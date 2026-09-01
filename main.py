@@ -138,11 +138,38 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 app.register_blueprint(bp)
-from services import nmos
-app.register_blueprint(nmos.bp)
-# IS-04 exige des en-têtes CORS sur toutes les réponses de l'API, y compris les erreurs —
-# donc au niveau de l'application, pas du blueprint (un 404 sur un chemin inconnu lui échappe).
-nmos.installer_cors(app)
+# ⚠ SEUL IMPORT DE SERVICE AU NIVEAU MODULE — donc le seul qui puisse empêcher le
+# DÉMARRAGE. Tous les autres sont paresseux, dans des fonctions : un service absent y
+# casse un chemin, pas le produit.
+#
+# Il l'était aussi, et c'était une panne sèche : un `git clone` SANS `--recursive` —
+# l'oubli le plus courant — donnait `ImportError: cannot import name 'nmos'` avant même
+# la première page. Constaté le 2026-09-01 sur le dépôt public fraîchement publié.
+#
+# Or NMOS est fonctionnellement OPTIONNEL : `nmos_enabled` vaut false sur une installation
+# neuve. Empêcher le démarrage pour une fonctionnalité éteinte par défaut est
+# disproportionné — et le pire est que le remède (installer le service depuis la page
+# Catalogue) exige que le produit TOURNE. Un cercle dont l'utilisateur ne peut pas sortir.
+#
+# On dégrade donc : le service manque, l'API NMOS n'existe pas, tout le reste marche, et
+# l'alerte le dit en toutes lettres plutôt que de laisser deviner.
+try:
+    from services import nmos
+    app.register_blueprint(nmos.bp)
+    # IS-04 exige des en-têtes CORS sur toutes les réponses de l'API, y compris les erreurs —
+    # donc au niveau de l'application, pas du blueprint (un 404 sur un chemin inconnu lui échappe).
+    nmos.installer_cors(app)
+except (ImportError, AttributeError) as _e:
+    # ⚠ ATTRAPER AUSSI AttributeError, et ce n'est pas du zèle : un `git clone` sans
+    # `--recursive` laisse un dossier services/nmos VIDE — pas absent. Python l'accepte
+    # alors comme paquet-espace-de-noms, l'import RÉUSSIT, et c'est `nmos.bp` qui casse.
+    # Un garde sur le seul ImportError ne se déclenche donc JAMAIS dans le cas qu'il vise.
+    # Vérifié en reproduisant le clone non récursif.
+    nmos = None
+    logging.getLogger(__name__).warning(
+        "services/nmos absent ou incomplet (%s) — l'API NMOS ne sera pas servie. Si vous "
+        "avez cloné sans --recursive : `git submodule update --init services/nmos`. Sinon, "
+        "installez le service depuis Réglages → Catalogue.", _e)
 from app.testplan import testplan_bp
 app.register_blueprint(testplan_bp)
 
