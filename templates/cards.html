@@ -1,0 +1,190 @@
+{% set STATUS_FR = {
+    'running':        _('containers.status.running'),
+    'stopped':        _('containers.status.stopped'),
+    'script_stopped': _('containers.status.script_stopped'),
+    'unreachable':    _('containers.status.unreachable'),
+    'crash_loop':     _('containers.status.crash_loop'),
+    'unknown':        _('containers.status.unknown')
+} %}
+<div class="filter-bar" role="toolbar" aria-label="{{ _('containers.filter.aria') }}">
+    <span class="filter-count">
+        <span class="filter-count-num" id="containers-count">{{ containers|length }}</span>
+        <span class="filter-count-label">{{ _('containers.filter.count_label') }}</span>
+    </span>
+    <span class="filter-sep" aria-hidden="true"></span>
+    <span class="filter-group">
+        <input type="search" class="filter-search" id="filter-search"
+               placeholder="{{ _('containers.filter.search_placeholder') }}"
+               aria-label="{{ _('containers.filter.search_aria') }}" autocomplete="off"
+               oninput="setSearch(this.value)">
+    </span>
+    <span class="filter-sep" aria-hidden="true"></span>
+    <span role="group" aria-label="{{ _('containers.filter.by_category_aria') }}" class="filter-group">
+        <span class="filter-label" aria-hidden="true">{{ _('containers.filter.category') }}</span>
+        <button class="filter-chip active" data-group="category" data-value="all" onclick="setFilter('category','all')">{{ _('containers.filter.all_f') }}</button>
+        {% for sid, s in (plugin_sections or {}).items() %}
+        <button class="filter-chip" data-group="category" data-value="{{ sid }}" onclick="setFilter('category','{{ sid }}')">{{ s.label }}</button>
+        {% endfor %}
+    </span>
+    <span class="filter-sep" aria-hidden="true"></span>
+    <span role="group" aria-label="{{ _('containers.filter.by_type_aria') }}" class="filter-group">
+        <span class="filter-label" aria-hidden="true">{{ _('containers.filter.type') }}</span>
+        <button class="filter-chip active" data-group="type" data-value="all"  onclick="setFilter('type','all')">{{ _('containers.filter.all') }}</button>
+        {# Un chip par type de plugin, généré depuis le registre (pas de doublon, libellés corrects).
+           data-section = catégorie du type, utilisé pour masquer les chips hors catégorie active. #}
+        {% for sid, s in (plugin_sections or {}).items() %}{% for p in s.plugins %}
+        <button class="filter-chip" data-group="type" data-value="{{ p.type }}" data-section="{{ sid }}" onclick="setFilter('type','{{ p.type }}')">{{ p.label }}</button>
+        {% endfor %}{% endfor %}
+        <button class="filter-chip"        data-group="type" data-value="none" onclick="setFilter('type','none')">{{ _('containers.filter.none') }}</button>
+    </span>
+    <span class="filter-sep" aria-hidden="true"></span>
+    <span role="group" aria-label="{{ _('containers.filter.by_status_aria') }}" class="filter-group">
+        <span class="filter-label" aria-hidden="true">{{ _('containers.filter.status') }}</span>
+        <button class="filter-chip active" data-group="status" data-value="all"            onclick="setFilter('status','all')">{{ _('containers.filter.all') }}</button>
+        <button class="filter-chip"        data-group="status" data-value="running"        onclick="setFilter('status','running')">{{ STATUS_FR['running']|capitalize }}</button>
+        <button class="filter-chip"        data-group="status" data-value="stopped"        onclick="setFilter('status','stopped')">{{ STATUS_FR['stopped']|capitalize }}</button>
+        <button class="filter-chip"        data-group="status" data-value="script_stopped" onclick="setFilter('status','script_stopped')">{{ STATUS_FR['script_stopped']|capitalize }}</button>
+        <button class="filter-chip"        data-group="status" data-value="unknown"        onclick="setFilter('status','unknown')">{{ STATUS_FR['unknown']|capitalize }}</button>
+    </span>
+    <span class="filter-sep" aria-hidden="true"></span>
+    <span class="filter-group">
+        <button class="filter-chip" id="flt-fabric-internals" onclick="toggleFabricInternals()"
+                title="{{ _('containers.filter.fabric_internals_title') }}">
+            ⚙ {{ _('containers.filter.fabric_internals') }}
+        </button>
+    </span>
+    {% if noeuds %}
+    <span class="filter-sep" aria-hidden="true"></span>
+    <span class="filter-group">
+        <label class="filter-label" for="filter-node">{{ _('containers.filter.node') }}</label>
+        <select id="filter-node" class="filter-select"
+                aria-label="{{ _('containers.filter.node') }}"
+                onchange="setFilter('node', this.value)">
+            <option value="all">{{ _('containers.filter.all') }}</option>
+            {% for n in noeuds %}
+            <option value="{{ n.id }}">{{ n.name }}</option>
+            {% endfor %}
+        </select>
+    </span>
+    {% endif %}
+    {% if projets %}
+    <span class="filter-sep" aria-hidden="true"></span>
+    <span class="filter-group">
+        <label class="filter-label" for="filter-project">{{ _('containers.filter.project') }}</label>
+        <select id="filter-project" class="filter-select"
+                aria-label="{{ _('containers.filter.project') }}"
+                onchange="setFilter('project', this.value)">
+            <option value="all">{{ _('containers.filter.all') }}</option>
+            <option value="none">{{ _('containers.filter.none') }}</option>
+            {% for p in projets %}
+            <option value="{{ p.id }}">{{ p.name }}</option>
+            {% endfor %}
+        </select>
+    </span>
+    {% endif %}
+</div>
+<div class="grid" id="containers-grid">
+    {% for c in containers %}
+    {% set dc = c.deploy_config | from_json %}
+    <article class="card" id="c-{{ c.vmid }}">
+        <header class="card-head">
+            <div class="card-title">
+                <h2 class="card-host">{{ c.hostname }}</h2>
+                <span class="card-vmid">#{{ c.vmid }}</span>
+            </div>
+            {# Cadence : chiffre SEULEMENT quand elle vient d'être mesurée. Sans mesure fraîche, la
+               colonne fps est NULL (metrics._fps_sans_mesure) et on l'affiche INCONNUE — jamais la
+               dernière valeur connue, qui faisait passer un conteneur mort pour un conteneur à 49,8 fps. #}
+            {% if dc.type not in ['webrtc_gateway', 'ServeurStream'] %}
+                {% if c.fps %}<span class="fps">{{ c.fps }} fps</span>
+                {% elif dc and c.status not in ['stopped', 'script_stopped'] %}<span class="fps fps-unknown" title="{{ _('containers.card.fps_unknown_title') }}">{{ _('containers.card.fps_unknown') }}</span>{% endif %}
+            {% endif %}
+        </header>
+
+        <div class="card-tags">
+            {% if c.status == 'script_stopped' and not dc %}
+                <span class="badge ready" aria-live="polite">{{ _('containers.card.ready') }}</span>
+            {% else %}
+                <span class="badge {{ c.status }}" aria-live="polite"
+                      {% if c.status_cause %}title="{{ c.status_cause }}"{% endif %}>{{ STATUS_FR.get(c.status, c.status) }}</span>
+                {# La CAUSE d'un arrêt, en clair. « script arrêté » sans cause obligeait à ouvrir un
+                   terminal et lire `docker logs` : c'est ce qui a coûté le plus de temps du chantier
+                   CPU, où ce badge cachait un SIGILL en boucle. #}
+                {% if c.status_cause %}<span class="status-cause" title="{{ c.status_cause }}">{{ c.status_cause }}</span>{% endif %}
+            {% endif %}
+            {% if dc and dc.type %}
+                {% set badge = plugin_badges.get(dc.type) %}
+                {% if badge %}
+                <span class="mode-badge {{ badge.class }}">{{ badge.label }}</span>
+                {% else %}
+                <span class="mode-badge mode-plugin">{{ dc.type }}</span>
+                {% endif %}
+            {% else %}
+                <span class="mode-badge mode-none">{{ _('containers.card.none') }}</span>
+            {% endif %}
+        </div>
+
+        <dl class="card-meta">
+            <dt>{{ _('containers.card.node') }}</dt>
+            <dd class="{% if not c.node_id %}dimmed{% endif %}">
+                {%- if c.node_id -%}{{ (node_names or {}).get(c.node_id) or ('Nœud ' ~ c.node_id) }}
+                {%- else -%}{{ _('containers.card.none') }}{%- endif -%}
+            </dd>
+            {% if dc and dc.type and dc.params and dc.params.plugin_version %}
+            <dt>{{ _('containers.card.version') }}</dt>
+            <dd title="{{ _('containers.card.plugin_version_title') }}">v{{ dc.params.plugin_version }}</dd>
+            {% endif %}
+            <dt>{{ _('containers.card.cores') }}</dt><dd>{{ c.cores }}</dd>
+            <dt>RAM</dt><dd>{{ c.memory }} MB</dd>
+            <dt>IP</dt><dd class="{% if not c.ip %}dimmed{% endif %}">{{ c.ip or _('containers.card.ip_none') }}</dd>
+            {% if c.source %}<dt>{{ _('containers.card.source') }}</dt><dd>{{ c.source }}</dd>{% endif %}
+            {% if c.shm_out %}<dt>SHM</dt><dd>{{ c.shm_out }}</dd>{% endif %}
+            <dt>{{ _('containers.card.restarts') }}</dt><dd>{{ c.restarts }}</dd>
+            <dt>{{ _('containers.card.script') }}</dt><dd class="{% if not c.script %}dimmed{% endif %}">{{ c.script or _('containers.card.none') }}</dd>
+            <dt>{{ _('containers.card.projects') if c.projects and c.projects|length > 1 else _('containers.card.project') }}</dt>
+            <dd class="{% if not c.projects %}dimmed{% endif %}">
+                {%- if c.projects -%}
+                    {{ c.projects | map(attribute='name') | join(', ') }}
+                {%- else -%}{{ _('containers.card.none') }}{%- endif -%}
+            </dd>
+        </dl>
+
+        {# Menu ACTIONS — MÊME structure que le rendu JS (`_renderCardInner`), qui remplace ce
+           balisage dès le premier rafraîchissement. Toute divergence entre les deux se voit une
+           seconde puis disparaît : c'est exactement comme ça qu'un bouton devient invisible. #}
+        <div class="card-actions">
+            <div class="card-menu">
+                <button class="btn card-menu-btn" aria-haspopup="menu" aria-expanded="false"
+                        onclick="_cardMenuBascule(event, {{ c.vmid }})">{{ _('containers.card.actions') }} ▾</button>
+                <div class="card-menu-list" role="menu" hidden>
+                    <button role="menuitem" class="card-menu-item" data-action="configure"
+                            aria-controls="deploy-palette"
+                            onclick="_cardMenuFermer(); modifier({{ c.vmid }})">{{ _('containers.card.configure') }}</button>
+                    <button role="menuitem" class="card-menu-item" onclick="_cardMenuFermer(); restart({{ c.vmid }})">Restart</button>
+                    {% if c.status == 'running' %}
+                    <button role="menuitem" class="card-menu-item" onclick="_cardMenuFermer(); stopScript({{ c.vmid }})">Stop</button>
+                    {% else %}
+                    <button role="menuitem" class="card-menu-item" onclick="_cardMenuFermer(); startScript({{ c.vmid }})">Start</button>
+                    {% endif %}
+                    {% if dc and dc.type == 'multiview' %}
+                    <button role="menuitem" class="card-menu-item" onclick="_cardMenuFermer(); ouvrirTally({{ c.vmid }}, '{{ c.hostname }}')">Tally</button>
+                    {% endif %}
+                    <button role="menuitem" class="card-menu-item" title="{{ _('migration.button_title') }}"
+                            onclick="_cardMenuFermer(); ouvrirMigration({{ c.vmid }}, '{{ c.hostname }}')">{{ _('migration.button') }}</button>
+                    <div class="card-menu-sep"></div>
+                    <button role="menuitem" class="card-menu-item card-menu-danger"
+                            onclick="_cardMenuFermer(); detruire({{ c.vmid }})"
+                            aria-label="{{ _('containers.card.destroy') }} {{ c.hostname }}">{{ _('containers.card.destroy') }}</button>
+                </div>
+            </div>
+        </div>
+    </article>
+    {% endfor %}
+    {% if not containers %}
+    <div class="empty-state">
+        <h2 class="empty-state-title">{{ _('containers.empty.title') }}</h2>
+        <p class="empty-state-msg">{{ _('containers.empty.msg') }}</p>
+        <button class="btn btn-blue" onclick="switchMainTab('creation')">{{ _('containers.empty.open_creation') }}</button>
+    </div>
+    {% endif %}
+</div>

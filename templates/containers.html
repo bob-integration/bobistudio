@@ -1,0 +1,91 @@
+{% extends "layout.html" %}
+{% set page = 'containers' %}
+{% block title %}{{ _('containers.page_title') }}{% endblock %}
+
+{% block content %}
+<h1>{{ _('containers.title') }}</h1>
+
+<div class="tabs">
+    <button class="tab active" id="main-tab-btn-surveillance" onclick="switchMainTab('surveillance')">{{ _('containers.tab.surveillance') }}</button>
+    <button class="tab"        id="main-tab-btn-creation"     onclick="switchMainTab('creation')">{{ _('containers.tab.creation') }}</button>
+    <button class="tab"        id="main-tab-btn-ressources"   onclick="switchMainTab('ressources')">{{ _('containers.tab.ressources') }}</button>
+    <button class="tab"        id="main-tab-btn-inventaire"   onclick="switchMainTab('inventaire')">{{ _('containers.tab.inventaire') }}</button>
+</div>
+
+<!-- ─── Onglet Surveillance ─── -->
+<div id="main-tab-surveillance">
+    <div class="containers-with-palette">
+        <div class="containers-side">
+            {% include 'cards.html' %}
+        </div>
+        {% include 'deploy_palette.html' %}
+    </div>
+</div>
+
+<!-- ─── Onglet Création ─── -->
+<div id="main-tab-creation" style="display:none">
+    {% include 'forms.html' %}
+</div>
+
+<!-- ─── Onglet Ressources ─── -->
+<div id="main-tab-ressources" style="display:none">
+    <div class="res-panel">
+        <div class="res-campaign" id="res-campaign">
+            <h2 style="margin:0">{{ _('containers.ressources.campaign_title') }}</h2>
+            <p class="res-campaign-hint">{{ _('containers.ressources.campaign_hint') }}</p>
+            <div class="res-campaign-row" id="res-campaign-idle">
+                <input type="text" id="res-campaign-libelle" class="wide"
+                       placeholder="{{ _('containers.ressources.libelle_ph') }}" autocomplete="off">
+                <button type="button" class="btn btn-green" id="res-campaign-start"
+                        title="{{ _('containers.ressources.calibrate_need_perm') }}">{{ _('containers.ressources.start') }}</button>
+            </div>
+            <div class="res-campaign-row" id="res-campaign-live" hidden>
+                <span class="res-campaign-chrono" id="res-campaign-chrono">00:00</span>
+                <span class="meta" id="res-campaign-points"></span>
+                <button type="button" class="btn btn-orange" id="res-campaign-stop">{{ _('containers.ressources.stop') }}</button>
+            </div>
+            <div id="res-campaign-errors" class="res-campaign-hint" style="display:none"></div>
+            <div id="res-campaign-result" hidden>
+                <p class="res-campaign-hint">{{ _('containers.ressources.result_hint') }}</p>
+                <div class="res-campaign-results" id="res-campaign-results"></div>
+                <div class="res-campaign-row" style="margin-top:var(--space-2)">
+                    <input type="text" id="res-campaign-note" class="wide"
+                           placeholder="{{ _('containers.ressources.note_ph') }}" autocomplete="off">
+                    <button type="button" class="btn btn-blue" id="res-campaign-save">{{ _('containers.ressources.save') }}</button>
+                    <span class="res-brick-status" id="res-campaign-save-status"></span>
+                </div>
+            </div>
+        </div>
+        <div class="res-list" id="res-list">
+            <p class="meta">{{ _('containers.ressources.loading') }}</p>
+        </div>
+    </div>
+</div>
+
+<!-- ─── Onglet Inventaire ─── -->
+<!-- Les autres onglets listent la BASE ; celui-ci liste ce que les agents voient RÉELLEMENT
+     sur les nœuds. C'est le seul endroit du produit où un conteneur inconnu de la base existe. -->
+<div id="main-tab-inventaire" style="display:none">
+    <div class="inv-panel">
+        <div class="inv-head">
+            <div>
+                <h2 style="margin:0">{{ _('containers.inv.title') }}</h2>
+                <p class="inv-hint">{{ _('containers.inv.hint') }}</p>
+            </div>
+            <button type="button" class="btn btn-blue" id="inv-refresh">{{ _('containers.inv.refresh') }}</button>
+        </div>
+        <div class="inv-totals" id="inv-totals"></div>
+        <div id="inv-body"><p class="meta">{{ _('containers.inv.loading') }}</p></div>
+    </div>
+</div>
+
+{% include 'alerts.html' %}
+{% include 'tally.html' %}
+{% include 'migration.html' %}
+{% endblock %}
+
+{% block scripts %}
+<script>const RES_CAN_DEPLOY = {{ has_perm('containers.deploy') | tojson }};
+const INV_CAN_DELETE = {{ has_perm('containers.delete') | tojson }};</script>
+<script src="/static/scripts.js?v={{ asset_v('scripts.js') }}"></script>
+{% endblock %}

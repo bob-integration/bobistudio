@@ -1,0 +1,23 @@
+{
+  "version": "0.5.0",
+  "date": "2026-08-31",
+  "image_tag": "bobi-webrtc:0.5",
+  "changes": {
+    "Surface NMOS par conteneur (plan 2) (0.5.0)": [
+      "★ L'agent embarqué sert désormais `/x-nmos/` : chaque conteneur expose SON Node NMOS, alimenté par un document que l'orchestrateur lui pousse (POST /nmos, écriture atomique).",
+      "⚠ BUMP NÉCESSAIRE, pas cosmétique : un conteneur n'est recréé que si sa signature `docker run` change, image comprise. Reconstruire sans changer `image_tag` laissait le nouvel agent dans l'image et AUCUN conteneur ne l'adoptait jamais."
+    ],
+    "Le chien de garde passe par le LOOPBACK (0.4.0)": [
+      "Même changement d'agent par-conteneur que les images compute 0.27.0 / média 0.16.0."
+    ],
+    "L'agent-NŒUD peut constater et relancer un script, le contrôleur absent (0.3.0)": [
+      "Même changement d'agent par-conteneur que les images compute 0.26.0 / média 0.15.0 (script_templates/agent.py est partagé) : seconde identité mTLS acceptée, celle de l'agent-nœud (`bobi://node/<id>`), restreinte à `GET /status` + `POST /start`."
+    ],
+    "Sortie des scripts sur stdout du conteneur (0.2.0)": [
+      "Journalisation : l'agent par-conteneur redirige désormais la sortie du script déployé vers la SORTIE STANDARD du conteneur au lieu de /var/log/mxl-script.log — fichier interne, sans rotation (24 Mo constatés sur un mur), sur rootfs éphémère, et invisible de `docker logs`. PYTHONUNBUFFERED propagé aux petits-enfants Python (qui n'héritent pas du -u de l'agent) pour éviter des lignes livrées par blocs ; code de sortie du script tracé sur le même flux ; purge de l'ancien fichier au démarrage. Bump de version INDISPENSABLE : le contenu de l'image change sans quoi le tag resterait identique et la page Réglages afficherait « à jour » alors que la flotte tourne encore l'ancien agent."
+    ],
+    "Nouveautés (0.1.0)": [
+      "Image runtime WebRTC dédiée (sœur de bobi-compute/bobi-media) : passerelle MediaMTX déployable en conteneur Docker sur un nœud (réseau macvlan, IP propre), au lieu du seul chemin LXC. Le binaire MediaMTX est PRÉ-BAKÉ dans l'image (v1.9.3, /usr/local/bin/mediamtx) → démarrage immédiat, aucun téléchargement runtime ni dépendance Internet du conteneur. Embarque l'agent par-conteneur (contrat :8081) comme les autres images compute : l'orchestrateur y pousse services/webrtc_gateway/script.py qui lance mediamtx et sert :8080. Build : docker build -t bobi-webrtc:0.1 -f plugins/_webrtc_runtime/Dockerfile ."
+    ]
+  }
+}

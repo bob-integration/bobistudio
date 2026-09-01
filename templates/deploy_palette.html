@@ -1,0 +1,211 @@
+<!-- Palette de déploiement (cachée par défaut, ouverte par le bouton Configurer) -->
+<aside class="deploy-palette" id="deploy-palette" hidden
+       aria-labelledby="dp-palette-heading"></aside>
+
+<!-- Template du contenu : cloné par JS quand un container est sélectionné -->
+<template id="deploy-palette-tpl">
+    <header class="palette-header">
+        <div class="palette-header-id">
+            <h2 id="dp-palette-heading" class="palette-host">
+                <span class="dp-hostname"></span>
+                <span class="card-vmid">#<span class="dp-vmid"></span></span>
+            </h2>
+            <span class="badge dp-status" aria-live="polite"></span>
+        </div>
+        <button class="btn-ghost-icon" onclick="fermerPalette()"
+                aria-label="{{ _('containers.palette.close_aria') }}">×</button>
+    </header>
+
+    <!-- Choix du type : ligne récap par défaut sur container déjà déployé,
+         chips visibles seulement au premier déploiement ou après clic "Changer" -->
+    <div class="palette-group palette-group-type" data-collapsed="false">
+        <button type="button" class="dp-type-summary" onclick="expandDpType()">
+            <span class="dp-type-summary-label">{{ _('containers.filter.type') }}</span>
+            <span class="dp-type-summary-value"></span>
+            <span class="dp-type-summary-action">{{ _('containers.palette.change') }}</span>
+        </button>
+        {# Chips groupés par catégorie : types cœur + plugins déclarant la même
+           `nav.section`. Médias = catégorie des plugins média (comme les autres). #}
+        {% set PS = plugin_sections or {} %}
+        {# `auto_provision` : type provisionné automatiquement (ex. moteur 2110_io) → pas de
+           chip pour le (re)typer manuellement. L'édition d'un moteur existant reste intacte :
+           son type est porté par l'input caché .dp-type + la ligne récap (label via JS). #}
+        {# Sous-groupes (`nav.group`) : dans Sources, « ce qui arrive d'ailleurs » et « ce qu'on
+           fabrique ici » ne se cherchent pas dans le même état d'esprit. Purement visuel — un
+           groupe ne crée ni catégorie, ni route. Une rubrique sans groupe rend exactement comme
+           avant : `groupes` est vide et on retombe sur la liste plate. #}
+        {% macro chips_de(liste) %}
+            {% for p in liste if not p.auto_provision %}
+                <button type="button" class="dp-chip" data-type="{{ p.type }}"
+                        onclick="setDpType(this, '{{ p.type }}')">{{ p.label }}</button>
+            {% endfor %}
+        {% endmacro %}
+        {% macro plug_chips(sid) %}
+            {% set sec = PS.get(sid) or {} %}
+            {% if sec.groupes %}
+                {% for g in sec.groupes %}
+                    {% if g.label %}<span class="dp-chip-group">{{ g.label }}</span>{% endif %}
+                    {{ chips_de(g.plugins) }}
+                {% endfor %}
+            {% else %}
+                {{ chips_de(sec.plugins or []) }}
+            {% endif %}
+        {% endmacro %}
+        {% set KNOWN = ['sources','traitements','destinations','streams','medias'] %}
+        {# Niveau 1 : onglets de catégorie (peuplés par JS depuis les .dp-type-cat) #}
+        <div class="dp-type-cats-nav" role="tablist" aria-label="{{ _('containers.filter.category') }}"></div>
+        {# Niveau 2 : chips du plugin, une catégorie visible à la fois #}
+        <div class="dp-type-chips" role="group" aria-label="{{ _('containers.palette.type_aria') }}">
+            <div class="dp-type-cat">
+                <span class="dp-type-cat-label">{{ _('containers.palette.sources') }}</span>
+                {{ plug_chips('sources') }}
+            </div>
+            <div class="dp-type-cat">
+                <span class="dp-type-cat-label">{{ _('containers.palette.traitements') }}</span>
+                {{ plug_chips('traitements') }}
+            </div>
+            <div class="dp-type-cat">
+                <span class="dp-type-cat-label">{{ _('containers.palette.destinations') }}</span>
+                {{ plug_chips('destinations') }}
+            </div>
+            <div class="dp-type-cat">
+                <span class="dp-type-cat-label">{{ _('containers.palette.streams') }}</span>
+                {{ plug_chips('streams') }}
+            </div>
+            {% if (PS.get('medias') or {}).get('plugins') %}
+            <div class="dp-type-cat">
+                <span class="dp-type-cat-label">{{ PS['medias'].label or _('containers.palette.medias') }}</span>
+                {{ plug_chips('medias') }}
+            </div>
+            {% endif %}
+            {# Sections plugin hors catégories connues : un groupe par section #}
+            {% for sid, s in PS.items() if sid not in KNOWN and s.plugins %}
+            <div class="dp-type-cat">
+                <span class="dp-type-cat-label">{{ s.label }}</span>
+                {{ plug_chips(sid) }}
+            </div>
+            {% endfor %}
+        </div>
+        <input type="hidden" class="dp-type" value="2110_io">
+    </div>
+
+    <!-- Format vidéo : universel, sauf plugins format-agnostiques (video_format:false) -->
+    <script>window.PLUGIN_VIDEO_FORMAT = {{ plugin_video_format | tojson }};</script>
+    <div class="palette-field palette-field-format">
+        <label for="dp-format-preset">{{ _('containers.create.video_format') }}</label>
+        <select class="dp-format-preset" id="dp-format-preset"
+                onchange="onFormatPresetChange(this)">
+            <option value="">{{ _('containers.palette.choose_format') }}</option>
+        </select>
+    </div>
+
+    <!-- Version du plugin : visible seulement si le type a >1 version installée
+         (versions archivées dans plugins/<type>/versions/). Défaut = version courante. -->
+    <script>window.PLUGIN_VERSIONS = {{ plugin_versions | tojson }};</script>
+    <div class="palette-field dp-plugin-version-field" hidden>
+        <label for="dp-plugin-version">{{ _('containers.palette.plugin_version') }}</label>
+        <select class="dp-plugin-version" id="dp-plugin-version"></select>
+    </div>
+
+    <!-- Champs de config déclaratifs des plugins (Tier 1) — rendus dynamiquement
+         depuis window.PLUGIN_CONFIG_SCHEMAS selon le type sélectionné. -->
+    <script>window.PLUGIN_CONFIG_SCHEMAS = {{ plugin_config_schemas | tojson }};</script>
+    <div class="dp-section dp-plugin-config" id="dp-plugin-config" hidden></div>
+
+    <!-- ─── Receiver ───────────────────────────────────────── -->
+    <div class="dp-section dp-receiver">
+        <fieldset class="palette-group">
+            <legend class="palette-group-title">{{ _('containers.palette.nmos_sources') }}</legend>
+            <div class="palette-row">
+                <div class="palette-field">
+                    <label for="dp-rx-vcount">{{ _('containers.palette.video') }}</label>
+                    <input type="number" class="dp-rx-vcount" id="dp-rx-vcount"
+                           min="0" max="32" value="25">
+                </div>
+                <div class="palette-field">
+                    <label for="dp-rx-aper">{{ _('containers.palette.audio_per_video') }}</label>
+                    <input type="number" class="dp-rx-aper" id="dp-rx-aper"
+                           min="0" max="2" value="2">
+                </div>
+                <div class="palette-field">
+                    <label for="dp-rx-anccount">{{ _('containers.palette.anc') }}</label>
+                    <input type="number" class="dp-rx-anccount" id="dp-rx-anccount"
+                           min="0" max="8" value="1">
+                </div>
+                <div class="palette-field dp-mtl-tx"
+                     title="{{ _('containers.palette.tx_tip') }}">
+                    <label for="dp-rx-txcount">{{ _('containers.palette.tx') }}</label>
+                    <input type="number" class="dp-rx-txcount" id="dp-rx-txcount"
+                           min="0" max="32" value="25">
+                </div>
+            </div>
+            <div class="palette-hint">
+                {{ _('containers.palette.nmos_hint') }}
+            </div>
+        </fieldset>
+
+        {# La section Simulateur a été retirée de la palette : la simu (GÉN/IDENT,
+           patterns, audio) se pilote en live depuis la page Sources 2110. Les params
+           sim_* persistés sont préservés au redeploy (merge params existants). #}
+    </div>
+
+    <!-- Action principale -->
+    <div class="palette-actions">
+        <button class="btn dp-deploy-btn" onclick="deployerPalette()">
+            <span aria-hidden="true">▶</span> {{ _('containers.palette.deploy') }}
+        </button>
+        <div class="dp-status-msg"></div>
+    </div>
+
+    <!-- Projet (plugins média) : sélecteur repliable, masqué si non-média -->
+    <div class="dp-project-section dp-resources-section" style="display:none">
+        <button class="dp-resources-header" onclick="toggleDpResources(this)" type="button"
+                aria-expanded="false">
+            <span class="dp-resources-icon">▸</span>
+            <span>{{ _('containers.filter.project') }}</span>
+            <span class="dp-resources-hint dp-project-hint">{{ _('containers.palette.project_hint') }}</span>
+        </button>
+        <div class="dp-resources-body" hidden>
+            <div class="palette-hint">{{ _('containers.palette.project_desc') }}</div>
+            <div class="palette-field">
+                <label for="dp-project-sel">{{ _('containers.filter.project') }}</label>
+                <select class="dp-project-sel" id="dp-project-sel">
+                    <option value="">{{ _('containers.palette.project_all') }}</option>
+                </select>
+            </div>
+            <button class="btn btn-blue" onclick="saveContainerProject()">{{ _('containers.palette.save') }}</button>
+            <div class="palette-hint dp-project-status"></div>
+        </div>
+    </div>
+
+    <!-- Ressources du conteneur (cores · RAM · pinning, appliquées au docker run) :
+         toujours visible — peu de champs, plus de raison d'être repliable. -->
+    <fieldset class="palette-group dp-resources-group">
+        <legend class="palette-group-title">{{ _('containers.palette.resources') }}</legend>
+        <div class="palette-hint">
+            {{ _('containers.palette.resources_hint') }}
+        </div>
+        <div class="palette-row">
+            <div class="palette-field">
+                <label for="dp-r-cores">{{ _('containers.card.cores') }}</label>
+                <input type="number" class="dp-r-cores" id="dp-r-cores"
+                       min="1" max="64" value="2">
+            </div>
+            <div class="palette-field">
+                <label for="dp-r-memory">{{ _('containers.create.ram_mb') }}</label>
+                <input type="number" class="dp-r-memory" id="dp-r-memory"
+                       min="64" max="262144" step="64" value="2048">
+            </div>
+        </div>
+        <div class="palette-field">
+            <label for="dp-r-pinned">{{ _('containers.palette.pinning') }}</label>
+            <input type="text" class="dp-r-pinned" id="dp-r-pinned"
+                   placeholder="{{ _('containers.palette.pinning_ph') }}">
+            <div class="palette-hint dp-r-pinned-hint"></div>
+        </div>
+        <button class="btn btn-blue btn-update" onclick="majRessources()">
+            {{ _('containers.palette.update_resources') }}
+        </button>
+        <div class="palette-hint dp-r-status"></div>
+    </fieldset>
+</template>

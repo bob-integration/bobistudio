@@ -1,0 +1,2535 @@
+{% extends "layout.html" %}
+{% set page = 'cables' %}
+{% block title %}{{ _('cables.page_title') }}{% endblock %}
+
+{% block content %}
+<div class="home-head">
+    <h1>{{ _('cables.title') }}</h1>
+    <div class="meta" id="home-updated">{{ _('cables.loading') }}</div>
+</div>
+
+<div class="cables-toolbar" role="toolbar" aria-label="{{ _('cables.toolbar.aria') }}">
+    <button type="button" class="btn btn-blue" onclick="saveCableSnapshot()">
+        {{ _('cables.save') }}
+    </button>
+    <div class="cables-recall">
+        <button type="button" class="btn btn-purple"
+                aria-expanded="false" aria-controls="cables-recall-menu"
+                onclick="toggleRecallMenu(event)">{{ _('cables.recall') }} ▾</button>
+        <div id="cables-recall-menu" class="cables-recall-menu" hidden role="menu"></div>
+    </div>
+    <button type="button" class="btn btn-red" onclick="clearAllCables()">
+        {{ _('cables.clear_all') }}
+    </button>
+    <label class="ctl-switch-inline" style="margin-left:auto; font-size:0.9em; color:var(--text-muted)"
+           title="{{ _('cables.autoaudio.tip') }}">
+        <input type="checkbox" class="ctl-switch" id="auto-audio"
+               onchange="localStorage.setItem('mxl.cables.autoaudio', this.checked ? '1' : '0')">
+        {{ _('cables.autoaudio.label') }}
+    </label>
+    <label class="ctl-switch-inline" style="font-size:0.9em; color:var(--topo-flow-data)"
+           title="{{ _('cables.autoanc.tip') }}">
+        <input type="checkbox" class="ctl-switch" id="auto-anc"
+               onchange="localStorage.setItem('mxl.cables.autoanc', this.checked ? '1' : '0')">
+        {{ _('cables.autoanc.label') }}
+    </label>
+    <span class="cables-filter-label" title="{{ _('cables.latmode.title') }}">{{ _('cables.latmode.short') }}</span>
+    <div class="lat-mode-toggle" role="group" aria-label="{{ _('cables.latmode.aria') }}"
+         title="{{ _('cables.latmode.title') }}">
+        <button type="button" id="lat-mode-charge" class="lat-mode-btn" onclick="cablesSetLatMode('charge')"
+                title="{{ _('cables.latmode.charge_title') }}">{{ _('cables.latmode.charge') }}</button>
+        <button type="button" id="lat-mode-delai" class="lat-mode-btn" onclick="cablesSetLatMode('delai')"
+                title="{{ _('cables.latmode.delai_title') }}">{{ _('cables.latmode.delai') }}</button>
+        <button type="button" id="lat-mode-cum" class="lat-mode-btn" onclick="cablesSetLatMode('delai_cum')"
+                title="{{ _('cables.latmode.cum_title') }}">{{ _('cables.latmode.cum') }}</button>
+        <button type="button" id="lat-mode-off" class="lat-mode-btn" onclick="cablesSetLatMode('off')">{{ _('cables.latmode.off') }}</button>
+    </div>
+    <span class="cables-filter-label" title="{{ _('cables.rdmamode.title') }}">RDMA</span>
+    <div class="lat-mode-toggle" role="group" aria-label="{{ _('cables.rdmamode.aria') }}"
+         title="{{ _('cables.rdmamode.title') }}">
+        <button type="button" id="rdma-mode-line"  class="lat-mode-btn" onclick="cablesSetRdmaMode('line')">{{ _('cables.rdmamode.line') }}</button>
+        <button type="button" id="rdma-mode-label" class="lat-mode-btn" onclick="cablesSetRdmaMode('label')">{{ _('cables.rdmamode.label') }}</button>
+        <button type="button" id="rdma-mode-off"   class="lat-mode-btn" onclick="cablesSetRdmaMode('off')">{{ _('cables.rdmamode.off') }}</button>
+    </div>
+</div>
+
+<div class="cables-toolbar cables-toolbar-filters" role="toolbar" aria-label="{{ _('cables.filters.aria') }}">
+    <span class="cables-filter-label">{{ _('cables.filters.signal') }}</span>
+    <div class="cables-signal-filter" role="group">
+        <button type="button" class="sig-btn sig-video active" data-sig="video" onclick="toggleSignalFilter('video')">{{ _('cables.kind.video') }}</button>
+        <button type="button" class="sig-btn sig-audio active" data-sig="audio" onclick="toggleSignalFilter('audio')">{{ _('cables.kind.audio') }}</button>
+        <button type="button" class="sig-btn sig-data active"  data-sig="data"  onclick="toggleSignalFilter('data')">ANC</button>
+    </div>
+    <label class="cables-filter-sel">
+        {{ _('cables.filters.project') }}
+        <select id="filter-project" onchange="setProjectFilter(this.value)"></select>
+    </label>
+    <label class="cables-filter-sel">
+        {{ _('cables.filters.node') }}
+        <select id="filter-node" onchange="setNodeFilter(this.value)"></select>
+    </label>
+    <button type="button" class="btn btn-ghost cables-filter-reset" onclick="resetCableFilters()">{{ _('cables.filters.reset') }}</button>
+    <button type="button" class="sig-btn" id="cables-fabric-internals" onclick="toggleFabricInternalsCables()"
+            title="{{ _('cables.js.fabric_internals_title') }}">⚙ {{ _('containers.filter.fabric_internals') }}</button>
+    {% if has_perm('projects.manage') %}
+    <button type="button" class="sig-btn" id="cables-projects-view" onclick="toggleProjectsView()"
+            title="{{ _('cables.projects_view_title') }}">▣ {{ _('cables.projects_view') }}</button>
+    {% endif %}
+
+    <div class="cables-view-toggle" role="group" aria-label="{{ _('cables.view.aria') }}" style="margin-left:auto"
+         title="{{ _('cables.view.title') }}">
+        <button type="button" id="view-mode-cols" class="lat-mode-btn" onclick="cablesSetViewMode('cols')">{{ _('cables.view.cols') }}</button>
+        <button type="button" id="view-mode-free" class="lat-mode-btn" onclick="cablesSetViewMode('free')">{{ _('cables.view.free') }}</button>
+    </div>
+    <div class="cables-recall cables-layouts" id="cables-layouts-wrap" hidden>
+        <button type="button" class="btn btn-ghost" onclick="resetFreeLayout()"
+                title="{{ _('cables.view.reorganize_title') }}">{{ _('cables.view.reorganize') }}</button>
+        <button type="button" class="btn btn-blue" onclick="saveCableLayout()">{{ _('cables.view.save') }}</button>
+        <button type="button" class="btn btn-purple"
+                aria-expanded="false" aria-controls="cables-layouts-menu"
+                onclick="toggleLayoutsMenu(event)">{{ _('cables.view.recall') }} ▾</button>
+        <div id="cables-layouts-menu" class="cables-recall-menu" hidden role="menu"></div>
+    </div>
+</div>
+
+<!-- Légende du voyant de signal. Placée AU-DESSUS du graphe et non dans une infobulle : la
+     question « allumé/éteint, ça veut dire quoi ? » se pose au premier regard, et une réponse
+     qu'il faut aller chercher au survol d'un port arrive trop tard. -->
+<div class="topo-legend" aria-label="{{ _('cables.legend.aria') }}">
+    <span><i class="lg-on"></i>{{ _('cables.legend.on') }}</span>
+    <span><i class="lg-off"></i>{{ _('cables.legend.off') }}</span>
+    <span><i class="lg-unk"></i>{{ _('cables.legend.unknown') }}</span>
+</div>
+
+<div class="topo" id="topo">
+  <div class="topo-canvas" id="topo-canvas">
+    <svg class="topo-edges" id="topo-edges" aria-hidden="true"></svg>
+    <div class="topo-col" data-col="sources">
+        <div class="topo-col-head">
+            <span class="topo-col-title">{{ _('cables.col.sources') }}</span>
+            <span class="topo-col-sub">{{ _('cables.col.sources.sub') }}</span>
+        </div>
+        <div class="topo-col-body" id="col-sources"></div>
+    </div>
+    <div class="topo-col" data-col="composition">
+        <div class="topo-col-head">
+            <span class="topo-col-title">{{ _('cables.col.composition') }}</span>
+            <span class="topo-col-sub">{{ _('cables.col.composition.sub') }}</span>
+        </div>
+        <div class="topo-col-body" id="col-composition"></div>
+    </div>
+    <div class="topo-col" data-col="sinks">
+        <div class="topo-col-head">
+            <span class="topo-col-title">{{ _('cables.col.sinks') }}</span>
+            <span class="topo-col-sub">{{ _('cables.col.sinks.sub') }}</span>
+        </div>
+        <div class="topo-col-body" id="col-sinks"></div>
+    </div>
+  </div>
+</div>
+
+<div class="cables-zoom-bar" id="cables-zoom" hidden>
+    <div class="cables-zoom" role="group" aria-label="{{ _('cables.zoom.aria') }}">
+        <button type="button" class="cables-zoom-btn" onclick="cablesZoom(-1)" title="{{ _('cables.zoom.out') }}">−</button>
+        <button type="button" class="cables-zoom-btn cables-zoom-level" onclick="cablesZoomReset()" title="{{ _('cables.zoom.reset') }}">100%</button>
+        <button type="button" class="cables-zoom-btn" onclick="cablesZoom(1)" title="{{ _('cables.zoom.in') }}">+</button>
+        <button type="button" class="cables-zoom-btn" onclick="cablesZoomFit()" title="{{ _('cables.zoom.fit') }}">⤢</button>
+    </div>
+</div>
+
+<div class="topo-fallback" id="topo-empty" hidden>
+    <div class="topo-fallback-msg">{{ _('cables.empty') }}</div>
+    <a class="btn btn-blue" href="/containers">{{ _('cables.goto_containers') }}</a>
+</div>
+
+<!-- Distinct de `topo-empty` : là il n'y a RIEN à montrer, ici il y a de la matière que les
+     filtres masquent. Une toile blanche ne dit pas laquelle des deux, et c'est justement ce
+     qu'il faut savoir pour agir. -->
+<div class="topo-fallback" id="topo-all-filtered" hidden>
+    <div class="topo-fallback-msg">{{ _('cables.all_filtered') }}</div>
+    <button type="button" class="btn btn-blue" onclick="resetCableFilters()">{{ _('cables.filters.reset') }}</button>
+</div>
+
+<!-- Sous 900 px la couche de câbles est masquée par la feuille de style (choix délibéré :
+     cartes empilées en une colonne). Sans ce bandeau, « aucun câble » est indiscernable d'une
+     panne — et c'est exactement la question posée le 2026-08-18. -->
+<div class="topo-fallback" id="topo-edges-hidden" hidden>
+    <div class="topo-fallback-msg">{{ _('cables.edges_hidden_narrow') }}</div>
+</div>
+
+<div class="topo-tip" id="topo-tip" role="tooltip" hidden></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+console.log('[Bobi.Studio] cables build', 'cables-v1');
+const T = (k) => window.t(k);
+
+// ─── État d'AFFICHAGE du graphe (déclaré ICI, tout en haut) ──────────────────
+// `renderTopology` lit ces trois variables et vit plus haut dans le fichier que les fonctions
+// qui les pilotent. Déclarées près de ces fonctions (fin de script), elles étaient en zone morte
+// temporelle tant que le script n'était pas entièrement analysé : un rendu déclenché entre-temps
+// — le fetch de topologie peut résoudre pendant l'analyse — levait un ReferenceError qui avortait
+// TOUT le rendu. Symptôme : plus un seul câble, puis retour normal au poll suivant (2 s).
+// Les valeurs vivent donc ici ; les fonctions de bascule restent en bas, près de leurs boutons.
+//
+// _latMode  : DEUX AXES, à ne pas confondre (cf. docs/reference/LATENCE_CHAINE.md) —
+//   'charge'    = axe A : TEMPS DE CALCUL du nœud rapporté à son budget de trame, et transit des
+//                 câbles. Répond à « ce plugin a-t-il de la MARGE ? ». En millisecondes.
+//   'delai'     = axe B : délai que chaque étage AJOUTE au signal, en TRAMES (mesure directe
+//                 `delai_etage_trames` = index sortie − index entrée).
+//   'delai_cum' = axe B cumulé depuis l'origine (segment A compris).
+// Un seul sélecteur servait ces deux questions, et il additionnait des temps de calcul en
+// laissant croire à un délai : 4,3 ms affichés pour 4,0 trames réelles.
+// _latShow  : étiquettes de délai sur les câbles (une entrée GELÉE reste étiquetée quand même).
+// _rdmaMode : 'line' = surlignage seul · 'label' = + étiquette · 'off' = rien
+//             (un lien RDMA MANQUANT reste signalé dans les trois modes : c'est une alarme).
+const _RDMA_MODES = ['line', 'label', 'off'];
+const _LAT_MODES = ['charge', 'delai', 'delai_cum'];
+let _latMode  = localStorage.getItem('mxl.cables.latmode') || 'charge';
+// Migration des valeurs mémorisées : 'step' visait la charge ; 'cum' visait le RETARD du signal
+// (c'est ce que l'utilisateur y cherchait), on l'amène donc sur l'axe B cumulé.
+if (_latMode === 'step') _latMode = 'charge';
+else if (_latMode === 'cum') _latMode = 'delai_cum';
+let _latShow  = localStorage.getItem('mxl.cables.latshow') !== '0';
+let _rdmaMode = localStorage.getItem('mxl.cables.rdmamode') || 'line';
+if (!_LAT_MODES.includes(_latMode)) _latMode = 'charge';
+if (!_RDMA_MODES.includes(_rdmaMode)) _rdmaMode = 'line';
+// Durée d'une trame pour ce nœud, depuis sa cadence NOMINALE (l'intention, pas la mesure).
+function _periodeMs(n) {
+    const f = parseFloat((n && (n.fps_nominal ?? (n.cadence || {}).cible)) ?? NaN);
+    return (f > 0) ? (1000 / f) : null;
+}
+// Formatage d'un délai en TRAMES : c'est l'unité du broadcast. Le ms suit entre parenthèses,
+// jamais l'inverse — un chiffre en ms se compare instinctivement à un temps de calcul.
+function _fmtTrames(trames, ms) {
+    const t = `${(Math.round(trames * 100) / 100).toLocaleString(window.LANG || 'fr')} ${T('cables.delai.img')}`;
+    return (ms != null) ? `${t} (${Math.round(ms)} ms)` : t;
+}
+
+const PIPELINE_KIND_LABEL = Object.fromEntries(
+    Object.entries(window.MXL_PLUGINS || {}).map(([t, m]) => [t, m.label || t])
+);
+const PIPELINE_KIND_CLASS = Object.fromEntries(
+    Object.entries(window.MXL_PLUGINS || {}).filter(([, m]) => m.badge_class).map(([t, m]) => [t, m.badge_class])
+);
+const STATUS_LABEL = {
+    running:        'running',
+    stopped:        'stopped',
+    script_stopped: window.t('cables.status.script_stopped'),
+    // Conteneur qui tourne mais ne répond plus (agent :8081 / contrôleur :8080 muets) : ni
+    // « running » (on ne mesure plus rien) ni « stopped » (rien ne prouve qu'il est mort).
+    unreachable:    window.t('cables.status.unreachable'),
+    unknown:        'unknown',
+};
+
+// URL de config par type = shell de la rubrique + #type → l'onglet du plugin est reflété dans
+// l'adresse ET sélectionné à l'arrivée. On dérive de nav.section (les nav.route sont legacy et
+// incohérents : certains sans #hash ouvraient la rubrique sur l'onglet par défaut, pas le bon
+// plugin). Sources/streams/destinations sont agrégées sous /io ; traitements/medias ont leur shell.
+// 2110_io est traité à part (onglets custom « Sources/Destinations 2110 »), aiguillé par la colonne.
+{% set _io_secs = ['sources', 'streams', 'destinations'] %}
+const CONFIG_ROUTE = {
+{% for sid, s in (plugin_sections or {}).items() %}{% for p in s.plugins %}{% if p.type != '2110_io' %}
+    {{ p.type|tojson }}: {{ (('/io' if sid in _io_secs else '/' ~ sid) ~ '#' ~ p.type)|tojson }},{% endif %}{% endfor %}{% endfor %}
+};
+// Le hash porte « <onglet>/<vmid> » : l'onglet SEUL amenait toujours sur la PREMIÈRE instance du
+// type (plugin_section.html sélectionne items[0] faute de mieux) — donc sur le mauvais conteneur
+// dès qu'il y en a deux du même type. Le vmid est optionnel côté rubrique : les vieilles URL
+// « #<type> » gardent le comportement d'avant.
+function configHref(n) {
+    // 2110_io = moteur bi-rôle : carte en colonne « sources » → RX (Sources 2110), « sinks » → TX (Destinations 2110).
+    if (n.kind === '2110_io')
+        return (n.col === 'sinks' ? '/io#destinations_2110/' : '/io#sources_2110/') + n.vmid;
+    const route = CONFIG_ROUTE[n.kind];
+    return route ? (route + '/' + n.vmid) : ('/containers#c-' + n.vmid);
+}
+// Bouton 📺 d'un node : empêche le drill-down et ouvre le moniteur sur ce container.
+// MXLMonitor.monitorVmid propose toutes ses sorties vidéo (sélecteur si plusieurs).
+function monitorNode(event, vmid) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (window.MXLMonitor) MXLMonitor.monitorVmid(vmid);
+}
+
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+}
+
+// Résumé lisible d'un descripteur de format (cf. /api/home/summary produces[].format).
+function fmtSummary(f) {
+    if (!f) return '';
+    if (f.channels != null) {  // audio
+        const sr = f.sample_rate ? (f.sample_rate / 1000) + 'k' : '';
+        return [f.channels + 'ch', sr, f.bit_depth ? 'L' + f.bit_depth : ''].filter(Boolean).join(' · ');
+    }
+    // Balayage RÉEL (i/p) : écrire « p » en dur mentait sur toute source entrelacée — et le balayage
+    // est justement l'axe qui recrée une session TX (docs/reference/TX_LAYOUTS.md étage 3).
+    const scan = String(f.scan || 'p') === 'i' ? 'i' : 'p';
+    const res = (f.width && f.height)
+        ? f.width + '×' + f.height + (f.fps ? scan + (Math.round(f.fps * 100) / 100) : '')
+        : '';
+    const chroma = f.chroma ? f.chroma.replace(/(.)(.)(.)/, '$1:$2:$3') : '';
+    // bit_depth = axe de SIGNATURE (comme le scan) : câbler une source 8 bits sur une sortie qui
+    // annonce 10 bits recrée la session TX. L'omettre rendait le message d'écart incohérent (deux
+    // formats affichés « identiques » alors que seul le bit_depth diffère).
+    const depth = f.bit_depth ? f.bit_depth + ' bits' : '';
+    return [res, chroma, depth].filter(Boolean).join(' · ');
+}
+
+// ─── Écart de format sur une SORTIE TX 2110 (docs/reference/TX_LAYOUTS.md étage 3) ──────────
+// Les axes comparés ici sont EXACTEMENT ceux qui entrent dans l'identité de session du moteur
+// (mtl_rx.c:compute_sig) ET que le câblage pousse dans le slot (controller.py:/input) :
+// résolution, cadence (TRAME), balayage, ordre de champ, profondeur. La CHROMA n'y est PAS : un
+// écart de chroma ne recrée aucune session (on l'affiche dans la modale, on ne bloque pas dessus).
+// Miroir client de app/tx_maintenance.py:format_diff — les deux doivent rester d'accord.
+function txFrameFps(fps, scan) {
+    const f = parseFloat(fps || 0);
+    if (!f) return 0;
+    return (String(scan || 'p') === 'i' && f > 30) ? Math.round((f / 2) * 1000) / 1000
+                                                   : Math.round(f * 1000) / 1000;
+}
+function txFormatDiff(src, slot) {
+    if (!src || !slot) return [];
+    const ss = String(src.scan || 'p') === 'i' ? 'i' : 'p';
+    const ts = String(slot.scan || 'p') === 'i' ? 'i' : 'p';
+    const a = { width: +src.width || 0, height: +src.height || 0, fps: txFrameFps(src.fps, ss),
+                scan: ss, field_order: ss === 'i' ? String(src.field_order || '') : '',
+                bit_depth: +src.bit_depth || 0 };
+    const b = { width: +slot.width || 0, height: +slot.height || 0, fps: txFrameFps(slot.fps, ts),
+                scan: ts, field_order: ts === 'i' ? String(slot.field_order || '') : '',
+                bit_depth: +slot.bit_depth || 0 };
+    const out = [];
+    for (const ax of ['width', 'height', 'fps', 'scan', 'field_order', 'bit_depth']) {
+        if (ax === 'field_order' && (a.scan !== 'i' || b.scan !== 'i')) continue;
+        if (!a[ax] || !b[ax]) continue;
+        if (String(a[ax]) !== String(b[ax])) out.push({ axis: ax, source: a[ax], slot: b[ax] });
+    }
+    return out;
+}
+// Le port d'entrée (spec de consommation) visé par un câble — sert à savoir si c'est un slot TX.
+function consumesPort(vmid, kind, slot) {
+    const n = nodesByVmid[vmid];
+    const cands = (n && n.consumes || []).filter(x => (x.kind || 'video') === kind);
+    const s = (slot != null) ? parseInt(slot) : null;
+    return (s != null) ? (cands.find(x => x.slot === s) || cands.find(x => x.slot == null))
+                       : cands[0];
+}
+
+function renderPort(side, port, idx, nodeKind, vmid) {
+    const kindClass = port.kind === 'audio' ? 'topo-port-audio' : port.kind === 'data' ? 'topo-port-data' : 'topo-port-video';
+    const freeCls   = (side === 'out' && port.free) ? ' topo-port-free' : '';
+    const discoCls  = (side === 'in'  && port.disconnected) ? ' topo-port-disconnected' : '';
+    // Slot RÉEL de la spec (par essence : la vidéo et l'audio ont chacun slot 0,1,…),
+    // pas l'index dans la liste consumes (qui mélange V puis A). Sinon les entrées audio
+    // d'un type vidéo+audio (ex. delay) reçoivent un slot décalé et le câblage échoue.
+    const slotVal   = (port.slot != null) ? port.slot : idx;
+    const slotAttr  = (side === 'in' && slotVal != null) ? ` data-slot="${slotVal}"` : '';
+    // Rendu générique : port.label vient du wiring (API /summary) — pas de branche par type.
+    let labelTxt, titleAttr;
+    if (side === 'out') {
+        labelTxt = port.label || port.shm;
+        const shmHint = port.label ? ` (${port.shm})` : '';
+        const fmt = fmtSummary(port.format);
+        const fmtHint = fmt ? ` · ${fmt}` : '';
+        titleAttr = ` title="${T('cables.port.out')} ${port.kind} ${port.label || port.shm}${shmHint}${fmtHint} · ${port.free ? T('cables.port.free') : T('cables.port.used')}. ${T('cables.port.click')}"`;
+    } else {
+        const base = port.label || (port.kind === 'audio' ? T('cables.kind.audio') : port.kind === 'video' ? T('cables.kind.video') : `${T('cables.kind.slot')} ${(idx ?? 0) + 1}`);
+        // Sur une ENTRÉE, le libellé du port nomme le SLOT (où l'on branche) et la partie droite
+        // nomme la SOURCE branchée — c'est elle, et elle seule, que le niveau de libellé de la
+        // barre de navigation gouverne (`shm_label`, posé par l'habillage plus bas). Le nom
+        // technique reste dans l'infobulle : on ne perd jamais l'adresse réelle du flux.
+        const srcTxt = port.shm_label || port.shm;
+        labelTxt = port.disconnected ? `${base} ${T('cables.w.empty')}` : `${base} · ${srcTxt}`;
+        const decl = port.tx_slot ? ` — ${T('cables.tx.announces')} ${fmtSummary(port.format)}` : '';
+        const shmHintIn = port.shm_label ? ` (${port.shm})` : '';
+        titleAttr = port.disconnected
+            ? ` title="${base} : ${T('cables.w.no_source')}${decl}. ${T('cables.w.hotplug')}"`
+            : ` title="${base} : ${T('cables.w.source')} ${srcTxt}${shmHintIn}${decl}"`;
+    }
+    // VOYANT DE SIGNAL. La pastille existait déjà sur chaque port, des deux côtés, pour porter la
+    // COULEUR d'essence (vidéo/audio/données) : elle devient aussi le voyant. Allumée = un flux
+    // alimente ce port, éteinte = il est déclaré ou câblé mais rien ne circule.
+    //
+    // Deux dimensions sur un seul élément, et c'est voulu : la teinte reste l'essence, seule
+    // l'INTENSITÉ dit le signal. Ajouter un second point aurait doublé le bruit visuel d'une liste
+    // qui compte jusqu'à 75 ports.
+    //
+    // ⚠ Tri-état : `fed` ABSENT ≠ éteint. Absent = le producteur ne publie pas de quoi conclure ;
+    // le voyant reste alors neutre (aspect actuel). Éteindre par défaut aurait affiché une flotte
+    // entière en panne — l'ignorance déguisée en diagnostic.
+    const ledCls = port.fed === true ? ' led-on' : (port.fed === false ? ' led-off' : '');
+    const ledTip = port.fed === true ? T('cables.led_on') : (port.fed === false ? T('cables.led_off') : '');
+    const dot   = `<span class="topo-port-dot ${kindClass}${ledCls}"${ledTip ? ` title="${ledTip}"` : ' aria-hidden="true"'}></span>`;
+    // Le format d'une SORTIE TX (port.tx_slot) est un CONTRAT : c'est ce que le SDP annonce à
+    // l'équipement d'en face. On l'affiche en permanence, comme sur les sorties — sinon l'écart
+    // n'existe que dans une modale, après coup.
+    const fmtTxt = (side === 'out' || port.tx_slot) ? fmtSummary(port.format) : '';
+    const fmtBadge = fmtTxt ? `<span class="topo-port-fmt">${escapeHtml(fmtTxt)}</span>` : '';
+    // fps PAR FLUX (moteurs multi-flux : 2110_io/pyramide, où le badge fps de carte est masqué).
+    // Affiché sur le port de sortie qui le porte.
+    const fpsPortBadge = (side === 'out' && port.fps != null && port.fps >= 1)
+        ? `<span class="topo-port-fps" title="${T('cables.port_fps_title')}">${Math.round(port.fps)} fps</span>`
+        : '';
+    // Badge temps de traitement : délai cumulé sur SORTIE ; alignement sur ENTRÉE quand
+    // le serveur a calculé is_ref (tous les types multi-entrées à référence déclarée).
+    // Les badges Δ de port (délai CUMULÉ : sortie delay_total, entrée sink/mixer delay_in) ne
+    // s'affichent qu'en mode « Cumulé ». L'alignement (is_ref/skew) reste affiché dans les deux modes.
+    let timeBadge = '';
+    const _sig = port.delai_signal;
+    // `side === 'in'` compte désormais : sur un sink (moniteur, streamer, TX) le cumul est porté
+    // par ses ENTRÉES — c'est là qu'on lit « de combien est décalé ce que je regarde ».
+    if (_latShow && _latMode === 'delai_cum' && _sig && _sig.ms > 0) {
+        // ≥ quand un étage amont ne mesure pas : le total est alors un MINORANT, et il le dit.
+        // Les étages manquants sont nommés dans l'infobulle — un total partiel ne doit jamais
+        // se présenter comme un total.
+        const inc = (_sig.complet === false);
+        const tip = inc ? T('cables.delai.incomplet_title').replace('{s}', (_sig.manquants || []).join(', '))
+                        : T('cables.delai.cum_title');
+        // TRAMES SEULES sur un port : « Σ 3,96 img (79 ms) » débordait la tuile, répété sur
+        // chaque port. Les ms restent dans l'infobulle — l'unité qui compte en broadcast est
+        // la trame, le ms n'est qu'un repère secondaire.
+        timeBadge = `<span class="topo-port-delay${inc ? ' topo-delay-partiel' : ''}"`
+                  + ` title="${escapeHtml(tip + ' — ' + Math.round(_sig.ms) + ' ms')}">`
+                  + `${inc ? '≥ ' : 'Σ '}${_fmtTrames(_sig.trames ?? 0, null)}</span>`;
+    } else if (side === 'in' && port.is_ref !== undefined && !port.disconnected) {
+        let txt, cls, tip;
+        const din = (port.delay_in_ms != null && port.delay_in_ms > 0) ? T('cables.align.in_delay') + Math.round(port.delay_in_ms) + ' ms' : '';
+        if (port.is_ref) { txt = T('cables.align.ref_txt'); cls = 'ref'; tip = T('cables.align.ref_tip'); }
+        else if (port.late) { txt = T('cables.align.late_txt'); cls = 'late'; tip = T('cables.align.late_tip'); }
+        else { const s = port.skew_ms != null ? Math.round(port.skew_ms) : 0; txt = '+' + s + ' ms'; cls = 'aligned'; tip = T('cables.align.ok_tip_pre') + s + ' ms.'; }
+        // « Masqué » : on garde le RÔLE (réf) et la PANNE (en retard) — ce ne sont pas des
+        // latences — mais pas la variante « aligné », qui ne porte qu'un écart en ms, ni le
+        // délai d'entrée glissé dans l'infobulle.
+        if (!_latShow && cls === 'aligned') timeBadge = '';
+        else timeBadge = `<span class="topo-port-align align-${cls}" title="${escapeHtml(tip + (_latShow ? din : ''))}">${escapeHtml(txt)}</span>`;
+    }
+    // Le label (texte) est seul dans le span clippé (ellipse) ; les badges (format/délai/alignement)
+    // sont des frères → jamais coupés.
+    // Badge latence de RÉCEPTION (segment A = capture média → écriture shm : réseau + framebuffers
+    // MTL + de-jitter) sur les ports source 2110. Distinct du badge ⧖ des arêtes (segment B =
+    // transit shm → lecteur). N'apparaît que sur les sorties qui l'exposent (sources 2110_io).
+    // Multiview input-locked : retard de la source en IMAGES. Une entrée qui dépasse le budget
+    // d'1 image est « décalée » (sa tuile garde sa dernière trame) → on la signale ; les entrées
+    // synchrones n'ont pas de badge (port propre). Permet de voir qui est synchrone / qui est décalé.
+    let lagBadge = '';
+    if (side === 'in' && port.lag_frames > 0 && !port.disconnected) {
+        lagBadge = `<span class="topo-port-align align-late" title="${T('cables.lag.tip')}">${T('cables.lag.badge').replace('{n}', port.lag_frames)}</span>`;
+    }
+    let rxLatBadge = '';
+    if (side === 'out' && port.rx_stalled) {
+        // Slot abonné (mode mtl) mais sans flux : création RX ratée (budget lcores) ou pas de trafic.
+        rxLatBadge = `<span class="topo-port-rxstall" title="${T('cables.rx_stalled_title')}">⚠ ${T('cables.rx_stalled')}</span>`;
+    } else if (_latShow && side === 'out' && port.rx_latency_ms != null && port.rx_latency_ms > 0) {
+        // ⇣ segment A (capture → shm). C'est une LATENCE : « Masqué » doit l'éteindre. Le badge
+        // ⚠ « abonné mais sans flux » juste au-dessus, lui, est une PANNE et reste affiché.
+        rxLatBadge = `<span class="topo-port-rxlat" title="${T('cables.rx_latency_title')}">⇣ ${Math.round(port.rx_latency_ms)} ms</span>`;
+    }
+    const label = `<span class="topo-port-label">${escapeHtml(labelTxt)}</span>`;
+    const badges = fmtBadge + fpsPortBadge + timeBadge + lagBadge + rxLatBadge;
+    // NB : la destination 2110-20 d'un slot TX se règle désormais sur la page I/O → « Destinations 2110 »
+    // (la page Câbles est recentrée sur le tissu MXL/shm ; pas de multicast ici).
+    return `<li class="topo-port topo-port-${side} ${kindClass}${freeCls}${discoCls}" data-shm="${escapeHtml(port.shm || '')}" data-kind="${escapeHtml(port.kind)}"${slotAttr}${titleAttr}>
+        ${side === 'in' ? dot + label + badges : label + badges + dot}
+    </li>`;
+}
+function renderPlaceholderInput(idx, nodeKind) {
+    const isMv = nodeKind === 'multiview';
+    const label = isMv ? `PiP ${idx + 1}` : `slot ${idx + 1}`;
+    const tip   = isMv ? `PiP ${idx + 1} ${T('cables.placeholder.pip')}` : T('cables.placeholder.slot');
+    return `<li class="topo-port topo-port-in topo-port-placeholder topo-port-video" data-slot="${idx}" data-kind="video" title="${tip}">
+        <span class="topo-port-dot topo-port-video topo-port-dot-empty" aria-hidden="true"></span>
+        <span class="topo-port-label">${escapeHtml(label)}</span>
+    </li>`;
+}
+function renderNode(n) {
+    let kindLabel = n.kind ? (PIPELINE_KIND_LABEL[n.kind] || n.kind) : null;
+    let kindClass = n.kind ? (PIPELINE_KIND_CLASS[n.kind] || 'mode-none') : 'mode-none';
+    let statusLabel = STATUS_LABEL[n.status] || (n.status || 'unknown');
+    let statusClass = (n.status === 'script_stopped' && !n.kind) ? '' : (n.status || 'unknown');
+    // Module PROJET (vue d'ensemble ?view=projects) : boîte noire — badge = état du
+    // projet (chargé/déchargé), ports = sa frontière. Pas de fps/latence/actions.
+    if (n.project_module) {
+        kindLabel = window.t('cables.project_module');
+        kindClass = 'mode-none';
+        const st = n.project_state || 'saved';
+        statusLabel = window.t('projects.state_' + st);
+        statusClass = st === 'active' ? 'running' : (st === 'error' ? 'stopped' : 'unknown');
+    }
+
+    // "En traitement" = running ET shm_active=true (frame_index progresse entre deux polls).
+    // shm_active null = pas encore mesuré (premier poll) → on se rabat sur fps >= 1.
+    const isProcessing = n.status === 'running' && (
+        n.shm_active === true ||
+        (n.shm_active == null && n.fps != null && n.fps >= 1)
+    );
+    const isRunningNoSignal = n.status === 'running' && !isProcessing;
+
+    // Badge fps de carte : masqué pour les moteurs multi-flux (manifeste aggregate_fps:false,
+    // ex. 2110_io/pyramide) où un fps unique agrégé n'a aucun sens — le fps réel est affiché
+    // par port de sortie à la place (cf. renderPort).
+    // On affiche l'INTENTION tant qu'elle est tenue, la mesure seulement lorsqu'elle s'en écarte
+    // (même règle et même verdict serveur que le badge des cartes, cf. fpsBadge dans scripts.js).
+    // La mesure brute porte ±1 image de troncature de fenêtre : un nœud sain affichait « 49,8 »,
+    // un chiffre qui bouge en permanence sans jamais rien signaler.
+    const _aggFps = (window.MXL_PLUGINS?.[n.kind]?.aggregate_fps !== false);
+    const _cad = n.cadence || {};
+    const _fpsTxt = (_cad.cible > 0 && _cad.tenue) ? `${Math.round(_cad.cible)} fps`
+                  : (_cad.cible > 0)               ? `${_cad.mesure}/${Math.round(_cad.cible)} fps`
+                  :                                  `${escapeHtml(n.fps)} fps`;
+    const fpsBadge = (isProcessing && _aggFps)
+        ? `<span class="topo-node-fps${(_cad.cible > 0 && !_cad.tenue) ? ' bas' : ''}">${_fpsTxt}</span>`
+        : '';
+
+    // DEUXIÈME LIGNE — cadence de CONTENU NEUF, affichée SEULEMENT quand elle décroche.
+    // Un nœud peut composer 50 fois par seconde à partir d'entrées inchangées : il publie alors
+    // 50 fps en toute honnêteté, et cette page concluait que la chaîne allait bien pendant que
+    // l'émetteur aval, qui n'émet que sur changement, sortait à 38 (mesuré le 2026-08-07 : mur à
+    // 50,1 fps et 0 trame manquée, ses deux shards ratant la moitié de leurs créneaux).
+    // Silencieuse tant que tout va bien : une ligne qui s'affiche toujours n'alerte personne.
+    // ⚠ Le VERDICT EST CALCULÉ CÔTÉ SERVEUR (`contenu_etat`, cf. home_dashboard._contenu_etats) —
+    // même principe que `cadence_etat` : la référence est la cadence de contenu neuf ATTENDUE EN
+    // AMONT, que seul l'orchestrateur connaît (topologie + format déclaré des sources). Cette page
+    // comparait `fps_content` à la cadence de composition du nœud LUI-MÊME : sur des sources 25i
+    // alimentant un mur 50p, l'avertissement ne pouvait jamais s'éteindre, et il restait aveugle
+    // sur l'assembleur — le seul endroit où il aurait servi (Horace, 2026-08-17).
+    const _ct = n.contenu_etat || {};
+    const _decroche = (_ct.tenue === false);
+    const _ctN = (_ct.maillon_mesure != null) ? _ct.maillon_mesure : _ct.mesure;
+    const contentLine = (_decroche && _ctN != null)
+        ? `<div class="topo-node-content-gap" title="${T(_ct.maillon ? 'cables.content_gap_shard_title' : 'cables.content_gap_title')}">
+               ${(_ct.maillon ? T('cables.content_gap_shard').replace('{s}', escapeHtml(_ct.maillon))
+                              : T('cables.content_gap'))
+                   .replace('{n}', Math.round(_ctN)).replace('{r}', Math.round(_ct.ref || 0))}
+           </div>`
+        : '';
+
+    // MUR SHARDÉ : cadence du shard le plus LENT, sous celle de l'assembleur. L'assembleur
+    // recompose à sa cadence nominale quoi qu'il arrive — il ne peut pourtant pas relayer plus
+    // vite que son maillon le plus lent, et les shards sont volontairement repliés ici. Sans
+    // cette ligne, un mur dont un shard tombe à 44 s'affiche à 50 (constaté le 2026-08-07).
+    // Ce n'est PAS une alarme sur l'assembleur, qui va bien : c'est la valeur réelle de ce que
+    // le mur produit. Silencieuse tant que les shards suivent.
+    // RÉFÉRENCE = la cadence NOMINALE du mur, pas celle de l'assembleur : une alarme se compare à
+    // l'INTENTION, sinon on compare un défaut à un autre défaut. Et la tolérance ne couvre que le
+    // BRUIT DE MESURE (1 %), pas une perte acceptable : en broadcast, une image perdue est un
+    // incident. À 50 img/s, 5 % de tolérance auraient tu 2,5 images par seconde.
+    // La valeur comparée est un PLANCHER sur 30 s (côté serveur) — sans quoi l'avertissement
+    // clignoterait au gré des oscillations normales de la mesure, et on cesserait de le croire.
+    // AUCUNE TOLÉRANCE. Le déclencheur n'est plus un écart de cadence — un écart oblige à choisir
+    // « à partir de combien est-ce grave », question sans bonne réponse en broadcast — mais le
+    // compteur de TRAMES PERDUES que le producteur tient lui-même : zéro, ou pas zéro. On retient
+    // le PIC sur 30 s (côté serveur) : une image perdue il y a vingt secondes reste une image
+    // perdue, et l'avertissement ne clignote pas. Repli sur la cadence, en comparaison STRICTE au
+    // nominal, pour les modules qui ne publient pas ce compteur.
+    const _fpsS = n.fps_shard_min;
+    // ⚠ Repli quand aucune cadence NOMINALE n'est déclarée : la mesure du nœud lui-même.
+    // Cette déclaration avait disparu avec la refonte du verdict de contenu neuf (6042578) —
+    // elle vivait sur la ligne `const _fpsC = n.fps_content, _fpsN = parseFloat(n.fps);`,
+    // supprimée en bloc alors que son SECOND terme servait encore ici. `_fpsN` n'était plus
+    // déclaré nulle part : `ReferenceError` sur tout nœud sans `fps_nominal` (streamer,
+    // moniteur, pyramide). `renderNode` étant appelé dans un `.map()` par colonne, la colonne
+    // entière échouait et `renderTopology` était abandonnée AVANT `drawTopoEdges()` — d'où des
+    // cartes partielles ET zéro câble, sans que rien ne relie les deux symptômes.
+    const _fpsN = parseFloat(n.fps);
+    const _ref = parseFloat(n.fps_nominal) > 0 ? parseFloat(n.fps_nominal) : _fpsN;
+    const _perdues = n.shard_frames_missed;
+    const _shardBas = (_perdues != null)
+        ? (_perdues > 0)
+        : (_fpsS != null && _ref > 0 && _fpsS < _ref);
+    const shardLine = _shardBas
+        ? `<div class="topo-node-content-gap topo-node-gap-right" title="${T('cables.shard_slow_title').replace('{s}', escapeHtml(n.fps_shard_maillon || ''))}">
+               ${T('cables.shard_slow').replace('{n}', Math.round(_fpsS))}
+           </div>`
+        : '';
+
+    // Badge "aucun signal" : container running mais shm figé.
+    // Cliquable → page Monitoring (section SHM).
+    const noSignalBadge = isRunningNoSignal
+        ? `<a href="/monitoring#shm" class="topo-node-nosignal" title="${T('cables.nosignal_title')}">${T('cables.nosignal_label')}</a>`
+        : '';
+
+    // Badge latence du nœud selon le mode : « Par étape » = traitement PROPRE (own, ⧖) ; « Cumulé » =
+    // retard total du signal en SORTIE de ce nœud (= max delay_total des ports de sortie, Σ).
+    // Masqué si pas de traitement en cours (valeur figée = trompeuse).
+    const _nodeCum = Math.max(0, ...((n.produces || []).map(p => p.delay_total_ms || 0)), 0);
+    let ownLatBadge = '';
+    // ⚠ `_latShow` (bouton « Masqué ») ne conditionnait QUE l'étiquette des câbles. Tant que les
+    // deux modes historiques en portaient une, ça suffisait à « tout masquer ». Depuis que les
+    // axes Délai n'étiquettent plus les câbles — le transit est une grandeur d'axe Charge —,
+    // « Masqué » n'y avait plus rien à couper et paraissait mort. Il éteint désormais toute la
+    // couche de latence, badges de nœud et de port compris, dans les trois modes.
+    if (!_latShow) {
+        ownLatBadge = '';
+    } else if (isProcessing && _latMode === 'charge' && n.own_latency_ms != null && n.own_latency_ms > 0) {
+        // AXE A — le temps de calcul rapporté à son BUDGET de trame. Seul, « 4,3 ms » se lit
+        // comme un retard sur une page de latence ; « 4,3 / 20 ms · 21 % » ne peut pas être mal
+        // lu, et c'est la forme qui répond vraiment à « ce plugin a-t-il de la marge ? ».
+        const per = _periodeMs(n);
+        const pct = per ? Math.round((n.own_latency_ms / per) * 100) : null;
+        const txt = per ? `⧖ ${n.own_latency_ms} / ${Math.round(per)} ms · ${pct} %`
+                        : `⧖ ${n.own_latency_ms} ms`;
+        const tip = T('cables.own_latency_title')
+                  + (_nodeCum > 0 ? T('cables.charge.cum_suffix').replace('{n}', Math.round(_nodeCum)) : '');
+        ownLatBadge = `<span class="topo-node-own-lat${(pct != null && pct >= 80) ? ' bas' : ''}"`
+                    + ` title="${escapeHtml(tip)}">${txt}</span>`;
+    } else if (_latMode === 'delai') {
+        // AXE B — ce que CET étage ajoute, en trames. Mesure directe ou RIEN : un zéro se lirait
+        // « cet étage n'ajoute aucun délai », ce qu'on ne sait pas.
+        if (n.delai_etage) {
+            // Un étage qui PROPAGE la coordonnée source affiche 0,00 par construction. C'est juste,
+            // mais ça ne se lit pas comme le 0 d'un étage qui re-cadence — on le nomme.
+            const prop = (n.delai_etage.propage === true);
+            const rec = (n.delai_etage.reception === true);
+            ownLatBadge = `<span class="topo-node-own-lat${prop ? ' topo-delay-partiel' : ''}"`
+                        + ` title="${T(rec ? 'cables.delai.reception_title'
+                                          : (prop ? 'cables.delai.propage_title' : 'cables.delai.etage_title'))}">`
+                        + `⧗ ${_fmtTrames(n.delai_etage.trames, n.delai_etage.ms)}`
+                        + `${prop ? ' ' + T('cables.delai.propage') : (rec ? ' ' + T('cables.delai.reception') : '')}</span>`;
+        } else if (n.delai_emission) {
+            ownLatBadge = `<span class="topo-node-own-lat topo-delay-partiel" title="${T('cables.delai.emission_title')}">`
+                        + `~ ${_fmtTrames(n.delai_emission.trames, n.delai_emission.ms)}</span>`;
+        } else if (n.status === 'running') {
+            // JAMAIS DE BLANC sur un nœud qui tourne. La condition portait `produces.length`, ce qui
+            // excluait TOUS les sinks (moniteur, streamer, TX) : leur tuile ne montrait rien du tout
+            // et ça se lisait comme un mode cassé. « Non mesuré » est une information ; le vide n'en
+            // est pas une.
+            ownLatBadge = `<span class="topo-node-own-lat topo-delay-partiel" title="${T('cables.delai.non_mesure_title')}">`
+                        + `${T('cables.delai.non_mesure')}</span>`;
+        }
+    } else if (_latMode === 'delai_cum') {
+        // Sorties d'abord ; à défaut (sink) les ENTRÉES. Le pire des deux côtés fait foi.
+        // `delai_fil` (TX 2110) l'emporte : il ajoute à l'arrivée ce que l'émission coûte, et
+        // répond donc à « quel âge a l'image qui PART », pas « celle qui arrive ».
+        const _src = (n.produces || []).some(p => p.delai_signal) ? n.produces : (n.consumes || []);
+        const _best = n.delai_fil || _src.map(p => p.delai_signal).filter(Boolean)
+                          .sort((a, b) => (b.ms || 0) - (a.ms || 0))[0];
+        if (_best && _best.ms > 0) {
+            const inc = (_best.complet === false);
+            const est = (_best.estime === true);
+            // Trois préfixes, trois natures : Σ tout mesuré · ≥ minorant (un étage ne mesure pas)
+            // · ≈ contient une estimation. L'incomplétude prime : c'est le plus fort des deux.
+            const tip = inc ? T('cables.delai.incomplet_title').replace('{s}', (_best.manquants || []).join(', '))
+                            : (est ? T('cables.delai.fil_title') : T('cables.delai.cum_title'));
+            ownLatBadge = `<span class="topo-node-own-lat${(inc || est) ? ' topo-delay-partiel' : ''}" title="${escapeHtml(tip)}">`
+                        + `${inc ? '≥ ' : (est ? '≈ ' : 'Σ ')}${_fmtTrames(_best.trames ?? 0, _best.ms)}</span>`;
+        } else if (n.delai_emission) {
+            ownLatBadge = `<span class="topo-node-own-lat topo-delay-partiel" title="${T('cables.delai.emission_title')}">`
+                        + `~ ${_fmtTrames(n.delai_emission.trames, n.delai_emission.ms)}</span>`;
+        }
+    }
+
+    // Badge MODE TRANCHE : le container publie RÉELLEMENT bande par bande (slice_mode RUNTIME
+    // remonté par le script sur :8080, repli config au démarrage) — indication discrète.
+    const sliceBadge = n.slice_mode
+        ? `<span class="mode-badge mode-none" title="${T('cables.slice_title')}">▤ ${T('cables.slice')}</span>`
+        : '';
+    // Badge GPU : compositing accéléré cupy (gpu/gpu_name de :8080 — l'info arrivait déjà à la
+    // topologie sans être affichée ; un mur GPU montrait « Tranche » (config) mais pas GPU).
+    const gpuBadge = (n.gpu && n.gpu.gpu)
+        ? `<span class="mode-badge mode-none" title="${T('cables.gpu_title')}${n.gpu.name ? ' — ' + escapeHtml(n.gpu.name) : ''}">⚡ ${T('cables.gpu')}</span>`
+        : '';
+
+    // Badge calage A/V (streamer) : délai MANUEL appliqué (av_offset_ms), affiché si ≠ 0.
+    let avBadge = '';
+    if (n.av_sync && n.av_sync.applied) {
+        const a = n.av_sync.applied;
+        const txt = `A/V ${a > 0 ? T('cables.av.audio') : T('cables.av.video')} +${Math.abs(a)} ms`;
+        avBadge = `<span class="topo-node-avsync" title="${escapeHtml(T('cables.avsync.pre') + a + T('cables.avsync.post'))}">${escapeHtml(txt)}</span>`;
+    }
+
+    let inPorts = (n.consumes || []).map((p, i) => renderPort('in', p, i, n.kind, n.vmid)).join('');
+    if (n.kind === 'multiview') {
+        const taken = (n.consumes || []).length;
+        const total = n.max_inputs || 4;
+        for (let i = taken; i < total; i++) inPorts += renderPlaceholderInput(i, n.kind);
+    }
+    const outPorts = (n.produces || []).map(p => renderPort('out', p, null, n.kind, n.vmid)).join('');
+
+    // Multiview : autonome (rendu mono-process) ou parallélisé par le tissu (≥1 shard interne).
+    let fabricBadge = '';
+    if (n.kind === 'multiview') {
+        fabricBadge = (n.fabric_shards > 0)
+            ? `<span class="mode-badge mode-mux" title="${T('cables.fabric_parallel_title')}">⚡ ${T('cables.fabric_parallel').replace('{n}', n.fabric_shards)}</span>`
+            : `<span class="mode-badge mode-none" title="${T('cables.fabric_autonomous_title')}">${T('cables.fabric_autonomous')}</span>`;
+    }
+
+    const slotsHint = (n.kind === 'multiview' && n.slots_free > 0)
+        ? `<span class="topo-node-slots" title="${T('cables.pip_not_created')}">+${n.slots_free} ${T('cables.pip_free_suffix')}</span>`
+        : '';
+
+    const _nid = _nidOf(n);
+    const collapsed = _isCollapsed(_nid);
+    const cls = [
+        'topo-node',
+        `topo-node-${n.status || 'unknown'}`,
+        n.kind ? `topo-node-kind-${n.kind}` : 'topo-node-idle',
+        collapsed ? 'topo-node-collapsed' : '',
+    ].filter(Boolean).join(' ');
+
+    // Badge version du plugin + chip du nœud d'exécution (résolus côté serveur).
+    const verBadge = n.plugin_version
+        ? `<span class="topo-node-ver" title="${T('cables.ver_title')}">v${escapeHtml(n.plugin_version)}</span>`
+        : '';
+    const nodeBadge = n.node_label
+        ? `<span class="topo-node-onnode" title="${T('cables.onnode_title')}">⬡ ${escapeHtml(n.node_label)}</span>`
+        : '';
+
+    return `
+        <div class="${cls}" role="link" tabindex="0"
+             data-vmid="${escapeHtml(n.vmid)}"
+             data-nid="${escapeHtml(_nidOf(n))}"
+             data-kind="${escapeHtml(n.kind || 'idle')}"
+             data-split="${n.split ? '1' : '0'}"
+             data-slots-free="${escapeHtml(n.slots_free || 0)}"
+             data-project="${escapeHtml(n.project_id == null ? '' : n.project_id)}"
+             data-node="${escapeHtml(n.node_id == null ? '' : n.node_id)}"
+             data-href="${escapeHtml(configHref(n))}">
+            <div class="topo-node-head">
+                <button type="button" class="topo-node-collapse" aria-label="${T('cables.collapse_aria')}"
+                        title="${collapsed ? T('cables.expand') : T('cables.collapse')}"
+                        onclick="toggleCollapse(event, '${escapeHtml(_nid)}')">${collapsed ? '⊞' : '⊟'}</button>
+                <span class="topo-node-host">${escapeHtml(n.hostname || `vmid${n.vmid}`)}</span>
+                <span class="topo-node-vmid">#${escapeHtml(n.vmid)}</span>
+                ${verBadge}
+                ${nodeBadge}
+                ${(n.produces || []).some(p => p.kind === 'video' && p.shm)
+                    ? `<button type="button" class="topo-node-monitor" title="${T('cables.monitor_of')} ${escapeHtml(n.hostname || ('#'+n.vmid))}"
+                              onclick="monitorNode(event, ${escapeHtml(n.vmid)})">📺</button>`
+                    : ''}
+            </div>
+            <div class="topo-node-row">
+                <span class="badge ${statusClass}">${escapeHtml(statusLabel)}</span>
+                ${kindLabel ? `<span class="mode-badge ${kindClass}">${escapeHtml(kindLabel)}</span>` : `<span class="mode-badge mode-none">${T('cables.status.ready')}</span>`}
+                ${fabricBadge}
+                ${gpuBadge}
+                ${sliceBadge}
+                ${avBadge}
+                ${noSignalBadge}
+                ${ownLatBadge}
+                ${fpsBadge}
+            </div>
+            ${contentLine}${shardLine}
+            ${inPorts  ? `<ul class="topo-node-ports topo-node-ports-in">${inPorts}</ul>`   : ''}
+            ${outPorts ? `<ul class="topo-node-ports topo-node-ports-out">${outPorts}</ul>` : ''}
+            ${slotsHint}
+        </div>
+    `;
+}
+
+function renderTopology(topo) {
+    window._lastTopo = topo;   // mémorisé pour re-rendu sur bascule du mode latence (sans re-fetch)
+    const cols = { sources: [], composition: [], sinks: [] };
+    (topo.nodes || []).forEach(n => {
+        (cols[n.col] || cols.sources).push(n);
+    });
+    document.getElementById('col-sources').innerHTML =
+        cols.sources.length
+            ? cols.sources.map(renderNode).join('')
+            : `<div class="topo-col-empty">${T('cables.empty.sources')}</div>`;
+    document.getElementById('col-composition').innerHTML =
+        cols.composition.length
+            ? cols.composition.map(renderNode).join('')
+            : `<div class="topo-col-empty">${T('cables.empty.processing')}</div>`;
+    document.getElementById('col-sinks').innerHTML =
+        cols.sinks.length
+            ? cols.sinks.map(renderNode).join('')
+            : `<div class="topo-col-empty">${T('cables.empty.sinks')}</div>`;
+
+    // Positionnement libre (mode « Libre ») PUIS filtres : ils changent la géométrie/visibilité
+    // des cartes et ports → doivent précéder le tracé des arêtes (qui lit les rects écran).
+    applyViewMode();
+    applyCableFilters();
+    drawTopoEdges();
+    // Le tally colore des classes POSÉES SUR LE DOM des ports : reconstruire les colonnes ci-dessus
+    // les efface. Sans ce repeint, la couleur ne réapparaissait qu'au prochain CHANGEMENT de tally
+    // (seul émetteur de source-tally:change) — donc elle clignotait au rythme du poll de 2 s.
+    _updateCablesTallyDom();
+}
+
+// Tracé des arêtes SVG seul (sans reconstruire les cartes) : réutilisable en direct pendant
+// un drag de carte (mode Libre). Lit window._lastTopo + les rects DOM courants.
+function drawTopoEdges() {
+    const topo = window._lastTopo;
+    if (!topo) return;
+    const svg = document.getElementById('topo-edges');
+    if (!svg) return;
+    // On interroge la couche elle-même plutôt que de redupliquer le point de rupture en JS :
+    // si la feuille de style change, le bandeau suit sans qu'on y pense.
+    const _masquee = getComputedStyle(svg).display === 'none';
+    const _bandeau = document.getElementById('topo-edges-hidden');
+    if (_bandeau) _bandeau.hidden = !(_masquee && (topo.edges || []).length > 0);
+    if (_masquee) return;
+    // Repère = le CANVAS (élément transformé par le zoom). On convertit les rects écran en coords
+    // LOCALES du canvas (non zoomées) en divisant par Z → l'SVG, enfant du canvas, partage ce repère.
+    const Z = _zoom || 1;
+    const canvasEl = document.getElementById('topo-canvas');
+    const topo_box = canvasEl.getBoundingClientRect();
+    // Canvas pas encore dimensionné (mesure prise avant la mise en page) : on ABANDONNE la passe
+    // sans rien effacer. L'effacement était fait AVANT ce garde-fou : une seule mesure prématurée
+    // vidait donc les câbles et ne redessinait rien jusqu'à la passe suivante.
+    //
+    // ⚠ Le test était `topo_box.width < 700 * Z`, qui confond DEUX choses : « pas encore mesuré »
+    // et « fenêtre étroite ». Une fenêtre de moins de 700 px de canvas — écran modeste, panneau
+    // latéral ouvert, zoom navigateur à 150 % — n'était pas un état transitoire : aucun câble
+    // n'était JAMAIS tracé, en silence, les cartes restant parfaitement visibles. En vue libre le
+    // canvas est dimensionné sur les cartes (`maxX + 320`) : un layout compact passait sous le
+    // seuil et condamnait le tracé de la même façon.
+    // Le vrai critère est la MISE EN PAGE, pas la largeur : tant qu'aucune carte n'a de rect, il
+    // n'y a rien à relier ; dès qu'il y en a, on trace, si étroit soit-il.
+    const _cartes = document.querySelectorAll('.topo-node:not(.topo-node-filtered)');
+    const _misEnPage = topo_box.width > 0 &&
+                       [..._cartes].some(nd => nd.getBoundingClientRect().width > 0);
+    if (_cartes.length && !_misEnPage) return;
+    svg.innerHTML = '';
+
+    const status_by_vmid = {};
+    (topo.nodes || []).forEach(n => { status_by_vmid[n.vmid] = n.status; });
+
+    function endpointOf(vmid, side, shm, slot) {
+        // Côté entrée : quand l'arête connaît son slot, viser le dot de CE slot précis. Sinon
+        // (slot absent) un même shm câblé sur plusieurs slots résoudrait toujours le 1er dot et
+        // toutes les arêtes se superposeraient (cf. multiview : 5 PiP du même flux).
+        const inSel = (slot != null)
+            ? `.topo-port-in[data-shm="${CSS.escape(shm)}"][data-slot="${slot}"] .topo-port-dot`
+            : `.topo-port-in[data-shm="${CSS.escape(shm)}"] .topo-port-dot`;
+        const selPort = side === 'out'
+            ? `.topo-port-out[data-shm="${CSS.escape(shm)}"] .topo-port-dot`
+            : inSel;
+        // Un moteur split_io produit DEUX nœuds de même vmid (RX/TX) → on choisit celui qui porte
+        // réellement le port (out pour RX, in pour TX) ; sinon le 1er nœud du vmid (cas normal).
+        const nodes = document.querySelectorAll(`.topo-node[data-vmid="${vmid}"]`);
+        let node = null, dot = null;
+        for (const nd of nodes) {
+            const d = nd.querySelector(selPort);
+            // Dot masqué (carte repliée ou port filtré) → rect nul : on l'ignore et on retombe
+            // sur le bord de la carte, pour que l'arête reste ancrée sur le nœud.
+            if (d && (d.offsetParent !== null || d.getClientRects().length)) { node = nd; dot = d; break; }
+            if (d && !node) node = nd;   // mémorise le nœud même si le dot est caché
+        }
+        if (!node) node = nodes[0];
+        if (!node) return null;
+        const r = (dot || node).getBoundingClientRect();
+        if (dot) {
+            return { x: (r.left + r.width / 2 - topo_box.left) / Z,
+                     y: (r.top  + r.height / 2 - topo_box.top) / Z };
+        }
+        return side === 'out'
+            ? { x: (r.right - topo_box.left) / Z, y: (r.top + r.height / 2 - topo_box.top) / Z }
+            : { x: (r.left  - topo_box.left) / Z, y: (r.top + r.height / 2 - topo_box.top) / Z };
+    }
+
+    (topo.edges || []).forEach(e => {
+        if (!_edgePassesFilter(e)) return;   // filtres signal/projet/nœud
+        const A = endpointOf(e.from, 'out', e.shm);
+        const B = endpointOf(e.to,   'in',  e.shm, e.slot);
+        if (!A || !B) return;
+        const cx = Math.max(40, (B.x - A.x) * 0.45);
+        const active = (status_by_vmid[e.from] === 'running' && status_by_vmid[e.to] === 'running');
+        const cls = [
+            'topo-edge',
+            `topo-edge-${e.kind || 'video'}`,
+            active ? 'topo-edge-active' : '',
+            e.rdma ? 'topo-edge-rdma' : '',
+            // Câble en POINTILLÉ = aucun signal ne le traverse. Même tri-état que les voyants :
+            // `fed` absent (producteur qui ne publie pas d'inventaire) laisse le trait plein,
+            // parce que le pointillé affirme une absence de signal, pas une absence de mesure.
+            e.fed === false ? 'topo-edge-unfed' : '',
+        ].filter(Boolean).join(' ');
+        const d = `M ${A.x} ${A.y} C ${A.x + cx} ${A.y}, ${B.x - cx} ${B.y}, ${B.x} ${B.y}`;
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', d);
+        path.setAttribute('class', cls);
+        path.setAttribute('data-shm', e.shm);
+        path.setAttribute('data-from', e.from);
+        path.setAttribute('data-to', e.to);
+        path.setAttribute('data-kind', e.kind || 'video');
+        path.setAttribute('data-latency-ms', e.latency_ms == null ? '' : e.latency_ms);
+        // Zone de détection élargie : chaque arête est doublée d'un path TRANSPARENT superposé
+        // plus large (stroke 14px, pointer-events:stroke) qui porte les mêmes data-* — le
+        // hover/clic marche à ~7px du trait sans épaissir visuellement le câble. Inséré AVANT
+        // le path visible (frère précédent) pour que le CSS .topo-edge-hit:hover + .topo-edge
+        // applique le style hover du câble.
+        const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        hit.setAttribute('d', d);
+        hit.setAttribute('class', 'topo-edge-hit');
+        hit.setAttribute('data-shm', e.shm);
+        hit.setAttribute('data-from', e.from);
+        hit.setAttribute('data-to', e.to);
+        hit.setAttribute('data-kind', e.kind || 'video');
+        hit.setAttribute('data-latency-ms', e.latency_ms == null ? '' : e.latency_ms);
+        svg.appendChild(hit);
+        svg.appendChild(path);
+        // Étiquette d'arête selon le mode : « Par étape » = transit (arrivée = âge à la lecture du
+        // consommateur, e.latency_ms) ; « Cumulé » = retard total du signal à l'arrivée (e.cum_ms).
+        // Le transit (arrivée chez le consommateur) est une grandeur d'AXE A, en ms sous-trame.
+        // Sur l'axe B on ne l'affiche pas : il n'y a pas d'équivalent « en trames » d'un transit,
+        // et en fabriquer un reviendrait à remettre des millisecondes de travail dans un délai.
+        const edgeVal = (_latMode === 'charge') ? e.latency_ms : null;
+        if (e.stale) {
+            // Entrée gelée (source coupée) : on affiche « figé » + l'âge plutôt qu'une latence
+            // aberrante. age_ms = now − dernière trame écrite (cf. backend topo_edges).
+            const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            txt.setAttribute('x', (A.x + B.x) / 2);
+            txt.setAttribute('y', (A.y + B.y) / 2 - 4);
+            txt.setAttribute('class', 'topo-edge-lat lat-err');
+            txt.setAttribute('text-anchor', 'middle');
+            let ageStr = '';
+            if (e.age_ms != null) {
+                const s = Math.round(e.age_ms / 1000);
+                ageStr = ` (${s >= 90 ? Math.round(s / 60) + ' min' : s + ' s'})`;
+            }
+            txt.textContent = `${T('cables.frozen')}${ageStr}`;
+            svg.appendChild(txt);
+        } else if (edgeVal != null && _latShow) {
+            const ms = Math.round(edgeVal);
+            const latCls = ms > 500 ? 'lat-err' : ms > 100 ? 'lat-warn' : 'lat-ok';
+            const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            txt.setAttribute('x', (A.x + B.x) / 2);
+            txt.setAttribute('y', (A.y + B.y) / 2 - 4);
+            txt.setAttribute('class', `topo-edge-lat ${latCls}`);
+            txt.setAttribute('text-anchor', 'middle');
+            txt.textContent = `+${ms} ms`;
+            svg.appendChild(txt);
+        }
+        // Marquage « RDMA » sur les câbles inter-nœud (flux transporté par RDMA entre deux nœuds).
+        // `e.rdma` ne dit que « les deux bouts sont sur des nœuds différents ». Sans le statut
+        // du lien, le libellé affirmait un transport qui pouvait ne pas exister — treize câbles
+        // audio/ANC l'annonçaient alors qu'aucune réplication n'était provisionnée, et le
+        // consommateur lisait un flux absent de son nœud. On distingue donc :
+        //   • lien 'running'      → RDMA, orange
+        //   • lien absent/erreur  → RDMA ABSENT, rouge — le flux n'arrive PAS
+        //   • lien en cours       → RDMA …, atténué
+        if (e.rdma) {
+            const _st = e.rdma_link;                      // undefined = aucun lien provisionné
+            const _ko = (_st === undefined || _st === null || _st === 'error');
+            const _cls = _ko ? 'rdma-ko' : (_st === 'running' ? 'rdma-up' : 'rdma-wait');
+            // SURLIGNAGE plutôt qu'étiquette : une SECONDE couleur en pointillé superposée au
+            // câble, qui ne touche pas à son essence (la couleur du trait reste lisible en
+            // dessous). Vingt étiquettes « RDMA » se chevauchaient et rendaient le graphe
+            // illisible ; vingt surlignages restent lisibles parce qu'ils suivent le câble.
+            // Le trait de l'erreur, lui, s'affiche MÊME en mode « masqué » : c'est une alarme
+            // (le flux n'arrive pas au consommateur), pas une décoration.
+            if (_rdmaMode !== 'off' || _ko) {
+                const ov = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                ov.setAttribute('d', d);
+                ov.setAttribute('class', `topo-edge-rdma-line ${_cls}`);
+                ov.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'title'))
+                  .textContent = _ko ? T('cables.rdma_edge_missing_title')
+                                     : T('cables.rdma_edge_title');
+                svg.appendChild(ov);
+            }
+            // Étiquette texte : seulement en mode « étiquette », ou quand le lien manque.
+            if (_rdmaMode === 'label' || _ko) {
+                const rt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                rt.setAttribute('x', (A.x + B.x) / 2);
+                rt.setAttribute('y', (A.y + B.y) / 2 + 11);
+                rt.setAttribute('text-anchor', 'middle');
+                rt.setAttribute('class', `topo-edge-rdma-lbl ${_cls}`);
+                rt.textContent = _ko ? T('cables.rdma_edge_missing')
+                                     : (_st === 'running' ? 'RDMA' : 'RDMA …');
+                rt.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'title'))
+                  .textContent = _ko ? T('cables.rdma_edge_missing_title')
+                                     : T('cables.rdma_edge_title');
+                svg.appendChild(rt);
+            }
+        }
+    });
+
+    // Dimensions de l'SVG en coords LOCALES (le canvas porte le scale).
+    const w = topo_box.width / Z, h = topo_box.height / Z;
+    svg.setAttribute('width', w);
+    svg.setAttribute('height', h);
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+}
+
+let nodesByVmid = {};
+let highlightedNodes = [];
+const tip = () => document.getElementById('topo-tip');
+
+function clearHighlight() {
+    highlightedNodes.forEach(n => n.classList.remove('topo-node-highlight'));
+    highlightedNodes = [];
+}
+function highlightPair(fromVmid, toVmid) {
+    clearHighlight();
+    [fromVmid, toVmid].forEach(v => {
+        const el = document.querySelector(`.topo-node[data-vmid="${v}"]`);
+        if (el) { el.classList.add('topo-node-highlight'); highlightedNodes.push(el); }
+    });
+}
+
+function showEdgeTip(path, evt) {
+    const shm  = path.getAttribute('data-shm');
+    const from = path.getAttribute('data-from');
+    const to   = path.getAttribute('data-to');
+    const kind = path.getAttribute('data-kind') || 'video';
+    const a = nodesByVmid[from] || {};
+    const b = nodesByVmid[to]   || {};
+    let pipLabel = '';
+    if (b.kind === 'multiview') {
+        const idx = (b.consumes || []).findIndex(p => p.shm === shm);
+        if (idx >= 0) pipLabel = ` (PiP ${idx + 1})`;
+    } else if (b.kind === 'mixer') {
+        const idx = (b.consumes || []).findIndex(p => p.shm === shm);
+        if (idx >= 0) pipLabel = ` (Input ${idx + 1})`;
+    } else if (b.kind === 'split') {
+        const idx = (b.consumes || []).findIndex(p => p.shm === shm);
+        if (idx >= 0) pipLabel = idx === 4 ? ' (Fond)' : ` (Box ${idx + 1})`;
+    }
+    // Latence : méthode dépend du type de consommateur.
+    const latRaw = path.getAttribute('data-latency-ms');
+    const latMs  = (latRaw === '' || latRaw == null) ? null : Number(latRaw);
+    const latCls = (latMs == null) ? 'lat-none'
+                  : (latMs > 500)  ? 'lat-err'
+                  : (latMs > 100)  ? 'lat-warn'
+                  :                  'lat-ok';
+    const latTxt = (latMs == null) ? '—' : `${Math.round(latMs)} ms`;
+    // Extrémités de CE câble uniquement (jamais les colonnes dénormalisées source/shm_out du
+    // conteneur, qui listent TOUS les flux d'un moteur multi-flux) : port de sortie du
+    // producteur (produces[shm]) et port d'entrée du consommateur (consumes[shm(+slot)]).
+    const outPort = (a.produces || []).find(p => p.shm === shm) || {};
+    const inPort  = (b.consumes || []).find(p => p.shm === shm && (p.kind || 'video') === kind) || {};
+    const srcFmt  = fmtSummary(outPort.format);
+    const srcTxt  = (outPort.label || shm) + (srcFmt ? ` · ${srcFmt}` : '');
+    const dstTxt  = (inPort.label ? inPort.label : (pipLabel ? pipLabel.replace(/^ \(|\)$/g, '') :
+                     (kind === 'audio' ? T('cables.av.audio') : T('cables.av.video'))));
+    const isProcessor = (b.produces || []).length > 0 && (b.consumes || []).length > 0;
+    const latMethod = (latMs == null)
+        ? T('cables.lat.none')
+        : (isProcessor ? T('cables.lat.processor') : T('cables.lat.encoder'));
+
+    const t = tip();
+    t.innerHTML = `
+        <div class="topo-tip-shm">
+            <span class="topo-tip-kind topo-tip-kind-${escapeHtml(kind)}">${kind === 'audio' ? T('cables.av.audio') : T('cables.av.video')}</span>
+            ${escapeHtml(shm)}${escapeHtml(pipLabel)}
+        </div>
+        <div class="topo-tip-flow">
+            <span class="topo-tip-node">
+                <span class="topo-tip-host">${escapeHtml(a.hostname || `vmid${from}`)}</span>
+                <span class="topo-tip-vmid">#${escapeHtml(from)}</span>
+            </span>
+            <span class="topo-tip-arrow" aria-hidden="true">→</span>
+            <span class="topo-tip-node">
+                <span class="topo-tip-host">${escapeHtml(b.hostname || `vmid${to}`)}</span>
+                <span class="topo-tip-vmid">#${escapeHtml(to)}</span>
+            </span>
+        </div>
+        <dl class="topo-tip-grid">
+            <dt>${T('cables.dl.source')}</dt><dd>${escapeHtml(srcTxt)}</dd>
+            <dt>${T('cables.dl.produces')}</dt><dd class="mono">${escapeHtml(shm)}</dd>
+            <dt>${T('cables.dl.destination')}</dt><dd>${escapeHtml(dstTxt)}</dd>
+            <dt>${T('cables.dl.status')}</dt><dd>${escapeHtml(a.status || '?')} → ${escapeHtml(b.status || '?')}</dd>
+            ${(a.fps || b.fps)
+                ? `<dt>FPS</dt><dd class="mono">${escapeHtml(a.fps || '—')} / ${escapeHtml(b.fps || '—')}</dd>`
+                : ''}
+            <dt>${T('cables.dl.latency')}</dt>
+            <dd class="mono topo-tip-lat ${latCls}">${latTxt}</dd>
+            <dt>${T('cables.dl.method')}</dt>
+            <dd class="topo-tip-lat-method">${escapeHtml(latMethod)}</dd>
+        </dl>
+    `;
+    t.hidden = false;
+    positionTip(evt);
+    highlightPair(from, to);
+}
+function positionTip(evt) {
+    const t = tip();
+    const w = t.offsetWidth, h = t.offsetHeight;
+    const ww = window.innerWidth, wh = window.innerHeight;
+    let x = evt.clientX + 14, y = evt.clientY + 14;
+    if (x + w > ww - 8) x = evt.clientX - w - 14;
+    if (y + h > wh - 8) y = evt.clientY - h - 14;
+    t.style.left = Math.max(8, x) + 'px';
+    t.style.top  = Math.max(8, y) + 'px';
+}
+function hideEdgeTip() {
+    tip().hidden = true;
+    clearHighlight();
+}
+(function bindEdgeTip() {
+    const svg = document.getElementById('topo-edges');
+    if (!svg) return;
+    // Le sélecteur inclut le path de détection élargi (.topo-edge-hit), qui porte les mêmes data-*.
+    const EDGE_SEL = '.topo-edge, .topo-edge-hit';
+    svg.addEventListener('mouseover', e => {
+        if (wireSrc) return;
+        const p = e.target.closest(EDGE_SEL);
+        if (p) showEdgeTip(p, e);
+    });
+    svg.addEventListener('mousemove', e => {
+        if (!tip().hidden) positionTip(e);
+    });
+    svg.addEventListener('mouseout', e => {
+        if (e.target.closest(EDGE_SEL)) {
+            const next = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(EDGE_SEL);
+            if (!next) hideEdgeTip();
+        }
+    });
+    svg.addEventListener('click', e => {
+        if (wireSrc) return;
+        const p = e.target.closest(EDGE_SEL);
+        if (p) {
+            e.preventDefault();
+            e.stopPropagation();
+            showEdgeMenu(p, e);
+        }
+    });
+})();
+
+let wireSrc = null;
+const wireBanner = () => document.getElementById('wire-banner');
+
+function startWire(srcVmid, srcShm, srcKind) {
+    wireSrc = { vmid: srcVmid, shm: srcShm, kind: srcKind };
+    stopPolling();
+    document.body.classList.add('wiring');
+    document.body.dataset.wireKind = srcKind;
+    document.querySelectorAll(`.topo-node`).forEach(node => {
+        // Acceptation générique pilotée par le wiring : un nœud accepte le câble s'il
+        // a une entrée (topo-port-in) du même kind, libre ou remplie (= remplacement).
+        // Couvre tous les types cœur ET les plugins (consumes du manifeste).
+        const accepts = node.querySelector(`.topo-port-in[data-kind="${srcKind}"]`) != null;
+        // Anti-boucle : pas de câble d'un nœud vers lui-même — SAUF pour un moteur split_io
+        // (RX et TX partagent le vmid mais sont indépendants : RX réseau→shm, TX shm→réseau).
+        const sameVmid = String(node.dataset.vmid) === String(srcVmid);
+        if (accepts && (!sameVmid || node.dataset.split === '1')) {
+            node.classList.add('topo-node-target');
+        }
+    });
+    document.querySelector(`.topo-node[data-vmid="${srcVmid}"]`)?.classList.add('topo-node-wire-src');
+    document.querySelector(`.topo-port-out[data-shm="${CSS.escape(srcShm)}"]`)?.classList.add('topo-port-wire-src');
+    markFormatClashes(srcVmid, srcShm, srcKind);
+    showWireBanner();
+}
+// AVANT le clic : marque les sorties TX dont le format déclaré diffère de celui de la source qu'on
+// tient. L'écart de format est l'action la plus destructrice du système (session recréée → l'arbre
+// TX du port est recalé → TOUTES les sorties de la carte figent ~1 s) : l'opérateur doit le VOIR
+// pendant qu'il vise, pas le découvrir dans une modale après avoir lâché le câble. Le port reste
+// cliquable — le clic ouvre la résolution (UDC / alignement), il ne « force » rien.
+function markFormatClashes(srcVmid, srcShm, srcKind) {
+    if (srcKind !== 'video') return;
+    const sf = producesFmt(srcVmid, srcShm);
+    if (!sf) return;
+    document.querySelectorAll('.topo-node .topo-port-in.topo-port-video[data-slot]').forEach(li => {
+        const vmid = li.closest('.topo-node')?.dataset.vmid;
+        if (!vmid) return;
+        const p = consumesPort(parseInt(vmid), 'video', li.dataset.slot);
+        if (!p || !p.tx_slot || !p.format) return;
+        const axes = txFormatDiff(sf, p.format);
+        if (!axes.length) return;
+        li.classList.add('topo-port-clash');
+        li.setAttribute('title', `${p.label || ''} : ${T('cables.tx.clash_tip')} `
+            + `${fmtSummary(sf)} ≠ ${fmtSummary(p.format)} (${axes.map(a => a.axis).join(', ')}). `
+            + T('cables.tx.clash_tip2'));
+    });
+}
+function showWireBanner() {
+    let b = wireBanner();
+    if (!b) {
+        b = document.createElement('div');
+        b.id = 'wire-banner';
+        b.className = 'wire-banner';
+        document.body.appendChild(b);
+    }
+    b.innerHTML = `
+        <span class="wire-banner-kind topo-tip-kind-${escapeHtml(wireSrc.kind)}">${wireSrc.kind === 'audio' ? T('cables.av.audio') : T('cables.av.video')}</span>
+        <span class="wire-banner-shm">${escapeHtml(wireSrc.shm)}</span>
+        <span class="wire-banner-msg">${T('cables.wire.banner_pre')} <kbd>${T('cables.wire.esc_key')}</kbd> ${T('cables.wire.banner_post')}</span>
+        <button type="button" class="wire-banner-cancel" onclick="cancelWire()">${T('cables.cancel')}</button>
+    `;
+    b.hidden = false;
+}
+function cancelWire() {
+    wireSrc = null;
+    document.body.classList.remove('wiring');
+    delete document.body.dataset.wireKind;
+    document.querySelectorAll('.topo-node-target, .topo-node-wire-src, .topo-port-wire-src, .topo-port-clash')
+        .forEach(el => el.classList.remove('topo-node-target', 'topo-node-wire-src', 'topo-port-wire-src', 'topo-port-clash'));
+    const b = wireBanner(); if (b) b.hidden = true;
+    startPolling();
+}
+// Piste audio associée à une sortie vidéo d'un producteur : appariement par index
+// (receiver_0 ↔ receiver_audio_0). 1 seul groupe vidéo → 1ʳᵉ sortie audio.
+function associatedAudioShm(node, videoShm) {
+    if (!node) return null;
+    const vids = (node.produces || []).filter(p => p.kind === 'video').map(p => p.shm);
+    const auds = (node.produces || []).filter(p => p.kind === 'audio').map(p => p.shm);
+    if (!auds.length) return null;
+    const k = vids.indexOf(videoShm);
+    if (k < 0) return auds[0];
+    return auds[k] != null ? auds[k] : auds[0];
+}
+function associatedAncShm(node, videoShm) {
+    if (!node) return null;
+    const vids = (node.produces || []).filter(p => p.kind === 'video').map(p => p.shm);
+    const ancs = (node.produces || []).filter(p => p.kind === 'data').map(p => p.shm);
+    if (!ancs.length) return null;
+    const k = vids.indexOf(videoShm);
+    if (k < 0) return ancs[0];
+    return ancs[k] != null ? ancs[k] : ancs[0];
+}
+
+async function commitWire(targetVmid, portEl, toSlot) {
+    const target = nodesByVmid[targetVmid];
+    if (!target || !wireSrc) return;
+    const src = wireSrc;
+    if (portEl) portEl.classList.add('topo-port-drop-flash');
+    showToast((window.t('cables.js.wiring').replace('{src}', src.shm).replace('{dst}', target.hostname || '#' + targetVmid)));
+    // Arme la garde anti-nav : le click qui suit le mousedown ne doit pas
+    // déclencher un drill-down même si le hit-test rate le port.
+    _wireCancelAt = Date.now();
+    cancelWire();
+    const payload = {
+        from_vmid: parseInt(src.vmid),
+        to_vmid:   parseInt(targetVmid),
+        shm:       src.shm,
+        kind:      src.kind,
+    };
+    if (toSlot != null) payload.to_slot = toSlot;
+    // Option « câbler aussi l'audio associé » : on joint l'audio dans le MÊME appel
+    // (un seul déploiement, atomique) quand on câble une vidéo vers un encodeur.
+    let autoA = null;
+    if (src.kind === 'video' && target.kind === 'streamer'
+        && document.getElementById('auto-audio')?.checked) {
+        autoA = associatedAudioShm(nodesByVmid[src.vmid], src.shm);
+        if (autoA) payload.audio_shm = autoA;
+    }
+    let autoAnc = null;
+    if (src.kind === 'video' && document.getElementById('auto-anc')?.checked) {
+        autoAnc = associatedAncShm(nodesByVmid[src.vmid], src.shm);
+        if (autoAnc) payload.anc_shm = autoAnc;
+    }
+    // Détection mismatch de format (vidéo uniquement) : si la source et l'entrée attendue
+    // diffèrent, proposer d'insérer un UDC convertisseur plutôt que câbler un flux illisible.
+    const pFmt = (src.kind === 'video') ? producesFmt(src.vmid, src.shm) : null;
+    const cFmt = (src.kind === 'video') ? consumesFmt(targetVmid, src.kind, toSlot) : null;
+    // Les SORTIES TX 2110 ont leur propre gate (axes de signature ≠ axes « image lisible ») et leur
+    // propre résolution (jamais de « forcer ») : c'est le SERVEUR qui tranche (409 format_mismatch),
+    // pour que le verdict affiché soit exactement celui qui sera appliqué. Cf. _postWire.
+    const _txPort = (src.kind === 'video') ? consumesPort(targetVmid, 'video', toSlot) : null;
+    if (_txPort && _txPort.tx_slot) {
+        await _postWire(payload, src, target, targetVmid, autoA, autoAnc);
+        return;
+    }
+    if (formatsDiffer(pFmt, cFmt)) {
+        openMismatchModal({
+            payload, src, target, targetVmid, toSlot, autoA, pFmt, cFmt,
+        });
+        return;
+    }
+    await _postWire(payload, src, target, targetVmid, autoA, autoAnc);
+}
+
+// POST réel du câble (chemin direct). Extrait pour pouvoir le réutiliser depuis la modale
+// « Câbler quand même ».
+async function _postWire(payload, src, target, targetVmid, autoA, autoAnc) {
+    try {
+        let r = await fetch('/api/home/wire', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        // Étage 2 (docs/reference/TX_LAYOUTS.md) : câbler une sortie 2110 est GRATUIT (swap de source) tant que le
+        // format de la source concorde avec celui de la sortie provisionnée. Sinon la session est
+        // recréée → l'arbre TX du port est recalé → TOUTES les sorties de la carte figent ~1 s. Le
+        // serveur le calcule (409 + verdict) ; on nomme les victimes avant de confirmer.
+        // Le corps d'une Response ne se lit QU'UNE FOIS. Le test 409 ci-dessous le consomme ; sans
+        // le garder, le `r.json()` final retombait sur un corps déjà lu → {} → « Erreur 409 : (pas
+        // de détail) », qui masquait la vraie raison du refus (écart de format, etc.).
+        let j = null;
+        if (r.status === 409) {
+            const j409 = await r.json().catch(() => ({}));
+            // Étage 3 : ÉCART DE FORMAT sur une sortie TX. Pas de « forcer » : trois issues.
+            if (j409 && j409.format_mismatch) {
+                openTxFormatModal(j409.format_mismatch, { payload, src, target, targetVmid, autoA, autoAnc });
+                return;
+            }
+            // ÉCART DE FORMAT constaté par le SERVEUR (format réellement porté par le flux). La
+            // détection côté client, elle, compare les formats DÉCLARÉS de la topologie : quand les
+            // deux divergent (RX 2110 dont le moteur annonce sa cadence globale), le client ne voit
+            // rien et n'affichait qu'un toast d'erreur. On ouvre la MÊME modale de résolution.
+            if (j409 && j409.format_conflict) {
+                const fc = j409.format_conflict;
+                openMismatchModal({
+                    payload, src, target, targetVmid,
+                    toSlot: (fc.to_slot != null ? fc.to_slot : payload.to_slot),
+                    autoA, pFmt: fc.source, cFmt: fc.target, why: fc.why,
+                });
+                return;
+            }
+            if (j409 && j409.needs_confirm) {
+                const choice = await window.txMaintConfirm(j409.verdict || {detail: j409.reason}, {});
+                if (!choice) return;
+                r = await fetch('/api/home/wire', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(Object.assign({}, payload, {confirm: true})),
+                });
+            } else {
+                j = j409;                       // refus sec : c'est CE corps qui porte `error`
+            }
+        }
+        if (j === null) j = await r.json().catch(() => ({}));
+        if (r.ok && j.ok) {
+            const suite = j.hot_wired ? T('cables.js.hot_applied') : T('cables.js.needs_redeploy');
+            // PRÉ-CÂBLAGE : la source n'a pas encore de flux, l'écart de format annoncé n'est
+            // qu'une prédiction. Le dire ici, sinon le succès laisse croire à un patch validé.
+            if (j.format_unverified) {
+                const why = (typeof j.format_unverified === 'string') ? ` (${j.format_unverified})` : '';
+                showToast(T('cables.js.prewire').replace('{src}', src.shm).replace('{dst}', target.hostname || '#' + targetVmid).replace('{why}', why), 'warn');
+                setTimeout(rafraichirCables, 300);
+                setTimeout(rafraichirCables, 2000);
+                return;
+            }
+            showToast(window.t('cables.js.cable_created')
+                          .replace('{src}', src.shm + (autoA ? ' + ' + autoA : '') + (autoAnc ? ' + ' + autoAnc : ''))
+                          .replace('{dst}', target.hostname || '#' + targetVmid) + '. ' + suite, 'ok');
+            setTimeout(rafraichirCables, 300);
+            setTimeout(rafraichirCables, 2000);
+        } else {
+            console.error('[wire] FAIL', r.status, j);
+            showToast((window.t('cables.js.err_http').replace('{status}', r.status).replace('{detail}', j.error || window.t('cables.js.err_http_nodetail'))), 'error');
+        }
+    } catch (e) {
+        console.error('[wire] FAIL réseau', e);
+        showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error');
+    }
+}
+
+// ─── Détection de mismatch de format + proposition d'insérer un UDC ──────────
+function producesFmt(vmid, shm) {
+    const n = nodesByVmid[vmid];
+    const p = (n && n.produces || []).find(x => x.shm === shm);
+    return p && p.format;
+}
+function consumesFmt(vmid, kind, slot) {
+    const n = nodesByVmid[vmid];
+    const cands = (n && n.consumes || []).filter(x => (x.kind || 'video') === kind);
+    const s = (slot != null) ? parseInt(slot) : null;
+    const m = (s != null)
+        ? (cands.find(x => x.slot === s) || cands.find(x => x.slot == null))
+        : cands[0];
+    return m && m.format;
+}
+// Mismatch si un champ DÉFINI des deux côtés diffère (résolution, chroma, fps, colorimétrie).
+function formatsDiffer(a, b) {
+    if (!a || !b) return false;
+    return ['width', 'height', 'chroma', 'fps', 'colorimetry'].some(k =>
+        a[k] != null && b[k] != null && String(a[k]) !== String(b[k]));
+}
+// Cherche un UDC déployé dont la SORTIE n'est consommée par personne (libre, réutilisable :
+// on re-câblera son entrée et sa sortie). → vmid ou null.
+function findFreeUdc(excludeVmid) {
+    const n = Object.values(nodesByVmid).find(nd => nd.kind === 'udc' && nd.vmid !== excludeVmid
+        && (nd.produces || []).some(p => (p.kind || 'video') === 'video' && p.free));
+    return n ? n.vmid : null;
+}
+// Deux formats compatibles (mêmes résolution/chroma + fps/colorimétrie si définis des deux côtés).
+function formatsMatch(a, b) {
+    return !!a && !!b && !formatsDiffer(a, b)
+        && ['width', 'height', 'chroma'].every(k => a[k] != null && b[k] != null);
+}
+// Cherche un UDC déjà câblé sur `srcShm` ET produisant déjà le format `wantFmt` : il suffit
+// de tirer un câble de sa sortie (fan-out d'une conversion existante). → {vmid, shm} ou null.
+function findMatchingUdc(srcShm, wantFmt) {
+    for (const nd of Object.values(nodesByVmid)) {
+        if (nd.kind !== 'udc') continue;
+        const wired = (nd.consumes || []).some(c => (c.kind || 'video') === 'video' && c.shm === srcShm);
+        if (!wired) continue;
+        const outp = (nd.produces || []).find(p => (p.kind || 'video') === 'video' && formatsMatch(p.format, wantFmt));
+        if (outp) return { vmid: nd.vmid, shm: outp.shm };
+    }
+    return null;
+}
+
+function closeMismatchModal() {
+    const m = document.getElementById('udc-mismatch-modal');
+    if (m) m.remove();
+}
+
+async function _postInsertUdc(ctx, mode, reuseVmid) {
+    closeMismatchModal();
+    showToast(mode === 'reuse' ? window.t('cables.js.udc_reuse') : 'Insertion d\'un UDC en cours (~1 min)…');
+    const body = {
+        from_vmid: ctx.payload.from_vmid, to_vmid: ctx.payload.to_vmid,
+        shm: ctx.payload.shm, kind: ctx.payload.kind, mode,
+    };
+    if (ctx.toSlot != null) body.to_slot = ctx.toSlot;
+    if (reuseVmid != null) body.reuse_vmid = reuseVmid;
+    try {
+        const r = await fetch('/api/home/insert_udc', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) { showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error'); return; }
+        // Re-poll de la topologie jusqu'à apparition de la chaîne (création ~60-90 s).
+        let tries = (mode === 'reuse') ? 6 : 45;
+        const t = setInterval(() => { rafraichirCables(); if (--tries <= 0) clearInterval(t); }, 3000);
+    } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
+}
+
+function openMismatchModal(ctx) {
+    closeMismatchModal();
+    const matchUdc = findMatchingUdc(ctx.src.shm, ctx.cFmt);   // conversion déjà en place ?
+    const freeUdc = findFreeUdc(matchUdc && matchUdc.vmid);    // UDC libre (toujours proposé si dispo)
+    const ov = document.createElement('div');
+    ov.id = 'udc-mismatch-modal';
+    ov.className = 'modal-overlay';
+    ov.innerHTML = `
+      <div class="modal-card" style="max-width:520px">
+        <h2 style="margin-top:0">${T('cables.fmt.title')}</h2>
+        <p class="meta">${T('cables.fmt.intro')}</p>
+        ${ctx.why ? `<p class="meta" style="color:var(--status-warning-fg)">${escapeHtml(ctx.why)}</p>` : ''}
+        <div style="display:flex; gap:10px; align-items:center; margin:12px 0; font-size:0.95em">
+          <span><strong>${T('cables.dl.source')}</strong><br>${escapeHtml(fmtSummary(ctx.pFmt) || '?')}</span>
+          <span style="color:var(--text-muted)">→ UDC →</span>
+          <span><strong>${T('cables.dl.destination')}</strong><br>${escapeHtml(fmtSummary(ctx.cFmt) || '?')}</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:16px">
+          ${matchUdc != null ? `<button type="button" class="btn btn-green" id="udc-m-tap">${T('cables.fmt.reuse_udc')}${matchUdc.vmid} ${T('cables.fmt.already_converted')}</button>` : ''}
+          <button type="button" class="btn btn-blue" id="udc-m-create">${T('cables.fmt.create_udc')}</button>
+          ${freeUdc != null ? `<button type="button" class="btn btn-purple" id="udc-m-reuse">${T('cables.fmt.reuse_free_udc')}${freeUdc})</button>` : ''}
+          <button type="button" class="btn" id="udc-m-force">${T('cables.fmt.force')}</button>
+          <button type="button" class="btn" id="udc-m-cancel">${T('cables.cancel')}</button>
+        </div>
+      </div>`;
+    ov.addEventListener('click', (e) => { if (e.target === ov) closeMismatchModal(); });
+    document.body.appendChild(ov);
+    if (matchUdc != null) document.getElementById('udc-m-tap').onclick = () => {
+        closeMismatchModal();
+        // Fan-out : on tire un câble de la sortie (déjà au bon format) de l'UDC existant.
+        const p2 = { from_vmid: matchUdc.vmid, to_vmid: ctx.payload.to_vmid,
+                     shm: matchUdc.shm, kind: ctx.payload.kind };
+        if (ctx.toSlot != null) p2.to_slot = ctx.toSlot;
+        _postWire(p2, { vmid: matchUdc.vmid, shm: matchUdc.shm, kind: ctx.payload.kind },
+                  ctx.target, ctx.targetVmid, null);
+    };
+    document.getElementById('udc-m-create').onclick = () => _postInsertUdc(ctx, 'create');
+    if (freeUdc != null) document.getElementById('udc-m-reuse').onclick = () => _postInsertUdc(ctx, 'reuse', freeUdc);
+    document.getElementById('udc-m-force').onclick = () => {
+        closeMismatchModal();
+        // `force` : le serveur a son PROPRE gate de format (sur le flux réel). Sans ce drapeau,
+        // « câbler quand même » repartait pour un 409 et rouvrait cette modale — une boucle.
+        // L'écart reste tracé en alerte côté serveur : forcer n'efface pas le fait.
+        _postWire(Object.assign({}, ctx.payload, {force: true}),
+                  ctx.src, ctx.target, ctx.targetVmid, ctx.autoA);
+    };
+    document.getElementById('udc-m-cancel').onclick = closeMismatchModal;
+}
+
+// ─── Écart de format sur une SORTIE TX 2110 : les TROIS issues (docs/reference/TX_LAYOUTS.md étage 3) ───────────
+// Il n'y a PAS de quatrième issue « forcer » : un TX qui annonce un format et en émet un autre est
+// une non-conformité 2110 (et un piège pour l'équipement d'en face). L'écart se RÉSOUT :
+//   1. insérer un UDC (conversion — la sortie garde son contrat, coût : zéro commit) ;
+//   2. aligner la sortie sur la source (on change le contrat — coût : recalage de l'arbre TX,
+//      donc passage par le circuit de la fenêtre de maintenance) ;
+//   3. annuler.
+const AXIS_LABEL = () => ({
+    width: T('cables.tx.ax.width'), height: T('cables.tx.ax.height'), fps: T('cables.tx.ax.fps'),
+    scan: T('cables.tx.ax.scan'), field_order: T('cables.tx.ax.field_order'),
+    bit_depth: T('cables.tx.ax.bit_depth'),
+});
+function closeTxFormatModal() { document.getElementById('tx-format-modal')?.remove(); }
+
+function openTxFormatModal(mm, ctx) {
+    closeTxFormatModal();
+    const v = mm.verdict || {};
+    const slotFmt = mm.slot_format || {};
+    const srcFmt = mm.source || {};
+    const AX = AXIS_LABEL();
+    const uctx = { payload: ctx.payload, toSlot: mm.slot, src: ctx.src, target: ctx.target,
+                   targetVmid: ctx.targetVmid };
+    const matchUdc = findMatchingUdc(mm.shm, slotFmt);   // conversion déjà en place → simple fan-out
+    const freeUdc = findFreeUdc(matchUdc && matchUdc.vmid);
+    // Le coût de l'alignement dépend du PORT : en rate-limiter (DPDK) il recale l'arbre → toutes les
+    // sorties de la carte figent ; en AF-XDP il n'y a pas d'arbre, donc pas de blip collatéral.
+    const cost = (v.level === 'disruptive')
+        ? T('cables.tx.align_cost_rl').replace('{n}', (v.victims || []).length)
+        : T('cables.tx.align_cost_safe');
+    const rows = (mm.axes || []).map(a => `
+        <tr><td class="txf-ax">${escapeHtml(AX[a.axis] || a.axis)}</td>
+            <td class="txf-src">${escapeHtml(String(a.source))}</td>
+            <td class="txf-slot">${escapeHtml(String(a.slot))}</td></tr>`).join('');
+    const ov = document.createElement('div');
+    ov.id = 'tx-format-modal';
+    ov.className = 'modal-overlay';
+    ov.innerHTML = `
+      <div class="modal-card txf-card" role="alertdialog" aria-modal="true">
+        <h2 class="txf-title">${T('cables.tx.title')}</h2>
+        <p class="txf-lead">${T('cables.tx.lead')
+            .replace('{out}', escapeHtml(mm.label)).replace('{decl}', escapeHtml(fmtSummary(slotFmt)))
+            .replace('{src}', escapeHtml(mm.shm)).replace('{real}', escapeHtml(fmtSummary(srcFmt)))}</p>
+        <table class="txf-axes">
+          <thead><tr><th></th><th>${T('cables.dl.source')}</th><th>${T('cables.tx.announced')}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${mm.chroma ? `<p class="meta txf-chroma">${T('cables.tx.chroma_warn')
+            .replace('{s}', escapeHtml(mm.chroma.source)).replace('{e}', escapeHtml(mm.chroma.engine))}</p>` : ''}
+        <div class="txf-actions">
+          ${matchUdc != null ? `<button type="button" class="btn btn-green" id="txf-tap">${
+              T('cables.tx.act_tap')} #${matchUdc.vmid}</button>` : ''}
+          <button type="button" class="btn btn-blue" id="txf-udc">${T('cables.tx.act_udc')}</button>
+          ${freeUdc != null ? `<button type="button" class="btn btn-purple" id="txf-reuse">${
+              T('cables.tx.act_reuse')} #${freeUdc}</button>` : ''}
+          <button type="button" class="btn" id="txf-align">${T('cables.tx.act_align')
+              .replace('{f}', escapeHtml(fmtSummary(srcFmt)))}</button>
+          <p class="meta txf-cost">${escapeHtml(cost)}</p>
+          <button type="button" class="btn" id="txf-cancel">${T('cables.cancel')}</button>
+        </div>
+      </div>`;
+    ov.addEventListener('click', (e) => { if (e.target === ov) closeTxFormatModal(); });
+    document.body.appendChild(ov);
+    if (matchUdc != null) document.getElementById('txf-tap').onclick = () => {
+        closeTxFormatModal();
+        const p2 = { from_vmid: matchUdc.vmid, to_vmid: mm.engine, shm: matchUdc.shm,
+                     kind: 'video', to_slot: mm.slot };
+        _postWire(p2, { vmid: matchUdc.vmid, shm: matchUdc.shm, kind: 'video' },
+                  ctx.target, ctx.targetVmid, null);
+    };
+    document.getElementById('txf-udc').onclick = () => { closeTxFormatModal(); _postInsertUdc(uctx, 'create'); };
+    if (freeUdc != null) document.getElementById('txf-reuse').onclick = () => {
+        closeTxFormatModal(); _postInsertUdc(uctx, 'reuse', freeUdc);
+    };
+    document.getElementById('txf-align').onclick = () => alignTxSlot(mm, ctx);
+    document.getElementById('txf-cancel').onclick = closeTxFormatModal;
+    document.getElementById('txf-udc').focus();
+}
+
+// Issue n°2 : ALIGNER la sortie sur sa source. Le format du slot entre dans la signature de session
+// → l'action est perturbatrice sur un port en rate-limiter : elle passe par le circuit de l'étage 2
+// (modale qui NOMME les sorties qui vont figer, possibilité de différer en fenêtre de maintenance).
+async function alignTxSlot(mm, ctx) {
+    closeTxFormatModal();
+    const f = mm.source || {};
+    const body = { width: f.width, height: f.height, fps: f.fps, scan: f.scan || 'p',
+                   field_order: f.field_order || '', bit_depth: f.bit_depth || 0 };
+    const url = `/api/mtl/${mm.engine}/tx/${mm.slot}/format`;
+    const post = (extra) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                         body: JSON.stringify(Object.assign({}, body, extra || {})) });
+    try {
+        let r = await post();
+        if (r.status === 409) {
+            const j = await r.json().catch(() => ({}));
+            if (!j.needs_confirm) { showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || 409)), 'error'); return; }
+            const choice = await window.txMaintConfirm(j.verdict || {}, { allowDefer: true });
+            if (!choice) return;
+            if (choice === 'defer') {
+                r = await post({ defer: true });
+                if (r.ok) showToast(T('cables.tx.deferred').replace('{out}', mm.label), 'ok');
+                else showToast((window.t('cables.js.err_status').replace('{status}', r.status)), 'error');
+                return;   // le câble n'est PAS posé : le slot changera de format à la fenêtre.
+            }
+            r = await post({ confirm: true });
+        }
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) { showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error'); return; }
+        showToast(T('cables.tx.aligned').replace('{out}', mm.label), 'ok');
+        // Le slot annonce désormais le format de la source → le câble devient un simple swap.
+        setTimeout(() => _postWire(ctx.payload, ctx.src, ctx.target, ctx.targetVmid,
+                                   ctx.autoA, ctx.autoAnc), 600);
+    } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
+}
+
+async function deleteWire(consumerVmid, shm, kind) {
+    closeEdgeMenu();
+    showToast((window.t('cables.js.unwiring').replace('{shm}', shm)));
+    try {
+        const r = await fetch('/api/home/unwire', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to_vmid: parseInt(consumerVmid),
+                shm,
+                kind,
+            }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && j.ok) {
+            const suite = j.hot_wired ? T('cables.js.hot_applied') : T('cables.js.needs_redeploy');
+            showToast((window.t('cables.js.cable_removed').replace('{shm}', shm).replace('{suite}', suite)), 'ok');
+            setTimeout(rafraichirCables, 300);
+            setTimeout(rafraichirCables, 2000);
+        } else {
+            showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error');
+        }
+    } catch (e) {
+        showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error');
+    }
+}
+
+function showToast(msg, kind) {
+    const t = document.createElement('div');
+    t.className = 'wire-toast wire-toast-' + (kind || 'info');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.classList.add('wire-toast-out'); setTimeout(() => t.remove(), 400); }, 4500);
+}
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && wireSrc) { cancelWire(); return; }
+    if ((e.key === 'Enter' || e.key === ' ') && !wireSrc) {
+        // Un bouton de la carte (collapse/monitor) gère sa propre activation : pas de drill-down.
+        if (e.target.closest('button')) return;
+        const node = e.target.closest('.topo-node[data-href]');
+        if (node) { e.preventDefault(); window.location.href = node.dataset.href; }
+    }
+});
+document.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    const outPort = e.target.closest('.topo-port-out');
+    if (outPort && outPort.dataset.shm && !wireSrc) {
+        e.preventDefault();
+        e.stopPropagation();
+        const node = outPort.closest('.topo-node');
+        startWire(node.dataset.vmid, outPort.dataset.shm, outPort.dataset.kind);
+        return;
+    }
+    if (wireSrc) {
+        const portIn = e.target.closest('.topo-port-in');
+        if (portIn) {
+            const targetNode = portIn.closest('.topo-node-target');
+            console.log('[wire] mousedown on port-in', { has_target: !!targetNode, kind: targetNode?.dataset.kind, slot: portIn.dataset.slot, classes: portIn.className });
+            if (targetNode) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (targetNode.dataset.kind === 'multiview' && portIn.classList.contains('topo-port-placeholder')) {
+                    showToast(window.t('cables.js.slot_empty'), 'warn');
+                    _wireCancelAt = Date.now();
+                    cancelWire();
+                    return;
+                }
+                const slot = portIn.dataset.slot;
+                console.log('[wire] -> commitWire', targetNode.dataset.vmid, 'slot=', slot);
+                commitWire(targetNode.dataset.vmid, portIn, slot != null ? parseInt(slot) : null);
+                return;
+            }
+            // port-in trouvé MAIS pas de cible compatible (la classe topo-node-target
+            // n'est pas posée). On stoppe quand même la propagation pour éviter
+            // tout drill-down.
+            console.log('[wire] port-in sans target — block + cancel');
+            e.preventDefault();
+            e.stopPropagation();
+            _wireCancelAt = Date.now();
+            cancelWire();
+            return;
+        }
+        const targetNode = e.target.closest('.topo-node-target');
+        if (targetNode) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Nœud à plusieurs entrées → exiger le clic sur un slot précis (générique :
+            // couvre multiview/mixer/split et tout plugin multi-entrées).
+            if (targetNode.querySelectorAll('.topo-port-in').length > 1) {
+                showToast(window.t('cables.js.click_slot'), 'warn');
+                return;
+            }
+            console.log('[wire] -> commitWire (card)', targetNode.dataset.vmid);
+            commitWire(targetNode.dataset.vmid, null, null);
+            return;
+        }
+        if (!e.target.closest('.wire-banner')) {
+            console.log('[wire] cancel — clic hors target');
+            e.preventDefault();
+            _wireCancelAt = Date.now();
+            cancelWire();
+        }
+    }
+}, true);
+
+// Garde : si le wire mode a été annulé au mousedown (cible non trouvée),
+// suppresser le click qui suit pour éviter un drill-down accidentel.
+let _wireCancelAt = 0;
+
+document.addEventListener('click', e => {
+    if (wireSrc) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
+    if (Date.now() - _wireCancelAt < 150) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+    }
+    const portClicked = e.target.closest('.topo-port');
+    if (portClicked) return;
+    // Le bouton Monitoring gère lui-même son action (ne pas drill-down).
+    if (e.target.closest('.topo-node-monitor')) return;
+    // Idem pour le bouton réduire/agrandir (ne pas ouvrir la page de réglage du plugin).
+    if (e.target.closest('.topo-node-collapse')) return;
+    const node = e.target.closest('.topo-node[data-href]');
+    if (node) {
+        e.preventDefault();
+        window.location.href = node.dataset.href;
+    }
+}, true);
+
+function showEdgeMenu(path, evt) {
+    hideEdgeTip();
+    closeEdgeMenu();
+    const shm  = path.getAttribute('data-shm');
+    const from = path.getAttribute('data-from');
+    const to   = path.getAttribute('data-to');
+    const kind = path.getAttribute('data-kind') || 'video';
+    const consumer = nodesByVmid[to] || {};
+    const producer = nodesByVmid[from] || {};
+    const shmJs   = shm.replace(/'/g, "\\'");
+    const labelJs = `${producer.hostname || ('#' + from)} · ${shm}`.replace(/'/g, "\\'");
+    // Monitoring : un câble est un signal shm → on le pousse au moniteur WebRTC.
+    // Réservé à la vidéo (le pipeline moniteur encode de la vidéo).
+    const monBtn = kind === 'video'
+        ? `<button type="button" class="btn btn-blue" onclick="closeEdgeMenu(); MXLMonitor.send('${shmJs}', '${labelJs}')" title="${T('cables.monitor_tip')}">${T('cables.monitoring')}</button>`
+        : '';
+    const m = document.createElement('div');
+    m.id = 'edge-menu';
+    m.className = 'edge-menu';
+    m.innerHTML = `
+        <div class="edge-menu-head">
+            <span class="topo-tip-kind topo-tip-kind-${escapeHtml(kind)}">${kind === 'audio' ? T('cables.av.audio') : T('cables.av.video')}</span>
+            <span class="edge-menu-shm">${escapeHtml(shm)}</span>
+        </div>
+        <div class="edge-menu-body">
+            ${escapeHtml(producer.hostname || `#${from}`)} → ${escapeHtml(consumer.hostname || `#${to}`)}
+        </div>
+        <div class="edge-menu-actions">
+            ${monBtn}
+            <button type="button" class="btn btn-red" onclick="deleteWire(${escapeHtml(to)}, '${shmJs}', '${kind}')">${T('cables.delete_wire')}</button>
+            <button type="button" class="btn" onclick="closeEdgeMenu()">${T('cables.cancel')}</button>
+        </div>
+    `;
+    document.body.appendChild(m);
+    const w = m.offsetWidth, h = m.offsetHeight;
+    const ww = window.innerWidth, wh = window.innerHeight;
+    let x = evt.clientX + 14, y = evt.clientY + 14;
+    if (x + w > ww - 8) x = evt.clientX - w - 14;
+    if (y + h > wh - 8) y = evt.clientY - h - 14;
+    m.style.left = Math.max(8, x) + 'px';
+    m.style.top  = Math.max(8, y) + 'px';
+}
+function closeEdgeMenu() {
+    document.getElementById('edge-menu')?.remove();
+}
+document.addEventListener('click', e => {
+    if (!e.target.closest('#edge-menu') && !e.target.closest('.topo-edge, .topo-edge-hit')) closeEdgeMenu();
+}, false);
+
+let failCount = 0;
+let cablesShowFabricInternals = false;
+function toggleFabricInternalsCables() {
+    cablesShowFabricInternals = !cablesShowFabricInternals;
+    const b = document.getElementById('cables-fabric-internals');
+    if (b) b.classList.toggle('active', cablesShowFabricInternals);
+    rafraichirCables();
+}
+// Vue d'ensemble PROJETS : chaque projet est un module boîte noire n'exposant que ses
+// ports (les échanges hors-projet et inter-projets restent visibles, jamais l'intérieur).
+let cablesProjectsView = localStorage.getItem('mxl.cables.projectsView') === '1';
+function toggleProjectsView() {
+    cablesProjectsView = !cablesProjectsView;
+    localStorage.setItem('mxl.cables.projectsView', cablesProjectsView ? '1' : '0');
+    const b = document.getElementById('cables-projects-view');
+    if (b) b.classList.toggle('active', cablesProjectsView);
+    rafraichirCables();
+}
+document.addEventListener('DOMContentLoaded', () => {
+    const b = document.getElementById('cables-projects-view');
+    if (b) b.classList.toggle('active', cablesProjectsView);
+});
+
+async function rafraichirCables() {
+    try {
+        const r = await fetch('/api/home/summary' + (cablesProjectsView ? '?view=projects' : ''));
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        failCount = 0;
+        // (idem : c'est MXLConnexion qui pose et retire le voile)
+
+        // Si on est en wire mode quand le fetch revient (fetch in-flight
+        // démarré avant startWire), on ne re-render pas la topologie : sinon on
+        // efface les classes .topo-node-target et le drop click échoue.
+        if (wireSrc) return;
+
+        // Repli des internes du tissu (shards / proxies pyramide), comme dans Containers : masqués
+        // par défaut ; les arêtes vers un nœud retiré se taisent (endpointOf renvoie null).
+        if (!cablesShowFabricInternals) {
+            j.topology.nodes = (j.topology.nodes || []).filter(
+                n => n.fabric_role !== 'shard' && n.fabric_role !== 'proxy');
+        }
+        nodesByVmid = Object.fromEntries((j.topology.nodes || []).map(n => [n.vmid, n]));
+        _populateFilterSelects(j.cable_filters || {projects: [], nodes: []});
+
+        if ((j.topology.nodes || []).length === 0) {
+            document.getElementById('topo').hidden = true;
+            document.getElementById('topo-empty').hidden = false;
+            document.getElementById('topo-all-filtered').hidden = true;  // rien à filtrer : l'autre bandeau fait foi
+        } else {
+            document.getElementById('topo').hidden = false;
+            document.getElementById('topo-empty').hidden = true;
+            renderTopology(j.topology);
+        }
+
+        const now = new Date();
+        // Mêmes clés que l'accueil : c'est le MÊME témoin (id « home-updated »), copié ici.
+        // Deux jeux de clés pour un seul composant divergeraient à la première retouche.
+        document.getElementById('home-updated').textContent =
+            window.t('home.updated_at') + ' ' + now.toLocaleTimeString();
+    } catch (e) {
+        failCount += 1;
+        // (le voile « données périmées » appartient au témoin global, cf. MXLConnexion)
+        document.getElementById('home-updated').textContent =
+            window.t('home.error') + ' ' + e.message
+            + (failCount >= 3 ? ' · ' + window.t('home.stale') : '');
+    }
+}
+
+// ─── Sauvegarde / rappel / effacement de câblage ───────────────
+async function saveCableSnapshot() {
+    const name = prompt(T('cables.prompt.snap_name'));
+    if (!name || !name.trim()) return;
+    try {
+        const r = await fetch('/api/cables/snapshots', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name.trim()}),
+        });
+        const j = await r.json();
+        if (r.ok && j.ok) {
+            showToast(window.t('cables.js.snap_saved').replace('{name}', name).replace('{n}', j.edge_count), 'ok');
+        } else {
+            showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error');
+        }
+    } catch (e) {
+        showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error');
+    }
+}
+
+async function toggleRecallMenu(evt) {
+    const menu = document.getElementById('cables-recall-menu');
+    const btn  = evt.currentTarget;
+    if (!menu.hidden) { closeRecallMenu(); return; }
+    try {
+        const r = await fetch('/api/cables/snapshots');
+        const j = await r.json();
+        const snaps = j.snapshots || [];
+        if (!snaps.length) {
+            menu.innerHTML = `<div class="cables-recall-empty">${T('cables.snap.empty')}</div>`;
+        } else {
+            menu.innerHTML = snaps.map(s => `
+                <div class="cables-recall-row" role="none">
+                    <button type="button" class="cables-recall-pick" role="menuitem"
+                            onclick="restoreCableSnapshot(${s.id}, '${s.name.replace(/'/g,"\\'")}')">
+                        <span class="cables-recall-name">${escapeHtml(s.name)}</span>
+                        <span class="cables-recall-meta">
+                            ${s.edge_count} ${T('cables.snap.cable')}${s.edge_count > 1 ? 's' : ''}
+                            · ${escapeHtml(s.created_at || '')}
+                        </span>
+                    </button>
+                    <button type="button" class="btn-ghost-icon cables-recall-del"
+                            aria-label="${T('cables.snap.del_aria')} ${escapeHtml(s.name)}"
+                            onclick="deleteCableSnapshot(${s.id}, '${s.name.replace(/'/g,"\\'")}', event)">×</button>
+                </div>
+            `).join('');
+        }
+        menu.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+    } catch (e) {
+        showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error');
+    }
+}
+function closeRecallMenu() {
+    const menu = document.getElementById('cables-recall-menu');
+    if (menu) menu.hidden = true;
+    const btn = document.querySelector('.cables-recall > button[aria-controls="cables-recall-menu"]');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+document.addEventListener('click', e => {
+    if (!e.target.closest('.cables-recall')) closeRecallMenu();
+}, false);
+
+async function restoreCableSnapshot(sid, name) {
+    closeRecallMenu();
+    if (!confirm(`${T('cables.recall.confirm_pre')} "${name}"${T('cables.recall.confirm_post')}`)) return;
+    showToast(`Rappel du snapshot "${name}"…`);
+    try {
+        const r = await fetch(`/api/cables/snapshots/${sid}/restore`, {method: 'POST'});
+        const j = await r.json();
+        if (r.ok && j.ok) {
+            showToast((window.t('cables.js.snap_restored').replace('{n}', j.applied).replace('{total}', j.total)), 'ok');
+        } else {
+            const detail = (j.errors || []).slice(0, 2).join(' · ') || j.error || r.status;
+            showToast(`Rappel partiel : ${j.applied}/${j.total}. ${detail}`, 'warn');
+        }
+        setTimeout(rafraichirCables, 500);
+        setTimeout(rafraichirCables, 2500);
+    } catch (e) {
+        showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error');
+    }
+}
+
+async function deleteCableSnapshot(sid, name, evt) {
+    evt.stopPropagation();
+    if (!confirm(`${T('cables.snap.del_confirm')} "${name}" ?`)) return;
+    try {
+        const r = await fetch(`/api/cables/snapshots/${sid}`, {method: 'DELETE'});
+        if (r.ok) {
+            showToast((window.t('cables.js.snap_deleted').replace('{name}', name)), 'ok');
+            // Re-render la liste si menu encore ouvert
+            const menu = document.getElementById('cables-recall-menu');
+            if (menu && !menu.hidden) {
+                closeRecallMenu();
+                const btn = document.querySelector('.cables-recall > button');
+                if (btn) toggleRecallMenu({currentTarget: btn});
+            }
+        }
+    } catch (e) {
+        showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error');
+    }
+}
+
+async function clearAllCables() {
+    if (!confirm(T('cables.clear_confirm'))) return;
+    showToast(window.t('cables.js.unwiring_all'));
+    try {
+        const r = await fetch('/api/cables/clear', {method: 'POST'});
+        const j = await r.json();
+        if (r.ok && j.ok) {
+            showToast(window.t('cables.js.cleared').replace('{n}', j.cleared), 'ok');
+        } else {
+            showToast(window.t('cables.js.cleared_partial').replace('{n}', j.cleared).replace('{ko}', j.failed), 'warn');
+        }
+        setTimeout(rafraichirCables, 500);
+        setTimeout(rafraichirCables, 2500);
+    } catch (e) {
+        showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error');
+    }
+}
+
+let resizeRaf = null;
+window.addEventListener('resize', () => {
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(() => { if (!wireSrc) rafraichirCables(); resizeRaf = null; });
+});
+
+let pollInterval = null;
+// Poll SANS RECOUVREMENT (window.MXLPoll, cf. layout.html) : le délai de 2 s ne repart qu'une
+// fois la passe terminée. Avec setInterval, une réponse plus lente que l'intervalle empilait les
+// requêtes et saturait l'orchestrateur — plus aucun câble pendant des dizaines de secondes.
+function startPolling() { if (!pollInterval) pollInterval = window.MXLPoll(rafraichirCables, 2000); }
+function stopPolling()  { if (pollInterval) { pollInterval.stop(); pollInterval = null; } }
+// Restaure l'état de l'option « câbler aussi l'audio associé ».
+(() => { const cb = document.getElementById('auto-audio');
+         if (cb) cb.checked = localStorage.getItem('mxl.cables.autoaudio') === '1'; })();
+(() => { const cb = document.getElementById('auto-anc');
+         if (cb) cb.checked = localStorage.getItem('mxl.cables.autoanc') === '1'; })();
+
+// ─── Mode d'affichage de la latence (badges page Câbles) ─────────────────────
+// 'step' = délai par étape (arête = arrivée/transit, nœud = traitement propre) ;
+// 'cum'  = cumul du retard à chaque étape (arête/sortie = total du signal jusque-là).
+// `_latShow` sépare l'AFFICHAGE du MODE : couper les étiquettes ne doit pas faire oublier le
+// mode choisi. Les deux sont déclarés en tête de script (cf. zone morte temporelle).
+function _latSyncButtons() {
+    const bs = document.getElementById('lat-mode-charge'),
+          bd = document.getElementById('lat-mode-delai'),
+          bc = document.getElementById('lat-mode-cum'),
+          bo = document.getElementById('lat-mode-off');
+    if (bs) bs.classList.toggle('active', _latShow && _latMode === 'charge');
+    if (bd) bd.classList.toggle('active', _latShow && _latMode === 'delai');
+    if (bc) bc.classList.toggle('active', _latShow && _latMode === 'delai_cum');
+    if (bo) bo.classList.toggle('active', !_latShow);
+}
+function cablesSetLatMode(mode) {
+    if (mode === 'off') {
+        _latShow = false;
+    } else {
+        _latShow = true;
+        // ⚠ La liste fait FOI. Ce setter portait encore `(mode === 'cum') ? 'cum' : 'step'`, hérité
+        // des deux anciens modes : les trois boutons y écrivaient donc 'step', une valeur qui
+        // n'existe plus. Plus aucune branche de rendu ne correspondait — tous les badges
+        // disparaissaient et aucun bouton ne s'allumait, au PREMIER clic (au chargement la
+        // migration rattrapait la valeur mémorisée, d'où un défaut qui ne se voyait pas d'emblée).
+        _latMode = _LAT_MODES.includes(mode) ? mode : 'charge';
+        localStorage.setItem('mxl.cables.latmode', _latMode);
+    }
+    localStorage.setItem('mxl.cables.latshow', _latShow ? '1' : '0');
+    _latSyncButtons();
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
+// État initial des boutons (sans re-rendu : la 1re topo n'est pas encore chargée).
+_latSyncButtons();
+
+// ─── Marquage RDMA des câbles inter-nœud ─────────────────────────────────────
+// 'line'  (défaut) = surlignage pointillé ambré superposé au câble, sans texte ;
+// 'label' = surlignage + étiquette « RDMA » (l'ancien affichage, illisible dès qu'il y a
+//           beaucoup de câbles répliqués — d'où le défaut sur 'line') ;
+// 'off'   = rien. Un lien MANQUANT reste signalé dans les trois modes : c'est une alarme.
+// `_rdmaMode` est déclaré en tête de script (cf. zone morte temporelle).
+function _rdmaSyncButtons() {
+    _RDMA_MODES.forEach(m => {
+        const b = document.getElementById('rdma-mode-' + m);
+        if (b) b.classList.toggle('active', _rdmaMode === m);
+    });
+}
+function cablesSetRdmaMode(mode) {
+    _rdmaMode = _RDMA_MODES.includes(mode) ? mode : 'line';
+    localStorage.setItem('mxl.cables.rdmamode', _rdmaMode);
+    _rdmaSyncButtons();
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
+_rdmaSyncButtons();
+
+// ─── Libellés de source + tally TSL ──────────────────────────────────────────
+// Le NIVEAU de libellé n'est plus choisi ici : il vient du sélecteur global de la barre de
+// navigation (window.SourceLabels), commun à toutes les pages qui listent des sources. Cette page
+// avait le sien, avec sa propre mémorisation — deux réglages pour la même chose, qui divergeaient.
+// Ne reste ici que ce qui est PROPRE au câblage : l'index TSL par shm (pastilles de tally).
+let _cablesTslByShm    = {};  // {shm: {labels:[]}} — libellés seulement
+let _cablesTslMapByShm = {};  // {shm: [{tsl_index, levels, connection_id}]} — mapping INVERSE
+
+
+// Rafraîchit libellés + noms de colonnes. Renvoie true si quelque chose a CHANGÉ.
+// Les libellés étaient chargés UNE SEULE FOIS au chargement de la page : une modification faite
+// depuis TSL n'apparaissait qu'après un rechargement manuel, alors que les couleurs de tally, elles,
+// se mettaient à jour toutes les 3 s. Les deux viennent pourtant de la même source.
+async function _loadCablesTslLabels() {
+    let change = false;
+    try {
+        const [r1, rm] = await Promise.all([
+            fetch('/api/tsl/sources/by_shm'),
+            fetch('/api/tsl/mapping/by_shm'),
+        ]);
+        if (rm.ok) _cablesTslMapByShm = await rm.json();
+        if (r1.ok) {
+            const j = await r1.json();
+            // Comparaison sur le contenu sérialisé : un re-rendu inutile ferait clignoter le
+            // tableau toutes les 3 s et casserait la sélection de texte en cours.
+            if (JSON.stringify(j) !== JSON.stringify(_cablesTslByShm)) { _cablesTslByShm = j; change = true; }
+        }
+    } catch(e) {}
+    // Les libellés eux-mêmes vivent dans le service partagé : on lui demande de se rafraîchir (il
+    // n'émet son événement que si le contenu a réellement bougé, donc pas de clignotement).
+    if (window.SourceLabels) window.SourceLabels.refresh();
+    return change;
+}
+
+async function _loadCablesTslData() {
+    await _loadCablesTslLabels();
+    _startCablesTally();
+    // Bascule du niveau dans la barre de navigation → re-rendu, sauf pendant un câblage en cours
+    // (re-rendre sous les doigts ferait perdre le lien que l'opérateur est en train de tirer).
+    document.addEventListener('source-labels:change', () => { if (!wireSrc) rafraichirCables(); });
+    setInterval(async () => {
+        // Les libellés sont injectés au RENDU (habillage de renderPort) : les rafraîchir impose un
+        // re-rendu du tableau. On ne le fait donc QUE s'ils ont changé, et JAMAIS pendant un
+        // câblage en cours — re-rendre sous les doigts de l'opérateur ferait perdre le lien qu'il
+        // est en train de tirer (même garde que le redimensionnement de fenêtre).
+        if (await _loadCablesTslLabels() && !wireSrc) rafraichirCables();
+    }, 3000);
+}
+
+// L'état des lampes est sondé par window.SourceTally (une seule horloge pour toute la page, et
+// pour l'encart de monitoring) ; on ne fait que repeindre quand il signale un changement.
+function _startCablesTally() {
+    if (!window.SourceTally) return;
+    window.SourceTally.start();
+    document.addEventListener('source-tally:change', _updateCablesTallyDom);
+    _updateCablesTallyDom();   // état déjà en cache : peindre sans attendre le 1er changement
+}
+
+// Le tally COLORE LE TEXTE du label, il n'ajoute pas de pastille : sur un point de connexion,
+// une pastille supplémentaire se confond avec la pastille d'ESSENCE (vidéo/audio/données) et
+// brouille la lecture du type de point. La résolution (mapping inverse + filtre de niveau) vit
+// dans window.SourceTally, partagée avec l'encart de monitoring.
+function _updateCablesTallyDom() {
+    document.querySelectorAll('.topo-port[data-shm]').forEach(li => {
+        li.querySelectorAll('.cables-tally-dots').forEach(el => el.remove());   // héritage : purge
+        const c = window.SourceTally ? window.SourceTally.colorFor(li.dataset.shm) : null;
+        li.classList.remove('tally-red', 'tally-green', 'tally-amber');
+        if (c) li.classList.add('tally-' + c);
+    });
+}
+
+// Libellé à substituer au nom de port. Niveaux 0 (hostname) et 1 (MXL) : on ne substitue RIEN —
+// le tableau affiche déjà le nom technique, remplacer un nom technique par un autre n'apprendrait
+// rien. Au-delà, c'est un nom d'exploitation, avec héritage et repli gérés par le service partagé.
+function _cablesResolvePortLabel(port) {
+    if (!port.shm || !window.SourceLabels || window.SourceLabels.level < 2) return null;
+    return window.SourceLabels.labelOf(port.shm).value || null;
+}
+
+// Injection dans renderPort. Sortie : le libellé d'exploitation REMPLACE le nom du port (une
+// sortie EST une source). Entrée : il nomme la source branchée, pas le slot — le nom du port
+// (« Entrée 3 », « Audio 1 ») dit où l'on branche et doit rester lisible.
+const _renderPort_orig = renderPort;
+renderPort = function (side, port, idx, nodeKind, vmid) {
+    const tslLabel = _cablesResolvePortLabel(port);
+    if (tslLabel) port = (side === 'out') ? { ...port, label: tslLabel }
+                                          : { ...port, shm_label: tslLabel };
+    return _renderPort_orig(side, port, idx, nodeKind, vmid);
+};
+
+// ─── E. Réduire / agrandir une carte ─────────────────────────────────────────
+// Repli keyé par NID (≠ vmid) : un moteur split_io (2110_io) expose RX et TX comme deux cartes du
+// même vmid → on doit pouvoir les replier indépendamment.
+let _collapsed = new Set(JSON.parse(localStorage.getItem('mxl.cables.collapsed') || '[]').map(String));
+function _isCollapsed(nid) { return _collapsed.has(String(nid)); }
+function toggleCollapse(ev, nid) {
+    ev.preventDefault(); ev.stopPropagation();
+    const k = String(nid);
+    if (_collapsed.has(k)) _collapsed.delete(k); else _collapsed.add(k);
+    localStorage.setItem('mxl.cables.collapsed', JSON.stringify([..._collapsed]));
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
+
+// ─── C. Filtres (signal · projet · nœud), combinables et mémorisés ───────────
+let _sigFilter  = new Set(JSON.parse(localStorage.getItem('mxl.cables.filter.signal') || '["video","audio","data"]'));
+let _projFilter = localStorage.getItem('mxl.cables.filter.project') || '';
+let _nodeFilter = localStorage.getItem('mxl.cables.filter.node') || '';
+let _filterSig  = '';   // signature du dernier remplissage des selects (évite de reconstruire à chaque poll)
+
+function _nodeKey(n) { return (n && n.node_id != null) ? String(n.node_id) : 'local'; }
+function _nodeObjMatches(n) {
+    if (!n) return false;
+    if (_projFilter && String(n.project_id == null ? '' : n.project_id) !== _projFilter) return false;
+    if (_nodeFilter && _nodeKey(n) !== _nodeFilter) return false;
+    return true;
+}
+function _edgePassesFilter(e) {
+    if (!_sigFilter.has(e.kind || 'video')) return false;
+    return _nodeObjMatches(nodesByVmid[e.from]) && _nodeObjMatches(nodesByVmid[e.to]);
+}
+function applyCableFilters() {
+    let total = 0, shown = 0;
+    document.querySelectorAll('.topo-node').forEach(node => {
+        const n = nodesByVmid[node.dataset.vmid];
+        let visible = _nodeObjMatches(n);
+        let anyPort = false, hasPorts = false;
+        node.querySelectorAll('.topo-port').forEach(li => {
+            hasPorts = true;
+            const show = _sigFilter.has(li.dataset.kind || 'video');
+            li.classList.toggle('topo-port-filtered', !show);
+            if (show) anyPort = true;
+        });
+        if (visible && hasPorts && !anyPort) visible = false;  // plus aucun port du type retenu
+        node.classList.toggle('topo-node-filtered', !visible);
+        total += 1; if (visible) shown += 1;
+    });
+    // Filtres qui masquent TOUT : sans ce bandeau la page est une toile blanche indiscernable
+    // d'un parc vide, et rien ne désigne le filtre comme responsable.
+    const banner = document.getElementById('topo-all-filtered');
+    if (banner) banner.hidden = !(total > 0 && shown === 0);
+}
+function toggleSignalFilter(sig) {
+    if (_sigFilter.has(sig)) { if (_sigFilter.size > 1) _sigFilter.delete(sig); }  // garder ≥ 1 actif
+    else _sigFilter.add(sig);
+    localStorage.setItem('mxl.cables.filter.signal', JSON.stringify([..._sigFilter]));
+    _syncSignalButtons();
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
+function setProjectFilter(v) {
+    _projFilter = v || '';
+    localStorage.setItem('mxl.cables.filter.project', _projFilter);
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
+function setNodeFilter(v) {
+    _nodeFilter = v || '';
+    localStorage.setItem('mxl.cables.filter.node', _nodeFilter);
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
+function resetCableFilters() {
+    _sigFilter = new Set(['video', 'audio', 'data']); _projFilter = ''; _nodeFilter = '';
+    localStorage.removeItem('mxl.cables.filter.signal');
+    localStorage.removeItem('mxl.cables.filter.project');
+    localStorage.removeItem('mxl.cables.filter.node');
+    _syncSignalButtons();
+    const ps = document.getElementById('filter-project'); if (ps) ps.value = '';
+    const ns = document.getElementById('filter-node');    if (ns) ns.value = '';
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
+function _syncSignalButtons() {
+    document.querySelectorAll('.sig-btn').forEach(b =>
+        b.classList.toggle('active', _sigFilter.has(b.dataset.sig)));
+}
+function _populateFilterSelects(filters) {
+    const sig = JSON.stringify([(filters.projects || []).map(p => p.id),
+                                (filters.nodes || []).map(n => n.id)]);
+    if (sig === _filterSig) return;   // listes inchangées → ne pas reconstruire (préserve le focus)
+    _filterSig = sig;
+
+    // ⚠ FILTRE FANTÔME : les listes sont ÉLAGUÉES côté serveur à ce qui est réellement présent
+    // dans la topologie (cf. home_dashboard : « seuls les projets/nœuds RÉELLEMENT présents »).
+    // Un filtre mémorisé dont la valeur a quitté la liste — projet terminé, nœud vidé de ses
+    // conteneurs ou tombé — n'a alors plus d'`<option>` correspondante : `select.value = …`
+    // échoue en silence (selectedIndex = -1) tandis que la variable JS, elle, RESTE armée.
+    // `_nodeObjMatches` recale alors TOUS les nœuds : page vide, aucun câble, aucun conteneur,
+    // et rien à l'écran qui dise qu'un filtre est actif. Un filtre devenu inatteignable ne peut
+    // plus être levé par l'utilisateur : on le lève ici, et on le DIT.
+    const _projIds = new Set((filters.projects || []).map(p => String(p.id)));
+    const _nodeIds = new Set((filters.nodes || []).map(n => (n.id == null) ? 'local' : String(n.id)));
+    // Liste de nœuds VIDE = pas de topologie du tout (poll pendant un redémarrage, parc à l'arrêt) :
+    // on n'a alors rien contre quoi confronter le filtre, et le jeter effacerait un réglage
+    // légitime sur un simple passage à vide. Absence de référence = on ne tranche pas.
+    let _lache = null;
+    if (_nodeIds.size === 0) { /* rien à confronter */ } else {
+    if (_projFilter && !_projIds.has(_projFilter)) {
+        _lache = T('cables.filters.project'); _projFilter = '';
+        localStorage.removeItem('mxl.cables.filter.project');
+    }
+    if (_nodeFilter && !_nodeIds.has(_nodeFilter)) {
+        _lache = T('cables.filters.node'); _nodeFilter = '';
+        localStorage.removeItem('mxl.cables.filter.node');
+    }
+    }
+    if (_lache) showToast(T('cables.filters.stale_dropped').replace('{f}', _lache), 'info');
+
+    const ps = document.getElementById('filter-project');
+    if (ps) {
+        ps.innerHTML = `<option value="">${T('cables.filters.all')}</option>` +
+            (filters.projects || []).map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+        ps.value = _projFilter;
+    }
+    const ns = document.getElementById('filter-node');
+    if (ns) {
+        ns.innerHTML = `<option value="">${T('cables.filters.all')}</option>` +
+            (filters.nodes || []).map(n => {
+                const key = (n.id == null) ? 'local' : n.id;
+                return `<option value="${key}">${escapeHtml(n.name)}</option>`;
+            }).join('');
+        ns.value = _nodeFilter;
+    }
+}
+
+// ─── F. Vue libre déplaçable + sauvegarde/rappel ─────────────────────────────
+let _viewMode   = localStorage.getItem('mxl.cables.viewmode') || 'cols';
+let _freeLayout = JSON.parse(localStorage.getItem('mxl.cables.freelayout') || '{}');  // {nid:{x,y}}
+let _drag = null;
+let _zoom = parseFloat(localStorage.getItem('mxl.cables.zoom') || '1') || 1;
+let _panX = parseFloat(localStorage.getItem('mxl.cables.panx') || '0') || 0;
+let _panY = parseFloat(localStorage.getItem('mxl.cables.pany') || '0') || 0;
+const _ZOOM_MIN = 0.3, _ZOOM_MAX = 2;
+
+function _syncZoomLabel() {
+    const el = document.querySelector('.cables-zoom-level');
+    if (el) el.textContent = Math.round(_zoom * 100) + '%';
+}
+// Transform unique : translation (pan, en px ÉCRAN car appliquée après le scale) + zoom.
+function _setCanvasTransform() {
+    const canvas = document.getElementById('topo-canvas');
+    if (canvas) canvas.style.transform = `translate(${_panX}px, ${_panY}px) scale(${_zoom})`;
+}
+function _persistPan() {
+    localStorage.setItem('mxl.cables.panx', String(Math.round(_panX)));
+    localStorage.setItem('mxl.cables.pany', String(Math.round(_panY)));
+}
+// Applique zoom/pan au canvas SANS reconstruire les cartes (juste la transform + re-tracé des câbles).
+function _applyZoom() {
+    _zoom = Math.min(_ZOOM_MAX, Math.max(_ZOOM_MIN, _zoom));
+    localStorage.setItem('mxl.cables.zoom', String(_zoom));
+    _setCanvasTransform();
+    _syncZoomLabel();
+    drawTopoEdges();
+}
+function cablesZoom(dir) { _zoom = Math.round((_zoom + dir * 0.1) * 10) / 10; _applyZoom(); }
+function cablesZoomReset() { _zoom = 1; _panX = 0; _panY = 0; _persistPan(); _applyZoom(); }
+function cablesZoomFit() {
+    // Ajuste le zoom pour que tout le canvas tienne dans la fenêtre du viewport.
+    const topo = document.getElementById('topo'), canvas = document.getElementById('topo-canvas');
+    if (!topo || !canvas) return;
+    const cw = parseFloat(canvas.style.width) || canvas.scrollWidth / (_zoom || 1);
+    const ch = parseFloat(canvas.style.height) || canvas.scrollHeight / (_zoom || 1);
+    if (!cw || !ch) return;
+    _zoom = Math.min(topo.clientWidth / cw, topo.clientHeight / ch, 1);
+    _zoom = Math.max(_ZOOM_MIN, Math.round(_zoom * 100) / 100);
+    _panX = 0; _panY = 0; _persistPan();   // recadre depuis l'origine
+    _applyZoom();
+}
+// Molette (mode Libre) : Ctrl = zoom ; sinon = pan (vertical, ou horizontal avec Maj).
+document.getElementById('topo')?.addEventListener('wheel', e => {
+    if (_viewMode !== 'free') return;
+    e.preventDefault();
+    if (e.ctrlKey) { cablesZoom(e.deltaY < 0 ? 1 : -1); return; }
+    if (e.shiftKey) _panX -= e.deltaY; else { _panX -= e.deltaX; _panY -= e.deltaY; }
+    _setCanvasTransform(); drawTopoEdges(); _persistPan();
+}, { passive: false });
+
+function cablesSetViewMode(m) {
+    _viewMode = (m === 'free') ? 'free' : 'cols';
+    localStorage.setItem('mxl.cables.viewmode', _viewMode);
+    _syncViewButtons();
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
+function _syncViewButtons() {
+    document.getElementById('view-mode-cols')?.classList.toggle('active', _viewMode === 'cols');
+    document.getElementById('view-mode-free')?.classList.toggle('active', _viewMode === 'free');
+    const wrap = document.getElementById('cables-layouts-wrap');
+    if (wrap) wrap.hidden = (_viewMode !== 'free');
+}
+// Identité STABLE et UNIQUE d'une carte : le vmid suffit, SAUF pour un moteur split_io (2110_io)
+// qui produit deux cartes du même vmid (RX en sources, TX en sinks) — sinon RX et TX partageraient
+// la même position et se colleraient. On les dissocie par leur colonne.
+function _nidOf(n) { return n.split ? `${n.vmid}-${n.col}` : String(n.vmid); }
+
+// Layout par DÉFAUT calculé à partir des ABONNEMENTS (graphe de câblage) : chaque carte est placée
+// dans une colonne = sa profondeur (plus long chemin depuis une source), empilée verticalement.
+// Donne une disposition lisible gauche→droite qui suit le flux, sans dépendre du flux DOM.
+const _LAY_COLW = 320, _LAY_ROWH = 150, _LAY_PADX = 24, _LAY_PADY = 24;
+function _edgeSrcNid(topo, e) {
+    const n = (topo.nodes || []).find(n => n.vmid == e.from && (n.produces || []).some(p => p.shm === e.shm));
+    return n ? _nidOf(n) : String(e.from);
+}
+function _edgeDstNid(topo, e) {
+    const n = (topo.nodes || []).find(n => n.vmid == e.to && (n.consumes || []).some(p => p.shm === e.shm));
+    return n ? _nidOf(n) : String(e.to);
+}
+function _computeDefaultLayout(topo) {
+    if (!topo) return {};
+    const nodes = topo.nodes || [];
+    const byNid = {}; nodes.forEach(n => { byNid[_nidOf(n)] = n; });
+    // Niveau de base par colonne (repli pour les cartes sans câble) : sources/idle 0, traitement 1, sinks 2.
+    const colLvl = { sources: 0, composition: 1, sinks: 2 };
+    const level = {}; Object.keys(byNid).forEach(k => { level[k] = colLvl[byNid[k].col] ?? 0; });
+    // Relaxation « plus long chemin » : un consommateur est au moins une colonne à droite de sa source.
+    const elist = (topo.edges || []).map(e => [_edgeSrcNid(topo, e), _edgeDstNid(topo, e)])
+        .filter(([a, b]) => a !== b && level[a] != null && level[b] != null);
+    let changed = true, guard = 0;
+    while (changed && guard++ < nodes.length + 5) {
+        changed = false;
+        elist.forEach(([a, b]) => { if (level[b] < level[a] + 1) { level[b] = level[a] + 1; changed = true; } });
+    }
+    // Ordonnancement par BARYCENTRE pour limiter les croisements : dans chaque niveau (de gauche à
+    // droite), on trie les cartes par la position moyenne (row) de leurs sources déjà placées.
+    const levels = {};
+    Object.keys(level).forEach(k => { (levels[level[k]] = levels[level[k]] || []).push(k); });
+    const preds = {}; Object.keys(byNid).forEach(k => preds[k] = []);
+    elist.forEach(([a, b]) => preds[b].push(a));
+    const rowOf = {}, pos = {};
+    Object.keys(levels).map(Number).sort((a, b) => a - b).forEach(lv => {
+        const arr = levels[lv].map((k, i) => {
+            const placed = preds[k].map(p => rowOf[p]).filter(v => v != null);
+            const bc = placed.length ? placed.reduce((s, v) => s + v, 0) / placed.length : Number.POSITIVE_INFINITY;
+            return { k, bc, i };
+        }).sort((A, B) => (A.bc - B.bc) || (A.i - B.i));
+        arr.forEach((o, row) => {
+            rowOf[o.k] = row;
+            pos[o.k] = { x: _LAY_PADX + lv * _LAY_COLW, y: _LAY_PADY + row * _LAY_ROWH };
+        });
+    });
+    return pos;
+}
+
+function applyViewMode() {
+    const topo = document.getElementById('topo');
+    const canvas = document.getElementById('topo-canvas');
+    const zoomCtl = document.getElementById('cables-zoom');
+    if (_viewMode !== 'free') {
+        topo.classList.remove('topo-free');
+        canvas.style.transform = ''; canvas.style.width = ''; canvas.style.height = '';
+        document.querySelectorAll('.topo-node').forEach(nd => { nd.style.left = ''; nd.style.top = ''; });
+        if (zoomCtl) zoomCtl.hidden = true;
+        return;
+    }
+    // Placement DÉTERMINISTE : layout par défaut (abonnements) pour toute carte non déplacée à la
+    // main, position sauvée sinon. Aucune mesure du flux DOM → pas d'empilement au re-render.
+    topo.classList.add('topo-free');
+    if (zoomCtl) zoomCtl.hidden = false;
+    const def = _computeDefaultLayout(window._lastTopo);
+    let maxX = 0, maxY = 0;
+    document.querySelectorAll('.topo-node').forEach(nd => {
+        const nid = nd.dataset.nid;
+        const pos = _freeLayout[nid] || def[nid] || { x: 20, y: 20 };
+        nd.style.left = pos.x + 'px';
+        nd.style.top  = pos.y + 'px';
+        maxX = Math.max(maxX, pos.x); maxY = Math.max(maxY, pos.y);
+    });
+    // Dimensionne le canvas pour englober toutes les cartes, puis applique pan + zoom.
+    canvas.style.width  = (maxX + 320) + 'px';
+    canvas.style.height = (maxY + 240) + 'px';
+    _setCanvasTransform();
+    _syncZoomLabel();
+}
+function resetFreeLayout() {
+    _freeLayout = {};
+    localStorage.removeItem('mxl.cables.freelayout');
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
+// Drag d'une carte par sa tête (mode Libre). Ne déclenche pas le câblage (qui ne s'arme que sur
+// un port de sortie) ni les boutons (collapse/monitor gèrent leur propre clic).
+let _pan = null;                 // pan du fond : {sx, sy, px, py}
+let _autoPanRAF = null;
+let _lastPointer = { x: 0, y: 0 };
+
+// Position de la carte en cours de drag depuis la position courante du curseur, en relisant la
+// géométrie LIVE du canvas (qui inclut pan + zoom) → reste correct même si on auto-pan en plein drag.
+function _placeDraggedCard() {
+    if (!_drag) return;
+    const Z = _zoom || 1;
+    const box = document.getElementById('topo-canvas').getBoundingClientRect();
+    const x = Math.max(0, Math.round((_lastPointer.x - box.left) / Z - _drag.offx));
+    const y = Math.max(0, Math.round((_lastPointer.y - box.top)  / Z - _drag.offy));
+    _drag.node.style.left = x + 'px';
+    _drag.node.style.top  = y + 'px';
+    _freeLayout[_drag.nid] = { x, y };
+}
+// Auto-pan : quand le curseur approche un bord du viewport pendant un drag de carte, on fait glisser
+// l'ensemble (pan) pour pouvoir amener la carte plus loin sans relâcher.
+function _startAutoPan() {
+    if (_autoPanRAF) return;
+    const tick = () => {
+        if (!_drag) { _autoPanRAF = null; return; }
+        const vp = document.getElementById('topo').getBoundingClientRect();
+        const M = 64, S = 16;
+        let dx = 0, dy = 0;
+        const { x: px, y: py } = _lastPointer;
+        if (px < vp.left + M)       dx =  (vp.left + M - px) / M * S;
+        else if (px > vp.right - M) dx = -(px - (vp.right - M)) / M * S;
+        if (py < vp.top + M)        dy =  (vp.top + M - py) / M * S;
+        else if (py > vp.bottom - M) dy = -(py - (vp.bottom - M)) / M * S;
+        if (dx || dy) {
+            _panX += dx; _panY += dy;
+            _setCanvasTransform(); _placeDraggedCard(); drawTopoEdges();
+        }
+        _autoPanRAF = requestAnimationFrame(tick);
+    };
+    _autoPanRAF = requestAnimationFrame(tick);
+}
+
+document.addEventListener('mousedown', e => {
+    if (_viewMode !== 'free' || wireSrc || e.button !== 0) return;
+    if (e.target.closest('button')) return;
+    // 1) Drag d'une carte par sa tête.
+    const head = e.target.closest('.topo-node-head');
+    if (head) {
+        const node = head.closest('.topo-node');
+        if (!node) return;
+        e.preventDefault();
+        const Z = _zoom || 1;
+        const r = node.getBoundingClientRect();
+        _drag = { node, nid: node.dataset.nid, offx: (e.clientX - r.left) / Z, offy: (e.clientY - r.top) / Z };
+        node.classList.add('topo-node-dragging');
+        _lastPointer = { x: e.clientX, y: e.clientY };
+        stopPolling();
+        _startAutoPan();
+        return;
+    }
+    // 2) Pan du fond : clic sur le vide du viewport (ni carte, ni port, ni câble, ni contrôle).
+    if (!e.target.closest('#topo')) return;
+    if (e.target.closest('.topo-node') || e.target.closest('.topo-port') ||
+        e.target.closest('.topo-edge') || e.target.closest('.cables-zoom')) return;
+    e.preventDefault();
+    _pan = { sx: e.clientX, sy: e.clientY, px: _panX, py: _panY };
+    document.getElementById('topo').classList.add('topo-panning');
+    stopPolling();
+});
+document.addEventListener('mousemove', e => {
+    if (_drag) {
+        _lastPointer = { x: e.clientX, y: e.clientY };
+        _placeDraggedCard(); drawTopoEdges();
+    } else if (_pan) {
+        _panX = _pan.px + (e.clientX - _pan.sx);
+        _panY = _pan.py + (e.clientY - _pan.sy);
+        _setCanvasTransform(); drawTopoEdges();
+    }
+});
+document.addEventListener('mouseup', () => {
+    if (_drag) {
+        _drag.node.classList.remove('topo-node-dragging');
+        _drag = null;
+        if (_autoPanRAF) { cancelAnimationFrame(_autoPanRAF); _autoPanRAF = null; }
+        localStorage.setItem('mxl.cables.freelayout', JSON.stringify(_freeLayout));
+        _persistPan();
+        _wireCancelAt = Date.now();   // garde anti-drill-down du clic suivant
+        startPolling();
+    } else if (_pan) {
+        _pan = null;
+        document.getElementById('topo').classList.remove('topo-panning');
+        _persistPan();
+        _wireCancelAt = Date.now();
+        startPolling();
+    }
+});
+
+async function saveCableLayout() {
+    const name = prompt(T('cables.view.save_prompt'));
+    if (!name || !name.trim()) return;
+    try {
+        const r = await fetch('/api/cables/layouts', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name.trim(), payload: { positions: _freeLayout, collapsed: [..._collapsed] } }),
+        });
+        const j = await r.json();
+        if (r.ok && j.ok) showToast(`${T('cables.view.saved_pre')}"${name}" (${j.node_count}).`, 'ok');
+        else showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error');
+    } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
+}
+async function toggleLayoutsMenu(evt) {
+    const menu = document.getElementById('cables-layouts-menu');
+    const btn = evt.currentTarget;
+    if (!menu.hidden) { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); return; }
+    try {
+        const r = await fetch('/api/cables/layouts');
+        const j = await r.json();
+        const list = j.layouts || [];
+        menu.innerHTML = list.length ? list.map(l => `
+            <div class="cables-recall-row" role="none">
+                <button type="button" class="cables-recall-pick" role="menuitem"
+                        onclick="restoreCableLayout(${l.id}, '${l.name.replace(/'/g,"\\'")}')">
+                    <span class="cables-recall-name">${escapeHtml(l.name)}</span>
+                    <span class="cables-recall-meta">${l.node_count} ${T('cables.view.cards')} · ${escapeHtml(l.created_at || '')}</span>
+                </button>
+                <button type="button" class="btn-ghost-icon cables-recall-del"
+                        aria-label="${T('cables.snap.del_aria')} ${escapeHtml(l.name)}"
+                        onclick="deleteCableLayout(${l.id}, '${l.name.replace(/'/g,"\\'")}', event)">×</button>
+            </div>`).join('') : `<div class="cables-recall-empty">${T('cables.view.no_layout')}</div>`;
+        menu.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+    } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
+}
+async function restoreCableLayout(lid, name) {
+    document.getElementById('cables-layouts-menu').hidden = true;
+    try {
+        const r = await fetch(`/api/cables/layouts/${lid}`);
+        const j = await r.json();
+        if (!r.ok || !j.ok) { showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error'); return; }
+        const pl = j.payload || {};
+        _freeLayout = pl.positions || {};
+        _collapsed  = new Set((pl.collapsed || []).map(String));
+        localStorage.setItem('mxl.cables.freelayout', JSON.stringify(_freeLayout));
+        localStorage.setItem('mxl.cables.collapsed', JSON.stringify([..._collapsed]));
+        if (_viewMode !== 'free') { _viewMode = 'free'; localStorage.setItem('mxl.cables.viewmode', 'free'); _syncViewButtons(); }
+        showToast(`${T('cables.view.recalled')}"${name}".`, 'ok');
+        if (window._lastTopo) renderTopology(window._lastTopo);
+    } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
+}
+async function deleteCableLayout(lid, name, evt) {
+    evt.stopPropagation();
+    if (!confirm(`${T('cables.snap.del_confirm')} "${name}" ?`)) return;
+    try {
+        const r = await fetch(`/api/cables/layouts/${lid}`, { method: 'DELETE' });
+        if (!r.ok) return;
+        showToast((window.t('cables.js.deleted').replace('{name}', name)), 'ok');
+        // Re-render la liste si le menu est encore ouvert.
+        const menu = document.getElementById('cables-layouts-menu');
+        const btn = document.querySelector('#cables-layouts-wrap [aria-controls="cables-layouts-menu"]');
+        if (menu && !menu.hidden && btn) { menu.hidden = true; toggleLayoutsMenu({ currentTarget: btn }); }
+    } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
+}
+document.addEventListener('click', e => {
+    if (!e.target.closest('.cables-layouts')) {
+        const m = document.getElementById('cables-layouts-menu');
+        if (m) m.hidden = true;
+    }
+}, false);
+
+// État initial des contrôles (sans re-rendu : la 1re topo n'est pas encore chargée).
+_syncSignalButtons();
+_syncViewButtons();
+
+_loadCablesTslData();
+startPolling();   // MXLPoll déclenche la 1re passe lui-même (pas d'appel nu en plus : il partirait
+                  // EN PARALLÈLE de celle du poll, soit deux requêtes concurrentes au chargement).
+</script>
+{% endblock %}

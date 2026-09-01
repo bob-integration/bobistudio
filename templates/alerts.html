@@ -1,0 +1,28 @@
+<h2>{{ _('containers.alerts.title') }}</h2>
+<div class="alerts-toolbar">
+    <input type="search" id="alerts-q" placeholder="{{ _('containers.alerts.search') }}"
+           aria-label="{{ _('containers.alerts.search') }}"
+           oninput="onAlertsFilterChange()" autocomplete="off">
+    <select id="alerts-niveau" aria-label="{{ _('containers.alerts.level_aria') }}" onchange="rafraichirAlertes()">
+        <option value="">{{ _('containers.alerts.all_levels') }}</option>
+        <option value="info">info</option>
+        <option value="warning">warning</option>
+        <option value="error">error</option>
+    </select>
+    <span id="alerts-count" class="meta"></span>
+    <span style="flex:1"></span>
+    <button type="button" class="btn" onclick="exporterAlertes('csv')">Export CSV</button>
+    <button type="button" class="btn" onclick="exporterAlertes('txt')">Export TXT</button>
+</div>
+<div id="alerts-list" role="log" aria-live="polite" aria-label="{{ _('containers.alerts.log_aria') }}">
+    {% for a in alerts %}
+    <div class="log-line">
+        <span class="log-ts">{{ a.timestamp }}</span>
+        <span class="log-niveau log-niveau-{{ a.niveau }}">[{{ a.niveau }}]</span>
+        <span class="log-msg">{{ a.message }}</span>
+    </div>
+    {% endfor %}
+    {% if not alerts %}
+    <div class="meta">{{ _('containers.alerts.none') }}</div>
+    {% endif %}
+</div>

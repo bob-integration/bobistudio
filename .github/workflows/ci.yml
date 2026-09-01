@@ -1,0 +1,126 @@
+# CI minimale bobistudio — garde-fous "gratuits" (pas de build/lint/test lourd).
+# Gates BLOQUANTS : smoke import (circularités app/), scan des plugins (accolades
+# non doublées). Étape ADVISORY (non bloquante) : doctor des sous-modules + pyflakes.
+#
+# NB sous-modules : ce sont des dépôts PRIVÉS (git@github.com:bob-integration/…).
+# Pour que `submodules: recursive` fonctionne en CI il faut fournir un accès :
+#   - soit un PAT org dans le secret SUBMODULES_TOKEN (passé à actions/checkout `token`),
+#   - soit une clé SSH de déploiement injectée avant le checkout.
+# Sans credentials, le checkout des sous-modules échoue → les jobs dépendants
+# (scan plugins) échoueront, ce qui est le comportement voulu (on veut le savoir).
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (avec sous-modules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # Requiert un token capable de lire les dépôts privés bob-integration.
+          # Repli sur GITHUB_TOKEN si le secret n'est pas défini (peut ne pas suffire
+          # pour des sous-modules cross-repo privés).
+          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}
+
+      - name: Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Dépendances
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Chemin d'installation (/opt/bobistudio)
+        # L'app référence des chemins absolus /opt/bobistudio (LOG_PATH, DB_PATH).
+        # On aligne le checkout dessus via un lien symbolique pour que `import main`
+        # (qui pose le handler de log au chargement) fonctionne comme en prod.
+        run: |
+          sudo mkdir -p /opt
+          sudo ln -sfn "$GITHUB_WORKSPACE" /opt/bobistudio
+
+      - name: Smoke import (circularités app/)
+        run: |
+          python -c "import app.routes, app.plugins, app.database, app.deploy; print('app.* import OK')"
+          python -c "import main; print('import main OK')"
+
+      - name: Scan des plugins (accolades non doublées)
+        run: python tests/check_plugins.py
+
+      # Un plugin est un dépôt indépendant : ses libellés doivent VOYAGER AVEC LUI.
+      # Une clé restée au catalogue du cœur est masquée pour l'auteur (le cœur prime)
+      # et absente sur l'instance qui installe le plugin depuis le Catalogue — où
+      # l'interface anglaise retombe alors sur le libellé français du manifeste.
+      # Panne silencieuse : rien ne casse, la traduction disparaît simplement.
+      - name: Portée des clés i18n (plugin vs cœur)
+        run: python tests/check_i18n_scope.py
+
+      # Le plugin d'EXEMPLE doit continuer d'illustrer le contrat qu'il enseigne.
+      # Bloquant à dessein : une documentation que rien n'exécute dérive sans que
+      # personne s'en aperçoive — c'est arrivé à plugins/AUTHORING.md, resté trois
+      # mois à décrire un contrat qui avait changé sous lui.
+      # Le dépôt est public : une adresse de notre réseau y est à la fois un renseignement
+      # offert et un contresens pour le lecteur, qui croit lire un exemple reproductible.
+      # Le nettoyage du 2026-09-01 en a retiré une vingtaine ; rien n'empêchait qu'elles
+      # reviennent — elles arrivent naturellement, en collant dans un commentaire une adresse
+      # relevée sur un banc. Les NOMS de machines restent autorisés (provenance de mesure).
+      # ⚠ ABSENTE DU DÉPÔT PUBLIC, et c'est voulu : cette garde ÉNUMÈRE ce qu'on retire
+      # (plages, domaine, noms de machines), donc la publier livrerait ce que le nettoyage
+      # efface. L'étape se saute proprement quand le fichier n'est pas là, plutôt que de
+      # faire échouer la CI du dépôt public sur un fichier manquant.
+      - name: Adresses et machines du site
+        run: |
+          if [ -f tests/check_adresses_site.py ]; then
+            python tests/check_adresses_site.py
+          else
+            echo "garde interne absente (dépôt dérivé) — étape sautée"
+          fi
+
+      - name: Conformité du plugin d'exemple (hello_world)
+        run: python tests/verif_plugin_hello_world.py
+
+      # ★ LA SUITE HORS LIGNE, EN BLOC. Elle a existé sans tourner nulle part : au
+      # 2026-09-01, CINQ de ses fichiers échouaient depuis des semaines sans que personne le
+      # sache — dont un qui masquait sa propre raison d'être (une assertion cassée coupait
+      # avant la boucle `node --check`), et un autre qui exigeait un `systemctl enable`
+      # RETIRÉ du produit parce qu'il avait causé une panne GPU de neuf jours. « Réparer »
+      # le code pour satisfaire ce test aurait réintroduit le bug.
+      #
+      # Une suite qu'on n'exécute pas ne protège de rien, et se retourne contre celui qui
+      # la croit verte. Elle tourne donc ici, en bloc et de manière BLOQUANTE.
+      #
+      # Ce qui n'y est PAS : `tools/bancs/`, qui exige un nœud, un orchestrateur ou des flux
+      # MXL vivants — sans objet sur un exécuteur GitHub.
+      - name: Suite hors ligne (tests/)
+        run: |
+          ec=0
+          for f in tests/*.py; do
+            case "$(basename "$f")" in __init__.py|submodules-doctor*) continue ;; esac
+            echo "── $f"
+            python "$f" || { echo "   ✗ ÉCHEC : $f"; ec=1; }
+          done
+          for f in tests/*.js; do
+            [ -e "$f" ] || continue
+            echo "── $f"
+            node "$f" || { echo "   ✗ ÉCHEC : $f"; ec=1; }
+          done
+          exit $ec
+
+      - name: Doctor des sous-modules (advisory)
+        # actions/checkout laisse les sous-modules en HEAD détaché → la vérif de branche
+        # remonte des faux positifs en CI. On l'exécute pour information seulement ;
+        # la vérif de branche/propreté fait autorité en LOCAL (voir CONTRIBUTING.md).
+        continue-on-error: true
+        run: bash tests/submodules-doctor.sh
+
+      - name: pyflakes (advisory)
+        continue-on-error: true
+        run: |
+          pip install pyflakes
+          pyflakes app main.py tools || true

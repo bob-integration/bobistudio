@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later
+     PAGE PUBLIQUE d'un plugin, ouverte par un jeton, en LECTURE SEULE.
+
+     ★ RIEN ICI NE CONNAÎT UN PLUGIN EN PARTICULIER. On monte la console du type du conteneur
+     visé — c'est un mécanisme d'orchestrateur, pas une capacité recopiée dans chaque plugin.
+
+     ★ ET C'EST LA MÊME CONSOLE que dans l'interface interne, montée avec une BASE d'API
+     différente. Une seconde écriture de la même page finirait par ne plus montrer la même
+     chose, ce qui est exactement le contraire de ce qu'on veut d'un instrument. -->
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ title }}</title>
+<link rel="stylesheet" href="/static/css/base.css?v={{ asset_v('css/base.css') }}">
+<link rel="stylesheet" href="/static/css/controls.css?v={{ asset_v('css/controls.css') }}">
+<link rel="stylesheet" href="{{ base }}/ui/control_css">
+<style>
+  html, body { height: 100%; margin: 0; background: #05070a; }
+  .pub-hote { min-height: 100vh; }
+
+  /* ── BANDEAU RÉTRACTABLE ────────────────────────────────────────────────────────────────
+     Il ne prend AUCUNE place au repos : sur un mur de régie la surface est l'instrument, et
+     un bandeau permanent mange une tuile. Il descend quand la souris approche du haut et
+     remonte quand elle s'éloigne. La zone d'appel fait 28 px — assez pour être trouvée sans
+     la chercher, assez peu pour ne pas se déclencher en visant la tuile du haut. */
+  .pub-appel { position: fixed; inset: 0 0 auto 0; height: 28px; z-index: 20; }
+  .pub-tete {
+    position: fixed; inset: 0 0 auto 0; z-index: 21;
+    display: flex; align-items: center; gap: 18px; padding: 10px 16px;
+    background: rgba(8,12,16,.94); border-bottom: 1px solid var(--border, #223);
+    color: var(--text, #dfe7ef); font-size: .92rem;
+    transform: translateY(-100%); transition: transform .18s ease;
+    backdrop-filter: blur(4px);
+  }
+  .pub-appel:hover ~ .pub-tete,
+  .pub-tete:hover, .pub-tete:focus-within, .pub-tete.epinglee { transform: translateY(0); }
+  .pub-logo { max-height: 34px; max-width: 150px; object-fit: contain; }
+  .pub-titre { font-weight: 600; white-space: nowrap; }
+  .pub-meta { display: flex; gap: 16px; flex-wrap: wrap; min-width: 0;
+              color: var(--text-muted, #8b9bab); font-size: .86rem; }
+  .pub-meta b { color: var(--text, #dfe7ef); font-weight: 500; }
+  .pub-epingle { margin-left: auto; background: transparent;
+                 border: 1px solid var(--border, #223); color: inherit; border-radius: 4px;
+                 padding: 3px 9px; cursor: pointer; font: inherit; font-size: .82rem; }
+  .pub-epingle[aria-pressed="true"] { border-color: #4aa; color: #7dd; }
+  /* Le repère : sans lui personne ne devine qu'il y a quelque chose en haut. Il s'efface dès
+     que le bandeau est ouvert. */
+  .pub-poignee {
+    position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 19;
+    width: 46px; height: 4px; margin-top: 3px; border-radius: 0 0 3px 3px;
+    background: rgba(160,190,210,.35); pointer-events: none; transition: opacity .18s;
+  }
+  .pub-appel:hover ~ .pub-poignee, .pub-tete.epinglee ~ .pub-poignee { opacity: 0; }
+  @media (prefers-reduced-motion: reduce) { .pub-tete { transition: none; } }
+  .pub-souci { padding: 24px; color: #f4a08a; font-family: var(--font-mono, monospace); }
+</style>
+</head>
+<body>
+<div class="pub-appel" aria-hidden="true"></div>
+<header class="pub-tete" id="pub_tete">
+  {% if brand_logo %}<img class="pub-logo" src="{{ brand_logo }}" alt="">{% endif %}
+  <span class="pub-titre">{{ title }}</span>
+  <span class="pub-meta">
+    {% if brand_system %}<span><b>{{ brand_system }}</b></span>{% endif %}
+    {% if brand_org %}<span>{{ brand_org }}</span>{% endif %}
+    {% if brand_location %}<span>&#128205; {{ brand_location }}</span>{% endif %}
+    <span>&#127760; {{ adresse }}</span>
+    {% if note %}<span>{{ note }}</span>{% endif %}
+  </span>
+  <button type="button" class="pub-epingle" id="pub_epingle" aria-pressed="false">&#128204;</button>
+</header>
+<div class="pub-poignee" aria-hidden="true"></div>
+
+<div class="pub-hote" id="pub_hote"></div>
+
+<script>window.I18N = {{ js_catalog | tojson }};</script>
+<script src="/static/js/controls.js?v={{ asset_v('js/controls.js') }}"></script>
+<script src="/static/js/layout_engine.js?v={{ asset_v('js/layout_engine.js') }}"></script>
+<script src="/static/num_stepper.js?v={{ asset_v('num_stepper.js') }}"></script>
+<script>
+(function () {
+  "use strict";
+  var TYPE = {{ type | tojson }}, VMID = {{ vmid | tojson }}, BASE = {{ base | tojson }};
+
+  // Épinglage RETENU PAR NAVIGATEUR : qui veut voir en permanence d'où vient l'image ne doit
+  // pas le redemander à chaque ouverture. C'est un confort par poste, pas un réglage du
+  // produit — donc localStorage, et un échec de stockage (navigation privée) ne casse rien.
+  var tete = document.getElementById("pub_tete"), btn = document.getElementById("pub_epingle");
+  var CLE = "bobi.public.entete.epinglee";
+  function poser(v) {
+    tete.classList.toggle("epinglee", !!v);
+    btn.setAttribute("aria-pressed", v ? "true" : "false");
+    try { localStorage.setItem(CLE, v ? "1" : "0"); } catch (e) { /* stockage refusé */ }
+  }
+  try { poser(localStorage.getItem(CLE) === "1"); } catch (e) { poser(false); }
+  btn.addEventListener("click", function () {
+    poser(btn.getAttribute("aria-pressed") !== "true");
+  });
+
+  // La console vient du PLUGIN : son gabarit, son script, son style. C'est ce qui garantit
+  // qu'on regarde le même instrument que dans l'interface interne.
+  var hote = document.getElementById("pub_hote");
+  function souci(m) { hote.innerHTML = '<p class="pub-souci"></p>';
+                      hote.firstChild.textContent = m; }
+  fetch(BASE + "/ui/control_html")
+    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+    .then(function (html) {
+      hote.innerHTML = html;
+      var s = document.createElement("script");
+      s.src = BASE + "/ui/control_js";
+      s.onload = function () {
+        var P = (window.MXLPlugins || {})[TYPE];
+        if (!P || !P.mount) { souci("Plugin " + TYPE + " : pas de console montable."); return; }
+        P.mount(hote.firstElementChild || hote, VMID, { base: BASE });
+      };
+      s.onerror = function () { souci("Console du plugin " + TYPE + " illisible."); };
+      document.body.appendChild(s);
+    })
+    .catch(function (e) { souci("Console indisponible : " + e.message); });
+})();
+</script>
+</body>
+</html>

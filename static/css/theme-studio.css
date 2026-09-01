@@ -1,0 +1,67 @@
+/* ─── Thème Studio : broadcast pro, dark warm, accent amber ── */
+:root {
+    --bg:           #18181b;
+    --bg-elev:      #23232a;
+    --bg-input:     #1c1c22;
+    --bg-hover:     #2d2d36;
+    --bg-selected:  #3a2f1f;
+    --border:       #36363f;
+    --border-soft:  #2a2a32;
+
+    --text:         #e4e4e7;
+    --text-muted:   #a1a1aa;
+    --text-strong:  #fafafa;
+
+    --accent:       #f59e0b;   /* amber broadcast */
+    --accent-hover: #fbbf24;
+    --accent-soft:  rgba(245, 158, 11, 0.12);
+
+    --status-running-bg:   #064e3b;
+    --status-running-fg:   #34d399;
+    --status-stopped-bg:   #4c1d24;
+    --status-stopped-fg:   #fb7185;
+    --status-warning-bg:   #3f2b0f;
+    --status-warning-fg:   #fbbf24;
+    --status-unknown-bg:   #2e2e36;
+    --status-unknown-fg:   #a1a1aa;
+
+    --btn-red:    #dc2626;
+    --btn-blue:   #2563eb;
+    --btn-green:  #059669;
+    --btn-orange: #d97706;
+    --btn-purple: #7c3aed;
+    --btn-text:   #ffffff;
+
+    --font-base: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    --font-size: 14px;
+    --letter-spacing-h2: 1.5px;
+
+    --radius:        6px;
+    --radius-small:  4px;
+    --shadow:        0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+    --card-padding:  18px;
+    --gap:           14px;
+
+    --backdrop-blur: none;
+    --bg-image:      none;
+
+    /* Les couleurs d'ESSENCE (vidéo/audio/ANC) ne sont PLUS surchargées ici : elles sont
+       invariantes par thème, cf. base.css. « Suis le câble bleu » doit vouloir dire la même
+       chose dans les trois thèmes. */
+
+    /* Canvas preview multiview : warm-tinted pour rester cohérent avec le studio */
+    --canvas-bg: #0f0d0a;
+
+    /* Accent overlays composer multiview : même rôle que default, hue légèrement
+       réchauffée pour la régie sombre. */
+    --overlay-accent:      oklch(0.75 0.10 325);
+    --overlay-accent-soft: oklch(0.75 0.10 325 / 0.14);
+}
+
+h1 { font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-weight: 600; }
+
+/* Monospace pour valeurs techniques uniquement */
+code, .badge, .fps, .timestamp { font-family: var(--font-mono); }
+.form input[type="number"], .form input[type="text"], .form select { font-family: var(--font-mono); }

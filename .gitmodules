@@ -1,0 +1,4 @@
+[submodule "plugins/hello_world"]
+	path = plugins/hello_world
+	url = https://github.com/bob-integration/bobistudio-plugin-hello_world
+	branch = main

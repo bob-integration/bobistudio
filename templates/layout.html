@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="{{ lang|default('fr') }}">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Bobi.Studio{% endblock %}</title>
+    <!-- i18n : langue + sous-catalogue JS (js.*/plugin.*) + helper global t().
+         Défini tôt pour être dispo avant scripts.js et les control.js de plugins. -->
+    <script>
+        window.LANG = {{ (lang|default('fr'))|tojson }};
+        window.I18N = {{ (js_catalog|default({}))|tojson }};
+        window.t = function(key){ return (window.I18N && window.I18N[key]) || key; };
+
+        // ─── Dialogue de confirmation PARTAGÉ ──────────────────────────────────────────────────
+        // Il vivait dans settings.html, donc n'existait QUE sur Réglages : toute autre page
+        // demandant une confirmation tombait sur un ReferenceError silencieux (le clic ne fait
+        // rien) ou retombait sur le `confirm()` du navigateur, qui ignore le thème et la langue.
+        // Il est ici, comme la sparkline, pour la même raison.
+        window._escp = function(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); };
+        const _escp = window._escp;
+        function mxlConfirm(opts) {
+            if (typeof opts === 'string') opts = {message: opts};
+            const {message, html, title = 'Confirmation', confirmLabel = 'Confirmer',
+                   cancelLabel = 'Annuler', danger = false, confirmDisabled = false,
+                   alert = false} = opts || {};
+            // `alert` = un seul bouton : rien à confirmer, on INFORME. Ajouté ici
+            // plutôt qu'en modale maison dans une page : un dialogue accessible
+            // (Échap, piège de focus, focus restauré) ne se réécrit pas à chaque
+            // fois qu'on a un message à faire lire.
+            // `html` = corps déjà construit/échappé par l'appelant (rich content) ; sinon `message`
+            // est échappé. `confirmDisabled` grise le bouton Confirmer (preview non applicable).
+            const bodyHtml = html != null ? html : _escp(message);
+            return new Promise(resolve => {
+                const prevFocus = document.activeElement;
+                const ov = document.createElement('div');
+                ov.className = 'modal-overlay';
+                ov.style.display = 'flex';
+                ov.innerHTML = `
+                    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="mxlc-t" style="max-width:${html != null ? '640px' : '440px'}">
+                        <h3 id="mxlc-t" style="margin:0 0 var(--space-3)">${_escp(title)}</h3>
+                        <div style="margin-bottom:var(--space-4); line-height:1.5">${bodyHtml}</div>
+                        <div class="flex-row" style="justify-content:flex-end">
+                            <button class="btn" data-act="cancel"${alert ? ' style="display:none"' : ''}>${_escp(cancelLabel)}</button>
+                            <button class="btn ${danger ? 'btn-red' : 'btn-blue'}" data-act="ok" ${confirmDisabled ? 'disabled' : ''}>${_escp(confirmLabel)}</button>
+                        </div>
+                    </div>`;
+                document.body.appendChild(ov);
+                const okBtn = ov.querySelector('[data-act=ok]');
+                const cancelBtn = ov.querySelector('[data-act=cancel]');
+                const focusables = alert ? [okBtn] : [cancelBtn, okBtn];
+                function close(val) {
+                    document.removeEventListener('keydown', onKey, true);
+                    ov.remove();
+                    if (prevFocus && prevFocus.focus) prevFocus.focus();
+                    resolve(val);
+                }
+                function onKey(e) {
+                    if (e.key === 'Escape') { e.preventDefault(); close(false); }
+                    else if (e.key === 'Tab') {            // piège de focus minimal
+                        e.preventDefault();
+                        const i = focusables.indexOf(document.activeElement);
+                        const n = e.shiftKey ? (i <= 0 ? focusables.length - 1 : i - 1)
+                                             : (i === focusables.length - 1 ? 0 : i + 1);
+                        focusables[n].focus();
+                    }
+                }
+                okBtn.addEventListener('click', () => close(true));
+                cancelBtn.addEventListener('click', () => close(false));
+                ov.addEventListener('mousedown', e => { if (e.target === ov) close(false); });
+                document.addEventListener('keydown', onKey, true);
+                // Action destructive : focus par défaut sur Annuler (Entrée ne détruit pas).
+                // En mode alerte il n'y a pas d'Annuler : le focus va sur le seul bouton.
+                (danger && !alert ? cancelBtn : okBtn).focus();
+            });
+        }
+        window.mxlConfirm = mxlConfirm;
+
+        // ─── Sparkline PARTAGÉE ────────────────────────────────────────────────────────────────
+        // Il en existait TROIS quasi-copies page-locales dans monitoring (sparkline / offsetSpark /
+        // throughputSpark), et j'allais en écrire une quatrième pour les horloges. La cause n'était
+        // pas la fonction de trop : c'est qu'aucune primitive n'était partagée. La voici, dans
+        // layout (chargé partout, contrairement à scripts.js qui ne l'est que sur containers et
+        // projects), avec les options qui couvraient les différences entre les trois.
+        //
+        // Corrige au passage un défaut commun aux trois : un trou de mesure était FILTRÉ puis la
+        // polyligne joignait les deux bords — une droite inventée là où il n'y a pas de donnée. Ici
+        // un trou ROMPT le tracé.
+        window.mkSparkline = function(points, opts) {
+            const o = Object.assign({
+                key: null,          // nom de champ, ou fonction (p) => valeur
+                w: 240, h: 34, stroke: 1.5, color: 'var(--text-muted)',
+                scale: 'auto',      // 'auto' | 'percent' (0..max) | 'signed' (centré sur 0) | nombre = plafond
+                max: 100,           // plafond pour 'percent'
+                area: false,        // aire remplie sous la courbe
+                zero: false,        // repère de zéro (implicite en 'signed')
+                dot: false,         // point sur la dernière valeur
+                titles: false,      // survol par échantillon (<title> natif)
+                fmt: (v) => v,      // mise en forme dans l'infobulle
+                cls: 'node-spark',
+                stretch: true,      // preserveAspectRatio="none" : la courbe épouse sa colonne
+            }, opts || {});
+            const pts = points || [];
+            const val = (typeof o.key === 'function') ? o.key : (p) => p[o.key];
+            const vals = pts.map(val).filter(v => v != null && isFinite(v));
+            if (vals.length < 2) return `<div class="meta">${window.t('monitoring.nodes_no_history')}</div>`;
+
+            let y;                                   // valeur → ordonnée, selon l'échelle demandée
+            if (o.scale === 'signed') {
+                const amax = Math.max(o.max || 0, ...vals.map(Math.abs)) || 1;
+                y = v => o.h / 2 - (v / amax) * (o.h / 2 - 2);
+            } else if (o.scale === 'percent' || typeof o.scale === 'number') {
+                const top = (typeof o.scale === 'number') ? Math.max(o.scale, ...vals, 1e-3) : o.max;
+                y = v => o.h - (v / top) * (o.h - 2) - 1;
+            } else {
+                let lo = Math.min(...vals), hi = Math.max(...vals);
+                if (hi - lo < 1e-9) { lo -= 1; hi += 1; }      // série plate : centrée, jamais /0
+                const m = (hi - lo) * 0.15; lo -= m; hi += m;
+                y = v => o.h - 2 - ((v - lo) / (hi - lo)) * (o.h - 4);
+            }
+            const x = i => (i / Math.max(1, pts.length - 1)) * o.w;
+
+            let d = '', ouvert = false, dernier = null, segs = [];
+            pts.forEach((p, i) => {
+                const v = val(p);
+                if (v == null || !isFinite(v)) { ouvert = false; return; }   // trou → rupture
+                d += (ouvert ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1) + ' ';
+                if (!ouvert) segs.push([]);
+                segs[segs.length - 1].push([x(i), y(v)]);
+                ouvert = true; dernier = [x(i), y(v), v];
+            });
+            const aire = (o.area && segs.length)
+                ? segs.map(sg => `<polygon points="${sg[0][0].toFixed(1)},${o.h} `
+                    + sg.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(' ')
+                    + ` ${sg[sg.length - 1][0].toFixed(1)},${o.h}" fill="${o.color}" fill-opacity="0.15"/>`).join('')
+                : '';
+            const zero = (o.zero || o.scale === 'signed')
+                ? `<line x1="0" y1="${(o.scale === 'signed' ? o.h / 2 : y(0)).toFixed(1)}" x2="${o.w}"
+                         y2="${(o.scale === 'signed' ? o.h / 2 : y(0)).toFixed(1)}"
+                         stroke="var(--border)" stroke-width="0.5"/>` : '';
+            const point = (o.dot && dernier)
+                ? `<circle cx="${dernier[0].toFixed(1)}" cy="${dernier[1].toFixed(1)}" r="2.5" fill="${o.color}"/>` : '';
+            // Survol : une bande par échantillon, plus large que la marque (cible ≥ 8 px), avec le
+            // <title> natif — accessible et sans machinerie d'infobulle maison.
+            const survol = o.titles ? pts.map((p, i) => {
+                const v = val(p); if (v == null || !isFinite(v)) return '';
+                const larg = o.w / Math.max(1, pts.length - 1);
+                const heure = p.t ? new Date(p.t * 1000).toLocaleTimeString() + ' — ' : '';
+                return `<rect x="${(x(i) - larg / 2).toFixed(1)}" y="0" width="${Math.max(8, larg).toFixed(1)}"
+                              height="${o.h}" fill="transparent"><title>${heure}${o.fmt(v)}</title></rect>`;
+            }).join('') : '';
+            return `<svg class="${o.cls}" viewBox="0 0 ${o.w} ${o.h}"`
+                 + (o.stretch ? ' preserveAspectRatio="none"' : ` width="${o.w}" height="${o.h}"`)
+                 + ` role="img" aria-label="${window.t('layout.js.sparkline_aria').replace('{n}', vals.length).replace('{min}', Math.min(...vals)).replace('{max}', Math.max(...vals))}">`
+                 + `${zero}${aire}<path d="${d.trim()}" fill="none" stroke="${o.color}"
+                    stroke-width="${o.stroke}" stroke-linecap="round" stroke-linejoin="round"/>${point}${survol}</svg>`;
+        };
+        window.MXL_PLUGINS = {{ (mxl_plugins_json|default({}))|tojson|safe }};
+
+        // ─── Tri + filtre de tableau, PARTAGÉS ─────────────────────────────────────────────────
+        // Même raison que la sparkline ci-dessus : le tri par colonne existait déjà dans labels
+        // (scopé à `#tsl-grid`, donc non réutilisable) et un filtre ad hoc dans les logs du
+        // monitoring. Plutôt que d'en écrire une troisième et une quatrième copie pour les listes
+        // de liens RDMA — l'une vivant dans un sous-module, l'autre dans monitoring — la primitive
+        // vit ici, dans layout, chargé partout (contrairement à scripts.js, qui ne l'est que sur
+        // containers et projects).
+        //
+        // L'appelant fournit des ACCESSEURS `{clé: row => valeur}` : la même fonction sert à
+        // ordonner ET à chercher, donc une colonne triable est toujours cherchable, et il n'y a pas
+        // de liste de champs de recherche à maintenir en parallèle des colonnes.
+        // ─── TÉMOIN DE CONNEXION ────────────────────────────────────────────────────────────
+        // Quand la liaison au serveur tombe (VPN, wifi, serveur redémarré), une page web ne
+        // proteste PAS : elle continue d'afficher son dernier état et de répondre aux clics, avec
+        // ce qu'elle sait faire sans réseau. L'exploitant lit alors des chiffres périmés en croyant
+        // qu'ils sont vivants — le pire des échecs silencieux, et sur une régie c'est une décision
+        // prise sur une image d'il y a dix minutes.
+        //
+        // Le témoin se greffe sur `fetch` : un seul point d'entrée couvre les ~520 appels du
+        // front, présents et à venir, sans toucher un seul appelant. Et comme toutes les pages
+        // pollent déjà (cf. MXLPoll juste en dessous), il n'ajoute AUCUN trafic tant que tout va
+        // bien — il ne fait qu'écouter le trafic existant.
+        //
+        // Ce qui compte pour « la liaison est coupée » (et ce qui ne compte pas) :
+        //   · `fetch` REJETTE  → échec réseau : la requête n'a jamais atteint le serveur. Compte.
+        //   · `fetch` RÉSOUT   → le serveur a répondu, même 500 : la liaison est BONNE. Ne compte
+        //     pas. (Même règle que le disjoncteur de node_driver : répondre, fût-ce en erreur,
+        //     prouve qu'on est là.)
+        //   · AbortError       → c'est NOUS qui avons annulé (navigation, timeout applicatif).
+        //     Ne compte pas : sinon changer de page afficherait « connexion perdue ».
+        //   · 401              → le serveur va bien, c'est la SESSION qui est finie. Panne
+        //     différente, geste différent (se reconnecter, pas attendre) : message distinct.
+        //
+        // `navigator.onLine` n'est qu'un ACCÉLÉRATEUR, jamais le verdict : il dit « une interface
+        // réseau existe », pas « le serveur est joignable » — un VPN qui tombe le laisse à `true`.
+        // On s'en sert pour sonder tout de suite, et c'est la sonde qui tranche.
+        window.MXLConnexion = (function () {
+            // ⚠ LE POINT CRITIQUE, appris en coupant un VPN pour de vrai : quand la liaison
+            // disparaît, `fetch` ne REJETTE PAS — il PEND. Le noyau attend l'expiration TCP, qui
+            // se compte en minutes. Une première version n'écoutait que les rejets : elle n'a rien
+            // vu pendant tout ce temps. Pire, `MXLPoll` n'ordonnance la passe suivante qu'à la fin
+            // de la précédente : une requête pendue arrête donc TOUS les polls de la page, et avec
+            // eux la moindre chance de s'apercevoir de quoi que ce soit.
+            //
+            // Une coupure ne produit aucun ÉVÉNEMENT : elle produit du SILENCE. On surveille donc
+            // le silence — le temps écoulé depuis la dernière réponse reçue — avec une horloge
+            // indépendante que rien ne peut bloquer, et une sonde qui, ELLE, a un délai de garde.
+            // (On n'impose surtout pas de délai de garde aux requêtes de l'application : un build
+            // ou un déploiement dure légitimement des minutes.)
+            // Réglages serrés SANS risque de fausse alerte : la sonde est indépendante de
+            // l'application et coûte 3 ms. Un serveur simplement LENT n'en déclenche donc pas :
+            // le silence lance la sonde, la sonde répond, et le compteur repart — au prix d'un
+            // ping. On n'accuse que si la sonde elle-même reste sans réponse.
+            var SILENCE_MS   = 4000;     // sans nouvelle du serveur au-delà → on va vérifier
+            var BATTEMENT_MS = 1500;     // rythme de l'horloge de surveillance
+            var SONDE_MS     = 3000;     // rythme de la sonde tant que la liaison est coupée
+            var SONDE_TIMEOUT = 2500;    // au-delà, la sonde est réputée échouée (~800x le coût réel)
+            var perdue = false, sessionFinie = false, depuis = 0, timer = null;
+            var dernierSucces = Date.now(), sondeEnCours = false;
+            var fetchNu = window.fetch.bind(window);
+
+            function bandeau() {
+                var el = document.getElementById('mxl-connexion');
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = 'mxl-connexion';
+                    el.className = 'mxl-connexion';
+                    el.setAttribute('role', 'status');
+                    el.setAttribute('aria-live', 'assertive');
+                    (document.body || document.documentElement).appendChild(el);
+                }
+                return el;
+            }
+
+            // L'HEURE du constat, pas un chronomètre : c'est elle qui se recoupe avec les
+            // journaux du serveur et le reste de la régie (« à 16:42 on a perdu la liaison »),
+            // là où « depuis 3 min » oblige à faire la soustraction de tête, et change à chaque
+            // repeinture. Secondes incluses : c'est ce qui permet le recoupement fin.
+            function heureConstat() {
+                if (!depuis) return '';
+                try {
+                    return new Date(depuis).toLocaleTimeString(undefined,
+                        {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+                } catch (e) {
+                    var d = new Date(depuis), p = function (n) { return (n < 10 ? '0' : '') + n; };
+                    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+                }
+            }
+
+            function peindre() {
+                var el = bandeau();
+                if (!perdue && !sessionFinie) { el.className = 'mxl-connexion'; el.textContent = ''; return; }
+                if (sessionFinie) {
+                    el.className = 'mxl-connexion visible session';
+                    el.innerHTML = '<span class="mxl-connexion-pastille"></span>' +
+                        '<span>' + window.t('conn.session') + '</span>' +
+                        ' <a href="/login">' + window.t('conn.session.action') + '</a>';
+                    return;
+                }
+                el.className = 'mxl-connexion visible';
+                el.innerHTML = '<span class="mxl-connexion-pastille"></span>' +
+                    '<span>' + window.t('conn.perdue') + '</span>' +
+                    '<span class="mxl-connexion-detail">' + window.t('conn.constatee') + ' ' + heureConstat()
+                    + ' · ' + window.t('conn.stale') + '</span>';
+            }
+
+            function perdre() {
+                if (perdue) return;
+                perdue = true; depuis = Date.now();
+                document.body && document.body.classList.add('home-stale', 'mxl-hors-ligne');
+                peindre();
+                // Le texte est figé (heure du constat) → plus rien à repeindre : le battement
+                // ne sert qu'à sonder pour détecter le retour.
+                if (!timer) timer = setInterval(sonder, SONDE_MS);
+            }
+
+            function retrouver() {
+                if (!perdue) return;
+                perdue = false; depuis = 0;
+                if (timer) { clearInterval(timer); timer = null; }
+                document.body && document.body.classList.remove('home-stale', 'mxl-hors-ligne');
+                var el = bandeau();
+                el.className = 'mxl-connexion visible retablie';
+                el.innerHTML = '<span class="mxl-connexion-pastille"></span><span>'
+                             + window.t('conn.retablie') + '</span>';
+                setTimeout(function () { if (!perdue) peindre(); }, 4000);
+            }
+
+            // Sonde : /api/ping est PUBLIQUE et sans état — elle répond « le serveur est
+            // joignable », indépendamment de la session (cf. app/routes/__init__.py).
+            // La sonde est le SEUL appel à porter un délai de garde : sans lui elle pendrait
+            // comme les autres, et on attendrait le verdict aussi longtemps que sans témoin.
+            function sonder() {
+                if (sondeEnCours) return Promise.resolve();
+                sondeEnCours = true;
+                var ctl = ('AbortController' in window) ? new AbortController() : null;
+                var expire = false;
+                var t = ctl ? setTimeout(function () { expire = true; ctl.abort(); }, SONDE_TIMEOUT) : null;
+                return fetchNu('/api/ping', {cache: 'no-store', signal: ctl ? ctl.signal : undefined})
+                    .then(function (r) {
+                        if (t) clearTimeout(t);
+                        sondeEnCours = false;
+                        if (r && r.ok) { dernierSucces = Date.now(); retrouver(); }
+                        else perdre();          // le serveur répond n'importe quoi à /api/ping
+                    })
+                    .catch(function () {
+                        if (t) clearTimeout(t);
+                        sondeEnCours = false;
+                        // Sonde rejetée OU expirée : dans les deux cas le serveur n'a pas répondu
+                        // dans le délai, et ça fait suite à SILENCE_MS de mutisme — assez pour
+                        // trancher sans faire clignoter la page au moindre à-coup.
+                        perdre();
+                        void expire;
+                    });
+            }
+
+            // Horloge de surveillance : elle tourne en permanence et ne dépend d'aucune requête.
+            // Tant que la page dialogue avec le serveur (toutes les pages pollent, cf. MXLPoll),
+            // `dernierSucces` reste frais et la sonde ne part JAMAIS : le coût reste nul en marche
+            // normale. Elle ne part que dans le silence, c'est-à-dire quand quelque chose cloche.
+            setInterval(function () {
+                if (perdue) return;                       // déjà en alarme : c'est `timer` qui sonde
+                if (Date.now() - dernierSucces > SILENCE_MS) sonder();
+            }, BATTEMENT_MS);
+
+            function echecReseau() {
+                // Rejet franc (serveur joignable mais refusant la connexion, DNS, etc.) : on
+                // confirme à la sonde plutôt que d'accuser tout de suite.
+                sonder();
+            }
+
+            window.fetch = function () {
+                var args = arguments;
+                return fetchNu.apply(null, args).then(function (r) {
+                    dernierSucces = Date.now();
+                    if (r && r.status === 401) {
+                        if (!sessionFinie) { sessionFinie = true; peindre(); }
+                    } else if (sessionFinie) { sessionFinie = false; peindre(); }
+                    retrouver();
+                    return r;
+                }, function (e) {
+                    if (!(e && e.name === 'AbortError')) echecReseau();
+                    throw e;
+                });
+            };
+
+            window.addEventListener('offline', function () { sonder(); });
+            window.addEventListener('online',  function () { sonder(); });
+            // Retour sur l'onglet : les navigateurs bridant fortement les minuteries d'un onglet
+            // caché, l'horloge ci-dessus y tourne au ralenti. On tranche donc TOUT DE SUITE au
+            // retour, pour ne pas laisser regarder des chiffres périmés le temps d'un battement.
+            document.addEventListener('visibilitychange', function () {
+                if (!document.hidden) sonder();
+            });
+
+            return {
+                perdue:  function () { return perdue; },
+                depuis:  function () { return depuis; },
+                sonder:  sonder,
+            };
+        })();
+
+        // ─── Poll SANS RECOUVREMENT ────────────────────────────────────────────────────────
+        // `setInterval(f, 2000)` re-tire tous les 2 s SANS attendre la réponse précédente. Tant
+        // que le serveur répond vite, ça ne se voit pas. Le jour où une réponse coûte 11 s, cinq
+        // requêtes sont déjà en vol, chacune à ~180 ms de CPU serveur : la charge s'auto-entretient
+        // et le serveur ne s'en relève jamais. C'est ce qui laissait la page Câbles sans un seul
+        // câble pendant des dizaines de secondes après un rechargement — mesuré le 2026-08-12 :
+        // /api/home/summary répondait en 11,4 s alors qu'il coûte 0,18 s à vide.
+        //
+        // Ici le délai ne redémarre qu'une fois la passe TERMINÉE (succès ou échec) : au pire on
+        // poll moins souvent, jamais en parallèle de soi-même. Le rythme demandé devient donc un
+        // rythme MINIMAL entre deux fins de passe, ce qui est la seule lecture honnête quand la
+        // réponse peut durer plus longtemps que l'intervalle.
+        //
+        // Renvoie {stop()} — et déclenche une première passe immédiatement. `{immediate: false}`
+        // pour les appelants qui ont DÉJÀ lancé la première passe eux-mêmes (typiquement parce
+        // qu'ils en attendent le résultat : `await f(); MXLPoll(f, ms, {immediate: false})`) —
+        // sans quoi MXLPoll en lancerait une seconde en parallèle, exactement le recouvrement
+        // qu'il est là pour empêcher.
+        window.MXLPoll = function(fn, ms, opts) {
+            let timer = null, arrete = false, enVol = false;
+            async function passe() {
+                if (arrete || enVol) return;
+                enVol = true;
+                try { await fn(); }
+                catch (e) { console.warn('[MXLPoll]', e); }
+                finally {
+                    enVol = false;
+                    if (!arrete) timer = setTimeout(passe, ms);
+                }
+            }
+            if (!opts || opts.immediate !== false) passe();
+            else timer = setTimeout(passe, ms);
+            return { stop() { arrete = true; if (timer) clearTimeout(timer); timer = null; } };
+        };
+
+        window.MXLTable = (function() {
+            const S = {};                       // id de tableau → {key, dir, q, redraw}
+
+            function etat(id) {
+                return S[id] || (S[id] = {key: null, dir: 1, q: '', redraw: null});
+            }
+
+            // Comparaison : numérique quand les DEUX valeurs le sont, sinon alphabétique
+            // insensible à la casse et aux accents. Comparer « 10 » et « 9 » comme du texte
+            // classerait 10 avant 9 — le piège classique d'un tri de tableau générique.
+            function cmp(a, b) {
+                const na = typeof a === 'number' ? a : (a !== '' && a != null && !isNaN(a) ? Number(a) : null);
+                const nb = typeof b === 'number' ? b : (b !== '' && b != null && !isNaN(b) ? Number(b) : null);
+                if (na !== null && nb !== null) return na - nb;
+                return String(a == null ? '' : a).localeCompare(String(b == null ? '' : b),
+                                                                undefined, {numeric: true, sensitivity: 'base'});
+            }
+
+            return {
+                // `redraw` est rappelée à chaque changement de tri ou de filtre.
+                init(id, redraw) { etat(id).redraw = redraw; },
+
+                // En-tête cliquable. `label` est inséré tel quel : à l'appelant de l'échapper.
+                th(id, key, label, extra) {
+                    const e = etat(id);
+                    const on = e.key === key;
+                    const cls = 'mxl-sortable' + (on ? (e.dir === 1 ? ' sort-asc' : ' sort-desc') : '');
+                    const ico = on ? (e.dir === 1 ? '↑' : '↓') : '⇅';
+                    return `<th class="${cls}" ${extra || ''} onclick="MXLTable.trier('${id}','${key}')"`
+                         + ` title="${window.t('js.table.sort_tip')}">${label}`
+                         + `<span class="mxl-sort-icon">${ico}</span></th>`;
+                },
+
+                trier(id, key) {
+                    const e = etat(id);
+                    if (e.key === key) e.dir *= -1; else { e.key = key; e.dir = 1; }
+                    if (e.redraw) e.redraw();
+                },
+
+                filtrer(id, q) {
+                    const e = etat(id);
+                    e.q = String(q || '').trim().toLowerCase();
+                    if (e.redraw) e.redraw();
+                },
+
+                etat(id) { const e = etat(id); return {key: e.key, dir: e.dir, q: e.q}; },
+
+                // Filtre PUIS trie. `acc` = {clé: row => valeur}. Le filtre balaie TOUS les
+                // accesseurs : ce qui s'affiche est ce qui se cherche.
+                appliquer(id, rows, acc) {
+                    const e = etat(id);
+                    let out = rows || [];
+                    if (e.q) {
+                        out = out.filter(r => Object.values(acc).some(f => {
+                            let v; try { v = f(r); } catch (_) { v = null; }
+                            return v != null && String(v).toLowerCase().includes(e.q);
+                        }));
+                    }
+                    if (e.key && acc[e.key]) {
+                        // Copie avant tri : `sort` mute en place, et l'appelant nous passe souvent
+                        // son tableau de données, qu'on ne doit pas réordonner à son insu.
+                        out = out.slice().sort((a, b) => {
+                            let va, vb;
+                            try { va = acc[e.key](a); } catch (_) { va = null; }
+                            try { vb = acc[e.key](b); } catch (_) { vb = null; }
+                            return cmp(va, vb) * e.dir;
+                        });
+                    }
+                    return out;
+                },
+            };
+        })();
+        // Copie presse-papier robuste : navigator.clipboard n'existe qu'en contexte
+        // sécurisé (HTTPS/localhost). En HTTP clair sur le LAN, on retombe sur
+        // execCommand via un textarea temporaire. Renvoie une Promise<bool>.
+        window.copierTexte = function(texte){
+            const fallback = function(){
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = texte;
+                    ta.style.position = 'fixed'; ta.style.top = '-9999px';
+                    ta.setAttribute('readonly', '');
+                    document.body.appendChild(ta);
+                    ta.select(); ta.setSelectionRange(0, texte.length);
+                    const ok = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    return ok;
+                } catch (e) { return false; }
+            };
+            if (navigator.clipboard && window.isSecureContext) {
+                return navigator.clipboard.writeText(texte).then(() => true).catch(() => fallback());
+            }
+            return Promise.resolve(fallback());
+        };
+    </script>
+    <link rel="stylesheet" href="/static/css/base.css?v={{ asset_v('css/base.css') }}">
+    <link rel="stylesheet" href="/static/css/nav.css?v={{ asset_v('css/nav.css') }}">
+    {# Catalogue de contrôles (poussoirs, rotatifs, tranches, afficheurs, bus) : source UNIQUE,
+       chargée partout comme base.css. Un plugin CHOISIT une variante, il n'en redéfinit pas.
+       Inventaire vivant : Réglages → Contrôles. #}
+    <link rel="stylesheet" href="/static/css/controls.css?v={{ asset_v('css/controls.css') }}">
+    {# Partie JS du catalogue (tracé des rotatifs) : un rotatif est un TRACÉ, pas seulement un
+       style. Sans ça chaque plugin redessinerait le sien, ce qui déplacerait la duplication. #}
+    <script src="/static/js/controls.js?v={{ asset_v('js/controls.js') }}"></script>
+    <script src="/static/js/layout_engine.js?v={{ asset_v('js/layout_engine.js') }}"></script>
+    {# Lecture d'un flux 2110 (cadence, état) : les vues Sources et Destinations affichent les
+       mêmes deux informations et les rendaient chacune à sa façon — jusqu'à « 1000 fps » sur une
+       piste audio d'un côté et « — » de l'autre. Le calcul est partagé, comme le gabarit de ligne
+       l'est déjà dans base.css. #}
+    <script src="/static/js/io_flux.js?v={{ asset_v('js/io_flux.js') }}"></script>
+    {% block head %}{% endblock %}
+    {% if theme and theme != 'classic' %}
+    <link rel="stylesheet" href="/static/css/theme-{{ theme }}.css?v={{ asset_v('css/theme-' ~ theme ~ '.css') }}">
+    {% endif %}
+    {% if badge_css %}
+    <style>
+    {% for cls, oklch in badge_css.items() %}
+    {% set p = oklch.split() %}
+    .{{ cls }} { background: oklch({{ oklch }} / 14%); color: oklch({{ oklch }}); border-color: oklch({{ oklch }} / 32%); }
+    {% if theme == 'light' %}.{{ cls }} { background: oklch(calc({{ p[0] }} - 0.33) {{ p[1] }} {{ p[2] }} / 10%); color: oklch(calc({{ p[0] }} - 0.33) {{ p[1] }} {{ p[2] }}); border-color: oklch(calc({{ p[0] }} - 0.33) {{ p[1] }} {{ p[2] }} / 28%); }{% endif %}
+    {% endfor %}
+    </style>
+    {% endif %}
+    {% if brand and brand.system_name %}<script>document.title += ' · ' + {{ brand.system_name|tojson }};</script>{% endif %}
+    <!-- Bibliothèque de polices (window.BobiFonts) : chargée pour TOUTES les pages. Elle vivait
+         dans scripts.js, qui n'est chargé que par containers.html et projects.html — donc absente
+         du composer (plugin_section.html) et de Réglages, où les sélecteurs de police retombaient
+         silencieusement sur la liste figée des polices d'image. -->
+    <script src="/static/bobi_fonts.js?v={{ asset_v('bobi_fonts.js') }}"></script>
+    <!-- Steppers numériques −/+ : DOIT être ici (parent), pas dans scripts.js — celui-ci n'est chargé
+         que par containers.html/projects.html, donc les pages de contrôle de plugin n'avaient AUCUN
+         bouton, en silence (le CSS et les champs étaient bons ; personne ne posait les boutons). -->
+    <script src="/static/num_stepper.js?v={{ asset_v('num_stepper.js') }}"></script>
+    {# Brique du moniteur de ressources CPU (window.MXLRessources) : chargée ICI, pas dans
+       scripts.js — l'onglet Ressources (containers.html) ET le widget compact des pages plugin
+       (plugin_section.html, qui ne charge pas scripts.js) en dépendent tous les deux. #}
+    <script src="/static/ressources.js?v={{ asset_v('ressources.js') }}"></script>
+    {# Visualiseur de journal : chargé ICI (et pas dans scripts.js, qui n'est servi qu'aux pages
+       Containers/Projets) pour être ouvrable depuis n'importe quelle page — cf. window.BobiLogs. #}
+    <script src="/static/log_viewer.js?v={{ asset_v('log_viewer.js') }}"></script>
+    <!-- Modale « action perturbatrice » (docs/reference/TX_LAYOUTS.md étage 2, window.txMaintConfirm) : chargée pour
+         TOUTES les pages. Elle vivait d'abord dans scripts.js — qui n'est chargé que par
+         containers.html et projects.html — donc absente de Destinations 2110 et de Câbles, c.-à-d.
+         exactement des deux pages où le garde-fou doit s'afficher. -->
+    <!-- Liste des formats vidéo (window.loadVideoFormats / _videoFormats) : chargée pour TOUTES les
+         pages. Elle vivait dans scripts.js — chargé seulement par containers.html/projects.html —
+         donc Réglages ne pouvait pas proposer les préréglages de Réglages → Vidéo sans recopier le
+         parseur (seconde vérité). Une seule source : static/video_formats.js. -->
+    <script src="/static/video_formats.js?v={{ asset_v('video_formats.js') }}"></script>
+    <script src="/static/tx_maint.js?v={{ asset_v('tx_maint.js') }}"></script>
+    <!-- Niveau de libellé des sources (window.SourceLabels) : MÊME raison que ci-dessus — la règle
+         d'héritage parent+suffixe ne vivait que dans le JS de /labels, et scripts.js n'aurait pas
+         été chargé sur les pages de plugin. Une seule implémentation, disponible partout. -->
+    <script src="/static/source_labels.js?v={{ asset_v('source_labels.js') }}"></script>
+</head>
+{% set page = page|default('') %}
+<body class="page-{{ page }}">
+    <a href="#contenu" class="lien-evitement">{{ _('nav.aller_contenu') }}</a>
+
+    {# Mode plein écran (workspace) : pas de topnav — le template porte son propre menu
+       flottant. La sécurité ne repose pas sur ce masquage (garde before_request + API). #}
+    {% if not hide_topnav %}
+    <nav class="topnav">
+        {# Chrome projet (chantier 1) : les utilisateurs `interface=projets` n'ont que
+           l'accueil de leurs projets — la nav technique est réservée aux autres. Défini AVANT le
+           bloc de marque : celui-ci ramène à l'accueil, qui n'est pas le même selon l'interface. #}
+        {% set project_ui = current_user and current_user.interface == 'projets' %}
+        {# Marque en BLOC vertical : logo client à gauche, « Bobi.Studio » puis le nom du système
+           en dessous. Coûte moins de largeur que l'ancienne mise en ligne (marque · filet · nom)
+           dans une barre déjà chargée, et hiérarchise : produit au-dessus, installation en dessous.
+           C'est aussi le RETOUR À L'ACCUEIL : convention universelle, et le seul repère qui ne
+           bouge jamais d'une page à l'autre. #}
+        <a href="{{ '/workspaces' if project_ui else '/' }}" class="brand-block"
+           title="{{ brand.location if brand and brand.location else _('nav.home') }}">
+            {% if brand and brand.logo_url %}
+            <img class="brand-logo" src="{{ brand.logo_url }}" alt="{{ brand.org_name or brand.system_name or 'Logo' }}">
+            {% endif %}
+            <span class="brand-names">
+                <span class="brand">Bobi.Studio</span>
+                {% if brand and brand.system_name %}<span class="brand-system">{{ brand.system_name }}</span>{% endif %}
+            </span>
+        </a>
+        {% if project_ui %}
+        <a href="/workspaces" class="{{ 'active' if page in ('workspaces', 'workspace') }}">{{ _('nav.workspaces') }}</a>
+        {% else %}
+        <a href="/"           class="{{ 'active' if page == 'home' }}">{{ _('nav.home') }}</a>
+        <a href="/containers" class="{{ 'active' if page == 'containers' }}">{{ _('nav.containers') }}</a>
+        <a href="/io" class="{{ 'active' if page == 'io' }}">{{ _('nav.io') }}</a>
+        {# Rubriques de plugins : DÉRIVÉES du registre, pas énumérées ici. Deux rubriques étaient
+           câblées en dur (Traitements, Médias) ; toute rubrique nouvelle restait donc invisible
+           dans la nav, quel que soit son contenu. `sources`, `streams` et `destinations` sont
+           exclues parce qu'elles sont déjà servies par la page agrégée /io juste au-dessus. #}
+        {% for sid in ['traitements', 'composition', 'mesure', 'medias'] %}
+          {% set sec = (plugin_sections or {}).get(sid) %}
+          {% if sec %}
+        <a href="{{ sec.route }}" class="{{ 'active' if page == sid }}">{{ sec.label }}</a>
+          {% endif %}
+        {% endfor %}
+        <a href="/cables"     class="{{ 'active' if page == 'cables' }}">{{ _('nav.cables') }}</a>
+        <a href="/projects"   class="{{ 'active' if page == 'projects' }}">{{ _('nav.projects') }}</a>
+        {# Sonde 2110 n'est plus un lien de premier niveau : c'est un ONGLET de Monitoring
+           (barre d'onglets de monitoring.html) — même famille que Nœuds / Tissu / RDMA. #}
+        <a href="/monitoring" class="{{ 'active' if page in ('monitoring', 'probe') }}">{{ _('nav.monitoring') }}</a>
+        {% endif %}
+        <span class="spacer"></span>
+        {% if control_role == 'standby' %}
+        <a href="/settings#cluster" id="nav-ha-badge" class="nav-ha-standby"
+           title="{{ _('layout.ha_standby_title') }}">⏸ {{ _('layout.ha_standby') }}</a>
+        <script>
+        // Chien de garde HA : un standby qui se tait pendant que l'actif est mort, c'est une
+        // panne invisible. On sonde l'état côté serveur et le badge passe à l'alarme — sur TOUTES
+        // les pages, puisque l'opérateur peut arriver n'importe où (la VIP l'amène ici).
+        (function () {
+            const badge = document.getElementById('nav-ha-badge');
+            if (!badge) return;
+            const normal = badge.textContent, titre = badge.title;
+            async function tick() {
+                try {
+                    const s = await (await fetch('/api/ha/status')).json();
+                    const p = s.peer || {};
+                    if (p.armed) {
+                        badge.classList.add('alerte');
+                        badge.textContent = '⚠ ' + {{ _('layout.ha_peer_down')|tojson }};
+                        badge.title = {{ _('layout.ha_peer_down_title')|tojson }} + ' — ' + (p.reason || '');
+                    } else {
+                        badge.classList.remove('alerte');
+                        badge.textContent = normal;
+                        badge.title = titre;
+                    }
+                } catch (e) { /* non bloquant */ }
+            }
+            tick();
+            setInterval(tick, 15000);
+        })();
+        </script>
+        {% endif %}
+        {# Aide (et Recette) : du CHROME, pas une destination métier — réduit à une pastille « ? »
+           qui ouvre un petit menu, plutôt que deux liens au milieu des pages de production. #}
+        <span class="nav-menu" id="nav-help-menu">
+            <button type="button" class="nav-icon-btn {{ 'active' if page in ('aide', 'tests') }}"
+                    aria-haspopup="true" aria-expanded="false"
+                    title="{{ _('nav.aide') }}" data-nav-menu-toggle>?</button>
+            <span class="nav-menu-pop" role="menu">
+                <a href="/aide" role="menuitem" class="{{ 'active' if page == 'aide' }}">{{ _('nav.aide') }}</a>
+                {# L'entrée suit le réglage `testplan_enabled` : passée la mise en service,
+                   un menu qui mène à une page désactivée vaut moins que pas de menu du tout.
+                   `default(false)` : le gabarit se recharge à chaud, pas le code — sans lui,
+                   la page rendrait une erreur jusqu'au redémarrage du contrôleur. #}
+                {% if not project_ui and recette_active|default(false) %}
+                <a href="/tests" role="menuitem" class="{{ 'active' if page == 'tests' }}">{{ _('recette.title') }}</a>
+                {% endif %}
+            </span>
+        </span>
+        {% if current_user %}
+        {# Le nom d'utilisateur EST le menu : identité, réglages de VUE (niveau de libellé des
+           sources, niveau de tally — globaux à toutes les pages, consultés en permanence) et
+           déconnexion. Ils vivaient tous dans la barre ; ils y prenaient trois cadres pour des
+           réglages qu'on change à la volée mais qu'on n'a pas besoin de VOIR en permanence. #}
+        <span class="nav-menu" id="nav-user-menu">
+            <button type="button" class="nav-user-btn" aria-haspopup="true" aria-expanded="false"
+                    title="{{ current_user.role }}" data-nav-menu-toggle>
+                <span class="nav-user-name">{{ current_user.username }}</span>
+                <span class="nav-caret" aria-hidden="true">▾</span>
+            </button>
+            <span class="nav-menu-pop nav-menu-pop-wide" role="menu">
+                <span class="nav-menu-head">{{ current_user.username }}<small> · {{ current_user.role }}</small></span>
+                <span class="nav-menu-field" title="{{ _('nav.label_level_title') }}">
+                    <label for="nav-label-level">{{ _('nav.label_level_full') }}</label>
+                    <select id="nav-label-level"></select>
+                </span>
+                <span class="nav-menu-field" title="{{ _('nav.tally_level_title') }}">
+                    <label for="nav-tally-level">{{ _('nav.tally_level_full') }}</label>
+                    <select id="nav-tally-level"></select>
+                </span>
+                <span class="nav-menu-sep"></span>
+                {# LA LANGUE A QUITTÉ CE MENU pour la page « Mon compte ». On ne change pas
+                   de langue plusieurs fois par jour : lui garder une place dans un menu conçu
+                   pour les gestes fréquents la mettait au même rang que le niveau de tally.
+                   Le THÈME reste, lui : on bascule sombre/clair quand l'éclairage de la régie
+                   change, et ça arrive vraiment.
+
+                   ⚠ Les niveaux de libellé et de tally ci-dessus restent AUSSI, et ce n'est pas
+                   une hésitation : ils vivent dans `localStorage`, donc par NAVIGATEUR. Les
+                   poser sur une page de compte laisserait croire qu'ils suivent la personne
+                   d'un poste à l'autre, ce qui est faux. #}
+                {# ⏳ LANGUE — REMISE ICI À TITRE PROVISOIRE (2026-08-29), pour la campagne
+                   de recette : basculer FR/EN plusieurs fois par heure depuis « Mon compte »
+                   coûte deux navigations à chaque essai.
+
+                   ⚠ L'argument qui l'avait fait partir reste VALABLE et n'est pas effacé : on
+                   ne change pas de langue plusieurs fois par jour en exploitation, et lui garder
+                   une place dans un menu conçu pour les gestes fréquents la met au même rang que
+                   le niveau de tally. « Mon compte » reste la vraie place ; ce sélecteur-ci est
+                   un OUTIL DE TEST, à retirer quand la recette sera close. #}
+                <span class="nav-menu-field" title="{{ _('nav.lang_title') }}">
+                    <label for="nav-lang">{{ _('nav.lang') }}</label>
+                    <select id="nav-lang">
+                        {% for l in languages %}
+                        <option value="{{ l.code }}" {{ 'selected' if current_user.lang == l.code }}>{{ l.label }}</option>
+                        {% endfor %}
+                    </select>
+                </span>
+                <span class="nav-menu-sep"></span>
+                {# Thème : préférence PERSONNELLE (`users.theme`), comme la langue. Le setting
+                   global n'est plus que le DÉFAUT servi à qui n'a rien choisi — d'où l'option
+                   vide en tête. Un thème est un confort de poste (régie sombre, bureau en plein
+                   jour) : il n'a pas à être imposé à la flotte par le dernier qui y a touché. #}
+                <span class="nav-menu-field" title="{{ _('nav.theme_title') }}">
+                    <label for="nav-theme">{{ _('nav.theme') }}</label>
+                    <select id="nav-theme">
+                        <option value="" {{ 'selected' if not current_user.theme }}>{{ _('nav.theme_default') }}</option>
+                        {% for th in themes %}
+                        <option value="{{ th.id }}" {{ 'selected' if current_user.theme == th.id }}>{{ th.label.split('—')[0].strip() }}</option>
+                        {% endfor %}
+                    </select>
+                </span>
+                <span class="nav-menu-sep"></span>
+                {# MON COMPTE, dans MON menu. Le mot de passe se changeait depuis Réglages →
+                   Utilisateurs, sous la liste de tous les comptes ; l'e-mail ne se changeait
+                   pas du tout. On cherche ses propres réglages là où on trouve déjà sa langue
+                   et son thème, pas dans l'administration des autres. #}
+                <a href="/compte" class="nav-menu-item" role="menuitem">{{ _('nav.compte') }}</a>
+                <a href="/logout" class="nav-menu-logout" role="menuitem"
+                   title="{{ _('nav.logout_title') }}">{{ _('nav.logout') }}</a>
+            </span>
+        </span>
+        {% endif %}
+        {% if has_perm('settings.edit') %}
+        <span class="nav-service" id="nav-service" title="{{ _('layout.service_uptime_title') }}">
+            <span class="nav-service-uptime" id="nav-service-uptime">…</span>
+            <button type="button" id="nav-service-restart" class="nav-service-btn"
+                    title="{{ _('layout.service_restart_title') }}">↻</button>
+        </span>
+        {% endif %}
+        {% if not project_ui %}
+        <a href="/settings" class="nav-settings {{ 'active' if page == 'settings' }}">
+            {{ _('nav.settings') }}
+        </a>
+        {% endif %}
+    </nav>
+    <script>
+    (function () {
+        const nav = document.querySelector('.topnav');
+        if (!nav) return;
+
+        /* Barre COLLANTE : elle reste en haut, et se condense au-delà du premier écran de
+           défilement (padding réduit, bloc de marque replié sur une ligne, ombre portée).
+           On garde la barre pleine en tête de page — c'est là qu'on la lit — et une version
+           fine ensuite, où seule la navigation compte.
+
+           SEUIL UNIQUE = BOUCLE DE RÉTROACTION, via l'ANCRAGE DE DÉFILEMENT. La barre est
+           `position: sticky` : elle compte dans le flux, donc se condenser retire ~25 px de
+           hauteur AU-DESSUS du contenu visible. Or les navigateurs (overflow-anchor, actif par
+           défaut) compensent tout changement de hauteur situé au-dessus du viewport en ajustant
+           scrollY d'autant — pour que le contenu regardé ne saute pas. Se condenser faisait donc
+           BAISSER scrollY de ~25 px, ce qui repassait sous le seuil unique de 40 px : la barre se
+           rétendait, l'ancrage remontait scrollY de 25 px, on repassait au-dessus du seuil… en
+           boucle, à l'infini, pour toute position d'arrêt entre 40 et 65 px. Et comme la
+           transition de 0,14 s était relancée à chaque tour, la barre restait FIGÉE À MI-COURSE —
+           ni rabattue ni étendue — en train de scintiller. Simulé : le seuil unique boucle sur
+           TOUTE la fenêtre [40, 40+perte] ; l'hystérésis est stable partout.
+
+           Correction : HYSTÉRÉSIS. Deux seuils, avec une bande (48 px) plus large que ce que la
+           barre peut perdre en hauteur — la compensation d'ancrage ne peut alors plus atteindre
+           le seuil inverse. On condense en passant 56 px, on ne rétend qu'en revenant tout en
+           haut (8 px). Sur une page trop courte pour atteindre 56 px, la barre reste simplement
+           étendue : c'est le comportement correct, pas un cas dégradé. */
+        const SEUIL_ETEND = 8;       // en deçà : barre pleine
+        let SEUIL_CONDENSE = 56;     // au-delà : barre fine — l'écart des deux EST le garde-fou
+        let condensed = false;
+        function onScroll() {
+            const y = window.scrollY;
+            const doit = condensed ? y > SEUIL_ETEND : y > SEUIL_CONDENSE;
+            if (doit === condensed) return;
+            condensed = doit;
+            nav.classList.toggle('condensed', doit);
+        }
+        window.addEventListener('scroll', onScroll, { passive: true });
+
+        /* La bande de 48 px couvre largement la perte de hauteur observée (~25 px), mais celle-ci
+           dépend de la police et de la longueur du nom du système : avec une police système
+           agrandie, elle pourrait la dépasser et ramener la boucle. On la MESURE donc au lieu de
+           la supposer — en fin de transition, où la hauteur est stabilisée — et on élargit le
+           seuil haut si besoin. Jamais l'inverse : la bande ne se resserre pas. */
+        let hauteurEtendue = nav.offsetHeight;
+        nav.addEventListener('transitionend', function () {
+            const h = nav.offsetHeight;
+            if (!condensed) { hauteurEtendue = h; return; }
+            const perte = hauteurEtendue - h;
+            if (perte > 0 && SEUIL_ETEND + perte + 16 > SEUIL_CONDENSE)
+                SEUIL_CONDENSE = SEUIL_ETEND + perte + 16;
+        });
+
+        onScroll();
+
+        /* Menus déroulants de la barre (« ? » et le nom d'utilisateur) : un seul ouvert à la
+           fois, fermé au clic extérieur et à Échap. */
+        const menus = Array.from(nav.querySelectorAll('.nav-menu'));
+        function fermerTout(sauf) {
+            menus.forEach(m => {
+                if (m === sauf) return;
+                m.classList.remove('open');
+                const b = m.querySelector('[data-nav-menu-toggle]');
+                if (b) b.setAttribute('aria-expanded', 'false');
+            });
+        }
+        menus.forEach(m => {
+            const btn = m.querySelector('[data-nav-menu-toggle]');
+            if (!btn) return;
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const ouvert = m.classList.toggle('open');
+                btn.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+                fermerTout(ouvert ? m : null);
+            });
+            m.addEventListener('click', (e) => e.stopPropagation());
+        });
+        document.addEventListener('click', () => fermerTout(null));
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fermerTout(null); });
+
+        /* Langue (préférence PAR UTILISATEUR) et thème (setting GLOBAL) : mêmes endpoints que
+           la page Réglages → Personnalisation, qui reste la source de vérité. Le rechargement
+           n'a lieu que si le serveur a bien accepté — sinon on remet le sélecteur sur la valeur
+           en vigueur, plutôt que de recharger sur un changement qui n'a pas eu lieu. */
+        function brancher(id, envoyer, echec) {
+            const sel = document.getElementById(id);
+            if (!sel) return;
+            let courant = sel.value;
+            sel.addEventListener('change', async () => {
+                sel.disabled = true;
+                try {
+                    const r = await envoyer(sel.value);
+                    if (r && r.ok) { location.reload(); return; }
+                    throw new Error('HTTP ' + (r ? r.status : '?'));
+                } catch (e) {
+                    sel.value = courant;
+                    sel.disabled = false;
+                    alert(echec + ' — ' + e.message);
+                }
+            });
+        }
+        const json = (body) => ({ method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify(body) });
+
+        // `nav-lang` est de retour À TITRE PROVISOIRE (cf. le commentaire du gabarit) : il
+        // poste la préférence PERSONNELLE, pas le défaut du site — c'est exactement la
+        // distinction qui avait piégé le champ de la page Réglages.
+        brancher('nav-lang', (v) => fetch('/api/users/me/lang', json({ lang: v })),
+                 '{{ _("nav.lang_failed") }}');
+        brancher('nav-theme', (v) => fetch('/api/users/me/theme', json({ theme: v })),
+                 '{{ _("nav.theme_failed") }}');
+    })();
+    </script>
+    {% endif %}
+
+    <main id="contenu">
+    {% block content %}{% endblock %}
+    </main>
+
+    {% if current_user %}
+    <!-- ═══ Panneau de monitoring WebRTC (global, par utilisateur) ═══ -->
+    <style>
+    #mon-tab {
+        position: fixed; right: 0; bottom: 80px;
+        z-index: 201; writing-mode: vertical-rl; padding: 14px 6px;
+        background: var(--bg-panel, #161b22); color: var(--text, #e6edf3);
+        border: 1px solid var(--border-soft, #30363d); border-right: none;
+        border-radius: 8px 0 0 8px; cursor: pointer; font-size: 0.85em; letter-spacing: 0.05em;
+    }
+    #mon-tab:hover { color: var(--status-running-fg, #3fb950); }
+    #mon-panel {
+        position: fixed; bottom: 0; right: 0; width: min(440px, 92vw);
+        max-height: 85vh; z-index: 200; background: var(--bg-panel, #161b22);
+        border: 1px solid var(--border-soft, #30363d); border-right: none; border-bottom: none;
+        border-radius: 8px 0 0 0;
+        box-shadow: -6px -6px 24px rgba(0,0,0,0.35);
+        transform: translateX(110%); transition: transform 220ms ease;
+        display: flex; flex-direction: column;
+    }
+    #mon-panel.open { transform: translateX(0); }
+    .mon-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+        border-bottom: 1px solid var(--border-soft, #30363d); }
+    .mon-head .mon-title { font-weight: 600; }
+    .mon-head .mon-source { color: var(--text-muted, #8b949e); font-size: 0.85em;
+        flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mon-head button { background: none; border: 1px solid var(--border-soft, #30363d);
+        color: var(--text-muted, #8b949e); border-radius: 4px; cursor: pointer; padding: 2px 8px; }
+    .mon-head button:hover { color: var(--text, #e6edf3); }
+    .mon-body { display: flex; flex-direction: column; padding: 10px; gap: 8px; overflow: auto; }
+    #mon-frame { width: 100%; aspect-ratio: 16/9; border: 1px solid var(--border-soft, #30363d);
+        border-radius: 6px; background: #000; }
+    .mon-msg { color: var(--text-muted, #8b949e); font-size: 0.9em; }
+    .mon-msg button { background: var(--status-running-fg, #3fb950); color: #06210f; border: none;
+        border-radius: 4px; padding: 6px 12px; font-weight: 600; cursor: pointer; margin-top: 6px; }
+    .mon-sources { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .mon-sources .mon-src-label { color: var(--text-muted, #8b949e); font-size: 0.82em; margin-right: 2px; }
+    .mon-src-btn { background: transparent; color: var(--text, #e6edf3);
+        border: 1px solid var(--border-soft, #30363d); border-radius: 4px;
+        padding: 3px 9px; font-size: 0.82em; cursor: pointer; }
+    .mon-src-btn:hover { border-color: var(--accent, #7aa2c8); }
+    .mon-src-btn.active { background: var(--accent-soft, rgba(122,162,200,0.15));
+        border-color: var(--accent, #7aa2c8); color: var(--accent, #7aa2c8); font-weight: 600; }
+    /* TALLY de la source regardée (TSL) : pastilles dans l'en-tête + LISERÉ autour de l'image.
+       Le liseré est ce qu'on voit du coin de l'œil ; les pastilles disent QUELS niveaux sont
+       actifs (une par niveau, un même flux pouvant être PGM sur l'un et PVW sur l'autre). */
+    .mon-tally { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+    .mon-tally .mon-tally-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    #mon-frame.tally-red    { border-color: #cc2222; box-shadow: 0 0 0 2px #cc2222; }
+    #mon-frame.tally-green  { border-color: #22aa44; box-shadow: 0 0 0 2px #22aa44; }
+    #mon-frame.tally-amber  { border-color: #cc8800; box-shadow: 0 0 0 2px #cc8800; }
+    #mon-log { background: var(--bg-soft, #0d1117); border: 1px solid var(--border-soft, #30363d);
+        border-radius: 4px; padding: 8px; font-size: 0.78em; max-height: 200px; overflow: auto;
+        white-space: pre-wrap; line-height: 1.4; font-family: var(--font-mono, monospace); }
+    </style>
+    <button id="mon-tab" onclick="MXLMonitor.toggle()">{{ _('layout.monitoring') }}</button>
+    <aside id="mon-panel" aria-label="{{ _('layout.monitor_panel_aria') }}">
+        <div class="mon-head">
+            <span class="mon-title">{{ _('layout.monitoring') }}</span>
+            <span class="mon-source" id="mon-source"></span>
+            <span class="mon-tally" id="mon-tally" title="{{ _('layout.monitor_tally_title') }}"></span>
+            <button id="mon-controls-btn" onclick="MXLMonitor.toggleControls()" aria-pressed="false" aria-label="{{ _('layout.monitor_controls_aria') }}" title="{{ _('layout.monitor_controls_title') }}">☰</button>
+            <button onclick="MXLMonitor.detach()" aria-label="{{ _('layout.monitor_detach') }}" title="{{ _('layout.monitor_detach_title') }}">⧉</button>
+            <button onclick="MXLMonitor.refreshStatus()" title="{{ _('layout.refresh') }}">↻</button>
+            <button onclick="MXLMonitor.close()" title="{{ _('layout.close') }}">✕</button>
+        </div>
+        <div class="mon-body">
+            <div class="mon-sources" id="mon-sources" style="display:none"></div>
+            <div class="mon-msg" id="mon-msg">…</div>
+            <pre id="mon-log" style="display:none"></pre>
+            <iframe id="mon-frame" allow="autoplay" allowfullscreen style="display:none"></iframe>
+        </div>
+    </aside>
+    <script>
+    window.MXLMonitor = (function() {
+        let hbTimer = null, pending = null, curEmbed = null, waitTimer = null, curLabel = null, curSource = null, waitGen = 0;
+        const $ = id => document.getElementById(id);
+
+        // Charge le lecteur dans l'iframe. force=true → ajoute un cache-buster pour
+        // forcer un rechargement (au démarrage / changement de source : le path a pu
+        // disparaître puis revenir, le lecteur MediaMTX ne se rétablit pas seul).
+        // Contrôles du lecteur masqués par défaut (toggle ci-dessous). muted+autoplay+
+        // playsinline = lecture immédiate sans pause. Slash final AVANT la query car
+        // MediaMTX redirige /path → /path/ par un 301 qui perd la query.
+        let monControls = (localStorage.getItem('mxl.monitor.controls') === '1');
+        function monPlayerUrl(embed, bust) {
+            if (!embed) return embed;
+            const base = embed.endsWith('/') ? embed : embed + '/';
+            let u = base + `?controls=${monControls?'true':'false'}&muted=true&autoplay=true&playsinline=true`;
+            if (bust) u += '&_=' + Date.now();
+            return u;
+        }
+        function updateControlsBtn() {
+            const b = $('mon-controls-btn'); if (!b) return;
+            b.setAttribute('aria-pressed', monControls ? 'true' : 'false');
+            b.title = monControls ? window.t('js.monitor.controls_hide') : window.t('js.monitor.controls_show');
+            b.style.color = monControls ? 'var(--accent)' : '';
+        }
+        function toggleControls() {
+            monControls = !monControls;
+            localStorage.setItem('mxl.monitor.controls', monControls ? '1' : '0');
+            if (curEmbed) $('mon-frame').setAttribute('src', monPlayerUrl(curEmbed, true)); // reload avec/sans barre
+            updateControlsBtn();
+        }
+        function loadFrame(url, force) {
+            const f = $('mon-frame');
+            if (!url) { f.style.display = 'none'; return; }
+            if (force || curEmbed !== url) {
+                f.setAttribute('src', monPlayerUrl(url, force));
+                curEmbed = url;   // url BRUTE (détection de changement) ; les options sont ajoutées par monPlayerUrl
+            }
+            f.style.display = '';
+        }
+        function showMsg(html) { $('mon-msg').innerHTML = html || ''; $('mon-msg').style.display = html ? '' : 'none'; }
+
+        // Patiente jusqu'à ce que le flux soit publié (fps > 0), puis (re)charge l'iframe.
+        // waitGen annule les polls en vol (fetch déjà parti) issus d'un appel précédent.
+        function waitLive(force) {
+            if (waitTimer) { clearTimeout(waitTimer); waitTimer = null; }
+            const gen = ++waitGen;
+            let n = 0;
+            (async function poll() {
+                if (gen !== waitGen) return;
+                let s;
+                try { s = await (await fetch('/api/monitor/status')).json(); } catch(e) { s = {}; }
+                if (gen !== waitGen) return;
+                if (s.publishing) { showMsg(''); loadFrame(s.embed_url, force); return; }
+                if (++n > 14) { showMsg(window.t('js.monitor.no_image')); return; }
+                waitTimer = setTimeout(poll, 1500);
+            })();
+        }
+
+        async function refreshStatus() {
+            try {
+                const s = await (await fetch('/api/monitor/status')).json();
+                if (!s.gateway_ready) {
+                    loadFrame(null);
+                    showMsg(window.t('js.monitor.no_gateway'));
+                    return;
+                }
+                if (!s.exists) {
+                    loadFrame(null);
+                    showMsg(window.t('js.monitor.no_monitor') + '<br><button onclick="MXLMonitor.create()">' + window.t('js.monitor.create_btn') + '</button>');
+                    return;
+                }
+                if (!s.script_running) {
+                    await fetch('/api/monitor/activate', {method:'POST'});
+                }
+                // curLabel (source demandée) prime : refreshStatus ne doit pas réécrire
+                // le nom avec la source serveur encore périmée juste après un changement.
+                if (!curLabel && s.source) curLabel = s.source.label || s.source.shm || '';
+                if (curLabel) $('mon-source').textContent = curLabel;
+                if (s.publishing) { showMsg(''); loadFrame(s.embed_url, false); }
+                else {
+                    const srcBox = $('mon-sources');
+                    const pickerOpen = srcBox && srcBox.style.display !== 'none' && srcBox.innerHTML.trim();
+                    const hasSource = !!(curSource || s.source);
+                    let m;
+                    if (hasSource)        m = window.t('js.monitor.waiting');
+                    else if (pickerOpen)  m = window.t('js.monitor.pick_output');
+                    else                  m = window.t('js.monitor.pick_source');
+                    showMsg(m);
+                    waitLive(false);
+                }
+            } catch(e) {
+                showMsg(window.t('js.monitor.error') + ' ' + e.message);
+            }
+        }
+
+        async function create() {
+            const log = $('mon-log');
+            log.style.display = ''; log.textContent = '';
+            showMsg(window.t('js.monitor.creating'));
+            try {
+                const r = await fetch('/api/monitor/create', {method:'POST'});
+                const reader = r.body.getReader(); const dec = new TextDecoder(); let buf='', last='';
+                while (true) {
+                    const {value, done} = await reader.read(); if (done) break;
+                    buf += dec.decode(value, {stream:true});
+                    const lines = buf.split('\n'); buf = lines.pop();
+                    for (const ln of lines) { log.textContent += ln + '\n'; if (ln.trim()) last = ln; }
+                    log.scrollTop = log.scrollHeight;
+                }
+                if (buf.trim()) { log.textContent += buf; last = buf; }
+                setTimeout(() => { log.style.display = 'none'; }, 4000);
+                if (last.startsWith('✅') && pending) { const p = pending; pending = null; send(p.shm, p.label, p.audioShm); }
+                else refreshStatus();
+            } catch(e) { showMsg(window.t('js.monitor.create_error') + ' ' + e.message); }
+        }
+
+        // Nom d'affichage d'une source : le libellé d'exploitation du niveau courant prime sur ce
+        // que l'appelant a passé. Chaque page a sa propre façon de nommer (« hôte Rx1 », le shm
+        // brut, « recorder (source) »…) : sans ce point de passage unique, le panneau afficherait
+        // un nom différent selon le bouton par lequel on est arrivé.
+        function monLabel(shm, fallback) {
+            const l = window.SourceLabels ? window.SourceLabels.labelOf(shm).value : '';
+            return l || fallback || shm;
+        }
+        async function send(shm, label, audioShm) {
+            label = monLabel(shm, label);
+            curLabel = label || shm;   // fixé AVANT open() pour que refreshStatus ne l'écrase pas
+            curSource = shm;
+            open();
+            highlightSource(shm);   // surligne dans le sélecteur persistant (ou le masque si hors liste)
+            $('mon-source').textContent = curLabel + (audioShm ? ' · audio' : '');
+            tallyPaint();   // la source a changé : ne pas garder la lampe de la précédente
+            try {
+                const j = await (await fetch('/api/monitor/source', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({shm, label, audio_shm: audioShm || ''})
+                })).json();
+                if (j.need_create) {
+                    pending = {shm, label, audioShm};
+                    showMsg(window.t('js.monitor.first_use'));
+                    create();
+                    return;
+                }
+                if (j.error) { showMsg(window.t('js.monitor.error') + ' ' + j.error); return; }
+                // Hot-swap (j.hot) : même ffmpeg/path WebRTC, pas de coupure → on ne
+                // force PAS le rechargement de l'iframe. Sinon (redéploiement) on attend
+                // la re-publication et on recharge le lecteur.
+                if (j.hot) { showMsg(''); waitLive(false); }
+                else { showMsg(window.t('js.monitor.loading').replace('{name}', label || shm)); waitLive(true); }
+            } catch(e) { showMsg(window.t('js.monitor.error') + ' ' + e.message); }
+        }
+
+        function startHb() { stopHb(); hbTimer = setInterval(() => fetch('/api/monitor/heartbeat', {method:'POST'}), 30000); }
+        function stopHb() { if (hbTimer) { clearInterval(hbTimer); hbTimer = null; } }
+
+        function open() {
+            $('mon-panel').classList.add('open');
+            startHb(); refreshStatus(); tallyStart();
+        }
+        function close() {
+            $('mon-panel').classList.remove('open');
+            stopHb(); tallyStop();
+        }
+        function toggle() { $('mon-panel').classList.contains('open') ? close() : open(); }
+
+        // ── Détacher / réattacher ────────────────────────────────────────────────────────────
+        // L'état vit dans localStorage (et PAS dans une référence à la fenêtre popup) : l'événement
+        // `storage` traverse toutes les fenêtres de même origine, donc le réattachement fonctionne
+        // MÊME si la page d'origine a navigué entre-temps (la référence `popup` serait alors perdue,
+        // et l'onglet Monitoring resterait masqué à vie — sans aucun moyen de le récupérer).
+        const DETACHED_KEY = 'mxl.monitor.detached';
+        let popup = null;
+        function isDetached() { try { return localStorage.getItem(DETACHED_KEY) === '1'; } catch (_) { return false; } }
+        function applyDetached(d) {
+            const tab = $('mon-tab'), panel = $('mon-panel');
+            if (tab) tab.style.display = d ? 'none' : '';
+            if (d) {
+                panel.classList.remove('open'); stopHb();
+                $('mon-frame').src = 'about:blank';
+                // ★ Remettre curEmbed à zéro EN MÊME TEMPS que l'iframe : loadFrame() déduplique sur
+                //   `curEmbed !== url`. Sans ça, au réattachement il verrait la MÊME url, croirait le
+                //   lecteur déjà chargé, et ne réécrirait jamais le src — panneau ouvert, image vide.
+                curEmbed = null;
+            }
+        }
+        function detach() {
+            try { localStorage.setItem(DETACHED_KEY, '1'); } catch (_) {}
+            applyDetached(true);
+            // Le lecteur de la page est coupé (src vidé) : deux lecteurs sur le même path WebRTC ne
+            // servent à rien et doublent la charge de la passerelle.
+            popup = window.open('/monitor/popout', 'mxl-monitor',
+                                'width=720,height=440,menubar=no,toolbar=no,location=no,status=no');
+            if (!popup) {   // bloqueur de popup : on ne laisse PAS l'utilisateur sans monitoring
+                try { localStorage.setItem(DETACHED_KEY, '0'); } catch (_) {}
+                applyDetached(false);
+                showMsg(window.t('js.monitor.popup_blocked'));
+                open();
+            }
+        }
+        function reattach() {
+            try { localStorage.setItem(DETACHED_KEY, '0'); } catch (_) {}
+            if (popup && !popup.closed) { try { popup.close(); } catch (_) {} }
+            popup = null;
+            applyDetached(false);
+            curEmbed = null;          // ceinture : le lecteur DOIT être rechargé, jamais dédupliqué
+            open();
+        }
+        // La fenêtre détachée écrit la clé à 0 (bouton « Réattacher » OU simple fermeture) → on
+        // récupère le panneau ici, quelle que soit la page où l'utilisateur se trouve.
+        window.addEventListener('storage', e => {
+            if (e.key === DETACHED_KEY && e.newValue === '0') reattach();
+        });
+        applyDetached(isDetached());   // au chargement d'une page : respecte l'état courant
+
+        // Sélecteur de sources PERSISTANT (reste affiché tant qu'on est sur la page) :
+        // permet de basculer entre les sorties d'un node sans recliquer « Monitoring ».
+        let lastSources = null;   // derniers arguments de renderSources (re-rendu à la bascule de niveau)
+        function clearSources() { lastSources = null; const b = $('mon-sources'); if (b) { b.innerHTML = ''; b.style.display = 'none'; } }
+        function renderSources(outs, nodeLabel, aShm, activeShm) {
+            lastSources = { outs, nodeLabel, aShm, activeShm };
+            const b = $('mon-sources');
+            if (!b) return;
+            if (!outs || outs.length < 2) { clearSources(); return; }
+            const esc = s => String(s == null ? '' : s).replace(/'/g, "\\'");
+            b.style.display = '';
+            b.innerHTML = `<span class="mon-src-label">${esc(nodeLabel)} :</span>` + outs.map(o => {
+                // Nom du bouton = libellé d'exploitation du niveau courant si la source en a un
+                // (window.SourceLabels), sinon le nom de sortie puis le shm. Un bus de mixer
+                // s'annonce ainsi « PGM », pas « mxl_mix_pgm ».
+                const base = o.label || o.shm;
+                const txt = window.SourceLabels ? (window.SourceLabels.labelOf(o.shm).value || base) : base;
+                const lbl = `${nodeLabel} ${txt}`;
+                const on = (o.shm === activeShm) ? ' active' : '';
+                return `<button type="button" class="mon-src-btn${on}" data-shm="${esc(o.shm)}"
+                    onclick="MXLMonitor.send('${esc(o.shm)}','${esc(lbl)}','${esc(aShm)}')">${esc(txt)}</button>`;
+            }).join('');
+        }
+        // Surligne la source active dans le sélecteur ; masque le sélecteur si la source
+        // courante n'en fait pas partie (envoi direct depuis une autre page).
+        function highlightSource(shm) {
+            const b = $('mon-sources');
+            if (!b || b.style.display === 'none') return;
+            let matched = false;
+            b.querySelectorAll('.mon-src-btn').forEach(btn => {
+                const on = btn.dataset.shm === shm;
+                btn.classList.toggle('active', on);
+                if (on) matched = true;
+            });
+            if (!matched) clearSources();
+        }
+
+        // Monitore la sortie d'un container par son vmid : récupère ses sorties vidéo
+        // via /api/home/summary. 1 sortie → envoi direct ; plusieurs (bus mixer) → sélecteur persistant.
+        async function monitorVmid(vmid) {
+            open();
+            try {
+                const j = await (await fetch('/api/home/summary')).json();
+                const node = ((j.topology || {}).nodes || []).find(n => n.vmid === vmid);
+                if (!node) { clearSources(); showMsg(window.t('js.monitor.not_found')); return; }
+                const outs = (node.produces || []).filter(p => p.kind === 'video' && p.shm);
+                if (!outs.length) { clearSources(); showMsg(window.t('js.monitor.no_video_out').replace('{name}', node.hostname || ('#'+vmid))); return; }
+                // Audio : 1ʳᵉ sortie audio du node (ex. receiver_audio_0), incluse en Opus (1 piste).
+                const aud = (node.produces || []).find(p => p.kind === 'audio' && p.shm);
+                const aShm = aud ? aud.shm : '';
+                const nodeLabel = node.hostname || ('#' + vmid);
+                if (outs.length === 1) {
+                    clearSources();
+                    send(outs[0].shm, `${nodeLabel}${outs[0].label ? ' ' + outs[0].label : ''}`, aShm);
+                    return;
+                }
+                // Si la source courante n'est pas une des sorties de ce node (monitor
+                // câblé sur autre chose), on sélectionne la 1ʳᵉ par défaut pour éviter
+                // de regarder un flux qui n'a rien à voir avec le container demandé.
+                const active = outs.some(o => o.shm === curSource) ? curSource : outs[0].shm;
+                if (active !== curSource) {
+                    send(active, `${nodeLabel}${outs[0].label ? ' ' + outs[0].label : ''}`, aShm);
+                }
+                renderSources(outs, nodeLabel, aShm, active);
+            } catch(e) { showMsg(window.t('js.monitor.error') + ' ' + e.message); }
+        }
+
+        // ─── TALLY de la source regardée ──────────────────────────────────────────────────
+        // Toute la résolution (mapping inverse shm → index/niveaux, état des lampes, filtre du
+        // niveau choisi dans la barre de navigation) vit dans window.SourceTally, partagé avec la
+        // page Câbles. Ici on ne fait que peindre : pastilles par niveau actif dans l'en-tête, et
+        // liseré autour de l'image à la couleur dominante — c'est ce qu'on voit du coin de l'œil.
+        function tallyPaint() {
+            const box = $('mon-tally'), frame = $('mon-frame');
+            if (!box || !window.SourceTally) return;
+            const lamps = curSource ? window.SourceTally.lampsFor(curSource) : [];
+            box.innerHTML = lamps.map(([lvl, c]) =>
+                `<span class="mon-tally-dot" style="background:${window.SourceTally.color(c)}"
+                       title="${window.t('js.monitor.tally_level').replace('{n}', lvl)} : ${c}"></span>`).join('');
+            if (frame) {
+                frame.classList.remove('tally-red', 'tally-green', 'tally-amber');
+                const dom = curSource ? window.SourceTally.colorFor(curSource) : null;
+                if (dom) frame.classList.add('tally-' + dom);
+            }
+        }
+        function tallyStart() {
+            if (!window.SourceTally) return;
+            window.SourceTally.start();
+            document.addEventListener('source-tally:change', tallyPaint);
+            tallyPaint();
+        }
+        function tallyStop() {
+            if (!window.SourceTally) return;
+            document.removeEventListener('source-tally:change', tallyPaint);
+            window.SourceTally.stop();
+            const box = $('mon-tally'), frame = $('mon-frame');
+            if (box) box.innerHTML = '';
+            if (frame) frame.classList.remove('tally-red', 'tally-green', 'tally-amber');
+        }
+
+        // Bascule du niveau de libellé (sélecteur global de la barre de navigation) : on réécrit le
+        // nom affiché et les boutons de sortie. Aucun appel à /api/monitor/source — le flux ne
+        // change pas, seule sa désignation change.
+        document.addEventListener('source-labels:change', () => {
+            if (curSource) {
+                curLabel = monLabel(curSource, curLabel);
+                const el = $('mon-source');
+                if (el) el.textContent = curLabel + (el.textContent.endsWith(' · audio') ? ' · audio' : '');
+            }
+            if (lastSources) {
+                const l = lastSources;
+                renderSources(l.outs, l.nodeLabel, l.aShm, l.activeShm);
+            }
+        });
+
+        // Fermé par défaut à chaque chargement de page (pas de restauration d'état) :
+        // on le rouvre via l'onglet ou un bouton « Monitoring ».
+        updateControlsBtn();
+        return { open, close, toggle, refreshStatus, create, send, monitorVmid, toggleControls,
+                 detach, reattach };
+    })();
+    </script>
+    <script>
+        window.MXL_PERMS = new Set([
+            {% for p in ['containers.create','containers.delete','containers.deploy','plugins.operate','multiview.edit','projects.manage','settings.edit','backup.manage'] %}
+                {% if has_perm(p) %}'{{ p }}',{% endif %}
+            {% endfor %}
+        ]);
+        window.hasPerm = (p) => window.MXL_PERMS.has(p);
+    </script>
+    {% endif %}
+
+    {% if has_perm('settings.edit') %}
+    <script>
+    (function() {
+        const elUp  = document.getElementById('nav-service-uptime');
+        const elBtn = document.getElementById('nav-service-restart');
+        if (!elUp || !elBtn) return;
+
+        function fmt(s) {
+            s = Math.max(0, s|0);
+            const d = (s / 86400) | 0; s -= d * 86400;
+            const h = (s / 3600)  | 0; s -= h * 3600;
+            const m = (s / 60)    | 0; const ss = s - m * 60;
+            if (d) return `${d}${window.t('js.service.day_abbr')} ${h}h${String(m).padStart(2,'0')}`;
+            if (h) return `${h}h${String(m).padStart(2,'0')}`;
+            if (m) return `${m}m${String(ss).padStart(2,'0')}s`;
+            return `${ss}s`;
+        }
+
+        let baseUptime = 0, baseAt = Date.now();
+        function tick() {
+            const live = baseUptime + Math.floor((Date.now() - baseAt) / 1000);
+            elUp.textContent = fmt(live);
+        }
+        async function refresh() {
+            try {
+                const r = await fetch('/api/service/info', {cache: 'no-store'});
+                if (!r.ok) return;
+                const j = await r.json();
+                baseUptime = j.uptime_s || 0;
+                baseAt = Date.now();
+                tick();
+            } catch (e) {}
+        }
+        refresh();
+        setInterval(tick, 1000);
+        setInterval(refresh, 30000);   // resync (au cas où le service ait redémarré sans qu'on clique)
+
+        elBtn.addEventListener('click', async () => {
+            if (!confirm(window.t('js.service.restart_confirm'))) return;
+            elBtn.disabled = true;
+            elUp.textContent = window.t('js.service.restarting');
+            try {
+                const r = await fetch('/api/service/restart', {method: 'POST'});
+                const j = await r.json().catch(() => ({}));
+                if (!r.ok || !j.ok) {
+                    alert(window.t('js.service.fail') + ' ' + (j.error || r.status));
+                    elBtn.disabled = false;
+                    refresh();
+                    return;
+                }
+                // Attendre que le service revienne (poll /api/service/info)
+                const t0 = Date.now();
+                (function waitBack() {
+                    fetch('/api/service/info', {cache: 'no-store'})
+                        .then(r => r.ok ? r.json() : Promise.reject())
+                        .then(j => {
+                            // Nouveau started_at → bien redémarré
+                            if (j.uptime_s < (Date.now() - t0) / 1000) {
+                                baseUptime = j.uptime_s || 0;
+                                baseAt = Date.now();
+                                elBtn.disabled = false;
+                                tick();
+                            } else {
+                                setTimeout(waitBack, 800);
+                            }
+                        })
+                        .catch(() => setTimeout(waitBack, 800));
+                })();
+            } catch (e) {
+                alert(window.t('js.service.net_error') + ' ' + e.message);
+                elBtn.disabled = false;
+            }
+        });
+    })();
+    </script>
+    {% endif %}
+
+    {% block scripts %}{% endblock %}
+
+    <footer class="app-footer">
+        {% if brand and (brand.org_name or brand.location) %}
+        <span class="app-footer-org">{{ brand.org_name }}{% if brand.org_name and brand.location %} · {% endif %}{{ brand.location }}</span>
+        {% endif %}
+        <span class="app-footer-attr"><a href="https://www.bobi.studio" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">Bobi.Studio</a> — made by Bobi</span>
+    </footer>
+<div id="skh-tooltip"></div>
+</body>
+</html>

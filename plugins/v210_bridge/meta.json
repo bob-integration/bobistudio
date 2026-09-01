@@ -1,0 +1,35 @@
+{
+  "version": "0.6.0",
+  "date": "2026-08-02",
+  "changes": {
+    "Variante libmxl exposée dans /state (0.6.0)": [
+      "GET /state porte désormais `mxl_lib` : {path, variante} de la libmxl RÉELLEMENT chargée (x86-64-v3/glibc-hwcaps ou baseline), lu via bobimxl.lib_info(). Jusqu'ici cette information n'était constatable que PAR NŒUD (app/placement.py) — un conteneur retombé sur la baseline (~20 % de coût en régime consommateur) ne se voyait qu'indirectement. Protégé par try/except : une erreur de lecture ne casse jamais /state."
+    ],
+    "Index de sortie : un seul point de calcul, dans bobimxl (0.5.0)": [
+      "L'index des grains de sortie n'est plus calculé dans le plugin : il vient de bobimxl.Writer.next_index, LE point unique pour toute la flotte — grille TAI, strictement croissante, holdover. Chaque plugin réinventait sa version (compteur maison, appel direct à mxlGetCurrentIndex, convention de repli propre), avec les divergences que ça implique.",
+      "Un index de grain est une COORDONNÉE DE TEMPS, pas un numéro de séquence : docs/Timing.md du SDK MXL est normatif (GrainIndex = Timestamp / GrainDurationNs, epoch SMPTE 2059-1). Un compteur parti de 0 casse l'alignement inter-flux et rend le flux irréplicable entre nœuds.",
+      "PROPAGATION de l'origin timestamp : un plugin qui TRAITE un grain source passe open_grain(src_index=...) — le grain de sortie porte la coordonnée de son origine, ce qui garde alignées les branches de latences différentes. Pas de source (entrée absente, trame de garde) → repli sur la grille décidé par bobimxl, plus par chaque plugin."
+    ],
+    "Niveau de log réglable À CHAUD (0.4.0)": [
+      "Endpoint POST /log_level {level} sur le contrôle :8082 : bascule la verbosité pendant un incident, sans redéployer ni couper la production. Une valeur hors debug|info|warning|error est REFUSÉE (HTTP 400, {ok:false}) — jamais un 200 silencieux.",
+      "Niveau courant publié dans /state (et /state en lecture seule) : le niveau effectif se constate sans redéploiement et s'utilise en CONDITION de macro.",
+      "Exposé aux macros : action « Niveau de log (à chaud) » + groupe param_tree « Journal (diagnostic) ». Le réglage PERSISTANT reste le champ `log_level` du config_schema (appliqué au (re)déploiement) ; l'endpoint est volatil.",
+      "REDÉPLOIEMENT du conteneur requis (le nouvel endpoint vit dans le script)."
+    ],
+    "Niveau de log par plugin — silencieux par défaut (0.3.0)": [
+      "Nouveau réglage `log_level` (détaillé / événements / anomalies / erreurs, défaut « Événements »). Les impressions du script sont désormais classées ÉVÉNEMENT (démarrage, câblage d’une entrée, changement de format, reconnexion, repli) vs ANOMALIE (`warning`/`error`) : au niveau par défaut le journal raconte l’histoire du conteneur sans bavardage. Aucune métrique périodique n’est journalisée (le fps est publié sur :8080).",
+      "Pas encore d’endpoint /log_level sur ce plugin : le niveau est appliqué au (re)déploiement. Pilotable par macro via l’étape « config » (config_schema)."
+    ],
+    "Sens IMPORT + découverte (0.2.0) — Phase 3 interop": [
+      "Le pont devient BI-DIRECTIONNEL (config direction) : import = lit un flux video/v210 TIERS du domaine, ciblé par son flowId UUID brut (nouveau Reader by_id de bobimxl) ou un nom maison, et publie sa conversion planar interne {hostname} (8 bits force8 par défaut, ou 10) câblable normalement.",
+      "GET /flows (read_endpoint) : liste les flux video/v210 découverts dans le domaine (bobimxl.discover_flows, énumération *.mxl-flow/flow_def.json) avec marquage is_ours — l'opérateur y trouve le flowId tiers à coller dans import_flow.",
+      "Wiring conditionnel via hook before_deploy (motif delay) : export = 1 entrée câblable/0 sortie ; import = 0 entrée/1 sortie planar {hostname}. Conversion import zéro-copie (v210_unpack(out=vue grain))."
+    ],
+    "Création (0.1.0) — pont d'interop MXL R1": [
+      "Nouveau plugin : lit un flux vidéo planar interne et publie son miroir au format standard video/v210 (SDK MXL stock), lisible par les containers d'autres éditeurs sur le même domaine /dev/shm/mxl. Index de grain propagé (miroir 1:1), conversion bobimxl.v210_pack (libbobi_v210 SIMD, ~2-3 ms/image 1080p ; repli numpy sur les vieilles images). Entrée 8 bits promue 10 bits (<<2).",
+      "Limites v1 : entrée 4:2:2 progressive uniquement ; miroir commité trame entière (sémantique slice « ligne » du flow v210 à valider au banc croisé stock↔fork). Le flux miroir n'est pas déclaré dans Câbles (les readers internes attendent du planar) ; nom + flowId exposés sur /state et :8080.",
+      "Requiert bobi-compute:0.10 pour le chemin SIMD (repli numpy sinon)."
+    ],
+    "Bugs connus": []
+  }
+}

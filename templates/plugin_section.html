@@ -1,0 +1,1197 @@
+{% extends "layout.html" %}
+{% block title %}{{ section_label }} — Bobi.Studio{% endblock %}
+
+{# Shell générique de rubrique de plugins (Traitements, Médias, …) : onglets par type
+   (bascule par #hash, sans reload) + sidebar d'instances (badge version + mini-aperçu
+   optionnel via MXLPlugins[type].listPreview) + zone de montage de l'UI de contrôle du
+   plugin (control.html/js/css servis par /api/plugins/<type>/ui). Un seul template pour
+   toutes les rubriques ; les types sont injectés via `plugins`. #}
+{% set has_mv = plugins | selectattr('type', 'equalto', 'multiview') | list %}
+{% set is_medias = (page == 'medias') %}
+
+{% block head %}
+{% if has_mv %}<link rel="stylesheet" href="/api/plugins/multiview/ui/extra_css">{% endif %}
+<style>
+.tp-cols { display:grid; grid-template-columns:minmax(220px,280px) 1fr; gap:14px; align-items:start; margin-top:14px; }
+.tp-side { border:1px solid var(--border-soft); border-radius:6px; padding:8px; }
+.tp-side h3 { margin:0 0 8px; font-size:0.95em; }
+.tp-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:2px; }
+.tp-inst { display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:6px 8px;
+    border-radius:4px; background:transparent; border:1px solid transparent; color:var(--text);
+    font:inherit; font-size:0.92em; cursor:pointer; }
+.tp-inst:hover { background:var(--bg-hover, var(--border-soft)); }
+.tp-inst.active { background:var(--bg-selected); border-color:var(--border); font-weight:600; }
+.tp-inst-main { flex:1; min-width:0; }
+.tp-inst-status { display:block; color:var(--text-muted); font-weight:400; font-size:0.85em; }
+/* Version du plugin telle que déployée SUR CE container (peut différer d'un container à
+   l'autre). Affichée par instance, jamais dans le titre d'onglet. */
+.tp-inst-ver { font-size:0.7em; font-weight:400; padding:1px 6px; border-radius:3px;
+    background:var(--border-soft); color:var(--text-muted); font-family:var(--font-mono); flex-shrink:0; }
+/* Mini-aperçu optionnel par instance (hook MXLPlugins[type].listPreview), ex. schéma des
+   box DVE / disposition multiview. Cliquer l'aperçu sélectionne l'instance. */
+.tp-inst-preview { display:block; width:100%; margin:4px 0 2px; border-radius:4px;
+    background:var(--bg); border:1px solid var(--border-soft); cursor:pointer; }
+/* Réglages structurels (config_schema scope system, admin) : icône-action ⚙ en haut à
+   droite de la zone plugin (même vocabulaire que le ⚙ de la topnav : encadré 1px,
+   hover accent), popover sur la surface élevée du thème. */
+.tp-main { position:relative; min-width:0; }
+.tp-settings-btn { position:absolute; top:8px; right:8px; z-index:5;
+    display:inline-flex; align-items:center; justify-content:center;
+    width:28px; height:28px;
+    background:var(--bg-elev); border:1px solid var(--border);
+    border-radius:var(--radius-small); color:var(--text-muted);
+    font-size:0.95em; cursor:pointer;
+    transition:border-color 120ms, color 120ms, background 120ms; }
+/* le display d'auteur ci-dessus écrase le [hidden] du style UA → le réaffirmer */
+.tp-settings-btn[hidden] { display:none; }
+.tp-settings-btn:hover { border-color:var(--accent); color:var(--accent); }
+.tp-settings-btn[aria-expanded="true"] { border-color:var(--accent); color:var(--accent);
+    background:var(--bg-selected); }
+.tp-settings-btn:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.tp-settings-pop { position:absolute; top:42px; right:8px; z-index:6; width:300px; max-width:90%;
+    max-height:70vh; overflow-y:auto;
+    background:var(--bg-elev); border:1px solid var(--border);
+    border-radius:var(--radius); padding:var(--space-3);
+    box-shadow:var(--shadow);
+    animation:tp-pop-in 140ms cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes tp-pop-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+.tp-settings-body { display:flex; flex-direction:column; gap:var(--space-2); }
+.tp-settings-body .palette-field, .tp-settings-body .palette-field-check { margin:var(--space-1) 0; }
+.tp-settings-hint { font-size:0.8em; color:var(--text-muted); }
+.tp-settings-status { font-size:0.82em; min-height:1.2em; }
+.tp-settings-status.ok  { color:var(--status-running-fg); }
+.tp-settings-status.err { color:var(--status-stopped-fg); }
+.tp-mount { border:1px solid var(--border-soft); border-radius:6px; padding:14px; min-height:300px; }
+.tp-mount.empty { display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
+.toast-host { position:fixed; bottom:18px; right:18px; display:flex; flex-direction:column; gap:8px; z-index:300; }
+.toast { padding:10px 14px; border-radius:6px; font-size:0.9em; box-shadow:0 4px 16px rgba(0,0,0,0.3); max-width:380px; }
+.toast.info { background:var(--accent-soft); color:var(--accent); }
+.toast.warning { background:var(--status-warning-bg); color:var(--status-warning-fg); }
+.toast.error { background:var(--status-stopped-bg); color:var(--status-stopped-fg); }
+{% if is_medias %}
+/* ── Bibliothèque clips ─────────────────────────────────── */
+.mxl-lib { margin-top:22px; border:1px solid var(--border-soft); border-radius:6px; padding:14px; }
+.mxl-lib-header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.mxl-lib-header h2 { margin:0; font-size:1em; font-weight:600; }
+.mxl-lib-meta { color:var(--text-muted); font-size:0.82em; }
+.mxl-lib-search { margin-left:auto; background:var(--bg-panel); color:var(--text);
+    border:1px solid var(--border-soft); border-radius:4px; padding:5px 9px;
+    font-size:0.85em; min-width:180px; }
+.mxl-lib-refresh { background:none; border:none; color:var(--text-muted);
+    cursor:pointer; font-size:1em; padding:0 4px; }
+.mxl-lib-refresh:hover { color:var(--text); }
+.mxl-lib-sort { display:flex; gap:0; border-bottom:1px solid var(--border-soft); padding-bottom:6px; margin-bottom:4px; }
+.mxl-lib-sort button { background:none; border:none; color:var(--text-muted); cursor:pointer;
+    font-size:0.78em; padding:3px 8px; border-radius:3px; font-family:var(--font-mono); }
+.mxl-lib-sort button.active { color:var(--text); background:var(--bg-panel); }
+.mxl-lib-list { display:flex; flex-direction:column; gap:3px; max-height:480px; overflow-y:auto; }
+.mxl-lib-empty { font-size:0.85em; color:var(--text-muted); padding:12px 0; text-align:center; }
+.mxl-clip-row { display:grid;
+    grid-template-columns: minmax(0,1fr) 130px 70px 80px 130px 80px;
+    align-items:center; gap:10px;
+    padding:6px 10px; border-radius:4px;
+    background:var(--bg-card);
+    font-family:var(--font-mono); font-size:0.8em; }
+.mxl-clip-row:hover { background:var(--bg-panel); }
+.mxl-clip-row.live { outline:1px solid #f87171; }
+.mxl-clip-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
+.mxl-clip-source { color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mxl-clip-dur { color:var(--text-muted); white-space:nowrap; }
+.mxl-clip-size, .mxl-clip-date { color:var(--text-muted); white-space:nowrap; }
+.mxl-clip-del { justify-self:end; background:none; border:1px solid var(--border-soft);
+    color:var(--text-muted); border-radius:3px; padding:2px 8px; cursor:pointer;
+    font-size:0.85em; white-space:nowrap; font-family:inherit; }
+.mxl-clip-del:hover { border-color:#f87171; color:#f87171; }
+.mxl-clip-live-badge { padding:1px 5px; border-radius:3px; background:#f87171;
+    color:#000; font-size:0.75em; font-weight:600; }
+{% endif %}
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap">
+  <h1 style="margin:0 auto 0 0">{{ section_label }}</h1>
+  {% if is_medias and has_perm('media.manage') %}
+  <div class="tabs" id="medias-mode">
+    <button class="tab active" id="medias-mode-plugins" onclick="mediasMode('plugins')">{{ _('section.medias.mode_plugins') }}</button>
+    <button class="tab" id="medias-mode-manager" onclick="mediasMode('manager')">{{ _('section.medias.mode_manager') }}</button>
+  </div>
+  {% endif %}
+</div>
+<div id="medias-plugins-view">
+<div class="tabs" id="ps-tabs">
+  {# Repliable par construction : une SEULE ligne dans le flux (la synthèse), et le détail en
+     SURCOUCHE absolue. Un panneau déplié ne doit jamais décaler la page — l'utilisateur consulte
+     ses ressources en réglant son conteneur, pas l'inverse. #}
+  <div class="res-compact" id="res-compact" hidden>
+    <button type="button" class="res-compact-toggle" id="res-compact-toggle"
+            aria-expanded="false" aria-controls="res-compact-panel">
+      <span class="res-compact-mini" id="res-compact-mini"></span>
+      <span class="res-compact-sum" id="res-compact-sum">—</span>
+      <span class="res-compact-caret" aria-hidden="true">▾</span>
+    </button>
+    <div class="res-compact-panel" id="res-compact-panel" hidden>
+      <div class="res-compact-head">
+        <h3 id="res-compact-title">{{ _('containers.ressources.compact_title') }}</h3>
+        <button type="button" class="btn btn-green" id="res-compact-calibrate" style="padding:2px 10px; font-size:0.8em"
+                title="{{ _('containers.ressources.calibrate_need_perm') }}">{{ _('containers.ressources.calibrate_btn') }}</button>
+      </div>
+      <span class="res-compact-chrono" id="res-compact-chrono" hidden></span>
+      <div class="res-compact-list" id="res-compact-list"></div>
+    </div>
+  </div>
+</div>
+<div class="tp-cols">
+    <nav class="tp-side" aria-label="{{ _('section.instances_aria') }}">
+        <h3 id="ps-side-title">{{ _('section.deployed') }}</h3>
+        <ul class="tp-list" id="tp-list"><li class="meta">{{ _('section.loading') }}</li></ul>
+        <button type="button" class="btn" style="width:100%; margin-top:8px"
+                id="tp-monitor" hidden onclick="tpMonitor()">{{ _('section.monitoring') }}</button>
+    </nav>
+    <section class="tp-main">
+        <!-- LIEN PUBLIC — fonction d'ORCHESTRATEUR, offerte à tout plugin qui déclare
+             `ui.public_page`. Elle est ici et pas dans la console d'un plugin : c'est un
+             mécanisme du produit, et l'écrire dans un plugin garantirait qu'on le recopie au
+             suivant (l'éditeur de layout en est à sa quatrième copie). -->
+        <button type="button" class="tp-settings-btn" id="tp-public-btn" hidden
+                style="right:52px"
+                title="{{ _('section.public_btn_title') }}"
+                aria-label="{{ _('section.public_btn_title') }}"
+                aria-haspopup="true" aria-expanded="false"
+                aria-controls="tp-public"><span aria-hidden="true">🔗</span></button>
+        <div class="tp-settings-pop" id="tp-public" hidden style="right:52px">
+            <div class="tp-settings-body" id="tp-public-body"></div>
+        </div>
+        <button type="button" class="tp-settings-btn" id="tp-settings-btn" hidden
+                title="{{ _('section.settings_btn_title') }}"
+                aria-label="{{ _('section.settings_btn_title') }}"
+                aria-haspopup="true" aria-expanded="false"
+                aria-controls="tp-settings"><span aria-hidden="true">⚙</span></button>
+        <div class="tp-settings-pop" id="tp-settings" hidden>
+            <div class="tp-settings-body"></div>
+        </div>
+        <div class="tp-mount empty" id="tp-mount" aria-live="polite">
+            <div>{{ _('section.pick_hint') }}</div>
+        </div>
+    </section>
+</div>
+<div class="toast-host" id="toast-host" role="status" aria-live="polite"></div>
+
+{% if is_medias %}
+<section class="mxl-lib" id="mxl-lib" aria-label="{{ _('section.lib_aria') }}">
+  <div class="mxl-lib-header">
+    <h2>{{ _('section.lib_title') }}</h2>
+    <span class="mxl-lib-meta" id="mxl-lib-count"></span>
+    <input class="mxl-lib-search" id="mxl-lib-search" placeholder="{{ _('section.lib_filter') }}" autocomplete="off">
+    <button class="mxl-lib-refresh" id="mxl-lib-refresh" title="{{ _('section.refresh') }}">↺</button>
+  </div>
+  <div class="mxl-lib-sort">
+    <button data-sort="date" class="active">{{ _('section.sort_date') }} ↓</button>
+    <button data-sort="name">{{ _('section.sort_name') }}</button>
+    <button data-sort="size">{{ _('section.sort_size') }}</button>
+    <button data-sort="source">{{ _('section.sort_source') }}</button>
+  </div>
+  <div class="mxl-lib-list" id="mxl-lib-list">
+    <div class="mxl-lib-empty">{{ _('section.loading') }}</div>
+  </div>
+</section>
+{% endif %}
+</div><!-- /medias-plugins-view -->
+{% if is_medias and has_perm('media.manage') %}
+<div id="medias-mgr-view" hidden>
+{% include 'media_manager/embed.html' %}
+</div>
+<script>
+let _mgrLoaded = false;
+function mediasMode(m){
+  const pv=document.getElementById('medias-plugins-view'), mv=document.getElementById('medias-mgr-view');
+  const onP=(m!=='manager');
+  if(pv)pv.hidden=!onP; if(mv)mv.hidden=onP;
+  const bp=document.getElementById('medias-mode-plugins'), bm=document.getElementById('medias-mode-manager');
+  if(bp)bp.classList.toggle('active',onP); if(bm)bm.classList.toggle('active',!onP);
+  if(!onP && !_mgrLoaded && window.mmLoad){ _mgrLoaded=true; mmLoad(); }
+}
+</script>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if has_mv %}<script src="/api/plugins/multiview/ui/extra_js"></script>{% endif %}
+{% if extra_tabs %}<script src="/static/io2110.js?v={{ asset_v('io2110.js') }}"></script>{% endif %}
+<script>
+const SECTION_PLUGINS = {{ plugins | tojson }};   // [{type, label, version, …}, …] triés
+// ── LIEN PUBLIC ────────────────────────────────────────────────────────────────────────────
+// Le bouton n'apparaît que pour les types qui DÉCLARENT savoir se monter en page publique.
+// Le proposer partout créerait des liens qui s'ouvrent sur une console appelant l'API privée :
+// 401 en boucle, et personne pour l'expliquer à qui a reçu le lien.
+let _tpPublicVmid = null, _tpPublicCidrs = null;
+
+function tpPublicSupporte(type) {
+    // Le drapeau vit dans `ui` du manifeste, pas à la racine : `_plugin_public` renvoie le
+    // manifeste tel quel, et le lire à la racine rendrait TOUJOURS faux — bouton jamais
+    // affiché, sans erreur, donc une fonction perdue en silence.
+    const p = (SECTION_PLUGINS || []).find(x => x.type === type);
+    return !!(p && p.ui && p.ui.public_page);
+}
+
+function tpPublicMaj(it) {
+    const b = document.getElementById('tp-public-btn');
+    if (!b) return;
+    _tpPublicVmid = it ? it.vmid : null;
+    b.hidden = !(it && tpPublicSupporte(it.type));
+    const pop = document.getElementById('tp-public');
+    if (pop && !pop.hidden) tpPublicCharger();
+}
+
+async function tpPublicCharger() {
+    const body = document.getElementById('tp-public-body');
+    if (!body || !_tpPublicVmid) return;
+    body.innerHTML = '<p class="meta">…</p>';
+    let liens = [];
+    try {
+        const r = await fetch('/api/containers/' + _tpPublicVmid + '/share_page');
+        liens = await r.json();
+    } catch (e) { liens = []; }
+    let h = '<p class="meta" style="margin-top:0">' +
+        psEsc({{ _('section.public_help') | tojson }}) + '</p>' +
+        '<div style="display:flex;gap:6px;margin-bottom:8px">' +
+        '<input type="text" class="ctl-input" id="tp-public-titre" style="flex:1" placeholder="' +
+        psEsc({{ _('section.public_title_ph') | tojson }}) + '">' +
+        '<button type="button" class="btn btn-green" onclick="tpPublicCreer()">' +
+        psEsc({{ _('section.public_create') | tojson }}) + '</button></div>' +
+        // RESTREINDRE DÈS LA NAISSANCE. Créer d'abord, restreindre après, laisse une fenêtre
+        // pendant laquelle le lien est ouvert à tous — courte, mais c'est le genre de fenêtre
+        // qu'on oublie de refermer.
+        //
+        // ★ LE MÊME CONTRÔLE QU'À LA PAGE RÉGLAGES. Un champ texte ici et des puces là-bas
+        // pour LA MÊME donnée, c'est deux vocabulaires de formulaire dans un produit — le
+        // défaut qui fait douter du reste de l'interface.
+        '<div id="tp-public-cidrs" style="margin-bottom:var(--space-2)"></div>';
+    if (!liens.length) {
+        h += '<p class="meta">' + psEsc({{ _('section.public_none') | tojson }}) + '</p>';
+    } else {
+        h += liens.map(l =>
+            '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px">' +
+            '<input type="text" readonly style="flex:1;font-size:.85em" value="' +
+            psEsc(l.url) + '" onclick="this.select()">' +
+            (l.cidrs ? '<span class="badge" title="' + psEsc(l.cidrs) + '">🔒</span>' : '') +
+            '<button type="button" class="btn" onclick="tpPublicCopier(this)">⧉</button>' +
+            '<button type="button" class="btn" onclick="tpPublicRevoquer(\'' +
+            psEsc(l.token) + '\')" title="' +
+            psEsc({{ _('section.public_revoke') | tojson }}) + '">✕</button></div>').join('');
+    }
+    body.innerHTML = h;
+    const zc = document.getElementById('tp-public-cidrs');
+    if (zc && window.MXLControls) {
+        _tpPublicCidrs = MXLControls.cidrList(zc, {
+            vide: {{ _('section.public_cidrs_ph') | tojson }},
+            ajouter: {{ _('section.public_add') | tojson }},
+        });
+    }
+}
+
+async function tpPublicCreer() {
+    const t = document.getElementById('tp-public-titre');
+    try {
+        const r = await fetch('/api/containers/' + _tpPublicVmid + '/share_page', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: (t && t.value) || '',
+                                   cidrs: _tpPublicCidrs ? _tpPublicCidrs.value() : '' }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        tpPublicCharger();
+    } catch (e) { if (window.toast) window.toast(String(e.message || e), 'error'); }
+}
+
+function tpPublicCopier(btn) {
+    const inp = btn.parentElement.querySelector('input');
+    if (!inp) return;
+    inp.select();
+    // ★ LE HELPER GLOBAL `copierTexte`, pas `navigator.clipboard` en direct : celui-ci n'existe
+    // qu'en contexte SÉCURISÉ, et cet orchestrateur tourne couramment en HTTP clair sur le LAN.
+    // Ma première écriture échouait donc en silence là où elle sert le plus.
+    window.copierTexte(inp.value).then(ok => {
+        if (window.toast) {
+            window.toast(ok ? {{ _('section.public_copied') | tojson }}
+                            : {{ _('section.public_copy_failed') | tojson }},
+                         ok ? 'info' : 'error');
+        }
+    });
+}
+
+async function tpPublicRevoquer(token) {
+    // ⚠ RÉVOQUER EST DÉFINITIF ET IMMÉDIAT : le lien cesse de fonctionner pour tout le monde,
+    // y compris pour qui est en train de le regarder. On demande confirmation.
+    if (!confirm({{ _('section.public_revoke_confirm') | tojson }})) return;
+    try { await fetch('/api/share/' + encodeURIComponent(token), { method: 'DELETE' }); }
+    catch (e) { /* la liste se rechargera de toute façon */ }
+    tpPublicCharger();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const b = document.getElementById('tp-public-btn'), pop = document.getElementById('tp-public');
+    if (!b || !pop) return;
+    b.addEventListener('click', () => {
+        const ouvert = pop.hidden;
+        pop.hidden = !ouvert;
+        b.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+        if (ouvert) tpPublicCharger();
+    });
+});
+
+// Réglages structurels (config_schema scope "system") : popover ⚙ admin. Les champs
+// scope "user" ne sont rendus nulle part ici — l'UI de contrôle du plugin les couvre.
+const PS_SCHEMAS    = {{ plugin_config_schemas | tojson }};
+const PS_CAN_DEPLOY = {{ has_perm('containers.deploy') | tojson }};
+const EXTRA_TABS = {{ extra_tabs | default([]) | tojson }};   // onglets custom (non-plugin), ex. 2110
+const PS_SECTION = {{ section_id | tojson }};   // id de la rubrique (traitements, medias, …)
+const PS_LAST_TAB_KEY = 'ps-last-tab:' + PS_SECTION;   // dernier onglet visité (par rubrique)
+const _isCustomTab = (t) => EXTRA_TABS.some(x => x.id === t);
+const _psTabValid = (t) => SECTION_PLUGINS.some(p => p.type === t) || _isCustomTab(t);
+// Hash composite « #<type>/<vmid> » (même patron que settings.html). Le vmid est OPTIONNEL :
+// sans lui on retombe sur le comportement historique (1re instance du type). Il porte le
+// raccourci de la page Câbles, qui doit ouvrir LE conteneur cliqué et pas un homonyme de type.
+function _psParseHash(h){
+    h = String(h||'').replace(/^#/,'');
+    const i = h.indexOf('/');
+    if(i < 0) return {type: h, vmid: null};
+    const v = parseInt(h.slice(i+1), 10);
+    return {type: h.slice(0,i), vmid: Number.isFinite(v) ? v : null};
+}
+let TP_TYPE = null;          // type actif (onglet courant)
+let TP_LABEL = '';
+let tpSelectedVmid = null;
+let tpWantVmid = null;       // vmid demandé par le hash, consommé au prochain tpLoadInstances
+let tpItems = [];            // instances du type actif (source de tpSelectInstance)
+window.MXLPlugins = window.MXLPlugins || {};
+
+function psEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function tpToast(msg, kind='info'){
+    const host=document.getElementById('toast-host');
+    const el=document.createElement('div'); el.className='toast '+kind; el.textContent=msg;
+    host.appendChild(el); setTimeout(()=>el.remove(), 4000);
+}
+function tpMonitor(){ if(tpSelectedVmid!=null && window.MXLMonitor) MXLMonitor.monitorVmid(tpSelectedVmid); }
+
+// Chargement idempotent des assets d'un plugin, keyé par (type@version, kind).
+// Si vmid est fourni, les assets sont chargés avec ?vmid=X pour servir la bonne version archivée.
+// Quand la version change pour un type, les anciens tags sont purgés et remplacés.
+function tpEnsureAsset(type, kind, vmid, version){
+    const vtag = type+'@'+(version||'current');
+    const domId='plugin-'+kind+'-'+vtag.replace(/[^a-zA-Z0-9_-]/g,'_');
+    if(document.getElementById(domId)) return Promise.resolve();
+    // Purger l'asset du même (type, kind) pour une autre version
+    document.querySelectorAll('[data-mxl-type="'+type+'"][data-mxl-kind="'+kind+'"]')
+            .forEach(el=>el.remove());
+    const qs = vmid ? '?vmid='+vmid : '';
+    return new Promise(res=>{
+        let el;
+        if(kind==='js'){ el=document.createElement('script'); el.src='/api/plugins/'+type+'/ui/js'+qs; }
+        else { el=document.createElement('link'); el.rel='stylesheet'; el.href='/api/plugins/'+type+'/ui/css'+qs; }
+        el.id=domId; el.dataset.mxlType=type; el.dataset.mxlKind=kind;
+        el.onload=()=>res(); el.onerror=()=>res();
+        document.head.appendChild(el);
+    });
+}
+
+async function tpMount(inst, mountEl){
+    // Démonte proprement l'instance précédente (timers de polling, resize, etc.).
+    try { window.MXLPlugins[TP_TYPE] && window.MXLPlugins[TP_TYPE].unmount && window.MXLPlugins[TP_TYPE].unmount(); } catch(_){}
+    // La feuille de style d'un plugin DÉMONTÉ doit partir avec lui. Sans ça elle restait dans le
+    // <head> pour toute la session : deux plugins qui partagent un nom de classe (cas vécu
+    // split ↔ color_corrector, 12 classes .cc-* communes) se recouvraient selon l'ORDRE de
+    // consultation, et le dernier chargé gagnait. Silencieux tant que les règles sont identiques,
+    // et indébogable le jour où l'une diverge.
+    document.querySelectorAll('link[data-mxl-kind="css"]').forEach(function(el){
+        if (el.dataset.mxlType !== TP_TYPE) el.remove();
+    });
+    mountEl.classList.remove('empty');
+    mountEl.innerHTML='<div class="meta">'+window.t('section.loading')+'</div>';
+    const vmid = inst ? inst.vmid : null;
+    const version = inst ? inst.version : null;
+    let html='';
+    const htmlQs = vmid ? '?vmid='+vmid : '';
+    try { html = await (await fetch('/api/plugins/'+TP_TYPE+'/ui/html'+htmlQs)).text(); }
+    catch(e){ mountEl.innerHTML='<div class="meta">'+window.t('section.fragment_missing')+'</div>'; return; }
+    mountEl.innerHTML = html;
+    await tpEnsureAsset(TP_TYPE,'css',vmid,version);
+    await tpEnsureAsset(TP_TYPE,'js',vmid,version);
+    const api = window.MXLPlugins[TP_TYPE];
+    if(api && typeof api.mount==='function'){
+        try { api.mount(mountEl, inst.vmid, {toast:tpToast, type:TP_TYPE, instance:inst}); }
+        catch(e){ console.error(e); tpToast(window.t('section.mount_error')+' '+e.message,'error'); }
+    } else {
+        mountEl.innerHTML='<div class="meta">'+window.t('section.no_ui')+'</div>';
+    }
+}
+
+// Sélectionne (et MONTE) une instance de la liste. Extrait du handler de clic pour être appelable
+// par le deep-link « #<type>/<vmid> » : poser tpSelectedVmid ne suffit pas — sans passer ici, la
+// vignette prend juste la classe .active et rien n'est monté.
+function tpSelectInstance(vmid){
+    const it = tpItems.find(x => +x.vmid === +vmid);
+    if(!it) return false;
+    const list=document.getElementById('tp-list');
+    tpSelectedVmid=it.vmid;
+    list.querySelectorAll('.tp-inst').forEach(b=>b.classList.toggle('active', +b.dataset.vmid===it.vmid));
+    tpPublicMaj(it);
+    const btn=list.querySelector('.tp-inst[data-vmid="'+it.vmid+'"]');
+    if(btn && btn.scrollIntoView) btn.scrollIntoView({block:'nearest'});
+    document.getElementById('tp-monitor').hidden=false;
+    tpMount(it, document.getElementById('tp-mount'));
+    tpRenderSettings(it);
+    return true;
+}
+
+// Charge la liste d'instances du type ACTIF + assets (eager, pour listPreview).
+async function tpLoadInstances(){
+    if(!TP_TYPE) return;
+    const type=TP_TYPE;
+    const list=document.getElementById('tp-list');
+    let items=[];
+    try { items = await (await fetch('/api/plugins/instances?type='+type)).json(); }
+    catch(e){ items=[]; }
+    if(type!==TP_TYPE) return;   // l'utilisateur a changé d'onglet entre-temps
+    await tpEnsureAsset(type,'css',null,null); await tpEnsureAsset(type,'js',null,null);
+    if(type!==TP_TYPE) return;
+    const preview = (window.MXLPlugins[type] || {}).listPreview;
+    list.innerHTML='';
+    tpItems=items;
+    if(!items.length){ list.innerHTML='<li class="meta">'+psEsc(window.t('section.none_deployed').replace('{label}',TP_LABEL))+'</li>'; tpSelectedVmid=null; tpWantVmid=null; tpRenderSettings(null); return; }
+    items.forEach(it=>{
+        const li=document.createElement('li');
+        const btn=document.createElement('button'); btn.type='button'; btn.className='tp-inst'; btn.dataset.vmid=it.vmid;
+        if(it.vmid===tpSelectedVmid) btn.classList.add('active');
+        btn.innerHTML='<span class="tp-inst-main">'+psEsc(it.hostname||('#'+it.vmid))+' #'+it.vmid+
+            '<span class="tp-inst-status">'+psEsc(it.status||'?')+'</span></span>'+
+            '<span class="tp-inst-ver">v'+psEsc(it.version||'?')+'</span>';
+        btn.onclick=()=>tpSelectInstance(it.vmid);
+        li.appendChild(btn);
+        if(typeof preview==='function'){
+            const cv=document.createElement('canvas'); cv.className='tp-inst-preview'; cv.dataset.vmid=it.vmid;
+            cv.onclick=()=>btn.click();
+            li.appendChild(cv);
+            requestAnimationFrame(()=>{ try{ preview(cv, it); }catch(_){} });
+        }
+        list.appendChild(li);
+    });
+    // Deep-link : le vmid demandé gagne, une seule fois (consommé ici — un rechargement de liste
+    // ultérieur, p.ex. après déploiement, ne doit pas re-sauter dessus). Vmid inconnu (conteneur
+    // détruit, mauvais type) → repli silencieux sur la 1re instance, comme avant.
+    const want=tpWantVmid; tpWantVmid=null;
+    if(want!=null && tpSelectInstance(want)) return;
+    if(tpSelectedVmid==null) tpSelectInstance(items[0].vmid);
+}
+window.tpLoadInstances = tpLoadInstances;   // appelé par multiview.js après déploiement
+
+// Rafraîchit l'aperçu d'une instance dans la sidebar (utilisé p.ex. par split).
+window.tpRefreshPreview = function(vmid){
+    const fn=(window.MXLPlugins[TP_TYPE]||{}).listPreview;
+    if(typeof fn!=='function') return;
+    const cv=document.querySelector('.tp-inst-preview[data-vmid="'+vmid+'"]');
+    if(cv) try{ fn(cv, {vmid:Number(vmid)}); }catch(_){}
+};
+
+// ── Panneau Réglages (config_schema scopé user/system) ──────────────────────
+// Mini-renderer autonome (scripts.js n'est pas chargé ici) ; mêmes conventions
+// data-cf/data-cft que la palette de la page Containers.
+function psFieldHtml(f){
+    const k=psEsc(f.key), lbl=psEsc(f.label||f.key);
+    const ph=f.placeholder!=null?' placeholder="'+psEsc(f.placeholder)+'"':'';
+    const val=(f.default!=null)?' value="'+psEsc(f.default)+'"':'';
+    // Texte d'aide du champ (config_schema `help`) : rendu sous le champ (aligné palette).
+    const help=f.help?'<small class="meta">'+psEsc(f.help)+'</small>':'';
+    if(f.type==='checkbox'||f.type==='bool')   // bool = alias (schémas récents)
+        return '<div class="palette-field-check" data-cf-wrap="'+k+'"><label>'
+            +'<input type="checkbox" class="ios-toggle" data-cf="'+k+'" data-cft="checkbox"'+(f.default?' checked':'')+'> '+lbl+'</label>'+help+'</div>';
+    let input;
+    if(f.type==='number'){
+        const a=[f.min!=null?'min="'+psEsc(f.min)+'"':'', f.max!=null?'max="'+psEsc(f.max)+'"':'',
+                 f.step!=null?'step="'+psEsc(f.step)+'"':''].join(' ');
+        input='<input type="number" data-cf="'+k+'" data-cft="number" '+a+ph+val+'>';
+    } else if(f.type==='multiselect'){
+        // Même contrat que la palette (scripts.js), et le MÊME contrôle de catalogue : un champ
+        // rendu différemment ici et là donnerait deux comportements pour un seul réglage, selon
+        // la page d'où on l'ouvre. Le montage suit l'insertion du HTML (cf. psMonter).
+        input='<div data-cf="'+k+'" data-cft="multiselect" data-cf-opts="'
+            +psEsc(JSON.stringify({o:f.options||[], v:f.default||[]}))+'"></div>';
+    } else if(f.type==='select'){
+        const opts=(f.options||[]).map(o=>'<option value="'+psEsc(o.value)+'"'
+            +((f.default!=null&&String(o.value)===String(f.default))?' selected':'')+'>'
+            +psEsc(o.label||o.value)+'</option>').join('');
+        input='<select data-cf="'+k+'" data-cft="select">'+opts+'</select>';
+    } else {
+        input='<input type="text" data-cf="'+k+'" data-cft="text"'+ph+val+'>';
+    }
+    return '<div class="palette-field" data-cf-wrap="'+k+'"><label>'+lbl+'</label>'+input+help+'</div>';
+}
+// Monte les contrôles de catalogue — à appeler APRÈS avoir posé le HTML. Même fonction que la
+// palette (`_montePluginFields` dans scripts.js), dupliquée parce que scripts.js n'est PAS chargé
+// sur les pages de plugin (cf. la note de `psFieldHtml`).
+function psMonter(box){
+    if(!box || !window.MXLControls) return;
+    box.querySelectorAll('[data-cft="multiselect"]').forEach(el=>{
+        if(el._ctl) return;
+        let d={o:[],v:[]};
+        try { d=JSON.parse(el.dataset.cfOpts||'{}'); } catch(e){ /* champ sans options */ }
+        el._ctl=window.MXLControls.chooseList(el,{
+            options:(d.o||[]).map(o=>({value:o.value,label:o.label||o.value})),
+            valeurs:Array.isArray(d.v)?d.v:(d.v?[d.v]:[]),
+            vide:'— aucun —', ajouter:'+ Ajouter…', tout:'tout est choisi'});
+    });
+}
+
+function psReadFields(box){
+    const out={};
+    box.querySelectorAll('[data-cf]').forEach(el=>{
+        const k=el.dataset.cf, t=el.dataset.cft;
+        if(t==='checkbox') out[k]=el.checked;
+        else if(t==='number'){ const v=parseFloat(el.value); if(!isNaN(v)) out[k]=v; }
+        else if(t==='multiselect') out[k]=el._ctl?el._ctl.value():[];
+        else out[k]=el.value;
+    });
+    return out;
+}
+function psApplyVisibility(box, schema){
+    const vals=psReadFields(box);
+    (schema||[]).forEach(f=>{
+        if(!f.visible_if) return;
+        const wrap=box.querySelector('[data-cf-wrap="'+CSS.escape(f.key)+'"]');
+        if(wrap) wrap.hidden=!Object.entries(f.visible_if).every(([k,v])=>
+            Array.isArray(v) ? v.some(x=>String(vals[k])===String(x)) : String(vals[k])===String(v));
+    });
+}
+
+// Champs système du type actif — les champs scope "user" ne sont PAS rendus ici :
+// ils sont déjà couverts par l'UI de contrôle du plugin (live). Un plugin dont l'UI
+// gère aussi sa structure (ex. composer multiview) opte out via manifest
+// `settings_panel: false`.
+// `hidden: true` = champ jamais rendu (aligné palette : scripts.js _paletteSchema) mais qui
+// reste dans le schema → coerce_config/déploiement/API inchangés (clés tranche, réglage
+// global Réglages → Vidéo).
+function psSystemFields(type_){
+    const t = type_ || TP_TYPE;
+    const pm=SECTION_PLUGINS.find(p=>p.type===t)||{};
+    if(pm.settings_panel===false) return [];
+    return (PS_SCHEMAS[t]||[]).filter(f=>!f.hidden && (f.scope||'system')!=='user');
+}
+
+// Onglets CUSTOM 2110 (Sources/Destinations 2110) : pas de sidebar d'instances, mais
+// le ⚙ du MOTEUR doit rester accessible (smpte_2022_7, tx_fallback… — un moteur par
+// nœud). On liste les moteurs et on ouvre le popover générique sur celui choisi.
+async function tpRenderSettingsEngine(){
+    const btn=document.getElementById('tp-settings-btn');
+    const pop=document.getElementById('tp-settings');
+    if(!btn||!pop) return;
+    pop.hidden=true; btn.setAttribute('aria-expanded','false');
+    const sysF=psSystemFields('2110_io');
+    btn.hidden=!(PS_CAN_DEPLOY && sysF.length && PS_SCHEMAS['2110_io']);
+    btn.onclick=btn.hidden?null:async ()=>{
+        if(!pop.hidden){ pop.hidden=true; btn.setAttribute('aria-expanded','false'); return; }
+        let insts=[];
+        try{ insts=await (await fetch('/api/plugins/instances?type=2110_io')).json(); }catch(_){}
+        if(!insts.length){ tpToast(window.t('section.none_deployed').replace('{label}','2110_io'),'error'); return; }
+        const open=(inst)=>tpToggleSettings(
+            {vmid:inst.vmid, version:inst.version, hostname:inst.hostname}, '2110_io',
+            insts.length>1?insts:null);
+        open(insts[0]);
+    };
+}
+
+// Affiche/masque le bouton ⚙ selon l'instance sélectionnée ; le popover est
+// construit à l'ouverture (fetch des params persistés à ce moment-là).
+function tpRenderSettings(inst){
+    const btn=document.getElementById('tp-settings-btn');
+    const pop=document.getElementById('tp-settings');
+    if(!btn||!pop) return;
+    pop.hidden=true; btn.setAttribute('aria-expanded','false');
+    pop.querySelector('.tp-settings-body').innerHTML='';
+    // ⚙ visible dès qu'on peut déployer : champs système ET/OU sauvegardes de config
+    // (ces dernières existent pour TOUS les types — décision 2026-07-05, cf. 2110_io).
+    btn.hidden=!(inst && PS_CAN_DEPLOY);
+    btn.onclick=btn.hidden?null:()=>tpToggleSettings(inst);
+}
+
+async function tpToggleSettings(inst, type_, engineList){
+    const btn=document.getElementById('tp-settings-btn');
+    const pop=document.getElementById('tp-settings');
+    if(!pop.hidden && !engineList){ pop.hidden=true; btn.setAttribute('aria-expanded','false'); return; }
+    const sysF=psSystemFields(type_);
+    const body=pop.querySelector('.tp-settings-body');
+    let params={};
+    try{
+        const rc=await fetch('/api/containers/'+inst.vmid+'/config');
+        if(!rc.ok) throw new Error('http '+rc.status);
+        const c=await rc.json();
+        const dc=(typeof c.deploy_config==='string')?JSON.parse(c.deploy_config||'{}'):(c.deploy_config||{});
+        params=(dc&&dc.params)||{};
+    }catch(_){
+        // Échec de lecture : ne pas rendre le formulaire avec des défauts qui écraseraient les params persistés.
+        if(!type_ && inst.vmid!==tpSelectedVmid) return;
+        body.innerHTML='<div class="tp-settings-status err">'+psEsc(window.t('section.settings_load_error'))+'</div>';
+        pop.hidden=false; btn.setAttribute('aria-expanded','true');
+        return;
+    }
+    // Sélection changée entre-temps (onglets génériques seulement : sur les onglets
+    // custom 2110, type_ est posé et il n'y a pas de sidebar → tpSelectedVmid=null).
+    if(!type_ && inst.vmid!==tpSelectedVmid) return;
+    const sysHtml = sysF.length
+        ? '<fieldset class="palette-group"><legend class="palette-group-title">'
+            +psEsc(window.t('section.settings_system'))+'</legend>'+sysF.map(psFieldHtml).join('')+'</fieldset>'
+          +'<div class="tp-settings-hint">'+psEsc(window.t('section.settings_redeploy_hint'))+'</div>'
+          +'<button type="button" class="btn btn-blue" id="tp-settings-apply">'+psEsc(window.t('section.settings_apply'))+'</button>'
+        : '';
+    // Sélecteur de MOTEUR (onglets custom 2110, plusieurs nœuds) : bascule le popover.
+    const engineSel = (engineList && engineList.length > 1)
+        ? '<div class="palette-field"><label>'+psEsc(window.t('section.engine_pick'))+'</label>'
+          +'<select id="tp-settings-engine">'+engineList.map(e=>
+              '<option value="'+e.vmid+'"'+(e.vmid===inst.vmid?' selected':'')+'>'
+              +psEsc(e.hostname||('#'+e.vmid))+'</option>').join('')+'</select></div>'
+        : '';
+    body.innerHTML= engineSel + sysHtml
+        +'<div class="tp-settings-status" id="tp-settings-status" role="status"></div>'
+        +'<fieldset class="palette-group"><legend class="palette-group-title">'
+            +psEsc(window.t('section.cfgsnap_title'))+'</legend>'
+            +'<div id="tp-cfgsnap-list" class="meta">…</div>'
+            +'<div style="display:flex;gap:var(--space-1);margin-top:var(--space-2)">'
+            +'<input type="text" id="tp-cfgsnap-name" placeholder="'+psEsc(window.t('section.cfgsnap_name_ph'))+'" style="flex:1;min-width:0">'
+            +'<button type="button" class="btn" onclick="psSnapSave('+inst.vmid+')">'+psEsc(window.t('section.cfgsnap_save'))+'</button>'
+            +'</div></fieldset>';
+    psMonter(body);   // les contrôles de catalogue se montent APRÈS l'insertion du HTML
+    psSnapsLoad(inst.vmid);
+    // Pré-remplir depuis les params persistés (deploy_config), puis visibilité conditionnelle.
+    body.querySelectorAll('[data-cf]').forEach(el=>{
+        const k=el.dataset.cf;
+        if(!(k in params)) return;
+        if(el.dataset.cft==='checkbox') el.checked=!!params[k]; else el.value=params[k];
+    });
+    body.querySelectorAll('[data-cf]').forEach(el=>
+        el.addEventListener('change',()=>psApplyVisibility(body, sysF)));
+    psApplyVisibility(body, sysF);
+    const applyBtn=document.getElementById('tp-settings-apply');
+    if(applyBtn) applyBtn.onclick=()=>tpApplySettings(inst.vmid, body);
+    const engSel=document.getElementById('tp-settings-engine');
+    if(engSel) engSel.onchange=()=>{
+        const e=(engineList||[]).find(x=>String(x.vmid)===engSel.value);
+        if(e) tpToggleSettings({vmid:e.vmid, version:e.version, hostname:e.hostname},
+                               type_, engineList);
+    };
+    pop.hidden=false; btn.setAttribute('aria-expanded','true');
+}
+
+// ── Sauvegardes de config par container (génériques ; clé pour le 2110_io) ──
+async function psSnapsLoad(vmid){
+    const host=document.getElementById('tp-cfgsnap-list');
+    if(!host) return;
+    try{
+        const r=await fetch('/api/containers/'+vmid+'/config_snapshots');
+        const snaps=r.ok?((await r.json()).snapshots||[]):[];
+        host.innerHTML=snaps.map(s=>
+            '<div style="display:flex;gap:var(--space-1);align-items:center;margin:2px 0">'
+            +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">'
+            +psEsc(s.name)+' <small class="meta">'+psEsc(s.created_at||'')+'</small></span>'
+            +'<button type="button" class="btn btn-orange" style="padding:2px 8px;font-size:0.8em" '
+            +'onclick="psSnapRestore('+vmid+','+s.id+')">'+psEsc(window.t('section.cfgsnap_restore'))+'</button>'
+            +'<button type="button" class="btn btn-red" style="padding:2px 8px;font-size:0.8em" '
+            +'onclick="psSnapDel('+vmid+','+s.id+')">✕</button></div>'
+        ).join('')||'<span class="meta">—</span>';
+    }catch(_){ host.textContent='—'; }
+}
+async function psSnapSave(vmid){
+    const name=(document.getElementById('tp-cfgsnap-name').value||'').trim();
+    if(!name) return;
+    const r=await fetch('/api/containers/'+vmid+'/config_snapshots',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+    if(!r.ok){ const j=await r.json().catch(()=>({})); tpToast(j.error||r.statusText,'error'); return; }
+    document.getElementById('tp-cfgsnap-name').value='';
+    tpToast(window.t('section.cfgsnap_saved'));
+    psSnapsLoad(vmid);
+}
+async function psSnapRestore(vmid, sid, confirmed){
+    const r=await fetch('/api/containers/'+vmid+'/config_snapshots/'+sid+'/restore',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(confirmed?{confirm:true}:{})});
+    const j=await r.json().catch(()=>({}));
+    if(r.status===409&&j.needs_confirm){
+        if(confirm((j.reason||'')+'\n\n'+window.t('section.cfgsnap_confirm')))
+            return psSnapRestore(vmid, sid, true);
+        return;
+    }
+    if(!r.ok){ tpToast(j.error||r.statusText,'error'); return; }
+    tpToast(window.t('section.cfgsnap_restoring'));
+}
+async function psSnapDel(vmid, sid){
+    await fetch('/api/containers/'+vmid+'/config_snapshots/'+sid,{method:'DELETE'});
+    psSnapsLoad(vmid);
+}
+
+// Fermer le popover au clic extérieur ou sur Échap.
+document.addEventListener('click',(e)=>{
+    const pop=document.getElementById('tp-settings');
+    const btn=document.getElementById('tp-settings-btn');
+    if(!pop||pop.hidden) return;
+    if(pop.contains(e.target)||btn.contains(e.target)) return;
+    pop.hidden=true; btn.setAttribute('aria-expanded','false');
+});
+document.addEventListener('keydown',(e)=>{
+    if(e.key!=='Escape') return;
+    const pop=document.getElementById('tp-settings');
+    if(pop&&!pop.hidden){ pop.hidden=true;
+        document.getElementById('tp-settings-btn').setAttribute('aria-expanded','false'); }
+});
+
+// Bornes du config_schema (min/max/step déjà posés en attributs HTML) : on refuse AVANT
+// d'envoyer, avec le message du navigateur. Le serveur revalide (plugins.validate_config) —
+// aucune valeur hors bornes n'est plus écrêtée en silence.
+function psValidateFields(box){
+    for(const el of box.querySelectorAll('[data-cf]')){
+        if(el.checkValidity()) continue;
+        const lbl=(el.closest('[data-cf-wrap]')||{}).querySelector
+            ? (el.closest('[data-cf-wrap]').querySelector('label')||{}).textContent : '';
+        el.reportValidity();
+        return ((lbl||el.dataset.cf).trim())+' : '+el.validationMessage;
+    }
+    return null;
+}
+
+async function tpApplySettings(vmid, body, confirmed){
+    const status=document.getElementById('tp-settings-status');
+    const applyBtn=document.getElementById('tp-settings-apply');
+    const bad=psValidateFields(body);
+    if(bad){ status.className='tp-settings-status err'; status.textContent='✕ '+bad; tpToast(bad,'error'); return; }
+    if(applyBtn) applyBtn.disabled=true;   // évite le double-clic / double redeploy
+    status.className='tp-settings-status'; status.textContent=window.t('section.settings_applying');
+    try{
+        const r=await fetch('/api/containers/'+vmid+'/plugin_config',{
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({params: psReadFields(body), confirm: !!confirmed}),
+        });
+        const j=await r.json().catch(()=>({}));
+        if(r.status===409 && j.needs_confirm){
+            status.textContent='';
+            if(applyBtn) applyBtn.disabled=false;   // réactivé avant le retry récursif
+            if(confirm(j.reason||'?')) return tpApplySettings(vmid, body, true);
+            return;
+        }
+        if(r.ok){
+            status.classList.add('ok'); status.textContent=window.t('section.settings_applied');
+            tpToast(window.t('section.settings_applied'),'info');
+        } else {
+            // 409 {error, pending:true} = redeploy déjà en cours : traité comme une erreur normale.
+            status.classList.add('err'); status.textContent='✕ '+(j.error||window.t('section.settings_error'));
+            tpToast(j.error||window.t('section.settings_error'),'error');
+        }
+    }catch(_){
+        status.classList.add('err'); status.textContent=window.t('section.settings_error');
+        tpToast(window.t('section.settings_error'),'error');
+    }finally{
+        if(applyBtn) applyBtn.disabled=false;
+        setTimeout(()=>{ status.textContent=''; status.className='tp-settings-status'; }, 5000);
+    }
+}
+
+// Bascule d'onglet (= type) sans reload, reflétée dans #hash (« #<type> » ou « #<type>/<vmid> »).
+async function activateTab(type, wantVmid){
+    if(!SECTION_PLUGINS.some(p=>p.type===type) && !_isCustomTab(type)) type=(SECTION_PLUGINS[0]||EXTRA_TABS[0]||{}).type || (EXTRA_TABS[0]||{}).id;
+    if(!type) return;
+    if(type===TP_TYPE){
+        // Même onglet : seul le vmid change (deep-link depuis Câbles vers une autre instance du
+        // type déjà affiché). Ne pas remonter tout l'onglet, juste re-sélectionner.
+        if(wantVmid==null) return;
+        if(_isCustomTab(type)){
+            const a=window.MXLPlugins[type];
+            if(a && typeof a.focus==='function') { try{ a.focus(wantVmid); }catch(_){} }
+        } else tpSelectInstance(wantVmid);
+        return;
+    }
+    try { window.MXLPlugins[TP_TYPE] && window.MXLPlugins[TP_TYPE].unmount && window.MXLPlugins[TP_TYPE].unmount(); } catch(_){}
+    // La feuille de style d'un plugin DÉMONTÉ doit partir avec lui. Sans ça elle restait dans le
+    // <head> pour toute la session : deux plugins qui partagent un nom de classe (cas vécu
+    // split ↔ color_corrector, 12 classes .cc-* communes) se recouvraient selon l'ORDRE de
+    // consultation, et le dernier chargé gagnait. Silencieux tant que les règles sont identiques,
+    // et indébogable le jour où l'une diverge.
+    document.querySelectorAll('link[data-mxl-kind="css"]').forEach(function(el){
+        if (el.dataset.mxlType !== TP_TYPE) el.remove();
+    });
+    TP_TYPE=type;
+    tpSelectedVmid=null;
+    tpItems=[];
+    tpWantVmid=(wantVmid==null?null:wantVmid);
+    try { localStorage.setItem(PS_LAST_TAB_KEY, type); } catch(_){}   // mémorise le dernier onglet de la rubrique
+    // Le hash doit GARDER le vmid : le réécrire en « #<type> » seul faisait retomber tout
+    // rechargement (F5, partage du lien) sur la 1re instance du type.
+    const _h='#'+type+(wantVmid==null?'':('/'+wantVmid));
+    if(history.replaceState) history.replaceState(null, '', _h); else location.hash=_h.slice(1);
+    document.querySelectorAll('#ps-tabs .tab').forEach(t=>t.classList.toggle('active', t.dataset.type===type));
+    const side=document.querySelector('.tp-side');
+    const mountEl=document.getElementById('tp-mount');
+    document.getElementById('tp-monitor').hidden=true;
+    tpRenderSettings(null);
+    if(_isCustomTab(type)) tpRenderSettingsEngine();   // ⚙ du moteur 2110 (réglages système)
+
+    if(_isCustomTab(type)){
+        // Onglet custom (vue 2110) : pas d'instances par-vmid → on masque la sidebar et on monte
+        // la vue NMOS-centric en pleine largeur.
+        TP_LABEL=(EXTRA_TABS.find(t=>t.id===type)||{}).label||type;
+        if(side) side.style.display='none';
+        const cols=document.querySelector('.tp-cols'); if(cols) cols.style.gridTemplateColumns='1fr';
+        mountEl.className='tp-mount'; mountEl.innerHTML='<div class="meta">'+window.t('section.loading')+'</div>';
+        const api=window.MXLPlugins[type];
+        if(api && typeof api.mount==='function'){
+            try { api.mount(mountEl, (wantVmid==null?null:wantVmid), {toast:tpToast, type}); }
+            catch(e){ console.error(e); mountEl.innerHTML='<div class="meta">'+psEsc(window.t('section.error')+' '+e.message)+'</div>'; }
+        } else { mountEl.innerHTML='<div class="meta">'+window.t('section.io_not_loaded')+'</div>'; }
+        return;
+    }
+
+    if(side) side.style.display='';
+    const cols=document.querySelector('.tp-cols'); if(cols) cols.style.gridTemplateColumns='';
+    const p=SECTION_PLUGINS.find(x=>x.type===type); TP_LABEL=p?p.label:type;
+    document.getElementById('ps-side-title').textContent = window.t('section.label_deployed').replace('{label}', TP_LABEL);
+    mountEl.className='tp-mount empty'; mountEl.innerHTML='<div>'+window.t('section.pick_hint')+'</div>';
+    await tpLoadInstances();
+}
+
+function psBuildTabs(){
+    const tabs=document.getElementById('ps-tabs');
+    const plug = SECTION_PLUGINS.map(p =>
+        '<button type="button" class="tab" data-type="'+psEsc(p.type)+'">'+psEsc(p.label)+'</button>').join('');
+    const extra = EXTRA_TABS.map(t =>
+        '<button type="button" class="tab tab-custom" data-type="'+psEsc(t.id)+'">'+psEsc(t.label)+'</button>').join('');
+    // ⚠ NE PAS écraser `innerHTML` : la barre d'onglets héberge aussi le widget de ressources.
+    // On ne retire que les onglets et on réinsère avant lui.
+    tabs.querySelectorAll('.tab').forEach(b => b.remove());
+    tabs.insertAdjacentHTML('afterbegin', plug + extra);
+    tabs.querySelectorAll('.tab').forEach(b => b.onclick=()=>activateTab(b.dataset.type));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    psBuildTabs();
+    const {type:h, vmid} = _psParseHash(location.hash);
+    // Priorité : #hash explicite (lien direct) → dernier onglet mémorisé → 1er onglet.
+    let last=''; try { last=localStorage.getItem(PS_LAST_TAB_KEY)||''; } catch(_){}
+    const ok = _psTabValid(h);
+    const target = ok ? h
+                 : (_psTabValid(last) ? last
+                 : ((SECTION_PLUGINS[0]||{}).type || (EXTRA_TABS[0]||{}).id));
+    activateTab(target, ok ? vmid : null);
+});
+window.addEventListener('hashchange', () => {
+    const {type:h, vmid} = _psParseHash(location.hash);
+    // Réagit aussi quand SEUL le vmid change (même onglet) : activateTab gère ce cas.
+    if(h) activateTab(h, vmid);
+});
+
+// ── Widget compact du moniteur de ressources CPU (window.MXLRessources, static/ressources.js) ──
+// Même brique que l'onglet Ressources de containers.html, filtrée sur le type d'onglet actif.
+// scripts.js n'est PAS chargé ici : tout le câblage est local.
+(function(){
+    let lastType = null, campaignTimer = null, chronoTimer = null, campaignDebut = null;
+    let items_of_type_cache = new Set();
+
+    async function refresh(){
+        const box = document.getElementById('res-compact');
+        if(!box || !TP_TYPE) return;
+        // Onglets custom (Sources/Destinations 2110) : pas un type de plugin filtrable côté
+        // /api/ressources (le moteur 2110_io est partagé par les deux) → le widget se tait plutôt
+        // que d'afficher une brique trompeuse.
+        if(typeof _isCustomTab === 'function' && _isCustomTab(TP_TYPE)){ box.hidden = true; return; }
+        box.hidden = false;
+        document.getElementById('res-compact-title').textContent =
+            window.t('containers.ressources.compact_title').replace('{label}', TP_LABEL || TP_TYPE);
+        const items = await MXLRessources.fetchRessources({type: TP_TYPE});
+        const list = document.getElementById('res-compact-list');
+        list.innerHTML = items.length
+            ? items.map(c => MXLRessources.brickHtml(c, {showActions:false})).join('')
+            : '<div class="res-compact-empty">'+window.t('containers.ressources.compact_none_running')+'</div>';
+        majSynthese(items);
+    }
+
+    // Synthèse d'une ligne : le CUMUL du type. C'est ce qu'on veut savoir d'un coup d'œil en
+    // réglant — « mes 3 multiviews prennent 4 cœurs sur les 6 réservés » — le détail vient au clic.
+    function majSynthese(items){
+        const mini = document.getElementById('res-compact-mini');
+        const sum  = document.getElementById('res-compact-sum');
+        if(!mini || !sum) return;
+        if(!items.length){ mini.innerHTML=''; sum.textContent = window.t('containers.ressources.compact_none_running'); return; }
+        const somme = (f) => items.reduce((a,c) => a + (f(c) || 0), 0);
+        const conso = somme(c => c.consomme_pct);
+        const reserve = somme(c => c.reserve_pct);
+        const pic = somme(c => c.mesure && c.mesure.max);
+        const axe = Math.max(reserve, conso, pic, 100) * 1.08;
+        // Même règle de couleur que la brique : on compare au PIC ÉTALONNÉ, jamais à un idéal.
+        let cls = 'res-fill-neutral';
+        if (reserve && conso >= 0.9 * reserve) cls = 'res-fill-danger';
+        else if (pic && conso > pic) cls = 'res-fill-warn';
+        else if (pic) cls = 'res-fill-ok';
+        mini.innerHTML = (reserve ? '<i class="res-bar-reserve" style="width:'+(reserve/axe*100)+'%"></i>' : '')
+            + '<i class="res-bar-fill '+cls+'" style="width:'+(conso/axe*100)+'%"></i>'
+            + (pic ? '<i class="res-bar-mark" style="left:'+(pic/axe*100)+'%"></i>' : '');
+        const avecGpu = items.filter(c => c.gpu_index != null);
+        const sm = avecGpu.reduce((a, c) => a + ((c.gpu_live && c.gpu_live.sm) || 0), 0);
+        // GPU dans la synthèse : la MESURE si la carte travaille, le simple décompte sinon. Un
+        // « GPU 0 % » là où rien n'est mesuré ferait croire la carte au repos.
+        const gpuTxt = !avecGpu.length ? ''
+            : (sm > 0 ? ' · ' + window.t('containers.ressources.gpu_short') + ' ' + Math.round(sm) + ' %'
+                      : ' · ' + window.t('containers.ressources.gpu_count').replace('{n}', avecGpu.length));
+        sum.textContent = MXLRessources.fmtCores(conso)
+            + (reserve ? ' / ' + MXLRessources.fmtCores(reserve) : ' · ' + window.t('containers.ressources.unreserved'))
+            + gpuTxt;
+    }
+
+    // Ouverture/fermeture du panneau. Fermeture au clic extérieur et à Échap : une surcouche qui
+    // ne se ferme pas gêne autant qu'un bloc qui décale.
+    (function(){
+        const t = document.getElementById('res-compact-toggle');
+        const p = document.getElementById('res-compact-panel');
+        if(!t || !p) return;
+        const setOuvert = (v) => { p.hidden = !v; t.setAttribute('aria-expanded', v ? 'true' : 'false'); };
+        t.addEventListener('click', (e) => { e.stopPropagation(); setOuvert(p.hidden); });
+        document.addEventListener('click', (e) => { if(!p.hidden && !p.contains(e.target)) setOuvert(false); });
+        document.addEventListener('keydown', (e) => { if(e.key === 'Escape') setOuvert(false); });
+    })();
+
+    function setCalibrateBtn(){
+        const btn = document.getElementById('res-compact-calibrate');
+        if(!btn) return;
+        if(!PS_CAN_DEPLOY){
+            btn.disabled = true;
+            btn.title = window.t('containers.ressources.calibrate_need_perm');
+            return;
+        }
+        btn.disabled = false;
+        btn.title = '';
+    }
+
+    function startChrono(debut){
+        campaignDebut = debut;
+        const el = document.getElementById('res-compact-chrono');
+        el.hidden = false;
+        if(chronoTimer) clearInterval(chronoTimer);
+        chronoTimer = setInterval(()=>{ el.textContent = MXLRessources.fmtChrono(Date.now()/1000 - campaignDebut); }, 1000);
+        const btn = document.getElementById('res-compact-calibrate');
+        btn.textContent = window.t('containers.ressources.stop');
+        btn.classList.remove('btn-green'); btn.classList.add('btn-orange');
+    }
+    function stopChrono(){
+        if(chronoTimer){ clearInterval(chronoTimer); chronoTimer=null; }
+        if(campaignTimer){ clearInterval(campaignTimer); campaignTimer=null; }
+        const el = document.getElementById('res-compact-chrono'); el.hidden = true;
+        const btn = document.getElementById('res-compact-calibrate');
+        btn.textContent = window.t('containers.ressources.calibrate_btn');
+        btn.classList.remove('btn-orange'); btn.classList.add('btn-green');
+    }
+
+    async function onCalibrateClick(){
+        const btn = document.getElementById('res-compact-calibrate');
+        if(btn.disabled) return;
+        const st = await MXLRessources.fetchState();
+        if(st.etat === 'en_cours'){
+            const r = await fetch('/api/etalonnage/stop', {method:'POST'});
+            const j = await r.json().catch(()=>({}));
+            stopChrono();
+            if(!r.ok || !j.ok){ tpToast(j.error||r.statusText, 'error'); return; }
+            const mine = (j.resultat.conteneurs||[]).filter(l => l.suffisant && l.vmid != null
+                && items_of_type_cache.has(l.vmid));
+            if(!mine.length){
+                // Dire CE QUI MANQUE. « Aucune mesure suffisante » n'apprend rien : l'utilisateur
+                // ne sait pas s'il doit exercer plus longtemps, changer de nœud, ou si c'est cassé.
+                const vus = (j.resultat.conteneurs||[]).filter(l => l.vmid != null && items_of_type_cache.has(l.vmid));
+                const pts = vus.reduce((a,l) => Math.max(a, (l.mesure&&l.mesure.n)||0), 0);
+                tpToast(window.t('containers.ressources.not_enough_points')
+                    .replace('{n}', pts).replace('{min}', j.resultat.min_points || 20)
+                    .replace('{s}', j.resultat.duree_min_s || 30)
+                    .replace('{d}', Math.round(j.resultat.duree_s || 0)), 'warning');
+                return;
+            }
+            const rs = await fetch('/api/etalonnage/save', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({vmids: mine.map(l=>l.vmid)})});
+            const js = await rs.json().catch(()=>({}));
+            if(rs.ok && js.ok) tpToast(window.t('containers.ressources.saved').replace('{n}', js.enregistres), 'info');
+            else tpToast(js.error||rs.statusText, 'error');
+            refresh();
+            return;
+        }
+        const items = await MXLRessources.fetchRessources({type: TP_TYPE});
+        items_of_type_cache = new Set(items.map(c=>c.vmid));
+        const nodeIds = [...new Set(items.map(c=>c.node_id).filter(Boolean))];
+        if(!nodeIds.length){ tpToast(window.t('containers.ressources.compact_none_running'), 'error'); return; }
+        const r = await fetch('/api/etalonnage/start', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({node_ids: nodeIds, libelle: TP_LABEL || TP_TYPE})});
+        const j = await r.json().catch(()=>({}));
+        if(!r.ok || !j.ok){ tpToast(j.error||r.statusText, 'error'); return; }
+        startChrono(j.etat.debut);
+        pollCampaign();
+    }
+
+    function pollCampaign(){
+        if(campaignTimer) clearInterval(campaignTimer);
+        campaignTimer = setInterval(async ()=>{
+            const st = await MXLRessources.fetchState();
+            if(st.etat !== 'en_cours') stopChrono();
+        }, 3000);
+    }
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+        setCalibrateBtn();
+        const btn = document.getElementById('res-compact-calibrate');
+        if(btn) btn.onclick = onCalibrateClick;
+        MXLRessources.fetchState().then(st => { if(st.etat==='en_cours') { startChrono(st.debut); pollCampaign(); } });
+        setInterval(()=>{
+            if(TP_TYPE && TP_TYPE !== lastType){ lastType = TP_TYPE; refresh(); }
+        }, 300);
+        window.MXLPoll(refresh, MXLRessources.REFRESH_MS);   // sans recouvrement (cf. layout.html)
+    });
+})();
+
+{% if is_medias %}
+// ── Bibliothèque clips ───────────────────────────────────────────────────────
+(function(){
+    let allClips = [];   // [{name, size_bytes, mtime, vmid, source}]
+    let sortKey  = 'date';
+    let sortAsc  = false;
+    let filter   = '';
+
+    function fmtSize(b){
+        if(!b) return '0 '+window.t('section.unit_mb');
+        return b < 1073741824
+            ? (b/1048576).toFixed(1)+' '+window.t('section.unit_mb')
+            : (b/1073741824).toFixed(2)+' '+window.t('section.unit_gb');
+    }
+    function fmtDur(s){
+        if(s == null) return '…';
+        s = Math.floor(s);
+        const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
+        return h>0
+            ? h+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0')
+            : m+':'+String(sec).padStart(2,'0');
+    }
+    function fmtDate(ts){
+        const d = new Date(ts*1000);
+        const loc = (window.LANG==='en')?'en-GB':'fr-FR';
+        return d.toLocaleDateString(loc,{day:'2-digit',month:'2-digit',year:'2-digit'})
+            +' '+d.toLocaleTimeString(loc,{hour:'2-digit',minute:'2-digit'});
+    }
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    async function loadClips(){
+        const listEl = document.getElementById('mxl-lib-list');
+        const countEl = document.getElementById('mxl-lib-count');
+        listEl.innerHTML = '<div class="mxl-lib-empty">'+window.t('section.loading')+'</div>';
+        countEl.textContent = '';
+        let recorders = [];
+        try { recorders = await (await fetch('/api/plugins/instances?type=recorder')).json(); }
+        catch(e){}
+        if(!recorders.length){
+            listEl.innerHTML = '<div class="mxl-lib-empty">'+window.t('section.no_recorder')+'</div>';
+            return;
+        }
+        const results = await Promise.allSettled(recorders.map(async r => {
+            const res = await fetch('/api/containers/'+r.vmid+'/plugin/clips');
+            const j   = await res.json();
+            return (j.clips||[]).map(c => ({
+                ...c,
+                vmid:   r.vmid,
+                source: r.hostname || ('#'+r.vmid),
+                live:   false,
+            }));
+        }));
+        // fetch live status to mark live clips
+        const statusResults = await Promise.allSettled(recorders.map(async r => {
+            const res = await fetch('/api/containers/'+r.vmid+'/plugin/status');
+            const j   = await res.json();
+            return { vmid: r.vmid, file: j.file ? j.file.split('/').pop() : '', recording: j.recording };
+        }));
+        const liveMap = {};
+        statusResults.forEach(r => { if(r.status==='fulfilled' && r.value.recording) liveMap[r.value.vmid] = r.value.file; });
+
+        allClips = [];
+        results.forEach(r => {
+            if(r.status==='fulfilled') allClips.push(...r.value.map(c => ({
+                ...c,
+                live: liveMap[c.vmid] === c.name,
+            })));
+        });
+        render();
+    }
+
+    function render(){
+        const listEl  = document.getElementById('mxl-lib-list');
+        const countEl = document.getElementById('mxl-lib-count');
+        let clips = allClips.filter(c =>
+            !filter
+            || c.name.toLowerCase().includes(filter)
+            || c.source.toLowerCase().includes(filter)
+        );
+        clips = clips.slice().sort((a,b) => {
+            let va, vb;
+            if(sortKey==='name')   { va=a.name;       vb=b.name; }
+            else if(sortKey==='size')   { va=a.size_bytes; vb=b.size_bytes; }
+            else if(sortKey==='source') { va=a.source;     vb=b.source; }
+            else                        { va=a.mtime;      vb=b.mtime; }
+            if(va < vb) return sortAsc ? -1 : 1;
+            if(va > vb) return sortAsc ?  1 : -1;
+            return 0;
+        });
+        countEl.textContent = window.t('section.clips_count').replace('{n}', clips.length);
+        if(!clips.length){
+            listEl.innerHTML = '<div class="mxl-lib-empty">'
+                +(filter ? window.t('section.no_result').replace('{q}', esc(filter)) : window.t('section.no_clips'))
+                +'</div>';
+            return;
+        }
+        listEl.innerHTML = clips.map((c,i) =>
+            '<div class="mxl-clip-row'+(c.live?' live':'')+'" data-i="'+i+'">'
+            +'<span class="mxl-clip-name" title="'+esc(c.name)+'">'+esc(c.name)+'</span>'
+            +'<span class="mxl-clip-source">'+esc(c.source)+'</span>'
+            +'<span class="mxl-clip-dur">'+fmtDur(c.duration_s)+'</span>'
+            +'<span class="mxl-clip-size">'+fmtSize(c.size_bytes)+'</span>'
+            +'<span class="mxl-clip-date">'+fmtDate(c.mtime)+'</span>'
+            +(c.live
+                ? '<span class="mxl-clip-live-badge">live</span>'
+                : '<button class="mxl-clip-del" data-i="'+i+'">'+window.t('section.delete')+'</button>')
+            +'</div>'
+        ).join('');
+        listEl.querySelectorAll('.mxl-clip-del').forEach(btn => {
+            btn.onclick = async () => {
+                const c = clips[+btn.dataset.i];
+                if(!confirm(window.t('section.delete_confirm').replace('{name}', c.name))) return;
+                const r = await fetch('/api/containers/'+c.vmid+'/plugin/clips/delete', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({name:c.name}),
+                });
+                const j = await r.json();
+                if(j.ok){ tpToast(window.t('section.clip_deleted'),'info'); allClips.splice(allClips.indexOf(c),1); render(); }
+                else tpToast(j.error||window.t('section.delete_error'),'error');
+            };
+        });
+    }
+
+    document.getElementById('mxl-lib-refresh').onclick = loadClips;
+    document.getElementById('mxl-lib-search').oninput = function(){
+        filter = this.value.trim().toLowerCase(); render();
+    };
+    document.querySelectorAll('.mxl-lib-sort button').forEach(btn => {
+        btn.onclick = () => {
+            if(sortKey === btn.dataset.sort){ sortAsc = !sortAsc; }
+            else { sortKey = btn.dataset.sort; sortAsc = (sortKey==='name'||sortKey==='source'); }
+            document.querySelectorAll('.mxl-lib-sort button').forEach(b=>{
+                b.classList.toggle('active', b.dataset.sort===sortKey);
+                const _lbl = k => ({date:window.t('section.sort_date'),name:window.t('section.sort_name'),size:window.t('section.sort_size'),source:window.t('section.sort_source')}[k]);
+                if(b.dataset.sort===sortKey)
+                    b.textContent = _lbl(sortKey) + (sortAsc ? ' ↑' : ' ↓');
+                else
+                    b.textContent = _lbl(b.dataset.sort);
+            });
+            render();
+        };
+    });
+
+    document.addEventListener('DOMContentLoaded', loadClips);
+})();
+{% endif %}
+</script>
+{% endblock %}

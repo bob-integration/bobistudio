@@ -1,0 +1,12 @@
+{
+  "type.probe_2110.badge": "PROBE",
+  "type.probe_2110.cfg.log_level.help": "Container log verbosity. Default “Events”: notable facts (start/stop, format change, reconnection, fallback to a degraded path, an input appearing or disappearing) are ALWAYS written — after a failure the log must let you reconstruct the story, and raising the level afterwards recovers nothing. Periodic metrics (fps, counters) are NOT logged: they are already published on :8080. “Verbose” = a flamethrower, one line per frame, to be enabled only for the duration of a diagnosis (the Docker log is not rotated).",
+  "type.probe_2110.cfg.log_level.label": "Log level",
+  "type.probe_2110.cfg.log_level.opt.debug": "Verbose (per frame — one-off diagnosis)",
+  "type.probe_2110.cfg.log_level.opt.error": "Errors only",
+  "type.probe_2110.cfg.log_level.opt.info": "Events (default)",
+  "type.probe_2110.cfg.log_level.opt.warning": "Anomalies only",
+  "type.probe_2110.cfg.measure_audio.label": "Also measure audio conformance (ST 2110-30)",
+  "type.probe_2110.cfg.probe_iface.label": "DEDICATED media interface (vfio PF, node_interfaces) — never the engine's",
+  "type.probe_2110.label": "2110 probe"
+}

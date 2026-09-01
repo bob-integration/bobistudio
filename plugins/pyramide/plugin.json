@@ -1,0 +1,225 @@
+{
+  "license": "GPL-3.0-or-later",
+  "type": "pyramide",
+  "label": "Pyramide",
+  "runtime": "docker",
+  "image": "compute",
+  "badge": {
+    "label": "Pyramide",
+    "class": "mode-pyramide",
+    "oklch": "0.74 0.10 200"
+  },
+  "version": "0.18.0",
+  "video_format": false,
+  "adapts_input": true,
+  "aggregate_fps": false,
+  "description": "Pyramide de proxies : descale chaque source en versions pré-réduites (½ ¼ ⅛ 1/16) partagées par tous les consommateurs (multiviews, monitoring…). Un thread par source, verrouillé à l'entrée 1:1 (jamais de re-cadencement). Sortie : <source>__p2/p4/p8/p16.",
+  "nav": { "section": "composition", "label": "Composition", "route": "/composition", "order": 40 },
+  "script_template": "script.py",
+  "ui": {
+    "control_html": "control.html",
+    "control_js": "control.js",
+    "control_css": "control.css"
+  },
+  "deploy_defaults": {
+    "n_inputs": 8,
+    "base_octaves": "none",
+    "ring": 4,
+    "extra_sizes": {},
+    "custom_size_threshold": 2,
+    "log_level": "info"
+  },
+  "config_schema": [
+    {
+      "key": "n_inputs",
+      "type": "number",
+      "label": "Nombre de sources",
+      "min": 1,
+      "max": 16,
+      "default": 8
+    },
+    {
+      "key": "ring",
+      "type": "number",
+      "label": "Ring de sortie (proxies)",
+      "min": 2,
+      "max": 8,
+      "default": 4
+    },
+    {
+      "key": "custom_size_threshold",
+      "type": "number",
+      "label": "Seuil sur-mesure (départage seulement si > cap de tailles)",
+      "help": "Seuil SOUPLE : toutes les tailles demandées sont servies jusqu'au cap (6/source). Ce seuil ne départage le surplus que s'il y a PLUS de tailles distinctes que le cap.",
+      "min": 1,
+      "max": 8,
+      "default": 2
+    },
+    {
+      "key": "cores_per_1080p_input",
+      "type": "number",
+      "label": "Cœurs par source 1080p (dimensionnement dynamique)",
+      "help": "Les cœurs de la pyramide sont dimensionnés à la charge : cœurs = plancher (6) + ce ratio × Σ(résolution_source / 1080p), clampé au pool du nœud. Petit = nœud léger ; grand = nœud dédié multiview. 0 = cœurs fixes (plancher). Appliqué au (re)déploiement (le cpuset n'est pas modifiable à chaud).",
+      "min": 0,
+      "max": 4,
+      "step": 0.25,
+      "default": 0.5
+    },
+    {
+      "key": "base_octaves",
+      "type": "select",
+      "label": "Socle d'octaves toujours générés",
+      "help": "Octaves génériques générés en permanence, même sans consommateur. En auto-câblage piloté par la demande, les consommateurs réclament des tailles SUR-MESURE → les octaves restent le plus souvent ORPHELINS (travail + bande passante RAM gaspillés, qui peuvent faire SAUTER les sources entrelacées 50 fps au bord du budget). Défaut « Aucun » (pur à la demande). Ne repasser à Complet/Minimal que si un consommateur lit réellement les octaves (ex. monitoring générique).",
+      "options": [
+        {
+          "value": "full",
+          "label": "Complet (½ ¼ ⅛ 1/16)"
+        },
+        {
+          "value": "half",
+          "label": "Minimal (½ seul)"
+        },
+        {
+          "value": "none",
+          "label": "Aucun (pur à la demande)"
+        }
+      ],
+      "default": "none"
+    },
+    {
+      "key": "slice_mode",
+      "hidden": false,
+      "type": "checkbox",
+      "label": "Mode tranche (latence sous-image)",
+      "help": "Lit la source bande par bande ET publie les proxies de la même façon, pour que l'aval démarre avant la fin de l'image. MESURÉ le 2026-08-11 : sans ce réglage la pyramide lisait une source tranchée et republiait des proxies monolithiques — elle coûtait UNE IMAGE pleine à toute la chaîne. Activée, le délai d'étage du mur consommateur est passé de 3,0 à 1,0 image. Source entrelacée → repli image entière.",
+      "default": false,
+      "scope": "system"
+    },
+    {
+      "key": "slice_lines",
+      "hidden": true,
+      "type": "number",
+      "label": "Lignes par tranche",
+      "help": "Hauteur des bandes (lignes). Doit être un diviseur de la hauteur d'image (36 pour 1080p) — sinon repli image entière.",
+      "min": 4,
+      "max": 540,
+      "default": 36,
+      "scope": "system",
+      "visible_if": {
+        "slice_mode": true
+      }
+    },
+    {
+      "key": "log_level",
+      "type": "select",
+      "label": "Niveau de log",
+      "help": "Verbosité du journal du conteneur. Défaut « Événements » : les faits marquants (démarrage/arrêt, changement de format, reconnexion, repli sur un chemin dégradé, entrée qui apparaît ou disparaît) sont TOUJOURS écrits — après une panne le journal doit permettre de reconstituer l'histoire, et élever le niveau après coup ne récupère rien. Les métriques périodiques (fps, compteurs) ne sont PAS journalisées : elles sont déjà publiées sur :8080. « Détaillé » = lance-flammes par trame, à n'activer que le temps d'un diagnostic (le journal Docker n'est pas roté).",
+      "options": [
+        {
+          "value": "debug",
+          "label": "Détaillé (par trame — diagnostic ponctuel)"
+        },
+        {
+          "value": "info",
+          "label": "Événements (défaut)"
+        },
+        {
+          "value": "warning",
+          "label": "Anomalies seules"
+        },
+        {
+          "value": "error",
+          "label": "Erreurs seules"
+        }
+      ],
+      "default": "info",
+      "scope": "user"
+    }
+  ],
+  "wiring": {
+    "produces": [],
+    "consumes": [
+      {
+        "repeat": "n_inputs",
+        "essence": "video",
+        "state_field": "input_{i1}",
+        "label": "Source {i1}"
+      }
+    ],
+    "mode": "hot-wire",
+    "state_endpoint": "/state"
+  },
+  "control": {
+    "endpoints": [
+      "/state",
+      "/input",
+      "/reset",
+      "/extra_sizes",
+      "/log_level"
+    ],
+    "read_endpoints": [
+      "/state"
+    ]
+  },
+  "resources": {
+    "cores": 6,
+    "cores_per_1080p_input": 0.5,
+    "memory": 3072,
+    "pin": true
+  },
+  "param_tree": {
+    "global_groups": [
+      {
+        "label": "Journal (diagnostic)",
+        "endpoint": "/log_level",
+        "fields": {
+          "level": {
+            "label": "Niveau de log",
+            "type": "enum",
+            "options": [
+              "debug",
+              "info",
+              "warning",
+              "error"
+            ],
+            "default": "info",
+            "path": "log_level"
+          }
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "id": "log_level",
+      "label": "Niveau de log (à chaud)",
+      "endpoint": "/log_level",
+      "params": [
+        {
+          "key": "level",
+          "label": "Niveau",
+          "type": "text",
+          "default": "info",
+          "options": [
+            {
+              "value": "debug",
+              "label": "Détaillé"
+            },
+            {
+              "value": "info",
+              "label": "Événements (défaut)"
+            },
+            {
+              "value": "warning",
+              "label": "Anomalies seules"
+            },
+            {
+              "value": "error",
+              "label": "Erreurs seules"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

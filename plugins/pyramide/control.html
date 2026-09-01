@@ -1,0 +1,17 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Console de monitoring de la pyramide de proxies (montée dans le shell Traitements). -->
+<div class="pyr-console">
+  <div class="pyr-head">
+    <h3 class="pyr-title" data-i18n="plugin.pyramide.title">Pyramide de proxies</h3>
+    <div class="pyr-actions">
+      <button class="pyr-btn pyr-btn-opt" data-act="optimise" data-i18n="plugin.pyramide.optimise">⚙ Optimiser</button>
+      <button class="pyr-btn" data-act="refresh" data-i18n-title="plugin.pyramide.refresh_tip" title="Rafraîchir">↻</button>
+    </div>
+  </div>
+  <div class="pyr-kpi" data-el="kpi"></div>
+  <div class="pyr-body" data-el="body"></div>
+  <p class="pyr-hint" data-i18n="plugin.pyramide.hint">
+    Les proxies sont mutualisés : une taille n'est générée sur-mesure que si elle est demandée
+    ≥ seuil fois. « Optimiser » force le recalcul à chaud. 📺 prévisualise un proxy.
+  </p>
+</div>

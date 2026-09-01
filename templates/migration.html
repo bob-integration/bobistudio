@@ -1,0 +1,16 @@
+<!-- Modale « Migrer vers un autre nœud » — la SIMULATION s'affiche avant toute action.
+     L'ordre compte : on montre d'abord le verdict par nœud et les conséquences pour les voisins,
+     et le bouton de bascule n'apparaît qu'ensuite, sur le nœud choisi. Une opération destructive
+     avec coupure ne doit pas se déclencher au premier clic. -->
+<div id="migration-modal" class="modal-overlay" style="display:none">
+    <div class="modal-card">
+        <div class="modal-head">
+            <h2 style="margin:0">{{ _('migration.title') }} — <span id="migration-hote">—</span></h2>
+            <button class="btn btn-red" onclick="fermerMigration()">{{ _('migration.close') }}</button>
+        </div>
+        <p class="migration-coupure">{{ _('migration.warning_cut') }}</p>
+        <div id="migration-corps" style="display:flex; flex-direction:column; gap:10px;">
+            <p style="color:var(--text-muted)">{{ _('migration.loading') }}</p>
+        </div>
+    </div>
+</div>

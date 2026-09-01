@@ -1,0 +1,108 @@
+{
+  "license": "GPL-3.0-or-later",
+  "type": "probe_2110",
+  "label": "Sonde 2110",
+  "runtime": "docker",
+  "needs_nic": true,
+  "needs_dpdk": true,
+  "badge": {
+    "label": "SONDE",
+    "class": "mode-receiver",
+    "oklch": "0.72 0.12 300"
+  },
+  "nmos_role": "receiver",
+  "split_io": false,
+  "deploy_order": 0,
+  "version": "0.4.0",
+  "nav": { "section": "mesure", "label": "Mesure", "route": "/mesure", "order": 30 },
+  "adapts_input": true,
+  "aggregate_fps": false,
+  "help": {
+    "category": "debug",
+    "order": 10
+  },
+  "description": "Analyseur ponctuel ST 2110 piloté par NMOS. « Un receiver dont le but est la mesure » : réutilise l'image bobi-mtl (libmtl/DPDK) en mode RX-only avec le parser de conformité 2110-21 (TIMING_PARSER=1). L'utilisateur choisit un flux au registre IS-04, la sonde s'y abonne (IS-05) sur sa PF vfio DÉDIÉE (jamais celle du moteur) et publie sur :8080 un rapport de conformité (Cinst/VRX/vrx_span, narrow/wide/failed, FPT/latency) + transport. Verdict absolu (compliant) valable en prod avec PTP ; sur banc sans grandmaster, s'appuyer sur Cinst et vrx_span (invariants à la dérive).",
+  "script_template": "script.py",
+  "control": {
+    "endpoints": {
+      "subscribe": {
+        "method": "POST",
+        "port": 8081,
+        "path": "/nmos/subscribe",
+        "desc": "Abonne (ou désabonne) un slot RX de la sonde à un flux via SDP (chaîne IS-05)."
+      }
+    },
+    "read_endpoints": {
+      "report": {
+        "method": "GET",
+        "port": 8080,
+        "path": "/",
+        "desc": "Rapport live de la sonde : verdict conformité (compliant/failed_cause/cinst/vrx/vrx_span/fpt/latency) + transport."
+      }
+    }
+  },
+  "deploy_defaults": {
+    "probe_mode": true,
+    "timing_parser": true,
+    "video_count": 1,
+    "audio_count": 0,
+    "anc_count": 0,
+    "tx_count": 0,
+    "active_rx_count": 1,
+    "active_tx_count": 0,
+    "probe_iface": "",
+    "controller_port_base": 8090,
+    "log_level": "info"
+  },
+  "config_schema": [
+    {
+      "key": "probe_iface",
+      "type": "text",
+      "label": "Interface média DÉDIÉE (PF vfio, node_interfaces) — jamais celle du moteur",
+      "default": ""
+    },
+    {
+      "key": "measure_audio",
+      "type": "bool",
+      "label": "Mesurer aussi la conformité audio (ST 2110-30)",
+      "default": false
+    },
+    {
+      "key": "log_level",
+      "type": "select",
+      "label": "Niveau de log",
+      "help": "Verbosité du journal du conteneur. Défaut « Événements » : les faits marquants (démarrage/arrêt, changement de format, reconnexion, repli sur un chemin dégradé, entrée qui apparaît ou disparaît) sont TOUJOURS écrits — après une panne le journal doit permettre de reconstituer l'histoire, et élever le niveau après coup ne récupère rien. Les métriques périodiques (fps, compteurs) ne sont PAS journalisées : elles sont déjà publiées sur :8080. « Détaillé » = lance-flammes par trame, à n'activer que le temps d'un diagnostic (le journal Docker n'est pas roté).",
+      "options": [
+        {
+          "value": "debug",
+          "label": "Détaillé (par trame — diagnostic ponctuel)"
+        },
+        {
+          "value": "info",
+          "label": "Événements (défaut)"
+        },
+        {
+          "value": "warning",
+          "label": "Anomalies seules"
+        },
+        {
+          "value": "error",
+          "label": "Erreurs seules"
+        }
+      ],
+      "default": "info",
+      "scope": "user"
+    }
+  ],
+  "wiring": {
+    "produces": [
+      {
+        "essence": "video",
+        "repeat": "video_count",
+        "shm": "{hostname}_{i1}"
+      }
+    ],
+    "consumes": [],
+    "mode": "none"
+  }
+}

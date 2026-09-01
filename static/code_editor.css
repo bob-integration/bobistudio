@@ -1,0 +1,58 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+/* Éditeur de code : gutter (numéros) + overlay coloré + textarea transparent superposé. */
+.ce-wrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  height: 360px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg, #1e1e1e);
+  font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
+  font-size: 0.88em;
+  line-height: 1.5;
+}
+.ce-gutter {
+  grid-column: 1;
+  padding: 8px 8px 8px 10px;
+  text-align: right;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-soft);
+  white-space: pre;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* Le <pre> coloré et le textarea occupent la même cellule, superposés. */
+.ce-pre, .ce-input {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  padding: 8px 10px;
+  white-space: pre;
+  overflow: auto;
+  font: inherit;
+  tab-size: 2;
+}
+.ce-pre {
+  pointer-events: none;
+  color: var(--text);
+}
+.ce-pre code { font: inherit; white-space: pre; }
+.ce-input {
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text, #eee);
+  border: 0;
+  outline: none;
+  resize: none;
+}
+.ce-input::selection { background: rgba(120, 160, 220, 0.35); color: transparent; }
+/* Jetons (couleurs sobres, s'adaptent au thème via des teintes neutres). */
+.ce-com { color: #6a9955; font-style: italic; }
+.ce-str { color: #ce9178; }
+.ce-num { color: #b5cea8; }
+.ce-kw  { color: #569cd6; font-weight: 600; }
+.ce-var { color: #9cdcfe; }

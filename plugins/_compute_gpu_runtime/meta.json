@@ -1,0 +1,46 @@
+{
+  "version": "0.11.0",
+  "date": "2026-08-31",
+  "image_tag": "bobi-compute-gpu:0.11",
+  "base_image": "bobi-compute:0.27",
+  "changes": {
+    "Surface NMOS par conteneur (plan 2) (0.11.0)": [
+      "★ L'agent embarqué sert désormais `/x-nmos/` : chaque conteneur expose SON Node NMOS, alimenté par un document que l'orchestrateur lui pousse (POST /nmos, écriture atomique).",
+      "⚠ BUMP NÉCESSAIRE, pas cosmétique : un conteneur n'est recréé que si sa signature `docker run` change, image comprise. Reconstruire sans changer `image_tag` laissait le nouvel agent dans l'image et AUCUN conteneur ne l'adoptait jamais."
+    ],
+    "Rebase sur bobi-compute:0.27 (exemption loopback) (0.10.0)": [
+      "Le `FROM` de cette couche fine est réécrit au staging vers l'image_tag COURANT de `compute` : rebâtir sans bumper produirait un CONTENU DIFFÉRENT sous le tag `0.9`, c'est-à-dire un tag qui ment. Hérite de l'exemption loopback de compute 0.27.0. Aucun changement propre au GPU."
+    ],
+    "Rebase sur bobi-compute:0.26 (libmxl rc1 + agent-nœud) (0.9.0)": [
+      "Le `FROM` de cette couche fine est réécrit au staging vers l'image_tag COURANT de `compute` : rebâtir sans bumper aurait produit un CONTENU DIFFÉRENT sous le tag `0.8` (nouvelle libmxl v1.1.0-rc1, nouvel agent), c'est-à-dire un tag qui ment. Un nœud portant déjà `0.8` aurait été déclaré « à jour » en exécutant l'ancienne libmxl.",
+      "Hérite donc de tout ce que porte compute 0.26 : libmxl v1.1.0-beta-1 → v1.1.0-rc1 (fuite de fd du lecteur de flux discret, notification futex des flux continus/audio, correctifs fabrics/RDMA) et la seconde identité mTLS de l'agent par-conteneur.",
+      "Aucun changement propre au GPU : ni les kernels CUDA (`split_gpu.cu`), ni le chemin CPU hérité de mvk ABI 7."
+    ],
+    "Rebase sur bobi-compute:0.23 (mvk ABI 7) (0.8.0)": [
+      "Le chemin CPU de l image GPU herite de la pre-fusion en C : un split render=cpu deploye sur l image GPU garde exactement les memes performances CPU."
+    ],
+    "Base 0.22 (mvk ABI 6) + kernels CUDA du compositing DVE (0.7.0)": [
+      "Rebase sur bobi-compute:0.22 : l'image GPU hérite des kernels mvk ABI 6, donc du chemin CPU accéléré — un split en render=cpu déployé sur l'image GPU garde exactement les mêmes performances CPU.",
+      "Ajoute script_templates/split_gpu.cu (compositing DVE : box tournée + feather + coins + opacité + ruban biseauté éclairé + ombre portée). Compilé par NVRTC au premier usage. Placé dans l'image et non dans le script du plugin, parce que script.py est un template str.format où chaque accolade littérale devrait être doublée."
+    ],
+    "Sortie des scripts sur stdout du conteneur (0.6.0)": [
+      "Journalisation : l'agent par-conteneur redirige désormais la sortie du script déployé vers la SORTIE STANDARD du conteneur au lieu de /var/log/mxl-script.log — fichier interne, sans rotation (24 Mo constatés sur un mur), sur rootfs éphémère, et invisible de `docker logs`. PYTHONUNBUFFERED propagé aux petits-enfants Python (qui n'héritent pas du -u de l'agent) pour éviter des lignes livrées par blocs ; code de sortie du script tracé sur le même flux ; purge de l'ancien fichier au démarrage. Bump de version INDISPENSABLE : le contenu de l'image change sans quoi le tag resterait identique et la page Réglages afficherait « à jour » alors que la flotte tourne encore l'ancien agent."
+    ],
+    "cupy ÉPINGLÉ 13.4.1 + libs CUDA explicites + ldconfig ; exige driver >= 570 (0.5)": [
+      "cupy-cuda12x est désormais ÉPINGLÉ à 13.4.1 (runtime CUDA 12.8) — fini le non-épinglage qui tirait un CUDA récent à chaque rebuild. ⚠ EXIGE un driver NVIDIA >= 570 (cupy 12.8) : la flotte GPU doit être au driver >= 570 (dell-1 : upgradé 550 -> 580.105.08 ; Pascal/P5000 supporté jusqu'au 580 inclus, la branche 590 le drop). Deux corrections de fond au provisionnement de l'image : (1) les wheels nvidia-*-cu12 (nvrtc/cudart/cublas/curand/cusparse/cusolver/cufft/nvjitlink) sont installés EXPLICITEMENT — l'extra [ctk] ne les tirait pas pour ce cupy (import nvidia KO -> libnvrtc.so.12 introuvable) ; (2) leurs dossiers lib sont enregistrés via /etc/ld.so.conf.d + ldconfig (cupy 13.x ne scanne pas les dossiers de wheels ; plus propre qu'un LD_LIBRARY_PATH). VALIDÉ live sur dell-1/P5000/driver 580 : 24 fen 1080p à 137 fps, sans LD_LIBRARY_PATH. Bench capacité P5000 ~= classe T4 (~8-11 murs 16-PiP 1080p @50fps). REBUILD node_only requis. NB PRÉREQUIS NŒUD : libcuda1 doit être installé (trou install-node.sh corrigé à la main sur dell-1)."
+    ],
+    "Rebase bobi-compute:0.16 — mvk ABI 5 (dégradé/wipe split, RGBA→YUV fusionné) (0.4)": [
+      "Rattrape le retard : la couche GPU restait FROM bobi-compute:0.13 alors que l'image compute était passée 0.14→0.15→0.16 (writer purge flow_def divergent, mvk ABI 3/4/5). Conséquence : sur un nœud n'ayant que bobi-compute:0.16 en local, le build GPU tentait un pull docker.io de bobi-compute:0.13 → échec d'auth (couplage de version non tenu). Rebase 0.16 = parité mvk/libmxl avec le chemin CPU. REBUILD sur le nœud GPU requis (node_only)."
+    ],
+    "Rebase bobi-compute:0.11 — kernel compose fusionné libbobi_mvk (0.3)": [
+      "Rebase sur bobi-compute:0.11 (la 0.2 restait sur la 0.9 : sans convertisseur v210 SIMD ni kernel mvk). Apporte libbobi_mvk + libbobi_v210 (variantes AVX2 incluses) au chemin force_cpu du multiview sur nœud GPU. REBUILD sur le nœud GPU requis (node_only)."
+    ],
+    "Rebase bobi-compute:0.9 — patch mxl-planar-slices + bobimxl slice_height (0.2)": [
+      "0.1 était basée sur bobi-compute:0.8 (libmxl SANS le patch slices, bobimxl sans slice_height) → un multiview gpu_slice managé crashait au boot (TypeError build_flow_def) et les writers dégradaient en totalSlices=1. Même famille que le finding bobi-media:0.6. Rebase 0.9 = parité slices avec le chemin CPU. REBUILD sur le nœud GPU requis."
+    ],
+    "Image GPU initiale (0.1.0)": [
+      "Variante NVIDIA de l'image compute : fine couche FROM bobi-compute:0.8 + cupy-cuda12x[ctk] (wheels CUDA self-contained, base debian trixie slim conservée). node_only — buildée sur le nœud GPU (pas de push flotte). Destinée au compositing multiview accéléré GPU (cupy auto-détecté côté plugin via l'abstraction xp ; repli numpy sur image compute CPU). Validée au banc dl360-2 / Tesla T4 (JIT OK base slim + --gpus, driver 550 / CUDA 12.4). Suit l'image_tag de _compute_runtime (BASE_IMAGE)."
+    ],
+    "Bugs connus": []
+  }
+}

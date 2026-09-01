@@ -1,0 +1,12 @@
+{
+  "_comment": "Config bobi-node-agent — copier en /etc/bobi-node-agent/config.json. Le token est partagé avec le contrôleur (saisi dans Réglages → Déploiement → Nœuds).",
+  "token": "CHANGEME-token-urlsafe-24o",
+  "port": 9100,
+  "capabilities": ["io2110", "compute", "media", "webrtc"],
+  "mxl_mount": "/dev/shm",
+  "macvlan_network": "bobimacvlan",
+  "media_mount": "/srv/mxl-media",
+  "mtl_iface": "ens1f0np0",
+  "lcores": "2-9",
+  "images": ["bobi-mtl:0.22.15", "bobi-compute:0.2", "bobi-media:0.1", "bobi-webrtc:0.1"]
+}

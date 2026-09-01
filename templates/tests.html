@@ -1,0 +1,917 @@
+{% extends "layout.html" %}
+{% set page = 'tests' %}
+{% block title %}Plan de recette{% endblock %}
+
+{% block content %}
+<style>
+  .tp-wrap { max-width: 1100px; }
+  .tp-head { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+  .tp-name { display:flex; align-items:center; gap:8px; }
+  .tp-name input { padding:6px 10px; border-radius:6px; border:1px solid var(--border,#444);
+                   background:var(--bg2,#1c1c1c); color:inherit; min-width:180px; }
+  .tp-summary { display:flex; gap:8px; flex-wrap:wrap; }
+  .tp-pill { padding:4px 10px; border-radius:999px; font-size:13px; font-weight:600;
+             border:1px solid transparent; }
+  .tp-pill.ok       { background:#143d1e; color:#7be29a; border-color:#2c6e43; }
+  .tp-pill.defect   { background:#3d1414; color:#ef8a8a; border-color:#7a2c2c; }
+  .tp-pill.progress { background:#3a3413; color:#e6cf6a; border-color:#7a6f2c; }
+  .tp-pill.untested { background:#26282b; color:#9aa0a6; border-color:#3a3d42; }
+  .tp-filter { margin-left:auto; display:flex; gap:6px; align-items:center; }
+  .tp-filter select { padding:6px 8px; border-radius:6px; border:1px solid var(--border,#444);
+                      background:var(--bg2,#1c1c1c); color:inherit; }
+
+  .tp-area-h { margin:22px 0 8px; font-size:15px; letter-spacing:.5px; text-transform:uppercase;
+               color:#9aa0a6; border-bottom:1px solid var(--border,#333); padding-bottom:4px; }
+  .tp-item { border:1px solid var(--border,#333); border-radius:10px; padding:12px 14px;
+             margin-bottom:10px; background:var(--bg2,#1a1a1a); }
+  .tp-item.s-ok       { border-left:4px solid #2c6e43; }
+  .tp-item.s-defect   { border-left:4px solid #b14242; }
+  .tp-item.s-progress { border-left:4px solid #b1a142; }
+  .tp-item.s-untested { border-left:4px solid #44484d; }
+  .tp-title { font-weight:600; font-size:15px; }
+  .tp-detail { color:#b8bdc2; font-size:13px; margin-top:3px; line-height:1.45; }
+  .tp-row2 { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-start; margin-top:10px; }
+  .tp-status { display:flex; gap:6px; flex-wrap:wrap; }
+  .tp-sbtn { cursor:pointer; padding:5px 12px; border-radius:6px; font-size:13px; font-weight:600;
+             border:1px solid var(--border,#444); background:var(--bg,#222); color:#cfd3d7; }
+  .tp-sbtn:hover { filter:brightness(1.2); }
+  .tp-sbtn.act.ok       { background:#1e6b3a; color:#fff; border-color:#2c6e43; }
+  .tp-sbtn.act.defect   { background:#9e2f2f; color:#fff; border-color:#7a2c2c; }
+  .tp-sbtn.act.progress { background:#8a7a1e; color:#fff; border-color:#7a6f2c; }
+  .tp-sbtn.act.untested { background:#3a3d42; color:#fff; border-color:#52565b; }
+  /* Gravité : n'apparaît qu'après avoir choisi Défaut. Ton plus sourd que les
+     statuts — c'est une PRÉCISION du défaut, pas un statut de plus, et elle ne
+     doit pas rivaliser visuellement avec la ligne au-dessus. */
+  .tp-sev { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px; }
+  .tp-sev-lbl { font-size:12px; color:#8a8d94; }
+  .tp-sevbtn { cursor:pointer; padding:3px 10px; border-radius:999px; font-size:12px;
+               font-weight:600; background:#26282d; color:#b8bcc2; border:1px solid #3a3d42; }
+  .tp-sevbtn:hover { filter:brightness(1.25); }
+  .tp-sevbtn.act.mineur   { background:#4a4426; color:#e8d9a0; border-color:#6b6136; }
+  .tp-sevbtn.act.majeur   { background:#5c3620; color:#f0bd94; border-color:#7d4c2c; }
+  .tp-sevbtn.act.bloquant { background:#7a1f1f; color:#ffd6d6; border-color:#a33; }
+  /* Un défaut BLOQUANT se voit sans lire : la barre de gauche s'épaissit. */
+  .tp-item.sev-bloquant { border-left-width:8px; border-left-color:#e05555; }
+  .tp-remark { flex:1; min-width:260px; }
+  .tp-remark textarea { width:100%; box-sizing:border-box; min-height:42px; resize:vertical;
+                        padding:7px 9px; border-radius:6px; border:1px solid var(--border,#444);
+                        background:var(--bg,#161616); color:inherit; font-family:inherit; font-size:13px; }
+  .tp-meta { font-size:12px; color:#80868c; margin-top:5px; min-height:14px; }
+  .tp-saved { color:#7be29a; }
+  .tp-ctx-t { cursor:pointer; font-size:12px; color:#7aa2d6; user-select:none; margin-top:8px;
+              display:inline-block; margin-right:14px; }
+  .tp-ctx { display:none; margin-top:6px; padding:8px 10px; border-radius:6px;
+            background:#101216; border:1px dashed #3a3d42; color:#9aa7b4; font-size:12px;
+            line-height:1.5; white-space:pre-wrap; }
+  .tp-ctx.open { display:block; }
+
+  .tp-thread { display:none; margin-top:10px; border-top:1px solid var(--border,#333); padding-top:10px; }
+  .tp-thread.open { display:block; }
+  .tp-msg { display:flex; gap:8px; margin-bottom:8px; }
+  .tp-msg .tp-av { flex:0 0 auto; width:30px; height:30px; border-radius:50%; display:flex;
+                   align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#fff; }
+  .tp-msg.dev .tp-av    { background:#2c5db1; }
+  .tp-msg.tester .tp-av { background:#5a6068; }
+  .tp-msg .tp-body { flex:1; }
+  .tp-msg .tp-by { font-size:12px; color:#aab0b6; }
+  .tp-msg .tp-by .tp-badge { font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;
+                   margin-left:6px; vertical-align:middle; }
+  .tp-msg.dev .tp-badge    { background:#1d3a6b; color:#bcd3f7; }
+  .tp-msg.tester .tp-badge { background:#33373c; color:#c7ccd1; }
+  .tp-msg .tp-txt { white-space:pre-wrap; font-size:13.5px; line-height:1.45; margin-top:2px;
+                    color:#dfe3e7; }
+  .tp-msg .tp-ts { font-size:11px; color:#71777d; }
+  .tp-reply { display:flex; gap:8px; margin-top:8px; }
+  .tp-reply textarea { flex:1; min-height:38px; resize:vertical; padding:7px 9px; border-radius:6px;
+                       border:1px solid var(--border,#444); background:var(--bg,#161616); color:inherit;
+                       font-family:inherit; font-size:13px; }
+  .tp-reply button { padding:0 16px; border-radius:6px; border:none; cursor:pointer;
+                     background:#2c5db1; color:#fff; font-weight:600; }
+  .tp-unread { background:#8a3b1e; color:#fff; font-size:10px; font-weight:700; padding:1px 7px;
+               border-radius:999px; margin-left:8px; }
+  .tp-del { cursor:pointer; color:#c06; font-size:12px; margin-left:8px; background:none;
+            border:none; }
+  .tp-add { margin:26px 0 10px; padding:14px; border:1px dashed var(--border,#444); border-radius:10px; }
+  .tp-add input, .tp-add textarea { width:100%; box-sizing:border-box; margin:4px 0; padding:7px 9px;
+            border-radius:6px; border:1px solid var(--border,#444); background:var(--bg,#161616);
+            color:inherit; font-family:inherit; }
+  .tp-add button, .tp-name button { padding:7px 14px; border-radius:6px; border:none; cursor:pointer;
+            background:#2c5db1; color:#fff; font-weight:600; }
+  .tp-note { color:#80868c; font-size:12px; margin:6px 0 18px; }
+
+  /* ── Navigation dans les réponses ──────────────────────────────────────────────────────────
+     Le fil de discussion était la seule chose qu'on vienne VRAIMENT chercher sur cette page
+     (« le dev a-t-il répondu ? »), et c'était la seule qui n'était pas navigable : replié, sans
+     aperçu, sans moyen d'aller au suivant. D'où cette barre d'outils collante + l'aperçu du
+     dernier message sur le repli. */
+  .tp-tools { position:sticky; top:64px; z-index:5; display:flex; gap:10px; flex-wrap:wrap;
+              align-items:center; padding:8px 10px; margin-bottom:14px;
+              background:var(--bg-elev,#1c1c1c); border:1px solid var(--border,#333);
+              border-radius:8px; font-size:13px; }
+  .tp-tools select, .tp-tools button { padding:5px 9px; border-radius:6px;
+              border:1px solid var(--border,#444); background:var(--bg2,#1c1c1c);
+              color:inherit; font:inherit; cursor:pointer; }
+  .tp-tools button:hover:not(:disabled) { filter:brightness(1.3); }
+  .tp-tools button:disabled { opacity:.4; cursor:default; }
+  .tp-tools .tp-sep { width:1px; align-self:stretch; background:var(--border,#333); }
+  .tp-tools .tp-grow { flex:1; }
+  .tp-unread-nav { display:flex; gap:4px; align-items:center; }
+  .tp-unread-count { font-weight:700; color:#e8a06a; }
+  .tp-unread-count.zero { color:#71777d; font-weight:400; }
+
+  /* Aperçu du dernier message sur la ligne repliée : savoir QUI a répondu et QUOI, sans ouvrir. */
+  .tp-last { display:block; margin-top:4px; font-size:12px; color:#8b9198; line-height:1.4;
+             max-width:70ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tp-last b { color:#a9b0b7; font-weight:600; }
+  .tp-last.dev b { color:#8fb3e8; }
+
+  /* Cible d'un saut (« suivant non lu », lien profond #test-<id>) : la ligne se signale une
+     seconde, sinon on ne sait pas où le défilement nous a posé. */
+  .tp-item.tp-flash { animation:tpflash 1.4s ease-out; }
+  @keyframes tpflash {
+    0%   { box-shadow:0 0 0 3px #8a3b1e; }
+    100% { box-shadow:0 0 0 3px transparent; }
+  }
+  .tp-item { scroll-margin-top:130px; }
+
+  /* ── Fils longs (121 messages sur `atem-hang-info`) ────────────────────────────────────────
+     Tout déplier livrait les 121 messages d'un bloc, du plus ancien au plus récent : ce qu'on
+     vient lire (la fin, et ce qui est nouveau) était à un écran et demi de défilement, et le
+     champ de réponse encore après. On ouvre donc sur une FENÊTRE de fin, avec un repère
+     « nouveaux » et de quoi remonter par paliers. */
+  .tp-thead { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px;
+              font-size:12px; color:#8b9198; }
+  .tp-thead .tp-new { color:#e8a06a; font-weight:700; }
+  .tp-thead button { padding:3px 8px; border-radius:6px; border:1px solid var(--border,#444);
+              background:var(--bg2,#1c1c1c); color:inherit; font:inherit; font-size:12px;
+              cursor:pointer; }
+  .tp-thead button:hover { filter:brightness(1.3); }
+  .tp-more { display:block; width:100%; margin:0 0 10px; padding:6px; border-radius:6px;
+             border:1px dashed var(--border,#444); background:transparent; color:#8fb3e8;
+             font:inherit; font-size:12px; cursor:pointer; }
+  .tp-more:hover { background:#14171c; }
+  .tp-newsep { display:flex; align-items:center; gap:8px; margin:12px 0 10px;
+               color:#e8a06a; font-size:11px; font-weight:700; letter-spacing:.06em;
+               text-transform:uppercase; }
+  .tp-newsep::before, .tp-newsep::after { content:""; flex:1; height:1px; background:#8a3b1e; }
+  .tp-msg.tp-neuf { background:#1b1512; border-radius:6px; padding:4px 6px; margin-left:-6px; }
+  /* Champ de réponse toujours atteignable, même au milieu d'un fil de 121 messages. */
+  .tp-reply { position:sticky; bottom:0; background:var(--bg2,#1a1a1a); padding-top:8px;
+              border-top:1px solid var(--border,#333); }
+</style>
+
+<div class="tp-wrap">
+  <h1>Plan de recette — suivi des tests</h1>
+  <p class="tp-note">Cochez chaque point une fois testé (<b>OK</b> / <b>Défaut</b> / <b>En cours</b>) et
+    laissez une remarque en cas de souci. L'état est <b>partagé</b> : tout le monde voit la même liste
+    (rafraîchie automatiquement). Le « ℹ Contexte technique » de chaque ligne est là pour que les
+    retours soient reliés au bon morceau de code.</p>
+
+  <div class="tp-head">
+    <div class="tp-name">
+      <label for="tp-tester">Votre nom&nbsp;:</label>
+      <input id="tp-tester" type="text" placeholder="ex. Sarah" autocomplete="off">
+    </div>
+    <div class="tp-summary" id="tp-summary"></div>
+    <div class="tp-filter">
+      <label for="tp-filter-sel">Filtrer&nbsp;:</label>
+      <select id="tp-filter-sel">
+        <option value="all">Tout</option>
+        <option value="untested">Non testé</option>
+        <option value="progress">En cours</option>
+        <option value="ok">OK</option>
+        <option value="defect">Défaut</option>
+      </select>
+    </div>
+  </div>
+
+  {# Barre d'outils COLLANTE : tout ce qui sert à retrouver une réponse. Séparée du bandeau
+     d'en-tête (nom + compteurs), qui lui n'est consulté qu'au début. #}
+  <div class="tp-tools">
+    <span class="tp-unread-nav">
+      <span id="tp-unread-count" class="tp-unread-count zero">0 réponse non lue</span>
+      <button type="button" id="tp-unread-prev" title="Réponse non lue précédente">↑</button>
+      <button type="button" id="tp-unread-next" title="Réponse non lue suivante">↓</button>
+      <button type="button" id="tp-unread-read" title="Marquer toutes les discussions comme lues">tout lu</button>
+    </span>
+    <span class="tp-sep"></span>
+    <label for="tp-filter-disc">Discussions&nbsp;:</label>
+    <select id="tp-filter-disc">
+      <option value="all">toutes</option>
+      <option value="unread">non lues</option>
+      <option value="any">avec discussion</option>
+      <option value="none">sans discussion</option>
+    </select>
+    <button type="button" id="tp-expand">tout déplier</button>
+    <button type="button" id="tp-collapse">tout replier</button>
+    <span class="tp-grow"></span>
+    <label for="tp-goto">Aller à&nbsp;:</label>
+    <select id="tp-goto"><option value="">—</option></select>
+  </div>
+
+  <!-- ─── Audit automatique du parc de plugins ─────────────────────────────────────────
+       À côté de la campagne manuelle, et pas ailleurs : les deux répondent à la même
+       question — ce qui est promis tient-il ? Replié par défaut, parce qu'un parc sain n'a
+       rien à dire et ne doit pas occuper la place de ce qu'on est venu suivre. -->
+  <details class="tp-audit" id="tp-audit">
+    <summary>Promesses des manifestes <span id="tp-audit-resume" class="tp-audit-resume">…</span></summary>
+    <p class="tp-audit-aide">
+      Confronte le manifeste de chaque plugin à ce que son code sert réellement — points
+      d'entrée, actions proposées aux macros, réglages déclarés. Détecteur d'<em>oubli</em>,
+      pas de fonctionnement : un point d'entrée présent peut malgré tout être cassé.
+    </p>
+    <div id="tp-audit-corps"></div>
+  </details>
+
+  <!-- ─── Auto-contrôles des instruments ───────────────────────────────────────────────
+       Un appareil de mesure doit pouvoir prouver son étalonnage. Ces contrôles tournent DANS
+       le conteneur, seul endroit où vivent les noyaux, et rejouent ce qui a été vérifié à la
+       main pendant le développement : conservation des histogrammes, cas 1 de l'EBU Tech 3341,
+       aller-retour du paquet binaire. -->
+  <details class="tp-audit" id="tp-auto">
+    <summary>Auto-contrôles des instruments <span id="tp-auto-resume" class="tp-audit-resume">…</span></summary>
+    <p class="tp-audit-aide">
+      Rejoués à l'ouverture, dans chaque conteneur qui en déclare. Un contrôle
+      « indisponible » n'est pas un contrôle réussi : c'est un contrôle qui n'a pas pu tourner.
+    </p>
+    <div id="tp-auto-corps"></div>
+  </details>
+
+  <div id="tp-list"></div>
+
+  <div class="tp-add">
+    <b>Ajouter un test</b>
+    <input id="tp-add-area"  type="text" placeholder="Catégorie (ex. Audio, UI, 2110…)">
+    <input id="tp-add-title" type="text" placeholder="Intitulé du test">
+    <textarea id="tp-add-detail" rows="2" placeholder="Comment le tester / ce qu'on attend (optionnel)"></textarea>
+    <button id="tp-add-btn" type="button">Ajouter</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const STATUS_LABELS = { untested:"Non testé", progress:"En cours", ok:"OK", defect:"Défaut" };
+  const STATUS_ORDER  = ["untested","progress","ok","defect"];
+  const SEV_ORDER  = ["mineur","majeur","bloquant"];
+  const SEV_LABELS = { mineur:"Mineur", majeur:"Majeur", bloquant:"Bloquant" };
+  const listEl = document.getElementById("tp-list");
+  const sumEl  = document.getElementById("tp-summary");
+  const testerEl = document.getElementById("tp-tester");
+  const filterEl = document.getElementById("tp-filter-sel");
+  const discEl   = document.getElementById("tp-filter-disc");
+  const gotoEl   = document.getElementById("tp-goto");
+  const cntEl    = document.getElementById("tp-unread-count");
+  testerEl.value = localStorage.getItem("tp_tester") || "";
+  testerEl.addEventListener("change", () => localStorage.setItem("tp_tester", testerEl.value.trim()));
+
+  let DATA = { items: [], state: {}, threads: {}, summary: {} };
+  const editing = new Set();      // champs en cours d'édition (remarque/réponse) → pause du refresh
+  const openThreads = new Set();  // ids dont le fil de discussion est déplié
+
+  // Fils longs : combien de messages de FIN sont affichés (id → n), et où en était la lecture
+  // au moment de l'ouverture (id → ts vu) pour poser le repère « nouveaux » — markRead() écrase
+  // cette valeur dès l'ouverture, il faut donc la retenir avant.
+  const FENETRE = 8;              // messages affichés par défaut à l'ouverture
+  const PALIER  = 25;             // messages révélés par clic sur « afficher les précédents »
+  const fenetre = new Map();
+  const luAvant = new Map();
+
+  function fmtTime(ts) {
+    if (!ts) return "";
+    const d = new Date(ts * 1000);
+    return d.toLocaleString();
+  }
+
+  function renderSummary(s) {
+    s = s || {};
+    sumEl.innerHTML = "";
+    const order = [["ok","ok"],["defect","defect"],["progress","progress"],["untested","untested"]];
+    const lab = { ok:"OK", defect:"Défauts", progress:"En cours", untested:"Restants" };
+    order.forEach(([k, cls]) => {
+      const span = document.createElement("span");
+      span.className = "tp-pill " + cls;
+      span.textContent = (lab[k]) + " : " + (s[k] || 0);
+      sumEl.appendChild(span);
+    });
+    const tot = document.createElement("span");
+    tot.className = "tp-pill untested";
+    tot.textContent = "Total : " + (s.total || 0);
+    sumEl.appendChild(tot);
+  }
+
+  function postJSON(url, body) {
+    return fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" },
+                        body: JSON.stringify(body) }).then(r => r.json());
+  }
+
+  function setStatus(item, status) {
+    const cur = DATA.state[item.id] || {};
+    const remark = (document.getElementById("rmk-" + item.id) || {}).value;
+    // ⚠ LA GRAVITÉ NE SURVIT PAS HORS DU DÉFAUT — même règle que côté serveur,
+    // sinon l'affichage local et le magasin divergeraient le temps d'un rendu.
+    const sev = (status === "defect") ? (cur.severite || "") : "";
+    DATA.state[item.id] = Object.assign({}, cur, { status: status, severite: sev });
+    postJSON("/api/tests/state", { id:item.id, status:status, severite:sev,
+            remark: (remark !== undefined ? remark : (cur.remark||"")),
+            tester: testerEl.value.trim() })
+      .then(r => { if (r && r.summary) { DATA.summary = r.summary; renderSummary(r.summary); } render(); })
+      .catch(() => {});
+  }
+
+  function setSeverite(item, severite) {
+    const cur = DATA.state[item.id] || {};
+    const remark = (document.getElementById("rmk-" + item.id) || {}).value;
+    DATA.state[item.id] = Object.assign({}, cur, { severite: severite });
+    postJSON("/api/tests/state", { id:item.id, status:"defect", severite:severite,
+            remark: (remark !== undefined ? remark : (cur.remark||"")),
+            tester: testerEl.value.trim() })
+      .then(r => { if (r && r.summary) { DATA.summary = r.summary; renderSummary(r.summary); } render(); })
+      .catch(() => {});
+  }
+
+  function saveRemark(item) {
+    const ta = document.getElementById("rmk-" + item.id);
+    const meta = document.getElementById("meta-" + item.id);
+    const cur = DATA.state[item.id] || {};
+    DATA.state[item.id] = Object.assign({}, cur, { remark: ta.value });
+    postJSON("/api/tests/state", { id:item.id, status:(cur.status||"untested"),
+            severite: (cur.severite || ""),   // sinon enregistrer une remarque effacerait la gravité
+            remark: ta.value, tester: testerEl.value.trim() })
+      .then(r => { if (meta) { meta.innerHTML = '<span class="tp-saved">✓ enregistré</span>'; }
+                   if (r && r.summary) renderSummary(r.summary); })
+      .catch(() => {});
+  }
+
+  function delItem(id) {
+    if (!confirm("Supprimer ce test ?")) return;
+    postJSON("/api/tests/item/delete", { id:id }).then(() => load());
+  }
+
+  /* Un item passe-t-il les DEUX filtres (statut de test, état de discussion) ? */
+  function retenu(it) {
+    const st = (DATA.state[it.id] || {}).status || "untested";
+    if (filterEl.value !== "all" && st !== filterEl.value) return false;
+    const msgs = DATA.threads[it.id] || [];
+    switch (discEl.value) {
+      case "unread": return hasUnread(it.id, msgs);
+      case "any":    return msgs.length > 0;
+      case "none":   return msgs.length === 0;
+      default:       return true;
+    }
+  }
+
+  /* Le rendu est DESTRUCTIF (innerHTML = "") : il perd la position de lecture. C'est acceptable
+     sur un changement de filtre, jamais sur le rafraîchissement automatique de 12 s — on lisait
+     une réponse et la page sautait. D'où la restauration du défilement. */
+  function render() {
+    const y = window.scrollY;
+    const byArea = {};
+    DATA.items.forEach(it => { (byArea[it.area] = byArea[it.area] || []).push(it); });
+    listEl.innerHTML = "";
+    Object.keys(byArea).forEach(area => {
+      const items = byArea[area].filter(retenu);
+      if (!items.length) return;
+      const h = document.createElement("div");
+      h.className = "tp-area-h"; h.textContent = area;
+      h.id = "aire-" + area.replace(/\s+/g, "-");
+      listEl.appendChild(h);
+      items.forEach(it => listEl.appendChild(renderItem(it)));
+    });
+    if (!listEl.children.length) {
+      listEl.innerHTML = '<p class="tp-note">Aucun test ne correspond aux filtres.</p>';
+    }
+    majCompteurNonLues();
+    majSauts(byArea);
+    window.scrollTo(0, y);
+  }
+
+  /* Compteur de réponses non lues (barre d'outils) : c'est LA question que se pose quelqu'un
+     qui revient sur la page. Il compte sur TOUS les items, pas seulement ceux affichés — sinon
+     un filtre actif ferait croire à zéro réponse en attente. */
+  function nonLus() {
+    return DATA.items.filter(it => hasUnread(it.id, DATA.threads[it.id] || [])).map(it => it.id);
+  }
+  function majCompteurNonLues() {
+    const n = nonLus().length;
+    cntEl.textContent = n === 0 ? "0 réponse non lue"
+                                : n + (n > 1 ? " réponses non lues" : " réponse non lue");
+    cntEl.classList.toggle("zero", n === 0);
+    document.getElementById("tp-unread-prev").disabled = (n === 0);
+    document.getElementById("tp-unread-next").disabled = (n === 0);
+    document.getElementById("tp-unread-read").disabled = (n === 0);
+  }
+
+  /* Liste « Aller à » : les catégories réellement affichées, avec leur effectif. */
+  function majSauts(byArea) {
+    const cur = gotoEl.value;
+    gotoEl.innerHTML = '<option value="">—</option>';
+    Object.keys(byArea).forEach(area => {
+      const n = byArea[area].filter(retenu).length;
+      if (!n) return;
+      const o = document.createElement("option");
+      o.value = "aire-" + area.replace(/\s+/g, "-");
+      o.textContent = area + " (" + n + ")";
+      gotoEl.appendChild(o);
+    });
+    gotoEl.value = "";
+    if (cur) gotoEl.value = "";
+  }
+
+  /* Saut vers un item : on l'ouvre, on l'amène à l'écran et on le fait clignoter — sans quoi
+     un défilement programmé laisse l'utilisateur sans repère sur où il vient d'atterrir. */
+  function sauterVers(id, ouvrir) {
+    const el = document.getElementById("test-" + id);
+    if (!el) return false;
+    if (ouvrir && !openThreads.has(id)) basculerFil(id, true);
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    el.classList.remove("tp-flash");
+    void el.offsetWidth;                       // relance l'animation même si déjà posée
+    el.classList.add("tp-flash");
+    return true;
+  }
+
+  /* Non lue précédente / suivante, dans l'ordre de la liste, relativement à la position lue.
+     Boucle en fin de liste : on ne veut pas d'un bouton qui ne fait rien parce qu'on est en bas. */
+  function allerNonLu(sens) {
+    const ids = nonLus();
+    if (!ids.length) return;
+    const pos = ids.map(id => {
+      const el = document.getElementById("test-" + id);
+      return { id: id, y: el ? el.getBoundingClientRect().top : Infinity };
+    }).filter(p => isFinite(p.y));
+    if (!pos.length) {                          // tous masqués par le filtre → on l'ouvre
+      discEl.value = "unread"; render();
+      return allerNonLu(sens);
+    }
+    let cible = (sens > 0) ? pos.find(p => p.y > 80) : [...pos].reverse().find(p => p.y < -10);
+    if (!cible) cible = (sens > 0) ? pos[0] : pos[pos.length - 1];
+    sauterVers(cible.id, true);
+  }
+
+  function renderItem(it) {
+    const st = DATA.state[it.id] || {};
+    const status = st.status || "untested";
+    const div = document.createElement("div");
+    // Un défaut BLOQUANT se repère sans lire : la barre de gauche s'épaissit.
+    // C'est le seul niveau qui mérite d'attirer l'œil dans une liste de 77 points.
+    div.className = "tp-item s-" + status
+                  + (status === "defect" && st.severite === "bloquant" ? " sev-bloquant" : "");
+    div.id = "test-" + it.id;          // ancre : lien profond /tests#test-<id> vers une ligne
+
+    const title = document.createElement("div");
+    title.className = "tp-title";
+    title.textContent = it.title;
+    if (!it.builtin) {
+      const del = document.createElement("button");
+      del.className = "tp-del"; del.textContent = "supprimer"; del.type = "button";
+      del.onclick = () => delItem(it.id);
+      title.appendChild(del);
+    }
+    div.appendChild(title);
+
+    if (it.detail) {
+      const d = document.createElement("div");
+      d.className = "tp-detail"; d.textContent = it.detail;
+      div.appendChild(d);
+    }
+
+    const row = document.createElement("div");
+    row.className = "tp-row2";
+    const sdiv = document.createElement("div");
+    sdiv.className = "tp-status";
+    STATUS_ORDER.forEach(s => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "tp-sbtn " + s + (s === status ? " act" : "");
+      b.textContent = STATUS_LABELS[s];
+      b.onclick = () => setStatus(it, s);
+      sdiv.appendChild(b);
+    });
+    row.appendChild(sdiv);
+
+    // ★ LA GRAVITÉ N'APPARAÎT QU'APRÈS « Défaut ». Trois boutons visibles en
+    // permanence auraient laissé croire qu'on peut qualifier un point qui va
+    // bien ; et un défaut SANS gravité reste possible — c'est « non qualifié »,
+    // qui a le mérite de se compter et donc de se voir.
+    if (status === "defect") {
+      const sev = document.createElement("div");
+      sev.className = "tp-sev";
+      const lbl = document.createElement("span");
+      lbl.className = "tp-sev-lbl";
+      lbl.textContent = "Gravité :";
+      sev.appendChild(lbl);
+      SEV_ORDER.forEach(v => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "tp-sevbtn " + v + (v === (st.severite || "") ? " act" : "");
+        b.textContent = SEV_LABELS[v];
+        // Recliquer la gravité active la retire : on se trompe, et il faut
+        // pouvoir revenir à « non qualifié » sans changer de statut.
+        b.onclick = () => setSeverite(it, v === (st.severite || "") ? "" : v);
+        sev.appendChild(b);
+      });
+      row.appendChild(sev);
+    }
+
+    const rdiv = document.createElement("div");
+    rdiv.className = "tp-remark";
+    const ta = document.createElement("textarea");
+    ta.id = "rmk-" + it.id;
+    ta.placeholder = "Remarque / défaut constaté…";
+    ta.value = st.remark || "";
+    ta.addEventListener("focus", () => editing.add(it.id));
+    ta.addEventListener("blur",  () => { editing.delete(it.id); saveRemark(it); });
+    rdiv.appendChild(ta);
+    const meta = document.createElement("div");
+    meta.className = "tp-meta"; meta.id = "meta-" + it.id;
+    if (st.updated) meta.textContent = "Dernière MAJ : " + (st.tester ? st.tester + " — " : "") + fmtTime(st.updated);
+    rdiv.appendChild(meta);
+    row.appendChild(rdiv);
+    div.appendChild(row);
+
+    // ── Discussion (fil Q/R horodaté) ──
+    const msgs = DATA.threads[it.id] || [];
+    const dtgl = document.createElement("span");
+    dtgl.className = "tp-ctx-t";
+    dtgl.id = "tgl-" + it.id;
+    dtgl.appendChild(etiquetteFil(it.id, msgs));
+    const thread = document.createElement("div");
+    thread.className = "tp-thread" + (openThreads.has(it.id) ? " open" : "");
+    thread.id = "fil-" + it.id;
+    // Contenu PARESSEUX : un fil replié ne construit pas ses 121 messages. La page portait
+    // jusqu'ici tout le DOM de tous les fils, y compris ceux que personne n'ouvrira.
+    if (openThreads.has(it.id)) thread.appendChild(renderThread(it, msgs));
+    // Le repli/dépli ne RE-RENDAIT pas seulement cette ligne : il appelait render(), qui
+    // reconstruisait toute la liste et renvoyait la lecture en haut de page. Ici, on ne touche
+    // qu'à cette ligne (+ le compteur global).
+    dtgl.onclick = () => basculerFil(it.id, !openThreads.has(it.id));
+    div.appendChild(dtgl);
+
+    // Aperçu du dernier message quand le fil est replié : qui a répondu, quand, et le début du
+    // propos. C'est ce qui permet de PARCOURIR la page sans ouvrir vingt fils.
+    if (msgs.length) {
+      const last = msgs[msgs.length - 1];
+      const ap = document.createElement("span");
+      ap.className = "tp-last" + (last.role === "dev" ? " dev" : "");
+      ap.id = "last-" + it.id;
+      ap.innerHTML = "<b>" + escapeHtml(last.role === "dev" ? "DEV" : (last.author || "?")) + "</b> · " +
+                     fmtTime(last.ts) + " — " + escapeHtml(last.text.replace(/\s+/g, " ").slice(0, 140));
+      ap.style.display = openThreads.has(it.id) ? "none" : "block";
+      div.appendChild(ap);
+    }
+
+    if (it.context) {
+      const tgl = document.createElement("span");
+      tgl.className = "tp-ctx-t"; tgl.textContent = "ℹ Contexte technique";
+      const ctx = document.createElement("div");
+      ctx.className = "tp-ctx"; ctx.textContent = it.context;
+      tgl.onclick = () => ctx.classList.toggle("open");
+      div.appendChild(tgl); div.appendChild(ctx);
+    }
+    div.appendChild(thread);
+    return div;
+  }
+
+  /* Étiquette du repli : « 💬 Discussion (n) » + pastille « nouveau » si le dernier message
+     n'a pas été vu. Fabriquée à part pour être RECONSTRUITE seule au dépli (sans re-rendu). */
+  function etiquetteFil(id, msgs) {
+    const frag = document.createDocumentFragment();
+    const lbl = document.createElement("span");
+    lbl.textContent = "💬 Discussion (" + msgs.length + ")";
+    frag.appendChild(lbl);
+    if (hasUnread(id, msgs)) {
+      const u = document.createElement("span");
+      u.className = "tp-unread"; u.textContent = "nouveau";
+      frag.appendChild(u);
+    }
+    return frag;
+  }
+
+  /* Ouvre/ferme UN fil, sans toucher au reste de la page. */
+  function basculerFil(id, ouvrir) {
+    const thread = document.getElementById("fil-" + id);
+    const tgl    = document.getElementById("tgl-" + id);
+    const ap     = document.getElementById("last-" + id);
+    if (!thread) return;
+    const it = DATA.items.find(x => x.id === id);
+    const msgs = DATA.threads[id] || [];
+    thread.classList.toggle("open", ouvrir);
+    if (ap) ap.style.display = ouvrir ? "none" : "block";
+    if (ouvrir) {
+      openThreads.add(id);
+      if (!luAvant.has(id)) luAvant.set(id, parseFloat(localStorage.getItem(seenKey(id)) || "0"));
+      thread.innerHTML = "";
+      if (it) thread.appendChild(renderThread(it, msgs));
+      markRead(id, msgs);
+      // Ouvrir sur le début du fil n'a aucun intérêt quand il en compte 121 : on se pose sur
+      // le repère « nouveaux », à défaut sur le dernier message.
+      requestAnimationFrame(() => {
+        const cible = thread.querySelector(".tp-newsep") || dernierMsg(thread);
+        if (cible) cible.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    } else {
+      openThreads.delete(id);
+      luAvant.delete(id);
+      fenetre.delete(id);
+      thread.innerHTML = "";
+    }
+    if (tgl) { tgl.innerHTML = ""; tgl.appendChild(etiquetteFil(id, msgs)); }
+    majCompteurNonLues();
+  }
+
+  /* Dernier message d'un fil. Pas `.tp-msg:last-of-type` : `:last-of-type` porte sur le TYPE
+     d'élément (div), et le dernier div du fil est la zone de réponse — le sélecteur ne
+     désignait donc rien du tout. */
+  function dernierMsg(fil) {
+    const l = fil.querySelectorAll(".tp-msg");
+    return l.length ? l[l.length - 1] : null;
+  }
+
+  /* Combien de messages de fin afficher : assez pour couvrir tout ce qui est nouveau (plus
+     trois messages de contexte avant), sinon la fenêtre par défaut. Une fois que l'utilisateur
+     a demandé à en voir plus, c'est SON choix qui prime. */
+  function tailleFenetre(id, msgs) {
+    if (fenetre.has(id)) return fenetre.get(id);
+    const vu = luAvant.get(id);
+    if (vu != null) {
+      const i = msgs.findIndex(m => m.ts > vu);
+      if (i >= 0) return Math.max(FENETRE, msgs.length - i + 3);
+    }
+    return FENETRE;
+  }
+
+  function renderThread(it, msgs) {
+    const wrap = document.createElement("div");
+    const vu = luAvant.get(it.id);
+    const nNeufs = (vu == null) ? 0 : msgs.filter(m => m.ts > vu).length;
+    const n = Math.min(msgs.length, tailleFenetre(it.id, msgs));
+    const debut = msgs.length - n;                 // index du 1er message affiché
+    const vus = msgs.slice(debut);
+
+    // En-tête du fil : combien de messages, combien de nouveaux, et de quoi sauter aux extrêmes.
+    if (msgs.length) {
+      const head = document.createElement("div");
+      head.className = "tp-thead";
+      const info = document.createElement("span");
+      info.innerHTML = msgs.length + " message" + (msgs.length > 1 ? "s" : "") +
+        (nNeufs ? ' · <span class="tp-new">' + nNeufs + " nouveau" + (nNeufs > 1 ? "x" : "") + "</span>" : "") +
+        (debut > 0 ? " · " + debut + " masqué" + (debut > 1 ? "s" : "") : "");
+      head.appendChild(info);
+      if (debut > 0) {
+        const tout = document.createElement("button");
+        tout.type = "button"; tout.textContent = "tout afficher";
+        tout.onclick = () => { fenetre.set(it.id, msgs.length); rafraichirFil(it.id); };
+        head.appendChild(tout);
+      }
+      const bas = document.createElement("button");
+      bas.type = "button"; bas.textContent = "↓ dernier";
+      bas.onclick = () => {
+        const f = document.getElementById("fil-" + it.id);
+        const d = f && dernierMsg(f);
+        if (d) d.scrollIntoView({ behavior: "smooth", block: "center" });
+      };
+      head.appendChild(bas);
+      wrap.appendChild(head);
+    }
+
+    // Palier de remontée : on ne charge pas 121 messages pour en lire 5.
+    if (debut > 0) {
+      const more = document.createElement("button");
+      more.type = "button"; more.className = "tp-more";
+      const reste = Math.min(PALIER, debut);
+      more.textContent = "↑ afficher les " + reste + " message" + (reste > 1 ? "s" : "") + " précédent" + (reste > 1 ? "s" : "");
+      more.onclick = () => { fenetre.set(it.id, n + PALIER); rafraichirFil(it.id); };
+      wrap.appendChild(more);
+    }
+
+    let repere = false;
+    vus.forEach(m => {
+      // Repère « nouveaux messages » : posé une fois, devant le premier message postérieur à
+      // la dernière lecture. C'est le seul point d'entrée utile dans un fil qu'on suit.
+      if (!repere && vu != null && m.ts > vu) {
+        repere = true;
+        const sep = document.createElement("div");
+        sep.className = "tp-newsep"; sep.textContent = "nouveaux messages";
+        wrap.appendChild(sep);
+      }
+      const row = document.createElement("div");
+      row.className = "tp-msg " + (m.role === "dev" ? "dev" : "tester") +
+                      ((vu != null && m.ts > vu) ? " tp-neuf" : "");
+      const av = document.createElement("div");
+      av.className = "tp-av";
+      av.textContent = (m.role === "dev") ? "DEV" : (m.author || "?").slice(0,1).toUpperCase();
+      const body = document.createElement("div");
+      body.className = "tp-body";
+      const by = document.createElement("div");
+      by.className = "tp-by";
+      by.innerHTML = '<b>' + escapeHtml(m.author || "?") + '</b>' +
+        '<span class="tp-badge">' + (m.role === "dev" ? "DEV" : "TEST") + '</span>' +
+        ' <span class="tp-ts">' + fmtTime(m.ts) + '</span>';
+      const txt = document.createElement("div");
+      txt.className = "tp-txt"; txt.textContent = m.text;
+      body.appendChild(by); body.appendChild(txt);
+      row.appendChild(av); row.appendChild(body);
+      wrap.appendChild(row);
+    });
+    // zone de réponse
+    const reply = document.createElement("div");
+    reply.className = "tp-reply";
+    const ta = document.createElement("textarea");
+    ta.id = "rep-" + it.id;
+    ta.placeholder = "Répondre / poser une question…";
+    ta.addEventListener("focus", () => editing.add("rep-" + it.id));
+    ta.addEventListener("blur",  () => editing.delete("rep-" + it.id));
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.textContent = "Envoyer";
+    btn.onclick = () => postReply(it, ta);
+    reply.appendChild(ta); reply.appendChild(btn);
+    wrap.appendChild(reply);
+    return wrap;
+  }
+
+  /* Reconstruit UN fil ouvert (changement de fenêtre) sans toucher au reste de la page ni à
+     la position de lecture — l'ancien réflexe `render()` renvoyait en haut. */
+  function rafraichirFil(id) {
+    const thread = document.getElementById("fil-" + id);
+    const it = DATA.items.find(x => x.id === id);
+    if (!thread || !it) return;
+    const avant = thread.scrollHeight;
+    thread.innerHTML = "";
+    thread.appendChild(renderThread(it, DATA.threads[id] || []));
+    // Révéler des messages PLUS ANCIENS pousse le contenu vers le bas : on compense pour que
+    // le message qu'on lisait reste sous les yeux.
+    window.scrollBy(0, thread.scrollHeight - avant);
+  }
+
+  function postReply(it, ta) {
+    const text = ta.value.trim();
+    if (!text) return;
+    const name = testerEl.value.trim() || "anonyme";
+    btnBusy(ta, true);
+    postJSON("/api/tests/thread", { id: it.id, text: text, author: name, role: "tester" })
+      .then(r => { ta.value = ""; editing.delete("rep-" + it.id); openThreads.add(it.id); load(); })
+      .catch(() => {})
+      .finally(() => btnBusy(ta, false));
+  }
+  function btnBusy(ta, b) { const btn = ta.nextSibling; if (btn) btn.disabled = b; }
+
+  function escapeHtml(s) {
+    return (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+  }
+
+  // suivi « non lu » : dernier ts de message vu par item (localStorage)
+  function seenKey(id) { return "tp_seen_" + id; }
+  function hasUnread(id, msgs) {
+    if (!msgs.length) return false;
+    const seen = parseFloat(localStorage.getItem(seenKey(id)) || "0");
+    return msgs[msgs.length - 1].ts > seen;
+  }
+  function markRead(id, msgs) {
+    if (msgs.length) localStorage.setItem(seenKey(id), String(msgs[msgs.length - 1].ts));
+  }
+
+  function load() {
+    return fetch("/api/tests").then(r => r.json()).then(d => {
+      // ne pas écraser une remarque en cours d'édition
+      editing.forEach(id => {
+        const ta = document.getElementById("rmk-" + id);
+        if (ta && d.state[id]) d.state[id].remark = ta.value;
+      });
+      DATA = d;
+      DATA.threads = DATA.threads || {};
+      // Un fil OUVERT est un fil lu : sans ça, un message arrivé pendant qu'on le lisait
+      // resterait compté « non lu » jusqu'à ce qu'on le replie et le rouvre.
+      openThreads.forEach(id => markRead(id, DATA.threads[id] || []));
+      renderSummary(d.summary);
+      render();
+    }).catch(() => {});
+  }
+
+  filterEl.addEventListener("change", render);
+  discEl.addEventListener("change", render);
+
+  document.getElementById("tp-unread-next").onclick = () => allerNonLu(+1);
+  document.getElementById("tp-unread-prev").onclick = () => allerNonLu(-1);
+  document.getElementById("tp-unread-read").onclick = () => {
+    DATA.items.forEach(it => markRead(it.id, DATA.threads[it.id] || []));
+    render();
+  };
+  document.getElementById("tp-expand").onclick = () => {
+    DATA.items.forEach(it => { if ((DATA.threads[it.id] || []).length) basculerFil(it.id, true); });
+  };
+  document.getElementById("tp-collapse").onclick = () => {
+    [...openThreads].forEach(id => basculerFil(id, false));
+  };
+  gotoEl.addEventListener("change", () => {
+    const el = gotoEl.value && document.getElementById(gotoEl.value);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    gotoEl.value = "";
+  });
+  document.getElementById("tp-add-btn").addEventListener("click", () => {
+    const title = document.getElementById("tp-add-title").value.trim();
+    if (!title) { alert("Donnez un intitulé."); return; }
+    postJSON("/api/tests/item", {
+      area:  document.getElementById("tp-add-area").value.trim(),
+      title: title,
+      detail:document.getElementById("tp-add-detail").value.trim()
+    }).then(() => {
+      document.getElementById("tp-add-area").value = "";
+      document.getElementById("tp-add-title").value = "";
+      document.getElementById("tp-add-detail").value = "";
+      load();
+    });
+  });
+
+  // Lien profond : /tests#test-<id> ouvre le fil de cette ligne et l'amène à l'écran — c'est
+  // ainsi qu'on renvoie quelqu'un sur UNE réponse précise plutôt que sur « la page recette ».
+  load().then(() => {
+    const m = (location.hash || "").match(/^#test-(.+)$/);
+    if (m) setTimeout(() => sauterVers(m[1], true), 60);
+  });
+  // refresh partagé (pause si édition) — sans recouvrement, cf. layout.html
+  window.MXLPoll(() => { if (editing.size === 0) return load(); }, 12000);
+})();
+
+// ─── Audit des manifestes de plugins ────────────────────────────────────────────────────
+// Chargé À L'OUVERTURE seulement : l'audit relit tout le code de l'orchestrateur (~1,9 s),
+// ce n'est pas quelque chose qu'on met dans une boucle de rafraîchissement.
+(function () {
+  const bloc = document.getElementById('tp-audit');
+  if (!bloc) return;
+  let charge = false;
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  bloc.addEventListener('toggle', async () => {
+    if (!bloc.open || charge) return;
+    charge = true;
+    const corps = document.getElementById('tp-audit-corps');
+    corps.innerHTML = '<p class="tp-audit-aide">Analyse en cours…</p>';
+    try {
+      const j = await (await fetch('/api/plugins/audit')).json();
+      document.getElementById('tp-audit-resume').textContent =
+        j.ok + '/' + j.total + ' sans manquement';
+      const mauvais = (j.plugins || []).filter((p) => !p.ok || (p.hors_portee || []).length);
+      if (!mauvais.length) {
+        corps.innerHTML = '<p class="tp-audit-ok">Tous les manifestes sont tenus.</p>';
+        return;
+      }
+      corps.innerHTML = mauvais.map((p) => {
+        const l = [];
+        if ((p.endpoints_absents || []).length)
+          l.push('<li><b>Points d\'entrée absents</b> : ' + esc(p.endpoints_absents.join(', ')) + '</li>');
+        if ((p.actions_absentes || []).length)
+          l.push('<li><b>Actions proposées aux macros mais non servies</b> : ' + esc(p.actions_absentes.join(', ')) + '</li>');
+        if ((p.reglages_morts || []).length)
+          l.push('<li><b>Réglages que personne ne lit</b> : ' + esc(p.reglages_morts.join(', ')) + '</li>');
+        if ((p.hors_portee || []).length)
+          l.push('<li class="tp-audit-hp">Hors portée (servi par l\'agent, hors de ce dépôt) : '
+                 + esc(p.hors_portee.join(', ')) + '</li>');
+        if (p.etat && p.etat !== 'ok') l.push('<li class="tp-audit-hp">' + esc(p.etat) + '</li>');
+        return '<div class="tp-audit-p"><h4>' + esc(p.type) + '</h4><ul>' + l.join('') + '</ul></div>';
+      }).join('');
+    } catch (e) {
+      corps.innerHTML = '<p class="tp-audit-aide">Audit indisponible : ' + esc(e.message || e) + '</p>';
+    }
+  });
+})();
+
+// ─── Auto-contrôles des instruments ──────────────────────────────────────────────────────
+(function () {
+  const bloc = document.getElementById('tp-auto');
+  if (!bloc) return;
+  let charge = false;
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const MARQUE = { ok: '✓', 'échec': '✗', indisponible: '·', erreur: '!' };
+  bloc.addEventListener('toggle', async () => {
+    if (!bloc.open || charge) return;
+    charge = true;
+    const corps = document.getElementById('tp-auto-corps');
+    corps.innerHTML = '<p class="tp-audit-aide">Exécution dans les conteneurs…</p>';
+    try {
+      const j = await (await fetch('/api/plugins/autotests')).json();
+      const cs = j.conteneurs || [];
+      document.getElementById('tp-auto-resume').textContent =
+        cs.length ? (j.echecs + ' échec(s) sur ' + cs.length + ' instrument(s)') : 'aucun instrument déployé';
+      if (!cs.length) {
+        corps.innerHTML = '<p class="tp-audit-ok">Aucun conteneur ne déclare d\'auto-contrôle.</p>';
+        return;
+      }
+      corps.innerHTML = cs.map((c) => {
+        if (c.etat === 'injoignable')
+          return '<div class="tp-audit-p"><h4>' + esc(c.hostname || c.vmid) +
+                 '</h4><ul><li class="tp-audit-hp">injoignable : ' + esc(c.detail || '') + '</li></ul></div>';
+        const l = (c.controles || []).map((x) =>
+          '<li class="tp-ac-' + esc(x.etat) + '">' + (MARQUE[x.etat] || '?') + ' ' + esc(x.libelle) +
+          (x.obtenu !== undefined ? ' — <b>' + esc(x.obtenu) + '</b> / attendu ' + esc(x.attendu) : '') +
+          (x.detail ? ' <i>(' + esc(x.detail) + ')</i>' : '') + '</li>').join('');
+        return '<div class="tp-audit-p"><h4>' + esc(c.hostname || c.vmid) + ' <small>' +
+               esc(c.type || '') + ' ' + esc(c.plugin_version || '') + '</small></h4><ul>' + l + '</ul></div>';
+      }).join('');
+    } catch (e) {
+      corps.innerHTML = '<p class="tp-audit-aide">Auto-contrôles indisponibles : ' + esc(e.message || e) + '</p>';
+    }
+  });
+})();
+</script>
+{% endblock %}

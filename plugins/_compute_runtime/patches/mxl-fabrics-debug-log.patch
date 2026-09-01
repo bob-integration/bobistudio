@@ -1,0 +1,29 @@
+Diagnostic uniquement — N'EST PAS APPLIQUÉ dans le build normal.
+
+`runDiscrete()` journalise déjà chaque transfert :
+
+    MXL_DEBUG("Transferred grain index={} slices {}-{}", grainIndex, startSlice, grainInfo.validSlices);
+
+mais c'est un `SPDLOG_DEBUG`, compilé HORS du binaire en Release, et `Logging.cpp` ne règle
+aucun niveau à l'exécution. Deux changements sont donc nécessaires, et ce patch ne porte que
+le second : le niveau à l'exécution. Le premier (`SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG`) est
+un drapeau de compilation, posé par le contexte de build de diagnostic.
+
+Objectif : voir la séquence RÉELLE des grains et des tranches qui franchissent le fil, pour
+établir si la case source est recyclée sous un transfert en vol (réplication d'un flux tranché :
+grains corrompus + ~12 images de retard, cf. docs/chantiers/MXL_FABRICS_SLICE_CORRUPTION.md).
+
+--- a/tools/mxl-fabrics-demo/demo.cpp
++++ b/tools/mxl-fabrics-demo/demo.cpp
+@@ -746,6 +746,11 @@ int main(int argc, char** argv)
+ {
+     std::signal(SIGINT, &signal_handler);
+     std::signal(SIGTERM, &signal_handler);
++
++    // BUILD DE DIAGNOSTIC (bobi.studio) : sans ceci, les MXL_DEBUG restent muets même compilés,
++    // spdlog filtrant à `info` par défaut et MXL ne réglant aucun niveau. Réservé au build de
++    // diagnostic — le build normal n'applique pas ce patch.
++    spdlog::set_level(spdlog::level::debug);
+
+     CLI::App app("mxl-fabrics-demo");
+

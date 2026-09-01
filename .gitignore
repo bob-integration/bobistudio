@@ -1,0 +1,94 @@
+# ── Secrets ──────────────────────────────────────────────
+config_local.py
+# Matériel de CA interne (mTLS) : clés privées — JAMAIS versionné (cf. app/ca.py, TLS_DIR).
+tls/
+*.key
+
+# ── Base de données runtime ───────────────────────────────
+*.db
+# Sauvegardes de base : *.db ne les attrape PAS (suffixe après l'extension).
+# Deux d'entre elles ont été versionnées par ce trou — elles contenaient
+# flask_secret_key, le mot de passe SMTP et les hash de comptes réels.
+*.db.bak*
+*.bak-*
+*-shm
+*-wal
+**/.clips.db
+db_testplan.json
+db_testplan.json.tmp
+
+# ── Logs ─────────────────────────────────────────────────
+*.log
+*.log.*
+
+# ── ISO d'enrôlement cachées (service iLO Virtual Media) ──
+node_iso_cache/
+# ── ISO netinst Debian source téléchargée (champ « depuis une URL ») ──
+iso_src/
+# ── Arbre netboot Debian extrait (boot réseau PXE / UEFI HTTP Boot) ──
+pxe_root/
+.netboot.tar.gz.part
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+
+# ── Environnement virtuel ─────────────────────────────────
+venv/
+
+# ── Sauvegardes automatiques ──────────────────────────────
+backups/
+
+# ── Réplica HA stagé (snapshot DB reçu par un standby — runtime) ──
+ha_staging/
+
+# ── Uploads utilisateur (assets runtime, pas du code) ────
+static/uploads/
+
+# ── Ancienne codebase (référence archivée, non versionnée) ─
+old/
+
+# ── Mémoire interne (dépôt PRIVÉ séparé, cloné ici) ───────
+# PAS un sous-module : un sous-module privé casse le clone --recursive du public.
+interne/
+
+# ── Plans / mémoire / skills Claude Code ─────────────────
+.claude/
+.agents/
+
+# ── État runtime (rings d'historique flushés, pas du code) ─
+ptp_stats.json
+node_health_stats.json
+clocks_hist.json
+flux_pannes.json
+flux_pannes.json.tmp
+
+# ── OS ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Artefacts de distribution ────────────────────────────
+bobistudio_dist.tar.gz
+dist/
+vendor/
+build_info.json
+UPDATE_PENDING
+
+# ── Locks runtime ────────────────────────────────────────
+db_testplan.json.lock
+*.db-journal
+*.db-wal
+*.db-shm
+venv
+
+# ── État runtime (épisodes de surveillance, profils CPU) ──
+episodes_*.json
+cpu_pressure_stats.json
+
+# ── Outils de profilage téléchargés ──
+py_spy-*.whl
+
+# Captures d'écran de travail (site vitrine) : elles portent des IP, des noms de nœuds
+# et le plan multicast — jamais dans un dépôt public.
+_captures/

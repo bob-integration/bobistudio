@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bobi.Studio — Coming Soon</title>
+<meta name="description" content="Bobi.Studio — Coming soon.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #18181b;
+  --bg-elev:     #23232a;
+  --bg-card:     #1e1e24;
+  --border:      #36363f;
+  --border-soft: #2a2a32;
+  --text:        #e4e4e7;
+  --text-muted:  #a1a1aa;
+  --text-strong: #fafafa;
+  --accent:      #f59e0b;
+  --accent-dim:  rgba(245, 158, 11, 0.12);
+  --font:        'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono:   ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+html, body {
+  min-height: 100vh;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Grain subtil sur le fond ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Ligne d'accent en haut ── */
+body::after {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 40%, var(--accent) 60%, transparent 100%);
+  opacity: 0.7;
+  z-index: 10;
+}
+
+/* ── Layout centré ── */
+.page {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 0;
+}
+
+/* ── Lueur d'ambiance ── */
+.glow {
+  position: fixed;
+  top: -120px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 600px;
+  height: 400px;
+  background: radial-gradient(ellipse at center, rgba(245, 158, 11, 0.07) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Carte principale ── */
+.card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 48px 48px 40px;
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-soft) 30%, var(--accent) 50%, var(--border-soft) 70%, transparent);
+  opacity: 0.5;
+}
+
+/* ── Logo / wordmark ── */
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.wordmark-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--accent-dim);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wordmark-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: var(--accent);
+}
+
+.wordmark-text {
+  font-size: 1.15em;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
+}
+
+.wordmark-text span {
+  color: var(--accent);
+}
+
+/* ── Titre ── */
+.headline {
+  font-size: 2em;
+  font-weight: 700;
+  color: var(--text-strong);
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-bottom: 16px;
+}
+
+.headline em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+/* ── Sous-titre ── */
+.sub {
+  font-size: 0.93em;
+  color: var(--text-muted);
+  line-height: 1.65;
+  margin-bottom: 36px;
+  max-width: 44ch;
+}
+
+/* ── Lien dans le sous-titre ── */
+.sub-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+  transition: border-color 120ms, opacity 120ms;
+}
+.sub-link:hover { border-color: var(--accent); opacity: 0.8; }
+
+/* ── Séparateur ── */
+.sep {
+  height: 1px;
+  background: var(--border-soft);
+  margin-bottom: 28px;
+}
+
+/* ── Bloc contact ── */
+.contact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.contact-label {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.contact-link {
+  font-size: 0.85em;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  transition: opacity 120ms;
+}
+
+.contact-link:hover {
+  opacity: 0.75;
+}
+
+/* ── Badge "coming soon" ── */
+.badge-soon {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  background: var(--accent-dim);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 20px;
+  font-size: 0.75em;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* ── Pied de carte ── */
+.card-footer {
+  margin-top: 32px;
+  font-size: 0.74em;
+  color: var(--border);
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+/* ── Responsive ── */
+@media (max-width: 480px) {
+  .card { padding: 32px 24px 28px; }
+  .headline { font-size: 1.55em; }
+}
+</style>
+</head>
+<body>
+<div class="glow"></div>
+<div class="page">
+  <div class="card">
+
+    <div class="wordmark">
+      <div class="wordmark-icon">
+        <!-- Icône broadcast simplifiée -->
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 3C7.03 3 3 7.03 3 12s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 2c3.87 0 7 3.13 7 7s-3.13 7-7 7-7-3.13-7-7 3.13-7 7-7zm0 3a4 4 0 100 8 4 4 0 000-8zm0 2a2 2 0 110 4 2 2 0 010-4z"/>
+        </svg>
+      </div>
+      <div class="wordmark-text">Bobi<span>.Studio</span></div>
+    </div>
+
+    <div class="badge-soon">
+      <span class="badge-dot"></span>
+      Coming Soon
+    </div>
+
+    <h1 class="headline">Something is<br><em>coming.</em></h1>
+
+    <p class="sub">
+      The <a href="https://tech.ebu.ch/dmf/mxl" target="_blank" rel="noopener" class="sub-link">Media Exchange Layer</a>
+      opens new possibilities for broadcast.
+      We're building on it.
+    </p>
+
+    <div class="sep"></div>
+
+    <div class="contact">
+      <span class="contact-label">Get in touch</span>
+      <a href="mailto:contact@bob-i.tv" class="contact-link">contact@bob-i.tv</a>
+    </div>
+
+  </div>
+
+  <div class="card-footer">© 2026 Bobi.Studio</div>
+</div>
+</body>
+</html>

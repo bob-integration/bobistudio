@@ -1,0 +1,22 @@
+{
+  "type.v210_bridge.badge": "v210 bridge",
+  "type.v210_bridge.cfg.direction.label": "Bridge direction",
+  "type.v210_bridge.cfg.direction.opt.export": "Export — internal planar → v210 mirror (for a third party)",
+  "type.v210_bridge.cfg.direction.opt.import": "Import — third-party v210 flow → internal planar",
+  "type.v210_bridge.cfg.import_bit_depth.label": "Planar output depth",
+  "type.v210_bridge.cfg.import_bit_depth.opt.10": "10-bit (PLANAR10LE)",
+  "type.v210_bridge.cfg.import_bit_depth.opt.8": "8-bit (force8 pipeline, v>>2)",
+  "type.v210_bridge.cfg.import_flow.help": "Raw flowId UUID of a third-party video/v210 flow (GET /flows on the container lists the candidates discovered in the domain), or the name of an in-house flow.",
+  "type.v210_bridge.cfg.import_flow.label": "Source v210 flow (flowId UUID or name)",
+  "type.v210_bridge.cfg.log_level.help": "Container log verbosity. Default “Events”: notable facts (start/stop, format change, reconnection, fallback to a degraded path, an input appearing or disappearing) are ALWAYS written — after a failure the log must let you reconstruct the story, and raising the level afterwards recovers nothing. Periodic metrics (fps, counters) are NOT logged: they are already published on :8080. “Verbose” = a flamethrower, one line per frame, to be enabled only for the duration of a diagnosis (the Docker log is not rotated).",
+  "type.v210_bridge.cfg.log_level.label": "Log level",
+  "type.v210_bridge.cfg.log_level.opt.debug": "Verbose (per frame — one-off diagnosis)",
+  "type.v210_bridge.cfg.log_level.opt.error": "Errors only",
+  "type.v210_bridge.cfg.log_level.opt.info": "Events (default)",
+  "type.v210_bridge.cfg.log_level.opt.warning": "Anomalies only",
+  "type.v210_bridge.cfg.out_name.help": "Name of the MXL flow published for third parties (empty = <hostname>_v210). Its flowId (UUID) is exposed on /state — that is what a third-party container targets.",
+  "type.v210_bridge.cfg.out_name.label": "v210 mirror flow name",
+  "type.v210_bridge.label": "v210 bridge",
+  "type.v210_bridge.wire.consumes.0": "Video source (internal planar)",
+  "type.v210_bridge.wire.produces.0": "Planar output (import)"
+}

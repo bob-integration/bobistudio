@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="{{ lang|default('fr') }}">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ _('login.page_title') }}</title>
+    <link rel="stylesheet" href="/static/css/base.css?v={{ asset_v('css/base.css') }}">
+    {% if theme and theme != 'classic' %}
+    <link rel="stylesheet" href="/static/css/theme-{{ theme }}.css?v={{ asset_v('css/theme-' ~ theme ~ '.css') }}">
+    {% endif %}
+    <style>
+        body { display: flex; align-items: center; justify-content: center;
+               min-height: 100vh; padding: 20px; }
+        .login-card { width: 100%; max-width: 360px;
+                      background: var(--bg-elev); border: 1px solid var(--border);
+                      border-radius: var(--radius); padding: 28px;
+                      box-shadow: var(--shadow); backdrop-filter: var(--backdrop-blur); }
+        .login-logo { display: block; max-height: 56px; max-width: 200px; margin: 0 auto 16px; }
+        .login-card h1 { text-align: center; margin-bottom: 6px; font-size: 1.3em; }
+        .login-card .sub { text-align: center; color: var(--text-muted);
+                           font-size: 0.85em; margin-bottom: 24px; }
+        .login-card .field { margin-bottom: 14px; }
+        .login-card input { width: 100%; background: var(--bg-input);
+                            border: 1px solid var(--border); color: var(--text);
+                            padding: 9px 12px; border-radius: var(--radius-small);
+                            font-family: var(--font-base); font-size: 0.95em; }
+        .login-card input:focus { outline: none; border-color: var(--accent); }
+        .login-card .btn { width: 100%; margin: 8px 0 0; padding: 10px;
+                           font-size: 0.95em; font-weight: 600; }
+        .login-err { color: var(--status-stopped-fg); font-size: 0.85em;
+                     text-align: center; margin-bottom: 12px; min-height: 1.2em; }
+    </style>
+</head>
+<body>
+    <main>
+    <form class="login-card" method="POST" action="{{ url_for('routes.login_page') }}">
+        {% if brand and brand.logo_url %}<img class="login-logo" src="{{ brand.logo_url }}" alt="{{ brand.org_name or '' }}">{% endif %}
+        {% if brand and brand.system_name %}
+        <h1>{{ brand.system_name }}</h1>
+        <div class="sub">Bobi.Studio{% if brand.org_name %} · {{ brand.org_name }}{% endif %}{% if brand.location %} — {{ brand.location }}{% endif %}</div>
+        {% else %}
+        <h1>Bobi.Studio</h1>
+        <div class="sub">{{ _('login.subtitle') }}</div>
+        {% endif %}
+        <div class="login-err">{{ error or '' }}</div>
+        <input type="hidden" name="next" value="{{ next or '' }}">
+        <div class="field">
+            <label>{{ _('login.username') }}</label>
+            <input type="text" name="username" autocomplete="username" autofocus required>
+        </div>
+        <div class="field">
+            <label>{{ _('login.password') }}</label>
+            <input type="password" name="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn btn-blue" type="submit">{{ _('login.submit') }}</button>
+    </form>
+    </main>
+</body>
+</html>

@@ -1,0 +1,95 @@
+{
+  "version": "0.18.0",
+  "date": "2026-08-19",
+  "changes": {
+    "Une entrée inexploitable se VOIT : tracée, publiée dans /state, et retentée en palier (0.18.0)": [
+      "★ INCIDENT HORACE 2026-08-19 : trois workers sur seize n'ont jamais réussi à ouvrir leur source et ont bouclé **43 heures à 20 Hz** sans une ligne au journal. Le seul indice était une ABSENCE — leur slot manquait dans `/state.sources` — pendant que l'état périodique continuait d'ANNONCER les proxys correspondants. En aval, les murs tournaient à vide sur des proxys jamais écrits, et leur propre boucle de reconnexion a fini par saturer la mémoire noyau d'un nœud.",
+      "Les deux `except` fautifs (`Reader` qui lève, `flow_def` illisible) faisaient `time.sleep(0.05); continue` — muets, sans état, sans palier. Ils TRACENT désormais (3 premières tentatives puis une sur cent), PUBLIENT dans `metrics[\"entrees_ko\"]` {shm, motif, tentatives, depuis_s}, et ESPACENT les tentatives de 50 ms à 2 s.",
+      "★ Le point qui manquait vraiment est la PUBLICATION : une absence ne se voit pas, une entrée qui dit « je n'y arrive pas depuis 43 h » se voit. On ne renonce jamais à rouvrir — une source peut revenir."
+    ],
+    "Le mode tranche : ventilation, puis la copie stridée préférée au gather fusionné (0.16.0)": [
+      "★ MESURÉ, PAS SUPPOSÉ — et DEUX hypothèses réfutées en route. Le mode tranche coûtait 15 ms de temps propre contre 2,7 en image entière, sans que rien ne dise où. Sonde `slice_breakdown_ms` posée : TOUT est dans l'écriture des bandes (7 à 13 ms), les commits progressifs ne pèsent RIEN (0,3 à 0,7 ms).",
+      "⛔ RÉFUTÉ 1 — le nombre d'appels. Balayage de la granularité : `emit` reste à 7,3-9,1 ms que la trame soit découpée en 30 bandes ou en 2. Le coût ne suit pas le découpage.",
+      "⛔ RÉFUTÉ 2 — un repli numpy silencieux du noyau fusionné (précédent documenté « mvk : False en silence »). Compteur posé : `mvk_ko` = 0 sur 794 854 appels. Le noyau réussit TOUJOURS.",
+      "★ LA CAUSE : pour un proxy à RATIO ENTIER, `_mvk_band` construit un tableau d'indices de lignes et fait un GATHER, là où numpy fait `py[a:b] = y0[a*sy:b*sy:sy, ::sx]` — une copie à pas constant. On remplaçait une copie par un gather ; en C, mais un gather quand même.",
+      "MESURÉ A/B sur le même mur, même charge : emit 9,29 → 5,83 ms, temps propre 9,8 → 7,0 ms. Un tiers du poste supprimé en ÉCARTANT un noyau C au profit de numpy.",
+      "Le noyau fusionné reste utilisé pour les ratios NON entiers, où le gather est le bon outil — c'est le réglage `mvk_skip_strided` (défaut true) qui trace la frontière.",
+      "⚠ Les compteurs `mvk_ok`/`mvk_ko` et la ventilation restent publiés : c'est ce qui a permis de réfuter deux causes plausibles avant d'en trouver une vraie."
+    ],
+    "Le mode tranche sort du placard : réglage EXPOSÉ (0.13.0)": [
+      "`slice_mode` était `hidden: true` : invisible dans toute interface, atteignable seulement par l'API. Or c'est le réglage le plus rentable de la chaîne — sans lui la pyramide lisait une source tranchée et republiait des proxies MONOLITHIQUES (`Commit batch size: 1`), annulant le découpage et coûtant UNE IMAGE pleine à tout l'aval.",
+      "Mesuré en production le 2026-08-11 : activé, les proxies passent de −1 à +1 grain vis-à-vis du RX brut, et le délai d'étage du mur consommateur tombe de 3,0 à 1,0 image. Mur à 50,0 fps, zéro trame perdue.",
+      "Aide réécrite sur cette mesure."
+    ],
+    "Variante libmxl exposée dans /state (0.12.0)": [
+      "GET /state porte désormais `mxl_lib` : {path, variante} de la libmxl RÉELLEMENT chargée (x86-64-v3/glibc-hwcaps ou baseline), lu via bobimxl.lib_info(). Jusqu'ici cette information n'était constatable que PAR NŒUD (app/placement.py) — un conteneur retombé sur la baseline (~20 % de coût en régime consommateur) ne se voyait qu'indirectement. Protégé par try/except : une erreur de lecture ne casse jamais /state."
+    ],
+    "Index de sortie : un seul point de calcul, dans bobimxl (0.10.0)": [
+      "L'index des grains de sortie n'est plus calculé dans le plugin : il vient de bobimxl.Writer.next_index, LE point unique pour toute la flotte — grille TAI, strictement croissante, holdover. Chaque plugin réinventait sa version (compteur maison, appel direct à mxlGetCurrentIndex, convention de repli propre), avec les divergences que ça implique.",
+      "Un index de grain est une COORDONNÉE DE TEMPS, pas un numéro de séquence : docs/Timing.md du SDK MXL est normatif (GrainIndex = Timestamp / GrainDurationNs, epoch SMPTE 2059-1). Un compteur parti de 0 casse l'alignement inter-flux et rend le flux irréplicable entre nœuds.",
+      "PROPAGATION de l'origin timestamp : un plugin qui TRAITE un grain source passe open_grain(src_index=...) — le grain de sortie porte la coordonnée de son origine, ce qui garde alignées les branches de latences différentes. Pas de source (entrée absente, trame de garde) → repli sur la grille décidé par bobimxl, plus par chaque plugin."
+    ],
+    "Niveau de log par plugin — événements par défaut (0.9.0)": [
+      "Nouveau réglage `log_level` (défaut « Événements »). Les lignes de câblage par slot (format de source détecté, jeu de proxies (re)généré) sont des ÉVÉNEMENTS : visibles par défaut. SIGBUS et échecs de création de proxy passent en `warning`.",
+      "Endpoint POST /log_level {level} : bascule la verbosité à chaud, sans redéployer. Niveau courant publié dans /state (ajouté aux read_endpoints).",
+      "Exposé aux macros : config_schema (persistant), param_tree groupe « Journal (diagnostic) » et action « Niveau de log (à chaud) ». REDÉPLOIEMENT requis (nouvel endpoint)."
+    ],
+    "Kernel compose fusionné C (mvk) — chemin CPU (0.8.0)": [
+      "Câblage de bobimxl.mvk_place_into (libbobi_mvk, même kernel C que multiview 0.29.0) sur les deux chemins de génération de proxy, en STRICTE parité octet avec le numpy historique : chemin whole-frame (resize+écriture DIRECTE dans la vue du grain proxy, plus de tableau intermédiaire ni de tobytes()) et chemin MODE TRANCHE (_emit_band, fast-path strided ET gather chaîné). Indices SOURCE ABSOLUS calculés côté Python avec les MÊMES formules nearest que resize_plane/_emit_band d'origine (le C ne fait que le gather mémoire) ; repli numpy intégral conservé à chaque site d'appel si la lib est absente ou le wrapper non applicable (échec partiel sur un plan → toute la trame/bande est ré-écrite par le repli, bit-exact). Gate `_MVK` = disponibilité de la lib seule (ce plugin n'a pas de chemin GPU, donc pas de garde force_cpu comme le multiview). Champ `mvk` ajouté aux métriques :8080. Validé par équivalence numérique hors container (Δ=0 sur ratios entiers/non-entiers, 8/10 bits, bandes partielles, fast-path strided et gather forcé)."
+    ],
+    "GC CPython discipliné — même remède que multiview 0.27.2, par uniformité (0.7.4)": [
+      "gc.disable()+gc.freeze() au boot, collect gen0/gen1 au point sûr de chaque worker (dernier proxy committé), gen2 cadencé ~5 s dans la boucle d'agrégation (pas de point sûr global avec N workers ; ~0,1 ms grâce au freeze), métrique gc_full_ms sur :8080. inst.garbage_collect() (ring MXL) intact. Dernier étage Python au GC automatique — la chaîne tissu est désormais uniformément disciplinée."
+    ],
+    "Masquage UI mode tranche (0.7.3)": [
+      "Clés du mode tranche (slice_mode, slice_lines) marquées hidden:true dans le config_schema : plus rendues dans la palette ni le panneau ⚙ — pilotage par le réglage global Réglages → Vidéo « Mode tranche » (slice_mode_global). Les clés restent dans le schéma : coercion, déploiement et API inchangés."
+    ],
+    "Réglages mode tranche (0.7.2)": [
+      "Exposition des réglages du mode tranche dans le panneau ⚙ Réglages et la palette (config_schema, scope system) : slice_mode, slice_lines. Schéma/UI seulement — aucun changement de comportement du script."
+    ],
+    "Nouveautés (0.7.0)": [
+      "MODE TRANCHE (chantier latence sous-trame, patch mxl-planar-slices) : avec `slice_mode` (défaut false) et une source PROGRESSIVE, le worker ne bufferise plus la trame complète — il suit le grain de TÊTE de la source (head_index + get_slice, réveil à chaque commit partiel du producteur, ex. RX 2110 par tranches de 36 lignes) et écrit chaque proxy BANDE PAR BANDE avec commit progressif (validSlices=1..N) → un étage pyramide n'ajoute plus ~1 trame (~18 ms) de latence, l'aval (multiview slice) démarre sur la 1ʳᵉ bande. Chaque proxy déclare son slice_height PROPRE : plus petit diviseur de sa hauteur ≥ hauteur/30 (540→18, 270→9, 135→5) ; hauteur sans diviseur raisonnable → whole-frame (les consommateurs s'adaptent via gi.totalSlices). Convention identique moteur/multiview : k tranches ⇔ lignes [0, k·slice_height) valides sur les 3 plans (bandes arrondies aux lignes chroma entières en 420). Resize par bande = même mapping nearest que resize_plane (vue stridée si ratio entier, sinon gather chaîné lignes→colonnes — jamais np.ix_ 2D, ~120 µs/appel), écrit en ZÉRO-COPIE directement dans la vue du grain proxy. Budget d'attente borné à 1,5 période de trame : source en retard → repli sur le dernier grain COMPLET (léger tearing d'une image, jamais de blocage), grain toujours commité complet. Index source propagé, watchdog stale et métriques conservés (own = durée de SUIVI du grain, attentes comprises). `slice_lines` (défaut 36) règle la granularité cible (nb de tranches ≈ 1080/slice_lines). slice_mode absent/false ou source ENTRELACÉE → chemin historique STRICTEMENT inchangé."
+    ],
+    "Corrections (0.6.2)": [
+      "Watchdog Reader périmé : une source figée pour le worker alors que son flux MXL existe toujours (shm RECRÉÉ sous le même nom — NMOS re-souscrit, source coupée/re-câblée) déclenche désormais une RÉOUVERTURE du Reader après 0,5 s sans avancée. Le flow_id étant déterministe du nom, `wanted == in_name` ne rouvrait jamais le Reader → le worker restait collé au buffer mort (get_latest renvoyant le même index, fps=0) et tous les proxies de la source restaient FIGÉS indéfiniment, alors que le RX recevait bien (cf. saute observée Rx2 : source vivante, proxies gelés). Re-tentative bornée à 1×/0,5 s (pas de thrash si la source est réellement morte ; réouverture inoffensive sinon). Aligne la pyramide sur la robustesse multiview 0.18.4 (Reader périmé reconnecté)."
+    ],
+    "Corrections (0.6.1)": [
+      "Socle d'octaves : défaut passé de « Complet » à « Aucun » (pur à la demande). En auto-câblage piloté par la demande, les consommateurs (multiviews) réclament des tailles SUR-MESURE — les 4 octaves génériques (½ ¼ ⅛ 1/16) générés par source restaient quasi toujours ORPHELINS (0 consommateur), gaspillant bande passante RAM + temps GIL (32 descales/trame inutiles sur 8 sources). Cette charge parasite poussait les sources ENTRELACÉES 50 fps au bord du budget de trame (mesuré : 18,8 ms / 20 ms) → débordement occasionnel → un champ sauté par get_latest → SAUTE d'image visible (le bob entrelacé est très sensible ; le progressif ne montrait rien). En « Aucun » : la même source tombe à 10,4 ms et les sautes mesurées passent de ~0,87/s à ~0,01/s (1 en 100 s). Repasser à Complet/Minimal uniquement si un consommateur lit réellement les octaves (monitoring générique)."
+    ],
+    "Nouveautés (0.5.0)": [
+      "Migration MXL (Phase 1, sans double-écriture) : sources lues via bobimxl.Reader (format LU DU flow_def), proxies (octaves + tailles sur-mesure) écrits via bobimxl.Writer (flux planar video/x-mxl-planar). Verrou 1:1 via get_latest() + index source PROPAGÉ aux proxies (open_grain(index=idx)). Drop d'un proxy = close Writer + garbage_collect. Suppression de _detect_fmt/_source_ring/mmap/struct. Requiert bobi-compute >= 0.5. multiview réactivera les proxies en énumérant les flux du domaine MXL."
+    ],
+    "Nouveautés (0.4.0)": [
+      "AUTO-CÂBLAGE piloté par la demande (orchestrateur) : plus besoin de câbler la pyramide à la main. Le reconcile assigne automatiquement chaque source réclamée par un consommateur (proxy_needs) à un slot de pyramide libre du nœud — à chaud via POST :8082/input — et libère les slots dont la source n'est plus demandée (délai de grâce anti-flap). Le format est résolu via la DB (deploy_config du producteur) et POUSSÉ à la pyramide (plus de devinette SHM). Le multiview découvre les proxies par scan /dev/shm. Capacité dépassée (plus de sources que de slots) → alerte (augmenter n_inputs / ajouter une pyramide).",
+      "CŒURS DYNAMIQUES (pondérés résolution) : les cœurs CPU de la pyramide sont dimensionnés à la charge au (re)déploiement — cœurs = plancher (resources.cores=6) + `cores_per_1080p_input` × Σ(résolution_source / 1080p), clampé au pool de cœurs du nœud. Réglable par conteneur (config_schema, défaut 0,5 ; petit=nœud léger, grand=nœud dédié multiview). Le cpuset Docker n'étant pas modifiable à chaud, la dérive (sources câblées après coup) déclenche une recréation AUTO si la pyramide n'a aucun consommateur, sinon une ALERTE (jamais de coupure subie).",
+      "CAP RÉACTIF des proxies : sous saturation (latency_ms du worker d'une source > 0,9 × intervalle de trame), le reconcile interdit l'ajout de tailles et déleste la moins demandée (hystérésis 0,8/0,9 anti-flapping) ; ré-autorise sous le seuil bas. Signal lu dans le cache mémoire des métriques (pas d'appel réseau)."
+    ],
+    "Performance (0.3.4)": [
+      "Reconcile à SEUIL SOUPLE (orchestrateur, deploy.reconcile_pyramide_sizes) : toutes les tailles demandées par les consommateurs (proxy_needs) sont désormais servies jusqu'au cap (6/source), priorité au count décroissant — au lieu d'un hard-drop des tailles demandées < custom_size_threshold. Motivation : une taille meter-réduite réclamée par UNE seule tuile (non-diviseur-entier de la source) tombait sinon en `gather` (resize non-entier, coûteux) côté consommateur — exactement ce que la pyramide doit éliminer. Le cap borne déjà la prolifération ; `custom_size_threshold` ne départage plus que le surplus quand il y a > 6 tailles distinctes/source (sinon il n'écarte plus rien). Cas concret : multiview 16 fenêtres avec VU-mètres (les meters réservent de la largeur → tuiles de tailles légèrement différentes par fenêtre → besoins à count 1) — `inputs` passait de ~6 à ~29 ms (6 fenêtres en gather) → la sortie saturait à 16,7 fps."
+    ],
+    "Nouveautés (0.3.3)": [
+      "Page Câbles (UI seule) : le badge fps de carte est masqué (manifeste aggregate_fps:false) — un fps unique agrégé n'a pas de sens pour un scaler multi-source. Le fps par source (sources[].fps, fenêtre glissante 1 s) s'affiche désormais sur le port de sortie du proxy correspondant."
+    ],
+    "Corrections (0.3.2)": [
+      "fps en FENÊTRE GLISSANTE (1 s) au lieu d'une moyenne cumulée depuis le démarrage. Le fps par-source est désormais calculé dans la boucle d'agrégation à partir du delta de frame_index sur 1 s → reflète le débit réel instantané et tombe à 0 si la source se fige (l'ancien cumul affichait des valeurs trompeuses, ex. 35/8/5 alors que le débit réel était 50/50/25/25). Le worker met à jour ses métriques en place sans écraser le fps."
+    ],
+    "Corrections (0.3.1)": [
+      "Champ de config « Socle d'octaves » (base_octaves) : options au format {value,label} attendu par le rendu de la palette (auparavant simples chaînes → menu déroulant vide). N'empêchait pas la création, mais le champ ne s'affichait pas correctement."
+    ],
+    "Nouveautés (0.3.0)": [
+      "Console de monitoring (P3) : le plugin gagne une UI de contrôle (rubrique Traitements) qui affiche, par source, les proxies produits (taille, octave/sur-mesure, nb de consommateurs, ORPHELINS en évidence), les besoins non couverts, les réglages (seuil/socle) et les KPIs (% copie pure / strided / gather / plein). Bouton « Optimiser » (reconcile à chaud) + 📺 preview WHEP de chaque proxy. Données via GET /api/pyramide/overview (cache, sans appel réseau live).",
+      "Métriques per-proxy enrichies sur :8080 (sources[].proxies = {name,w,h,kind}) → alimentent la console, les KPIs du dashboard et les alertes proactives (proxy orphelin, besoin ≥ seuil non couvert) levées par la boucle de surveillance."
+    ],
+    "Nouveautés (0.2.0)": [
+      "Tailles sur-mesure À LA DEMANDE (hybride) : en plus des octaves, la pyramide produit les tailles EXACTES dont les consommateurs ont besoin (ex. tuile de quad 952×536, jamais pile un octave à cause des bordures/nom/tally). Le resize est alors payé UNE fois dans la pyramide, mutualisé, et le multiview lit une COPIE PURE (zéro resize). Proxy nommé `<src>__s<w>x<h>`.",
+      "HOT-APPLY (sans coupure) : les tailles sur-mesure sont pilotées à chaud via POST :8082/extra_sizes — le worker crée/retire UNIQUEMENT les proxies concernés, sans redémarrer ni toucher aux proxies en cours (octaves et autres tailles intacts). Aucun gel pour les consommateurs. L'orchestrateur (reconcile_pyramide_sizes) agrège les besoins du nœud, ne retient que ceux demandés ≥ `custom_size_threshold` (défaut 2), cap 6/source.",
+      "Socle d'octaves RÉGLABLE (`base_octaves`) : `full` ½/¼/⅛/1/16 (défaut, filet générique max) · `half` ½ seul (compromis) · `none` (pur à la demande, zéro coût de base). Permet d'arbitrer coût CPU permanent vs réactivité selon le nœud."
+    ],
+    "Nouveautés (0.1.0)": [
+      "Premier jet du plugin « Pyramide de proxies » (Phase 1, autonome). Descale chaque source vidéo YUV en versions pré-réduites partagées ½ ¼ ⅛ 1/16 (<source>__p2/p4/p8/p16), de sorte que le gros redimensionnement soit fait UNE fois et mutualisé entre tous les consommateurs (multiviews, monitoring…) au lieu d'être refait par tuile à chaque trame.",
+      "Un thread par source (thread-pool), VERROUILLÉ À L'ENTRÉE 1:1 : chaque thread attend une nouvelle frame_index sur SA source puis émet en propageant cette frame_index — aucune grille PTP maître, aucun re-cadençage (sinon perte/duplication d'images). Deux sources de cadences différentes avancent indépendamment ; couper une source fige ses proxies (pas d'image noire injectée).",
+      "Descale strided zéro-copie pour les ratios entiers (plane[::r,::r], nearest, identique au multiview), repli gather sinon. Dimensions de proxy alignées chroma/2 (même formule que app/plugins.derive_wiring → tailles cohérentes orchestrateur ↔ script).",
+      "Robustesse : ring du producteur DÉRIVÉ de la taille réelle du shm ; lecture tronquée / mismatch de format → trame sautée (jamais de crash). cf. mxl-consumer-format-contract.",
+      "Hot-wire : sources câblées à chaud par slot (POST :8082/input {slot,shm,format}). Métriques :8080 par-source (fps, frame_index, latence propre) + agrégat + inputs_latency_ms (badge ⧖ page Câbles)."
+    ]
+  }
+}

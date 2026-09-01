@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later
+     REFUS D'UN LIEN PUBLIC RESTREINT PAR ADRESSE.
+
+     ★ CETTE PAGE EST LA SEULE CHOSE QUE VERRA SON DESTINATAIRE. Elle a donc trois devoirs, et
+     un seul est technique : dire que ce n'est pas cassé (c'est restreint), donner l'adresse
+     vue — qui est exactement celle qu'il faut faire autoriser —, et dire à QUI la demander.
+     Un « 403 Forbidden » nu envoie chercher la panne au mauvais endroit et fait perdre une
+     demi-heure à deux personnes.
+
+     ⚠ ELLE NE RÉVÈLE RIEN QUE LE PORTEUR DU JETON N'AIT DÉJÀ : le titre du lien, et son
+     adresse à lui. Pas de nom de conteneur, pas de topologie. -->
+<html lang="{{ lang }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ _('public.refus.title') }}</title>
+<link rel="stylesheet" href="/static/css/base.css?v={{ asset_v('css/base.css') }}">
+<style>
+  /* Page autonome : elle n'hérite pas du thème choisi par un utilisateur connecté — il n'y en
+     a pas. On pose donc un fond neutre explicite, comme la page publique. */
+  html, body { height: 100%; margin: 0; background: var(--bg, #14161a); }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    padding: var(--space-5);
+    font-family: var(--font-base); color: var(--text);
+  }
+  .rf { max-width: 46ch; }
+  /* ⚠ PAS DE LISERÉ COLORÉ À GAUCHE. Ma première écriture posait un `border-left: 2px` en
+     couleur d'état — le motif « side-stripe » que la charte interdit sans exception, et qui
+     n'est jamais un choix, seulement un réflexe. Le produit a déjà un vocabulaire pour dire un
+     état : `.badge` + `.stopped`, avec ses propres jetons de fond et de texte. On s'en sert.
+     Pas de pictogramme non plus : un cadenas ou un sens interdit dramatise un refus qui n'est
+     pas un incident. */
+  .rf-etat {
+    display: inline-block; margin-bottom: var(--space-4);
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .rf h1 {
+    margin: 0 0 var(--space-3);
+    font-size: 1.45em; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em;
+  }
+  .rf p { margin: 0 0 var(--space-4); line-height: 1.55; color: var(--text-muted); }
+  .rf p.rf-fort { color: var(--text); }
+  /* L'ADRESSE EST LA DONNÉE UTILE de cette page : c'est elle qu'on va recopier dans un message.
+     `user-select: all` la sélectionne entière d'un seul clic — pas de bouton à expliquer, pas
+     de presse-papier à demander au navigateur (qui le refuse en HTTP clair). */
+  .rf-adresse {
+    display: block; margin-bottom: var(--space-4);
+    padding: var(--space-3);
+    background: var(--bg-input); border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    font-family: var(--font-mono); font-size: 1.1em; color: var(--text-strong, var(--text));
+    user-select: all; cursor: text;
+  }
+  .rf-pied {
+    margin: 0; padding-top: var(--space-4); border-top: 1px solid var(--border-soft);
+    font-size: 0.85em; color: var(--text-muted);
+    display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  }
+  .rf-pied img { max-height: 26px; max-width: 110px; object-fit: contain; }
+  .rf-pied b { color: var(--text); font-weight: 500; }
+</style>
+</head>
+<body>
+<main class="rf">
+  <span class="badge stopped rf-etat">{{ _('public.refus.etat') }}</span>
+  <h1>{{ _('public.refus.h1') }}</h1>
+  <p class="rf-fort">{{ _('public.refus.explication') }}</p>
+  <code class="rf-adresse">{{ adresse }}</code>
+  <p>{{ _('public.refus.demande') }}</p>
+  {% if brand_logo or brand_system or brand_org or brand_location or titre %}
+  <p class="rf-pied">
+    {% if brand_logo %}<img src="{{ brand_logo }}" alt="">{% endif %}
+    {% if titre %}<span>{{ titre }}</span>{% endif %}
+    {% if brand_system %}<b>{{ brand_system }}</b>{% endif %}
+    {% if brand_org %}<span>{{ brand_org }}</span>{% endif %}
+    {% if brand_location %}<span>&#128205; {{ brand_location }}</span>{% endif %}
+  </p>
+  {% endif %}
+</main>
+</body>
+</html>

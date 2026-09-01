@@ -1,0 +1,33 @@
+diff --git a/tools/mxl-fabrics-demo/demo.cpp b/tools/mxl-fabrics-demo/demo.cpp
+index 06c7fec..900fac6 100644
+--- a/tools/mxl-fabrics-demo/demo.cpp
++++ b/tools/mxl-fabrics-demo/demo.cpp
+@@ -420,6 +420,17 @@ public:
+             {
+                 // We are too late.. time travel!
+                 grainIndex = mxlGetCurrentIndex(&configInfo.common.grainRate);
++                // Moving to another grain MUST restart its slice cursor. Without this reset the
++                // cursor keeps the value it had in the grain we just abandoned, and the transfer
++                // below starts at that offset: slices [0, startSlice) of the new grain are never
++                // sent, so the target keeps whatever the previous frame left there and then
++                // commits the grain as complete. The result is a torn picture with a band coming
++                // from another frame, and a boundary that moves with the cursor.
++                // The smaller maxSyncBatchSizeHint is, the more iterations per grain, hence the
++                // more chances to be mid-grain when falling behind: measured 36 tears/min at a
++                // batch of 2 slices versus ~5 at the SDK default (whole frame).
++                startSlice = 0;
++                endSlice = slicesPerBatch;
+                 continue;
+             }
+             else if (status == MXL_ERR_OUT_OF_RANGE_TOO_EARLY)
+@@ -447,6 +458,10 @@ public:
+                 stats.record(0);
+                 stats.maybeLog("grains", "slices");
+                 ++grainIndex;
++                // Same reason as the TOO_LATE branch above: we leave this grain for the next one,
++                // so its slice cursor must start over.
++                startSlice = 0;
++                endSlice = slicesPerBatch;
+                 continue;
+             }
+ 

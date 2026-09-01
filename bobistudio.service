@@ -1,0 +1,19 @@
+[Unit]
+Description=Bobi.Studio
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/bobistudio
+ExecStart=/opt/bobistudio/venv/bin/python main.py
+Restart=on-failure
+RestartSec=5
+# La sortie standard va à journald, JAMAIS dans le fichier de journal applicatif : celui-ci
+# appartient au handler de logging Python (app/logsetup.py), qui l'ouvre, le fait tourner et
+# l'archive. Un `append:<fichier>` partagé avec lui écrivait chaque ligne deux fois ET vidait
+# la rotation de son sens — systemd garde son descripteur à travers le renommage, donc continue
+# d'écrire dans l'archive, que plus rien ne borne (2,3 Go constatés le 2026-08-15).
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

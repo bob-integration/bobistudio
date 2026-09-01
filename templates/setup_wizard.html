@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="{{ lang|default('fr') }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ _('wiz.page_title') }}</title>
+    <!-- i18n : langue + sous-catalogue JS (wiz.*) + helper t(). Le wizard est standalone
+         (n'étend pas layout.html) → on injecte le bootstrap i18n ici. -->
+    <script>
+        window.LANG = {{ (lang|default('fr'))|tojson }};
+        window.I18N = {{ (js_catalog|default({}))|tojson }};
+        window.t = function(key){ return (window.I18N && window.I18N[key]) || key; };
+    </script>
+    <link rel="stylesheet" href="/static/css/base.css?v={{ asset_v('css/base.css') }}">
+    {% if theme and theme != 'classic' %}
+    <link rel="stylesheet" href="/static/css/theme-{{ theme }}.css?v={{ asset_v('css/theme-' ~ theme ~ '.css') }}">
+    {% endif %}
+    <style>
+        /* base.css force body{flex-direction:column} : on centre donc sur l'axe
+           transversal (align-items = horizontal) et on ancre en haut (justify-content). */
+        body { display: flex; flex-direction: column; align-items: center;
+               justify-content: flex-start; min-height: 100vh; padding: 32px 20px; }
+        .wiz { width: 100%; max-width: 600px; }
+        .wiz-card { background: var(--bg-elev); border: 1px solid var(--border);
+                    border-radius: var(--radius); padding: 30px 34px;
+                    box-shadow: var(--shadow); backdrop-filter: var(--backdrop-blur); }
+        .wiz-progress { display: flex; gap: 6px; margin-bottom: 22px; }
+        .wiz-progress span { flex: 1; height: 4px; border-radius: 2px;
+                             background: var(--border); transition: background .2s; }
+        .wiz-progress span.done { background: var(--accent); }
+        .wiz-step-num { font-size: 0.78em; color: var(--text-muted);
+                        text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+        .wiz h1 { font-size: 1.3em; margin: 0 0 6px; }
+        .wiz .lead { color: var(--text-muted); font-size: 0.9em; line-height: 1.5;
+                     margin-bottom: 22px; }
+        .wiz .field { margin-bottom: 14px; }
+        .wiz label { display: block; font-size: 0.82em; color: var(--text-muted); margin-bottom: 4px; }
+        .wiz label .opt { opacity: .6; }
+        .wiz input, .wiz select { width: 100%; background: var(--bg-input);
+                    border: 1px solid var(--border); color: var(--text);
+                    padding: 9px 12px; border-radius: var(--radius-small);
+                    font-family: var(--font-base); font-size: 0.94em; }
+        .wiz input:focus, .wiz select:focus { outline: none; border-color: var(--accent); }
+        .wiz .row { display: flex; gap: 12px; }
+        .wiz .row .field { flex: 1; }
+        .wiz .hint { font-size: 0.8em; color: var(--text-muted); margin-top: 5px; line-height: 1.45; }
+        .wiz .check { display: flex; align-items: center; gap: 8px; font-size: 0.9em; }
+        .wiz .check input { width: auto; }
+        .wiz-nav { display: flex; align-items: center; gap: 10px; margin-top: 26px; }
+        .wiz-nav .spacer { flex: 1; }
+        .wiz-msg { font-size: 0.84em; margin-top: 10px; min-height: 1.2em; }
+        .wiz-msg.ok  { color: var(--status-running-fg, #29b36a); }
+        .wiz-msg.err { color: var(--status-stopped-fg, #e05260); }
+        .wiz-log { background: var(--bg-input); border: 1px solid var(--border);
+                   border-radius: var(--radius-small); padding: 10px 12px; margin-top: 12px;
+                   font-family: var(--font-mono, monospace); font-size: 0.8em; white-space: pre-wrap;
+                   max-height: 220px; overflow-y: auto; display: none; }
+        .wiz-logo-prev { max-height: 48px; max-width: 160px; margin-top: 8px; display: none; }
+        .wiz-mxl { background: var(--bg-input); border-left: 3px solid var(--accent);
+                   padding: 12px 14px; border-radius: var(--radius-small); font-size: 0.86em;
+                   line-height: 1.55; margin-bottom: 18px; }
+        .wiz-mxl a { color: var(--accent); }
+        .nic-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+        .nic-item { border: 1px solid var(--border); border-radius: var(--radius-small);
+                    padding: 10px 12px; cursor: pointer; font-size: 0.88em; }
+        .nic-item.sel { border-color: var(--accent); background: var(--bg-input); }
+        .nic-item .meta { color: var(--text-muted); font-size: 0.85em; margin-top: 3px; }
+        .nic-item .busy { color: var(--status-stopped-fg, #e05260); }
+        .wiz-skip-all { text-align: center; margin-top: 16px; }
+        .wiz-skip-all a { color: var(--text-muted); font-size: 0.82em; cursor: pointer; }
+    </style>
+</head>
+<body>
+<div class="wiz">
+    <div class="wiz-card">
+        <div class="wiz-progress" id="wiz-progress"></div>
+        <div id="wiz-body"><!-- étape injectée en JS --></div>
+        <div class="wiz-nav">
+            <button class="btn" id="wiz-prev" onclick="wiz.prev()" style="display:none">{{ _('wiz.prev') }}</button>
+            <div class="spacer"></div>
+            <button class="btn" id="wiz-skip" onclick="wiz.skip()">{{ _('wiz.skip') }}</button>
+            <button class="btn btn-blue" id="wiz-next" onclick="wiz.next()">{{ _('wiz.next') }}</button>
+        </div>
+        <div class="wiz-msg" id="wiz-msg"></div>
+    </div>
+    <div class="wiz-skip-all">
+        <a onclick="wiz.skipAll()">{{ _('wiz.skip_all') }}</a>
+    </div>
+</div>
+
+<script>
+const VIDEO_FORMATS = {{ video_formats | tojson }};
+const LANGUAGES = {{ languages | tojson }};   // [{code, label, builtin}, …]
+const T = (k) => window.t(k);
+
+async function api(method, url, body, isForm) {
+    const opt = { method, headers: {} };
+    if (body !== undefined) {
+        if (isForm) { opt.body = body; }
+        else { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+    }
+    const r = await fetch(url, opt);
+    let j = null; try { j = await r.json(); } catch(e) {}
+    return { ok: r.ok, status: r.status, data: j || {} };
+}
+async function saveSettings(obj) { return api('POST', '/api/settings', obj); }
+
+const wiz = {
+    i: 0,
+    steps: [],
+    detected: null,   // résultat nic detect
+    selNic: null,
+
+    start() {
+        this.steps = [
+            this.language, this.welcome, this.identity, this.network,
+            this.mxl, this.videofmt, this.done
+        ];
+        this.renderProgress();
+        this.render();
+    },
+    renderProgress() {
+        document.getElementById('wiz-progress').innerHTML =
+            this.steps.map((_, k) => `<span class="${k <= this.i ? 'done' : ''}"></span>`).join('');
+    },
+    msg(text, kind) {
+        const m = document.getElementById('wiz-msg');
+        m.textContent = text || ''; m.className = 'wiz-msg ' + (kind || '');
+    },
+    async render() {
+        this.msg('');
+        this.renderProgress();
+        document.getElementById('wiz-prev').style.display = this.i > 0 ? '' : 'none';
+        const last = this.i === this.steps.length - 1;
+        document.getElementById('wiz-skip').style.display = (this.i === 0 || last) ? 'none' : '';
+        document.getElementById('wiz-next').textContent = last ? T('wiz.finish') : T('wiz.next');
+        const def = await this.steps[this.i].call(this);
+        document.getElementById('wiz-body').innerHTML = def.html;
+        if (def.after) def.after.call(this);
+    },
+    async next() {
+        const step = this.steps[this.i];
+        // valider/sauver l'étape courante
+        if (step.save) {
+            const ok = await step.save.call(this);
+            if (!ok) return;
+        }
+        if (this.i === this.steps.length - 1) { location.href = '/'; return; }
+        this.i++; this.render();
+    },
+    prev() { if (this.i > 0) { this.i--; this.render(); } },
+    skip() { if (this.i < this.steps.length - 1) { this.i++; this.render(); } },
+    async skipAll() {
+        await api('POST', '/api/setup/complete');
+        location.href = '/';
+    },
+
+    // ── Étape 0 : Langue ──────────────────────────────────
+    // En PREMIER : le choix de langue s'applique à tout l'assistant et à l'app.
+    // Changer la langue persiste (préférence utilisateur + défaut global) puis
+    // recharge la page → l'assistant se ré-affiche dans la langue choisie.
+    language() {
+        const opts = (LANGUAGES || []).map(l =>
+            `<option value="${esc(l.code)}" ${l.code === window.LANG ? 'selected' : ''}>${esc(l.label)}</option>`).join('');
+        return { html: `
+            <div class="wiz-step-num">${esc(T('wiz.lang.step'))}</div>
+            <h1>${esc(T('wiz.lang.title'))}</h1>
+            <p class="lead">${T('wiz.lang.lead')}</p>
+            <div class="field"><label>${esc(T('wiz.lang.label'))}</label>
+                <select id="f-lang" onchange="wiz.setLang(this.value)">${opts}</select></div>` };
+    },
+    async setLang(code) {
+        if (!code || code === window.LANG) return;
+        await api('POST', '/api/users/me/lang', { lang: code });   // effet immédiat (admin connecté)
+        await saveSettings({ ui_lang_default: code });             // défaut global de l'installation
+        location.reload();                                          // ré-affiche l'assistant traduit
+    },
+
+    // ── Étape 1 : Bienvenue ───────────────────────────────
+    welcome() {
+        return { html: `
+            <div class="wiz-step-num">${esc(T('wiz.welcome.step'))}</div>
+            <h1>${esc(T('wiz.welcome.title'))}</h1>
+            <p class="lead">${T('wiz.welcome.lead')}</p>` };
+    },
+
+    // ── Étape 2 : Identité ────────────────────────────────
+    async identity() {
+        const s = (await api('GET', '/api/settings')).data;
+        return {
+            html: `
+            <div class="wiz-step-num">${esc(T('wiz.identity.step'))}</div>
+            <h1>${esc(T('wiz.identity.title'))}</h1>
+            <p class="lead">${esc(T('wiz.identity.lead'))}</p>
+            <div class="field"><label>${esc(T('wiz.identity.sysname'))}</label>
+                <input id="f-sysname" placeholder="${esc(T('wiz.identity.sysname_ph'))}" value="${esc(s.brand_system_name)}"></div>
+            <div class="field"><label>${esc(T('wiz.identity.org'))} <span class="opt">${esc(T('wiz.opt'))}</span></label>
+                <input id="f-org" value="${esc(s.brand_org_name)}"></div>
+            <div class="field"><label>${esc(T('wiz.identity.loc'))} <span class="opt">${esc(T('wiz.opt'))}</span></label>
+                <input id="f-loc" placeholder="${esc(T('wiz.identity.loc_ph'))}" value="${esc(s.brand_location)}"></div>
+            <div class="field"><label>${esc(T('wiz.identity.logo'))} <span class="opt">${esc(T('wiz.identity.logo_opt'))}</span></label>
+                <input type="file" id="f-logo" accept="image/*">
+                <img class="wiz-logo-prev" id="logo-prev" ${s.brand_logo_url ? `src="${esc(s.brand_logo_url)}" style="display:block"` : ''}>
+            </div>`,
+            after() {
+                document.getElementById('f-logo').addEventListener('change', async (e) => {
+                    const f = e.target.files[0]; if (!f) return;
+                    const fd = new FormData(); fd.append('logo', f);
+                    this.msg(T('wiz.identity.logo_sending'));
+                    const r = await api('POST', '/api/settings/logo', fd, true);
+                    if (r.ok) {
+                        const p = document.getElementById('logo-prev');
+                        p.src = r.data.url; p.style.display = 'block';
+                        this.msg(T('wiz.identity.logo_saved'), 'ok');
+                    } else this.msg(r.data.error || T('wiz.identity.logo_fail'), 'err');
+                });
+            }
+        };
+    },
+
+    // ── Étape 3 : VMID & réseau ───────────────────────────
+    async network() {
+        const s = (await api('GET', '/api/settings')).data;
+        return {
+            html: `
+            <div class="wiz-step-num">${esc(T('wiz.network.step'))}</div>
+            <h1>${esc(T('wiz.network.title'))}</h1>
+            <p class="lead">${esc(T('wiz.network.lead'))}</p>
+            <div class="row">
+              <div class="field"><label>${esc(T('wiz.network.vmid_start'))}</label><input id="f-vstart" type="number" value="${esc(s.vmid_start)}"></div>
+              <div class="field"><label>${esc(T('wiz.network.vmid_end'))}</label><input id="f-vend" type="number" value="${esc(s.vmid_end)}"></div>
+            </div>
+            <div class="field"><label>${esc(T('wiz.network.mode'))}</label>
+              <select id="f-netmode" onchange="wiz.toggleStatic()">
+                <option value="dhcp" ${s.net_mode==='dhcp'?'selected':''}>${esc(T('wiz.network.dhcp'))}</option>
+                <option value="static" ${s.net_mode==='static'?'selected':''}>${esc(T('wiz.network.static'))}</option>
+              </select></div>
+            <div id="static-fields" style="display:${s.net_mode==='static'?'block':'none'}">
+              <div class="row">
+                <div class="field"><label>${esc(T('wiz.network.ip_start'))}</label><input id="f-ipstart" value="${esc(s.ip_start)}"></div>
+                <div class="field"><label>${esc(T('wiz.network.ip_end'))}</label><input id="f-ipend" value="${esc(s.ip_end)}"></div>
+              </div>
+              <div class="row">
+                <div class="field"><label>${esc(T('wiz.network.mask'))}</label><input id="f-mask" type="number" value="${esc(s.netmask_bits)}"></div>
+                <div class="field"><label>${esc(T('wiz.network.gw'))}</label><input id="f-gw" value="${esc(s.gateway)}"></div>
+              </div>
+            </div>`,
+        };
+    },
+    toggleStatic() {
+        document.getElementById('static-fields').style.display =
+            val('f-netmode') === 'static' ? 'block' : 'none';
+    },
+
+
+    // ── Étape 7 : MXL & ring ──────────────────────────────
+    async mxl() {
+        const s = (await api('GET', '/api/settings')).data;
+        return {
+            html: `
+            <div class="wiz-step-num">${esc(T('wiz.mxl.step'))}</div>
+            <h1>${esc(T('wiz.mxl.title'))}</h1>
+            <div class="wiz-mxl">
+              ${T('wiz.mxl.blurb')}
+              <br><a href="https://tech.ebu.ch/dmf/mxl" target="_blank" rel="noopener">${esc(T('wiz.mxl.learn'))}</a>
+            </div>
+            <div class="row">
+              <div class="field"><label>${esc(T('wiz.mxl.vgrain'))}</label>
+                <input id="f-vring" type="number" min="2" value="${esc(s.shm_video_ring)}">
+                <div class="hint">${esc(T('wiz.mxl.vgrain_hint'))}</div></div>
+              <div class="field"><label>${esc(T('wiz.mxl.agrain'))}</label>
+                <input id="f-aring" type="number" min="2" value="${esc(s.shm_audio_ring)}">
+                <div class="hint">${esc(T('wiz.mxl.agrain_hint'))}</div></div>
+            </div>`,
+        };
+    },
+
+    // ── Étape 8 : Format vidéo ────────────────────────────
+    async videofmt() {
+        const s = (await api('GET', '/api/settings')).data;
+        const labels = (VIDEO_FORMATS || '').split('\n')
+            .map(l => l.split(';')[0].trim()).filter(Boolean);
+        const opts = [`<option value="">${esc(T('wiz.videofmt.none'))}</option>`].concat(
+            labels.map(l => `<option ${l===s.video_format_default?'selected':''}>${esc(l)}</option>`)).join('');
+        return {
+            html: `
+            <div class="wiz-step-num">${esc(T('wiz.videofmt.step'))}</div>
+            <h1>${esc(T('wiz.videofmt.title'))}</h1>
+            <p class="lead">${esc(T('wiz.videofmt.lead'))}</p>
+            <div class="field"><label>${esc(T('wiz.videofmt.default'))}</label><select id="f-vfmt">${opts}</select></div>`,
+        };
+    },
+
+    // ── Étape 9 : Terminé ─────────────────────────────────
+    async done() {
+        await api('POST', '/api/setup/complete');
+        return {
+            html: `
+            <div class="wiz-step-num">${esc(T('wiz.done.step'))}</div>
+            <h1>${esc(T('wiz.done.title'))}</h1>
+            <p class="lead">${T('wiz.done.lead')}</p>` };
+    },
+};
+
+// ── save handlers attachés aux étapes ─────────────────────
+wiz.identity.save = async function() {
+    await saveSettings({ brand_system_name: val('f-sysname'), brand_org_name: val('f-org'),
+                         brand_location: val('f-loc') });
+    return true;
+};
+wiz.network.save = async function() {
+    const o = { vmid_start: +val('f-vstart'), vmid_end: +val('f-vend'),
+                net_mode: val('f-netmode') };
+    if (val('f-netmode') === 'static') {
+        Object.assign(o, { ip_start: val('f-ipstart'), ip_end: val('f-ipend'),
+                           netmask_bits: +val('f-mask'), gateway: val('f-gw') });
+    }
+    await saveSettings(o); return true;
+};
+wiz.mxl.save = async function() {
+    await saveSettings({ shm_video_ring: +val('f-vring'), shm_audio_ring: +val('f-aring') });
+    return true;
+};
+wiz.videofmt.save = async function() {
+    await saveSettings({ video_format_default: val('f-vfmt') });
+    return true;
+};
+
+function val(id) { const e = document.getElementById(id); return e ? (e.value || '').trim() : ''; }
+function esc(s) { return (s === null || s === undefined ? '' : String(s))
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+wiz.start();
+</script>
+</body>
+</html>

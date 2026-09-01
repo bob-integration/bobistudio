@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="{{ lang|default('fr') }}">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ _('setup.page_title') }}</title>
+    <link rel="stylesheet" href="/static/css/base.css?v={{ asset_v('css/base.css') }}">
+    {% if theme and theme != 'classic' %}
+    <link rel="stylesheet" href="/static/css/theme-{{ theme }}.css?v={{ asset_v('css/theme-' ~ theme ~ '.css') }}">
+    {% endif %}
+    <style>
+        body { display: flex; align-items: center; justify-content: center;
+               min-height: 100vh; padding: 20px; }
+        .setup-card { width: 100%; max-width: 440px;
+                      background: var(--bg-elev); border: 1px solid var(--border);
+                      border-radius: var(--radius); padding: 32px;
+                      box-shadow: var(--shadow); backdrop-filter: var(--backdrop-blur); }
+        .setup-logo { display: block; max-height: 56px; max-width: 200px; margin: 0 auto 16px; }
+        .setup-card h1 { text-align: center; margin-bottom: 6px; font-size: 1.35em; }
+        .setup-ok { text-align: center; color: var(--status-running-fg, #29b36a);
+                    font-size: 0.92em; margin-bottom: 4px; font-weight: 600; }
+        .setup-intro { text-align: center; color: var(--text-muted);
+                       font-size: 0.86em; line-height: 1.5; margin-bottom: 22px; }
+        .setup-sep { border: none; border-top: 1px solid var(--border); margin: 0 0 20px; }
+        .setup-card .field { margin-bottom: 13px; }
+        .setup-card label { display: block; font-size: 0.82em; color: var(--text-muted);
+                            margin-bottom: 4px; }
+        .setup-card .row { display: flex; gap: 12px; }
+        .setup-card .row .field { flex: 1; }
+        .setup-card input { width: 100%; background: var(--bg-input);
+                            border: 1px solid var(--border); color: var(--text);
+                            padding: 9px 12px; border-radius: var(--radius-small);
+                            font-family: var(--font-base); font-size: 0.95em; }
+        .setup-card input:focus { outline: none; border-color: var(--accent); }
+        .setup-card .btn { width: 100%; margin: 10px 0 0; padding: 11px;
+                           font-size: 0.95em; font-weight: 600; }
+        .setup-err { color: var(--status-stopped-fg); font-size: 0.85em;
+                     text-align: center; margin-bottom: 10px; min-height: 1.2em; }
+        .setup-hint { font-size: 0.78em; color: var(--text-muted); margin-top: 6px;
+                      text-align: center; }
+        .setup-lang { display: flex; justify-content: flex-end; align-items: center;
+                      gap: 8px; margin-bottom: 14px; }
+        .setup-lang label { font-size: 0.8em; color: var(--text-muted); margin: 0; }
+        .setup-lang select { background: var(--bg-input); border: 1px solid var(--border);
+                             color: var(--text); padding: 5px 9px; border-radius: var(--radius-small);
+                             font-family: var(--font-base); font-size: 0.85em; }
+    </style>
+</head>
+<body>
+    <form class="setup-card" method="POST" action="{{ url_for('routes.setup_page') }}">
+        <div class="setup-lang">
+            <label for="setup-lang-sel">{{ _('setup.lang_label') }}</label>
+            <select id="setup-lang-sel" onchange="setupSetLang(this.value)">
+                {% for l in languages %}
+                <option value="{{ l.code }}" {{ 'selected' if l.code == lang }}>{{ l.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if brand and brand.logo_url %}<img class="setup-logo" src="{{ brand.logo_url }}" alt="{{ brand.org_name or '' }}">{% endif %}
+        <h1>{{ _('setup.welcome') }}</h1>
+        <div class="setup-ok">{{ _('setup.ok') }}</div>
+        <div class="setup-intro">
+            {{ _('setup.intro') }}
+        </div>
+        <hr class="setup-sep">
+        <div class="setup-err">{{ error or '' }}</div>
+        <div class="field">
+            <label>{{ _('setup.username') }}</label>
+            <input type="text" name="username" autocomplete="username" autofocus required>
+        </div>
+        <div class="row">
+            <div class="field">
+                <label>{{ _('setup.firstname') }} <span style="opacity:.6">{{ _('setup.opt') }}</span></label>
+                <input type="text" name="prenom" autocomplete="given-name">
+            </div>
+            <div class="field">
+                <label>{{ _('setup.lastname') }} <span style="opacity:.6">{{ _('setup.opt') }}</span></label>
+                <input type="text" name="nom" autocomplete="family-name">
+            </div>
+        </div>
+        <div class="field">
+            <label>{{ _('setup.email') }} <span style="opacity:.6">{{ _('setup.opt') }}</span></label>
+            <input type="email" name="email" autocomplete="email">
+        </div>
+        <div class="field">
+            <label>{{ _('setup.password') }}</label>
+            <input type="password" name="password" autocomplete="new-password" required>
+        </div>
+        <div class="field">
+            <label>{{ _('setup.password2') }}</label>
+            <input type="password" name="password2" autocomplete="new-password" required>
+        </div>
+        <button class="btn btn-blue" type="submit">{{ _('setup.submit') }}</button>
+        <div class="setup-hint">{{ _('setup.hint') }}</div>
+    </form>
+    <script>
+    // Choix de langue avant toute authentification : persiste le défaut global
+    // (endpoint autorisé uniquement tant qu'aucun compte n'existe) puis recharge.
+    async function setupSetLang(code) {
+        try {
+            await fetch('/api/setup/lang', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({lang: code})
+            });
+        } catch (e) {}
+        location.reload();
+    }
+    </script>
+</body>
+</html>

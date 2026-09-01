@@ -1,0 +1,659 @@
+{% extends "layout.html" %}
+{% set page = 'home' %}
+{% block title %}{{ _('home.page_title') }}{% endblock %}
+
+{% block content %}
+<div class="home-head">
+    {% if brand and brand.system_name %}
+    <h1>{{ brand.system_name }}</h1>
+    <div class="meta home-product">Bobi.Studio{% if brand.org_name %} · {{ brand.org_name }}{% endif %}{% if brand.location %} — {{ brand.location }}{% endif %}</div>
+    {% else %}
+    <h1>Bobi.Studio</h1>
+    {% endif %}
+    <div class="meta" id="home-updated">{{ _('home.loading') }}</div>
+</div>
+
+<div class="health-strip" id="health-strip" aria-label="{{ _('home.health.aria') }}">
+    <!-- Groupe CLUSTER : santé globale + état du parc de nœuds. Chaque item est cliquable
+         vers la page de monitoring correspondante. -->
+    <a class="health-item health-global" id="h-global" href="/monitoring"
+       title="{{ _('home.health.global_tip') }}">
+        <span class="health-dot health-dot-off"></span>
+        <span class="health-label">{{ _('home.health.global') }}</span>
+        <span class="health-value">—</span>
+    </a>
+    <span class="health-sep" aria-hidden="true">·</span>
+    <a class="health-item" id="h-nodes" href="/monitoring#view=nodes"
+       title="{{ _('home.health.nodes_tip') }}">
+        <span class="health-dot health-dot-off"></span>
+        <span class="health-label">{{ _('home.health.nodes') }}</span>
+        <span class="health-value">—</span>
+    </a>
+    <span class="health-sep" aria-hidden="true">·</span>
+    <a class="health-item" id="h-resources" href="/monitoring#view=nodes"
+       title="{{ _('home.health.resources_tip') }}">
+        <span class="health-dot health-dot-off"></span>
+        <span class="health-label">{{ _('home.health.resources') }}</span>
+    </a>
+    <a class="health-item" id="h-gpu" style="display:none" href="/monitoring#view=nodes"
+       title="{{ _('home.health.gpu_tip') }}">
+        <span class="health-dot health-dot-off"></span>
+        <span class="health-label">{{ _('home.health.gpu') }}</span>
+    </a>
+    <a class="health-item" id="h-rdma" style="display:none" href="/monitoring#view=rdma"
+       title="{{ _('home.health.rdma_tip') }}">
+        <span class="health-dot health-dot-off"></span>
+        <span class="health-label">{{ _('home.health.rdma') }}</span>
+        <span class="health-value">—</span>
+    </a>
+    <span class="health-sep health-sep-group" aria-hidden="true">|</span>
+    <!-- Groupe SERVICES : pipeline broadcast. -->
+    <a class="health-item" id="h-ptp" style="display:none" href="/settings#reseau"
+       title="{{ _('home.health.ptp_tip') }}">
+        <span class="health-dot health-dot-off"></span>
+        <span class="health-label">PTP</span>
+        <span class="health-value">—</span>
+    </a>
+    <span class="health-sep" id="h-ptp-sep" style="display:none" aria-hidden="true">·</span>
+    <a class="health-item" id="h-containers" href="/containers"
+       title="{{ _('home.health.containers_tip') }}">
+        <span class="health-dot health-dot-off"></span>
+        <span class="health-label">{{ _('home.health.containers') }}</span>
+        <span class="health-value">—</span>
+    </a>
+    <span class="health-sep" aria-hidden="true">·</span>
+    <a class="health-item" id="h-nmos" href="/settings#nmos"
+       title="{{ _('home.health.nmos_tip') }}">
+        <span class="health-dot health-dot-off"></span>
+        <span class="health-label">NMOS</span>
+        <span class="health-value">—</span>
+    </a>
+    <span class="health-sep" aria-hidden="true">·</span>
+    <!-- Voyant « Attention » : synthèse des POINTS D'ATTENTION opérationnels (RX/TX sans signal,
+         collisions multicast, proxies orphelins…). Toujours visible — un bandeau tout vert alors
+         que deux réceptions sont mortes était le trou constaté à l'audit.
+         Il s'appelait « Flux », ce qui ne décrivait pas ce qu'il compte : ni les proxies orphelins
+         ni les collisions multicast ne sont des flux, et le chiffre est un nombre de CATÉGORIES,
+         pas de flux en défaut. Il porte désormais le titre exact de la section vers laquelle il
+         renvoie (#home-attention), pour qu'on sache où l'on atterrit avant de cliquer. -->
+    <a class="health-item" id="h-attention" href="#home-attention"
+       title="{{ _('home.health.attention_tip') }}">
+        <span class="health-dot health-dot-off"></span>
+        <span class="health-label">{{ _('home.health.attention') }}</span>
+        <span class="health-value">—</span>
+    </a>
+    <!-- Voyant « log moteur verbeux » : n'apparaît QUE si un moteur 2110_io tourne en debug/info/notice
+         (dump de stats libmtl → micro-hoquet de cadence + logs volumineux) OU si le réglage l'est. -->
+    <span class="health-sep" id="h-mtl-log-sep" style="display:none" aria-hidden="true">·</span>
+    <a class="health-item" id="h-mtl-log" style="display:none" href="/settings#mxl"
+       title="{{ _('home.health.mtl_log_tip') }}">
+        <span class="health-dot health-dot-off"></span>
+        <span class="health-label">{{ _('home.health.mtl_log') }}</span>
+        <span class="health-value">—</span>
+    </a>
+</div>
+
+<div id="pipeline-diagram" class="pipeline-diagram" aria-label="{{ _('home.pipeline.aria') }}"></div>
+
+<section class="home-stats" aria-label="{{ _('home.stats.aria') }}">
+    <div class="stat-card">
+        <div class="stat-head"><span class="stat-label">{{ _('home.stat.flows') }}</span><span class="stat-value" id="stat-flows">—</span></div>
+        <canvas class="stat-spark" id="spark-flows" aria-hidden="true"></canvas>
+        <div class="stat-sub" id="stat-flows-sub">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-head"><span class="stat-label">{{ _('home.stat.grains') }}</span><span class="stat-value" id="stat-grains">—</span></div>
+        <canvas class="stat-spark" id="spark-grains" aria-hidden="true"></canvas>
+        <div class="stat-sub" id="stat-grains-sub">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-head"><span class="stat-label">{{ _('home.stat.bw') }}</span><span class="stat-value" id="stat-bw">—</span></div>
+        <canvas class="stat-spark" id="spark-bw" aria-hidden="true"></canvas>
+        <div class="stat-sub" id="stat-bw-sub">—</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-head"><span class="stat-label">{{ _('home.stat.ram') }}</span><span class="stat-value" id="stat-ram">—</span></div>
+        <canvas class="stat-spark" id="spark-ram" aria-hidden="true"></canvas>
+        <div class="stat-sub" id="stat-ram-sub">—</div>
+    </div>
+</section>
+
+<!-- Points d'attention (état LIVE, bloc `attention` de /api/home/summary) — la donnée était déjà
+     calculée et envoyée au navigateur, mais l'accueil ne la rendait NULLE PART : un flux mort depuis
+     33 h restait invisible sur un bandeau tout vert. Rendue SANS CLIC, toujours.
+     Placée APRÈS les plaques de synthèse et juste AVANT le journal d'alertes : ce sont des
+     constats opérationnels, qui se lisent dans la foulée des alertes. En tête de page, elles
+     repoussaient les plaques vers le bas dès qu'un point s'ouvrait. -->
+<section class="home-attention" id="home-attention" style="margin:var(--space-4) 0 0" hidden
+         aria-label="{{ _('home.attention.aria') }}">
+    <h2 style="display:flex; align-items:baseline; gap:var(--space-2)">
+        {{ _('home.attention.title') }}
+        <span class="meta" id="att-count"></span>
+    </h2>
+    <div id="att-body"></div>
+</section>
+
+<section class="home-alerts">
+    <h2>{{ _('home.alerts.title') }}</h2>
+    <div id="alerts-recent" class="meta"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+}
+function plural(n, word, suffix) {
+    return `${n} ${word}${n > 1 ? (suffix || 's') : ''}`;
+}
+// Toast léger (mêmes classes que /cables, mais inline ici car home.html n'embarque
+// pas scripts.js). Affiche 3.5s puis fade out.
+function showToast(msg, kind) {
+    const t = document.createElement('div');
+    t.className = 'wire-toast wire-toast-' + (kind || 'info');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.classList.add('wire-toast-out'); setTimeout(() => t.remove(), 400); }, 3500);
+}
+function fmtOffset(ns) {
+    if (ns == null) return '—';
+    const a = Math.abs(ns);
+    if (a >= 1e6) return `${(ns / 1e6).toFixed(2)} ms`;
+    if (a >= 1e3) return `${(ns / 1e3).toFixed(2)} µs`;
+    return `${ns} ns`;
+}
+function setHealth(id, dotClass, value, titleSuffix) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const dot = el.querySelector('.health-dot');
+    const val = el.querySelector('.health-value');
+    dot.className = 'health-dot ' + dotClass;
+    if (val) val.textContent = value;   // certains items n'affichent que couleur + nom
+    if (titleSuffix) {
+        const base = el.getAttribute('data-title-base') || el.getAttribute('title') || '';
+        if (!el.getAttribute('data-title-base')) el.setAttribute('data-title-base', base);
+        el.setAttribute('title', base + ' · ' + titleSuffix);
+    }
+}
+
+function _showItem(id, on) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = on ? '' : 'none';
+}
+function renderHealth(j) {
+    const cl = j.cluster || {};
+    const _pct = v => (v != null ? v + '%' : '—');
+    // ── Santé globale (synthèse OK / dégradé / erreur) ──
+    const G = {ok:  ['health-dot-ok',   window.t('home.health.state_ok')],
+               warn: ['health-dot-warn', window.t('home.health.state_warn')],
+               err:  ['health-dot-err',  window.t('home.health.state_err')]};
+    const g = G[cl.health] || G.ok;
+    setHealth('h-global', g[0], g[1]);
+    // ── Nœuds en ligne ──
+    const on = cl.nodes_online, tot = cl.nodes_total;
+    const ndot = (tot > 0 && on === tot) ? 'health-dot-ok'
+               : (on > 0) ? 'health-dot-warn' : 'health-dot-err';
+    setHealth('h-nodes', ndot, `${on != null ? on : '—'}/${tot != null ? tot : '—'}`);
+    // ── Ressources cluster (pire-cas sur tous les nœuds + contrôleur) ──
+    // Affiche juste la couleur + le nom ; le détail CPU/RAM/disque va dans l'infobulle.
+    const cpu = cl.cpu_max_pct, mem = cl.mem_max_pct, disk = cl.disk_max_pct;
+    let rdot = 'health-dot-ok';
+    if (cl.membw_level === 'err' || (disk != null && disk >= 95)) rdot = 'health-dot-err';
+    else if (cl.membw_level === 'warn' || (cpu != null && cpu >= 90)
+             || (mem != null && mem >= 90) || (disk != null && disk >= 85)) rdot = 'health-dot-warn';
+    setHealth('h-resources', rdot, '',
+              `CPU ${_pct(cpu)} · RAM ${_pct(mem)} · ${window.t('home.health.disk')} ${_pct(disk)}`
+              + (cl.membw_level ? ` · membw ${cl.membw_level}` : ''));
+    // ── GPU (conditionnel : ≥1 nœud GPU) — couleur + nom, détail en infobulle ──
+    if (cl.gpu_present) {
+        _showItem('h-gpu', true);
+        const gu = cl.gpu_util_max_pct, gp = cl.gpu_pcie_max_pct;
+        setHealth('h-gpu', (gu != null && gu >= 95) ? 'health-dot-warn' : 'health-dot-ok',
+                  '', `util ${_pct(gu)} · PCIe ${_pct(gp)}`);
+    } else _showItem('h-gpu', false);
+    // ── RDMA (conditionnel : ≥1 lien) ──
+    const rd = cl.rdma || {};
+    if (rd.count) {
+        _showItem('h-rdma', true);
+        // Trois niveaux, alignés sur le vocabulaire du service : ROUGE seulement sur `error`.
+        // `waiting` (source pas encore produite) est bénin — c'est l'état normal d'un lien
+        // pré-câblé — et `pending` est transitoire ; les peindre en rouge laissait la pastille
+        // allumée en permanence, ce qui n'alarme plus personne. On les mentionne en détail, sans
+        // changer la couleur, pour qu'ils restent visibles sans crier.
+        const _err = rd.error || 0, _att = (rd.waiting || 0) + (rd.pending || 0);
+        const _det = _err ? `${_err} ${window.t('home.health.rdma_degraded')}`
+                   : (_att ? `${_att} ${window.t('home.health.rdma_waiting')}` : null);
+        setHealth('h-rdma', _err ? 'health-dot-err' : 'health-dot-ok',
+                  `${rd.count} ${window.t('home.health.rdma_links')}`, _det);
+    } else _showItem('h-rdma', false);
+    // ── PTP (conditionnel : masqué si aucun nœud PTP-activé ; agrégé multi-nœuds) ──
+    const ptp = j.ptp || {};
+    _showItem('h-ptp-sep', !!ptp.enabled);
+    if (!ptp.enabled) {
+        _showItem('h-ptp', false);
+    } else {
+        _showItem('h-ptp', true);
+        const nSfx = (ptp.nodes_ptp > 1)
+            ? ` · ${ptp.nodes_locked}/${ptp.nodes_ptp} ${window.t('home.health.ptp_nodes')}` : '';
+        if (ptp.locked) {
+            const gm = ptp.grandmaster_id ? `GM ${ptp.grandmaster_id.slice(0, 17)}…` : '';
+            setHealth('h-ptp', 'health-dot-ok', 'LOCKED',
+                      `${ptp.port_state || ''} · offset ${fmtOffset(ptp.offset_ns)}${gm ? ' · ' + gm : ''}${nSfx}`);
+        } else {
+            setHealth('h-ptp', 'health-dot-warn', window.t('home.health.ptp_unlocked'),
+                      `${ptp.port_state || 'state ?'} · offset ${fmtOffset(ptp.offset_ns)}${nSfx}`);
+        }
+    }
+    const c = j.containers || {};
+    const cdot = (c.total > 0 && c.running === c.total) ? 'health-dot-ok'
+               : (c.running > 0) ? 'health-dot-warn' : 'health-dot-off';
+    setHealth('h-containers', cdot, `${c.running}/${c.total}`,
+              `${c.multiview_count} ${window.t('home.health.multiview_suffix')}`);
+    const n = j.nmos || {};
+    const recvTot = (n.receivers_video || 0) + (n.receivers_audio || 0);
+    const sendTot = (n.senders_video || 0) + (n.senders_audio || 0);
+    setHealth('h-nmos',
+              (recvTot + sendTot > 0) ? 'health-dot-ok' : 'health-dot-off',
+              `${recvTot} recv · ${sendTot} send`,
+              `${n.receivers_subscribed || 0} ${window.t('home.health.recv_suffix')}`);
+    // ── Voyant « log moteur verbeux » (conditionnel) : n'apparaît QUE si ≥1 moteur 2110_io tourne
+    //    en debug/info/notice (verbose_engines) OU si le réglage l'est → dump de stats libmtl =
+    //    micro-hoquet de cadence synchronisé + logs volumineux. Ambre. Cliquable → Réglages MXL. ──
+    const ml = j.mtl_log || {};
+    if (ml.setting_verbose || (ml.verbose_engines || 0) > 0) {
+        _showItem('h-mtl-log-sep', true);
+        _showItem('h-mtl-log', true);
+        const val = (ml.verbose_engines || 0) > 0 ? `${ml.verbose_engines}/${ml.engines}` : (ml.setting || 'verbose');
+        setHealth('h-mtl-log', 'health-dot-warn', val, window.t('home.health.mtl_log_tip'));
+    } else {
+        _showItem('h-mtl-log', false);
+        _showItem('h-mtl-log-sep', false);
+    }
+}
+
+// ─── Schéma pipeline par catégorie ──────────────────────────
+const PIPELINE_CATEGORIES = [
+    {
+        key: 'sources',
+        label: window.t('home.pipe.sources'),
+        desc: window.t('home.pipe.sources.desc'),
+        iconKey: 'pd-icon-sources',
+        iconText: 'IN',
+        types: {{ ((plugin_sections.get('sources') or {}).get('plugins') or []) | map(attribute='type') | list | tojson }},
+        route: '/containers',
+    },
+    {
+        key: 'traitements',
+        label: window.t('home.pipe.traitements'),
+        desc: window.t('home.pipe.traitements.desc'),
+        iconKey: 'pd-icon-traitements',
+        {# ⚠ PAS « TX » : en broadcast TX veut dire TRANSMIT, donc une SORTIE — l'étage d'à côté.
+           Un code à trois lettres sur un schéma de chaîne est lu avec les réflexes du métier, pas
+           comme une abréviation libre. « FX » est le raccourci usuel du traitement de signal. #}
+        iconText: 'FX',
+        types: {{ ((plugin_sections.get('traitements') or {}).get('plugins') or []) | map(attribute='type') | list | tojson }},
+        route: '/traitements',
+    },
+    {
+        {# Étage à part et non fondu dans Traitements : assembler plusieurs signaux et en corriger
+           un seul ne se décident pas au même moment de l'exploitation, et ce sont les quatre types
+           les plus lourds du parc. Mesure ne figure PAS dans ce schéma : une sonde observe la
+           chaîne, elle n'en est pas un étage. #}
+        key: 'composition',
+        label: window.t('home.pipe.composition'),
+        desc: window.t('home.pipe.composition.desc'),
+        iconKey: 'pd-icon-composition',
+        iconText: 'MIX',
+        types: {{ ((plugin_sections.get('composition') or {}).get('plugins') or []) | map(attribute='type') | list | tojson }},
+        route: '/composition',
+    },
+    {
+        key: 'streams',
+        label: window.t('home.pipe.streams'),
+        desc: window.t('home.pipe.streams.desc'),
+        iconKey: 'pd-icon-streams',
+        iconText: 'ENC',
+        types: {{ ((plugin_sections.get('streams') or {}).get('plugins') or []) | map(attribute='type') | list | tojson }},
+        route: '/streams',
+    },
+    {
+        key: 'destinations',
+        label: window.t('home.pipe.destinations'),
+        desc: window.t('home.pipe.destinations.desc'),
+        iconKey: 'pd-icon-destinations',
+        iconText: 'OUT',
+        types: {{ ((plugin_sections.get('destinations') or {}).get('plugins') or []) | map(attribute='type') | list | tojson }},
+        route: '/containers',
+    },
+    {
+        key: 'medias',
+        label: window.t('home.pipe.medias'),
+        desc: window.t('home.pipe.medias.desc'),
+        iconKey: 'pd-icon-medias',
+        iconText: 'REC',
+        types: {{ ((plugin_sections.get('medias') or {}).get('plugins') or []) | map(attribute='type') | list | tojson }},
+        route: '/medias',
+    },
+];
+function renderPipelineDiagram(containers) {
+    const el = document.getElementById('pipeline-diagram');
+    if (!el) return;
+    const by_type    = containers.by_type || {};
+    const nav_routes = containers.nav_routes || {};
+    const io         = containers.io2110 || {};
+    const catTotal = cat => cat.types.reduce((s, t) => s + (by_type[t] || 0), 0);
+    // Le moteur 2110_io est BI-RÔLE : il compte pour 1 conteneur en section « Sources », mais il
+    // porte N flux Rx ET M flux Tx. On annote donc Sources (Rx) et Destinations (Tx) avec les
+    // FLUX vidéo actifs agrégés — sinon « Destinations » paraît vide alors qu'il y a des Tx.
+    const flowBadge = (cat) => {
+        if (cat.key === 'sources' && (io.rx_video || 0) > 0)
+            return {n: io.rx_video, a: io.rx_audio || 0, label: window.t('home.pipe.rx2110')};
+        if (cat.key === 'destinations' && (io.tx_video || 0) > 0)
+            return {n: io.tx_video, a: io.tx_audio || 0, label: window.t('home.pipe.tx2110')};
+        return null;
+    };
+    // Le 2110_io étant bi-rôle, on l'INJECTE aussi comme conteneur de « Destinations » (moteurs
+    // ayant du Tx vidéo), exactement comme il apparaît déjà dans « Sources » via sa section —
+    // sinon Destinations afficherait « 0 container » malgré des émetteurs actifs.
+    const extraChips = (cat) =>
+        (cat.key === 'destinations' && (io.tx_engines || 0) > 0)
+            ? [{type: '2110_io', count: io.tx_engines}] : [];
+    const chipHtml = (cat, t, cnt) =>
+        `<a class="pd-type-chip" href="${nav_routes[t] || cat.route}" title="${window.t('home.open')} ${escapeHtml(t)}">${escapeHtml(t)}&thinsp;<strong>${cnt}</strong></a>`;
+    const nodeHtml = (cat, isLast) => {
+        const extra = extraChips(cat);
+        const n = catTotal(cat) + extra.reduce((s, e) => s + e.count, 0);
+        const fb = flowBadge(cat);
+        const active = n > 0 || !!fb;
+        // Chaque chip de type est un lien vers la page dédiée du type (route nav du
+        // manifeste, ex. split → /traitements/split) ; à défaut, retombe sur la catégorie.
+        const typeChips = cat.types
+            .filter(t => (by_type[t] || 0) > 0)
+            .map(t => chipHtml(cat, t, by_type[t]))
+            .concat(extra.map(e => chipHtml(cat, e.type, e.count)))
+            .join('');
+        // Badge de flux 2110 (Rx/Tx) : lien vers la page du moteur 2110_io.
+        const flowHtml = fb ? `<a class="pd-flow-badge" href="${nav_routes['2110_io'] || '/sources'}"
+                title="${escapeHtml(window.t('home.pipe.flow_title')
+                    .replace('{label}', fb.label).replace('{n}', fb.n)
+                    .replace('{audio}', fb.a ? ' · ' + fb.a + ' ' + window.t('js.unit.audio') : ''))}">
+                <strong>${fb.n}</strong>&thinsp;${escapeHtml(fb.label)}${fb.a ? `<span class="pd-flow-aud"> · ${fb.a}&thinsp;${escapeHtml(window.t('js.unit.audio'))}</span>` : ''}</a>` : '';
+        return `<div class="pd-node${active ? '' : ' pd-node-empty'}" title="${cat.label} — ${cat.desc}">
+            <a class="pd-node-main" href="${cat.route}">
+                <span class="pd-icon ${cat.iconKey}">${cat.iconText}</span>
+                <span class="pd-label">${cat.label}</span>
+                <span class="pd-desc">${cat.desc}</span>
+                <span class="pd-count ${active ? 'pd-count-active' : 'pd-count-empty'}">${n} container${n !== 1 ? 's' : ''}</span>
+            </a>
+            ${flowHtml}
+            ${typeChips ? `<div class="pd-types">${typeChips}</div>` : ''}
+        </div>`;
+    };
+    const byKey = k => PIPELINE_CATEGORIES.find(c => c.key === k);
+    // 4 colonnes (grille alignée sur les cartes de stats). Connecteurs = décorations de
+    // cellule (flèche / séparateur) dans le gap, sans consommer de largeur de colonne.
+    // Sources → Traitements → (Streams + Destinations) | Médias (indépendant).
+    const cell = (inner, cls) => `<div class="pd-cell ${cls || ''}">${inner}</div>`;
+    // ⚠ La grille est composée À LA MAIN : une catégorie ajoutée à PIPELINE_CATEGORIES et oubliée
+    // ici existe dans les données et n'apparaît NULLE PART. C'est arrivé avec « Composition », et
+    // c'est la même panne que l'onglet Journaux et que `_setActiveTab` — une disposition écrite en
+    // dur à côté de sa liste finit toujours par en diverger. D'où le contrôle en fin de fonction.
+    const places = new Set();
+    const noeud = k => { places.add(k); return nodeHtml(byKey(k)); };
+    const pile = (...cles) => `<div class="pd-branch">`
+        + cles.map(k => `<div class="pd-branch-row">${noeud(k)}</div>`).join('')
+        + `</div>`;
+    el.innerHTML =
+        cell(noeud('sources'))
+        // Traitements et Composition partagent la colonne : même étage de la chaîne (le signal y
+        // est transformé avant l'encodage), deux gestes d'exploitation distincts.
+        // `pd-cell-stack` et non `pd-cell-arrow` : ce dernier pose UNE flèche en haut de la
+        // colonne, qui ne désignait donc que Traitements. La colonne est empilée, il en faut
+        // une par ligne — le motif de la branche Streams/Destinations.
+        + cell(pile('traitements', 'composition'), 'pd-cell-stack')
+        + cell(pile('streams', 'destinations'), 'pd-cell-branch')
+        + cell(noeud('medias'), 'pd-cell-sep');
+    const oubliees = PIPELINE_CATEGORIES.map(c => c.key).filter(k => !places.has(k));
+    if (oubliees.length) console.error('accueil : catégorie(s) absente(s) du schéma — ' + oubliees.join(', '));
+}
+
+// ─── Points d'attention (état LIVE) ─────────────────────────────────────────
+// `j.attention` = anomalies opérationnelles de flux/config lues des caches live du moteur — PAS du
+// journal d'alertes (qui n'émet qu'au franchissement : une panne persistante y paraît « vieille de
+// 2 minutes »). Mêmes libellés que le panneau Monitoring (clés monitoring.att_*) pour que les deux
+// pages racontent la MÊME chose.
+function fmtAge(s, lowerBound) {
+    if (s == null) return '';
+    const U = k => window.t('home.attention.unit_' + k);
+    let txt;
+    if (s < 60)        txt = `${s} ${U('s')}`;
+    else if (s < 3600) txt = `${Math.floor(s / 60)} ${U('min')}`;
+    else if (s < 86400) {
+        const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+        txt = m ? `${h} ${U('h')} ${m} ${U('min')}` : `${h} ${U('h')}`;
+    } else {
+        const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+        txt = h ? `${d} ${U('d')} ${h} ${U('h')}` : `${d} ${U('d')}`;
+    }
+    // « ≥ » quand le point était DÉJÀ là au démarrage de l'orchestrateur : l'ancienneté observée
+    // est alors une borne inférieure, pas l'âge réel de la panne (cf. _annoter_anciennete).
+    return lowerBound ? '≥ ' + txt : txt;
+}
+function homeAttentionItem(a) {
+    const slots = (a.slots || []).map(s => '#' + s).join(', ');
+    const suff = slots ? ` (${slots})` : '';
+    switch (a.kind) {
+        case 'rx_stall': return {title: 'RX ' + (a.host || ('#' + a.vmid)),
+            reason: window.t('monitoring.att_rx_stall').replace('{n}', a.count) + suff,
+            href: '/containers#c-' + a.vmid};
+        case 'tx_stall': return {title: 'TX ' + (a.host || ('#' + a.vmid)),
+            reason: window.t('monitoring.att_tx_stall').replace('{n}', a.count) + suff,
+            href: '/containers#c-' + a.vmid};
+        case 'mcast': return {title: window.t('monitoring.att_mcast_title'),
+            reason: window.t('monitoring.att_mcast').replace('{n}', a.count) + ' : ' + (a.items || []).join(', '),
+            href: '/settings#nmos'};
+        case 'mcast_range_exhausted': return {title: window.t('monitoring.att_mcast_range_title'),
+            reason: window.t('monitoring.att_mcast_range').replace('{n}', a.count) + ' : ' +
+                (a.items || []).map(it => it.label).join(', '),
+            href: '/settings#mcast'};
+        case 'pyramide': return {title: 'Pyramide',
+            reason: window.t('monitoring.att_pyramide').replace('{o}', a.orphans).replace('{u}', a.unmet),
+            href: '/monitoring#view=fabric'};
+        case 'orphan_container': return {title: a.name || '?',
+            reason: window.t('monitoring.att_orphan').replace('{node}', a.node || a.node_id),
+            href: '/monitoring#view=overview'};
+        default: return {title: a.kind || '?', reason: '', href: '/monitoring#view=overview'};
+    }
+}
+function renderAttention(j) {
+    const att  = (j && j.attention) || [];
+    const io   = (j.containers && j.containers.io2110) || {};
+    const flux = (io.rx_video || 0) + (io.rx_audio || 0) + (io.tx_video || 0) + (io.tx_audio || 0);
+    const nCont = (j.containers && j.containers.total) || 0;
+    const nErr = att.filter(a => a.severity === 'error').length;
+    // ── Voyant du bandeau : trois états DISTINCTS (jamais « vert » par défaut d'information) ──
+    if (!att.length) {
+        // « rien à surveiller » ≠ « tout va bien » : pastille éteinte + libellé explicite.
+        const rien = (flux === 0 && nCont === 0);
+        setHealth('h-attention', rien ? 'health-dot-off' : 'health-dot-ok',
+                  rien ? window.t('home.attention.nothing') : window.t('home.attention.ok'));
+    } else {
+        setHealth('h-attention', nErr ? 'health-dot-err' : 'health-dot-warn', String(att.length));
+    }
+    // ── Section détaillée ──
+    const cnt  = document.getElementById('att-count');
+    const body = document.getElementById('att-body');
+    const sect = document.getElementById('home-attention');
+    if (!body) return;
+    // RIEN À SIGNALER → la section entière disparaît. Un encart « aucune anomalie » n'apporte
+    // aucune information ici : le bandeau de voyants juste au-dessus dit déjà que tout va bien,
+    // et le journal d'alertes en dessous couvre l'historique. Il ne ferait qu'occuper l'espace et
+    // diluer le reste. La section n'apparaît QUE quand elle a quelque chose à dire.
+    if (sect) sect.hidden = !att.length;
+    cnt.textContent = att.length ? window.t('home.attention.count').replace('{n}', att.length) : '';
+    if (!att.length) {
+        body.innerHTML = '';
+        return;
+    }
+    // Les erreurs d'abord, puis du plus ANCIEN au plus récent : une panne installée passe devant
+    // un hoquet qui vient d'apparaître.
+    const rows = att.slice().sort((x, y) =>
+            (y.severity === 'error') - (x.severity === 'error') || (y.age_s || 0) - (x.age_s || 0))
+        .map(a => {
+            const it = homeAttentionItem(a);
+            const err = a.severity === 'error';
+            const age = fmtAge(a.age_s, a.age_is_lower_bound);
+            const ageTitle = a.age_is_lower_bound ? window.t('home.attention.since_boot') : '';
+            return `<li class="issue-row">
+            <div class="issue-id">
+                <span class="issue-host">${escapeHtml(it.title)}</span>
+                <span class="badge ${err ? 'stopped' : 'script_stopped'}">${escapeHtml(
+                    err ? window.t('monitoring.sev_error') : window.t('monitoring.sev_warning'))}</span>
+                ${age ? `<span class="issue-kind" title="${escapeHtml(ageTitle)}">${escapeHtml(
+                    window.t('home.attention.since').replace('{age}', age))}</span>` : ''}
+            </div>
+            <div class="issue-reason">${escapeHtml(it.reason)}</div>
+            <div class="issue-actions"><a class="btn btn-purple" href="${it.href}">${
+                escapeHtml(window.t('monitoring.att_open'))}</a></div>
+        </li>`;
+        }).join('');
+    body.innerHTML = `<ul class="issue-list" aria-live="polite" aria-atomic="false">${rows}</ul>`;
+}
+
+function renderAlerts(a) {
+    const wrap = document.getElementById('alerts-recent');
+    const list = a.recent || [];
+    // Le lien vers le journal est TOUJOURS rendu, y compris quand rien n'est en cours :
+    // « rien en cours » ne doit pas donner l'impression qu'il ne s'est jamais rien passé.
+    const lien = `<div class="meta home-alerts-total">`
+        + `<a href="/monitoring#logs">${window.t('home.alerts.journal_link')
+             .replace('{n}', a.total)}</a></div>`;
+    if (!list.length) {
+        wrap.innerHTML = `<div class="home-alerts-clear">${window.t('home.alerts.none')}</div>` + lien;
+        wrap.classList.add('home-alerts-empty');
+        return;
+    }
+    wrap.classList.remove('home-alerts-empty');
+    wrap.innerHTML =
+        list.map(x => {
+            // Ces lignes sont EN COURS (émises dans la fenêtre d'anti-rebond). Elles gardent
+            // leur ancienneté et leur nombre d'occurrences : une panne qui dure depuis 33 h ne
+            // doit pas se lire comme un incident frais et isolé.
+            const n = x.count || 1;
+            const debut = (n > 1 && x.first_timestamp && x.first_timestamp !== x.timestamp)
+                ? `<span class="log-since" title="${window.t('home.js.first_occurrence')}">${window.t('home.js.since')} ${escapeHtml(x.first_timestamp)}</span>` : '';
+            const rep = n > 1
+                ? `<span class="log-count" title="${n} occurrences de ce message">×${n}</span>` : '';
+            return `
+            <div class="log-line">
+                <span class="log-ts">${escapeHtml(x.timestamp || '')}</span>
+                <span class="log-niveau log-niveau-${escapeHtml(x.niveau || 'info')}">[${escapeHtml(x.niveau || 'info')}]</span>
+                <span class="log-msg">${escapeHtml(x.message || '')} ${rep} ${debut}</span>
+            </div>`; }).join('') +
+        lien;
+}
+
+// ─── Graphique stats MXL (flux / grains / débit / RAM) — sparklines canvas ───
+const STAT_MAX = 60;   // points d'historique (≈ 2 min à 2s/poll)
+const STAT_HIST = { flows: [], grains: [], bw: [], ram: [] };
+const STAT_COLOR = { flows: '#7aa2c8', grains: '#a882c8', bw: '#64b482', ram: '#c8a05a' };
+function _pushHist(k, v) { const a = STAT_HIST[k]; a.push(v); if (a.length > STAT_MAX) a.shift(); }
+function _fmtBps(b) {
+    if (b >= 1e9) return (b / 1e9).toFixed(2) + ' Gb/s';
+    if (b >= 1e6) return (b / 1e6).toFixed(1) + ' Mb/s';
+    if (b >= 1e3) return (b / 1e3).toFixed(0) + ' kb/s';
+    return Math.round(b) + ' b/s';
+}
+function _fmtBytes(b) {
+    if (b >= (1 << 30)) return (b / (1 << 30)).toFixed(2) + ' ' + window.t('js.unit.gib');
+    if (b >= (1 << 20)) return (b / (1 << 20)).toFixed(0) + ' ' + window.t('js.unit.mib');
+    if (b >= (1 << 10)) return (b / (1 << 10)).toFixed(0) + ' ' + window.t('js.unit.kib');
+    return b + ' ' + window.t('js.unit.byte');
+}
+function _drawSpark(id, data, color) {
+    const cv = document.getElementById(id);
+    if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = cv.clientWidth || 220, cssH = cv.clientHeight || 40;
+    if (cv.width !== Math.round(cssW * dpr)) { cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr); }
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    if (data.length < 2) return;
+    const max = Math.max(...data), min = Math.min(...data);
+    const range = (max - min) || 1;
+    const step = cssW / (STAT_MAX - 1);
+    const x0 = cssW - (data.length - 1) * step;   // aligné à droite (les plus récents)
+    const yOf = v => (cssH - 3) - ((v - min) / range) * (cssH - 6);
+    ctx.beginPath();
+    data.forEach((v, i) => { const x = x0 + i * step, y = yOf(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.stroke();
+    ctx.lineTo(x0 + (data.length - 1) * step, cssH); ctx.lineTo(x0, cssH); ctx.closePath();
+    ctx.fillStyle = color + '22'; ctx.fill();
+}
+function renderStats(s) {
+    if (!s) return;
+    const fv = (s.flows && s.flows.video) || 0, fa = (s.flows && s.flows.audio) || 0;
+    const flows = (s.flows && s.flows.total) || 0;
+    // Empreinte CALCULÉE du bus MXL (débit du domaine × durée d'historique), sur la RAM PHYSIQUE
+    // des nœuds. Ne PAS revenir à une somme de `mem_used` par conteneur : les pages du tmpfs MXL
+    // sont facturées au cgroup qui les touche en premier, donc cette somme répartissait la mémoire
+    // PARTAGÉE au hasard, et son total était la constante 2048 × nombre de conteneurs.
+    const grains = s.grains || 0, bw = s.bandwidth_bps || 0;
+    const ram = s.mxl_bytes || 0, ramT = s.ram_node_total || 0;
+    document.getElementById('stat-flows').textContent = flows;
+    document.getElementById('stat-flows-sub').textContent =
+        window.t('home.stat.flows_sub').replace('{v}', fv).replace('{a}', fa);
+    // séparateurs de milliers : la locale du navigateur, pas 'fr-FR' figé
+    document.getElementById('stat-grains').textContent = grains.toLocaleString(window.LANG || undefined);
+    document.getElementById('stat-grains-sub').textContent = window.t('home.stat.grains_sub');
+    document.getElementById('stat-bw').textContent = _fmtBps(bw);
+    document.getElementById('stat-bw-sub').textContent = window.t('home.stat.bw_sub');
+    document.getElementById('stat-ram').textContent = _fmtBytes(ram);
+    // Sans snapshot node_health (boot, nœuds injoignables) on affiche l'empreinte SEULE plutôt
+    // qu'un ratio sur zéro — une part de « 0 » se lirait comme une saturation.
+    document.getElementById('stat-ram-sub').textContent = ramT
+        ? window.t('home.stat.ram_sub').replace('{total}', _fmtBytes(ramT))
+                                       .replace('{pct}', (100 * ram / ramT).toFixed(1))
+        : window.t('home.stat.ram_sub_seul');
+    _pushHist('flows', flows); _pushHist('grains', grains); _pushHist('bw', bw); _pushHist('ram', ram);
+    _drawSpark('spark-flows', STAT_HIST.flows, STAT_COLOR.flows);
+    _drawSpark('spark-grains', STAT_HIST.grains, STAT_COLOR.grains);
+    _drawSpark('spark-bw', STAT_HIST.bw, STAT_COLOR.bw);
+    _drawSpark('spark-ram', STAT_HIST.ram, STAT_COLOR.ram);
+}
+
+let failCount = 0;
+async function rafraichirHome() {
+    try {
+        const r = await fetch('/api/home/summary');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        failCount = 0;
+        // (idem : c'est MXLConnexion qui pose et retire le voile)
+        renderHealth(j);
+        renderAttention(j);
+        renderStats(j.stats);
+        renderPipelineDiagram(j.containers || {});
+        renderAlerts(j.alerts);
+        const now = new Date();
+        document.getElementById('home-updated').textContent =
+            window.t('home.updated_at') + ' ' + now.toLocaleTimeString();
+    } catch (e) {
+        failCount += 1;
+        // (le voile « données périmées » appartient au témoin global, cf. MXLConnexion)
+        document.getElementById('home-updated').textContent =
+            window.t('home.error') + ' ' + e.message
+            + (failCount >= 3 ? ' · ' + window.t('home.stale') : '');
+    }
+}
+
+// Poll SANS RECOUVREMENT (cf. window.MXLPoll dans layout.html) : `/api/home/summary` coûte ~180 ms
+// de CPU serveur ; avec setInterval, une réponse plus lente que les 2 s empilait les requêtes et
+// saturait l'orchestrateur pour TOUTES les pages. MXLPoll déclenche la 1re passe lui-même.
+window.MXLPoll(rafraichirHome, 2000);
+</script>
+{% endblock %}

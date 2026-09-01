@@ -1,0 +1,194 @@
+{
+  "license": "GPL-3.0-or-later",
+  "type": "v210_bridge",
+  "label": "Pont v210",
+  "runtime": "docker",
+  "badge": {
+    "label": "Pont v210",
+    "class": "mode-corrector",
+    "oklch": "0.78 0.06 260"
+  },
+  "version": "0.7.0",
+  "adapts_input": true,
+  "description": "Pont d'interopérabilité MXL (R1), bi-directionnel. Export : lit un flux vidéo planar interne et publie son MIROIR au format standard video/v210 (SDK MXL stock), lisible par les containers d'autres éditeurs sur le même serveur (le flux miroir n'apparaît pas dans Câbles ; son flowId — l'UUID à donner au tiers — est sur /state). Import : lit un flux video/v210 TIERS du domaine (flowId UUID brut, candidats listés par GET /flows) et publie sa conversion planar interne, câblable normalement. Conversion SIMD (libbobi_v210) ~2-5 ms/image 1080p, index de grain propagé. 4:2:2 progressif uniquement (v1).",
+  "nav": { "section": "traitements", "label": "Traitements", "route": "/traitements", "order": 30 },
+  "script_template": "script.py",
+  "video_format": false,
+  "deploy_defaults": {
+    "direction": "export",
+    "out_name": "",
+    "import_flow": "",
+    "import_bit_depth": "8",
+    "log_level": "info"
+  },
+  "config_schema": [
+    {
+      "key": "direction",
+      "type": "select",
+      "label": "Sens du pont",
+      "default": "export",
+      "options": [
+        {
+          "value": "export",
+          "label": "Export — planar interne → miroir v210 (pour un tiers)"
+        },
+        {
+          "value": "import",
+          "label": "Import — flux v210 tiers → planar interne"
+        }
+      ]
+    },
+    {
+      "key": "out_name",
+      "type": "text",
+      "label": "Nom du flux miroir v210",
+      "help": "Nom du flux MXL publié pour les tiers (vide = <hostname>_v210). Son flowId (UUID) est exposé sur /state — c'est lui qu'un container tiers cible.",
+      "default": "",
+      "visible_if": {
+        "direction": "export"
+      }
+    },
+    {
+      "key": "import_flow",
+      "type": "text",
+      "label": "Flux v210 source (flowId UUID ou nom)",
+      "help": "FlowId UUID brut d'un flux video/v210 tiers (GET /flows sur le container liste les candidats découverts dans le domaine), ou un nom de flux maison.",
+      "default": "",
+      "visible_if": {
+        "direction": "import"
+      }
+    },
+    {
+      "key": "import_bit_depth",
+      "type": "select",
+      "label": "Profondeur de la sortie planar",
+      "default": "8",
+      "options": [
+        {
+          "value": "8",
+          "label": "8 bits (pipeline force8, v>>2)"
+        },
+        {
+          "value": "10",
+          "label": "10 bits (PLANAR10LE)"
+        }
+      ],
+      "visible_if": {
+        "direction": "import"
+      }
+    },
+    {
+      "key": "log_level",
+      "type": "select",
+      "label": "Niveau de log",
+      "help": "Verbosité du journal du conteneur. Défaut « Événements » : les faits marquants (démarrage/arrêt, changement de format, reconnexion, repli sur un chemin dégradé, entrée qui apparaît ou disparaît) sont TOUJOURS écrits — après une panne le journal doit permettre de reconstituer l'histoire, et élever le niveau après coup ne récupère rien. Les métriques périodiques (fps, compteurs) ne sont PAS journalisées : elles sont déjà publiées sur :8080. « Détaillé » = lance-flammes par trame, à n'activer que le temps d'un diagnostic (le journal Docker n'est pas roté).",
+      "options": [
+        {
+          "value": "debug",
+          "label": "Détaillé (par trame — diagnostic ponctuel)"
+        },
+        {
+          "value": "info",
+          "label": "Événements (défaut)"
+        },
+        {
+          "value": "warning",
+          "label": "Anomalies seules"
+        },
+        {
+          "value": "error",
+          "label": "Erreurs seules"
+        }
+      ],
+      "default": "info",
+      "scope": "user"
+    }
+  ],
+  "wiring": {
+    "produces": [
+      {
+        "repeat": "produces_planar",
+        "essence": "video",
+        "shm": "{hostname}",
+        "label": "Sortie planar (import)"
+      }
+    ],
+    "consumes": [
+      {
+        "repeat": "consumes_video",
+        "essence": "video",
+        "state_field": "input_shm",
+        "label": "Source vidéo (planar interne)"
+      }
+    ],
+    "mode": "hot-wire",
+    "state_endpoint": "/state"
+  },
+  "control": {
+    "endpoints": [
+      "/state",
+      "/flows",
+      "/input",
+      "/log_level"
+    ],
+    "read_endpoints": [
+      "/state",
+      "/flows"
+    ]
+  },
+  "actions": [
+    {
+      "id": "log_level",
+      "label": "Niveau de log (à chaud)",
+      "endpoint": "/log_level",
+      "params": [
+        {
+          "key": "level",
+          "label": "Niveau",
+          "type": "text",
+          "default": "info",
+          "options": [
+            {
+              "value": "debug",
+              "label": "Détaillé"
+            },
+            {
+              "value": "info",
+              "label": "Événements (défaut)"
+            },
+            {
+              "value": "warning",
+              "label": "Anomalies seules"
+            },
+            {
+              "value": "error",
+              "label": "Erreurs seules"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "param_tree": {
+    "global_groups": [
+      {
+        "label": "Journal (diagnostic)",
+        "endpoint": "/log_level",
+        "fields": {
+          "level": {
+            "label": "Niveau de log",
+            "type": "enum",
+            "options": [
+              "debug",
+              "info",
+              "warning",
+              "error"
+            ],
+            "default": "info",
+            "path": "log_level"
+          }
+        }
+      }
+    ]
+  }
+}

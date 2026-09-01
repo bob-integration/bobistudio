@@ -1,0 +1,145 @@
+{% if has_perm('containers.create') %}
+{# ─── Assistant de création (2 étapes + panier) ──────────────────────────────
+   Étape 1 : choisir un type (palette de chips, depuis plugin_sections).
+   Étape 2 : une ligne par container du type choisi. « + Container » empile une
+   nouvelle ligne du même type (hostname auto-incrémenté, réglages clonés) ;
+   « Ajouter à la liste » (sous les lignes) pousse tout dans « À créer ».
+   Panier : entrées de types variés, puis « Lancer la création » d'un coup. #}
+<div class="form create-wizard">
+
+    {# ─── Étape 1 : type ─── #}
+    <div class="create-step">
+        <div class="create-step-head"><span class="create-step-num">{{ _('containers.create.step1') }}</span> {{ _('containers.create.what') }}</div>
+        <div class="dp-type-cats-nav" role="tablist" id="create-type-cats">
+            <button type="button" class="dp-cat-btn active" data-cat="__all"
+                    onclick="selectCreateCat(this)">{{ _('containers.filter.all') }}</button>
+            {% for sid, s in (plugin_sections or {}).items() %}
+            <button type="button" class="dp-cat-btn" data-cat="{{ sid }}"
+                    onclick="selectCreateCat(this)">{{ s.label }}</button>
+            {% endfor %}
+        </div>
+        <div class="dp-type-chips create-type-chips" id="create-type-chips">
+            {# Le chip « Container nu » (type vide, runtime lxc) a été RETIRÉ avec le backend
+               LXC : sans nœud il tombait sur le 400 « Backend LXC retiré », avec un nœud sur
+               le 400 « type de déploiement manquant ». Il ne menait nulle part.
+               `auto_provision` : type provisionné automatiquement (ex. moteur 2110_io créé
+               à la config d'un port média) → jamais de chip de création manuelle. #}
+            {% for sid, s in (plugin_sections or {}).items() %}
+                {% for p in s.plugins if not p.auto_provision %}
+                <button type="button" class="dp-chip create-type-chip" data-cat="{{ sid }}"
+                        data-type="{{ p.type }}" data-label="{{ p.label }}"
+                        data-runtime="{{ (plugin_runtimes or {}).get(p.type, 'docker') }}"
+                        data-image-kind="{{ (plugin_image_kinds or {}).get(p.type, 'compute') }}"
+                        {# Profil de ressources déclaré : ce que le container VA prendre sur le nœud.
+                           Absent = type sans bloc `resources` → pool partagé (cf. cc-nodes). #}
+                        {# Attribut en guillemets SIMPLES : `tojson` échappe `<`, `>`, `&` et `'`
+                           mais PAS le guillemet double — en attribut double il fermerait
+                           l'attribut au premier `"` du JSON et le profil arriverait vide. #}
+                        data-resources='{{ (plugin_resources or {}).get(p.type, {})|tojson }}'
+                        onclick="selectCreateType(this)">{{ p.label }}</button>
+                {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+
+    {# ─── Étape 2 : une ligne par container ─── #}
+    <div class="create-step" id="create-step2" style="display:none">
+        <div class="create-step-head">
+            <span class="create-step-num">{{ _('containers.create.step2') }}</span> {{ _('containers.create.settings') }} — <span id="create-step2-type"></span>
+        </div>
+        <div id="create-step2-rows"></div>
+        <div class="create-step2-actions">
+            <button class="btn btn-green" onclick="addToCart()">{{ _('containers.create.add_to_cart') }}</button>
+        </div>
+    </div>
+
+    {# ─── Panier : entrées empilées + lancement ─── #}
+    <div class="create-step create-cart" id="create-cart-zone" style="display:none">
+        <div class="create-step-head">{{ _('containers.create.cart_title') }} — <span id="cart-total" class="create-cart-total"></span></div>
+        <table class="create-cart-table">
+            <thead>
+                <tr>
+                    <th>{{ _('containers.filter.type') }}</th><th>{{ _('containers.create.col_hostname') }}</th><th>{{ _('containers.create.col_resources') }}</th><th></th>
+                </tr>
+            </thead>
+            <tbody id="cart-tbody"></tbody>
+        </table>
+        <div class="create-cart-actions">
+            <button class="btn btn-blue" id="cart-launch-btn" onclick="lancerCreation()">{{ _('containers.create.launch') }}</button>
+            <button class="btn btn-ghost" onclick="viderPanier()">{{ _('containers.create.clear') }}</button>
+        </div>
+    </div>
+
+    {# Bandeau d'erreur de l'assistant — au niveau du WIZARD, pas dans l'étape 2 : celle-ci est
+       repliée (display:none) par `_resetStep2()` dès que le panier est alimenté, et tout refus
+       émis ensuite par « Lancer la création » (hostname déjà utilisé, panier vide, refus serveur)
+       s'affichait alors DANS un conteneur caché — l'utilisateur ne voyait strictement rien. #}
+    <div id="create-warning" role="alert"
+         style="display:none; margin-top:8px; padding:6px 10px; font-size:0.85em;
+                border:1px solid var(--status-stopped-fg); background:var(--status-stopped-bg);
+                color:var(--status-stopped-fg); border-radius:var(--radius-small)"></div>
+</div>
+
+{# Gabarit d'une ligne de l'étape 2 (un container). Cloné par _ccBuildRow ;
+   ids conservés en classes (cc-*) car répété. #}
+<template id="cc-row-tpl">
+    <div class="create-row row">
+        <div class="field"><label>{{ _('containers.create.col_hostname') }}</label>
+            <input type="text" class="cc-hostname wide"
+                   oninput="ccHostnameInput(this)" onblur="ccHostnameBlur(this)"
+                   title="{{ _('containers.create.hostname_title') }}">
+            {# La règle est ÉCRITE sous le champ, pas seulement en tooltip : le champ réécrit la
+               frappe (espace → tiret, point supprimé) et un title= au survol n'est jamais lu au
+               moment où la surprise arrive. Le texte bascule en explication de ce qui vient
+               d'être corrigé (ccHostnameInput). #}
+            <div class="meta cc-hostname-hint">{{ _('containers.create.hostname_help') }}</div></div>
+        {# Le <select> reste la SOURCE DE VÉRITÉ de la valeur (lu par lancerCreation, cloné par
+           addStep2Row, accessible au clavier). Le panneau `.cc-nodes` ci-dessous en est une vue
+           enrichie : il montre la charge de chaque serveur et, au clic, ce que la création va y
+           prendre. Les deux restent synchronisés dans les deux sens (_ccSyncNodePanel). #}
+        <div class="field cc-node"><label class="cc-node-label">{{ _('containers.create.node') }}</label>
+            <span class="cc-node-pick">
+                <select class="cc-node-sel" style="min-width:150px"
+                        onchange="ccNodeSelChange(this)"></select>
+                {# Vue par défaut = le menu déroulant seul (empiler dix containers ne doit pas
+                   afficher dix tableaux de charge). Le panneau est à un clic, par ligne. #}
+                <button type="button" class="btn btn-ghost cc-load-toggle" aria-expanded="false"
+                        onclick="ccToggleLoad(this)"
+                        title="{{ _('containers.create.load.toggle_title') }}"
+                        >{{ _('containers.create.load.toggle') }}</button>
+            </span></div>
+        <div class="cc-nodes" style="display:none"></div>
+        <div class="field cc-format" style="display:none"><label>{{ _('containers.create.video_format') }}</label>
+            <select class="cc-format-sel dp-format-preset" style="min-width:160px"></select></div>
+        <div class="field cc-project" style="display:none"><label>{{ _('containers.filter.project') }}</label>
+            <select class="cc-project-sel" style="min-width:140px"></select></div>
+        <button type="button" class="btn btn-ghost cc-del" title="{{ _('containers.create.remove_row') }}"
+                onclick="removeStep2Row(this)" style="display:none">×</button>
+        <button type="button" class="btn cc-add" onclick="addStep2Row()">{{ _('containers.create.add_row') }}</button>
+    </div>
+</template>
+
+<!-- Batch en cours -->
+<div id="batch-box" style="margin-top:var(--gap); display:none">
+    <div style="background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius); padding:12px">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px">
+            <span style="font-size:0.82em; color:var(--text-muted); flex:1">{{ _('containers.batch.title') }} — <span id="batch-label"></span></span>
+            <button class="btn btn-ghost" style="padding:2px 8px; font-size:0.78em" onclick="reinitBatch()">{{ _('containers.batch.reset') }}</button>
+        </div>
+        <table style="width:100%; border-collapse:collapse; font-size:0.84em">
+            <thead>
+                <tr style="color:var(--text-muted); text-align:left; border-bottom:1px solid var(--border)">
+                    <th style="padding:4px 8px">{{ _('containers.create.col_hostname') }}</th>
+                    <th style="padding:4px 8px">VMID</th>
+                    <th style="padding:4px 8px">{{ _('containers.filter.type') }}</th>
+                    <th style="padding:4px 8px">{{ _('containers.filter.status') }}</th>
+                    <th style="padding:4px 8px"></th>
+                </tr>
+            </thead>
+            <tbody id="batch-tbody">
+            </tbody>
+        </table>
+    </div>
+
+</div>
+{% endif %}

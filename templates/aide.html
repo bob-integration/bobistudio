@@ -1,0 +1,2204 @@
+{% extends "layout.html" %}
+{% set page = 'aide' %}
+{% block title %}Documentation — Bobi.Studio{% endblock %}
+
+{% block head %}
+<style>
+/* ── Wiki shell ──────────────────────────────────────────────────────────── */
+.wiki-root {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  height: calc(100vh - 52px);
+  overflow: hidden;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.wiki-sidebar {
+  background: var(--bg-elev);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wiki-search-wrap {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.wiki-search {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px 6px 28px;
+  color: var(--text);
+  font-size: 0.83em;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 120ms;
+  box-sizing: border-box;
+}
+.wiki-search:focus { border-color: var(--accent); }
+.wiki-search::placeholder { color: var(--text-muted); }
+
+.wiki-search-icon {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 0.85em;
+  pointer-events: none;
+}
+.wiki-search-wrap { position: relative; }
+
+.wiki-search-kbd {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.68em;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  pointer-events: none;
+  transition: opacity 120ms;
+}
+
+.wiki-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.wiki-nav::-webkit-scrollbar { width: 4px; }
+.wiki-nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* En-tête de catégorie repliable */
+.wiki-cat {
+  border-bottom: 1px solid var(--border-soft, var(--border));
+}
+.wiki-cat:last-child { border-bottom: none; }
+
+.wiki-cat-hd {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 9px 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.7em;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  user-select: none;
+  text-align: left;
+  transition: color 100ms;
+}
+.wiki-cat-hd:hover { color: var(--text); }
+.wiki-cat-hd:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.wiki-cat-chevron {
+  font-size: 0.9em;
+  transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.wiki-cat.collapsed .wiki-cat-chevron { transform: rotate(-90deg); }
+
+.wiki-cat-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  font-weight: 400;
+  letter-spacing: 0;
+  opacity: 0.55;
+}
+
+.wiki-cat-items {
+  padding-bottom: 4px;
+}
+.wiki-cat.collapsed .wiki-cat-items { display: none; }
+
+.wiki-nav-item {
+  display: block;
+  padding: 5px 14px 5px 28px;
+  font-size: 0.82em;
+  color: var(--text-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 80ms, color 80ms;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wiki-nav-item:hover { background: var(--bg-hover); color: var(--text); }
+.wiki-nav-item.active {
+  background: var(--bg-selected);
+  color: var(--accent);
+  font-weight: 500;
+}
+.wiki-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ── Content area ─────────────────────────────────────────────────────────── */
+.wiki-content {
+  overflow-y: auto;
+  background: var(--bg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.wiki-content::-webkit-scrollbar { width: 6px; }
+.wiki-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* .wiki-content reste le conteneur scrollable ; le padding vit sur .wiki-doc. */
+.wiki-doc { padding: 32px 40px 60px; }
+.wiki-doc.has-toc { display: grid; grid-template-columns: minmax(0, 980px) 200px; gap: 40px; }
+.wiki-doc:not(.has-toc) .wiki-toc { display: none; }
+
+.wiki-article {
+  max-width: 980px;
+}
+.wiki-doc.has-toc .wiki-article { max-width: none; }
+
+/* ── Table des matières « Sur cette page » (colonne droite sticky) ─────────── */
+.wiki-toc {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.wiki-toc-hd {
+  font-size: .72em;
+  font-weight: 600;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.wiki-toc-item {
+  display: block;
+  padding: 4px 8px;
+  font-size: .8em;
+  line-height: 1.4;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: var(--radius-small);
+  transition: color 80ms, background 80ms;
+}
+.wiki-toc-item.lvl-3 { padding-left: 20px; font-size: .76em; }
+.wiki-toc-item:hover { color: var(--text); }
+.wiki-toc-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.wiki-toc-item.active { color: var(--accent); background: var(--bg-selected); font-weight: 500; }
+
+.wiki-article-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.wiki-article-cat {
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+/* Aide de plugin servie dans une autre langue que l'interface. Discret : c'est
+   une précision, pas une alerte — la doc est là et elle est lisible. */
+.wiki-doc-lang {
+  margin: 0 0 var(--space-3);
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+.wiki-article-ver {
+  font-family: var(--font-mono);
+  font-size: 0.72em;
+  color: var(--text-muted);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+
+.wiki-article h1 {
+  font-size: 1.35em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+  margin: 0 0 20px;
+  line-height: 1.25;
+}
+.wiki-article h2 {
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin: 28px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.wiki-article h3 {
+  font-size: 0.88em;
+  font-weight: 600;
+  color: var(--text);
+  margin: 18px 0 8px;
+}
+.wiki-article p { margin: 0 0 12px; line-height: 1.6; font-size: 0.88em; color: var(--text); }
+.wiki-article ul, .wiki-article ol { margin: 0 0 12px; padding-left: 22px; }
+.wiki-article li { font-size: 0.88em; color: var(--text); margin-bottom: 4px; line-height: 1.5; }
+.wiki-article code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--text-strong);
+}
+.wiki-article pre {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 0 0 14px;
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  line-height: 1.5;
+  color: var(--text);
+}
+.wiki-article pre code { background: none; border: none; padding: 0; font-size: 1em; }
+.wiki-article table {
+  border-collapse: collapse;
+  margin: 0 0 14px;
+  font-size: 0.85em;
+  width: 100%;
+}
+.wiki-article th, .wiki-article td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.wiki-article th { color: var(--text-muted); font-weight: 600; font-size: 0.88em; }
+.wiki-article strong { color: var(--text-strong); }
+.wiki-article a { color: var(--accent); text-decoration: none; }
+.wiki-article a:hover { text-decoration: underline; }
+.wiki-article blockquote {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-soft, var(--border));
+  border-radius: var(--radius-small);
+  color: var(--text);
+}
+.wiki-article blockquote p:last-child { margin-bottom: 0; }
+
+.wiki-note {
+  background: var(--status-running-bg);
+  border: 1px solid var(--status-running-fg);
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin: 0 0 14px;
+  font-size: 0.85em;
+}
+.wiki-warn {
+  background: var(--status-warning-bg);
+  border: 1px solid var(--status-warning-fg);
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin: 0 0 14px;
+  font-size: 0.85em;
+}
+
+/* ── Search results ───────────────────────────────────────────────────────── */
+.wiki-results {
+  padding: 24px 32px;
+}
+.wiki-results-hd {
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+.wiki-result-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  background: var(--bg-elev);
+  transition: border-color 100ms, background 100ms;
+}
+.wiki-result-item:hover { border-color: var(--accent); background: var(--bg-selected); }
+.wiki-result-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.wiki-result-title {
+  font-size: 0.88em;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 3px;
+}
+.wiki-result-cat {
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+.wiki-result-snippet {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.wiki-result-snippet mark {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.wiki-no-results {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+.wiki-loading {
+  padding: 40px 32px;
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+/* ── Accessibilité : mouvement réduit ─────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .wiki-search, .wiki-cat-hd, .wiki-cat-chevron, .wiki-nav-item,
+  .wiki-result-item, .wiki-toc-item, .wiki-search-kbd { transition: none; }
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  /* Replie la table des matières « Sur cette page » */
+  .wiki-doc.has-toc { grid-template-columns: minmax(0, 1fr); }
+  .wiki-doc.has-toc .wiki-toc { display: none; }
+}
+@media (max-width: 640px) {
+  /* Sidebar au-dessus du contenu (la page entière défile) */
+  .wiki-root { grid-template-columns: 1fr; height: auto; overflow: visible; }
+  .wiki-sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="wiki-root" id="wiki-root">
+
+  <!-- ── Sidebar ────────────────────────────────────────────────────────── -->
+  <aside class="wiki-sidebar">
+    <div class="wiki-search-wrap">
+      <span class="wiki-search-icon" aria-hidden="true">⌕</span>
+      <input class="wiki-search" id="wiki-search" type="search"
+             placeholder="Rechercher…" autocomplete="off" spellcheck="false"
+             aria-label="Rechercher dans la documentation">
+      <span class="wiki-search-kbd" id="wiki-search-kbd">/</span>
+    </div>
+    <nav class="wiki-nav" id="wiki-nav" aria-label="Navigation documentation"></nav>
+  </aside>
+
+  <!-- ── Content ───────────────────────────────────────────────────────── -->
+  <main class="wiki-content" id="wiki-content" aria-live="polite">
+    <div class="wiki-loading">Chargement…</div>
+  </main>
+
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     CONTENU DES ARTICLES — templates inertes (non rendus)
+     ══════════════════════════════════════════════════════════════════════ -->
+
+<template id="wiki-art-vue-densemble">
+<p>Bobi.Studio orchestre un pool de <strong>conteneurs Docker</strong> répartis sur un ou plusieurs <strong>nœuds</strong>. Chaque conteneur héberge un script Python qui implémente un rôle broadcast : réception ST 2110, mixage multiview, émission ST 2110, encodage, enregistrement. L'orchestrateur expose une façade NMOS IS-04/IS-05 (de niveau cluster) pour les contrôleurs broadcast.</p>
+<table>
+<tr><th>Couche</th><th>Composant</th></tr>
+<tr><td>Contrôleur</td><td>VSM ou autre — pilote via NMOS IS-04/05</td></tr>
+<tr><td>Orchestrateur</td><td>Flask + SQLite. Gère conteneurs, nœuds, NMOS provider, Ember+. Peut tourner en paire HA (actif/standby)</td></tr>
+<tr><td>Pipeline vidéo</td><td>Conteneurs Docker partageant la mémoire (<code>/dev/shm</code> / MXL) de leur nœud</td></tr>
+<tr><td>Nœud</td><td>Hôte Docker piloté par un <em>agent de nœud</em> (jeton HTTP) — aucun accès SSH root requis</td></tr>
+<tr><td>Infrastructure</td><td>NIC dédiée (PF E810, AF-XDP/DPDK) pour le 2110, PTP pour la synchro</td></tr>
+</table>
+<p>Les trois questions auxquelles l'interface répond en permanence :</p>
+<ol>
+<li><strong>Qu'est-ce qui tourne et est-ce nominal ?</strong> (surveillance)</li>
+<li><strong>Pourquoi ça ne tourne plus ?</strong> (diagnostic)</li>
+<li><strong>Comment configurer ou déployer ?</strong> (configuration)</li>
+</ol>
+</template>
+
+<template id="wiki-art-cluster-architecture">
+<p>L'orchestrateur a quitté le modèle Proxmox/LXC : il est aujourd'hui <strong>full-Docker</strong> et pensé pour un <strong>cluster de nœuds</strong>. Cet article résume l'architecture actuelle.</p>
+
+<h2>Nœuds &amp; agent de nœud</h2>
+<p>Un <strong>nœud</strong> est un hôte Docker. Il est piloté par un <strong>agent de nœud</strong> (daemon HTTP, port 9100, authentifié par jeton) qui gère le cycle de vie des conteneurs, la préparation hôte (Ethernet/SR-IOV/PTP/MTL, CPU) et le <em>build</em> d'images. Conséquence : <strong>aucun accès SSH root</strong> n'est requis depuis le contrôleur. Un nœud vierge s'enrôle depuis <strong>Réglages → Nœuds & Matériel → Déploiement</strong>.</p>
+
+<h2>Identités NMOS de niveau cluster</h2>
+<p>Les senders/receivers IS-04/05 vivent dans un <strong>registre de cluster</strong> (un Device unique), avec UUID/SDP/multicast/refclk <strong>persistés</strong>. Un recreate ou un restore de projet ne casse donc plus les abonnements des contrôleurs externes. Les flux d'un conteneur se <em>bindent</em> sur ces ressources (rebinding possible dans Réglages → NMOS) ; une ressource non servie reste exposée <strong>inactive</strong>.</p>
+
+<h2>Réseau cluster</h2>
+<p>Trois plans : <strong>management</strong>, <strong>conteneurs</strong> et <strong>ST 2110</strong>. La topologie est réglable (<em>Simple</em> = management + conteneurs sur un réseau ; <em>Séparé</em> = réseau conteneurs privé dédié). En multi-nœuds (ou mode séparé), l'<strong>allocation d'IP est centralisée</strong> (une IP stable par conteneur). Les flux 2110 sans adresse imposée tirent un groupe d'un <strong>pool multicast cluster-unique</strong>.</p>
+
+<h2>Réglages par-nœud</h2>
+<p>La préparation matérielle (Ethernet, SR-IOV, PTP, MTL, CPU) est <strong>par-nœud</strong> : un sélecteur de nœud coiffe les onglets <em>Réseau hôte</em>, <em>CPU</em> et <em>Déploiement → Local</em>. Le moniteur PTP échantillonne chaque nœud.</p>
+
+<h2>Haute disponibilité (paire de contrôleurs)</h2>
+<p>L'orchestrateur peut tourner en <strong>paire warm-standby</strong> : un <strong>actif</strong> pilote, un <strong>standby</strong> démarre passif (interface en lecture seule). L'actif <strong>réplique</strong> sa base vers le standby ; la <strong>bascule est manuelle</strong> (promouvoir/rétrograder), VIP de management déplacée à la main. Détails : voir le fichier <code>HA.md</code> et Réglages → Cluster & Réseau → Haute disponibilité.</p>
+
+<div class="wiki-note">Les anciens articles « Pré-requis orchestrateur » et « Pré-requis containers LXC » décrivent le modèle Proxmox/LXC <strong>historique</strong> et ne s'appliquent plus.</div>
+</template>
+
+<template id="wiki-art-systeme-plugins">
+<p>Bobi.Studio repose sur deux systèmes de plugins complémentaires.</p>
+
+<h2>Container plugins — <code>plugins/&lt;type&gt;/</code></h2>
+<p>Chaque type de conteneur Docker (2110_io, mixer, streamer…) est un plugin découvert au démarrage.</p>
+<table>
+<tr><th>Rubrique</th><th>Types</th></tr>
+<tr><td>Sources</td><td><code>2110_io</code> (RX/TX ST 2110), <code>avsync</code>, <code>stream_in</code> (ingest SRT/UDP)</td></tr>
+<tr><td>Traitements</td><td><code>mixer</code>, <code>multiview</code>, <code>color_corrector</code>, <code>split</code>, <code>udc</code>, <code>delay</code>, <code>pyramide</code> (proxies)</td></tr>
+<tr><td>Streams</td><td><code>streamer</code></td></tr>
+<tr><td>Médias</td><td><code>player</code>, <code>recorder</code>, <code>stills</code>, <code>transcoder</code></td></tr>
+<tr><td>Dépannage</td><td><code>probe_2110</code> (sonde de conformité 2110)</td></tr>
+</table>
+<h3>Anatomie d'un container plugin</h3>
+<ul>
+<li><code>plugin.json</code> — manifeste : type, label, version, deploy_defaults, wiring, config_schema, nav, <code>control</code> (endpoints de contrôle + <code>read_endpoints</code>), <code>actions</code> (actions curatées), <code>param_tree</code> (paramètres réglables exposés aux macros)</li>
+<li><code>script.py</code> — code Python déployé dans le container (template str.format)</li>
+<li><code>help.md</code> — documentation (chargée dans cette page)</li>
+<li>UI optionnelle : <code>control.html</code> / <code>control.js</code> / <code>control.css</code></li>
+</ul>
+<p>La version du manifeste est enregistrée par container déployé. Un drift de version est détecté et signalé dans la page Plugins.</p>
+<h3>Exposer les capacités aux macros — obligatoire</h3>
+<p><strong>Toute nouvelle fonction ou tout nouveau paramètre d'un plugin doit être exposé au système de macros/déclencheurs.</strong> Une capacité qui existe dans le conteneur mais qu'aucune surface de pilotage n'atteint est une fonction « morte » en production : l'opérateur ne peut ni la régler, ni l'automatiser, ni la conditionner. C'est une étape de la définition de « terminé », pas une option.</p>
+<table>
+<tr><th>Nature de la fonction</th><th>Où l'exposer</th></tr>
+<tr><td>Paramètre continu réglable à chaud (position, opacité, gain, angle, bitrate…)</td><td><code>param_tree</code> du manifeste : arbre <em>élément → groupe → paramètre</em> typé et borné (bornes déclarées, ou lues dans <code>/state.caps</code>). L'éditeur de macros génère automatiquement les widgets.</td></tr>
+<tr><td>Action discrète, chargement d'un fichier, pilotage d'état (start/stop, charger une image/clip, changer un texte, rappeler une mémoire)</td><td><code>actions[]</code> curatées : <code>endpoint</code> + <code>params</code> (avec <code>options_endpoint</code> pour les listes vivantes, <code>body</code> pour les champs fixes).</td></tr>
+<tr><td>État à lire dans une condition/déclencheur</td><td>Le publier dans <code>/state</code> et ajouter le chemin à <code>control.read_endpoints</code>.</td></tr>
+</table>
+<div class="wiki-note"><strong>Réflexe PR</strong> : à chaque évolution d'un plugin, se demander « est-ce pilotable par macro ? ». Si non, ajouter <code>param_tree</code> / <code>actions</code> / publication <code>/state</code> avant de considérer la fonction livrée. Modèles de référence : <code>split</code> (param_tree riche + caps live), <code>mixer</code> (bornes déclarées + surcharge de chemin), <code>multiview</code> (paramètres par élément + actions horloge/texte).</div>
+<h3>Métriques :8080 — champs attendus</h3>
+<p>Le script expose un objet JSON sur <code>:8080</code>. Les champs suivants sont lus par l'orchestrateur :</p>
+<table>
+<tr><th>Champ</th><th>Type</th><th>Usage</th></tr>
+<tr><td><code>fps</code></td><td>float</td><td>Cadence affichée dans le dashboard</td></tr>
+<tr><td><code>frame_index</code></td><td>int</td><td>Write pointer shm (débit grains/s MXL)</td></tr>
+<tr><td><code>inputs_latency_ms</code></td><td><code>{shm_name: ms}</code></td><td>Délai propre du module → badge <code>⧖ N ms</code> page Câbles</td></tr>
+<tr><td><code>channels[{delay_ms}]</code></td><td>liste</td><td>Délai fixe (Delay, AV Sync) → idem badge ⧖, stocké sous clé <code>"*"</code></td></tr>
+</table>
+<div class="wiki-note"><strong>Implémenter <code>inputs_latency_ms</code></strong> : mesurer <code>ts_out − ts_in</code> en nanosecondes sur chaque trame traitée, convertir en ms, lisser sur une fenêtre glissante (≈ 30 frames). Modèle : <code>plugins/color_corrector/script.py</code> — classe <code>RollingMs</code>.</div>
+<div class="wiki-note"><strong>Renommage d'un type</strong> : les containers existants sont migrés automatiquement au redémarrage. Les enregistrements NMOS restent stables (UUID basés sur le VMID).</div>
+
+<h2>Services infrastructure — <code>services/&lt;nom&gt;/</code></h2>
+<p>Les services qui tournent dans l'orchestrateur lui-même (protocoles, passerelles, stockage) suivent le même principe : chaque service vit dans un dossier autonome et est découvert au démarrage.</p>
+<table>
+<tr><th>Service</th><th>Dossier</th><th>Onglet Réglages</th></tr>
+<tr><td>NMOS IS-04/IS-05</td><td><code>services/nmos/</code></td><td>Protocoles → NMOS</td></tr>
+<tr><td>Ember+</td><td><code>services/emberplus/</code></td><td>Protocoles → Ember+</td></tr>
+<tr><td>TSL 5.0 (tally centralisé)</td><td><code>services/tsl/</code></td><td>Protocoles → TSL</td></tr>
+<tr><td>Émulateur ATEM</td><td><code>services/atem/</code></td><td>Pupitres → ATEM</td></tr>
+<tr><td>Skaarhoj Quick Bar</td><td><code>services/skaarhoj/</code></td><td>Pupitres → Skaarhoj</td></tr>
+<tr><td>Passerelle WebRTC</td><td><code>services/webrtc_gateway/</code></td><td>WebRTC</td></tr>
+<tr><td>Volume média (Filebrowser)</td><td><code>services/storage/</code></td><td>Stockage</td></tr>
+</table>
+<h3>Anatomie d'un service</h3>
+<ul>
+<li><code>manifest.json</code> — id, label, version, settings déclarés, position dans l'onglet Réglages</li>
+<li><code>__init__.py</code> — logique Python (démarrage, arrêt, routes API <code>/api/&lt;service&gt;/…</code>)</li>
+<li><code>settings_tab.html</code> — onglet Réglages (chargé dynamiquement, aucune modification de <code>settings.html</code> nécessaire)</li>
+<li><code>lxc_script.py</code> — (optionnel) script déployé dans le container dédié</li>
+</ul>
+<div class="wiki-note">Ajouter un service = créer <code>services/mon-service/</code> avec ses 3 fichiers. Il apparaît automatiquement dans Réglages au prochain démarrage.</div>
+</template>
+
+<template id="wiki-art-dev-orientation">
+<p>Cet article s'adresse à quelqu'un qui vient de cloner le dépôt et cherche par où entrer. Il ne décrit pas ce que fait le produit — pour ça, voyez <em>Vue d'ensemble</em> et <em>Architecture cluster</em> — mais <strong>où vit le code</strong> et quelles règles y sont non négociables.</p>
+
+<h2>La forme du dépôt</h2>
+<p>Un <strong>orchestrateur Flask central</strong> (le contrôleur) pilote des <strong>nœuds</strong> Docker enrôlés qui exécutent les conteneurs de production. Le contrôleur n'exécute jamais de traitement vidéo : il décide, déploie et surveille.</p>
+<p><code>main.py</code> à la racine est le point d'entrée ; tout le reste du code Python vit dans <code>app/</code>. Les <strong>plugins</strong> (un par type de conteneur) et les <strong>services</strong> (intégrations : NMOS, Ember+, TSL, SNMP…) sont des <strong>sous-modules git</strong> séparés, sous <code>plugins/</code> et <code>services/</code>.</p>
+<table>
+<tr><th>Chemin</th><th>Ce qu'on y trouve</th></tr>
+<tr><td><code>app/routes.py</code>, <code>app/routes/</code></td><td>L'API REST. Point d'entrée unique par Blueprint — commencez ici pour remonter n'importe quel comportement de l'interface.</td></tr>
+<tr><td><code>app/database.py</code></td><td>SQLite : schéma, migrations au démarrage, et <strong>tous</strong> les helpers <code>db_*</code>. Aucune requête SQL ne devrait vivre ailleurs.</td></tr>
+<tr><td><code>app/plugins.py</code></td><td>Le registre des plugins : découverte, rendu du script, câblage déduit, hooks.</td></tr>
+<tr><td><code>app/deploy.py</code></td><td>Le déploiement d'un conteneur, et les hooks bespoke par type.</td></tr>
+<tr><td><code>app/node_driver.py</code></td><td>Le dialogue avec l'agent-nœud. Tout ce qui touche un nœud passe par là.</td></tr>
+<tr><td><code>templates/</code>, <code>static/scripts.js</code></td><td>L'interface. Jinja2 + JS global, sans framework.</td></tr>
+<tr><td><code>script_templates/bobimxl.py</code></td><td>Le binding du SDK MXL. C'est la bibliothèque que tout script de plugin utilise pour lire et écrire des images.</td></tr>
+<tr><td><code>tools/verif_*.py</code></td><td>Les bancs de vérification. À lancer à la main, mais ce sont eux qui attrapent les régressions silencieuses.</td></tr>
+</table>
+
+<h2>Trois choses qui surprennent</h2>
+<p><strong>Une bonne partie du code est en français.</strong> <code>detruire_container</code>, <code>redemarrer_container</code>, <code>surveillance</code>, et beaucoup de commentaires. C'est l'héritage d'un projet écrit par une équipe francophone, pas une exigence : le code plus récent — système de plugins, monitoring, passerelle, services — est en <strong>anglais</strong>, et c'est la direction prise.</p>
+<p>La règle pratique tient en une phrase : <strong>écrivez comme le fichier autour de vous</strong>. Un correctif dans un module français garde ses noms français, pour ne pas laisser un fichier à moitié traduit — ce qui est pire que l'un ou l'autre. Un <strong>nouveau</strong> module, plugin ou service s'écrit en anglais. Personne n'a à parler français pour contribuer ici : <code>CONTRIBUTING.md</code> porte une <strong>table de correspondance</strong> des termes français vers leur équivalent anglais — un repère de lecture, explicitement pas une liste de renommages à faire. On ne renomme jamais un symbole au seul motif qu'il est en français. Si une explication en français vous bloque, ouvrez une <em>issue</em> — c'est un défaut de documentation, pas un pré-requis à remplir.</p>
+<p><strong>Tout est asynchrone, et sérialisé par conteneur.</strong> Les routes Flask retournent immédiatement et dispatchent le travail dans un <code>threading.Thread</code>. Les opérations de cycle de vie — déployer, détruire, redémarrer, recréer, câbler, migrer — prennent un <strong>verrou par conteneur</strong> (<code>app/vmlocks.py</code>) dans le thread de fond : deux opérations sur le même conteneur s'attendent, deux conteneurs différents restent parallèles. Si vous ajoutez une opération de cycle de vie, prenez ce verrou.</p>
+<p>Deux limites, l'une et l'autre délibérées. Le registre de verrous vit <strong>en mémoire du processus</strong> : un déploiement lancé ailleurs — script d'administration, ou le contrôleur de secours en haute disponibilité — lui est invisible. Ne vous fiez donc jamais au verrou seul, re-vérifiez <strong>l'état observé</strong> sous verrou plutôt que ce que la base affirme. Et le verrou <strong>dégrade au bout de 120 secondes</strong> : il alerte et exécute quand même, parce qu'abandonner silencieusement une destruction laisserait un état pire qu'une course.</p>
+<p>Ce qui n'est pas protégé, en revanche : SQLite ouvre une connexion fraîche par appel, donc les écritures depuis les threads de fond sont sûres, mais <strong>il n'y a pas de transaction entre deux helpers</strong>.</p>
+<p><strong>Aucun code de plugin ne tourne dans l'orchestrateur.</strong> C'est une règle de sécurité : les identifiants du contrôleur ne doivent pas pouvoir fuir. Le code d'un plugin ne s'exécute que dans son conteneur, via l'agent.</p>
+
+<h2>L'identité d'un conteneur : trois barreaux</h2>
+<p>C'est la distinction la plus utile du produit, et celle qu'on se trompe le plus souvent à choisir.</p>
+<table>
+<tr><th>Barreau</th><th>Survit à…</th><th>À utiliser pour</th></tr>
+<tr><td><code>vmid</code></td><td>rien — réattribué, change au <em>recreate</em></td><td>chemins d'API internes, verrous, journaux. <strong>Jamais</strong> une adresse exposée à l'extérieur.</td></tr>
+<tr><td><code>instance_uuid</code></td><td>recreate, restore, import de projet</td><td>NMOS, vues de projet, macros, liens publics.</td></tr>
+<tr><td><strong>Emplacement</strong></td><td>le remplacement du conteneur lui-même</td><td>Identité <strong>fonctionnelle</strong> (« MULTIVIEW RÉGIE 1 »). C'est ce que doit adresser tout système de contrôle externe.</td></tr>
+</table>
+<p>Un lien public accroché au <code>vmid</code> a produit exactement le défaut prévisible : le vmid réattribué à un autre conteneur, et le vieux jeton ouvrait la page d'une autre machine. Choisissez le barreau avant d'écrire la clé étrangère.</p>
+
+<h2>La boucle de surveillance</h2>
+<p>Un thread démon interroge le parc toutes les 5 secondes : un conteneur dont le statut Docker n'est pas <code>running</code> est redémarré et une alerte est levée ; un conteneur <em>up</em> dont l'agent répond <code>running:false</code> reçoit un pseudo-statut <code>script_stopped</code>. Ajouter un statut implique d'ajouter son badge CSS — sans quoi il s'affiche sans style.</p>
+
+<h2>Où est la documentation</h2>
+<p>La racine du dépôt ne porte que de la documentation <strong>publique</strong> (<code>README</code>, <code>INSTALL</code>, <code>INFRASTRUCTURE</code>, <code>HA</code>, <code>NODE_AGENT</code>, <code>CONTRIBUTING</code>, <code>CHANGELOG</code>). Le reste est sous <code>docs/</code> : <code>docs/design/</code> pour la charte d'interface et la doctrine, <code>docs/reference/</code> pour les documents qui <strong>font foi</strong> (formats d'émission, horloge PTP, interopérabilité MXL, MIB SNMP), et <code>docs/chantiers/</code> pour les journaux datés, qu'on ne maintient pas.</p>
+<div class="wiki-note">Un document rendu dans cette page d'aide doit aussi figurer dans la liste blanche de <code>app/builder.py</code>. Sinon il donne un 404 sur toute instance installée alors que tout fonctionne en développement.</div>
+</template>
+
+<template id="wiki-art-dev-plugin">
+<p>Un plugin, c'est un <strong>type de conteneur</strong>. Trois fichiers suffisent : un manifeste, un script, et éventuellement une interface. Cet article décrit le contrat, et surtout les quatre règles qui font échouer un plugin <strong>en silence</strong> quand on les ignore.</p>
+
+<h2>Anatomie</h2>
+<table>
+<tr><th>Fichier</th><th>Rôle</th></tr>
+<tr><td><code>plugin.json</code></td><td>Le manifeste : <code>type</code>, <code>label</code>, <code>version</code>, <code>deploy_defaults</code>, <code>wiring</code> (ce que le plugin produit et consomme), <code>control.endpoints</code>, <code>config_schema</code>, et <code>nav</code> pour apparaître dans la palette.</td></tr>
+<tr><td><code>script.py</code></td><td>Le code qui tourne <strong>dans le conteneur</strong>. Il embarque son propre serveur HTTP de métriques sur le port 8080.</td></tr>
+<tr><td><code>control.js</code> / <code>control.css</code></td><td>La console de contrôle, optionnelle, montée par l'orchestrateur.</td></tr>
+</table>
+<p>Sans <code>nav</code>, le plugin est rendu et versionné mais n'émet ni chip de palette ni lien de navigation — c'est le cas des types à déploiement bespoke.</p>
+
+<h2>⚠ Le piège des accolades</h2>
+<p><code>script.py</code> n'est pas un module Python ordinaire : c'est un gabarit passé dans <code>str.format()</code>, avec seulement trois substitutions — <code>{config}</code>, <code>{hostname}</code> et <code>{plugin_version}</code>. <strong>Toute accolade littérale doit être doublée</strong> : dictionnaires, ensembles, f-strings, <em>et les commentaires</em>.</p>
+<p>Le garde-fou fait un rendu à blanc au démarrage et <strong>écarte</strong> un plugin dont une accolade traîne. Conséquence à connaître : le plugin <em>disparaît du registre</em> au lieu de planter au déploiement. C'est nettement plus long à diagnostiquer si on ne s'y attend pas — et un banc a un temps annoncé « tout compile » alors qu'un plugin était écarté.</p>
+
+<h2>⚠ Le mode tranche est obligatoire</h2>
+<p>Tout <strong>nouveau</strong> plugin doit lire son entrée par tranches (<code>head_index</code> + <code>get_slice</code>, avec repli sur <code>get_latest</code> si la source n'est pas tranchée) et publier sa sortie en commit progressif. Le contrat : <em>k</em> tranches valides signifie que les lignes <code>[0, k × hauteur_de_tranche)</code> sont écrites <strong>sur les trois plans</strong>.</p>
+<p>Pourquoi une règle et pas un réflexe : un plugin qui travaille en image entière ajoute <strong>une trame de latence</strong> à toute chaîne qui le traverse, et cette dette n'apparaît sur aucun compteur — le plugin affiche une cadence parfaite. L'instrument de mesure a été écrit en image entière, et il a fallu y revenir après coup ; le calcul restant après l'arrivée de la dernière ligne est passé de 5,09 à 1,48 ms.</p>
+<p>Deux exceptions légitimes, à écrire dans le code : l'<strong>entrelacé</strong> et la <strong>sélection de ligne</strong> restent en image entière.</p>
+
+<h2>⚠ Exposer les capacités aux macros</h2>
+<p>Toute nouvelle fonction ou tout nouveau paramètre d'un plugin <strong>doit</strong> être pilotable par le système de macros et de déclencheurs. Sinon la capacité est morte : elle existe, elle marche à la main, et aucun automatisme ne peut l'atteindre. C'est un échec silencieux fonctionnel.</p>
+<table>
+<tr><th>Nature</th><th>Mécanisme</th></tr>
+<tr><td>Paramètre continu réglable à chaud</td><td><code>param_tree</code> — arbre élément → groupe → paramètre typé et borné</td></tr>
+<tr><td>Action discrète, chargement de fichier, rappel</td><td><code>actions[]</code>, avec <code>options_endpoint</code> pour les listes vivantes</td></tr>
+<tr><td>État lisible en condition</td><td>publié dans <code>/state</code> et déclaré dans <code>control.read_endpoints</code></td></tr>
+</table>
+
+<h2>⚠ Publier ce qui rend le plugin observable</h2>
+<p>Le port 8080 du conteneur doit rendre au minimum <code>{fps, frame_index}</code>. Au-delà, un plugin publie ce qui permet de savoir s'il fait <strong>ce qu'on lui a demandé</strong>, pas seulement s'il tourne. Une alarme qui dit « ça tourne » sans dire « ça fait ce qui était voulu » n'a pas de valeur — et un compteur parfait pendant que le résultat est faux est la panne la plus coûteuse du produit.</p>
+
+<h2>Le contrat de l'agent, côté conteneur</h2>
+<table>
+<tr><th>Appel</th><th>Effet</th></tr>
+<tr><td><code>POST :8081/deploy</code></td><td>écrit le script sur disque</td></tr>
+<tr><td><code>POST :8081/start</code> · <code>/stop</code></td><td>contrôle le script</td></tr>
+<tr><td><code>GET :8081/status</code></td><td><code>{running: bool}</code></td></tr>
+<tr><td><code>GET :8080/</code></td><td>les métriques émises par le script lui-même</td></tr>
+</table>
+<p>Ces appels exigent un jeton d'agent : tout appel doit joindre les en-têtes fournis par l'orchestrateur. Un seul chemin sans en-tête, et le conteneur devient impilotable après redéploiement.</p>
+
+<h2>Page publique</h2>
+<p>Un plugin peut être exposé par un lien sans authentification. L'orchestrateur fait tout le travail ; le plugin n'a qu'à respecter le contrat : la fonction de montage honore la base d'API fournie — <strong>toutes</strong> les URL passent par une fonction unique, jamais un test par appel — et le manifeste déclare <code>ui.public_page</code>. L'orchestrateur <strong>refuse</strong> de créer un lien pour un plugin qui ne le déclare pas, plutôt que d'en livrer un qui échouerait en 401.</p>
+
+<h2>Versionner et publier</h2>
+<p>La version du manifeste est persistée avec le conteneur et exposée sur le port de métriques : elle dit quelle version tourne réellement. Incrémentez-la à chaque changement de comportement, sinon le parc devient indéchiffrable.</p>
+<div class="wiki-note">Modèles à lire avant d'écrire : <code>color_corrector</code> pour l'entrée en tranches, <code>scope</code> pour l'accumulation par bandes et la page publique, <code>split</code> pour <code>param_tree</code> avec bornes vivantes, <code>multiview</code> pour les actions par élément.</div>
+</template>
+
+<template id="wiki-art-dev-service">
+<p>Un <strong>service</strong> est une intégration : un protocole tiers, une passerelle, un canal de notification. Contrairement à un plugin, il tourne <strong>dans l'orchestrateur</strong>, pas dans un conteneur.</p>
+
+<h2>Anatomie</h2>
+<p>Un dossier sous <code>services/</code>, qui est un sous-module git, avec un <code>__init__.py</code> exposant un Blueprint <strong>auto-enregistré au démarrage</strong>, un <code>manifest.json</code> et, optionnellement, un <code>settings_tab.html</code>.</p>
+<table>
+<tr><th>Fichier</th><th>Rôle</th></tr>
+<tr><td><code>__init__.py</code></td><td>Les routes et la logique. Importé par <code>from services import &lt;nom&gt;</code>.</td></tr>
+<tr><td><code>manifest.json</code></td><td>Identifiant, libellé, version, capacités déclarées.</td></tr>
+<tr><td><code>settings_tab.html</code></td><td>Le fragment Jinja agrégé par la page Réglages.</td></tr>
+</table>
+
+<h2>Ce qui tourne, et où</h2>
+<p>Un service qui émet ou répond sur le réseau doit être démarré <strong>sous la garde du contrôleur actif</strong> : en paire haute disponibilité, le standby ne doit rien annoncer. La garde est doublée à dessein — le point de démarrage la vérifie, et le service la revérifie de son côté.</p>
+<p>Accédez à la base par les helpers <code>db_*</code> de <code>app/database.py</code>, pas par du SQL brut : c'est là que vivent le schéma et ses migrations, et un service qui écrit sa propre requête finit désynchronisé du jour où une colonne bouge. Un import local <code>from app.database import …</code> en tête de fonction est le style de la maison.</p>
+
+<h2>⚠ L'onglet de réglages a sa propre famille i18n</h2>
+<p>La page Réglages agrège un <code>settings_tab.html</code> par service. Ces fichiers vivant dans des sous-modules, leurs textes sont <strong>invisibles</strong> quand on relit la page principale : une famille entière de traductions peut manquer sans que rien ne le signale. Deux services ont ainsi vécu longtemps sans aucune clé — 128 textes pour l'un d'eux.</p>
+<p>Le libellé de l'onglet vient du manifeste : il est traduit <strong>centralement</strong> par convention de clé, sans toucher au manifeste du sous-module.</p>
+
+<h2>Vérifier une interface, vraiment</h2>
+<p>Un gabarit qui se lit bien ne prouve rien. Vérifiez sur la page <strong>rendue</strong>, et <strong>dans les deux langues</strong> : c'est le seul endroit où l'on voit une clé absente du catalogue, une chaîne JS mal échappée, ou un texte construit en JavaScript qui n'est jamais passé par le catalogue.</p>
+<div class="wiki-note">Avant de créer un contrôle d'interface, cherchez-le dans le catalogue existant. Il contient déjà des rotatifs, des arcs gradués, des interrupteurs et des champs numériques. En recréer un produit deux composants qui divergent.</div>
+</template>
+
+<template id="wiki-art-dev-contribuer">
+<h2>Les garde-fous</h2>
+<p>Il n'y a ni build, ni <em>linter</em>, ni suite de tests configurée : un seul environnement virtuel à <code>./venv</code>, et <code>./venv/bin/python main.py</code> démarre tout. Ce qui tient lieu de filet, ce sont les vérifications ci-dessous — lancez-les avant de proposer un changement.</p>
+<table>
+<tr><th>Vérification</th><th>Ce qu'elle attrape</th></tr>
+<tr><td><code>pyflakes</code></td><td>Les orphelins d'un retrait de code : import mort, symbole disparu, fonction redéfinie. À passer systématiquement après avoir supprimé quoi que ce soit.</td></tr>
+<tr><td>Le scan des plugins</td><td>Un plugin écarté du registre pour une accolade non doublée, ou dont le script rendu ne compile pas.</td></tr>
+<tr><td><code>tools/verif_*.py</code></td><td>Les bancs : délai d'étage, marque audio, format de sonde, cohérence des plugins rendus contre le registre.</td></tr>
+<tr><td>La CI</td><td>Un import circulaire dans <code>app/</code>, et le scan des plugins. Deux barrières bloquantes, volontairement légères.</td></tr>
+</table>
+<p>Une règle qui vient de l'expérience : <strong>un banc qui ne peut pas échouer ne vérifie rien</strong>. Avant de faire confiance à une vérification, cassez délibérément ce qu'elle surveille et regardez-la échouer.</p>
+
+<h2>Ce qui se casse en silence</h2>
+<p>Les pannes coûteuses de ce produit ne lèvent pas d'exception. Un lecteur accroché à un flux détruit sert des images à index figé, sans erreur. Un plugin écarté du registre ne plante pas : il n'existe plus. Un plugin en image entière affiche une cadence parfaite tout en coûtant une trame à la chaîne. Une alerte stockée en français ne peut plus être traduite. À chaque fois, la question utile n'est pas « est-ce que ça tourne ? » mais <strong>« est-ce que ça fait ce qu'on a demandé ? »</strong>.</p>
+
+<h2>Secrets et valeurs de site</h2>
+<p>Aucune valeur propre à une installation n'est écrite en dur. Hôtes, jetons et secrets vivent dans <code>config_local.py</code> à la racine, qui n'est pas versionné ; <code>app/config.py</code> ne porte que des défauts neutres. Ne les recopiez nulle part, ne les journalisez pas.</p>
+
+<h2>Le guide de contribution</h2>
+<p class="meta">Contenu chargé depuis <code>CONTRIBUTING.md</code> — <span class="wiki-doc-mtime" data-doc="contributing">…</span></p>
+<div class="wiki-doc-content" data-doc="contributing">Chargement…</div>
+</template>
+
+<template id="wiki-art-prereq-orchestrateur">
+<div class="wiki-warn"><strong>Article historique (Proxmox/LXC)</strong> — l'orchestrateur est désormais full-Docker. Voir <em>Architecture cluster</em>. Token Proxmox et clé SSH host ne sont plus requis.</div>
+<h2>Système</h2>
+<ul>
+<li>VM Linux (Debian/Ubuntu), ports 5000 (Flask) et 9000 (Ember+)</li>
+<li>Python 3.13 + venv dans <code>./venv</code></li>
+<li>SQLite (DB créée au premier démarrage)</li>
+</ul>
+<h2>Token Proxmox</h2>
+<p>Un token API avec <code>privsep=0</code> et permissions root@pam. Renseigner dans <code>config_local.py</code> (non versionné).</p>
+<h2>Clé SSH vers l'host Proxmox</h2>
+<p>Plusieurs opérations passent par SSH (bind mounts, SR-IOV, PTP, CPU pinning, recréation template). Sans clé, ces features ne fonctionnent pas.</p>
+<pre>ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ""
+ssh-copy-id root@&lt;proxmox-host&gt;</pre>
+<p>Test : <code>ssh -o BatchMode=yes root@&lt;proxmox-host&gt; "echo OK"</code> doit retourner <code>OK</code>.</p>
+<h2>Settings au premier démarrage</h2>
+<p>Onglet <strong>Réglages → Proxmox</strong> : adresse host, node, storage, template VMID (299 par défaut), plage VMID, plage IP, bridge réseau, VLAN tag.</p>
+</template>
+
+<template id="wiki-art-prereq-containers">
+<div class="wiki-warn"><strong>Article historique (LXC)</strong> — les conteneurs tournent désormais en Docker sur des nœuds. Le template 299 et le contrat agent par-LXC ci-dessous ne s'appliquent plus. Voir <em>Architecture cluster</em>.</div>
+<h2>Template LXC (VMID 299)</h2>
+<p>Tous les containers sont clonés depuis le template 299. Pour le créer : <strong>Réglages → Proxmox → Recréer le template</strong>.</p>
+<p>Le template installe : python3, python3-numpy, python3-pil, ffmpeg, ca-certificates. L'agent par-LXC est déployé et lancé via systemd.</p>
+<div class="wiki-warn"><strong>Bind mount /dev/shm obligatoire</strong> : sans <code>lxc.mount.entry: /dev/shm dev/shm none bind,create=dir 0 0</code> dans le .conf Proxmox, chaque container a son propre /dev/shm isolé → le pipeline est cassé. L'orchestrateur l'ajoute automatiquement à la création.</div>
+<h2>Contrat agent par-LXC (:8081)</h2>
+<table>
+<tr><th>Endpoint</th><th>Rôle</th></tr>
+<tr><td><code>POST /deploy</code></td><td>écrit un script Python sur disque</td></tr>
+<tr><td><code>POST /start</code></td><td>démarre le script</td></tr>
+<tr><td><code>POST /stop</code></td><td>arrête le script</td></tr>
+<tr><td><code>GET /status</code></td><td><code>{running: bool}</code></td></tr>
+</table>
+<p>Chaque script exposse ses métriques sur <code>:8080</code> (fps, frame_index, etc.).</p>
+</template>
+
+<template id="wiki-art-prereq-2110">
+<h2>Matériel</h2>
+<ul>
+<li><strong>Carte SR-IOV sans 2022-7</strong> : Mellanox ConnectX-4/5/6/7 (mlx5, PTP hw)</li>
+<li><strong>Carte SR-IOV avec 2022-7</strong> : paire de ports déclarée ensemble dans le registre NIC — ConnectX ou Intel E810</li>
+<li><strong>Carte E810 (MTL)</strong> : Intel E810 pour DPDK/MTL — PTP et 2022-7 gérés nativement dans la NIC</li>
+<li><strong>Source PTP</strong> : grandmaster sur le LAN ou le node Proxmox en BMCA</li>
+<li><strong>Switch 10/25 GbE</strong> avec multicast snooping</li>
+</ul>
+<h2>Système host</h2>
+<ul>
+<li>IOMMU activé : <code>/proc/cmdline</code> doit contenir <code>intel_iommu=on</code></li>
+<li>Paquet linuxptp installé (bouton dans Réglages → PTP)</li>
+</ul>
+<h2>Configuration</h2>
+<ol>
+<li><strong>Réglages → Réseau → Vue d'ensemble</strong> → régler la PF E810 en rôle <code>media2110</code> + IP média (CIDR) ; appairer red/blue pour le 2022-7</li>
+<li><strong>Réglages → Réseau → PTP</strong> : domaine (127 SMPTE), priority1/priority2, hardware timestamping, activer (par NIC <code>media2110</code>)</li>
+<li>Vérifier PTP affiche <code>LOCKED</code> avec offset &lt; 1µs</li>
+<li>Déployer le moteur <code>2110_io</code> sur le nœud : il tourne sur la PF en AF-XDP (<code>--network host</code>), l'IP média est posée automatiquement</li>
+</ol>
+</template>
+
+<template id="wiki-art-workflow-streams">
+<p>La page <strong>Streams</strong> pilote tous les containers <code>streamer</code> : un container encode une source shm une seule fois et diffuse vers plusieurs destinations simultanément via le muxer <code>tee</code>.</p>
+<h2>Créer et câbler</h2>
+<ol>
+<li>Créer un container (sans 2110 NIC)</li>
+<li>Page <strong>Câbles</strong> : câbler une source vidéo sur son entrée</li>
+</ol>
+<h2>Régler l'encodage</h2>
+<ul>
+<li><strong>Codec</strong> : H.264 (compatible WebRTC) ou H.265 (meilleure compression, pas de preview WebRTC)</li>
+<li><strong>Format de sortie</strong> : toujours appliqué. L'entrée est auto-détectée et adaptée si différente</li>
+<li><strong>Mode source</strong> : "Adaptation auto" (redéploiement au recâblage) ou "Bascule sans coupure" (même résolution, pas de coupure)</li>
+</ul>
+<h2>Destinations</h2>
+<table>
+<tr><th>Type</th><th>Usage</th></tr>
+<tr><td>UDP</td><td>MPEG-TS sur UDP</td></tr>
+<tr><td>SRT</td><td>Transport fiable sur réseau lossy (caller → listener)</td></tr>
+<tr><td>WebRTC</td><td>Push vers la passerelle MediaMTX, preview navigateur</td></tr>
+</table>
+<h2>Lien client</h2>
+<p>Dès qu'une destination WebRTC est active : générer un lien public brandé (<code>/w/&lt;token&gt;</code>), non devinable, révocable. Page lisible dans n'importe quel navigateur.</p>
+<h2>Audio</h2>
+<p>Source audio câblée via la page Câbles. Pistes configurables (canal mono ou stéréo parmi les 8). UDP/SRT : toutes les pistes AAC. WebRTC : 1ère piste Opus uniquement.</p>
+</template>
+
+<template id="wiki-art-webrtc-explique">
+<p>ffmpeg ne peut pas servir WebRTC directement. Un container <strong>passerelle</strong> (<code>webrtc_gateway</code>) exécute MediaMTX qui reçoit les flux des encodeurs (RTSP/WHIP) et les rediffuse en WebRTC (WHEP).</p>
+<h2>Déployer</h2>
+<ol>
+<li>Réglages → WebRTC → Container → "Déployer la passerelle"</li>
+<li>MediaMTX est téléchargé au 1er lancement (accès Internet requis)</li>
+<li>Le WebRTC est activé automatiquement dès que MediaMTX tourne</li>
+</ol>
+<h2>Chaîne complète</h2>
+<pre>shm → [streamer] H.264 → RTSP → [MediaMTX] → WHEP → &lt;iframe&gt;
+                              ↘ tee → UDP / SRT</pre>
+<div class="wiki-warn"><strong>Preview navigateur</strong> : H.264 uniquement. Le H.265 n'est pas décodable en WebRTC par les navigateurs.</div>
+</template>
+
+<template id="wiki-art-monitoring">
+<p>Un panneau latéral global (onglet Monitoring sur le bord droit) embarque un flux WebRTC par utilisateur. Visualise en direct le signal en cours de réglage, sans quitter la page.</p>
+<h2>Création</h2>
+<p>Premier usage : "Créer mon moniteur" dans le panneau. Un container streamer dédié est créé par utilisateur.</p>
+<h2>Changer de source</h2>
+<p>Bouton "Monitoring" sur les pages productrices (mélangeur, correcteur, multiview, DVE, streams, sources). Bascule sans coupure si même résolution.</p>
+<h2>Mise en veille</h2>
+<p>Après 10 min sans heartbeat, le script est coupé (CPU libéré). Réactivé automatiquement à la réouverture du panneau.</p>
+<div class="wiki-warn">Prérequis : passerelle WebRTC déployée et activée.</div>
+</template>
+
+<template id="wiki-art-tsl-explique">
+<p>Le service <strong>TSL 5.0</strong> centralise la réception des tallies depuis un contrôleur broadcast et les distribue à tous les containers multiview concernés.</p>
+<h2>Principe</h2>
+<p>Sans ce service, chaque multiview écoute son propre port TCP TSL — le contrôleur doit envoyer les mêmes tallies à <em>n</em> destinations. Avec le service central :</p>
+<ol>
+<li>Le contrôleur envoie les tallies sur <strong>un seul port TCP</strong> de l'orchestrateur</li>
+<li>L'orchestrateur maintient un état tally global par <strong>index TSL</strong></li>
+<li>À chaque changement, il pousse le tally vers les multiviews concernés via HTTP</li>
+</ol>
+<h2>Activer</h2>
+<ol>
+<li>Réglages → Protocoles → TSL → activer, choisir un port TCP (défaut 12345), Appliquer</li>
+<li>Configurer le contrôleur VSM pour envoyer les tallies sur <code>IP-orchestrateur:12345</code></li>
+</ol>
+<h2>Mapping</h2>
+<p>Dans le tableau <em>Mapping TSL → Multiviews</em> : associer chaque <strong>index TSL</strong> (numéro de source dans VSM) au container multiview et au numéro de flux vidéo (#0, #1…) qui doit recevoir ce tally. Un même index peut alimenter plusieurs multiviews.</p>
+<h2>Mode orchestrateur dans le multiview</h2>
+<p>Dans la palette de déploiement d'un multiview, cocher <em>« TSL géré par l'orchestrateur »</em> désactive le serveur TSL local du container. Le multiview reçoit ses tallies de l'orchestrateur uniquement, via <code>POST :8082/tally_bulk</code>.</p>
+<div class="wiki-note">Le champ <em>Port TSL 5.0</em> du multiview est ignoré quand ce mode est actif.</div>
+<h2>Protocole TSL 5.0</h2>
+<table>
+<tr><th>Champ CONTROL (bits)</th><th>Sens</th></tr>
+<tr><td>0–1 : RH tally</td><td>0=off, 1=rouge, 2=vert, 3=ambre</td></tr>
+<tr><td>2–3 : TT tally (label)</td><td>même codage</td></tr>
+<tr><td>4–5 : LH tally</td><td>même codage</td></tr>
+</table>
+<p>Le service applique une logique <strong>dominante</strong> : rouge + vert simultanés → ambre. Il gère aussi les <strong>keepalives</strong> avec TTL adaptatif (mesuré sur l'intervalle des arrivées successives).</p>
+<h2>Correspondance VSM typique</h2>
+<table>
+<tr><th>Signal VSM</th><th>Bits CONTROL</th><th>Couleur affichée</th></tr>
+<tr><td>On-air (PGM)</td><td>TT=1 (rouge)</td><td>Rouge</td></tr>
+<tr><td>Preview (PVW)</td><td>LH=2 (vert)</td><td>Vert</td></tr>
+<tr><td>PGM + PVW</td><td>TT=1 + LH=2</td><td>Ambre</td></tr>
+<tr><td>Extinction</td><td>CONTROL=0</td><td>Off (immédiat)</td></tr>
+</table>
+</template>
+
+<template id="wiki-art-workflow-atem">
+<p>L'orchestrateur émule un switcher ATEM (UDP 9910) pour piloter le mélangeur et les DVE depuis un pupitre matériel Blackmagic.</p>
+<div class="wiki-warn">Protocole propriétaire reverse-engineeré : best-effort. Activer <code>ATEM_DEBUG=1</code> pour journaliser les datagrammes.</div>
+<h2>Activer</h2>
+<ol>
+<li>Réglages → Pupitres ATEM → activer, port 9910, Appliquer</li>
+<li>Sur le pupitre : IP switcher = IP de l'orchestrateur</li>
+</ol>
+<h2>Affecter les pupitres</h2>
+<p>Les pupitres sont distingués par leur IP source. Dans le tableau : affecter un mélangeur et 1 ou 2 DVE (SS0/SS1) par pupitre.</p>
+<h2>Correspondance des commandes</h2>
+<table>
+<tr><th>Geste pupitre</th><th>Action MXL</th></tr>
+<tr><td>Bus Program</td><td>Cut direct sur l'entrée</td></tr>
+<tr><td>Bus Preview</td><td>Prépare en preview</td></tr>
+<tr><td>CUT</td><td>Coupe sèche PVW→PGM</td></tr>
+<tr><td>AUTO</td><td>Transition dissolve</td></tr>
+<tr><td>T-bar</td><td>Crossfade manuel</td></tr>
+<tr><td>SuperSource</td><td>Position/taille/crop des boxes DVE</td></tr>
+</table>
+</template>
+
+<template id="wiki-art-workflow-skaarhoj">
+<p>Un pupitre Skaarhoj en <strong>Raw Panel</strong> déclenche des macros Bobi.Studio : chaque touche du pupitre est associée à une macro dans un <em>mapping</em>, et le mapping est affecté au pupitre.</p>
+
+<div class="wiki-warn"><strong>Le sens de la connexion est l'inverse de l'ATEM.</strong> Pour un pupitre ATEM, c'est le pupitre qui vient chercher l'orchestrateur. Pour un Skaarhoj, <strong>c'est Bobi.Studio qui se connecte au pupitre</strong>. On ne donne donc pas l'adresse de Bobi.Studio au pupitre — on donne l'adresse <em>du pupitre</em> à Bobi.Studio. Se tromper de sens donne un pupitre qui affiche « Trying IP » en boucle pendant que l'orchestrateur, de son côté, tente une adresse qui ne répond pas : les deux appellent, personne ne décroche.</div>
+
+<h2>Côté pupitre</h2>
+<ol>
+<li>Passer le pupitre en <strong>Raw Panel</strong>, et cocher <strong>« server mode »</strong> — le pupitre doit ÉCOUTER, pas composer une adresse.</li>
+<li>Laisser le port par défaut : <strong>9923</strong>.</li>
+<li>Relever l'adresse IP <em>du pupitre lui-même</em>.</li>
+</ol>
+<div class="wiki-warn">L'adresse IPv4 affichée par l'application <strong>Skaarhoj Updater</strong> est celle de l'ordinateur qui fait tourner l'Updater, pas celle du pupitre. Prendre l'adresse sur le pupitre, ou vérifier qu'elle répond au ping.</div>
+
+<h2>Côté Bobi.Studio</h2>
+<ol>
+<li>Réglages → Pupitres → Skaarhoj → <strong>+ Ajouter un panel</strong></li>
+<li>Renseigner l'<strong>IP du pupitre</strong> et le port 9923, cocher <em>activé</em></li>
+<li>Créer un <strong>mapping</strong> (touche → macro) et l'affecter au panel</li>
+</ol>
+<p>La connexion est retentée <strong>toutes les 5 secondes</strong> tant qu'elle échoue, et le mapping est renvoyé au pupitre à chaque (re)connexion : débrancher puis rebrancher le réseau ne demande aucune intervention.</p>
+
+<h2>« Connecté » ne veut pas dire « qui se comprend »</h2>
+<p>Bobi.Studio ne lit qu'une seule chose : des lignes ASCII <code>HWC#&lt;numéro&gt;=&lt;valeur&gt;</code> terminées par un saut de ligne, et ne déclenche une macro que sur <code>=1</code> (l'appui ; le relâchement est ignoré). Tout le reste est ignoré silencieusement.</p>
+<p>Conséquence à connaître avant de chercher ailleurs : si le pupitre est en mode <strong>binaire</strong> plutôt qu'en Raw Panel ASCII, la connexion TCP s'établit, l'état affiche <em>connecté</em>… et aucune touche ne fait rien. Le seul test qui prouve l'entente est <strong>d'appuyer sur une touche</strong> et de voir la macro partir.</p>
+
+<h2>Diagnostic</h2>
+<table>
+<tr><th>Dans le journal</th><th>Ce que ça veut dire</th></tr>
+<tr><td><code>connexion à &lt;ip&gt;:9923…</code> puis <code>connecté</code></td><td>Tout va bien côté transport.</td></tr>
+<tr><td><code>erreur (Connection refused)</code></td><td>La machine est là mais rien n'écoute sur 9923 : « server mode » n'est pas coché, ou ce n'est pas le pupitre à cette adresse.</td></tr>
+<tr><td><code>erreur (timed out)</code></td><td>Adresse injoignable : mauvais réseau, mauvaise IP, ou pupitre éteint.</td></tr>
+<tr><td>Connecté, mais aucune macro</td><td>Le pupitre ne parle pas Raw Panel ASCII — cf. section ci-dessus.</td></tr>
+</table>
+</template>
+
+<template id="wiki-art-nmos-explique">
+<p>NMOS (AMWA) est l'ensemble de specs pour la découverte et le contrôle de flux IP broadcast.</p>
+<table>
+<tr><th>Spec</th><th>Rôle</th></tr>
+<tr><td>IS-04</td><td>Découverte : déclare Node, Devices, Senders, Receivers, Sources, Flows</td></tr>
+<tr><td>IS-05</td><td>Connection : PATCH staged pour subscriber un Receiver à un Sender via SDP</td></tr>
+</table>
+<h2>Découverte</h2>
+<p>Via un <strong>RDS</strong> (Registration &amp; Discovery Service) ou via <strong>mDNS</strong> (<code>_nmos-node._tcp.local.</code>). Configurer dans Réglages → NMOS.</p>
+<h2>Exposition des containers</h2>
+<ul>
+<li>Chaque receiver ST 2110 est exposé comme un Receiver NMOS distinct</li>
+<li>Chaque sender ST 2110 est exposé comme un Sender avec SDP live</li>
+<li>Les UUID sont basés sur le VMID — stables après redéploiement</li>
+</ul>
+</template>
+
+<template id="wiki-art-sriov-explique">
+<p>Le pipeline ST 2110 utilise la <strong>Physical Function (PF)</strong> de la carte E810 <strong>directement en AF-XDP</strong> (kernel-bypass DPDK via la Media Transport Library), avec le conteneur <code>2110_io</code> en <code>--network host</code>. Il n'y a <strong>plus</strong> de pool SR-IOV ni de VF allouée par conteneur (le modèle LXC SR-IOV a été retiré).</p>
+<div class="wiki-note"><strong>Par-nœud</strong> : un moteur <code>2110_io</code> par nœud, sur la PF du nœud. Les cartes se déclarent via <em>Réglages → Réseau → Vue d'ensemble</em> (sélecteur de nœud en tête), en rôle <code>media2110</code>.</div>
+<h2>Déclarer une NIC 2110</h2>
+<p>Réglages → Réseau → Vue d'ensemble : régler l'interface en rôle <code>media2110</code>, lui donner <strong>une IP média</strong> (CIDR) et, pour le SMPTE 2022-7, l'appairer <strong>red/blue</strong> (deux ports = redondance <em>et</em> capacité). Cette IP est posée sur la PF (<code>ensure_media_ip</code>) au déploiement du moteur.</p>
+<h2>PTP</h2>
+<p>PTP tourne sur la/les PF <code>media2110</code> : un <code>ptp4l</code> multi-port (boundary clock JBOD) par domaine, BMCA unique, hardware timestamping (sub-µs) sur E810. Voir l'article PTP.</p>
+<h2>Moteur MTL bi-rôle (2110_io) — Sorties TX</h2>
+<p>Le moteur MTL fait simultanément réception (RX, réseau→shm) et émission (TX, shm→réseau) sur la même NIC E810. Chaque <strong>slot TX</strong> émet :</p>
+<ul>
+<li><strong>Vidéo 2110-20</strong> — câblé depuis la page Câbles (colonne Destinations)</li>
+<li><strong>Audio 2110-30 #1 et #2</strong> — suit automatiquement le shm vidéo câblé (<code>host_0</code> → <code>host_audio_0/1</code>)</li>
+<li><strong>ANC 2110-40</strong> — suit automatiquement le shm vidéo câblé (<code>host_0</code> → <code>host_anc_0</code>)</li>
+</ul>
+<p>Les destinations IP multicast sont auto-allouées au déploiement (plages <code>239.10.40-41.x</code> audio, <code>239.10.50.x</code> ANC). Elles sont modifiables à chaud via l'API <code>POST /api/mtl/&lt;vmid&gt;/tx/&lt;slot&gt;/dest</code> (paramètre <code>audio_idx</code> pour cibler le flux audio 0 ou 1). Les senders NMOS IS-04 correspondants (2110-30 ×2 + 2110-40 par slot) sont enregistrés automatiquement.</p>
+<h2>Workflow</h2>
+<ol>
+<li>Réglages → Réseau → Vue d'ensemble — choisir le <strong>nœud</strong>, puis régler la PF E810 en rôle <code>media2110</code></li>
+<li>Lui donner une <strong>IP média</strong> (CIDR) ; pour le 2022-7, appairer une seconde PF en red/blue</li>
+<li>Activer le PTP sur la/les NIC <code>media2110</code> (Réglages → Réseau → PTP / Vue d'ensemble)</li>
+<li>Déployer le moteur <code>2110_io</code> sur le nœud (Réglages → Déploiement → Nœuds → io2110) : l'IP média est posée sur la PF, le moteur tourne en <code>--network host</code> / AF-XDP</li>
+</ol>
+</template>
+
+<template id="wiki-art-genlock">
+<p>Toute la chaîne vidéo est <strong>genlockée</strong> : cadencée sur la même référence de temps (le
+<a href="#ptp-explique">PTP</a>), de la source jusqu'à la sortie antenne, pour qu'aucune trame ne soit
+dupliquée ni sautée et que les sources composées soient alignées à l'image près.</p>
+
+<h2>Principe : genlock par propagation (latence minimale)</h2>
+<p>On ne re-cadence PAS chaque étage sur la grille PTP — cela ajouterait <strong>une trame pleine de
+latence par étage</strong>. On genlocke seulement aux <strong>frontières</strong> :</p>
+<ul>
+<li>la <strong>source</strong> (receiver ST 2110 / MTL) est déjà calée sur le PTP entrant ;</li>
+<li>la <strong>sortie antenne</strong> (sender / MTL TX) émet sur la grille PTP.</li>
+</ul>
+<p>Entre les deux, chaque traitement <strong>se verrouille sur sa source</strong> et émet sa trame dès
+le traitement terminé. La latence cumulée d'une chaîne (DVE + correcteur + mélangeur…) vaut donc la
+<strong>somme des temps de traitement réels</strong> (souvent moins d'une trame), pas N trames.</p>
+<div class="wiki-note">La grille PTP = <code>CLOCK_REALTIME</code>, disciplinée par <code>phc2sys</code>
+depuis le PHC de la NIC. Un instant de grille = trame k à <code>round(k·1e9·den/num)</code> ns depuis
+l'epoch.</div>
+
+<h2>Gestion par type de module</h2>
+<table>
+<tr><th>Type de module</th><th>Mode de synchro</th></tr>
+<tr><td>Source (receiver 2110 / MTL)</td><td>Ancre PTP : calée sur le flux 2110 entrant</td></tr>
+<tr><td>Player, Mire A/V, Stills, Multiviewer, UDC</td><td>Sortie <strong>cadencée sur la grille PTP</strong> (générateurs &amp; convertisseur de cadence)</td></tr>
+<tr><td>Correcteur de couleur, Delay</td><td><strong>Verrou d'entrée 1:1</strong> : 1 trame sortie par trame entrée (latence = traitement)</td></tr>
+<tr><td>Mélangeur, DVE</td><td>Verrou sur une <strong>entrée de référence</strong> + alignement des autres entrées par media-timestamp</td></tr>
+<tr><td>Enregistreur</td><td><strong>Frame-accurate</strong> : 1 trame fichier par trame source + plancher de cadence</td></tr>
+<tr><td>Sortie antenne (sender / MTL TX)</td><td>Ancre PTP : émission sur la grille</td></tr>
+</table>
+
+<h2>Player : signal toujours stable</h2>
+<p>Le player produit un signal <strong>continu</strong> dans tous les états — lecture, pause, freeze,
+chargement, changement de clip — <strong>sans rupture ni saut de phase</strong>. Le calage
+audio/vidéo est <strong>déterministe</strong> (verrou par media-timestamp), jamais réglé « à l'oreille ».</p>
+
+<h2>Mélangeur &amp; DVE : entrée de référence + alignement</h2>
+<p>Un mélangeur compose des trames du <strong>même instant</strong>. Il se verrouille sur une
+<strong>entrée de référence</strong> — un <strong>choix opérateur</strong> (réglage <code>sync_ref</code>,
+changeable à chaud), <strong>fixe</strong> : elle ne change PAS à la commutation PGM/PVW. Les autres
+entrées sont alignées par media-timestamp dans une fenêtre réglable (<code>align_budget</code>, défaut
+1 trame) :</p>
+<ul>
+<li>budget = 0 : on n'attend jamais (latence mini ; une source décalée peut être 1 trame « en retard ») ;</li>
+<li>budget = N : on attend jusqu'à N trames que les sources en retard rattrapent l'instant de référence.</li>
+</ul>
+<p>Une source hors budget est présentée avec sa trame précédente (sans bloquer le programme) et
+<strong>signalée</strong> (skew par entrée + alerte « en retard » dans les métriques). Le DVE suit le
+même modèle, avec le <strong>fond</strong> comme référence (il ne commute pas).</p>
+
+<h2>Cadences fractionnaires</h2>
+<p>Les cadences <strong>fractionnaires</strong> (29.97, 59.94, 23.976) sont gérées nativement via une
+grille <strong>rationnelle</strong> (num/den exact : 29.97 = 30000/1001, 59.94 = 60000/1001) — pas
+d'approximation à 30/60. Les formats fractionnaires sont sélectionnables dans Réglages → Formats.</p>
+
+<h2>Contrôle de format au câblage</h2>
+<p>Câbler une source <strong>incompatible</strong> avec un consommateur (résolution, chroma ou cadence
+différente) est <strong>refusé</strong> avec la raison et la solution (« insérer un UDC »), au lieu de
+produire une image illisible. Les <strong>convertisseurs</strong> (UDC, Multiviewer) et les
+consommateurs en auto-détection sont exemptés.</p>
+<div class="wiki-note">Désactivable : Réglages → Formats → <em>Contrôle de format au câblage</em> (repasse
+en simple avertissement). Chaque plugin a aussi un commutateur <code>genlock</code> (activé par défaut)
+pour revenir au comportement horloge mur en cas de besoin.</div>
+
+<h2>Suivi des temps de traitement (page Câbles)</h2>
+<p>La page <strong>Câbles</strong> affiche les délais de traitement le long du pipeline — utile pour
+caler un <strong>délai audio externe</strong> :</p>
+<ul>
+<li><strong>Carte module</strong> : badge <code>⧖ N ms</code> = délai de traitement <strong>propre</strong>
+à ce module (son coût de traitement seul). Affiché uniquement si le module mesure sa propre latence
+(correcteur de couleur, delay, AV sync, mélangeur, multiview…).</li>
+<li><strong>Sortie</strong> : badge <code>Δ N ms</code> = délai de traitement <strong>cumulé</strong>
+du signal le long de la chaîne. C'est le retard à compenser sur un audio externe pour rester synchrone.</li>
+<li><strong>Câble</strong> : étiquette <code>+N ms</code> au milieu = délai <strong>ajouté</strong> par
+ce saut (colorée par seuil). Le survol détaille la méthode de mesure.</li>
+<li><strong>Entrées de mélangeur/DVE</strong> : le mélangeur aligne ses entrées sur une référence, donc
+chaque entrée porte un badge — <strong>« réf »</strong> (immédiate, cadence le mix), <code>+N ms</code>
+(alignée dans le budget) ou <strong>« attend ↺ »</strong> (image précédente, hors budget), + son délai
+propre → on voit l'écart réconcilié.</li>
+</ul>
+<div class="wiki-note">Le délai mesuré est le <strong>temps de traitement MXL</strong> (moyenne
+glissante), pas la latence de transport 2110 / encodage en aval.</div>
+</template>
+
+<template id="wiki-art-cables-page">
+<p>La page <strong>Câbles</strong> est la vue de <strong>topologie</strong> du pipeline : chaque
+container y est une carte, reliée à ses sources et destinations par les liaisons en mémoire
+partagée (shm). C'est là qu'on <strong>câble</strong> les signaux et qu'on surveille
+<strong>cadence</strong>, <strong>latence</strong> et <strong>tally</strong> d'un coup d'œil.</p>
+
+<h2>Câbler un signal</h2>
+<ul>
+<li>Tirer un câble d'un <strong>port de sortie</strong> (à droite d'une carte) vers un
+<strong>port d'entrée</strong> (à gauche d'une autre) — vidéo et audio ont des ports distincts.</li>
+<li>Les sources réelles (RX 2110, générateurs) sont à gauche, les destinations (TX, streamer,
+recorder) à droite ; les traitements s'intercalent au milieu.</li>
+<li>Recâbler une entrée se fait <strong>à chaud, sans coupure ni redéploiement</strong> tant que
+la nouvelle source a la même résolution (cf. <em>Changement de source à chaud</em>).</li>
+</ul>
+
+<h2>Voyant de signal</h2>
+<p>Chaque port, en entrée comme en sortie, porte une <strong>pastille</strong> qui dit si un signal
+y circule <em>en ce moment</em>. Elle se lit comme une lampe :</p>
+<ul>
+<li><strong>Disque de couleur, avec un halo</strong> — <strong>signal présent</strong>. La teinte
+reste celle de l'essence (vidéo, audio, données) ; seule la lampe renseigne sur le signal.</li>
+<li><strong>Disque gris, sans halo</strong> — <strong>pas de signal</strong>. Une lampe éteinte
+reste une lampe : c'est une information, pas une absence d'information.</li>
+<li><strong>Cercle creux en pointillé</strong> — <strong>état inconnu</strong>. Le producteur de ce
+flux ne publie pas de quoi conclure. Rare, et volontairement distinct des deux autres.</li>
+</ul>
+<p>Les <strong>câbles</strong> suivent la même logique : un câble que rien ne traverse s'affiche
+atténué et cesse de pulser.</p>
+
+<div class="wiki-warn"><strong>Éteint ne veut pas dire cassé.</strong> Trois situations donnent une
+lampe éteinte, et deux sont parfaitement normales : le port n'est <strong>pas câblé</strong> (cas
+de l'immense majorité des entrées d'un moteur TX, qui en déclare 64) ; <strong>aucune session</strong>
+ne l'alimente (les sorties audio et ANC d'un moteur 2110 tant qu'aucun receiver correspondant n'est
+abonné) ; ou la source reçoit mais son image est <strong>noire ET figée</strong>, donc sans contenu.</div>
+
+<h3>Pourquoi les ports non alimentés ne sont pas masqués</h3>
+<p>Un port éteint reste <strong>câblable</strong>, et c'est délibéré : <strong>pré-câbler</strong>
+avant que la source arrive est un usage normal. Le câble prend effet dès que le flux existe. Masquer
+ces ports empêcherait de préparer une configuration ; ne rien afficher du tout laissait croire que
+ces flux existaient — c'est ce qui faisait chercher, parfois longtemps, pourquoi un flux audio
+n'arrivait jamais sur un autre nœud alors qu'il n'avait jamais été produit.</p>
+
+<h3>Pourquoi une image noire et figée compte comme « pas de signal »</h3>
+<p>Une entrée 2110 peut recevoir ses paquets à la cadence nominale tout en ne transportant rien :
+tous les compteurs de transport sont au vert, et l'image est noire et immobile. Le voyant répond à
+la question « <em>est-ce qu'il se passe quelque chose ?</em> », pas « <em>est-ce que le transport
+fonctionne ?</em> » — cette dernière a déjà ses propres indicateurs (cadence, latence, badge
+« ne reçoit pas »).</p>
+<p>Les deux critères sont exigés <strong>ensemble</strong>. « Figé » seul est vrai de toute mire
+fixe, qui est un signal valide ; « noir » seul peut être un noir voulu à l'antenne. Conséquence à
+connaître : une source <strong>volontairement noire et immobile</strong> s'affichera éteinte.</p>
+
+<div class="wiki-note">Le voyant décrit le <strong>flux</strong>, pas le container. Un module en
+bonne santé qui ne reçoit rien aura des entrées éteintes — c'est l'information recherchée, pas une
+contradiction.</div>
+
+<h2>Filtres &amp; lisibilité</h2>
+<p>Sur les topologies chargées, plusieurs outils réduisent le bruit :</p>
+<ul>
+<li><strong>Filtres</strong> par <strong>nœud</strong>, par <strong>type</strong> de container et
+par <strong>version</strong> de plugin → n'afficher que ce qui compte.</li>
+<li><strong>Repli</strong> (collapse) des cartes : réduire un container à son en-tête pour
+dégager la vue.</li>
+<li><strong>Vue libre zoomable</strong> : passer en disposition manuelle, déplacer les cartes,
+<strong>zoom/pan</strong> ; la disposition est mémorisée d'une visite à l'autre.</li>
+</ul>
+
+<h2>Cadence (fps par flux)</h2>
+<p>Chaque liaison affiche le <strong>fps</strong> du flux qui y circule (débit glissant ~1 s, pas
+un cumul). Un flux qui décroche sous la cadence nominale saute immédiatement aux yeux —
+utile pour repérer une source figée ou un module en sous-cadence.</p>
+
+<h2>Les deux lignes d'avertissement sous une carte</h2>
+<p>Une carte peut afficher, sous ses badges, une <strong>ligne en orange</strong> qui n'apparaît
+que lorsqu'il y a quelque chose à signaler. Elles répondent toutes les deux à la même question&nbsp;:
+<em>le chiffre de cadence affiché décrit-il vraiment ce qui sort d'ici&nbsp;?</em></p>
+
+<h3><code>⚠ N img/s neuves seulement</code></h3>
+<p>Ce module <strong>compose</strong> bien à sa cadence nominale, mais ses <strong>entrées</strong>
+ne suivent pas&nbsp;: il recompose des images identiques. Il affiche 50&nbsp;img/s en toute honnêteté
+— il travaille bien cinquante fois par seconde — mais il ne relaie de la matière neuve que N fois.
+Un émetteur en aval, qui n'émet que sur changement, sortira à cette cadence-ci et pas à 50.</p>
+<p><strong>Où chercher&nbsp;:</strong> chez les <strong>fournisseurs</strong> de ce module, pas chez
+lui. Remonter les câbles vers la gauche jusqu'à trouver qui ne tient pas la cadence.</p>
+
+<h3><code>⚠ shards à N img/s</code> (alignée à droite, sous le fps)</h3>
+<p>Ce mur est <strong>découpé en shards</strong> par le tissu de composition&nbsp;: plusieurs
+containers internes calculent chacun une région, et un <strong>assembleur</strong> les recompose.
+La ligne donne la cadence du <strong>shard le plus lent</strong>, et son nom au survol.</p>
+<p>Elle est placée juste sous le badge <code>fps</code> parce que les deux valeurs sont de même
+nature et se lisent ensemble&nbsp;: en haut ce que l'assembleur <em>compose</em>, en dessous ce que
+son maillon le plus lent lui permet de <em>relayer</em>. L'assembleur recompose à sa cadence
+nominale quoi qu'il arrive — <strong>ce n'est donc pas un défaut de l'assembleur</strong>, et il ne
+sert à rien de le redéployer. Mais il ne peut pas produire plus d'images neuves que le plus lent
+de ses shards, et c'est cette valeur-là que voit l'aval.</p>
+<p>Cette ligne existe parce que les shards sont <strong>volontairement repliés</strong> dans
+l'interface&nbsp;: ce sont des rouages internes, on ne veut pas les voir en temps normal. Sans elle,
+un mur dont un shard décroche s'afficherait à 50&nbsp;img/s, en pleine forme, et rien n'aurait
+trahi la panne.</p>
+<p><strong>Où chercher&nbsp;:</strong> le nom du shard est dans l'infobulle. Un shard qui décroche
+est en général saturé (trop de fenêtres ou d'habillage dans sa région) ou en concurrence avec
+d'autres containers sur les mêmes cœurs ou le même GPU. La page <strong>Monitoring</strong> donne
+le détail par shard.</p>
+<div class="wiki-note"><strong>Aucune tolérance.</strong> Ces avertissements ne reposent pas sur
+un seuil d'écart&nbsp;: un seuil obligerait à répondre à « à partir de combien d'images perdues
+est-ce grave&nbsp;?&nbsp;», question qui n'a pas de bonne réponse en broadcast. Le déclencheur est
+le <strong>compteur de trames perdues</strong> que chaque producteur tient lui-même&nbsp;: zéro, ou
+pas zéro. Pour les modules qui ne publient pas ce compteur, on retombe sur une comparaison
+<strong>stricte</strong> à la cadence nominale — pas à celle de l'assembleur&nbsp;: une alarme se
+compare à l'<em>intention</em>, sinon on compare un défaut à un autre défaut.
+<br><br>La valeur retenue est le <strong>pire relevé des 30 dernières secondes</strong>. Une image
+perdue il y a vingt secondes reste une image perdue&nbsp;; et sans cette fenêtre, l'avertissement
+clignoterait au gré des oscillations normales de la mesure, au point qu'on cesserait d'y croire.</div>
+
+<h2>Latence (badges ⧖ / Δ / +N ms)</h2>
+<p>Le suivi des temps de traitement est détaillé dans l'article
+<em>Synchronisation (Genlock)</em>. En résumé&nbsp;:</p>
+<ul>
+<li><code>⧖ N ms</code> sur une carte = délai de traitement <strong>propre</strong> au module.</li>
+<li><code>Δ N ms</code> sur une sortie = délai <strong>cumulé</strong> depuis la source (à compenser
+sur un audio externe).</li>
+<li><code>+N ms</code> au milieu d'un câble = délai <strong>ajouté</strong> par ce saut.</li>
+</ul>
+
+<h2>Tally en direct</h2>
+<p>Les ports de sortie portent des <strong>dots tally live</strong> : l'état tally (rouge
+programme / vert preview…) de chaque source est reflété en temps réel sur la topologie,
+au rythme des changements poussés par le <em>TSL centralisé</em> (cf. article TSL 5.0).</p>
+
+<div class="wiki-note">La page se rafraîchit en continu : cadences, latences et tally sont des
+mesures <strong>live</strong>, pas un instantané figé du déploiement.</div>
+</template>
+
+<template id="wiki-art-ptp-explique">
+<p>PTP (IEEE 1588 / SMPTE 2059-2) synchronise les horloges pour aligner les RTP timestamps ST 2110.</p>
+<div class="wiki-note">Pour l'horloge <strong>système</strong> des nœuds, la grille TAI du bus MXL et ce qui se passe à l'arrivée d'un nœud neuf, voir l'article <strong>Horloges du cluster (TAI)</strong>.</div>
+<h2>Architecture (mode kernel)</h2>
+<ul>
+<li><code>ptp4l</code> tourne sur l'<strong>hôte du nœud</strong>, lié à la NIC PTP-capable</li>
+<li><code>phc2sys</code> aligne <code>CLOCK_REALTIME</code> sur le PHC de la NIC</li>
+<li>Les <strong>conteneurs</strong> héritent de l'horloge système de leur nœud (pas de time namespace)</li>
+<li>Le rôle (master/slave/grandmaster) est déterminé automatiquement par BMCA</li>
+</ul>
+<div class="wiki-note"><strong>Par-nœud</strong> : la configuration PTP et le moniteur sont propres à chaque nœud. Réglages → <em>Nœuds &amp; Matériel → Réseau hôte → PTP</em>, avec le <strong>sélecteur de nœud</strong> ; l'échantillonneur suit l'état/historique de chaque nœud séparément.</div>
+<h2>Paramètres SMPTE 2059-2</h2>
+<p>Réglages → PTP expose les paramètres broadcast standard :</p>
+<table>
+<tr><th>Paramètre</th><th>Rôle</th><th>Défaut</th></tr>
+<tr><td>Priority 1 / 2</td><td>Contrôle BMCA : valeur basse = préféré comme GM</td><td>128</td></tr>
+<tr><td>logAnnounceInterval</td><td>Cadence des annonces (2^n s)</td><td>−2 (4/s)</td></tr>
+<tr><td>logSyncInterval</td><td>Cadence des syncs</td><td>−3 (8/s)</td></tr>
+<tr><td>UTC offset TAI</td><td>Requis par SMPTE 2059-2 pour convertir TAI→UTC</td><td>37 s</td></tr>
+<tr><td>neighborPropDelayThresh</td><td>Seuil asymétrie lien (ns)</td><td>800 ns</td></tr>
+</table>
+<h2>Graphiques live</h2>
+<p>L'onglet PTP affiche deux courbes canvas (offset master et mean path delay) sur 5 minutes. La courbe est verte quand l'horloge est verrouillée, orange sinon.</p>
+<h2>Mode MTL (Intel E810)</h2>
+<p>Avec une NIC E810 en mode MTL, ptp4l/phc2sys ne sont <strong>pas</strong> utilisés pour les conteneurs concernés — MTL gère le PTP directement via le PHC de la NIC avec une précision sub-100 ns.</p>
+<div class="wiki-warn">ffmpeg (mode kernel) utilise <code>CLOCK_REALTIME</code>, pas le PHC directement. Précision = celle de phc2sys, sub-µs avec hardware timestamping (ConnectX-4+ ou E810).</div>
+<div class="wiki-warn">ConnectX-3 et antérieurs : pas de hardware timestamping → offset en millisecondes, inutilisable pour du 2110 réel.</div>
+</template>
+
+<template id="wiki-art-horloges-cluster">
+<p>Le bus MXL <strong>indexe ses grains sur le temps</strong> : <code>index = TAI ÷ durée du grain</code>, epoch SMPTE 2059-1. Deux nœuds qui ne tombent pas sur la même grille ne peuvent <strong>ni aligner leurs flux, ni se les répliquer</strong>. L'horloge n'est donc pas un détail d'exploitation, c'est une pièce du chemin média.</p>
+
+<h2>La seule horloge qui compte</h2>
+<p>libmxl ne lit qu'une chose : <code>CLOCK_TAI</code>. Et sous Linux :</p>
+<pre>CLOCK_TAI = CLOCK_REALTIME + tai_offset (noyau)</pre>
+<p>Le piège est là. <strong>Ni <code>systemd-timesyncd</code> ni <code>chrony</code> ne posent <code>tai_offset</code> d'eux-mêmes</strong> : laissé à 0, <code>CLOCK_TAI</code> vaut l'UTC, soit <strong>37 s d'écart</strong> avec la grille. Invisible tant qu'on ne regarde que l'heure civile, qui elle est juste.</p>
+
+<h2>Deux conventions, toutes deux correctes</h2>
+<table>
+<tr><th>Type de nœud</th><th>CLOCK_REALTIME</th><th>tai_offset</th><th>Qui discipline</th></tr>
+<tr><td>Porteur d'un moteur 2110</td><td>du <strong>TAI</strong></td><td>0</td><td>client PTP interne de libmtl, dans le moteur</td></tr>
+<tr><td>Calcul / média</td><td>de l'<strong>UTC</strong></td><td>37</td><td>chrony + <code>leapseclist</code></td></tr>
+</table>
+<p>Les deux donnent le bon <code>CLOCK_TAI</code> par des routes opposées. On ne cherche donc pas à imposer une convention : on vérifie le <strong>résultat</strong>.</p>
+
+<h2>Un nœud tout neuf qui arrive</h2>
+<p><strong>Il arrive HORS GRILLE, dans les deux cas.</strong> Une Debian fraîche démarre avec <code>systemd-timesyncd</code> : l'heure civile est juste, <code>tai_offset</code> vaut 0, donc <code>CLOCK_TAI</code> vaut l'UTC. L'enrôlement ne touche pas au temps.</p>
+<ul>
+<li><strong>Sans 2110</strong> — il <em>reste</em> à 37 s tant que personne n'agit. Les symptômes ne nomment jamais l'horloge : ses flux paraissent <strong>périmés en permanence</strong> chez leurs consommateurs (l'âge apparent dépasse le seuil de 5 s, donc les lecteurs les déclarent morts et les rouvrent en boucle), et la <strong>réplication RDMA depuis ce nœud ne transporte rien</strong>. On cherche un problème de réseau ou de plugin pendant des heures.</li>
+<li><strong>Avec 2110</strong> — il se répare tout seul, mais <em>seulement</em> quand le moteur tourne : c'est le client PTP de libmtl qui écrit du TAI dans l'horloge système. Entre l'enrôlement et le premier démarrage du moteur, le nœud est hors grille comme les autres. Ajouter l'entraînement du lien E810 (une à deux minutes) avant que le moteur ne produise.</li>
+</ul>
+<div class="wiki-note"><strong>À faire à l'enrôlement d'un nœud sans 2110 :</strong> Réglages → Réseau → <strong>Horloges</strong>, bouton <em>Mettre sur la grille</em>. Il installe chrony et pose <code>leapseclist</code>, qui maintient <code>tai_offset</code> tout seul, secondes intercalaires comprises. L'action est <strong>refusée</strong> sur un nœud dont <code>REALTIME</code> porte déjà du TAI : y ajouter chrony ferait battre deux disciplines sur la même horloge.</div>
+
+<h2>Ce que la page Horloges sait dire, et ce qu'elle ne sait pas</h2>
+<p>La sonde passe par l'agent de nœud en HTTP : l'instant du nœud n'est connu qu'à la <strong>demi-fenêtre d'aller-retour</strong> près, soit quelques dizaines de millisecondes. La colonne <em>Écart TAI</em> ne tranche donc qu'à la <strong>seconde</strong> — ce qui suffit largement à ce qu'elle vise : <code>tai_offset</code> oublié, source absente, convention incohérente, nœud injoignable.</p>
+<p>L'accord au grain près ne se mesure <strong>pas</strong> ainsi. C'est la colonne <strong>précision locale</strong> qui porte le jugement fin : elle est relevée <em>sur</em> le nœud, sans aller-retour — offset rapporté par chrony, ou offset du client PTP du moteur pour un nœud 2110.</p>
+
+<h2>Qui discipline quoi — et le piège du nœud 2110</h2>
+<p>Sur un nœud de calcul, c'est <strong>chrony</strong> : il tient <code>CLOCK_REALTIME</code> sur l'UTC, et <code>leapseclist</code> pose <code>tai_offset</code>.</p>
+<p>Sur un nœud <strong>2110</strong>, c'est <strong>libmtl, à l'intérieur du conteneur moteur</strong> : <code>ENGINE_PTP=libmtl</code> en fait un esclave PTPv2 sur le port DPDK, et <code>ENGINE_PHC2SYS=1</code> lui fait discipliner <code>CLOCK_REALTIME</code> depuis le PHC — en remplacement de <code>phc2sys</code> noyau, qui ne peut plus tourner puisque le port est sur vfio.</p>
+<div class="wiki-note"><strong>Piège de diagnostic, déjà payé.</strong> Sur un nœud 2110, toutes les sondes de l'hôte annoncent « aucune horloge » : <code>systemctl</code> ne montre aucun service, <code>ps</code> aucun processus, <code>timedatectl</code> affiche <em>System clock synchronized: no</em> et le noyau garde <code>STA_UNSYNC</code> armé. <strong>C'est faux.</strong> Rien de tout cela n'est visible côté hôte parce que le discipliné vit dans un conteneur, et un programme qui pose l'heure ne se déclare pas comme démon de discipline. <strong>Toujours lire l'environnement du moteur avant de conclure</strong> — la colonne <em>Source de temps</em> de la page Horloges le fait pour vous et affiche le détail au survol.</div>
+<p>Qualité constatée sur un moteur verrouillé : l'offset au grandmaster oscille à <strong>±50 ns</strong> autour de zéro, avec <code>synced: true</code>. Le <code>locked: false</code> que l'on peut lire à côté correspond au <em>lock strict</em> (chantier différé) et n'indique pas un défaut de synchronisation.</p>
+<div class="wiki-note"><code>raw_delta_ns</code>, dans le bloc PTP du moteur, <strong>n'est pas un indicateur de dérive</strong> : c'est un instantané de diagnostic, figé entre deux relevés et variant par sauts non monotones. Ne pas y lire une tendance.</div>
+
+<h2>Qui sert de référence — et pourquoi pas l'orchestrateur</h2>
+<p>Les écarts sont exprimés <strong>par rapport au nœud le mieux tracé</strong> : un nœud verrouillé sur un grandmaster PTP passe avant un nœud NTP, qui passe avant un nœud sans source. Ce nœud porte la mention <em>référence</em> dans la colonne d'écart.</p>
+<p>L'orchestrateur, lui, <strong>n'arbitre rien</strong>. C'est une machine NTP ordinaire : le prendre pour référence revenait à reporter sa propre dérive, à l'identique, sur toutes les lignes — au point de faire croire que tous les nœuds partaient ensemble alors que c'était le repère qui bougeait. Comme il sert d'intermédiaire à la mesure, son biais est <strong>commun à toutes les lignes</strong> et s'annule dès qu'on exprime les écarts entre nœuds.</p>
+<p>Il a malgré tout <strong>sa ligne</strong> dans le tableau, parce qu'il fait partie du tableau des horloges du site et qu'on veut voir à quoi il est accroché. Mais il n'écrit aucun flux MXL : son horloge n'a pas à être sur la grille média, et la page ne lui applique donc aucun verdict de grille.</p>
+<div class="wiki-note"><strong>La colonne <em>Source de temps</em> nomme la SOURCE, pas l'outil.</strong> « chrony » et « moteur 2110 » sont des outils ; ce qui compte est ce à quoi ils sont accrochés — l'adresse du serveur NTP et sa strate, ou l'identité du grandmaster PTP. L'outil et le moyen de discipline restent lisibles au survol.</div>
+
+<h2>Écart, dérive, et ce que chacun vaut</h2>
+<p>Deux grandeurs, à ne pas confondre :</p>
+<ul>
+<li>l'<strong>écart absolu</strong> porte un biais systématique (l'asymétrie de l'aller-retour vers l'agent) qu'on ne sait pas retirer — d'où le ± de plusieurs dizaines de millisecondes affiché à côté ;</li>
+<li>la <strong>dérive</strong> est une <em>différence</em>, et ce biais étant à peu près constant, il s'y annule. Mesuré sur le parc, l'écart-type des relevés est de <strong>1 à 2 ms</strong> : cent fois mieux que la borne systématique.</li>
+</ul>
+<p>Autrement dit : <strong>une horloge qui part se voit</strong>, même si sa position exacte reste incertaine. C'est la colonne <em>Dérive</em> qu'il faut surveiller, pas l'écart. Elle reste muette tant que la fenêtre est trop courte (moins de dix points ou dix minutes) plutôt que d'annoncer une pente tirée du bruit.</p>
+<div class="wiki-note"><strong>La dérive se mesure contre le RÉFÉRENT</strong>, pas contre l'orchestrateur. Sinon elle mesure le mauvais couple : chaque nœud paraissait s'éloigner d'une dizaine de millisecondes par heure alors que c'était le contrôleur, simple machine NTP, qui bougeait sous eux tous. Le référent, lui, ne « dérive » pas par rapport à la grille : il <em>est</em> la grille — sa ligne n'affiche donc pas de dérive, et sa qualité propre se lit dans la précision locale (l'offset au grandmaster).</div>
+<div class="wiki-note"><strong>Si tous les nœuds dérivent dans le même sens et du même ordre</strong>, ce ne sont pas eux : c'est la <strong>référence</strong> qui bouge. Le contrôleur n'est qu'une machine NTP ordinaire, et sa propre dérive se retrouve à l'identique sur chaque ligne. La page le signale explicitement quand le cas se présente.</div>
+
+<h2>Les seuils sont déduits du métier du nœud</h2>
+<ul>
+<li><strong>Nœud de calcul</strong> — son horloge ne sert qu'à tomber sur le <strong>même grain</strong> que ses pairs. Au-delà d'un <strong>demi-grain</strong>, il désigne l'image d'à côté : c'est là qu'est la limite. La cadence vient du <em>format vidéo par défaut</em>, plancher à 60 fps (entre 50 et 60 l'écart de demi-grain est mince, autant retenir le plus contraignant).</li>
+<li><strong>Nœud portant un moteur 2110</strong> — il ne désigne pas des grains, il <strong>cadence des paquets</strong> sur le fil. C'est le modèle temporel ST 2110-21 qui commande, à la microseconde.</li>
+</ul>
+<p>Un seuil unique serait à la fois dix fois trop strict pour le calcul et des milliers de fois trop permissif pour le 2110. Le réglage de la page reste disponible comme <strong>remplacement explicite</strong> (0 = déduit).</p>
+
+<h2>Pourquoi NTP suffit entre nœuds</h2>
+<p>On ne propage pas le PTP d'un nœud à l'autre, et ce n'est pas un renoncement. La seule contrainte de temps <em>inter-nœuds</em> du plan MXL est de tomber sur le même grain — 20 ms à 50 fps — quand NTP tient la milliseconde. La précision PTP, elle, se consomme <strong>à l'intérieur</strong> du nœud 2110 (PHC de la NIC média → <code>media_ts</code> et pacing TX) et n'a aucune raison d'en sortir. La documentation du SDK MXL l'écrit noir sur blanc : pour du multi-hôtes, une source NTP traçable suffit. Propager créerait au contraire un point de panne unique, l'horloge du nœud 2110 n'existant que tant que son moteur tourne.</p>
+<div class="wiki-note">Le jour où il faudra une phase <strong>trame-exacte</strong> entre nœuds, elle passera par le <strong>plan média</strong> (un flux de référence portant index et <code>media_ts</code>), pas par l'horloge système. Voir <code>docs/reference/PTP_CLOCK.md</code>.</div>
+</template>
+
+
+<template id="wiki-art-choix-serveur">
+<p>Un nœud <strong>2110</strong> et un nœud de <strong>calcul</strong> ne demandent pas la même machine — et l'intuition courante se trompe sur les deux. Les chiffres ci-dessous sont <strong>mesurés</strong> sur la flotte (dl360 Gen10, Xeon Scalable), pas estimés.</p>
+
+<h2>La règle en une phrase</h2>
+<p>On n'achète <strong>pas de la vitesse de cœur</strong>. On achète de la <strong>disponibilité de cœur</strong> (pour le 2110) et de la <strong>bande passante mémoire</strong> (pour le calcul).</p>
+
+<h2>Ce que consomme réellement un moteur 2110</h2>
+<ul>
+<li><strong>Cœurs : beaucoup, mais sobres.</strong> Les lcores DPDK tournent en <em>busy-poll</em> : ils occupent 100 % de leur cœur qu'il y ait du trafic ou non. On ne les réserve pas pour encaisser du débit, mais pour que <strong>rien ne s'intercale</strong> — une préemption au mauvais moment fait dépasser la fenêtre de réordonnancement et coince les sessions en cascade. Le nombre de lcores est dérivé du <strong>débit</strong> à traiter (≈ 1 cœur par slot 1080p50 non compressé), jamais de la fréquence.</li>
+<li><strong>RAM : très peu.</strong> Le bus MXL n'est qu'un anneau de quelques trames. Mesuré sur un moteur en production à 25 flux : <code>/dev/shm/mxl</code> = <strong>490 Mo</strong>. Le vrai poste, ce sont les <strong>hugepages</strong> de DPDK (quelques Go).</li>
+<li><strong>Bande passante mémoire : marginale.</strong> ≈ 3-4 Go/s pour déposer les trames RX en mémoire — négligeable devant les dizaines de Go/s d'un socket.</li>
+<li><strong>PCIe :</strong> la carte 2110 (E810) et, si le nœud réplique vers d'autres nœuds, une <strong>seconde NIC RDMA</strong> (voir plus bas).</li>
+</ul>
+<div class="wiki-note">« Beaucoup de cœurs sobres », <strong>pas</strong> « des cœurs faibles » : chaque scheduler doit boucler plus vite que l'intervalle inter-paquets (≈ 200 000 paquets/s pour un seul flux 1080p50). Un cœur trop lent allonge la boucle — c'est le mécanisme exact d'un incident de 14 h en lab.</div>
+
+<h2>Ce que consomme réellement le calcul (multiview, mélangeur, streamer…)</h2>
+<p>Le bus MXL <strong>est</strong> de la RAM : chaque trame produite est écrite en mémoire, chaque consommateur la relit, chaque traitement la réécrit. La charge est donc <strong>bornée par la bande passante mémoire, pas par le CPU</strong>. Trois mesures concordantes :</p>
+<ul>
+<li>banc de charge multiview : <em>memory-bandwidth bound</em> (plafond dl360 ≈ 175 Go/s) ;</li>
+<li>mélangeur passé de <strong>8 à 20 entrées</strong> : coût identique (3,3 % contre 3,45 % de CPU) ;</li>
+<li>murs multiview en production : ils n'utilisent que <strong>23 %</strong> de leurs cœurs dédiés tout en tenant leurs 50 fps.</li>
+</ul>
+<p>Un cœur plus rapide ne fera qu'<strong>attendre la RAM plus vite</strong>. Ce qu'il faut maximiser, ce sont les <strong>canaux mémoire garnis</strong> — et assez de cœurs pour tenir l'échéance de trame (20 ms à 50p), quitte à ce qu'ils restent à 25 % : c'est <em>voulu</em>. Un cœur dédié utilisé à 90 % serait au bord du décrochage.</p>
+
+<h2>Profils recommandés</h2>
+<table>
+<tr><th></th><th>Nœud 2110</th><th>Nœud de calcul</th></tr>
+<tr><th>Cœurs</th><td>Nombreux (24-32), fréquence modérée</td><td>Assez pour les échéances ; la fréquence n'est pas le levier</td></tr>
+<tr><th>RAM (capacité)</th><td><strong>Faible</strong> — 32 Go suffisent</td><td>Selon le nombre de conteneurs (le bus MXL reste petit)</td></tr>
+<tr><th>RAM (bande passante)</th><td>Marginale</td><td>★ <strong>Le poste critique</strong> — garnir tous les canaux</td></tr>
+<tr><th>Sockets</th><td>1 suffit</td><td>2 pour doubler la bande passante (pas les GHz)</td></tr>
+<tr><th>NIC</th><td>E810 (2110) <strong>+ Mellanox (RDMA)</strong></td><td>Mellanox (RDMA)</td></tr>
+</table>
+
+<h2>RAM : capacité ≠ bande passante</h2>
+<p>C'est la confusion la plus coûteuse. Le passage par la RAM est <strong>obligatoire</strong> (le moteur écrit ses flux RX dans le bus MXL local avant toute réplication RDMA), mais il ne demande <strong>presque aucune capacité</strong> :</p>
+<pre>trame 1080p50 YUV420 8 bits ....... 3,1 Mo
+anneau vidéo (8 trames) ........... 25 Mo par flux
+25 flux RX + TX ................... ≈ 600 Mo   (mesuré : 490 Mo)</pre>
+<p>Garnir de RAM le socket qui porte la carte 2110 « parce qu'il fait du 2110 » est de l'argent perdu. Le garnir parce qu'il porte <strong>aussi du calcul</strong> est justifié.</p>
+
+<h2>Séparer les rôles : ce que ça implique</h2>
+<p>Si le 2110 et le calcul vivent sur des machines différentes, les trames MXL doivent <strong>traverser le réseau</strong> — c'est le rôle du service <strong>RDMA</strong> (réplication MXL inter-nœuds, câblage inter-nœud transparent : on câble producteur→consommateur sur la page Câbles, le lien est provisionné sous le capot).</p>
+<p>Le coût réseau est faible : un flux 1080p50 = <strong>1,24 Gb/s</strong> ; dix flux = 12 Gb/s. Du 25G passe sans effort.</p>
+<div class="wiki-warn"><strong>Contrainte matérielle dure :</strong> sur E810, la RoCE est <strong>désactivée au runtime</strong> (devlink, pour l'AF-XDP du 2110). Un nœud 2110 ne peut donc <strong>pas</strong> faire son RDMA sur sa carte 2110 : il lui faut une <strong>seconde NIC dédiée</strong> (Mellanox).</div>
+
+<h2>Piège vécu : un nœud ne peut pas être les deux</h2>
+<p>Sur un dl360 à <strong>24 cœurs physiques</strong>, un moteur 2110 en consomme <strong>22</strong> (1 EAL + 16 lcores + cœurs de service). Il ne reste <strong>rien</strong> pour le calcul — et un mur multiview y tombe à 1,5 s par trame (pour un budget de 20 ms) sans qu'aucun code ne soit en cause. Le moteur n'est pas surdimensionné : il est <em>à sa taille</em> sur une machine trop petite.</p>
+<p>Vérifier avant de déployer : <em>Monitoring</em> affiche la capacité en <strong>cœurs physiques</strong> et alerte quand un pool est sur-souscrit ou qu'un conteneur est en famine CPU (pression PSI, cadence non tenue).</p>
+
+<h2>NUMA</h2>
+<p>Sur une machine bi-socket, la carte 2110 est rattachée à <strong>un</strong> socket ; le moteur doit y être épinglé (c'est le cas par défaut). Un accès mémoire distant coûte <strong>×1,39 en latence</strong> (mesuré : 165 ns local, 240 ns distant). Comme MXL fait des copies <em>séquentielles</em> (la latence est masquée par le préchargement) et que les débits en jeu (~1,5 Go/s par mur) restent loin de la capacité du lien inter-socket, <strong>ce n'est pas un goulot démontré</strong> — c'est de l'hygiène, pas une urgence.</p>
+</template>
+
+<template id="wiki-art-cpu-pinning">
+<p>Épingler un conteneur à des cores spécifiques réduit le cache thrashing et la gigue pour les workloads vidéo lourds (4K, multiview).</p>
+<h2>Workflow</h2>
+<ol>
+<li>Configurer un conteneur → bloc "Ressources"</li>
+<li>Champ "Épinglage CPU" : <code>4,5,6</code> ou <code>4-6</code> ou <code>4,7-9</code> (<code>--cpuset-cpus</code> Docker)</li>
+<li>"Mettre à jour les ressources" → le conteneur redémarre avec la contrainte</li>
+</ol>
+<p>Vue globale <strong>par-nœud</strong> : Réglages → <em>Nœuds &amp; Matériel → CPU</em> — carte des cores du nœud sélectionné, avec assignation et conflits (deux conteneurs visant le même core sur le même nœud).</p>
+<div class="wiki-note">Épinglage souple : le conteneur ne peut tourner que sur ces cores, mais l'hôte peut les utiliser aussi. Pour une réservation stricte, <code>isolcpus</code> dans la cmdline kernel — non implémenté.</div>
+</template>
+
+<template id="wiki-art-jeux-instructions">
+<p>Une même image de conteneur doit tourner sur des processeurs de générations très différentes. Or le code compilé pour un CPU récent utilise des instructions que les anciens n'ont pas : lancé sur une vieille machine, il ne ralentit pas — il <strong>meurt</strong> sur une « instruction illégale ».</p>
+<p>Les images <code>bobi-compute</code> et <code>bobi-media</code> embarquent donc <strong>deux versions de <code>libmxl</code></strong>, et c'est l'éditeur de liens du système qui choisit la bonne au démarrage de chaque conteneur, selon le processeur du nœud. Aucun réglage, aucune image par machine.</p>
+
+<h2>Comment le choix se fait</h2>
+<table>
+<tr><th>Emplacement dans l'image</th><th>Compilée pour</th><th>Utilisée sur</th></tr>
+<tr><td><code>/usr/local/lib/libmxl.so.1.1</code></td><td>x86-64-v2 (socle)</td><td>tout processeur, y compris antérieur à 2013</td></tr>
+<tr><td><code>/usr/local/lib/glibc-hwcaps/x86-64-v3/libmxl.so.1.1</code></td><td>x86-64-v3 (AVX2, FMA, BMI2)</td><td>Haswell (2013) et au-delà</td></tr>
+</table>
+<p>Le mécanisme est <code>glibc-hwcaps</code>, standard depuis la glibc 2.33 : si le sous-dossier correspond aux capacités du CPU, la bibliothèque qu'il contient l'emporte ; sinon il est purement ignoré.</p>
+
+<h2>Pourquoi deux versions plutôt qu'une</h2>
+<p>Les deux réponses simples sont mauvaises, et la mesure le montre :</p>
+<ul>
+<li><strong>Tout compiler pour les CPU récents</strong> — c'était le cas avant. Les trois serveurs R620 (Sandy Bridge, 2012) du parc n'exécutaient <em>aucun</em> conteneur du pipeline : le script mourait en boucle et l'interface n'affichait qu'un « script arrêté » sans cause. Deux cartes Tesla T4 y étaient inutilisables.</li>
+<li><strong>Tout compiler pour le socle</strong> — mesuré à charge identique, un conteneur <em>consommateur</em> (mixer, qui lit et réécrit le bus) coûte alors <strong>~20 % de CPU en plus</strong>. Un <em>producteur</em>, lui, ne perd que ~2 % : le compromis n'apparaît qu'en mesurant les deux régimes.</li>
+</ul>
+
+<h2>Où le voir</h2>
+<p>La variante réellement chargée est <strong>constatée</strong> par nœud, en exécutant le chargeur — pas déduite des drapeaux du processeur. Elle apparaît dans le constat de placement (<code>GET /api/nodes/&lt;id&gt;/placement</code>, champ <code>mxl</code>) avec le chemin exact du fichier mappé.</p>
+<div class="wiki-note"><strong>Une alerte veille dessus</strong> : un nœud dont le CPU sait faire de l'AVX2 mais qui charge quand même le socle est signalé. Sans ce contrôle, la bascule serait <em>invisible</em> — tout continuerait de fonctionner, simplement ~20 % plus lentement, et rien ne le dirait. Le cas n'est pas théorique : le binding Python liste des chemins absolus en dernier recours, et ceux-là court-circuitent la sélection.</div>
+
+<h2>Conséquences pratiques</h2>
+<ul>
+<li>Un serveur ancien n'est plus exclu du parc : il tourne, un peu moins vite, et c'est <em>visible</em>.</li>
+<li>Les <strong>outils</strong> livrés dans l'image (<code>mxl-info</code>, <code>mxl-fabrics-demo</code>) restent au socle : un exécutable ne bénéficie pas de ce mécanisme, réservé aux bibliothèques. Sans conséquence — la réplication RDMA est bornée par la carte réseau, pas par le processeur.</li>
+<li>L'architecture visée est <strong>épinglée</strong> dans le Dockerfile, plus héritée de la machine qui construit : deux builds successifs donnent le même binaire, et on sait ce que contient l'image livrée.</li>
+</ul>
+</template>
+
+<template id="wiki-art-mxl-format">
+<p><strong>MXL</strong> (Media eXchange Layer, SDK Linux Foundation/EBU) est une bibliothèque d'échange média en <strong>mémoire partagée</strong> : des <em>flows</em> de <em>grains</em> (trames) dans un tmpfs, lecture/écriture <strong>zéro-copie</strong>, réveil des lecteurs par <strong>futex</strong> (au lieu d'un poll), récupération des flows morts (<strong>GC</strong>), et réplication inter-hôtes (<em>fabrics</em> RDMA). C'est la version standardisée de notre contrat shm maison.</p>
+<p>Adoption <strong>progressive</strong>. La <strong>Phase 0</strong> (fondations) est faite : <code>libmxl</code> est buildée dans l'image <code>bobi-compute</code> et un binding Python ctypes <code>bobimxl.py</code> est fourni (<code>Writer</code>/<code>Reader</code>, <code>get_latest()</code> non-bloquant, <code>get()</code> futex, grain numpy zéro-copie). Tant que la migration des plugins (Phase 1) n'est pas lancée, libmxl/bobimxl sont <strong>présents mais inertes</strong>.</p>
+
+<h2>Décision de format : payload <strong>planar</strong>, pas v210</h2>
+<p>MXL v1.0.0 n'accepte en vidéo que <code>video/v210</code> / <code>video/v210a</code> (10-bit packed 4:2:2). Or nos plugins de traitement calculent sur du <strong>planar</strong> (samples adressables). Nous avons choisi d'ajouter à libmxl un type vidéo <strong>planar 10-bit</strong> via un petit patch local (~30 lignes dans <code>FlowParser::getPayloadSize()</code>, grain = somme des plans Y+Cb+Cr), et de proposer la modification en amont (PR). Comme on compile libmxl nous-mêmes (Dockerfile, <code>MXL_REF</code> épinglé), on n'attend pas le merge upstream.</p>
+
+<h3>Pourquoi planar et pas v210</h3>
+<p>Le v210 est <strong>bit-packed</strong> : on ne peut pas faire d'arithmétique pixel dessus (ni en numpy, ni en C) — il faut <strong>dé-packer puis re-packer</strong> à chaque étage. Sur ce système <strong>limité par la bande passante mémoire</strong>, cette conversion est du poids mort sur le goulot. Mesuré au banc (dl360, 1080p 4:2:2 10-bit, numpy) :</p>
+<table>
+<tr><th>Opération (par trame)</th><th>Coût</th><th>% du budget 50 fps (20 ms)</th></tr>
+<tr><td><strong>Conversion v210 par étage</strong> (unpack + repack)</td><td><strong>33,0 ms</strong></td><td><strong>165 %</strong></td></tr>
+<tr><td>— unpack v210 → planar</td><td>14,2 ms</td><td>71 %</td></tr>
+<tr><td>— repack planar → v210</td><td>18,8 ms</td><td>94 %</td></tr>
+<tr><td>Repère : blend planar (1 plan)</td><td>11,9 ms</td><td>60 %</td></tr>
+<tr><td>Repère : memcpy d'une trame (plafond bus)</td><td>0,9 ms</td><td>4,5 %</td></tr>
+<tr><td><strong>Planar (notre choix)</strong></td><td><strong>0 ms</strong></td><td><strong>0 %</strong></td></tr>
+</table>
+<div class="wiki-note"><strong>À retenir</strong> : en v210 bout-en-bout, un plugin dépasserait le budget 50 fps <em>rien qu'en convertissant</em> (33 ms &gt; 20 ms), avant tout traitement. Le planar supprime ce coût (≈ 33 ms économisés <em>par étage</em> de la chaîne).</div>
+
+<h3>Interop : planar en interne, v210 aux frontières</h3>
+<p>Le transport MXL est <strong>agnostique aux octets</strong> : le <code>media_type</code> ne sert qu'à dimensionner le grain et à l'interprétation par les outils. Donc le planar fonctionne <strong>partout dans notre cluster</strong> (tous les nœuds bobi se comprennent) et via les <em>fabrics</em> inter-nœuds. La conversion en v210 (ou ST 2110-20) n'est nécessaire qu'aux <strong>vraies frontières externes</strong> (consommateur MXL tiers, egress 2110) — et là seulement.</p>
+
+<h3>Et plus tard ?</h3>
+<p>Tout le pipeline est en <strong>10-bit</strong> (standard broadcast actuel). Le seul cas où v210 redeviendrait intéressant est un déport du calcul sur <strong>GPU</strong> (dé-package quasi gratuit, transfert PCIe plus petit) — c'est un chantier matériel séparé ; le patch planar se retire alors proprement.</p>
+</template>
+
+<template id="wiki-art-projets-raz">
+<p>Un projet est un <strong>espace de travail</strong> : snapshot de la flotte (containers, câblage, réglages) chargeable et déchargeable. Les utilisateurs membres retrouvent leurs projets sur l'accueil (vues composables par widgets) ; un projet chargé est isolé des autres.</p>
+<h2>Rappel de projet</h2>
+<p>Page Projets → "Restaurer" : recrée tous les containers depuis le snapshot. Progression en direct (clonage → IP → agent → déploiement). Un container échoué n'interrompt pas les autres.</p>
+<ul>
+<li><strong>Réessayer les échecs</strong> : relance uniquement sur les containers ayant échoué</li>
+<li><strong>Interrompre</strong> : stoppe entre deux containers</li>
+<li>Les VMIDs déjà pris sont remappés automatiquement</li>
+</ul>
+<div class="wiki-note">Un conflit de hostname ou de SHM avec des containers existants bloque le rappel : détruire ou renommer les containers en conflit d'abord.</div>
+<h2>RAZ</h2>
+<p>Réglages → RAZ : liste les containers à supprimer (décochables), détruit en streaming avec confirmation à chaque étape. La suppression est vérifiée (status = stopped) avant le DELETE.</p>
+</template>
+
+
+<template id="wiki-art-mode-tranche">
+<p>Le <strong>mode tranche</strong> réduit la latence de traversée : au lieu d'attendre une image complète à chaque étage, chaque étage publie et consomme l'image <strong>par bandes</strong> au fil de l'eau. Un étage interne coûte alors ~1 à 3 ms au lieu d'une image entière (20 ms en 50p).</p>
+<h2>Activation</h2>
+<ul>
+<li><strong>Par container</strong> : opt-in via le paramètre <code>slice_mode</code> du container (défaut : désactivé — comportement historique inchangé).</li>
+<li><strong>Tissu de composition</strong> (multiview composé) : réglage <code>fabric_slice_mode</code>.</li>
+<li>Un consommateur non migré lit toujours des images complètes : la compatibilité est totale, chaque maillon peut être activé indépendamment.</li>
+</ul>
+<h2>Sorties 2110 : rythme d'émission</h2>
+<p>Sur <strong>Destinations 2110</strong>, chaque sortie a un sélecteur de rythme d'émission :</p>
+<ul>
+<li><strong>⏱ Image suivante</strong> (défaut) : émission alignée sur l'horloge 2110 — interopérabilité stricte, mais une chaîne interne paie jusqu'à une image d'attente.</li>
+<li><strong>⚡ Émission décalée +N ms</strong> : l'image part dès que ses premières bandes sont prêtes, N ms après le début du cycle. Le décalage (TROFF) est déclaré dans le SDP et l'horodatage RTP ne change pas : la synchro A/V du récepteur est préservée, il lui faut simplement une marge de tampon équivalente. Gain : ~une image de latence sur la sortie.</li>
+</ul>
+<div class="wiki-note">Les métriques <code>slice</code> de chaque container (waits, fallbacks, retard des sources) sont visibles sur son port 8080 et remontées en alertes quand une source est chroniquement en retard.</div>
+</template>
+
+<template id="wiki-art-hot-input">
+<p>Recâbler l'entrée d'un container depuis la page Câbles se fait <strong>à chaud, sans coupure ni redéploiement</strong> si la nouvelle source a la même résolution.</p>
+<table>
+<tr><th>Type</th><th>Hot-input</th></tr>
+<tr><td>Mélangeur, DVE, Correcteur</td><td>Toujours (rescale intégré)</td></tr>
+<tr><td>Multiview (par fenêtre)</td><td>Toujours (résolution auto-détectée)</td></tr>
+<tr><td>Streamer</td><td>Selon le mode source (voir Streaming)</td></tr>
+<tr><td>2110_io (TX)</td><td>Vidéo (même format) et audio</td></tr>
+</table>
+<p>Un redéploiement avec brève coupure reste nécessaire uniquement quand la résolution ou le format de sortie change.</p>
+<h2>Éditeur multiview — tout à chaud</h2>
+<p>Depuis la version 0.8.0, l'éditeur multiview applique tous les changements en direct sur la sortie, sans redéploiement ni coupure :</p>
+<ul>
+<li><strong>Déplacer / redimensionner</strong> une fenêtre (drag sur le canvas ou saisie numérique) → appliqué immédiatement</li>
+<li><strong>Ajouter / supprimer</strong> une source → reconfiguration atomique du multiview en direct ; la résolution source est auto-résolue</li>
+<li><strong>Réglages par fenêtre</strong> (label, tally, VU-mètre, TSL index…) → appliqués sans coupure</li>
+<li><strong>Réglages globaux</strong> (bordure, couleur, taille de texte, style de cadre…) → appliqués sans coupure</li>
+</ul>
+<p>Le bouton <em>Déployer</em> reste nécessaire uniquement pour changer la résolution de sortie, le FPS, le genlock ou le SHM de sortie.</p>
+</template>
+
+<template id="wiki-art-recette">
+<p>La page <strong>Recette</strong> suit une campagne de vérification : une liste de points à
+contrôler, un statut par point, et un <strong>fil de questions-réponses</strong> entre celui qui
+développe et celui qui teste. Elle sert pendant la mise en service — brancher, vérifier, noter ce
+qui cloche, répondre.</p>
+
+<h2>Pourquoi elle existe</h2>
+<p>Une campagne de recette vit d'habitude dans un tableur qui circule par courriel, et personne ne
+sait quelle version fait foi. Ici, tout le monde voit la <strong>même liste en temps quasi réel</strong> :
+le testeur pose une question sous le point concerné, le développeur répond au même endroit, et le
+statut change sous les yeux des deux.</p>
+<p>Chaque point porte trois choses : ce qu'il faut vérifier, <em>comment</em> le vérifier, et le
+<strong>contexte</strong> — version d'image, conteneur concerné. Sans ce dernier, un « ça ne marche
+pas » de la semaine dernière n'est plus interprétable.</p>
+
+<h2>Statuts</h2>
+<ul>
+<li><strong>Non testé</strong> — l'état de départ. Un point non testé n'est pas un point qui marche.</li>
+<li><strong>En cours</strong> — quelqu'un s'en occupe, on ne s'y met pas à deux.</li>
+<li><strong>OK</strong> — vérifié, avec la remarque de qui l'a vérifié.</li>
+<li><strong>Défaut</strong> — constaté ; le fil sous le point porte l'échange.</li>
+</ul>
+
+<h2>L'activer ou la masquer</h2>
+<p><strong>Réglages → Système → Recette</strong> porte l'interrupteur. La page est
+<strong>désactivée par défaut sur une installation neuve</strong> : passée la livraison, une entrée
+de menu qui mène à une campagne vide encombre pour rien.</p>
+<p>Désactivée, la page n'existe plus — elle répond 404, et l'entrée de menu disparaît au prochain
+chargement. Les données, elles, restent : réactiver la retrouve intacte.</p>
+
+<h2>Exporter</h2>
+<p>Deux exports, et ce ne sont pas les mêmes pièces :</p>
+<ul>
+<li><strong>Le modèle</strong> — les points à vérifier, sans les résultats. C'est un plan de tests
+réutilisable : on l'emporte sur une autre installation, on le remet à un intégrateur.</li>
+<li><strong>La campagne complète</strong> — le modèle <em>plus</em> les résultats et les fils de
+questions, donc les noms des testeurs et leurs remarques de terrain. C'est un
+<strong>constat daté</strong>, la pièce qu'on joint à une livraison — pas quelque chose qui circule
+par mégarde.</li>
+</ul>
+<p>Le nom du fichier le rappelle : <code>recette-modele-…</code> ou <code>recette-campagne-…</code>.</p>
+
+<h2>Importer</h2>
+<p><strong>Importer et fusionner</strong> ajoute les points absents et laisse le reste : un point
+déjà présent n'est jamais écrasé. C'est le geste normal — reprendre un modèle, compléter une
+campagne en cours.</p>
+<p><strong>Importer en remplaçant</strong> efface d'abord tout : points, résultats, fils. Le suivi
+ne garde <strong>aucun historique</strong>, donc l'action est sans retour — d'où la confirmation qui
+le dit avant, et pas un message de regret après.</p>
+<h2>Faire circuler questions et réponses</h2>
+<p>C'est l'usage principal de l'export/import quand la recette tourne
+<strong>chez un client</strong> : le testeur est sur site, celui qui répond ne l'est pas.</p>
+<ol>
+<li>sur site, le testeur pose ses questions sous les points concernés, puis
+<strong>exporte la campagne complète</strong> ;</li>
+<li>le fichier vous parvient par le moyen qui vous arrange — courriel, clé, dépôt partagé ;</li>
+<li>vous l'importez chez vous, vous répondez dans les fils, vous corrigez les statuts, puis vous
+<strong>réexportez</strong> ;</li>
+<li>le site réimporte : vos réponses <strong>s'ajoutent</strong> à ses questions.</li>
+</ol>
+<p>La fusion est faite pour qu'<strong>aucun des deux côtés ne perde son travail</strong> :</p>
+<ul>
+<li>les <strong>fils</strong> se recousent message par message, par leur identifiant : une
+conversation ne s'écrase jamais, les deux moitiés se rejoignent et se retrient par date ;</li>
+<li>les <strong>statuts</strong> suivent la règle du plus récent, point par point : un statut n'a
+qu'une valeur, et c'est le dernier qui a regardé qui fait foi.</li>
+</ul>
+<p>Aucun réseau n'est nécessaire entre les deux installations — ce qui compte sur un réseau de
+production isolé, où le contrôleur ne sort pas.</p>
+
+<p>Un point importé n'hérite jamais du drapeau « intégré » : ce marquage désigne les points qui
+viennent du code de <em>cette</em> installation et que le démarrage réinjecte. L'hériter d'un
+fichier rendrait le point indestructible sur la machine qui l'importe.</p>
+
+<h2>Où vivent les données</h2>
+<p>Dans <code>db_testplan.json</code>, à côté de la base — un fichier à part, jamais versionné et
+jamais publié. Il n'entre dans aucune sauvegarde de projet : une recette est un constat sur une
+installation, pas un état de la flotte.</p>
+</template>
+
+<template id="wiki-art-depannage">
+<h2>Multiview ne voit pas le shm du receiver</h2>
+<pre>ssh root@&lt;proxmox-host&gt; "grep dev/shm /etc/pve/lxc/&lt;vmid&gt;.conf"</pre>
+<p>Doit retourner <code>lxc.mount.entry: /dev/shm dev/shm none bind,create=dir 0 0</code>. Sinon recréer le container.</p>
+<h2>PermissionError sur /dev/shm/mxl_*</h2>
+<p>Fichiers fantômes UID 100000 d'anciens containers unprivileged :</p>
+<pre>ssh root@&lt;proxmox-host&gt; "rm -f /dev/shm/mxl_*"</pre>
+<h2>Receivers NMOS invisibles côté VSM</h2>
+<ul>
+<li>Vérifier <code>nmos_receivers_count &gt; 0</code> sur le container</li>
+<li>Si <code>nmos_registry_url</code> est vide, VSM doit utiliser mDNS</li>
+</ul>
+<h2>PTP non locked</h2>
+<ul>
+<li>Vérifier que <code>ptp_ifname</code> voit le grandmaster</li>
+<li>Sans hardware timestamping : offset en millisecondes, inutilisable pour 2110 réel</li>
+</ul>
+<h2>Alerte "SSH vers l'host Proxmox a échoué"</h2>
+<p>Test : <code>ssh -o BatchMode=yes -o ConnectTimeout=5 root@&lt;proxmox-host&gt; "echo OK"</code>. Causes courantes : clé absente, non autorisée, host injoignable.</p>
+<pre>ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ""
+ssh-copy-id root@&lt;proxmox-host&gt;</pre>
+</template>
+
+<template id="wiki-art-lexique">
+<table>
+<tr><th>Terme</th><th>Définition</th></tr>
+<tr><td>ST 2110-20</td><td>Vidéo raw uncompressed sur RTP (RFC 4175)</td></tr>
+<tr><td>ST 2110-30</td><td>Audio PCM (L24) sur RTP (AES67)</td></tr>
+<tr><td>NMOS IS-04</td><td>API de discovery des Nodes/Devices/Senders/Receivers</td></tr>
+<tr><td>NMOS IS-05</td><td>API de Connection : PATCH staged pour subscriber</td></tr>
+<tr><td>SDP</td><td>Session Description Protocol : décrit un flux RTP</td></tr>
+<tr><td>RDS</td><td>Registration &amp; Discovery Service NMOS</td></tr>
+<tr><td>BMCA</td><td>Best Master Clock Algorithm : élection automatique du master PTP (priority1 &lt; 128 = préféré GM)</td></tr>
+<tr><td>PHC</td><td>PTP Hardware Clock : horloge matérielle sur NIC (ConnectX-4+, E810)</td></tr>
+<tr><td>PF / VF</td><td>Physical Function / Virtual Function (SR-IOV). Le pipeline 2110 utilise la PF directement (AF-XDP), pas de VF par conteneur</td></tr>
+<tr><td>MTL</td><td>Intel Media Transport Library : stack ST 2110 DPDK sur E810, PTP et 2022-7 dans la NIC</td></tr>
+<tr><td>DPDK</td><td>Data Plane Development Kit : accès NIC en espace utilisateur, bypass kernel</td></tr>
+<tr><td>Policy routing</td><td>Tables de routage par source IP — évite les conflits de gateway sur les hôtes multi-NIC</td></tr>
+<tr><td>ConnectX-3</td><td>mlx4, pas de PTP hw — non recommandé pour 2110 production</td></tr>
+<tr><td>ConnectX-4/5/6/7</td><td>mlx5, PTP hw sub-µs, SR-IOV — recommandé pour 2110 kernel mode</td></tr>
+<tr><td>SMPTE 2022-7</td><td>Dual-path redondant : deux jambes réseau indépendantes, sélection per-paquet</td></tr>
+<tr><td>shm</td><td>Shared memory : <code>/dev/shm</code>, fichier tmpfs partagé entre containers</td></tr>
+<tr><td>LXC</td><td>Linux Containers, virtualisation légère (pas de time namespace — héritent CLOCK_REALTIME)</td></tr>
+<tr><td>WHEP</td><td>WebRTC-HTTP Egress Protocol : lecture WebRTC côté client</td></tr>
+<tr><td>WHIP</td><td>WebRTC-HTTP Ingestion Protocol : push WebRTC vers un serveur</td></tr>
+</table>
+</template>
+
+<template id="wiki-art-snmp-supervision">
+<h2>Brancher votre supervision (SNMP)</h2>
+<p>Bobi.Studio expose l'état du <strong>cluster entier</strong> à un système de supervision (NMS)
+   par SNMPv3 : santé des nœuds, synchronisation PTP, état des flux ST 2110, conteneurs et alarmes
+   en cours. <strong>Un seul point d'interrogation</strong> — le contrôleur actif — parce que la
+   donnée de tous les nœuds y est déjà agrégée. Il n'y a rien à installer sur les nœuds.</p>
+
+<h3>En cinq minutes</h3>
+<ol>
+<li>Ouvrez <strong>Réglages → Protocoles → SNMP</strong> (si l'onglet n'apparaît pas, activez
+    d'abord le service SNMP dans la liste des services).</li>
+<li>Choisissez un <strong>nom d'utilisateur</strong> et <strong>deux mots de passe différents</strong>
+    d'au moins 8 caractères — un pour l'authentification, un pour le chiffrement. Ils ne sont
+    jamais réaffichés ensuite.</li>
+<li>Activez l'agent et enregistrez. La page affiche alors <strong>l'engine ID</strong> et une
+    <strong>ligne de commande prête à copier</strong>.</li>
+<li>Cliquez sur <strong>Télécharger la MIB</strong> et chargez le fichier dans votre NMS
+    (Centreon, Zabbix, PRTG, LibreNMS…). C'est lui qui donne un nom lisible à chaque valeur.</li>
+<li>Vérifiez depuis un poste tiers en collant la ligne de commande affichée, avec vos mots de
+    passe à la place des repères.</li>
+</ol>
+<p><a class="btn btn-blue" href="/api/snmp/mib" download>Télécharger BOBI-STUDIO-MIB.mib</a></p>
+
+<h3>Recevoir les alarmes sans interroger</h3>
+<p>L'interrogation périodique donne l'état ; les <strong>notifications</strong> préviennent
+   immédiatement. Elles se configurent ailleurs, dans
+   <strong>Réglages → Alertes → Canal SNMP</strong> : c'est le même moteur de décision que les
+   e-mails et le syslog (seuil, anti-tempête, état des envois), avec SNMP comme simple canal
+   de sortie.</p>
+<div class="wiki-note"><strong>Laissez « Inform » plutôt que « Trap »</strong> : un inform est
+   <em>acquitté</em>, donc une notification perdue se voit dans l'état des envois. Un trap ne
+   l'est pas — sa perte est silencieuse. Si votre NMS n'accepte que les traps, il devra connaître
+   notre <strong>engine ID</strong> (affiché par la page dès que « trap » est choisi) : sans ce
+   provisionnement, il jette les traps sans un mot pendant que l'envoi se déclare réussi.</div>
+
+<h3>Trois choses à savoir avant d'écrire vos règles</h3>
+<ul>
+<li><strong>N'alarmez pas sur <code>bsPtpLocked</code></strong>, mais sur <code>bsPtpSynced</code>.
+    Les deux ne disent pas la même chose : <code>bsPtpSynced</code> répond « il y a une référence
+    de temps » (disponibilité), <code>bsPtpLocked</code> répond « le servo est convergé sous
+    100 ns » (qualité). Une alarme de disponibilité doit donc porter sur le premier : au démarrage
+    d'un moteur, le servo met une à deux minutes à converger, et une règle sur
+    <code>bsPtpLocked</code> sonnerait à chaque déploiement. Gardez le second pour une règle de
+    qualité, avec une temporisation.</li>
+<li><strong>Lisez toujours la colonne <code>…Age</code></strong> à côté d'une valeur. Sans elle,
+    une panne de <em>collecte</em> se lit exactement comme une panne de <em>production</em>.</li>
+<li><strong>Corrélez sur les numéros d'emplacement</strong> (<code>bsAlarmRoleNum</code>,
+    <code>bsFlowRoleNum</code>) et non sur les identifiants de conteneur : ces derniers sont
+    réattribués quand un conteneur est recréé, et votre règle finirait par désigner autre
+    chose.</li>
+</ul>
+
+<div class="wiki-warn"><strong>Si vous aviez chargé une version antérieure de la MIB</strong> :
+   le numéro d'entreprise IANA de BOBI a été attribué le 2026-08-26 (66633). L'arbre était
+   auparavant publié sous un arc réservé provisoire — <strong>tout a changé d'adresse</strong>, et
+   l'engine ID a été régénéré. Rechargez la MIB et re-provisionnez les identifiants côté NMS.</div>
+
+<h2>Référence d'intégration</h2>
+<p class="meta">Contenu chargé depuis <code>docs/reference/SNMP_MIB.md</code> — <span class="wiki-doc-mtime" data-doc="snmp-mib">…</span></p>
+<div class="wiki-doc-content" data-doc="snmp-mib">Chargement…</div>
+</template>
+
+<template id="wiki-art-installation">
+<p class="meta">Contenu chargé depuis <code>INSTALL.md</code> — <span class="wiki-doc-mtime" data-doc="install">…</span></p>
+<div class="wiki-doc-content" data-doc="install">Chargement…</div>
+</template>
+
+<template id="wiki-art-infrastructure">
+<p class="meta">Contenu chargé depuis <code>INFRASTRUCTURE.md</code> — <span class="wiki-doc-mtime" data-doc="infrastructure">…</span></p>
+<div class="wiki-doc-content" data-doc="infrastructure">Chargement…</div>
+</template>
+
+<template id="wiki-art-mises-a-jour">
+<p class="meta">Contenu chargé depuis <code>CHANGELOG.md</code> — <span id="wiki-changelog-mtime">…</span></p>
+<div id="wiki-changelog-content">Chargement…</div>
+</template>
+
+<template id="wiki-art-rdma-replication">
+<p>La <strong>réplication RDMA</strong> transporte un flux MXL produit sur un nœud jusqu'au domaine MXL d'un autre nœud, sans repasser par ST 2110. On ne la pilote presque jamais directement : câbler un producteur d'un nœud vers un consommateur d'un autre nœud, sur la page <strong>Câbles</strong>, provisionne le lien sous le capot. Cet article explique ce qui se passe dessous, et surtout <strong>comment obtenir plus de 10 Gb/s</strong> quand un seul port ne suffit plus.</p>
+
+<div class="wiki-note">Réglages → <em>Nœuds &amp; Matériel → RDMA</em> pour l'activation, les liens et les chemins. Monitoring → onglet <em>RDMA</em> pour les débits mesurés par interface.</div>
+
+<h2>Pré-requis matériel</h2>
+<ul>
+<li>Une NIC <strong>RoCE</strong> (Mellanox ConnectX) sur chaque nœud concerné, déclarée en rôle <code>rdma</code> dans Réglages → <em>Nœuds &amp; Matériel → Réseau hôte</em>, avec une IP.</li>
+<li>Un nœud 2110 ne peut <strong>pas</strong> faire son RDMA sur sa carte E810 : la RoCE y est désactivée au runtime pour l'AF-XDP. Il lui faut une seconde NIC dédiée.</li>
+<li>Les deux nœuds doivent partager un <strong>sous-réseau</strong> sur leurs interfaces <code>rdma</code>.</li>
+</ul>
+
+<h2>Passer à plusieurs ports : ce qui ne marche pas</h2>
+<p>Quand un port sature, le réflexe est d'agréger deux liens physiques en LACP. <strong>Ça ne donnera rien.</strong> Deux raisons indépendantes :</p>
+<ul>
+<li>En RoCE, une connexion (une <em>QP</em>) reste sur <strong>un seul port</strong>. Même avec un bond parfait, une réplication donnée ne dépassera jamais le débit d'un port.</li>
+<li>Le <em>RoCE-over-LAG</em>, qui fusionne deux ports en un device verbs unique, est une fonction des <strong>ConnectX-4 et au-delà</strong>. Sur une ConnectX-3, un <code>bond0</code> Linux donne un lien IP agrégé et un RDMA qui continue de sortir par un seul port.</li>
+</ul>
+
+<h2>Ce qui marche : distribuer les liens</h2>
+<p>L'agrégat s'obtient en répartissant les <strong>liens</strong> entre plusieurs <strong>chemins</strong>. Un chemin = une paire de ports partageant un sous-réseau. Chaque lien reçoit son chemin à sa création, sur le moins chargé du moment.</p>
+
+<div class="wiki-warn"><strong>Un sous-réseau distinct par chemin, impérativement.</strong> Deux ports d'un même nœud sur le même sous-réseau, et c'est le modèle « weak host » de Linux qui décide : l'ARP répond par n'importe quel port, le pair apprend la mauvaise MAC, et tout ressort par un seul fil. Deux ports actifs, aucune erreur, la moitié de la bande passante perdue. Exemple d'adressage sain : <code>192.168.1.0/24</code> pour le chemin 1, <code>192.168.2.0/24</code> pour le chemin 2.</div>
+
+<p>Le durcissement ARP correspondant (<code>arp_ignore=1</code>, <code>arp_announce=2</code>) est posé automatiquement à l'installation du nœud et rejoué à chaque établissement de lien — rien à faire à la main, y compris après un ré-enrôlement.</p>
+
+<h3>La charge est une estimation, pas une mesure</h3>
+<p>La répartition raisonne sur le débit <strong>déduit du format</strong> de chaque flux (résolution, cadence, profondeur, chroma), et non sur le trafic observé. C'est volontaire : au moment où un lien est créé, il ne transporte encore rien. Un lien dont le format n'est pas encore connu compte pour une valeur forfaitaire, réglable (<code>rdma_default_flow_gbps</code>), et sera recalé au ré-établissement suivant.</p>
+
+<p>La comptabilité est <strong>orientée</strong> : l'Ethernet étant full-duplex, l'aller et le retour d'un même port sont deux budgets indépendants. Saturer un sens n'interdit pas l'autre.</p>
+
+<h2>Câblage inter-nœud : le lien se crée tout seul</h2>
+<p>On ne crée presque jamais un lien à la main. Câbler, sur la page <strong>Câbles</strong>, un
+producteur d'un nœud vers un consommateur d'un <em>autre</em> nœud provisionne la réplication sous
+le capot — le flux n'existant pas dans le domaine MXL du consommateur, il faut bien l'y amener.</p>
+<p>Une <strong>réconciliation</strong> tourne en fond (toutes les 30 s) et rattrape les câbles
+inter-nœuds dépourvus de lien. Elle existe parce que le provisionnement à la pose ne suffisait pas :
+tous les câbles ne passent pas par le même chemin de code — composeur multiview, restauration de
+snapshot, câblages antérieurs à la fonctionnalité — et ceux-là n'obtenaient rien. Le symptôme était
+muet : le câble était affiché, la page annonçait « RDMA », et le consommateur lisait un flux absent
+de son propre nœud.</p>
+<ul>
+<li>Elle ne contourne <strong>pas</strong> l'interrupteur : service désactivé, aucune création.</li>
+<li>Un lien existant compte <strong>quel que soit son statut</strong> — réparer un lien en erreur
+est le travail de la réconciliation d'état, pas de celle-ci.</li>
+<li>Elle crée au plus <strong>4 liens par passe</strong> : chaque lien, ce sont deux conteneurs de
+réplication à démarrer. La passe suivante prend la suite.</li>
+<li>Un flux que <strong>personne ne produit</strong> est ignoré : câbler vers un flux inexistant est
+un problème de câblage, et lui inventer un lien le masquerait.</li>
+</ul>
+<p>Chaque création lève une alerte, pour que le rattrapage ne soit pas silencieux non plus.</p>
+
+<div class="wiki-note">Sur la page Câbles, un câble inter-nœud porte la mention <strong>RDMA</strong>
+quand sa réplication tourne, <strong>RDMA …</strong> pendant l'établissement, et
+<strong>RDMA ABSENT</strong> en rouge quand aucun lien ne le transporte. Cette dernière ne devrait
+plus apparaître que fugitivement, le temps que la réconciliation passe.</div>
+
+<h2>Ajouter un port à une installation en service</h2>
+<p>L'affectation se fait à la création du lien. Câbler une seconde interface ne déplace donc <strong>rien</strong> par lui-même : les liens en place gardent leur chemin et le nouveau port reste à zéro. Marche à suivre :</p>
+<ol>
+<li>Câbler le second port, des deux côtés.</li>
+<li>Le déclarer en rôle <code>rdma</code> sur chaque nœud, avec une IP dans un <strong>nouveau</strong> sous-réseau.</li>
+<li>Réglages → <em>Nœuds &amp; Matériel → RDMA</em> → section <strong>Chemins</strong> : le nouveau chemin doit apparaître, à 0 lien.</li>
+<li><strong>Simuler un rééquilibrage</strong>. La simulation liste les liens à déplacer et la charge résultante par chemin ; rien n'est modifié tant qu'on n'a pas confirmé.</li>
+<li>Confirmer. Les liens déplacés sont ré-établis, ce qui implique une <strong>coupure brève</strong> de leur réplication — à faire en fenêtre de maintenance si les flux sont à l'antenne.</li>
+</ol>
+
+<h2>Panne d'un chemin : bascule automatique</h2>
+<p>Quand un port tombe — câble débranché, transceiver mort, port de switch en panne — les liens qui
+l'empruntaient sont <strong>déplacés sur le chemin survivant</strong>, le moins chargé. Sans ça,
+deux ports agrégés donnent de l'agrégat mais aucune redondance : l'adresse d'un lien étant figée à
+sa création, les liens retenteraient indéfiniment sur un fil mort pendant que l'autre chemin a de la
+place.</p>
+<p>Un chemin n'est déclaré mort que sur <strong>preuve positive</strong> : ses deux ports doivent
+être relevés et l'un d'eux non-ACTIVE. Un nœud dont le relevé de santé manque — sonde pas encore
+passée, hôte injoignable — n'est jamais lu comme « ports morts », sans quoi une panne de supervision
+provoquerait une vraie coupure.</p>
+
+<div class="wiki-warn"><strong>On bascule à la panne, on ne revient pas tout seul.</strong> Déplacer
+un lien déjà cassé ne peut que l'améliorer. Le ramener sur son chemin d'origine, à l'inverse,
+casserait un lien qui fonctionne pour un simple gain d'équilibrage. Au retour du port, une alerte
+signale que les liens sont restés sur leur chemin de secours : c'est au <strong>rééquilibrage
+manuel</strong> de les répartir, lui qui annonce sa coupure avant de l'infliger.</div>
+
+<h2>Surveillance de la capacité</h2>
+<p>Un chemin qui dépasse sa capacité lève une alerte, <strong>à la transition</strong> et non à
+chaque passage — et une seconde, informative, quand il repasse dessous. Le contrôle a lieu à chaque
+passe de réconciliation, pas seulement à la création d'un lien : la charge bouge sans qu'aucun lien
+soit créé, par exemple lorsqu'un format grossit sous des liens déjà placés, après une bascule de
+chemin, ou quand la réconciliation crée des liens d'elle-même.</p>
+
+<h2>Vérifier que ça répartit vraiment</h2>
+<p>C'est le point le plus important, parce qu'une répartition morte ne ressemble à rien d'anormal. Monitoring → onglet <strong>RDMA</strong> ventile le débit <strong>par interface</strong> :</p>
+<ul>
+<li>Un total de 6 Gb/s sur une capacité de 20 peut être <strong>6+0</strong> (répartition morte) ou <strong>3+3</strong> (répartition vivante). Le total seul ne les distingue pas.</li>
+<li>Un port qui reste à zéro <em>pendant qu'un autre port du même nœud travaille</em> est marqué « aucun trafic ». C'est le symptôme à chercher.</li>
+<li>La capacité affichée d'un nœud est la <strong>somme</strong> de ses ports.</li>
+</ul>
+
+<h2>Diagnostic</h2>
+<ul>
+<li><strong>Le nouveau chemin n'apparaît pas dans Chemins</strong> — les deux nœuds n'ont pas de sous-réseau commun sur leurs interfaces <code>rdma</code>. Vérifier les IP déclarées des deux côtés.</li>
+<li><strong>« Aucun chemin »</strong> — un seul port <code>rdma</code> par nœud : il n'y a rien à répartir, c'est normal.</li>
+<li><strong>Deux interfaces partagent le sous-réseau X</strong> (avertissement dans l'onglet) — voir l'encadré plus haut : un seul port transportera. Donner un sous-réseau distinct à chacun.</li>
+<li><strong>Une interface porte une adresse recouvrant le sous-réseau d'une autre</strong> — une adresse secondaire aussi spécifique que celle du port légitime peut capter son trafic. Une adresse <em>moins</em> spécifique (un <code>/16</code> à côté d'un <code>/24</code>) est inoffensive : le noyau route au préfixe le plus long.</li>
+<li><strong>Un lien reste « en attente »</strong> — le flux source n'est pas (encore) produit. Ce n'est pas une erreur RDMA ; le lien s'établira dès que le producteur démarre.</li>
+<li><strong>Aucun lien audio ni ANC alors que la page Câbles montre ces ports</strong> — un port déclaré n'est pas un flux produit. Vérifier le <strong>voyant de signal</strong> du port sur la page Câbles (cf. article <em>Page Câbles</em>) : éteint, il n'y a rien à répliquer, et le RDMA n'y est pour rien. Sur un moteur 2110, les sorties audio et ANC restent éteintes tant qu'aucun receiver 2110-30 ou 2110-40 n'est abonné en IS-05.</li>
+<li><strong>Un câble marqué « RDMA ABSENT »</strong> — le câble relie deux nœuds mais aucun lien ne transporte son flux : le consommateur lit un flux qui n'existe pas chez lui. La réconciliation le provisionne dans les 30 s ; si la mention persiste, c'est que la création échoue (voir les alertes) ou que le service RDMA est désactivé.</li>
+<li><strong>Un lien ne transporte rien alors que tout est « running »</strong> — vérifier l'horloge du nœud source : un nœud hors grille TAI produit des flux que la cible refuse d'indexer. Voir l'article <strong>Horloges du cluster (TAI)</strong>.</li>
+</ul>
+
+<h2>Dimensionner</h2>
+<p>Un ordre de grandeur utile, en 4:2:2 non compressé : un 1080p50 pèse environ <strong>1,7 Gb/s</strong> en 8 bits et <strong>2,1 Gb/s</strong> en 10 bits. Six flux 1080p50 8 bits saturent donc un port 10 Gb/s, et le passage en 10 bits impose de répartir.</p>
+
+<div class="wiki-note"><strong>Recommandation</strong> : pour une installation neuve, préférer <strong>un seul port RDMA correctement dimensionné</strong> (25 Gb/s) à deux ports agrégés. Le multi-port reste disponible pour les machines dont la carte n'est pas remplaçable, mais chaque diagnostic ultérieur devra se demander par quel chemin passe un lien donné.</div>
+</template>
+
+<template id="wiki-art-obtenir-aide">
+<p>Bobi.Studio est développé par <strong>Bobi</strong>.</p>
+<ul>
+<li>Site : <a href="https://www.bobi.studio" target="_blank" rel="noopener">www.bobi.studio</a></li>
+<li>Contact : <a href="mailto:contact@bob-i.tv">contact@bob-i.tv</a></li>
+</ul>
+</template>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     WIKI SCRIPT
+     ══════════════════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+
+// ── Définition des articles core ──────────────────────────────────────────
+const CORE_ARTICLES = [
+  { id: 'vue-densemble',        title: "Vue d'ensemble",              cat: 'start' },
+  { id: 'installation',         title: 'Installer et mettre en service', cat: 'start' },
+  { id: 'infrastructure',       title: 'Choix matériel & réseau',     cat: 'prereq' },
+  { id: 'cluster-architecture', title: 'Architecture cluster',        cat: 'start' },
+  { id: 'systeme-plugins',      title: 'Système de plugins',          cat: 'start' },
+  { id: 'prereq-orchestrateur', title: 'Pré-requis orchestrateur (historique LXC)', cat: 'prereq' },
+  { id: 'prereq-containers',    title: 'Pré-requis containers LXC (historique)',    cat: 'prereq' },
+  { id: 'prereq-2110',          title: 'Pré-requis ST 2110 & SR-IOV', cat: 'prereq' },
+  { id: 'workflow-streams',     title: 'Streaming multi-destinations', cat: 'pipeline' },
+  { id: 'webrtc-explique',      title: 'WebRTC',                      cat: 'pipeline' },
+  { id: 'monitoring',           title: 'Monitoring',                  cat: 'pipeline' },
+  { id: 'genlock',              title: 'Synchronisation (Genlock)',   cat: 'pipeline' },
+  { id: 'cables-page',          title: 'Page Câbles',                 cat: 'pipeline' },
+  { id: 'mode-tranche',         title: 'Mode tranche (latence sous-image)', cat: 'pipeline' },
+  { id: 'tsl-explique',         title: 'TSL 5.0 (tally centralisé)',  cat: 'controle' },
+  { id: 'workflow-atem',        title: 'Pupitre ATEM',                cat: 'controle' },
+  { id: 'workflow-skaarhoj',    title: 'Pupitre Skaarhoj (Raw Panel)', cat: 'controle' },
+  { id: 'nmos-explique',        title: 'NMOS IS-04/IS-05',            cat: 'infra' },
+  { id: 'sriov-explique',       title: 'NIC ST 2110 (PF / AF-XDP)',   cat: 'infra' },
+  { id: 'ptp-explique',         title: 'PTP',                         cat: 'infra' },
+  { id: 'snmp-supervision',     title: 'Supervision SNMP (brancher un NMS)', cat: 'infra' },
+  { id: 'horloges-cluster',     title: 'Horloges du cluster (TAI)',   cat: 'infra' },
+  { id: 'cpu-pinning',          title: 'CPU pinning',                 cat: 'infra' },
+  { id: 'choix-serveur',        title: 'Choisir un serveur (dimensionnement)', cat: 'infra' },
+  { id: 'mxl-format',           title: 'MXL (bus shm) & format vidéo', cat: 'infra' },
+  { id: 'jeux-instructions',    title: 'Jeux d\'instructions CPU (deux variantes)', cat: 'infra' },
+  { id: 'rdma-replication',     title: 'Réplication RDMA & agrégation de ports', cat: 'infra' },
+  { id: 'projets-raz',          title: 'Projets & RAZ',               cat: 'operations' },
+  { id: 'hot-input',            title: 'Changement de source à chaud', cat: 'operations' },
+  { id: 'recette',              title: 'Recette : suivi de campagne',  cat: 'operations' },
+  { id: 'depannage',            title: 'Dépannage courant',           cat: 'debug' },
+  { id: 'lexique',              title: 'Lexique',                     cat: 'debug' },
+  { id: 'dev-orientation',      title: "S'orienter dans le code",     cat: 'dev' },
+  { id: 'dev-plugin',           title: 'Écrire un plugin',            cat: 'dev' },
+  { id: 'dev-service',          title: 'Écrire un service',           cat: 'dev' },
+  { id: 'dev-contribuer',       title: 'Contribuer',                  cat: 'dev' },
+  { id: 'mises-a-jour',         title: 'Mises à jour',                cat: 'about' },
+  { id: 'obtenir-aide',         title: 'Obtenir de l\'aide',          cat: 'about' },
+];
+
+const CATEGORIES = [
+  { id: 'start',      label: 'Démarrage' },
+  { id: 'prereq',     label: 'Pré-requis' },
+  { id: 'pipeline',   label: 'Pipeline vidéo' },
+  { id: 'sources',    label: 'Sources & Destinations' },
+  { id: 'traitements',label: 'Traitements' },
+  { id: 'medias',     label: 'Médias' },
+  { id: 'controle',   label: 'Contrôle' },
+  { id: 'infra',      label: 'Infrastructure' },
+  { id: 'streams',    label: 'Streams' },
+  { id: 'destinations',label: 'Destinations' },
+  { id: 'operations', label: 'Opérations' },
+  { id: 'debug',      label: 'Dépannage' },
+  { id: 'dev',        label: 'Développer' },
+  { id: 'about',      label: 'À propos' },
+];
+
+// ── State ─────────────────────────────────────────────────────────────────
+let allArticles = [...CORE_ARTICLES];   // core + plugin articles merged
+let searchIndex = [];                   // [{id, title, cat, catLabel, text}]
+let currentId   = null;
+let history_    = [];
+let collapsedCats = new Set();          // ids des catégories repliées
+let tocObserver = null;                 // IntersectionObserver du scroll-spy TOC
+
+// ── DOM refs ──────────────────────────────────────────────────────────────
+const navEl     = document.getElementById('wiki-nav');
+const contentEl = document.getElementById('wiki-content');
+const searchEl  = document.getElementById('wiki-search');
+const kbdEl     = document.getElementById('wiki-search-kbd');
+
+// ── Utilitaires ───────────────────────────────────────────────────────────
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function stripHtml(html){
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  return d.textContent || '';
+}
+
+function catLabel(catId){
+  return (CATEGORIES.find(c => c.id === catId)||{}).label || catId;
+}
+
+// ── Charger les articles plugins ──────────────────────────────────────────
+async function loadPluginArticles(){
+  try {
+    const r = await fetch('/api/plugins/help');
+    if (!r.ok) return;
+    const plugins = await r.json();
+    const pluginCatMap = { sources:'sources', traitements:'traitements',
+                           medias:'medias', streams:'streams', destinations:'destinations' };
+    for (const p of plugins) {
+      const cat = pluginCatMap[p.category] || p.category;
+      allArticles.push({
+        id: 'plugin-' + p.type,
+        title: p.label,
+        cat: cat,
+        version: p.version,
+        html: p.html,
+        isPlugin: true,
+        // Langue RÉELLEMENT servie par le plugin ("" = fichier générique).
+        docLang: p.lang || '',
+      });
+    }
+  } catch(e) {}
+  buildIndex();
+  renderNav();
+  // Naviguer vers l'article courant (si URL hash pointe vers un plugin)
+  const hash = location.hash.slice(1);
+  if (hash && allArticles.find(a => a.id === hash)) {
+    navigate(hash, false);
+  }
+}
+
+// ── Construire l'index de recherche ──────────────────────────────────────
+function buildIndex(){
+  searchIndex = allArticles.map(a => {
+    const raw = a.html ? stripHtml(a.html)
+                       : stripHtml((document.getElementById('wiki-art-' + a.id)||{}).innerHTML || '');
+    return { id: a.id, title: a.title, cat: a.cat, catLabel: catLabel(a.cat), text: raw };
+  });
+}
+
+// ── Rendu du nav ─────────────────────────────────────────────────────────
+function renderNav(){
+  const catOrder = CATEGORIES.map(c => c.id);
+  const bycat = {};
+  for (const a of allArticles) {
+    if (!bycat[a.cat]) bycat[a.cat] = [];
+    bycat[a.cat].push(a);
+  }
+  // Trier les catégories selon CATEGORIES order, puis les inconnues
+  const keys = [...new Set([...catOrder, ...Object.keys(bycat)])].filter(k => bycat[k]);
+  // Catégorie de l'article courant (toujours dépliée)
+  const activeCat = (allArticles.find(a => a.id === currentId) || {}).cat;
+  let html = '';
+  for (const k of keys) {
+    const collapsed = collapsedCats.has(k) && k !== activeCat;
+    const items = bycat[k];
+    html += `<div class="wiki-cat${collapsed ? ' collapsed' : ''}" data-cat="${esc(k)}">
+      <button class="wiki-cat-hd" data-cat-toggle="${esc(k)}" aria-expanded="${collapsed ? 'false' : 'true'}">
+        <span class="wiki-cat-chevron" aria-hidden="true">▾</span>
+        <span>${esc(catLabel(k))}</span>
+        <span class="wiki-cat-count">${items.length}</span>
+      </button>
+      <div class="wiki-cat-items">`;
+    for (const a of items) {
+      html += `<a class="wiki-nav-item${a.id === currentId ? ' active' : ''}"
+                  data-id="${esc(a.id)}" role="button" tabindex="0"
+                  title="${esc(a.title)}">${esc(a.title)}</a>`;
+    }
+    html += `</div></div>`;
+  }
+  navEl.innerHTML = html;
+  navEl.querySelectorAll('.wiki-nav-item').forEach(el => {
+    el.addEventListener('click', () => navigate(el.dataset.id));
+    el.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' ') navigate(el.dataset.id); });
+  });
+  navEl.querySelectorAll('[data-cat-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => toggleCat(btn.dataset.catToggle));
+  });
+}
+
+// ── Replier / déplier une catégorie ───────────────────────────────────────
+function toggleCat(catId){
+  if (collapsedCats.has(catId)) collapsedCats.delete(catId);
+  else collapsedCats.add(catId);
+  const catEl = navEl.querySelector(`.wiki-cat[data-cat="${catId}"]`);
+  if (catEl) {
+    const collapsed = collapsedCats.has(catId);
+    catEl.classList.toggle('collapsed', collapsed);
+    const btn = catEl.querySelector('.wiki-cat-hd');
+    if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+}
+
+// ── Navigation vers un article ────────────────────────────────────────────
+function navigate(id, pushState = true){
+  const art = allArticles.find(a => a.id === id);
+  if (!art) return;
+  if (pushState && currentId && currentId !== id) history_.push(currentId);
+  currentId = id;
+  location.hash = id;
+  renderArticle(art);
+  // Déplier la catégorie de l'article et rafraîchir le nav (active + état replié)
+  collapsedCats.delete(art.cat);
+  renderNav();
+  // Scroll nav item into view
+  const active = navEl.querySelector('.wiki-nav-item.active');
+  if (active) active.scrollIntoView({ block: 'nearest' });
+  contentEl.scrollTop = 0;
+  // (Le chargement des articles adossés à un markdown — CHANGELOG.md, INSTALL.md… — se fait dans
+  // `renderArticle`, qui est le point de passage de TOUTES les voies de rendu, pas seulement de la
+  // navigation.)
+}
+
+// ── Rendu d'un article ────────────────────────────────────────────────────
+function renderArticle(art){
+  let body;
+  if (art.html) {
+    // ⚠ UNE AIDE DANS UNE AUTRE LANGUE DOIT LE DIRE. Le repli sur `help.md` est
+    // silencieux côté serveur ; sans ce bandeau, un article anglais dans une
+    // interface française se lit comme un défaut de traduction du PRODUIT, alors
+    // que c'est une doc de plugin que personne n'a encore traduite. On ne le dit
+    // que si la langue servie est CONNUE et différente : le fichier générique ne
+    // déclare pas la sienne, et l'accuser à tort serait pire que se taire.
+    const ui = (window.LANG || 'fr');
+    body = (art.docLang && art.docLang !== ui)
+      ? `<p class="wiki-doc-lang">${esc(window.t('js.aide_doc_autre_langue')
+           .replace('{l}', art.docLang.toUpperCase()))}</p>` + art.html
+      : art.html;
+  } else {
+    const tpl = document.getElementById('wiki-art-' + art.id);
+    body = tpl ? tpl.innerHTML : '<p>Contenu introuvable.</p>';
+  }
+  const verBadge = art.version
+    ? `<span class="wiki-article-ver">v${esc(art.version)}</span>` : '';
+  contentEl.innerHTML = `<div class="wiki-doc" id="wiki-doc">
+    <article class="wiki-article">
+      <div class="wiki-article-meta">
+        <span class="wiki-article-cat">${esc(catLabel(art.cat))}</span>
+        ${verBadge}
+      </div>
+      <h1>${esc(art.title)}</h1>
+      ${body}
+    </article>
+    <nav class="wiki-toc" id="wiki-toc" aria-label="Sur cette page"></nav>
+  </div>`;
+  // Appliquer les classes wiki sur les divs aide-note / aide-warning injectées par plugins
+  contentEl.querySelectorAll('.aide-note').forEach(el => { el.className = 'wiki-note'; });
+  contentEl.querySelectorAll('.aide-warning').forEach(el => { el.className = 'wiki-warn'; });
+  buildToc();
+  // RÉ-HYDRATATION des articles adossés à un markdown (INSTALL.md, CHANGELOG.md…). Le corps vient
+  // d'être RECRÉÉ depuis son <template> : il est donc revenu à « Chargement… ». Le remplissage doit
+  // vivre ICI, seul point de passage obligé de toutes les voies de rendu — le brancher sur la
+  // navigation seule laissait l'article se vider au retour, ou en effaçant la recherche
+  // (`search('')` appelle renderArticle directement). Le conteneur déclare LUI-MÊME son document
+  // (`data-doc`) : aucune table id d'article → nom de document à tenir à jour.
+  contentEl.querySelectorAll('.wiki-doc-content[data-doc]').forEach(el => loadDoc(el.dataset.doc));
+  if (contentEl.querySelector('#wiki-changelog-content')) loadChangelog();
+}
+
+// ── Table des matières « Sur cette page » ─────────────────────────────────
+function slugify(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'sec';
+}
+function buildToc(){
+  if (tocObserver){ tocObserver.disconnect(); tocObserver = null; }
+  const doc = document.getElementById('wiki-doc'), tocEl = document.getElementById('wiki-toc');
+  const article = doc && doc.querySelector('.wiki-article');
+  if (!doc || !tocEl || !article) return;
+  const heads = [...article.querySelectorAll('h2, h3')];
+  if (heads.length < 2){ doc.classList.remove('has-toc'); tocEl.innerHTML = ''; return; }
+  const used = new Set();
+  for (const h of heads){
+    let id = h.id || slugify(h.textContent);
+    while (used.has(id)) id += '-x';
+    used.add(id); h.id = id;
+  }
+  tocEl.innerHTML = `<div class="wiki-toc-hd">Sur cette page</div>` + heads.map(h =>
+    `<a class="wiki-toc-item lvl-${h.tagName==='H3'?3:2}" href="#" data-tid="${esc(h.id)}">${esc(h.textContent)}</a>`).join('');
+  doc.classList.add('has-toc');
+  const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches, byId = {};
+  tocEl.querySelectorAll('.wiki-toc-item').forEach(a => {
+    byId[a.dataset.tid] = a;
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const t = article.querySelector('#' + CSS.escape(a.dataset.tid));
+      if (t) t.scrollIntoView({ behavior: smooth?'smooth':'auto', block:'start' });
+    });
+  });
+  tocObserver = new IntersectionObserver(ents => {
+    for (const en of ents){
+      if (!en.isIntersecting) continue;
+      tocEl.querySelectorAll('.wiki-toc-item.active').forEach(x => x.classList.remove('active'));
+      const a = byId[en.target.id];
+      if (a){ a.classList.add('active'); a.scrollIntoView({block:'nearest'}); }
+    }
+  }, { root: contentEl, rootMargin: '0px 0px -70% 0px', threshold: 0 });
+  heads.forEach(h => tocObserver.observe(h));
+}
+
+// ── Recherche ─────────────────────────────────────────────────────────────
+function search(q){
+  q = q.trim();
+  if (!q) {
+    if (currentId) renderArticle(allArticles.find(a=>a.id===currentId)||allArticles[0]);
+    else navigate(allArticles[0].id, false);
+    return;
+  }
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const scored = searchIndex.map(a => {
+    const titleL = a.title.toLowerCase();
+    const textL  = a.text.toLowerCase();
+    let score = 0;
+    for (const t of terms) {
+      if (titleL.includes(t)) score += 10;
+      if (textL.includes(t))  score += 1;
+    }
+    return { ...a, score };
+  }).filter(a => a.score > 0).sort((a,b) => b.score - a.score);
+
+  if (!scored.length) {
+    contentEl.innerHTML = `<div class="wiki-no-results">Aucun résultat pour « ${esc(q)} »</div>`;
+    return;
+  }
+
+  // Extraire un snippet avec contexte
+  function snippet(text, query, len=160){
+    const tl = text.toLowerCase();
+    const ql = query.toLowerCase().split(/\s+/)[0];
+    const idx = tl.indexOf(ql);
+    const start = Math.max(0, idx - 60);
+    const raw = text.slice(start, start+len).replace(/\s+/g,' ');
+    return raw.replace(new RegExp('(' + ql.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi'),
+                       '<mark>$1</mark>');
+  }
+
+  const items = scored.slice(0,20).map(a =>
+    `<div class="wiki-result-item" data-id="${esc(a.id)}" role="button" tabindex="0">
+      <div class="wiki-result-title">${esc(a.title)}</div>
+      <div class="wiki-result-cat">${esc(a.catLabel)}</div>
+      <div class="wiki-result-snippet">${snippet(a.text, q)}</div>
+    </div>`
+  ).join('');
+
+  contentEl.innerHTML = `<div class="wiki-results">
+    <div class="wiki-results-hd">${scored.length} résultat${scored.length>1?'s':''} pour « ${esc(q)} »</div>
+    ${items}
+  </div>`;
+
+  function openResult(el){
+    searchEl.value = '';
+    kbdEl.style.opacity = '1';
+    navigate(el.dataset.id);
+  }
+  contentEl.querySelectorAll('.wiki-result-item').forEach(el => {
+    el.addEventListener('click', () => openResult(el));
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openResult(el); }
+    });
+  });
+}
+
+// ── Changelog ────────────────────────────────────────────────────────────
+// ATTENTION : `renderArticle` RECRÉE le corps de l'article depuis son <template> à CHAQUE
+// navigation — le conteneur rempli ici est donc détruit dès qu'on quitte l'article. Un simple
+// drapeau « déjà chargé » faisait alors disparaître le contenu au retour (chargé une fois, jamais
+// réinjecté). On mémorise donc le CONTENU, pas le fait de l'avoir chargé : une seule requête, mais
+// une réinjection à chaque rendu.
+let changelogCache = null;      // {html, mtime}
+async function loadChangelog(){
+  const target = document.getElementById('wiki-changelog-content');
+  const mtime  = document.getElementById('wiki-changelog-mtime');
+  if (!target) return;
+  const poser = (c) => {
+    target.innerHTML = c.html;
+    if (mtime) mtime.textContent = new Date(c.mtime * 1000).toLocaleString('fr-FR');
+  };
+  if (changelogCache) { poser(changelogCache); return; }
+  try {
+    const r = await fetch('/api/changelog');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error||'erreur');
+    changelogCache = { html: j.html, mtime: j.mtime };
+    poser(changelogCache);
+  } catch(e) {
+    if (target) target.innerHTML = `<p style="color:var(--status-stopped-fg)">Erreur : ${e.message}</p>`;
+  }
+}
+
+// ── Documents markdown de la racine (INSTALL.md, INFRASTRUCTURE.md…) ──────
+// Même source que le dépôt : le fichier reste lisible sur GitHub, la page Aide
+// l'affiche sans le dupliquer.
+// Cache du CONTENU (et non un drapeau « déjà chargé ») : cf. `loadChangelog` — le conteneur est
+// recréé à chaque navigation, il faut donc pouvoir le re-remplir sans refaire la requête.
+const docCache = {};            // nom → {html, mtime}
+async function loadDoc(name){
+  const target = document.querySelector(`.wiki-doc-content[data-doc="${name}"]`);
+  const mtime  = document.querySelector(`.wiki-doc-mtime[data-doc="${name}"]`);
+  // Sans ce garde-fou bruyant, un nom qui ne correspond à aucun conteneur laissait l'article sur
+  // « Chargement… » indéfiniment : l'échec ressemblait à une lenteur. C'est exactement ce qui est
+  // arrivé à INSTALL.md, appelé « installation » alors que le conteneur portait « install ».
+  if (!target) {
+    console.error(`[aide] loadDoc("${name}") : aucun conteneur .wiki-doc-content[data-doc="${name}"]`);
+    return;
+  }
+  const poser = (c) => {
+    target.innerHTML = c.html;
+    if (mtime) mtime.textContent = new Date(c.mtime * 1000).toLocaleString('fr-FR');
+  };
+  if (docCache[name]) { poser(docCache[name]); return; }
+  try {
+    const r = await fetch(`/api/doc/${name}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error||'erreur');
+    docCache[name] = { html: j.html, mtime: j.mtime };
+    poser(docCache[name]);
+  } catch(e) {
+    target.innerHTML = `<p style="color:var(--status-stopped-fg)">Erreur : ${e.message}</p>`;
+  }
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement !== searchEl) {
+    e.preventDefault();
+    searchEl.focus();
+    searchEl.select();
+  }
+  if (e.key === 'Escape' && document.activeElement === searchEl) {
+    searchEl.value = '';
+    search('');
+    searchEl.blur();
+    kbdEl.style.opacity = '1';
+  }
+  if (e.key === 'ArrowLeft' && (e.altKey || e.metaKey)) {
+    if (history_.length) navigate(history_.pop(), false);
+  }
+});
+
+searchEl.addEventListener('input', () => {
+  kbdEl.style.opacity = searchEl.value ? '0' : '1';
+  search(searchEl.value);
+});
+
+searchEl.addEventListener('focus', () => { kbdEl.style.opacity = '0'; });
+searchEl.addEventListener('blur',  () => { if (!searchEl.value) kbdEl.style.opacity = '1'; });
+
+// ── Init ─────────────────────────────────────────────────────────────────
+buildIndex();
+renderNav();
+
+const startId = location.hash.slice(1) || 'vue-densemble';
+const startArticle = allArticles.find(a => a.id === startId) || allArticles[0];
+navigate(startArticle.id, false);
+
+// Charger les plugins en arrière-plan (merge dans les catégories)
+loadPluginArticles();
+
+// Handle browser back/forward
+window.addEventListener('hashchange', () => {
+  const id = location.hash.slice(1);
+  if (id && id !== currentId) navigate(id, false);
+});
+
+})();
+</script>
+{% endblock %}

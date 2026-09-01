@@ -1,0 +1,36 @@
+/* Console de monitoring de la pyramide (éditeur du shell Traitements). */
+.pyr-console { font-size: 0.9em; }
+.pyr-head { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding-bottom:10px; border-bottom:1px solid var(--border-soft); margin-bottom:10px; }
+.pyr-title { margin:0; font-size:1em; }
+.pyr-actions { display:flex; gap:6px; }
+.pyr-btn { background:var(--bg-input); border:1px solid var(--border); border-radius:4px;
+    color:var(--text); padding:4px 10px; cursor:pointer; font:inherit; }
+.pyr-btn:hover { border-color:var(--accent); color:var(--text-strong); }
+.pyr-btn-opt { font-weight:600; }
+
+.pyr-kpi { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:12px; }
+.pyr-meta { color:var(--text-muted); font-size:0.85em; margin-right:4px; }
+.pyr-pill { font-size:0.78em; padding:2px 7px; border-radius:999px; border:1px solid var(--border-soft); }
+.pyr-copy    { color:oklch(0.78 0.12 150); border-color:oklch(0.78 0.12 150 / 0.4); }
+.pyr-strided { color:oklch(0.80 0.12 90);  border-color:oklch(0.80 0.12 90 / 0.4); }
+.pyr-gather  { color:oklch(0.70 0.15 30);  border-color:oklch(0.70 0.15 30 / 0.4); }
+.pyr-full    { color:var(--text-muted); }
+.pyr-warn { color:oklch(0.72 0.16 30); font-size:0.82em; font-weight:600; }
+
+.pyr-src { margin-bottom:14px; }
+.pyr-src-h { font-weight:600; margin-bottom:4px; }
+.pyr-fps { color:var(--text-muted); font-weight:400; font-size:0.85em; }
+.pyr-tbl { width:100%; border-collapse:collapse; font-size:0.85em; }
+.pyr-tbl th { text-align:left; color:var(--text-muted); font-weight:600; font-size:0.85em;
+    padding:2px 8px 2px 0; border-bottom:1px solid var(--border-soft); }
+.pyr-tbl td { padding:3px 8px 3px 0; border-bottom:1px solid var(--border-soft); }
+.pyr-mono { font-family: var(--font-mono); font-size:0.92em; }
+.pyr-tbl tr.pyr-orphan td { opacity:0.6; }
+.pyr-mon { background:none; border:1px solid var(--border-soft); border-radius:3px;
+    cursor:pointer; padding:0 5px; }
+.pyr-mon:hover { border-color:var(--accent); }
+.pyr-unmet { font-size:0.8em; color:oklch(0.72 0.16 30); margin-top:4px; }
+.pyr-empty { color:var(--text-muted); padding:20px; text-align:center; }
+.pyr-hint { margin-top:14px; padding-top:10px; border-top:1px dashed var(--border-soft);
+    font-size:0.78em; color:var(--text-muted); }

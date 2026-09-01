@@ -1,0 +1,11 @@
+{
+  "id": "files",
+  "label": "Fichiers",
+  "nav_tab": "files",
+  "tab_template": "files/settings_tab.html",
+  "version": "0.2.0",
+  "order": 7,
+  "settings_keys": {},
+  "description": "Gestionnaire de fichiers générique : navigation multi-racines (configuration de l'orchestrateur + média des nœuds, toujours accessible), recherche, tri, colonnes, import/téléchargement/renommage/suppression, et éditeur de code (numéros de ligne + coloration syntaxique). Accès filtré par les droits utilisateur.",
+  "runtime": false
+}

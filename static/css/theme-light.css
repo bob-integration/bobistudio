@@ -1,0 +1,90 @@
+/* ─── Thème Daylight : clean light, accent indigo ────────── */
+:root {
+    --bg:           #f6f7f9;
+    --bg-elev:      #ffffff;
+    --bg-input:     #ffffff;
+    --bg-hover:     #f0f3f7;
+    --bg-selected:  #eef2ff;
+    --border:       #e5e7eb;
+    --border-soft:  #eef0f3;
+
+    --text:         #1f2937;
+    --text-muted:   #6b7280;
+    --text-strong:  #111827;
+
+    --accent:       #4f46e5;   /* indigo */
+    --accent-hover: #6366f1;
+    --accent-soft:  rgba(79, 70, 229, 0.08);
+
+    --status-running-bg:   #d1fae5;
+    --status-running-fg:   #047857;
+    --status-stopped-bg:   #fee2e2;
+    --status-stopped-fg:   #b91c1c;
+    --status-warning-bg:   #fef3c7;
+    --status-warning-fg:   #b45309;
+    --status-unknown-bg:   #e5e7eb;
+    --status-unknown-fg:   #6b7280;
+    /* Le bleu ardoise du thème sombre (#7aa2c8) tombait à ~2,6:1 sur fond clair —
+       il porte des textes (badge « ⬡ nœud » de la topologie, niveaux de log). */
+    --status-info-fg:      #1d4ed8;
+
+    --btn-red:    #dc2626;
+    --btn-blue:   #4f46e5;
+    --btn-green:  #059669;
+    --btn-orange: #ea580c;
+    --btn-purple: #7c3aed;
+    --btn-text:   #ffffff;
+
+    --font-base: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    --font-size: 14px;
+    --letter-spacing-h2: 1px;
+
+    --radius:        8px;
+    --radius-small:  6px;
+    --shadow:        0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06);
+    --card-padding:  18px;
+    --gap:           14px;
+
+    --backdrop-blur: none;
+    --bg-image:      none;
+
+    /* Les couleurs d'ESSENCE (vidéo/audio/ANC) ne sont PLUS surchargées ici : elles sont
+       invariantes par thème, cf. base.css. « Suis le câble bleu » doit vouloir dire la même
+       chose dans les trois thèmes. */
+
+    /* Canvas preview multiview : tonal foncé tinté indigo, lisible sur fond clair */
+    --canvas-bg: #1e1b2e;
+
+    /* Accent overlays composer multiview : violet plus dense pour le fond clair,
+       reste lisible en trait sur le canvas foncé. */
+    --overlay-accent:      oklch(0.54 0.13 315);
+    --overlay-accent-soft: oklch(0.54 0.13 315 / 0.12);
+}
+
+h1 { font-weight: 700; color: var(--text-strong); letter-spacing: -0.015em; }
+h2 { color: var(--text-muted); font-weight: 600; }
+h3 { color: var(--text-strong); font-weight: 600; }
+
+code, .badge, .fps, .timestamp { font-family: var(--font-mono); }
+.form input[type="number"], .form input[type="text"], .form select { font-family: var(--font-mono); }
+
+/* Inputs un peu plus marqués sur fond clair */
+.form input, .form select {
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.form input:focus, .form select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+
+/* Carte avec un poil plus de relief */
+.card, .form, .topnav {
+    border-color: #e5e7eb;
+}
+
+/* Liens nav un peu plus sobres */
+.topnav a { color: var(--text); }
+.topnav a.active { background: var(--accent-soft); color: var(--accent); }
+
+/* mode-* badge colors for light theme are now generated from plugin.json:badge.oklch via templates/layout.html */

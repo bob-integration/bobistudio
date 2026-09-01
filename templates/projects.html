@@ -1,0 +1,632 @@
+{% extends "layout.html" %}
+{% set page = 'projects' %}
+{% block title %}{{ _('projects.page_title') }}{% endblock %}
+
+{% block content %}
+<h1>{{ _('projects.title') }}</h1>
+
+{% if has_perm('projects.manage') %}
+{% set MODE_LABELS = {
+    '2110_io':            ('mode-receiver',  '2110_io'),
+    'multiview':     ('mode-multiview', 'Multiviewer'),
+    'streamer':         ('mode-stream',    'Streamer'),
+    'mixer':              ('mode-mixer',     'Mélangeur'),
+    'color_corrector':    ('mode-corrector', 'Correcteur')
+} %}
+<h2>{{ _('projects.new') }}</h2>
+<div class="form proj-create">
+    <div class="proj-create-head">
+        <div class="field">
+            <label for="proj_name">{{ _('projects.name') }}</label>
+            <input type="text" id="proj_name" class="wide" placeholder="{{ _('projects.name_ph') }}">
+        </div>
+        <button class="btn btn-green" onclick="sauvegarderProjet()">{{ _('projects.save') }}</button>
+    </div>
+
+    <fieldset class="proj-picker">
+        <legend class="proj-picker-legend">{{ _('projects.include') }}</legend>
+
+        {% if containers %}
+        <div class="proj-picker-toolbar">
+            <input type="search" id="proj-search" class="proj-search"
+                   placeholder="{{ _('projects.filter_ph') }}"
+                   oninput="filterProjList()" aria-label="{{ _('projects.filter_aria') }}">
+            <div class="proj-picker-summary">
+                <span class="proj-picker-count"><span id="proj-selected-count">0</span> {{ _('projects.selected') }}<span id="proj-selected-plural" hidden>{{ _('projects.plural_s') }}</span></span>
+                <button type="button" class="btn-text-action" onclick="projSelectAll()">{{ _('projects.check_all') }}</button>
+                <button type="button" class="btn-text-action" onclick="projSelectNone()">{{ _('projects.uncheck_all') }}</button>
+            </div>
+        </div>
+
+        <div class="proj-picker-types" role="group" aria-label="{{ _('projects.filter_type_aria') }}">
+            <button type="button" class="filter-chip active" data-proj-type="all"
+                    onclick="filterProjType(this, 'all')">{{ _('projects.all') }}</button>
+            <button type="button" class="filter-chip" data-proj-type="2110_io"
+                    onclick="filterProjType(this, '2110_io')">2110_io</button>
+            <button type="button" class="filter-chip" data-proj-type="multiview"
+                    onclick="filterProjType(this, 'multiview')">Multiviewer</button>
+            <button type="button" class="filter-chip" data-proj-type="streamer"
+                    onclick="filterProjType(this, 'streamer')">Streamer</button>
+            <button type="button" class="filter-chip" data-proj-type="mixer"
+                    onclick="filterProjType(this, 'mixer')">Mélangeur</button>
+            <button type="button" class="filter-chip" data-proj-type="color_corrector"
+                    onclick="filterProjType(this, 'color_corrector')">Correcteur</button>
+            <button type="button" class="filter-chip" data-proj-type="none"
+                    onclick="filterProjType(this, 'none')">{{ _('projects.none') }}</button>
+        </div>
+
+        <ul class="proj-picker-list">
+            {% for c in containers %}
+            {% set dc = c.deploy_config | from_json %}
+            {% set ctype = dc.type if dc else 'none' %}
+            {% set mode = MODE_LABELS.get(ctype) %}
+            <li class="proj-picker-row" data-type="{{ ctype }}"
+                data-hostname="{{ c.hostname|lower }}">
+                <label class="proj-picker-item">
+                    <input type="checkbox" class="proj-vmid-cb" value="{{ c.vmid }}"
+                           onchange="updateProjSelectedCount()">
+                    <span class="proj-picker-host">{{ c.hostname }}</span>
+                    <span class="card-vmid">#{{ c.vmid }}</span>
+                    {% if mode %}
+                    <span class="mode-badge {{ mode[0] }}">{{ mode[1] }}</span>
+                    {% else %}
+                    <span class="mode-badge mode-none">{{ _('projects.badge_none') }}</span>
+                    {% endif %}
+                    <span class="proj-picker-projects {% if not c.projects %}dimmed{% endif %}">
+                        {%- if c.projects -%}
+                            {{ c.projects | map(attribute='name') | join(', ') }}
+                        {%- else -%}—{%- endif -%}
+                    </span>
+                </label>
+            </li>
+            {% endfor %}
+        </ul>
+        <p class="proj-picker-no-match" hidden>{{ _('projects.no_match') }}</p>
+        {% else %}
+        <p class="palette-hint">{{ _('projects.no_container') }}</p>
+        {% endif %}
+    </fieldset>
+</div>
+{% else %}
+<p class="palette-hint">{{ _('projects.readonly') }}</p>
+{% endif %}
+
+{% if has_perm('projects.manage') %}
+<!-- Données conteneurs pour le panneau « Composition » (chantier 4) : rattacher/détacher
+     des conteneurs existants sans repasser par le sélecteur de création. -->
+{% set compo_containers = [] %}
+{% for c in containers %}
+    {% set dc = c.deploy_config | from_json %}
+    {% set _ = compo_containers.append({
+        'vmid': c.vmid,
+        'hostname': c.hostname,
+        'type': (dc.type if dc else none),
+        'project_id': (c.project.id if c.project else none),
+        'projects': (c.projects | map(attribute='id') | list),
+    }) %}
+{% endfor %}
+<script type="application/json" id="proj-containers-data">{{ compo_containers | tojson }}</script>
+{% endif %}
+
+{% if has_perm('projects.manage') %}
+<!-- Macros SYSTÈME (admin, inter-projets) : panneau global repliable.
+     Publication = boutons opaques dans les projets cochés (docs/reference/PROJETS.md §7). -->
+<h2>🛡 {{ _('projects.sysmacros') }}</h2>
+<div class="form">
+    <button class="btn" onclick="toggleSysMacros()">{{ _('projects.sysmacros_toggle') }}</button>
+    <div id="sysmacros-panel" hidden></div>
+</div>
+{% endif %}
+
+<h2>{{ _('projects.saved') }}</h2>
+{% if has_perm('projects.manage') %}
+<div class="proj-import">
+    <input type="file" id="proj-import-file" accept=".json,application/json"
+           onchange="importerProjet()" hidden>
+    <button class="btn btn-blue" onclick="document.getElementById('proj-import-file').click()">
+        {{ _('projects.import') }}
+    </button>
+    <span class="palette-hint">{{ _('projects.import_hint') }}</span>
+</div>
+{% endif %}
+<div class="grid">
+    {% for p in projects %}
+    {% set count = p.snapshot|length %}
+    <article class="card">
+        <header class="card-head">
+            <div class="card-title">
+                <h3 class="card-host">{{ p.name }}</h3>
+                <span class="card-vmid">#{{ p.id }}</span>
+                {% if p.state == 'active' %}<span class="badge running">{{ _('projects.state_active') }}</span>
+                {% elif p.state in ('loading', 'unloading') %}<span class="badge warn">{{ _('projects.state_' ~ p.state) }}</span>
+                {% elif p.state == 'error' %}<span class="badge stopped">{{ _('projects.state_error') }}</span>
+                {% endif %}
+            </div>
+        </header>
+
+        <dl class="card-meta">
+            <dt>{{ _('projects.containers') }}</dt><dd>{{ count }}</dd>
+            <dt>{{ _('projects.created') }}</dt><dd>{{ p.created_at }}</dd>
+        </dl>
+
+        <ul class="proj-snapshot-list">
+            {% for c in p.snapshot %}
+            <li>
+                {{ c.hostname }}
+                <span class="card-vmid">#{{ c.vmid }}</span>
+                {% if c.deploy_config %}<span class="proj-snapshot-type">: {{ c.deploy_config.type }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+
+        <div class="card-actions">
+            <div class="card-actions-primary">
+                {% if has_perm('projects.manage') %}
+                <button class="btn btn-green" onclick="restaurerProjet({{ p.id }}, '{{ p.name }}')"
+                        aria-label="{{ _('projects.restore_aria', name=p.name) }}">{{ _('projects.restore') }}</button>
+                <button class="btn btn-orange" onclick="detruireContainersProjet({{ p.id }}, '{{ p.name }}')"
+                        aria-label="{{ _('projects.destroy_aria', name=p.name) }}">{{ _('projects.destroy') }}</button>
+                {% endif %}
+                <button class="btn btn-blue" onclick="exporterProjet({{ p.id }})"
+                        aria-label="{{ _('projects.export_aria', name=p.name) }}">{{ _('projects.export') }}</button>
+                {% if has_perm('projects.manage') %}
+                <button class="btn" onclick="toggleMembres({{ p.id }})">{{ _('projects.members') }}</button>
+                <button class="btn" onclick="toggleVersions({{ p.id }})">{{ _('projects.versions') }}</button>
+                <button class="btn" onclick="toggleComposition({{ p.id }})">{{ _('projects.compo') }}</button>
+                {% endif %}
+            </div>
+            {% if has_perm('projects.manage') %}
+            <button class="btn btn-red" onclick="supprimerProjet({{ p.id }}, '{{ p.name }}')"
+                    aria-label="{{ _('projects.delete_aria', name=p.name) }}">{{ _('projects.delete') }}</button>
+            {% endif %}
+        </div>
+        {% if has_perm('projects.manage') %}
+        <div class="proj-members" id="proj-members-{{ p.id }}" hidden></div>
+        <div class="proj-versions" id="proj-versions-{{ p.id }}" hidden></div>
+        <div class="proj-compo" id="proj-compo-{{ p.id }}" hidden></div>
+        {% endif %}
+    </article>
+    {% endfor %}
+    {% if not projects %}
+    <div class="empty-state">
+        <h3 class="empty-state-title">{{ _('projects.empty_title') }}</h3>
+        <p class="empty-state-msg">
+            {% if has_perm('projects.manage') %}
+            {{ _('projects.empty_msg') }}
+            {% else %}
+            {{ _('projects.empty_ro') }}
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Overlay de progression du rappel de projet (streaming verbeux) -->
+<div id="restore-overlay" style="display:none; position:fixed; inset:0; z-index:1000;
+     background:rgba(0,0,0,0.55); align-items:center; justify-content:center">
+    <div style="background:var(--bg); border:1px solid var(--border); border-radius:var(--radius);
+                width:min(760px,92vw); max-height:86vh; display:flex; flex-direction:column;
+                box-shadow:0 12px 40px rgba(0,0,0,0.4)">
+        <div style="display:flex; align-items:center; gap:var(--space-3); padding:var(--space-3) var(--space-4);
+                    border-bottom:1px solid var(--border)">
+            <h3 id="restore-title" style="margin:0; flex:1">{{ _('projects.restoring') }}</h3>
+            <button class="btn btn-red"   id="restore-abort-btn" onclick="restoreInterrompre()">{{ _('projects.abort') }}</button>
+            <button class="btn btn-ghost" id="restore-close-btn" onclick="restoreFermer()" style="display:none">{{ _('projects.close') }}</button>
+        </div>
+        <div id="restore-log"
+             style="flex:1; overflow-y:auto; margin:0; padding:var(--space-3) var(--space-4);
+                    font-size:0.82em; font-family:var(--font-mono, monospace); white-space:pre-wrap;
+                    color:var(--text)"></div>
+        <div id="restore-retry-bar" style="display:none; padding:var(--space-3) var(--space-4);
+                    border-top:1px solid var(--border); align-items:center; gap:var(--space-3)">
+            <span id="restore-retry-msg" class="meta" style="flex:1"></span>
+            <button class="btn btn-orange" id="restore-retry-btn" onclick="restoreReessayer()">{{ _('projects.retry') }}</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/scripts.js?v={{ asset_v('scripts.js') }}"></script>
+<script>
+// ─── Sélecteur de containers (filtre type + recherche) ──────────
+function filterProjList() {
+    const q = (document.getElementById('proj-search')?.value || '').toLowerCase().trim();
+    const t = document.querySelector('.proj-picker-types .filter-chip.active')?.dataset.projType || 'all';
+    let visible = 0;
+    document.querySelectorAll('.proj-picker-row').forEach(row => {
+        const matchType = (t === 'all') || (row.dataset.type === t);
+        const matchSearch = !q || row.dataset.hostname.includes(q);
+        const show = matchType && matchSearch;
+        row.hidden = !show;
+        if (show) visible++;
+    });
+    const empty = document.querySelector('.proj-picker-no-match');
+    if (empty) empty.hidden = visible !== 0;
+}
+function filterProjType(btn, t) {
+    document.querySelectorAll('.proj-picker-types .filter-chip').forEach(c => {
+        c.classList.toggle('active', c === btn);
+    });
+    filterProjList();
+}
+function projSelectAll() {
+    document.querySelectorAll('.proj-picker-row:not([hidden]) input.proj-vmid-cb')
+        .forEach(cb => cb.checked = true);
+    updateProjSelectedCount();
+}
+function projSelectNone() {
+    document.querySelectorAll('.proj-picker-row:not([hidden]) input.proj-vmid-cb')
+        .forEach(cb => cb.checked = false);
+    updateProjSelectedCount();
+}
+function exporterProjet(id) {
+    // Redirection vers la route d'export — le serveur force le download via Content-Disposition.
+    window.location.href = `/api/projects/${id}/export`;
+}
+
+async function importerProjet() {
+    const input = document.getElementById('proj-import-file');
+    const file  = input?.files?.[0];
+    if (!file) return;
+    try {
+        // Optionnel : permettre de renommer à l'import
+        let name = '';
+        try {
+            const peek = JSON.parse(await file.text());
+            const defaultName = (peek && peek.name) || file.name.replace(/\.bsproj.json$|\.json$/i, '');
+            name = prompt(window.t('projects.import_name'), defaultName) || '';
+            if (!name.trim()) { input.value = ''; return; }
+        } catch (e) {
+            alert(window.t('projects.invalid_json') + ' ' + e.message);
+            input.value = '';
+            return;
+        }
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('name', name.trim());
+        const r = await fetch('/api/projects/import', { method: 'POST', body: fd });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            alert(window.t('projects.import_failed') + ' ' + (data.error || r.statusText));
+            return;
+        }
+        location.reload();
+    } finally {
+        input.value = '';
+    }
+}
+
+function updateProjSelectedCount() {
+    const n = document.querySelectorAll('.proj-vmid-cb:checked').length;
+    const countEl = document.getElementById('proj-selected-count');
+    const pluralEl = document.getElementById('proj-selected-plural');
+    if (countEl)  countEl.textContent = n;
+    if (pluralEl) pluralEl.hidden = n <= 1;
+}
+
+/* ─── Membres du projet (chantier 1) ───────────────────────── */
+
+const PROJ_ROLES = ['owner', 'editor', 'operator', 'viewer'];
+let _allUsers = null;   // null = pas encore tenté ; [] = /api/users refusé (repli username)
+
+const _mEsc = s => String(s ?? '').replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const _mRole = r => window.t('projects.role_' + r) || r;
+
+async function toggleMembres(pid) {
+    const el = document.getElementById('proj-members-' + pid);
+    if (!el) return;
+    if (!el.hidden) { el.hidden = true; return; }
+    el.hidden = false;
+    await chargerMembres(pid);
+}
+
+async function chargerMembres(pid) {
+    const el = document.getElementById('proj-members-' + pid);
+    const r = await fetch(`/api/projects/${pid}/members`);
+    if (!r.ok) { el.innerHTML = '<p class="meta">…</p>'; return; }
+    const data = await r.json();
+    if (_allUsers === null) {
+        const ru = await fetch('/api/users');
+        _allUsers = ru.ok ? ((await ru.json()).users || []) : [];
+    }
+    const roleSel = (sel, cb) => `<select onchange="${cb}">` +
+        PROJ_ROLES.map(x => `<option value="${x}" ${x === sel ? 'selected' : ''}>${_mEsc(_mRole(x))}</option>`).join('') +
+        '</select>';
+    const rows = (data.members || []).map(m => `
+        <li style="display:flex; gap:var(--space-2); align-items:center; margin:var(--space-1) 0">
+            <b>${_mEsc(m.username)}</b>
+            <span class="meta">${_mEsc([m.prenom, m.nom].filter(Boolean).join(' '))}</span>
+            ${roleSel(m.role, `majMembre(${pid}, ${m.user_id}, this.value)`)}
+            <button class="btn btn-red" style="padding:var(--space-1) var(--space-2); font-size:0.8em"
+                    onclick="retirerMembre(${pid}, ${m.user_id})">${_mEsc(window.t('projects.members_remove'))}</button>
+        </li>`).join('');
+    const memberIds = new Set((data.members || []).map(m => m.user_id));
+    const candidates = _allUsers.filter(u => !memberIds.has(u.id));
+    const picker = _allUsers.length
+        ? `<select id="pm-user-${pid}">` +
+          candidates.map(u => `<option value="${u.id}">${_mEsc(u.username)}</option>`).join('') + '</select>'
+        : `<input id="pm-user-${pid}" type="text" placeholder="username" style="width:10em">`;
+    el.innerHTML = `
+        <h4 style="margin:var(--space-3) 0 var(--space-1)">${_mEsc(window.t('projects.members'))}</h4>
+        <ul style="list-style:none; margin:0; padding:0">${rows || '<li class="meta">—</li>'}</ul>
+        <div style="display:flex; gap:var(--space-2); align-items:center; margin-top:var(--space-2)">
+            ${picker}
+            <select id="pm-role-${pid}">${PROJ_ROLES.map(x =>
+                `<option value="${x}" ${x === 'operator' ? 'selected' : ''}>${_mEsc(_mRole(x))}</option>`).join('')}</select>
+            <button class="btn btn-blue" style="padding:var(--space-1) var(--space-2)"
+                    onclick="ajouterMembre(${pid})">${_mEsc(window.t('projects.members_add'))}</button>
+        </div>`;
+}
+
+async function ajouterMembre(pid) {
+    const who = document.getElementById('pm-user-' + pid).value;
+    const role = document.getElementById('pm-role-' + pid).value;
+    const body = _allUsers.length ? {user_id: parseInt(who, 10), role} : {username: who.trim(), role};
+    const r = await fetch(`/api/projects/${pid}/members`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)});
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || r.statusText); }
+    chargerMembres(pid);
+}
+
+async function majMembre(pid, uid, role) {
+    await fetch(`/api/projects/${pid}/members`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({user_id: uid, role})});
+    chargerMembres(pid);
+}
+
+async function retirerMembre(pid, uid) {
+    await fetch(`/api/projects/${pid}/members/${uid}`, {method: 'DELETE'});
+    chargerMembres(pid);
+}
+
+/* ─── Versions du projet (« projet vivant », chantier 3) ───── */
+
+async function toggleVersions(pid) {
+    const el = document.getElementById('proj-versions-' + pid);
+    if (!el) return;
+    if (!el.hidden) { el.hidden = true; return; }
+    el.hidden = false;
+    await chargerVersions(pid);
+}
+
+async function chargerVersions(pid) {
+    const el = document.getElementById('proj-versions-' + pid);
+    const r = await fetch(`/api/projects/${pid}/versions`);
+    if (!r.ok) { el.innerHTML = '<p class="meta">…</p>'; return; }
+    const data = await r.json();
+    const rows = (data.versions || []).map(v => `
+        <li style="display:flex; gap:var(--space-2); align-items:center; margin:var(--space-1) 0">
+            <span class="meta">${_mEsc(v.created_at || '')}</span>
+            <b>${v.label ? _mEsc(v.label) : '<span class="meta">' + _mEsc(window.t('projects.version_auto')) + '</span>'}</b>
+            <span class="meta">${v.containers} ${_mEsc(window.t('projects.ws_containers'))}</span>
+            <button class="btn btn-orange" style="padding:var(--space-1) var(--space-2); font-size:0.8em"
+                    onclick="rollbackVersion(${pid}, ${v.id})">${_mEsc(window.t('projects.version_rollback'))}</button>
+            <button class="btn btn-red" style="padding:var(--space-1) var(--space-2); font-size:0.8em"
+                    onclick="supprimerVersion(${pid}, ${v.id})">✕</button>
+        </li>`).join('');
+    el.innerHTML = `
+        <h4 style="margin:var(--space-3) 0 var(--space-1)">${_mEsc(window.t('projects.versions'))}</h4>
+        <ul style="list-style:none; margin:0; padding:0; max-height:16em; overflow-y:auto">
+            ${rows || '<li class="meta">—</li>'}</ul>
+        <div style="display:flex; gap:var(--space-2); align-items:center; margin-top:var(--space-2)">
+            <input id="pv-label-${pid}" type="text" placeholder="${_mEsc(window.t('projects.version_label_ph'))}" style="width:14em">
+            <button class="btn btn-blue" style="padding:var(--space-1) var(--space-2)"
+                    onclick="nommerVersion(${pid})">${_mEsc(window.t('projects.version_name_btn'))}</button>
+        </div>`;
+}
+
+async function nommerVersion(pid) {
+    const label = document.getElementById('pv-label-' + pid).value.trim();
+    if (!label) return;
+    const r = await fetch(`/api/projects/${pid}/versions`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({label})});
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || r.statusText); }
+    chargerVersions(pid);
+}
+
+async function rollbackVersion(pid, vid) {
+    if (!confirm(window.t('projects.version_rollback_confirm'))) return;
+    const r = await fetch(`/api/projects/${pid}/versions/${vid}/rollback`, {method: 'POST'});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { alert(j.error || r.statusText); return; }
+    alert(window.t('projects.version_rollback_done'));
+    chargerVersions(pid);
+}
+
+async function supprimerVersion(pid, vid) {
+    await fetch(`/api/projects/${pid}/versions/${vid}`, {method: 'DELETE'});
+    chargerVersions(pid);
+}
+
+/* ─── Composition du projet : rattacher/détacher des containers existants ────
+   Backend : PATCH /api/containers/<vmid>/project {project_id}. Route déjà en place,
+   asynchrone (thread) — elle RECRÉE le container (rebind du dossier média), c'est
+   voulu. project_id: null détache. Types exclus (miroir de PROJECT_EXCLUDED_TYPES,
+   app/projects.py) : jamais proposés au rattachement. ────────────────────────── */
+
+const PROJ_COMPO_EXCLUDED_TYPES = new Set(['webrtc_gateway', 'storage', '2110_io']);
+
+let _compoContainers = null;   // chargé une fois depuis la balise <script type="application/json">
+function _compoAllContainers() {
+    if (_compoContainers === null) {
+        const el = document.getElementById('proj-containers-data');
+        try { _compoContainers = el ? JSON.parse(el.textContent) : []; } catch (e) { _compoContainers = []; }
+    }
+    return _compoContainers;
+}
+
+// Un container appartient au projet pid si son rattachement direct (project_id)
+// vaut pid, OU si son vmid figure dans une version figée (snapshot) du projet.
+function _compoMembersOf(pid) {
+    return _compoAllContainers().filter(c => c.project_id === pid || (c.projects || []).includes(pid));
+}
+
+async function toggleComposition(pid) {
+    const el = document.getElementById('proj-compo-' + pid);
+    if (!el) return;
+    if (!el.hidden) { el.hidden = true; return; }
+    el.hidden = false;
+    chargerComposition(pid);
+}
+
+function chargerComposition(pid) {
+    const el = document.getElementById('proj-compo-' + pid);
+    if (!el) return;
+    const members = _compoMembersOf(pid);
+    const memberVmids = new Set(members.map(c => c.vmid));
+
+    const rows = members.map(c => `
+        <li style="display:flex; gap:var(--space-2); align-items:center; margin:var(--space-1) 0">
+            <b>${_mEsc(c.hostname)}</b>
+            <span class="card-vmid">#${c.vmid}</span>
+            <span class="meta">${_mEsc(c.type || '—')}</span>
+            <button class="btn btn-red" style="padding:var(--space-1) var(--space-2); font-size:0.8em"
+                    onclick="detacherContainerProjet(${pid}, ${c.vmid})">${_mEsc(window.t('projects.compo_detach'))}</button>
+        </li>`).join('');
+
+    const candidates = _compoAllContainers().filter(c =>
+        !memberVmids.has(c.vmid) && !PROJ_COMPO_EXCLUDED_TYPES.has(c.type));
+    const picker = candidates.length
+        ? `<select id="compo-add-${pid}">` +
+          candidates.map(c => `<option value="${c.vmid}">${_mEsc(c.hostname)} (#${c.vmid}${c.type ? ' · ' + _mEsc(c.type) : ''})</option>`).join('') +
+          '</select>'
+        : `<span class="meta">${_mEsc(window.t('projects.compo_none_avail'))}</span>`;
+
+    el.innerHTML = `
+        <h4 style="margin:var(--space-3) 0 var(--space-1)">${_mEsc(window.t('projects.compo'))}</h4>
+        <ul style="list-style:none; margin:0; padding:0">${rows || '<li class="meta">—</li>'}</ul>
+        <div style="display:flex; gap:var(--space-2); align-items:center; margin-top:var(--space-2); flex-wrap:wrap">
+            ${picker}
+            <button class="btn btn-blue" style="padding:var(--space-1) var(--space-2)"
+                    ${candidates.length ? '' : 'disabled'}
+                    onclick="rattacherContainerProjet(${pid})">${_mEsc(window.t('projects.compo_attach'))}</button>
+            <span class="meta" style="color:var(--warn, #c77)">⚠ ${_mEsc(window.t('projects.compo_warn'))}</span>
+        </div>`;
+}
+
+async function rattacherContainerProjet(pid) {
+    const sel = document.getElementById('compo-add-' + pid);
+    const vmid = sel ? parseInt(sel.value, 10) : null;
+    if (!vmid) return;
+    if (!confirm(window.t('projects.compo_warn'))) return;
+    await _compoPatchProject(vmid, pid);
+}
+
+async function detacherContainerProjet(pid, vmid) {
+    if (!confirm(window.t('projects.compo_detach_confirm'))) return;
+    await _compoPatchProject(vmid, null);
+}
+
+async function _compoPatchProject(vmid, project_id) {
+    const r = await fetch(`/api/containers/${vmid}/project`, {
+        method: 'PATCH', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({project_id})});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { alert(j.error || r.statusText); return; }
+    showWireToast(window.t('projects.compo_inprogress'), 'ok');
+    // PATCH asynchrone (recrée le container) — la vue se recharge après un court délai
+    // pour refléter le nouveau rattachement une fois l'opération lancée.
+    setTimeout(() => location.reload(), 1500);
+}
+
+/* ─── Macros système (admin, inter-projets — docs/reference/PROJETS.md §7) ── */
+
+const SYS_PROJECTS = [{% for p in projects %}{id: {{ p.id }}, name: {{ p.name|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}];
+
+async function toggleSysMacros() {
+    const el = document.getElementById('sysmacros-panel');
+    if (!el) return;
+    if (!el.hidden) { el.hidden = true; return; }
+    el.hidden = false;
+    await chargerSysMacros();
+}
+
+async function chargerSysMacros() {
+    const el = document.getElementById('sysmacros-panel');
+    const r = await fetch('/api/macros');
+    if (!r.ok) { el.innerHTML = '<p class="meta">…</p>'; return; }
+    const macros = (await r.json()).macros || [];
+    const rows = macros.map(m => {
+        const toggles = SYS_PROJECTS.map(p => `
+            <label style="display:inline-flex; gap:var(--space-1); align-items:center; margin-right:var(--space-3)">
+                <input type="checkbox" class="ios-toggle"
+                       ${(m.published_to || []).includes(p.id) ? 'checked' : ''}
+                       onchange="publierSysMacro(${m.id}, ${p.id}, this.checked)">
+                ${_mEsc(p.name)}
+            </label>`).join('');
+        return `
+        <li style="border-top:1px solid var(--border); padding:var(--space-2) 0">
+            <div style="display:flex; gap:var(--space-2); align-items:center">
+                <b style="flex:1">🛡 ${_mEsc(m.name)}</b>
+                <span class="meta">${m.steps} ${_mEsc(window.t('projects.m_steps'))}</span>
+                <button class="btn btn-green" style="padding:var(--space-1) var(--space-2)"
+                        onclick="lancerSysMacro(${m.id})">▶</button>
+                <button class="btn btn-red" style="padding:var(--space-1) var(--space-2)"
+                        onclick="supprimerSysMacro(${m.id})">🗑</button>
+            </div>
+            <div style="margin:var(--space-1) 0">
+                <span class="meta">${_mEsc(window.t('projects.sysmacro_publish'))}</span>
+                ${SYS_PROJECTS.length ? toggles : '<span class="meta">—</span>'}
+            </div>
+            <div class="meta" id="sm-log-${m.id}" style="white-space:pre-line"></div>
+        </li>`;
+    }).join('');
+    el.innerHTML = `
+        <p class="meta" style="margin:var(--space-2) 0">${_mEsc(window.t('projects.sysmacros_hint'))}
+        ${_mEsc(window.t('projects.sysmacros_edit_note'))}</p>
+        <ul style="list-style:none; margin:0; padding:0">
+            ${rows || '<li class="meta">' + _mEsc(window.t('projects.sysmacro_none')) + '</li>'}</ul>
+        <div style="display:flex; gap:var(--space-2); align-items:center; margin-top:var(--space-2)">
+            <input id="sm-new-name" type="text" style="width:18em"
+                   placeholder="${_mEsc(window.t('projects.sysmacro_name_ph'))}">
+            <button class="btn btn-blue" style="padding:var(--space-1) var(--space-2)"
+                    onclick="creerSysMacro()">＋</button>
+        </div>`;
+}
+
+async function creerSysMacro() {
+    const name = document.getElementById('sm-new-name').value.trim();
+    if (!name) return;
+    const r = await fetch('/api/macros', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name})});
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || r.statusText); }
+    chargerSysMacros();
+}
+
+async function supprimerSysMacro(mid) {
+    if (!confirm(window.t('projects.sysmacro_del_confirm'))) return;
+    await fetch('/api/macros/' + mid, {method: 'DELETE'});
+    chargerSysMacros();
+}
+
+async function publierSysMacro(mid, pid, checked) {
+    const r = await fetch('/api/macros');
+    const m = r.ok ? ((await r.json()).macros || []).find(x => x.id === mid) : null;
+    if (!m) return;
+    const pub = new Set(m.published_to || []);
+    if (checked) pub.add(pid); else pub.delete(pid);
+    const r2 = await fetch('/api/macros/' + mid, {
+        method: 'PATCH', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({published_to: [...pub]})});
+    if (!r2.ok) { const j = await r2.json().catch(() => ({})); alert(j.error || r2.statusText); chargerSysMacros(); }
+}
+
+async function lancerSysMacro(mid) {
+    const r = await fetch('/api/macros/' + mid + '/run', {method: 'POST'});
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || r.statusText); return; }
+    const logEl = document.getElementById('sm-log-' + mid);
+    const tick = async () => {
+        const s = (await (await fetch('/api/macros/' + mid + '/status')).json()).run;
+        if (logEl && s) logEl.textContent = s.journal.map(j => (j.ok ? '· ' : '✕ ') + j.msg).join('\n');
+        if (s && s.running) setTimeout(tick, 400);
+    };
+    tick();
+}
+</script>
+{% endblock %}

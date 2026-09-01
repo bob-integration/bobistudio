@@ -1,0 +1,18 @@
+# systemd oneshot — provisioning au 1er boot d'un nœud (clé USB préseedée).
+# Activé par le preseed (late_command) ; node-bootstrap.sh se désactive après succès.
+[Unit]
+Description=Bobi.Studio node first-boot provisioning
+After=network-online.target docker.service
+Wants=network-online.target
+ConditionPathExists=!/var/lib/bobi-node/bootstrap.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bobi-node-bootstrap.sh
+RemainAfterExit=yes
+# Provisioning long (apt, build/pull d'images, PTP) → pas de timeout serré.
+TimeoutStartSec=0
+User=root
+
+[Install]
+WantedBy=multi-user.target

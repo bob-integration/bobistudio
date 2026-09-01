@@ -1,0 +1,22 @@
+{
+  "type.v210_bridge.badge": "Pont v210",
+  "type.v210_bridge.cfg.direction.label": "Sens du pont",
+  "type.v210_bridge.cfg.direction.opt.export": "Export — planar interne → miroir v210 (pour un tiers)",
+  "type.v210_bridge.cfg.direction.opt.import": "Import — flux v210 tiers → planar interne",
+  "type.v210_bridge.cfg.import_bit_depth.label": "Profondeur de la sortie planar",
+  "type.v210_bridge.cfg.import_bit_depth.opt.10": "10 bits (PLANAR10LE)",
+  "type.v210_bridge.cfg.import_bit_depth.opt.8": "8 bits (pipeline force8, v>>2)",
+  "type.v210_bridge.cfg.import_flow.help": "FlowId UUID brut d'un flux video/v210 tiers (GET /flows sur le container liste les candidats découverts dans le domaine), ou un nom de flux maison.",
+  "type.v210_bridge.cfg.import_flow.label": "Flux v210 source (flowId UUID ou nom)",
+  "type.v210_bridge.cfg.log_level.help": "Verbosité du journal du conteneur. Défaut « Événements » : les faits marquants (démarrage/arrêt, changement de format, reconnexion, repli sur un chemin dégradé, entrée qui apparaît ou disparaît) sont TOUJOURS écrits — après une panne le journal doit permettre de reconstituer l'histoire, et élever le niveau après coup ne récupère rien. Les métriques périodiques (fps, compteurs) ne sont PAS journalisées : elles sont déjà publiées sur :8080. « Détaillé » = lance-flammes par trame, à n'activer que le temps d'un diagnostic (le journal Docker n'est pas roté).",
+  "type.v210_bridge.cfg.log_level.label": "Niveau de log",
+  "type.v210_bridge.cfg.log_level.opt.debug": "Détaillé (par trame — diagnostic ponctuel)",
+  "type.v210_bridge.cfg.log_level.opt.error": "Erreurs seules",
+  "type.v210_bridge.cfg.log_level.opt.info": "Événements (défaut)",
+  "type.v210_bridge.cfg.log_level.opt.warning": "Anomalies seules",
+  "type.v210_bridge.cfg.out_name.help": "Nom du flux MXL publié pour les tiers (vide = <hostname>_v210). Son flowId (UUID) est exposé sur /state — c'est lui qu'un container tiers cible.",
+  "type.v210_bridge.cfg.out_name.label": "Nom du flux miroir v210",
+  "type.v210_bridge.label": "Pont v210",
+  "type.v210_bridge.wire.consumes.0": "Source vidéo (planar interne)",
+  "type.v210_bridge.wire.produces.0": "Sortie planar (import)"
+}

@@ -1,0 +1,284 @@
+/* Barre COLLANTE. `top: 0` + z-index au-dessus du contenu de page ; le fond est opaque (et non
+   translucide) pour que le contenu qui défile dessous ne transparaisse pas. La transition porte
+   sur le padding : au passage en mode condensé, la barre se resserre au lieu de sauter. */
+.topnav {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    backdrop-filter: var(--backdrop-blur);
+    transition: padding 0.14s ease, box-shadow 0.14s ease;
+}
+
+.topnav.condensed {
+    padding: 4px 16px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* Bloc de marque : logo client à gauche, « Bobi.Studio » au-dessus du nom du système.
+   En mode condensé le nom du système passe en ligne, à la suite de la marque produit. */
+/* Le bloc de marque est un LIEN vers l'accueil : il ne doit rien emprunter au style des liens de
+   navigation (pastille, fond au survol) — c'est une marque, pas un onglet. Le survol se signale
+   sobrement, sur le seul mot « Bobi.Studio ». */
+.topnav a.brand-block {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    margin-right: 18px;
+    padding: 0;
+    border-radius: 0;
+}
+.topnav a.brand-block:hover { background: none; }
+.topnav a.brand-block:hover .brand { color: var(--accent); }
+.topnav a.brand-block:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.topnav .brand-names {
+    display: inline-flex;
+    flex-direction: column;
+    line-height: 1.15;
+}
+.topnav .brand {
+    color: var(--text-strong);
+    font-weight: 700;
+    font-size: 0.95em;
+    letter-spacing: 2px;
+}
+.topnav .brand-system {
+    color: var(--text-muted);
+    font-size: 0.74em;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+.topnav.condensed .brand-names { flex-direction: row; align-items: baseline; gap: 8px; }
+.topnav.condensed .brand { font-size: 0.85em; }
+.topnav.condensed .brand-logo { height: 16px; }
+.topnav.condensed a:not(.brand-block) { padding: 4px 12px; }
+.topnav.condensed .nav-user-btn { padding: 3px 9px; }
+.topnav.condensed .nav-icon-btn { width: 24px; height: 24px; }
+.topnav.condensed .nav-service { padding: 2px 6px 2px 8px; }
+
+.topnav a {
+    color: var(--text);
+    text-decoration: none;
+    padding: 7px 14px;
+    border-radius: var(--radius-small);
+    font-size: 0.9em;
+    font-weight: 500;
+    transition: background 0.12s, color 0.12s;
+}
+
+.topnav a:hover {
+    background: var(--bg-hover);
+    text-decoration: none;
+}
+
+.topnav a.active {
+    background: var(--bg-selected);
+    color: var(--accent);
+}
+
+.topnav .spacer { flex: 1; }
+
+.topnav a.nav-settings {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    padding: 7px 14px;
+}
+.topnav a.nav-settings:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.topnav a.nav-settings.active {
+    border-color: var(--accent);
+}
+
+/* ---- Menus de la barre : « ? » (aide/recette) et le nom d'utilisateur -------------------- */
+
+.topnav .nav-menu { position: relative; display: inline-flex; align-items: center; }
+
+.topnav .nav-icon-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; padding: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    color: var(--text);
+    font-size: 0.95em; font-weight: 700; line-height: 1;
+    cursor: pointer;
+    margin-right: 6px;
+}
+.topnav .nav-icon-btn:hover,
+.topnav .nav-menu.open .nav-icon-btn,
+.topnav .nav-icon-btn.active { border-color: var(--accent); color: var(--accent); }
+
+.topnav .nav-user-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    color: var(--text);
+    font-size: 0.85em;
+    cursor: pointer;
+    margin-right: 6px;
+    max-width: 14em;
+}
+.topnav .nav-user-btn:hover,
+.topnav .nav-menu.open .nav-user-btn { border-color: var(--accent); color: var(--accent); }
+.topnav .nav-user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topnav .nav-caret { font-size: 0.75em; color: var(--text-muted); }
+
+.topnav .nav-menu-pop {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 50;
+    min-width: 11em;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.topnav .nav-menu.open .nav-menu-pop { display: flex; }
+.topnav .nav-menu-pop-wide { min-width: 15em; }
+
+.topnav .nav-menu-pop a {
+    display: block;
+    padding: 6px 10px;
+    font-size: 0.87em;
+    border-radius: var(--radius-small);
+}
+.topnav .nav-menu-head {
+    padding: 4px 10px 6px;
+    font-size: 0.85em;
+    color: var(--text-strong);
+    white-space: nowrap;
+}
+.topnav .nav-menu-head small { color: var(--text-muted); }
+.topnav .nav-menu-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+
+/* Réglages de VUE (niveau de libellé des sources, niveau de tally) : globaux à toutes les pages,
+   changés à la volée mais sans besoin d'être VISIBLES en permanence — d'où leur place ici.
+   Les <select> portent leurs propres couleurs : le style de champ du parc est scopé `.form select`,
+   donc un champ posé hors d'un formulaire resterait invisible en thème sombre. */
+.topnav .nav-menu-field {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 3px 10px;
+    font-size: 0.8em; color: var(--text-muted);
+}
+.topnav .nav-menu-field label { font-weight: 600; }
+.topnav .nav-menu-field select {
+    background: var(--bg-panel);
+    color: var(--text);
+    border: 1px solid var(--border-soft, var(--border));
+    border-radius: var(--radius-small);
+    padding: 2px 4px;
+    font-size: 1.02em;
+    max-width: 9em;
+}
+/* Entrée simple du menu utilisateur (« Mon compte »). Elle hérite déjà de la mise en forme
+   des liens du menu ; on ne lui donne qu'un survol, pour qu'elle se comporte comme les autres
+   et pas comme du texte cliquable par accident. */
+.topnav a.nav-menu-item { color: var(--text); }
+.topnav a.nav-menu-item:hover { background: var(--bg-hover); }
+
+.topnav a.nav-menu-logout { color: var(--text); }
+.topnav a.nav-menu-logout:hover {
+    background: var(--status-stopped-bg);
+    color: var(--status-stopped-fg);
+}
+
+/* B3-2a : badge rôle HA — affiché uniquement quand ce contrôleur est en STANDBY (orange). */
+.topnav .nav-ha-standby {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    font-size: 0.82em;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--status-warning-fg, #fbbf24);
+    background: var(--status-warning-bg, #3f2b0f);
+    border: 1px solid var(--status-warning-fg, #fbbf24);
+    border-radius: var(--radius-small);
+    margin-right: 8px;
+    text-decoration: none;
+}
+
+/* Chien de garde armé : l'actif ne répond plus. Le badge passe au rouge et CLIGNOTE — c'est la
+   seule chose à l'écran qui distingue « en veille, tout va bien » de « en veille, plus personne
+   ne pilote la production ». Il devient cliquable (→ Réglages, bouton Promouvoir). */
+.topnav .nav-ha-standby.alerte {
+    color: var(--status-stopped-fg, #f87171);
+    background: var(--status-stopped-bg, #3f1414);
+    border-color: var(--status-stopped-fg, #f87171);
+    animation: ha-alerte-pulse 1.4s ease-in-out infinite;
+}
+@keyframes ha-alerte-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.55 } }
+@media (prefers-reduced-motion: reduce) {
+    .topnav .nav-ha-standby.alerte { animation: none }
+}
+
+.topnav .nav-service {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 4px 10px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    font-size: 0.82em;
+    color: var(--text-muted);
+    margin-right: 6px;
+}
+.topnav .nav-service-uptime {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+    min-width: 5ch;
+    text-align: right;
+}
+.topnav .nav-service-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius-small);
+    width: 22px;
+    height: 22px;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    font-size: 14px;
+}
+.topnav .nav-service-btn:hover:not(:disabled) {
+    background: var(--status-stopped-bg);
+    color: var(--status-stopped-fg);
+    border-color: var(--status-stopped-fg);
+}
+.topnav .nav-service-btn:disabled {
+    opacity: 0.5;
+    cursor: progress;
+}
+
+/* Logo client (personnalisation) : posé à GAUCHE du bloc de marque. Ne remplace jamais la
+   marque produit — « Bobi.Studio » reste la première ligne du bloc. */
+.topnav .brand-logo { height: 26px; width: auto; display: block; border-radius: 3px; }
+
+/* Pied de page global : identité client (si renseignée) + attribution produit. */
+.app-footer {
+    margin-top: auto; padding: 22px 4px 14px;
+    border-top: 1px solid var(--border-soft);
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+    color: var(--text-muted); font-size: 0.8em;
+}
+.app-footer-attr { margin-left: auto; }

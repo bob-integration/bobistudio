@@ -1,0 +1,12 @@
+{
+  "type.probe_2110.badge": "SONDE",
+  "type.probe_2110.cfg.log_level.help": "Verbosité du journal du conteneur. Défaut « Événements » : les faits marquants (démarrage/arrêt, changement de format, reconnexion, repli sur un chemin dégradé, entrée qui apparaît ou disparaît) sont TOUJOURS écrits — après une panne le journal doit permettre de reconstituer l'histoire, et élever le niveau après coup ne récupère rien. Les métriques périodiques (fps, compteurs) ne sont PAS journalisées : elles sont déjà publiées sur :8080. « Détaillé » = lance-flammes par trame, à n'activer que le temps d'un diagnostic (le journal Docker n'est pas roté).",
+  "type.probe_2110.cfg.log_level.label": "Niveau de log",
+  "type.probe_2110.cfg.log_level.opt.debug": "Détaillé (par trame — diagnostic ponctuel)",
+  "type.probe_2110.cfg.log_level.opt.error": "Erreurs seules",
+  "type.probe_2110.cfg.log_level.opt.info": "Événements (défaut)",
+  "type.probe_2110.cfg.log_level.opt.warning": "Anomalies seules",
+  "type.probe_2110.cfg.measure_audio.label": "Mesurer aussi la conformité audio (ST 2110-30)",
+  "type.probe_2110.cfg.probe_iface.label": "Interface média DÉDIÉE (PF vfio, node_interfaces) — jamais celle du moteur",
+  "type.probe_2110.label": "Sonde 2110"
+}

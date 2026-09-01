@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="{{ lang|default('fr') }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{{ title }}{% if brand and brand.org_name %} — {{ brand.org_name }}{% endif %}</title>
+    <link rel="stylesheet" href="/static/css/base.css?v={{ asset_v('css/base.css') }}">
+    {% if theme and theme != 'classic' %}
+    <link rel="stylesheet" href="/static/css/theme-{{ theme }}.css?v={{ asset_v('css/theme-' ~ theme ~ '.css') }}">
+    {% endif %}
+    <style>
+        body { min-height: 100vh; padding: 0; display: flex; flex-direction: column; }
+        .pw-head { display: flex; align-items: center; gap: 14px; padding: 16px 22px;
+                   border-bottom: 1px solid var(--border); }
+        .pw-logo { max-height: 44px; max-width: 180px; }
+        .pw-org { font-weight: 600; font-size: 1.05em; }
+        .pw-product { margin-left: auto; color: var(--text-muted); font-size: 0.8em;
+                      letter-spacing: 0.04em; text-transform: uppercase; }
+        .pw-main { flex: 1; display: flex; flex-direction: column; align-items: center;
+                   justify-content: center; gap: 12px; padding: 14px 18px; width: 100%;
+                   margin: 0 auto; box-sizing: border-box; }
+        .pw-title { font-size: 1.3em; font-weight: 600; text-align: center; margin: 0; }
+        .pw-note { color: var(--text-muted); text-align: center; max-width: 900px;
+                   margin: 0; white-space: pre-wrap; }
+        /* La scène occupe le plus grand 16:9 tenant dans l'espace dispo (largeur ET
+           hauteur, en réservant header + titre + message + pied ≈ 250px pour qu'ils
+           restent visibles). */
+        .pw-stage { position: relative; background: #000;
+                    border: 1px solid var(--border); border-radius: var(--radius);
+                    overflow: hidden; aspect-ratio: 16 / 9; margin: 0 auto;
+                    width: min(100%, calc((100vh - 250px) * 16 / 9)); }
+        .pw-stage video { width: 100%; height: 100%; object-fit: contain;
+                          background: #000; display: block; }
+        .pw-overlay { position: absolute; inset: 0; display: flex; align-items: center;
+                      justify-content: center; flex-direction: column; gap: 12px;
+                      color: #fff; text-align: center; padding: 20px;
+                      background: rgba(0,0,0,0.55); }
+        .pw-overlay.hidden { display: none; }
+        .pw-overlay .btn { font-size: 1em; padding: 10px 22px; }
+        .pw-status { font-size: 0.9em; opacity: 0.85; }
+        .pw-unavailable { padding: 40px; text-align: center; color: var(--text-muted);
+                          border: 1px dashed var(--border); border-radius: var(--radius);
+                          width: 100%; box-sizing: border-box; }
+        .pw-foot { padding: 14px 22px; border-top: 1px solid var(--border);
+                   color: var(--text-muted); font-size: 0.8em; text-align: center; }
+    </style>
+</head>
+<body>
+    <header class="pw-head">
+        {% if brand and brand.logo_url %}<img class="pw-logo" src="{{ brand.logo_url }}" alt="{{ brand.org_name or '' }}">{% endif %}
+        {% if brand and brand.org_name %}<span class="pw-org">{{ brand.org_name }}</span>{% endif %}
+        <span class="pw-product">Bobi.Studio</span>
+    </header>
+
+    <main class="pw-main">
+        <h1 class="pw-title">{{ title }}</h1>
+        {% if note %}<p class="pw-note">{{ note }}</p>{% endif %}
+
+        {% if whep_url %}
+        <div class="pw-stage">
+            <video id="pw-video" playsinline autoplay muted controls controlslist="nodownload"></video>
+            <div class="pw-overlay" id="pw-overlay">
+                <div class="pw-status" id="pw-status">{{ _('public_watch.connecting') }}</div>
+                <button class="btn btn-blue" id="pw-play" style="display:none">{{ _('public_watch.play') }}</button>
+            </div>
+        </div>
+        {% else %}
+        <div class="pw-unavailable">
+            {{ _('public_watch.unavailable_title') }}<br>
+            {{ _('public_watch.unavailable_note') }}
+        </div>
+        {% endif %}
+    </main>
+
+    <footer class="pw-foot">
+        Bobi.Studio{% if brand and brand.location %} — {{ brand.location }}{% endif %}
+    </footer>
+
+    {% if whep_url %}
+    <script>
+    (function(){
+        const WHEP_URL = {{ whep_url | tojson }};
+        const video   = document.getElementById('pw-video');
+        const overlay = document.getElementById('pw-overlay');
+        const status  = document.getElementById('pw-status');
+        const playBtn = document.getElementById('pw-play');
+        let pc = null, retry = null, stopped = false;
+
+        function setStatus(t){ status.textContent = t; }
+        function showOverlay(show){ overlay.classList.toggle('hidden', !show); }
+
+        // Attendre la fin du gathering ICE (non-trickle : on POST une offre complète).
+        function waitIce(pc){
+            return new Promise(resolve=>{
+                if(pc.iceGatheringState === 'complete') return resolve();
+                const t = setTimeout(resolve, 2500);   // garde-fou : ne pas bloquer
+                pc.addEventListener('icegatheringstatechange', ()=>{
+                    if(pc.iceGatheringState === 'complete'){ clearTimeout(t); resolve(); }
+                });
+            });
+        }
+
+        async function connect(){
+            cleanup();
+            setStatus({{ _('public_watch.connecting')|tojson }}); showOverlay(true); playBtn.style.display='none';
+            pc = new RTCPeerConnection();
+            pc.addTransceiver('video', {direction:'recvonly'});
+            pc.addTransceiver('audio', {direction:'recvonly'});
+            pc.ontrack = (e)=>{ if(e.streams && e.streams[0]) video.srcObject = e.streams[0]; };
+            pc.onconnectionstatechange = ()=>{
+                if(['failed','disconnected','closed'].includes(pc.connectionState)) scheduleRetry();
+            };
+            try{
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                await waitIce(pc);
+                const resp = await fetch(WHEP_URL, {
+                    method:'POST', headers:{'Content-Type':'application/sdp'},
+                    body: pc.localDescription.sdp
+                });
+                if(!resp.ok) throw new Error('HTTP '+resp.status);
+                const answer = await resp.text();
+                await pc.setRemoteDescription({type:'answer', sdp:answer});
+                onConnected();
+            }catch(e){
+                setStatus({{ _('public_watch.retry')|tojson }});
+                scheduleRetry();
+            }
+        }
+
+        function onConnected(){
+            // Autoplay muet (politique navigateur) ; le volume/son se gère ensuite via
+            // les contrôles natifs du lecteur (volume, plein écran, lecture/pause).
+            video.play().then(()=>{
+                showOverlay(false);
+            }).catch(()=>{
+                // Autoplay refusé : proposer un clic explicite.
+                setStatus({{ _('public_watch.ready')|tojson }}); playBtn.style.display='inline-flex';
+            });
+        }
+
+        playBtn.onclick = ()=>{ video.play().then(()=>showOverlay(false)).catch(()=>{}); };
+
+        function cleanup(){ if(pc){ try{pc.close();}catch(e){} pc=null; } }
+        function scheduleRetry(){
+            if(stopped || retry) return;
+            retry = setTimeout(()=>{ retry=null; connect(); }, 3000);
+        }
+
+        window.addEventListener('beforeunload', ()=>{ stopped=true; cleanup(); });
+        connect();
+    })();
+    </script>
+    {% endif %}
+</body>
+</html>

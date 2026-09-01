@@ -1,0 +1,523 @@
+{% extends "layout.html" %}
+{% set page = 'compte' %}
+{% block title %}{{ _('compte.titre') }}{% endblock %}
+
+{# Fiche du compte COURANT. Elle existe parce qu'un utilisateur ne pouvait ni corriger son
+   adresse (seul un administrateur le pouvait), ni trouver où changer son mot de passe : le
+   formulaire vivait dans Réglages → Utilisateurs, sous la liste de TOUS les comptes. On cherche
+   ses propres réglages dans son propre menu, pas dans l'administration des autres. #}
+{% block content %}
+<div class="home-head" style="margin-bottom:var(--space-4)">
+    <h1>{{ _('compte.titre') }}</h1>
+</div>
+
+<div class="cpt">
+    <section class="cpt-bloc cpt-bloc--large">
+        <h2>{{ _('compte.identite') }}</h2>
+        <div class="form">
+        <div class="meta cpt-note">{{ _('compte.identite_note') }}</div>
+        <div class="cpt-identite">
+            {# La photo À GAUCHE des champs : c'est elle qu'on reconnaît, et la mettre en
+               bandeau au-dessus l'aurait éloignée du nom qu'elle illustre. #}
+            <div class="cpt-photo-bloc">
+                <div class="cpt-photo" id="cpt_photo" aria-hidden="true">—</div>
+                <input type="file" id="cpt_photo_f" accept="image/*" hidden>
+                <div class="cpt-photo-actions">
+                    <button type="button" class="btn btn-sm" id="cpt_photo_choisir">{{ _('compte.photo_changer') }}</button>
+                    <button type="button" class="btn btn-sm btn-red" id="cpt_photo_retirer" hidden>{{ _('compte.photo_retirer') }}</button>
+                </div>
+                <div class="meta cpt-photo-aide">{{ _('compte.photo_aide') }}</div>
+            </div>
+            <div class="form cpt-champs">
+                <div class="row">
+                    <div class="field"><label for="cpt_prenom">{{ _('compte.prenom') }}</label>
+                        <input type="text" id="cpt_prenom" autocomplete="given-name"></div>
+                    <div class="field"><label for="cpt_nom">{{ _('compte.nom') }}</label>
+                        <input type="text" id="cpt_nom" autocomplete="family-name"></div>
+                </div>
+                <div class="row">
+                    <div class="field"><label for="cpt_email">{{ _('compte.email') }}</label>
+                        <input type="email" id="cpt_email" autocomplete="email"></div>
+                    <div class="field"><label for="cpt_tel">{{ _('compte.telephone') }}</label>
+                        <input type="tel" id="cpt_tel" autocomplete="tel"></div>
+                </div>
+                <div class="row">
+                    <div class="field"><label for="cpt_service">{{ _('compte.service') }}</label>
+                        <input type="text" id="cpt_service" autocomplete="organization"></div>
+                    <div class="field"><label for="cpt_poste">{{ _('compte.poste') }}</label>
+                        <input type="text" id="cpt_poste" autocomplete="organization-title"></div>
+                </div>
+                <div class="row">
+                    <button type="button" class="btn btn-blue" id="cpt_enregistrer">{{ _('compte.enregistrer') }}</button>
+                    <span id="cpt_msg" class="meta" role="status" style="align-self:center"></span>
+                </div>
+            </div>
+        </div>
+        </div>
+    </section>
+
+    <section class="cpt-bloc">
+        <h2>{{ _('compte.preferences') }}</h2>
+        <div class="form">
+            <div class="meta cpt-note">{{ _('compte.preferences_note') }}</div>
+            <div class="row">
+                <div class="field" style="min-width:min(300px,100%)">
+                    <label for="cpt_lang">{{ _('nav.lang') }}</label>
+                    <select id="cpt_lang">
+                        {% for l in languages %}<option value="{{ l.code }}">{{ l.label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="field" style="min-width:min(300px,100%)">
+                    <label for="cpt_theme">{{ _('nav.theme') }}</label>
+                    <select id="cpt_theme">
+                        <option value="">{{ _('nav.theme_default') }}</option>
+                        {% for th in themes %}<option value="{{ th.id }}">{{ th.label.split('—')[0].strip() }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="cpt-bloc">
+        <h2>{{ _('compte.motdepasse') }}</h2>
+        <div class="form">
+            <div class="row">
+                <div class="field"><label for="cpt_pwd_old">{{ _('settings.users.old_pwd') }}</label>
+                    <input type="password" id="cpt_pwd_old" autocomplete="current-password"></div>
+            </div>
+            <div class="row">
+                <div class="field"><label for="cpt_pwd_new">{{ _('settings.users.new_pwd') }}</label>
+                    <input type="password" id="cpt_pwd_new" autocomplete="new-password"
+                           aria-describedby="cpt_pwd_regles"></div>
+                <div class="field"><label for="cpt_pwd_new2">{{ _('compte.pwd_confirmer') }}</label>
+                    <input type="password" id="cpt_pwd_new2" autocomplete="new-password"></div>
+            </div>
+            <div id="cpt_pwd_regles" class="cpt-regles">
+                <div class="meta">{{ _('compte.pwd_exigences') }}</div>
+                <ul></ul>
+            </div>
+            <div class="row">
+                <button type="button" class="btn btn-blue" id="cpt_changer">{{ _('settings.users.change') }}</button>
+                <span id="cpt_pwd_msg" class="meta" role="alert" style="align-self:center"></span>
+            </div>
+        </div>
+    </section>
+
+    {# MON MONITORING : chaque utilisateur a un encodeur WebRTC dédié qui consomme un conteneur
+       et du CPU sur un nœud. Il était totalement invisible — on ne savait ni qu'il existait, ni
+       sur quoi il pointait, ni comment le libérer. #}
+    <section class="cpt-bloc">
+        <h2>{{ _('compte.monitoring') }}</h2>
+        <div class="form">
+        <div class="meta cpt-note">{{ _('compte.monitoring_note') }}</div>
+        {% if not monitor or not monitor.exists %}
+        <div class="meta">{{ _('compte.monitoring_aucun') }}</div>
+        {% else %}
+        <dl class="cpt-dl">
+            <dt>{{ _('compte.monitoring_conteneur') }}</dt>
+            <dd class="mono">#{{ monitor.vmid }}</dd>
+            <dt>{{ _('compte.monitoring_etat') }}</dt>
+            <dd>
+                {% if monitor.publishing %}<span class="badge running">{{ _('compte.monitoring_actif') }}</span>
+                {% elif monitor.script_running %}<span class="badge script_stopped">{{ _('compte.monitoring_pret') }}</span>
+                {% else %}<span class="badge unknown">{{ _('compte.monitoring_dormant') }}</span>{% endif %}
+            </dd>
+            <dt>{{ _('compte.monitoring_source') }}</dt>
+            <dd class="mono">{{ monitor.source or '—' }}</dd>
+        </dl>
+        <div class="cpt-actions">
+            <button type="button" class="btn btn-sm btn-red" id="cpt_mon_suppr">{{ _('compte.monitoring_supprimer') }}</button>
+            <span id="cpt_mon_msg" class="meta" role="status" style="align-self:center"></span>
+        </div>
+        {% endif %}
+        </div>
+    </section>
+
+    {# MES CONNEXIONS. Une session Flask est un cookie signé : jusqu'ici le serveur ne savait
+       ni combien étaient ouvertes, ni les fermer. Un registre les rend visibles ET révocables,
+       ce qui est la seule chose à faire quand on soupçonne un accès qu'on n'a pas ouvert. #}
+    <section class="cpt-bloc cpt-bloc--large">
+        <h2>{{ _('compte.sessions') }}</h2>
+        <div class="form">
+            <div class="meta cpt-note">{{ _('compte.sessions_note') }}</div>
+            <dl class="cpt-dl">
+                <dt>{{ _('compte.sessions_derniere') }}</dt>
+                <dd id="cpt_derniere_connexion">—</dd>
+            </dl>
+            <div class="table-wrap">
+                <table class="tbl" id="cpt_sessions"></table>
+            </div>
+            <div class="cpt-actions">
+                <button type="button" class="btn btn-sm btn-red" id="cpt_sess_fermer" hidden>{{ _('compte.sessions_fermer') }}</button>
+                <span id="cpt_sess_msg" class="meta" role="status" style="align-self:center"></span>
+            </div>
+        </div>
+    </section>
+
+    {# CE QUE LE RÔLE AUTORISE, en clair et en entier. Un utilisateur découvrait ses droits en
+       SE HEURTANT à un refus ; les montrer répond avant qu'on ne demande. #}
+    <section class="cpt-bloc cpt-bloc--large">
+        <h2>{{ _('compte.acces') }}</h2>
+        <div class="form">
+        <dl class="cpt-dl">
+            <dt>{{ _('compte.identifiant') }}</dt><dd class="mono" id="cpt_username">—</dd>
+            <dt>{{ _('compte.role') }}</dt><dd id="cpt_role">—</dd>
+            <dt>{{ _('compte.interface') }}</dt><dd id="cpt_interface">—</dd>
+        </dl>
+        <div class="cpt-perms" id="cpt_perms"></div>
+        <div class="meta cpt-note" style="margin-top:var(--space-3)">{{ _('compte.acces_note') }}</div>
+        </div>
+    </section>
+</div>
+
+<style>
+/* ⚠ LA PAGE PRENAIT 74 CARACTÈRES DE LARGE, ET RIEN D'AUTRE DANS LE PRODUIT NE LE FAIT. Sur
+   un moniteur de régie, elle laissait les trois quarts de l'écran vides et se lisait comme un
+   gabarit inachevé. La règle des 65-75 caractères vaut pour la PROSE ; une fiche est faite de
+   champs et de listes, qui se rangent en colonnes.
+
+   `auto-fit` plutôt qu'un nombre de colonnes figé : une, deux ou trois selon la place, sans
+   point de rupture à maintenir. Les blocs s'alignent en HAUT (`align-items: start`) — sinon
+   le plus court s'étire pour suivre le plus long et son titre flotte au milieu du vide. */
+.cpt {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(370px, 100%), 1fr));
+    gap: var(--space-6) var(--space-6);
+    align-items: start;
+}
+/* L'identité et les accès traversent : la première porte la photo ET six champs sur deux
+   colonnes, les seconds une liste de puces qui respire mieux étalée. Les coincer dans une
+   colonne de 370 px les aurait pliés en accordéon. */
+.cpt-bloc--large { grid-column: 1 / -1; }
+.cpt-bloc h2 { margin: 0 0 var(--space-2); }
+/* ⚠ ON ÉLARGIT LA PAGE, PAS LES ZONES DE SAISIE. Sans plafond, « Prénom » et « Nom » se
+   partageraient 1800 px sur un moniteur de régie : un champ de neuf cents pixels pour six
+   lettres se lit comme une erreur de gabarit, et l'œil doit traverser tout l'écran pour
+   relier une étiquette à sa valeur. */
+.cpt-champs { max-width: 72ch; }
+.cpt-champs .field { flex: 1 1 200px; min-width: 0; }
+.cpt-champs .field input { width: 100%; }
+/* Même raison pour les deux sélecteurs de préférences : ils portent « Français » et
+   « Studio », pas une phrase. */
+.cpt-bloc .form .field select { max-width: 34ch; }
+.cpt-note { margin-bottom: var(--space-3); }
+/* La carte, c'est la SECTION — pas le formulaire qu'elle contient. `.cpt-champs` garde sa classe
+   `form` parce que c'est elle qui habille les champs, mais elle perd sa boîte : deux cadres
+   emboîtés se lisent comme un défaut de gabarit, et le produit n'en fait nulle part. */
+.cpt-bloc .form .form {
+    background: none; border: 0; border-radius: 0;
+    padding: 0; margin-bottom: 0; box-shadow: none; backdrop-filter: none;
+}
+/* Le dernier `.form` d'une section ne traîne pas de marge basse à l'intérieur de son cadre. */
+.cpt-bloc > .form { margin-bottom: 0; }
+.cpt-identite { display: flex; gap: var(--space-5); align-items: flex-start; flex-wrap: wrap; }
+.cpt-champs { flex: 1 1 380px; min-width: 0; }
+.cpt-photo-bloc { display: flex; flex-direction: column; gap: var(--space-2); align-items: center;
+                  width: 132px; }
+/* Carré aux angles adoucis plutôt qu'un rond : un rond rogne les côtés d'un visage cadré large,
+   et la plupart des photos de badge le sont. */
+.cpt-photo {
+    width: 112px; height: 112px; border-radius: var(--radius);
+    background: var(--bg-input); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); font-size: 2em; overflow: hidden;
+}
+.cpt-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cpt-photo-actions { display: flex; gap: var(--space-1); flex-wrap: wrap; justify-content: center; }
+.cpt-photo-aide { text-align: center; font-size: 0.78em; }
+.cpt-dl { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4);
+          margin: 0 0 var(--space-3); }
+.cpt-dl dt { color: var(--text-muted); font-size: 0.88em; }
+.cpt-dl dd { margin: 0; }
+/* Les permissions : une grille de puces, accordées en clair, refusées estompées ET barrées —
+   jamais la couleur seule (doctrine produit, § statuts critiques). */
+.cpt-regles { margin: var(--space-3) 0; }
+.cpt-regles ul { list-style: none; margin: var(--space-2) 0 0; padding: 0;
+                 display: flex; flex-direction: column; gap: 3px; }
+.cpt-regles li { font-size: 0.85em; color: var(--text-muted); display: flex; gap: var(--space-2); }
+/* Le signe, pas la couleur seule : c'est lui qui reste lisible en niveaux de gris et qui est
+   ANNONCÉ par un lecteur d'écran (la couleur, jamais). */
+.cpt-regles li::before { content: "○"; width: 1em; flex: none; text-align: center; }
+.cpt-regles li.ok { color: var(--status-running-fg); }
+.cpt-regles li.ok::before { content: "✓"; }
+.cpt-regles li.ko::before { content: "✗"; }
+.cpt-regles li.ko { color: var(--text); }
+.cpt-actions { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+.cpt-perms { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.cpt-perm { font-size: 0.82em; padding: 2px 9px; border-radius: 999px;
+            border: 1px solid var(--border-soft); }
+.cpt-perm.oui { background: var(--status-running-bg); color: var(--status-running-fg);
+                border-color: transparent; }
+.cpt-perm.non { color: var(--text-muted); text-decoration: line-through; }
+</style>
+
+<script>window.PWD_EXIGENCES = {{ pwd_exigences|tojson }};</script>
+<script src="/static/js/motdepasse.js?v={{ asset_v('js/motdepasse.js') }}"></script>
+<script>
+(function () {
+    "use strict";
+    const $ = (id) => document.getElementById(id);
+    // Message posé SUR le formulaire concerné, pas dans un toast : on vient de taper, le
+    // regard est là, et un toast en bas d'écran se rate.
+    const dire = (el, texte, ok) => {
+        el.textContent = (ok ? '' : '✕ ') + texte;
+        el.style.color = ok ? 'var(--status-running-fg)' : 'var(--status-stopped-fg)';
+    };
+    const T = (k, f) => (window.t ? window.t(k) : null) || f;
+
+    let MOI = {};
+
+    function poserPhoto(url) {
+        const box = $('cpt_photo');
+        box.innerHTML = '';
+        if (url) {
+            const img = document.createElement('img');
+            img.src = url; img.alt = '';
+            box.appendChild(img);
+            $('cpt_photo_retirer').hidden = false;
+        } else {
+            // Initiales plutôt qu'une silhouette générique : elles distinguent déjà les gens.
+            const ini = ((MOI.prenom || '')[0] || '') + ((MOI.nom || '')[0] || '');
+            box.textContent = ini.toUpperCase() || (MOI.username || '?')[0].toUpperCase();
+            $('cpt_photo_retirer').hidden = true;
+        }
+    }
+
+    function poserPermissions(liste) {
+        const z = $('cpt_perms');
+        z.innerHTML = '';
+        (liste || []).forEach(p => {
+            const s = document.createElement('span');
+            s.className = 'cpt-perm ' + (p.accordee ? 'oui' : 'non');
+            s.textContent = T('perm.' + p.cle, p.cle);
+            const etat = document.createElement('span');
+            etat.className = 'sr-only';
+            etat.textContent = ' (' + (p.accordee ? T('compte.perm_accordee', 'accordée')
+                                                  : T('compte.perm_refusee', 'refusée')) + ')';
+            s.appendChild(etat);
+            z.appendChild(s);
+        });
+    }
+
+    async function charger() {
+        try {
+            MOI = await (await fetch('/api/users/me')).json();
+        } catch (e) { dire($('cpt_msg'), String(e), false); return; }
+        ['prenom', 'nom', 'email'].forEach(k => { $('cpt_' + k).value = MOI[k] || ''; });
+        $('cpt_tel').value = MOI.telephone || '';
+        $('cpt_service').value = MOI.service || '';
+        $('cpt_poste').value = MOI.poste || '';
+        $('cpt_lang').value = MOI.lang || '';
+        $('cpt_theme').value = MOI.theme || '';
+        $('cpt_username').textContent = MOI.username || '—';
+        $('cpt_role').textContent = MOI.role || '—';
+        $('cpt_interface').textContent = T('compte.interface_' + (MOI.interface || 'technique'),
+                                           MOI.interface || '—');
+        poserPhoto(MOI.photo_url);
+        poserPermissions(MOI.permissions);
+    }
+
+    async function patch(corps, cible) {
+        const r = await fetch('/api/users/me', {
+            method: 'PATCH', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(corps)});
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        if (cible) dire(cible, T('compte.enregistre', 'Enregistré.'), true);
+        return j;
+    }
+
+    $('cpt_enregistrer').addEventListener('click', async () => {
+        try {
+            await patch({prenom: $('cpt_prenom').value, nom: $('cpt_nom').value,
+                         email: $('cpt_email').value, telephone: $('cpt_tel').value,
+                         service: $('cpt_service').value, poste: $('cpt_poste').value},
+                        $('cpt_msg'));
+            MOI.prenom = $('cpt_prenom').value; MOI.nom = $('cpt_nom').value;
+            if (!MOI.photo_url) poserPhoto('');   // les initiales suivent le nom
+        } catch (e) { dire($('cpt_msg'), e.message || String(e), false); }
+    });
+
+    // ★ LANGUE ET THÈME S'APPLIQUENT IMMÉDIATEMENT, avec rechargement : ce sont les deux seuls
+    // réglages de cette page dont l'effet est VISIBLE sur la page elle-même. Un bouton
+    // « Enregistrer » suivi de rien laisserait croire que ça n'a pas marché.
+    $('cpt_lang').addEventListener('change', async () => {
+        try { await patch({lang: $('cpt_lang').value}); location.reload(); }
+        catch (e) { dire($('cpt_msg'), e.message || String(e), false); }
+    });
+    $('cpt_theme').addEventListener('change', async () => {
+        try { await patch({theme: $('cpt_theme').value}); location.reload(); }
+        catch (e) { dire($('cpt_msg'), e.message || String(e), false); }
+    });
+
+    $('cpt_photo_choisir').addEventListener('click', () => $('cpt_photo_f').click());
+    $('cpt_photo_f').addEventListener('change', async (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        const fd = new FormData(); fd.append('photo', f);
+        try {
+            const r = await fetch('/api/users/me/photo', {method: 'POST', body: fd});
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+            MOI.photo_url = j.photo_url;
+            poserPhoto(j.photo_url);
+            dire($('cpt_msg'), T('compte.enregistre', 'Enregistré.'), true);
+        } catch (err) { dire($('cpt_msg'), err.message || String(err), false); }
+        e.target.value = '';
+    });
+    $('cpt_photo_retirer').addEventListener('click', async () => {
+        try {
+            const r = await fetch('/api/users/me/photo', {method: 'DELETE'});
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            MOI.photo_url = '';
+            poserPhoto('');
+        } catch (e) { dire($('cpt_msg'), e.message || String(e), false); }
+    });
+
+    // Le bouton n'existe que si un encodeur existe — la section est rendue côté serveur.
+    const bSuppr = $('cpt_mon_suppr');
+    if (bSuppr) bSuppr.addEventListener('click', async () => {
+        if (!await mxlConfirm(T('compte.monitoring_supprimer_q', 'Supprimer votre encodeur ?'))) return;
+        bSuppr.disabled = true;
+        try {
+            const r = await fetch('/api/monitor/me/destroy', {method: 'POST'});
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || r.status);
+            dire($('cpt_mon_msg'), T('compte.monitoring_supprime', 'Encodeur supprimé.'), true);
+            // La destruction est asynchrone côté serveur : on recharge pour montrer l'ÉTAT,
+            // pas la promesse.
+            setTimeout(() => location.reload(), 1200);
+        } catch (e) {
+            dire($('cpt_mon_msg'), e.message || String(e), false);
+            bSuppr.disabled = false;
+        }
+    });
+
+    // ── Robustesse du mot de passe ─────────────────────────────────────────────────────────
+    // ⚠ CE CONTRÔLE NE PROTÈGE RIEN : la règle qui fait foi est `app/auth.py`, et l'API est
+    // postable sans passer par ici. Il existe pour montrer CE QUI MANQUE pendant la frappe.
+    // Les deux implémentations sont confrontées par `tools/check_motdepasse.py`.
+    const REGLES = window.validerMotDePasse ? window.validerMotDePasse.REGLES : [];
+    const zoneRegles = $('cpt_pwd_regles') && $('cpt_pwd_regles').querySelector('ul');
+
+    function identiteConnue() {
+        return [(MOI && MOI.prenom) || '', (MOI && MOI.nom) || '', (MOI && MOI.email) || ''];
+    }
+
+    function majRegles() {
+        if (!zoneRegles || !window.validerMotDePasse) return [];
+        const pwd = $('cpt_pwd_new').value;
+        const fautes = window.validerMotDePasse(pwd, (MOI && MOI.username) || '', identiteConnue());
+        zoneRegles.innerHTML = '';
+        REGLES.forEach(cle => {
+            const li = document.createElement('li');
+            // Tant que rien n'est saisi, aucune règle n'est « ratée » — un formulaire vide qui
+            // s'affiche tout en rouge accuse l'utilisateur de ce qu'il n'a pas encore fait.
+            li.className = !pwd ? '' : (fautes.indexOf(cle) < 0 ? 'ok' : 'ko');
+            // Le seuil vient des exigences SERVIES, pas d'un nombre écrit dans la
+            // traduction : changer de profil dans Réglages doit changer ce qui est annoncé.
+            li.textContent = T('compte.pwd_regle_' + cle, cle)
+                .replace('{n}', (window.PWD_EXIGENCES || {}).longueur_min || 12);
+            zoneRegles.appendChild(li);
+        });
+        return fautes;
+    }
+
+    if ($('cpt_pwd_new')) {
+        $('cpt_pwd_new').addEventListener('input', majRegles);
+        majRegles();
+    }
+
+    $('cpt_changer').addEventListener('click', async () => {
+        const oldp = $('cpt_pwd_old').value, newp = $('cpt_pwd_new').value,
+              newp2 = $('cpt_pwd_new2').value;
+        if (!newp) { dire($('cpt_pwd_msg'), T('settings.js.new_pwd_required', '…'), false); return; }
+        // La discordance AVANT la robustesse : c'est la faute la plus probable et la plus
+        // bête, et l'annoncer en même temps qu'une liste de règles la noie.
+        if (newp !== newp2) {
+            dire($('cpt_pwd_msg'), T('compte.pwd_discordant', 'Les deux saisies diffèrent.'), false);
+            return;
+        }
+        const fautes = majRegles();
+        if (fautes.length) {
+            dire($('cpt_pwd_msg'), T('compte.pwd_faible', 'Mot de passe trop faible.'), false);
+            return;
+        }
+        try {
+            const r = await fetch('/api/users/me/password', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({old_password: oldp, new_password: newp})});
+            const j = await r.json();
+            if (!r.ok) {
+                // Le serveur peut refuser pour une règle que le miroir ne connaît pas (ou plus).
+                // On affiche SA raison à lui, pas celle qu'on avait calculée.
+                if (j.regles && j.regles.length) {
+                    throw new Error(T('compte.pwd_faible', 'Mot de passe trop faible.') + ' ' +
+                                    j.regles.map(f => T('compte.pwd_regle_' + f, f)).join(' ; '));
+                }
+                throw new Error(j.error || ('HTTP ' + r.status));
+            }
+            // Vidés après succès : laisser un mot de passe en clair dans un formulaire, sur un
+            // poste de régie partagé, est exactement ce qu'on ne veut pas.
+            $('cpt_pwd_old').value = ''; $('cpt_pwd_new').value = ''; $('cpt_pwd_new2').value = '';
+            majRegles();
+            dire($('cpt_pwd_msg'), T('settings.js.pwd_changed', 'Modifié.'), true);
+        } catch (e) { dire($('cpt_pwd_msg'), e.message || String(e), false); }
+    });
+
+    // ── Mes connexions ─────────────────────────────────────────────────────────────────────
+    const quand = (iso) => {
+        if (!iso) return '—';
+        const d = new Date(iso);
+        return isNaN(d) ? iso : d.toLocaleString(window.LANG || 'fr');
+    };
+
+    async function chargerSessions() {
+        const t = $('cpt_sessions'), bouton = $('cpt_sess_fermer');
+        if (!t) return;
+        let d;
+        try {
+            const r = await fetch('/api/users/me/sessions');
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            d = await r.json();
+        } catch (e) { dire($('cpt_sess_msg'), String(e), false); return; }
+        $('cpt_derniere_connexion').textContent = quand(d.derniere_connexion);
+        const esc = s => String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        let html = '<thead><tr>' +
+            ['compte.sessions_navigateur', 'compte.sessions_adresse',
+             'compte.sessions_debut', 'compte.sessions_vue']
+            .map(k => '<th>' + T(k, k) + '</th>').join('') + '</tr></thead><tbody>';
+        (d.sessions || []).forEach(s => {
+            html += '<tr>' +
+                '<td>' + esc(s.navigateur || T('compte.sessions_inconnu', '?')) +
+                (s.courante ? ' <span class="badge running">' +
+                              T('compte.sessions_courante', '') + '</span>' : '') + '</td>' +
+                '<td class="mono">' + esc(s.ip || '—') + '</td>' +
+                '<td>' + esc(quand(s.debut)) + '</td>' +
+                '<td>' + esc(quand(s.vue)) + '</td></tr>';
+        });
+        t.innerHTML = html + '</tbody>';
+        // Le bouton n'a de sens que s'il y a autre chose à fermer que soi-même.
+        const autres = (d.sessions || []).filter(s => !s.courante).length;
+        bouton.hidden = !autres;
+        if (!autres) dire($('cpt_sess_msg'), T('compte.sessions_seule', ''), true);
+    }
+
+    if ($('cpt_sess_fermer')) $('cpt_sess_fermer').addEventListener('click', async () => {
+        if (!await mxlConfirm({message: T('compte.sessions_fermer_q', ''), danger: true})) return;
+        try {
+            const r = await fetch('/api/users/me/sessions/autres', {method: 'DELETE'});
+            const j = await r.json();
+            if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+            dire($('cpt_sess_msg'),
+                 T('compte.sessions_fermees', '').replace('{n}', j.fermees), true);
+            chargerSessions();
+        } catch (e) { dire($('cpt_sess_msg'), e.message || String(e), false); }
+    });
+
+    charger();
+    chargerSessions();
+})();
+</script>
+{% endblock %}

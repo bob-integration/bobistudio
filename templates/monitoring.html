@@ -1,0 +1,2348 @@
+{% extends "layout.html" %}
+{% set page = 'monitoring' %}
+{% block title %}{{ _('monitoring.page_title') }}{% endblock %}
+
+{% block content %}
+<h1>{{ _('monitoring.title') }}</h1>
+
+<style>
+/* `.mon-tabs` vit dans base.css : la page /probe (onglet « Sonde 2110 ») porte la MÊME barre. */
+
+.nodes-grid { display:grid; gap:var(--space-4);
+    grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); }
+/* Bandeau sélecteur de serveurs (en haut du détail) — minimal et stylisé */
+.node-switcher { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 4px; }
+.node-switch { display:inline-flex; align-items:center; gap:6px; padding:3px 11px; border-radius:14px;
+    border:1px solid var(--border); background:var(--bg-card, var(--surface)); color:var(--text-muted);
+    font-size:12px; line-height:1.4; cursor:pointer; transition:color .12s, border-color .12s, background .12s; }
+.node-switch:hover { color:var(--text); border-color:var(--accent, #5b8def); }
+.node-switch.is-cur { color:var(--text); font-weight:600; border-color:var(--accent, #5b8def);
+    background:color-mix(in srgb, var(--accent, #5b8def) 14%, transparent); }
+.node-switch-dot { width:7px; height:7px; border-radius:50%; display:inline-block; flex:0 0 auto; }
+/* Bandeau cluster (vue d'ensemble) */
+.cluster-bar { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 var(--space-4); }
+.cl-chip { display:inline-flex; align-items:baseline; gap:6px; padding:6px 12px; border-radius:8px;
+    border:1px solid var(--border); background:var(--bg-card, var(--surface)); font-size:12px; }
+.cl-chip b { font-size:14px; font-weight:700; }
+.cl-chip .lab { color:var(--text-muted); }
+.node-card { background:var(--surface, #1b1e24); border:1px solid var(--border);
+    border-radius:10px; padding:var(--space-4); cursor:pointer; transition:border-color .15s; }
+.node-card:hover { border-color:var(--accent, #5b8def); }
+.node-card.is-ctl { border-style:dashed; }
+.node-card-head { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+.node-card-head .node-name { font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.node-caps { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:8px; }
+.node-cap { font-size:.72rem; padding:1px 7px; border-radius:10px;
+    background:var(--surface-2, #262a31); color:var(--text-muted); }
+.node-gauge { margin-bottom:7px; }
+.node-gauge-top { display:flex; justify-content:space-between; font-size:.8rem; margin-bottom:2px; }
+.node-gauge-top .label { color:var(--text-muted); }
+.node-bar { height:7px; border-radius:4px; background:var(--surface-2, #262a31); overflow:hidden; }
+.node-bar-fill { height:100%; background:var(--accent, #5b8def); transition:width .4s; }
+.node-bar-fill.warn { background:#e0a93b; } .node-bar-fill.crit { background:#e0533b; }
+.node-spark { display:block; width:100%; height:34px; }
+.node-detail-grid { display:grid; gap:var(--space-4); margin-top:var(--space-4);
+    grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); }
+.node-detail-grid section { background:var(--surface, #1b1e24); border:1px solid var(--border);
+    border-radius:10px; padding:var(--space-4); }
+.node-detail-grid h3 { margin:0 0 10px; font-size:.95rem; }
+.node-kv { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:.85rem; }
+.node-kv dt { color:var(--text-muted); } .node-kv dd { margin:0; text-align:right; }
+.node-cores { display:flex; gap:2px; flex-wrap:wrap; align-items:flex-start; }
+.node-core { width:14px; height:32px; background:var(--surface-2, #262a31); border-radius:2px;
+    position:relative; overflow:hidden; padding:0; border:0; cursor:pointer;
+    transition:transform .15s ease-out, box-shadow .15s ease-out; }
+.node-core:hover { transform:translateY(-2px); }
+.node-core:focus-visible { outline:2px solid var(--accent, #5b8def); outline-offset:2px; }
+/* Cœur SÉLECTIONNÉ : le détail affiché dessous s'y rapporte, le lien doit être évident. */
+.node-core.core-sel { box-shadow:0 0 0 2px var(--accent, #5b8def); transform:translateY(-2px); }
+.core-detail { margin:10px 0 2px; padding:10px 12px; border:1px solid var(--border, #2a2f37);
+    border-radius:6px; background:var(--surface-2, #262a31); }
+.node-core span { position:absolute; bottom:0; left:0; right:0; background:var(--accent, #5b8def); }
+/* Propriétaire du cœur : liseré haut coloré (le fond reste la jauge de charge). */
+.node-core.core-engine { box-shadow:inset 0 3px 0 #b06cd9; }
+.node-core.core-pin    { box-shadow:inset 0 3px 0 #5b8def; }
+.node-core.core-gpu    { box-shadow:inset 0 3px 0 #e8a33d; }
+.node-core.core-free   { box-shadow:inset 0 3px 0 #3bce82; }
+.node-core.core-off    { opacity:.5; }
+/* Tuile de SOCKET (nœud NUMA). Pas une carte : un groupe séparé par un filet, parce que la
+   comparaison entre sockets doit se lire d'un balayage vertical, sans cadre qui isole. */
+.socket { margin:10px 0 0; padding-top:8px; border-top:1px solid var(--border, #2a2f37); }
+.socket:first-of-type { border-top:0; padding-top:0; }
+.socket-head { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:6px; }
+.socket-name { font-weight:650; font-size:.86rem; letter-spacing:.01em; }
+/* Périphérique ANCRÉ sur ce socket : c'est ce qui rend la capacité actionnable. */
+.socket-dev { font-size:.72rem; padding:1px 7px; border-radius:10px;
+    background:var(--surface-2, #262a31); color:var(--text-muted, #9aa4b2); }
+/* Un emplacement = un cœur PHYSIQUE, ses threads HyperThreading côte à côte. C'est l'unité que
+   comptent les chiffres de capacité : on la rend visible au lieu d'aligner 96 barres anonymes. */
+.phys-core { display:flex; gap:2px; padding:3px; border-radius:3px; background:var(--surface-2, #262a31); }
+/* Les deux threads appartiennent à des conteneurs DIFFÉRENTS : « dédié » n'y veut plus dire dédié. */
+.phys-core.phys-shared { outline:1px solid var(--warning, #e8a33d); outline-offset:-1px; }
+.phys-core .node-core { width:10px; }
+.socket-cap { margin-left:auto; font-size:.8rem; font-variant-numeric:tabular-nums; }
+/* Socket PLEIN : l'état qui doit sauter aux yeux — c'est celui qui fait tomber un mur à 30 fps. */
+.socket-cap.socket-full { color:var(--danger, #e5484d); font-weight:650; }
+.core-legend { display:flex; gap:12px; flex-wrap:wrap; margin:4px 0 8px; font-size:.78rem; }
+.core-legend span { display:inline-flex; align-items:center; gap:5px; }
+.core-dot { display:inline-block; width:9px; height:9px; border-radius:2px; background:var(--surface-2, #262a31); }
+.core-dot.core-engine { background:#b06cd9; } .core-dot.core-pin { background:#5b8def; }
+.core-dot.core-gpu { background:#e8a33d; }
+.core-dot.core-free { background:#3bce82; } .core-dot.core-off { opacity:.4; background:var(--text-muted); }
+.cpu-sub { margin:10px 0 4px; font-size:.85rem; }
+.cpu-who-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+.cpu-who-table th { color:var(--text-muted); font-weight:normal; text-align:left; padding:2px 4px; }
+.cpu-who-table td { padding:2px 4px; border-top:1px solid var(--border, #333a44); }
+.cpu-who-table .badge { font-size:.7rem; padding:1px 5px; border-radius:4px;
+    background:rgba(176,108,217,.18); color:#b06cd9; }
+.core-snap-table tr.core-hot td { color:var(--status-warning-fg, #e0a93b); }
+.node-stale { opacity:.55; }
+/* ─── Tissu de composition : graphe à connecteurs ─── */
+.fab-graph-wrap { overflow-x:auto; }
+.fab-graph { display:block; min-width:760px; }
+.fab-edge { fill:none; stroke:var(--border, #333a44); stroke-width:1.2; opacity:.5; }
+.fab-edge.shared { stroke:var(--accent, #5b8def); opacity:.45; }
+.fab-edge.hot { stroke:var(--accent, #5b8def); opacity:1; stroke-width:2; }
+.fab-box rect { fill:var(--surface-2, #262a31); stroke:var(--border, #333a44); stroke-width:1; }
+.fab-box.src rect { fill:var(--surface-1, #1c2026); }
+.fab-box.node.shared rect { stroke:var(--accent, #5b8def); stroke-width:2; }
+.fab-box.wall rect { fill:var(--surface-2, #262a31); stroke:var(--text-2, #9aa4b2); }
+.fab-tot { fill:var(--text, #e6e9ee); font-size:10px; font-weight:600; }
+.fab-box.wall.ok .fab-tot { fill:var(--status-running-fg, #22c55e); }
+.fab-box.wall.over rect { stroke:var(--status-stopped-fg, #f87171); stroke-width:2; }
+.fab-box.wall.over .fab-tot { fill:var(--status-stopped-fg, #f87171); }
+.fab-t1 { fill:var(--text, #e6e9ee); font-size:11px; font-weight:600; }
+.fab-t2 { fill:var(--text-2, #9aa4b2); font-size:9px; }
+.fab-box.node.shared .fab-t2 { fill:var(--accent, #5b8def); }
+.fab-graph.focusing .fab-edge { opacity:.1; }
+.fab-graph.focusing .fab-edge.hot { opacity:1; }
+.fab-graph.focusing .fab-box { opacity:.32; }
+.fab-graph.focusing .fab-box.hot { opacity:1; }
+.fab-box { cursor:pointer; }
+.fab-box.sel rect { stroke:var(--accent, #5b8def); stroke-width:2.5; }
+.fab-detail { margin-top:12px; background:var(--surface-2, #262a31); border:1px solid var(--border, #333a44);
+    border-radius:8px; padding:12px 14px; min-height:38px; }
+.fab-det-head { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.fab-role { display:inline-block; padding:2px 9px; border-radius:11px; font-size:.78rem;
+    background:var(--surface-1, #1c2026); border:1px solid var(--border, #333a44); }
+.fab-role.shared { border-color:var(--accent, #5b8def); color:var(--accent, #5b8def); }
+.fab-det-grid { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; margin:0; font-size:.85rem; }
+.fab-det-grid dt { color:var(--text-2, #9aa4b2); }
+.fab-det-grid dd { margin:0; }
+.fab-det-grid code { background:var(--surface-1, #1c2026); border-radius:4px; padding:1px 5px; font-size:.82rem; }
+.fab-edge.cross { stroke:#e8a33d; opacity:.85; stroke-width:1.6; stroke-dasharray:5 3; }
+.fab-graph.focusing .fab-edge.cross { opacity:.12; }
+.fab-graph.focusing .fab-edge.cross.hot { opacity:1; }
+.fab-legend { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:8px; font-size:.8rem; color:var(--text-2, #9aa4b2); }
+.fab-leg { display:inline-flex; align-items:center; gap:5px; }
+.fab-leg i { width:10px; height:10px; border-radius:2px; display:inline-block; }
+.fab-leg.cross i { width:16px; height:0; border-top:2px dashed #e8a33d; border-radius:0; }
+#mon-view-rdma table { width:100%; border-collapse:collapse; font-size:.85em; }
+#mon-view-rdma th, #mon-view-rdma td { padding:4px 8px; text-align:left; border-bottom:1px solid var(--border); vertical-align:top; }
+#mon-view-rdma th { color:var(--text-muted); font-weight:600; }
+.rdma-node-grid { display:grid; gap:var(--space-3); grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); }
+.rdma-node-card { border:1px solid var(--border); border-radius:8px; padding:10px 12px; background:var(--surface-2,rgba(127,127,127,.04)); }
+.rdma-node-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.rdma-graphs { display:grid; gap:10px; grid-template-columns:1fr 1fr; margin-top:8px; }
+.rdma-graph .node-spark { height:40px; }
+.rdma-iface { width:100%; border-collapse:collapse; font-size:.95em; }
+.rdma-iface th { color:var(--text-muted); font-weight:600; padding:2px 6px; }
+.rdma-iface td { padding:2px 6px; border-bottom:1px solid var(--border); }
+.rdma-iface td code { font-size:.95em; }
+.node-spark-empty { height:40px; display:flex; align-items:center; justify-content:center; border:1px dashed var(--border); border-radius:4px; }
+@media (max-width:640px){ .rdma-graphs { grid-template-columns:1fr; } }
+</style>
+
+<div id="mon-tabs" class="mon-tabs" role="tablist">
+    <button type="button" class="tab active" data-view="overview" role="tab"
+            onclick="activateMonitoringView('overview')">{{ _('monitoring.tab_overview') }}</button>
+    <button type="button" class="tab" data-view="nodes" role="tab"
+            onclick="activateMonitoringView('nodes')">{{ _('monitoring.tab_nodes') }}</button>
+    <button type="button" class="tab" data-view="fabric" role="tab"
+            onclick="activateMonitoringView('fabric')">{{ _('monitoring.tab_fabric') }}</button>
+    <button type="button" class="tab" data-view="rdma" role="tab"
+            onclick="activateMonitoringView('rdma')">{{ _('monitoring.tab_rdma') }}</button>
+    <button type="button" class="tab" data-view="logs" role="tab"
+            onclick="activateMonitoringView('logs')">{{ _('monitoring.tab_logs') }}</button>
+    <a class="tab" href="/probe" role="tab">{{ _('nav.probe') }}</a>
+</div>
+
+<div id="mon-view-overview" class="mon-view">
+<div id="cluster-bar" class="cluster-bar" hidden></div>
+<div class="home-panels">
+    <section class="home-panel panel-issues" aria-labelledby="panel-issues-title">
+        <header class="panel-head">
+            <h2 class="panel-title" id="panel-issues-title">{{ _('monitoring.watch') }}</h2>
+            <span class="panel-count" id="issues-count"></span>
+        </header>
+        <div id="issues-body"></div>
+    </section>
+
+    <section class="home-panel panel-perf" aria-labelledby="panel-perf-title">
+        <header class="panel-head">
+            <h2 class="panel-title" id="panel-perf-title">{{ _('monitoring.perf') }}</h2>
+        </header>
+        <dl class="panel-stats" id="perf-stats">
+            <dt>{{ _('monitoring.lat_max') }}</dt><dd id="perf-lat-max"><span class="placeholder">{{ _('monitoring.pending') }}</span></dd>
+            <dt>{{ _('monitoring.lat_avg') }}</dt><dd id="perf-lat-avg"><span class="placeholder">{{ _('monitoring.pending') }}</span></dd>
+            <dt>{{ _('monitoring.fps_min') }}</dt>     <dd id="perf-fps-min"><span class="placeholder">{{ _('monitoring.pending') }}</span></dd>
+            <dt id="perf-rdma-dt" hidden>{{ _('monitoring.rdma_aggregate') }}</dt><dd id="perf-rdma" hidden></dd>
+            <!-- Horloges : ICI on ne dit QUE « ça va » ou « ça ne va pas ». Le détail et les
+                 réglages vivent dans Réglages → Réseau → Horloges, vers où pointe le lien. -->
+            <dt>{{ _('monitoring.clocks') }}</dt><dd id="perf-clocks"><span class="placeholder">{{ _('monitoring.pending') }}</span></dd>
+        </dl>
+    </section>
+
+    <section class="home-panel panel-usage" aria-labelledby="panel-usage-title">
+        <header class="panel-head">
+            <h2 class="panel-title" id="panel-usage-title">{{ _('monitoring.resources') }}</h2>
+        </header>
+        <div class="usage-row">
+            <span class="usage-label">CPU</span>
+            <div class="usage-bar"><div class="usage-fill" id="usage-cpu-fill"></div></div>
+            <span class="usage-value" id="usage-cpu-val"><span class="placeholder">…</span></span>
+        </div>
+        <div class="usage-row">
+            <span class="usage-label">RAM</span>
+            <div class="usage-bar"><div class="usage-fill" id="usage-mem-fill"></div></div>
+            <span class="usage-value" id="usage-mem-val"><span class="placeholder">…</span></span>
+        </div>
+        <p class="panel-foot" id="usage-foot"></p>
+    </section>
+</div>
+
+<section id="shm" aria-labelledby="shm-title">
+    <h2 id="shm-title">{{ _('monitoring.shm') }}</h2>
+    <div id="shm-table-wrap">
+        <div class="meta">{{ _('monitoring.loading') }}</div>
+    </div>
+</section>
+
+<section class="home-logs">
+    <h2>{{ _('monitoring.logs') }}</h2>
+    <div class="alerts-toolbar">
+        <select id="logs-source" aria-label="{{ _('monitoring.logs_source') }}" onchange="onLogsSourceChange()">
+            <option value="alerts">{{ _('monitoring.src_alerts') }}</option>
+            <option value="events">{{ _('monitoring.src_ptp_events') }}</option>
+        </select>
+        <input type="search" id="logs-q" placeholder="{{ _('monitoring.search') }}"
+               aria-label="{{ _('monitoring.search') }}"
+               oninput="onLogsFilterChange()" autocomplete="off">
+        <select id="logs-niveau" aria-label="{{ _('monitoring.level_aria') }}" onchange="rafraichirLogs()">
+            <option value="">{{ _('monitoring.all_levels') }}</option>
+            <option value="info">info</option>
+            <option value="warning">warning</option>
+            <option value="error">error</option>
+        </select>
+        <select id="logs-sort" aria-label="{{ _('monitoring.sort_aria') }}" onchange="renderLogs()">
+            <option value="recent">{{ _('monitoring.sort_recent') }}</option>
+            <option value="old">{{ _('monitoring.sort_old') }}</option>
+            <option value="niveau">{{ _('monitoring.sort_level') }}</option>
+        </select>
+        <select id="logs-limit" aria-label="{{ _('monitoring.lines_aria') }}" onchange="rafraichirLogs()">
+            <option value="100">{{ _('monitoring.lines_opt', n=100) }}</option>
+            <option value="500" selected>{{ _('monitoring.lines_opt', n=500) }}</option>
+            <option value="1000">{{ _('monitoring.lines_opt', n=1000) }}</option>
+        </select>
+        <span id="logs-count" class="meta"></span>
+        <span style="flex:1"></span>
+        <span id="logs-export-wrap">
+            <button type="button" class="btn" onclick="exporterLogs('csv')">Export CSV</button>
+            <button type="button" class="btn" onclick="exporterLogs('txt')">Export TXT</button>
+        </span>
+    </div>
+    <div id="logs-list" class="home-logs-list" role="log" aria-live="polite"
+         aria-label="{{ _('monitoring.log_aria') }}">
+        <div class="meta">{{ _('monitoring.loading') }}</div>
+    </div>
+</section>
+</div><!-- /mon-view-overview -->
+
+<div id="mon-view-nodes" class="mon-view" hidden>
+    <div id="nodes-detail" hidden>
+        <button type="button" class="btn" onclick="closeNodeDetail()">← {{ _('monitoring.nodes_back') }}</button>
+        <div id="nodes-detail-body"></div>
+    </div>
+    <div id="nodes-grid" class="nodes-grid">
+        <div class="meta">{{ _('monitoring.loading') }}</div>
+    </div>
+</div>
+
+<div id="mon-view-fabric" class="mon-view" hidden>
+    <div id="fabric-body"><div class="meta">{{ _('monitoring.loading') }}</div></div>
+</div>
+
+<div id="mon-view-rdma" class="mon-view" hidden>
+    <div id="rdma-body"><div class="meta">{{ _('monitoring.loading') }}</div></div>
+</div>
+
+<div id="mon-view-logs" class="mon-view" hidden>
+{# Journaux de conteneurs. La liste vient du JOURNAL de l'hôte, pas de la base ni de `docker ps -a` :
+   elle inclut donc les conteneurs DÉTRUITS, qui sont la raison d'être de journald ici. #}
+<section>
+    <h3>{{ _('monitoring.logs_title') }}</h3>
+    <div class="meta" style="margin-bottom:var(--space-2)">{{ _('monitoring.logs_hint') }}</div>
+    <div class="row" style="gap:var(--space-2); align-items:flex-end; flex-wrap:wrap">
+        <div class="field"><label>{{ _('monitoring.logs_node') }}</label>
+            <select id="logs-node" onchange="logsChargerListe()"></select></div>
+        <label class="toggle-inline"><input type="checkbox" class="ios-toggle" id="logs-show-gone"
+               onchange="logsRendreListe()"> {{ _('monitoring.logs_show_gone') }}</label>
+        <button class="btn" onclick="logsChargerListe()">{{ _('monitoring.logs_refresh') }}</button>
+        <span id="logs-retention" class="meta" style="flex:1; min-width:240px"></span>
+    </div>
+    <!-- ★ PAS « logs-list » : cet identifiant est déjà celui de la liste des journaux applicatifs
+         (section « home-logs » plus haut). getElementById rend le PREMIER élément trouvé, donc les
+         deux fonctionnalités écrivaient dans la MÊME boîte : la liste des conteneurs partait dans
+         le panneau d'à côté, celui-ci restait bloqué sur « ⏳ », et le rafraîchissement 5 s des
+         journaux applicatifs écrasait l'autre à tour de rôle (signalé en recette, 2026-08-21). -->
+    <div id="logs-conteneurs" class="meta" style="margin-top:var(--space-2)">⏳…</div>
+</section>
+</div>
+
+<div id="mon-view-plugin" class="mon-view" hidden>
+    <div id="pmon-mount"><div class="meta">{{ _('monitoring.loading') }}</div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+}
+function plural(n, word, suffix) {
+    return `${n} ${word}${n > 1 ? (suffix || 's') : ''}`;
+}
+function showToast(msg, kind) {
+    const t = document.createElement('div');
+    t.className = 'wire-toast wire-toast-' + (kind || 'info');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.classList.add('wire-toast-out'); setTimeout(() => t.remove(), 400); }, 3500);
+}
+
+// ─── Panel "À surveiller" ────────────────────────────────────
+const KIND_LABEL = {
+    '2110_io': '2110_io', multiview: 'Multiviewer',
+    streamer: 'Streamer',
+    mixer: window.t('monitoring.kind.mixer'), color_corrector: window.t('monitoring.kind.color_corrector'),
+};
+function detectIssues(nodes) {
+    const issues = [];
+    (nodes || []).forEach(n => {
+        if (!n.kind) return;
+        if (n.status === 'stopped') {
+            issues.push({node: n, severity: 'error', reason: window.t('monitoring.issue_stopped')});
+        } else if (n.status === 'unreachable') {
+            // Le point d'attention qui MANQUAIT : le conteneur restait « running · 49,8 fps »
+            // pendant que plus personne ne pouvait le joindre (incident prod, deux multiviews).
+            issues.push({node: n, severity: 'error', reason: window.t('monitoring.issue_unreachable')});
+        } else if (n.status === 'script_stopped') {
+            // La cause quand on l'a : « script arrêté » seul n'oriente vers rien.
+            issues.push({node: n, severity: 'warning',
+                         reason: window.t('monitoring.issue_paused')
+                                 + (n.status_cause ? ' — ' + n.status_cause : '')});
+        } else if (n.status === 'unknown') {
+            issues.push({node: n, severity: 'warning', reason: window.t('monitoring.issue_unknown')});
+        } else if (n.status === 'running') {
+            const fps = parseFloat(n.fps);
+            if (!isFinite(fps) || fps <= 0) {
+                issues.push({node: n, severity: 'warning', reason: window.t('monitoring.issue_nofps')});
+            }
+        }
+    });
+    return issues;
+}
+// Met en forme un point d'attention OPÉRATIONNEL (j.attention, état live) → ligne unifiée.
+function attentionItem(a) {
+    const slots = (a.slots || []).map(s => '#' + s).join(', ');
+    const suff = slots ? ` (${slots})` : '';
+    switch (a.kind) {
+        case 'rx_stall': return {sev: a.severity, title: 'RX ' + (a.host || ('#' + a.vmid)),
+            reason: window.t('monitoring.att_rx_stall').replace('{n}', a.count) + suff,
+            href: '/containers#c-' + a.vmid};
+        case 'tx_stall': return {sev: a.severity, title: 'TX ' + (a.host || ('#' + a.vmid)),
+            reason: window.t('monitoring.att_tx_stall').replace('{n}', a.count) + suff,
+            href: '/containers#c-' + a.vmid};
+        case 'mcast': return {sev: a.severity, title: window.t('monitoring.att_mcast_title'),
+            reason: window.t('monitoring.att_mcast').replace('{n}', a.count) + ' : ' + (a.items || []).join(', '),
+            href: '/settings#nmos'};
+        case 'mcast_range_exhausted': return {sev: a.severity, title: window.t('monitoring.att_mcast_range_title'),
+            reason: window.t('monitoring.att_mcast_range').replace('{n}', a.count) + ' : ' +
+                (a.items || []).map(it => it.label).join(', '),
+            href: '/settings#mcast'};
+        case 'pyramide': return {sev: a.severity, title: 'Pyramide',
+            reason: window.t('monitoring.att_pyramide').replace('{o}', a.orphans).replace('{u}', a.unmet),
+            href: '/monitoring#view=fabric'};
+        case 'orphan_container': {
+            const canDel = window.hasPerm ? hasPerm('containers.delete') : true;
+            return {sev: a.severity, title: a.name,
+                reason: window.t('monitoring.att_orphan').replace('{node}', a.node || a.node_id),
+                actionHtml: canDel
+                    ? `<button class="btn btn-blue" data-node-id="${a.node_id}" data-name="${escapeHtml(a.name)}"
+                               onclick="goDestroyOrphan(this)">${window.t('monitoring.att_orphan_destroy')}</button>`
+                    : ''};
+        }
+        default: return {sev: a.severity || 'warning', title: a.kind || '?', reason: '', href: '#'};
+    }
+}
+async function goDestroyOrphan(btn) {
+    if (!confirm(window.t('monitoring.att_orphan_confirm').replace('{name}', btn.dataset.name))) return;
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/fleet/orphans/destroy', {method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({node_id: parseInt(btn.dataset.nodeId), name: btn.dataset.name})});
+        const j = await r.json();
+        if (!j.ok) { alert(j.error || window.t('monitoring.echec')); btn.disabled = false; return; }
+        btn.closest('.issue-row')?.remove();
+    } catch (e) { alert(e.message); btn.disabled = false; }
+}
+function renderIssues(j) {
+    const nodes = (j && j.topology && j.topology.nodes) || [];
+    const issues = detectIssues(nodes);
+    const attention = (j && j.attention) || [];
+    const total = issues.length + attention.length;
+    document.getElementById('issues-count').textContent =
+        total ? window.t('monitoring.count_points').replace('{n}', total) : '';
+    const body = document.getElementById('issues-body');
+    if (!total) {
+        body.innerHTML = `<p class="issue-empty">${window.t('monitoring.all_nominal')}</p>`;
+        return;
+    }
+    const canDeploy = window.hasPerm ? hasPerm('containers.deploy') : true;
+    // 1) Anomalies CONTENEUR (statut/fps) — avec actions Restart/Configurer.
+    const nodeRows = issues.map(i => {
+        const n = i.node;
+        const kindLabel = KIND_LABEL[n.kind] || n.kind || '';
+        // Le badge nomme le STATUT RÉEL du conteneur (catalogue containers.status.*) et non une
+        // traduction de la sévérité : un conteneur injoignable n'est pas « arrêté », on ne sait
+        // justement pas s'il l'est. Statut hors catalogue → brut, jamais un libellé inventé.
+        const stKey = 'containers.status.' + (n.status || 'unknown');
+        const stLbl = window.t(stKey) === stKey ? (n.status || 'unknown') : window.t(stKey);
+        const badgeCls = n.status === 'unreachable' ? 'unreachable'
+                       : (i.severity === 'error' ? 'stopped' : 'script_stopped');
+        const restartBtn = canDeploy
+            ? `<button class="btn btn-blue"
+                       data-vmid="${n.vmid}" data-host="${escapeHtml(n.hostname)}"
+                       onclick="goRestart(this)"
+                       aria-label="${window.t('monitoring.restart_aria').replace('{host}', escapeHtml(n.hostname))}">Restart</button>`
+            : '';
+        const configBtn = canDeploy
+            ? `<button class="btn btn-purple"
+                       onclick="window.location.href='/containers#c-${n.vmid}'"
+                       aria-label="${window.t('monitoring.config_aria').replace('{host}', escapeHtml(n.hostname))}">${window.t('monitoring.configure')}</button>`
+            : '';
+        return `<li class="issue-row">
+            <div class="issue-id">
+                <span class="issue-host">${escapeHtml(n.hostname)}</span>
+                <span class="card-vmid">#${n.vmid}</span>
+                <span class="badge ${badgeCls}">${escapeHtml(stLbl)}</span>
+                ${kindLabel ? `<span class="issue-kind">${escapeHtml(kindLabel)}</span>` : ''}
+            </div>
+            <div class="issue-reason">${escapeHtml(i.reason)}</div>
+            <div class="issue-actions">${restartBtn}${configBtn}</div>
+        </li>`;
+    }).join('');
+    // 2) Anomalies OPÉRATIONNELLES de flux/config (état live) — lien « Ouvrir » vers la page utile.
+    const attRows = attention.map(a => {
+        const it = attentionItem(a);
+        const badgeCls = it.sev === 'error' ? 'stopped' : 'script_stopped';
+        const sevLbl = it.sev === 'error' ? window.t('monitoring.sev_error') : window.t('monitoring.sev_warning');
+        return `<li class="issue-row">
+            <div class="issue-id">
+                <span class="issue-host">${escapeHtml(it.title)}</span>
+                <span class="badge ${badgeCls}">${escapeHtml(sevLbl)}</span>
+            </div>
+            <div class="issue-reason">${escapeHtml(it.reason)}</div>
+            <div class="issue-actions">${it.actionHtml !== undefined ? it.actionHtml
+                : `<a class="btn btn-purple" href="${it.href}">${window.t('monitoring.att_open')}</a>`}</div>
+        </li>`;
+    }).join('');
+    body.innerHTML = `<ul class="issue-list" aria-live="polite" aria-atomic="false">${nodeRows}${attRows}</ul>`;
+}
+async function goRestart(btn) {
+    const vmid = btn.dataset.vmid;
+    const host = btn.dataset.host;
+    showToast(window.t('monitoring.restarting').replace('{host}', host));
+    try {
+        const r = await fetch('/api/containers/' + vmid + '/restart', {method: 'POST'});
+        const j = await r.json().catch(() => ({}));
+        if (r.ok) {
+            showToast(window.t('monitoring.restarted').replace('{host}', host), 'ok');
+            setTimeout(rafraichir, 600);
+        } else {
+            showToast(window.t('monitoring.error') + ' ' + (j.error || r.status), 'error');
+        }
+    } catch (e) {
+        showToast(window.t('monitoring.net_error') + ' ' + e.message, 'error');
+    }
+}
+
+// ─── Panel "Performance pipeline" ───────────────────────────
+function fmtLatency(ms) {
+    if (ms == null || !isFinite(ms)) return '—';
+    return `${Math.round(ms)} ms`;
+}
+function latencyClass(ms) {
+    if (ms == null) return '';
+    if (ms > 500) return 'lat-err';
+    if (ms > 100) return 'lat-warn';
+    return 'lat-ok';
+}
+function renderPerf(nodes, edges) {
+    // Les entrées GELÉES (source coupée) sont marquées stale côté backend, latency_ms=null → on les
+    // EXCLUT du max/moyenne (sinon l'âge d'une tuile figée, plusieurs minutes, écrase la métrique) ;
+    // on les compte à part pour le signaler.
+    const allEdges = edges || [];
+    const staleN = allEdges.filter(e => e.stale).length;
+    const lats = allEdges
+        .map(e => ({lat: e.latency_ms, from: e.from, to: e.to, shm: e.shm}))
+        .filter(x => x.lat != null && isFinite(x.lat));
+    const latMaxEl = document.getElementById('perf-lat-max');
+    const latAvgEl = document.getElementById('perf-lat-avg');
+    const frozenNote = staleN
+        ? ` · <span class="lat-frozen">${window.t('monitoring.frozen_inputs').replace('{n}', staleN)}</span>` : '';
+    if (lats.length) {
+        const sorted = lats.slice().sort((a, b) => b.lat - a.lat);
+        const max = sorted[0];
+        const avg = lats.reduce((s, x) => s + x.lat, 0) / lats.length;
+        const byVmid = Object.fromEntries((nodes || []).map(n => [n.vmid, n.hostname || `#${n.vmid}`]));
+        const cls = latencyClass(max.lat);
+        latMaxEl.innerHTML =
+            `<span class="lat-pill ${cls}">${fmtLatency(max.lat)}</span>` +
+            `<span class="perf-meta">${escapeHtml(byVmid[max.from] || ('#' + max.from))} → ${escapeHtml(byVmid[max.to] || ('#' + max.to))}</span>`;
+        latAvgEl.innerHTML =
+            `<span class="perf-value">${fmtLatency(avg)}</span>` +
+            `<span class="perf-meta">${window.t('monitoring.on_cables').replace('{n}', lats.length)}${frozenNote}</span>`;
+    } else {
+        // Aucune latence mesurable : soit rien de câblé, soit tout est gelé.
+        latMaxEl.innerHTML = `<span class="placeholder">${window.t('monitoring.no_measure')}</span>`;
+        latAvgEl.innerHTML = staleN
+            ? `<span class="perf-meta"><span class="lat-frozen">${window.t('monitoring.frozen_inputs').replace('{n}', staleN)}</span></span>`
+            : `<span class="placeholder">${window.t('monitoring.no_measure')}</span>`;
+    }
+    const fpsSamples = (nodes || [])
+        .filter(n => n.kind && n.status === 'running')
+        .map(n => ({fps: parseFloat(n.fps), host: n.hostname, vmid: n.vmid}))
+        .filter(x => isFinite(x.fps) && x.fps > 0);
+    const fpsEl = document.getElementById('perf-fps-min');
+    if (fpsSamples.length) {
+        const min = fpsSamples.slice().sort((a, b) => a.fps - b.fps)[0];
+        fpsEl.innerHTML =
+            `<span class="perf-value">${min.fps.toFixed(2)}</span>` +
+            `<span class="perf-meta">${escapeHtml(min.host)}</span>`;
+    } else {
+        fpsEl.innerHTML = `<span class="placeholder">${window.t('monitoring.no_flow')}</span>`;
+    }
+}
+
+// ─── Panel "Ressources cumulées" ────────────────────────────
+function fmtGB(bytes) {
+    return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+}
+function renderUsage(nodes) {
+    const running = (nodes || []).filter(n => n.status === 'running' && n.kind);
+    // CPU : cpu_percent est 0..100 = % d'utilisation des cores alloués.
+    // Cores actifs = Σ(cpu_percent/100 * cores)
+    let coresUsed = 0, coresAlloc = 0;
+    let memUsed = 0, memAlloc = 0;
+    running.forEach(n => {
+        const cp = parseFloat(n.cpu_percent);
+        const co = parseInt(n.cores) || 0;
+        if (isFinite(cp) && co) coresUsed += (cp / 100) * co;
+        coresAlloc += co;
+        const mu = parseFloat(n.mem_used);
+        const ma = parseInt(n.memory) || 0;   // MB
+        if (isFinite(mu)) memUsed += mu;
+        memAlloc += ma * 1024 * 1024;
+    });
+    const cpuPct = coresAlloc > 0 ? Math.min(100, (coresUsed / coresAlloc) * 100) : 0;
+    const memPct = memAlloc > 0   ? Math.min(100, (memUsed   / memAlloc)   * 100) : 0;
+    const tone = pct => pct > 85 ? 'usage-fill-err' : pct > 60 ? 'usage-fill-warn' : 'usage-fill-ok';
+    const cpuFill = document.getElementById('usage-cpu-fill');
+    const memFill = document.getElementById('usage-mem-fill');
+    cpuFill.style.transform = `scaleX(${(cpuPct / 100).toFixed(4)})`;
+    cpuFill.className = 'usage-fill ' + tone(cpuPct);
+    memFill.style.transform = `scaleX(${(memPct / 100).toFixed(4)})`;
+    memFill.className = 'usage-fill ' + tone(memPct);
+    const cpuVal = document.getElementById('usage-cpu-val');
+    cpuVal.textContent = '';
+    if (coresAlloc > 0) {
+        cpuVal.textContent = `${coresUsed.toFixed(1)} / ${coresAlloc} cores`;
+    } else {
+        cpuVal.innerHTML = `<span class="placeholder">${window.t('monitoring.no_cores')}</span>`;
+    }
+    const memVal = document.getElementById('usage-mem-val');
+    if (memAlloc > 0) {
+        memVal.textContent = `${fmtGB(memUsed)} / ${fmtGB(memAlloc)}`;
+    } else {
+        memVal.innerHTML = `<span class="placeholder">${window.t('monitoring.no_ram')}</span>`;
+    }
+    document.getElementById('usage-foot').textContent =
+        running.length ? window.t('monitoring.on_active').replace('{n}', running.length) : window.t('monitoring.no_active');
+}
+
+// ─── Logs (recherche / filtre / classement / export) ─────────
+let logsData = [];
+const NIVEAU_RANK = { error: 0, warning: 1, info: 2 };
+
+function logsQueryString() {
+    const q = (document.getElementById('logs-q')?.value || '').trim();
+    const n = (document.getElementById('logs-niveau')?.value || '').trim();
+    const limit = (document.getElementById('logs-limit')?.value || '500').trim();
+    const p = new URLSearchParams();
+    if (q) p.set('q', q);
+    if (n) p.set('niveau', n);
+    p.set('limit', limit);
+    return p.toString();
+}
+
+// Tri client-side : l'API renvoie déjà id DESC (plus récent), on réordonne selon
+// le « classement » choisi sans refaire d'appel réseau.
+function sortLogs(rows) {
+    const mode = document.getElementById('logs-sort')?.value || 'recent';
+    const out = rows.slice();
+    if (mode === 'old') out.reverse();
+    else if (mode === 'niveau') {
+        out.sort((a, b) => {
+            const d = (NIVEAU_RANK[a.niveau] ?? 9) - (NIVEAU_RANK[b.niveau] ?? 9);
+            return d !== 0 ? d : (b.id || 0) - (a.id || 0);  // récents d'abord à niveau égal
+        });
+    }
+    return out;
+}
+
+function renderLogs() {
+    const el = document.getElementById('logs-list');
+    if (!el) return;
+    const rows = sortLogs(logsData);
+    const countEl = document.getElementById('logs-count');
+    if (countEl) countEl.textContent = rows.length
+        ? window.t('monitoring.lines_count').replace('{n}', rows.length) : '';
+    el.innerHTML = rows.length ? rows.map(x => `
+        <div class="log-line">
+            <span class="log-ts">${escapeHtml(x.timestamp || '')}</span>
+            <span class="log-niveau log-niveau-${escapeHtml(x.niveau || 'info')}">[${escapeHtml(x.niveau || 'info')}]</span>
+            <span class="log-msg">${escapeHtml(x.message || '')}</span>
+        </div>`).join('') : `<div class="meta">${window.t('monitoring.no_alerts')}</div>`;
+}
+
+// Source de logs sélectionnée : 'alerts' | 'events' | 'j:<node>:<unit>:<net>' (journal démon).
+function _logsSource() { return document.getElementById('logs-source')?.value || 'alerts'; }
+
+// Peuple le sélecteur avec les sources « journal » (ptp4l/phc2sys par nœud×réseau), en plus des
+// deux entrées statiques (Alertes, Événements PTP). Appelé une fois au chargement.
+async function populateLogSources() {
+    const sel = document.getElementById('logs-source');
+    if (!sel) return;
+    try {
+        const r = await fetch('/api/ptp/log-sources');
+        if (!r.ok) return;
+        const j = await r.json();
+        const cur = sel.value;
+        // On retire les anciennes options « journal » puis on les ré-ajoute (stable).
+        [...sel.querySelectorAll('option[data-journal]')].forEach(o => o.remove());
+        (j.sources || []).forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.value; o.textContent = s.label; o.dataset.journal = '1';
+            sel.appendChild(o);
+        });
+        if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+        // Deep-link depuis l'onglet PTP : #logsrc=<value> présélectionne la source (une fois).
+        const m = (location.hash || '').match(/logsrc=([^&]+)/);
+        if (m && !_logsrcApplied) {
+            const want = decodeURIComponent(m[1]);
+            if ([...sel.options].some(o => o.value === want)) {
+                sel.value = want; _logsrcApplied = true; onLogsSourceChange();
+            }
+        }
+    } catch (e) { /* pas bloquant */ }
+}
+let _logsrcApplied = false;
+
+function onLogsSourceChange() {
+    const src = _logsSource();
+    // Le filtre par niveau n'a de sens que pour alerts/events (lignes structurées).
+    const lvl = document.getElementById('logs-niveau');
+    if (lvl) lvl.style.display = src.startsWith('j:') ? 'none' : '';
+    // L'export n'est branché que sur les alertes (v1).
+    const exp = document.getElementById('logs-export-wrap');
+    if (exp) exp.style.display = (src === 'alerts') ? '' : 'none';
+    rafraichirLogs();
+}
+
+async function rafraichirLogs() {
+    const src = _logsSource();
+    try {
+        if (src === 'alerts') {
+            const r = await fetch('/api/alerts?' + logsQueryString());
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            logsData = await r.json();
+        } else if (src === 'events') {
+            const r = await fetch('/api/ptp/events?' + logsQueryString());
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const rows = await r.json();
+            // renderLogs() ré-échappe message → on passe du texte brut (pas de double-échappement).
+            logsData = rows.map(e => ({
+                id: e.id, timestamp: e.ts, niveau: e.level || 'info',
+                message: `[${e.network_name || '?'} / ${e.node_name || '?'}] ${e.detail || ''}`,
+            }));
+        } else if (src.startsWith('j:')) {
+            const [, node, unit, net] = src.split(':');
+            const lines = (document.getElementById('logs-limit')?.value || '500');
+            const r = await fetch(`/api/ptp/logs?node_id=${node}&unit=${unit}&network=${net}&lines=${lines}`);
+            const j = await r.json();
+            if (!r.ok || !j.ok) { logsData = [{timestamp:'', niveau:'error', message: j.error || ('HTTP ' + r.status)}]; }
+            else {
+                const q = (document.getElementById('logs-q')?.value || '').trim().toLowerCase();
+                logsData = (j.lines || [])
+                    .filter(l => !q || l.toLowerCase().includes(q))
+                    .map((l, i) => ({ id: i, timestamp: '', niveau: 'info', message: l }));
+            }
+        }
+        renderLogs();
+    } catch (e) { /* garde l'affichage précédent */ }
+}
+
+let _logsFilterTimer = null;
+function onLogsFilterChange() {
+    clearTimeout(_logsFilterTimer);
+    _logsFilterTimer = setTimeout(rafraichirLogs, 200);
+}
+
+function exporterLogs(fmt) {
+    const q = (document.getElementById('logs-q')?.value || '').trim();
+    const n = (document.getElementById('logs-niveau')?.value || '').trim();
+    const p = new URLSearchParams();
+    p.set('format', fmt);
+    if (q) p.set('q', q);
+    if (n) p.set('niveau', n);
+    window.location.href = '/api/alerts/export?' + p.toString();
+}
+
+let failCount = 0;
+async function rafraichir() {
+    try {
+        const r = await fetch('/api/home/summary');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        failCount = 0;
+        renderIssues(j);
+        renderPerf(j.topology && j.topology.nodes, j.topology && j.topology.edges);
+        renderUsage(j.topology && j.topology.nodes);
+    } catch (e) {
+        failCount += 1;
+    }
+}
+
+// ─── Section SHM ───────────────────────────────────────────────────────────
+function renderShmTable(rows) {
+    const wrap = document.getElementById('shm-table-wrap');
+    if (!wrap) return;
+    if (!rows || !rows.length) {
+        wrap.innerHTML = `<div class="meta">${window.t('monitoring.no_shm')}</div>`;
+        return;
+    }
+    const thead = `<tr>
+        <th>${window.t('monitoring.shm_col_source')}</th>
+        <th>${window.t('monitoring.shm_col_state')}</th>
+        <th>${window.t('monitoring.shm_col_producer')}</th>
+        <th>${window.t('monitoring.shm_col_consumers')}</th>
+        <th>FPS</th>
+    </tr>`;
+    const tbody = rows.map(r => {
+        const active = r.shm_active;
+        const stateCls = active === true ? 'shm-active' : active === false ? 'shm-idle' : 'shm-unknown';
+        const stateLabel = active === true ? window.t('monitoring.shm_active') : active === false ? window.t('monitoring.shm_idle') : window.t('monitoring.shm_unknown');
+        const prod = r.producer ? `<span class="shm-vmid">#${escapeHtml(String(r.producer.vmid))}</span> ${escapeHtml(r.producer.hostname)}` : '<span class="meta">—</span>';
+        const cons = (r.consumers || []).length
+            ? r.consumers.map(c => `<span class="shm-vmid">#${escapeHtml(String(c.vmid))}</span> ${escapeHtml(c.hostname)}`).join(', ')
+            : '<span class="meta">—</span>';
+        const fps = r.fps != null ? `${r.fps} fps` : '<span class="meta">—</span>';
+        // Libellé d'exploitation du niveau courant au-dessus du nom technique : c'est sous ce
+        // nom-là que l'opérateur reconnaît la source, le shm reste pour le diagnostic.
+        const lab = window.SourceLabels ? window.SourceLabels.labelOf(r.shm).value : '';
+        return `<tr class="${stateCls}">
+            <td>${lab ? `<div class="shm-label">${escapeHtml(lab)}</div>` : ''}<code>${escapeHtml(r.shm)}</code></td>
+            <td><span class="shm-state ${stateCls}">${stateLabel}</span></td>
+            <td>${prod}</td>
+            <td>${cons}</td>
+            <td>${fps}</td>
+        </tr>`;
+    }).join('');
+    wrap.innerHTML = `<table class="shm-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+}
+
+async function rafraichirShm() {
+    try {
+        const r = await fetch('/api/shm/status');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        renderShmTable(await r.json());
+    } catch (e) {
+        const wrap = document.getElementById('shm-table-wrap');
+        if (wrap && wrap.querySelector('.meta')) wrap.querySelector('.meta').textContent = window.t('monitoring.shm_error');
+    }
+}
+
+// ─── Onglets de page : « Vue d'ensemble » + un onglet par plugin (manifest.monitoring) ─
+// Aucun panneau n'est codé en dur : la page interroge /api/monitoring/panels (plugins
+// présents) et ajoute un onglet par plugin ; à l'activation, charge son fragment + JS via
+// /api/plugins/<type>/ui/… Le JS du plugin enregistre window.MXLMonitorPanels[type] =
+// { mount(el), unmount() }. Onglet « Vue d'ensemble » (défaut) = panneaux + SHM + logs.
+window.MXLMonitorPanels = window.MXLMonitorPanels || {};
+let _pmonActive = null;   // type du plugin actif, ou null si « Vue d'ensemble »
+
+function ensureMonitorAsset(type) {
+    const id = 'mon-js-' + type.replace(/[^a-zA-Z0-9_-]/g, '_');
+    if (document.getElementById(id)) return Promise.resolve();
+    return new Promise(res => {
+        const el = document.createElement('script');
+        el.id = id; el.src = '/api/plugins/' + type + '/ui/monitoring_js';
+        el.onload = () => res(); el.onerror = () => res();
+        document.head.appendChild(el);
+    });
+}
+
+function _setActiveTab(view) {
+    document.querySelectorAll('#mon-tabs .tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.view === view));
+    // ⚠ Les vues sont dérivées de _MON_BUILTIN, jamais recopiées à la main. C'est la RECOPIE qui a
+    // cassé l'onglet Journaux : `_setActiveTab` a été écrit le 2026-06-16 avec quatre vues en dur,
+    // l'onglet Journaux a été ajouté le 2026-07-26 avec son `<div id="mon-view-logs" hidden>`, et
+    // personne n'est revenu ici. Résultat pendant cinq semaines : cliquer « Journaux » masquait les
+    // quatre autres vues, n'affichait JAMAIS celle des journaux — `mon-view-logs` n'apparaissait
+    // qu'à un seul endroit du dépôt, son HTML, et rien ne lui retirait `hidden` — et démasquait au
+    // passage le point de montage des plugins, vide. La liste de la dernière ligne omettait aussi
+    // 'logs', ce qui était la MÊME erreur, écrite deux fois.
+    _MON_BUILTIN.forEach(v => {
+        const el = document.getElementById('mon-view-' + v);
+        // Une vue déclarée sans panneau est un oubli, pas une option : le dire, sinon l'onglet
+        // s'affiche et ne montre rien — exactement la panne qu'on vient de corriger.
+        if (!el) { console.error('monitoring: aucun panneau #mon-view-' + v + ' pour l\'onglet ' + v); return; }
+        el.hidden = (v !== view);
+    });
+    document.getElementById('mon-view-plugin').hidden = _MON_BUILTIN.includes(view);
+}
+
+const _MON_BUILTIN = ['overview', 'nodes', 'fabric', 'rdma', 'logs'];
+
+// Active un onglet de page. 'overview' = vue d'ensemble ; sinon view = type de plugin.
+// ─── Onglet Journaux ──────────────────────────────────────────────────────────────────────
+// La liste des conteneurs vient du JOURNAL de l'hôte (route /api/nodes/<id>/journal/containers),
+// PAS de la base ni de `docker ps -a` : elle inclut donc ceux qui n'existent plus, ce qui est
+// exactement ce que journald permet et que `docker logs` ne peut pas. Le visualiseur lui-même est
+// le composant global window.BobiLogs (static/log_viewer.js, chargé par layout.html).
+let _logsData = null;
+
+// ── Un `await fetch` sans délai de garde n'a pas d'état d'échec : il a un état d'ATTENTE, et
+// l'attente n'est pas une information. Signalé le 2026-08-30 : « Chargement… » perpétuel, aucun
+// message, alors que le serveur répondait en 0,09 s — l'onglet était ouvert depuis avant un
+// redémarrage de l'orchestrateur et sa connexion maintenue était morte sans avoir été refermée ;
+// la requête partait dans le vide. Le serveur va donc bien, la page ne le sait pas, et rien ne le
+// dit à l'exploitant. On borne, et on nomme ce qu'on a abandonné.
+// 60 s et non 10 : la lecture du journal d'un nœud passe par l'agent avec un plafond de 45 s, et
+// couper avant lui transformerait une lenteur légitime en fausse panne.
+const LOGS_DELAI_MS = 60000;
+
+async function _logsFetch(url) {
+    const ctrl = new AbortController();
+    const minuteur = setTimeout(() => ctrl.abort(), LOGS_DELAI_MS);
+    try {
+        return await fetch(url, {signal: ctrl.signal});
+    } catch (e) {
+        // On distingue les deux causes : elles n'appellent pas le même geste.
+        throw (e && e.name === 'AbortError')
+            ? new Error(window.t('monitoring.logs_timeout').replace('{s}', LOGS_DELAI_MS / 1000))
+            : e;
+    } finally {
+        clearTimeout(minuteur);
+    }
+}
+
+async function logsChargerNoeuds() {
+    const sel = document.getElementById('logs-node');
+    const box = document.getElementById('logs-conteneurs');
+    if (!sel) return;
+    if (!sel.options.length) {
+        try {
+            const j = await (await _logsFetch('/api/nodes')).json();
+            const nodes = Array.isArray(j) ? j : (j.nodes || []);
+            sel.innerHTML = nodes.map(n => `<option value="${n.id}">${escapeHtml(n.name || ('#'+n.id))}</option>`).join('');
+        } catch (e) {
+            // ÉCHEC VISIBLE : avaler l'erreur ici laissait le sélecteur vide, et `logsChargerListe`
+            // repartait en silence sur un `sel.value` vide → sablier « ⏳… » perpétuel, sans qu'aucun
+            // message ne dise pourquoi (signalé en recette le 2026-08-21). Typiquement : la page a
+            // interrogé /api/nodes pendant un redémarrage de l'orchestrateur.
+            sel.innerHTML = '';
+            if (box) box.innerHTML = `<span class="meta" style="color:var(--status-stopped-fg)">✕ ${
+                escapeHtml(window.t('monitoring.logs_nodes_error').replace('{err}', '' + e))}</span>`;
+        }
+    }
+    logsChargerListe();
+}
+
+async function logsChargerListe() {
+    const sel = document.getElementById('logs-node');
+    const box = document.getElementById('logs-conteneurs');
+    const ret = document.getElementById('logs-retention');
+    if (!sel || !box) return;
+    if (!sel.value) {                     // aucun nœud dans le sélecteur : le DIRE, ne pas laisser le sablier
+        box.innerHTML = `<span class="meta">${window.t('monitoring.logs_no_node')}</span>`;
+        return;
+    }
+    box.innerHTML = `<span class="meta">${window.t('monitoring.logs_loading')}</span>`;
+    ret.textContent = '';
+    try {
+        const j = await (await _logsFetch('/api/nodes/' + sel.value + '/journal/containers')).json();
+        if (!j.ok) { box.innerHTML = `<span class="meta" style="color:var(--status-stopped-fg)">✕ ${escapeHtml(j.error || '')}</span>`; return; }
+        _logsData = j;
+        logsRendreListe();
+        // Rétention affichée AVEC la liste : un conteneur absent peut n'avoir été que purgé par la
+        // rotation. Sans cette info on conclut « il n'a jamais tourné ».
+        try {
+            const st = await (await _logsFetch('/api/nodes/' + sel.value + '/journal')).json();
+            const r = st.retention || {};
+            ret.textContent = [r.disk_usage || '', r.oldest_entry ? window.t('monitoring.logs_oldest') + ' ' + r.oldest_entry : '']
+                .filter(Boolean).join(' · ');
+        } catch (_) {}
+    } catch (e) {
+        // `e.message` et non `''+e` : ce dernier rend « Error: … », et le nom de la classe JS
+        // n'apprend rien à personne — il ne fait que pousser le message utile vers la droite.
+        box.innerHTML = `<span class="meta" style="color:var(--status-stopped-fg)">✕ ${
+            escapeHtml(e && e.message ? e.message : '' + e)}</span>`;
+    }
+}
+
+function logsRendreListe() {
+    const box = document.getElementById('logs-conteneurs');
+    if (!box || !_logsData) return;
+    const gone = (document.getElementById('logs-show-gone') || {}).checked;
+    const nodeId = (document.getElementById('logs-node') || {}).value;
+    const list = (_logsData.containers || []).filter(c => gone || c.alive);
+    if (!list.length) {
+        box.innerHTML = `<span class="meta">${window.t('monitoring.logs_none')}</span>`;
+        return;
+    }
+    box.innerHTML = list.map(c => {
+        const nom = c.hostname || c.name;
+        const badge = c.alive
+            ? `<span class="badge running">${window.t('monitoring.logs_alive')}</span>`
+            : `<span class="badge script_stopped" title="${window.t('monitoring.logs_gone_title')}">${window.t('monitoring.logs_gone')}</span>`;
+        // Un conteneur oublié de la base n'a plus de vmid exploitable : on passe alors le NOM et le
+        // nœud, seuls identifiants que le journal connaisse encore.
+        const args = c.vmid != null
+            ? `${c.vmid}, {nom: '${escapeHtml(nom)}', node_id: ${nodeId}}`
+            : `0, {nom: '${escapeHtml(nom)}', name: '${escapeHtml(c.name)}', node_id: ${nodeId}}`;
+        return `<div class="row" style="gap:var(--space-2); align-items:center; margin-bottom:3px">
+            <button class="btn" onclick="BobiLogs.open(${args})">${window.t('monitoring.logs_open')}</button>
+            <b>${escapeHtml(nom)}</b> <code class="meta">${escapeHtml(c.name)}</code> ${badge}
+            ${c.vmid == null ? '' : `<span class="meta">#${c.vmid}</span>`}
+        </div>`;
+    }).join('');
+}
+
+// ─── Adresse profonde : #<onglet>[/<serveur>] ────────────────────────────────────────────────
+// Un rechargement pendant un diagnostic ramenait à la vue d'ensemble, et un lien vers « le détail
+// de dl360-1 » n'existait pas — il fallait décrire le chemin à la main. L'état visible de la page
+// est donc reflété dans l'URL, et relu au chargement.
+function _monMajHash() {
+    const vue = document.querySelector('#mon-tabs .tab.active');
+    const v = vue ? vue.dataset.view : '';
+    if (!v) return;
+    const h = '#' + v + ((v === 'nodes' && _detailKey) ? '/' + _detailKey : '');
+    // replaceState, pas de nouvelle entrée : naviguer entre onglets ne doit pas transformer le
+    // bouton Retour en historique de clics.
+    if (location.hash !== h) history.replaceState(null, '', h);
+}
+
+function _monLireHash() {
+    const brut = (location.hash || '').replace(/^#/, '');
+    if (!brut) return null;
+    const [vue, serveur] = brut.split('/');
+    return {vue: vue || null, serveur: serveur || null};
+}
+
+async function activateMonitoringView(view) {
+    if (_MON_BUILTIN.includes(view)) {
+        if (_pmonActive) { try { const p = window.MXLMonitorPanels[_pmonActive]; p && p.unmount && p.unmount(); } catch (_) {} }
+        _pmonActive = null;
+        _setActiveTab(view);
+        _monMajHash();
+        if (view === 'nodes') rafraichirNodes();
+        if (view === 'fabric') renderFabric();
+        if (view === 'rdma') rafraichirRdmaMon();
+        if (view === 'logs') logsChargerNoeuds();
+        return;
+    }
+    const type = view;
+    const mount = document.getElementById('pmon-mount');
+    _setActiveTab(type);
+    _monMajHash();
+    if (type === _pmonActive && mount.dataset.mounted === type) return;
+    try { const prev = window.MXLMonitorPanels[_pmonActive]; prev && prev.unmount && prev.unmount(); } catch (_) {}
+    _pmonActive = type;
+    mount.dataset.mounted = '';
+    mount.innerHTML = `<div class="meta">${window.t('monitoring.loading')}</div>`;
+    let html = '';
+    try { html = await (await fetch('/api/plugins/' + type + '/ui/monitoring_html')).text(); }
+    catch (e) { mount.innerHTML = `<div class="meta">${window.t('section.fragment_missing')}</div>`; return; }
+    if (_pmonActive !== type) return;   // l'utilisateur a changé d'onglet entre-temps
+    mount.innerHTML = html;
+    await ensureMonitorAsset(type);
+    if (_pmonActive !== type) return;
+    const api = window.MXLMonitorPanels[type];
+    if (api && typeof api.mount === 'function') {
+        try { api.mount(mount); mount.dataset.mounted = type; }
+        catch (e) { console.error(e); }
+    } else {
+        mount.innerHTML = `<div class="meta">${window.t('section.no_ui')}</div>`;
+    }
+}
+
+// Rafraîchit la liste des onglets plugin (présence). Ne remonte rien si l'ensemble est
+// inchangé ; ne quitte jamais l'onglet courant de force (sauf si le plugin actif disparaît).
+async function rafraichirMonitoringPanels() {
+    let panels = [];
+    try { panels = ((await (await fetch('/api/monitoring/panels')).json()) || {}).panels || []; }
+    catch (e) { return; }
+    const tabs = document.getElementById('mon-tabs');
+    const sig = panels.map(p => p.type).join(',');
+    if (tabs.dataset.sig === sig) return;   // ensemble inchangé
+    tabs.dataset.sig = sig;
+    // Purge les onglets plugin existants (on garde « Vue d'ensemble »).
+    tabs.querySelectorAll('.tab[data-plugin="1"]').forEach(b => b.remove());
+    panels.forEach(p => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'tab'; b.dataset.view = p.type; b.dataset.plugin = '1';
+        b.textContent = p.label; b.setAttribute('role', 'tab');
+        b.onclick = () => activateMonitoringView(p.type);
+        tabs.appendChild(b);
+    });
+    // Si le plugin actuellement affiché a disparu → revenir à la vue d'ensemble.
+    if (_pmonActive && !panels.some(p => p.type === _pmonActive)) activateMonitoringView('overview');
+}
+
+// ─── Onglet "Serveurs" (santé matérielle nœuds + contrôleur) ─────────────────
+let _nodesData = null;     // dernier {nodes, controller}
+let _detailKey = null;     // clé du nœud ouvert en détail (null = grille)
+let _cpuMap = null;        // dernier /api/nodes/<id>/cpu-map {key, data}
+// CPU logique sélectionné dans la carte des cœurs. Gardé HORS du DOM : `renderNodeDetail` réécrit
+// tout le panneau à chaque rafraîchissement (5 s), une sélection portée par le DOM disparaîtrait.
+let _coreSel = null;
+// Délégation posée UNE fois sur le conteneur stable du détail (le contenu, lui, est recréé).
+document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('.node-core[data-cpu]');
+    if (!b || !document.getElementById('nodes-detail-body').contains(b)) return;
+    const cpu = parseInt(b.dataset.cpu, 10);
+    _coreSel = (_coreSel === cpu) ? null : cpu;   // re-clic = referme
+    renderNodeDetail();
+});
+let _coreSnap = null;      // dernier instantané des cœurs {key, ts, data} — survit au re-render 5 s
+let _coreSnapBusy = false;
+
+// Mini-parseur cpuset "a-b,c" → liste d'entiers (miroir JS de core_pool.parse_cpuset).
+function parseCpusetJS(s) {
+    const out = [];
+    String(s || '').split(',').forEach(part => {
+        part = part.trim(); if (!part) return;
+        const m = part.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (m) { for (let i = +m[1]; i <= +m[2]; i++) out.push(i); }
+        else if (/^\d+$/.test(part)) out.push(+part);
+    });
+    return out;
+}
+
+function fmtBytes(n) {
+    if (n == null || !isFinite(n)) return '—';
+    const u = ['o','Ko','Mo','Go','To']; let i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
+}
+function fmtBps(n) {
+    if (n == null || !isFinite(n)) return '—';
+    const u = ['b/s','Kb/s','Mb/s','Gb/s']; let i = 0;
+    while (n >= 1000 && i < u.length - 1) { n /= 1000; i++; }
+    return `${n.toFixed(i ? 1 : 0)} ${u[i]}`;
+}
+function fmtMBps(n) {
+    if (n == null || !isFinite(n)) return '—';
+    return n >= 1024 ? `${(n / 1024).toFixed(2)} Go/s` : `${Math.round(n)} Mo/s`;
+}
+function fmtUptime(s) {
+    if (s == null || !isFinite(s)) return '—';
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+    if (d) return `${d} j ${h} h`;
+    if (h) return `${h} h ${m} min`;
+    return `${m} min`;
+}
+function fmtPct(p) { return (p == null || !isFinite(p)) ? '—' : `${Math.round(p)} %`; }
+function barClass(p) { return p == null ? '' : (p >= 95 ? 'crit' : (p >= 85 ? 'warn' : '')); }
+
+function _caps(snap) {
+    let c = snap.capabilities;
+    if (typeof c === 'string') { try { c = JSON.parse(c); } catch (_) { c = c ? [c] : []; } }
+    return Array.isArray(c) ? c : [];
+}
+function _cpuPct(snap) {
+    const r = snap.resources || {};
+    return r.cpu_pct_real != null ? r.cpu_pct_real : r.cpu_pct;
+}
+function _memPct(snap) {
+    const r = snap.resources || {};
+    return r.mem_total_mb ? (r.mem_used_mb / r.mem_total_mb * 100) : null;
+}
+function _shmPct(snap) { return ((snap.disks || {}).shm || {}).pct; }
+
+function gauge(label, pct, valTxt) {
+    return `<div class="node-gauge">
+        <div class="node-gauge-top"><span class="label">${label}</span><span>${valTxt}</span></div>
+        <div class="node-bar"><div class="node-bar-fill ${barClass(pct)}"
+             style="width:${Math.max(0, Math.min(100, pct || 0))}%"></div></div>
+    </div>`;
+}
+
+// Les trois tracés ci-dessous ÉTAIENT trois quasi-copies. Ils délèguent maintenant à la primitive
+// partagée window.mkSparkline (layout.html), en gardant leurs paramètres visuels À L'IDENTIQUE :
+// mêmes dimensions, même classe, même épaisseur, mêmes couleurs. Seule différence de rendu, et
+// c'est une correction : un trou de mesure rompt le tracé au lieu d'être enjambé par une droite.
+function sparkline(points, key, color) {
+    return window.mkSparkline(points, {key, color, w: 240, h: 34,
+        scale: (key === 'membw') ? 'auto' : 'percent', max: 100});
+}
+
+// Offset PTP signé, autour de 0. La couleur porte le SEUIL (≤100 ns, ≤1 µs, au-delà) — redondante
+// avec la valeur affichée à côté, jamais seule porteuse de l'information.
+function offsetSpark(points) {
+    const vals = (points || []).map(p => p.ptp_off).filter(v => v != null && isFinite(v));
+    const last = vals.length ? vals[vals.length - 1] : 0;
+    const col = Math.abs(last) <= 100 ? 'var(--status-running-fg)'
+              : Math.abs(last) <= 1000 ? 'var(--status-warning-fg,#c80)' : 'var(--status-error-fg)';
+    return window.mkSparkline(points, {key: 'ptp_off', color: col, w: 240, h: 34,
+        scale: 'signed', max: 50});
+}
+
+// Débit : aire remplie, plafond = capacité du lien → le taux d'usage se lit dans la hauteur.
+function throughputSpark(points, key, max, color) {
+    return window.mkSparkline(points, {key, color, w: 240, h: 40, scale: max || 0.001, area: true});
+}
+
+// ─── Prép hôte 2110 (verdict node_recovery.evaluer_prep, publié dans le snapshot) ───────────
+// ATTENTION FRAÎCHEUR : ce verdict vient d'une sonde LENTE sur l'hôte (défaut 30 min), pas du
+// sampler 5 s qui alimente les jauges CPU/RAM de la même carte. Il est donc TOUJOURS rendu avec
+// son âge — l'afficher au même niveau que des chiffres de 5 s sans le dire serait un mensonge sur
+// la fraîcheur. Bouton « revérifier » (POST /api/nodes/<id>/prep/refresh) pour forcer une sonde.
+function prepAge(ts) {
+    if (!ts) return null;
+    const m = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
+    return m < 1 ? window.t('monitoring.prep_age_now')
+                 : window.t('monitoring.prep_age').replace('{n}', m);
+}
+function prepColor(level) {
+    return level === 'error' ? 'var(--status-error-fg)'
+         : level === 'warning' ? 'var(--status-warning-fg,#c80)'
+         : level === 'ok' ? 'var(--status-running-fg)' : 'var(--text-muted)';
+}
+function prepLabel(level) {
+    const k = ['ok', 'warning', 'error'].includes(level) ? level : 'unknown';
+    return window.t('monitoring.prep_state_' + k);
+}
+
+function nodeCard(key, snap) {
+    const cpu = _cpuPct(snap), mem = _memPct(snap), shm = _shmPct(snap);
+    const r = snap.resources || {};
+    const stale = !snap.ok;
+    const badge = stale ? '<span class="badge stopped">' + window.t('monitoring.nodes_unreachable') + '</span>'
+                        : '<span class="badge running">' + window.t('monitoring.nodes_ok') + '</span>';
+    const caps = snap.is_controller
+        ? `<span class="node-cap">${window.t('monitoring.nodes_controller')}</span>`
+        : _caps(snap).map(c => `<span class="node-cap">${escapeHtml(c)}</span>`).join('');
+    // Bande passante mémoire retirée de la tuile : canary memcpy (débit atteignable), sans max
+    // parlant → ni barre ni texte ici. La contention RAM reste signalée par alerte (membw.py).
+    const ptp = snap.ptp;
+    // Critère = SYNCHRO au grandmaster (`sync_ok`, cf. app/ptp.py:clock_ok), pas `locked`. Sur un
+    // nœud full-PF DPDK, `locked` est le verrou servo STRICT de libmtl : il reste False sur E810
+    // alors que l'offset au GM tient la nanoseconde → la carte criait « PTP ✗ » sur le nœud le mieux
+    // discipliné du parc. Repli sur `locked` pour un relevé d'avant ce champ (nœud ptp4l).
+    const ptpOk = ptp ? (ptp.sync_ok != null ? !!ptp.sync_ok : !!ptp.locked) : false;
+    const ptpBadge = ptp ? `<span class="badge ${ptpOk ? 'running' : 'script_stopped'}">PTP ${ptpOk ? '✓' : '✗'}</span>` : '';
+    const g0 = ((snap.gpu || {}).gpus || [])[0];
+    const gpuBlock = g0 ? `
+        ${gauge('GPU', g0.util_pct, fmtPct(g0.util_pct))}
+        ${gauge('PCIe RAM↔GPU', g0.pcie_pct, g0.pcie_pct != null ? fmtPct(g0.pcie_pct) : '—')}` : '';
+    const rdev = ((snap.rdma || {}).devices || [])[0];
+    const rRate = rdev && rdev.rate_gbps ? rdev.rate_gbps : 0;
+    const rTxt = (v) => `${(v || 0).toFixed(1)}${rRate ? ' / ' + rRate.toFixed(0) : ''} Gb/s`;
+    const rdmaBlock = rdev
+        ? gauge('RDMA Rx ↓', rRate ? (rdev.rx_gbps / rRate) * 100 : 0, rTxt(rdev.rx_gbps))
+        + gauge('RDMA Tx ↑', rRate ? (rdev.tx_gbps / rRate) * 100 : 0, rTxt(rdev.tx_gbps))
+        : '';
+    // Prép hôte 2110 : ABSENTE du snapshot pour un nœud sans capacité io2110 → on n'affiche rien
+    // (pas de ligne vide à décrypter). Présente mais jamais sondée → « pas encore vérifié », et
+    // surtout pas « OK ». L'âge accompagne toujours le verdict (cf. bloc prepAge ci-dessus).
+    const prep = snap.prep;
+    const prepLine = prep ? `<div class="meta" style="margin:2px 0 4px">${window.t('monitoring.prep_label')} :
+        <span style="color:${prepColor(prep.level)}">${prepLabel(prep.level)}</span>${
+        prep.ts ? ` · ${prepAge(prep.ts)}` : ''}</div>` : '';
+    return `<div class="node-card ${snap.is_controller ? 'is-ctl' : ''} ${stale ? 'node-stale' : ''}"
+                 onclick="showNodeDetail('${key}')">
+        <div class="node-card-head"><span class="node-name">${escapeHtml(snap.name || key)}</span>${badge}${ptpBadge}</div>
+        <div class="node-caps">${caps}</div>
+        ${prepLine}
+        ${gauge('CPU', cpu, fmtPct(cpu))}
+        ${gauge('RAM', mem, `${fmtBytes((r.mem_used_mb || 0) * 1048576)} / ${fmtBytes((r.mem_total_mb || 0) * 1048576)}`)}
+        ${gauge('/dev/shm', shm, fmtPct(shm))}
+        ${gpuBlock}
+        ${rdmaBlock}
+    </div>`;
+}
+
+function _orderedNodes(data) {
+    const out = [];
+    if (data.controller) out.push(['controller', data.controller]);
+    Object.entries(data.nodes || {})
+        .sort((a, b) => (a[1].name || '').localeCompare(b[1].name || ''))
+        .forEach(e => out.push(e));
+    return out;
+}
+
+function renderNodesGrid() {
+    const grid = document.getElementById('nodes-grid');
+    if (!_nodesData) return;
+    const entries = _orderedNodes(_nodesData);
+    if (!entries.length) { grid.innerHTML = `<div class="meta">${window.t('monitoring.nodes_none')}</div>`; return; }
+    grid.innerHTML = entries.map(([k, s]) => nodeCard(k, s)).join('');
+}
+
+async function showNodeDetail(key) {
+    _detailKey = key;
+    _monMajHash();
+    // style.display (pas l'attribut hidden) : `.nodes-grid{display:grid}` écrase [hidden] → la
+    // grille des autres serveurs resterait visible sous le détail.
+    document.getElementById('nodes-grid').style.display = 'none';
+    document.getElementById('nodes-detail').hidden = false;
+    await renderNodeDetail();
+}
+function closeNodeDetail() {
+    _detailKey = null;
+    _monMajHash();
+    document.getElementById('nodes-detail').hidden = true;
+    document.getElementById('nodes-grid').style.display = '';
+    renderNodesGrid();
+}
+
+// Re-sonde MANUELLE de la prép hôte : une vraie sonde sur le nœud (~1 s), pas une relecture de
+// cache — d'où la route dédiée et le bouton désactivé pendant l'appel.
+async function goPrepRefresh(key, btn) {
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = window.t('monitoring.prep_rechecking');
+    try {
+        const r = await fetch(`/api/nodes/${encodeURIComponent(key)}/prep/refresh`, {method: 'POST'});
+        const j = await r.json();
+        if (j.ok && j.prep) {
+            if (_nodesData && _nodesData.nodes && _nodesData.nodes[key]) _nodesData.nodes[key].prep = j.prep;
+            showToast(window.t('monitoring.prep_rechecked'), 'ok');
+            await renderNodeDetail();
+            return;                              // le corps est re-rendu : le bouton n'existe plus
+        }
+        // Sonde impossible (nœud injoignable / sans capacité 2110) : le DIRE, ne pas laisser
+        // l'ancien verdict sur place en donnant l'illusion d'un rafraîchissement.
+        showToast(window.t('monitoring.prep_recheck_failed') + (j.error ? ' — ' + j.error : ''), 'error');
+    } catch (e) {
+        showToast(window.t('monitoring.net_error') + ' ' + e.message, 'error');
+    }
+    btn.disabled = false;
+    btn.textContent = old;
+}
+
+async function renderNodeDetail() {
+    const key = _detailKey;
+    // `_nodesData` peut être NUL : une adresse profonde (#nodes/34) demande le détail avant que
+    // le premier relevé soit arrivé, ou après un relevé en échec. Sans ce garde-fou, la page entière
+    // plante sur un lien collé — un deep-link doit dégrader, jamais casser.
+    const nd = _nodesData || {};
+    const snap = (key === 'controller' ? nd.controller : (nd.nodes || {})[key]);
+    const body = document.getElementById('nodes-detail-body');
+    if (!snap) { body.innerHTML = `<div class="meta">${window.t('monitoring.nodes_none')}</div>`; return; }
+    let hist = [], st24 = {};
+    try { hist = ((await (await fetch(`/api/nodes/health/${encodeURIComponent(key)}/history`)).json()) || {}).history || []; }
+    catch (_) {}
+    try { st24 = (await (await fetch(`/api/nodes/health/${encodeURIComponent(key)}/stats_24h`)).json()) || {}; }
+    catch (_) {}
+    // « Qui consomme quoi » : conso + pinning des containers du nœud (pas pour le contrôleur,
+    // qui n'a ni agent-nœud ni pool de cœurs).
+    _cpuMap = null;
+    if (key !== 'controller') {
+        try { _cpuMap = { key, data: await (await fetch(`/api/nodes/${encodeURIComponent(key)}/cpu-map`)).json() }; }
+        catch (_) {}
+    }
+    const r = snap.resources || {};
+    const kv = (rows) => `<dl class="node-kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+    // Ligne « 24 h min/moy/max » pour une métrique (#6). unit = '%' ou ' Go/s'.
+    const st24row = (mkey, unit) => {
+        const s = st24[mkey]; if (!s || s.mean == null) return null;
+        const f = (v) => unit === '%' ? Math.round(v) : (Math.round(v * 10) / 10);
+        return [window.t('monitoring.stats_24h'), `${f(s.min)} / ${f(s.mean)} / ${f(s.max)}${unit}`];
+    };
+
+    // CPU par cœur, annoté par propriétaire (lcores moteur / pin compute / pool libre / hors-pool)
+    const cm = (_cpuMap && _cpuMap.key === key && _cpuMap.data && _cpuMap.data.ok) ? _cpuMap.data : null;
+    const computeSet = new Set(cm ? parseCpusetJS(cm.compute_cpuset) : []);
+    const ownerOf = (i) => {
+        if (!cm) return { cls: '', names: '' };
+        const occ = (cm.by_cpu || {})[String(i)] || [];
+        if (occ.length) return {
+            // Priorité : moteur 2110 > conteneur GPU > calcul ordinaire. Un cœur qui fait tourner
+            // un conteneur GPU se distingue : c'est la seule façon de VOIR qu'un mur GPU est
+            // épinglé sur le socket qui ne porte pas la carte graphique.
+            cls: occ.some(o => o.source === 'engine') ? 'core-engine'
+               : (occ.some(o => o.gpu_index != null) ? 'core-gpu' : 'core-pin'),
+            names: occ.map(o => `${o.hostname || '?'} (${o.vmid})`
+                                + (o.gpu_index != null ? ' · GPU ' + o.gpu_index : '')).join(', '),
+        };
+        return computeSet.has(i) ? { cls: 'core-free', names: '' } : { cls: 'core-off', names: '' };
+    };
+    // Un cœur est CLIQUABLE → vrai <button> : focusable, activable au clavier, annoncé comme un
+    // contrôle. Un div avec un onclick ne l'est pas, et cette carte est un outil de diagnostic.
+    const coreBar = (c, i) => {
+        const o = ownerOf(i);
+        return `<button type="button" class="node-core ${o.cls}${_coreSel === i ? ' core-sel' : ''}" data-cpu="${i}" aria-pressed="${_coreSel === i}" title="#${i} · ${fmtPct(c)}${o.names ? ' · ' + escapeHtml(o.names) : ''}"><span style="height:${Math.max(0, Math.min(100, c))}%"></span></button>`;
+    };
+    const perCore = r.cpu_per_core || [];
+
+    // ── CŒURS JUMEAUX (HyperThreading) ──────────────────────────────────────────────────────
+    // Deux threads d'un même cœur physique partagent les unités d'exécution : l'HT ne double PAS la
+    // puissance de calcul, et c'est pour ça que la capacité se compte en cœurs physiques. Mais les
+    // jumeaux portent des numéros éloignés (i et i+N/2) — dans une bande ordonnée par index ils
+    // sont à des dizaines de positions l'un de l'autre, donc l'appariement est invisible. On
+    // regroupe les threads PAR CŒUR PHYSIQUE : un emplacement = un cœur réel, ce que comptent les
+    // chiffres de capacité. Un cœur dont les deux threads appartiennent à des propriétaires
+    // DIFFÉRENTS est signalé : « dédié » n'y veut plus dire dédié.
+    // ⚠ C'est une propriété de TOUTE machine avec HyperThreading — mono-socket comprise. La
+    // première version la calculait à l'intérieur des tuiles de socket, donc `dl360-1` (mono-socket)
+    // n'avait aucun appariement : la condition « plusieurs sockets » annulait une notion qui n'a
+    // rien à voir avec le nombre de sockets.
+    const physOf = (cm && cm.cores_phys) ? cm.cores_phys : null;
+    const bandeCoeurs = (idx) => {
+        if (!physOf) return idx.map(i => coreBar(perCore[i], i)).join('');
+        const groupes = new Map();
+        for (const i of idx) {
+            const ph = physOf[String(i)];
+            const k = (ph == null) ? 'x' + i : ph;
+            if (!groupes.has(k)) groupes.set(k, []);
+            groupes.get(k).push(i);
+        }
+        return [...groupes.values()].map(threads => {
+            const proprios = threads.map(i => {
+                const occ = ((cm.by_cpu || {})[String(i)] || []);
+                return occ.length ? occ.map(o => o.vmid).sort().join('+') : '';
+            });
+            const partage = threads.length > 1 && proprios[0] && proprios[1]
+                            && proprios[0] !== proprios[1];
+            return `<div class="phys-core${partage ? ' phys-shared' : ''}"${
+                partage ? ` title="${window.t('monitoring.core_twins_shared')}"` : ''
+            }>${threads.map(i => coreBar(perCore[i], i)).join('')}</div>`;
+        }).join('');
+    };
+    const cores = bandeCoeurs(perCore.map((c, i) => i));
+
+    // ── Une TUILE PAR SOCKET (nœud NUMA) ────────────────────────────────────────────────────
+    // Une bande unique de 96 cœurs et UNE ligne de capacité agrégée pour toute la machine : c'est
+    // l'affichage qui a laissé croire qu'« il reste de la place partout ». Sur un bi-socket, la
+    // place restante peut être ENTIÈREMENT du mauvais côté du bus — le socket qui porte le GPU
+    // saturé pendant que l'autre a des cœurs libres. Un mur GPU déployé là tombe à 30 fps (constaté
+    // en prod). On ventile donc par socket, avec sa capacité PROPRE et les périphériques qui y sont
+    // ANCRÉS : c'est ce qui rend le chiffre actionnable. Topologie illisible (mono-socket, nœud
+    // injoignable) → `sockets` vide → on retombe sur la bande unique + l'agrégat, sans rien perdre.
+    const sockets = (cm && Array.isArray(cm.sockets)) ? cm.sockets : [];
+    const numaOf = (cm && cm.numa) ? cm.numa : null;
+    let socketBlocks = '';
+    if (sockets.length > 1 && numaOf) {
+        socketBlocks = sockets.map(s => {
+            const idx = perCore.map((c, i) => i).filter(i => numaOf[String(i)] === s.numa);
+            const strip = bandeCoeurs(idx);
+            const plein = s.physical_free === 0;
+            // Périphériques ancrés : l'information qui manquait pour lire la capacité.
+            // Seules les cartes du CHEMIN MÉDIA sont nommées : « 11 ports réseau » comptait aussi
+            // la management et se lisait comme un nombre de flux. On dit le RÔLE et on liste les
+            // interfaces — « 2110 · ens1f0np0, ens1f1np1 » ne se confond avec rien.
+            // Le rôle et le compte restent visibles, la liste des interfaces passe en infobulle :
+            // quatre noms de ports dans l'en-tête le font déborder sans rien apprendre au coup d'œil.
+            const devChip = (k, list) => (list || []).length
+                ? [{ txt: window.t(k).replace('{n}', list.length), tip: list.join(', ') }] : [];
+            const dev = []
+                .concat((s.gpus || []).map(g => ({ txt: window.t('monitoring.socket_gpu').replace('{n}', g), tip: '' })))
+                .concat(devChip('monitoring.socket_nic_media', s.nics_media))
+                .concat(devChip('monitoring.socket_nic_rdma', s.nics_rdma));
+            return `<div class="socket">
+                <div class="socket-head">
+                    <span class="socket-name">${window.t('monitoring.socket_label').replace('{n}', s.numa)}</span>
+                    <span class="meta">${escapeHtml(s.cpus)}</span>
+                    ${dev.map(d => `<span class="socket-dev"${d.tip ? ` title="${escapeHtml(d.tip)}"` : ''}>${escapeHtml(d.txt)}</span>`).join('')}
+                    <span class="socket-cap${plein ? ' socket-full' : ''}">${
+                        window.t('monitoring.socket_capacity')
+                            .replace('{free}', s.physical_free).replace('{phys}', s.physical)
+                    }</span>
+                </div>
+                <div class="node-cores">${strip}</div>
+            </div>`;
+        }).join('');
+    }
+
+    // ── Détail du cœur SÉLECTIONNÉ ──────────────────────────────────────────────────────────
+    // Deux questions distinctes, et c'est toute la valeur du panneau : qui RÉSERVE ce cœur
+    // (allocation exclusive, décidée au déploiement) et qui l'UTILISE (charge instantanée). Les
+    // deux divergent tout le temps : un conteneur affamé réserve et consomme peu (il ATTEND), et
+    // des threads sans affinité — le contrôleur du moteur 2110 tourne en 0-95 — chargent un cœur
+    // que personne n'a réservé. Afficher l'un pour l'autre ferait chercher la panne au mauvais endroit.
+    let coreDetail = '';
+    if (cm && _coreSel != null && perCore[_coreSel] != null) {
+        const i = _coreSel;
+        const occ = (cm.by_cpu || {})[String(i)] || [];
+        const phys = (cm.cores_phys || {})[String(i)];
+        const nd = (cm.numa || {})[String(i)];
+        const sock = (cm.sockets || []).find(x => x.numa === nd);
+        // Jumeau HyperThreading = l'AUTRE cpu logique du même cœur physique.
+        const jum = phys == null ? null : Object.keys(cm.cores_phys || {})
+            .map(Number).find(j => j !== i && cm.cores_phys[String(j)] === phys);
+        const occJ = jum == null ? [] : ((cm.by_cpu || {})[String(jum)] || []);
+        const nomsDe = (l) => l.length
+            ? l.map(o => escapeHtml(o.hostname || ('#' + o.vmid)) + ' (' + o.vmid + ')'
+                       + (o.source === 'engine' ? ' · ' + window.t('monitoring.core_owner_engine') : '')
+                       + (o.gpu_index != null ? ' · GPU ' + o.gpu_index : '')).join(', ')
+            : null;
+        const reserve = nomsDe(occ);
+        // Détail du conteneur qui réserve : sa charge PROPRE et sa pression cgroup. Un conteneur
+        // en famine consomme peu de CPU — c'est justement le symptôme, la charge du cœur ne le dit pas.
+        const ct = occ.length ? (cm.containers || []).find(c => c.vmid === occ[0].vmid) : null;
+        const psiFull = ct && ct.psi ? ct.psi.full : null;
+        const dev = sock ? []
+            .concat((sock.gpus || []).map(g => 'GPU ' + g))
+            .concat((sock.nics_media || []).length ? [window.t('monitoring.socket_nic_media').replace('{n}', sock.nics_media.length)] : [])
+            .concat((sock.nics_rdma || []).length ? [window.t('monitoring.socket_nic_rdma').replace('{n}', sock.nics_rdma.length)] : []) : [];
+        const lignes = [
+            [window.t('monitoring.core_d_id'), `#${i}` + (phys != null ? ` · ${window.t('monitoring.core_d_phys')} ${phys}` : '')],
+            [window.t('monitoring.core_d_socket'), (nd != null ? `${window.t('monitoring.socket_label').replace('{n}', nd)}` : '—')
+                + (dev.length ? ` · ${escapeHtml(dev.join(' · '))}` : '')],
+            [window.t('monitoring.core_d_reserved'), reserve || `<span class="meta">${window.t('monitoring.core_d_nobody')}</span>`],
+            [window.t('monitoring.core_d_load'), fmtPct(perCore[i])],
+        ];
+        if (ct) lignes.push([window.t('monitoring.core_d_container_cpu'),
+            fmtPct(ct.cpu_percent) + (psiFull != null ? ` · ${window.t('monitoring.core_d_psi')} ${Math.round(psiFull)}%` : '')]);
+        if (jum != null) {
+            const nj = nomsDe(occJ);
+            const conflit = reserve && nj && reserve !== nj;
+            lignes.push([window.t('monitoring.core_d_twin'),
+                `#${jum} · ${fmtPct(perCore[jum])} — ` + (nj || `<span class="meta">${window.t('monitoring.core_d_nobody')}</span>`)
+                + (conflit ? ` <strong style="color:var(--warning,#e8a33d)">${window.t('monitoring.core_d_twin_conflict')}</strong>` : '')]);
+        }
+        coreDetail = `<div class="core-detail">${kv(lignes)}</div>`;
+    }
+
+    // Légende des propriétaires + table « qui consomme quoi » + instantané des cœurs
+    let cpuExtra = '';
+    if (cm) {
+        cpuExtra += `<div class="core-legend meta">` +
+            [['core-engine', 'core_owner_engine'], ['core-gpu', 'core_owner_gpu'],
+             ['core-pin', 'core_owner_pin'],
+             ['core-free', 'core_owner_free'], ['core-off', 'core_owner_off']]
+            .map(([cls, k]) => `<span><i class="core-dot ${cls}"></i>${window.t('monitoring.' + k)}</span>`).join('') + `</div>`;
+        // Capacité RÉELLE du pool (cœurs PHYSIQUES : l'HyperThreading ne double pas la puissance de
+        // calcul) + pression CPU du nœud (PSI). Un pool sur-souscrit est affiché EN ROUGE : c'est la
+        // seule façon de voir, AVANT de déployer, qu'un mur n'aura nulle part où tourner.
+        const cap = cm.capacite || {};
+        // Quand les tuiles par socket sont affichées, elles PORTENT la capacité réelle : réafficher
+        // l'agrégat ne ferait que remettre le chiffre trompeur (« 2 libres » pour toute la machine,
+        // alors que le socket qui compte n'en a aucun). On ne garde alors que l'alerte de
+        // sur-souscription, qui reste un fait de niveau nœud.
+        if (cap.physical != null && socketBlocks && !cap.oversub) {
+            /* rien : les tuiles disent mieux */
+        } else if (cap.physical != null) {
+            const over = cap.oversub;
+            cpuExtra += `<div class="meta" style="margin:6px 0${over ? ';color:var(--danger, #e5484d);font-weight:600' : ''}">` +
+                `${window.t('monitoring.cpu_capacity')} : ` +
+                window.t('monitoring.cpu_capacity_val')
+                    .replace('{phys}', cap.physical).replace('{ded}', cap.physical_dedicated)
+                    .replace('{free}', cap.physical_free).replace('{shared}', cap.shared_containers) +
+                (over ? ` — ${window.t('monitoring.cpu_oversub')}` : '') + `</div>`;
+        }
+        // Partage ISOLÉS / ORDONNANÇABLES (cf. node_health._merge_cpu_partage). Sur un nœud très
+        // isolé, la jauge CPU globale moyenne deux régimes opposés et reste au vert pendant que la
+        // poignée de cœurs qui portent réellement le système sature. C'est CE chiffre qui le dit.
+        const part = snap.cpu_partage;
+        if (part && part.ordonnancables) {
+            const o = part.ordonnancables, iso = part.isoles;
+            const chaud = o.pct != null && o.pct >= 80;
+            cpuExtra += `<div class="meta" style="margin:6px 0${chaud ? ';color:var(--danger, #e5484d);font-weight:600' : ''}">` +
+                `${window.t('monitoring.cpu_split')} : ` +
+                window.t('monitoring.cpu_split_val')
+                    .replace('{niso}', iso.n).replace('{isopct}', Math.round(iso.pct))
+                    .replace('{nord}', o.n).replace('{ordpct}', Math.round(o.pct))
+                    .replace('{part}', Math.round(part.part_isolee_pct)) + `</div>`;
+        }
+        const hsome = ((cm.psi_host || {}).some || {}).avg60;
+        if (hsome != null) {
+            cpuExtra += `<div class="meta" style="margin:6px 0${hsome >= 30 ? ';color:var(--danger, #e5484d)' : ''}">` +
+                `${window.t('monitoring.cpu_pressure')} : ` +
+                window.t('monitoring.cpu_pressure_val').replace('{some}', Math.round(hsome)) + `</div>`;
+        }
+        const rows = (cm.containers || []).map(c => {
+            const pin = c.source === 'engine'
+                ? `${escapeHtml(c.pinned_cores)} <span class="badge">${window.t('monitoring.cpu_engine_badge')}</span>`
+                : (c.pinned_cores ? escapeHtml(c.pinned_cores) : `<span class="meta">${window.t('monitoring.cpu_not_pinned')}</span>`);
+            // Famine = PSI « full » du conteneur. Un conteneur affamé consomme PEU de CPU (il attend) :
+            // la colonne CPU % ne peut PAS la montrer, celle-ci si.
+            const full = (c.psi || {}).full;
+            const psi = full == null ? '—'
+                : (full < 1 ? `<span class="meta">${window.t('monitoring.cpu_psi_ok')}</span>`
+                            : `<span style="color:${full >= 25 ? 'var(--danger, #e5484d)' : 'var(--warning, #f5a524)'};font-weight:600">${full.toFixed(0)} %</span>`);
+            return `<tr><td>${escapeHtml(c.hostname || '?')} <span class="meta">(${c.vmid}${c.type ? ' · ' + escapeHtml(c.type) : ''})</span></td>
+                <td style="text-align:right">${c.cpu_percent != null ? c.cpu_percent.toFixed(1) + ' %' : '—'}</td>
+                <td style="text-align:right" title="${window.t('monitoring.cpu_psi_tip')}">${psi}</td>
+                <td style="text-align:right">${pin}</td></tr>`;
+        }).join('');
+        cpuExtra += `<h4 class="cpu-sub">${window.t('monitoring.cpu_who_title')}</h4>` + (rows
+            ? `<table class="cpu-who-table"><thead><tr><th></th><th style="text-align:right">${window.t('monitoring.cpu_col_cpu')}</th><th style="text-align:right" title="${window.t('monitoring.cpu_psi_tip')}">${window.t('monitoring.cpu_col_psi')}</th><th style="text-align:right">${window.t('monitoring.cpu_col_pinning')}</th></tr></thead><tbody>${rows}</tbody></table>`
+            : `<div class="meta">—</div>`);
+        cpuExtra += `<div style="margin-top:8px"><button type="button" class="btn" onclick="coreSnapshot('${key}')" ${_coreSnapBusy ? 'disabled' : ''}>${_coreSnapBusy ? window.t('monitoring.core_snapshot_busy') : window.t('monitoring.core_snapshot_btn')}</button></div>`;
+        cpuExtra += renderCoreSnapHtml(key);
+    }
+
+    // Disques (hors /dev/shm : tmpfs adossé à la RAM → présenté dans « Mémoire »)
+    const disks = Object.entries(snap.disks || {}).filter(([k]) => k !== 'shm').map(([k, d]) =>
+        gauge(escapeHtml(d.path || k), d.pct, `${fmtBytes(d.used)} / ${fmtBytes(d.total)}`)).join('') || `<div class="meta">—</div>`;
+    // /dev/shm = tmpfs RAM → rattaché à la mémoire (son remplissage consomme de la RAM).
+    const shmD = (snap.disks || {}).shm;
+    const shmBlock = shmD
+        ? gauge('/dev/shm (tmpfs)', shmD.pct, `${fmtBytes(shmD.used)} / ${fmtBytes(shmD.total)}`) + sparkline(hist, 'shm', '#e0a93b')
+        : '';
+
+    // Réseau
+    // Réseau : barres rx/tx vs vitesse du lien (speed_mbps remonté par l'agent ≥0.11.0) ; repli texte
+    // si la vitesse est inconnue (lien down / champ absent).
+    const _spdTxt = (s) => s >= 1000 ? `${s / 1000} G` : `${s} M`;
+    const net = Object.entries(snap.net || {}).map(([i, n]) => {
+        const spd = n.speed_mbps;
+        if (spd) {
+            const cap = spd * 1e6;
+            return gauge(`${escapeHtml(i)} ↓`, (n.rx_bps || 0) / cap * 100, `${fmtBps(n.rx_bps)} / ${_spdTxt(spd)}`)
+                 + gauge(`${escapeHtml(i)} ↑`, (n.tx_bps || 0) / cap * 100, `${fmtBps(n.tx_bps)} / ${_spdTxt(spd)}`);
+        }
+        return `<div class="meta" style="margin:2px 0">${escapeHtml(i)} : ↓ ${fmtBps(n.rx_bps)} · ↑ ${fmtBps(n.tx_bps)}</div>`;
+    }).join('') || `<div class="meta">—</div>`;
+
+    const sections = [];
+    sections.push(`<section><h3>${window.t('monitoring.nodes_identity')}</h3>${kv([
+        [window.t('monitoring.nodes_host'), escapeHtml(snap.host || '—')],
+        [window.t('monitoring.nodes_status'), snap.ok ? window.t('monitoring.nodes_ok') : window.t('monitoring.nodes_unreachable')],
+        [window.t('monitoring.nodes_caps'), snap.is_controller ? window.t('monitoring.nodes_controller') : (_caps(snap).join(', ') || '—')],
+        [window.t('monitoring.nodes_uptime'), fmtUptime(snap.host_uptime_s)],
+        ['Agent', escapeHtml(snap.agent_version || '—')],
+        [window.t('monitoring.nodes_kernel'), escapeHtml((snap.versions || {}).kernel || '—')],
+        ['OS', escapeHtml((snap.versions || {}).os || '—')],
+    ])}</section>`);
+
+    sections.push(`<section><h3>CPU</h3>${kv([
+        [window.t('monitoring.nodes_cpu_use'), fmtPct(_cpuPct(snap))],
+        ['Load (1/5/15)', (r.loadavg || []).join(' / ') || '—'],
+        [window.t('monitoring.nodes_cores'), r.cpu_count != null ? r.cpu_count : '—'],
+        [window.t('monitoring.nodes_model'), escapeHtml(r.cpu_model || '—')],
+    ].concat([st24row('cpu', '%')].filter(Boolean)))}${
+        socketBlocks || `<div class="node-cores" style="margin:8px 0">${cores}</div>`
+    }${coreDetail}${cpuExtra}${sparkline(hist, 'cpu', '#5b8def')}</section>`);
+
+    const mb = snap.membw;
+    sections.push(`<section><h3>${window.t('monitoring.nodes_memory')}</h3>${kv([
+        ['RAM', `${fmtBytes((r.mem_used_mb || 0) * 1048576)} / ${fmtBytes((r.mem_total_mb || 0) * 1048576)} (${fmtPct(_memPct(snap))})`],
+        ['Swap', `${fmtBytes((r.swap_used_mb || 0) * 1048576)} / ${fmtBytes((r.swap_total_mb || 0) * 1048576)}`],
+        [window.t('monitoring.nodes_membw'), mb && mb.gbps != null ? `${mb.gbps} Go/s (${mb.ratio != null ? Math.round(mb.ratio * 100) + '%' : '—'})` : '—'],
+    ].concat([st24row('mem', '%'), mb ? st24row('membw', ' Go/s') : null].filter(Boolean)))}${sparkline(hist, 'mem', '#3bce82')}${shmBlock}</section>`);
+
+    // GPU(s) — utilisation/VRAM + échange PCIe RAM↔GPU (le compositing accéléré est PCIe-bound).
+    const gpus = (snap.gpu || {}).gpus || [];
+    gpus.forEach((g) => {
+        const pcieDir = (g.pcie_rx_mbps != null || g.pcie_tx_mbps != null)
+            ? `↓ ${fmtMBps(g.pcie_rx_mbps)} <span class="meta">RAM→GPU</span> · ↑ ${fmtMBps(g.pcie_tx_mbps)} <span class="meta">GPU→RAM</span>`
+            : '—';
+        const linkTxt = (g.pcie_gen && g.pcie_width)
+            ? `PCIe ${g.pcie_gen}.0 ×${g.pcie_width}` +
+              ((g.pcie_gen_max && g.pcie_width_max && (g.pcie_gen < g.pcie_gen_max || g.pcie_width < g.pcie_width_max))
+                  ? ` <span class="meta">(max ${g.pcie_gen_max}.0 ×${g.pcie_width_max})</span>` : '') +
+              (g.pcie_link_mbps ? ` · ${fmtMBps(g.pcie_link_mbps)}${window.t('monitoring.nodes_gpu_per_dir')}` : '')
+            : '—';
+        const title = 'GPU' + (g.name ? ' — ' + escapeHtml(g.name) : '') +
+                      (gpus.length > 1 ? ` #${g.index}` : '');
+        sections.push(`<section><h3>${title}</h3>
+            ${gauge(window.t('monitoring.nodes_gpu_compute'), g.util_pct, fmtPct(g.util_pct))}
+            ${gauge('VRAM', g.mem_pct, `${fmtBytes((g.mem_used_mb || 0) * 1048576)} / ${fmtBytes((g.mem_total_mb || 0) * 1048576)}`)}
+            ${gauge(window.t('monitoring.nodes_gpu_exchange'), g.pcie_pct, g.pcie_pct != null ? fmtPct(g.pcie_pct) + ' ' + window.t('monitoring.nodes_gpu_of_link') : '—')}
+            ${kv([
+                [window.t('monitoring.nodes_gpu_pcie_rate'), pcieDir],
+                [window.t('monitoring.nodes_gpu_link'), linkTxt],
+                [window.t('monitoring.nodes_gpu_vram_bus'), fmtPct(g.mem_util_pct)],
+                [window.t('monitoring.nodes_gpu_encdec'), `${fmtPct(g.enc_pct)} / ${fmtPct(g.dec_pct)}`],
+                [window.t('monitoring.nodes_gpu_temp'), g.temp_c != null ? `${g.temp_c} °C` : '—'],
+                [window.t('monitoring.nodes_gpu_power'), g.power_w != null ? `${g.power_w} W${g.power_limit_w ? ' / ' + g.power_limit_w + ' W' : ''}${g.power_pct != null ? ' (' + fmtPct(g.power_pct) + ')' : ''}` : '—'],
+                [window.t('monitoring.nodes_gpu_clocks'), `${g.clock_sm_mhz != null ? g.clock_sm_mhz + ' MHz' : '—'} / ${g.clock_mem_mhz != null ? g.clock_mem_mhz + ' MHz' : '—'}`],
+                [window.t('monitoring.nodes_gpu_driver'), escapeHtml(g.driver || '—')],
+            ])}</section>`);
+    });
+
+    // RDMA — devices IB : Rx/Tx en BARRES (consommé / débit nominal du lien), comme les disques.
+    const rdevs = (snap.rdma || {}).devices || [];
+    if (rdevs.length) {
+        const blocks = rdevs.map(d => {
+            const rate = d.rate_gbps || 0;
+            const rx = d.rx_gbps || 0, tx = d.tx_gbps || 0;
+            const e = d.errors || {};
+            const errN = (e.rcv_errors || 0) + (e.xmit_discards || 0) + (e.buffer_overrun || 0);
+            const stCol = (d.state || '').toUpperCase() === 'ACTIVE' ? 'var(--status-running-fg)' : 'var(--status-error-fg)';
+            const head = `<div class="meta" style="margin:4px 0 2px">${escapeHtml(d.dev)}/${escapeHtml(String(d.port))} · `
+                + `<span style="color:${stCol}">${escapeHtml(d.state || '—')}</span>`
+                + (rate ? ` · ${rate} Gb/s` : '')
+                + (errN ? ` · <span style="color:var(--status-error-fg)">${errN} err</span>` : '') + `</div>`;
+            const rate1 = rate || 1;
+            return head
+                + gauge('Rx', rx / rate1 * 100, `↓ ${rx.toFixed(2)} / ${rate || '?'} Gb/s`)
+                + gauge('Tx', tx / rate1 * 100, `↑ ${tx.toFixed(2)} / ${rate || '?'} Gb/s`);
+        }).join('');
+        sections.push(`<section><h3>${window.t('monitoring.rdma_section')}</h3>${blocks}</section>`);
+    }
+
+    sections.push(`<section><h3>${window.t('monitoring.nodes_disks')}</h3>${disks}</section>`);
+    sections.push(`<section><h3>${window.t('monitoring.nodes_network')}</h3>${net}</section>`);
+
+    // Docker : version moteur + conteneurs présents (nom, image, état). Tri : RDMA (rdma-*) à part.
+    const dk = snap.docker || {};
+    const conts = snap.containers || [];
+    if (dk.version != null || conts.length) {
+        const stCol = (s) => /^up/i.test(s || '') ? 'var(--status-running-fg)'
+                            : /exit|dead|restart/i.test(s || '') ? 'var(--status-error-fg)' : 'var(--text-muted)';
+        const rows = conts.map(c => `<dt title="${escapeHtml(c.image || '')}">${escapeHtml(c.name)}</dt>`
+            + `<dd><span style="color:${stCol(c.status)}">${escapeHtml(c.status || '—')}</span>`
+            + (c.image ? ` <span class="meta">· ${escapeHtml(c.image)}</span>` : '') + `</dd>`).join('') || `<dt class="meta">${window.t('monitoring.docker_none')}</dt><dd></dd>`;
+        const head = kv([
+            [window.t('monitoring.docker_engine'), `<span style="color:${dk.ok ? 'var(--status-running-fg)' : 'var(--status-error-fg)'}">${escapeHtml(dk.version || '—')}</span>`],
+            [window.t('monitoring.docker_count'), String(conts.length)],
+        ]);
+        sections.push(`<section><h3>Docker</h3>${head}<dl class="node-kv" style="margin-top:6px">${rows}</dl></section>`);
+    }
+
+    // Santé matérielle (hwmon, agent ≥0.12.0) : températures (max par puce), ventilateurs, conso.
+    // Sur certains serveurs (HPE) ventilateurs/conso passent par l'IPMI → potentiellement absents.
+    const sens = snap.sensors || {};
+    const temps = sens.temps || [], fans = sens.fans || [];
+    if (temps.length || fans.length || sens.power_w != null) {
+        const tcol = (c) => c < 70 ? 'var(--status-running-fg)' : c < 85 ? 'var(--status-warning-fg,#c80)' : 'var(--status-error-fg)';
+        const byChip = {};
+        temps.forEach(t => { byChip[t.chip] = Math.max(byChip[t.chip] ?? -999, t.c); });
+        const hrows = Object.entries(byChip).map(([c, v]) =>
+            [escapeHtml(c), `<span style="color:${tcol(v)}">${v} °C</span>`]);
+        if (fans.length) {
+            const rpms = fans.map(f => f.rpm);
+            hrows.push([window.t('monitoring.hw_fans'), `${fans.length} · ${Math.min(...rpms)}–${Math.max(...rpms)} RPM`]);
+        }
+        if (sens.power_w != null) hrows.push([window.t('monitoring.hw_power'), `${sens.power_w} W`]);
+        sections.push(`<section><h3>${window.t('monitoring.hw_health')}</h3>${kv(hrows)}</section>`);
+    }
+
+    if (snap.ptp) {
+        const p = snap.ptp;
+        const RUN = 'var(--status-running-fg)', ERR = 'var(--status-error-fg)', WARN = 'var(--status-warning-fg,#c80)', MUT = 'var(--text-muted)';
+        const syncOk = (p.sync_ok != null ? !!p.sync_ok : !!p.locked);
+        const lockCol = syncOk ? RUN : ERR;
+        const off = p.offset_ns;
+        const offCol = off == null ? MUT : (Math.abs(off) <= 100 ? RUN : Math.abs(off) <= 1000 ? WARN : ERR);
+        const ps = p.port_state || '';
+        const psCol = ['SLAVE', 'MASTER', 'GRAND_MASTER', 'PASSIVE'].includes(ps) ? RUN
+                    : ['FAULTY', 'DISABLED'].includes(ps) ? ERR : MUT;
+        // Interfaces porteuses de PTP (config node_interfaces). Statut détaillé par-port = limite connue
+        // (le relevé pmc est au niveau nœud) → on liste les NIC PTP + le rôle.
+        const ifs = p.interfaces || [];
+        const ifRows = ifs.length
+            ? ifs.map(i => `<dt>${escapeHtml(i.ifname || '—')}</dt><dd>${i.role ? `<span class="meta">${escapeHtml(i.role)}</span> · ` : ''}<span style="color:${RUN}">PTP actif</span></dd>`).join('')
+            : `<dt class="meta">—</dt><dd></dd>`;
+        // Offset des 30 dernières secondes (depuis l'historique node_health).
+        const lastT = hist.length ? hist[hist.length - 1].t : 0;
+        const recent = (hist || []).filter(pt => pt.t >= lastT - 32);
+        // Sur PTP moteur (DPDK), on affiche les DEUX : la synchro réelle au GM, qui fait foi, et le
+        // verrou servo strict en second rideau — sinon un « Verrouillé : non » laisse croire à une
+        // panne d'horloge alors que le nœud est aligné à la nanoseconde.
+        const servoRows = p.engine_ptp ? [
+            [window.t('monitoring.nodes_locked'),
+             `<span style="color:${p.locked ? RUN : MUT}">${p.locked ? window.t('monitoring.yes') : window.t('monitoring.no')}</span>`
+             + ` <span class="meta">${window.t('monitoring.ptp_servo_note')}</span>`],
+        ].concat(p.raw_delta_ns != null
+                 ? [[window.t('monitoring.ptp_raw_delta'), `<span class="meta">${p.raw_delta_ns} ns</span>`]] : [])
+        : [[window.t('monitoring.nodes_locked'), `<span style="color:${lockCol}">${p.locked ? window.t('monitoring.yes') : window.t('monitoring.no')}</span>`]];
+        sections.push(`<section><h3>PTP</h3>${kv([
+            [window.t('monitoring.ptp_sync'), `<span style="color:${lockCol}">${syncOk ? window.t('monitoring.yes') : window.t('monitoring.no')}</span>`],
+        ].concat(servoRows).concat([
+            [window.t('monitoring.ptp_port_state'), `<span style="color:${psCol}">${escapeHtml(ps || '—')}</span>`],
+            ['Grandmaster', `<span style="font-family:var(--font-mono)">${escapeHtml(p.gm_id || '—')}</span>`],
+            ['Offset', off != null ? `<span style="color:${offCol}">${off} ns</span>` : '—'],
+            [window.t('monitoring.ptp_mpd'), p.mpd_ns != null ? `${p.mpd_ns} ns` : '—'],
+        ]).concat(p.phc2sys_state ? [['phc2sys', escapeHtml(p.phc2sys_state)]] : []))}
+            <div class="meta" style="margin-top:6px">${window.t('monitoring.ptp_interfaces')}</div>
+            <dl class="node-kv">${ifRows}</dl>
+            <div class="meta" style="margin-top:6px">${window.t('monitoring.ptp_offset_30s')}</div>${offsetSpark(recent)}
+        </section>`);
+    }
+    // Préparation hôte 2110 : verdict de la sonde MTL (IOMMU/vfio/hugepages/isolation/fréquence).
+    // Absent = nœud sans capacité io2110 → pas de section du tout. La ligne « vérifié » vient EN
+    // TÊTE : sans elle on lirait un verdict vieux de 30 min comme s'il datait du dernier tick.
+    if (snap.prep && key !== 'controller') {
+        const p = snap.prep, iso = p.isolation || {}, cf = p.cpufreq || {};
+        const RUN = 'var(--status-running-fg)', ERR = 'var(--status-error-fg)', WARN = 'var(--status-warning-fg,#c80)';
+        const rows = [
+            [window.t('monitoring.prep_state'), `<span style="color:${prepColor(p.level)}">${prepLabel(p.level)}</span>`],
+            [window.t('monitoring.prep_checked'), p.ts
+                ? `${prepAge(p.ts)} <span class="meta">(${new Date(p.ts * 1000).toLocaleTimeString()})</span>`
+                : `<span class="meta">${window.t('monitoring.prep_never')}</span>`],
+        ];
+        if (p.level !== 'unknown') {
+            // Bande isolée : ACTIVE vs ATTENDUE, telles que mesurées par la sonde (rien en dur ici).
+            rows.push([window.t('monitoring.prep_isolation'), iso.expected || iso.active
+                ? `<span style="font-family:var(--font-mono)">${escapeHtml(iso.active || '—')}</span>`
+                  + ` <span class="meta">${window.t('monitoring.prep_expected')} `
+                  + `<span style="font-family:var(--font-mono)">${escapeHtml(iso.expected || '—')}</span></span>`
+                  + ` <span style="color:${iso.match ? RUN : WARN}">${iso.match ? '✓' : '✗'}</span>`
+                  + (iso.irqbalance ? ` <span style="color:${WARN}">· irqbalance</span>` : '')
+                : '—']);
+            rows.push([window.t('monitoring.prep_cpufreq'), cf.isolated
+                ? `${window.t('monitoring.prep_cores').replace('{n}', cf.isolated)} · `
+                  + `<span style="color:${cf.pinned ? RUN : ERR}">`
+                  + `${cf.pinned ? window.t('monitoring.prep_pinned') : window.t('monitoring.prep_not_pinned')}</span>`
+                  + (cf.cur_min_mhz != null && cf.max_mhz != null
+                        ? ` <span class="meta">(${cf.cur_min_mhz} / ${cf.max_mhz} MHz${cf.governor ? ' · ' + escapeHtml(cf.governor) : ''})</span>` : '')
+                : '—']);
+            if (p.reboot_needed) rows.push([window.t('monitoring.prep_reboot'),
+                `<span style="color:${WARN}">${window.t('monitoring.prep_reboot_pending')}</span>`]);
+        }
+        const detail = (p.checks || []).length
+            ? `<dl class="node-kv">` + p.checks.map(c =>
+                  `<dt><span style="color:${prepColor(c.level)}">${escapeHtml(c.key)}</span></dt>`
+                + `<dd>${escapeHtml(c.message || '')}</dd>`).join('') + `</dl>`
+            : `<div class="meta" style="margin-top:6px">${escapeHtml(
+                  p.level === 'unknown' ? window.t('monitoring.prep_never_hint') : (p.summary || ''))}</div>`;
+        sections.push(`<section><h3>${window.t('monitoring.prep_section')}</h3>${kv(rows)}${detail}
+            <div style="margin-top:8px"><button type="button" class="btn"
+                onclick="goPrepRefresh('${key}', this)">${window.t('monitoring.prep_recheck')}</button>
+            <span class="meta"> ${window.t('monitoring.prep_recheck_hint')}</span></div>
+        </section>`);
+    }
+
+    // Réservation des cœurs : le pool DÉCLARÉ, et surtout la VÉRIFICATION qu'il est effectif.
+    // Un pool en base ne prouve rien : ce qui compte est ce que Docker a réellement posé et ce que
+    // l'ordonnanceur peut réellement exécuter (invariants I1/I2 de app/placement.py). Sans ce
+    // constat, un nœud « configuré » peut n'avoir aucune réservation active — c'était le cas de
+    // cinq nœuds sur six le 2026-08-02.
+    if (key !== 'controller') {
+        let pl = null;
+        try { pl = await (await fetch(`/api/nodes/${encodeURIComponent(key)}/placement`)).json(); }
+        catch (_) {}
+        const pool = (cm && cm.compute_cpuset) || '';
+        // Le constat rend `defauts` : [{code, conteneur, message}]. `ok:false` = relevé impossible
+        // (agent muet) — à ne surtout pas confondre avec « aucun défaut ».
+        const viol = (pl && pl.ok) ? (pl.defauts || []) : [];
+        const nViol = viol.length;
+        const relevePerdu = !!(pl && pl.ok === false);
+        let etat, cls;
+        if (relevePerdu) { etat = window.t('monitoring.pool_unknown'); cls = 'warn'; }
+        else if (!pool) { etat = window.t('monitoring.pool_none'); cls = 'warn'; }
+        else if (nViol) { etat = window.t('monitoring.pool_violated').replace('{n}', nViol); cls = 'bad'; }
+        else { etat = window.t('monitoring.pool_active'); cls = 'ok'; }
+        const dedies = (cm && cm.by_cpu)
+            ? new Set(Object.entries(cm.by_cpu).filter(([, o]) => (o || []).length).map(([i]) => i)).size : null;
+        sections.push(`<section class="node-sec">
+            <h3>${window.t('monitoring.pool_title')}</h3>
+            ${kv([
+                [window.t('monitoring.pool_declared'), pool
+                    ? `<code>${escapeHtml(pool)}</code>`
+                    : `<span class="meta">${window.t('monitoring.pool_none_hint')}</span>`],
+                [window.t('monitoring.pool_pinned'), dedies == null ? '—' : dedies],
+                [window.t('monitoring.pool_check'),
+                 `<span class="pool-etat pool-${cls}">${escapeHtml(etat)}</span>`],
+            ])}
+            ${nViol ? `<ul class="pool-viol">` + (Array.isArray(viol) ? viol : []).slice(0, 6).map(v =>
+                `<li>${escapeHtml(v.message || v.code || '')}</li>`).join('') + `</ul>` : ''}
+        </section>`);
+    }
+
+    // Réseau des CONTENEURS : un nœud dont le macvlan pend dans le vide s'affiche parfaitement
+    // sain — ping, agent, capacités, pool de cœurs, tout est vert — et aucun de ses conteneurs
+    // n'est joignable. Deux défauts SÉPARÉS : le réseau contredit les rôles (se corrige en le
+    // recréant) ou la carte n'a pas de porteuse (se corrige au câblage).
+    if (key !== 'controller') {
+        let rn = null;
+        try { rn = await (await fetch(`/api/nodes/${encodeURIComponent(key)}/container-network`)).json(); }
+        catch (_) {}
+        if (rn && !rn.error) {
+            let etat, cls;
+            if (rn.parent_derive) {
+                etat = window.t('monitoring.net_drift')
+                    .replace('{reel}', rn.parent_reel || '?').replace('{decl}', rn.parent_declare || '?');
+                cls = 'bad';
+            } else if (rn.parent_sans_lien) {
+                etat = window.t('monitoring.net_nolink').replace('{if}', rn.parent_reel || '?');
+                cls = 'bad';
+            } else if (!rn.parent_declare) {
+                etat = window.t('monitoring.net_undeclared'); cls = 'warn';
+            } else {
+                etat = window.t('monitoring.net_ok'); cls = 'ok';
+            }
+            sections.push(`<section class="node-sec">
+                <h3>${window.t('monitoring.net_title')}</h3>
+                ${kv([
+                    [window.t('monitoring.net_declared'), rn.parent_declare
+                        ? `<code>${escapeHtml(rn.parent_declare)}</code>` : '—'],
+                    [window.t('monitoring.net_actual'), rn.parent_reel
+                        ? `<code>${escapeHtml(rn.parent_reel)}</code>` : '—'],
+                    [window.t('monitoring.pool_check'),
+                     `<span class="pool-etat pool-${cls}">${escapeHtml(etat)}</span>`],
+                ])}
+            </section>`);
+        }
+    }
+
+    // (l'ancienne tuile « Conteneurs » est remplacée par la tuile Docker ci-dessus.)
+
+    // Bandeau sélecteur : tous les serveurs en chips minimales, l'actif surligné, clic = bascule.
+    const switcher = _orderedNodes(nd).map(([k, s]) => {
+        const cur = (k === key);
+        const dot = s.ok ? 'var(--status-running-fg)' : 'var(--status-stopped-fg)';
+        const nm = escapeHtml(s.name || k);
+        return `<button type="button" class="node-switch${cur ? ' is-cur' : ''}"${cur ? ' aria-current="true"' : ''}
+            onclick="showNodeDetail('${k}')" title="${nm}"><span class="node-switch-dot" style="background:${dot}"></span>${nm}</button>`;
+    }).join('');
+    body.innerHTML = `<div class="node-switcher">${switcher}</div>
+        <h2 style="margin:6px 0 10px">${escapeHtml(snap.name || key)}</h2>
+        <div class="node-detail-grid">${sections.join('')}</div>`;
+}
+
+// Instantané des cœurs : mesure on-demand (~0,5 s côté agent) — % réel par cœur + threads/
+// conteneurs dessus (PSR). Résultat gardé dans _coreSnap : renderNodeDetail réécrit tout
+// l'innerHTML toutes les 5 s, l'instantané doit survivre au refresh (d'où l'horodatage).
+async function coreSnapshot(key) {
+    if (_coreSnapBusy) return;
+    _coreSnapBusy = true;
+    if (_detailKey === key) renderNodeDetail();   // bouton → « Mesure en cours… »
+    try {
+        const j = await (await fetch(`/api/nodes/${encodeURIComponent(key)}/core-snapshot`)).json();
+        _coreSnap = { key, ts: Date.now(), data: j };
+    } catch (_) {
+        _coreSnap = { key, ts: Date.now(), data: { ok: false, error: 'network' } };
+    }
+    _coreSnapBusy = false;
+    if (_detailKey === key) renderNodeDetail();
+}
+
+function renderCoreSnapHtml(key) {
+    if (!_coreSnap || _coreSnap.key !== key) return '';
+    const d = _coreSnap.data || {};
+    const ts = new Date(_coreSnap.ts).toLocaleTimeString();
+    if (!d.ok) {
+        const msg = d.error === 'agent_too_old' ? window.t('monitoring.core_snapshot_agent_old')
+                                                : window.t('monitoring.core_snapshot_err');
+        return `<div class="meta" style="margin-top:6px">${msg}</div>`;
+    }
+    const rows = (d.cores || []).map(c => {
+        const hot = c.pct >= 80;
+        const top = (c.top || []).map(t => {
+            const who = t.hostname ? `${escapeHtml(t.hostname)} (${t.vmid})` : escapeHtml(t.container || '?');
+            return `${who} · <span class="meta">${escapeHtml(t.comm || '')}</span> · ${t.pct} %`;
+        }).join('<br>') || `<span class="meta">${window.t('monitoring.core_top_none')}</span>`;
+        return `<tr${hot ? ' class="core-hot"' : ''}><td>#${c.cpu}</td>
+            <td style="text-align:right">${c.pct != null ? c.pct.toFixed(1) + ' %' : '—'}</td><td>${top}</td></tr>`;
+    }).join('');
+    return `<div class="meta" style="margin-top:8px">${window.t('monitoring.core_snapshot_ts')} ${ts} · ${d.duration_ms} ms</div>
+        <table class="cpu-who-table core-snap-table"><tbody>${rows}</tbody></table>`;
+}
+
+async function rafraichirClusterBar() {
+    const el = document.getElementById('cluster-bar');
+    if (!el) return;
+    let data;
+    try { data = await (await fetch('/api/nodes/health')).json(); } catch (e) { return; }
+    const nodes = Object.values(data.nodes || {});   // serveurs (hors contrôleur)
+    if (!nodes.length) { el.hidden = true; return; }
+    const live = nodes.filter(s => s.ok);
+    const up = live.length;
+    const cpuAvg = live.length ? Math.round(live.reduce((a, s) => a + (_cpuPct(s) || 0), 0) / live.length) : null;
+    let memU = 0, memT = 0;
+    live.forEach(s => { const r = s.resources || {}; memU += (r.mem_used_mb || 0); memT += (r.mem_total_mb || 0); });
+    const T = (_rdmaMon && _rdmaMon.totals) || {};
+    const gms = [...new Set(live.map(s => (s.ptp || {}).gm_id).filter(Boolean))];
+    const chip = (lab, val) => `<span class="cl-chip"><b>${val}</b> <span class="lab">${lab}</span></span>`;
+    const out = [chip(window.t('monitoring.cl_servers'), `${up}/${nodes.length}`)];
+    if (cpuAvg != null) out.push(chip('CPU', cpuAvg + '%'));
+    if (memT) out.push(chip('RAM', `${fmtBytes(memU * 1048576)} / ${fmtBytes(memT * 1048576)}`));
+    if ((T.links_total || 0) > 0 || (T.throughput_gbps || 0) > 0)
+        out.push(chip('RDMA', `${T.links_running || 0} · ${(T.throughput_gbps || 0).toFixed(1)} Gb/s`));
+    if (gms.length === 1) out.push(chip('PTP GM', `<span style="font-family:var(--font-mono)">${escapeHtml(gms[0])}</span>`));
+    else if (gms.length > 1) out.push(chip('PTP GM', `<span style="color:var(--status-warning-fg,#c80)">${gms.length} GM ⚠</span>`));
+    el.innerHTML = out.join('');
+    el.hidden = false;
+}
+
+async function rafraichirNodes() {
+    try { _nodesData = await (await fetch('/api/nodes/health')).json(); }
+    catch (e) { return; }
+    if (document.getElementById('mon-view-nodes').hidden) return;   // onglet non visible
+    if (_detailKey) renderNodeDetail(); else renderNodesGrid();
+}
+
+// ─── Onglet RDMA (liens + readiness + devices) + badge agrégé Vue d'ensemble ──
+let _rdmaMon = null;
+// Redessin sur changement de tri ou de filtre. Passe par renderRdmaMon (pas par un appel réseau) :
+// trier et filtrer se font sur les données déjà en main.
+MXLTable.init('rdma-links', () => renderRdmaMon());
+
+async function rafraichirRdmaMon() {
+    try { _rdmaMon = await (await fetch('/api/rdma/monitoring')).json(); }
+    catch (e) { return; }
+    const T = _rdmaMon.totals || {};
+    // Horloges du cluster : verdict binaire + renvoi vers l'onglet qui porte le détail.
+    (async () => {
+        const el = document.getElementById('perf-clocks');
+        if (!el) return;
+        try {
+            const d = await (await fetch('/api/cluster/clocks')).json();
+            el.innerHTML = d.ok
+                ? '<span class="badge running">✓</span>'
+                : `<a href="/settings#reseau-horloge" class="badge stopped" title="${escapeHtml(d.problemes.join(' · '))}">`
+                  + `⚠ ${d.problemes.length}</a>`;
+        } catch (e) { el.textContent = '—'; }
+    })();
+    const dt = document.getElementById('perf-rdma-dt'), dd = document.getElementById('perf-rdma');
+    if (dt && dd) {                                  // badge Vue d'ensemble (toujours à jour)
+        const show = (T.links_total || 0) > 0 || (T.throughput_gbps || 0) > 0;
+        dt.hidden = dd.hidden = !show;
+        if (show) dd.textContent = `${T.links_running || 0} ${window.t('monitoring.rdma_links_running')} · ${(T.throughput_gbps || 0).toFixed(1)} Gb/s`;
+    }
+    if (!document.getElementById('mon-view-rdma').hidden) renderRdmaMon();
+}
+
+function _rdmaStatusBadge(l) {
+    const live = l.live || {};
+    const cls = l.status === 'running' ? (live.up ? 'running' : 'script_stopped')
+              : (l.status === 'error' ? 'stopped' : 'script_stopped');
+    let txt = l.status || '—';
+    if (l.status === 'running' && !live.up) txt = window.t('monitoring.degrade').replace('{t}', live.target || '?').replace('{i}', live.initiator || '?');
+    return `<span class="badge ${cls}">${escapeHtml(txt)}</span>`;
+}
+
+function renderRdmaMon() {
+    const body = document.getElementById('rdma-body');
+    if (!_rdmaMon || !body) return;
+    const T = _rdmaMon.totals || {};
+    const parts = [];
+    const dis = !_rdmaMon.enabled ? `<div class="meta">${window.t('monitoring.rdma_disabled')}</div>` : '';
+    parts.push(`<section><h3>${window.t('monitoring.rdma_aggregate')}</h3>
+        <div class="meta">${T.links_running || 0} ${window.t('monitoring.rdma_links_running')} · ${(T.throughput_gbps || 0).toFixed(1)} Gb/s</div>${dis}</section>`);
+
+    const links = _rdmaMon.links || [];
+    const nomNoeud = (id) => {
+        const n = (_rdmaMon.nodes || []).find(x => Number(x.node_id) === Number(id));
+        return n ? n.name : ('#' + id);
+    };
+    // Chemin : le nom d'interface d'abord (c'est ce qu'on va débrancher), l'adresse en second.
+    const cellChemin = (l) => {
+        const p = (l.detail || {}).path;
+        if (!p) return '<span class="meta">—</span>';
+        return `<code>${escapeHtml(p.src_if || p.src_addr)}</code> → <code>${escapeHtml(p.dst_if || p.dst_addr)}</code>`
+             + `<div class="meta">${escapeHtml(p.src_addr)} → ${escapeHtml(p.dst_addr)}</div>`;
+    };
+    // Observé (cadence réelle de la source × taille de grain) vs estimé (format seul, ce que
+    // l'allocateur utilise). Aucun des deux n'est un débit sur le fil : celui-là est par interface,
+    // dans les cartes de nœud ci-dessous. Les confondre ferait lire une intention comme une mesure.
+    const cellDebit = (l) => {
+        const d = l.detail || {};
+        if (d.obs_gbps == null) {
+            return d.est_gbps != null
+                ? `<span class="meta" title="${window.t('monitoring.rdma_rate_est_tip')}">≈ ${d.est_gbps.toFixed(2)} Gb/s</span>`
+                : '<span class="meta">—</span>';
+        }
+        const derive = d.est_gbps ? Math.abs(d.obs_gbps - d.est_gbps) / d.est_gbps : 0;
+        const col = derive > 0.15 ? ' style="color:var(--status-warning-fg)"' : '';
+        return `<span${col} title="${window.t('monitoring.rdma_rate_obs_tip')}">${d.obs_gbps.toFixed(2)} Gb/s</span>`
+             + `<div class="meta">${d.obs_grains_s != null ? d.obs_grains_s.toFixed(1) + '/s' : ''}`
+             + `${d.est_gbps != null ? ' · ' + window.t('monitoring.rdma_rate_expected') + ' ' + d.est_gbps.toFixed(2) : ''}</div>`;
+    };
+    // Accesseurs : la MÊME fonction sert à trier et à chercher, donc toute colonne triable est
+    // cherchable et il n'y a pas de liste de champs de recherche à tenir à jour en parallèle.
+    const acc = {
+        id:     l => l.id,
+        flow:   l => l.src_flow,
+        route:  l => nomNoeud(l.src_node_id) + ' → ' + nomNoeud(l.dst_node_id),
+        path:   l => { const p = (l.detail || {}).path; return p ? `${p.src_if || p.src_addr} ${p.dst_if || p.dst_addr} ${p.src_addr} ${p.dst_addr} ${p.subnet || ''}` : ''; },
+        format: l => (l.detail || {}).format || '',
+        // Trier sur l'observé quand il existe, sinon sur l'estimé : trier sur « — » regrouperait
+        // en tête tous les liens sans mesure, ce qui n'apprend rien.
+        rate:   l => (l.detail || {}).obs_gbps ?? (l.detail || {}).est_gbps ?? -1,
+        kind:   l => l.kind || '',
+        endpoint: l => `${l.provider || ''}:${l.service_port || ''}`,
+        // Trie les inconnus À PART (−1) plutôt qu'avec les 0 : « on ne sait pas » et « lot par
+        // défaut du SDK » ne se rangent pas ensemble, c'est justement ce que la colonne dit.
+        lot:    l => (l.sync_batch == null ? -1 : Number(l.sync_batch)),
+        status: l => l.status || '',
+    };
+    // Lot de synchro RÉELLEMENT posé sur la réplique (`maxSyncBatchSizeHint`), et non le réglage :
+    // une option de flux se fixe à la CRÉATION, donc une réplique réattachée garde le lot avec
+    // lequel elle est née. C'est ce qui décide si le consommateur distant peut démarrer sur une
+    // bande ou doit attendre la trame entière — une trame pleine de latence.
+    const cellLot = l => {
+        if (l.sync_batch == null)
+            return `<span class="meta" title="${escapeHtml(window.t('monitoring.rdma_lot_unknown_tip'))}">?</span>`;
+        const n = Number(l.sync_batch);
+        return n > 0 ? `${n}` : `<span class="meta" title="${escapeHtml(window.t('monitoring.rdma_lot_default_tip'))}">${escapeHtml(window.t('monitoring.rdma_lot_default'))}</span>`;
+    };
+    const vus = MXLTable.appliquer('rdma-links', links, acc);
+    const st = MXLTable.etat('rdma-links');
+    const linkRows = vus.length ? vus.map(l =>
+        `<tr><td>#${l.id}</td><td>${escapeHtml(l.src_flow)}</td>
+         <td>${escapeHtml(nomNoeud(l.src_node_id))} → ${escapeHtml(nomNoeud(l.dst_node_id))}</td>
+         <td>${cellChemin(l)}</td>
+         <td class="meta">${escapeHtml((l.detail || {}).format || '—')}</td>
+         <td style="white-space:nowrap">${cellDebit(l)}</td>
+         <td>${escapeHtml(l.kind || '')}</td><td>${escapeHtml(l.provider || '')}:${l.service_port || ''}</td>
+         <td style="text-align:right">${cellLot(l)}</td>
+         <td>${_rdmaStatusBadge(l)}</td>
+         <td><button type="button" class="btn" onclick="rdmaMonDelete(${l.id})">${window.t('monitoring.rdma_delete')}</button></td></tr>`).join('')
+        // Distinguer « aucun lien » de « aucun résultat » : le second se corrige en vidant le
+        // filtre, et l'afficher comme le premier ferait croire à une perte de données.
+        : `<tr><td colspan="11" class="meta">${st.q ? window.t('monitoring.rdma_no_match') : window.t('monitoring.rdma_no_links')}</td></tr>`;
+    const th = (k, lbl) => MXLTable.th('rdma-links', k, lbl);
+    parts.push(`<section style="grid-column:1/-1">
+        <div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap">
+          <h3 style="margin:0">${window.t('monitoring.rdma_links_title')}</h3>
+          <input type="search" class="mxl-table-search" id="rdma-links-q"
+                 placeholder="${window.t('js.table.filter_ph')}" value="${escapeHtml(st.q)}"
+                 oninput="MXLTable.filtrer('rdma-links', this.value)">
+          <span class="mxl-table-count">${vus.length === links.length
+              ? links.length : vus.length + ' / ' + links.length}</span>
+        </div>
+        <table><thead><tr>${th('id', '#')}${th('flow', window.t('monitoring.rdma_flow'))}
+        ${th('route', window.t('monitoring.rdma_route'))}${th('path', window.t('monitoring.rdma_path'))}
+        ${th('format', window.t('monitoring.rdma_format'))}${th('rate', window.t('monitoring.rdma_rate'))}
+        ${th('kind', window.t('monitoring.rdma_type'))}${th('endpoint', window.t('monitoring.rdma_endpoint'))}
+        ${th('lot', window.t('monitoring.rdma_lot'))}
+        ${th('status', window.t('monitoring.rdma_status'))}<th></th></tr></thead>
+        <tbody>${linkRows}</tbody></table></section>`);
+
+    const nodes = _rdmaMon.nodes || [];
+    const nodeCards = nodes.length ? nodes.map(n => {
+        const rb = `<span class="badge ${n.ready ? 'running' : 'script_stopped'}">${n.ready ? window.t('monitoring.rdma_ready') : window.t('monitoring.rdma_not_ready')}</span>`;
+        // Débit PAR INTERFACE. Le total du nœud ne dit pas si les deux ports d'un nœud agrégé
+        // travaillent : 6 Gb/s sur 20 peut être 6+0 (répartition morte) ou 3+3 (répartition vivante).
+        // Seule la ventilation par port distingue les deux, d'où ce tableau et pas une somme.
+        const devs = (n.devices || []).length
+            ? `<table class="rdma-iface"><thead><tr>
+                 <th>${window.t('monitoring.rdma_iface')}</th><th>${window.t('monitoring.rdma_state')}</th>
+                 <th style="text-align:right">${window.t('monitoring.rdma_rx')} ↓</th>
+                 <th style="text-align:right">${window.t('monitoring.rdma_tx')} ↑</th></tr></thead><tbody>`
+              + (n.devices || []).map(d => {
+                  const lim = d.rate_gbps || 0;
+                  const busy = Math.max(d.rx_gbps || 0, d.tx_gbps || 0);
+                  // Un port à zéro alors qu'un autre du même nœud travaille = la répartition ne se
+                  // fait pas. C'est le symptôme qu'on est venu chercher : il doit sauter aux yeux.
+                  const mort = busy < 0.01 && (n.devices || []).some(o => Math.max(o.rx_gbps || 0, o.tx_gbps || 0) >= 0.01);
+                  const col = lim && busy > lim * 0.9 ? 'var(--status-error-fg)'
+                            : (lim && busy > lim * 0.75 ? 'var(--status-warning-fg)' : '');
+                  return `<tr${mort ? ' style="opacity:.55"' : ''}>
+                    <td><code>${escapeHtml(d.net || d.dev + '/' + d.port)}</code>
+                        <span class="meta">${lim ? lim.toFixed(0) + ' Gb/s' : ''}</span></td>
+                    <td>${escapeHtml(d.state || '')}${mort ? ' <span class="meta">· ' + window.t('monitoring.rdma_iface_idle') + '</span>' : ''}</td>
+                    <td style="text-align:right;color:${col}">${(d.rx_gbps || 0).toFixed(2)}</td>
+                    <td style="text-align:right;color:${col}">${(d.tx_gbps || 0).toFixed(2)}</td></tr>`;
+              }).join('') + '</tbody></table>'
+            : `<span class="meta">${window.t('monitoring.rdma_no_device')}</span>`;
+        const reasons = (!n.ready && (n.reasons || []).length) ? `<div class="meta">${n.reasons.map(escapeHtml).join(' · ')}</div>` : '';
+        const warns = (n.warnings || []).length
+            ? `<div class="meta" style="color:var(--status-warning-fg)">${n.warnings.map(w => '⚠ ' + escapeHtml(w)).join('<br>')}</div>` : '';
+        const rate = n.rate_gbps || 0;
+        const cap = rate ? ` / ${rate.toFixed(0)} Gb/s` : '';
+        const hist = n.history || [];
+        const rxg = `<div class="rdma-graph">
+            <div class="node-gauge-top"><span class="label">${window.t('monitoring.rdma_rx')} ↓</span><span>${(n.rx_gbps || 0).toFixed(2)}${cap}</span></div>
+            ${throughputSpark(hist, 'rx', rate, 'var(--accent,#4af)')}</div>`;
+        const txg = `<div class="rdma-graph">
+            <div class="node-gauge-top"><span class="label">${window.t('monitoring.rdma_tx')} ↑</span><span>${(n.tx_gbps || 0).toFixed(2)}${cap}</span></div>
+            ${throughputSpark(hist, 'tx', rate, 'var(--status-running-fg,#3c3)')}</div>`;
+        return `<div class="rdma-node-card">
+            <div class="rdma-node-head"><b>${escapeHtml(n.name || '')}</b> ${rb}</div>
+            <div class="meta">${devs}</div>${reasons}${warns}
+            <div class="rdma-graphs">${rxg}${txg}</div>
+        </div>`;
+    }).join('') : `<div class="meta">${window.t('monitoring.rdma_no_nodes')}</div>`;
+    parts.push(`<section style="grid-column:1/-1"><h3>${window.t('monitoring.rdma_nodes_title')}</h3>
+        <div class="rdma-node-grid">${nodeCards}</div></section>`);
+
+    // ⚠ Le panneau se redessine INTÉGRALEMENT toutes les 5 s (setInterval) et à chaque frappe dans
+    // le filtre. Remplacer innerHTML détruit le champ de recherche : sans ce report de focus, taper
+    // « dl3 » donnerait « d » — chaque caractère chasserait le curseur. Sauver la position AVANT le
+    // remplacement, la rendre APRÈS, et seulement si le champ avait effectivement le focus (sinon
+    // on volerait le curseur à l'utilisateur en train d'écrire ailleurs dans la page).
+    const q = document.getElementById('rdma-links-q');
+    const avaitFocus = q && document.activeElement === q;
+    const caret = avaitFocus ? [q.selectionStart, q.selectionEnd] : null;
+
+    body.innerHTML = `<div class="node-detail-grid">${parts.join('')}</div>`;
+
+    if (avaitFocus) {
+        const n = document.getElementById('rdma-links-q');
+        if (n) {
+            n.focus();
+            try { n.setSelectionRange(caret[0], caret[1]); } catch (_) {}
+        }
+    }
+}
+
+async function rdmaMonDelete(id) {
+    if (!confirm('RDMA #' + id + ' ?')) return;
+    try { await fetch('/api/rdma/links/' + id, { method: 'DELETE' }); } catch (_) {}
+    rafraichirRdmaMon();
+}
+window.MXLPoll(rafraichirNodes, 5000, {immediate: false});
+
+// ─── Tissu de composition (vue GLOBALE, pas par multiview) ───────────────────
+// Agrège /api/fabric/overview : dédup des nœuds par signature à travers TOUS les murs.
+// Un nœud `shared` (ou présent sur ≥2 murs) = commun → mis en évidence ; le reste = shards propres.
+let _fabSel = null;   // élément sélectionné (persiste à travers les refresh)
+async function renderFabric() {
+    const body = document.getElementById('fabric-body');
+    if (!body || document.getElementById('mon-view-fabric').hidden) return;
+    let j;
+    try { j = await (await fetch('/api/fabric/overview')).json(); }
+    catch (e) { body.innerHTML = `<p class="issue-empty">${window.t('monitoring.fabric_error')}</p>`; return; }
+    const asm = (j && j.assemblers) || [];
+    if (!asm.length) { body.innerHTML = `<p class="issue-empty">${window.t('monitoring.fabric_empty')}</p>`; return; }
+    const nodes = {}, sources = new Set();
+    asm.forEach(a => {
+        const mur = a.hostname || ('mv' + a.vmid);
+        (a.shards || []).forEach(s => {
+            let n = nodes[s.signature];
+            if (!n) n = nodes[s.signature] = {kind: s.kind, sources: s.sources || [],
+                out_w: s.out_w, out_h: s.out_h, lat: s.own_latency_ms, murs: new Set(),
+                vmid: s.vmid, shm: s.shm, format: s.format || {}, cells: s.cells, node_name: s.node_name};
+            n.murs.add(mur);
+            (s.sources || []).forEach(x => sources.add(x));
+        });
+    });
+    const all = Object.entries(nodes).map(([sig, n]) => ({sig, ...n, murs: [...n.murs]}));
+    const shared = all.filter(n => n.kind === 'shared' || n.murs.length > 1);
+    const sharedSigs = new Set(shared.map(n => n.sig));
+    const size = n => (n.out_w && n.out_h) ? `${n.out_w}×${n.out_h}` : '';
+    const lat = v => (v != null) ? `${v} ms` : '';
+
+    // ── Graphe à connecteurs : sources (gauche) → nœuds du tissu (milieu) → murs (droite) ──
+    const nodeList = all;
+    nodeList.forEach(n => n.shared = sharedSigs.has(n.sig));
+    const srcList = [...sources].sort();                       // TOUTES les sources affichées
+    const walls = asm.map(a => {
+        const sl = (a.shards || []).map(s => s.own_latency_ms).filter(x => x != null);
+        return {id: a.hostname || ('mv' + a.vmid), lat: a.cumulative_latency_ms, fps: a.fps,
+                compo: a.own_latency_ms, maxShard: sl.length ? Math.round(Math.max(...sl) * 10) / 10 : null,
+                vmid: a.vmid, format: a.format || {}, node_id: a.node_id, node_name: a.node_name};
+    });
+    const sIdx = {}; srcList.forEach((s, i) => sIdx[s] = i);
+    const wIdx = {}; walls.forEach((w, i) => wIdx[w.id] = i);
+
+    // ── Multi-serveur : couleur par serveur + repérage des liens inter-serveurs ──
+    const srcServer = j.source_nodes || {};
+    const idServer = {};
+    srcList.forEach(s => idServer['src:' + s] = srcServer[s] || null);
+    nodeList.forEach(n => idServer['node:' + n.sig] = n.node_name || null);
+    walls.forEach(w => idServer['wall:' + w.id] = w.node_name || null);
+    const servers = [...new Set(Object.values(idServer).filter(Boolean))];
+    const multi = servers.length > 1;
+    const PALETTE = ['#5b8def', '#e8a33d', '#22c55e', '#c678dd', '#56b6c2', '#e06c75'];
+    const srvColor = s => s ? PALETTE[servers.indexOf(s) % PALETTE.length] : null;
+    const stripe = (id, x, yTop, h) => {
+        if (!multi) return '';
+        const col = srvColor(idServer[id]); if (!col) return '';
+        return `<rect class="fab-srv" x="${x}" y="${yTop}" width="4" height="${h}" fill="${col}"/>`;
+    };
+
+    const W = 860, BW = 156, BH = 30, PADY = 18;
+    const colX = {src: 6, node: Math.round(W / 2 - BW / 2), wall: W - BW - 6};
+    const rows = Math.max(srcList.length, nodeList.length, walls.length, 1);
+    const H = Math.max(170, rows * 46 + PADY * 2);
+    const yTopOf = (i, n) => PADY + (i + 0.5) * (H - 2 * PADY) / Math.max(1, n);
+    const yc = (i, n) => yTopOf(i, n) + BH / 2;
+    const trunc = (s, k) => { s = '' + (s || ''); k = k || 18; return s.length > k ? s.slice(0, k - 1) + '…' : s; };
+
+    let edges = '';
+    const edge = (x1, y1, x2, y2, a, b, hot) => {
+        const mx = (x1 + x2) / 2;
+        const cross = multi && idServer[a] && idServer[b] && idServer[a] !== idServer[b];
+        return `<path class="fab-edge${hot ? ' shared' : ''}${cross ? ' cross' : ''}" data-a="${a}" data-b="${b}" d="M ${x1} ${y1} C ${mx} ${y1} ${mx} ${y2} ${x2} ${y2}"/>`;
+    };
+    nodeList.forEach((n, ni) => {
+        const ny = yc(ni, nodeList.length);
+        n.sources.forEach(s => { const si = sIdx[s]; if (si == null) return;
+            edges += edge(colX.src + BW, yc(si, srcList.length), colX.node, ny, 'src:' + s, 'node:' + n.sig, n.shared); });
+        n.murs.forEach(m => { const wi = wIdx[m]; if (wi == null) return;
+            edges += edge(colX.node + BW, ny, colX.wall, yc(wi, walls.length), 'node:' + n.sig, 'wall:' + m, n.shared); });
+    });
+
+    const box = (id, x, yTop, cls, l1, l2, title) =>
+        `<g class="fab-box ${cls}" data-id="${id}"><title>${escapeHtml(title)}</title>` +
+        `<rect x="${x}" y="${yTop}" width="${BW}" height="${BH}" rx="5"/>` + stripe(id, x, yTop, BH) +
+        `<text x="${x + 8}" y="${yTop + (l2 ? 13 : 19)}" class="fab-t1">${escapeHtml(trunc(l1))}</text>` +
+        (l2 ? `<text x="${x + 8}" y="${yTop + 24}" class="fab-t2">${escapeHtml(trunc(l2, 24))}</text>` : '') + `</g>`;
+    let boxes = '';
+    srcList.forEach((s, i) => boxes += box('src:' + s, colX.src, yTopOf(i, srcList.length), 'src', s, '', s));
+    nodeList.forEach((n, i) => {
+        const tag = n.shared ? `${window.t('monitoring.fabric_shared')} ×${n.murs.length}` : window.t('monitoring.fabric_private');
+        const l2 = n.lat != null ? `${tag} · ${n.lat} ms` : tag;
+        const ttl = `${size(n)}${n.lat != null ? ' · ' + n.lat + ' ms' : ''} — ${n.murs.join(', ')}`;
+        boxes += box('node:' + n.sig, colX.node, yTopOf(i, nodeList.length), n.shared ? 'node shared' : 'node', size(n) || n.sig.slice(0, 8), l2, ttl);
+    });
+    const WALLBH = 44;                                                       // mur = 3 lignes (détail du délai)
+    walls.forEach((w, i) => {
+        const frame = (w.fps && w.fps > 0) ? 1000 / w.fps : null;            // durée d'1 image (ms)
+        const known = (w.lat != null && frame != null);
+        const over = known && w.lat > frame;
+        const verdict = known ? (over ? window.t('monitoring.fabric_over_frame') : window.t('monitoring.fabric_within_frame')) : '';
+        const cls = over ? 'wall over' : (known ? 'wall ok' : 'wall');
+        // Détail : shard le plus long (parallèle) + composition assembleur = total.
+        const brk = (w.maxShard != null && w.compo != null)
+            ? window.t('monitoring.fabric_breakdown').replace('{a}', w.maxShard).replace('{b}', w.compo) : '';
+        const tot = (w.lat != null) ? `${w.lat} ms${verdict ? ' · ' + verdict : ''}` : '';
+        const ttl = w.id
+            + (w.lat != null ? ` — ${window.t('monitoring.fabric_lat_crit')} : ${w.lat} ms` : '')
+            + (frame != null ? ` (1 img = ${frame.toFixed(1)} ms)` : '');
+        const cy = yc(i, walls.length), yTop = cy - WALLBH / 2, x = colX.wall;
+        boxes += `<g class="fab-box ${cls}" data-id="wall:${w.id}"><title>${escapeHtml(ttl)}</title>`
+            + `<rect x="${x}" y="${yTop}" width="${BW}" height="${WALLBH}" rx="5"/>` + stripe('wall:' + w.id, x, yTop, WALLBH)
+            + `<text x="${x + 8}" y="${yTop + 14}" class="fab-t1">${escapeHtml(trunc(w.id))}</text>`
+            + (brk ? `<text x="${x + 8}" y="${yTop + 27}" class="fab-t2">${escapeHtml(trunc(brk, 26))}</text>` : '')
+            + `<text x="${x + 8}" y="${yTop + 39}" class="fab-tot">${escapeHtml(tot)}</text></g>`;
+    });
+
+    // Détail au clic : map id → infos riches (conteneur, format, rôle, shm, serveur…).
+    const chromaLbl = c => ({'420': '4:2:0', '422': '4:2:2', '444': '4:4:4'}[c] || c || '?');
+    const fmtLbl = f => (f && (f.chroma || f.bit_depth)) ? `${chromaLbl(f.chroma)} · ${f.bit_depth || '?'} bit` : '—';
+    const detailMap = {};
+    nodeList.forEach(n => detailMap['node:' + n.sig] = {kind: 'node', n});
+    walls.forEach(w => detailMap['wall:' + w.id] = {kind: 'wall', w});
+    srcList.forEach(s => {
+        const cons = nodeList.filter(n => n.sources.includes(s));
+        const mset = new Set(); cons.forEach(n => n.murs.forEach(m => mset.add(m)));
+        detailMap['src:' + s] = {kind: 'src', name: s, nNodes: cons.length, murs: [...mset]};
+    });
+
+    const legend = multi ? `<div class="fab-legend">`
+        + servers.map(s => `<span class="fab-leg"><i style="background:${srvColor(s)}"></i>${escapeHtml(s)}</span>`).join('')
+        + `<span class="fab-leg cross"><i></i>${window.t('monitoring.fabric_cross')}</span></div>` : '';
+    body.innerHTML = legend
+        + `<div class="fab-graph-wrap"><svg class="fab-graph" viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">`
+        + `<g class="fab-edges">${edges}</g><g class="fab-boxes">${boxes}</g></svg></div>`
+        + `<div id="fabric-detail" class="fab-detail"></div>`;
+
+    const svg = body.querySelector('.fab-graph');
+    const detEl = body.querySelector('#fabric-detail');
+    const T = k => window.t('monitoring.' + k);
+    const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
+    function showDetail(id) {
+        svg.querySelectorAll('.fab-box.sel').forEach(b => b.classList.remove('sel'));
+        const d = detailMap[id];
+        if (!d) { detEl.innerHTML = `<span class="meta">${T('fabric_detail_hint')}</span>`; return; }
+        svg.querySelector('.fab-box[data-id="' + CSS.escape(id) + '"]')?.classList.add('sel');
+        let head = '', grid = '';
+        if (d.kind === 'node') {
+            const n = d.n;
+            head = `<span class="fab-role${n.shared ? ' shared' : ''}">${n.shared ? T('fabric_role_shared') : T('fabric_role_shard')}</span> <b>${size(n)}</b>`;
+            grid = row(T('fabric_d_container'), '#' + (n.vmid ?? '—'))
+                + row(T('fabric_d_server'), escapeHtml(n.node_name || '—'))
+                + row('shm', '<code>' + escapeHtml(n.shm || '—') + '</code>')
+                + row(T('fabric_d_format'), fmtLbl(n.format))
+                + row(T('fabric_d_latency'), n.lat != null ? n.lat + ' ms' : '—')
+                + row(T('fabric_d_cells'), n.cells ?? '—')
+                + row(T('fabric_d_walls'), n.murs.map(escapeHtml).join(', '))
+                + row(T('fabric_d_sources'), n.sources.map(s => '<code>' + escapeHtml(s) + '</code>').join(' ') || '—');
+        } else if (d.kind === 'wall') {
+            const w = d.w;
+            head = `<span class="fab-role">${T('fabric_role_wall')}</span> <b>${escapeHtml(w.id)}</b>`;
+            const brk = (w.maxShard != null && w.compo != null) ? `${w.maxShard} + ${w.compo} = ` : '';
+            grid = row(T('fabric_d_container'), '#' + (w.vmid ?? '—'))
+                + row(T('fabric_d_server'), escapeHtml(w.node_name || '—'))
+                + row(T('fabric_d_format'), fmtLbl(w.format) + (w.fps ? ' · ' + w.fps + ' fps' : ''))
+                + row(T('fabric_d_latency'), brk + (w.lat != null ? w.lat + ' ms' : '—'));
+        } else {
+            head = `<span class="fab-role">${T('fabric_role_source')}</span> <b><code>${escapeHtml(d.name)}</code></b>`;
+            grid = row(T('fabric_d_consumers'), d.nNodes + ' ' + T('fabric_nodes'))
+                + row(T('fabric_d_walls'), d.murs.map(escapeHtml).join(', ') || '—');
+        }
+        detEl.innerHTML = `<div class="fab-det-head">${head}</div><dl class="fab-det-grid">${grid}</dl>`;
+    }
+    showDetail(_fabSel);   // restaure la sélection après refresh (ou affiche l'invite)
+
+    // Survol → surligne le sous-graphe incident ; clic → détail persistant.
+    svg.querySelectorAll('.fab-box').forEach(g => {
+        g.addEventListener('mouseenter', () => {
+            const id = g.dataset.id;
+            svg.classList.add('focusing');
+            svg.querySelectorAll('.fab-edge').forEach(e => {
+                const on = e.dataset.a === id || e.dataset.b === id;
+                e.classList.toggle('hot', on);
+                if (on) {
+                    svg.querySelector('.fab-box[data-id="' + CSS.escape(e.dataset.a) + '"]')?.classList.add('hot');
+                    svg.querySelector('.fab-box[data-id="' + CSS.escape(e.dataset.b) + '"]')?.classList.add('hot');
+                }
+            });
+            g.classList.add('hot');
+        });
+        g.addEventListener('mouseleave', () => {
+            svg.classList.remove('focusing');
+            svg.querySelectorAll('.hot').forEach(e => e.classList.remove('hot'));
+        });
+        g.addEventListener('click', () => { _fabSel = g.dataset.id; showDetail(_fabSel); });
+    });
+}
+window.MXLPoll(renderFabric, 5000, {immediate: false});
+
+// 1re passe déjà lancée ci-dessus (rafraichir().then(_applyMonitoringHash)) : le poll
+// ne doit PAS en relancer une en parallèle.
+window.MXLPoll(rafraichir, 5000, {immediate: false});
+
+// Deep-link. DEUX formes acceptées, et ce n'est pas de la complaisance : la forme historique
+// `#view=nodes` est posée par le bandeau d'accueil et par des liens déjà en circulation — la
+// casser romprait des favoris. La forme riche `#nodes/34` porte en plus le serveur ouvert.
+// C'est la seconde qu'on ÉCRIT ; on lit les deux.
+async function _applyMonitoringHash() {
+    const brut = (location.hash || '').replace(/^#/, '');
+    if (!brut) return;
+    const legacy = brut.match(/^view=([a-z0-9_]+)$/i);
+    const vue = legacy ? legacy[1] : brut.split('/')[0];
+    const serveur = legacy ? null : (brut.split('/')[1] || null);
+    if (vue) await activateMonitoringView(vue);
+    // Le détail d'un serveur exige que les données soient chargées : `renderNodeDetail` lit
+    // `_nodesData`. On l'applique donc APRÈS le premier rafraîchissement, jamais avant.
+    if (vue === 'nodes' && serveur) await showNodeDetail(serveur);
+}
+
+// `rafraichir()` peuple `_nodesData` : l'adresse ne peut être appliquée qu'ensuite.
+rafraichir().then(_applyMonitoringHash);
+// Retour/avance du navigateur, ou lien collé dans l'onglet courant.
+window.addEventListener('hashchange', _applyMonitoringHash);
+
+// Tous les rafraîchissements de cette page passent par MXLPoll (cf. layout.html) : le délai ne
+// repart qu'à la FIN de la passe. Avec setInterval, une réponse plus lente que l'intervalle
+// empilait les requêtes et la charge s'auto-entretenait — neuf pollers sur la même page, c'est
+// l'endroit du parc où ça coûtait le plus cher.
+window.MXLPoll(rafraichirMonitoringPanels, 5000);
+
+window.MXLPoll(populateLogSources, 30000);   // rafraîchit la liste des sources (nouveaux réseaux)
+window.MXLPoll(rafraichirLogs, 5000);
+
+window.MXLPoll(rafraichirShm, 5000);
+
+window.MXLPoll(rafraichirRdmaMon, 5000);                        // badge agrégé + onglet RDMA
+
+window.MXLPoll(rafraichirClusterBar, 5000);                      // bandeau cluster (vue d'ensemble)
+</script>
+{% endblock %}

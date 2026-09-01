@@ -1,0 +1,117 @@
+{# Monitoring DÉTACHÉ (fenêtre à part). Page servie par NOUS — indispensable : le lecteur est une
+   iframe de la passerelle WebRTC (autre origine), on ne peut pas y injecter de code. Or l'encodeur
+   du monitoring est TUÉ après IDLE_TIMEOUT sans heartbeat (app/monitor.py, reaper) : la fenêtre
+   détachée doit donc porter SON PROPRE heartbeat, sinon le flux se couperait tout seul dès que la
+   page d'origine change ou se ferme. #}
+<!doctype html>
+<html lang="{{ lang|default('fr') }}" data-theme="{{ theme|default('dark') }}">
+<head>
+<meta charset="utf-8">
+<title>{{ _('layout.monitoring') }}</title>
+<link rel="stylesheet" href="/static/css/base.css?v={{ asset_v('css/base.css') }}">
+<style>
+  /* ⚠ base.css impose `body { padding:20px; display:flex; min-height:100vh }` — sans ce reset, le
+     contenu était décalé de 20 px tandis que le lecteur, positionné en ABSOLU par rapport à la
+     FENÊTRE, recouvrait l'en-tête et ses boutons. D'où : « on ne voit que le haut ».
+     Plus de positionnement absolu : une colonne flex, en-tête figé, lecteur qui prend le reste. */
+  html { height:100%; }
+  body { margin:0 !important; padding:0 !important; height:100%; min-height:0 !important;
+         display:flex !important; flex-direction:column; background:#000; overflow:hidden; }
+  #hd { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:6px 10px;
+        background:var(--bg-elev,#161b22); border-bottom:1px solid var(--border,#30363d);
+        font-size:0.85em; color:var(--text,#c9d1d9); }
+  #src { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+         color:var(--text-muted,#8b949e); }
+  #hd button { flex:0 0 auto; background:transparent; border:1px solid var(--border,#30363d);
+               color:inherit; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:0.95em;
+               white-space:nowrap; }
+  #hd button:hover { border-color:var(--accent,#7aa2c8); color:var(--accent,#7aa2c8); }
+  #wrap { flex:1 1 auto; min-height:0; }          /* min-height:0 : sinon le flex refuse de rétrécir */
+  iframe { width:100%; height:100%; border:0; display:block; background:#000; }
+  /* Bandeau « contrôleur injoignable » : SUPERPOSÉ, jamais dans le flux. #msg et #wrap sont
+     deux enfants flex en `flex:1 1 auto` — les afficher ensemble partagerait l'espace et
+     réduirait l'image de moitié. Or perdre l'orchestrateur ne doit RIEN retirer à l'image :
+     elle vient de la passerelle et continue de tourner. */
+  #offline { position:fixed; top:0; left:0; right:0; z-index:10; display:none;
+             padding:4px 10px; font-size:0.8em; text-align:center;
+             background:rgba(204,136,0,.92); color:#1a1200; }
+  #msg { flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center;
+         color:var(--text-muted,#8b949e); font-size:0.9em; text-align:center; padding:16px; }
+</style>
+</head>
+<body>
+  <div id="hd">
+    <strong>{{ _('layout.monitoring') }}</strong>
+    <span id="src"></span>
+    <button id="btn-reattach" title="{{ _('layout.monitor_reattach_title') }}">{{ _('layout.monitor_reattach') }}</button>
+  </div>
+  <div id="wrap"><iframe id="frm" allow="autoplay" allowfullscreen style="display:none"></iframe></div>
+  <div id="offline"></div>
+  <div id="msg">…</div>
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  let cur = null;
+
+  // ★ Heartbeat PROPRE à cette fenêtre : sans lui, le reaper couperait l'encodeur après
+  //   IDLE_TIMEOUT dès que la page d'origine est fermée ou navigue ailleurs.
+  fetch('/api/monitor/heartbeat', { method: 'POST' });
+  setInterval(() => fetch('/api/monitor/heartbeat', { method: 'POST' }), 30000);
+
+  function playerUrl(embed) {
+    const u = embed.endsWith('/') ? embed : embed + '/';   // MediaMTX redirige /path → /path/ (301
+    return u + '?controls=0&muted=1&autoplay=1&playsinline=1';   // qui perdrait la query)
+  }
+
+  async function refresh() {
+    try {
+      const s = await (await fetch('/api/monitor/status')).json();
+      $('offline').style.display = 'none';   // le contrôleur répond de nouveau
+      $('src').textContent = s.label || s.source || '';
+      // On masque le CONTENEUR (#wrap), pas seulement l'iframe : les deux sont des enfants flex,
+      // laisser #wrap visible lui ferait prendre la moitié de la place sous le message.
+      if (s.publishing && s.embed_url) {
+        if (cur !== s.embed_url) { cur = s.embed_url; $('frm').src = playerUrl(s.embed_url); }
+        $('frm').style.display = 'block'; $('wrap').style.display = 'block'; $('msg').style.display = 'none';
+        $('msg').textContent = '';
+      } else {
+        $('wrap').style.display = 'none'; $('msg').style.display = 'flex';
+        $('msg').textContent = s.error || '{{ _("layout.monitor_waiting") }}';
+      }
+    } catch (e) {
+      // ★ PERDRE L'ORCHESTRATEUR NE DIT RIEN DU FLUX. L'image vient de la passerelle
+      // WebRTC en direct : le contrôleur n'est pas dans le chemin média — vérifié,
+      // l'encodeur et la passerelle traversent ses redémarrages sans broncher. Cette
+      // branche masquait pourtant #wrap, donc l'iframe ; or `display:none` sur un
+      // ancêtre la sort de l'arbre de rendu et SUSPEND la session WebRTC. Au sondage
+      // suivant elle réapparaissait et le lecteur renégociait : 1 à 2 s d'image noire
+      // à CHAQUE redémarrage du contrôleur, avec « Load failed » par-dessus.
+      //
+      // On signale la perte SANS toucher à l'image : rien de ce qui la produit n'a
+      // bougé. Le message s'efface au premier sondage qui aboutit.
+      $('offline').textContent = String(e.message || e);
+      $('offline').style.display = 'block';
+    }
+  }
+  refresh();
+  // NB : page AUTONOME (elle n'hérite pas de layout.html) → `window.MXLPoll` n'y existe pas.
+  // On garde setInterval ici, à dessein : un seul poll à 5 s, et pas de dépendance qu'on ne peut
+  // pas satisfaire. Ne pas « harmoniser » sans embarquer le helper.
+  setInterval(refresh, 5000);
+
+  // Réattacher : on repasse par localStorage plutôt que par window.opener — l'événement `storage`
+  // traverse toutes les fenêtres de MÊME ORIGINE, donc la page d'accueil réagit MÊME si elle a
+  // navigué ailleurs depuis (auquel cas `opener.MXLMonitor` serait une instance périmée).
+  $('btn-reattach').onclick = () => {
+    try { localStorage.setItem('mxl.monitor.detached', '0'); } catch (_) {}
+    window.close();
+  };
+  // Fermeture par la croix de la fenêtre = réattachement implicite (sinon le panneau resterait
+  // masqué à vie et l'utilisateur n'aurait plus aucun moyen de le récupérer).
+  window.addEventListener('pagehide', () => {
+    try { localStorage.setItem('mxl.monitor.detached', '0'); } catch (_) {}
+  });
+})();
+</script>
+</body>
+</html>

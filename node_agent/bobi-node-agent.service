@@ -1,0 +1,19 @@
+# systemd unit — bobi-node-agent (Phase B).
+# Installé par l'installeur de nœud (Phase C) en /etc/systemd/system/bobi-node-agent.service.
+[Unit]
+Description=Bobi.Studio node agent
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Agent Python stdlib (aucune dépendance pip) → python3 système suffit.
+ExecStart=/usr/bin/python3 /opt/bobi-node-agent/agent.py
+Environment=BOBI_NODE_AGENT_CONFIG=/etc/bobi-node-agent/config.json
+Restart=on-failure
+RestartSec=3
+# Doit rester root (docker, hugepages, xdp, ptp, ethtool).
+User=root
+
+[Install]
+WantedBy=multi-user.target

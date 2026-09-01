@@ -1,0 +1,64 @@
+{
+  "version": "0.19.0",
+  "date": "2026-08-31",
+  "image_tag": "bobi-media:0.19",
+  "changes": {
+    "Surface NMOS par conteneur (plan 2) (0.19.0)": [
+      "★ L'agent embarqué sert désormais `/x-nmos/` : chaque conteneur expose SON Node NMOS, alimenté par un document que l'orchestrateur lui pousse (POST /nmos, écriture atomique).",
+      "⚠ BUMP NÉCESSAIRE, pas cosmétique : un conteneur n'est recréé que si sa signature `docker run` change, image comprise. Reconstruire sans changer `image_tag` laissait le nouvel agent dans l'image et AUCUN conteneur ne l'adoptait jamais."
+    ],
+    "Le chien de garde passe par le LOOPBACK (0.16.0)": [
+      "Même changement d'agent par-conteneur que l'image compute 0.27.0 (`script_templates/agent.py` est partagé) : exemption loopback pour la sonde `docker exec` de l'agent-nœud, restreinte à `GET /status` + `POST /start`. Les deux images sont à garder synchrones."
+    ],
+    "L'agent-NŒUD peut constater et relancer un script, le contrôleur absent (0.15.0)": [
+      "Même changement d'agent par-conteneur que l'image compute 0.26.0 (script_templates/agent.py est partagé) : seconde identité mTLS acceptée, celle de l'agent-nœud (`bobi://node/<id>`), restreinte à `GET /status` + `POST /start`. Les deux images sont à garder synchrones."
+    ],
+    "libmxl v1.1.0-beta-1 → v1.1.0-rc1 (0.14.0)": [
+      "Même bump que l'image compute 0.25.0 (builder libmxl byte-identique, cache partagé) : fuite de fd du lecteur de flux discret, notification futex des flux continus (audio), correctifs fabrics/RDMA. Nos patches planar s'appliquent sans conflit.",
+      "⚠ Rebuild + redéploiement requis en même temps que bobi-compute : le protocole fabrics a changé, un lien RDMA beta-1 ↔ rc1 n'est pas supporté."
+    ],
+    "Deux niveaux d'instructions (glibc-hwcaps) — les vieux CPU exécutent, les récents gardent leur performance (0.13.0)": [
+      "libmxl était bâtie avec l'architecture NATIVE de la machine de build : elle embarquait du BMI2/AVX2 et levait SIGILL sur tout CPU antérieur à Haswell. Les trois R620 (Sandy Bridge) du parc n'exécutaient AUCUN conteneur du pipeline — l'agent relançait le script en boucle et l'orchestrateur n'affichait qu'un « script_stopped » sans cause ; les deux Tesla T4 y étaient prisonnières.",
+      "Une baseline unique ne suffisait pas : mesuré à charge identique, un CONSOMMATEUR (mixer, lecture+écriture du ring) coûte ~20 % de plus en x86-64-v2 qu'en v3. Un producteur ne perd que ~2 % — c'est en mesurant les DEUX régimes que le compromis est apparu. Le premier verdict, tiré du seul producteur, disait « écart nul ».",
+      "D'où le double build : la baseline au chemin normal, la variante x86-64-v3 dans `/usr/local/lib/glibc-hwcaps/x86-64-v3/`. L'éditeur de liens dynamique choisit selon le CPU — aucun code d'aiguillage, aucune sélection d'image par nœud, rien à régler.",
+      "Vérifié sur les deux générations : chemin RÉELLEMENT mappé (/proc/self/maps) = v3 sur dell-1 et baseline sur r620-1 À PARTIR DE LA MÊME IMAGE · jeux d'instructions disjoints (baseline ymm=0, v3 ymm=214) · le pipeline démarre sur Sandy Bridge · le gain suit (mixer 17,29 % contre 20,99 %).",
+      "⚠ L'architecture est désormais ÉPINGLÉE et non native : le build natif produisait de l'AVX-512 sur un Xeon récent et du v3 ailleurs, sans qu'on puisse dire ce que contenait l'image livrée. Et le WRAPPER de compilateur est indispensable — `-DCMAKE_C_FLAGS=-march=…` est sans effet, ces drapeaux passant AVANT ceux que la cible ajoute.",
+      "Les outils (mxl-info, mxl-fabrics-demo) restent en baseline : un exécutable ne bénéficie pas de hwcaps. Sans conséquence — un lien RDMA coûte 1,2 % d'un cœur indépendamment du débit, il est borné par le DMA de la carte."
+    ],
+    "bobimxl : avance de grille, index→temps, attente TAI (0.12.0)": [
+      "Embarque le bobimxl étendu (cf. image compute 0.21.0) — requis par player 0.19.0, qui tourne sur cette image."
+    ],
+    "bobimxl : l'index de grain se calcule à UN SEUL endroit (0.11.0)": [
+      "Embarque le bobimxl unifié (cf. image compute 0.20.0) : Writer.next_index comme point unique, index_mode défaut \"tai\", propagation de l'origin timestamp via open_grain(src_index=...)."
+    ],
+    "RETRAIT du patch mxl-fabrics-seed-on-head (0.10.0)": [
+      "Symétrique du retrait côté image compute (cf. son meta.json 0.19.0) : le patch reposait sur une lecture erronée du modèle de temps MXL, qui est normatif. Les deux Dockerfiles restent synchrones."
+    ],
+    "Réplication RDMA agnostique au modèle d'index du producteur (0.9.0)": [
+      "Patch mxl-fabrics-seed-on-head, comme l'image compute : cette image porte elle aussi mxl-fabrics-demo, et la réplication RDMA retombe dessus sur un nœud sans image compute. Sans le patch, un tel nœud garderait l'initiator qui s'amorce sur l'horloge — même panne muette, sur une image seulement. Les deux Dockerfiles sont à garder synchrones."
+    ],
+    "Sortie des scripts sur stdout du conteneur (0.8.0)": [
+      "Journalisation : l'agent par-conteneur redirige désormais la sortie du script déployé vers la SORTIE STANDARD du conteneur au lieu de /var/log/mxl-script.log — fichier interne, sans rotation (24 Mo constatés sur un mur), sur rootfs éphémère, et invisible de `docker logs`. PYTHONUNBUFFERED propagé aux petits-enfants Python (qui n'héritent pas du -u de l'agent) pour éviter des lignes livrées par blocs ; code de sortie du script tracé sur le même flux ; purge de l'ancien fichier au démarrage. Bump de version INDISPENSABLE : le contenu de l'image change sans quoi le tag resterait identique et la page Réglages afficherait « à jour » alors que la flotte tourne encore l'ancien agent."
+    ],
+    "FIX 0.7 : le patch mxl-planar-slices n'était PAS appliqué (Dockerfile)": [
+      "La 0.6 affirmait le patch « déjà dans le Dockerfile » : FAUX — seul _compute_runtime l'appliquait. Résultat : bobi-media:0.6 avait l'API slice (HAS_SLICES=true, symboles upstream) mais un FlowParser sans slice_height → tous les producteurs médias en slice_mode (player/stills/stream_in/streamer) publiaient des grains totalSlices=1 (dégradation silencieuse en whole-frame, flowDef slice_height ignoré). Découvert au banc stream_in 0.3.0 (grains 1-slice malgré flow_def.json correct).",
+      "Dockerfile aligné sur _compute_runtime : COPY + git apply de mxl-planar-slices.patch avant le cmake --build. REBUILD bobi-media requis, puis REDÉMARRAGE des conteneurs médias slice-mode."
+    ],
+    "Mode tranche MXL (0.6) : bobimxl slice-aware + libmxl patché mxl-planar-slices": [
+      "Rebuild avec le bobimxl courant (get_slice/HAS_SLICES) et le patch libmxl mxl-planar-slices (déjà dans le Dockerfile, jamais rebuilé) — prérequis du streamer 0.10 (pipe ffmpeg bandé) et des plugins médias slice-aware (player/recorder/stills)."
+    ],
+    "bobimxl format() interlace-aware (champ-natif, 0.5.0)": [
+      "Nouveau bobimxl (format() interlace-aware) pour la migration champ-natif des plugins média (recorder/player). REBUILD bobi-media."
+    ],
+    "Audio MXL gapless (0.4.0)": [
+      "bobimxl gagne AudioReader.read_from(start_index,count) : lecture audio SÉQUENTIELLE/gapless par index sample (encodeurs streamer/recorder, retard delay) ; read_latest délègue désormais à read_from(head). Débloque la bascule audio float32 des plugins (Phase 3). Validé au banc (write index explicite → read_from contigu, 0 trou/0 doublon)."
+    ],
+    "Nouveautés": [
+      "Phase 2 (fondations) : bobimxl embarque l'AUDIO (AudioWriter/Reader, samples float32) + DATA/ANC (build_data_flow_def) — round-trips validés. Inertes tant que mtl_rx + bascule consommateurs pas faits.",
+      "Chantier MXL Phase 1 : l'image embarque libmxl (patché planar video/x-mxl-planar) + bobimxl.py + mxl-info, comme bobi-compute — pour les plugins média migrés (streamer = consommateur vidéo MXL). L'étage builder libmxl est IDENTIQUE à celui de bobi-compute (cache BuildKit partagé → pas de recompil vcpkg).",
+      "Image runtime « média » dédiée (séparée de bobi-compute) : GStreamer 1.0 (base/good/bad/ugly/libav + python3-gi) pour les moteurs temps réel player/recorder, ffmpeg pour le transcoder + streamer, numpy/Pillow. Volume média bind-monté sur /mnt/media."
+    ],
+    "Corrections": [],
+    "Bugs connus": []
+  }
+}

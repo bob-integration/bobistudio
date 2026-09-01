@@ -1,0 +1,55 @@
+diff --git a/lib/internal/src/FlowParser.cpp b/lib/internal/src/FlowParser.cpp
+index aac6832..8e9129c 100644
+--- a/lib/internal/src/FlowParser.cpp
++++ b/lib/internal/src/FlowParser.cpp
+@@ -371,6 +371,23 @@ namespace mxl::lib
+                     throw std::invalid_argument{std::move(msg)};
+                 }
+             }
++            else if (mediaType == "video/x-mxl-planar")
++            {
++                // MXL extension (bobi.studio) : payload PLANAR contigu = somme des plans
++                // décrits par "components" (octets/sample = ceil(bit_depth/8)). Permet le
++                // calcul pixel direct (numpy/C) sans dé-packer un format wire (v210).
++                auto const& components = fetchAs<picojson::array>(_root, "components");
++                auto total = std::size_t{0};
++                for (auto const& c : components)
++                {
++                    auto const& comp = c.get<picojson::object>();
++                    auto const cw = static_cast<std::size_t>(fetchAs<double>(comp, "width"));
++                    auto const ch = static_cast<std::size_t>(fetchAs<double>(comp, "height"));
++                    auto const bd = static_cast<std::size_t>(fetchAs<double>(comp, "bit_depth"));
++                    total += cw * ch * ((bd + 7U) / 8U);
++                }
++                payloadSize = _interlaced ? total / 2U : total;
++            }
+             else
+             {
+                 auto msg = std::string{"Unsupported video media_type: "} + mediaType;
+@@ -444,6 +461,11 @@ namespace mxl::lib
+                     sliceLengths[0] = v210fillSize;
+                     sliceLengths[1] = get10BitAlphaLineLength(width);
+                 }
++                else if (mediaType == "video/x-mxl-planar")
++                {
++                    // Grain planar = UNE slice (trame pleine) — chroma-agnostique.
++                    sliceLengths[0] = static_cast<std::uint32_t>(getPayloadSize());
++                }
+                 else
+                 {
+                     auto msg = std::string{"Unsupported video media_type: "} + mediaType;
+@@ -473,7 +495,13 @@ namespace mxl::lib
+ 
+             case MXL_DATA_FORMAT_VIDEO:
+             {
+-                if (auto const mediaType = fetchAs<std::string>(_root, "media_type"); mediaType != "video/v210" && mediaType != "video/v210a")
++                auto const mediaType = fetchAs<std::string>(_root, "media_type");
++                if (mediaType == "video/x-mxl-planar")
++                {
++                    // Grain planar publié en une seule slice (trame pleine).
++                    return 1;
++                }
++                if (mediaType != "video/v210" && mediaType != "video/v210a")
+                 {
+                     auto msg = std::string{"Unsupported video media_type: "} + mediaType;
+                     throw std::invalid_argument{std::move(msg)};

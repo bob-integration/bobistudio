@@ -1,0 +1,74 @@
+diff --git a/lib/internal/src/FlowParser.cpp b/lib/internal/src/FlowParser.cpp
+index 91201df..6f67483 100644
+--- a/lib/internal/src/FlowParser.cpp
++++ b/lib/internal/src/FlowParser.cpp
+@@ -427,6 +427,39 @@ namespace mxl::lib
+         return payloadSize;
+     }
+ 
++    namespace
++    {
++        // MXL extension (bobi.studio) : pour "video/x-mxl-planar", nombre de slices par grain.
++        // Le flowDef peut porter un champ optionnel "slice_height" (lignes par bande) : le grain
++        // est alors publie en N = hauteur_grain / slice_height tranches de taille egale (commit
++        // progressif validSlices=1..N pour la latence sous-trame). Absent ou <= 0 -> 1 slice
++        // (trame pleine, comportement historique du patch planar).
++        std::size_t planarSliceCount(picojson::object const& root, bool interlaced)
++        {
++            auto const it = root.find("slice_height");
++            if (it == root.end() || !it->second.is<double>())
++            {
++                return 1U;
++            }
++            auto const sliceHeight = static_cast<long long>(it->second.get<double>());
++            if (sliceHeight <= 0)
++            {
++                return 1U;
++            }
++            auto height = static_cast<std::size_t>(fetchAs<double>(root, "frame_height"));
++            if (interlaced)
++            {
++                height /= 2U; // grain = un champ
++            }
++            if ((height % static_cast<std::size_t>(sliceHeight)) != 0U)
++            {
++                auto msg = fmt::format("slice_height {} does not divide grain height {}", sliceHeight, height);
++                throw std::invalid_argument{std::move(msg)};
++            }
++            return height / static_cast<std::size_t>(sliceHeight);
++        }
++    }
++
+     std::array<std::uint32_t, MXL_MAX_PLANES_PER_GRAIN> FlowParser::getPayloadSliceLengths() const
+     {
+         auto sliceLengths = std::array<std::uint32_t, MXL_MAX_PLANES_PER_GRAIN>{0, 0, 0, 0};
+@@ -459,8 +492,16 @@ namespace mxl::lib
+                 }
+                 else if (mediaType == "video/x-mxl-planar")
+                 {
+-                    // Grain planar = UNE slice (trame pleine) — chroma-agnostique.
+-                    sliceLengths[0] = static_cast<std::uint32_t>(getPayloadSize());
++                    // Grain planar = N tranches EGALES (N = grain height / slice_height,
++                    // 1 si absent) — chroma-agnostique, decoupage en OCTETS contigus.
++                    auto const n = planarSliceCount(_root, _interlaced);
++                    auto const payload = getPayloadSize();
++                    if ((payload % n) != 0U)
++                    {
++                        auto msg = fmt::format("planar payload {} not divisible in {} slices", payload, n);
++                        throw std::invalid_argument{std::move(msg)};
++                    }
++                    sliceLengths[0] = static_cast<std::uint32_t>(payload / n);
+                 }
+                 else
+                 {
+@@ -494,8 +535,8 @@ namespace mxl::lib
+                 auto const mediaType = fetchAs<std::string>(_root, "media_type");
+                 if (mediaType == "video/x-mxl-planar")
+                 {
+-                    // Grain planar publié en une seule slice (trame pleine).
+-                    return 1;
++                    // Grain planar publie en N slices (slice_height du flowDef ; 1 par defaut).
++                    return planarSliceCount(_root, _interlaced);
+                 }
+                 if (mediaType != "video/v210" && mediaType != "video/v210a")
+                 {

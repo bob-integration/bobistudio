@@ -1,0 +1,1729 @@
+{% extends "layout.html" %}
+{% set page = 'labels' %}
+{% block title %}{{ _('labels.title') }}{% endblock %}
+
+{% block content %}
+<div class="home-head" style="margin-bottom:var(--space-3)">
+    <h1>{{ _('labels.title') }}</h1>
+    <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">
+        <a href="/settings#labels" class="btn" style="font-size:0.9em">{{ _('labels.back_settings') }}</a>
+        <span class="meta" id="tsl-dirty-badge" style="display:none"></span>
+        <input type="text" id="tsl-global-filter" placeholder="{{ _('labels.search_ph') }}"
+               style="width:220px;font-size:0.9em" oninput="tslFilter()">
+        <div style="display:flex;gap:var(--space-2);margin-left:auto">
+            <button class="btn" onclick="tslExport()" title="{{ _('labels.export_title') }}">{{ _('labels.export') }}</button>
+            <button class="btn" onclick="tslImportTrigger()" title="{{ _('labels.import_title') }}">{{ _('labels.import') }}</button>
+            <input id="tsl-import-input" type="file" accept=".csv,text/csv" style="display:none"
+                   onchange="tslImportFile(this)">
+            <button class="btn btn-green" id="tsl-save-btn" onclick="tslSave()">{{ _('labels.save') }}</button>
+        </div>
+    </div>
+</div>
+
+<!-- Config suffixes (collapsible) -->
+<details id="tsl-suffix-panel" style="margin-bottom:var(--space-3);font-size:0.87em">
+    <summary style="cursor:pointer;color:var(--text-muted);user-select:none">
+        {{ _('labels.suffixes_summary') }}
+    </summary>
+    <div style="margin-top:var(--space-2);padding:var(--space-2) var(--space-3);
+                background:var(--bg-panel);border:1px solid var(--border);border-radius:6px">
+        <div class="meta" style="margin-bottom:var(--space-2)">
+            {{ _('labels.suffixes_help')|safe }}
+        </div>
+        <table id="tsl-suffix-table" style="border-collapse:collapse;font-size:0.9em;margin-bottom:var(--space-2)">
+            <thead>
+                <tr style="color:var(--text-muted)">
+                    <th style="padding:2px 8px;text-align:left">{{ _('labels.col_shm_tail') }}</th>
+                    <th style="padding:2px 8px;text-align:left">{{ _('labels.col_suffix') }}</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="tsl-suffix-tbody"></tbody>
+        </table>
+        <div style="display:flex;gap:var(--space-2)">
+            <button class="btn" style="font-size:0.85em" onclick="tslSuffixAddRow()">{{ _('labels.add') }}</button>
+            <button class="btn btn-green" style="font-size:0.85em" onclick="tslSuffixSave()">{{ _('labels.save_suffixes') }}</button>
+        </div>
+    </div>
+</details>
+
+<div id="tsl-grid-wrap" style="position:relative;overflow:auto;max-height:calc(100vh - 240px);border:1px solid var(--border);border-radius:6px">
+    <table id="tsl-grid" style="border-collapse:collapse;table-layout:fixed;width:max-content;min-width:100%;font-size:0.84em">
+        <colgroup id="tsl-colgroup"></colgroup>
+        <thead id="tsl-thead" style="position:sticky;top:0;z-index:10;background:var(--bg-panel)"></thead>
+        <tbody id="tsl-tbody"></tbody>
+    </table>
+    <div id="tsl-fill-handle" style="
+        position:fixed;width:8px;height:8px;
+        background:var(--accent,#2563eb);border:1px solid #fff;border-radius:2px;
+        cursor:crosshair;display:none;z-index:200;pointer-events:all"></div>
+</div>
+
+<div style="display:flex;gap:var(--space-3);margin-top:var(--space-3);align-items:center">
+    <button class="btn" onclick="tslAddRow()">{{ _('labels.add_source') }}</button>
+    <button class="btn" onclick="tslAddTextRow()" title="{{ _('labels.add_text_row_title') }}">{{ _('labels.add_text_row') }}</button>
+    <button class="btn" id="tsl-col-add" onclick="tslColonneAjouter()"
+            title="{{ _('labels.add_col_title') }}">{{ _('labels.add_col') }}</button>
+    <button class="btn" id="tsl-col-del" onclick="tslColonneRetirer()"
+            title="{{ _('labels.del_col_title') }}">{{ _('labels.del_col') }}</button>
+    <span class="meta" id="tsl-row-count"></span>
+    <span class="meta" style="margin-left:auto;font-size:0.8em">
+        {{ _('labels.shortcuts') }}
+    </span>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Raccourci local : window.t est posé par layout.html (préfixe « labels. » exposé à js_catalog).
+const T = (k) => (window.t ? window.t(k) : k);
+</script>
+<style>
+/* Ligne dont plus aucun conteneur ne déclare le flux. On la GRISE sans la masquer : elle porte
+   peut-être un libellé que quelqu'un a écrit, et la cacher ferait chercher longtemps pourquoi il
+   a disparu. La pastille dit pourquoi ; le compteur en bas propose de ranger. */
+.tsl-row-orph { opacity: 0.62; }
+.tsl-orph { font-size: 0.72em; border: 1px solid var(--status-warning-fg);
+            color: var(--status-warning-fg); border-radius: 3px; padding: 0 4px;
+            margin-left: 5px; white-space: nowrap; vertical-align: middle; }
+/* ─── Grille labels ──────────────────────────────────────────── */
+#tsl-grid th { padding:4px 8px; border:1px solid var(--border); background:var(--bg-panel);
+    white-space:nowrap; font-weight:600; user-select:none; position:relative;
+    overflow:hidden; text-overflow:ellipsis; }
+/* Poignée de redimensionnement — chevauche la bordure droite de l'en-tête */
+#tsl-grid th .tsl-col-resizer { position:absolute; top:0; right:0; width:7px; height:100%;
+    cursor:col-resize; z-index:12; }
+#tsl-grid th .tsl-col-resizer:hover { background:var(--accent,#2563eb); opacity:.55; }
+#tsl-grid th.tsl-sortable { cursor:pointer; }
+#tsl-grid th.tsl-sortable:hover { background:var(--bg-hover,rgba(255,255,255,.06)); }
+#tsl-grid th .tsl-sort-icon { margin-left:4px; opacity:.4; font-size:0.75em; }
+#tsl-grid th.sort-asc  .tsl-sort-icon,
+#tsl-grid th.sort-desc .tsl-sort-icon { opacity:1; }
+#tsl-grid th input.tsl-col-filter { width:100%; box-sizing:border-box; margin-top:3px;
+    padding:2px 4px; font-size:0.8em; background:var(--bg-input,var(--bg)); color:inherit;
+    border:1px solid var(--border); border-radius:3px; }
+#tsl-grid td { padding:3px 6px; border:1px solid var(--border);
+    min-width:0; overflow:hidden; white-space:nowrap; vertical-align:middle; }
+#tsl-grid td.tsl-auto { color:var(--text-muted); font-style:italic; background:rgba(255,255,255,.03); cursor:default; }
+#tsl-grid td.tsl-shm  { font-family:monospace; font-size:0.88em; color:var(--text-muted);
+    background:var(--bg-panel); cursor:default; }
+#tsl-grid td.tsl-edit { cursor:cell; }
+#tsl-grid td.tsl-edit.tsl-editing { padding:0; }
+#tsl-grid td.tsl-edit.tsl-editing input { width:100%; height:100%;
+    padding:3px 6px; box-sizing:border-box; border:none; outline:none;
+    background:var(--bg-input,var(--bg)); color:inherit; font:inherit; }
+/* Cellule parent (select) */
+#tsl-grid td.tsl-parent { padding:0 2px; }
+/* Cellule héritée du parent : italique + icône */
+#tsl-grid td.tsl-inherited { color:var(--text-muted); font-style:italic; }
+#tsl-grid td.tsl-selected { background:rgba(37,99,235,.15); }
+#tsl-grid th.tsl-th-idx { background:rgba(124,58,237,.16); }
+#tsl-grid td.tsl-tslidx { font-variant-numeric:tabular-nums; background:rgba(124,58,237,.05); }
+#tsl-grid .tsl-live-dot { display:inline-block; width:9px; height:9px; border-radius:50%;
+    margin-left:6px; vertical-align:middle; background:#444; box-shadow:0 0 0 1px rgba(0,0,0,.3) inset; }
+@keyframes tslFlash { from { background:rgba(245,158,11,.6); } to { background:transparent; } }
+#tsl-grid td.tsl-flash { animation:tslFlash 1.2s ease-out; }
+#tsl-grid td.tsl-tslidx.tsl-selected { background:rgba(37,99,235,.15); }
+#tsl-grid tr.tsl-dirty td.tsl-shm::after { content:'●'; color:var(--status-warn-fg,#f59e0b);
+    margin-left:5px; font-size:0.5em; vertical-align:middle; }
+#tsl-grid tr:hover td { background:var(--bg-hover,rgba(255,255,255,.03)); }
+#tsl-grid tr.tsl-dirty:hover td { background:rgba(245,158,11,.08); }
+/* Suffix table */
+#tsl-suffix-tbody td { padding:2px 8px; }
+#tsl-suffix-tbody input { padding:2px 5px; font-size:0.9em; width:120px; }
+/* Import diff modal */
+#tsl-import-modal { position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55) }
+#tsl-import-modal .modal-box { background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;
+    width:min(92vw,900px);max-height:85vh;display:flex;flex-direction:column;overflow:hidden }
+#tsl-import-modal .modal-head { padding:var(--space-3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:var(--space-3) }
+#tsl-import-modal .modal-body { overflow-y:auto;flex:1;padding:var(--space-2) var(--space-3) }
+#tsl-import-modal .modal-foot { padding:var(--space-3);border-top:1px solid var(--border);display:flex;gap:var(--space-2);justify-content:flex-end }
+#tsl-import-modal table { width:100%;border-collapse:collapse;font-size:0.83em }
+#tsl-import-modal td,#tsl-import-modal th { padding:3px 7px;border:1px solid var(--border) }
+#tsl-import-modal th { background:var(--bg-panel);font-weight:600;white-space:nowrap }
+#tsl-import-modal tr.imp-new td { background:rgba(34,170,68,.08) }
+#tsl-import-modal tr.imp-mod td { background:rgba(245,158,11,.07) }
+#tsl-import-modal .imp-badge { display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.8em;font-weight:600 }
+#tsl-import-modal .imp-badge.new { background:rgba(34,170,68,.2);color:#22aa44 }
+#tsl-import-modal .imp-badge.mod { background:rgba(245,158,11,.2);color:#cc8800 }
+#tsl-import-modal .diff-old { color:var(--status-stopped-fg,#cc2222);text-decoration:line-through;margin-right:4px }
+#tsl-import-modal .diff-new { color:var(--status-running-fg,#22aa44) }
+</style>
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  Labels sources — tableur source-centrique
+//  Lignes = sources système (video + audio + ANC) + entrées manuelles
+//  Clé = shm · parent_shm = héritage label auto
+// ═══════════════════════════════════════════════════════════════
+
+// ─── État global ───────────────────────────────────────────────
+let _rows         = [];
+let _names        = [];    // noms des colonnes OFFERTES : hostname, MXL, puis les actives
+let _suffixMap    = {};    // { "_audio_0": "_A1", ... }
+let _videoSources = [];    // [{shm, hostname}] pour le select parent
+let _importPendingChanges = null;  // diff en attente de validation
+let _view         = [];
+let _sort         = { col: null, dir: 1 };
+let _filters      = {};
+let _globalFilter = '';
+let _sel          = null;
+let _editing      = null;
+let _fillDragging = false;
+let _undoStack    = [];
+const UNDO_MAX    = 30;
+
+// ─── Colonnes ──────────────────────────────────────────────────
+// 0=node 1=hostname 2=shm 3=parent(select) 4=projet 5..12=label_2..9
+// 13.. = colonnes d'index TSL, une par connexion (_tslConns) → clé tsl_<connId>
+const COL_NODE       = 0;
+const COL_HOSTNAME   = 1;
+const COL_SHM        = 2;
+const COL_PARENT     = 3;   // parent_shm — <select> sources vidéo
+const COL_PROJET     = 4;
+const COL_EDIT_START = 5;   // label_2 → label_9
+// ★ LE NOMBRE DE COLONNES PERSONNALISÉES EST UN RÉGLAGE, plus une constante. Le produit en
+// proposait huit d'office ; un site en utilise deux ou trois, et les cinq autres allongeaient
+// chaque tableau et chaque sélecteur sans rien porter. `_names` arrive déjà tronqué du serveur
+// (hostname, MXL, puis les actives) : tout ce qui suit s'en déduit.
+//
+// ⚠ LES HUIT COLONNES PHYSIQUES RESTENT EN BASE, et les lignes les portent toutes : réduire
+// l'affichage n'efface rien, et réaugmenter le nombre fait réapparaître les libellés intacts.
+// C'est pour ça que les boucles de DONNÉES vont toujours de 2 à 9, et seules les bornes
+// d'AFFICHAGE bougent.
+function nbLabelsPerso()  { return Math.max(1, (_names.length || 4) - 2); }
+function colLabelEnd()    { return COL_EDIT_START + nbLabelsPerso() - 1; }
+function tslColStart()    { return colLabelEnd() + 1; }
+let   _tslConns      = [];  // [{id, name, …}] connexions TSL → colonnes dynamiques
+// ★ MÊME TABLE POUR LES DEUX PROTOCOLES. Une connexion IS-07 entrante est le même objet qu'une
+// connexion TSL — elle écrit des tally dans UN niveau — et la question posée par cette page est
+// la même : « quelle adresse de l'émetteur désigne quel signal ». Chez TSL l'adresse est un
+// index de trame, en IS-07 l'UUID d'une Source. Deux tables séparées auraient obligé un site qui
+// reçoit des deux à tenir la même liste de signaux à deux endroits.
+let   _i7Conns       = [];
+// Niveaux du site : on n'en veut que la correspondance uuid → numéro, pour que l'infobulle
+// d'une pastille montre le numéro que l'exploitant lit ailleurs, et jamais l'UUID.
+let   _tslNiveaux    = [];
+// Flux qu'aucun conteneur ne déclare plus. ⚠ « Absent » veut dire absent de la DÉCLARATION, pas
+// éteint : un conteneur arrêté déclare toujours ses flux. Sans cette propriété, arrêter un
+// conteneur ferait basculer tous ses libellés en « à nettoyer » et quelqu'un les supprimerait.
+let   _orphelins     = new Set();
+let   TOTAL_COLS     = 13;  // recalculé = 13 + _tslConns.length + _i7Conns.length
+
+// Le début des colonnes IS-07 DÉPEND du nombre de connexions TSL : il se calcule, il ne se
+// constantise pas — une constante ici se serait décalée à la première connexion TSL ajoutée.
+function i7ColStart()   { return tslColStart() + _tslConns.length; }
+function _tslColConn(c) { return _tslConns[c - tslColStart()]; }  // connexion d'une col TSL
+function _i7ColConn(c)  { return _i7Conns[c - i7ColStart()]; }
+function isTslCol(c)    { return c >= tslColStart() && c < i7ColStart(); }
+function isI7Col(c)     { return c >= i7ColStart() && c < TOTAL_COLS; }
+
+function colKey(c) {
+    if (c === COL_NODE)     return 'node';
+    if (c === COL_HOSTNAME) return 'hostname';
+    if (c === COL_SHM)      return 'shm';
+    if (c === COL_PARENT)   return 'parent_shm';
+    if (c === COL_PROJET)   return 'projet';
+    if (isTslCol(c))        return `tsl_${_tslColConn(c).id}`;
+    if (isI7Col(c))         return `is07_${_i7ColConn(c).id}`;
+    return `label_${c - 3}`;  // c=5→label_2, …, c=12→label_9
+}
+function colEditable(c) { return c === COL_PROJET || (c >= COL_EDIT_START && c <= colLabelEnd()) || isTslCol(c) || isI7Col(c); }
+function colFillable(c) { return colEditable(c) || c === COL_PARENT; }
+
+function _editableCols() {
+    return [COL_PROJET,
+            ...Array.from({length: nbLabelsPerso()}, (_, i) => COL_EDIT_START + i),
+            ..._tslConns.map((_, i) => tslColStart() + i),
+            ..._i7Conns.map((_, i) => i7ColStart() + i)];
+}
+
+function emptyRow(shm, hostname, node, isSystem) {
+    const r = { shm, hostname: hostname||'', node: node||'', projet: '',
+                parent_shm: null, _dirty: false, _isSystem: !!isSystem };
+    for (let i = 2; i <= 9; i++) r[`label_${i}`] = '';
+    for (const c of _tslConns) r[`tsl_${c.id}`] = '';
+    for (const c of _i7Conns) r[`is07_${c.id}`] = '';
+    return r;
+}
+
+// ─── Héritage parent ───────────────────────────────────────────
+// Détecter le parent d'un shm selon les patterns du suffixMap
+function _detectParentShm(shm, allShms) {
+    for (const tail of Object.keys(_suffixMap)) {
+        if (shm.endsWith(tail)) {
+            const base = shm.slice(0, shm.length - tail.length);
+            if (allShms.has(base)) return base;
+        }
+    }
+    return null;
+}
+
+// Valeur effective d'une cellule label (heritée ou explicite) → { value, inherited }
+// La RÈGLE (valeur propre, sinon parent + suffixe de la queue de nom) vit désormais dans
+// window.SourceLabels (static/source_labels.js), partagée avec toutes les pages qui affichent des
+// sources — cette page était la seule à la connaître. On lui passe NOS lignes : l'éditeur doit
+// résoudre sur l'état en cours d'édition, pas sur le cache serveur.
+function _effectiveLabel(row, col) {
+    if (!row || !row.shm) return { value: '', inherited: false };
+    // ⚠ CONVERSION OBLIGATOIRE. Le module partagé raisonne en NIVEAU de libellé (2 à 9, comme
+    // les colonnes `label_N` en base) ; cette table raisonne en INDICE de colonne (5 à 12).
+    // Sans la conversion, il cherchait label_5 … label_12 — des clés qui n'existent nulle part —
+    // et renvoyait donc une valeur vide pour TOUTES les cellules de libellé : les noms déjà
+    // enregistrés n'apparaissaient plus, et une saisie semblait effacée dès qu'on validait,
+    // alors qu'elle était bien en mémoire et bien envoyée au serveur.
+    if (col >= COL_EDIT_START && col <= colLabelEnd())
+        return window.SourceLabels.resolve(row.shm, col - 3, _rows);
+    // « projet » n'est pas un niveau de libellé : le module partagé ne le connaît pas. Même
+    // règle d'héritage (valeur propre, sinon celle du parent + suffixe de queue de nom).
+    const key = colKey(col);
+    const stored = row[key] || '';
+    if (stored) return { value: stored, inherited: false };
+    if (!row.parent_shm) return { value: '', inherited: false };
+    const parentRow = _rows.find(r => r.shm === row.parent_shm);
+    const parentVal = parentRow ? (parentRow[key] || '') : '';
+    if (!parentVal) return { value: '', inherited: false };
+    const tail = row.shm.slice(row.parent_shm.length);
+    return { value: parentVal + (_suffixMap[tail] !== undefined ? _suffixMap[tail] : tail),
+             inherited: true };
+}
+
+// ─── Initialisation ────────────────────────────────────────────
+async function tslInit() {
+    try {
+        const [rsys, rsl, rnames, rsuf, rconns, rmap, rports] = await Promise.all([
+            fetch('/api/sources'),           // tous les kinds : video + audio + anc
+            fetch('/api/source_labels'),
+            fetch('/api/tsl/label_names'),
+            fetch('/api/source_labels/suffix_map'),
+            fetch('/api/tsl/connections'),
+            fetch('/api/tsl/mapping_all'),
+            fetch('/api/ports'),             // ports de projet (clé « port:<id> »)
+        ]);
+        const sysSrcs  = rsys.ok  ? await rsys.json()  : [];
+        const projPorts = rports.ok ? ((await rports.json()).ports || []) : [];
+        const slabels  = rsl.ok   ? await rsl.json()   : [];
+        _names         = rnames.ok? await rnames.json(): ['Hostname','MXL','Label 2','Label 3'];
+        _suffixMap     = rsuf.ok  ? await rsuf.json()  : {"_audio_0":"_A1","_audio_1":"_A2","_anc_0":"_Anc"};
+        _tslConns      = rconns.ok? await rconns.json(): [];
+        try {
+            const ro = await fetch('/api/source_labels/orphelins');
+            const lst = ro.ok ? await ro.json() : [];
+            _orphelins = new Set(lst.map(x => x.shm));
+            _orphInfo = lst;
+        } catch (e) { _orphelins = new Set(); _orphInfo = []; }
+        let i7Maps = [];
+        try {
+            const rn = await fetch('/api/tally/levels');
+            _tslNiveaux = rn.ok ? await rn.json() : [];
+            const ri = await fetch('/api/tally/is07/connections');
+            _i7Conns = ri.ok ? ((await ri.json()).connections || []) : [];
+            const rim = await fetch('/api/tally/is07/mapping_all');
+            i7Maps = rim.ok ? await rim.json() : [];
+        } catch (e) { _tslNiveaux = []; _i7Conns = []; i7Maps = []; }
+        const tslMaps  = rmap.ok  ? await rmap.json()  : [];
+        TOTAL_COLS     = tslColStart() + _tslConns.length + _i7Conns.length;
+
+        _videoSources = sysSrcs
+            .filter(s => !s.kind || s.kind === 'video')
+            .map(s => ({ shm: s.shm, hostname: s.hostname || '' }));
+
+        const slMap = {};
+        for (const sl of slabels) slMap[sl.shm] = sl;
+
+        const rows = [];
+        const seen = new Set();
+
+        // Phase 1 : toutes les sources système
+        for (const s of sysSrcs) {
+            const shm = s.shm || '';
+            if (!shm || seen.has(shm)) continue;
+            seen.add(shm);
+            const sl = slMap[shm] || {};
+            const row = emptyRow(shm, s.hostname || '', s.node || '', true);
+            row.projet = sl.projet || '';
+            row.parent_shm = sl.parent_shm || null;
+            for (let i = 2; i <= 9; i++) row[`label_${i}`] = sl[`label_${i}`] || '';
+            rows.push(row);
+        }
+        // Phase 1.5 : PORTS de projet — clé synthétique « port:<id> » (comme __umd:).
+        // L'adresse reste stable pour le contrôleur broadcast, le binding suit derrière.
+        for (const p of projPorts) {
+            const key = 'port:' + p.id;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const sl = slMap[key] || {};
+            const row = emptyRow(key, `${p.project_name || p.project_id} / ${p.name}`, '', false);
+            row.projet = sl.projet || (p.project_name || '');
+            row.parent_shm = sl.parent_shm || null;
+            for (let i = 2; i <= 9; i++) row[`label_${i}`] = sl[`label_${i}`] || '';
+            rows.push(row);
+        }
+        // Phase 2 : entrées manuelles (source_labels sans shm système)
+        for (const sl of slabels) {
+            if (seen.has(sl.shm)) continue;
+            seen.add(sl.shm);
+            const row = emptyRow(sl.shm, '', '', false);
+            row.projet = sl.projet || '';
+            row.parent_shm = sl.parent_shm || null;
+            for (let i = 2; i <= 9; i++) row[`label_${i}`] = sl[`label_${i}`] || '';
+            rows.push(row);
+        }
+
+        // Phase 2.6 : Sources IS-07 mappées — même traitement que les index TSL. Une
+        // correspondance qui vise un shm absent CRÉE sa ligne : sinon l'affectation existerait en
+        // base sans apparaître nulle part, et on la referait sans comprendre pourquoi.
+        if (_i7Conns.length && i7Maps.length) {
+            const byShm2 = {};
+            for (const r of rows) byShm2[r.shm] = r;
+            const valides = new Set(_i7Conns.map(c => c.id));
+            for (const m of i7Maps) {
+                if (!valides.has(m.connection_id)) continue;
+                let row = byShm2[m.source_shm];
+                if (!row) {
+                    if (seen.has(m.source_shm)) continue;
+                    seen.add(m.source_shm);
+                    row = emptyRow(m.source_shm, '', '', false);
+                    rows.push(row); byShm2[m.source_shm] = row;
+                }
+                row[`is07_${m.connection_id}`] = m.source_id || '';
+            }
+        }
+
+        // Phase 2.5 : index TSL mappés (colonnes par connexion)
+        if (_tslConns.length && tslMaps.length) {
+            const byShm = {};
+            for (const r of rows) byShm[r.shm] = r;
+            const validConn = new Set(_tslConns.map(c => c.id));
+            for (const m of tslMaps) {
+                if (!validConn.has(m.connection_id)) continue;
+                let row = byShm[m.source_shm];
+                if (!row) {                       // mapping vers un shm absent → ligne manuelle
+                    if (seen.has(m.source_shm)) continue;
+                    seen.add(m.source_shm);
+                    row = emptyRow(m.source_shm, '', '', false);
+                    rows.push(row); byShm[m.source_shm] = row;
+                }
+                row[`tsl_${m.connection_id}`] = String(m.tsl_index);
+            }
+        }
+
+        // Phase 3 : auto-détecter les parents non encore définis
+        const allShms = new Set(rows.map(r => r.shm));
+        for (const row of rows) {
+            if (!row.parent_shm) {
+                const parent = _detectParentShm(row.shm, allShms);
+                if (parent) row.parent_shm = parent;
+            }
+        }
+
+        _rows = rows;
+        _suffixTableRender();
+        tslApplyView();
+        tslRender();
+    } catch(e) {
+        console.error('tslInit:', e);
+    }
+}
+
+// ─── Vue (tri + filtre) ─────────────────────────────────────────
+function tslApplyView() {
+    let view = _rows.map((_, i) => i);
+
+    for (const [k, fv] of Object.entries(_filters)) {
+        if (!fv) continue;
+        const fvl = fv.toLowerCase();
+        view = view.filter(i => String(_rows[i][k] ?? '').toLowerCase().includes(fvl));
+    }
+    if (_globalFilter) {
+        const gfl = _globalFilter.toLowerCase();
+        view = view.filter(i => {
+            const r = _rows[i];
+            return [r.shm, r.hostname, r.node, r.projet,
+                    ...Array.from({length:8}, (_,j) => r[`label_${j+2}`]),
+                    ..._tslConns.map(c => r[`tsl_${c.id}`]),
+                    ..._i7Conns.map(c => r[`is07_${c.id}`])]
+                .some(v => String(v||'').toLowerCase().includes(gfl));
+        });
+    }
+    if (_sort.col !== null) {
+        const key = colKey(_sort.col);
+        view.sort((a, b) => {
+            const av = _rows[a][key] ?? '', bv = _rows[b][key] ?? '';
+            const an = parseFloat(av), bn = parseFloat(bv);
+            const cmp = (!isNaN(an) && !isNaN(bn)) ? (an - bn) : String(av).localeCompare(String(bv));
+            return cmp * _sort.dir;
+        });
+    }
+    _view = view;
+    const count = document.getElementById('tsl-row-count');
+    if (count) {
+        const n = _rows.filter(r => _orphelins.has(r.shm)).length;
+        count.innerHTML = `${_view.length} / ${_rows.length} source${_rows.length>1?'s':''}`
+            + (n ? ` · <a href="#" onclick="tslOrphelinsOuvrir();return false">`
+                 + T('labels.js.orphan_count').replace('{n}', n) + `</a>` : '');
+    }
+}
+
+// ─── Largeurs de colonnes (redimensionnables, persistées) ──────
+const COLW_KEY  = 'tsl.colwidths';
+const COLW_MIN  = 48;
+let   _colW     = null;   // {cléColonne: px} — chargé à la 1ʳᵉ utilisation
+
+function _colWLoad() {
+    if (_colW) return _colW;
+    try { _colW = JSON.parse(localStorage.getItem(COLW_KEY) || '{}') || {}; }
+    catch(e) { _colW = {}; }
+    return _colW;
+}
+function _colWSave() {
+    try { localStorage.setItem(COLW_KEY, JSON.stringify(_colW || {})); } catch(e) {}
+}
+function tslDefaultWidths() {
+    return [80, 105, 160, 175, 105, ...Array(nbLabelsPerso()).fill(110), ..._tslConns.map(() => 88),
+            ..._i7Conns.map(() => 210)];   // un UUID de Source, pas un index : il lui faut la place
+}
+// Largeurs effectives : défaut par colonne, surchargé par la largeur mémorisée (clé = colKey,
+// stable quand une connexion TSL est ajoutée/retirée).
+function tslWidths() {
+    const saved = _colWLoad(), def = tslDefaultWidths();
+    return Array.from({length: TOTAL_COLS}, (_, c) => {
+        const w = saved[colKey(c)];
+        return (typeof w === 'number' && w >= COLW_MIN) ? w : (def[c] || 110);
+    });
+}
+
+let _resizing = null;   // {c, x0, w0}
+
+document.addEventListener('mousedown', e => {
+    const h = e.target.closest?.('.tsl-col-resizer');
+    if (!h) return;
+    const c = +h.dataset.c;
+    const col = document.getElementById('tsl-colgroup')?.children[c];
+    if (!col) return;
+    _resizing = { c, x0: e.clientX, w0: parseInt(col.style.width) || tslWidths()[c] };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault(); e.stopPropagation();
+});
+document.addEventListener('mousemove', e => {
+    if (!_resizing) return;
+    const col = document.getElementById('tsl-colgroup')?.children[_resizing.c];
+    if (!col) return;
+    col.style.width = Math.max(COLW_MIN, _resizing.w0 + (e.clientX - _resizing.x0)) + 'px';
+    e.preventDefault();
+});
+document.addEventListener('mouseup', () => {
+    if (!_resizing) return;
+    const col = document.getElementById('tsl-colgroup')?.children[_resizing.c];
+    if (col) { _colWLoad()[colKey(_resizing.c)] = parseInt(col.style.width); _colWSave(); }
+    _resizing = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    tslPositionFillHandle();
+});
+// Double-clic sur la poignée : retour à la largeur par défaut de la colonne.
+document.addEventListener('dblclick', e => {
+    const h = e.target.closest?.('.tsl-col-resizer');
+    if (!h) return;
+    delete _colWLoad()[colKey(+h.dataset.c)];
+    _colWSave(); tslRender(); tslPositionFillHandle();
+    e.preventDefault(); e.stopPropagation();
+});
+
+// ─── Rendu ─────────────────────────────────────────────────────
+function tslRender() {
+    const cg   = document.getElementById('tsl-colgroup');
+    const head = document.getElementById('tsl-thead');
+    const body = document.getElementById('tsl-tbody');
+
+    const widths = tslWidths();
+    cg.innerHTML = widths.map(w => `<col style="width:${w}px">`).join('');
+
+    const colLabels = [
+        T('labels.js.col_node'), _names[0]||T('labels.js.col_hostname'), T('labels.js.src_shm'),
+        T('labels.js.col_parent'), T('labels.js.col_project'),
+        ...Array.from({length: nbLabelsPerso()}, (_, i) => _names[i+2]||`Label ${i+2}`),
+        ..._tslConns.map(c => `⎘ ${c.name}`),  // index TSL par connexion
+        ..._i7Conns.map(c => `◈ ${c.name}`)    // Source IS-07 par connexion entrante
+    ];
+
+    // En-tête
+    let thRow = '<tr>';
+    for (let c = 0; c < TOTAL_COLS; c++) {
+        const key = colKey(c);
+        let sortIcon = '<span class="tsl-sort-icon">⇅</span>';
+        let sortCls  = '';
+        if (_sort.col === c) {
+            sortCls  = _sort.dir === 1 ? ' sort-asc' : ' sort-desc';
+            sortIcon = `<span class="tsl-sort-icon">${_sort.dir===1?'↑':'↓'}</span>`;
+        }
+        const thIdxCls = (isTslCol(c) || isI7Col(c)) ? ' tsl-th-idx' : '';
+        const thTitre = isTslCol(c) ? 'Index TSL — ' + escapeHtml(_tslColConn(c).name)
+                      : isI7Col(c)  ? 'Source IS-07 de l\'émetteur — ' + escapeHtml(_i7ColConn(c).name)
+                      : '';
+        thRow += `<th class="tsl-sortable${sortCls}${thIdxCls}" onclick="tslSort(${c})" title="${thTitre}">${escapeHtml(colLabels[c])}${sortIcon}`;
+        const fv = _filters[key] || '';
+        thRow += `<div><input class="tsl-col-filter" type="text" placeholder="Filtre…"
+            value="${escapeHtml(fv)}" oninput="tslColFilter('${key}',this.value)"></div>`;
+        thRow += `<div class="tsl-col-resizer" data-c="${c}" title="${T('labels.col_resize_title')}"
+            onclick="event.stopPropagation()"></div></th>`;
+    }
+    thRow += '</tr>';
+    head.innerHTML = thRow;
+
+    // Corps
+    let html = '';
+    for (let vi = 0; vi < _view.length; vi++) {
+        const ri  = _view[vi];
+        const row = _rows[ri];
+        const dirty = row._dirty ? ' tsl-dirty' : '';
+        html += `<tr class="${dirty}" data-ri="${ri}" data-vi="${vi}">`;
+        for (let c = 0; c < TOTAL_COLS; c++) {
+            const key = colKey(c);
+            const selCls = (_sel && vi>=_sel.r1 && vi<=_sel.r2 && c>=_sel.c1 && c<=_sel.c2) ? ' tsl-selected' : '';
+
+            if (c === COL_NODE || c === COL_HOSTNAME) {
+                const val = row[key] || '';
+                html += `<td class="tsl-auto${selCls}" data-ri="${ri}" data-vi="${vi}" data-c="${c}">${escapeHtml(val)}</td>`;
+
+            } else if (c === COL_SHM) {
+                const isUmd = String(row.shm).startsWith('__umd:');
+                const isPort = String(row.shm).startsWith('port:');
+                const shmDisp = isUmd
+                    ? `${escapeHtml(row.shm.slice(6))} <span class="meta" style="font-size:0.75em;opacity:0.7">(texte)</span>`
+                    : isPort
+                    ? `⚓ ${escapeHtml(row.hostname || row.shm)} <span class="meta" style="font-size:0.75em;opacity:0.7">(port)</span>`
+                    : escapeHtml(row.shm);
+                // ★ ORPHELINE : plus AUCUN conteneur ne déclare ce flux. Sans marque, ces lignes
+                // se mêlent aux sources vivantes — sur ce banc, 46 sur 68, dont on ne peut pas
+                // deviner qu'elles ne servent plus. On les signale, on ne les cache pas : un
+                // libellé écrit est du travail, et c'est à l'exploitant de trancher.
+                const orph = _orphelins.has(row.shm)
+                    ? ` <span class="tsl-orph" title="${T('labels.js.orphan_title')}">${T('labels.js.orphan')}</span>`
+                    : '';
+                html += `<td class="tsl-shm${orph ? ' tsl-row-orph' : ''}${selCls}" data-ri="${ri}" data-vi="${vi}" data-c="${c}">${shmDisp}${orph}</td>`;
+
+            } else if (c === COL_PARENT) {
+                const parentOpts = '<option value="">— aucune —</option>' +
+                    _videoSources.map(s => {
+                        const sel = row.parent_shm === s.shm ? ' selected' : '';
+                        const lbl = s.hostname ? `${escapeHtml(s.hostname)} / ${escapeHtml(s.shm)}` : escapeHtml(s.shm);
+                        return `<option value="${escapeHtml(s.shm)}"${sel}>${lbl}</option>`;
+                    }).join('');
+                html += `<td class="tsl-parent${selCls}" data-ri="${ri}" data-vi="${vi}" data-c="${c}">
+                    <select class="tsl-parent-sel" style="width:100%;border:none;background:transparent;color:inherit;font:inherit;cursor:pointer"
+                        onchange="tslParentChange(${ri}, this.value)">${parentOpts}</select></td>`;
+
+            } else {
+                // Colonnes éditables (projet + label_2..9 + index TSL par connexion)
+                const isEditing = _editing && _editing.ri === ri && _editing.ci === c;
+                if (isEditing) {
+                    // Pour la valeur initiale dans l'input : utiliser la valeur stored (pas héritée)
+                    const storedVal = row[key] || '';
+                    html += `<td class="tsl-edit tsl-editing${selCls}" data-ri="${ri}" data-vi="${vi}" data-c="${c}">
+                        <input id="tsl-cell-input" type="text" value="${escapeHtml(storedVal)}"
+                            onblur="tslCommitEdit()" onkeydown="tslInputKey(event)"></td>`;
+                } else if (isI7Col(c)) {
+                    // UUID de Source de l'émetteur. On n'affiche que sa TÊTE : un UUID complet
+                    // fait quatre fois la largeur utile, et la colonne devient illisible pour une
+                    // information dont on ne relit jamais la fin.
+                    const v = row[key] || '';
+                    const court = v.length > 13 ? v.slice(0, 13) + '…' : v;
+                    html += `<td class="tsl-edit tsl-tslidx${selCls}" data-ri="${ri}" data-vi="${vi}" data-c="${c}" title="${escapeHtml(v)}" style="text-align:center;font-family:var(--font-mono);font-size:.85em">${escapeHtml(court)}</td>`;
+                } else if (isTslCol(c)) {
+                    // Index TSL : valeur brute + pastille de tally live (colorée par _applyLiveTally)
+                    const v = row[key] || '';
+                    const conn = _tslColConn(c);
+                    const dot = v ? `<span class="tsl-live-dot" data-conn="${conn.id}" data-idx="${escapeHtml(v)}"></span>` : '';
+                    html += `<td class="tsl-edit tsl-tslidx${selCls}" data-ri="${ri}" data-vi="${vi}" data-c="${c}" style="text-align:center">${escapeHtml(v)}${dot}</td>`;
+                } else {
+                    const { value: dispVal, inherited } = _effectiveLabel(row, c);
+                    const inh = inherited ? ' tsl-inherited' : '';
+                    const inhIcon = inherited ? '<span style="opacity:.35;margin-right:3px;font-size:.75em">⛓</span>' : '';
+                    html += `<td class="tsl-edit${inh}${selCls}" data-ri="${ri}" data-vi="${vi}" data-c="${c}">${inhIcon}${escapeHtml(dispVal)}</td>`;
+                }
+            }
+        }
+        html += '</tr>';
+    }
+    body.innerHTML = html;
+
+    if (_editing) {
+        const inp = document.getElementById('tsl-cell-input');
+        if (inp) { inp.focus(); inp.select(); }
+    }
+    tslUpdateDirtyBadge();
+    tslPositionFillHandle();
+    if (typeof _applyLiveTally === 'function') _applyLiveTally();
+}
+
+// ─── Sélection souris ──────────────────────────────────────────
+let _mouseSelecting = false;
+let _mouseSelStart  = null;
+
+document.addEventListener('mousedown', e => {
+    const td = e.target.closest('td[data-vi]');
+    if (!td) return;
+    const vi = +td.dataset.vi, c = +td.dataset.c, ri = +td.dataset.ri;
+
+    if (c === COL_NODE || c === COL_HOSTNAME || c === COL_SHM) {
+        if (!e.shiftKey) _sel = { r1: vi, c1: c, r2: vi, c2: c };
+        else if (_sel)   { _sel.r2 = vi; _sel.c2 = c; }
+        else             _sel = { r1: vi, c1: c, r2: vi, c2: c };
+        _editing = null;
+        tslRender();
+        e.preventDefault();
+        return;
+    }
+    if (c === COL_PARENT) {
+        // Mettre à jour la sélection sans bloquer le <select> natif
+        if (!e.shiftKey) _sel = { r1: vi, c1: c, r2: vi, c2: c };
+        else if (_sel)   { _sel.r2 = vi; _sel.c2 = c; }
+        else             _sel = { r1: vi, c1: c, r2: vi, c2: c };
+        _editing = null;
+        tslPartialSelRender();
+        return;
+    }
+    if (_editing && _editing.ri === ri && _editing.ci === c) return;
+    if (e.shiftKey && _sel) {
+        _sel.r2 = vi; _sel.c2 = c;
+        tslRender(); e.preventDefault(); return;
+    }
+    _mouseSelecting = true;
+    _mouseSelStart  = { vi, c };
+    _sel = { r1: vi, c1: c, r2: vi, c2: c };
+    if (_editing) tslCommitEdit();
+    _editing = null;
+    tslRender();
+    e.preventDefault();
+});
+document.addEventListener('mousemove', e => {
+    if (!_mouseSelecting) return;
+    const td = e.target.closest('td[data-vi]');
+    if (!td) return;
+    const vi = +td.dataset.vi, c = +td.dataset.c;
+    _sel = {
+        r1: Math.min(_mouseSelStart.vi, vi), c1: Math.min(_mouseSelStart.c, c),
+        r2: Math.max(_mouseSelStart.vi, vi), c2: Math.max(_mouseSelStart.c, c),
+    };
+    tslPartialSelRender();
+    e.preventDefault();
+});
+document.addEventListener('mouseup', () => { _mouseSelecting = false; });
+
+function tslPartialSelRender() {
+    document.querySelectorAll('#tsl-tbody td').forEach(td => {
+        const vi = +td.dataset.vi, c = +td.dataset.c;
+        td.classList.toggle('tsl-selected',
+            !!(_sel && vi >= _sel.r1 && vi <= _sel.r2 && c >= _sel.c1 && c <= _sel.c2));
+    });
+    tslPositionFillHandle();
+}
+
+document.addEventListener('dblclick', e => {
+    const td = e.target.closest('td.tsl-edit[data-vi]');
+    if (!td) return;
+    tslStartEdit(+td.dataset.ri, +td.dataset.c, +td.dataset.vi);
+});
+
+// ─── Édition ───────────────────────────────────────────────────
+function tslStartEdit(ri, c, vi) {
+    if (!colEditable(c)) return;
+    if (_editing) tslCommitEdit();
+    _sel = { r1: vi, c1: c, r2: vi, c2: c };
+    _editing = { ri, ci: c };
+    tslRender();
+}
+
+function tslCommitEdit() {
+    if (!_editing) return;
+    const inp = document.getElementById('tsl-cell-input');
+    if (!inp) { _editing = null; return; }
+    const key = colKey(_editing.ci);
+    const oldVal = _rows[_editing.ri][key];
+    const newVal = inp.value;
+    if (oldVal !== newVal) {
+        tslPushUndo(_editing.ri, key, oldVal);
+        _rows[_editing.ri][key] = newVal;
+        _rows[_editing.ri]._dirty = true;
+    }
+    _editing = null;
+    tslRender();
+}
+
+function tslInputKey(e) {
+    if (e.key === 'Escape') { _editing = null; tslRender(); return; }
+    if (e.key === 'Tab')    { e.preventDefault(); tslCommitEdit(); tslMoveEdit(0, e.shiftKey ? -1 : 1); return; }
+    if (e.key === 'Enter')  { e.preventDefault(); tslCommitEdit(); tslMoveEdit(1, 0); return; }
+}
+
+function tslMoveEdit(dr, dc) {
+    if (!_sel) return;
+    const cols = _editableCols();
+    const curIdx = cols.indexOf(_sel.c1);
+    let nc, nr = _sel.r1 + dr;
+    if (dc !== 0) {
+        const next = curIdx + dc;
+        if (next < 0)              { nc = cols[cols.length - 1]; nr = _sel.r1 - 1; }
+        else if (next >= cols.length) { nc = cols[0]; nr = _sel.r1 + 1; }
+        else                       { nc = cols[next]; }
+    } else {
+        nc = curIdx >= 0 ? _sel.c1 : cols[0];
+    }
+    nr = Math.max(0, Math.min(_view.length - 1, nr));
+    _sel = { r1: nr, c1: nc, r2: nr, c2: nc };
+    tslStartEdit(_view[nr], nc, nr);
+}
+
+// ─── Clavier global ────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+    if (_editing) return;
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
+        e.target.tagName === 'SELECT') return;
+    if (e.ctrlKey || e.metaKey) {
+        if (e.key === 's') { e.preventDefault(); tslSave(); return; }
+        if (e.key === 'z') { e.preventDefault(); tslUndo(); return; }
+        if (e.key === 'a') { e.preventDefault(); tslSelectAll(); return; }
+        if (e.key === 'c') { e.preventDefault(); tslCopy(); return; }
+        if (e.key === 'v') { e.preventDefault(); tslPaste(); return; }
+        return;
+    }
+    if (!_sel) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); tslClearSelection(); return; }
+    if (e.key === 'Enter') { e.preventDefault(); tslStartEdit(_view[_sel.r1], _sel.c1, _sel.r1); return; }
+    if (e.key === 'Tab')   { e.preventDefault(); tslMoveEdit(0, e.shiftKey ? -1 : 1); return; }
+    const arrows = { ArrowUp:[-1,0], ArrowDown:[1,0], ArrowLeft:[0,-1], ArrowRight:[0,1] };
+    if (arrows[e.key]) {
+        e.preventDefault();
+        const [dr, dc] = arrows[e.key];
+        let nr = Math.max(0, Math.min(_view.length-1, _sel.r1 + dr));
+        let nc = Math.max(0, Math.min(TOTAL_COLS-1, _sel.c1 + dc));
+        _sel = { r1: nr, c1: nc, r2: nr, c2: nc };
+        tslPartialSelRender();
+        document.querySelector(`#tsl-tbody td[data-vi="${nr}"]`)?.scrollIntoView({ block:'nearest', inline:'nearest' });
+        return;
+    }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && colEditable(_sel.c1)) {
+        // preventDefault INDISPENSABLE : on pose nous-mêmes le caractère dans l'input qu'on
+        // vient de créer. Sans lui, le navigateur le livre AUSSI à l'input qui prend le focus,
+        // et le premier caractère de toute saisie est doublé (défaut de longue date).
+        e.preventDefault();
+        const ri = _view[_sel.r1], ci = _sel.c1, vi = _sel.r1;
+        _sel = { r1: vi, c1: ci, r2: vi, c2: ci };
+        _editing = { ri, ci };
+        tslRender();
+        const inp = document.getElementById('tsl-cell-input');
+        if (inp) { inp.value = e.key; inp.setSelectionRange(1,1); }
+    }
+});
+
+function tslSelectAll() {
+    if (!_view.length) return;
+    _sel = { r1: 0, c1: COL_PROJET, r2: _view.length-1, c2: TOTAL_COLS-1 };
+    tslPartialSelRender();
+}
+
+// ─── Copier / Coller ───────────────────────────────────────────
+let _clipboard = null;
+
+function tslCopy() {
+    if (!_sel) return;
+    const data = [];
+    for (let r = _sel.r1; r <= _sel.r2; r++) {
+        const row = [];
+        for (let c = _sel.c1; c <= _sel.c2; c++) {
+            // Copier la valeur effective (héritée ou explicite) ; index TSL = valeur brute
+            const col = c;
+            if (isTslCol(col) || isI7Col(col)) {
+                row.push(_rows[_view[r]][colKey(col)] ?? '');
+            } else if (colEditable(col)) {
+                const { value } = _effectiveLabel(_rows[_view[r]], col);
+                row.push(value);
+            } else {
+                row.push(_rows[_view[r]][colKey(col)] ?? '');
+            }
+        }
+        data.push(row);
+    }
+    _clipboard = data;
+    window.copierTexte(data.map(r => r.join('\t')).join('\n'));
+}
+
+function tslPaste() {
+    if (!_sel || !_clipboard) return;
+    for (let dr = 0; dr < _clipboard.length; dr++) {
+        const vi = _sel.r1 + dr;
+        if (vi >= _view.length) break;
+        const ri = _view[vi];
+        for (let dc = 0; dc < _clipboard[dr].length; dc++) {
+            const c = _sel.c1 + dc;
+            if (c >= TOTAL_COLS || !colFillable(c)) continue;
+            if (c === COL_PARENT) {
+                tslPushUndo(ri, 'parent_shm', _rows[ri].parent_shm);
+                _rows[ri].parent_shm = _clipboard[dr][dc] || null;
+            } else {
+                const key = colKey(c);
+                tslPushUndo(ri, key, _rows[ri][key]);
+                _rows[ri][key] = _clipboard[dr][dc];
+            }
+            _rows[ri]._dirty = true;
+        }
+    }
+    tslApplyView(); tslRender();
+}
+
+function tslClearSelection() {
+    if (!_sel) return;
+    for (let r = _sel.r1; r <= _sel.r2; r++) {
+        const ri = _view[r];
+        for (let c = _sel.c1; c <= _sel.c2; c++) {
+            if (c === COL_PARENT) {
+                tslPushUndo(ri, 'parent_shm', _rows[ri].parent_shm);
+                _rows[ri].parent_shm = null;
+                _rows[ri]._dirty = true;
+            } else if (colEditable(c)) {
+                const key = colKey(c);
+                tslPushUndo(ri, key, _rows[ri][key]);
+                _rows[ri][key] = '';
+                _rows[ri]._dirty = true;
+            }
+        }
+    }
+    tslRender();
+}
+
+// ─── Tri / Filtre ──────────────────────────────────────────────
+function tslSort(col) {
+    if (_sort.col === col) _sort.dir *= -1;
+    else { _sort.col = col; _sort.dir = 1; }
+    _sel = null; _editing = null;
+    tslApplyView(); tslRender();
+}
+function tslColFilter(key, val) {
+    _filters[key] = val; _sel = null; _editing = null;
+    tslApplyView(); tslRender();
+}
+function tslFilter() {
+    _globalFilter = document.getElementById('tsl-global-filter')?.value || '';
+    _sel = null; _editing = null;
+    tslApplyView(); tslRender();
+}
+
+// ─── Fill handle ────────────────────────────────────────────────
+function tslPositionFillHandle() {
+    const fh = document.getElementById('tsl-fill-handle');
+    if (!fh) return;
+    if (!_sel || !colFillable(_sel.c2)) { fh.style.display = 'none'; return; }
+    const lastTd = document.querySelector(`#tsl-tbody td[data-vi="${_sel.r2}"][data-c="${_sel.c2}"]`);
+    if (!lastTd) { fh.style.display = 'none'; return; }
+    const rect = lastTd.getBoundingClientRect();
+    fh.style.display = 'block';
+    fh.style.left = (rect.right - 5) + 'px';
+    fh.style.top  = (rect.bottom - 5) + 'px';
+}
+
+const _fhEl = () => document.getElementById('tsl-fill-handle');
+document.addEventListener('mousedown', e => {
+    if (e.target !== _fhEl()) return;
+    _fillDragging = true; e.preventDefault();
+});
+document.addEventListener('mousemove', e => {
+    if (!_fillDragging) return;
+    const td = document.elementFromPoint(e.clientX, e.clientY)?.closest?.('td[data-vi]');
+    if (!td) return;
+    const vi = +td.dataset.vi;
+    if (vi > _sel.r2) {
+        _sel = { ..._sel, _fillTo: vi };
+        document.querySelectorAll('#tsl-tbody td').forEach(t => {
+            const tv = +t.dataset.vi, tc = +t.dataset.c;
+            t.classList.toggle('tsl-selected',
+                (tv >= _sel.r1 && tv <= _sel.r2 && tc >= _sel.c1 && tc <= _sel.c2) ||
+                (tv > _sel.r2 && tv <= vi && tc >= _sel.c1 && tc <= _sel.c2));
+        });
+    }
+    e.preventDefault();
+});
+document.addEventListener('mouseup', () => {
+    if (!_fillDragging) return;
+    _fillDragging = false;
+    if (!_sel || !_sel._fillTo || _sel._fillTo <= _sel.r2) return;
+    const fillTo = _sel._fillTo;
+    delete _sel._fillTo;
+    for (let c = _sel.c1; c <= _sel.c2; c++) {
+        if (!colFillable(c)) continue;
+        if (c === COL_PARENT) {
+            // Fill parent : auto-incrément sur les sources vidéo (cam1 → cam2 → …)
+            const baseParents = Array.from({length: _sel.r2 - _sel.r1 + 1},
+                                           (_, i) => _rows[_view[_sel.r1 + i]].parent_shm || '');
+            const filledP = autoFillParent(baseParents, fillTo - _sel.r2);
+            for (let i = 0; i < filledP.length; i++) {
+                const vi2 = _sel.r2 + 1 + i;
+                if (vi2 >= _view.length) break;
+                const ri = _view[vi2];
+                tslPushUndo(ri, 'parent_shm', _rows[ri].parent_shm);
+                _rows[ri].parent_shm = filledP[i] || null;
+                _rows[ri]._dirty = true;
+            }
+            continue;
+        }
+        const key = colKey(c);
+        const baseVals = Array.from({length: _sel.r2 - _sel.r1 + 1}, (_, i) => _rows[_view[_sel.r1 + i]][key] ?? '');
+        const filled = autoFill(baseVals, fillTo - _sel.r2);
+        for (let i = 0; i < filled.length; i++) {
+            const vi2 = _sel.r2 + 1 + i;
+            if (vi2 >= _view.length) break;
+            const ri = _view[vi2];
+            tslPushUndo(ri, key, _rows[ri][key]);
+            _rows[ri][key] = filled[i];
+            _rows[ri]._dirty = true;
+        }
+    }
+    _sel.r2 = fillTo; tslRender();
+});
+
+function autoFill(baseVals, targetCount) {
+    if (!baseVals.length || !targetCount) return [];
+    const parsed = baseVals.map(v => {
+        const m = /^(.*?)(\d+)([^\d]*)$/.exec(v || '');
+        return m ? { prefix: m[1], n: parseInt(m[2]), suffix: m[3], numeric: true }
+                 : { prefix: v, n: null, suffix: '', numeric: false };
+    });
+    const allNumeric = parsed.every(p => p.numeric);
+    const result = [];
+    for (let i = 0; i < targetCount; i++) {
+        if (!allNumeric) { result.push(baseVals[i % baseVals.length] ?? ''); continue; }
+        let step = parsed.length >= 2 ? (parsed[parsed.length-1].n - parsed[parsed.length-2].n) || 1 : 1;
+        const last = parsed[parsed.length-1];
+        result.push(last.prefix + (last.n + (i + 1) * step) + last.suffix);
+    }
+    return result;
+}
+
+// Delta numérique entre deux noms de même forme (cam1 → cam3 = 2). 1 si non comparables.
+function _nameDelta(a, b) {
+    const ma = /^(.*?)(\d+)([^\d]*)$/.exec(a || ''), mb = /^(.*?)(\d+)([^\d]*)$/.exec(b || '');
+    if (!ma || !mb || ma[1] !== mb[1] || ma[3] !== mb[3]) return 1;
+    return (parseInt(mb[2]) - parseInt(ma[2])) || 1;
+}
+
+// Auto-remplissage de la colonne « source vidéo parente ».
+// La valeur n'est pas du texte libre : elle doit exister dans _videoSources. On incrémente donc
+// d'abord PAR LE NOM (cam1 → cam2) quand la source cible existe vraiment, sinon on avance d'un
+// cran dans la liste du select. Sans parent de départ (ou parent inconnu), on répète — il n'y a
+// rien à incrémenter.
+function autoFillParent(baseVals, targetCount) {
+    if (!baseVals.length || !targetCount) return [];
+    const list  = _videoSources.map(s => s.shm);
+    const known = new Set(list);
+    const last  = baseVals[baseVals.length - 1] || '';
+    if (!last || !known.has(last)) return Array.from({length: targetCount}, () => last || null);
+
+    // Pas déduit des cellules sélectionnées (2+ → pas explicite), sinon 1.
+    const prev = baseVals.length >= 2 ? baseVals[baseVals.length - 2] : null;
+    const prevKnown = prev && known.has(prev);
+    const idxStep  = prevKnown ? (list.indexOf(last) - list.indexOf(prev)) || 1 : 1;
+    const nameStep = prevKnown ? _nameDelta(prev, last) : 1;
+
+    const m = /^(.*?)(\d+)([^\d]*)$/.exec(last);
+    const iLast = list.indexOf(last);
+    const out = [];
+    for (let i = 1; i <= targetCount; i++) {
+        let cand = null;
+        if (m) {
+            const byName = m[1] + (parseInt(m[2]) + i * nameStep) + m[3];
+            if (known.has(byName)) cand = byName;
+        }
+        if (!cand) {
+            // Repli : position dans la liste, bornée (au-delà de la fin on répète la dernière).
+            const j = Math.max(0, Math.min(list.length - 1, iLast + i * idxStep));
+            cand = list[j] || last;
+        }
+        out.push(cand);
+    }
+    return out;
+}
+
+// ─── Undo ───────────────────────────────────────────────────────
+function tslPushUndo(ri, key, oldVal) {
+    _undoStack.push({ ri, key, val: oldVal });
+    if (_undoStack.length > UNDO_MAX) _undoStack.shift();
+}
+function tslUndo() {
+    if (!_undoStack.length) return;
+    const { ri, key, val } = _undoStack.pop();
+    _rows[ri][key] = val;
+    _rows[ri]._dirty = _undoStack.some(u => u.ri === ri);
+    tslApplyView(); tslRender();
+}
+
+// ─── Changement de parent via le select ────────────────────────
+function tslParentChange(ri, val) {
+    const newParent = val || null;
+    const old = _rows[ri].parent_shm;
+    if (old === newParent) return;
+    tslPushUndo(ri, 'parent_shm', old);
+    _rows[ri].parent_shm = newParent;
+    _rows[ri]._dirty = true;
+    tslRender();
+}
+
+// ─── Ajouter une source manuelle ────────────────────────────────
+function tslAddRow() {
+    const shm = prompt(T('labels.js.shm_prompt'));
+    if (!shm?.trim()) return;
+    const s = shm.trim();
+    if (_rows.some(r => r.shm === s)) {
+        typeof mxlToast === 'function' && mxlToast(T('labels.js.src_exists'), 'warning');
+        return;
+    }
+    // Auto-détecter le parent
+    const allShms = new Set(_rows.map(r => r.shm));
+    allShms.add(s);
+    const parent = _detectParentShm(s, allShms);
+    _rows.push({ ...emptyRow(s, '', '', false), parent_shm: parent || null, _dirty: true });
+    tslApplyView(); tslRender();
+    const vi = _view.findIndex(i => _rows[i].shm === s);
+    if (vi >= 0) { _sel = { r1: vi, c1: COL_PROJET, r2: vi, c2: COL_PROJET }; tslPartialSelRender(); }
+}
+
+// ─── Ajouter une ligne texte (UMD sans source vidéo) ────────────
+// Clé synthétique « __umd:<nom> » : portée par source_labels comme une ligne normale (labels +
+// index TSL par connexion), mais sans producteur vidéo. Reliable depuis un overlay texte de MV.
+function tslAddTextRow() {
+    const name = prompt(T('labels.js.umd_prompt'));
+    if (!name?.trim()) return;
+    const s = '__umd:' + name.trim();
+    if (_rows.some(r => r.shm === s)) {
+        typeof mxlToast === 'function' && mxlToast(T('labels.js.textrow_exists'), 'warning');
+        return;
+    }
+    _rows.push({ ...emptyRow(s, '', '', false), _dirty: true });
+    tslApplyView(); tslRender();
+    const vi = _view.findIndex(i => _rows[i].shm === s);
+    if (vi >= 0) { _sel = { r1: vi, c1: COL_PROJET, r2: vi, c2: COL_PROJET }; tslPartialSelRender(); }
+}
+
+// ─── Badge dirty ────────────────────────────────────────────────
+function tslUpdateDirtyBadge() {
+    const n = _rows.filter(r => r._dirty).length;
+    const badge = document.getElementById('tsl-dirty-badge');
+    const btn   = document.getElementById('tsl-save-btn');
+    if (!badge) return;
+    if (n > 0) {
+        badge.style.display = '';
+        badge.textContent = T('labels.js.unsaved').replace('{n}', n);
+        if (btn) btn.classList.add('btn-green');
+    } else {
+        badge.style.display = 'none';
+        if (btn) btn.classList.remove('btn-green');
+    }
+}
+
+// ─── Sauvegarde ─────────────────────────────────────────────────
+async function tslSave() {
+    if (_editing) tslCommitEdit();   // committer l'édition en cours (cellule non encore « blur »)
+    const dirtyRows = _rows.filter(r => r._dirty && r.shm);
+    const dirty = dirtyRows.map(r => {
+        const out = { shm: r.shm, projet: r.projet || '',
+                      parent_shm: r.parent_shm || null };
+        for (let i = 2; i <= 9; i++) out[`label_${i}`] = r[`label_${i}`] || '';
+        return out;
+    });
+
+    // Index TSL (colonnes par connexion) — validation + détection de doublons
+    const tslPayload = [];
+    for (const conn of _tslConns) {
+        const key = `tsl_${conn.id}`;
+        const seenIdx = new Map();   // index → shm (pour repérer les doublons sur cette connexion)
+        for (const r of _rows) {
+            const raw = (r[key] ?? '').toString().trim();
+            if (raw === '') continue;
+            if (!/^\d+$/.test(raw)) {
+                typeof mxlToast === 'function' && mxlToast(
+                    `Index TSL invalide « ${raw} » (${conn.name}) — entier attendu`, 'error');
+                return;
+            }
+            if (seenIdx.has(raw)) {
+                typeof mxlToast === 'function' && mxlToast(
+                    window.t('labels.js.dup_index').replace('{i}', raw).replace('{c}', conn.name).replace('{a}', seenIdx.get(raw)).replace('{b}', r.shm), 'error');
+                return;
+            }
+            seenIdx.set(raw, r.shm);
+        }
+        // n'envoyer que les sources modifiées (réconciliation par-source côté serveur)
+        for (const r of dirtyRows) {
+            const raw = (r[key] ?? '').toString().trim();
+            tslPayload.push({ connection_id: conn.id, shm: r.shm,
+                              tsl_index: raw === '' ? null : parseInt(raw) });
+        }
+    }
+
+    // Sources IS-07 (colonnes par connexion entrante). Pas de format à valider — un UUID est
+    // opaque — mais le MÊME contrôle de doublon qu'en TSL : deux signaux derrière la même Source
+    // de l'émetteur, et l'un des deux garderait un tally que plus rien ne met à jour.
+    const i7Payload = [];
+    for (const conn of _i7Conns) {
+        const key = `is07_${conn.id}`;
+        const vus = new Map();
+        for (const r of _rows) {
+            const raw = (r[key] ?? '').toString().trim();
+            if (raw === '') continue;
+            if (vus.has(raw)) {
+                typeof mxlToast === 'function' && mxlToast(
+                    `Source IS-07 « ${raw} » affectée deux fois (${conn.name}) : ` +
+                    `${vus.get(raw)} et ${r.shm}`, 'error');
+                return;
+            }
+            vus.set(raw, r.shm);
+        }
+        for (const r of dirtyRows) {
+            const raw = (r[key] ?? '').toString().trim();
+            i7Payload.push({ connection_id: conn.id, shm: r.shm, source_id: raw || null });
+        }
+    }
+
+    if (!dirty.length && !tslPayload.length && !i7Payload.length) {
+        typeof mxlToast === 'function' && mxlToast(T('labels.js.no_change'), 'info');
+        return;
+    }
+    try {
+        if (dirty.length) {
+            const r = await fetch('/api/source_labels/batch', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(dirty)
+            });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+        }
+        if (tslPayload.length) {
+            const r2 = await fetch('/api/tsl/mapping/by_source/batch', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(tslPayload)
+            });
+            if (!r2.ok) throw new Error('HTTP ' + r2.status);
+        }
+        if (i7Payload.length) {
+            const r3 = await fetch('/api/tally/is07/mapping/by_source/batch', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify(i7Payload)
+            });
+            if (!r3.ok) throw new Error('HTTP ' + r3.status);
+        }
+        _rows.forEach(r => r._dirty = false);
+        // Les libellés sont affichés ailleurs (I/O, Câbles…) via window.SourceLabels : son cache
+        // doit repartir de la base après un enregistrement, sinon les autres pages montrent
+        // l'ancien nom jusqu'au prochain rechargement complet.
+        window.SourceLabels && window.SourceLabels.refresh();
+        tslRender();
+        const n = dirtyRows.length;
+        typeof mxlToast === 'function' && mxlToast(
+            window.t('labels.js.saved_n').replace('{n}', n), 'success');
+    } catch(e) {
+        typeof mxlToast === 'function' && mxlToast(T('labels.js.err_save') + e.message, 'error');
+    }
+}
+
+// ─── Config suffixes ───────────────────────────────────────────
+let _suffixEdits = [];   // [{tail, suffix}] pour l'UI
+
+function _suffixTableRender() {
+    const tbody = document.getElementById('tsl-suffix-tbody');
+    if (!tbody) return;
+    _suffixEdits = Object.entries(_suffixMap).map(([tail, suffix]) => ({ tail, suffix }));
+    tbody.innerHTML = _suffixEdits.map((e, i) => `
+        <tr data-si="${i}">
+            <td><input class="suf-tail" value="${escapeHtml(e.tail)}" placeholder="_audio_0"></td>
+            <td><input class="suf-suf"  value="${escapeHtml(e.suffix)}" placeholder="_A1"></td>
+            <td><button class="btn btn-red" style="padding:1px 7px;font-size:0.8em"
+                onclick="tslSuffixDel(${i})">✕</button></td>
+        </tr>`).join('');
+}
+
+function tslSuffixAddRow() {
+    _suffixEdits.push({ tail: '', suffix: '' });
+    _suffixTableRender();
+    // focus le dernier input
+    const last = document.querySelector('#tsl-suffix-tbody tr:last-child .suf-tail');
+    if (last) last.focus();
+}
+
+function tslSuffixDel(i) {
+    _suffixEdits.splice(i, 1);
+    _suffixTableRender();
+}
+
+async function tslSuffixSave() {
+    const rows = [...document.querySelectorAll('#tsl-suffix-tbody tr[data-si]')];
+    const map = {};
+    for (const tr of rows) {
+        const tail = tr.querySelector('.suf-tail')?.value?.trim() || '';
+        const suf  = tr.querySelector('.suf-suf')?.value || '';
+        if (tail) map[tail] = suf;
+    }
+    const r = await fetch('/api/source_labels/suffix_map', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(map)
+    });
+    if (r.ok) {
+        _suffixMap = map;
+        window.SourceLabels && window.SourceLabels.refresh();   // la règle d'héritage partagée relit le map
+        typeof mxlToast === 'function' && mxlToast(T('labels.js.suffixes_saved'), 'success');
+        // Re-détecter les parents avec le nouveau map
+        const allShms = new Set(_rows.map(r => r.shm));
+        for (const row of _rows) {
+            if (!row._dirty) {
+                const p = _detectParentShm(row.shm, allShms);
+                if (p !== row.parent_shm) row.parent_shm = p;
+            }
+        }
+        tslRender();
+    } else {
+        typeof mxlToast === 'function' && mxlToast(T('labels.js.err_save_suffixes'), 'error');
+    }
+}
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+window.addEventListener('keydown', e => {
+    if ((e.ctrlKey||e.metaKey) && e.key === 's') { e.preventDefault(); tslSave(); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+//  Export CSV
+// ═══════════════════════════════════════════════════════════════
+function tslExport() {
+    const FIELDS = ['parent_shm', 'projet', ...Array.from({length:8}, (_,i) => `label_${i+2}`)];
+    const headers = ['shm', 'parent_shm', 'Projet',
+                     ...Array.from({length:8}, (_,i) => _names[i+2] || `label_${i+2}`)];
+    const csvRows = [headers];
+    for (const ri of _view) {
+        const r = _rows[ri];
+        csvRows.push([
+            r.shm,
+            r.parent_shm || '',
+            r.projet || '',
+            ...Array.from({length:8}, (_,i) => r[`label_${i+2}`] || '')
+        ]);
+    }
+    const csv = csvRows.map(row =>
+        row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
+    ).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `labels_sources${_globalFilter || Object.values(_filters).some(Boolean) ? '_filtre' : ''}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Import CSV
+// ═══════════════════════════════════════════════════════════════
+function tslImportTrigger() {
+    document.getElementById('tsl-import-input').click();
+}
+
+function tslImportFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => _tslImportParse(e.target.result);
+    reader.readAsText(file, 'utf-8');
+    input.value = '';
+}
+
+// Parser CSV minimal (gère les guillemets et virgules dans les valeurs)
+function _csvParseLine(line) {
+    const result = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+            if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+            else inQ = !inQ;
+        } else if (ch === ',' && !inQ) {
+            result.push(cur); cur = '';
+        } else {
+            cur += ch;
+        }
+    }
+    result.push(cur);
+    return result;
+}
+
+function _tslImportParse(text) {
+    const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+                      .split('\n').filter(l => l.trim());
+    if (lines.length < 2) {
+        typeof mxlToast === 'function' && mxlToast(window.t('labels.js.file_empty_invalid'), 'error');
+        return;
+    }
+
+    const headers = _csvParseLine(lines[0]).map(h => h.trim().toLowerCase());
+    const shmIdx = headers.indexOf('shm');
+    if (shmIdx < 0) {
+        typeof mxlToast === 'function' && mxlToast('CSV invalide : colonne "shm" manquante', 'error');
+        return;
+    }
+
+    // Correspondance header CSV → champ interne
+    const knownFields = ['parent_shm', 'projet',
+                         ...Array.from({length:8}, (_,i) => `label_${i+2}`)];
+    const labelByName = {};
+    for (let i = 2; i <= 9; i++) {
+        labelByName[(_names[i] || `label_${i}`).toLowerCase().trim()] = `label_${i}`;
+    }
+    labelByName['projet'] = 'projet';
+    labelByName['parent_shm'] = 'parent_shm';
+
+    const colToField = {};
+    headers.forEach((h, i) => {
+        if (i === shmIdx) return;
+        if (knownFields.includes(h))  { colToField[i] = h; return; }
+        if (labelByName[h])           { colToField[i] = labelByName[h]; }
+    });
+
+    const rowsByShm = Object.fromEntries(_rows.map(r => [r.shm, r]));
+    const changes = [];
+
+    for (let li = 1; li < lines.length; li++) {
+        const vals = _csvParseLine(lines[li]);
+        const shm = (vals[shmIdx] || '').trim();
+        if (!shm) continue;
+
+        const incoming = {};
+        for (const [ci, field] of Object.entries(colToField)) {
+            incoming[field] = (vals[ci] || '').trim();
+        }
+        if ('parent_shm' in incoming && !incoming.parent_shm) incoming.parent_shm = null;
+
+        const existing = rowsByShm[shm];
+        if (!existing) {
+            changes.push({ kind: 'new', shm, incoming, diffs: [] });
+        } else {
+            const diffs = [];
+            for (const field of knownFields) {
+                if (!(field in incoming)) continue;
+                const oldV = field === 'parent_shm' ? (existing.parent_shm || '') : (existing[field] || '');
+                const newV = incoming[field] === null ? '' : (incoming[field] || '');
+                if (oldV !== newV) diffs.push({ field, old: oldV, new: newV });
+            }
+            if (diffs.length) changes.push({ kind: 'modified', shm, incoming, diffs });
+        }
+    }
+
+    if (!changes.length) {
+        typeof mxlToast === 'function' && mxlToast(T('labels.js.no_change_detected'), 'info');
+        return;
+    }
+    _tslImportShowModal(changes);
+}
+
+function _fieldLabel(f) {
+    if (f === 'parent_shm') return window.t('labels.js.parent_video_source');
+    if (f === 'projet')     return 'Projet';
+    const m = /^label_(\d+)$/.exec(f);
+    if (m) return _names[parseInt(m[1])] || f;
+    return f;
+}
+
+function _tslImportShowModal(changes) {
+    _importPendingChanges = changes;
+    const nNew = changes.filter(c => c.kind === 'new').length;
+    const nMod = changes.filter(c => c.kind === 'modified').length;
+
+    const rowsHtml = changes.map((ch, idx) => {
+        const badge = ch.kind === 'new'
+            ? '<span class="imp-badge new">Nouvelle</span>'
+            : `<span class="imp-badge mod">${T('labels.js.modified')}</span>`;
+        const cls = ch.kind === 'new' ? 'imp-new' : 'imp-mod';
+
+        let detailHtml = '';
+        if (ch.kind === 'new') {
+            const parts = Object.entries(ch.incoming)
+                .filter(([,v]) => v != null && v !== '')
+                .map(([f,v]) => `<em>${escapeHtml(_fieldLabel(f))}</em> : ${escapeHtml(String(v))}`)
+                .join(' · ');
+            detailHtml = parts || '<span style="opacity:.5">vide</span>';
+        } else {
+            detailHtml = ch.diffs.map(d =>
+                `<em>${escapeHtml(_fieldLabel(d.field))}</em> : ` +
+                (d.old ? `<span class="diff-old">${escapeHtml(d.old)}</span>` : '<span style="opacity:.4">—</span>') +
+                ` <span class="diff-new">${escapeHtml(d.new) || `<span style="opacity:.4">${T('labels.js.cleared')}</span>`}</span>`
+            ).join(' · ');
+        }
+
+        return `<tr class="${cls}" data-idx="${idx}">
+            <td style="white-space:nowrap">${badge}</td>
+            <td style="font-family:monospace;font-size:0.9em;white-space:nowrap">${escapeHtml(ch.shm)}</td>
+            <td>${detailHtml}</td>
+            <td style="text-align:center">
+                <input type="checkbox" class="imp-check" data-idx="${idx}" checked>
+            </td>
+        </tr>`;
+    }).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'tsl-import-modal';
+    modal.innerHTML = `
+        <div class="modal-box">
+            <div class="modal-head">
+                <strong>Import CSV</strong>
+                <span class="meta">
+                    ${nNew ? `<span style="color:#22aa44">${nNew} nouvelle${nNew>1?'s':''}</span>` : ''}
+                    ${nNew && nMod ? ' · ' : ''}
+                    ${nMod ? `<span style="color:#cc8800">${nMod} modifiée${nMod>1?'s':''}</span>` : ''}
+                </span>
+                <span class="meta" style="margin-left:auto;font-size:0.85em">
+                    ${T('labels.js.uncheck_hint')}
+                </span>
+            </div>
+            <div class="modal-body">
+                <table>
+                    <thead><tr>
+                        <th>${T('labels.js.col_status')}</th><th>${T('labels.js.src_shm')}</th><th>${T('labels.js.col_changes')}</th>
+                        <th style="width:36px"><input type="checkbox" id="imp-check-all" checked
+                            onchange="document.querySelectorAll('.imp-check').forEach(c=>c.checked=this.checked)"></th>
+                    </tr></thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>
+            <div class="modal-foot">
+                <button class="btn" onclick="document.getElementById('tsl-import-modal').remove()">${T('labels.js.cancel')}</button>
+                <button class="btn btn-green" onclick="_tslImportApply()">
+                    Appliquer les lignes sélectionnées
+                </button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+function _tslImportApply() {
+    const changes = _importPendingChanges;
+    if (!changes) return;
+    const checks = document.querySelectorAll('#tsl-import-modal .imp-check');
+    const selected = new Set([...checks].filter(c => c.checked).map(c => +c.dataset.idx));
+    if (!selected.size) {
+        typeof mxlToast === 'function' && mxlToast(T('labels.js.no_row_selected'), 'warning');
+        return;
+    }
+
+    const knownFields = ['parent_shm', 'projet',
+                         ...Array.from({length:8}, (_,i) => `label_${i+2}`)];
+    const rowsByShm = Object.fromEntries(_rows.map(r => [r.shm, r]));
+    let applied = 0;
+
+    for (const idx of selected) {
+        const ch = changes[idx];
+        if (!ch) continue;
+
+        if (ch.kind === 'new') {
+            // Créer la ligne
+            const r = emptyRow(ch.shm, '', '', false);
+            for (const field of knownFields) {
+                if (!(field in ch.incoming)) continue;
+                if (field === 'parent_shm') r.parent_shm = ch.incoming.parent_shm || null;
+                else r[field] = ch.incoming[field] || '';
+            }
+            r._dirty = true;
+            _rows.push(r);
+        } else {
+            // Modifier la ligne existante
+            const r = rowsByShm[ch.shm];
+            if (!r) continue;
+            for (const d of ch.diffs) {
+                if (d.field === 'parent_shm') r.parent_shm = ch.incoming.parent_shm || null;
+                else r[d.field] = ch.incoming[d.field] || '';
+            }
+            r._dirty = true;
+        }
+        applied++;
+    }
+
+    document.getElementById('tsl-import-modal').remove();
+    tslApplyView();
+    tslRender();
+    typeof mxlToast === 'function' && mxlToast(
+        window.t('labels.js.applied_n').replace('{n}', applied), 'success');
+}
+
+let _orphInfo = [];
+
+/* Les lignes dont plus aucun conteneur ne déclare le flux.
+
+   ★ CE QUI EST CONFIGURÉ ATTEND SON CONTENEUR. Un libellé écrit à la main, une correspondance
+   TSL ou IS-07 : c'est un réglage, et le conteneur reviendra peut-être. On le garde, on le
+   MARQUE, et on laisse l'exploitant trancher. Les lignes SANS aucune configuration, elles, sont
+   balayées au démarrage (`db_purger_libelles_orphelins`) : elles ne portent le travail de
+   personne et il n'y a rien à décider. C'est pour ça que ce dialogue ne parle plus que des
+   configurées — les autres ne sont déjà plus là.
+
+   ⚠ Les lignes qu'une correspondance vise encore ne sont pas proposées au retrait : le tally
+   les adresse, et les effacer casserait quelque chose en silence. Défaire la correspondance
+   d'abord. */
+function tslOrphelinsOuvrir() {
+    const pleines = _orphInfo.filter(x => x.rempli.length && !x.mappe);
+    const bloquees = _orphInfo.filter(x => x.mappe);
+    const liste = (t) => t.slice(0, 12).map(x => escapeHtml(x.shm)).join(', ')
+                       + (t.length > 12 ? ` … (+${t.length - 12})` : '');
+    const el = document.createElement('div');
+    el.id = 'tsl-orph-modal';
+    el.style.cssText = 'position:fixed;inset:0;background:#0008;display:flex;'
+        + 'align-items:center;justify-content:center;z-index:900';
+    el.innerHTML = `<div style="background:var(--bg-elev);border:1px solid var(--border);
+        border-radius:var(--radius,6px);padding:var(--space-4);max-width:760px;width:92%">
+        <h3 style="margin-top:0">${T('labels.js.orphan_title2')}</h3>
+        <p class="meta">${T('labels.js.orphan_intro')}</p>
+        ${pleines.length ? `<p><b>${pleines.length}</b> ${T('labels.js.orphan_filled')}<br>
+            <span class="meta" style="font-size:.85em">${liste(pleines)}</span></p>` : ''}
+        ${bloquees.length ? `<p><b>${bloquees.length}</b> ${T('labels.js.orphan_mapped')}<br>
+            <span class="meta" style="font-size:.85em">${liste(bloquees)}</span></p>` : ''}
+        <div style="display:flex;gap:var(--space-2);margin-top:var(--space-3)">
+            <button class="btn" onclick="document.getElementById('tsl-orph-modal').remove()">
+                ${T('labels.js.cancel')}</button>
+            ${pleines.length ? `<button class="btn btn-red" onclick="tslOrphelinsPurger(true)">
+                ${T('labels.js.orphan_purge_all')}</button>` : ''}
+        </div></div>`;
+    document.body.appendChild(el);
+}
+
+async function tslOrphelinsPurger(avecLibelles) {
+    const cibles = _orphInfo.filter(x => !x.mappe && (avecLibelles || !x.rempli.length));
+    if (avecLibelles && !confirm(T('labels.js.orphan_confirm')
+            .replace('{n}', cibles.filter(x => x.rempli.length).length))) return;
+    const r = await fetch('/api/source_labels/orphelins', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({shms: cibles.map(x => x.shm)})});
+    const j = await r.json().catch(() => ({}));
+    document.getElementById('tsl-orph-modal')?.remove();
+    if (!r.ok) { typeof mxlToast === 'function' && mxlToast(j.error || 'Erreur', 'error'); return; }
+    typeof mxlToast === 'function' && mxlToast(
+        T('labels.js.orphan_done').replace('{n}', j.retires || 0), 'success');
+    await tslInit();
+}
+
+/* Ajouter / retirer une colonne de libellé personnalisée.
+
+   ★ RETIRER N'EFFACE RIEN. Les huit colonnes existent en base et les lignes les portent toutes :
+   on ne change que le nombre OFFERT. Une colonne masquée garde ses libellés, et les rouvrir les
+   fait réapparaître intacts — c'est ce qui rend le geste sans risque, et il faut le dire, sinon
+   personne n'ose s'en servir.
+
+   ⚠ ON REFUSE DE RETIRER UNE COLONNE REMPLIE sans le dire. Elle ne serait pas perdue, mais elle
+   deviendrait invisible : quelqu'un la chercherait sans savoir qu'il faut réaugmenter le nombre. */
+async function _tslColonnes(n) {
+    const r = await fetch('/api/tsl/label_cols', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({actives: n})});
+    if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        typeof mxlToast === 'function' && mxlToast(e.error || T('labels.js.col_err'), 'error');
+        return;
+    }
+    await tslInit();
+}
+
+function tslColonneAjouter() {
+    const n = nbLabelsPerso();
+    if (n >= 8) {
+        typeof mxlToast === 'function' && mxlToast(T('labels.js.col_max'), 'info');
+        return;
+    }
+    _tslColonnes(n + 1);
+}
+
+function tslColonneRetirer() {
+    const n = nbLabelsPerso();
+    if (n <= 1) return;
+    const cle = `label_${n + 1}`;               // la dernière offerte : label_2 est la 1ʳᵉ
+    const remplies = _rows.filter(r => (r[cle] || '').toString().trim() !== '').length;
+    if (remplies && !confirm(T('labels.js.col_del_filled')
+            .replace('{n}', remplies).replace('{c}', _names[n + 1] || cle))) return;
+    _tslColonnes(n - 1);
+}
+
+// ─── Tally live (≥2 Hz) — pastille de tally par cellule d'index TSL ──────────
+let _tallyState = {};   // "idx_lvl" → color
+
+// Colore les pastilles en place (ne re-rend pas la grille → pas d'écrasement d'édition)
+function _applyLiveTally() {
+    const DOT = { red:'#cc2222', green:'#22aa44', amber:'#cc8800', off:'#444' };
+    // ★ UN NIVEAU, LU DIRECTEMENT. On recomposait ici la « bande » LH/RH/TT à partir de
+    // `tally_base` — trois clés d'état pour un seul signal, et une pastille qui s'éteignait dès
+    // qu'une connexion changeait de base. La connexion porte maintenant SON niveau, dont l'état
+    // dit déjà rouge, vert ou ambre.
+    const nivByConn = {}, numByNiv = {};
+    for (const c of _tslConns) nivByConn[c.id] = c.level_uuid || '';
+    for (const n of (_tslNiveaux || [])) numByNiv[n.uuid] = n.num;
+    document.querySelectorAll('#tsl-tbody .tsl-live-dot').forEach(el => {
+        const connId = +el.dataset.conn, idx = el.dataset.idx;
+        const niv = nivByConn[connId] || '';
+        const etat = niv ? (_tallyState[`${idx}_${niv}`] || 'off') : 'off';
+        el.style.background = DOT[etat] || DOT.off;
+        // L'infobulle montre le NUMÉRO, jamais l'UUID : c'est ce que l'exploitant lit ailleurs.
+        el.title = `Tally IDX ${idx} — niveau ${numByNiv[niv] || '—'} : ${etat}`;
+    });
+}
+
+function keyToCol(key) {
+    if (key === 'projet') return COL_PROJET;
+    if (key.startsWith('label_')) return parseInt(key.slice(6)) + 3;   // label_2→5 … label_9→12
+    return -1;
+}
+
+// Fusionne les labels serveur dans les lignes NON modifiées localement (jamais d'écrasement
+// d'une édition non enregistrée). Renvoie la liste des cellules réellement changées.
+const _LABEL_KEYS = ['projet','label_2','label_3','label_4','label_5','label_6','label_7','label_8','label_9'];
+function _mergeServerLabels(serverRows) {
+    const byShm = {};
+    for (const sl of serverRows) byShm[sl.shm] = sl;
+    const changed = [];
+    for (let ri = 0; ri < _rows.length; ri++) {
+        const row = _rows[ri];
+        if (row._dirty) continue;               // préserver les éditions locales non enregistrées
+        const sl = byShm[row.shm];
+        if (!sl) continue;
+        for (const key of _LABEL_KEYS) {
+            const sv = sl[key] || '';
+            if ((row[key] || '') !== sv) { row[key] = sv; changed.push({ ri, key }); }
+        }
+        const sp = sl.parent_shm || null;
+        if ((row.parent_shm || null) !== sp) row.parent_shm = sp;
+    }
+    return changed;
+}
+
+function _flashCells(changed) {
+    for (const { ri, key } of changed) {
+        const c = keyToCol(key);
+        const td = document.querySelector(`#tsl-tbody td[data-ri="${ri}"][data-c="${c}"]`);
+        if (td) { td.classList.remove('tsl-flash'); void td.offsetWidth; td.classList.add('tsl-flash'); }
+    }
+}
+
+// Poll live combiné : tally (pastilles, toujours) + labels (re-render seulement si un label a
+// changé et qu'on n'édite pas — sinon différé pour ne pas casser la saisie).
+async function _labelsLivePoll() {
+    try {
+        const [rstate, rsl] = await Promise.all([
+            fetch('/api/tsl/state'),
+            fetch('/api/source_labels'),
+        ]);
+        if (rstate.ok) _tallyState = await rstate.json();
+        if (!_editing && rsl.ok) {
+            const changed = _mergeServerLabels(await rsl.json());
+            if (changed.length) { tslApplyView(); tslRender(); _flashCells(changed); return; }
+        }
+        _applyLiveTally();
+    } catch(e) { /* best-effort */ }
+}
+// 2,5 Hz demandés — MXLPoll en fait un rythme MINIMAL entre deux fins de passe : à 400 ms, une
+// réponse un peu lente suffisait à empiler les requêtes (cf. layout.html).
+window.MXLPoll(_labelsLivePoll, 400);
+
+tslInit();
+</script>
+{% endblock %}

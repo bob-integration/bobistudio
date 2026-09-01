@@ -1,0 +1,61 @@
+{% extends "layout.html" %}
+{% block title %}{{ _('projects.ws_title') }} — Bobi.Studio{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>{{ _('projects.ws_title') }}</h1>
+    <div class="grid" id="ws-grid">
+        <p style="color:var(--text-muted)">…</p>
+    </div>
+</div>
+
+<script>
+(function () {
+    const grid = document.getElementById('ws-grid');
+    const esc = s => String(s ?? '').replace(/[&<>"']/g,
+        c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const roleLabel = r => window.t('projects.role_' + r) || r;
+
+    async function load() {
+        let projs;
+        try {
+            const r = await fetch('/api/projects');
+            if (!r.ok) throw new Error(r.status);
+            projs = await r.json();
+        } catch (e) {
+            grid.innerHTML = '<p class="alert alert-error">' +
+                esc(window.t('projects.ws_load_err')) + '</p>';
+            return;
+        }
+        if (!projs.length) {
+            grid.innerHTML = '<p style="color:var(--text-muted)">' +
+                esc(window.t('projects.ws_empty')) + '</p>';
+            return;
+        }
+        const stateBadge = s => {
+            if (s === 'active')    return '<span class="badge running">' + esc(window.t('projects.state_active')) + '</span>';
+            if (s === 'loading')   return '<span class="badge warn">' + esc(window.t('projects.state_loading')) + '</span>';
+            if (s === 'unloading') return '<span class="badge warn">' + esc(window.t('projects.state_unloading')) + '</span>';
+            if (s === 'error')     return '<span class="badge stopped">' + esc(window.t('projects.state_error')) + '</span>';
+            return '<span class="badge unknown">' + esc(window.t('projects.state_saved')) + '</span>';
+        };
+        grid.innerHTML = projs.map(p => {
+            const role = p.my_role ? '<span class="badge ready">' +
+                esc(roleLabel(p.my_role)) + '</span>' : '';
+            const count = Array.isArray(p.snapshot)
+                ? '<small style="color:var(--text-muted)">' + p.snapshot.length + ' ' +
+                  esc(window.t('projects.ws_containers')) + '</small>' : '';
+            return '<a class="card ws-card" href="/workspace/' + p.id + '">' +
+                '<h3 style="margin-top:0">' + esc(p.name) + '</h3>' +
+                '<div style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap">' +
+                stateBadge(p.state) + role + count + '</div></a>';
+        }).join('');
+    }
+    load();
+})();
+</script>
+<style>
+.ws-card { text-decoration: none; color: var(--text); display: block; }
+.ws-card:hover { background: var(--bg-hover); }
+</style>
+{% endblock %}

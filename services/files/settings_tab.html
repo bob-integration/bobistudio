@@ -1,0 +1,228 @@
+<script>
+// i18n (catalogue service.files.*) — repli sur le français passé en 2e argument.
+const _filesT = (k, repli) => { const v = window.t ? window.t(k) : k; return (v && v !== k) ? v : repli; };
+</script>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- Copyright (C) 2026 BOBI SAS, France -->
+<link rel="stylesheet" href="/static/code_editor.css?v={{ asset_v('code_editor.css') }}">
+<script src="/static/code_editor.js?v={{ asset_v('code_editor.js') }}"></script>
+<div id="set-tab-files" class="set-tab-content" style="display:none">
+  <h2>{{ _('service.files.fichiers') }}</h2>
+  <div class="meta" style="margin-bottom:var(--space-3)">{{ _('service.files.navigation_dans_les_racines_accessibles_') }}</div>
+
+  <div class="row" style="gap:var(--space-2); flex-wrap:wrap; align-items:center; margin-bottom:var(--space-2)">
+    <span class="meta">{{ _('service.files.racine') }}</span>
+    <span id="files-roots" class="row" style="gap:var(--space-1); flex-wrap:wrap"></span>
+  </div>
+
+  <div class="row" style="gap:var(--space-3); align-items:center; flex-wrap:wrap; margin-bottom:var(--space-2)">
+    <div id="files-crumb" class="meta" style="font-family:var(--mono,monospace)">/</div>
+    <span style="flex:1"></span>
+    <input id="files-search" placeholder="Rechercher…" style="max-width:200px" oninput="filesRender()">
+    <button class="btn" id="files-upload-btn" onclick="document.getElementById('files-upload-input').click()" hidden>{{ _('service.files.importer') }}</button>
+    <input type="file" id="files-upload-input" multiple style="display:none" onchange="filesUpload(this.files)">
+    <details style="position:relative">
+      <summary class="btn" style="cursor:pointer">{{ _('service.files.colonnes') }}</summary>
+      <div style="position:absolute; right:0; z-index:10; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:var(--space-2); white-space:nowrap">
+        <label class="meta" style="display:block"><input type="checkbox" class="files-col" value="size" checked onchange="filesRender()"> {{ _('service.files.taille') }}</label>
+        <label class="meta" style="display:block"><input type="checkbox" class="files-col" value="mtime" checked onchange="filesRender()"> {{ _('service.files.modifie') }}</label>
+        <label class="meta" style="display:block"><input type="checkbox" class="files-col" value="ext" onchange="filesRender()"> Extension</label>
+        <label class="meta" style="display:block"><input type="checkbox" class="files-col" value="type" onchange="filesRender()"> Type</label>
+      </div>
+    </details>
+  </div>
+
+  <div id="files-progress" style="display:none; margin:6px 0">
+    <div class="meta" id="files-progress-label"></div>
+    <progress id="files-progress-bar" value="0" max="100" style="width:100%; height:14px"></progress>
+  </div>
+
+  <div id="files-list" class="meta" style="border:1px solid var(--border); border-radius:8px; overflow:auto; max-height:420px">{{ _('service.files.selectionnez_une_racine') }}</div>
+
+  <!-- Éditeur de fichier texte -->
+  <div id="files-editor" style="display:none; margin-top:var(--space-3); border-top:1px solid var(--border); padding-top:var(--space-3)">
+    <div class="row" style="align-items:center; gap:var(--space-3); margin-bottom:var(--space-2)">
+      <strong id="files-edit-name" style="font-family:var(--mono,monospace)"></strong>
+      <span style="flex:1"></span>
+      <button class="btn btn-green" id="files-edit-save" onclick="filesSave()">{{ _('service.files.enregistrer') }}</button>
+      <button class="btn" onclick="filesCloseEditor()">{{ _('service.files.fermer') }}</button>
+      <span id="files-edit-msg" class="meta"></span>
+    </div>
+    <textarea id="files-edit-area" spellcheck="false"></textarea>
+  </div>
+</div>
+
+<script>
+(function () {
+  let ROOT = null, ROOT_WRITABLE = false, PATH = '', ITEMS = [], SORT = {key:'name', dir:1};
+  let EDIT = null;  // {root, path}
+  let CE = null;    // éditeur de code (CodeEditor)
+  const _fp = name => PATH ? PATH + '/' + name : name;
+
+  function _fmtSize(n) { if (n==null) return ''; const u=['o','Ko','Mo','Go']; let i=0,v=n; while(v>=1024&&i<u.length-1){v/=1024;i++;} return (i?v.toFixed(1):v)+' '+u[i]; }
+  function _fmtDate(t) { if (!t) return ''; const d=new Date(t*1000); return d.toLocaleString(); }
+  function _cols() { return Array.from(document.querySelectorAll('.files-col:checked')).map(c=>c.value); }
+  function _esc(s){ return (window.escapeHtml ? escapeHtml(s) : String(s)); }
+
+  window.filesInit = async function () {
+    try {
+      const d = await (await fetch('/api/files/roots')).json();
+      const box = document.getElementById('files-roots');
+      const roots = d.roots || [];
+      if (!roots.length) { box.innerHTML = '<span class="meta">Aucune racine accessible.</span>'; return; }
+      box.innerHTML = roots.map(r => `<button class="btn files-root-btn" data-id="${_esc(r.id)}" data-w="${r.writable?1:0}" onclick="filesOpenRoot('${_esc(r.id)}',${r.writable?1:0})">${_esc(r.label)}</button>`).join('');
+      if (!ROOT) filesOpenRoot(roots[0].id, roots[0].writable);
+    } catch (e) { document.getElementById('files-roots').textContent = 'Erreur de chargement.'; }
+  };
+
+  window.filesOpenRoot = function (id, writable) {
+    ROOT = id; ROOT_WRITABLE = !!writable; PATH = '';
+    filesCloseEditor();
+    document.querySelectorAll('.files-root-btn').forEach(b => b.classList.toggle('btn-blue', b.dataset.id===id));
+    filesLoad();
+  };
+
+  window.filesGoto = function (p) { PATH = p; filesLoad(); };
+
+  async function filesLoad() {
+    const box = document.getElementById('files-list');
+    box.textContent = 'Chargement…';
+    try {
+      const url = `/api/files/list?root=${encodeURIComponent(ROOT)}&path=${encodeURIComponent(PATH)}`;
+      const d = await (await fetch(url)).json();
+      if (d.error) { box.innerHTML = `<div style="padding:8px; color:var(--status-stopped-fg)">${_esc(d.error)}</div>`; return; }
+      ITEMS = d.items || []; ROOT_WRITABLE = !!d.writable;
+      const ub = document.getElementById('files-upload-btn'); if (ub) ub.hidden = !ROOT_WRITABLE;
+      filesRender();
+    } catch (e) { box.textContent = 'Erreur.'; }
+  }
+
+  window.filesRender = function () {
+    // fil d'Ariane
+    const crumb = document.getElementById('files-crumb');
+    const segs = PATH ? PATH.split('/') : [];
+    let acc = '';
+    let html = `<a href="#" onclick="filesGoto('');return false">${_esc(ROOT||'/')}</a>`;
+    segs.forEach(s => { acc = acc ? acc+'/'+s : s; const a=acc; html += ` / <a href="#" onclick="filesGoto('${_esc(a)}');return false">${_esc(s)}</a>`; });
+    crumb.innerHTML = html;
+    // filtre + tri
+    const q = (document.getElementById('files-search').value||'').toLowerCase();
+    let rows = ITEMS.filter(it => !q || it.name.toLowerCase().includes(q));
+    rows.sort((a,b) => {
+      if (a.type!==b.type) return a.type==='dir'?-1:1;
+      const k=SORT.key, va=a[k], vb=b[k];
+      if (va<vb) return -SORT.dir; if (va>vb) return SORT.dir; return 0;
+    });
+    const cols = _cols();
+    const th = (k,lbl) => `<th style="text-align:left; padding:4px 8px; cursor:pointer" onclick="filesSort('${k}')">${lbl}${SORT.key===k?(SORT.dir>0?' ▲':' ▼'):''}</th>`;
+    let h = '<table style="width:100%; border-collapse:collapse"><thead><tr>' + th('name', _filesT('service.files.js.col_name','Nom'))
+      + (cols.includes('type')?th('type', _filesT('service.files.js.col_type','Type')):'') + (cols.includes('ext')?th('ext', _filesT('service.files.js.col_ext','Ext')):'')
+      + (cols.includes('size')?th('size', _filesT('service.files.js.col_size','Taille')):'') + (cols.includes('mtime')?th('mtime', _filesT('service.files.js.col_mtime','Modifié')):'')
+      + '<th style="padding:4px 8px"></th></tr></thead><tbody>';
+    if (PATH) { h += `<tr><td colspan="7" style="padding:4px 8px"><a href="#" onclick="filesGoto('${_esc(PATH.split('/').slice(0,-1).join('/'))}');return false">⬆ ..</a></td></tr>`; }
+    rows.forEach(it => {
+      const fp = _fp(it.name);
+      const open = it.type==='dir' ? `filesGoto('${_esc(fp)}')` : `filesOpen('${_esc(fp)}')`;
+      const icon = it.type==='dir' ? '📁' : '📄';
+      let act = '';
+      if (it.type==='file') act += `<a href="#" title="${_filesT('service.files.js.download','Télécharger')}" onclick="filesDownload('${_esc(fp)}');return false">📥</a> `;
+      if (ROOT_WRITABLE) act += `<a href="#" title="${_filesT('service.files.js.rename','Renommer')}" onclick="filesRename('${_esc(fp)}','${_esc(it.name)}');return false">✎</a> <a href="#" title="${_filesT('service.files.js.delete','Supprimer')}" onclick="filesDelete('${_esc(fp)}','${_esc(it.name)}');return false">🗑</a>`;
+      h += `<tr style="border-top:1px solid var(--border-soft)"><td style="padding:4px 8px"><a href="#" onclick="${open};return false">${icon} ${_esc(it.name)}</a></td>`
+        + (cols.includes('type')?`<td style="padding:4px 8px">${it.type}</td>`:'')
+        + (cols.includes('ext')?`<td style="padding:4px 8px">${_esc(it.ext||'')}</td>`:'')
+        + (cols.includes('size')?`<td style="padding:4px 8px">${it.type==='dir'?'':_fmtSize(it.size)}</td>`:'')
+        + (cols.includes('mtime')?`<td style="padding:4px 8px">${_fmtDate(it.mtime)}</td>`:'')
+        + `<td style="padding:4px 8px; white-space:nowrap">${act}</td></tr>`;
+    });
+    h += '</tbody></table>';
+    document.getElementById('files-list').innerHTML = rows.length||PATH ? h : '<div style="padding:8px">Dossier vide.</div>';
+  };
+
+  window.filesSort = function (k) { if (SORT.key===k) SORT.dir=-SORT.dir; else {SORT.key=k; SORT.dir=1;} filesRender(); };
+
+  window.filesOpen = async function (path) {
+    const msg = document.getElementById('files-edit-msg');
+    try {
+      const d = await (await fetch(`/api/files/read?root=${encodeURIComponent(ROOT)}&path=${encodeURIComponent(path)}`)).json();
+      if (d.error) { mxlToast ? mxlToast(d.error,'error') : alert(d.error); return; }
+      EDIT = {root: ROOT, path};
+      if (!CE && window.CodeEditor) CE = CodeEditor.enhance(document.getElementById('files-edit-area'));
+      document.getElementById('files-edit-name').textContent = ROOT + '/' + path;
+      if (CE) { CE.setLangByName(path); CE.setValue(d.content); CE.setReadOnly(!ROOT_WRITABLE); }
+      else document.getElementById('files-edit-area').value = d.content;
+      document.getElementById('files-edit-save').style.display = ROOT_WRITABLE ? '' : 'none';
+      if (msg) msg.textContent = ROOT_WRITABLE ? '' : 'lecture seule';
+      document.getElementById('files-editor').style.display = 'block';
+    } catch (e) { alert('Erreur : ' + e); }
+  };
+
+  window.filesSave = async function () {
+    if (!EDIT) return;
+    const msg = document.getElementById('files-edit-msg');
+    msg.style.color = 'var(--text-muted)'; msg.textContent = 'Enregistrement…';
+    try {
+      const content = CE ? CE.getValue() : document.getElementById('files-edit-area').value;
+      const r = await fetch('/api/files/write', {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({root: EDIT.root, path: EDIT.path, content})});
+      const j = await r.json().catch(()=>({}));
+      if (r.ok) { msg.style.color='var(--status-running-fg)'; msg.textContent='✓ ' + _filesT('service.files.js.saved','enregistré'); }
+      else { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+(j.error||_filesT('service.files.js.fail','échec')); }
+    } catch (e) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; }
+  };
+
+  window.filesCloseEditor = function () { EDIT=null; const e=document.getElementById('files-editor'); if (e) e.style.display='none'; };
+
+  window.filesDownload = function (path) {
+    window.location = `/api/files/download?root=${encodeURIComponent(ROOT)}&path=${encodeURIComponent(path)}`;
+  };
+
+  function _xhrUpload(f, onProg) {
+    return new Promise((resolve) => {
+      const fd = new FormData(); fd.append('root', ROOT); fd.append('path', PATH); fd.append('file', f);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/files/upload');
+      xhr.upload.onprogress = e => { if (e.lengthComputable) onProg(e.loaded / e.total); };
+      xhr.onload = () => { let err=null; if (xhr.status<200||xhr.status>=300){ try{err=(JSON.parse(xhr.responseText).error)||('HTTP '+xhr.status);}catch(_){err='HTTP '+xhr.status;} } resolve(err); };
+      xhr.onerror = () => resolve(_filesT('service.files.js.net_error','erreur réseau'));
+      xhr.send(fd);
+    });
+  }
+
+  window.filesUpload = async function (fileList) {
+    const files = Array.from(fileList || []); if (!files.length) return;
+    const wrap = document.getElementById('files-progress');
+    const bar = document.getElementById('files-progress-bar');
+    const lbl = document.getElementById('files-progress-label');
+    wrap.style.display = 'block';
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      lbl.textContent = `Import ${i+1}/${files.length} : ${f.name} (${_fmtSize(f.size)})`;
+      bar.value = 0;
+      const err = await _xhrUpload(f, p => { bar.value = Math.round(p * 100); });
+      if (err) (window.mxlToast||alert)('Upload ' + f.name + ' : ' + err, 'error');
+    }
+    wrap.style.display = 'none';
+    document.getElementById('files-upload-input').value = '';
+    filesLoad();
+  };
+
+  window.filesRename = async function (path, name) {
+    const nn = prompt(_filesT('service.files.js.rename_prompt','Renommer « {n} » en :').replace('{n}', name), name); if (!nn || nn===name) return;
+    const r = await fetch('/api/files/rename', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({root: ROOT, path, new_name: nn})});
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok) (window.mxlToast||alert)(_filesT('service.files.js.rename_lbl','Renommage : ')+(j.error||_filesT('service.files.js.fail','échec')), 'error');
+    filesLoad();
+  };
+
+  window.filesDelete = async function (path, name) {
+    if (!confirm(_filesT('service.files.del_confirm','Supprimer « {name} » ? (dossier : doit être vide)').replace('{name}', name))) return;
+    const r = await fetch('/api/files/delete', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({root: ROOT, path})});
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok) (window.mxlToast||alert)(_filesT('service.files.js.delete_lbl','Suppression : ')+(j.error||_filesT('service.files.js.fail','échec')), 'error');
+    if (EDIT && EDIT.path===path) filesCloseEditor();
+    filesLoad();
+  };
+})();
+</script>

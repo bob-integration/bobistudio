@@ -1,0 +1,157 @@
+{% extends "layout.html" %}
+{% set page = 'probe' %}
+{% block title %}{{ _('probe.page_title') }}{% endblock %}
+
+{% block head %}
+<style>
+.probe-intro { color:var(--text-muted); max-width:70ch; margin:0 0 var(--space-3); }
+.probe-ptp { border:1px solid var(--border); border-left:3px solid #d9a441;
+    background:color-mix(in srgb, #d9a441 8%, transparent); border-radius:8px;
+    padding:8px 12px; margin:0 0 var(--space-4); color:var(--text); font-size:.9em; }
+.probe-panel { border:1px solid var(--border); border-radius:10px; padding:var(--space-3);
+    margin-bottom:var(--space-4); background:var(--bg-card, var(--surface)); }
+.probe-panel h2 { margin:0 0 var(--space-3); font-size:1.05em; }
+.probe-row { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
+.probe-field { display:flex; flex-direction:column; gap:4px; }
+.probe-field label { font-size:.8em; color:var(--text-muted); }
+.probe-field select, .probe-field input[type=text], .probe-panel textarea {
+    background:var(--surface); color:var(--text); border:1px solid var(--border);
+    border-radius:6px; padding:6px 8px; font:inherit; min-width:220px; }
+.probe-panel textarea { width:100%; min-height:70px; font-family:monospace; font-size:.85em; }
+.btn-probe { background:var(--accent, #5b8def); color:#fff; border:none; border-radius:6px;
+    padding:7px 14px; cursor:pointer; font:inherit; }
+.btn-probe[disabled] { opacity:.5; cursor:not-allowed; }
+.btn-ghost { background:none; border:1px solid var(--border); color:var(--text-muted);
+    border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
+.iface-busy { color:#c0553b; }
+
+.probe-cards { display:grid; gap:var(--space-4);
+    grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); }
+.probe-card { border:1px solid var(--border); border-radius:10px; overflow:hidden;
+    background:var(--bg-card, var(--surface)); }
+.probe-card-head { display:flex; align-items:center; gap:10px; padding:10px 12px;
+    border-bottom:1px solid var(--border); }
+.probe-card-head .hn { font-weight:600; }
+.probe-card-head .node { color:var(--text-muted); font-size:.85em; }
+.probe-card-body { padding:12px; }
+.light { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:12px;
+    font-size:.78em; font-weight:700; letter-spacing:.03em; }
+.light::before { content:""; width:9px; height:9px; border-radius:50%; background:currentColor; }
+.light.narrow   { color:#2e9e5b; background:color-mix(in srgb,#2e9e5b 15%,transparent); }
+.light.wide     { color:#c98a1e; background:color-mix(in srgb,#c98a1e 15%,transparent); }
+.light.failed   { color:#c0392b; background:color-mix(in srgb,#c0392b 15%,transparent); }
+.light.nosignal { color:var(--text-muted); background:color-mix(in srgb,#888 12%,transparent); }
+.gauges { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:12px; }
+.gauge { border:1px solid var(--border); border-radius:8px; padding:8px 10px; }
+.gauge .k { font-size:.72em; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; }
+.gauge .v { font-size:1.35em; font-weight:700; font-variant-numeric:tabular-nums; }
+.gauge .u { font-size:.7em; color:var(--text-muted); }
+.cause { margin-top:10px; font-size:.85em; color:#c0392b; }
+.transport { margin-top:12px; font-size:.83em; color:var(--text-muted); }
+.transport .t-row { display:flex; justify-content:space-between; border-top:1px dashed var(--border); padding:3px 0; }
+.card-actions { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+.muted { color:var(--text-muted); }
+
+/* Phase B — monitoring / timeline d'incidents */
+.pm-toolbar { display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;
+    margin-bottom:var(--space-3); }
+.pm-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.pm-filters select { background:var(--surface); color:var(--text); border:1px solid var(--border);
+    border-radius:6px; padding:5px 8px; font:inherit; }
+.pm-watched-wrap { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:.85em; }
+.pm-watched { display:flex; gap:6px; flex-wrap:wrap; }
+.pm-chip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border);
+    border-radius:12px; padding:2px 8px; font-size:.85em; }
+.pm-chip button { background:none; border:none; color:var(--text-muted); cursor:pointer; font:inherit; padding:0; }
+.pm-timeline { display:flex; flex-direction:column; gap:1px; }
+.pm-ev { display:grid; grid-template-columns:150px 90px 1fr auto; gap:10px; align-items:baseline;
+    padding:7px 10px; border-left:3px solid var(--border); background:var(--surface); font-size:.86em; }
+.pm-ev.error   { border-left-color:#c0392b; }
+.pm-ev.warning { border-left-color:#c98a1e; }
+.pm-ev.info    { border-left-color:#2e9e5b; }
+.pm-ev .pm-ts { color:var(--text-muted); font-variant-numeric:tabular-nums; font-size:.92em; }
+.pm-ev .pm-flow { font-weight:600; }
+.pm-ev .pm-msg { color:var(--text); }
+.pm-badge { font-size:.72em; font-weight:700; padding:2px 8px; border-radius:10px; text-transform:uppercase;
+    letter-spacing:.03em; align-self:center; }
+.pm-badge.open  { color:#c0392b; background:color-mix(in srgb,#c0392b 14%,transparent); }
+.pm-badge.closed{ color:var(--text-muted); background:color-mix(in srgb,#888 12%,transparent); }
+.pm-kind { color:var(--text-muted); font-size:.9em; }
+</style>
+{% endblock %}
+
+{% block content %}
+{# Barre d'onglets MIROIR de Monitoring : la Sonde n'a plus de lien de premier niveau, elle vit
+   dans la famille Monitoring. Les autres onglets renvoient sur /monitoring#<vue> (la page lit
+   déjà le hash au chargement). #}
+<div class="mon-tabs" role="tablist">
+    <a class="tab" href="/monitoring#overview" role="tab">{{ _('monitoring.tab_overview') }}</a>
+    <a class="tab" href="/monitoring#nodes"    role="tab">{{ _('monitoring.tab_nodes') }}</a>
+    <a class="tab" href="/monitoring#fabric"   role="tab">{{ _('monitoring.tab_fabric') }}</a>
+    <a class="tab" href="/monitoring#rdma"     role="tab">{{ _('monitoring.tab_rdma') }}</a>
+    <a class="tab" href="/monitoring#logs"     role="tab">{{ _('monitoring.tab_logs') }}</a>
+    <a class="tab active" href="/probe" role="tab" aria-current="page">{{ _('nav.probe') }}</a>
+</div>
+
+<h1>{{ _('probe.title') }}</h1>
+<p class="probe-intro">{{ _('probe.intro') }}</p>
+<div class="probe-ptp">⏱ {{ _('probe.ptp_reminder') }}</div>
+
+{% if not probe_available %}
+<div class="probe-panel muted">plugin <code>probe_2110</code> — registre indisponible.</div>
+{% endif %}
+
+<div class="probe-panel">
+    <h2>{{ _('probe.deploy_title') }}</h2>
+    <div class="probe-row" id="probe-deploy">
+        <div class="probe-field">
+            <label>{{ _('probe.deploy_node') }}</label>
+            <select id="probe-node"></select>
+        </div>
+        <div class="probe-field">
+            <label>{{ _('probe.deploy_iface') }}</label>
+            <select id="probe-iface"></select>
+        </div>
+        <div class="probe-field">
+            <label><input type="checkbox" id="probe-audio"> {{ _('probe.deploy_measure_audio') }}</label>
+        </div>
+        <button class="btn-probe" id="probe-deploy-btn">{{ _('probe.deploy_btn') }}</button>
+    </div>
+    <div id="probe-deploy-none" class="muted" style="margin-top:8px; display:none;">{{ _('probe.deploy_none') }}</div>
+</div>
+
+<div class="probe-panel">
+    <h2>{{ _('probe.probes_title') }}</h2>
+    <div id="probe-cards" class="probe-cards"><div class="muted">{{ _('probe.loading') }}</div></div>
+</div>
+
+<div class="probe-panel">
+    <h2 data-t="probemon.monitoring_title">Surveillance longue durée</h2>
+    <div class="pm-toolbar">
+        <div class="pm-filters">
+            <label><input type="checkbox" id="pm-active-only"> <span data-t="probemon.active_only">Incidents actifs seulement</span></label>
+            <select id="pm-sev">
+                <option value="" data-t="probemon.sev_all">Toutes sévérités</option>
+                <option value="error" data-t="probemon.sev_error">Erreurs</option>
+                <option value="warning" data-t="probemon.sev_warning">Avertissements</option>
+                <option value="info" data-t="probemon.sev_info">Info</option>
+            </select>
+            <select id="pm-kind">
+                <option value="" data-t="probemon.kind_all">Tous types</option>
+            </select>
+        </div>
+        <div class="pm-watched-wrap">
+            <span class="muted" data-t="probemon.watched_title">Signaux surveillés :</span>
+            <span id="pm-watched" class="pm-watched"></span>
+            <input type="text" id="pm-watch-vmid" style="width:90px" placeholder="vmid">
+            <input type="text" id="pm-watch-idx" style="width:56px" placeholder="idx">
+            <button class="btn-ghost" id="pm-watch-add" data-t="probemon.watch_add">Surveiller</button>
+        </div>
+    </div>
+    <div id="pm-timeline" class="pm-timeline"><div class="muted" data-t="probemon.loading">Chargement…</div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/probe.js?v={{ asset_v('probe.js') }}"></script>
+{% endblock %}

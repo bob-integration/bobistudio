@@ -1,0 +1,292 @@
+{% extends "layout.html" %}
+{% set page = 'i18n' %}
+{% block title %}Traductions — Bobi.Studio{% endblock %}
+
+{% block head %}
+<style>
+    .i18n-toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;
+        margin-bottom:14px; }
+    .i18n-toolbar .field { display:flex; flex-direction:column; gap:3px; }
+    .i18n-toolbar label { font-size:0.78em; color:var(--text-muted); }
+    .i18n-toolbar input, .i18n-toolbar select { padding:6px 8px; background:var(--bg-input);
+        border:1px solid var(--border); border-radius:var(--radius-small); color:var(--text); }
+    .i18n-toolbar .spacer { flex:1; }
+    .i18n-count { font-size:0.85em; color:var(--text-muted); white-space:nowrap; }
+    table.i18n-table { width:100%; border-collapse:collapse; font-size:0.88em; }
+    table.i18n-table th, table.i18n-table td { text-align:left; padding:6px 8px;
+        border-bottom:1px solid var(--border-soft); vertical-align:top; }
+    table.i18n-table th { position:sticky; top:0; background:var(--bg-elev);
+        color:var(--text-muted); font-weight:600; }
+    .i18n-key { font-family:var(--font-mono); font-size:0.92em; color:var(--text-muted);
+        word-break:break-all; width:26%; }
+    .i18n-src { width:30%; color:var(--text-muted); }
+    .i18n-val input { width:100%; padding:5px 7px; background:var(--bg-input);
+        border:1px solid var(--border); border-radius:var(--radius-small); color:var(--text);
+        font-family:inherit; }
+    .i18n-val input.dirty { border-color:var(--accent, #d29922); }
+    .i18n-origin { width:90px; }
+    .badge-origin { font-size:0.72em; padding:2px 6px; border-radius:10px; }
+    .badge-origin.file     { background:rgba(110,118,129,.2); color:var(--text-muted); }
+    .badge-origin.override { background:rgba(63,185,80,.18);  color:var(--status-running-fg,#3fb950); }
+    .badge-origin.missing  { background:rgba(248,81,73,.18);  color:var(--status-stopped-fg,#f85149); }
+    .i18n-reset { cursor:pointer; border:none; background:none; color:var(--text-muted);
+        font-size:1.05em; }
+    .i18n-reset:hover { color:var(--text); }
+    .i18n-warn { font-size:0.8em; color:var(--text-muted); margin-top:4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>{{ _('i18n.title') }}</h1>
+<p class="i18n-warn">
+    {{ _('i18n.intro_1') }} <strong>{{ _('i18n.intro_db') }}</strong>
+    {{ _('i18n.intro_2') }}
+    <code>i18n/*.json</code> {{ _('i18n.intro_3') }}
+</p>
+
+<div class="i18n-toolbar">
+    <div class="field">
+        <label for="i18n-lang">{{ _('i18n.target_lang') }}</label>
+        <select id="i18n-lang">
+            {% for l in languages %}
+            <option value="{{ l.code }}">{{ l.label }} ({{ l.code }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="field">
+        <label for="i18n-ns">{{ _('i18n.namespace') }}</label>
+        <select id="i18n-ns"><option value="">{{ _('i18n.all') }}</option></select>
+    </div>
+    <div class="field" style="flex:1; min-width:180px">
+        <label for="i18n-search">{{ _('i18n.search') }}</label>
+        <input id="i18n-search" type="search" placeholder="filtrer…">
+    </div>
+    <span class="i18n-count" id="i18n-count"></span>
+    <span class="spacer"></span>
+    <div class="field">
+        <label>&nbsp;</label>
+        <div style="display:flex; gap:6px">
+            <button class="btn" id="i18n-export">{{ _('i18n.export') }}</button>
+            <button class="btn" id="i18n-import-btn">{{ _('i18n.import') }}</button>
+            <input id="i18n-import-file" type="file" accept="application/json" hidden>
+            <button class="btn" id="i18n-writefile" title="{{ _('i18n.write_file_tip') }}">{{ _('i18n.write_file') }}</button>
+        </div>
+    </div>
+</div>
+
+<details style="margin-bottom:14px">
+    <summary style="cursor:pointer; color:var(--text-muted)">{{ _('i18n.add_lang') }}</summary>
+    <div class="i18n-toolbar" style="margin-top:10px">
+        <div class="field">
+            <label for="i18n-new-code">{{ _('i18n.code_ex') }}</label>
+            <input id="i18n-new-code" placeholder="fr-studio" size="12">
+        </div>
+        <div class="field">
+            <label for="i18n-new-label">{{ _('i18n.label') }}</label>
+            <input id="i18n-new-label" placeholder="{{ _('i18n.label_ph') }}">
+        </div>
+        <div class="field">
+            <label>&nbsp;</label>
+            <button class="btn btn-blue" id="i18n-add-lang">{{ _('i18n.create') }}</button>
+        </div>
+        <div class="field">
+            <label>&nbsp;</label>
+            <button class="btn" id="i18n-del-lang" title="{{ _('i18n.del_lang_tip') }}">{{ _('i18n.del_lang') }}</button>
+        </div>
+    </div>
+</details>
+
+<table class="i18n-table">
+    <thead><tr>
+        <th class="i18n-key">{{ _('i18n.col_key') }}</th>
+        <th class="i18n-src">{{ _('i18n.col_source') }}</th>
+        <th class="i18n-val">{{ _('i18n.col_value') }} (<span id="i18n-th-lang">—</span>)</th>
+        <th class="i18n-origin">{{ _('i18n.col_origin') }}</th>
+        <th></th>
+    </tr></thead>
+    <tbody id="i18n-tbody"></tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+    const BUILTIN = new Set(['fr','en']);
+    const elLang   = document.getElementById('i18n-lang');
+    const elNs     = document.getElementById('i18n-ns');
+    const elSearch = document.getElementById('i18n-search');
+    const elCount  = document.getElementById('i18n-count');
+    const elBody   = document.getElementById('i18n-tbody');
+    const elThLang = document.getElementById('i18n-th-lang');
+    let rows = [];
+
+    function esc(s){ return (s||'').replace(/[&<>"]/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    function nsOf(key){
+        const p = key.split('.');
+        return p.length < 3 ? p[0] : p[0]+'.'+p[1];
+    }
+
+    async function load(){
+        const lang = elLang.value;
+        elThLang.textContent = lang;
+        const r = await fetch('/api/i18n/rows?lang=' + encodeURIComponent(lang));
+        const j = await r.json();
+        if (!r.ok){ alert(j.error || {{ _('i18n.js.error')|tojson }}); return; }
+        rows = j.rows;
+        // Remplir le filtre d'espaces de noms
+        const cur = elNs.value;
+        elNs.innerHTML = '<option value="">' + {{ _('i18n.all')|tojson }} + '</option>' +
+            j.namespaces.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+        elNs.value = cur;
+        render();
+    }
+
+    function render(){
+        const ns = elNs.value;
+        const q  = elSearch.value.trim().toLowerCase();
+        const lang = elLang.value;
+        let shown = 0, translated = 0;
+        const out = [];
+        for (const row of rows){
+            if (row.origin !== 'missing') translated++;
+            if (ns && nsOf(row.key) !== ns) continue;
+            if (q && !(row.key.toLowerCase().includes(q) ||
+                       (row.source||'').toLowerCase().includes(q) ||
+                       (row.value||'').toLowerCase().includes(q))) continue;
+            shown++;
+            out.push(
+                `<tr data-key="${esc(row.key)}">
+                    <td class="i18n-key">${esc(row.key)}</td>
+                    <td class="i18n-src">${esc(row.source)}</td>
+                    <td class="i18n-val"><input value="${esc(row.value)}"
+                        data-orig="${esc(row.value)}"></td>
+                    <td class="i18n-origin"><span class="badge-origin ${row.origin}">${row.origin}</span></td>
+                    <td><button class="i18n-reset" title="Réinitialiser (revenir au fichier)">↺</button></td>
+                </tr>`);
+        }
+        elBody.innerHTML = out.join('');
+        elCount.textContent = {{ _('i18n.js.counts')|tojson }}.replace('{n}', shown).replace('{t}', translated).replace('{tot}', rows.length).replace('{l}', lang);
+    }
+
+    async function saveCell(key, value, input){
+        const r = await fetch('/api/i18n/override', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({lang: elLang.value, key, value})
+        });
+        const j = await r.json();
+        if (!r.ok){ alert(j.error || {{ _('i18n.js.error')|tojson }}); return; }
+        input.classList.remove('dirty');
+        input.dataset.orig = value;
+        // Met à jour le badge d'origine de la ligne
+        const tr = input.closest('tr');
+        const badge = tr.querySelector('.badge-origin');
+        const origin = value ? 'override' : 'file';
+        badge.className = 'badge-origin ' + origin;
+        badge.textContent = origin;
+        const m = rows.find(x => x.key === key);
+        if (m){ m.value = value; m.origin = value ? 'override' : 'file'; }
+    }
+
+    // Délégation : édition + reset
+    elBody.addEventListener('input', e => {
+        if (e.target.matches('.i18n-val input'))
+            e.target.classList.toggle('dirty', e.target.value !== e.target.dataset.orig);
+    });
+    elBody.addEventListener('change', e => {
+        if (e.target.matches('.i18n-val input')){
+            const key = e.target.closest('tr').dataset.key;
+            saveCell(key, e.target.value, e.target);
+        }
+    });
+    elBody.addEventListener('click', e => {
+        if (e.target.matches('.i18n-reset')){
+            const tr = e.target.closest('tr');
+            const input = tr.querySelector('.i18n-val input');
+            saveCell(tr.dataset.key, '', input).then(load);
+        }
+    });
+
+    elLang.addEventListener('change', () => { updateDelBtn(); load(); });
+    elNs.addEventListener('change', render);
+    elSearch.addEventListener('input', render);
+
+    // Export
+    document.getElementById('i18n-export').addEventListener('click', () => {
+        window.location = '/api/i18n/export/' + encodeURIComponent(elLang.value);
+    });
+
+    // Import
+    const fileInput = document.getElementById('i18n-import-file');
+    document.getElementById('i18n-import-btn').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+        const f = fileInput.files[0]; if (!f) return;
+        let strings;
+        try { strings = JSON.parse(await f.text()); }
+        catch(e){ alert('JSON invalide : ' + e.message); return; }
+        const r = await fetch('/api/i18n/import', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({lang: elLang.value, strings})
+        });
+        const j = await r.json();
+        fileInput.value = '';
+        if (!r.ok){ alert(j.error || {{ _('i18n.js.error')|tojson }}); return; }
+        alert({{ _('i18n.js.imported')|tojson }}.replace('{n}', j.imported));
+        load();
+    });
+
+    // Écrire le fichier
+    document.getElementById('i18n-writefile').addEventListener('click', async () => {
+        if (!confirm({{ _('i18n.js.write_confirm')|tojson }}.replace('{l}', elLang.value))) return;
+        const r = await fetch('/api/i18n/write-file', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({lang: elLang.value})
+        });
+        const j = await r.json();
+        alert(r.ok ? ({{ _('i18n.js.written')|tojson }}.replace('{p}', j.path)) : (j.error || {{ _('i18n.js.error')|tojson }}));
+    });
+
+    // Ajouter une langue
+    document.getElementById('i18n-add-lang').addEventListener('click', async () => {
+        const code  = document.getElementById('i18n-new-code').value.trim();
+        const label = document.getElementById('i18n-new-label').value.trim();
+        const r = await fetch('/api/i18n/language', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({code, label})
+        });
+        const j = await r.json();
+        if (!r.ok){ alert(j.error || {{ _('i18n.js.error')|tojson }}); return; }
+        const o = document.createElement('option');
+        o.value = j.language.code;
+        o.textContent = j.language.label + ' (' + j.language.code + ')';
+        elLang.appendChild(o);
+        elLang.value = j.language.code;
+        document.getElementById('i18n-new-code').value = '';
+        document.getElementById('i18n-new-label').value = '';
+        updateDelBtn(); load();
+    });
+
+    // Supprimer une langue custom
+    const delBtn = document.getElementById('i18n-del-lang');
+    function updateDelBtn(){ delBtn.disabled = BUILTIN.has(elLang.value); }
+    delBtn.addEventListener('click', async () => {
+        const code = elLang.value;
+        if (BUILTIN.has(code)) return;
+        if (!confirm({{ _('i18n.js.del_lang_confirm')|tojson }}.replace('{c}', code))) return;
+        const r = await fetch('/api/i18n/language/' + encodeURIComponent(code), {method:'DELETE'});
+        const j = await r.json();
+        if (!r.ok){ alert(j.error || {{ _('i18n.js.error')|tojson }}); return; }
+        elLang.querySelector('option[value="'+code+'"]').remove();
+        elLang.selectedIndex = 0;
+        updateDelBtn(); load();
+    });
+
+    // Démarrage : préférer 'en' si présent (cas d'usage le plus courant).
+    const hasEn = [...elLang.options].some(o => o.value === 'en');
+    elLang.value = hasEn ? 'en' : elLang.options[0].value;
+    updateDelBtn();
+    load();
+})();
+</script>
+{% endblock %}

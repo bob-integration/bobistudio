@@ -1,0 +1,84 @@
+diff --git a/lib/fabrics/ofi/src/internal/Endpoint.cpp b/lib/fabrics/ofi/src/internal/Endpoint.cpp
+index 43d784f..aa76357 100644
+--- a/lib/fabrics/ofi/src/internal/Endpoint.cpp
++++ b/lib/fabrics/ofi/src/internal/Endpoint.cpp
+@@ -320,11 +320,17 @@ namespace mxl::lib::fabrics::ofi
+     }
+ 
+     void Endpoint::writeImpl(Completion::Token token, ::iovec const* msgIov, std::size_t iovCount, void** desc, ::fi_rma_iov const* rmaIov,
+-        ::fi_addr_t destAddr, std::optional<std::uint32_t> immData) const
++        ::fi_addr_t destAddr, std::optional<std::uint32_t> immData, bool fence) const
+     {
+         std::uint64_t data = immData.value_or(0);
+         std::uint64_t flags = FI_DELIVERY_COMPLETE;
+         flags |= immData.has_value() ? FI_REMOTE_CQ_DATA : 0;
++        // FI_FENCE: do not initiate this write until all previously posted writes to the same peer
++        // have completed. Required when the immediate data ANNOUNCES payload that was sent by other
++        // writes: without it nothing orders those writes, the notification can land first, and the
++        // target publishes slices whose bytes are still in flight — the consumer then reads the
++        // previous frame's content in those lines (torn picture, moving boundary).
++        flags |= fence ? FI_FENCE : 0;
+ 
+         ::fi_msg_rma msg = {
+             .msg_iov = msgIov,
+@@ -341,14 +347,14 @@ namespace mxl::lib::fabrics::ofi
+     }
+ 
+     std::size_t Endpoint::write(Completion::Token token, LocalRegion const& local, RemoteRegion const& remote, ::fi_addr_t destAddr,
+-        std::optional<std::uint32_t> immData) const
++        std::optional<std::uint32_t> immData, bool fence) const
+     {
+         std::vector<void*> descs{local.desc};
+ 
+         auto msgIov = local.toIovec();
+         auto rmaIov = remote.toRmaIov();
+ 
+-        writeImpl(token, &msgIov, 1, descs.data(), &rmaIov, destAddr, immData);
++        writeImpl(token, &msgIov, 1, descs.data(), &rmaIov, destAddr, immData, fence);
+ 
+         return 1;
+     }
+diff --git a/lib/fabrics/ofi/src/internal/Endpoint.hpp b/lib/fabrics/ofi/src/internal/Endpoint.hpp
+index 20d933a..c897ea8 100644
+--- a/lib/fabrics/ofi/src/internal/Endpoint.hpp
++++ b/lib/fabrics/ofi/src/internal/Endpoint.hpp
+@@ -261,7 +261,7 @@ namespace mxl::lib::fabrics::ofi
+          */
+         [[nodiscard]]
+         std::size_t write(Completion::Token token, LocalRegion const& local, RemoteRegion const& remote, ::fi_addr_t destAddr = FI_ADDR_UNSPEC,
+-            std::optional<std::uint32_t> immData = std::nullopt) const;
++            std::optional<std::uint32_t> immData = std::nullopt, bool fence = false) const;
+ 
+         /** \brief Push a remote write work request of a scatter-gather list to the endpoint work queue.
+          *
+@@ -305,7 +305,7 @@ namespace mxl::lib::fabrics::ofi
+         /** \brief Internal implementation of the  remote write request
+          */
+         void writeImpl(Completion::Token token, ::iovec const* msgIov, std::size_t iovCount, void** desc, ::fi_rma_iov const* rmaIov,
+-            ::fi_addr_t destAddr, std::optional<std::uint32_t> immData) const;
++            ::fi_addr_t destAddr, std::optional<std::uint32_t> immData, bool fence = false) const;
+ 
+         /** \brief Close the endpoint and release all resources. Called from the destructor and the move assignment operator.
+          */
+diff --git a/lib/fabrics/ofi/src/internal/ProtocolEgressRMA.cpp b/lib/fabrics/ofi/src/internal/ProtocolEgressRMA.cpp
+index 0dd7785..0af7ef8 100644
+--- a/lib/fabrics/ofi/src/internal/ProtocolEgressRMA.cpp
++++ b/lib/fabrics/ofi/src/internal/ProtocolEgressRMA.cpp
+@@ -73,7 +73,16 @@ namespace mxl::lib::fabrics::ofi
+             auto const isLastPlane = (plane == planeCount - 1);
+             auto const immData = isLastPlane ? std::make_optional(ImmDataGrain{remoteSlot, sliceRange.end()}.data()) : std::nullopt;
+ 
+-            _pending += ep.write(_token, localRegion, remoteRegion, destAddr, immData);
++            // A partial batch is split into ONE WRITE PER PLANE, and only the last one carries the
++            // immediate data that makes the target publish the slices (setValidSlicesForGrain).
++            // Nothing orders RMA writes — no FI_ORDER_WAW is requested anywhere — so that last
++            // write can complete BEFORE the plane 0/1 payload has landed: the target then declares
++            // slices valid whose luma still holds the previous frame, and the consumer reads a torn
++            // picture whose boundary moves with the batch cursor. Fence the notification behind the
++            // payload it announces. Only needed when several writes make up the batch: the
++            // whole-grain fast path above is a single write and is already ordered with itself.
++            auto const fence = isLastPlane && (planeCount > 1);
++            _pending += ep.write(_token, localRegion, remoteRegion, destAddr, immData, fence);
+         }
+     }
+ 
