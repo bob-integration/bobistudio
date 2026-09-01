@@ -1,3 +1,7 @@
+[submodule "services/nmos"]
+	path = services/nmos
+	url = https://github.com/bob-integration/bobistudio-service-nmos
+	branch = main
 [submodule "plugins/hello_world"]
 	path = plugins/hello_world
 	url = https://github.com/bob-integration/bobistudio-plugin-hello_world
