@@ -101,6 +101,28 @@ def _my_identity():
             "label": info.get("label"), "build_id": info.get("build_id"),
             "deployed_at": updater.deploy_info().get("deployed_at")}
 
+@bp.route("/api/update/core", methods=["GET"])
+@require_login
+def update_core():
+    """La dernière version de Bobi.Studio publiée, comparée à celle de cette instance.
+
+    ★ CE CHEMIN N'EXISTAIT PAS. `updater.py` met à jour d'instance à INSTANCE sur le réseau
+    local ; le catalogue ne liste que les composants. Un utilisateur extérieur installait une
+    version et n'avait donc AUCUN moyen d'apprendre qu'une suivante existait, ni de l'obtenir —
+    alors que ses plugins, eux, se mettent à jour depuis le catalogue.
+
+    ⚠ CETTE ROUTE INFORME, ELLE N'APPLIQUE PAS, et `applicable` dit pourquoi : tant qu'une
+    release ne porte pas l'artefact du builder et son empreinte, il n'y a rien d'installable à
+    tirer — l'archive de source que sert GitHub n'embarque ni l'installeur ni son SHA256SUMS, que
+    `get.sh` vérifie avant d'exécuter quoi que ce soit en root. Annoncer une mise à jour
+    applicable qui échouerait serait pire que de ne rien annoncer.
+    """
+    from .. import catalogue
+    from ..version import VERSION
+    dispo, info = catalogue.maj_core_disponible()
+    return jsonify({"version_installee": VERSION, "disponible": dispo, "derniere": info})
+
+
 @bp.route("/api/update/ping", methods=["GET"])
 def update_ping():
     """Identité légère pour la découverte réseau (pas de code exposé → pas de token)."""

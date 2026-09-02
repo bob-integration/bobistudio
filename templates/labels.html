@@ -292,9 +292,9 @@ async function tslInit() {
     try {
         const [rsys, rsl, rnames, rsuf, rconns, rmap, rports] = await Promise.all([
             fetch('/api/sources'),           // tous les kinds : video + audio + anc
-            fetch('/api/source_labels'),
-            fetch('/api/tsl/label_names'),
-            fetch('/api/source_labels/suffix_map'),
+            fetch('/api/labels'),
+            fetch('/api/labels/names'),
+            fetch('/api/labels/suffix_map'),
             fetch('/api/tsl/connections'),
             fetch('/api/tsl/mapping_all'),
             fetch('/api/ports'),             // ports de projet (clé « port:<id> »)
@@ -306,7 +306,7 @@ async function tslInit() {
         _suffixMap     = rsuf.ok  ? await rsuf.json()  : {"_audio_0":"_A1","_audio_1":"_A2","_anc_0":"_Anc"};
         _tslConns      = rconns.ok? await rconns.json(): [];
         try {
-            const ro = await fetch('/api/source_labels/orphelins');
+            const ro = await fetch('/api/labels/orphelins');
             const lst = ro.ok ? await ro.json() : [];
             _orphelins = new Set(lst.map(x => x.shm));
             _orphInfo = lst;
@@ -1188,7 +1188,7 @@ async function tslSave() {
     }
     try {
         if (dirty.length) {
-            const r = await fetch('/api/source_labels/batch', {
+            const r = await fetch('/api/labels/batch', {
                 method: 'POST', headers: {'Content-Type':'application/json'},
                 body: JSON.stringify(dirty)
             });
@@ -1259,7 +1259,7 @@ async function tslSuffixSave() {
         const suf  = tr.querySelector('.suf-suf')?.value || '';
         if (tail) map[tail] = suf;
     }
-    const r = await fetch('/api/source_labels/suffix_map', {
+    const r = await fetch('/api/labels/suffix_map', {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify(map)
     });
@@ -1594,7 +1594,7 @@ async function tslOrphelinsPurger(avecLibelles) {
     const cibles = _orphInfo.filter(x => !x.mappe && (avecLibelles || !x.rempli.length));
     if (avecLibelles && !confirm(T('labels.js.orphan_confirm')
             .replace('{n}', cibles.filter(x => x.rempli.length).length))) return;
-    const r = await fetch('/api/source_labels/orphelins', {
+    const r = await fetch('/api/labels/orphelins', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({shms: cibles.map(x => x.shm)})});
     const j = await r.json().catch(() => ({}));
@@ -1615,7 +1615,7 @@ async function tslOrphelinsPurger(avecLibelles) {
    ⚠ ON REFUSE DE RETIRER UNE COLONNE REMPLIE sans le dire. Elle ne serait pas perdue, mais elle
    deviendrait invisible : quelqu'un la chercherait sans savoir qu'il faut réaugmenter le nombre. */
 async function _tslColonnes(n) {
-    const r = await fetch('/api/tsl/label_cols', {
+    const r = await fetch('/api/labels/cols', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({actives: n})});
     if (!r.ok) {
@@ -1709,8 +1709,8 @@ function _flashCells(changed) {
 async function _labelsLivePoll() {
     try {
         const [rstate, rsl] = await Promise.all([
-            fetch('/api/tsl/state'),
-            fetch('/api/source_labels'),
+            fetch('/api/tally/state'),
+            fetch('/api/labels'),
         ]);
         if (rstate.ok) _tallyState = await rstate.json();
         if (!_editing && rsl.ok) {

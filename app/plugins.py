@@ -31,6 +31,8 @@ import re
 import shutil
 import time
 
+from . import version as _v
+
 log = logging.getLogger(__name__)
 
 PLUGINS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plugins")
@@ -1542,6 +1544,22 @@ def validate_package(d):
     missing = [k for k in REQUIRED_KEYS if k not in man]
     if missing:
         return None, f"clés manquantes : {', '.join(missing)}"
+    # ★ EXIGENCE DE VERSION DU CŒUR. Un composant peut avoir besoin d'un orchestrateur récent :
+    # `services/tsl` importe `app.tally`, `multiview` attend que le cœur lui pousse ses colonnes
+    # de libellé. Installé sur un cœur trop ancien, le premier casse BRUYAMMENT (ImportError) et
+    # le second EN SILENCE — le mur affiche des libellés périmés sans que rien ne le dise. C'est
+    # la seconde qui a motivé ce garde : une panne muette qu'aucun compteur ne montre.
+    #
+    # ⚠ ON REFUSE ICI, AU PLUS PROFOND. Les trois voies d'installation — catalogue et les deux
+    # imports manuels — passent toutes par cette fonction. Poser le contrôle sur les sites
+    # d'appel aurait laissé le prochain en oubli silencieux, exactement le défaut relevé sur
+    # l'épinglage de version (un seul appel sur 23 passait sa consigne).
+    _cmin = _v.core_min_de(man)
+    if _cmin and not _v.au_moins(_v.VERSION, _cmin):
+        return None, ("exige Bobi.Studio >= %s (cette instance est en %s)" % (_cmin, _v.VERSION))
+    if _cmin and not _v.comparable(_v.VERSION, _cmin):
+        log.warning("paquet : exigence de coeur non comparable (exigee %s, courante %s) — "
+                    "controle IGNORE", _cmin, _v.VERSION)
     if not _SAFE_TYPE.match(str(man.get("type", ""))):
         return None, "type invalide (autorisé : lettres, chiffres, _ et -)"
     sp = os.path.join(d, man["script_template"])

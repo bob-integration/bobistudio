@@ -1999,7 +1999,7 @@ async function _loadCablesTslLabels() {
     let change = false;
     try {
         const [r1, rm] = await Promise.all([
-            fetch('/api/tsl/sources/by_shm'),
+            fetch('/api/labels/by_shm'),
             fetch('/api/tsl/mapping/by_shm'),
         ]);
         if (rm.ok) _cablesTslMapByShm = await rm.json();

@@ -144,7 +144,7 @@ client = None
 try:
     db_set_setting("nmos_is07", "1")
     db_set_setting("nmos_is07_ws", "1")
-    from services import tsl                                          # noqa: E402
+    from app import tally
     from services.nmos import is07                                    # noqa: E402
     from services.nmos import is07_client                             # noqa: E402
     importlib.reload(is07)
@@ -185,10 +185,10 @@ try:
              "un abonné qui doit attendre un changement peut rester aveugle indéfiniment — le "
              "tally d'une source qui ne bouge pas ne bouge pas. Reçus : %r" % recus[:3])
 
-    tsl.poser_tally("banc:is07", {})
+    tally.poser_tally("banc:is07", {})
     with verrou:
         recus.clear()
-    tsl.poser_tally("banc:is07", {(idx, niveau): "red"})
+    tally.poser_tally("banc:is07", {(idx, niveau): "red"})
     is07._pousser([sid])
     controle("★★★ un tally posé à l'intérieur ressort chez le client",
              jusqua(lambda: any(v == "red" for s, v in recus if s == sid)),
@@ -197,7 +197,7 @@ try:
 
     with verrou:
         recus.clear()
-    tsl.poser_tally("banc:is07", {(idx, niveau): "amber"})
+    tally.poser_tally("banc:is07", {(idx, niveau): "amber"})
     is07._pousser([sid])
     controle("★★ l'ambre traverse aussi",
              jusqua(lambda: any(v == "amber" for s, v in recus if s == sid)),
@@ -355,7 +355,7 @@ finally:
     except Exception:
         pass
     try:
-        from services import tsl as _t
+        from app import tally as _t
         _t.poser_tally("banc:is07", {})
         residu = _t.get_tally_state()
     except Exception:

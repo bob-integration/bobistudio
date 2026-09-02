@@ -1,0 +1,410 @@
+{
+ "controles": [
+  0,
+  0,
+  0,
+  0,
+  32,
+  8,
+  2,
+  32,
+  4,
+  1,
+  16,
+  4,
+  36,
+  9,
+  18,
+  36
+ ],
+ "cumuler": [
+  [
+   "off",
+   "off",
+   "off"
+  ],
+  [
+   "off",
+   "red",
+   "red"
+  ],
+  [
+   "off",
+   "green",
+   "green"
+  ],
+  [
+   "off",
+   "amber",
+   "amber"
+  ],
+  [
+   "off",
+   null,
+   "off"
+  ],
+  [
+   "red",
+   "off",
+   "red"
+  ],
+  [
+   "red",
+   "red",
+   "red"
+  ],
+  [
+   "red",
+   "green",
+   "amber"
+  ],
+  [
+   "red",
+   "amber",
+   "amber"
+  ],
+  [
+   "red",
+   null,
+   "red"
+  ],
+  [
+   "green",
+   "off",
+   "green"
+  ],
+  [
+   "green",
+   "red",
+   "amber"
+  ],
+  [
+   "green",
+   "green",
+   "green"
+  ],
+  [
+   "green",
+   "amber",
+   "amber"
+  ],
+  [
+   "green",
+   null,
+   "green"
+  ],
+  [
+   "amber",
+   "off",
+   "amber"
+  ],
+  [
+   "amber",
+   "red",
+   "amber"
+  ],
+  [
+   "amber",
+   "green",
+   "amber"
+  ],
+  [
+   "amber",
+   "amber",
+   "amber"
+  ],
+  [
+   "amber",
+   null,
+   "amber"
+  ],
+  [
+   null,
+   "off",
+   "off"
+  ],
+  [
+   null,
+   "red",
+   "red"
+  ],
+  [
+   null,
+   "green",
+   "green"
+  ],
+  [
+   null,
+   "amber",
+   "amber"
+  ],
+  [
+   null,
+   null,
+   "off"
+  ]
+ ],
+ "resolve_ref": [
+  [
+   "",
+   ""
+  ],
+  [
+   "  ",
+   ""
+  ],
+  [
+   "cam1",
+   "cam1"
+  ],
+  [
+   " cam1 ",
+   "cam1"
+  ],
+  [
+   "port:",
+   null
+  ],
+  [
+   "port:abc",
+   null
+  ],
+  [
+   "port:999999",
+   null
+  ],
+  [
+   "/dev/shm/x",
+   "/dev/shm/x"
+  ]
+ ],
+ "sequence": [
+  {
+   "etat": {
+    "cumul": {
+     "5_niveau-a": "red"
+    },
+    "sources": {
+     "5_niveau-a": {
+      "srcA": "red"
+     }
+    }
+   },
+   "pas": "A pose rouge",
+   "retour": true
+  },
+  {
+   "etat": {
+    "cumul": {
+     "5_niveau-a": "red"
+    },
+    "sources": {
+     "5_niveau-a": {
+      "srcA": "red"
+     }
+    }
+   },
+   "pas": "A repose l'identique (doit rendre False)",
+   "retour": false
+  },
+  {
+   "etat": {
+    "cumul": {
+     "5_niveau-a": "amber"
+    },
+    "sources": {
+     "5_niveau-a": {
+      "srcA": "red",
+      "srcB": "green"
+     }
+    }
+   },
+   "pas": "B pose vert sur la MEME case",
+   "retour": true
+  },
+  {
+   "etat": {
+    "cumul": {
+     "5_niveau-a": "red"
+    },
+    "sources": {
+     "5_niveau-a": {
+      "srcA": "red"
+     }
+    }
+   },
+   "pas": "B dit 'off' — c'est un RETRAIT, pas une couleur",
+   "retour": true
+  },
+  {
+   "etat": {
+    "cumul": {
+     "5_niveau-a": "amber"
+    },
+    "sources": {
+     "5_niveau-a": {
+      "srcA": "red",
+      "srcB": "green"
+     }
+    }
+   },
+   "pas": "B repose vert",
+   "retour": true
+  },
+  {
+   "etat": {
+    "cumul": {
+     "5_niveau-a": "green"
+    },
+    "sources": {
+     "5_niveau-a": {
+      "srcB": "green"
+     }
+    }
+   },
+   "pas": "A se tait — B ne doit PAS etre coupe",
+   "retour": true
+  },
+  {
+   "etat": {
+    "cumul": {},
+    "sources": {}
+   },
+   "pas": "B se tait — la case doit DISPARAITRE",
+   "retour": true
+  },
+  {
+   "etat": {
+    "cumul": {
+     "1_niveau-a": "red",
+     "2_niveau-a": "green"
+    },
+    "sources": {
+     "1_niveau-a": {
+      "srcA": "red"
+     },
+     "2_niveau-a": {
+      "srcA": "green"
+     }
+    }
+   },
+   "pas": "A pose deux cases",
+   "retour": true
+  },
+  {
+   "etat": {
+    "cumul": {
+     "1_niveau-a": "amber",
+     "2_niveau-a": "green"
+    },
+    "sources": {
+     "1_niveau-a": {
+      "srcA": "red",
+      "srcC": "green"
+     },
+     "2_niveau-a": {
+      "srcA": "green"
+     }
+    }
+   },
+   "pas": "C pose sur la case 1",
+   "retour": true
+  },
+  {
+   "etat": {
+    "cumul": {
+     "1_niveau-a": "green",
+     "3_niveau-a": "red"
+    },
+    "sources": {
+     "1_niveau-a": {
+      "srcC": "green"
+     },
+     "3_niveau-a": {
+      "srcA": "red"
+     }
+    }
+   },
+   "pas": "A ne garde que la case 3 — 1 et 2 tombent, C SURVIT",
+   "retour": true
+  },
+  {
+   "etat": {
+    "cumul": {
+     "9_niveau-a": "red",
+     "9_niveau-b": "green"
+    },
+    "sources": {
+     "9_niveau-a": {
+      "srcA": "red"
+     },
+     "9_niveau-b": {
+      "srcA": "green"
+     }
+    }
+   },
+   "pas": "meme index, deux niveaux",
+   "retour": true
+  },
+  {
+   "etat": {
+    "cumul": {
+     "9_niveau-a": "red",
+     "9_niveau-b": "green"
+    },
+    "sources": {
+     "9_niveau-a": {
+      "srcA": "red"
+     },
+     "9_niveau-b": {
+      "srcA": "green"
+     }
+    }
+   },
+   "pas": "lecture niveau a",
+   "retour": "red"
+  },
+  {
+   "etat": {
+    "cumul": {
+     "9_niveau-a": "red",
+     "9_niveau-b": "green"
+    },
+    "sources": {
+     "9_niveau-a": {
+      "srcA": "red"
+     },
+     "9_niveau-b": {
+      "srcA": "green"
+     }
+    }
+   },
+   "pas": "lecture niveau b",
+   "retour": "green"
+  },
+  {
+   "etat": {
+    "cumul": {
+     "9_niveau-a": "red",
+     "9_niveau-b": "green"
+    },
+    "sources": {
+     "9_niveau-a": {
+      "srcA": "red"
+     },
+     "9_niveau-b": {
+      "srcA": "green"
+     }
+    }
+   },
+   "pas": "lecture d'une case vide",
+   "retour": "off"
+  }
+ ],
+ "trames": [
+  "fe020a0000000000000000000000",
+  "fe020f000000000001000100050043414d2031",
+  "fe020c0000000000ff003f000200c9c0",
+  "fe022a000000000000102a0020007878787878787878787878787878787878787878787878787878787878787878"
+ ]
+}

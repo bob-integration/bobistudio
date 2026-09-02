@@ -1555,6 +1555,7 @@ from . import monitoring_api  # noqa: F401
 from . import projects_api  # noqa: F401
 from . import macros_api    # noqa: F401
 from . import tally_api     # noqa: F401
+from . import labels_api    # noqa: F401
 
 # PTP (historique/événements/logs/status/install/apply) — tranche 15 (dernière).
 from . import ptp_routes  # noqa: F401

@@ -3826,7 +3826,7 @@ async function habSupprimer(rid) {
 let _labelsNames = [];
 
 async function labelsLoadNames() {
-    const r = await fetch('/api/tsl/label_names');
+    const r = await fetch('/api/labels/names');
     if (!r.ok) return;
     _labelsNames = await r.json();
     const grid = document.getElementById('labels_names_grid');
@@ -3843,7 +3843,7 @@ async function labelsLoadNames() {
 
 async function labelsSaveNames() {
     const names = Array.from({length: 10}, (_, i) => document.getElementById(`lbl_name_${i}`)?.value || `Label ${i}`);
-    const r = await fetch('/api/tsl/label_names', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(names) });
+    const r = await fetch('/api/labels/names', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(names) });
     if (r.ok) { mxlToast(T('settings.js.names_saved'), 'success'); _labelsNames = names; }
     else       { mxlToast(T('settings.js.err_save_names'), 'error'); }
 }
@@ -4229,7 +4229,7 @@ async function tallyCharger() {
     try {
         const r = await Promise.all([
             fetch('/api/tally/levels'), fetch('/api/tsl/connections'),
-            fetch('/api/tsl/state'), fetch('/api/containers'),
+            fetch('/api/tally/state'), fetch('/api/containers'),
             fetch('/api/tally/consumers')]);
         [niveaux, conns, etat, cts, conso] = await Promise.all(r.map(x => x.json()));
     } catch (e) {
@@ -13660,16 +13660,43 @@ function catChip(etat) {
   return '<span class="cat-chip ' + m[0] + '">' + escapeHtml(m[1]) + '</span>';
 }
 
+// ★ UN BOUTON GRISÉ DOIT ANNONCER SON PROPRE ÉTAT, PAS UNE ACTION IMPOSSIBLE.
+// La version d'avant écrivait « Récupérer » sur TOUTE ligne déjà installée — donc
+// aussi sur celles qui étaient à jour, où il n'y a rien à récupérer. Le libellé
+// annonçait une action que l'état interdisait : on lisait une panne là où il n'y
+// avait qu'un paquet déjà en place. Le libellé suit maintenant l'état, et le titre
+// dit POURQUOI le bouton ne mord pas.
+function catBouton(e) {
+  const depot = JSON.stringify(e.depot).replace(/"/g, '&quot;');
+  const grise = (lib, motif) => '<button class="btn" disabled title="' + escapeHtml(motif) + '">'
+                              + escapeHtml(lib) + '</button>';
+  // ★ AUCUNE RELEASE : le dépôt reste LISTÉ, mais rien n'est installable. Le faire disparaître
+  // laisserait l'exploitant chercher un composant qu'il sait publié, sans rien pour comprendre.
+  // On le montre, le bouton ne mord pas, et il dit pourquoi.
+  if (e.indisponible)
+    return grise(CAT_T('install', 'Installer'),
+                 CAT_T('no_release', 'aucune release publiée — rien à installer'));
+  if (!e.manifeste_lu)
+    return grise(CAT_T('install', 'Installer'),
+                 CAT_T('no_manifest', 'manifeste illisible — installation refusée'));
+  if (e.etat === 'absent' || e.etat === 'maj') {
+    const lib = e.etat === 'absent' ? CAT_T('install', 'Installer') : CAT_T('fetch', 'Récupérer');
+    return '<button class="btn btn-green" onclick="catInstaller(this, ' + depot + ')">'
+         + escapeHtml(lib) + '</button>';
+  }
+  if (e.etat === 'a_jour')
+    return grise(CAT_T('btn_uptodate', 'À jour'),
+                 CAT_T('why_uptodate', 'La version publiée est déjà installée.'));
+  if (e.etat === 'locale_plus_recente')
+    return grise(CAT_T('fetch', 'Récupérer'),
+                 CAT_T('why_newer', 'La version installée est plus récente que celle publiée.'));
+  return grise(CAT_T('fetch', 'Récupérer'),
+               CAT_T('why_unknown', 'Version publiée inconnue : rien à comparer.'));
+}
+
 function catLigne(e) {
-  // Le bouton dit ce qui va se passer : « Installer » quand rien n'est là,
-  // « Récupérer » quand une version plus récente existe. Un libellé unique
-  // obligerait à lire la colonne d'état pour savoir ce qu'on déclenche.
-  const actif = (e.etat === 'absent' || e.etat === 'maj') && e.manifeste_lu;
-  const lib = e.etat === 'absent' ? CAT_T('install', 'Installer') : CAT_T('fetch', 'Récupérer');
-  const bouton = actif
-    ? '<button class="btn btn-green" onclick="catInstaller(this, ' + JSON.stringify(e.depot).replace(/"/g, '&quot;') + ')">' + escapeHtml(lib) + '</button>'
-    : '<button class="btn" disabled>' + escapeHtml(lib) + '</button>';
-  const desc = e.description || (e.manifeste_lu ? '' : CAT_T('no_manifest', 'manifeste illisible — installation refusée'));
+  const bouton = catBouton(e);
+  const desc = e.description || e.indisponible || (e.manifeste_lu ? '' : CAT_T('no_manifest', 'manifeste illisible — installation refusée'));
   return '<tr>'
     + '<td style="padding:10px var(--space-2); border-bottom:1px solid var(--border)">'
     +   '<a class="cat-nom" href="' + escapeHtml(e.url) + '" target="_blank" rel="noopener">' + escapeHtml(e.label) + '</a>'

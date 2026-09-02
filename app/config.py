@@ -11,9 +11,17 @@ import os
 # B1b-2 : full-Docker, host-ops par-nœud — les hôtes vivent dans la table `nodes`. PROXMOX_* RETIRÉS.
 # Plan conteneurs : subnet/passerelle/pool d'IP = cluster ; carte parent + VLAN (si trunk) = PAR-NŒUD.
 # ─── Catalogue des paquets (plugins et services) ─────────────────────────────
-# Organisation GitHub d'où le catalogue lit les paquets publiés. Les mises à jour
-# de Bobi.Studio viennent de là, par définition ; la surcharge dans
-# `config_local.py` n'existe que pour un fork ou un banc d'essai.
+# Organisation GitHub d'où le catalogue lit les paquets publiés, ET d'où l'on
+# apprend qu'une nouvelle version de Bobi.Studio est sortie
+# (`catalogue.maj_core_disponible`). La surcharge dans `config_local.py`
+# n'existe que pour un fork ou un banc d'essai.
+#
+# ⚠ Ce commentaire a longtemps affirmé que « les mises à jour de Bobi.Studio
+# viennent de là, par définition » — c'était une INTENTION que le code n'avait
+# jamais réalisée : `_construire()` ne retient que les dépôts préfixés
+# `bobistudio-plugin-` / `bobistudio-service-`, et celui de l'orchestrateur
+# tombait dans le `continue`. La détection existe depuis le 2026-09-02 ;
+# l'application, elle, attend qu'une release porte l'artefact du builder.
 #
 # ⚠⚠ SI VOUS CHANGEZ CETTE VALEUR, SOYEZ SÛR DE VOTRE SOURCE. Installer un plugin
 # depuis le catalogue dépose son code sur le contrôleur, et son fichier `hooks.py`

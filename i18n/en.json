@@ -742,6 +742,7 @@
   "cables.zoom.reset": "Reset zoom",
   "catalogue.actif_lbl": "Catalogue enabled",
   "catalogue.ago": "{m} min ago",
+  "catalogue.btn_uptodate": "Up to date",
   "catalogue.done_active": "{t} {v} installed and activated.",
   "catalogue.done_stored": "{t} {v} fetched — activate it from Settings → Plugins.",
   "catalogue.empty": "No package published in this category.",
@@ -773,6 +774,9 @@
   "catalogue.title": "Catalogue",
   "catalogue.trust": "Packages come from the public repositories of the <code>{org}</code> organisation.",
   "catalogue.unreachable": "Catalogue unreachable: {e}",
+  "catalogue.why_newer": "The installed version is newer than the published one.",
+  "catalogue.why_unknown": "Published version unknown: nothing to compare.",
+  "catalogue.why_uptodate": "The published version is already installed.",
   "catalogue.working": "Downloading…",
   "compte.acces": "Access",
   "compte.acces_note": "Username, role and interface cannot be changed by yourself: ask an administrator.",
@@ -5140,5 +5144,6 @@
   "wiz.videofmt.title": "Default video format",
   "wiz.welcome.lead": "✓ Installation is complete and operational.<br>This wizard guides you through the first settings: identity, Proxmox connection, network, base template, ST 2110 interface, MXL pipeline and video format. Each step is optional and can be changed later in Settings.",
   "wiz.welcome.step": "Welcome",
-  "wiz.welcome.title": "Bobi.Studio setup"
+  "wiz.welcome.title": "Bobi.Studio setup",
+  "catalogue.no_release": "no release published — nothing to install"
 }

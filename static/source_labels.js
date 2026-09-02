@@ -135,9 +135,9 @@
   function load(force) {
     if (_loaded && !force) return _loaded;
     _loaded = Promise.all([
-      fetch('/api/source_labels').then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }),
-      fetch('/api/tsl/label_names').then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }),
-      fetch('/api/source_labels/suffix_map').then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; }),
+      fetch('/api/labels').then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }),
+      fetch('/api/labels/names').then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }),
+      fetch('/api/labels/suffix_map').then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; }),
       fetch('/api/sources').then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; })
     ]).then(function (res) {
       _rows = res[0] || []; _byShm = _index(_rows);
@@ -195,7 +195,7 @@
    Le tally se résout en DEUX temps et aucune UI ne devrait refaire ce chemin à la main :
      1. mapping INVERSE shm → [{tsl_index, levels}]  (/api/tsl/mapping/by_shm) — le mapping n'est
         stocké que dans l'autre sens en base ;
-     2. état des lampes par « <index>_<niveau> »      (/api/tsl/state).
+     2. état des lampes par « <index>_<niveau> »      (/api/tally/state).
    Une lampe ne concerne une source que si l'index ET le niveau tombent dans la MÊME entrée de
    mapping : deux connexions peuvent employer le même index pour des sources différentes.
 
@@ -216,7 +216,7 @@
      ★ 500 ms, ET SEULEMENT SI L'ONGLET EST VISIBLE. Le tally est un état
      d'ANTENNE : 2 s de retard sur une pastille rouge, ce sont 2 s pendant
      lesquelles l'exploitant lit une information fausse. Mesuré AVANT de changer
-     quoi que ce soit : `/api/tsl/state` coûte 4,0 ms pour 146 octets, quand
+     quoi que ce soit : `/api/tally/state` coûte 4,0 ms pour 146 octets, quand
      `/api/home/summary` — que la même page appelle toutes les 2 s — coûte
      114 ms. Passer ce sondage-ci à 500 ms ajoute ~12 ms/s par onglet, soit
      +19 % sur les 64 ms/s qu'un onglet coûte déjà. Meilleur rapport de la page.
@@ -251,25 +251,30 @@
   }
 
   /* Lampes ALLUMÉES d'une source : [[niveau, couleur], …]. Filtrées par le niveau choisi. */
+  /* Lampes d'une source : l'état est indexé PAR SOURCE, on lit donc directement.
+
+     ★ Le mapping TSL a disparu d'ici, et c'est le point. Cette fonction retrouvait l'index TSL
+     de la source, puis balayait l'état à la recherche des clés portant cet index — si bien
+     qu'une source sans correspondance TSL n'avait AUCUNE lampe, quel que soit son tally réel.
+     Le filtre par `levels` du mapping ne servait qu'à départager deux porteurs employant le
+     même index ; la collision n'existe plus, la clé nomme la source. */
   function lampsFor(shm) {
     if (_level < 0) return [];    // « Aucun » : tally éteint partout (aucune lampe, aucune couleur)
-    if (!shm || !_maps) return [];
+    if (!shm) return [];
     shm = String(shm).replace(/^\/dev\/shm\//, '');
-    var maps = _maps[shm] || [];
-    if (!maps.length) return [];
     var seul = (_level && _level !== -1) ? String(_level) : null;
     var out = [];
     Object.keys(_state).forEach(function (k) {
       var c = _state[k];
       if (!c || c === 'off') return;
+      /* Coupure au DERNIER souligné : le niveau est un UUID, donc sans souligné, alors qu'une
+         référence de source peut parfaitement en contenir. */
       var cut = k.lastIndexOf('_');
-      var idx = k.slice(0, cut), lvl = k.slice(cut + 1);
+      if (cut < 0) return;
+      var ref = k.slice(0, cut), lvl = k.slice(cut + 1);
+      if (String(ref) !== shm) return;
       if (seul && String(lvl) !== seul) return;
-      var ok = maps.some(function (m) {
-        return String(m.tsl_index) === String(idx) &&
-               (m.levels || []).map(String).indexOf(String(lvl)) >= 0;
-      });
-      if (ok) out.push([lvl, c]);
+      out.push([lvl, c]);
     });
     return out;
   }
@@ -326,7 +331,7 @@
   }
 
   function refresh() {
-    var jobs = [fetch('/api/tsl/state').then(function (r) { return r.ok ? r.json() : {}; })
+    var jobs = [fetch('/api/tally/state').then(function (r) { return r.ok ? r.json() : {}; })
                  .catch(function () { return {}; })];
     if (_maps === null) {
       jobs.push(fetch('/api/tsl/mapping/by_shm').then(function (r) { return r.ok ? r.json() : {}; })

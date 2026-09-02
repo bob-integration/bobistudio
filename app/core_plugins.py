@@ -18,6 +18,8 @@ import re
 import shutil
 import sys
 
+from . import version as _v
+
 log = logging.getLogger(__name__)
 
 SERVICES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "services")
@@ -344,6 +346,16 @@ def validate_package(src_dir) -> tuple:
     missing = _REQUIRED - set(manifest.keys())
     if missing:
         return None, f"clés manquantes : {', '.join(sorted(missing))}"
+    # ★ EXIGENCE DE VERSION DU CŒUR — même garde que pour les plugins, au même endroit : la
+    # fonction de validation, par où passent TOUTES les voies d'installation. Un service peut
+    # avoir besoin d'un orchestrateur récent (`services/tsl` importe `app.tally`) ; installé sur
+    # un cœur trop ancien, il casse à l'import et ne démarre pas.
+    _cmin = _v.core_min_de(manifest)
+    if _cmin and not _v.au_moins(_v.VERSION, _cmin):
+        return None, ("exige Bobi.Studio >= %s (cette instance est en %s)" % (_cmin, _v.VERSION))
+    if _cmin and not _v.comparable(_v.VERSION, _cmin):
+        log.warning("paquet : exigence de coeur non comparable (exigee %s, courante %s) — "
+                    "controle IGNORE", _cmin, _v.VERSION)
     if not _SAFE_ID.match(str(manifest.get("id", ""))):
         return None, "id invalide (autorisé : lettres, chiffres, _ et -)"
     if not os.path.isfile(os.path.join(src_dir, "__init__.py")):

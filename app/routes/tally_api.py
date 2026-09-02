@@ -331,3 +331,27 @@ def tally_is07_mapping_batch():
         n += 1
     _relancer_is07()
     return jsonify({"ok": True, "saved": n})
+
+
+# ─── L'ÉTAT DU TALLY ────────────────────────────────────────────────────────────────────
+# ★ IL ÉTAIT SERVI SOUS `/api/tsl/state`, et c'était trompeur : il rend l'état CUMULÉ de
+# toutes les sources — TSL, IS-07, mélangeur. Rien de protocolaire là-dedans, sauf le nom.
+# L'ancienne adresse redirige (cf. `services/tsl:register_routes`).
+@bp.route("/api/tally/state", methods=["GET"])
+@require_login
+def tally_state():
+    """`{"<index>_<niveau>": couleur}` — le cumul, tel que le lisent les consommateurs."""
+    from ..tally import get_tally_state
+    return jsonify(get_tally_state())
+
+
+@bp.route("/api/tally/sources", methods=["GET"])
+@require_login
+def tally_sources():
+    """`{"<index>_<niveau>": {source: couleur}}` — QUI affirme quoi.
+
+    Sert au diagnostic, et il n'avait aucune adresse : un niveau servi par deux écrivains ne
+    disait pas lequel allume la lampe. Le cumul seul ne permet pas de le savoir — c'est
+    exactement la question qu'on se pose quand une lampe reste rouge sans raison apparente."""
+    from ..tally import sources_du_tally
+    return jsonify(sources_du_tally())

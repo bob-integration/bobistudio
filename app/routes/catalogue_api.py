@@ -55,7 +55,7 @@ def catalogue_installer():
         return jsonify({"error": "manifeste illisible sur ce dépôt"}), 400
 
     try:
-        brut = _cat.telecharger(depot, e["branche"])
+        brut = _cat.telecharger(depot, e.get("tag"))
     except Exception as exc:
         return jsonify({"error": "téléchargement impossible : %s" % (exc,)}), 502
 

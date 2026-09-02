@@ -742,6 +742,7 @@
   "cables.zoom.reset": "Zoom 100 %",
   "catalogue.actif_lbl": "Catalogue activé",
   "catalogue.ago": "il y a {m} min",
+  "catalogue.btn_uptodate": "À jour",
   "catalogue.done_active": "{t} {v} installé et activé.",
   "catalogue.done_stored": "{t} {v} récupéré — à activer depuis Réglages → Plugins.",
   "catalogue.empty": "Aucun paquet publié dans cette catégorie.",
@@ -773,6 +774,9 @@
   "catalogue.title": "Catalogue",
   "catalogue.trust": "Les paquets viennent des dépôts publics de l'organisation <code>{org}</code>.",
   "catalogue.unreachable": "Catalogue injoignable : {e}",
+  "catalogue.why_newer": "La version installée est plus récente que celle publiée.",
+  "catalogue.why_unknown": "Version publiée inconnue : rien à comparer.",
+  "catalogue.why_uptodate": "La version publiée est déjà installée.",
   "catalogue.working": "Téléchargement…",
   "compte.acces": "Accès",
   "compte.acces_note": "L'identifiant, le rôle et l'interface ne se modifient pas soi-même : demandez à un administrateur.",
@@ -5140,5 +5144,6 @@
   "wiz.videofmt.title": "Format vidéo par défaut",
   "wiz.welcome.lead": "✓ L'installation est terminée et opérationnelle.<br>Cet assistant vous guide pour les premiers réglages : identité, connexion Proxmox, réseau, template de base, interface ST 2110, pipeline MXL et format vidéo. Chaque étape est facultative et modifiable plus tard dans les Réglages.",
   "wiz.welcome.step": "Bienvenue",
-  "wiz.welcome.title": "Configuration de Bobi.Studio"
+  "wiz.welcome.title": "Configuration de Bobi.Studio",
+  "catalogue.no_release": "aucune release publiée — rien à installer"
 }
