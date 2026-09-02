@@ -52,10 +52,19 @@ LISTER=0
 DRY=0
 KEEP=0
 
-# Services indispensables au DÉMARRAGE du contrôleur (importés au niveau module par main.py).
-# Cette liste doit rester COURTE et justifiée : tout ce qu'on ajoute ici, on le retire au
-# catalogue, donc à la maîtrise de l'exploitant. Format : <chemin dans l'arbre>:<dépôt GitHub>.
-SOUS_MODULES_REQUIS=(
+# Composants qu'on POSE D'EMBLÉE parce qu'ils rendent l'installation immédiatement utile, sans
+# aller au catalogue. Format : <chemin dans l'arbre>:<dépôt GitHub>.
+#
+# ⚠ AUCUN N'EST INDISPENSABLE, et cette liste ne doit plus jamais le devenir. Elle l'a été :
+# `services/nmos` y figurait comme obligatoire, l'installation ABANDONNAIT s'il était injoignable,
+# et le message affirmait que « l'orchestrateur ne démarrerait pas ». C'était vrai à l'époque —
+# `main.py` l'importait sans garde — et ça ne l'est plus : l'import est enveloppé, l'API NMOS
+# n'est simplement pas servie, une alerte le dit, et le composant s'installe depuis le Catalogue.
+#
+# Faire échouer une installation ENTIÈRE pour un composant absent est disproportionné, et le
+# remède qu'on suggérait — installer depuis le catalogue — exige que le produit TOURNE. Un cercle
+# dont l'utilisateur ne peut pas sortir. Constaté chez un installateur le 2026-09-02.
+SOUS_MODULES_UTILES=(
   "services/nmos:bobistudio-service-nmos"
 )
 
@@ -84,7 +93,7 @@ done
 #
 # ⚠ À BUMPER À CHAQUE MODIFICATION DE CE FICHIER, sinon elle ment — et une version qui ment est
 # pire que pas de version, puisqu'on lui fait confiance pour écarter une piste.
-INSTALLEUR_VERSION="2026.09.02"
+INSTALLEUR_VERSION="2026.09.02b"
 
 # Centre un texte dans le cadre. CALCULÉ, pas compté à la main : le sous-titre était décalé de
 # deux caractères parce que son remplissage avait été posé à l'œil (corrigé le 2026-09-02), et un
@@ -256,19 +265,27 @@ if ! _recuperer "$REPO" "$SRC" "dépôt principal"; then
        · pas d'accès réseau à codeload.github.com."
 fi
 
-for entree in "${SOUS_MODULES_REQUIS[@]}"; do
+manques=()
+for entree in "${SOUS_MODULES_UTILES[@]}"; do
   chemin="${entree%%:*}"; depot="${entree#*:}"
   # Le SHA épinglé d'abord ; à défaut (API injoignable, quota épuisé, ref = branche) on retombe
   # sur « main » du composant, qui reste installable — mieux qu'un échec sec.
   ref_sm="$(_sha_sous_module "$chemin")"
   [ -n "$ref_sm" ] || ref_sm="main"
   if ! _recuperer "${REPO%/*}/$depot" "$SRC/$chemin" "$chemin" "$ref_sm"; then
-    die "« $chemin » n'a pas pu être récupéré (dépôt ${REPO%/*}/$depot).
-     Ce composant n'est PAS optionnel : l'orchestrateur l'importe au démarrage, et sans lui il ne
-     démarrerait pas — avec un message qui ne nommerait pas la cause. Vérifier que le dépôt est
-     accessible (public, ou GITHUB_TOKEN fourni) puis relancer."
+    # ON CONTINUE. Le produit s'installe et démarre sans lui ; on le DIT ici, une fois, plutôt
+    # que de laisser la personne le découvrir à l'usage.
+    rmdir "$SRC/$chemin" 2>/dev/null || true
+    manques+=("$chemin")
+    warn "« $chemin » n'a pas pu être récupéré — l'installation continue sans lui."
   fi
 done
+if [ ${#manques[@]} -gt 0 ]; then
+  echo
+  warn "${#manques[@]} composant(s) non récupéré(s) : ${manques[*]}
+     Ce n'est pas bloquant : Bobi.Studio démarre sans eux, et les signale dans ses alertes.
+     Installez-les ensuite depuis Réglages → Catalogue."
+fi
 
 # Contrôle de ce qu'on a VRAIMENT obtenu, plutôt que de faire confiance à des codes retour :
 # l'installeur applique le même critère (install.py:_find_source), on échoue donc ici, où le
@@ -276,13 +293,16 @@ done
 python3 - "$SRC" <<'PY' || die "source incomplète — installation annulée."
 import os, sys
 src = sys.argv[1]
+# ⚠ SEULEMENT LE PRODUIT. `services/nmos/__init__.py` figurait ici : le contrôle annulait donc
+# l'installation quelques lignes après qu'on ait décidé de continuer sans lui. Un composant
+# facultatif n'a rien à faire dans un contrôle d'intégrité — il s'installe depuis le Catalogue.
 manque = [c for c in ("main.py", "app", "install/install.py", "node_agent/install-node.sh",
-                      "services/nmos/__init__.py", "plugins/_compute_runtime/meta.json")
+                      "plugins/_compute_runtime/meta.json")
           if not os.path.exists(os.path.join(src, c))]
 if manque:
     sys.exit("absents de la source : " + ", ".join(manque))
 PY
-ok "source complète (produit + services/nmos ; le reste s'installe depuis la page Catalogue)"
+ok "source complète (les composants s'installent depuis la page Catalogue)"
 
 if [ "$DRY" = 1 ]; then
   echo

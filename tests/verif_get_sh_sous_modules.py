@@ -54,7 +54,7 @@ controle("★★★ le SHA épinglé du sous-module est résolu",
 # ⚠ Ce contrôle a d'abord cherché la chaîne n'importe où dans le bloc de la boucle — et il était
 # MUET : `[ -n "$ref_sm" ]`, deux lignes plus haut, la contient aussi. Muté en retirant l'argument
 # de l'appel, le banc restait vert. On isole donc la LIGNE D'APPEL.
-_apres = s.split('for entree in "${SOUS_MODULES_REQUIS[@]}"; do', 1)
+_apres = s.split('for entree in "${SOUS_MODULES_UTILES[@]}"; do', 1)
 _appel = None
 if len(_apres) == 2:
     for l in _apres[1].splitlines():
@@ -119,6 +119,35 @@ for mauvais in ("", "pas du json", "[]", json.dumps({"message": "Not Found"})):
              "le script continue vers son repli ; une trace sur stderr ferait passer une "
              "installation saine pour une panne")
 
+# ═══ AUCUN COMPOSANT N'EST BLOQUANT ════════════════════
+#
+# ★ L'installation ABANDONNAIT si `services/nmos` était injoignable, en affirmant que
+# « l'orchestrateur ne démarrerait pas ». C'était vrai quand main.py l'importait sans garde ; ça
+# ne l'est plus. Et le remède suggéré — installer depuis le catalogue — exige que le produit
+# TOURNE : un cercle dont l'utilisateur ne peut pas sortir.
+_g = io.open(GET, encoding="utf-8").read()
+controle("★★★ aucun composant n'est déclaré REQUIS",
+         "SOUS_MODULES_REQUIS" not in _g and "SOUS_MODULES_UTILES" in _g,
+         "le nom porte la règle : ce qui est « utile » se rattrape, ce qui est « requis » bloque")
+
+_boucle = _g.split("SOUS_MODULES_UTILES[@]", 1)[-1].split("\ndone", 1)[0]
+controle("★★★ un composant manquant n'interrompt PAS l'installation",
+         "die " not in _boucle,
+         "un `die` dans cette boucle rend le produit ININSTALLABLE dès qu'un composant est "
+         "injoignable. Trouvé : %r"
+         % [l.strip() for l in _boucle.splitlines() if "die " in l])
+
+controle("★★ ...et l'absence est DITE, pas avalée",
+         "manques+=" in _g and "warn " in _boucle,
+         "continuer en silence laisserait découvrir le manque à l'usage")
+
+# Le contrôle d'intégrité final ne doit plus exiger un composant facultatif : il annulerait
+# l'installation quelques lignes après qu'on ait décidé de continuer sans lui.
+_verif = _g.split("manque = [c for c in", 1)[-1].split("]", 1)[0]
+controle("★★★ le contrôle d'intégrité final n'exige aucun composant",
+         "services/" not in _verif,
+         "il annulerait l'installation juste après. Contenu : %s" % _verif.strip()[:110])
+
 # ═══ L'en-tête : version affichée, et cadre centré PAR CALCUL ═════════
 #
 # C'est la première chose que voit quelqu'un qui installe le produit. Un cadre de travers y donne
@@ -152,7 +181,7 @@ _fn = re.search(r"(_cadre_ligne\(\) \{.*?\n\})", _src, re.S)
 controle("★ la fonction de cadre est extractible", bool(_fn))
 if _fn:
     for _t in ("B O B I . S T U D I O", "Installation depuis GitHub",
-               "installateur 2026.09.02", "x", "un texte nettement plus long que les autres"):
+               "installateur %s" % (_ver.group(1) if _ver else "?"), "x", "un texte nettement plus long que les autres"):
         _out = subprocess.run(["bash", "-c", _fn.group(1) + '\n_cadre_ligne "%s"' % _t],
                               capture_output=True, text=True).stdout.rstrip("\n")
         _i, _j = _out.find("║"), _out.rfind("║")

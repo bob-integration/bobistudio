@@ -26,6 +26,15 @@ optionnel et invitait à vérifier l'accès au dépôt. Il désignait la mauvais
 Un bon message sur un mauvais diagnostic coûte plus cher que pas de message du tout — celui-ci a
 envoyé chercher du côté des droits, là où il n'y avait rien.
 
+**Et aucun composant ne bloque plus l'installation.** Le service NMOS y était déclaré
+indispensable : s'il était injoignable, tout s'arrêtait, avec un message affirmant que
+l'orchestrateur ne démarrerait pas. C'était vrai autrefois ; ça ne l'est plus depuis que son
+import est protégé — l'API NMOS n'est simplement pas servie, une alerte le dit, et le composant
+s'installe ensuite depuis le Catalogue.
+
+Le remède qu'on suggérait exigeait d'ailleurs que le produit TOURNE : un cercle dont on ne
+pouvait pas sortir. L'installation continue désormais, et signale ce qui manque.
+
 ---
 
 ## La mise à jour depuis GitHub, en entier — 2026-09-02
