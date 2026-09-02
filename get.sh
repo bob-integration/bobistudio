@@ -74,10 +74,32 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Version de CET INSTALLATEUR — pas celle du produit, qui n'est pas encore choisie à ce stade.
+#
+# ★ À QUOI ELLE SERT : quand une installation échoue, on demande à la personne le numéro affiché.
+# Sans lui, impossible de savoir si elle a un `get.sh` d'aujourd'hui ou celui de la semaine
+# dernière — le script est servi par le site, donc mis en cache un peu partout, et rien ne dit
+# lequel elle exécute. Une date se lit sans table de correspondance : « 2026-08-20 » dit tout de
+# suite qu'il est vieux de deux semaines.
+#
+# ⚠ À BUMPER À CHAQUE MODIFICATION DE CE FICHIER, sinon elle ment — et une version qui ment est
+# pire que pas de version, puisqu'on lui fait confiance pour écarter une piste.
+INSTALLEUR_VERSION="2026.09.02"
+
+# Centre un texte dans le cadre. CALCULÉ, pas compté à la main : le sous-titre était décalé de
+# deux caractères parce que son remplissage avait été posé à l'œil (corrigé le 2026-09-02), et un
+# numéro de version change de longueur à chaque bump.
+_cadre_ligne() {   # <texte>
+  local t="$1" l=54 g
+  g=$(( (l - ${#t}) / 2 ))
+  printf "  ║%*s%s%*s║\n" "$g" "" "$t" "$(( l - ${#t} - g ))" ""
+}
+
 echo
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║                B O B I . S T U D I O                 ║"
-echo "  ║            Installation depuis GitHub                ║"
+_cadre_ligne "B O B I . S T U D I O"
+_cadre_ligne "Installation depuis GitHub"
+_cadre_ligne "installateur $INSTALLEUR_VERSION"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo
 
@@ -179,17 +201,43 @@ SRC="$TMP/src"; mkdir -p "$SRC"
 
 # Récupère l'archive d'un dépôt et la déplie DANS $2. `--strip-components=1` retire le dossier
 # racine que GitHub ajoute (« <dépôt>-<ref>/ »), qu'on ne veut pas voir apparaître dans l'arbre.
-_recuperer() {   # <dépôt> <destination> <étiquette>
-  local depot="$1" dest="$2" quoi="$3"
-  local url="$CODELOAD/$depot/tar.gz/refs/heads/$REF"
+# SHA du sous-module `$1` tel qu'il est ÉPINGLÉ dans le dépôt principal à la ref installée.
+#
+# ★ POURQUOI CE DÉTOUR. `_recuperer` employait la MÊME ref pour le produit et pour ses
+# sous-modules. Tant qu'on installait « main », présente partout, ça passait. Depuis qu'on
+# installe par ÉTIQUETTE, ça ne peut plus : il n'existe aucun « v0.9.3 » dans
+# `bobistudio-service-nmos`, qui vit sur ses propres numéros. L'installation échouait donc au
+# premier sous-module — constaté chez un installateur le 2026-09-02.
+#
+# L'API rend le SHA exact que le dépôt principal épingle à cette étiquette : c'est LE commit
+# contre lequel la release a été construite, donc la seule réponse reproductible. Une étiquette
+# du composant serait un à-peu-près ; sa branche, pas une version du tout.
+_sha_sous_module() {   # <chemin>
+  "${_curl[@]}" "$API/repos/$REPO/contents/$1?ref=$REF" 2>/dev/null \
+    | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    if d.get("type") == "submodule" and d.get("sha"): print(d["sha"])
+except Exception:
+    pass' 2>/dev/null
+}
+
+_recuperer() {   # <dépôt> <destination> <étiquette> [ref]
+  local depot="$1" dest="$2" quoi="$3" ref="${4:-$REF}"
+  local url="$CODELOAD/$depot/tar.gz/refs/heads/$ref"
   mkdir -p "$dest"
   # Les deux tentatives sont MUETTES : une ref peut être une branche ou une étiquette, GitHub les
   # sert sur des chemins différents, et l'échec de la première est donc NORMAL une fois sur deux.
   # Laisser curl le crier ferait passer une installation saine pour une panne. Si les deux
   # échouent, l'appelant produit un message qui, lui, nomme les causes possibles.
   if ! "${_curl[@]}" -o "$TMP/a.tar.gz" "$url" 2>/dev/null; then
-    url="$CODELOAD/$depot/tar.gz/refs/tags/$REF"
-    "${_curl[@]}" -o "$TMP/a.tar.gz" "$url" 2>/dev/null || return 1
+    url="$CODELOAD/$depot/tar.gz/refs/tags/$ref"
+    if ! "${_curl[@]}" -o "$TMP/a.tar.gz" "$url" 2>/dev/null; then
+      # Ni branche ni étiquette : un SHA brut, que codeload sert aussi. C'est le cas d'un
+      # sous-module épinglé, dont le commit ne porte ni l'une ni l'autre.
+      url="$CODELOAD/$depot/tar.gz/$ref"
+      "${_curl[@]}" -o "$TMP/a.tar.gz" "$url" 2>/dev/null || return 1
+    fi
   fi
   # Un HTML de page de connexion se déballe mal : on le dit ici plutôt que de laisser un arbre
   # à moitié rempli passer pour une source valide.
@@ -210,7 +258,11 @@ fi
 
 for entree in "${SOUS_MODULES_REQUIS[@]}"; do
   chemin="${entree%%:*}"; depot="${entree#*:}"
-  if ! _recuperer "${REPO%/*}/$depot" "$SRC/$chemin" "$chemin"; then
+  # Le SHA épinglé d'abord ; à défaut (API injoignable, quota épuisé, ref = branche) on retombe
+  # sur « main » du composant, qui reste installable — mieux qu'un échec sec.
+  ref_sm="$(_sha_sous_module "$chemin")"
+  [ -n "$ref_sm" ] || ref_sm="main"
+  if ! _recuperer "${REPO%/*}/$depot" "$SRC/$chemin" "$chemin" "$ref_sm"; then
     die "« $chemin » n'a pas pu être récupéré (dépôt ${REPO%/*}/$depot).
      Ce composant n'est PAS optionnel : l'orchestrateur l'importe au démarrage, et sans lui il ne
      démarrerait pas — avec un message qui ne nommerait pas la cause. Vérifier que le dépôt est

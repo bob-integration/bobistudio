@@ -5,6 +5,29 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## L'installation échouait dès qu'on choisissait une version — 2026-09-02
+
+Signalé par un installateur le jour même. Le script d'installation propose une liste de versions ;
+en choisir une le faisait échouer aussitôt après avoir récupéré le produit, sur son premier
+composant obligatoire.
+
+La cause : il cherchait ce composant **à la version du produit**. Or un service vit sur ses
+propres numéros — il n'existe aucun « v0.9.3 » dans le dépôt du service NMOS. Tant qu'on
+installait la branche de développement, présente partout, rien ne se voyait ; le défaut est
+apparu avec le choix de version, ajouté la veille.
+
+Le script résout maintenant, pour chaque composant, le commit exact que la version du produit
+épingle — donc celui contre lequel elle a été construite. Si cette résolution est impossible
+(réseau, quota d'interrogation épuisé), il retombe sur la branche principale du composant plutôt
+que d'abandonner.
+
+⚠ Le message d'erreur, lui, était clair et bien écrit : il expliquait que le composant n'est pas
+optionnel et invitait à vérifier l'accès au dépôt. Il désignait la mauvaise cause, avec assurance.
+Un bon message sur un mauvais diagnostic coûte plus cher que pas de message du tout — celui-ci a
+envoyé chercher du côté des droits, là où il n'y avait rien.
+
+---
+
 ## La mise à jour depuis GitHub, en entier — 2026-09-02
 
 La 0.9.2 savait REGARDER : elle lisait les releases publiées et vous disait qu'une version
