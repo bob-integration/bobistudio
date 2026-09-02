@@ -5,6 +5,66 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Le premier démarrage dit ce qu'il attend, et la version se voit enfin — 2026-09-03
+
+**Le mot de passe du premier compte.** L'écran de création de l'administrateur n'annonçait aucune
+condition. On remplissait tout, on validait, le formulaire revenait **vide** avec un refus — et
+sans avoir appris la règle pour autant. Les exigences sont désormais affichées dès l'arrivée et
+cochées au fur et à mesure de la frappe, la saisie survit à un refus (le mot de passe, lui, n'est
+jamais renvoyé au navigateur), et les deux saisies se comparent en direct.
+
+**Et l'exigence se choisit là.** Le profil — souple, standard, stricte — vivait dans Réglages →
+Sécurité, c'est-à-dire *derrière* cet écran : personne montant une instance d'essai ne pouvait
+assouplir la règle avant de s'être fait refuser. Il est sur l'écran, coché sur « standard », et
+c'est le serveur qui l'applique. Un indice au passage : la mention « au moins 6 caractères » qui
+figurait là était fausse depuis longtemps — le minimum réel est de douze.
+
+**L'assistant ne demande plus que ce qui existe.** Il annonçait « connexion Proxmox, template de
+base, interface ST 2110 » : trois étapes retirées depuis le passage au tout-Docker. L'étape MXL
+demandait deux nombres **sans aucun effet** — la profondeur d'un flux se règle par une durée, au
+niveau du domaine, jamais par un compte par conteneur. Les champs VMID demandaient un plancher de
+numérotation interne et un plafond qui n'est plus lu nulle part. Tout cela est parti. À la place,
+l'étape réseau **explique** ce qui se joue : une adresse par conteneur, pas une par machine, et
+le choix entre un réseau dédié ou le même réseau que l'orchestrateur.
+
+**Le fuseau horaire y trouve sa place**, à côté de l'identité du système : il gouverne les
+journaux, l'horodatage des alertes et les dates affichées, et vide il suit l'OS du contrôleur —
+ce qui est juste jusqu'au jour où l'OS ne l'est pas.
+
+**L'écran final disait « Bobi.Studio est prêt ».** Il ne l'est pas : sans nœud enrôlé, rien ne
+peut tourner. Il dit maintenant les deux gestes qui suivent, rappelle les réglages à poser avant
+le premier conteneur — ceux qui sont lus **au moment du déploiement**, pas seulement à l'usage —
+et indique où trouver l'aide.
+
+**La version du produit était introuvable.** Elle existait dans le code, deux routes savaient
+déjà la comparer à la dernière publiée, et aucune page ne l'affichait. Elle est désormais dans le
+menu « ? » de la barre de navigation, sur l'écran de connexion, sur les écrans de premier
+démarrage et dans l'aide.
+
+**La page Catalogue devient « Mises à jour »**, et porte enfin ce que son nom promet : la version
+de cette instance confrontée à la dernière publiée, avec le bouton pour l'appliquer. Le bouton
+n'apparaît que si la publication porte réellement l'archive d'installation et son empreinte —
+annoncer une mise à jour qui échouerait vaudrait moins que de ne rien annoncer.
+
+**Le sort d'un paquet récupéré était une règle cachée** : un type inconnu s'activait, une mise à
+jour était seulement rangée. Deux clics identiques, deux résultats différents, et rien ne le
+disait. C'est un interrupteur, coché par défaut. Quand une activation laisse des conteneurs sur
+la version précédente, le message le compte au lieu de dire « installé et activé ».
+
+**L'installation d'un nœud échouait sur Ubuntu**, à l'étape Docker : la liste de paquets était
+écrite pour Debian 13, où le client a été scindé dans `docker-cli` — un paquet qui n'existe dans
+aucune version d'Ubuntu. L'installeur demande maintenant à apt ce qu'il connaît au lieu de coder
+la liste, ce qui le protège aussi de la prochaine scission côté Debian. La documentation, elle,
+annonçait « Debian/Ubuntu » sans que personne n'ait jamais essayé Ubuntu : elle annonce désormais
+**Debian 13 (trixie)**, la seule distribution sur laquelle le produit est éprouvé.
+
+**Installation sans accès direct au nœud : l'état réel est écrit.** PXE, USB et iLO n'ont jamais
+été menés jusqu'à un nœud enrôlé — le guide d'installation le dit maintenant en tête de section,
+avec ce qui est prouvé, ce qui ne l'est pas, et le seul matériel sur lequel cela a été essayé.
+Les retours sur d'autres iLO, iDRAC ou contrôleurs de gestion sont les bienvenus.
+
+---
+
 ## L'installateur parle anglais, et ne pose plus deux fois la même question — 2026-09-02
 
 Le script d'installation était en français seul. Il choisit désormais sa langue d'après celle de

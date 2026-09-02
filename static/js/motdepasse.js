@@ -8,7 +8,7 @@
    MANQUE pendant qu'il tape, au lieu de deviner après un refus.
 
    ⚠ DEUX IMPLÉMENTATIONS DE LA MÊME RÈGLE DÉRIVENT. Confrontation :
-       ./venv/bin/python outils/verif_motdepasse.py
+       ./venv/bin/python tests/check_motdepasse.py
    qui fait tourner les deux sur le même corpus et compare verdict par verdict. */
 (function (racine) {
     "use strict";

@@ -683,7 +683,7 @@
 <div class="wiki-warn"><strong>Article historique (Proxmox/LXC)</strong> — l'orchestrateur est désormais full-Docker. Voir <em>Architecture cluster</em>. Token Proxmox et clé SSH host ne sont plus requis.</div>
 <h2>Système</h2>
 <ul>
-<li>VM Linux (Debian/Ubuntu), ports 5000 (Flask) et 9000 (Ember+)</li>
+<li>VM Linux (Debian 13), ports 5000 (Flask) et 9000 (Ember+)</li>
 <li>Python 3.13 + venv dans <code>./venv</code></li>
 <li>SQLite (DB créée au premier démarrage)</li>
 </ul>
@@ -1612,6 +1612,9 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 </template>
 
 <template id="wiki-art-mises-a-jour">
+<p><strong>Cette instance tourne en Bobi.Studio {{ app_version|default('?') }}.</strong>
+   La version publiée la plus récente, et la mise à jour quand il y en a une, se trouvent dans
+   <a href="/settings#catalogue">Réglages → Mises à jour</a>.</p>
 <p class="meta">Contenu chargé depuis <code>CHANGELOG.md</code> — <span id="wiki-changelog-mtime">…</span></p>
 <div id="wiki-changelog-content">Chargement…</div>
 </template>
@@ -1785,7 +1788,7 @@ const CORE_ARTICLES = [
   { id: 'dev-plugin',           title: 'Écrire un plugin',            cat: 'dev' },
   { id: 'dev-service',          title: 'Écrire un service',           cat: 'dev' },
   { id: 'dev-contribuer',       title: 'Contribuer',                  cat: 'dev' },
-  { id: 'mises-a-jour',         title: 'Mises à jour',                cat: 'about' },
+  { id: 'mises-a-jour',         title: 'Liste des évolutions',        cat: 'about' },
   { id: 'obtenir-aide',         title: 'Obtenir de l\'aide',          cat: 'about' },
 ];
 

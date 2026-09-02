@@ -383,6 +383,13 @@ def pwd_exigences(profil=None):
             "longueur_min": p["longueur_min"],
             "variete": [list(x) for x in p["variete"]]}
 
+def pwd_profils_publics():
+    """Les TROIS profils, sous forme sérialisable. Sert l'écran de premier démarrage, où le
+    profil se choisit en même temps que le mot de passe : sans la table complète, changer de
+    profil dans le sélecteur imposerait un aller-retour serveur pour ré-afficher les règles."""
+    return {nom: pwd_exigences(nom) for nom in PWD_PROFILS}
+
+
 # Mots de passe interdits quelle que soit leur longueur. Liste COURTE et assumée : elle n'a pas
 # vocation à remplacer une vraie base de fuites, seulement à écarter ce qui est tapé par réflexe
 # sur une installation neuve. Comparée en minuscules, sans les chiffres de fin (« bobi2026 » et
@@ -409,6 +416,13 @@ def _noyau(txt):
     """Forme comparable : minuscules, sans espaces ni chiffres de fin."""
     t = "".join(txt.lower().split())
     return t.rstrip("0123456789") or t
+
+
+# ORDRE D'AFFICHAGE des règles, et liste de ce qui est ANNONÇABLE avant la frappe. Le miroir
+# navigateur porte la même liste (`validerMotDePasse.REGLES`) : une règle ajoutée ici sans y être
+# n'apparaîtrait nulle part dans l'interface — l'utilisateur se ferait refuser pour un critère
+# qu'on ne lui a jamais montré.
+PWD_REGLES = ("court", "variete", "courant", "identite", "repetitif")
 
 
 def valider_motdepasse(pwd, username=None, extras=(), exigences=None):

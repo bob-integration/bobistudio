@@ -220,6 +220,19 @@ def inject_brand():
     }}
 
 @app.context_processor
+def inject_version():
+    """La version du produit, dans TOUS les gabarits — y compris ceux qui ne passent par aucune
+    route métier (login, premier démarrage).
+
+    ★ Elle n'était affichée NULLE PART. `app/version.py` existe et fait autorité, deux routes
+    savent la comparer au dernier tag publié — mais aucune page ne la montrait : mesuré le
+    2026-09-02, la chaîne « 0.9.5 » n'apparaissait dans aucun rendu. Un exploitant au téléphone
+    avec le support ne pouvait pas dire ce qu'il faisait tourner.
+    """
+    from app.version import VERSION
+    return {"app_version": VERSION}
+
+@app.context_processor
 def inject_auth():
     """Injecte current_user et helper has_perm() dans tous les templates."""
     from app.auth import current_user, has_perm

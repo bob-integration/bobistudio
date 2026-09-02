@@ -26,6 +26,8 @@
         .login-card input:focus { outline: none; border-color: var(--accent); }
         .login-card .btn { width: 100%; margin: 8px 0 0; padding: 10px;
                            font-size: 0.95em; font-weight: 600; }
+        .login-ver { text-align: center; margin-top: 14px; font-size: 0.75em;
+                     color: var(--text-muted); font-variant-numeric: tabular-nums; }
         .login-err { color: var(--status-stopped-fg); font-size: 0.85em;
                      text-align: center; margin-bottom: 12px; min-height: 1.2em; }
     </style>
@@ -52,6 +54,9 @@
             <input type="password" name="password" autocomplete="current-password" required>
         </div>
         <button class="btn btn-blue" type="submit">{{ _('login.submit') }}</button>
+        {# Version en pied : c'est la première chose que demande le support, et on la demande
+           justement à quelqu'un qui n'est PAS encore entré. Discret, non cliquable. #}
+        <div class="login-ver">Bobi.Studio {{ app_version|default('') }}</div>
     </form>
     </main>
 </body>

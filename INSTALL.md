@@ -5,7 +5,7 @@
 > ce document n'aborde que le déploiement logiciel.
 >
 > Vocabulaire : le **contrôleur** est la machine qui exécute l'orchestrateur Flask (ce dépôt).
-> Un **nœud** est une machine Debian/Ubuntu enrôlée qui exécute les conteneurs Docker de
+> Un **nœud** est une machine Debian 13 enrôlée qui exécute les conteneurs Docker de
 > production, pilotée par un **agent-nœud** (`bobi-node-agent`, port 9100). Contrôleur et
 > nœud peuvent être la même machine (« tout-en-un »).
 
@@ -31,8 +31,8 @@ déjà conforme (NIC E810/`ice` pour un nœud ST 2110, réseau multicast routé 
 
 Résumé logiciel minimal :
 
-- **Contrôleur** : Debian avec Python 3.13, root (ou sudo), accès réseau vers les nœuds.
-- **Nœud** : Debian/Ubuntu, root, Docker (installé automatiquement par l'installeur de nœud
+- **Contrôleur** : Debian 13 (trixie) avec Python 3.13, root (ou sudo), accès réseau vers les nœuds.
+- **Nœud** : Debian 13 (trixie), root, Docker (installé automatiquement par l'installeur de nœud
   s'il est absent).
 - Un navigateur pour l'interface web (aucun logiciel client à installer).
 
@@ -275,7 +275,7 @@ la cause documentée d'une panne restée huit jours sans réaction sur une insta
 
 ## 4. Enrôlement d'un nœud
 
-Un nœud = une machine Debian/Ubuntu + l'agent `bobi-node-agent` + un jeu de **capacités**
+Un nœud = une machine Debian 13 + l'agent `bobi-node-agent` + un jeu de **capacités**
 choisies à l'installation : `io2110` (E810, moteur ST 2110), `compute` (traitements numpy),
 `media` (lecture/enregistrement/transcodage), `webrtc` (passerelle MediaMTX), `gpu` (pilote
 NVIDIA). Les capacités sont **rattrapables après coup** (§4.3) mais jamais retirées par ce
@@ -364,6 +364,44 @@ nœud.
 
 ### 4.5 Installation sans accès direct au nœud (PXE / USB / iLO)
 
+> ⚠ **CES TROIS CHEMINS NE SONT PAS VALIDÉS DE BOUT EN BOUT. Aucun n'a encore abouti à un nœud
+> réellement enrôlé.** Utilisez `install-node.sh` lancé à la main (§4.1) pour toute mise en
+> service dont vous dépendez ; ce qui suit est un chantier avancé, pas un mode opératoire.
+>
+> État exact, au 2026-09-02 :
+>
+> - **PXE/UEFI HTTP** — c'est le chemin le plus avancé, et sa **chaîne firmware est prouvée** sur
+>   un DL360 Gen10 : shim → grub → `grub.cfg` → noyau → initrd s'enchaînent. Ce qui n'a **jamais**
+>   été exercé, c'est tout ce qui vient après : le tirage du preseed par l'installeur Debian, le
+>   partitionnement, la pose des composants apt, la `late_command`, le bootstrap, puis le POST
+>   d'enrôlement. Trois pièges de transport ont déjà été payés pour arriver là (keep-alive
+>   HTTP/1.1 obligatoire — d'où `app/pxe_server.py` sur son propre port ; service à la RACINE et
+>   non sous `/pxe` ; 404 **avec corps**, sans quoi shim reste bloqué sur la connexion).
+> - **Média USB** — l'image se construit et se flashe, mais aucune installation menée jusqu'à
+>   l'enrôlement n'a été observée. Même phase `d-i` non exercée que ci-dessus.
+> - **Prise en main iLO** — **bloquée par la licence** sur la flotte actuelle, et ce n'est pas
+>   corrigeable côté code : le Virtual Media par URL est une fonction **iLO Advanced**, un iLO
+>   Standard répond `iLO.2.25.LicenseKeyRequired`. La découverte matérielle Redfish (inventaire
+>   disques/NIC) et la console HTML5, elles, fonctionnent sans cette licence.
+>
+> Contrainte matérielle à connaître avant de tenter le test : la phase 0 repose sur l'**UEFI HTTP
+> Boot avec URL explicite**, qui n'existe qu'à partir des Gen10 / 14G. Les PowerEdge R620 (12G,
+> iDRAC7) ne peuvent donc pas servir de banc — leur PXE UEFI exige DHCP option 66/67 + TFTP, que
+> le contrôleur ne sert pas.
+>
+> **Ce qui a réellement été essayé, et sur quoi.** Un seul matériel : un **HPE DL360 Gen10, iLO 5
+> firmware 3.17**. Rien d'autre. Ni une autre génération d'iLO, ni **aucune version d'iDRAC**, ni
+> aucun contrôleur de gestion d'un autre constructeur. Les échanges Redfish sont écrits contre ce
+> seul exemplaire, et Redfish laisse aux constructeurs assez de latitude pour qu'un autre modèle
+> se comporte différemment — sur l'inventaire matériel comme sur le contrôle du boot.
+>
+> **Vos retours nous intéressent.** Si vous tentez l'un de ces chemins, dites-nous ce qui s'est
+> passé — que ça marche ou non — en ouvrant une issue :
+> <https://github.com/bob-integration/bobistudio/issues>. Ce qui aide le plus : le modèle exact
+> du serveur, la génération et la version de firmware du contrôleur de gestion (iLO, iDRAC,
+> autre), et l'étape précise où ça s'arrête. Un échec documenté vaut mieux qu'un succès supposé :
+> c'est exactement ce qui manque pour sortir cette section de l'état de chantier.
+
 Pour les nœuds qu'on ne peut pas atteindre en SSH avant enrôlement (salle machine, pas de
 clavier), trois aiguillages depuis Réglages → Déploiement → Nœuds, tous pilotés depuis un
 **jeton d'enrôlement** pré-généré :
@@ -379,10 +417,11 @@ clavier), trois aiguillages depuis Réglages → Déploiement → Nœuds, tous p
 - **Prise en main iLO** (routes `/api/nodes/<id>/ilo/*`) : dépose l'ISO générée en CD/DVD
   virtuel via l'interface de gestion HPE iLO du serveur, sans média physique.
 
-Ces trois chemins aboutissent au même résultat que `install-node.sh` lancé à la main : un nœud
+Ces trois chemins **visent** le même résultat que `install-node.sh` lancé à la main : un nœud
 qui s'annonce avec le profil préparé côté contrôleur. Pas de commande à retenir ici — le détail
 opérationnel (choix de l'interface, du disque, du profil réseau) se pilote entièrement depuis
-l'interface web.
+l'interface web. Rappel de l'avertissement en tête de section : aucun des trois n'a encore été
+mené jusqu'à un nœud enrôlé.
 
 ---
 

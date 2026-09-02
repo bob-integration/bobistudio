@@ -396,7 +396,7 @@
     // ── Robustesse du mot de passe ─────────────────────────────────────────────────────────
     // ⚠ CE CONTRÔLE NE PROTÈGE RIEN : la règle qui fait foi est `app/auth.py`, et l'API est
     // postable sans passer par ici. Il existe pour montrer CE QUI MANQUE pendant la frappe.
-    // Les deux implémentations sont confrontées par `tools/check_motdepasse.py`.
+    // Les deux implémentations sont confrontées par `tests/check_motdepasse.py`.
     const REGLES = window.validerMotDePasse ? window.validerMotDePasse.REGLES : [];
     const zoneRegles = $('cpt_pwd_regles') && $('cpt_pwd_regles').querySelector('ul');
 

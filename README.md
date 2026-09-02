@@ -115,7 +115,7 @@ systemctl start bobistudio
 ### Enrôler un nœud
 
 ```bash
-# Sur la machine nœud (Debian/Ubuntu), capacités à la carte :
+# Sur la machine nœud (Debian 13), capacités à la carte :
 ./node_agent/install-node.sh --with compute,media \
     --macvlan-parent eno1 --macvlan-subnet 10.x.x.0/24 --macvlan-gateway 10.x.x.254
 ```
@@ -182,8 +182,8 @@ CHANGELOG.md          ← historique des versions (rendu sur la page Aide)
 
 ## Prérequis infrastructure
 
-- Contrôleur : Debian avec Python 3.13 (VM ou machine dédiée)
-- Nœuds : Debian/Ubuntu avec Docker ; pour le rôle `io2110`, NIC Intel E810 (MTL/DPDK AF-XDP) + hugepages + PTP
+- Contrôleur : Debian 13 (trixie) avec Python 3.13 (VM ou machine dédiée)
+- Nœuds : Debian 13 (trixie) avec Docker ; pour le rôle `io2110`, NIC Intel E810 (MTL/DPDK AF-XDP) + hugepages + PTP
 - Réseau : un plan média ST 2110, un segment macvlan pour les conteneurs compute/média, un plan de contrôle
 - Pour WebRTC : la passerelle MediaMTX se déploie depuis Réglages → WebRTC
 

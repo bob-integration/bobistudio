@@ -56,10 +56,12 @@
                    font-family: var(--font-mono, monospace); font-size: 0.8em; white-space: pre-wrap;
                    max-height: 220px; overflow-y: auto; display: none; }
         .wiz-logo-prev { max-height: 48px; max-width: 160px; margin-top: 8px; display: none; }
-        .wiz-mxl { background: var(--bg-input); border-left: 3px solid var(--accent);
+        .wiz-note { background: var(--bg-input); border-left: 3px solid var(--accent);
                    padding: 12px 14px; border-radius: var(--radius-small); font-size: 0.86em;
                    line-height: 1.55; margin-bottom: 18px; }
-        .wiz-mxl a { color: var(--accent); }
+        .wiz-note a { color: var(--accent); }
+        .wiz-next { margin: 8px 0 0; padding-left: 20px; }
+        .wiz-next li { margin-bottom: 6px; }
         .nic-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
         .nic-item { border: 1px solid var(--border); border-radius: var(--radius-small);
                     padding: 10px 12px; cursor: pointer; font-size: 0.88em; }
@@ -68,6 +70,8 @@
         .nic-item .busy { color: var(--status-stopped-fg, #e05260); }
         .wiz-skip-all { text-align: center; margin-top: 16px; }
         .wiz-skip-all a { color: var(--text-muted); font-size: 0.82em; cursor: pointer; }
+        .wiz-ver { text-align: center; margin-top: 10px; font-size: 0.75em;
+                   color: var(--text-muted); font-variant-numeric: tabular-nums; }
     </style>
 </head>
 <body>
@@ -86,11 +90,18 @@
     <div class="wiz-skip-all">
         <a onclick="wiz.skipAll()">{{ _('wiz.skip_all') }}</a>
     </div>
+    <div class="wiz-ver">Bobi.Studio {{ app_version|default('') }}</div>
 </div>
 
 <script>
 const VIDEO_FORMATS = {{ video_formats | tojson }};
 const LANGUAGES = {{ languages | tojson }};   // [{code, label, builtin}, …]
+const TIMEZONES = {{ timezones|default([])|tojson }};   // [[région, [noms…]], …]
+const TZ_TXT = {
+  title:  {{ _('settings.branding.tz_title')|tojson }},
+  system: {{ _('settings.branding.tz_system')|tojson }},
+  help:   {{ _('settings.branding.tz_help')|tojson }},
+};
 const T = (k) => window.t(k);
 
 async function api(method, url, body, isForm) {
@@ -114,7 +125,7 @@ const wiz = {
     start() {
         this.steps = [
             this.language, this.welcome, this.identity, this.network,
-            this.mxl, this.videofmt, this.done
+            this.videofmt, this.done
         ];
         this.renderProgress();
         this.render();
@@ -198,6 +209,14 @@ const wiz = {
                 <input id="f-org" value="${esc(s.brand_org_name)}"></div>
             <div class="field"><label>${esc(T('wiz.identity.loc'))} <span class="opt">${esc(T('wiz.opt'))}</span></label>
                 <input id="f-loc" placeholder="${esc(T('wiz.identity.loc_ph'))}" value="${esc(s.brand_location)}"></div>
+            {# ★ Le FUSEAU HORAIRE est ici parce qu'il n'a pas de valeur de site : vide, on suit
+               l'OS du contrôleur, ce qui est juste jusqu'au jour où l'OS ne l'est pas. Il pilote
+               les journaux, l'horodatage des alertes et les dates affichées — donc la lisibilité
+               de tout ce qui se passera ensuite. Le poser coûte un clic maintenant, et une
+               relecture de journaux plus tard. #}
+            <div class="field"><label>${esc(TZ_TXT.title)}</label>
+                <select id="f-tz">${tzOptions(s.timezone || '')}</select>
+                <div class="hint">${esc(TZ_TXT.help)}</div></div>
             <div class="field"><label>${esc(T('wiz.identity.logo'))} <span class="opt">${esc(T('wiz.identity.logo_opt'))}</span></label>
                 <input type="file" id="f-logo" accept="image/*">
                 <img class="wiz-logo-prev" id="logo-prev" ${s.brand_logo_url ? `src="${esc(s.brand_logo_url)}" style="display:block"` : ''}>
@@ -218,7 +237,14 @@ const wiz = {
         };
     },
 
-    // ── Étape 3 : VMID & réseau ───────────────────────────
+    // ── Étape 3 : réseau des conteneurs ───────────────────
+    // Les deux champs VMID ont été RETIRÉS le 2026-09-02 : `vmid_end` n'est plus lu nulle part
+    // (l'allocation est monotone illimitée depuis le passage full-Docker, cf. allocations.py) et
+    // `vmid_start` n'est qu'un plancher de numérotation interne — un handle jetable. Faire choisir
+    // ça à quelqu'un qui n'a pas encore vu un conteneur, c'est lui demander de décider de ce qu'il
+    // ne peut pas comprendre. Le plancher garde son défaut et reste dans Réglages → Cluster.
+    // À la place : ce qu'il faut VRAIMENT comprendre ici, c'est qu'un conteneur porte sa propre
+    // adresse IP et que l'orchestrateur lui parle en direct.
     async network() {
         const s = (await api('GET', '/api/settings')).data;
         return {
@@ -226,9 +252,8 @@ const wiz = {
             <div class="wiz-step-num">${esc(T('wiz.network.step'))}</div>
             <h1>${esc(T('wiz.network.title'))}</h1>
             <p class="lead">${esc(T('wiz.network.lead'))}</p>
-            <div class="row">
-              <div class="field"><label>${esc(T('wiz.network.vmid_start'))}</label><input id="f-vstart" type="number" value="${esc(s.vmid_start)}"></div>
-              <div class="field"><label>${esc(T('wiz.network.vmid_end'))}</label><input id="f-vend" type="number" value="${esc(s.vmid_end)}"></div>
+            <div class="wiz-note">
+              ${T('wiz.network.explain')}
             </div>
             <div class="field"><label>${esc(T('wiz.network.mode'))}</label>
               <select id="f-netmode" onchange="wiz.toggleStatic()">
@@ -244,7 +269,8 @@ const wiz = {
                 <div class="field"><label>${esc(T('wiz.network.mask'))}</label><input id="f-mask" type="number" value="${esc(s.netmask_bits)}"></div>
                 <div class="field"><label>${esc(T('wiz.network.gw'))}</label><input id="f-gw" value="${esc(s.gateway)}"></div>
               </div>
-            </div>`,
+            </div>
+            <p class="hint">${T('wiz.network.after_node')}</p>`,
         };
     },
     toggleStatic() {
@@ -253,29 +279,7 @@ const wiz = {
     },
 
 
-    // ── Étape 7 : MXL & ring ──────────────────────────────
-    async mxl() {
-        const s = (await api('GET', '/api/settings')).data;
-        return {
-            html: `
-            <div class="wiz-step-num">${esc(T('wiz.mxl.step'))}</div>
-            <h1>${esc(T('wiz.mxl.title'))}</h1>
-            <div class="wiz-mxl">
-              ${T('wiz.mxl.blurb')}
-              <br><a href="https://tech.ebu.ch/dmf/mxl" target="_blank" rel="noopener">${esc(T('wiz.mxl.learn'))}</a>
-            </div>
-            <div class="row">
-              <div class="field"><label>${esc(T('wiz.mxl.vgrain'))}</label>
-                <input id="f-vring" type="number" min="2" value="${esc(s.shm_video_ring)}">
-                <div class="hint">${esc(T('wiz.mxl.vgrain_hint'))}</div></div>
-              <div class="field"><label>${esc(T('wiz.mxl.agrain'))}</label>
-                <input id="f-aring" type="number" min="2" value="${esc(s.shm_audio_ring)}">
-                <div class="hint">${esc(T('wiz.mxl.agrain_hint'))}</div></div>
-            </div>`,
-        };
-    },
-
-    // ── Étape 8 : Format vidéo ────────────────────────────
+    // ── Étape 4 : Format vidéo ────────────────────────────
     async videofmt() {
         const s = (await api('GET', '/api/settings')).data;
         const labels = (VIDEO_FORMATS || '').split('\n')
@@ -291,35 +295,72 @@ const wiz = {
         };
     },
 
-    // ── Étape 9 : Terminé ─────────────────────────────────
+    // ── Étape 5 : Et maintenant ? ─────────────────────────
+    // ⚠ L'écran disait « Bobi.Studio est prêt » alors qu'AUCUN nœud n'est enrôlé — donc rien ne
+    // peut tourner. Il dit maintenant ce qui reste à faire, et où trouver l'aide : c'est le seul
+    // moment où on est sûr que l'utilisateur regarde.
     async done() {
         await api('POST', '/api/setup/complete');
         return {
             html: `
             <div class="wiz-step-num">${esc(T('wiz.done.step'))}</div>
             <h1>${esc(T('wiz.done.title'))}</h1>
-            <p class="lead">${T('wiz.done.lead')}</p>` };
+            <p class="lead">${T('wiz.done.lead')}</p>
+            <div class="wiz-note">
+              <strong>${esc(T('wiz.done.next_title'))}</strong>
+              <ol class="wiz-next">
+                <li>${esc(T('wiz.done.next_node'))}
+                    <a href="/settings#deploiement/nodes">${esc(T('wiz.done.next_node_link'))}</a></li>
+                <li>${esc(T('wiz.done.next_iface'))}
+                    <a href="/settings#reseau/interfaces">${esc(T('wiz.done.next_iface_link'))}</a></li>
+              </ol>
+              {# Hors de la liste NUMÉROTÉE, à dessein : ce n'est pas un 3ᵉ geste obligatoire mais
+                 la réponse à « et comment j'obtiens d'autres types de conteneurs ? ». Rien dans
+                 l'interface ne le disait — on pouvait chercher longtemps une liste figée qui
+                 n'existe pas. #}
+              <p style="margin:12px 0 0">${esc(T('wiz.done.plugins'))}
+                 <a href="/settings#catalogue">${esc(T('wiz.done.plugins_link'))}</a></p>
+            </div>
+            {# ★ Cet assistant ne pose QUE trois réglages, et il y en a d'autres sans valeur de
+               site, LUS AU MOMENT DU DÉPLOIEMENT — pas seulement à l'usage. Les taire ici, c'est
+               les laisser découvrir par la panne. On ne les recopie pas : la liste qui fait foi
+               est INSTALL.md, rendue dans l'aide ; on nomme et on renvoie. #}
+            <div class="wiz-note">
+              <strong>${esc(T('wiz.done.settings_title'))}</strong>
+              <p style="margin:8px 0 0">${esc(T('wiz.done.settings'))}</p>
+              <p style="margin:8px 0 0"><a href="/aide#installation">${esc(T('wiz.done.settings_link'))}</a></p>
+            </div>
+            <div class="wiz-note">
+              ${esc(T('wiz.done.help'))}
+              <br><a href="/aide">${esc(T('wiz.done.help_link'))}</a>
+            </div>` };
     },
 };
 
 // ── save handlers attachés aux étapes ─────────────────────
+function tzOptions(courant) {
+    const sel = v => v === courant ? ' selected' : '';
+    let html = `<option value=""${sel('')}>${esc(TZ_TXT.system)}</option>`;
+    for (const [region, zones] of (TIMEZONES || [])) {
+        html += `<optgroup label="${esc(region)}">`;
+        for (const z of zones) html += `<option value="${esc(z)}"${sel(z)}>${esc(z)}</option>`;
+        html += '</optgroup>';
+    }
+    return html;
+}
+
 wiz.identity.save = async function() {
     await saveSettings({ brand_system_name: val('f-sysname'), brand_org_name: val('f-org'),
-                         brand_location: val('f-loc') });
+                         brand_location: val('f-loc'), timezone: val('f-tz') });
     return true;
 };
 wiz.network.save = async function() {
-    const o = { vmid_start: +val('f-vstart'), vmid_end: +val('f-vend'),
-                net_mode: val('f-netmode') };
+    const o = { net_mode: val('f-netmode') };
     if (val('f-netmode') === 'static') {
         Object.assign(o, { ip_start: val('f-ipstart'), ip_end: val('f-ipend'),
                            netmask_bits: +val('f-mask'), gateway: val('f-gw') });
     }
     await saveSettings(o); return true;
-};
-wiz.mxl.save = async function() {
-    await saveSettings({ shm_video_ring: +val('f-vring'), shm_audio_ring: +val('f-aring') });
-    return true;
 };
 wiz.videofmt.save = async function() {
     await saveSettings({ video_format_default: val('f-vfmt') });

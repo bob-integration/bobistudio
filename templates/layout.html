@@ -635,6 +635,11 @@
                     aria-haspopup="true" aria-expanded="false"
                     title="{{ _('nav.aide') }}" data-nav-menu-toggle>?</button>
             <span class="nav-menu-pop" role="menu">
+                {# La VERSION, ici et pas ailleurs : c'est le menu qu'on ouvre quand on cherche
+                   « c'est quoi, cette installation ? », et il est atteignable depuis toutes les
+                   pages. Ligne d'en-tête, pas un lien : il n'y a rien à ouvrir. #}
+                <span class="nav-menu-head">Bobi.Studio <small>{{ app_version|default('') }}</small></span>
+                <span class="nav-menu-sep"></span>
                 <a href="/aide" role="menuitem" class="{{ 'active' if page == 'aide' }}">{{ _('nav.aide') }}</a>
                 {# L'entrée suit le réglage `testplan_enabled` : passée la mise en service,
                    un menu qui mène à une page désactivée vaut moins que pas de menu du tout.

@@ -161,7 +161,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
   `MmioAbove4GB=Enabled` (Dell) ou `PciResourcePadding=High` (HPE). À vérifier et poser au BIOS
   avant l'enrôlement (le nœud le sonde en lecture seule, sans garantie de correction automatique).
 - **Noyau** : la pile MTL/DPDK (ice + AF_XDP) « exige un noyau validé (6.14 sur la pile de
-  référence) » — les distributions Debian/Ubuntu stock n'apportent pas nativement cette version, un
+  référence) » — le noyau Debian stock n'apporte pas nativement cette version, un
   paquet noyau épinglé est installé si configuré à l'enrôlement.
 - **IOMMU/hugepages** requis dans la cmdline noyau : `intel_iommu=on iommu=pt` en plus des hugepages
   1G (§ 2).

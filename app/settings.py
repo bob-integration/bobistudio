@@ -45,6 +45,10 @@ _BASE_DEFAULTS = {
     # de `settings.edit` un droit d'exécution de code arbitraire.
     # Ne restent réglables que l'interrupteur et la durée de cache.
     "catalogue_actif":  "1",
+    # Activer un paquet dès sa récupération. Par DÉFAUT oui : récupérer sans activer
+    # donne un plugin qui n'apparaît nulle part, et l'exploitant croit que rien ne s'est
+    # passé. Décocher sert à préparer une version sans la mettre en service.
+    "catalogue_activer": "1",
     "catalogue_ttl_s":  1800,
 
     "vmid_start":       200,

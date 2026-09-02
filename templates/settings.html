@@ -2496,8 +2496,9 @@ async function fontDelete(f) {
    qui n'existerait que sur cette page divergerait au premier changement de thème. */
 .cat-head { display:flex; gap:var(--space-3); align-items:flex-start; justify-content:space-between; flex-wrap:wrap; }
 .cat-sec { display:flex; flex-direction:column; gap:var(--space-2); }
-.cat-sec-t { margin:0; font-size:0.78em; font-weight:600; text-transform:uppercase;
-             letter-spacing:1.2px; color:var(--text-muted); }
+/* « Plugins » / « Services » sont les titres de section de cette page, pas des surtitres :
+   style Headline de la charte (h3 : 0.95em, text-strong, sans capitales), hérité du global. */
+.cat-sec-t { margin:0; }
 /* ⚠ Bandeau de confiance : bordure 1px et fond d'entrée, JAMAIS une bande colorée
    en bord gauche (charte : « pas de border-left > 1px comme bande colorée »). */
 .cat-confiance { border:1px solid var(--border); border-radius:var(--radius-small, 4px);
@@ -2520,6 +2521,13 @@ async function fontDelete(f) {
 .cat-chip.new  { color:var(--accent); }
 .cat-chip.old  { color:var(--text-muted); border-style:dashed; }
 .cat-err { color:var(--status-warning-fg); font-size:0.86em; }
+.cat-core { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-3);
+            border:1px solid var(--border); border-radius:var(--radius-small, 4px);
+            background:var(--bg-input); padding:12px var(--space-3); }
+.cat-core .cat-core-v { display:flex; flex-direction:column; gap:2px; }
+.cat-core .cat-core-l { font-size:0.75em; color:var(--text-muted); text-transform:uppercase;
+                        letter-spacing:1px; }
+.cat-core .cat-core-note { flex:1 1 100%; font-size:0.85em; color:var(--text-muted); }
 .cat-source-reglage { display:flex; gap:var(--space-3); align-items:center; flex-wrap:wrap; }
 .cat-source-reglage label[for] { font-size:0.9em; }
 </style>
@@ -2554,15 +2562,36 @@ async function fontDelete(f) {
     </label>
     <span id="cat-reglage-msg" class="meta"></span>
   </div>
+  {# ★ Le sort d'un paquet récupéré était une RÈGLE CACHÉE : neuf → activé, mise à jour →
+     rangée. Sensé, mais deux clics identiques donnaient deux résultats différents et rien
+     ne l'annonçait. C'est un interrupteur maintenant, coché par défaut. #}
+  <div class="cat-source-reglage">
+    <label class="ctl-switch-inline">
+      <input type="checkbox" class="ctl-switch" id="s_catalogue_activer"
+             onchange="catSauverActiver(this.checked)">
+      <span>{{ _('catalogue.activer_lbl') }}</span>
+    </label>
+  </div>
+  <div class="meta">{{ _('catalogue.activer_hint') }}</div>
   <div class="meta">{{ _('catalogue.org_hint') }}</div>
   <div id="cat-erreur" class="cat-err"></div>
 
+  {# ★ LE CŒUR N'ÉTAIT NULLE PART. `GET /api/update/core` sait depuis toujours comparer cette
+     instance à la dernière release publiée, et `POST /api/update/core/apply` sait l'appliquer —
+     aucune page n'appelait ni l'une ni l'autre. Un utilisateur extérieur installait une version
+     et n'avait aucun chemin vers la suivante, alors que ses plugins, eux, se mettaient à jour
+     ici même. C'est la première section : la version du produit prime sur celle de ses pièces. #}
   <div class="cat-sec">
-    <h2 class="cat-sec-t">{{ _('catalogue.plugins') }}</h2>
+    <h3 class="cat-sec-t">Bobi.Studio</h3>
+    <div id="cat-core" class="cat-core meta">{{ _('settings.loading') }}</div>
+  </div>
+
+  <div class="cat-sec">
+    <h3 class="cat-sec-t">{{ _('catalogue.plugins') }}</h3>
     <div class="table-wrap">
       <table style="width:100%; border-collapse:collapse; font-size:0.9em">
         <thead><tr>
-          <th style="padding:var(--space-2); border-bottom:1px solid var(--border); text-align:left">{{ _('catalogue.th_package') }}</th>
+          <th style="padding:var(--space-2); border-bottom:1px solid var(--border); text-align:left"><span class="sr-only">{{ _('catalogue.th_package') }}</span></th>
           <th style="padding:var(--space-2); border-bottom:1px solid var(--border); text-align:left; width:100px">{{ _('catalogue.th_published') }}</th>
           <th style="padding:var(--space-2); border-bottom:1px solid var(--border); text-align:left; width:100px">{{ _('catalogue.th_installed') }}</th>
           <th style="padding:var(--space-2); border-bottom:1px solid var(--border); text-align:left; width:150px">{{ _('catalogue.th_state') }}</th>
@@ -2574,12 +2603,12 @@ async function fontDelete(f) {
   </div>
 
   <div class="cat-sec">
-    <h2 class="cat-sec-t">{{ _('catalogue.services') }}</h2>
+    <h3 class="cat-sec-t">{{ _('catalogue.services') }}</h3>
     <p class="meta" style="margin:0">{{ _('catalogue.services_hint') }}</p>
     <div class="table-wrap">
       <table style="width:100%; border-collapse:collapse; font-size:0.9em">
         <thead><tr>
-          <th style="padding:var(--space-2); border-bottom:1px solid var(--border); text-align:left">{{ _('catalogue.th_package') }}</th>
+          <th style="padding:var(--space-2); border-bottom:1px solid var(--border); text-align:left"><span class="sr-only">{{ _('catalogue.th_package') }}</span></th>
           <th style="padding:var(--space-2); border-bottom:1px solid var(--border); text-align:left; width:100px">{{ _('catalogue.th_published') }}</th>
           <th style="padding:var(--space-2); border-bottom:1px solid var(--border); text-align:left; width:100px">{{ _('catalogue.th_installed') }}</th>
           <th style="padding:var(--space-2); border-bottom:1px solid var(--border); text-align:left; width:150px">{{ _('catalogue.th_state') }}</th>
@@ -13717,6 +13746,9 @@ function catVide(n) {
 async function catSauverActif(on) {
   await catSauverReglage({ catalogue_actif: on ? '1' : '0' });
 }
+async function catSauverActiver(on) {
+  await catSauverReglage({ catalogue_activer: on ? '1' : '0' });
+}
 async function catSauverReglage(corps) {
   const z = document.getElementById('cat-reglage-msg');
   try {
@@ -13734,6 +13766,7 @@ async function catSauverReglage(corps) {
 }
 
 async function catCharger(force) {
+  catCoreCharger();
   const src = document.getElementById('cat-source');
   const err = document.getElementById('cat-erreur');
   try {
@@ -13742,6 +13775,8 @@ async function catCharger(force) {
     if (!j.actif) {
       const chAct0 = document.getElementById('s_catalogue_actif');
       if (chAct0) chAct0.checked = false;
+      const chActiver0 = document.getElementById('s_catalogue_activer');
+      if (chActiver0 && j.activer_apres !== undefined) chActiver0.checked = !!j.activer_apres;
       src.textContent = CAT_T('off', 'Catalogue désactivé.');
       err.textContent = '';
       document.getElementById('cat-plugins').innerHTML = catVide();
@@ -13757,14 +13792,91 @@ async function catCharger(force) {
     src.textContent = (j.org || '?') + ' · ' + age;
     const chAct = document.getElementById('s_catalogue_actif');
     if (chAct) chAct.checked = j.actif !== false;
+    const chActiver = document.getElementById('s_catalogue_activer');
+    if (chActiver && j.activer_apres !== undefined) chActiver.checked = !!j.activer_apres;
     err.textContent = j.erreur || '';
     const pl = j.entrees.filter(e => e.genre === 'plugin');
     const sv = j.entrees.filter(e => e.genre === 'service');
     document.getElementById('cat-plugins').innerHTML = pl.length ? pl.map(catLigne).join('') : catVide();
     document.getElementById('cat-services').innerHTML = sv.length ? sv.map(catLigne).join('') : catVide();
   } catch (e) {
-    err.textContent = CAT_T('unreachable', 'Catalogue injoignable : {e}').replace('{e}', e.message);
+    err.textContent = CAT_T('unreachable', 'Publications injoignables : {e}').replace('{e}', e.message);
   }
+}
+
+// ── Version du cœur : constat, puis décision ────────────────────────────────
+// ⚠ CETTE ROUTE INFORME, ELLE N'APPLIQUE PAS. `applicable` dit si la release publiée porte
+// vraiment l'archive d'installation et son empreinte : sans elles, `get.sh` n'a rien à vérifier
+// avant d'exécuter du code en root, et l'application échouerait. On affiche donc le bouton
+// SEULEMENT quand il y a quelque chose d'installable, et on dit pourquoi quand il n'y en a pas.
+async function catCoreCharger() {
+  const z = document.getElementById('cat-core');
+  if (!z) return;
+  try {
+    const j = await (await fetch('/api/update/core', { cache: 'no-store' })).json();
+    const d = j.derniere || null;
+    const bloc = (lbl, val) => '<div class="cat-core-v"><span class="cat-core-l">'
+        + escapeHtml(lbl) + '</span><span class="cat-ver">' + escapeHtml(val) + '</span></div>';
+    let html = bloc(CAT_T('core_installed', 'Version installée'), j.version_installee || '—');
+    if (!d) {
+      // Catalogue coupé ou GitHub injoignable : on montre quand même CE QU'ON A. Une page
+      // vide laisserait croire que l'instance n'a pas de version.
+      html += '<span class="cat-chip old">' + escapeHtml(CAT_T('core_unknown', 'version publiée inconnue')) + '</span>';
+      z.innerHTML = html;
+      return;
+    }
+    html += bloc(CAT_T('core_published', 'Dernière publiée'), d.version || '—')
+          + (d.prerelease ? '<span class="cat-chip new">' + escapeHtml(CAT_T('core_prerelease', 'pré-version')) + '</span>' : '');
+    if (!j.disponible) {
+      html += '<span class="cat-chip ok">' + escapeHtml(CAT_T('core_uptodate', 'à jour')) + '</span>';
+    } else if (d.applicable) {
+      html += '<span class="cat-chip maj">' + escapeHtml(CAT_T('core_available', 'mise à jour disponible')) + '</span>'
+            + '<button class="btn btn-green" id="cat-core-btn" onclick="catCoreAppliquer(this, '
+            + JSON.stringify(d.tag || '') + ', ' + JSON.stringify(d.version || '') + ')">'
+            + escapeHtml(CAT_T('core_apply', 'Mettre à jour vers {v}').replace('{v}', d.version || '')) + '</button>';
+    } else {
+      html += '<span class="cat-chip maj">' + escapeHtml(CAT_T('core_available', 'mise à jour disponible')) + '</span>'
+            + '<div class="cat-core-note">' + escapeHtml(CAT_T('core_not_applicable',
+                "Cette release ne porte pas l'archive d'installation ni son empreinte : elle ne peut pas être appliquée depuis ici."))
+            + (d.url ? ' <a href="' + escapeHtml(d.url) + '" target="_blank" rel="noopener">'
+                     + escapeHtml(CAT_T('core_release', 'Voir la release')) + '</a>' : '')
+            + '</div>';
+    }
+    z.innerHTML = html;
+  } catch (e) {
+    z.textContent = CAT_T('unreachable', 'Publications injoignables : {e}').replace('{e}', e.message);
+  }
+}
+
+async function catCoreAppliquer(btn, tag, version) {
+  // ★ ON DEMANDE, ET ON DIT CE QUE ÇA COUPE. Le geste redémarre le contrôleur : ce n'est pas un
+  // détail sur une installation d'antenne, et le moment se choisit.
+  const ok = await mxlConfirm({
+    title: 'Bobi.Studio ' + version,
+    message: CAT_T('core_confirm', 'Mettre à jour vers {v} ? Le service redémarre : l\'interface sera indisponible quelques instants. Les conteneurs en marche ne sont pas touchés.').replace('{v}', version),
+    confirmLabel: CAT_T('core_apply_short', 'Mettre à jour'), danger: true });
+  if (!ok) return;
+  btn.disabled = true;
+  const out = document.getElementById('cat-result');
+  out.textContent = CAT_T('core_applying', 'Mise à jour en cours — le service redémarre…');
+  try {
+    const r = await fetch('/api/update/core/apply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tag: tag || null }) });
+    const j = await r.json();
+    out.textContent = j.message || (j.ok ? CAT_T('core_applying', 'Mise à jour en cours — le service redémarre…')
+                                         : CAT_T('http', 'Échec : HTTP {c}').replace('{c}', r.status));
+    if (!j.ok) btn.disabled = false;
+  } catch (e) {
+    // Le redémarrage COUPE la requête : une erreur réseau ici est le cas NORMAL du succès, pas
+    // un échec. Le dire autrement ferait relancer la mise à jour par-dessus elle-même.
+    out.textContent = CAT_T('core_applying', 'Mise à jour en cours — le service redémarre…');
+  }
+}
+
+function catActiverCoche() {
+  const ch = document.getElementById('s_catalogue_activer');
+  return ch ? ch.checked : true;
 }
 
 async function catInstaller(btn, depot) {
@@ -13774,7 +13886,10 @@ async function catInstaller(btn, depot) {
   try {
     const r = await fetch('/api/catalogue/install', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ depot: depot }),
+      // On envoie l'état LU SUR L'ÉCRAN, pas le réglage en base : ce que l'exploitant voit
+      // coché au moment du clic est ce qui doit s'appliquer, même si l'enregistrement du
+      // réglage vient d'échouer.
+      body: JSON.stringify({ depot: depot, activer: catActiverCoche() }),
     });
     const j = await r.json();
     if (!r.ok) {
@@ -13788,16 +13903,22 @@ async function catInstaller(btn, depot) {
     if (j.genre === 'service' && j.redemarrage_requis) {
       out.textContent = CAT_T('svc_done', '{t} {v} installé — redémarrage du contrôleur nécessaire.')
         .replace('{t}', j.type).replace('{v}', j.version);
+    } else if (j.activee && j.derive) {
+      // ★ Activer ne redéploie RIEN : les conteneurs en marche gardent le script qu'ils ont
+      // reçu. Dire « installé et activé » sans ce nombre laisserait croire le parc à jour.
+      out.textContent = CAT_T('done_active_drift',
+          '{t} {v} activé — {n} conteneur(s) tournent encore la version précédente : à redéployer depuis Réglages → Plugins.')
+        .replace('{t}', j.type).replace('{v}', j.version).replace('{n}', j.derive);
     } else if (j.activee) {
       out.textContent = CAT_T('done_active', '{t} {v} installé et activé.')
         .replace('{t}', j.type).replace('{v}', j.version);
     } else {
-      out.textContent = CAT_T('done_stored', '{t} {v} récupéré — à activer depuis Réglages → Plugins.')
+      out.textContent = CAT_T('done_stored', '{t} {v} récupéré mais NON activé — à activer depuis Réglages → Plugins.')
         .replace('{t}', j.type).replace('{v}', j.version);
     }
     catCharger(true);
   } catch (e) {
-    out.textContent = CAT_T('unreachable', 'Catalogue injoignable : {e}').replace('{e}', e.message);
+    out.textContent = CAT_T('unreachable', 'Publications injoignables : {e}').replace('{e}', e.message);
     btn.disabled = false;
   }
 }

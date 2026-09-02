@@ -28,7 +28,32 @@ def catalogue_lister():
     HTTP : un contrôleur sans accès Internet est un cas normal, et la page doit
     pouvoir afficher la dernière liste connue en disant qu'elle est périmée."""
     force = (request.args.get("force") or "") in ("1", "true", "yes")
-    return jsonify(_cat.lister(force=force))
+    res = _cat.lister(force=force)
+    # L'état de l'interrupteur « activer après récupération » voyage avec la liste, comme
+    # `actif` : la page ne doit pas avoir à faire un second appel pour savoir dans quel mode
+    # elle est, sinon les deux se désynchronisent le temps d'un chargement.
+    res["activer_apres"] = _activer_apres_defaut()
+    return jsonify(res)
+
+
+def _en_derive(type_, ver):
+    """Conteneurs de ce type qui ne tournent PAS déjà la version qu'on vient d'activer.
+    Même lecture que la page Plugins (`plugin_registry`), pour que les deux comptent pareil."""
+    from ..database import db_get_containers
+    from .plugin_registry import _load_dc
+    n = 0
+    for c in db_get_containers() or []:
+        dc = _load_dc(c) or {}
+        if dc.get("type") != type_:
+            continue
+        if (dc.get("params") or {}).get("plugin_version") != ver:
+            n += 1
+    return n
+
+
+def _activer_apres_defaut():
+    from .. import settings as st
+    return str(st.get("catalogue_activer") or "1") not in ("0", "false", "no")
 
 
 @bp.route("/api/catalogue/install", methods=["POST"])
@@ -46,6 +71,13 @@ def catalogue_installer():
 
     data = request.get_json(silent=True) or {}
     depot = (data.get("depot") or "").strip()
+    # ★ ACTIVER OU NON EST UN CHOIX DE L'EXPLOITANT, plus une règle déduite du fait que le
+    # type existait déjà. L'ancienne règle — neuf → activé, mise à jour → rangée — était
+    # sensée mais INVISIBLE : deux clics identiques donnaient deux résultats différents, et
+    # rien ne le disait avant de cliquer. Le corps peut trancher au coup par coup ; sans lui,
+    # c'est l'interrupteur de la page (réglage `catalogue_activer`, coché par défaut).
+    activer = data.get("activer")
+    activer = _activer_apres_defaut() if activer is None else bool(activer)
     e = _cat.entree(depot)
     if not e:
         return jsonify({"error": "dépôt absent du catalogue"}), 404
@@ -77,18 +109,19 @@ def catalogue_installer():
                                 "type": type_, "version": ver,
                                 "version_courante": courante}), 409
             plugins.stamp_imported_at(root)
-            # ★ ACTIVER UNE NOUVELLE VERSION N'EST PAS AU CATALOGUE DE LE DÉCIDER.
-            # Une installation neuve s'active (sinon le plugin n'apparaît nulle
-            # part et l'exploitant croit que rien ne s'est passé) ; une mise à jour
-            # est RANGÉE, et c'est la page Plugins qui la promeut — c'est elle qui
-            # sait combien de conteneurs tournent dessus.
-            plugins.install_package(root, activate=not existait)
-            statut = "installe" if not existait else "range"
+            plugins.install_package(root, activate=activer)
+            statut = "installe" if activer else "range"
             db_add_alert("alert.deploy.plugin_importe", "info", kind="deploy",
                          params={"t": type_, "v": ver, "statut": statut})
+            # ★ CE QUE L'ACTIVATION LAISSE DERRIÈRE, COMPTÉ. Promouvoir une version ne
+            # touche AUCUN conteneur en marche : ils continuent sur le script qu'ils ont
+            # reçu, et se retrouvent en DÉRIVE. C'est ce que la page Plugins savait dire et
+            # que le catalogue taisait — on rend donc le nombre, pour que le message le
+            # dise au lieu d'un « installé et activé » qui laisse croire le parc à jour.
+            derive = _en_derive(type_, ver) if (activer and existait) else 0
             return jsonify({"status": statut, "genre": "plugin", "type": type_,
                             "version": ver, "version_precedente": courante,
-                            "activee": not existait})
+                            "activee": activer, "derive": derive})
 
         # ── Service : MÊME chemin que l'import manuel d'un .mxlservice ───────
         # ⚠ Un service a son propre registre versionné (`core_plugins`), au même
@@ -113,14 +146,14 @@ def catalogue_installer():
                             "type": svc_id, "version": ver,
                             "version_courante": courante}), 409
         core_plugins.stamp_imported_at(root)
-        core_plugins.install_package(root, activate=not existait)
+        core_plugins.install_package(root, activate=activer)
         db_add_alert("alert.deploy.service_importe", "info", kind="deploy",
                      params={"id": svc_id, "v": ver,
-                             "statut": "installe" if not existait else "range"})
-        return jsonify({"status": "installe" if not existait else "range",
+                             "statut": "installe" if activer else "range"})
+        return jsonify({"status": "installe" if activer else "range",
                         "genre": "service", "type": svc_id, "version": ver,
                         "version_precedente": courante,
-                        "activee": not existait,
+                        "activee": activer,
                         # ★ LE SEUL MESSAGE QUI COMPTE POUR UN SERVICE. `main.py`
                         # importe les services par leur nom au démarrage : tant
                         # que le contrôleur n'a pas redémarré, le paquet est sur

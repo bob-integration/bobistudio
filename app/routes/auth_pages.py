@@ -14,7 +14,8 @@ from flask import jsonify, request, redirect, url_for, render_template
 from . import bp
 from ..auth import (require_login, require_perm, login_user, logout_user,
                     verify_password, hash_password, valider_motdepasse,
-                    pwd_exigences)
+                    pwd_exigences, PWD_REGLES, PWD_PROFILS,
+                    pwd_profil, pwd_profils_publics)
 from ..database import db_count_users, db_create_user, db_get_user_by_id, db_get_user
 
 SERVICE_STARTED_AT = time.time()
@@ -82,29 +83,57 @@ def setup_page():
         prenom = (request.form.get("prenom") or "").strip() or None
         nom = (request.form.get("nom") or "").strip() or None
         email = (request.form.get("email") or "").strip() or None
+        # ★ Le PROFIL d'exigence se choisit ICI, en même temps que le mot de passe. Imposer 12
+        # signes à quelqu'un qui monte une instance d'essai sur un réseau isolé, c'est produire
+        # un mot de passe sur un post-it — et l'écran d'installation était justement le seul
+        # endroit où le réglage n'était pas atteignable (il vit dans Réglages → Sécurité, qui
+        # exige d'être connecté, donc d'avoir déjà passé cet écran).
+        profil = (request.form.get("pwd_profil") or "").strip().lower()
+        if profil not in PWD_PROFILS:
+            profil = pwd_profil()
+        exigences = pwd_exigences(profil)
+        fautes = valider_motdepasse(p, u, (prenom, nom, email), exigences=exigences)
         from ..i18n import t as _t
         if not u or not p:
             error = _t("setup.err_required")
         elif p != p2:
             error = _t("setup.err_mismatch")
-        elif valider_motdepasse(p, u, (prenom, nom, email)):
+        elif fautes:
             # Le tout premier compte est ADMINISTRATEUR : c'est le mot de passe qui compte le
             # plus de l'installation, et c'est celui qu'on tapait le plus vite. Même règle
             # qu'ailleurs, pas un seuil de complaisance à six caractères.
             error = _t("setup.err_weak").format(regles="; ".join(
                 _t("compte.pwd_regle_" + f).replace(
-                    "{n}", str(pwd_exigences()["longueur_min"]))
-                for f in valider_motdepasse(p, u, (prenom, nom, email))))
+                    "{n}", str(exigences["longueur_min"]))
+                for f in fautes))
         else:
             # Course possible (double soumission) : re-vérifier qu'aucun compte
             # n'a été créé entre-temps avant d'insérer le tout premier admin.
             if db_count_users() > 0:
                 return redirect(url_for("routes.login_page"))
+            # Le profil retenu devient celui de l'installation : c'est la même exigence qui
+            # s'appliquera aux comptes suivants, et elle reste modifiable (Réglages → Sécurité).
+            from .. import settings as _st
+            _st.set("pwd_profil", profil)
             uid = db_create_user(u, hash_password(p), "admin", prenom, nom, email)
             login_user(db_get_user_by_id(uid))
             # Compte créé → enchaîner l'assistant de premier démarrage.
             return redirect(url_for("routes.setup_wizard"))
-    return render_template("setup.html", error=error)
+    profil_choisi = (request.form.get("pwd_profil") or "").strip().lower()
+    if profil_choisi not in PWD_PROFILS:
+        profil_choisi = pwd_profil()
+    # ⚠ On REND les champs saisis (sauf les mots de passe, jamais renvoyés au navigateur).
+    # Un refus qui vide le formulaire fait retaper identifiant, prénom, nom et courriel pour
+    # une faute qui ne portait que sur le mot de passe — et n'apprend toujours pas la règle.
+    return render_template("setup.html", error=error,
+                           form={"username": request.form.get("username", "").strip(),
+                                 "prenom": request.form.get("prenom", "").strip(),
+                                 "nom": request.form.get("nom", "").strip(),
+                                 "email": request.form.get("email", "").strip()},
+                           pwd_exigences=pwd_exigences(profil_choisi),
+                           pwd_profils=pwd_profils_publics(),
+                           pwd_profil=profil_choisi,
+                           pwd_regles=PWD_REGLES)
 
 @bp.route("/api/setup/lang", methods=["POST"])
 def api_setup_lang():
@@ -128,7 +157,13 @@ def setup_wizard():
     from .. import settings as st
     if st.get("setup_completed") and not request.args.get("force"):
         return redirect(url_for("routes.home"))
-    return render_template("setup_wizard.html", video_formats=st.get("video_formats") or "")
+    # Le fuseau est servi comme sur la page Personnalisation : la liste vient de la tzdata
+    # RÉELLEMENT installée, jamais d'une liste en dur — c'est la seule qui garantisse qu'un
+    # choix sera applicable par le process.
+    from .pages import _timezones_par_region
+    return render_template("setup_wizard.html",
+                           video_formats=st.get("video_formats") or "",
+                           timezones=_timezones_par_region())
 
 @bp.route("/api/setup/complete", methods=["POST"])
 @require_perm("settings.edit")

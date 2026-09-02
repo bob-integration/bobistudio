@@ -3,7 +3,7 @@
 # Copyright (C) 2026 BOBI SAS, France
 #
 # install-node.sh — Bring-up d'un nœud Bobi.Studio SANS Proxmox (Phase C).
-# Idempotent, capability-selectable. Sur une box Debian/Ubuntu nue, provisionne UNIQUEMENT
+# Idempotent, capability-selectable. Sur une box Debian 13 (trixie) nue, provisionne UNIQUEMENT
 # les capacités demandées et installe bobi-node-agent (Python + systemd). Cf. NODE_AGENT.md.
 #
 # Usage :
@@ -744,13 +744,37 @@ ok "journal persistant ($(journalctl --disk-usage 2>/dev/null | tr -d '\n'))"
 if command -v docker >/dev/null 2>&1; then
   ok "docker déjà présent ($(docker --version 2>/dev/null | awk '{print $3}' | tr -d ,))"
 else
-  log "Installation de Docker (docker.io + docker-cli + docker-buildx)…"
   # Debian 13 (trixie) a scindé `docker.io` : client `docker` → paquet `docker-cli`, builder BuildKit
   # → `docker-buildx`, tous deux en Recommends seulement. Sans eux le daemon tourne mais `docker`
   # manque (preflight KO) et `docker build` échoue (« buildx component is missing »).
-  apt-get "${APT_OPTS[@]}" install -y -qq docker.io docker-cli docker-buildx >/dev/null || die "échec install docker.io/docker-cli/docker-buildx"
+  #
+  # ⚠ MAIS ce découpage est PROPRE À DEBIAN. `docker-cli` n'existe dans AUCUNE version d'Ubuntu
+  # (vérifié sur packages.ubuntu.com le 2026-09-02) : là-bas le client est dans `docker.io`. La
+  # liste en dur faisait donc échouer `apt-get install` sur « Unable to locate package docker-cli »,
+  # et le `die` arrêtait net l'installation du nœud — sur TOUTE Ubuntu, alors que le README,
+  # INSTALL.md et le site public annonçaient « Debian/Ubuntu ». Un testeur y a laissé sa journée.
+  # Ces annonces disent « Debian 13 » depuis le 2026-09-02 : la cible est UNE distribution, et
+  # celle-là. Ce garde-fou reste néanmoins, parce qu'une liste de paquets en dur se périme aussi
+  # d'une version de Debian à l'autre — c'est exactement ce qui a créé le problème en trixie.
+  #
+  # On n'interroge donc PAS la distribution (`ID`/`ID_LIKE` se trompe sur les dérivées) : on
+  # demande à apt ce qu'il connaît, et on n'installe que ça. `docker.io` reste obligatoire ;
+  # le reste est un complément quand il existe.
+  _dk_pkgs="docker.io"
+  for _p in docker-cli docker-buildx; do
+    # `grep "^Package: <nom>$"` plutôt que le seul code de retour : sur un paquet purement
+    # VIRTUEL, `apt-cache show` sort 0 en n'affichant qu'une note — on croirait le paquet réel.
+    if apt-cache show "$_p" 2>/dev/null | grep -q "^Package: $_p\$"; then _dk_pkgs="$_dk_pkgs $_p"; fi
+  done
+  log "Installation de Docker ($_dk_pkgs)…"
+  # shellcheck disable=SC2086  (word-splitting voulu : liste de paquets)
+  apt-get "${APT_OPTS[@]}" install -y -qq $_dk_pkgs >/dev/null || die "échec install Docker ($_dk_pkgs)"
   systemctl enable --now docker
-  ok "docker installé"
+  # Le client DOIT être là : sur une distribution qui n'a ni `docker-cli` ni client dans
+  # `docker.io`, tout le reste du script échouerait plus loin, avec un message moins clair.
+  command -v docker >/dev/null 2>&1 \
+    || die "Docker installé mais la commande « docker » est absente — paquet client introuvable pour cette distribution ($_dk_pkgs)."
+  ok "docker installé ($_dk_pkgs)"
 fi
 
 # ─── 2a bis. HORLOGE : mettre le nœud sur la grille TAI ───────────────────────

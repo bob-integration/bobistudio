@@ -30,16 +30,40 @@
                             border: 1px solid var(--border); color: var(--text);
                             padding: 9px 12px; border-radius: var(--radius-small);
                             font-family: var(--font-base); font-size: 0.95em; }
-        .setup-card input:focus { outline: none; border-color: var(--accent); }
+        .setup-card select { width: 100%; background: var(--bg-input);
+                             border: 1px solid var(--border); color: var(--text);
+                             padding: 9px 12px; border-radius: var(--radius-small);
+                             font-family: var(--font-base); font-size: 0.95em; }
+        .setup-card input:focus, .setup-card select:focus { outline: none; border-color: var(--accent); }
         .setup-card .btn { width: 100%; margin: 10px 0 0; padding: 11px;
                            font-size: 0.95em; font-weight: 600; }
         .setup-err { color: var(--status-stopped-fg); font-size: 0.85em;
                      text-align: center; margin-bottom: 10px; min-height: 1.2em; }
         .setup-hint { font-size: 0.78em; color: var(--text-muted); margin-top: 6px;
                       text-align: center; }
+        .setup-ver { text-align: center; margin-top: 14px; font-size: 0.75em;
+                     color: var(--text-muted); font-variant-numeric: tabular-nums; }
         .setup-lang { display: flex; justify-content: flex-end; align-items: center;
                       gap: 8px; margin-bottom: 14px; }
         .setup-lang label { font-size: 0.8em; color: var(--text-muted); margin: 0; }
+        /* Liste des exigences. Reprise à l'identique de la page Compte : c'est la MÊME règle,
+           elle doit se lire pareil. Le SIGNE porte l'information (✓ / ✗ / ○) — la couleur seule
+           ne survit ni aux niveaux de gris ni à un lecteur d'écran. */
+        .setup-regles { margin: 4px 0 13px; }
+        .setup-regles .titre { font-size: 0.8em; color: var(--text-muted); }
+        .setup-regles ul { list-style: none; margin: 6px 0 0; padding: 0;
+                           display: flex; flex-direction: column; gap: 3px; }
+        .setup-regles li { font-size: 0.82em; color: var(--text-muted); display: flex; gap: 8px; }
+        .setup-regles li::before { content: "\25CB"; width: 1em; flex: none; text-align: center; }
+        .setup-regles li.ok { color: var(--status-running-fg, #29b36a); }
+        .setup-regles li.ok::before { content: "\2713"; }
+        .setup-regles li.ko { color: var(--text); }
+        .setup-regles li.ko::before { content: "\2717"; }
+        .setup-profil-desc { font-size: 0.78em; color: var(--text-muted); margin-top: 5px;
+                             line-height: 1.45; }
+        .setup-confirm { font-size: 0.82em; min-height: 1.2em; margin: -8px 0 10px; }
+        .setup-confirm.ko { color: var(--status-stopped-fg); }
+        .setup-confirm.ok { color: var(--status-running-fg, #29b36a); }
         .setup-lang select { background: var(--bg-input); border: 1px solid var(--border);
                              color: var(--text); padding: 5px 9px; border-radius: var(--radius-small);
                              font-family: var(--font-base); font-size: 0.85em; }
@@ -65,34 +89,128 @@
         <div class="setup-err">{{ error or '' }}</div>
         <div class="field">
             <label>{{ _('setup.username') }}</label>
-            <input type="text" name="username" autocomplete="username" autofocus required>
+            <input type="text" name="username" id="su_user" value="{{ form.username|default('') }}"
+                   autocomplete="username" autofocus required>
         </div>
         <div class="row">
             <div class="field">
                 <label>{{ _('setup.firstname') }} <span style="opacity:.6">{{ _('setup.opt') }}</span></label>
-                <input type="text" name="prenom" autocomplete="given-name">
+                <input type="text" name="prenom" id="su_prenom" value="{{ form.prenom|default('') }}"
+                       autocomplete="given-name">
             </div>
             <div class="field">
                 <label>{{ _('setup.lastname') }} <span style="opacity:.6">{{ _('setup.opt') }}</span></label>
-                <input type="text" name="nom" autocomplete="family-name">
+                <input type="text" name="nom" id="su_nom" value="{{ form.nom|default('') }}"
+                       autocomplete="family-name">
             </div>
         </div>
         <div class="field">
             <label>{{ _('setup.email') }} <span style="opacity:.6">{{ _('setup.opt') }}</span></label>
-            <input type="email" name="email" autocomplete="email">
+            <input type="email" name="email" id="su_email" value="{{ form.email|default('') }}"
+                   autocomplete="email">
+        </div>
+        {# ★ Le PROFIL d'exigence se choisit ici. Il vit normalement dans Réglages → Sécurité —
+           c'est-à-dire derrière un login, donc DERRIÈRE cet écran : jusqu'ici, quelqu'un qui
+           montait une instance d'essai n'avait aucun moyen d'assouplir la règle avant d'avoir
+           subi son refus. Les libellés sont ceux de l'onglet Sécurité : même réglage, mêmes
+           mots. Le choix est PERSISTÉ à la création du compte et s'appliquera aux suivants. #}
+        <div class="field">
+            <label for="su_profil">{{ _('settings.securite.pwd_title') }}</label>
+            <select name="pwd_profil" id="su_profil">
+                {% for nom in ['souple', 'standard', 'stricte'] %}
+                <option value="{{ nom }}" {{ 'selected' if nom == pwd_profil }}>{{ _('settings.securite.pwd_' ~ nom) }}</option>
+                {% endfor %}
+            </select>
+            <div class="setup-profil-desc" id="su_profil_desc"></div>
         </div>
         <div class="field">
             <label>{{ _('setup.password') }}</label>
-            <input type="password" name="password" autocomplete="new-password" required>
+            <input type="password" name="password" id="su_pwd" autocomplete="new-password"
+                   aria-describedby="su_regles" required>
+        </div>
+        {# Les exigences sont affichées DÈS L'ARRIVÉE, pas après un refus : c'est la seule façon
+           d'éviter qu'on choisisse un mot de passe avant de savoir ce qui est demandé. Les
+           libellés sont ceux de la page Compte (clés `compte.pwd_regle_*`) et le seuil vient des
+           exigences SERVIES — changer `pwd_profil` dans les Réglages change ce qui est annoncé. #}
+        <div class="setup-regles" id="su_regles">
+            <div class="titre">{{ _('compte.pwd_exigences') }}</div>
+            <ul>
+                {% for cle in pwd_regles %}
+                <li data-regle="{{ cle }}"
+                    data-modele="{{ _('compte.pwd_regle_' ~ cle) }}">{{ _('compte.pwd_regle_' ~ cle)|replace('{n}', pwd_exigences.longueur_min|string) }}</li>
+                {% endfor %}
+            </ul>
         </div>
         <div class="field">
             <label>{{ _('setup.password2') }}</label>
-            <input type="password" name="password2" autocomplete="new-password" required>
+            <input type="password" name="password2" id="su_pwd2" autocomplete="new-password" required>
         </div>
+        <div class="setup-confirm" id="su_confirm" role="status"></div>
         <button class="btn btn-blue" type="submit">{{ _('setup.submit') }}</button>
         <div class="setup-hint">{{ _('setup.hint') }}</div>
+        <div class="setup-ver">Bobi.Studio {{ app_version|default('') }}</div>
     </form>
+    <script>window.PWD_EXIGENCES = {{ pwd_exigences|tojson }};
+             window.PWD_PROFILS = {{ pwd_profils|tojson }};
+             window.PWD_PROFIL_DESC = {{ {'souple': _('settings.securite.pwd_souple_d'),
+                                          'standard': _('settings.securite.pwd_standard_d'),
+                                          'stricte': _('settings.securite.pwd_stricte_d')}|tojson }};
+             window.PWD_DISCORDANT = {{ _('compte.pwd_discordant')|tojson }};</script>
+    <script src="/static/js/motdepasse.js?v={{ asset_v('js/motdepasse.js') }}"></script>
     <script>
+    // ⚠ CE CONTRÔLE NE PROTÈGE RIEN : la règle qui fait foi est `app/auth.py:valider_motdepasse`,
+    // et POST /setup la réapplique quoi qu'il arrive. Il est là pour montrer CE QUI MANQUE
+    // pendant la frappe, au lieu de le découvrir en perdant sa saisie.
+    (function () {
+        var pwd = document.getElementById('su_pwd'),
+            pwd2 = document.getElementById('su_pwd2'),
+            zone = document.getElementById('su_regles'),
+            conf = document.getElementById('su_confirm');
+        if (!pwd || !zone || !window.validerMotDePasse) return;
+        function ident() {
+            return ['su_prenom', 'su_nom', 'su_email'].map(function (id) {
+                var e = document.getElementById(id); return e ? e.value : ''; });
+        }
+        var profil = document.getElementById('su_profil'),
+            desc = document.getElementById('su_profil_desc');
+        function majProfil() {
+            if (!profil) return;
+            // Les seuils du profil choisi deviennent CEUX du miroir, et les libellés des règles
+            // sont ré-écrits : annoncer « au moins 12 caractères » alors que le profil souple en
+            // demande 8 serait exactement le défaut qu'on corrige.
+            var ex = (window.PWD_PROFILS || {})[profil.value];
+            if (ex) window.PWD_EXIGENCES = ex;
+            if (desc) desc.textContent = (window.PWD_PROFIL_DESC || {})[profil.value] || '';
+            Array.prototype.forEach.call(zone.querySelectorAll('li'), function (li) {
+                var m = li.getAttribute('data-modele');
+                if (m) li.textContent = m.replace('{n}', (ex || {}).longueur_min || '');
+            });
+        }
+        function maj() {
+            var v = pwd.value,
+                user = (document.getElementById('su_user') || {}).value || '',
+                fautes = window.validerMotDePasse(v, user, ident());
+            // Rien de saisi = rien de raté : un formulaire vierge tout en rouge reproche à
+            // l'utilisateur ce qu'il n'a pas encore eu l'occasion de faire.
+            Array.prototype.forEach.call(zone.querySelectorAll('li'), function (li) {
+                li.className = !v ? '' :
+                    (fautes.indexOf(li.getAttribute('data-regle')) < 0 ? 'ok' : 'ko');
+            });
+            if (conf && pwd2) {
+                var deux = pwd2.value;
+                conf.className = 'setup-confirm' + (!deux ? '' : (deux === v ? ' ok' : ' ko'));
+                conf.textContent = (!deux || deux === v) ? '' : (window.PWD_DISCORDANT || '');
+            }
+        }
+        ['su_pwd', 'su_pwd2', 'su_user', 'su_prenom', 'su_nom', 'su_email'].forEach(function (id) {
+            var e = document.getElementById(id);
+            if (e) e.addEventListener('input', maj);
+        });
+        if (profil) profil.addEventListener('change', function () { majProfil(); maj(); });
+        majProfil();
+        maj();
+    })();
+
     // Choix de langue avant toute authentification : persiste le défaut global
     // (endpoint autorisé uniquement tant qu'aucun compte n'existe) puis recharge.
     async function setupSetLang(code) {
