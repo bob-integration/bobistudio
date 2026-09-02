@@ -14,6 +14,7 @@ Sécurité : token partagé obligatoire (vérifié côté routes) + sha256 du zi
 extraction. L'extraction **préserve** config_local.py, les bases *.db et static/uploads/.
 """
 import hashlib
+import io
 import json
 import logging
 import os
@@ -421,6 +422,124 @@ def apply_update(source_url, token, install_new=None):
     if skipped:
         extra += f" · {skipped} composant(s) non installé(s) ici ignoré(s)"
     return True, f"mise à jour appliquée (v {man.get('label') or '?'}) — redémarrage en cours{extra}"
+
+
+def _asset_release(tag=None):
+    """(url_zip, url_sha, tag) de la dernière release publiée, ou (None, None, motif)."""
+    from . import catalogue
+    org, _ttl, actif = catalogue._reglages()
+    if not actif:
+        return None, None, "catalogue désactivé"
+    chemin = ("tags/" + tag) if tag else "latest"
+    try:
+        rel = catalogue._http_json("%s/repos/%s/%s/releases/%s"
+                                   % (catalogue.API, org, catalogue.DEPOT_CORE, chemin))
+    except Exception as e:
+        # `latest` ignore les pré-versions : sur un produit en bêta il rend 404 alors que des
+        # releases existent. On retombe sur la liste, qui les voit.
+        info = catalogue.derniere_version_core()
+        if not info:
+            return None, None, "aucune release lisible (%s)" % e
+        try:
+            rel = catalogue._http_json("%s/repos/%s/%s/releases/tags/%s"
+                                       % (catalogue.API, org, catalogue.DEPOT_CORE, info["tag"]))
+        except Exception as e2:
+            return None, None, "release %s illisible (%s)" % (info["tag"], e2)
+    par_nom = {a.get("name"): a.get("browser_download_url") for a in (rel.get("assets") or [])}
+    zip_url, sha_url = par_nom.get("bobistudio.zip"), par_nom.get("SHA256SUMS")
+    if not zip_url or not sha_url:
+        # ⚠ ON REFUSE PLUTÔT QUE DE PRENDRE L'ARCHIVE DE SOURCE que GitHub sert d'office : elle
+        # n'embarque ni l'installeur ni d'empreinte, et appliquer du code non vérifié sur une
+        # instance qui tourne en root est exactement ce que `get.sh` s'interdit.
+        return None, None, ("la release %s ne porte pas d'artefact installable "
+                            "(bobistudio.zip + SHA256SUMS)" % (rel.get("tag_name") or "?"))
+    return zip_url, sha_url, (rel.get("tag_name") or "")
+
+
+def apply_update_github(tag=None, install_new=None):
+    """Tire la dernière release publiée sur GitHub, vérifie son empreinte, applique, relance.
+
+    ★ CE CHEMIN N'EXISTAIT PAS. `apply_update` tire d'une AUTRE INSTANCE du réseau local, par son
+    API et son token ; le catalogue, lui, n'installait que des composants. Un utilisateur
+    extérieur installait donc une version et n'avait aucun moyen d'obtenir la suivante — alors
+    que ses plugins, eux, se mettaient à jour.
+
+    Ce qui change par rapport au chemin entre pairs : la SOURCE, et elle seule. L'empreinte se lit
+    dans le SHA256SUMS joint à la release au lieu du manifeste d'un pair, et les composants de la
+    source se déduisent du contenu de l'archive — il n'y a pas de manifeste à interroger. Tout le
+    reste est partagé : contrôle des dépendances, sauvegarde, extraction sélective, redémarrage,
+    et le `rollback` qui va avec.
+    """
+    inew = install_new or {}
+    new_p = {str(x) for x in (inew.get("plugins") or [])}
+    new_s = {str(x) for x in (inew.get("services") or [])}
+
+    zip_url, sha_url, tag_ou_motif = _asset_release(tag)
+    if not zip_url:
+        return False, tag_ou_motif
+
+    tmpdir = tempfile.mkdtemp(prefix="mxlupd-gh-")
+    try:
+        zpath = os.path.join(tmpdir, "bobistudio.zip")
+        spath = os.path.join(tmpdir, "SHA256SUMS")
+        try:
+            _download(zip_url, None, zpath)
+            _download(sha_url, None, spath)
+        except Exception as e:
+            return False, "téléchargement échoué : %s" % e
+
+        # L'empreinte fait foi AVANT toute lecture du contenu.
+        attendu = ""
+        try:
+            for ligne in io.open(spath, encoding="utf-8"):
+                parts = ligne.split()
+                if len(parts) >= 2 and parts[-1].lstrip("*").endswith("bobistudio.zip"):
+                    attendu = parts[0].strip()
+                    break
+        except Exception as e:
+            return False, "SHA256SUMS illisible : %s" % e
+        if not attendu:
+            return False, "SHA256SUMS ne mentionne pas bobistudio.zip"
+        recu = sha256_file(zpath)
+        if recu != attendu:
+            return False, ("empreinte invalide (attendu %s…, reçu %s…) — rien n'a été appliqué"
+                           % (attendu[:12], recu[:12]))
+
+        try:
+            with zipfile.ZipFile(zpath) as zf:
+                noms = zf.namelist()
+        except Exception as e:
+            return False, "archive illisible : %s" % e
+        if "main.py" not in noms:
+            return False, "archive invalide (main.py absent)"
+
+        # Composants de la SOURCE, déduits du contenu : pas de manifeste à interroger ici.
+        src_p = {n.split("/")[1] for n in noms
+                 if n.startswith("plugins/") and len(n.split("/")) > 2}
+        src_s = {n.split("/")[1] for n in noms
+                 if n.startswith("services/") and len(n.split("/")) > 2}
+        loc_p, loc_s = _local_component_ids()
+        # Même règle que le chemin entre pairs : un composant qui n'est pas installé ICI
+        # n'apparaît pas tout seul. Les runtimes partagés (`_…`) passent toujours.
+        skip_p = {p for p in src_p if not p.startswith("_") and p not in loc_p and p not in new_p}
+        skip_s = {s for s in src_s if not s.startswith("_") and s not in loc_s and s not in new_s}
+
+        ok_req, req_msg = _ensure_requirements(zpath)
+        if not ok_req:
+            return False, req_msg
+
+        backup_code()
+        _extract_over(zpath, skip_plugins=skip_p, skip_services=skip_s)
+        with open(PENDING_PATH, "w") as f:
+            f.write(tag_ou_motif or "?")
+        record_deploy(None, tag_ou_motif)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    restart_service()
+    n = len(skip_p) + len(skip_s)
+    extra = (" · %d composant(s) non installé(s) ici ignoré(s)" % n) if n else ""
+    return True, "mise à jour %s appliquée — redémarrage en cours%s" % (tag_ou_motif, extra)
 
 
 def rollback():

@@ -131,8 +131,12 @@ def _derniere_release(org, depot):
     """
     try:
         rels = _http_json("%s/repos/%s/%s/releases?per_page=10" % (API, org, depot))
-    except Exception:
-        return None
+    except Exception as e:
+        # ★ « JE N'AI PAS PU DEMANDER » N'EST PAS « IL N'Y EN A PAS ». Rendre None dans les deux
+        # cas ferait afficher « aucune release publiée » sur TOUS les composants dès que le quota
+        # d'API est épuisé — un catalogue qui paraît vide alors que tout est publié, et rien pour
+        # le comprendre. On distingue, et l'appelant le dit.
+        return None, "interrogation impossible (%s)" % e
     from .version import analyser
     meilleure = None
     for r in rels or []:
@@ -142,7 +146,7 @@ def _derniere_release(org, depot):
         v = analyser(tag)
         if v is not None and (meilleure is None or v > meilleure[0]):
             meilleure = (v, tag)
-    return meilleure[1] if meilleure else None
+    return (meilleure[1] if meilleure else None), ""
 
 
 def _manifeste_distant(org, depot, ref, fichier):
@@ -190,8 +194,8 @@ def _construire(org):
         # version — le numéro venant du manifeste sur la branche, que rien n'oblige à bumper. Le
         # catalogue distribuait donc sans versions, ce qui privait d'objet l'épinglage par
         # conteneur et rendait « mettre à jour vers 0.115.2 » ambigu.
-        tag = _derniere_release(org, nom)
-        man = _manifeste_distant(org, nom, tag, fichier) or {} if tag else {}
+        tag, err_rel = _derniere_release(org, nom)
+        man = (_manifeste_distant(org, nom, tag, fichier) or {}) if tag else {}
         # ★ L'IDENTITÉ VIENT DU MANIFESTE, PAS DU NOM DU DÉPÔT. Un dépôt se RENOMME —
         # `bobistudio-plugin-helloworld` est devenu `...-hello_world` le 2026-09-01, et
         # GitHub a simplement posé une redirection. Dériver le type du nom du dépôt aurait
@@ -222,7 +226,7 @@ def _construire(org):
             # sait publié, ne le trouverait pas, et n'aurait rien pour comprendre. On le montre,
             # on refuse de l'installer, et on dit pourquoi.
             "installable": bool(tag) and bool(man),
-            "indisponible": ("" if tag else "aucune release publiée sur ce dépôt"),
+            "indisponible": ("" if tag else (err_rel or "aucune release publiée sur ce dépôt")),
         })
     entrees.sort(key=lambda e: (e["genre"], e["label"].lower()))
     return entrees

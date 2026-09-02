@@ -5,6 +5,30 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## La mise à jour depuis GitHub, en entier — 2026-09-02
+
+La 0.9.2 savait REGARDER : elle lisait les releases publiées et vous disait qu'une version
+existait. Elle ne savait pas la prendre. C'était la moitié de ce qui était annoncé.
+
+Une instance tire désormais la dernière release, vérifie son empreinte, sauvegarde son code,
+applique, et relance. La sauvegarde permet un retour arrière si le redémarrage se passe mal.
+
+**Sans empreinte, on refuse.** L'archive de source que GitHub sert d'office n'embarque ni
+l'installeur ni de `SHA256SUMS`. S'en contenter reviendrait à exécuter du code non vérifié sur une
+machine qui tourne en root — ce que le script d'installation s'interdit précisément. Une release
+qui ne porte pas son paquet et son empreinte est donc signalée comme non applicable, plutôt que
+de proposer un bouton qui échouerait.
+
+**L'application reste un geste, pas un automatisme.** Elle redémarre le service : sur une
+installation d'antenne, le moment se choisit. C'est la détection qui est automatique.
+
+**Un catalogue qui paraissait vide.** Le quota d'interrogation de GitHub est de 60 requêtes par
+heure sans compte, et lister les composants en coûte une par dépôt. Une fois épuisé, chaque
+composant s'affichait « aucune release publiée » — alors que tout l'était. « Je n'ai pas pu
+demander » et « il n'y en a pas » se distinguent maintenant, et le motif s'affiche.
+
+---
+
 ## Les emplacements se créaient tout seuls, 274 sur 282 pour rien — 2026-08-30
 
 Un emplacement est une position de production — « MULTIVIEW RÉGIE 1 » — donc une décision humaine.

@@ -123,6 +123,26 @@ def update_core():
     return jsonify({"version_installee": VERSION, "disponible": dispo, "derniere": info})
 
 
+@bp.route("/api/update/core/apply", methods=["POST"])
+@require_perm("settings.edit")
+def update_core_apply():
+    """Tire la dernière release publiée sur GitHub, vérifie son empreinte, applique, relance.
+
+    ⚠ CE GESTE REDÉMARRE LE SERVICE. Il n'est donc pas automatique et ne le sera pas : sur une
+    installation d'antenne, le moment se choisit. La détection (`GET /api/update/core`) prévient ;
+    l'application reste une décision.
+
+    Refuse si la release ne porte pas `bobistudio.zip` + `SHA256SUMS` : l'archive de source que
+    GitHub sert d'office n'embarque ni l'installeur ni d'empreinte, et on n'applique pas du code
+    non vérifié sur une instance qui tourne en root.
+    """
+    from .. import updater
+    data = request.get_json(silent=True) or {}
+    ok, msg = updater.apply_update_github(tag=data.get("tag") or None,
+                                          install_new=data.get("install_new"))
+    return jsonify({"ok": bool(ok), "message": msg}), (200 if ok else 400)
+
+
 @bp.route("/api/update/ping", methods=["GET"])
 def update_ping():
     """Identité légère pour la découverte réseau (pas de code exposé → pas de token)."""
