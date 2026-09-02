@@ -79,7 +79,7 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY=1; shift;;
     --keep) KEEP=1; shift;;
     -h|--help) sed -n '5,40p' "$0"; exit 0;;
-    *) die "option inconnue : $1";;
+    *) die "$(_t option_inconnue "$1")";;
   esac
 done
 
@@ -93,7 +93,94 @@ done
 #
 # ⚠ À BUMPER À CHAQUE MODIFICATION DE CE FICHIER, sinon elle ment — et une version qui ment est
 # pire que pas de version, puisqu'on lui fait confiance pour écarter une piste.
-INSTALLEUR_VERSION="2026.09.02b"
+INSTALLEUR_VERSION="2026.09.02c"
+
+# ─── Langue de l'installateur ────────────────────────────────
+#
+# ★ LE DÉFAUT VIENT DE L'ENVIRONNEMENT. Une machine configurée en anglais parle anglais sans
+# qu'on ait à le demander ; la question ne sert qu'à contredire ce défaut. Demander sans proposer
+# de défaut sensé ajoute une étape à qui n'en avait pas besoin.
+#
+# `BOBI_LANG=fr|en` court-circuite tout — indispensable en non-interactif, où aucune question ne
+# peut être posée et où les journaux doivent pourtant être lisibles par leur destinataire.
+UI="${BOBI_LANG:-}"
+if [ -z "$UI" ]; then
+  case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
+    fr*|FR*) UI="fr" ;;
+    "")      UI="fr" ;;      # environnement muet : on reste sur la langue du produit
+    *)       UI="en" ;;
+  esac
+fi
+
+# Table des messages. Une clé, deux langues, et `printf` pour les valeurs interpolées : PAS de
+# concaténation, qui rendrait certaines phrases intraduisibles — l'ordre des mots change d'une
+# langue à l'autre, et un morceau de phrase ne se traduit pas isolément.
+#
+# Une clé sans traduction anglaise retombe sur le français plutôt que d'afficher la clé brute :
+# un texte dans la mauvaise langue reste lisible, une clé ne l'est pas.
+_t() {
+  local k="$1"; shift
+  local fr="" en=""
+  case "$k" in
+    sous_titre)   fr="Installation depuis GitHub";                      en="Install from GitHub" ;;
+    installateur) fr="installateur %s";                                 en="installer %s" ;;
+    langue)       fr="Langue / Language  [1] Français  [2] English : "; en="Langue / Language  [1] Français  [2] English : " ;;
+    root)         fr="à lancer en root (l'installeur pose des services systemd)."
+                  en="must be run as root (the installer sets up systemd services)." ;;
+    requis)       fr="%s est requis (apt-get install -y %s)."
+                  en="%s is required (apt-get install -y %s)." ;;
+    py_absent)    fr="python3 est absent, et l'installeur en a besoin."
+                  en="python3 is missing, and the installer needs it." ;;
+    py_demande)   fr="  ${c_y}?${c_0} L'installer maintenant (apt-get install python3) ? [O/n] "
+                  en="  ${c_y}?${c_0} Install it now (apt-get install python3)? [Y/n] " ;;
+    py_auto)      fr="non interactif — installation de python3 sans demander"
+                  en="non-interactive — installing python3 without asking" ;;
+    py_refus)     fr="python3 requis : « apt-get install -y python3 », puis relancer."
+                  en="python3 required: run « apt-get install -y python3 », then start again." ;;
+    apt_update)   fr="apt-get update a échoué — dépôts injoignables ?"
+                  en="apt-get update failed — repositories unreachable?" ;;
+    apt_install)  fr="installation de python3 échouée."
+                  en="python3 installation failed." ;;
+    apt_muet)     fr="apt s'est terminé sans erreur mais python3 reste introuvable — dépôts incomplets ?"
+                  en="apt exited without error yet python3 is still missing — incomplete repositories?" ;;
+    py_ok)        fr="python3 installé (%s)";                           en="python3 installed (%s)" ;;
+    jeton)        fr="jeton GitHub fourni (dépôts privés)"
+                  en="GitHub token supplied (private repositories)" ;;
+    lecture_vers) fr="lecture des versions disponibles…";               en="reading available versions…" ;;
+    aucune_vers)  fr="aucune version étiquetée trouvée — installation de la branche « main » (développement)."
+                  en="no tagged version found — installing the « main » branch (development)." ;;
+    vers_dispo)   fr="  Versions disponibles :";                        en="  Available versions:" ;;
+    plus_recente) fr="(la plus récente)";                               en="(most recent)" ;;
+    branche_dev)  fr="main — branche de développement, non figée"
+                  en="main — development branch, not frozen" ;;
+    quelle_vers)  fr="  Version à installer [1] : ";                    en="  Version to install [1]: " ;;
+    vers_retenue) fr="version retenue : %s";                            en="selected version: %s" ;;
+    vers_publiees) fr="  Versions publiées de %s :";                    en="  Published versions of %s:" ;;
+    branche_dev2) fr="    · main (branche de développement)";           en="    · main (development branch)" ;;
+    non_interactif) fr="non interactif — branche « main »";             en="non-interactive — « main » branch" ;;
+    dossier_garde) fr="dossier de travail conservé : %s";               en="work directory kept: %s" ;;
+    recuperation) fr="récupération de la source (%s@%s)…";              en="fetching the source (%s@%s)…" ;;
+    src_introuvable) fr="source introuvable : %s@%s\n       Trois causes possibles :\n         · le dépôt est encore PRIVÉ — exporter GITHUB_TOKEN=<jeton> avant de relancer ;\n         · la branche ou l'étiquette « %s » n'existe pas ;\n         · pas d'accès réseau à codeload.github.com."
+                  en="source not found: %s@%s\n       Three possible causes:\n         · the repository is still PRIVATE — export GITHUB_TOKEN=<token> and start again;\n         · the branch or tag « %s » does not exist;\n         · no network access to codeload.github.com." ;;
+    comp_absent)  fr="« %s » n'a pas pu être récupéré — l'installation continue sans lui."
+                  en="« %s » could not be fetched — the installation continues without it." ;;
+    comp_recap)   fr="%s composant(s) non récupéré(s) : %s\n     Ce n'est pas bloquant : Bobi.Studio démarre sans eux, et les signale dans ses alertes.\n     Installez-les ensuite depuis Réglages → Catalogue."
+                  en="%s component(s) not fetched: %s\n     This is not blocking: Bobi.Studio starts without them, and reports them in its alerts.\n     Install them afterwards from Settings → Catalogue." ;;
+    src_incomplete) fr="source incomplète — installation annulée."
+                  en="incomplete source — installation cancelled." ;;
+    src_complete) fr="source complète (les composants s'installent depuis la page Catalogue)"
+                  en="source complete (components install from the Catalogue page)" ;;
+    simulation)   fr="Simulation (--dry-run) : source récupérée et vérifiée, rien n'a été installé."
+                  en="Dry run (--dry-run): source fetched and verified, nothing was installed." ;;
+    contenu_dans) fr="contenu dans %s";                                 en="contents in %s" ;;
+    lancement)    fr="lancement de l'installeur…";                      en="starting the installer…" ;;
+    option_inconnue) fr="option inconnue : %s";                         en="unknown option: %s" ;;
+    pause)        fr="tout est en place — l'installeur démarre dans %s s…"
+                  en="everything is in place — the installer starts in %s s…" ;;
+  esac
+  if [ "$UI" = "en" ] && [ -n "$en" ]; then printf "%b" "$(printf "$en" "$@")"
+  else printf "%b" "$(printf "$fr" "$@")"; fi
+}
 
 # Centre un texte dans le cadre. CALCULÉ, pas compté à la main : le sous-titre était décalé de
 # deux caractères parce que son remplissage avait été posé à l'œil (corrigé le 2026-09-02), et un
@@ -104,44 +191,53 @@ _cadre_ligne() {   # <texte>
   printf "  ║%*s%s%*s║\n" "$g" "" "$t" "$(( l - ${#t} - g ))" ""
 }
 
+# La question n'est posée QU'EN INTERACTIF, et seulement si l'exploitant n'a pas déjà tranché
+# par BOBI_LANG. Elle est bilingue par nécessité : on ne sait pas encore quelle langue il lit.
+if [ -z "${BOBI_LANG:-}" ] && [ -t 0 ]; then
+  echo
+  printf "%b" "$(_t langue)"
+  read -r _lg || _lg=""
+  case "$_lg" in 2|en|EN|e|E) UI="en" ;; 1|fr|FR|f|F) UI="fr" ;; esac
+fi
+
 echo
 echo "  ╔══════════════════════════════════════════════════════╗"
 _cadre_ligne "B O B I . S T U D I O"
-_cadre_ligne "Installation depuis GitHub"
-_cadre_ligne "installateur $INSTALLEUR_VERSION"
+_cadre_ligne "$(_t sous_titre)"
+_cadre_ligne "$(_t installateur "$INSTALLEUR_VERSION")"
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo
 
-[ "$(id -u)" = "0" ] || die "à lancer en root (l'installeur pose des services systemd)."
-command -v curl    >/dev/null 2>&1 || die "curl est requis (apt-get install -y curl)."
-command -v tar     >/dev/null 2>&1 || die "tar est requis (apt-get install -y tar)."
+[ "$(id -u)" = "0" ] || die "$(_t root)"
+command -v curl    >/dev/null 2>&1 || die "$(_t requis curl curl)"
+command -v tar     >/dev/null 2>&1 || die "$(_t requis tar tar)"
 # python3 sert à déballer les métadonnées et à exécuter l'installeur. Sur une Debian minimale il
 # peut manquer : on le pose plutôt que de renvoyer l'exploitant à une commande qu'on sait taper.
 if ! command -v python3 >/dev/null 2>&1; then
-  warn "python3 est absent, et l'installeur en a besoin."
+  warn "$(_t py_absent)"
   _rep="o"
   if [ -t 0 ]; then
-    printf "%b" "  ${c_y}?${c_0} L'installer maintenant (apt-get install python3) ? [O/n] "
+    printf "%b" "$(_t py_demande)"
     read -r _rep || _rep="o"
   else
-    log "non interactif — installation de python3 sans demander"
+    log "$(_t py_auto)"
   fi
   case "${_rep:-o}" in
-    [nN]*) die "python3 requis : « apt-get install -y python3 », puis relancer.";;
+    [nN]*) die "$(_t py_refus)";;
   esac
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update -qq || die "apt-get update a échoué — dépôts injoignables ?"
-  apt-get install -y -qq python3 || die "installation de python3 échouée."
+  apt-get update -qq || die "$(_t apt_update)"
+  apt-get install -y -qq python3 || die "$(_t apt_install)"
   # apt peut rendre 0 sans avoir posé le binaire (miroir partiel, paquet retenu). On CONSTATE.
   command -v python3 >/dev/null 2>&1 \
-    || die "apt s'est terminé sans erreur mais python3 reste introuvable — dépôts incomplets ?"
-  ok "python3 installé ($(python3 --version 2>&1))"
+    || die "$(_t apt_muet)"
+  ok "$(_t py_ok "$(python3 --version 2>&1)")"
 fi
 
 _curl=(curl -fsSL --retry 3 --retry-delay 2 --connect-timeout 15)
 if [ -n "${GITHUB_TOKEN:-}" ]; then
   _curl+=(-H "Authorization: Bearer $GITHUB_TOKEN")
-  log "jeton GitHub fourni (dépôts privés)"
+  log "$(_t jeton)"
 fi
 
 # ─── Quelles versions existent ────────────────────────────────────────────────
@@ -160,26 +256,26 @@ except Exception:
 
 _choisir_version() {
   local -a tags=()
-  log "lecture des versions disponibles…"
+  log "$(_t lecture_vers)"
   mapfile -t tags < <(_etiquettes)
   if [ "${#tags[@]}" -eq 0 ]; then
     # Aucune étiquette (ou API injoignable) : la branche principale reste installable. On le DIT,
     # plutôt que d'installer « main » en laissant croire qu'une version a été choisie.
-    warn "aucune version étiquetée trouvée — installation de la branche « main » (développement)."
+    warn "$(_t aucune_vers)"
     REF="main"; return 0
   fi
   echo
-  echo "  Versions disponibles :"
+  echo "$(_t vers_dispo)"
   local i=1
   for t in "${tags[@]:0:10}"; do
-    if [ "$i" = 1 ]; then echo "    ${c_g}$i${c_0}) $t   ${c_g}(la plus récente)${c_0}"
+    if [ "$i" = 1 ]; then echo "    ${c_g}$i${c_0}) $t   ${c_g}$(_t plus_recente)${c_0}"
     else echo "    ${c_g}$i${c_0}) $t"; fi
     i=$((i + 1))
   done
-  echo "    ${c_g}d${c_0}) main — branche de développement, non figée"
+  echo "    ${c_g}d${c_0}) $(_t branche_dev)"
   echo
   local rep_
-  printf "%b" "  Version à installer [1] : "
+  printf "%b" "$(_t quelle_vers)"
   read -r rep_ || rep_=""
   case "${rep_:-1}" in
     d|D|main) REF="main";;
@@ -187,25 +283,25 @@ _choisir_version() {
     *) if [ "$rep_" -ge 1 ] && [ "$rep_" -le "${#tags[@]}" ]; then REF="${tags[$((rep_ - 1))]}"
        else REF="${tags[0]}"; fi;;
   esac
-  ok "version retenue : $REF"
+  ok "$(_t vers_retenue "$REF")"
 }
 
 if [ "$LISTER" = 1 ]; then
-  echo "  Versions publiées de $REPO :"
+  echo "$(_t vers_publiees "$REPO")"
   _etiquettes | sed 's/^/    · /' || true
-  echo "    · main (branche de développement)"
+  echo "$(_t branche_dev2)"
   exit 0
 fi
 
 if [ -z "$REF" ]; then
   # Hors terminal (script, pipe), on ne peut pas demander : « main » et on le dit.
-  if [ -t 0 ]; then _choisir_version; else REF="main"; log "non interactif — branche « main »"; fi
+  if [ -t 0 ]; then _choisir_version; else REF="main"; log "$(_t non_interactif)"; fi
 fi
 
 TMP="$(mktemp -d)"
 _menage() { if [ "$KEEP" != 1 ]; then rm -rf "$TMP"; fi; }
 trap _menage EXIT
-if [ "$KEEP" = 1 ]; then log "dossier de travail conservé : $TMP"; fi
+if [ "$KEEP" = 1 ]; then log "$(_t dossier_garde "$TMP")"; fi
 SRC="$TMP/src"; mkdir -p "$SRC"
 
 # Récupère l'archive d'un dépôt et la déplie DANS $2. `--strip-components=1` retire le dossier
@@ -255,14 +351,10 @@ _recuperer() {   # <dépôt> <destination> <étiquette> [ref]
   log "  $quoi ✓"
 }
 
-log "récupération de la source ($REPO@$REF)…"
+log "$(_t recuperation "$REPO" "$REF")"
 if ! _recuperer "$REPO" "$SRC" "dépôt principal"; then
   echo
-  die "source introuvable : $REPO@$REF
-     Trois causes possibles :
-       · le dépôt est encore PRIVÉ — exporter GITHUB_TOKEN=<jeton> avant de relancer ;
-       · la branche ou l'étiquette « $REF » n'existe pas ;
-       · pas d'accès réseau à codeload.github.com."
+  die "$(_t src_introuvable "$REPO" "$REF" "$REF")"
 fi
 
 manques=()
@@ -277,20 +369,18 @@ for entree in "${SOUS_MODULES_UTILES[@]}"; do
     # que de laisser la personne le découvrir à l'usage.
     rmdir "$SRC/$chemin" 2>/dev/null || true
     manques+=("$chemin")
-    warn "« $chemin » n'a pas pu être récupéré — l'installation continue sans lui."
+    warn "$(_t comp_absent "$chemin")"
   fi
 done
 if [ ${#manques[@]} -gt 0 ]; then
   echo
-  warn "${#manques[@]} composant(s) non récupéré(s) : ${manques[*]}
-     Ce n'est pas bloquant : Bobi.Studio démarre sans eux, et les signale dans ses alertes.
-     Installez-les ensuite depuis Réglages → Catalogue."
+  warn "$(_t comp_recap "${#manques[@]}" "${manques[*]}")"
 fi
 
 # Contrôle de ce qu'on a VRAIMENT obtenu, plutôt que de faire confiance à des codes retour :
 # l'installeur applique le même critère (install.py:_find_source), on échoue donc ici, où le
 # message peut encore être utile.
-python3 - "$SRC" <<'PY' || die "source incomplète — installation annulée."
+python3 - "$SRC" <<'PY' || die "$(_t src_incomplete)"
 import os, sys
 src = sys.argv[1]
 # ⚠ SEULEMENT LE PRODUIT. `services/nmos/__init__.py` figurait ici : le contrôle annulait donc
@@ -302,17 +392,33 @@ manque = [c for c in ("main.py", "app", "install/install.py", "node_agent/instal
 if manque:
     sys.exit("absents de la source : " + ", ".join(manque))
 PY
-ok "source complète (les composants s'installent depuis la page Catalogue)"
+ok "$(_t src_complete)"
 
 if [ "$DRY" = 1 ]; then
   echo
-  ok "Simulation (--dry-run) : source récupérée et vérifiée, rien n'a été installé."
-  if [ "$KEEP" = 1 ]; then log "contenu dans $SRC"; fi
+  ok "$(_t simulation)"
+  if [ "$KEEP" = 1 ]; then log "$(_t contenu_dans "$SRC")"; fi
   exit 0
 fi
 
 echo
-log "lancement de l'installeur…"
+log "$(_t lancement)"
+
+# ★ UNE PAUSE COURTE, ET SEULEMENT EN INTERACTIF. L'installeur efface l'écran en démarrant : sans
+# ce temps d'arrêt, tout ce que get.sh vient d'afficher — versions, composants récupérés,
+# avertissements sur ce qui manque — disparaît avant d'avoir été lu. Or c'est précisément là que
+# se lisent les anomalies non bloquantes.
+#
+# En non-interactif (CI, script), attendre ne montre rien à personne : on saute.
+if [ -t 0 ]; then
+  for _s in 3 2 1; do
+    printf "\r  ${c_b}·${c_0} %s   " "$(_t pause "$_s")"
+    sleep 1
+  done
+  printf "\r%*s\r" 70 ""
+fi
 echo
 cd "$SRC"
+# La langue choisie plus haut suit : l'installeur ne repose pas la question.
+export BOBI_LANG="$UI"
 exec python3 install/install.py

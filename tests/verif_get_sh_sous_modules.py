@@ -156,7 +156,7 @@ controle("★★★ le contrôle d'intégrité final n'exige aucun composant",
 _src = io.open(GET, encoding="utf-8").read()
 
 controle("★★★ l'installateur affiche SA version",
-         "INSTALLEUR_VERSION=" in _src and "installateur $INSTALLEUR_VERSION" in _src,
+         "INSTALLEUR_VERSION=" in _src and '_t installateur "$INSTALLEUR_VERSION"' in _src,
          "quand une installation échoue, on demande le numéro affiché. Le script est servi par le "
          "site, donc mis en cache : sans lui, rien ne dit lequel la personne exécute.")
 
@@ -191,6 +191,62 @@ if _fn:
                  len(_in) == 54 and abs(_g - _d) <= 1,
                  "largeur=%d gauche=%d droite=%d — le cadre doit garder sa largeur ET rester "
                  "centré quelle que soit la longueur du texte" % (len(_in), _g, _d))
+
+# ═══ BILINGUE ══════════════════════════════════════
+_g2 = io.open(GET, encoding="utf-8").read()
+
+controle("★★ la langue par défaut vient de l'ENVIRONNEMENT",
+         "LC_ALL:-${LC_MESSAGES" in _g2 and 'fr*|FR*)' in _g2,
+         "une machine en anglais doit parler anglais sans qu'on le demande ; la question ne sert "
+         "qu'à contredire ce défaut")
+
+controle("★★ BOBI_LANG court-circuite la question",
+         'UI="${BOBI_LANG:-}"' in _g2 and '[ -z "${BOBI_LANG:-}" ] && [ -t 0 ]' in _g2,
+         "en non-interactif aucune question ne peut être posée, et les journaux doivent quand "
+         "même être lisibles par leur destinataire")
+
+# ★ La langue choisie DOIT suivre : l'installeur la reposait trois secondes plus tard.
+controle("★★★ la langue est transmise à l'installeur",
+         'export BOBI_LANG="$UI"' in _g2,
+         "sans ça, deux fois la même question à trois secondes d'intervalle — et l'on doute que "
+         "la première ait servi")
+
+_inst = io.open(os.path.join(RACINE, "install", "install.py"), encoding="utf-8").read()
+controle("★★★ l'installeur HONORE la langue héritée",
+         'os.environ.get("BOBI_LANG")' in _inst and "_premier" in _inst,
+         "transmettre sans lire ne sert à rien")
+controle("★★★ ...mais le choix reste ATTEIGNABLE en reculant",
+         "_premier = False" in _inst and "while True:" in _inst,
+         "reculer depuis le menu principal ramène au choix de langue : c'est le seul moyen d'en "
+         "changer. Le sauter définitivement enfermerait dans une réponse donnée à l'étape d'avant")
+
+# Toutes les clés employées doivent exister dans la table, et réciproquement.
+_cles_table = set(re.findall(r"^\s{4}([a-z_0-9]+)\)\s+fr=", _g2, re.M))
+_cles_usage = set(re.findall(r'_t ([a-z_0-9]+)', _g2))
+controle("★★★ aucune clé employée n'est absente de la table",
+         not (_cles_usage - _cles_table),
+         "une clé absente s'affiche… vide, et le message disparaît sans bruit. Manquantes : %s"
+         % sorted(_cles_usage - _cles_table))
+controle("★ aucune clé de la table n'est inutilisée",
+         not (_cles_table - _cles_usage),
+         "orphelines : %s" % sorted(_cles_table - _cles_usage))
+
+# ⚠ BORNÉ À L'ENTRÉE. Une première version cherchait `en=` n'importe où APRÈS la clé : elle
+# trouvait donc celle de la clé SUIVANTE, et restait verte quand une traduction disparaissait.
+# Chaque entrée d'un `case` bash finit par `;;` — c'est la borne.
+_entrees = dict(re.findall(r"^\s{4}([a-z_0-9]+)\)((?:.|\n)*?);;", _g2, re.M))
+_sans_en = sorted(k for k in _cles_table if 'en="' not in _entrees.get(k, ""))
+controle("★★ chaque clé a sa traduction anglaise",
+         not _sans_en, "sans traduction : %s" % _sans_en)
+
+# ═══ LA PAUSE AVANT L'INSTALLEUR ═══════════════════════
+controle("★★ une pause laisse LIRE ce que get.sh a affiché",
+         "_t pause" in _g2 and "sleep 1" in _g2,
+         "l'installeur efface l'écran : sans pause, les avertissements non bloquants — un "
+         "composant non récupéré — disparaissent avant d'avoir été lus")
+controle("★★★ ...et elle est sautée en non-interactif",
+         re.search(r'if \[ -t 0 \]; then\n  for _s in 3 2 1', _g2) is not None,
+         "attendre devant une CI ne montre rien à personne")
 
 print("\n%d contrôle(s) OK, %d en échec." % (len(reussites), len(echecs)))
 sys.exit(1 if echecs else 0)

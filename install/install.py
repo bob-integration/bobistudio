@@ -1113,10 +1113,24 @@ def path_all_in_one(zip_path):
 # ─── Menu / boucle principale (avec retour en arrière) ───────────────────────
 def main():
     global LANG
+    # ★ NE PAS REPOSER UNE QUESTION DÉJÀ RÉPONDUE. `get.sh` demande la langue avant de nous
+    # lancer et la transmet par BOBI_LANG : la redemander ici donnait deux fois la même question
+    # à trois secondes d'intervalle, ce qui fait douter que la première ait servi à quelque chose.
+    #
+    # ⚠ SEULEMENT AU PREMIER PASSAGE. Reculer depuis le menu principal ramène ici — c'est le seul
+    # moyen de changer de langue une fois entré. La sauter DÉFINITIVEMENT enfermerait dans un
+    # choix fait à l'étape d'avant, éventuellement par erreur.
+    _herite = (os.environ.get("BOBI_LANG") or "").strip().lower()
+    _premier = _herite in ("fr", "en")
+    if _premier:
+        LANG = _herite
     while True:
         # Étape 1 : langue (pas de retour avant elle).
-        LANG = menu_select(t("lang_title"), [("fr", "Français", None), ("en", "English", None)],
-                           default=0, allow_back=False)
+        if _premier:
+            _premier = False
+        else:
+            LANG = menu_select(t("lang_title"), [("fr", "Français", None), ("en", "English", None)],
+                               default=(1 if LANG == "en" else 0), allow_back=False)
         _banner()
         # Étape 2 : menu principal (← revient au choix de langue ; ← d'un chemin revient ici).
         while True:

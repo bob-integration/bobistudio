@@ -5,6 +5,23 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## L'installateur parle anglais, et ne pose plus deux fois la même question — 2026-09-02
+
+Le script d'installation était en français seul. Il choisit désormais sa langue d'après celle de
+la machine, et la demande — en français et en anglais — quand il est lancé à la main. `BOBI_LANG`
+tranche pour les installations automatisées, où aucune question ne peut être posée.
+
+**La réponse suit.** L'installeur qui prend le relais reposait la même question trois secondes
+plus tard ; il hérite maintenant du choix. Reculer depuis son menu principal y ramène quand même,
+car c'est le seul moyen de changer d'avis une fois entré.
+
+**Une courte pause avant de passer la main.** L'installeur efface l'écran en démarrant, et tout
+ce qui venait d'être affiché disparaissait avec lui — dont les avertissements sur un composant
+qui n'a pas pu être récupéré. Trois secondes suffisent à les lire. En automatique, il n'y a
+personne pour lire : la pause est sautée.
+
+---
+
 ## L'installation échouait dès qu'on choisissait une version — 2026-09-02
 
 Signalé par un installateur le jour même. Le script d'installation propose une liste de versions ;
