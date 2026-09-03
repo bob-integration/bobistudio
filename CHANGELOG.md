@@ -5,6 +5,39 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Installer des plugins sans se heurter au quota GitHub — 2026-09-03
+
+**Le symptôme, signalé à l'usage :** on n'installe pas trois plugins d'affilée sans être arrêté
+par « quota GitHub épuisé ». Sans identification, GitHub accorde 60 requêtes par heure et par
+adresse IP — or une relecture de la liste en consomme une dizaine, une par dépôt publié. Six
+relectures et la journée est finie.
+
+Quatre choses ont changé. Les relectures sont désormais **conditionnelles** : quand rien n'a
+bougé en amont — le cas courant — la réponse ne compte pas dans le quota. La version du produit
+est **mise en cache** au lieu d'être relue à chaque affichage de la page. L'interrupteur
+« Activer après récupération » **ne relit plus la liste**, qu'il ne modifie pas : deux clics
+brûlaient un sixième du quota horaire.
+
+Et quand le plafond tombe malgré tout, la page propose d'enregistrer un **jeton personnel**, qui
+le porte à 5 000 requêtes par heure. Il est attaché à votre compte et non à l'installation :
+personne ne consomme le quota d'un autre sans le savoir. Il se crée sans aucune permission — la
+page ne lit que des dépôts publics —, il est vérifié auprès de GitHub avant d'être enregistré, et
+il n'est jamais réaffiché ensuite. Le message d'erreur, lui, cesse de présenter 60 par heure
+comme une fatalité.
+
+**La page « Mises à jour » a enfin une aide.** L'onglet par lequel on installe un plugin et met le
+produit à jour n'était documenté nulle part. Le nouvel article explique la version du cœur et
+pourquoi le bouton peut manquer, ce qu'active ou non un paquet récupéré, pourquoi un service
+n'est effectif qu'au redémarrage, et tout ce qui précède sur le quota.
+
+**Deux corrections invisibles mais qui comptent.** Le paquet de distribution emportait
+`static/uploads/` — c'est-à-dire les images déposées sur l'installation qui le construit, pas du
+code. Il ne le fait plus, et le build est désormais refusé si le cas se reproduit. Enfin, un
+contrôle de publication déclarait « non publiés » les modules qui vivent dans le dépôt principal
+et n'ont pas de dépôt propre : il bloquait sur du code déjà public.
+
+---
+
 ## Le premier démarrage dit ce qu'il attend, et la version se voit enfin — 2026-09-03
 
 **Le mot de passe du premier compte.** L'écran de création de l'administrateur n'annonçait aucune

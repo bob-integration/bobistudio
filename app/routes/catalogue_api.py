@@ -14,7 +14,7 @@ import shutil
 from flask import jsonify, request
 
 from . import bp
-from ..auth import require_perm
+from ..auth import require_perm, require_login
 from ..database import db_add_alert
 from .. import catalogue as _cat
 
@@ -33,7 +33,63 @@ def catalogue_lister():
     # `actif` : la page ne doit pas avoir à faire un second appel pour savoir dans quel mode
     # elle est, sinon les deux se désynchronisent le temps d'un chargement.
     res["activer_apres"] = _activer_apres_defaut()
+    # L'écran doit savoir s'il peut PROPOSER un jeton, sans jamais le renvoyer.
+    res["jeton_pose"] = bool(_cat._jeton())
     return jsonify(res)
+
+
+@bp.route("/api/catalogue/token", methods=["POST"])
+@require_login
+def catalogue_token():
+    """Pose ou efface le jeton GitHub de l'utilisateur COURANT.
+
+    ★ SUR SOI, JAMAIS SUR AUTRUI, et pas de réglage de site : un jeton est une identité. Celui
+    qui bute sur le plafond anonyme (60 requêtes/heure, soit six relectures du catalogue) fournit
+    le sien et n'élargit que pour lui — personne ne consomme sans le savoir le quota d'un autre.
+
+    ⚠ ON VÉRIFIE LE JETON AVANT DE L'ENREGISTRER, contre `/rate_limit` — le seul point d'API que
+    GitHub ne décompte pas. Un jeton faux ou révoqué stocké tel quel donnerait exactement le
+    symptôme qu'on cherche à faire disparaître, en pire : l'utilisateur croirait le problème
+    réglé. On rend aussi le plafond obtenu, pour que l'écran le montre plutôt que l'affirmer.
+    """
+    import json as _json
+    import urllib.error
+    import urllib.request
+    from ..auth import current_user
+    from ..database import db_set_user_gh_token
+
+    uid = (current_user() or {}).get("id")
+    if not uid:
+        return jsonify({"error": "non authentifié"}), 401
+    jeton = ((request.get_json(silent=True) or {}).get("token") or "").strip()
+
+    if not jeton:                                   # effacement explicite
+        db_set_user_gh_token(uid, "")
+        return jsonify({"status": "efface", "jeton_pose": False})
+
+    req = urllib.request.Request("https://api.github.com/rate_limit", headers={
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "bobistudio-catalogue",
+        "Authorization": "Bearer %s" % jeton,
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            corps = _json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return jsonify({"error": "jeton refusé par GitHub (expiré ou invalide)"}), 400
+        return jsonify({"error": "GitHub a répondu HTTP %s" % e.code}), 502
+    except Exception as e:
+        return jsonify({"error": "GitHub injoignable : %s" % (e,)}), 502
+
+    plafond = (((corps or {}).get("resources") or {}).get("core") or {}).get("limit") or 0
+    if plafond <= 60:
+        # Le jeton est valide mais ne change rien : le dire, plutôt que de l'enregistrer et
+        # laisser l'utilisateur se cogner au même plafond en croyant l'avoir levé.
+        return jsonify({"error": "ce jeton n'élargit rien (plafond %s/heure)" % plafond}), 400
+    db_set_user_gh_token(uid, jeton)
+    db_add_alert("alert.catalogue.jeton_pose", "info", params={"n": plafond})
+    return jsonify({"status": "pose", "jeton_pose": True, "plafond": plafond})
 
 
 def _en_derive(type_, ver):

@@ -119,7 +119,10 @@ def update_core():
     """
     from .. import catalogue
     from ..version import VERSION
-    dispo, info = catalogue.maj_core_disponible()
+    # `?force=1` : même convention que /api/catalogue. C'est ce que demande le bouton
+    # « Relire les publications » — sans quoi il rafraîchirait la liste et pas le cœur.
+    force = (request.args.get("force") or "") in ("1", "true", "yes")
+    dispo, info = catalogue.maj_core_disponible(force=force)
     return jsonify({"version_installee": VERSION, "disponible": dispo, "derniere": info})
 
 

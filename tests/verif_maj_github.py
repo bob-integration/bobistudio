@@ -121,17 +121,23 @@ controle("★★★ `latest` en 404 sur une bêta → repli par la LISTE",
          "bêta ne verrait JAMAIS ses propres releases. Obtenu %r / %r" % (z, t))
 
 # ═══ 3. LE COMPARATEUR DE VERSION DU CŒUR ═══════════════
+#
+# ⚠ `force=True` À CHAQUE CAS, et ce n'est pas une facilité : la lecture du cœur est MISE EN
+# CACHE depuis le 2026-09-03 (elle était relue à chaque affichage de la page, sur un quota
+# GitHub de 60 requêtes/heure). Ce banc, lui, enchaîne trois états amont DIFFÉRENTS dans le même
+# processus — sans forcer, il recevrait trois fois le premier et validerait n'importe quoi.
+# C'est ce même besoin qui a révélé que le bouton « Relire » ne rafraîchissait pas le cœur.
 _REP.clear(); _REP["/releases"] = [REL("v" + V.VERSION)]
-dispo, info = C.maj_core_disponible()
+dispo, info = C.maj_core_disponible(force=True)
 controle("★★ à égalité, aucune mise à jour n'est proposée", not dispo and info)
 
 _REP["/releases"] = [REL("v99.0.0", ("bobistudio.zip", "SHA256SUMS"))]
-dispo, info = C.maj_core_disponible()
+dispo, info = C.maj_core_disponible(force=True)
 controle("★★★ une version SUPÉRIEURE est proposée, et dite applicable",
          dispo and info.get("applicable"), "obtenu %r" % info)
 
 _REP["/releases"] = [REL("v99.0.0")]
-dispo, info = C.maj_core_disponible()
+dispo, info = C.maj_core_disponible(force=True)
 controle("★★★ ...mais pas applicable si la release est nue",
          dispo and not info.get("applicable"),
          "annoncer applicable une mise à jour qui échouerait est pire que se taire. Obtenu %r"

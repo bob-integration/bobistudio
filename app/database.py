@@ -406,6 +406,15 @@ def init_db():
             db.execute("ALTER TABLE users ADD COLUMN last_login TEXT")
         if "session_epoch" not in ucols:
             db.execute("ALTER TABLE users ADD COLUMN session_epoch INTEGER NOT NULL DEFAULT 0")
+        # Jeton GitHub PERSONNEL, pour la page Mises à jour. Anonyme, GitHub accorde 60 requêtes
+        # par heure et par IP : une dizaine par relecture du catalogue, donc six relectures. Un
+        # jeton monte à 5 000. Il est par UTILISATEUR et non par site : c'est une identité, celui
+        # qui bute sur le plafond fournit la sienne et n'élargit que pour lui.
+        # ⚠ Stocké en clair, donc présent dans les sauvegardes de base. L'interface exige
+        # explicitement un jeton SANS AUCUNE PORTÉE (lecture publique seule) : il n'ouvre alors
+        # rien de plus que ce que n'importe qui lit déjà sans être authentifié.
+        if "gh_token" not in ucols:
+            db.execute("ALTER TABLE users ADD COLUMN gh_token TEXT")
 
         # ─── Rôles et autorisations ────────────────────────────────────────────────────────
         # Les rôles étaient des CONSTANTES Python : ajouter « le monteur peut piloter les
@@ -5416,6 +5425,16 @@ def db_create_user(username, password_hash, role, prenom=None, nom=None, email=N
              prenom, nom, email, interface))
         db.commit()
         return cur.lastrowid
+
+def db_set_user_gh_token(uid, token):
+    """Pose (ou efface, avec "") le jeton GitHub PERSONNEL d'un utilisateur.
+
+    Fonction dédiée plutôt qu'un paramètre de plus à `db_update_user` : celle-ci est appelée
+    depuis les pages d'administration des comptes, où un admin modifie les champs d'AUTRUI.
+    Un jeton n'a pas à voyager par ce chemin — il ne se pose que sur soi-même."""
+    with get_db() as db:
+        db.execute("UPDATE users SET gh_token=? WHERE id=?", (token or "", uid))
+
 
 def db_update_user(uid, role=None, password_hash=None, prenom=None, nom=None,
                    email=None, lang=None, interface=None, theme=None,

@@ -68,6 +68,10 @@ _TAILLE_MAX = 20 * 1024 * 1024          # même plafond que l'import manuel
 
 _verrou = threading.Lock()
 _cache = {"t": 0.0, "entrees": [], "erreur": None, "org": None}
+# Cache du CŒUR, séparé : il a sa propre requête (les releases du dépôt de
+# l'orchestrateur), et la page l'interroge à chaque affichage.
+_cache_core = {"t": 0.0, "info": None, "org": None}
+_verrou_core = threading.Lock()
 
 
 def _reglages():
@@ -93,13 +97,68 @@ def _reglages():
     return org, ttl, actif
 
 
+# ── Cache CONDITIONNEL (ETag) ────────────────────────────────────────────────
+#
+# ★ CE QUI COÛTE, C'EST LE NOMBRE DE REQUÊTES, PAS LEUR CONTENU. Un scan dépense une requête
+# pour lister l'organisation, plus UNE PAR DÉPÔT pour lire ses releases — une dizaine au total.
+# Anonyme, GitHub en donne 60 par heure et par IP : six relectures et c'est fini, ce que les
+# exploitants ont constaté avant nous.
+#
+# GitHub ne DÉCOMPTE PAS les réponses `304 Not Modified` obtenues par requête conditionnelle
+# (documenté). On mémorise donc l'ETag de chaque URL et on le renvoie en `If-None-Match` : quand
+# rien n'a bougé — le cas courant — la relecture ne coûte RIEN au quota. C'est ce qui rend le
+# bouton « Relire les publications » utilisable sans compter ses clics.
+_etags = {}          # url -> (etag, corps décodé)
+_verrou_etag = threading.Lock()
+
+
+def _jeton():
+    """Jeton GitHub de l'utilisateur COURANT, ou None.
+
+    ★ PAR UTILISATEUR, PAS PAR SITE (décision du 2026-09-03). Un jeton est une identité : le
+    poser dans `config_local.py` en ferait un secret partagé que tout le monde consomme sans le
+    savoir, et dont personne n'est responsable. Ici, celui qui bute sur le quota fournit le sien,
+    et n'élargit le plafond que pour lui.
+
+    Hors contexte de requête (script d'administration, banc), il n'y a pas d'utilisateur : on
+    rend None et l'on repart en anonyme. Ce chemin doit rester silencieux — `publier_release.sh`
+    appelle `lister()` sans Flask autour.
+    """
+    try:
+        from .auth import current_user
+        u = current_user()
+        return ((u or {}).get("gh_token") or "").strip() or None
+    except Exception:
+        return None
+
+
 def _http_json(url):
-    req = urllib.request.Request(url, headers={
+    en_tetes = {
         "Accept": "application/vnd.github+json",
         "User-Agent": "bobistudio-catalogue",
-    })
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-        return json.loads(r.read().decode("utf-8"))
+    }
+    jeton = _jeton()
+    if jeton:
+        en_tetes["Authorization"] = "Bearer %s" % jeton
+    with _verrou_etag:
+        connu = _etags.get(url)
+    if connu:
+        en_tetes["If-None-Match"] = connu[0]
+    req = urllib.request.Request(url, headers=en_tetes)
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+            corps = json.loads(r.read().decode("utf-8"))
+            etag = r.headers.get("ETag")
+            if etag:
+                with _verrou_etag:
+                    _etags[url] = (etag, corps)
+            return corps
+    except urllib.error.HTTPError as e:
+        # 304 : rien n'a changé, et cette réponse-là n'est pas décomptée du quota.
+        # urllib la remonte en ERREUR ; c'est un succès pour nous.
+        if e.code == 304 and connu:
+            return connu[1]
+        raise
 
 
 def _http_texte(url):
@@ -251,10 +310,20 @@ def lister(force=False):
         entrees = _construire(org)
         erreur = None
     except urllib.error.HTTPError as e:
-        # 403 sur l'API GitHub = quota anonyme épuisé, pas un refus d'accès. Le
-        # dire précisément évite de faire chercher un problème de droits.
-        entrees, erreur = None, ("quota GitHub anonyme épuisé (60 requêtes/heure) — réessayez plus tard"
-                                 if e.code == 403 else "GitHub a répondu HTTP %s" % e.code)
+        # 403 sur l'API GitHub = quota épuisé, pas un refus d'accès. Le dire précisément évite
+        # de faire chercher un problème de droits. ★ Et on dit CE QU'ON PEUT FAIRE : « réessayez
+        # plus tard » présentait un plafond de 60 requêtes/heure comme une fatalité, alors qu'un
+        # jeton personnel le porte à 5 000. Le message distingue les deux cas — avec un jeton
+        # déjà posé, conseiller d'en poser un serait absurde.
+        if e.code == 403 and _jeton():
+            erreur = ("quota GitHub épuisé pour votre jeton (5 000 requêtes/heure) — "
+                      "réessayez plus tard")
+        elif e.code == 403:
+            erreur = ("quota GitHub anonyme épuisé (60 requêtes/heure). "
+                      "Un jeton personnel porte la limite à 5 000 par heure.")
+        else:
+            erreur = "GitHub a répondu HTTP %s" % e.code
+        entrees = None
     except urllib.error.URLError as e:
         entrees, erreur = None, "pas d'accès à GitHub : %s" % (getattr(e, "reason", e),)
     except Exception as e:
@@ -277,7 +346,7 @@ def entree(depot):
     return None
 
 
-def derniere_version_core():
+def derniere_version_core(force=False):
     """La dernière version publiée de Bobi.Studio, ou None.
 
     ★ POURQUOI ÇA N'EXISTAIT PAS. Le catalogue ne retient que les dépôts préfixés
@@ -295,9 +364,22 @@ def derniere_version_core():
     Renvoie `{"version", "tag", "url", "publiee_le", "prerelease", "artefacts": [...]}` ou None
     si l'organisation ne répond pas ou n'a aucune release.
     """
-    org, _ttl, actif = _reglages()
+    org, ttl, actif = _reglages()
     if not actif:
         return None
+    # ★ MIS EN CACHE COMME LE RESTE. Cette fonction est appelée à CHAQUE affichage de la page
+    # Mises à jour : sans cache, elle dépensait une requête par affichage, quota ou pas. La
+    # requête conditionnelle ci-dessous ne coûte déjà plus rien quand rien n'a bougé, mais un
+    # aller-retour réseau par affichage reste du gaspillage.
+    # ⚠ `force` N'EST PAS UN LUXE. Sans lui, le bouton « Relire les publications » relisait la
+    # liste des paquets mais PAS la version du cœur : on aurait cliqué pour rafraîchir et le bloc
+    # du haut serait resté sur sa valeur d'il y a une demi-heure, sans rien dire. Un banc l'a
+    # attrapé en premier — il enchaîne trois états amont différents et recevait trois fois le
+    # premier.
+    with _verrou_core:
+        frais = (time.time() - _cache_core["t"]) < ttl and _cache_core["org"] == org
+        if frais and not force and _cache_core["info"] is not None:
+            return dict(_cache_core["info"])
     try:
         rels = _http_json("%s/repos/%s/%s/releases?per_page=10" % (API, org, DEPOT_CORE))
     except Exception as e:
@@ -317,7 +399,7 @@ def derniere_version_core():
     if not meilleure:
         return None
     _v, r, tag = meilleure
-    return {
+    info = {
         "version":    tag.lstrip("vV"),
         "tag":        tag,
         "url":        r.get("html_url"),
@@ -329,12 +411,15 @@ def derniere_version_core():
         # bouton qui échouerait.
         "artefacts":  [a.get("name") for a in (r.get("assets") or [])],
     }
+    with _verrou_core:
+        _cache_core.update({"t": time.time(), "info": dict(info), "org": org})
+    return info
 
 
-def maj_core_disponible():
+def maj_core_disponible(force=False):
     """(disponible, info) — compare la dernière version publiée à celle de CETTE instance."""
     from .version import VERSION, au_moins, comparable
-    info = derniere_version_core()
+    info = derniere_version_core(force=force)
     if not info:
         return False, None
     info["version_installee"] = VERSION

@@ -2521,6 +2521,8 @@ async function fontDelete(f) {
 .cat-chip.new  { color:var(--accent); }
 .cat-chip.old  { color:var(--text-muted); border-style:dashed; }
 .cat-err { color:var(--status-warning-fg); font-size:0.86em; }
+.cat-jeton { border:1px solid var(--border); border-radius:var(--radius-small, 4px);
+             background:var(--bg-input); padding:12px var(--space-3); font-size:0.9em; }
 .cat-core { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-3);
             border:1px solid var(--border); border-radius:var(--radius-small, 4px);
             background:var(--bg-input); padding:12px var(--space-3); }
@@ -2575,6 +2577,25 @@ async function fontDelete(f) {
   <div class="meta">{{ _('catalogue.activer_hint') }}</div>
   <div class="meta">{{ _('catalogue.org_hint') }}</div>
   <div id="cat-erreur" class="cat-err"></div>
+
+  {# ★ LE JETON N'EST PROPOSÉ QU'AU MOMENT OÙ IL SERT : quand le quota tombe, ou quand un jeton
+     est déjà posé (pour pouvoir le retirer). Un champ « jeton GitHub » affiché en permanence sur
+     une page de réglages serait une question posée à quelqu'un qui n'a pas le problème. #}
+  <div id="cat-jeton" class="cat-jeton" style="display:none">
+    <strong>{{ _('catalogue.jeton_titre') }}</strong>
+    <p class="meta" style="margin:6px 0 0">{{ _('catalogue.jeton_expl') }}</p>
+    <p class="meta" style="margin:6px 0 0">{{ _('catalogue.jeton_prive') }}</p>
+    <div class="row" style="margin-top:var(--space-3); align-items:center">
+      <div class="field" style="flex:1; min-width:min(320px,100%)">
+        <input type="password" id="cat-jeton-val" autocomplete="off"
+               placeholder="{{ _('catalogue.jeton_ph') }}">
+      </div>
+      <button class="btn btn-blue" onclick="catJetonEnregistrer()">{{ _('catalogue.jeton_enregistrer') }}</button>
+      <button class="btn" id="cat-jeton-retirer" style="display:none"
+              onclick="catJetonRetirer()">{{ _('catalogue.jeton_retirer') }}</button>
+      <span id="cat-jeton-msg" class="meta" role="status"></span>
+    </div>
+  </div>
 
   {# ★ LE CŒUR N'ÉTAIT NULLE PART. `GET /api/update/core` sait depuis toujours comparer cette
      instance à la dernière release publiée, et `POST /api/update/core/apply` sait l'appliquer —
@@ -13747,26 +13768,31 @@ async function catSauverActif(on) {
   await catSauverReglage({ catalogue_actif: on ? '1' : '0' });
 }
 async function catSauverActiver(on) {
-  await catSauverReglage({ catalogue_activer: on ? '1' : '0' });
+  // ⚠ PAS de relecture du catalogue ici, contrairement aux autres réglages : cet interrupteur
+  // ne change pas la LISTE, seulement ce qu'on fera d'un paquet récupéré. Relire coûtait une
+  // dizaine de requêtes GitHub — sur un quota anonyme de 60 par heure, deux clics sur un
+  // interrupteur suffisaient à épuiser un sixième de la journée.
+  await catSauverReglage({ catalogue_activer: on ? '1' : '0' }, false);
 }
-async function catSauverReglage(corps) {
+async function catSauverReglage(corps, relire) {
   const z = document.getElementById('cat-reglage-msg');
   try {
     const r = await fetch('/api/settings', { method: 'POST',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     z.textContent = CAT_T('saved', 'Enregistré.');
-    // ★ ON RELIT DANS LA FOULÉE, ET EN FORÇANT. Changer d'organisation sans
-    // relire laisserait la liste de l'ANCIENNE à l'écran : on croirait le
-    // nouveau réglage sans effet, ou pire, on installerait depuis l'ancienne.
-    catCharger(true);
+    // ★ ON RELIT DANS LA FOULÉE, ET EN FORÇANT — mais seulement quand le réglage change
+    // vraiment la liste. Changer d'organisation sans relire laisserait celle de l'ANCIENNE à
+    // l'écran : on croirait le nouveau réglage sans effet, ou pire, on installerait depuis
+    // l'ancienne. Un réglage qui ne touche pas la liste, lui, ne doit rien coûter au quota.
+    if (relire !== false) catCharger(true);
   } catch (e) {
     z.textContent = CAT_T('save_failed', 'Échec de l\'enregistrement : {e}').replace('{e}', e.message);
   }
 }
 
 async function catCharger(force) {
-  catCoreCharger();
+  catCoreCharger(force);
   const src = document.getElementById('cat-source');
   const err = document.getElementById('cat-erreur');
   try {
@@ -13795,6 +13821,7 @@ async function catCharger(force) {
     const chActiver = document.getElementById('s_catalogue_activer');
     if (chActiver && j.activer_apres !== undefined) chActiver.checked = !!j.activer_apres;
     err.textContent = j.erreur || '';
+    catJetonAfficher(/quota/i.test(j.erreur || ''), !!j.jeton_pose);
     const pl = j.entrees.filter(e => e.genre === 'plugin');
     const sv = j.entrees.filter(e => e.genre === 'service');
     document.getElementById('cat-plugins').innerHTML = pl.length ? pl.map(catLigne).join('') : catVide();
@@ -13809,11 +13836,12 @@ async function catCharger(force) {
 // vraiment l'archive d'installation et son empreinte : sans elles, `get.sh` n'a rien à vérifier
 // avant d'exécuter du code en root, et l'application échouerait. On affiche donc le bouton
 // SEULEMENT quand il y a quelque chose d'installable, et on dit pourquoi quand il n'y en a pas.
-async function catCoreCharger() {
+async function catCoreCharger(force) {
   const z = document.getElementById('cat-core');
   if (!z) return;
   try {
-    const j = await (await fetch('/api/update/core', { cache: 'no-store' })).json();
+    const j = await (await fetch('/api/update/core' + (force ? '?force=1' : ''),
+                                 { cache: 'no-store' })).json();
     const d = j.derniere || null;
     const bloc = (lbl, val) => '<div class="cat-core-v"><span class="cat-core-l">'
         + escapeHtml(lbl) + '</span><span class="cat-ver">' + escapeHtml(val) + '</span></div>';
@@ -13873,6 +13901,42 @@ async function catCoreAppliquer(btn, tag, version) {
     out.textContent = CAT_T('core_applying', 'Mise à jour en cours — le service redémarre…');
   }
 }
+
+// ── Jeton GitHub personnel ───────────────────────────────────────────────────
+// Le bloc n'est montré QUE s'il sert : quota atteint, ou jeton déjà posé (pour le retirer).
+function catJetonAfficher(quotaAtteint, jetonPose) {
+  const z = document.getElementById('cat-jeton');
+  if (!z) return;
+  z.style.display = (quotaAtteint || jetonPose) ? '' : 'none';
+  const b = document.getElementById('cat-jeton-retirer');
+  if (b) b.style.display = jetonPose ? '' : 'none';
+  const m = document.getElementById('cat-jeton-msg');
+  if (m && jetonPose && !m.textContent) m.textContent = CAT_T('jeton_actif', '');
+}
+
+async function catJetonEnvoyer(valeur) {
+  const m = document.getElementById('cat-jeton-msg');
+  m.textContent = '…';
+  try {
+    const r = await fetch('/api/catalogue/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: valeur }) });
+    const j = await r.json();
+    if (!r.ok) { m.textContent = j.error || ('HTTP ' + r.status); return; }
+    document.getElementById('cat-jeton-val').value = '';
+    m.textContent = valeur
+      ? CAT_T('jeton_pose_ok', 'Jeton enregistré — {n} requêtes par heure.').replace('{n}', j.plafond)
+      : CAT_T('jeton_efface', 'Jeton retiré.');
+    // Le plafond vient de changer : c'est LE moment où une relecture forcée a du sens.
+    catCharger(true);
+  } catch (e) { m.textContent = e.message || String(e); }
+}
+function catJetonEnregistrer() {
+  const v = (document.getElementById('cat-jeton-val').value || '').trim();
+  if (!v) { document.getElementById('cat-jeton-msg').textContent = CAT_T('jeton_ph', ''); return; }
+  catJetonEnvoyer(v);
+}
+function catJetonRetirer() { catJetonEnvoyer(''); }
 
 function catActiverCoche() {
   const ch = document.getElementById('s_catalogue_activer');

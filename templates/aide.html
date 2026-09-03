@@ -1611,6 +1611,36 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 <div class="wiki-doc-content" data-doc="infrastructure">Chargement…</div>
 </template>
 
+<template id="wiki-art-mises-a-jour-page">
+<p>La page <strong>Réglages → Mises à jour</strong> est le seul endroit où l'on confronte <em>ce qui tourne ici</em> à <em>ce qui existe en amont</em> : la version de Bobi.Studio, puis chaque plugin et chaque service publiés, avec leur version installée en regard de la version publiée.</p>
+
+<h2>Bobi.Studio</h2>
+<p>Le premier bloc donne la version installée et la dernière publiée. Le bouton de mise à jour n'apparaît que si la publication porte réellement l'archive d'installation <strong>et son empreinte</strong> : sans elles, l'installeur n'a rien à vérifier avant d'exécuter du code en root, et la mise à jour échouerait. Annoncer une mise à jour impossible vaudrait moins que de ne rien annoncer — dans ce cas la page l'explique et renvoie vers la publication.</p>
+<div class="wiki-note">La mise à jour <strong>redémarre le contrôleur</strong> : l'interface est indisponible quelques instants. Les conteneurs en marche ne sont pas touchés. Sur une installation d'antenne, le moment se choisit — c'est pourquoi rien n'est automatique.</div>
+
+<h2>Plugins et services</h2>
+<p>Les types de conteneurs sont des plugins : il n'y a pas de liste figée, et cette page est l'endroit où l'on en ajoute. Chaque ligne compare la version publiée à celle installée.</p>
+<ul>
+<li><strong>Activer après récupération</strong> — coché par défaut : le paquet récupéré devient tout de suite la version en service. Décoché, il est seulement rangé et n'apparaît nulle part tant qu'il n'a pas été activé depuis Réglages → Plugins.</li>
+<li><strong>Activer ne redéploie rien.</strong> Les conteneurs en marche gardent le script qu'ils ont reçu : ils passent en <em>dérive</em> jusqu'à un redéploiement. Le message de retour compte ceux qui restent sur l'ancienne version, plutôt que d'annoncer un parc à jour qui ne l'est pas.</li>
+<li><strong>Un service n'est pas chargé à chaud</strong> : le contrôleur l'importe par son nom au démarrage. L'installer le dépose et l'archive ; il ne devient effectif qu'au redémarrage.</li>
+</ul>
+
+<h2>Consultation en ligne, et quota GitHub</h2>
+<p>La liste vient des dépôts publics de l'organisation de confiance. L'interrupteur <strong>Consulter les publications en ligne</strong> coupe toute requête sortante : un site isolé garde la page, sans rien interroger.</p>
+<p>Sans identification, GitHub accorde <strong>60 requêtes par heure et par adresse IP</strong>. Or une relecture du catalogue en consomme une dizaine — une par dépôt publié. Six relectures suffisent donc à épuiser le quota, ce qui se voit à un message en tête de page.</p>
+<p>Deux choses limitent la casse sans rien demander : les relectures sont <strong>conditionnelles</strong> (quand rien n'a changé en amont, la réponse ne compte pas dans le quota), et les résultats sont gardés en cache pendant une demi-heure — l'âge de la liste est affiché en haut.</p>
+<h3>Le jeton personnel</h3>
+<p>Quand le quota tombe malgré tout, la page propose d'enregistrer un <strong>jeton GitHub personnel</strong>, qui porte la limite à 5 000 requêtes par heure.</p>
+<ul>
+<li>Il se crée sur github.com → Settings → Developer settings → Personal access tokens, <strong>sans cocher aucune portée</strong> : la page ne lit que des dépôts publics.</li>
+<li>Il est <strong>attaché à votre compte</strong>, pas à l'installation : il n'élargit la limite que pour vos consultations. Personne ne consomme le quota d'un autre sans le savoir.</li>
+<li>Il est vérifié auprès de GitHub <strong>avant</strong> d'être enregistré — un jeton expiré accepté en silence donnerait le même blocage, en laissant croire le problème réglé.</li>
+<li>Il n'est jamais réaffiché après enregistrement, et le bouton « Retirer le jeton » revient à la limite anonyme.</li>
+</ul>
+<div class="wiki-note">Le jeton est stocké en clair dans la base, donc présent dans les sauvegardes. C'est pourquoi l'on demande un jeton <strong>sans aucune portée</strong> : il n'ouvre alors rien de plus que ce que n'importe qui lit déjà sans être authentifié.</div>
+</template>
+
 <template id="wiki-art-mises-a-jour">
 <p><strong>Cette instance tourne en Bobi.Studio {{ app_version|default('?') }}.</strong>
    La version publiée la plus récente, et la mise à jour quand il y en a une, se trouvent dans
@@ -1788,6 +1818,7 @@ const CORE_ARTICLES = [
   { id: 'dev-plugin',           title: 'Écrire un plugin',            cat: 'dev' },
   { id: 'dev-service',          title: 'Écrire un service',           cat: 'dev' },
   { id: 'dev-contribuer',       title: 'Contribuer',                  cat: 'dev' },
+  { id: 'mises-a-jour-page',    title: 'Page Mises à jour',           cat: 'operations' },
   { id: 'mises-a-jour',         title: 'Liste des évolutions',        cat: 'about' },
   { id: 'obtenir-aide',         title: 'Obtenir de l\'aide',          cat: 'about' },
 ];

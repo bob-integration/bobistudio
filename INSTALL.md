@@ -190,8 +190,14 @@ Deux chemins, au choix :
 
 - **Web** : ouvrir `http://<contrôleur>:5000/`. Tant qu'**aucun** utilisateur n'existe en
   base, `/login` redirige automatiquement vers `/setup`, qui crée le premier compte (rôle
-  `admin` imposé) puis enchaîne directement sur `/setup/wizard` (identité, réseau, format
-  vidéo — cf. §3).
+  `admin` imposé) puis enchaîne directement sur `/setup/wizard` (identité **et fuseau
+  horaire**, réseau des conteneurs, format vidéo — cf. §3).
+
+  L'écran de création du compte annonce les conditions du mot de passe et les coche à la
+  frappe. Il porte aussi le **profil d'exigence** (souple 8 signes / standard 12 / stricte 16) :
+  c'est le seul endroit où il soit atteignable avant d'avoir un compte, puisque son réglage
+  habituel (Réglages → Sécurité) est derrière l'authentification. Le choix vaut ensuite pour
+  tous les comptes, et reste modifiable.
 - **CLI** :
   ```bash
   ./venv/bin/python tools/create_admin.py
@@ -224,7 +230,8 @@ conteneur — plusieurs sont lus au moment du déploiement, pas seulement à l'u
   alloué de façon centralisée et atomique par l'orchestrateur. Le défaut (`239.100.0.0`/4096)
   n'est valable que si ce bloc n'est pas déjà routé/utilisé ailleurs sur le réseau média du
   site — à vérifier avec l'équipe réseau avant le premier flux.
-- `timezone` : vide = fuseau de l'OS du contrôleur. À poser explicitement (nom IANA,
+- `timezone` (**également proposé par l'assistant de premier démarrage**, étape Identité) :
+  vide = fuseau de l'OS du contrôleur. À poser explicitement (nom IANA,
   ex. `Europe/Paris`) si l'OS n'est pas déjà sur le bon fuseau — ce réglage pilote logs,
   horodatage des alertes et dates UI d'un seul geste, mais **ne réinterprète pas** les
   horodatages déjà en base.

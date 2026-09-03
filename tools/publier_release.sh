@@ -107,12 +107,31 @@ def modules(prefixe):
     return {n.split("/")[1] for n in noms
             if n.startswith(prefixe + "/") and n.count("/") > 1 and not n.split("/")[1].startswith("_")}
 embarques = modules("plugins") | modules("services")
+
+# ★ UN MODULE SANS DÉPÔT PROPRE EST DÉJÀ PUBLIC. Certains plugins et services vivent DANS le
+# dépôt principal et ne sont pas des sous-modules — `probe_2110`, `pyramide`, `v210_bridge`,
+# `files`. Leur code est donc déjà en clair sur le dépôt public : les embarquer n'expose rien.
+# Le contrôle ne les voyait pas ainsi (il ne connaissait que le CATALOGUE, c'est-à-dire les
+# dépôts `bobistudio-plugin-*`), les déclarait privés et bloquait la publication. Il a fallu
+# passer outre pour livrer du code déjà public — et un garde-fou qui crie au loup finit par se
+# faire contourner par réflexe, y compris le jour où il a raison.
+dans_le_depot = set()
+try:
+    with open(".gitmodules", encoding="utf-8") as f:
+        sousmodules = {l.split("=", 1)[1].strip() for l in f if l.strip().startswith("path")}
+except FileNotFoundError:
+    sousmodules = set()
+for prefixe in ("plugins", "services"):
+    for m in modules(prefixe):
+        if "%s/%s" % (prefixe, m) not in sousmodules:
+            dans_le_depot.add(m)
+
 try:
     from app import catalogue
     r = catalogue.lister(force=True)
     if r.get("erreur"):
         print("INCONNU|%s" % r["erreur"]); sys.exit(0)
-    publies = {e["type"] for e in r["entrees"]}
+    publies = {e["type"] for e in r["entrees"]} | dans_le_depot
 except Exception as e:
     print("INCONNU|catalogue injoignable : %r" % (e,)); sys.exit(0)
 prives = sorted(embarques - publies)

@@ -66,7 +66,12 @@ DEFAULT_SERVICES = ["nmos", "webrtc_gateway", "files", "media_manager"]
 
 # ── Exclusions (n'importe où dans le chemin relatif) ─────────
 # Secrets / état local : JAMAIS dans le zip.
-SECRET_PATTERNS = ["config_local.py", "backups/"]   # + tout fichier .db (cf. _is_secret)
+# ⚠ `static/uploads/` en fait partie : c'est de l'état d'instance, pas un secret au sens strict,
+# mais le publier revient à diffuser ce que les utilisateurs de cette installation ont déposé.
+# Le mettre ICI en plus de `EXCLUDE_PATHS` est délibéré : l'exclusion peut être défaite par une
+# refonte de la liste blanche, le garde-fou de sortie, lui, REFUSE le build. Deux mécanismes
+# indépendants pour la même règle, parce que celle-ci ne pardonne pas.
+SECRET_PATTERNS = ["config_local.py", "backups/", "static/uploads/"]   # + tout .db (cf. _is_secret)
 
 # Bruit / non pertinent au déploiement.
 EXCLUDE_DIRS = {
@@ -79,6 +84,24 @@ EXCLUDE_DIRS = {
 EXCLUDE_FILES = {
     "config_local.py", ".impeccable",
 }
+# ── Chemins d'ÉTAT D'INSTANCE, exclus par PRÉFIXE ────────────────────────────
+#
+# ⚠ `static/` est embarqué en entier par CORE_DIRS, et `static/uploads/` s'y trouve — or ce
+# dossier est GITIGNORÉ : ce n'est pas du code, c'est ce que les utilisateurs de CETTE
+# installation y ont déposé. Logo de marque, polices téléversées, et surtout les images servies
+# depuis l'interface : sur le contrôleur de l'éditeur, 76 fichiers nommés d'après des machines
+# de production, soit 14 Mo. Un paquet construit depuis le dépôt de travail les emportait donc
+# dans une release publique — vérifié le 2026-09-03, à un clic près.
+#
+# Les releases publiques échappaient au problème PAR ACCIDENT DE MÉTHODE : elles sont
+# construites depuis l'arbre de publication, qui ne contient que du versionné et n'a donc pas ce
+# dossier. Un garde-fou qui dépend de l'endroit d'où l'on lance la commande n'en est pas un.
+#
+# Exclu par CHEMIN et non par nom : `EXCLUDE_DIRS` écarterait tout dossier « uploads », y
+# compris celui qu'un plugin aurait le droit de porter.
+EXCLUDE_PATHS = (
+    "static/uploads",
+)
 EXCLUDE_EXT = {".db", ".log", ".pyc", ".pyo"}
 
 
@@ -92,7 +115,10 @@ def _is_secret(rel):
 
 def _excluded(rel):
     """Vrai si le chemin relatif doit être écarté du zip."""
-    parts = rel.replace("\\", "/").split("/")
+    norm = rel.replace("\\", "/")
+    if any(norm == p or norm.startswith(p + "/") for p in EXCLUDE_PATHS):
+        return True
+    parts = norm.split("/")
     if any(p in EXCLUDE_DIRS for p in parts):
         return True
     base = parts[-1]
@@ -106,8 +132,13 @@ def _excluded(rel):
 def _add_dir(zf, abs_dir, arc_prefix):
     """Ajoute récursivement un dossier au zip en filtrant les exclusions."""
     for dirpath, dirnames, filenames in os.walk(abs_dir):
-        # Élagage des dossiers exclus (perf + cohérence).
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
+        # Élagage des dossiers exclus (perf + cohérence). On élague AUSSI sur le chemin
+        # d'archive, sans quoi `os.walk` descendrait dans `static/uploads` pour ne rien en
+        # garder — inutile, et trompeur à la lecture.
+        arc_dir = os.path.join(arc_prefix, os.path.relpath(dirpath, abs_dir)).replace("\\", "/")
+        arc_dir = arc_dir[2:] if arc_dir.startswith("./") else arc_dir
+        dirnames[:] = [d for d in dirnames
+                       if d not in EXCLUDE_DIRS and not _excluded(os.path.join(arc_dir, d))]
         for fn in filenames:
             absf = os.path.join(dirpath, fn)
             rel = os.path.relpath(absf, abs_dir)
