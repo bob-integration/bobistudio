@@ -1,26 +1,26 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc du REGISTRE DE PORTEURS (`app/tally.py`).
-***REMOVED***
-***REMOVED*** CE QU'IL PROTÈGE. Le distributeur allait chercher ses porteurs dans
-***REMOVED*** `db_get_tsl_connections()` : le modèle de tally lisait la table d'un PROTOCOLE. Il aurait
-***REMOVED*** fallu lui apprendre `is07_connections`, puis celle du protocole suivant — et surtout,
-***REMOVED*** supprimer le service TSL aurait emporté le distributeur, donc les murs multiview, alors que
-***REMOVED*** la moitié des sources de tally ne vient pas de TSL.
-***REMOVED***
-***REMOVED*** Depuis l'inversion, chaque protocole se DÉCLARE. Ce banc vérifie que la déclaration tient
-***REMOVED*** ses promesses — et il existe parce que les seize autres bancs de tally passaient déjà tous
-***REMOVED*** AVANT que le registre ne fonctionne : aucun n'exerce ce chemin.
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tests/verif_tally_porteurs.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc du REGISTRE DE PORTEURS (`app/tally.py`).
+#
+# CE QU'IL PROTÈGE. Le distributeur allait chercher ses porteurs dans
+# `db_get_tsl_connections()` : le modèle de tally lisait la table d'un PROTOCOLE. Il aurait
+# fallu lui apprendre `is07_connections`, puis celle du protocole suivant — et surtout,
+# supprimer le service TSL aurait emporté le distributeur, donc les murs multiview, alors que
+# la moitié des sources de tally ne vient pas de TSL.
+#
+# Depuis l'inversion, chaque protocole se DÉCLARE. Ce banc vérifie que la déclaration tient
+# ses promesses — et il existe parce que les seize autres bancs de tally passaient déjà tous
+# AVANT que le registre ne fonctionne : aucun n'exerce ce chemin.
+#
+#   $ ./venv/bin/python tests/verif_tally_porteurs.py
 import os
 import sys
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
-from app import tally                                                    ***REMOVED*** noqa: E402
+from app import tally                                                    # noqa: E402
 
 echecs, reussites = [], []
 
@@ -39,7 +39,7 @@ def _vider():
 
 NA, NB, NC = "niv-a", "niv-b", "niv-c"
 
-***REMOVED*** ─── 1. Déclarer, retrouver, retirer ─────────────────────────────────────────
+# ─── 1. Déclarer, retrouver, retirer ─────────────────────────────────────────
 _vider()
 tally.enregistrer_porteur("proto:1", [NA], lambda shm, n=None: 7 if shm == "cam1" else None,
                           nom="Protocole 1")
@@ -56,9 +56,9 @@ controle("un niveau que personne ne porte rend (None, None)",
 tally.retirer_porteur("proto:1")
 controle("retiré, le porteur n'est plus trouvé", tally.porteur_pour([NA]) == (None, None))
 
-***REMOVED*** ─── 2. DEUX porteurs peuvent employer le MÊME index ─────────────────────────
-***REMOVED*** C'est la raison d'être de « chez le porteur » : une table à plat (index → source) mélangerait
-***REMOVED*** les deux et allumerait un rouge sur le mauvais signal.
+# ─── 2. DEUX porteurs peuvent employer le MÊME index ─────────────────────────
+# C'est la raison d'être de « chez le porteur » : une table à plat (index → source) mélangerait
+# les deux et allumerait un rouge sur le mauvais signal.
 _vider()
 tally.enregistrer_porteur("proto:A", [NA], lambda shm, n=None: 1 if shm == "cam1" else None)
 tally.enregistrer_porteur("proto:B", [NB], lambda shm, n=None: 1 if shm == "cam2" else None)
@@ -69,7 +69,7 @@ controle("l'index 1 désigne cam1 chez A et cam2 chez B",
          and tally.index_chez(pa, "cam2") is None and tally.index_chez(pb, "cam1") is None,
          "une table à plat confondrait les deux")
 
-***REMOVED*** ─── 3. Le PREMIER déclarant d'un niveau le garde ────────────────────────────
+# ─── 3. Le PREMIER déclarant d'un niveau le garde ────────────────────────────
 _vider()
 tally.enregistrer_porteur("proto:1", [NA], lambda shm, n=None: 10)
 tally.enregistrer_porteur("proto:2", [NA], lambda shm, n=None: 20)
@@ -78,22 +78,22 @@ controle("deux porteurs sur un même niveau : le premier gagne, sans osciller",
          tally.index_chez(pt, "x") == 10,
          "sinon le tally changerait de porteur d'un tour à l'autre")
 
-***REMOVED*** ─── 4. Ordre des niveaux DEMANDÉS ───────────────────────────────────────────
+# ─── 4. Ordre des niveaux DEMANDÉS ───────────────────────────────────────────
 _vider()
 tally.enregistrer_porteur("proto:1", [NB], lambda shm, n=None: 5)
 niveau, _ = tally.porteur_pour([NC, NB, NA])
 controle("le premier niveau demandé QUI A un porteur est retenu", niveau == NB, str(niveau))
 
-***REMOVED*** ─── 5. Un porteur qui LÈVE ne fait pas tomber les autres ────────────────────
+# ─── 5. Un porteur qui LÈVE ne fait pas tomber les autres ────────────────────
 _vider()
 def _casse(shm, n=None):
     raise RuntimeError("porteur défaillant")
 tally.enregistrer_porteur("proto:casse", [NA], _casse)
 _, pt = tally.porteur_pour([NA])
-***REMOVED*** ⚠ On appelle SOUS try : si la garde d'`index_chez` disparaît, l'exception remonte ici et
-***REMOVED*** ferait MOURIR ce banc — il dirait « traceback » au lieu de nommer la propriété perdue.
-***REMOVED*** Un banc qui plante ne diagnostique rien. Vérifié en retirant la garde : c'est bien ce
-***REMOVED*** contrôle-ci qui doit rougir, et lui seul.
+# ⚠ On appelle SOUS try : si la garde d'`index_chez` disparaît, l'exception remonte ici et
+# ferait MOURIR ce banc — il dirait « traceback » au lieu de nommer la propriété perdue.
+# Un banc qui plante ne diagnostique rien. Vérifié en retirant la garde : c'est bien ce
+# contrôle-ci qui doit rougir, et lui seul.
 try:
     _res = tally.index_chez(pt, "cam1")
     _leve = False
@@ -103,7 +103,7 @@ controle("un porteur dont la résolution lève rend None, sans propager",
          _res is None and not _leve,
          "le distributeur sert TOUS les murs : une exception les arrêterait tous")
 
-***REMOVED*** ─── 6. La référence de libellé est facultative ──────────────────────────────
+# ─── 6. La référence de libellé est facultative ──────────────────────────────
 _vider()
 tally.enregistrer_porteur("proto:1", [NA], lambda shm, n=None: 1)
 _, pt = tally.porteur_pour([NA])
@@ -114,12 +114,12 @@ _, pt2 = tally.porteur_pour([NB])
 controle("avec ref_de, la référence d'origine du libellé est rendue",
          tally.ref_chez(pt2, "cam1") == "port:42", str(tally.ref_chez(pt2, "cam1")))
 
-***REMOVED*** ─── 7. Retirer un porteur n'éteint PAS le tally d'un autre écrivain ─────────
+# ─── 7. Retirer un porteur n'éteint PAS le tally d'un autre écrivain ─────────
 _vider()
-***REMOVED*** ⚠ La clé est une RÉFÉRENCE DE SOURCE, plus un index. Un porteur ne sert donc plus à LIRE
-***REMOVED*** l'état — seulement à traduire vers un protocole sortant : le retirer ne peut, par construction,
-***REMOVED*** rien éteindre. Le contrôle garde tout son sens, et en gagne : il vérifie que la lecture ne
-***REMOVED*** passe plus par lui du tout.
+# ⚠ La clé est une RÉFÉRENCE DE SOURCE, plus un index. Un porteur ne sert donc plus à LIRE
+# l'état — seulement à traduire vers un protocole sortant : le retirer ne peut, par construction,
+# rien éteindre. Le contrôle garde tout son sens, et en gagne : il vérifie que la lecture ne
+# passe plus par lui du tout.
 tally.poser_tally("srcX", {("cam1", NA): "red"})
 tally.enregistrer_porteur("proto:1", [NA], lambda shm, n=None: 3)
 tally.retirer_porteur("proto:1")

@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Allocateur de GPU NVIDIA par nœud (sélecteur `docker run --gpus`).
 
@@ -45,7 +45,7 @@ def allocate_gpu(node_id, vmid):
                          (node_id, vmid)).fetchone()
         if row is not None:
             return "device=%d" % int(row["gpu_index"])
-        ***REMOVED*** Round-robin : choisir l'index le MOINS chargé (équilibrage des contextes sur les GPU).
+        # Round-robin : choisir l'index le MOINS chargé (équilibrage des contextes sur les GPU).
         counts = {i: 0 for i in range(ngpu)}
         for r in db.execute("SELECT gpu_index, COUNT(*) AS c FROM node_gpu_alloc WHERE node_id=? "
                             "GROUP BY gpu_index", (node_id,)).fetchall():

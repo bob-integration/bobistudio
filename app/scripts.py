@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 import json
 def get_default_video_format(settings_dict=None):
@@ -64,31 +64,31 @@ def multiview_output_dims(params):
     h = int(p.get("out_height") or p.get("height") or 0)
     return (h, w) if is_portrait(p) else (w, h)
 
-***REMOVED*** Chroma subsampling supportée dans tout le pipeline shm (défaut 4:2:2). Détermine le
-***REMOVED*** layout octet d'une frame vidéo en shared memory ET le -pix_fmt ffmpeg. Source de vérité
-***REMOVED*** partagée entre l'orchestrateur (normalisation/NMOS) et les scripts de plugin.
+# Chroma subsampling supportée dans tout le pipeline shm (défaut 4:2:2). Détermine le
+# layout octet d'une frame vidéo en shared memory ET le -pix_fmt ffmpeg. Source de vérité
+# partagée entre l'orchestrateur (normalisation/NMOS) et les scripts de plugin.
 VALID_CHROMA = ("420", "422", "444")
 DEFAULT_CHROMA = "422"
-***REMOVED*** Diviseurs (largeur, hauteur) de la résolution chroma par rapport au luma.
+# Diviseurs (largeur, hauteur) de la résolution chroma par rapport au luma.
 CHROMA_DIV = {"420": (2, 2), "422": (2, 1), "444": (1, 1)}
 PIX_FMT_BY_CHROMA = {"420": "yuv420p", "422": "yuv422p", "444": "yuv444p"}
-***REMOVED*** Whitelists colorimétrie ffmpeg ("" = laissé à l'auto-détection ffmpeg).
+# Whitelists colorimétrie ffmpeg ("" = laissé à l'auto-détection ffmpeg).
 VALID_PRIMARIES = ("", "bt709", "bt2020", "smpte170m", "bt470bg")
 VALID_TRC = ("", "bt709", "bt2020-10", "smpte2084", "arib-std-b67")
 VALID_COLORSPACE = ("", "bt709", "bt2020nc", "smpte170m")
-***REMOVED*** Encodage matériel NVENC : la nomenclature n'est PAS celle de x264 (`ultrafast`/`zerolatency` y
-***REMOVED*** sont invalides et font échouer ffmpeg). Bornées ici pour que le normaliseur refuse une valeur
-***REMOVED*** hors liste au lieu de la transmettre à l'encodeur.
+# Encodage matériel NVENC : la nomenclature n'est PAS celle de x264 (`ultrafast`/`zerolatency` y
+# sont invalides et font échouer ffmpeg). Bornées ici pour que le normaliseur refuse une valeur
+# hors liste au lieu de la transmettre à l'encodeur.
 VALID_NVENC_PRESETS = ("", "p1", "p2", "p3", "p4", "p5", "p6", "p7")
 VALID_NVENC_TUNES = ("", "ull", "ll", "hq")
 
-***REMOVED*** Profondeur d'échantillonnage (ST 2110-20 broadcast = 10 bits). Métadonnée du flux : portée
-***REMOVED*** par le format/NMOS ; le pipeline simulé reste en 8 bits en mémoire (uint8).
+# Profondeur d'échantillonnage (ST 2110-20 broadcast = 10 bits). Métadonnée du flux : portée
+# par le format/NMOS ; le pipeline simulé reste en 8 bits en mémoire (uint8).
 VALID_BIT_DEPTH = (8, 10, 12)
 DEFAULT_BIT_DEPTH = 10
 
-***REMOVED*** Colorimétrie nommée (token du tableau de formats) → triplet ffmpeg + équivalents NMOS IS-04.
-***REMOVED*** Défaut broadcast HD = BT.709 ; UHD = BT.2020 (SDR) ; +variantes HDR (PQ / HLG).
+# Colorimétrie nommée (token du tableau de formats) → triplet ffmpeg + équivalents NMOS IS-04.
+# Défaut broadcast HD = BT.709 ; UHD = BT.2020 (SDR) ; +variantes HDR (PQ / HLG).
 COLORIMETRY = {
     "709":     {"primaries": "bt709",    "trc": "bt709",         "colorspace": "bt709",
                 "nmos_colorspace": "BT709",  "nmos_transfer": "SDR"},
@@ -155,13 +155,13 @@ def nmos_colorimetry(primaries, trc):
     return cs, transfer
 
 
-***REMOVED*** ─── Mode de balayage (entrelacé / progressif) ──────────────────────────────────────────
-***REMOVED*** Source de vérité UNIQUE pour « ce format est-il entrelacé + quel ordre de champ ». Le scan
-***REMOVED*** est porté HORS-BANDE (params["scan"]/["field_order"] du deploy_config → topologie →
-***REMOVED*** consommateurs), JAMAIS dans l'en-tête shm : la trame shm reste une trame pleine, cohérent
-***REMOVED*** avec bit_depth/chroma/ring. Tout code field-aware (TX passthrough, désentrelacement preview,
-***REMOVED*** futures migrations de plugins compute) DOIT passer par ces helpers — ne pas refaire
-***REMOVED*** `scan == "i"` à la main (cf. dette de la saga bit_depth/chroma).
+# ─── Mode de balayage (entrelacé / progressif) ──────────────────────────────────────────
+# Source de vérité UNIQUE pour « ce format est-il entrelacé + quel ordre de champ ». Le scan
+# est porté HORS-BANDE (params["scan"]/["field_order"] du deploy_config → topologie →
+# consommateurs), JAMAIS dans l'en-tête shm : la trame shm reste une trame pleine, cohérent
+# avec bit_depth/chroma/ring. Tout code field-aware (TX passthrough, désentrelacement preview,
+# futures migrations de plugins compute) DOIT passer par ces helpers — ne pas refaire
+# `scan == "i"` à la main (cf. dette de la saga bit_depth/chroma).
 DEFAULT_SCAN = "p"
 
 
@@ -210,7 +210,7 @@ def _normalize_audio(a):
     `tracks` = liste de pistes, chaque piste = liste de 1 (mono) ou 2 (stéréo) indices
     de canaux d'entrée 0..7. Défaut si activé sans piste : 1 piste stéréo ch0-1."""
     a = dict(a or {})
-    enabled = bool(a.get("enabled", True))   ***REMOVED*** activé par défaut
+    enabled = bool(a.get("enabled", True))   # activé par défaut
     tracks = []
     for t in (a.get("tracks") or []):
         chs = []
@@ -221,7 +221,7 @@ def _normalize_audio(a):
                 continue
             if 0 <= ci <= 7:
                 chs.append(ci)
-        chs = chs[:2]   ***REMOVED*** mono (1) ou stéréo (2)
+        chs = chs[:2]   # mono (1) ou stéréo (2)
         if chs:
             tracks.append({"channels": chs})
     if enabled and not tracks:
@@ -244,10 +244,10 @@ def normalize_worker_udp_params(params):
     p = dict(params or {})
     legacy = "destinations" not in p and "video" not in p
 
-    ***REMOVED*** MODE TRANCHE MXL (plugin streamer ≥ 0.10) : pass-through de slice_mode/slice_lines à
-    ***REMOVED*** travers la whitelist — sinon la clé serait silencieusement perdue au deploy ET au
-    ***REMOVED*** round-trip de l'éditeur Streams (PUT normalisé puis sauvé). Absents → rien d'ajouté
-    ***REMOVED*** (configs existantes inchangées octet pour octet).
+    # MODE TRANCHE MXL (plugin streamer ≥ 0.10) : pass-through de slice_mode/slice_lines à
+    # travers la whitelist — sinon la clé serait silencieusement perdue au deploy ET au
+    # round-trip de l'éditeur Streams (PUT normalisé puis sauvé). Absents → rien d'ajouté
+    # (configs existantes inchangées octet pour octet).
     slice_extra = {}
     if "slice_mode" in p:
         _sm = p.get("slice_mode")
@@ -266,10 +266,10 @@ def normalize_worker_udp_params(params):
             destinations.append({"type": "udp", "host": p["dest_ip"],
                                  "port": _as_int(p.get("dest_port") or 9000, 9000)})
         return {
-            ***REMOVED*** "" explicite (décâblage via _apply_unwire) préservé ; défaut seulement si absent
+            # "" explicite (décâblage via _apply_unwire) préservé ; défaut seulement si absent
             "shm_name": p["shm_name"] if "shm_name" in p else "mxl_mix",
             "audio_shm": None,
-            ***REMOVED*** chroma top-level = layout du shm d'entrée (défaut 422) ; video.chroma = sortie encodée
+            # chroma top-level = layout du shm d'entrée (défaut 422) ; video.chroma = sortie encodée
             "chroma": normalize_chroma(p.get("chroma")),
             "video": {"codec": "h264", "bitrate": p.get("bitrate") or "4M",
                       "preset": "ultrafast", "gop": fps,
@@ -288,10 +288,10 @@ def normalize_worker_udp_params(params):
         fps = int(round(float(v.get("fps", 25) or 25))) or 25
     except (TypeError, ValueError):
         fps = 25
-    ***REMOVED*** width/height/fps = FORMAT DE SORTIE souhaité (toujours appliqué par l'encodeur).
-    ***REMOVED*** 0 explicite (largeur/hauteur) => « suivre l'entrée » (pas de mise à l'échelle) ;
-    ***REMOVED*** absent (None) => défaut 1280x720. L'ENTRÉE est auto-détectée par l'encodeur et
-    ***REMOVED*** ajustée vers cette sortie (cf. worker_udp._video_filter / _detect_dims).
+    # width/height/fps = FORMAT DE SORTIE souhaité (toujours appliqué par l'encodeur).
+    # 0 explicite (largeur/hauteur) => « suivre l'entrée » (pas de mise à l'échelle) ;
+    # absent (None) => défaut 1280x720. L'ENTRÉE est auto-détectée par l'encodeur et
+    # ajustée vers cette sortie (cf. worker_udp._video_filter / _detect_dims).
     _w = v.get("width"); _h = v.get("height")
 
     def _wl(val, allowed):
@@ -306,17 +306,17 @@ def normalize_worker_udp_params(params):
         "width": _as_int(_w, 1280),
         "height": _as_int(_h, 720),
         "fps": fps,
-        ***REMOVED*** chroma de SORTIE (encode) ; color_* vides => laissés à l'auto ffmpeg
+        # chroma de SORTIE (encode) ; color_* vides => laissés à l'auto ffmpeg
         "chroma": normalize_chroma(v.get("chroma")),
         "bit_depth": normalize_bit_depth(v.get("bit_depth")),
         "color_primaries": _wl(v.get("color_primaries"), VALID_PRIMARIES),
         "color_trc": _wl(v.get("color_trc"), VALID_TRC),
         "colorspace": _wl(v.get("colorspace"), VALID_COLORSPACE),
-        ***REMOVED*** ★ Encodage matériel (streamer ≥ 0.15). Ce bloc est une LISTE BLANCHE : une clé absente
-        ***REMOVED*** d'ici est silencieusement perdue au déploiement ET au round-trip de l'éditeur Streams.
-        ***REMOVED*** C'est ce qui a fait qu'un `encoder: nvenc` posté n'atteignait jamais l'allocateur GPU —
-        ***REMOVED*** le conteneur partait sans carte, sans que rien ne le signale. Toute future option
-        ***REMOVED*** d'encodage doit être ajoutée ici en même temps que dans le manifeste.
+        # ★ Encodage matériel (streamer ≥ 0.15). Ce bloc est une LISTE BLANCHE : une clé absente
+        # d'ici est silencieusement perdue au déploiement ET au round-trip de l'éditeur Streams.
+        # C'est ce qui a fait qu'un `encoder: nvenc` posté n'atteignait jamais l'allocateur GPU —
+        # le conteneur partait sans carte, sans que rien ne le signale. Toute future option
+        # d'encodage doit être ajoutée ici en même temps que dans le manifeste.
         "encoder": (str(v.get("encoder") or "cpu").strip().lower()
                     if str(v.get("encoder") or "cpu").strip().lower() in ("cpu", "nvenc", "auto")
                     else "cpu"),
@@ -340,7 +340,7 @@ def normalize_worker_udp_params(params):
         elif t == "webrtc":
             wd = {"type": "webrtc", "path": d.get("path") or "",
                   "enabled": bool(d.get("enabled", True))}
-            ***REMOVED*** champs résolus injectés par deploy.py (Phase D) — préservés tels quels
+            # champs résolus injectés par deploy.py (Phase D) — préservés tels quels
             for k in ("ingest_url", "whep_url", "embed_url"):
                 if d.get(k):
                     wd[k] = d[k]
@@ -348,7 +348,7 @@ def normalize_worker_udp_params(params):
     return {
         "shm_name": p["shm_name"] if "shm_name" in p else "mxl_mix",
         "audio_shm": p.get("audio_shm") or None,
-        ***REMOVED*** input shm chroma : suit la source (défaut 422). À défaut, aligné sur la sortie.
+        # input shm chroma : suit la source (défaut 422). À défaut, aligné sur la sortie.
         "chroma": normalize_chroma(p.get("chroma") or video["chroma"]),
         "video": video,
         "audio": audio,
@@ -387,7 +387,7 @@ def normalize_receiver_params(params, settings=None):
         except (TypeError, ValueError): v = -18.0
         return max(-60.0, min(0.0, v))
 
-    ***REMOVED*** Globaux legacy pour le fallback
+    # Globaux legacy pour le fallback
     legacy_pattern = p.get("sim_video_pattern", "bars")
     legacy_freq    = _as_int(p.get("sim_audio_freq", 1000) or 1000, 1000)
     legacy_level   = _clamp_db(p.get("sim_audio_level_db", -18))
@@ -409,7 +409,7 @@ def normalize_receiver_params(params, settings=None):
         return {
             "enabled": bool(slot.get("enabled", False)) and sim_master,
             "pattern": slot.get("pattern", legacy_pattern),
-            ***REMOVED*** IDENT : incrustation 3 lignes (nom/source/format) — indépendante du générateur.
+            # IDENT : incrustation 3 lignes (nom/source/format) — indépendante du générateur.
             "ident": bool(slot.get("ident", False)),
             "ident_size": max(0, _isz),
         }
@@ -422,7 +422,7 @@ def normalize_receiver_params(params, settings=None):
             "active":  _norm_active(slot.get("active")),
             "rupted":  _norm_rupted(slot.get("rupted")),
         }
-    ***REMOVED*** Pad/trunc pour matcher exactement n_video / n_audio
+    # Pad/trunc pour matcher exactement n_video / n_audio
     vslots = [_norm_v(vslots_in[i] if i < len(vslots_in) else None) for i in range(n_video)]
     aslots = [_norm_a(aslots_in[i] if i < len(aslots_in) else None) for i in range(n_audio)]
 
@@ -460,14 +460,14 @@ def _render_script_service(type_script, params):
     import logging
     import re
     log = logging.getLogger(__name__)
-    ***REMOVED*** Le nom vient de la DB : on n'importe QUE des identifiants simples (ni point, ni séparateur
-    ***REMOVED*** de chemin) — un `type` fantaisiste ne doit pas pouvoir désigner un module arbitraire.
+    # Le nom vient de la DB : on n'importe QUE des identifiants simples (ni point, ni séparateur
+    # de chemin) — un `type` fantaisiste ne doit pas pouvoir désigner un module arbitraire.
     if not re.fullmatch(r"[a-z0-9_]+", type_script or ""):
         return None
     try:
         mod = importlib.import_module("services.%s" % type_script)
     except ImportError:
-        return None                     ***REMOVED*** pas un service : type réellement inconnu
+        return None                     # pas un service : type réellement inconnu
     fn = getattr(mod, "render_script", None)
     if not callable(fn):
         return None
@@ -479,11 +479,11 @@ def _render_script_service(type_script, params):
 
 
 def generer_script(type_script, params, version=None):
-    ***REMOVED*** Tous les types de containers sont des plugins : rendu via le manifeste (plugins.render_script).
-    ***REMOVED*** `version` (optionnel) = version archivée du plugin à rappeler (défaut : courante).
+    # Tous les types de containers sont des plugins : rendu via le manifeste (plugins.render_script).
+    # `version` (optionnel) = version archivée du plugin à rappeler (défaut : courante).
     from . import plugins
     if plugins.is_plugin(type_script):
         return plugins.render_script(type_script, params, params.get("hostname", "mxl"), version)
-    ***REMOVED*** …sauf les types apportés par un SERVICE (passerelle WebRTC) : sans ce repli, toute reprise
-    ***REMOVED*** automatique les laisse morts (cf. _render_script_service).
+    # …sauf les types apportés par un SERVICE (passerelle WebRTC) : sans ce repli, toute reprise
+    # automatique les laisse morts (cf. _render_script_service).
     return _render_script_service(type_script, params)

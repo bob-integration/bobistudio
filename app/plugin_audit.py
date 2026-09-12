@@ -31,10 +31,10 @@ import os
 
 log = logging.getLogger(__name__)
 
-_CORPUS = None      ***REMOVED*** sources de l'orchestrateur, lues une fois par processus
+_CORPUS = None      # sources de l'orchestrateur, lues une fois par processus
 
-***REMOVED*** Placeholders neutres pour rendre le gabarit : on ne veut que la forme du code, pas un script
-***REMOVED*** déployable. Même approche que le dry-run de `plugins._scan`.
+# Placeholders neutres pour rendre le gabarit : on ne veut que la forme du code, pas un script
+# déployable. Même approche que le dry-run de `plugins._scan`.
 _CONFIG_MUET = {"log_level": "info"}
 
 
@@ -89,9 +89,9 @@ def _corpus_orchestrateur():
         if "/__pycache__" in racine:
             continue
         for f in fichiers:
-            ***REMOVED*** ⚠ S'EXCLURE SOI-MÊME. Ce fichier cite des clés en exemple dans ses commentaires
-            ***REMOVED*** (`tally_emit`, `max_inputs`…) : sans cette ligne, l'audit se compte comme
-            ***REMOVED*** consommateur et perd la trouvaille qu'il vient d'expliquer. Constaté en direct.
+            # ⚠ S'EXCLURE SOI-MÊME. Ce fichier cite des clés en exemple dans ses commentaires
+            # (`tally_emit`, `max_inputs`…) : sans cette ligne, l'audit se compte comme
+            # consommateur et perd la trouvaille qu'il vient d'expliquer. Constaté en direct.
             if f == os.path.basename(__file__):
                 continue
             if f.endswith((".py", ".html", ".js")):
@@ -113,17 +113,17 @@ def _corpus_plugin(type_):
         if m.get("type") == type_:
             d = m.get("dir") or m.get("_dir")
     d = d or os.path.join(os.path.dirname(os.path.dirname(__file__)), "plugins", type_)
-    ***REMOVED*** RÉCURSIF, et pas seulement `script.py`. Plusieurs plugins ne servent PAS leurs points
-    ***REMOVED*** d'entrée depuis le gabarit poussé : `2110_io` a son contrôleur baké dans l'image
-    ***REMOVED*** (`docker/controller.py`) et ses hooks côté orchestrateur (`hooks.py`), `probe_2110` de
-    ***REMOVED*** même. Ne lire que `script.py` déclarait absents des chemins parfaitement servis.
+    # RÉCURSIF, et pas seulement `script.py`. Plusieurs plugins ne servent PAS leurs points
+    # d'entrée depuis le gabarit poussé : `2110_io` a son contrôleur baké dans l'image
+    # (`docker/controller.py`) et ses hooks côté orchestrateur (`hooks.py`), `probe_2110` de
+    # même. Ne lire que `script.py` déclarait absents des chemins parfaitement servis.
     out = []
     for racine, dirs, fichiers in os.walk(d):
         dirs[:] = [x for x in dirs if x not in ("__pycache__", "versions", ".git")]
         for f in fichiers:
-            ***REMOVED*** PAS les `.md` : un `help.md` qui décrit un réglage le PROMET à l'exploitant, il
-            ***REMOVED*** ne l'implémente pas. Les compter comme consommateurs a masqué `tally_emit` du
-            ***REMOVED*** mixer, documenté « panneau ⚙ du conteneur » et introuvable dans le code.
+            # PAS les `.md` : un `help.md` qui décrit un réglage le PROMET à l'exploitant, il
+            # ne l'implémente pas. Les compter comme consommateurs a masqué `tally_emit` du
+            # mixer, documenté « panneau ⚙ du conteneur » et introuvable dans le code.
             if f.endswith((".py", ".js", ".html")) and f != "plugin.json":
                 try:
                     with open(os.path.join(racine, f), encoding="utf-8", errors="ignore") as fh:
@@ -151,40 +151,40 @@ def _cle_lue(k, ident, ailleurs=""):
         dernier = k.rsplit(".", 1)[-1]
         if dernier in ident or dernier.upper() in ident:
             return True
-    ***REMOVED*** Clé numérotée : on cherche le préfixe, qui est ce que porte le format.
+    # Clé numérotée : on cherche le préfixe, qui est ce que porte le format.
     base = k.rstrip("0123456789")
     if base != k and base and any(s.startswith(base) for s in ident if isinstance(s, str)):
         return True
-    ***REMOVED*** Consommé AILLEURS : orchestrateur (hook de déploiement, allocation de cœurs, vue NMOS…)
-    ***REMOVED*** ou interface du plugin. Recherche textuelle, suffisante pour des identifiants distinctifs.
+    # Consommé AILLEURS : orchestrateur (hook de déploiement, allocation de cœurs, vue NMOS…)
+    # ou interface du plugin. Recherche textuelle, suffisante pour des identifiants distinctifs.
     return bool(ailleurs and k in ailleurs)
 
 
-***REMOVED*** ── Ce qu'on a ESSAYÉ ET RETIRÉ : le contrôle des vocabulaires ────────────────────────────
-***REMOVED***
-***REMOVED*** Le 2026-08-26, l'instrument « phase » du scope était déclaré dans la liste des emplacements de
-***REMOVED*** sortie — donc proposé par l'éditeur, donc accepté par l'endpoint — et ne dessinait RIEN. C'est
-***REMOVED*** la famille « déclaré et absent » que ce fichier traque, et il ne la voyait pas : il contrôle
-***REMOVED*** les endpoints, les actions et les réglages, jamais les VOCABULAIRES publiés dans `/state.caps`.
-***REMOVED***
-***REMOVED*** J'ai écrit ce contrôle, puis je l'ai confronté au défaut qu'il prétendait attraper. Il a
-***REMOVED*** échoué DEUX FOIS, et la seconde est concluante :
-***REMOVED***
-***REMOVED***   1. Compter les occurrences ne marche pas : « phase » apparaissait deux fois dans le script,
-***REMOVED***      dans la liste des instruments ET dans la table des libellés de sortie. Une seconde table
-***REMOVED***      DÉCLARATIVE le faisait passer pour traité.
-***REMOVED***   2. Chercher la valeur en position de traitement (`== "x"`, `case "x"`, `"x":`) ne marche pas
-***REMOVED***      davantage : une table de LIBELLÉS s'écrit exactement comme une table de TRAITEMENT.
-***REMOVED***      Aucune expression régulière ne les distingue. Et le contrôle accusait au passage
-***REMOVED***      `dispositions: quatre`, qui est le repli par défaut d'une fonction — traité sans jamais
-***REMOVED***      être comparé.
-***REMOVED***
-***REMOVED*** ★ CONCLUSION : ce contrôle-là ne peut pas être LEXICAL, il doit être COMPORTEMENTAL. Le bon
-***REMOVED*** endroit est l'auto-contrôle du plugin, qui tourne DANS le conteneur et peut simplement rendre
-***REMOVED*** chaque instrument déclaré et vérifier qu'il dessine quelque chose. C'est ce qui a été fait
-***REMOVED*** (scope : « instruments déclarés : chacun dessine »). Un garde-fou qui rate le cas pour lequel
-***REMOVED*** il a été écrit, et qui accuse du code correct, est pire que pas de garde-fou : il se fait
-***REMOVED*** ignorer, et c'est alors le vrai manquement qui passe.
+# ── Ce qu'on a ESSAYÉ ET RETIRÉ : le contrôle des vocabulaires ────────────────────────────
+#
+# Le 2026-08-26, l'instrument « phase » du scope était déclaré dans la liste des emplacements de
+# sortie — donc proposé par l'éditeur, donc accepté par l'endpoint — et ne dessinait RIEN. C'est
+# la famille « déclaré et absent » que ce fichier traque, et il ne la voyait pas : il contrôle
+# les endpoints, les actions et les réglages, jamais les VOCABULAIRES publiés dans `/state.caps`.
+#
+# J'ai écrit ce contrôle, puis je l'ai confronté au défaut qu'il prétendait attraper. Il a
+# échoué DEUX FOIS, et la seconde est concluante :
+#
+#   1. Compter les occurrences ne marche pas : « phase » apparaissait deux fois dans le script,
+#      dans la liste des instruments ET dans la table des libellés de sortie. Une seconde table
+#      DÉCLARATIVE le faisait passer pour traité.
+#   2. Chercher la valeur en position de traitement (`== "x"`, `case "x"`, `"x":`) ne marche pas
+#      davantage : une table de LIBELLÉS s'écrit exactement comme une table de TRAITEMENT.
+#      Aucune expression régulière ne les distingue. Et le contrôle accusait au passage
+#      `dispositions: quatre`, qui est le repli par défaut d'une fonction — traité sans jamais
+#      être comparé.
+#
+# ★ CONCLUSION : ce contrôle-là ne peut pas être LEXICAL, il doit être COMPORTEMENTAL. Le bon
+# endroit est l'auto-contrôle du plugin, qui tourne DANS le conteneur et peut simplement rendre
+# chaque instrument déclaré et vérifier qu'il dessine quelque chose. C'est ce qui a été fait
+# (scope : « instruments déclarés : chacun dessine »). Un garde-fou qui rate le cas pour lequel
+# il a été écrit, et qui accuse du code correct, est pire que pas de garde-fou : il se fait
+# ignorer, et c'est alors le vrai manquement qui passe.
 
 def auditer_un(type_):
     """{type, ok, endpoints_absents, actions_absentes, reglages_morts, etat} pour un plugin.
@@ -203,7 +203,7 @@ def auditer_un(type_):
         source = _pl.render_script(type_, dict(_CONFIG_MUET), "audit")
         lit = _litteraux(source)
         ident = _identifiants(source)
-    except Exception as e:                                          ***REMOVED*** noqa: BLE001
+    except Exception as e:                                          # noqa: BLE001
         res.update(ok=False, etat="indéterminable (%s)" % e)
         return res
 
@@ -213,13 +213,13 @@ def auditer_un(type_):
     port_ctrl = ctrl.get("port") or 8082
     for nom, e, port in _chemins(ctrl.get("endpoints")):
         if port and int(port) != int(port_ctrl):
-            ***REMOVED*** Servi par l'AGENT du conteneur (port 8081), qui vit dans l'image runtime, hors de
-            ***REMOVED*** ce dépôt. On ne peut ni le confirmer ni l'infirmer : le DIRE, plutôt que de le
-            ***REMOVED*** compter comme absent — un faux positif discrédite tout le reste du verdict.
+            # Servi par l'AGENT du conteneur (port 8081), qui vit dans l'image runtime, hors de
+            # ce dépôt. On ne peut ni le confirmer ni l'infirmer : le DIRE, plutôt que de le
+            # compter comme absent — un faux positif discrédite tout le reste du verdict.
             res["hors_portee"].append("%s (port %s)" % (nom, port))
             continue
-        ***REMOVED*** Un chemin peut être servi par son préfixe (`startswith`) ou en entier : on accepte
-        ***REMOVED*** toute chaîne du script qui commence par le chemin déclaré, ou dont il est le préfixe.
+        # Un chemin peut être servi par son préfixe (`startswith`) ou en entier : on accepte
+        # toute chaîne du script qui commence par le chemin déclaré, ou dont il est le préfixe.
         if (not any(s == e or s.startswith(e) or (e.startswith(s) and len(s) > 1) for s in lit)
                 and e not in ailleurs_plugin):
             res["endpoints_absents"].append(nom)
@@ -244,7 +244,7 @@ def auditer():
     for t in types:
         try:
             out.append(auditer_un(t))
-        except Exception as e:                                      ***REMOVED*** noqa: BLE001
+        except Exception as e:                                      # noqa: BLE001
             log.warning("audit du plugin %s impossible : %s", t, e)
             out.append({"type": t, "ok": False, "etat": "erreur (%s)" % e,
                         "endpoints_absents": [], "actions_absentes": [],

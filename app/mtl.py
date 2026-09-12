@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """MTL (Media Transport Library / Intel Tiber Broadcast Suite) — prép host DPDK/E810.
 
@@ -25,13 +25,13 @@ from .host_ops import ssh_run
 
 log = logging.getLogger(__name__)
 
-KERNEL_CMDLINE_PATH = "/etc/kernel/cmdline"        ***REMOVED*** systemd-boot (proxmox-boot-tool)
+KERNEL_CMDLINE_PATH = "/etc/kernel/cmdline"        # systemd-boot (proxmox-boot-tool)
 VFIO_MODULES_PATH   = "/etc/modules-load.d/vfio.conf"
 
-***REMOVED*** Flags requis dans le cmdline (hors hugepages, qui dépendent du nombre demandé)
+# Flags requis dans le cmdline (hors hugepages, qui dépendent du nombre demandé)
 REQUIRED_FLAGS = ["intel_iommu=on", "iommu=pt"]
 
-***REMOVED*** Générations ConnectX (vendor 0x15b3) — réutilisé pour info (MTL supporte mlx5 = CX-4+)
+# Générations ConnectX (vendor 0x15b3) — réutilisé pour info (MTL supporte mlx5 = CX-4+)
 CONNECTX = {
     "0x1013": "ConnectX-4",    "0x1015": "ConnectX-4 Lx",
     "0x1017": "ConnectX-5",    "0x1019": "ConnectX-5 Ex", "0x101a": "ConnectX-5 Ex",
@@ -43,26 +43,26 @@ E810 = {
     "0x1891", "0x188a", "0x188b", "0x188c",
 }
 
-***REMOVED*** ── BIBLIOTHÈQUE DE CARTES : capacités NON identifiables → À CONNAÎTRE ───────────────────────────
-***REMOVED*** Le max de FILES/sessions TX narrow (RL) EFFECTIF n'est PAS lisible du PMD : rte_eth_dev_info.
-***REMOVED*** max_tx_queues rapporte le mur ice NATIF (8) que patch_tm_hierarchy transcende jusqu'à la vraie
-***REMOVED*** capacité (banc dl360-1 E810-C = 64 files → 63 sessions). C'est une propriété mtl+patch, invisible
-***REMOVED*** à l'introspection → il faut la CONNAÎTRE (biblio), pas la lire (cf. docs/chantiers/DPDK_NARROW.md §7).
-***REMOVED***
-***REMOVED*** Clé = sous-chaîne de MODÈLE (node_interfaces.model). À terme keyer aussi le FIRMWARE/DDP (qui peut
-***REMOVED*** changer la capacité → une carte peut figurer plusieurs fois). Valeurs = MESURÉES au banc /
-***REMOVED*** qualification uniquement ; une carte inconnue prend le plancher sûr (jamais de boucle de relance)
-***REMOVED*** jusqu'à sa qualification. Ordre = du plus spécifique au plus générique.
+# ── BIBLIOTHÈQUE DE CARTES : capacités NON identifiables → À CONNAÎTRE ───────────────────────────
+# Le max de FILES/sessions TX narrow (RL) EFFECTIF n'est PAS lisible du PMD : rte_eth_dev_info.
+# max_tx_queues rapporte le mur ice NATIF (8) que patch_tm_hierarchy transcende jusqu'à la vraie
+# capacité (banc dl360-1 E810-C = 64 files → 63 sessions). C'est une propriété mtl+patch, invisible
+# à l'introspection → il faut la CONNAÎTRE (biblio), pas la lire (cf. docs/chantiers/DPDK_NARROW.md §7).
+#
+# Clé = sous-chaîne de MODÈLE (node_interfaces.model). À terme keyer aussi le FIRMWARE/DDP (qui peut
+# changer la capacité → une carte peut figurer plusieurs fois). Valeurs = MESURÉES au banc /
+# qualification uniquement ; une carte inconnue prend le plancher sûr (jamais de boucle de relance)
+# jusqu'à sa qualification. Ordre = du plus spécifique au plus générique.
 NIC_RL_TX_CAP = [
-    ***REMOVED*** (sous-chaîne modèle (lower), sessions TX narrow max/port, MESURÉ ?)
-    ***REMOVED*** ⚠ Un cap TROP HAUT sur une carte non mesurée RE-BOUCLE (le clamp DOIT être ≤ capacité réelle) →
-    ***REMOVED*** on n'inscrit QUE le modèle MESURÉ. Les variantes non qualifiées (ex. E810-XXVDA4 4-port, dont les
-    ***REMOVED*** files sont partagées entre 4 ports → probablement < 63) tombent sur le plancher sûr ci-dessous
-    ***REMOVED*** jusqu'à leur qualification au banc.
-    ("e810-c", 63, True),    ***REMOVED*** E810-C-Q2 MESURÉ (dl360-1, 64 files − 1 contrôle).
+    # (sous-chaîne modèle (lower), sessions TX narrow max/port, MESURÉ ?)
+    # ⚠ Un cap TROP HAUT sur une carte non mesurée RE-BOUCLE (le clamp DOIT être ≤ capacité réelle) →
+    # on n'inscrit QUE le modèle MESURÉ. Les variantes non qualifiées (ex. E810-XXVDA4 4-port, dont les
+    # files sont partagées entre 4 ports → probablement < 63) tombent sur le plancher sûr ci-dessous
+    # jusqu'à leur qualification au banc.
+    ("e810-c", 63, True),    # E810-C-Q2 MESURÉ (dl360-1, 64 files − 1 contrôle).
 ]
-***REMOVED*** Carte NON profilée : plancher ice natif SÛR (le mur des 8 avant patch) → 7 sessions. Ne re-boucle
-***REMOVED*** JAMAIS (toujours ≤ capacité réelle) ; la qualification relève la valeur et l'inscrit dans le profil.
+# Carte NON profilée : plancher ice natif SÛR (le mur des 8 avant patch) → 7 sessions. Ne re-boucle
+# JAMAIS (toujours ≤ capacité réelle) ; la qualification relève la valeur et l'inscrit dans le profil.
 NIC_RL_TX_CAP_DEFAULT = 7
 
 
@@ -82,20 +82,20 @@ def _hugepages_flags(n):
     return ["default_hugepagesz=1G", "hugepagesz=1G", f"hugepages={int(n)}"]
 
 
-***REMOVED*** ─── Isolation des cœurs DPDK du moteur 2110 (cmdline) ───────────────────────
-***REMOVED*** POURQUOI : sans isolation, IRQ/softirq/tick timer/callbacks RCU du noyau préemptent les
-***REMOVED*** schedulers libmtl (busy-poll <100 % → overflow des rings → trames incomplètes → flux qui
-***REMOVED*** tombent au-delà de la capacité « propre »).
-***REMOVED***
-***REMOVED*** LA BANDE N'EST PAS CALCULÉE ICI : elle vient de `core_pool.engine_cpu_footprint`, LA source de
-***REMOVED*** vérité unique de l'empreinte moteur, partagée avec `derive_compute_cpuset` (pool de calcul).
-***REMOVED*** Deux calculs séparés divergent — c'est exactement ce qui s'est produit avec une bande PLATE
-***REMOVED*** `1-18` déclarée « identique au cpuset compute » : les siblings HT (49-66) restaient en
-***REMOVED*** housekeeping et RECEVAIENT les IRQ, sur les jumeaux physiques des cœurs busy-poll.
-***REMOVED***
-***REMOVED*** Le cœur 0 (et TOUT son cœur physique, siblings compris) est EXCLU de la bande : c'est le
-***REMOVED*** housekeeping du noyau (et le main_lcore EAL, qui dort). Isoler cpu0 sans son sibling
-***REMOVED*** rebasculerait le housekeeping sur le jumeau d'un lcore.
+# ─── Isolation des cœurs DPDK du moteur 2110 (cmdline) ───────────────────────
+# POURQUOI : sans isolation, IRQ/softirq/tick timer/callbacks RCU du noyau préemptent les
+# schedulers libmtl (busy-poll <100 % → overflow des rings → trames incomplètes → flux qui
+# tombent au-delà de la capacité « propre »).
+#
+# LA BANDE N'EST PAS CALCULÉE ICI : elle vient de `core_pool.engine_cpu_footprint`, LA source de
+# vérité unique de l'empreinte moteur, partagée avec `derive_compute_cpuset` (pool de calcul).
+# Deux calculs séparés divergent — c'est exactement ce qui s'est produit avec une bande PLATE
+# `1-18` déclarée « identique au cpuset compute » : les siblings HT (49-66) restaient en
+# housekeeping et RECEVAIENT les IRQ, sur les jumeaux physiques des cœurs busy-poll.
+#
+# Le cœur 0 (et TOUT son cœur physique, siblings compris) est EXCLU de la bande : c'est le
+# housekeeping du noyau (et le main_lcore EAL, qui dort). Isoler cpu0 sans son sibling
+# rebasculerait le housekeeping sur le jumeau d'un lcore.
 
 def _parse_topologie(txt):
     """Blocs `<cpu>|<thread_siblings_list>` → {cpu logique: cœur physique canonique (= plus petit
@@ -138,7 +138,7 @@ def _lire_topologie(run):
     CPU, ni bande). ({} , n, raison) si indisponible → l'appelant DOIT signaler le repli plat."""
     try:
         rc, out, err = run(_TOPO_PROBE, timeout=20)
-    except Exception as e:                                    ***REMOVED*** nœud injoignable
+    except Exception as e:                                    # nœud injoignable
         return {}, 0, f"lecture topologie impossible ({e})"
     if rc != 0:
         return {}, 0, f"lecture topologie rc={rc} {(err or '').strip()[:120]}"
@@ -174,7 +174,7 @@ def _isolation_cpus(core_of=None, n_cpus=None):
         return "", ht_aware
     hk = {0}
     if core_of and 0 in core_of:
-        hk = {c for c, k in core_of.items() if k == core_of[0]}   ***REMOVED*** cpu0 + ses siblings HT
+        hk = {c for c, k in core_of.items() if k == core_of[0]}   # cpu0 + ses siblings HT
     hk |= engine_service_cpus(n_cpus=n_cpus, core_of=core_of)
     band = sorted(c for c in cpus if c not in hk)
     return (fmt_cpuset(band) if band else ""), ht_aware
@@ -204,12 +204,12 @@ def plan_isolation(run):
             "core_of": core_of}
 
 
-***REMOVED*** ─── Runner injectable (SSH legacy ↔ agent-nœud) ─────────────────────────────
-***REMOVED*** Chantier DPDK (Lot A) : les fonctions de host-prep acceptent un paramètre `run=`
-***REMOVED*** (signature (cmd, input_data=None, timeout=300) → (rc, stdout, stderr)). Défaut =
-***REMOVED*** comportement historique (ssh_run, qui route déjà vers l'agent pour un nœud enrôlé).
-***REMOVED*** Les façades `*_node(node)` routent EXPLICITEMENT par node_driver.host_exec (token
-***REMOVED*** HTTP, /v1/host/exec) — plus de dépendance à la résolution host→nœud de ssh_run.
+# ─── Runner injectable (SSH legacy ↔ agent-nœud) ─────────────────────────────
+# Chantier DPDK (Lot A) : les fonctions de host-prep acceptent un paramètre `run=`
+# (signature (cmd, input_data=None, timeout=300) → (rc, stdout, stderr)). Défaut =
+# comportement historique (ssh_run, qui route déjà vers l'agent pour un nœud enrôlé).
+# Les façades `*_node(node)` routent EXPLICITEMENT par node_driver.host_exec (token
+# HTTP, /v1/host/exec) — plus de dépendance à la résolution host→nœud de ssh_run.
 
 def _run_ssh(host):
     """Runner par défaut : chemin historique `ssh_run(host, …)`."""
@@ -236,15 +236,15 @@ def appliquer_node(node, hugepages_1g=16):
     """Façade nœud de `appliquer` : applique la prép (cmdline IOMMU + hugepages 1G + vfio.conf
     + sysctl) sur un NŒUD enrôlé via son agent. Renvoie (ok, msg, reboot_needed)."""
     ok, msg, reboot = appliquer((node or {}).get("host"), hugepages_1g, run=_run_agent(node))
-    ***REMOVED*** Identité du domaine MXL (cf. ensure_mxl_domain_def) : posée ici parce que c'est le seul
-    ***REMOVED*** chemin de prép qui connaisse le NŒUD (et donc son UUID de domaine en base) — `appliquer`,
-    ***REMOVED*** lui, ne reçoit qu'un host. Best effort : n'invalide pas la prép cmdline déjà écrite.
+    # Identité du domaine MXL (cf. ensure_mxl_domain_def) : posée ici parce que c'est le seul
+    # chemin de prép qui connaisse le NŒUD (et donc son UUID de domaine en base) — `appliquer`,
+    # lui, ne reçoit qu'un host. Best effort : n'invalide pas la prép cmdline déjà écrite.
     ok_dd, msg_dd = ensure_mxl_domain_def(node)
     msg += f" ; domaine MXL: {msg_dd}" if ok_dd else f" ; identité domaine MXL NON posée: {msg_dd}"
     return ok, msg, reboot
 
 
-***REMOVED*** ─── Vérification (lecture seule) ────────────────────────────────────────────
+# ─── Vérification (lecture seule) ────────────────────────────────────────────
 
 def verifier(host, run=None):
     """Sonde l'état de préparation MTL d'un host. Renvoie un dict de readiness.
@@ -257,34 +257,34 @@ def verifier(host, run=None):
         "hugepages_total": 0,
         "hugepages_size_ok": False,
         "hugepages_1g_supported": False,
-        "isolated_cpus":   "",       ***REMOVED*** /sys/devices/system/cpu/isolated (bande isolcpus ACTIVE)
+        "isolated_cpus":   "",       # /sys/devices/system/cpu/isolated (bande isolcpus ACTIVE)
         "ice_present":     False,
         "vfio_present":    False,
         "ddp_pkg":         None,
-        "bootloader":      None,     ***REMOVED*** 'systemd-boot' | 'grub' | None
+        "bootloader":      None,     # 'systemd-boot' | 'grub' | None
         "reboot_needed":   False,
-        "nics":            [],       ***REMOVED*** [{iface, pci, family, model, slot_gen, slot_width}]
-        "rdma_unit":       False,    ***REMOVED*** unité rdma-netns-exclusive installée + enabled
-        "rdma_exclusive":  False,    ***REMOVED*** `rdma system show` == netns exclusive (actif)
-        ***REMOVED*** Fréquence des cœurs ISOLÉS du moteur 2110. `risk` = LE piège : une bande isolée dont la
-        ***REMOVED*** fréquence n'est PAS épinglée retombe au plancher (nohz_full prive intel_pstate du retour
-        ***REMOVED*** d'utilisation sur les cœurs tickless) → le moteur s'étouffe. Sonde OBLIGATOIRE : sans elle
-        ***REMOVED*** un simple reboot réintroduit le bug EN SILENCE. Rien en dur : la cible est `cpuinfo_max_freq`
-        ***REMOVED*** lue sur chaque cœur, donc le seuil s'adapte au CPU présent.
+        "nics":            [],       # [{iface, pci, family, model, slot_gen, slot_width}]
+        "rdma_unit":       False,    # unité rdma-netns-exclusive installée + enabled
+        "rdma_exclusive":  False,    # `rdma system show` == netns exclusive (actif)
+        # Fréquence des cœurs ISOLÉS du moteur 2110. `risk` = LE piège : une bande isolée dont la
+        # fréquence n'est PAS épinglée retombe au plancher (nohz_full prive intel_pstate du retour
+        # d'utilisation sur les cœurs tickless) → le moteur s'étouffe. Sonde OBLIGATOIRE : sans elle
+        # un simple reboot réintroduit le bug EN SILENCE. Rien en dur : la cible est `cpuinfo_max_freq`
+        # lue sur chaque cœur, donc le seuil s'adapte au CPU présent.
         "cpufreq":         {"unit": False, "isolated": 0, "pinned": False, "governor": None,
                             "min_mhz": None, "cur_min_mhz": None, "max_mhz": None, "risk": False},
-        ***REMOVED*** Isolation des cœurs DPDK du moteur 2110 : bande ACTIVE (cmdline en vigueur) vs bande
-        ***REMOVED*** ATTENDUE (dérivée de core_pool.engine_cpu_footprint, HT-aware). `risk` = LE piège :
-        ***REMOVED*** bande partielle (siblings HT laissés au noyau), unité IRQ absente, ou irqbalance actif
-        ***REMOVED*** (il ré-étale les IRQ sur la bande isolée quelques minutes APRÈS le boot → régression
-        ***REMOVED*** silencieuse à retardement).
+        # Isolation des cœurs DPDK du moteur 2110 : bande ACTIVE (cmdline en vigueur) vs bande
+        # ATTENDUE (dérivée de core_pool.engine_cpu_footprint, HT-aware). `risk` = LE piège :
+        # bande partielle (siblings HT laissés au noyau), unité IRQ absente, ou irqbalance actif
+        # (il ré-étale les IRQ sur la bande isolée quelques minutes APRÈS le boot → régression
+        # silencieuse à retardement).
         "isolation":       {"active": "", "expected": "", "match": False, "ht_aware": False,
                             "unit": False, "unit_state": None, "irqbalance": False,
                             "n_cpus": 0, "risk": False, "hint": None},
-        "mtl_capable":     False,    ***REMOVED*** ≥1 carte CX-4+/E810 (dérivé des nics)
-        ***REMOVED*** SR-IOV/MMIO (prérequis des VF DPDK/narrow, cf. docs/reference/PTP_CLOCK.md) — probe read-only SANS iLO :
-        ***REMOVED*** `mmio_error` = le noyau a DÉJÀ échoué à créer un VF faute de MMIO (dmesg) → BIOS à régler
-        ***REMOVED*** (HPe: PciResourcePadding=High / Above-4G). `capable` = ≥1 E810 avec sriov_totalvfs>0.
+        "mtl_capable":     False,    # ≥1 carte CX-4+/E810 (dérivé des nics)
+        # SR-IOV/MMIO (prérequis des VF DPDK/narrow, cf. docs/reference/PTP_CLOCK.md) — probe read-only SANS iLO :
+        # `mmio_error` = le noyau a DÉJÀ échoué à créer un VF faute de MMIO (dmesg) → BIOS à régler
+        # (HPe: PciResourcePadding=High / Above-4G). `capable` = ≥1 E810 avec sriov_totalvfs>0.
         "sriov":           {"capable": False, "mmio_error": False, "nics": [], "hint": None},
         "error":           None,
     }
@@ -292,15 +292,15 @@ def verifier(host, run=None):
         out["error"] = "host non configuré"
         return out
 
-    ***REMOVED*** Probe unique (un seul SSH) : on émet des blocs balisés faciles à parser.
+    # Probe unique (un seul SSH) : on émet des blocs balisés faciles à parser.
     script = r"""
 echo "@@CMDLINE_LIVE"; cat /proc/cmdline 2>/dev/null
 echo "@@CMDLINE_PENDING"; cat /etc/kernel/cmdline 2>/dev/null
-***REMOVED*** Le cmdline « en attente » vit à DEUX endroits selon le bootloader : /etc/kernel/cmdline
-***REMOVED*** (systemd-boot/proxmox-boot-tool) OU /etc/default/grub (grub). Ne lire que le premier rendait
-***REMOVED*** `pending` VIDE sur tout nœud grub → `reboot_needed` bloqué à False EN PERMANENCE : après une
-***REMOVED*** prép, rien n'invitait jamais à redémarrer pour l'activer. On émet les deux ; `_managed_tokens`
-***REMOVED*** filtre de toute façon sur les préfixes gérés, donc concaténer est sans risque.
+# Le cmdline « en attente » vit à DEUX endroits selon le bootloader : /etc/kernel/cmdline
+# (systemd-boot/proxmox-boot-tool) OU /etc/default/grub (grub). Ne lire que le premier rendait
+# `pending` VIDE sur tout nœud grub → `reboot_needed` bloqué à False EN PERMANENCE : après une
+# prép, rien n'invitait jamais à redémarrer pour l'activer. On émet les deux ; `_managed_tokens`
+# filtre de toute façon sur les préfixes gérés, donc concaténer est sans risque.
 grep -h "^GRUB_CMDLINE_LINUX" /etc/default/grub 2>/dev/null | sed 's/^[^=]*=//; s/"//g'
 echo "@@IOMMU_GROUPS"; ls /sys/kernel/iommu_groups 2>/dev/null | wc -l
 echo "@@HUGE"; grep -iE "HugePages_Total|Hugepagesize" /proc/meminfo 2>/dev/null
@@ -356,9 +356,9 @@ echo "@@SRIOV_MMIO"; dmesg 2>/dev/null | grep -c "not enough MMIO resources for 
 echo "@@END"
 """
     run = run or _run_ssh(host)
-    ***REMOVED*** + topologie HT (nproc/thread_siblings_list) : sert à recalculer la bande ATTENDUE dans le
-    ***REMOVED*** MÊME aller-retour (la comparer à la bande active est la seule façon de voir qu'un cmdline
-    ***REMOVED*** posé avant le fix HT n'isole que la moitié de l'empreinte).
+    # + topologie HT (nproc/thread_siblings_list) : sert à recalculer la bande ATTENDUE dans le
+    # MÊME aller-retour (la comparer à la bande active est la seule façon de voir qu'un cmdline
+    # posé avant le fix HT n'isole que la moitié de l'empreinte).
     rc, txt, err = run(script + _TOPO_PROBE, timeout=25)
     if rc != 0:
         out["error"] = f"SSH rc={rc} {err.strip()[:200]}"
@@ -380,13 +380,13 @@ echo "@@END"
         out["hugepages_total"] = int(m.group(1))
     m = re.search(r"Hugepagesize:\s*(\d+)\s*kB", huge)
     if m:
-        out["hugepages_size_ok"] = int(m.group(1)) >= 1048576  ***REMOVED*** 1G
+        out["hugepages_size_ok"] = int(m.group(1)) >= 1048576  # 1G
     out["hugepages_1g_supported"] = bool(blocks.get("PDPE1GB", "").strip())
 
-    ***REMOVED*** Fréquence des cœurs isolés : AUCUN seuil en dur. La cible de chaque cœur est SON PROPRE
-    ***REMOVED*** `cpuinfo_max_freq` (turbo max du CPU présent) ; « épinglé » = gouverneur performance ET
-    ***REMOVED*** scaling_min_freq à ≥95 % de ce max sur TOUS les cœurs de la bande (95 % = tolérance aux
-    ***REMOVED*** arrondis de la table P-state, pas une valeur métier). Bande isolée sans épinglage = `risk`.
+    # Fréquence des cœurs isolés : AUCUN seuil en dur. La cible de chaque cœur est SON PROPRE
+    # `cpuinfo_max_freq` (turbo max du CPU présent) ; « épinglé » = gouverneur performance ET
+    # scaling_min_freq à ≥95 % de ce max sur TOUS les cœurs de la bande (95 % = tolérance aux
+    # arrondis de la table P-state, pas une valeur métier). Bande isolée sans épinglage = `risk`.
     cf = out["cpufreq"]
     cf["unit"] = blocks.get("CPUFREQ_UNIT", "").strip() == "enabled"
     govs, mins, curs, maxs = set(), [], [], []
@@ -406,13 +406,13 @@ echo "@@END"
         cf["max_mhz"]     = max(maxs) // 1000
         cf["min_mhz"]     = (min(mins) // 1000) if mins else None
         cf["cur_min_mhz"] = (min(curs) // 1000) if curs else None
-        ***REMOVED*** Tous les cœurs sondés doivent être performance ET plancher ≥95 % de LEUR max.
+        # Tous les cœurs sondés doivent être performance ET plancher ≥95 % de LEUR max.
         cf["pinned"] = (govs == {"performance"} and len(mins) == cf["isolated"]
                         and len(maxs) == cf["isolated"]
                         and all(mn >= 0.95 * mx for mn, mx in zip(mins, maxs)))
     cf["risk"] = bool(cf["isolated"]) and not cf["pinned"]
 
-    ***REMOVED*** ── Isolation des cœurs DPDK : ACTIF (sysfs) vs ATTENDU (source de vérité core_pool) ──
+    # ── Isolation des cœurs DPDK : ACTIF (sysfs) vs ATTENDU (source de vérité core_pool) ──
     from .core_pool import parse_cpuset as _parse_cpuset, fmt_cpuset as _fmt_cpuset
     iso = out["isolation"]
     try:
@@ -434,8 +434,8 @@ echo "@@END"
     manque = _fmt_cpuset(exp_set - act_set)
     hints = []
     if exp_set and not act_set:
-        ***REMOVED*** Distinguer « prép jamais appliquée » de « prép appliquée, en attente de reboot » : sans
-        ***REMOVED*** ça on envoie l'opérateur recliquer « Appliquer » alors qu'il ne manque qu'un redémarrage.
+        # Distinguer « prép jamais appliquée » de « prép appliquée, en attente de reboot » : sans
+        # ça on envoie l'opérateur recliquer « Appliquer » alors qu'il ne manque qu'un redémarrage.
         _en_attente = any(t.split("=", 1)[0] == "isolcpus" for t in (pending or "").split())
         hints.append(
             f"bande {expected} écrite dans le cmdline mais PAS ACTIVE — redémarrer l'hôte pour "
@@ -471,10 +471,10 @@ echo "@@END"
     bl = blocks.get("BOOTLOADER", "").strip()
     out["bootloader"] = bl if bl in ("systemd-boot", "grub") else None
 
-    ***REMOVED*** reboot requis seulement si des tokens QUE NOUS GÉRONS (IOMMU/hugepages) sont présents
-    ***REMOVED*** dans le cmdline pending mais pas encore actifs dans le live. Comparer les cmdline
-    ***REMOVED*** entières donnait un faux positif permanent : /proc/cmdline contient toujours des tokens
-    ***REMOVED*** de boot (initrd=, BOOT_IMAGE=…) absents de /etc/kernel/cmdline.
+    # reboot requis seulement si des tokens QUE NOUS GÉRONS (IOMMU/hugepages) sont présents
+    # dans le cmdline pending mais pas encore actifs dans le live. Comparer les cmdline
+    # entières donnait un faux positif permanent : /proc/cmdline contient toujours des tokens
+    # de boot (initrd=, BOOT_IMAGE=…) absents de /etc/kernel/cmdline.
     if pending and (_managed_tokens(pending) - _managed_tokens(live)):
         out["reboot_needed"] = True
 
@@ -484,9 +484,9 @@ echo "@@END"
     out["nics"] = _parse_nics(blocks.get("NICS", ""))
     out["mtl_capable"] = any(n.get("mtl_capable") for n in out["nics"])
 
-    ***REMOVED*** SR-IOV/MMIO (read-only, sans iLO) : capacité par E810 + erreur MMIO confirmée (dmesg). Un
-    ***REMOVED*** nœud « capable » mais sans VF ni erreur reste indéterminé en read-only (le test définitif =
-    ***REMOVED*** dry-run création de VF, mutant, hors de ce probe) ; l'erreur dmesg, elle, est un signal SÛR.
+    # SR-IOV/MMIO (read-only, sans iLO) : capacité par E810 + erreur MMIO confirmée (dmesg). Un
+    # nœud « capable » mais sans VF ni erreur reste indéterminé en read-only (le test définitif =
+    # dry-run création de VF, mutant, hors de ce probe) ; l'erreur dmesg, elle, est un signal SÛR.
     sn = []
     for ln in blocks.get("SRIOV", "").splitlines():
         p = ln.split("|")
@@ -539,10 +539,10 @@ def _split_blocks(txt):
     return blocks
 
 
-***REMOVED*** Préfixes de tokens cmdline gérés par la prép MTL (IOMMU + hugepages + isolation cœurs 2110).
-***REMOVED*** ⚠ isolcpus/nohz_full/rcu_nocbs DOIVENT y figurer : c'est ce qui fait lever `reboot_needed` quand
-***REMOVED*** la bande isolée change (ex. élargissement HT) — sans ça le cmdline pending diffère du live sans
-***REMOVED*** que personne ne le voie.
+# Préfixes de tokens cmdline gérés par la prép MTL (IOMMU + hugepages + isolation cœurs 2110).
+# ⚠ isolcpus/nohz_full/rcu_nocbs DOIVENT y figurer : c'est ce qui fait lever `reboot_needed` quand
+# la bande isolée change (ex. élargissement HT) — sans ça le cmdline pending diffère du live sans
+# que personne ne le voie.
 _MANAGED_KEYS = {"intel_iommu", "iommu", "default_hugepagesz", "hugepagesz", "hugepages",
                  "isolcpus", "nohz_full", "rcu_nocbs"}
 
@@ -574,7 +574,7 @@ def _parse_nics(raw):
     return nics
 
 
-***REMOVED*** ─── Application de la prép (écriture cmdline + refresh) ──────────────────────
+# ─── Application de la prép (écriture cmdline + refresh) ──────────────────────
 
 def appliquer(host, hugepages_1g=16, run=None):
     """Écrit les flags IOMMU + hugepages dans le cmdline (idempotent), charge vfio-pci
@@ -590,17 +590,17 @@ def appliquer(host, hugepages_1g=16, run=None):
     if n < 0:
         n = 0
 
-    ***REMOVED*** Isolation des cœurs du moteur 2110 : la bande vient de core_pool.engine_cpu_footprint (source
-    ***REMOVED*** de vérité unique) et est calculée SUR LE NŒUD (topologie HT lue en sysfs) — jamais en dur.
+    # Isolation des cœurs du moteur 2110 : la bande vient de core_pool.engine_cpu_footprint (source
+    # de vérité unique) et est calculée SUR LE NŒUD (topologie HT lue en sysfs) — jamais en dur.
     plan = plan_isolation(run)
     flags = REQUIRED_FLAGS + _hugepages_flags(n) + _isolation_flags(plan["band"])
     flags_str = " ".join(flags)
-    ***REMOVED*** Script bash idempotent : n'ajoute que les tokens absents, backup horodaté, remplace une
-    ***REMOVED*** éventuelle valeur hugepages= différente. Le bootloader est choisi par l'OUTIL présent (comme
-    ***REMOVED*** `verifier`) : proxmox-boot-tool (host Proxmox/systemd-boot) → sinon grub (Debian nue = nœud).
-    ***REMOVED*** ⚠ NE PAS se baser sur l'existence de /etc/kernel/cmdline : il peut exister sans proxmox-boot-tool
-    ***REMOVED*** alors que le boot réel passe par grub → on écrirait dans un fichier ignoré + proxmox-boot-tool
-    ***REMOVED*** « commande introuvable ».
+    # Script bash idempotent : n'ajoute que les tokens absents, backup horodaté, remplace une
+    # éventuelle valeur hugepages= différente. Le bootloader est choisi par l'OUTIL présent (comme
+    # `verifier`) : proxmox-boot-tool (host Proxmox/systemd-boot) → sinon grub (Debian nue = nœud).
+    # ⚠ NE PAS se baser sur l'existence de /etc/kernel/cmdline : il peut exister sans proxmox-boot-tool
+    # alors que le boot réel passe par grub → on écrirait dans un fichier ignoré + proxmox-boot-tool
+    # « commande introuvable ».
     script = r"""set -e
 WANT="%FLAGS%"
 apply_grub() {
@@ -642,12 +642,12 @@ else
   echo "@@ERR aucun bootloader géré (ni proxmox-boot-tool ni update-grub)"
   exit 1
 fi
-***REMOVED*** GARDE-FOU sysctl (CRITIQUE) : avec default_hugepagesz=1G (posé ci-dessus), `vm.nr_hugepages`
-***REMOVED*** cible les pages 1G. Un fichier résiduel d'install 2M (`vm.nr_hugepages = 2048`) serait ré-appliqué
-***REMOVED*** APRÈS le cmdline par systemd-sysctl → 2048 pages de 1G, bridé par la RAM (quasi toute la RAM gelée
-***REMOVED*** en hugepages, nœud à ~2 Go libres = faux « plein » + thrash). On réécrit donc le fichier avec le
-***REMOVED*** compte 1G correct (idempotent, écrase tout résidu 2M) ET on ajuste le runtime (baisser nr_hugepages
-***REMOVED*** réussit toujours ; monter peut échouer sur mémoire fragmentée → le reboot garantit le compte).
+# GARDE-FOU sysctl (CRITIQUE) : avec default_hugepagesz=1G (posé ci-dessus), `vm.nr_hugepages`
+# cible les pages 1G. Un fichier résiduel d'install 2M (`vm.nr_hugepages = 2048`) serait ré-appliqué
+# APRÈS le cmdline par systemd-sysctl → 2048 pages de 1G, bridé par la RAM (quasi toute la RAM gelée
+# en hugepages, nœud à ~2 Go libres = faux « plein » + thrash). On réécrit donc le fichier avec le
+# compte 1G correct (idempotent, écrase tout résidu 2M) ET on ajuste le runtime (baisser nr_hugepages
+# réussit toujours ; monter peut échouer sur mémoire fragmentée → le reboot garantit le compte).
 echo "vm.nr_hugepages = %N%" > /etc/sysctl.d/10-bobi-hugepages.conf
 [ -d /sys/kernel/mm/hugepages/hugepages-1048576kB ] && \
   echo "%N%" > /sys/kernel/mm/hugepages/hugepages-1048576kB/nr_hugepages 2>/dev/null || true
@@ -657,31 +657,31 @@ echo "@@SYSCTL %N%"
     rc, txt, err = run(script, timeout=60)
     if rc != 0 or "@@OK" not in txt:
         detail = (txt + " " + err).strip()
-        ***REMOVED*** extrait le message d'erreur balisé si présent
+        # extrait le message d'erreur balisé si présent
         m = re.search(r"@@ERR (.+)", txt)
         if m:
             detail = m.group(1).strip()
         return False, f"échec prép : {detail[:300]}", False
     bl = "grub" if "@@OK grub" in txt else "systemd-boot"
 
-    ***REMOVED*** Pose aussi l'unité rdma-netns-exclusive (requise pour scoper une VF mlx5 par container).
-    ***REMOVED*** Best effort : un échec ici ne fait pas échouer la prép cmdline (déjà écrite).
+    # Pose aussi l'unité rdma-netns-exclusive (requise pour scoper une VF mlx5 par container).
+    # Best effort : un échec ici ne fait pas échouer la prép cmdline (déjà écrite).
     ok_rdma, msg_rdma, _ = ensure_rdma_netns_exclusive(host, run=run)
     rdma_note = "rdma-netns-exclusive posée" if ok_rdma else f"rdma unit: {msg_rdma}"
 
-    ***REMOVED*** Épinglage fréquence des cœurs isolés (cf. ensure_cpufreq_performance) : posé À CHAQUE prép,
-    ***REMOVED*** y compris sur un nœud sans bande isolée — le script est alors un no-op, mais l'unité est en
-    ***REMOVED*** place le jour où l'isolation arrive. Best effort : n'invalide pas la prép cmdline déjà écrite.
+    # Épinglage fréquence des cœurs isolés (cf. ensure_cpufreq_performance) : posé À CHAQUE prép,
+    # y compris sur un nœud sans bande isolée — le script est alors un no-op, mais l'unité est en
+    # place le jour où l'isolation arrive. Best effort : n'invalide pas la prép cmdline déjà écrite.
     ok_freq, msg_freq, _ = ensure_cpufreq_performance(host, run=run)
     freq_note = f"cpufreq: {msg_freq}" if ok_freq else f"cpufreq NON épinglée: {msg_freq}"
 
-    ***REMOVED*** Profondeur des ring buffers MXL (cf. ensure_mxl_history) : posée À CHAQUE prép, comme
-    ***REMOVED*** cpufreq — best effort, n'invalide pas la prép cmdline déjà écrite.
+    # Profondeur des ring buffers MXL (cf. ensure_mxl_history) : posée À CHAQUE prép, comme
+    # cpufreq — best effort, n'invalide pas la prép cmdline déjà écrite.
     ok_mxlh, msg_mxlh, _ = ensure_mxl_history(host, run=run)
     mxlh_note = f"mxl history: {msg_mxlh}" if ok_mxlh else f"mxl history NON posée: {msg_mxlh}"
 
-    ***REMOVED*** IRQ housekeeping (complément de isolcpus=managed_irq, qui ne couvre que les IRQ MANAGÉES de
-    ***REMOVED*** la NIC) + neutralisation d'irqbalance. Best effort : n'invalide pas le cmdline déjà écrit.
+    # IRQ housekeeping (complément de isolcpus=managed_irq, qui ne couvre que les IRQ MANAGÉES de
+    # la NIC) + neutralisation d'irqbalance. Best effort : n'invalide pas le cmdline déjà écrit.
     ok_irq, msg_irq = ensure_irq_housekeeping(host, run=run, band=plan["band"])
     if plan["band"]:
         iso_note = (f"cœurs 2110 isolés {plan['band']} "
@@ -689,8 +689,8 @@ echo "@@SYSCTL %N%"
                     + ("" if plan["ht_aware"] else f" ⚠ siblings HT NON isolés — {plan['note']}")
                     + " ; " + ("IRQ: " + msg_irq if ok_irq else f"IRQ housekeeping KO: {msg_irq}"))
         if not plan["ht_aware"]:
-            ***REMOVED*** Repli SIGNALÉ (jamais muet) : sans les siblings, le noyau garde des IRQ/timers sur les
-            ***REMOVED*** jumeaux physiques des lcores busy-poll → contention HT invisible.
+            # Repli SIGNALÉ (jamais muet) : sans les siblings, le noyau garde des IRQ/timers sur les
+            # jumeaux physiques des lcores busy-poll → contention HT invisible.
             try:
                 from .database import db_add_alert
                 db_add_alert(
@@ -706,7 +706,7 @@ echo "@@SYSCTL %N%"
                   f"{rdma_note} ; {freq_note} ; {mxlh_note}) — reboot requis"), True
 
 
-***REMOVED*** ─── Unité RDMA netns exclusive (scoping VF mlx5 par container) ───────────────
+# ─── Unité RDMA netns exclusive (scoping VF mlx5 par container) ───────────────
 
 RDMA_NETNS_UNIT_PATH = "/etc/systemd/system/rdma-netns-exclusive.service"
 RDMA_NETNS_UNIT = """[Unit]
@@ -738,7 +738,7 @@ def ensure_rdma_netns_exclusive(host, run=None):
         "set -e; "
         f"cat > {RDMA_NETNS_UNIT_PATH} << 'MXLEOF'\n{RDMA_NETNS_UNIT}MXLEOF\n"
         "systemctl daemon-reload; systemctl enable rdma-netns-exclusive.service >/dev/null 2>&1; "
-        ***REMOVED*** état courant : déjà exclusive ?
+        # état courant : déjà exclusive ?
         "rdma system show 2>/dev/null | grep -q 'netns exclusive' && echo ACTIVE || echo PENDING"
     )
     rc, out, err = run(cmd, timeout=20)
@@ -749,44 +749,44 @@ def ensure_rdma_netns_exclusive(host, run=None):
                   + (" (reboot requis pour activer)" if reboot_needed else " (déjà actif)")), reboot_needed
 
 
-***REMOVED*** ─── Épinglage de la fréquence : TOUS les cœurs, plancher sur les cœurs isolés ───────────────
-***REMOVED*** DEUX couplages DISTINCTS, que ce script traite ensemble parce qu'ils ont le même remède :
-***REMOVED***
-***REMOVED*** 1. Cœurs ISOLÉS (DPDK) — isoler impose d'épingler. `nohz_full` rend les cœurs tickless →
-***REMOVED***    `intel_pstate` (active/HWP) n'a plus le retour d'utilisation qui lui sert à monter la
-***REMOVED***    fréquence → les cœurs restent collés au PLANCHER (min_perf_pct) alors qu'ils sont à 100 %
-***REMOVED***    de busy-poll. Le moteur 2110 s'étouffe et les flux tombent au bout de quelques heures.
-***REMOVED***    Remède : gouverneur `performance` ET `scaling_min_freq` = max (le gouverneur seul ne suffit
-***REMOVED***    pas quand le retour d'utilisation est cassé).
-***REMOVED***
-***REMOVED*** 2. Cœurs DÉDIÉS À UNE TÂCHE TEMPS-RÉEL (murs, traitements — cpuset posé par `core_pool`).
-***REMOVED***    Mesuré le 2026-08-08 sur dell-1 : un mur dont le fil de compo ne consomme que 57 % d'UN
-***REMOVED***    cœur (GIL) sur trois alloués laisse les cœurs paraître oisifs → `schedutil` les gare au
-***REMOVED***    plancher (1,2 GHz pour 3,6 max, facteur 3). Le fil migre, atterrit sur un cœur garé, et la
-***REMOVED***    compo tourne à demi-vitesse PENDANT DES SECONDES : effondrements à 25 fps, une à deux fois
-***REMOVED***    par minute, avec TOUS les postes qui doublent ensemble. A/B sur 4 blocs alternés de 60 s :
-***REMOVED***    112 → 68 trames perdues/min, et zéro effondrement sur 300 s de contrôle.
-***REMOVED***    Remède : gouverneur `performance`. Le plancher, lui, n'est PAS forcé (le retour
-***REMOVED***    d'utilisation fonctionne sur ces cœurs tickful — inutile d'empêcher la descente au repos,
-***REMOVED***    qui ne coûte rien puisque les C-states restent disponibles).
-***REMOVED***
-***REMOVED*** La leçon commune : le couplage n'est pas « cœur isolé ⇒ épingler » mais « cœur porteur d'une
-***REMOVED*** échéance temps-réel ⇒ épingler ». Comme on ne sait pas, depuis l'hôte, quels cœurs `core_pool`
-***REMOVED*** dédiera demain, on pose `performance` PARTOUT : c'est le seul réglage qui survive à un
-***REMOVED*** ré-agencement du placement sans qu'on ait à le re-poser.
-***REMOVED***
-***REMOVED*** AUCUNE FRÉQUENCE EN DUR : la cible de chaque cœur est SON PROPRE `cpuinfo_max_freq`, lu sur
-***REMOVED*** la machine. Le script s'adapte donc à n'importe quel CPU (et aux cœurs hétérogènes).
-***REMOVED*** AUCUNE BANDE EN DUR non plus : la liste des isolés vient de /sys/devices/system/cpu/isolated,
-***REMOVED*** donc elle suit automatiquement le cmdline ; celle des cœurs tout court vient de /sys.
+# ─── Épinglage de la fréquence : TOUS les cœurs, plancher sur les cœurs isolés ───────────────
+# DEUX couplages DISTINCTS, que ce script traite ensemble parce qu'ils ont le même remède :
+#
+# 1. Cœurs ISOLÉS (DPDK) — isoler impose d'épingler. `nohz_full` rend les cœurs tickless →
+#    `intel_pstate` (active/HWP) n'a plus le retour d'utilisation qui lui sert à monter la
+#    fréquence → les cœurs restent collés au PLANCHER (min_perf_pct) alors qu'ils sont à 100 %
+#    de busy-poll. Le moteur 2110 s'étouffe et les flux tombent au bout de quelques heures.
+#    Remède : gouverneur `performance` ET `scaling_min_freq` = max (le gouverneur seul ne suffit
+#    pas quand le retour d'utilisation est cassé).
+#
+# 2. Cœurs DÉDIÉS À UNE TÂCHE TEMPS-RÉEL (murs, traitements — cpuset posé par `core_pool`).
+#    Mesuré le 2026-08-08 sur dell-1 : un mur dont le fil de compo ne consomme que 57 % d'UN
+#    cœur (GIL) sur trois alloués laisse les cœurs paraître oisifs → `schedutil` les gare au
+#    plancher (1,2 GHz pour 3,6 max, facteur 3). Le fil migre, atterrit sur un cœur garé, et la
+#    compo tourne à demi-vitesse PENDANT DES SECONDES : effondrements à 25 fps, une à deux fois
+#    par minute, avec TOUS les postes qui doublent ensemble. A/B sur 4 blocs alternés de 60 s :
+#    112 → 68 trames perdues/min, et zéro effondrement sur 300 s de contrôle.
+#    Remède : gouverneur `performance`. Le plancher, lui, n'est PAS forcé (le retour
+#    d'utilisation fonctionne sur ces cœurs tickful — inutile d'empêcher la descente au repos,
+#    qui ne coûte rien puisque les C-states restent disponibles).
+#
+# La leçon commune : le couplage n'est pas « cœur isolé ⇒ épingler » mais « cœur porteur d'une
+# échéance temps-réel ⇒ épingler ». Comme on ne sait pas, depuis l'hôte, quels cœurs `core_pool`
+# dédiera demain, on pose `performance` PARTOUT : c'est le seul réglage qui survive à un
+# ré-agencement du placement sans qu'on ait à le re-poser.
+#
+# AUCUNE FRÉQUENCE EN DUR : la cible de chaque cœur est SON PROPRE `cpuinfo_max_freq`, lu sur
+# la machine. Le script s'adapte donc à n'importe quel CPU (et aux cœurs hétérogènes).
+# AUCUNE BANDE EN DUR non plus : la liste des isolés vient de /sys/devices/system/cpu/isolated,
+# donc elle suit automatiquement le cmdline ; celle des cœurs tout court vient de /sys.
 CPUFREQ_SCRIPT_PATH = "/usr/local/sbin/bobi-cpufreq-perf.sh"
-CPUFREQ_SCRIPT = """***REMOVED***!/bin/sh
-***REMOVED*** BOBI — gouverneur `performance` sur TOUS les coeurs + plancher au max sur les coeurs ISOLES.
-***REMOVED*** Genere par app/mtl.py (ensure_cpufreq_performance) — ne pas editer a la main.
+CPUFREQ_SCRIPT = """#!/bin/sh
+# BOBI — gouverneur `performance` sur TOUS les coeurs + plancher au max sur les coeurs ISOLES.
+# Genere par app/mtl.py (ensure_cpufreq_performance) — ne pas editer a la main.
 set -u
 ISO=$(cat /sys/devices/system/cpu/isolated 2>/dev/null || true)
 
-***REMOVED*** Bande isolee -> liste plate, pour tester l'appartenance cœur par cœur.
+# Bande isolee -> liste plate, pour tester l'appartenance cœur par cœur.
 iso_list=""
 for p in $(echo "$ISO" | tr ',' ' '); do
   lo=$(echo "$p" | cut -d- -f1); hi=$(echo "$p" | cut -d- -f2)
@@ -804,7 +804,7 @@ for d in /sys/devices/system/cpu/cpu*/cpufreq; do
   cpu=$(echo "$d" | sed 's|.*/cpu\\([0-9]*\\)/cpufreq|\\1|')
   n=$((n+1))
   echo performance > "$d/scaling_governor" 2>/dev/null || rc=1
-  ***REMOVED*** Plancher force UNIQUEMENT sur les coeurs isoles : la ou le retour d'utilisation est casse.
+  # Plancher force UNIQUEMENT sur les coeurs isoles : la ou le retour d'utilisation est casse.
   for k in $iso_list; do
     if [ "$k" = "$cpu" ]; then
       max=$(cat "$d/cpuinfo_max_freq" 2>/dev/null || true)
@@ -862,7 +862,7 @@ def ensure_cpufreq_performance(host, run=None):
         f"cat > {CPUFREQ_UNIT_PATH} << 'MXLEOF'\n{CPUFREQ_UNIT}MXLEOF\n"
         "systemctl daemon-reload; "
         "systemctl enable bobi-cpufreq-perf.service >/dev/null 2>&1; "
-        ***REMOVED*** Application à chaud : on relaie la sortie du script (nb de cœurs, ou la raison du no-op).
+        # Application à chaud : on relaie la sortie du script (nb de cœurs, ou la raison du no-op).
         "systemctl restart bobi-cpufreq-perf.service 2>&1 || echo '@@UNITFAIL'; "
         f"{CPUFREQ_SCRIPT_PATH} 2>&1 || true"
     )
@@ -876,21 +876,21 @@ def ensure_cpufreq_performance(host, run=None):
     return True, f"unité posée + enabled ; {detail[:160]}", False
 
 
-***REMOVED*** ─── IRQ housekeeping : déporte les IRQ hors des cœurs isolés du moteur 2110 ──────────────────
-***REMOVED*** `isolcpus=managed_irq` ne couvre QUE les IRQ MANAGÉES (multiqueue NIC ice/E810). Toutes les
-***REMOVED*** autres (disque, USB, iLO, mei, timers matériels…) restent affinées « partout », donc AUSSI sur
-***REMOVED*** la bande isolée. Cette unité les repose au boot sur le COMPLÉMENT (housekeeping).
-***REMOVED***
-***REMOVED*** La logique vit dans un SCRIPT (comme bobi-cpufreq-perf.sh), pas dans un ExecStart en une ligne :
-***REMOVED***   1. le complément se calcule sur une cpulist MULTI-PLAGES (`1-18,49-66` dès que l'HT est actif).
-***REMOVED***      L'ancien `LO=${ISO%%-*}; HI=${ISO***REMOVED******REMOVED****-}` ne voyait qu'UNE plage contiguë → complément FAUX
-***REMOVED***      (il aurait rendu 0,67-95 en laissant 19-48 hors housekeeping) ;
-***REMOVED***   2. `%` est un spécificateur systemd dans un fichier d'unité — à éviter dans un ExecStart ;
-***REMOVED***   3. c'est lisible et testable à la main sur le nœud.
+# ─── IRQ housekeeping : déporte les IRQ hors des cœurs isolés du moteur 2110 ──────────────────
+# `isolcpus=managed_irq` ne couvre QUE les IRQ MANAGÉES (multiqueue NIC ice/E810). Toutes les
+# autres (disque, USB, iLO, mei, timers matériels…) restent affinées « partout », donc AUSSI sur
+# la bande isolée. Cette unité les repose au boot sur le COMPLÉMENT (housekeeping).
+#
+# La logique vit dans un SCRIPT (comme bobi-cpufreq-perf.sh), pas dans un ExecStart en une ligne :
+#   1. le complément se calcule sur une cpulist MULTI-PLAGES (`1-18,49-66` dès que l'HT est actif).
+#      L'ancien `LO=${ISO%%-*}; HI=${ISO##*-}` ne voyait qu'UNE plage contiguë → complément FAUX
+#      (il aurait rendu 0,67-95 en laissant 19-48 hors housekeeping) ;
+#   2. `%` est un spécificateur systemd dans un fichier d'unité — à éviter dans un ExecStart ;
+#   3. c'est lisible et testable à la main sur le nœud.
 IRQ_SCRIPT_PATH = "/usr/local/sbin/bobi-irq-housekeeping.sh"
-IRQ_SCRIPT = """***REMOVED***!/bin/sh
-***REMOVED*** BOBI — repose les IRQ NON managees hors des coeurs ISOLES du moteur 2110.
-***REMOVED*** Genere par app/mtl.py (ensure_irq_housekeeping) — ne pas editer a la main.
+IRQ_SCRIPT = """#!/bin/sh
+# BOBI — repose les IRQ NON managees hors des coeurs ISOLES du moteur 2110.
+# Genere par app/mtl.py (ensure_irq_housekeeping) — ne pas editer a la main.
 set -u
 ISO=$(cat /sys/devices/system/cpu/isolated 2>/dev/null || true)
 if [ -z "$ISO" ]; then
@@ -902,8 +902,8 @@ if [ "$N" -le 0 ]; then
   echo "bobi-irq: nombre de CPU illisible (nproc) -> abandon" >&2
   exit 1
 fi
-***REMOVED*** Expansion COMPLETE de la cpulist : plusieurs plages separees par des virgules ('1-18,49-66'),
-***REMOVED*** elements isoles ('3') compris. Un simple premier/dernier serait FAUX des que l'HT est actif.
+# Expansion COMPLETE de la cpulist : plusieurs plages separees par des virgules ('1-18,49-66'),
+# elements isoles ('3') compris. Un simple premier/dernier serait FAUX des que l'HT est actif.
 ISOL=""
 for p in $(echo "$ISO" | tr ',' ' '); do
   lo=$(echo "$p" | cut -d- -f1)
@@ -932,8 +932,8 @@ if [ -z "$HK" ]; then
   exit 1
 fi
 rc=0
-***REMOVED*** irqbalance re-etale les IRQ sur TOUS les CPU quelques minutes apres le boot : il defait ce
-***REMOVED*** travail EN SILENCE, longtemps apres. La prep MTL le masque ; s'il revient, on echoue BRUYAMMENT.
+# irqbalance re-etale les IRQ sur TOUS les CPU quelques minutes apres le boot : il defait ce
+# travail EN SILENCE, longtemps apres. La prep MTL le masque ; s'il revient, on echoue BRUYAMMENT.
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet irqbalance 2>/dev/null; then
   echo "bobi-irq: irqbalance est ACTIF -> il va re-etaler les IRQ sur la bande isolee $ISO. Le masquer: systemctl mask --now irqbalance" >&2
   rc=1
@@ -944,7 +944,7 @@ for f in /proc/irq/[0-9]*/smp_affinity_list; do
   if echo "$HK" > "$f" 2>/dev/null; then
     n=$((n+1))
   else
-    fixes=$((fixes+1))   ***REMOVED*** IRQ managees/per-cpu: non deplacables (attendu, pas une erreur)
+    fixes=$((fixes+1))   # IRQ managees/per-cpu: non deplacables (attendu, pas une erreur)
   fi
 done
 echo "bobi-irq: $n IRQ posees sur le housekeeping $HK (bande isolee $ISO) ; $fixes IRQ non deplacables (managees/per-cpu)"
@@ -980,7 +980,7 @@ def ensure_irq_housekeeping(host, run=None, band=None):
     if not host:
         return False, "host non configuré"
     run = run or _run_ssh(host)
-    masque = bool(band)      ***REMOVED*** pas de bande prévue → on ne touche pas au service de l'exploitant
+    masque = bool(band)      # pas de bande prévue → on ne touche pas au service de l'exploitant
     cmd = (
         "set -e; "
         f"cat > {IRQ_SCRIPT_PATH} << 'MXLEOF'\n{IRQ_SCRIPT}MXLEOF\n"
@@ -997,7 +997,7 @@ def ensure_irq_housekeeping(host, run=None, band=None):
             "else echo '@@IRQBAL absent'; fi; "
         )
     cmd += (
-        ***REMOVED*** À chaud : no-op tant que le cmdline n'est pas actif (isolated vide) ; utile après reboot.
+        # À chaud : no-op tant que le cmdline n'est pas actif (isolated vide) ; utile après reboot.
         "systemctl restart bobi-irq-housekeeping.service >/dev/null 2>&1 || echo '@@UNITFAIL'; "
         f"{IRQ_SCRIPT_PATH} 2>&1 || true"
     )
@@ -1014,48 +1014,48 @@ def ensure_irq_housekeeping(host, run=None, band=None):
     return True, f"unité posée + enabled{bal} ; {detail[:200]}"
 
 
-***REMOVED*** ─── Profondeur des ring buffers MXL (réglage DE NŒUD, pas par-conteneur) ─────────────────────
-***REMOVED*** Vérifié le 2026-08-09 dans les sources du SDK MXL v1.1.0-beta-1 (lib/internal/src/Instance.cpp,
-***REMOVED*** lib/internal/src/PathUtils.cpp, docs/Configuration.md) : la profondeur d'un ring buffer MXL
-***REMOVED*** n'est PAS un nombre de trames, c'est une DURÉE — `urn:x-mxl:option:history_duration/v1.0`, en
-***REMOVED*** NANOSECONDES (défaut SDK 200_000_000 = 200 ms). `grainCount = historyDuration * grain_rate`
-***REMOVED*** (10 cases à 50 fps, 5 à 25 fps) ; l'audio reçoit le DOUBLE de la durée (une moitié seule du
-***REMOVED*** tampon est lisible à la fois). Le SDK REFUSE délibérément qu'elle soit posée par instance
-***REMOVED*** (commentaire du SDK : "we don't want per-instance history durations") : la seule prise en
-***REMOVED*** compte est un fichier `options.json` À LA RACINE DU DOMAINE MXL (`/dev/shm/mxl/options.json`).
-***REMOVED*** C'est donc un réglage DE NŒUD, partagé par TOUS les conteneurs du nœud — pas un choix qu'on
-***REMOVED*** pourrait faire par plugin/container. `/dev/shm` est un tmpfs : le fichier est perdu au reboot,
-***REMOVED*** d'où l'unité systemd ci-dessous (même schéma que bobi-cpufreq-perf.service) pour le reposer
-***REMOVED*** AVANT que docker (et donc les containers MXL) ne démarre. ⚠ Ne prend effet que pour les flux
-***REMOVED*** CRÉÉS ENSUITE : un flux existant garde la profondeur qu'il avait à sa création — changer ce
-***REMOVED*** réglage exige de recréer les flux (redéployer les producteurs) pour en bénéficier.
-***REMOVED*** ⚠ Le SDK règle la profondeur PAR DOMAINE, pas par nœud. Si on parle de « réglage de nœud »,
-***REMOVED*** c'est une HYPOTHÈSE DE NOTRE DÉPLOIEMENT : un nœud = un seul domaine, celui par défaut. Vérifié
-***REMOVED*** le 2026-08-09 — aucun conteneur de la flotte ne pose `MXL_DOMAIN`, et l'orchestrateur ne
-***REMOVED*** l'injecte nulle part, donc tous partagent `/dev/shm/mxl`. Le jour où un conteneur pointerait un
-***REMOVED*** autre domaine (variable `MXL_DOMAIN`, cf. `bobimxl.DEFAULT_DOMAIN`), il aurait son propre
-***REMOVED*** `options.json` — absent, donc 200 ms par défaut — INVISIBLE pour cette fonction comme pour la
-***REMOVED*** sonde de dérive de `node_health`, toutes deux codées sur ce chemin. Ce serait un angle mort
-***REMOVED*** silencieux : il faudrait alors énumérer les domaines au lieu d'en supposer un.
+# ─── Profondeur des ring buffers MXL (réglage DE NŒUD, pas par-conteneur) ─────────────────────
+# Vérifié le 2026-08-09 dans les sources du SDK MXL v1.1.0-beta-1 (lib/internal/src/Instance.cpp,
+# lib/internal/src/PathUtils.cpp, docs/Configuration.md) : la profondeur d'un ring buffer MXL
+# n'est PAS un nombre de trames, c'est une DURÉE — `urn:x-mxl:option:history_duration/v1.0`, en
+# NANOSECONDES (défaut SDK 200_000_000 = 200 ms). `grainCount = historyDuration * grain_rate`
+# (10 cases à 50 fps, 5 à 25 fps) ; l'audio reçoit le DOUBLE de la durée (une moitié seule du
+# tampon est lisible à la fois). Le SDK REFUSE délibérément qu'elle soit posée par instance
+# (commentaire du SDK : "we don't want per-instance history durations") : la seule prise en
+# compte est un fichier `options.json` À LA RACINE DU DOMAINE MXL (`/dev/shm/mxl/options.json`).
+# C'est donc un réglage DE NŒUD, partagé par TOUS les conteneurs du nœud — pas un choix qu'on
+# pourrait faire par plugin/container. `/dev/shm` est un tmpfs : le fichier est perdu au reboot,
+# d'où l'unité systemd ci-dessous (même schéma que bobi-cpufreq-perf.service) pour le reposer
+# AVANT que docker (et donc les containers MXL) ne démarre. ⚠ Ne prend effet que pour les flux
+# CRÉÉS ENSUITE : un flux existant garde la profondeur qu'il avait à sa création — changer ce
+# réglage exige de recréer les flux (redéployer les producteurs) pour en bénéficier.
+# ⚠ Le SDK règle la profondeur PAR DOMAINE, pas par nœud. Si on parle de « réglage de nœud »,
+# c'est une HYPOTHÈSE DE NOTRE DÉPLOIEMENT : un nœud = un seul domaine, celui par défaut. Vérifié
+# le 2026-08-09 — aucun conteneur de la flotte ne pose `MXL_DOMAIN`, et l'orchestrateur ne
+# l'injecte nulle part, donc tous partagent `/dev/shm/mxl`. Le jour où un conteneur pointerait un
+# autre domaine (variable `MXL_DOMAIN`, cf. `bobimxl.DEFAULT_DOMAIN`), il aurait son propre
+# `options.json` — absent, donc 200 ms par défaut — INVISIBLE pour cette fonction comme pour la
+# sonde de dérive de `node_health`, toutes deux codées sur ce chemin. Ce serait un angle mort
+# silencieux : il faudrait alors énumérer les domaines au lieu d'en supposer un.
 MXL_DOMAIN_DIR          = "/dev/shm/mxl"
 MXL_OPTIONS_PATH        = f"{MXL_DOMAIN_DIR}/options.json"
 MXL_HISTORY_OPTION_KEY  = "urn:x-mxl:option:history_duration/v1.0"
 MXL_HISTORY_MS_DEFAULT  = 200
 
-***REMOVED*** ★ POURQUOI `tmpfiles.d` ET PAS UNE UNITÉ SYSTEMD (leçon payée le 2026-08-09).
-***REMOVED*** La première version posait une unité oneshot `bobi-mxl-options.service`. Installer une unité
-***REMOVED*** EXIGE un `systemctl daemon-reload` — lequel RÉVOQUE l'accès aux périphériques GPU des conteneurs
-***REMOVED*** DÉJÀ LANCÉS. Constaté le jour même sur dell-1 : la pose du fichier sur ce nœud a cassé NVML dans
-***REMOVED*** le conteneur du mur 906 (« Failed to initialize NVML: Unknown Error »), panne à retardement
-***REMOVED*** invisible tant que le process garde son contexte CUDA. Rendre le reload conditionnel ne suffit
-***REMOVED*** PAS : la toute première installation sur un nœud GPU le déclenche forcément.
-***REMOVED*** `systemd-tmpfiles` est l'outil prévu exactement pour ça — créer des fichiers dans un tmpfs au
-***REMOVED*** boot — et une config `tmpfiles.d` se dépose SANS aucun reload. `systemd-tmpfiles-setup.service`
-***REMOVED*** tourne bien avant docker. Cesse de valoir si systemd corrige la révocation de périphériques au
-***REMOVED*** reload, ou si le domaine MXL quitte un tmpfs.
+# ★ POURQUOI `tmpfiles.d` ET PAS UNE UNITÉ SYSTEMD (leçon payée le 2026-08-09).
+# La première version posait une unité oneshot `bobi-mxl-options.service`. Installer une unité
+# EXIGE un `systemctl daemon-reload` — lequel RÉVOQUE l'accès aux périphériques GPU des conteneurs
+# DÉJÀ LANCÉS. Constaté le jour même sur dell-1 : la pose du fichier sur ce nœud a cassé NVML dans
+# le conteneur du mur 906 (« Failed to initialize NVML: Unknown Error »), panne à retardement
+# invisible tant que le process garde son contexte CUDA. Rendre le reload conditionnel ne suffit
+# PAS : la toute première installation sur un nœud GPU le déclenche forcément.
+# `systemd-tmpfiles` est l'outil prévu exactement pour ça — créer des fichiers dans un tmpfs au
+# boot — et une config `tmpfiles.d` se dépose SANS aucun reload. `systemd-tmpfiles-setup.service`
+# tourne bien avant docker. Cesse de valoir si systemd corrige la révocation de périphériques au
+# reload, ou si le domaine MXL quitte un tmpfs.
 MXL_TMPFILES_PATH = "/etc/tmpfiles.d/bobi-mxl.conf"
 
-***REMOVED*** Ancienne unité, désinstallée si on la trouve (cf. commentaire ci-dessus).
+# Ancienne unité, désinstallée si on la trouve (cf. commentaire ci-dessus).
 MXL_OPTIONS_UNIT_PATH = "/etc/systemd/system/bobi-mxl-options.service"
 def ensure_mxl_history(host, run=None, duree_ms=None):
     """Installe (idempotent) `/dev/shm/mxl/options.json` (profondeur des ring buffers MXL) +
@@ -1086,28 +1086,28 @@ def ensure_mxl_history(host, run=None, duree_ms=None):
     duree_ns = duree_ms * 1_000_000
     content = json.dumps({MXL_HISTORY_OPTION_KEY: duree_ns})
     run = run or _run_ssh(host)
-    ***REMOVED*** `f` de tmpfiles.d : crée le fichier avec l'ARGUMENT comme contenu (une seule ligne — notre
-    ***REMOVED*** JSON n'en contient pas). `d` garantit le répertoire du domaine. Les `%` sont doublés :
-    ***REMOVED*** tmpfiles.d les interprète comme des spécificateurs.
+    # `f` de tmpfiles.d : crée le fichier avec l'ARGUMENT comme contenu (une seule ligne — notre
+    # JSON n'en contient pas). `d` garantit le répertoire du domaine. Les `%` sont doublés :
+    # tmpfiles.d les interprète comme des spécificateurs.
     tmpf = (f"d {MXL_DOMAIN_DIR} 0755 root root -\n"
             f"f {MXL_OPTIONS_PATH} 0644 root root - {content.replace('%', '%%')}\n")
     cmd = (
         "set -e; "
         f"mkdir -p {MXL_DOMAIN_DIR} /etc/tmpfiles.d; "
-        ***REMOVED*** Idempotent : ne réécrit rien si le contenu voulu est déjà là — évite de perturber un
-        ***REMOVED*** domaine en place à chaque tour de prép.
+        # Idempotent : ne réécrit rien si le contenu voulu est déjà là — évite de perturber un
+        # domaine en place à chaque tour de prép.
         f"want='{content}'; "
         f"cur=$(cat {MXL_OPTIONS_PATH} 2>/dev/null || true); "
         f"if [ \"$cur\" != \"$want\" ]; then printf '%s' \"$want\" > {MXL_OPTIONS_PATH}; echo '@@WRITTEN'; fi; "
-        ***REMOVED*** Persistance au boot : une config tmpfiles.d, déposée SANS `daemon-reload` (cf. le
-        ***REMOVED*** commentaire de MXL_TMPFILES_PATH — le reload casse le GPU des conteneurs en marche).
+        # Persistance au boot : une config tmpfiles.d, déposée SANS `daemon-reload` (cf. le
+        # commentaire de MXL_TMPFILES_PATH — le reload casse le GPU des conteneurs en marche).
         f"cat > /tmp/.mxl-tmpf.new << 'MXLEOF'\n{tmpf}MXLEOF\n"
         f"if ! cmp -s /tmp/.mxl-tmpf.new {MXL_TMPFILES_PATH} 2>/dev/null; then "
         f"  mv /tmp/.mxl-tmpf.new {MXL_TMPFILES_PATH}; echo '@@TMPF'; "
         f"else rm -f /tmp/.mxl-tmpf.new; fi; "
-        ***REMOVED*** Ménage de l'ancienne unité si elle traîne. `disable` seul suffit à la neutraliser ; on
-        ***REMOVED*** NE fait PAS de `daemon-reload` ici non plus — une unité orpheline est inoffensive, une
-        ***REMOVED*** révocation GPU ne l'est pas.
+        # Ménage de l'ancienne unité si elle traîne. `disable` seul suffit à la neutraliser ; on
+        # NE fait PAS de `daemon-reload` ici non plus — une unité orpheline est inoffensive, une
+        # révocation GPU ne l'est pas.
         f"if [ -f {MXL_OPTIONS_UNIT_PATH} ]; then "
         "   systemctl disable --now bobi-mxl-options.service >/dev/null 2>&1 || true; "
         f"  rm -f {MXL_OPTIONS_UNIT_PATH}; echo '@@UNIT_RETIREE'; fi; "
@@ -1126,29 +1126,29 @@ def ensure_mxl_history(host, run=None, duree_ms=None):
     return True, detail, False
 
 
-***REMOVED*** ─── Identité du domaine MXL : `domain_def.json` (BCP-007-03) ────────────────────────────────
-***REMOVED*** AMWA BCP-007-03 « NMOS With MXL » (relevé sur `v1.0-dev`, commit 5ed4eb6 du 2026-08-05 — aucune
-***REMOVED*** release à ce jour) impose : « All MXL Domains MUST hold a definition json file `domain_def.json`
-***REMOVED*** in their host directory ». Schéma normatif `APIs/schemas/mxl_domain_definition.json` : QUATRE
-***REMOVED*** champs REQUIS — `id` (UUID canonique minuscule), `label`, `description`, `tags` (objet
-***REMOVED*** clé → tableau de chaînes, peut être vide) ; `additionalProperties: true`.
-***REMOVED***
-***REMOVED*** POURQUOI ça nous revient, et pourquoi on le fait MAINTENANT alors que le reste de la BCP est
-***REMOVED*** différé (cf. TODO.md § BCP-007-03) : le SDK MXL LIT ce fichier (`tools/mxl-info` le parse et
-***REMOVED*** l'affiche) mais rien dans la lib ne l'ÉCRIT — la BCP pose que c'est l'orchestrateur qui
-***REMOVED*** configure l'emplacement du domaine, donc qui le nomme. Et sa valeur ne dépend pas de la BCP :
-***REMOVED*** elle règle l'identité de domaine dont on a besoin de toute façon pour la réplication RDMA
-***REMOVED*** inter-nœuds, où « le même bus » vu de deux nœuds n'a aujourd'hui aucun nom commun.
-***REMOVED***
-***REMOVED*** Le problème exact que ça règle : le même domaine bind-monté sous deux chemins différents selon
-***REMOVED*** le conteneur (`/dev/shm/mxl` chez l'un, `/domain_a` chez l'autre) est le MÊME bus, et le chemin
-***REMOVED*** ne le dit pas. L'identité voyage donc DANS le domaine, pas dans son adresse.
+# ─── Identité du domaine MXL : `domain_def.json` (BCP-007-03) ────────────────────────────────
+# AMWA BCP-007-03 « NMOS With MXL » (relevé sur `v1.0-dev`, commit 5ed4eb6 du 2026-08-05 — aucune
+# release à ce jour) impose : « All MXL Domains MUST hold a definition json file `domain_def.json`
+# in their host directory ». Schéma normatif `APIs/schemas/mxl_domain_definition.json` : QUATRE
+# champs REQUIS — `id` (UUID canonique minuscule), `label`, `description`, `tags` (objet
+# clé → tableau de chaînes, peut être vide) ; `additionalProperties: true`.
+#
+# POURQUOI ça nous revient, et pourquoi on le fait MAINTENANT alors que le reste de la BCP est
+# différé (cf. TODO.md § BCP-007-03) : le SDK MXL LIT ce fichier (`tools/mxl-info` le parse et
+# l'affiche) mais rien dans la lib ne l'ÉCRIT — la BCP pose que c'est l'orchestrateur qui
+# configure l'emplacement du domaine, donc qui le nomme. Et sa valeur ne dépend pas de la BCP :
+# elle règle l'identité de domaine dont on a besoin de toute façon pour la réplication RDMA
+# inter-nœuds, où « le même bus » vu de deux nœuds n'a aujourd'hui aucun nom commun.
+#
+# Le problème exact que ça règle : le même domaine bind-monté sous deux chemins différents selon
+# le conteneur (`/dev/shm/mxl` chez l'un, `/domain_a` chez l'autre) est le MÊME bus, et le chemin
+# ne le dit pas. L'identité voyage donc DANS le domaine, pas dans son adresse.
 MXL_DOMAIN_DEF_PATH      = f"{MXL_DOMAIN_DIR}/domain_def.json"
-***REMOVED*** Copie persistante hors tmpfs (même dossier que VFIO_BINDS_PATH) : c'est ELLE que tmpfiles.d
-***REMOVED*** recopie dans le domaine au boot. On ne met PAS le JSON en argument d'une ligne `f` de
-***REMOVED*** tmpfiles.d (contrairement à options.json) : cet argument subit le déséchappement C de systemd
-***REMOVED*** et l'expansion des spécificateurs, ce qui mutilerait un label contenant `\` ou `%`. Le type
-***REMOVED*** `C` recopie un fichier tel quel — aucune règle d'échappement à respecter.
+# Copie persistante hors tmpfs (même dossier que VFIO_BINDS_PATH) : c'est ELLE que tmpfiles.d
+# recopie dans le domaine au boot. On ne met PAS le JSON en argument d'une ligne `f` de
+# tmpfiles.d (contrairement à options.json) : cet argument subit le déséchappement C de systemd
+# et l'expansion des spécificateurs, ce qui mutilerait un label contenant `\` ou `%`. Le type
+# `C` recopie un fichier tel quel — aucune règle d'échappement à respecter.
 MXL_DOMAIN_DEF_SRC       = "/etc/bobi/mxl-domain_def.json"
 MXL_DOMAIN_TMPFILES_PATH = "/etc/tmpfiles.d/bobi-mxl-domain.conf"
 
@@ -1163,8 +1163,8 @@ def build_domain_def(domain_id, label, description=None, tags=None):
         "id":          str(domain_id),
         "label":       label,
         "description": description or f"Domaine MXL du nœud {label} (Bobi.Studio)",
-        ***REMOVED*** Le schéma impose des valeurs en TABLEAU de chaînes. Le nom du nœud est déjà dans
-        ***REMOVED*** `label` ; on n'y remet donc que ce qu'un tiers ne peut pas déduire du reste.
+        # Le schéma impose des valeurs en TABLEAU de chaînes. Le nom du nœud est déjà dans
+        # `label` ; on n'y remet donc que ce qu'un tiers ne peut pas déduire du reste.
         "tags":        tags if isinstance(tags, dict) else {"urn:x-bobi:orchestrator": ["bobi.studio"]},
     }, ensure_ascii=False)
 
@@ -1201,10 +1201,10 @@ def ensure_mxl_domain_def(node, run=None):
     cmd = (
         "set -e; "
         f"mkdir -p {MXL_DOMAIN_DIR} /etc/bobi /etc/tmpfiles.d; "
-        ***REMOVED*** Heredoc quoté : le shell ne touche à rien du JSON.
+        # Heredoc quoté : le shell ne touche à rien du JSON.
         f"cat > /tmp/.mxl-domaindef.new << 'MXLEOF'\n{content}\nMXLEOF\n"
-        ***REMOVED*** Idempotent des deux côtés : on ne réécrit que ce qui diffère, pour ne pas remuer un
-        ***REMOVED*** domaine en place à chaque tour de sonde.
+        # Idempotent des deux côtés : on ne réécrit que ce qui diffère, pour ne pas remuer un
+        # domaine en place à chaque tour de sonde.
         f"if ! cmp -s /tmp/.mxl-domaindef.new {MXL_DOMAIN_DEF_SRC} 2>/dev/null; then "
         f"  cp /tmp/.mxl-domaindef.new {MXL_DOMAIN_DEF_SRC}; chmod 0644 {MXL_DOMAIN_DEF_SRC}; echo '@@SRC'; fi; "
         f"if ! cmp -s /tmp/.mxl-domaindef.new {MXL_DOMAIN_DEF_PATH} 2>/dev/null; then "
@@ -1226,53 +1226,53 @@ def ensure_mxl_domain_def(node, run=None):
     if src or tmpf_pose:
         detail += " ; persistance " + ", ".join(
             x for x in (("copie /etc/bobi" if src else ""), ("tmpfiles.d" if tmpf_pose else "")) if x)
-    ***REMOVED*** C'EST ICI que la trace doit vivre, pas chez l'appelant (leçon payée le 2026-08-15). La
-    ***REMOVED*** première version ne journalisait que depuis `node_health` : une pose faite par un AUTRE
-    ***REMOVED*** chemin — la prép hôte, ou un appel direct à la main — écrivait trois fichiers sur un hôte
-    ***REMOVED*** sans laisser la moindre ligne, et l'enquête sur « qui a écrit ce fichier ? » n'avait aucune
-    ***REMOVED*** prise. Une fonction qui mute l'hôte se signale elle-même : elle couvre alors TOUS ses
-    ***REMOVED*** appelants, présents et futurs. On ne journalise que l'ÉCRITURE — le cas « déjà à jour »
-    ***REMOVED*** passe toutes les 30 min par nœud et n'apprend rien.
+    # C'EST ICI que la trace doit vivre, pas chez l'appelant (leçon payée le 2026-08-15). La
+    # première version ne journalisait que depuis `node_health` : une pose faite par un AUTRE
+    # chemin — la prép hôte, ou un appel direct à la main — écrivait trois fichiers sur un hôte
+    # sans laisser la moindre ligne, et l'enquête sur « qui a écrit ce fichier ? » n'avait aucune
+    # prise. Une fonction qui mute l'hôte se signale elle-même : elle couvre alors TOUS ses
+    # appelants, présents et futurs. On ne journalise que l'ÉCRITURE — le cas « déjà à jour »
+    # passe toutes les 30 min par nœud et n'apprend rien.
     if live or src or tmpf_pose:
         log.info("domaine MXL %s : %s", label, detail)
     return True, detail
 
 
-***REMOVED*** ─── Binding vfio-pci d'un port média (chantier DPDK, Lot A) ──────────────────
-***REMOVED*** Plans PURS (aucun accès hôte) : `vfio_bind_plan`/`vfio_unbind_plan` rendent le script shell
-***REMOVED*** idempotent complet + une liste de checks lisibles ; `*_apply` l'exécutent via le runner
-***REMOVED*** injecté (défaut : agent-nœud). Persistance au boot : fichier /etc/bobi/vfio-binds (un BDF
-***REMOVED*** par ligne) rejoué par une unité systemd oneshot unique (plus simple/robuste qu'une unité
-***REMOVED*** templatée : les BDF contiennent des caractères que systemd-escape mutile).
+# ─── Binding vfio-pci d'un port média (chantier DPDK, Lot A) ──────────────────
+# Plans PURS (aucun accès hôte) : `vfio_bind_plan`/`vfio_unbind_plan` rendent le script shell
+# idempotent complet + une liste de checks lisibles ; `*_apply` l'exécutent via le runner
+# injecté (défaut : agent-nœud). Persistance au boot : fichier /etc/bobi/vfio-binds (un BDF
+# par ligne) rejoué par une unité systemd oneshot unique (plus simple/robuste qu'une unité
+# templatée : les BDF contiennent des caractères que systemd-escape mutile).
 
 VFIO_BINDS_PATH     = "/etc/bobi/vfio-binds"
 VFIO_BIND_UNIT      = "bobi-vfio-bind.service"
 VFIO_BIND_UNIT_PATH = f"/etc/systemd/system/{VFIO_BIND_UNIT}"
 
-***REMOVED*** Driver kernel de retour au rollback (E810). Le plan unbind vérifie qu'on y revient.
+# Driver kernel de retour au rollback (E810). Le plan unbind vérifie qu'on y revient.
 VFIO_KERNEL_DRIVER = "ice"
 
-***REMOVED*** Activation SANS `systemctl enable` : le lien que `enable` poserait, posé à la main.
-***REMOVED***
-***REMOVED*** ★★★ CAUSE RACINE D'UNE PANNE DE 9 JOURS (Horace, trouvée le 2026-08-28). Ce plan écrivait
-***REMOVED*** l'unité INCONDITIONNELLEMENT puis faisait `systemctl daemon-reload` — donc à CHAQUE déploiement
-***REMOVED*** de moteur, même quand le fichier était identique. Or un `daemon-reload` réapplique la politique
-***REMOVED*** de périphériques des cgroups et RETIRE l'accès GPU aux conteneurs DÉJÀ EN MARCHE (les nœuds
-***REMOVED*** `/dev/nvidia*` restent visibles, seule l'autorisation disparaît : `open()` rend EPERM, NVML dit
-***REMOVED*** « Unknown Error »). Le 2026-08-19 à 18:50, un redémarrage du moteur 2110 a ainsi révoqué la carte
-***REMOVED*** du conteneur de monitoring d'un utilisateur ; son ffmpeg est mort en `-22` et a été relancé en
-***REMOVED*** boucle pendant NEUF JOURS. Les conteneurs recréés APRÈS (18:57) n'ont rien eu.
-***REMOVED***
-***REMOVED*** ⚠ CE QUI A RENDU LE DIAGNOSTIC SI LONG : `daemon-reload` **n'est pas journalisé** sur ce parc
-***REMOVED*** (systemd 257) — vérifié sur un nœud ayant 9 472 entrées de journal sur l'heure d'un reload
-***REMOVED*** documenté, et zéro trace. L'absence au journal ne prouve donc RIEN, et j'en avais conclu à tort
-***REMOVED*** qu'aucun reload n'avait eu lieu. Ne jamais réutiliser cet argument.
-***REMOVED***
-***REMOVED*** La parade est la même que pour `options.json` du domaine MXL : **ne pas recharger**. Cette unité
-***REMOVED*** est un `oneshot` qui ne sert QU'AU BOOT — systemd relit tout à ce moment-là, l'état en mémoire
-***REMOVED*** n'a donc pas besoin d'être à jour. On écrit le fichier seulement s'il DIFFÈRE, et on pose le lien
-***REMOVED*** d'activation seulement s'il MANQUE. Un `systemctl enable` est proscrit ici : il avertit sur unité
-***REMOVED*** inconnue et, selon les versions, recharge.
+# Activation SANS `systemctl enable` : le lien que `enable` poserait, posé à la main.
+#
+# ★★★ CAUSE RACINE D'UNE PANNE DE 9 JOURS (Horace, trouvée le 2026-08-28). Ce plan écrivait
+# l'unité INCONDITIONNELLEMENT puis faisait `systemctl daemon-reload` — donc à CHAQUE déploiement
+# de moteur, même quand le fichier était identique. Or un `daemon-reload` réapplique la politique
+# de périphériques des cgroups et RETIRE l'accès GPU aux conteneurs DÉJÀ EN MARCHE (les nœuds
+# `/dev/nvidia*` restent visibles, seule l'autorisation disparaît : `open()` rend EPERM, NVML dit
+# « Unknown Error »). Le 2026-08-19 à 18:50, un redémarrage du moteur 2110 a ainsi révoqué la carte
+# du conteneur de monitoring d'un utilisateur ; son ffmpeg est mort en `-22` et a été relancé en
+# boucle pendant NEUF JOURS. Les conteneurs recréés APRÈS (18:57) n'ont rien eu.
+#
+# ⚠ CE QUI A RENDU LE DIAGNOSTIC SI LONG : `daemon-reload` **n'est pas journalisé** sur ce parc
+# (systemd 257) — vérifié sur un nœud ayant 9 472 entrées de journal sur l'heure d'un reload
+# documenté, et zéro trace. L'absence au journal ne prouve donc RIEN, et j'en avais conclu à tort
+# qu'aucun reload n'avait eu lieu. Ne jamais réutiliser cet argument.
+#
+# La parade est la même que pour `options.json` du domaine MXL : **ne pas recharger**. Cette unité
+# est un `oneshot` qui ne sert QU'AU BOOT — systemd relit tout à ce moment-là, l'état en mémoire
+# n'a donc pas besoin d'être à jour. On écrit le fichier seulement s'il DIFFÈRE, et on pose le lien
+# d'activation seulement s'il MANQUE. Un `systemctl enable` est proscrit ici : il avertit sur unité
+# inconnue et, selon les versions, recharge.
 VFIO_BIND_WANTS_PATH = "/etc/systemd/system/multi-user.target.wants/" + VFIO_BIND_UNIT
 
 _VFIO_BIND_UNIT_TEXT = f"""[Unit]
@@ -1332,10 +1332,10 @@ def _vfio_gardefous(node, bdf):
         return None, checks
     ifn = iface.get("ifname") or "?"
     if iface.get("ptp_enabled"):
-        ***REMOVED*** ⚠ Sens exact du refus : « ptp4l ne peut pas tourner sur une carte en vfio-pci » — PAS
-        ***REMOVED*** « cette carte n'aura plus de PTP ». En DPDK l'horloge PTP existe toujours : elle est portée
-        ***REMOVED*** par le moteur 2110 (libmtl, client PTP interne). Il faut donc RETIRER ptp4l de cette carte
-        ***REMOVED*** (Réglages → Réseau → interface, section « Horloge PTP »), pas déplacer « le PTP ».
+        # ⚠ Sens exact du refus : « ptp4l ne peut pas tourner sur une carte en vfio-pci » — PAS
+        # « cette carte n'aura plus de PTP ». En DPDK l'horloge PTP existe toujours : elle est portée
+        # par le moteur 2110 (libmtl, client PTP interne). Il faut donc RETIRER ptp4l de cette carte
+        # (Réglages → Réseau → interface, section « Horloge PTP »), pas déplacer « le PTP ».
         raise GardeFouVfio(
             f"refus : {ifn} ({bdf}) porte ptp_enabled=1 (ptp4l tourne sur cette carte) — en vfio-pci "
             "il n'y a plus de netdev noyau ni de PHC, ptp4l ne peut pas y tourner. En DPDK, l'horloge "
@@ -1349,9 +1349,9 @@ def _vfio_gardefous(node, bdf):
             "contrôle (agent-nœud injoignable).")
     checks.append(f"ok: {ifn} ({bdf}) role={iface.get('role') or 'unused'}, "
                   f"ptp_enabled=0 — éligible vfio-pci")
-    ***REMOVED*** Une PAIRE exige groupe ET rôle des deux côtés (même règle que docker_driver.media_port_pairs).
-    ***REMOVED*** Tester `pair_group` seul faisait annoncer une « paire 2022-7 incohérente » à propos d'une paire
-    ***REMOVED*** qui n'existe pas — dl360-1 portait un groupe sans aucun rôle.
+    # Une PAIRE exige groupe ET rôle des deux côtés (même règle que docker_driver.media_port_pairs).
+    # Tester `pair_group` seul faisait annoncer une « paire 2022-7 incohérente » à propos d'une paire
+    # qui n'existe pas — dl360-1 portait un groupe sans aucun rôle.
     pg = iface.get("pair_group")
     if pg is not None and iface.get("pair_role") in ("red", "blue"):
         pair = next((r for r in rows
@@ -1434,8 +1434,8 @@ else
 fi
 if [ -f {VFIO_BINDS_PATH} ]; then sed -i "\\|^$BDF$|d" {VFIO_BINDS_PATH}; fi
 if [ ! -s {VFIO_BINDS_PATH} ]; then
-  ***REMOVED*** Retirer le lien EST ce que fait `systemctl disable` ; ni lui ni un `daemon-reload` ne sont
-  ***REMOVED*** nécessaires pour une unité de boot, et le reload révoquerait le GPU des conteneurs en marche.
+  # Retirer le lien EST ce que fait `systemctl disable` ; ni lui ni un `daemon-reload` ne sont
+  # nécessaires pour une unité de boot, et le reload révoquerait le GPU des conteneurs en marche.
   rm -f {VFIO_BIND_WANTS_PATH} {VFIO_BIND_UNIT_PATH} {VFIO_BINDS_PATH}
   echo "@@PERSIST purgee (plus aucun BDF vfio)"
 else
@@ -1469,17 +1469,17 @@ def vfio_unbind_apply(node, bdf, run=None):
     return _vfio_executer(vfio_unbind_plan, node, bdf, run=run)
 
 
-***REMOVED*** ─── SR-IOV : PF kernel-PTP + VF DPDK-narrow (chantier narrow, cf. docs/chantiers/SRIOV_IMPL.md) ─────
-***REMOVED*** ≠ vfio_bind_plan (qui met le PF en vfio → tue le PTP). Ici la PF RESTE sur ice/kernel (ptp4l
-***REMOVED*** discipline le PHC) et on crée UNE VF, bindée vfio-pci, qui porte le moteur DPDK-narrow.
-SRIOV_VFS_PATH     = "/etc/bobi/sriov-vfs"            ***REMOVED*** lignes: <pf_bdf> <pf_ifname> <vf_mac>
+# ─── SR-IOV : PF kernel-PTP + VF DPDK-narrow (chantier narrow, cf. docs/chantiers/SRIOV_IMPL.md) ─────
+# ≠ vfio_bind_plan (qui met le PF en vfio → tue le PTP). Ici la PF RESTE sur ice/kernel (ptp4l
+# discipline le PHC) et on crée UNE VF, bindée vfio-pci, qui porte le moteur DPDK-narrow.
+SRIOV_VFS_PATH     = "/etc/bobi/sriov-vfs"            # lignes: <pf_bdf> <pf_ifname> <vf_mac>
 SRIOV_VF_UNIT      = "bobi-sriov-vf.service"
 SRIOV_VF_UNIT_PATH = f"/etc/systemd/system/{SRIOV_VF_UNIT}"
-***REMOVED*** Activation sans rechargement — même raison que VFIO_BIND_WANTS_PATH (unité de BOOT).
+# Activation sans rechargement — même raison que VFIO_BIND_WANTS_PATH (unité de BOOT).
 SRIOV_VF_WANTS_PATH = f"/etc/systemd/system/multi-user.target.wants/{SRIOV_VF_UNIT}"
 
-***REMOVED*** Unité boot : pour chaque PF listé, recrée VF0 (numvfs=1) + mac/trust + bind la VF en vfio. La PF
-***REMOVED*** revient sur ice toute seule (kernel) → ptp4l repart dessus. numvfs ne survivant pas au reboot.
+# Unité boot : pour chaque PF listé, recrée VF0 (numvfs=1) + mac/trust + bind la VF en vfio. La PF
+# revient sur ice toute seule (kernel) → ptp4l repart dessus. numvfs ne survivant pas au reboot.
 _SRIOV_VF_UNIT_TEXT = f"""[Unit]
 Description=MXL SR-IOV VF (PF kernel-PTP + VF DPDK-narrow — {SRIOV_VFS_PATH})
 DefaultDependencies=no
@@ -1499,8 +1499,8 @@ WantedBy=multi-user.target
 
 def _vf_mac(pf_bdf, vf_index=0):
     """MAC localement administrée, DÉTERMINISTE (stable across recreations) pour la VF."""
-    h = hashlib.md5(f"{pf_bdf}***REMOVED***{vf_index}".encode()).hexdigest()
-    return "02:" + ":".join(h[i:i + 2] for i in (0, 2, 4, 6, 8))   ***REMOVED*** 02 = locally administered/unicast
+    h = hashlib.md5(f"{pf_bdf}#{vf_index}".encode()).hexdigest()
+    return "02:" + ":".join(h[i:i + 2] for i in (0, 2, 4, 6, 8))   # 02 = locally administered/unicast
 
 
 def _sriov_gardefous(node, bdf):
@@ -1591,11 +1591,11 @@ def sriov_vf_apply(node, pf_bdf, run=None, timeout=60):
     return True, (f"VF {vf} prête (vfio)" if vf else "ok"), vf, checks
 
 
-***REMOVED*** Build + install (NON-disruptif) du driver ice Kahawai 2.6.6 = prérequis du RL narrow sur VF
-***REMOVED*** (cf. docs/chantiers/SRIOV_IMPL.md §3). Bash brut (pas de str.format). Idempotent (skip si déjà Kahawai). Installe
-***REMOVED*** dans /lib/modules/<K>/updates + depmod → ACTIF AU PROCHAIN REBOOT (on ne rmmod PAS ice à chaud :
-***REMOVED*** ça couperait tous les ports E810 + ptp4l + irdma). ⚠ irdma ne recharge pas contre l'ice 2.6.6
-***REMOVED*** (symboles rdma) → au boot, irdma peut rester déchargé (bénin si pas de RDMA ; documenté SRIOV_IMPL).
+# Build + install (NON-disruptif) du driver ice Kahawai 2.6.6 = prérequis du RL narrow sur VF
+# (cf. docs/chantiers/SRIOV_IMPL.md §3). Bash brut (pas de str.format). Idempotent (skip si déjà Kahawai). Installe
+# dans /lib/modules/<K>/updates + depmod → ACTIF AU PROCHAIN REBOOT (on ne rmmod PAS ice à chaud :
+# ça couperait tous les ports E810 + ptp4l + irdma). ⚠ irdma ne recharge pas contre l'ice 2.6.6
+# (symboles rdma) → au boot, irdma peut rester déchargé (bénin si pas de RDMA ; documenté SRIOV_IMPL).
 INSTALL_PATCHED_ICE = r"""set -e
 K=$(uname -r)
 if modinfo ice 2>/dev/null | grep -q "Kahawai_2.6.6"; then echo "@@SKIP ice deja Kahawai_2.6.6 charge"; exit 0; fi
@@ -1640,12 +1640,12 @@ def install_patched_ice(node, run=None, timeout=900):
     if "@@SKIP" in (out or ""):
         m = re.search(r"@@SKIP (.+)", out or "")
         txt = m.group(1).strip() if m else "déjà à jour"
-        return True, txt, ("charge" not in txt)        ***REMOVED*** déjà chargé → pas de reboot ; installé → reboot
+        return True, txt, ("charge" not in txt)        # déjà chargé → pas de reboot ; installé → reboot
     return True, "ice Kahawai 2.6.6 installé (updates/) — reboot requis pour activer", True
 
 
-***REMOVED*** ─── Provisioning MTL du template (apt + build libmtl/DPDK) ───────────────────
-***REMOVED*** Bash bruts (pas de str.format) — pas de contrainte d'accolades doublées.
+# ─── Provisioning MTL du template (apt + build libmtl/DPDK) ───────────────────
+# Bash bruts (pas de str.format) — pas de contrainte d'accolades doublées.
 
 PROVISION_MTL_APT = r"""set -e
 echo '>>> apt-get update'
@@ -1658,8 +1658,8 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 echo '>>> apt MTL OK'
 """
 
-***REMOVED*** Build libmtl + DPDK patché MTL. Le composant ld_preload/udp casse (signature ioctl vs glibc) :
-***REMOVED*** on N'échoue PAS sur le rc de build.sh ; le gate de succès est `pkg-config --exists mtl` + libmtl.so.
+# Build libmtl + DPDK patché MTL. Le composant ld_preload/udp casse (signature ioctl vs glibc) :
+# on N'échoue PAS sur le rc de build.sh ; le gate de succès est `pkg-config --exists mtl` + libmtl.so.
 PROVISION_MTL_BUILD = r"""set -e
 SRC=/root/Media-Transport-Library
 echo '>>> clone / update Media-Transport-Library'
@@ -1670,11 +1670,11 @@ else
 fi
 cd "$SRC"
 echo '>>> build DPDK (patché MTL, tests désactivés) — long…'
-***REMOVED*** -Dtests=false : ne PAS construire les dpdk-test-* (binaires statiques énormes, inutiles à MTL
-***REMOVED*** et qui saturaient le rootfs « No space left on device »). Injecté via MTL_PREFIX_ARGS, ajouté
-***REMOVED*** tel quel à la ligne `meson build …` de build_dpdk.sh. ENV INLINE (scopé à cette commande
-***REMOVED*** seulement) : exporté globalement, il fuit dans le meson de build.sh (libmtl) qui n'a pas
-***REMOVED*** d'option `tests` → « Unknown options: tests ».
+# -Dtests=false : ne PAS construire les dpdk-test-* (binaires statiques énormes, inutiles à MTL
+# et qui saturaient le rootfs « No space left on device »). Injecté via MTL_PREFIX_ARGS, ajouté
+# tel quel à la ligne `meson build …` de build_dpdk.sh. ENV INLINE (scopé à cette commande
+# seulement) : exporté globalement, il fuit dans le meson de build.sh (libmtl) qui n'a pas
+# d'option `tests` → « Unknown options: tests ».
 MTL_PREFIX_ARGS="-Dtests=false" ./script/build_dpdk.sh -f
 echo '>>> build libmtl + apps (ld_preload/udp peut casser → ignoré)'
 ./build.sh || echo '>>> build.sh rc!=0 (probable ld_preload/udp) — on vérifie via pkg-config'
@@ -1697,16 +1697,16 @@ def redemarrer(host):
     """Redémarre l'host cible. À n'appeler que sur action utilisateur confirmée."""
     if not host:
         return False, "host non configuré"
-    ***REMOVED*** systemctl reboot coupe la session SSH → on ne lit pas la sortie, rc attendu non nul.
+    # systemctl reboot coupe la session SSH → on ne lit pas la sortie, rc attendu non nul.
     ssh_run(host, "systemctl reboot", timeout=10)
     return True, "redémarrage demandé"
 
 
-***REMOVED*** ─── Binaire mtl_rx (réception MTL) — build une fois, cache hôte, push (C3b) ──
+# ─── Binaire mtl_rx (réception MTL) — build une fois, cache hôte, push (C3b) ──
 
-MTL_RX_CACHE_DIR = "/var/lib/vz/mtl"          ***REMOVED*** cache du binaire prébuildé, par version
-MTL_RX_SRC       = "/opt/script/mtl_rx.c"     ***REMOVED*** source poussée dans le CT
-MTL_RX_BIN       = "/opt/script/mtl_rx"       ***REMOVED*** destination dans le CT
+MTL_RX_CACHE_DIR = "/var/lib/vz/mtl"          # cache du binaire prébuildé, par version
+MTL_RX_SRC       = "/opt/script/mtl_rx.c"     # source poussée dans le CT
+MTL_RX_BIN       = "/opt/script/mtl_rx"       # destination dans le CT
 _MTL_PKGCONFIG   = ("/usr/local/lib/x86_64-linux-gnu/pkgconfig:"
                     "/usr/local/lib/pkgconfig")
 
@@ -1734,7 +1734,7 @@ def ensure_mtl_rx_binary(host, vmid, version):
     cache = f"{MTL_RX_CACHE_DIR}/mtl_rx-{ver}"
     cache_q = shlex.quote(cache)
 
-    ***REMOVED*** 1) Cache présent → push direct.
+    # 1) Cache présent → push direct.
     rc, _, _ = ssh_run(host, f"test -s {cache_q}", timeout=10)
     if rc == 0:
         rc2, out, err = ssh_run(host, f"pct push {int(vmid)} {cache_q} {MTL_RX_BIN} && "
@@ -1743,7 +1743,7 @@ def ensure_mtl_rx_binary(host, vmid, version):
             return False, f"push cache: rc={rc2} {err.strip() or out.strip()}"
         return True, f"mtl_rx poussé (cache {ver})"
 
-    ***REMOVED*** 2) Pas de cache → pousser la source dans le CT via l'agent, builder, cacher, push.
+    # 2) Pas de cache → pousser la source dans le CT via l'agent, builder, cacher, push.
     ip = get_container_ip(vmid)
     if not ip:
         return False, f"IP container {vmid} introuvable"

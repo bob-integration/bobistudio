@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Allocateur de cœurs CPU par nœud (pinning Docker « compute »).
 
@@ -20,11 +20,11 @@ from .episodes import EtatEpisodes as _Episodes
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Sérialise lire-les-libres → insérer : sans verrou, deux déploiements concurrents lisaient le
-***REMOVED*** même ensemble libre et l'INSERT OR REPLACE (PK node_id,core) écrasait silencieusement la ligne
-***REMOVED*** du premier → deux conteneurs épinglés sur les MÊMES cœurs. Un seul processus orchestrateur
-***REMOVED*** écrit cette table → un lock in-process suffit ; l'INSERT strict (plus de OR REPLACE) sert de
-***REMOVED*** ceinture si un autre écrivain apparaissait (échec bruyant plutôt que clobber).
+# Sérialise lire-les-libres → insérer : sans verrou, deux déploiements concurrents lisaient le
+# même ensemble libre et l'INSERT OR REPLACE (PK node_id,core) écrasait silencieusement la ligne
+# du premier → deux conteneurs épinglés sur les MÊMES cœurs. Un seul processus orchestrateur
+# écrit cette table → un lock in-process suffit ; l'INSERT strict (plus de OR REPLACE) sert de
+# ceinture si un autre écrivain apparaissait (échec bruyant plutôt que clobber).
 _alloc_lock = threading.Lock()
 
 
@@ -88,7 +88,7 @@ def read_cpu_core_map(node):
     m = {}
     for ln in (out or "").splitlines():
         ln = ln.strip()
-        if not ln or ln.startswith("***REMOVED***"):
+        if not ln or ln.startswith("#"):
             continue
         p = ln.split(",")
         if len(p) >= 2 and p[0].isdigit() and p[1].isdigit():
@@ -120,7 +120,7 @@ def read_cpu_numa_map(node):
     m = {}
     for ln in (out or "").splitlines():
         ln = ln.strip()
-        if not ln or ln.startswith("***REMOVED***"):
+        if not ln or ln.startswith("#"):
             continue
         p = ln.split(",")
         if len(p) >= 2 and p[0].isdigit() and p[1].isdigit():
@@ -139,7 +139,7 @@ def read_gpu_numa_map(node):
     firmware muet) est EXCLU : il ne contraint rien."""
     from . import node_driver
     cmd = ("nvidia-smi --query-gpu=index,pci.bus_id --format=csv,noheader 2>/dev/null | tr -d ' ' | "
-           "while IFS=, read -r i b; do b=$(printf '%s' \"$b\" | tr 'A-Z' 'a-z'); b=${b***REMOVED***????}; "
+           "while IFS=, read -r i b; do b=$(printf '%s' \"$b\" | tr 'A-Z' 'a-z'); b=${b#????}; "
            "echo \"$i:$(cat /sys/bus/pci/devices/$b/numa_node 2>/dev/null || echo -1)\"; done")
     try:
         rc, out, _ = node_driver.host_exec(node, cmd, timeout=15)
@@ -244,10 +244,10 @@ def engine_service_cpus(n_cpus=None, core_of=None):
     """
     base, cap, svc = _reglages_moteur()
     hi = base + cap + 1 + (svc - 1)
-    cpus = set(range(base + cap, hi + 1))                        ***REMOVED*** les (svc+1) derniers
+    cpus = set(range(base + cap, hi + 1))                        # les (svc+1) derniers
     if core_of:
         phys = {core_of[c] for c in cpus if c in core_of}
-        cpus |= {c for c, k in core_of.items() if k in phys}     ***REMOVED*** + jumeaux HT
+        cpus |= {c for c, k in core_of.items() if k in phys}     # + jumeaux HT
     if n_cpus:
         cpus = {c for c in cpus if 0 <= c < int(n_cpus)}
     return cpus
@@ -275,11 +275,11 @@ def engine_cpu_footprint(n_cpus=None, core_of=None):
     Renvoie `(cpus:set[int], ht_aware:bool)`. `ht_aware=False` = carte de topologie absente →
     modèle plat : l'appelant DOIT le signaler (repli muet = échec silencieux)."""
     base, cap, svc = _reglages_moteur()
-    extra = svc - 1                                              ***REMOVED*** 0 si réglage par défaut (1)
+    extra = svc - 1                                              # 0 si réglage par défaut (1)
     hi = base + cap + 1 + extra
-    ***REMOVED*** 0 inclus : MTL préfixe TOUJOURS son main_lcore (=0) à la liste EAL, et le cpuset Docker du
-    ***REMOVED*** moteur le contient (docker_driver). En dessous de `base` (réglage inhabituel) les cœurs sont
-    ***REMOVED*** comptés dans l'empreinte comme le faisait déjà le modèle plat historique.
+    # 0 inclus : MTL préfixe TOUJOURS son main_lcore (=0) à la liste EAL, et le cpuset Docker du
+    # moteur le contient (docker_driver). En dessous de `base` (réglage inhabituel) les cœurs sont
+    # comptés dans l'empreinte comme le faisait déjà le modèle plat historique.
     cpus = set(range(0, hi + 1))
     ht_aware = False
     if core_of:
@@ -331,10 +331,10 @@ def pool_par_defaut(node, n_cpus, core_of=None, isoles=None):
     if not n_cpus:
         return ""
     iso = set(isoles if isoles is not None else (read_isolated_cpus(node) or set()))
-    ***REMOVED*** CPU 0 EXCLU : c'est le cœur de service du noyau (timers, IRQ non dirigées, tâches
-    ***REMOVED*** housekeeping). Y clouer un conteneur média, c'est le mettre en concurrence avec le système
-    ***REMOVED*** sur le seul cœur qu'on ne peut pas décharger. Le premier essai sur dl-380 a attribué
-    ***REMOVED*** exactement celui-là, faute de l'avoir exclu (2026-08-02).
+    # CPU 0 EXCLU : c'est le cœur de service du noyau (timers, IRQ non dirigées, tâches
+    # housekeeping). Y clouer un conteneur média, c'est le mettre en concurrence avec le système
+    # sur le seul cœur qu'on ne peut pas décharger. Le premier essai sur dl-380 a attribué
+    # exactement celui-là, faute de l'avoir exclu (2026-08-02).
     iso.add(0)
     pool = [c for c in range(int(n_cpus)) if c not in iso]
     return fmt_cpuset(sorted(pool)) if pool else ""
@@ -350,14 +350,14 @@ def ensure_compute_cpuset(node_id, n_cpus, core_of=None):
         return ""
     cur = (node.get("compute_cpuset") or "").strip()
     if cur:
-        return cur                                 ***REMOVED*** déjà défini (auto ou manuel) → ne pas écraser
+        return cur                                 # déjà défini (auto ou manuel) → ne pas écraser
     cpuset = pool_par_defaut(node, n_cpus, core_of=core_of)
     if not cpuset:
         return ""
     from .database import db_update_node, db_set_node_setting
     db_update_node(node_id, compute_cpuset=cpuset)
-    ***REMOVED*** Mémorise la valeur AUTO-dérivée. Elle permet plus tard de savoir si le pool courant est encore
-    ***REMOVED*** celui qu'on a calculé (donc re-dérivable) ou s'il a été retouché par un opérateur (intouchable).
+    # Mémorise la valeur AUTO-dérivée. Elle permet plus tard de savoir si le pool courant est encore
+    # celui qu'on a calculé (donc re-dérivable) ou s'il a été retouché par un opérateur (intouchable).
     try:
         db_set_node_setting(node_id, "compute_cpuset_auto", cpuset)
     except Exception as e:
@@ -386,7 +386,7 @@ def rederiver_si_auto(node_id, n_cpus, core_of=None):
     cur = (node.get("compute_cpuset") or "").strip()
     memo = (db_get_node_setting(node_id, "compute_cpuset_auto", "") or "").strip()
     if cur and cur != memo:
-        return cur                                  ***REMOVED*** réglage opérateur → intouchable
+        return cur                                  # réglage opérateur → intouchable
     neuf = pool_par_defaut(node, n_cpus, core_of=core_of)
     if not neuf or neuf == cur:
         return cur
@@ -446,12 +446,12 @@ def _choisir_numa(free, n, numa_of, prefer_numa, prio=None, poids=None):
 
     if prefer_numa is not None and len(par_numa_prio.get(prefer_numa, ())) >= n:
         return _prendre(prefer_numa), ""
-    ***REMOVED*** Le socket visé n'a plus de cœur PHYSIQUE libre : un autre socket qui, lui, en a, est
-    ***REMOVED*** préférable — sinon on paie la contention HT en plus de rien gagner.
+    # Le socket visé n'a plus de cœur PHYSIQUE libre : un autre socket qui, lui, en a, est
+    # préférable — sinon on paie la contention HT en plus de rien gagner.
     candidats = sorted((nd for nd, cs in par_numa_prio.items() if len(cs) >= n),
                        key=lambda nd: (-len(par_numa_prio[nd]), nd))
     if not candidats and prefer_numa is not None and len(par_numa.get(prefer_numa, ())) >= n:
-        return _prendre(prefer_numa), ""      ***REMOVED*** plus rien de physique nulle part → au moins local
+        return _prendre(prefer_numa), ""      # plus rien de physique nulle part → au moins local
     if not candidats:
         candidats = sorted((nd for nd, cs in par_numa.items() if len(cs) >= n),
                            key=lambda nd: (-len(par_numa[nd]), nd))
@@ -494,11 +494,11 @@ def _score_placement(cores, numa_of, prefer_numa):
     Sert à ne RE-placer un conteneur que si c'est STRICTEMENT mieux — un cpuset qui change sans
     gain est du churn : il recrée le conteneur pour rien."""
     if not numa_of or not cores:
-        return 0                     ***REMOVED*** topologie inconnue : aucun jugement possible → ne rien bouger
+        return 0                     # topologie inconnue : aucun jugement possible → ne rien bouger
     nds = {numa_of.get(c) for c in cores}
     entier = len(nds) == 1 and None not in nds
     if prefer_numa is None:
-        ***REMOVED*** Sans socket visé, seule la cohérence se juge (mêmes rangs relatifs qu'avant).
+        # Sans socket visé, seule la cohérence se juge (mêmes rangs relatifs qu'avant).
         return 0 if entier else 3
     touche = prefer_numa in nds
     if entier:
@@ -567,7 +567,7 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
                         try:
                             from .metrics import own_latency_cache as _olc
                             return float(_olc.get(vv) or 10.0)
-                        except Exception:                                  ***REMOVED*** noqa: BLE001
+                        except Exception:                                  # noqa: BLE001
                             return 10.0
                 return 0
 
@@ -582,25 +582,25 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
 
             mine = sorted(c for c, v in alloc.items() if v == vmid)
             if mine:
-                ***REMOVED*** IDEMPOTENCE, mais PAS AVEUGLE. Recopier l'allocation existante sans la regarder
-                ***REMOVED*** FIGE une erreur pour toujours : un conteneur épinglé du mauvais côté du bus par une
-                ***REMOVED*** version antérieure (ou avant que son GPU ne change de socket) la garde à TOUS ses
-                ***REMOVED*** redéploiements — c'est ce qui a maintenu le mur `multiview-vision` d'Horace à 30 fps
-                ***REMOVED*** pour 50 (cf. mémoire numa-blind-core-pool-halves-gpu-walls). Le (re)déploiement est
-                ***REMOVED*** le SEUL moment où le placement peut être revu (le conteneur est recréé de toute
-                ***REMOVED*** façon) ; on ne déplace donc JAMAIS un conteneur en cours de route, mais on ne
-                ***REMOVED*** reconduit pas non plus un placement incohérent sans l'examiner.
+                # IDEMPOTENCE, mais PAS AVEUGLE. Recopier l'allocation existante sans la regarder
+                # FIGE une erreur pour toujours : un conteneur épinglé du mauvais côté du bus par une
+                # version antérieure (ou avant que son GPU ne change de socket) la garde à TOUS ses
+                # redéploiements — c'est ce qui a maintenu le mur `multiview-vision` d'Horace à 30 fps
+                # pour 50 (cf. mémoire numa-blind-core-pool-halves-gpu-walls). Le (re)déploiement est
+                # le SEUL moment où le placement peut être revu (le conteneur est recréé de toute
+                # façon) ; on ne déplace donc JAMAIS un conteneur en cours de route, mais on ne
+                # reconduit pas non plus un placement incohérent sans l'examiner.
                 score_actuel = _score_placement(mine, numa_of, prefer_numa)
                 if score_actuel == 0 or len(mine) != n:
-                    return fmt_cpuset(mine)      ***REMOVED*** déjà optimal, ou resize géré en amont → statu quo
-                ***REMOVED*** Les cœurs qu'on rendrait redeviennent candidats : le meilleur placement possible
-                ***REMOVED*** s'évalue sur (libres + les miens).
+                    return fmt_cpuset(mine)      # déjà optimal, ou resize géré en amont → statu quo
+                # Les cœurs qu'on rendrait redeviennent candidats : le meilleur placement possible
+                # s'évalue sur (libres + les miens).
                 cand = sorted((pool - set(alloc)) | set(mine))
                 mieux, _m = _choisir_numa(cand, n, numa_of, prefer_numa,
                                           prio=_phys_libres(cand), poids=_poids)
                 score_mieux = _score_placement(mieux, numa_of, prefer_numa)
                 if score_mieux >= score_actuel:
-                    return fmt_cpuset(mine)      ***REMOVED*** rien de strictement mieux → aucun churn
+                    return fmt_cpuset(mine)      # rien de strictement mieux → aucun churn
                 db.execute("DELETE FROM node_core_alloc WHERE vmid=?", (vmid,))
                 db.executemany("INSERT INTO node_core_alloc (node_id, core, vmid) VALUES (?,?,?)",
                                [(node_id, c, vmid) for c in mieux])
@@ -631,8 +631,8 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
                 db.executemany("INSERT INTO node_core_alloc (node_id, core, vmid) VALUES (?,?,?)",
                                [(node_id, c, vmid) for c in pick])
             except sqlite3.IntegrityError:
-                ***REMOVED*** Écrivain concurrent inattendu (hors process) : ne JAMAIS écraser une allocation
-                ***REMOVED*** existante — repli quota CPU, l'opérateur voit l'alerte.
+                # Écrivain concurrent inattendu (hors process) : ne JAMAIS écraser une allocation
+                # existante — repli quota CPU, l'opérateur voit l'alerte.
                 db_add_alert("alert.resource.pinning_collision", "warning",
                              node_id=node_id, vmid=vmid, kind="resource",
                              params={"node_id": node_id, "vmid": vmid})
@@ -665,29 +665,29 @@ def effective_cpuset(node_id, vmid, n=0, prefer_numa=None):
                     "cpuset (risque de contention avec un moteur 2110 co-localisé)", node_id, vmid)
         return "", False
 
-    ***REMOVED*** ★ Le pool de repli EXCLUT les cœurs DÉDIÉS à d'AUTRES conteneurs (node_core_alloc). Sinon le
-    ***REMOVED*** repli « partagé » s'installe sur des cœurs réservés en EXCLUSIVITÉ et les dispute à leur
-    ***REMOVED*** propriétaire — constaté sur Horace le 2026-07-14 : le streamer 171 (sans allocation dédiée,
-    ***REMOVED*** donc replié sur TOUT le pool 19-47,67-95) brûlait 107 % de CPU sur les cœurs 19-21 dédiés au
-    ***REMOVED*** mur 333, qui chutait alors sous 50 fps ~20 % du temps. « Dédié » doit vouloir dire dédié.
+    # ★ Le pool de repli EXCLUT les cœurs DÉDIÉS à d'AUTRES conteneurs (node_core_alloc). Sinon le
+    # repli « partagé » s'installe sur des cœurs réservés en EXCLUSIVITÉ et les dispute à leur
+    # propriétaire — constaté sur Horace le 2026-07-14 : le streamer 171 (sans allocation dédiée,
+    # donc replié sur TOUT le pool 19-47,67-95) brûlait 107 % de CPU sur les cœurs 19-21 dédiés au
+    # mur 333, qui chutait alors sous 50 fps ~20 % du temps. « Dédié » doit vouloir dire dédié.
     with get_db() as db:
         pris = {c for c, owner in _allocated(db, node_id).items() if owner != vmid}
         proprios = {owner for c, owner in _allocated(db, node_id).items()
                     if owner != vmid and c in parse_cpuset(pool)}
     libres = [c for c in parse_cpuset(pool) if c not in pris]
     if not libres:
-        ***REMOVED*** Tous les cœurs du pool sont réservés : mieux vaut partager le pool entier (dégradé, mais
-        ***REMOVED*** borné hors des lcores du moteur) que de créer un conteneur SANS cpuset, libre de flotter
-        ***REMOVED*** sur les cœurs busy-poll du moteur 2110. ⚠ Ce n'est PAS un détail de log : on installe un
-        ***REMOVED*** conteneur PAR-DESSUS des cœurs réservés en exclusivité à d'autres → alerte NOMMANT les
-        ***REMOVED*** propriétaires (anti-patron de l'échec silencieux), et REFUS pur et simple si l'exploitant
-        ***REMOVED*** a activé `compute_refuse_oversubscribed`.
+        # Tous les cœurs du pool sont réservés : mieux vaut partager le pool entier (dégradé, mais
+        # borné hors des lcores du moteur) que de créer un conteneur SANS cpuset, libre de flotter
+        # sur les cœurs busy-poll du moteur 2110. ⚠ Ce n'est PAS un détail de log : on installe un
+        # conteneur PAR-DESSUS des cœurs réservés en exclusivité à d'autres → alerte NOMMANT les
+        # propriétaires (anti-patron de l'échec silencieux), et REFUS pur et simple si l'exploitant
+        # a activé `compute_refuse_oversubscribed`.
         log.warning("core_pool: pool partagé du nœud %s ENTIÈREMENT dédié (vmid=%s) — repli sur le "
                     "pool complet %s : contention avec les propriétaires", node_id, vmid, pool)
-        ***REMOVED*** `msg` reste le texte FR historique : repris tel quel par `raise PoolSature(msg)`, dont
-        ***REMOVED*** `docker_compute.py` relaie ensuite `str(e)` en paramètre `e` d'une alerte propre (piège des
-        ***REMOVED*** données réutilisées ailleurs — cf. alert.deploy.compute.pool_sature). Les DEUX alertes émises
-        ***REMOVED*** ICI, elles, ont chacune leur clé i18n : seul `msg` (la donnée qui fuit vers l'exception) ne bouge pas.
+        # `msg` reste le texte FR historique : repris tel quel par `raise PoolSature(msg)`, dont
+        # `docker_compute.py` relaie ensuite `str(e)` en paramètre `e` d'une alerte propre (piège des
+        # données réutilisées ailleurs — cf. alert.deploy.compute.pool_sature). Les DEUX alertes émises
+        # ICI, elles, ont chacune leur clé i18n : seul `msg` (la donnée qui fuit vers l'exception) ne bouge pas.
         msg = (f"Nœud {(node or {}).get('name', node_id)} : le pool de calcul {pool} est "
                f"ENTIÈREMENT dédié à {_noms_vmids(proprios)} — {_noms_vmids([vmid])} y est déployé "
                f"PAR-DESSUS (cœurs partagés de force). Aucun des deux n'a la garantie de tenir sa "
@@ -703,9 +703,9 @@ def effective_cpuset(node_id, vmid, n=0, prefer_numa=None):
                           cle="alert.resource.pinning_sature_partage", params=_p_sature)
         return pool, False
 
-    ***REMOVED*** Le repli partagé est non-exclusif, mais il n'a AUCUNE raison de s'étaler sur les deux sockets :
-    ***REMOVED*** on le borne au nœud NUMA visé (celui du GPU) dès qu'il y reste de la place. Garde-fou : si le
-    ***REMOVED*** sous-ensemble local est vide, on garde le pool complet (mieux vaut partagé et distant que rien).
+    # Le repli partagé est non-exclusif, mais il n'a AUCUNE raison de s'étaler sur les deux sockets :
+    # on le borne au nœud NUMA visé (celui du GPU) dès qu'il y reste de la place. Garde-fou : si le
+    # sous-ensemble local est vide, on garde le pool complet (mieux vaut partagé et distant que rien).
     if prefer_numa is not None:
         numa_of = numa_map_cached(node_id)
         locaux = [c for c in libres if numa_of.get(c) == prefer_numa]
@@ -744,7 +744,7 @@ def read_nic_numa_map(node):
         ifs = []
     if not ifs:
         return {}
-    ***REMOVED*** Un seul exec pour toutes les interfaces déclarées (l'ifname reste la clé de sortie).
+    # Un seul exec pour toutes les interfaces déclarées (l'ifname reste la clé de sortie).
     cmd = "; ".join(
         "echo \"%s:$(cat /sys/bus/pci/devices/%s/numa_node 2>/dev/null || echo -1)\""
         % (nm, pci) for nm, pci in ifs)
@@ -805,10 +805,10 @@ def capacite_par_socket(node_id):
         alloc = _allocated(db, node_id)
     gpus = gpu_numa_cached(node_id)
     nics = nic_numa_cached(node_id)
-    ***REMOVED*** RÔLE des interfaces (table node_interfaces) : compter « les ports réseau » d'un socket ne veut
-    ***REMOVED*** rien dire — sur un serveur il y a la management, l'iLO, le RDMA et la carte 2110, et un « 11 »
-    ***REMOVED*** brut se lit même comme un nombre de flux. Seules les cartes du CHEMIN MÉDIA déterminent le
-    ***REMOVED*** placement : on ne montre que celles-là, NOMMÉES par leur rôle.
+    # RÔLE des interfaces (table node_interfaces) : compter « les ports réseau » d'un socket ne veut
+    # rien dire — sur un serveur il y a la management, l'iLO, le RDMA et la carte 2110, et un « 11 »
+    # brut se lit même comme un nombre de flux. Seules les cartes du CHEMIN MÉDIA déterminent le
+    # placement : on ne montre que celles-là, NOMMÉES par leur rôle.
     roles = {}
     try:
         from .database import db_get_node_interfaces
@@ -838,13 +838,13 @@ def capacite_par_socket(node_id):
             "physical": phys,
             "physical_dedicated": phys_ded,
             "physical_free": max(0, phys - phys_ded),
-            ***REMOVED*** Périphériques ANCRÉS sur ce socket : c'est ce qui rend la tuile actionnable
-            ***REMOVED*** (« la place restante est du côté sans GPU » se lit d'un coup d'œil).
+            # Périphériques ANCRÉS sur ce socket : c'est ce qui rend la tuile actionnable
+            # (« la place restante est du côté sans GPU » se lit d'un coup d'œil).
             "gpus": sorted(i for i, n in gpus.items() if n == nd),
-            ***REMOVED*** Cartes du CHEMIN MÉDIA ancrées sur ce socket, par rôle. `media2110` = la carte qui
-            ***REMOVED*** porte les flux ST 2110 (c'est ELLE qui écrit les shm RX, donc elle décide où vit la
-            ***REMOVED*** donnée) ; `rdma` = la réplication inter-nœuds. Le reste (management, iLO) n'influe pas
-            ***REMOVED*** sur le placement et n'a rien à faire ici.
+            # Cartes du CHEMIN MÉDIA ancrées sur ce socket, par rôle. `media2110` = la carte qui
+            # porte les flux ST 2110 (c'est ELLE qui écrit les shm RX, donc elle décide où vit la
+            # donnée) ; `rdma` = la réplication inter-nœuds. Le reste (management, iLO) n'influe pas
+            # sur le placement et n'a rien à faire ici.
             "nics_media": sorted(nm for nm, n in nics.items()
                                  if n == nd and roles.get(nm) == "media2110"),
             "nics_rdma": sorted(nm for nm, n in nics.items()
@@ -868,10 +868,10 @@ def diagnostic_placement(node_id, vmid, pinned_cores):
     à n'appeler QU'AU MOMENT D'ALERTER, jamais sur le chemin chaud des métriques."""
     cores = sorted(parse_cpuset(pinned_cores))
     if not cores:
-        return None                      ***REMOVED*** pas de pinning dédié : ce n'est pas un défaut de placement
+        return None                      # pas de pinning dédié : ce n'est pas un défaut de placement
     numa_of = numa_map_cached(node_id)
     if not numa_of:
-        return None                      ***REMOVED*** topologie illisible : on n'invente pas de cause
+        return None                      # topologie illisible : on n'invente pas de cause
     nds = {numa_of.get(c) for c in cores}
     if len(nds) > 1 or None in nds:
         _cores = fmt_cpuset(cores)
@@ -892,7 +892,7 @@ def diagnostic_placement(node_id, vmid, pinned_cores):
         log.debug("diagnostic_placement(%s,%s) gpu: %s", node_id, vmid, e)
         return None
     if row is None:
-        return None                      ***REMOVED*** pas de GPU : rien à confronter
+        return None                      # pas de GPU : rien à confronter
     numa_gpu = gpu_numa_cached(node_id).get(int(row["gpu_index"]))
     if numa_gpu is None or numa_gpu == numa_coeurs:
         return None
@@ -907,8 +907,8 @@ def diagnostic_placement(node_id, vmid, pinned_cores):
     }
 
 
-***REMOVED*** État de sur-souscription par nœud (alerte à la TRANSITION, pas de spam). Le cache RAM sert le
-***REMOVED*** chemin chaud ; `_episodes` le SURVIT au redémarrage de l'orchestrateur (cf. app/episodes.py).
+# État de sur-souscription par nœud (alerte à la TRANSITION, pas de spam). Le cache RAM sert le
+# chemin chaud ; `_episodes` le SURVIT au redémarrage de l'orchestrateur (cf. app/episodes.py).
 _oversub_etat = {}
 _episodes = _Episodes("core_pool")
 
@@ -926,16 +926,16 @@ def verifier_capacite(node_id):
     over = bool(cap.get("oversub"))
     prev = _oversub_etat.get(node_id)
     if prev is None:
-        ***REMOVED*** Reprise après (re)démarrage : l'état vit en RAM, mais un pool sur-souscrit ne se répare
-        ***REMOVED*** pas parce que l'orchestrateur redémarre. Sans cette relecture, chaque redémarrage
-        ***REMOVED*** ré-annonçait la MÊME sur-souscription (26 fois le 2026-07-26). Cf. app/episodes.py.
+        # Reprise après (re)démarrage : l'état vit en RAM, mais un pool sur-souscrit ne se répare
+        # pas parce que l'orchestrateur redémarre. Sans cette relecture, chaque redémarrage
+        # ré-annonçait la MÊME sur-souscription (26 fois le 2026-07-26). Cf. app/episodes.py.
         prev = _episodes.get(node_id)
     if over == prev:
         return
     _oversub_etat[node_id] = over
     _episodes.poser(node_id, over)
     if prev is None and not over:
-        return          ***REMOVED*** 1ʳᵉ observation d'un nœud SAIN : rien à annoncer (pas de « retour » au boot)
+        return          # 1ʳᵉ observation d'un nœud SAIN : rien à annoncer (pas de « retour » au boot)
     nom = node.get("name") or node_id
     if over:
         db_add_alert(
@@ -961,7 +961,7 @@ def _strict_pool():
     return str(v).strip().lower() in ("1", "true", "on", "oui", "yes")
 
 
-***REMOVED*** Anti-spam des alertes de pression du pool : (node_id, motif) → monotone du dernier envoi.
+# Anti-spam des alertes de pression du pool : (node_id, motif) → monotone du dernier envoi.
 _ALERTE_THROTTLE_S = 300.0
 _alerte_last = {}
 
@@ -1013,15 +1013,15 @@ def _exclure_du_pool(node, cores, core_of=None):
     interdits = set(int(c) for c in cores)
     if core_of:
         phys = {core_of.get(c) for c in interdits if c in core_of}
-        interdits |= {c for c in pool if core_of.get(c) in phys}   ***REMOVED*** siblings HT des cœurs moteur
+        interdits |= {c for c in pool if core_of.get(c) in phys}   # siblings HT des cœurs moteur
     retires = sorted(pool & interdits)
     if not retires:
         return []
     reste = sorted(pool - interdits)
     nom = (node or {}).get("name") or (node or {}).get("id")
     if not reste:
-        ***REMOVED*** Le pool disparaîtrait ENTIÈREMENT : ne rien écrire (un compute_cpuset vide = conteneurs
-        ***REMOVED*** SANS cpuset, libres de flotter sur les lcores → pire que le chevauchement). On alerte, fort.
+        # Le pool disparaîtrait ENTIÈREMENT : ne rien écrire (un compute_cpuset vide = conteneurs
+        # SANS cpuset, libres de flotter sur les lcores → pire que le chevauchement). On alerte, fort.
         db_add_alert("alert.resource.pool_moteur_couvre_tout_ht" if core_of
                      else "alert.resource.pool_moteur_couvre_tout",
                      "error", node_id=node.get("id"), kind="resource",
@@ -1071,18 +1071,18 @@ def reserve_engine_cores(node_id, vmid, cores, core_of=None):
                                [(node_id, c) for lst in victimes.values() for c in lst])
             db.executemany("INSERT INTO node_core_alloc (node_id, core, vmid) VALUES (?,?,?)",
                            [(node_id, c, vmid) for c in cores])
-    ***REMOVED*** Alertes + rétrécissement du pool HORS transaction (db_add_alert ouvre sa propre connexion).
+    # Alertes + rétrécissement du pool HORS transaction (db_add_alert ouvre sa propre connexion).
     if victimes:
-        ***REMOVED*** `detail` : noms + cpuset des victimes (identifiants, pas des phrases explicatives) — un
-        ***REMOVED*** paramètre unique, sur le modèle mixer 0.22.1.
+        # `detail` : noms + cpuset des victimes (identifiants, pas des phrases explicatives) — un
+        # paramètre unique, sur le modèle mixer 0.22.1.
         detail = " ; ".join(f"{_noms_vmids([v])} sur {fmt_cpuset(cs)}"
                             for v, cs in sorted(victimes.items()))
         db_add_alert("alert.resource.moteur_empiete", "error", node_id=node_id, vmid=vmid,
                      kind="resource",
                      params={"n": node.get("name", node_id), "vmid": vmid,
                              "cores": fmt_cpuset(cores), "detail": detail})
-    ***REMOVED*** Siblings HT du moteur occupés par d'autres (contention invisible : numéros de CPU disjoints,
-    ***REMOVED*** mêmes unités d'exécution) — signalé, mais pas évincé (ce n'est pas le même CPU logique).
+    # Siblings HT du moteur occupés par d'autres (contention invisible : numéros de CPU disjoints,
+    # mêmes unités d'exécution) — signalé, mais pas évincé (ce n'est pas le même CPU logique).
     if core_of:
         phys = {core_of.get(c) for c in cores if c in core_of}
         with get_db() as db:
@@ -1160,18 +1160,18 @@ def cores_status(node_id):
     return out
 
 
-***REMOVED*** Carte {cpu_logique: cœur_physique} par nœud — invariante à chaud (topologie matérielle) → cachée
-***REMOVED*** en RAM : `capacite` est appelée à chaque rafraîchissement de la page Nœuds (5 s), pas question de
-***REMOVED*** faire un host_exec `lscpu` à chaque fois.
+# Carte {cpu_logique: cœur_physique} par nœud — invariante à chaud (topologie matérielle) → cachée
+# en RAM : `capacite` est appelée à chaque rafraîchissement de la page Nœuds (5 s), pas question de
+# faire un host_exec `lscpu` à chaque fois.
 _core_map_cache = {}
 
 
-***REMOVED*** Cache NÉGATIF, même raison et même patron que `_numa_map_echec` plus bas : sans lui, un nœud
-***REMOVED*** injoignable faisait attendre le timeout du host_exec (2,8 s mesurées) À CHAQUE appel. Or
-***REMOVED*** `/api/nodes` appelle `cores_status` pour chaque nœud et la page Monitoring le poll toutes les
-***REMOVED*** 5 s : la carte HT à elle seule pesait 2,8 des 12 s de la requête (mesuré 2026-08-19). La
-***REMOVED*** topologie est du matériel : rien ne presse, et un nœud qui revient est repris au plus tard 60 s
-***REMOVED*** après. C'est exactement ce que fait déjà la carte NUMA — la carte HT avait simplement été oubliée.
+# Cache NÉGATIF, même raison et même patron que `_numa_map_echec` plus bas : sans lui, un nœud
+# injoignable faisait attendre le timeout du host_exec (2,8 s mesurées) À CHAQUE appel. Or
+# `/api/nodes` appelle `cores_status` pour chaque nœud et la page Monitoring le poll toutes les
+# 5 s : la carte HT à elle seule pesait 2,8 des 12 s de la requête (mesuré 2026-08-19). La
+# topologie est du matériel : rien ne presse, et un nœud qui revient est repris au plus tard 60 s
+# après. C'est exactement ce que fait déjà la carte NUMA — la carte HT avait simplement été oubliée.
 _core_map_echec = {}
 _CORE_MAP_RETRY_S = 60.0
 
@@ -1182,30 +1182,30 @@ def core_map_cached(node_id):
     if _core_map_cache.get(nid):
         return _core_map_cache[nid]
     if _t.time() - _core_map_echec.get(nid, 0.0) < _CORE_MAP_RETRY_S:
-        return {}                    ***REMOVED*** échec récent : on ne retente pas (et on ne bloque pas l'UI)
+        return {}                    # échec récent : on ne retente pas (et on ne bloque pas l'UI)
     try:
         m = read_cpu_core_map(db_get_node(node_id)) or {}
     except Exception as e:
         log.debug("core_map_cached(%s): %s", node_id, e)
         m = {}
     if m:
-        _core_map_cache[nid] = m     ***REMOVED*** topologie matérielle : invariante → cachée à vie
+        _core_map_cache[nid] = m     # topologie matérielle : invariante → cachée à vie
         _core_map_echec.pop(nid, None)
     else:
         _core_map_echec[nid] = _t.time()
     return m
 
 
-***REMOVED*** Topologies NUMA (CPU et GPU) par nœud — invariantes à chaud, mêmes règles de cache que la carte
-***REMOVED*** HT ci-dessus : cachées seulement en cas de succès (un nœud down doit être retenté).
+# Topologies NUMA (CPU et GPU) par nœud — invariantes à chaud, mêmes règles de cache que la carte
+# HT ci-dessus : cachées seulement en cas de succès (un nœud down doit être retenté).
 _numa_map_cache = {}
 _gpu_numa_cache = {}
 
 
-***REMOVED*** Cache NÉGATIF : un nœud injoignable fait échouer le host_exec au bout de son timeout (10 s). Sans
-***REMOVED*** ça, la page Monitoring — qui appelle `capacite_par_socket` à chaque affichage — attendrait ce
-***REMOVED*** timeout À CHAQUE FOIS. On ne retente donc qu'une fois par minute. La topologie est du matériel :
-***REMOVED*** rien ne presse, et un nœud qui revient est repris au plus tard 60 s après.
+# Cache NÉGATIF : un nœud injoignable fait échouer le host_exec au bout de son timeout (10 s). Sans
+# ça, la page Monitoring — qui appelle `capacite_par_socket` à chaque affichage — attendrait ce
+# timeout À CHAQUE FOIS. On ne retente donc qu'une fois par minute. La topologie est du matériel :
+# rien ne presse, et un nœud qui revient est repris au plus tard 60 s après.
 _numa_map_echec = {}
 _NUMA_RETRY_S = 60.0
 
@@ -1217,7 +1217,7 @@ def numa_map_cached(node_id):
     if _numa_map_cache.get(nid):
         return _numa_map_cache[nid]
     if _t.time() - _numa_map_echec.get(nid, 0.0) < _NUMA_RETRY_S:
-        return {}                       ***REMOVED*** échec récent : on ne retente pas (et on ne bloque pas l'UI)
+        return {}                       # échec récent : on ne retente pas (et on ne bloque pas l'UI)
     try:
         m = read_cpu_numa_map(db_get_node(node_id)) or {}
     except Exception as e:
@@ -1231,12 +1231,12 @@ def numa_map_cached(node_id):
     return m
 
 
-***REMOVED*** Bande isolée par nœud. ⚠ Contrairement aux cartes HT/NUMA ci-dessus, elle N'EST PAS invariante à
-***REMOVED*** vie : elle change au REBOOT du nœud (nouveau cmdline appliqué), et l'orchestrateur survit aux
-***REMOVED*** reboots de ses nœuds. Un cache à vie ferait juger la flotte sur une bande périmée — exactement la
-***REMOVED*** classe d'erreur que ce chantier combat. TTL court, et un set VIDE est un RÉSULTAT VALIDE (nœud sans
-***REMOVED*** isolation) qu'il faut donc cacher aussi : d'où le sentinel None pour « illisible ».
-_isolated_cache = {}          ***REMOVED*** node_id → (monotone, set|None)
+# Bande isolée par nœud. ⚠ Contrairement aux cartes HT/NUMA ci-dessus, elle N'EST PAS invariante à
+# vie : elle change au REBOOT du nœud (nouveau cmdline appliqué), et l'orchestrateur survit aux
+# reboots de ses nœuds. Un cache à vie ferait juger la flotte sur une bande périmée — exactement la
+# classe d'erreur que ce chantier combat. TTL court, et un set VIDE est un RÉSULTAT VALIDE (nœud sans
+# isolation) qu'il faut donc cacher aussi : d'où le sentinel None pour « illisible ».
+_isolated_cache = {}          # node_id → (monotone, set|None)
 _ISOLATED_TTL_S = 120.0
 
 
@@ -1280,7 +1280,7 @@ def numa_of_gpu(node_id, gpu_sel):
         return None
     idx = str(gpu_sel).split("=", 1)[-1].strip()
     if not idx.isdigit():
-        return None                  ***REMOVED*** "all" / sélecteur par UUID : aucune préférence dérivable
+        return None                  # "all" / sélecteur par UUID : aucune préférence dérivable
     return gpu_numa_cached(node_id).get(int(idx))
 
 
@@ -1310,12 +1310,12 @@ def numa_of_media_nic(node_id):
     return nds.pop() if len(nds) == 1 else None
 
 
-***REMOVED*** Types SANS GPU dont les entrées sont les flux RX 2110 lus en PLEINE résolution : leur cpuset doit
-***REMOVED*** viser le socket de la carte média. La pyramide est le cas d'école — c'est même toute sa raison
-***REMOVED*** d'être : lire une fois, près de la carte, et ne publier que des proxies réduits (mesuré sur ce
-***REMOVED*** parc : 12 lectures pleines pour 4 sources distinctes, soit ×3 de déduplication en plus du ×16 du
-***REMOVED*** downscale). Posée du mauvais côté du bus, elle ne sert À RIEN : elle déplacerait à travers l'UPI
-***REMOVED*** exactement ce qu'elle est censée y éviter.
+# Types SANS GPU dont les entrées sont les flux RX 2110 lus en PLEINE résolution : leur cpuset doit
+# viser le socket de la carte média. La pyramide est le cas d'école — c'est même toute sa raison
+# d'être : lire une fois, près de la carte, et ne publier que des proxies réduits (mesuré sur ce
+# parc : 12 lectures pleines pour 4 sources distinctes, soit ×3 de déduplication en plus du ×16 du
+# downscale). Posée du mauvais côté du bus, elle ne sert À RIEN : elle déplacerait à travers l'UPI
+# exactement ce qu'elle est censée y éviter.
 PREFERE_SOCKET_MEDIA = ("pyramide",)
 
 
@@ -1394,7 +1394,7 @@ def capacite(node_id):
     def _phys(cores):
         if core_of:
             return {core_of[c] for c in cores if c in core_of}
-        return set(cores)                                   ***REMOVED*** pas de carte → 1 logique = 1 « cœur »
+        return set(cores)                                   # pas de carte → 1 logique = 1 « cœur »
     with get_db() as db:
         alloc = _allocated(db, node_id)
     dedies = {c for c in alloc if c in pool}
@@ -1410,9 +1410,9 @@ def capacite(node_id):
             if c.get("node_id") != node_id or c.get("status") != "running":
                 continue
             if not is_compute_container(c):
-                continue                                    ***REMOVED*** moteur 2110 : hors pool compute
+                continue                                    # moteur 2110 : hors pool compute
             if c.get("vmid") in vmids_dedies:
-                continue                                    ***REMOVED*** pinning dédié → pas sur le pool partagé
+                continue                                    # pinning dédié → pas sur le pool partagé
             shared += 1
     except Exception as e:
         log.debug("capacite(%s) conteneurs: %s", node_id, e)

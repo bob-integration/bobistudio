@@ -1,4 +1,4 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Aller-retour d'index audio MXL : ce qu'on ÉCRIT à l'index k se relit-il à l'index k ?
 
 L'API C prend un index ONE-PAST-THE-END ([index - count, index)) alors que notre binding expose
@@ -33,7 +33,7 @@ import numpy as np
 
 import bobimxl
 
-N = 48                      ***REMOVED*** notre bloc partout : 1 ms à 48 kHz
+N = 48                      # notre bloc partout : 1 ms à 48 kHz
 CH = 8
 NB = 5
 NOM = "test-idx-roundtrip"
@@ -44,7 +44,7 @@ r = bobimxl.AudioReader(inst, NOM)
 
 echecs = []
 
-***REMOVED*** Écriture de NB blocs à des index de DÉBUT connus : 0, 48, 96, …
+# Écriture de NB blocs à des index de DÉBUT connus : 0, 48, 96, …
 debuts = []
 for j in range(NB):
     bloc = np.full((N, CH), float(j + 1), dtype=np.float32)
@@ -59,7 +59,7 @@ if r.head_index() != NB * N:
     echecs.append("head_index = %s, attendu %d — l'index n'est pas one-past-the-end"
                   % (r.head_index(), NB * N))
 
-***REMOVED*** RELECTURE à l'index de début : le bloc j doit valoir j+1, partout.
+# RELECTURE à l'index de début : le bloc j doit valoir j+1, partout.
 for j in range(NB):
     blk = r.read_from(j * N, N)
     if blk is None:
@@ -72,7 +72,7 @@ for j in range(NB):
     else:
         print("  read_from(%4d, %d) → %.1f  ✓" % (j * N, N, vus[0]))
 
-***REMOVED*** read_latest doit rendre le DERNIER bloc écrit (valeur NB), pas celui d'avant.
+# read_latest doit rendre le DERNIER bloc écrit (valeur NB), pas celui d'avant.
 last = r.read_latest(N)
 if last is None:
     echecs.append("read_latest → None")

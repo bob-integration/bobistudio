@@ -1,31 +1,31 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
-***REMOVED*** Mire de DIAGNOSTIC luma/chroma : barres SMPTE qui DEFILENT horizontalement.
-***REMOVED***
-***REMOVED*** Pourquoi celle-ci et pas une existante : `bars` est coloree mais FIXE, `moving` bouge mais sa
-***REMOVED*** chroma est NEUTRE. Or pour voir si un etage tient la chroma pendant que la luma avance, il faut
-***REMOVED*** que les deux bougent ENSEMBLE et de facon connue. Ici tout le motif glisse de VITESSE px par
-***REMOVED*** trame ; luma et chroma sont decalees du MEME nombre de pixels a chaque trame.
-***REMOVED***
-***REMOVED*** Lecture du resultat : sur la sortie de l'etage teste, on correle le profil de bords de la luma
-***REMOVED*** avec celui de la chroma. Un decalage de d pixels = un ecart temporel de d/VITESSE trames.
-***REMOVED*** Zero pixel = luma et chroma co-temporelles.
+# Mire de DIAGNOSTIC luma/chroma : barres SMPTE qui DEFILENT horizontalement.
+#
+# Pourquoi celle-ci et pas une existante : `bars` est coloree mais FIXE, `moving` bouge mais sa
+# chroma est NEUTRE. Or pour voir si un etage tient la chroma pendant que la luma avance, il faut
+# que les deux bougent ENSEMBLE et de facon connue. Ici tout le motif glisse de VITESSE px par
+# trame ; luma et chroma sont decalees du MEME nombre de pixels a chaque trame.
+#
+# Lecture du resultat : sur la sortie de l'etage teste, on correle le profil de bords de la luma
+# avec celui de la chroma. Un decalage de d pixels = un ecart temporel de d/VITESSE trames.
+# Zero pixel = luma et chroma co-temporelles.
 import sys, time, numpy as np, bobimxl
 
 NOM     = sys.argv[1] if len(sys.argv) > 1 else "mire-couleur"
-***REMOVED*** Mode INJECTION : dechire volontairement une trame sur 25 (moitie haute prise a k+1,
-***REMOVED*** moitie basse a k). Sert a verifier la SENSIBILITE du veilleur — un detecteur qui ne
-***REMOVED*** se declenche jamais est aussi inutile qu'un detecteur qui crie tout le temps.
+# Mode INJECTION : dechire volontairement une trame sur 25 (moitie haute prise a k+1,
+# moitie basse a k). Sert a verifier la SENSIBILITE du veilleur — un detecteur qui ne
+# se declenche jamais est aussi inutile qu'un detecteur qui crie tout le temps.
 DECHIRE = "--dechire" in sys.argv
 W, H    = 1920, 1080
 FPS     = 50
-VITESSE = 16          ***REMOVED*** px par trame — 16 px a 50 fps = 800 px/s, franc et non ambigu
+VITESSE = 16          # px par trame — 16 px a 50 fps = 800 px/s, franc et non ambigu
 
-***REMOVED*** SMPTE 75 % : (Y, Cb, Cr) 8 bits. Barres FORTEMENT chromatiques (c'est le point).
+# SMPTE 75 % : (Y, Cb, Cr) 8 bits. Barres FORTEMENT chromatiques (c'est le point).
 BARRES = [(180,128,128), (162, 44,142), (131,156, 44), (112, 72, 58),
           ( 84,184,198), ( 65,100,212), ( 35,212,114), ( 16,128,128)]
 
@@ -54,7 +54,7 @@ k = 0
 while True:
     dx  = (k * VITESSE) % W
     dxc = dx // 2
-    ***REMOVED*** roll = decalage circulaire : luma et chroma glissent du MEME nombre de pixels IMAGE.
+    # roll = decalage circulaire : luma et chroma glissent du MEME nombre de pixels IMAGE.
     y = np.roll(Y0, dx,  axis=1)
     u = np.roll(U0, dxc, axis=1)
     v = np.roll(V0, dxc, axis=1)

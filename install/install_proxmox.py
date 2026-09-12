@@ -1,8 +1,8 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Bobi.Studio — Bootstrapper Proxmox
@@ -26,7 +26,7 @@ import urllib.error
 import ssl
 import zipfile
 
-***REMOVED*** ── ANSI ──────────────────────────────────────────────────────────────────────
+# ── ANSI ──────────────────────────────────────────────────────────────────────
 R = "\033[0m"
 BOLD = "\033[1m"
 DIM = "\033[2m"
@@ -48,7 +48,7 @@ def log(msg):  print(f"     {DIM}{msg}{R}")
 
 def sep(): print(f"  {DIM}{'─' * 54}{R}")
 
-***REMOVED*** ── En-tête ───────────────────────────────────────────────────────────────────
+# ── En-tête ───────────────────────────────────────────────────────────────────
 def print_header():
     w = 52
     print()
@@ -71,7 +71,7 @@ def print_done(title):
 def print_fail(title):
     print(f"  {RED}{BOLD}✗ {title}{R}")
 
-***REMOVED*** ── Spinner ───────────────────────────────────────────────────────────────────
+# ── Spinner ───────────────────────────────────────────────────────────────────
 SPIN_CHARS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 class Spinner:
@@ -95,9 +95,9 @@ class Spinner:
         self._stop.set(); self._t.join()
         print("\r" + " " * (len(self.label) + 12) + "\r", end="", flush=True)
 
-***REMOVED*** ── Saisie ────────────────────────────────────────────────────────────────────
-***REMOVED*** Sentinelle renvoyée par ask() quand l'utilisateur tape '<' (revenir au champ
-***REMOVED*** précédent), si allow_back=True.
+# ── Saisie ────────────────────────────────────────────────────────────────────
+# Sentinelle renvoyée par ask() quand l'utilisateur tape '<' (revenir au champ
+# précédent), si allow_back=True.
 _BACK = object()
 
 def ask(prompt, default=None, secret=False, required=True, validate=None, allow_back=False):
@@ -136,7 +136,7 @@ def ask(prompt, default=None, secret=False, required=True, validate=None, allow_
         return val
 
 
-***REMOVED*** ── Validateurs (callable(val) -> (ok, msg)) ────────────────────────────────────
+# ── Validateurs (callable(val) -> (ok, msg)) ────────────────────────────────────
 def _v_ipv4(cidr_ok=False):
     import ipaddress
     def _v(val):
@@ -183,7 +183,7 @@ def _v_host_reachable(val):
         ipaddress.ip_address(val)
         return True, ""
     except ValueError:
-        ***REMOVED*** pas une IP → accepter un hostname
+        # pas une IP → accepter un hostname
         return _v_hostname(val.split(".")[0]) if "." in val else _v_hostname(val)
 
 
@@ -256,7 +256,7 @@ def bail(msg):
     print()
     sys.exit(1)
 
-***REMOVED*** ── Subprocess ────────────────────────────────────────────────────────────────
+# ── Subprocess ────────────────────────────────────────────────────────────────
 def run(cmd, check=True, capture=False, input_data=None):
     """Lance une commande. Retourne (returncode, stdout) si capture=True."""
     if capture:
@@ -287,7 +287,7 @@ def pct_exec(vmid, *cmd, stream=False, capture=False, input_data=None):
         return run(full, capture=True)
     return run(full)
 
-***REMOVED*** ── Proxmox API (depuis le nœud, sans token — pvesh local) ───────────────────
+# ── Proxmox API (depuis le nœud, sans token — pvesh local) ───────────────────
 def pvesh_get(path):
     rc, out = run(["pvesh", "get", path, "--output-format", "json"],
                   check=False, capture=True)
@@ -366,7 +366,7 @@ def pveam_available_debian():
         parts = line.split()
         if parts and "debian" in parts[-1].lower():
             tpls.append(parts[-1])
-    ***REMOVED*** Plus récents d'abord (tri lexical inversé : debian-13 avant debian-12).
+    # Plus récents d'abord (tri lexical inversé : debian-13 avant debian-12).
     return sorted(set(tpls), reverse=True)
 
 def download_template(storage, template):
@@ -381,7 +381,7 @@ def detect_node_ip(node):
     """IP de management du nœud Proxmox (1ère adresse non-loopback sur un bridge/iface
     active), pour proposer un défaut au champ host. None si indétectable."""
     nets = pvesh_get(f"/nodes/{node}/network") or []
-    ***REMOVED*** Priorité aux bridges (vmbr*) qui portent une adresse, puis toute iface avec address.
+    # Priorité aux bridges (vmbr*) qui portent une adresse, puis toute iface avec address.
     candidates = []
     for n in nets:
         addr = (n.get("address") or "").strip()
@@ -393,25 +393,25 @@ def detect_node_ip(node):
     candidates.sort()
     return candidates[0][1] if candidates else None
 
-***REMOVED*** ── ÉTAPES ────────────────────────────────────────────────────────────────────
+# ── ÉTAPES ────────────────────────────────────────────────────────────────────
 
 def step1_prerequisites():
     print_step(1, 7, "Prérequis")
     errors = []
 
-    ***REMOVED*** pct disponible
+    # pct disponible
     if shutil.which("pct"):
         ok("pct (Proxmox LXC tool) disponible")
     else:
         errors.append("pct introuvable — ce script doit tourner sur un nœud Proxmox")
 
-    ***REMOVED*** pvesh disponible
+    # pvesh disponible
     if shutil.which("pvesh"):
         ok("pvesh disponible")
     else:
         errors.append("pvesh introuvable")
 
-    ***REMOVED*** SSH key
+    # SSH key
     key = "/root/.ssh/id_ed25519"
     if os.path.exists(key):
         ok(f"Clé SSH root présente ({key})")
@@ -419,7 +419,7 @@ def step1_prerequisites():
         warn(f"Clé SSH absente ({key}) — sera nécessaire pour le template LXC")
         info("Créer avec : ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N \"\"")
 
-    ***REMOVED*** Source : zip ou répertoire
+    # Source : zip ou répertoire
     install_dir = os.path.dirname(os.path.abspath(__file__))
     zip_path = os.path.join(install_dir, "bobistudio.zip")
 
@@ -476,13 +476,13 @@ def _select_or_download_template(node):
     debian = [t for t in present if "debian" in t.lower()]
 
     if debian:
-        ***REMOVED*** Plus récents d'abord (debian-13 avant debian-12).
+        # Plus récents d'abord (debian-13 avant debian-12).
         debian.sort(reverse=True)
         others = [t for t in present if t not in debian]
         options = debian + others
         return choose("Template LXC", options, 0)
 
-    ***REMOVED*** Aucun template Debian présent.
+    # Aucun template Debian présent.
     warn("Aucun template Debian trouvé sur ce nœud.")
     if present:
         info("Templates présents (non-Debian) :")
@@ -496,7 +496,7 @@ def _select_or_download_template(node):
         if not avail:
             warn("Impossible de récupérer la liste (pas d'accès Internet sur l'hôte ?).")
         else:
-            ***REMOVED*** Storage destination = un storage qui accepte vztmpl (souvent 'local').
+            # Storage destination = un storage qui accepte vztmpl (souvent 'local').
             vz = [s["storage"] for s in list_storages(node, content="vztmpl")]
             if not vz:
                 warn("Aucun storage n'accepte les templates (content=vztmpl).")
@@ -505,7 +505,7 @@ def _select_or_download_template(node):
             else:
                 dflt_s = vz.index("local") if "local" in vz else 0
                 dst = choose("Storage de destination du template", vz, dflt_s)
-                ***REMOVED*** Défaut = 1er Debian « standard » récent si présent dans la liste.
+                # Défaut = 1er Debian « standard » récent si présent dans la liste.
                 std = [t for t in avail if "standard" in t.lower()]
                 ordered = std + [t for t in avail if t not in std]
                 tpl = choose("Template Debian à télécharger", ordered, 0)
@@ -515,7 +515,7 @@ def _select_or_download_template(node):
                     return volid
                 warn("Échec du téléchargement.")
 
-    ***REMOVED*** Repli : saisie manuelle (ou ajout via l'UI Proxmox puis ressaisie du volid).
+    # Repli : saisie manuelle (ou ajout via l'UI Proxmox puis ressaisie du volid).
     info("Vous pouvez aussi ajouter un template via l'UI Proxmox "
          "(<node> → local → CT Templates → Templates) puis saisir son volid ici.")
     return ask("Template LXC (volid)",
@@ -528,14 +528,14 @@ def step2_proxmox_config(node_auto):
     info("  Datacenter → Permissions → API Tokens → Add")
     info("  User: root@pam  |  Token ID: bobistudio  |  Privilege Separation: NON")
 
-    ***REMOVED*** Défaut host = IP réelle du nœud (pas loopback : le container doit la joindre).
+    # Défaut host = IP réelle du nœud (pas loopback : le container doit la joindre).
     host_default = detect_node_ip(node_auto)
     if host_default:
         info(f"IP du nœud détectée : {host_default}")
 
     state = {}
     while True:
-        ***REMOVED*** 1) Connexion Proxmox (node / host / token) + test API HTTPS.
+        # 1) Connexion Proxmox (node / host / token) + test API HTTPS.
         conn_fields = [
             {"key": "node",    "prompt": "Nom du nœud Proxmox", "default": node_auto,
              "validate": _v_hostname},
@@ -561,15 +561,15 @@ def step2_proxmox_config(node_auto):
 
         node = state["node"]
 
-        ***REMOVED*** 2) Storage pour les disques LXC (liste des storages existants).
+        # 2) Storage pour les disques LXC (liste des storages existants).
         print()
         state["storage"] = _select_storage(node)
 
-        ***REMOVED*** 3) Template LXC (liste des templates ; téléchargement Debian si absent).
+        # 3) Template LXC (liste des templates ; téléchargement Debian si absent).
         print()
         state["template"] = _select_or_download_template(node)
 
-        ***REMOVED*** 4) Récapitulatif.
+        # 4) Récapitulatif.
         masked = (state["tok_sec"][:4] + "…" + state["tok_sec"][-2:]) if len(state["tok_sec"]) > 6 else "••••"
         recap = [
             ("Nœud Proxmox",   state["node"]),
@@ -661,7 +661,7 @@ def step3_create_vm(cfg, src):
         bail("Échec de la création du container.")
     ok(f"Container {vmid} créé et démarré")
 
-    ***REMOVED*** Attendre que le réseau soit disponible
+    # Attendre que le réseau soit disponible
     info("Attente du démarrage réseau…")
     for attempt in range(30):
         with Spinner(f"Ping {vm_ip.split('/')[0]}"):
@@ -686,7 +686,7 @@ def step4_deploy_code(cfg, vm_cfg, src):
     vmid = vm_cfg["vmid"]
     src_type, src_path = src
 
-    ***REMOVED*** Créer /opt/bobistudio dans le container
+    # Créer /opt/bobistudio dans le container
     pct_exec(vmid, "mkdir", "-p", "/opt/bobistudio")
     ok("Répertoire /opt/bobistudio créé")
 
@@ -695,7 +695,7 @@ def step4_deploy_code(cfg, vm_cfg, src):
 
     try:
         if src_type == "zip":
-            ***REMOVED*** Extraire le zip vers un dossier temporaire puis retar en .tar.gz
+            # Extraire le zip vers un dossier temporaire puis retar en .tar.gz
             info("Préparation de l'archive depuis le zip…")
             with Spinner("Extraction + recompression"):
                 extract_dir = tempfile.mkdtemp()
@@ -708,11 +708,11 @@ def step4_deploy_code(cfg, vm_cfg, src):
                 finally:
                     shutil.rmtree(extract_dir, ignore_errors=True)
         else:
-            ***REMOVED*** Tar du répertoire source directement
+            # Tar du répertoire source directement
             info("Création de l'archive depuis le répertoire source…")
             excludes = {"venv", "__pycache__", "db_bobistudio.db",
                         "bobistudio.log", ".git", "bobistudio_install"}
-            ***REMOVED*** Plugins et services inclus dans cette distribution
+            # Plugins et services inclus dans cette distribution
             PLUGINS_INCLUDE  = {"receiver_2110", "sender_2110", "streamer"}
             SERVICES_INCLUDE = {"nmos", "webrtc_gateway"}
 
@@ -747,12 +747,12 @@ def step4_deploy_code(cfg, vm_cfg, src):
 
         ok(f"Archive prête ({os.path.getsize(tmp_path) // 1024} Ko)")
 
-        ***REMOVED*** Pousser l'archive
+        # Pousser l'archive
         info("Transfert vers le container…")
         run(["pct", "push", str(vmid), tmp_path, "/tmp/bobistudio.tar.gz"])
         ok("Archive transférée")
 
-        ***REMOVED*** Extraire
+        # Extraire
         pct_exec(vmid, "tar", "xzf", "/tmp/bobistudio.tar.gz", "-C", "/opt/bobistudio")
         pct_exec(vmid, "rm", "/tmp/bobistudio.tar.gz")
         ok("Code extrait dans /opt/bobistudio")
@@ -760,7 +760,7 @@ def step4_deploy_code(cfg, vm_cfg, src):
     finally:
         os.unlink(tmp_path)
 
-    ***REMOVED*** Écrire config_local.py
+    # Écrire config_local.py
     info("Écriture de config_local.py…")
     config_content = textwrap.dedent(f"""\
         PROXMOX_HOST  = "{cfg['host']}"
@@ -781,25 +781,25 @@ def step4_deploy_code(cfg, vm_cfg, src):
         os.unlink(tmp_path)
     ok("config_local.py écrit")
 
-    ***REMOVED*** ── Clé SSH container → hôte Proxmox ──────────────────────────────────────
-    ***REMOVED*** L'orchestrateur exécute `ssh root@<host>` pour les bind mounts /dev/shm,
-    ***REMOVED*** l'inventaire NIC, PTP, la recréation du template. On génère la clé DANS le
-    ***REMOVED*** container et on autorise sa clé publique sur l'hôte (l'installeur tourne sur
-    ***REMOVED*** le nœud, accès local à /root/.ssh).
+    # ── Clé SSH container → hôte Proxmox ──────────────────────────────────────
+    # L'orchestrateur exécute `ssh root@<host>` pour les bind mounts /dev/shm,
+    # l'inventaire NIC, PTP, la recréation du template. On génère la clé DANS le
+    # container et on autorise sa clé publique sur l'hôte (l'installeur tourne sur
+    # le nœud, accès local à /root/.ssh).
     info("Configuration de la clé SSH container → hôte…")
-    ***REMOVED*** 1. Générer la clé dans le container si absente (idempotent)
+    # 1. Générer la clé dans le container si absente (idempotent)
     pct_exec(vmid, "mkdir", "-p", "/root/.ssh")
     pct_exec(vmid, "sh", "-c",
              "test -f /root/.ssh/id_ed25519 || "
              "ssh-keygen -t ed25519 -N '' -f /root/.ssh/id_ed25519 -q")
-    ***REMOVED*** 2. Récupérer la clé publique du container
+    # 2. Récupérer la clé publique du container
     rc, pubkey = pct_exec(vmid, "cat", "/root/.ssh/id_ed25519.pub", capture=True)
     pubkey = (pubkey or "").strip()
     if rc != 0 or not pubkey:
         warn("Impossible de lire la clé publique du container — SSH à configurer manuellement.")
         return
-    ***REMOVED*** 3. Autoriser la clé sur l'hôte Proxmox (local) — idempotent. Perms strictes :
-    ***REMOVED***    sshd (StrictModes) refuse silencieusement la clé si .ssh ≠ 700 / authorized_keys ≠ 600.
+    # 3. Autoriser la clé sur l'hôte Proxmox (local) — idempotent. Perms strictes :
+    #    sshd (StrictModes) refuse silencieusement la clé si .ssh ≠ 700 / authorized_keys ≠ 600.
     auth = "/root/.ssh/authorized_keys"
     os.makedirs("/root/.ssh", mode=0o700, exist_ok=True)
     os.chmod("/root/.ssh", 0o700)
@@ -816,9 +816,9 @@ def step4_deploy_code(cfg, vm_cfg, src):
     else:
         ok("Clé publique déjà autorisée sur l'hôte")
     os.chmod(auth, 0o600)
-    ***REMOVED*** 4. Test : ssh container → hôte (accept-new pour enregistrer le known_hosts).
-    ***REMOVED***    Échec = bloquant fonctionnellement (recréation template, NIC, PTP cassés) :
-    ***REMOVED***    on le signale fort et on mémorise pour le répéter dans le récap final.
+    # 4. Test : ssh container → hôte (accept-new pour enregistrer le known_hosts).
+    #    Échec = bloquant fonctionnellement (recréation template, NIC, PTP cassés) :
+    #    on le signale fort et on mémorise pour le répéter dans le récap final.
     test_cmd = (f"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new "
                 f"-o ConnectTimeout=5 root@{cfg['host']} true")
     rc, _ = pct_exec(vmid, "sh", "-c", test_cmd, capture=True)
@@ -836,26 +836,26 @@ def step4_deploy_code(cfg, vm_cfg, src):
 def _check_internet(vmid):
     """Vérifie qu'Internet est joignable DEPUIS le container avant tout apt.
     Retourne (ok, raison). Distingue panne réseau, DNS et HTTP(S) sortant."""
-    ***REMOVED*** 1. Route/IP sortante : ping de la gateway puis d'une IP publique (DNS Google).
+    # 1. Route/IP sortante : ping de la gateway puis d'une IP publique (DNS Google).
     rc, _ = pct_exec(vmid, "sh", "-c",
                      "ping -c1 -W2 1.1.1.1 >/dev/null 2>&1 || ping -c1 -W2 8.8.8.8 >/dev/null 2>&1",
                      capture=True)
     if rc != 0:
         return False, "pas de connectivité IP sortante (gateway/route ?)"
-    ***REMOVED*** 2. Résolution DNS.
+    # 2. Résolution DNS.
     rc, _ = pct_exec(vmid, "sh", "-c",
                      "getent hosts deb.debian.org >/dev/null 2>&1",
                      capture=True)
     if rc != 0:
         return False, "résolution DNS impossible (deb.debian.org) — vérifier /etc/resolv.conf"
-    ***REMOVED*** 3. Accès HTTP(S) sortant vers les dépôts (proxy/pare-feu).
+    # 3. Accès HTTP(S) sortant vers les dépôts (proxy/pare-feu).
     rc, _ = pct_exec(vmid, "sh", "-c",
                      "(command -v curl >/dev/null && curl -fsS --max-time 8 -o /dev/null "
                      "http://deb.debian.org/debian/dists/stable/Release) "
                      "|| (command -v wget >/dev/null && wget -q -T8 -O /dev/null "
                      "http://deb.debian.org/debian/dists/stable/Release)",
                      capture=True)
-    ***REMOVED*** curl/wget peuvent être absents sur un template minimal → on ne bloque que si présents et KO.
+    # curl/wget peuvent être absents sur un template minimal → on ne bloque que si présents et KO.
     if rc != 0:
         rc2, _ = pct_exec(vmid, "sh", "-c", "command -v curl >/dev/null || command -v wget >/dev/null",
                           capture=True)
@@ -891,7 +891,7 @@ def step5_install_deps(vm_cfg):
         "apt-get", "install", "-y", "--no-install-recommends",
         "python3", "python3-venv", "python3-pip",
         "ffmpeg", "rsync", "curl",
-        "cifs-utils", "nfs-common",   ***REMOVED*** montage des partages externes (Gestionnaire de Médias)
+        "cifs-utils", "nfs-common",   # montage des partages externes (Gestionnaire de Médias)
         stream=True)
     if rc != 0:
         bail("apt-get install a échoué.")
@@ -928,7 +928,7 @@ def step6_service(vm_cfg, src):
     vmid = vm_cfg["vmid"]
     src_type, src_path = src
 
-    ***REMOVED*** Extraire bobistudio.service depuis le zip ou le répertoire
+    # Extraire bobistudio.service depuis le zip ou le répertoire
     if src_type == "zip":
         with tempfile.NamedTemporaryFile(suffix=".service", delete=False) as tmp:
             service_tmp = tmp.name
@@ -960,7 +960,7 @@ def step6_service(vm_cfg, src):
     pct_exec(vmid, "systemctl", "start", "bobistudio")
     ok("Service démarré")
 
-    ***REMOVED*** Vérification
+    # Vérification
     time.sleep(3)
     rc, state = pct_exec(vmid, "systemctl", "is-active", "bobistudio",
                          capture=True)
@@ -978,12 +978,12 @@ def step7_template():
     print()
     ok("Étape ignorée — à faire depuis l'UI")
 
-***REMOVED*** ── MAIN ──────────────────────────────────────────────────────────────────────
+# ── MAIN ──────────────────────────────────────────────────────────────────────
 
 def main():
     print_header()
 
-    ***REMOVED*** Auto-détection du nom du nœud
+    # Auto-détection du nom du nœud
     _, node_auto = run(["hostname", "-s"], capture=True)
     node_auto = node_auto or "pve"
 
@@ -1012,7 +1012,7 @@ def main():
         print()
         bail("Installation interrompue.")
 
-    ***REMOVED*** Récap final
+    # Récap final
     print()
     print(f"  {BOLD}{GREEN}╔{'═' * 50}╗{R}")
     print(f"  {BOLD}{GREEN}║{'Installation terminée !':^50}║{R}")

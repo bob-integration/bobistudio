@@ -1,4 +1,4 @@
-***REMOVED***!/usr/bin/env node
+#!/usr/bin/env node
 // Vérification hors-ligne du GARDE-FOU DES FILTRES FANTÔMES de la page Câbles.
 //
 // Les listes de filtres (projet / nœud) sont ÉLAGUÉES côté serveur à ce qui est réellement
@@ -11,8 +11,8 @@
 // La fonction est EXTRAITE du gabarit à chaque exécution : ce banc ne peut pas dériver de la
 // page. Aucune base lue, aucun conteneur touché.
 //
-//   node tools/verif_filtres_cables.js                 ***REMOVED*** le gabarit courant
-//   node tools/verif_filtres_cables.js <cables.html>    ***REMOVED*** une autre version (bissection)
+//   node tools/verif_filtres_cables.js                 # le gabarit courant
+//   node tools/verif_filtres_cables.js <cables.html>    # une autre version (bissection)
 
 const fs = require('fs'), path = require('path');
 const cible = process.argv[2] || path.join(__dirname, '..', 'templates', 'cables.html');

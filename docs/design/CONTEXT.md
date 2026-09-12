@@ -1,17 +1,17 @@
-***REMOVED*** Contexte — Bobi.Studio
+# Contexte — Bobi.Studio
 
 > Mis à jour 2026-07-04. Contexte métier et périmètre du projet ; le détail technique
 > (architecture, structure des fichiers, conventions) vit dans `CLAUDE.md`.
 > Version historique (ère Proxmox/LXC) : `old/CONTEXT-2026-05-31.md`.
 
-***REMOVED******REMOVED*** Ce qu'est le produit
+## Ce qu'est le produit
 
 Bobi.Studio est un **orchestrateur de production vidéo broadcast IP** : il pilote un
 pipeline **SMPTE ST 2110** (ingest → traitements → sorties) sur un **cluster de nœuds
 Docker** enrôlés, depuis une interface web unique. Cible : régies et infrastructures
 de production broadcast (environnement PTP, multicast, NMOS).
 
-***REMOVED******REMOVED*** Grandes briques
+## Grandes briques
 
 - **Contrôleur** : application Flask centrale (ce dépôt), DB SQLite, rôle control-plane
   uniquement — les nœuds exécutent les conteneurs. HA possible en paire actif/standby.
@@ -26,7 +26,7 @@ de production broadcast (environnement PTP, multicast, NMOS).
 - **Services** (`services/`, sous-modules) : NMOS IS-04/05, Ember+, TSL, ATEM, Skaarhoj,
   passerelle WebRTC (MediaMTX), RDMA, fichiers/médias, stockage.
 
-***REMOVED******REMOVED*** État du chantier (juillet 2026)
+## État du chantier (juillet 2026)
 
 - Migration **full-Docker terminée** (2026-06-16) : plus de Proxmox/LXC nulle part.
 - Migration **SDK MXL terminée** (vidéo planar, audio, ANC) pour tous les plugins.
@@ -36,7 +36,7 @@ de production broadcast (environnement PTP, multicast, NMOS).
 - Une **installation de production** existe en parallèle du serveur de développement ;
   la page `/tests` (« Recette ») suit la campagne de validation avec l'équipe.
 
-***REMOVED******REMOVED*** Environnement de travail
+## Environnement de travail
 
 - Dépôt : `/opt/bobistudio` (module Python `app/`, ~20 sous-modules git pour les
   plugins et services). Lancement : `./venv/bin/python main.py` (port 5000).

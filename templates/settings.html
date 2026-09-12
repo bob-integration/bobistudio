@@ -37,7 +37,7 @@
     {% if has_perm('settings.edit') %}
     <button class="tab"        id="set-tab-btn-deploiement" onclick="switchSetTab('deploiement')">{{ _('settings.tab.deployment') }}</button>
     {% endif %}
-    {***REMOVED*** ── Core plugins (services infrastructure) ── ***REMOVED***}
+    {# ── Core plugins (services infrastructure) ── #}
     {% for tab in core_tabs %}
     <button class="tab" id="set-tab-btn-{{tab.nav_tab}}" onclick="switchSetTab('{{tab.nav_tab}}')">{{tab.label}}</button>
     {% endfor %}
@@ -353,7 +353,7 @@
      inopérante (constaté après le correctif du template literal de l'éditeur). -->
 <script src="/static/pip_editor.js?v={{ asset_v('pip_editor.js') }}"></script>
 <!-- « Modèle d'utilisation de la carte » (docs/reference/TX_LAYOUTS.md) : sorties déclarées, format annoncé,
-     état réel, et ce qui coûte un recalcul d'arbre TX. Monté dans ***REMOVED***tx_layout_panel (onglet Réseau). -->
+     état réel, et ce qui coûte un recalcul d'arbre TX. Monté dans #tx_layout_panel (onglet Réseau). -->
 <script src="/static/tx_model.js?v={{ asset_v('tx_model.js') }}"></script>
 <script src="/static/tx_models.js?v={{ asset_v('tx_models.js') }}"></script>
 
@@ -608,10 +608,10 @@ async function fontDelete(f) {
     <h2>{{ _('settings.habilitations.title') }}</h2>
     <div class="form">
         <div class="meta" style="margin-bottom:var(--space-4)">{{ _('settings.habilitations.intro') }}</div>
-        {***REMOVED*** MATRICE autorisation × rôle, et pas une fiche par rôle. La question qu'on se pose
+        {# MATRICE autorisation × rôle, et pas une fiche par rôle. La question qu'on se pose
            devant cet écran n'est jamais « que peut le rôle X » mais « qui peut supprimer un
            conteneur » — une colonne par rôle y répond d'un coup d'œil, cinq fiches à ouvrir
-           l'une après l'autre, non. ***REMOVED***}
+           l'une après l'autre, non. #}
         <div class="table-wrap">
             <table class="tbl hab-matrice" id="hab_matrice" style="min-width:min(720px, 100%)"></table>
         </div>
@@ -649,10 +649,10 @@ async function fontDelete(f) {
             <div class="field"><label for="u_pwd">{{ _('settings.users.password') }}</label>
                 <input type="password" id="u_pwd"></div>
             <div class="field"><label for="u_role">{{ _('settings.users.role') }}</label>
-                {***REMOVED*** Options peuplées par chargerUtilisateurs() depuis /api/users : MÊME source que
+                {# Options peuplées par chargerUtilisateurs() depuis /api/users : MÊME source que
                    le sélecteur de rôle d'un utilisateur existant. Les deux listes divergeaient —
                    en langue (celle-ci traduite, l'autre en français) et en contenu (« exploitant »
-                   manquait ici). Une seule source, plus de divergence possible. ***REMOVED***}
+                   manquait ici). Une seule source, plus de divergence possible. #}
                 <select id="u_role">
                 </select>
             </div>
@@ -677,10 +677,10 @@ async function fontDelete(f) {
     </div>
     {% endif %}
 
-    {***REMOVED*** « Mon compte » est parti sur sa propre page (/compte), atteignable depuis le menu de
+    {# « Mon compte » est parti sur sa propre page (/compte), atteignable depuis le menu de
        l'utilisateur. Le laisser AUSSI ici referait l'erreur du champ Langue : deux endroits
        pour la même chose finissent par en désigner deux différentes. Cet onglet ne garde donc
-       que l'administration des AUTRES comptes. ***REMOVED***}
+       que l'administration des AUTRES comptes. #}
     <div class="meta">{{ _('settings.users.my_account_moved') }}
         <a href="/compte">{{ _('nav.compte') }}</a>.</div>
 </div>
@@ -770,8 +770,8 @@ async function fontDelete(f) {
             </div>
             <span id="pwd_profil_msg" class="meta" role="status" style="align-self:center"></span>
         </div>
-        {***REMOVED*** Ce que chaque profil veut dire, ÉCRIT. Trois options dont l'effet n'est lisible
-           qu'en essayant un mot de passe obligeraient à deviner, ou à tester en production. ***REMOVED***}
+        {# Ce que chaque profil veut dire, ÉCRIT. Trois options dont l'effet n'est lisible
+           qu'en essayant un mot de passe obligeraient à deviner, ou à tester en production. #}
         <div class="meta" id="pwd_profil_desc" style="margin-top:var(--space-3)"></div>
         <div class="meta" style="margin-top:var(--space-3)">{{ _('settings.securite.pwd_toujours') }}</div>
         <div class="meta" style="margin-top:var(--space-2)">{{ _('settings.securite.pwd_retro') }}</div>
@@ -793,9 +793,9 @@ async function fontDelete(f) {
 <!-- ═══ Onglet Personnalisation ══════════════════════════════ -->
 <div id="set-tab-branding" class="set-tab-content">
     <h2>{{ _('settings.branding.defaults_title') }}</h2>
-    {***REMOVED*** La portée est expliquée UNE FOIS ici, plus dans chaque champ. Répéter « défaut du
+    {# La portée est expliquée UNE FOIS ici, plus dans chaque champ. Répéter « défaut du
        système » sous trois sélecteurs n'apprend rien au troisième et fait lire trois fois la
-       même phrase pour trouver ce qui, dans chacune, est différent. ***REMOVED***}
+       même phrase pour trouver ce qui, dans chacune, est différent. #}
     <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.branding.defaults_intro') }}</div>
     <div class="form">
         <div class="row">
@@ -807,11 +807,11 @@ async function fontDelete(f) {
                 </select>
             </div>
         </div>
-        {***REMOVED*** UNE LIGNE PAR RÉGLAGE, et non deux sélecteurs côte à côte. Alignés horizontalement,
+        {# UNE LIGNE PAR RÉGLAGE, et non deux sélecteurs côte à côte. Alignés horizontalement,
            ils se lisaient comme un couple — ce qui a précisément fait croire qu'ils avaient la
-           même portée. Empilés, chacun porte sa propre note sous lui, là où elle se lit. ***REMOVED***}
+           même portée. Empilés, chacun porte sa propre note sous lui, là où elle se lit. #}
         <div class="row">
-            {***REMOVED*** ⚠ CE CHAMP RÉGLAIT LA LANGUE DE L'UTILISATEUR COURANT, pas le défaut du système,
+            {# ⚠ CE CHAMP RÉGLAIT LA LANGUE DE L'UTILISATEUR COURANT, pas le défaut du système,
                alors qu'il est posé à côté du Thème — qui, lui, règle bien le défaut. Deux
                champs d'apparence identique et de portée opposée : personne ne pouvait le
                deviner, et l'un des deux devait forcément tromper. Il règle désormais
@@ -820,7 +820,7 @@ async function fontDelete(f) {
 
                Au passage, `ui_lang_default` était un réglage DORMANT : lu par
                `i18n.current_lang()`, servi à la page de connexion et aux pages publiques, et
-               modifiable NULLE PART. ***REMOVED***}
+               modifiable NULLE PART. #}
             <div class="field" style="min-width:min(380px, 100%)"><label for="s_ui_lang_default">{{ _('settings.branding.lang_default') }}</label>
                 <select id="s_ui_lang_default" onchange="appliquerLangueDefaut()">
                     {% for l in languages %}
@@ -839,10 +839,10 @@ async function fontDelete(f) {
              où l'on ne traite que la SYNCHRO (NTP/PTP), c'est-à-dire quel instant il est. -->
         <div class="row" style="gap:var(--space-4); flex-wrap:wrap; margin-top:var(--space-4)">
             <div class="field" style="min-width:min(380px, 100%)">
-                {***REMOVED*** ⚠ CE N'EST PAS UN DÉFAUT PAR UTILISATEUR, contrairement au thème et à la
+                {# ⚠ CE N'EST PAS UN DÉFAUT PAR UTILISATEUR, contrairement au thème et à la
                    langue au-dessus : la table `users` n'a pas de colonne de fuseau. Sous un
                    titre « Réglages par défaut », il faut le dire — sinon le titre ment sur
-                   l'un de ses trois champs. ***REMOVED***}
+                   l'un de ses trois champs. #}
                 <label for="s_timezone">{{ _('settings.branding.tz_title') }}</label>
                 <select id="s_timezone">
                     <option value="">{{ _('settings.branding.tz_system') }}</option>
@@ -865,11 +865,11 @@ async function fontDelete(f) {
     <div class="row" style="margin-bottom:var(--space-3)">
         <button class="btn" onclick="location.href='/setup/wizard?force=1'">{{ _('settings.branding.rerun_wizard') }}</button>
     </div>
-    {***REMOVED*** Trois champs de PROSE (un nom de régie, une raison sociale, un lieu) : ils héritaient de
+    {# Trois champs de PROSE (un nom de régie, une raison sociale, un lieu) : ils héritaient de
        `.form input { width: 90px }` et de la monospace des valeurs techniques, donc on saisissait
        « Régie A — Studio 3 » dans une fenêtre de 90 px, en chiffres alignés. D'où un bloc dédié :
        champ pleine largeur, fonte de texte, et sous chaque champ la seule chose qu'on ne pouvait
-       pas deviner — OÙ la valeur apparaît. Sans elle, on remplit trois cases au hasard. ***REMOVED***}
+       pas deviner — OÙ la valeur apparaît. Sans elle, on remplit trois cases au hasard. #}
     <div class="form">
         <div class="identity-grid">
             <div class="identity-field">
@@ -917,7 +917,7 @@ async function fontDelete(f) {
     </div>
 </div>
 
-{***REMOVED*** ── Core plugins : onglets infrastructure (injectés dynamiquement) ── ***REMOVED***}
+{# ── Core plugins : onglets infrastructure (injectés dynamiquement) ── #}
 {% for tab in core_tabs %}
 {% if tab.sub_tabs %}
 <div id="set-tab-{{tab.nav_tab}}" class="set-tab-content" style="display:none">
@@ -955,48 +955,48 @@ async function fontDelete(f) {
     <div id="reseau-tab-horloge" style="display:none">
         <style>
         /* Portée au seul onglet : aucun de ces sélecteurs ne doit fuir sur le reste des Réglages. */
-        ***REMOVED***reseau-tab-horloge .clk-kpis { display:flex; flex-wrap:wrap; gap:var(--space-5);
+        #reseau-tab-horloge .clk-kpis { display:flex; flex-wrap:wrap; gap:var(--space-5);
             padding:var(--space-3) 0 var(--space-4); border-bottom:1px solid var(--border); }
-        ***REMOVED***reseau-tab-horloge .clk-kpi { min-width:150px; }
-        ***REMOVED***reseau-tab-horloge .clk-kpi dt { font-size:.72rem; font-weight:500; letter-spacing:.06em;
+        #reseau-tab-horloge .clk-kpi { min-width:150px; }
+        #reseau-tab-horloge .clk-kpi dt { font-size:.72rem; font-weight:500; letter-spacing:.06em;
             text-transform:uppercase; color:var(--text-muted); margin-bottom:5px; }
-        ***REMOVED***reseau-tab-horloge .clk-kpi dd { margin:0; font-family:var(--font-mono);
+        #reseau-tab-horloge .clk-kpi dd { margin:0; font-family:var(--font-mono);
             font-size:1.32rem; font-weight:600; line-height:1.15; color:var(--text-strong); }
-        ***REMOVED***reseau-tab-horloge .clk-kpi dd .u { font-size:.72rem; font-weight:400; color:var(--text-muted);
+        #reseau-tab-horloge .clk-kpi dd .u { font-size:.72rem; font-weight:400; color:var(--text-muted);
             margin-left:4px; letter-spacing:0; }
-        ***REMOVED***reseau-tab-horloge table.clk { width:100%; border-collapse:collapse; }
-        ***REMOVED***reseau-tab-horloge table.clk th { text-align:left; font-size:.72rem; font-weight:500;
+        #reseau-tab-horloge table.clk { width:100%; border-collapse:collapse; }
+        #reseau-tab-horloge table.clk th { text-align:left; font-size:.72rem; font-weight:500;
             letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted);
             padding:var(--space-3) var(--space-3) var(--space-2) 0; border-bottom:1px solid var(--border); }
-        ***REMOVED***reseau-tab-horloge table.clk td { padding:var(--space-3) var(--space-3) var(--space-3) 0;
+        #reseau-tab-horloge table.clk td { padding:var(--space-3) var(--space-3) var(--space-3) 0;
             border-bottom:1px solid var(--border-soft); vertical-align:middle; }
-        ***REMOVED***reseau-tab-horloge table.clk tr:last-child td { border-bottom:0; }
-        ***REMOVED***reseau-tab-horloge .clk-node { font-weight:600; color:var(--text-strong); }
-        ***REMOVED***reseau-tab-horloge .clk-num { font-family:var(--font-mono);
+        #reseau-tab-horloge table.clk tr:last-child td { border-bottom:0; }
+        #reseau-tab-horloge .clk-node { font-weight:600; color:var(--text-strong); }
+        #reseau-tab-horloge .clk-num { font-family:var(--font-mono);
             font-variant-numeric:tabular-nums; }
-        ***REMOVED***reseau-tab-horloge .clk-sub { display:block; font-size:.72rem; color:var(--text-muted);
+        #reseau-tab-horloge .clk-sub { display:block; font-size:.72rem; color:var(--text-muted);
             font-family:var(--font-mono); }
-        ***REMOVED***reseau-tab-horloge .clk-spark { display:flex; align-items:center; gap:var(--space-2); }
-        ***REMOVED***reseau-tab-horloge .clk-spark svg { display:block; }
+        #reseau-tab-horloge .clk-spark { display:flex; align-items:center; gap:var(--space-2); }
+        #reseau-tab-horloge .clk-spark svg { display:block; }
         /* Commandes | résultat. Le résultat prend la place restante et ne repousse plus le
            formulaire à chaque essai. Sous 900 px, on empile — un formulaire à côté d un tableau
            n a plus de sens dans une colonne étroite. */
-        ***REMOVED***reseau-tab-horloge .clk-reglages { display:grid; gap:var(--space-5);
+        #reseau-tab-horloge .clk-reglages { display:grid; gap:var(--space-5);
             grid-template-columns:minmax(300px, 400px) 1fr; align-items:start; }
-        @media (max-width: 900px) { ***REMOVED***reseau-tab-horloge .clk-reglages { grid-template-columns:1fr; } }
-        ***REMOVED***reseau-tab-horloge .clk-resultat { border-left:1px solid var(--border); padding-left:var(--space-5); min-width:0; }
-        @media (max-width: 900px) { ***REMOVED***reseau-tab-horloge .clk-resultat { border-left:0; padding-left:0;
+        @media (max-width: 900px) { #reseau-tab-horloge .clk-reglages { grid-template-columns:1fr; } }
+        #reseau-tab-horloge .clk-resultat { border-left:1px solid var(--border); padding-left:var(--space-5); min-width:0; }
+        @media (max-width: 900px) { #reseau-tab-horloge .clk-resultat { border-left:0; padding-left:0;
             border-top:1px solid var(--border); padding-top:var(--space-4); } }
-        ***REMOVED***reseau-tab-horloge .clk-sous-titre { font-size:.78rem; font-weight:600; letter-spacing:.06em;
+        #reseau-tab-horloge .clk-sous-titre { font-size:.78rem; font-weight:600; letter-spacing:.06em;
             text-transform:uppercase; color:var(--text-muted); margin:var(--space-5) 0 var(--space-2); }
-        ***REMOVED***reseau-tab-horloge .clk-pill-ref { font-size:.72rem; font-weight:600; letter-spacing:.04em;
+        #reseau-tab-horloge .clk-pill-ref { font-size:.72rem; font-weight:600; letter-spacing:.04em;
             text-transform:uppercase; color:var(--accent); }
-        ***REMOVED***reseau-tab-horloge .clk-empty { font-size:.74rem; color:var(--text-muted); font-style:italic; }
+        #reseau-tab-horloge .clk-empty { font-size:.74rem; color:var(--text-muted); font-style:italic; }
         /* Voyant : la couleur SIGNALE, le libellé à côté INFORME — jamais la couleur seule
            (le vert et l'ambre du système ne sont séparés que de ΔE 4,7 en protanopie). */
-        ***REMOVED***reseau-tab-horloge .clk-led { display:inline-block; width:8px; height:8px; border-radius:50%;
+        #reseau-tab-horloge .clk-led { display:inline-block; width:8px; height:8px; border-radius:50%;
             margin-right:7px; vertical-align:baseline; flex:0 0 auto; }
-        ***REMOVED***reseau-tab-horloge .clk-state { display:inline-flex; align-items:center; white-space:nowrap; }
+        #reseau-tab-horloge .clk-state { display:inline-flex; align-items:center; white-space:nowrap; }
         </style>
 
         <h2>{{ _('settings.net.clocks_title') }}</h2>
@@ -1005,7 +1005,7 @@ async function fontDelete(f) {
              on nomme cet instant) est un réglage de locale, rangé avec la langue. -->
         <div class="meta" style="max-width:72ch; margin-top:var(--space-2)">
             {{ _('settings.net.clocks_tz_xref') }}
-            <a href="***REMOVED***branding">{{ _('settings.net.clocks_tz_xref_link') }}</a>
+            <a href="#branding">{{ _('settings.net.clocks_tz_xref_link') }}</a>
         </div>
 
         <dl class="clk-kpis" id="horloges_kpis"></dl>
@@ -1073,16 +1073,16 @@ async function fontDelete(f) {
         <!-- Encadré conseils : bons choix matériels (MTL / RDMA / connecteur / PTP). Statique. -->
         <div style="margin-top:var(--space-4); border:1px solid var(--border);
             border-radius:var(--radius, 8px); padding:var(--space-3) var(--space-4);
-            background:linear-gradient(135deg, color-mix(in srgb, var(--accent, ***REMOVED***60a5fa) 6%, var(--bg-card)), var(--bg-card) 55%)">
+            background:linear-gradient(135deg, color-mix(in srgb, var(--accent, #60a5fa) 6%, var(--bg-card)), var(--bg-card) 55%)">
             <h3 style="margin:0 0 var(--space-2); display:flex; align-items:center; gap:8px">
                 <span aria-hidden="true">💡</span>{{ _('settings.net.guide_title') }}</h3>
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:var(--space-3)">
                 <div>
-                    <div style="font-weight:600; color:***REMOVED***10b981; margin-bottom:2px">ST 2110 · MTL</div>
+                    <div style="font-weight:600; color:#10b981; margin-bottom:2px">ST 2110 · MTL</div>
                     <div class="meta" style="line-height:1.6">{{ _('settings.net.guide_2110')|safe }}</div>
                 </div>
                 <div>
-                    <div style="font-weight:600; color:***REMOVED***60a5fa; margin-bottom:2px">RDMA</div>
+                    <div style="font-weight:600; color:#60a5fa; margin-bottom:2px">RDMA</div>
                     <div class="meta" style="line-height:1.6">{{ _('settings.net.guide_rdma')|safe }}</div>
                 </div>
                 <div>
@@ -1236,7 +1236,7 @@ async function fontDelete(f) {
     .img-prog-track.sub { height: 4px; opacity: .8; }
     .img-prog-fill { height: 100%; background: var(--accent); border-radius: 3px;
         transition: width .4s ease; }
-    .img-prog-fill.sub { background: var(--status-running-fg, ***REMOVED***22c55e); }
+    .img-prog-fill.sub { background: var(--status-running-fg, #22c55e); }
 
     /* ── Matrice des images runtime : DÉPÔT (à builder) / PRÉSENTES sur le nœud / UTILISÉE par
        le nœud. Sections empilées + micro-titres (référence : plugins/color_corrector). Aucun
@@ -1326,7 +1326,7 @@ async function fontDelete(f) {
         text-align: center;
         line-height: 1.5;
     }
-    .mxl-donut-meta strong { color: var(--text-primary, ***REMOVED***e2e8f0); }
+    .mxl-donut-meta strong { color: var(--text-primary, #e2e8f0); }
     .mxl-fps-canvas { width: 100%; height: 130px; display: block; }
     .mxl-fps-legend {
         display: flex;
@@ -1388,10 +1388,10 @@ async function fontDelete(f) {
        Dans une colonne de 70-80px il ne restait ~10-20px pour la valeur → invisible. On garantit une
        largeur mini au stepper (60px de boutons + ~48px de valeur) ; la colonne s'adapte au composant
        (le stepper reste l'étalon, la mise en page suit — pas l'inverse). */
-    ***REMOVED***video-formats-tbody .num-stepper { min-width: 108px; }
+    #video-formats-tbody .num-stepper { min-width: 108px; }
     /* Largeur/Hauteur portent des valeurs à 4 chiffres (1920/1080) → un peu plus de place que FPS. */
-    ***REMOVED***video-formats-tbody .num-stepper:has(.vf-w),
-    ***REMOVED***video-formats-tbody .num-stepper:has(.vf-h) { min-width: 132px; }
+    #video-formats-tbody .num-stepper:has(.vf-w),
+    #video-formats-tbody .num-stepper:has(.vf-h) { min-width: 132px; }
     </style>
 
     <!-- Rangée 1 : jauges ring + flux actifs -->
@@ -1845,8 +1845,8 @@ async function fontDelete(f) {
                 <label style="display:flex; align-items:center; gap:var(--space-3)">
                     {{ _('settings.deploy.build_plugins') }}
                     <span class="meta" style="font-weight:normal; margin-left:auto">
-                        <a href="***REMOVED***" onclick="buildSelectAll('bld-plugin',true);return false">{{ _('settings.deploy.select_all') }}</a>
-                        / <a href="***REMOVED***" onclick="buildSelectAll('bld-plugin',false);return false">{{ _('settings.deploy.select_none') }}</a>
+                        <a href="#" onclick="buildSelectAll('bld-plugin',true);return false">{{ _('settings.deploy.select_all') }}</a>
+                        / <a href="#" onclick="buildSelectAll('bld-plugin',false);return false">{{ _('settings.deploy.select_none') }}</a>
                     </span>
                 </label>
                 <div id="build-plugins" class="meta">{{ _('settings.loading') }}</div>
@@ -1855,8 +1855,8 @@ async function fontDelete(f) {
                 <label style="display:flex; align-items:center; gap:var(--space-3)">
                     Services (infrastructure)
                     <span class="meta" style="font-weight:normal; margin-left:auto">
-                        <a href="***REMOVED***" onclick="buildSelectAll('bld-service',true);return false">{{ _('settings.deploy.select_all') }}</a>
-                        / <a href="***REMOVED***" onclick="buildSelectAll('bld-service',false);return false">{{ _('settings.deploy.select_none') }}</a>
+                        <a href="#" onclick="buildSelectAll('bld-service',true);return false">{{ _('settings.deploy.select_all') }}</a>
+                        / <a href="#" onclick="buildSelectAll('bld-service',false);return false">{{ _('settings.deploy.select_none') }}</a>
                     </span>
                 </label>
                 <div id="build-services" class="meta">{{ _('settings.loading') }}</div>
@@ -2276,7 +2276,7 @@ async function fontDelete(f) {
 .tp-dot { display:inline-block; width:9px; height:9px; border-radius:50%; flex:none;
     background:var(--status-unknown-fg); }
 .tp-dot.on   { background:var(--status-stopped-fg); }
-.tp-dot.warn { background:var(--status-warning-fg,***REMOVED***d99a3f); }
+.tp-dot.warn { background:var(--status-warning-fg,#d99a3f); }
 .tp-dot.off  { background:var(--status-unknown-fg); }
 .tally-legend { display:flex; gap:18px; flex-wrap:wrap; margin-top:12px; align-items:center;
     color:var(--text-muted); font-size:0.82em; }
@@ -2295,9 +2295,9 @@ async function fontDelete(f) {
 
   <div id="ctl-missing" class="alert alert-warning" style="display:none;margin-bottom:14px"></div>
 
-  {***REMOVED*** Règles locales qui écrasent le catalogue. Relu à CHAQUE affichage de cette page, jamais au
+  {# Règles locales qui écrasent le catalogue. Relu à CHAQUE affichage de cette page, jamais au
      démarrage : ces fichiers ne bougent qu'au développement. Poser la classe ne suffit pas — une
-     règle de plugin plus spécifique l'annule sans erreur ni avertissement. ***REMOVED***}
+     règle de plugin plus spécifique l'annule sans erreur ni avertissement. #}
   {% if controls_overrides %}
   <div class="alert alert-warning" style="margin-bottom:14px">
     <strong>{{ _('settings.st.plugin_rules_override_catalog', n=controls_overrides | length) }}</strong>
@@ -2441,9 +2441,9 @@ async function fontDelete(f) {
                    onchange="_doImportPlugin(this.files[0])">
             <button class="btn btn-orange" id="plugins-redeploy-all" onclick="redeployerTout()"
                     style="display:none">{{ _('settings.plugins.redeploy_all') }}</button>
-            {***REMOVED*** Le catalogue est une PAGE, pas un onglet de réglages : on y installe, on n'y
+            {# Le catalogue est une PAGE, pas un onglet de réglages : on y installe, on n'y
                règle rien. Le lien part d'ici parce que c'est là qu'on constate qu'il manque
-               un plugin ou qu'une version a vieilli. ***REMOVED***}
+               un plugin ou qu'une version a vieilli. #}
             <button class="btn" onclick="switchSetTab('catalogue')">{{ _('catalogue.link') }}</button>
             <span id="plugins-result" class="meta"></span>
         </div>
@@ -2543,19 +2543,19 @@ async function fontDelete(f) {
     </div>
   </div>
 
-  {***REMOVED*** ⚠ `default` OBLIGATOIRE, ET CE N'EST PAS DE LA PRUDENCE DÉCORATIVE. Les gabarits
+  {# ⚠ `default` OBLIGATOIRE, ET CE N'EST PAS DE LA PRUDENCE DÉCORATIVE. Les gabarits
      se rechargent À CHAUD (TEMPLATES_AUTO_RELOAD), le code Python NON. Entre
      l'enregistrement de ce fichier et le redémarrage du contrôleur, la route tourne
      encore dans sa version d'avant et ne passe pas `catalogue_org` : sans `default`,
      `.replace()` reçoit un Undefined et TOUTE la page Réglages rend un 500.
      Constaté en production. Toute nouvelle variable de gabarit doit donc supporter
-     son absence — la fenêtre dure jusqu'au prochain redémarrage. ***REMOVED***}
+     son absence — la fenêtre dure jusqu'au prochain redémarrage. #}
   <div class="cat-confiance">{{ _('catalogue.trust').replace('{org}', catalogue_org|default('', true))|safe }}</div>
 
-  {***REMOVED*** L'organisation n'est PAS un champ : c'est le seul point de confiance du
+  {# L'organisation n'est PAS un champ : c'est le seul point de confiance du
      mécanisme, il vit dans le code (`config.CATALOGUE_ORG`, surchargeable par
      config_local.py). Ne reste ici que l'interrupteur — un site peut vouloir
-     qu'aucune requête ne sorte vers Internet. ***REMOVED***}
+     qu'aucune requête ne sorte vers Internet. #}
   <div class="cat-source-reglage">
     <label class="ctl-switch-inline">
       <input type="checkbox" class="ctl-switch" id="s_catalogue_actif"
@@ -2564,9 +2564,9 @@ async function fontDelete(f) {
     </label>
     <span id="cat-reglage-msg" class="meta"></span>
   </div>
-  {***REMOVED*** ★ Le sort d'un paquet récupéré était une RÈGLE CACHÉE : neuf → activé, mise à jour →
+  {# ★ Le sort d'un paquet récupéré était une RÈGLE CACHÉE : neuf → activé, mise à jour →
      rangée. Sensé, mais deux clics identiques donnaient deux résultats différents et rien
-     ne l'annonçait. C'est un interrupteur maintenant, coché par défaut. ***REMOVED***}
+     ne l'annonçait. C'est un interrupteur maintenant, coché par défaut. #}
   <div class="cat-source-reglage">
     <label class="ctl-switch-inline">
       <input type="checkbox" class="ctl-switch" id="s_catalogue_activer"
@@ -2578,9 +2578,9 @@ async function fontDelete(f) {
   <div class="meta">{{ _('catalogue.org_hint') }}</div>
   <div id="cat-erreur" class="cat-err"></div>
 
-  {***REMOVED*** ★ LE JETON N'EST PROPOSÉ QU'AU MOMENT OÙ IL SERT : quand le quota tombe, ou quand un jeton
+  {# ★ LE JETON N'EST PROPOSÉ QU'AU MOMENT OÙ IL SERT : quand le quota tombe, ou quand un jeton
      est déjà posé (pour pouvoir le retirer). Un champ « jeton GitHub » affiché en permanence sur
-     une page de réglages serait une question posée à quelqu'un qui n'a pas le problème. ***REMOVED***}
+     une page de réglages serait une question posée à quelqu'un qui n'a pas le problème. #}
   <div id="cat-jeton" class="cat-jeton" style="display:none">
     <strong>{{ _('catalogue.jeton_titre') }}</strong>
     <p class="meta" style="margin:6px 0 0">{{ _('catalogue.jeton_expl') }}</p>
@@ -2597,11 +2597,11 @@ async function fontDelete(f) {
     </div>
   </div>
 
-  {***REMOVED*** ★ LE CŒUR N'ÉTAIT NULLE PART. `GET /api/update/core` sait depuis toujours comparer cette
+  {# ★ LE CŒUR N'ÉTAIT NULLE PART. `GET /api/update/core` sait depuis toujours comparer cette
      instance à la dernière release publiée, et `POST /api/update/core/apply` sait l'appliquer —
      aucune page n'appelait ni l'une ni l'autre. Un utilisateur extérieur installait une version
      et n'avait aucun chemin vers la suivante, alors que ses plugins, eux, se mettaient à jour
-     ici même. C'est la première section : la version du produit prime sur celle de ses pièces. ***REMOVED***}
+     ici même. C'est la première section : la version du produit prime sur celle de ses pièces. #}
   <div class="cat-sec">
     <h3 class="cat-sec-t">Bobi.Studio</h3>
     <div id="cat-core" class="cat-core meta">{{ _('settings.loading') }}</div>
@@ -2665,10 +2665,10 @@ async function fontDelete(f) {
             <h3 style="margin:0 0 var(--space-2); font-size:0.78em; font-weight:600;
                        text-transform:uppercase; letter-spacing:1.2px; color:var(--text-muted)">
                 {{ _('recette.export_title') }}</h3>
-            {***REMOVED*** ⚠ DEUX BOUTONS, PAS UNE CASE À COCHER. Le modèle et la campagne ne se
+            {# ⚠ DEUX BOUTONS, PAS UNE CASE À COCHER. Le modèle et la campagne ne se
                diffusent pas au même public : la campagne porte des noms de testeurs et
                des remarques de terrain. Deux gestes distincts, deux libellés qui disent
-               ce qu'ils emportent. ***REMOVED***}
+               ce qu'ils emportent. #}
             <div style="display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:center">
                 <a class="btn" href="/api/tests/export">{{ _('recette.export_modele') }}</a>
                 <a class="btn" href="/api/tests/export?resultats=1">{{ _('recette.export_campagne') }}</a>
@@ -2785,7 +2785,7 @@ window.HostNode = {
     _render() {
         document.querySelectorAll('.hostnode-select').forEach(sel => {
             sel.innerHTML = this.list.length
-                ? this.list.map(n => `<option value="${n.id}"${n.id === this.current ? ' selected' : ''}>${(n.name || n.host || ('***REMOVED***' + n.id))} ${n.host ? '· ' + n.host : ''}</option>`).join('')
+                ? this.list.map(n => `<option value="${n.id}"${n.id === this.current ? ' selected' : ''}>${(n.name || n.host || ('#' + n.id))} ${n.host ? '· ' + n.host : ''}</option>`).join('')
                 : `<option value="">${T('settings.js.no_node') || setT('settings.js2.aucun_noeud')}</option>`;
         });
     },
@@ -2950,9 +2950,9 @@ function ctlDocRender() {
         ctlSpec(['ctl-dot', 'ctl-dots', 'ctl-dot--all'], setT('settings.ctl.dotid_t'),
             setT('settings.ctl.dotid_d'),
             '<span style="display:inline-flex;gap:14px;align-items:center">' +
-            ['***REMOVED***e5484d', '***REMOVED***f5a524', '***REMOVED***30a46c', '***REMOVED***3b82f6'].map(c =>
+            ['#e5484d', '#f5a524', '#30a46c', '#3b82f6'].map(c =>
                 '<span class="ctl-dot" style="background:' + c + '"></span>').join('') +
-            '<span class="ctl-dots">' + ['***REMOVED***e5484d', '***REMOVED***f5a524', '***REMOVED***30a46c'].map(c =>
+            '<span class="ctl-dots">' + ['#e5484d', '#f5a524', '#30a46c'].map(c =>
                 '<span class="ctl-dot" style="background:' + c + '"></span>').join('') + '</span>' +
             '<span class="ctl-dot ctl-dot--all"></span></span>') +
         ctlSpec(['ctl-toolbar', 'ctl-toolgroup', 'ctl-toolrow', 'ctl-tool'], setT('settings.ctl.toolbar_t'),
@@ -3059,13 +3059,13 @@ function ctlDocRender() {
         if (b) b.parentNode.querySelectorAll('.ctl-bus').forEach(o => o.setAttribute('aria-checked', String(o === b)));
     });
     document.getElementById('ctl-demo-on').addEventListener('change', (e) => {
-        document.querySelectorAll('***REMOVED***set-tab-controles .ctl-push').forEach(p =>
+        document.querySelectorAll('#set-tab-controles .ctl-push').forEach(p =>
             p.setAttribute('aria-pressed', String(e.target.checked)));
     });
 
     // Anti-dérive : ce que le catalogue déclare doit être montré ici.
     const montre = new Set();
-    document.querySelectorAll('***REMOVED***set-tab-controles [data-ctl]').forEach(el =>
+    document.querySelectorAll('#set-tab-controles [data-ctl]').forEach(el =>
         el.dataset.ctl.split(/\s+/).forEach(c => montre.add(c)));
     // Parties STRUCTURELLES d'un composant déjà montré : elles n'ont pas de vignette à elles (on ne
     // montre pas un `-fill` tout seul). Les VARIANTES, elles, n'ont rien à faire ici — une variante
@@ -3089,7 +3089,7 @@ function ctlDots() {
                ' ':['00000','00000','00000','00000','00000','00000','00000'],
                '1':['00100','01100','00100','00100','00100','00100','01110'],
                k:['00000','10000','10010','10100','11000','10100','10010']};
-    document.querySelectorAll('***REMOVED***set-tab-controles canvas[data-ctl-dots]').forEach(cv => {
+    document.querySelectorAll('#set-tab-controles canvas[data-ctl-dots]').forEach(cv => {
         const ctx = cv.getContext && cv.getContext('2d');
         if (!ctx) return;
         const css = getComputedStyle(document.documentElement);
@@ -3172,8 +3172,8 @@ function ctlOrphelins() {
     // Une feuille UNIQUE pour tous les aperçus, chacun sur son identifiant de bac. Sans elle,
     // aucune règle du composant ne s'applique et les vignettes retombent en texte nu.
     const css = orph.map((o, i) => (o.css || '')
-        .split('__PREV__ .' + o.classe + ' ').join('***REMOVED***ctlp' + i)      // la racine EST le bac
-        .split('__PREV__').join('***REMOVED***ctlp' + i + ' ')).join('\n');
+        .split('__PREV__ .' + o.classe + ' ').join('#ctlp' + i)      // la racine EST le bac
+        .split('__PREV__').join('#ctlp' + i + ' ')).join('\n');
     let st = document.getElementById('ctl-prev-style');
     if (!st) { st = document.createElement('style'); st.id = 'ctl-prev-style'; document.head.appendChild(st); }
     st.textContent = css;
@@ -3286,7 +3286,7 @@ function ctlSpecimen(cls) {
         // sort de sa case et va se lire dans la voisine.
         return '<span style="display:inline-block;padding-top:34px"><span class="ctl-gauge warn" tabindex="0" style="--ctl-gauge-w:110px"><span class="ctl-gauge-fill" style="transform:scaleX(0.87)"></span><span class="ctl-gauge-val">87 %</span></span></span>';
     if (base === 'ctl-dot' || base === 'ctl-dots')
-        return '<span class="ctl-dots">' + ['***REMOVED***e5484d', '***REMOVED***f5a524', '***REMOVED***30a46c'].map(c =>
+        return '<span class="ctl-dots">' + ['#e5484d', '#f5a524', '#30a46c'].map(c =>
             '<span class="ctl-dot" style="background:' + c + '"></span>').join('') + '</span>';
     if (base === 'ctl-tool' || base === 'ctl-toolbar' || base === 'ctl-toolgroup' || base === 'ctl-toolrow')
         return '<span class="ctl-toolbar" style="margin:0;padding:0;border:0"><div class="ctl-toolgroup">' +
@@ -3385,7 +3385,7 @@ const SET_GROUPS = [
 // `escapeHtml` existe bien sur la page, mais il y arrive par le JS injecté d'un CORE PLUGIN :
 // s'en servir ferait dépendre cet onglet d'un service qu'on peut désactiver.
 const apEsc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
-    c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&***REMOVED***39;'}[c]));
+    c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 
 // État de tri et de filtre de la table. Gardés HORS de la fonction de rendu : re-trier ne doit
 // pas relancer une requête, et une recherche qui perdrait le tri à chaque frappe serait pire
@@ -3493,8 +3493,8 @@ function apRendre() {
             '<td><span class="badge">' + apEsc(l.kind) + '</span></td>' +
             '<td>' + (orphelin
                 ? '<span class="ap-mort">' + apEsc({{ _('settings.public.gone') | tojson }}) +
-                  ' <span class="mono">***REMOVED***' + l.vmid + '</span></span>'
-                : apEsc(l.hostname) + ' <span class="meta mono">***REMOVED***' + (l.vmid_actuel || l.vmid) +
+                  ' <span class="mono">#' + l.vmid + '</span></span>'
+                : apEsc(l.hostname) + ' <span class="meta mono">#' + (l.vmid_actuel || l.vmid) +
                   '</span>') + '</td>' +
             // ★ UN VRAI LIEN, PAS UN CHAMP EN LECTURE SEULE. Un `<input readonly>` ne
             // s'ouvre pas, ne se voit pas comme cliquable, et ne s'annonce pas comme un lien
@@ -3624,7 +3624,7 @@ function switchSetGroup(gid) {
     const subnav = document.querySelector('.set-subnav');
     if (subnav) subnav.hidden = grp.tabs.length <= 1;
     // Affiche le contenu : onglet courant s'il appartient au groupe, sinon le 1er du groupe.
-    // ⚠ Le hash porte maintenant `***REMOVED***<onglet>/<sous-onglet>` : le lire brut ferait échouer la
+    // ⚠ Le hash porte maintenant `#<onglet>/<sous-onglet>` : le lire brut ferait échouer la
     // reconnaissance de l'onglet (« deploiement/build » n'est dans aucune liste) et retomberait
     // silencieusement sur le premier onglet du groupe.
     const cur = _setLireHash().onglet;
@@ -4009,10 +4009,10 @@ const McastRanges = {
     _scopeLabel(r) {
         if (r.scope === 'network') {
             const net = this._networks.find(n => n.id === r.media_network_id);
-            return `${T('settings.mcast.scope_network')} : ${net ? escapeHtml(net.name) : '***REMOVED***' + r.media_network_id}`;
+            return `${T('settings.mcast.scope_network')} : ${net ? escapeHtml(net.name) : '#' + r.media_network_id}`;
         }
         const node = this._nodes.find(n => n.id === r.node_id);
-        return `${T('settings.mcast.scope_interface')} : ${node ? escapeHtml(node.name) : '***REMOVED***' + r.node_id}/${escapeHtml(r.ifname || '')}`;
+        return `${T('settings.mcast.scope_interface')} : ${node ? escapeHtml(node.name) : '#' + r.node_id}/${escapeHtml(r.ifname || '')}`;
     },
 
     _renderTable() {
@@ -4205,10 +4205,10 @@ function _initSetTabs() {
         if (!(e.key in keys)) return;
         e.preventDefault();
         // Cycle RESTREINT aux onglets du groupe actif (sous-nav visible).
-        const tabs = (SET_GROUPS.find(g => g.id === tabGroupOf((location.hash || '***REMOVED***branding').slice(1)))
+        const tabs = (SET_GROUPS.find(g => g.id === tabGroupOf((location.hash || '#branding').slice(1)))
                       || SET_GROUPS[0]).tabs;
         if (!tabs.length) return;
-        const cur = tabs.indexOf((location.hash || '***REMOVED***branding').slice(1));
+        const cur = tabs.indexOf((location.hash || '#branding').slice(1));
         let i = keys[e.key] === 'first' ? 0
               : keys[e.key] === 'last'  ? tabs.length - 1
               : ((cur < 0 ? 0 : cur) + keys[e.key] + tabs.length) % tabs.length;
@@ -4218,7 +4218,7 @@ function _initSetTabs() {
     });
 }
 
-// ─── Adresse : `***REMOVED***<onglet>[/<sous-onglet>]` ───────────────────────────────────────────────────
+// ─── Adresse : `#<onglet>[/<sous-onglet>]` ───────────────────────────────────────────────────
 // Le 2e niveau était déjà dans l'URL, le 3e (les `.subtabs` : Nœuds, Build, Interfaces, Pupitres…)
 // ne l'était pas : recharger une page ouverte sur « Déploiement › Build » ramenait sur « Nœuds ».
 // Un seul point d'écriture, sinon deux formules divergent — motif déjà rencontré aujourd'hui.
@@ -4227,12 +4227,12 @@ let _setSousOnglet = {};        // onglet → dernier sous-onglet visité
 function _setMajHash(onglet, sous) {
     if (sous) _setSousOnglet[onglet] = sous;
     const s = sous || _setSousOnglet[onglet];
-    const h = '***REMOVED***' + onglet + (s ? '/' + s : '');
+    const h = '#' + onglet + (s ? '/' + s : '');
     if (location.hash !== h) history.replaceState(null, '', h);
 }
 
 function _setLireHash() {
-    let [onglet, sous] = (location.hash || '').replace(/^***REMOVED***/, '').split('/');
+    let [onglet, sous] = (location.hash || '').replace(/^#/, '').split('/');
     // NMOS était un SOUS-ONGLET de « protocoles » ; il est devenu un groupe. Les liens déjà
     // partagés (documentation, favoris, tickets) pointent encore l'ancienne adresse : sans ce
     // repli ils retomberaient sur Ember+ sans rien dire.
@@ -4320,7 +4320,7 @@ async function tallyCharger() {
         }
         if (st.error) faits.push(st.error);
         _ecrire(c.level_uuid, {
-            nom: c.name || ('TSL ***REMOVED***' + c.id), tag: 'TSL 5.0 · ' + c.port, lien: '***REMOVED***tsl',
+            nom: c.name || ('TSL #' + c.id), tag: 'TSL 5.0 · ' + c.port, lien: '#tsl',
             faits: faits.join(' · '),
             // Trois états, et ils ne disent PAS la même chose : coupé volontairement, connecté
             // mais silencieux (le cas qu'on cherche — le câble est là, l'émetteur ne parle pas),
@@ -4345,7 +4345,7 @@ async function tallyCharger() {
             return ((dc || {}).type || '') === 'mixer';
         });
         mx.forEach(m => _ecrire(n.uuid, {
-            nom: m.hostname || ('***REMOVED***' + m.vmid), lien: '/traitements***REMOVED***mixer',
+            nom: m.hostname || ('#' + m.vmid), lien: '/traitements#mixer',
             tag: setT('settings.tally.by_mixer'), faits: '',
             etat: m.status === 'running' ? 'warn' : 'off'}));
     });
@@ -4359,7 +4359,7 @@ async function tallyCharger() {
         if ((c.direction || 'in') !== 'out' || !c.level_uuid) return;
         const st = c.status || {};
         (lit[c.level_uuid] = lit[c.level_uuid] || []).push({
-            nom: c.name || ('TSL ***REMOVED***' + c.id), lien: '***REMOVED***tsl',
+            nom: c.name || ('TSL #' + c.id), lien: '#tsl',
             faits: (c.dest_host || '?') + ':' + c.port,
             etat: !c.enabled ? 'off' : (st.running ? 'on' : 'warn'),
         });
@@ -4374,7 +4374,7 @@ async function tallyCharger() {
             // destinataire qui ne le regarde pas.
             const quoi = x.n > 1 ? (x.n + ' ' + x.detail) : x.detail;
             (lit[lid] = lit[lid] || []).push({
-                nom: x.hostname || ('***REMOVED***' + x.vmid), lien: x.lien,
+                nom: x.hostname || ('#' + x.vmid), lien: x.lien,
                 faits: [x.type, quoi, x.agit ? '' : setT('settings.tally.declared_off')]
                        .filter(Boolean).join(' · '),
                 etat: !x.agit ? 'off' : (etatCt[x.vmid] === 'running' ? 'on' : 'warn'),
@@ -4639,7 +4639,7 @@ function renderSecuriteNodes(d) {
             action = `<button class="btn btn-blue" id="securite-mig-${n.id}" onclick="migrateSecuriteNode(${n.id})">${T('settings.securite.migrate_btn')}</button>`
                 + ` <span class="meta" id="securite-migmsg-${n.id}"></span>`;
         }
-        return `<tr><td><strong>${_escp(n.name || ('***REMOVED***' + n.id))}</strong></td>`
+        return `<tr><td><strong>${_escp(n.name || ('#' + n.id))}</strong></td>`
             + `<td>${_escp(n.status || '')}</td>`
             + `<td><code>${_escp(n.agent_url || '—')}</code></td>`
             + `<td>${badge}</td><td>${action}</td></tr>`;
@@ -4704,7 +4704,7 @@ let _buildLoaded = false;
 //  orchestrateur — images d'exécution + montage — sont relocalisés sous Build.)
 const DEPLOY_TABS = ['nodes', 'build', 'newserver', 'fleet'];
 function _activeDeployTab() {
-    return document.querySelector('***REMOVED***set-tab-deploiement > .subtabs .subtab.active')
+    return document.querySelector('#set-tab-deploiement > .subtabs .subtab.active')
         ?.id?.replace('deploy-btn-', '') || 'nodes';
 }
 // Bloc « Agent <version> · MAJ dispo / à jour » d'un nœud (factorisé : rendu initial + poll in-place).
@@ -4712,7 +4712,7 @@ function _nodeAgentHtml(n, bundled) {
     const av = escapeHtml(n.agent_version || '') || '?';
     const maj = bundled && n.agent_version && n.agent_version !== bundled;
     const tail = maj
-        ? ` · <span style="color:var(--status-warning-fg,***REMOVED***c80)">MAJ ${escapeHtml(bundled)} dispo</span> <button type="button" class="btn" onclick="majAgentNoeud(${n.id})">${setT('settings.st.update_the_agent')}</button> <span id="agentmaj_${n.id}" class="meta"></span>`
+        ? ` · <span style="color:var(--status-warning-fg,#c80)">MAJ ${escapeHtml(bundled)} dispo</span> <button type="button" class="btn" onclick="majAgentNoeud(${n.id})">${setT('settings.st.update_the_agent')}</button> <span id="agentmaj_${n.id}" class="meta"></span>`
         : (n.agent_version ? ' <span style="color:var(--status-running-fg)">' + setT('settings.st.up_to_date') + '</span>' : '');
     return `Agent <code>${av}</code>${tail}`;
 }
@@ -4817,7 +4817,7 @@ function _imgxRow(n, w, im) {
             act += ` <button class="btn" data-imgxpush="${n.id}_${w}" onclick="pousserImagesNoeud(this,${n.id},'${w}')" title="${T('settings.img.push_tip')}">${T('settings.img.push')}</button>`;
     }
     return `<tr class="${missing ? 'imgx-missing' : (bad ? 'imgx-alert' : '')}">
-        <td class="imgx-node">${escapeHtml(n.name || ('***REMOVED***' + n.id))}<div class="meta" style="font-family:var(--font-mono);font-size:0.85em">${escapeHtml(n.host || '—')}</div></td>
+        <td class="imgx-node">${escapeHtml(n.name || ('#' + n.id))}<div class="meta" style="font-family:var(--font-mono);font-size:0.85em">${escapeHtml(n.host || '—')}</div></td>
         <td>${chips}</td>
         <td><span class="${usedCls}">${used}</span>${gl}</td>
         <td>${_imgxBadge(im.state)}</td>
@@ -4849,7 +4849,7 @@ async function rafraichirNoeudsImages(force) {
                 </table></section>`;
         }).join('');
         const errs = nodes.filter(n => n.inventory_error)
-            .map(n => `<div class="alert alert-warning" style="margin-top:var(--space-2)">${escapeHtml(n.name || ('***REMOVED***'+n.id))} : ${T('settings.img.inv_error')} ${escapeHtml(n.inventory_error)}</div>`).join('');
+            .map(n => `<div class="alert alert-warning" style="margin-top:var(--space-2)">${escapeHtml(n.name || ('#'+n.id))} : ${T('settings.img.inv_error')} ${escapeHtml(n.inventory_error)}</div>`).join('');
         boxes.forEach(b => b.innerHTML = html + errs);
     } catch (e) {
         boxes.forEach(b => b.innerHTML = '<span style="color:var(--status-stopped-fg)">✕ ' + escapeHtml('' + e) + '</span>');
@@ -5108,7 +5108,7 @@ function _renderUpdatePreview(d) {
     let h = '';
     // Bandeau « sens » : quelle instance redémarre.
     h += `<div style="padding:var(--space-2) var(--space-3); border-radius:6px; margin-bottom:var(--space-3);
-            background:var(--status-warning-bg,***REMOVED***4a3a10); border:1px solid var(--status-warning-fg)">
+            background:var(--status-warning-bg,#4a3a10); border:1px solid var(--status-warning-fg)">
             ⚠ ${T('settings.js.upd_banner_pre')} <strong>${T('settings.js.upd_restart')}</strong> ${T('settings.js.upd_banner_post')}
             <strong>${_escp(d.target.label)}</strong>
             <span style="font-family:var(--font-mono); font-size:0.85em">${_escp(d.target.url)}</span>
@@ -5303,7 +5303,7 @@ async function rafraichirNodes() {
         const nodes = d.nodes || [];
         window._nodesCache = nodes;
         const bundled = d.agent_bundled || '';   // version d'agent embarquée dans l'orchestrateur
-        const enrolled = nodes.filter(n => !n.pending_enroll);   // les jetons en attente → ***REMOVED***enroll-list
+        const enrolled = nodes.filter(n => !n.pending_enroll);   // les jetons en attente → #enroll-list
         renderEnrollList(nodes);
         if (!enrolled.length) { box.innerHTML = T('settings.js.no_node'); _restoreEnrollFromHash(); return; }
         box.innerHTML = enrolled.map(n => {
@@ -5328,7 +5328,7 @@ async function rafraichirNodes() {
                   <span style="color:var(--text-muted)">· ${escapeHtml(n.host)} · ${escapeHtml(n.mtl_iface||'—')}</span> ${badge}
                   <span class="meta">${n.containers||0} ${T('settings.js.containers_word')}</span>
                   ${n.compute_cpuset ? `<span class="meta" title="${T('settings.js.core_pool_tip')}">· ${T('settings.js.cores_word')} ${escapeHtml(n.compute_cpuset)}${n.cores_pool?` (${n.cores_pool.used}/${n.cores_pool.total} ${T('settings.js.used_word')})`:''}</span>` : ''}
-                  ${(n.cores_pool && n.cores_pool.physical != null) ? `<span class="meta" title="${T('monitoring.cpu_psi_tip')}"${n.cores_pool.oversub?' style="color:var(--danger, ***REMOVED***e5484d);font-weight:600"':''}>· ${T('monitoring.cpu_capacity_val').replace('{phys}', n.cores_pool.physical).replace('{ded}', n.cores_pool.physical_dedicated).replace('{free}', n.cores_pool.physical_free).replace('{shared}', n.cores_pool.shared_containers)}${n.cores_pool.oversub?' — '+T('monitoring.cpu_oversub'):''}</span>` : ''}</div>
+                  ${(n.cores_pool && n.cores_pool.physical != null) ? `<span class="meta" title="${T('monitoring.cpu_psi_tip')}"${n.cores_pool.oversub?' style="color:var(--danger, #e5484d);font-weight:600"':''}>· ${T('monitoring.cpu_capacity_val').replace('{phys}', n.cores_pool.physical).replace('{ded}', n.cores_pool.physical_dedicated).replace('{free}', n.cores_pool.physical_free).replace('{shared}', n.cores_pool.shared_containers)}${n.cores_pool.oversub?' — '+T('monitoring.cpu_oversub'):''}</span>` : ''}</div>
                 <div style="display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap">
                   <button class="btn" onclick="basculerEditNode(${n.id})">${T('settings.js.edit')}</button>
                   <button class="btn btn-red" onclick="supprimerNode(${n.id})">${T('settings.js.delete_word')}</button>
@@ -5379,14 +5379,14 @@ async function rafraichirNodes() {
 }
 
 // ─── Flux d'enrôlement centré « jeton » (maître/détail, restaurable au reload) ────────────────
-// État de sélection persisté dans le hash d'URL ***REMOVED***enroll/<nodeId>/<mode> (mode ∈ usb|ilo|uefi) →
+// État de sélection persisté dans le hash d'URL #enroll/<nodeId>/<mode> (mode ∈ usb|ilo|uefi) →
 // un F5 restaure le jeton sélectionné + le mode. _usbCtx (lu par toutes les fonctions d'install)
 // est reconstruit depuis la ligne `nodes` (status=pending) au lieu de vivre uniquement en mémoire.
 const INSTALL_MODES = ['usb', 'ilo', 'uefi'];
 window._installMode = 'usb';
 window._enrollOpen = null;   // nodeId du détail actuellement ouvert (anti-reclobber)
 // Persistance de la sélection HORS du hash d'URL : le hash sert déjà au routage d'onglets Réglages
-// (DOMContentLoaded remplace tout hash inconnu par ***REMOVED***branding). On utilise localStorage → survit au
+// (DOMContentLoaded remplace tout hash inconnu par #branding). On utilise localStorage → survit au
 // reload sans collision. Format : "<nodeId>/<mode>".
 const ENROLL_SEL_KEY = 'bobi_enroll_sel';
 function _setEnrollSel(nodeId, mode) { try { localStorage.setItem(ENROLL_SEL_KEY, nodeId + '/' + mode); } catch (e) {} }
@@ -5407,7 +5407,7 @@ function toggleEnrollCreate(force) {
 function _ctxFromNode(n) {
     let prof = {}; try { prof = JSON.parse(n.enroll_profile || '{}'); } catch (e) {}
     return { nodeId: n.id, token: n.enroll_token || '', controllerUrl: window.location.origin,
-             name: n.name || ('***REMOVED***' + n.id),
+             name: n.name || ('#' + n.id),
              ilo_host: n.ilo_host || '', ilo_user: n.ilo_user || 'Administrator',
              mgmt: { mgmt_ip: prof.mgmt_ip || '', mgmt_netmask: prof.mgmt_netmask || '',
                      mgmt_gateway: prof.mgmt_gateway || '', mgmt_dns: prof.mgmt_dns || '',
@@ -5432,7 +5432,7 @@ async function renderEnrollList(nodes) {
         const net = c.mgmt.mgmt_ip ? ('IP ' + escapeHtml(c.mgmt.mgmt_ip)) : 'DHCP';
         const bIlo = c.ilo_host ? '<span class="badge ready">iLO ✓</span>' : '';
         const bUefi = (armedId === n.id) ? '<span class="badge ready">' + setT('settings.st.uefi_armed') + '</span>' : '';
-        return `<div style="background:var(--bg-card); border:1px solid ${sel ? 'var(--accent,***REMOVED***39f)' : 'var(--border)'}; border-radius:8px; padding:var(--space-3); margin-bottom:var(--space-2)">
+        return `<div style="background:var(--bg-card); border:1px solid ${sel ? 'var(--accent,#39f)' : 'var(--border)'}; border-radius:8px; padding:var(--space-3); margin-bottom:var(--space-2)">
           <div style="display:flex; justify-content:space-between; align-items:baseline; gap:var(--space-3); flex-wrap:wrap">
             <div><strong>${escapeHtml(n.name)}</strong> <span class="meta">· jeton en attente · contrôle ${net}</span>
               <div style="margin-top:4px; display:flex; gap:6px; flex-wrap:wrap; align-items:center">${caps} ${bIlo} ${bUefi}</div>
@@ -5970,7 +5970,7 @@ async function pxeRefresh() {
         const dlrow = document.getElementById('np_pxe_dlrow');
         if (s.ready) {
             dl.innerHTML = '<span class="badge ready">' + T('settings.js.netboot_present') + '</span>'
-                + ' <a href="***REMOVED***" class="meta" onclick="document.getElementById(\'np_pxe_dlrow\').style.display=\'flex\'; this.style.display=\'none\'; return false;">remplacer l’image…</a>';
+                + ' <a href="#" class="meta" onclick="document.getElementById(\'np_pxe_dlrow\').style.display=\'flex\'; this.style.display=\'none\'; return false;">remplacer l’image…</a>';
             if (dlrow) dlrow.style.display = 'none';
         } else {
             dl.innerHTML = '<span class="badge stopped">✕ Image netboot absente</span>'
@@ -5979,7 +5979,7 @@ async function pxeRefresh() {
         }
         if (st) {
             if (s.armed_node_id && c && s.armed_node_id === c.nodeId) { st.style.color='var(--status-running-fg)'; st.textContent=T('settings.js.armed_here'); }
-            else if (s.armed_node_id) { st.style.color='var(--text-muted)'; st.textContent=T('settings.js.armed_elsewhere')+escapeHtml(s.armed_node_name||('***REMOVED***'+s.armed_node_id)); }
+            else if (s.armed_node_id) { st.style.color='var(--text-muted)'; st.textContent=T('settings.js.armed_elsewhere')+escapeHtml(s.armed_node_name||('#'+s.armed_node_id)); }
             else { st.style.color='var(--text-muted)'; st.textContent=T('settings.js.not_armed'); }
         }
         // Mot de passe root : affiché SEULEMENT sur le nœud armé depuis cet écran, à côté de l'URL de
@@ -6044,7 +6044,7 @@ async function supprimerNode(id) {
     const nb = n.containers || 0;
     if (nb) {
         if (msg) {
-            msg.style.color = 'var(--status-warning-fg,***REMOVED***c80)';
+            msg.style.color = 'var(--status-warning-fg,#c80)';
             msg.innerHTML = n.online
                 ? escapeHtml('🔒 ' + setT('settings.chk.attached_containers').replace('{n}', nb))
                 : escapeHtml('⚠ ' + setT('settings.chk.node_unreachable_orphans').replace('{n}', nb)) + ' '
@@ -6128,7 +6128,7 @@ async function chargerReadiness(id, mode) {
 }
 function _ckRow(label, state, detail, id) {
     const mark = state === true ? '<span style="color:var(--status-running-fg)">✓</span>'
-               : state === 'warn' ? '<span style="color:var(--status-warning-fg,***REMOVED***c80)">⚠</span>'
+               : state === 'warn' ? '<span style="color:var(--status-warning-fg,#c80)">⚠</span>'
                : '<span style="color:var(--status-stopped-fg)">✗</span>';
     return `<div ${id ? `id="${id}" ` : ''}style="display:flex;gap:8px;align-items:baseline;padding:1px 0">
         <span style="width:1.3em;text-align:center">${mark}</span><span>${label}</span>
@@ -6149,7 +6149,7 @@ function _reachSummary(reach) {
         + (r.via ? ' (via ' + r.via + (r.dev ? ' dev ' + r.dev : '') + ')' : '') + ' — ' + setT('settings.chk.reach_to_confirm') };
     return { level: 'none', text: setT('settings.chk.no_ip_no_route') };
 }
-// Test de joignabilité réel (ping passerelle + TCP vers un conteneur déployé). Écrit dans ***REMOVED***spanId.
+// Test de joignabilité réel (ping passerelle + TCP vers un conteneur déployé). Écrit dans #spanId.
 async function lancerReachTest(spanId, ckId) {
     const el = document.getElementById(spanId);
     if (el) { el.style.color = 'var(--text-muted)'; el.textContent = '⏳ test…'; }
@@ -6163,7 +6163,7 @@ async function lancerReachTest(spanId, ckId) {
         // Confirmation forte = TCP vers un conteneur (preuve de bout en bout) ; le ping seul est indicatif.
         const proven = !!(j.container && j.container.ok);
         const okAny = proven || j.gateway_ping === true;
-        if (el) { el.style.color = okAny ? 'var(--status-running-fg)' : 'var(--status-warning-fg,***REMOVED***c80)';
+        if (el) { el.style.color = okAny ? 'var(--status-running-fg)' : 'var(--status-warning-fg,#c80)';
                   el.textContent = (okAny ? '✓ ' : '⚠ ') + parts.join(' · '); }
         // Promeut la ligne de checklist : vert si prouvé par TCP conteneur, sinon laisse en ⚠.
         if (proven && ckId) {
@@ -6331,10 +6331,10 @@ function _secNetwork(id, j) {
         cnWarn = `<div class="meta" style="color:var(--status-stopped-fg);margin-bottom:4px">✗ ${setT('settings.js2.no_route_to_container_plane').replace('{subnet}', escapeHtml(cl.subnet||'—'))}
             <button class="btn" style="margin-left:6px" onclick="lancerReachTest('cn_${id}_reach','ck_reach_${id}')">${setT('settings.js2.tester')}</button> <span id="cn_${id}_reach"></span></div>`;
     else if (_rs.level === 'route')
-        cnWarn = `<div class="meta" style="color:var(--status-warning-fg,***REMOVED***c80);margin-bottom:4px">ℹ Orchestrateur : ${escapeHtml(_rs.text)} vers <code>${escapeHtml(cl.subnet||'—')}</code>.
+        cnWarn = `<div class="meta" style="color:var(--status-warning-fg,#c80);margin-bottom:4px">ℹ Orchestrateur : ${escapeHtml(_rs.text)} vers <code>${escapeHtml(cl.subnet||'—')}</code>.
             <button class="btn" style="margin-left:6px" onclick="lancerReachTest('cn_${id}_reach','ck_reach_${id}')">${setT('settings.st.test_reachability')}</button> <span id="cn_${id}_reach"></span></div>`;
     else if (cn.allinone)
-        cnWarn = `<div class="meta" style="color:var(--status-warning-fg,***REMOVED***c80);margin-bottom:4px">⚠ ${setT('settings.js2.allinone_macvlan_warning')}</div>`;
+        cnWarn = `<div class="meta" style="color:var(--status-warning-fg,#c80);margin-bottom:4px">⚠ ${setT('settings.js2.allinone_macvlan_warning')}</div>`;
     return `<div style="font-weight:600;margin-bottom:4px">${setT('settings.st.container_network_macvlan')}</div>
       <div class="meta" style="margin-bottom:4px">Subnet <code>${escapeHtml(cl.subnet||'—')}</code> · passerelle <code>${escapeHtml(cl.gateway||'—')}</code> · plage <code>${escapeHtml(cl.ip_range||'—')}</code>
         <span style="opacity:.7">${setT('settings.st.cluster_settings_network_static_ips')}</span></div>
@@ -6445,8 +6445,8 @@ const NodeWizard = {
         let rebootBox = '';
         if (step.reboot) {
             const mp = (j.io2110||{}).mtl_prep || {};
-            if (mp.reboot_needed) rebootBox = `<div style="margin-top:8px;padding:8px 10px;border:1px solid var(--status-warning-fg,***REMOVED***c80);border-radius:6px">
-                <div class="meta" style="color:var(--status-warning-fg,***REMOVED***c80)">⚠ ${T2('wiz.node.reboot_required')}</div>
+            if (mp.reboot_needed) rebootBox = `<div style="margin-top:8px;padding:8px 10px;border:1px solid var(--status-warning-fg,#c80);border-radius:6px">
+                <div class="meta" style="color:var(--status-warning-fg,#c80)">⚠ ${T2('wiz.node.reboot_required')}</div>
                 <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                   <button class="btn btn-orange" onclick="mtlNodeReboot(${id})">${T2('wiz.node.reboot_now')}</button>
                   <button class="btn" onclick="NodeWizard.waitReboot(${id})">${T2('wiz.node.reboot_wait_btn')}</button>
@@ -6489,7 +6489,7 @@ const NodeWizard = {
             if (btn) { btn.style.display = _ready ? 'none' : ''; btn.textContent = T('settings.js.enable_all_queues')+q.max_combined+')'; }
             if (m) {
                 if (_ready) { m.style.color = 'var(--status-running-fg)'; m.textContent = '✓ ' + T('wiz.node.ok_confirmed'); }
-                else { m.style.color = 'var(--status-warning-fg,***REMOVED***c80)'; m.textContent = '⚠ ' + T('wiz.node.queues_not_done'); }
+                else { m.style.color = 'var(--status-warning-fg,#c80)'; m.textContent = '⚠ ' + T('wiz.node.queues_not_done'); }
             }
         };
         if (st.queues !== undefined) { paint(); return; }
@@ -6520,7 +6520,7 @@ const NodeWizard = {
             const m2 = document.getElementById('wiz_'+id+'_msg');
             if (m2 && !(step && step.final)) {
                 if (done) { m2.style.color = 'var(--status-running-fg)'; m2.textContent = '✓ ' + T('wiz.node.ok_confirmed'); }
-                else { m2.style.color = 'var(--status-warning-fg,***REMOVED***c80)'; m2.textContent = '⚠ ' + T('wiz.node.not_done'); }
+                else { m2.style.color = 'var(--status-warning-fg,#c80)'; m2.textContent = '⚠ ' + T('wiz.node.not_done'); }
             }
         } catch (e) { if (m) { m.style.color = 'var(--status-stopped-fg)'; m.textContent = '✕ ' + e; } }
     },
@@ -6709,7 +6709,7 @@ function _capFixHtml(n) {
     const manquantes = CAPS_NODE.filter(c => !caps.includes(c.id));
     const declarees = caps.length
         ? caps.map(c => `<code>${escapeHtml(c)}</code>`).join(' ')
-        : `<span style="color:var(--status-warning-fg,***REMOVED***c80)">${T('settings.js.caps_none')}</span>`;
+        : `<span style="color:var(--status-warning-fg,#c80)">${T('settings.js.caps_none')}</span>`;
     let ajout = '';
     if (!n.agent_url) {
         ajout = ` <span class="meta">· ${T('settings.js.caps_no_agent')}</span>`;
@@ -6816,7 +6816,7 @@ async function detecterGpu(id) {
     try {
         const j = await (await fetch('/api/nodes/'+id+'/detect-gpu', {method:'POST'})).json();
         if (msg) {
-            msg.style.color = j.gpu_capable ? 'var(--status-running-fg)' : 'var(--status-warning-fg,***REMOVED***c80)';
+            msg.style.color = j.gpu_capable ? 'var(--status-running-fg)' : 'var(--status-warning-fg,#c80)';
             msg.textContent = (j.gpu_capable ? '✓ ' : '⚠ ') + (j.msg || '');
         }
         rafraichirNodes();
@@ -6941,7 +6941,7 @@ async function chargerImageBuildNode() {
         const cur = (s.image_build_node || '').toString();
         let html = `<option value="">${setT('settings.st.auto_single_node_otherwise_orchestrato')}</option>`
                  + `<option value="local">Orchestrateur (local)</option>`;
-        html += (nd.nodes || []).map(n => `<option value="${n.id}">${escapeHtml(n.name || ('***REMOVED***'+n.id))}${n.host ? (' · ' + escapeHtml(n.host)) : ''}</option>`).join('');
+        html += (nd.nodes || []).map(n => `<option value="${n.id}">${escapeHtml(n.name || ('#'+n.id))}${n.host ? (' · ' + escapeHtml(n.host)) : ''}</option>`).join('');
         sel.innerHTML = html;
         sel.value = cur;
     } catch (e) {}
@@ -6975,7 +6975,7 @@ async function rafraichirImages() {
                 const tgts = s.nodes || [];
                 note = tgts.length
                     ? `<span class="meta" title="${T('settings.js.build_node_tip')}">· ${T('settings.js.build_pernode')} : `
-                      + tgts.map(n => `${escapeHtml(n.name || ('***REMOVED***'+n.id))} ${n.present
+                      + tgts.map(n => `${escapeHtml(n.name || ('#'+n.id))} ${n.present
                             ? '<span class="badge ready">'+T('settings.js.image_ok')+'</span>'
                             : '<span class="badge stopped">'+T('settings.js.absent_word')+'</span>'}`).join(' · ')
                       + '</span>'
@@ -7013,7 +7013,7 @@ async function rafraichirImages() {
             const nodes = Array.isArray(_nj) ? _nj : (_nj.nodes || []);
             for (const n of nodes.filter(n => n.gpu_capable)) {
                 box.innerHTML += `<div style="display:flex; align-items:center; gap:var(--space-3); padding:4px 0; flex-wrap:wrap">
-                    <span style="min-width:210px">bobi-compute-gpu — ${escapeHtml(n.name || ('***REMOVED***' + n.id))} <code>${escapeHtml(n.compute_gpu_image || '—')}</code></span>
+                    <span style="min-width:210px">bobi-compute-gpu — ${escapeHtml(n.name || ('#' + n.id))} <code>${escapeHtml(n.compute_gpu_image || '—')}</code></span>
                     <span class="meta">${T('settings.js.gpu_derived_note')}</span>
                     <button class="btn" onclick="buildImageGpu(${n.id})">${T('settings.js.build_word')}</button>
                     <span id="gpubuild_${n.id}" class="meta"></span>
@@ -7581,8 +7581,8 @@ async function nmosRenderSnapshots() {
     if (!snaps.length) { box.innerHTML = '<span style="opacity:.7">aucun snapshot</span>'; return; }
     box.innerHTML = snaps.map(s =>
         `<span class="filter-chip" style="cursor:default; gap:6px">${escapeHtml(s.name)} <span style="opacity:.6">(${s.resources})</span>
-            <a href="***REMOVED***" onclick="nmosSnapRecall(${s.id});return false" title="Rappeler ce snapshot" style="color:var(--accent)">rappeler</a>
-            <a href="***REMOVED***" onclick="nmosSnapDelete(${s.id},'${escapeHtml(s.name).replace(/'/g,"")}');return false" title="${T('settings.js.delete_full')}" style="color:var(--status-stopped-fg)">✕</a></span>`
+            <a href="#" onclick="nmosSnapRecall(${s.id});return false" title="Rappeler ce snapshot" style="color:var(--accent)">rappeler</a>
+            <a href="#" onclick="nmosSnapDelete(${s.id},'${escapeHtml(s.name).replace(/'/g,"")}');return false" title="${T('settings.js.delete_full')}" style="color:var(--status-stopped-fg)">✕</a></span>`
     ).join(' ');
 }
 async function nmosSnapRecall(id) {
@@ -7636,7 +7636,7 @@ async function nmosRenderCards() {
             <label class="toggle-inline" ${hasD?'':'style="opacity:.4"'}><input type="checkbox" class="ios-toggle" id="nm_d_${c.vmid}" ${hasD?(o.anc?'checked':''):'disabled'} onchange="nmosCardOptChange(${c.vmid})"> ANC</label>
         </div>`;
         return `<div class="card">
-            <div class="card-head"><b>${escapeHtml(c.hostname)}</b> <span class="meta">***REMOVED***${c.vmid}</span></div>
+            <div class="card-head"><b>${escapeHtml(c.hostname)}</b> <span class="meta">#${c.vmid}</span></div>
             <div class="card-meta meta">${counts}</div>
             ${bar}
             <div class="meta" style="margin:0">Câblés ${boundN}/${totN}</div>
@@ -7889,7 +7889,7 @@ function _nmosSlotClick(slot, mods) {
     _nmosApplySelClasses(); _nmosUpdateSelInfo();
 }
 function _nmosApplySelClasses() {
-    document.querySelectorAll('***REMOVED***nmos_graph_slots .nmos-slot').forEach(el =>
+    document.querySelectorAll('#nmos_graph_slots .nmos-slot').forEach(el =>
         el.classList.toggle('sel', _nmosGSel.has(el.dataset.vmid + '|' + el.dataset.slot)));
 }
 function _nmosDrawDragEdge(slot, e) {
@@ -7903,7 +7903,7 @@ function _nmosDrawDragEdge(slot, e) {
     const cx = Math.max(30, (B.x - A.x) * 0.45);
     p.setAttribute('d', `M ${A.x} ${A.y} C ${A.x+cx} ${A.y}, ${B.x-cx} ${B.y}, ${B.x} ${B.y}`);
 }
-function _nmosClearDragEdge() { const p = document.querySelector('***REMOVED***nmos_graph_edges .nmos-edge-drag'); if (p) p.remove(); }
+function _nmosClearDragEdge() { const p = document.querySelector('#nmos_graph_edges .nmos-edge-drag'); if (p) p.remove(); }
 function _nmosDrawMarquee(m, e) {
     const canvas = document.getElementById('nmos_graph_canvas'), cr = canvas.getBoundingClientRect();
     const x = e.clientX - cr.left + canvas.scrollLeft, y = e.clientY - cr.top + canvas.scrollTop;
@@ -7914,7 +7914,7 @@ function _nmosDrawMarquee(m, e) {
 function _nmosApplyMarquee(m, e) {
     if (!m.el) return;
     const rect = m.el.getBoundingClientRect();
-    document.querySelectorAll('***REMOVED***nmos_graph_slots .nmos-slot').forEach(el => {
+    document.querySelectorAll('#nmos_graph_slots .nmos-slot').forEach(el => {
         const r = el.getBoundingClientRect();
         if (r.right > rect.left && r.left < rect.right && r.bottom > rect.top && r.top < rect.bottom)
             _nmosGSel.add(el.dataset.vmid + '|' + el.dataset.slot);
@@ -8295,13 +8295,13 @@ function switchReseauTab(name) {
 
 // ─── Vue réseau du nœud (modèle interface → rôle) ────────────
 const NET_ROLE_META = {
-    management: {label: T('settings.js.net.role_management'), color: '***REMOVED***3b82f6'},
-    mgmt_containers: {label: T('settings.js.net.role_mgmt_containers'), color: '***REMOVED***6366f1'},
-    containers: {label: T('settings.js.net.role_containers'), color: '***REMOVED***8b5cf6'},
-    media2110:  {label: T('settings.js.net.role_media2110'),  color: '***REMOVED***10b981'},
-    rdma:       {label: T('settings.js.net.role_rdma'),       color: '***REMOVED***f59e0b'},
-    bmc:        {label: T('settings.js.net.role_bmc'),        color: '***REMOVED***64748b'},
-    unused:     {label: T('settings.js.net.role_unused'),     color: '***REMOVED***475569'},
+    management: {label: T('settings.js.net.role_management'), color: '#3b82f6'},
+    mgmt_containers: {label: T('settings.js.net.role_mgmt_containers'), color: '#6366f1'},
+    containers: {label: T('settings.js.net.role_containers'), color: '#8b5cf6'},
+    media2110:  {label: T('settings.js.net.role_media2110'),  color: '#10b981'},
+    rdma:       {label: T('settings.js.net.role_rdma'),       color: '#f59e0b'},
+    bmc:        {label: T('settings.js.net.role_bmc'),        color: '#64748b'},
+    unused:     {label: T('settings.js.net.role_unused'),     color: '#475569'},
 };
 // Rôle combiné « mgmt_containers » = Management ET Containers à la fois : tout test de rôle
 // passe par ces helpers (miroir de database.role_is_management/role_is_containers).
@@ -8310,7 +8310,7 @@ const roleIsCt   = (r) => r === 'containers' || r === 'mgmt_containers';
 function _netRoleBadge(role) {
     const m = NET_ROLE_META[role] || NET_ROLE_META.unused;
     return `<span style="display:inline-block; padding:1px 8px; border-radius:10px; font-size:0.74em;
-        font-weight:600; color:***REMOVED***fff; background:${m.color}">${m.label}</span>`;
+        font-weight:600; color:#fff; background:${m.color}">${m.label}</span>`;
 }
 let _netViewData = null, _netViewPrev = null;
 async function rafraichirNodeNetView(sig) {
@@ -8399,9 +8399,9 @@ function _netPtpChip(n) {
     const isBad     = _PTP_BAD_STATES.includes(ps);   // FAULTY / DISABLED = lien coupé / port HS
     // Couleur = état du PORT : SLAVE=vert (port élu), STANDBY=ambre (redondance prête),
     // FAULTY/DISABLED=rouge (lien coupé), MASTER=rouge (ne devrait pas en clientOnly), inconnu=gris.
-    const clr = isSlave ? '***REMOVED***10b981' : isBad ? 'var(--status-stopped-fg)'
-              : isStandby ? 'var(--status-warning-fg, ***REMOVED***f59e0b)'
-              : isMaster ? '***REMOVED***ef4444' : 'var(--text-muted)';
+    const clr = isSlave ? '#10b981' : isBad ? 'var(--status-stopped-fg)'
+              : isStandby ? 'var(--status-warning-fg, #f59e0b)'
+              : isMaster ? '#ef4444' : 'var(--text-muted)';
     const lbl = isSlave ? 'SLAVE' : isStandby ? T('settings.js.net.ptp_standby')
               : ps ? ps : '—';
     const gm = (st && st.grandmaster_id) ? ` · GM ${st.grandmaster_id}` : '';
@@ -8420,18 +8420,18 @@ function _netRdmaChip(n) {
     if (!rs) return '';
     let clr, lbl, tip;
     if (!rs.verbs) {
-        clr = 'var(--status-warning-fg, ***REMOVED***f59e0b)';
+        clr = 'var(--status-warning-fg, #f59e0b)';
         lbl = T('settings.js.net.rdma_unavailable');
         tip = !rs.module      ? T('settings.js.net.rdma_tip_no_driver')
             : !rs.module_available ? T('settings.js.net.rdma_tip_no_module').replace('{mod}', rs.module)
             : !rs.module_loaded    ? T('settings.js.net.rdma_tip_not_loaded').replace('{mod}', rs.module)
             :                        T('settings.js.net.rdma_tip_no_roce').replace('{mod}', rs.module);
     } else if (rs.port_state && rs.port_state !== 'ACTIVE') {
-        clr = 'var(--status-warning-fg, ***REMOVED***f59e0b)';
+        clr = 'var(--status-warning-fg, #f59e0b)';
         lbl = 'RDMA ' + rs.port_state;
         tip = T('settings.js.net.rdma_tip_port_down');
     } else {
-        clr = '***REMOVED***10b981';
+        clr = '#10b981';
         lbl = 'RDMA ✓' + (rs.rate_gbps ? ' ' + rs.rate_gbps + 'G' : '');
         tip = (rs.kind || 'RDMA') + (rs.port_state ? ' · ' + rs.port_state : '');
     }
@@ -8464,7 +8464,7 @@ function renderNodeNetView(j, prev) {
     // Tuile BMC (iLO/iDRAC) — out-of-band, distincte des NICs.
     const b = j.bmc;
     if (b) {
-        const dot = b.reachable ? (b.health === 'OK' || !b.health ? '***REMOVED***10b981' : '***REMOVED***f59e0b') : '***REMOVED***ef4444';
+        const dot = b.reachable ? (b.health === 'OK' || !b.health ? '#10b981' : '#f59e0b') : '#ef4444';
         html += `<div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px;
             padding:var(--space-2) var(--space-3); margin-bottom:var(--space-3); display:flex; align-items:center; gap:var(--space-3)">
             <span style="font-weight:600">${escapeHtml(b.label || 'BMC')}</span>
@@ -8499,17 +8499,17 @@ function renderNodeNetView(j, prev) {
         const rs = n.rdma_state;
         const rdmaOk = rs && rs.verbs && (!rs.port_state || rs.port_state === 'ACTIVE');
         const dot = n.dpdk_bound ? 'var(--accent)'
-                  : (rs ? (!n.link_up && n.operstate ? '***REMOVED***ef4444' : (rdmaOk ? '***REMOVED***10b981' : '***REMOVED***f59e0b'))
-                        : (n.link_up ? '***REMOVED***10b981' : (n.operstate ? '***REMOVED***ef4444' : '***REMOVED***64748b')));
+                  : (rs ? (!n.link_up && n.operstate ? '#ef4444' : (rdmaOk ? '#10b981' : '#f59e0b'))
+                        : (n.link_up ? '#10b981' : (n.operstate ? '#ef4444' : '#64748b')));
         // DPDK (vfio-pci) : la PF est prise par le moteur → plus de netdev kernel. C'est NORMAL ;
         // la carte reste cliquable (rôle/pmd/IP/réseau 2110). Badge thème (pas de couleur en dur).
         const dpdkBadge = n.dpdk_bound
             ? `<span class="badge dpdk" title="${escapeHtml(T('settings.js.net.dpdk_tip'))}" style="margin-left:6px">${T('settings.js.net.dpdk_badge')}</span>` : '';
         // Appariement 2022-7 : badge coloré (rouge/bleu) dans la colonne Rôle.
-        const pairClr = n.pair_role === 'red' ? '***REMOVED***ef4444' : '***REMOVED***3b82f6';
+        const pairClr = n.pair_role === 'red' ? '#ef4444' : '#3b82f6';
         const pairBadge = (n.role === 'media2110' && n.pair_role)
             ? `<span style="font-size:0.66em; font-weight:700; letter-spacing:0.03em; padding:1px 7px; border-radius:4px; margin-left:6px;
-                 background:${pairClr}22; color:${pairClr}">${n.pair_role.toUpperCase()}${n.pair_group!=null?(' ***REMOVED***'+n.pair_group):''}</span>` : '';
+                 background:${pairClr}22; color:${pairClr}">${n.pair_role.toUpperCase()}${n.pair_group!=null?(' #'+n.pair_group):''}</span>` : '';
         // Réserve de files 2110 réglée (capacité « à chaud ») : badge compact « Q rx+tx(+marge) ».
         const capBadge = (n.role === 'media2110' && (n.rx_reserve != null || n.tx_reserve != null))
             ? `<span title="${T('settings.js.net.cap_title')}" style="font-size:0.66em; font-weight:600; padding:1px 6px; border-radius:4px; margin-left:6px;
@@ -8558,11 +8558,11 @@ function renderNodeNetView(j, prev) {
         const maxSpeed = Math.max(0, ...ports.map(p => p.max_speed_mbps || p.speed_mbps || 0)) || null;
         const rdmaKind = ports.map(p => p.rdma_kind).find(Boolean) || 'RDMA';
         const caps = isOrph ? '' :
-            (ports.some(p => p.nic_2110) ? capBadge('ST 2110', '***REMOVED***10b981', T('settings.js.net.cap_2110_tip')) : '') +
-            (ports.some(p => p.rdma)     ? capBadge('RDMA · ' + rdmaKind, '***REMOVED***60a5fa', T('settings.js.net.cap_rdma_tip'))
+            (ports.some(p => p.nic_2110) ? capBadge('ST 2110', '#10b981', T('settings.js.net.cap_2110_tip')) : '') +
+            (ports.some(p => p.rdma)     ? capBadge('RDMA · ' + rdmaKind, '#60a5fa', T('settings.js.net.cap_rdma_tip'))
              // Carte d'une famille RDMA connue mais sans device verbs : capacité POTENTIELLE, en
              // gris — surtout pas la même pastille que « RDMA opérationnel ».
-             : ports.some(p => p.rdma_module) ? capBadge('RDMA ? · ' + rdmaKind, '***REMOVED***94a3b8', T('settings.js.net.cap_rdma_maybe_tip')) : '') +
+             : ports.some(p => p.rdma_module) ? capBadge('RDMA ? · ' + rdmaKind, '#94a3b8', T('settings.js.net.cap_rdma_maybe_tip')) : '') +
             (maxSpeed ? `<span style="font-size:0.72em;color:var(--text-muted);margin-left:8px" title="${T('settings.js.net.max_speed')}">↕ ${fmtSpeed(maxSpeed)}</span>` : '');
         const pciLbl = isOrph ? '' : `<span style="font-family:var(--font-mono);font-size:0.7em;color:var(--text-muted);margin-left:8px">${escapeHtml(cid)}</span>`;
         const header = `<tr style="background:var(--bg-elev)"><td colspan="8" style="padding:6px var(--space-2);font-weight:600;border-top:2px solid var(--border)">${escapeHtml(model)}${pciLbl}${caps}</td></tr>`;
@@ -8693,8 +8693,8 @@ function _net2110StBadge(state, running) {
     return _net2110StChip(state || '—', 'warn');
 }
 function _net2110RoleChip(pr) {
-    if (pr === 'red')  return `<span style="color:***REMOVED***ef4444;font-weight:600;font-size:0.78em">red</span>`;
-    if (pr === 'blue') return `<span style="color:***REMOVED***3b82f6;font-weight:600;font-size:0.78em">blue</span>`;
+    if (pr === 'red')  return `<span style="color:#ef4444;font-weight:600;font-size:0.78em">red</span>`;
+    if (pr === 'blue') return `<span style="color:#3b82f6;font-weight:600;font-size:0.78em">blue</span>`;
     return '';
 }
 function _renderNet2110Panel(nets) {
@@ -8754,7 +8754,7 @@ function _renderNet2110Panel(nets) {
                                         : _net2110StChip(T('settings.js.net.ptp_needs_apply'), 'warn')));
             // Logs ptp4l : sans objet en DPDK (pas d'unité systemd — le PTP vit dans le moteur).
             const logsBtn = isEng ? '' : `<a class="btn" style="padding:1px 9px;margin-left:6px;text-decoration:none"
-                title="${T('settings.js.net.ptp_view_logs')}" href="/monitoring***REMOVED***logsrc=j:${nd.node_id}:ptp4l:${n.id}">${T('settings.js.net.ptp_logs_btn')}</a>`;
+                title="${T('settings.js.net.ptp_view_logs')}" href="/monitoring#logsrc=j:${nd.node_id}:ptp4l:${n.id}">${T('settings.js.net.ptp_logs_btn')}</a>`;
             // « Appliquer » déploie ptp4l/phc2sys : sans objet en DPDK (le PTP moteur s'auto-configure).
             const applyBtn = (nd.has_ptp && !isEng)
                 ? `<button class="btn btn-green" style="padding:1px 9px;margin-left:6px" onclick="applyPtpNode(${nd.node_id})">${T('settings.js.net.ptp_apply_node')}</button>` : '';
@@ -8864,7 +8864,7 @@ function _renderClusterSvg(j) {
     const nodes = j.nodes || [];
     const rdmaNics = (j.rdma && j.rdma.nics) || {};   // {node_id: [{ifname,state,link,...}]}
     const rdmaAnchor = {};                            // node_id → {x,y} de la ligne NIC rdma
-    const RDMA_COL = (NET_ROLE_META.rdma || {}).color || '***REMOVED***f59e0b';   // identité RDMA (≠ vert 2110)
+    const RDMA_COL = (NET_ROLE_META.rdma || {}).color || '#f59e0b';   // identité RDMA (≠ vert 2110)
     // 1) Hubs nécessaires : scan des media2110 → {net<id>:<red|blue|generic>}. Préserve l'ordre réseau.
     const hubKeys = [];
     const hubMeta = {};
@@ -8916,7 +8916,7 @@ function _renderClusterSvg(j) {
     const VBH = Math.max(nodesBottom, hy) + PAD;
     // 4) Couleurs.
     const roleColor = (role) => (NET_ROLE_META[role] || NET_ROLE_META.unused).color;
-    const hubColor = (m) => m.rdma ? RDMA_COL : m.pair === 'red' ? '***REMOVED***ef4444' : m.pair === 'blue' ? '***REMOVED***3b82f6' : '***REMOVED***10b981';
+    const hubColor = (m) => m.rdma ? RDMA_COL : m.pair === 'red' ? '#ef4444' : m.pair === 'blue' ? '#3b82f6' : '#10b981';
     // 5) Câbles (dessinés d'abord, sous les cartes).
     let cables = '';
     const cubicR = (px, py, qx, qy, col, dash) =>
@@ -8940,7 +8940,7 @@ function _renderClusterSvg(j) {
         });
     });
     // 6) Orchestrateur (hub contrôle).
-    let svg = `<rect x="${ORCH_X}" y="${ORCH_Y}" width="${ORCH_W}" height="${ORCH_H}" rx="8" fill="var(--bg-elev)" stroke="var(--accent,***REMOVED***60a5fa)" stroke-width="1.5"/>
+    let svg = `<rect x="${ORCH_X}" y="${ORCH_Y}" width="${ORCH_W}" height="${ORCH_H}" rx="8" fill="var(--bg-elev)" stroke="var(--accent,#60a5fa)" stroke-width="1.5"/>
         <text x="${ORCH_CX}" y="${ORCH_Y+20}" text-anchor="middle" fill="var(--text)" font-weight="700" font-size="13">${T('settings.net.topo_control')}</text>
         <text x="${ORCH_CX}" y="${ORCH_Y+37}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="var(--font-mono)">${esc(j.orchestrator && j.orchestrator.ip || '—')}</text>`;
     // 7) Cartes nœud.
@@ -8976,7 +8976,7 @@ function _renderClusterSvg(j) {
                         // Carte déclarée rdma sans device verbs : le dire, au lieu d'une ligne nue
                         // qu'on lit comme « pas encore câblée ».
                         flow = T('settings.js.net.rdma_unavailable');
-                        flowCol = 'var(--status-warning-fg, ***REMOVED***f59e0b)';
+                        flowCol = 'var(--status-warning-fg, #f59e0b)';
                     } else if (ent.state === 'ACTIVE') {
                         // Débit RoCE : compteurs IB (le kernel netdev ne voit pas le trafic RoCE).
                         if (ent.rx_gbps != null || ent.tx_gbps != null)
@@ -8984,7 +8984,7 @@ function _renderClusterSvg(j) {
                         else if (ent.rate_gbps) flow = `${ent.rate_gbps} Gb/s`;
                     } else {
                         flow = T('settings.net.rdma_down') + (ent.state ? ` (${esc(ent.state)})` : '');
-                        flowCol = '***REMOVED***ef4444';
+                        flowCol = '#ef4444';
                     }
                 }
             } else if (i.rx_bps != null || i.tx_bps != null) {
@@ -9031,7 +9031,7 @@ function _renderClusterSvg(j) {
     if (!nodes.length) return `<div class="meta" style="padding:10px 0">${T('settings.js.no_node')||setT('settings.js2.aucun_noeud')}</div>`;
     // Légende : un type de réseau présent = une pastille colorée. + style du lien RDMA.
     const present = new Set(); nodes.forEach(nd => (nd.interfaces || []).forEach(i => present.add(i.role)));
-    const legItems = [`<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:50%;background:var(--accent,***REMOVED***60a5fa);display:inline-block"></span>${T('settings.net.topo_control')}</span>`];
+    const legItems = [`<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:50%;background:var(--accent,#60a5fa);display:inline-block"></span>${T('settings.net.topo_control')}</span>`];
     ['management', 'mgmt_containers', 'containers', 'media2110', 'rdma', 'bmc'].forEach(r => {
         if (present.has(r)) legItems.push(`<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:50%;background:${(NET_ROLE_META[r]||{}).color};display:inline-block"></span>${esc((NET_ROLE_META[r]||{}).label||r)}</span>`);
     });
@@ -9157,8 +9157,8 @@ function _netModuleControl(n) {
 // Un seul détail ouvert à la fois (IDs de form uniques + UI propre). Tant qu'un détail est
 // ouvert, le poll 2 s saute le re-rendu (cf. garde dans rafraichirNodeNetView).
 function _closeAllNetDetails() {
-    document.querySelectorAll('***REMOVED***node_net_view .net-mod-detail').forEach(r => r.remove());
-    document.querySelectorAll('***REMOVED***node_net_view button.net-detail-open').forEach(b => b.classList.remove('net-detail-open', 'btn-blue'));
+    document.querySelectorAll('#node_net_view .net-mod-detail').forEach(r => r.remove());
+    document.querySelectorAll('#node_net_view button.net-detail-open').forEach(b => b.classList.remove('net-detail-open', 'btn-blue'));
 }
 async function toggleNetRowDetail(btn, ifname, kind) {
     const tr = btn.closest('tr');
@@ -9631,7 +9631,7 @@ async function saveNetIface(ifname) {
         if (r.status === 409 && j.code === 'no_rdma_device') {
             if (!await mxlConfirm({message: `${j.error}\n\n${T('settings.js.net.rdma_force_ask')}`,
                                    confirmLabel: T('settings.js.net.rdma_force_ok'), danger: true})) {
-                msg.innerHTML = `<span style="color:var(--status-warning-fg,***REMOVED***c80)">${escapeHtml(j.error)}</span>`;
+                msg.innerHTML = `<span style="color:var(--status-warning-fg,#c80)">${escapeHtml(j.error)}</span>`;
                 return;
             }
             [r, j] = await envoyer(true);
@@ -9770,12 +9770,12 @@ function _ptpDraw(canvasId, data, lockedBuf, opts = {}) {
     ctx.scale(dpr, dpr);
 
     const cs = getComputedStyle(document.documentElement);
-    const clrBg      = cs.getPropertyValue('--bg-card').trim() || '***REMOVED***1a1d24';
-    const clrBorder  = cs.getPropertyValue('--border').trim()  || '***REMOVED***2a2d34';
-    const clrMuted   = cs.getPropertyValue('--text-muted').trim() || '***REMOVED***6b7280';
-    const clrLocked  = cs.getPropertyValue('--status-running-fg').trim()  || '***REMOVED***34d399';
-    const clrWarn    = cs.getPropertyValue('--status-warning-fg').trim()  || '***REMOVED***f59e0b';
-    const clrStopped = cs.getPropertyValue('--status-stopped-fg').trim()  || '***REMOVED***ef4444';
+    const clrBg      = cs.getPropertyValue('--bg-card').trim() || '#1a1d24';
+    const clrBorder  = cs.getPropertyValue('--border').trim()  || '#2a2d34';
+    const clrMuted   = cs.getPropertyValue('--text-muted').trim() || '#6b7280';
+    const clrLocked  = cs.getPropertyValue('--status-running-fg').trim()  || '#34d399';
+    const clrWarn    = cs.getPropertyValue('--status-warning-fg').trim()  || '#f59e0b';
+    const clrStopped = cs.getPropertyValue('--status-stopped-fg').trim()  || '#ef4444';
 
     // Fond
     ctx.clearRect(0, 0, W, H);
@@ -10372,7 +10372,7 @@ document.addEventListener('DOMContentLoaded', () => { chargerAutoRecovery(); });
 // ─── Niveau d'attention PAR SOURCE (présence signal) ─────────────────────────
 // UNE ligne par source VIDÉO, et c'est le moteur qui l'impose : il sonde l'image ET le son d'un
 // slot, puis publie les deux dans le signal du slot vidéo (controller.py : `sig.update(vres)` puis
-// `sig.update(sres)`). Le silence de `_audio_3` remonte donc sur « Rx ***REMOVED***3 », et l'ANC n'a AUCUNE
+// `sig.update(sres)`). Le silence de `_audio_3` remonte donc sur « Rx #3 », et l'ANC n'a AUCUNE
 // sonde. Afficher des lignes audio/ANC réglables promettrait des réglages sans effet.
 //
 // UNE table pour les sources ET les destinations : les colonnes doivent s'aligner, sinon on ne peut
@@ -10409,7 +10409,7 @@ async function chargerSrcAlarmes() {
     for (const c of moteurs) {
         try {
             const d = await (await fetch(`/api/mtl/${c.vmid}/flows`)).json();
-            if (d && d.ok) _srcAlData.push({ vmid: c.vmid, hostname: c.hostname || ('***REMOVED***' + c.vmid), flows: d.flows || [] });
+            if (d && d.ok) _srcAlData.push({ vmid: c.vmid, hostname: c.hostname || ('#' + c.vmid), flows: d.flows || [] });
         } catch (_) { /* moteur injoignable : on n'invente pas de lignes */ }
     }
     renderSrcAlarmes();
@@ -10430,7 +10430,7 @@ function renderSrcAlarmes() {
             const vids = m.flows.filter(f => f.role === role && f.alarmes).sort((a, b) => a.idx - b.idx);
             const corps = [];
             for (const f of vids) {
-                const nom = f.label || `${role === 'rx' ? 'Rx' : 'Tx'} ***REMOVED***${f.idx + 1}`;
+                const nom = f.label || `${role === 'rx' ? 'Rx' : 'Tx'} #${f.idx + 1}`;
                 if (ql && !(nom + ' ' + (f.shm || '') + ' ' + role).toLowerCase().includes(ql)) continue;
                 visibles += 1;
                 const cases = SRC_AL_FLAGS.map(k => (!SRC_AL_TX.includes(k) || role === 'tx')
@@ -10657,10 +10657,10 @@ async function rafraichirCpu(sig) {
                 let bg = 'var(--border-soft)', col = 'var(--text-muted)', title = `CPU ${idx} ${T('settings.js.cpu_free')}`;
                 if (conflictSet.has(idx)) {
                     bg = 'var(--status-warning-bg)'; col = 'var(--status-warning-fg)';
-                    title = `CPU ${idx} ${T('settings.js.cpu_conflict')} ${users.map(u => u.hostname + ' ***REMOVED***' + u.vmid).join(', ')}`;
+                    title = `CPU ${idx} ${T('settings.js.cpu_conflict')} ${users.map(u => u.hostname + ' #' + u.vmid).join(', ')}`;
                 } else if (users.length === 1) {
-                    bg = 'var(--status-running-fg)'; col = '***REMOVED***000';
-                    title = `CPU ${idx} — ${users[0].hostname} ***REMOVED***${users[0].vmid}`;
+                    bg = 'var(--status-running-fg)'; col = '#000';
+                    title = `CPU ${idx} — ${users[0].hostname} #${users[0].vmid}`;
                 }
                 return `<div title="${escapeHtml(title)}" style="
                     width:44px; height:44px; border-radius:4px;
@@ -10673,7 +10673,7 @@ async function rafraichirCpu(sig) {
             tblEl.innerHTML = '<span style="color:var(--text-muted)">' + T('settings.js.no_pinned') + '</span>';
         } else {
             const rows = j.by_container.map(c => `<tr>
-                <td style="padding:var(--space-1) var(--space-2)"><b>${escapeHtml(c.hostname)}</b> <small style="color:var(--text-muted)">***REMOVED***${c.vmid}</small></td>
+                <td style="padding:var(--space-1) var(--space-2)"><b>${escapeHtml(c.hostname)}</b> <small style="color:var(--text-muted)">#${c.vmid}</small></td>
                 <td style="padding:var(--space-1) var(--space-2)"><code>${escapeHtml(c.pinned_cores)}</code></td>
                 <td style="padding:var(--space-1) var(--space-2); color:var(--text-muted)">${c.cpu_set.length} ${T('settings.js.cores_label')} ${c.cpu_set.join(', ')}</td>
             </tr>`).join('');
@@ -10769,7 +10769,7 @@ async function nmosRenderPrefixNodes() {
         }));
         box.innerHTML = cibles.map((n, i) => `
             <div class="row" style="align-items:flex-end; gap:var(--space-2); margin-bottom:4px">
-              <div class="field" style="max-width:210px"><label>${escapeHtml(n.name || ('***REMOVED***' + n.id))}</label>
+              <div class="field" style="max-width:210px"><label>${escapeHtml(n.name || ('#' + n.id))}</label>
                 <input type="text" id="nmos_pfx_node_${n.id}" value="${escapeHtml(vals[i])}"
                        placeholder="${T('settings.nmos.prefix_inherit')}"></div>
               <button class="btn" onclick="nmosSavePrefixNode(${n.id})">${T('settings.nmos.prefix_save')}</button>
@@ -10833,7 +10833,7 @@ setInterval(async () => {
             rafraichirNmosStatus();
         }
         if (document.getElementById('set-tab-reseau')?.style.display !== 'none') {
-            const _rt = document.querySelector('***REMOVED***set-tab-reseau .subtab.active')?.id?.replace('reseau-btn-', '');
+            const _rt = document.querySelector('#set-tab-reseau .subtab.active')?.id?.replace('reseau-btn-', '');
             if (_rt === 'interfaces') { rafraichirNodeNetView(sig); }
             if (_rt === 'net')        { rafraichirNet2110Ptp(sig); rafraichirPtp(sig); }
             // 'vue' (graphe cluster) : rafraîchi à l'ouverture d'onglet, pas en poll 2s (statique).
@@ -10901,7 +10901,7 @@ function _roleContainerOptions(sel, num) {
         // Un conteneur déjà pris par un AUTRE emplacement reste proposé (le lier l'y délie —
         // c'est le geste de remplacement), mais il est signalé comme tel.
         const pris = (!c.libre && c.instance_uuid !== sel) ? ' ⋯' : '';
-        html += `<option value="${c.instance_uuid}"${s}>${c.hostname} (***REMOVED***${c.vmid})${pris}</option>`;
+        html += `<option value="${c.instance_uuid}"${s}>${c.hostname} (#${c.vmid})${pris}</option>`;
     }
     return html;
 }
@@ -11042,7 +11042,7 @@ function _atemOptions(selectedVmid) {
     let html = '<option value="">' + T('settings.js.unassigned_opt') + '</option>';
     for (const m of _atemMixers) {
         const sel = (m.vmid === selectedVmid) ? ' selected' : '';
-        html += `<option value="${m.vmid}"${sel}>${m.hostname} (***REMOVED***${m.vmid})</option>`;
+        html += `<option value="${m.vmid}"${sel}>${m.hostname} (#${m.vmid})</option>`;
     }
     return html;
 }
@@ -11051,7 +11051,7 @@ function _atemDveOptions(selectedVmid) {
     let html = '<option value="">—</option>';
     for (const d of _atemDves) {
         const sel = (d.vmid === selectedVmid) ? ' selected' : '';
-        html += `<option value="${d.vmid}"${sel}>${d.hostname} (***REMOVED***${d.vmid})</option>`;
+        html += `<option value="${d.vmid}"${sel}>${d.hostname} (#${d.vmid})</option>`;
     }
     return html;
 }
@@ -11422,7 +11422,7 @@ function _skhSlotsFromPreset(preset) {
     _skhSlots = [];
     for (let i = 0; i < SKH_BTN; i++) {
         const b = (preset.buttons || [])[i] || null;
-        _skhSlots.push(b ? { ...b } : { type: null, label: '', color: '***REMOVED***0055ff' });
+        _skhSlots.push(b ? { ...b } : { type: null, label: '', color: '#0055ff' });
     }
 }
 
@@ -11544,7 +11544,7 @@ function _skhBuildPalette() {
             : _skhSources;
         html += `<div style="display:flex;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-3)">`;
         if (filteredSrc.length)
-            html += filteredSrc.map(s => _skhChipHtml(s.shm, s.label, s.kind_hint === 'audio' ? '***REMOVED***007766' : '***REMOVED***0055ff', 'source', '', s.shm,
+            html += filteredSrc.map(s => _skhChipHtml(s.shm, s.label, s.kind_hint === 'audio' ? '#007766' : '#0055ff', 'source', '', s.shm,
                 `${T('settings.js.container_label')} ${s.label.split(' · ')[0]}\n${T('settings.js.flux_label')} ${s.kind_hint || 'video'}\nSHM : ${s.shm}`)).join('');
         else
             html += '<span class="meta">' + T('settings.js.no_source_avail') + '</span>';
@@ -11566,7 +11566,7 @@ function _skhBuildPalette() {
             html += `<div style="display:flex;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-3)">`;
             if (filteredDst.length)
                 html += filteredDst.map(d => _skhChipHtml(`${d.vmid}:${d.slot ?? ''}`, d.label,
-                    d.kind_hint === 'audio' ? '***REMOVED***885500' : '***REMOVED***006622', 'destination', '', '',
+                    d.kind_hint === 'audio' ? '#885500' : '#006622', 'destination', '', '',
                     `${T('settings.js.container_label')} ${d.label.split(' · ')[0]}\n${T('settings.js.entry_label')} ${d.label}\n${T('settings.js.flux_label')} ${d.kind_hint || 'video'}`)).join('');
             else
                 html += '<span class="meta">' + T('settings.js.no_dest_avail') + '</span>';
@@ -11577,7 +11577,7 @@ function _skhBuildPalette() {
         html += `<div style="font-size:0.78em;color:var(--text-muted);margin-bottom:var(--space-1);text-transform:uppercase;letter-spacing:.04em">Layouts</div>`;
         html += `<div style="display:flex;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-3)">`;
         for (let i = 1; i <= 8; i++)
-            html += _skhChipHtml(String(i), `Layout ${i}`, '***REMOVED***7700cc', 'layout');
+            html += _skhChipHtml(String(i), `Layout ${i}`, '#7700cc', 'layout');
         html += '</div>';
     }
 
@@ -11590,7 +11590,7 @@ function _skhBuildPalette() {
     html += `<div style="font-size:0.78em;color:var(--text-muted);margin-bottom:var(--space-1);text-transform:uppercase;letter-spacing:.04em">${T('settings.js.skh_macros', 'Macros')}</div>`;
     if (_skhMacros.length) {
         html += `<div style="display:flex;flex-wrap:wrap;gap:var(--space-2);margin-bottom:var(--space-3)">`;
-        html += _skhMacros.map(m => _skhChipHtml(String(m.id), m.name, '***REMOVED***00885c', 'macro', '', '', m.name)).join('');
+        html += _skhMacros.map(m => _skhChipHtml(String(m.id), m.name, '#00885c', 'macro', '', '', m.name)).join('');
         html += '</div>';
     } else {
         html += `<div class="meta" style="margin-bottom:var(--space-3)">${T('settings.js.skh_macros_empty', "Aucune macro définie pour l'instant — créez-en une pour pouvoir l'affecter à une touche.")}</div>`;
@@ -11601,7 +11601,7 @@ function _skhBuildPalette() {
     if (others.length) {
         html += `<div style="font-size:0.78em;color:var(--text-muted);margin-bottom:var(--space-1);text-transform:uppercase;letter-spacing:.04em">${T('settings.js.change_mapping')}</div>`;
         html += `<div style="display:flex;flex-wrap:wrap;gap:var(--space-2)">`;
-        html += others.map(p => _skhChipHtml(p.id, p.name, '***REMOVED***cc6600', 'recall_preset', p.name)).join('');
+        html += others.map(p => _skhChipHtml(p.id, p.name, '#cc6600', 'recall_preset', p.name)).join('');
         html += '</div>';
     }
 
@@ -11637,7 +11637,7 @@ function _skhRenderPanel() {
         const sl = _skhSlots[i] || {};
         const btype = sl.type;
         const hasAction = !!btype;
-        const color = hasAction ? (sl.color || '***REMOVED***0055ff') : 'transparent';
+        const color = hasAction ? (sl.color || '#0055ff') : 'transparent';
         let line1 = sl.label || '';
         let line2 = '';
         if (!line1) {
@@ -11743,7 +11743,7 @@ function _skhDropOnSlot(idx) {
     _skhRenderPanel();
 }
 
-function _skhClearSlot(idx) { _skhSlots[idx] = { type: null, label: '', color: '***REMOVED***0055ff' }; _skhRenderPanel(); }
+function _skhClearSlot(idx) { _skhSlots[idx] = { type: null, label: '', color: '#0055ff' }; _skhRenderPanel(); }
 
 function _skhEditLabel(idx) {
     const val = prompt(T('settings.js.oled_label'), _skhSlots[idx].label || '');
@@ -12421,7 +12421,7 @@ async function rafraichirOrchLeg() {
             return;
         }
         if (s.level === 'route') {
-            box.innerHTML = `<span style="color:var(--status-warning-fg,***REMOVED***c80)">ℹ ${setT('settings.net.orch_towards').replace('{s}', escapeHtml(s.text)).replace('{net}', '<code>' + escapeHtml(subnet) + '</code>')}</span>` + testBtn;
+            box.innerHTML = `<span style="color:var(--status-warning-fg,#c80)">ℹ ${setT('settings.net.orch_towards').replace('{s}', escapeHtml(s.text)).replace('{net}', '<code>' + escapeHtml(subnet) + '</code>')}</span>` + testBtn;
             return;
         }
         // none : ni IP ni route → guide de provisioning (opérateur).
@@ -12431,9 +12431,9 @@ async function rafraichirOrchLeg() {
             + `<div style="margin-top:4px">${setT('settings.js2.provision_container_leg')}</div>`
             + `<pre style="background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-small);padding:var(--space-2);overflow-x:auto;user-select:all;margin-top:4px">`
             + `ip link add link &lt;nic&gt; name &lt;nic&gt;.&lt;vlan&gt; type vlan id &lt;vlan&gt;\n`
-            + `ip addr add &lt;ip-orch&gt;/${escapeHtml(bits)} dev &lt;nic&gt;.&lt;vlan&gt;   ***REMOVED*** ${setT('settings.net.outside_pool')}\n`
+            + `ip addr add &lt;ip-orch&gt;/${escapeHtml(bits)} dev &lt;nic&gt;.&lt;vlan&gt;   # ${setT('settings.net.outside_pool')}\n`
             + `ip link set &lt;nic&gt; up; ip link set &lt;nic&gt;.&lt;vlan&gt; up\n`
-            + '***REMOVED*** ' + setT('settings.js3.then_persist') + '</pre>'
+            + '# ' + setT('settings.js3.then_persist') + '</pre>'
             + `<div style="margin-top:4px"><button class="btn" onclick="rafraichirOrchLeg()">${setT('settings.st.re_check')}</button>${testBtn}</div>`;
     } catch (e) { box.innerHTML = '<span class="meta" style="color:var(--status-stopped-fg)">✕ '+escapeHtml(''+e)+'</span>'; }
 }
@@ -12595,8 +12595,8 @@ function _mxlFmtBps(b) {
 }
 
 const _MXL_COLORS = [
-    '***REMOVED***4f8ef7', '***REMOVED***f59e0b', '***REMOVED***a78bfa', '***REMOVED***f472b6',
-    '***REMOVED***38bdf8', '***REMOVED***fb923c', '***REMOVED***84cc16', '***REMOVED***e879f9', '***REMOVED***2dd4bf', '***REMOVED***34d399',
+    '#4f8ef7', '#f59e0b', '#a78bfa', '#f472b6',
+    '#38bdf8', '#fb923c', '#84cc16', '#e879f9', '#2dd4bf', '#34d399',
 ];
 const _MXL_BUF_LEN = 60;   // 60 ticks × ~2s ≈ 2 min
 
@@ -12646,9 +12646,9 @@ function _mxlDrawDonut(canvasId, value, maxVal, centerLabel, centerSub, color) {
     const startAngle = -Math.PI / 2;
 
     const cs = getComputedStyle(document.documentElement);
-    const clrTrack = cs.getPropertyValue('--border').trim() || '***REMOVED***2a2d34';
-    const clrText  = cs.getPropertyValue('--text-primary').trim() || '***REMOVED***e2e8f0';
-    const clrMuted = cs.getPropertyValue('--text-muted').trim() || '***REMOVED***6b7280';
+    const clrTrack = cs.getPropertyValue('--border').trim() || '#2a2d34';
+    const clrText  = cs.getPropertyValue('--text-primary').trim() || '#e2e8f0';
+    const clrMuted = cs.getPropertyValue('--text-muted').trim() || '#6b7280';
 
     ctx.clearRect(0, 0, S, S);
 
@@ -12708,8 +12708,8 @@ function _mxlDrawMultiSeries(canvasId, series, opts = {}) {
     ctx.scale(dpr, dpr);
 
     const cs = getComputedStyle(document.documentElement);
-    const clrBorder = cs.getPropertyValue('--border').trim() || '***REMOVED***2a2d34';
-    const clrMuted  = cs.getPropertyValue('--text-muted').trim() || '***REMOVED***6b7280';
+    const clrBorder = cs.getPropertyValue('--border').trim() || '#2a2d34';
+    const clrMuted  = cs.getPropertyValue('--text-muted').trim() || '#6b7280';
 
     ctx.clearRect(0, 0, W, H);
 
@@ -12805,7 +12805,7 @@ async function rafraichirMxlCharts() {
         _mxlLastContainers = containers;
 
         // ── Jauge Ring Vidéo ──────────────────────────────────
-        _mxlDrawDonut('mxl_donut_video', vRing, 120, vRing.toString(), 'grains', '***REMOVED***4f8ef7');
+        _mxlDrawDonut('mxl_donut_video', vRing, 120, vRing.toString(), 'grains', '#4f8ef7');
         const vRam1080 = Math.round(vRing * 1920 * 1080 * 2 / 1024 / 1024);
         const vRamUhd  = Math.round(vRing * 3840 * 2160 * 2 / 1024 / 1024);
         const vMs      = Math.round(vRing / 25 * 1000);
@@ -12815,7 +12815,7 @@ async function rafraichirMxlCharts() {
             `buffer ≈ <strong>${vMs} ms</strong> @ 25fps`;
 
         // ── Jauge Ring Audio ──────────────────────────────────
-        _mxlDrawDonut('mxl_donut_audio', aRing, 2000, aRing.toString(), 'chunks', '***REMOVED***34d399');
+        _mxlDrawDonut('mxl_donut_audio', aRing, 2000, aRing.toString(), 'chunks', '#34d399');
         const aChunkBytes = 48 * 8 * 3;
         const aRamKb = Math.round(aRing * aChunkBytes / 1024);
         const aMeta = document.getElementById('mxl_donut_audio_meta');
@@ -12830,7 +12830,7 @@ async function rafraichirMxlCharts() {
         const activeFlux  = pipelineCs.filter(c => c.status === 'running').length;
         const totalFlux   = pipelineCs.length;
         const fluxMax     = Math.max(totalFlux, 8);
-        const fluxColor   = activeFlux === 0 ? '***REMOVED***6b7280' : (activeFlux === totalFlux ? '***REMOVED***34d399' : '***REMOVED***f59e0b');
+        const fluxColor   = activeFlux === 0 ? '#6b7280' : (activeFlux === totalFlux ? '#34d399' : '#f59e0b');
         _mxlDrawDonut('mxl_donut_flux', activeFlux, fluxMax, activeFlux.toString(), 'actifs', fluxColor);
         const fluxMeta = document.getElementById('mxl_donut_flux_meta');
         if (fluxMeta) fluxMeta.innerHTML =
@@ -12840,7 +12840,7 @@ async function rafraichirMxlCharts() {
         const totalBwBps = pipelineCs.reduce((s, c) => s + (c.status === 'running' ? (c.bw_bps || 0) : 0), 0);
         // Plafond de la jauge : 10 Gb/s (pipeline broadcast typique)
         const bwMax = 10e9;
-        const bwColor = totalBwBps === 0 ? '***REMOVED***6b7280' : (totalBwBps > 5e9 ? '***REMOVED***f59e0b' : '***REMOVED***4f8ef7');
+        const bwColor = totalBwBps === 0 ? '#6b7280' : (totalBwBps > 5e9 ? '#f59e0b' : '#4f8ef7');
         const bwLabel = totalBwBps >= 1e9
             ? (totalBwBps / 1e9).toFixed(2) + ' G'
             : (totalBwBps / 1e6).toFixed(0) + ' M';
@@ -12854,7 +12854,7 @@ async function rafraichirMxlCharts() {
         if (memTotal) {
             const memUsed = memTotal - (memAvail ?? 0);
             const memRatio = memUsed / memTotal;
-            const ramColor = memRatio > 0.85 ? '***REMOVED***ef4444' : memRatio > 0.6 ? '***REMOVED***f59e0b' : '***REMOVED***4f8ef7';
+            const ramColor = memRatio > 0.85 ? '#ef4444' : memRatio > 0.6 ? '#f59e0b' : '#4f8ef7';
             const ramLabel = memAvail > 1024
                 ? (memAvail / 1024).toFixed(1) + ' Go'
                 : (memAvail ?? '?') + ' Mo';
@@ -12897,8 +12897,8 @@ async function rafraichirMxlCharts() {
             _mxlBufPush('ram_avail', memAvail ?? 0);
             _mxlBufPush('ram_shm',   (data.shm_total_mb ?? 0));
             _mxlDrawMultiSeries('mxl_ram_chart', [
-                { key: 'avail', color: '***REMOVED***4f8ef7', data: _mxlBufRead('ram_avail') },
-                { key: 'shm',   color: '***REMOVED***f59e0b', data: _mxlBufRead('ram_shm') },
+                { key: 'avail', color: '#4f8ef7', data: _mxlBufRead('ram_avail') },
+                { key: 'shm',   color: '#f59e0b', data: _mxlBufRead('ram_shm') },
             ], {
                 yMin: 100, step: 512,
                 fmt: v => v > 1024 ? (v/1024).toFixed(1)+'G' : v.toFixed(0)+'M',
@@ -12914,7 +12914,7 @@ async function rafraichirMxlCharts() {
         const grainCount = Math.round(shmMb * 1024 * 1024 / frameSz);
         _mxlBufPush('shm_grains', grainCount);
         _mxlDrawMultiSeries('mxl_shm_chart', [
-            { key: 'shm_mb', color: '***REMOVED***a78bfa', data: _mxlBufRead('shm_mb') },
+            { key: 'shm_mb', color: '#a78bfa', data: _mxlBufRead('shm_mb') },
         ], {
             yMin: 1, step: 10,
             fmt: v => v.toFixed(0) + ' Mo',
@@ -13182,7 +13182,7 @@ async function chargerUtilisateurs() {
     tbody.innerHTML = (data.users || []).map(u => `
         <tr>
             <td style="padding:var(--space-2) var(--space-2); ${bb}">
-                <b>${escapeHtml(u.username)}</b> <span class="meta">***REMOVED***${u.id}</span>
+                <b>${escapeHtml(u.username)}</b> <span class="meta">#${u.id}</span>
                 <div style="margin-top:var(--space-1); display:flex; gap:var(--space-1); flex-wrap:wrap">
                     ${inp(u.id,'prenom',u.prenom)}${inp(u.id,'nom',u.nom)}${inp(u.id,'email',u.email)}
                 </div>
@@ -13201,7 +13201,7 @@ async function chargerUtilisateurs() {
             </td>
             <td style="padding:var(--space-2) var(--space-2); ${bb}; font-size:0.85em">
                 ${u.monitor_vmid
-                    ? `<code>${escapeHtml(u.monitor_hostname||'')}</code> <span class="meta">***REMOVED***${u.monitor_vmid}</span>
+                    ? `<code>${escapeHtml(u.monitor_hostname||'')}</code> <span class="meta">#${u.monitor_vmid}</span>
                        <button class="btn btn-red" style="padding:var(--space-1) var(--space-2); font-size:0.85em; margin-top:var(--space-1)"
                                onclick="supprimerMonitor(${u.id}, '${escapeAttr(u.monitor_hostname||'')}')">${T('settings.js.delete_word')}</button>`
                     : '<span class="meta">—</span>'}
@@ -13237,7 +13237,7 @@ async function supprimerMonitor(uid, hostname) {
 }
 
 function escapeHtml(s) {
-    return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&***REMOVED***39;'}[c]));
+    return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function escapeAttr(s) { return String(s||'').replace(/'/g, "\\'"); }
 
@@ -13328,7 +13328,7 @@ async function restaurerDb() {
 // core plugin — s'en servir rendrait l'onglet dépendant d'un service désactivable.
 function _razEsc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g,
-        ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&***REMOVED***39;'}[ch]));
+        ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 
 async function razChargerPlan() {
@@ -13469,7 +13469,7 @@ const _pluginsExpanded = new Set();
 function filterPluginsCat(cat) { _pluginsFilterCat = cat; _drawPlugins(); }
 function filterPluginsState(st) {
     _pluginsFilterState = st;
-    document.querySelectorAll('***REMOVED***plugins-filters [data-st]').forEach(b =>
+    document.querySelectorAll('#plugins-filters [data-st]').forEach(b =>
         b.classList.toggle('active', b.dataset.st === st));
     _drawPlugins();
 }
@@ -13579,7 +13579,7 @@ function _pluginDetailHtml(p) {
         }
         const when = (i.deployed_at || '').replace('T', ' ').slice(0, 16) || '<span class="meta">—</span>';
         return `<tr>
-            <td style="${tdd}">***REMOVED***${i.vmid}</td>
+            <td style="${tdd}">#${i.vmid}</td>
             <td style="${tdd}">${_escp(i.hostname || '')}</td>
             <td style="${tdd}">${deployedCell}</td>
             <td style="${tdd}"><span class="meta">v${_escp(p.version)}</span></td>
@@ -14018,7 +14018,7 @@ async function supprimerPlugin(type_) {
             // avec la LISTE des conteneurs et la marche à suivre. Un message qu'il
             // faut avoir de la chance pour lire ne remplit pas son office.
             const lignes = (j.containers || []).map(c =>
-                `<li><code>***REMOVED***${c.vmid}</code> ${_escp(c.hostname || '')}</li>`).join('');
+                `<li><code>#${c.vmid}</code> ${_escp(c.hostname || '')}</li>`).join('');
             await mxlConfirm({
                 alert: true, danger: true,
                 title: T('settings.js.cannot_delete'),
@@ -14029,7 +14029,7 @@ async function supprimerPlugin(type_) {
                       <p class="meta" style="margin:0">${T('settings.js.del_blocked_how')}</p>`,
             });
             res.textContent = T('settings.js.used_by').replace('{list}',
-                (j.containers || []).map(c => `***REMOVED***${c.vmid} ${c.hostname || ''}`).join(', '));
+                (j.containers || []).map(c => `#${c.vmid} ${c.hostname || ''}`).join(', '));
             return;
         }
         if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
@@ -14224,7 +14224,7 @@ function _drawServices() {
             .map(el => el.id.replace('svc-detail-', ''))
     );
     const openVers = new Set(
-        [...document.querySelectorAll('***REMOVED***services-tbody details[data-key][open]')]
+        [...document.querySelectorAll('#services-tbody details[data-key][open]')]
             .map(el => el.dataset.key)
     );
     const tb = document.getElementById('services-tbody');
@@ -14494,7 +14494,7 @@ async function _followDeploy(sinceId, vmids, expected) {
             // alertes de ce redéploiement : id > baseline, mentionnant un vmid concerné
             const mine = all.filter(a => a.id > sinceId &&
                 [...vmidSet].some(v => (a.message || '').includes('container ' + v) ||
-                                       (a.message || '').includes('***REMOVED***' + v)))
+                                       (a.message || '').includes('#' + v)))
                 .sort((a, b) => a.id - b.id);
             if (mine.length) {
                 logEl.innerHTML = mine.map(a => {
@@ -14577,7 +14577,7 @@ document.addEventListener('DOMContentLoaded', () => {
     _initSetTabs();
     chargerSettings();
     chargerUtilisateurs();
-    // Active l'onglet depuis le hash de l'URL (***REMOVED***users / ***REMOVED***database / ***REMOVED***theme) puis ouvre son
+    // Active l'onglet depuis le hash de l'URL (#users / #database / #theme) puis ouvre son
     // groupe parent (déroule la sous-nav filtrée). switchSetGroup bascule sur l'onglet courant.
     const {onglet, sous} = _setLireHash();
     const tab = SET_TABS.includes(onglet) ? onglet : 'branding';

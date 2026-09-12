@@ -1,6 +1,6 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 """Catalogue : « activer après récupération » est un CHOIX, plus une règle cachée.
 
 ★ CE QU'ON A CHANGÉ, ET POURQUOI. Le sort d'un paquet récupéré était déduit : type inconnu →
@@ -26,7 +26,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import config, database                                   ***REMOVED*** noqa: E402
+from app import config, database                                   # noqa: E402
 
 ECHECS = []
 
@@ -53,12 +53,12 @@ def main():
     with cli.session_transaction() as sess:
         sess["user_id"] = database.db_get_user("essai")["id"]
 
-    ***REMOVED*** 1 & 2 — la liste publie l'état, et il vaut « activer » par défaut.
+    # 1 & 2 — la liste publie l'état, et il vaut « activer » par défaut.
     j = cli.get("/api/catalogue").get_json()
     verifier("activer_apres" in (j or {}), "la liste publie « activer_apres »")
     verifier(j.get("activer_apres") is True, "le défaut est : activer après récupération")
 
-    ***REMOVED*** 3 — le réglage est suivi dans les deux sens (et pas seulement à la baisse).
+    # 3 — le réglage est suivi dans les deux sens (et pas seulement à la baisse).
     st.set("catalogue_activer", "0")
     verifier(cli.get("/api/catalogue").get_json().get("activer_apres") is False,
              "décocher est bien répercuté")
@@ -66,7 +66,7 @@ def main():
     verifier(cli.get("/api/catalogue").get_json().get("activer_apres") is True,
              "recocher est bien répercuté")
 
-    ***REMOVED*** 4 — la page porte la case, et l'appel d'installation transporte le choix de l'écran.
+    # 4 — la page porte la case, et l'appel d'installation transporte le choix de l'écran.
     page = cli.get("/settings").get_data(as_text=True)
     verifier('id="s_catalogue_activer"' in page, "la page Réglages porte l'interrupteur")
     verifier("catSauverActiver" in page, "l'interrupteur est câblé à l'enregistrement")

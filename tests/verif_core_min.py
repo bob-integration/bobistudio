@@ -1,24 +1,24 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc de l'EXIGENCE DE VERSION DU CŒUR (`requires.core_min`) et du comparateur d'`app/version.py`.
-***REMOVED***
-***REMOVED*** ★ CE QUE ÇA PROTÈGE. Un composant peut avoir besoin d'un orchestrateur récent, et jusqu'au
-***REMOVED*** 2026-09-02 rien ne le déclarait. Deux cas réels ce jour-là, entre le dépôt public et le privé :
-***REMOVED***
-***REMOVED***   · `services/tsl` importe `app.tally`, créé après la release publiée → ImportError au
-***REMOVED***     chargement, le service ne démarre pas. Panne BRUYANTE.
-***REMOVED***   · `plugins/multiview` 0.115.2 attend que le cœur lui pousse ses colonnes de libellé. Sur un
-***REMOVED***     cœur d'avant, personne ne les pousse : le mur affiche des libellés périmés et RIEN ne le
-***REMOVED***     signale. Panne SILENCIEUSE — c'est elle qui a motivé le garde.
-***REMOVED***
-***REMOVED*** ★ ET OÙ IL EST POSÉ, ce qui compte autant : dans `validate_package`, par où passent les TROIS
-***REMOVED*** voies d'installation (catalogue + les deux imports manuels). Le mettre sur les sites d'appel
-***REMOVED*** aurait laissé le prochain en oubli silencieux — le défaut exact relevé sur l'épinglage de
-***REMOVED*** version, où un seul appel sur 23 transmettait sa consigne.
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tests/verif_core_min.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc de l'EXIGENCE DE VERSION DU CŒUR (`requires.core_min`) et du comparateur d'`app/version.py`.
+#
+# ★ CE QUE ÇA PROTÈGE. Un composant peut avoir besoin d'un orchestrateur récent, et jusqu'au
+# 2026-09-02 rien ne le déclarait. Deux cas réels ce jour-là, entre le dépôt public et le privé :
+#
+#   · `services/tsl` importe `app.tally`, créé après la release publiée → ImportError au
+#     chargement, le service ne démarre pas. Panne BRUYANTE.
+#   · `plugins/multiview` 0.115.2 attend que le cœur lui pousse ses colonnes de libellé. Sur un
+#     cœur d'avant, personne ne les pousse : le mur affiche des libellés périmés et RIEN ne le
+#     signale. Panne SILENCIEUSE — c'est elle qui a motivé le garde.
+#
+# ★ ET OÙ IL EST POSÉ, ce qui compte autant : dans `validate_package`, par où passent les TROIS
+# voies d'installation (catalogue + les deux imports manuels). Le mettre sur les sites d'appel
+# aurait laissé le prochain en oubli silencieux — le défaut exact relevé sur l'épinglage de
+# version, où un seul appel sur 23 transmettait sa consigne.
+#
+#   $ ./venv/bin/python tests/verif_core_min.py
 import io
 import json
 import os
@@ -38,12 +38,12 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-from app import version as V                                         ***REMOVED*** noqa: E402
-from app import plugins, core_plugins                                ***REMOVED*** noqa: E402
+from app import version as V                                         # noqa: E402
+from app import plugins, core_plugins                                # noqa: E402
 
 print("Exigence de version du cœur\n")
 
-***REMOVED*** ═══ 1. LE COMPARATEUR ═══════════════════════════════
+# ═══ 1. LE COMPARATEUR ═══════════════════════════════
 controle("★★ une version égale satisfait l'exigence", V.au_moins("0.9.2", "0.9.2"))
 controle("★★★ une version INFÉRIEURE ne la satisfait pas", not V.au_moins("0.9.1", "0.9.2"),
          "sans ça le garde laisse tout passer et n'a jamais mordu")
@@ -54,9 +54,9 @@ controle("★★ les longueurs inégales se comblent de zéros", V.au_moins("0.9
          "sinon « 0.9 » serait jugé antérieur à « 0.9.0 », sans que personne puisse le comprendre")
 controle("★ une exigence VIDE ne bloque rien", V.au_moins("0.9.2", "") and V.au_moins("0.9.2", None))
 
-***REMOVED*** ★ NE PAS SAVOIR COMPARER N'AUTORISE PAS À BLOQUER. Un refus fondé sur une comparaison bancale
-***REMOVED*** serait pire que l'absence de contrôle — c'est la règle déjà tenue par le contrôle d'image des
-***REMOVED*** nœuds (`docker_compute`), et les deux doivent se comporter pareil.
+# ★ NE PAS SAVOIR COMPARER N'AUTORISE PAS À BLOQUER. Un refus fondé sur une comparaison bancale
+# serait pire que l'absence de contrôle — c'est la règle déjà tenue par le contrôle d'image des
+# nœuds (`docker_compute`), et les deux doivent se comporter pareil.
 controle("★★★ une version NON analysable laisse passer, et se signale",
          V.au_moins("main", "0.9.2") and V.au_moins("0.9.2", "0.24-fix")
          and not V.comparable("main", "0.9.2") and not V.comparable("0.9.2", "0.24-fix"),
@@ -65,7 +65,7 @@ controle("★★★ une version NON analysable laisse passer, et se signale",
             V.comparable("main", "0.9.2"), V.comparable("0.9.2", "0.24-fix")))
 controle("★ le préfixe « v » d'un tag est toléré", V.analyser("v0.9.2") == (0, 9, 2))
 
-***REMOVED*** ═══ 2. LE GARDE, SUR LES DEUX FAMILLES ═════════════════════
+# ═══ 2. LE GARDE, SUR LES DEUX FAMILLES ═════════════════════
 def _plugin(tmp, core_min=None):
     d = os.path.join(tmp, "p"); os.makedirs(d, exist_ok=True)
     man = {"type": "banc_core_min", "label": "Banc", "version": "1.0.0",
@@ -74,14 +74,14 @@ def _plugin(tmp, core_min=None):
         man["requires"] = {"core_min": core_min}
     json.dump(man, io.open(os.path.join(d, "plugin.json"), "w", encoding="utf-8"))
     io.open(os.path.join(d, "script.py"), "w", encoding="utf-8").write(
-        "***REMOVED*** {config} {hostname} {plugin_version}\n")
+        "# {config} {hostname} {plugin_version}\n")
     return d
 
 
 def _service(tmp, core_min=None):
     d = os.path.join(tmp, "s"); os.makedirs(d, exist_ok=True)
-    ***REMOVED*** Les six clés exigées d'un manifeste de service : sans elles, `validate_package` refuse
-    ***REMOVED*** sur la STRUCTURE et le banc ne dirait plus rien de l'exigence de version.
+    # Les six clés exigées d'un manifeste de service : sans elles, `validate_package` refuse
+    # sur la STRUCTURE et le banc ne dirait plus rien de l'exigence de version.
     man = {"id": "banc_core_min", "label": "Banc", "version": "1.0.0",
            "nav_tab": "protocoles", "tab_template": "banc/settings_tab.html",
            "settings_keys": {}}
@@ -113,8 +113,8 @@ with tempfile.TemporaryDirectory() as tmp:
     _, err = core_plugins.validate_package(_service(tmp, None))
     controle("★★ un service sans exigence passe", not err, "obtenu %r" % err)
 
-***REMOVED*** ═══ 3. LE GARDE EST AU POINT DE PASSAGE UNIQUE ═══════════════
-import inspect                                                       ***REMOVED*** noqa: E402
+# ═══ 3. LE GARDE EST AU POINT DE PASSAGE UNIQUE ═══════════════
+import inspect                                                       # noqa: E402
 for nom, fn in (("plugins", plugins.validate_package),
                 ("core_plugins", core_plugins.validate_package)):
     controle("★★★ %s.validate_package porte le garde lui-même" % nom,
@@ -122,7 +122,7 @@ for nom, fn in (("plugins", plugins.validate_package),
              "les trois voies d'installation passent par cette fonction ; le garde posé sur les "
              "sites d'appel laisserait le prochain en oubli silencieux")
 
-***REMOVED*** ═══ 4. LES DEUX COMPOSANTS CONCERNÉS LE DÉCLARENT ══════════════
+# ═══ 4. LES DEUX COMPOSANTS CONCERNÉS LE DÉCLARENT ══════════════
 for chemin, fichier in (("plugins/multiview", "plugin.json"),
                         ("services/tsl", "manifest.json")):
     p = os.path.join(RACINE, chemin, fichier)

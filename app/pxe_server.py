@@ -1,5 +1,5 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 
 """Serveur HTTP dédié au boot réseau PXE — HTTP/1.1 KEEP-ALIVE, sert le netboot à la RACINE.
 
@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 
 
 class _Handler(SimpleHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"   ***REMOVED*** KEEP-ALIVE — toute la raison d'être de ce serveur
+    protocol_version = "HTTP/1.1"   # KEEP-ALIVE — toute la raison d'être de ce serveur
 
     def __init__(self, *a, **k):
         super().__init__(*a, directory=pxe.PXE_ROOT, **k)
@@ -43,7 +43,7 @@ class _Handler(SimpleHTTPRequestHandler):
         log.info("pxe-http %s - %s", self.client_address[0], fmt % a)
 
     def guess_type(self, path):
-        ***REMOVED*** octet-stream EXIGÉ par le firmware UEFI HTTP Boot (rejette application/efi & co.).
+        # octet-stream EXIGÉ par le firmware UEFI HTTP Boot (rejette application/efi & co.).
         return "application/octet-stream"
 
     def _text(self, body):
@@ -59,11 +59,11 @@ class _Handler(SimpleHTTPRequestHandler):
         """Sert grub.cfg/preseed/payload générés. Retourne True si pris en charge (sinon → statique)."""
         token, api_ctrl = pxe.armed()
         filename = urlparse(self.path).path.lstrip("/")
-        base = "http://" + (self.headers.get("Host") or "")   ***REMOVED*** CE serveur (keep-alive)
+        base = "http://" + (self.headers.get("Host") or "")   # CE serveur (keep-alive)
         name = filename.rsplit("/", 1)[-1]
 
         if name == "grub.cfg":
-            ***REMOVED*** NB : un grub.cfg stock existe dans l'arbre → on DOIT l'intercepter pour servir le nôtre.
+            # NB : un grub.cfg stock existe dans l'arbre → on DOIT l'intercepter pour servir le nôtre.
             node = db_get_node_by_enroll_token(token) if token else None
             self._text(pxe.grub_cfg(base, prefix="", node=node) if api_ctrl else "")
             return True
@@ -79,7 +79,7 @@ class _Handler(SimpleHTTPRequestHandler):
                 self._text("")
                 return True
             if pname == "enroll.conf":
-                ***REMOVED*** CONTROLLER_URL = API :5000 (POST /api/nodes/enroll), pas ce serveur PXE.
+                # CONTROLLER_URL = API :5000 (POST /api/nodes/enroll), pas ce serveur PXE.
                 self._text(pxe.enroll_conf(node, api_ctrl, token))
                 return True
             p = pxe.payload_path(pname)
@@ -93,7 +93,7 @@ class _Handler(SimpleHTTPRequestHandler):
                 if self.command != "HEAD":
                     self.wfile.write(data)
                 return True
-            ***REMOVED*** payload inconnu → laisse SimpleHTTPRequestHandler renvoyer un 404 (avec corps).
+            # payload inconnu → laisse SimpleHTTPRequestHandler renvoyer un 404 (avec corps).
         return False
 
     def do_GET(self):

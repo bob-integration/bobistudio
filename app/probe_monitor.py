@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Moteur d'événements + sampler de la sonde ST 2110 (probe_2110) — Phase B.
 
@@ -44,34 +44,34 @@ log = logging.getLogger(__name__)
 PROBE_TYPE = "probe_2110"
 ENGINE_TYPE = "2110_io"
 
-***REMOVED*** ─── Rétention du journal (modèle db_add_ptp_event) ──────────────────────────
+# ─── Rétention du journal (modèle db_add_ptp_event) ──────────────────────────
 PROBE_EVENTS_RETENTION = 5000
 PROBE_EVENTS_PURGE_MARGIN = 500
 
-***REMOVED*** ─── Cadence / seuils par défaut (surchargeables en settings) ────────────────
-SAMPLE_INTERVAL_S = 5      ***REMOVED*** probemon_interval_s
-ENTER_SAMPLES     = 2      ***REMOVED*** probemon_enter_samples — anti-rebond à l'OUVERTURE
-EXIT_SAMPLES      = 2      ***REMOVED*** probemon_exit_samples  — anti-rebond à la FERMETURE
-LOSS_PPS          = 5.0    ***REMOVED*** probemon_loss_pps — pertes transport (paquets/s) tolérées
-PTP_OFFSET_NS     = 1000   ***REMOVED*** probemon_ptp_offset_ns — |offset| PTP toléré (ns)
-UNREACH_SAMPLES   = 3      ***REMOVED*** échantillons injoignables avant l'événement « sonde muette »
+# ─── Cadence / seuils par défaut (surchargeables en settings) ────────────────
+SAMPLE_INTERVAL_S = 5      # probemon_interval_s
+ENTER_SAMPLES     = 2      # probemon_enter_samples — anti-rebond à l'OUVERTURE
+EXIT_SAMPLES      = 2      # probemon_exit_samples  — anti-rebond à la FERMETURE
+LOSS_PPS          = 5.0    # probemon_loss_pps — pertes transport (paquets/s) tolérées
+PTP_OFFSET_NS     = 1000   # probemon_ptp_offset_ns — |offset| PTP toléré (ns)
+UNREACH_SAMPLES   = 3      # échantillons injoignables avant l'événement « sonde muette »
 
-SETTING_WATCHED = "probemon_watched"   ***REMOVED*** JSON : signaux de prod surveillés en continu
+SETTING_WATCHED = "probemon_watched"   # JSON : signaux de prod surveillés en continu
 
-***REMOVED*** ─── État en mémoire (process contrôleur) ────────────────────────────────────
+# ─── État en mémoire (process contrôleur) ────────────────────────────────────
 _lock = threading.Lock()
 _last_sample_m = 0.0
-***REMOVED*** FSM binaire par (vmid, flow, kind) : {"cand": int, "active": bool, "id": event_id|None}
+# FSM binaire par (vmid, flow, kind) : {"cand": int, "active": bool, "id": event_id|None}
 _fsm = {}
-***REMOVED*** FSM conformité par (vmid, flow) : verdict stable + candidat débouncé + event ouvert
+# FSM conformité par (vmid, flow) : verdict stable + candidat débouncé + event ouvert
 _conf = {}
-***REMOVED*** Compteurs cumulés pour les deltas transport : (vmid, port) → {"drop": int, "ts": float}
+# Compteurs cumulés pour les deltas transport : (vmid, port) → {"drop": int, "ts": float}
 _loss_prev = {}
-***REMOVED*** Compteurs cumulés « late » par flux : (vmid, flow) → int
+# Compteurs cumulés « late » par flux : (vmid, flow) → int
 _late_prev = {}
 
 
-***REMOVED*** ─── Réglages ────────────────────────────────────────────────────────────────
+# ─── Réglages ────────────────────────────────────────────────────────────────
 def _cfg(key, default):
     try:
         v = S.get(key)
@@ -84,7 +84,7 @@ def _now():
     return datetime.now().isoformat(timespec="milliseconds")
 
 
-***REMOVED*** ─── Persistance : helpers probe_events (get_db, PAS d'édition de database.py) ─
+# ─── Persistance : helpers probe_events (get_db, PAS d'édition de database.py) ─
 def _val(value):
     if value is None:
         return None
@@ -147,7 +147,7 @@ def db_get_probe_events(vmid=None, flow=None, kind=None, severity=None,
         return [dict(r) for r in db.execute(sql, params).fetchall()]
 
 
-***REMOVED*** ─── Registre des signaux de PROD surveillés (persisté en settings) ───────────
+# ─── Registre des signaux de PROD surveillés (persisté en settings) ───────────
 def get_watched():
     """Liste des signaux de production explicitement mis sous surveillance longue durée
     (receivers 2110_io hors sonde). [{vmid, idx, essence, label}]."""
@@ -177,7 +177,7 @@ def watch(vmid, idx=0, essence="video", label="", on=True):
     return cur
 
 
-***REMOVED*** ─── Moteur d'événements : FSM binaire à hystérésis ──────────────────────────
+# ─── Moteur d'événements : FSM binaire à hystérésis ──────────────────────────
 def _binary(vmid, flow, kind, cond, severity, msg_on, msg_off, value=None, alert=True,
             msg_on_i18n=None, msg_off_i18n=None):
     """Événement à transition sur une CONDITION booléenne (noir, gel, silence, fps 0, pertes…).
@@ -232,7 +232,7 @@ def _conformance(vmid, flow, verdict, cause):
         return
     key = (vmid, flow)
     st = _conf.setdefault(key, {"stable": "narrow", "cand": None, "cand_n": 0, "id": None})
-    ***REMOVED*** Débounce : il faut enter_n échantillons consécutifs du même verdict pour le rendre « stable ».
+    # Débounce : il faut enter_n échantillons consécutifs du même verdict pour le rendre « stable ».
     if verdict == st["cand"]:
         st["cand_n"] += 1
     else:
@@ -240,7 +240,7 @@ def _conformance(vmid, flow, verdict, cause):
         st["cand_n"] = 1
     if st["cand_n"] < enter_n or verdict == st["stable"]:
         return
-    ***REMOVED*** Transition confirmée : fermer l'incident courant s'il existe, ouvrir le nouveau si anormal.
+    # Transition confirmée : fermer l'incident courant s'il existe, ouvrir le nouveau si anormal.
     if st["id"]:
         db_close_probe_event(st["id"]); st["id"] = None
     prev = st["stable"]
@@ -254,7 +254,7 @@ def _conformance(vmid, flow, verdict, cause):
         sev = "warning"
         val = {"verdict": "wide"}
         alert_key, alert_params = "alert.rx.sortie_narrow_wide", {"flow": flow}
-    else:  ***REMOVED*** failed
+    else:  # failed
         c = (cause or "").strip()
         msg = f"Sonde {flow} : flux NON CONFORME (2110-21 failed{': ' + c if c else ''})."
         sev = "error"
@@ -267,7 +267,7 @@ def _conformance(vmid, flow, verdict, cause):
     ajouter_alerte(alert_key, sev, params=alert_params)
 
 
-***REMOVED*** ─── Lecture du rapport :8080 d'un conteneur (sonde ou moteur) ───────────────
+# ─── Lecture du rapport :8080 d'un conteneur (sonde ou moteur) ───────────────
 def _read_report(vmid):
     try:
         from .addressing import get_container_ip
@@ -285,14 +285,14 @@ def _read_report(vmid):
 def _flow_id(vmid, rec):
     idx = rec.get("idx")
     ess = rec.get("essence") or "video"
-    return f"***REMOVED***{vmid}/{idx}/{ess}"
+    return f"#{vmid}/{idx}/{ess}"
 
 
 def _eval_receiver(vmid, rec):
     """Applique les seuils à UN flux (une entrée receivers[] du rapport) et pilote les FSM."""
     ess = rec.get("essence") or "video"
     mode = rec.get("mode")
-    if mode == "idle":              ***REMOVED*** non abonné / générateur off → rien à journaliser
+    if mode == "idle":              # non abonné / générateur off → rien à journaliser
         return
     flow = _flow_id(vmid, rec)
     sig = rec.get("signal") or {}
@@ -301,7 +301,7 @@ def _eval_receiver(vmid, rec):
     except (TypeError, ValueError):
         fps = 0.0
 
-    ***REMOVED*** Erreur de session RX (budget lcores/files, RTP alignment…) — le plus grave.
+    # Erreur de session RX (budget lcores/files, RTP alignment…) — le plus grave.
     _rx_detail = rec.get("rx_error") or "session RX en échec"
     _binary(vmid, flow, "rx_error", mode == "error", "error",
             f"Sonde {flow} : erreur de réception — {_rx_detail}.",
@@ -311,13 +311,13 @@ def _eval_receiver(vmid, rec):
             msg_off_i18n=("alert.rx.reception_retablie", {"flow": flow}))
 
     if ess in (None, "video", "anc"):
-        ***REMOVED*** Perte de signal : session MTL vivante mais 0 fps (aucune trame reconstruite).
+        # Perte de signal : session MTL vivante mais 0 fps (aucune trame reconstruite).
         _binary(vmid, flow, "no_signal", mode == "mtl" and fps <= 0.0, "error",
                 f"Sonde {flow} : plus de trames vidéo (fps 0) alors que la session est active.",
                 f"Sonde {flow} : trames vidéo de nouveau reçues.", value={"fps": fps},
                 msg_on_i18n=("alert.rx.plus_de_trames", {"flow": flow}),
                 msg_off_i18n=("alert.rx.trames_retablies", {"flow": flow}))
-        ***REMOVED*** Contenu (exposé par le contrôleur via _signal_loop, persistance SIGNAL_HOLD_S côté moteur).
+        # Contenu (exposé par le contrôleur via _signal_loop, persistance SIGNAL_HOLD_S côté moteur).
         _binary(vmid, flow, "freeze", bool(sig.get("frozen")), "error",
                 f"Sonde {flow} : image GELÉE (freeze) détectée.",
                 f"Sonde {flow} : image de nouveau animée.",
@@ -328,7 +328,7 @@ def _eval_receiver(vmid, rec):
                 f"Sonde {flow} : image de nouveau présente.",
                 msg_on_i18n=("alert.rx.image_noire", {"flow": flow}),
                 msg_off_i18n=("alert.rx.image_presente", {"flow": flow}))
-        ***REMOVED*** Conformité 2110-21 (présente seulement si TIMING_PARSER=1 → DPDK/vfio).
+        # Conformité 2110-21 (présente seulement si TIMING_PARSER=1 → DPDK/vfio).
         if rec.get("compliant") is not None:
             _conformance(vmid, flow, rec.get("compliant"), rec.get("failed_cause"))
 
@@ -363,7 +363,7 @@ def _eval_transport(vmid, report):
         if prev and now > prev["ts"] and drop >= prev["drop"]:
             rate = (drop - prev["drop"]) / (now - prev["ts"])
             over = rate > thr
-        flow = f"***REMOVED***{vmid}/port/{pname}"
+        flow = f"#{vmid}/port/{pname}"
         _binary(vmid, flow, "loss", over, "error",
                 f"Sonde {flow} : pertes transport {rate:.0f} pq/s (> {thr:.0f}) — "
                 f"réseau amont / switch à vérifier.",
@@ -385,15 +385,15 @@ def _eval_ptp(vmid, node_id):
             return
         off = s.get("offset_ns")
         thr = float(_cfg("probemon_ptp_offset_ns", PTP_OFFSET_NS))
-        ***REMOVED*** `ptp.clock_ok` et non `locked` : sur un nœud full-PF DPDK `locked` est le verrou servo
-        ***REMOVED*** STRICT de libmtl, jamais armé sur E810 — la sonde déclarait « PTP perdu » en permanence.
+        # `ptp.clock_ok` et non `locked` : sur un nœud full-PF DPDK `locked` est le verrou servo
+        # STRICT de libmtl, jamais armé sur E810 — la sonde déclarait « PTP perdu » en permanence.
         synced = ptp.clock_ok(s)
         lost = (not synced) or (off is not None and abs(off) > thr)
-        flow = f"***REMOVED***{vmid}/ptp"
+        flow = f"#{vmid}/ptp"
         _binary(vmid, flow, "ptp", lost, "warning",
-                f"Sonde ***REMOVED***{vmid} : PTP perdu/désaligné (synchro={synced}, "
+                f"Sonde #{vmid} : PTP perdu/désaligné (synchro={synced}, "
                 f"offset={off} ns) — verdict de conformité absolu non fiable.",
-                f"Sonde ***REMOVED***{vmid} : PTP de nouveau verrouillé.",
+                f"Sonde #{vmid} : PTP de nouveau verrouillé.",
                 value={"locked": synced, "offset_ns": off},
                 msg_on_i18n=("alert.ptp.sonde_perdu",
                              {"vmid": vmid, "locked": synced, "offset_ns": off}),
@@ -432,10 +432,10 @@ def _sample_probe(c):
     vmid = int(c["vmid"])
     node_id = c.get("node_id")
     report = _read_report(vmid)
-    ***REMOVED*** Sonde injoignable : événement à transition (warning) — hystérésis dédiée UNREACH_SAMPLES
-    ***REMOVED*** (plus tolérante que l'hystérésis générique : un rapport :8080 peut manquer un tick).
+    # Sonde injoignable : événement à transition (warning) — hystérésis dédiée UNREACH_SAMPLES
+    # (plus tolérante que l'hystérésis générique : un rapport :8080 peut manquer un tick).
     unreach_n = max(1, int(_cfg("probemon_unreach_samples", UNREACH_SAMPLES)))
-    key = (vmid, f"***REMOVED***{vmid}", "unreachable")
+    key = (vmid, f"#{vmid}", "unreachable")
     st = _fsm.setdefault(key, {"cand": 0, "active": False, "id": None})
     ok = bool(report and isinstance(report.get("receivers"), list))
     if not ok:
@@ -443,8 +443,8 @@ def _sample_probe(c):
             st["cand"] += 1
             if st["cand"] >= unreach_n:
                 st["active"] = True; st["cand"] = 0
-                st["id"] = db_add_probe_event(vmid, f"***REMOVED***{vmid}", "unreachable", "warning",
-                                              f"Sonde ***REMOVED***{vmid} : rapport :8080 injoignable.", None)
+                st["id"] = db_add_probe_event(vmid, f"#{vmid}", "unreachable", "warning",
+                                              f"Sonde #{vmid} : rapport :8080 injoignable.", None)
                 ajouter_alerte("alert.rx.sonde_injoignable", "warning", params={"vmid": vmid})
         return
     if st["active"]:
@@ -485,7 +485,7 @@ def _sample_watched_engine(c, slots):
                 log.debug("probe_monitor watched %s: %s", vmid, e)
 
 
-***REMOVED*** ─── Sampler (appelé depuis surveillance, throttlé) ──────────────────────────
+# ─── Sampler (appelé depuis surveillance, throttlé) ──────────────────────────
 def sample_all(force=False):
     global _last_sample_m
     if not _cfg("probemon_enabled", 1):
@@ -514,7 +514,7 @@ def sample_all(force=False):
                 log.debug("probe_monitor moteur surveillé %s: %s", vmid, e)
 
 
-***REMOVED*** ─── Accès API (résumé pour le tableau de bord) ──────────────────────────────
+# ─── Accès API (résumé pour le tableau de bord) ──────────────────────────────
 def monitor_summary(limit=200):
     """Instantané pour l'onglet Monitoring : incidents actifs, timeline récente, signaux surveillés."""
     return {

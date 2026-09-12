@@ -1,23 +1,23 @@
-***REMOVED***!/usr/bin/env bash
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** install.sh — amorce d'installation depuis une source DÉJÀ PRÉSENTE (clone git, archive dépliée,
-***REMOVED*** clé USB). Son seul travail : réunir les conditions minimales, puis passer la main à l'installeur
-***REMOVED*** unifié `install/install.py`, qui pose tout le reste (venv, dépendances, horloge TAI, service
-***REMOVED*** systemd, base) et propose le menu — nœud, orchestrateur, tout-en-un, désinstallation.
-***REMOVED***
-***REMOVED***     bash install.sh
-***REMOVED***
-***REMOVED*** ★ POURQUOI CE FICHIER EXISTE ENCORE.
-***REMOVED*** Il a longtemps fait l'installation lui-même, en parallèle de install.py. Deux chemins pour la même
-***REMOVED*** cible finissent toujours par DIVERGER : celui-ci posait l'horloge TAI, l'autre non — donc un
-***REMOVED*** contrôleur installé par le menu restait à 37 s de la grille média, sans que rien ne le signale.
-***REMOVED*** L'étape a été repliée dans install.py, et ce script est redevenu ce qu'il aurait dû rester : une
-***REMOVED*** amorce. Il subsiste parce qu'il ne demande RIEN — pas même python3, qu'il propose d'installer —
-***REMOVED*** et parce que « bash install.sh » est dans les doigts de tout le monde.
-***REMOVED***
-***REMOVED*** Cf. get.sh pour l'équivalent depuis GitHub, sur une machine vierge.
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# install.sh — amorce d'installation depuis une source DÉJÀ PRÉSENTE (clone git, archive dépliée,
+# clé USB). Son seul travail : réunir les conditions minimales, puis passer la main à l'installeur
+# unifié `install/install.py`, qui pose tout le reste (venv, dépendances, horloge TAI, service
+# systemd, base) et propose le menu — nœud, orchestrateur, tout-en-un, désinstallation.
+#
+#     bash install.sh
+#
+# ★ POURQUOI CE FICHIER EXISTE ENCORE.
+# Il a longtemps fait l'installation lui-même, en parallèle de install.py. Deux chemins pour la même
+# cible finissent toujours par DIVERGER : celui-ci posait l'horloge TAI, l'autre non — donc un
+# contrôleur installé par le menu restait à 37 s de la grille média, sans que rien ne le signale.
+# L'étape a été repliée dans install.py, et ce script est redevenu ce qu'il aurait dû rester : une
+# amorce. Il subsiste parce qu'il ne demande RIEN — pas même python3, qu'il propose d'installer —
+# et parce que « bash install.sh » est dans les doigts de tout le monde.
+#
+# Cf. get.sh pour l'équivalent depuis GitHub, sur une machine vierge.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -36,9 +36,9 @@ echo
 INSTALLEUR="install/install.py"
 [ -f "$INSTALLEUR" ] || die "$INSTALLEUR introuvable — ce script doit être lancé depuis la racine de la source."
 
-***REMOVED*** ─── python3 : le seul prérequis, et on ne se contente pas de le constater ────
-***REMOVED*** Sur une Debian minimale il peut manquer. Échouer en disant « installez python3 » renvoie
-***REMOVED*** l'exploitant à une commande qu'on sait taper à sa place — autant la proposer.
+# ─── python3 : le seul prérequis, et on ne se contente pas de le constater ────
+# Sur une Debian minimale il peut manquer. Échouer en disant « installez python3 » renvoie
+# l'exploitant à une commande qu'on sait taper à sa place — autant la proposer.
 if ! command -v python3 >/dev/null 2>&1; then
   warn "python3 est absent, et l'installeur en a besoin."
   _rep="o"
@@ -54,7 +54,7 @@ if ! command -v python3 >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq || die "apt-get update a échoué — dépôts injoignables ? Rien n'a été modifié."
   apt-get install -y -qq python3 || die "installation de python3 échouée — rien n'a été modifié."
-  ***REMOVED*** apt peut rendre 0 sans avoir posé le binaire (miroir partiel, paquet retenu). On CONSTATE.
+  # apt peut rendre 0 sans avoir posé le binaire (miroir partiel, paquet retenu). On CONSTATE.
   command -v python3 >/dev/null 2>&1 \
     || die "apt s'est terminé sans erreur mais python3 reste introuvable — dépôts incomplets ?"
   ok "python3 installé ($(python3 --version 2>&1))"

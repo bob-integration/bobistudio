@@ -1,22 +1,22 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc du contrôle de CATALOGUE « choix multiple » (`MXLControls.chooseList`).
-***REMOVED***
-***REMOVED*** POURQUOI IL EXISTE. Un `<select multiple>` tient tant qu'il y a quatre entrées ; à vingt il
-***REMOVED*** devient inutilisable — boîte de quatre lignes à faire défiler, Ctrl+clic pour désélectionner qui
-***REMOVED*** ne s'invente pas, et surtout la sélection est DANS la liste au lieu d'être à côté : on ne voit
-***REMOVED*** pas ce qu'on a choisi sans tout parcourir. Ici la liste sert à AJOUTER, les puces disent l'état.
-***REMOVED***
-***REMOVED*** CE QU'IL PROTÈGE, et qui ne se voit pas en lisant le code :
-***REMOVED***   · reproposer ce qui est déjà choisi — l'exploitant ajoute un doublon que le contrôle refuse
-***REMOVED***     en silence, et le menu s'allonge de ce qu'il vient de régler ;
-***REMOVED***   · perdre une valeur qui a disparu de la liste (un niveau supprimé ailleurs) : la masquer la
-***REMOVED***     ferait disparaître au premier enregistrement, sans que personne l'ait demandé ;
-***REMOVED***   · rendre autre chose qu'une LISTE, ce qui reproduirait le défaut d'origine.
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tools/verif_controle_choix.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc du contrôle de CATALOGUE « choix multiple » (`MXLControls.chooseList`).
+#
+# POURQUOI IL EXISTE. Un `<select multiple>` tient tant qu'il y a quatre entrées ; à vingt il
+# devient inutilisable — boîte de quatre lignes à faire défiler, Ctrl+clic pour désélectionner qui
+# ne s'invente pas, et surtout la sélection est DANS la liste au lieu d'être à côté : on ne voit
+# pas ce qu'on a choisi sans tout parcourir. Ici la liste sert à AJOUTER, les puces disent l'état.
+#
+# CE QU'IL PROTÈGE, et qui ne se voit pas en lisant le code :
+#   · reproposer ce qui est déjà choisi — l'exploitant ajoute un doublon que le contrôle refuse
+#     en silence, et le menu s'allonge de ce qu'il vient de régler ;
+#   · perdre une valeur qui a disparu de la liste (un niveau supprimé ailleurs) : la masquer la
+#     ferait disparaître au premier enregistrement, sans que personne l'ait demandé ;
+#   · rendre autre chose qu'une LISTE, ce qui reproduirait le défaut d'origine.
+#
+#   $ ./venv/bin/python tools/verif_controle_choix.py
 import json
 import os
 import subprocess
@@ -34,8 +34,8 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-***REMOVED*** Un DOM minimal : le contrôle fabrique de VRAIS éléments, on les compte. Bouchonner le rendu
-***REMOVED*** ferait passer un contrôle qui n'affiche rien.
+# Un DOM minimal : le contrôle fabrique de VRAIS éléments, on les compte. Bouchonner le rendu
+# ferait passer un contrôle qui n'affiche rien.
 DOM = """
 class El {
   constructor(t){ this.tag=t; this.children=[]; this.className=''; this._txt='';
@@ -53,7 +53,7 @@ class El {
 }
 global.window = {};
 global.document = { createElement: (t) => new El(t), activeElement: null,
-                    createTextNode: (t) => { const e = new El('***REMOVED***text'); e.textContent = t; return e; } };
+                    createTextNode: (t) => { const e = new El('#text'); e.textContent = t; return e; } };
 """
 
 
@@ -140,7 +140,7 @@ controle("★★ rien de choisi → on le DIT, on ne laisse pas un vide",
          res.get("vide") == ["AUCUN"],
          "une zone vide ne se distingue pas d'un contrôle en panne. Obtenu %r" % res.get("vide"))
 
-***REMOVED*** ── Le style existe, sinon le contrôle est nu là où on le dépose ─────────────
+# ── Le style existe, sinon le contrôle est nu là où on le dépose ─────────────
 css = open(os.path.join(RACINE, "static", "css", "controls.css"), encoding="utf-8").read()
 manquantes = [c for c in ("ctl-choix", "ctl-choix-puce", "ctl-choix-x", "ctl-choix-select",
                           "ctl-choix-vide", "ctl-choix-inconnue") if ".%s" % c not in css]
@@ -148,12 +148,12 @@ controle("★★ toutes ses classes sont stylées", not manquantes,
          "un contrôle de catalogue doit être autonome partout où on le dépose — y compris sur "
          "une page de plugin, qui n'a pas le style scopé `.form`. Manquantes : %s" % manquantes)
 
-***REMOVED*** ── UN CLIC QU'ON N'A PAS REÇU ───────────────────────────────────────────────
-***REMOVED*** Déposé dans un <label> — ce qui arrive — le contrôle voit TOUT clic de l'étiquette renvoyé vers
-***REMOVED*** son premier bouton : cliquer À CÔTÉ d'une puce en supprimait une autre. Signalé le 2026-09-01 :
-***REMOVED*** « si j'appuie à droite de la case pour supprimer le premier niveau, ça le supprime quand même ».
-***REMOVED*** ⚠ Et il ne suffit pas de refuser `detail === 0` : une activation au CLAVIER vaut aussi 0. Ce
-***REMOVED*** qui sépare les deux, c'est le FOCUS.
+# ── UN CLIC QU'ON N'A PAS REÇU ───────────────────────────────────────────────
+# Déposé dans un <label> — ce qui arrive — le contrôle voit TOUT clic de l'étiquette renvoyé vers
+# son premier bouton : cliquer À CÔTÉ d'une puce en supprimait une autre. Signalé le 2026-09-01 :
+# « si j'appuie à droite de la case pour supprimer le premier niveau, ça le supprime quand même ».
+# ⚠ Et il ne suffit pas de refuser `detail === 0` : une activation au CLAVIER vaut aussi 0. Ce
+# qui sépare les deux, c'est le FOCUS.
 res = executer("""
 const hote = new El('div');
 const OPTS = [{value:'a',label:'A'},{value:'b',label:'B'},{value:'c',label:'C'}];

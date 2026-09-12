@@ -8,7 +8,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--bg, ***REMOVED***1e1e1e);
+  background: var(--bg, #1e1e1e);
   font-family: var(--font-mono, ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace);
   font-size: 0.88em;
   line-height: 1.5;
@@ -44,15 +44,15 @@
 .ce-input {
   background: transparent;
   color: transparent;
-  caret-color: var(--text, ***REMOVED***eee);
+  caret-color: var(--text, #eee);
   border: 0;
   outline: none;
   resize: none;
 }
 .ce-input::selection { background: rgba(120, 160, 220, 0.35); color: transparent; }
 /* Jetons (couleurs sobres, s'adaptent au thème via des teintes neutres). */
-.ce-com { color: ***REMOVED***6a9955; font-style: italic; }
-.ce-str { color: ***REMOVED***ce9178; }
-.ce-num { color: ***REMOVED***b5cea8; }
-.ce-kw  { color: ***REMOVED***569cd6; font-weight: 600; }
-.ce-var { color: ***REMOVED***9cdcfe; }
+.ce-com { color: #6a9955; font-style: italic; }
+.ce-str { color: #ce9178; }
+.ce-num { color: #b5cea8; }
+.ce-kw  { color: #569cd6; font-weight: 600; }
+.ce-var { color: #9cdcfe; }

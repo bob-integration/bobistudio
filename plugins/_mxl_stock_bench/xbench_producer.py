@@ -1,4 +1,4 @@
-***REMOVED***!/usr/bin/env python3
+#!/usr/bin/env python3
 """Producteur du BANC CROISÉ interop — à lancer dans un conteneur bobi-compute (libmxl FORKÉE).
 
 Publie en continu, pendant DURATION s, deux flux (noms préfixés v210xbench_, jamais de la prod) :
@@ -29,8 +29,8 @@ t0 = time.time()
 k = 0
 while time.time() - t0 < DURATION:
     frame = (base + np.uint16(k & 1023)) & np.uint16(1023)
-    wp.write(frame, index=k)                       ***REMOVED*** flux planar (type maison)
-    _i, gi, ovw = wv.open_grain(index=k)           ***REMOVED*** miroir v210 (type stock)
+    wp.write(frame, index=k)                       # flux planar (type maison)
+    _i, gi, ovw = wv.open_grain(index=k)           # miroir v210 (type stock)
     bx.v210_pack(frame, W, H, bit_depth=10, out=ovw)
     wv.commit(gi)
     k += 1

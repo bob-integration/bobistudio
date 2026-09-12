@@ -1,12 +1,12 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
-***REMOVED***
-***REMOVED*** probe_2110 — hooks lifecycle (exécutés IN-PROCESS, mais sans handles DB/token : uniquement
-***REMOVED*** un dict `params` + un contexte minimal, cf. app/plugins.py). La sonde réutilise la
-***REMOVED*** normalisation du receiver 2110_io (format vidéo, comptes RX) puis FORCE le profil « mesure » :
-***REMOVED*** RX-only strict (aucune sortie TX/ANC), parser de conformité activé, PF vfio dédiée.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+#
+# probe_2110 — hooks lifecycle (exécutés IN-PROCESS, mais sans handles DB/token : uniquement
+# un dict `params` + un contexte minimal, cf. app/plugins.py). La sonde réutilise la
+# normalisation du receiver 2110_io (format vidéo, comptes RX) puis FORCE le profil « mesure » :
+# RX-only strict (aucune sortie TX/ANC), parser de conformité activé, PF vfio dédiée.
 
 import logging
 
@@ -19,21 +19,21 @@ def before_deploy(params, context):
     try:
         from app.scripts import normalize_receiver_params
         params = normalize_receiver_params(params, settings=context.get("settings"))
-    except Exception as e:  ***REMOVED*** normalisation best-effort — ne jamais bloquer un deploy sonde
+    except Exception as e:  # normalisation best-effort — ne jamais bloquer un deploy sonde
         log.warning("probe_2110 before_deploy: normalize_receiver_params ignoré (%s)", e)
 
-    ***REMOVED*** Profil MESURE, non négociable : une sonde est un RECEIVER pur. On coupe toute émission
-    ***REMOVED*** (TX/ANC) pour ne consommer QUE des files RX sur la PF dédiée et n'exposer aucun sender NMOS.
+    # Profil MESURE, non négociable : une sonde est un RECEIVER pur. On coupe toute émission
+    # (TX/ANC) pour ne consommer QUE des files RX sur la PF dédiée et n'exposer aucun sender NMOS.
     params["probe_mode"] = True
     params["timing_parser"] = True
     params["tx_count"] = 0
     params["active_tx_count"] = 0
     params["anc_count"] = 0
-    ***REMOVED*** tx_slots/tx_flows n'ont aucun sens pour une sonde : les vider (rétro-compat si recopiés).
+    # tx_slots/tx_flows n'ont aucun sens pour une sonde : les vider (rétro-compat si recopiés).
     params["tx_slots"] = []
     params["tx_flows"] = []
 
-    ***REMOVED*** Slots RX : une sonde analyse UN flux à la fois par port en Phase A. On garde ≥1 slot vidéo.
+    # Slots RX : une sonde analyse UN flux à la fois par port en Phase A. On garde ≥1 slot vidéo.
     try:
         vc = int(params.get("video_count") or 0)
     except (TypeError, ValueError):
@@ -47,7 +47,7 @@ def before_deploy(params, context):
     if arc < 1:
         params["active_rx_count"] = 1
 
-    ***REMOVED*** Conformité audio (ST 2110-30) optionnelle : n'allouer un slot audio RX que si demandé.
+    # Conformité audio (ST 2110-30) optionnelle : n'allouer un slot audio RX que si demandé.
     if params.get("measure_audio"):
         try:
             if int(params.get("audio_count") or 0) < 1:

@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Premier démarrage (setup), login/logout, et widget systemd du topnav (uptime + restart)."""
 
@@ -29,18 +29,18 @@ def _safe_next(raw):
     return url_for("routes.home")
 
 
-***REMOVED*** ─── Rate-limit login (anti-bruteforce) ────────────────────────────────────
-***REMOVED*** Fenêtre glissante par IP en mémoire : max N échecs / fenêtre, sinon 429. Reset sur
-***REMOVED*** succès. Simple, sans dépendance externe (mono-processus Waitress → un seul dict).
+# ─── Rate-limit login (anti-bruteforce) ────────────────────────────────────
+# Fenêtre glissante par IP en mémoire : max N échecs / fenêtre, sinon 429. Reset sur
+# succès. Simple, sans dépendance externe (mono-processus Waitress → un seul dict).
 _LOGIN_MAX_FAILS = 10
-_LOGIN_WINDOW_S = 300          ***REMOVED*** 5 min
-_login_fails = {}             ***REMOVED*** ip -> [timestamps des échecs récents]
+_LOGIN_WINDOW_S = 300          # 5 min
+_login_fails = {}             # ip -> [timestamps des échecs récents]
 _login_lock = threading.Lock()
 
 
 def _client_ip():
-    ***REMOVED*** ProxyFix (main.py) réécrit déjà remote_addr depuis X-Forwarded-For quand on est
-    ***REMOVED*** derrière le reverse-proxy → remote_addr est l'IP client de confiance.
+    # ProxyFix (main.py) réécrit déjà remote_addr depuis X-Forwarded-For quand on est
+    # derrière le reverse-proxy → remote_addr est l'IP client de confiance.
     return request.remote_addr or "?"
 
 
@@ -66,13 +66,13 @@ def _login_reset(ip):
         _login_fails.pop(ip, None)
 
 
-***REMOVED*** ─── Premier démarrage / Login / Logout ────────────────────────────────────
+# ─── Premier démarrage / Login / Logout ────────────────────────────────────
 @bp.route("/setup", methods=["GET", "POST"])
 def setup_page():
     """Assistant de premier démarrage. Affiché tant qu'AUCUN utilisateur n'existe
     (installation neuve, plus de seed admin par défaut). Confirme que l'installation
     est fonctionnelle et invite à créer le compte administrateur."""
-    ***REMOVED*** Dès qu'un compte existe, l'assistant n'a plus lieu d'être → login.
+    # Dès qu'un compte existe, l'assistant n'a plus lieu d'être → login.
     if db_count_users() > 0:
         return redirect(url_for("routes.login_page"))
     error = None
@@ -83,11 +83,11 @@ def setup_page():
         prenom = (request.form.get("prenom") or "").strip() or None
         nom = (request.form.get("nom") or "").strip() or None
         email = (request.form.get("email") or "").strip() or None
-        ***REMOVED*** ★ Le PROFIL d'exigence se choisit ICI, en même temps que le mot de passe. Imposer 12
-        ***REMOVED*** signes à quelqu'un qui monte une instance d'essai sur un réseau isolé, c'est produire
-        ***REMOVED*** un mot de passe sur un post-it — et l'écran d'installation était justement le seul
-        ***REMOVED*** endroit où le réglage n'était pas atteignable (il vit dans Réglages → Sécurité, qui
-        ***REMOVED*** exige d'être connecté, donc d'avoir déjà passé cet écran).
+        # ★ Le PROFIL d'exigence se choisit ICI, en même temps que le mot de passe. Imposer 12
+        # signes à quelqu'un qui monte une instance d'essai sur un réseau isolé, c'est produire
+        # un mot de passe sur un post-it — et l'écran d'installation était justement le seul
+        # endroit où le réglage n'était pas atteignable (il vit dans Réglages → Sécurité, qui
+        # exige d'être connecté, donc d'avoir déjà passé cet écran).
         profil = (request.form.get("pwd_profil") or "").strip().lower()
         if profil not in PWD_PROFILS:
             profil = pwd_profil()
@@ -99,32 +99,32 @@ def setup_page():
         elif p != p2:
             error = _t("setup.err_mismatch")
         elif fautes:
-            ***REMOVED*** Le tout premier compte est ADMINISTRATEUR : c'est le mot de passe qui compte le
-            ***REMOVED*** plus de l'installation, et c'est celui qu'on tapait le plus vite. Même règle
-            ***REMOVED*** qu'ailleurs, pas un seuil de complaisance à six caractères.
+            # Le tout premier compte est ADMINISTRATEUR : c'est le mot de passe qui compte le
+            # plus de l'installation, et c'est celui qu'on tapait le plus vite. Même règle
+            # qu'ailleurs, pas un seuil de complaisance à six caractères.
             error = _t("setup.err_weak").format(regles="; ".join(
                 _t("compte.pwd_regle_" + f).replace(
                     "{n}", str(exigences["longueur_min"]))
                 for f in fautes))
         else:
-            ***REMOVED*** Course possible (double soumission) : re-vérifier qu'aucun compte
-            ***REMOVED*** n'a été créé entre-temps avant d'insérer le tout premier admin.
+            # Course possible (double soumission) : re-vérifier qu'aucun compte
+            # n'a été créé entre-temps avant d'insérer le tout premier admin.
             if db_count_users() > 0:
                 return redirect(url_for("routes.login_page"))
-            ***REMOVED*** Le profil retenu devient celui de l'installation : c'est la même exigence qui
-            ***REMOVED*** s'appliquera aux comptes suivants, et elle reste modifiable (Réglages → Sécurité).
+            # Le profil retenu devient celui de l'installation : c'est la même exigence qui
+            # s'appliquera aux comptes suivants, et elle reste modifiable (Réglages → Sécurité).
             from .. import settings as _st
             _st.set("pwd_profil", profil)
             uid = db_create_user(u, hash_password(p), "admin", prenom, nom, email)
             login_user(db_get_user_by_id(uid))
-            ***REMOVED*** Compte créé → enchaîner l'assistant de premier démarrage.
+            # Compte créé → enchaîner l'assistant de premier démarrage.
             return redirect(url_for("routes.setup_wizard"))
     profil_choisi = (request.form.get("pwd_profil") or "").strip().lower()
     if profil_choisi not in PWD_PROFILS:
         profil_choisi = pwd_profil()
-    ***REMOVED*** ⚠ On REND les champs saisis (sauf les mots de passe, jamais renvoyés au navigateur).
-    ***REMOVED*** Un refus qui vide le formulaire fait retaper identifiant, prénom, nom et courriel pour
-    ***REMOVED*** une faute qui ne portait que sur le mot de passe — et n'apprend toujours pas la règle.
+    # ⚠ On REND les champs saisis (sauf les mots de passe, jamais renvoyés au navigateur).
+    # Un refus qui vide le formulaire fait retaper identifiant, prénom, nom et courriel pour
+    # une faute qui ne portait que sur le mot de passe — et n'apprend toujours pas la règle.
     return render_template("setup.html", error=error,
                            form={"username": request.form.get("username", "").strip(),
                                  "prenom": request.form.get("prenom", "").strip(),
@@ -157,9 +157,9 @@ def setup_wizard():
     from .. import settings as st
     if st.get("setup_completed") and not request.args.get("force"):
         return redirect(url_for("routes.home"))
-    ***REMOVED*** Le fuseau est servi comme sur la page Personnalisation : la liste vient de la tzdata
-    ***REMOVED*** RÉELLEMENT installée, jamais d'une liste en dur — c'est la seule qui garantisse qu'un
-    ***REMOVED*** choix sera applicable par le process.
+    # Le fuseau est servi comme sur la page Personnalisation : la liste vient de la tzdata
+    # RÉELLEMENT installée, jamais d'une liste en dur — c'est la seule qui garantisse qu'un
+    # choix sera applicable par le process.
     from .pages import _timezones_par_region
     return render_template("setup_wizard.html",
                            video_formats=st.get("video_formats") or "",
@@ -174,7 +174,7 @@ def api_setup_complete():
 
 @bp.route("/login", methods=["GET", "POST"])
 def login_page():
-    ***REMOVED*** Installation neuve sans aucun compte → assistant de premier démarrage.
+    # Installation neuve sans aucun compte → assistant de premier démarrage.
     if db_count_users() == 0:
         return redirect(url_for("routes.setup_page"))
     error = None
@@ -183,9 +183,9 @@ def login_page():
         from ..i18n import t as _t
         ip = _client_ip()
         if _login_throttled(ip):
-            ***REMOVED*** Trop d'échecs récents depuis cette IP → 429 (défense anti-bruteforce).
-            ***REMOVED*** (message littéral : la clé i18n n'est pas dans le catalogue et les fichiers
-            ***REMOVED*** i18n sont hors périmètre de ce correctif.)
+            # Trop d'échecs récents depuis cette IP → 429 (défense anti-bruteforce).
+            # (message littéral : la clé i18n n'est pas dans le catalogue et les fichiers
+            # i18n sont hors périmètre de ce correctif.)
             error = "Trop de tentatives échouées. Réessayez dans quelques minutes."
             return render_template("login.html", error=error, next=next_url), 429
         u = (request.form.get("username") or "").strip()
@@ -194,15 +194,15 @@ def login_page():
         if user and verify_password(p, user["password_hash"]):
             _login_reset(ip)
             login_user(user)
-            ***REMOVED*** Premier démarrage non terminé → reprendre l'assistant (sauf si une
-            ***REMOVED*** cible 'next' explicite a été demandée). Réservé aux comptes admin.
+            # Premier démarrage non terminé → reprendre l'assistant (sauf si une
+            # cible 'next' explicite a été demandée). Réservé aux comptes admin.
             from .. import settings as st
             if (not st.get("setup_completed")
                     and not request.values.get("next")
                     and user.get("role") == "admin"):
                 return redirect(url_for("routes.setup_wizard"))
-            ***REMOVED*** Interface projets (chantier 1) : atterrissage sur l'accueil /workspaces
-            ***REMOVED*** (sauf cible explicite — le garde-page redirigera si elle est technique).
+            # Interface projets (chantier 1) : atterrissage sur l'accueil /workspaces
+            # (sauf cible explicite — le garde-page redirigera si elle est technique).
             if user.get("interface") == "projets" and not request.values.get("next"):
                 return redirect(url_for("routes.workspaces_page"))
             return redirect(next_url)
@@ -216,8 +216,8 @@ def logout():
     return redirect(url_for("routes.login_page"))
 
 
-***REMOVED*** ─── Service systemd (debug) ───────────────────────────────────────────────
-***REMOVED*** Widget topnav : uptime + bouton restart. Réservé admin.
+# ─── Service systemd (debug) ───────────────────────────────────────────────
+# Widget topnav : uptime + bouton restart. Réservé admin.
 @bp.route("/api/service/info", methods=["GET"])
 @require_login
 def api_service_info():
@@ -229,8 +229,8 @@ def api_service_info():
 @bp.route("/api/service/restart", methods=["POST"])
 @require_perm("settings.edit")
 def api_service_restart():
-    ***REMOVED*** --no-block : systemctl ne reste pas pendu sur l'arrêt du process appelant
-    ***REMOVED*** (ce process lui-même). La réponse HTTP part avant le SIGTERM.
+    # --no-block : systemctl ne reste pas pendu sur l'arrêt du process appelant
+    # (ce process lui-même). La réponse HTTP part avant le SIGTERM.
     try:
         subprocess.Popen(["systemctl", "restart", "--no-block", "bobistudio.service"])
     except FileNotFoundError:

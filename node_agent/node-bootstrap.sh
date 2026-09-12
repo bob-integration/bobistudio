@@ -1,22 +1,22 @@
-***REMOVED***!/usr/bin/env bash
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** node-bootstrap.sh — provisioning au PREMIER boot d'un nœud installé par la clé USB préseedée.
-***REMOVED*** Lancé une seule fois par le service systemd `bobi-node-bootstrap` (oneshot), réseau up.
-***REMOVED***
-***REMOVED*** Deux modes, selon /etc/bobi-node/enroll.conf :
-***REMOVED***   1) ZÉRO-TOUCH (recommandé) : CONTROLLER_URL + ENROLL_TOKEN définis → on POST nos faits matériels
-***REMOVED***      à <CONTROLLER_URL>/api/nodes/enroll, le contrôleur renvoie le profil (capacités, macvlan,
-***REMOVED***      token agent, domaine PTP, registry) → on lance install-node.sh avec.
-***REMOVED***   2) ANSWER-FILE (repli/déterministe) : les paramètres sont écrits en dur dans enroll.conf
-***REMOVED***      (CAPS, MACVLAN_*, TOKEN, MTL_IFACE…) → on lance install-node.sh directement.
-***REMOVED***
-***REMOVED*** Idempotent : se désactive (systemctl disable) après un provisioning réussi.
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# node-bootstrap.sh — provisioning au PREMIER boot d'un nœud installé par la clé USB préseedée.
+# Lancé une seule fois par le service systemd `bobi-node-bootstrap` (oneshot), réseau up.
+#
+# Deux modes, selon /etc/bobi-node/enroll.conf :
+#   1) ZÉRO-TOUCH (recommandé) : CONTROLLER_URL + ENROLL_TOKEN définis → on POST nos faits matériels
+#      à <CONTROLLER_URL>/api/nodes/enroll, le contrôleur renvoie le profil (capacités, macvlan,
+#      token agent, domaine PTP, registry) → on lance install-node.sh avec.
+#   2) ANSWER-FILE (repli/déterministe) : les paramètres sont écrits en dur dans enroll.conf
+#      (CAPS, MACVLAN_*, TOKEN, MTL_IFACE…) → on lance install-node.sh directement.
+#
+# Idempotent : se désactive (systemctl disable) après un provisioning réussi.
 set -uo pipefail
 
 CONF=/etc/bobi-node/enroll.conf
-SRC=/opt/bobi-node-src                       ***REMOVED*** payload copié par le preseed (install-node.sh, agent.py…)
+SRC=/opt/bobi-node-src                       # payload copié par le preseed (install-node.sh, agent.py…)
 STATE=/var/lib/bobi-node/bootstrap.done
 LOG=/var/log/bobi-node-bootstrap.log
 exec > >(tee -a "$LOG") 2>&1
@@ -28,10 +28,10 @@ fail(){ log "ÉCHEC: $*"; exit 1; }
 [ -r "$CONF" ] || fail "config absente : $CONF"
 [ -x "$SRC/install-node.sh" ] || fail "payload absent : $SRC/install-node.sh"
 
-***REMOVED*** shellcheck disable=SC1090
+# shellcheck disable=SC1090
 . "$CONF"
 
-***REMOVED*** ─── Détection matérielle ──────────────────────────────────────────────────────
+# ─── Détection matérielle ──────────────────────────────────────────────────────
 detect_ice_iface() {
   for i in $(ls /sys/class/net 2>/dev/null); do
     [ "$i" = "lo" ] && continue
@@ -39,16 +39,16 @@ detect_ice_iface() {
   done
 }
 ICE_IFACE="$(detect_ice_iface || true)"
-***REMOVED*** Interface de gestion (route par défaut) — repli pour macvlan parent si pas d'E810.
+# Interface de gestion (route par défaut) — repli pour macvlan parent si pas d'E810.
 MGMT_IFACE="$(ip route show default 2>/dev/null | awk '/default/{print $5; exit}')"
 PRIMARY_MAC="$(cat "/sys/class/net/${MGMT_IFACE:-lo}/address" 2>/dev/null || echo '')"
 NICS="$(for i in $(ls /sys/class/net); do [ "$i" = lo ] && continue; echo -n "$i:$(cat /sys/class/net/$i/address 2>/dev/null) "; done)"
 log "iface ice=${ICE_IFACE:-aucune} mgmt=${MGMT_IFACE:-?} mac=$PRIMARY_MAC"
 
-***REMOVED*** ─── Mode ZÉRO-TOUCH : enrôlement auprès du contrôleur ──────────────────────────
+# ─── Mode ZÉRO-TOUCH : enrôlement auprès du contrôleur ──────────────────────────
 if [ -n "${CONTROLLER_URL:-}" ] && [ -n "${ENROLL_TOKEN:-}" ]; then
   log "enrôlement zéro-touch auprès de $CONTROLLER_URL …"
-  ***REMOVED*** Boucle d'attente : le contrôleur peut ne pas être joignable au tout 1er boot.
+  # Boucle d'attente : le contrôleur peut ne pas être joignable au tout 1er boot.
   PROFILE=""
   for attempt in $(seq 1 60); do
     PROFILE="$(python3 - "$CONTROLLER_URL" "$ENROLL_TOKEN" "$(hostname)" "$ICE_IFACE" "$PRIMARY_MAC" "$NICS" <<'PY'
@@ -61,7 +61,7 @@ req = urllib.request.Request(base.rstrip("/") + "/api/nodes/enroll", data=body,
 try:
     with urllib.request.urlopen(req, timeout=8) as r:
         d = json.load(r)
-    ***REMOVED*** Émet des lignes KEY=VALUE shell-safe pour eval côté bash.
+    # Émet des lignes KEY=VALUE shell-safe pour eval côté bash.
     def out(k, v):
         if v is None: return
         print('%s=%s' % (k, json.dumps(str(v))))
@@ -95,8 +95,8 @@ PY
   LCORES="${E_LCORES:-}"; REGISTRY="${E_REGISTRY:-}"
   KERNEL_PKG="${E_KERNEL_PKG:-}"; KERNEL_APT="${E_KERNEL_APT:-}"
   log "profil reçu : caps=$CAPS macvlan=$MACVLAN_SUBNET vlan=${MACVLAN_VLAN:-—}"
-  ***REMOVED*** Clé publique du contrôleur → authorized_keys (SSH root d'ops ; idempotent). L'orchestration
-  ***REMOVED*** passe par l'agent, mais ça donne un shell direct `ssh root@<nœud>` sans manip de fichier.
+  # Clé publique du contrôleur → authorized_keys (SSH root d'ops ; idempotent). L'orchestration
+  # passe par l'agent, mais ça donne un shell direct `ssh root@<nœud>` sans manip de fichier.
   if [ -n "${E_CONTROLLER_SSH_KEY:-}" ]; then
     mkdir -p /root/.ssh; chmod 700 /root/.ssh
     if ! grep -qxF "$E_CONTROLLER_SSH_KEY" /root/.ssh/authorized_keys 2>/dev/null; then
@@ -106,19 +106,19 @@ PY
     chmod 600 /root/.ssh/authorized_keys
   fi
 
-  ***REMOVED*** Durcissement SSH : plus de connexion root par MOT DE PASSE, la clé seulement.
-  ***REMOVED***
-  ***REMOVED*** Conditionné à la présence d'une clé dans authorized_keys, et c'est une condition de SÛRETÉ, pas
-  ***REMOVED*** une condition sur l'appelant : sans clé installée, couper le mot de passe fermerait le seul accès
-  ***REMOVED*** distant au nœud. On préfère un nœud joignable et signalé à un nœud durci et injoignable.
-  ***REMOVED***
-  ***REMOVED*** L'accès CONSOLE reste ouvert : le mot de passe root existe toujours, tiré au hasard à la
-  ***REMOVED*** génération de l'ISO ou à l'armement PXE. C'est lui qui sert en panne réseau, et lui seul.
+  # Durcissement SSH : plus de connexion root par MOT DE PASSE, la clé seulement.
+  #
+  # Conditionné à la présence d'une clé dans authorized_keys, et c'est une condition de SÛRETÉ, pas
+  # une condition sur l'appelant : sans clé installée, couper le mot de passe fermerait le seul accès
+  # distant au nœud. On préfère un nœud joignable et signalé à un nœud durci et injoignable.
+  #
+  # L'accès CONSOLE reste ouvert : le mot de passe root existe toujours, tiré au hasard à la
+  # génération de l'ISO ou à l'armement PXE. C'est lui qui sert en panne réseau, et lui seul.
   if [ -s /root/.ssh/authorized_keys ]; then
     mkdir -p /etc/ssh/sshd_config.d
     cat > /etc/ssh/sshd_config.d/10-bobi-durcissement.conf <<'EOF_SSHD'
-***REMOVED*** Posé par node-bootstrap.sh. root est le seul compte du nœud (le preseed ne crée pas d'utilisateur),
-***REMOVED*** donc « prohibit-password » suffit à fermer toute authentification SSH par mot de passe.
+# Posé par node-bootstrap.sh. root est le seul compte du nœud (le preseed ne crée pas d'utilisateur),
+# donc « prohibit-password » suffit à fermer toute authentification SSH par mot de passe.
 PermitRootLogin prohibit-password
 EOF_SSHD
     chmod 644 /etc/ssh/sshd_config.d/10-bobi-durcissement.conf
@@ -126,8 +126,8 @@ EOF_SSHD
       systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
       log "SSH durci : connexion root par mot de passe désactivée (clé seule ; console inchangée)"
     else
-      ***REMOVED*** Configuration refusée par sshd : on la RETIRE plutôt que de laisser le service mourir au
-      ***REMOVED*** prochain redémarrage. Un nœud durci qui ne démarre plus est pire que le défaut qu'on corrige.
+      # Configuration refusée par sshd : on la RETIRE plutôt que de laisser le service mourir au
+      # prochain redémarrage. Un nœud durci qui ne démarre plus est pire que le défaut qu'on corrige.
       rm -f /etc/ssh/sshd_config.d/10-bobi-durcissement.conf
       log "ATTENTION : durcissement SSH refusé par sshd -t, configuration retirée"
     fi
@@ -136,7 +136,7 @@ EOF_SSHD
   fi
 fi
 
-***REMOVED*** ─── Interface VLAN parente du macvlan (remplace un bridge Proxmox) ─────────────
+# ─── Interface VLAN parente du macvlan (remplace un bridge Proxmox) ─────────────
 PARENT="${ICE_IFACE:-$MGMT_IFACE}"
 if [ -n "${MACVLAN_VLAN:-}" ] && [ -n "$PARENT" ]; then
   VIF="${PARENT}.${MACVLAN_VLAN}"
@@ -145,7 +145,7 @@ if [ -n "${MACVLAN_VLAN:-}" ] && [ -n "$PARENT" ]; then
     modprobe 8021q 2>/dev/null || true
     ip link add link "$PARENT" name "$VIF" type vlan id "$MACVLAN_VLAN" 2>/dev/null || true
     ip link set "$VIF" up 2>/dev/null || true
-    ***REMOVED*** Persistance (ifupdown).
+    # Persistance (ifupdown).
     mkdir -p /etc/network/interfaces.d
     printf 'auto %s\niface %s inet manual\n  vlan-raw-device %s\n' "$VIF" "$VIF" "$PARENT" \
       > "/etc/network/interfaces.d/bobi-${VIF}"
@@ -155,7 +155,7 @@ else
   MACVLAN_PARENT="${MACVLAN_PARENT:-$PARENT}"
 fi
 
-***REMOVED*** ─── Lancement de l'installeur de nœud ──────────────────────────────────────────
+# ─── Lancement de l'installeur de nœud ──────────────────────────────────────────
 ARGS=( --with "${CAPS:-compute}" --macvlan-name "${MACVLAN_NAME:-bobimacvlan}" )
 [ -n "${TOKEN:-}" ]            && ARGS+=( --token "$TOKEN" )
 [ -n "${MACVLAN_PARENT:-}" ]  && ARGS+=( --macvlan-parent "$MACVLAN_PARENT" )

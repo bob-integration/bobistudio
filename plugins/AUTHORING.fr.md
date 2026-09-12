@@ -1,4 +1,4 @@
-***REMOVED*** Écrire un plugin Bobi.Studio
+# Écrire un plugin Bobi.Studio
 
 *[English version](AUTHORING.md)*
 
@@ -17,7 +17,7 @@ dossier `plugins/<type>/`, versionné dans son propre dépôt git (sous-module).
 
 ---
 
-***REMOVED******REMOVED*** Structure
+## Structure
 
 ```
 plugins/<type>/
@@ -33,12 +33,12 @@ plugins/<type>/
 
 ---
 
-***REMOVED******REMOVED*** Les cinq règles qui comptent
+## Les cinq règles qui comptent
 
 Le reste du guide est de la référence. Ces cinq-là décident si votre plugin est utilisable en
 production, et leur oubli ne produit **aucune erreur** — juste un produit qui ment.
 
-***REMOVED******REMOVED******REMOVED*** 1. Mode tranche — obligatoire pour tout nouveau plugin
+### 1. Mode tranche — obligatoire pour tout nouveau plugin
 
 Lire l'entrée bande par bande (`get_slice`) et publier en commit progressif
 (`commit(gi, valid_slices=k)`), au lieu d'attendre la trame entière.
@@ -60,7 +60,7 @@ code**. L'entrelacé et la sélection de ligne sont les exceptions documentées.
 `slice_mode` va dans `config_schema` en `hidden: true` : le réglage qui compte est le commutateur
 global Réglages → Vidéo. Un plugin qui exposerait le sien laisserait un parc réglé au hasard.
 
-***REMOVED******REMOVED******REMOVED*** 2. Tout exposer aux macros
+### 2. Tout exposer aux macros
 
 Toute fonction ou paramètre non exposé au système de macros est une **capacité morte** : elle
 existe, personne ne peut la déclencher, et rien ne le signale.
@@ -74,7 +74,7 @@ existe, personne ne peut la déclencher, et rien ne le signale.
 Toute cible d'action ou de `param_tree` doit figurer dans `control.endpoints` : le proxy
 **refuse** un chemin non déclaré, et la macro « réussit » alors sans rien changer.
 
-***REMOVED******REMOVED******REMOVED*** 3. Des métriques qui disent si l'étage fait ce qu'on lui a demandé
+### 3. Des métriques qui disent si l'étage fait ce qu'on lui a demandé
 
 `fps` dit seulement que la boucle tourne. Publiez au moins :
 
@@ -86,7 +86,7 @@ Et par entrée quand il y en a plusieurs : « rien n'arrive » ne dit pas **laqu
 « non câblée » n'est pas « câblée mais muette » — ce sont deux pannes opposées, l'une se répare
 au câblage, l'autre chez le producteur.
 
-***REMOVED******REMOVED******REMOVED*** 4. La sortie ne dépend pas du producteur
+### 4. La sortie ne dépend pas du producteur
 
 Publiez vos flux **même sans aucune entrée** : fond de couleur, silence audio, ANC régénéré. Un
 aval abonné ne doit pas voir sa chaîne s'éteindre parce qu'une source amont est tombée.
@@ -94,7 +94,7 @@ aval abonné ne doit pas voir sa chaîne s'éteindre parce qu'une source amont e
 C'est aussi ce qui rend un plugin déployable **sans rien câbler** — donc utilisable comme test de
 fumée le jour de l'installation, quand justement aucune chaîne n'existe encore.
 
-***REMOVED******REMOVED******REMOVED*** 5. Survivre à SIGBUS et aux exceptions
+### 5. Survivre à SIGBUS et aux exceptions
 
 Un producteur qui recrée son flux invalide la projection mémoire des lecteurs. Le piège : la
 génération morte reste **lisible** — des grains sont servis, index figé, aucune exception. Sans
@@ -106,7 +106,7 @@ Et une exception non rattrapée dans la boucle fait redémarrer le conteneur san
 
 ---
 
-***REMOVED******REMOVED*** `script.py` — le gabarit
+## `script.py` — le gabarit
 
 Le script est un **gabarit `str.format()`** avec exactement trois substitutions :
 
@@ -120,11 +120,11 @@ Le script est un **gabarit `str.format()`** avec exactement trois substitutions 
 commentaires et les f-strings.
 
 ```python
-***REMOVED*** ✅ correct
+# ✅ correct
 state = {{"running": False, "fps": 0}}
 url = f"http://{{ip}}:{{port}}/path"
 
-***REMOVED*** ❌ le plugin disparaît du registre
+# ❌ le plugin disparaît du registre
 state = {"running": False}
 ```
 
@@ -147,7 +147,7 @@ print("rendu + compile OK")
 EOF
 ```
 
-***REMOVED******REMOVED******REMOVED*** Accès aux paramètres
+### Accès aux paramètres
 
 ```python
 CONFIG = {config}
@@ -157,7 +157,7 @@ PLUGIN_VERSION = "{plugin_version}"
 ma_valeur = CONFIG.get("ma_cle") or "defaut"
 ```
 
-***REMOVED******REMOVED******REMOVED*** Les deux ports
+### Les deux ports
 
 | Port | Rôle |
 |---|---|
@@ -169,7 +169,7 @@ en GET seul rendrait 501 et le tally n'arriverait jamais, sans que rien ne le si
 
 ---
 
-***REMOVED******REMOVED*** `hooks.py` — ce qui tourne dans l'orchestrateur
+## `hooks.py` — ce qui tourne dans l'orchestrateur
 
 C'est l'**unique exception** à la règle « aucun code de plugin dans le contrôleur ». Le fichier
 est importé et exécuté par l'orchestrateur, avec ses droits : la base, les jetons d'agent, le
@@ -178,7 +178,7 @@ appelé sur le chemin d'un geste d'exploitation.
 
 Un hook qui lève est ignoré avec un avertissement au journal ; il ne bloque pas le déploiement.
 
-***REMOVED******REMOVED******REMOVED*** Les hooks reconnus
+### Les hooks reconnus
 
 | Hook | Quand |
 |---|---|
@@ -198,7 +198,7 @@ Consultez `plugins/hello_world/hooks.py` : il en implémente trois (`before_depl
 l'importe une fois, au scan. Sans rechargement, le hook ne se déclenche **jamais** : panne
 parfaitement silencieuse. Réglages → Plugins → *Recharger*, ou `POST /api/plugins/reload`.
 
-***REMOVED******REMOVED******REMOVED*** Ce qu'un hook a le droit de faire
+### Ce qu'un hook a le droit de faire
 
 Contrairement à ce que disait une version précédente de ce guide, un hook **peut** lire la base
 et les réglages : c'est même souvent sa raison d'être, puisque le conteneur, lui, n'y a aucun
@@ -210,7 +210,7 @@ durables, ou dépendre d'un état global mutable.
 
 ---
 
-***REMOVED******REMOVED*** `plugin.json` — le manifeste
+## `plugin.json` — le manifeste
 
 Champs obligatoires : `type`, `label`, `version`, `script_template`.
 
@@ -230,7 +230,7 @@ Notables :
 
 ---
 
-***REMOVED******REMOVED*** Console de contrôle
+## Console de contrôle
 
 `control.js` expose `window.MXLPlugins.<type> = { mount, unmount }`.
 
@@ -268,7 +268,7 @@ faisait correctement.
 
 ---
 
-***REMOVED******REMOVED*** Versions
+## Versions
 
 `meta.json` porte la version et le changelog. Pour publier :
 
@@ -282,7 +282,7 @@ version jusqu'au prochain redéploiement : la page Plugins montre le drift.
 
 ---
 
-***REMOVED******REMOVED*** Sous-modules git
+## Sous-modules git
 
 Chaque plugin est un dépôt indépendant.
 
@@ -300,7 +300,7 @@ Cloner le superprojet avec ses plugins : `git clone --recurse-submodules <url>`.
 
 ---
 
-***REMOVED******REMOVED*** Créer un plugin
+## Créer un plugin
 
 1. **Copiez `plugins/hello_world/`** plutôt que de partir d'une page blanche.
 2. Renommez le `type` dans `plugin.json`, videz ce qui ne sert pas.
@@ -310,7 +310,7 @@ Cloner le superprojet avec ses plugins : `git clone --recurse-submodules <url>`.
 
 ---
 
-***REMOVED******REMOVED*** Proposer un plugin
+## Proposer un plugin
 
 Le catalogue ne lit qu'une organisation GitHub de confiance, et ce n'est pas une commodité :
 installer un plugin exécute son `hooks.py` **dans l'orchestrateur**. Un plugin tiers n'y apparaît
@@ -329,7 +329,7 @@ l'organisation, et faites passer les contrôles de conformité avant de proposer
 
 ---
 
-***REMOVED******REMOVED*** Sécurité
+## Sécurité
 
 - `script.py` s'exécute **uniquement dans le conteneur**, jamais dans l'orchestrateur — les
   identifiants du contrôleur ne fuitent pas. `hooks.py` est l'exception, cf. plus haut.

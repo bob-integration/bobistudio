@@ -1,8 +1,8 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 """Le MODÈLE DE TALLY de l'orchestrateur — indépendant de tout protocole.
 
 ★ POURQUOI CE MODULE EXISTE. Ce code vivait dans `services/tsl`, parce que c'est TSL qui
@@ -33,44 +33,44 @@ import json
 import threading
 import time
 
-from app.numerotation import cle_input           ***REMOVED*** 0-based en entrée, clé 1-based en sortie
+from app.numerotation import cle_input           # 0-based en entrée, clé 1-based en sortie
 
 log = __import__("logging").getLogger(__name__)
 
 
-***REMOVED*** ─── Le verrou du MODÈLE ────────────────────────────────────────────────────────────────
-***REMOVED*** ⚠ DISTINCT de celui du service TSL, et ce n'est pas cosmétique : un seul verrou protégeait
-***REMOVED*** jusqu'ici deux invariants disjoints — l'état du tally d'un côté, le dictionnaire des
-***REMOVED*** connexions TCP de l'autre. Aucun chemin ne prend les deux domaines à la fois, la séparation
-***REMOVED*** est donc sûre ; les garder confondus aurait fait qu'un `reload()` de connexions bloque le
-***REMOVED*** distributeur.
+# ─── Le verrou du MODÈLE ────────────────────────────────────────────────────────────────
+# ⚠ DISTINCT de celui du service TSL, et ce n'est pas cosmétique : un seul verrou protégeait
+# jusqu'ici deux invariants disjoints — l'état du tally d'un côté, le dictionnaire des
+# connexions TCP de l'autre. Aucun chemin ne prend les deux domaines à la fois, la séparation
+# est donc sûre ; les garder confondus aurait fait qu'un `reload()` de connexions bloque le
+# distributeur.
 _lock = threading.Lock()
 
 
-***REMOVED*** ═══ L'ÉTAT DU TALLY, EN DEUX COUCHES ═════════════════════════════════════════════════════════
-***REMOVED***
-***REMOVED*** ★ PLUSIEURS SOURCES PEUVENT SERVIR LE MÊME NIVEAU, et c'est un cas voulu : deux contrôleurs
-***REMOVED*** broadcast sur une même chaîne de destination, un émetteur TSL doublé par un Receiver IS-07, un
-***REMOVED*** mélangeur qui complète ce qu'un pupitre externe annonce. Une seule couche ne pouvait pas
-***REMOVED*** l'exprimer : le dernier écrivain écrasait les autres, et surtout, une source qui repasse au vert
-***REMOVED*** écrivait « off » sur le rouge d'une AUTRE — un tally qui s'éteint sans que personne ne l'ait
-***REMOVED*** demandé, sur une fonction d'antenne.
-***REMOVED***
-***REMOVED***   `_tally_par_source[(index, niveau)][source]` — ce que CHAQUE source affirme. Une source
-***REMOVED***   remplace toujours sa contribution ENTIÈRE (`poser_tally`), jamais case par case : sinon un
-***REMOVED***   signal qui sort du programme garderait son rouge, faute d'un « off » explicite.
-***REMOVED***
-***REMOVED***   `_tally_state[(index, niveau)]` — le CUMUL, seul lu par les consommateurs. Rouge + vert donne
-***REMOVED***   l'ambre, exactement comme deux contributions d'un même mélangeur.
+# ═══ L'ÉTAT DU TALLY, EN DEUX COUCHES ═════════════════════════════════════════════════════════
+#
+# ★ PLUSIEURS SOURCES PEUVENT SERVIR LE MÊME NIVEAU, et c'est un cas voulu : deux contrôleurs
+# broadcast sur une même chaîne de destination, un émetteur TSL doublé par un Receiver IS-07, un
+# mélangeur qui complète ce qu'un pupitre externe annonce. Une seule couche ne pouvait pas
+# l'exprimer : le dernier écrivain écrasait les autres, et surtout, une source qui repasse au vert
+# écrivait « off » sur le rouge d'une AUTRE — un tally qui s'éteint sans que personne ne l'ait
+# demandé, sur une fonction d'antenne.
+#
+#   `_tally_par_source[(index, niveau)][source]` — ce que CHAQUE source affirme. Une source
+#   remplace toujours sa contribution ENTIÈRE (`poser_tally`), jamais case par case : sinon un
+#   signal qui sort du programme garderait son rouge, faute d'un « off » explicite.
+#
+#   `_tally_state[(index, niveau)]` — le CUMUL, seul lu par les consommateurs. Rouge + vert donne
+#   l'ambre, exactement comme deux contributions d'un même mélangeur.
 _tally_par_source: dict = {}
 _tally_state: dict = {}
 _tally_dirty = threading.Event()
 
 
 
-***REMOVED*** ─── Ports virtuels de projet (chantier 4/5) ──────────────────────────────────
-***REMOVED*** Un mapping/label peut référencer "port:<id>" au lieu d'un shm brut : l'adresse reste
-***REMOVED*** stable côté contrôleur broadcast, le binding du port suit les rebinds/chargements.
+# ─── Ports virtuels de projet (chantier 4/5) ──────────────────────────────────
+# Un mapping/label peut référencer "port:<id>" au lieu d'un shm brut : l'adresse reste
+# stable côté contrôleur broadcast, le binding du port suit les rebinds/chargements.
 _ports_cache = {"ts": 0.0, "by_id": {}, "by_pid": {}}
 
 def _ports_snapshot():
@@ -133,34 +133,34 @@ def cumuler(a, b):
 
 
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════════════════════
-***REMOVED*** PROPAGATION du tally — remonter le graphe depuis les sorties à l'antenne
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════════════════════
-***REMOVED*** La règle, en une ligne :
-***REMOVED***
-***REMOVED***     tally(entrée d'un élément) = tally(sortie de cet élément) ET (cette entrée CONTRIBUE)
-***REMOVED***
-***REMOVED*** La récursion part des flux qu'un ÉMETTEUR a tallyés — aujourd'hui un contrôleur broadcast (VSM)
-***REMOVED*** via TSL, demain un Receiver IS-07 — et remonte le graphe de câblage (`derive_wiring`).
-***REMOVED***
-***REMOVED*** ★ « CONTRIBUE » DÉPEND DU TYPE, et ce qu'on ne sait pas ne propage RIEN. Un élément traversant
-***REMOVED***   (delay, correcteur, UDC) contribue toujours : sa sortie EST son entrée, transformée. Un
-***REMOVED***   mélangeur ne contribue que par sa source PGM. Un DVE ne contribue que par ses sources
-***REMOVED***   VISIBLES — et il ne sait pas encore le dire, donc il ne propage rien.
-***REMOVED***
-***REMOVED***   Inventer une contribution allumerait un rouge sur une source qui n'est pas à l'antenne : c'est
-***REMOVED***   exactement le défaut qu'on corrige, à l'envers. `_CONTRIBUTION` est donc une liste FERMÉE, et
-***REMOVED***   tout type absent vaut « je ne sais pas » — pas « tout ».
-***REMOVED***
-***REMOVED*** ⚠ PLAFOND DE PROFONDEUR. Le graphe MXL peut boucler (une sortie recâblée sur une entrée en
-***REMOVED***   amont, un aller-retour d'incrustation). Sans plafond, la propagation ne rendrait jamais la
-***REMOVED***   main — et elle tourne dans la boucle du distributeur.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# PROPAGATION du tally — remonter le graphe depuis les sorties à l'antenne
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# La règle, en une ligne :
+#
+#     tally(entrée d'un élément) = tally(sortie de cet élément) ET (cette entrée CONTRIBUE)
+#
+# La récursion part des flux qu'un ÉMETTEUR a tallyés — aujourd'hui un contrôleur broadcast (VSM)
+# via TSL, demain un Receiver IS-07 — et remonte le graphe de câblage (`derive_wiring`).
+#
+# ★ « CONTRIBUE » DÉPEND DU TYPE, et ce qu'on ne sait pas ne propage RIEN. Un élément traversant
+#   (delay, correcteur, UDC) contribue toujours : sa sortie EST son entrée, transformée. Un
+#   mélangeur ne contribue que par sa source PGM. Un DVE ne contribue que par ses sources
+#   VISIBLES — et il ne sait pas encore le dire, donc il ne propage rien.
+#
+#   Inventer une contribution allumerait un rouge sur une source qui n'est pas à l'antenne : c'est
+#   exactement le défaut qu'on corrige, à l'envers. `_CONTRIBUTION` est donc une liste FERMÉE, et
+#   tout type absent vaut « je ne sais pas » — pas « tout ».
+#
+# ⚠ PLAFOND DE PROFONDEUR. Le graphe MXL peut boucler (une sortie recâblée sur une entrée en
+#   amont, un aller-retour d'incrustation). Sans plafond, la propagation ne rendrait jamais la
+#   main — et elle tourne dans la boucle du distributeur.
 
 _PROFONDEUR_MAX = 12
 
-***REMOVED*** Ce qui contribue à la sortie d'un élément, PAR TYPE. Liste fermée : un type absent ne propage
-***REMOVED*** rien. Voir TODO.md § TALLY pour les deux familles qui manquent encore (mélangeur configurable,
-***REMOVED*** DVE), différées parce qu'elles demandent de toucher des plugins.
+# Ce qui contribue à la sortie d'un élément, PAR TYPE. Liste fermée : un type absent ne propage
+# rien. Voir TODO.md § TALLY pour les deux familles qui manquent encore (mélangeur configurable,
+# DVE), différées parce qu'elles demandent de toucher des plugins.
 _CONTRIBUTION = {
     "delay":            "toutes",
     "color_corrector":  "toutes",
@@ -202,9 +202,9 @@ def _entrees_contributives(ct, dc, etat_ctrl):
         pgm = etat_ctrl.get("pgm")
         if pgm is None:
             return []
-        ***REMOVED*** Le câblage vient de l'ÉTAT VIVANT, comme dans `_mixer_publisher_tick` : c'est lui qui
-        ***REMOVED*** sait sur quoi le mélangeur est réellement branché à cet instant. Les params ne servent
-        ***REMOVED*** que de repli — ils peuvent être en retard d'un câblage à chaud.
+        # Le câblage vient de l'ÉTAT VIVANT, comme dans `_mixer_publisher_tick` : c'est lui qui
+        # sait sur quoi le mélangeur est réellement branché à cet instant. Les params ne servent
+        # que de repli — ils peuvent être en retard d'un câblage à chaud.
         shm = (etat_ctrl.get(cle_input(pgm)) or params.get(cle_input(pgm)) or "").strip()
         return [shm] if shm else []
     return []
@@ -228,7 +228,7 @@ def propager(etat, par_shm, etat_ctrl_de):
     tally propagé deviendrait indiscernable d'un tally reçu au tour suivant, et se propagerait
     à son tour — la boucle se referme sur elle-même."""
     ajouts = {}
-    ***REMOVED*** File des (shm à l'antenne, niveau, couleur) à remonter.
+    # File des (shm à l'antenne, niveau, couleur) à remonter.
     file = []
     for (ref, niveau), couleur in (etat or {}).items():
         if couleur == "off":
@@ -302,10 +302,10 @@ def poser_tally(source, cases, reveiller=True):
     cases = {k: v for k, v in (cases or {}).items() if v and v != "off"}
     change = False
     with _lock:
-        ***REMOVED*** ⚠ CE FILTRE EST UNE OPTIMISATION, PAS LE GARDE-FOU. Ce qui protège les autres écrivains,
-        ***REMOVED*** c'est le `par.pop(source)` de `_poser_cases` : retirer sa propre entrée d'une case ne
-        ***REMOVED*** touche à rien d'autre. Vérifié par mutation — élargir cette liste à toutes les cases ne
-        ***REMOVED*** change aucun résultat. Ne pas la « corriger » en croyant renforcer quelque chose.
+        # ⚠ CE FILTRE EST UNE OPTIMISATION, PAS LE GARDE-FOU. Ce qui protège les autres écrivains,
+        # c'est le `par.pop(source)` de `_poser_cases` : retirer sa propre entrée d'une case ne
+        # touche à rien d'autre. Vérifié par mutation — élargir cette liste à toutes les cases ne
+        # change aucun résultat. Ne pas la « corriger » en croyant renforcer quelque chose.
         anciennes = [cle for cle, par in _tally_par_source.items() if source in par]
     a_retirer = {cle: "off" for cle in anciennes if cle not in cases}
     if a_retirer:
@@ -326,8 +326,8 @@ def sources_du_tally() -> dict:
 
 def get_tally_state() -> dict:
     with _lock:
-        ***REMOVED*** Clé plate `<ref>_<niveau>`. Le niveau est un UUID — donc sans souligné — ce qui rend
-        ***REMOVED*** la coupure au DERNIER souligné non ambiguë, même quand la référence en contient.
+        # Clé plate `<ref>_<niveau>`. Le niveau est un UUID — donc sans souligné — ce qui rend
+        # la coupure au DERNIER souligné non ambiguë, même quand la référence en contient.
         return {f"{ref}_{lvl}": color for (ref, lvl), color in _tally_state.items()}
 
 
@@ -339,11 +339,11 @@ def get_tally_level(ref: str, level: str) -> str:
         return _tally_state.get((resolve_ref(ref) or ref, level), "off")
 
 
-***REMOVED*** ─── Signal de changement — API PUBLIQUE ────────────────────────────────────────────────
-***REMOVED*** ★ POURQUOI UNE API PLUTÔT QUE L'ÉVÉNEMENT NU. `services/nmos/is07.py` faisait
-***REMOVED*** `tsl._tally_dirty.wait(...)` : un service atteignait l'attribut PRIVÉ d'un autre service, pour
-***REMOVED*** un signal qui n'appartenait ni à l'un ni à l'autre. Trois consommateurs l'attendent aujourd'hui
-***REMOVED*** — le distributeur, le client TSL sortant, la veille IS-07 — et rien ne dit lesquels dans le nom.
+# ─── Signal de changement — API PUBLIQUE ────────────────────────────────────────────────
+# ★ POURQUOI UNE API PLUTÔT QUE L'ÉVÉNEMENT NU. `services/nmos/is07.py` faisait
+# `tsl._tally_dirty.wait(...)` : un service atteignait l'attribut PRIVÉ d'un autre service, pour
+# un signal qui n'appartenait ni à l'un ni à l'autre. Trois consommateurs l'attendent aujourd'hui
+# — le distributeur, le client TSL sortant, la veille IS-07 — et rien ne dit lesquels dans le nom.
 
 def attendre_changement(timeout=None):
     """Bloque jusqu'au prochain changement du CUMUL. Vrai si le signal est venu, faux au timeout.
@@ -387,17 +387,17 @@ def poser_cases(source, cases):
     return _poser_cases(source, cases)
 
 
-***REMOVED*** ─── Registre des PORTEURS de niveaux ───────────────────────────────────────────────────
-***REMOVED*** ★ CE REGISTRE EST CE QUI REND LE MODÈLE INDÉPENDANT DES PROTOCOLES. Le distributeur allait
-***REMOVED*** chercher ses porteurs dans `db_get_tsl_connections()` : le modèle lisait donc la table d'un
-***REMOVED*** protocole, et il aurait fallu lui apprendre `is07_connections`, puis la table du suivant.
-***REMOVED***
-***REMOVED*** Un porteur possède des niveaux et sait, pour chacun, quel INDEX désigne une source donnée.
-***REMOVED*** Deux porteurs peuvent employer le même index pour des sources différentes — c'est pourquoi
-***REMOVED*** l'index se résout TOUJOURS chez un porteur, jamais dans une table à plat.
-***REMOVED***
-***REMOVED*** Chaque protocole s'enregistre au démarrage et se retire à l'arrêt. Le modèle ne sait pas qui
-***REMOVED*** ils sont, et c'est le but.
+# ─── Registre des PORTEURS de niveaux ───────────────────────────────────────────────────
+# ★ CE REGISTRE EST CE QUI REND LE MODÈLE INDÉPENDANT DES PROTOCOLES. Le distributeur allait
+# chercher ses porteurs dans `db_get_tsl_connections()` : le modèle lisait donc la table d'un
+# protocole, et il aurait fallu lui apprendre `is07_connections`, puis la table du suivant.
+#
+# Un porteur possède des niveaux et sait, pour chacun, quel INDEX désigne une source donnée.
+# Deux porteurs peuvent employer le même index pour des sources différentes — c'est pourquoi
+# l'index se résout TOUJOURS chez un porteur, jamais dans une table à plat.
+#
+# Chaque protocole s'enregistre au démarrage et se retire à l'arrêt. Le modèle ne sait pas qui
+# ils sont, et c'est le but.
 _porteurs: dict = {}
 
 
@@ -482,11 +482,11 @@ def rafraichir_porteurs_projets():
         cle = "proj:%s" % pid
         vivants.add(cle)
         enregistrer_porteur(cle, niv, _index_de_projet(pid),
-                            nom=pr.get("name") or ("Projet ***REMOVED***%s" % pid),
+                            nom=pr.get("name") or ("Projet #%s" % pid),
                             ref_de=_ref_de_projet(pid))
 
-    ***REMOVED*** Une production qui perd son dernier niveau cesse d'être un porteur. Ne retirer QUE les
-    ***REMOVED*** `proj:*` : les porteurs d'un protocole ne nous appartiennent pas.
+    # Une production qui perd son dernier niveau cesse d'être un porteur. Ne retirer QUE les
+    # `proj:*` : les porteurs d'un protocole ne nous appartiennent pas.
     for cle in [c for c in liste_porteurs() if c.startswith("proj:")]:
         if cle not in vivants:
             retirer_porteur(cle)
@@ -539,10 +539,10 @@ def index_chez(porteur, shm, niveau=None):
         return None
 
 
-***REMOVED*** Ordre de repli des colonnes de libellé. La colonne demandée passe d'abord ; ensuite les
-***REMOVED*** colonnes SAISIES (2→9), qui portent un nom écrit par un humain ; puis le nom d'hôte (0), qui
-***REMOVED*** est toujours renseigné mais technique ; le shm brut (1) en dernier — c'est un identifiant, pas
-***REMOVED*** un libellé, et l'afficher est un aveu d'échec plutôt qu'une information.
+# Ordre de repli des colonnes de libellé. La colonne demandée passe d'abord ; ensuite les
+# colonnes SAISIES (2→9), qui portent un nom écrit par un humain ; puis le nom d'hôte (0), qui
+# est toujours renseigné mais technique ; le shm brut (1) en dernier — c'est un identifiant, pas
+# un libellé, et l'afficher est un aveu d'échec plutôt qu'une information.
 ORDRE_REPLI_COLONNES = (2, 3, 4, 5, 6, 7, 8, 9, 0, 1)
 
 
@@ -664,25 +664,25 @@ def ref_chez(porteur, shm):
         return None
 
 
-***REMOVED*** ═══ LES DEUX FILS D'EXÉCUTION DU MODÈLE ════════════════════════════════════════════════
-***REMOVED***
-***REMOVED*** ★ POURQUOI ILS SONT ICI ET PLUS DANS `services/tsl`. Le distributeur pousse couleur et texte
-***REMOVED*** aux fenêtres des multiviews, en HTTP ; le publisher lit le `/state` d'un mélangeur pour en
-***REMOVED*** déduire un tally. Ni l'un ni l'autre n'émet un octet de TSL. Les laisser dans le service
-***REMOVED*** voulait dire qu'arrêter TSL arrêtait la distribution du tally à tous les murs — y compris
-***REMOVED*** celui qui vient d'IS-07 ou du mélangeur.
-***REMOVED***
-***REMOVED*** Le multiview GARDE SON CHEMIN DÉDIÉ dans le distributeur, plutôt que de passer par le hook
-***REMOVED*** `tally_targets` comme les autres plugins. C'est délibéré : c'est le composant le plus
-***REMOVED*** sensible du produit et il tourne. On ne le fait pas migrer sur du code neuf pour l'élégance.
+# ═══ LES DEUX FILS D'EXÉCUTION DU MODÈLE ════════════════════════════════════════════════
+#
+# ★ POURQUOI ILS SONT ICI ET PLUS DANS `services/tsl`. Le distributeur pousse couleur et texte
+# aux fenêtres des multiviews, en HTTP ; le publisher lit le `/state` d'un mélangeur pour en
+# déduire un tally. Ni l'un ni l'autre n'émet un octet de TSL. Les laisser dans le service
+# voulait dire qu'arrêter TSL arrêtait la distribution du tally à tous les murs — y compris
+# celui qui vient d'IS-07 ou du mélangeur.
+#
+# Le multiview GARDE SON CHEMIN DÉDIÉ dans le distributeur, plutôt que de passer par le hook
+# `tally_targets` comme les autres plugins. C'est délibéré : c'est le composant le plus
+# sensible du produit et il tourne. On ne le fait pas migrer sur du code neuf pour l'élégance.
 
 _dist_thr = None
 _mixer_pub_thr = None
 _stop_evt = threading.Event()
 
-***REMOVED*** Dernier `/state` connu de chaque mélangeur, DÉPOSÉ par l'émetteur qui l'interroge déjà toutes
-***REMOVED*** les 0,3 s. La propagation le relit : refaire la requête depuis le distributeur doublerait le
-***REMOVED*** trafic vers les conteneurs pour la même information, à la même fraîcheur.
+# Dernier `/state` connu de chaque mélangeur, DÉPOSÉ par l'émetteur qui l'interroge déjà toutes
+# les 0,3 s. La propagation le relit : refaire la requête depuis le distributeur doublerait le
+# trafic vers les conteneurs pour la même information, à la même fraîcheur.
 _etat_mixer: dict = {}
 
 
@@ -706,10 +706,10 @@ def _sortie_a_l_antenne(ct, niveaux):
         from app import plugins as _plg
         dc = ct.get("deploy_config")
         dc = _json.loads(dc) if isinstance(dc, str) else (dc or {})
-        ***REMOVED*** ⚠ AVEC LES PARAMS. `derive_wiring` déplie les ports `repeat` sur eux : sans params, un
-        ***REMOVED*** plugin dont les sorties se déplient (`repeat: "video_channels"`) renvoie une liste VIDE,
-        ***REMOVED*** et la garde bloquerait son émission pour toujours. Le mélangeur y échappait parce que
-        ***REMOVED*** ses trois sorties sont statiques — c'est une coïncidence, pas une propriété.
+        # ⚠ AVEC LES PARAMS. `derive_wiring` déplie les ports `repeat` sur eux : sans params, un
+        # plugin dont les sorties se déplient (`repeat: "video_channels"`) renvoie une liste VIDE,
+        # et la garde bloquerait son émission pour toujours. Le mélangeur y échappait parce que
+        # ses trois sorties sont statiques — c'est une coïncidence, pas une propriété.
         w = _plg.derive_wiring(dc.get("type"), ct.get("hostname"), dc.get("params") or {}) or {}
         prod = w.get("produces") or []
         pgm = next((p for p in prod if (p.get("label") or "").upper() == "PGM"), None) or \
@@ -718,7 +718,7 @@ def _sortie_a_l_antenne(ct, niveaux):
         if not shm:
             return False
         shm = resolve_ref(shm) or shm
-        etat = etat_brut()               ***REMOVED*** le modèle prend SON verrou
+        etat = etat_brut()               # le modèle prend SON verrou
         return any(etat.get((shm, n)) == "red" for n in (niveaux or ()))
     except Exception as e:
         log.debug("TSL: propagation — sortie de %s indéterminable (%s)", ct.get("vmid"), e)
@@ -749,10 +749,10 @@ def _retirer_mixer(vmid):
 
 def _mixer_publisher_tick(_req, db_get_containers):
     from app.metrics import get_container_ip
-    ***REMOVED*** ⚠ `db_get_projects` et `db_get_tsl_connections` étaient INJECTÉS SANS ÊTRE UTILISÉS —
-    ***REMOVED*** un commentaire les disait gardés « pour les bancs », mais aucun banc n'appelle cette
-    ***REMOVED*** fonction. Retirés : ce module ne doit citer aucune table de protocole, et l'en-tête le
-    ***REMOVED*** promet. Une signature qui traîne des paramètres morts finit par les faire ré-utiliser.
+    # ⚠ `db_get_projects` et `db_get_tsl_connections` étaient INJECTÉS SANS ÊTRE UTILISÉS —
+    # un commentaire les disait gardés « pour les bancs », mais aucun banc n'appelle cette
+    # fonction. Retirés : ce module ne doit citer aucune table de protocole, et l'en-tête le
+    # promet. Une signature qui traîne des paramètres morts finit par les faire ré-utiliser.
     changed = False
     vus: set = set()
     for ct in db_get_containers():
@@ -768,15 +768,15 @@ def _mixer_publisher_tick(_req, db_get_containers):
         params = dc.get("params") or {}
         vus.add(ct["vmid"])
         if not params.get("tally_emit"):
-            ***REMOVED*** ★ SE TAIRE, C'EST DIRE « RIEN », PAS SE TAIRE. Décocher « émettre le tally »
-            ***REMOVED*** faisait `continue` : la contribution précédente de ce mélangeur restait dans le
-            ***REMOVED*** modèle, et sa caméra gardait son rouge INDÉFINIMENT. L'exploitant a coupé
-            ***REMOVED*** l'émission, il n'a pas demandé à figer un plateau. Reproduit avant correction.
+            # ★ SE TAIRE, C'EST DIRE « RIEN », PAS SE TAIRE. Décocher « émettre le tally »
+            # faisait `continue` : la contribution précédente de ce mélangeur restait dans le
+            # modèle, et sa caméra gardait son rouge INDÉFINIMENT. L'exploitant a coupé
+            # l'émission, il n'a pas demandé à figer un plateau. Reproduit avant correction.
             if _retirer_mixer(ct["vmid"]):
                 changed = True
             continue
-        ***REMOVED*** NIVEAUX de ce mélangeur : ceux qu'il déclare, sinon ceux de sa production. C'est une
-        ***REMOVED*** LISTE depuis le dénouement — le cas « un seul » n'est que la liste à un élément.
+        # NIVEAUX de ce mélangeur : ceux qu'il déclare, sinon ceux de sa production. C'est une
+        # LISTE depuis le dénouement — le cas « un seul » n'est que la liste à un élément.
         from app.database import db_get_tally_levels_of
         pid = ct.get("project_id")
         niveaux = params.get("tally_level_base") or []
@@ -785,7 +785,7 @@ def _mixer_publisher_tick(_req, db_get_containers):
         if not niveaux:
             niveaux = db_get_tally_levels_of("project", pid)
         if not niveaux:
-            ***REMOVED*** Idem : un mélangeur qui n'a plus de niveau n'adresse plus personne.
+            # Idem : un mélangeur qui n'a plus de niveau n'adresse plus personne.
             if _retirer_mixer(ct["vmid"]):
                 changed = True
             continue
@@ -795,11 +795,11 @@ def _mixer_publisher_tick(_req, db_get_containers):
                 continue
             st = _req.get(f"http://{ip}:8082/state", timeout=0.8).json()
         except Exception:
-            ***REMOVED*** ⚠ ICI ON GARDE, ET C'EST DÉLIBÉRÉ. Un mélangeur injoignable est le plus souvent un
-            ***REMOVED*** hoquet réseau d'un tour ; éteindre le tally d'une source à l'antenne pour 800 ms de
-            ***REMOVED*** timeout serait pire que de le garder. Un mélangeur DÉTRUIT, lui, disparaît de la
-            ***REMOVED*** liste des conteneurs et se fait retirer plus bas — c'est ce chemin-là qui répond du
-            ***REMOVED*** cas définitif, pas celui-ci.
+            # ⚠ ICI ON GARDE, ET C'EST DÉLIBÉRÉ. Un mélangeur injoignable est le plus souvent un
+            # hoquet réseau d'un tour ; éteindre le tally d'une source à l'antenne pour 800 ms de
+            # timeout serait pire que de le garder. Un mélangeur DÉTRUIT, lui, disparaît de la
+            # liste des conteneurs et se fait retirer plus bas — c'est ce chemin-là qui répond du
+            # cas définitif, pas celui-ci.
             continue
         _etat_mixer[ct["vmid"]] = st
         pgm, pvw = st.get("pgm"), st.get("pvw")
@@ -813,35 +813,35 @@ def _mixer_publisher_tick(_req, db_get_containers):
             for lvl in niveaux:
                 cle = (shm, lvl)
                 want[cle] = cumuler(want.get(cle), couleur)
-        ***REMOVED*** ★ LE TALLY SE PROPAGE : un mélangeur ne tallye ses entrées que si SA PROPRE SORTIE est
-        ***REMOVED*** à l'antenne. Jusqu'ici l'émission était inconditionnelle — un mélangeur de préparation
-        ***REMOVED*** allumait un rouge sur une caméra qui n'était diffusée nulle part. C'est le premier étage
-        ***REMOVED*** du chantier « TALLY : le calculer par propagation » (TODO.md).
-        ***REMOVED***
-        ***REMOVED*** `tally_force` (défaut VRAI) conserve l'ancien comportement : on livre la correction pour
-        ***REMOVED*** tous, mais un site dont la sortie de mélangeur n'est mappée nulle part perdrait sinon
-        ***REMOVED*** son tally du jour au lendemain, sans avoir rien demandé — sur une fonction d'antenne.
-        ***REMOVED*** Le décocher, c'est demander la propagation.
+        # ★ LE TALLY SE PROPAGE : un mélangeur ne tallye ses entrées que si SA PROPRE SORTIE est
+        # à l'antenne. Jusqu'ici l'émission était inconditionnelle — un mélangeur de préparation
+        # allumait un rouge sur une caméra qui n'était diffusée nulle part. C'est le premier étage
+        # du chantier « TALLY : le calculer par propagation » (TODO.md).
+        #
+        # `tally_force` (défaut VRAI) conserve l'ancien comportement : on livre la correction pour
+        # tous, mais un site dont la sortie de mélangeur n'est mappée nulle part perdrait sinon
+        # son tally du jour au lendemain, sans avoir rien demandé — sur une fonction d'antenne.
+        # Le décocher, c'est demander la propagation.
         if not params.get("tally_force", True) and not _sortie_a_l_antenne(ct, niveaux):
             want = {}
         else:
             i_pgm = resolve_ref(shm_pgm) or shm_pgm
             i_pvw = resolve_ref(shm_pvw) or shm_pvw
-            ***REMOVED*** ★ MÊME NIVEAU pour les deux. Avant le dénouement, le rouge et le vert partaient sur
-            ***REMOVED*** DEUX niveaux distincts (le 1er et le 2nd du mélangeur) : une source au programme ET
-            ***REMOVED*** en préparation occupait deux entrées qui ne se rencontraient jamais, et c'est
-            ***REMOVED*** l'afficheur qui recomposait l'orange en lisant les deux champs de la trame. Le cumul
-            ***REMOVED*** a désormais lieu ICI, sur le niveau — donc IS-07 et le multiview le voient aussi.
+            # ★ MÊME NIVEAU pour les deux. Avant le dénouement, le rouge et le vert partaient sur
+            # DEUX niveaux distincts (le 1er et le 2nd du mélangeur) : une source au programme ET
+            # en préparation occupait deux entrées qui ne se rencontraient jamais, et c'est
+            # l'afficheur qui recomposait l'orange en lisant les deux champs de la trame. Le cumul
+            # a désormais lieu ICI, sur le niveau — donc IS-07 et le multiview le voient aussi.
             _poser(i_pgm, "red")
             _poser(i_pvw, "green")
-        ***REMOVED*** ★ REMPLACEMENT INTÉGRAL, PAR MÉLANGEUR. `poser_tally` retire tout ce que CE mélangeur
-        ***REMOVED*** avait posé et qu'il ne pose plus — un changement de PGM éteint donc l'ancienne source —
-        ***REMOVED*** sans jamais toucher à ce qu'un autre écrivain affirme sur les mêmes clés.
+        # ★ REMPLACEMENT INTÉGRAL, PAR MÉLANGEUR. `poser_tally` retire tout ce que CE mélangeur
+        # avait posé et qu'il ne pose plus — un changement de PGM éteint donc l'ancienne source —
+        # sans jamais toucher à ce qu'un autre écrivain affirme sur les mêmes clés.
         if poser_tally("mixer:%s" % ct["vmid"], want, reveiller=False):
             changed = True
         _mixers_publies.add(ct["vmid"])
-    ***REMOVED*** Un mélangeur DÉTRUIT, ou dont le conteneur a changé de type, ne repassera jamais par la
-    ***REMOVED*** boucle : sans ce balayage, sa dernière contribution resterait dans le modèle pour toujours.
+    # Un mélangeur DÉTRUIT, ou dont le conteneur a changé de type, ne repassera jamais par la
+    # boucle : sans ce balayage, sa dernière contribution resterait dans le modèle pour toujours.
     for _vm in list(_mixers_publies - vus):
         if _retirer_mixer(_vm):
             changed = True
@@ -851,20 +851,20 @@ def _mixer_publisher_tick(_req, db_get_containers):
 def _distributor():
     """Pousse tally + texte label vers chaque multiview selon sa flux_config."""
     import requests as _req
-    ***REMOVED*** ★ PLUS AUCUNE TABLE TSL ICI, ni aucun index — c'est le but du chantier, mené en deux
-    ***REMOVED*** temps. Ce distributeur lisait d'abord `db_get_tsl_connections` et `db_get_tsl_mappings_all` :
-    ***REMOVED*** le modèle connaissait la table d'un protocole, et il aurait fallu lui apprendre
-    ***REMOVED*** `is07_connections`, puis celle du suivant. Les porteurs se sont donc mis à se DÉCLARER.
-    ***REMOVED*** Mais il restait à demander au porteur « quel est le NUMÉRO de ce signal », pour lire
-    ***REMOVED*** ensuite l'état sous ce numéro — et une tuile dont la source n'avait de numéro chez personne
-    ***REMOVED*** était SAUTÉE, donc figée sur son état d'avant (PiP4, 2026-09-01).
-    ***REMOVED***
-    ***REMOVED*** L'état est désormais adressé PAR SOURCE. Le distributeur lit directement l'état du flux de
-    ***REMOVED*** chaque tuile ; il n'y a plus de traduction, donc plus d'échec de traduction, donc plus de
-    ***REMOVED*** tuile sautée. Les porteurs subsistent pour les protocoles SORTANTS, qui eux doivent bien
-    ***REMOVED*** écrire un numéro sur un fil — mais plus rien ne LIT à travers eux.
+    # ★ PLUS AUCUNE TABLE TSL ICI, ni aucun index — c'est le but du chantier, mené en deux
+    # temps. Ce distributeur lisait d'abord `db_get_tsl_connections` et `db_get_tsl_mappings_all` :
+    # le modèle connaissait la table d'un protocole, et il aurait fallu lui apprendre
+    # `is07_connections`, puis celle du suivant. Les porteurs se sont donc mis à se DÉCLARER.
+    # Mais il restait à demander au porteur « quel est le NUMÉRO de ce signal », pour lire
+    # ensuite l'état sous ce numéro — et une tuile dont la source n'avait de numéro chez personne
+    # était SAUTÉE, donc figée sur son état d'avant (PiP4, 2026-09-01).
+    #
+    # L'état est désormais adressé PAR SOURCE. Le distributeur lit directement l'état du flux de
+    # chaque tuile ; il n'y a plus de traduction, donc plus d'échec de traduction, donc plus de
+    # tuile sautée. Les porteurs subsistent pour les protocoles SORTANTS, qui eux doivent bien
+    # écrire un numéro sur un fil — mais plus rien ne LIT à travers eux.
     from app.database import db_get_containers
-    _last_push: dict = {}   ***REMOVED*** vmid → (dernier payload poussé, ts) — anti-repush identique (cf. plus bas)
+    _last_push: dict = {}   # vmid → (dernier payload poussé, ts) — anti-repush identique (cf. plus bas)
 
     while not _stop_evt.is_set():
         _tally_dirty.wait(timeout=0.1)
@@ -872,20 +872,20 @@ def _distributor():
             break
         _tally_dirty.clear()
 
-        state = etat_brut()          ***REMOVED*** le modèle prend SON verrou
+        state = etat_brut()          # le modèle prend SON verrou
 
         try:
             containers = db_get_containers()
-            ***REMOVED*** PORTEURS de niveaux : les connexions ENTRANTES actives (les sortantes consomment
-            ***REMOVED*** l'état, elles ne le servent pas) et les productions. Depuis le dénouement, chacun
-            ***REMOVED*** POSSÈDE ses niveaux — on ne les recoupe plus par une bande commune, et deux
-            ***REMOVED*** porteurs ne peuvent plus se disputer un niveau par construction.
+            # PORTEURS de niveaux : les connexions ENTRANTES actives (les sortantes consomment
+            # l'état, elles ne le servent pas) et les productions. Depuis le dénouement, chacun
+            # POSSÈDE ses niveaux — on ne les recoupe plus par une bande commune, et deux
+            # porteurs ne peuvent plus se disputer un niveau par construction.
             from app.database import db_get_tally_levels_of, db_get_projects
-            ***REMOVED*** ★ LES PORTEURS VIENNENT DU REGISTRE, PLUS DES TABLES. Ce bloc lisait
-            ***REMOVED*** `db_get_tsl_connections()` : le distributeur — donc le modèle — connaissait la
-            ***REMOVED*** table d'un protocole, et il aurait fallu lui apprendre `is07_connections`, puis
-            ***REMOVED*** celle du suivant. Chaque protocole se déclare désormais lui-même
-            ***REMOVED*** (`_publier_porteurs`), et les productions sont déclarées par le modèle.
+            # ★ LES PORTEURS VIENNENT DU REGISTRE, PLUS DES TABLES. Ce bloc lisait
+            # `db_get_tsl_connections()` : le distributeur — donc le modèle — connaissait la
+            # table d'un protocole, et il aurait fallu lui apprendre `is07_connections`, puis
+            # celle du suivant. Chaque protocole se déclare désormais lui-même
+            # (`_publier_porteurs`), et les productions sont déclarées par le modèle.
             rafraichir_porteurs_projets()
 
             def _porteur_pour(niveaux):
@@ -897,24 +897,24 @@ def _distributor():
                 n'être lu par personne. Le rouge et le vert sont maintenant deux ÉTATS du même
                 niveau, et les champs TSL ne concernent plus que la mise sur le fil."""
                 return porteur_pour(niveaux)
-            ***REMOVED*** ★ PLUS DE TABLE À PLAT, ET PLUS DE TRADUCTION DU TOUT. Deux dictionnaires
-            ***REMOVED*** étaient reconstruits à chaque tour — (connexion, shm) → index, et (connexion, shm)
-            ***REMOVED*** → référence du libellé — en lisant `db_get_tsl_mappings_all()`. Ils ont d'abord
-            ***REMOVED*** cédé la place au porteur, qui savait, lui, comment il adressait ses sources. Puis
-            ***REMOVED*** la question elle-même a disparu : l'état étant indexé par flux, il n'y a plus rien
-            ***REMOVED*** à traduire pour le lire. Le porteur ne sert plus qu'aux protocoles SORTANTS.
-            ***REMOVED*** Niveaux par projet : défaut d'un conteneur qui n'en déclare pas.
+            # ★ PLUS DE TABLE À PLAT, ET PLUS DE TRADUCTION DU TOUT. Deux dictionnaires
+            # étaient reconstruits à chaque tour — (connexion, shm) → index, et (connexion, shm)
+            # → référence du libellé — en lisant `db_get_tsl_mappings_all()`. Ils ont d'abord
+            # cédé la place au porteur, qui savait, lui, comment il adressait ses sources. Puis
+            # la question elle-même a disparu : l'état étant indexé par flux, il n'y a plus rien
+            # à traduire pour le lire. Le porteur ne sert plus qu'aux protocoles SORTANTS.
+            # Niveaux par projet : défaut d'un conteneur qui n'en déclare pas.
             try:
                 proj_niv = {pr["id"]: db_get_tally_levels_of("project", pr["id"])
                             for pr in db_get_projects()}
             except Exception:
                 proj_niv = {}
 
-            ***REMOVED*** ── PROPAGATION : remonter le graphe depuis les flux à l'antenne ──────────────
-            ***REMOVED*** Ses déductions s'ajoutent à `state` POUR CE TOUR seulement, jamais à
-            ***REMOVED*** `_tally_state`. C'est ce qui empêche la boucle : un tally propagé qu'on écrirait
-            ***REMOVED*** dans l'état deviendrait, au tour suivant, indiscernable d'un tally REÇU, et se
-            ***REMOVED*** propagerait à son tour d'un cran de plus, indéfiniment.
+            # ── PROPAGATION : remonter le graphe depuis les flux à l'antenne ──────────────
+            # Ses déductions s'ajoutent à `state` POUR CE TOUR seulement, jamais à
+            # `_tally_state`. C'est ce qui empêche la boucle : un tally propagé qu'on écrirait
+            # dans l'état deviendrait, au tour suivant, indiscernable d'un tally REÇU, et se
+            # propagerait à son tour d'un cran de plus, indéfiniment.
             try:
                 par_shm = {}
                 for _ct in containers:
@@ -939,7 +939,7 @@ def _distributor():
         updates_by_vmid: dict = {}
         overlays_by_vmid: dict = {}
         labels_by_vmid: dict = {}
-        ***REMOVED*** UN SEUL instantané pour tout le tour : la table est la même pour tous les murs.
+        # UN SEUL instantané pour tout le tour : la table est la même pour tous les murs.
         labels_snap = _labels_snapshot()
         for ct in containers:
             dc_raw = ct.get("deploy_config")
@@ -951,15 +951,15 @@ def _distributor():
                 continue
             type_ct = (dc.get("type") or "")
             if type_ct != "multiview":
-                ***REMOVED*** ── AUTRES PLUGINS : le plugin DIT ce qu'il veut voir allumé ──────────────
-                ***REMOVED*** ★ UN HOOK, PAS UNE BRANCHE PAR TYPE. Le distributeur connaissait un seul
-                ***REMOVED*** modèle de données (`flux_config` du mur) ; chaque plugin qui voudrait du
-                ***REMOVED*** tally aurait ajouté ici sa propre lecture, et ce fichier serait devenu un
-                ***REMOVED*** catalogue de modèles étrangers. Le plugin déclare `tally_targets` et rend
-                ***REMOVED*** une liste plate : le distributeur ne sait plus rien de personne.
-                ***REMOVED***
-                ***REMOVED*** ⚠ LE MUR RESTE SUR SON CHEMIN. C'est le plus sensible du produit et il
-                ***REMOVED*** tourne : on ne le fait pas passer sur du code neuf pour l'élégance.
+                # ── AUTRES PLUGINS : le plugin DIT ce qu'il veut voir allumé ──────────────
+                # ★ UN HOOK, PAS UNE BRANCHE PAR TYPE. Le distributeur connaissait un seul
+                # modèle de données (`flux_config` du mur) ; chaque plugin qui voudrait du
+                # tally aurait ajouté ici sa propre lecture, et ce fichier serait devenu un
+                # catalogue de modèles étrangers. Le plugin déclare `tally_targets` et rend
+                # une liste plate : le distributeur ne sait plus rien de personne.
+                #
+                # ⚠ LE MUR RESTE SUR SON CHEMIN. C'est le plus sensible du produit et il
+                # tourne : on ne le fait pas passer sur du code neuf pour l'élégance.
                 try:
                     from app import plugins as _plug
                     _h = _plug.get_hook(type_ct, "tally_targets")
@@ -980,18 +980,18 @@ def _distributor():
                         shm_c = shm_c[len("/dev/shm/"):]
                     if not shm_c:
                         continue
-                    ***REMOVED*** Niveaux demandés par le plugin : liste d'identifiants, vide = ceux de
-                    ***REMOVED*** son projet. Le champ garde son nom historique `niveau`, mais ce n'est plus
-                    ***REMOVED*** un numéro de bande.
+                    # Niveaux demandés par le plugin : liste d'identifiants, vide = ceux de
+                    # son projet. Le champ garde son nom historique `niveau`, mais ce n'est plus
+                    # un numéro de bande.
                     niv_c = cible.get("niveau") or []
                     if not isinstance(niv_c, list):
                         niv_c = [niv_c]
                     if not niv_c:
                         niv_c = proj_niv.get(ct.get("project_id")) or []
                     lvl_c, conn_c = _porteur_pour(niv_c)
-                    ***REMOVED*** LE TEXTE EST RÉSOLU MÊME SANS NIVEAU DE TALLY. Un scope peut vouloir le
-                    ***REMOVED*** libellé vivant d'une source sans jamais l'allumer en rouge — et c'est
-                    ***REMOVED*** même le cas courant : un instrument n'est pas à l'antenne.
+                    # LE TEXTE EST RÉSOLU MÊME SANS NIVEAU DE TALLY. Un scope peut vouloir le
+                    # libellé vivant d'une source sans jamais l'allumer en rouge — et c'est
+                    # même le cas courant : un instrument n'est pas à l'antenne.
                     txt_c = libelle_de(shm_c, cible.get("label_col"))
                     coul_r = coul_v = "off"
                     if lvl_c:
@@ -1003,7 +1003,7 @@ def _distributor():
                          "rouge": coul_r, "vert": coul_v, "texte": txt_c})
                 continue
             params = dc.get("params") or {}
-            ***REMOVED*** Mode Direct : le multiview reçoit le TSL via son serveur local → ne pas double-piloter.
+            # Mode Direct : le multiview reçoit le TSL via son serveur local → ne pas double-piloter.
             tsl_mode = params.get("tsl_mode") or (
                 "direct" if (int(params.get("tsl_port") or 0) > 0 and not params.get("tsl_remote"))
                 else "central")
@@ -1014,37 +1014,37 @@ def _distributor():
             for i, fc in enumerate(flux_config):
                 if not isinstance(fc, dict):
                     continue
-                ***REMOVED*** NIVEAUX de cette tuile : une LISTE d'identifiants depuis le dénouement.
-                ***REMOVED*** Vide = « ceux de mon projet ». Le numéro de bande 1-based a disparu : il
-                ***REMOVED*** réintroduisait le « 3 » de TSL au cœur d'un réglage de multiview.
-                ***REMOVED*** ⚠ UNE CHAÎNE N'EST PAS UNE LISTE, et Python ne le dira pas : depuis que les
-                ***REMOVED*** niveaux sont des UUID, un scalaire hérité est une CHAÎNE, et `for n in ...`
-                ***REMOVED*** l'aurait parcourue caractère par caractère — trente-six « niveaux » d'une
-                ***REMOVED*** lettre, dont aucun n'existe, donc un tally qui ne s'allume jamais et pas la
-                ***REMOVED*** moindre erreur.
-                ***REMOVED*** flux_config[i] câble via "path" ("/dev/shm/<shm>"), jamais "shm".
+                # NIVEAUX de cette tuile : une LISTE d'identifiants depuis le dénouement.
+                # Vide = « ceux de mon projet ». Le numéro de bande 1-based a disparu : il
+                # réintroduisait le « 3 » de TSL au cœur d'un réglage de multiview.
+                # ⚠ UNE CHAÎNE N'EST PAS UNE LISTE, et Python ne le dira pas : depuis que les
+                # niveaux sont des UUID, un scalaire hérité est une CHAÎNE, et `for n in ...`
+                # l'aurait parcourue caractère par caractère — trente-six « niveaux » d'une
+                # lettre, dont aucun n'existe, donc un tally qui ne s'allume jamais et pas la
+                # moindre erreur.
+                # flux_config[i] câble via "path" ("/dev/shm/<shm>"), jamais "shm".
                 shm = (fc.get("path") or "").strip()
                 if shm.startswith("/dev/shm/"):
                     shm = shm[len("/dev/shm/"):]
 
-                ***REMOVED*** ═══ LES LIBELLÉS, POUSSÉS SANS AUCUNE CONDITION ═══════════════
-                ***REMOVED***
-                ***REMOVED*** ★ AVANT TOUT `continue`, ET C'EST LE POINT. Les colonnes de libellé étaient
-                ***REMOVED*** CUITES dans la config au déploiement, le conteneur ne sachant pas lire la base.
-                ***REMOVED*** Éditer un libellé ne l'atteignait donc jamais : le mur affichait la valeur du
-                ***REMOVED*** jour de son dernier déploiement, indéfiniment et sans que rien ne le signale.
-                ***REMOVED*** Constaté en production le 2026-09-01 — une fenêtre passée sur le Clean du
-                ***REMOVED*** mélangeur montrait encore « Mire Externe ».
-                ***REMOVED***
-                ***REMOVED*** Ce canal ne dépend ni d'un niveau de tally, ni d'un porteur, ni du mode de
-                ***REMOVED*** libellé de la tuile : un libellé est un libellé. Toutes les autres conditions
-                ***REMOVED*** de cette boucle ne gouvernent QUE le tally, plus bas.
+                # ═══ LES LIBELLÉS, POUSSÉS SANS AUCUNE CONDITION ═══════════════
+                #
+                # ★ AVANT TOUT `continue`, ET C'EST LE POINT. Les colonnes de libellé étaient
+                # CUITES dans la config au déploiement, le conteneur ne sachant pas lire la base.
+                # Éditer un libellé ne l'atteignait donc jamais : le mur affichait la valeur du
+                # jour de son dernier déploiement, indéfiniment et sans que rien ne le signale.
+                # Constaté en production le 2026-09-01 — une fenêtre passée sur le Clean du
+                # mélangeur montrait encore « Mire Externe ».
+                #
+                # Ce canal ne dépend ni d'un niveau de tally, ni d'un porteur, ni du mode de
+                # libellé de la tuile : un libellé est un libellé. Toutes les autres conditions
+                # de cette boucle ne gouvernent QUE le tally, plus bas.
                 if shm:
                     _cols, _proj = colonnes_de(shm, labels_snap)
                     labels_by_vmid.setdefault(vmid, []).append(
                         {"flux_idx": i, "labels": _cols, "projet": _proj})
 
-                ***REMOVED*** ═══ LE TALLY, lui, se gouverne ══════════════════════════
+                # ═══ LE TALLY, lui, se gouverne ══════════════════════════
                 niveaux_fc = fc.get("tally_level") or []
                 if not isinstance(niveaux_fc, list):
                     niveaux_fc = [niveaux_fc]
@@ -1053,42 +1053,42 @@ def _distributor():
                 want_text  = veut_texte_pousse(fc, params)
                 if not niveaux_fc:
                     niveaux_fc = proj_niv.get(ct.get("project_id")) or []
-                ***REMOVED*** ⚠ LE TEXTE NE DÉPEND PAS DU TALLY. Le `continue` groupait les trois conditions :
-                ***REMOVED*** une fenêtre qui veut son libellé mais n'a aucun niveau de tally — le cas le plus
-                ***REMOVED*** courant, une source qui n'est pas à l'antenne — n'en recevait aucun.
+                # ⚠ LE TEXTE NE DÉPEND PAS DU TALLY. Le `continue` groupait les trois conditions :
+                # une fenêtre qui veut son libellé mais n'a aucun niveau de tally — le cas le plus
+                # courant, une source qui n'est pas à l'antenne — n'en recevait aucun.
                 if not (want_red or want_green or want_text):
                     continue
                 if not niveaux_fc and not want_text:
                     continue
-                ***REMOVED*** ⚠ LE PORTEUR NE COMMANDE PLUS RIEN ICI. `lvl_fc, conn = _porteur_pour(...)`
-                ***REMOVED*** était suivi d'un `if not conn: continue` — une tuile dont les niveaux n'avaient
-                ***REMOVED*** de porteur déclaré nulle part était SAUTÉE, donc figée sur son état d'avant.
-                ***REMOVED*** Quatrième occurrence de la même faute dans cette chaîne. `conn` ne servait plus
-                ***REMOVED*** qu'à ce test depuis que l'état s'adresse par source : il disparaît.
+                # ⚠ LE PORTEUR NE COMMANDE PLUS RIEN ICI. `lvl_fc, conn = _porteur_pour(...)`
+                # était suivi d'un `if not conn: continue` — une tuile dont les niveaux n'avaient
+                # de porteur déclaré nulle part était SAUTÉE, donc figée sur son état d'avant.
+                # Quatrième occurrence de la même faute dans cette chaîne. `conn` ne servait plus
+                # qu'à ce test depuis que l'état s'adresse par source : il disparaît.
                 lvl_fc, _ = _porteur_pour(niveaux_fc)
-                ***REMOVED*** ★ SAUTER N'EST PAS ÉTEINDRE, et il n'y a plus de quoi sauter. Cette tuile
-                ***REMOVED*** traduisait d'abord sa source en index de protocole, puis faisait `continue`
-                ***REMOVED*** quand la traduction échouait — et le conteneur, qui n'applique QUE ce qu'on lui
-                ***REMOVED*** pousse, gardait son dernier état. Une tuile basculée sur un flux sans
-                ***REMOVED*** correspondance restait AU ROUGE, avec le libellé de l'ancienne source ; constaté
-                ***REMOVED*** en production le 2026-09-01, un PiP passé sur le mélangeur gardait le rouge et
-                ***REMOVED*** le nom d'un enregistreur.
-                ***REMOVED***
-                ***REMOVED*** La tuile lit désormais l'état DE SA SOURCE. Il n'existe plus de cas « je ne sais
-                ***REMOVED*** pas traduire » : soit ce flux a un tally, soit il n'en a pas, et l'absence
-                ***REMOVED*** s'écrit "off" comme n'importe quel autre état. La panne n'est plus corrigée,
-                ***REMOVED*** elle est devenue inexprimable.
+                # ★ SAUTER N'EST PAS ÉTEINDRE, et il n'y a plus de quoi sauter. Cette tuile
+                # traduisait d'abord sa source en index de protocole, puis faisait `continue`
+                # quand la traduction échouait — et le conteneur, qui n'applique QUE ce qu'on lui
+                # pousse, gardait son dernier état. Une tuile basculée sur un flux sans
+                # correspondance restait AU ROUGE, avec le libellé de l'ancienne source ; constaté
+                # en production le 2026-09-01, un PiP passé sur le mélangeur gardait le rouge et
+                # le nom d'un enregistreur.
+                #
+                # La tuile lit désormais l'état DE SA SOURCE. Il n'existe plus de cas « je ne sais
+                # pas traduire » : soit ce flux a un tally, soit il n'en a pas, et l'absence
+                # s'écrit "off" comme n'importe quel autre état. La panne n'est plus corrigée,
+                # elle est devenue inexprimable.
                 label_col = int(fc.get("label_col") or 0)
 
-                ***REMOVED*** Le niveau a plusieurs états : `amber` allume les DEUX bandeaux de la tuile,
-                ***REMOVED*** c'est ainsi que l'orange se voit sur le mur.
+                # Le niveau a plusieurs états : `amber` allume les DEUX bandeaux de la tuile,
+                # c'est ainsi que l'orange se voit sur le mur.
                 _e = state.get((resolve_ref(shm) or shm, lvl_fc), "off") if lvl_fc else "off"
                 color_l = "red"   if (want_red   and _e in ("red", "amber"))   else "off"
                 color_r = "green" if (want_green and _e in ("green", "amber")) else "off"
-                ***REMOVED*** ★ LE TEXTE N'EST POUSSÉ QUE SI LA TUILE LE DEMANDE. `want_text` était calculé
-                ***REMOVED*** puis oublié : on écrasait le libellé de toute tuile ayant un tally, y compris
-                ***REMOVED*** celles en `hostname` ou `mxl_path`, qui résolvent leur nom elles-mêmes. Une
-                ***REMOVED*** tuile en `hostname` doit afficher le nom de son conteneur, que TSL existe ou non.
+                # ★ LE TEXTE N'EST POUSSÉ QUE SI LA TUILE LE DEMANDE. `want_text` était calculé
+                # puis oublié : on écrasait le libellé de toute tuile ayant un tally, y compris
+                # celles en `hostname` ou `mxl_path`, qui résolvent leur nom elles-mêmes. Une
+                # tuile en `hostname` doit afficher le nom de son conteneur, que TSL existe ou non.
                 upd = updates_by_vmid.setdefault(vmid, [])
                 if want_text:
                     text = libelle_de(shm, label_col)
@@ -1098,21 +1098,21 @@ def _distributor():
                     upd.append({"flux_idx": i, "slot": "L", "color": color_l})
                     upd.append({"flux_idx": i, "slot": "R", "color": color_r})
 
-            ***REMOVED*** Overlays texte « TSL/Tableau » : reliés à une LIGNE du tableau /labels (label_row)
-            ***REMOVED*** + une colonne (texte) + un niveau de Tally (allumage). Tout résolu côté orchestrateur.
+            # Overlays texte « TSL/Tableau » : reliés à une LIGNE du tableau /labels (label_row)
+            # + une colonne (texte) + un niveau de Tally (allumage). Tout résolu côté orchestrateur.
             for ov in (params.get("overlays") or []):
                 if not isinstance(ov, dict) or (ov.get("kind") or "") != "text":
                     continue
                 if (ov.get("text_source") or "local") != "tsl":
                     continue
-                ***REMOVED*** ★ UNE LIGNE VIDÉE S'EFFACE, elle ne se fige pas. Un `continue` ici laissait
-                ***REMOVED*** l'overlay absent du paquet, donc le conteneur — qui n'applique que ce qu'on lui
-                ***REMOVED*** pousse — sur le texte de la ligne PRÉCÉDENTE. Un bandeau d'antenne qui garde le
-                ***REMOVED*** nom d'un invité parti est exactement ce qu'on ne veut pas.
-                ***REMOVED***
-                ***REMOVED*** Un overlay basculé en `local`, lui, est bien SAUTÉ plus haut : le conteneur
-                ***REMOVED*** ignore alors la couche centrale et rend son propre texte — il n'y a rien à
-                ***REMOVED*** effacer, et pousser du vide écraserait une valeur qu'il tient lui-même.
+                # ★ UNE LIGNE VIDÉE S'EFFACE, elle ne se fige pas. Un `continue` ici laissait
+                # l'overlay absent du paquet, donc le conteneur — qui n'applique que ce qu'on lui
+                # pousse — sur le texte de la ligne PRÉCÉDENTE. Un bandeau d'antenne qui garde le
+                # nom d'un invité parti est exactement ce qu'on ne veut pas.
+                #
+                # Un overlay basculé en `local`, lui, est bien SAUTÉ plus haut : le conteneur
+                # ignore alors la couche centrale et rend son propre texte — il n'y a rien à
+                # effacer, et pousser du vide écraserait une valeur qu'il tient lui-même.
                 row_shm = (ov.get("label_row") or "").strip()
                 o_text = libelle_de(row_shm, ov.get("label_col")) if row_shm else ""
                 active = False
@@ -1121,8 +1121,8 @@ def _distributor():
                     o_niv = [o_niv]
                 if not o_niv:
                     o_niv = proj_niv.get(ct.get("project_id")) or []
-                ***REMOVED*** ⚠ `row_shm` d'abord : sans ligne, il n'y a pas de signal à interroger, et le
-                ***REMOVED*** repli sur les niveaux du projet aurait sinon fait lire l'état de la clé VIDE.
+                # ⚠ `row_shm` d'abord : sans ligne, il n'y a pas de signal à interroger, et le
+                # repli sur les niveaux du projet aurait sinon fait lire l'état de la clé VIDE.
                 if row_shm and o_niv and (ov.get("tally_red") or ov.get("tally_green")):
                     lvl_o, _ = _porteur_pour(o_niv)
                     if lvl_o:
@@ -1143,23 +1143,23 @@ def _distributor():
                 payload = {"updates": updates_by_vmid.get(vmid, []),
                            "overlays": overlays_by_vmid.get(vmid, []),
                            "labels": labels_by_vmid.get(vmid, [])}
-                ***REMOVED*** ★ PERF : ne POSTER que si l'état a RÉELLEMENT changé. Ce distributeur tourne
-                ***REMOVED*** sur un timeout de 100 ms (il repasse même sans événement TSL) : re-pousser un
-                ***REMOVED*** paquet identique 10×/s faisait re-baker l'habillage PLEIN CADRE du multiview
-                ***REMOVED*** 10×/s (PIL + RGBA→YUV + upload GPU ≈ 25 ms, soit une trame perdue à chaque
-                ***REMOVED*** fois — mur 333 Horace mesuré à 28-36 fps au lieu de 50). Le mur a lui aussi
-                ***REMOVED*** sa garde (comparaison de valeur avant de marquer sale, multiview ≥ 0.39.2) ;
-                ***REMOVED*** celle-ci évite en plus 10 requêtes HTTP/s et par mur.
-                ***REMOVED*** Re-synchro périodique (5 s) : un mur redéployé repart avec un tally VIDE — sans
-                ***REMOVED*** ce filet, il resterait éteint jusqu'au prochain changement TSL. Coût nul côté
-                ***REMOVED*** mur grâce à sa garde de valeur (paquet identique = aucun re-bake).
+                # ★ PERF : ne POSTER que si l'état a RÉELLEMENT changé. Ce distributeur tourne
+                # sur un timeout de 100 ms (il repasse même sans événement TSL) : re-pousser un
+                # paquet identique 10×/s faisait re-baker l'habillage PLEIN CADRE du multiview
+                # 10×/s (PIL + RGBA→YUV + upload GPU ≈ 25 ms, soit une trame perdue à chaque
+                # fois — mur 333 Horace mesuré à 28-36 fps au lieu de 50). Le mur a lui aussi
+                # sa garde (comparaison de valeur avant de marquer sale, multiview ≥ 0.39.2) ;
+                # celle-ci évite en plus 10 requêtes HTTP/s et par mur.
+                # Re-synchro périodique (5 s) : un mur redéployé repart avec un tally VIDE — sans
+                # ce filet, il resterait éteint jusqu'au prochain changement TSL. Coût nul côté
+                # mur grâce à sa garde de valeur (paquet identique = aucun re-bake).
                 _prev, _pts = _last_push.get(vmid, (None, 0.0))
                 if _prev == payload and (_now_p - _pts) < 5.0:
                     continue
                 _req.post(f"http://{ip}:8080/tally_bulk", json=payload, timeout=1)
                 _last_push[vmid] = (payload, _now_p)
             except Exception:
-                _last_push.pop(vmid, None)   ***REMOVED*** échec → re-pousser au prochain tour
+                _last_push.pop(vmid, None)   # échec → re-pousser au prochain tour
 
 
 def demarrer():
@@ -1196,11 +1196,11 @@ def fils_actifs():
             bool(_mixer_pub_thr and _mixer_pub_thr.is_alive()))
 
 
-***REMOVED*** ═══ LES COLONNES DE LIBELLÉ ════════════════════════════════════════════════════════════
-***REMOVED*** ★ POURQUOI C'EST DU MODÈLE. Le réglage s'appelle `tsl_label_names` — nom hérité, TSL ayant
-***REMOVED*** introduit la notion. Mais ces colonnes servent aujourd'hui le multiview, IS-07 et les macros
-***REMOVED*** autant que TSL. Les laisser dans le service voulait dire qu'un site sans TSL n'avait plus
-***REMOVED*** de libellés du tout.
+# ═══ LES COLONNES DE LIBELLÉ ════════════════════════════════════════════════════════════
+# ★ POURQUOI C'EST DU MODÈLE. Le réglage s'appelle `tsl_label_names` — nom hérité, TSL ayant
+# introduit la notion. Mais ces colonnes servent aujourd'hui le multiview, IS-07 et les macros
+# autant que TSL. Les laisser dans le service voulait dire qu'un site sans TSL n'avait plus
+# de libellés du tout.
 
 
 NOMS_COLONNES_DEFAUT = ["Hostname", "MXL", "Label 2", "Label 3", "Label 4",

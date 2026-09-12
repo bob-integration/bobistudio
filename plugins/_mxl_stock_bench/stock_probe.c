@@ -16,11 +16,11 @@
  * Usage : stock_probe <domaine> <flowId>
  * Build : gcc -O2 stock_probe.c -o stock_probe -lmxl   (dans l'image bobi-mxl-stock)
  */
-***REMOVED***include <stdio.h>
-***REMOVED***include <stdint.h>
-***REMOVED***include <mxl/mxl.h>
-***REMOVED***include <mxl/flow.h>
-***REMOVED***include <mxl/flowinfo.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <mxl/mxl.h>
+#include <mxl/flow.h>
+#include <mxl/flowinfo.h>
 
 int main(int argc, char **argv)
 {

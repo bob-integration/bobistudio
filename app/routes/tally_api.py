@@ -1,14 +1,14 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Niveaux de tally — l'affectation, et elle vit ICI et nulle part ailleurs.
-***REMOVED***
-***REMOVED*** ★ POURQUOI PAS DANS L'ONGLET TSL. Le tally n'était réglable que depuis la page du protocole TSL,
-***REMOVED*** ce qui le cachait derrière un TRANSPORT — alors qu'il est consommé par TSL, par IS-07, par les
-***REMOVED*** mélangeurs et par les multiviews, et qu'il est découpé par production. L'allocation est la seule
-***REMOVED*** chose vraiment INTER-PROTOCOLE : c'est là qu'un chevauchement se voit, et nulle part ailleurs.
-***REMOVED*** Le détail propre à chaque protocole (hôte et port d'une connexion, activation d'un Receiver
-***REMOVED*** IS-07) reste dans sa page : le déplacer forcerait à tout dupliquer au troisième protocole.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Niveaux de tally — l'affectation, et elle vit ICI et nulle part ailleurs.
+#
+# ★ POURQUOI PAS DANS L'ONGLET TSL. Le tally n'était réglable que depuis la page du protocole TSL,
+# ce qui le cachait derrière un TRANSPORT — alors qu'il est consommé par TSL, par IS-07, par les
+# mélangeurs et par les multiviews, et qu'il est découpé par production. L'allocation est la seule
+# chose vraiment INTER-PROTOCOLE : c'est là qu'un chevauchement se voit, et nulle part ailleurs.
+# Le détail propre à chaque protocole (hôte et port d'une connexion, activation d'un Receiver
+# IS-07) reste dans sa page : le déplacer forcerait à tout dupliquer au troisième protocole.
 
 import logging
 
@@ -37,20 +37,20 @@ def lien_de_config(type_, vmid=None):
     from .. import plugins
     m = plugins.get(type_) or {}
     sec = ((m.get("nav") or {}).get("section")) or "traitements"
-    return "/%s***REMOVED***%s%s" % (sec, type_, ("/%s" % vmid) if vmid else "")
+    return "/%s#%s%s" % (sec, type_, ("/%s" % vmid) if vmid else "")
 
 
 def _porteurs():
-    """Nom lisible de chaque porteur, pour que la page ne montre pas des `project***REMOVED***7`."""
+    """Nom lisible de chaque porteur, pour que la page ne montre pas des `project#7`."""
     noms = {}
     try:
         for p in db_get_projects():
-            noms[("project", p["id"])] = p.get("name") or ("Projet ***REMOVED***%s" % p["id"])
+            noms[("project", p["id"])] = p.get("name") or ("Projet #%s" % p["id"])
     except Exception:
         pass
     try:
         for c in db_get_tsl_connections():
-            noms[("connection", c["id"])] = c.get("name") or ("TSL ***REMOVED***%s" % c["id"])
+            noms[("connection", c["id"])] = c.get("name") or ("TSL #%s" % c["id"])
     except Exception:
         pass
     return noms
@@ -190,9 +190,9 @@ def tally_consumers():
         params = dc.get("params") or {}
         pid = ct.get("project_id")
         if type_ == "multiview":
-            ***REMOVED*** ⚠ LE MUR RESTE SUR SON CHEMIN — même raison que dans le distributeur : c'est le
-            ***REMOVED*** composant le plus sensible du produit, il ne publie pas `tally_targets`, et on ne
-            ***REMOVED*** le fait pas passer sur du code neuf pour l'élégance.
+            # ⚠ LE MUR RESTE SUR SON CHEMIN — même raison que dans le distributeur : c'est le
+            # composant le plus sensible du produit, il ne publie pas `tally_targets`, et on ne
+            # le fait pas passer sur du code neuf pour l'élégance.
             for fc in (params.get("flux_config") or []):
                 if not isinstance(fc, dict):
                     continue
@@ -225,22 +225,22 @@ def tally_consumers():
         for cible in cibles:
             if not isinstance(cible, dict):
                 continue
-            ***REMOVED*** Un plugin qui publie une cible la VEUT : le hook n'est appelé que pour ce qu'il
-            ***REMOVED*** déclare, il n'y a pas ici d'équivalent des cases décochées du mur.
+            # Un plugin qui publie une cible la VEUT : le hook n'est appelé que pour ce qu'il
+            # déclare, il n'y a pas ici d'équivalent des cases décochées du mur.
             _ajouter(_liste(cible.get("niveau"), pid), ct, type_,
                      str(cible.get("cle") or ""), True)
     return jsonify(par_niveau)
 
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════════════════════
-***REMOVED*** IS-07 ENTRANT — le MÊME objet qu'une connexion TSL
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════════════════════
-***REMOVED*** ★ Ce qu'un exploitant choisit n'est pas « quelles sorties peuvent recevoir un tally » mais
-***REMOVED*** « quel protocole écrit dans quel niveau ». On a d'abord publié un Receiver par groupe de sortie
-***REMOVED*** BCP-002-01 — 99 sur le banc pour 6 utiles : la lecture littérale de la BCP, qui répondait à
-***REMOVED*** côté de la question. Une connexion = un niveau, plus une correspondance qui dit quelle Source
-***REMOVED*** de l'émetteur désigne quel signal chez nous. Cette correspondance s'édite dans la page Labels,
-***REMOVED*** à côté des colonnes TSL, parce que c'est le même geste.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# IS-07 ENTRANT — le MÊME objet qu'une connexion TSL
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# ★ Ce qu'un exploitant choisit n'est pas « quelles sorties peuvent recevoir un tally » mais
+# « quel protocole écrit dans quel niveau ». On a d'abord publié un Receiver par groupe de sortie
+# BCP-002-01 — 99 sur le banc pour 6 utiles : la lecture littérale de la BCP, qui répondait à
+# côté de la question. Une connexion = un niveau, plus une correspondance qui dit quelle Source
+# de l'émetteur désigne quel signal chez nous. Cette correspondance s'édite dans la page Labels,
+# à côté des colonnes TSL, parce que c'est le même geste.
 
 def _relancer_is07():
     """Republie le modèle et coupe les écoutes devenues sans objet.
@@ -333,10 +333,10 @@ def tally_is07_mapping_batch():
     return jsonify({"ok": True, "saved": n})
 
 
-***REMOVED*** ─── L'ÉTAT DU TALLY ────────────────────────────────────────────────────────────────────
-***REMOVED*** ★ IL ÉTAIT SERVI SOUS `/api/tsl/state`, et c'était trompeur : il rend l'état CUMULÉ de
-***REMOVED*** toutes les sources — TSL, IS-07, mélangeur. Rien de protocolaire là-dedans, sauf le nom.
-***REMOVED*** L'ancienne adresse redirige (cf. `services/tsl:register_routes`).
+# ─── L'ÉTAT DU TALLY ────────────────────────────────────────────────────────────────────
+# ★ IL ÉTAIT SERVI SOUS `/api/tsl/state`, et c'était trompeur : il rend l'état CUMULÉ de
+# toutes les sources — TSL, IS-07, mélangeur. Rien de protocolaire là-dedans, sauf le nom.
+# L'ancienne adresse redirige (cf. `services/tsl:register_routes`).
 @bp.route("/api/tally/state", methods=["GET"])
 @require_login
 def tally_state():

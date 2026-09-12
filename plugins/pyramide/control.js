@@ -5,7 +5,7 @@
 
 // Pyramide — console de monitoring embarquée (plugin). Montée par le shell Traitements via
 // window.MXLPlugins.pyramide.mount(el, vmid, ctx). Lit /api/pyramide/overview (cache, pas de
-// réseau live), affiche par source les proxies produits (***REMOVED***conso, orphelins), les besoins non
+// réseau live), affiche par source les proxies produits (#conso, orphelins), les besoins non
 // couverts et les KPIs ; bouton « Optimiser » → /api/pyramide/reconcile à chaud.
 window.MXLPlugins = window.MXLPlugins || {};
 window.MXLPlugins.pyramide = (function () {

@@ -1,14 +1,14 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Classification des actions TX + fenêtre de maintenance — Étage 2 du chantier docs/reference/TX_LAYOUTS.md.
 
 EXIGENCE PRODUIT : « une action sur un TX ne doit jamais se voir sur un autre — sauf événement de
 maintenance explicitement déclaré, avertissant, et soumis à validation. »
 
-***REMOVED******REMOVED*** Le classement est CALCULÉ, pas codé en dur
+## Le classement est CALCULÉ, pas codé en dur
 
 Fait matériel (mesuré, cf. docs/chantiers/DPDK_NARROW.md §7 / docs/reference/TX_LAYOUTS.md) : sur le socle **narrow** (PMD ice +
 pacing rate-limiter), l'arbre d'ordonnancement TX ne se modifie que par `rte_tm_hierarchy_commit`,
@@ -38,7 +38,7 @@ l'UI doit le DIRE au lieu de rester muette (cf. `port_mode`). On ne devine pas l
 payloads `:8081/tx` RÉELLEMENT poussés (`docker_driver.tx_payloads`, source unique de vérité) en
 rejouant les règles d'émission du contrôleur (`controller.py`, boucle `_emit_tx`).
 
-***REMOVED******REMOVED*** Fenêtre de maintenance
+## Fenêtre de maintenance
 
 Une action perturbatrice peut être **différée** : elle s'empile dans un bac (table
 `tx_pending_changes`, persistante) et tout est appliqué **ensemble** — un seul `push_tx_slots`, donc
@@ -61,18 +61,18 @@ import time
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Opérations différables (mutations pures de `params`, appliquées en lot puis poussées une fois).
+# Opérations différables (mutations pures de `params`, appliquées en lot puis poussées une fois).
 DEFERRABLE = ("tx_dest", "tx_format", "tx_pacing", "tx_serve_newest", "tx_layout_apply",
                "tx_mcast_plan")
 
-***REMOVED*** ─── Axes de format qui font RÉELLEMENT changer la signature (étage 3) ─────────────────────────────
-***REMOVED*** Établis en LISANT le code, pas en raisonnant : `mtl_rx.c:compute_sig` (identité de session) inclut
-***REMOVED***   role|kind|mcast|port|pt|ssrc|WxH|fps|interlaced|tff|bit_depth|ring|channels|ptime|epoch_shift|iface…
-***REMOVED*** et le câblage POUSSE le format de la source dans le slot (`controller.py:/input` → t[w|h|bd|fps|
-***REMOVED*** scan|field_order]). L'intersection des deux = les 6 axes ci-dessous. Tout le reste (CHROMA,
-***REMOVED*** colorimétrie, pix_fmt) n'entre NI dans la signature NI dans `/input` → un écart y est INOFFENSIF
-***REMOVED*** pour l'arbre TX : on ne bloque pas dessus (on avertit pour le chroma, qui casse l'image sans
-***REMOVED*** recréer la session — la CHROMA du moteur est une constante d'image, pas une clé de session).
+# ─── Axes de format qui font RÉELLEMENT changer la signature (étage 3) ─────────────────────────────
+# Établis en LISANT le code, pas en raisonnant : `mtl_rx.c:compute_sig` (identité de session) inclut
+#   role|kind|mcast|port|pt|ssrc|WxH|fps|interlaced|tff|bit_depth|ring|channels|ptime|epoch_shift|iface…
+# et le câblage POUSSE le format de la source dans le slot (`controller.py:/input` → t[w|h|bd|fps|
+# scan|field_order]). L'intersection des deux = les 6 axes ci-dessous. Tout le reste (CHROMA,
+# colorimétrie, pix_fmt) n'entre NI dans la signature NI dans `/input` → un écart y est INOFFENSIF
+# pour l'arbre TX : on ne bloque pas dessus (on avertit pour le chroma, qui casse l'image sans
+# recréer la session — la CHROMA du moteur est une constante d'image, pas une clé de session).
 SIG_FORMAT_AXES = ("width", "height", "fps", "scan", "field_order", "bit_depth")
 
 
@@ -120,7 +120,7 @@ def format_diff(src_fmt, slot_fmt):
     for ax in SIG_FORMAT_AXES:
         a, b = s.get(ax), slot_fmt.get(ax)
         if ax == "field_order":
-            ***REMOVED*** L'ordre de champ ne compte QUE si les deux sont entrelacés (en progressif il vaut "").
+            # L'ordre de champ ne compte QUE si les deux sont entrelacés (en progressif il vaut "").
             if s["scan"] != "i" or slot_fmt.get("scan") != "i" or not a or not b:
                 continue
         elif ax == "bit_depth":
@@ -133,7 +133,7 @@ def format_diff(src_fmt, slot_fmt):
     return out
 
 
-***REMOVED*** ─── Mode d'un port : le RL (donc le risque de blip) n'existe qu'en DPDK ──────────────────────────
+# ─── Mode d'un port : le RL (donc le risque de blip) n'existe qu'en DPDK ──────────────────────────
 
 def port_mode(node, iface):
     """Mode d'émission d'un port média : dict {pmd, rl, why}. `rl=True` ⇒ pacing par rate-limiter
@@ -153,8 +153,8 @@ def port_mode(node, iface):
         pacing, _ = _dd._derive_pacing(node)
     except Exception:
         pacing = None
-    ***REMOVED*** `_derive_pacing` → None si aucun profil posé ; le contrôleur retombe alors sur MTL_PACING=auto
-    ***REMOVED*** = RL sur port E810 dpdk → traiter None comme 'rl' (même convention que _mtl_rl_tx_budget).
+    # `_derive_pacing` → None si aucun profil posé ; le contrôleur retombe alors sur MTL_PACING=auto
+    # = RL sur port E810 dpdk → traiter None comme 'rl' (même convention que _mtl_rl_tx_budget).
     rl = (pacing or "rl") == "rl"
     return {"pmd": pmd, "rl": rl, "why": "rl" if rl else "tsc"}
 
@@ -186,7 +186,7 @@ class _PortModes:
         return self._cache[iface]
 
 
-***REMOVED*** ─── Signatures de sessions TX (miroir de controller._emit_tx + mtl_rx.compute_sig) ───────────────
+# ─── Signatures de sessions TX (miroir de controller._emit_tx + mtl_rx.compute_sig) ───────────────
 
 def _video_format(ent, slot_decl):
     """Format EFFECTIF de la session vidéo d'un slot TX — celui qui entre dans la signature mtl_rx.
@@ -198,11 +198,11 @@ def _video_format(ent, slot_decl):
     format DIFFÈRE du format provisionné du slot change la signature ⇒ session RECRÉÉE ⇒ commit TM.
     Le swap gratuit n'existe que si les formats CONCORDENT (d'où l'étage 3 : gate de format + UDC)."""
     p = ent["payload"]
-    if p.get("width"):                      ***REMOVED*** gen : le slot déclare son format
+    if p.get("width"):                      # gen : le slot déclare son format
         w, h = p.get("width"), p.get("height")
         fps, bd = p.get("fps"), p.get("bit_depth")
         scan, fo = p.get("scan"), p.get("field_order")
-    else:                                   ***REMOVED*** câblé : la source gouverne (repli = format du slot)
+    else:                                   # câblé : la source gouverne (repli = format du slot)
         src = ent.get("src") or {}
         t = slot_decl or {}
         w   = src.get("w") or t.get("width")
@@ -215,7 +215,7 @@ def _video_format(ent, slot_decl):
         fps = float(fps or 0)
     except (TypeError, ValueError):
         fps = 0.0
-    if str(scan) == "i" and fps > 30:        ***REMOVED*** ST 2110-20 : cadence TRAME (mtl_rx._tx_session)
+    if str(scan) == "i" and fps > 30:        # ST 2110-20 : cadence TRAME (mtl_rx._tx_session)
         fps /= 2.0
     return w, h, fps, bd, scan, fo
 
@@ -237,20 +237,20 @@ def _slot_sessions(ent, node, params, primary=None):
     slot_decl = ((params or {}).get("tx_slots") or [{}] * (i + 1))[i] if i < len(
         (params or {}).get("tx_slots") or []) else {}
     out = []
-    enabled = bool(p.get("enabled"))            ***REMOVED*** = un shm vidéo est câblé sur ce slot
+    enabled = bool(p.get("enabled"))            # = un shm vidéo est câblé sur ce slot
     prov    = bool(p.get("provisioned"))
     mc, up  = p.get("mcast"), int(p.get("udp_port") or 0)
     if mc and up and (enabled or prov):
         w, h, fps, bd, scan, fo = _video_format(ent, slot_decl)
         out.append({
             "iface": iface, "essence": "video", "slot": i,
-            ***REMOVED*** `sn` (serve_newest) fait partie de la signature mtl_rx : l'omettre ici ferait
-            ***REMOVED*** conclure « aucune session ne change » à une action qui les recrée pourtant.
+            # `sn` (serve_newest) fait partie de la signature mtl_rx : l'omettre ici ferait
+            # conclure « aucune session ne change » à une action qui les recrée pourtant.
             "sig": "tx|v|%s|%s:%d|%s|%sx%s|%s|%s|%s|bd%s|r%s|es%s|sn%s|%s:%s" % (
                 iface, mc, up, p.get("pt"), w, h, fps, scan, fo, bd, p.get("ring"),
                 p.get("epoch_shift_us"), p.get("serve_newest"),
                 p.get("mcast2"), p.get("udp_port2")),
-            ***REMOVED*** Une session vidéo PROVISIONNÉE sans source est SILENCIEUSE (feuille RL créée, 0 Gb/s).
+            # Une session vidéo PROVISIONNÉE sans source est SILENCIEUSE (feuille RL créée, 0 Gb/s).
             "silent": not enabled,
         })
     for ai, a in enumerate(p.get("audios") or []):
@@ -287,10 +287,10 @@ def tx_sessions(vmid, params, node=None, primary=None):
     out = []
     try:
         ents = _dd.tx_payloads(vmid, params) or []
-    except Exception as e:                      ***REMOVED*** jamais bloquer une action sur un défaut de calcul
+    except Exception as e:                      # jamais bloquer une action sur un défaut de calcul
         log.warning("tx_sessions %s: %s", vmid, e)
         return []
-    ***REMOVED*** Le contrôleur ne crée de session que pour les slots < ACTIVE_TX_COUNT (budget bootté).
+    # Le contrôleur ne crée de session que pour les slots < ACTIVE_TX_COUNT (budget bootté).
     act = int((params or {}).get("active_tx_count") or 0) or len(ents)
     for ent in ents:
         if ent["i"] >= act:
@@ -300,7 +300,7 @@ def tx_sessions(vmid, params, node=None, primary=None):
 
 
 def _slot_label(params, slot):
-    """Nom lisible d'une sortie (pour NOMMER les victimes) : label du flux TX, sinon « TX ***REMOVED***n »."""
+    """Nom lisible d'une sortie (pour NOMMER les victimes) : label du flux TX, sinon « TX #n »."""
     try:
         from . import io2110_flows as _iof
         for f in _iof.active_flows(params or {}, "tx"):
@@ -309,10 +309,10 @@ def _slot_label(params, slot):
                     return f["label"].strip()
     except Exception:
         pass
-    return "TX ***REMOVED***%d" % (int(slot) + 1)
+    return "TX #%d" % (int(slot) + 1)
 
 
-***REMOVED*** ─── Classification d'une action ──────────────────────────────────────────────────────────────────
+# ─── Classification d'une action ──────────────────────────────────────────────────────────────────
 
 def classify(vmid, params_after, op="tx_edit", params_before=None):
     """Verdict d'une action sur un moteur 2110_io. Retourne un dict :
@@ -337,14 +337,14 @@ def classify(vmid, params_after, op="tx_edit", params_before=None):
     pmc = _PortModes(node)
     prim = pmc.primary
     pm = pmc.mode(prim) if prim else {"pmd": "?", "rl": False, "why": "no_iface"}
-    base = {"engine": c.get("hostname") or ("***REMOVED***%s" % vmid), "vmid": vmid,
+    base = {"engine": c.get("hostname") or ("#%s" % vmid), "vmid": vmid,
             "node": node.get("name") or node.get("host") or "", "node_id": node.get("id"),
             "iface": prim, "port_mode": pm, "rl": bool(pm.get("rl")),
             "victims": [], "victim_count": 0, "ports": [], "created": [],
             "deferrable": op in DEFERRABLE}
 
     before = tx_sessions(vmid, params_before, node, prim)
-    ***REMOVED*** Victimes potentielles = les sorties qui ÉMETTENT réellement (session vivante avec une source).
+    # Victimes potentielles = les sorties qui ÉMETTENT réellement (session vivante avec une source).
     def _victims(ifaces):
         """Les victimes sont des SORTIES (un slot = une sortie nommée dans l'UI), pas des sessions :
         une sortie qui émet vidéo + audio + ANC ne doit être NOMMÉE et COMPTÉE qu'UNE fois."""
@@ -368,18 +368,18 @@ def classify(vmid, params_after, op="tx_edit", params_before=None):
     after = tx_sessions(vmid, params_after, node, prim)
     sig_before = {s["sig"] for s in before}
     created = [s for s in after if s["sig"] not in sig_before]
-    ***REMOVED*** Seules les sessions VIDÉO sont mises en forme par le rate limiter. libmtl ne pose une feuille RL
-    ***REMOVED*** (`dev_tx_queue_set_rl_rate` → `rte_tm_hierarchy_commit` → stop/start du port) que si le débit
-    ***REMOVED*** demandé est NON NUL : `if (inf->tx_pacing_way == RL && bytes_per_sec)` (mt_dev.c:1551). L'audio
-    ***REMOVED*** (st30) et l'ANC (st40) demandent un débit 0 → file obtenue SANS set_rl_rate → AUCUN commit.
-    ***REMOVED*** VÉRIFIÉ AU BANC (moteur 140) : câbler une sortie provisionnée crée ses sessions audio + ANC et
-    ***REMOVED*** ne produit ZÉRO `mt_dev_get_tx_queue` avec débit → zéro blip.
-    ***REMOVED*** Un port sans RL (af_xdp : pacing TSC logiciel) ne commit jamais non plus.
+    # Seules les sessions VIDÉO sont mises en forme par le rate limiter. libmtl ne pose une feuille RL
+    # (`dev_tx_queue_set_rl_rate` → `rte_tm_hierarchy_commit` → stop/start du port) que si le débit
+    # demandé est NON NUL : `if (inf->tx_pacing_way == RL && bytes_per_sec)` (mt_dev.c:1551). L'audio
+    # (st30) et l'ANC (st40) demandent un débit 0 → file obtenue SANS set_rl_rate → AUCUN commit.
+    # VÉRIFIÉ AU BANC (moteur 140) : câbler une sortie provisionnée crée ses sessions audio + ANC et
+    # ne produit ZÉRO `mt_dev_get_tx_queue` avec débit → zéro blip.
+    # Un port sans RL (af_xdp : pacing TSC logiciel) ne commit jamais non plus.
     rl_created = [s for s in created if s["essence"] == "video" and pmc.rl(s["iface"])]
     if not rl_created:
         return dict(base, level="safe", scope="slot",
                     reason=("no_new_session" if not created else "no_rl_leaf"),
-                    ***REMOVED*** Sessions créées mais SANS feuille RL (audio/ANC, ou port non-RL) → gratuites.
+                    # Sessions créées mais SANS feuille RL (audio/ANC, ou port non-RL) → gratuites.
                     created_free=[{"slot": s["slot"], "essence": s["essence"]} for s in created])
     ifaces = sorted({s["iface"] for s in rl_created})
     vic = _victims(set(ifaces))
@@ -389,13 +389,13 @@ def classify(vmid, params_after, op="tx_edit", params_before=None):
                 victims=vic, victim_count=len(vic))
 
 
-***REMOVED*** ─── Mutations de params (rejouées telles quelles à l'application différée) ────────────────────────
+# ─── Mutations de params (rejouées telles quelles à l'application différée) ────────────────────────
 
 def _mut_tx_dest(params, a):
     slots = list(params.get("tx_slots") or [])
     i = int(a["slot"])
     if not (0 <= i < len(slots)):
-        raise ValueError("slot TX ***REMOVED***%d inexistant" % i)
+        raise ValueError("slot TX #%d inexistant" % i)
     slots[i] = dict(slots[i] or {})
     essence = a.get("essence") or "video"
     leg = 1 if int(a.get("leg") or 0) == 1 else 0
@@ -421,11 +421,11 @@ def _mut_tx_format(params, a):
     slots = list(params.get("tx_slots") or [])
     i = int(a["slot"])
     if not (0 <= i < len(slots)):
-        raise ValueError("slot TX ***REMOVED***%d inexistant" % i)
+        raise ValueError("slot TX #%d inexistant" % i)
     slots[i] = dict(slots[i] or {})
     fps = float(a["fps"])
     scan = "i" if str(a.get("scan") or "p").lower() == "i" else "p"
-    if scan == "i" and fps > 30:                  ***REMOVED*** ST 2110-20 : cadence TRAME, jamais champ
+    if scan == "i" and fps > 30:                  # ST 2110-20 : cadence TRAME, jamais champ
         fps /= 2.0
     slots[i]["width"], slots[i]["height"] = int(a["width"]), int(a["height"])
     slots[i]["fps"], slots[i]["scan"] = fps, scan
@@ -437,8 +437,8 @@ def _mut_tx_format(params, a):
             slots[i].setdefault("field_order", "tff")
     else:
         slots[i]["field_order"] = ""
-    ***REMOVED*** Profondeur (étage 3, « aligner le slot sur la source ») : elle entre dans la signature ET est
-    ***REMOVED*** poussée à chaque `/tx` — l'omettre laisserait un écart de bd derrière un alignement « réussi ».
+    # Profondeur (étage 3, « aligner le slot sur la source ») : elle entre dans la signature ET est
+    # poussée à chaque `/tx` — l'omettre laisserait un écart de bd derrière un alignement « réussi ».
     if a.get("bit_depth"):
         slots[i]["bit_depth"] = int(a["bit_depth"])
     params["tx_slots"] = slots
@@ -449,7 +449,7 @@ def _mut_tx_pacing(params, a):
     slots = list(params.get("tx_slots") or [])
     i = int(a["slot"])
     if not (0 <= i < len(slots)):
-        raise ValueError("slot TX ***REMOVED***%d inexistant" % i)
+        raise ValueError("slot TX #%d inexistant" % i)
     slots[i] = dict(slots[i] or {})
     slots[i]["epoch_shift_us"] = max(0, min(15000, int(a.get("epoch_shift_us") or 0)))
     params["tx_slots"] = slots
@@ -481,7 +481,7 @@ def _mut_tx_serve_newest(params, a):
     slots = list(params.get("tx_slots") or [])
     i = int(a["slot"])
     if not (0 <= i < len(slots)):
-        raise ValueError("slot TX ***REMOVED***%d inexistant" % i)
+        raise ValueError("slot TX #%d inexistant" % i)
     slots[i] = dict(slots[i] or {})
     slots[i]["serve_newest"] = 1 if int(a.get("serve_newest") or 0) else 0
     params["tx_slots"] = slots
@@ -495,8 +495,8 @@ MUTATORS = {"tx_dest": _mut_tx_dest, "tx_format": _mut_tx_format, "tx_pacing": _
 def mutate(params, op, args):
     """Applique une action différable à `params` (copie) et retourne les params résultants."""
     if op in ("tx_layout_apply", "tx_mcast_plan"):
-        ***REMOVED*** Cas à part : ces deux actions RECALCULENT elles-mêmes les params (io2110_layouts.apply_layout
-        ***REMOVED*** / allocations.plan_tx_multicast) et se persistent/poussent seules à l'application.
+        # Cas à part : ces deux actions RECALCULENT elles-mêmes les params (io2110_layouts.apply_layout
+        # / allocations.plan_tx_multicast) et se persistent/poussent seules à l'application.
         return params
     fn = MUTATORS.get(op)
     if not fn:
@@ -524,7 +524,7 @@ def preview(vmid, op, args):
 
 def action_label(op, args):
     a = args or {}
-    slot = ("TX ***REMOVED***%d" % (int(a["slot"]) + 1)) if a.get("slot") is not None else ""
+    slot = ("TX #%d" % (int(a["slot"]) + 1)) if a.get("slot") is not None else ""
     if op == "tx_format":
         return "%s → %sx%s%s%s" % (slot, a.get("width"), a.get("height"),
                                    a.get("scan") or "p", _norm_fps(a.get("fps"), a.get("scan")))
@@ -544,7 +544,7 @@ def action_label(op, args):
     return op
 
 
-***REMOVED*** ─── Bac de changements en attente (fenêtre de maintenance) ────────────────────────────────────────
+# ─── Bac de changements en attente (fenêtre de maintenance) ────────────────────────────────────────
 
 def queue(vmid, op, args, apply_at=None, actor=None):
     """Empile une action perturbatrice dans le bac. `apply_at` = ISO 'YYYY-MM-DDTHH:MM' (ou None =
@@ -610,7 +610,7 @@ def apply_pending(vmid, actor=""):
     if not pend:
         return 0, []
     errors, applied, layout_apply, mcast_plan = [], [], False, False
-    layout_iface = None      ***REMOVED*** carte ciblée mémorisée par l'op différée (portée multi-port)
+    layout_iface = None      # carte ciblée mémorisée par l'op différée (portée multi-port)
     with verrou_vmid(vmid, op="tx-maintenance"):
         c = db_get_container(vmid) or {}
         try:
@@ -621,26 +621,26 @@ def apply_pending(vmid, actor=""):
         for p in pend:
             try:
                 if p["op"] == "tx_layout_apply":
-                    layout_apply = True                 ***REMOVED*** appliqué en dernier (alloc + provisioning)
-                    ***REMOVED*** Portée MÉMORISÉE : différer ne doit pas élargir l'application de la carte
-                    ***REMOVED*** cliquée à toutes les cartes du nœud (multi-port).
+                    layout_apply = True                 # appliqué en dernier (alloc + provisioning)
+                    # Portée MÉMORISÉE : différer ne doit pas élargir l'application de la carte
+                    # cliquée à toutes les cartes du nœud (multi-port).
                     layout_iface = (p.get("args") or {}).get("iface") or layout_iface
                 elif p["op"] == "tx_mcast_plan":
-                    mcast_plan = True                   ***REMOVED*** idem : replanifie + persiste + pousse seul
+                    mcast_plan = True                   # idem : replanifie + persiste + pousse seul
                 else:
                     params = mutate(params, p["op"], p["args"])
                 applied.append(p)
             except Exception as e:
-                errors.append("***REMOVED***%s %s : %s" % (p["id"], p["label"], e))
+                errors.append("#%s %s : %s" % (p["id"], p["label"], e))
                 db_tx_pending_set_status(p["id"], "failed", str(e))
         if applied:
             db_update_deploy_config(vmid, dc.get("type") or "2110_io", params)
             if layout_apply:
-                ***REMOVED*** apply_layout persiste + pousse lui-même (alloc mcast + provisioning silencieux).
+                # apply_layout persiste + pousse lui-même (alloc mcast + provisioning silencieux).
                 ok, res = _lay.apply_layout(vmid, iface=layout_iface)
                 if not ok:
                     errors.append("layout : %s" % res)
-                if mcast_plan:                          ***REMOVED*** replan APRÈS le layout (adresses fraîches)
+                if mcast_plan:                          # replan APRÈS le layout (adresses fraîches)
                     from . import allocations as _alloc
                     _d, _e = _alloc.plan_tx_multicast(vmid, appliquer=True)
                     if _e:
@@ -677,7 +677,7 @@ def apply_pending(vmid, actor=""):
     return len(applied), errors
 
 
-***REMOVED*** ─── Planificateur (« appliquer à HH:MM ») ────────────────────────────────────────────────────────
+# ─── Planificateur (« appliquer à HH:MM ») ────────────────────────────────────────────────────────
 
 _sched_started = False
 

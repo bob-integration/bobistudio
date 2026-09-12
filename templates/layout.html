@@ -157,7 +157,7 @@
 
         // ─── Tri + filtre de tableau, PARTAGÉS ─────────────────────────────────────────────────
         // Même raison que la sparkline ci-dessus : le tri par colonne existait déjà dans labels
-        // (scopé à `***REMOVED***tsl-grid`, donc non réutilisable) et un filtre ad hoc dans les logs du
+        // (scopé à `#tsl-grid`, donc non réutilisable) et un filtre ad hoc dans les logs du
         // monitoring. Plutôt que d'en écrire une troisième et une quatrième copie pour les listes
         // de liens RDMA — l'une vivant dans un sous-module, l'autre dans monitoring — la primitive
         // vit ici, dans layout, chargé partout (contrairement à scripts.js, qui ne l'est que sur
@@ -489,18 +489,18 @@
     </script>
     <link rel="stylesheet" href="/static/css/base.css?v={{ asset_v('css/base.css') }}">
     <link rel="stylesheet" href="/static/css/nav.css?v={{ asset_v('css/nav.css') }}">
-    {***REMOVED*** Catalogue de contrôles (poussoirs, rotatifs, tranches, afficheurs, bus) : source UNIQUE,
+    {# Catalogue de contrôles (poussoirs, rotatifs, tranches, afficheurs, bus) : source UNIQUE,
        chargée partout comme base.css. Un plugin CHOISIT une variante, il n'en redéfinit pas.
-       Inventaire vivant : Réglages → Contrôles. ***REMOVED***}
+       Inventaire vivant : Réglages → Contrôles. #}
     <link rel="stylesheet" href="/static/css/controls.css?v={{ asset_v('css/controls.css') }}">
-    {***REMOVED*** Partie JS du catalogue (tracé des rotatifs) : un rotatif est un TRACÉ, pas seulement un
-       style. Sans ça chaque plugin redessinerait le sien, ce qui déplacerait la duplication. ***REMOVED***}
+    {# Partie JS du catalogue (tracé des rotatifs) : un rotatif est un TRACÉ, pas seulement un
+       style. Sans ça chaque plugin redessinerait le sien, ce qui déplacerait la duplication. #}
     <script src="/static/js/controls.js?v={{ asset_v('js/controls.js') }}"></script>
     <script src="/static/js/layout_engine.js?v={{ asset_v('js/layout_engine.js') }}"></script>
-    {***REMOVED*** Lecture d'un flux 2110 (cadence, état) : les vues Sources et Destinations affichent les
+    {# Lecture d'un flux 2110 (cadence, état) : les vues Sources et Destinations affichent les
        mêmes deux informations et les rendaient chacune à sa façon — jusqu'à « 1000 fps » sur une
        piste audio d'un côté et « — » de l'autre. Le calcul est partagé, comme le gabarit de ligne
-       l'est déjà dans base.css. ***REMOVED***}
+       l'est déjà dans base.css. #}
     <script src="/static/js/io_flux.js?v={{ asset_v('js/io_flux.js') }}"></script>
     {% block head %}{% endblock %}
     {% if theme and theme != 'classic' %}
@@ -525,12 +525,12 @@
          que par containers.html/projects.html, donc les pages de contrôle de plugin n'avaient AUCUN
          bouton, en silence (le CSS et les champs étaient bons ; personne ne posait les boutons). -->
     <script src="/static/num_stepper.js?v={{ asset_v('num_stepper.js') }}"></script>
-    {***REMOVED*** Brique du moniteur de ressources CPU (window.MXLRessources) : chargée ICI, pas dans
+    {# Brique du moniteur de ressources CPU (window.MXLRessources) : chargée ICI, pas dans
        scripts.js — l'onglet Ressources (containers.html) ET le widget compact des pages plugin
-       (plugin_section.html, qui ne charge pas scripts.js) en dépendent tous les deux. ***REMOVED***}
+       (plugin_section.html, qui ne charge pas scripts.js) en dépendent tous les deux. #}
     <script src="/static/ressources.js?v={{ asset_v('ressources.js') }}"></script>
-    {***REMOVED*** Visualiseur de journal : chargé ICI (et pas dans scripts.js, qui n'est servi qu'aux pages
-       Containers/Projets) pour être ouvrable depuis n'importe quelle page — cf. window.BobiLogs. ***REMOVED***}
+    {# Visualiseur de journal : chargé ICI (et pas dans scripts.js, qui n'est servi qu'aux pages
+       Containers/Projets) pour être ouvrable depuis n'importe quelle page — cf. window.BobiLogs. #}
     <script src="/static/log_viewer.js?v={{ asset_v('log_viewer.js') }}"></script>
     <!-- Modale « action perturbatrice » (docs/reference/TX_LAYOUTS.md étage 2, window.txMaintConfirm) : chargée pour
          TOUTES les pages. Elle vivait d'abord dans scripts.js — qui n'est chargé que par
@@ -549,21 +549,21 @@
 </head>
 {% set page = page|default('') %}
 <body class="page-{{ page }}">
-    <a href="***REMOVED***contenu" class="lien-evitement">{{ _('nav.aller_contenu') }}</a>
+    <a href="#contenu" class="lien-evitement">{{ _('nav.aller_contenu') }}</a>
 
-    {***REMOVED*** Mode plein écran (workspace) : pas de topnav — le template porte son propre menu
-       flottant. La sécurité ne repose pas sur ce masquage (garde before_request + API). ***REMOVED***}
+    {# Mode plein écran (workspace) : pas de topnav — le template porte son propre menu
+       flottant. La sécurité ne repose pas sur ce masquage (garde before_request + API). #}
     {% if not hide_topnav %}
     <nav class="topnav">
-        {***REMOVED*** Chrome projet (chantier 1) : les utilisateurs `interface=projets` n'ont que
+        {# Chrome projet (chantier 1) : les utilisateurs `interface=projets` n'ont que
            l'accueil de leurs projets — la nav technique est réservée aux autres. Défini AVANT le
-           bloc de marque : celui-ci ramène à l'accueil, qui n'est pas le même selon l'interface. ***REMOVED***}
+           bloc de marque : celui-ci ramène à l'accueil, qui n'est pas le même selon l'interface. #}
         {% set project_ui = current_user and current_user.interface == 'projets' %}
-        {***REMOVED*** Marque en BLOC vertical : logo client à gauche, « Bobi.Studio » puis le nom du système
+        {# Marque en BLOC vertical : logo client à gauche, « Bobi.Studio » puis le nom du système
            en dessous. Coûte moins de largeur que l'ancienne mise en ligne (marque · filet · nom)
            dans une barre déjà chargée, et hiérarchise : produit au-dessus, installation en dessous.
            C'est aussi le RETOUR À L'ACCUEIL : convention universelle, et le seul repère qui ne
-           bouge jamais d'une page à l'autre. ***REMOVED***}
+           bouge jamais d'une page à l'autre. #}
         <a href="{{ '/workspaces' if project_ui else '/' }}" class="brand-block"
            title="{{ brand.location if brand and brand.location else _('nav.home') }}">
             {% if brand and brand.logo_url %}
@@ -580,10 +580,10 @@
         <a href="/"           class="{{ 'active' if page == 'home' }}">{{ _('nav.home') }}</a>
         <a href="/containers" class="{{ 'active' if page == 'containers' }}">{{ _('nav.containers') }}</a>
         <a href="/io" class="{{ 'active' if page == 'io' }}">{{ _('nav.io') }}</a>
-        {***REMOVED*** Rubriques de plugins : DÉRIVÉES du registre, pas énumérées ici. Deux rubriques étaient
+        {# Rubriques de plugins : DÉRIVÉES du registre, pas énumérées ici. Deux rubriques étaient
            câblées en dur (Traitements, Médias) ; toute rubrique nouvelle restait donc invisible
            dans la nav, quel que soit son contenu. `sources`, `streams` et `destinations` sont
-           exclues parce qu'elles sont déjà servies par la page agrégée /io juste au-dessus. ***REMOVED***}
+           exclues parce qu'elles sont déjà servies par la page agrégée /io juste au-dessus. #}
         {% for sid in ['traitements', 'composition', 'mesure', 'medias'] %}
           {% set sec = (plugin_sections or {}).get(sid) %}
           {% if sec %}
@@ -592,13 +592,13 @@
         {% endfor %}
         <a href="/cables"     class="{{ 'active' if page == 'cables' }}">{{ _('nav.cables') }}</a>
         <a href="/projects"   class="{{ 'active' if page == 'projects' }}">{{ _('nav.projects') }}</a>
-        {***REMOVED*** Sonde 2110 n'est plus un lien de premier niveau : c'est un ONGLET de Monitoring
-           (barre d'onglets de monitoring.html) — même famille que Nœuds / Tissu / RDMA. ***REMOVED***}
+        {# Sonde 2110 n'est plus un lien de premier niveau : c'est un ONGLET de Monitoring
+           (barre d'onglets de monitoring.html) — même famille que Nœuds / Tissu / RDMA. #}
         <a href="/monitoring" class="{{ 'active' if page in ('monitoring', 'probe') }}">{{ _('nav.monitoring') }}</a>
         {% endif %}
         <span class="spacer"></span>
         {% if control_role == 'standby' %}
-        <a href="/settings***REMOVED***cluster" id="nav-ha-badge" class="nav-ha-standby"
+        <a href="/settings#cluster" id="nav-ha-badge" class="nav-ha-standby"
            title="{{ _('layout.ha_standby_title') }}">⏸ {{ _('layout.ha_standby') }}</a>
         <script>
         // Chien de garde HA : un standby qui se tait pendant que l'actif est mort, c'est une
@@ -628,33 +628,33 @@
         })();
         </script>
         {% endif %}
-        {***REMOVED*** Aide (et Recette) : du CHROME, pas une destination métier — réduit à une pastille « ? »
-           qui ouvre un petit menu, plutôt que deux liens au milieu des pages de production. ***REMOVED***}
+        {# Aide (et Recette) : du CHROME, pas une destination métier — réduit à une pastille « ? »
+           qui ouvre un petit menu, plutôt que deux liens au milieu des pages de production. #}
         <span class="nav-menu" id="nav-help-menu">
             <button type="button" class="nav-icon-btn {{ 'active' if page in ('aide', 'tests') }}"
                     aria-haspopup="true" aria-expanded="false"
                     title="{{ _('nav.aide') }}" data-nav-menu-toggle>?</button>
             <span class="nav-menu-pop" role="menu">
-                {***REMOVED*** La VERSION, ici et pas ailleurs : c'est le menu qu'on ouvre quand on cherche
+                {# La VERSION, ici et pas ailleurs : c'est le menu qu'on ouvre quand on cherche
                    « c'est quoi, cette installation ? », et il est atteignable depuis toutes les
-                   pages. Ligne d'en-tête, pas un lien : il n'y a rien à ouvrir. ***REMOVED***}
+                   pages. Ligne d'en-tête, pas un lien : il n'y a rien à ouvrir. #}
                 <span class="nav-menu-head">Bobi.Studio <small>{{ app_version|default('') }}</small></span>
                 <span class="nav-menu-sep"></span>
                 <a href="/aide" role="menuitem" class="{{ 'active' if page == 'aide' }}">{{ _('nav.aide') }}</a>
-                {***REMOVED*** L'entrée suit le réglage `testplan_enabled` : passée la mise en service,
+                {# L'entrée suit le réglage `testplan_enabled` : passée la mise en service,
                    un menu qui mène à une page désactivée vaut moins que pas de menu du tout.
                    `default(false)` : le gabarit se recharge à chaud, pas le code — sans lui,
-                   la page rendrait une erreur jusqu'au redémarrage du contrôleur. ***REMOVED***}
+                   la page rendrait une erreur jusqu'au redémarrage du contrôleur. #}
                 {% if not project_ui and recette_active|default(false) %}
                 <a href="/tests" role="menuitem" class="{{ 'active' if page == 'tests' }}">{{ _('recette.title') }}</a>
                 {% endif %}
             </span>
         </span>
         {% if current_user %}
-        {***REMOVED*** Le nom d'utilisateur EST le menu : identité, réglages de VUE (niveau de libellé des
+        {# Le nom d'utilisateur EST le menu : identité, réglages de VUE (niveau de libellé des
            sources, niveau de tally — globaux à toutes les pages, consultés en permanence) et
            déconnexion. Ils vivaient tous dans la barre ; ils y prenaient trois cadres pour des
-           réglages qu'on change à la volée mais qu'on n'a pas besoin de VOIR en permanence. ***REMOVED***}
+           réglages qu'on change à la volée mais qu'on n'a pas besoin de VOIR en permanence. #}
         <span class="nav-menu" id="nav-user-menu">
             <button type="button" class="nav-user-btn" aria-haspopup="true" aria-expanded="false"
                     title="{{ current_user.role }}" data-nav-menu-toggle>
@@ -672,7 +672,7 @@
                     <select id="nav-tally-level"></select>
                 </span>
                 <span class="nav-menu-sep"></span>
-                {***REMOVED*** LA LANGUE A QUITTÉ CE MENU pour la page « Mon compte ». On ne change pas
+                {# LA LANGUE A QUITTÉ CE MENU pour la page « Mon compte ». On ne change pas
                    de langue plusieurs fois par jour : lui garder une place dans un menu conçu
                    pour les gestes fréquents la mettait au même rang que le niveau de tally.
                    Le THÈME reste, lui : on bascule sombre/clair quand l'éclairage de la régie
@@ -681,8 +681,8 @@
                    ⚠ Les niveaux de libellé et de tally ci-dessus restent AUSSI, et ce n'est pas
                    une hésitation : ils vivent dans `localStorage`, donc par NAVIGATEUR. Les
                    poser sur une page de compte laisserait croire qu'ils suivent la personne
-                   d'un poste à l'autre, ce qui est faux. ***REMOVED***}
-                {***REMOVED*** ⏳ LANGUE — REMISE ICI À TITRE PROVISOIRE (2026-08-29), pour la campagne
+                   d'un poste à l'autre, ce qui est faux. #}
+                {# ⏳ LANGUE — REMISE ICI À TITRE PROVISOIRE (2026-08-29), pour la campagne
                    de recette : basculer FR/EN plusieurs fois par heure depuis « Mon compte »
                    coûte deux navigations à chaque essai.
 
@@ -690,7 +690,7 @@
                    ne change pas de langue plusieurs fois par jour en exploitation, et lui garder
                    une place dans un menu conçu pour les gestes fréquents la met au même rang que
                    le niveau de tally. « Mon compte » reste la vraie place ; ce sélecteur-ci est
-                   un OUTIL DE TEST, à retirer quand la recette sera close. ***REMOVED***}
+                   un OUTIL DE TEST, à retirer quand la recette sera close. #}
                 <span class="nav-menu-field" title="{{ _('nav.lang_title') }}">
                     <label for="nav-lang">{{ _('nav.lang') }}</label>
                     <select id="nav-lang">
@@ -700,10 +700,10 @@
                     </select>
                 </span>
                 <span class="nav-menu-sep"></span>
-                {***REMOVED*** Thème : préférence PERSONNELLE (`users.theme`), comme la langue. Le setting
+                {# Thème : préférence PERSONNELLE (`users.theme`), comme la langue. Le setting
                    global n'est plus que le DÉFAUT servi à qui n'a rien choisi — d'où l'option
                    vide en tête. Un thème est un confort de poste (régie sombre, bureau en plein
-                   jour) : il n'a pas à être imposé à la flotte par le dernier qui y a touché. ***REMOVED***}
+                   jour) : il n'a pas à être imposé à la flotte par le dernier qui y a touché. #}
                 <span class="nav-menu-field" title="{{ _('nav.theme_title') }}">
                     <label for="nav-theme">{{ _('nav.theme') }}</label>
                     <select id="nav-theme">
@@ -714,10 +714,10 @@
                     </select>
                 </span>
                 <span class="nav-menu-sep"></span>
-                {***REMOVED*** MON COMPTE, dans MON menu. Le mot de passe se changeait depuis Réglages →
+                {# MON COMPTE, dans MON menu. Le mot de passe se changeait depuis Réglages →
                    Utilisateurs, sous la liste de tous les comptes ; l'e-mail ne se changeait
                    pas du tout. On cherche ses propres réglages là où on trouve déjà sa langue
-                   et son thème, pas dans l'administration des autres. ***REMOVED***}
+                   et son thème, pas dans l'administration des autres. #}
                 <a href="/compte" class="nav-menu-item" role="menuitem">{{ _('nav.compte') }}</a>
                 <a href="/logout" class="nav-menu-logout" role="menuitem"
                    title="{{ _('nav.logout_title') }}">{{ _('nav.logout') }}</a>
@@ -860,55 +860,55 @@
     {% if current_user %}
     <!-- ═══ Panneau de monitoring WebRTC (global, par utilisateur) ═══ -->
     <style>
-    ***REMOVED***mon-tab {
+    #mon-tab {
         position: fixed; right: 0; bottom: 80px;
         z-index: 201; writing-mode: vertical-rl; padding: 14px 6px;
-        background: var(--bg-panel, ***REMOVED***161b22); color: var(--text, ***REMOVED***e6edf3);
-        border: 1px solid var(--border-soft, ***REMOVED***30363d); border-right: none;
+        background: var(--bg-panel, #161b22); color: var(--text, #e6edf3);
+        border: 1px solid var(--border-soft, #30363d); border-right: none;
         border-radius: 8px 0 0 8px; cursor: pointer; font-size: 0.85em; letter-spacing: 0.05em;
     }
-    ***REMOVED***mon-tab:hover { color: var(--status-running-fg, ***REMOVED***3fb950); }
-    ***REMOVED***mon-panel {
+    #mon-tab:hover { color: var(--status-running-fg, #3fb950); }
+    #mon-panel {
         position: fixed; bottom: 0; right: 0; width: min(440px, 92vw);
-        max-height: 85vh; z-index: 200; background: var(--bg-panel, ***REMOVED***161b22);
-        border: 1px solid var(--border-soft, ***REMOVED***30363d); border-right: none; border-bottom: none;
+        max-height: 85vh; z-index: 200; background: var(--bg-panel, #161b22);
+        border: 1px solid var(--border-soft, #30363d); border-right: none; border-bottom: none;
         border-radius: 8px 0 0 0;
         box-shadow: -6px -6px 24px rgba(0,0,0,0.35);
         transform: translateX(110%); transition: transform 220ms ease;
         display: flex; flex-direction: column;
     }
-    ***REMOVED***mon-panel.open { transform: translateX(0); }
+    #mon-panel.open { transform: translateX(0); }
     .mon-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px;
-        border-bottom: 1px solid var(--border-soft, ***REMOVED***30363d); }
+        border-bottom: 1px solid var(--border-soft, #30363d); }
     .mon-head .mon-title { font-weight: 600; }
-    .mon-head .mon-source { color: var(--text-muted, ***REMOVED***8b949e); font-size: 0.85em;
+    .mon-head .mon-source { color: var(--text-muted, #8b949e); font-size: 0.85em;
         flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .mon-head button { background: none; border: 1px solid var(--border-soft, ***REMOVED***30363d);
-        color: var(--text-muted, ***REMOVED***8b949e); border-radius: 4px; cursor: pointer; padding: 2px 8px; }
-    .mon-head button:hover { color: var(--text, ***REMOVED***e6edf3); }
+    .mon-head button { background: none; border: 1px solid var(--border-soft, #30363d);
+        color: var(--text-muted, #8b949e); border-radius: 4px; cursor: pointer; padding: 2px 8px; }
+    .mon-head button:hover { color: var(--text, #e6edf3); }
     .mon-body { display: flex; flex-direction: column; padding: 10px; gap: 8px; overflow: auto; }
-    ***REMOVED***mon-frame { width: 100%; aspect-ratio: 16/9; border: 1px solid var(--border-soft, ***REMOVED***30363d);
-        border-radius: 6px; background: ***REMOVED***000; }
-    .mon-msg { color: var(--text-muted, ***REMOVED***8b949e); font-size: 0.9em; }
-    .mon-msg button { background: var(--status-running-fg, ***REMOVED***3fb950); color: ***REMOVED***06210f; border: none;
+    #mon-frame { width: 100%; aspect-ratio: 16/9; border: 1px solid var(--border-soft, #30363d);
+        border-radius: 6px; background: #000; }
+    .mon-msg { color: var(--text-muted, #8b949e); font-size: 0.9em; }
+    .mon-msg button { background: var(--status-running-fg, #3fb950); color: #06210f; border: none;
         border-radius: 4px; padding: 6px 12px; font-weight: 600; cursor: pointer; margin-top: 6px; }
     .mon-sources { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-    .mon-sources .mon-src-label { color: var(--text-muted, ***REMOVED***8b949e); font-size: 0.82em; margin-right: 2px; }
-    .mon-src-btn { background: transparent; color: var(--text, ***REMOVED***e6edf3);
-        border: 1px solid var(--border-soft, ***REMOVED***30363d); border-radius: 4px;
+    .mon-sources .mon-src-label { color: var(--text-muted, #8b949e); font-size: 0.82em; margin-right: 2px; }
+    .mon-src-btn { background: transparent; color: var(--text, #e6edf3);
+        border: 1px solid var(--border-soft, #30363d); border-radius: 4px;
         padding: 3px 9px; font-size: 0.82em; cursor: pointer; }
-    .mon-src-btn:hover { border-color: var(--accent, ***REMOVED***7aa2c8); }
+    .mon-src-btn:hover { border-color: var(--accent, #7aa2c8); }
     .mon-src-btn.active { background: var(--accent-soft, rgba(122,162,200,0.15));
-        border-color: var(--accent, ***REMOVED***7aa2c8); color: var(--accent, ***REMOVED***7aa2c8); font-weight: 600; }
+        border-color: var(--accent, #7aa2c8); color: var(--accent, #7aa2c8); font-weight: 600; }
     /* TALLY de la source regardée (TSL) : pastilles dans l'en-tête + LISERÉ autour de l'image.
        Le liseré est ce qu'on voit du coin de l'œil ; les pastilles disent QUELS niveaux sont
        actifs (une par niveau, un même flux pouvant être PGM sur l'un et PVW sur l'autre). */
     .mon-tally { display: inline-flex; align-items: center; gap: 3px; flex: none; }
     .mon-tally .mon-tally-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-    ***REMOVED***mon-frame.tally-red    { border-color: ***REMOVED***cc2222; box-shadow: 0 0 0 2px ***REMOVED***cc2222; }
-    ***REMOVED***mon-frame.tally-green  { border-color: ***REMOVED***22aa44; box-shadow: 0 0 0 2px ***REMOVED***22aa44; }
-    ***REMOVED***mon-frame.tally-amber  { border-color: ***REMOVED***cc8800; box-shadow: 0 0 0 2px ***REMOVED***cc8800; }
-    ***REMOVED***mon-log { background: var(--bg-soft, ***REMOVED***0d1117); border: 1px solid var(--border-soft, ***REMOVED***30363d);
+    #mon-frame.tally-red    { border-color: #cc2222; box-shadow: 0 0 0 2px #cc2222; }
+    #mon-frame.tally-green  { border-color: #22aa44; box-shadow: 0 0 0 2px #22aa44; }
+    #mon-frame.tally-amber  { border-color: #cc8800; box-shadow: 0 0 0 2px #cc8800; }
+    #mon-log { background: var(--bg-soft, #0d1117); border: 1px solid var(--border-soft, #30363d);
         border-radius: 4px; padding: 8px; font-size: 0.78em; max-height: 200px; overflow: auto;
         white-space: pre-wrap; line-height: 1.4; font-family: var(--font-mono, monospace); }
     </style>
@@ -1191,11 +1191,11 @@
                 const node = ((j.topology || {}).nodes || []).find(n => n.vmid === vmid);
                 if (!node) { clearSources(); showMsg(window.t('js.monitor.not_found')); return; }
                 const outs = (node.produces || []).filter(p => p.kind === 'video' && p.shm);
-                if (!outs.length) { clearSources(); showMsg(window.t('js.monitor.no_video_out').replace('{name}', node.hostname || ('***REMOVED***'+vmid))); return; }
+                if (!outs.length) { clearSources(); showMsg(window.t('js.monitor.no_video_out').replace('{name}', node.hostname || ('#'+vmid))); return; }
                 // Audio : 1ʳᵉ sortie audio du node (ex. receiver_audio_0), incluse en Opus (1 piste).
                 const aud = (node.produces || []).find(p => p.kind === 'audio' && p.shm);
                 const aShm = aud ? aud.shm : '';
-                const nodeLabel = node.hostname || ('***REMOVED***' + vmid);
+                const nodeLabel = node.hostname || ('#' + vmid);
                 if (outs.length === 1) {
                     clearSources();
                     send(outs[0].shm, `${nodeLabel}${outs[0].label ? ' ' + outs[0].label : ''}`, aShm);

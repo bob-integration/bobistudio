@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Auth & permissions de l'orchestrateur.
@@ -22,27 +22,27 @@ from .database import (db_get_user, db_get_user_by_id, db_get_container,
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** ─── Permissions ─────────────────────────────────────────────
+# ─── Permissions ─────────────────────────────────────────────
 
 PERMISSIONS = [
     "containers.create",
     "containers.delete",
-    "containers.deploy",       ***REMOVED*** start/stop/restart, deploy d'un script
-    "plugins.operate",         ***REMOVED*** contrôle live + réglages « user » des plugins (pages plugin)
-    "multiview.edit",          ***REMOVED*** composer, layouts, tally
+    "containers.deploy",       # start/stop/restart, deploy d'un script
+    "plugins.operate",         # contrôle live + réglages « user » des plugins (pages plugin)
+    "multiview.edit",          # composer, layouts, tally
     "projects.manage",
-    "settings.edit",           ***REMOVED*** config Proxmox, plages, thème, users
+    "settings.edit",           # config Proxmox, plages, thème, users
     "backup.manage",
-    "files.access",            ***REMOVED*** gestionnaire de fichiers (Réglages → Fichiers) ; gating fin par racine
-    "media.manage",            ***REMOVED*** gestionnaire de médias (Médias → Gestionnaire de Médias)
+    "files.access",            # gestionnaire de fichiers (Réglages → Fichiers) ; gating fin par racine
+    "media.manage",            # gestionnaire de médias (Médias → Gestionnaire de Médias)
 ]
 
-***REMOVED*** ⚠ CES CONSTANTES SONT DES DÉFAUTS DE PREMIER DÉMARRAGE, PLUS LA VÉRITÉ.
-***REMOVED*** Depuis l'onglet Réglages → Rôles, les habilitations vivent dans la table `habilitations` et
-***REMOVED*** sont modifiables. `recharger_habilitations()` recopie la table dans `ROLES`/`ROLE_LABELS`
-***REMOVED*** EN PLACE — les modules qui ont fait `from .auth import ROLES` gardent le bon objet, donc
-***REMOVED*** voient les changements sans redémarrage. C'est la raison du `.clear()` + `.update()` plutôt
-***REMOVED*** qu'une réaffectation.
+# ⚠ CES CONSTANTES SONT DES DÉFAUTS DE PREMIER DÉMARRAGE, PLUS LA VÉRITÉ.
+# Depuis l'onglet Réglages → Rôles, les habilitations vivent dans la table `habilitations` et
+# sont modifiables. `recharger_habilitations()` recopie la table dans `ROLES`/`ROLE_LABELS`
+# EN PLACE — les modules qui ont fait `from .auth import ROLES` gardent le bon objet, donc
+# voient les changements sans redémarrage. C'est la raison du `.clear()` + `.update()` plutôt
+# qu'une réaffectation.
 ROLES = {
     "admin": set(PERMISSIONS),
     "operator": {
@@ -56,14 +56,14 @@ ROLES = {
     "multiview": {
         "multiview.edit",
     },
-    "viewer": set(),   ***REMOVED*** lecture seule
+    "viewer": set(),   # lecture seule
 }
 
-***REMOVED*** ⚠ CE CHAMP DÉCRIT, IL NE NOMME PAS. Le nom d'un rôle, c'est son IDENTIFIANT (`exploitant`) :
-***REMOVED*** c'est lui qu'on lit dans `users.role` et qu'on cherche dans le code. Ces valeurs portaient
-***REMOVED*** les deux à la fois — « Exploitant (pilotage plugins, sans déploiement) » est un nom ET une
-***REMOVED*** description agrafés — et c'est ce qui faisait déborder les en-têtes de la matrice. Une
-***REMOVED*** description, donc : pas de reprise du nom, pas de parenthèses.
+# ⚠ CE CHAMP DÉCRIT, IL NE NOMME PAS. Le nom d'un rôle, c'est son IDENTIFIANT (`exploitant`) :
+# c'est lui qu'on lit dans `users.role` et qu'on cherche dans le code. Ces valeurs portaient
+# les deux à la fois — « Exploitant (pilotage plugins, sans déploiement) » est un nom ET une
+# description agrafés — et c'est ce qui faisait déborder les en-têtes de la matrice. Une
+# description, donc : pas de reprise du nom, pas de parenthèses.
 ROLE_LABELS = {
     "admin":      "Tous les droits",
     "operator":   "Exploitation complète, sans les réglages",
@@ -72,8 +72,8 @@ ROLE_LABELS = {
     "viewer":     "Lecture seule",
 }
 
-***REMOVED*** Ce que ces descriptions valaient AVANT le nettoyage. Sert à la migration : on ne remplace que
-***REMOVED*** ce qui n'a jamais été modifié — une description réécrite par un administrateur lui appartient.
+# Ce que ces descriptions valaient AVANT le nettoyage. Sert à la migration : on ne remplace que
+# ce qui n'a jamais été modifié — une description réécrite par un administrateur lui appartient.
 ROLE_LABELS_ANCIENS = {
     "admin":      "Administrateur",
     "operator":   "Opérateur",
@@ -82,14 +82,14 @@ ROLE_LABELS_ANCIENS = {
     "viewer":     "Lecteur (lecture seule)",
 }
 
-***REMOVED*** ─── Rôles par projet (chantier 1, cf. docs/reference/PROJETS.md §12) ───────
-***REMOVED***
-***REMOVED*** Le rôle GLOBAL décide du scope d'accès : admin/operator voient tout le cluster
-***REMOVED*** (rien ne change pour eux) ; tout autre rôle est « scopé projet » et n'atteint
-***REMOVED*** une ressource que via son appartenance au projet qui la porte. Le rôle global
-***REMOVED*** reste le plafond des capacités (plugins.operate etc. s'appliquent toujours).
+# ─── Rôles par projet (chantier 1, cf. docs/reference/PROJETS.md §12) ───────
+#
+# Le rôle GLOBAL décide du scope d'accès : admin/operator voient tout le cluster
+# (rien ne change pour eux) ; tout autre rôle est « scopé projet » et n'atteint
+# une ressource que via son appartenance au projet qui la porte. Le rôle global
+# reste le plafond des capacités (plugins.operate etc. s'appliquent toujours).
 
-PROJECT_ROLES = ["viewer", "operator", "editor", "owner"]   ***REMOVED*** ordre croissant
+PROJECT_ROLES = ["viewer", "operator", "editor", "owner"]   # ordre croissant
 
 PROJECT_ROLE_LABELS = {
     "owner":    "Propriétaire",
@@ -100,16 +100,16 @@ PROJECT_ROLE_LABELS = {
 
 GLOBAL_ACCESS_ROLES = ("admin", "operator")
 
-***REMOVED*** Copies figées des défauts : `ROLES` est muté en place au chargement, donc il ne peut pas
-***REMOVED*** servir de référence pour « remettre d'origine ».
+# Copies figées des défauts : `ROLES` est muté en place au chargement, donc il ne peut pas
+# servir de référence pour « remettre d'origine ».
 ROLES_DEFAUT = {r: set(p) for r, p in ROLES.items()}
 ROLE_LABELS_DEFAUT = dict(ROLE_LABELS)
 GLOBAL_ACCESS_DEFAUT = tuple(GLOBAL_ACCESS_ROLES)
 
-***REMOVED*** ⚠ L'ADMINISTRATEUR N'EST PAS MODIFIABLE, ET C'EST STRUCTUREL. Une interface qui laisse retirer
-***REMOVED*** `settings.edit` au rôle administrateur laisse verrouiller l'installation pour de bon : plus
-***REMOVED*** personne ne peut rouvrir l'onglet qui rendrait le droit. Il porte donc TOUJOURS toutes les
-***REMOVED*** autorisations et l'accès global, quoi que dise la table.
+# ⚠ L'ADMINISTRATEUR N'EST PAS MODIFIABLE, ET C'EST STRUCTUREL. Une interface qui laisse retirer
+# `settings.edit` au rôle administrateur laisse verrouiller l'installation pour de bon : plus
+# personne ne peut rouvrir l'onglet qui rendrait le droit. Il porte donc TOUJOURS toutes les
+# autorisations et l'accès global, quoi que dise la table.
 ROLE_INTOUCHABLE = "admin"
 
 
@@ -125,15 +125,15 @@ def recharger_habilitations():
                                     "permissions": sorted(p),
                                     "global_access": r in GLOBAL_ACCESS_DEFAUT}
                                 for r, p in ROLES_DEFAUT.items()})
-        ***REMOVED*** Migration des descriptions : uniquement celles restées à leur ANCIENNE valeur par
-        ***REMOVED*** défaut. Un administrateur qui a réécrit la sienne la garde.
+        # Migration des descriptions : uniquement celles restées à leur ANCIENNE valeur par
+        # défaut. Un administrateur qui a réécrit la sienne la garde.
         from .database import db_habilitation_get, db_habilitation_upsert
         for rid, ancien in ROLE_LABELS_ANCIENS.items():
             h = db_habilitation_get(rid)
             if h and h.get("label") == ancien and ROLE_LABELS_DEFAUT.get(rid) != ancien:
                 db_habilitation_upsert(rid, label=ROLE_LABELS_DEFAUT[rid])
         lignes = db_habilitations_lister(set(PERMISSIONS))
-    except Exception as e:                       ***REMOVED*** base absente, migration en cours…
+    except Exception as e:                       # base absente, migration en cours…
         log.warning("habilitations : lecture impossible, défauts conservés (%s)", e)
         return
     if not lignes:
@@ -141,14 +141,14 @@ def recharger_habilitations():
     neufs = {l["id"]: set(l["permissions"]) for l in lignes}
     libelles = {l["id"]: (l["label"] or l["id"]) for l in lignes}
     globaux = tuple(l["id"] for l in lignes if l["global_access"])
-    ***REMOVED*** L'administrateur reprend TOUT, quoi qu'il y ait en base (cf. ROLE_INTOUCHABLE).
+    # L'administrateur reprend TOUT, quoi qu'il y ait en base (cf. ROLE_INTOUCHABLE).
     if ROLE_INTOUCHABLE in neufs:
         neufs[ROLE_INTOUCHABLE] = set(PERMISSIONS)
         if ROLE_INTOUCHABLE not in globaux:
             globaux = globaux + (ROLE_INTOUCHABLE,)
     else:
-        ***REMOVED*** Quelqu'un a réussi à le faire disparaître : on le remet plutôt que de servir une
-        ***REMOVED*** installation sans administrateur possible.
+        # Quelqu'un a réussi à le faire disparaître : on le remet plutôt que de servir une
+        # installation sans administrateur possible.
         neufs[ROLE_INTOUCHABLE] = set(PERMISSIONS)
         libelles[ROLE_INTOUCHABLE] = ROLE_LABELS_DEFAUT[ROLE_INTOUCHABLE]
         globaux = globaux + (ROLE_INTOUCHABLE,)
@@ -178,9 +178,9 @@ def project_role_for(pid, user=None):
         return "owner"
     return db_project_role(pid, u["id"])
 
-***REMOVED*** Cache court vmid → (project_id, monitor_user_id) : assert_vmid_access est sur le
-***REMOVED*** chemin chaud du proxy plugin (T-bar, polls de feedback), on évite un hit SQLite
-***REMOVED*** par requête. TTL volontairement bref : un rattachement de projet doit se voir vite.
+# Cache court vmid → (project_id, monitor_user_id) : assert_vmid_access est sur le
+# chemin chaud du proxy plugin (T-bar, polls de feedback), on évite un hit SQLite
+# par requête. TTL volontairement bref : un rattachement de projet doit se voir vite.
 _VMID_PROJECT_TTL = 5.0
 _vmid_project_cache = {}
 
@@ -195,18 +195,18 @@ def _vmid_project_info(vmid):
     _vmid_project_cache[vmid] = (pid, mon, now)
     return pid, mon
 
-***REMOVED*** Appartenance via SNAPSHOT : tant que le cycle de vie (chantier 3) n'existe pas, un
-***REMOVED*** projet référence surtout ses containers par snapshot (db_save_project ne pose PAS
-***REMOVED*** project_id). Un container est donc « dans » un projet si project_id le dit OU si son
-***REMOVED*** vmid figure dans le snapshot — même sémantique que _attach_projects côté UI technique.
+# Appartenance via SNAPSHOT : tant que le cycle de vie (chantier 3) n'existe pas, un
+# projet référence surtout ses containers par snapshot (db_save_project ne pose PAS
+# project_id). Un container est donc « dans » un projet si project_id le dit OU si son
+# vmid figure dans le snapshot — même sémantique que _attach_projects côté UI technique.
 _snap_map_cache = {"ts": 0.0, "map": {}}
 
 def _snapshot_project_map():
     now = time.monotonic()
     if now - _snap_map_cache["ts"] > _VMID_PROJECT_TTL:
         from .database import db_get_projects
-        ***REMOVED*** Types exclus des projets (2110_io lié au nœud, infra partagée) : un VIEUX
-        ***REMOVED*** snapshot peut encore les référencer — ils ne comptent pas comme appartenance.
+        # Types exclus des projets (2110_io lié au nœud, infra partagée) : un VIEUX
+        # snapshot peut encore les référencer — ils ne comptent pas comme appartenance.
         try:
             from .projects import PROJECT_EXCLUDED_TYPES as _excl
         except Exception:
@@ -310,11 +310,11 @@ def require_project_role(min_role="viewer", pid_arg="pid"):
         return wrapper
     return deco
 
-***REMOVED*** ─── Helpers password ────────────────────────────────────────
+# ─── Helpers password ────────────────────────────────────────
 
-***REMOVED*** pbkdf2 plutôt que le scrypt par défaut de werkzeug 3.x : scrypt réclame ~32 Mo
-***REMOVED*** par vérification et lève « memory limit exceeded » selon le build OpenSSL / les
-***REMOVED*** limites mémoire d'un LXC, ce qui faisait échouer le login silencieusement.
+# pbkdf2 plutôt que le scrypt par défaut de werkzeug 3.x : scrypt réclame ~32 Mo
+# par vérification et lève « memory limit exceeded » selon le build OpenSSL / les
+# limites mémoire d'un LXC, ce qui faisait échouer le login silencieusement.
 _HASH_METHOD = "pbkdf2:sha256"
 
 def hash_password(plain):
@@ -326,38 +326,38 @@ def verify_password(plain, hashed):
     except Exception:
         return False
 
-***REMOVED*** ─── Robustesse des mots de passe ────────────────────────────
+# ─── Robustesse des mots de passe ────────────────────────────
 
-***REMOVED*** Longueur minimale. C'est le SEUL facteur qui compte vraiment : un mot de passe court reste
-***REMOVED*** court même truffé de symboles, et l'espace de recherche croît avec la longueur bien plus vite
-***REMOVED*** qu'avec le jeu de caractères.
+# Longueur minimale. C'est le SEUL facteur qui compte vraiment : un mot de passe court reste
+# court même truffé de symboles, et l'espace de recherche croît avec la longueur bien plus vite
+# qu'avec le jeu de caractères.
 PWD_LONGUEUR_MIN = 12
 
-***REMOVED*** ⚠ PAS DE RÈGLE DE COMPOSITION CLASSIQUE (« une majuscule, un chiffre, un symbole »), ET C'EST
-***REMOVED*** DÉLIBÉRÉ. Le NIST (SP 800-63B, § 5.1.1.2) la déconseille explicitement : imposée, elle ne
-***REMOVED*** produit pas de la variété, elle produit `Bobi2026!` sur tous les postes — une majuscule au
-***REMOVED*** début, un chiffre et un `!` à la fin, exactement là où un attaquant les essaie d'abord. On
-***REMOVED*** demande donc de la LONGUEUR, et une variété qui DÉCROÎT quand la longueur augmente : une
-***REMOVED*** phrase de passe de vingt lettres est meilleure qu'un `X7@k!` et doit passer.
+# ⚠ PAS DE RÈGLE DE COMPOSITION CLASSIQUE (« une majuscule, un chiffre, un symbole »), ET C'EST
+# DÉLIBÉRÉ. Le NIST (SP 800-63B, § 5.1.1.2) la déconseille explicitement : imposée, elle ne
+# produit pas de la variété, elle produit `Bobi2026!` sur tous les postes — une majuscule au
+# début, un chiffre et un `!` à la fin, exactement là où un attaquant les essaie d'abord. On
+# demande donc de la LONGUEUR, et une variété qui DÉCROÎT quand la longueur augmente : une
+# phrase de passe de vingt lettres est meilleure qu'un `X7@k!` et doit passer.
 PWD_VARIETE = ((PWD_LONGUEUR_MIN, 3), (16, 2), (20, 1))
 
-***REMOVED*** ─── Profils d'exigence ──────────────────────────────────────
-***REMOVED***
-***REMOVED*** Un contrôleur de régie sur un réseau isolé et un contrôleur joignable depuis Internet ne
-***REMOVED*** courent pas le même risque, et imposer le second au premier ne produit pas de la sécurité :
-***REMOVED*** ça produit des mots de passe sur des post-it. Le profil est donc un RÉGLAGE (`pwd_profil`).
-***REMOVED***
-***REMOVED*** ⚠ Ce qui change d'un profil à l'autre, c'est la LONGUEUR et la VARIÉTÉ. Les trois autres
-***REMOVED*** contrôles — mot de passe courant, reprise de l'identité, suite de clavier — restent actifs
-***REMOVED*** PARTOUT, y compris en souple : ils ne coûtent rien à un utilisateur de bonne foi (personne ne
-***REMOVED*** choisit « azerty » par commodité de frappe, on le choisit parce qu'on n'a pas envie de
-***REMOVED*** choisir) et ce sont exactement les premiers essais d'une attaque.
+# ─── Profils d'exigence ──────────────────────────────────────
+#
+# Un contrôleur de régie sur un réseau isolé et un contrôleur joignable depuis Internet ne
+# courent pas le même risque, et imposer le second au premier ne produit pas de la sécurité :
+# ça produit des mots de passe sur des post-it. Le profil est donc un RÉGLAGE (`pwd_profil`).
+#
+# ⚠ Ce qui change d'un profil à l'autre, c'est la LONGUEUR et la VARIÉTÉ. Les trois autres
+# contrôles — mot de passe courant, reprise de l'identité, suite de clavier — restent actifs
+# PARTOUT, y compris en souple : ils ne coûtent rien à un utilisateur de bonne foi (personne ne
+# choisit « azerty » par commodité de frappe, on le choisit parce qu'on n'a pas envie de
+# choisir) et ce sont exactement les premiers essais d'une attaque.
 PWD_PROFILS = {
-    ***REMOVED*** Réseau de production isolé, pas de route vers l'extérieur, accès physique contrôlé.
+    # Réseau de production isolé, pas de route vers l'extérieur, accès physique contrôlé.
     "souple":   {"longueur_min": 8,  "variete": ((8, 1),)},
-    ***REMOVED*** Défaut. Aligné sur ce que le NIST appelle une exigence raisonnable pour un secret mémorisé.
+    # Défaut. Aligné sur ce que le NIST appelle une exigence raisonnable pour un secret mémorisé.
     "standard": {"longueur_min": 12, "variete": ((12, 3), (16, 2), (20, 1))},
-    ***REMOVED*** Contrôleur atteignable depuis un réseau qu'on ne maîtrise pas.
+    # Contrôleur atteignable depuis un réseau qu'on ne maîtrise pas.
     "stricte":  {"longueur_min": 16, "variete": ((16, 3), (24, 2))},
 }
 PWD_PROFIL_DEFAUT = "standard"
@@ -390,17 +390,17 @@ def pwd_profils_publics():
     return {nom: pwd_exigences(nom) for nom in PWD_PROFILS}
 
 
-***REMOVED*** Mots de passe interdits quelle que soit leur longueur. Liste COURTE et assumée : elle n'a pas
-***REMOVED*** vocation à remplacer une vraie base de fuites, seulement à écarter ce qui est tapé par réflexe
-***REMOVED*** sur une installation neuve. Comparée en minuscules, sans les chiffres de fin (« bobi2026 » et
-***REMOVED*** « bobi2027 » sont le même mot de passe).
+# Mots de passe interdits quelle que soit leur longueur. Liste COURTE et assumée : elle n'a pas
+# vocation à remplacer une vraie base de fuites, seulement à écarter ce qui est tapé par réflexe
+# sur une installation neuve. Comparée en minuscules, sans les chiffres de fin (« bobi2026 » et
+# « bobi2027 » sont le même mot de passe).
 PWD_INTERDITS = {
     "password", "motdepasse", "azerty", "qwerty", "administrateur", "admin", "root",
     "bobi", "bobistudio", "bobi studio", "changeme", "changermoi", "secret", "letmein",
     "welcome", "bienvenue", "iloveyou", "monkey", "dragon", "soleil", "console", "regie",
 }
 
-***REMOVED*** Suites de touches et d'alphabet : cherchées DANS le mot de passe, pas comparées à lui.
+# Suites de touches et d'alphabet : cherchées DANS le mot de passe, pas comparées à lui.
 _SUITES = ("abcdefghijklmnopqrstuvwxyz", "0123456789",
            "azertyuiop", "qwertyuiop", "qsdfghjklm", "asdfghjkl", "wxcvbn", "zxcvbn")
 
@@ -418,10 +418,10 @@ def _noyau(txt):
     return t.rstrip("0123456789") or t
 
 
-***REMOVED*** ORDRE D'AFFICHAGE des règles, et liste de ce qui est ANNONÇABLE avant la frappe. Le miroir
-***REMOVED*** navigateur porte la même liste (`validerMotDePasse.REGLES`) : une règle ajoutée ici sans y être
-***REMOVED*** n'apparaîtrait nulle part dans l'interface — l'utilisateur se ferait refuser pour un critère
-***REMOVED*** qu'on ne lui a jamais montré.
+# ORDRE D'AFFICHAGE des règles, et liste de ce qui est ANNONÇABLE avant la frappe. Le miroir
+# navigateur porte la même liste (`validerMotDePasse.REGLES`) : une règle ajoutée ici sans y être
+# n'apparaîtrait nulle part dans l'interface — l'utilisateur se ferait refuser pour un critère
+# qu'on ne lui a jamais montré.
 PWD_REGLES = ("court", "variete", "courant", "identite", "repetitif")
 
 
@@ -447,7 +447,7 @@ def valider_motdepasse(pwd, username=None, extras=(), exigences=None):
     if len(pwd) < lmin:
         fautes.append("court")
 
-    ***REMOVED*** Variété exigée selon la longueur atteinte (cf. le commentaire de PWD_VARIETE).
+    # Variété exigée selon la longueur atteinte (cf. le commentaire de PWD_VARIETE).
     besoin = variete[-1][1]
     for seuil, n in variete:
         if len(pwd) < seuil:
@@ -460,9 +460,9 @@ def valider_motdepasse(pwd, username=None, extras=(), exigences=None):
     if noyau in PWD_INTERDITS:
         fautes.append("courant")
 
-    ***REMOVED*** Le mot de passe contient l'identité, ou l'identité contient le mot de passe.
-    ***REMOVED*** ⚠ `noyau` doit être testé AUSSI : la chaîne vide est sous-chaîne de tout, donc un mot de
-    ***REMOVED*** passe vide se faisait accuser de contenir l'identité (trouvé au banc).
+    # Le mot de passe contient l'identité, ou l'identité contient le mot de passe.
+    # ⚠ `noyau` doit être testé AUSSI : la chaîne vide est sous-chaîne de tout, donc un mot de
+    # passe vide se faisait accuser de contenir l'identité (trouvé au banc).
     for ident in ([username] + list(extras or ())) if len(noyau) >= 3 else []:
         i = _noyau(ident or "")
         if len(i) < 3:
@@ -471,7 +471,7 @@ def valider_motdepasse(pwd, username=None, extras=(), exigences=None):
             fautes.append("identite")
             break
 
-    ***REMOVED*** Un seul caractère répété, ou une suite de clavier / d'alphabet de 4 signes ou plus.
+    # Un seul caractère répété, ou une suite de clavier / d'alphabet de 4 signes ou plus.
     if pwd and len(set(pwd)) <= 2:
         fautes.append("repetitif")
     else:
@@ -487,7 +487,7 @@ def valider_motdepasse(pwd, username=None, extras=(), exigences=None):
     return fautes
 
 
-***REMOVED*** ─── User session ────────────────────────────────────────────
+# ─── User session ────────────────────────────────────────────
 
 def current_user():
     """Renvoie le user courant (dict) ou None. Caché dans g pour économiser la DB."""
@@ -547,9 +547,9 @@ def login_user(user):
     from .database import (db_session_ouvrir, db_sessions_purger, db_user_marquer_connexion)
     session.clear()
     session["user_id"] = user["id"]
-    session.permanent = True   ***REMOVED*** cookie persistant (~30 jours selon config app)
-    ***REMOVED*** Identifiant OPAQUE tiré au sort : le cookie ne porte plus qu'une référence, et c'est le
-    ***REMOVED*** registre qui décide si elle vaut encore. C'est ce qui rend une session révocable.
+    session.permanent = True   # cookie persistant (~30 jours selon config app)
+    # Identifiant OPAQUE tiré au sort : le cookie ne porte plus qu'une référence, et c'est le
+    # registre qui décide si elle vaut encore. C'est ce qui rend une session révocable.
     sid = secrets.token_urlsafe(32)
     session["sid"] = sid
     session["session_epoch"] = user.get("session_epoch") or 0
@@ -559,8 +559,8 @@ def login_user(user):
         db_user_marquer_connexion(user["id"])
         db_sessions_purger()
     except Exception:
-        ***REMOVED*** Une connexion ne doit PAS échouer parce que le registre est indisponible. On perd la
-        ***REMOVED*** traçabilité de cette session, pas l'accès au produit.
+        # Une connexion ne doit PAS échouer parce que le registre est indisponible. On perd la
+        # traçabilité de cette session, pas l'accès au produit.
         log.exception("registre de sessions : ouverture impossible")
 
 def logout_user():
@@ -573,7 +573,7 @@ def logout_user():
             log.exception("registre de sessions : fermeture impossible")
     session.clear()
 
-***REMOVED*** ─── Décorateurs ─────────────────────────────────────────────
+# ─── Décorateurs ─────────────────────────────────────────────
 
 def _wants_json():
     """True si la requête vient d'un fetch / accepte JSON."""

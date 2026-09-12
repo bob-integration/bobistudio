@@ -1,4 +1,4 @@
-***REMOVED*** Brouillon d'Issue AMWA — `urn:x-nmos:transport:mxl` absent du registre des transports
+# Brouillon d'Issue AMWA — `urn:x-nmos:transport:mxl` absent du registre des transports
 
 ⚠ **NON PUBLIÉE.** À ouvrir sur <https://github.com/AMWA-TV/nmos-parameter-registers/issues>
 après relecture. Nous ne sommes pas membres AMWA : Issues oui, **pas de Pull Request**

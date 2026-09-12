@@ -1,5 +1,5 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 
 """Service HTTP de l'ISO d'enrôlement par-nœud — pour iLO 5 « Virtual Media URL ».
 
@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ISO_CACHE = os.path.join(ROOT, "node_iso_cache")
 
-***REMOVED*** État global d'une (unique) construction en cours (xorriso lourd, un seul build à la fois).
+# État global d'une (unique) construction en cours (xorriso lourd, un seul build à la fois).
 _status = {"state": "idle", "msg": "", "node_id": None, "url": None, "at": 0.0}
 _lock = threading.Lock()
 
@@ -69,7 +69,7 @@ def is_ready(token):
     p = cache_path(token)
     if not (os.path.isfile(p) and os.path.getsize(p) > 0):
         return False
-    ***REMOVED*** Cache périmé si une entrée de build est plus récente que l'ISO → forcer une reconstruction.
+    # Cache périmé si une entrée de build est plus récente que l'ISO → forcer une reconstruction.
     try:
         if os.path.getmtime(p) < _build_inputs_mtime():
             return False

@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Layouts multiview (mémoires de disposition, indépendantes des projets) + Projets : snapshot
 d'un ensemble de containers (export/import .bsproj.json, restauration en streaming avec
@@ -25,8 +25,8 @@ from ..database import (db_get_layouts, db_save_layout, db_update_layout, db_del
                       db_update_view, db_delete_view)
 from ..projects import restaurer_projet, detruire_containers_projet, planifier_restore
 
-***REMOVED*** Priorité de déploiement au restore (les moteurs 2110_io/streamer d'abord, la
-***REMOVED*** composition — mixer/multiview — ensuite, une fois ses sources potentielles en place).
+# Priorité de déploiement au restore (les moteurs 2110_io/streamer d'abord, la
+# composition — mixer/multiview — ensuite, une fois ses sources potentielles en place).
 TYPE_PRIORITY = {"2110_io": 0, "streamer": 1, "mixer": 2, "multiview": 2}
 
 
@@ -95,10 +95,10 @@ def supprimer_layout(lid):
     db_delete_layout(lid)
     return jsonify({"status": "supprimé"})
 
-***REMOVED*** ─── Modèles de PiP (bibliothèque composable, éditeur Réglages → PiP) ──
-***REMOVED*** Comme les layouts : bibliothèque GLOBALE (indépendante des projets — les modèles affectés
-***REMOVED*** sont embarqués dans les deploy_config, donc snapshotés avec les projets). Les modèles
-***REMOVED*** d'usine (id "builtin:…") sont servis avec la liste mais ni modifiables ni supprimables.
+# ─── Modèles de PiP (bibliothèque composable, éditeur Réglages → PiP) ──
+# Comme les layouts : bibliothèque GLOBALE (indépendante des projets — les modèles affectés
+# sont embarqués dans les deploy_config, donc snapshotés avec les projets). Les modèles
+# d'usine (id "builtin:…") sont servis avec la liste mais ni modifiables ni supprimables.
 
 @bp.route("/api/pip_templates", methods=["GET"])
 @require_login
@@ -128,14 +128,14 @@ def sauvegarder_pip_template():
     if not isinstance(tags, list):
         tags = None
     else:
-        ***REMOVED*** Chaînes libres, dédupliquées, nettoyées — jamais de tag vide.
+        # Chaînes libres, dédupliquées, nettoyées — jamais de tag vide.
         seen = []
         for tg in tags:
             tg = str(tg).strip()
             if tg and tg not in seen:
                 seen.append(tg)
         tags = seen
-    ***REMOVED*** Polices embarquées (import d'un modèle exporté depuis une autre instance) : dédup par hash.
+    # Polices embarquées (import d'un modèle exporté depuis une autre instance) : dédup par hash.
     config, font_warnings = _absorb_fonts(config, data)
     tid = db_save_pip_template(name, config, tid, tags=tags)
     return jsonify({"status": "ok", "id": tid, "font_warnings": font_warnings})
@@ -164,16 +164,16 @@ def supprimer_pip_template(tid):
 @require_login
 def liste_projets():
     projs = db_get_projects()
-    member_pids = scoped_project_ids()   ***REMOVED*** None = accès global
+    member_pids = scoped_project_ids()   # None = accès global
     if member_pids is not None:
-        ***REMOVED*** Utilisateur scopé : seulement SES projets, sans le snapshot (config interne).
+        # Utilisateur scopé : seulement SES projets, sans le snapshot (config interne).
         projs = [{k: v for k, v in p.items() if k != "snapshot"}
                  for p in projs if p["id"] in member_pids]
         for p in projs:
             p["my_role"] = project_role_for(p["id"])
     return jsonify(projs)
 
-***REMOVED*** ─── Membres + résumé par projet (chantier 1, cf. docs/reference/PROJETS.md §12) ──
+# ─── Membres + résumé par projet (chantier 1, cf. docs/reference/PROJETS.md §12) ──
 
 @bp.route("/api/projects/<int:pid>/members", methods=["GET"])
 @require_project_role("owner")
@@ -187,8 +187,8 @@ def project_members_set(pid):
     data = request.json or {}
     uid = data.get("user_id")
     if uid in (None, "") and data.get("username"):
-        ***REMOVED*** Repli par username : un `operator` (projects.manage sans settings.edit) n'a
-        ***REMOVED*** pas accès à la liste /api/users pour choisir un id.
+        # Repli par username : un `operator` (projects.manage sans settings.edit) n'a
+        # pas accès à la liste /api/users pour choisir un id.
         from ..database import db_get_user
         u = db_get_user((data.get("username") or "").strip())
         if not u:
@@ -226,9 +226,9 @@ def project_summary(pid):
     proj = db_get_project(pid)
     if not proj:
         return jsonify({"error": "projet introuvable"}), 404
-    ***REMOVED*** « Dans le projet » = rattachement direct (project_id) OU référencé par le snapshot
-    ***REMOVED*** (db_save_project ne pose pas project_id — le rattachement systématique arrive avec
-    ***REMOVED*** le cycle de vie du chantier 3). Même sémantique que auth.vmid_project_ids.
+    # « Dans le projet » = rattachement direct (project_id) OU référencé par le snapshot
+    # (db_save_project ne pose pas project_id — le rattachement systématique arrive avec
+    # le cycle de vie du chantier 3). Même sémantique que auth.vmid_project_ids.
     snap_vmids = {sc.get("vmid") for sc in (proj.get("snapshot") or [])}
     containers = []
     for c in db_get_containers():
@@ -262,13 +262,13 @@ def project_summary(pid):
         "containers": containers,
     })
 
-***REMOVED*** ─── Ports virtuels (chantier 4, cf. docs/reference/PROJETS.md §5) ───────────
-***REMOVED***
-***REMOVED*** Frontière du projet : les EDITORS déclarent les ports (nom, sens, essence, labels
-***REMOVED*** canaux, sortie interne publiée pour une destination) ; le BINDING physique d'une
-***REMOVED*** source (quel shm alimente CAM1) est réservé aux accès globaux (admin/operator).
-***REMOVED*** Re-binder un port d'un projet chargé re-câble À CHAUD les consommateurs concernés
-***REMOVED*** (mécanique _apply_wire existante : hot-input si possible, redeploy async sinon).
+# ─── Ports virtuels (chantier 4, cf. docs/reference/PROJETS.md §5) ───────────
+#
+# Frontière du projet : les EDITORS déclarent les ports (nom, sens, essence, labels
+# canaux, sortie interne publiée pour une destination) ; le BINDING physique d'une
+# source (quel shm alimente CAM1) est réservé aux accès globaux (admin/operator).
+# Re-binder un port d'un projet chargé re-câble À CHAUD les consommateurs concernés
+# (mécanique _apply_wire existante : hot-input si possible, redeploy async sinon).
 
 def _find_producer_vmid(shm):
     """vmid du container qui produit ce shm (pour _apply_wire/format), ou None."""
@@ -369,7 +369,7 @@ def project_ports_update(pid, port_id):
             return jsonify({"error": "binding invalide"}), 400
         old = port.get("binding") or {}
         if port["kind"] == "source":
-            ***REMOVED*** Binding physique d'une source = réservé aux accès globaux (admin binde).
+            # Binding physique d'une source = réservé aux accès globaux (admin binde).
             if not has_global_access():
                 return jsonify({"error": "forbidden",
                                 "reason": "binding_requires_admin"}), 403
@@ -381,8 +381,8 @@ def project_ports_update(pid, port_id):
                                                  binding.get("audio_shm"),
                                                  restrict_pids={pid})
         else:
-            ***REMOVED*** Destination : la sortie interne publiée est du CONTENU (editor OK) ;
-            ***REMOVED*** les consommateurs EXTERNES suivent à chaud.
+            # Destination : la sortie interne publiée est du CONTENU (editor OK) ;
+            # les consommateurs EXTERNES suivent à chaud.
             if old.get("internal_shm") and binding.get("internal_shm"):
                 rewired = _rewire_shm_consumers(old.get("internal_shm"),
                                                 binding.get("internal_shm"),
@@ -404,7 +404,7 @@ def project_ports_delete(pid, port_id):
     db_delete_port(port_id)
     return jsonify({"status": "ok"})
 
-***REMOVED*** ─── Versions de projet (« projet vivant », chantier 3) ───────
+# ─── Versions de projet (« projet vivant », chantier 3) ───────
 
 @bp.route("/api/projects/<int:pid>/versions", methods=["GET"])
 @require_project_role("viewer")
@@ -457,11 +457,11 @@ def project_versions_delete(pid, vid):
     db_delete_project_version(vid)
     return jsonify({"status": "ok"})
 
-***REMOVED*** ─── Vues composées (chantier 2, cf. docs/reference/PROJETS.md §7) ───────────
-***REMOVED***
-***REMOVED*** Règles : chaque membre ≥ operator compose SES vues privées ; le partage au projet
-***REMOVED*** (visibility=project) et l'édition d'une vue partagée (edit_shared) exigent ≥ editor.
-***REMOVED*** Suppression / changement de partage : propriétaire de la vue, owner du projet ou admin.
+# ─── Vues composées (chantier 2, cf. docs/reference/PROJETS.md §7) ───────────
+#
+# Règles : chaque membre ≥ operator compose SES vues privées ; le partage au projet
+# (visibility=project) et l'édition d'une vue partagée (edit_shared) exigent ≥ editor.
+# Suppression / changement de partage : propriétaire de la vue, owner du projet ou admin.
 
 def _view_rights(view, pid):
     u = current_user() or {}
@@ -565,12 +565,12 @@ def sauvegarder_projet():
     vmids = data.get("vmids") or []
     if not name or not vmids:
         return jsonify({"error": "name et vmids requis"}), 400
-    ***REMOVED*** La passerelle WebRTC (webrtc_gateway) est une infra PERSISTANTE et partagée :
-    ***REMOVED*** on l'exclut des snapshots (sinon le rappel en clonerait une copie « <projet>-… »).
+    # La passerelle WebRTC (webrtc_gateway) est une infra PERSISTANTE et partagée :
+    # on l'exclut des snapshots (sinon le rappel en clonerait une copie « <projet>-… »).
     gateway_vmid = int(st.get("webrtc_gateway_vmid") or 0)
     if gateway_vmid:
         vmids = [v for v in vmids if int(v) != gateway_vmid]
-    ***REMOVED*** Types exclus des projets (2110_io lié au nœud, storage…) : filtrés PAR TYPE.
+    # Types exclus des projets (2110_io lié au nœud, storage…) : filtrés PAR TYPE.
     from ..projects import PROJECT_EXCLUDED_TYPES
     from .shared import _load_dc
     from ..database import db_get_container as _dgc
@@ -581,7 +581,7 @@ def sauvegarder_projet():
     if not vmids:
         return jsonify({"error": "aucun container à sauvegarder (infra partagée/liée au "
                                  "nœud exclue : passerelle, 2110_io…)"}), 400
-    ***REMOVED*** Dossier média dédié au projet sur le host : /srv/mxl-media/<slug>/
+    # Dossier média dédié au projet sur le host : /srv/mxl-media/<slug>/
     from ..containers import MEDIA_HOST_DIR
     slug = re.sub(r"[^a-z0-9-]", "-", name.lower()).strip("-") or "projet"
     slug = re.sub(r"-+", "-", slug)
@@ -599,8 +599,8 @@ def exporter_projet(pid):
     p = db_get_project(pid)
     if not p:
         return jsonify({"error": "projet introuvable"}), 404
-    ***REMOVED*** v2 (chantier 3) : embarque aussi les VUES composées (les widgets référencent
-    ***REMOVED*** instance_uuid/vmid — remappés au chargement par _remap_project_views).
+    # v2 (chantier 3) : embarque aussi les VUES composées (les widgets référencent
+    # instance_uuid/vmid — remappés au chargement par _remap_project_views).
     payload = {
         "schema": "bobi.studio.project.v2",
         "name": p["name"],
@@ -620,7 +620,7 @@ def exporter_projet(pid):
 @bp.route("/api/projects/import", methods=["POST"])
 @require_perm("projects.manage")
 def importer_projet():
-    ***REMOVED*** Accepte soit un upload multipart (champ "file"), soit un JSON brut.
+    # Accepte soit un upload multipart (champ "file"), soit un JSON brut.
     raw = None
     if "file" in request.files:
         try:
@@ -636,15 +636,15 @@ def importer_projet():
     if not isinstance(snapshot, list) or not snapshot:
         return jsonify({"error": "snapshot manquant ou vide"}), 400
 
-    ***REMOVED*** Nom : priorité au paramètre POST (renommage à l'import), sinon celui du fichier.
+    # Nom : priorité au paramètre POST (renommage à l'import), sinon celui du fichier.
     override = (request.form.get("name") or "").strip() if request.form else ""
     name = override or (raw.get("name") or "").strip()
     if not name:
         return jsonify({"error": "nom manquant"}), 400
 
     pid = db_import_project(name, snapshot)
-    ***REMOVED*** Dossier média garanti dès l'import (sinon les containers du projet retomberaient
-    ***REMOVED*** sur la racine partagée) + vues embarquées (schema v2, importeur = propriétaire).
+    # Dossier média garanti dès l'import (sinon les containers du projet retomberaient
+    # sur la racine partagée) + vues embarquées (schema v2, importeur = propriétaire).
     from ..projects import _ensure_media_dir
     from ..database import db_get_project as _gp
     try:
@@ -669,12 +669,12 @@ def preview_restore(pid):
         return jsonify({"error": "projet introuvable"}), 404
     snapshot = sorted(p["snapshot"], key=lambda c: TYPE_PRIORITY.get(
         (c.get("deploy_config") or {}).get("type"), 99))
-    ***REMOVED*** Mêmes hostnames/SHM que le rappel réel (préfixés par le nom du projet),
-    ***REMOVED*** sinon le pré-vol détecte de faux conflits avec les originaux.
+    # Mêmes hostnames/SHM que le rappel réel (préfixés par le nom du projet),
+    # sinon le pré-vol détecte de faux conflits avec les originaux.
     snapshot = _prefix_snapshot(snapshot, p["name"])
     return jsonify(planifier_restore(snapshot))
 
-***REMOVED*** Flag d'interruption du restore (op globale : un seul restore verbeux à la fois).
+# Flag d'interruption du restore (op globale : un seul restore verbeux à la fois).
 _restore_abort = threading.Event()
 
 @bp.route("/api/projects/<int:pid>/restore/abort", methods=["POST"])
@@ -690,8 +690,8 @@ def restaurer(pid):
     """Restaure un projet en streaming (log verbeux + bilan + liste des échecs)."""
     import queue as _queue
     data       = request.json or {}
-    only_vmids = data.get("only_vmids")   ***REMOVED*** None = tout ; liste = reprise des échecs
-    preserve_uuid = bool(data.get("preserve_uuid"))   ***REMOVED*** True = déplacement (conserver l'identité)
+    only_vmids = data.get("only_vmids")   # None = tout ; liste = reprise des échecs
+    preserve_uuid = bool(data.get("preserve_uuid"))   # True = déplacement (conserver l'identité)
 
     def restore_iter():
         _restore_abort.clear()
@@ -725,7 +725,7 @@ def restaurer(pid):
             yield (f"⚠ Restauration terminée : {ok}/{total} OK, {len(failed)} échec(s).\n")
         else:
             yield f"✅ Restauration terminée : {ok}/{total} OK.\n"
-        ***REMOVED*** Marqueur machine pour l'UI (bouton « réessayer »).
+        # Marqueur machine pour l'UI (bouton « réessayer »).
         yield "__SUMMARY__" + json.dumps(summary) + "\n"
 
     return Response(stream_with_context(restore_iter()),
@@ -736,14 +736,14 @@ def restaurer(pid):
 @bp.route("/api/projects/<int:pid>/destroy_containers", methods=["POST"])
 @require_perm("projects.manage")
 def detruire_projet_containers(pid):
-    ***REMOVED*** Journal d'exploitation : destruction EN MASSE — c'est exactement le geste qu'on veut pouvoir
-    ***REMOVED*** attribuer à la relecture. Ligne posée avant le dispatch (cf. app/audit.py).
+    # Journal d'exploitation : destruction EN MASSE — c'est exactement le geste qu'on veut pouvoir
+    # attribuer à la relecture. Ligne posée avant le dispatch (cf. app/audit.py).
     from ..audit import journal as _journal
     from ..database import db_get_project
-    ***REMOVED*** Repli sans le mot « projet » : la cible est une DONNÉE, et un mot français dedans
-    ***REMOVED*** ressortirait tel quel au milieu d'une phrase traduite (la phrase, elle, dit déjà « projet »).
+    # Repli sans le mot « projet » : la cible est une DONNÉE, et un mot français dedans
+    # ressortirait tel quel au milieu d'une phrase traduite (la phrase, elle, dit déjà « projet »).
     _journal("alert.audit.detruire_conteneurs_projet",
-             cible=(db_get_project(pid) or {}).get("name") or f"***REMOVED***{pid}", kind="deploy")
+             cible=(db_get_project(pid) or {}).get("name") or f"#{pid}", kind="deploy")
     threading.Thread(target=detruire_containers_projet, args=(pid,)).start()
     return jsonify({"status": "destruction_en_cours"})
 
@@ -753,6 +753,6 @@ def supprimer_projet(pid):
     from ..audit import journal as _journal
     from ..database import db_get_project
     _journal("alert.audit.supprimer_projet",
-             cible=(db_get_project(pid) or {}).get("name") or f"***REMOVED***{pid}", kind="deploy")
+             cible=(db_get_project(pid) or {}).get("name") or f"#{pid}", kind="deploy")
     db_delete_project(pid)
     return jsonify({"status": "supprimé"})

@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Agrégation de la home dashboard (/api/home/summary, une seule requête → tout : PTP, containers,
 NMOS, topologie pipeline câblage, santé cluster, points d'attention) + /api/sources (sorties de la
@@ -26,15 +26,15 @@ from ..database import db_get_containers, db_get_nodes, db_get_node, db_get_proj
 log = logging.getLogger(__name__)
 
 
-***REMOVED*** ─── Ancienneté des points d'attention ───────────────────────────────────────────────────────
-***REMOVED*** Les caches live du moteur (metrics.rx_stalled_cache / tx_stalled_cache) ne portent QU'UN BOOLÉEN :
-***REMOVED*** il n'existe nulle part d'horodatage de DÉBUT de panne. Sans rien, le dashboard ne peut afficher
-***REMOVED*** que la fraîcheur du journal d'alertes (« il y a 2 minutes ») pour une panne vieille de 33 h — ce
-***REMOVED*** qui désamorce l'urgence. On mémorise donc ici, par clé stable, la PREMIÈRE fois où CE processus a
-***REMOVED*** vu le point d'attention. C'est une BORNE INFÉRIEURE, jamais l'âge réel : elle repart à zéro au
-***REMOVED*** redémarrage de l'orchestrateur. Elle est exposée comme telle (`age_is_lower_bound`) et l'UI écrit
-***REMOVED*** « ≥ … ». Pour un âge VRAI il faudrait horodater le passage à stalled dans app/metrics.py.
-_ATT_FIRST_SEEN = {}          ***REMOVED*** clé → timestamp epoch du premier passage où on a vu le point
+# ─── Ancienneté des points d'attention ───────────────────────────────────────────────────────
+# Les caches live du moteur (metrics.rx_stalled_cache / tx_stalled_cache) ne portent QU'UN BOOLÉEN :
+# il n'existe nulle part d'horodatage de DÉBUT de panne. Sans rien, le dashboard ne peut afficher
+# que la fraîcheur du journal d'alertes (« il y a 2 minutes ») pour une panne vieille de 33 h — ce
+# qui désamorce l'urgence. On mémorise donc ici, par clé stable, la PREMIÈRE fois où CE processus a
+# vu le point d'attention. C'est une BORNE INFÉRIEURE, jamais l'âge réel : elle repart à zéro au
+# redémarrage de l'orchestrateur. Elle est exposée comme telle (`age_is_lower_bound`) et l'UI écrit
+# « ≥ … ». Pour un âge VRAI il faudrait horodater le passage à stalled dans app/metrics.py.
+_ATT_FIRST_SEEN = {}          # clé → timestamp epoch du premier passage où on a vu le point
 _ATT_PROCESS_START = time.time()
 
 
@@ -54,18 +54,18 @@ def _annoter_anciennete(attention):
         first = _ATT_FIRST_SEEN.setdefault(k, now)
         a["first_seen_ts"] = first
         a["age_s"] = int(now - first)
-        ***REMOVED*** Vu dès le premier tick suivant le démarrage → l'âge observé ne dit rien de l'âge réel.
+        # Vu dès le premier tick suivant le démarrage → l'âge observé ne dit rien de l'âge réel.
         a["age_is_lower_bound"] = first <= _ATT_PROCESS_START + 30
-        ***REMOVED*** ÂGE RÉEL quand il existe : `metrics` tient un épisode de panne PERSISTÉ par flux
-        ***REMOVED*** (clé vmid/sens/slot, champ `since`), qui survit à un redémarrage du contrôleur. Il prime
-        ***REMOVED*** sur l'ancienneté simplement OBSERVÉE ci-dessus, laquelle repart à zéro à chaque restart
-        ***REMOVED*** et affichait « il y a 2 minutes » pour une panne de 33 h — le défaut même que ce chantier
-        ***REMOVED*** corrige. On retient le plus ANCIEN épisode des slots concernés (le point d'attention
-        ***REMOVED*** agrège plusieurs slots ; sa gravité, c'est celui qui dure depuis le plus longtemps).
-        ***REMOVED*** `unreachable` a un épisode PERSISTÉ lui aussi (sens « agent », idx None) : on peut donc
-        ***REMOVED*** afficher l'ancienneté RÉELLE de la panne, pas seulement celle observée depuis le
-        ***REMOVED*** démarrage du processus — c'est précisément ce qui manquait quand un multiview est resté
-        ***REMOVED*** injoignable sans que personne ne mesure depuis combien de temps.
+        # ÂGE RÉEL quand il existe : `metrics` tient un épisode de panne PERSISTÉ par flux
+        # (clé vmid/sens/slot, champ `since`), qui survit à un redémarrage du contrôleur. Il prime
+        # sur l'ancienneté simplement OBSERVÉE ci-dessus, laquelle repart à zéro à chaque restart
+        # et affichait « il y a 2 minutes » pour une panne de 33 h — le défaut même que ce chantier
+        # corrige. On retient le plus ANCIEN épisode des slots concernés (le point d'attention
+        # agrège plusieurs slots ; sa gravité, c'est celui qui dure depuis le plus longtemps).
+        # `unreachable` a un épisode PERSISTÉ lui aussi (sens « agent », idx None) : on peut donc
+        # afficher l'ancienneté RÉELLE de la panne, pas seulement celle observée depuis le
+        # démarrage du processus — c'est précisément ce qui manquait quand un multiview est resté
+        # injoignable sans que personne ne mesure depuis combien de temps.
         if a.get("kind") == "unreachable" and a.get("vmid") is not None:
             try:
                 from ..metrics import panne_en_cours as _panne_ag
@@ -81,8 +81,8 @@ def _annoter_anciennete(attention):
         if _sens and a.get("vmid") is not None:
             try:
                 from ..metrics import panne_en_cours as _panne
-                ***REMOVED*** `slots` porte les clés d'affichage « <hostname>_<idx> » (cf. metrics: skey), pas
-                ***REMOVED*** des entiers : l'épisode, lui, est keyé sur l'INDEX. Extraire le suffixe numérique.
+                # `slots` porte les clés d'affichage « <hostname>_<idx> » (cf. metrics: skey), pas
+                # des entiers : l'épisode, lui, est keyé sur l'INDEX. Extraire le suffixe numérique.
                 _idx = []
                 for _s in (a.get("slots") or []):
                     _t = str(_s).rsplit("_", 1)[-1]
@@ -93,8 +93,8 @@ def _annoter_anciennete(attention):
                 if _since:
                     a["first_seen_ts"] = min(_since)
                     a["age_s"] = int(now - min(_since))
-                    a["age_is_lower_bound"] = False      ***REMOVED*** horodatage réel, persisté
-            except Exception as e:                       ***REMOVED*** jamais silencieux : on garde l'observé
+                    a["age_is_lower_bound"] = False      # horodatage réel, persisté
+            except Exception as e:                       # jamais silencieux : on garde l'observé
                 log.debug("ancienneté réelle indisponible (vmid %s) : %s", a.get("vmid"), e)
     for k in [k for k in _ATT_FIRST_SEEN if k not in vues]:
         _ATT_FIRST_SEEN.pop(k, None)
@@ -102,19 +102,19 @@ def _annoter_anciennete(attention):
 
 
 
-***REMOVED*** ─── Sélection des alertes mises en avant sur l'accueil ──────────────────────────────────────
-***REMOVED*** Constat d'audit : la page affichait `db_get_alerts(limit=5)`, soit les CINQ DERNIÈRES, sans tri
-***REMOVED*** par gravité ni dédoublonnage. Deux conséquences mesurées sur ce parc (584 alertes/24 h, à peu
-***REMOVED*** près un tiers de chaque niveau) :
-***REMOVED***   · une `error` sort du top-5 en quelques secondes, chassée par du bruit `info` (« signal
-***REMOVED***     rétabli », etc.) — c'est-à-dire qu'on perd de vue le problème au moment où il dure ;
-***REMOVED***   · un même problème persistant occupe les 5 lignes (un message vu 16 fois dans une fenêtre de
-***REMOVED***     200), et masque tous les autres. Sur cette fenêtre, 200 lignes ne portent que 113 messages
-***REMOVED***     distincts : 43 % de redondance.
-***REMOVED*** On classe donc par GRAVITÉ puis par récence, et on regroupe les occurrences IDENTIQUES pour
-***REMOVED*** montrer 5 problèmes DISTINCTS plutôt que 5 lignes du même. Le regroupement est fait sur le
-***REMOVED*** message EXACT (pas de normalisation) : fusionner des messages seulement ressemblants ferait
-***REMOVED*** disparaître des incidents différents, ce qui serait pire que la redondance qu'on corrige.
+# ─── Sélection des alertes mises en avant sur l'accueil ──────────────────────────────────────
+# Constat d'audit : la page affichait `db_get_alerts(limit=5)`, soit les CINQ DERNIÈRES, sans tri
+# par gravité ni dédoublonnage. Deux conséquences mesurées sur ce parc (584 alertes/24 h, à peu
+# près un tiers de chaque niveau) :
+#   · une `error` sort du top-5 en quelques secondes, chassée par du bruit `info` (« signal
+#     rétabli », etc.) — c'est-à-dire qu'on perd de vue le problème au moment où il dure ;
+#   · un même problème persistant occupe les 5 lignes (un message vu 16 fois dans une fenêtre de
+#     200), et masque tous les autres. Sur cette fenêtre, 200 lignes ne portent que 113 messages
+#     distincts : 43 % de redondance.
+# On classe donc par GRAVITÉ puis par récence, et on regroupe les occurrences IDENTIQUES pour
+# montrer 5 problèmes DISTINCTS plutôt que 5 lignes du même. Le regroupement est fait sur le
+# message EXACT (pas de normalisation) : fusionner des messages seulement ressemblants ferait
+# disparaître des incidents différents, ce qui serait pire que la redondance qu'on corrige.
 _ORDRE_NIVEAU = {"error": 3, "warning": 2, "info": 1}
 
 
@@ -134,7 +134,7 @@ def _en_cours_seulement(groupes):
     Elles restent intégralement dans Monitoring → Journaux."""
     from ..database import _antirebond_fenetre, _ecart_s
     fenetre = _antirebond_fenetre()
-    if fenetre <= 0:            ***REMOVED*** anti-rebond désactivé : aucune notion d'épisode, on ne filtre pas
+    if fenetre <= 0:            # anti-rebond désactivé : aucune notion d'épisode, on ne filtre pas
         return [g for g in groupes if g.get("niveau") in ("warning", "error")]
     maintenant = datetime.now()
     out = []
@@ -156,7 +156,7 @@ def _saillantes_depuis_groupes(groupes, n=5):
     for g in groupes or []:
         d = dict(g)
         niveaux = d.pop("niveaux", None) or [d.get("niveau")]
-        d["niveau"] = max(niveaux, key=lambda x: _ORDRE_NIVEAU.get(x, 0))   ***REMOVED*** pire niveau du groupe
+        d["niveau"] = max(niveaux, key=lambda x: _ORDRE_NIVEAU.get(x, 0))   # pire niveau du groupe
         d.setdefault("count", 1)
         d.setdefault("first_timestamp", d.get("timestamp"))
         out.append(d)
@@ -180,12 +180,12 @@ def _alertes_saillantes(rows, n=5):
             groupes[cle] = {**r, "count": 1, "first_timestamp": r.get("timestamp")}
             continue
         g["count"] += 1
-        ***REMOVED*** `rows` arrive du plus récent au plus ancien : la 1re vue est la dernière occurrence,
-        ***REMOVED*** les suivantes reculent dans le temps → elles fixent le début de l'épisode.
+        # `rows` arrive du plus récent au plus ancien : la 1re vue est la dernière occurrence,
+        # les suivantes reculent dans le temps → elles fixent le début de l'épisode.
         if (r.get("timestamp") or "") < (g.get("first_timestamp") or ""):
             g["first_timestamp"] = r.get("timestamp")
         if _ORDRE_NIVEAU.get(r.get("niveau"), 0) > _ORDRE_NIVEAU.get(g.get("niveau"), 0):
-            g["niveau"] = r.get("niveau")        ***REMOVED*** pire niveau vu pour ce message
+            g["niveau"] = r.get("niveau")        # pire niveau vu pour ce message
     return sorted(groupes.values(),
                   key=lambda g: (_ORDRE_NIVEAU.get(g.get("niveau"), 0), g.get("timestamp") or ""),
                   reverse=True)[:max(1, n)]
@@ -214,12 +214,12 @@ def api_sources():
     ses listes de sources. Optionnel ?kind=video|audio pour filtrer."""
     from .. import plugins as _plugins
     want = (request.args.get("kind") or "").strip() or None
-    ***REMOVED*** Nœuds Docker par id → nom ; LXC rattachés au nœud Proxmox principal
+    # Nœuds Docker par id → nom ; LXC rattachés au nœud Proxmox principal
     try:
         nodes_by_id = {n["id"]: n["name"] for n in db_get_nodes()}
     except Exception:
         nodes_by_id = {}
-    default_node = "local"   ***REMOVED*** label de repli pour un conteneur legacy sans node_id
+    default_node = "local"   # label de repli pour un conteneur legacy sans node_id
     out = []
     for c in db_get_containers():
         dc = _load_dc(c) or {}
@@ -247,42 +247,42 @@ def api_sources():
                         "label": port.get("label") or "", "format": port.get("format")})
     return jsonify(out)
 
-***REMOVED*** ─── CADENCE DE CONTENU NEUF : la référence vient de l'AMONT, jamais de soi-même ──────────────
-***REMOVED*** `fps_content` (publié par le plugin) = à quelle vitesse un nœud relaie de la matière NOUVELLE,
-***REMOVED*** par opposition à la vitesse à laquelle il compose. La page Câbles comparait cette valeur à la
-***REMOVED*** cadence de composition du nœud LUI-MÊME. Cette référence est fausse, et elle l'est dans les
-***REMOVED*** deux sens (constaté à Horace le 2026-08-17, murs 1080p50 sur sources 1080i25) :
-***REMOVED***
-***REMOVED***  • FAUX POSITIF, en permanence. Des sources à 25 trames/s ne peuvent pas alimenter un mur à
-***REMOVED***    50 Hz en contenu neuf : `fps_content < fps` est structurellement garanti, l'avertissement ne
-***REMOVED***    peut jamais s'éteindre. Les 4 shards du parc l'affichaient en continu alors qu'ils relaient
-***REMOVED***    ~100 % de la matière disponible (24,7 sur 24,9), avec 0 trame perdue.
-***REMOVED***  • FAUX NÉGATIF, là où ça compte. Les entrées d'un assembleur sont ses SHARDS, qui réémettent
-***REMOVED***    un grain à chaque créneau que leur contenu ait changé ou non : « une entrée a avancé » est
-***REMOVED***    donc toujours vrai, et l'assembleur publie fps_content = fps quoi qu'il arrive en amont. Un
-***REMOVED***    shard qui gèlerait son image passerait pour parfaitement sain.
-***REMOVED***
-***REMOVED*** La référence légitime est la cadence de contenu neuf ATTENDUE EN AMONT :
-***REMOVED***   — entrée lue depuis une vraie source → sa cadence TRAME déclarée (25 pour du 1080i25, pas la
-***REMOVED***     cadence de sortie du mur) ;
-***REMOVED***   — entrée lue depuis un nœud qui publie lui-même du contenu neuf (un shard) → l'ATTENTE de ce
-***REMOVED***     producteur, propagée récursivement. On propage l'attente et non la mesure : sinon un shard
-***REMOVED***     qui décroche fait baisser la référence de son assembleur d'autant, et le défaut s'annule
-***REMOVED***     lui-même au lieu de se voir.
-***REMOVED***   — MAX sur les entrées, pas min ni somme : si une entrée avance à 25 Hz, le nœud doit relayer
-***REMOVED***     au moins 25 fois par seconde ou il jette de la matière. C'est un minorant rigoureux, qui ne
-***REMOVED***     demande aucun modèle de phase entre les entrées (des sources déphasées font légitimement
-***REMOVED***     monter fps_content au-dessus du max — d'où « au moins »).
-***REMOVED***
-***REMOVED*** ⚠ Une TOLÉRANCE devient nécessaire, contrairement à la règle d'origine (« aucune tolérance »).
-***REMOVED*** Elle se défendait tant que les deux termes sortaient du MÊME compteur ; ici on compare deux
-***REMOVED*** mesures indépendantes, et l'écart de mesure n'est pas un défaut. La marge est large à dessein :
-***REMOVED*** les vrais défauts de ce genre sont grossiers (moitié de cadence, gel complet), jamais marginaux.
-_CONTENU_MARGE = 0.80      ***REMOVED*** décroche sous 80 % de l'attendu
+# ─── CADENCE DE CONTENU NEUF : la référence vient de l'AMONT, jamais de soi-même ──────────────
+# `fps_content` (publié par le plugin) = à quelle vitesse un nœud relaie de la matière NOUVELLE,
+# par opposition à la vitesse à laquelle il compose. La page Câbles comparait cette valeur à la
+# cadence de composition du nœud LUI-MÊME. Cette référence est fausse, et elle l'est dans les
+# deux sens (constaté à Horace le 2026-08-17, murs 1080p50 sur sources 1080i25) :
+#
+#  • FAUX POSITIF, en permanence. Des sources à 25 trames/s ne peuvent pas alimenter un mur à
+#    50 Hz en contenu neuf : `fps_content < fps` est structurellement garanti, l'avertissement ne
+#    peut jamais s'éteindre. Les 4 shards du parc l'affichaient en continu alors qu'ils relaient
+#    ~100 % de la matière disponible (24,7 sur 24,9), avec 0 trame perdue.
+#  • FAUX NÉGATIF, là où ça compte. Les entrées d'un assembleur sont ses SHARDS, qui réémettent
+#    un grain à chaque créneau que leur contenu ait changé ou non : « une entrée a avancé » est
+#    donc toujours vrai, et l'assembleur publie fps_content = fps quoi qu'il arrive en amont. Un
+#    shard qui gèlerait son image passerait pour parfaitement sain.
+#
+# La référence légitime est la cadence de contenu neuf ATTENDUE EN AMONT :
+#   — entrée lue depuis une vraie source → sa cadence TRAME déclarée (25 pour du 1080i25, pas la
+#     cadence de sortie du mur) ;
+#   — entrée lue depuis un nœud qui publie lui-même du contenu neuf (un shard) → l'ATTENTE de ce
+#     producteur, propagée récursivement. On propage l'attente et non la mesure : sinon un shard
+#     qui décroche fait baisser la référence de son assembleur d'autant, et le défaut s'annule
+#     lui-même au lieu de se voir.
+#   — MAX sur les entrées, pas min ni somme : si une entrée avance à 25 Hz, le nœud doit relayer
+#     au moins 25 fois par seconde ou il jette de la matière. C'est un minorant rigoureux, qui ne
+#     demande aucun modèle de phase entre les entrées (des sources déphasées font légitimement
+#     monter fps_content au-dessus du max — d'où « au moins »).
+#
+# ⚠ Une TOLÉRANCE devient nécessaire, contrairement à la règle d'origine (« aucune tolérance »).
+# Elle se défendait tant que les deux termes sortaient du MÊME compteur ; ici on compare deux
+# mesures indépendantes, et l'écart de mesure n'est pas un défaut. La marge est large à dessein :
+# les vrais défauts de ce genre sont grossiers (moitié de cadence, gel complet), jamais marginaux.
+_CONTENU_MARGE = 0.80      # décroche sous 80 % de l'attendu
 
-***REMOVED*** ⚠ ABSENCE DE RÉFÉRENCE = AUCUN VERDICT (`tenue: None`), jamais une alerte. Un format non
-***REMOVED*** déclaré, un producteur hors topologie, un cycle : autant de raisons de ne rien conclure. Une
-***REMOVED*** page de diagnostic qui invente une alarme à partir d'une inconnue est pire que muette.
+# ⚠ ABSENCE DE RÉFÉRENCE = AUCUN VERDICT (`tenue: None`), jamais une alerte. Un format non
+# déclaré, un producteur hors topologie, un cycle : autant de raisons de ne rien conclure. Une
+# page de diagnostic qui invente une alarme à partir d'une inconnue est pire que muette.
 def _contenu_etats(topo_nodes, producers, shards_par_parent, noms):
     """Pose `contenu_etat` = {ref, mesure, tenue, maillon, maillon_mesure} sur chaque nœud topo.
 
@@ -295,7 +295,7 @@ def _contenu_etats(topo_nodes, producers, shards_par_parent, noms):
     par_vmid = {}
     for n in topo_nodes:
         par_vmid.setdefault(n["vmid"], []).append(n)
-    ***REMOVED*** shm → vmid qui l'écrit, et shm → cadence TRAME déclarée par son producteur.
+    # shm → vmid qui l'écrit, et shm → cadence TRAME déclarée par son producteur.
     prod_vmid, shm_fps = {}, {}
     for shm, lst in (producers or {}).items():
         for pn in lst:
@@ -312,8 +312,8 @@ def _contenu_etats(topo_nodes, producers, shards_par_parent, noms):
                 continue
             if f > 0:
                 shm_fps.setdefault(pp["shm"], f)
-    ***REMOVED*** Un vmid « à contenu » publie fps_content : c'est lui dont on propage l'ATTENTE plutôt que la
-    ***REMOVED*** cadence de son flux de sortie (laquelle vaut 50 sur un shard qui ne relaie que 25 de neuf).
+    # Un vmid « à contenu » publie fps_content : c'est lui dont on propage l'ATTENTE plutôt que la
+    # cadence de son flux de sortie (laquelle vaut 50 sur un shard qui ne relaie que 25 de neuf).
     a_contenu = {v for v, f in (fps_content_cache or {}).items() if f is not None}
 
     memo, encours = {}, set()
@@ -322,7 +322,7 @@ def _contenu_etats(topo_nodes, producers, shards_par_parent, noms):
         if vmid in memo:
             return memo[vmid]
         if vmid in encours:
-            return None                      ***REMOVED*** cycle de câblage : on ne conclut rien
+            return None                      # cycle de câblage : on ne conclut rien
         encours.add(vmid)
         r = None
         for n in par_vmid.get(vmid, ()):
@@ -354,8 +354,8 @@ def _contenu_etats(topo_nodes, producers, shards_par_parent, noms):
                 "tenue": None, "maillon": None, "maillon_mesure": None}
         if ref and mes is not None:
             etat["tenue"] = mes >= ref * _CONTENU_MARGE
-        ***REMOVED*** MAILLON FAIBLE d'un mur shardé, même raison d'être que `fps_shard_min` : l'assembleur va
-        ***REMOVED*** bien par construction, ce sont ses shards qu'il faut regarder — et ils sont repliés.
+        # MAILLON FAIBLE d'un mur shardé, même raison d'être que `fps_shard_min` : l'assembleur va
+        # bien par construction, ce sont ses shards qu'il faut regarder — et ils sont repliés.
         pire = None
         for r in (shards_par_parent.get(vmid) or ()):
             d = _deficit(r)
@@ -377,52 +377,52 @@ def api_home_summary():
     from services import nmos as _nmos
     from collections import Counter
 
-    ***REMOVED*** PTP — AGRÉGÉ sur tous les nœuds PTP-activés (cohérence multi-nœuds). Dernier relevé du
-    ***REMOVED*** sampler (ptp.cached_status), JAMAIS de status() live ici : cette route est pollée (home,
-    ***REMOVED*** multiview, câbles) et un status() = jusqu'à 5 commandes SSH séquentielles (~1 s, 40 s si
-    ***REMOVED*** hôte injoignable). Au boot (sampler pas encore passé) les champs restent aux défauts.
-    ***REMOVED*** enabled=False → le front masque entièrement la pastille.
+    # PTP — AGRÉGÉ sur tous les nœuds PTP-activés (cohérence multi-nœuds). Dernier relevé du
+    # sampler (ptp.cached_status), JAMAIS de status() live ici : cette route est pollée (home,
+    # multiview, câbles) et un status() = jusqu'à 5 commandes SSH séquentielles (~1 s, 40 s si
+    # hôte injoignable). Au boot (sampler pas encore passé) les champs restent aux défauts.
+    # enabled=False → le front masque entièrement la pastille.
     from .. import ptp as _ptp
     _ptp_ref_nid = _eff_node_id()
-    _ptp_nodes = []   ***REMOVED*** [(nid, status_dict)] des nœuds PTP-activés
+    _ptp_nodes = []   # [(nid, status_dict)] des nœuds PTP-activés
     for _n in (db_get_nodes() or []):
         try:
             if st.setting_for("ptp_enabled", _n["id"]):
                 _ptp_nodes.append((_n["id"], _ptp.cached_status(_n["id"]) or {}))
         except Exception:
             pass
-    ***REMOVED*** Repli mono-box (table nodes vide / transition 1 nœud) : comportement nœud unique d'origine.
+    # Repli mono-box (table nodes vide / transition 1 nœud) : comportement nœud unique d'origine.
     if not _ptp_nodes and st.setting_for("ptp_enabled", _ptp_ref_nid):
         _ptp_nodes.append((_ptp_ref_nid, _ptp.cached_status(_ptp_ref_nid) or {}))
     ptp_info = {"enabled": bool(_ptp_nodes), "locked": False, "port_state": None,
                 "offset_ns": None, "grandmaster_id": None,
                 "nodes_ptp": len(_ptp_nodes), "nodes_locked": 0}
     if _ptp_nodes:
-        ***REMOVED*** Critère = ptp.clock_ok (synchro au GM), PAS `locked` brut : sur un nœud full-PF DPDK
-        ***REMOVED*** `locked` est le verrou servo STRICT de libmtl, resté False sur E810 alors que l'offset au
-        ***REMOVED*** GM tient la nanoseconde → la pastille d'accueil passait en warning à tort.
+        # Critère = ptp.clock_ok (synchro au GM), PAS `locked` brut : sur un nœud full-PF DPDK
+        # `locked` est le verrou servo STRICT de libmtl, resté False sur E810 alors que l'offset au
+        # GM tient la nanoseconde → la pastille d'accueil passait en warning à tort.
         _locked = [_ptp.clock_ok(s) for _, s in _ptp_nodes]
         ptp_info["nodes_locked"] = sum(_locked)
-        ptp_info["locked"] = all(_locked)   ***REMOVED*** verrouillé seulement si TOUS les nœuds le sont
+        ptp_info["locked"] = all(_locked)   # verrouillé seulement si TOUS les nœuds le sont
         _offs = [s.get("offset_ns") for _, s in _ptp_nodes if s.get("offset_ns") is not None]
         if _offs:
-            ptp_info["offset_ns"] = max(_offs, key=lambda o: abs(o))  ***REMOVED*** pire offset absolu
+            ptp_info["offset_ns"] = max(_offs, key=lambda o: abs(o))  # pire offset absolu
         _ref = next((s for nid, s in _ptp_nodes if nid == _ptp_ref_nid), _ptp_nodes[0][1])
         ptp_info["port_state"] = _ref.get("port_state")
         ptp_info["grandmaster_id"] = _ref.get("grandmaster_id")
 
-    ***REMOVED*** Containers + ventilation par type
+    # Containers + ventilation par type
     from .. import io2110_flows as _iof
     containers = db_get_containers()
     running = sum(1 for c in containers if c.get("status") == "running")
     by_type = Counter()
     multiview_count = 0
-    ***REMOVED*** Comptes RX/TX agrégés des moteurs 2110_io (bi-rôle) : le moteur compte comme 1 conteneur
-    ***REMOVED*** en section « Sources », mais il porte N RX *et* M TX. On agrège les FLUX vidéo ACTIFS pour
-    ***REMOVED*** alimenter le schéma pipeline (Sources = Rx 2110, Destinations = Tx 2110).
+    # Comptes RX/TX agrégés des moteurs 2110_io (bi-rôle) : le moteur compte comme 1 conteneur
+    # en section « Sources », mais il porte N RX *et* M TX. On agrège les FLUX vidéo ACTIFS pour
+    # alimenter le schéma pipeline (Sources = Rx 2110, Destinations = Tx 2110).
     io_rx_v = io_rx_a = io_tx_v = io_tx_a = 0
-    io_rx_eng = io_tx_eng = 0   ***REMOVED*** nb de MOTEURS ayant respectivement du RX / du TX vidéo actif
-    io_engines = io_verbose = 0  ***REMOVED*** moteurs 2110_io : total / en log verbeux (params.mtl_log_level ≠ warning)
+    io_rx_eng = io_tx_eng = 0   # nb de MOTEURS ayant respectivement du RX / du TX vidéo actif
+    io_engines = io_verbose = 0  # moteurs 2110_io : total / en log verbeux (params.mtl_log_level ≠ warning)
     for c in containers:
         dc = c.get("deploy_config")
         try: dc = json.loads(dc) if isinstance(dc, str) else dc
@@ -434,10 +434,10 @@ def api_home_summary():
             if dc["type"] == "2110_io":
                 _p = dc.get("params") or {}
                 io_engines += 1
-                ***REMOVED*** Niveau de log EFFECTIF du moteur (tracé au déploiement, cf. docker_driver). Absent =
-                ***REMOVED*** moteur déployé avant la feature (assimilé warning pour ne pas fausse-alarmer). Sont
-                ***REMOVED*** VERBEUX (dump de stats périodique → hoquet) les niveaux plus bavards que warning :
-                ***REMOVED*** debug/info/notice. warning/err/crit sont silencieux (pas de hoquet).
+                # Niveau de log EFFECTIF du moteur (tracé au déploiement, cf. docker_driver). Absent =
+                # moteur déployé avant la feature (assimilé warning pour ne pas fausse-alarmer). Sont
+                # VERBEUX (dump de stats périodique → hoquet) les niveaux plus bavards que warning :
+                # debug/info/notice. warning/err/crit sont silencieux (pas de hoquet).
                 if str(_p.get("mtl_log_level") or "warning").lower() in ("debug", "info", "notice"):
                     io_verbose += 1
                 try:
@@ -449,24 +449,24 @@ def api_home_summary():
                     io_rx_a += sum(1 for f in _rxf if f.get("essence") == "audio")
                     io_tx_v += _v_tx
                     io_tx_a += sum(1 for f in _txf if f.get("essence") == "audio")
-                    if _v_rx: io_rx_eng += 1   ***REMOVED*** ce moteur a un rôle de source
-                    if _v_tx: io_tx_eng += 1   ***REMOVED*** ce moteur a un rôle de destination
+                    if _v_rx: io_rx_eng += 1   # ce moteur a un rôle de source
+                    if _v_tx: io_tx_eng += 1   # ce moteur a un rôle de destination
                 except Exception:
                     pass
     io2110_counts = {"rx_video": io_rx_v, "rx_audio": io_rx_a,
                      "tx_video": io_tx_v, "tx_audio": io_tx_a,
                      "rx_engines": io_rx_eng, "tx_engines": io_tx_eng}
-    ***REMOVED*** Voyant « log moteur verbeux » : le réglage courant (intention) + l'état RÉEL des moteurs
-    ***REMOVED*** tournants (params.mtl_log_level tracé au déploiement). Le voyant s'allume si l'un OU l'autre
-    ***REMOVED*** n'est pas "warning" (cf. renderHealth côté home.html). ≥ INFO = dump de stats périodique de
-    ***REMOVED*** libmtl → micro-hoquet de cadence + log volumineux (diagnostic ponctuel seulement).
+    # Voyant « log moteur verbeux » : le réglage courant (intention) + l'état RÉEL des moteurs
+    # tournants (params.mtl_log_level tracé au déploiement). Le voyant s'allume si l'un OU l'autre
+    # n'est pas "warning" (cf. renderHealth côté home.html). ≥ INFO = dump de stats périodique de
+    # libmtl → micro-hoquet de cadence + log volumineux (diagnostic ponctuel seulement).
     from .. import settings as _settings_mod
     _mtl_lvl = str(_settings_mod.get("mtl_log_level") or "warning").lower()
     mtl_log_info = {"setting": _mtl_lvl,
                     "setting_verbose": _mtl_lvl in ("debug", "info", "notice"),
                     "engines": io_engines, "verbose_engines": io_verbose}
 
-    ***REMOVED*** NMOS : ventiler par format
+    # NMOS : ventiler par format
     with _nmos._lock:
         recv_list = list(_nmos._receivers.values())
         send_list = list(_nmos._senders.values())
@@ -474,16 +474,16 @@ def api_home_summary():
                               if (r.get("subscription") or {}).get("active"))
     recv_video = sum(1 for r in recv_list if r.get("format") == "urn:x-nmos:format:video")
     recv_audio = sum(1 for r in recv_list if r.get("format") == "urn:x-nmos:format:audio")
-    ***REMOVED*** Senders : on compte directement les NMOS Senders exposés (vidéo vs audio par format de leur flow)
+    # Senders : on compte directement les NMOS Senders exposés (vidéo vs audio par format de leur flow)
     send_video = sum(1 for s in send_list
                      if _nmos._flows.get(s.get("flow_id") or "", {}).get("format") == "urn:x-nmos:format:video")
     send_audio = sum(1 for s in send_list
                      if _nmos._flows.get(s.get("flow_id") or "", {}).get("format") == "urn:x-nmos:format:audio")
 
-    ***REMOVED*** Flux MXL = nombre de shms /dev/shm/* écrits par les pipelines vidéo (count
-    ***REMOVED*** depuis les containers qui ont un script vidéo déployé). Approximation rapide :
-    ***REMOVED*** un container avec dc.type in {receiver, audio_receiver, multiview} écrit
-    ***REMOVED*** au moins 1 shm.
+    # Flux MXL = nombre de shms /dev/shm/* écrits par les pipelines vidéo (count
+    # depuis les containers qui ont un script vidéo déployé). Approximation rapide :
+    # un container avec dc.type in {receiver, audio_receiver, multiview} écrit
+    # au moins 1 shm.
     from .. import plugins as _plugins
     mxl_flows = 0
     for c in containers:
@@ -497,44 +497,44 @@ def api_home_summary():
         if h:
             mxl_flows += (h(p, {}) or 0)
 
-    ***REMOVED*** mDNS + Ember+
+    # mDNS + Ember+
     mdns_active = False
     try:
         mdns_active = bool(_nmos._state.get("mdns_active"))
     except Exception:
         pass
 
-    ***REMOVED*** (Le badge SR-IOV/pool VF a été retiré : modèle full-Docker = PF en AF-XDP, pas de VF.)
+    # (Le badge SR-IOV/pool VF a été retiré : modèle full-Docker = PF en AF-XDP, pas de VF.)
 
-    ***REMOVED*** Alertes récentes — SAILLANTES, pas « les 5 dernières » (cf. _alertes_saillantes).
-    ***REMOVED*** Le regroupement se fait en SQL : cette route est pollée toutes les 2 s et matérialiser
-    ***REMOVED*** 1000 lignes complètes en Python à chaque passe en avait fait le 1er poste de CPU du
-    ***REMOVED*** contrôleur. Et le total est un vrai COUNT : `len()` d'une fenêtre plafonnée à 1000
-    ***REMOVED*** annonçait « 1000 alerte(s) au total » sur une base qui en garde 10 000.
+    # Alertes récentes — SAILLANTES, pas « les 5 dernières » (cf. _alertes_saillantes).
+    # Le regroupement se fait en SQL : cette route est pollée toutes les 2 s et matérialiser
+    # 1000 lignes complètes en Python à chaque passe en avait fait le 1er poste de CPU du
+    # contrôleur. Et le total est un vrai COUNT : `len()` d'une fenêtre plafonnée à 1000
+    # annonçait « 1000 alerte(s) au total » sur une base qui en garde 10 000.
     from ..database import db_alertes_groupees, db_alerts_count
     alerts_total = db_alerts_count()
-    ***REMOVED*** Le regroupement travaille sur `message` (forme canonique, indépendante du lecteur) ; le
-    ***REMOVED*** rendu vient APRÈS, sur les 5 lignes retenues seulement — regrouper sur du texte traduit
-    ***REMOVED*** ferait dépendre le dédoublonnage de la langue de celui qui regarde.
+    # Le regroupement travaille sur `message` (forme canonique, indépendante du lecteur) ; le
+    # rendu vient APRÈS, sur les 5 lignes retenues seulement — regrouper sur du texte traduit
+    # ferait dépendre le dédoublonnage de la langue de celui qui regarde.
     from ..i18n import rendre_alertes
-    ***REMOVED*** ── Accueil = ÉTAT, pas historique ────────────────────────────────────────────────
-    ***REMOVED*** Ce bandeau montrait les 5 alertes les plus SAILLANTES (gravité d'abord) parmi les 1000
-    ***REMOVED*** dernières : une erreur close depuis trois jours y restait en tête indéfiniment, sous un
-    ***REMOVED*** en-tête « SYSTÈME OK ». Mesuré le 2026-08-30 : 5 erreurs rouges affichées alors qu'AUCUN
-    ***REMOVED*** épisode de niveau erreur n'était actif. L'exploitant ne pouvait pas distinguer une panne
-    ***REMOVED*** vivante d'une cicatrice, et finissait par ne plus lire la zone.
-    ***REMOVED*** Désormais : seulement ce qui est EN COURS. L'historique complet vit dans Monitoring →
-    ***REMOVED*** Journaux, qui a les filtres et l'export pour ça.
+    # ── Accueil = ÉTAT, pas historique ────────────────────────────────────────────────
+    # Ce bandeau montrait les 5 alertes les plus SAILLANTES (gravité d'abord) parmi les 1000
+    # dernières : une erreur close depuis trois jours y restait en tête indéfiniment, sous un
+    # en-tête « SYSTÈME OK ». Mesuré le 2026-08-30 : 5 erreurs rouges affichées alors qu'AUCUN
+    # épisode de niveau erreur n'était actif. L'exploitant ne pouvait pas distinguer une panne
+    # vivante d'une cicatrice, et finissait par ne plus lire la zone.
+    # Désormais : seulement ce qui est EN COURS. L'historique complet vit dans Monitoring →
+    # Journaux, qui a les filtres et l'export pour ça.
     alerts_recent = rendre_alertes(_en_cours_seulement(
         _saillantes_depuis_groupes(db_alertes_groupees(1000), 40)))[:5]
 
-    ***REMOVED*** Topologie pipeline : nodes par container + edges shm producteur → consommateur
-    ***REMOVED*** Chaque port (produces/consumes) porte son kind 'video' ou 'audio' pour
-    ***REMOVED*** colorer les arêtes et les pastilles côté front.
+    # Topologie pipeline : nodes par container + edges shm producteur → consommateur
+    # Chaque port (produces/consumes) porte son kind 'video' ou 'audio' pour
+    # colorer les arêtes et les pastilles côté front.
     from .. import plugins as _plugins
     from ..metrics import av_sync_cache, latency_cache as _lat_cache, shm_active_cache as _shm_active, cpu_count_cache as _cpu_count, rx_latency_cache as _rx_lat_cache, own_latency_cache as _own_lat_cache, rx_stalled_cache as _rx_stalled_cache, rx_fps_cache as _rx_fps_cache, rx_served_cache as _rx_served_cache, gpu_cache as _gpu_cache, slice_cache as _slice_cache
-    ***REMOVED*** Résolution paresseuse du nom de nœud d'exécution par container : node_id non nul → nodes.name ;
-    ***REMOVED*** node_id nul (conteneur legacy sans nœud) → label de repli. Mémoïsé (évite N requêtes DB).
+    # Résolution paresseuse du nom de nœud d'exécution par container : node_id non nul → nodes.name ;
+    # node_id nul (conteneur legacy sans nœud) → label de repli. Mémoïsé (évite N requêtes DB).
     _node_name_memo = {}
     def _node_label_for(node_id):
         if node_id is None:
@@ -546,32 +546,32 @@ def api_home_summary():
     topo_nodes = []
     producers = {}
     consumers = []
-    ***REMOVED*** shm → alimenté (bool), renseigné par les producteurs qui publient l'inventaire de ce qu'ils
-    ***REMOVED*** servent. Sert ensuite à éclairer le voyant des ENTRÉES : une entrée est alimentée si le flux
-    ***REMOVED*** auquel elle est câblée est réellement produit. Un shm absent de cette table = on ne sait pas
-    ***REMOVED*** (producteur qui ne publie rien), pas « éteint ».
+    # shm → alimenté (bool), renseigné par les producteurs qui publient l'inventaire de ce qu'ils
+    # servent. Sert ensuite à éclairer le voyant des ENTRÉES : une entrée est alimentée si le flux
+    # auquel elle est câblée est réellement produit. Un shm absent de cette table = on ne sait pas
+    # (producteur qui ne publie rien), pas « éteint ».
     fed_shm = {}
-    vmid_params = {}                       ***REMOVED*** vmid → params (pour le délai cumulé : entrée de réf)
-    vmid_kind = {}                         ***REMOVED*** vmid → type
-    ***REMOVED*** Rôle de chaque conteneur dans le tissu (pour replier les internes dans Câbles, comme Containers)
+    vmid_params = {}                       # vmid → params (pour le délai cumulé : entrée de réf)
+    vmid_kind = {}                         # vmid → type
+    # Rôle de chaque conteneur dans le tissu (pour replier les internes dans Câbles, comme Containers)
     try:
         from .. import compositor_fabric as _cf
         _fab = _cf.fabric_layout(containers)
         _present = {c.get("vmid") for c in containers}
     except Exception:
         _fab, _present = {}, set()
-    ***REMOVED*** MAILLON FAIBLE d'un mur shardé. L'assembleur recompose à sa cadence nominale quoi qu'il
-    ***REMOVED*** arrive : son fps ne dit rien de la santé de ses shards, et ceux-ci sont volontairement
-    ***REMOVED*** repliés dans l'interface. Sans ce calcul, un mur dont un shard tombe à 44 s'affiche à 50.
+    # MAILLON FAIBLE d'un mur shardé. L'assembleur recompose à sa cadence nominale quoi qu'il
+    # arrive : son fps ne dit rien de la santé de ses shards, et ceux-ci sont volontairement
+    # repliés dans l'interface. Sans ce calcul, un mur dont un shard tombe à 44 s'affiche à 50.
     _shard_bas, _shard_perdues, _perdues_par_vmid = {}, {}, {}
     try:
         from ..metrics import fps_plancher as _plancher, fps_pic as _pic
         _fps_par_vmid = {}
         for _c in containers:
-            ***REMOVED*** PLANCHER sur 30 s, pas la valeur instantanée : la cadence d'un shard oscille de
-            ***REMOVED*** quelques images, et comparer l'instantané à un seuil faisait CLIGNOTER
-            ***REMOVED*** l'avertissement d'un rafraîchissement à l'autre. Repli sur la valeur courante quand
-            ***REMOVED*** la fenêtre est vide (conteneur qui vient de démarrer).
+            # PLANCHER sur 30 s, pas la valeur instantanée : la cadence d'un shard oscille de
+            # quelques images, et comparer l'instantané à un seuil faisait CLIGNOTER
+            # l'avertissement d'un rafraîchissement à l'autre. Repli sur la valeur courante quand
+            # la fenêtre est vide (conteneur qui vient de démarrer).
             _p = _plancher(_c["vmid"])
             if _p is None:
                 try:
@@ -579,55 +579,55 @@ def api_home_summary():
                 except (TypeError, ValueError):
                     continue
             _fps_par_vmid[_c["vmid"]] = _p
-            ***REMOVED*** PIC de trames perdues sur la fenêtre : une trame perdue il y a vingt secondes reste
-            ***REMOVED*** une trame perdue. C'est le signal qui déclenche l'avertissement — pas un écart de
-            ***REMOVED*** cadence, qui obligerait à choisir une tolérance.
+            # PIC de trames perdues sur la fenêtre : une trame perdue il y a vingt secondes reste
+            # une trame perdue. C'est le signal qui déclenche l'avertissement — pas un écart de
+            # cadence, qui obligerait à choisir une tolérance.
             _perdues_par_vmid[_c["vmid"]] = _pic(_c["vmid"], canal="perdues")
         _noms = {_c["vmid"]: (_c.get("hostname") or str(_c["vmid"])) for _c in containers}
         for _parent, _refs in (_cf.shards_par_parent() or {}).items():
             _vals = [(_fps_par_vmid[_r], _noms.get(_r, str(_r))) for _r in _refs
                      if _r in _fps_par_vmid]
             if _vals:
-                _shard_bas[_parent] = min(_vals)   ***REMOVED*** (fps, nom) — le plus lent des shards
+                _shard_bas[_parent] = min(_vals)   # (fps, nom) — le plus lent des shards
             _pertes = [_perdues_par_vmid.get(_r) or 0.0 for _r in _refs]
             _shard_perdues[_parent] = max(_pertes) if _pertes else 0.0
-    except Exception:                                                      ***REMOVED*** noqa: BLE001
+    except Exception:                                                      # noqa: BLE001
         _shard_bas, _shard_perdues = {}, {}
-    ***REMOVED*** États live des plugins (:8082/state) PRÉ-CHARGÉS EN PARALLÈLE. Ils étaient lus un par un au
-    ***REMOVED*** fil de la boucle ci-dessous, chacun avec 0,5 s de timeout : sur cette route pollée toutes les
-    ***REMOVED*** 2 s, c'était le premier poste de coût (579 ms sur 706 — mesuré 2026-08-13), et un seul
-    ***REMOVED*** conteneur injoignable retardait tous les suivants. Même contenu, même repli sur {}.
+    # États live des plugins (:8082/state) PRÉ-CHARGÉS EN PARALLÈLE. Ils étaient lus un par un au
+    # fil de la boucle ci-dessous, chacun avec 0,5 s de timeout : sur cette route pollée toutes les
+    # 2 s, c'était le premier poste de coût (579 ms sur 706 — mesuré 2026-08-13), et un seul
+    # conteneur injoignable retardait tous les suivants. Même contenu, même repli sur {}.
     from .cabling import _fetch_plugin_states_cache
     _live_cibles = []
-    ***REMOVED*** Statuts depuis lesquels un :8082 peut répondre : le conteneur tourne. `script_stopped` compte
-    ***REMOVED*** (conteneur up, script arrêté : l'agent répond). Tout le reste — `unreachable`, `stopped`,
-    ***REMOVED*** `unknown` — c'est l'orchestrateur qui DIT DÉJÀ que rien ne répondra : l'interroger quand même
-    ***REMOVED*** coûtait un timeout plein (0,5 s) par conteneur et par poll, pour un `{}` connu d'avance.
-    ***REMOVED*** Un seul conteneur `unreachable` pesait ainsi 500 des 626 ms de la requête (mesuré 2026-08-13).
+    # Statuts depuis lesquels un :8082 peut répondre : le conteneur tourne. `script_stopped` compte
+    # (conteneur up, script arrêté : l'agent répond). Tout le reste — `unreachable`, `stopped`,
+    # `unknown` — c'est l'orchestrateur qui DIT DÉJÀ que rien ne répondra : l'interroger quand même
+    # coûtait un timeout plein (0,5 s) par conteneur et par poll, pour un `{}` connu d'avance.
+    # Un seul conteneur `unreachable` pesait ainsi 500 des 626 ms de la requête (mesuré 2026-08-13).
     _STATUTS_JOIGNABLES = ("running", "script_stopped")
-    _wiring_par_vmid = {}   ***REMOVED*** le wiring calculé ici est RÉUTILISÉ par la boucle (sinon on le
-                            ***REMOVED*** dériverait deux fois par conteneur plugin, à chaque poll)
+    _wiring_par_vmid = {}   # le wiring calculé ici est RÉUTILISÉ par la boucle (sinon on le
+                            # dériverait deux fois par conteneur plugin, à chaque poll)
     for _c in containers:
         if _c.get("status") not in _STATUTS_JOIGNABLES:
             continue
         _dc = _c.get("deploy_config")
         try:
             _dc = json.loads(_dc) if isinstance(_dc, str) else _dc
-        except Exception:                                                  ***REMOVED*** noqa: BLE001
+        except Exception:                                                  # noqa: BLE001
             _dc = None
         _k = (_dc or {}).get("type")
         if not _k or not _plugins.is_plugin(_k):
             continue
         try:
             _w = _plugins.derive_wiring(_k, (_c.get("hostname") or ""), (_dc or {}).get("params") or {})
-        except Exception:                                                  ***REMOVED*** noqa: BLE001
+        except Exception:                                                  # noqa: BLE001
             continue
         _wiring_par_vmid[_c["vmid"]] = _w
         if any(x.get("state_field") for x in _w.get("consumes") or []):
             _live_cibles.append((_c["vmid"], _c.get("ip"), _w.get("state_endpoint") or "/state"))
-    ***REMOVED*** Cache tiède : cette route est pollée toutes les 2 s par l'accueil ET par la
-    ***REMOVED*** page Câbles ; l'état câblé d'un plugin ne change que sur un geste. On sert
-    ***REMOVED*** le cache et on rafraîchit derrière (cf. _fetch_plugin_states_cache).
+    # Cache tiède : cette route est pollée toutes les 2 s par l'accueil ET par la
+    # page Câbles ; l'état câblé d'un plugin ne change que sur un geste. On sert
+    # le cache et on rafraîchit derrière (cf. _fetch_plugin_states_cache).
     _live_par_vmid = _fetch_plugin_states_cache(_live_cibles)
     for c in containers:
         dc_raw = c.get("deploy_config")
@@ -644,11 +644,11 @@ def api_home_summary():
         if tp_hook:
             _tp = tp_hook(hn, p, {})
             produces, consumes_ = _tp["produces"], _tp["consumes"]
-            ***REMOVED*** Étage 3 (docs/reference/TX_LAYOUTS.md) : le format DÉCLARÉ d'une sortie TX vit dans `tx_slots[i]`, pas
-            ***REMOVED*** dans le wiring du plugin (un slot TX n'a pas de format « attendu » au manifeste : il
-            ***REMOVED*** suit sa source). On l'expose ici, côté orchestrateur, pour que la page Câbles AFFICHE
-            ***REMOVED*** le format de chaque sortie et signale l'écart AVANT le clic (et pas seulement après,
-            ***REMOVED*** dans une modale). C'est le format qu'annonce le SDP — donc le contrat de la sortie.
+            # Étage 3 (docs/reference/TX_LAYOUTS.md) : le format DÉCLARÉ d'une sortie TX vit dans `tx_slots[i]`, pas
+            # dans le wiring du plugin (un slot TX n'a pas de format « attendu » au manifeste : il
+            # suit sa source). On l'expose ici, côté orchestrateur, pour que la page Câbles AFFICHE
+            # le format de chaque sortie et signale l'écart AVANT le clic (et pas seulement après,
+            # dans une modale). C'est le format qu'annonce le SDP — donc le contrat de la sortie.
             if kind == "2110_io":
                 from .. import tx_maintenance as _txm
                 for _port in consumes_:
@@ -656,12 +656,12 @@ def api_home_summary():
                         _sf = _txm.slot_format(p, _port["slot"])
                         if _sf and _sf.get("width"):
                             _port["format"] = dict(_sf, chroma=str(p.get("chroma") or "422"))
-                            _port["tx_slot"] = True   ***REMOVED*** gate de format spécifique (axes de signature)
+                            _port["tx_slot"] = True   # gate de format spécifique (axes de signature)
         elif _plugins.is_plugin(kind):
-            ***REMOVED*** Plugins : I/O déclarées au manifeste (wiring). produces = gabarits shm
-            ***REMOVED*** résolus ; consumes hot-wire = shm live lu via state_field sur :8082.
-            ***REMOVED*** Déjà dérivé par la pré-passe ci-dessus pour les conteneurs joignables ; recalculé
-            ***REMOVED*** seulement pour les autres (elle les saute).
+            # Plugins : I/O déclarées au manifeste (wiring). produces = gabarits shm
+            # résolus ; consumes hot-wire = shm live lu via state_field sur :8082.
+            # Déjà dérivé par la pré-passe ci-dessus pour les conteneurs joignables ; recalculé
+            # seulement pour les autres (elle les saute).
             w = _wiring_par_vmid.get(c["vmid"]) or _plugins.derive_wiring(kind, hn, p)
             for prod in w["produces"]:
                 if prod.get("shm"):
@@ -672,10 +672,10 @@ def api_home_summary():
                         pp["format"] = prod["format"]
                     produces.append(pp)
             cons_specs = w["consumes"]
-            ***REMOVED*** Les plugins qui ADAPTENT leur entrée (scale/convert : udc, multiview, delay)
-            ***REMOVED*** n'exposent pas de format attendu → pas de proposition d'UDC au câblage.
+            # Les plugins qui ADAPTENT leur entrée (scale/convert : udc, multiview, delay)
+            # n'exposent pas de format attendu → pas de proposition d'UDC au câblage.
             adapts_input = bool((_plugins.get(kind) or {}).get("adapts_input"))
-            live = _live_par_vmid.get(c["vmid"], {})   ***REMOVED*** pré-chargé en parallèle (cf. plus haut)
+            live = _live_par_vmid.get(c["vmid"], {})   # pré-chargé en parallèle (cf. plus haut)
             for spec in cons_specs:
                 ess = spec.get("essence") or "video"
                 shm = spec.get("shm") or (live.get(spec["state_field"]) if spec.get("state_field") else None)
@@ -685,15 +685,15 @@ def api_home_summary():
                 if spec.get("slot") is not None:
                     port["slot"] = spec["slot"]
                 if spec.get("format") and not adapts_input:
-                    port["format"] = spec["format"]   ***REMOVED*** format ATTENDU (pour détection mismatch au câblage)
+                    port["format"] = spec["format"]   # format ATTENDU (pour détection mismatch au câblage)
                 if shm:
                     port["shm"] = shm
                 else:
                     port["shm"] = ""; port["disconnected"] = True
                 consumes_.append(port)
-        ***REMOVED*** Latence de RÉCEPTION (segment A = capture média → écriture shm) par port producteur :
-        ***REMOVED*** exposée sur les sources 2110_io (réseau + framebuffers MTL + de-jitter). Distincte du badge
-        ***REMOVED*** segment B (transit shm → lecteur) porté par les arêtes. Affichée sur le port source.
+        # Latence de RÉCEPTION (segment A = capture média → écriture shm) par port producteur :
+        # exposée sur les sources 2110_io (réseau + framebuffers MTL + de-jitter). Distincte du badge
+        # segment B (transit shm → lecteur) porté par les arêtes. Affichée sur le port source.
         _rxl = _rx_lat_cache.get(c["vmid"]) or {}
         _rxstall = _rx_stalled_cache.get(c["vmid"]) or {}
         if _rxl or _rxstall:
@@ -701,66 +701,66 @@ def api_home_summary():
                 _v = _rxl.get(pp.get("shm"))
                 if isinstance(_v, (int, float)):
                     pp["rx_latency_ms"] = round(_v, 1)
-                ***REMOVED*** « Abonné mais ne reçoit pas » : slot mtl dont le flux n'avance pas.
+                # « Abonné mais ne reçoit pas » : slot mtl dont le flux n'avance pas.
                 if _rxstall.get(pp.get("shm")):
                     pp["rx_stalled"] = True
-        ***REMOVED*** fps PAR FLUX (moteur multi-flux 2110_io, où un fps de carte agrégé n'a pas de sens) :
-        ***REMOVED*** exposé sur chaque port de sortie depuis receivers[].fps (rx_fps_cache, keyé par shm).
+        # fps PAR FLUX (moteur multi-flux 2110_io, où un fps de carte agrégé n'a pas de sens) :
+        # exposé sur chaque port de sortie depuis receivers[].fps (rx_fps_cache, keyé par shm).
         _rxf = _rx_fps_cache.get(c["vmid"]) or {}
         if _rxf:
             for pp in produces:
                 _vf = _rxf.get(pp.get("shm"))
                 if isinstance(_vf, (int, float)):
                     pp["fps"] = round(_vf, 1)
-        ***REMOVED*** ALIMENTATION du port (`fed`), TRI-ÉTAT — absent de la charge utile quand on ne sait pas.
-        ***REMOVED***
-        ***REMOVED*** Un moteur multi-flux déclare bien plus de ports qu'il n'en sert : le moteur 2110 annonce
-        ***REMOVED*** 25 sorties vidéo, 25 audio et 25 ANC, alors que seules les sessions réellement abonnées
-        ***REMOVED*** produisent un flux MXL. La page les offrait toutes au câblage sans distinction, ce qui
-        ***REMOVED*** laissait croire à des flux audio/ANC qui n'ont jamais existé.
-        ***REMOVED***
-        ***REMOVED*** On ne masque PAS les ports non alimentés : pré-câbler un port avant que sa source arrive
-        ***REMOVED*** est un usage légitime (décision produit). On dit seulement lesquels sont servis.
-        ***REMOVED***
-        ***REMOVED*** ⚠ `fed=False` exige une PREUVE POSITIVE d'absence : le producteur publie l'inventaire de
-        ***REMOVED*** ses flux servis, et celui-ci n'y est pas. Un producteur qui ne publie rien (la plupart des
-        ***REMOVED*** plugins, mono-flux) ne reçoit aucun `fed` — traiter son silence comme « non alimenté »
-        ***REMOVED*** marquerait toute la flotte en erreur, ce qui est le contraire de l'information cherchée.
+        # ALIMENTATION du port (`fed`), TRI-ÉTAT — absent de la charge utile quand on ne sait pas.
+        #
+        # Un moteur multi-flux déclare bien plus de ports qu'il n'en sert : le moteur 2110 annonce
+        # 25 sorties vidéo, 25 audio et 25 ANC, alors que seules les sessions réellement abonnées
+        # produisent un flux MXL. La page les offrait toutes au câblage sans distinction, ce qui
+        # laissait croire à des flux audio/ANC qui n'ont jamais existé.
+        #
+        # On ne masque PAS les ports non alimentés : pré-câbler un port avant que sa source arrive
+        # est un usage légitime (décision produit). On dit seulement lesquels sont servis.
+        #
+        # ⚠ `fed=False` exige une PREUVE POSITIVE d'absence : le producteur publie l'inventaire de
+        # ses flux servis, et celui-ci n'y est pas. Un producteur qui ne publie rien (la plupart des
+        # plugins, mono-flux) ne reçoit aucun `fed` — traiter son silence comme « non alimenté »
+        # marquerait toute la flotte en erreur, ce qui est le contraire de l'information cherchée.
         _served = _rx_served_cache.get(c["vmid"])
         if _served is not None:
             for pp in produces:
                 _e = _served.get(pp.get("shm"))
-                ***REMOVED*** UNE SESSION QUI LIVRE DES TRAMES N'EST PAS DU SIGNAL. Constaté : deux entrées RX
-                ***REMOVED*** recevaient à 50,3 fps tout en étant `black` ET `frozen` — le moteur travaillait,
-                ***REMOVED*** le contenu était vide, et le voyant s'allumait quand même. « Allumé » doit vouloir
-                ***REMOVED*** dire « il se passe quelque chose », pas « le transport fonctionne ».
-                ***REMOVED***
-                ***REMOVED*** Les deux drapeaux ENSEMBLE, jamais l'un seul : `frozen` est vrai pour toute mire
-                ***REMOVED*** fixe — l'exiger éteindrait des sources parfaitement valides — et `black` seul peut
-                ***REMOVED*** être un vrai noir à l'antenne. Leur conjonction signe l'absence de contenu.
-                ***REMOVED***
-                ***REMOVED*** Contrepartie assumée : une source volontairement noire ET immobile s'affichera
-                ***REMOVED*** éteinte. Pour un voyant de présence de signal, c'est le bon compromis.
+                # UNE SESSION QUI LIVRE DES TRAMES N'EST PAS DU SIGNAL. Constaté : deux entrées RX
+                # recevaient à 50,3 fps tout en étant `black` ET `frozen` — le moteur travaillait,
+                # le contenu était vide, et le voyant s'allumait quand même. « Allumé » doit vouloir
+                # dire « il se passe quelque chose », pas « le transport fonctionne ».
+                #
+                # Les deux drapeaux ENSEMBLE, jamais l'un seul : `frozen` est vrai pour toute mire
+                # fixe — l'exiger éteindrait des sources parfaitement valides — et `black` seul peut
+                # être un vrai noir à l'antenne. Leur conjonction signe l'absence de contenu.
+                #
+                # Contrepartie assumée : une source volontairement noire ET immobile s'affichera
+                # éteinte. Pour un voyant de présence de signal, c'est le bon compromis.
                 _sig = (_e or {}).get("signal") or {}
                 pp["fed"] = bool(_e) and not (_sig.get("black") and _sig.get("frozen"))
                 fed_shm[pp.get("shm")] = pp["fed"]
-        ***REMOVED*** Producteur sans inventaire par flux : `shm_active` sert de preuve, mais UNIQUEMENT DANS LE
-        ***REMOVED*** SENS POSITIF. Ce drapeau vaut `prev is not None and fi > prev` : quand il est VRAI, le
-        ***REMOVED*** frame_index a réellement avancé entre deux relevés — preuve de vie irréfutable, on allume.
-        ***REMOVED*** Quand il est FAUX, il ne distingue pas « à l'arrêt » de « pas encore deux relevés » : il
-        ***REMOVED*** vaut donc faux au premier tick suivant chaque redémarrage, et pour tout conteneur
-        ***REMOVED*** momentanément injoignable. L'asymétrie est délibérée — une preuve positive allume, une
-        ***REMOVED*** absence de preuve n'éteint jamais.
+        # Producteur sans inventaire par flux : `shm_active` sert de preuve, mais UNIQUEMENT DANS LE
+        # SENS POSITIF. Ce drapeau vaut `prev is not None and fi > prev` : quand il est VRAI, le
+        # frame_index a réellement avancé entre deux relevés — preuve de vie irréfutable, on allume.
+        # Quand il est FAUX, il ne distingue pas « à l'arrêt » de « pas encore deux relevés » : il
+        # vaut donc faux au premier tick suivant chaque redémarrage, et pour tout conteneur
+        # momentanément injoignable. L'asymétrie est délibérée — une preuve positive allume, une
+        # absence de preuve n'éteint jamais.
         elif _shm_active.get(c["vmid"]) is True and len(produces) == 1:
             produces[0]["fed"] = True
             fed_shm[produces[0].get("shm")] = True
-        ***REMOVED*** Containers sans aucune I/O (Stockage, webrtc_gateway, …) : hors topologie/Câbles.
+        # Containers sans aucune I/O (Stockage, webrtc_gateway, …) : hors topologie/Câbles.
         if not produces and not consumes_:
             continue
-        ***REMOVED*** split_io : un moteur RX+TX (ex. 2110_io) n'est PAS un process passthrough — ses
-        ***REMOVED*** produces (RX, réseau→shm) et consumes (TX, shm→réseau) sont indépendants. On le rend en
-        ***REMOVED*** DEUX nœuds : RX dans la colonne sources (gauche), TX dans la colonne sinks (droite). Même
-        ***REMOVED*** vmid (le câblage cible le vmid ; le slot/shm désambiguïse — endpointOf trouve le bon nœud).
+        # split_io : un moteur RX+TX (ex. 2110_io) n'est PAS un process passthrough — ses
+        # produces (RX, réseau→shm) et consumes (TX, shm→réseau) sont indépendants. On le rend en
+        # DEUX nœuds : RX dans la colonne sources (gauche), TX dans la colonne sinks (droite). Même
+        # vmid (le câblage cible le vmid ; le slot/shm désambiguïse — endpointOf trouve le bon nœud).
         _split = bool((_plugins.get(kind) or {}).get("split_io")) and produces and consumes_
 
         def _emit_node(prods, cons, col, host_suffix="", split=False):
@@ -771,29 +771,29 @@ def api_home_summary():
                 "hostname": (c.get("hostname") or "") + host_suffix,
                 "status": c.get("status"),
                 "fps": c.get("fps"),
-                ***REMOVED*** Cadence de CONTENU NEUF, à côté de la cadence de composition. L'ÉCART entre les
-                ***REMOVED*** deux est le diagnostic : un mur qui compose 50 fois par seconde sur des tuiles
-                ***REMOVED*** inchangées publie 50 en toute honnêteté, pendant que l'émetteur aval sort à 38.
-                ***REMOVED*** None = le plugin ne la publie pas → l'UI n'affiche rien de plus.
+                # Cadence de CONTENU NEUF, à côté de la cadence de composition. L'ÉCART entre les
+                # deux est le diagnostic : un mur qui compose 50 fois par seconde sur des tuiles
+                # inchangées publie 50 en toute honnêteté, pendant que l'émetteur aval sort à 38.
+                # None = le plugin ne la publie pas → l'UI n'affiche rien de plus.
                 "fps_content": _fps_content.get(c["vmid"]),
-                ***REMOVED*** Cadence du SHARD LE PLUS LENT d'un mur shardé, et son nom. L'assembleur ne peut
-                ***REMOVED*** pas relayer plus vite que son maillon le plus lent ; c'est cette valeur-là qui
-                ***REMOVED*** décrit la réalité de ce que le mur produit. None = mur non shardé.
+                # Cadence du SHARD LE PLUS LENT d'un mur shardé, et son nom. L'assembleur ne peut
+                # pas relayer plus vite que son maillon le plus lent ; c'est cette valeur-là qui
+                # décrit la réalité de ce que le mur produit. None = mur non shardé.
                 "fps_shard_min": (_shard_bas.get(c["vmid"]) or (None, None))[0],
                 "fps_shard_maillon": (_shard_bas.get(c["vmid"]) or (None, None))[1],
-                ***REMOVED*** Cadence NOMINALE déclarée du mur : c'est l'INTENTION, donc la seule référence
-                ***REMOVED*** légitime d'une alarme. Comparer un shard à la cadence de l'assembleur reviendrait
-                ***REMOVED*** à comparer un défaut à un autre défaut.
+                # Cadence NOMINALE déclarée du mur : c'est l'INTENTION, donc la seule référence
+                # légitime d'une alarme. Comparer un shard à la cadence de l'assembleur reviendrait
+                # à comparer un défaut à un autre défaut.
                 "fps_nominal": p.get("fps"),
-                ***REMOVED*** Verdict de cadence PRÊT À AFFICHER ({cible, tenue, mesure}) — le même que celui
-                ***REMOVED*** des cartes et que celui de l'alarme de sous-cadence. Sans lui, cette page
-                ***REMOVED*** affichait la mesure brute, qui porte ±1 image de troncature de fenêtre : un
-                ***REMOVED*** nœud sain y montrait « 49,8 fps », un chiffre qui bouge sans rien signaler.
+                # Verdict de cadence PRÊT À AFFICHER ({cible, tenue, mesure}) — le même que celui
+                # des cartes et que celui de l'alarme de sous-cadence. Sans lui, cette page
+                # affichait la mesure brute, qui porte ±1 image de troncature de fenêtre : un
+                # nœud sain y montrait « 49,8 fps », un chiffre qui bouge sans rien signaler.
                 "cadence": _cadence_etat(c["vmid"], c, dc or {}),
-                ***REMOVED*** Trames perdues par seconde, le PIRE de ses shards sur 30 s. > 0 = des images ont
-                ***REMOVED*** été perdues, point : aucun seuil à régler.
+                # Trames perdues par seconde, le PIRE de ses shards sur 30 s. > 0 = des images ont
+                # été perdues, point : aucun seuil à régler.
                 "shard_frames_missed": _shard_perdues.get(c["vmid"]),
-                ***REMOVED*** … et les siennes propres, pour les modules non shardés.
+                # … et les siennes propres, pour les modules non shardés.
                 "frames_missed": _perdues_par_vmid.get(c["vmid"]),
                 "kind": kind,
                 "plugin_version": p.get("plugin_version"),
@@ -819,18 +819,18 @@ def api_home_summary():
                 "cores": c.get("cores"),
                 "memory": c.get("memory"),
                 "cpu_count": _cpu_count.get(c["vmid"]),
-                "av_sync": av_sync_cache.get(c["vmid"]),   ***REMOVED*** calage A/V (streamer) : {applied,live,drift} ms
-                ***REMOVED*** Latence PROPRE du nœud (traitement). Source : own_latency_ms rapporté par le plugin
-                ***REMOVED*** (ts_out − ts_cycle_start). Repli pour un plugin non migré : max des transits (ancien
-                ***REMOVED*** comportement, surestimé mais non nul).
+                "av_sync": av_sync_cache.get(c["vmid"]),   # calage A/V (streamer) : {applied,live,drift} ms
+                # Latence PROPRE du nœud (traitement). Source : own_latency_ms rapporté par le plugin
+                # (ts_out − ts_cycle_start). Repli pour un plugin non migré : max des transits (ancien
+                # comportement, surestimé mais non nul).
                 "own_latency_ms": (round(_own_lat_cache[c["vmid"]], 1) if isinstance(_own_lat_cache.get(c["vmid"]), (int, float)) else
                     (lambda _lc: round(max(v for v in _lc.values() if isinstance(v, (int, float)) and v > 0), 1) if any(isinstance(v, (int, float)) and v > 0 for v in _lc.values()) else None)(_lat_cache.get(c["vmid"]) or {})),
-                "shm_active": _shm_active.get(c["vmid"]),  ***REMOVED*** True/False/None (None = pas encore mesuré)
-                "gpu": _gpu_cache.get(c["vmid"]),          ***REMOVED*** {gpu:bool, name} si compositing GPU (cupy), sinon None
-                ***REMOVED*** Mode tranche (composition/publication bande par bande) : badge discret page
-                ***REMOVED*** Câbles. RUNTIME d'abord (le script dit s'il tranche VRAIMENT — un slice_mode
-                ***REMOVED*** de config peut être replié en trame entière : GPU sans gpu_slice, portrait…) ;
-                ***REMOVED*** repli config str-aware (bool("false") serait True) si métriques pas encore lues.
+                "shm_active": _shm_active.get(c["vmid"]),  # True/False/None (None = pas encore mesuré)
+                "gpu": _gpu_cache.get(c["vmid"]),          # {gpu:bool, name} si compositing GPU (cupy), sinon None
+                # Mode tranche (composition/publication bande par bande) : badge discret page
+                # Câbles. RUNTIME d'abord (le script dit s'il tranche VRAIMENT — un slice_mode
+                # de config peut être replié en trame entière : GPU sans gpu_slice, portrait…) ;
+                # repli config str-aware (bool("false") serait True) si métriques pas encore lues.
                 "slice_mode": (_slice_cache[c["vmid"]] if c["vmid"] in _slice_cache else
                                str(p.get("slice_mode") or "").strip().lower() in ("1", "true", "yes", "on")),
             })
@@ -849,30 +849,30 @@ def api_home_summary():
 
         for port in produces:
             producers.setdefault(port["shm"], []).append({"vmid": c["vmid"], "kind": port["kind"]})
-        ***REMOVED*** slot = MÊME valeur que le front rendra en data-slot (renderPort : port.slot ?? index dans
-        ***REMOVED*** consumes). Indispensable pour que endpointOf vise le BON dot d'entrée quand un même shm est
-        ***REMOVED*** câblé sur plusieurs slots d'un même nœud (ex. multiview : 5 PiP du même flux) — sinon les
-        ***REMOVED*** arêtes se superposent toutes sur le slot 0. On énumère la liste COMPLÈTE (slots déconnectés
-        ***REMOVED*** inclus) pour conserver l'alignement d'index avec le rendu front.
+        # slot = MÊME valeur que le front rendra en data-slot (renderPort : port.slot ?? index dans
+        # consumes). Indispensable pour que endpointOf vise le BON dot d'entrée quand un même shm est
+        # câblé sur plusieurs slots d'un même nœud (ex. multiview : 5 PiP du même flux) — sinon les
+        # arêtes se superposent toutes sur le slot 0. On énumère la liste COMPLÈTE (slots déconnectés
+        # inclus) pour conserver l'alignement d'index avec le rendu front.
         for _i, port in enumerate(consumes_):
             if not port.get("shm"):
-                continue  ***REMOVED*** slot disconnected, pas d'edge
+                continue  # slot disconnected, pas d'edge
             _slot = port.get("slot") if port.get("slot") is not None else _i
             consumers.append({"vmid": c["vmid"], "shm": port["shm"],
                               "kind": port["kind"], "slot": _slot})
-    ***REMOVED*** Verdict de CONTENU NEUF, une fois la topologie complète (il faut `producers` pour savoir qui
-    ***REMOVED*** écrit quel shm, donc après la boucle). Best-effort : ce diagnostic ne doit jamais faire
-    ***REMOVED*** échouer la page.
+    # Verdict de CONTENU NEUF, une fois la topologie complète (il faut `producers` pour savoir qui
+    # écrit quel shm, donc après la boucle). Best-effort : ce diagnostic ne doit jamais faire
+    # échouer la page.
     try:
         from .. import compositor_fabric as _cf2
         _contenu_etats(topo_nodes, producers, _cf2.shards_par_parent() or {},
                        {_c2["vmid"]: (_c2.get("hostname") or str(_c2["vmid"])) for _c2 in containers})
-    except Exception:                                                      ***REMOVED*** noqa: BLE001
+    except Exception:                                                      # noqa: BLE001
         log.debug("verdict contenu neuf indisponible", exc_info=True)
-    ***REMOVED*** ─── Vue d'ensemble PROJETS (?view=projects, chantier 4) ────────────────────────
-    ***REMOVED*** Chaque projet est replié en UN module boîte noire : ses containers disparaissent,
-    ***REMOVED*** le module n'expose que les PORTS (sources consommées / destinations publiées).
-    ***REMOVED*** Les échanges inter-projets et hors-projet restent visibles ; l'intérieur, non.
+    # ─── Vue d'ensemble PROJETS (?view=projects, chantier 4) ────────────────────────
+    # Chaque projet est replié en UN module boîte noire : ses containers disparaissent,
+    # le module n'expose que les PORTS (sources consommées / destinations publiées).
+    # Les échanges inter-projets et hors-projet restent visibles ; l'intérieur, non.
     if (request.args.get("view") or "") == "projects":
         from ..auth import vmid_project_ids
         from ..database import db_project_ports
@@ -905,7 +905,7 @@ def api_home_summary():
                 elif b.get("internal_shm"):
                     prods.append({"shm": b["internal_shm"], "kind": pt.get("media") or "video",
                                   "label": pt.get("name")})
-            svmid = -int(pid_)   ***REMOVED*** vmid synthétique (négatif : jamais un container réel)
+            svmid = -int(pid_)   # vmid synthétique (négatif : jamais un container réel)
             topo_nodes.append({
                 "vmid": svmid, "hostname": pr["name"], "status": None,
                 "fps": None, "kind": "project", "plugin_version": None,
@@ -926,47 +926,47 @@ def api_home_summary():
                     consumers.append({"vmid": svmid, "shm": port["shm"],
                                       "kind": port["kind"], "slot": _i})
 
-    ***REMOVED*** Voyant des ENTRÉES : une entrée est alimentée si le flux auquel elle est câblée est produit.
-    ***REMOVED*** Deuxième passe nécessaire — le producteur d'un flux peut apparaître APRÈS son consommateur
-    ***REMOVED*** dans l'ordre de parcours, donc on ne peut pas renseigner l'entrée au vol.
-    ***REMOVED***
-    ***REMOVED*** Trois cas, et seulement le deuxième allume/éteint :
-    ***REMOVED***   • entrée non câblée (shm vide) → aucun voyant, elle porte déjà « déconnectée » ;
-    ***REMOVED***   • shm connu de la table → allumé/éteint selon son producteur ;
-    ***REMOVED***   • shm inconnu (producteur muet, ou flux répliqué par RDMA dont la source est ailleurs)
-    ***REMOVED***     → pas de voyant. Éteindre faute de savoir signalerait une panne inexistante.
+    # Voyant des ENTRÉES : une entrée est alimentée si le flux auquel elle est câblée est produit.
+    # Deuxième passe nécessaire — le producteur d'un flux peut apparaître APRÈS son consommateur
+    # dans l'ordre de parcours, donc on ne peut pas renseigner l'entrée au vol.
+    #
+    # Trois cas, et seulement le deuxième allume/éteint :
+    #   • entrée non câblée (shm vide) → aucun voyant, elle porte déjà « déconnectée » ;
+    #   • shm connu de la table → allumé/éteint selon son producteur ;
+    #   • shm inconnu (producteur muet, ou flux répliqué par RDMA dont la source est ailleurs)
+    #     → pas de voyant. Éteindre faute de savoir signalerait une panne inexistante.
     for _tn in topo_nodes:
         for _port in (_tn.get("consumes") or []):
             _s = _port.get("shm")
             if not _s:
-                ***REMOVED*** Entrée SANS CÂBLE : rien n'y arrive, et ce n'est pas une ignorance mais une
-                ***REMOVED*** certitude — aucun flux ne lui est raccordé. Le laisser neutre revenait à
-                ***REMOVED*** l'afficher comme alimentée, ce qui est faux pour la majorité des ports d'un
-                ***REMOVED*** moteur TX (64 entrées déclarées, une seule câblée).
+                # Entrée SANS CÂBLE : rien n'y arrive, et ce n'est pas une ignorance mais une
+                # certitude — aucun flux ne lui est raccordé. Le laisser neutre revenait à
+                # l'afficher comme alimentée, ce qui est faux pour la majorité des ports d'un
+                # moteur TX (64 entrées déclarées, une seule câblée).
                 _port["fed"] = False
             elif _s in fed_shm:
                 _port["fed"] = fed_shm[_s]
 
     from ..metrics import latency_cache
-    ***REMOVED*** Seuil de FRAÎCHEUR : la « latence » d'entrée rapportée par un consommateur est l'ÂGE de la
-    ***REMOVED*** dernière trame lue (now_tai − last_write, cf. multiview script). Pour une source vivante c'est
-    ***REMOVED*** ~1-2 trames (<100 ms) ; pour une entrée GELÉE (source coupée / non abonnée) l'âge grandit sans
-    ***REMOVED*** borne (minutes). Au-delà de ce seuil on ne compte plus ça comme une latence de transport :
-    ***REMOVED*** latency_ms=None (exclue des agrégats max/moyenne/cumul partout), âge brut conservé dans age_ms
-    ***REMOVED*** + flag stale → l'UI affiche « figé » plutôt qu'un nombre aberrant.
+    # Seuil de FRAÎCHEUR : la « latence » d'entrée rapportée par un consommateur est l'ÂGE de la
+    # dernière trame lue (now_tai − last_write, cf. multiview script). Pour une source vivante c'est
+    # ~1-2 trames (<100 ms) ; pour une entrée GELÉE (source coupée / non abonnée) l'âge grandit sans
+    # borne (minutes). Au-delà de ce seuil on ne compte plus ça comme une latence de transport :
+    # latency_ms=None (exclue des agrégats max/moyenne/cumul partout), âge brut conservé dans age_ms
+    # + flag stale → l'UI affiche « figé » plutôt qu'un nombre aberrant.
     _STALE_INPUT_MS = 5000.0
-    ***REMOVED*** Map vmid → nœud : une arête producteur→consommateur sur deux nœuds DIFFÉRENTS passe forcément
-    ***REMOVED*** par RDMA (seul transport inter-nœud du bus MXL) → on la marque pour le voyant « RDMA » côté UI.
+    # Map vmid → nœud : une arête producteur→consommateur sur deux nœuds DIFFÉRENTS passe forcément
+    # par RDMA (seul transport inter-nœud du bus MXL) → on la marque pour le voyant « RDMA » côté UI.
     _vmid_node = {tn["vmid"]: tn.get("node_id") for tn in topo_nodes if tn.get("vmid") is not None}
-    ***REMOVED*** (flux, nœud destination) → statut du lien RDMA qui le réplique. Lu une fois : la table des
-    ***REMOVED*** liens est petite et vit en base, aucun appel réseau.
+    # (flux, nœud destination) → statut du lien RDMA qui le réplique. Lu une fois : la table des
+    # liens est petite et vit en base, aucun appel réseau.
     _rdma_par_flux = {}
     try:
         from services import rdma as _rdma_svc
         for _l in _rdma_svc.db_list_rdma_links():
             _rdma_par_flux[(_l.get("src_flow"), _l.get("dst_node_id"))] = _l.get("status")
     except Exception:
-        pass          ***REMOVED*** service absent ou non chargé : on n'affirme rien plutôt que d'affirmer faux
+        pass          # service absent ou non chargé : on n'affirme rien plutôt que d'affirmer faux
     topo_edges = []
     consumed_shms = set()
     for cn in consumers:
@@ -986,43 +986,43 @@ def api_home_summary():
                 "stale": _stale,
                 "age_ms": (round(lat) if _stale else None),
                 "rdma": bool(_fn is not None and _tn is not None and _fn != _tn),
-                ***REMOVED*** ÉTAT RÉEL de la réplication, et non le simple fait de traverser deux nœuds.
-                ***REMOVED***
-                ***REMOVED*** Le drapeau `rdma` ci-dessus ne dit QUE « les deux bouts sont sur des nœuds
-                ***REMOVED*** différents ». Le câble affichait donc « ⇄ RDMA » même sans aucun lien provisionné :
-                ***REMOVED*** constaté sur treize câbles audio et ANC dont le consommateur lisait un flux
-                ***REMOVED*** absent de son propre nœud. Le libellé affirmait le transport qui manquait
-                ***REMOVED*** précisément — on ne pouvait pas trouver la panne en regardant l'endroit où elle
-                ***REMOVED*** était. `rdma_link` vaut le statut du lien, ou None quand il n'en existe aucun.
+                # ÉTAT RÉEL de la réplication, et non le simple fait de traverser deux nœuds.
+                #
+                # Le drapeau `rdma` ci-dessus ne dit QUE « les deux bouts sont sur des nœuds
+                # différents ». Le câble affichait donc « ⇄ RDMA » même sans aucun lien provisionné :
+                # constaté sur treize câbles audio et ANC dont le consommateur lisait un flux
+                # absent de son propre nœud. Le libellé affirmait le transport qui manquait
+                # précisément — on ne pouvait pas trouver la panne en regardant l'endroit où elle
+                # était. `rdma_link` vaut le statut du lien, ou None quand il n'en existe aucun.
                 **({"rdma_link": _rdma_par_flux.get((cn["shm"], _tn))}
                    if (_fn is not None and _tn is not None and _fn != _tn) else {}),
-                ***REMOVED*** Un câble n'est « vivant » que si le flux qu'il porte est réellement produit.
-                ***REMOVED*** Même tri-état que les voyants : la clé est ABSENTE quand on ne sait pas, jamais
-                ***REMOVED*** False par défaut — un câble en pointillé annonce une absence de signal, pas une
-                ***REMOVED*** absence de mesure.
+                # Un câble n'est « vivant » que si le flux qu'il porte est réellement produit.
+                # Même tri-état que les voyants : la clé est ABSENTE quand on ne sait pas, jamais
+                # False par défaut — un câble en pointillé annonce une absence de signal, pas une
+                # absence de mesure.
                 **({"fed": fed_shm[cn["shm"]]} if cn["shm"] in fed_shm else {}),
             })
-    ***REMOVED*** ─── Suivi des temps de traitement (page Câbles) ─────────────────────────────────────────
-    ***REMOVED*** delay_total = délai de traitement CUMULÉ d'un signal de sortie (somme des latences le long du
-    ***REMOVED*** chemin de la RÉFÉRENCE) → ce qu'il faut compenser sur un audio externe. Le mélangeur/DVE
-    ***REMOVED*** « cassent » l'accumulation linéaire : on suit le chemin de l'entrée de référence, et on expose
-    ***REMOVED*** le délai + le skew de CHAQUE entrée sur leurs ports (immédiat = réf, sinon aligné / en retard).
+    # ─── Suivi des temps de traitement (page Câbles) ─────────────────────────────────────────
+    # delay_total = délai de traitement CUMULÉ d'un signal de sortie (somme des latences le long du
+    # chemin de la RÉFÉRENCE) → ce qu'il faut compenser sur un audio externe. Le mélangeur/DVE
+    # « cassent » l'accumulation linéaire : on suit le chemin de l'entrée de référence, et on expose
+    # le délai + le skew de CHAQUE entrée sur leurs ports (immédiat = réf, sinon aligné / en retard).
     from ..metrics import align_cache, inputs_lag_cache
-    prod_of = {shm: lst[0]["vmid"] for shm, lst in producers.items() if lst}  ***REMOVED*** 1er producteur d'un shm
-    in_v_edges = {}                        ***REMOVED*** vmid → arêtes vidéo entrantes
+    prod_of = {shm: lst[0]["vmid"] for shm, lst in producers.items() if lst}  # 1er producteur d'un shm
+    in_v_edges = {}                        # vmid → arêtes vidéo entrantes
     for e in topo_edges:
         if (e.get("kind") or "video") == "video":
             in_v_edges.setdefault(e["to"], []).append(e)
 
-    ***REMOVED*** ⚠ MOTEUR SCINDÉ (split_io) : ses deux moitiés — RX (produces) et TX (consumes) — sont DEUX
-    ***REMOVED*** nœuds de topologie portant le MÊME vmid. Raisonner le retard PAR CONTENEUR faisait donc
-    ***REMOVED*** remonter, depuis le RX, l'arête d'entrée du TX jusqu'au mur, et rapportait le temps de calcul
-    ***REMOVED*** de celui-ci sur les SORTIES du RX (`cum=4,3 ms` sur une arête RX→mur, avant que le mur ait
-    ***REMOVED*** rien fait). Circulaire : le garde-fou anti-cycle évitait la récursion infinie et laissait la
-    ***REMOVED*** valeur absurde passer pour une mesure.
-    ***REMOVED*** Le retard est une propriété du FLUX, pas du conteneur — c'est par le shm qu'on raisonne.
+    # ⚠ MOTEUR SCINDÉ (split_io) : ses deux moitiés — RX (produces) et TX (consumes) — sont DEUX
+    # nœuds de topologie portant le MÊME vmid. Raisonner le retard PAR CONTENEUR faisait donc
+    # remonter, depuis le RX, l'arête d'entrée du TX jusqu'au mur, et rapportait le temps de calcul
+    # de celui-ci sur les SORTIES du RX (`cum=4,3 ms` sur une arête RX→mur, avant que le mur ait
+    # rien fait). Circulaire : le garde-fou anti-cycle évitait la récursion infinie et laissait la
+    # valeur absurde passer pour une mesure.
+    # Le retard est une propriété du FLUX, pas du conteneur — c'est par le shm qu'on raisonne.
     _split_vmids = {n["vmid"] for n in topo_nodes if n.get("split")}
-    ***REMOVED*** SEGMENT A par flux : capture réseau → écriture shm, mesuré par le moteur (`rx_latency_ms`).
+    # SEGMENT A par flux : capture réseau → écriture shm, mesuré par le moteur (`rx_latency_ms`).
     _rx_lat_by_shm = {}
     for _n in topo_nodes:
         for _pp in _n.get("produces") or []:
@@ -1053,7 +1053,7 @@ def api_home_summary():
             for e in edges:
                 if e["shm"] == ref_shm:
                     return e
-        return edges[0] if edges else None     ***REMOVED*** mono-entrée / défaut : la 1re entrée vidéo
+        return edges[0] if edges else None     # mono-entrée / défaut : la 1re entrée vidéo
 
     _memo = {}
     def _delay_out_shm(shm, stack):
@@ -1066,10 +1066,10 @@ def api_home_summary():
         if v is None:
             return 0.0
         if v in _split_vmids:
-            ***REMOVED*** ORIGINE DE LA CHAÎNE : ce flux vient du réseau, pas d'une entrée shm. Son retard est
-            ***REMOVED*** le SEGMENT A (capture → écriture shm), pas zéro. L'exclure amputait le cumul d'une
-            ***REMOVED*** TRAME ENTIÈRE (19,3 ms mesurés) et interdisait structurellement au total d'approcher
-            ***REMOVED*** le fil-à-fil — `rx_latency_ms` n'était qu'un badge isolé, jamais additionné.
+            # ORIGINE DE LA CHAÎNE : ce flux vient du réseau, pas d'une entrée shm. Son retard est
+            # le SEGMENT A (capture → écriture shm), pas zéro. L'exclure amputait le cumul d'une
+            # TRAME ENTIÈRE (19,3 ms mesurés) et interdisait structurellement au total d'approcher
+            # le fil-à-fil — `rx_latency_ms` n'était qu'un badge isolé, jamais additionné.
             return _rx_lat_by_shm.get(shm) or 0.0
         return _delay_out(v, stack)
 
@@ -1077,16 +1077,16 @@ def api_home_summary():
         if vmid in _memo: return _memo[vmid]
         if vmid is None or vmid in stack: return 0.0
         if vmid in _split_vmids:
-            ***REMOVED*** Le retard en sortie d'un moteur scindé se lit par flux (segment A), pas par vmid :
-            ***REMOVED*** `in_v_edges[vmid]` porte ici les entrées du TX, qui ne mènent PAS aux sorties du RX.
+            # Le retard en sortie d'un moteur scindé se lit par flux (segment A), pas par vmid :
+            # `in_v_edges[vmid]` porte ici les entrées du TX, qui ne mènent PAS aux sorties du RX.
             return 0.0
         edges = in_v_edges.get(vmid) or []
-        if not edges:                          ***REMOVED*** source / générateur → origine
+        if not edges:                          # source / générateur → origine
             _memo[vmid] = 0.0; return 0.0
         ref = _ref_edge(vmid, edges)
         base = _delay_out_shm(ref["shm"], stack | {vmid}) if ref else 0.0
-        ***REMOVED*** Cumul = chemin de la réf jusqu'à la PRODUCTION amont (base) + TRANSIT de l'arête de réf
-        ***REMOVED*** (arrivée) + traitement PROPRE de ce nœud (own). La somme télescope en ts_out − origine.
+        # Cumul = chemin de la réf jusqu'à la PRODUCTION amont (base) + TRANSIT de l'arête de réf
+        # (arrivée) + traitement PROPRE de ce nœud (own). La somme télescope en ts_out − origine.
         transit = (ref.get("latency_ms") or 0.0) if ref else 0.0
         own = _own_lat_cache.get(vmid)
         own = own if isinstance(own, (int, float)) else 0.0
@@ -1098,13 +1098,13 @@ def api_home_summary():
         sr_idx = ac.get("sync_ref")
         sr_idx = int(sr_idx) if sr_idx is not None else (
             int((vmid_params.get(n["vmid"]) or {}).get("sync_ref") or 0) if n.get("kind") == "mixer" else None)
-        ***REMOVED*** Sorties : délai cumulé total du signal produit.
+        # Sorties : délai cumulé total du signal produit.
         for port in n["produces"]:
             dt = (_rx_lat_by_shm.get(port.get("shm")) or 0.0) if n["vmid"] in _split_vmids \
                  else _delay_out(n["vmid"], set())
             port["delay_total_ms"] = round(dt, 1) if dt else 0.0
-        ***REMOVED*** Entrées de nœuds SINK (TX 2110, destinations finales) : délai cumulé total jusqu'à la
-        ***REMOVED*** sortie réseau. Permet de lire le retard bout-en-bout sur le port d'entrée du TX.
+        # Entrées de nœuds SINK (TX 2110, destinations finales) : délai cumulé total jusqu'à la
+        # sortie réseau. Permet de lire le retard bout-en-bout sur le port d'entrée du TX.
         if n.get("col") == "sinks" and not n.get("produces"):
             for port in n["consumes"]:
                 shm = port.get("shm")
@@ -1113,7 +1113,7 @@ def api_home_summary():
                 dt = _delay_out_shm(shm, set()) + _transit_of(n["vmid"], shm, port.get("slot"))
                 if dt:
                     port["delay_in_ms"] = round(dt, 1)
-        ***REMOVED*** Entrées de mélangeur/DVE : délai propre + alignement (immédiat / aligné / en retard).
+        # Entrées de mélangeur/DVE : délai propre + alignement (immédiat / aligné / en retard).
         if n.get("kind") in ("mixer", "split"):
             for port in n["consumes"]:
                 shm = port.get("shm")
@@ -1127,10 +1127,10 @@ def api_home_summary():
                 port["late"] = shm in (ac.get("late") or [])
                 if n["kind"] == "mixer":
                     port["is_ref"] = (sr_idx is not None and port.get("slot") == sr_idx)
-                else:   ***REMOVED*** split : le fond (slot 4) est la référence
+                else:   # split : le fond (slot 4) est la référence
                     port["is_ref"] = (port.get("slot") == 4)
-        ***REMOVED*** Entrées de multiview (input-locked) : retard par source en IMAGES (0 = synchrone). Une
-        ***REMOVED*** entrée qui dépasse le budget d'1 image est « décalée » → badge « +N img » sur son port.
+        # Entrées de multiview (input-locked) : retard par source en IMAGES (0 = synchrone). Une
+        # entrée qui dépasse le budget d'1 image est « décalée » → badge « +N img » sur son port.
         if n.get("kind") == "multiview":
             _lag = inputs_lag_cache.get(n["vmid"]) or {}
             for port in n["consumes"]:
@@ -1138,9 +1138,9 @@ def api_home_summary():
                 if shm:
                     port["lag_frames"] = int(_lag.get(shm) or 0)
 
-    ***REMOVED*** Cumul à l'ARRIVÉE par arête (pour le toggle « Cumulé » de la page Câbles) : délai cumulé jusqu'à
-    ***REMOVED*** la sortie du producteur (_delay_out) + transit de l'arête. = retard total du signal quand il
-    ***REMOVED*** ENTRE dans le consommateur. latency_ms (transit) reste la valeur « par étape ».
+    # Cumul à l'ARRIVÉE par arête (pour le toggle « Cumulé » de la page Câbles) : délai cumulé jusqu'à
+    # la sortie du producteur (_delay_out) + transit de l'arête. = retard total du signal quand il
+    # ENTRE dans le consommateur. latency_ms (transit) reste la valeur « par étape ».
     for e in topo_edges:
         if (e.get("kind") or "video") != "video":
             continue
@@ -1148,14 +1148,14 @@ def api_home_summary():
         if cum:
             e["cum_ms"] = round(cum, 1)
 
-    ***REMOVED*** ═══ AXE B — DÉLAI DU SIGNAL, en TRAMES ══════════════════════════════════════════════════
-    ***REMOVED*** Tout ce qui précède relève de l'axe CHARGE : temps de CALCUL et transits, en millisecondes
-    ***REMOVED*** sous-trame. Ils disent si un étage a de la MARGE — pas combien de temps le signal met.
-    ***REMOVED*** Ici on ne modélise rien : on relaie la mesure DIRECTE de chaque étage (`delai_etage_trames`
-    ***REMOVED*** = index de sortie − index d'entrée) et le segment A du moteur. Un étage qui ne mesure pas
-    ***REMOVED*** rend le total INCOMPLET et on le NOMME. Absence de mesure = absence de chiffre — jamais un
-    ***REMOVED*** zéro, qui se lirait « cet étage n'ajoute aucun délai ».
-    ***REMOVED*** Cf. docs/reference/LATENCE_CHAINE.md.
+    # ═══ AXE B — DÉLAI DU SIGNAL, en TRAMES ══════════════════════════════════════════════════
+    # Tout ce qui précède relève de l'axe CHARGE : temps de CALCUL et transits, en millisecondes
+    # sous-trame. Ils disent si un étage a de la MARGE — pas combien de temps le signal met.
+    # Ici on ne modélise rien : on relaie la mesure DIRECTE de chaque étage (`delai_etage_trames`
+    # = index de sortie − index d'entrée) et le segment A du moteur. Un étage qui ne mesure pas
+    # rend le total INCOMPLET et on le NOMME. Absence de mesure = absence de chiffre — jamais un
+    # zéro, qui se lirait « cet étage n'ajoute aucun délai ».
+    # Cf. docs/reference/LATENCE_CHAINE.md.
     from ..metrics import delai_etage_cache as _delai_cache
 
     _noeud_prod = {}
@@ -1184,15 +1184,15 @@ def api_home_summary():
     for _n in topo_nodes:
         _d = _delai_cache.get(_n["vmid"])
         _p = _periode_ms(_n["vmid"])
-        ***REMOVED*** Le moteur scindé n'a pas d'« étage » : sa moitié RX EST le segment A, portée par ses ports.
+        # Le moteur scindé n'a pas d'« étage » : sa moitié RX EST le segment A, portée par ses ports.
         _n["delai_etage"] = ({"trames": _d["trames"], "trames_max": _d.get("trames_max"),
                               "ms": (round(_d["trames"] * _p, 1) if _p else None),
                               "propage": bool(_d.get("propage"))}
                              if (_d and _n["produces"] and _n["vmid"] not in _split_vmids) else None)
-        ***REMOVED*** MOITIÉ RX D'UN MOTEUR SCINDÉ : son « étage » EST la réception (capture réseau → shm),
-        ***REMOVED*** et elle est MESURÉE (`rx_latency_ms`). Elle n'apparaissait que sous forme de badge ⇣ sur
-        ***REMOVED*** l'axe Charge, alors que c'est un vrai délai de chaîne : l'axe Délai affichait « rien »
-        ***REMOVED*** pour le premier maillon. On retient le PIRE port, comme partout ailleurs.
+        # MOITIÉ RX D'UN MOTEUR SCINDÉ : son « étage » EST la réception (capture réseau → shm),
+        # et elle est MESURÉE (`rx_latency_ms`). Elle n'apparaissait que sous forme de badge ⇣ sur
+        # l'axe Charge, alors que c'est un vrai délai de chaîne : l'axe Délai affichait « rien »
+        # pour le premier maillon. On retient le PIRE port, comme partout ailleurs.
         if _n["delai_etage"] is None and _n["vmid"] in _split_vmids and _n.get("col") == "sources":
             _rx = [pp["rx_latency_ms"] for pp in _n["produces"]
                    if isinstance(pp.get("rx_latency_ms"), (int, float))]
@@ -1218,15 +1218,15 @@ def api_home_summary():
             _memo_sig[shm] = r
             return r
         edges = in_v_edges.get(v) or []
-        if not edges:                                   ***REMOVED*** générateur (mire, lecteur) → origine
+        if not edges:                                   # générateur (mire, lecteur) → origine
             _memo_sig[shm] = (0.0, True, [])
             return _memo_sig[shm]
-        ***REMOVED*** ⚠ MAX SUR TOUTES LES ENTRÉES, pas l'entrée de référence. L'axe A suit la référence
-        ***REMOVED*** (c'est la timeline de sortie qui l'intéresse) ; l'axe B décrit l'ÂGE DU CONTENU, et un
-        ***REMOVED*** compositeur ne peut pas être plus frais que sa plus VIEILLE entrée. Sur un mur shardé,
-        ***REMOVED*** suivre `edges[0]` aurait rendu invisible un shard n°3 en retard alors que ses tuiles
-        ***REMOVED*** sont dans l'image. Même doctrine que `StageDelay`, qui retient déjà l'entrée la plus
-        ***REMOVED*** vieille À L'INTÉRIEUR d'un étage — il fallait la tenir aussi ENTRE les étages.
+        # ⚠ MAX SUR TOUTES LES ENTRÉES, pas l'entrée de référence. L'axe A suit la référence
+        # (c'est la timeline de sortie qui l'intéresse) ; l'axe B décrit l'ÂGE DU CONTENU, et un
+        # compositeur ne peut pas être plus frais que sa plus VIEILLE entrée. Sur un mur shardé,
+        # suivre `edges[0]` aurait rendu invisible un shard n°3 en retard alors que ses tuiles
+        # sont dans l'image. Même doctrine que `StageDelay`, qui retient déjà l'entrée la plus
+        # vieille À L'INTÉRIEUR d'un étage — il fallait la tenir aussi ENTRE les étages.
         base, complet, manq = 0.0, True, []
         for _e in edges:
             _b, _c, _m = _delai_signal_shm(_e["shm"], stack | {shm})
@@ -1251,38 +1251,38 @@ def api_home_summary():
 
     for _n in topo_nodes:
         _p = _periode_ms_n(_n)
-        ***REMOVED*** ORIGINE DE CHAÎNE (aucune arête vidéo entrante : moteur RX, mire, lecteur) : le « cumul »
-        ***REMOVED*** y vaut son PROPRE segment A et rien d'autre. Le répéter sur chacun des 18 ports du moteur
-        ***REMOVED*** n'apprend rien — c'est déjà le badge ⇣ de l'axe Charge — et fait déborder la tuile.
+        # ORIGINE DE CHAÎNE (aucune arête vidéo entrante : moteur RX, mire, lecteur) : le « cumul »
+        # y vaut son PROPRE segment A et rien d'autre. Le répéter sur chacun des 18 ports du moteur
+        # n'apprend rien — c'est déjà le badge ⇣ de l'axe Charge — et fait déborder la tuile.
         _origine = not (in_v_edges.get(_n["vmid"]) or []) or _n["vmid"] in _split_vmids
         if not _origine:
             for port in _n["produces"]:
                 port["delai_signal"] = _sig_port(*_delai_signal_shm(port.get("shm"), set()), _p)
-        ***REMOVED*** SINKS (aucune sortie : moniteur, streamer, TX 2110) : le cumul se lit sur leurs ENTRÉES.
-        ***REMOVED*** C'est l'endroit le plus utile de toute la page — « de combien est décalé ce que je
-        ***REMOVED*** regarde ? » — et il n'y avait rien, le cumul n'étant posé que sur des sorties.
+        # SINKS (aucune sortie : moniteur, streamer, TX 2110) : le cumul se lit sur leurs ENTRÉES.
+        # C'est l'endroit le plus utile de toute la page — « de combien est décalé ce que je
+        # regarde ? » — et il n'y avait rien, le cumul n'étant posé que sur des sorties.
         if not _n["produces"]:
             for port in _n["consumes"]:
                 _shm = port.get("shm")
                 if _shm:
                     port["delai_signal"] = _sig_port(*_delai_signal_shm(_shm, set()), _p)
-        ***REMOVED*** ÉMISSION 2110 : jamais mesurée à ce jour — le 1,00 trame de référence est une
-        ***REMOVED*** SOUSTRACTION sur la boucle mur→TX→fil→RX (2026-08-12), pas une mesure. On l'affiche donc
-        ***REMOVED*** comme une constante ÉTIQUETÉE : une constante annoncée est honnête, une constante
-        ***REMOVED*** silencieuse est un mensonge. Mesurable (chemin tranche : notify_frame_done + meta->epoch),
-        ***REMOVED*** cf. docs/reference/LATENCE_CHAINE.md §6.
+        # ÉMISSION 2110 : jamais mesurée à ce jour — le 1,00 trame de référence est une
+        # SOUSTRACTION sur la boucle mur→TX→fil→RX (2026-08-12), pas une mesure. On l'affiche donc
+        # comme une constante ÉTIQUETÉE : une constante annoncée est honnête, une constante
+        # silencieuse est un mensonge. Mesurable (chemin tranche : notify_frame_done + meta->epoch),
+        # cf. docs/reference/LATENCE_CHAINE.md §6.
         if _n["vmid"] in _split_vmids and _n.get("col") == "sinks":
             _pe = _periode_ms(_n["vmid"]) or ((_n.get("cadence") or {}).get("cible")
                                               and 1000.0 / float(_n["cadence"]["cible"]))
             _n["delai_emission"] = {"trames": 1.0, "ms": (round(_pe, 1) if _pe else None),
                                     "mesure": False, "estime": True}
-            ***REMOVED*** CUMUL AU FIL = ce qui ARRIVE sur le TX + ce que le TX ajoute en émettant. Le port
-            ***REMOVED*** d'entrée porte l'arrivée (juste, et utile) ; la carte, elle, doit répondre « quel âge
-            ***REMOVED*** a l'image qui part sur le fil ? ». Sans ce terme, le TX affichait exactement le même
-            ***REMOVED*** chiffre que sa source alors qu'on lui compte une image — l'écart passait à la trappe.
-            ***REMOVED*** Marqué `estime` : le dernier terme est une constante déclarée, pas une mesure (§6 de
-            ***REMOVED*** docs/reference/LATENCE_CHAINE.md — le chemin tranche du moteur permettrait de la
-            ***REMOVED*** mesurer pour de bon).
+            # CUMUL AU FIL = ce qui ARRIVE sur le TX + ce que le TX ajoute en émettant. Le port
+            # d'entrée porte l'arrivée (juste, et utile) ; la carte, elle, doit répondre « quel âge
+            # a l'image qui part sur le fil ? ». Sans ce terme, le TX affichait exactement le même
+            # chiffre que sa source alors qu'on lui compte une image — l'écart passait à la trappe.
+            # Marqué `estime` : le dernier terme est une constante déclarée, pas une mesure (§6 de
+            # docs/reference/LATENCE_CHAINE.md — le chemin tranche du moteur permettrait de la
+            # mesurer pour de bon).
             _ins = [pp.get("delai_signal") for pp in _n["consumes"] if pp.get("delai_signal")]
             if _ins and _pe:
                 _pire_in = max(_ins, key=lambda q: q.get("ms") or 0)
@@ -1293,12 +1293,12 @@ def api_home_summary():
                                    "manquants": list(_pire_in.get("manquants") or []),
                                    "estime": True}
 
-    ***REMOVED*** Tag les ports producteurs comme "free" s'ils ne sont consommés nulle part
+    # Tag les ports producteurs comme "free" s'ils ne sont consommés nulle part
     for n in topo_nodes:
         for port in n["produces"]:
             port["free"] = port["shm"] not in consumed_shms
 
-    ***REMOVED*** Raccourcis : top 3 projets et top 3 snapshots de câblage les plus récents
+    # Raccourcis : top 3 projets et top 3 snapshots de câblage les plus récents
     try:
         recent_projects = db_get_projects()[:3]
         recent_projects = [{"id": p["id"], "name": p["name"], "created_at": p["created_at"],
@@ -1314,20 +1314,20 @@ def api_home_summary():
     except Exception:
         recent_cables = []
 
-    ***REMOVED*** Route nav par type (déclarée au manifeste) → chips cliquables sur la home
+    # Route nav par type (déclarée au manifeste) → chips cliquables sur la home
     nav_routes = {}
     for m in _plugins.all():
         route = (m.get("nav") or {}).get("route")
         if route:
             nav_routes[m.get("type")] = route
 
-    ***REMOVED*** Stats agrégées du pipeline MXL (pour le graphique de la home). Tout est dérivé de
-    ***REMOVED*** topo_nodes (produces[].format) → aucun coût supplémentaire par-frame.
+    # Stats agrégées du pipeline MXL (pour le graphique de la home). Tout est dérivé de
+    # topo_nodes (produces[].format) → aucun coût supplémentaire par-frame.
     from ..scripts import CHROMA_DIV
-    _VIDEO_RING, _AUDIO_RING = 10, 100   ***REMOVED*** tailles de ring shm (cf. scripts des plugins)
+    _VIDEO_RING, _AUDIO_RING = 10, 100   # tailles de ring shm (cf. scripts des plugins)
     _flows_v = _flows_a = _grains = 0
     _bw_bps = 0.0
-    _bw_par_noeud = {}          ***REMOVED*** node_id → bande passante produite sur CE nœud (bit/s)
+    _bw_par_noeud = {}          # node_id → bande passante produite sur CE nœud (bit/s)
     for n in topo_nodes:
         _nid = n.get("node_id")
         for pr in (n.get("produces") or []):
@@ -1345,23 +1345,23 @@ def api_home_summary():
                 _b = w * h * (1.0 + 2.0 / (cw * ch2)) * fps * 8.0 if (w and h and fps) else 0.0
             _bw_bps += _b
             _bw_par_noeud[_nid] = _bw_par_noeud.get(_nid, 0.0) + _b
-    ***REMOVED*** ── EMPREINTE DU BUS MXL, et pourquoi ce n'est PAS une somme par conteneur ────────────────
-    ***REMOVED*** La tuile sommait `containers.mem_used` sur un total de `containers.memory`. Les deux étaient
-    ***REMOVED*** faux, chacun à sa façon (mesuré le 2026-08-30, dl360-1) :
-    ***REMOVED***  · `containers.memory` vaut 2048 pour TOUT LE MONDE — c'est le défaut du paramètre de
-    ***REMOVED***    `db_upsert_container_docker`, que personne n'écrase jamais. Colonne héritée de LXC, elle
-    ***REMOVED***    ne décrit plus rien : on divisait une mesure réelle par une constante.
-    ***REMOVED***  · `mem_used` est le `memory.current` du cgroup, et les pages d'un tmpfs sont facturées au
-    ***REMOVED***    cgroup qui les a TOUCHÉES EN PREMIER. Relevé : le moteur portait 222 Mio de `shmem`,
-    ***REMOVED***    `hello-world` 40 Mio d'un flux qu'il ne faisait que LIRE, et le streamer 0. Cette
-    ***REMOVED***    répartition change à chaque redémarrage de conteneur — on additionnait un découpage
-    ***REMOVED***    arbitraire et instable de la mémoire PARTAGÉE.
-    ***REMOVED*** Le bus, lui, a une taille EXACTE et calculable : la profondeur d'anneau du SDK MXL n'est pas
-    ***REMOVED*** un nombre de cases mais une DURÉE (`history_duration`, réglage `mxl_history_ms`), donc
-    ***REMOVED***     octets = débit du domaine × durée d'historique.
-    ***REMOVED*** Vérifié : un flux 1080p50 4:2:2 8 bits = 1,66 Gbit/s × 0,2 s = 41,5 Mo, et les flux vidéo du
-    ***REMOVED*** domaine de dl360-1 pèsent 40 Mio chacun sur disque. La durée est lue PAR NŒUD (le réglage
-    ***REMOVED*** l'est), jamais supposée : deux nœuds peuvent porter deux profondeurs.
+    # ── EMPREINTE DU BUS MXL, et pourquoi ce n'est PAS une somme par conteneur ────────────────
+    # La tuile sommait `containers.mem_used` sur un total de `containers.memory`. Les deux étaient
+    # faux, chacun à sa façon (mesuré le 2026-08-30, dl360-1) :
+    #  · `containers.memory` vaut 2048 pour TOUT LE MONDE — c'est le défaut du paramètre de
+    #    `db_upsert_container_docker`, que personne n'écrase jamais. Colonne héritée de LXC, elle
+    #    ne décrit plus rien : on divisait une mesure réelle par une constante.
+    #  · `mem_used` est le `memory.current` du cgroup, et les pages d'un tmpfs sont facturées au
+    #    cgroup qui les a TOUCHÉES EN PREMIER. Relevé : le moteur portait 222 Mio de `shmem`,
+    #    `hello-world` 40 Mio d'un flux qu'il ne faisait que LIRE, et le streamer 0. Cette
+    #    répartition change à chaque redémarrage de conteneur — on additionnait un découpage
+    #    arbitraire et instable de la mémoire PARTAGÉE.
+    # Le bus, lui, a une taille EXACTE et calculable : la profondeur d'anneau du SDK MXL n'est pas
+    # un nombre de cases mais une DURÉE (`history_duration`, réglage `mxl_history_ms`), donc
+    #     octets = débit du domaine × durée d'historique.
+    # Vérifié : un flux 1080p50 4:2:2 8 bits = 1,66 Gbit/s × 0,2 s = 41,5 Mo, et les flux vidéo du
+    # domaine de dl360-1 pèsent 40 Mio chacun sur disque. La durée est lue PAR NŒUD (le réglage
+    # l'est), jamais supposée : deux nœuds peuvent porter deux profondeurs.
     from ..mtl import MXL_HISTORY_MS_DEFAULT
     _mxl_bytes = 0.0
     for _nid, _b in _bw_par_noeud.items():
@@ -1374,17 +1374,17 @@ def api_home_summary():
         "flows": {"video": _flows_v, "audio": _flows_a, "total": _flows_v + _flows_a},
         "grains": _grains,
         "bandwidth_bps": int(_bw_bps),
-        ***REMOVED*** Empreinte CALCULÉE du bus, et RAM PHYSIQUE des nœuds (complétée plus bas, une fois les
-        ***REMOVED*** snapshots node_health lus). `ram_node_total` reste None si aucun snapshot n'est encore
-        ***REMOVED*** arrivé : le front affiche alors la valeur seule, jamais un ratio sur zéro.
+        # Empreinte CALCULÉE du bus, et RAM PHYSIQUE des nœuds (complétée plus bas, une fois les
+        # snapshots node_health lus). `ram_node_total` reste None si aucun snapshot n'est encore
+        # arrivé : le front affiche alors la valeur seule, jamais un ratio sur zéro.
         "mxl_bytes": int(_mxl_bytes),
         "ram_node_used": None,
         "ram_node_total": None,
     }
 
-    ***REMOVED*** ─── Santé CLUSTER : agrégat pire-cas multi-nœuds (lu du cache node_health, AUCUN SSH ici) ──
-    ***REMOVED*** node_health échantillonne déjà CPU/RAM/disque/membw/GPU par nœud + contrôleur (sampler 5 s).
-    ***REMOVED*** On ne fait qu'agréger le dernier snapshot. Esprit défensif : tout champ peut manquer au boot.
+    # ─── Santé CLUSTER : agrégat pire-cas multi-nœuds (lu du cache node_health, AUCUN SSH ici) ──
+    # node_health échantillonne déjà CPU/RAM/disque/membw/GPU par nœud + contrôleur (sampler 5 s).
+    # On ne fait qu'agréger le dernier snapshot. Esprit défensif : tout champ peut manquer au boot.
     from .. import node_health as _nh
     from ..database import db_list_rdma_links
     _hsnap = _nh.latest()
@@ -1392,9 +1392,9 @@ def api_home_summary():
     if isinstance(_hsnap.get("controller"), dict):
         _node_snaps.append(_hsnap["controller"])
 
-    ***REMOVED*** RAM PHYSIQUE des nœuds, pour donner un dénominateur à l'empreinte MXL calculée plus haut.
-    ***REMOVED*** ⚠ NŒUDS SEULEMENT — le contrôleur ne porte pas de domaine MXL, l'inclure gonflerait le total
-    ***REMOVED*** d'une machine qui n'héberge aucun flux et ferait paraître la marge plus grande qu'elle n'est.
+    # RAM PHYSIQUE des nœuds, pour donner un dénominateur à l'empreinte MXL calculée plus haut.
+    # ⚠ NŒUDS SEULEMENT — le contrôleur ne porte pas de domaine MXL, l'inclure gonflerait le total
+    # d'une machine qui n'héberge aucun flux et ferait paraître la marge plus grande qu'elle n'est.
     _rn_used = _rn_total = 0
     for _s in (_hsnap.get("nodes") or {}).values():
         if not isinstance(_s, dict):
@@ -1442,7 +1442,7 @@ def api_home_summary():
         _nodes_online = sum(1 for n in _nodes if n.get("status") == "up")
         if any(n.get("gpu_capable") for n in _nodes):
             _gpu_present = True
-    else:  ***REMOVED*** mono-box legacy (table nodes vide) : le contrôleur EST le seul nœud.
+    else:  # mono-box legacy (table nodes vide) : le contrôleur EST le seul nœud.
         _nodes_total = 1
         _nodes_online = 1 if isinstance(_hsnap.get("controller"), dict) else 0
 
@@ -1451,18 +1451,18 @@ def api_home_summary():
     _disk_warn = st.setting_for("node_health_disk_warn_pct", _ptp_ref_nid) or 85.0
     _disk_err = st.setting_for("node_health_disk_err_pct", _ptp_ref_nid) or 95.0
 
-    ***REMOVED*** RDMA — liens persistés (vide → pastille masquée côté front). Lecture DB, pas de host_exec.
-    ***REMOVED*** ⚠ VOCABULAIRE DE STATUT. Le service émet `pending | running | error | waiting | stopped`.
-    ***REMOVED*** Le comptage cherchait ("established", "up", "ok", "active") — quatre valeurs qui n'existent
-    ***REMOVED*** nulle part : AUCUN lien n'était donc jamais compté comme établi, `degraded` valait le total,
-    ***REMOVED*** et la pastille d'accueil restait ROUGE en permanence en annonçant « 17 liens ». Une alarme qui
-    ***REMOVED*** est toujours allumée n'alarme plus personne ; elle apprend seulement à ignorer la pastille.
-    ***REMOVED***
-    ***REMOVED*** SÉVÉRITÉ, ensuite. Seul `error` est un échec d'infrastructure. `waiting` signifie que la
-    ***REMOVED*** source n'est pas (encore) produite — c'est bénin par construction, et c'est même l'état
-    ***REMOVED*** NORMAL d'un lien pré-câblé en attente de son flux. `pending` est transitoire (établissement
-    ***REMOVED*** en cours). Les compter comme dégradés remettrait la pastille au rouge en permanence, par un
-    ***REMOVED*** autre chemin.
+    # RDMA — liens persistés (vide → pastille masquée côté front). Lecture DB, pas de host_exec.
+    # ⚠ VOCABULAIRE DE STATUT. Le service émet `pending | running | error | waiting | stopped`.
+    # Le comptage cherchait ("established", "up", "ok", "active") — quatre valeurs qui n'existent
+    # nulle part : AUCUN lien n'était donc jamais compté comme établi, `degraded` valait le total,
+    # et la pastille d'accueil restait ROUGE en permanence en annonçant « 17 liens ». Une alarme qui
+    # est toujours allumée n'alarme plus personne ; elle apprend seulement à ignorer la pastille.
+    #
+    # SÉVÉRITÉ, ensuite. Seul `error` est un échec d'infrastructure. `waiting` signifie que la
+    # source n'est pas (encore) produite — c'est bénin par construction, et c'est même l'état
+    # NORMAL d'un lien pré-câblé en attente de son flux. `pending` est transitoire (établissement
+    # en cours). Les compter comme dégradés remettrait la pastille au rouge en permanence, par un
+    # autre chemin.
     _rdma_links = db_list_rdma_links() or []
     _rdma_st = [(l.get("status") or "").lower() for l in _rdma_links
                 if (l.get("status") or "").lower() != "stopped"]
@@ -1471,16 +1471,16 @@ def api_home_summary():
              "waiting": _rdma_st.count("waiting"),
              "pending": _rdma_st.count("pending"),
              "error": _rdma_st.count("error")}
-    ***REMOVED*** Conservé pour les consommateurs existants, mais avec le sens qu'il aurait toujours dû avoir.
+    # Conservé pour les consommateurs existants, mais avec le sens qu'il aurait toujours dû avoir.
     _rdma["degraded"] = _rdma["error"]
 
-    ***REMOVED*** Santé globale : err > warn > ok. La pastille reflète la santé de l'INFRASTRUCTURE
-    ***REMOVED*** (plateforme) — nœuds, disque, RAM, bande passante mémoire, PTP, liens RDMA — et NON les
-    ***REMOVED*** anomalies de flux/config (RX/TX sans signal, collisions multicast, proxies orphelins). Ces
-    ***REMOVED*** dernières sont des « Points d'attention » (cf. bloc `attention` + panneau Monitoring) : elles
-    ***REMOVED*** ne doivent pas faire passer tout le système en « dégradé » alors qu'il est fonctionnel. On ne
-    ***REMOVED*** gate donc PLUS la santé sur le journal d'alertes (opérationnel) ; les conditions infra qui
-    ***REMOVED*** persistent sont déjà couvertes par les signaux live ci-dessous.
+    # Santé globale : err > warn > ok. La pastille reflète la santé de l'INFRASTRUCTURE
+    # (plateforme) — nœuds, disque, RAM, bande passante mémoire, PTP, liens RDMA — et NON les
+    # anomalies de flux/config (RX/TX sans signal, collisions multicast, proxies orphelins). Ces
+    # dernières sont des « Points d'attention » (cf. bloc `attention` + panneau Monitoring) : elles
+    # ne doivent pas faire passer tout le système en « dégradé » alors qu'il est fonctionnel. On ne
+    # gate donc PLUS la santé sur le journal d'alertes (opérationnel) ; les conditions infra qui
+    # persistent sont déjà couvertes par les signaux live ci-dessous.
     _failed = (
         _nodes_online < _nodes_total or _membw_level == "err"
         or (_disk_max is not None and _disk_max >= _disk_err)
@@ -1504,22 +1504,22 @@ def api_home_summary():
         "rdma": _rdma,
     }
 
-    ***REMOVED*** Listes pour les filtres de la page Câbles : seuls les projets/nœuds RÉELLEMENT présents
-    ***REMOVED*** parmi les nœuds de topologie (évite de proposer des entrées vides).
+    # Listes pour les filtres de la page Câbles : seuls les projets/nœuds RÉELLEMENT présents
+    # parmi les nœuds de topologie (évite de proposer des entrées vides).
     _proj_names = {p["id"]: p["name"] for p in db_get_projects()}
     _f_proj_ids = sorted({n.get("project_id") for n in topo_nodes if n.get("project_id")})
     _f_node_ids = {n.get("node_id") for n in topo_nodes}
     cable_filters = {
-        "projects": [{"id": pid, "name": _proj_names.get(pid, f"***REMOVED***{pid}")} for pid in _f_proj_ids],
+        "projects": [{"id": pid, "name": _proj_names.get(pid, f"#{pid}")} for pid in _f_proj_ids],
         "nodes": [{"id": nid, "name": _node_label_for(nid)}
                   for nid in sorted(_f_node_ids, key=lambda x: (x is not None, x))],
     }
 
-    ***REMOVED*** ─── Points d'attention (état LIVE) ──────────────────────────────────────────────────────
-    ***REMOVED*** Anomalies opérationnelles de FLUX/CONFIG, lues des caches LIVE (rx/tx_stalled_cache, conflits
-    ***REMOVED*** multicast, KPI pyramide) — PAS du journal d'alertes, qui n'émet qu'au franchissement et ne
-    ***REMOVED*** refléterait pas une panne persistante. Alimente le panneau « Points d'attention » du
-    ***REMOVED*** Monitoring. N'affecte PAS la pastille « Système » (qui reste infra, cf. cluster.health).
+    # ─── Points d'attention (état LIVE) ──────────────────────────────────────────────────────
+    # Anomalies opérationnelles de FLUX/CONFIG, lues des caches LIVE (rx/tx_stalled_cache, conflits
+    # multicast, KPI pyramide) — PAS du journal d'alertes, qui n'émet qu'au franchissement et ne
+    # refléterait pas une panne persistante. Alimente le panneau « Points d'attention » du
+    # Monitoring. N'affecte PAS la pastille « Système » (qui reste infra, cf. cluster.health).
     from ..metrics import rx_stalled_cache as _rx_stalled, tx_stalled_cache as _tx_stalled
     _host_by_vmid = {tn["vmid"]: tn.get("hostname") for tn in topo_nodes if tn.get("vmid") is not None}
     attention = []
@@ -1530,23 +1530,23 @@ def api_home_summary():
                 attention.append({"severity": "warning", "kind": _kind, "vmid": _vmid,
                                   "host": _host_by_vmid.get(_vmid), "count": len(_bad),
                                   "slots": _bad})
-    ***REMOVED*** Conteneur INJOIGNABLE (statut `unreachable`, cf. metrics) : son agent ne répond plus alors
-    ***REMOVED*** qu'il tourne toujours. C'est le cas qui a produit l'incident des multiviews « à 49,8 fps » —
-    ***REMOVED*** il n'apparaissait NULLE PART en état live, seulement dans le journal d'alertes où il se
-    ***REMOVED*** noyait. Sévérité `error` : contrairement à un flux qui décroche, on ne peut plus RIEN piloter.
+    # Conteneur INJOIGNABLE (statut `unreachable`, cf. metrics) : son agent ne répond plus alors
+    # qu'il tourne toujours. C'est le cas qui a produit l'incident des multiviews « à 49,8 fps » —
+    # il n'apparaissait NULLE PART en état live, seulement dans le journal d'alertes où il se
+    # noyait. Sévérité `error` : contrairement à un flux qui décroche, on ne peut plus RIEN piloter.
     for _c in containers:
         if (_c.get("status") or _c.get("statut")) != "unreachable":
             continue
         attention.append({"severity": "error", "kind": "unreachable", "vmid": _c.get("vmid"),
                           "host": _c.get("hostname"), "node_id": _c.get("node_id"), "count": 1})
 
-    ***REMOVED*** Registre NMOS lu UNE fois pour les deux constats multicast qui suivent (conflits + plages
-    ***REMOVED*** épuisées). Ils le relisaient chacun de leur côté : deux scans + re-parse JSON de toutes les
-    ***REMOVED*** ressources par requête, sur une route pollée toutes les 2 s.
+    # Registre NMOS lu UNE fois pour les deux constats multicast qui suivent (conflits + plages
+    # épuisées). Ils le relisaient chacun de leur côté : deux scans + re-parse JSON de toutes les
+    # ressources par requête, sur une route pollée toutes les 2 s.
     try:
         from ..allocations import _registry_transports as _reg_tr
         _transports = _reg_tr()
-    except Exception:                                                      ***REMOVED*** noqa: BLE001
+    except Exception:                                                      # noqa: BLE001
         _transports = None
     try:
         from ..allocations import multicast_conflicts as _mc_conf
@@ -1569,8 +1569,8 @@ def api_home_summary():
     if _pyr and ((_pyr.get("orphans") or 0) or (_pyr.get("unmet") or 0)):
         attention.append({"severity": "warning", "kind": "pyramide",
                           "orphans": _pyr.get("orphans") or 0, "unmet": _pyr.get("unmet") or 0})
-    ***REMOVED*** Conteneurs orphelins sur les nœuds (réconciliation DB↔réalité, audit B2) : une entrée
-    ***REMOVED*** PAR orphelin — le panneau Monitoring offre l'action « Détruire » (perm containers.delete).
+    # Conteneurs orphelins sur les nœuds (réconciliation DB↔réalité, audit B2) : une entrée
+    # PAR orphelin — le panneau Monitoring offre l'action « Détruire » (perm containers.delete).
     try:
         from ..fleet_status import orphans_actuels as _orph
         for _o in _orph():

@@ -49,8 +49,8 @@
         .wiz-nav { display: flex; align-items: center; gap: 10px; margin-top: 26px; }
         .wiz-nav .spacer { flex: 1; }
         .wiz-msg { font-size: 0.84em; margin-top: 10px; min-height: 1.2em; }
-        .wiz-msg.ok  { color: var(--status-running-fg, ***REMOVED***29b36a); }
-        .wiz-msg.err { color: var(--status-stopped-fg, ***REMOVED***e05260); }
+        .wiz-msg.ok  { color: var(--status-running-fg, #29b36a); }
+        .wiz-msg.err { color: var(--status-stopped-fg, #e05260); }
         .wiz-log { background: var(--bg-input); border: 1px solid var(--border);
                    border-radius: var(--radius-small); padding: 10px 12px; margin-top: 12px;
                    font-family: var(--font-mono, monospace); font-size: 0.8em; white-space: pre-wrap;
@@ -67,7 +67,7 @@
                     padding: 10px 12px; cursor: pointer; font-size: 0.88em; }
         .nic-item.sel { border-color: var(--accent); background: var(--bg-input); }
         .nic-item .meta { color: var(--text-muted); font-size: 0.85em; margin-top: 3px; }
-        .nic-item .busy { color: var(--status-stopped-fg, ***REMOVED***e05260); }
+        .nic-item .busy { color: var(--status-stopped-fg, #e05260); }
         .wiz-skip-all { text-align: center; margin-top: 16px; }
         .wiz-skip-all a { color: var(--text-muted); font-size: 0.82em; cursor: pointer; }
         .wiz-ver { text-align: center; margin-top: 10px; font-size: 0.75em;
@@ -209,11 +209,11 @@ const wiz = {
                 <input id="f-org" value="${esc(s.brand_org_name)}"></div>
             <div class="field"><label>${esc(T('wiz.identity.loc'))} <span class="opt">${esc(T('wiz.opt'))}</span></label>
                 <input id="f-loc" placeholder="${esc(T('wiz.identity.loc_ph'))}" value="${esc(s.brand_location)}"></div>
-            {***REMOVED*** ★ Le FUSEAU HORAIRE est ici parce qu'il n'a pas de valeur de site : vide, on suit
+            {# ★ Le FUSEAU HORAIRE est ici parce qu'il n'a pas de valeur de site : vide, on suit
                l'OS du contrôleur, ce qui est juste jusqu'au jour où l'OS ne l'est pas. Il pilote
                les journaux, l'horodatage des alertes et les dates affichées — donc la lisibilité
                de tout ce qui se passera ensuite. Le poser coûte un clic maintenant, et une
-               relecture de journaux plus tard. ***REMOVED***}
+               relecture de journaux plus tard. #}
             <div class="field"><label>${esc(TZ_TXT.title)}</label>
                 <select id="f-tz">${tzOptions(s.timezone || '')}</select>
                 <div class="hint">${esc(TZ_TXT.help)}</div></div>
@@ -310,25 +310,25 @@ const wiz = {
               <strong>${esc(T('wiz.done.next_title'))}</strong>
               <ol class="wiz-next">
                 <li>${esc(T('wiz.done.next_node'))}
-                    <a href="/settings***REMOVED***deploiement/nodes">${esc(T('wiz.done.next_node_link'))}</a></li>
+                    <a href="/settings#deploiement/nodes">${esc(T('wiz.done.next_node_link'))}</a></li>
                 <li>${esc(T('wiz.done.next_iface'))}
-                    <a href="/settings***REMOVED***reseau/interfaces">${esc(T('wiz.done.next_iface_link'))}</a></li>
+                    <a href="/settings#reseau/interfaces">${esc(T('wiz.done.next_iface_link'))}</a></li>
               </ol>
-              {***REMOVED*** Hors de la liste NUMÉROTÉE, à dessein : ce n'est pas un 3ᵉ geste obligatoire mais
+              {# Hors de la liste NUMÉROTÉE, à dessein : ce n'est pas un 3ᵉ geste obligatoire mais
                  la réponse à « et comment j'obtiens d'autres types de conteneurs ? ». Rien dans
                  l'interface ne le disait — on pouvait chercher longtemps une liste figée qui
-                 n'existe pas. ***REMOVED***}
+                 n'existe pas. #}
               <p style="margin:12px 0 0">${esc(T('wiz.done.plugins'))}
-                 <a href="/settings***REMOVED***catalogue">${esc(T('wiz.done.plugins_link'))}</a></p>
+                 <a href="/settings#catalogue">${esc(T('wiz.done.plugins_link'))}</a></p>
             </div>
-            {***REMOVED*** ★ Cet assistant ne pose QUE trois réglages, et il y en a d'autres sans valeur de
+            {# ★ Cet assistant ne pose QUE trois réglages, et il y en a d'autres sans valeur de
                site, LUS AU MOMENT DU DÉPLOIEMENT — pas seulement à l'usage. Les taire ici, c'est
                les laisser découvrir par la panne. On ne les recopie pas : la liste qui fait foi
-               est INSTALL.md, rendue dans l'aide ; on nomme et on renvoie. ***REMOVED***}
+               est INSTALL.md, rendue dans l'aide ; on nomme et on renvoie. #}
             <div class="wiz-note">
               <strong>${esc(T('wiz.done.settings_title'))}</strong>
               <p style="margin:8px 0 0">${esc(T('wiz.done.settings'))}</p>
-              <p style="margin:8px 0 0"><a href="/aide***REMOVED***installation">${esc(T('wiz.done.settings_link'))}</a></p>
+              <p style="margin:8px 0 0"><a href="/aide#installation">${esc(T('wiz.done.settings_link'))}</a></p>
             </div>
             <div class="wiz-note">
               ${esc(T('wiz.done.help'))}

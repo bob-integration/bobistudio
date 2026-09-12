@@ -1,5 +1,5 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 """Migration d'un conteneur d'un nœud à un autre — simulation et bascule.
 
 `plan_migration` établit le verdict SANS RIEN TOUCHER ; `migrer` exécute. La bascule ne fait
@@ -19,8 +19,8 @@ from .database import db_get_container, db_get_containers, db_get_node, db_get_n
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Types qu'on ne migre PAS, avec la raison — affichée telle quelle à l'opérateur : un refus sans
-***REMOVED*** motif se lit comme une limitation arbitraire, et il retentera ailleurs.
+# Types qu'on ne migre PAS, avec la raison — affichée telle quelle à l'opérateur : un refus sans
+# motif se lit comme une limitation arbitraire, et il retentera ailleurs.
 INTERDITS = {
     "2110_io": ("le moteur ST 2110 est lié au MATÉRIEL de son nœud (ports en vfio, files DPDK, "
                 "horloge PTP disciplinée localement). Le déplacer n'aurait pas de sens : c'est la "
@@ -37,7 +37,7 @@ INTERDITS = {
 def _dc(c):
     try:
         return json.loads(c.get("deploy_config") or "{}") or {}
-    except Exception:                                                      ***REMOVED*** noqa: BLE001
+    except Exception:                                                      # noqa: BLE001
         return {}
 
 
@@ -47,7 +47,7 @@ def _shms(kind, hostname, params):
     try:
         from . import plugins as _pl
         w = _pl.derive_wiring(kind, hostname or "", params or {}) or {}
-    except Exception:                                                      ***REMOVED*** noqa: BLE001
+    except Exception:                                                      # noqa: BLE001
         return [], []
     prod = [p.get("shm") for p in (w.get("produces") or []) if p.get("shm")]
     cons = [c.get("shm") for c in (w.get("consumes") or []) if c.get("shm")]
@@ -67,18 +67,18 @@ def _cores_libres(node_id):
         for _v, _cs in (_cp.allocations_by_vmid(node_id) or {}).items():
             pris |= set(_cs or [])
         return len(set(pool) - pris), len(pool)
-    except Exception as _e:                                                ***REMOVED*** noqa: BLE001
+    except Exception as _e:                                                # noqa: BLE001
         log.warning("migration : pool de cœurs du nœud %s illisible (%s)", node_id, _e)
         return None, 0
 
 
-***REMOVED*** Jeux d'instructions par nœud — topologie matérielle, donc invariante : lue une fois puis cachée.
+# Jeux d'instructions par nœud — topologie matérielle, donc invariante : lue une fois puis cachée.
 _FLAGS_CACHE = {}
-***REMOVED*** Ceux qui font la différence pour nos charges. AVX2 en tête : libmxl l'exige, et un binaire compilé
-***REMOVED*** pour lui meurt en SIGILL sur un processeur qui ne l'a pas — pas d'erreur propre, pas de message,
-***REMOVED*** juste « script terminé (code -4) » en boucle. Vécu le 2026-08-07 : un mur migré sur un Sandy
-***REMOVED*** Bridge (E5-2630 v0) est mort à chaque démarrage, et rien dans le plan de migration ne l'avait
-***REMOVED*** annoncé.
+# Ceux qui font la différence pour nos charges. AVX2 en tête : libmxl l'exige, et un binaire compilé
+# pour lui meurt en SIGILL sur un processeur qui ne l'a pas — pas d'erreur propre, pas de message,
+# juste « script terminé (code -4) » en boucle. Vécu le 2026-08-07 : un mur migré sur un Sandy
+# Bridge (E5-2630 v0) est mort à chaque démarrage, et rien dans le plan de migration ne l'avait
+# annoncé.
 _FLAGS_UTILES = ("avx", "avx2", "avx512f", "fma", "bmi2", "sse4_2")
 
 
@@ -97,9 +97,9 @@ def _flags_cpu(node_id):
         tous = set(sortie.split())
         vus = {f for f in _FLAGS_UTILES if f in tous}
         if vus:
-            _FLAGS_CACHE[cle] = vus       ***REMOVED*** matériel : ne change pas → caché à vie
+            _FLAGS_CACHE[cle] = vus       # matériel : ne change pas → caché à vie
         return vus or None
-    except Exception as _e:                                                ***REMOVED*** noqa: BLE001
+    except Exception as _e:                                                # noqa: BLE001
         log.warning("migration : jeux d'instructions du nœud %s illisibles (%s)", node_id, _e)
         return None
 
@@ -124,7 +124,7 @@ def _inotify(node_id):
                       timeout=12)
         lignes = ((r[1] + r[2]) if isinstance(r, (tuple, list)) else str(r)).split()
         return int(lignes[1]), int(lignes[0])
-    except Exception as _e:                                                ***REMOVED*** noqa: BLE001
+    except Exception as _e:                                                # noqa: BLE001
         log.warning("migration : inotify du nœud %s illisible (%s)", node_id, _e)
         return None, None
 
@@ -133,7 +133,7 @@ def _cores_requis(kind):
     try:
         from . import cpu_profiles as _cpr
         return int((_cpr._resources(kind) or {}).get("cores") or 0)
-    except Exception:                                                      ***REMOVED*** noqa: BLE001
+    except Exception:                                                      # noqa: BLE001
         return 0
 
 
@@ -157,11 +157,11 @@ def _ressources_noeud(node_id, besoin_cores, besoin_ram_mb, veut_gpu):
     try:
         from . import node_health as _nh
         snap = (_nh.latest().get("nodes") or {}).get(str(node_id)) or {}
-        ***REMOVED*** SIGNALEMENT du processeur. « Plus de cœurs libres » ne veut pas dire « plus puissant » :
-        ***REMOVED*** deux nœuds peuvent offrir le même nombre de cœurs et ne pas jouer dans la même catégorie.
-        ***REMOVED*** On donne donc le modèle, sa fréquence nominale, et le compte de cœurs PHYSIQUES à côté
-        ***REMOVED*** des logiques — un E5-2699 v4 annonce 88 threads pour 44 cœurs, et confondre les deux
-        ***REMOVED*** fait croire à un nœud deux fois plus capable qu'il n'est.
+        # SIGNALEMENT du processeur. « Plus de cœurs libres » ne veut pas dire « plus puissant » :
+        # deux nœuds peuvent offrir le même nombre de cœurs et ne pas jouer dans la même catégorie.
+        # On donne donc le modèle, sa fréquence nominale, et le compte de cœurs PHYSIQUES à côté
+        # des logiques — un E5-2699 v4 annonce 88 threads pour 44 cœurs, et confondre les deux
+        # fait croire à un nœud deux fois plus capable qu'il n'est.
         _res = snap.get("resources") or {}
         _modele = _res.get("cpu_model")
         if _modele and out.get("cpu") is not None:
@@ -173,7 +173,7 @@ def _ressources_noeud(node_id, besoin_cores, besoin_ram_mb, veut_gpu):
                 _map = _cp2.core_map_cached(node_id) or {}
                 if _map:
                     _phys = len(set(_map.values()))
-            except Exception:                                              ***REMOVED*** noqa: BLE001
+            except Exception:                                              # noqa: BLE001
                 _phys = None
             out["cpu"]["proc"] = {
                 "modele": _re.sub(r"\s*@.*$", "", _modele).replace("(R)", "").replace("(TM)", "").strip(),
@@ -181,9 +181,9 @@ def _ressources_noeud(node_id, besoin_cores, besoin_ram_mb, veut_gpu):
                 "threads": _res.get("cpu_count"),
                 "physiques": _phys,
             }
-        ***REMOVED*** La mémoire vit dans le SOUS-OBJET `resources` du snapshot, pas à sa racine (où l'on ne
-        ***REMOVED*** trouve que membw/disks/gpu/…). Se tromper de niveau rendrait une jauge vide sans rien
-        ***REMOVED*** signaler — l'opérateur en conclurait que le nœud n'a pas de RAM à offrir.
+        # La mémoire vit dans le SOUS-OBJET `resources` du snapshot, pas à sa racine (où l'on ne
+        # trouve que membw/disks/gpu/…). Se tromper de niveau rendrait une jauge vide sans rien
+        # signaler — l'opérateur en conclurait que le nœud n'a pas de RAM à offrir.
         res = snap.get("resources") or {}
         _mt = res.get("mem_total_mb")
         _mu = res.get("mem_used_mb")
@@ -191,7 +191,7 @@ def _ressources_noeud(node_id, besoin_cores, besoin_ram_mb, veut_gpu):
             out["ram"] = {"unite": "Mo", "total": int(_mt),
                           "libre": (int(_mt) - int(_mu)) if _mu is not None else None,
                           "requis": int(besoin_ram_mb or 0), "exclusif": False}
-    except Exception:                                                      ***REMOVED*** noqa: BLE001
+    except Exception:                                                      # noqa: BLE001
         pass
     if veut_gpu:
         g = {"unite": "Mo VRAM"}
@@ -208,9 +208,9 @@ def _ressources_noeud(node_id, besoin_cores, besoin_ram_mb, veut_gpu):
             st = _gp.gpu_status(node_id) or {}
             g["clients"] = st.get("used")
             g["cartes"] = g.get("cartes") or st.get("count")
-        except Exception:                                                  ***REMOVED*** noqa: BLE001
+        except Exception:                                                  # noqa: BLE001
             pass
-        g["requis"] = None      ***REMOVED*** un GPU ne se réserve pas : c'est un client de plus, pas une part
+        g["requis"] = None      # un GPU ne se réserve pas : c'est un client de plus, pas une part
         g["exclusif"] = False
         g["note"] = ("un GPU ne se réserve pas : ce conteneur y ajoutera un CLIENT CUDA. Sur ce "
                      "parc, le nombre de processus pèse plus que la VRAM allouée.")
@@ -251,10 +251,10 @@ def plan_migration(vmid, node_cible_id):
     besoin_c = _cores_requis(kind)
     veut_gpu_c = bool(params.get("gpu") or params.get("use_gpu")) or kind in ("multiview",)
     if str(node_src) == str(node_cible_id):
-        ***REMOVED*** Le nœud OÙ IL EST DÉJÀ. Ce n'est pas une destination, mais c'est la référence qui
-        ***REMOVED*** justifie le déplacement : on montre ce qu'il RÉCUPÉRERAIT si le conteneur partait.
-        ***REMOVED*** Sans ce bloc, on voit ce que la migration coûte quelque part sans voir ce qu'elle
-        ***REMOVED*** rapporte ici — soit exactement la moitié de la décision.
+        # Le nœud OÙ IL EST DÉJÀ. Ce n'est pas une destination, mais c'est la référence qui
+        # justifie le déplacement : on montre ce qu'il RÉCUPÉRERAIT si le conteneur partait.
+        # Sans ce bloc, on voit ce que la migration coûte quelque part sans voir ce qu'elle
+        # rapporte ici — soit exactement la moitié de la décision.
         out["est_source"] = True
         res = _ressources_noeud(node_src, besoin_c, c.get("memory"), veut_gpu_c)
         for _cle, _val in (("cpu", besoin_c), ("ram", c.get("memory"))):
@@ -266,7 +266,7 @@ def plan_migration(vmid, node_cible_id):
         out["ressources"] = res
         return out
 
-    ***REMOVED*** ── Refus de type ────────────────────────────────────────────────────────
+    # ── Refus de type ────────────────────────────────────────────────────────
     if kind in INTERDITS:
         out["refus"].append("%s : %s" % (kind, INTERDITS[kind]))
     if str(hostname).startswith("bobi-fab-"):
@@ -276,7 +276,7 @@ def plan_migration(vmid, node_cible_id):
             "migration manuelle serait défaite sans prévenir. Pour déplacer la charge, agir sur le "
             "MUR logique, pas sur ses rouages.")
 
-    ***REMOVED*** ── Vérifications de capacité ────────────────────────────────────────────
+    # ── Vérifications de capacité ────────────────────────────────────────────
     _verif("nœud cible joignable", (cible.get("status") or "").lower() in ("up", "online", "ok"),
            "statut rapporté : %s" % (cible.get("status") or "inconnu"))
 
@@ -299,13 +299,13 @@ def plan_migration(vmid, node_cible_id):
         _verif("GPU sur la cible", bool(cible.get("gpu_capable")),
                "gpu_capable=%s" % (cible.get("gpu_capable") or 0))
 
-    ***REMOVED*** ── CAPACITÉS DU PROCESSEUR ──────────────────────────────────────────────
-    ***REMOVED*** Un nœud cible qui offre MOINS que le nœud actuel peut tuer le conteneur au démarrage, sans
-    ***REMOVED*** message exploitable : un binaire compilé pour AVX2 meurt en SIGILL sur un processeur qui ne
-    ***REMOVED*** l'a pas — « script terminé (code -4) », en boucle. On compare donc les deux jeux
-    ***REMOVED*** d'instructions plutôt que de tenir une liste des besoins de chaque type : la règle « la
-    ***REMOVED*** cible ne doit pas être moins capable que l'origine » couvre tous les cas sans rien supposer,
-    ***REMOVED*** et elle aurait suffi à empêcher le mur de tomber le 2026-08-07.
+    # ── CAPACITÉS DU PROCESSEUR ──────────────────────────────────────────────
+    # Un nœud cible qui offre MOINS que le nœud actuel peut tuer le conteneur au démarrage, sans
+    # message exploitable : un binaire compilé pour AVX2 meurt en SIGILL sur un processeur qui ne
+    # l'a pas — « script terminé (code -4) », en boucle. On compare donc les deux jeux
+    # d'instructions plutôt que de tenir une liste des besoins de chaque type : la règle « la
+    # cible ne doit pas être moins capable que l'origine » couvre tous les cas sans rien supposer,
+    # et elle aurait suffi à empêcher le mur de tomber le 2026-08-07.
     _f_src = _flags_cpu(node_src)
     _f_dst = _flags_cpu(node_cible_id)
     if _f_src and _f_dst:
@@ -321,9 +321,9 @@ def plan_migration(vmid, node_cible_id):
         _verif("jeux d'instructions du CPU", True,
                "non vérifiable (processeur d'un des deux nœuds illisible)")
 
-    ***REMOVED*** ── INSTANCES INOTIFY ────────────────────────────────────────────────────
-    ***REMOVED*** Chaque conteneur MXL en consomme une. Plafond atteint = le script ne démarre pas, avec un
-    ***REMOVED*** message qui parle de tmpfs et de droits, donc qui n'oriente pas vers la vraie cause.
+    # ── INSTANCES INOTIFY ────────────────────────────────────────────────────
+    # Chaque conteneur MXL en consomme une. Plafond atteint = le script ne démarre pas, avec un
+    # message qui parle de tmpfs et de droits, donc qui n'oriente pas vers la vraie cause.
     _ino_u, _ino_max = _inotify(node_cible_id)
     if _ino_u is not None and _ino_max:
         _ok_ino = (_ino_max - _ino_u) >= 4
@@ -336,7 +336,7 @@ def plan_migration(vmid, node_cible_id):
     else:
         _verif("instances inotify", True, "non vérifiable")
 
-    ***REMOVED*** IP du plan conteneurs : on regarde s'il en reste, sans en réserver.
+    # IP du plan conteneurs : on regarde s'il en reste, sans en réserver.
     try:
         from . import allocations as _al
         st = _al.ip_stats() or {}
@@ -344,13 +344,13 @@ def plan_migration(vmid, node_cible_id):
         _verif("IP conteneur disponible", (_libres_ip is None) or _libres_ip > 0,
                "adresses libres dans le plan conteneurs : %s"
                % ("inconnu" if _libres_ip is None else _libres_ip))
-    except Exception as _e:                                                ***REMOVED*** noqa: BLE001
+    except Exception as _e:                                                # noqa: BLE001
         _verif("IP conteneur disponible", True, "non vérifiable (%s)" % _e)
 
-    ***REMOVED*** ── Conséquences : ce que la migration change pour les VOISINS ───────────
-    ***REMOVED*** Un flux lu dans le même /dev/shm devient un flux à RÉPLIQUER. C'est automatique, mais ça
-    ***REMOVED*** consomme de la bande passante inter-nœuds : l'opérateur doit le savoir AVANT, pas le
-    ***REMOVED*** découvrir après.
+    # ── Conséquences : ce que la migration change pour les VOISINS ───────────
+    # Un flux lu dans le même /dev/shm devient un flux à RÉPLIQUER. C'est automatique, mais ça
+    # consomme de la bande passante inter-nœuds : l'opérateur doit le savoir AVANT, pas le
+    # découvrir après.
     prod, cons = _shms(kind, hostname, params)
     autres = [x for x in db_get_containers() if x.get("vmid") != vmid]
     for o in autres:
@@ -359,7 +359,7 @@ def plan_migration(vmid, node_cible_id):
         meme_noeud_avant = str(o.get("node_id")) == str(node_src)
         meme_noeud_apres = str(o.get("node_id")) == str(node_cible_id)
         if meme_noeud_avant == meme_noeud_apres:
-            continue                       ***REMOVED*** rien ne change pour ce voisin
+            continue                       # rien ne change pour ce voisin
         partages = (set(prod) & set(o_cons)) | (set(cons) & set(o_prod))
         if not partages:
             continue
@@ -370,11 +370,11 @@ def plan_migration(vmid, node_cible_id):
                       else "deviendra LOCAL (réplication RDMA devenue inutile)"),
         })
 
-    ***REMOVED*** Ressources du nœud CONCERNÉ par ce bloc. L'UI en tire deux colonnes — son état actuel et
-    ***REMOVED*** ce qu'il deviendrait — pour que l'avant/après se lise sur le même nœud, au même endroit.
-    ***REMOVED*** Un ASSEMBLEUR déplacé laisse ses shards derrière lui : ils produisent leurs tuiles dans le
-    ***REMOVED*** /dev/shm du nœud d'origine, et l'assembleur ne les y lit plus. Le tissu finira par
-    ***REMOVED*** re-planifier, mais entre-temps le mur n'affiche rien — autant le dire avant.
+    # Ressources du nœud CONCERNÉ par ce bloc. L'UI en tire deux colonnes — son état actuel et
+    # ce qu'il deviendrait — pour que l'avant/après se lise sur le même nœud, au même endroit.
+    # Un ASSEMBLEUR déplacé laisse ses shards derrière lui : ils produisent leurs tuiles dans le
+    # /dev/shm du nœud d'origine, et l'assembleur ne les y lit plus. Le tissu finira par
+    # re-planifier, mais entre-temps le mur n'affiche rien — autant le dire avant.
     try:
         from . import compositor_fabric as _cf2
         _shards = (_cf2.shards_par_parent() or {}).get(vmid) or []
@@ -382,13 +382,13 @@ def plan_migration(vmid, node_cible_id):
             out["shards_a_detruire"] = _shards
             out["consequences"].append({
                 "vmid": vmid, "hostname": hostname,
-                "flux": ["shard ***REMOVED***%s" % _s for _s in _shards],
+                "flux": ["shard #%s" % _s for _s in _shards],
                 "effet": ("ces shards seront DÉTRUITS : ils produisent dans le /dev/shm de %s, que "
                           "l'assembleur ne lira plus. Le mur repart en monolithe sur la cible, et "
                           "le tissu l'y re-découpera s'il sature."
                           % (db_get_node(node_src) or {}).get("name")),
             })
-    except Exception:                                                      ***REMOVED*** noqa: BLE001
+    except Exception:                                                      # noqa: BLE001
         pass
     out["ressources"] = _ressources_noeud(node_cible_id, besoin, c.get("memory"), veut_gpu)
     out["conserve"] = {
@@ -418,12 +418,12 @@ def noeuds_candidats(vmid):
     return [plan_migration(vmid, n["id"]) for n in noeuds]
 
 
-***REMOVED*** ─── Bascule ────────────────────────────────────────────────────────────────
-***REMOVED*** Migrer, c'est retirer le conteneur Docker du nœud source puis le REDÉPLOYER sur la cible avec le
-***REMOVED*** MÊME vmid. On ne passe donc PAS par `detruire_container` : celui-ci supprime la ligne DB, purge
-***REMOVED*** les ressources NMOS devenues orphelines et coupe EN CASCADE les liens RDMA dont ce conteneur
-***REMOVED*** était la source — trois nettoyages parfaitement justifiés pour une suppression, et trois dégâts
-***REMOVED*** pour une migration, où tout cela doit précisément survivre.
+# ─── Bascule ────────────────────────────────────────────────────────────────
+# Migrer, c'est retirer le conteneur Docker du nœud source puis le REDÉPLOYER sur la cible avec le
+# MÊME vmid. On ne passe donc PAS par `detruire_container` : celui-ci supprime la ligne DB, purge
+# les ressources NMOS devenues orphelines et coupe EN CASCADE les liens RDMA dont ce conteneur
+# était la source — trois nettoyages parfaitement justifiés pour une suppression, et trois dégâts
+# pour une migration, où tout cela doit précisément survivre.
 
 def _retirer_docker(node, name):
     """Retire le conteneur Docker d'un nœud. Agent-nœud d'abord, repli ssh — le repli existe pour
@@ -436,14 +436,14 @@ def _retirer_docker(node, name):
             if ok:
                 return True, "retiré via l'agent-nœud"
             log.warning("migration : agent-nœud n'a pas retiré %s (%s) — repli ssh", name, err)
-    except Exception as _e:                                                ***REMOVED*** noqa: BLE001
+    except Exception as _e:                                                # noqa: BLE001
         log.warning("migration : agent-nœud indisponible pour %s (%s) — repli ssh", name, _e)
     try:
         import shlex
         from .host_ops import ssh_run
         ssh_run(node["host"], "docker rm -f %s >/dev/null 2>&1" % shlex.quote(name), timeout=30)
         return True, "retiré via ssh"
-    except Exception as _e:                                                ***REMOVED*** noqa: BLE001
+    except Exception as _e:                                                # noqa: BLE001
         return False, "impossible de retirer le conteneur du nœud source : %s" % _e
 
 
@@ -484,11 +484,11 @@ def migrer(vmid, node_cible_id, forcer=False):
         cible = db_get_node(node_cible_id) or {}
         name = c.get("docker_name") or ("bobi-cmp-%s" % vmid)
 
-        ***REMOVED*** TISSU : un assembleur déplacé ne doit pas laisser ses shards derrière lui. Ils produisent
-        ***REMOVED*** leurs tuiles dans le /dev/shm du nœud d'origine, que l'assembleur ne lira plus — ils
-        ***REMOVED*** tourneraient donc à vide, en consommant cœurs et GPU, pendant que le mur n'affiche rien.
-        ***REMOVED*** On démonte AVANT de déplacer : le mur repart en monolithe (son deploy_config porte les
-        ***REMOVED*** params LOGIQUES), et le tissu le re-découpera sur la cible s'il y sature.
+        # TISSU : un assembleur déplacé ne doit pas laisser ses shards derrière lui. Ils produisent
+        # leurs tuiles dans le /dev/shm du nœud d'origine, que l'assembleur ne lira plus — ils
+        # tourneraient donc à vide, en consommant cœurs et GPU, pendant que le mur n'affiche rien.
+        # On démonte AVANT de déplacer : le mur repart en monolithe (son deploy_config porte les
+        # params LOGIQUES), et le tissu le re-découpera sur la cible s'il y sature.
         try:
             from . import compositor_fabric as _cf3
             from .database import db_fabric_delete as _dfd, db_fabric_all as _dfa
@@ -498,7 +498,7 @@ def migrer(vmid, node_cible_id, forcer=False):
                 for _sv in _shards:
                     try:
                         _ct3.detruire_container(int(_sv))
-                    except Exception as _e:                                ***REMOVED*** noqa: BLE001
+                    except Exception as _e:                                # noqa: BLE001
                         log.warning("migration %s : shard %s non détruit (%s)", vmid, _sv, _e)
                 for _row in _dfa():
                     _r = dict(_row)
@@ -508,7 +508,7 @@ def migrer(vmid, node_cible_id, forcer=False):
                 etapes.append({"etape": "démontage du tissu", "ok": True,
                                "detail": "%d shard(s) détruit(s) — le mur repart en monolithe"
                                          % len(_shards)})
-        except Exception as _e:                                            ***REMOVED*** noqa: BLE001
+        except Exception as _e:                                            # noqa: BLE001
             etapes.append({"etape": "démontage du tissu", "ok": False, "detail": str(_e)})
 
         ok, detail = _retirer_docker(src, name)
@@ -519,24 +519,24 @@ def migrer(vmid, node_cible_id, forcer=False):
                 mod = __import__("app.%s" % fn, fromlist=["x"])
                 (mod.release_cores if fn == "core_pool" else mod.release_gpu)(vmid)
                 etapes.append({"etape": "libération %s (source)" % lib, "ok": True, "detail": ""})
-            except Exception as _e:                                        ***REMOVED*** noqa: BLE001
+            except Exception as _e:                                        # noqa: BLE001
                 etapes.append({"etape": "libération %s (source)" % lib, "ok": False,
                                "detail": str(_e)})
 
-        ***REMOVED*** Bascule de la ligne. L'adresse et les cœurs sont REMIS À ZÉRO : ils appartiennent au nœud
-        ***REMOVED*** source (pool de pinning, plage macvlan) et seront réattribués sur la cible au déploiement.
+        # Bascule de la ligne. L'adresse et les cœurs sont REMIS À ZÉRO : ils appartiennent au nœud
+        # source (pool de pinning, plage macvlan) et seront réattribués sur la cible au déploiement.
         db_upsert_container_docker(vmid, hostname, node_cible_id, name, status="created")
-        ***REMOVED*** Les CŒURS épinglés appartiennent au pool du nœud source : ils doivent être réattribués
-        ***REMOVED*** sur la cible. L'ADRESSE, elle, est allouée sur un plan macvlan commun à la flotte — la
-        ***REMOVED*** remettre à zéro forçait une réallocation inutile, et si le redéploiement ne la
-        ***REMOVED*** repersistait pas, l'orchestrateur perdait le contact avec un conteneur pourtant vivant
-        ***REMOVED*** (vécu : `docker_ip` NULL en base alors que le conteneur répondait sur son IP d'origine).
-        ***REMOVED*** On la conserve donc ; `allocate_container_ip` est idempotent et la revalidera.
+        # Les CŒURS épinglés appartiennent au pool du nœud source : ils doivent être réattribués
+        # sur la cible. L'ADRESSE, elle, est allouée sur un plan macvlan commun à la flotte — la
+        # remettre à zéro forçait une réallocation inutile, et si le redéploiement ne la
+        # repersistait pas, l'orchestrateur perdait le contact avec un conteneur pourtant vivant
+        # (vécu : `docker_ip` NULL en base alors que le conteneur répondait sur son IP d'origine).
+        # On la conserve donc ; `allocate_container_ip` est idempotent et la revalidera.
         try:
             with get_db() as db:
                 db.execute("UPDATE containers SET pinned_cores=NULL WHERE vmid=?", (vmid,))
                 db.commit()
-        except Exception as _e:                                            ***REMOVED*** noqa: BLE001
+        except Exception as _e:                                            # noqa: BLE001
             log.warning("migration %s : remise à zéro des cœurs (%s)", vmid, _e)
         etapes.append({"etape": "bascule de node_id", "ok": True,
                        "detail": "%s → %s (vmid conservé)" % (src.get("name"), cible.get("name"))})
@@ -544,25 +544,25 @@ def migrer(vmid, node_cible_id, forcer=False):
         try:
             from .deploy import deployer_script
             ok_dep = bool(deployer_script(vmid, kind, params))
-        except Exception as _e:                                            ***REMOVED*** noqa: BLE001
+        except Exception as _e:                                            # noqa: BLE001
             ok_dep, _err = False, str(_e)
             etapes.append({"etape": "redéploiement sur la cible", "ok": False, "detail": _err})
         else:
             etapes.append({"etape": "redéploiement sur la cible", "ok": ok_dep, "detail": ""})
 
-    ***REMOVED*** Hors verrou : les câbles devenus inter-nœuds réclament une réplication, ceux devenus locaux
-    ***REMOVED*** n'en ont plus besoin. Idempotent.
+    # Hors verrou : les câbles devenus inter-nœuds réclament une réplication, ceux devenus locaux
+    # n'en ont plus besoin. Idempotent.
     try:
         from .deploy import reconcile_fabric_node as _rfn
-        _rfn(node_cible_id)      ***REMOVED*** le tissu re-découpe sur la cible si le mur y sature
+        _rfn(node_cible_id)      # le tissu re-découpe sur la cible si le mur y sature
         etapes.append({"etape": "réconciliation du tissu", "ok": True, "detail": ""})
-    except Exception as _e:                                                ***REMOVED*** noqa: BLE001
+    except Exception as _e:                                                # noqa: BLE001
         etapes.append({"etape": "réconciliation du tissu", "ok": False, "detail": str(_e)})
     try:
         from services import rdma as _rdma
         _rdma.reconcilier_cables(force=True)
         etapes.append({"etape": "réconciliation des câbles", "ok": True, "detail": ""})
-    except Exception as _e:                                                ***REMOVED*** noqa: BLE001
+    except Exception as _e:                                                # noqa: BLE001
         etapes.append({"etape": "réconciliation des câbles", "ok": False, "detail": str(_e)})
 
     ok_global = all(e["ok"] for e in etapes if e["etape"] != "libération GPU (source)")

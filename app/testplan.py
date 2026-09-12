@@ -1,13 +1,13 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Plan de recette / suivi de tests — page dédiée à l'équipe de test.
-***REMOVED*** Liste d'items à tester ; chaque testeur coche (OK / défaut / en cours) et laisse
-***REMOVED*** une remarque. État PARTAGÉ (persisté dans un JSON à côté de la DB) → tous les
-***REMOVED*** testeurs voient la même liste en temps quasi-réel (la page poll /api/tests).
-***REMOVED***
-***REMOVED*** Volontairement AUTONOME (Blueprint séparé + persistance fichier) : n'écrit dans
-***REMOVED*** aucun module existant (évite la course avec un agent concurrent sur routes.py).
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Plan de recette / suivi de tests — page dédiée à l'équipe de test.
+# Liste d'items à tester ; chaque testeur coche (OK / défaut / en cours) et laisse
+# une remarque. État PARTAGÉ (persisté dans un JSON à côté de la DB) → tous les
+# testeurs voient la même liste en temps quasi-réel (la page poll /api/tests).
+#
+# Volontairement AUTONOME (Blueprint séparé + persistance fichier) : n'écrit dans
+# aucun module existant (évite la course avec un agent concurrent sur routes.py).
 
 import fcntl
 import json
@@ -24,24 +24,24 @@ from .auth import require_login, current_user, require_perm
 
 testplan_bp = Blueprint("testplan", __name__)
 
-***REMOVED*** Persistance : un seul fichier JSON, écriture atomique sous DOUBLE lock :
-***REMOVED***  - _lock (threading) : exclut les threads du serveur Flask entre eux ;
-***REMOVED***  - flock (fcntl, fichier .lock) : exclut le serveur ET un process externe (l'assistant Claude
-***REMOVED***    qui poste une question depuis le CLI via mutate()/append_message()) → pas de write perdu.
+# Persistance : un seul fichier JSON, écriture atomique sous DOUBLE lock :
+#  - _lock (threading) : exclut les threads du serveur Flask entre eux ;
+#  - flock (fcntl, fichier .lock) : exclut le serveur ET un process externe (l'assistant Claude
+#    qui poste une question depuis le CLI via mutate()/append_message()) → pas de write perdu.
 STORE_PATH = "/opt/bobistudio/db_testplan.json"
 LOCK_PATH = STORE_PATH + ".lock"
 _lock = threading.Lock()
 
 STATUSES = ("untested", "ok", "defect", "progress")
 
-***REMOVED*** ★ LA GRAVITÉ EST UN CHAMP À PART, PAS TROIS STATUTS DE PLUS. Trois statuts
-***REMOVED*** `defect_mineur/majeur/bloquant` auraient obligé à migrer les 48 états déjà
-***REMOVED*** saisis, et à toucher tous les filtres et compteurs. Un champ orthogonal se
-***REMOVED*** greffe sans rien casser : un défaut d'avant garde son statut et n'a pas de
-***REMOVED*** gravité — « non qualifié », ce qui est la vérité.
-***REMOVED***
-***REMOVED*** Vocabulaire FERMÉ : une valeur hors liste est ramenée à "" plutôt qu'écrite
-***REMOVED*** telle quelle. Une gravité inventée ne se compte nulle part et ne se voit pas.
+# ★ LA GRAVITÉ EST UN CHAMP À PART, PAS TROIS STATUTS DE PLUS. Trois statuts
+# `defect_mineur/majeur/bloquant` auraient obligé à migrer les 48 états déjà
+# saisis, et à toucher tous les filtres et compteurs. Un champ orthogonal se
+# greffe sans rien casser : un défaut d'avant garde son statut et n'a pas de
+# gravité — « non qualifié », ce qui est la vérité.
+#
+# Vocabulaire FERMÉ : une valeur hors liste est ramenée à "" plutôt qu'écrite
+# telle quelle. Une gravité inventée ne se compte nulle part et ne se voit pas.
 SEVERITES = ("mineur", "majeur", "bloquant")
 ROLES = ("dev", "tester")
 
@@ -83,20 +83,20 @@ def append_message(item_id, author, role, text):
         return msg
     return mutate(_do)
 
-***REMOVED*** ─── Checklist par défaut (semée au 1er accès) ────────────────────────────────
-***REMOVED*** Centrée sur le chantier en cours « entrelacé natif 1 grain = 1 champ » + régressions.
-***REMOVED*** id = slug STABLE (ne pas renommer : c'est la clé de l'état). area = regroupement.
-***REMOVED***
-***REMOVED*** Tuple = (id, area, title, detail, context). Le champ CONTEXT = notes TECHNIQUES (pour
-***REMOVED*** l'assistant Claude qui triera les retours) : plugin+version+commit, ce qui a changé,
-***REMOVED*** fichiers/fonctions touchés, pièges connus, comment reproduire. Affiché sur la page sous
-***REMOVED*** « ℹ Contexte technique » → un défaut remonté est mappable direct sur le code concerné.
-***REMOVED*** ★ LA CAMPAGNE VIT DANS UN FICHIER À PART, ET SON ABSENCE EST NORMALE. Les
-***REMOVED*** éléments de recette de ce site nomment des vmid, des nœuds et des retours de
-***REMOVED*** testeurs : ils sont retirés à la publication. La page, elle, reste — un
-***REMOVED*** produit qui livre un suivi de recette est un produit qui assume d'être
-***REMOVED*** vérifié. Sans le fichier, la campagne démarre vide, ce qui est exactement ce
-***REMOVED*** qu'il faut pour qui installe le produit.
+# ─── Checklist par défaut (semée au 1er accès) ────────────────────────────────
+# Centrée sur le chantier en cours « entrelacé natif 1 grain = 1 champ » + régressions.
+# id = slug STABLE (ne pas renommer : c'est la clé de l'état). area = regroupement.
+#
+# Tuple = (id, area, title, detail, context). Le champ CONTEXT = notes TECHNIQUES (pour
+# l'assistant Claude qui triera les retours) : plugin+version+commit, ce qui a changé,
+# fichiers/fonctions touchés, pièges connus, comment reproduire. Affiché sur la page sous
+# « ℹ Contexte technique » → un défaut remonté est mappable direct sur le code concerné.
+# ★ LA CAMPAGNE VIT DANS UN FICHIER À PART, ET SON ABSENCE EST NORMALE. Les
+# éléments de recette de ce site nomment des vmid, des nœuds et des retours de
+# testeurs : ils sont retirés à la publication. La page, elle, reste — un
+# produit qui livre un suivi de recette est un produit qui assume d'être
+# vérifié. Sans le fichier, la campagne démarre vide, ce qui est exactement ce
+# qu'il faut pour qui installe le produit.
 try:
     from .testplan_seed import SEED_ITEMS
 except ImportError:
@@ -121,7 +121,7 @@ def _load():
             store = None
     if not store:
         store = _default_store()
-    ***REMOVED*** fusion idempotente des items builtin (ajout des nouveaux, MAJ libellé/détail/contexte)
+    # fusion idempotente des items builtin (ajout des nouveaux, MAJ libellé/détail/contexte)
     have = {it["id"]: it for it in store.get("items", [])}
     for (i, a, t, d, c) in SEED_ITEMS:
         if i in have:
@@ -177,9 +177,9 @@ def _actif():
 @testplan_bp.route("/tests", methods=["GET"])
 @require_login
 def tests_page():
-    ***REMOVED*** 404, pas 403 : désactivée, cette page n'existe pas. Un refus d'accès
-    ***REMOVED*** laisserait croire à un manque de droits et enverrait chercher une
-    ***REMOVED*** permission qui n'existe pas.
+    # 404, pas 403 : désactivée, cette page n'existe pas. Un refus d'accès
+    # laisserait croire à un manque de droits et enverrait chercher une
+    # permission qui n'existe pas.
     if not _actif():
         abort(404)
     return render_template("tests.html")
@@ -188,7 +188,7 @@ def tests_page():
 @testplan_bp.route("/api/tests", methods=["GET"])
 @require_login
 def api_tests():
-    store = mutate(lambda s: None)   ***REMOVED*** persiste la fusion éventuelle des nouveaux builtin
+    store = mutate(lambda s: None)   # persiste la fusion éventuelle des nouveaux builtin
     store = _load()
     return jsonify({"items": store["items"], "state": store["state"],
                     "threads": store.get("threads", {}), "summary": _summary(store)})
@@ -248,7 +248,7 @@ def api_plugins_autotests():
             r = _rq.get("http://%s:8082/autotest" % ip, timeout=25)
             item.update(r.json() if r.status_code == 200 else
                         {"etat": "injoignable", "detail": "HTTP %s" % r.status_code})
-        except Exception as e:                                      ***REMOVED*** noqa: BLE001
+        except Exception as e:                                      # noqa: BLE001
             item.update(etat="injoignable", detail=str(e))
         out.append(item)
     return jsonify({"conteneurs": out,
@@ -268,9 +268,9 @@ def api_tests_state():
         status = "untested"
     remark = str(data.get("remark") or "")[:4000]
     tester = str(data.get("tester") or "").strip()[:80]
-    ***REMOVED*** ⚠ LA GRAVITÉ NE SURVIT PAS À UN CHANGEMENT DE STATUT. Un point repassé en
-    ***REMOVED*** « OK » qui garderait « bloquant » sous le capot ressortirait bloquant au
-    ***REMOVED*** prochain filtre, sans que rien ne l'affiche. On la vide hors du défaut.
+    # ⚠ LA GRAVITÉ NE SURVIT PAS À UN CHANGEMENT DE STATUT. Un point repassé en
+    # « OK » qui garderait « bloquant » sous le capot ressortirait bloquant au
+    # prochain filtre, sans que rien ne l'affiche. On la vide hors du défaut.
     severite = str(data.get("severite") or "").strip().lower()
     if status != "defect" or severite not in SEVERITES:
         severite = ""
@@ -342,24 +342,24 @@ def api_tests_del_item():
     return jsonify({"ok": True})
 
 
-***REMOVED*** ─── Export / import d'une recette ──────────────────────────────────────────
-***REMOVED*** ★ UNE RECETTE EST UN LIVRABLE, PAS UNE DONNÉE PRIVÉE. On la remet à un client,
-***REMOVED*** on la rejoue sur une autre installation, on la reprend d'un site à l'autre.
-***REMOVED*** Sans export, elle reste prisonnière d'un fichier sur un serveur — et la seule
-***REMOVED*** façon de la partager est la capture d'écran.
-***REMOVED***
-***REMOVED*** ⚠ DEUX CHOSES BIEN DISTINCTES, ET LE CHOIX EST EXPLICITE :
-***REMOVED***   · le MODÈLE      = les éléments seuls. Ce qu'on veut vérifier. Réutilisable.
-***REMOVED***   · la CAMPAGNE    = les éléments PLUS les résultats et les fils de questions.
-***REMOVED***     C'est un constat daté, avec des noms de testeurs et des remarques de
-***REMOVED***     terrain. Ça ne se diffuse pas par mégarde.
-***REMOVED*** Le nom du fichier le dit aussi, pour qu'on ne se trompe pas de pièce jointe.
+# ─── Export / import d'une recette ──────────────────────────────────────────
+# ★ UNE RECETTE EST UN LIVRABLE, PAS UNE DONNÉE PRIVÉE. On la remet à un client,
+# on la rejoue sur une autre installation, on la reprend d'un site à l'autre.
+# Sans export, elle reste prisonnière d'un fichier sur un serveur — et la seule
+# façon de la partager est la capture d'écran.
+#
+# ⚠ DEUX CHOSES BIEN DISTINCTES, ET LE CHOIX EST EXPLICITE :
+#   · le MODÈLE      = les éléments seuls. Ce qu'on veut vérifier. Réutilisable.
+#   · la CAMPAGNE    = les éléments PLUS les résultats et les fils de questions.
+#     C'est un constat daté, avec des noms de testeurs et des remarques de
+#     terrain. Ça ne se diffuse pas par mégarde.
+# Le nom du fichier le dit aussi, pour qu'on ne se trompe pas de pièce jointe.
 
 def _recette_export(avec_resultats):
-    ***REMOVED*** ⚠ `mutate` rend ce que RETOURNE le callback, pas le magasin. `mutate(lambda
-    ***REMOVED*** s: None)` sert donc à persister la fusion des nouveaux items intégrés, et
-    ***REMOVED*** rend None — c'est `_load()` qui donne le magasin. Confondre les deux coûte
-    ***REMOVED*** un AttributeError, et c'est ce que faisait la première version.
+    # ⚠ `mutate` rend ce que RETOURNE le callback, pas le magasin. `mutate(lambda
+    # s: None)` sert donc à persister la fusion des nouveaux items intégrés, et
+    # rend None — c'est `_load()` qui donne le magasin. Confondre les deux coûte
+    # un AttributeError, et c'est ce que faisait la première version.
     mutate(lambda s: None)
     store = _load()
     out = {"format": "bobi.recette", "version": 1,
@@ -422,9 +422,9 @@ def api_tests_import():
             if iid in connus:
                 compte["ignores"] += 1
                 continue
-            ***REMOVED*** ⚠ `builtin` NE S'IMPORTE PAS. Il marque les éléments qui viennent du
-            ***REMOVED*** code de CETTE installation et que la fusion au démarrage réinjecte ;
-            ***REMOVED*** l'hériter d'un fichier rendrait l'élément indestructible ici.
+            # ⚠ `builtin` NE S'IMPORTE PAS. Il marque les éléments qui viennent du
+            # code de CETTE installation et que la fusion au démarrage réinjecte ;
+            # l'hériter d'un fichier rendrait l'élément indestructible ici.
             store["items"].append({
                 "id": iid, "area": str(it.get("area") or ""),
                 "title": str(it.get("title") or ""), "detail": str(it.get("detail") or ""),
@@ -432,19 +432,19 @@ def api_tests_import():
             })
             connus.add(iid)
             compte["ajoutes"] += 1
-        ***REMOVED*** ★ FUSION VÉRITABLE DES RÉSULTATS ET DES FILS — c'est ce qui fait de
-        ***REMOVED*** l'export/import un ALLER-RETOUR et pas un aller simple. Une première
-        ***REMOVED*** version faisait `setdefault` : un point déjà connu gardait son état et
-        ***REMOVED*** son fil, donc les réponses revenues du site n'entraient JAMAIS. Le
-        ***REMOVED*** testeur aurait exporté ses questions, nous aurions répondu, et il
-        ***REMOVED*** n'aurait rien vu — sans le moindre message d'erreur.
-        ***REMOVED***
-        ***REMOVED*** Règles, choisies pour qu'aucun des deux côtés ne perde son travail :
-        ***REMOVED***   · ÉTAT   — le plus RÉCENT gagne, point par point (champ `updated`).
-        ***REMOVED***     Un statut n'a qu'une valeur ; le dernier qui a regardé fait foi.
-        ***REMOVED***   · FIL    — on AJOUTE les messages inconnus et on retrie par date.
-        ***REMOVED***     Une conversation ne s'écrase pas : les deux moitiés se recousent
-        ***REMOVED***     par l'identifiant de message, stable depuis sa création.
+        # ★ FUSION VÉRITABLE DES RÉSULTATS ET DES FILS — c'est ce qui fait de
+        # l'export/import un ALLER-RETOUR et pas un aller simple. Une première
+        # version faisait `setdefault` : un point déjà connu gardait son état et
+        # son fil, donc les réponses revenues du site n'entraient JAMAIS. Le
+        # testeur aurait exporté ses questions, nous aurions répondu, et il
+        # n'aurait rien vu — sans le moindre message d'erreur.
+        #
+        # Règles, choisies pour qu'aucun des deux côtés ne perde son travail :
+        #   · ÉTAT   — le plus RÉCENT gagne, point par point (champ `updated`).
+        #     Un statut n'a qu'une valeur ; le dernier qui a regardé fait foi.
+        #   · FIL    — on AJOUTE les messages inconnus et on retrie par date.
+        #     Une conversation ne s'écrase pas : les deux moitiés se recousent
+        #     par l'identifiant de message, stable depuis sa création.
         for cle, val in (data.get("state") or {}).items():
             local = store["state"].get(cle)
             if local is None:

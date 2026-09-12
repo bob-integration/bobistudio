@@ -1,6 +1,6 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 """Quota GitHub du catalogue : requêtes conditionnelles, cache, et jeton PERSONNEL.
 
 ★ LE PROBLÈME, SIGNALÉ PAR L'USAGE. Un scan dépense une requête pour lister l'organisation plus
@@ -26,7 +26,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import config, database                                   ***REMOVED*** noqa: E402
+from app import config, database                                   # noqa: E402
 
 ECHECS = []
 
@@ -61,11 +61,11 @@ def main():
     import urllib.error
     import urllib.request
 
-    appels = []          ***REMOVED*** (url, en-têtes) de chaque requête réellement émise
+    appels = []          # (url, en-têtes) de chaque requête réellement émise
 
     def faux_urlopen(req, timeout=None):
         appels.append((req.full_url, dict(req.headers)))
-        ***REMOVED*** 2ᵉ appel et suivants sur la même URL : on répond 304 si le client a bien conditionné.
+        # 2ᵉ appel et suivants sur la même URL : on répond 304 si le client a bien conditionné.
         if any(k.lower() == "if-none-match" for k in req.headers):
             raise urllib.error.HTTPError(req.full_url, 304, "Not Modified", {}, None)
         return _Reponse([{"name": "essai"}], etag='W/"abc"')

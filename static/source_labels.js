@@ -228,7 +228,7 @@
      l'orchestrateur une fois. */
   var POLL_MS = 500;          // onglet au premier plan
   var POLL_MS_CACHE = 5000;   // onglet en arrière-plan : un filet, pas une cadence
-  var COLORS = { red: '***REMOVED***cc2222', green: '***REMOVED***22aa44', amber: '***REMOVED***cc8800' };
+  var COLORS = { red: '#cc2222', green: '#22aa44', amber: '#cc8800' };
 
   var _level = 0;                 // -1 = aucun (tally éteint) · 0 = tous · sinon l'UUID d'un niveau
   var _maps  = null;              // {shm: [{tsl_index, levels, connection_id, name}]}

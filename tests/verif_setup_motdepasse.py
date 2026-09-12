@@ -1,6 +1,6 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 """L'écran de PREMIER DÉMARRAGE (`/setup`) et son mot de passe.
 
 ★ POURQUOI. Le formulaire n'annonçait AUCUNE condition, et un refus renvoyait un formulaire
@@ -28,7 +28,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import config, database                                   ***REMOVED*** noqa: E402
+from app import config, database                                   # noqa: E402
 
 ECHECS = []
 
@@ -50,7 +50,7 @@ def verifier(cond, libelle):
 
 def main():
     _base_neuve()
-    import main as _main                                           ***REMOVED*** après le DB_PATH
+    import main as _main                                           # après le DB_PATH
     from app import settings as st
 
     for lang in ("fr", "en"):
@@ -64,13 +64,13 @@ def main():
         from app.auth import PWD_REGLES
         verifier(len(regles) == len(PWD_REGLES), f"{len(PWD_REGLES)} règles annoncées avant la frappe")
         verifier({r for r, _ in regles} == set(PWD_REGLES), "les règles annoncées sont celles du serveur")
-        ***REMOVED*** Un libellé non traduit sortirait sous forme de clé (« compte.pwd_regle_court »).
+        # Un libellé non traduit sortirait sous forme de clé (« compte.pwd_regle_court »).
         verifier(all("pwd_regle" not in txt for _, txt in regles), "libellés traduits (pas des clés)")
         verifier(all("{n}" not in txt for _, txt in regles), "le seuil est substitué, pas laissé en « {n} »")
         verifier("motdepasse.js" in page and "PWD_EXIGENCES" in page, "miroir navigateur chargé + seuils servis")
         verifier('name="pwd_profil"' in page and "PWD_PROFILS" in page, "sélecteur de profil présent")
 
-        ***REMOVED*** Refus : la saisie survit, le mot de passe ne revient jamais.
+        # Refus : la saisie survit, le mot de passe ne revient jamais.
         r = cli.post("/setup", data={"username": "cyril", "password": "abc", "password2": "abc",
                                      "prenom": "Cyril", "nom": "Mazouer", "email": "c@x.fr"})
         h = r.get_data(as_text=True)
@@ -78,14 +78,14 @@ def main():
                  and 'value="c@x.fr"' in h, "un refus CONSERVE la saisie")
         verifier(">abc<" not in h and 'value="abc"' not in h, "le mot de passe n'est jamais renvoyé")
 
-    ***REMOVED*** ── Le profil fait-il autorité côté serveur ? « Cerise-8x » : 9 signes, 3 classes.
+    # ── Le profil fait-il autorité côté serveur ? « Cerise-8x » : 9 signes, 3 classes.
     print("\n── le profil choisi sur l'écran fait autorité")
     mdp = "Cerise-8x"
     attendu = {"souple": True, "standard": False, "stricte": False,
-               ***REMOVED*** Valeur inconnue / absente → on retombe sur le réglage actif (standard), on ne
-               ***REMOVED*** désactive PAS le contrôle. C'est le cas qui compte : l'écran est PUBLIC.
+               # Valeur inconnue / absente → on retombe sur le réglage actif (standard), on ne
+               # désactive PAS le contrôle. C'est le cas qui compte : l'écran est PUBLIC.
                "": False, "profil-bidon": False, "../souple": False, None: False,
-               ***REMOVED*** Normalisation de casse assumée.
+               # Normalisation de casse assumée.
                "SOUPLE": True}
     for profil, doit_passer in attendu.items():
         _base_neuve()

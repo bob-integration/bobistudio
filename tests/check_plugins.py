@@ -1,28 +1,28 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** check_plugins.py — garde-fou CI du registre de plugins.
-***REMOVED***
-***REMOVED*** Importe app.plugins (ce qui déclenche le _scan() au chargement du module) puis
-***REMOVED*** vérifie que AUCUN plugin n'a été écarté (SCAN_ERRORS vide). Un plugin est écarté
-***REMOVED*** quand : manifeste JSON invalide, clés obligatoires manquantes, script_template
-***REMOVED*** introuvable, ou accolade littérale non doublée dans le template str.format
-***REMOVED*** (le piège classique documenté dans CLAUDE.md).
-***REMOVED***
-***REMOVED*** Exit 0 si tout est chargé, exit 1 si au moins un plugin est en erreur.
-***REMOVED***
-***REMOVED*** Usage : ./venv/bin/python tools/check_plugins.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# check_plugins.py — garde-fou CI du registre de plugins.
+#
+# Importe app.plugins (ce qui déclenche le _scan() au chargement du module) puis
+# vérifie que AUCUN plugin n'a été écarté (SCAN_ERRORS vide). Un plugin est écarté
+# quand : manifeste JSON invalide, clés obligatoires manquantes, script_template
+# introuvable, ou accolade littérale non doublée dans le template str.format
+# (le piège classique documenté dans CLAUDE.md).
+#
+# Exit 0 si tout est chargé, exit 1 si au moins un plugin est en erreur.
+#
+# Usage : ./venv/bin/python tools/check_plugins.py
 
 import os
 import sys
 
-***REMOVED*** Racine du projet = parent de tools/ ; on l'ajoute au path pour trouver le package app.
+# Racine du projet = parent de tools/ ; on l'ajoute au path pour trouver le package app.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from app import plugins  ***REMOVED*** noqa: E402  (le _scan() tourne à l'import)
+from app import plugins  # noqa: E402  (le _scan() tourne à l'import)
 
-***REMOVED*** Rescan explicite pour être robuste quel que soit l'ordre d'import.
+# Rescan explicite pour être robuste quel que soit l'ordre d'import.
 plugins.reload()
 
 registry = plugins.REGISTRY

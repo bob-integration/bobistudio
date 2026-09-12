@@ -1,11 +1,11 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Relais du relevé 2110 du moteur vers les scopes qui mesurent une source 2110.
 
-***REMOVED******REMOVED*** Pourquoi un relais, et pas une lecture directe
+## Pourquoi un relais, et pas une lecture directe
 
 ⚠ **LE SCOPE NE PEUT PAS INTERROGER LE MOTEUR.** Il est en macvlan (une IP du subnet du cluster),
 le moteur `2110_io` est sur le réseau HÔTE du nœud, et un conteneur macvlan ne joint pas son
@@ -14,7 +14,7 @@ propre hôte — c'est une propriété du pilote, pas un réglage. Vérifié au 
 l'orchestrateur lit la même URL en 20 ms. Seul l'orchestrateur voit les deux côtés. Ce n'est
 donc pas un détour : c'est la seule route.
 
-***REMOVED******REMOVED*** Ce que le scope mesure sans ce relais, et ce qu'il lui manque
+## Ce que le scope mesure sans ce relais, et ce qu'il lui manque
 
 L'instrument de phase lit deux choses sur le bus MXL : l'instant NOMINAL du dernier grain
 (`index_time_ns`, la grille TAI) et l'instant d'ÉCRITURE (`last_write_time`). Les deux sont
@@ -29,7 +29,7 @@ Or le moteur mesure déjà tout cela, par récepteur, et le publie sur son `:808
 
 Le travail ici n'est donc PAS de mesurer le 2110 — il l'est déjà — mais de l'acheminer.
 
-***REMOVED******REMOVED*** La cadence, et pourquoi elle est lente
+## La cadence, et pourquoi elle est lente
 
 Une fois par seconde, et UNE SEULE lecture par moteur quel que soit le nombre de scopes qui en
 dépendent. Ce sont des grandeurs de SOURCE (phase sur le fil, conformité, verrou PTP) : elles ne
@@ -45,7 +45,7 @@ import time
 log = logging.getLogger(__name__)
 
 _started = False
-***REMOVED*** Dernier relevé par vmid de moteur, pour ne pas relire le même moteur une fois par scope.
+# Dernier relevé par vmid de moteur, pour ne pas relire le même moteur une fois par scope.
 _cache = {}
 INTERVALLE = 1.0
 PERIME_S = 10.0
@@ -58,7 +58,7 @@ def _containers_par_type():
     for c in db_get_containers():
         try:
             dc = json.loads(c.get("deploy_config") or "{}") or {}
-        except Exception:                                          ***REMOVED*** noqa: BLE001
+        except Exception:                                          # noqa: BLE001
             continue
         t, p = dc.get("type"), (dc.get("params") or {})
         if t == "scope":
@@ -113,7 +113,7 @@ def _declare(moteur_vmid, idx):
         from services import nmos as _nmos
         from . import sdp2110
         return sdp2110.lire(_nmos.active_sdp_for(moteur_vmid, idx, "video"))
-    except Exception as e:                                         ***REMOVED*** noqa: BLE001
+    except Exception as e:                                         # noqa: BLE001
         log.debug("scope_2110 : SDP du récepteur %s : %s", idx, e)
         return None
 
@@ -133,8 +133,8 @@ def _lire_moteur(c):
             r = requests.get("http://%s:8080/" % ip, timeout=2)
             if r.status_code == 200:
                 d = r.json()
-        except Exception as e:                                     ***REMOVED*** noqa: BLE001
-            log.debug("scope_2110 : moteur ***REMOVED***%s injoignable : %s", vmid, e)
+        except Exception as e:                                     # noqa: BLE001
+            log.debug("scope_2110 : moteur #%s injoignable : %s", vmid, e)
     _cache[vmid] = (now, d)
     return d
 
@@ -148,8 +148,8 @@ def _pousser(scope_c, corps):
     try:
         requests.post("http://%s:8082/source2110" % ip, json=corps, timeout=2,
                       headers=deploy.agent_headers(scope_c["vmid"]))
-    except Exception as e:                                         ***REMOVED*** noqa: BLE001
-        log.debug("scope_2110 : scope ***REMOVED***%s injoignable : %s", scope_c["vmid"], e)
+    except Exception as e:                                         # noqa: BLE001
+        log.debug("scope_2110 : scope #%s injoignable : %s", scope_c["vmid"], e)
 
 
 def pousser_une_fois():
@@ -161,10 +161,10 @@ def pousser_une_fois():
     for sc, sp in scopes:
         mot, idx = _origine_2110((sp.get("input") or "").strip(), moteurs)
         if mot is None:
-            ***REMOVED*** La source n'est PAS un flux 2110 (un mur, un lecteur, un mélangeur…). On le DIT au
-            ***REMOVED*** scope au lieu de nous taire : sans ce message, l'instrument ne peut pas distinguer
-            ***REMOVED*** « pas de 2110 en amont » de « relais en panne », et il afficherait un cadran vide
-            ***REMOVED*** dans les deux cas — deux situations qui n'appellent pas la même réaction.
+            # La source n'est PAS un flux 2110 (un mur, un lecteur, un mélangeur…). On le DIT au
+            # scope au lieu de nous taire : sans ce message, l'instrument ne peut pas distinguer
+            # « pas de 2110 en amont » de « relais en panne », et il afficherait un cadran vide
+            # dans les deux cas — deux situations qui n'appellent pas la même réaction.
             _pousser(sc, {"origine": None, "shm": (sp.get("input") or "").strip()})
             continue
         d = _lire_moteur(mot)
@@ -180,28 +180,28 @@ def pousser_une_fois():
             continue
         _pousser(sc, {"origine": {"moteur": mot.get("hostname") or mot["vmid"],
                                   "numero": rec.get("numero"), "idx": idx,
-                                  ***REMOVED*** ⚠ LE FLUX SUR LEQUEL CE RELEVÉ A ÉTÉ FAIT, pour que le
-                                  ***REMOVED*** conteneur puisse le REFUSER s'il n'écoute plus celui-là.
-                                  ***REMOVED*** Le relais lit l'entrée dans la BASE ; un recâblage à chaud
-                                  ***REMOVED*** par `/input` ne la met pas à jour, et le scope affichait
-                                  ***REMOVED*** alors les mesures 2110 de son ANCIENNE source — « conforme
-                                  ***REMOVED*** narrow » sur un lecteur qui n'a jamais vu de 2110. C'est
-                                  ***REMOVED*** exactement la famille de fautes qu'on traque, et celle-ci
-                                  ***REMOVED*** était la mienne.
+                                  # ⚠ LE FLUX SUR LEQUEL CE RELEVÉ A ÉTÉ FAIT, pour que le
+                                  # conteneur puisse le REFUSER s'il n'écoute plus celui-là.
+                                  # Le relais lit l'entrée dans la BASE ; un recâblage à chaud
+                                  # par `/input` ne la met pas à jour, et le scope affichait
+                                  # alors les mesures 2110 de son ANCIENNE source — « conforme
+                                  # narrow » sur un lecteur qui n'a jamais vu de 2110. C'est
+                                  # exactement la famille de fautes qu'on traque, et celle-ci
+                                  # était la mienne.
                                   "shm": (sp.get("input") or "").strip()},
                       "recepteur": rec, "ptp": d.get("ptp") or {},
-                      ***REMOVED*** ⚠ CE QUE LA SOURCE DÉCLARE, pour être CONFRONTÉ — jamais pour être
-                      ***REMOVED*** affiché tel quel. Un SDP est une affirmation de l'émetteur sur
-                      ***REMOVED*** lui-même ; le relayer sans la confrontation serait une régression de
-                      ***REMOVED*** doctrine, pas un progrès. `app/sdp2110.py` attache à chaque champ la
-                      ***REMOVED*** façon dont il peut être vérifié, et le conteneur s'en sert.
+                      # ⚠ CE QUE LA SOURCE DÉCLARE, pour être CONFRONTÉ — jamais pour être
+                      # affiché tel quel. Un SDP est une affirmation de l'émetteur sur
+                      # lui-même ; le relayer sans la confrontation serait une régression de
+                      # doctrine, pas un progrès. `app/sdp2110.py` attache à chaque champ la
+                      # façon dont il peut être vérifié, et le conteneur s'en sert.
                       "declare": _declare(mot["vmid"], idx),
-                      ***REMOVED*** ⚠ LES COMPTEURS DE PAQUETS SONT PAR PORT, PAS PAR FLUX — et le relais
-                      ***REMOVED*** les jetait. On les transmet maintenant, MAIS avec le nom du port, parce
-                      ***REMOVED*** que c'est la seule façon d'empêcher qu'un « 9 478 paquets jetés »
-                      ***REMOVED*** agrégé sur quatorze sessions se lise comme le compteur d'un seul flux.
-                      ***REMOVED*** Les compteurs PAR SESSION n'existent pas encore côté moteur : c'est un
-                      ***REMOVED*** ajout à `mtl_rx.c`, pas à la tuile, et la tuile doit le DIRE.
+                      # ⚠ LES COMPTEURS DE PAQUETS SONT PAR PORT, PAS PAR FLUX — et le relais
+                      # les jetait. On les transmet maintenant, MAIS avec le nom du port, parce
+                      # que c'est la seule façon d'empêcher qu'un « 9 478 paquets jetés »
+                      # agrégé sur quatorze sessions se lise comme le compteur d'un seul flux.
+                      # Les compteurs PAR SESSION n'existent pas encore côté moteur : c'est un
+                      # ajout à `mtl_rx.c`, pas à la tuile, et la tuile doit le DIRE.
                       "nic": _nic_utile(d.get("nic") or {})})
         n += 1
     return n
@@ -220,7 +220,7 @@ def start(interval=INTERVALLE):
                 from . import ha as _ha
                 if _ha.is_active():
                     pousser_une_fois()
-            except Exception as e:                                 ***REMOVED*** noqa: BLE001
+            except Exception as e:                                 # noqa: BLE001
                 log.warning("scope_2110 : %s", e)
             time.sleep(interval)
 

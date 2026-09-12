@@ -1,26 +1,26 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc de la RAFALE de réglages sur la page d'un plugin — la séquence exacte rapportée le
-***REMOVED*** 2026-09-01 : « j'ai ajouté les 3 niveaux, supprimé le 1, et le 2 s'est supprimé aussi ».
-***REMOVED***
-***REMOVED*** CE QUI SE PASSAIT. Chaque écriture de réglage REDÉPLOIE le conteneur, et l'orchestrateur refuse
-***REMOVED*** un second déploiement tant que le premier est en vol (`_plugin_config_pending` → HTTP 409). Une
-***REMOVED*** sélection multiple s'édite par gestes SUCCESSIFS : trois niveaux choisis coup sur coup faisaient
-***REMOVED*** trois POST, dont deux repartaient en 409 — PERDUS, alors que les trois puces restaient à
-***REMOVED*** l'écran. On croyait avoir réglé trois niveaux, un seul était persisté, et le retrait suivant
-***REMOVED*** révélait la vérité en faisant « disparaître » les autres.
-***REMOVED***
-***REMOVED*** CE QU'IL PROTÈGE :
-***REMOVED***   · la rafale doit devenir UN seul envoi (sinon on redéploie trois fois pour trois clics) ;
-***REMOVED***   · un 409 doit être RÉESSAYÉ, jamais avalé ;
-***REMOVED***   · `/state` répond l'ANCIENNE valeur pendant le redéploiement : reconstruire l'affichage
-***REMOVED***     dessus ferait réapparaître ce qu'on vient de retirer, puis disparaître à nouveau ;
-***REMOVED***   · un échec définitif doit RESYNCHRONISER l'écran sur ce qui est vraiment enregistré — laisser
-***REMOVED***     une valeur optimiste est ce qui a rendu ce défaut si difficile à voir.
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tools/verif_hello_tally_rafale.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc de la RAFALE de réglages sur la page d'un plugin — la séquence exacte rapportée le
+# 2026-09-01 : « j'ai ajouté les 3 niveaux, supprimé le 1, et le 2 s'est supprimé aussi ».
+#
+# CE QUI SE PASSAIT. Chaque écriture de réglage REDÉPLOIE le conteneur, et l'orchestrateur refuse
+# un second déploiement tant que le premier est en vol (`_plugin_config_pending` → HTTP 409). Une
+# sélection multiple s'édite par gestes SUCCESSIFS : trois niveaux choisis coup sur coup faisaient
+# trois POST, dont deux repartaient en 409 — PERDUS, alors que les trois puces restaient à
+# l'écran. On croyait avoir réglé trois niveaux, un seul était persisté, et le retrait suivant
+# révélait la vérité en faisant « disparaître » les autres.
+#
+# CE QU'IL PROTÈGE :
+#   · la rafale doit devenir UN seul envoi (sinon on redéploie trois fois pour trois clics) ;
+#   · un 409 doit être RÉESSAYÉ, jamais avalé ;
+#   · `/state` répond l'ANCIENNE valeur pendant le redéploiement : reconstruire l'affichage
+#     dessus ferait réapparaître ce qu'on vient de retirer, puis disparaître à nouveau ;
+#   · un échec définitif doit RESYNCHRONISER l'écran sur ce qui est vraiment enregistré — laisser
+#     une valeur optimiste est ce qui a rendu ce défaut si difficile à voir.
+#
+#   $ ./venv/bin/python tools/verif_hello_tally_rafale.py
 import json
 import re
 import os
@@ -39,14 +39,14 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-***REMOVED*** ⚠ CE BANC EST EN DEUX MOITIÉS, ET IL FAUT LES DEUX.
-***REMOVED***   1. Une SIMULATION du contrat (regroupement, réessai sur 409, serveur avec sa garde) : elle
-***REMOVED***      démontre que le contrat résout le défaut, mais elle REJOUE la logique au lieu de l'appeler
-***REMOVED***      — monter la page entière demanderait un navigateur. Seule, elle prouverait la conception,
-***REMOVED***      pas le code.
-***REMOVED***   2. Des contrôles sur le CODE du plugin, qui vérifient qu'il implémente bien ce contrat.
-***REMOVED*** L'une sans l'autre laisserait passer soit un contrat qui ne marche pas, soit un plugin qui ne
-***REMOVED*** l'applique pas.
+# ⚠ CE BANC EST EN DEUX MOITIÉS, ET IL FAUT LES DEUX.
+#   1. Une SIMULATION du contrat (regroupement, réessai sur 409, serveur avec sa garde) : elle
+#      démontre que le contrat résout le défaut, mais elle REJOUE la logique au lieu de l'appeler
+#      — monter la page entière demanderait un navigateur. Seule, elle prouverait la conception,
+#      pas le code.
+#   2. Des contrôles sur le CODE du plugin, qui vérifient qu'il implémente bien ce contrat.
+# L'une sans l'autre laisserait passer soit un contrat qui ne marche pas, soit un plugin qui ne
+# l'applique pas.
 HARNAIS = """
 let TEMPS = 0;                       // horloge virtuelle : le banc ne doit pas ATTENDRE
 const FILE = [];
@@ -79,7 +79,7 @@ class El {
 }
 const NOEUDS = {};
 global.document = { createElement: t => new El(t), body: new El('body'),
-  createTextNode: t => { const e = new El('***REMOVED***text'); e.textContent = t; return e; },
+  createTextNode: t => { const e = new El('#text'); e.textContent = t; return e; },
   getElementById: id => (NOEUDS[id] = NOEUDS[id] || new El('div')),
   querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {} };
 global.window = {};
@@ -130,14 +130,14 @@ def executer(scenario):
 
 print("hello_world — trois niveaux choisis coup sur coup, puis un retrait\n")
 
-***REMOVED*** ── LA VRAIE RÉPONSE : ces réglages ne redéploient RIEN ──────────────────────
-***REMOVED*** ★ POURQUOI REDÉPLOYER POUR UN NIVEAU DE TALLY ? On ne devrait pas. Le niveau est lu par
-***REMOVED*** l'ORCHESTRATEUR (distributeur TSL, hook `tally_targets`), jamais par le conteneur. Redéployer
-***REMOVED*** pour ça coupe un flux vidéo pour changer une case — et comme le déploiement est sérialisé,
-***REMOVED*** c'est ce qui faisait perdre les gestes successifs en 409. Le regroupement et le réessai
-***REMOVED*** restent utiles pour les réglages qui, EUX, sont lus au démarrage (le format de sortie).
+# ── LA VRAIE RÉPONSE : ces réglages ne redéploient RIEN ──────────────────────
+# ★ POURQUOI REDÉPLOYER POUR UN NIVEAU DE TALLY ? On ne devrait pas. Le niveau est lu par
+# l'ORCHESTRATEUR (distributeur TSL, hook `tally_targets`), jamais par le conteneur. Redéployer
+# pour ça coupe un flux vidéo pour changer une case — et comme le déploiement est sérialisé,
+# c'est ce qui faisait perdre les gestes successifs en 409. Le regroupement et le réessai
+# restent utiles pour les réglages qui, EUX, sont lus au démarrage (le format de sortie).
 sys.path.insert(0, RACINE)
-from app import plugins as _plg                                              ***REMOVED*** noqa: E402
+from app import plugins as _plg                                              # noqa: E402
 _plg._scan()
 _chaud = _plg.cles_sans_redeploiement("hello_world")
 controle("★★★ le niveau de tally est déclaré SANS redéploiement",
@@ -146,11 +146,11 @@ controle("★★★ le niveau de tally est déclaré SANS redéploiement",
          "travail perdu, et c'est lui qui déclenchait la garde anti-rafale")
 controle("★★ le libellé de source aussi", "tally_label_col" in _chaud)
 
-***REMOVED*** ── LES PUCES NE SONT PAS DANS UN <label> ────────────────────────────────────
-***REMOVED*** Un <label> sans « for » renvoie TOUT clic vers le premier contrôle qu'il contient — ici la
-***REMOVED*** croix de la première puce. Cliquer à côté d'une puce supprimait donc le premier niveau.
-***REMOVED*** Le contrôle s'en défend lui-même (cf. verif_controle_choix), mais le balisage d'accueil doit
-***REMOVED*** être juste aussi : une garde n'excuse pas un contenant qui ment sur ce qu'il fait.
+# ── LES PUCES NE SONT PAS DANS UN <label> ────────────────────────────────────
+# Un <label> sans « for » renvoie TOUT clic vers le premier contrôle qu'il contient — ici la
+# croix de la première puce. Cliquer à côté d'une puce supprimait donc le premier niveau.
+# Le contrôle s'en défend lui-même (cf. verif_controle_choix), mais le balisage d'accueil doit
+# être juste aussi : une garde n'excuse pas un contenant qui ment sur ce qu'il fait.
 _js_pg = open(os.path.join(RACINE, "plugins", "hello_world", "control.js"),
               encoding="utf-8").read()
 _avant_puces = _js_pg[:_js_pg.index('id="hw-tniv"')]
@@ -159,12 +159,12 @@ controle("★★★ le contenant des puces n'est pas un <label>",
          "un <label> convient à un champ unique, pas à une liste d'actions : il renvoie tout "
          "clic vers le premier bouton qu'il contient")
 
-***REMOVED*** ── OÙ CES RÉGLAGES S'AFFICHENT ──────────────────────────────────────────────
-***REMOVED*** ★ LE PANNEAU ⚙ EST POUR LE SYSTÈME, PAS POUR L'EXPLOITATION. Format de sortie, niveau de
-***REMOVED*** journal, mode tranche : ce qu'on règle en installant. Un niveau de tally et un libellé de
-***REMOVED*** source sont des gestes d'EXPLOITATION, qui se font sur la page du plugin, là où l'on voit ce
-***REMOVED*** qu'ils changent. Les mettre aux deux endroits, c'est deux écrans à tenir d'accord et deux
-***REMOVED*** chemins de droits pour un seul réglage.
+# ── OÙ CES RÉGLAGES S'AFFICHENT ──────────────────────────────────────────────
+# ★ LE PANNEAU ⚙ EST POUR LE SYSTÈME, PAS POUR L'EXPLOITATION. Format de sortie, niveau de
+# journal, mode tranche : ce qu'on règle en installant. Un niveau de tally et un libellé de
+# source sont des gestes d'EXPLOITATION, qui se font sur la page du plugin, là où l'on voit ce
+# qu'ils changent. Les mettre aux deux endroits, c'est deux écrans à tenir d'accord et deux
+# chemins de droits pour un seul réglage.
 _sys = _plg.config_scope_keys("hello_world", "system")
 _usr = _plg.config_scope_keys("hello_world", "user")
 controle("★★★ le tally n'est PAS dans le panneau ⚙ ni dans la palette",
@@ -183,11 +183,11 @@ controle("★★ le panneau ne rend QUE les champs de scope système",
          "(f.scope||'system')!=='user'" in _src_panneau.replace(" ", ""),
          "c'est ce filtre qui fait tenir la séparation ; le retirer ramènerait le tally dans "
          "un écran où il n'a rien à faire")
-***REMOVED*** ⚠ ET LE TRI SE FAIT SUR CE QUI CHANGE, PAS SUR CE QUI EST ENVOYÉ. Les écrans postent tout le
-***REMOVED*** formulaire : le panneau ⚙ envoie TOUS les champs `system`. Sans ce tri, cocher un niveau de
-***REMOVED*** tally embarquait `format` dans le lot et forçait un redéploiement — le chemin « à chaud » ne
-***REMOVED*** servait donc jamais depuis cet écran, et l'utilisateur ne voyait aucune différence.
-from app.routes.plugin_registry import _cles_changees                        ***REMOVED*** noqa: E402
+# ⚠ ET LE TRI SE FAIT SUR CE QUI CHANGE, PAS SUR CE QUI EST ENVOYÉ. Les écrans postent tout le
+# formulaire : le panneau ⚙ envoie TOUS les champs `system`. Sans ce tri, cocher un niveau de
+# tally embarquait `format` dans le lot et forçait un redéploiement — le chemin « à chaud » ne
+# servait donc jamais depuis cet écran, et l'utilisateur ne voyait aucune différence.
+from app.routes.plugin_registry import _cles_changees                        # noqa: E402
 _p = {"format": "HD 1080i50", "tally_level": ["a"], "tally_label_col": 2}
 controle("★★★ un champ renvoyé À L'IDENTIQUE ne compte pas comme un changement",
          _cles_changees("hello_world", dict(_p), _p) == set(),
@@ -203,14 +203,14 @@ controle("★★ un vrai changement de format est bien vu",
 controle("★★★ le FORMAT, lui, redéploie bien", "format" not in _chaud,
          "le conteneur le lit à son démarrage : le déclarer à chaud donnerait un réglage qui "
          "semble pris et ne s'applique qu'au prochain déploiement, sans que rien ne le dise")
-***REMOVED*** ⚠ MESURE RÉELLE, PAS UNE INSPECTION DE SOURCE. Une première version cherchait le nom de la
-***REMOVED*** fonction avant la garde dans le fichier — et le trouvait ailleurs, donc elle acquiesçait même
-***REMOVED*** quand le court-circuit était retiré (vérifié par mutation). On ÉCRIT trois fois d'affilée sur
-***REMOVED*** le conteneur réel, ce qui est exactement le geste rapporté, et on RESTAURE la valeur.
+# ⚠ MESURE RÉELLE, PAS UNE INSPECTION DE SOURCE. Une première version cherchait le nom de la
+# fonction avant la garde dans le fichier — et le trouvait ailleurs, donc elle acquiesçait même
+# quand le court-circuit était retiré (vérifié par mutation). On ÉCRIT trois fois d'affilée sur
+# le conteneur réel, ce qui est exactement le geste rapporté, et on RESTAURE la valeur.
 try:
-    import main                                                              ***REMOVED*** noqa: E402
-    from app.database import get_db, db_get_containers, db_get_tally_levels  ***REMOVED*** noqa: E402
-    from app.routes.plugin_registry import _load_dc                          ***REMOVED*** noqa: E402
+    import main                                                              # noqa: E402
+    from app.database import get_db, db_get_containers, db_get_tally_levels  # noqa: E402
+    from app.routes.plugin_registry import _load_dc                          # noqa: E402
     _app = main.app
     _app.config["TESTING"] = True
     with get_db() as _db:
@@ -245,11 +245,11 @@ if _hw:
                  all(d is False for _, d in _codes),
                  "redéployer pour un niveau de tally coupe un flux vidéo pour changer une case, "
                  "et c'est ce qui déclenchait la garde anti-rafale. Obtenu %r" % (_codes,))
-        ***REMOVED*** ── ⚠ `/state` EST UNE PHOTO, PAS UN MIROIR ─────────────────
-        ***REMOVED*** Le conteneur répond avec la configuration qui lui a été remise à SON DÉPLOIEMENT.
-        ***REMOVED*** Tant qu'un réglage redéployait, la photo restait fraîche. Depuis qu'un réglage
-        ***REMOVED*** s'applique à chaud, elle ne l'est plus : la page se reconstruisait sur l'ancienne
-        ***REMOVED*** liste et défaisait le geste — « j'ai supprimé le 2, ça a supprimé le 3 aussi ».
+        # ── ⚠ `/state` EST UNE PHOTO, PAS UN MIROIR ─────────────────
+        # Le conteneur répond avec la configuration qui lui a été remise à SON DÉPLOIEMENT.
+        # Tant qu'un réglage redéployait, la photo restait fraîche. Depuis qu'un réglage
+        # s'applique à chaud, elle ne l'est plus : la page se reconstruisait sur l'ancienne
+        # liste et défaisait le geste — « j'ai supprimé le 2, ça a supprimé le 3 aussi ».
         _rp = _cli.get("/api/containers/%d/plugin_config" % _v)
         controle("★★★ l'orchestrateur sert les réglages PERSISTÉS", _rp.status_code == 200,
                  "sans cette route, la page n'a que la photo du conteneur pour se relire")
@@ -260,9 +260,9 @@ if _hw:
                  % ((_rp.get_json() or {}).get("params") or {}).get("tally_level"))
         _src_pg = open(os.path.join(RACINE, "plugins", "hello_world", "control.js"),
                        encoding="utf-8").read()
-        ***REMOVED*** ⚠ ON EXIGE QUE LA VALEUR PERSISTÉE PRIME, pas seulement qu'elle soit lue. Une
-        ***REMOVED*** première version se contentait de chercher le nom de la variable : la remplacer par
-        ***REMOVED*** `s.tally_level` gardait le nom et le contrôle acquiesçait (vérifié par mutation).
+        # ⚠ ON EXIGE QUE LA VALEUR PERSISTÉE PRIME, pas seulement qu'elle soit lue. Une
+        # première version se contentait de chercher le nom de la variable : la remplacer par
+        # `s.tally_level` gardait le nom et le contrôle acquiesçait (vérifié par mutation).
         _prime = ('("tally_level" in _persiste) ? _persiste.tally_level'
                   in _src_pg.replace("\n", " ").replace("  ", " "))
         controle("★★★ la valeur PERSISTÉE prime sur celle de `/state`",
@@ -281,11 +281,11 @@ if _hw:
                  _lu() == _niv[:min(3, len(_niv))],
                  "attendu %r, obtenu %r" % (_niv[:3], _lu()))
     finally:
-        ***REMOVED*** ⚠ ON VÉRIFIE LA RESTAURATION, et on crie si elle n'a pas pris. Ce banc écrit sur un
-        ***REMOVED*** conteneur RÉEL de l'exploitant : une restauration qu'on suppose réussie laisse dériver
-        ***REMOVED*** son réglage d'une exécution à l'autre — c'est arrivé pendant une campagne de mutation,
-        ***REMOVED*** où les écritures partaient en 409 et où le « avant » lu au départ n'était déjà plus le
-        ***REMOVED*** sien.
+        # ⚠ ON VÉRIFIE LA RESTAURATION, et on crie si elle n'a pas pris. Ce banc écrit sur un
+        # conteneur RÉEL de l'exploitant : une restauration qu'on suppose réussie laisse dériver
+        # son réglage d'une exécution à l'autre — c'est arrivé pendant une campagne de mutation,
+        # où les écritures partaient en 409 et où le « avant » lu au départ n'était déjà plus le
+        # sien.
         _cli.post("/api/containers/%d/plugin_config" % _v,
                   json={"params": {"tally_level": _avant or []}})
         _rendu = _lu()
@@ -317,7 +317,7 @@ controle("★ le module du plugin se charge et s'enregistre",
          res.get("enregistre") and not res.get("exception"),
          "obtenu %r" % (res.get("exception") or res.get("enregistre")))
 
-***REMOVED*** ── Le cœur : la rafale ──────────────────────────────────────────────────────
+# ── Le cœur : la rafale ──────────────────────────────────────────────────────
 res = executer("""
 const out = {};
 try {
@@ -348,7 +348,7 @@ controle("★★★ le drapeau est au niveau MODULE, pas dans une fonction",
          "`const` local n'existe pas dans l'autre — la référence LÈVE, et toute la mise à jour "
          "d'état tombe. `node --check` n'y voit rien")
 
-***REMOVED*** ── La simulation complète : trois ajouts, un retrait ────────────────────────
+# ── La simulation complète : trois ajouts, un retrait ────────────────────────
 res = executer("""
 const out = {};
 try {
@@ -402,11 +402,11 @@ controle("★★ retirer le premier ne retire QUE le premier",
          res.get("pucesApres") == 2 and res.get("persisteApresRetrait") == ["n2", "n3"],
          "écran %r, enregistré %r" % (res.get("pucesApres"), res.get("persisteApresRetrait")))
 
-***REMOVED*** ── LE GABARIT DE LA PAGE S'EXÉCUTE ─────────────────────────────────────────
-***REMOVED*** `node --check` est AVEUGLE à l'accident le plus probable ici : un accent grave dans un
-***REMOVED*** commentaire HTML situé DANS le gabarit ferme la chaîne, le fichier reste valide, et la page
-***REMOVED*** se vide à l'exécution sans un message nulle part. Seul le rendu le voit. On stube le strict
-***REMOVED*** nécessaire — un bouchon qui en ferait plus ferait passer le contrôle sans rien prouver.
+# ── LE GABARIT DE LA PAGE S'EXÉCUTE ─────────────────────────────────────────
+# `node --check` est AVEUGLE à l'accident le plus probable ici : un accent grave dans un
+# commentaire HTML situé DANS le gabarit ferme la chaîne, le fichier reste valide, et la page
+# se vide à l'exécution sans un message nulle part. Seul le rendu le voit. On stube le strict
+# nécessaire — un bouchon qui en ferait plus ferait passer le contrôle sans rien prouver.
 JS = _js_pg
 _d = JS.index("  function gabarit(")
 _m = re.search(r"\n  (?:function |const |async function )", JS[_d + 20:])
@@ -418,8 +418,8 @@ res = executer_brut(
     "global.window = {};\n"
     "window.MXLControls = {knobSvg: () => '<svg>', ICONS: new Proxy({}, {get: () => '<i>'})};\n"
     + JS[_d:_d + 20 + _m.start()]
-    ***REMOVED*** `gabarit()` accroche ses écouteurs APRÈS avoir posé l'innerHTML : l'erreur qu'on avale ici
-    ***REMOVED*** est celle du faux DOM, pas celle du gabarit — s'il avait levé, `EL.innerHTML` serait vide.
+    # `gabarit()` accroche ses écouteurs APRÈS avoir posé l'innerHTML : l'erreur qu'on avale ici
+    # est celle du faux DOM, pas celle du gabarit — s'il avait levé, `EL.innerHTML` serait vide.
     + "\nlet out_err = null;\ntry { gabarit(); } catch (e) { out_err = e.message; }\n"
       "const h = EL.innerHTML;\n"
       "console.log(JSON.stringify({len: h.length,\n"

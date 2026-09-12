@@ -1,35 +1,35 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Catalogue des plugins et services PUBLIÉS : lecture d'une organisation GitHub,
-***REMOVED*** comparaison avec l'installé, téléchargement du paquet.
-***REMOVED***
-***REMOVED*** ★ POURQUOI CE FICHIER EXISTE. Un exploitant n'a pas à cloner un dépôt git pour
-***REMOVED*** installer un traitement vidéo. Les sous-modules sont l'outil de DÉVELOPPEMENT ;
-***REMOVED*** la distribution passe par ici. La moitié du chemin existait déjà — `/api/plugins/
-***REMOVED*** import` accepte un `.mxlplugin` (zip du dossier) et `_extract_validated_package`
-***REMOVED*** tolère un dossier racine englobant, donc une archive GitHub s'y branche telle
-***REMOVED*** quelle. Il ne manquait que la LISTE.
-***REMOVED***
-***REMOVED*** ⚠ CE QU'ON INSTALLE, C'EST DU CODE QUI TOURNERA DANS LE CONTRÔLEUR. Le corps
-***REMOVED*** d'un plugin s'exécute dans un conteneur, jamais ici — mais `hooks.py` est
-***REMOVED*** l'exception documentée : il est importé et exécuté DANS l'orchestrateur
-***REMOVED*** (`plugins._load_hooks`). Installer depuis Internet, c'est donc exécuter du code
-***REMOVED*** tiers avec les droits du contrôleur. D'où trois garde-fous qui ne sont pas
-***REMOVED*** négociables :
-***REMOVED***   1. une ORGANISATION de confiance, réglable, jamais une URL libre ;
-***REMOVED***   2. la permission `settings.edit` sur les routes ;
-***REMOVED***   3. l'interface qui le DIT, au lieu de le taire derrière un bouton « installer ».
-***REMOVED***
-***REMOVED*** ⚠ ET UN SERVICE N'EST PAS UN PLUGIN — mais il a SON registre. `app/core_plugins.py`
-***REMOVED*** gère les services exactement comme `app/plugins.py` gère les plugins : validation
-***REMOVED*** de paquet, versions archivées, activation. Le catalogue s'y branche au lieu de
-***REMOVED*** réécrire un chemin d'installation à lui : deux chemins finissent par diverger, et
-***REMOVED*** celui qui sert le moins est celui qui dérive.
-***REMOVED***
-***REMOVED*** Ce qui reste vrai de la différence : `main.py` importe les services par leur nom
-***REMOVED*** au démarrage, donc un service installé à chaud ne devient effectif qu'au
-***REMOVED*** REDÉMARRAGE du contrôleur. Le catalogue le dit ; il ne le laisse pas deviner.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Catalogue des plugins et services PUBLIÉS : lecture d'une organisation GitHub,
+# comparaison avec l'installé, téléchargement du paquet.
+#
+# ★ POURQUOI CE FICHIER EXISTE. Un exploitant n'a pas à cloner un dépôt git pour
+# installer un traitement vidéo. Les sous-modules sont l'outil de DÉVELOPPEMENT ;
+# la distribution passe par ici. La moitié du chemin existait déjà — `/api/plugins/
+# import` accepte un `.mxlplugin` (zip du dossier) et `_extract_validated_package`
+# tolère un dossier racine englobant, donc une archive GitHub s'y branche telle
+# quelle. Il ne manquait que la LISTE.
+#
+# ⚠ CE QU'ON INSTALLE, C'EST DU CODE QUI TOURNERA DANS LE CONTRÔLEUR. Le corps
+# d'un plugin s'exécute dans un conteneur, jamais ici — mais `hooks.py` est
+# l'exception documentée : il est importé et exécuté DANS l'orchestrateur
+# (`plugins._load_hooks`). Installer depuis Internet, c'est donc exécuter du code
+# tiers avec les droits du contrôleur. D'où trois garde-fous qui ne sont pas
+# négociables :
+#   1. une ORGANISATION de confiance, réglable, jamais une URL libre ;
+#   2. la permission `settings.edit` sur les routes ;
+#   3. l'interface qui le DIT, au lieu de le taire derrière un bouton « installer ».
+#
+# ⚠ ET UN SERVICE N'EST PAS UN PLUGIN — mais il a SON registre. `app/core_plugins.py`
+# gère les services exactement comme `app/plugins.py` gère les plugins : validation
+# de paquet, versions archivées, activation. Le catalogue s'y branche au lieu de
+# réécrire un chemin d'installation à lui : deux chemins finissent par diverger, et
+# celui qui sert le moins est celui qui dérive.
+#
+# Ce qui reste vrai de la différence : `main.py` importe les services par leur nom
+# au démarrage, donc un service installé à chaud ne devient effectif qu'au
+# REDÉMARRAGE du contrôleur. Le catalogue le dit ; il ne le laisse pas deviner.
 import json
 import logging
 import threading
@@ -43,33 +43,33 @@ from . import settings as _st
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Convention de nommage des dépôts publiés. Ce sont ces préfixes qui distinguent
-***REMOVED*** un paquet d'un dépôt quelconque de l'organisation : le catalogue ne propose
-***REMOVED*** QUE ce qui se nomme comme un paquet.
+# Convention de nommage des dépôts publiés. Ce sont ces préfixes qui distinguent
+# un paquet d'un dépôt quelconque de l'organisation : le catalogue ne propose
+# QUE ce qui se nomme comme un paquet.
 PREFIXE_PLUGIN = "bobistudio-plugin-"
 PREFIXE_SERVICE = "bobistudio-service-"
 
-***REMOVED*** Le dépôt de l'ORCHESTRATEUR lui-même. Il ne porte aucun des deux préfixes, donc `_construire`
-***REMOVED*** l'ignore — c'est voulu : ce n'est pas un composant installable, on ne l'installe pas, on le MET
-***REMOVED*** À JOUR. Il est nommé ici pour que `derniere_version_core()` sache où regarder.
+# Le dépôt de l'ORCHESTRATEUR lui-même. Il ne porte aucun des deux préfixes, donc `_construire`
+# l'ignore — c'est voulu : ce n'est pas un composant installable, on ne l'installe pas, on le MET
+# À JOUR. Il est nommé ici pour que `derniere_version_core()` sache où regarder.
 DEPOT_CORE = "bobistudio"
 
-***REMOVED*** ⚠ L'API GitHub ANONYME est limitée à 60 requêtes par heure et par adresse. Le
-***REMOVED*** listing coûte UNE requête ; les manifestes passent par raw.githubusercontent.com,
-***REMOVED*** qui est un CDN et ne compte pas dans ce quota. C'est ce découpage qui rend le
-***REMOVED*** catalogue utilisable sans jeton — donc sans demander un secret à l'exploitant
-***REMOVED*** pour lire des dépôts publics.
+# ⚠ L'API GitHub ANONYME est limitée à 60 requêtes par heure et par adresse. Le
+# listing coûte UNE requête ; les manifestes passent par raw.githubusercontent.com,
+# qui est un CDN et ne compte pas dans ce quota. C'est ce découpage qui rend le
+# catalogue utilisable sans jeton — donc sans demander un secret à l'exploitant
+# pour lire des dépôts publics.
 API = "https://api.github.com"
 RAW = "https://raw.githubusercontent.com"
 CODELOAD = "https://codeload.github.com"
 
 _TIMEOUT = 8
-_TAILLE_MAX = 20 * 1024 * 1024          ***REMOVED*** même plafond que l'import manuel
+_TAILLE_MAX = 20 * 1024 * 1024          # même plafond que l'import manuel
 
 _verrou = threading.Lock()
 _cache = {"t": 0.0, "entrees": [], "erreur": None, "org": None}
-***REMOVED*** Cache du CŒUR, séparé : il a sa propre requête (les releases du dépôt de
-***REMOVED*** l'orchestrateur), et la page l'interroge à chaque affichage.
+# Cache du CŒUR, séparé : il a sa propre requête (les releases du dépôt de
+# l'orchestrateur), et la page l'interroge à chaque affichage.
 _cache_core = {"t": 0.0, "info": None, "org": None}
 _verrou_core = threading.Lock()
 
@@ -97,18 +97,18 @@ def _reglages():
     return org, ttl, actif
 
 
-***REMOVED*** ── Cache CONDITIONNEL (ETag) ────────────────────────────────────────────────
-***REMOVED***
-***REMOVED*** ★ CE QUI COÛTE, C'EST LE NOMBRE DE REQUÊTES, PAS LEUR CONTENU. Un scan dépense une requête
-***REMOVED*** pour lister l'organisation, plus UNE PAR DÉPÔT pour lire ses releases — une dizaine au total.
-***REMOVED*** Anonyme, GitHub en donne 60 par heure et par IP : six relectures et c'est fini, ce que les
-***REMOVED*** exploitants ont constaté avant nous.
-***REMOVED***
-***REMOVED*** GitHub ne DÉCOMPTE PAS les réponses `304 Not Modified` obtenues par requête conditionnelle
-***REMOVED*** (documenté). On mémorise donc l'ETag de chaque URL et on le renvoie en `If-None-Match` : quand
-***REMOVED*** rien n'a bougé — le cas courant — la relecture ne coûte RIEN au quota. C'est ce qui rend le
-***REMOVED*** bouton « Relire les publications » utilisable sans compter ses clics.
-_etags = {}          ***REMOVED*** url -> (etag, corps décodé)
+# ── Cache CONDITIONNEL (ETag) ────────────────────────────────────────────────
+#
+# ★ CE QUI COÛTE, C'EST LE NOMBRE DE REQUÊTES, PAS LEUR CONTENU. Un scan dépense une requête
+# pour lister l'organisation, plus UNE PAR DÉPÔT pour lire ses releases — une dizaine au total.
+# Anonyme, GitHub en donne 60 par heure et par IP : six relectures et c'est fini, ce que les
+# exploitants ont constaté avant nous.
+#
+# GitHub ne DÉCOMPTE PAS les réponses `304 Not Modified` obtenues par requête conditionnelle
+# (documenté). On mémorise donc l'ETag de chaque URL et on le renvoie en `If-None-Match` : quand
+# rien n'a bougé — le cas courant — la relecture ne coûte RIEN au quota. C'est ce qui rend le
+# bouton « Relire les publications » utilisable sans compter ses clics.
+_etags = {}          # url -> (etag, corps décodé)
 _verrou_etag = threading.Lock()
 
 
@@ -154,8 +154,8 @@ def _http_json(url):
                     _etags[url] = (etag, corps)
             return corps
     except urllib.error.HTTPError as e:
-        ***REMOVED*** 304 : rien n'a changé, et cette réponse-là n'est pas décomptée du quota.
-        ***REMOVED*** urllib la remonte en ERREUR ; c'est un succès pour nous.
+        # 304 : rien n'a changé, et cette réponse-là n'est pas décomptée du quota.
+        # urllib la remonte en ERREUR ; c'est un succès pour nous.
         if e.code == 304 and connu:
             return connu[1]
         raise
@@ -191,10 +191,10 @@ def _derniere_release(org, depot):
     try:
         rels = _http_json("%s/repos/%s/%s/releases?per_page=10" % (API, org, depot))
     except Exception as e:
-        ***REMOVED*** ★ « JE N'AI PAS PU DEMANDER » N'EST PAS « IL N'Y EN A PAS ». Rendre None dans les deux
-        ***REMOVED*** cas ferait afficher « aucune release publiée » sur TOUS les composants dès que le quota
-        ***REMOVED*** d'API est épuisé — un catalogue qui paraît vide alors que tout est publié, et rien pour
-        ***REMOVED*** le comprendre. On distingue, et l'appelant le dit.
+        # ★ « JE N'AI PAS PU DEMANDER » N'EST PAS « IL N'Y EN A PAS ». Rendre None dans les deux
+        # cas ferait afficher « aucune release publiée » sur TOUS les composants dès que le quota
+        # d'API est épuisé — un catalogue qui paraît vide alors que tout est publié, et rien pour
+        # le comprendre. On distingue, et l'appelant le dit.
         return None, "interrogation impossible (%s)" % e
     from .version import analyser
     meilleure = None
@@ -247,19 +247,19 @@ def _construire(org):
             genre, ident, fichier = "service", nom[len(PREFIXE_SERVICE):], "manifest.json"
         else:
             continue
-        ***REMOVED*** ★ ON SE BASE SUR LES RELEASES, PLUS SUR LA BRANCHE (décidé le 2026-09-02). Une branche
-        ***REMOVED*** dit « l'état du dépôt à cet instant » : deux clients installant le même composant à un
-        ***REMOVED*** jour d'intervalle pouvaient recevoir deux codes différents, tous deux annonçant la même
-        ***REMOVED*** version — le numéro venant du manifeste sur la branche, que rien n'oblige à bumper. Le
-        ***REMOVED*** catalogue distribuait donc sans versions, ce qui privait d'objet l'épinglage par
-        ***REMOVED*** conteneur et rendait « mettre à jour vers 0.115.2 » ambigu.
+        # ★ ON SE BASE SUR LES RELEASES, PLUS SUR LA BRANCHE (décidé le 2026-09-02). Une branche
+        # dit « l'état du dépôt à cet instant » : deux clients installant le même composant à un
+        # jour d'intervalle pouvaient recevoir deux codes différents, tous deux annonçant la même
+        # version — le numéro venant du manifeste sur la branche, que rien n'oblige à bumper. Le
+        # catalogue distribuait donc sans versions, ce qui privait d'objet l'épinglage par
+        # conteneur et rendait « mettre à jour vers 0.115.2 » ambigu.
         tag, err_rel = _derniere_release(org, nom)
         man = (_manifeste_distant(org, nom, tag, fichier) or {}) if tag else {}
-        ***REMOVED*** ★ L'IDENTITÉ VIENT DU MANIFESTE, PAS DU NOM DU DÉPÔT. Un dépôt se RENOMME —
-        ***REMOVED*** `bobistudio-plugin-helloworld` est devenu `...-hello_world` le 2026-09-01, et
-        ***REMOVED*** GitHub a simplement posé une redirection. Dériver le type du nom du dépôt aurait
-        ***REMOVED*** donc changé l'identité d'un plugin déjà installé : la mise à jour se serait posée
-        ***REMOVED*** À CÔTÉ de l'existant au lieu de le remplacer, sans que rien ne le signale.
+        # ★ L'IDENTITÉ VIENT DU MANIFESTE, PAS DU NOM DU DÉPÔT. Un dépôt se RENOMME —
+        # `bobistudio-plugin-helloworld` est devenu `...-hello_world` le 2026-09-01, et
+        # GitHub a simplement posé une redirection. Dériver le type du nom du dépôt aurait
+        # donc changé l'identité d'un plugin déjà installé : la mise à jour se serait posée
+        # À CÔTÉ de l'existant au lieu de le remplacer, sans que rien ne le signale.
         type_ = (man.get("type") or man.get("id") or ident) if man else ident
         if genre == "plugin":
             installee = (_pl.get(type_) or {}).get("version") if _pl.is_plugin(type_) else None
@@ -277,13 +277,13 @@ def _construire(org):
             "version_installee": installee,
             "etat":       _comparer(dispo, installee),
             "url":        d.get("html_url") or "",
-            ***REMOVED*** Un manifeste illisible n'est pas une erreur fatale : le dépôt existe,
-            ***REMOVED*** on l'affiche, mais on refuse de l'installer sans savoir ce qu'il est.
+            # Un manifeste illisible n'est pas une erreur fatale : le dépôt existe,
+            # on l'affiche, mais on refuse de l'installer sans savoir ce qu'il est.
             "manifeste_lu": bool(man),
-            ***REMOVED*** ★ UN DÉPÔT SANS RELEASE RESTE LISTÉ, avec son motif. Le faire DISPARAÎTRE serait la
-            ***REMOVED*** faute qu'on passe la journée à traquer : l'exploitant chercherait un composant qu'il
-            ***REMOVED*** sait publié, ne le trouverait pas, et n'aurait rien pour comprendre. On le montre,
-            ***REMOVED*** on refuse de l'installer, et on dit pourquoi.
+            # ★ UN DÉPÔT SANS RELEASE RESTE LISTÉ, avec son motif. Le faire DISPARAÎTRE serait la
+            # faute qu'on passe la journée à traquer : l'exploitant chercherait un composant qu'il
+            # sait publié, ne le trouverait pas, et n'aurait rien pour comprendre. On le montre,
+            # on refuse de l'installer, et on dit pourquoi.
             "installable": bool(tag) and bool(man),
             "indisponible": ("" if tag else (err_rel or "aucune release publiée sur ce dépôt")),
         })
@@ -310,11 +310,11 @@ def lister(force=False):
         entrees = _construire(org)
         erreur = None
     except urllib.error.HTTPError as e:
-        ***REMOVED*** 403 sur l'API GitHub = quota épuisé, pas un refus d'accès. Le dire précisément évite
-        ***REMOVED*** de faire chercher un problème de droits. ★ Et on dit CE QU'ON PEUT FAIRE : « réessayez
-        ***REMOVED*** plus tard » présentait un plafond de 60 requêtes/heure comme une fatalité, alors qu'un
-        ***REMOVED*** jeton personnel le porte à 5 000. Le message distingue les deux cas — avec un jeton
-        ***REMOVED*** déjà posé, conseiller d'en poser un serait absurde.
+        # 403 sur l'API GitHub = quota épuisé, pas un refus d'accès. Le dire précisément évite
+        # de faire chercher un problème de droits. ★ Et on dit CE QU'ON PEUT FAIRE : « réessayez
+        # plus tard » présentait un plafond de 60 requêtes/heure comme une fatalité, alors qu'un
+        # jeton personnel le porte à 5 000. Le message distingue les deux cas — avec un jeton
+        # déjà posé, conseiller d'en poser un serait absurde.
         if e.code == 403 and _jeton():
             erreur = ("quota GitHub épuisé pour votre jeton (5 000 requêtes/heure) — "
                       "réessayez plus tard")
@@ -367,15 +367,15 @@ def derniere_version_core(force=False):
     org, ttl, actif = _reglages()
     if not actif:
         return None
-    ***REMOVED*** ★ MIS EN CACHE COMME LE RESTE. Cette fonction est appelée à CHAQUE affichage de la page
-    ***REMOVED*** Mises à jour : sans cache, elle dépensait une requête par affichage, quota ou pas. La
-    ***REMOVED*** requête conditionnelle ci-dessous ne coûte déjà plus rien quand rien n'a bougé, mais un
-    ***REMOVED*** aller-retour réseau par affichage reste du gaspillage.
-    ***REMOVED*** ⚠ `force` N'EST PAS UN LUXE. Sans lui, le bouton « Relire les publications » relisait la
-    ***REMOVED*** liste des paquets mais PAS la version du cœur : on aurait cliqué pour rafraîchir et le bloc
-    ***REMOVED*** du haut serait resté sur sa valeur d'il y a une demi-heure, sans rien dire. Un banc l'a
-    ***REMOVED*** attrapé en premier — il enchaîne trois états amont différents et recevait trois fois le
-    ***REMOVED*** premier.
+    # ★ MIS EN CACHE COMME LE RESTE. Cette fonction est appelée à CHAQUE affichage de la page
+    # Mises à jour : sans cache, elle dépensait une requête par affichage, quota ou pas. La
+    # requête conditionnelle ci-dessous ne coûte déjà plus rien quand rien n'a bougé, mais un
+    # aller-retour réseau par affichage reste du gaspillage.
+    # ⚠ `force` N'EST PAS UN LUXE. Sans lui, le bouton « Relire les publications » relisait la
+    # liste des paquets mais PAS la version du cœur : on aurait cliqué pour rafraîchir et le bloc
+    # du haut serait resté sur sa valeur d'il y a une demi-heure, sans rien dire. Un banc l'a
+    # attrapé en premier — il enchaîne trois états amont différents et recevait trois fois le
+    # premier.
     with _verrou_core:
         frais = (time.time() - _cache_core["t"]) < ttl and _cache_core["org"] == org
         if frais and not force and _cache_core["info"] is not None:
@@ -405,10 +405,10 @@ def derniere_version_core(force=False):
         "url":        r.get("html_url"),
         "publiee_le": (r.get("published_at") or "")[:10],
         "prerelease": bool(r.get("prerelease")),
-        ***REMOVED*** ⚠ Une release SANS artefact n'est pas applicable : l'archive de source que sert GitHub
-        ***REMOVED*** n'embarque ni l'installeur ni son empreinte, et `get.sh` vérifie un SHA256SUMS avant
-        ***REMOVED*** d'exécuter quoi que ce soit en root. L'appelant doit le dire plutôt que de proposer un
-        ***REMOVED*** bouton qui échouerait.
+        # ⚠ Une release SANS artefact n'est pas applicable : l'archive de source que sert GitHub
+        # n'embarque ni l'installeur ni son empreinte, et `get.sh` vérifie un SHA256SUMS avant
+        # d'exécuter quoi que ce soit en root. L'appelant doit le dire plutôt que de proposer un
+        # bouton qui échouerait.
         "artefacts":  [a.get("name") for a in (r.get("assets") or [])],
     }
     with _verrou_core:
@@ -444,14 +444,14 @@ def telecharger(depot, tag=None):
     org, _ttl, _actif = _reglages()
     tag = tag or e.get("tag") or ""
     if not tag:
-        ***REMOVED*** Cohérent avec le listing : un dépôt sans release n'est pas installable, et on le DIT.
+        # Cohérent avec le listing : un dépôt sans release n'est pas installable, et on le DIT.
         raise ValueError("aucune release publiée sur %s" % depot)
     url = "%s/%s/%s/zip/refs/tags/%s" % (CODELOAD, org, depot, tag)
     req = urllib.request.Request(url, headers={"User-Agent": "bobistudio-catalogue"})
     with urllib.request.urlopen(req, timeout=30) as r:
-        ***REMOVED*** Lecture BORNÉE : `read()` sur une réponse HTTP est une confiance qu'on
-        ***REMOVED*** n'a pas à accorder à un serveur distant. Un octet de plus que le plafond
-        ***REMOVED*** et on refuse, plutôt que de remplir la mémoire du contrôleur.
+        # Lecture BORNÉE : `read()` sur une réponse HTTP est une confiance qu'on
+        # n'a pas à accorder à un serveur distant. Un octet de plus que le plafond
+        # et on refuse, plutôt que de remplir la mémoire du contrôleur.
         brut = r.read(_TAILLE_MAX + 1)
     if len(brut) > _TAILLE_MAX:
         raise ValueError("archive trop volumineuse (> %d Mo)" % (_TAILLE_MAX // (1024 * 1024)))

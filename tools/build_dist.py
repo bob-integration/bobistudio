@@ -1,22 +1,22 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Wrapper CLI autour de app.builder.build — fabrique dist/bobistudio.zip.
 
 Exemples :
-    python3 tools/build_dist.py                       ***REMOVED*** sélection par défaut
-    python3 tools/build_dist.py --all                 ***REMOVED*** tous les plugins + services
+    python3 tools/build_dist.py                       # sélection par défaut
+    python3 tools/build_dist.py --all                 # tous les plugins + services
     python3 tools/build_dist.py --plugins receiver_2110,streamer --services nmos
 """
 import argparse
 import os
 import sys
 
-***REMOVED*** Permettre l'import de `app` quel que soit le cwd.
+# Permettre l'import de `app` quel que soit le cwd.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import builder

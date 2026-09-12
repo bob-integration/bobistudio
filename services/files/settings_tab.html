@@ -102,8 +102,8 @@ const _filesT = (k, repli) => { const v = window.t ? window.t(k) : k; return (v 
     const crumb = document.getElementById('files-crumb');
     const segs = PATH ? PATH.split('/') : [];
     let acc = '';
-    let html = `<a href="***REMOVED***" onclick="filesGoto('');return false">${_esc(ROOT||'/')}</a>`;
-    segs.forEach(s => { acc = acc ? acc+'/'+s : s; const a=acc; html += ` / <a href="***REMOVED***" onclick="filesGoto('${_esc(a)}');return false">${_esc(s)}</a>`; });
+    let html = `<a href="#" onclick="filesGoto('');return false">${_esc(ROOT||'/')}</a>`;
+    segs.forEach(s => { acc = acc ? acc+'/'+s : s; const a=acc; html += ` / <a href="#" onclick="filesGoto('${_esc(a)}');return false">${_esc(s)}</a>`; });
     crumb.innerHTML = html;
     // filtre + tri
     const q = (document.getElementById('files-search').value||'').toLowerCase();
@@ -119,15 +119,15 @@ const _filesT = (k, repli) => { const v = window.t ? window.t(k) : k; return (v 
       + (cols.includes('type')?th('type', _filesT('service.files.js.col_type','Type')):'') + (cols.includes('ext')?th('ext', _filesT('service.files.js.col_ext','Ext')):'')
       + (cols.includes('size')?th('size', _filesT('service.files.js.col_size','Taille')):'') + (cols.includes('mtime')?th('mtime', _filesT('service.files.js.col_mtime','Modifié')):'')
       + '<th style="padding:4px 8px"></th></tr></thead><tbody>';
-    if (PATH) { h += `<tr><td colspan="7" style="padding:4px 8px"><a href="***REMOVED***" onclick="filesGoto('${_esc(PATH.split('/').slice(0,-1).join('/'))}');return false">⬆ ..</a></td></tr>`; }
+    if (PATH) { h += `<tr><td colspan="7" style="padding:4px 8px"><a href="#" onclick="filesGoto('${_esc(PATH.split('/').slice(0,-1).join('/'))}');return false">⬆ ..</a></td></tr>`; }
     rows.forEach(it => {
       const fp = _fp(it.name);
       const open = it.type==='dir' ? `filesGoto('${_esc(fp)}')` : `filesOpen('${_esc(fp)}')`;
       const icon = it.type==='dir' ? '📁' : '📄';
       let act = '';
-      if (it.type==='file') act += `<a href="***REMOVED***" title="${_filesT('service.files.js.download','Télécharger')}" onclick="filesDownload('${_esc(fp)}');return false">📥</a> `;
-      if (ROOT_WRITABLE) act += `<a href="***REMOVED***" title="${_filesT('service.files.js.rename','Renommer')}" onclick="filesRename('${_esc(fp)}','${_esc(it.name)}');return false">✎</a> <a href="***REMOVED***" title="${_filesT('service.files.js.delete','Supprimer')}" onclick="filesDelete('${_esc(fp)}','${_esc(it.name)}');return false">🗑</a>`;
-      h += `<tr style="border-top:1px solid var(--border-soft)"><td style="padding:4px 8px"><a href="***REMOVED***" onclick="${open};return false">${icon} ${_esc(it.name)}</a></td>`
+      if (it.type==='file') act += `<a href="#" title="${_filesT('service.files.js.download','Télécharger')}" onclick="filesDownload('${_esc(fp)}');return false">📥</a> `;
+      if (ROOT_WRITABLE) act += `<a href="#" title="${_filesT('service.files.js.rename','Renommer')}" onclick="filesRename('${_esc(fp)}','${_esc(it.name)}');return false">✎</a> <a href="#" title="${_filesT('service.files.js.delete','Supprimer')}" onclick="filesDelete('${_esc(fp)}','${_esc(it.name)}');return false">🗑</a>`;
+      h += `<tr style="border-top:1px solid var(--border-soft)"><td style="padding:4px 8px"><a href="#" onclick="${open};return false">${icon} ${_esc(it.name)}</a></td>`
         + (cols.includes('type')?`<td style="padding:4px 8px">${it.type}</td>`:'')
         + (cols.includes('ext')?`<td style="padding:4px 8px">${_esc(it.ext||'')}</td>`:'')
         + (cols.includes('size')?`<td style="padding:4px 8px">${it.type==='dir'?'':_fmtSize(it.size)}</td>`:'')

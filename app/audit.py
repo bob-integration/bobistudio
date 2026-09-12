@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Journal d'exploitation — « qui a demandé quoi », posé DANS la route.
 
@@ -61,10 +61,10 @@ def journal(action, cible=None, vmid=None, node_id=None, kind=None, niveau="info
     try:
         qui = acteur()
         if isinstance(action, str) and action.startswith("alert."):
-            ***REMOVED*** Forme KEYÉE. La présence d'une cible change la PHRASE, pas un paramètre : « — {cible} »
-            ***REMOVED*** collé en suffixe ne se traduirait pas, et une cible absente laisserait un tiret
-            ***REMOVED*** orphelin. Le helper choisit donc la variante, une fois ici, plutôt que de faire porter
-            ***REMOVED*** ce détail par chacun des six sites d'appel.
+            # Forme KEYÉE. La présence d'une cible change la PHRASE, pas un paramètre : « — {cible} »
+            # collé en suffixe ne se traduirait pas, et une cible absente laisserait un tiret
+            # orphelin. Le helper choisit donc la variante, une fois ici, plutôt que de faire porter
+            # ce détail par chacun des six sites d'appel.
             cle = action if cible else action + "_sans_cible"
             p = {"qui": qui or "machine"}
             if cible:
@@ -75,5 +75,5 @@ def journal(action, cible=None, vmid=None, node_id=None, kind=None, niveau="info
             libelle = f"{action}" + (f" — {cible}" if cible else "")
             db_add_alert(f"{qui or 'machine'} a demandé : {libelle}", niveau,
                          vmid=vmid, node_id=node_id, kind=kind, user=qui)
-    except Exception as e:                      ***REMOVED*** jamais bloquant
+    except Exception as e:                      # jamais bloquant
         log.debug("journal d'exploitation (%s): %s", action, e)

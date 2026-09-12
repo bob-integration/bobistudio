@@ -1,5 +1,5 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 """Profondeur de la FENÊTRE LISIBLE d'un flux à grains — et pourquoi elle a changé.
 
 MXL v1.1.0 (commit amont `6d5ac9c6`, « Fix discrete reader/writer tail conflict ») avance la
@@ -49,7 +49,7 @@ inst = bobimxl.Instance()
 w = bobimxl.Writer(inst, NOM, W, H, chroma="422", bit_depth=8, index_mode="free")
 r = bobimxl.Reader(inst, NOM)
 
-***REMOVED*** Remplir l'anneau, PUIS cesser d'écrire.
+# Remplir l'anneau, PUIS cesser d'écrire.
 for j in range(400):
     w.write(np.full((H * 3 // 2, W), j % 251, dtype=np.uint8), index=j)
 time.sleep(0.3)

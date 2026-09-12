@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Registre des instances Bobi.Studio du réseau + découverte par scan.
 
@@ -87,7 +87,7 @@ def refresh_url(url):
                     info.get("deployed_at"))
     except Exception as e:
         log.debug("ping %s: %s", url, e)
-    ***REMOVED*** renvoyer la ligne à jour
+    # renvoyer la ligne à jour
     with get_db() as db:
         r = db.execute(f"SELECT {_COLS} FROM peers WHERE url=?",
                        (url.rstrip("/"),)).fetchone()

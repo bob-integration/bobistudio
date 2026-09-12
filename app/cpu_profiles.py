@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Coût CPU **MESURÉ** par type de conteneur — confronté à ce que son manifeste DÉCLARE.
 
@@ -49,17 +49,17 @@ from .episodes import EtatEpisodes as _Episodes
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Intervalle d'échantillonnage. Le coût d'un type bouge à l'échelle du déploiement, pas de la
-***REMOVED*** seconde : inutile d'empiler des points corrélés (et de gonfler l'état persisté pour rien).
+# Intervalle d'échantillonnage. Le coût d'un type bouge à l'échelle du déploiement, pas de la
+# seconde : inutile d'empiler des points corrélés (et de gonfler l'état persisté pour rien).
 INTERVALLE_S = 60.0
-***REMOVED*** Points conservés par (type, nœud). 240 × 60 s = 4 h de mémoire glissante : assez pour couvrir un
-***REMOVED*** régime de production, assez court pour qu'un changement de version de plugin se voie vite.
+# Points conservés par (type, nœud). 240 × 60 s = 4 h de mémoire glissante : assez pour couvrir un
+# régime de production, assez court pour qu'un changement de version de plugin se voie vite.
 MAX_POINTS = 240
-***REMOVED*** En dessous, on n'affiche pas de statistique : trois points ne font pas une mesure.
+# En dessous, on n'affiche pas de statistique : trois points ne font pas une mesure.
 MIN_POINTS = 10
 
 _lock = threading.Lock()
-_serie = {}                    ***REMOVED*** (type, node_id) → [(ts, cpu_percent), …]
+_serie = {}                    # (type, node_id) → [(ts, cpu_percent), …]
 _episodes = _Episodes("cpu_profiles")
 _dernier = 0.0
 
@@ -77,8 +77,8 @@ def _charger():
         for k in _episodes.cles():
             v = _episodes.get(k)
             if isinstance(v, list):
-                ***REMOVED*** Points à 3 champs (ts, absolu, sature) UNIQUEMENT : les séries d'un format
-                ***REMOVED*** antérieur portaient une autre unité, les relire les mélangerait en silence.
+                # Points à 3 champs (ts, absolu, sature) UNIQUEMENT : les séries d'un format
+                # antérieur portaient une autre unité, les relire les mélangerait en silence.
                 _serie[k] = [tuple(p) for p in v if isinstance(p, (list, tuple)) and len(p) == 3]
 
 
@@ -107,11 +107,11 @@ def echantillonner(force=False):
             cpu, n = c.get("cpu_percent"), c.get("cpu_count")
             t = _type_of(c)
             if cpu is None or not t:
-                continue            ***REMOVED*** métrique pas encore remontée : ne PAS compter un 0 pour une mesure
+                continue            # métrique pas encore remontée : ne PAS compter un 0 pour une mesure
             if not n:
-                continue            ***REMOVED*** sans cpu_count le point n'a pas d'unité → il ne vaut RIEN
-            ***REMOVED*** % des CPU alloués → % d'UN CPU. `sature` marque un point ÉCRÊTÉ par l'agent : c'est un
-            ***REMOVED*** minorant, pas une mesure, et le confondre avec l'un fabriquerait un plafond invisible.
+                continue            # sans cpu_count le point n'a pas d'unité → il ne vaut RIEN
+            # % des CPU alloués → % d'UN CPU. `sature` marque un point ÉCRÊTÉ par l'agent : c'est un
+            # minorant, pas une mesure, et le confondre avec l'un fabriquerait un plafond invisible.
             absolu = float(cpu) * int(n)
             k = _cle(t, c.get("node_id"))
             s = _serie.setdefault(k, [])
@@ -120,14 +120,14 @@ def echantillonner(force=False):
                 del s[:len(s) - MAX_POINTS]
             vus.add(k)
     for k in vus:
-        ***REMOVED*** ⚠ COPIE OBLIGATOIRE. `EtatEpisodes.poser` mémorise la valeur TELLE QUELLE et ne se marque
-        ***REMOVED*** sale que si elle DIFFÈRE de la précédente. Lui passer la liste vivante lui fait stocker la
-        ***REMOVED*** référence : au tour suivant on compare l'objet à lui-même (muté entre-temps par `append`),
-        ***REMOVED*** l'égalité est toujours vraie, rien n'est jamais écrit. Constaté ici même — série à 5 points
-        ***REMOVED*** en mémoire, fichier figé à 2. Le module d'épisodes existe précisément pour survivre aux
-        ***REMOVED*** redémarrages : silencieusement inopérant, il ne sert à rien.
+        # ⚠ COPIE OBLIGATOIRE. `EtatEpisodes.poser` mémorise la valeur TELLE QUELLE et ne se marque
+        # sale que si elle DIFFÈRE de la précédente. Lui passer la liste vivante lui fait stocker la
+        # référence : au tour suivant on compare l'objet à lui-même (muté entre-temps par `append`),
+        # l'égalité est toujours vraie, rien n'est jamais écrit. Constaté ici même — série à 5 points
+        # en mémoire, fichier figé à 2. Le module d'épisodes existe précisément pour survivre aux
+        # redémarrages : silencieusement inopérant, il ne sert à rien.
         _episodes.poser(k, [list(p) for p in _serie[k]])
-    _episodes.flush()               ***REMOVED*** débouncé (30 s) : no-op tant que rien n'a changé
+    _episodes.flush()               # débouncé (30 s) : no-op tant que rien n'a changé
 
 
 def _stat(points):
@@ -140,8 +140,8 @@ def _stat(points):
     satures = sum(p[2] for p in points)
     return {"n": n, "median": round(q(0.5), 1), "p95": round(q(0.95), 1),
             "max": round(vals[-1], 1), "min": round(vals[0], 1),
-            ***REMOVED*** Nombre de points ÉCRÊTÉS par l'agent : au-delà de quelques pour cent, les
-            ***REMOVED*** statistiques ci-dessus sont des minorants et doivent être lues comme tels.
+            # Nombre de points ÉCRÊTÉS par l'agent : au-delà de quelques pour cent, les
+            # statistiques ci-dessus sont des minorants et doivent être lues comme tels.
             "satures": satures, "sature_pct": round(100.0 * satures / n, 1)}
 
 
@@ -166,19 +166,19 @@ def declare(t):
         return None
 
 
-***REMOVED*** Rapport max/médiane au-delà duquel on considère qu'un régime NETTEMENT plus coûteux a été
-***REMOVED*** observé. Convention, assumée comme telle : il ne s'agit pas de mesurer le pic mais de savoir si
-***REMOVED*** on a le DROIT de conclure. 2× écarte la simple gigue sans exiger un cas extrême — le seul rapport
-***REMOVED*** documenté dans la flotte (split animé vs figé) vaut 12×, très au-dessus.
-***REMOVED***
-***REMOVED*** ⚠ DÉFINITION UNIQUE, partagée avec `app/etalonnage.py`. Elle a d'abord existé en double (3× ici,
-***REMOVED*** 1,5× là-bas) : la même question rendait deux réponses opposées sur une même série.
+# Rapport max/médiane au-delà duquel on considère qu'un régime NETTEMENT plus coûteux a été
+# observé. Convention, assumée comme telle : il ne s'agit pas de mesurer le pic mais de savoir si
+# on a le DROIT de conclure. 2× écarte la simple gigue sans exiger un cas extrême — le seul rapport
+# documenté dans la flotte (split animé vs figé) vaut 12×, très au-dessus.
+#
+# ⚠ DÉFINITION UNIQUE, partagée avec `app/etalonnage.py`. Elle a d'abord existé en double (3× ici,
+# 1,5× là-bas) : la même question rendait deux réponses opposées sur une même série.
 RATIO_POINTE = 2.0
-***REMOVED*** Sur une série PASSIVE (des heures d'échantillons à 60 s), la gigue ordinaire atteint 2× sans
-***REMOVED*** qu'aucun régime coûteux n'ait eu lieu : `split` au repos donne médiane 8,4 / max 17,4. Il faut
-***REMOVED*** donc un critère plus exigeant que pour une campagne de 30 s, où un écart de 2× ne peut pas être
-***REMOVED*** du bruit. Même définition, sensibilité déclarée par contexte — plutôt que deux copies qui
-***REMOVED*** divergent en silence (c'était le cas : 3× ici, 1,5× dans l'étalonnage).
+# Sur une série PASSIVE (des heures d'échantillons à 60 s), la gigue ordinaire atteint 2× sans
+# qu'aucun régime coûteux n'ait eu lieu : `split` au repos donne médiane 8,4 / max 17,4. Il faut
+# donc un critère plus exigeant que pour une campagne de 30 s, où un écart de 2× ne peut pas être
+# du bruit. Même définition, sensibilité déclarée par contexte — plutôt que deux copies qui
+# divergent en silence (c'était le cas : 3× ici, 1,5× dans l'étalonnage).
 RATIO_POINTE_PASSIF = 3.0
 
 
@@ -232,35 +232,35 @@ def profils(node_id=None):
         if st["n"] < MIN_POINTS:
             verdict = "insuffisant"
         elif st["sature_pct"] >= 10:
-            ***REMOVED*** Trop de points écrêtés : on ne SAIT pas ce que ce type coûte, on sait seulement qu'il
-            ***REMOVED*** remplit ce qu'on lui donne. Le dire, plutôt que de publier un p95 qui est un plancher.
+            # Trop de points écrêtés : on ne SAIT pas ce que ce type coûte, on sait seulement qu'il
+            # remplit ce qu'on lui donne. Le dire, plutôt que de publier un p95 qui est un plancher.
             verdict = "sature"
         elif d is None:
             verdict = "non_declare"
         elif st["p95"] > d:
             verdict = "sous_dimensionne"
         elif st["p95"] < 0.4 * d:
-            ***REMOVED*** ⚠ Un type EN RAFALE ne se juge pas sur une fenêtre de repos. On n'accuse de
-            ***REMOVED*** sur-dimensionnement que si le régime coûteux a été VU au moins une fois : sans quoi
-            ***REMOVED*** on mesure l'inactivité et on en conclut sur la capacité.
+            # ⚠ Un type EN RAFALE ne se juge pas sur une fenêtre de repos. On n'accuse de
+            # sur-dimensionnement que si le régime coûteux a été VU au moins une fois : sans quoi
+            # on mesure l'inactivité et on en conclut sur la capacité.
             verdict = ("sur_dimensionne"
                        if not en_rafale(t) or pointe_vue(st, RATIO_POINTE_PASSIF)
                        else "regime_non_observe")
         else:
             verdict = "conforme"
-        ***REMOVED*** ⚠ Un profil ÉTALONNÉ sur ce nœud supersède tout ce qui précède : commenter l'intention du
-        ***REMOVED*** manifeste n'a plus d'intérêt quand on dispose d'une mesure faite en exerçant réellement le
-        ***REMOVED*** dispositif, à la microseconde et sans plafond. Le collecteur passif reste utile (il tourne
-        ***REMOVED*** sans que personne n'agisse), mais il cesse de JUGER là où mieux a été mesuré — sinon deux
-        ***REMOVED*** références concurrentes coexistent, et c'est la moins bonne qui parle le plus fort.
-        ***REMOVED*** Les verdicts de QUALITÉ DE MESURE (`insuffisant`, `sature`) gardent la priorité : ils
-        ***REMOVED*** portent sur la série elle-même, pas sur la référence à laquelle on la compare.
+        # ⚠ Un profil ÉTALONNÉ sur ce nœud supersède tout ce qui précède : commenter l'intention du
+        # manifeste n'a plus d'intérêt quand on dispose d'une mesure faite en exerçant réellement le
+        # dispositif, à la microseconde et sans plafond. Le collecteur passif reste utile (il tourne
+        # sans que personne n'agisse), mais il cesse de JUGER là où mieux a été mesuré — sinon deux
+        # références concurrentes coexistent, et c'est la moins bonne qui parle le plus fort.
+        # Les verdicts de QUALITÉ DE MESURE (`insuffisant`, `sature`) gardent la priorité : ils
+        # portent sur la série elle-même, pas sur la référence à laquelle on la compare.
         etal = _etalonne(t, nid)
         if etal and verdict not in ("insuffisant", "sature"):
             verdict = "etalonne"
         out.append({"type": t, "node_id": (int(nid) if nid.isdigit() else None),
                     "mesure": st, "declare": d, "verdict": verdict,
-                    ***REMOVED*** D'où vient la référence qui fait autorité pour ce couple (type, nœud).
+                    # D'où vient la référence qui fait autorité pour ce couple (type, nœud).
                     "reference": ({"source": "etalonnage", "pic": etal} if etal
                                   else {"source": "manifeste", "declare": d})})
     out.sort(key=lambda r: (-(r["mesure"]["p95"] or 0), r["type"]))
@@ -279,7 +279,7 @@ def _etalonne(t, node_id):
     Plusieurs configurations en marche → on garde le pic le plus élevé : une garantie se
     dimensionne sur le pic.
     """
-    from .etalonnage import signature as _sig        ***REMOVED*** tardif : `etalonnage` importe ce module
+    from .etalonnage import signature as _sig        # tardif : `etalonnage` importe ce module
     from .docker_compute import _type_of
     from .database import db_get_containers
     try:
@@ -320,8 +320,8 @@ def cout_estime(t, defaut_cores=None, node_id=None):
     Le p95 mesuré prime sur le déclaré dès qu'il y a assez de points — c'est le point de tout
     l'exercice. Le p95 et non la médiane : dimensionner sur le cas courant garantit de manquer
     de CPU dans le cas qui compte. Toutes instances confondues (le pré-vol raisonne cluster)."""
-    ***REMOVED*** Une mesure d'étalonnage sur le nœud visé prime sur tout : c'est la seule obtenue en
-    ***REMOVED*** exerçant le dispositif, donc la seule qui couvre le régime coûteux.
+    # Une mesure d'étalonnage sur le nœud visé prime sur tout : c'est la seule obtenue en
+    # exerçant le dispositif, donc la seule qui couvre le régime coûteux.
     if node_id is not None:
         pic = _etalonne(t, node_id)
         if pic is not None:

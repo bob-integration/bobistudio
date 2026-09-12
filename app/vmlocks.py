@@ -60,10 +60,10 @@ from contextlib import contextmanager
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Délai d'acquisition avant dégradation (voir docstring).
+# Délai d'acquisition avant dégradation (voir docstring).
 TIMEOUT_S = 120.0
 
-***REMOVED*** Registre {vmid: RLock} + méta-verrou protégeant sa création paresseuse.
+# Registre {vmid: RLock} + méta-verrou protégeant sa création paresseuse.
 _locks = {}
 _registry_lock = threading.Lock()
 
@@ -129,11 +129,11 @@ def verrou_vmids(*vmids, timeout=TIMEOUT_S, op=""):
     pour éviter les interblocages. Les vmid falsy (0/None) et doublons sont
     ignorés. Même politique de dégradation sur timeout que `verrou_vmid`.
     """
-    ***REMOVED*** Normalisation str AVANT tri/dédoublonnage : un mélange int/str planterait sorted()
-    ***REMOVED*** et {301, "301"} ne dédoublonnerait pas. L'ordre lexicographique suffit : il est
-    ***REMOVED*** TOTAL et identique pour tous les appelants, c'est tout ce que l'anti-deadlock exige.
+    # Normalisation str AVANT tri/dédoublonnage : un mélange int/str planterait sorted()
+    # et {301, "301"} ne dédoublonnerait pas. L'ordre lexicographique suffit : il est
+    # TOTAL et identique pour tous les appelants, c'est tout ce que l'anti-deadlock exige.
     ordered = sorted({str(v) for v in vmids if v})
-    acquired = []  ***REMOVED*** (lock, ok)
+    acquired = []  # (lock, ok)
     try:
         for v in ordered:
             lk = _lock_for(v)

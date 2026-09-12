@@ -1,6 +1,6 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 """Le paquet de distribution ne doit JAMAIS emporter l'état de l'instance qui le construit.
 
 ★ CE QUI A FAILLI PARTIR. `static/` est embarqué en entier par `CORE_DIRS`, et `static/uploads/`
@@ -28,7 +28,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import builder                                            ***REMOVED*** noqa: E402
+from app import builder                                            # noqa: E402
 
 ECHECS = []
 
@@ -51,8 +51,8 @@ def main():
         verifier(not builder._excluded(garde), f"{garde} reste embarqué")
 
     print("\n── 3. l'exclusion vise un CHEMIN, pas un nom de dossier")
-    ***REMOVED*** Un plugin a le droit de porter un dossier « uploads » : l'exclure aussi serait un dégât
-    ***REMOVED*** collatéral silencieux, et le plugin s'installerait amputé.
+    # Un plugin a le droit de porter un dossier « uploads » : l'exclure aussi serait un dégât
+    # collatéral silencieux, et le plugin s'installerait amputé.
     verifier(not builder._excluded("plugins/exemple/uploads/ressource.png"),
              "un dossier « uploads » d'un plugin n'est PAS écarté")
 

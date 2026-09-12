@@ -153,7 +153,7 @@
         if (c.gpu_index != null) titleParts.push(tr('containers.ressources.gpu_assigned_tip'));
         return '<div class="res-brick" data-vmid="' + c.vmid + '" data-type="' + esc(c.type || '') + '">'
             + '<div class="res-brick-head">'
-            + '<span class="res-brick-name">' + esc(c.hostname || ('***REMOVED***' + c.vmid)) + ' <span class="meta">***REMOVED***' + c.vmid + '</span></span>'
+            + '<span class="res-brick-name">' + esc(c.hostname || ('#' + c.vmid)) + ' <span class="meta">#' + c.vmid + '</span></span>'
             + '<span class="res-state res-state-' + esc(c.etat) + '">' + esc(tr('containers.ressources.state.' + c.etat) || c.etat) + '</span>'
             + '</div>'
             + '<div class="res-bar-wrap' + (c.reserve_pct == null ? ' res-bar-unreserved' : '') + '" title="' + esc(titleParts.join(' · ')) + '">'

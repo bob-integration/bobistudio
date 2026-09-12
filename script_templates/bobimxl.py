@@ -1,8 +1,8 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 bobimxl — binding Python (ctypes) du SDK MXL (Media eXchange Layer, Linux Foundation).
@@ -45,50 +45,50 @@ import uuid
 
 import numpy as np
 
-***REMOVED*** Version de contrat lib(image) ↔ scripts plugins : un script qui exige une version
-***REMOVED*** supérieure à celle embarquée dans l'image refuse de démarrer (anti-skew, cf. plan).
+# Version de contrat lib(image) ↔ scripts plugins : un script qui exige une version
+# supérieure à celle embarquée dans l'image refuse de démarrer (anti-skew, cf. plan).
 API_VERSION = 1
 
-***REMOVED*** True si la lib expose l'API audio (samples) — positionné par _bind (tolérant aux builds sans).
+# True si la lib expose l'API audio (samples) — positionné par _bind (tolérant aux builds sans).
 HAS_AUDIO = False
 
-***REMOVED*** True si la lib expose l'API de lecture PARTIELLE par tranches (mxlFlowReaderGetGrainSlice*,
-***REMOVED*** libmxl ≥ v1.1.0) — positionné par _bind. Chantier latence sous-trame (DPDK_NARROW Phase 3) :
-***REMOVED*** writer qui committe PROGRESSIVEMENT (validSlices=1..N) + readers réveillés à chaque bande.
+# True si la lib expose l'API de lecture PARTIELLE par tranches (mxlFlowReaderGetGrainSlice*,
+# libmxl ≥ v1.1.0) — positionné par _bind. Chantier latence sous-trame (DPDK_NARROW Phase 3) :
+# writer qui committe PROGRESSIVEMENT (validSlices=1..N) + readers réveillés à chaque bande.
 HAS_SLICES = False
 
-***REMOVED*** minValidSlices « toutes les tranches » (flow.h: MXL_GRAIN_VALID_SLICES_ALL) — un get_slice
-***REMOVED*** avec cette valeur équivaut au get() plein-grain historique.
+# minValidSlices « toutes les tranches » (flow.h: MXL_GRAIN_VALID_SLICES_ALL) — un get_slice
+# avec cette valeur équivaut au get() plein-grain historique.
 MXL_GRAIN_VALID_SLICES_ALL = 0xFFFF
 
-***REMOVED*** UUIDv5 déterministe : l'orchestrateur garde les NOMS comme identifiant UX/DB ; l'UUID
-***REMOVED*** MXL en est dérivé, jamais stocké ni montré (cf. identity-addressing-full-docker).
-***REMOVED*** Namespace dédié Bobi.Studio (uuid5 d'un FQDN projet sous le namespace DNS standard).
+# UUIDv5 déterministe : l'orchestrateur garde les NOMS comme identifiant UX/DB ; l'UUID
+# MXL en est dérivé, jamais stocké ni montré (cf. identity-addressing-full-docker).
+# Namespace dédié Bobi.Studio (uuid5 d'un FQDN projet sous le namespace DNS standard).
 _NS_BOBI = uuid.uuid5(uuid.NAMESPACE_DNS, "mxl.bobi.studio")
 
-***REMOVED*** Domaine MXL = sous-répertoire du tmpfs bind-monté (cf. docker_driver.mxl_mount → /dev/shm).
-***REMOVED*** Surchargeable par l'env pour isoler un banc (ex. /dev/shm/mxl-bench) sans toucher la prod.
+# Domaine MXL = sous-répertoire du tmpfs bind-monté (cf. docker_driver.mxl_mount → /dev/shm).
+# Surchargeable par l'env pour isoler un banc (ex. /dev/shm/mxl-bench) sans toucher la prod.
 DEFAULT_DOMAIN = os.environ.get("MXL_DOMAIN", "/dev/shm/mxl")
 
-***REMOVED*** ── Lot de synchronisation RDMA (`maxSyncBatchSizeHint`) ─────────────────────────────────────
-***REMOVED*** ★ MESURÉ le 2026-08-09 (banc dell-1 → dl360-1, 1080p50 tranché en 30 bandes, horodatage écrit
-***REMOVED*** DANS chaque tranche, décalage d'horloge TAI/UTC de 37,001 s soustrait) :
-***REMOVED***
-***REMOVED***   lot 30 (= totalSlices, LE DÉFAUT DU SDK) : 1ʳᵉ bande lisible sur la réplique à 22,63 ms
-***REMOVED***   lot  2                                   : 0,54 ms          lot 1 : 0,06 ms
-***REMOVED***
-***REMOVED*** L'initiateur RDMA attend d'avoir `maxSyncBatchSizeHint` tranches avant de transférer. Au défaut
-***REMOVED*** il attend donc la TRAME ENTIÈRE : trancher un flux répliqué n'apporte alors rien sur le fil, la
-***REMOVED*** granularité sous-trame existe dans le format et n'est pas exploitée. À petit lot, le transfert
-***REMOVED*** devient concomitant à la production — une trame pleine de latence en moins.
-***REMOVED***
-***REMOVED*** Coût mesuré à l'échelle (12 flux tranchés en parallèle, lot 2 contre lot 30) : débit et nombre de
-***REMOVED*** paquets IDENTIQUES (4,12 vs 4,13 Gb/s ; 487k vs 485k paquets/s) ; seul le CPU des initiateurs
-***REMOVED*** monte, de 15 % à 44 % CUMULÉS sur douze conteneurs — moins d'un demi-cœur. Et le retard de
-***REMOVED*** réplique s'AMÉLIORE (0 trame médian contre +1).
-***REMOVED***
-***REMOVED*** Non posé = comportement historique (défaut SDK). Cesse de valoir si l'initiateur change sa
-***REMOVED*** politique de lot (`demo.cpp`, `slicesPerBatch`) ou si le nombre de flux répliqués change d'ordre.
+# ── Lot de synchronisation RDMA (`maxSyncBatchSizeHint`) ─────────────────────────────────────
+# ★ MESURÉ le 2026-08-09 (banc dell-1 → dl360-1, 1080p50 tranché en 30 bandes, horodatage écrit
+# DANS chaque tranche, décalage d'horloge TAI/UTC de 37,001 s soustrait) :
+#
+#   lot 30 (= totalSlices, LE DÉFAUT DU SDK) : 1ʳᵉ bande lisible sur la réplique à 22,63 ms
+#   lot  2                                   : 0,54 ms          lot 1 : 0,06 ms
+#
+# L'initiateur RDMA attend d'avoir `maxSyncBatchSizeHint` tranches avant de transférer. Au défaut
+# il attend donc la TRAME ENTIÈRE : trancher un flux répliqué n'apporte alors rien sur le fil, la
+# granularité sous-trame existe dans le format et n'est pas exploitée. À petit lot, le transfert
+# devient concomitant à la production — une trame pleine de latence en moins.
+#
+# Coût mesuré à l'échelle (12 flux tranchés en parallèle, lot 2 contre lot 30) : débit et nombre de
+# paquets IDENTIQUES (4,12 vs 4,13 Gb/s ; 487k vs 485k paquets/s) ; seul le CPU des initiateurs
+# monte, de 15 % à 44 % CUMULÉS sur douze conteneurs — moins d'un demi-cœur. Et le retard de
+# réplique s'AMÉLIORE (0 trame médian contre +1).
+#
+# Non posé = comportement historique (défaut SDK). Cesse de valoir si l'initiateur change sa
+# politique de lot (`demo.cpp`, `slicesPerBatch`) ou si le nombre de flux répliqués change d'ordre.
 MXL_SYNC_BATCH = os.environ.get("MXL_SYNC_BATCH", "").strip()
 
 
@@ -105,22 +105,22 @@ def _flow_options():
     return json.dumps({"maxSyncBatchSizeHint": max(1, n)}).encode() if n > 0 else None
 
 MXL_STATUS_OK = 0
-MXL_UNDEFINED_INDEX = (1 << 64) - 1  ***REMOVED*** UINT64_MAX — « pas encore de grain » côté headIndex
+MXL_UNDEFINED_INDEX = (1 << 64) - 1  # UINT64_MAX — « pas encore de grain » côté headIndex
 
-***REMOVED*** Décalage TAI↔UTC (secondes) centralisé et fail-fast (cf. risque temporel du plan).
-***REMOVED*** mxlGetTime() rend des ns TAI (epoch ST 2059) ; notre media_ts (mtl_rx.c) est déjà TAI →
-***REMOVED*** pas de conversion sur le chemin MXL. Le décalage n'est utile QU'aux frontières UTC.
+# Décalage TAI↔UTC (secondes) centralisé et fail-fast (cf. risque temporel du plan).
+# mxlGetTime() rend des ns TAI (epoch ST 2059) ; notre media_ts (mtl_rx.c) est déjà TAI →
+# pas de conversion sur le chemin MXL. Le décalage n'est utile QU'aux frontières UTC.
 TAI_UTC_OFFSET_S = int(os.environ.get("MXL_TAI_UTC_OFFSET", "37"))
 
 
-***REMOVED*** --------------------------------------------------------------------------- ctypes ABI
+# --------------------------------------------------------------------------- ctypes ABI
 
 class mxlRational(ctypes.Structure):
     _fields_ = [("numerator", ctypes.c_int64), ("denominator", ctypes.c_int64)]
 
 
 class mxlGrainInfo(ctypes.Structure):
-    ***REMOVED*** flow.h : doit faire exactement 4096 octets (reserved dimensionné pour).
+    # flow.h : doit faire exactement 4096 octets (reserved dimensionné pour).
     _fields_ = [
         ("version", ctypes.c_uint32),
         ("size", ctypes.c_uint32),
@@ -134,7 +134,7 @@ class mxlGrainInfo(ctypes.Structure):
 
 
 class mxlFlowRuntimeInfo(ctypes.Structure):
-    ***REMOVED*** flowinfo.h : headIndex = index du dernier grain commité (clé du get-latest).
+    # flowinfo.h : headIndex = index du dernier grain commité (clé du get-latest).
     _fields_ = [
         ("headIndex", ctypes.c_uint64),
         ("lastWriteTime", ctypes.c_uint64),
@@ -151,7 +151,7 @@ class mxlVersionType(ctypes.Structure):
     ]
 
 
-***REMOVED*** --- AUDIO : flux CONTINU de samples (flow.h) — buffers par-canal avec wrap d'anneau (2 fragments).
+# --- AUDIO : flux CONTINU de samples (flow.h) — buffers par-canal avec wrap d'anneau (2 fragments).
 class mxlMutableBufferSlice(ctypes.Structure):
     _fields_ = [("pointer", ctypes.c_void_p), ("size", ctypes.c_size_t)]
 
@@ -159,14 +159,14 @@ class mxlBufferSlice(ctypes.Structure):
     _fields_ = [("pointer", ctypes.c_void_p), ("size", ctypes.c_size_t)]
 
 class mxlMutableWrappedBufferSlice(ctypes.Structure):
-    _fields_ = [("fragments", mxlMutableBufferSlice * 2)]   ***REMOVED*** [0]=contigu, [1]=partie wrap
+    _fields_ = [("fragments", mxlMutableBufferSlice * 2)]   # [0]=contigu, [1]=partie wrap
 
 class mxlWrappedBufferSlice(ctypes.Structure):
     _fields_ = [("fragments", mxlBufferSlice * 2)]
 
 class mxlMutableWrappedMultiBufferSlice(ctypes.Structure):
     _fields_ = [("base", mxlMutableWrappedBufferSlice),
-                ("stride", ctypes.c_size_t), ("count", ctypes.c_size_t)]   ***REMOVED*** count = canaux
+                ("stride", ctypes.c_size_t), ("count", ctypes.c_size_t)]   # count = canaux
 
 class mxlWrappedMultiBufferSlice(ctypes.Structure):
     _fields_ = [("base", mxlWrappedBufferSlice),
@@ -212,7 +212,7 @@ def _load(path=None):
     return _lib
 
 
-***REMOVED*** Chemin RÉELLEMENT chargé + variante déduite. Renseigné une fois, au chargement.
+# Chemin RÉELLEMENT chargé + variante déduite. Renseigné une fois, au chargement.
 _lib_info = {"path": None, "variante": None}
 
 
@@ -286,8 +286,8 @@ def _bind(lib):
     lib.mxlFlowReaderGetRuntimeInfo.restype = ctypes.c_int
     lib.mxlFlowReaderGetRuntimeInfo.argtypes = [_VOID, ctypes.POINTER(mxlFlowRuntimeInfo)]
 
-    ***REMOVED*** LECTURE PARTIELLE par tranches (libmxl ≥ v1.1.0, flow.h). TOLÉRANT : symbole absent
-    ***REMOVED*** (vieille lib) → HAS_SLICES reste False, le binding plein-grain fonctionne inchangé.
+    # LECTURE PARTIELLE par tranches (libmxl ≥ v1.1.0, flow.h). TOLÉRANT : symbole absent
+    # (vieille lib) → HAS_SLICES reste False, le binding plein-grain fonctionne inchangé.
     global HAS_SLICES
     try:
         lib.mxlFlowReaderGetGrainSlice.restype = ctypes.c_int
@@ -305,8 +305,8 @@ def _bind(lib):
     lib.mxlGetFlowDef.argtypes = [_VOID, ctypes.c_char_p, ctypes.c_char_p,
                                   ctypes.POINTER(ctypes.c_size_t)]
 
-    ***REMOVED*** AUDIO (samples continus). TOLÉRANT : un symbole audio absent (build sans audio) ne doit
-    ***REMOVED*** PAS casser le binding vidéo → on capture AttributeError (HAS_AUDIO reste False).
+    # AUDIO (samples continus). TOLÉRANT : un symbole audio absent (build sans audio) ne doit
+    # PAS casser le binding vidéo → on capture AttributeError (HAS_AUDIO reste False).
     global HAS_AUDIO
     try:
         lib.mxlFlowWriterOpenSamples.restype = ctypes.c_int
@@ -350,7 +350,7 @@ def _np_view(payload_ptr, size):
     return np.frombuffer(buf, dtype=np.uint8)
 
 
-***REMOVED*** --------------------------------------------------------------------------- identité / flow_def
+# --------------------------------------------------------------------------- identité / flow_def
 
 def flow_id(name: str) -> str:
     """UUIDv5 déterministe d'un nom de flux (= le champ `id` du flowDef, et le flowId lecteur)."""
@@ -396,11 +396,11 @@ def discover_flows(domain=None):
     return out
 
 
-***REMOVED*** Mapping chroma → (sous-échantillonnage horizontal Cb/Cr). 444=1, 422=2, 420=2 (vertical géré
-***REMOVED*** par la hauteur des composants). Payload PLANAR conservé octet-identique (cf. plan : pas de
-***REMOVED*** v210 — pack/unpack numpy rédhibitoire à 50 fps). En 10 bits on stocke PLANAR10LE (16 b/sample),
-***REMOVED*** comme aujourd'hui côté mtl_rx (v>>2 / planar10). La cohérence grainSize MXL ↔ taille planar
-***REMOVED*** réelle est un CRITÈRE DE BANC (Phase 0) — voir frame_bytes().
+# Mapping chroma → (sous-échantillonnage horizontal Cb/Cr). 444=1, 422=2, 420=2 (vertical géré
+# par la hauteur des composants). Payload PLANAR conservé octet-identique (cf. plan : pas de
+# v210 — pack/unpack numpy rédhibitoire à 50 fps). En 10 bits on stocke PLANAR10LE (16 b/sample),
+# comme aujourd'hui côté mtl_rx (v>>2 / planar10). La cohérence grainSize MXL ↔ taille planar
+# réelle est un CRITÈRE DE BANC (Phase 0) — voir frame_bytes().
 _CHROMA = {"444": (1, 1), "422": (2, 1), "420": (2, 2)}
 
 
@@ -430,17 +430,17 @@ def build_flow_def(name, width, height, chroma="422", bit_depth=10,
     """
     hx, hy = _CHROMA.get(str(chroma), (2, 1))
     cw, ch = width // hx, height // hy
-    ***REMOVED*** slice_height > 0 → le grain planar est déclaré en N = hauteur/slice_height TRANCHES égales
-    ***REMOVED*** (patch mxl-planar-slices, latence sous-trame : commit progressif validSlices=1..N).
-    ***REMOVED*** 0/absent → 1 slice (trame pleine), comportement historique — les libs sans le patch
-    ***REMOVED*** ignorent simplement le champ. Le découpage est en OCTETS contigus du payload : à charge
-    ***REMOVED*** de l'app d'y ranger un layout par-bande (ex. bande i = Y_i+Cb_i+Cr_i contigus).
+    # slice_height > 0 → le grain planar est déclaré en N = hauteur/slice_height TRANCHES égales
+    # (patch mxl-planar-slices, latence sous-trame : commit progressif validSlices=1..N).
+    # 0/absent → 1 slice (trame pleine), comportement historique — les libs sans le patch
+    # ignorent simplement le champ. Le découpage est en OCTETS contigus du payload : à charge
+    # de l'app d'y ranger un layout par-bande (ex. bande i = Y_i+Cb_i+Cr_i contigus).
     extra = {"slice_height": int(slice_height)} if slice_height else {}
     return json.dumps({
         **extra,
         "id": flow_id(name),
-        ***REMOVED*** MXL FlowParser EXIGE le tag group-hint NMOS (« <groupe>:<rôle> ») — sinon
-        ***REMOVED*** « Invalid or missing group hint tag » au mxlCreateFlowWriter.
+        # MXL FlowParser EXIGE le tag group-hint NMOS (« <groupe>:<rôle> ») — sinon
+        # « Invalid or missing group hint tag » au mxlCreateFlowWriter.
         "tags": {"urn:x-nmos:tag:grouphint/v1.0": ["%s:Video" % (label or name)]},
         "format": "urn:x-nmos:format:video",
         "label": label or name,
@@ -458,7 +458,7 @@ def build_flow_def(name, width, height, chroma="422", bit_depth=10,
     })
 
 
-***REMOVED*** --------------------------------------------------------------------------- Instance / Writer / Reader
+# --------------------------------------------------------------------------- Instance / Writer / Reader
 
 class Instance:
     """Poignée MXL (un domaine = un sous-rép. tmpfs). À partager par tous les writers/readers
@@ -482,8 +482,8 @@ class Instance:
         `fid` (flowId UUID brut — flux TIERS, chantier interop) → dict, ou None si absent.
         Source de vérité du format CÔTÉ DONNÉE (écrit par le producteur) — cf. plan Phase 1."""
         fid = (fid or flow_id(name)).encode()
-        ***REMOVED*** Buffer généreux en un seul appel : le flow_def fait < 1 Ko. (L'appel de sizing avec
-        ***REMOVED*** buffer NULL renvoie INVALID_ARG sur libmxl v1.0 — on évite ce chemin.)
+        # Buffer généreux en un seul appel : le flow_def fait < 1 Ko. (L'appel de sizing avec
+        # buffer NULL renvoie INVALID_ARG sur libmxl v1.0 — on évite ce chemin.)
         size = ctypes.c_size_t(65536)
         buf = ctypes.create_string_buffer(size.value)
         st = _lib.mxlGetFlowDef(self._h, fid, buf, ctypes.byref(size))
@@ -534,9 +534,9 @@ class Writer:
         _load()
         self.inst = instance
         self.name = name
-        ***REMOVED*** Réf de genlock (un Reader du flux de référence maison) — utilisé si index_mode="genlock".
+        # Réf de genlock (un Reader du flux de référence maison) — utilisé si index_mode="genlock".
         self.ref = ref
-        ***REMOVED*** flow_def override = flux non-vidéo (ex. data/ANC via build_data_flow_def) ; sinon vidéo.
+        # flow_def override = flux non-vidéo (ex. data/ANC via build_data_flow_def) ; sinon vidéo.
         self.flow_def = flow_def or build_flow_def(name, width, height, chroma, bit_depth,
                                                    fps_num, fps_den, **flow_kw)
         self.frame_size = frame_bytes(width, height, chroma, bit_depth) if width and height else 0
@@ -544,16 +544,16 @@ class Writer:
         self.index_mode = index_mode
         self._counter = 0
         self._h = _VOID()
-        ***REMOVED*** ── GARDE FLOW PÉRIMÉ (« flowDef menteur ») ───────────────────────────────────────────
-        ***REMOVED*** flow.h / mxlCreateFlowWriter : `created`=false ⇔ un flow EXISTANT est RÉATTACHÉ et le
-        ***REMOVED*** flowDef qu'on vient de construire est IGNORÉ (sémantique = attachement, pas remplacement).
-        ***REMOVED*** Un producteur reconfiguré (scan/résolution/cadence/chroma…) qui redémarre réattache donc
-        ***REMOVED*** SILENCIEUSEMENT sur l'ANCIEN flowDef : le SHM déclare l'ancien format à tout l'aval (NMOS,
-        ***REMOVED*** slot TX 2110, SDP) et ÉCRIT le nouveau — mesuré en prod (mur multiview 1080i50 resté
-        ***REMOVED*** flowDef 1080p50 progressif après le fix scan du script, cf. multiview-interlace bug).
-        ***REMOVED*** On compare aux champs STRUCTURANTS du flow_def existant et on purge son répertoire AVANT
-        ***REMOVED*** create si ça diverge → recréation propre (à charge des consommateurs, qui gèrent déjà la
-        ***REMOVED*** reconnexion SIGBUS d'un flow recréé au redémarrage d'un producteur).
+        # ── GARDE FLOW PÉRIMÉ (« flowDef menteur ») ───────────────────────────────────────────
+        # flow.h / mxlCreateFlowWriter : `created`=false ⇔ un flow EXISTANT est RÉATTACHÉ et le
+        # flowDef qu'on vient de construire est IGNORÉ (sémantique = attachement, pas remplacement).
+        # Un producteur reconfiguré (scan/résolution/cadence/chroma…) qui redémarre réattache donc
+        # SILENCIEUSEMENT sur l'ANCIEN flowDef : le SHM déclare l'ancien format à tout l'aval (NMOS,
+        # slot TX 2110, SDP) et ÉCRIT le nouveau — mesuré en prod (mur multiview 1080i50 resté
+        # flowDef 1080p50 progressif après le fix scan du script, cf. multiview-interlace bug).
+        # On compare aux champs STRUCTURANTS du flow_def existant et on purge son répertoire AVANT
+        # create si ça diverge → recréation propre (à charge des consommateurs, qui gèrent déjà la
+        # reconnexion SIGBUS d'un flow recréé au redémarrage d'un producteur).
         _new_fd = json.loads(self.flow_def)
         _old_fd = instance.flow_def(name)
         if _old_fd is not None and any(_old_fd.get(k) != _new_fd.get(k) for k in
@@ -636,19 +636,19 @@ class Writer:
         sur plusieurs writers au même index) l'appelle UNE fois par trame et passe la valeur en
         `index=` ; sinon `open_grain()` sans argument l'appelle pour lui."""
         if src_index is not None:
-            ***REMOVED*** PROPAGATION : la coordonnée vient du grain source. Le max() ci-dessous s'applique
-            ***REMOVED*** quand même — une source qui repart en arrière (producteur redémarré) ne doit pas
-            ***REMOVED*** faire reculer notre tête, sous peine de réécrire des grains déjà publiés.
+            # PROPAGATION : la coordonnée vient du grain source. Le max() ci-dessous s'applique
+            # quand même — une source qui repart en arrière (producteur redémarré) ne doit pas
+            # faire reculer notre tête, sous peine de réécrire des grains déjà publiés.
             candidat = int(src_index)
         elif self.index_mode == "genlock" and self.ref is not None:
-            ***REMOVED*** Index = tête du flux de référence (index de grille GM, issu du PHC). Tant que la réf
-            ***REMOVED*** n'existe pas (démarrage), 0 → le max() ci-dessous free-run, et on « snappe » sur la
-            ***REMOVED*** grille dès que la réf apparaît.
+            # Index = tête du flux de référence (index de grille GM, issu du PHC). Tant que la réf
+            # n'existe pas (démarrage), 0 → le max() ci-dessous free-run, et on « snappe » sur la
+            # grille dès que la réf apparaît.
             h = self.ref.head_index()
             candidat = int(h) if h != MXL_UNDEFINED_INDEX else 0
         elif self.index_mode == "free":
-            candidat = 0                       ***REMOVED*** compteur pur — NON CONFORME, cf. l'avertissement
-        else:                                  ***REMOVED*** "tai" (défaut) : la grille
+            candidat = 0                       # compteur pur — NON CONFORME, cf. l'avertissement
+        else:                                  # "tai" (défaut) : la grille
             g = int(_lib.mxlGetCurrentIndex(ctypes.byref(self.rate)))
             candidat = g if 0 < g < MXL_UNDEFINED_INDEX else 0
         if candidat and lookahead:
@@ -656,7 +656,7 @@ class Writer:
         self._counter = max(candidat, self._counter + 1)
         return self._counter
 
-    ***REMOVED*** Alias historique : des scripts appellent encore `_next_index()`. Même méthode, mêmes garanties.
+    # Alias historique : des scripts appellent encore `_next_index()`. Même méthode, mêmes garanties.
     _next_index = next_index
 
     def index_time_ns(self, index):
@@ -746,20 +746,20 @@ class _StaleGuard:
          vierge, résolution sur disque). Un lecteur d'un AUTRE process, lui, ne bloque rien.
     """
 
-    STALE_MS_DEFAULT = 5000.0     ***REMOVED*** ~250 trames à 50 Hz : au-delà, aucune source vivante n'est plausible
-    AUTO_PERIODE_S = 1.0          ***REMOVED*** cadence du contrôle implicite (le coût est un runtime_info/s)
+    STALE_MS_DEFAULT = 5000.0     # ~250 trames à 50 Hz : au-delà, aucune source vivante n'est plausible
+    AUTO_PERIODE_S = 1.0          # cadence du contrôle implicite (le coût est un runtime_info/s)
 
-    ***REMOVED*** ── Pourquoi la garde est IMPLICITE et non plus facultative ─────────────────────────────
-    ***REMOVED*** Cette parade a longtemps été en opt-in : chaque consommateur devait penser à appeler
-    ***REMOVED*** `reopen_if_stale`. Audit du 2026-08-22 : SEPT consommateurs sur onze ne l'appelaient pas
-    ***REMOVED*** (delay, mixer, recorder, sonde_latence, split, udc, v210_bridge) — ils gelaient donc en
-    ***REMOVED*** silence, pour toujours, au premier redéploiement de leur producteur. Ce n'est pas une série
-    ***REMOVED*** d'oublis : une protection facultative contre une panne SILENCIEUSE n'a aucun retour qui
-    ***REMOVED*** rappelle qu'on l'a oubliée, donc elle SERA oubliée. Constaté en direct le même jour : la
-    ***REMOVED*** sonde de latence lisait un anneau mort depuis 1 h 44, image parfaite par ailleurs, et on a
-    ***REMOVED*** cherché le défaut dans le décodeur.
-    ***REMOVED*** La garde tourne donc toute seule dans les chemins de lecture. `auto_reopen=False` reste
-    ***REMOVED*** possible pour un consommateur qui veut piloter la réouverture lui-même.
+    # ── Pourquoi la garde est IMPLICITE et non plus facultative ─────────────────────────────
+    # Cette parade a longtemps été en opt-in : chaque consommateur devait penser à appeler
+    # `reopen_if_stale`. Audit du 2026-08-22 : SEPT consommateurs sur onze ne l'appelaient pas
+    # (delay, mixer, recorder, sonde_latence, split, udc, v210_bridge) — ils gelaient donc en
+    # silence, pour toujours, au premier redéploiement de leur producteur. Ce n'est pas une série
+    # d'oublis : une protection facultative contre une panne SILENCIEUSE n'a aucun retour qui
+    # rappelle qu'on l'a oubliée, donc elle SERA oubliée. Constaté en direct le même jour : la
+    # sonde de latence lisait un anneau mort depuis 1 h 44, image parfaite par ailleurs, et on a
+    # cherché le défaut dans le décodeur.
+    # La garde tourne donc toute seule dans les chemins de lecture. `auto_reopen=False` reste
+    # possible pour un consommateur qui veut piloter la réouverture lui-même.
 
     def _auto_garde(self, verif):
         """Exécute `verif` au plus une fois par AUTO_PERIODE_S. Ne lève jamais : une garde qui
@@ -784,13 +784,13 @@ class _StaleGuard:
             rouvert = bool(verif())
         except Exception:
             pass
-        ***REMOVED*** ── RECUL EXPONENTIEL sur un producteur qui ne revient pas ──────────────────────────
-        ***REMOVED*** Un flux ARRÊTÉ (et pas recréé) reste indéfiniment « périmé » : sans recul, la garde le
-        ***REMOVED*** rouvrait une fois par seconde pour toujours. Mesuré en test : 55 réouvertures en 55 s
-        ***REMOVED*** sur une prévisualisation de mixer simplement éteinte, et autant de lignes de journal —
-        ***REMOVED*** une protection qui hurle en continu finit par être filtrée, donc ignorée.
-        ***REMOVED*** `_stale_n` est remis à 0 par la garde dès que le flux réécrit : une source qui revient
-        ***REMOVED*** est donc reprise à la seconde près, seul l'acharnement est amorti.
+        # ── RECUL EXPONENTIEL sur un producteur qui ne revient pas ──────────────────────────
+        # Un flux ARRÊTÉ (et pas recréé) reste indéfiniment « périmé » : sans recul, la garde le
+        # rouvrait une fois par seconde pour toujours. Mesuré en test : 55 réouvertures en 55 s
+        # sur une prévisualisation de mixer simplement éteinte, et autant de lignes de journal —
+        # une protection qui hurle en continu finit par être filtrée, donc ignorée.
+        # `_stale_n` est remis à 0 par la garde dès que le flux réécrit : une source qui revient
+        # est donc reprise à la seconde près, seul l'acharnement est amorti.
         n = getattr(self, "_stale_n", 0)
         recul = min(2 ** max(0, n - 1), 60) if n else 1
         self._auto_du_ns = time.monotonic() + self.AUTO_PERIODE_S * recul
@@ -802,8 +802,8 @@ class _StaleGuard:
         cran au lieu de le supprimer."""
         global _AUTO_REOPENS
         _AUTO_REOPENS += 1
-        ***REMOVED*** Journal ÉCONOME : les trois premières tentatives, puis une sur dix. Le compteur reste
-        ***REMOVED*** exact dans `auto_reopen_count()` — c'est la TRACE qu'on rationne, pas la mesure.
+        # Journal ÉCONOME : les trois premières tentatives, puis une sur dix. Le compteur reste
+        # exact dans `auto_reopen_count()` — c'est la TRACE qu'on rationne, pas la mesure.
         if n > 3 and n % 10:
             return
         try:
@@ -890,7 +890,7 @@ class _StaleGuard:
         age = self.stale_ms()
         if age is None or age <= thr:
             if age is not None:
-                self._stale_n = 0        ***REMOVED*** écriture fraîche → lecteur sain, escalade désarmée
+                self._stale_n = 0        # écriture fraîche → lecteur sain, escalade désarmée
             return False
         n = self.reopen()
         if on_reopen is not None:
@@ -928,27 +928,27 @@ class StageDelay:
         metrics["delai_etage_trames"] = _sd.publish()
     """
 
-    ***REMOVED*** Bornes de PLAUSIBILITÉ. Passer par le temps ne suffit pas : `index_time_ns` convertit un
-    ***REMOVED*** index LIBRE tout aussi volontiers qu'un index TAI, en rendant un instant absurde. Hors de
-    ***REMOVED*** ces bornes la mesure ne décrit pas un étage mais un désaccord de base d'index — on ne publie
-    ***REMOVED*** rien plutôt qu'un nombre qui a l'air d'un délai.
-    ***REMOVED***
-    ***REMOVED*** ⚠ La borne haute est en TEMPS, pas en trames. Elle valait 120 trames (2,4 s à 50 Hz), seuil
-    ***REMOVED*** pensé pour des étages intra-nœud — il aurait REJETÉ une mesure inter-site légitime (liaison
-    ***REMOVED*** satellite ou WAN longue). 10 s laisse passer le transport réel tout en attrapant les
-    ***REMOVED*** désaccords de base, qui se comptent en heures. Relevable par `ecart_max_ns` si besoin.
+    # Bornes de PLAUSIBILITÉ. Passer par le temps ne suffit pas : `index_time_ns` convertit un
+    # index LIBRE tout aussi volontiers qu'un index TAI, en rendant un instant absurde. Hors de
+    # ces bornes la mesure ne décrit pas un étage mais un désaccord de base d'index — on ne publie
+    # rien plutôt qu'un nombre qui a l'air d'un délai.
+    #
+    # ⚠ La borne haute est en TEMPS, pas en trames. Elle valait 120 trames (2,4 s à 50 Hz), seuil
+    # pensé pour des étages intra-nœud — il aurait REJETÉ une mesure inter-site légitime (liaison
+    # satellite ou WAN longue). 10 s laisse passer le transport réel tout en attrapant les
+    # désaccords de base, qui se comptent en heures. Relevable par `ecart_max_ns` si besoin.
     ECART_MAX_NS = 10_000_000_000
 
     def __init__(self, n=30, peremption_ns=2_000_000_000, essence="video", ecart_max_ns=None):
-        ***REMOVED*** Les écarts sont stockés en NANOSECONDES, pas en pas d'index : c'est la seule unité
-        ***REMOVED*** commune à la vidéo (trames) et à l'audio (échantillons), donc la seule qui permette de
-        ***REMOVED*** comparer les deux chaînes — l'écart A/V est exactement cette différence.
-        self._recent = deque(maxlen=n)     ***REMOVED*** entrée la plus RÉCENTE → plancher de l'étage
-        self._vieux = deque(maxlen=n)      ***REMOVED*** entrée la plus VIEILLE → délai réellement subi
-        self._periode_ns = None            ***REMOVED*** dernier pas d'index observé (1 trame, ou 1 échantillon)
+        # Les écarts sont stockés en NANOSECONDES, pas en pas d'index : c'est la seule unité
+        # commune à la vidéo (trames) et à l'audio (échantillons), donc la seule qui permette de
+        # comparer les deux chaînes — l'écart A/V est exactement cette différence.
+        self._recent = deque(maxlen=n)     # entrée la plus RÉCENTE → plancher de l'étage
+        self._vieux = deque(maxlen=n)      # entrée la plus VIEILLE → délai réellement subi
+        self._periode_ns = None            # dernier pas d'index observé (1 trame, ou 1 échantillon)
         self._last_ns = 0
         self._peremption_ns = peremption_ns
-        self._essence = essence            ***REMOVED*** "video" → aussi publié en trames · "audio" → ms seules
+        self._essence = essence            # "video" → aussi publié en trames · "audio" → ms seules
         self._ecart_max_ns = ecart_max_ns if ecart_max_ns is not None else self.ECART_MAX_NS
         self.non_mesurable = 0
         self._propage = False
@@ -968,8 +968,8 @@ class StageDelay:
         décrit le signal tel qu'il sort, et que l'orchestrateur affiche.
         """
         try:
-            ***REMOVED*** Writer en compteur LIBRE : son index n'est pas une coordonnée temporelle. Aucune
-            ***REMOVED*** conversion n'a de sens ici, et la refuser tôt évite de publier une valeur inventée.
+            # Writer en compteur LIBRE : son index n'est pas une coordonnée temporelle. Aucune
+            # conversion n'a de sens ici, et la refuser tôt évite de publier une valeur inventée.
             if getattr(writer, "index_mode", None) == "free":
                 self.non_mesurable += 1
                 return False
@@ -977,7 +977,7 @@ class StageDelay:
             if t_out is None:
                 self.non_mesurable += 1
                 return False
-            ***REMOVED*** Période lue sur le writer lui-même : aucune cadence supposée ni codée en dur.
+            # Période lue sur le writer lui-même : aucune cadence supposée ni codée en dur.
             periode = writer.index_time_ns(int(idx_out) + 1) - t_out
             if not periode:
                 self.non_mesurable += 1
@@ -987,22 +987,22 @@ class StageDelay:
                 t_in = rd.index_time_ns(idx_in) if rd is not None else None
                 if t_in is None:
                     self.non_mesurable += 1
-                    return False           ***REMOVED*** une entrée non convertible invalide la TRAME entière
+                    return False           # une entrée non convertible invalide la TRAME entière
                 ts.append(t_in)
             if not ts:
-                ***REMOVED*** AUCUNE entrée liée pour cette trame (toutes refusées en amont, source coupée,
-                ***REMOVED*** référence perdue). C'est un refus comme un autre et il doit se COMPTER : sans
-                ***REMOVED*** ça, `publish()` rendait None et le silence redevenait indiscernable d'un module
-                ***REMOVED*** qui ne mesure pas. Observé sur `mixer-test` (2026-08-19), qui émettait 50 fps
-                ***REMOVED*** « sans entrée vivante » — la page n'en disait rien.
+                # AUCUNE entrée liée pour cette trame (toutes refusées en amont, source coupée,
+                # référence perdue). C'est un refus comme un autre et il doit se COMPTER : sans
+                # ça, `publish()` rendait None et le silence redevenait indiscernable d'un module
+                # qui ne mesure pas. Observé sur `mixer-test` (2026-08-19), qui émettait 50 fps
+                # « sans entrée vivante » — la page n'en disait rien.
                 self.non_mesurable += 1
                 return False
             recent_ns = t_out - max(ts)
             vieux_ns = t_out - min(ts)
-            ***REMOVED*** Borne BASSE dynamique : une demi-période. Elle tolère l'arrondi d'un étage à délai
-            ***REMOVED*** nul sans laisser passer une sortie réellement ANTÉRIEURE à son entrée — et elle
-            ***REMOVED*** s'adapte d'elle-même à l'audio, où la période est un échantillon (~21 µs) et non
-            ***REMOVED*** une trame (20 ms).
+            # Borne BASSE dynamique : une demi-période. Elle tolère l'arrondi d'un étage à délai
+            # nul sans laisser passer une sortie réellement ANTÉRIEURE à son entrée — et elle
+            # s'adapte d'elle-même à l'audio, où la période est un échantillon (~21 µs) et non
+            # une trame (20 ms).
             _min = -0.5 * periode
             if not (_min <= recent_ns <= self._ecart_max_ns
                     and _min <= vieux_ns <= self._ecart_max_ns):
@@ -1015,7 +1015,7 @@ class StageDelay:
             self._last_ns = time.time_ns()
             return True
         except Exception:
-            ***REMOVED*** Un défaut de mesure ne doit JAMAIS tuer la boucle de production du plugin.
+            # Un défaut de mesure ne doit JAMAIS tuer la boucle de production du plugin.
             self.non_mesurable += 1
             return False
 
@@ -1041,10 +1041,10 @@ class StageDelay:
         moy_ns = self._stat(self._vieux, lambda d: sum(d) / len(d))
         if moy_ns is None:
             return {"non_mesurable": self.non_mesurable} if self.non_mesurable else None
-        ***REMOVED*** Les écarts sont STOCKÉS en ns (seule unité commune vidéo/audio) et RENDUS dans l'unité
-        ***REMOVED*** naturelle de l'essence : trames pour la vidéo — c'est ce que lit l'orchestrateur —,
-        ***REMOVED*** millisecondes pour l'audio, où « une trame » n'a pas de sens (granularité 1 ms).
-        ***REMOVED*** Les ms sont publiées dans les DEUX cas : c'est par elles que se compare l'écart A/V.
+        # Les écarts sont STOCKÉS en ns (seule unité commune vidéo/audio) et RENDUS dans l'unité
+        # naturelle de l'essence : trames pour la vidéo — c'est ce que lit l'orchestrateur —,
+        # millisecondes pour l'audio, où « une trame » n'a pas de sens (granularité 1 ms).
+        # Les ms sont publiées dans les DEUX cas : c'est par elles que se compare l'écart A/V.
         per = self._periode_ns or 0
         _ms = lambda v: (None if v is None else round(v / 1e6, 3))
         out = {"ms_moy": _ms(moy_ns),
@@ -1074,19 +1074,19 @@ class Reader(_StaleGuard):
         self.inst = instance
         self.name = name
         self.fid = str(name).strip() if (by_id or is_flow_uuid(name)) else flow_id(name)
-        self._opts = options       ***REMOVED*** conservé : la réouverture doit rendre le MÊME reader
-        self._own_inst = None      ***REMOVED*** Instance dédiée si escalade (cf. _StaleGuard)
+        self._opts = options       # conservé : la réouverture doit rendre le MÊME reader
+        self._own_inst = None      # Instance dédiée si escalade (cf. _StaleGuard)
         self._stale_n = 0
         self._h = _VOID()
         _ck("mxlCreateFlowReader", _lib.mxlCreateFlowReader(
             instance._h, self.fid.encode(), options.encode() if options else None,
             ctypes.byref(self._h)))
-        ***REMOVED*** État genlock (cf. wait_next_index). `holdover` = True quand la réf ne tique plus et
-        ***REMOVED*** qu'on free-run en secours. Attributs présents dès la construction (introspection sûre).
+        # État genlock (cf. wait_next_index). `holdover` = True quand la réf ne tique plus et
+        # qu'on free-run en secours. Attributs présents dès la construction (introspection sûre).
         self.holdover = False
-        self._gl_hold_idx = 0        ***REMOVED*** prochain index à émettre en free-run de secours
-        self._gl_hold_due_ns = 0     ***REMOVED*** échéance monotone (ns) du prochain grain de secours
-        self._rate = None            ***REMOVED*** cadence du flux, résolue à la 1re conversion index→temps
+        self._gl_hold_idx = 0        # prochain index à émettre en free-run de secours
+        self._gl_hold_due_ns = 0     # échéance monotone (ns) du prochain grain de secours
+        self._rate = None            # cadence du flux, résolue à la 1re conversion index→temps
 
     def index_time_ns(self, index):
         """Instant TAI (ns depuis l'epoch ST 2059) du grain `index`, à la cadence de CE flux.
@@ -1136,7 +1136,7 @@ class Reader(_StaleGuard):
         """Format du flux LU DANS SON flow_def (source de vérité côté donnée) :
         {width,height,chroma,bit_depth,fps_num,fps_den} ou None si le flux n'existe pas.
         chroma déduit du sous-échantillonnage des composants (½,1)=422 (½,½)=420 (1,1)=444."""
-        fd = self.inst.flow_def(fid=self.fid)   ***REMOVED*** par-flowId : marche aussi pour un flux tiers
+        fd = self.inst.flow_def(fid=self.fid)   # par-flowId : marche aussi pour un flux tiers
         if not fd:
             return None
         try:
@@ -1149,24 +1149,24 @@ class Reader(_StaleGuard):
             chroma = {(1, 1): "444", (2, 1): "422", (2, 2): "420"}.get((hx, hy), "422")
             gr = fd.get("grain_rate") or {}
             gn, gd = int(gr.get("numerator", 25)), int(gr.get("denominator", 1))
-            ***REMOVED*** ENTRELACÉ NATIF (modèle SDK MXL) : un grain = 1 CHAMP (½ hauteur), cadence = cadence
-            ***REMOVED*** CHAMP (libmxl double la grain_rate du flowDef). On expose les dims/cadence de GRAIN
-            ***REMOVED*** (`width`/`height`/`fps_*`) pour que les consommateurs reshape/pace SANS changement
-            ***REMOVED*** (reshape(height,width) tombe sur le champ, pacing à la cadence champ). Les dims/cadence
-            ***REMOVED*** de TRAME et l'interlace sont à part (`frame_*`, `interlace_mode`/`field_order`) — à
-            ***REMOVED*** passer sur la SORTIE pour rester champ-natif de bout en bout. Progressif : inchangé.
+            # ENTRELACÉ NATIF (modèle SDK MXL) : un grain = 1 CHAMP (½ hauteur), cadence = cadence
+            # CHAMP (libmxl double la grain_rate du flowDef). On expose les dims/cadence de GRAIN
+            # (`width`/`height`/`fps_*`) pour que les consommateurs reshape/pace SANS changement
+            # (reshape(height,width) tombe sur le champ, pacing à la cadence champ). Les dims/cadence
+            # de TRAME et l'interlace sont à part (`frame_*`, `interlace_mode`/`field_order`) — à
+            # passer sur la SORTIE pour rester champ-natif de bout en bout. Progressif : inchangé.
             im = str(fd.get("interlace_mode") or "progressive")
             interlaced = im.startswith("interlaced")
             grain_h = h // 2 if interlaced else h
-            frame_gn = gn                     ***REMOVED*** cadence TRAME (= grain_rate du flowDef)
+            frame_gn = gn                     # cadence TRAME (= grain_rate du flowDef)
             if interlaced:
-                gn *= 2                        ***REMOVED*** cadence de GRAIN = cadence champ (libmxl double)
+                gn *= 2                        # cadence de GRAIN = cadence champ (libmxl double)
             return {
-                ***REMOVED*** dims/cadence de GRAIN (= champ si entrelacé) → reshape(height,width)+pacing direct
+                # dims/cadence de GRAIN (= champ si entrelacé) → reshape(height,width)+pacing direct
                 "width": w, "height": grain_h, "chroma": chroma,
                 "bit_depth": int(y.get("bit_depth", 8)),
                 "fps_num": gn, "fps_den": gd,
-                ***REMOVED*** interlace + dims/cadence de TRAME → à passer sur le Writer de SORTIE (champ-natif)
+                # interlace + dims/cadence de TRAME → à passer sur le Writer de SORTIE (champ-natif)
                 "interlace_mode": im, "interlaced": interlaced,
                 "field_order": ("tff" if im == "interlaced_tff"
                                 else "bff" if im == "interlaced_bff" else ""),
@@ -1242,7 +1242,7 @@ class Reader(_StaleGuard):
             return None
         return index, gi, _np_view(payload, gi.grainSize)
 
-    ***REMOVED*** ------------------------------------------------------------------ GENLOCK (flux de réf maison)
+    # ------------------------------------------------------------------ GENLOCK (flux de réf maison)
 
     def _set_holdover(self, active, on_holdover):
         """Transition d'état holdover : ne signale (callback + flag public) qu'aux CHANGEMENTS
@@ -1302,15 +1302,15 @@ class Reader(_StaleGuard):
         if timeout_ns is None:
             timeout_ns = max(period_ns, int(period_ns * 2.5))
 
-        ***REMOVED*** 1er appel : « snap » sur l'index de tête courant de la réf…
+        # 1er appel : « snap » sur l'index de tête courant de la réf…
         if last_k is None:
             h = self.head_index()
             if h != MXL_UNDEFINED_INDEX:
                 self._set_holdover(False, on_holdover)
                 return int(h)
-            last_k = -1   ***REMOVED*** …sinon réf absente au démarrage → on bascule en free-run ci-dessous
+            last_k = -1   # …sinon réf absente au démarrage → on bascule en free-run ci-dessous
 
-        ***REMOVED*** Déjà en holdover : cadencer au nominal tout en guettant le RETOUR de la réf.
+        # Déjà en holdover : cadencer au nominal tout en guettant le RETOUR de la réf.
         if self.holdover:
             due = self._gl_hold_due_ns
             while True:
@@ -1324,7 +1324,7 @@ class Reader(_StaleGuard):
                 time.sleep(min(poll_s, max(0.0, (due - now) / 1e9)))
             return self._tick_holdover(period_ns)
 
-        ***REMOVED*** Locké : attendre que la réf avance, jusqu'au timeout.
+        # Locké : attendre que la réf avance, jusqu'au timeout.
         deadline = time.monotonic_ns() + timeout_ns
         while True:
             h = self.head_index()
@@ -1334,8 +1334,8 @@ class Reader(_StaleGuard):
                 break
             time.sleep(poll_s)
 
-        ***REMOVED*** Timeout → bascule HOLDOVER : reprend la numérotation juste après le dernier index,
-        ***REMOVED*** échéance immédiate (la sortie continue sans hoquet), signale l'événement.
+        # Timeout → bascule HOLDOVER : reprend la numérotation juste après le dernier index,
+        # échéance immédiate (la sortie continue sans hoquet), signale l'événement.
         self._gl_hold_idx = (last_k + 1) if last_k >= 0 else 0
         self._gl_hold_due_ns = time.monotonic_ns()
         self._set_holdover(True, on_holdover)
@@ -1354,39 +1354,39 @@ class Reader(_StaleGuard):
         self.close()
 
 
-***REMOVED*** --------------------------------------------------------------------------- ANC (ST 2110-40)
-***REMOVED*** Codage du grain d'un flux DATA `video/smpte291`.
-***REMOVED***
-***REMOVED*** ⚠ HISTORIQUE : jusqu'au 2026-07-12 on sérialisait un format MAISON
-***REMOVED***   [u32 meta_num][u32 udw_fill][meta×16 o][udw : 1 o = 1 UDW]
-***REMOVED*** Il n'était compris QUE de nous. Banc croisé (cf. docs/reference/MXL_INTEROP.md) : un consommateur MXL stock
-***REMOVED*** parse ce grain comme du RFC 8331, en déduit « ANC count: 0 » et conclut SANS ERREUR que le flux
-***REMOVED*** ne porte aucun ANC → PERTE SILENCIEUSE du tally/timecode/sous-titres. Symétriquement, on ne
-***REMOVED*** savait pas lire l'ANC d'un tiers. Contrairement au planar (qui achète un vrai gain CPU sur des
-***REMOVED*** trames de plusieurs Mo), ce format maison n'achetait RIEN : un grain ANC fait 4 Ko.
-***REMOVED*** → Le format NORMATIF est désormais RFC 8331 (`ANC_RFC8331`), le maison n'est plus que lu
-***REMOVED***   (`ANC_BOBI_V1`) le temps de la migration de la flotte.
-***REMOVED***
-***REMOVED*** Layout RFC 8331 du grain (validé contre le parseur STOCK `mxl-data-probe`, gros-boutiste) :
-***REMOVED***   [u16 Length][u8 ANC_Count][2 b F][22 b réservés]        ← en-tête 6 o (PAS d'ESN dans le grain)
-***REMOVED***   puis, par paquet ANC, aligné 32 bits :
-***REMOVED***     [1 b C][11 b Line_Number][12 b Horizontal_Offset][1 b S][7 b StreamNum]   (32 b)
-***REMOVED***     puis un FLUX DE BITS de mots de 10 bits, MSB d'abord :
-***REMOVED***       DID, SDID, Data_Count, UDW × Data_Count, Checksum_Word
-***REMOVED***     puis bourrage de 0 jusqu'à l'alignement 32 bits.
-***REMOVED*** Chaque mot de 10 bits = 8 bits de données + b8 = parité paire + b9 = ~b8 (SMPTE 291).
-***REMOVED*** Nos UDW sont stockés sur 8 bits (comme libmtl : parité vérifiée puis jetée) → la conversion est
-***REMOVED*** SANS PERTE : parité et checksum se RECALCULENT.
+# --------------------------------------------------------------------------- ANC (ST 2110-40)
+# Codage du grain d'un flux DATA `video/smpte291`.
+#
+# ⚠ HISTORIQUE : jusqu'au 2026-07-12 on sérialisait un format MAISON
+#   [u32 meta_num][u32 udw_fill][meta×16 o][udw : 1 o = 1 UDW]
+# Il n'était compris QUE de nous. Banc croisé (cf. docs/reference/MXL_INTEROP.md) : un consommateur MXL stock
+# parse ce grain comme du RFC 8331, en déduit « ANC count: 0 » et conclut SANS ERREUR que le flux
+# ne porte aucun ANC → PERTE SILENCIEUSE du tally/timecode/sous-titres. Symétriquement, on ne
+# savait pas lire l'ANC d'un tiers. Contrairement au planar (qui achète un vrai gain CPU sur des
+# trames de plusieurs Mo), ce format maison n'achetait RIEN : un grain ANC fait 4 Ko.
+# → Le format NORMATIF est désormais RFC 8331 (`ANC_RFC8331`), le maison n'est plus que lu
+#   (`ANC_BOBI_V1`) le temps de la migration de la flotte.
+#
+# Layout RFC 8331 du grain (validé contre le parseur STOCK `mxl-data-probe`, gros-boutiste) :
+#   [u16 Length][u8 ANC_Count][2 b F][22 b réservés]        ← en-tête 6 o (PAS d'ESN dans le grain)
+#   puis, par paquet ANC, aligné 32 bits :
+#     [1 b C][11 b Line_Number][12 b Horizontal_Offset][1 b S][7 b StreamNum]   (32 b)
+#     puis un FLUX DE BITS de mots de 10 bits, MSB d'abord :
+#       DID, SDID, Data_Count, UDW × Data_Count, Checksum_Word
+#     puis bourrage de 0 jusqu'à l'alignement 32 bits.
+# Chaque mot de 10 bits = 8 bits de données + b8 = parité paire + b9 = ~b8 (SMPTE 291).
+# Nos UDW sont stockés sur 8 bits (comme libmtl : parité vérifiée puis jetée) → la conversion est
+# SANS PERTE : parité et checksum se RECALCULENT.
 
-ANC_RFC8331 = "rfc8331"      ***REMOVED*** normatif (interopérable)
-ANC_BOBI_V1 = "bobi-v1"      ***REMOVED*** legacy maison — lecture seule (flotte en cours de migration)
+ANC_RFC8331 = "rfc8331"      # normatif (interopérable)
+ANC_BOBI_V1 = "bobi-v1"      # legacy maison — lecture seule (flotte en cours de migration)
 
-***REMOVED*** En-tête du grain = 6 octets (le grain MXL n'embarque PAS l'ESN, champ de niveau RTP) :
-***REMOVED***   [u16 Length][u8 ANC_Count][2 b F + 6 b rsvd][u16 rsvd]
-***REMOVED*** Length = nombre d'octets de paquets ANC APRÈS l'en-tête. ⚠ Les paquets restent alignés sur
-***REMOVED*** 32 bits AU SENS DU RFC, c.-à-d. relativement au payload RTP (qui avait 2 octets d'ESN de plus)
-***REMOVED*** → dans le grain, ils démarrent à l'octet 6 puis tous les 4 octets (6, 10, 14…), soit des offsets
-***REMOVED*** de MOT IMPAIRS. C'est exactement ce qu'attend le parseur stock (`wordOffset % 2 == 0 → skip`).
+# En-tête du grain = 6 octets (le grain MXL n'embarque PAS l'ESN, champ de niveau RTP) :
+#   [u16 Length][u8 ANC_Count][2 b F + 6 b rsvd][u16 rsvd]
+# Length = nombre d'octets de paquets ANC APRÈS l'en-tête. ⚠ Les paquets restent alignés sur
+# 32 bits AU SENS DU RFC, c.-à-d. relativement au payload RTP (qui avait 2 octets d'ESN de plus)
+# → dans le grain, ils démarrent à l'octet 6 puis tous les 4 octets (6, 10, 14…), soit des offsets
+# de MOT IMPAIRS. C'est exactement ce qu'attend le parseur stock (`wordOffset % 2 == 0 → skip`).
 _ANC_HDR = 6
 
 
@@ -1421,7 +1421,7 @@ class _BitWriter:
 
     def align32(self):
         """Bourrage de 0 jusqu'à l'alignement 32 bits (word_align du RFC)."""
-        self.write(0, (8 - self.n) % 8)              ***REMOVED*** d'abord l'octet courant
+        self.write(0, (8 - self.n) % 8)              # d'abord l'octet courant
         while len(self.out) % 4:
             self.out.append(0)
 
@@ -1468,26 +1468,26 @@ def anc_pack_rfc8331(packets, field=0, grain_size=0):
             udw = [int(x) & 0xFF for x in udw]
         if len(udw) > 255:
             raise ValueError("Data_Count > 255 UDW")
-        w.align32()                                    ***REMOVED*** chaque paquet démarre aligné 32 bits
-        w.write(int(p.get("c", 0)) & 1, 1)             ***REMOVED*** C : canal chroma(1)/luma(0)
-        w.write(int(p.get("line", 9)) & 0x7FF, 11)     ***REMOVED*** Line_Number
-        w.write(int(p.get("hori", 0xFFF)) & 0xFFF, 12) ***REMOVED*** Horizontal_Offset (0xFFF = indéfini)
-        w.write(int(p.get("s", 0)) & 1, 1)             ***REMOVED*** S : StreamNum significatif ?
-        w.write(int(p.get("stream_num", 0)) & 0x7F, 7) ***REMOVED*** StreamNum (PERDU par l'ancien format !)
-        ***REMOVED*** Flux de mots 10 bits : DID, SDID, DC, UDW…, Checksum.
+        w.align32()                                    # chaque paquet démarre aligné 32 bits
+        w.write(int(p.get("c", 0)) & 1, 1)             # C : canal chroma(1)/luma(0)
+        w.write(int(p.get("line", 9)) & 0x7FF, 11)     # Line_Number
+        w.write(int(p.get("hori", 0xFFF)) & 0xFFF, 12) # Horizontal_Offset (0xFFF = indéfini)
+        w.write(int(p.get("s", 0)) & 1, 1)             # S : StreamNum significatif ?
+        w.write(int(p.get("stream_num", 0)) & 0x7F, 7) # StreamNum (PERDU par l'ancien format !)
+        # Flux de mots 10 bits : DID, SDID, DC, UDW…, Checksum.
         words = [_anc_parity10(int(p["did"])), _anc_parity10(int(p["sdid"])),
                  _anc_parity10(len(udw))] + [_anc_parity10(u) for u in udw]
         for wd in words:
             w.write(wd, 10)
         w.write(_anc_checksum10(words), 10)
-        w.align32()                                    ***REMOVED*** word_align de fin de paquet
-    body = bytes(w.out)                                ***REMOVED*** aligné 32 b RELATIVEMENT à son propre début
+        w.align32()                                    # word_align de fin de paquet
+    body = bytes(w.out)                                # aligné 32 b RELATIVEMENT à son propre début
 
     hdr = bytearray(_ANC_HDR)
-    hdr[0] = (len(body) >> 8) & 0xFF                   ***REMOVED*** Length (octets d'ANC après l'en-tête)
+    hdr[0] = (len(body) >> 8) & 0xFF                   # Length (octets d'ANC après l'en-tête)
     hdr[1] = len(body) & 0xFF
-    hdr[2] = len(packets) & 0xFF                       ***REMOVED*** ANC_Count
-    hdr[3] = (int(field) & 0x3) << 6                   ***REMOVED*** F (2 b) + début des 22 b réservés
+    hdr[2] = len(packets) & 0xFF                       # ANC_Count
+    hdr[3] = (int(field) & 0x3) << 6                   # F (2 b) + début des 22 b réservés
     out = bytes(hdr) + body
     if grain_size and len(out) < grain_size:
         out = out + b"\x00" * (grain_size - len(out))
@@ -1504,7 +1504,7 @@ def anc_unpack_rfc8331(grain):
     if len(b) < _ANC_HDR:
         return []
     count = b[2]
-    r = _BitReader(b, base=_ANC_HDR)     ***REMOVED*** alignements 32 b relatifs au début du corps
+    r = _BitReader(b, base=_ANC_HDR)     # alignements 32 b relatifs au début du corps
     out = []
     for _ in range(count):
         try:
@@ -1525,7 +1525,7 @@ def anc_unpack_rfc8331(grain):
                 "checksum_ok": (cs == _anc_checksum10(words)),
             })
         except ValueError:
-            break                                      ***REMOVED*** grain tronqué → on rend ce qu'on a
+            break                                      # grain tronqué → on rend ce qu'on a
     return out
 
 
@@ -1573,7 +1573,7 @@ def anc_unpack(grain, flow_def=None):
     return anc_unpack_bobi_v1(grain)
 
 
-***REMOVED*** ── ATC / timecode (SMPTE ST 12-1 · RP 188), DID 0x60 SDID 0x60 ────────────────────────────
+# ── ATC / timecode (SMPTE ST 12-1 · RP 188), DID 0x60 SDID 0x60 ────────────────────────────
 def anc_atc_encode(hours, minutes, seconds, frames, drop_frame=False):
     """Timecode → les 16 UDW (8 bits) d'un paquet ATC, disposition LTC : UN CHIFFRE BCD PAR
     QUARTET, placé dans le quartet HAUT de son UDW. Les UDW d'index IMPAIR portent les drapeaux
@@ -1620,7 +1620,7 @@ def anc_atc_all(packets):
         u = p.get("udw") or b""
         if len(u) < 16:
             continue
-        ***REMOVED*** Un chiffre BCD par quartet HAUT (cf. anc_atc_encode) ; quartets BAS = drapeaux.
+        # Un chiffre BCD par quartet HAUT (cf. anc_atc_encode) ; quartets BAS = drapeaux.
         q = [(x >> 4) & 0x0F for x in u[:16]]
         bas = bytes(x & 0x0F for x in u[:16])
         f = q[0] + (q[2] & 0x3) * 10
@@ -1645,23 +1645,23 @@ def anc_atc_decode(packets, quel=0):
     return (a["h"], a["m"], a["s"], a["f"], a["drop_frame"])
 
 
-***REMOVED*** ── Métadonnées ANC : registre DID/SDID + décodeurs des types utiles au monitoring ─────────
-***REMOVED*** Le codec ci-dessus rend TOUS les paquets (did/sdid/udw/checksum_ok), pas seulement l'ATC :
-***REMOVED*** ces helpers en tirent l'information exploitable par un mur de contrôle. Aucun n'est appelé
-***REMOVED*** automatiquement — un consommateur décode ce dont il a besoin.
+# ── Métadonnées ANC : registre DID/SDID + décodeurs des types utiles au monitoring ─────────
+# Le codec ci-dessus rend TOUS les paquets (did/sdid/udw/checksum_ok), pas seulement l'ATC :
+# ces helpers en tirent l'information exploitable par un mur de contrôle. Aucun n'est appelé
+# automatiquement — un consommateur décode ce dont il a besoin.
 
-***REMOVED*** Registre SMPTE (ST 291-1) des types qu'on sait nommer. (did, sdid) → libellé court.
+# Registre SMPTE (ST 291-1) des types qu'on sait nommer. (did, sdid) → libellé court.
 ANC_TYPES = {
-    (0x60, 0x60): "ATC",         ***REMOVED*** SMPTE ST 12-2 — timecode auxiliaire (RP 188)
-    (0x61, 0x01): "CC/708",      ***REMOVED*** SMPTE ST 334-1 — CDP (sous-titres CEA-708, 608 encapsulé)
-    (0x61, 0x02): "CC/608",      ***REMOVED*** SMPTE ST 334-1 — CEA-608 direct
-    (0x41, 0x01): "ST352",       ***REMOVED*** SMPTE ST 352 — identification de charge utile (payload ID)
-    (0x41, 0x05): "AFD",         ***REMOVED*** SMPTE ST 2016-3 — format d'image actif + bar data
-    (0x41, 0x07): "SCTE-104",    ***REMOVED*** SCTE-104 — déclencheurs (publicité/splice)
-    (0x43, 0x02): "OP-47",       ***REMOVED*** OP-47 — télétexte/sous-titres (Europe)
-    (0x44, 0x04): "KLV",         ***REMOVED*** SMPTE ST 336 — métadonnées KLV
-    (0x45, 0x01): "Dolby",       ***REMOVED*** SMPTE ST 2020 — métadonnées audio Dolby
-    (0x5F, 0xDC): "Camera",      ***REMOVED*** (usage constructeur courant) métadonnées caméra/optique
+    (0x60, 0x60): "ATC",         # SMPTE ST 12-2 — timecode auxiliaire (RP 188)
+    (0x61, 0x01): "CC/708",      # SMPTE ST 334-1 — CDP (sous-titres CEA-708, 608 encapsulé)
+    (0x61, 0x02): "CC/608",      # SMPTE ST 334-1 — CEA-608 direct
+    (0x41, 0x01): "ST352",       # SMPTE ST 352 — identification de charge utile (payload ID)
+    (0x41, 0x05): "AFD",         # SMPTE ST 2016-3 — format d'image actif + bar data
+    (0x41, 0x07): "SCTE-104",    # SCTE-104 — déclencheurs (publicité/splice)
+    (0x43, 0x02): "OP-47",       # OP-47 — télétexte/sous-titres (Europe)
+    (0x44, 0x04): "KLV",         # SMPTE ST 336 — métadonnées KLV
+    (0x45, 0x01): "Dolby",       # SMPTE ST 2020 — métadonnées audio Dolby
+    (0x5F, 0xDC): "Camera",      # (usage constructeur courant) métadonnées caméra/optique
 }
 
 
@@ -1689,7 +1689,7 @@ def anc_find(packets, did, sdid):
     return None
 
 
-***REMOVED*** AFD (SMPTE ST 2016-3) : le 1er UDW porte le code AFD sur les bits 3-6, + le drapeau AR (bit 2).
+# AFD (SMPTE ST 2016-3) : le 1er UDW porte le code AFD sur les bits 3-6, + le drapeau AR (bit 2).
 _AFD_NAMES = {
     0b0000: "indéfini", 0b0010: "16:9 haut", 0b0011: "14:9 haut", 0b0100: "> 16:9 centré",
     0b1000: "plein cadre", 0b1001: "4:3 centré", 0b1010: "16:9 centré", 0b1011: "14:9 centré",
@@ -1708,8 +1708,8 @@ def anc_decode_afd(packets):
             "aspect": "16:9" if (b >> 2) & 1 else "4:3"}
 
 
-***REMOVED*** ST 352 (payload ID) : 4 UDW = 4 octets. Byte 0 = version/structure, byte 1 = balayage +
-***REMOVED*** fréquence image, byte 2 = échantillonnage/profondeur, byte 3 = colorimétrie/dynamique.
+# ST 352 (payload ID) : 4 UDW = 4 octets. Byte 0 = version/structure, byte 1 = balayage +
+# fréquence image, byte 2 = échantillonnage/profondeur, byte 3 = colorimétrie/dynamique.
 _ST352_RATE = {0x2: "24/1.001", 0x3: "24", 0x4: "47.95", 0x5: "25", 0x6: "29.97", 0x7: "30",
                0x8: "48/1.001", 0x9: "48", 0xA: "50", 0xB: "59.94", 0xC: "60"}
 
@@ -1721,7 +1721,7 @@ def anc_decode_st352(packets):
     if not p or len(p.get("udw") or b"") < 4:
         return None
     b1 = p["udw"][1]
-    scan = "p" if (b1 >> 6) & 1 else "i"          ***REMOVED*** bit 6 : progressif (1) / entrelacé (0)
+    scan = "p" if (b1 >> 6) & 1 else "i"          # bit 6 : progressif (1) / entrelacé (0)
     rate = _ST352_RATE.get(b1 & 0x0F, "?")
     return {"scan": scan, "rate": rate, "label": "%s%s" % (rate, scan)}
 
@@ -1733,7 +1733,7 @@ def anc_scte104(packets):
     if not p or len(p.get("udw") or b"") < 4:
         return None
     u = p["udw"]
-    return {"op_id": (u[2] << 8) | u[3]}          ***REMOVED*** multiple_operation_message : opID sur 16 b
+    return {"op_id": (u[2] << 8) | u[3]}          # multiple_operation_message : opID sur 16 b
 
 
 def anc_captions(packets):
@@ -1751,13 +1751,13 @@ def anc_captions(packets):
     u = p.get("udw") or b""
     out = {"present": True, "kind": anc_type_name(p["did"], p["sdid"]),
            "cc608": "", "dtvcc": False}
-    ***REMOVED*** Localiser la section ccdata du CDP (0x72), après l'en-tête 0x9669.
+    # Localiser la section ccdata du CDP (0x72), après l'en-tête 0x9669.
     i = 0
     if len(u) >= 2 and u[0] == 0x96 and u[1] == 0x69:
-        i = 7                                     ***REMOVED*** 0x9669 + len + rate + flags + counter
+        i = 7                                     # 0x9669 + len + rate + flags + counter
         while i < len(u):
             sec = u[i]
-            if sec == 0x72:                       ***REMOVED*** ccdata_section
+            if sec == 0x72:                       # ccdata_section
                 cc_count = u[i + 1] & 0x1F if i + 1 < len(u) else 0
                 j = i + 2
                 chars = []
@@ -1766,7 +1766,7 @@ def anc_captions(packets):
                         break
                     cc_valid = (u[j] >> 2) & 1
                     cc_type = u[j] & 0x03
-                    b1, b2 = u[j + 1] & 0x7F, u[j + 2] & 0x7F   ***REMOVED*** bit 7 = parité
+                    b1, b2 = u[j + 1] & 0x7F, u[j + 2] & 0x7F   # bit 7 = parité
                     if cc_valid and cc_type in (0, 1):
                         for ch in (b1, b2):
                             if 0x20 <= ch < 0x7F:
@@ -1776,23 +1776,23 @@ def anc_captions(packets):
                     j += 3
                 out["cc608"] = "".join(chars).strip()
                 break
-            if sec in (0x71, 0x73):               ***REMOVED*** sections de longueur variable → on s'arrête
+            if sec in (0x71, 0x73):               # sections de longueur variable → on s'arrête
                 break
             i += 1
     return out
 
 
 
-***REMOVED*** --------------------------------------------------------------------------- OP-47 / télétexte
+# --------------------------------------------------------------------------- OP-47 / télétexte
 
-***REMOVED*** HAMMING 8/4 (ETS 300 706 § 8.2). Les positions sont celles de la norme : en partant du bit de
-***REMOVED*** poids faible, P1 D? P3 D? … — quatre bits de donnée (D1..D4) entrelacés avec quatre bits de
-***REMOVED*** protection (P1..P4). La TABLE est construite ICI à partir de ces positions plutôt que recopiée :
-***REMOVED*** une table de 256 entrées recopiée à la main est une source d'erreurs qu'aucune relecture ne
-***REMOVED*** rattrape, et celle-ci se vérifie par aller-retour.
-_H84_D = (2, 4, 5, 6)          ***REMOVED*** positions des bits de donnée D1..D4
-_H84_P = (0, 1, 3, 7)          ***REMOVED*** positions des bits de protection P1..P4
-***REMOVED*** Chaque bit de protection couvre un sous-ensemble des bits de donnée (équations de la norme).
+# HAMMING 8/4 (ETS 300 706 § 8.2). Les positions sont celles de la norme : en partant du bit de
+# poids faible, P1 D? P3 D? … — quatre bits de donnée (D1..D4) entrelacés avec quatre bits de
+# protection (P1..P4). La TABLE est construite ICI à partir de ces positions plutôt que recopiée :
+# une table de 256 entrées recopiée à la main est une source d'erreurs qu'aucune relecture ne
+# rattrape, et celle-ci se vérifie par aller-retour.
+_H84_D = (2, 4, 5, 6)          # positions des bits de donnée D1..D4
+_H84_P = (0, 1, 3, 7)          # positions des bits de protection P1..P4
+# Chaque bit de protection couvre un sous-ensemble des bits de donnée (équations de la norme).
 _H84_COUV = ((0, 1, 3), (0, 2, 3), (1, 2, 3), (0, 1, 2, 3))
 
 
@@ -1807,8 +1807,8 @@ def _h84_encode(v4):
         par = 0
         for d in _H84_COUV[i]:
             par ^= (v4 >> d) & 1
-        ***REMOVED*** P4 est une parité PAIRE sur l'octet entier ; P1..P3 sont des parités IMPAIRES sur
-        ***REMOVED*** leur sous-ensemble. C'est la convention de la norme, et l'aller-retour la vérifie.
+        # P4 est une parité PAIRE sur l'octet entier ; P1..P3 sont des parités IMPAIRES sur
+        # leur sous-ensemble. C'est la convention de la norme, et l'aller-retour la vérifie.
         if i < 3:
             par ^= 1
         if par:
@@ -1819,10 +1819,10 @@ def _h84_encode(v4):
 _H84_TABLE = [None] * 256
 for _v in range(16):
     _H84_TABLE[_h84_encode(_v)] = _v
-***REMOVED*** CORRECTION D'UNE ERREUR SIMPLE : c'est tout l'objet d'un code de Hamming, et la sauter
-***REMOVED*** reviendrait à jeter des lignes qu'un décodeur conforme lirait. Chaque octet à distance 1 d'un
-***REMOVED*** mot valide est rattaché à ce mot — s'il l'est de DEUX mots valides, on refuse (double erreur
-***REMOVED*** détectée, non corrigible).
+# CORRECTION D'UNE ERREUR SIMPLE : c'est tout l'objet d'un code de Hamming, et la sauter
+# reviendrait à jeter des lignes qu'un décodeur conforme lirait. Chaque octet à distance 1 d'un
+# mot valide est rattaché à ce mot — s'il l'est de DEUX mots valides, on refuse (double erreur
+# détectée, non corrigible).
 for _v in range(16):
     _mot = _h84_encode(_v)
     for _b in range(8):
@@ -1830,7 +1830,7 @@ for _v in range(16):
         if _H84_TABLE[_abime] is None:
             _H84_TABLE[_abime] = _v
         elif _H84_TABLE[_abime] != _v:
-            _H84_TABLE[_abime] = None          ***REMOVED*** ambigu → non corrigible
+            _H84_TABLE[_abime] = None          # ambigu → non corrigible
 del _v, _mot, _b, _abime
 
 
@@ -1849,9 +1849,9 @@ def _parite_impaire_ok(o):
     return c == 1
 
 
-***REMOVED*** Jeu G0 latin (ETS 300 706) : les codes 0x20-0x7F sont l'ASCII, à quelques positions près qui
-***REMOVED*** dépendent de l'option nationale. On rend l'ASCII tel quel et on remplace les commandes par des
-***REMOVED*** espaces — un mur de contrôle veut LIRE le sous-titre, pas restituer une page télétexte exacte.
+# Jeu G0 latin (ETS 300 706) : les codes 0x20-0x7F sont l'ASCII, à quelques positions près qui
+# dépendent de l'option nationale. On rend l'ASCII tel quel et on remplace les commandes par des
+# espaces — un mur de contrôle veut LIRE le sous-titre, pas restituer une page télétexte exacte.
 def _texte_g0(octets):
     out = []
     for o in octets:
@@ -1881,9 +1881,9 @@ def teletext_ligne(bloc42):
             "parite_ok": mauvais == 0, "octets_douteux": mauvais}
 
 
-***REMOVED*** Code de TRAME d'une ligne WST : il ouvre chaque bloc de données d'un paquet OP-47.
+# Code de TRAME d'une ligne WST : il ouvre chaque bloc de données d'un paquet OP-47.
 OP47_FRAMING = 0xE4
-OP47_BLOC = 45          ***REMOVED*** code de trame + 2 octets d'adresse + 42 octets de ligne… voir ci-dessous
+OP47_BLOC = 45          # code de trame + 2 octets d'adresse + 42 octets de ligne… voir ci-dessous
 
 
 def anc_decode_op47(packets):
@@ -1921,8 +1921,8 @@ def anc_decode_op47(packets):
                 i += 43
             else:
                 i += 1
-    ***REMOVED*** Les lignes de SOUS-TITRE sont les paquets 1 à 23 (le 0 est l'en-tête de page). On les rend
-    ***REMOVED*** dans l'ordre reçu : c'est l'ordre d'affichage.
+    # Les lignes de SOUS-TITRE sont les paquets 1 à 23 (le 0 est l'en-tête de page). On les rend
+    # dans l'ordre reçu : c'est l'ordre d'affichage.
     texte = " ".join(l["texte"].strip() for l in lignes
                      if 1 <= l["paquet"] <= 23 and l["texte"].strip())
     return {"present": True, "lignes": lignes, "texte": texte.strip()}
@@ -1947,7 +1947,7 @@ def op47_encode_lignes(lignes, magazine=8, base_paquet=1):
     out += b"\x74\x00\x00\x00"
     return bytes(out)
 
-***REMOVED*** --------------------------------------------------------------------------- AUDIO (samples continus)
+# --------------------------------------------------------------------------- AUDIO (samples continus)
 
 def build_data_flow_def(name, fps_num=25, fps_den=1, label=None, anc_format=ANC_RFC8331):
     """flowDef d'un flux DATA (ANC ST 2110-40, media_type video/smpte291). Le grain = une payload
@@ -1998,7 +1998,7 @@ def _audio_planes(slc, n_frames):
             f = base.fragments[fi]
             if not f.size:
                 continue
-            cnt = int(f.size) // 4   ***REMOVED*** float32
+            cnt = int(f.size) // 4   # float32
             addr = int(f.pointer) + c * stride
             buf = (ctypes.c_float * cnt).from_address(addr)
             frags.append((np.frombuffer(buf, dtype=np.float32), cnt))
@@ -2051,7 +2051,7 @@ class AudioWriter:
         if index is not None:
             idx = index
         elif self.index_mode == "tai":
-            idx = _lib.mxlGetCurrentIndex(ctypes.byref(self.rate)) - n   ***REMOVED*** bloc se terminant « maintenant »
+            idx = _lib.mxlGetCurrentIndex(ctypes.byref(self.rate)) - n   # bloc se terminant « maintenant »
         else:
             idx = self._counter
         slc = mxlMutableWrappedMultiBufferSlice()
@@ -2083,8 +2083,8 @@ class AudioReader(_StaleGuard):
         self._opts = None
         self._own_inst = None
         self._stale_n = 0
-        self._head_seen = None      ***REMOVED*** (head, instant monotone) — détection de décrochage audio
-        self._rate = None           ***REMOVED*** cadence d'échantillonnage, résolue à la 1re conversion
+        self._head_seen = None      # (head, instant monotone) — détection de décrochage audio
+        self._rate = None           # cadence d'échantillonnage, résolue à la 1re conversion
         self._h = _VOID()
         _ck("mxlCreateFlowReader", _lib.mxlCreateFlowReader(
             instance._h, self.fid.encode(), None, ctypes.byref(self._h)))
@@ -2130,7 +2130,7 @@ class AudioReader(_StaleGuard):
         if prev is None or head != prev[0]:
             self._head_seen = (head, now)
             if prev is not None:
-                self._stale_n = 0       ***REMOVED*** head qui avance → lecteur sain, escalade désarmée
+                self._stale_n = 0       # head qui avance → lecteur sain, escalade désarmée
             return False
         if now - prev[1] <= max_s:
             return False
@@ -2163,8 +2163,8 @@ class AudioReader(_StaleGuard):
         ⚠ Même conversion que `AudioWriter.write` : l'API C prend un index ONE-PAST-THE-END et rend
         **[index - count, index)**. On lui passe donc `start_index + count`. Sans ce `+ count`,
         cette fonction rendait le bloc PRÉCÉDANT celui que son nom annonce."""
-        ***REMOVED*** Côté audio le signe du décrochage est un head FIGÉ (les writers audio ne bumpent pas
-        ***REMOVED*** lastWriteTime) — cf. reopen_if_head_stale. Un flux réellement muet a un head qui AVANCE.
+        # Côté audio le signe du décrochage est un head FIGÉ (les writers audio ne bumpent pas
+        # lastWriteTime) — cf. reopen_if_head_stale. Un flux réellement muet a un head qui AVANCE.
         self._auto_garde(self._verif_generation)
         slc = mxlWrappedMultiBufferSlice()
         st = _lib.mxlFlowReaderGetSamplesNonBlocking(self._h, start_index + count, count,
@@ -2253,13 +2253,13 @@ def lib_version():
             v.full.decode() if v.full else "")
 
 
-***REMOVED*** --------------------------------------------------------------------------- v210 (interop MXL)
-***REMOVED*** Pack/unpack v210 (4:2:2 10 bits, seul type vidéo du SDK MXL stock) ↔ notre planar contigu
-***REMOVED*** (plans Y,Cb,Cr — cf. frame_bytes). Chemin rapide = libbobi_v210.so (C auto-vectorisé, ~4-5 ms
-***REMOVED*** l'aller-retour 1080p, buildée dans les images runtime) ; repli numpy bit-exact sinon (~30 ms,
-***REMOVED*** vieilles images). Sert au pont de frontière inter-éditeurs (flow v210 miroir, docs/reference/MXL_INTEROP.md).
+# --------------------------------------------------------------------------- v210 (interop MXL)
+# Pack/unpack v210 (4:2:2 10 bits, seul type vidéo du SDK MXL stock) ↔ notre planar contigu
+# (plans Y,Cb,Cr — cf. frame_bytes). Chemin rapide = libbobi_v210.so (C auto-vectorisé, ~4-5 ms
+# l'aller-retour 1080p, buildée dans les images runtime) ; repli numpy bit-exact sinon (~30 ms,
+# vieilles images). Sert au pont de frontière inter-éditeurs (flow v210 miroir, docs/reference/MXL_INTEROP.md).
 
-_v210_lib = None            ***REMOVED*** CDLL chargée, ou False si introuvable (repli numpy)
+_v210_lib = None            # CDLL chargée, ou False si introuvable (repli numpy)
 
 
 def v210_stride(width):
@@ -2272,39 +2272,39 @@ def v210_frame_bytes(width, height):
     return v210_stride(width) * int(height)
 
 
-***REMOVED*** ------------------------------------------------------------------ écriture non temporelle
-***REMOVED*** Écrire un grain, c'est déverser une trame linéaire dans de la tmpfs que le producteur ne relit
-***REMOVED*** JAMAIS. En magasins normaux le CPU LIT d'abord chaque ligne de cache qu'il va écraser
-***REMOVED*** (read-for-ownership) → ~2× le trafic mémoire. Les magasins en flux (`movntdq`) le suppriment.
-***REMOVED***
-***REMOVED*** ⚠ CE QUI A ÉTÉ MESURÉ, ET CE QUI A ÉTÉ DÉMENTI (2026-08-02, bancs script_templates/nt_*.py).
-***REMOVED*** Première conclusion, FAUSSE : « la glibc bascule au-delà de x86_non_temporal_threshold, donc
-***REMOVED*** sous ce seuil il faut le faire nous-mêmes ». Vérifiée dans les conteneurs de production sur la
-***REMOVED*** MÊME trame de 4 Mo :
-***REMOVED***     dell-1  memcpy 411 µs → non temporel 321 µs   −22 %
-***REMOVED***     dl360-1 memcpy 323 µs → non temporel 390 µs   +20 %   ← le seuil y prédisait le PLUS gros gain
-***REMOVED*** Le seuil glibc décrit ce que FAIT la glibc, pas ce qui est RAPIDE sur la machine. Aucune règle
-***REMOVED*** statique ne marche : dl360-1 (35,8 Mio de L3, mono-socket) écrit déjà à 12,8 Go/s en memcpy.
-***REMOVED***
-***REMOVED*** D'où : on ne DÉDUIT plus, on MESURE, une fois par processus, sur le nœud réel et à la taille
-***REMOVED*** réelle (`_nt_calibrer`). Le chemin le plus rapide gagne — donc pas de régression possible, au
-***REMOVED*** pire on retombe sur `memcpy`.
-***REMOVED***
-***REMOVED*** NE PAS remplacer ceci par `GLIBC_TUNABLES` sur le conteneur : ce seuil est un réglage de
-***REMOVED*** PROCESSUS, il s'appliquerait AUSSI à la copie d'ENTRÉE d'un consommateur (buffer de travail relu
-***REMOVED*** aussitôt, donc éjecté du cache pour rien) — mesuré +9 % à +86 % de CPU. Le ciblage sur la seule
-***REMOVED*** écriture du grain gagne dans les deux régimes.
-***REMOVED***
-***REMOVED*** NE PAS porter ceci dans les kernels de composition (mvcompose.c) : ils écrivent des TUILES, et
-***REMOVED*** quand la largeur de tuile n'est pas multiple de 64 o la dernière ligne de chaque rangée est
-***REMOVED*** partagée avec la tuile voisine → ligne partielle mêlée à des magasins en flux → **3,5 à 5× plus
-***REMOVED*** LENT**. Mur 4×4 en 1080p 8 bits = tuiles de 480 o : pile le cas catastrophique.
+# ------------------------------------------------------------------ écriture non temporelle
+# Écrire un grain, c'est déverser une trame linéaire dans de la tmpfs que le producteur ne relit
+# JAMAIS. En magasins normaux le CPU LIT d'abord chaque ligne de cache qu'il va écraser
+# (read-for-ownership) → ~2× le trafic mémoire. Les magasins en flux (`movntdq`) le suppriment.
+#
+# ⚠ CE QUI A ÉTÉ MESURÉ, ET CE QUI A ÉTÉ DÉMENTI (2026-08-02, bancs script_templates/nt_*.py).
+# Première conclusion, FAUSSE : « la glibc bascule au-delà de x86_non_temporal_threshold, donc
+# sous ce seuil il faut le faire nous-mêmes ». Vérifiée dans les conteneurs de production sur la
+# MÊME trame de 4 Mo :
+#     dell-1  memcpy 411 µs → non temporel 321 µs   −22 %
+#     dl360-1 memcpy 323 µs → non temporel 390 µs   +20 %   ← le seuil y prédisait le PLUS gros gain
+# Le seuil glibc décrit ce que FAIT la glibc, pas ce qui est RAPIDE sur la machine. Aucune règle
+# statique ne marche : dl360-1 (35,8 Mio de L3, mono-socket) écrit déjà à 12,8 Go/s en memcpy.
+#
+# D'où : on ne DÉDUIT plus, on MESURE, une fois par processus, sur le nœud réel et à la taille
+# réelle (`_nt_calibrer`). Le chemin le plus rapide gagne — donc pas de régression possible, au
+# pire on retombe sur `memcpy`.
+#
+# NE PAS remplacer ceci par `GLIBC_TUNABLES` sur le conteneur : ce seuil est un réglage de
+# PROCESSUS, il s'appliquerait AUSSI à la copie d'ENTRÉE d'un consommateur (buffer de travail relu
+# aussitôt, donc éjecté du cache pour rien) — mesuré +9 % à +86 % de CPU. Le ciblage sur la seule
+# écriture du grain gagne dans les deux régimes.
+#
+# NE PAS porter ceci dans les kernels de composition (mvcompose.c) : ils écrivent des TUILES, et
+# quand la largeur de tuile n'est pas multiple de 64 o la dernière ligne de chaque rangée est
+# partagée avec la tuile voisine → ligne partielle mêlée à des magasins en flux → **3,5 à 5× plus
+# LENT**. Mur 4×4 en 1080p 8 bits = tuiles de 480 o : pile le cas catastrophique.
 
-_nt_lib = None                  ***REMOVED*** CDLL chargée, ou False si introuvable (repli memcpy)
-_nt_verdict = {}                ***REMOVED*** taille → True si le non temporel a GAGNÉ la calibration ici
+_nt_lib = None                  # CDLL chargée, ou False si introuvable (repli memcpy)
+_nt_verdict = {}                # taille → True si le non temporel a GAGNÉ la calibration ici
 NT_MIN = int(os.environ.get("BOBI_MXL_NT_MIN", 2 * 1024 * 1024))
-NT_CAL_GRAINS = 10              ***REMOVED*** anneau de calibration : l'ensemble de travail doit sortir du L3,
-                                ***REMOVED*** sinon la calibration conclut l'inverse de la réalité (piège vécu)
+NT_CAL_GRAINS = 10              # anneau de calibration : l'ensemble de travail doit sortir du L3,
+                                # sinon la calibration conclut l'inverse de la réalité (piège vécu)
 NT_CAL_ITERS = 20
 NT_ENABLED = os.environ.get("BOBI_MXL_NT", "1") not in ("0", "no", "off")
 
@@ -2345,7 +2345,7 @@ def _nt_calibrer(lib, n):
         total = n * NT_CAL_GRAINS
         buf = _mm.mmap(-1, total)
         dst = np.frombuffer(buf, dtype=np.uint8)
-        dst[:] = 0                                   ***REMOVED*** pré-faute : ne pas mesurer l'allocation
+        dst[:] = 0                                   # pré-faute : ne pas mesurer l'allocation
         src = np.empty(n, dtype=np.uint8)
         a_src = src.ctypes.data
 
@@ -2359,16 +2359,16 @@ def _nt_calibrer(lib, n):
                     dst[off:off + n] = src
             return time.perf_counter() - t0
 
-        _chrono(False); _chrono(True)                ***REMOVED*** chauffe des deux côtés
+        _chrono(False); _chrono(True)                # chauffe des deux côtés
         t_plain, t_nt = _chrono(False), _chrono(True)
-        verdict = t_nt < t_plain * 0.97              ***REMOVED*** marge : ne basculer que sur un gain NET
+        verdict = t_nt < t_plain * 0.97              # marge : ne basculer que sur un gain NET
     except Exception:
         return False
     finally:
-        ***REMOVED*** Libérer APRÈS le verdict, et sans jamais le compromettre : tant qu'une vue numpy
-        ***REMOVED*** référence le mmap, `close()` lève BufferError. Placée avant le calcul, cette ligne
-        ***REMOVED*** faisait retomber une mesure JUSTE dans l'`except` → verdict False sur TOUS les nœuds,
-        ***REMOVED*** y compris ceux où le non temporel gagnait de 46 %. Échec silencieux vécu.
+        # Libérer APRÈS le verdict, et sans jamais le compromettre : tant qu'une vue numpy
+        # référence le mmap, `close()` lève BufferError. Placée avant le calcul, cette ligne
+        # faisait retomber une mesure JUSTE dans l'`except` → verdict False sur TOUS les nœuds,
+        # y compris ceux où le non temporel gagnait de 46 %. Échec silencieux vécu.
         try:
             del dst, src
             buf.close()
@@ -2458,12 +2458,12 @@ def _v210_planes(planar, width, height, dtype):
     return a[:ny], a[ny:ny + nc], a[ny + nc:ny + 2 * nc]
 
 
-***REMOVED*** Ordre des 12 échantillons d'un groupe de 6 px (mots w0..w3, champs bas→haut) :
-***REMOVED*** [Cb0 Y0 Cr0 | Y1 Cb2 Y2 | Cr2 Y3 Cb4 | Y4 Cr4 Y5] → Y aux indices impairs,
-***REMOVED*** Cb aux indices 0,4,8 et Cr aux indices 2,6,10 (repli numpy).
+# Ordre des 12 échantillons d'un groupe de 6 px (mots w0..w3, champs bas→haut) :
+# [Cb0 Y0 Cr0 | Y1 Cb2 Y2 | Cr2 Y3 Cb4 | Y4 Cr4 Y5] → Y aux indices impairs,
+# Cb aux indices 0,4,8 et Cr aux indices 2,6,10 (repli numpy).
 def _v210_unpack_np(src, width, height, bit_depth):
     stride = v210_stride(width)
-    ngrp = -(-width // 6)                                    ***REMOVED*** groupes, queue incluse
+    ngrp = -(-width // 6)                                    # groupes, queue incluse
     w = (np.frombuffer(src, dtype="<u4", count=(stride // 4) * height)
            .reshape(height, stride // 4)[:, :4 * ngrp].reshape(height, ngrp, 4))
     flat = np.empty((height, ngrp, 12), dtype=np.uint16)
@@ -2472,7 +2472,7 @@ def _v210_unpack_np(src, width, height, bit_depth):
     flat[:, :, 2::3] = ((w >> 20) & 0x3FF).astype(np.uint16)
     flat = flat.reshape(height, ngrp * 12)
     y = flat[:, 1::2][:, :width]
-    cbcr = flat[:, 0::2]                                     ***REMOVED*** [cb cr cb cr …]
+    cbcr = flat[:, 0::2]                                     # [cb cr cb cr …]
     cb = cbcr[:, 0::2][:, :width // 2]
     cr = cbcr[:, 1::2][:, :width // 2]
     if int(bit_depth) <= 8:
@@ -2498,7 +2498,7 @@ def _v210_pack_np(y, cb, cr, out, width, height, bit_depth):
     cr = cr.reshape(height, width // 2).astype(np.uint16)
     if int(bit_depth) <= 8:
         y, cb, cr = y << 2, cb << 2, cr << 2
-    ***REMOVED*** Compléter la queue (<6 px) par réplication du dernier échantillon (comme le C).
+    # Compléter la queue (<6 px) par réplication du dernier échantillon (comme le C).
     def _padded(a, n):
         if a.shape[1] == n:
             return a
@@ -2514,7 +2514,7 @@ def _v210_pack_np(y, cb, cr, out, width, height, bit_depth):
     words = flat[:, :, :, 0] | (flat[:, :, :, 1] << 10) | (flat[:, :, :, 2] << 20)
     lines = out.reshape(height, stride)
     lines[:, :16 * ngrp] = words.reshape(height, -1).astype("<u4").view(np.uint8)
-    lines[:, 16 * ngrp:] = 0                                 ***REMOVED*** padding d'alignement (spec)
+    lines[:, 16 * ngrp:] = 0                                 # padding d'alignement (spec)
     return out
 
 
@@ -2578,26 +2578,26 @@ def v210_pack(planar, width, height, bit_depth=8, out=None):
     return out
 
 
-***REMOVED*** ------------------------------------------------------------- chargement générique des noyaux C
-***REMOVED*** `charger_noyau(nom, signatures)` charge `libbobi_<nom>.so` en choisissant la variante x86-64-v3
-***REMOVED*** si le CPU annonce AVX2. C'est le MÉCANISME qui est mutualisé ici — sélection d'ISA, ordre de
-***REMOVED*** recherche, repli — pas la connaissance des plugins : bobimxl n'a pas à savoir qu'il existe un
-***REMOVED*** scope. (`_mvk_load` et le v210 sont antérieurs et gardent leur forme nommée ; ils pourront s'y
-***REMOVED*** ramener, ce n'est pas urgent.)
-***REMOVED***
-***REMOVED*** ★ POURQUOI ICI ET PAS DANS LE PLUGIN. La sélection de variante est la seule chose qu'il ne faut
-***REMOVED*** surtout pas rater : un `.so` bâti pour une micro-architecture plus riche que le nœud lève SIGILL
-***REMOVED*** (vécu le 2026-08-22 en portant une image Cascade Lake vers un Broadwell). La dupliquer dans
-***REMOVED*** chaque plugin, c'est la rater une fois sur trois.
-***REMOVED***
-***REMOVED*** ★ L'APPELANT DOIT SE PROTÉGER. `bobimxl` vit dans l'IMAGE, les plugins sont POUSSÉS : un plugin
-***REMOVED*** récent peut atterrir sur une image ancienne où cette fonction n'existe pas encore. Appeler
-***REMOVED***     getattr(bobimxl, "charger_noyau", lambda *_a, **_k: None)(...)
-***REMOVED*** transforme un plantage en dégradation visible — c'est ce que fait déjà le multiview avec
-***REMOVED*** `mvk_available`, et c'est le bon réflexe tant qu'aucune exigence de version d'image n'est
-***REMOVED*** vérifiée au déploiement.
+# ------------------------------------------------------------- chargement générique des noyaux C
+# `charger_noyau(nom, signatures)` charge `libbobi_<nom>.so` en choisissant la variante x86-64-v3
+# si le CPU annonce AVX2. C'est le MÉCANISME qui est mutualisé ici — sélection d'ISA, ordre de
+# recherche, repli — pas la connaissance des plugins : bobimxl n'a pas à savoir qu'il existe un
+# scope. (`_mvk_load` et le v210 sont antérieurs et gardent leur forme nommée ; ils pourront s'y
+# ramener, ce n'est pas urgent.)
+#
+# ★ POURQUOI ICI ET PAS DANS LE PLUGIN. La sélection de variante est la seule chose qu'il ne faut
+# surtout pas rater : un `.so` bâti pour une micro-architecture plus riche que le nœud lève SIGILL
+# (vécu le 2026-08-22 en portant une image Cascade Lake vers un Broadwell). La dupliquer dans
+# chaque plugin, c'est la rater une fois sur trois.
+#
+# ★ L'APPELANT DOIT SE PROTÉGER. `bobimxl` vit dans l'IMAGE, les plugins sont POUSSÉS : un plugin
+# récent peut atterrir sur une image ancienne où cette fonction n'existe pas encore. Appeler
+#     getattr(bobimxl, "charger_noyau", lambda *_a, **_k: None)(...)
+# transforme un plantage en dégradation visible — c'est ce que fait déjà le multiview avec
+# `mvk_available`, et c'est le bon réflexe tant qu'aucune exigence de version d'image n'est
+# vérifiée au déploiement.
 
-_noyaux = {}                ***REMOVED*** nom → CDLL chargée, ou False si introuvable
+_noyaux = {}                # nom → CDLL chargée, ou False si introuvable
 
 
 def charger_noyau(nom, signatures):
@@ -2634,8 +2634,8 @@ def charger_noyau(nom, signatures):
                 f.restype = None
                 f.argtypes = list(args)
         except AttributeError:
-            ***REMOVED*** Le .so existe mais ne porte pas ce qu'on attend : une variante périmée traîne dans
-            ***REMOVED*** l'image. Mieux vaut le repli numpy qu'un appel sur une signature fausse.
+            # Le .so existe mais ne porte pas ce qu'on attend : une variante périmée traîne dans
+            # l'image. Mieux vaut le repli numpy qu'un appel sur une signature fausse.
             continue
         _noyaux[nom] = lib
         return lib
@@ -2643,17 +2643,17 @@ def charger_noyau(nom, signatures):
     return None
 
 
-***REMOVED*** ------------------------------------------------------------------- mvk (compose fusionné CPU)
-***REMOVED*** Passes de compositing multiview fusionnées en C (libbobi_mvk.so, script_templates/mvcompose.c) :
-***REMOVED*** blend / blend_pre / place nearest en UNE passe mémoire chacune, au lieu des passes numpy
-***REMOVED*** chaînées (memory-bound — banc 2026-07-11 : 7-40× selon la profondeur du pipeline). Contrat :
-***REMOVED*** les wrappers *_into renvoient False si la lib est absente ou si les tableaux ne conviennent
-***REMOVED*** pas (dtype/forme/contiguïté du dernier axe) → l'appelant DOIT garder son repli numpy, qui
-***REMOVED*** reste la référence bit-exacte. Les INDEX nearest sont calculés par l'appelant (les deux
-***REMOVED*** formules du multiview — troncature float de resize_plane, division entière du chemin
-***REMOVED*** tranche — donnent des octets différents ; le C n'en choisit aucune).
+# ------------------------------------------------------------------- mvk (compose fusionné CPU)
+# Passes de compositing multiview fusionnées en C (libbobi_mvk.so, script_templates/mvcompose.c) :
+# blend / blend_pre / place nearest en UNE passe mémoire chacune, au lieu des passes numpy
+# chaînées (memory-bound — banc 2026-07-11 : 7-40× selon la profondeur du pipeline). Contrat :
+# les wrappers *_into renvoient False si la lib est absente ou si les tableaux ne conviennent
+# pas (dtype/forme/contiguïté du dernier axe) → l'appelant DOIT garder son repli numpy, qui
+# reste la référence bit-exacte. Les INDEX nearest sont calculés par l'appelant (les deux
+# formules du multiview — troncature float de resize_plane, division entière du chemin
+# tranche — donnent des octets différents ; le C n'en choisit aucune).
 
-_mvk_lib = None             ***REMOVED*** CDLL chargée, ou False si introuvable (repli numpy)
+_mvk_lib = None             # CDLL chargée, ou False si introuvable (repli numpy)
 
 
 def _mvk_load():
@@ -2675,12 +2675,12 @@ def _mvk_load():
         if avx2:
             cands.append(os.path.join(d, "libbobi_mvk_v3.so"))
         cands.append(os.path.join(d, "libbobi_mvk.so"))
-    ***REMOVED*** AVANT le chargement (libgomp lit l'env à SON init) : attente PASSIVE des threads OpenMP.
-    ***REMOVED*** Le défaut libgomp (spin-wait ~300 ms après chaque région parallèle) laissait les threads
-    ***REMOVED*** tourner À VIDE entre deux appels mvk : sur un cpuset de N CPU avec N threads, ils
-    ***REMOVED*** affamaient tout le reste du process (PIL, lectures, sortie) — mesuré sur le vmid 145 :
-    ***REMOVED*** ov_render 6,8 → 29,7 ms, fps 50 → 15. Passif = le fork/join coûte quelques µs de plus,
-    ***REMOVED*** négligeable devant les régions (~ms) ; l'utilisateur peut surcharger via l'env.
+    # AVANT le chargement (libgomp lit l'env à SON init) : attente PASSIVE des threads OpenMP.
+    # Le défaut libgomp (spin-wait ~300 ms après chaque région parallèle) laissait les threads
+    # tourner À VIDE entre deux appels mvk : sur un cpuset de N CPU avec N threads, ils
+    # affamaient tout le reste du process (PIL, lectures, sortie) — mesuré sur le vmid 145 :
+    # ov_render 6,8 → 29,7 ms, fps 50 → 15. Passif = le fork/join coûte quelques µs de plus,
+    # négligeable devant les régions (~ms) ; l'utilisateur peut surcharger via l'env.
     os.environ.setdefault("OMP_WAIT_POLICY", "passive")
     for c in cands:
         if not c:
@@ -2709,10 +2709,10 @@ def _mvk_load():
         lib.mvk_set_threads.argtypes = [_i32]
         lib.mvk_get_threads.restype = _i32
         lib.mvk_get_threads.argtypes = []
-        ***REMOVED*** ABI 2 (image ≥ 0.12) : conversion RGBA→YUV fusionnée. Binding TOLÉRANT — un .so
-        ***REMOVED*** d'image 0.11 (ABI 1) n'a pas ces symboles : les blends/place restent servis, et
-        ***REMOVED*** mvk_rgba2yuv() renvoie None (repli numpy à l'appelant). bobimxl étant poussé au
-        ***REMOVED*** déploiement, il croise couramment des .so plus vieux que lui.
+        # ABI 2 (image ≥ 0.12) : conversion RGBA→YUV fusionnée. Binding TOLÉRANT — un .so
+        # d'image 0.11 (ABI 1) n'a pas ces symboles : les blends/place restent servis, et
+        # mvk_rgba2yuv() renvoie None (repli numpy à l'appelant). bobimxl étant poussé au
+        # déploiement, il croise couramment des .so plus vieux que lui.
         global _MVK_HAS_R2Y, _MVK_HAS_MIX
         try:
             for fn in ("mvk_rgba2yuv_u8_u8", "mvk_rgba2yuv_u8_u16",
@@ -2725,7 +2725,7 @@ def _mvk_load():
             _MVK_HAS_R2Y = True
         except AttributeError:
             _MVK_HAS_R2Y = False
-        ***REMOVED*** ABI 3 (image ≥ 0.13) : mix pondéré float32 A/B (transitions du mixer). Tolérant.
+        # ABI 3 (image ≥ 0.13) : mix pondéré float32 A/B (transitions du mixer). Tolérant.
         try:
             for fn in ("mvk_mixf_u8", "mvk_mixf_u16"):
                 f = getattr(lib, fn)
@@ -2742,8 +2742,8 @@ def _mvk_load():
             _MVK_HAS_MIX = True
         except AttributeError:
             _MVK_HAS_MIX = False
-        ***REMOVED*** ABI 4 (image ≥ 0.15) : compositing du plugin SPLIT (gather ⊗ ruban ⊗ blend 256e).
-        ***REMOVED*** Tolérant : un .so plus vieux garde tout le reste, mvk_spl_*_into renvoie False.
+        # ABI 4 (image ≥ 0.15) : compositing du plugin SPLIT (gather ⊗ ruban ⊗ blend 256e).
+        # Tolérant : un .so plus vieux garde tout le reste, mvk_spl_*_into renvoie False.
         global _MVK_HAS_SPL
         try:
             for fn in ("mvk_spl_compose_u8", "mvk_spl_compose_u16"):
@@ -2767,7 +2767,7 @@ def _mvk_load():
             _MVK_HAS_SPL = True
         except AttributeError:
             _MVK_HAS_SPL = False
-        ***REMOVED*** ABI 5 (image ≥ 0.16) : fond DÉGRADÉ N arrêts du split (wipe/mélange animable). Tolérant.
+        # ABI 5 (image ≥ 0.16) : fond DÉGRADÉ N arrêts du split (wipe/mélange animable). Tolérant.
         global _MVK_HAS_GRAD
         _f32 = ctypes.c_float
         try:
@@ -2783,7 +2783,7 @@ def _mvk_load():
             _MVK_HAS_GRAD = True
         except AttributeError:
             _MVK_HAS_GRAD = False
-        ***REMOVED*** ABI 6 (image ≥ 0.22) : CONSTRUCTION d'empreinte du split (régime ANIMÉ). Tolérant.
+        # ABI 6 (image ≥ 0.22) : CONSTRUCTION d'empreinte du split (régime ANIMÉ). Tolérant.
         global _MVK_HAS_STAMP
         try:
             f = lib.mvk_spl_blur2_f32
@@ -2809,7 +2809,7 @@ def _mvk_load():
             _MVK_HAS_STAMP = True
         except AttributeError:
             _MVK_HAS_STAMP = False
-        ***REMOVED*** ABI 7 (image ≥ 0.23) : pré-fusion ruban⊗alpha + produit externe (chemin NON TOURNÉ).
+        # ABI 7 (image ≥ 0.23) : pré-fusion ruban⊗alpha + produit externe (chemin NON TOURNÉ).
         global _MVK_HAS_FUSE
         try:
             for fn in ("mvk_spl_prefuse_u8", "mvk_spl_prefuse_u16"):
@@ -3065,13 +3065,13 @@ def mvk_place_into(dst, src, row_idx, col_idx=None, col0=0, col_step=0):
     return True
 
 
-***REMOVED*** ---------------------------------------------------------- mvk spl_* : compositing du SPLIT
-***REMOVED*** ABI 4 (image ≥ 0.15). Arithmétique en 256e (alpha 0..256, >> 8) — celle du plugin split, ≠
-***REMOVED*** des blends multiview (255e) : ne PAS mélanger les deux familles. Accumulation uint32 côté C.
-***REMOVED*** Les cartes d'index (flat 2D int64 pour une box TOURNÉE, row/col int32 pour une box droite)
-***REMOVED*** sont calculées par l'appelant → bit-exact à sa propre formule nearest. Wrappers défensifs :
-***REMOVED*** False si la lib est absente, l'ABI trop vieille ou les tableaux non conformes (dtype/forme/
-***REMOVED*** contiguïté du dernier axe) → l'appelant DOIT garder son repli numpy.
+# ---------------------------------------------------------- mvk spl_* : compositing du SPLIT
+# ABI 4 (image ≥ 0.15). Arithmétique en 256e (alpha 0..256, >> 8) — celle du plugin split, ≠
+# des blends multiview (255e) : ne PAS mélanger les deux familles. Accumulation uint32 côté C.
+# Les cartes d'index (flat 2D int64 pour une box TOURNÉE, row/col int32 pour une box droite)
+# sont calculées par l'appelant → bit-exact à sa propre formule nearest. Wrappers défensifs :
+# False si la lib est absente, l'ABI trop vieille ou les tableaux non conformes (dtype/forme/
+# contiguïté du dernier axe) → l'appelant DOIT garder son repli numpy.
 
 _MVK_HAS_SPL = False
 
@@ -3097,7 +3097,7 @@ def _spl_map(a, dt, h, w):
     if a is None:
         return None
     if a.ndim != 2 or a.dtype != dt or a.shape != (h, w) or a.strides[1] != a.itemsize:
-        return False          ***REMOVED*** non conforme (≠ absent) → repli
+        return False          # non conforme (≠ absent) → repli
     return a
 
 
@@ -3128,7 +3128,7 @@ def mvk_spl_compose_into(dst, src, flat=None, row_idx=None, col_idx=None,
     al = _spl_map(alpha, np.uint16, h, w)
     if ra is False or rc is False or al is False:
         return False
-    if (ra is None) != (rc is None):        ***REMOVED*** ruban = couple (masque, couleur)
+    if (ra is None) != (rc is None):        # ruban = couple (masque, couleur)
         return False
     fn = lib.mvk_spl_compose_u8 if dt == np.uint8 else lib.mvk_spl_compose_u16
     fn(dst.ctypes.data, dst.strides[0] // dst.itemsize,
@@ -3232,11 +3232,11 @@ def mvk_spl_gradient_into(y, u, v, W, H, cw, ch, y0, y1, cosv, sinv, pmin, inv_r
     return True
 
 
-***REMOVED*** ── ABI 6 : CONSTRUCTION d'empreinte du plugin SPLIT (régime ANIMÉ) ────────────────────────────
-***REMOVED*** Ces trois wrappers ne composent rien : ils bâtissent l'empreinte d'une box. Ils n'ont d'effet
-***REMOVED*** que quand la géométrie CHANGE à chaque trame (transition, curseur glissé, rotation animée) —
-***REMOVED*** le cas où le cache de stamp ne sert à rien et où la construction numpy domine la trame.
-***REMOVED*** Chaque kernel est BIT-EXACT avec son repli numpy (cf. mvcompose.c). False → repli.
+# ── ABI 6 : CONSTRUCTION d'empreinte du plugin SPLIT (régime ANIMÉ) ────────────────────────────
+# Ces trois wrappers ne composent rien : ils bâtissent l'empreinte d'une box. Ils n'ont d'effet
+# que quand la géométrie CHANGE à chaque trame (transition, curseur glissé, rotation animée) —
+# le cas où le cache de stamp ne sert à rien et où la construction numpy domine la trame.
+# Chaque kernel est BIT-EXACT avec son repli numpy (cf. mvcompose.c). False → repli.
 
 def mvk_spl_blur2(m, r, iters=3):
     """SPLIT — flou ~gaussien 2D EN PLACE d'un masque non séparable (silhouette d'une box

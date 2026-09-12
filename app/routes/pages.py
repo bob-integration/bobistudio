@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Rendu des pages Jinja (dashboard, containers, traitements, câbles, projets, réglages, aide)
 + les share links (page publique `/w/<token>` d'un flux WebRTC + son API de gestion), regroupés
@@ -28,7 +28,7 @@ from ..database import (db_get_containers, db_get_container, db_get_projects, db
                       db_delete_share_links_orphelins)
 
 
-***REMOVED*** ─── Espace projets (chantier 1, cf. docs/reference/PROJETS.md §12) ─────────
+# ─── Espace projets (chantier 1, cf. docs/reference/PROJETS.md §12) ─────────
 
 @bp.route("/workspaces")
 @require_login
@@ -47,8 +47,8 @@ def workspace_page(pid):
     return render_template("workspace.html", page="workspace", hide_topnav=True,
                            project={"id": proj["id"], "name": proj["name"]},
                            my_role=project_role_for(pid),
-                           ***REMOVED*** accès global → section « Macros système » de l'overlay ⚡
-                           ***REMOVED*** (édition des macros système via l'éditeur Scénario)
+                           # accès global → section « Macros système » de l'overlay ⚡
+                           # (édition des macros système via l'éditeur Scénario)
                            is_global=has_global_access())
 
 
@@ -76,7 +76,7 @@ def catalogue_page():
     ⚠ `settings.edit`, PAS `require_login` : installer un plugin exécute son
     `hooks.py` dans l'orchestrateur. La porte d'entrée n'a pas à être plus ouverte
     que le geste qu'elle mène."""
-    return redirect("/settings***REMOVED***catalogue")
+    return redirect("/settings#catalogue")
 
 @bp.route("/api/changelog", methods=["GET"])
 @require_login
@@ -100,12 +100,12 @@ def api_changelog():
     mtime = int(os.path.getmtime(path))
     return jsonify({"ok": True, "html": html, "mtime": mtime, "size": len(text)})
 
-***REMOVED*** Documents markdown VERSIONNÉS exposés à la page Aide. Liste BLANCHE volontaire : le nom vient
-***REMOVED*** de l'URL, on ne compose jamais un chemin avec une entrée non listée — les valeurs sont des
-***REMOVED*** chemins codés en dur, aucune traversée n'est possible.
-***REMOVED*** ⚠ Tout document ajouté ici doit être embarqué par `app/builder.py` (CORE_FILES pour la racine,
-***REMOVED*** CORE_DIRS pour `docs/`), sans quoi il donne un 404 sur toute instance installée alors que tout
-***REMOVED*** marche en dev.
+# Documents markdown VERSIONNÉS exposés à la page Aide. Liste BLANCHE volontaire : le nom vient
+# de l'URL, on ne compose jamais un chemin avec une entrée non listée — les valeurs sont des
+# chemins codés en dur, aucune traversée n'est possible.
+# ⚠ Tout document ajouté ici doit être embarqué par `app/builder.py` (CORE_FILES pour la racine,
+# CORE_DIRS pour `docs/`), sans quoi il donne un 404 sur toute instance installée alors que tout
+# marche en dev.
 _DOCS_RACINE = {
     "install": "INSTALL.md",
     "infrastructure": "INFRASTRUCTURE.md",
@@ -113,8 +113,8 @@ _DOCS_RACINE = {
     "node-agent": "NODE_AGENT.md",
     "third-party": "THIRD-PARTY-NOTICES.md",
     "contributing": "CONTRIBUTING.md",
-    ***REMOVED*** Hors racine : référence d'intégration de la MIB SNMP. C'est le document que lit
-    ***REMOVED*** l'intégrateur du client pour brancher son système de supervision.
+    # Hors racine : référence d'intégration de la MIB SNMP. C'est le document que lit
+    # l'intégrateur du client pour brancher son système de supervision.
     "snmp-mib": "docs/reference/SNMP_MIB.md",
 }
 
@@ -148,7 +148,7 @@ def api_doc(name):
 @bp.route("/")
 @require_login
 def home():
-    ***REMOVED*** Dashboard data-driven : tout est fetch en JS via /api/home/summary
+    # Dashboard data-driven : tout est fetch en JS via /api/home/summary
     resp = make_response(render_template("home.html"))
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"] = "no-cache"
@@ -161,8 +161,8 @@ def containers_page():
     from . import _attach_projects
     from ..database import db_get_nodes
     conts = _attach_projects(db_get_containers())
-    ***REMOVED*** Options du filtre par nœud : les nœuds RÉELLEMENT porteurs d'un conteneur (pas juste la
-    ***REMOVED*** table `nodes` — des conteneurs peuvent référencer un nœud absent de la table, ex. Horace).
+    # Options du filtre par nœud : les nœuds RÉELLEMENT porteurs d'un conteneur (pas juste la
+    # table `nodes` — des conteneurs peuvent référencer un nœud absent de la table, ex. Horace).
     noms = {n["id"]: (n.get("name") or f"Nœud {n['id']}") for n in db_get_nodes()}
     ids = sorted({c.get("node_id") for c in conts if c.get("node_id")})
     noeuds = [{"id": i, "name": noms.get(i, f"Nœud {i}")} for i in ids]
@@ -170,7 +170,7 @@ def containers_page():
         containers=conts,
         projets=db_get_projects(),
         noeuds=noeuds,
-        node_names=noms,          ***REMOVED*** node_id → nom, pour l'affichage « Nœud » par tuile
+        node_names=noms,          # node_id → nom, pour l'affichage « Nœud » par tuile
         alerts=rendre_alertes(db_get_alerts()))
 
 @bp.route("/traitements")
@@ -200,8 +200,8 @@ def mesure_index():
     return _render_plugin_section("mesure", "Mesure")
 
 
-***REMOVED*** Compat anciennes URLs /traitements/<key> (favoris) → onglet ***REMOVED***type du shell unifié.
-***REMOVED*** La rubrique Traitements est désormais une page unique à onglets (hash).
+# Compat anciennes URLs /traitements/<key> (favoris) → onglet #type du shell unifié.
+# La rubrique Traitements est désormais une page unique à onglets (hash).
 _TRAITEMENT_KEY_TO_TYPE = {
     "multiview": "multiview", "melangeurs": "mixer", "correcteurs": "color_corrector",
     "split": "split", "udc": "udc", "delay": "delay",
@@ -214,7 +214,7 @@ def traitements_legacy(key):
     /traitements aurait envoyé les favoris (« /traitements/multiview ») sur une page où l'onglet
     n'existe plus — une redirection qui ment est pire qu'un 404, elle affiche une page plausible."""
     t = _TRAITEMENT_KEY_TO_TYPE.get(key, key)
-    return redirect(_route_du_type(t) + "***REMOVED***" + t, code=301)
+    return redirect(_route_du_type(t) + "#" + t, code=301)
 
 
 def _route_du_type(type_):
@@ -224,11 +224,11 @@ def _route_du_type(type_):
     sec = ((m.get("nav") or {}).get("section")) or "traitements"
     return "/" + sec
 
-***REMOVED*** ─── Redirect compat ancien /multiview → /traitements/multiview ────
+# ─── Redirect compat ancien /multiview → /traitements/multiview ────
 @bp.route("/multiview")
 @require_login
 def multiview_page():
-    return redirect("/traitements***REMOVED***multiview", code=301)
+    return redirect("/traitements#multiview", code=301)
 
 @bp.route("/labels")
 @require_login
@@ -249,12 +249,12 @@ def cables_page():
 @bp.route("/streams")
 @require_login
 def streams_page():
-    return redirect("/io***REMOVED***streamer", code=301)
+    return redirect("/io#streamer", code=301)
 
-***REMOVED*** ─── Share links : page publique client pour un flux WebRTC ──────────────────
-***REMOVED*** Un jeton aléatoire non devinable (`secrets.token_urlsafe`) → URL `/w/<token>`
-***REMOVED*** (la seule route publique ajoutée). Révocable (delete). Le jeton protège la PAGE,
-***REMOVED*** pas le flux MediaMTX lui-même (qui reste diffusé sur la passerelle).
+# ─── Share links : page publique client pour un flux WebRTC ──────────────────
+# Un jeton aléatoire non devinable (`secrets.token_urlsafe`) → URL `/w/<token>`
+# (la seule route publique ajoutée). Révocable (delete). Le jeton protège la PAGE,
+# pas le flux MediaMTX lui-même (qui reste diffusé sur la passerelle).
 
 def _streamer_webrtc_path(vmid):
     """(container_dict, path) du 1er dest WebRTC activé d'un streamer, ou (c, None)."""
@@ -275,9 +275,9 @@ def _share_url(token):
     return request.host_url.rstrip("/") + url_for("routes.public_watch", token=token)
 
 def _share_public(link):
-    ***REMOVED*** ⚠ `cidrs` EN FAIT PARTIE. Sans lui, la réponse de création ne dit pas la restriction
-    ***REMOVED*** RÉELLEMENT appliquée : celui qui vient de restreindre un lien ne peut pas vérifier que
-    ***REMOVED*** ça a pris, et c'est exactement le moment où il veut en être sûr.
+    # ⚠ `cidrs` EN FAIT PARTIE. Sans lui, la réponse de création ne dit pas la restriction
+    # RÉELLEMENT appliquée : celui qui vient de restreindre un lien ne peut pas vérifier que
+    # ça a pris, et c'est exactement le moment où il veut en être sûr.
     return {"token": link["token"], "title": link.get("title") or "",
             "note": link.get("note") or "", "created_at": link.get("created_at"),
             "cidrs": link.get("cidrs") or "",
@@ -294,10 +294,10 @@ def api_share_create(vmid):
     body = request.get_json(force=True, silent=True) or {}
     c, path = _streamer_webrtc_path(vmid)
     if not c:
-        return jsonify({"error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"error": f"container #{vmid} introuvable"}), 404
     if not path:
         return jsonify({"error": "aucune destination WebRTC activée sur cet encodeur"}), 400
-    token = secrets.token_urlsafe(16)   ***REMOVED*** 128 bits → non devinable / non énumérable
+    token = secrets.token_urlsafe(16)   # 128 bits → non devinable / non énumérable
     title = (body.get("title") or "").strip() or (c.get("hostname") or path)
     note = (body.get("note") or "").strip()
     db_create_share_link(token, vmid, path, title, note)
@@ -314,7 +314,7 @@ def public_watch(token):
     link = db_get_share_link(token)
     if not link:
         abort(404)
-    _langue_du_visiteur()      ***REMOVED*** même raison que pour `/p/` : le visiteur n'a pas de compte
+    _langue_du_visiteur()      # même raison que pour `/p/` : le visiteur n'a pas de compte
     from .. import settings as _st
     enabled = _st.get("webrtc_enabled")
     gw_ip = _st.get("webrtc_gateway_ip")
@@ -329,26 +329,26 @@ def public_watch(token):
                            note=link.get("note") or "",
                            whep_url=whep_url, embed_url=embed_url)
 
-***REMOVED*** ─── Lien public d'une PAGE DE PLUGIN, en lecture seule ──────────────────────
-***REMOVED*** ★ MÉCANISME D'ORCHESTRATEUR, PAS CAPACITÉ D'UN PLUGIN. Rien ici ne connaît le scope : la
-***REMOVED*** page publique monte l'UI DU PLUGIN du conteneur visé, quel qu'il soit. Écrire ce mécanisme
-***REMOVED*** dans un plugin aurait garanti qu'on le recopie au suivant — c'est déjà arrivé quatre fois
-***REMOVED*** avec l'éditeur de layout, et le prix est écrit dans TODO.md.
-***REMOVED***
-***REMOVED*** ★ POURQUOI LA PAGE ET PAS LE WEBRTC. `/w/<token>` existe déjà et sert un flux réencodé :
-***REMOVED*** parfait pour montrer une image, destructeur pour un instrument de mesure, dont les tracés
-***REMOVED*** fins sont précisément ce que l'encodeur jette. Ici la page reçoit les données et les dessine.
-***REMOVED***
-***REMOVED*** ⚠ LE RELAIS EST EN LECTURE SEULE, ET C'EST SA RAISON D'ÊTRE. Trois verrous : la méthode (GET
-***REMOVED*** seul), le chemin (uniquement ce que le manifeste déclare dans `control.read_endpoints`), et
-***REMOVED*** le conteneur (celui du jeton, jamais un autre). Un relais qui accepterait `control.endpoints`
-***REMOVED*** au complet laisserait recâbler l'entrée d'un instrument de régie depuis un lien envoyé par
-***REMOVED*** courriel.
-***REMOVED***
-***REMOVED*** ⚠ ET LE PLUGIN DOIT DÉCLARER QU'IL SAIT LE FAIRE (`ui.public_page`). Sa console doit honorer
-***REMOVED*** une BASE d'API différente ; celle qui ne le fait pas appellerait l'API privée depuis la page
-***REMOVED*** publique et échouerait en 401, sans rien expliquer à qui a reçu le lien. Mieux vaut refuser
-***REMOVED*** de créer le lien que d'en livrer un qui ne marche pas.
+# ─── Lien public d'une PAGE DE PLUGIN, en lecture seule ──────────────────────
+# ★ MÉCANISME D'ORCHESTRATEUR, PAS CAPACITÉ D'UN PLUGIN. Rien ici ne connaît le scope : la
+# page publique monte l'UI DU PLUGIN du conteneur visé, quel qu'il soit. Écrire ce mécanisme
+# dans un plugin aurait garanti qu'on le recopie au suivant — c'est déjà arrivé quatre fois
+# avec l'éditeur de layout, et le prix est écrit dans TODO.md.
+#
+# ★ POURQUOI LA PAGE ET PAS LE WEBRTC. `/w/<token>` existe déjà et sert un flux réencodé :
+# parfait pour montrer une image, destructeur pour un instrument de mesure, dont les tracés
+# fins sont précisément ce que l'encodeur jette. Ici la page reçoit les données et les dessine.
+#
+# ⚠ LE RELAIS EST EN LECTURE SEULE, ET C'EST SA RAISON D'ÊTRE. Trois verrous : la méthode (GET
+# seul), le chemin (uniquement ce que le manifeste déclare dans `control.read_endpoints`), et
+# le conteneur (celui du jeton, jamais un autre). Un relais qui accepterait `control.endpoints`
+# au complet laisserait recâbler l'entrée d'un instrument de régie depuis un lien envoyé par
+# courriel.
+#
+# ⚠ ET LE PLUGIN DOIT DÉCLARER QU'IL SAIT LE FAIRE (`ui.public_page`). Sa console doit honorer
+# une BASE d'API différente ; celle qui ne le fait pas appellerait l'API privée depuis la page
+# publique et échouerait en 401, sans rien expliquer à qui a reçu le lien. Mieux vaut refuser
+# de créer le lien que d'en livrer un qui ne marche pas.
 
 def _ip_client_pour_filtre():
     """L'adresse à confronter à la liste blanche d'un lien public.
@@ -384,15 +384,15 @@ def _ip_autorisee(link):
     try:
         adr = ipaddress.ip_address(ip)
     except ValueError:
-        return False, ip          ***REMOVED*** pas d'adresse lisible → on refuse, on ne devine pas
+        return False, ip          # pas d'adresse lisible → on refuse, on ne devine pas
     for r in regles:
         try:
-            ***REMOVED*** Une adresse seule est acceptée comme un réseau /32 (ou /128) : écrire
-            ***REMOVED*** « x.x.x.x » doit marcher sans que personne ait à savoir ce qu'est un CIDR.
+            # Une adresse seule est acceptée comme un réseau /32 (ou /128) : écrire
+            # « x.x.x.x » doit marcher sans que personne ait à savoir ce qu'est un CIDR.
             if adr in ipaddress.ip_network(r, strict=False):
                 return True, ip
         except ValueError:
-            continue              ***REMOVED*** règle illisible : ignorée, jamais interprétée « au mieux »
+            continue              # règle illisible : ignorée, jamais interprétée « au mieux »
     return False, ip
 
 
@@ -461,7 +461,7 @@ def _container_du_lien(link):
     son lien continue de fonctionner. C'est le même appareil."""
     uuid = (link.get("instance_uuid") or "").strip()
     if not uuid:
-        return None                    ***REMOVED*** lien d'avant la migration, conteneur disparu : orphelin
+        return None                    # lien d'avant la migration, conteneur disparu : orphelin
     for c in db_get_containers():
         if (c.get("instance_uuid") or "") == uuid:
             return c
@@ -503,14 +503,14 @@ def api_page_share_create(vmid):
     body = request.get_json(force=True, silent=True) or {}
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"error": f"container #{vmid} introuvable"}), 404
     m, err = _page_publique_ok(c)
     if err:
         return jsonify({"error": err}), 400
     cidrs, refusees = _cidrs_valides(body.get("cidrs"))
     if refusees:
         return jsonify({"error": "adresses illisibles : " + ", ".join(refusees)}), 400
-    token = secrets.token_urlsafe(16)     ***REMOVED*** 128 bits : non devinable, non énumérable
+    token = secrets.token_urlsafe(16)     # 128 bits : non devinable, non énumérable
     db_create_share_link(token, vmid, m["type"],
                          (body.get("title") or "").strip() or (c.get("hostname") or m["type"]),
                          (body.get("note") or "").strip(), kind="page", cidrs=cidrs,
@@ -544,9 +544,9 @@ def api_share_all():
         d["kind"] = l.get("kind") or "webrtc"
         d["cidrs"] = l.get("cidrs") or ""
         d["vmid"] = l["vmid"]
-        ***REMOVED*** ⚠ L'ORPHELINAT SE JUGE SUR L'IDENTITÉ D'INSTANCE. Le juger sur le vmid ferait passer
-        ***REMOVED*** pour vivant un lien dont le vmid a simplement été REPRIS par un autre conteneur —
-        ***REMOVED*** c'est-à-dire exactement le cas dangereux.
+        # ⚠ L'ORPHELINAT SE JUGE SUR L'IDENTITÉ D'INSTANCE. Le juger sur le vmid ferait passer
+        # pour vivant un lien dont le vmid a simplement été REPRIS par un autre conteneur —
+        # c'est-à-dire exactement le cas dangereux.
         c = _container_du_lien(l)
         d["hostname"] = (c or {}).get("hostname")
         d["vmid_actuel"] = (c or {}).get("vmid")
@@ -578,16 +578,16 @@ def public_page(token):
     link, c, m = _lien_page(token)
     if not link:
         abort(404)
-    _langue_du_visiteur()      ***REMOVED*** AVANT tout rendu : `_()` la lit dans `g` (cf. i18n.current_lang)
-    ***REMOVED*** (le filtre d'adresses est appliqué juste après, avant tout rendu)
+    _langue_du_visiteur()      # AVANT tout rendu : `_()` la lit dans `g` (cf. i18n.current_lang)
+    # (le filtre d'adresses est appliqué juste après, avant tout rendu)
     ok, ip = _ip_autorisee(link)
     if not ok:
-        ***REMOVED*** ⚠ CETTE PAGE EST LA SEULE CHOSE QUE VERRA SON DESTINATAIRE, et il n'est probablement
-        ***REMOVED*** pas celui qui administre. Elle dit donc que ce n'est pas cassé (c'est restreint),
-        ***REMOVED*** donne l'ADRESSE VUE — exactement celle qu'il faut faire autoriser — et nomme le site
-        ***REMOVED*** à qui la demander. Un « 403 Forbidden » nu fait chercher la panne au mauvais endroit.
-        ***REMOVED*** Elle ne révèle rien que le porteur du jeton n'ait déjà : le titre du lien et sa
-        ***REMOVED*** propre adresse. Ni nom de conteneur, ni topologie.
+        # ⚠ CETTE PAGE EST LA SEULE CHOSE QUE VERRA SON DESTINATAIRE, et il n'est probablement
+        # pas celui qui administre. Elle dit donc que ce n'est pas cassé (c'est restreint),
+        # donne l'ADRESSE VUE — exactement celle qu'il faut faire autoriser — et nomme le site
+        # à qui la demander. Un « 403 Forbidden » nu fait chercher la panne au mauvais endroit.
+        # Elle ne révèle rien que le porteur du jeton n'ait déjà : le titre du lien et sa
+        # propre adresse. Ni nom de conteneur, ni topologie.
         return render_template("public_refus.html", adresse=ip or "?",
                                titre=link.get("title") or "",
                                lang=current_lang(),
@@ -646,15 +646,15 @@ def public_page_proxy(token, p):
     link, _c, m = _lien_page(token)
     if not link:
         abort(404)
-    ***REMOVED*** Le filtre d'adresses vaut AUSSI pour le relais, et pas seulement pour la page : sans ça
-    ***REMOVED*** l'adresse interdite n'aurait pas la page mais garderait les données, ce qui revient à
-    ***REMOVED*** n'avoir aucun filtre pour qui sait lire une URL.
+    # Le filtre d'adresses vaut AUSSI pour le relais, et pas seulement pour la page : sans ça
+    # l'adresse interdite n'aurait pas la page mais garderait les données, ce qui revient à
+    # n'avoir aucun filtre pour qui sait lire une URL.
     ok, ip = _ip_autorisee(link)
     if not ok:
         return jsonify({"error": "adresse %s non autorisée pour ce lien" % (ip or "?")}), 403
-    ***REMOVED*** ⚠ LA LISTE BLANCHE EST CELLE DU MANIFESTE, pas une copie locale. Une copie finirait par
-    ***REMOVED*** diverger, et c'est du côté PERMISSIF qu'elle divergerait : on ajoute un endpoint de
-    ***REMOVED*** lecture au plugin et on oublie d'en retirer un d'écriture ici.
+    # ⚠ LA LISTE BLANCHE EST CELLE DU MANIFESTE, pas une copie locale. Une copie finirait par
+    # diverger, et c'est du côté PERMISSIF qu'elle divergerait : on ajoute un endpoint de
+    # lecture au plugin et on oublie d'en retirer un d'écriture ici.
     lecture = set(((m.get("control") or {}).get("read_endpoints")) or [])
     if ("/" + p) not in lecture:
         return jsonify({"error": "lecture seule : /%s n'est pas un endpoint de lecture" % p}), 403
@@ -663,7 +663,7 @@ def public_page_proxy(token, p):
         return jsonify({"error": "container injoignable"}), 502
     try:
         r = _req.get(f"http://{ip}:8082/{p}", params=request.args, timeout=5)
-    except Exception as e:                                          ***REMOVED*** noqa: BLE001
+    except Exception as e:                                          # noqa: BLE001
         return jsonify({"error": str(e)}), 502
     if r.status_code == 204:
         return ("", 204)
@@ -681,19 +681,19 @@ def compte_page():
     on cherche ses propres réglages. Et changer son e-mail n'était pas possible du tout : il
     fallait déranger un administrateur pour corriger une faute de frappe dans sa propre
     adresse."""
-    ***REMOVED*** ⚠ L'ÉTAT DU MONITOR EST LU CÔTÉ SERVEUR, PAS PAR `/api/monitor/status`. Cette route-là
-    ***REMOVED*** appelle `monitor.touch()` — le battement de cœur qui empêche le faucheur d'arrêter
-    ***REMOVED*** l'encodeur après dix minutes. Une page de compte qui l'interroge MAINTIENDRAIT donc en
-    ***REMOVED*** vie un encodeur que personne ne regarde, en consommant un conteneur et du CPU sur un
-    ***REMOVED*** nœud. On lit sans réveiller.
+    # ⚠ L'ÉTAT DU MONITOR EST LU CÔTÉ SERVEUR, PAS PAR `/api/monitor/status`. Cette route-là
+    # appelle `monitor.touch()` — le battement de cœur qui empêche le faucheur d'arrêter
+    # l'encodeur après dix minutes. Une page de compte qui l'interroge MAINTIENDRAIT donc en
+    # vie un encodeur que personne ne regarde, en consommant un conteneur et du CPU sur un
+    # nœud. On lit sans réveiller.
     from .. import monitor
     u = current_user() or {}
     try:
         mon = monitor.status(u.get("id"))
-    except Exception:                                               ***REMOVED*** noqa: BLE001
+    except Exception:                                               # noqa: BLE001
         mon = None
-    ***REMOVED*** Les exigences de mot de passe viennent du SERVEUR, jamais recopiées dans le gabarit :
-    ***REMOVED*** sinon changer de profil dans Réglages laisserait la page annoncer les anciens seuils.
+    # Les exigences de mot de passe viennent du SERVEUR, jamais recopiées dans le gabarit :
+    # sinon changer de profil dans Réglages laisserait la page annoncer les anciens seuils.
     from ..auth import pwd_exigences
     return render_template("compte.html", monitor=mon, pwd_exigences=pwd_exigences())
 
@@ -709,14 +709,14 @@ def projects_page():
 @bp.route("/backup")
 @require_login
 def backup_page():
-    ***REMOVED*** Redirige vers l'onglet Database de la page Réglages
-    return redirect(url_for("routes.settings_page") + "***REMOVED***database")
+    # Redirige vers l'onglet Database de la page Réglages
+    return redirect(url_for("routes.settings_page") + "#database")
 
 @bp.route("/settings")
 @require_login
 def settings_page():
     from .. import core_plugins, settings as _st
-    ***REMOVED*** Services explicitement désactivés (ont une clé _enabled = False)
+    # Services explicitement désactivés (ont une clé _enabled = False)
     disabled = set()
     for entry in core_plugins.scan().values():
         m = entry["manifest"]
@@ -732,9 +732,9 @@ def settings_page():
         else:
             if tab.get("id") not in disabled:
                 tabs.append(tab)
-    ***REMOVED*** L'organisation du catalogue est affichée, jamais saisie : elle vient du code
-    ***REMOVED*** (`config.CATALOGUE_ORG`). La passer au gabarit évite un « {org} » brut à
-    ***REMOVED*** l'écran avant la première lecture de l'API.
+    # L'organisation du catalogue est affichée, jamais saisie : elle vient du code
+    # (`config.CATALOGUE_ORG`). La passer au gabarit évite un « {org} » brut à
+    # l'écran avant la première lecture de l'API.
     from ..catalogue import _reglages as _cat_reglages
     return render_template("settings.html", core_tabs=tabs,
                            timezones=_timezones_par_region(),
@@ -751,11 +751,11 @@ def api_timezones():
     return jsonify({"groups": [{"region": r, "zones": z} for r, z in _timezones_par_region()]})
 
 
-***REMOVED*** Catalogue des VARIABLES DE TEXTE des multiviews. Défini ICI, en un seul endroit, et servi aux
-***REMOVED*** DEUX éditeurs (modèles de PiP dans les Réglages, composeur de mur dans la page Traitements) :
-***REMOVED*** la liste était sinon dupliquée dans deux fichiers JS qui auraient divergé au premier ajout.
-***REMOVED*** ⚠ Reste à tenir synchrone avec _TEXT_VARS / _SRC_VARS de plugins/multiview/script.py, qui est
-***REMOVED*** la source de vérité du RENDU.
+# Catalogue des VARIABLES DE TEXTE des multiviews. Défini ICI, en un seul endroit, et servi aux
+# DEUX éditeurs (modèles de PiP dans les Réglages, composeur de mur dans la page Traitements) :
+# la liste était sinon dupliquée dans deux fichiers JS qui auraient divergé au premier ajout.
+# ⚠ Reste à tenir synchrone avec _TEXT_VARS / _SRC_VARS de plugins/multiview/script.py, qui est
+# la source de vérité du RENDU.
 _TEXT_VARIABLES = {
     "system": [
         ("conteneur", "Nom du conteneur"), ("systeme", "Nom du système"),
@@ -766,12 +766,12 @@ _TEXT_VARIABLES = {
         ("fps", "Cadence mesurée"), ("entrees", "Nombre d'entrées câblées"),
         ("duree", "Durée depuis le démarrage"),
     ],
-    ***REMOVED*** NŒUD, RDMA et CONTRÔLEUR — trois groupes distincts plutôt qu'un fourre-tout « infra ».
-    ***REMOVED*** Un menu se parcourt à la souris : quinze entrées d'affilée se lisent mal, trois listes de
-    ***REMOVED*** cinq se choisissent. Le découpage suit la question posée, pas l'implémentation : « comment va
-    ***REMOVED*** la machine », « comment vont les liens », « comment va le contrôleur ».
-    ***REMOVED*** Un conteneur ne voit que son cgroup : ces valeurs lui sont POUSSÉES par l'orchestrateur
-    ***REMOVED*** (deploy.pousser_telemetrie), qui les échantillonne déjà pour la page Monitoring.
+    # NŒUD, RDMA et CONTRÔLEUR — trois groupes distincts plutôt qu'un fourre-tout « infra ».
+    # Un menu se parcourt à la souris : quinze entrées d'affilée se lisent mal, trois listes de
+    # cinq se choisissent. Le découpage suit la question posée, pas l'implémentation : « comment va
+    # la machine », « comment vont les liens », « comment va le contrôleur ».
+    # Un conteneur ne voit que son cgroup : ces valeurs lui sont POUSSÉES par l'orchestrateur
+    # (deploy.pousser_telemetrie), qui les échantillonne déjà pour la page Monitoring.
     "noeud": [
         ("nom_noeud", "Nom du nœud"), ("cpu_noeud", "CPU"), ("ram_noeud", "Mémoire (%)"),
         ("ram_noeud_mo", "Mémoire (Mo)"), ("disque_noeud", "Disque"),
@@ -804,9 +804,9 @@ def api_text_variables():
     Les variables `infra` acceptent une CIBLE : `%cpu_noeud%` parle du nœud qui porte le mur,
     `%cpu_noeud:dl360-1%` du nœud nommé. De quoi faire un mur de supervision qui affiche tout le
     parc, sans dupliquer une variable par nœud."""
-    ***REMOVED*** Libellés TRADUITS dans la langue du lecteur : ce catalogue est relu à chaque ouverture du
-    ***REMOVED*** composeur, on peut donc le rendre par requête. Le nom de la variable (%cpu%) ne bouge JAMAIS —
-    ***REMOVED*** c'est lui que le conteneur cherche dans le texte, le traduire casserait tous les habillages.
+    # Libellés TRADUITS dans la langue du lecteur : ce catalogue est relu à chaque ouverture du
+    # composeur, on peut donc le rendre par requête. Le nom de la variable (%cpu%) ne bouge JAMAIS —
+    # c'est lui que le conteneur cherche dans le texte, le traduire casserait tous les habillages.
     from ..i18n import t as _t
     def _lbl(nom, defaut):
         cle = "vars.src_label" if nom.startswith("src_label") else "vars." + nom
@@ -835,7 +835,7 @@ def _timezones_par_region():
         else:
             region = n.split("/", 1)[0] if "/" in n else "Autres"
         groupes.setdefault(region, []).append(n)
-    ***REMOVED*** UTC en tête (choix explicite fréquent en broadcast), puis les régions par ordre alphabétique.
+    # UTC en tête (choix explicite fréquent en broadcast), puis les régions par ordre alphabétique.
     ordre = (["UTC"] if "UTC" in groupes else []) + sorted(k for k in groupes if k != "UTC")
     return [(r, groupes[r]) for r in ordre]
 
@@ -875,21 +875,21 @@ def _surcharges_catalogue():
                 src = f.read()
         except OSError:
             continue
-        ***REMOVED*** Les commentaires portent souvent le NOM du piège (« ne pas remettre select ici ») :
-        ***REMOVED*** les garder produirait un signalement sur la mise en garde elle-même.
+        # Les commentaires portent souvent le NOM du piège (« ne pas remettre select ici ») :
+        # les garder produirait un signalement sur la mise en garde elle-même.
         sans_com = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), src, flags=re.S)
         for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", sans_com):
             sel, corps = m.group(1).strip(), m.group(2)
             if not sel or sel.startswith("@"):
                 continue
-            ***REMOVED*** Ne juger que la CIBLE — le compound le plus à droite de chaque sélecteur.
-            ***REMOVED*** `.cc-knob.ctl-mixed .cc-knob-value` ne vise pas un contrôle du catalogue : il s'en
-            ***REMOVED*** sert comme QUALIFICATEUR pour styler un élément privé, ce qui est légitime. Tester
-            ***REMOVED*** le sélecteur entier signalait ces cas et noyait les vrais dans le bruit.
+            # Ne juger que la CIBLE — le compound le plus à droite de chaque sélecteur.
+            # `.cc-knob.ctl-mixed .cc-knob-value` ne vise pas un contrôle du catalogue : il s'en
+            # sert comme QUALIFICATEUR pour styler un élément privé, ce qui est légitime. Tester
+            # le sélecteur entier signalait ces cas et noyait les vrais dans le bruit.
             def _vise(part):
                 cible = re.split(r"[\s>+~]+", part.strip())[-1]
                 return bool(re.match(r"select\b", cible) or cible.startswith("select") or
-                            re.search(r"(^|[.:***REMOVED***\[])select\b", cible) or
+                            re.search(r"(^|[.:#\[])select\b", cible) or
                             re.search(r'input\[type=["\']?checkbox', cible) or
                             ".ctl-" in cible)
             if not any(_vise(part) for part in sel.split(",")):
@@ -930,9 +930,9 @@ def _inventaire_controles():
     return {"ok": True, "classes": classes, "adoption": adoption, "orphelins": orphelins}
 
 
-***REMOVED*** Familles de contrôle reconnaissables au NOM. Sert à repérer, dans le CSS privé d'un plugin, ce
-***REMOVED*** qui ressemble à un contrôle et devrait donc vivre au catalogue. Volontairement large : mieux vaut
-***REMOVED*** proposer une migration de trop, que l'exploitant écarte, qu'en rater une en silence.
+# Familles de contrôle reconnaissables au NOM. Sert à repérer, dans le CSS privé d'un plugin, ce
+# qui ressemble à un contrôle et devrait donc vivre au catalogue. Volontairement large : mieux vaut
+# proposer une migration de trop, que l'exploitant écarte, qu'en rater une en silence.
 _FAMILLES_CTL = {
     "knob": ("knob", "dial", "rotary", "encoder"),
     "push": ("push", "poussoir", "lamp", "led", "latch"),
@@ -975,13 +975,13 @@ def _adoption_controles(classes):
             if re.search(r"[\"'\s]%s[\"'\s]" % re.escape(c), usage):
                 adoption[c].append(plug)
         _orphelins_du_css(orphelins, plug, src_css)
-    ***REMOVED*** Les plugins ne sont pas les seuls consommateurs : des pages entières du produit sont rendues
-    ***REMOVED*** par des scripts partagés (les onglets I/O 2110, le panneau de modèle de carte TX). Tant qu'on
-    ***REMOVED*** ne lisait QUE plugins/*/control.js, l'inventaire les ignorait — une classe employée par la
-    ***REMOVED*** plus grosse vue du parc pouvait s'y afficher « aucun plugin », et une migration entière
-    ***REMOVED*** n'apparaissait nulle part. On les compte donc, sous leur nom de fichier pour qu'on voie d'un
-    ***REMOVED*** coup d'œil que ce n'est pas un plugin. On ne descend PAS dans `static/js/` : c'est là que vit
-    ***REMOVED*** `controls.js`, qui DÉFINIT le catalogue — l'y compter ferait croire que tout est adopté.
+    # Les plugins ne sont pas les seuls consommateurs : des pages entières du produit sont rendues
+    # par des scripts partagés (les onglets I/O 2110, le panneau de modèle de carte TX). Tant qu'on
+    # ne lisait QUE plugins/*/control.js, l'inventaire les ignorait — une classe employée par la
+    # plus grosse vue du parc pouvait s'y afficher « aucun plugin », et une migration entière
+    # n'apparaissait nulle part. On les compte donc, sous leur nom de fichier pour qu'on voie d'un
+    # coup d'œil que ce n'est pas un plugin. On ne descend PAS dans `static/js/` : c'est là que vit
+    # `controls.js`, qui DÉFINIT le catalogue — l'y compter ferait croire que tout est adopté.
     for js in sorted(glob.glob(os.path.join(racine, "static", "*.js"))):
         nom = os.path.basename(js)
         try:
@@ -1031,9 +1031,9 @@ def _grouper_composants(trouvees):
     return groupes
 
 
-***REMOVED*** Propriétés écartées de l'aperçu : elles ne décrivent pas l'ASPECT du contrôle et casseraient la
-***REMOVED*** mise en page de la vignette (un `position:absolute` sortirait de son cadre, un `width:100%`
-***REMOVED*** mangerait la ligne). L'aperçu montre à quoi ressemble la classe, pas où elle se place.
+# Propriétés écartées de l'aperçu : elles ne décrivent pas l'ASPECT du contrôle et casseraient la
+# mise en page de la vignette (un `position:absolute` sortirait de son cadre, un `width:100%`
+# mangerait la ligne). L'aperçu montre à quoi ressemble la classe, pas où elle se place.
 _APERCU_EXCLU = ("position", "top", "right", "bottom", "left", "z-index", "float", "grid-area",
                  "margin", "flex", "align-self", "justify-self", "order", "inset")
 
@@ -1061,10 +1061,10 @@ def _apercu_composant(src_css, racine, parts):
                 out.append((gardes, decls))
         return out
 
-    ***REMOVED*** 1er passage : ce que le composant déclare. On y récolte aussi ce dont son rendu DÉPEND —
-    ***REMOVED*** sans quoi une grille comme `.mx-bus-btns` s'affiche vide, puisque tout son contenu visible
-    ***REMOVED*** est porté par des classes d'un AUTRE composant (`.nkk-btn`), et un `.mx-bus-label` reste
-    ***REMOVED*** transparent parce que sa couleur vient d'un modificateur (`.pgm`).
+    # 1er passage : ce que le composant déclare. On y récolte aussi ce dont son rendu DÉPEND —
+    # sans quoi une grille comme `.mx-bus-btns` s'affiche vide, puisque tout son contenu visible
+    # est porté par des classes d'un AUTRE composant (`.nkk-btn`), et un `.mx-bus-label` reste
+    # transparent parce que sa couleur vient d'un modificateur (`.pgm`).
     modifs, enfants = set(), set()
     for gardes, _ in selecteurs(parts):
         for sel in gardes:
@@ -1079,10 +1079,10 @@ def _apercu_composant(src_css, racine, parts):
 
     regles, principales = [], []
     for gardes, decls in selecteurs(etendu):
-        ***REMOVED*** L'ancêtre ÉTRANGER au composant (`.mx-panel .mx-bus-label`) n'existe pas dans le bac :
-        ***REMOVED*** la règle serait inerte. On tronque le sélecteur à partir de la 1ʳᵉ classe du composant,
-        ***REMOVED*** ce qui la rend applicable. L'aperçu montre alors le contrôle hors de son contexte —
-        ***REMOVED*** c'est précisément ce qu'on veut voir ici.
+        # L'ancêtre ÉTRANGER au composant (`.mx-panel .mx-bus-label`) n'existe pas dans le bac :
+        # la règle serait inerte. On tronque le sélecteur à partir de la 1ʳᵉ classe du composant,
+        # ce qui la rend applicable. L'aperçu montre alors le contrôle hors de son contexte —
+        # c'est précisément ce qu'on veut voir ici.
         coupes = []
         for sel in gardes:
             m = re.search(r"(?<![-\w])\.(?:%s)(?![-\w])" % "|".join(re.escape(c) for c in etendu), sel)
@@ -1117,8 +1117,8 @@ def _apercu_regle(src_css, cls):
     import re
     motif = re.compile(r"(?<![-\w])\." + re.escape(cls) + r"(?![-\w])")
     regles, principales = [], []
-    ***REMOVED*** Balayage des règles de premier niveau : `sélecteur { déclarations }`. Les blocs @media sont
-    ***REMOVED*** ignorés (leur contenu est conditionnel à la taille d'écran, hors sujet pour une vignette).
+    # Balayage des règles de premier niveau : `sélecteur { déclarations }`. Les blocs @media sont
+    # ignorés (leur contenu est conditionnel à la taille d'écran, hors sujet pour une vignette).
     for m in re.finditer(r"([^{}@]+)\{([^{}]*)\}", src_css):
         sel, decls = m.group(1).strip(), m.group(2).strip()
         if not sel or not motif.search(sel):
@@ -1132,8 +1132,8 @@ def _apercu_regle(src_css, cls):
     if not regles:
         return {"css": "", "regles": "", "conteneur": False}
     brut = " ".join(" ".join(principales).split())
-    ***REMOVED*** Un conteneur pur (flex/grid sans fond ni bordure ni taille) n'a rien à MONTRER : la page le
-    ***REMOVED*** signalera plutôt que d'afficher un carré vide en laissant croire à un défaut de rendu.
+    # Un conteneur pur (flex/grid sans fond ni bordure ni taille) n'a rien à MONTRER : la page le
+    # signalera plutôt que d'afficher un carré vide en laissant croire à un défaut de rendu.
     conteneur = (("display:flex" in brut.replace(" ", "") or "display:grid" in brut.replace(" ", ""))
                  and not re.search(r"background|border|width|height|box-shadow", brut))
     css = "\n".join("%s { %s }" % (motif.sub("__PREV__", s), d) for s, d in regles)

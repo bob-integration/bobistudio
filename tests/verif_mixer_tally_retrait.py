@@ -1,24 +1,24 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc du RETRAIT de la contribution d'un mélangeur.
-***REMOVED***
-***REMOVED*** ★ SE TAIRE, C'EST DIRE « RIEN », PAS SE TAIRE. Un mélangeur qui cesse d'émettre faisait
-***REMOVED*** `continue` : sa contribution précédente restait dans le modèle, et sa caméra gardait son rouge
-***REMOVED*** indéfiniment. L'exploitant qui décoche « émettre le tally » n'a pas demandé à figer un plateau.
-***REMOVED***
-***REMOVED*** C'est la même faute que la tuile sautée (PiP4), l'IS-07 entrant qui rejetait les sources sans
-***REMOVED*** index, la propagation qui abandonnait ses amonts, et le libellé cuit qui survivait à sa source.
-***REMOVED*** Elle a une forme unique : NE PAS SAVOIR, OU NE PLUS AVOIR À DIRE, N'AUTORISE PAS À LAISSER
-***REMOVED*** CROIRE. Un état qu'on cesse de rafraîchir n'est pas neutre — il ment.
-***REMOVED***
-***REMOVED*** ⚠ UNE EXCEPTION, ET UNE SEULE : le mélangeur injoignable. Là on GARDE, parce qu'un timeout de
-***REMOVED*** 800 ms est presque toujours un hoquet, et qu'éteindre le tally d'une source à l'antenne pour ça
-***REMOVED*** serait pire. Le cas définitif — le mélangeur détruit — est couvert par le balayage, pas par le
-***REMOVED*** timeout. Ce banc vérifie les deux, sinon « on garde toujours » le passerait.
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tests/verif_mixer_tally_retrait.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc du RETRAIT de la contribution d'un mélangeur.
+#
+# ★ SE TAIRE, C'EST DIRE « RIEN », PAS SE TAIRE. Un mélangeur qui cesse d'émettre faisait
+# `continue` : sa contribution précédente restait dans le modèle, et sa caméra gardait son rouge
+# indéfiniment. L'exploitant qui décoche « émettre le tally » n'a pas demandé à figer un plateau.
+#
+# C'est la même faute que la tuile sautée (PiP4), l'IS-07 entrant qui rejetait les sources sans
+# index, la propagation qui abandonnait ses amonts, et le libellé cuit qui survivait à sa source.
+# Elle a une forme unique : NE PAS SAVOIR, OU NE PLUS AVOIR À DIRE, N'AUTORISE PAS À LAISSER
+# CROIRE. Un état qu'on cesse de rafraîchir n'est pas neutre — il ment.
+#
+# ⚠ UNE EXCEPTION, ET UNE SEULE : le mélangeur injoignable. Là on GARDE, parce qu'un timeout de
+# 800 ms est presque toujours un hoquet, et qu'éteindre le tally d'une source à l'antenne pour ça
+# serait pire. Le cas définitif — le mélangeur détruit — est couvert par le balayage, pas par le
+# timeout. Ce banc vérifie les deux, sinon « on garde toujours » le passerait.
+#
+#   $ ./venv/bin/python tests/verif_mixer_tally_retrait.py
 import json
 import os
 import sys
@@ -36,8 +36,8 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-from app import tally                                                ***REMOVED*** noqa: E402
-import app.metrics as _m                                             ***REMOVED*** noqa: E402
+from app import tally                                                # noqa: E402
+import app.metrics as _m                                             # noqa: E402
 
 _m.get_container_ip = lambda v: "127.0.0.1"
 
@@ -80,14 +80,14 @@ def _vider():
     tally._mixers_publies.clear()
 
 
-***REMOVED*** ── Le témoin positif : sans lui, tous les contrôles « éteint » passeraient à vide ──
+# ── Le témoin positif : sans lui, tous les contrôles « éteint » passeraient à vide ──
 _vider()
 controle("★★★ un mélangeur émetteur allume bien ses sources",
          _tick(_OK(), [_ct()]) == ALLUME,
          "sans ce témoin, un modèle qui n'allumerait JAMAIS rien rendrait ce banc entièrement "
          "vert. Obtenu %s" % tally.get_tally_state())
 
-***REMOVED*** ── 1. « Émettre le tally » décoché ────────────────────────
+# ── 1. « Émettre le tally » décoché ────────────────────────
 controle("★★★ décocher « émettre le tally » ÉTEINT sa contribution",
          _tick(_OK(), [_ct(emit=False)]) == {},
          "★ C'est le défaut : `continue` laissait le rouge en place indéfiniment. Reproduit "
@@ -98,12 +98,12 @@ controle("★★ ...et le recocher la rallume",
          "un retrait qui ne se défait pas serait aussi grave : le mélangeur ne pourrait plus "
          "jamais tallyer. Obtenu %s" % tally.get_tally_state())
 
-***REMOVED*** ── 2. Plus de niveau ────────────────────────────
-***REMOVED*** ⚠ CE CONTRÔLE A ÉTÉ REFAIT. Il affirmait « sans niveau, la contribution s'éteint » — vrai,
-***REMOVED*** mais le garde n'y est pour rien : sans niveau, `want` est vide et le chemin normal retire déjà.
-***REMOVED*** Muté, le banc restait vert. Ce que le garde apporte réellement, c'est de ne pas aller
-***REMOVED*** INTERROGER le conteneur pour un mélangeur qui n'a personne à adresser : une requête par
-***REMOVED*** mélangeur et par tour, dix fois par seconde. C'est cela qu'on vérifie.
+# ── 2. Plus de niveau ────────────────────────────
+# ⚠ CE CONTRÔLE A ÉTÉ REFAIT. Il affirmait « sans niveau, la contribution s'éteint » — vrai,
+# mais le garde n'y est pour rien : sans niveau, `want` est vide et le chemin normal retire déjà.
+# Muté, le banc restait vert. Ce que le garde apporte réellement, c'est de ne pas aller
+# INTERROGER le conteneur pour un mélangeur qui n'a personne à adresser : une requête par
+# mélangeur et par tour, dix fois par seconde. C'est cela qu'on vérifie.
 class _Compteur(_OK):
     def __init__(self):
         self.n = 0
@@ -121,7 +121,7 @@ controle("★★★ un mélangeur sans niveau n'est pas interrogé, et n'allume 
          "est une requête pure perte. Obtenu %d requête(s), état %s"
          % (_c.n, tally.get_tally_state()))
 
-***REMOVED*** ── 3. Le mélangeur disparaît ───────────────────────────
+# ── 3. Le mélangeur disparaît ───────────────────────────
 _tick(_OK(), [_ct()])
 controle("★★★ un mélangeur DÉTRUIT ne laisse pas sa dernière contribution",
          _tick(_OK(), []) == {},
@@ -134,7 +134,7 @@ controle("★★ ...ni un conteneur qui CHANGE de type",
          "un vmid réattribué à autre chose emporterait sinon le tally de son prédécesseur. "
          "Obtenu %s" % tally.get_tally_state())
 
-***REMOVED*** ── 4. L'EXCEPTION : injoignable ────────────────────────
+# ── 4. L'EXCEPTION : injoignable ────────────────────────
 _tick(_OK(), [_ct()])
 controle("★★★ un mélangeur INJOIGNABLE garde sa contribution",
          _tick(_KO(), [_ct()]) == ALLUME,
@@ -147,7 +147,7 @@ controle("★★ ...mais un mélangeur injoignable ET disparu est bien retiré",
          "l'indulgence vaut pour le silence, pas pour l'absence. Obtenu %s"
          % tally.get_tally_state())
 
-***REMOVED*** ── 5. Un mélangeur n'éteint jamais ce qu'un AUTRE écrivain affirme ────────
+# ── 5. Un mélangeur n'éteint jamais ce qu'un AUTRE écrivain affirme ────────
 _vider()
 tally.poser_tally("vsm", {("cam1", NIV): "red"})
 _tick(_OK(), [_ct()])

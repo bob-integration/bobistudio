@@ -2,11 +2,11 @@
  * (st40_set_udw / st40_add_parity_bits / st40_calc_checksum + struct st40_rfc8331_payload_hdr),
  * exactement comme st_tx_ancillary_session.c, et imprime les octets.
  * → à comparer bit à bit avec bobimxl.anc_pack_rfc8331(). */
-***REMOVED***include <stdio.h>
-***REMOVED***include <stdint.h>
-***REMOVED***include <string.h>
-***REMOVED***include <arpa/inet.h>
-***REMOVED***include <mtl/st40_api.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <mtl/st40_api.h>
 
 int main(void) {
   /* Paquet de test : ATC DID/SDID 0x60, line 9, hori 0xFFF, 16 UDW (TC 10:22:33:12). */

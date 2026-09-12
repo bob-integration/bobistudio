@@ -1,23 +1,23 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc de l'ÉTAPE 1 du chantier « NMOS dans les conteneurs » : vérifie que
-***REMOVED*** `services/nmos/mxl.py` dérive une surface IS-04/IS-05 conforme à BCP-007-03
-***REMOVED*** à partir du manifeste d'un plugin.
-***REMOVED***
-***REMOVED*** POURQUOI `hello_world` SERT DE GABARIT. Ce n'est pas « un plugin au hasard » :
-***REMOVED*** c'est le plugin de CONTRAT, et son wiring couvre exactement ce qu'il faut —
-***REMOVED*** trois `produces` (vidéo, audio, data → les trois media_type d'un coup) et
-***REMOVED*** trois `consumes` tous `optional` (→ le cas « port non câblé », que le schéma
-***REMOVED*** de la BCP prévoit et qu'on oublierait de tester). Si la surface se dérive
-***REMOVED*** correctement d'ici, elle se dérive pour tous les plugins.
-***REMOVED***
-***REMOVED*** CE BANC NE TOUCHE À RIEN : aucune écriture DB, aucun conteneur, aucun réseau.
-***REMOVED*** Toutes les fonctions éprouvées ici sont pures (`node_id=None` est délibéré :
-***REMOVED*** `_domain_id` ne doit pas ALLOUER un domaine depuis un banc — cf. contrôle 9).
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tools/verif_nmos_mxl.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc de l'ÉTAPE 1 du chantier « NMOS dans les conteneurs » : vérifie que
+# `services/nmos/mxl.py` dérive une surface IS-04/IS-05 conforme à BCP-007-03
+# à partir du manifeste d'un plugin.
+#
+# POURQUOI `hello_world` SERT DE GABARIT. Ce n'est pas « un plugin au hasard » :
+# c'est le plugin de CONTRAT, et son wiring couvre exactement ce qu'il faut —
+# trois `produces` (vidéo, audio, data → les trois media_type d'un coup) et
+# trois `consumes` tous `optional` (→ le cas « port non câblé », que le schéma
+# de la BCP prévoit et qu'on oublierait de tester). Si la surface se dérive
+# correctement d'ici, elle se dérive pour tous les plugins.
+#
+# CE BANC NE TOUCHE À RIEN : aucune écriture DB, aucun conteneur, aucun réseau.
+# Toutes les fonctions éprouvées ici sont pures (`node_id=None` est délibéré :
+# `_domain_id` ne doit pas ALLOUER un domaine depuis un banc — cf. contrôle 9).
+#
+#   $ ./venv/bin/python tools/verif_nmos_mxl.py
 import importlib.util
 import json
 import os
@@ -38,20 +38,20 @@ def controle(intitule, condition, explication=""):
         echecs.append((intitule, explication))
 
 
-from services.nmos import mxl                                    ***REMOVED*** noqa: E402
+from services.nmos import mxl                                    # noqa: E402
 
-***REMOVED*** ── 1. Le MIROIR d'UUID — le point de rupture silencieux ─────────────────────
-***REMOVED*** `mxl.flow_uuid` et `bobimxl.flow_id` sont deux copies de la même constante
-***REMOVED*** (uuid5 du namespace « mxl.bobi.studio ») dans deux fichiers distincts. Si elles
-***REMOVED*** divergent, les ressources NMOS s'annoncent, les patchs sont acceptés, et le
-***REMOVED*** câble ne transporte RIEN — sans un message d'erreur nulle part.
+# ── 1. Le MIROIR d'UUID — le point de rupture silencieux ─────────────────────
+# `mxl.flow_uuid` et `bobimxl.flow_id` sont deux copies de la même constante
+# (uuid5 du namespace « mxl.bobi.studio ») dans deux fichiers distincts. Si elles
+# divergent, les ressources NMOS s'annoncent, les patchs sont acceptés, et le
+# câble ne transporte RIEN — sans un message d'erreur nulle part.
 _spec = importlib.util.spec_from_file_location(
     "bobimxl_ref", os.path.join(RACINE, "script_templates", "bobimxl.py"))
 _ref = importlib.util.module_from_spec(_spec)
 try:
     _spec.loader.exec_module(_ref)
     _flow_id_ref = _ref.flow_id
-except Exception as e:                                           ***REMOVED*** pragma: no cover
+except Exception as e:                                           # pragma: no cover
     _flow_id_ref = None
     controle("bobimxl est importable pour comparaison", False, repr(e))
 
@@ -63,7 +63,7 @@ if _flow_id_ref:
              "l'UUID d'un flux MXL est dérivé de son nom par uuid5 dans DEUX fichiers ; "
              "une divergence fait pointer tout le routage NMOS vers des flux inexistants")
 
-***REMOVED*** ── 2. Inventaire des ports depuis le manifeste ──────────────────────────────
+# ── 2. Inventaire des ports depuis le manifeste ──────────────────────────────
 HOTE = "hello-banc-1"
 _manif = json.load(open(os.path.join(RACINE, "plugins", "hello_world", "plugin.json"),
                         encoding="utf-8"))
@@ -71,7 +71,7 @@ CONTENEUR = {
     "vmid": 999001,
     "hostname": HOTE,
     "instance_uuid": "11111111-2222-3333-4444-555555555555",
-    "node_id": None,                     ***REMOVED*** ⚠ délibéré : voir contrôle 9
+    "node_id": None,                     # ⚠ délibéré : voir contrôle 9
     "deploy_config": json.dumps({"type": "hello_world",
                                  "params": dict(_manif.get("deploy_defaults") or {})}),
 }
@@ -92,7 +92,7 @@ controle("le nom de flux produit est résolu depuis {hostname}",
          any(p.get("shm") == "%s_hello" % HOTE for p in prod),
          "sans substitution, mxl_flow_id serait l'uuid5 du littéral « {hostname}_hello »")
 
-***REMOVED*** ── 3. Construction du modèle, sans DB ni conteneur ──────────────────────────
+# ── 3. Construction du modèle, sans DB ni conteneur ──────────────────────────
 DID = "device-cluster-factice"
 devices = {DID: {"senders": [], "receivers": []}}
 sources, flows, senders, receivers = {}, {}, {}, {}
@@ -108,7 +108,7 @@ controle("un Sender par sortie, un Receiver par entrée",
 controle("Source et Flow accompagnent chaque Sender",
          len(sources) == 3 and len(flows) == 3)
 
-***REMOVED*** ── 4. Les champs que BCP-007-03 impose au Sender ────────────────────────────
+# ── 4. Les champs que BCP-007-03 impose au Sender ────────────────────────────
 un_snd = next(iter(senders.values()))
 controle("le Sender porte le transport littéral urn:x-nmos:transport:mxl",
          all(s["transport"] == "urn:x-nmos:transport:mxl" for s in senders.values()),
@@ -123,7 +123,7 @@ controle("manifest_href est null",
 controle("le Sender référence son Flow, qui référence sa Source",
          flows[un_snd["flow_id"]]["source_id"] in sources)
 
-***REMOVED*** ── 5. media_type : ce qui est au registre, et ce qui ne l'est pas ───────────
+# ── 5. media_type : ce qui est au registre, et ce qui ne l'est pas ───────────
 _par_essence = {}
 for f in flows.values():
     _par_essence[f["format"].rsplit(":", 1)[-1]] = f["media_type"]
@@ -136,7 +136,7 @@ controle("media_type vidéo = video/x-mxl-planar (HORS registre, assumé)",
          "arbitrage produit du 2026-08-15 : planar en interne, miroir v210 au cas par cas. "
          "Annoncer video/v210 sur un flux planar serait une non-conformité PIRE")
 
-***REMOVED*** ── 6. Le cas « port non câblé » — celui qu'on oublierait ────────────────────
+# ── 6. Le cas « port non câblé » — celui qu'on oublierait ────────────────────
 _libres = [st for st in recv_state.values() if not st.get("shm")]
 controle("les 3 entrées optionnelles non câblées sont détectées", len(_libres) == 3)
 controle("un Receiver non câblé a mxl_flow_id null",
@@ -148,14 +148,14 @@ controle("un Sender est actif par construction",
          all(st["active"]["master_enable"] is True for st in send_state.values()),
          "un conteneur ÉCRIT son flux tant qu'il tourne : il n'y a rien à activer")
 
-***REMOVED*** ── 7. L'asymétrie des transport_params (schémas de la BCP) ──────────────────
+# ── 7. L'asymétrie des transport_params (schémas de la BCP) ──────────────────
 _rid = next(iter(recv_state))
 ok_auto, code_auto, _p = mxl.apply_receiver_staged(
     _rid, {"transport_params": [{"mxl_flow_id": "auto"}]}, recv_state, send_state)
-***REMOVED*** ⚠ On vérifie le MOTIF, pas seulement le code. Un test de mutation l'a prouvé : en
-***REMOVED*** désarmant le refus explicite de « auto », la requête reste rejetée en 400 — par le
-***REMOVED*** contrôle suivant (« ce n'est pas un UUID »). Sur le seul code HTTP, la disparition de
-***REMOVED*** la garde serait INVISIBLE.
+# ⚠ On vérifie le MOTIF, pas seulement le code. Un test de mutation l'a prouvé : en
+# désarmant le refus explicite de « auto », la requête reste rejetée en 400 — par le
+# contrôle suivant (« ce n'est pas un UUID »). Sur le seul code HTTP, la disparition de
+# la garde serait INVISIBLE.
 controle("un Receiver REFUSE mxl_flow_id = \"auto\", et pour CE motif",
          (not ok_auto) and code_auto == 400 and "auto" in (_p.get("error") or ""),
          "receiver_transport_params_mxl.json : « The literal auto is not used for this "
@@ -182,7 +182,7 @@ ok_id, _c, _p = mxl.apply_sender_staged(
     _sid, {"transport_params": [{"mxl_flow_id": _reel}]}, send_state)
 controle("un Sender accepte qu'on lui redonne SA valeur", ok_id)
 
-***REMOVED*** ── 8. /constraints n'énumère JAMAIS « auto » ────────────────────────────────
+# ── 8. /constraints n'énumère JAMAIS « auto » ────────────────────────────────
 _cs = mxl.constraints(_rid, send_state, recv_state) or []
 _cs += mxl.constraints(_sid, send_state, recv_state) or []
 _plat = json.dumps(_cs)
@@ -194,7 +194,7 @@ controle("/constraints d'un Sender n'énumère que SON flux",
          (mxl.constraints(_sid, send_state, recv_state) or [{}])[0]
          .get("mxl_flow_id", {}).get("enum") == [_reel])
 
-***REMOVED*** ── 8bis. Grouping BCP-002-01 DÉRIVÉ ─────────────────────────────────────────
+# ── 8bis. Grouping BCP-002-01 DÉRIVÉ ─────────────────────────────────────────
 _G = "urn:x-nmos:tag:grouphint/v1.0"
 
 
@@ -212,15 +212,15 @@ controle("leurs rôles sont distincts dans le bundle",
 controle("les Senders portent aussi un group hint",
          all(_hint(s) for s in senders.values()))
 
-***REMOVED*** ⚠ RÉGRESSION VERROUILLÉE ICI. Le grouping doit se faire sur le RANG dans l'essence, jamais sur
-***REMOVED*** `slot` : `2110_io` numérote ses slots PAR ESSENCE (tx1/tx_audio1/tx_anc1 ont tous slot=0) tandis
-***REMOVED*** que `hello_world` les numérote GLOBALEMENT (0/1/2).
-***REMOVED***
-***REMOVED*** ★ Le contre-exemple doit être ENTRELACÉ, et le premier que j'ai écrit ne l'était pas : avec des
-***REMOVED*** slots séquentiels (toutes les vidéos, puis tous les audios), `slot % n` et le rang donnent
-***REMOVED*** TOUJOURS le même résultat — audio slot (n+r) → (n+r) % n = r. La garde passait donc en désarmant
-***REMOVED*** la règle. Il faut une déclaration « par entrée » (V,A,V,A), la plus naturelle pour un manifeste
-***REMOVED*** à entrées multiples, où les deux règles divergent vraiment.
+# ⚠ RÉGRESSION VERROUILLÉE ICI. Le grouping doit se faire sur le RANG dans l'essence, jamais sur
+# `slot` : `2110_io` numérote ses slots PAR ESSENCE (tx1/tx_audio1/tx_anc1 ont tous slot=0) tandis
+# que `hello_world` les numérote GLOBALEMENT (0/1/2).
+#
+# ★ Le contre-exemple doit être ENTRELACÉ, et le premier que j'ai écrit ne l'était pas : avec des
+# slots séquentiels (toutes les vidéos, puis tous les audios), `slot % n` et le rang donnent
+# TOUJOURS le même résultat — audio slot (n+r) → (n+r) % n = r. La garde passait donc en désarmant
+# la règle. Il faut une déclaration « par entrée » (V,A,V,A), la plus naturelle pour un manifeste
+# à entrées multiples, où les deux règles divergent vraiment.
 _faux = [{"essence": "video", "slot": 0, "key": "video:0"},
          {"essence": "audio", "slot": 1, "key": "audio:1"},
          {"essence": "video", "slot": 2, "key": "video:2"},
@@ -232,14 +232,14 @@ controle("déclaration ENTRELACÉE (V,A,V,A) : chaque audio rejoint SA vidéo",
          "obtenu %s — une règle indexée sur slot ferait tomber les DEUX audios dans le même "
          "bundle, et le mauvais" % _g)
 
-***REMOVED*** ── 9. Le banc n'a rien alloué ───────────────────────────────────────────────
-***REMOVED*** `_domain_id(None)` doit rendre None SANS toucher la base : `db_node_mxl_domain_id`
-***REMOVED*** CRÉE le domaine au premier appel (UPDATE). Un banc qui l'appelle avec un node_id
-***REMOVED*** réel écrirait en base de PRODUCTION — exactement ce qu'on s'interdit.
+# ── 9. Le banc n'a rien alloué ───────────────────────────────────────────────
+# `_domain_id(None)` doit rendre None SANS toucher la base : `db_node_mxl_domain_id`
+# CRÉE le domaine au premier appel (UPDATE). Un banc qui l'appelle avec un node_id
+# réel écrirait en base de PRODUCTION — exactement ce qu'on s'interdit.
 controle("_domain_id(None) ne déclenche aucune allocation",
          mxl._domain_id(None) is None)
 
-***REMOVED*** ── 10. Identité des ressources : déterministe et distincte ──────────────────
+# ── 10. Identité des ressources : déterministe et distincte ──────────────────
 _devices2 = {DID: {"senders": [], "receivers": []}}
 _s2, _f2, _sn2, _rc2, _rs2, _ss2 = {}, {}, {}, {}, {}, {}
 mxl._build_one(CONTENEUR, _devices2, _s2, _f2, _sn2, _rc2, _rs2, _ss2, DID, "1756500001:0")
@@ -249,13 +249,13 @@ controle("les identifiants sont DÉTERMINISTES d'une reconstruction à l'autre",
 controle("chaque (essence, slot) donne un identifiant DISTINCT",
          len(set(senders) | set(receivers)) == 6)
 
-***REMOVED*** ── 11. La garde de lecture seule tient sur TOUS les chemins ─────────────────
-***REMOVED*** ⚠ RÉGRESSION VERROUILLÉE. La garde 405 a d'abord été posée sur les deux routes PATCH unitaires
-***REMOVED*** — et les endpoints BULK, qui appellent `_apply_*_staged` en direct, la contournaient. Un garde
-***REMOVED*** conditionné à QUI APPELLE ne protège que celui-là. Elle vit désormais au point de passage ;
-***REMOVED*** ce contrôle vérifie les DEUX chemins sur le HTTP réel.
-import urllib.error                                                ***REMOVED*** noqa: E402
-import urllib.request                                              ***REMOVED*** noqa: E402
+# ── 11. La garde de lecture seule tient sur TOUS les chemins ─────────────────
+# ⚠ RÉGRESSION VERROUILLÉE. La garde 405 a d'abord été posée sur les deux routes PATCH unitaires
+# — et les endpoints BULK, qui appellent `_apply_*_staged` en direct, la contournaient. Un garde
+# conditionné à QUI APPELLE ne protège que celui-là. Elle vit désormais au point de passage ;
+# ce contrôle vérifie les DEUX chemins sur le HTTP réel.
+import urllib.error                                                # noqa: E402
+import urllib.request                                              # noqa: E402
 
 _B = "http://127.0.0.1:5000/x-nmos"
 
@@ -300,7 +300,7 @@ else:
                      _c == 200 and [x.get("code") for x in json.loads(_b)] == [200],
                      "le verrou ne doit toucher QUE la surface MXL — obtenu %s" % _b[:120])
 
-***REMOVED*** ── Verdict ──────────────────────────────────────────────────────────────────
+# ── Verdict ──────────────────────────────────────────────────────────────────
 print("services/nmos/mxl.py — surface BCP-007-03 dérivée de hello_world\n")
 for r in reussites:
     print("  OK    %s" % r)

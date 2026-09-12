@@ -1,21 +1,21 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc de l'onglet Réglages → NMOS : la section « Surfaces avancées ».
-***REMOVED***
-***REMOVED*** CE QU'IL ATTRAPE. Le dépôt documente déjà la panne : « une clé absente de DEFAULTS était JETÉE
-***REMOVED*** EN SILENCE, la route renvoyant quand même 200/ok — un champ ajouté à l'UI sans sa valeur par
-***REMOVED*** défaut semblait donc s'enregistrer sans jamais rien changer ». Ce banc relie les trois faces qui
-***REMOVED*** doivent rester d'accord :
-***REMOVED***
-***REMOVED***   le GABARIT (les `id` des contrôles) ── le JS (les clés qu'il poste) ── le MANIFESTE (ce que
-***REMOVED***   `update_bulk` accepte) ── l'i18n (les libellés, dans les DEUX langues)
-***REMOVED***
-***REMOVED*** Une divergence entre deux de ces quatre ne casse rien visiblement : la case se coche, le toast
-***REMOVED*** dit « enregistré », et rien ne se passe.
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tools/verif_nmos_reglages_ui.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc de l'onglet Réglages → NMOS : la section « Surfaces avancées ».
+#
+# CE QU'IL ATTRAPE. Le dépôt documente déjà la panne : « une clé absente de DEFAULTS était JETÉE
+# EN SILENCE, la route renvoyant quand même 200/ok — un champ ajouté à l'UI sans sa valeur par
+# défaut semblait donc s'enregistrer sans jamais rien changer ». Ce banc relie les trois faces qui
+# doivent rester d'accord :
+#
+#   le GABARIT (les `id` des contrôles) ── le JS (les clés qu'il poste) ── le MANIFESTE (ce que
+#   `update_bulk` accepte) ── l'i18n (les libellés, dans les DEUX langues)
+#
+# Une divergence entre deux de ces quatre ne casse rien visiblement : la case se coche, le toast
+# dit « enregistré », et rien ne se passe.
+#
+#   $ ./venv/bin/python tools/verif_nmos_reglages_ui.py
 import json
 import os
 import re
@@ -38,7 +38,7 @@ def controle(intitule, condition, explication=""):
 print("Réglages → NMOS : surfaces avancées\n")
 html = open(GABARIT, encoding="utf-8").read()
 
-***REMOVED*** ── 1. Les clés que le JS poste ──────────────────────────────────────────────
+# ── 1. Les clés que le JS poste ──────────────────────────────────────────────
 def _liste(nom):
     m = re.search(r"const %s = \[(.*?)\];" % nom, html, re.S)
     return re.findall(r"'([^']+)'", m.group(1)) if m else []
@@ -49,13 +49,13 @@ cles = bools + nums
 controle("le JS déclare bien les listes de réglages", bool(bools) and bool(nums),
          "sans elles, appliquerNmosAvance() posterait un objet vide")
 
-***REMOVED*** ── 2. Chaque clé a son contrôle dans le gabarit ─────────────────────────────
+# ── 2. Chaque clé a son contrôle dans le gabarit ─────────────────────────────
 manquants = [k for k in cles if ('id="s_%s"' % k) not in html]
 controle("★ chaque clé postée a son contrôle dans le gabarit", not manquants,
          "le JS lirait `null.checked` et l'application entière planterait — %s" % manquants)
 
-***REMOVED*** ── 3. Chaque clé est acceptée par la route générique ────────────────────────
-from app import settings as st                                      ***REMOVED*** noqa: E402
+# ── 3. Chaque clé est acceptée par la route générique ────────────────────────
+from app import settings as st                                      # noqa: E402
 
 _accepte = {**st.DEFAULTS, **st._get_core_defaults()}
 refusees = [k for k in cles if k not in _accepte]
@@ -63,7 +63,7 @@ controle("★★ chaque clé est ACCEPTÉE par update_bulk (manifeste)", not ref
          "une clé absente est jetée en silence et la route répond quand même ok : la case se "
          "coche, le toast dit « enregistré », et rien ne change — %s" % refusees)
 
-***REMOVED*** ── 4. Les booléens sont des toggles, les nombres des steppers ───────────────
+# ── 4. Les booléens sont des toggles, les nombres des steppers ───────────────
 mal_typees = [k for k in bools
               if not re.search(r'id="s_%s"[^>]*class="ios-toggle"|class="ios-toggle"[^>]*id="s_%s"'
                                % (k, k), html)]
@@ -72,14 +72,14 @@ controle("les booléens utilisent le toggle du catalogue", not mal_typees,
 mal_num = [k for k in nums if not re.search(r'id="s_%s"[^>]*class="num-stepper"' % k, html)]
 controle("les entiers utilisent le stepper numérique", not mal_num, "%s" % mal_num)
 
-***REMOVED*** ── 5. Les bornes du gabarit ne contredisent pas le code ─────────────────────
+# ── 5. Les bornes du gabarit ne contredisent pas le code ─────────────────────
 _bornes = dict(re.findall(r'id="s_(\w+)"[^>]*min="(\d+)"', html))
 controle("le ramasse-miettes ne peut pas descendre sous le plancher du code",
          int(_bornes.get("nmos_registre_gc_s", 0)) >= 4,
          "le code borne à 4 s (deux battements) : proposer moins dans l'UI ferait saisir une "
          "valeur silencieusement remontée")
 
-***REMOVED*** ── 6. i18n : toutes les clés, dans les DEUX langues ─────────────────────────
+# ── 6. i18n : toutes les clés, dans les DEUX langues ─────────────────────────
 utilisees = set(re.findall(r"_\('(service\.nmos\.[^']+)'\)", html))
 utilisees |= set(re.findall(r"_tnmos\('(service\.nmos\.[^']+)'\)", html))
 for lang in ("fr", "en"):
@@ -94,30 +94,30 @@ controle("les deux catalogues portent les mêmes clés", set(_fr) == set(_en),
          "un écart = une langue qui affiche des clés brutes — fr seul : %s ; en seul : %s"
          % (sorted(set(_fr) - set(_en))[:4], sorted(set(_en) - set(_fr))[:4]))
 
-***REMOVED*** ── 7. Ce que la section ENGAGE est dit, pas seulement ce qu'elle fait ───────
+# ── 7. Ce que la section ENGAGE est dit, pas seulement ce qu'elle fait ───────
 metas = [k for k in utilisees if ".meta_" in k]
 controle("★ chaque groupe porte une ligne `meta` qui dit ce qu'il engage",
          len(metas) >= 5,
          "un libellé dit ce qu'un réglage FAIT ; il faut aussi dire ce qu'il COÛTE, sinon "
          "l'exploitant coche sans savoir — %d trouvée(s)" % len(metas))
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════════════════════
-***REMOVED*** 8. La PROMOTION de NMOS en groupe : cinq sous-onglets, et aucune garde restée sur l'ancien id
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════════════════════
-***REMOVED*** Déplacer un panneau casse en silence tout ce qui le désignait par son ancien id. Ici trois
-***REMOVED*** gardes de rafraîchissement le faisaient — dont UNE vit dans le gabarit du service, invisible
-***REMOVED*** depuis settings.html. Et la formule employée, `(el || {}).style?.display !== 'none'`, échoue
-***REMOVED*** du MAUVAIS côté : un id disparu rend la condition VRAIE, donc l'onglet fermé interroge le
-***REMOVED*** serveur en boucle au lieu de se taire.
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# 8. La PROMOTION de NMOS en groupe : cinq sous-onglets, et aucune garde restée sur l'ancien id
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# Déplacer un panneau casse en silence tout ce qui le désignait par son ancien id. Ici trois
+# gardes de rafraîchissement le faisaient — dont UNE vit dans le gabarit du service, invisible
+# depuis settings.html. Et la formule employée, `(el || {}).style?.display !== 'none'`, échoue
+# du MAUVAIS côté : un id disparu rend la condition VRAIE, donc l'onglet fermé interroge le
+# serveur en boucle au lieu de se taire.
 SETTINGS = os.path.join(RACINE, "templates", "settings.html")
 reglages = open(SETTINGS, encoding="utf-8").read()
-***REMOVED*** ★ LA LISTE SE DÉRIVE DU GABARIT, ELLE NE S'ÉCRIT PAS À LA MAIN.
-***REMOVED*** Elle a été figée à cinq entrées pendant des mois. Quand `tally` est arrivé, personne ne l'a
-***REMOVED*** ajoutée ici : les contrôles d'i18n, de crochet de rafraîchissement et d'aiguillage
-***REMOVED*** `switchSubTab` ont donc CESSÉ de le couvrir, en silence, tout en restant verts. Et le
-***REMOVED*** contrôle d'arbre, lui, comparait à un `== 5` littéral : il est devenu rouge pour la seule
-***REMOVED*** raison qu'un sixième panneau existait — un échec qui ne désignait aucun défaut.
-***REMOVED*** En dérivant, un onglet neuf est vérifié le jour où il est écrit, sans rien toucher ici.
+# ★ LA LISTE SE DÉRIVE DU GABARIT, ELLE NE S'ÉCRIT PAS À LA MAIN.
+# Elle a été figée à cinq entrées pendant des mois. Quand `tally` est arrivé, personne ne l'a
+# ajoutée ici : les contrôles d'i18n, de crochet de rafraîchissement et d'aiguillage
+# `switchSubTab` ont donc CESSÉ de le couvrir, en silence, tout en restant verts. Et le
+# contrôle d'arbre, lui, comparait à un `== 5` littéral : il est devenu rouge pour la seule
+# raison qu'un sixième panneau existait — un échec qui ne désignait aucun défaut.
+# En dérivant, un onglet neuf est vérifié le jour où il est écrit, sans rien toucher ici.
 SOUS = re.findall(r'id="nmos-tab-([\w-]+)"', html)
 assert SOUS, "aucun panneau `nmos-tab-<id>` dans le gabarit — le format a changé"
 
@@ -137,17 +137,17 @@ absents = [s for s in SOUS if 'id="nmos-tab-%s"' % s not in html
            or 'id="subtab-btn-nmos-%s"' % s not in html]
 controle("★ les %d sous-onglets suivent la convention `nmos-tab-<id>`" % len(SOUS),
          not absents,
-         "c'est CETTE convention que switchSubTab attend, et elle seule qui met `***REMOVED***nmos/<id>` "
+         "c'est CETTE convention que switchSubTab attend, et elle seule qui met `#nmos/<id>` "
          "dans l'adresse : un id qui s'en écarte s'affiche mais aucun lien ne le rouvre — %s"
          % absents)
 
-***REMOVED*** ── ★★★ L'ARBRE. Le contrôle qui manquait, et qui aurait attrapé DEUX défauts ───────────────
-***REMOVED*** Chercher `id="nmos-tab-x"` dans le texte prouve que le panneau EXISTE, pas qu'il est au bon
-***REMOVED*** endroit. Vécu deux fois : (1) la carte « Surfaces avancées » ajoutée après la fermeture du
-***REMOVED*** panneau se retrouvait HORS de l'onglet ; (2) au découpage, ce `</div>` orphelin a fermé
-***REMOVED*** `set-tab-nmos` par erreur, mettant Contrôle, Bus MXL et Installation dehors — trois onglets qui
-***REMOVED*** s'affichaient vides, parce que switchSubTab ne cherche QUE dans son conteneur. Les treize
-***REMOVED*** contrôles étaient bien dans la page : tous les contrôles textuels restaient verts.
+# ── ★★★ L'ARBRE. Le contrôle qui manquait, et qui aurait attrapé DEUX défauts ───────────────
+# Chercher `id="nmos-tab-x"` dans le texte prouve que le panneau EXISTE, pas qu'il est au bon
+# endroit. Vécu deux fois : (1) la carte « Surfaces avancées » ajoutée après la fermeture du
+# panneau se retrouvait HORS de l'onglet ; (2) au découpage, ce `</div>` orphelin a fermé
+# `set-tab-nmos` par erreur, mettant Contrôle, Bus MXL et Installation dehors — trois onglets qui
+# s'affichaient vides, parce que switchSubTab ne cherche QUE dans son conteneur. Les treize
+# contrôles étaient bien dans la page : tous les contrôles textuels restaient verts.
 def _arbre(txt):
     """[(id, écart de profondeur au conteneur)] + profondeur finale (0 = arbre équilibré)."""
     t = re.sub(r"<!--.*?-->", "",
@@ -183,12 +183,12 @@ controle("★ et `nmos` a été RETIRÉ de la liste du groupe Protocoles",
          "'alertes', 'rdma', 'nmos'" in reglages,
          "sinon l'onglet apparaît dans les deux groupes, et tabGroupOf() rend le premier trouvé")
 
-***REMOVED*** ── Les gardes : plus aucune ne vise l'ancien id, et toutes exigent l'ÉLÉMENT ────────────────
+# ── Les gardes : plus aucune ne vise l'ancien id, et toutes exigent l'ÉLÉMENT ────────────────
 def _gardes(txt):
     """Lignes de code (hors commentaires) citant un id d'onglet NMOS."""
     return [l for l in txt.split("\n")
             if ("protocoles-tab-nmos" in l or "set-tab-nmos" in l or "nmos-tab-" in l)
-            and not l.strip().startswith(("//", "<!--", "*", "***REMOVED***"))]
+            and not l.strip().startswith(("//", "<!--", "*", "#"))]
 
 perimees = [l.strip()[:70] for l in _gardes(reglages) + _gardes(html)
             if "protocoles-tab-nmos" in l]
@@ -196,27 +196,27 @@ controle("★★ aucune garde ne vise encore `protocoles-tab-nmos`", not perimee
          "une garde sur un id disparu ne se tait pas : elle interroge le serveur en permanence, "
          "onglet fermé — %s" % perimees)
 
-***REMOVED*** ⚠ FENÊTRE, PAS LIGNE. Première version de ce contrôle : elle ne cherchait la formule molle que
-***REMOVED*** sur les lignes qui nomment un id — et une garde s'écrit sur DEUX lignes, l'id sur la première et
-***REMOVED*** le test sur la suivante. La mutation « garde qui accepte un élément absent » passait au travers.
-***REMOVED*** Trouvé en mutant ; sans cette mutation le banc restait vert et ne protégeait rien.
+# ⚠ FENÊTRE, PAS LIGNE. Première version de ce contrôle : elle ne cherchait la formule molle que
+# sur les lignes qui nomment un id — et une garde s'écrit sur DEUX lignes, l'id sur la première et
+# le test sur la suivante. La mutation « garde qui accepte un élément absent » passait au travers.
+# Trouvé en mutant ; sans cette mutation le banc restait vert et ne protégeait rien.
 def _molles(txt):
     lignes = txt.split("\n")
     interesse = set()
     for i, l in enumerate(lignes):
         if ("protocoles-tab-nmos" in l or "set-tab-nmos" in l or "nmos-tab-" in l) \
-           and not l.strip().startswith(("//", "<!--", "*", "***REMOVED***")):
+           and not l.strip().startswith(("//", "<!--", "*", "#")):
             interesse.update(range(max(0, i - 2), min(len(lignes), i + 3)))
     return [lignes[i].strip()[:70] for i in sorted(interesse)
             if ("|| {}" in lignes[i] or "?.style?." in lignes[i])
-            and not lignes[i].strip().startswith(("//", "<!--", "*", "***REMOVED***"))]
+            and not lignes[i].strip().startswith(("//", "<!--", "*", "#"))]
 
 molles = _molles(reglages) + _molles(html)
 controle("★★ aucune garde n'accepte un élément ABSENT", not molles,
          "`(el || {}).style?.display !== 'none'` vaut VRAI quand l'id n'existe pas : le jour où "
          "un panneau est renommé, le sondage part en boucle au lieu de s'arrêter — %s" % molles)
 
-controle("★ les liens `***REMOVED***protocoles/nmos` déjà partagés résolvent encore",
+controle("★ les liens `#protocoles/nmos` déjà partagés résolvent encore",
          "onglet === 'protocoles' && sous === 'nmos'" in reglages,
          "sans ce repli ils retomberaient sur Ember+ sans un mot")
 
@@ -224,7 +224,7 @@ controle("chaque sous-onglet a son crochet de rafraîchissement",
          all(("name === '%s'" % s) in reglages for s in SOUS),
          "un sous-onglet sans crochet s'ouvre sur des tableaux vides jusqu'au prochain cycle")
 
-***REMOVED*** ── i18n des libellés de sous-onglets (catalogue du CŒUR, pas du service) ────────────────────
+# ── i18n des libellés de sous-onglets (catalogue du CŒUR, pas du service) ────────────────────
 for lang in ("fr", "en"):
     cat = json.load(open(os.path.join(RACINE, "i18n", "%s.json" % lang)))
     manque = [k for k in ["settings.group.nmos"]

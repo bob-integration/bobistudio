@@ -1,4 +1,4 @@
-***REMOVED*** Chantier `decklink_io` — entrées/sorties Blackmagic
+# Chantier `decklink_io` — entrées/sorties Blackmagic
 
 Ouvert le 2026-09-07.
 
@@ -21,7 +21,7 @@ Télévisions, dont le périmètre exige de l'E/S SDI native.
 
 ---
 
-***REMOVED******REMOVED*** 1. Ce que le plugin fait, et ce qu'il ne fait pas
+## 1. Ce que le plugin fait, et ce qu'il ne fait pas
 
 **Fait**, sur une carte DeckLink montée dans un nœud :
 
@@ -49,7 +49,7 @@ pas comme une hypothèse. La sonde le relève déjà.
 
 ---
 
-***REMOVED******REMOVED*** 2. La décision structurante : un conteneur par CARTE, pas par connecteur
+## 2. La décision structurante : un conteneur par CARTE, pas par connecteur
 
 C'est le profil qui l'impose, pas une préférence d'architecture.
 
@@ -132,7 +132,7 @@ défaut et détachables. **Connecteurs numérotés à partir de 1**, conforméme
 
 ---
 
-***REMOVED******REMOVED*** 2 bis. Aucune branche par modèle — ce que ça veut dire concrètement
+## 2 bis. Aucune branche par modèle — ce que ça veut dire concrètement
 
 C'est la contrainte la plus structurante du chantier, et elle est facile à trahir sans s'en
 rendre compte. **Rien dans le code ne doit tester un nom de modèle.** Tout se demande à
@@ -161,7 +161,7 @@ Deux règles qui en découlent :
 
 ---
 
-***REMOVED******REMOVED*** 3. L'horloge : un décalage constant, pas un asservissement
+## 3. L'horloge : un décalage constant, pas un asservissement
 
 Décidé le 2026-09-07 : **la carte est genlockée sur la même source que le GM PTP.** C'est ce qui
 rend le chantier abordable.
@@ -208,7 +208,7 @@ réinventer** : `IDeckLinkOutput::GetReferenceStatus`, et le statut
 
 ---
 
-***REMOVED******REMOVED*** 4. La latence : pas de mode tranche, et c'est structurel
+## 4. La latence : pas de mode tranche, et c'est structurel
 
 La règle de la maison est que tout nouveau plugin lit et publie en tranches. **Ce plugin ne peut
 pas la tenir**, et l'exception doit être écrite dans le code, au même titre que l'entrelacé :
@@ -245,7 +245,7 @@ signe une profondeur trop basse.
 
 ---
 
-***REMOVED******REMOVED*** 5. Le pilote sur l'hôte
+## 5. Le pilote sur l'hôte
 
 Desktop Video est un module noyau propriétaire hors-arbre, recompilé par DKMS à chaque noyau, et
 **non redistribuable**.
@@ -266,7 +266,7 @@ Ce que ça laisse à faire, quand même :
   relevées par le sampler de santé (`app/node_health.py`), au même titre que le GPU et le RDMA.
   Un plugin `decklink_io` déployé sur un nœud dont le module ne charge plus doit produire une alerte,
   pas un flux muet ;
-***REMOVED******REMOVED******REMOVED*** Installation du 2026-09-07 sur dell-1 (faite)
+### Installation du 2026-09-07 sur dell-1 (faite)
 
 Desktop Video **16.4** (`desktopvideo_16.4a1_amd64.deb`, archive de 2,08 Go dont seul ce paquet
 est utile — le reste est l'interface graphique et MediaExpress). Résultat :
@@ -307,7 +307,7 @@ Une réserve subsiste :
 
 ---
 
-***REMOVED******REMOVED******REMOVED*** Ce que la bibliothèque 16.4 a appris (2026-09-07, mesuré sur dell-1)
+### Ce que la bibliothèque 16.4 a appris (2026-09-07, mesuré sur dell-1)
 
 Trois constats tirés de la bibliothèque installée, tous vérifiables en une commande.
 
@@ -341,7 +341,7 @@ liée depuis l'hôte, périphériques passés un par un.
 
 ---
 
-***REMOVED******REMOVED******REMOVED*** Relevé de flotte du 2026-09-07 (mesuré)
+### Relevé de flotte du 2026-09-07 (mesuré)
 
 Interrogation en lecture seule des quatre nœuds via `node_driver.host_exec`.
 
@@ -374,7 +374,7 @@ latence du §4.
 
 ---
 
-***REMOVED******REMOVED*** 6. Essences
+## 6. Essences
 
 - **Vidéo** : la carte délivre du v210 (10 bits) nativement. **Décidé le 2026-09-07 : la
   conversion est un RÉGLAGE du plugin — planar par défaut, v210 brut au choix.** Le défaut sert
@@ -391,7 +391,7 @@ latence du §4.
 
 ---
 
-***REMOVED******REMOVED*** 7. NMOS : un plugin MXL comme les autres
+## 7. NMOS : un plugin MXL comme les autres
 
 **Tranché le 2026-09-07.** `decklink_io` n'a droit à aucun traitement particulier : ses flux se
 publient sur le Device IS-04 du bus MXL, exactement comme ceux de n'importe quel autre plugin
@@ -409,7 +409,7 @@ producteur ordinaire, et c'est le plugin qu'il faut corriger.
 
 ---
 
-***REMOVED******REMOVED*** 8. Licence et distribution
+## 8. Licence et distribution
 
 Réglé par la décision du §5 : le pilote s'installe à la main, donc **rien de Blackmagic ne se
 distribue**. Restent deux points :
@@ -437,7 +437,7 @@ versionnés dans le dépôt »).
 
 ---
 
-***REMOVED******REMOVED*** 8 bis. Ce que le manuel révèle et qui dépasse le chantier
+## 8 bis. Ce que le manuel révèle et qui dépasse le chantier
 
 Deux trouvailles de la lecture du 2026-09-07 qui ne relèvent pas de l'implémentation mais de la
 stratégie, et qu'il faut porter devant quelqu'un plutôt que trancher ici.
@@ -466,9 +466,9 @@ d'écrire la nôtre, sachant que ça consomme du CPU sur le nœud comme la nôtr
 
 ---
 
-***REMOVED******REMOVED*** 9. Étapes, chacune avec un jalon vérifiable
+## 9. Étapes, chacune avec un jalon vérifiable
 
-| ***REMOVED*** | Étape | Jalon |
+| # | Étape | Jalon |
 |---|---|---|
 | 1 | Pilote posé à la main sur un nœud | ✅ **fait et vérifié au redémarrage le 2026-09-07 sur dell-1** (Desktop Video **16.4**) — cf. §5 |
 | 2 | Énumération | ✅ **fait le 2026-09-07** — `plugins/decklink_io/tools/probe/`, sans branche par modèle, exécutée contre la VRAIE bibliothèque 16.4. Reste à confronter à une carte |
@@ -496,7 +496,7 @@ Tout le reste dépend d'une carte montée sur un nœud.
 
 ---
 
-***REMOVED******REMOVED*** 9 bis. Le jour du montage — dans cet ordre
+## 9 bis. Le jour du montage — dans cet ordre
 
 Tout ce qui précède a été préparé sans carte. Ce qui suit est la séquence à suivre quand elle
 arrive, avec ce qu'il faut regarder à chaque pas. L'ordre compte : chaque étape invalide la
@@ -526,7 +526,7 @@ le périphérique au conteneur suffit, sans uid, gid ni groupe supplémentaire.
 
 ---
 
-***REMOVED******REMOVED*** 9 ter. Premier montage — DeckLink Duo 2 sur dell-1, le 2026-09-08
+## 9 ter. Premier montage — DeckLink Duo 2 sur dell-1, le 2026-09-08
 
 Séquence du §9 bis suivie dans l'ordre. Ce qu'elle a donné :
 
@@ -575,7 +575,7 @@ keying dépend du profil.
 
 ---
 
-***REMOVED******REMOVED*** 9 quater. Exigence d'interface : l'état du micrologiciel se voit et se corrige
+## 9 quater. Exigence d'interface : l'état du micrologiciel se voit et se corrige
 
 Demandé le 2026-09-08, à la suite de ce qui précède. Un micrologiciel périmé rend la carte
 **invisible au SDK** tout en la laissant présente pour le noyau : sans rien dans l'interface,
@@ -595,7 +595,7 @@ l'exploitant voit « aucune carte » et n'a aucun moyen de comprendre.
 
 ---
 
-***REMOVED******REMOVED*** 9 quinquies. Banc de sortie du 2026-09-08 — le pont d'horloge, mesuré
+## 9 quinquies. Banc de sortie du 2026-09-08 — le pont d'horloge, mesuré
 
 `plugins/decklink_io/tools/out` : émet un motif sur le premier sous-périphérique ACTIF capable de
 lecture, et compare trame par trame `GetFrameCompletionReferenceTimestamp` à `CLOCK_REALTIME`.
@@ -637,9 +637,9 @@ Aucune entrée SDI requise — c'est ce qui a permis de le passer avant tout câ
 
 ---
 
-***REMOVED******REMOVED*** 9 sexies. Jalons 3 et 4 — profil basculé, signal capturé (2026-09-08)
+## 9 sexies. Jalons 3 et 4 — profil basculé, signal capturé (2026-09-08)
 
-***REMOVED******REMOVED******REMOVED*** Le signal était là, sur un connecteur que le profil avait ÉTEINT
+### Le signal était là, sur un connecteur que le profil avait ÉTEINT
 
 Le testeur annonçait du signal ; les deux entrées actives n'en voyaient aucun. Ma première
 hypothèse — « le câble est sur un connecteur qui est une SORTIE dans ce profil » — était à côté.
@@ -655,7 +655,7 @@ Après bascule en `2dhd` (4 connecteurs indépendants), le signal apparaît imm�
 > L'interface doit montrer, par connecteur, s'il est **entrée / sortie / éteint** — sans quoi on
 > reproduira exactement cette demi-heure perdue, à chaque site.
 
-***REMOVED******REMOVED******REMOVED*** Un appareil peut porter PLUSIEURS groupes de profils
+### Un appareil peut porter PLUSIEURS groupes de profils
 
 `plugins/decklink_io/tools/profile` (jalon 3) bascule le profil et **attend `ProfileActivated`** — le
 manuel prévient que l'activation n'est pas terminée au retour de `SetActive`, et croire ce retour
@@ -679,7 +679,7 @@ en repartant d'un **itérateur neuf** à chaque passe.
 > aurait basculé le mauvais connecteur. Encore une raison de ne jamais raisonner sur l'index —
 > seul `GetPeers` dit qui va avec qui.
 
-***REMOVED******REMOVED******REMOVED*** Le piège de la reconfiguration en boucle
+### Le piège de la reconfiguration en boucle
 
 `VideoInputFormatChanged` demande de reconfigurer l'entrée sur le format détecté, sinon les
 trames restent invalides. Mais reconfigurer **re-déclenche** la notification : première mesure,
@@ -693,7 +693,7 @@ la cadence s'effondre sans que rien ne soit signalé.
 
 ---
 
-***REMOVED******REMOVED*** 9 septies. Jalon 4 COMPLET — SDI → MXL, lu par un consommateur (2026-09-08)
+## 9 septies. Jalon 4 COMPLET — SDI → MXL, lu par un consommateur (2026-09-08)
 
 `plugins/decklink_io` capture en v210 10 bits, convertit en planar et écrit des grains MXL.
 Vérifié **de bout en bout**, producteur dans un conteneur, consommateur dans un autre :
@@ -715,7 +715,7 @@ Vérifié **de bout en bout**, producteur dans un conteneur, consommateur dans u
 > mais le fait d'avoir branché un vrai consommateur au lieu de croire les compteurs.
 > **Aucun producteur MXL ne doit être déclaré fonctionnel sur la foi de ses propres compteurs.**
 
-***REMOVED******REMOVED******REMOVED*** Comment l'image est construite, et pourquoi ainsi
+### Comment l'image est construite, et pourquoi ainsi
 
 `libmxl` n'est **pas** reconstruite : elle est reprise telle quelle de l'image d'exécution
 (`COPY --from=bobi-compute`), ce qui garantit l'ABI et ramène la construction à quelques secondes
@@ -728,7 +728,7 @@ leur licence autorise (§8). Le contrôle de dépendances (`ldd | grep "not foun
 l'image **finale**, seul endroit où il veut dire quelque chose — placé dans l'étage de
 compilation, il rendait un faux positif.
 
-***REMOVED******REMOVED******REMOVED*** Dettes ouvertes à la sortie de ce jalon
+### Dettes ouvertes à la sortie de ce jalon
 
 - **`grain_rate` vaut `50000/1000`** et non `50/1` : je prends le rationnel brut de DeckLink,
   là où `mtl_rx.c` canonicalise. Le rapport est identique et la grille d'index aussi, mais deux
@@ -741,7 +741,7 @@ compilation, il rendait un faux positif.
 
 ---
 
-***REMOVED******REMOVED*** 9 octies. Le plugin existe et tourne en conteneur (2026-09-08)
+## 9 octies. Le plugin existe et tourne en conteneur (2026-09-08)
 
 `plugins/decklink_io` est un **sous-module** (dépôt privé
 `bob-integration/bobistudio-plugin-decklink_io`). Il porte le chemin de données natif, le
@@ -773,7 +773,7 @@ puce de palette ni entrée de menu. Il manque le hook de déploiement — qui de
 
 ---
 
-***REMOVED******REMOVED*** 9 nonies. Le dernier verrou : faire passer les périphériques au conteneur
+## 9 nonies. Le dernier verrou : faire passer les périphériques au conteneur
 
 Le plugin tourne quand on lui monte les `/dev` à la main. Pour qu'il soit **déployable depuis
 l'orchestrateur**, il manque une seule chose — et elle n'est pas dans le plugin.
@@ -783,7 +783,7 @@ l'orchestrateur**, il manque une seule chose — et elle n'est pas dans le plugi
 `docker_compute` ne pose jamais cette clé.** Rien, aujourd'hui, ne relie un besoin de
 périphérique déclaré par un plugin au conteneur qu'on crée pour lui.
 
-***REMOVED******REMOVED******REMOVED*** Ce que le hook du plugin ne peut PAS faire (constaté, pas supposé)
+### Ce que le hook du plugin ne peut PAS faire (constaté, pas supposé)
 
 J'avais prévu de valider les périphériques dans `before_deploy`. Deux limites l'interdisent :
 
@@ -796,7 +796,7 @@ Une validation écrite là aurait été **silencieusement ignorée**. Le partage
 NORMALISE (ce qui ne demande que les params), le superviseur DIAGNOSTIQUE dans le conteneur (ce
 qui demande la carte) et publie son verdict sur `:8082`.
 
-***REMOVED******REMOVED******REMOVED*** La décision à prendre, et sa part de sécurité
+### La décision à prendre, et sa part de sécurité
 
 Il faut un mécanisme générique, et le choix n'est pas neutre :
 
@@ -815,7 +815,7 @@ blanche de préfixes** côté orchestrateur, et le refus doit être visible.
 
 ---
 
-***REMOVED******REMOVED*** 9 decies. Audio embarqué capturé (2026-09-08)
+## 9 decies. Audio embarqué capturé (2026-09-08)
 
 `--audio <2|8|16>` publie l'audio embarqué en flux MXL `<nom>_audio`.
 
@@ -850,7 +850,7 @@ pas 6.
 
 ---
 
-***REMOVED******REMOVED*** 9 undecies. ANC : l'empaqueteur est vérifié, le chemin n'a pas encore vu un paquet (2026-09-08)
+## 9 undecies. ANC : l'empaqueteur est vérifié, le chemin n'a pas encore vu un paquet (2026-09-08)
 
 `--anc` publie les paquets ANC en flux `<nom>_anc` (`video/smpte291`, `bobi_anc_format:
 rfc8331`). L'empaqueteur natif est un miroir de `bobimxl.anc_pack_rfc8331`, **contrôlé octet
@@ -877,7 +877,7 @@ machine peut faire seule.
 
 ---
 
-***REMOVED******REMOVED*** 9 duodecies. Jalon 7 — sortie MXL → SDI, le bi-rôle est complet (2026-09-08)
+## 9 duodecies. Jalon 7 — sortie MXL → SDI, le bi-rôle est complet (2026-09-08)
 
 `decklink_tx` lit un flux MXL planar 10 bits et l'émet en v210. Chaîne complète vérifiée :
 capture sur un connecteur → flux MXL → réémission sur un autre connecteur de la même carte.
@@ -907,7 +907,7 @@ supporté » tombe sur du NTSC SD, comme le banc de sortie l'avait montré.
 
 ---
 
-***REMOVED******REMOVED*** 9 terdecies. ANC tranché : le pilote ne livre pas le timecode en paquet (2026-09-08)
+## 9 terdecies. ANC tranché : le pilote ne livre pas le timecode en paquet (2026-09-08)
 
 L'exploitant a précisé que **le timecode est le seul ANC rencontré en exploitation**. Il n'a pas
 fallu attendre une autre source : celle de test en portait déjà. Trois portes essayées sur la
@@ -937,7 +937,7 @@ est conservé pour les autres types d'ANC, s'il en vient.
 
 ---
 
-***REMOVED******REMOVED*** 9 quaterdecies. Jalon 6 COMPLET — timecode synthétisé, aller-retour vérifié (2026-09-08)
+## 9 quaterdecies. Jalon 6 COMPLET — timecode synthétisé, aller-retour vérifié (2026-09-08)
 
 Le pilote ne livrant pas l'ATC en paquet (§9 terdecies), on lit `GetTimecode` et on **synthétise**
 le paquet — DID 0x60 / SDID 0x60, 16 UDW, ligne 9 — pour que le flux ANC porte la même chose
@@ -972,7 +972,7 @@ dizaines d'images perdues). Les deux mutations correspondantes échouent.
 
 ---
 
-***REMOVED******REMOVED*** 9 quindecies. Jalon 8 — la densité bute sur la BANDE PASSANTE, pas sur le CPU (2026-09-08)
+## 9 quindecies. Jalon 8 — la densité bute sur la BANDE PASSANTE, pas sur le CPU (2026-09-08)
 
 Un seul connecteur porte du signal ; les quatre ont tout de même été exercés — une capture, plus
 des sorties rejouant ce flux sur les autres connecteurs.
@@ -1008,7 +1008,7 @@ entrées HD sur une carte qui n'en soutient que trois.
 
 ---
 
-***REMOVED******REMOVED*** 9 sexdecies. Le côté SORTIE entre dans le plugin (2026-09-08)
+## 9 sexdecies. Le côté SORTIE entre dans le plugin (2026-09-08)
 
 Point 3 du jalon 9, celui qui ne dépendait de personne. `plugin.json` 0.2.0 déclare `outputs`, le
 hook les normalise, le superviseur lance un `decklink_tx` par sortie. Vérifié en conteneur —
@@ -1039,7 +1039,7 @@ profil de ressources qui devra porter la contrainte de DÉBIT du §9 quindecies.
 
 ---
 
-***REMOVED******REMOVED*** 9 septdecies. Macros et NMOS — deux points du jalon 9 (2026-09-08)
+## 9 septdecies. Macros et NMOS — deux points du jalon 9 (2026-09-08)
 
 **NMOS : vérifié en exécutant, pas en lisant.** `services/nmos/mxl.py` dérive Sources, Flows et
 Senders depuis `derive_wiring`, sans aucun test de type — le commentaire du fichier dit « pas une
@@ -1072,7 +1072,7 @@ fonction de routage) et `output_enable`, avec la liste des sorties servie en dir
 
 ---
 
-***REMOVED******REMOVED*** 9 vicies. Où en est le chantier au soir du 2026-09-08 — et par quoi reprendre
+## 9 vicies. Où en est le chantier au soir du 2026-09-08 — et par quoi reprendre
 
 **Acquis, vérifié sur le matériel** : le plugin se déploie depuis l'orchestrateur (capacité
 `needs_decklink`, périphériques énumérés sur le nœud, image compute 0.35) ; capture 1080p50 →
@@ -1084,7 +1084,7 @@ et tenu (179 relevés sur 179) sur les modes 50 Hz ; plafond de débit mesuré e
 **Bloqué faute de source** : plus aucun signal sur les quatre entrées depuis la fin d'après-midi,
 et le câble ne revient que le lendemain.
 
-***REMOVED******REMOVED******REMOVED*** Par quoi reprendre, dans l'ordre
+### Par quoi reprendre, dans l'ordre
 
 1. **Vérifier l'écriture par CHAMP** (§9 sexdecies bis) : elle est écrite et compile, elle n'a
    **jamais tourné**. Deux points en particulier — la **parité** des champs (une erreur donne une
@@ -1101,7 +1101,7 @@ et le câble ne revient que le lendemain.
    décalage « soumission → front de sortie », et la ligne correspondante du §3 est toujours vide.
 5. **L'ANC autre que le timecode** : question ouverte à l'exploitant.
 
-***REMOVED******REMOVED******REMOVED*** Ce que cette journée a coûté et appris
+### Ce que cette journée a coûté et appris
 
 > ★★★ **Deux conventions non reprises du producteur existant ont coûté chacune plusieurs
 > heures**, et les deux se ressemblent : `validSlices` (sans quoi les grains sont écrits et
@@ -1119,7 +1119,7 @@ et le câble ne revient que le lendemain.
 
 ---
 
-***REMOVED******REMOVED*** 9 unvicies. L'instrument ne mesurait pas la bonne chose (2026-09-08) — §3 à refaire
+## 9 unvicies. L'instrument ne mesurait pas la bonne chose (2026-09-08) — §3 à refaire
 
 Deux fenêtres **indépendantes de 15 minutes**, sur le sous-périphérique asservi, en 1080p50 :
 
@@ -1201,7 +1201,7 @@ découvre après coup.
 
 ---
 
-***REMOVED******REMOVED*** 9 duovicies. Le §3 mesuré autrement : moins de 1 ppm (2026-09-08, soir)
+## 9 duovicies. Le §3 mesuré autrement : moins de 1 ppm (2026-09-08, soir)
 
 L'ancienne méthode étant morte (§9 unvicies), la relation d'horloge se mesure désormais par le
 **comptage de trames capturées rapporté au temps du nœud** — genlock-sensible par construction,
@@ -1222,7 +1222,7 @@ puisque la capture est cadencée par le signal entrant.
 `slip_hours = 0` sur une fenêtre de 300 s. Aucun glissement observé, aucune dérive mesurable.
 C'est un résultat CROISÉ, pas une mesure isolée — ce qui, vu la journée, n'est pas un luxe.
 
-***REMOVED******REMOVED******REMOVED*** Ce que ça mesure exactement, et ce que ça ne mesure pas
+### Ce que ça mesure exactement, et ce que ça ne mesure pas
 
 ★ **C'est la cadence de la SOURCE contre l'horloge du nœud.** Que cette source soit elle-même
 asservie à la synchro maison n'est pas établi — c'est un générateur externe dont on ne sait pas
@@ -1234,7 +1234,7 @@ asservie à la référence (1791 relevés sur 1791). Compter ses trames contre l
 donnerait directement l'écart cherché. `decklink_tx` publie déjà `frame_index` ; il lui manque
 le `t_frame_ns` pris dans le callback, comme sur la capture. **C'est le prochain geste.**
 
-***REMOVED******REMOVED******REMOVED*** Trois erreurs de mesure, et ce qui les a démasquées
+### Trois erreurs de mesure, et ce qui les a démasquées
 
 | Erreur | Symptôme | Ce qui l'a démasquée |
 |---|---|---|
@@ -1247,7 +1247,7 @@ Aucune n'a été trouvée par le raisonnement. Toutes l'ont été en **faisant v
 
 ---
 
-***REMOVED******REMOVED*** 9 tervicies. §3 RÉPONDU : la synchro maison et l'horloge du nœud sont cohérentes (2026-09-08)
+## 9 tervicies. §3 RÉPONDU : la synchro maison et l'horloge du nœud sont cohérentes (2026-09-08)
 
 Mesure des DEUX cadences contre l'horloge du nœud, paire (compte, instant) prise dans le
 callback, fenêtre de **1577 s (26 min)** :
@@ -1282,7 +1282,7 @@ elle n'aura pratiquement jamais à servir sur cette installation. Et les grandeu
 
 ---
 
-***REMOVED******REMOVED*** 9 quatervicies. `card_vs_node_ppm` mesurait le mauvais objet (2026-09-08)
+## 9 quatervicies. `card_vs_node_ppm` mesurait le mauvais objet (2026-09-08)
 
 La grandeur publiée par le TX était dérivée de `GetFrameCompletionReferenceTimestamp`. Le contrôle
 du §9 tervicies a montré que **cet horodatage ne suit pas la référence** : asservi ou non, il donne
@@ -1303,7 +1303,7 @@ card_vs_node_ppm = 0.09   (fenêtre 300 s) · genlock = true · slip_hours = 0
 
 ---
 
-***REMOVED******REMOVED*** 9 quinvicies. La fenêtre de publication, calibrée par la mesure (2026-09-09)
+## 9 quinvicies. La fenêtre de publication, calibrée par la mesure (2026-09-09)
 
 Le §9 quatervicies avait réparé *ce que* `card_vs_node_ppm` mesure. Restait *sur combien de temps*.
 La fenêtre de 300 s était héritée de l'ancienne méthode. Neuf fenêtres consécutives, chaîne saine :
@@ -1338,7 +1338,7 @@ Retenu : **1800 s** (image compute 0.42). Trente minutes avant la première vale
 
 ---
 
-***REMOVED******REMOVED*** 9 sexvicies. La première fenêtre mentait, pas le modèle (2026-09-09)
+## 9 sexvicies. La première fenêtre mentait, pas le modèle (2026-09-09)
 
 La fenêtre de 1800 s à peine posée, sa **première** valeur est tombée à **−1,12 ppm**. J'y ai lu la
 réfutation du modèle de gigue du §9 quinvicies et je l'ai annoncé comme tel. C'était faux : les
@@ -1372,7 +1372,7 @@ Deux défauts, une seule cause, corrigés ensemble (image compute **0.43**) :
 
 ---
 
-***REMOVED******REMOVED*** 9 septvicies. Le glissement est un SOLDE (2026-09-09)
+## 9 septvicies. Le glissement est un SOLDE (2026-09-09)
 
 Le correctif d'ancre de 0.43 a d'abord produit **pire** que le défaut : écrite
 `if (!ancre && emises > 250) … else …`, la garde envoyait les 250 premières trames dans la branche
@@ -1413,7 +1413,7 @@ intégralement compensées. L'ancienne grandeur aurait annoncé « un glissement
 
 ---
 
-***REMOVED******REMOVED*** 9 octovicies. Le bouclage n'existait pas — et quatre heures pour le voir (2026-09-09)
+## 9 octovicies. Le bouclage n'existait pas — et quatre heures pour le voir (2026-09-09)
 
 Le testeur annonce un câble BNC « en boucle fermée » entre deux prises. Toute la matinée y passe :
 émissions sur chaque sous-périphérique, entrées réellement ouvertes, tableaux de verrouillage —
@@ -1448,7 +1448,7 @@ redéploiement. Personne ne l'avait prévu ; c'est le meilleur test qu'on ait eu
 
 ---
 
-***REMOVED******REMOVED*** 10. Ce qui reste ouvert
+## 10. Ce qui reste ouvert
 
 Les quatre points laissés en suspens à l'ouverture ont été tranchés le 2026-09-07 : surface NMOS
 (§7), v210 réglable (§6), pré-charge mesurée et non choisie (§4), pilote installé à la main (§5).

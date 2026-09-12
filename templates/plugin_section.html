@@ -1,11 +1,11 @@
 {% extends "layout.html" %}
 {% block title %}{{ section_label }} — Bobi.Studio{% endblock %}
 
-{***REMOVED*** Shell générique de rubrique de plugins (Traitements, Médias, …) : onglets par type
-   (bascule par ***REMOVED***hash, sans reload) + sidebar d'instances (badge version + mini-aperçu
+{# Shell générique de rubrique de plugins (Traitements, Médias, …) : onglets par type
+   (bascule par #hash, sans reload) + sidebar d'instances (badge version + mini-aperçu
    optionnel via MXLPlugins[type].listPreview) + zone de montage de l'UI de contrôle du
    plugin (control.html/js/css servis par /api/plugins/<type>/ui). Un seul template pour
-   toutes les rubriques ; les types sont injectés via `plugins`. ***REMOVED***}
+   toutes les rubriques ; les types sont injectés via `plugins`. #}
 {% set has_mv = plugins | selectattr('type', 'equalto', 'multiview') | list %}
 {% set is_medias = (page == 'medias') %}
 
@@ -93,7 +93,7 @@
     background:var(--bg-card);
     font-family:var(--font-mono); font-size:0.8em; }
 .mxl-clip-row:hover { background:var(--bg-panel); }
-.mxl-clip-row.live { outline:1px solid ***REMOVED***f87171; }
+.mxl-clip-row.live { outline:1px solid #f87171; }
 .mxl-clip-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
 .mxl-clip-source { color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .mxl-clip-dur { color:var(--text-muted); white-space:nowrap; }
@@ -101,9 +101,9 @@
 .mxl-clip-del { justify-self:end; background:none; border:1px solid var(--border-soft);
     color:var(--text-muted); border-radius:3px; padding:2px 8px; cursor:pointer;
     font-size:0.85em; white-space:nowrap; font-family:inherit; }
-.mxl-clip-del:hover { border-color:***REMOVED***f87171; color:***REMOVED***f87171; }
-.mxl-clip-live-badge { padding:1px 5px; border-radius:3px; background:***REMOVED***f87171;
-    color:***REMOVED***000; font-size:0.75em; font-weight:600; }
+.mxl-clip-del:hover { border-color:#f87171; color:#f87171; }
+.mxl-clip-live-badge { padding:1px 5px; border-radius:3px; background:#f87171;
+    color:#000; font-size:0.75em; font-weight:600; }
 {% endif %}
 </style>
 {% endblock %}
@@ -120,9 +120,9 @@
 </div>
 <div id="medias-plugins-view">
 <div class="tabs" id="ps-tabs">
-  {***REMOVED*** Repliable par construction : une SEULE ligne dans le flux (la synthèse), et le détail en
+  {# Repliable par construction : une SEULE ligne dans le flux (la synthèse), et le détail en
      SURCOUCHE absolue. Un panneau déplié ne doit jamais décaler la page — l'utilisateur consulte
-     ses ressources en réglant son conteneur, pas l'inverse. ***REMOVED***}
+     ses ressources en réglant son conteneur, pas l'inverse. #}
   <div class="res-compact" id="res-compact" hidden>
     <button type="button" class="res-compact-toggle" id="res-compact-toggle"
             aria-expanded="false" aria-controls="res-compact-panel">
@@ -348,11 +348,11 @@ const PS_SECTION = {{ section_id | tojson }};   // id de la rubrique (traitement
 const PS_LAST_TAB_KEY = 'ps-last-tab:' + PS_SECTION;   // dernier onglet visité (par rubrique)
 const _isCustomTab = (t) => EXTRA_TABS.some(x => x.id === t);
 const _psTabValid = (t) => SECTION_PLUGINS.some(p => p.type === t) || _isCustomTab(t);
-// Hash composite « ***REMOVED***<type>/<vmid> » (même patron que settings.html). Le vmid est OPTIONNEL :
+// Hash composite « #<type>/<vmid> » (même patron que settings.html). Le vmid est OPTIONNEL :
 // sans lui on retombe sur le comportement historique (1re instance du type). Il porte le
 // raccourci de la page Câbles, qui doit ouvrir LE conteneur cliqué et pas un homonyme de type.
 function _psParseHash(h){
-    h = String(h||'').replace(/^***REMOVED***/,'');
+    h = String(h||'').replace(/^#/,'');
     const i = h.indexOf('/');
     if(i < 0) return {type: h, vmid: null};
     const v = parseInt(h.slice(i+1), 10);
@@ -427,7 +427,7 @@ async function tpMount(inst, mountEl){
 }
 
 // Sélectionne (et MONTE) une instance de la liste. Extrait du handler de clic pour être appelable
-// par le deep-link « ***REMOVED***<type>/<vmid> » : poser tpSelectedVmid ne suffit pas — sans passer ici, la
+// par le deep-link « #<type>/<vmid> » : poser tpSelectedVmid ne suffit pas — sans passer ici, la
 // vignette prend juste la classe .active et rien n'est monté.
 function tpSelectInstance(vmid){
     const it = tpItems.find(x => +x.vmid === +vmid);
@@ -463,7 +463,7 @@ async function tpLoadInstances(){
         const li=document.createElement('li');
         const btn=document.createElement('button'); btn.type='button'; btn.className='tp-inst'; btn.dataset.vmid=it.vmid;
         if(it.vmid===tpSelectedVmid) btn.classList.add('active');
-        btn.innerHTML='<span class="tp-inst-main">'+psEsc(it.hostname||('***REMOVED***'+it.vmid))+' ***REMOVED***'+it.vmid+
+        btn.innerHTML='<span class="tp-inst-main">'+psEsc(it.hostname||('#'+it.vmid))+' #'+it.vmid+
             '<span class="tp-inst-status">'+psEsc(it.status||'?')+'</span></span>'+
             '<span class="tp-inst-ver">v'+psEsc(it.version||'?')+'</span>';
         btn.onclick=()=>tpSelectInstance(it.vmid);
@@ -647,7 +647,7 @@ async function tpToggleSettings(inst, type_, engineList){
         ? '<div class="palette-field"><label>'+psEsc(window.t('section.engine_pick'))+'</label>'
           +'<select id="tp-settings-engine">'+engineList.map(e=>
               '<option value="'+e.vmid+'"'+(e.vmid===inst.vmid?' selected':'')+'>'
-              +psEsc(e.hostname||('***REMOVED***'+e.vmid))+'</option>').join('')+'</select></div>'
+              +psEsc(e.hostname||('#'+e.vmid))+'</option>').join('')+'</select></div>'
         : '';
     body.innerHTML= engineSel + sysHtml
         +'<div class="tp-settings-status" id="tp-settings-status" role="status"></div>'
@@ -791,7 +791,7 @@ async function tpApplySettings(vmid, body, confirmed){
     }
 }
 
-// Bascule d'onglet (= type) sans reload, reflétée dans ***REMOVED***hash (« ***REMOVED***<type> » ou « ***REMOVED***<type>/<vmid> »).
+// Bascule d'onglet (= type) sans reload, reflétée dans #hash (« #<type> » ou « #<type>/<vmid> »).
 async function activateTab(type, wantVmid){
     if(!SECTION_PLUGINS.some(p=>p.type===type) && !_isCustomTab(type)) type=(SECTION_PLUGINS[0]||EXTRA_TABS[0]||{}).type || (EXTRA_TABS[0]||{}).id;
     if(!type) return;
@@ -819,11 +819,11 @@ async function activateTab(type, wantVmid){
     tpItems=[];
     tpWantVmid=(wantVmid==null?null:wantVmid);
     try { localStorage.setItem(PS_LAST_TAB_KEY, type); } catch(_){}   // mémorise le dernier onglet de la rubrique
-    // Le hash doit GARDER le vmid : le réécrire en « ***REMOVED***<type> » seul faisait retomber tout
+    // Le hash doit GARDER le vmid : le réécrire en « #<type> » seul faisait retomber tout
     // rechargement (F5, partage du lien) sur la 1re instance du type.
-    const _h='***REMOVED***'+type+(wantVmid==null?'':('/'+wantVmid));
+    const _h='#'+type+(wantVmid==null?'':('/'+wantVmid));
     if(history.replaceState) history.replaceState(null, '', _h); else location.hash=_h.slice(1);
-    document.querySelectorAll('***REMOVED***ps-tabs .tab').forEach(t=>t.classList.toggle('active', t.dataset.type===type));
+    document.querySelectorAll('#ps-tabs .tab').forEach(t=>t.classList.toggle('active', t.dataset.type===type));
     const side=document.querySelector('.tp-side');
     const mountEl=document.getElementById('tp-mount');
     document.getElementById('tp-monitor').hidden=true;
@@ -869,7 +869,7 @@ function psBuildTabs(){
 document.addEventListener('DOMContentLoaded', () => {
     psBuildTabs();
     const {type:h, vmid} = _psParseHash(location.hash);
-    // Priorité : ***REMOVED***hash explicite (lien direct) → dernier onglet mémorisé → 1er onglet.
+    // Priorité : #hash explicite (lien direct) → dernier onglet mémorisé → 1er onglet.
     let last=''; try { last=localStorage.getItem(PS_LAST_TAB_KEY)||''; } catch(_){}
     const ok = _psTabValid(h);
     const target = ok ? h
@@ -1095,7 +1095,7 @@ window.addEventListener('hashchange', () => {
             return (j.clips||[]).map(c => ({
                 ...c,
                 vmid:   r.vmid,
-                source: r.hostname || ('***REMOVED***'+r.vmid),
+                source: r.hostname || ('#'+r.vmid),
                 live:   false,
             }));
         }));

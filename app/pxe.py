@@ -1,5 +1,5 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 
 """Boot réseau PXE / UEFI HTTP Boot — Phase 0 (preuve de chaîne, sans licence iLO ni DHCP).
 
@@ -31,24 +31,24 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NODE_AGENT = os.path.join(ROOT, "node_agent")
 PRESEED_SRC = os.path.join(NODE_AGENT, "iso", "preseed.cfg")
 PRESEED_MARQUEUR_MDP = "@@ROOT_PASSWORD@@"
-***REMOVED*** Alphabet sans caractères ambigus (ni O/0, ni l/1/I) : ce mot de passe se tape à la main sur une
-***REMOVED*** console iLO, souvent en clavier QWERTY et en pleine panne. Même alphabet dans build-node-iso.sh.
+# Alphabet sans caractères ambigus (ni O/0, ni l/1/I) : ce mot de passe se tape à la main sur une
+# console iLO, souvent en clavier QWERTY et en pleine panne. Même alphabet dans build-node-iso.sh.
 PRESEED_MDP_ALPHABET = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 PRESEED_MDP_LONGUEUR = 20
-***REMOVED*** Arbre netboot Debian extrait (debian-installer/amd64/{linux,initrd.gz,bootnetx64.efi,grub/…}).
+# Arbre netboot Debian extrait (debian-installer/amd64/{linux,initrd.gz,bootnetx64.efi,grub/…}).
 PXE_ROOT = os.path.join(ROOT, "pxe_root")
 
-***REMOVED*** Port du serveur HTTP dédié au boot réseau (app/pxe_server.py). Sert /pxe/* en HTTP/1.1 KEEP-ALIVE :
-***REMOVED*** le firmware UEFI HTTP Boot (HPe Gen10) réutilise la connexion entre son HEAD et son GET et échoue
-***REMOVED*** (« Failed to download the URI file ») sur le « Connection: close » forcé par le serveur Werkzeug de
-***REMOVED*** l'orchestrateur (:5000). Le boot pointe donc ce port, pas le :5000 du contrôleur.
+# Port du serveur HTTP dédié au boot réseau (app/pxe_server.py). Sert /pxe/* en HTTP/1.1 KEEP-ALIVE :
+# le firmware UEFI HTTP Boot (HPe Gen10) réutilise la connexion entre son HEAD et son GET et échoue
+# (« Failed to download the URI file ») sur le « Connection: close » forcé par le serveur Werkzeug de
+# l'orchestrateur (:5000). Le boot pointe donc ce port, pas le :5000 du contrôleur.
 PXE_HTTP_PORT = 8000
 
-***REMOVED*** Fichiers du payload servis tels quels depuis node_agent/ (enroll.conf est généré dynamiquement).
+# Fichiers du payload servis tels quels depuis node_agent/ (enroll.conf est généré dynamiquement).
 _PAYLOAD_STATIC = ("install-node.sh", "agent.py", "bobi-node-agent.service",
                    "node-bootstrap.sh", "bobi-node-bootstrap.service")
 
-***REMOVED*** État global d'un (unique) téléchargement de netboot en cours.
+# État global d'un (unique) téléchargement de netboot en cours.
 _dl_status = {"state": "idle", "msg": "", "pct": 0, "at": 0.0}
 _dl_lock = threading.Lock()
 
@@ -62,7 +62,7 @@ def _human(n):
     return f"{n:.1f} To"
 
 
-***REMOVED*** ─── Téléchargement / extraction de l'arbre netboot Debian ─────────────────────
+# ─── Téléchargement / extraction de l'arbre netboot Debian ─────────────────────
 
 def download_status():
     with _dl_lock:
@@ -112,7 +112,7 @@ def _download(url):
             os.unlink(tmp)
             return _dl_set("error", "le fichier téléchargé n'est pas une archive tar.gz valide")
         _dl_set("running", "extraction…")
-        ***REMOVED*** Extraction propre dans un PXE_ROOT neuf (purge l'ancien arbre).
+        # Extraction propre dans un PXE_ROOT neuf (purge l'ancien arbre).
         import shutil
         if os.path.isdir(PXE_ROOT):
             shutil.rmtree(PXE_ROOT, ignore_errors=True)
@@ -161,10 +161,10 @@ def netboot_ready():
     return bool(bf.get("efi") and bf.get("kernel") and bf.get("initrd"))
 
 
-***REMOVED*** ─── Mot de passe root du preseed ──────────────────────────────────────────────
-***REMOVED*** Il n'est PAS le moyen d'exploitation du nœud : celui-là, c'est la clé SSH du contrôleur, injectée
-***REMOVED*** au même endroit. Ce mot de passe ne sert qu'à la console physique ou iLO, quand le réseau est
-***REMOVED*** tombé. D'où le choix : tiré au hasard à chaque armement, jamais versionné, effacé au désarmement.
+# ─── Mot de passe root du preseed ──────────────────────────────────────────────
+# Il n'est PAS le moyen d'exploitation du nœud : celui-là, c'est la clé SSH du contrôleur, injectée
+# au même endroit. Ce mot de passe ne sert qu'à la console physique ou iLO, quand le réseau est
+# tombé. D'où le choix : tiré au hasard à chaque armement, jamais versionné, effacé au désarmement.
 
 def generer_mdp_root():
     return "".join(secrets.choice(PRESEED_MDP_ALPHABET) for _ in range(PRESEED_MDP_LONGUEUR))
@@ -196,7 +196,7 @@ def _injecter_mdp_root(texte, mdp):
     return texte.replace(PRESEED_MARQUEUR_MDP, mdp)
 
 
-***REMOVED*** ─── Armement d'un nœud (Phase 0 : un seul à la fois) ──────────────────────────
+# ─── Armement d'un nœud (Phase 0 : un seul à la fois) ──────────────────────────
 
 def armed():
     """Retourne (token, controller_url) du nœud armé, ou (None, None)."""
@@ -207,7 +207,7 @@ def armed():
 def arm(token, controller_url):
     settings.set("pxe_armed_token", token or "")
     settings.set("pxe_controller_url", (controller_url or "").rstrip("/"))
-    ***REMOVED*** Un mot de passe root neuf par armement : deux nœuds installés successivement n'en partagent pas.
+    # Un mot de passe root neuf par armement : deux nœuds installés successivement n'en partagent pas.
     settings.set("pxe_root_password", generer_mdp_root())
 
 
@@ -225,11 +225,11 @@ def boot_url(controller_url):
         return None
     from urllib.parse import urlparse
     host = urlparse((controller_url or "").rstrip("/")).hostname or ""
-    ***REMOVED*** Racine (pas de /pxe) : shim/grub réclament grubx64.efi + modules au prefix compilé sans /pxe.
+    # Racine (pas de /pxe) : shim/grub réclament grubx64.efi + modules au prefix compilé sans /pxe.
     return f"http://{host}:{PXE_HTTP_PORT}/{bf['efi']}"
 
 
-***REMOVED*** ─── Génération grub.cfg / preseed / enroll.conf ───────────────────────────────
+# ─── Génération grub.cfg / preseed / enroll.conf ───────────────────────────────
 
 def _choose_interface(node):
     """Sélecteur d'interface d-i (`netcfg/choose_interface`) : le MAC du port de gestion s'il est
@@ -277,18 +277,18 @@ def grub_cfg(controller_url, prefix="/pxe", node=None):
     kernel = f"{prefix}/{bf.get('kernel') or 'debian-installer/amd64/linux'}"
     initrd = f"{prefix}/{bf.get('initrd') or 'debian-installer/amd64/initrd.gz'}"
     base = (controller_url or "").rstrip("/")
-    ***REMOVED*** Partie réseau commune aux deux entrées (choix d'interface + IP statique éventuelle).
+    # Partie réseau commune aux deux entrées (choix d'interface + IP statique éventuelle).
     net = f"netcfg/choose_interface={_choose_interface(node)} " + _static_net_kargs(node)
-    ***REMOVED*** Entrée AUTOMATIQUE : preseed complet, priority=critical → aucune question (partitionnement inclus).
+    # Entrée AUTOMATIQUE : preseed complet, priority=critical → aucune question (partitionnement inclus).
     auto_kargs = (f"auto=true priority=critical preseed/url={base}{prefix}/preseed.cfg "
                   + net + "DEBIAN_FRONTEND=text ---")
-    ***REMOVED*** Entrée SEMI-AUTO : preseed complet MAIS sans priority=critical → d-i déroule tout seul tant que
-    ***REMOVED*** ça passe, et ne s'arrête pour demander QUE si une étape coince (réponse manquante/échec) → on
-    ***REMOVED*** reprend la main au point de blocage, le reste reste automatique.
+    # Entrée SEMI-AUTO : preseed complet MAIS sans priority=critical → d-i déroule tout seul tant que
+    # ça passe, et ne s'arrête pour demander QUE si une étape coince (réponse manquante/échec) → on
+    # reprend la main au point de blocage, le reste reste automatique.
     semi_kargs = (f"auto=true preseed/url={base}{prefix}/preseed.cfg "
                   + net + "DEBIAN_FRONTEND=text ---")
-    ***REMOVED*** Entrée MANUELLE : preseed SANS le bloc partman (preseed-manual.cfg) et sans priority=critical →
-    ***REMOVED*** d-i pose les questions de partitionnement (le reste — locale, paquets, payload — reste auto).
+    # Entrée MANUELLE : preseed SANS le bloc partman (preseed-manual.cfg) et sans priority=critical →
+    # d-i pose les questions de partitionnement (le reste — locale, paquets, payload — reste auto).
     man_kargs = (f"auto=true preseed/url={base}{prefix}/preseed-manual.cfg "
                  + net + "DEBIAN_FRONTEND=text ---")
     return (
@@ -326,7 +326,7 @@ def _partman_block(part):
         return None
     disk = f"/dev/disk/by-id/{by_id}"
     return (
-        "***REMOVED******REMOVED******REMOVED*** Partitionnement — cible choisie via l'inventaire iLO (EFFACE TOUT)\n"
+        "### Partitionnement — cible choisie via l'inventaire iLO (EFFACE TOUT)\n"
         "d-i partman-auto/method string regular\n"
         f"d-i partman-auto/disk string {disk}\n"
         "d-i partman-auto/choose_recipe select atomic\n"
@@ -345,33 +345,33 @@ def preseed(node, controller_url, prefix="/pxe", manual=False):
     `manual=True` : retire les réponses partman préséed → d-i pose les questions de partitionnement
     (le reste reste automatisé). Sert l'entrée grub « installation MANUELLE »."""
     base = (controller_url or "").rstrip("/")
-    ***REMOVED*** 1. Tronque le preseed source AVANT son bloc late_command (marqueur stable dans le fichier).
+    # 1. Tronque le preseed source AVANT son bloc late_command (marqueur stable dans le fichier).
     try:
         with open(PRESEED_SRC, "r") as f:
             src = f.read()
     except Exception:
         src = ""
-    marker = "***REMOVED******REMOVED******REMOVED*** ─── late_command"
+    marker = "### ─── late_command"
     head = src.split(marker)[0].rstrip() if marker in src else src.rstrip()
 
-    ***REMOVED*** Choix d'interface déterministe (multi-NIC) : épingle d-i sur le MAC du port de gestion si fixé.
-    ***REMOVED*** (Le karg grub prime déjà côté PXE, mais on garde le preseed cohérent.)
+    # Choix d'interface déterministe (multi-NIC) : épingle d-i sur le MAC du port de gestion si fixé.
+    # (Le karg grub prime déjà côté PXE, mais on garde le preseed cohérent.)
     iface = _choose_interface(node)
     if iface != "auto":
         head = head.replace("netcfg/choose_interface select auto",
                             f"netcfg/choose_interface select {iface}")
 
-    ***REMOVED*** Profil d'enrôlement (choix opérateur : IP statique, MAC de gestion, cible de partitionnement).
+    # Profil d'enrôlement (choix opérateur : IP statique, MAC de gestion, cible de partitionnement).
     import json as _json
     try:
         prof = _json.loads(node.get("enroll_profile") or "{}")
     except Exception:
         prof = {}
 
-    ***REMOVED*** 1bis. Partitionnement. MANUEL → on retire les réponses partman (d-i pose les questions). Sinon, si
-    ***REMOVED*** l'opérateur a choisi une cible (découverte iLO), on remplace le bloc historique (recette atomic sur
-    ***REMOVED*** /dev/sda…, qui se bloque sur RAID HPe / disques multiples) par un bloc ciblé by-id déterministe.
-    ***REMOVED*** Sans choix → bloc historique inchangé.
+    # 1bis. Partitionnement. MANUEL → on retire les réponses partman (d-i pose les questions). Sinon, si
+    # l'opérateur a choisi une cible (découverte iLO), on remplace le bloc historique (recette atomic sur
+    # /dev/sda…, qui se bloque sur RAID HPe / disques multiples) par un bloc ciblé by-id déterministe.
+    # Sans choix → bloc historique inchangé.
     if manual:
         head = _strip_partman(head)
     else:
@@ -379,11 +379,11 @@ def preseed(node, controller_url, prefix="/pxe", manual=False):
         if block:
             head = _strip_partman(head) + "\n" + block
 
-    ***REMOVED*** 2. IP statique du plan de contrôle (si profil) — sinon DHCP (réseau d'install requis).
+    # 2. IP statique du plan de contrôle (si profil) — sinon DHCP (réseau d'install requis).
     if prof.get("mgmt_ip"):
         dns = prof.get("mgmt_dns") or prof.get("mgmt_gateway") or ""
         head += (
-            "\n***REMOVED******REMOVED******REMOVED*** Réseau de contrôle — IP statique (profil)\n"
+            "\n### Réseau de contrôle — IP statique (profil)\n"
             "d-i netcfg/disable_autoconfig boolean true\n"
             f"d-i netcfg/get_ipaddress string {prof['mgmt_ip']}\n"
             f"d-i netcfg/get_netmask string {prof.get('mgmt_netmask') or ''}\n"
@@ -392,10 +392,10 @@ def preseed(node, controller_url, prefix="/pxe", manual=False):
             "d-i netcfg/confirm_static boolean true\n"
         )
 
-    ***REMOVED*** 3. late_command PXE : tire le payload en HTTP (curl, déjà dans pkgsel) puis pose le first-boot.
+    # 3. late_command PXE : tire le payload en HTTP (curl, déjà dans pkgsel) puis pose le first-boot.
     files = " ".join(list(_PAYLOAD_STATIC) + ["enroll.conf"])
     late = (
-        "\n***REMOVED******REMOVED******REMOVED*** ─── late_command PXE : payload tiré du contrôleur en HTTP ───\n"
+        "\n### ─── late_command PXE : payload tiré du contrôleur en HTTP ───\n"
         "d-i preseed/late_command string \\\n"
         "  in-target mkdir -p /opt/bobi-node-src /etc/bobi-node /usr/local/sbin ; \\\n"
         f"  in-target sh -c 'for f in {files}; do "
@@ -406,15 +406,15 @@ def preseed(node, controller_url, prefix="/pxe", manual=False):
         "  in-target install -m 0644 /opt/bobi-node-src/bobi-node-bootstrap.service /etc/systemd/system/bobi-node-bootstrap.service ; \\\n"
         "  in-target systemctl enable bobi-node-bootstrap.service\n"
     )
-    ***REMOVED*** 4. Mot de passe root : substitué EN DERNIER, sur le texte complet, pour couvrir aussi bien le
-    ***REMOVED*** bloc repris du preseed source que tout ce qu'on vient d'ajouter. Lève si le marqueur subsiste.
+    # 4. Mot de passe root : substitué EN DERNIER, sur le texte complet, pour couvrir aussi bien le
+    # bloc repris du preseed source que tout ce qu'on vient d'ajouter. Lève si le marqueur subsiste.
     return _injecter_mdp_root(head + "\n" + late, mdp_root_arme())
 
 
 def enroll_conf(node, controller_url, token):
     """enroll.conf zéro-touch (consommé par node-bootstrap.sh) : URL contrôleur + enroll_token."""
     base = (controller_url or "").rstrip("/")
-    return (f"***REMOVED*** Généré par pxe.py (boot réseau) pour le nœud « {node.get('name')} »\n"
+    return (f"# Généré par pxe.py (boot réseau) pour le nœud « {node.get('name')} »\n"
             f'CONTROLLER_URL="{base}"\n'
             f'ENROLL_TOKEN="{token}"\n')
 

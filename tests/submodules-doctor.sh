@@ -1,20 +1,20 @@
-***REMOVED***!/usr/bin/env bash
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** submodules-doctor.sh — audit de cohérence des sous-modules git de bobistudio.
-***REMOVED***
-***REMOVED*** Pour CHAQUE sous-module déclaré dans .gitmodules, vérifie :
-***REMOVED***   (a) initialisé / checkout (présent sur disque, enregistré)
-***REMOVED***   (b) sur la branche attendue (main par défaut, ou `branch =` pinné dans .gitmodules)
-***REMOVED***   (c) working tree propre (aucune modif non commit)
-***REMOVED***   (d) SHA checkout == gitlink enregistré dans l'index du parent
-***REMOVED***   (+) alerte si le nom du dépôt (basename de l'URL) != nom du chemin (path)
-***REMOVED***
-***REMOVED*** Rapport lisible OK / DÉSYNC par sous-module. Exit != 0 si au moins un problème.
-***REMOVED***
-***REMOVED*** Usage : bash tools/submodules-doctor.sh
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# submodules-doctor.sh — audit de cohérence des sous-modules git de bobistudio.
+#
+# Pour CHAQUE sous-module déclaré dans .gitmodules, vérifie :
+#   (a) initialisé / checkout (présent sur disque, enregistré)
+#   (b) sur la branche attendue (main par défaut, ou `branch =` pinné dans .gitmodules)
+#   (c) working tree propre (aucune modif non commit)
+#   (d) SHA checkout == gitlink enregistré dans l'index du parent
+#   (+) alerte si le nom du dépôt (basename de l'URL) != nom du chemin (path)
+#
+# Rapport lisible OK / DÉSYNC par sous-module. Exit != 0 si au moins un problème.
+#
+# Usage : bash tools/submodules-doctor.sh
 set -u
 
-***REMOVED*** Racine du dépôt parent (le script peut être lancé de n'importe où).
+# Racine du dépôt parent (le script peut être lancé de n'importe où).
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
 if [ -z "${ROOT}" ]; then
     echo "ERREUR : pas dans un dépôt git." >&2
@@ -28,7 +28,7 @@ if [ ! -f "${GITMODULES}" ]; then
     exit 2
 fi
 
-***REMOVED*** Couleurs (désactivées si pas un TTY, ex. en CI).
+# Couleurs (désactivées si pas un TTY, ex. en CI).
 if [ -t 1 ]; then
     C_OK=$'\033[32m'; C_BAD=$'\033[31m'; C_WARN=$'\033[33m'; C_DIM=$'\033[2m'; C_RST=$'\033[0m'
 else
@@ -39,7 +39,7 @@ problems=0
 n_ok=0
 n_bad=0
 
-***REMOVED*** Liste des noms de sous-modules déclarés.
+# Liste des noms de sous-modules déclarés.
 names="$(git config -f "${GITMODULES}" --get-regexp '^submodule\..*\.path$' \
          | sed -E 's/^submodule\.(.*)\.path .*/\1/')"
 
@@ -57,10 +57,10 @@ for name in ${names}; do
     want_branch="$(git config -f "${GITMODULES}" --get "submodule.${name}.branch" 2>/dev/null)"
     [ -z "${want_branch}" ] && want_branch="main"
 
-    issues=()   ***REMOVED*** liste des problèmes pour ce sous-module
+    issues=()   # liste des problèmes pour ce sous-module
 
-    ***REMOVED*** (a) initialisé ? Le préfixe de `git submodule status` fait foi :
-    ***REMOVED***     '-' = non initialisé, '+' = SHA != gitlink, 'U' = conflit de merge.
+    # (a) initialisé ? Le préfixe de `git submodule status` fait foi :
+    #     '-' = non initialisé, '+' = SHA != gitlink, 'U' = conflit de merge.
     status_line="$(git submodule status -- "${path}" 2>/dev/null)"
     prefix="${status_line:0:1}"
 
@@ -72,36 +72,36 @@ for name in ${names}; do
         issues+=("NON INITIALISÉ (git submodule update --init -- ${path})")
     fi
 
-    ***REMOVED*** Nom dépôt (basename URL, sans .git) vs nom du path — piège type split->dve.
-    ***REMOVED*** Convention projet : le dépôt s'appelle bobistudio-{plugin,service}-<slug>, où <slug>
-    ***REMOVED*** DOIT correspondre au basename du path. On retire le préfixe conventionnel avant compare
-    ***REMOVED*** pour ne signaler QUE les vraies anomalies (ex. split dont le dépôt est ...-dve).
+    # Nom dépôt (basename URL, sans .git) vs nom du path — piège type split->dve.
+    # Convention projet : le dépôt s'appelle bobistudio-{plugin,service}-<slug>, où <slug>
+    # DOIT correspondre au basename du path. On retire le préfixe conventionnel avant compare
+    # pour ne signaler QUE les vraies anomalies (ex. split dont le dépôt est ...-dve).
     repo_base="$(basename "${url%.git}")"
-    repo_slug="${repo_base***REMOVED***bobistudio-plugin-}"
-    repo_slug="${repo_slug***REMOVED***bobistudio-service-}"
+    repo_slug="${repo_base#bobistudio-plugin-}"
+    repo_slug="${repo_slug#bobistudio-service-}"
     path_base="$(basename "${path}")"
     if [ -n "${url}" ] && [ "${repo_slug}" != "${path_base}" ]; then
         issues+=("nom dépôt != path : dépôt=${repo_base} (slug '${repo_slug}') path=${path_base}")
     fi
 
-    ***REMOVED*** Les vérifs suivantes n'ont de sens que si le checkout est exploitable.
+    # Les vérifs suivantes n'ont de sens que si le checkout est exploitable.
     if [ -e "${path}/.git" ]; then
         head_sha="$(git -C "${path}" rev-parse HEAD 2>/dev/null)"
         cur_branch="$(git -C "${path}" rev-parse --abbrev-ref HEAD 2>/dev/null)"
 
-        ***REMOVED*** (b) branche attendue
+        # (b) branche attendue
         if [ "${cur_branch}" = "HEAD" ]; then
             issues+=("HEAD détaché (attendu branche '${want_branch}')")
         elif [ "${cur_branch}" != "${want_branch}" ]; then
             issues+=("branche '${cur_branch}' != attendu '${want_branch}'")
         fi
 
-        ***REMOVED*** (c) working tree propre
+        # (c) working tree propre
         if [ -n "$(git -C "${path}" status --porcelain 2>/dev/null)" ]; then
             issues+=("working tree SALE (modifs non commit)")
         fi
 
-        ***REMOVED*** (d) SHA checkout == gitlink dans l'index du parent
+        # (d) SHA checkout == gitlink dans l'index du parent
         gitlink="$(git ls-files -s -- "${path}" 2>/dev/null | awk '{print $2}')"
         if [ -n "${gitlink}" ] && [ -n "${head_sha}" ] && [ "${gitlink}" != "${head_sha}" ]; then
             issues+=("SHA checkout ${head_sha:0:10} != gitlink index ${gitlink:0:10}")
@@ -110,7 +110,7 @@ for name in ${names}; do
         issues+=("pas de .git dans ${path} (checkout absent/cassé)")
     fi
 
-    if [ ${***REMOVED***issues[@]} -eq 0 ]; then
+    if [ ${#issues[@]} -eq 0 ]; then
         printf "%s[ OK ]%s %-28s %sbranche=%s%s\n" "${C_OK}" "${C_RST}" "${path}" "${C_DIM}" "${want_branch}" "${C_RST}"
         n_ok=$((n_ok + 1))
     else

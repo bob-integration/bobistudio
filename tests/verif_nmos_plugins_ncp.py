@@ -1,21 +1,21 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc de `services/nmos/plugins_ncp.py` — les paramètres de plugin exposés en MS-05-02.
-***REMOVED***
-***REMOVED*** CE QUE CE BANC PROTÈGE, ET POURQUOI C'EST CELUI-LÀ QUI COMPTE
-***REMOVED*** --------------------------------------------------------------
-***REMOVED*** Ce module publie un CONTRAT : des `classId` et des noms de propriétés qu'un contrôleur tiers
-***REMOVED*** mémorise. Une régression ici ne casse rien chez nous — elle casse chez le client, silencieusement,
-***REMOVED*** le jour où il met à jour. D'où des contrôles qui portent surtout sur ce qui est PUBLIÉ et sur ce
-***REMOVED*** qui ne doit jamais bouger.
-***REMOVED***
-***REMOVED*** Le chemin d'écriture est éprouvé en détournant `macros.exec_post` : on vérifie ce qui SERAIT
-***REMOVED*** envoyé au conteneur, sans en avoir besoin. Le trajet réel a été vérifié à la main le 2026-08-31
-***REMOVED*** sur un hello_world vivant (Set(coefficient_omega=42) et Set(fond="nuit") retrouvés dans /state).
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tools/verif_nmos_plugins_ncp.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc de `services/nmos/plugins_ncp.py` — les paramètres de plugin exposés en MS-05-02.
+#
+# CE QUE CE BANC PROTÈGE, ET POURQUOI C'EST CELUI-LÀ QUI COMPTE
+# --------------------------------------------------------------
+# Ce module publie un CONTRAT : des `classId` et des noms de propriétés qu'un contrôleur tiers
+# mémorise. Une régression ici ne casse rien chez nous — elle casse chez le client, silencieusement,
+# le jour où il met à jour. D'où des contrôles qui portent surtout sur ce qui est PUBLIÉ et sur ce
+# qui ne doit jamais bouger.
+#
+# Le chemin d'écriture est éprouvé en détournant `macros.exec_post` : on vérifie ce qui SERAIT
+# envoyé au conteneur, sans en avoir besoin. Le trajet réel a été vérifié à la main le 2026-08-31
+# sur un hello_world vivant (Set(coefficient_omega=42) et Set(fond="nuit") retrouvés dans /state).
+#
+#   $ ./venv/bin/python tools/verif_nmos_plugins_ncp.py
 import json
 import os
 import re
@@ -36,11 +36,11 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-from services.nmos import ncp, plugins_ncp as P                    ***REMOVED*** noqa: E402
+from services.nmos import ncp, plugins_ncp as P                    # noqa: E402
 
 print("plugins_ncp — contrat publié\n")
 
-***REMOVED*** ── 1. Le contrat : des classId qui ne doivent JAMAIS bouger ─────────────────
+# ── 1. Le contrat : des classId qui ne doivent JAMAIS bouger ─────────────────
 controle("les deux classId sont ceux publiés",
          P.CLASSE_PLUGIN == [1, 1, P.CLE_AUTORITE, 1]
          and P.CLASSE_PARAMETRE == [1, 2, P.CLE_AUTORITE, 1],
@@ -77,9 +77,9 @@ controle("les propriétés sont au niveau 3 (nos classes dérivent d'une profond
 controle("leurs index sont uniques et contigus",
          sorted(p["id"]["index"] for p in _props.values()) == list(range(1, 9)))
 
-***REMOVED*** ── 2. La clé d'autorité : UN SEUL littéral dans tout le produit ─────────────
-***REMOVED*** Même leçon que le PEN IANA pour SNMP : la clé est EMBARQUÉE dans chaque classId publié. La
-***REMOVED*** disséminer, c'est se garantir un parc à moitié migré le jour où le CID IEEE est attribué.
+# ── 2. La clé d'autorité : UN SEUL littéral dans tout le produit ─────────────
+# Même leçon que le PEN IANA pour SNMP : la clé est EMBARQUÉE dans chaque classId publié. La
+# disséminer, c'est se garantir un parc à moitié migré le jour où le CID IEEE est attribué.
 _hits = subprocess.run(
     ["grep", "-rn", "-E", r"CLE_AUTORITE\s*=", "--include=*.py", RACINE],
     capture_output=True, text=True).stdout.strip().splitlines()
@@ -93,23 +93,23 @@ controle("aucun classId n'écrit la clé en dur ailleurs",
              capture_output=True, text=True).stdout.strip().splitlines()
              if "/venv/" not in h and "plugins_ncp.py" not in h and "/tools/" not in h])
 
-***REMOVED*** ── 3. Forme canonique et rôles ──────────────────────────────────────────────
+# ── 3. Forme canonique et rôles ──────────────────────────────────────────────
 controle("les booléens sont canonisés en true/false",
          P._canon(True) == "true" and P._canon(False) == "false",
          "un contrôleur qui lit « True » (Python) au lieu de « true » ne saura pas le coercer")
 controle("None reste None (et ne devient pas la chaîne « None »)", P._canon(None) is None)
 
-***REMOVED*** ⚠ Le rôle est l'ADRESSE d'un objet (GetMemberDescriptors, chemins IS-14) : il doit dépendre de
-***REMOVED*** l'identité du paramètre, jamais de son rang. Un paramètre ajouté au manifeste décalerait sinon
-***REMOVED*** toutes les adresses déjà mémorisées par un contrôleur.
+# ⚠ Le rôle est l'ADRESSE d'un objet (GetMemberDescriptors, chemins IS-14) : il doit dépendre de
+# l'identité du paramètre, jamais de son rang. Un paramètre ajouté au manifeste décalerait sinon
+# toutes les adresses déjà mémorisées par un contrôleur.
 controle("le rôle dépend de l'identité, pas du rang",
          P._role("el", "Groupe A", "gain") == P._role("el", "Groupe A", "gain"))
 controle("deux paramètres distincts ont des rôles distincts",
          P._role("el", "Groupe A", "gain") != P._role("el", "Groupe B", "gain"))
-***REMOVED*** ⚠ LE CONTRE-EXEMPLE DOIT RÉSISTER À NFKD, et le premier que j'ai écrit n'y résistait pas :
-***REMOVED*** « À » se décompose en « A » + diacritique, que la normalisation retire déjà — le filtre ASCII
-***REMOVED*** n'était donc pas sollicité, et la garde passait même désarmée. Il faut des caractères que NFKD
-***REMOVED*** ne décompose PAS : « ø », « œ », du cyrillique. C'est le cas réel d'un site non francophone.
+# ⚠ LE CONTRE-EXEMPLE DOIT RÉSISTER À NFKD, et le premier que j'ai écrit n'y résistait pas :
+# « À » se décompose en « A » + diacritique, que la normalisation retire déjà — le filtre ASCII
+# n'était donc pas sollicité, et la garde passait même désarmée. Il faut des caractères que NFKD
+# ne décompose PAS : « ø », « œ », du cyrillique. C'est le cas réel d'un site non francophone.
 _cas = P._role("el", "Grøupe œuf Ω", "gain %")
 controle("le rôle ne contient que des caractères sûrs, même hors décomposition NFKD",
          re.fullmatch(r"[a-z0-9_]+", _cas) is not None,
@@ -120,7 +120,7 @@ controle("et la translittération préserve la distinction des libellés accentu
          "on translittère (é→e) plutôt que de remplacer par « _ » : un rôle illisible ne "
          "s'associe plus à rien pour l'humain")
 
-***REMOVED*** ── 4. Bornes publiées = bornes appliquées ───────────────────────────────────
+# ── 4. Bornes publiées = bornes appliquées ───────────────────────────────────
 APPELS = []
 
 
@@ -186,7 +186,7 @@ try:
 finally:
     P._appliquer = _vrai
 
-***REMOVED*** ── 5. Un refus du conteneur ne doit JAMAIS passer pour un succès ────────────
+# ── 5. Un refus du conteneur ne doit JAMAIS passer pour un succès ────────────
 P._appliquer = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("HTTP 500"))
 try:
     r = _num._ecrire("value", 10)
@@ -199,7 +199,7 @@ try:
 finally:
     P._appliquer = _vrai
 
-***REMOVED*** ── 5bis. Actions : une méthode générique, et des refus qui NOMMENT le problème ──
+# ── 5bis. Actions : une méthode générique, et des refus qui NOMMENT le problème ──
 _act = P.Action(_app, _app.oid_libre(), "action_fond", 1, 42,
                 {"id": "fond", "label": "Changer le fond", "endpoint": "/fond",
                  "params": [{"key": "couleur", "label": "Couleur",
@@ -232,9 +232,9 @@ try:
 
     r = _act._m_invoke({"argumentsJson": "pas du json"})
     controle("un argumentsJson illisible est refusé", r.get("status") != 200)
-    ***REMOVED*** ⚠ Vérifier le MOTIF, pas le statut. Avec le contrôle de type désarmé, « [1,2] » est encore
-    ***REMOVED*** rejeté — mais comme « arguments inconnus », par le contrôle suivant. Sur le seul statut, la
-    ***REMOVED*** disparition de cette garde-ci serait invisible. (Deuxième fois cette nuit pour ce motif.)
+    # ⚠ Vérifier le MOTIF, pas le statut. Avec le contrôle de type désarmé, « [1,2] » est encore
+    # rejeté — mais comme « arguments inconnus », par le contrôle suivant. Sur le seul statut, la
+    # disparition de cette garde-ci serait invisible. (Deuxième fois cette nuit pour ce motif.)
     r = _act._m_invoke({"argumentsJson": "[1,2]"})
     controle("un argumentsJson qui n'est pas un OBJET est refusé, et pour CE motif",
              r.get("status") != 200 and "OBJET" in (r.get("errorMessage") or ""),
@@ -263,8 +263,8 @@ try:
 finally:
     P._executer = _vrai_exec
 
-***REMOVED*** ── 6. Le réglage ferme bien la surface ──────────────────────────────────────
-from app.database import db_get_setting, db_set_setting                      ***REMOVED*** noqa: E402
+# ── 6. Le réglage ferme bien la surface ──────────────────────────────────────
+from app.database import db_get_setting, db_set_setting                      # noqa: E402
 _avant = db_get_setting("nmos_plugins_ncp", "0")
 try:
     db_set_setting("nmos_plugins_ncp", "0")
@@ -272,10 +272,10 @@ try:
              "publier ce modèle, c'est publier un contrat que d'autres mémoriseront")
     db_set_setting("nmos_plugins_ncp", "1")
     controle("le réglage ouvre bien la surface", P.actif())
-    ***REMOVED*** ⚠ Les réglages booléens sont stockés en JSON : `db_get_setting` rend `True`, pas « 1 ».
-    ***REMOVED*** Une comparaison sensible à la casse (`str(True)` vaut « True ») ne correspond à aucune des
-    ***REMOVED*** formes attendues — le réglage activé depuis l'interface serait resté SANS EFFET. Panne
-    ***REMOVED*** muette parfaite : la case est cochée, et rien ne se passe.
+    # ⚠ Les réglages booléens sont stockés en JSON : `db_get_setting` rend `True`, pas « 1 ».
+    # Une comparaison sensible à la casse (`str(True)` vaut « True ») ne correspond à aucune des
+    # formes attendues — le réglage activé depuis l'interface serait resté SANS EFFET. Panne
+    # muette parfaite : la case est cochée, et rien ne se passe.
     db_set_setting("nmos_plugins_ncp", True)
     controle("★ un booléen JSON active la surface autant que la chaîne « 1 »", P.actif(),
              "db_get_setting rend un VRAI booléen pour les réglages de type bool")

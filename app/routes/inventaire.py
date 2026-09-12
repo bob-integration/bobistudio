@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Inventaire Docker par nœud : ce que l'agent voit RÉELLEMENT, confronté à la base.
 
@@ -33,15 +33,15 @@ from ..vmlocks import verrou_vmid
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Noms produits par l'orchestrateur lui-même (docker_compute._name / docker_driver._name).
+# Noms produits par l'orchestrateur lui-même (docker_compute._name / docker_driver._name).
 _RE_ORCH = re.compile(r"^bobi-(?:cmp|mtl)-(\d+)$")
-***REMOVED*** Noms produits par le service RDMA (services/rdma/__init__.py:_nom_cible/_nom_initiateur).
+# Noms produits par le service RDMA (services/rdma/__init__.py:_nom_cible/_nom_initiateur).
 _RE_RDMA = re.compile(r"^rdma-(?:ini|tgt)-(\d+)$")
-***REMOVED*** Garde-fou d'injection : le nom part dans l'URL appelée sur l'agent.
+# Garde-fou d'injection : le nom part dans l'URL appelée sur l'agent.
 _RE_NOM_SUR = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
-***REMOVED*** Signature Docker d'un conteneur dont le processus ne peut PAS être tué. Ce n'est pas un refus de
-***REMOVED*** l'agent ni une panne réseau : c'est le noyau qui ne rendra jamais la main.
+# Signature Docker d'un conteneur dont le processus ne peut PAS être tué. Ce n'est pas un refus de
+# l'agent ni une panne réseau : c'est le noyau qui ne rendra jamais la main.
 _RE_INTUABLE = re.compile(r"did not receive an exit event|could not kill", re.I)
 
 
@@ -74,18 +74,18 @@ def _diagnostic_intuable(node, nom):
     pile = [l.strip() for l in (out or "").splitlines() if l.strip().startswith("[<")]
     fonction = ""
     if pile:
-        ***REMOVED*** « [<0>] cm_destroy_id+0x1d6/0x5c0 [ib_cm] » → « cm_destroy_id [ib_cm] »
+        # « [<0>] cm_destroy_id+0x1d6/0x5c0 [ib_cm] » → « cm_destroy_id [ib_cm] »
         m = re.search(r"\]\s+([A-Za-z0-9_]+)\+.*?(\[[a-z0-9_]+\])?\s*$", pile[0])
         if m:
             fonction = " ".join(x for x in m.groups() if x)
     return ("intuable", fonction or "état D, pile noyau indisponible")
 
 
-***REMOVED*** Classes d'un conteneur vu sur un nœud.
-***REMOVED***   managed : la base le connaît SUR CE NŒUD → géré, destruction par la page Conteneurs
-***REMOVED***   rdma    : lien RDMA vivant → destruction en supprimant le lien, pas le conteneur
-***REMOVED***   orphan  : nommé par nous ou par le service RDMA, mais plus rien ne le référence
-***REMOVED***   foreign : étranger à l'orchestrateur (lancement manuel, banc, image sans étiquette)
+# Classes d'un conteneur vu sur un nœud.
+#   managed : la base le connaît SUR CE NŒUD → géré, destruction par la page Conteneurs
+#   rdma    : lien RDMA vivant → destruction en supprimant le lien, pas le conteneur
+#   orphan  : nommé par nous ou par le service RDMA, mais plus rien ne le référence
+#   foreign : étranger à l'orchestrateur (lancement manuel, banc, image sans étiquette)
 _DESTRUCTIBLE = ("orphan", "foreign")
 
 
@@ -94,7 +94,7 @@ def _liens_rdma():
     try:
         with get_db() as db:
             return {int(r[0]) for r in db.execute("SELECT id FROM rdma_links")}
-    except Exception as e:                                   ***REMOVED*** table absente = aucun lien
+    except Exception as e:                                   # table absente = aucun lien
         log.warning("inventaire : lecture rdma_links impossible (%s)", e)
         return set()
 
@@ -173,8 +173,8 @@ def api_inventaire():
     return jsonify({"nodes": out, "totals": totaux})
 
 
-***REMOVED*** `<nom>` et non `<path:nom>` : un nom de conteneur Docker ne contient jamais de « / », et le
-***REMOVED*** convertisseur `path` rendrait la fin de règle ambiguë.
+# `<nom>` et non `<path:nom>` : un nom de conteneur Docker ne contient jamais de « / », et le
+# convertisseur `path` rendrait la fin de règle ambiguë.
 @bp.route("/api/inventaire/<int:node_id>/<nom>/destroy", methods=["POST"])
 @require_perm("containers.delete")
 def api_inventaire_destroy(node_id, nom):
@@ -201,9 +201,9 @@ def api_inventaire_destroy(node_id, nom):
     if classe == "rdma":
         return jsonify({"error": "rdma_link_alive", "classe": classe, "detail": detail}), 409
 
-    ***REMOVED*** Le nom porte parfois un vmid, et les vmid sont RÉATTRIBUÉS : on se sérialise avec les
-    ***REMOVED*** opérations de cycle de vie de ce vmid pour ne pas détruire un conteneur en cours de
-    ***REMOVED*** création qui viendrait de reprendre le numéro.
+    # Le nom porte parfois un vmid, et les vmid sont RÉATTRIBUÉS : on se sérialise avec les
+    # opérations de cycle de vie de ce vmid pour ne pas détruire un conteneur en cours de
+    # création qui viendrait de reprendre le numéro.
     m = _RE_ORCH.match(nom)
     vmid = int(m.group(1)) if m else None
 
@@ -217,9 +217,9 @@ def api_inventaire_destroy(node_id, nom):
         ok, err = _detruire()
 
     if not ok:
-        ***REMOVED*** Avant de rendre le vocabulaire de Docker à l'exploitant : est-ce le cas connu du processus
-        ***REMOVED*** bloqué en état D ? Si oui, on nomme la cause ET la seule sortie — sinon on cherche pendant
-        ***REMOVED*** des jours du côté de l'agent (vécu le 2026-08-30 : le message a remonté jusqu'à moi).
+        # Avant de rendre le vocabulaire de Docker à l'exploitant : est-ce le cas connu du processus
+        # bloqué en état D ? Si oui, on nomme la cause ET la seule sortie — sinon on cherche pendant
+        # des jours du côté de l'agent (vécu le 2026-08-30 : le message a remonté jusqu'à moi).
         if _RE_INTUABLE.search(str(err) or ""):
             diag, ou = _diagnostic_intuable(node, nom)
             if diag:

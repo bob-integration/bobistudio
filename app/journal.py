@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Journaux de conteneurs DURABLES (journald) — pilote de log, prép nœud, interrogation.
 
@@ -54,26 +54,26 @@ import shlex
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Plafond dur du nombre de lignes servies par la route (cf. container_logs.py) : sans borne, un
-***REMOVED*** `?lines=1e7` ramènerait des centaines de Mo de journal dans la RAM du contrôleur.
+# Plafond dur du nombre de lignes servies par la route (cf. container_logs.py) : sans borne, un
+# `?lines=1e7` ramènerait des centaines de Mo de journal dans la RAM du contrôleur.
 MAX_LINES = 2000
-***REMOVED*** Plafond dur par ligne : une trace binaire/JSON d'un plugin peut faire des Mo à elle seule.
+# Plafond dur par ligne : une trace binaire/JSON d'un plugin peut faire des Mo à elle seule.
 MAX_LINE_CHARS = 4000
 
 JOURNALD_DROPIN_PATH = "/etc/systemd/journald.conf.d/10-bobi.conf"
 
-***REMOVED*** Valeurs EXPLICITES (ne jamais dépendre du défaut amont, cf. docstring) :
-***REMOVED***  · Storage=persistent   → /var/log/journal, survit au reboot (le mode `auto` ne persiste que si
-***REMOVED***                           le dossier existe déjà : on crée le dossier ET on l'écrit noir sur blanc) ;
-***REMOVED***  · SystemMaxUse=4G      → plafond du journal ; c'est LE garde-fou disque (les nœuds ont ~600 Mo
-***REMOVED***                           de journal pour ~1 mois : 4 Go laissent une marge confortable même avec
-***REMOVED***                           des conteneurs bavards, sans risquer le disque) ;
-***REMOVED***  · SystemKeepFree=4G    → journald s'efface avant de remplir le disque du nœud ;
-***REMOVED***  · SystemMaxFileSize=256M / SystemMaxFiles=64 → rotation par petits fichiers = purge granulaire ;
-***REMOVED***  · RateLimit* = 0       → AUCUN message jeté en silence (cf. docstring) ;
-***REMOVED***  · ForwardToSyslog=no   → pas de double écriture (rsyslog n'est pas installé sur les nœuds).
-JOURNALD_DROPIN = """***REMOVED*** BOBI — journal systemd DURABLE pour les conteneurs (pilote docker `journald`).
-***REMOVED*** Genere par app/journal.py (ensure_journal_durable) — ne pas editer a la main.
+# Valeurs EXPLICITES (ne jamais dépendre du défaut amont, cf. docstring) :
+#  · Storage=persistent   → /var/log/journal, survit au reboot (le mode `auto` ne persiste que si
+#                           le dossier existe déjà : on crée le dossier ET on l'écrit noir sur blanc) ;
+#  · SystemMaxUse=4G      → plafond du journal ; c'est LE garde-fou disque (les nœuds ont ~600 Mo
+#                           de journal pour ~1 mois : 4 Go laissent une marge confortable même avec
+#                           des conteneurs bavards, sans risquer le disque) ;
+#  · SystemKeepFree=4G    → journald s'efface avant de remplir le disque du nœud ;
+#  · SystemMaxFileSize=256M / SystemMaxFiles=64 → rotation par petits fichiers = purge granulaire ;
+#  · RateLimit* = 0       → AUCUN message jeté en silence (cf. docstring) ;
+#  · ForwardToSyslog=no   → pas de double écriture (rsyslog n'est pas installé sur les nœuds).
+JOURNALD_DROPIN = """# BOBI — journal systemd DURABLE pour les conteneurs (pilote docker `journald`).
+# Genere par app/journal.py (ensure_journal_durable) — ne pas editer a la main.
 [Journal]
 Storage=persistent
 Compress=yes
@@ -81,16 +81,16 @@ SystemMaxUse=4G
 SystemKeepFree=4G
 SystemMaxFileSize=256M
 SystemMaxFiles=64
-***REMOVED*** Limitation de debit DESACTIVEE : au-dela du burst, journald jette les messages SANS RIEN DIRE.
-***REMOVED*** Un moteur 2110 en crash-loop perdrait justement les lignes qui expliquent le crash. La borne
-***REMOVED*** est la TAILLE (SystemMaxUse ci-dessus), dont la perte est bornee, previsible et OBSERVABLE.
+# Limitation de debit DESACTIVEE : au-dela du burst, journald jette les messages SANS RIEN DIRE.
+# Un moteur 2110 en crash-loop perdrait justement les lignes qui expliquent le crash. La borne
+# est la TAILLE (SystemMaxUse ci-dessus), dont la perte est bornee, previsible et OBSERVABLE.
 RateLimitIntervalSec=0
 RateLimitBurst=0
 ForwardToSyslog=no
 """
 
 
-***REMOVED*** ─── Pilote de log des conteneurs ────────────────────────────────────────────
+# ─── Pilote de log des conteneurs ────────────────────────────────────────────
 def driver():
     """Pilote de log à poser sur les conteneurs. Réglage `container_log_driver` (défaut `journald`) ;
     `json-file` reste sélectionnable pour un nœud dont le journal ne serait pas persistant."""
@@ -106,10 +106,10 @@ def log_opts(name):
     """Options de log (driver + opts) pour un conteneur nommé `name`, sous forme de dict.
     Source unique de vérité partagée par les deux backends ET par la spec agent-nœud."""
     if driver() == "json-file":
-        ***REMOVED*** Historique : json-file NON borné a déjà saturé un disque (225 Go en 13 h). Toujours borné.
+        # Historique : json-file NON borné a déjà saturé un disque (225 Go en 13 h). Toujours borné.
         return {"driver": "json-file", "opts": {"max-size": "50m", "max-file": "5"}}
-    ***REMOVED*** `tag={{.Name}}` : sans ça CONTAINER_TAG/SYSLOG_IDENTIFIER = l'id court du conteneur, inutilisable
-    ***REMOVED*** a posteriori (on ne connaît plus l'id d'un conteneur détruit). Avec, le NOM sert de clé.
+    # `tag={{.Name}}` : sans ça CONTAINER_TAG/SYSLOG_IDENTIFIER = l'id court du conteneur, inutilisable
+    # a posteriori (on ne connaît plus l'id d'un conteneur détruit). Avec, le NOM sert de clé.
     return {"driver": "journald", "opts": {"tag": "{{.Name}}"}}
 
 
@@ -122,7 +122,7 @@ def docker_flags(name):
     return s
 
 
-***REMOVED*** ─── Prép nœud : journal persistant + limites explicites ─────────────────────
+# ─── Prép nœud : journal persistant + limites explicites ─────────────────────
 def verifier(host, run=None):
     """État (LECTURE SEULE) du journal d'un nœud : persistance, drop-in BOBI posé, limitation de
     débit effective, occupation. Retourne un dict (jamais d'exception)."""
@@ -132,11 +132,11 @@ def verifier(host, run=None):
         "echo '@@PERSIST='$([ -d /var/log/journal ] && echo yes || echo no); "
         f"echo '@@DROPIN='$([ -f {JOURNALD_DROPIN_PATH} ] && echo yes || echo no); "
         "echo '@@USAGE='$(journalctl --disk-usage 2>/dev/null | tr -d '\\n'); "
-        ***REMOVED*** `***REMOVED***?` : les lignes COMMENTÉES du journald.conf amont sont la documentation du défaut —
-        ***REMOVED*** les afficher permet de voir d'un coup d'œil ce qui est EXPLICITE (sans ***REMOVED***) et ce qui est
-        ***REMOVED*** implicite (avec ***REMOVED***), au lieu d'un écran vide qui ne dit rien.
+        # `#?` : les lignes COMMENTÉES du journald.conf amont sont la documentation du défaut —
+        # les afficher permet de voir d'un coup d'œil ce qui est EXPLICITE (sans #) et ce qui est
+        # implicite (avec #), au lieu d'un écran vide qui ne dit rien.
         "echo '@@CONF='; systemd-analyze cat-config systemd/journald.conf 2>/dev/null "
-        "| grep -Ei '^***REMOVED***?(Storage|SystemMaxUse|SystemKeepFree|RateLimit)' | tr '\\n' ';'"
+        "| grep -Ei '^#?(Storage|SystemMaxUse|SystemKeepFree|RateLimit)' | tr '\\n' ';'"
     )
     rc, out, err = run(cmd, timeout=30)
     txt = out or ""
@@ -173,8 +173,8 @@ def ensure_journal_durable(host, run=None):
         "systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1 || true; "
         "mkdir -p /etc/systemd/journald.conf.d; "
         f"cat > {JOURNALD_DROPIN_PATH} << 'BOBIEOF'\n{JOURNALD_DROPIN}BOBIEOF\n"
-        ***REMOVED*** Le redémarrage de journald ne perd RIEN (les entrées sont déjà sur disque) et ne
-        ***REMOVED*** perturbe aucun conteneur : c'est le seul « restart » de cette prép.
+        # Le redémarrage de journald ne perd RIEN (les entrées sont déjà sur disque) et ne
+        # perturbe aucun conteneur : c'est le seul « restart » de cette prép.
         "systemctl restart systemd-journald 2>&1 || echo '@@FAIL'; "
         "journalctl --disk-usage 2>&1 | tr -d '\\n'"
     )
@@ -193,8 +193,8 @@ def ensure_journal_durable(host, run=None):
             "alert.prep.journal_durable_pose", {"detail": detail})
 
 
-***REMOVED*** ─── Interrogation ───────────────────────────────────────────────────────────
-_SINCE_RE = re.compile(r"^[0-9a-zA-Z:\-\+ \.@]{1,40}$")   ***REMOVED*** « 2026-07-25 10:00:00 », « -2h », « today »
+# ─── Interrogation ───────────────────────────────────────────────────────────
+_SINCE_RE = re.compile(r"^[0-9a-zA-Z:\-\+ \.@]{1,40}$")   # « 2026-07-25 10:00:00 », « -2h », « today »
 _PRIO_RE = re.compile(r"^[0-7](\.\.[0-7])?$|^(emerg|alert|crit|err|warning|notice|info|debug)$")
 
 
@@ -225,8 +225,8 @@ def retention(node, run=None):
     def _g(k):
         m = re.search(r"@@%s=(.*)" % k, txt)
         return (m.group(1).strip() if m else "")
-    ***REMOVED*** `SystemMaxUse` non posé = défaut systemd (10 % du système de fichiers, plafonné à 4 Go) — on le
-    ***REMOVED*** NOMME plutôt que de renvoyer un vide qui laisserait croire à un journal sans plafond.
+    # `SystemMaxUse` non posé = défaut systemd (10 % du système de fichiers, plafonné à 4 Go) — on le
+    # NOMME plutôt que de renvoyer un vide qui laisserait croire à un journal sans plafond.
     return {"disk_usage": _g("USAGE"),
             "max_use": _g("MAX") or "défaut systemd (10 % de /var, plafonné à 4 Go) — prép non appliquée",
             "oldest_entry": _g("OLDEST"), "ok": rc == 0}
@@ -263,9 +263,9 @@ def lire(node, name, lines=200, since=None, until=None, priority=None, grep=None
     q = shlex.quote(name)
     n = max(1, min(int(lines or 200), MAX_LINES))
     args = ["journalctl", "--no-pager", "-o", "short-iso", "-q", "-n", str(n)]
-    ***REMOVED*** OU explicite entre les deux champs : CONTAINER_NAME est posé par le pilote journald sur tout
-    ***REMOVED*** conteneur ; CONTAINER_TAG ne vaut le nom que depuis qu'on force `--log-opt tag={{.Name}}`.
-    ***REMOVED*** Des matchs sur des champs DIFFÉRENTS seraient ET-és par journalctl → le `+` est indispensable.
+    # OU explicite entre les deux champs : CONTAINER_NAME est posé par le pilote journald sur tout
+    # conteneur ; CONTAINER_TAG ne vaut le nom que depuis qu'on force `--log-opt tag={{.Name}}`.
+    # Des matchs sur des champs DIFFÉRENTS seraient ET-és par journalctl → le `+` est indispensable.
     args += [f"CONTAINER_NAME={name}", "+", f"CONTAINER_TAG={name}"]
     if boot not in (None, ""):
         args += ["-b", str(boot)] if re.match(r"^-?\d+$|^[0-9a-f]{32}$", str(boot)) else []
@@ -274,8 +274,8 @@ def lire(node, name, lines=200, since=None, until=None, priority=None, grep=None
     if until and _SINCE_RE.match(str(until)):
         args += ["--until", str(until)]
     if priority and _PRIO_RE.match(str(priority)):
-        ***REMOVED*** Rappel : le pilote journald mappe stdout→PRIORITY=6 (info) et stderr→PRIORITY=3 (err).
-        ***REMOVED*** `?priority=err` = « uniquement ce que le conteneur a écrit sur stderr ».
+        # Rappel : le pilote journald mappe stdout→PRIORITY=6 (info) et stderr→PRIORITY=3 (err).
+        # `?priority=err` = « uniquement ce que le conteneur a écrit sur stderr ».
         args += ["-p", str(priority)]
     if grep:
         args += ["--grep", str(grep)[:200], "--case-sensitive=no"]
@@ -284,21 +284,21 @@ def lire(node, name, lines=200, since=None, until=None, priority=None, grep=None
         rc, out, err = run(cmd, timeout=45)
     except Exception as e:
         return {"ok": False, "name": name, "error": f"exécution hôte impossible : {e}"[:300]}, 502
-    ***REMOVED*** `journalctl --grep` sort avec le code 1 quand RIEN NE CORRESPOND (comportement documenté) :
-    ***REMOVED*** ce n'est PAS une erreur, c'est un résultat vide. Le confondre avec un échec afficherait un
-    ***REMOVED*** 502 à chaque recherche infructueuse. Seul un rc≠0 AVEC du stderr est un vrai échec.
+    # `journalctl --grep` sort avec le code 1 quand RIEN NE CORRESPOND (comportement documenté) :
+    # ce n'est PAS une erreur, c'est un résultat vide. Le confondre avec un échec afficherait un
+    # 502 à chaque recherche infructueuse. Seul un rc≠0 AVEC du stderr est un vrai échec.
     if rc != 0 and not (out or "").strip() and (err or "").strip():
         return {"ok": False, "name": name, "source": "journald",
                 "error": (err or "journalctl a échoué").strip()[:300]}, 502
     rows = _chronologique([l[:MAX_LINE_CHARS] for l in (out or "").splitlines() if l.strip()])
     src = "journald"
     fallback = None
-    ***REMOVED*** Une requête FILTRÉE vide ne veut PAS dire « ce conteneur n'est pas dans journald » : demander
-    ***REMOVED*** `priority=err` à un conteneur qui n'écrit rien sur stderr rend légitimement zéro ligne. Sans
-    ***REMOVED*** cette distinction, on repliait sur `docker logs` — qui ne sait pas filtrer — et on rendait
-    ***REMOVED*** donc des lignes NE CORRESPONDANT PAS au filtre demandé, en annonçant `source: "docker"` sur un
-    ***REMOVED*** conteneur pourtant migré. Un opérateur cherchant les erreurs en voyait alors de fausses.
-    ***REMOVED*** → on ne replie que si le conteneur est ABSENT du journal, filtres retirés.
+    # Une requête FILTRÉE vide ne veut PAS dire « ce conteneur n'est pas dans journald » : demander
+    # `priority=err` à un conteneur qui n'écrit rien sur stderr rend légitimement zéro ligne. Sans
+    # cette distinction, on repliait sur `docker logs` — qui ne sait pas filtrer — et on rendait
+    # donc des lignes NE CORRESPONDANT PAS au filtre demandé, en annonçant `source: "docker"` sur un
+    # conteneur pourtant migré. Un opérateur cherchant les erreurs en voyait alors de fausses.
+    # → on ne replie que si le conteneur est ABSENT du journal, filtres retirés.
     filtre_actif = bool(since or until or priority or grep or boot not in (None, ""))
     if not rows and filtre_actif:
         sonde = " ".join([shlex.quote(a) if a != "+" else "+" for a in
@@ -315,10 +315,10 @@ def lire(node, name, lines=200, since=None, until=None, priority=None, grep=None
         except Exception:
             pass
     if not rows:
-        ***REMOVED*** Rien dans le journal de l'hôte, filtres compris. Deux causes possibles, non confondues :
-        ***REMOVED*** (a) le conteneur tourne encore en `json-file` (flotte pas encore migrée) → on va chercher
-        ***REMOVED***     ses lignes avec `docker logs` et on l'ANNONCE (`source: "docker"`) ;
-        ***REMOVED*** (b) le conteneur n'a jamais rien écrit / a été purgé par rotation → liste vide assumée.
+        # Rien dans le journal de l'hôte, filtres compris. Deux causes possibles, non confondues :
+        # (a) le conteneur tourne encore en `json-file` (flotte pas encore migrée) → on va chercher
+        #     ses lignes avec `docker logs` et on l'ANNONCE (`source: "docker"`) ;
+        # (b) le conteneur n'a jamais rien écrit / a été purgé par rotation → liste vide assumée.
         rc2, out2, err2 = run(f"docker logs --tail {n} {q} 2>&1", timeout=30)
         if rc2 == 0:
             rows = [l[:MAX_LINE_CHARS] for l in (out2 or "").splitlines()]
@@ -329,8 +329,8 @@ def lire(node, name, lines=200, since=None, until=None, priority=None, grep=None
                         "ATTENTION : les filtres since/until/priority/grep/boot ne s'appliquent "
                         "PAS à ce repli (`docker logs` ne sait pas filtrer) — seul `lines` vaut.")
         elif "No such container" in (out2 or "") + (err2 or ""):
-            ***REMOVED*** Ni journal hôte, ni conteneur vivant. On NOMME les deux causes possibles plutôt que
-            ***REMOVED*** de renvoyer une liste vide muette (le pire des retours pour un post-mortem).
+            # Ni journal hôte, ni conteneur vivant. On NOMME les deux causes possibles plutôt que
+            # de renvoyer une liste vide muette (le pire des retours pour un post-mortem).
             fallback = ("aucune entrée dans le journal de l'hôte pour ce nom, et le conteneur "
                         "n'existe plus : soit il n'a jamais tourné avec le pilote `journald` "
                         "(fenêtre ANTÉRIEURE à la migration — ses logs sont définitivement perdus "
@@ -368,8 +368,8 @@ def conteneurs_connus(node, run=None):
     if not connus and (err or "").strip():
         return {"ok": False, "error": (err or "").strip()[:300]}, 502
 
-    ***REMOVED*** Nom d'hôte lisible depuis la base quand le vmid y existe encore. Un conteneur détruit ET
-    ***REMOVED*** purgé de la base ne garde que son nom Docker — c'est normal, et on ne l'invente pas.
+    # Nom d'hôte lisible depuis la base quand le vmid y existe encore. Un conteneur détruit ET
+    # purgé de la base ne garde que son nom Docker — c'est normal, et on ne l'invente pas.
     hostnames = {}
     try:
         from .database import db_get_containers
@@ -386,7 +386,7 @@ def conteneurs_connus(node, run=None):
         lignes.append({"name": nom, "vmid": vmid, "alive": nom in vivants,
                        "in_db": vmid in hostnames if vmid is not None else False,
                        "hostname": hostnames.get(vmid)})
-    ***REMOVED*** Vivants d'abord, puis par nom : on veut voir l'exploitation courante en haut, l'historique en bas.
+    # Vivants d'abord, puis par nom : on veut voir l'exploitation courante en haut, l'historique en bas.
     lignes.sort(key=lambda x: (not x["alive"], x["name"]))
     return {"ok": True, "node": {"id": node.get("id"), "name": node.get("name")},
             "containers": lignes, "count": len(lignes)}, 200

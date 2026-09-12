@@ -1,4 +1,4 @@
-***REMOVED*** Textes de licence des composants tiers
+# Textes de licence des composants tiers
 
 Ce dossier existe pour une raison précise : **Apache-2.0 §4(a) et BSD-3-Clause exigent qu'une
 copie de la licence accompagne toute redistribution**, source comme binaire. Les citer dans

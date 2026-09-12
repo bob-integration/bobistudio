@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Bibliothèque des modèles de PiP (multiview) : modèles d'USINE (builtin, non modifiables,
 servis avec la bibliothèque DB) + résolution nom → composants.
@@ -37,9 +37,9 @@ fractions du MUR + source câblée propre), cf. plugins/multiview/script.py rend
 
 BUILTIN_PIP_TEMPLATES = [
     {
-        ***REMOVED*** Réplique STATIQUE du rendu historique par défaut (bandeau nom translucide en bas de
-        ***REMOVED*** l'image + pavés tally G/D). Miroir du modèle GÉNÉRÉ côté moteur (_classic_comps,
-        ***REMOVED*** plugins/multiview/script.py) — c'est aussi le repli d'une cellule sans modèle.
+        # Réplique STATIQUE du rendu historique par défaut (bandeau nom translucide en bas de
+        # l'image + pavés tally G/D). Miroir du modèle GÉNÉRÉ côté moteur (_classic_comps,
+        # plugins/multiview/script.py) — c'est aussi le repli d'une cellule sans modèle.
         "id": "builtin:classic",
         "name": "Classique (bandeau + tally)",
         "builtin": True,
@@ -47,7 +47,7 @@ BUILTIN_PIP_TEMPLATES = [
             {"id": "video", "type": "video", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0,
              "fit": "fill", "border": "none"},
             {"id": "umd", "type": "umd", "x": 0.0, "y": 0.92, "w": 1.0, "h": 0.08,
-             "text_source": "name", "tally_bg": False, "bg_color": "***REMOVED***000000", "bg_opacity": 70},
+             "text_source": "name", "tally_bg": False, "bg_color": "#000000", "bg_opacity": 70},
             {"id": "talL", "type": "tally", "x": 0.01, "y": 0.93, "w": 0.032, "h": 0.056,
              "shape": "bar", "slot": "L", "min_w": 140},
             {"id": "talR", "type": "tally", "x": 0.958, "y": 0.93, "w": 0.032, "h": 0.056,
@@ -55,8 +55,8 @@ BUILTIN_PIP_TEMPLATES = [
         ]},
     },
     {
-        ***REMOVED*** Ex-« texte sous l'image » (overlay_below) : PAS de mécanisme dédié, c'est un LAYOUT
-        ***REMOVED*** de modèle — vidéo réduite + bandeau UMD broadcast SOUS l'image, cadre fin.
+        # Ex-« texte sous l'image » (overlay_below) : PAS de mécanisme dédié, c'est un LAYOUT
+        # de modèle — vidéo réduite + bandeau UMD broadcast SOUS l'image, cadre fin.
         "id": "builtin:umd-below",
         "name": "UMD broadcast (texte sous l'image)",
         "builtin": True,
@@ -66,13 +66,13 @@ BUILTIN_PIP_TEMPLATES = [
             {"id": "lampL", "type": "tally", "x": 0.03, "y": 0.895, "w": 0.05, "h": 0.085,
              "shape": "lamp", "slot": "L", "min_w": 160},
             {"id": "umd", "type": "umd", "x": 0.14, "y": 0.885, "w": 0.72, "h": 0.105,
-             "text_source": "name", "tally_bg": False, "bg_color": "***REMOVED***08080a", "bg_opacity": 100},
+             "text_source": "name", "tally_bg": False, "bg_color": "#08080a", "bg_opacity": 100},
             {"id": "lampR", "type": "tally", "x": 0.92, "y": 0.895, "w": 0.05, "h": 0.085,
              "shape": "lamp", "slot": "R", "min_w": 160},
         ]},
     },
     {
-        ***REMOVED*** Tuile nue (image pure) — remplace l'ex-option par-tuile « __none__ / classique forcé ».
+        # Tuile nue (image pure) — remplace l'ex-option par-tuile « __none__ / classique forcé ».
         "id": "builtin:video-only",
         "name": "Vidéo seule",
         "builtin": True,
@@ -82,7 +82,7 @@ BUILTIN_PIP_TEMPLATES = [
         ]},
     },
     {
-        ***REMOVED*** Bezel « moniteur » : l'ex-frame_style stylized, porté par la bordure du composant video.
+        # Bezel « moniteur » : l'ex-frame_style stylized, porté par la bordure du composant video.
         "id": "builtin:monitor",
         "name": "Moniteur (bezel)",
         "builtin": True,
@@ -107,12 +107,12 @@ BUILTIN_PIP_TEMPLATES = [
             {"id": "lampL", "type": "tally", "x": 0.02, "y": 0.875, "w": 0.055, "h": 0.10,
              "shape": "lamp", "slot": "L", "min_w": 180},
             {"id": "umd", "type": "umd", "x": 0.14, "y": 0.865, "w": 0.72, "h": 0.125,
-             "text_source": "name", "tally_bg": True, "bg_color": "***REMOVED***000000", "bg_opacity": 75},
+             "text_source": "name", "tally_bg": True, "bg_color": "#000000", "bg_opacity": 75},
             {"id": "lampR", "type": "tally", "x": 0.925, "y": 0.875, "w": 0.055, "h": 0.10,
              "shape": "lamp", "slot": "R", "min_w": 180},
             {"id": "onair", "type": "text", "x": 0.35, "y": 0.02, "w": 0.30, "h": 0.09,
              "text": "ON AIR", "when": "tally_red", "min_w": 240,
-             "color": "***REMOVED***ffffff", "bg_color": "***REMOVED***cc0000", "bg_opacity": 85},
+             "color": "#ffffff", "bg_color": "#cc0000", "bg_opacity": 85},
         ]},
     },
     {
@@ -125,12 +125,12 @@ BUILTIN_PIP_TEMPLATES = [
             {"id": "vu", "type": "meters", "x": 0.9, "y": 0.0, "w": 0.1, "h": 0.86,
              "channels": 2, "scale": "dbfs", "opacity": 100, "align": "right"},
             {"id": "fmt", "type": "format", "x": 0.5, "y": 0.015, "w": 0.385, "h": 0.075,
-             "min_w": 260, "bg_color": "***REMOVED***000000", "bg_opacity": 65},
+             "min_w": 260, "bg_color": "#000000", "bg_opacity": 65},
             {"id": "anc", "type": "anc", "x": 0.0, "y": 0.785, "w": 0.9, "h": 0.075,
              "anc_types": True, "anc_tc": True, "anc_crc": True, "anc_opacity": 60,
              "min_w": 320},
             {"id": "umd", "type": "umd", "x": 0.1, "y": 0.87, "w": 0.7, "h": 0.115,
-             "text_source": "name", "tally_bg": True, "bg_color": "***REMOVED***000000", "bg_opacity": 75},
+             "text_source": "name", "tally_bg": True, "bg_color": "#000000", "bg_opacity": 75},
         ]},
     },
     {
@@ -141,18 +141,18 @@ BUILTIN_PIP_TEMPLATES = [
             {"id": "video", "type": "video", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0,
              "fit": "fill"},
             {"id": "umd", "type": "umd", "x": 0.25, "y": 0.88, "w": 0.5, "h": 0.10,
-             "text_source": "name", "bg_color": "***REMOVED***000000", "bg_opacity": 55, "min_w": 120},
+             "text_source": "name", "bg_color": "#000000", "bg_opacity": 55, "min_w": 120},
         ]},
     },
 ]
-***REMOVED*** NB : le modèle d'usine `builtin:audio-only` (cellule audio seule, "fenêtre déguisée") a été
-***REMOVED*** RETIRÉ en 0.36.0 — remplacé par le bloc VU-mètres de MUR (deploy_config.params.meter_blocks,
-***REMOVED*** cf. plugins/multiview/script.py render_meters). `resolve_pip_template` renvoie None pour un id
-***REMOVED*** absent : un mur dont une fenêtre référence encore cet id (`template_ref`) continue de s'afficher
-***REMOVED*** normalement, le moteur lisant le `template` déjà RÉSOLU et embarqué dans flux_config[i] (jamais
-***REMOVED*** l'id à l'exécution) ; seul le composer perd la capacité de RE-résoudre ce ref (bouton
-***REMOVED*** « ↻ Recharger »), avec repli propre déjà prévu (`_pipTemplateOptions` garde une option orpheline
-***REMOVED*** pour un `template_ref` absent de la bibliothèque).
+# NB : le modèle d'usine `builtin:audio-only` (cellule audio seule, "fenêtre déguisée") a été
+# RETIRÉ en 0.36.0 — remplacé par le bloc VU-mètres de MUR (deploy_config.params.meter_blocks,
+# cf. plugins/multiview/script.py render_meters). `resolve_pip_template` renvoie None pour un id
+# absent : un mur dont une fenêtre référence encore cet id (`template_ref`) continue de s'afficher
+# normalement, le moteur lisant le `template` déjà RÉSOLU et embarqué dans flux_config[i] (jamais
+# l'id à l'exécution) ; seul le composer perd la capacité de RE-résoudre ce ref (bouton
+# « ↻ Recharger »), avec repli propre déjà prévu (`_pipTemplateOptions` garde une option orpheline
+# pour un `template_ref` absent de la bibliothèque).
 
 
 def all_pip_templates():

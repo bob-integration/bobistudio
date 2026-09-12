@@ -1,18 +1,18 @@
-***REMOVED*** Identité d'un flux MXL : découpler l'identifiant du nom lisible (relevé 2026-08-08)
+# Identité d'un flux MXL : découpler l'identifiant du nom lisible (relevé 2026-08-08)
 
 > Chantier OUVERT, non commencé. Déclencheur : question utilisateur « pourquoi garde-t-on le
 > hostname si le SDK ne le garde pas ? ». Réponse courte : le SDK ne le garde pas, **on le hache
 > pour fabriquer l'identifiant** — donc le nom est plus porteur, pas moins. Ce document rassemble
 > tout ce qu'il faut pour attaquer sans re-fouiller.
 
-***REMOVED******REMOVED*** 1. Le constat
+## 1. Le constat
 
 `script_templates/bobimxl.py:319` :
 
 ```python
 def flow_id(name: str) -> str:
     """UUIDv5 déterministe d'un nom de flux (= le champ `id` du flowDef, et le flowId lecteur)."""
-    return str(uuid.uuid5(_NS_BOBI, name))          ***REMOVED*** _NS_BOBI défini l. 65
+    return str(uuid.uuid5(_NS_BOBI, name))          # _NS_BOBI défini l. 65
 ```
 
 Le SDK MXL n'identifie un flux **que** par un UUID : c'est `flow_def["id"]`, c'est l'argument de
@@ -31,13 +31,13 @@ bobimxl).
 emplacements, et on les remplit avec la même chaîne — `bobimxl.py:405` et `:410` :
 
 ```python
-"id":    flow_id(name),    ***REMOVED*** identité machine
-"label": label or name,    ***REMOVED*** nom lisible — le champ prévu exactement pour ça
+"id":    flow_id(name),    # identité machine
+"label": label or name,    # nom lisible — le champ prévu exactement pour ça
 ```
 
 On dérive l'identité **du** libellé. Le modèle NMOS les sépare ; nous non.
 
-***REMOVED******REMOVED*** 2. Ce que ça coûte aujourd'hui
+## 2. Ce que ça coûte aujourd'hui
 
 - **Le hostname est irrévocable.** Aucune UI ne renomme un conteneur, et c'est structurel :
   renommer change l'UUID, donc c'est un AUTRE flux, et tout lecteur câblé dessus perd sa source.
@@ -58,7 +58,7 @@ On dérive l'identité **du** libellé. Le modèle NMOS les sépare ; nous non.
   - et c'est **déjà cassé** : `app/routes/cabling.py:694` documente l'abandon de la dérivation
     parce que le player produit `p1_audio`, pas `p1_audio_0`
 
-***REMOVED******REMOVED*** 3. La cible
+## 3. La cible
 
 | | Aujourd'hui | Cible |
 |---|---|---|
@@ -78,9 +78,9 @@ ce cas, l'identité stable est le **barreau 3**, l'emplacement (`production_role
 moment du chantier : keyer sur `instance_uuid` (simple, aligné NMOS) ou sur l'emplacement (survit
 au remplacement, mais tous les conteneurs n'en ont pas un).
 
-***REMOVED******REMOVED*** 4. Périmètre réel de la bascule
+## 4. Périmètre réel de la bascule
 
-***REMOVED******REMOVED******REMOVED*** En base (mesuré sur `db_bobistudio.db` le 2026-08-08)
+### En base (mesuré sur `db_bobistudio.db` le 2026-08-08)
 
 | Table.colonne | Lignes portant un nom de flux |
 |---|---|
@@ -94,7 +94,7 @@ au remplacement, mais tous les conteneurs n'en ont pas un).
 
 ~106 lignes au total sur cette instance — le volume n'est pas le problème, la **cohérence** l'est.
 
-***REMOVED******REMOVED******REMOVED*** En code
+### En code
 
 - **Fabrication des noms** : `app/plugins.py:961 derive_wiring()` (substitution `{hostname}`,
   `repeat`, `from_list`) + les `shm` de tous les `plugins/*/plugin.json` + le bloc pyramide
@@ -112,7 +112,7 @@ au remplacement, mais tous les conteneurs n'en ont pas un).
   `services/tsl/__init__.py:1079` (`/api/tsl/sources/by_shm`) est **indexé par nom de shm**. C'est
   là que le `label` reprend son rôle.
 
-***REMOVED******REMOVED******REMOVED*** Transition
+### Transition
 
 Les flux existants **changent d'UUID** → coupure de tous les liens au basculement. Deux options à
 arbitrer :
@@ -120,7 +120,7 @@ arbitrer :
 - **double-écriture** : le writer publie sous les deux UUID le temps que les lecteurs migrent —
   coût mémoire d'un grain dupliqué par flux, à chiffrer avant de choisir.
 
-***REMOVED******REMOVED*** 5. Ce qui n'est PAS en cause
+## 5. Ce qui n'est PAS en cause
 
 - **La conformité MXL.** `docs/reference/MXL_INTEROP.md` classe notre identité « CONFORME
   (uuid5 = UUID RFC valide) » et le layout `/dev/shm/mxl` « CONFORME (posé par libmxl, non
@@ -133,7 +133,7 @@ arbitrer :
   relevé dans MXL_INTEROP est déjà comblé (`bobimxl.py:328,334`). Le lecteur sait déjà travailler
   sur un UUID arbitraire — c'est un prérequis du chantier, et il est acquis.
 
-***REMOVED******REMOVED*** 6. Ordre d'attaque proposé
+## 6. Ordre d'attaque proposé
 
 1. **Supprimer les 3 sites de parsing sémantique** (`rdma:_infer_kind`, `home_dashboard` rsplit,
    `metrics`/`nmos_detail` reconstruction) en lisant `format`/`media_type` du `flow_def.json` et

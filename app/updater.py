@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Mise à jour entre instances Bobi.Studio (pull / push) sur le réseau local.
 
@@ -33,17 +33,17 @@ log = logging.getLogger(__name__)
 
 ROOT = builder.ROOT
 DIST_DIR = builder.DIST_DIR
-***REMOVED*** Zip dédié à la mise à jour inter-instances : copie FIDÈLE (tous plugins/services),
-***REMOVED*** distinct du zip de distribution sélectif servi par /install.
+# Zip dédié à la mise à jour inter-instances : copie FIDÈLE (tous plugins/services),
+# distinct du zip de distribution sélectif servi par /install.
 ZIP_PATH = os.path.join(DIST_DIR, "bobistudio-update.zip")
 SERVICE = "bobistudio"
 PENDING_PATH = os.path.join(ROOT, "UPDATE_PENDING")
-***REMOVED*** Horodatage du DERNIER déploiement appliqué SUR cette instance (distinct de built_at,
-***REMOVED*** qui date la construction du zip). Écrit par apply_update, lu par _my_identity/ping.
+# Horodatage du DERNIER déploiement appliqué SUR cette instance (distinct de built_at,
+# qui date la construction du zip). Écrit par apply_update, lu par _my_identity/ping.
 DEPLOY_INFO_PATH = os.path.join(ROOT, "deploy_info.json")
 
-***REMOVED*** Chemins jamais écrasés lors de l'extraction (état local de l'instance cible).
-***REMOVED*** Le zip ne contient déjà ni secrets ni .db, mais il EMBARQUE static/uploads/ → on protège.
+# Chemins jamais écrasés lors de l'extraction (état local de l'instance cible).
+# Le zip ne contient déjà ni secrets ni .db, mais il EMBARQUE static/uploads/ → on protège.
 def _protected(arc):
     a = arc.replace("\\", "/")
     return (a == "config_local.py" or a.endswith(".db")
@@ -51,7 +51,7 @@ def _protected(arc):
             or a == "build_manifest.json" or a == "deploy_info.json")
 
 
-***REMOVED*** ─── Côté serveur : manifeste + zip à jour ───────────────────────────────────
+# ─── Côté serveur : manifeste + zip à jour ───────────────────────────────────
 
 def sha256_file(path):
     h = hashlib.sha256()
@@ -90,12 +90,12 @@ def ensure_build():
     Il n'y a pas de risque d'emballement : on ne reconstruit QUE si le code a bougé, et
     `_code_mtime()` ne scanne que les dossiers de code — `build_info.json` vit à la racine, donc
     l'écrire ne re-déclenche pas un build."""
-    ***REMOVED*** Deux raisons de reconstruire, et il FAUT les deux :
-    ***REMOVED***  · le code a changé (mtime) → le contenu de l'artefact n'est plus le bon ;
-    ***REMOVED***  · l'identité git a changé alors que les fichiers, eux, n'ont pas bougé — c'est le cas après
-    ***REMOVED***    un COMMIT : le contenu reste identique mais l'étiquette dit encore l'ancien hash (et un
-    ***REMOVED***    `-dirty` qui n'a plus lieu d'être). Sans ce second test, on repart pour un libellé faux,
-    ***REMOVED***    simplement dans l'autre sens.
+    # Deux raisons de reconstruire, et il FAUT les deux :
+    #  · le code a changé (mtime) → le contenu de l'artefact n'est plus le bon ;
+    #  · l'identité git a changé alors que les fichiers, eux, n'ont pas bougé — c'est le cas après
+    #    un COMMIT : le contenu reste identique mais l'étiquette dit encore l'ancien hash (et un
+    #    `-dirty` qui n'a plus lieu d'être). Sans ce second test, on repart pour un libellé faux,
+    #    simplement dans l'autre sens.
     _hash_ok = (builder.current_build_info() or {}).get("git_hash") == builder._git_hash()
     if os.path.exists(ZIP_PATH) and os.path.getmtime(ZIP_PATH) >= _code_mtime() and _hash_ok:
         return None
@@ -173,11 +173,11 @@ def current_manifest():
     }
 
 
-***REMOVED*** ─── Côté client : récupération + application ────────────────────────────────
+# ─── Côté client : récupération + application ────────────────────────────────
 
 def _http_json(url, token, timeout=15):
     req = urllib.request.Request(url, headers={"X-MXL-Update-Token": token or ""})
-    with urllib.request.urlopen(req, timeout=timeout) as r:   ***REMOVED*** noqa: S310 (réseau interne)
+    with urllib.request.urlopen(req, timeout=timeout) as r:   # noqa: S310 (réseau interne)
         return json.loads(r.read().decode())
 
 
@@ -191,7 +191,7 @@ def ping(base_url, token=None, timeout=4):
 
 def _download(url, token, dest, timeout=120):
     req = urllib.request.Request(url, headers={"X-MXL-Update-Token": token or ""})
-    with urllib.request.urlopen(req, timeout=timeout) as r, open(dest, "wb") as f:  ***REMOVED*** noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as r, open(dest, "wb") as f:  # noqa: S310
         shutil.copyfileobj(r, f)
 
 
@@ -212,7 +212,7 @@ def backup_code():
 
 
 def _tar_filter(ti):
-    ***REMOVED*** Ne pas embarquer venv/caches/uploads/db dans le backup non plus.
+    # Ne pas embarquer venv/caches/uploads/db dans le backup non plus.
     name = ti.name.split("/", 1)[-1] if "/" in ti.name else ti.name
     parts = ti.name.split("/")
     if any(p in builder.EXCLUDE_DIRS for p in parts) or "uploads" in parts:
@@ -289,7 +289,7 @@ def _missing_requirements(req_text):
     missing = []
     for line in (req_text or "").splitlines():
         line = line.strip()
-        if not line or line.startswith("***REMOVED***"):
+        if not line or line.startswith("#"):
             continue
         name = _re.split(r"[<>=!\[;]", line, 1)[0].strip()
         if not name:
@@ -345,7 +345,7 @@ def _ensure_requirements(zpath):
 
 def restart_service():
     """Relance le service hors de notre cgroup (sinon le restart nous tue avant l'heure)."""
-    ***REMOVED*** systemd-run lance un transient timer indépendant → notre réponse HTTP part d'abord.
+    # systemd-run lance un transient timer indépendant → notre réponse HTTP part d'abord.
     try:
         subprocess.Popen(["systemd-run", "--on-active=2s", "--quiet",
                           "systemctl", "restart", SERVICE])
@@ -386,19 +386,19 @@ def apply_update(source_url, token, install_new=None):
         got = sha256_file(zpath)
         if got != expected:
             return False, f"checksum invalide (attendu {expected[:12]}…, reçu {got[:12]}…)"
-        ***REMOVED*** sanity : le zip doit contenir main.py
+        # sanity : le zip doit contenir main.py
         with zipfile.ZipFile(zpath) as zf:
             if "main.py" not in zf.namelist():
                 return False, "archive invalide (main.py absent)"
 
-        ***REMOVED*** Dépendances Python AVANT d'appliquer : une dépendance ajoutée par cette version
-        ***REMOVED*** doit être installable ici, sinon on refuse (le restart casserait le service).
+        # Dépendances Python AVANT d'appliquer : une dépendance ajoutée par cette version
+        # doit être installable ici, sinon on refuse (le restart casserait le service).
         ok_req, req_msg = _ensure_requirements(zpath)
         if not ok_req:
             return False, req_msg
 
-        ***REMOVED*** Composition par instance : composants du manifeste SOURCE ni installés ici ni
-        ***REMOVED*** opt-in → exclus de l'extraction. Tout le reste (cœur, runtimes `_…`) passe.
+        # Composition par instance : composants du manifeste SOURCE ni installés ici ni
+        # opt-in → exclus de l'extraction. Tout le reste (cœur, runtimes `_…`) passe.
         loc_p, loc_s = _local_component_ids()
         src_p = {p.get("type") for p in (man.get("plugins") or []) if p.get("type")}
         src_s = {s.get("id") for s in (man.get("services") or []) if s.get("id")}
@@ -435,8 +435,8 @@ def _asset_release(tag=None):
         rel = catalogue._http_json("%s/repos/%s/%s/releases/%s"
                                    % (catalogue.API, org, catalogue.DEPOT_CORE, chemin))
     except Exception as e:
-        ***REMOVED*** `latest` ignore les pré-versions : sur un produit en bêta il rend 404 alors que des
-        ***REMOVED*** releases existent. On retombe sur la liste, qui les voit.
+        # `latest` ignore les pré-versions : sur un produit en bêta il rend 404 alors que des
+        # releases existent. On retombe sur la liste, qui les voit.
         info = catalogue.derniere_version_core()
         if not info:
             return None, None, "aucune release lisible (%s)" % e
@@ -448,9 +448,9 @@ def _asset_release(tag=None):
     par_nom = {a.get("name"): a.get("browser_download_url") for a in (rel.get("assets") or [])}
     zip_url, sha_url = par_nom.get("bobistudio.zip"), par_nom.get("SHA256SUMS")
     if not zip_url or not sha_url:
-        ***REMOVED*** ⚠ ON REFUSE PLUTÔT QUE DE PRENDRE L'ARCHIVE DE SOURCE que GitHub sert d'office : elle
-        ***REMOVED*** n'embarque ni l'installeur ni d'empreinte, et appliquer du code non vérifié sur une
-        ***REMOVED*** instance qui tourne en root est exactement ce que `get.sh` s'interdit.
+        # ⚠ ON REFUSE PLUTÔT QUE DE PRENDRE L'ARCHIVE DE SOURCE que GitHub sert d'office : elle
+        # n'embarque ni l'installeur ni d'empreinte, et appliquer du code non vérifié sur une
+        # instance qui tourne en root est exactement ce que `get.sh` s'interdit.
         return None, None, ("la release %s ne porte pas d'artefact installable "
                             "(bobistudio.zip + SHA256SUMS)" % (rel.get("tag_name") or "?"))
     return zip_url, sha_url, (rel.get("tag_name") or "")
@@ -488,7 +488,7 @@ def apply_update_github(tag=None, install_new=None):
         except Exception as e:
             return False, "téléchargement échoué : %s" % e
 
-        ***REMOVED*** L'empreinte fait foi AVANT toute lecture du contenu.
+        # L'empreinte fait foi AVANT toute lecture du contenu.
         attendu = ""
         try:
             for ligne in io.open(spath, encoding="utf-8"):
@@ -513,14 +513,14 @@ def apply_update_github(tag=None, install_new=None):
         if "main.py" not in noms:
             return False, "archive invalide (main.py absent)"
 
-        ***REMOVED*** Composants de la SOURCE, déduits du contenu : pas de manifeste à interroger ici.
+        # Composants de la SOURCE, déduits du contenu : pas de manifeste à interroger ici.
         src_p = {n.split("/")[1] for n in noms
                  if n.startswith("plugins/") and len(n.split("/")) > 2}
         src_s = {n.split("/")[1] for n in noms
                  if n.startswith("services/") and len(n.split("/")) > 2}
         loc_p, loc_s = _local_component_ids()
-        ***REMOVED*** Même règle que le chemin entre pairs : un composant qui n'est pas installé ICI
-        ***REMOVED*** n'apparaît pas tout seul. Les runtimes partagés (`_…`) passent toujours.
+        # Même règle que le chemin entre pairs : un composant qui n'est pas installé ICI
+        # n'apparaît pas tout seul. Les runtimes partagés (`_…`) passent toujours.
         skip_p = {p for p in src_p if not p.startswith("_") and p not in loc_p and p not in new_p}
         skip_s = {s for s in src_s if not s.startswith("_") and s not in loc_s and s not in new_s}
 
@@ -548,7 +548,7 @@ def rollback():
     if not bk:
         return False, "aucun backup disponible"
     with tarfile.open(bk, "r:gz") as tar:
-        tar.extractall(ROOT)   ***REMOVED*** noqa: S202 (archives produites par nous-mêmes)
+        tar.extractall(ROOT)   # noqa: S202 (archives produites par nous-mêmes)
     clear_pending()
     restart_service()
     return True, f"rollback depuis {os.path.basename(bk)} — redémarrage en cours"

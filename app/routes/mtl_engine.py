@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Moteur ST 2110 (2110_io / MTL-DPDK) : flux composables RX/TX (« Option A »), budgets de
 files AF-XDP / lcores, détection d'opération disruptive (relance moteur), épinglage de port,
@@ -29,7 +29,7 @@ from ..vmlocks import verrou_vmid
 log = logging.getLogger(__name__)
 
 
-***REMOVED*** ─── Flux composables RX/TX (« Option A ») ───────────────────────────────────
+# ─── Flux composables RX/TX (« Option A ») ───────────────────────────────────
 def _tx_gate(vmid, op, args, data):
     """Garde-fou étage 2 (docs/reference/TX_LAYOUTS.md) commun aux actions TX éditables : CALCULE le verdict
     (`tx_maintenance.classify` — perturbatrice = elle fait apparaître une session TX sur un port en
@@ -45,9 +45,9 @@ def _tx_gate(vmid, op, args, data):
     try:
         verdict = _txm.classify(vmid, _txm.preview(vmid, op, args), op=op)
     except Exception as e:
-        ***REMOVED*** Le classement ne doit jamais BLOQUER une action (le moteur reste pilotable même si le
-        ***REMOVED*** calcul de verdict casse) — mais un garde-fou qui tombe en silence est pire que pas de
-        ***REMOVED*** garde-fou : on le rend VISIBLE (alerte + log error) au lieu de laisser passer sans bruit.
+        # Le classement ne doit jamais BLOQUER une action (le moteur reste pilotable même si le
+        # calcul de verdict casse) — mais un garde-fou qui tombe en silence est pire que pas de
+        # garde-fou : on le rend VISIBLE (alerte + log error) au lieu de laisser passer sans bruit.
         log.error("tx gate %s/%s: verdict incalculable (action appliquée sans classement) : %s",
                   vmid, op, e)
         db_add_alert("alert.docker.classement_impossible", "warning", vmid=vmid, kind="tx_stall",
@@ -102,9 +102,9 @@ def api_mtl_tx_dest(vmid, slot):
     params = dc.get("params") or {}
     slots = list(params.get("tx_slots") or [])
     if not (0 <= slot < len(slots)):
-        return jsonify({"ok": False, "error": f"slot TX ***REMOVED***{slot} inexistant"}), 400
-    ***REMOVED*** C2b+ : si ce flux est lié à une ressource NMOS (rebinding explicite), son transport est piloté
-    ***REMOVED*** par la ressource (push-down) → on refuse l'édition directe du slot (éditer la ressource, ou délier).
+        return jsonify({"ok": False, "error": f"slot TX #{slot} inexistant"}), 400
+    # C2b+ : si ce flux est lié à une ressource NMOS (rebinding explicite), son transport est piloté
+    # par la ressource (push-down) → on refuse l'édition directe du slot (éditer la ressource, ou délier).
     _nbind = params.get("nmos_bind") or {}
     try:
         _aidx = max(0, min(1, int(data.get("audio_idx") or 0)))
@@ -113,8 +113,8 @@ def api_mtl_tx_dest(vmid, slot):
     _sk = {"video": slot_tx(slot, "v"), "anc": slot_tx(slot, "d"), "audio": slot_tx(slot, "a%d" % _aidx)}[essence]
     if _nbind.get(_sk):
         return jsonify({"ok": False, "error": "flux lié à une ressource NMOS — éditez la ressource ou déliez le slot"}), 409
-    ***REMOVED*** Règle de plage STRICTE éventuelle sur le port physique résolu pour ce slot/leg : un switch qui
-    ***REMOVED*** contraint les adresses par port rejetterait physiquement une adresse hors plage.
+    # Règle de plage STRICTE éventuelle sur le port physique résolu pour ce slot/leg : un switch qui
+    # contraint les adresses par port rejetterait physiquement une adresse hors plage.
     if c.get("node_id"):
         import ipaddress as _ipa
         from .. import allocations as _alloc
@@ -131,35 +131,35 @@ def api_mtl_tx_dest(vmid, slot):
                 return jsonify({"ok": False, "error":
                     f"adresse hors plage autorisée sur ce port ({_rule.get('label') or _rule['base_ip']}"
                     f"/+{_rule.get('size')}) — {_ifn or '?'}"}), 400
-    ***REMOVED*** Ledger de réservation atomique (cf. app/allocations.py) : garde le "tx:{vmid}:" cohérent
-    ***REMOVED*** avec l'allocation automatique pour que la libération à la destruction du container ramasse
-    ***REMOVED*** aussi les overrides manuels. Libère d'abord une éventuelle réservation précédente de CE
-    ***REMOVED*** même override (l'opérateur change d'avis) avant de réserver la nouvelle adresse.
+    # Ledger de réservation atomique (cf. app/allocations.py) : garde le "tx:{vmid}:" cohérent
+    # avec l'allocation automatique pour que la libération à la destruction du container ramasse
+    # aussi les overrides manuels. Libère d'abord une éventuelle réservation précédente de CE
+    # même override (l'opérateur change d'avis) avant de réserver la nouvelle adresse.
     from ..database import db_reserve_mcast, db_release_mcast_owner
     _override_ref = f"tx:{vmid}:{slot}:{essence}:override:{_aidx}:leg{leg}"
-    ***REMOVED*** Étage 2 : changer la destination change la SIGNATURE de session (mtl_rx.compute_sig) → ancienne
-    ***REMOVED*** libérée + NOUVELLE créée = commit TM = stop/start du port en narrow. Le verdict est calculé AVANT
-    ***REMOVED*** de toucher au ledger multicast : un refus (409, faute de confirmation) ne doit RIEN modifier —
-    ***REMOVED*** relâcher la réservation après coup libérerait aussi l'adresse ACTUELLEMENT émise par ce flux
-    ***REMOVED*** (le ref d'override est le même), qu'un autre flux pourrait alors s'attribuer.
+    # Étage 2 : changer la destination change la SIGNATURE de session (mtl_rx.compute_sig) → ancienne
+    # libérée + NOUVELLE créée = commit TM = stop/start du port en narrow. Le verdict est calculé AVANT
+    # de toucher au ledger multicast : un refus (409, faute de confirmation) ne doit RIEN modifier —
+    # relâcher la réservation après coup libérerait aussi l'adresse ACTUELLEMENT émise par ce flux
+    # (le ref d'override est le même), qu'un autre flux pourrait alors s'attribuer.
     _gate, _verdict = _tx_gate(vmid, "tx_dest",
                                {"slot": slot, "essence": essence, "leg": leg,
                                 "audio_idx": _aidx, "mcast": mcast, "port": port}, data)
     if _gate is not None and _gate[1] == 409:
         return _gate
-    ***REMOVED*** Ledger de réservation atomique (cf. app/allocations.py) : garde le "tx:{vmid}:" cohérent
-    ***REMOVED*** avec l'allocation automatique pour que la libération à la destruction du container ramasse
-    ***REMOVED*** aussi les overrides manuels. Libère d'abord une éventuelle réservation précédente de CE
-    ***REMOVED*** même override (l'opérateur change d'avis) avant de réserver la nouvelle adresse. Un changement
-    ***REMOVED*** DIFFÉRÉ réserve dès maintenant : l'adresse ne doit pas être soufflée avant l'application.
+    # Ledger de réservation atomique (cf. app/allocations.py) : garde le "tx:{vmid}:" cohérent
+    # avec l'allocation automatique pour que la libération à la destruction du container ramasse
+    # aussi les overrides manuels. Libère d'abord une éventuelle réservation précédente de CE
+    # même override (l'opérateur change d'avis) avant de réserver la nouvelle adresse. Un changement
+    # DIFFÉRÉ réserve dès maintenant : l'adresse ne doit pas être soufflée avant l'application.
     db_release_mcast_owner(_override_ref)
     if not db_reserve_mcast(mcast, port, _override_ref):
         return jsonify({"ok": False, "error": f"adresse {mcast}:{port} déjà utilisée par un autre flux"}), 409
-    if _gate is not None:                          ***REMOVED*** différé (202) : réservé, mais pas encore appliqué
+    if _gate is not None:                          # différé (202) : réservé, mais pas encore appliqué
         return _gate
     slots[slot] = dict(slots[slot] or {})
     if essence == "audio":
-        ***REMOVED*** Audio : liste de 2 entrées indexées par audio_idx (0 ou 1)
+        # Audio : liste de 2 entrées indexées par audio_idx (0 ou 1)
         audio_idx = _aidx
         audios = list(slots[slot].get("audios") or [{}, {}])
         while len(audios) <= audio_idx:
@@ -170,7 +170,7 @@ def api_mtl_tx_dest(vmid, slot):
         audios[audio_idx]["dest_port" + sfx] = port
         slots[slot]["audios"] = audios
     else:
-        ***REMOVED*** Vidéo + ANC : clés préfixées (video=pas de préfixe, anc=anc_) + suffixe leg1.
+        # Vidéo + ANC : clés préfixées (video=pas de préfixe, anc=anc_) + suffixe leg1.
         pfx = "" if essence == "video" else essence + "_"
         sfx = "_leg1" if leg == 1 else ""
         slots[slot]["{}multicast_ip{}".format(pfx, sfx)] = mcast
@@ -210,9 +210,9 @@ def api_mtl_tx_format(vmid, slot):
     scan = "i" if str(data.get("scan") or "p").lower() == "i" else "p"
     if not (16 <= w <= 8192 and 16 <= h <= 8192 and 1 <= fps <= 240):
         return jsonify({"ok": False, "error": "format hors bornes"}), 400
-    ***REMOVED*** Étage 3 : « aligner la sortie sur sa source » pousse aussi l'ORDRE DE CHAMP et la PROFONDEUR —
-    ***REMOVED*** les deux entrent dans la signature de session (mtl_rx.c:compute_sig) ; les omettre laisserait un
-    ***REMOVED*** écart résiduel derrière un alignement présenté comme réussi (et donc un commit au câblage).
+    # Étage 3 : « aligner la sortie sur sa source » pousse aussi l'ORDRE DE CHAMP et la PROFONDEUR —
+    # les deux entrent dans la signature de session (mtl_rx.c:compute_sig) ; les omettre laisserait un
+    # écart résiduel derrière un alignement présenté comme réussi (et donc un commit au câblage).
     fo = str(data.get("field_order") or "").lower()
     fo = fo if fo in ("tff", "bff") else ""
     try:
@@ -231,12 +231,12 @@ def api_mtl_tx_format(vmid, slot):
     params = dc.get("params") or {}
     slots = list(params.get("tx_slots") or [])
     if not (0 <= slot < len(slots)):
-        return jsonify({"ok": False, "error": f"slot TX ***REMOVED***{slot} inexistant"}), 400
-    ***REMOVED*** C2b+ : slot lié à une ressource NMOS → format piloté par la ressource (push-down).
+        return jsonify({"ok": False, "error": f"slot TX #{slot} inexistant"}), 400
+    # C2b+ : slot lié à une ressource NMOS → format piloté par la ressource (push-down).
     if (params.get("nmos_bind") or {}).get(slot_tx(slot, "v")):
         return jsonify({"ok": False, "error": "slot lié à une ressource NMOS — éditez la ressource ou déliez le slot"}), 409
-    ***REMOVED*** Étage 2 : le format entre dans la signature de session → une session est recréée (commit TM)
-    ***REMOVED*** SAUF si le slot est câblé et suit sa source (le format poussé vaut 0 → aucun changement de sig).
+    # Étage 2 : le format entre dans la signature de session → une session est recréée (commit TM)
+    # SAUF si le slot est câblé et suit sa source (le format poussé vaut 0 → aucun changement de sig).
     _gate, _verdict = _tx_gate(vmid, "tx_format",
                                {"slot": slot, "width": w, "height": h, "fps": fps, "scan": scan,
                                 "field_order": fo, "bit_depth": bd}, data)
@@ -246,10 +246,10 @@ def api_mtl_tx_format(vmid, slot):
     slots[slot]["width"], slots[slot]["height"] = w, h
     if bd:
         slots[slot]["bit_depth"] = bd
-    ***REMOVED*** ST 2110-20 : en entrelacé on stocke la cadence TRAME (jamais la cadence CHAMP/field rate).
-    ***REMOVED*** Une UI qui envoie la cadence champ (p.ex. 50 pour du 1080i50) émettrait un SDP
-    ***REMOVED*** « exactframerate=50; interlace » non conforme → RX abonné en 50i, 0 trame. On ramène à la
-    ***REMOVED*** cadence trame ; cohérent avec la normalisation idempotente du hook deploy (2110_io/hooks.py).
+    # ST 2110-20 : en entrelacé on stocke la cadence TRAME (jamais la cadence CHAMP/field rate).
+    # Une UI qui envoie la cadence champ (p.ex. 50 pour du 1080i50) émettrait un SDP
+    # « exactframerate=50; interlace » non conforme → RX abonné en 50i, 0 trame. On ramène à la
+    # cadence trame ; cohérent avec la normalisation idempotente du hook deploy (2110_io/hooks.py).
     if scan == "i" and fps > 30:
         fps = fps / 2.0
     slots[slot]["fps"], slots[slot]["scan"] = fps, scan
@@ -293,8 +293,8 @@ def api_mtl_tx_pacing(vmid, slot):
         shift = int(data.get("epoch_shift_us") or 0)
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "epoch_shift_us invalide"}), 400
-    ***REMOVED*** Borne haute : rester nettement sous une période trame (20 ms @50p) — au-delà on retomberait
-    ***REMOVED*** dans l'epoch suivant et le décalage n'aurait plus de sens.
+    # Borne haute : rester nettement sous une période trame (20 ms @50p) — au-delà on retomberait
+    # dans l'epoch suivant et le décalage n'aurait plus de sens.
     if not (0 <= shift <= 15000):
         return jsonify({"ok": False, "error": "epoch_shift_us hors bornes (0–15000 µs)"}), 400
     c = db_get_container(vmid)
@@ -307,8 +307,8 @@ def api_mtl_tx_pacing(vmid, slot):
     params = dc.get("params") or {}
     slots = list(params.get("tx_slots") or [])
     if not (0 <= slot < len(slots)):
-        return jsonify({"ok": False, "error": f"slot TX ***REMOVED***{slot} inexistant"}), 400
-    ***REMOVED*** Étage 2 : `epoch_shift_us` est DANS la signature de session mtl_rx → recréation = commit TM.
+        return jsonify({"ok": False, "error": f"slot TX #{slot} inexistant"}), 400
+    # Étage 2 : `epoch_shift_us` est DANS la signature de session mtl_rx → recréation = commit TM.
     _gate, _verdict = _tx_gate(vmid, "tx_pacing", {"slot": slot, "epoch_shift_us": shift}, data)
     if _gate is not None:
         return _gate
@@ -338,7 +338,7 @@ def api_mtl_tx_serve_newest(vmid, slot):
       la plus ANCIENNE de son anneau.
 
     ⚠ LE DÉFAUT EST REPASSÉ À 0 LE 2026-08-19 : à 1, une sortie de production est sortie STRIÉE
-    (Horace, TX ***REMOVED***2) pendant que sa jumelle au même réglage restait propre — le résultat dépend de
+    (Horace, TX #2) pendant que sa jumelle au même réglage restait propre — le résultat dépend de
     la phase entre la publication du producteur et la lecture du TX. Activer 1 sur un slot reste
     légitime et rentable, mais c'est une DEMANDE, à vérifier à l'image sur cette sortie-là.
 
@@ -369,7 +369,7 @@ def api_mtl_tx_serve_newest(vmid, slot):
     params = dc.get("params") or {}
     slots = list(params.get("tx_slots") or [])
     if not (0 <= slot < len(slots)):
-        return jsonify({"ok": False, "error": f"slot TX ***REMOVED***{slot} inexistant"}), 400
+        return jsonify({"ok": False, "error": f"slot TX #{slot} inexistant"}), 400
     _gate, _verdict = _tx_gate(vmid, "tx_serve_newest",
                                {"slot": slot, "serve_newest": val}, data)
     if _gate is not None:
@@ -431,9 +431,9 @@ def _mtl_lcore_sessions(node):
         per_lcore = 2
     raw = ((node or {}).get("lcores") or "").strip().lower()
     if raw in ("", "auto"):
-        ***REMOVED*** lcores AUTO-dimensionnés au déploiement (docker_driver._auto_lcores) : un cpuset littéral
-        ***REMOVED*** n'existe pas encore. Le budget = plafond de schedulers réservables = mtl_lcore_max −
-        ***REMOVED*** (1 manager + 1 marge). Sans ce cas, parse_cpuset('auto')=[] → 1 lcore → cap quasi nul.
+        # lcores AUTO-dimensionnés au déploiement (docker_driver._auto_lcores) : un cpuset littéral
+        # n'existe pas encore. Le budget = plafond de schedulers réservables = mtl_lcore_max −
+        # (1 manager + 1 marge). Sans ce cas, parse_cpuset('auto')=[] → 1 lcore → cap quasi nul.
         try:
             lcore_max = int(_st.get("mtl_lcore_max") or 16)
         except Exception:
@@ -453,10 +453,10 @@ def _mtl_per_source_sessions(params, role="rx"):
     2… flux audio (audio_per_video) et 0 ou 1 ANC. AVANT on supposait 3 fixe (1+1+1) ; faux dans
     les deux sens (vidéo-seule = 1 ; 1 vidéo+2 audio+1 ANC = 4). Aligné sur le contrôleur 0.22.16
     qui dimensionne les files au nb réel de sessions."""
-    ***REMOVED*** « Option A » : compté depuis les flux ACTIFS réels (rx_flows/tx_flows). 1 session = 1 flux
-    ***REMOVED*** (vidéo + audio + ANC). On renvoie un coût PAR vidéo = ceil(total / nb vidéos) → borne SUPÉRIEURE
-    ***REMOVED*** (les appelants multiplient par active_*_count : ceil(total/n)×n ≥ total → jamais sous-alloué).
-    ***REMOVED*** Identique à l'ancien 1+aper+anc_per pour une compo homogène.
+    # « Option A » : compté depuis les flux ACTIFS réels (rx_flows/tx_flows). 1 session = 1 flux
+    # (vidéo + audio + ANC). On renvoie un coût PAR vidéo = ceil(total / nb vidéos) → borne SUPÉRIEURE
+    # (les appelants multiplient par active_*_count : ceil(total/n)×n ≥ total → jamais sous-alloué).
+    # Identique à l'ancien 1+aper+anc_per pour une compo homogène.
     import math
     from .. import io2110_flows as _iof
     flows = _iof.active_flows(params, role)
@@ -496,12 +496,12 @@ def _mtl_active_caps(params, total_queues, node=None, tx_budget=None):
     active_tx = int(params.get("active_tx_count") or 0)
     prov_rx = int(params.get("video_count") or 0)
     prov_tx = int(params.get("tx_count") or 0)
-    per_rx = _mtl_per_source_sessions(params, "rx")     ***REMOVED*** files/source RX (≥1)
-    per_tx = _mtl_per_source_sessions(params, "tx")     ***REMOVED*** files/slot TX  (≥1)
-    ***REMOVED*** Budget de FILES partagé RX+TX (1 file/session) ; ~1 file TX réservée d'office par le moteur.
+    per_rx = _mtl_per_source_sessions(params, "rx")     # files/source RX (≥1)
+    per_tx = _mtl_per_source_sessions(params, "tx")     # files/slot TX  (≥1)
+    # Budget de FILES partagé RX+TX (1 file/session) ; ~1 file TX réservée d'office par le moteur.
     q_budget = max(1, int(total_queues) - 1)
     if tx_budget is not None:
-        ***REMOVED*** DPDK/RL : budgets découplés — RX sur les files RSS (total_queues), TX sur les feuilles RL.
+        # DPDK/RL : budgets découplés — RX sur les files RSS (total_queues), TX sur les feuilles RL.
         cap_rx = min(prov_rx, max(0, q_budget // per_rx))
         cap_tx = min(prov_tx, max(0, int(tx_budget) // per_tx))
     else:
@@ -509,7 +509,7 @@ def _mtl_active_caps(params, total_queues, node=None, tx_budget=None):
         used_tx_q = active_tx * per_tx
         cap_rx = min(prov_rx, max(0, (q_budget - used_tx_q) // per_rx))
         cap_tx = min(prov_tx, max(0, (q_budget - used_rx_q) // per_tx))
-    ***REMOVED*** Garde-fou lcore (en sessions vidéo : budget par scheduler dérivé du quota Mb/s).
+    # Garde-fou lcore (en sessions vidéo : budget par scheduler dérivé du quota Mb/s).
     lc = _mtl_lcore_sessions(node)
     cap_rx = min(cap_rx, max(0, lc - active_tx))
     cap_tx = min(cap_tx, max(0, lc - active_rx))
@@ -529,8 +529,8 @@ def _mtl_rl_tx_budget(rx_blk, params, node):
             from .. import docker_driver as _dd
             if node and _dd._has_dpdk_pf(node):
                 _pc, _ = _dd._derive_pacing(node)
-                ***REMOVED*** _derive_pacing → None si aucun profil posé ; le contrôleur retombe alors sur
-                ***REMOVED*** MTL_PACING=auto = RL sur port E810 dpdk → traiter None comme 'rl'.
+                # _derive_pacing → None si aucun profil posé ; le contrôleur retombe alors sur
+                # MTL_PACING=auto = RL sur port E810 dpdk → traiter None comme 'rl'.
                 if (_pc or "rl") == "rl":
                     cap_pp = _dd._node_rl_tx_cap(node)
         except Exception:
@@ -563,7 +563,7 @@ def _mtl_apply_flow_change(vmid, params, role, notify=True, push=True, recreate=
     try:
         from .. import docker_driver
         if recreate:
-            ***REMOVED*** Op disruptive CONFIRMÉE (au-delà de la réserve figée / budget bootté) → recréation.
+            # Op disruptive CONFIRMÉE (au-delà de la réserve figée / budget bootté) → recréation.
             db_add_alert("alert.docker.recreation_budget", "warning", vmid=vmid, kind="tx_stall",
                          params={"vmid": vmid})
             docker_driver.deploy_docker(vmid, params, type_script="2110_io")
@@ -709,10 +709,10 @@ def _mtl_op_is_disruptive(vmid, params_after, role=None, op="add"):
                 return True, ("dépassement de la réserve de files (%d > %d) — redéploiement du moteur, "
                               "coupure brève de tous les flux" % (_planned, _reserved))
         else:
-            ***REMOVED*** Réserve par-port indéterminable (moteur injoignable / état partiel) → repli sur le budget
-            ***REMOVED*** bootté (env figé), même axe que le TX : active_rx_count vs ACTIVE_RX_COUNT. Au-delà, une
-            ***REMOVED*** recréation est requise. (Le dépassement de réserve par AJOUT de flux est, lui, couvert par
-            ***REMOVED*** la branche per-port quand l'état live est disponible — cas normal.)
+            # Réserve par-port indéterminable (moteur injoignable / état partiel) → repli sur le budget
+            # bootté (env figé), même axe que le TX : active_rx_count vs ACTIVE_RX_COUNT. Au-delà, une
+            # recréation est requise. (Le dépassement de réserve par AJOUT de flux est, lui, couvert par
+            # la branche per-port quand l'état live est disponible — cas normal.)
             _desired_rx = int((params_after or {}).get("active_rx_count") or 0)
             _booted_rx = _engine_booted_active_rx(vmid)
             if _booted_rx is not None and _desired_rx > _booted_rx:
@@ -764,7 +764,7 @@ def _mtl_teardown_rx_flows(vmid, removed):
             continue
         try:
             if not _nmos.active_sdp_for(vmid, idx, ess):
-                continue   ***REMOVED*** slot non abonné (GÉN/simu) → aucune session moteur à couper
+                continue   # slot non abonné (GÉN/simu) → aucune session moteur à couper
             _nmos.manual_subscribe(vmid, idx, ess, None, enable=False)
             n += 1
         except Exception as e:
@@ -788,14 +788,14 @@ def api_mtl_activate(vmid):
         return jsonify({"ok": False, "error": "kind doit être 'rx' ou 'tx'"}), 400
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"ok": False, "error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"ok": False, "error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c)
     if not dc or dc.get("type") != "2110_io":
         return jsonify({"ok": False, "error": "container non 2110_io"}), 400
     params = dict(dc.get("params") or {})
-    ***REMOVED*** Garde-fou budget NIC/CPU (queues XDP / lcores) — comme avant l'« Option A ». Le budget de files
-    ***REMOVED*** est AGRÉGÉ sur tous les ports média (× nb de ports) : chaque port a son propre budget AF-XDP. On
-    ***REMOVED*** prend le plafond HW LIVE du moteur (sinon réglage) pour rester cohérent avec le bouton « + » (api_io_mtl).
+    # Garde-fou budget NIC/CPU (queues XDP / lcores) — comme avant l'« Option A ». Le budget de files
+    # est AGRÉGÉ sur tous les ports média (× nb de ports) : chaque port a son propre budget AF-XDP. On
+    # prend le plafond HW LIVE du moteur (sinon réglage) pour rester cohérent avec le bouton « + » (api_io_mtl).
     _node_cap = db_get_node(c.get("node_id"))
     _rx_blk_cap = next((_b for _b in _compute_receivers_detail(only_vmid=vmid)), {}) or {}
     _live_hw = _rx_blk_cap.get("xdp_hw_per_port")
@@ -803,8 +803,8 @@ def api_mtl_activate(vmid):
         params,
         _mtl_total_queues({"hw_max_combined": _live_hw} if _live_hw else None) * _mtl_media_port_count(_node_cap, params),
         node=_node_cap,
-        ***REMOVED*** Socle DPDK narrow : le TX se borne sur le budget RL (cap/port × ports), pas sur les
-        ***REMOVED*** files AF-XDP — même plafond que le bouton « + Ajouter un TX » (Destinations).
+        # Socle DPDK narrow : le TX se borne sur le budget RL (cap/port × ports), pas sur les
+        # files AF-XDP — même plafond que le bouton « + Ajouter un TX » (Destinations).
         tx_budget=_mtl_rl_tx_budget(_rx_blk_cap, params, _node_cap))
     flows = _iof.normalize(params.get("rx_flows" if kind == "rx" else "tx_flows")
                            or _iof.active_flows(params, kind))
@@ -813,7 +813,7 @@ def api_mtl_activate(vmid):
         return jsonify({"ok": False, "error": "Budget NIC/CPU atteint (queues XDP ou lcores) — "
                         "désactivez une source/destination ou augmentez les queues/lcores du nœud, "
                         "ou redéployez avec un pool plus grand."}), 400
-    ***REMOVED*** Compo par défaut d'une source/destination : 1 vidéo + N audio + 1 ANC (mémoire du ratio legacy).
+    # Compo par défaut d'une source/destination : 1 vidéo + N audio + 1 ANC (mémoire du ratio legacy).
     ntot = int(params.get("video_count" if kind == "rx" else "tx_count") or 0)
     aper = max(1, (int(params.get("audio_count") or 0) // ntot) if ntot else 1)
     vid, err = _mtl_flow_add(params, kind, "video")
@@ -823,12 +823,12 @@ def api_mtl_activate(vmid):
         _mtl_flow_add(params, kind, "audio", attached_to=vid["id"])
     if int(params.get("anc_count") or 0) > 0:
         _mtl_flow_add(params, kind, "anc", attached_to=vid["id"])
-    ***REMOVED*** Pré-confirmation : ajout d'une source/destination au-delà de la réserve figée → recréation du
-    ***REMOVED*** moteur (coupure de TOUS les flux). confirm:true requis, sinon 409 sans rien appliquer.
+    # Pré-confirmation : ajout d'une source/destination au-delà de la réserve figée → recréation du
+    # moteur (coupure de TOUS les flux). confirm:true requis, sinon 409 sans rien appliquer.
     _disruptive, _reason = _mtl_op_is_disruptive(vmid, params, kind)
     if _disruptive and not bool(data.get("confirm")):
-        ***REMOVED*** Étage 2 : la modal doit NOMMER les sorties qui vont figer (verdict calculé, cf.
-        ***REMOVED*** tx_maintenance.classify) — un ajout hors budget bootté recrée le conteneur (op='recreate').
+        # Étage 2 : la modal doit NOMMER les sorties qui vont figer (verdict calculé, cf.
+        # tx_maintenance.classify) — un ajout hors budget bootté recrée le conteneur (op='recreate').
         from .. import tx_maintenance as _txm
         return jsonify({"ok": False, "needs_confirm": True, "reason": _reason,
                         "verdict": dict(_txm.classify(vmid, params, op="recreate"),
@@ -856,7 +856,7 @@ def api_mtl_deactivate(vmid):
         return jsonify({"ok": False, "error": "kind doit être 'rx' ou 'tx'"}), 400
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"ok": False, "error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"ok": False, "error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c)
     if not dc or dc.get("type") != "2110_io":
         return jsonify({"ok": False, "error": "container non 2110_io"}), 400
@@ -869,7 +869,7 @@ def api_mtl_deactivate(vmid):
     last = videos[-1]
     removed = [f for f in flows if f["id"] == last["id"] or f.get("attached_to") == last["id"]]
     params[key] = [f for f in flows if f["id"] != last["id"] and f.get("attached_to") != last["id"]]
-    ***REMOVED*** RX : teardown à chaud des sessions retirées AVANT le rebuild (le moteur libère la file XDP).
+    # RX : teardown à chaud des sessions retirées AVANT le rebuild (le moteur libère la file XDP).
     if kind == "rx":
         _mtl_teardown_rx_flows(vmid, removed)
     params = _mtl_apply_flow_change(vmid, params, kind, notify=True)
@@ -895,12 +895,12 @@ def api_mtl_pin(vmid):
     role = data.get("role")
     if role not in ("rx", "tx"):
         return jsonify({"ok": False, "error": "role doit être 'rx' ou 'tx'"}), 400
-    ***REMOVED*** `idxs` (liste) : épingle D'UN COUP tous les flux d'un même ensemble. L'exploitant raisonne
-    ***REMOVED*** par SOURCE ou par SORTIE, pas par essence — et une vidéo reçue sur une carte pendant que son
-    ***REMOVED*** audio arrive sur l'autre n'est pas un réglage, c'est un accident. Le choix se fait donc au
-    ***REMOVED*** niveau de l'ensemble, et cette route le pose sur chacun de ses flux en UNE opération : une
-    ***REMOVED*** boucle de N requêtes côté navigateur laisserait un ensemble à moitié épinglé si l'une échoue.
-    ***REMOVED*** `idx` seul reste accepté (appelants existants).
+    # `idxs` (liste) : épingle D'UN COUP tous les flux d'un même ensemble. L'exploitant raisonne
+    # par SOURCE ou par SORTIE, pas par essence — et une vidéo reçue sur une carte pendant que son
+    # audio arrive sur l'autre n'est pas un réglage, c'est un accident. Le choix se fait donc au
+    # niveau de l'ensemble, et cette route le pose sur chacun de ses flux en UNE opération : une
+    # boucle de N requêtes côté navigateur laisserait un ensemble à moitié épinglé si l'une échoue.
+    # `idx` seul reste accepté (appelants existants).
     try:
         if isinstance(data.get("idxs"), list):
             idxs = [int(x) for x in data["idxs"]]
@@ -911,10 +911,10 @@ def api_mtl_pin(vmid):
     except Exception:
         return jsonify({"ok": False, "error": "idx invalide"}), 400
     idx = idxs[0]
-    iface = (data.get("iface") or "").strip()   ***REMOVED*** "" → auto
+    iface = (data.get("iface") or "").strip()   # "" → auto
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"ok": False, "error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"ok": False, "error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c)
     if not dc or dc.get("type") != "2110_io":
         return jsonify({"ok": False, "error": "container non 2110_io"}), 400
@@ -932,7 +932,7 @@ def api_mtl_pin(vmid):
             pins.pop(str(_i), None)
     params[key] = pins
     db_update_deploy_config(vmid, "2110_io", params)
-    ***REMOVED*** Application à chaud
+    # Application à chaud
     msg = ""
     try:
         if role == "tx":
@@ -942,10 +942,10 @@ def api_mtl_pin(vmid):
             from .. import deploy
             ip = get_container_ip(vmid)
             if ip:
-                ***REMOVED*** Un appel par flux : l'agent déplace UNE session à la fois (le daemon reconcile
-                ***REMOVED*** la repose sur la nouvelle NIC sans faute PTP). La persistance, elle, a déjà été
-                ***REMOVED*** écrite en bloc plus haut — un échec ici ne laisse donc pas l'ensemble incohérent
-                ***REMOVED*** au prochain déploiement.
+                # Un appel par flux : l'agent déplace UNE session à la fois (le daemon reconcile
+                # la repose sur la nouvelle NIC sans faute PTP). La persistance, elle, a déjà été
+                # écrite en bloc plus haut — un échec ici ne laisse donc pas l'ensemble incohérent
+                # au prochain déploiement.
                 for _i in idxs:
                     deploy.agent_session().post(deploy.agent_url(ip, "/pin"),
                              json={"role": "rx", "idx": _i, "iface": iface or None}, timeout=5,
@@ -970,7 +970,7 @@ def api_mtl_realign(vmid):
     data = request.get_json(silent=True) or {}
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"ok": False, "error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"ok": False, "error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c)
     if not dc or dc.get("type") != "2110_io":
         return jsonify({"ok": False, "error": "container non 2110_io"}), 400
@@ -1004,7 +1004,7 @@ def api_mtl_flow_add(vmid):
         return jsonify({"ok": False, "error": "role/essence invalide"}), 400
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"ok": False, "error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"ok": False, "error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c)
     if not dc or dc.get("type") != "2110_io":
         return jsonify({"ok": False, "error": "container non 2110_io"}), 400
@@ -1014,8 +1014,8 @@ def api_mtl_flow_add(vmid):
                               label=data.get("label") or "")
     if err:
         return jsonify({"ok": False, "error": err}), 400
-    ***REMOVED*** Pré-confirmation : si l'ajout dépasse la réserve figée → relance/recréation du moteur (coupure
-    ***REMOVED*** de TOUS les flux). On exige confirm:true ; sinon 409 sans rien appliquer (rien n'est persisté).
+    # Pré-confirmation : si l'ajout dépasse la réserve figée → relance/recréation du moteur (coupure
+    # de TOUS les flux). On exige confirm:true ; sinon 409 sans rien appliquer (rien n'est persisté).
     _disruptive, _reason = _mtl_op_is_disruptive(vmid, params, role)
     if _disruptive and not bool(data.get("confirm")):
         from .. import tx_maintenance as _txm
@@ -1039,7 +1039,7 @@ def api_mtl_flows(vmid):
     from .. import io2110_flows as _iof
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"ok": False, "error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"ok": False, "error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c)
     if not dc or dc.get("type") != "2110_io":
         return jsonify({"ok": False, "error": "container non 2110_io"}), 400
@@ -1050,24 +1050,24 @@ def api_mtl_flows(vmid):
         table = _iof.alarmes_par_slot(params, role)
         for f in _iof.active_flows(params, role):
             ess, idx = f.get("essence"), int(f.get("idx") or 0)
-            ***REMOVED*** Nom de shm : uniquement en RX, où le moteur PRODUIT le flux. Un slot TX ne produit
-            ***REMOVED*** rien — il LIT le shm qu'on lui a câblé, dont le nom dépend du câblage. Le fabriquer
-            ***REMOVED*** ici donnerait un nom qui entre en collision avec celui du RX de même index : une
-            ***REMOVED*** colonne qui ment.
-            ***REMOVED*** ⚠ PASSER PAR `numerotation` (2026-08-19) : ce nom était construit à la main sur
-            ***REMOVED*** l'indice BRUT, donc resté 0-based après la migration du 2026-08-13. Il ne s'agissait
-            ***REMOVED*** pas d'un simple défaut d'affichage — c'est la valeur que l'UI reprend pour CÂBLER un
-            ***REMOVED*** consommateur, donc une porte par laquelle des noms 0-based revenaient s'écrire dans
-            ***REMOVED*** les configs bien après la migration (constaté à Horace : un mur pointait sur
-            ***REMOVED*** `<hn>_0`, un flux qui ne peut plus exister). Le nom d'un flux décide de son UUID
-            ***REMOVED*** (uuid5) : il n'y a pas de « à peu près » possible ici.
+            # Nom de shm : uniquement en RX, où le moteur PRODUIT le flux. Un slot TX ne produit
+            # rien — il LIT le shm qu'on lui a câblé, dont le nom dépend du câblage. Le fabriquer
+            # ici donnerait un nom qui entre en collision avec celui du RX de même index : une
+            # colonne qui ment.
+            # ⚠ PASSER PAR `numerotation` (2026-08-19) : ce nom était construit à la main sur
+            # l'indice BRUT, donc resté 0-based après la migration du 2026-08-13. Il ne s'agissait
+            # pas d'un simple défaut d'affichage — c'est la valeur que l'UI reprend pour CÂBLER un
+            # consommateur, donc une porte par laquelle des noms 0-based revenaient s'écrire dans
+            # les configs bien après la migration (constaté à Horace : un mur pointait sur
+            # `<hn>_0`, un flux qui ne peut plus exister). Le nom d'un flux décide de son UUID
+            # (uuid5) : il n'y a pas de « à peu près » possible ici.
             shm = ((flux_video(hn, idx) if ess == "video" else
                     flux_audio(hn, idx) if ess == "audio" else
                     flux_anc(hn, idx)) if role == "rx" else "")
             item = {**f, "role": role, "shm": shm}
-            ***REMOVED*** `alarmes`/`niveau` UNIQUEMENT sur les flux vidéo : ce sont les seuls que le moteur
-            ***REMOVED*** sonde (il y publie aussi le silence de leur audio). Les poser sur un audio ou un ANC
-            ***REMOVED*** afficherait des réglages sans effet — l'UI doit pouvoir distinguer les deux.
+            # `alarmes`/`niveau` UNIQUEMENT sur les flux vidéo : ce sont les seuls que le moteur
+            # sonde (il y publie aussi le silence de leur audio). Les poser sur un audio ou un ANC
+            # afficherait des réglages sans effet — l'UI doit pouvoir distinguer les deux.
             r = table.get((ess, idx))
             if r:
                 item["alarmes"] = r["drapeaux"]
@@ -1135,12 +1135,12 @@ def api_mtl_flow_alarmes(vmid):
 
     Le réglage est porté par la SOURCE VIDÉO, et c'est le moteur qui l'impose : il sonde l'image ET
     le son d'un slot puis publie les deux dans le signal du slot vidéo. Le silence de `_audio_3`
-    remonte donc sur `Rx ***REMOVED***3`. L'ANC n'a aucune sonde.
+    remonte donc sur `Rx #3`. L'ANC n'a aucune sonde.
 
     ⚠ La source est désignée par son INDEX DE SLOT, pas par un id de flux. Tant que `rx_flows`
     n'est pas persisté, `active_flows` DÉRIVE la liste et régénère des ids à CHAQUE appel : un
     client qui lirait un id puis le reposterait tomberait systématiquement sur « flux inconnu ».
-    L'index, lui, est stable et c'est déjà ce que l'UI affiche (« Rx ***REMOVED***n »).
+    L'index, lui, est stable et c'est déjà ce que l'UI affiche (« Rx #n »).
 
     Pourquoi c'est un réglage PAR SOURCE : un gel n'est un incident que si la source est censée
     bouger. Une mire, une ardoise ou un player en pause sont fixes par construction — alerter
@@ -1168,22 +1168,22 @@ def api_mtl_flow_alarmes(vmid):
                         "error": "niveau invalide (%s)" % ", ".join(_iof.NIVEAUX)}), 400
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"ok": False, "error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"ok": False, "error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c)
     if not dc or dc.get("type") != "2110_io":
         return jsonify({"ok": False, "error": "container non 2110_io"}), 400
     params = dict(dc.get("params") or {})
     cle = "rx_flows" if role == "rx" else "tx_flows"
-    ***REMOVED*** On PERSISTE la liste résolue : sans ça un moteur dont les flux sont encore DÉRIVÉS (jamais
-    ***REMOVED*** édités) perdrait le réglage au prochain calcul — les ids dérivés sont régénérés à chaque appel.
+    # On PERSISTE la liste résolue : sans ça un moteur dont les flux sont encore DÉRIVÉS (jamais
+    # édités) perdrait le réglage au prochain calcul — les ids dérivés sont régénérés à chaque appel.
     flows = _iof.active_flows(params, role)
     cible = next((f for f in flows
                   if f.get("essence") == "video" and int(f.get("idx") or 0) == idx), None)
     if cible is None:
         return jsonify({"ok": False, "error": f"aucune source vidéo à l'index {idx}"}), 404
-    ***REMOVED*** Restreint aux drapeaux du RÔLE (cf. io2110_flows.ALARMES_ROLE) : `tx_late` n'a de sens que
-    ***REMOVED*** côté TX (mesure du slot de sortie) — l'accepter sur une source RX persisterait un réglage
-    ***REMOVED*** sans effet, jamais lu (le signal RX n'a jamais cette clé), mais qui polluerait l'API/l'UI.
+    # Restreint aux drapeaux du RÔLE (cf. io2110_flows.ALARMES_ROLE) : `tx_late` n'a de sens que
+    # côté TX (mesure du slot de sortie) — l'accepter sur une source RX persisterait un réglage
+    # sans effet, jamais lu (le signal RX n'a jamais cette clé), mais qui polluerait l'API/l'UI.
     permis = _iof.ALARMES_ROLE.get(role, _iof.ALARMES)
     demande = {k: bool(v) for k, v in data["alarmes"].items() if k in permis}
     defaut_role = {k: v for k, v in _iof.ALARMES_DEFAUT.items() if k in permis}
@@ -1191,11 +1191,11 @@ def api_mtl_flow_alarmes(vmid):
     cible["niveau"] = niveau
     params[cle] = _iof.normalize(flows)
     db_update_deploy_config(vmid, dc.get("type"), params)
-    ***REMOVED*** GATING DU COÛT : le moteur calcule les sondes pour tout le monde tant qu'on ne lui dit pas
-    ***REMOVED*** ce qui est armé (0,03 % d'un cœur par source pour le gamut, 0,09 % par flux pour l'audio).
-    ***REMOVED*** Décocher doit économiser le calcul, pas seulement taire l'alerte. Best-effort et NON bloquant :
-    ***REMOVED*** un moteur injoignable garde son comportement par défaut — tout surveiller — et le réglage sera
-    ***REMOVED*** repoussé au prochain déploiement. Ne jamais échouer la sauvegarde pour un push raté.
+    # GATING DU COÛT : le moteur calcule les sondes pour tout le monde tant qu'on ne lui dit pas
+    # ce qui est armé (0,03 % d'un cœur par source pour le gamut, 0,09 % par flux pour l'audio).
+    # Décocher doit économiser le calcul, pas seulement taire l'alerte. Best-effort et NON bloquant :
+    # un moteur injoignable garde son comportement par défaut — tout surveiller — et le réglage sera
+    # repoussé au prochain déploiement. Ne jamais échouer la sauvegarde pour un push raté.
     if role == "rx":
         _push_probes(vmid, idx, cible["alarmes"])
     return jsonify({"ok": True, "idx": idx, "alarmes": cible["alarmes"],
@@ -1216,7 +1216,7 @@ def api_mtl_flow_remove(vmid):
         return jsonify({"ok": False, "error": "id manquant"}), 400
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"ok": False, "error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"ok": False, "error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c)
     if not dc or dc.get("type") != "2110_io":
         return jsonify({"ok": False, "error": "container non 2110_io"}), 400
@@ -1236,7 +1236,7 @@ def api_mtl_flow_remove(vmid):
                if f["id"] == fid or (target["essence"] == "video" and f.get("attached_to") == fid)]
     params[key] = [f for f in flows
                    if f["id"] != fid and not (target["essence"] == "video" and f.get("attached_to") == fid)]
-    ***REMOVED*** RX : teardown à chaud des sessions retirées AVANT le rebuild (le moteur libère la file XDP).
+    # RX : teardown à chaud des sessions retirées AVANT le rebuild (le moteur libère la file XDP).
     if role == "rx":
         _mtl_teardown_rx_flows(vmid, removed)
     params = _mtl_apply_flow_change(vmid, params, role, notify=True)
@@ -1244,10 +1244,10 @@ def api_mtl_flow_remove(vmid):
                     "note": ("retiré ; file moteur libérée à chaud" if role == "rx" else "retiré")})
 
 
-***REMOVED*** ─── MTL : prép host DPDK/E810 (hôte local uniquement) ───────────────────────
-***REMOVED*** La prép ne concerne que l'hôte local de cette instance (= proxmox_host) ; il
-***REMOVED*** n'y a pas de host distant paramétrable (un éventuel onglet « Distant » viendra
-***REMOVED*** par un autre mécanisme).
+# ─── MTL : prép host DPDK/E810 (hôte local uniquement) ───────────────────────
+# La prép ne concerne que l'hôte local de cette instance (= proxmox_host) ; il
+# n'y a pas de host distant paramétrable (un éventuel onglet « Distant » viendra
+# par un autre mécanisme).
 @bp.route("/api/mtl/status", methods=["GET"])
 @require_login
 def mtl_status():
@@ -1301,7 +1301,7 @@ def mtl_reboot():
     return jsonify({"ok": ok, "msg": msg})
 
 
-***REMOVED*** ─── Qualification de carte (bibliothèque de cartes, cf. docs/chantiers/DPDK_NARROW.md §7) ───────────────────────
+# ─── Qualification de carte (bibliothèque de cartes, cf. docs/chantiers/DPDK_NARROW.md §7) ───────────────────────
 @bp.route("/api/nodes/<int:node_id>/qualify-nic", methods=["POST"])
 @require_perm("containers.deploy")
 def qualify_node_nic(node_id):
@@ -1321,7 +1321,7 @@ def qualify_node_nic(node_id):
     name = docker_driver._name(ct["vmid"])
     prof = nic_qualify.qualify_node_via_agent(node, name)
     if isinstance(prof, dict) and prof.get("error"):
-        ***REMOVED*** Moteur non sain (crash-loop) : refus EXPLICITE plutôt qu'un profil garbage écrit en silence.
+        # Moteur non sain (crash-loop) : refus EXPLICITE plutôt qu'un profil garbage écrit en silence.
         db_add_alert("alert.prep.qualification_refusee", "warning", node_id=node.get("id"), kind="prep",
                      params={"n": node.get("name"), "e": prof["error"]})
         return jsonify({"ok": False, "error": prof["error"]}), 409
@@ -1334,9 +1334,9 @@ def qualify_node_nic(node_id):
         db_add_alert("alert.prep.carte_qualifiee", "info", node_id=node.get("id"), kind="prep",
                      params={"card": _card, "cap": prof["rl_tx_cap"], "fw": _fw})
     else:
-        ***REMOVED*** Capacité NON mesurable (pas de clamp du PMD) : PTP/DDP sont enregistrés, le cap reste celui
-        ***REMOVED*** de la bibliothèque. Dit explicitement — un « qualifié » muet sur ce point laisserait croire
-        ***REMOVED*** que le cap affiché vient d'une mesure.
+        # Capacité NON mesurable (pas de clamp du PMD) : PTP/DDP sont enregistrés, le cap reste celui
+        # de la bibliothèque. Dit explicitement — un « qualifié » muet sur ce point laisserait croire
+        # que le cap affiché vient d'une mesure.
         _raison = prof.get("cap_reason")
         if _raison:
             db_add_alert("alert.prep.carte_qualifiee_sans_mesure", "warning", node_id=node.get("id"),
@@ -1389,13 +1389,13 @@ def list_nic_profiles():
     return jsonify({"ok": True, "profiles": db_all_nic_profiles()})
 
 
-***REMOVED*** ─── Bibliothèque de MODÈLES de carte 2110 (gabarits par TYPE de carte) ───────────────────────────
-***REMOVED*** Deux temps, deux objets (cf. app/tx_card_models.py) :
-***REMOVED***   1. on RÈGLE des modèles par TYPE de carte — une DÉCLARATION, elle ne coûte RIEN (aucun matériel
-***REMOVED***      touché) → édition ADMIN (settings.edit) ;
-***REMOVED***   2. on les APPLIQUE à une carte réelle (page Interfaces) — c'est LÀ que le coût se paie (en DPDK,
-***REMOVED***      recalcul de l'arbre de pacing ; en AF-XDP : aucun commit possible, donc GRATUIT).
-***REMOVED*** Le modèle est une SOURCE ; la VÉRITÉ reste le layout appliqué de la carte (io2110_layouts).
+# ─── Bibliothèque de MODÈLES de carte 2110 (gabarits par TYPE de carte) ───────────────────────────
+# Deux temps, deux objets (cf. app/tx_card_models.py) :
+#   1. on RÈGLE des modèles par TYPE de carte — une DÉCLARATION, elle ne coûte RIEN (aucun matériel
+#      touché) → édition ADMIN (settings.edit) ;
+#   2. on les APPLIQUE à une carte réelle (page Interfaces) — c'est LÀ que le coût se paie (en DPDK,
+#      recalcul de l'arbre de pacing ; en AF-XDP : aucun commit possible, donc GRATUIT).
+# Le modèle est une SOURCE ; la VÉRITÉ reste le layout appliqué de la carte (io2110_layouts).
 
 @bp.route("/api/tx-card-models", methods=["GET"])
 @require_login
@@ -1432,8 +1432,8 @@ def api_tx_card_model_update(mid):
     from ..auth import current_user
     d = request.get_json(silent=True) or {}
     actor = (current_user() or {}).get("username") or ""
-    ***REMOVED*** Nom vide = refus EXPLICITE (l'UI le dit déjà avant le clic ; ici on empêche l'écriture d'un
-    ***REMOVED*** modèle anonyme, y compris par un client qui court-circuiterait l'UI).
+    # Nom vide = refus EXPLICITE (l'UI le dit déjà avant le clic ; ici on empêche l'écriture d'un
+    # modèle anonyme, y compris par un client qui court-circuiterait l'UI).
     if isinstance(d.get("name"), str) and not d["name"].strip():
         return jsonify({"ok": False, "error": "nom requis : un modèle sans nom est introuvable "
                                               "dans la bibliothèque"}), 400
@@ -1497,7 +1497,7 @@ def api_tx_card_model_delete(mid):
     return jsonify({"ok": True})
 
 
-***REMOVED*** ─── Application d'un modèle à une CARTE réelle (page Interfaces) ─────────────────────────────────
+# ─── Application d'un modèle à une CARTE réelle (page Interfaces) ─────────────────────────────────
 
 @bp.route("/api/nodes/<int:node_id>/tx-model/candidates", methods=["GET"])
 @require_login
@@ -1513,8 +1513,8 @@ def api_tx_model_candidates(node_id):
     budget = _lay.nic_budget(node_id, iface)
     return jsonify({"ok": True, "models": _tcm.compatible_models(node_id, iface),
                     "binding": _tcm.card_binding(node_id, iface),
-                    ***REMOVED*** Le champ « Modèle » de la fiche d'interface a besoin du moteur (pour provisionner)
-                    ***REMOVED*** et du MODE du port (`rl`) : en AF-XDP, appliquer ne coûte RIEN — il doit le DIRE.
+                    # Le champ « Modèle » de la fiche d'interface a besoin du moteur (pour provisionner)
+                    # et du MODE du port (`rl`) : en AF-XDP, appliquer ne coûte RIEN — il doit le DIRE.
                     "engine": ({"vmid": eng["vmid"], "hostname": eng.get("hostname")} if eng else None),
                     "port": {"pmd": budget.get("pmd"), "rl": bool(budget.get("dpdk_active")),
                              "model": budget.get("model") or ""}})
@@ -1557,11 +1557,11 @@ def api_tx_model_apply(node_id):
     return jsonify({"ok": True, **res})
 
 
-***REMOVED*** ─── Layouts TX déclarés par NIC (docs/reference/TX_LAYOUTS.md, étage 1 — arbre TX statique) ──────────────────────
-***REMOVED*** Persistance : app/io2110_layouts.py (blob JSON par node_id+iface, table settings générique). Édition
-***REMOVED*** ADMIN (settings.edit, cf. docs/reference/TX_LAYOUTS.md décision ***REMOVED***1 — le layout vit dans Réglages, adossé à la
-***REMOVED*** bibliothèque de cartes) ; lecture ouverte à tout connecté (Destinations 2110 l'affiche en lecture
-***REMOVED*** seule) ; « appliquer » = événement de maintenance sur un moteur déployé (containers.deploy).
+# ─── Layouts TX déclarés par NIC (docs/reference/TX_LAYOUTS.md, étage 1 — arbre TX statique) ──────────────────────
+# Persistance : app/io2110_layouts.py (blob JSON par node_id+iface, table settings générique). Édition
+# ADMIN (settings.edit, cf. docs/reference/TX_LAYOUTS.md décision #1 — le layout vit dans Réglages, adossé à la
+# bibliothèque de cartes) ; lecture ouverte à tout connecté (Destinations 2110 l'affiche en lecture
+# seule) ; « appliquer » = événement de maintenance sur un moteur déployé (containers.deploy).
 
 @bp.route("/api/nodes/<int:node_id>/tx-layout", methods=["GET"])
 @require_login
@@ -1667,20 +1667,20 @@ def api_tx_layout_apply(vmid):
     import json as _json
     from ..database import db_get_container
     data = request.get_json(silent=True) or {}
-    ***REMOVED*** Le layout déclaré fait AUTORITÉ sur le nombre de sorties. S'il en déclare plus que le budget
-    ***REMOVED*** bootté du moteur (ACTIVE_TX_COUNT figé au `docker run`), l'appliquer RECRÉE le moteur pour
-    ***REMOVED*** ré-réserver les files RL (coupure brève de TOUS les flux, RX inclus) → verdict engine-scope +
-    ***REMOVED*** confirmation, comme « + Ajouter un TX » au-delà de la réserve. apply_layout porte alors
-    ***REMOVED*** active_tx_count au nombre déclaré et recrée lui-même.
-    ***REMOVED*** Carte CIBLE : celle cliquée (multi-port), à défaut la PRIMAIRE.
-    ***REMOVED*** ⚠ NE JAMAIS retomber sur « toutes les cartes » ici : cette route sert un geste PAR CARTE, et
-    ***REMOVED*** `apply_layout(iface=None)` applique le nœud entier. Le 2026-07-27, la page Modèles postant un
-    ***REMOVED*** corps vide, un clic sur une carte a additionné les modèles des deux (32+32 → 64 sorties), saturé
-    ***REMOVED*** les 63 files RL du port et tué les 6 RX. `iface=None` reste réservé au déploiement (resync).
+    # Le layout déclaré fait AUTORITÉ sur le nombre de sorties. S'il en déclare plus que le budget
+    # bootté du moteur (ACTIVE_TX_COUNT figé au `docker run`), l'appliquer RECRÉE le moteur pour
+    # ré-réserver les files RL (coupure brève de TOUS les flux, RX inclus) → verdict engine-scope +
+    # confirmation, comme « + Ajouter un TX » au-delà de la réserve. apply_layout porte alors
+    # active_tx_count au nombre déclaré et recrée lui-même.
+    # Carte CIBLE : celle cliquée (multi-port), à défaut la PRIMAIRE.
+    # ⚠ NE JAMAIS retomber sur « toutes les cartes » ici : cette route sert un geste PAR CARTE, et
+    # `apply_layout(iface=None)` applique le nœud entier. Le 2026-07-27, la page Modèles postant un
+    # corps vide, un clic sur une carte a additionné les modèles des deux (32+32 → 64 sorties), saturé
+    # les 63 files RL du port et tué les 6 RX. `iface=None` reste réservé au déploiement (resync).
     node_id, iface = _lay.layout_iface_for_container(vmid)
     _req_iface = (data.get("iface") or "").strip() or iface
-    ***REMOVED*** Total DÉCLARÉ après cet apply = ce que produirait l'allocateur (somme des modèles, les cartes
-    ***REMOVED*** non ciblées conservant leurs sorties) — PAS le seul compte de la carte cliquée.
+    # Total DÉCLARÉ après cet apply = ce que produirait l'allocateur (somme des modèles, les cartes
+    # non ciblées conservant leurs sorties) — PAS le seul compte de la carte cliquée.
     n_decl = _lay.planned_active_tx(vmid, iface) if iface else 0
     booted = _engine_booted_active_tx(vmid)
     if booted is not None and n_decl != booted:
@@ -1695,21 +1695,21 @@ def api_tx_layout_apply(vmid):
                              "RECRÉÉ pour aligner les sorties (coupure brève de tous les flux)"
                              % (n_decl, booted))
         if bool(data.get("defer")):
-            _g, _ = _tx_gate(vmid, "tx_layout_apply", {"iface": _req_iface}, data)   ***REMOVED*** réutilise le report en fenêtre
+            _g, _ = _tx_gate(vmid, "tx_layout_apply", {"iface": _req_iface}, data)   # réutilise le report en fenêtre
             if _g is not None:
                 return _g
         elif not bool(data.get("confirm")):
             return jsonify({"ok": False, "needs_confirm": True, "verdict": verdict,
                             "reason": verdict.get("reason")}), 409
         with verrou_vmid(vmid, op="tx-layout-apply"):
-            ***REMOVED*** `redeploy` = l'exploitant a choisi « appliquer ET redéployer maintenant ». Sinon on
-            ***REMOVED*** écrit la déclaration et reconcile_engine_sizing signale le redéploiement requis.
+            # `redeploy` = l'exploitant a choisi « appliquer ET redéployer maintenant ». Sinon on
+            # écrit la déclaration et reconcile_engine_sizing signale le redéploiement requis.
             ok, result = _lay.apply_layout(vmid, iface=_req_iface,
                                            redeploy=bool(data.get("redeploy")))
         if not ok:
             return jsonify({"ok": False, "error": result}), 400
         return jsonify({"ok": True, "verdict": verdict, **result})
-    ***REMOVED*** Chemin à chaud (le layout tient dans le budget bootté) : gate tx_layout_apply existant.
+    # Chemin à chaud (le layout tient dans le budget bootté) : gate tx_layout_apply existant.
     _gate, _verdict = _tx_gate(vmid, "tx_layout_apply", {"iface": _req_iface}, data)
     if _gate is not None:
         return _gate
@@ -1749,10 +1749,10 @@ def api_tx_mcast_plan(vmid):
                     "conflicts": [d for d in diff if d["etat"] == "conflit"]})
 
 
-***REMOVED*** ─── Étage 2 : classification des actions + fenêtre de maintenance (docs/reference/TX_LAYOUTS.md) ─────────────────
-***REMOVED*** Modèle : app/tx_maintenance.py. Le verdict est CALCULÉ (diff des signatures de sessions TX
-***REMOVED*** réellement poussées au contrôleur), pas codé en dur — et dépend du MODE DU PORT : sur af_xdp il n'y
-***REMOVED*** a pas de rate limiter, donc pas de commit TM, donc AUCUNE action n'est perturbatrice.
+# ─── Étage 2 : classification des actions + fenêtre de maintenance (docs/reference/TX_LAYOUTS.md) ─────────────────
+# Modèle : app/tx_maintenance.py. Le verdict est CALCULÉ (diff des signatures de sessions TX
+# réellement poussées au contrôleur), pas codé en dur — et dépend du MODE DU PORT : sur af_xdp il n'y
+# a pas de rate limiter, donc pas de commit TM, donc AUCUNE action n'est perturbatrice.
 
 @bp.route("/api/mtl/<int:vmid>/tx-preflight", methods=["POST"])
 @require_perm("containers.deploy")

@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Internationalisation (i18n) légère, sans gettext/babel (le repo n'a aucun build).
@@ -42,19 +42,19 @@ _CONTRIB_DIRS = (os.path.join(_ROOT, "plugins"), os.path.join(_ROOT, "services")
 DEFAULT_LANG = "fr"
 LANG_CODE_RE = re.compile(r"^[a-z]{2}(-[a-z0-9]+)?$")
 
-***REMOVED*** Langues fournies (portées par des fichiers catalogue).
+# Langues fournies (portées par des fichiers catalogue).
 _BUILTIN = [
     {"code": "fr", "label": "Français", "builtin": True},
     {"code": "en", "label": "English",  "builtin": True},
 ]
 
-***REMOVED*** Recalculés à chaque _load().
+# Recalculés à chaque _load().
 LANGUAGES = list(_BUILTIN)
 LANG_CODES = {l["code"] for l in _BUILTIN}
 
-***REMOVED*** Catalogues fichiers (cœur+contrib) : { code: {clé: texte} } — sans overrides.
+# Catalogues fichiers (cœur+contrib) : { code: {clé: texte} } — sans overrides.
 _FILE_CATALOGS = {}
-***REMOVED*** Catalogues effectifs (fichiers + overrides DB appliqués) : { code: {clé: texte} }.
+# Catalogues effectifs (fichiers + overrides DB appliqués) : { code: {clé: texte} }.
 _CATALOGS = {}
 
 
@@ -100,7 +100,7 @@ def _file_catalog_for(code):
             cdir = os.path.join(base, name, "i18n")
             if os.path.isdir(cdir):
                 merged.update(_read_catalog(os.path.join(cdir, f"{code}.json")))
-    merged.update(core)   ***REMOVED*** le cœur prime sur les contributeurs
+    merged.update(core)   # le cœur prime sur les contributeurs
     return merged
 
 
@@ -111,18 +111,18 @@ def _load():
     LANGUAGES = list(_BUILTIN) + _custom_languages()
     LANG_CODES = {l["code"] for l in LANGUAGES}
 
-    ***REMOVED*** Catalogues fichiers (uniquement pour les langues à fichier = built-in).
+    # Catalogues fichiers (uniquement pour les langues à fichier = built-in).
     _FILE_CATALOGS = {l["code"]: _file_catalog_for(l["code"])
                       for l in _BUILTIN}
 
-    ***REMOVED*** Surcouche DB.
+    # Surcouche DB.
     try:
         from .database import db_i18n_overrides
         overrides = db_i18n_overrides()
     except Exception:
         overrides = {}
 
-    ***REMOVED*** Catalogues effectifs = fichier + overrides (override prime).
+    # Catalogues effectifs = fichier + overrides (override prime).
     cats = {}
     for code in LANG_CODES:
         eff = dict(_FILE_CATALOGS.get(code, {}))
@@ -202,14 +202,14 @@ def existe(cle, lang=DEFAULT_LANG):
     return bool(cle) and cle in _CATALOGS.get(lang, {})
 
 
-***REMOVED*** Entrées RÉSERVÉES de `alerts.msg_params` : le compte de l'anti-rebond. Rendues ici plutôt que
-***REMOVED*** concaténées à l'écriture, sinon le suffixe « répété N fois » resterait français sur toutes les
-***REMOVED*** alertes en cours — c'est-à-dire sur celles qu'on regarde le plus.
+# Entrées RÉSERVÉES de `alerts.msg_params` : le compte de l'anti-rebond. Rendues ici plutôt que
+# concaténées à l'écriture, sinon le suffixe « répété N fois » resterait français sur toutes les
+# alertes en cours — c'est-à-dire sur celles qu'on regarde le plus.
 ALERTE_REP_N = "_rep_n"
 ALERTE_REP_DEPUIS = "_rep_depuis"
 
 
-ALERTE_SEP = "_sep"          ***REMOVED*** séparateur d'une liste de sous-clés (défaut : « — »)
+ALERTE_SEP = "_sep"          # séparateur d'une liste de sous-clés (défaut : « — »)
 
 
 def _developper_sous_cles(params, lang):
@@ -295,7 +295,7 @@ def js_catalog(lang=None, prefixes=("js.", "plugin.", "home.", "catalogue.", "re
             if any(k.startswith(p) for p in prefixes)}
 
 
-***REMOVED*** ─── Support de l'éditeur de traductions ─────────────────────
+# ─── Support de l'éditeur de traductions ─────────────────────
 
 def _all_keys():
     """Union de toutes les clés connues (tous fichiers + toutes surcharges)."""
@@ -421,5 +421,5 @@ def write_catalog_file(lang):
     return path
 
 
-***REMOVED*** Chargement au premier import.
+# Chargement au premier import.
 _load()

@@ -49,11 +49,11 @@ window.txMaintConfirm = function (verdict, opts) {
         ov.addEventListener('click', (e) => { if (e.target === ov) done(null); });
         document.body.appendChild(ov);
         document.addEventListener('keydown', onKey);
-        ov.querySelector('***REMOVED***txm-cancel').onclick = () => done(null);
-        ov.querySelector('***REMOVED***txm-now').onclick = () => done('now');
-        const d = ov.querySelector('***REMOVED***txm-defer');
+        ov.querySelector('#txm-cancel').onclick = () => done(null);
+        ov.querySelector('#txm-now').onclick = () => done('now');
+        const d = ov.querySelector('#txm-defer');
         if (d) d.onclick = () => done('defer');
-        ov.querySelector('***REMOVED***txm-now').focus();
+        ov.querySelector('#txm-now').focus();
     });
 };
 })();

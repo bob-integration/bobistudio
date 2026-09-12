@@ -1,11 +1,11 @@
-***REMOVED*** Tissu de composition en mode tranche — plan de conception (sémantique « flow »)
+# Tissu de composition en mode tranche — plan de conception (sémantique « flow »)
 
 > Chantier latence sous-trame MXL, phase tissu. Décisions utilisateur 2026-07-11 :
 > sémantique (c) directement (pas d'étape intermédiaire barrière-(a)), GPU à migrer,
 > rollout opt-in. Prérequis livrés : moteur 2110 RX/TX slice (0.40.0), multiview 0.24.0,
 > pyramide 0.7.0, UDC 0.6.0 (optimisation resize en cours).
 
-***REMOVED******REMOVED*** 0. État mesuré (banc dl360-1, 1080p50, phases médianes par période de 20 ms)
+## 0. État mesuré (banc dl360-1, 1080p50, phases médianes par période de 20 ms)
 
 | Étage | 1ʳᵉ bande dispo | whole-frame équiv. |
 |---|---|---|
@@ -21,7 +21,7 @@ N étages internes reste donc à ~1 trame de latence totale au lieu de N×20 ms.
 (Piste ultérieure hors tissu : epoch-shift TX `rtp_timestamp_delta_us` pour rattraper la
 phase de chaîne et gagner la dernière trame.)
 
-***REMOVED******REMOVED*** 1. Objectif
+## 1. Objectif
 
 Le tissu (`app/compositor_fabric.py` : dédup par signature + shards guillotine + assembleur)
 matérialise aujourd'hui des multiviews `cadence="input"` **whole-frame** : chaque étage
@@ -29,7 +29,7 @@ matérialise aujourd'hui des multiviews `cadence="input"` **whole-frame** : chaq
 du tissu **entièrement par bande** — latence interne d'un mur shardé ≈ Σ(~2 ms) au lieu
 de ~40-60 ms, sans changer le planificateur (signatures/partition inchangées).
 
-***REMOVED******REMOVED*** 2. Sémantique « flow » (la (c) actée) — cahier des charges
+## 2. Sémantique « flow » (la (c) actée) — cahier des charges
 
 Nouveau mode `cadence="flow"` dans le script multiview (les modes `genlock` et `input`
 restent STRICTEMENT inchangés — compat murs existants). Data-flow pur par bande, plus de
@@ -59,7 +59,7 @@ barrière globale :
    PARFAIT (fini le `get_latest` désaligné), repli k-1 si un shard est en retard.
 6. Écriture de sortie inchangée (open_grain 1×, commit validSlices=1..N).
 
-***REMOVED******REMOVED*** 3. Modifications par composant
+## 3. Modifications par composant
 
 **A. plugins/multiview (script.py)** — le gros du travail (~200-250 lignes) :
 - mode `cadence="flow"` (points 1-5) ; état par-tuile persistant entre trames
@@ -83,7 +83,7 @@ barrière globale :
 **C. pyramide / UDC / moteur** : déjà migrés. Les proxies sur-mesure du tissu
 (`extra_sizes`) passent par `_proxy_slice_h` (toute hauteur) — rien à faire.
 
-***REMOVED******REMOVED*** 4. GPU (décision : migrer)
+## 4. GPU (décision : migrer)
 
 Phase dédiée, APRÈS le tissu CPU (la sensibilité des transferts H2D au découpage est le
 risque n°1 — banc Phase 0 : un H2D par tuile faisait régresser le GPU, d'où l'upload
@@ -95,7 +95,7 @@ groupé épinglé actuel).
   (streams), compose bandé en VRAM, D2H bandé épinglé vers la vue du grain.
 - Le fallback CPU-whole-frame actuel reste le comportement par défaut GPU jusqu'au GO.
 
-***REMOVED******REMOVED*** 5. Bancs et recette
+## 5. Bancs et recette
 
 - **B1 nominal** : 2 murs partageant des cellules (dédup + 2 shards + assembleur) sur
   dl360-1, chaîne RX→pyramide→shards→assembleur→TX en tranche ; mesure des phases par
@@ -109,7 +109,7 @@ groupé épinglé actuel).
   nœuds du tissu) et que la bande passante mémoire ne bouge pas (mêmes octets).
 - Recette visuelle : utilisateur.
 
-***REMOVED******REMOVED*** 6. Risques identifiés
+## 6. Risques identifiés
 
 - **R1 réveils par bande × N nœuds** : charge context-switch — mesuré en B4, mitigation
   slice_lines plus grand côté tissu.
@@ -124,7 +124,7 @@ groupé épinglé actuel).
 - **R5 compat** : « flow » est un NOUVEAU mode ; `input` et `genlock` intacts —
   aucun mur existant ne change de comportement sans opt-in.
 
-***REMOVED******REMOVED*** 6bis. RÉALISÉ (2026-07-12, banc B1) — design affiné à l'implémentation
+## 6bis. RÉALISÉ (2026-07-12, banc B1) — design affiné à l'implémentation
 
 La sémantique « flow » livrée est PLUS SIMPLE que le cahier des charges §2 : comme tous les
 flux du tissu sont sur la grille TAI, le « déclenchement à la première entrée » est équivalent
@@ -151,7 +151,7 @@ Trois pièges corrigés au banc (0.25.1 / pyramide 0.7.1) :
 Reconfiguration : le fabric reconfigure les assembleurs À CHAUD (style/flux seulement) — la
 cadence/slice d'un mur logique existant ne bascule qu'à son REDÉPLOIEMENT (documenté §3.B).
 
-***REMOVED******REMOVED*** 6ter. Bancs B2-B4 — RÉALISÉS (2026-07-12 soir)
+## 6ter. Bancs B2-B4 — RÉALISÉS (2026-07-12 soir)
 
 **B2 churn (3/3 PASS)** : (1) recréation pyramide → shard revenu en suivi ; (2) recréation du
 shard (nouvelle génération fab) → assembleur reconnecté, **8,1 s** bout-en-bout redéploiement
@@ -177,7 +177,7 @@ mitigation (slice_lines=72 pas nécessaire à cette échelle).
    (déployés avec les seuls défauts : flux_config vidé, shm_out=hostname) — corruption
    silencieuse. À investiguer côté route creer/threads (même famille que le wedge).
 
-***REMOVED******REMOVED*** 7. Ordre de réalisation
+## 7. Ordre de réalisation
 
 1. **P0** : own_latency multiview sans attentes + promotion des compteurs slice en
    métriques (court, à glisser dans la vague durcissements avec le watchdog TX 0.40.1
@@ -188,7 +188,7 @@ mitigation (slice_lines=72 pas nécessaire à cette échelle).
 5. GPU : banc gate puis implémentation selon verdict.
 6. Doc exploitant + config_schema UI (slice_mode/cadence) + décision de généralisation.
 
-***REMOVED******REMOVED*** 8. Epoch-shift TX (banc 2026-07-11, moteur 0.41.0) — RÉALISÉ
+## 8. Epoch-shift TX (banc 2026-07-11, moteur 0.41.0) — RÉALISÉ
 
 Choix PAR DESTINATION (Destinations 2110 → sélecteur par carte TX) entre « ⏱ image
 suivante » (défaut : émission alignée sur l'epoch nominal — une chaîne interne en phase
@@ -219,7 +219,7 @@ delta négatif sur l'audio st30 (stamp reculé sans décalage de grille).
 
 ---
 
-***REMOVED******REMOVED*** Banc GATE du slice GPU — 2026-08-07, Tesla T4 (r620-1)
+## Banc GATE du slice GPU — 2026-08-07, Tesla T4 (r620-1)
 
 Verdict de l'outil : **GO-MEGA-540**. Résultat brut : `docs/chantiers/gate_gpu_slice_T4.json`.
 

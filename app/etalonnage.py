@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Étalonnage : MESURER ce qu'un dispositif coûte réellement, pendant que l'utilisateur l'exerce.
 
@@ -15,7 +15,7 @@ autorise ensuite le mot « garanti ».
 dure une seconde est invisible à un échantillonnage de 60 s, et personne — surtout pas un plugin —
 ne sait dire à l'avance ce que « niveau normal » veut dire pour un dispositif donné.
 
-***REMOVED******REMOVED*** Pourquoi une sonde à part, et pas `containers.cpu_percent`
+## Pourquoi une sonde à part, et pas `containers.cpu_percent`
 
 Parce que la métrique existante ne peut pas porter cette mesure :
   · arrondie au dixième, et NORMALISÉE par `cpu_count` — sur un nœud à 88 CPU, un cran vaut 8,8 %
@@ -26,7 +26,7 @@ Parce que la métrique existante ne peut pas porter cette mesure :
 Ici on lit `cpu.stat:usage_usec` du cgroup, en microsecondes, sans plafond et sans normalisation.
 Validé le 2026-08-02 contre une voie indépendante (932,8 % contre 962 %).
 
-***REMOVED******REMOVED*** Ce qu'une mesure vaut, et où
+## Ce qu'une mesure vaut, et où
 
 Un profil est un fait à propos d'un COUPLE (configuration, machine) — il ne voyage pas. Le même
 `avsync`, mêmes paramètres, coûte 40,8 % sur dl360-1 et 79,2 % sur r620-1 : un facteur 1,94. La
@@ -34,7 +34,7 @@ mesure appartient donc au nœud ; la GARANTIE, elle, appartient au projet, qui r
 dont elle provient. Restaurer un projet ailleurs ne transporte pas la garantie, seulement le besoin
 — et le pré-vol doit le dire.
 
-***REMOVED******REMOVED*** Signature
+## Signature
 
 Une mesure est indexée par `(signature, node_id)`. La signature identifie la configuration qui a
 été mesurée : type + version de plugin + condensat des paramètres de déploiement. Changer les
@@ -47,33 +47,33 @@ import logging
 import threading
 import time
 
-from .cpu_profiles import (pointe_vue as _pointe_vue,   ***REMOVED*** définition UNIQUE du « pic observé »
+from .cpu_profiles import (pointe_vue as _pointe_vue,   # définition UNIQUE du « pic observé »
                            en_rafale as _en_rafale)
 from .database import get_db, db_get_node, db_get_nodes, db_get_containers, db_add_alert
 from . import node_driver
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Période d'échantillonnage de la sonde. 1 Hz : une animation d'une seconde laisse au moins un
-***REMOVED*** point, là où les 60 s de `cpu_profiles` ne la voient jamais. En dessous, on paierait un aller-
-***REMOVED*** retour agent par seconde pour du bruit — le compteur cgroup est cumulatif, pas instantané.
+# Période d'échantillonnage de la sonde. 1 Hz : une animation d'une seconde laisse au moins un
+# point, là où les 60 s de `cpu_profiles` ne la voient jamais. En dessous, on paierait un aller-
+# retour agent par seconde pour du bruit — le compteur cgroup est cumulatif, pas instantané.
 PERIODE_S = 1.0
-***REMOVED*** Durée d'un appel à la sonde. Elle échantillonne EN LOCAL sur le nœud pendant cette durée puis
-***REMOVED*** rend la série entière : un aller-retour toutes les 6 s au lieu d'un par seconde.
-***REMOVED*** ⚠ C'est aussi la GRANULARITÉ d'accumulation : rien n'est enregistré avant la fin d'une fenêtre.
-***REMOVED*** Elle valait 20 s — un étalonnage de 15 s rendait donc ZÉRO point, sans rien dire d'utile.
-***REMOVED*** Constaté le 2026-08-02 sur un multiview : 7,5 s de campagne, 0 point, « mesure insuffisante ».
+# Durée d'un appel à la sonde. Elle échantillonne EN LOCAL sur le nœud pendant cette durée puis
+# rend la série entière : un aller-retour toutes les 6 s au lieu d'un par seconde.
+# ⚠ C'est aussi la GRANULARITÉ d'accumulation : rien n'est enregistré avant la fin d'une fenêtre.
+# Elle valait 20 s — un étalonnage de 15 s rendait donc ZÉRO point, sans rien dire d'utile.
+# Constaté le 2026-08-02 sur un multiview : 7,5 s de campagne, 0 point, « mesure insuffisante ».
 FENETRE_S = 6.0
-***REMOVED*** Garde-fou : une campagne oubliée ne tourne pas indéfiniment.
+# Garde-fou : une campagne oubliée ne tourne pas indéfiniment.
 DUREE_MAX_S = 3600.0
-***REMOVED*** En dessous, la campagne ne prouve rien : on refuse de publier une distribution.
+# En dessous, la campagne ne prouve rien : on refuse de publier une distribution.
 MIN_POINTS = 20
 
 _lock = threading.Lock()
-_campagne = None        ***REMOVED*** None si aucune campagne en cours (cf. `etat()`)
+_campagne = None        # None si aucune campagne en cours (cf. `etat()`)
 
 
-***REMOVED*** ── Sonde : exécutée SUR le nœud, rend une série de (ts, usage_usec) par conteneur ────────────
+# ── Sonde : exécutée SUR le nœud, rend une série de (ts, usage_usec) par conteneur ────────────
 _SONDE = r"""python3 - <<'EOF'
 import glob, json, re, subprocess, time
 
@@ -83,7 +83,7 @@ def conteneurs():
     return dict(l.split(None, 1) for l in out.splitlines() if len(l.split(None, 1)) == 2)
 
 def usage(cid):
-    ***REMOVED*** Deux dispositions de cgroup v2 selon l'installation Docker (systemd ou cgroupfs).
+    # Deux dispositions de cgroup v2 selon l'installation Docker (systemd ou cgroupfs).
     for pat in ("/sys/fs/cgroup/system.slice/docker-%s*.scope/cpu.stat",
                 "/sys/fs/cgroup/docker/%s*/cpu.stat"):
         hits = glob.glob(pat % cid)
@@ -97,8 +97,8 @@ def usage(cid):
     return None
 
 def cid_de_pid(pid):
-    ***REMOVED*** Rattache un PID de l'hôte à son conteneur : le cgroup porte l'id long, dont l'id court de
-    ***REMOVED*** `docker ps` est le préfixe. Même technique que app/placement.py.
+    # Rattache un PID de l'hôte à son conteneur : le cgroup porte l'id long, dont l'id court de
+    # `docker ps` est le préfixe. Même technique que app/placement.py.
     try:
         with open("/proc/%d/cgroup" % pid) as f:
             m = re.search(r"[0-9a-f]{64}", f.read())
@@ -106,9 +106,9 @@ def cid_de_pid(pid):
     except OSError:
         return None
 
-***REMOVED*** GPU : `pmon` échantillonne par PROCESSUS (sm/enc/dec/mem). Lancé EN TÂCHE DE FOND pour toute la
-***REMOVED*** fenêtre — un `pmon -c 1` dans la boucle bloquerait une seconde à chaque tour et fausserait la
-***REMOVED*** cadence de la sonde CPU. Absence de nvidia-smi = pas de GPU : ce n'est pas une erreur.
+# GPU : `pmon` échantillonne par PROCESSUS (sm/enc/dec/mem). Lancé EN TÂCHE DE FOND pour toute la
+# fenêtre — un `pmon -c 1` dans la boucle bloquerait une seconde à chaque tour et fausserait la
+# cadence de la sonde CPU. Absence de nvidia-smi = pas de GPU : ce n'est pas une erreur.
 pmon, fpmon = None, None
 try:
     fpmon = open("/tmp/bobi-pmon.txt", "w+")
@@ -137,7 +137,7 @@ if pmon is not None:
         for court, nom in noms.items():
             long_de_court[court] = nom
         for ln in fpmon:
-            if ln.startswith("***REMOVED***"):
+            if ln.startswith("#"):
                 continue
             ch = ln.split()
             if len(ch) < 7 or ch[1] == "-":
@@ -192,19 +192,19 @@ def signature(conteneur):
     except (TypeError, ValueError):
         dc = {}
     params = dict(dc.get("params") or {})
-    version = params.pop("plugin_version", None)     ***REMOVED*** porté à part : il change sans changer le réglage
-    ***REMOVED*** Le manifeste peut DÉCLARER les paramètres qui déterminent le coût (`resources.signature_keys`).
-    ***REMOVED*** Sans cette déclaration on condense TOUT — et on périme alors le profil à chaque écriture de
-    ***REMOVED*** l'orchestrateur dans les paramètres. Constaté sur le moteur 2110 le 2026-08-02 : `rx_flows` et
-    ***REMOVED*** `rx_fmt` sont réécrits depuis l'état runtime à chaque rattachement de flux, si bien que le
-    ***REMOVED*** profil se périmait à chaque redémarrage sans que le coût ait bougé. Le plugin déclare ce que
-    ***REMOVED*** l'orchestrateur ne peut pas deviner ; le défaut reste « tous les paramètres ».
+    version = params.pop("plugin_version", None)     # porté à part : il change sans changer le réglage
+    # Le manifeste peut DÉCLARER les paramètres qui déterminent le coût (`resources.signature_keys`).
+    # Sans cette déclaration on condense TOUT — et on périme alors le profil à chaque écriture de
+    # l'orchestrateur dans les paramètres. Constaté sur le moteur 2110 le 2026-08-02 : `rx_flows` et
+    # `rx_fmt` sont réécrits depuis l'état runtime à chaque rattachement de flux, si bien que le
+    # profil se périmait à chaque redémarrage sans que le coût ait bougé. Le plugin déclare ce que
+    # l'orchestrateur ne peut pas deviner ; le défaut reste « tous les paramètres ».
     cles = _cles_signature(dc.get("type"))
     if cles:
         params = {k: params.get(k) for k in cles}
     brut = json.dumps(params, sort_keys=True, ensure_ascii=False, default=str)
     h = hashlib.sha256(brut.encode("utf-8")).hexdigest()[:12]
-    return "%s@%s***REMOVED***%s" % (dc.get("type") or "?", version or "?", h)
+    return "%s@%s#%s" % (dc.get("type") or "?", version or "?", h)
 
 
 def _stats(valeurs):
@@ -223,10 +223,10 @@ def _stats(valeurs):
 
 def _sonder_noeud(node, fenetre):
     """Un aller-retour : rend {docker_name: [coûts en % d'un CPU]} pour la fenêtre écoulée."""
-    ***REMOVED*** Substitution par MARQUEURS, pas par `%` : la sonde contient des `%s` littéraux (motifs de
-    ***REMOVED*** chemins cgroup) que le formateur consommerait. Même famille de piège que les accolades
-    ***REMOVED*** doublées des scripts de plugin — un gabarit dont le langage cible partage la syntaxe du
-    ***REMOVED*** formateur doit utiliser des marqueurs qui ne collident avec rien.
+    # Substitution par MARQUEURS, pas par `%` : la sonde contient des `%s` littéraux (motifs de
+    # chemins cgroup) que le formateur consommerait. Même famille de piège que les accolades
+    # doublées des scripts de plugin — un gabarit dont le langage cible partage la syntaxe du
+    # formateur doit utiliser des marqueurs qui ne collident avec rien.
     cmd = (_SONDE.replace("@FENETRE@", repr(float(fenetre)))
                  .replace("@PERIODE@", repr(float(PERIODE_S))))
     rc, out, err = node_driver.host_exec(node, cmd, timeout=int(fenetre) + 60)
@@ -243,8 +243,8 @@ def _sonder_noeud(node, fenetre):
             u0 = a.get(nom)
             if u0 is None:
                 continue
-            ***REMOVED*** µs de CPU consommées / µs écoulées × 100 = % d'UN CPU. Aucun plafond : un conteneur
-            ***REMOVED*** sur 4 cœurs saturés rend 400, et c'est bien ce qu'on veut lire.
+            # µs de CPU consommées / µs écoulées × 100 = % d'UN CPU. Aucun plafond : un conteneur
+            # sur 4 cœurs saturés rend 400, et c'est bien ce qu'on veut lire.
             couts.setdefault(nom, []).append((u1 - u0) / (dt * 1e6) * 100.0)
     return couts, gpu
 
@@ -275,9 +275,9 @@ def _boucle(camp):
                 log.warning("étalonnage: sonde %s: %s", node.get("name"), e)
                 continue
             with _lock:
-                ***REMOVED*** On fusionne MÊME si la campagne vient d'être arrêtée : ces points sont déjà
-                ***REMOVED*** mesurés, les jeter parce que le clic est arrivé une seconde trop tôt serait
-                ***REMOVED*** perdre exactement ce que l'utilisateur venait d'exercer.
+                # On fusionne MÊME si la campagne vient d'être arrêtée : ces points sont déjà
+                # mesurés, les jeter parce que le clic est arrivé une seconde trop tôt serait
+                # perdre exactement ce que l'utilisateur venait d'exercer.
                 fini = camp["etat"] != "en_cours"
                 camp["erreurs"].pop(str(nid), None)
                 for nom, vals in couts.items():
@@ -336,8 +336,8 @@ def arreter():
         camp["etat"] = "termine"
         camp["fin"] = time.time()
         th = camp.get("thread")
-    ***REMOVED*** Laisse la fenêtre en vol se terminer et se fusionner : sans cette attente, l'arrêt amputerait
-    ***REMOVED*** le résultat de la dernière fenêtre — celle que l'utilisateur vient précisément d'exercer.
+    # Laisse la fenêtre en vol se terminer et se fusionner : sans cette attente, l'arrêt amputerait
+    # le résultat de la dernière fenêtre — celle que l'utilisateur vient précisément d'exercer.
     if th is not None and th.is_alive():
         th.join(timeout=FENETRE_S + 8)
     return True, resultat()
@@ -370,29 +370,29 @@ def resultat():
             "hostname": (c or {}).get("hostname") or nom,
             "node_id": (c or {}).get("node_id"),
             "signature": signature(c) if c else None,
-            ***REMOVED*** Un conteneur inconnu de la base (créé hors du modèle, ex. `rdma-*`) est mesuré quand
-            ***REMOVED*** même : c'est justement le genre de charge que le modèle ignore et qui pèse.
+            # Un conteneur inconnu de la base (créé hors du modèle, ex. `rdma-*`) est mesuré quand
+            # même : c'est justement le genre de charge que le modèle ignore et qui pèse.
             "hors_modele": c is None,
             "mesure": st,
-            ***REMOVED*** GPU : présent SEULEMENT si des processus du conteneur ont réellement travaillé sur la
-            ***REMOVED*** carte. Un GPU attribué mais inutilisé ne produit aucune ligne pmon — et l'absence de
-            ***REMOVED*** mesure ne doit pas se lire comme un zéro mesuré.
+            # GPU : présent SEULEMENT si des processus du conteneur ont réellement travaillé sur la
+            # carte. Un GPU attribué mais inutilisé ne produit aucune ligne pmon — et l'absence de
+            # mesure ne doit pas se lire comme un zéro mesuré.
             "gpu": ({k: _stats(v) for k, v in gpus[nom].items() if v} or None) if nom in gpus else None,
             "suffisant": st["n"] >= MIN_POINTS,
             "manque": max(0, MIN_POINTS - st["n"]),
-            ***REMOVED*** Régime déclaré par le manifeste du type (cf. cpu_profiles.en_rafale).
+            # Régime déclaré par le manifeste du type (cf. cpu_profiles.en_rafale).
             "regime": ("rafale" if (c and _en_rafale(_type_of(c))) else "continu"),
-            ***REMOVED*** Une série plate signale que le pic n'a probablement pas été joué. On le DIT, au lieu
-            ***REMOVED*** de laisser croire que le maximum observé est le maximum possible.
-            ***REMOVED*** ⚠ N'a de sens que pour un type EN RAFALE. Un multiview refait la même composition à
-            ***REMOVED*** chaque trame : sa série plate EST la mesure complète, pas une mesure incomplète.
-            ***REMOVED*** Afficher « pic probablement pas atteint » sur un type stable est un faux avertissement
-            ***REMOVED*** — et un avertissement qui crie toujours finit ignoré quand il a raison.
+            # Une série plate signale que le pic n'a probablement pas été joué. On le DIT, au lieu
+            # de laisser croire que le maximum observé est le maximum possible.
+            # ⚠ N'a de sens que pour un type EN RAFALE. Un multiview refait la même composition à
+            # chaque trame : sa série plate EST la mesure complète, pas une mesure incomplète.
+            # Afficher « pic probablement pas atteint » sur un type stable est un faux avertissement
+            # — et un avertissement qui crie toujours finit ignoré quand il a raison.
             "pointe_vue": (_pointe_vue(st) if (c and _en_rafale(_type_of(c))) else None),
         })
     base["duree_s"] = round((base["fin"] or time.time()) - base["debut"], 1)
     base["min_points"] = MIN_POINTS
-    ***REMOVED*** Durée minimale utile, en clair : une fenêtre pour amorcer + le temps d'atteindre MIN_POINTS.
+    # Durée minimale utile, en clair : une fenêtre pour amorcer + le temps d'atteindre MIN_POINTS.
     base["duree_min_s"] = int(FENETRE_S + MIN_POINTS * PERIODE_S)
     base["conteneurs"] = sorted(lignes, key=lambda r: -(r["mesure"]["max"] or 0))
     return base
@@ -453,9 +453,9 @@ def profil(signature_, node_id):
     return {"mesure": m, "ts": r["ts"], "duree_s": r["duree_s"]}
 
 
-***REMOVED*** ── Garantie : transformer une mesure en cœurs réellement réservés ────────────────────────────
-***REMOVED*** Marge par défaut au-dessus du pic MESURÉ. Elle ne compense pas l'incertitude de la mesure (le
-***REMOVED*** compteur cgroup est exact) mais la variabilité de ce qui n'a pas été joué pendant la campagne.
+# ── Garantie : transformer une mesure en cœurs réellement réservés ────────────────────────────
+# Marge par défaut au-dessus du pic MESURÉ. Elle ne compense pas l'incertitude de la mesure (le
+# compteur cgroup est exact) mais la variabilité de ce qui n'a pas été joué pendant la campagne.
 MARGE = 1.25
 
 
@@ -498,13 +498,13 @@ def garantir(vmid, coeurs=None, marge=MARGE):
                            "d'abord (une mesure faite ailleurs ne garantit rien ici)")
         coeurs = besoin(p["mesure"], marge)
     coeurs = int(coeurs)
-    ***REMOVED*** Redimensionner impose de libérer d'abord : `allocate_cores` est idempotent PAR VMID et
-    ***REMOVED*** renverrait l'ancienne allocation telle quelle.
+    # Redimensionner impose de libérer d'abord : `allocate_cores` est idempotent PAR VMID et
+    # renverrait l'ancienne allocation telle quelle.
     if core_pool.allocated_for(c["node_id"], c["vmid"]) not in (0, coeurs):
         core_pool.release_cores(c["vmid"])
-    ***REMOVED*** Deux refus TRÈS différents, que confondre laisserait l'utilisateur sans action possible :
-    ***REMOVED*** un nœud sans pool déclaré se règle en déclarant le pool ; un pool trop petit se règle en
-    ***REMOVED*** libérant des cœurs ou en réduisant la bande isolée. Le message doit nommer lequel des deux.
+    # Deux refus TRÈS différents, que confondre laisserait l'utilisateur sans action possible :
+    # un nœud sans pool déclaré se règle en déclarant le pool ; un pool trop petit se règle en
+    # libérant des cœurs ou en réduisant la bande isolée. Le message doit nommer lequel des deux.
     etat_pool = core_pool.cores_status(c["node_id"]) or {}
     if not (etat_pool.get("pool") or "").strip():
         return False, ("%s n'a AUCUN pool de cœurs déclaré (`compute_cpuset` vide) : ses conteneurs "
@@ -519,7 +519,7 @@ def garantir(vmid, coeurs=None, marge=MARGE):
     rc, out, err = node_driver.host_exec(
         node, "docker update --cpuset-cpus '%s' %s" % (cpuset, c["docker_name"]), timeout=60)
     if rc != 0:
-        core_pool.release_cores(c["vmid"])      ***REMOVED*** ne jamais laisser une réserve comptée mais non posée
+        core_pool.release_cores(c["vmid"])      # ne jamais laisser une réserve comptée mais non posée
         return False, "docker update a échoué : %s" % ((err or out or "").strip()[:200])
     db_add_alert("alert.prep.garantie_posee", "info",
                  vmid=c["vmid"], node_id=c["node_id"], kind="prep",
@@ -542,8 +542,8 @@ def pressions_noeud(nid):
     snap = ((node_health.latest() or {}).get("nodes") or {}).get(str(nid)) or {}
     out = []
     mb = snap.get("membw") or {}
-    ***REMOVED*** `level` est posé par le moniteur de bande passante quand la mesure s'écarte de sa ligne de
-    ***REMOVED*** base : on réutilise SON verdict plutôt que d'inventer un seuil concurrent.
+    # `level` est posé par le moniteur de bande passante quand la mesure s'écarte de sa ligne de
+    # base : on réutilise SON verdict plutôt que d'inventer un seuil concurrent.
     if mb.get("level") in ("warning", "error"):
         out.append({"kind": "membw", "niveau": mb["level"], "valeur": mb.get("gbps"),
                     "ref": mb.get("baseline")})
@@ -611,8 +611,8 @@ def ressources(type_=None, node_id=None, vmid=None):
             "vmid": v, "hostname": c.get("hostname"), "type": t, "node_id": nid,
             "docker_name": c.get("docker_name"),
             "signature": sig,
-            ***REMOVED*** Réservé : des CŒURS EXCLUSIFS, pas un quota. 0 = « partagé, non réservé », l'état
-            ***REMOVED*** majoritaire aujourd'hui — et il doit s'afficher comme tel, pas comme une garantie.
+            # Réservé : des CŒURS EXCLUSIFS, pas un quota. 0 = « partagé, non réservé », l'état
+            # majoritaire aujourd'hui — et il doit s'afficher comme tel, pas comme une garantie.
             "reserve_pct": (n_reserves * 100) or None,
             "consomme_pct": (round(float(cpu) * int(ncpu), 1) if cpu is not None and ncpu else None),
             "mesure": (p or {}).get("mesure"),
@@ -620,33 +620,33 @@ def ressources(type_=None, node_id=None, vmid=None):
             "besoin_pct": (besoin((p or {}).get("mesure")) * 100) if p else None,
             "etat": etat_mesure, "mesure_node_id": ailleurs,
             "noeud": caps.get(nid),
-            ***REMOVED*** Ressources de MACHINE sous tension : signalées, jamais mesurées ici (cf. `pressions_noeud`).
+            # Ressources de MACHINE sous tension : signalées, jamais mesurées ici (cf. `pressions_noeud`).
             "pressions": press.get(nid),
-            ***REMOVED*** ⚠ Tout ce qui précède est du CPU, et RIEN d'autre. `gpu_index` dit seulement qu'un GPU
-            ***REMOVED*** est ATTRIBUÉ à ce conteneur — sa consommation n'est pas mesurée à ce jour (il faudrait
-            ***REMOVED*** interroger nvidia-smi par processus). L'afficher comme « attribué, non mesuré » plutôt
-            ***REMOVED*** que de laisser croire que la barre couvre les deux ressources.
+            # ⚠ Tout ce qui précède est du CPU, et RIEN d'autre. `gpu_index` dit seulement qu'un GPU
+            # est ATTRIBUÉ à ce conteneur — sa consommation n'est pas mesurée à ce jour (il faudrait
+            # interroger nvidia-smi par processus). L'afficher comme « attribué, non mesuré » plutôt
+            # que de laisser croire que la barre couvre les deux ressources.
             "gpu_index": gpu_of.get(v),
-            ***REMOVED*** Consommation GPU RÉELLE (pmon, cumulée sur les processus du conteneur), ou None si la
-            ***REMOVED*** carte est attribuée sans être utilisée. None n'est PAS 0 : l'absence de mesure ne doit
-            ***REMOVED*** pas se lire comme un zéro mesuré.
+            # Consommation GPU RÉELLE (pmon, cumulée sur les processus du conteneur), ou None si la
+            # carte est attribuée sans être utilisée. None n'est PAS 0 : l'absence de mesure ne doit
+            # pas se lire comme un zéro mesuré.
             "gpu_live": (_gpu_live.get(nid) or {}).get(c.get("docker_name")),
         })
-    ***REMOVED*** Rafraîchissement du cache GPU en fond, pour les seuls nœuds portant des GPU alloués.
+    # Rafraîchissement du cache GPU en fond, pour les seuls nœuds portant des GPU alloués.
     _assurer_sonde_gpu({r["node_id"] for r in out if r.get("gpu_index") is not None})
     return out
 
 
-***REMOVED*** ── Échantillonnage GPU CONTINU (hors campagne) ───────────────────────────────────────────────
-***REMOVED*** La campagne mesure le GPU, mais elle est ponctuelle : sur une page de plugin GPU, l'utilisateur
-***REMOVED*** veut voir la carte travailler MAINTENANT, sans avoir à lancer quoi que ce soit. D'où ce sondage
-***REMOVED*** léger, par nœud portant des GPU alloués.
-***REMOVED***
-***REMOVED*** `nvidia-smi pmon -c 1` bloque ~1 s : il ne peut donc PAS tourner dans la requête HTTP (l'endpoint
-***REMOVED*** est sondé toutes les 5 s par l'interface). Il tourne dans un thread, et la requête lit un cache.
+# ── Échantillonnage GPU CONTINU (hors campagne) ───────────────────────────────────────────────
+# La campagne mesure le GPU, mais elle est ponctuelle : sur une page de plugin GPU, l'utilisateur
+# veut voir la carte travailler MAINTENANT, sans avoir à lancer quoi que ce soit. D'où ce sondage
+# léger, par nœud portant des GPU alloués.
+#
+# `nvidia-smi pmon -c 1` bloque ~1 s : il ne peut donc PAS tourner dans la requête HTTP (l'endpoint
+# est sondé toutes les 5 s par l'interface). Il tourne dans un thread, et la requête lit un cache.
 GPU_TTL_S = 15.0
-_gpu_live = {}          ***REMOVED*** node_id → {docker_name: {sm, enc, dec, mem}}
-_gpu_ts = {}            ***REMOVED*** node_id → horodatage du dernier relevé
+_gpu_live = {}          # node_id → {docker_name: {sm, enc, dec, mem}}
+_gpu_ts = {}            # node_id → horodatage du dernier relevé
 _gpu_thread = None
 
 _SONDE_GPU = r"""python3 - <<'EOF'
@@ -668,7 +668,7 @@ try:
 except Exception:
     txt = ""
 for ln in txt.splitlines():
-    if ln.startswith("***REMOVED***"):
+    if ln.startswith("#"):
         continue
     ch = ln.split()
     if len(ch) < 7 or ch[1] == "-":
@@ -686,7 +686,7 @@ for ln in txt.splitlines():
             return float(x)
         except ValueError:
             return 0.0
-    ***REMOVED*** Plusieurs processus d'un même conteneur : on CUMULE (un multiview shardé en a plusieurs).
+    # Plusieurs processus d'un même conteneur : on CUMULE (un multiview shardé en a plusieurs).
     e = res.setdefault(nom, {"sm": 0.0, "mem": 0.0, "enc": 0.0, "dec": 0.0})
     e["sm"] += num(ch[3]); e["mem"] += num(ch[4])
     e["enc"] += num(ch[5]); e["dec"] += num(ch[6])

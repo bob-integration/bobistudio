@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 import hashlib
 import json
@@ -15,16 +15,16 @@ from .config import DB_PATH
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Connexion PAR THREAD (incident 2026-07-11, Errno 24) : l'historique « une connexion fraîche
-***REMOVED*** par appel, jamais fermée » (219 sites, aucun close) laissait les connexions en attente du GC
-***REMOVED*** CYCLIQUE (cycles sqlite3 connection↔cursor) → pool transitoire de centaines de fds, débordé
-***REMOVED*** par une rafale d'opérations → accept() de Waitress en Errno 24, orchestrateur mort. Mesuré :
-***REMOVED*** ~400 fds .db à 3 h d'uptime ; gc.collect() en récupérait ~100 d'un coup. La connexion par
-***REMOVED*** thread borne le compte au nombre de threads (~30-40) et supprime le churn open/GC.
-***REMOVED*** Contrat appelant INCHANGÉ : personne ne ferme (vérifié) ; sémantique transactionnelle
-***REMOVED*** identique (isolation legacy — un helper qui écrivait sans commit était DÉJÀ bogué : sa
-***REMOVED*** transaction implicite était perdue au GC ; elle serait maintenant commitée par le prochain
-***REMOVED*** commit du même thread, comportement au pire « moins pire »).
+# Connexion PAR THREAD (incident 2026-07-11, Errno 24) : l'historique « une connexion fraîche
+# par appel, jamais fermée » (219 sites, aucun close) laissait les connexions en attente du GC
+# CYCLIQUE (cycles sqlite3 connection↔cursor) → pool transitoire de centaines de fds, débordé
+# par une rafale d'opérations → accept() de Waitress en Errno 24, orchestrateur mort. Mesuré :
+# ~400 fds .db à 3 h d'uptime ; gc.collect() en récupérait ~100 d'un coup. La connexion par
+# thread borne le compte au nombre de threads (~30-40) et supprime le churn open/GC.
+# Contrat appelant INCHANGÉ : personne ne ferme (vérifié) ; sémantique transactionnelle
+# identique (isolation legacy — un helper qui écrivait sans commit était DÉJÀ bogué : sa
+# transaction implicite était perdue au GC ; elle serait maintenant commitée par le prochain
+# commit du même thread, comportement au pire « moins pire »).
 _tls = threading.local()
 
 def get_db():
@@ -33,25 +33,25 @@ def get_db():
         return conn
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    ***REMOVED*** Anti « database is locked » : attendre le verrou jusqu'à 5 s (nombreux threads
-    ***REMOVED*** de fond partagent le même fichier).
+    # Anti « database is locked » : attendre le verrou jusqu'à 5 s (nombreux threads
+    # de fond partagent le même fichier).
     conn.execute("PRAGMA busy_timeout=5000")
-    ***REMOVED*** synchronous=NORMAL : recommandé AVEC le mode WAL (bon compromis durabilité/perf). Réglage
-    ***REMOVED*** PAR CONNEXION (non persistant), donc posé ici pour que tous les threads en bénéficient.
-    ***REMOVED*** Le mode WAL lui-même est persistant (en-tête du fichier DB) : activé une fois dans init_db().
+    # synchronous=NORMAL : recommandé AVEC le mode WAL (bon compromis durabilité/perf). Réglage
+    # PAR CONNEXION (non persistant), donc posé ici pour que tous les threads en bénéficient.
+    # Le mode WAL lui-même est persistant (en-tête du fichier DB) : activé une fois dans init_db().
     conn.execute("PRAGMA synchronous=NORMAL")
     _tls.conn = conn
     return conn
 
 def init_db():
     with get_db() as db:
-        ***REMOVED*** WAL : lecteurs et écrivain ne se bloquent plus mutuellement (au lieu du journal `delete`
-        ***REMOVED*** historique qui sérialisait tout via busy_timeout). PERSISTANT (écrit dans l'en-tête du
-        ***REMOVED*** fichier) → une seule activation suffit ; l'auto-checkpoint SQLite (1000 pages par défaut)
-        ***REMOVED*** replie le -wal dans la DB proprement. Exécuté AVANT toute écriture (hors transaction :
-        ***REMOVED*** un PRAGMA journal_mode dans une transaction ouverte est un no-op silencieux).
-        ***REMOVED*** NB : WAL crée des fichiers -wal / -shm à côté de la DB ; l'API sqlite3 `.backup()`
-        ***REMOVED*** (utilisée par app/ha.py) gère WAL correctement — ne JAMAIS copier le seul .db à la main.
+        # WAL : lecteurs et écrivain ne se bloquent plus mutuellement (au lieu du journal `delete`
+        # historique qui sérialisait tout via busy_timeout). PERSISTANT (écrit dans l'en-tête du
+        # fichier) → une seule activation suffit ; l'auto-checkpoint SQLite (1000 pages par défaut)
+        # replie le -wal dans la DB proprement. Exécuté AVANT toute écriture (hors transaction :
+        # un PRAGMA journal_mode dans une transaction ouverte est un no-op silencieux).
+        # NB : WAL crée des fichiers -wal / -shm à côté de la DB ; l'API sqlite3 `.backup()`
+        # (utilisée par app/ha.py) gère WAL correctement — ne JAMAIS copier le seul .db à la main.
         db.execute("PRAGMA journal_mode=WAL")
         db.execute('''CREATE TABLE IF NOT EXISTS containers (
             vmid        INTEGER PRIMARY KEY,
@@ -76,130 +76,130 @@ def init_db():
             db.execute("ALTER TABLE containers ADD COLUMN cpu_percent REAL")
         if "mem_used" not in cols:
             db.execute("ALTER TABLE containers ADD COLUMN mem_used INTEGER")
-        ***REMOVED*** IMAGE RÉELLEMENT POSÉE AU `docker run`. Sans elle, `requires.image_min` ne pouvait
-        ***REMOVED*** protéger que la CRÉATION : au redéploiement, la seule image connaissable était celle
-        ***REMOVED*** du NŒUD, qui peut avoir été promue depuis. Un conteneur créé sur une image ancienne
-        ***REMOVED*** passait donc le contrôle tout en tournant sur l'ancienne — le cas exact qui a coûté
-        ***REMOVED*** deux recréations le 2026-08-25. NULL = conteneur d'avant cette colonne, on ne sait
-        ***REMOVED*** pas, et on le DIT plutôt que de supposer.
+        # IMAGE RÉELLEMENT POSÉE AU `docker run`. Sans elle, `requires.image_min` ne pouvait
+        # protéger que la CRÉATION : au redéploiement, la seule image connaissable était celle
+        # du NŒUD, qui peut avoir été promue depuis. Un conteneur créé sur une image ancienne
+        # passait donc le contrôle tout en tournant sur l'ancienne — le cas exact qui a coûté
+        # deux recréations le 2026-08-25. NULL = conteneur d'avant cette colonne, on ne sait
+        # pas, et on le DIT plutôt que de supposer.
         if "image" not in cols:
             db.execute("ALTER TABLE containers ADD COLUMN image TEXT")
         if "script_enabled" not in cols:
-            ***REMOVED*** INTENTION d'exploitation du script, distincte de son ÉTAT observé. Écrite par le seul
-            ***REMOVED*** `NcWorker.enabled` du modèle MS-05-02 (services/nmos/plugins_ncp.py) : un contrôleur
-            ***REMOVED*** NMOS tiers peut arrêter un traitement, et il faut que ça TIENNE.
-            ***REMOVED***
-            ***REMOVED*** ★ Sans elle, le pilotage serait un leurre : le prochain déploiement rallumerait le
-            ***REMOVED*** script (`deploy.py` fait /stop puis /start), et le contrôleur verrait sa consigne
-            ***REMOVED*** acceptée puis silencieusement défaite. Une capacité qui se contredit toute seule est
-            ***REMOVED*** pire que pas de capacité.
+            # INTENTION d'exploitation du script, distincte de son ÉTAT observé. Écrite par le seul
+            # `NcWorker.enabled` du modèle MS-05-02 (services/nmos/plugins_ncp.py) : un contrôleur
+            # NMOS tiers peut arrêter un traitement, et il faut que ça TIENNE.
+            #
+            # ★ Sans elle, le pilotage serait un leurre : le prochain déploiement rallumerait le
+            # script (`deploy.py` fait /stop puis /start), et le contrôleur verrait sa consigne
+            # acceptée puis silencieusement défaite. Une capacité qui se contredit toute seule est
+            # pire que pas de capacité.
             db.execute("ALTER TABLE containers ADD COLUMN script_enabled INTEGER DEFAULT 1")
         if "status_cause" not in cols:
-            ***REMOVED*** CAUSE d'un statut anormal (`script_stopped`, `crash_loop`) : code de sortie, signal,
-            ***REMOVED*** dernières lignes du journal. Sans elle, l'interface affiche « script arrêté » et rien
-            ***REMOVED*** d'autre — le SIGILL des nœuds Sandy Bridge n'était visible que dans `docker logs`, et
-            ***REMOVED*** c'est ce qui a coûté le plus de temps de tout le chantier CPU.
+            # CAUSE d'un statut anormal (`script_stopped`, `crash_loop`) : code de sortie, signal,
+            # dernières lignes du journal. Sans elle, l'interface affiche « script arrêté » et rien
+            # d'autre — le SIGILL des nœuds Sandy Bridge n'était visible que dans `docker logs`, et
+            # c'est ce qui a coûté le plus de temps de tout le chantier CPU.
             db.execute("ALTER TABLE containers ADD COLUMN status_cause TEXT")
         if "cpu_count" not in cols:
-            ***REMOVED*** Nombre de CPU vus par le conteneur, au moment où `cpu_percent` a été relevé. Sans lui
-            ***REMOVED*** `cpu_percent` n'a pas d'unité exploitable (cf. db_update_usage) : c'est ce qui permet
-            ***REMOVED*** de repasser au coût ABSOLU en cœurs, seule grandeur comparable entre types.
+            # Nombre de CPU vus par le conteneur, au moment où `cpu_percent` a été relevé. Sans lui
+            # `cpu_percent` n'a pas d'unité exploitable (cf. db_update_usage) : c'est ce qui permet
+            # de repasser au coût ABSOLU en cœurs, seule grandeur comparable entre types.
             db.execute("ALTER TABLE containers ADD COLUMN cpu_count INTEGER")
         if "assigned_vf" not in cols:
-            ***REMOVED*** Nom du VF SR-IOV assigné au container (ex: "enp1s0f0v3"), NULL si aucun
+            # Nom du VF SR-IOV assigné au container (ex: "enp1s0f0v3"), NULL si aucun
             db.execute("ALTER TABLE containers ADD COLUMN assigned_vf TEXT")
         if "pinned_cores" not in cols:
-            ***REMOVED*** CPUs épinglés (cpuset), format "4,5,6" ou "4-6,8" ; NULL = pas d'épinglage
+            # CPUs épinglés (cpuset), format "4,5,6" ou "4-6,8" ; NULL = pas d'épinglage
             db.execute("ALTER TABLE containers ADD COLUMN pinned_cores TEXT")
         if "nmos_audio_count" not in cols:
-            ***REMOVED*** Nombre de receivers audio NMOS exposés (en plus de nmos_receivers_count qui est = vidéo)
+            # Nombre de receivers audio NMOS exposés (en plus de nmos_receivers_count qui est = vidéo)
             db.execute("ALTER TABLE containers ADD COLUMN nmos_audio_count INTEGER DEFAULT 0")
         if "monitor_user_id" not in cols:
-            ***REMOVED*** Lien stable container monitoring ↔ utilisateur (le hostname peut être renommé)
+            # Lien stable container monitoring ↔ utilisateur (le hostname peut être renommé)
             db.execute("ALTER TABLE containers ADD COLUMN monitor_user_id INTEGER")
         if "deployed_at" not in cols:
-            ***REMOVED*** Horodatage du dernier déploiement de script (renseigné par db_update_deploy_config)
+            # Horodatage du dernier déploiement de script (renseigné par db_update_deploy_config)
             db.execute("ALTER TABLE containers ADD COLUMN deployed_at TEXT")
         if "project_id" not in cols:
             db.execute("ALTER TABLE containers ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL")
         if "instance_uuid" not in cols:
-            ***REMOVED*** Identité d'instance PORTABLE (uuid4), découplée du vmid (= handle local). Embarquée dans
-            ***REMOVED*** les snapshots projet → survit recreate/import. Le vmid se réattribue, l'uuid voyage.
+            # Identité d'instance PORTABLE (uuid4), découplée du vmid (= handle local). Embarquée dans
+            # les snapshots projet → survit recreate/import. Le vmid se réattribue, l'uuid voyage.
             db.execute("ALTER TABLE containers ADD COLUMN instance_uuid TEXT")
         if "config_rev" not in cols:
-            ***REMOVED*** RÉVISION de `deploy_config` : compteur monotone incrémenté à CHAQUE écriture (cf.
-            ***REMOVED*** `db_update_deploy_config`). Sert de garde anti-écrasement quand plusieurs personnes
-            ***REMOVED*** éditent le même conteneur : l'éditeur mémorise la révision qu'il a chargée et la
-            ***REMOVED*** joint à son déploiement ; le serveur refuse (409) si elle a bougé entre-temps.
-            ***REMOVED*** POURQUOI PAS `deployed_at` : sa résolution est la SECONDE — deux écritures dans la
-            ***REMOVED*** même seconde sont indistinguables, et le composer multiview écrit à chaque geste.
-            ***REMOVED*** 0 = jamais écrit depuis la migration ; un éditeur qui ne joint pas de révision n'est
-            ***REMOVED*** pas gardé (rétrocompatible : palette, macros, projets, page Câbles).
+            # RÉVISION de `deploy_config` : compteur monotone incrémenté à CHAQUE écriture (cf.
+            # `db_update_deploy_config`). Sert de garde anti-écrasement quand plusieurs personnes
+            # éditent le même conteneur : l'éditeur mémorise la révision qu'il a chargée et la
+            # joint à son déploiement ; le serveur refuse (409) si elle a bougé entre-temps.
+            # POURQUOI PAS `deployed_at` : sa résolution est la SECONDE — deux écritures dans la
+            # même seconde sont indistinguables, et le composer multiview écrit à chaque geste.
+            # 0 = jamais écrit depuis la migration ; un éditeur qui ne joint pas de révision n'est
+            # pas gardé (rétrocompatible : palette, macros, projets, page Câbles).
             db.execute("ALTER TABLE containers ADD COLUMN config_rev INTEGER DEFAULT 0")
         if "config_rev_by" not in cols:
-            ***REMOVED*** AUTEUR de la dernière écriture (id utilisateur, NULL = écriture machine :
-            ***REMOVED*** surveillance, réconciliation, agent). Sans lui, la garde de révision serait
-            ***REMOVED*** inutilisable : le déploiement s'exécute dans un thread, donc la nouvelle révision
-            ***REMOVED*** n'existe pas encore quand la réponse HTTP part — un éditeur ne peut pas tenir son
-            ***REMOVED*** compteur à jour et se ferait refuser ses PROPRES gestes suivants. Un conflit n'est
-            ***REMOVED*** déclaré que si la dernière écriture vient de QUELQU'UN D'AUTRE.
+            # AUTEUR de la dernière écriture (id utilisateur, NULL = écriture machine :
+            # surveillance, réconciliation, agent). Sans lui, la garde de révision serait
+            # inutilisable : le déploiement s'exécute dans un thread, donc la nouvelle révision
+            # n'existe pas encore quand la réponse HTTP part — un éditeur ne peut pas tenir son
+            # compteur à jour et se ferait refuser ses PROPRES gestes suivants. Un conflit n'est
+            # déclaré que si la dernière écriture vient de QUELQU'UN D'AUTRE.
             db.execute("ALTER TABLE containers ADD COLUMN config_rev_by INTEGER")
         if "agent_token" not in cols:
-            ***REMOVED*** Token d'auth de l'agent PAR-CONTENEUR (:8081, en-tête X-MXL-Agent-Token) : valeur
-            ***REMOVED*** ALÉATOIRE (secrets.token_urlsafe) posée à la création du conteneur par les drivers
-            ***REMOVED*** (docker_compute / docker_driver) qui l'injectent en MXL_AGENT_TOKEN au `docker run`.
-            ***REMOVED*** POURQUOI une colonne plutôt que la dérivation historique (HMAC(flask_secret_key,
-            ***REMOVED*** vmid)) : `flask_secret_key` signe AUSSI les cookies de session — la faire tourner
-            ***REMOVED*** après un incident invaliderait d'un coup TOUS les tokens d'agent et l'orchestrateur
-            ***REMOVED*** ne piloterait plus aucun conteneur existant. Un token par conteneur, indépendant du
-            ***REMOVED*** secret racine, rend cette clé réellement rotable.
-            ***REMOVED*** Pas de backfill : un token n'existe QUE s'il a été injecté dans le conteneur. NULL =
-            ***REMOVED*** conteneur d'avant la migration → `deploy.agent_token` retombe sur le dérivé (cf.
-            ***REMOVED*** `db_agent_token_etat` pour savoir combien il en reste).
+            # Token d'auth de l'agent PAR-CONTENEUR (:8081, en-tête X-MXL-Agent-Token) : valeur
+            # ALÉATOIRE (secrets.token_urlsafe) posée à la création du conteneur par les drivers
+            # (docker_compute / docker_driver) qui l'injectent en MXL_AGENT_TOKEN au `docker run`.
+            # POURQUOI une colonne plutôt que la dérivation historique (HMAC(flask_secret_key,
+            # vmid)) : `flask_secret_key` signe AUSSI les cookies de session — la faire tourner
+            # après un incident invaliderait d'un coup TOUS les tokens d'agent et l'orchestrateur
+            # ne piloterait plus aucun conteneur existant. Un token par conteneur, indépendant du
+            # secret racine, rend cette clé réellement rotable.
+            # Pas de backfill : un token n'existe QUE s'il a été injecté dans le conteneur. NULL =
+            # conteneur d'avant la migration → `deploy.agent_token` retombe sur le dérivé (cf.
+            # `db_agent_token_etat` pour savoir combien il en reste).
             db.execute("ALTER TABLE containers ADD COLUMN agent_token TEXT")
         if "runtime_spec_sig" not in cols:
-            ***REMOVED*** Signature de la spec `docker run` du conteneur EN MARCHE (image/réseau/ip/mounts/
-            ***REMOVED*** ressources/gpu). Permet à docker_compute.deploy_compute d'être IDEMPOTENT : un
-            ***REMOVED*** (re)déploiement de SCRIPT ne recrée plus le conteneur si sa spec n'a pas bougé
-            ***REMOVED*** (l'agent-nœud, lui, fait toujours `rm -f` + `run`). Cf. docker_compute.
+            # Signature de la spec `docker run` du conteneur EN MARCHE (image/réseau/ip/mounts/
+            # ressources/gpu). Permet à docker_compute.deploy_compute d'être IDEMPOTENT : un
+            # (re)déploiement de SCRIPT ne recrée plus le conteneur si sa spec n'a pas bougé
+            # (l'agent-nœud, lui, fait toujours `rm -f` + `run`). Cf. docker_compute.
             db.execute("ALTER TABLE containers ADD COLUMN runtime_spec_sig TEXT")
-        ***REMOVED*** Backfill idempotent (ne touche que les NULL/'') : un uuid4 par conteneur existant.
+        # Backfill idempotent (ne touche que les NULL/'') : un uuid4 par conteneur existant.
         import uuid as _uuid
         for (v,) in db.execute(
                 "SELECT vmid FROM containers WHERE instance_uuid IS NULL OR instance_uuid=''").fetchall():
             db.execute("UPDATE containers SET instance_uuid=? WHERE vmid=?", (str(_uuid.uuid4()), v))
         if "desired_state" not in cols:
-            ***REMOVED*** État VOULU par l'opérateur ('running'/'stopped') — distinct de `status` (état OBSERVÉ,
-            ***REMOVED*** écrasé chaque tick par surveillance). Sert à l'auto-recovery au reboot d'un nœud : on ne
-            ***REMOVED*** relève que ce qui devait tourner (un conteneur arrêté volontairement reste arrêté).
-            ***REMOVED*** Écrit par deploy/start/stop/redemarrer (db_set_desired_state) — JAMAIS par surveillance.
+            # État VOULU par l'opérateur ('running'/'stopped') — distinct de `status` (état OBSERVÉ,
+            # écrasé chaque tick par surveillance). Sert à l'auto-recovery au reboot d'un nœud : on ne
+            # relève que ce qui devait tourner (un conteneur arrêté volontairement reste arrêté).
+            # Écrit par deploy/start/stop/redemarrer (db_set_desired_state) — JAMAIS par surveillance.
             db.execute("ALTER TABLE containers ADD COLUMN desired_state TEXT")
-            ***REMOVED*** Backfill une seule fois (à la création de la colonne) : l'état observé courant est la
-            ***REMOVED*** meilleure approximation de l'intention.
+            # Backfill une seule fois (à la création de la colonne) : l'état observé courant est la
+            # meilleure approximation de l'intention.
             db.execute("UPDATE containers SET desired_state = CASE WHEN status='running' "
                        "THEN 'running' ELSE 'stopped' END")
         if "role_seeded" not in cols:
-            ***REMOVED*** Marqueur « un emplacement a DÉJÀ été semé pour ce conteneur » (cf. table `production_roles`).
-            ***REMOVED*** Sans lui, supprimer un emplacement le ferait ressusciter au redéploiement suivant :
-            ***REMOVED*** l'opérateur ne pourrait jamais s'en débarrasser.
+            # Marqueur « un emplacement a DÉJÀ été semé pour ce conteneur » (cf. table `production_roles`).
+            # Sans lui, supprimer un emplacement le ferait ressusciter au redéploiement suivant :
+            # l'opérateur ne pourrait jamais s'en débarrasser.
             db.execute("ALTER TABLE containers ADD COLUMN role_seeded INTEGER DEFAULT 0")
-            ***REMOVED*** Backfill : les conteneurs d'AVANT la migration n'ont pas d'emplacement mais doivent
-            ***REMOVED*** en obtenir un — on les laisse à 0 pour qu'ils soient semés au prochain déploiement.
+            # Backfill : les conteneurs d'AVANT la migration n'ont pas d'emplacement mais doivent
+            # en obtenir un — on les laisse à 0 pour qu'ils soient semés au prochain déploiement.
 
-        ***REMOVED*** ─── Emplacements (rôles) : l'IDENTITÉ FONCTIONNELLE, stable au remplacement ────────
-        ***REMOVED*** Le vmid est un handle jetable, `instance_uuid` survit au recreate mais PAS au
-        ***REMOVED*** remplacement (nouveau conteneur qui prend la fonction de l'ancien). Un emplacement est
-        ***REMOVED*** la fonction elle-même (« MULTIVIEW RÉGIE 1 ») : c'est LUI que les systèmes de contrôle
-        ***REMOVED*** externes adressent (Ember+ aujourd'hui), et il se réaffecte d'un conteneur à l'autre
-        ***REMOVED*** sans que la config du pupitre en face ne bouge.
-        ***REMOVED***   num           : numéro Ember+ — AUTOINCREMENT = JAMAIS réattribué (sqlite_sequence).
-        ***REMOVED***                   Supprimer un emplacement laisse un TROU, c'est voulu : un numéro
-        ***REMOVED***                   recyclé re-pointerait silencieusement le pupitre sur autre chose.
-        ***REMOVED***   key           : slug IMMUABLE (identifier Ember+). Le libellé, lui, est renommable.
-        ***REMOVED***   expect_type   : type de plugin attendu (garde-fou de liaison, informatif).
-        ***REMOVED***   instance_uuid : conteneur SERVANT — NULL = emplacement hors ligne (la branche reste
-        ***REMOVED***                   publiée, avec isOnline=false : une branche qui DISPARAÎT laisse le
-        ***REMOVED***                   pupitre avec des boutons morts sans le savoir).
+        # ─── Emplacements (rôles) : l'IDENTITÉ FONCTIONNELLE, stable au remplacement ────────
+        # Le vmid est un handle jetable, `instance_uuid` survit au recreate mais PAS au
+        # remplacement (nouveau conteneur qui prend la fonction de l'ancien). Un emplacement est
+        # la fonction elle-même (« MULTIVIEW RÉGIE 1 ») : c'est LUI que les systèmes de contrôle
+        # externes adressent (Ember+ aujourd'hui), et il se réaffecte d'un conteneur à l'autre
+        # sans que la config du pupitre en face ne bouge.
+        #   num           : numéro Ember+ — AUTOINCREMENT = JAMAIS réattribué (sqlite_sequence).
+        #                   Supprimer un emplacement laisse un TROU, c'est voulu : un numéro
+        #                   recyclé re-pointerait silencieusement le pupitre sur autre chose.
+        #   key           : slug IMMUABLE (identifier Ember+). Le libellé, lui, est renommable.
+        #   expect_type   : type de plugin attendu (garde-fou de liaison, informatif).
+        #   instance_uuid : conteneur SERVANT — NULL = emplacement hors ligne (la branche reste
+        #                   publiée, avec isOnline=false : une branche qui DISPARAÎT laisse le
+        #                   pupitre avec des boutons morts sans le savoir).
         db.execute('''CREATE TABLE IF NOT EXISTS production_roles (
             num           INTEGER PRIMARY KEY AUTOINCREMENT,
             key           TEXT NOT NULL UNIQUE,
@@ -208,7 +208,7 @@ def init_db():
             instance_uuid TEXT,
             created_at    TEXT
         )''')
-        ***REMOVED*** Un conteneur ne sert qu'UN emplacement (index partiel : les NULL ne collisionnent pas).
+        # Un conteneur ne sert qu'UN emplacement (index partiel : les NULL ne collisionnent pas).
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_production_roles_instance "
                    "ON production_roles(instance_uuid) WHERE instance_uuid IS NOT NULL")
         db.execute('''CREATE TABLE IF NOT EXISTS projects (
@@ -220,18 +220,18 @@ def init_db():
         pcols = [r[1] for r in db.execute("PRAGMA table_info(projects)")]
         if "media_path" not in pcols:
             db.execute("ALTER TABLE projects ADD COLUMN media_path TEXT")
-        ***REMOVED*** Chantier 1 (cf. docs/reference/PROJETS.md §12) : propriétaire du projet (NULL = legacy,
-        ***REMOVED*** géré par les admins) + membres avec rôle par projet.
+        # Chantier 1 (cf. docs/reference/PROJETS.md §12) : propriétaire du projet (NULL = legacy,
+        # géré par les admins) + membres avec rôle par projet.
         if "owner_id" not in pcols:
             db.execute("ALTER TABLE projects ADD COLUMN owner_id INTEGER "
                        "REFERENCES users(id) ON DELETE SET NULL")
-        ***REMOVED*** Chantier 3 : cycle de vie du projet (saved|loading|active|error|unloading).
+        # Chantier 3 : cycle de vie du projet (saved|loading|active|error|unloading).
         if "state" not in pcols:
             db.execute("ALTER TABLE projects ADD COLUMN state TEXT DEFAULT 'saved'")
-        ***REMOVED*** Chantier 4 : ports virtuels — la frontière du projet (sources/destinations
-        ***REMOVED*** nommées). L'intérieur du projet se câble sur les ports ; l'admin binde le
-        ***REMOVED*** physique (binding JSON : {"shm":…, "audio_shm":…} pour une source ;
-        ***REMOVED*** {"internal_shm":…} pour une destination = sortie interne publiée).
+        # Chantier 4 : ports virtuels — la frontière du projet (sources/destinations
+        # nommées). L'intérieur du projet se câble sur les ports ; l'admin binde le
+        # physique (binding JSON : {"shm":…, "audio_shm":…} pour une source ;
+        # {"internal_shm":…} pour une destination = sortie interne publiée).
         db.execute('''CREATE TABLE IF NOT EXISTS project_ports (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -243,8 +243,8 @@ def init_db():
             binding        TEXT,
             created_at     TEXT
         )''')
-        ***REMOVED*** Chantier 6 : macros/scénarios (graph = blocs structurés, format blocks/v1)
-        ***REMOVED*** + variables de projet (lues/écrites par les macros, gabarits {{var}}).
+        # Chantier 6 : macros/scénarios (graph = blocs structurés, format blocks/v1)
+        # + variables de projet (lues/écrites par les macros, gabarits {{var}}).
         db.execute('''CREATE TABLE IF NOT EXISTS project_macros (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id   INTEGER REFERENCES projects(id) ON DELETE CASCADE,
@@ -261,8 +261,8 @@ def init_db():
             value      TEXT,
             PRIMARY KEY (project_id, name)
         )''')
-        ***REMOVED*** Chantier 6 (suite) : déclencheurs permanents « quand <condition> devient vraie
-        ***REMOVED*** → lancer <macro> » (front montant + cooldown_ms, poller dans app/macros.py).
+        # Chantier 6 (suite) : déclencheurs permanents « quand <condition> devient vraie
+        # → lancer <macro> » (front montant + cooldown_ms, poller dans app/macros.py).
         db.execute('''CREATE TABLE IF NOT EXISTS project_triggers (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -273,9 +273,9 @@ def init_db():
             cooldown_ms INTEGER DEFAULT 2000,
             created_at  TEXT
         )''')
-        ***REMOVED*** Chantier 3 « projet vivant » : historique de versions du snapshot.
-        ***REMOVED*** label NULL = version automatique (rétention bornée) ; label posé = version
-        ***REMOVED*** nommée (« avant émission »), conservée sans limite.
+        # Chantier 3 « projet vivant » : historique de versions du snapshot.
+        # label NULL = version automatique (rétention bornée) ; label posé = version
+        # nommée (« avant émission »), conservée sans limite.
         db.execute('''CREATE TABLE IF NOT EXISTS project_versions (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -289,9 +289,9 @@ def init_db():
             role       TEXT NOT NULL DEFAULT 'viewer',
             PRIMARY KEY (project_id, user_id)
         )''')
-        ***REMOVED*** Chantier 2 : vues composées d'un projet (interfaces utilisateur sauvegardées).
-        ***REMOVED*** layout = JSON [{id, widget, type, instance_uuid, vmid, x, y, w, h, params}] —
-        ***REMOVED*** les widgets référencent les containers par instance_uuid (stable au recreate).
+        # Chantier 2 : vues composées d'un projet (interfaces utilisateur sauvegardées).
+        # layout = JSON [{id, widget, type, instance_uuid, vmid, x, y, w, h, params}] —
+        # les widgets référencent les containers par instance_uuid (stable au recreate).
         db.execute('''CREATE TABLE IF NOT EXISTS project_views (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -318,14 +318,14 @@ def init_db():
         )''')
         pptcols = [r[1] for r in db.execute("PRAGMA table_info(pip_templates)")]
         if "tags" not in pptcols:
-            ***REMOVED*** Tags libres (galerie de vignettes, Réglages → PiP) : liste JSON de chaînes,
-            ***REMOVED*** NULL/'' = aucun tag. Uniquement sur les modèles UTILISATEUR (les modèles d'usine,
-            ***REMOVED*** servis depuis app/pip_library.py:BUILTIN_PIP_TEMPLATES, n'ont pas de ligne ici).
+            # Tags libres (galerie de vignettes, Réglages → PiP) : liste JSON de chaînes,
+            # NULL/'' = aucun tag. Uniquement sur les modèles UTILISATEUR (les modèles d'usine,
+            # servis depuis app/pip_library.py:BUILTIN_PIP_TEMPLATES, n'ont pas de ligne ici).
             db.execute("ALTER TABLE pip_templates ADD COLUMN tags TEXT")
-        ***REMOVED*** Bibliothèque de POLICES côté orchestrateur (Réglages → Polices). Le FICHIER vit dans
-        ***REMOVED*** static/uploads/fonts/<sha256>.<ext> (préservé par l'updater) ; la ligne ne porte que
-        ***REMOVED*** les métadonnées. La CLÉ D'USAGE d'une police est `lib:<sha256[:16]>` (cf. app/fonts.py)
-        ***REMOVED*** → l'import de layouts/modèles de PiP déduplique par HASH, jamais par nom.
+        # Bibliothèque de POLICES côté orchestrateur (Réglages → Polices). Le FICHIER vit dans
+        # static/uploads/fonts/<sha256>.<ext> (préservé par l'updater) ; la ligne ne porte que
+        # les métadonnées. La CLÉ D'USAGE d'une police est `lib:<sha256[:16]>` (cf. app/fonts.py)
+        # → l'import de layouts/modèles de PiP déduplique par HASH, jamais par nom.
         db.execute('''CREATE TABLE IF NOT EXISTS fonts (
             sha256      TEXT PRIMARY KEY,
             name        TEXT NOT NULL,
@@ -351,36 +351,36 @@ def init_db():
         for _c in ("prenom", "nom", "email"):
             if _c not in ucols:
                 db.execute(f"ALTER TABLE users ADD COLUMN {_c} TEXT")
-        ***REMOVED*** Préférence de langue d'interface (i18n) — défaut 'fr'
+        # Préférence de langue d'interface (i18n) — défaut 'fr'
         if "lang" not in ucols:
             db.execute("ALTER TABLE users ADD COLUMN lang TEXT DEFAULT 'fr'")
-        ***REMOVED*** Thème de l'interface — préférence PAR UTILISATEUR, même modèle que `lang` :
-        ***REMOVED*** NULL = suivre le défaut du système (setting global `theme`). Un thème est un confort
-        ***REMOVED*** de poste de travail (régie sombre, bureau en plein jour) ; il n'a aucune raison
-        ***REMOVED*** d'être imposé à toute la flotte par le dernier qui y a touché.
+        # Thème de l'interface — préférence PAR UTILISATEUR, même modèle que `lang` :
+        # NULL = suivre le défaut du système (setting global `theme`). Un thème est un confort
+        # de poste de travail (régie sombre, bureau en plein jour) ; il n'a aucune raison
+        # d'être imposé à toute la flotte par le dernier qui y a touché.
         if "theme" not in ucols:
             db.execute("ALTER TABLE users ADD COLUMN theme TEXT")
-        ***REMOVED*** Interface d'atterrissage au login : 'technique' (UI actuelle) ou 'projets'
-        ***REMOVED*** (accueil /workspaces). Défaut 'technique' pour les comptes existants —
-        ***REMOVED*** personne ne change de comportement sans action de l'admin (docs/reference/PROJETS.md §12).
+        # Interface d'atterrissage au login : 'technique' (UI actuelle) ou 'projets'
+        # (accueil /workspaces). Défaut 'technique' pour les comptes existants —
+        # personne ne change de comportement sans action de l'admin (docs/reference/PROJETS.md §12).
         if "interface" not in ucols:
             db.execute("ALTER TABLE users ADD COLUMN interface TEXT DEFAULT 'technique'")
-        ***REMOVED*** Fiche de la personne : de quoi la joindre et la situer dans l'organisation. Un parc
-        ***REMOVED*** broadcast se pilote à plusieurs, souvent de nuit : savoir QUI a déployé un conteneur
-        ***REMOVED*** et comment le joindre en trois secondes vaut mieux qu'un nom d'utilisateur seul.
-        ***REMOVED*** Toutes facultatives, toutes modifiables par l'intéressé (≠ `role` et `interface`).
+        # Fiche de la personne : de quoi la joindre et la situer dans l'organisation. Un parc
+        # broadcast se pilote à plusieurs, souvent de nuit : savoir QUI a déployé un conteneur
+        # et comment le joindre en trois secondes vaut mieux qu'un nom d'utilisateur seul.
+        # Toutes facultatives, toutes modifiables par l'intéressé (≠ `role` et `interface`).
         for _c, _t in (("telephone", "TEXT"), ("service", "TEXT"), ("poste", "TEXT"),
                        ("photo_url", "TEXT")):
             if _c not in ucols:
                 db.execute("ALTER TABLE users ADD COLUMN %s %s" % (_c, _t))
-        ***REMOVED*** ─── Sessions ouvertes ──────────────────────────────────────────────────────────────
-        ***REMOVED*** Une session Flask est un COOKIE SIGNÉ : le serveur ne sait ni combien sont ouvertes,
-        ***REMOVED*** ni les fermer. « Fermer mes autres sessions » était donc impossible à tenir, et
-        ***REMOVED*** « depuis quel poste suis-je connecté » impossible à répondre. D'où ce registre : le
-        ***REMOVED*** cookie ne porte plus qu'un identifiant opaque, et c'est CETTE table qui décide.
-        ***REMOVED***
-        ***REMOVED*** `revoked` plutôt qu'un DELETE : une session fermée reste listable un moment, et on
-        ***REMOVED*** distingue « jamais existé » (cookie forgé, ou base réinitialisée) de « fermée ».
+        # ─── Sessions ouvertes ──────────────────────────────────────────────────────────────
+        # Une session Flask est un COOKIE SIGNÉ : le serveur ne sait ni combien sont ouvertes,
+        # ni les fermer. « Fermer mes autres sessions » était donc impossible à tenir, et
+        # « depuis quel poste suis-je connecté » impossible à répondre. D'où ce registre : le
+        # cookie ne porte plus qu'un identifiant opaque, et c'est CETTE table qui décide.
+        #
+        # `revoked` plutôt qu'un DELETE : une session fermée reste listable un moment, et on
+        # distingue « jamais existé » (cookie forgé, ou base réinitialisée) de « fermée ».
         db.execute('''CREATE TABLE IF NOT EXISTS user_sessions (
             sid        TEXT PRIMARY KEY,
             user_id    INTEGER NOT NULL,
@@ -392,39 +392,39 @@ def init_db():
         )''')
         db.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_user "
                    "ON user_sessions(user_id, revoked)")
-        ***REMOVED*** Dernière connexion réussie, et ÉPOQUE de session.
-        ***REMOVED***
-        ***REMOVED*** ⚠ L'ÉPOQUE EXISTE POUR UNE RAISON PRÉCISE. Les cookies émis AVANT ce registre ne
-        ***REMOVED*** portent pas d'identifiant de session : à leur prochain usage ils s'en font attribuer
-        ***REMOVED*** un (personne n'est déconnecté par la mise à jour). Mais un cookie ancien resté
-        ***REMOVED*** DORMANT sur un poste oublié n'existe encore nulle part au moment où l'on clique
-        ***REMOVED*** « fermer mes autres sessions » — il se ferait inscrire tranquillement le lendemain,
-        ***REMOVED*** et aurait survécu à une révocation censée être totale. L'époque ferme ce trou : elle
-        ***REMOVED*** est gravée dans le cookie, comparée à celle du compte, et un cookie plus ancien que
-        ***REMOVED*** l'époque du compte est refusé, qu'il soit inscrit ou non.
+        # Dernière connexion réussie, et ÉPOQUE de session.
+        #
+        # ⚠ L'ÉPOQUE EXISTE POUR UNE RAISON PRÉCISE. Les cookies émis AVANT ce registre ne
+        # portent pas d'identifiant de session : à leur prochain usage ils s'en font attribuer
+        # un (personne n'est déconnecté par la mise à jour). Mais un cookie ancien resté
+        # DORMANT sur un poste oublié n'existe encore nulle part au moment où l'on clique
+        # « fermer mes autres sessions » — il se ferait inscrire tranquillement le lendemain,
+        # et aurait survécu à une révocation censée être totale. L'époque ferme ce trou : elle
+        # est gravée dans le cookie, comparée à celle du compte, et un cookie plus ancien que
+        # l'époque du compte est refusé, qu'il soit inscrit ou non.
         if "last_login" not in ucols:
             db.execute("ALTER TABLE users ADD COLUMN last_login TEXT")
         if "session_epoch" not in ucols:
             db.execute("ALTER TABLE users ADD COLUMN session_epoch INTEGER NOT NULL DEFAULT 0")
-        ***REMOVED*** Jeton GitHub PERSONNEL, pour la page Mises à jour. Anonyme, GitHub accorde 60 requêtes
-        ***REMOVED*** par heure et par IP : une dizaine par relecture du catalogue, donc six relectures. Un
-        ***REMOVED*** jeton monte à 5 000. Il est par UTILISATEUR et non par site : c'est une identité, celui
-        ***REMOVED*** qui bute sur le plafond fournit la sienne et n'élargit que pour lui.
-        ***REMOVED*** ⚠ Stocké en clair, donc présent dans les sauvegardes de base. L'interface exige
-        ***REMOVED*** explicitement un jeton SANS AUCUNE PORTÉE (lecture publique seule) : il n'ouvre alors
-        ***REMOVED*** rien de plus que ce que n'importe qui lit déjà sans être authentifié.
+        # Jeton GitHub PERSONNEL, pour la page Mises à jour. Anonyme, GitHub accorde 60 requêtes
+        # par heure et par IP : une dizaine par relecture du catalogue, donc six relectures. Un
+        # jeton monte à 5 000. Il est par UTILISATEUR et non par site : c'est une identité, celui
+        # qui bute sur le plafond fournit la sienne et n'élargit que pour lui.
+        # ⚠ Stocké en clair, donc présent dans les sauvegardes de base. L'interface exige
+        # explicitement un jeton SANS AUCUNE PORTÉE (lecture publique seule) : il n'ouvre alors
+        # rien de plus que ce que n'importe qui lit déjà sans être authentifié.
         if "gh_token" not in ucols:
             db.execute("ALTER TABLE users ADD COLUMN gh_token TEXT")
 
-        ***REMOVED*** ─── Rôles et autorisations ────────────────────────────────────────────────────────
-        ***REMOVED*** Les rôles étaient des CONSTANTES Python : ajouter « le monteur peut piloter les
-        ***REMOVED*** plugins mais pas déployer » demandait de modifier le code et de redéployer. La table
-        ***REMOVED*** les rend éditables ; `auth.py` la lit et retombe sur ses constantes si elle est vide
-        ***REMOVED*** (installation neuve, ou base d'une version antérieure).
-        ***REMOVED***
-        ***REMOVED*** `permissions` = liste JSON EXPLICITE, jamais un masque de bits ni un « tout sauf » :
-        ***REMOVED*** une permission ajoutée au produit plus tard ne doit être accordée à personne par
-        ***REMOVED*** accident. Elle apparaîtra simplement décochée partout.
+        # ─── Rôles et autorisations ────────────────────────────────────────────────────────
+        # Les rôles étaient des CONSTANTES Python : ajouter « le monteur peut piloter les
+        # plugins mais pas déployer » demandait de modifier le code et de redéployer. La table
+        # les rend éditables ; `auth.py` la lit et retombe sur ses constantes si elle est vide
+        # (installation neuve, ou base d'une version antérieure).
+        #
+        # `permissions` = liste JSON EXPLICITE, jamais un masque de bits ni un « tout sauf » :
+        # une permission ajoutée au produit plus tard ne doit être accordée à personne par
+        # accident. Elle apparaîtra simplement décochée partout.
         db.execute('''CREATE TABLE IF NOT EXISTS habilitations (
             id            TEXT PRIMARY KEY,
             label         TEXT,
@@ -433,9 +433,9 @@ def init_db():
             builtin       INTEGER NOT NULL DEFAULT 0
         )''')
 
-        ***REMOVED*** Surcouche de traductions éditée via l'UI (i18n) : appliquée PAR-DESSUS les
-        ***REMOVED*** catalogues fichiers, donc persistante à travers les sync git (qui écrasent
-        ***REMOVED*** les *.json versionnés). PK (lang, key) → une valeur par couple.
+        # Surcouche de traductions éditée via l'UI (i18n) : appliquée PAR-DESSUS les
+        # catalogues fichiers, donc persistante à travers les sync git (qui écrasent
+        # les *.json versionnés). PK (lang, key) → une valeur par couple.
         db.execute('''CREATE TABLE IF NOT EXISTS i18n_overrides (
             lang  TEXT NOT NULL,
             key   TEXT NOT NULL,
@@ -448,19 +448,19 @@ def init_db():
             created_at  TEXT,
             payload     TEXT
         )''')
-        ***REMOVED*** Vues de DISPOSITION de la page Câbles (mode « Libre ») : positions des cartes +
-        ***REMOVED*** cartes repliées. Distinct de cable_snapshots (qui sauve le CÂBLAGE/edges) : ici on
-        ***REMOVED*** ne stocke QUE la disposition visuelle, partagée entre utilisateurs.
+        # Vues de DISPOSITION de la page Câbles (mode « Libre ») : positions des cartes +
+        # cartes repliées. Distinct de cable_snapshots (qui sauve le CÂBLAGE/edges) : ici on
+        # ne stocke QUE la disposition visuelle, partagée entre utilisateurs.
         db.execute('''CREATE TABLE IF NOT EXISTS cable_layouts (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT NOT NULL,
             created_at  TEXT,
             payload     TEXT
         )''')
-        ***REMOVED*** Stockage générique par plugin (presets, mémoires…) : remplace les anciennes
-        ***REMOVED*** tables cc_presets / dve_memories (retirées en 2026-07 avec leur migration ;
-        ***REMOVED*** les fichiers DB existants peuvent encore porter ces tables, ignorées).
-        ***REMOVED*** scope='' = global ; scope=str(vmid) = par container. value = JSON.
+        # Stockage générique par plugin (presets, mémoires…) : remplace les anciennes
+        # tables cc_presets / dve_memories (retirées en 2026-07 avec leur migration ;
+        # les fichiers DB existants peuvent encore porter ces tables, ignorées).
+        # scope='' = global ; scope=str(vmid) = par container. value = JSON.
         db.execute('''CREATE TABLE IF NOT EXISTS plugin_store (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             type       TEXT NOT NULL,
@@ -470,8 +470,8 @@ def init_db():
             created_at TEXT,
             updated_at TEXT
         )''')
-        ***REMOVED*** Liens de partage publics (page client WebRTC) : jeton aléatoire non devinable
-        ***REMOVED*** (secrets.token_urlsafe) → page publique `/w/<token>`. Révocable (delete).
+        # Liens de partage publics (page client WebRTC) : jeton aléatoire non devinable
+        # (secrets.token_urlsafe) → page publique `/w/<token>`. Révocable (delete).
         db.execute('''CREATE TABLE IF NOT EXISTS share_links (
             token      TEXT PRIMARY KEY,
             vmid       INTEGER NOT NULL,
@@ -480,45 +480,45 @@ def init_db():
             note       TEXT,
             created_at TEXT
         )''')
-        ***REMOVED*** ⚠ `kind` DISTINGUE LA NATURE DE LA PAGE PUBLIQUE, et ce n'est pas cosmétique : le
-        ***REMOVED*** jeton d'un lecteur WebRTC et celui d'un scope ouvrent des pages différentes et
-        ***REMOVED*** donnent accès à des choses différentes. Sans cette colonne, il faudrait deviner à
-        ***REMOVED*** partir du type du conteneur — donc réinterpréter un droit d'accès à chaque requête,
-        ***REMOVED*** et se tromper le jour où un type change. Migration idempotente ; les liens existants
-        ***REMOVED*** sont des liens WebRTC, d'où le défaut.
+        # ⚠ `kind` DISTINGUE LA NATURE DE LA PAGE PUBLIQUE, et ce n'est pas cosmétique : le
+        # jeton d'un lecteur WebRTC et celui d'un scope ouvrent des pages différentes et
+        # donnent accès à des choses différentes. Sans cette colonne, il faudrait deviner à
+        # partir du type du conteneur — donc réinterpréter un droit d'accès à chaque requête,
+        # et se tromper le jour où un type change. Migration idempotente ; les liens existants
+        # sont des liens WebRTC, d'où le défaut.
         _sl = [r[1] for r in db.execute("PRAGMA table_info(share_links)").fetchall()]
         if _sl and "kind" not in _sl:
             db.execute("ALTER TABLE share_links ADD COLUMN kind TEXT DEFAULT 'webrtc'")
             db.execute("UPDATE share_links SET kind='webrtc' WHERE kind IS NULL")
-        ***REMOVED*** `cidrs` : liste d'adresses ou de réseaux autorisés, séparés par des virgules. VIDE =
-        ***REMOVED*** aucune restriction, ce qui est le comportement des liens existants — un filtre qui
-        ***REMOVED*** s'activerait tout seul à la migration couperait des liens en service sans prévenir.
+        # `cidrs` : liste d'adresses ou de réseaux autorisés, séparés par des virgules. VIDE =
+        # aucune restriction, ce qui est le comportement des liens existants — un filtre qui
+        # s'activerait tout seul à la migration couperait des liens en service sans prévenir.
         if _sl and "cidrs" not in _sl:
             db.execute("ALTER TABLE share_links ADD COLUMN cidrs TEXT")
-        ***REMOVED*** ⚠ UN LIEN PUBLIC DOIT PORTER L'`instance_uuid`, PAS LE `vmid`. Le vmid est un handle
-        ***REMOVED*** LOCAL ET JETABLE — réattribué, il change au recreate (cf. CLAUDE.md, « Identité d'un
-        ***REMOVED*** conteneur : trois barreaux »). Un jeton accroché au vmid a deux défauts, et le second
-        ***REMOVED*** est grave :
-        ***REMOVED***   1. il MEURT à la recréation du conteneur dans un projet, alors que l'exploitant
-        ***REMOVED***      attend l'inverse — c'est le même appareil, l'identité d'instance le dit ;
-        ***REMOVED***   2. si ce vmid est REPRIS par un autre conteneur du même type, le vieux jeton ouvre
-        ***REMOVED***      la page de CET AUTRE conteneur. Un accès sans identification qui se déplace tout
-        ***REMOVED***      seul sur une autre machine.
-        ***REMOVED*** L'identité d'instance, elle, survit recreate/restore/import et n'est jamais réattribuée.
+        # ⚠ UN LIEN PUBLIC DOIT PORTER L'`instance_uuid`, PAS LE `vmid`. Le vmid est un handle
+        # LOCAL ET JETABLE — réattribué, il change au recreate (cf. CLAUDE.md, « Identité d'un
+        # conteneur : trois barreaux »). Un jeton accroché au vmid a deux défauts, et le second
+        # est grave :
+        #   1. il MEURT à la recréation du conteneur dans un projet, alors que l'exploitant
+        #      attend l'inverse — c'est le même appareil, l'identité d'instance le dit ;
+        #   2. si ce vmid est REPRIS par un autre conteneur du même type, le vieux jeton ouvre
+        #      la page de CET AUTRE conteneur. Un accès sans identification qui se déplace tout
+        #      seul sur une autre machine.
+        # L'identité d'instance, elle, survit recreate/restore/import et n'est jamais réattribuée.
         if _sl and "instance_uuid" not in _sl:
             db.execute("ALTER TABLE share_links ADD COLUMN instance_uuid TEXT")
-            ***REMOVED*** Rattrapage : les liens dont le conteneur vit encore reçoivent son identité.
-            ***REMOVED*** Ceux dont il a disparu restent sans — ils sont orphelins, et c'est exact.
+            # Rattrapage : les liens dont le conteneur vit encore reçoivent son identité.
+            # Ceux dont il a disparu restent sans — ils sont orphelins, et c'est exact.
             db.execute("UPDATE share_links SET instance_uuid = ("
                        "  SELECT c.instance_uuid FROM containers c WHERE c.vmid = share_links.vmid"
                        ") WHERE instance_uuid IS NULL")
-        ***REMOVED*** Pool SR-IOV nic_pool RETIRÉ (vestige LXC) : le moteur 2110_io tourne sur la PF en
-        ***REMOVED*** AF-XDP, sans VF. Les NIC 2110 se déclarent via node_interfaces (role=media2110).
-        ***REMOVED*** Purge idempotente des tables mortes.
+        # Pool SR-IOV nic_pool RETIRÉ (vestige LXC) : le moteur 2110_io tourne sur la PF en
+        # AF-XDP, sans VF. Les NIC 2110 se déclarent via node_interfaces (role=media2110).
+        # Purge idempotente des tables mortes.
         db.execute("DROP TABLE IF EXISTS nic_vf_alloc")
         db.execute("DROP TABLE IF EXISTS nic_pool")
-        ***REMOVED*** Registre des autres instances Bobi.Studio du réseau (mise à jour pull/push).
-        ***REMOVED*** token = secret d'update DU PAIR (pour le joindre). version/last_seen via ping.
+        # Registre des autres instances Bobi.Studio du réseau (mise à jour pull/push).
+        # token = secret d'update DU PAIR (pour le joindre). version/last_seen via ping.
         db.execute('''CREATE TABLE IF NOT EXISTS peers (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT NOT NULL,
@@ -528,12 +528,12 @@ def init_db():
             last_seen  TEXT,
             created_at TEXT
         )''')
-        ***REMOVED*** deployed_at : date/heure du dernier déploiement appliqué sur le pair (via son ping).
+        # deployed_at : date/heure du dernier déploiement appliqué sur le pair (via son ping).
         if "deployed_at" not in [r[1] for r in db.execute("PRAGMA table_info(peers)")]:
             db.execute("ALTER TABLE peers ADD COLUMN deployed_at TEXT")
-        ***REMOVED*** Cluster multi-nœud : un nœud = un hôte d'exécution (Docker ou Proxmox/LXC). Fondation
-        ***REMOVED*** pour le futur cluster avec RAM partagée (MXL). mxl_mount = point de montage du shared
-        ***REMOVED*** memory (défaut /dev/shm local ; pointera la fabric partagée le jour venu).
+        # Cluster multi-nœud : un nœud = un hôte d'exécution (Docker ou Proxmox/LXC). Fondation
+        # pour le futur cluster avec RAM partagée (MXL). mxl_mount = point de montage du shared
+        # memory (défaut /dev/shm local ; pointera la fabric partagée le jour venu).
         db.execute('''CREATE TABLE IF NOT EXISTS nodes (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT NOT NULL,
@@ -553,78 +553,78 @@ def init_db():
             db.execute("ALTER TABLE containers ADD COLUMN node_id INTEGER REFERENCES nodes(id)")
         if "docker_name" not in cols_c:
             db.execute("ALTER TABLE containers ADD COLUMN docker_name TEXT")
-        ***REMOVED*** docker_ip : IP propre du conteneur Docker « compute » (réseau macvlan/ipvlan), lue
-        ***REMOVED*** après `docker run`. Pour ces conteneurs get_container_ip renvoie cette IP (pas l'hôte
-        ***REMOVED*** du nœud comme le chemin MTL --network host). NULL pour LXC / MTL.
+        # docker_ip : IP propre du conteneur Docker « compute » (réseau macvlan/ipvlan), lue
+        # après `docker run`. Pour ces conteneurs get_container_ip renvoie cette IP (pas l'hôte
+        # du nœud comme le chemin MTL --network host). NULL pour LXC / MTL.
         if "docker_ip" not in cols_c:
             db.execute("ALTER TABLE containers ADD COLUMN docker_ip TEXT")
-        ***REMOVED*** Colonne `backend` RETIRÉE (full-Docker) : elle ne pouvait plus valoir que 'docker', et un
-        ***REMOVED*** schéma qui affiche encore « DEFAULT 'lxc' » raconte une architecture qui n'existe plus.
-        ***REMOVED*** Migration en deux temps, dans cet ordre et une seule fois : purge des lignes LXC
-        ***REMOVED*** résiduelles (pure DB — aucun conteneur réel détruit, la prod est 100% docker), puis
-        ***REMOVED*** suppression de la colonne. Idempotent : après le DROP, la condition est fausse à jamais.
+        # Colonne `backend` RETIRÉE (full-Docker) : elle ne pouvait plus valoir que 'docker', et un
+        # schéma qui affiche encore « DEFAULT 'lxc' » raconte une architecture qui n'existe plus.
+        # Migration en deux temps, dans cet ordre et une seule fois : purge des lignes LXC
+        # résiduelles (pure DB — aucun conteneur réel détruit, la prod est 100% docker), puis
+        # suppression de la colonne. Idempotent : après le DROP, la condition est fausse à jamais.
         if "backend" in cols_c:
             db.execute("DELETE FROM containers WHERE backend = 'lxc'")
             db.execute("ALTER TABLE containers DROP COLUMN backend")
-        ***REMOVED*** nodes : réseau macvlan + image compute génériques (chemin Docker « compute »).
+        # nodes : réseau macvlan + image compute génériques (chemin Docker « compute »).
         cols_n = [r[1] for r in db.execute("PRAGMA table_info(nodes)")]
         if "docker_network" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN docker_network TEXT")
         if "compute_image" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN compute_image TEXT")
-        ***REMOVED*** Pool de cœurs CPU dispo pour le pinning compute (ex. "8-47"). Vide = pas de pinning.
+        # Pool de cœurs CPU dispo pour le pinning compute (ex. "8-47"). Vide = pas de pinning.
         if "compute_cpuset" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN compute_cpuset TEXT")
-        ***REMOVED*** Variante GPU/NVIDIA de l'image compute (tag bobi-compute-gpu:<ver>, buildée node_only sur
-        ***REMOVED*** le nœud GPU). Renseignée si le nœud porte un GPU NVIDIA + nvidia-container-toolkit ; le
-        ***REMOVED*** déploiement d'un plugin GPU-capable (multiview) choisit cette image + injecte --gpus.
+        # Variante GPU/NVIDIA de l'image compute (tag bobi-compute-gpu:<ver>, buildée node_only sur
+        # le nœud GPU). Renseignée si le nœud porte un GPU NVIDIA + nvidia-container-toolkit ; le
+        # déploiement d'un plugin GPU-capable (multiview) choisit cette image + injecte --gpus.
         if "compute_gpu_image" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN compute_gpu_image TEXT")
-        ***REMOVED*** GPU NVIDIA : gpu_capable (0/1, détecté côté orchestrateur via nvidia-smi + runtime nvidia
-        ***REMOVED*** Docker) ; gpu_count = nb de GPU (défaut 1). Un plugin GPU-capable (multiview) déployé sur un
-        ***REMOVED*** nœud gpu_capable prend compute_gpu_image + --gpus (cf. gpu_pool / docker_compute).
+        # GPU NVIDIA : gpu_capable (0/1, détecté côté orchestrateur via nvidia-smi + runtime nvidia
+        # Docker) ; gpu_count = nb de GPU (défaut 1). Un plugin GPU-capable (multiview) déployé sur un
+        # nœud gpu_capable prend compute_gpu_image + --gpus (cf. gpu_pool / docker_compute).
         if "gpu_capable" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN gpu_capable INTEGER NOT NULL DEFAULT 0")
         if "gpu_count" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN gpu_count INTEGER")
-        ***REMOVED*** Plugins MÉDIA (player/recorder/transcoder/stills) : image dédiée (GStreamer+ffmpeg) et
-        ***REMOVED*** point de montage LOCAL du stockage média sur l'hôte du nœud (bind → /mnt/media).
+        # Plugins MÉDIA (player/recorder/transcoder/stills) : image dédiée (GStreamer+ffmpeg) et
+        # point de montage LOCAL du stockage média sur l'hôte du nœud (bind → /mnt/media).
         if "media_image" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN media_image TEXT")
         if "media_mount" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN media_mount TEXT")
-        ***REMOVED*** Auto-recovery au reboot d'un nœud (app/node_recovery.py) : dernier boot connu
-        ***REMOVED*** (boot_ts ≈ now − host_uptime_s du /v1/health) et dernier boot pour lequel le recovery a
-        ***REMOVED*** été exécuté. Persistés → détection/one-shot survivent à un restart du contrôleur.
+        # Auto-recovery au reboot d'un nœud (app/node_recovery.py) : dernier boot connu
+        # (boot_ts ≈ now − host_uptime_s du /v1/health) et dernier boot pour lequel le recovery a
+        # été exécuté. Persistés → détection/one-shot survivent à un restart du contrôleur.
         if "last_boot_ts" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN last_boot_ts REAL")
         if "recovered_boot_ts" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN recovered_boot_ts REAL")
-        ***REMOVED*** Profil CPU du nœud : modèle relevé (clé vers `cpu_profiles`) et surcharge explicite du
-        ***REMOVED*** quota de scheduler. Le quota est une propriété de la MACHINE, pas du site.
+        # Profil CPU du nœud : modèle relevé (clé vers `cpu_profiles`) et surcharge explicite du
+        # quota de scheduler. Le quota est une propriété de la MACHINE, pas du site.
         if "cpu_model" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN cpu_model TEXT")
         if "sch_quota_mbs" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN sch_quota_mbs INTEGER")
-        ***REMOVED*** io2110 (Docker) : IP du plan MÉDIA 2110 (CIDR, ex. "198.51.100.60/24") assignée à mtl_iface.
-        ***REMOVED*** Sans elle, le PF n'a pas d'IPv4 → MTL annonce sip=0.0.0.0 (TX cassé, SSM impossible) et la
-        ***REMOVED*** jointure IGMPv3 source-specific échoue → rx_gbps=0 (free-run noir). Le chemin LXC dérivait
-        ***REMOVED*** cette IP du pool VF (vf_sip) ; le chemin Docker la stocke ici. Ré-appliquée au (re)déploiement
-        ***REMOVED*** du conteneur MTL (idempotent), le moteur l'auto-détecte (_detect_iface_ip).
+        # io2110 (Docker) : IP du plan MÉDIA 2110 (CIDR, ex. "198.51.100.60/24") assignée à mtl_iface.
+        # Sans elle, le PF n'a pas d'IPv4 → MTL annonce sip=0.0.0.0 (TX cassé, SSM impossible) et la
+        # jointure IGMPv3 source-specific échoue → rx_gbps=0 (free-run noir). Le chemin LXC dérivait
+        # cette IP du pool VF (vf_sip) ; le chemin Docker la stocke ici. Ré-appliquée au (re)déploiement
+        # du conteneur MTL (idempotent), le moteur l'auto-détecte (_detect_iface_ip).
         if "media_ip" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN media_ip TEXT")
-        ***REMOVED*** Identité du DOMAINE MXL du nœud (BCP-007-03 « NMOS With MXL », `domain_def.json:id`).
-        ***REMOVED*** Le problème que ce champ règle : un domaine bind-monté sous DEUX chemins différents
-        ***REMOVED*** selon le conteneur (`/dev/shm/mxl` ici, `/domain_a` là) est le MÊME domaine, et rien
-        ***REMOVED*** dans le chemin ne le dit. La BCP donne donc au domaine une identité propre, portée par
-        ***REMOVED*** un fichier À LA RACINE du domaine — elle voyage avec le montage. On la garde ici parce
-        ***REMOVED*** que le tmpfs, lui, ne survit pas au reboot : la DB est la source de vérité, le fichier
-        ***REMOVED*** n'en est qu'une projection reposée par `mtl.ensure_mxl_domain_def`.
+        # Identité du DOMAINE MXL du nœud (BCP-007-03 « NMOS With MXL », `domain_def.json:id`).
+        # Le problème que ce champ règle : un domaine bind-monté sous DEUX chemins différents
+        # selon le conteneur (`/dev/shm/mxl` ici, `/domain_a` là) est le MÊME domaine, et rien
+        # dans le chemin ne le dit. La BCP donne donc au domaine une identité propre, portée par
+        # un fichier À LA RACINE du domaine — elle voyage avec le montage. On la garde ici parce
+        # que le tmpfs, lui, ne survit pas au reboot : la DB est la source de vérité, le fichier
+        # n'en est qu'une projection reposée par `mtl.ensure_mxl_domain_def`.
         if "mxl_domain_id" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN mxl_domain_id TEXT")
-        ***REMOVED*** Agent-nœud (bobi-node-agent) : si agent_url renseigné, le contrôleur pilote le nœud via
-        ***REMOVED*** l'API HTTP de l'agent (token) au lieu du root-SSH/Proxmox. capabilities = source de vérité
-        ***REMOVED*** d'éligibilité (JSON array). Cf. NODE_AGENT.md / node_driver.py.
+        # Agent-nœud (bobi-node-agent) : si agent_url renseigné, le contrôleur pilote le nœud via
+        # l'API HTTP de l'agent (token) au lieu du root-SSH/Proxmox. capabilities = source de vérité
+        # d'éligibilité (JSON array). Cf. NODE_AGENT.md / node_driver.py.
         if "capabilities" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN capabilities TEXT")
         if "agent_url" not in cols_n:
@@ -635,42 +635,42 @@ def init_db():
             db.execute("ALTER TABLE nodes ADD COLUMN agent_version TEXT")
         if "last_seen" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN last_seen TEXT")
-        ***REMOVED*** Enrôlement zéro-touch (clé USB préseedée) : un nœud pré-déclaré porte un enroll_token
-        ***REMOVED*** one-time + un profil (JSON : caps, macvlan subnet/gw/vlan, ptp, hugepages, registry) que
-        ***REMOVED*** le nœud vierge récupère au 1er boot via POST /api/nodes/enroll. status: pending→enrolling→up.
+        # Enrôlement zéro-touch (clé USB préseedée) : un nœud pré-déclaré porte un enroll_token
+        # one-time + un profil (JSON : caps, macvlan subnet/gw/vlan, ptp, hugepages, registry) que
+        # le nœud vierge récupère au 1er boot via POST /api/nodes/enroll. status: pending→enrolling→up.
         if "enroll_token" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN enroll_token TEXT")
         if "enroll_profile" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN enroll_profile TEXT")
-        ***REMOVED*** Carte de gestion iLO (HPe iLO 5) : montage auto de l'ISO d'enrôlement en CD virtuel via
-        ***REMOVED*** Redfish (cf. app/ilo.py). Mot de passe stocké en clair comme agent_token (réseau interne).
-        ***REMOVED*** NE PAS placer dans enroll_profile (ce blob est renvoyé au nœud à l'enrôlement).
+        # Carte de gestion iLO (HPe iLO 5) : montage auto de l'ISO d'enrôlement en CD virtuel via
+        # Redfish (cf. app/ilo.py). Mot de passe stocké en clair comme agent_token (réseau interne).
+        # NE PAS placer dans enroll_profile (ce blob est renvoyé au nœud à l'enrôlement).
         if "ilo_host" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN ilo_host TEXT")
         if "ilo_user" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN ilo_user TEXT")
         if "ilo_password" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN ilo_password TEXT")
-        ***REMOVED*** BMC vendor-agnostique (Redfish) : 'hpe' (iLO) | 'dell' (iDRAC). Les chemins/IDs Redfish
-        ***REMOVED*** diffèrent par constructeur (cf. app/ilo.py). Les colonnes ilo_* restent le transport des
-        ***REMOVED*** identifiants (host/user/password) quel que soit le vendor. Backfill 'hpe' si iLO renseigné.
+        # BMC vendor-agnostique (Redfish) : 'hpe' (iLO) | 'dell' (iDRAC). Les chemins/IDs Redfish
+        # diffèrent par constructeur (cf. app/ilo.py). Les colonnes ilo_* restent le transport des
+        # identifiants (host/user/password) quel que soit le vendor. Backfill 'hpe' si iLO renseigné.
         if "bmc_vendor" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN bmc_vendor TEXT DEFAULT 'hpe'")
         db.execute("UPDATE nodes SET bmc_vendor='hpe' "
                    "WHERE (bmc_vendor IS NULL OR bmc_vendor='') AND ilo_host IS NOT NULL AND ilo_host<>''")
-        ***REMOVED*** mTLS du plan de contrôle : tls_ready=1 quand le nœud a reçu un cert signé par la CA interne
-        ***REMOVED*** et que son agent écoute en HTTPS (sur le MÊME port). node_driver dial alors en HTTPS (+ token
-        ***REMOVED*** applicatif en plus). 0 = flotte non migrée → repli HTTP+token (rétro-compatible). node_cert =
-        ***REMOVED*** archive du cert signé (PEM public, diagnostic uniquement — la clé privée ne quitte JAMAIS le nœud).
+        # mTLS du plan de contrôle : tls_ready=1 quand le nœud a reçu un cert signé par la CA interne
+        # et que son agent écoute en HTTPS (sur le MÊME port). node_driver dial alors en HTTPS (+ token
+        # applicatif en plus). 0 = flotte non migrée → repli HTTP+token (rétro-compatible). node_cert =
+        # archive du cert signé (PEM public, diagnostic uniquement — la clé privée ne quitte JAMAIS le nœud).
         if "tls_ready" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN tls_ready INTEGER DEFAULT 0")
         if "node_cert" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN node_cert TEXT")
-        ***REMOVED*** Modèle « interface → rôle » par nœud (refonte réseau 2026-06) : source de vérité de ce à
-        ***REMOVED*** quoi sert chaque NIC d'un nœud. Subsume mtl_iface/media_ip/parent docker_network qui restent
-        ***REMOVED*** synchronisés (pont de compat — cf. routes api_node_interfaces). Rôles : management |
-        ***REMOVED*** containers (parent macvlan) | media2110 (avec pair_role red/blue + pair_group pour 2022-7
-        ***REMOVED*** ET capacité) | rdma | bmc | unused. ptp_enabled = PTP par-interface (cadre PTP multi-NIC).
+        # Modèle « interface → rôle » par nœud (refonte réseau 2026-06) : source de vérité de ce à
+        # quoi sert chaque NIC d'un nœud. Subsume mtl_iface/media_ip/parent docker_network qui restent
+        # synchronisés (pont de compat — cf. routes api_node_interfaces). Rôles : management |
+        # containers (parent macvlan) | media2110 (avec pair_role red/blue + pair_group pour 2022-7
+        # ET capacité) | rdma | bmc | unused. ptp_enabled = PTP par-interface (cadre PTP multi-NIC).
         db.execute('''CREATE TABLE IF NOT EXISTS node_interfaces (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             node_id     INTEGER NOT NULL REFERENCES nodes(id),
@@ -688,11 +688,11 @@ def init_db():
             notes       TEXT,
             created_at  TEXT
         )''')
-        ***REMOVED*** nic_profiles : BIBLIOTHÈQUE DE CARTES (capacités NON auto-découvrables — cf. docs/chantiers/DPDK_NARROW.md §7 :
-        ***REMOVED*** le max de files TX narrow effectif n'est pas lisible du PMD). Un profil MESURÉ par la qualification
-        ***REMOVED*** PRIME sur la biblio statique (app/mtl.py) et le plancher sûr. Keyé (device_id + firmware) — le
-        ***REMOVED*** firmware/DDP peut changer les capacités → une carte peut y figurer plusieurs fois (firmware='' =
-        ***REMOVED*** non renseigné / valeur biblio). `measured=1` = qualifié au banc.
+        # nic_profiles : BIBLIOTHÈQUE DE CARTES (capacités NON auto-découvrables — cf. docs/chantiers/DPDK_NARROW.md §7 :
+        # le max de files TX narrow effectif n'est pas lisible du PMD). Un profil MESURÉ par la qualification
+        # PRIME sur la biblio statique (app/mtl.py) et le plancher sûr. Keyé (device_id + firmware) — le
+        # firmware/DDP peut changer les capacités → une carte peut y figurer plusieurs fois (firmware='' =
+        # non renseigné / valeur biblio). `measured=1` = qualifié au banc.
         db.execute('''CREATE TABLE IF NOT EXISTS nic_profiles (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             device_id    TEXT NOT NULL,
@@ -707,16 +707,16 @@ def init_db():
             qualified_at TEXT,
             UNIQUE(device_id, firmware)
         )''')
-        ***REMOVED*** Profils CPU : quota de scheduler libmtl PAR MODÈLE de processeur. Même modèle que
-        ***REMOVED*** `nic_profiles` (bibliothèque + valeur mesurée qui prime), pour la même raison : la capacité
-        ***REMOVED*** d'un scheduler — combien de Mb/s de ST 2110 un cœur en busy-poll parse et recopie — est une
-        ***REMOVED*** propriété PHYSIQUE de la machine, pas une préférence de site. Elle vivait pourtant dans un
-        ***REMOVED*** réglage GLOBAL (`mtl_sch_quota_mbs`) appliqué à toute la flotte : sur un nœud plus rapide on
-        ***REMOVED*** gaspille des cœurs, sur un nœud plus lent on sous-dimensionne — et sous-dimensionner ne se
-        ***REMOVED*** voit pas tout de suite, ça se paie en sessions refusées ou en wedges sous jitter.
-        ***REMOVED*** `measured=1` exige une campagne de CHARGE RÉELLE ayant atteint le décrochage ; un micro-banc
-        ***REMOVED*** ne prouve rien (cf. la même garde dans app/nic_qualify.py, et la dérive 63→14 qu'elle a
-        ***REMOVED*** coûtée sur les cartes). Sans mesure : la valeur reste déclarative et on le dit.
+        # Profils CPU : quota de scheduler libmtl PAR MODÈLE de processeur. Même modèle que
+        # `nic_profiles` (bibliothèque + valeur mesurée qui prime), pour la même raison : la capacité
+        # d'un scheduler — combien de Mb/s de ST 2110 un cœur en busy-poll parse et recopie — est une
+        # propriété PHYSIQUE de la machine, pas une préférence de site. Elle vivait pourtant dans un
+        # réglage GLOBAL (`mtl_sch_quota_mbs`) appliqué à toute la flotte : sur un nœud plus rapide on
+        # gaspille des cœurs, sur un nœud plus lent on sous-dimensionne — et sous-dimensionner ne se
+        # voit pas tout de suite, ça se paie en sessions refusées ou en wedges sous jitter.
+        # `measured=1` exige une campagne de CHARGE RÉELLE ayant atteint le décrochage ; un micro-banc
+        # ne prouve rien (cf. la même garde dans app/nic_qualify.py, et la dérive 63→14 qu'elle a
+        # coûtée sur les cartes). Sans mesure : la valeur reste déclarative et on le dit.
         db.execute('''CREATE TABLE IF NOT EXISTS cpu_profiles (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             model         TEXT NOT NULL,
@@ -731,11 +731,11 @@ def init_db():
             qualified_at  TEXT,
             UNIQUE(model)
         )''')
-        ***REMOVED*** Fenêtre de maintenance TX (docs/reference/TX_LAYOUTS.md étage 2) : bac des changements PERTURBATEURS
-        ***REMOVED*** différés d'un moteur 2110_io. Une action perturbatrice recale l'arbre RL du port (commit TM
-        ***REMOVED*** = stop/start du port ~1 s, cf. app/tx_maintenance.py) : on peut les GROUPER pour ne payer
-        ***REMOVED*** qu'UN SEUL blip. `args` = JSON de l'action, rejouée telle quelle à l'application ;
-        ***REMOVED*** `apply_at` = 'YYYY-MM-DDTHH:MM' (planifié) ou NULL (application manuelle).
+        # Fenêtre de maintenance TX (docs/reference/TX_LAYOUTS.md étage 2) : bac des changements PERTURBATEURS
+        # différés d'un moteur 2110_io. Une action perturbatrice recale l'arbre RL du port (commit TM
+        # = stop/start du port ~1 s, cf. app/tx_maintenance.py) : on peut les GROUPER pour ne payer
+        # qu'UN SEUL blip. `args` = JSON de l'action, rejouée telle quelle à l'application ;
+        # `apply_at` = 'YYYY-MM-DDTHH:MM' (planifié) ou NULL (application manuelle).
         db.execute('''CREATE TABLE IF NOT EXISTS tx_pending_changes (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             vmid       INTEGER NOT NULL,
@@ -750,15 +750,15 @@ def init_db():
             created_by TEXT,
             result     TEXT
         )''')
-        ***REMOVED*** tx_card_models : BIBLIOTHÈQUE DE MODÈLES DE CARTE 2110 (gabarits RÉUTILISABLES, par TYPE de
-        ***REMOVED*** carte — PAS par interface). Un modèle = une composition nommée de sorties TX déclarées
-        ***REMOVED*** (format annoncé par slot + audio + ANC), rattachée à un type de carte (`nic_model`, la même
-        ***REMOVED*** chaîne que node_interfaces.model / nic_profiles.model). Il ne touche AUCUN matériel : le
-        ***REMOVED*** déclarer ne coûte rien. On l'APPLIQUE ensuite à une carte réelle (page Interfaces) — c'est
-        ***REMOVED*** là, et seulement là, que le coût (recalcul d'arbre RL en DPDK) se paie.
-        ***REMOVED*** ⚠ Un modèle est une SOURCE ; la VÉRITÉ reste le layout appliqué de la carte
-        ***REMOVED*** (settings:tx_layout_<node>_<iface> → deploy_config.tx_slots du moteur). Une carte peut
-        ***REMOVED*** DIVERGER du modèle dont elle est issue : c'est une information, pas une erreur.
+        # tx_card_models : BIBLIOTHÈQUE DE MODÈLES DE CARTE 2110 (gabarits RÉUTILISABLES, par TYPE de
+        # carte — PAS par interface). Un modèle = une composition nommée de sorties TX déclarées
+        # (format annoncé par slot + audio + ANC), rattachée à un type de carte (`nic_model`, la même
+        # chaîne que node_interfaces.model / nic_profiles.model). Il ne touche AUCUN matériel : le
+        # déclarer ne coûte rien. On l'APPLIQUE ensuite à une carte réelle (page Interfaces) — c'est
+        # là, et seulement là, que le coût (recalcul d'arbre RL en DPDK) se paie.
+        # ⚠ Un modèle est une SOURCE ; la VÉRITÉ reste le layout appliqué de la carte
+        # (settings:tx_layout_<node>_<iface> → deploy_config.tx_slots du moteur). Une carte peut
+        # DIVERGER du modèle dont elle est issue : c'est une information, pas une erreur.
         db.execute('''CREATE TABLE IF NOT EXISTS tx_card_models (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT NOT NULL,
@@ -769,62 +769,62 @@ def init_db():
             updated_at TEXT,
             updated_by TEXT
         )''')
-        ***REMOVED*** PTP multi-NIC : domaine PTP par-interface (NULL → repli sur le réglage nœud ptp_domain).
-        ***REMOVED*** Permet de grouper les media2110/ptp_enabled par domainNumber → un ptp4l JBOD par domaine.
+        # PTP multi-NIC : domaine PTP par-interface (NULL → repli sur le réglage nœud ptp_domain).
+        # Permet de grouper les media2110/ptp_enabled par domainNumber → un ptp4l JBOD par domaine.
         if "ptp_domain" not in [r[1] for r in db.execute("PRAGMA table_info(node_interfaces)")]:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN ptp_domain INTEGER")
-        ***REMOVED*** Modèle + vitesse de lien capturés lors de la config réseau (sonde lspci/ethtool de
-        ***REMOVED*** /api/nodes/<id>/interfaces). Persistés ICI → la page Sources/Destinations 2110 lit le
-        ***REMOVED*** modèle exact (« E810-XXV-4 ») et l'agrégat (somme des vitesses) sans re-sonder en SSH.
+        # Modèle + vitesse de lien capturés lors de la config réseau (sonde lspci/ethtool de
+        # /api/nodes/<id>/interfaces). Persistés ICI → la page Sources/Destinations 2110 lit le
+        # modèle exact (« E810-XXV-4 ») et l'agrégat (somme des vitesses) sans re-sonder en SSH.
         _ni_cols = [r[1] for r in db.execute("PRAGMA table_info(node_interfaces)")]
         if "model" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN model TEXT")
         if "speed_mbps" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN speed_mbps INTEGER")
-        ***REMOVED*** Réserve de files AF-XDP du moteur 2110_io PAR INTERFACE media2110 (capacité « à chaud »
-        ***REMOVED*** choisie par l'opérateur, plafonnée au budget de files de la carte). NULL = auto (le moteur
-        ***REMOVED*** applique son plancher par défaut). Pilote la réserve de files ET le budget de lcores au
-        ***REMOVED*** déploiement (cf. docker_driver._build_docker_run_controlplane / _auto_lcores).
+        # Réserve de files AF-XDP du moteur 2110_io PAR INTERFACE media2110 (capacité « à chaud »
+        # choisie par l'opérateur, plafonnée au budget de files de la carte). NULL = auto (le moteur
+        # applique son plancher par défaut). Pilote la réserve de files ET le budget de lcores au
+        # déploiement (cf. docker_driver._build_docker_run_controlplane / _auto_lcores).
         if "rx_reserve" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN rx_reserve INTEGER")
         if "tx_reserve" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN tx_reserve INTEGER")
         if "queue_margin" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN queue_margin INTEGER")
-        ***REMOVED*** Chemin data du moteur 2110_io PAR INTERFACE media2110 (chantier DPDK/narrow) :
-        ***REMOVED*** NULL/'af_xdp' = comportement actuel (AF_XDP natif sur la PF kernel) ; 'dpdk' = port
-        ***REMOVED*** remis à vfio-pci et passé au moteur en BDF PCI (colonne `pci`) → PMD ice DPDK,
-        ***REMOVED*** pacing RL. Opt-in strict par interface : sans ce flag, rien ne change.
+        # Chemin data du moteur 2110_io PAR INTERFACE media2110 (chantier DPDK/narrow) :
+        # NULL/'af_xdp' = comportement actuel (AF_XDP natif sur la PF kernel) ; 'dpdk' = port
+        # remis à vfio-pci et passé au moteur en BDF PCI (colonne `pci`) → PMD ice DPDK,
+        # pacing RL. Opt-in strict par interface : sans ce flag, rien ne change.
         if "pmd" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN pmd TEXT")
-        ***REMOVED*** SR-IOV (chantier narrow, cf. docs/chantiers/SRIOV_IMPL.md) : pmd='sriov' = PF reste kernel (ptp4l) + VF
-        ***REMOVED*** DPDK-narrow porte le moteur. vf_bdf = BDF de la VF créée au host-prep (ex. 0000:11:11.0) ;
-        ***REMOVED*** vf_ip = IP média (sip) de la VF (le trafic 2110 sort/entre par la VF ; la PF garde son `ip`
-        ***REMOVED*** pour le PTP L4). NULL tant que la VF n'est pas provisionnée.
+        # SR-IOV (chantier narrow, cf. docs/chantiers/SRIOV_IMPL.md) : pmd='sriov' = PF reste kernel (ptp4l) + VF
+        # DPDK-narrow porte le moteur. vf_bdf = BDF de la VF créée au host-prep (ex. 0000:11:11.0) ;
+        # vf_ip = IP média (sip) de la VF (le trafic 2110 sort/entre par la VF ; la PF garde son `ip`
+        # pour le PTP L4). NULL tant que la VF n'est pas provisionnée.
         if "vf_bdf" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN vf_bdf TEXT")
         if "vf_ip" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN vf_ip TEXT")
-        ***REMOVED*** Profil d'émetteur ST 2110-21 PAR INTERFACE media2110 (chantier narrow) : classe de sender
-        ***REMOVED*** NULL/'' = défaut (auto) | 'narrow' (N) | 'narrow_linear' (NL) | 'wide' (W). Pilote le
-        ***REMOVED*** pacing du moteur (MTL_PACING) : narrow/NL → RL matériel (repli tsc_narrow si >cap),
-        ***REMOVED*** wide → tsc. Device-level dans libmtl → règle « narrow-wins » sur un nœud multi-réseaux.
+        # Profil d'émetteur ST 2110-21 PAR INTERFACE media2110 (chantier narrow) : classe de sender
+        # NULL/'' = défaut (auto) | 'narrow' (N) | 'narrow_linear' (NL) | 'wide' (W). Pilote le
+        # pacing du moteur (MTL_PACING) : narrow/NL → RL matériel (repli tsc_narrow si >cap),
+        # wide → tsc. Device-level dans libmtl → règle « narrow-wins » sur un nœud multi-réseaux.
         if "output_profile" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN output_profile TEXT")
-        ***REMOVED*** Alias lisible de la NIC média (ex. « PGM-Rouge ») affiché sur la page 2110_io et le
-        ***REMOVED*** libellé du profil, au lieu de ens1f0np0/BDF. Purement cosmétique (aucune clé).
+        # Alias lisible de la NIC média (ex. « PGM-Rouge ») affiché sur la page 2110_io et le
+        # libellé du profil, au lieu de ens1f0np0/BDF. Purement cosmétique (aucune clé).
         if "alias" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN alias TEXT")
-        ***REMOVED*** Plage IP conteneurs PAR NŒUD (2026-07) : posée sur la carte de rôle containers/
-        ***REMOVED*** mgmt_containers. Si les deux bornes sont renseignées, l'allocation macvlan de CE nœud
-        ***REMOVED*** pioche dans ct_ip_start..ct_ip_end (son subnet) au lieu de la plage cluster ip_start/ip_end.
-        ***REMOVED*** NULL = comportement historique (plage cluster) — zéro régression pour l'existant.
+        # Plage IP conteneurs PAR NŒUD (2026-07) : posée sur la carte de rôle containers/
+        # mgmt_containers. Si les deux bornes sont renseignées, l'allocation macvlan de CE nœud
+        # pioche dans ct_ip_start..ct_ip_end (son subnet) au lieu de la plage cluster ip_start/ip_end.
+        # NULL = comportement historique (plage cluster) — zéro régression pour l'existant.
         if "ct_ip_start" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN ct_ip_start TEXT")
         if "ct_ip_end" not in _ni_cols:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN ct_ip_end TEXT")
-        ***REMOVED*** Backfill idempotent : semer node_interfaces depuis les scalaires historiques par nœud
-        ***REMOVED*** (n'écrase rien — ne crée une ligne que si l'ifname est absent pour ce nœud).
+        # Backfill idempotent : semer node_interfaces depuis les scalaires historiques par nœud
+        # (n'écrase rien — ne crée une ligne que si l'ifname est absent pour ce nœud).
         def _seed_iface(_node_id, ifname, role, **extra):
             if not (ifname or "").strip():
                 return
@@ -841,64 +841,64 @@ def init_db():
                        % (", ".join(cols), ", ".join("?" * len(cols))), vals)
         for _nrow in db.execute("SELECT * FROM nodes").fetchall():
             _n = dict(_nrow)
-            ***REMOVED*** ★ PAS de pair_role/pair_group ici. Le semis posait `red`/`0` sur la NIC média
-            ***REMOVED*** primaire, à chaque démarrage, pour tout nœud dont la ligne manquait : un leg ROUGE
-            ***REMOVED*** SOLITAIRE, qui n'apparie rien. Inerte (media_port_pairs exige red ET blue), mais c'était
-            ***REMOVED*** un troisième dialecte pour dire « pas de 2022-7 » — à côté de « tout vide » et de
-            ***REMOVED*** « groupe sans leg » — et le seul visible dans l'UI. Une NIC seule n'est le leg de rien.
+            # ★ PAS de pair_role/pair_group ici. Le semis posait `red`/`0` sur la NIC média
+            # primaire, à chaque démarrage, pour tout nœud dont la ligne manquait : un leg ROUGE
+            # SOLITAIRE, qui n'apparie rien. Inerte (media_port_pairs exige red ET blue), mais c'était
+            # un troisième dialecte pour dire « pas de 2022-7 » — à côté de « tout vide » et de
+            # « groupe sans leg » — et le seul visible dans l'UI. Une NIC seule n'est le leg de rien.
             _seed_iface(_n["id"], _n.get("mtl_iface"), "media2110",
                         ip_cidr=_n.get("media_ip"))
-        ***REMOVED*** B1b-cleanup : purge des réglages inertes de l'ère LXC (client API Proxmox + template 299).
-        ***REMOVED*** Plus aucun code vivant ne les lit. `proxmox_host` + net_*/ip_* sont CONSERVÉS.
+        # B1b-cleanup : purge des réglages inertes de l'ère LXC (client API Proxmox + template 299).
+        # Plus aucun code vivant ne les lit. `proxmox_host` + net_*/ip_* sont CONSERVÉS.
         db.executemany("DELETE FROM settings WHERE key=?", [
             (k,) for k in ("proxmox_node", "proxmox_user", "proxmox_token_id", "proxmox_token",
                            "storage", "template_vmid", "template_image", "template_disk_gb",
                            "template_memory", "template_cores",
-                           "proxmox_host")])   ***REMOVED*** B1b-2 : host-ops par-nœud, hôte dans la table nodes
-        ***REMOVED*** Allocations de cœurs par conteneur (pinning Docker) : 1 ligne par cœur attribué.
+                           "proxmox_host")])   # B1b-2 : host-ops par-nœud, hôte dans la table nodes
+        # Allocations de cœurs par conteneur (pinning Docker) : 1 ligne par cœur attribué.
         db.execute('''CREATE TABLE IF NOT EXISTS node_core_alloc (
             node_id INTEGER NOT NULL,
             core    INTEGER NOT NULL,
             vmid    INTEGER NOT NULL,
             PRIMARY KEY (node_id, core)
         )''')
-        ***REMOVED*** Allocations GPU par conteneur (sélecteur --gpus device=<idx>) : 1 ligne par vmid. Le GPU se
-        ***REMOVED*** PARTAGE (time-slicing) → plusieurs vmid peuvent viser le même index (round-robin). Cf. gpu_pool.
+        # Allocations GPU par conteneur (sélecteur --gpus device=<idx>) : 1 ligne par vmid. Le GPU se
+        # PARTAGE (time-slicing) → plusieurs vmid peuvent viser le même index (round-robin). Cf. gpu_pool.
         db.execute('''CREATE TABLE IF NOT EXISTS node_gpu_alloc (
             node_id   INTEGER NOT NULL,
             gpu_index INTEGER NOT NULL,
             vmid      INTEGER NOT NULL,
             PRIMARY KEY (node_id, vmid)
         )''')
-        ***REMOVED*** Réglages PAR NŒUD (override du global) — refonte IA Réglages (portée global + override
-        ***REMOVED*** par nœud). Résolution : node_settings > settings (global) > défaut. Cf. settings.setting_for.
+        # Réglages PAR NŒUD (override du global) — refonte IA Réglages (portée global + override
+        # par nœud). Résolution : node_settings > settings (global) > défaut. Cf. settings.setting_for.
         db.execute('''CREATE TABLE IF NOT EXISTS node_settings (
             node_id INTEGER NOT NULL,
             key     TEXT NOT NULL,
             value   TEXT,
             PRIMARY KEY (node_id, key)
         )''')
-        ***REMOVED*** « Réseaux 2110 » : table GLOBALE (cluster). Un réseau = une horloge logique PTP (= un
-        ***REMOVED*** ptp4l JBOD) avec un nom + un domaine. Remplace le regroupement par domaine BRUT → deux
-        ***REMOVED*** réseaux peuvent partager un même numéro de domaine et rester indépendants. Les NIC
-        ***REMOVED*** (de n'importe quel nœud) référencent media_network_id. Rouge/bleu = legs d'UN réseau.
+        # « Réseaux 2110 » : table GLOBALE (cluster). Un réseau = une horloge logique PTP (= un
+        # ptp4l JBOD) avec un nom + un domaine. Remplace le regroupement par domaine BRUT → deux
+        # réseaux peuvent partager un même numéro de domaine et rester indépendants. Les NIC
+        # (de n'importe quel nœud) référencent media_network_id. Rouge/bleu = legs d'UN réseau.
         db.execute('''CREATE TABLE IF NOT EXISTS media_networks (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT NOT NULL,
             domain     INTEGER NOT NULL,
             created_at TEXT
         )''')
-        ***REMOVED*** ptp_params : surcharges PTP de profil PAR RÉSEAU (JSON : priority1/2, log_*, announce_timeout,
-        ***REMOVED*** delay_thresh, utc_offset, client_only). NULL/clé absente → hérite du réglage nœud. hw_ts reste
-        ***REMOVED*** node-global (capacité carte).
+        # ptp_params : surcharges PTP de profil PAR RÉSEAU (JSON : priority1/2, log_*, announce_timeout,
+        # delay_thresh, utc_offset, client_only). NULL/clé absente → hérite du réglage nœud. hw_ts reste
+        # node-global (capacité carte).
         if "ptp_params" not in [r[1] for r in db.execute("PRAGMA table_info(media_networks)")]:
             db.execute("ALTER TABLE media_networks ADD COLUMN ptp_params TEXT")
         if "media_network_id" not in [r[1] for r in db.execute("PRAGMA table_info(node_interfaces)")]:
             db.execute("ALTER TABLE node_interfaces ADD COLUMN media_network_id INTEGER")
-        ***REMOVED*** Règles de plage multicast STRICTES par port (switch qui contraint les adresses
-        ***REMOVED*** autorisées par port) — scope='network' (média_network_id) ou 'interface' (node_id+ifname,
-        ***REMOVED*** surcharge du réseau). match_json = critères de FORMAT optionnels (scan/résolution/fps
-        ***REMOVED*** vidéo, nb de canaux audio) : absent → règle valable pour tout format de l'essence.
+        # Règles de plage multicast STRICTES par port (switch qui contraint les adresses
+        # autorisées par port) — scope='network' (média_network_id) ou 'interface' (node_id+ifname,
+        # surcharge du réseau). match_json = critères de FORMAT optionnels (scan/résolution/fps
+        # vidéo, nb de canaux audio) : absent → règle valable pour tout format de l'essence.
         db.execute('''CREATE TABLE IF NOT EXISTS mcast_ranges (
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
             scope            TEXT NOT NULL,
@@ -916,25 +916,25 @@ def init_db():
         )''')
         db.execute("CREATE INDEX IF NOT EXISTS idx_mcast_ranges_net ON mcast_ranges(media_network_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_mcast_ranges_iface ON mcast_ranges(node_id, ifname)")
-        ***REMOVED*** prefix_len : longueur du préfixe CIDR saisi par l'opérateur (ex. 24 pour un /24), gardée
-        ***REMOVED*** pour ré-afficher la plage en notation CIDR fidèle — base_ip/size restent la source de
-        ***REMOVED*** vérité pour le scan d'allocation (dérivés du CIDR à la saisie). port_default_* : port de
-        ***REMOVED*** base PAR ESSENCE (2110-20 vidéo/2110-30 audio/2110-40 ANC) — remplace l'ancien port_default
-        ***REMOVED*** unique (conservé pour compat, servait de repli générique).
-        ***REMOVED*** ip_offset_* / ip_step_audio : PLAN d'adressage déterministe dans la plage (cf.
-        ***REMOVED*** allocations._plan_offset). L'adresse d'un flux se DÉDUIT de son rang (base + décalage
-        ***REMOVED*** d'essence + n° de sortie) au lieu d'être « la première libre » — la granularité d'un
-        ***REMOVED*** abonnement IGMP est le GROUPE, pas le port : empiler plusieurs flux sur une même adresse
-        ***REMOVED*** avec des ports différents force un récepteur qui s'abonne à l'audio à encaisser AUSSI la
-        ***REMOVED*** vidéo du groupe. NULL = valeurs par défaut du plan (allocations.MCAST_PLAN_DEFAUT).
+        # prefix_len : longueur du préfixe CIDR saisi par l'opérateur (ex. 24 pour un /24), gardée
+        # pour ré-afficher la plage en notation CIDR fidèle — base_ip/size restent la source de
+        # vérité pour le scan d'allocation (dérivés du CIDR à la saisie). port_default_* : port de
+        # base PAR ESSENCE (2110-20 vidéo/2110-30 audio/2110-40 ANC) — remplace l'ancien port_default
+        # unique (conservé pour compat, servait de repli générique).
+        # ip_offset_* / ip_step_audio : PLAN d'adressage déterministe dans la plage (cf.
+        # allocations._plan_offset). L'adresse d'un flux se DÉDUIT de son rang (base + décalage
+        # d'essence + n° de sortie) au lieu d'être « la première libre » — la granularité d'un
+        # abonnement IGMP est le GROUPE, pas le port : empiler plusieurs flux sur une même adresse
+        # avec des ports différents force un récepteur qui s'abonne à l'audio à encaisser AUSSI la
+        # vidéo du groupe. NULL = valeurs par défaut du plan (allocations.MCAST_PLAN_DEFAUT).
         for _col, _typ in (("prefix_len", "INTEGER"), ("port_default_video", "INTEGER"),
                           ("port_default_audio", "INTEGER"), ("port_default_anc", "INTEGER"),
                           ("ip_offset_video", "INTEGER"), ("ip_offset_audio", "INTEGER"),
                           ("ip_offset_anc", "INTEGER"), ("ip_step_audio", "INTEGER")):
             if _col not in [r[1] for r in db.execute("PRAGMA table_info(mcast_ranges)")]:
                 db.execute(f"ALTER TABLE mcast_ranges ADD COLUMN {_col} {_typ}")
-        ***REMOVED*** Ledger de réservation atomique (voir db_reserve_mcast) : PRIMARY KEY (ip, port) = la garantie
-        ***REMOVED*** d'unicité vient de SQLite (INSERT qui échoue), pas d'une lecture Python suivie d'une décision.
+        # Ledger de réservation atomique (voir db_reserve_mcast) : PRIMARY KEY (ip, port) = la garantie
+        # d'unicité vient de SQLite (INSERT qui échoue), pas d'une lecture Python suivie d'une décision.
         db.execute('''CREATE TABLE IF NOT EXISTS mcast_allocations (
             ip          TEXT NOT NULL,
             port        INTEGER NOT NULL,
@@ -943,10 +943,10 @@ def init_db():
             PRIMARY KEY (ip, port)
         )''')
         db.execute("CREATE INDEX IF NOT EXISTS idx_mcast_allocations_owner ON mcast_allocations(owner_ref)")
-        ***REMOVED*** Ledgers de RÉSERVATION ATOMIQUE vmid / IP conteneur (même patron que mcast_allocations :
-        ***REMOVED*** la PRIMARY KEY tranche l'INSERT concurrent — le perdant reçoit IntegrityError). Ferme la
-        ***REMOVED*** fenêtre de course lire-max-puis-décider de next_free_vmid()/allocate_container_ip(), où deux
-        ***REMOVED*** créations simultanées obtenaient le même vmid / la même IP macvlan.
+        # Ledgers de RÉSERVATION ATOMIQUE vmid / IP conteneur (même patron que mcast_allocations :
+        # la PRIMARY KEY tranche l'INSERT concurrent — le perdant reçoit IntegrityError). Ferme la
+        # fenêtre de course lire-max-puis-décider de next_free_vmid()/allocate_container_ip(), où deux
+        # créations simultanées obtenaient le même vmid / la même IP macvlan.
         db.execute('''CREATE TABLE IF NOT EXISTS vmid_reservations (
             vmid        INTEGER PRIMARY KEY,
             reserved_at TEXT
@@ -957,8 +957,8 @@ def init_db():
             reserved_at TEXT
         )''')
         db.execute("CREATE INDEX IF NOT EXISTS idx_ip_reservations_vmid ON ip_reservations(vmid)")
-        ***REMOVED*** Migration idempotente : rattacher les NIC PTP encore sans réseau. Domaine effectif d'une
-        ***REMOVED*** NIC = ptp_domain de la NIC, sinon réglage nœud ptp_domain, sinon réglage global, sinon 127.
+        # Migration idempotente : rattacher les NIC PTP encore sans réseau. Domaine effectif d'une
+        # NIC = ptp_domain de la NIC, sinon réglage nœud ptp_domain, sinon réglage global, sinon 127.
         def _eff_dom(_nid, _pdom):
             if _pdom is not None:
                 return int(_pdom)
@@ -981,7 +981,7 @@ def init_db():
                                       (_nm, d, datetime.now().isoformat(timespec="seconds")))
                     _net_by_dom[d] = _cur.lastrowid
                 db.execute("UPDATE node_interfaces SET media_network_id=? WHERE id=?", (_net_by_dom[d], r["id"]))
-            ***REMOVED*** ptp_primary_domain (par-nœud) → ptp_primary_network
+            # ptp_primary_domain (par-nœud) → ptp_primary_network
             for _nr in db.execute("SELECT DISTINCT node_id FROM node_interfaces WHERE media_network_id IS NOT NULL").fetchall():
                 _nid = _nr["node_id"]
                 if db.execute("SELECT 1 FROM node_settings WHERE node_id=? AND key='ptp_primary_network'", (_nid,)).fetchone():
@@ -994,13 +994,13 @@ def init_db():
                 if _pdv is not None and _pdv in _net_by_dom:
                     db.execute("INSERT OR REPLACE INTO node_settings (node_id, key, value) VALUES (?,?,?)",
                                (_nid, 'ptp_primary_network', json.dumps(_net_by_dom[_pdv])))
-        ***REMOVED*** Liens RDMA (chantier RDMA) : réplication d'UN flux MXL d'un nœud (initiator) vers un autre
-        ***REMOVED*** (target) via mxl-fabrics (libfabric, provider verbs=RoCEv2). Chaque ligne = un lien actif,
-        ***REMOVED*** piloté par app/rdma.py. src_flow = nom du flux MXL produit sur src_node. Les deux conteneurs
-        ***REMOVED*** mxl-fabrics-demo (target sur dst_node, initiator sur src_node) sont nommés de façon
-        ***REMOVED*** déterministe à partir de l'id (rdma-tgt-<id> / rdma-ini-<id>) — pas de vmid alloué.
-        ***REMOVED*** target_info = descripteur de connexion base64 émis par le target (échangé hors-bande par
-        ***REMOVED*** l'orchestrateur). status : pending | running | error | stopped.
+        # Liens RDMA (chantier RDMA) : réplication d'UN flux MXL d'un nœud (initiator) vers un autre
+        # (target) via mxl-fabrics (libfabric, provider verbs=RoCEv2). Chaque ligne = un lien actif,
+        # piloté par app/rdma.py. src_flow = nom du flux MXL produit sur src_node. Les deux conteneurs
+        # mxl-fabrics-demo (target sur dst_node, initiator sur src_node) sont nommés de façon
+        # déterministe à partir de l'id (rdma-tgt-<id> / rdma-ini-<id>) — pas de vmid alloué.
+        # target_info = descripteur de connexion base64 émis par le target (échangé hors-bande par
+        # l'orchestrateur). status : pending | running | error | stopped.
         db.execute('''CREATE TABLE IF NOT EXISTS rdma_links (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             src_node_id   INTEGER NOT NULL,
@@ -1015,38 +1015,38 @@ def init_db():
             notes         TEXT,
             created_at    TEXT
         )''')
-        ***REMOVED*** flow_format (JSON) : format du flux répliqué (w/h/chroma/bit_depth/scan/fps), lu du flowDef
-        ***REMOVED*** source à l'établissement. Permet d'exposer le flux comme source de câblage sur le nœud dst
-        ***REMOVED*** (api_home_summary) sans host_exec à chaque poll. Migration idempotente.
+        # flow_format (JSON) : format du flux répliqué (w/h/chroma/bit_depth/scan/fps), lu du flowDef
+        # source à l'établissement. Permet d'exposer le flux comme source de câblage sur le nœud dst
+        # (api_home_summary) sans host_exec à chaque poll. Migration idempotente.
         if "flow_format" not in [r[1] for r in db.execute("PRAGMA table_info(rdma_links)")]:
             db.execute("ALTER TABLE rdma_links ADD COLUMN flow_format TEXT")
-        ***REMOVED*** auto_cable=1 : lien créé AUTOMATIQUEMENT par un câblage inter-nœud (app/rdma.ensure_cable_link)
-        ***REMOVED*** → seul ce type est auto-supprimé au décâblage. Les liens manuels (onglet RDMA) restent.
+        # auto_cable=1 : lien créé AUTOMATIQUEMENT par un câblage inter-nœud (app/rdma.ensure_cable_link)
+        # → seul ce type est auto-supprimé au décâblage. Les liens manuels (onglet RDMA) restent.
         if "auto_cable" not in [r[1] for r in db.execute("PRAGMA table_info(rdma_links)")]:
             db.execute("ALTER TABLE rdma_links ADD COLUMN auto_cable INTEGER DEFAULT 0")
-        ***REMOVED*** src_addr / dst_addr : adresses d'endpoint fabric FIGÉES à la création du lien, quand un nœud
-        ***REMOVED*** porte PLUSIEURS interfaces de rôle 'rdma' (agrégation : 2×10G face à 1×25G, cf. dell-1). Un
-        ***REMOVED*** lien = UN chemin = une paire (adresse source, adresse destination) du MÊME sous-réseau — le
-        ***REMOVED*** RDMA ne répartit pas une QP entre deux ports, donc l'agrégat s'obtient en distribuant les
-        ***REMOVED*** LIENS, pas en agrégeant les ports (un bond LACP ne donnerait rien de plus, et le RoCE-over-LAG
-        ***REMOVED*** n'existe pas sur mlx4). NULL = comportement historique : première interface 'rdma' trouvée,
-        ***REMOVED*** ce qui laisse les liens d'avant la migration intacts et sans resave.
+        # src_addr / dst_addr : adresses d'endpoint fabric FIGÉES à la création du lien, quand un nœud
+        # porte PLUSIEURS interfaces de rôle 'rdma' (agrégation : 2×10G face à 1×25G, cf. dell-1). Un
+        # lien = UN chemin = une paire (adresse source, adresse destination) du MÊME sous-réseau — le
+        # RDMA ne répartit pas une QP entre deux ports, donc l'agrégat s'obtient en distribuant les
+        # LIENS, pas en agrégeant les ports (un bond LACP ne donnerait rien de plus, et le RoCE-over-LAG
+        # n'existe pas sur mlx4). NULL = comportement historique : première interface 'rdma' trouvée,
+        # ce qui laisse les liens d'avant la migration intacts et sans resave.
         for _c in ("src_addr", "dst_addr"):
             if _c not in [r[1] for r in db.execute("PRAGMA table_info(rdma_links)")]:
                 db.execute(f"ALTER TABLE rdma_links ADD COLUMN {_c} TEXT")
-        ***REMOVED*** sync_batch : lot de synchronisation (`maxSyncBatchSizeHint`) RÉELLEMENT posé sur la
-        ***REMOVED*** réplique, au moment où la cible l'a CRÉÉE. Ce n'est pas une copie du réglage : une option
-        ***REMOVED*** de flux se fixe à la création, et une cible qui trouve la réplique déjà là la RÉATTACHE
-        ***REMOVED*** en ignorant `--flow-options`. Sans cette colonne, le réglage est une intention qu'on
-        ***REMOVED*** espère et que rien ne confronte au terrain — c'est-à-dire une trame de latence qui peut
-        ***REMOVED*** revenir en silence. NULL = inconnu (lien antérieur au suivi), et ce n'est PAS 0 :
-        ***REMOVED*** « on n'a pas la valeur » ne se confond pas avec « le lot vaut le défaut du SDK ».
+        # sync_batch : lot de synchronisation (`maxSyncBatchSizeHint`) RÉELLEMENT posé sur la
+        # réplique, au moment où la cible l'a CRÉÉE. Ce n'est pas une copie du réglage : une option
+        # de flux se fixe à la création, et une cible qui trouve la réplique déjà là la RÉATTACHE
+        # en ignorant `--flow-options`. Sans cette colonne, le réglage est une intention qu'on
+        # espère et que rien ne confronte au terrain — c'est-à-dire une trame de latence qui peut
+        # revenir en silence. NULL = inconnu (lien antérieur au suivi), et ce n'est PAS 0 :
+        # « on n'a pas la valeur » ne se confond pas avec « le lot vaut le défaut du SDK ».
         if "sync_batch" not in [r[1] for r in db.execute("PRAGMA table_info(rdma_links)")]:
             db.execute("ALTER TABLE rdma_links ADD COLUMN sync_batch INTEGER")
-        ***REMOVED*** Tissu de composition : registre des nœuds de fabric MATÉRIALISÉS, keyé par SIGNATURE de
-        ***REMOVED*** contenu (cf. app/compositor_fabric). signature → conteneur (vmid) qui le rend + son shm de
-        ***REMOVED*** sortie. Permet la déduplication (un nœud partagé entre N multiviews = 1 ligne) et le cycle
-        ***REMOVED*** de vie (last_ref : retrait après grâce quand plus aucun output ne le référence).
+        # Tissu de composition : registre des nœuds de fabric MATÉRIALISÉS, keyé par SIGNATURE de
+        # contenu (cf. app/compositor_fabric). signature → conteneur (vmid) qui le rend + son shm de
+        # sortie. Permet la déduplication (un nœud partagé entre N multiviews = 1 ligne) et le cycle
+        # de vie (last_ref : retrait après grâce quand plus aucun output ne le référence).
         db.execute('''CREATE TABLE IF NOT EXISTS fabric_node_alloc (
             signature  TEXT PRIMARY KEY,
             node_id    INTEGER,
@@ -1063,9 +1063,9 @@ def init_db():
             tile_y     INTEGER,
             fmt        TEXT
         )''')
-        ***REMOVED*** Registre NMOS de NIVEAU CLUSTER (C2a) : ressources sender/receiver à UUID + transport
-        ***REMOVED*** STABLES, indépendantes des conteneurs. Un conteneur 2110 « sert » une ressource via son
-        ***REMOVED*** instance_uuid (C1, stable à travers recreate/projet) → l'identité NMOS ne suit plus le vmid.
+        # Registre NMOS de NIVEAU CLUSTER (C2a) : ressources sender/receiver à UUID + transport
+        # STABLES, indépendantes des conteneurs. Un conteneur 2110 « sert » une ressource via son
+        # instance_uuid (C1, stable à travers recreate/projet) → l'identité NMOS ne suit plus le vmid.
         db.execute('''CREATE TABLE IF NOT EXISTS nmos_resources (
             id                 TEXT PRIMARY KEY,   -- UUID NMOS STABLE (sender/receiver id)
             kind               TEXT,               -- 'sender' | 'receiver'
@@ -1078,14 +1078,14 @@ def init_db():
             bind_slot          INTEGER,            -- index du slot dans le conteneur (rx idx / tx slot)
             created_at         TEXT
         )''')
-        ***REMOVED*** C2b : label op-owné — une fois relabellée à la main (label_locked=1), la ressource garde
-        ***REMOVED*** son libellé à travers les rebuilds (n'est plus écrasée par le hostname du conteneur servant).
+        # C2b : label op-owné — une fois relabellée à la main (label_locked=1), la ressource garde
+        # son libellé à travers les rebuilds (n'est plus écrasée par le hostname du conteneur servant).
         _ncols = [r[1] for r in db.execute("PRAGMA table_info(nmos_resources)")]
         if "label_locked" not in _ncols:
             db.execute("ALTER TABLE nmos_resources ADD COLUMN label_locked INTEGER DEFAULT 0")
-        ***REMOVED*** Snapshots nommés de la config NMOS (pool + bindings + réglages) rappelables d'un clic.
-        ***REMOVED*** payload = JSON de nmos_config_snapshot() ; les UUID y sont préservés (rappel sans casser le
-        ***REMOVED*** routage du contrôleur).
+        # Snapshots nommés de la config NMOS (pool + bindings + réglages) rappelables d'un clic.
+        # payload = JSON de nmos_config_snapshot() ; les UUID y sont préservés (rappel sans casser le
+        # routage du contrôleur).
         db.execute('''CREATE TABLE IF NOT EXISTS nmos_snapshots (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT NOT NULL,
@@ -1095,61 +1095,61 @@ def init_db():
         _fcols = [r[1] for r in db.execute("PRAGMA table_info(fabric_node_alloc)")]
         if "ref" not in _fcols:
             db.execute("ALTER TABLE fabric_node_alloc ADD COLUMN ref TEXT")
-        ***REMOVED*** parents : JSON list des vmids de multiviews logiques qui consomment ce nœud (pour replier
-        ***REMOVED*** les internes du tissu sous leur multiview dans l'UI). Un nœud partagé a plusieurs parents.
+        # parents : JSON list des vmids de multiviews logiques qui consomment ce nœud (pour replier
+        # les internes du tissu sous leur multiview dans l'UI). Un nœud partagé a plusieurs parents.
         if "parents" not in _fcols:
             db.execute("ALTER TABLE fabric_node_alloc ADD COLUMN parents TEXT")
-        ***REMOVED*** EMPLACEMENT du nœud dans son mur (tile_x/tile_y) + empreinte de FORMAT de sortie (fmt).
-        ***REMOVED*** Un nœud est adressé par sa signature de CONTENU : le moindre changement de pixel en fait
-        ***REMOVED*** un autre nœud, donc un autre conteneur. Ces trois colonnes permettent de reconnaître
-        ***REMOVED*** qu'un nœud « neuf » occupe le MÊME emplacement, à la MÊME taille et au MÊME format qu'un
-        ***REMOVED*** nœud qui disparaît — auquel cas on mute le conteneur existant à chaud au lieu de le
-        ***REMOVED*** détruire et d'en créer un autre (cf. compositor_fabric.reconcile_fabric, rebind).
+        # EMPLACEMENT du nœud dans son mur (tile_x/tile_y) + empreinte de FORMAT de sortie (fmt).
+        # Un nœud est adressé par sa signature de CONTENU : le moindre changement de pixel en fait
+        # un autre nœud, donc un autre conteneur. Ces trois colonnes permettent de reconnaître
+        # qu'un nœud « neuf » occupe le MÊME emplacement, à la MÊME taille et au MÊME format qu'un
+        # nœud qui disparaît — auquel cas on mute le conteneur existant à chaud au lieu de le
+        # détruire et d'en créer un autre (cf. compositor_fabric.reconcile_fabric, rebind).
         for _c, _t in (("tile_x", "INTEGER"), ("tile_y", "INTEGER"), ("fmt", "TEXT")):
             if _c not in _fcols:
                 db.execute(f"ALTER TABLE fabric_node_alloc ADD COLUMN {_c} {_t}")
-        ***REMOVED*** Journal (alertes) : historiquement absente d'init_db (existait dans la DB en
-        ***REMOVED*** place) → une DB recréée cassait silencieusement db_add_alert. Créée ici.
+        # Journal (alertes) : historiquement absente d'init_db (existait dans la DB en
+        # place) → une DB recréée cassait silencieusement db_add_alert. Créée ici.
         db.execute('''CREATE TABLE IF NOT EXISTS alerts (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             message   TEXT NOT NULL,
             niveau    TEXT DEFAULT 'info',
             timestamp TEXT
         )''')
-        ***REMOVED*** CONTEXTE MACHINE de l'alerte (2026-07) : `vmid`, `node_id`, `kind`. Avant, une alerte
-        ***REMOVED*** n'était QUE du texte — l'UI (« ⤷ journal ») et le service d'alertes DEVINAIENT le vmid en
-        ***REMOVED*** relisant le message (regex + hostnames connus). Ça tombait en panne exactement là où le
-        ***REMOVED*** journal durable est utile : un conteneur DÉTRUIT n'a plus de hostname en base. Ces trois
-        ***REMOVED*** colonnes sont OPTIONNELLES (NULL) : un producteur non migré continue d'écrire comme avant,
-        ***REMOVED*** et les consommateurs retombent sur la déduction textuelle. Pas de reprise rétroactive
-        ***REMOVED*** (décision 2026-07) : la rétention à 1000 lignes renouvelle le parc en ~2 jours.
-        ***REMOVED*** `kind` = VOCABULAIRE FERMÉ, cf. ALERT_KINDS plus bas (une chaîne libre par appel ne
-        ***REMOVED*** serait pas filtrable — c'est tout l'intérêt de la colonne).
-        ***REMOVED*** ACTEUR (2026-07-27) : `alerts` est aussi le journal d'exploitation — « qui a fait quoi ».
-        ***REMOVED*** NULL = action de la MACHINE (boucle de surveillance, réconciliation, watchdog), et c'est
-        ***REMOVED*** une information en soi : il ne faut donc jamais y mettre un acteur « par défaut ».
-        ***REMOVED*** MESSAGE TRADUISIBLE (2026-08-21, signalé par Marine) : `message` était une phrase
-        ***REMOVED*** FRANÇAISE déjà rendue — donc de la donnée, plus un libellé, et rien à traduire à
-        ***REMOVED*** l'affichage. `msg_key` + `msg_params` (JSON) portent désormais la clé i18n et ses
-        ***REMOVED*** paramètres ; le rendu est DIFFÉRÉ à la lecture (`i18n.rendre_alerte`), dans la langue
-        ***REMOVED*** du lecteur — une alerte est écrite une fois et relue par N utilisateurs de langues
-        ***REMOVED*** différentes. `message` reste rempli, en français, comme FORME CANONIQUE : c'est lui que
-        ***REMOVED*** dédoublonne l'anti-rebond, que regroupe la home et que cherche `?q=`, et ces trois
-        ***REMOVED*** usages ont besoin d'une représentation unique INDÉPENDANTE du lecteur.
-        ***REMOVED*** Colonnes optionnelles, pas de reprise rétroactive (même décision que `kind`).
+        # CONTEXTE MACHINE de l'alerte (2026-07) : `vmid`, `node_id`, `kind`. Avant, une alerte
+        # n'était QUE du texte — l'UI (« ⤷ journal ») et le service d'alertes DEVINAIENT le vmid en
+        # relisant le message (regex + hostnames connus). Ça tombait en panne exactement là où le
+        # journal durable est utile : un conteneur DÉTRUIT n'a plus de hostname en base. Ces trois
+        # colonnes sont OPTIONNELLES (NULL) : un producteur non migré continue d'écrire comme avant,
+        # et les consommateurs retombent sur la déduction textuelle. Pas de reprise rétroactive
+        # (décision 2026-07) : la rétention à 1000 lignes renouvelle le parc en ~2 jours.
+        # `kind` = VOCABULAIRE FERMÉ, cf. ALERT_KINDS plus bas (une chaîne libre par appel ne
+        # serait pas filtrable — c'est tout l'intérêt de la colonne).
+        # ACTEUR (2026-07-27) : `alerts` est aussi le journal d'exploitation — « qui a fait quoi ».
+        # NULL = action de la MACHINE (boucle de surveillance, réconciliation, watchdog), et c'est
+        # une information en soi : il ne faut donc jamais y mettre un acteur « par défaut ».
+        # MESSAGE TRADUISIBLE (2026-08-21, signalé par Marine) : `message` était une phrase
+        # FRANÇAISE déjà rendue — donc de la donnée, plus un libellé, et rien à traduire à
+        # l'affichage. `msg_key` + `msg_params` (JSON) portent désormais la clé i18n et ses
+        # paramètres ; le rendu est DIFFÉRÉ à la lecture (`i18n.rendre_alerte`), dans la langue
+        # du lecteur — une alerte est écrite une fois et relue par N utilisateurs de langues
+        # différentes. `message` reste rempli, en français, comme FORME CANONIQUE : c'est lui que
+        # dédoublonne l'anti-rebond, que regroupe la home et que cherche `?q=`, et ces trois
+        # usages ont besoin d'une représentation unique INDÉPENDANTE du lecteur.
+        # Colonnes optionnelles, pas de reprise rétroactive (même décision que `kind`).
         _alcols = [r[1] for r in db.execute("PRAGMA table_info(alerts)")]
         for _c, _t in (("vmid", "INTEGER"), ("node_id", "INTEGER"), ("kind", "TEXT"),
                        ("user", "TEXT"), ("msg_key", "TEXT"), ("msg_params", "TEXT")):
             if _c not in _alcols:
                 db.execute(f"ALTER TABLE alerts ADD COLUMN {_c} {_t}")
-        ***REMOVED*** ÉPISODES D'ALERTE (2026-08-15) — mémoire de l'anti-rebond, cf. `_antirebond` plus bas.
-        ***REMOVED*** Une alerte qui se répète n'apporte plus d'information à partir de la deuxième ligne ; elle
-        ***REMOVED*** en RETIRE, en chassant du journal ce qui, lui, n'est arrivé qu'une fois. Mesuré le
-        ***REMOVED*** 2026-08-15 : 10 068 lignes en base, dont ~80 % faites de quatre messages répétés.
-        ***REMOVED*** La table porte l'état d'un épisode EN COURS (une signature = un symptôme dans un
-        ***REMOVED*** contexte) ; le journal `alerts`, lui, ne reçoit plus que la TRANSITION et un résumé
-        ***REMOVED*** périodique. Persistée à dessein : un redémarrage de l'orchestrateur ne doit pas
-        ***REMOVED*** relibérer le flot d'un incident déjà annoncé.
+        # ÉPISODES D'ALERTE (2026-08-15) — mémoire de l'anti-rebond, cf. `_antirebond` plus bas.
+        # Une alerte qui se répète n'apporte plus d'information à partir de la deuxième ligne ; elle
+        # en RETIRE, en chassant du journal ce qui, lui, n'est arrivé qu'une fois. Mesuré le
+        # 2026-08-15 : 10 068 lignes en base, dont ~80 % faites de quatre messages répétés.
+        # La table porte l'état d'un épisode EN COURS (une signature = un symptôme dans un
+        # contexte) ; le journal `alerts`, lui, ne reçoit plus que la TRANSITION et un résumé
+        # périodique. Persistée à dessein : un redémarrage de l'orchestrateur ne doit pas
+        # relibérer le flot d'un incident déjà annoncé.
         db.execute('''CREATE TABLE IF NOT EXISTS alert_episodes (
             signature    TEXT PRIMARY KEY,
             squelette    TEXT,
@@ -1165,12 +1165,12 @@ def init_db():
             last_message TEXT
         )''')
         db.execute("CREATE INDEX IF NOT EXISTS idx_alert_episodes_last ON alert_episodes(last_ts)")
-        ***REMOVED*** Journal d'événements de la sonde 2110 (probe_2110, monitoring longue durée) : timeline
-        ***REMOVED*** d'incidents par signal surveillé — silence, black, freeze, hors-norme vidéo/audio, pertes,
-        ***REMOVED*** sortie du gabarit narrow→wide→failed, perte PTP. Alimenté par le moteur d'événements
-        ***REMOVED*** (seuils sur les métriques :8080 de la sonde). Distinct des alertes (durable, filtrable
-        ***REMOVED*** par vmid/flow/kind). vmid = sonde ; flow = nom/flowId du signal ; kind = type d'événement ;
-        ***REMOVED*** severity info|warning|error ; value = mesure au déclenchement ; ts_start/ts_end = fenêtre.
+        # Journal d'événements de la sonde 2110 (probe_2110, monitoring longue durée) : timeline
+        # d'incidents par signal surveillé — silence, black, freeze, hors-norme vidéo/audio, pertes,
+        # sortie du gabarit narrow→wide→failed, perte PTP. Alimenté par le moteur d'événements
+        # (seuils sur les métriques :8080 de la sonde). Distinct des alertes (durable, filtrable
+        # par vmid/flow/kind). vmid = sonde ; flow = nom/flowId du signal ; kind = type d'événement ;
+        # severity info|warning|error ; value = mesure au déclenchement ; ts_start/ts_end = fenêtre.
         db.execute('''CREATE TABLE IF NOT EXISTS probe_events (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             vmid      INTEGER,
@@ -1182,16 +1182,16 @@ def init_db():
             ts_start  TEXT,
             ts_end    TEXT
         )''')
-        ***REMOVED*** Profils CPU MESURÉS par étalonnage (app/etalonnage.py) : ce qu'un conteneur a réellement
-        ***REMOVED*** coûté pendant que l'utilisateur exerçait son dispositif. Distinct de `resources.cores` du
-        ***REMOVED*** manifeste, qui est une intention a priori — ici c'est un constat, et lui seul autorise le
-        ***REMOVED*** mot « garanti ».
-        ***REMOVED***
-        ***REMOVED*** ⚠ La clé est le COUPLE (signature, node_id), jamais le type seul. `signature` = type +
-        ***REMOVED*** version de plugin + condensat des paramètres : changer les réglages PÉRIME la mesure au
-        ***REMOVED*** lieu de la réutiliser en silence. Et une mesure ne voyage pas d'une machine à l'autre —
-        ***REMOVED*** le même `avsync` coûte 40,8 % sur dl360-1 et 79,2 % sur r620-1 (facteur 1,94, mesuré).
-        ***REMOVED*** `mesure` = JSON {n, min, median, p95, p99, max, moyenne} en % d'UN CPU.
+        # Profils CPU MESURÉS par étalonnage (app/etalonnage.py) : ce qu'un conteneur a réellement
+        # coûté pendant que l'utilisateur exerçait son dispositif. Distinct de `resources.cores` du
+        # manifeste, qui est une intention a priori — ici c'est un constat, et lui seul autorise le
+        # mot « garanti ».
+        #
+        # ⚠ La clé est le COUPLE (signature, node_id), jamais le type seul. `signature` = type +
+        # version de plugin + condensat des paramètres : changer les réglages PÉRIME la mesure au
+        # lieu de la réutiliser en silence. Et une mesure ne voyage pas d'une machine à l'autre —
+        # le même `avsync` coûte 40,8 % sur dl360-1 et 79,2 % sur r620-1 (facteur 1,94, mesuré).
+        # `mesure` = JSON {n, min, median, p95, p99, max, moyenne} en % d'UN CPU.
         db.execute('''CREATE TABLE IF NOT EXISTS profils_cpu (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             signature TEXT,
@@ -1205,9 +1205,9 @@ def init_db():
             ts        TEXT
         )''')
         db.execute("CREATE INDEX IF NOT EXISTS idx_profils_cpu_cle ON profils_cpu(signature, node_id)")
-        ***REMOVED*** Journal d'événements PTP persisté : trace durable des bascules (port SLAVE↔FAULTY,
-        ***REMOVED*** grandmaster, lock, service) détectées par le sampler (app/ptp.py). Distinct des alertes
-        ***REMOVED*** (filtrable par nœud/réseau) et des métriques (ptp_stats.json). Cf. db_add_ptp_event.
+        # Journal d'événements PTP persisté : trace durable des bascules (port SLAVE↔FAULTY,
+        # grandmaster, lock, service) détectées par le sampler (app/ptp.py). Distinct des alertes
+        # (filtrable par nœud/réseau) et des métriques (ptp_stats.json). Cf. db_add_ptp_event.
         db.execute('''CREATE TABLE IF NOT EXISTS ptp_events (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             ts           TEXT,
@@ -1220,16 +1220,16 @@ def init_db():
             detail       TEXT,
             level        TEXT DEFAULT 'info'
         )''')
-        ***REMOVED*** NB : les migrations de RENOMMAGE DE TYPE (worker_udp→streamer, worker_2110_sender→
-        ***REMOVED*** sender_2110, receiver→receiver_2110, ServeurStream→webrtc_gateway, multiview_free→
-        ***REMOVED*** multiview, dve→split, receiver_2110_mtl→2110_io, + plugin_store dve→split et
-        ***REMOVED*** cc_presets/dve_memories→plugin_store) ont été RETIRÉES en 2026-07 : plus aucune
-        ***REMOVED*** ligne correspondante en DB, et plusieurs types cibles n'existent plus eux-mêmes.
-        ***REMOVED*** Motif de référence si un futur renommage l'exige : voir l'historique git.
-        ***REMOVED*** Migration de données : modèle de FLUX composables 2110 (« Option A »). Les containers
-        ***REMOVED*** `2110_io` sans rx_flows/tx_flows reçoivent les listes DÉRIVÉES de leurs compteurs +
-        ***REMOVED*** ratio audio/vidéo actuels (groupement audio/ANC→vidéo préservé). Idempotente : on ne
-        ***REMOVED*** touche que les params sans la clé → un container déjà migré (ou édité) est laissé tel quel.
+        # NB : les migrations de RENOMMAGE DE TYPE (worker_udp→streamer, worker_2110_sender→
+        # sender_2110, receiver→receiver_2110, ServeurStream→webrtc_gateway, multiview_free→
+        # multiview, dve→split, receiver_2110_mtl→2110_io, + plugin_store dve→split et
+        # cc_presets/dve_memories→plugin_store) ont été RETIRÉES en 2026-07 : plus aucune
+        # ligne correspondante en DB, et plusieurs types cibles n'existent plus eux-mêmes.
+        # Motif de référence si un futur renommage l'exige : voir l'historique git.
+        # Migration de données : modèle de FLUX composables 2110 (« Option A »). Les containers
+        # `2110_io` sans rx_flows/tx_flows reçoivent les listes DÉRIVÉES de leurs compteurs +
+        # ratio audio/vidéo actuels (groupement audio/ANC→vidéo préservé). Idempotente : on ne
+        # touche que les params sans la clé → un container déjà migré (ou édité) est laissé tel quel.
         from . import io2110_flows as _io2110_flows
         for vmid, dcraw in db.execute(
                 "SELECT vmid, deploy_config FROM containers "
@@ -1251,27 +1251,27 @@ def init_db():
                 db.execute("UPDATE containers SET deploy_config=? WHERE vmid=?",
                            (json.dumps(dc), vmid))
         db.commit()
-        ***REMOVED*** Migration de données : FIGER le socle d'octaves des pyramides d'AVANT la clé
-        ***REMOVED*** `base_octaves`. Idempotente (on ne touche que les params SANS la clé).
-        ***REMOVED***
-        ***REMOVED*** POURQUOI. Le défaut DÉCLARÉ (`plugin.json`) vaut « none » — choix délibéré et argumenté :
-        ***REMOVED*** en câblage à la demande, les octaves restent le plus souvent orphelins et gaspillent de
-        ***REMOVED*** la bande passante mémoire. Mais le SCRIPT retombe sur « full » quand la clé est absente,
-        ***REMOVED*** pour ne pas casser les pyramides antérieures. Les deux se défendent ; c'est leur
-        ***REMOVED*** COEXISTENCE qui est un piège : le comportement dépend alors de si la clé a été
-        ***REMOVED*** MATÉRIALISÉE ou non. Toute action qui matérialise les défauts — palette, réinitialisation,
-        ***REMOVED*** fusion `effective_deploy_defaults` — fait basculer silencieusement une pyramide de
-        ***REMOVED*** « full » à « none », ses octaves disparaissent, et TOUT consommateur qui lit `__p2`
-        ***REMOVED*** tourne à vide.
-        ***REMOVED***
-        ***REMOVED*** Vécu le 2026-08-11 : le mur de production a composé pendant ~6 minutes à 50 fps SANS
-        ***REMOVED*** CONTENU NEUF (`fps_content` 0,0 pour seul témoin, `fps` nominal — cf. la note de mémoire
-        ***REMOVED*** sur les alarmes qui doivent se comparer à l'INTENTION). Aucune erreur, aucun log côté
-        ***REMOVED*** pyramide : elle faisait exactement ce qu'on venait de lui demander.
-        ***REMOVED***
-        ***REMOVED*** On fige donc l'implicite : la pyramide garde son comportement, et il ne dépend plus de
-        ***REMOVED*** la façon dont on la redéploie. Les pyramides CRÉÉES ENSUITE reçoivent « none » par le
-        ***REMOVED*** défaut déclaré, comme voulu.
+        # Migration de données : FIGER le socle d'octaves des pyramides d'AVANT la clé
+        # `base_octaves`. Idempotente (on ne touche que les params SANS la clé).
+        #
+        # POURQUOI. Le défaut DÉCLARÉ (`plugin.json`) vaut « none » — choix délibéré et argumenté :
+        # en câblage à la demande, les octaves restent le plus souvent orphelins et gaspillent de
+        # la bande passante mémoire. Mais le SCRIPT retombe sur « full » quand la clé est absente,
+        # pour ne pas casser les pyramides antérieures. Les deux se défendent ; c'est leur
+        # COEXISTENCE qui est un piège : le comportement dépend alors de si la clé a été
+        # MATÉRIALISÉE ou non. Toute action qui matérialise les défauts — palette, réinitialisation,
+        # fusion `effective_deploy_defaults` — fait basculer silencieusement une pyramide de
+        # « full » à « none », ses octaves disparaissent, et TOUT consommateur qui lit `__p2`
+        # tourne à vide.
+        #
+        # Vécu le 2026-08-11 : le mur de production a composé pendant ~6 minutes à 50 fps SANS
+        # CONTENU NEUF (`fps_content` 0,0 pour seul témoin, `fps` nominal — cf. la note de mémoire
+        # sur les alarmes qui doivent se comparer à l'INTENTION). Aucune erreur, aucun log côté
+        # pyramide : elle faisait exactement ce qu'on venait de lui demander.
+        #
+        # On fige donc l'implicite : la pyramide garde son comportement, et il ne dépend plus de
+        # la façon dont on la redéploie. Les pyramides CRÉÉES ENSUITE reçoivent « none » par le
+        # défaut déclaré, comme voulu.
         _fige = 0
         for vmid, dcraw in db.execute(
                 "SELECT vmid, deploy_config FROM containers "
@@ -1284,8 +1284,8 @@ def init_db():
                 continue
             p = dc.get("params") or {}
             if "base_octaves" in p or p.get("levels"):
-                continue                       ***REMOVED*** déjà explicite (ou piloté par `levels`) → intact
-            p["base_octaves"] = "full"         ***REMOVED*** LE repli du script, désormais écrit noir sur blanc
+                continue                       # déjà explicite (ou piloté par `levels`) → intact
+            p["base_octaves"] = "full"         # LE repli du script, désormais écrit noir sur blanc
             dc["params"] = p
             db.execute("UPDATE containers SET deploy_config=? WHERE vmid=?",
                        (json.dumps(dc), vmid))
@@ -1294,8 +1294,8 @@ def init_db():
             log.info("migration pyramide : socle d'octaves figé à « full » sur %d container(s) "
                      "d'avant la clé base_octaves (le repli du script devient explicite)", _fige)
         db.commit()
-        ***REMOVED*** Migration de données : purge la passerelle WebRTC (infra persistante) des
-        ***REMOVED*** snapshots de projets sauvegardés AVANT son exclusion à la création. Idempotente.
+        # Migration de données : purge la passerelle WebRTC (infra persistante) des
+        # snapshots de projets sauvegardés AVANT son exclusion à la création. Idempotente.
         _EXCLUDED = {"webrtc_gateway", "storage"}
         for pid, snapraw in db.execute("SELECT id, snapshot FROM projects").fetchall():
             try:
@@ -1310,12 +1310,12 @@ def init_db():
                 db.execute("UPDATE projects SET snapshot=? WHERE id=?",
                            (json.dumps(cleaned), pid))
         db.commit()
-        ***REMOVED*** Migration de données : PURGE du base64 des polices (`params.font_library`) des
-        ***REMOVED*** `deploy_config` et des snapshots de projets. Le base64 (jusqu'à 8 Mo/conteneur) n'a
-        ***REMOVED*** jamais eu à être PERSISTÉ : seules les références `lib:<sha16>` comptent en base, la
-        ***REMOVED*** bibliothèque (static/uploads/fonts + table `fonts`) est la source de vérité, et le
-        ***REMOVED*** base64 est ré-injecté à la volée à l'envoi vers le conteneur (deploy._gras).
-        ***REMOVED*** Idempotente : ne touche que les configs qui portent encore la clé.
+        # Migration de données : PURGE du base64 des polices (`params.font_library`) des
+        # `deploy_config` et des snapshots de projets. Le base64 (jusqu'à 8 Mo/conteneur) n'a
+        # jamais eu à être PERSISTÉ : seules les références `lib:<sha16>` comptent en base, la
+        # bibliothèque (static/uploads/fonts + table `fonts`) est la source de vérité, et le
+        # base64 est ré-injecté à la volée à l'envoi vers le conteneur (deploy._gras).
+        # Idempotente : ne touche que les configs qui portent encore la clé.
         _fl_freed = 0
         for vmid, dcraw in db.execute(
                 "SELECT vmid, deploy_config FROM containers "
@@ -1354,16 +1354,16 @@ def init_db():
             log.info("migration polices : %d o de base64 purgés des deploy_config/snapshots",
                      _fl_freed)
         db.commit()
-        ***REMOVED*** Migration de données : NUMÉROTATION 1-BASED (« le 0 n'existe pas », 2026-08-13).
-        ***REMOVED*** Décale d'un cran, EN UNE PASSE, tout ce qui porte un numéro de slot ou de flux : clés
-        ***REMOVED*** `tx{n}_shm`/`input_{n}`/`audio_shm_{n}`, noms de flux MXL référencés partout,
-        ***REMOVED*** `rdma_links.src_flow`, `nmos_resources.bind_slot`, `nmos_subscriptions.recv_idx`.
-        ***REMOVED*** Règle et helpers : app/numerotation.py. Idempotente par MARQUEUR en settings — et
-        ***REMOVED*** SEULEMENT par lui : un décalage n'est pas détectable à l'œil sur les données (un `_1`
-        ***REMOVED*** peut être un `_0` déjà migré ou un `_1` d'origine), donc un second passage sans le
-        ***REMOVED*** marqueur re-décalerait tout.
-        ***REMOVED*** ⚠ Indissociable du code : `bind_slot` migré ici est ce qui PRÉSERVE les UUID NMOS
-        ***REMOVED*** (cf. `_registry_id`). Migrer l'un sans l'autre sème des ressources en double.
+        # Migration de données : NUMÉROTATION 1-BASED (« le 0 n'existe pas », 2026-08-13).
+        # Décale d'un cran, EN UNE PASSE, tout ce qui porte un numéro de slot ou de flux : clés
+        # `tx{n}_shm`/`input_{n}`/`audio_shm_{n}`, noms de flux MXL référencés partout,
+        # `rdma_links.src_flow`, `nmos_resources.bind_slot`, `nmos_subscriptions.recv_idx`.
+        # Règle et helpers : app/numerotation.py. Idempotente par MARQUEUR en settings — et
+        # SEULEMENT par lui : un décalage n'est pas détectable à l'œil sur les données (un `_1`
+        # peut être un `_0` déjà migré ou un `_1` d'origine), donc un second passage sans le
+        # marqueur re-décalerait tout.
+        # ⚠ Indissociable du code : `bind_slot` migré ici est ce qui PRÉSERVE les UUID NMOS
+        # (cf. `_registry_id`). Migrer l'un sans l'autre sème des ressources en double.
         try:
             from .migration_numerotation import migrer as _migrer_num
             _rap = _migrer_num(db, simulation=False)
@@ -1373,12 +1373,12 @@ def init_db():
                          _rap["cles"], _rap["noms"], _rap["rdma"],
                          _rap["nmos_resources"], _rap["abonnements"])
         except Exception:
-            ***REMOVED*** Une migration qui échoue à moitié est pire qu'une qui ne part pas : on trace et on
-            ***REMOVED*** laisse la base en l'état (le marqueur n'est posé qu'en fin de `migrer`).
+            # Une migration qui échoue à moitié est pire qu'une qui ne part pas : on trace et on
+            # laisse la base en l'état (le marqueur n'est posé qu'en fin de `migrer`).
             log.exception("migration numérotation 1-based : ÉCHEC, base laissée inchangée")
-        ***REMOVED*** Migration de données : `video_formats` étendu de 5 champs (Nom;L;H;FPS;Scan) à 8
-        ***REMOVED*** (+Chroma;BitDepth;Colorimétrie) pour la réception ST 2110-20 broadcast. Idempotente :
-        ***REMOVED*** n'ajoute les 3 champs qu'aux lignes qui en ont moins (défauts 422/10 ; UHD≥2160 → 2020).
+        # Migration de données : `video_formats` étendu de 5 champs (Nom;L;H;FPS;Scan) à 8
+        # (+Chroma;BitDepth;Colorimétrie) pour la réception ST 2110-20 broadcast. Idempotente :
+        # n'ajoute les 3 champs qu'aux lignes qui en ont moins (défauts 422/10 ; UHD≥2160 → 2020).
         row = db.execute("SELECT value FROM settings WHERE key='video_formats'").fetchone()
         try:
             stored = json.loads(row["value"]) if row and row["value"] else None
@@ -1407,7 +1407,7 @@ def init_db():
                 db.execute("UPDATE settings SET value=? WHERE key='video_formats'",
                            (json.dumps("\n".join(out_lines)),))
         db.commit()
-        ***REMOVED*** Ajout idempotent du format SD-SDI PAL (720×576i25, 4:2:2/10/BT.601) à la liste stockée.
+        # Ajout idempotent du format SD-SDI PAL (720×576i25, 4:2:2/10/BT.601) à la liste stockée.
         row = db.execute("SELECT value FROM settings WHERE key='video_formats'").fetchone()
         try:
             stored = json.loads(row["value"]) if row and row["value"] else None
@@ -1421,19 +1421,19 @@ def init_db():
                 db.execute("UPDATE settings SET value=? WHERE key='video_formats'",
                            (json.dumps(stored),))
         db.commit()
-        ***REMOVED*** ─── Correction des cadences ENTRELACÉES mal déclarées (2026-08-15) ────────────────────
-        ***REMOVED*** La colonne FPS compte les CHAMPS pour l'entrelacé (« 1080i50 » → 50), convention établie
-        ***REMOVED*** par `io2110_layouts.py` et `static/tx_models.js`. Deux lignes LIVRÉES la violaient :
-        ***REMOVED*** « SD-SDI PAL » à 25 champs (= 12,5 trames/s, inexistant ; le PAL c'est 25 trames = 50
-        ***REMOVED*** champs) et « HD 1080i59.94 » à 29,97 champs (= 14,985 trames/s au lieu de 29,97).
-        ***REMOVED*** Ces valeurs alimentent le calcul de débit pixel et, depuis BCP-004-01, les capacités
-        ***REMOVED*** annoncées de nos receivers — un contrôleur tiers y lisait une cadence qui n'existe pas.
-        ***REMOVED***
-        ***REMOVED*** Correction CIBLÉE et idempotente : on ne touche qu'une ligne ENTRELACÉE dont le libellé
-        ***REMOVED*** annonce lui-même une cadence (« …i59.94 ») différente de la colonne — l'intention est
-        ***REMOVED*** alors écrite noir sur blanc, on ne devine rien. Plus le cas nommé « SD-SDI PAL », dont
-        ***REMOVED*** le libellé ne porte pas de cadence, à 25 champs exactement. Un site qui a délibérément
-        ***REMOVED*** saisi autre chose n'est PAS touché.
+        # ─── Correction des cadences ENTRELACÉES mal déclarées (2026-08-15) ────────────────────
+        # La colonne FPS compte les CHAMPS pour l'entrelacé (« 1080i50 » → 50), convention établie
+        # par `io2110_layouts.py` et `static/tx_models.js`. Deux lignes LIVRÉES la violaient :
+        # « SD-SDI PAL » à 25 champs (= 12,5 trames/s, inexistant ; le PAL c'est 25 trames = 50
+        # champs) et « HD 1080i59.94 » à 29,97 champs (= 14,985 trames/s au lieu de 29,97).
+        # Ces valeurs alimentent le calcul de débit pixel et, depuis BCP-004-01, les capacités
+        # annoncées de nos receivers — un contrôleur tiers y lisait une cadence qui n'existe pas.
+        #
+        # Correction CIBLÉE et idempotente : on ne touche qu'une ligne ENTRELACÉE dont le libellé
+        # annonce lui-même une cadence (« …i59.94 ») différente de la colonne — l'intention est
+        # alors écrite noir sur blanc, on ne devine rien. Plus le cas nommé « SD-SDI PAL », dont
+        # le libellé ne porte pas de cadence, à 25 champs exactement. Un site qui a délibérément
+        # saisi autre chose n'est PAS touché.
         row = db.execute("SELECT value FROM settings WHERE key='video_formats'").fetchone()
         try:
             stored = json.loads(row["value"]) if row and row["value"] else None
@@ -1466,10 +1466,10 @@ def init_db():
                 db.execute("UPDATE settings SET value=? WHERE key='video_formats'",
                            (json.dumps("\n".join(lignes)),))
         db.commit()
-        ***REMOVED*** ─── TSL : connexions et sources ──────────────────────────────────────────
-        ***REMOVED*** tsl_connections : un serveur TCP par connexion (multi-contrôleurs).
-        ***REMOVED*** label_col  : colonne label (2-9) mise à jour par le texte TSL natif de cette connexion.
-        ***REMOVED*** tally_base : premier niveau tally alloué (LH=base, RH=base+1, TT=base+2).
+        # ─── TSL : connexions et sources ──────────────────────────────────────────
+        # tsl_connections : un serveur TCP par connexion (multi-contrôleurs).
+        # label_col  : colonne label (2-9) mise à jour par le texte TSL natif de cette connexion.
+        # tally_base : premier niveau tally alloué (LH=base, RH=base+1, TT=base+2).
         db.execute('''CREATE TABLE IF NOT EXISTS tsl_connections (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT    NOT NULL DEFAULT '',
@@ -1480,14 +1480,14 @@ def init_db():
             rouge_field TEXT   NOT NULL DEFAULT 'tt',
             vert_field  TEXT   NOT NULL DEFAULT 'lh'
         )''')
-        ***REMOVED*** Migration : champs Rouge/Vert par connexion (= niveau de Tally). Défaut TT/LH.
+        # Migration : champs Rouge/Vert par connexion (= niveau de Tally). Défaut TT/LH.
         cols_tc = {r[1] for r in db.execute("PRAGMA table_info(tsl_connections)").fetchall()}
         if "rouge_field" not in cols_tc:
             db.execute("ALTER TABLE tsl_connections ADD COLUMN rouge_field TEXT NOT NULL DEFAULT 'tt'")
         if "vert_field" not in cols_tc:
             db.execute("ALTER TABLE tsl_connections ADD COLUMN vert_field TEXT NOT NULL DEFAULT 'lh'")
-        ***REMOVED*** Chantier 5 : connexions SORTANTES (client TCP → UMD externe) + rattachement au
-        ***REMOVED*** niveau de tally d'un projet (project_id posé → tally_base effectif = celui du projet).
+        # Chantier 5 : connexions SORTANTES (client TCP → UMD externe) + rattachement au
+        # niveau de tally d'un projet (project_id posé → tally_base effectif = celui du projet).
         if "direction" not in cols_tc:
             db.execute("ALTER TABLE tsl_connections ADD COLUMN direction TEXT NOT NULL DEFAULT 'in'")
         if "dest_host" not in cols_tc:
@@ -1495,24 +1495,24 @@ def init_db():
         if "project_id" not in cols_tc:
             db.execute("ALTER TABLE tsl_connections ADD COLUMN project_id INTEGER "
                        "REFERENCES projects(id) ON DELETE SET NULL")
-        ***REMOVED*** Chantier 5 : niveau de tally PAR PROJET, auto-alloué (base unique, pas de 3
-        ***REMOVED*** sous-niveaux qui se chevauchent : bases espacées de 3 — LH/RH/TT).
+        # Chantier 5 : niveau de tally PAR PROJET, auto-alloué (base unique, pas de 3
+        # sous-niveaux qui se chevauchent : bases espacées de 3 — LH/RH/TT).
         if "tally_base" not in pcols:
             db.execute("ALTER TABLE projects ADD COLUMN tally_base INTEGER")
         _rows = db.execute("SELECT id FROM projects WHERE tally_base IS NULL ORDER BY id").fetchall()
         for _r in _rows:
             db.execute("UPDATE projects SET tally_base=? WHERE id=?",
                        (_next_tally_base(db), _r[0]))
-        ***REMOVED*** ★ DÉNOUEMENT DES NIVEAUX (2026-08-31). Tout ce qui précède reste pour les bases
-        ***REMOVED*** anciennes ; la migration ci-dessous les aplatit en niveaux nommés numérotés 1..N.
+        # ★ DÉNOUEMENT DES NIVEAUX (2026-08-31). Tout ce qui précède reste pour les bases
+        # anciennes ; la migration ci-dessous les aplatit en niveaux nommés numérotés 1..N.
         _migrer_niveaux_tally(db)
-        ***REMOVED*** Puis la BASCULE SUR L'UUID : le numéro cesse d'être une identité pour
-        ***REMOVED*** n'être plus qu'un rang d'affichage. Dans cet ordre — la première sème
-        ***REMOVED*** les niveaux, la seconde leur donne leur identité et réécrit ce qui les cite.
+        # Puis la BASCULE SUR L'UUID : le numéro cesse d'être une identité pour
+        # n'être plus qu'un rang d'affichage. Dans cet ordre — la première sème
+        # les niveaux, la seconde leur donne leur identité et réécrit ce qui les cite.
         _migrer_identite_niveaux(db)
         _elaguer_niveaux_projets_dormants(db)
         _migrer_colonnes_libelles(db)
-        ***REMOVED*** tsl_sources : table legacy (conservée, non utilisée pour les nouvelles données).
+        # tsl_sources : table legacy (conservée, non utilisée pour les nouvelles données).
         db.execute('''CREATE TABLE IF NOT EXISTS tsl_sources (
             tsl_index  INTEGER PRIMARY KEY,
             linked_shm TEXT DEFAULT '',
@@ -1533,8 +1533,8 @@ def init_db():
         except Exception:
             pass
 
-        ***REMOVED*** source_labels : métadonnées des sources, keyed par shm.
-        ***REMOVED*** Remplace tsl_sources comme table active pour les labels et projet.
+        # source_labels : métadonnées des sources, keyed par shm.
+        # Remplace tsl_sources comme table active pour les labels et projet.
         db.execute('''CREATE TABLE IF NOT EXISTS source_labels (
             shm        TEXT PRIMARY KEY,
             projet     TEXT DEFAULT '',
@@ -1552,8 +1552,8 @@ def init_db():
         if "parent_shm" not in cols_sl:
             db.execute("ALTER TABLE source_labels ADD COLUMN parent_shm TEXT DEFAULT NULL")
 
-        ***REMOVED*** tsl_mapping : mapping (connection_id, tsl_index) → source_shm.
-        ***REMOVED*** Indépendant par connexion : Connection A index 5 ≠ Connection B index 5.
+        # tsl_mapping : mapping (connection_id, tsl_index) → source_shm.
+        # Indépendant par connexion : Connection A index 5 ≠ Connection B index 5.
         db.execute('''CREATE TABLE IF NOT EXISTS tsl_mapping (
             connection_id INTEGER NOT NULL,
             tsl_index     INTEGER NOT NULL,
@@ -1561,16 +1561,16 @@ def init_db():
             PRIMARY KEY (connection_id, tsl_index)
         )''')
 
-        ***REMOVED*** ── IS-07 entrant : LE MÊME MODÈLE QUE TSL, et c'est le point ────────────────────────
-        ***REMOVED*** Une connexion = un protocole qui vient écrire des tally dans UN niveau, plus une table
-        ***REMOVED*** qui dit « telle adresse de l'émetteur = tel signal chez nous ». Chez TSL cette adresse
-        ***REMOVED*** est un index de trame ; en IS-07 c'est l'UUID d'une Source. Rien d'autre ne change, et
-        ***REMOVED*** c'est pour ça que l'affectation vit au même endroit : la page Labels.
-        ***REMOVED***
-        ***REMOVED*** ⚠ UN RECEIVER PAR CONNEXION, PAS PAR SORTIE. On publiait un Receiver par groupe de
-        ***REMOVED*** sortie BCP-002-01 — 99 sur le banc pour 6 utiles. C'est la lecture littérale de la BCP,
-        ***REMOVED*** mais elle répond à la mauvaise question : ce qu'on choisit, ce n'est pas « quelles
-        ***REMOVED*** sorties peuvent recevoir un tally », c'est « quel protocole écrit dans quel niveau ».
+        # ── IS-07 entrant : LE MÊME MODÈLE QUE TSL, et c'est le point ────────────────────────
+        # Une connexion = un protocole qui vient écrire des tally dans UN niveau, plus une table
+        # qui dit « telle adresse de l'émetteur = tel signal chez nous ». Chez TSL cette adresse
+        # est un index de trame ; en IS-07 c'est l'UUID d'une Source. Rien d'autre ne change, et
+        # c'est pour ça que l'affectation vit au même endroit : la page Labels.
+        #
+        # ⚠ UN RECEIVER PAR CONNEXION, PAS PAR SORTIE. On publiait un Receiver par groupe de
+        # sortie BCP-002-01 — 99 sur le banc pour 6 utiles. C'est la lecture littérale de la BCP,
+        # mais elle répond à la mauvaise question : ce qu'on choisit, ce n'est pas « quelles
+        # sorties peuvent recevoir un tally », c'est « quel protocole écrit dans quel niveau ».
         db.execute('''CREATE TABLE IF NOT EXISTS is07_connections (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT    NOT NULL DEFAULT '',
@@ -1584,7 +1584,7 @@ def init_db():
             PRIMARY KEY (connection_id, source_id)
         )''')
 
-        ***REMOVED*** Migration : si ancienne config TSL activée → créer une connexion par défaut.
+        # Migration : si ancienne config TSL activée → créer une connexion par défaut.
         tsl_enabled = db.execute("SELECT value FROM settings WHERE key='tsl_enabled'").fetchone()
         if tsl_enabled and json.loads(tsl_enabled["value"] or "false"):
             if not db.execute("SELECT 1 FROM tsl_connections LIMIT 1").fetchone():
@@ -1595,7 +1595,7 @@ def init_db():
                     "VALUES (?, ?, 1, 2, 0)",
                     ("Connexion par défaut", old_port))
 
-        ***REMOVED*** Migration tsl_sources → source_labels + tsl_mapping (une seule fois).
+        # Migration tsl_sources → source_labels + tsl_mapping (une seule fois).
         has_old = db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='tsl_sources'"
         ).fetchone()
@@ -1629,15 +1629,15 @@ def init_db():
 
         db.commit()
 
-        ***REMOVED*** Première installation : AUCUN utilisateur seedé par défaut (plus de couple
-        ***REMOVED*** admin/bobistudio en dur — risque de sécurité). Tant qu'aucun utilisateur
-        ***REMOVED*** n'existe, l'app redirige vers l'assistant de premier démarrage (/setup,
-        ***REMOVED*** cf. routes.py) qui invite à créer le compte administrateur.
+        # Première installation : AUCUN utilisateur seedé par défaut (plus de couple
+        # admin/bobistudio en dur — risque de sécurité). Tant qu'aucun utilisateur
+        # n'existe, l'app redirige vers l'assistant de premier démarrage (/setup,
+        # cf. routes.py) qui invite à créer le compte administrateur.
 
-        ***REMOVED*** Migration : params booléens stockés en chaîne ("True"/"False") par un
-        ***REMOVED*** ancien coerce_config (type:"bool" non géré → str()). bool("False")==True
-        ***REMOVED*** côté script → fonctionnalité activée à tort (cf. PROD-011). On recast en
-        ***REMOVED*** vrai booléen les clés connues comme booléennes.
+        # Migration : params booléens stockés en chaîne ("True"/"False") par un
+        # ancien coerce_config (type:"bool" non géré → str()). bool("False")==True
+        # côté script → fonctionnalité activée à tort (cf. PROD-011). On recast en
+        # vrai booléen les clés connues comme booléennes.
         _BOOL_KEYS = ("smpte_2022_7", "tsl_remote", "hot_input", "overlay_enabled",
                       "overlay_below", "show_brand", "loop", "pl_auto", "pl_loop")
         for vmid, dcraw in db.execute(
@@ -1661,9 +1661,9 @@ def init_db():
         db.commit()
 
 
-***REMOVED*** ─── Stockage générique par plugin (plugin_store) ────────────
-***REMOVED*** Remplace cc_presets / dve_memories : tout plugin peut persister des entrées JSON
-***REMOVED*** nommées, scopées globalement (scope='') ou par container (scope=str(vmid)).
+# ─── Stockage générique par plugin (plugin_store) ────────────
+# Remplace cc_presets / dve_memories : tout plugin peut persister des entrées JSON
+# nommées, scopées globalement (scope='') ou par container (scope=str(vmid)).
 def _ps_row(r):
     return {"id": r["id"], "name": r["name"], "value": json.loads(r["value"]),
             "scope": r["scope"], "created_at": r["created_at"], "updated_at": r["updated_at"]}
@@ -1731,14 +1731,14 @@ def plugin_store_delete(id_):
         return cur.rowcount > 0
 
 
-***REMOVED*** ── Token d'agent par-conteneur (:8081) ───────────────────────────────────────
-***REMOVED*** La colonne `containers.agent_token` porte un SECRET. Les deux getters de conteneur font
-***REMOVED*** `SELECT *` et leurs lignes finissent en JSON dans /api/containers, dans les snapshots projet et
-***REMOVED*** dans les sauvegardes exportables : on RETIRE donc la colonne des dicts rendus et on la remplace
-***REMOVED*** par le seul fait observable dont l'exploitation a besoin — `agent_auth` : "stored" (token propre
-***REMOVED*** au conteneur) ou "derived" (conteneur d'avant la migration, token encore dérivé du
-***REMOVED*** `flask_secret_key`). C'est la TRAÇABILITÉ de la migration : tant qu'un "derived" subsiste, le
-***REMOVED*** secret racine n'est pas rotable. Le secret lui-même ne se lit QUE par `db_get_agent_token`.
+# ── Token d'agent par-conteneur (:8081) ───────────────────────────────────────
+# La colonne `containers.agent_token` porte un SECRET. Les deux getters de conteneur font
+# `SELECT *` et leurs lignes finissent en JSON dans /api/containers, dans les snapshots projet et
+# dans les sauvegardes exportables : on RETIRE donc la colonne des dicts rendus et on la remplace
+# par le seul fait observable dont l'exploitation a besoin — `agent_auth` : "stored" (token propre
+# au conteneur) ou "derived" (conteneur d'avant la migration, token encore dérivé du
+# `flask_secret_key`). C'est la TRAÇABILITÉ de la migration : tant qu'un "derived" subsiste, le
+# secret racine n'est pas rotable. Le secret lui-même ne se lit QUE par `db_get_agent_token`.
 def _container_sans_secret(row):
     d = dict(row)
     d["agent_auth"] = "stored" if (d.pop("agent_token", None) or "") else "derived"
@@ -1812,7 +1812,7 @@ def db_get_agent_token(vmid):
             row = db.execute("SELECT agent_token FROM containers WHERE vmid=?",
                              (vmid,)).fetchone()
         return (row["agent_token"] or None) if row else None
-    except Exception as e:      ***REMOVED*** colonne absente (DB antérieure à la migration) → dérivé
+    except Exception as e:      # colonne absente (DB antérieure à la migration) → dérivé
         log.warning("db_get_agent_token %s: %s", vmid, e)
         return None
 
@@ -1874,7 +1874,7 @@ def db_agent_token_etat():
 def db_upsert_container(vmid, hostname, cores=2, memory=2048,
                          script=None, status="unknown", restarts=0, instance_uuid=None):
     import uuid as _uuid
-    iu = instance_uuid or str(_uuid.uuid4())   ***REMOVED*** généré à l'INSERT ; COALESCE → jamais écrasé en UPDATE
+    iu = instance_uuid or str(_uuid.uuid4())   # généré à l'INSERT ; COALESCE → jamais écrasé en UPDATE
     with get_db() as db:
         db.execute('''INSERT INTO containers
             (vmid, hostname, cores, memory, script, status, restarts, created_at, instance_uuid)
@@ -1970,9 +1970,9 @@ def db_update_docker_ip(vmid, ip):
     with get_db() as db:
         db.execute("UPDATE containers SET docker_ip=? WHERE vmid=?", (ip, vmid))
         db.commit()
-    ***REMOVED*** containers.docker_ip fait désormais autorité pour cette IP → la réservation transitoire
-    ***REMOVED*** (ip_reservations) est redondante : on la libère (sans elle, une IP de container mort resterait
-    ***REMOVED*** bloquée). NB : on ne libère QUE cette IP-là, pas les autres réservations du vmid.
+    # containers.docker_ip fait désormais autorité pour cette IP → la réservation transitoire
+    # (ip_reservations) est redondante : on la libère (sans elle, une IP de container mort resterait
+    # bloquée). NB : on ne libère QUE cette IP-là, pas les autres réservations du vmid.
     if ip:
         db_release_ip_reservation(ip)
 
@@ -1988,9 +1988,9 @@ def db_set_instance_uuid(vmid, instance_uuid):
         db.execute("UPDATE containers SET instance_uuid=? WHERE vmid=?", (instance_uuid, vmid))
         db.commit()
 
-***REMOVED*** ─── Emplacements (rôles) : identité fonctionnelle, stable au remplacement ──────────────
-***REMOVED*** Cf. le commentaire de la table `production_roles` dans init_db pour le POURQUOI. Ici : le CRUD + la
-***REMOVED*** résolution emplacement → conteneur servant, et le semage automatique au premier déploiement.
+# ─── Emplacements (rôles) : identité fonctionnelle, stable au remplacement ──────────────
+# Cf. le commentaire de la table `production_roles` dans init_db pour le POURQUOI. Ici : le CRUD + la
+# résolution emplacement → conteneur servant, et le semage automatique au premier déploiement.
 
 def _role_row(r):
     return dict(r) if r is not None else None
@@ -2027,7 +2027,7 @@ def db_role_slugify(label, taken=None):
     label = "".join(c for c in label if not unicodedata.combining(c))
     base = "".join(ch if ch.isalnum() and ch.isascii() else "_" for ch in label.strip().lower())
     base = "_".join(p for p in base.split("_") if p) or "emplacement"
-    if base[0].isdigit():          ***REMOVED*** un identifier Ember+ ne commence pas par un chiffre
+    if base[0].isdigit():          # un identifier Ember+ ne commence pas par un chiffre
         base = f"e_{base}"
     if taken is None:
         with get_db() as db:
@@ -2152,7 +2152,7 @@ def db_update_resources(vmid, cores=None, memory=None, pinned_cores=None):
         sets.append("cores=?"); args.append(int(cores))
     if memory is not None:
         sets.append("memory=?"); args.append(int(memory))
-    if pinned_cores is not None:  ***REMOVED*** "" vidé explicitement → NULL
+    if pinned_cores is not None:  # "" vidé explicitement → NULL
         sets.append("pinned_cores=?"); args.append(pinned_cores or None)
     if not sets:
         return
@@ -2175,9 +2175,9 @@ def db_delete_container(vmid):
     with get_db() as db:
         db.execute("DELETE FROM containers WHERE vmid=?", (vmid,))
         db.commit()
-    ***REMOVED*** Libère toute réservation d'IP encore détenue par ce vmid (cas : container détruit avant que
-    ***REMOVED*** son docker_ip n'ait été persisté → sinon l'IP resterait bloquée pour toujours). Le vmid, lui,
-    ***REMOVED*** reste réservé (allocation MONOTONE : on ne réutilise jamais un numéro).
+    # Libère toute réservation d'IP encore détenue par ce vmid (cas : container détruit avant que
+    # son docker_ip n'ait été persisté → sinon l'IP resterait bloquée pour toujours). Le vmid, lui,
+    # reste réservé (allocation MONOTONE : on ne réutilise jamais un numéro).
     db_release_ip_reservations_for_vmid(vmid)
 
 def db_upsert_container_docker(vmid, hostname, node_id, docker_name,
@@ -2191,7 +2191,7 @@ def db_upsert_container_docker(vmid, hostname, node_id, docker_name,
     UPDATE quand l'appelant ne la donne pas — un simple changement de statut ne doit pas
     l'effacer."""
     import uuid as _uuid
-    iu = instance_uuid or str(_uuid.uuid4())   ***REMOVED*** généré à l'INSERT ; COALESCE → préservé en UPDATE
+    iu = instance_uuid or str(_uuid.uuid4())   # généré à l'INSERT ; COALESCE → préservé en UPDATE
     with get_db() as db:
         db.execute('''INSERT INTO containers
             (vmid, hostname, cores, memory, status, restarts, created_at,
@@ -2208,7 +2208,7 @@ def db_upsert_container_docker(vmid, hostname, node_id, docker_name,
              node_id, docker_name, iu, image))
         db.commit()
 
-***REMOVED*** ─── Nœuds (cluster multi-hôte) ──────────────────────────────────────
+# ─── Nœuds (cluster multi-hôte) ──────────────────────────────────────
 @cache_requete
 def db_get_nodes():
     with get_db() as db:
@@ -2280,8 +2280,8 @@ def db_update_node(node_id, **fields):
                "capabilities", "agent_url", "agent_token", "agent_version", "last_seen",
                "enroll_token", "enroll_profile", "ilo_host", "ilo_user", "ilo_password",
                "bmc_vendor", "tls_ready", "node_cert",
-               ***REMOVED*** Profil CPU du nœud : modèle relevé (clé vers `cpu_profiles`) + surcharge du quota
-               ***REMOVED*** de scheduler. Absents de cette liste, ils étaient AVALÉS EN SILENCE par l'upsert.
+               # Profil CPU du nœud : modèle relevé (clé vers `cpu_profiles`) + surcharge du quota
+               # de scheduler. Absents de cette liste, ils étaient AVALÉS EN SILENCE par l'upsert.
                "cpu_model", "sch_quota_mbs")
     sets, args = [], []
     for k, v in fields.items():
@@ -2297,27 +2297,27 @@ def db_update_node(node_id, **fields):
 def db_delete_node(node_id):
     with get_db() as db:
         db.execute("DELETE FROM node_interfaces WHERE node_id=?", (node_id,))
-        ***REMOVED*** Liens RDMA du nœud, dans LES DEUX SENS : un nœud retiré ne peut plus ni recevoir ni
-        ***REMOVED*** produire. Sans ça, ses liens survivent à sa suppression et le réconciliateur les
-        ***REMOVED*** retente indéfiniment — constaté le 2026-08-07 : SIX liens vers les nœuds 39 et 40,
-        ***REMOVED*** disparus de la table, réessayaient toutes les 63 s depuis des jours. Le bruit qu'ils
-        ***REMOVED*** produisaient dans le journal masquait les DEUX vraies pannes.
+        # Liens RDMA du nœud, dans LES DEUX SENS : un nœud retiré ne peut plus ni recevoir ni
+        # produire. Sans ça, ses liens survivent à sa suppression et le réconciliateur les
+        # retente indéfiniment — constaté le 2026-08-07 : SIX liens vers les nœuds 39 et 40,
+        # disparus de la table, réessayaient toutes les 63 s depuis des jours. Le bruit qu'ils
+        # produisaient dans le journal masquait les DEUX vraies pannes.
         db.execute("DELETE FROM rdma_links WHERE dst_node_id=? OR src_node_id=?",
                    (node_id, node_id))
         db.execute("DELETE FROM nodes WHERE id=?", (node_id,))
         db.commit()
 
-***REMOVED*** ── Listes blanches de colonnes (motif partagé) ──────────────────────────────
-***REMOVED***
-***REMOVED*** Plusieurs helpers d'écriture acceptent `**fields` et ne retiennent que les colonnes d'une liste
-***REMOVED*** blanche. Le filtre protège des injections de nom de colonne, mais il est SILENCIEUX par nature :
-***REMOVED*** un champ hors liste disparaît sans exception ni trace. Ça a déjà coûté — `rdma_links.src_addr` et
-***REMOVED*** `dst_addr`, ajoutées à la table mais oubliées dans `RDMA_LINK_FIELDS`, faisaient « réussir »
-***REMOVED*** l'écriture sans rien persister : le rééquilibrage des chemins RDMA annonçait ses déplacements et
-***REMOVED*** rejouait indéfiniment le même plan, un port restant à zéro sans le moindre message.
-***REMOVED***
-***REMOVED*** D'où ce helper unique : un appelant qui écrit un champ inconnu se trompe, et doit l'apprendre.
-***REMOVED*** ⚠ AJOUTER UNE COLONNE À L'UNE DE CES TABLES = L'AJOUTER À SA LISTE, sans quoi elle restera NULL.
+# ── Listes blanches de colonnes (motif partagé) ──────────────────────────────
+#
+# Plusieurs helpers d'écriture acceptent `**fields` et ne retiennent que les colonnes d'une liste
+# blanche. Le filtre protège des injections de nom de colonne, mais il est SILENCIEUX par nature :
+# un champ hors liste disparaît sans exception ni trace. Ça a déjà coûté — `rdma_links.src_addr` et
+# `dst_addr`, ajoutées à la table mais oubliées dans `RDMA_LINK_FIELDS`, faisaient « réussir »
+# l'écriture sans rien persister : le rééquilibrage des chemins RDMA annonçait ses déplacements et
+# rejouait indéfiniment le même plan, un port restant à zéro sans le moindre message.
+#
+# D'où ce helper unique : un appelant qui écrit un champ inconnu se trompe, et doit l'apprendre.
+# ⚠ AJOUTER UNE COLONNE À L'UNE DE CES TABLES = L'AJOUTER À SA LISTE, sans quoi elle restera NULL.
 
 def _champs_filtres(fields, autorises, nom_liste, appelant, ignorer_none=False):
     """Filtre `fields` sur la liste blanche `autorises` et JOURNALISE les champs écartés.
@@ -2331,7 +2331,7 @@ def _champs_filtres(fields, autorises, nom_liste, appelant, ignorer_none=False):
             if k in autorises and not (ignorer_none and v is None)}
 
 
-***REMOVED*** ── node_interfaces : modèle « interface → rôle » par nœud (refonte réseau) ──
+# ── node_interfaces : modèle « interface → rôle » par nœud (refonte réseau) ──
 
 NODE_IFACE_FIELDS = ("ifname", "mac", "pci", "role", "pair_role", "pair_group",
                      "ip_cidr", "gateway", "vlan", "ptp_enabled", "ptp_domain",
@@ -2340,9 +2340,9 @@ NODE_IFACE_FIELDS = ("ifname", "mac", "pci", "role", "pair_role", "pair_group",
                      "output_profile", "alias", "vf_bdf", "vf_ip",
                      "ct_ip_start", "ct_ip_end")
 
-***REMOVED*** Rôle COMBINÉ « Management + Containers » : la carte porte À LA FOIS l'IP de contrôle du nœud
-***REMOVED*** et le réseau macvlan des conteneurs (cas nœud sur un autre LAN que le cluster, ex. dl360Horace).
-***REMOVED*** Tout test de rôle doit passer par ces helpers — jamais de comparaison littérale disséminée.
+# Rôle COMBINÉ « Management + Containers » : la carte porte À LA FOIS l'IP de contrôle du nœud
+# et le réseau macvlan des conteneurs (cas nœud sur un autre LAN que le cluster, ex. dl360Horace).
+# Tout test de rôle doit passer par ces helpers — jamais de comparaison littérale disséminée.
 ROLE_MGMT_CONTAINERS = "mgmt_containers"
 
 def role_is_management(role):
@@ -2353,8 +2353,8 @@ def role_is_containers(role):
     """True si ce rôle porte le réseau macvlan des conteneurs (containers pur ou combiné)."""
     return (role or "") in ("containers", ROLE_MGMT_CONTAINERS)
 
-***REMOVED*** ── « Réseaux 2110 » : table globale (cluster). Une horloge logique PTP par réseau ──
-_MN_KEEP = object()   ***REMOVED*** sentinelle « ne pas toucher » pour les champs optionnels de db_update_media_network
+# ── « Réseaux 2110 » : table globale (cluster). Une horloge logique PTP par réseau ──
+_MN_KEEP = object()   # sentinelle « ne pas toucher » pour les champs optionnels de db_update_media_network
 
 def db_get_media_networks():
     with get_db() as db:
@@ -2415,7 +2415,7 @@ def db_upsert_node_interface(node_id, ifname, clear=(), **fields):
                            "db_upsert_node_interface", ignorer_none=True)
     for k in clear:
         if k in NODE_IFACE_FIELDS:
-            sets[k] = None                       ***REMOVED*** forcer NULL (vidage explicite)
+            sets[k] = None                       # forcer NULL (vidage explicite)
     with get_db() as db:
         row = db.execute("SELECT id FROM node_interfaces WHERE node_id=? AND ifname=?",
                          (node_id, ifname)).fetchone()
@@ -2436,7 +2436,7 @@ def db_delete_node_interface(node_id, ifname):
         db.execute("DELETE FROM node_interfaces WHERE node_id=? AND ifname=?", (node_id, ifname))
         db.commit()
 
-***REMOVED*** ── nic_profiles : bibliothèque de cartes (capacités mesurées par la qualification) ──────────────
+# ── nic_profiles : bibliothèque de cartes (capacités mesurées par la qualification) ──────────────
 NIC_PROFILE_FIELDS = ("model", "rl_tx_cap", "narrow_ok", "ddp_ok", "ptp_ok", "measured", "notes")
 
 def db_get_nic_profile(device_id, firmware=""):
@@ -2484,7 +2484,7 @@ def db_all_nic_profiles():
         return [dict(r) for r in db.execute(
             "SELECT * FROM nic_profiles ORDER BY device_id, firmware").fetchall()]
 
-***REMOVED*** ── cpu_profiles : quota de scheduler par MODÈLE de CPU (cf. init_db pour le pourquoi) ────────────
+# ── cpu_profiles : quota de scheduler par MODÈLE de CPU (cf. init_db pour le pourquoi) ────────────
 CPU_PROFILE_FIELDS = ("quota_mbs", "cores", "threads", "base_mhz",
                       "memcpy_gbps", "pkt_mpps", "measured", "notes")
 
@@ -2557,9 +2557,9 @@ def db_all_cpu_profiles():
         return [dict(r) for r in db.execute("SELECT * FROM cpu_profiles ORDER BY model").fetchall()]
 
 
-***REMOVED*** ── tx_card_models : bibliothèque de MODÈLES de carte 2110 (gabarits par TYPE de carte) ───────────
-***REMOVED*** Le blob `slots` est stocké en JSON (même forme que io2110_layouts._normalize_slots). Les helpers
-***REMOVED*** le (dé)sérialisent pour que les appelants ne manipulent que des listes Python.
+# ── tx_card_models : bibliothèque de MODÈLES de carte 2110 (gabarits par TYPE de carte) ───────────
+# Le blob `slots` est stocké en JSON (même forme que io2110_layouts._normalize_slots). Les helpers
+# le (dé)sérialisent pour que les appelants ne manipulent que des listes Python.
 
 def _tx_card_model_row(r):
     d = dict(r)
@@ -2610,7 +2610,7 @@ def db_delete_tx_card_model(mid):
         db.execute("DELETE FROM tx_card_models WHERE id=?", (mid,))
         db.commit()
 
-***REMOVED*** ── tx_pending_changes : bac des changements TX différés (fenêtre de maintenance, étage 2) ──
+# ── tx_pending_changes : bac des changements TX différés (fenêtre de maintenance, étage 2) ──
 
 def _tx_pending_row(r):
     d = dict(r)
@@ -2664,7 +2664,7 @@ def db_tx_pending_due(now_iso):
             "SELECT * FROM tx_pending_changes WHERE status='pending' AND apply_at IS NOT NULL "
             "AND apply_at <= ? ORDER BY id", (now_iso,)).fetchall()]
 
-***REMOVED*** ── mcast_ranges : règles de plage multicast strictes par réseau logique / interface physique ──
+# ── mcast_ranges : règles de plage multicast strictes par réseau logique / interface physique ──
 
 MCAST_RANGE_FIELDS = ("scope", "media_network_id", "node_id", "ifname", "base_ip", "size", "prefix_len",
                       "port_default", "port_default_video", "port_default_audio", "port_default_anc",
@@ -2724,12 +2724,12 @@ def db_delete_mcast_range(range_id):
         db.execute("DELETE FROM mcast_ranges WHERE id=?", (int(range_id),))
         db.commit()
 
-***REMOVED*** ── mcast_allocations : ledger de RÉSERVATION ATOMIQUE (ferme la fenêtre de course lire-puis-écrire
-***REMOVED*** entre deux allocateurs concurrents — deux containers/ressources qui calculent une adresse en même
-***REMOVED*** temps sans que le registre NMOS de l'un ne reflète encore le choix de l'autre). La PRIMARY KEY
-***REMOVED*** (ip, port) fait que SQLite refuse une 2ᵉ réservation de la même paire (IntegrityError), quel que
-***REMOVED*** soit l'ordre d'arrivée des threads — l'INSERT lui-même est l'opération atomique, pas une lecture
-***REMOVED*** suivie d'une décision en Python.
+# ── mcast_allocations : ledger de RÉSERVATION ATOMIQUE (ferme la fenêtre de course lire-puis-écrire
+# entre deux allocateurs concurrents — deux containers/ressources qui calculent une adresse en même
+# temps sans que le registre NMOS de l'un ne reflète encore le choix de l'autre). La PRIMARY KEY
+# (ip, port) fait que SQLite refuse une 2ᵉ réservation de la même paire (IntegrityError), quel que
+# soit l'ordre d'arrivée des threads — l'INSERT lui-même est l'opération atomique, pas une lecture
+# suivie d'une décision en Python.
 def db_reserve_mcast(ip, port, owner_ref):
     """Tente de réserver atomiquement (ip, port) pour `owner_ref`. True si acquis, False si déjà pris
     (par CET owner_ref ou un autre — idempotent : un owner_ref qui redemande SA PROPRE adresse déjà
@@ -2796,9 +2796,9 @@ def db_used_mcast_allocations():
     with get_db() as db:
         return {f"{r['ip']}:{r['port']}" for r in db.execute("SELECT ip, port FROM mcast_allocations")}
 
-***REMOVED*** ── vmid_reservations / ip_reservations : RÉSERVATION ATOMIQUE d'un handle vmid et d'une IP macvlan.
-***REMOVED*** L'INSERT (contraint par la PRIMARY KEY) EST l'opération qui tranche — deux allocateurs concurrents
-***REMOVED*** ne peuvent pas tous deux « gagner » le même vmid/la même IP (le perdant reçoit IntegrityError).
+# ── vmid_reservations / ip_reservations : RÉSERVATION ATOMIQUE d'un handle vmid et d'une IP macvlan.
+# L'INSERT (contraint par la PRIMARY KEY) EST l'opération qui tranche — deux allocateurs concurrents
+# ne peuvent pas tous deux « gagner » le même vmid/la même IP (le perdant reçoit IntegrityError).
 def db_reserve_vmid(vmid):
     """Réserve atomiquement `vmid`. True si acquis, False si déjà réservé (par une allocation
     concurrente). Le vmid étant MONOTONE (jamais réutilisé), la réservation reste un marqueur
@@ -2859,10 +2859,10 @@ def db_release_ip_reservations_for_vmid(vmid):
         db.execute("DELETE FROM ip_reservations WHERE vmid=?", (int(vmid),))
         db.commit()
 
-***REMOVED*** ── Liens RDMA (réplication de flux MXL inter-nœuds via mxl-fabrics) ──
-***REMOVED*** ⚠ LISTE BLANCHE : `db_add_rdma_link` / `db_update_rdma_link` IGNORENT en silence tout champ absent
-***REMOVED*** d'ici. Ajouter une colonne à `rdma_links` sans l'inscrire ici donne un écrivain qui « réussit » et
-***REMOVED*** une colonne qui reste NULL — sans exception, sans log. Toute nouvelle colonne va DANS cette liste.
+# ── Liens RDMA (réplication de flux MXL inter-nœuds via mxl-fabrics) ──
+# ⚠ LISTE BLANCHE : `db_add_rdma_link` / `db_update_rdma_link` IGNORENT en silence tout champ absent
+# d'ici. Ajouter une colonne à `rdma_links` sans l'inscrire ici donne un écrivain qui « réussit » et
+# une colonne qui reste NULL — sans exception, sans log. Toute nouvelle colonne va DANS cette liste.
 RDMA_LINK_FIELDS = ("src_node_id", "src_vmid", "src_flow", "dst_node_id", "kind", "provider",
                     "service_port", "status", "target_info", "notes", "flow_format", "auto_cable",
                     "src_addr", "dst_addr", "sync_batch")
@@ -2905,13 +2905,13 @@ def db_delete_rdma_link(link_id):
         db.execute("DELETE FROM rdma_links WHERE id=?", (int(link_id),))
         db.commit()
 
-***REMOVED*** RÉTENTION du fil. Portée de 1 000 à 10 000 le 2026-07-27, avec la décision que `alerts` est AUSSI
-***REMOVED*** le JOURNAL D'EXPLOITATION (« qui a fait quoi ») et pas seulement la liste de ce qui va mal. À
-***REMOVED*** 1 000 lignes, un site actif renouvelait tout son fil en ~2 jours (mesuré : 1 096 lignes en 19 h) —
-***REMOVED*** l'historique des actions disparaissait avant d'avoir servi, et le bruit ÉVINÇAIT les vraies
-***REMOVED*** alertes. 10 000 lignes ≈ quelques Mo de SQLite pour des semaines d'historique.
+# RÉTENTION du fil. Portée de 1 000 à 10 000 le 2026-07-27, avec la décision que `alerts` est AUSSI
+# le JOURNAL D'EXPLOITATION (« qui a fait quoi ») et pas seulement la liste de ce qui va mal. À
+# 1 000 lignes, un site actif renouvelait tout son fil en ~2 jours (mesuré : 1 096 lignes en 19 h) —
+# l'historique des actions disparaissait avant d'avoir servi, et le bruit ÉVINÇAIT les vraies
+# alertes. 10 000 lignes ≈ quelques Mo de SQLite pour des semaines d'historique.
 ALERTS_RETENTION_DEFAUT = 10000
-ALERTS_PURGE_MARGIN = 200   ***REMOVED*** purge seulement quand on dépasse RETENTION + marge
+ALERTS_PURGE_MARGIN = 200   # purge seulement quand on dépasse RETENTION + marge
 
 
 def _alerts_retention():
@@ -2924,35 +2924,35 @@ def _alerts_retention():
     return max(100, v)
 
 
-***REMOVED*** Compat : d'anciens imports référencent la constante. Elle vaut le défaut ; le chemin d'écriture
-***REMOVED*** passe par `_alerts_retention()` pour honorer le réglage.
+# Compat : d'anciens imports référencent la constante. Elle vaut le défaut ; le chemin d'écriture
+# passe par `_alerts_retention()` pour honorer le réglage.
 ALERTS_RETENTION = ALERTS_RETENTION_DEFAUT
 
-***REMOVED*** ─── Vocabulaire FERMÉ des natures d'incident (colonne `alerts.kind`) ────────────────────────
-***REMOVED*** UN SEUL endroit. Une chaîne inventée à l'appel serait inexploitable pour filtrer : le but de la
-***REMOVED*** colonne est justement de pouvoir dire « montre-moi tous les rx_stall » ou « tout ce qui touche le
-***REMOVED*** nœud 3 ». Ajouter une valeur ICI (et la documenter) avant de l'utiliser ; un `kind` inconnu est
-***REMOVED*** REFUSÉ (stocké NULL) avec un log d'avertissement — jamais accepté en douce.
+# ─── Vocabulaire FERMÉ des natures d'incident (colonne `alerts.kind`) ────────────────────────
+# UN SEUL endroit. Une chaîne inventée à l'appel serait inexploitable pour filtrer : le but de la
+# colonne est justement de pouvoir dire « montre-moi tous les rx_stall » ou « tout ce qui touche le
+# nœud 3 ». Ajouter une valeur ICI (et la documenter) avant de l'utiliser ; un `kind` inconnu est
+# REFUSÉ (stocké NULL) avec un log d'avertissement — jamais accepté en douce.
 ALERT_KINDS = (
-    "rx_stall",     ***REMOVED*** réception 2110 en panne / absente (flux RX)
-    "tx_stall",     ***REMOVED*** émission 2110 en panne / figée (flux TX)
-    "signal",       ***REMOVED*** présence signal : noir, gel, silence, hors-gamut, loudness
-    "fps",          ***REMOVED*** cadence non tenue par un conteneur
-    "crash_loop",   ***REMOVED*** conteneur/script qui redémarre en boucle ou passe en quarantaine
-    "agent",        ***REMOVED*** agent par-conteneur injoignable, script arrêté/repris
-    "deploy",       ***REMOVED*** création / déploiement / arrêt / destruction d'un conteneur
-    "prep",         ***REMOVED*** préparation hôte (MTL, vfio, hugepages, isolation, pinning)
-    "net",          ***REMOVED*** réseau : IP média, lien, port muet, anomalie d'interface
-    "node",         ***REMOVED*** nœud : reboot, auto-recovery, injoignable
-    "disk",         ***REMOVED*** remplissage disque
-    "ptp",          ***REMOVED*** horloge PTP
-    "resource",     ***REMOVED*** CPU/RAM/bande passante mémoire/GPU
-    "advisory",     ***REMOVED*** avis remonté par un plugin (l'exploitant arbitre)
-    "webhook",      ***REMOVED*** sortie d'alerte elle-même en échec (canal mail/webhook injoignable)
-    "ui",           ***REMOVED*** interface elle-même en défaut : un bloc <script> de gabarit dont la syntaxe
-                    ***REMOVED*** est invalide met HORS SERVICE toutes les fonctions de sa page côté navigateur,
-                    ***REMOVED*** sans que le serveur ne s'en aperçoive (il rend la page normalement). Contrôlé
-                    ***REMOVED*** au démarrage par app/template_check.py.
+    "rx_stall",     # réception 2110 en panne / absente (flux RX)
+    "tx_stall",     # émission 2110 en panne / figée (flux TX)
+    "signal",       # présence signal : noir, gel, silence, hors-gamut, loudness
+    "fps",          # cadence non tenue par un conteneur
+    "crash_loop",   # conteneur/script qui redémarre en boucle ou passe en quarantaine
+    "agent",        # agent par-conteneur injoignable, script arrêté/repris
+    "deploy",       # création / déploiement / arrêt / destruction d'un conteneur
+    "prep",         # préparation hôte (MTL, vfio, hugepages, isolation, pinning)
+    "net",          # réseau : IP média, lien, port muet, anomalie d'interface
+    "node",         # nœud : reboot, auto-recovery, injoignable
+    "disk",         # remplissage disque
+    "ptp",          # horloge PTP
+    "resource",     # CPU/RAM/bande passante mémoire/GPU
+    "advisory",     # avis remonté par un plugin (l'exploitant arbitre)
+    "webhook",      # sortie d'alerte elle-même en échec (canal mail/webhook injoignable)
+    "ui",           # interface elle-même en défaut : un bloc <script> de gabarit dont la syntaxe
+                    # est invalide met HORS SERVICE toutes les fonctions de sa page côté navigateur,
+                    # sans que le serveur ne s'en aperçoive (il rend la page normalement). Contrôlé
+                    # au démarrage par app/template_check.py.
 )
 
 
@@ -2991,53 +2991,53 @@ def _acteur_courant():
         u = current_user()
         return (u or {}).get("username") or None
     except Exception:
-        return None                 ***REMOVED*** jamais un chemin d'alerte ne doit échouer sur l'attribution
+        return None                 # jamais un chemin d'alerte ne doit échouer sur l'attribution
 
 
-***REMOVED*** ─── Anti-rebond : une alerte qui se répète ne s'écrit qu'à la TRANSITION ────────────────────
-***REMOVED***
-***REMOVED*** Constat du 2026-08-15 : 10 068 alertes en base, dont quatre messages répétés faisaient ~80 % du
-***REMOVED*** volume (un lien RDMA vers un nœud éteint, 1145 lignes ; un ré-établissement en boucle, 680 par
-***REMOVED*** lien ; un câblage de pyramide reperdu toutes les 2 min). Conséquence : un « TX ***REMOVED***1 instable »
-***REMOVED*** survenu l'après-midi était déjà noyé sous les répétitions du matin. Une supervision où le volume
-***REMOVED*** est fait de redites ne supervise plus rien.
-***REMOVED***
-***REMOVED*** Règle, la même que celle d'`app/placement.py` : **on alerte à la transition, on compte ensuite**.
-***REMOVED***   • 1ʳᵉ occurrence d'un symptôme  → écrite IMMÉDIATEMENT, telle quelle (c'est la transition).
-***REMOVED***   • répétitions dans la fenêtre   → comptées, pas écrites (ni journal, ni e-mail/webhook).
-***REMOVED***   • toujours là au bout d'une fenêtre → UNE ligne de résumé « répété N fois depuis <heure> ».
-***REMOVED***   • plus rien pendant une fenêtre → l'épisode est CLOS : la prochaine occurrence redevient une
-***REMOVED***     transition, donc réécrite tout de suite. C'est ce qui garantit qu'un incident qui repart
-***REMOVED***     après accalmie ne se fait jamais étouffer.
-***REMOVED***
-***REMOVED*** Deux garde-fous contre l'étouffement de ce qu'il ne faut PAS étouffer :
-***REMOVED***   • le `niveau` fait partie de la signature — une aggravation info→warning→error est une
-***REMOVED***     transition, donc écrite sur-le-champ ;
-***REMOVED***   • une alerte portant un ACTEUR (`user`) n'est jamais rebondie : `alerts` est aussi le journal
-***REMOVED***     d'exploitation, et deux gestes humains identiques sont deux faits distincts à conserver.
+# ─── Anti-rebond : une alerte qui se répète ne s'écrit qu'à la TRANSITION ────────────────────
+#
+# Constat du 2026-08-15 : 10 068 alertes en base, dont quatre messages répétés faisaient ~80 % du
+# volume (un lien RDMA vers un nœud éteint, 1145 lignes ; un ré-établissement en boucle, 680 par
+# lien ; un câblage de pyramide reperdu toutes les 2 min). Conséquence : un « TX #1 instable »
+# survenu l'après-midi était déjà noyé sous les répétitions du matin. Une supervision où le volume
+# est fait de redites ne supervise plus rien.
+#
+# Règle, la même que celle d'`app/placement.py` : **on alerte à la transition, on compte ensuite**.
+#   • 1ʳᵉ occurrence d'un symptôme  → écrite IMMÉDIATEMENT, telle quelle (c'est la transition).
+#   • répétitions dans la fenêtre   → comptées, pas écrites (ni journal, ni e-mail/webhook).
+#   • toujours là au bout d'une fenêtre → UNE ligne de résumé « répété N fois depuis <heure> ».
+#   • plus rien pendant une fenêtre → l'épisode est CLOS : la prochaine occurrence redevient une
+#     transition, donc réécrite tout de suite. C'est ce qui garantit qu'un incident qui repart
+#     après accalmie ne se fait jamais étouffer.
+#
+# Deux garde-fous contre l'étouffement de ce qu'il ne faut PAS étouffer :
+#   • le `niveau` fait partie de la signature — une aggravation info→warning→error est une
+#     transition, donc écrite sur-le-champ ;
+#   • une alerte portant un ACTEUR (`user`) n'est jamais rebondie : `alerts` est aussi le journal
+#     d'exploitation, et deux gestes humains identiques sont deux faits distincts à conserver.
 
-ANTIREBOND_DEFAUT_S = 900       ***REMOVED*** 15 min. 0 (réglage `alerts_antirebond_s`) = désactivé.
+ANTIREBOND_DEFAUT_S = 900       # 15 min. 0 (réglage `alerts_antirebond_s`) = désactivé.
 
-***REMOVED*** Un nombre qui est une QUANTITÉ est neutralisé (« depuis 93927 s » et « depuis 92479 s » sont le
-***REMOVED*** même symptôme) ; un nombre qui est un IDENTIFIANT est gardé (`***REMOVED***3800`, `audio_1`, `dl360-1`) —
-***REMOVED*** sinon deux liens différents se replieraient l'un sur l'autre. D'où la garde arrière : un chiffre
-***REMOVED*** collé à `***REMOVED***`, à `_`, à `-` ou à un caractère de mot appartient au nom de la chose, pas à sa mesure.
-_ANTIREBOND_QUANTITE = re.compile(r"(?<![***REMOVED***\w_-])\d+(?:[.,]\d+)*")
+# Un nombre qui est une QUANTITÉ est neutralisé (« depuis 93927 s » et « depuis 92479 s » sont le
+# même symptôme) ; un nombre qui est un IDENTIFIANT est gardé (`#3800`, `audio_1`, `dl360-1`) —
+# sinon deux liens différents se replieraient l'un sur l'autre. D'où la garde arrière : un chiffre
+# collé à `#`, à `_`, à `-` ou à un caractère de mot appartient au nom de la chose, pas à sa mesure.
+_ANTIREBOND_QUANTITE = re.compile(r"(?<![#\w_-])\d+(?:[.,]\d+)*")
 
-***REMOVED*** Les alertes viennent de dizaines de threads de fond : sans ce verrou, deux occurrences
-***REMOVED*** simultanées du même symptôme liraient le même épisode et écriraient deux lignes.
+# Les alertes viennent de dizaines de threads de fond : sans ce verrou, deux occurrences
+# simultanées du même symptôme liraient le même épisode et écriraient deux lignes.
 _antirebond_verrou = threading.Lock()
 
 
-***REMOVED*** Espaces de noms RÉSERVÉS des clés d'alerte. La détection est une correspondance EXACTE sur ce
-***REMOVED*** motif, jamais une reconnaissance de forme sur le texte : aucune phrase française ne peut
-***REMOVED*** ressembler à `alert.<…>`, donc il n'y a pas d'ambiguïté à lever, et rien à deviner.
-***REMOVED***
-***REMOVED*** `plugin.<…>` est admis parce que les AVIS de plugins (`advisory`, cf. app/metrics.py) portent
-***REMOVED*** des clés qui vivent dans le catalogue du plugin, préfixées `plugin.<type>.*` — c'est la
-***REMOVED*** convention i18n du projet. Sans lui, un avis structuré était stocké en texte brut (la clé
-***REMOVED*** elle-même), ses paramètres perdus, et SANS erreur au journal : exactement l'échec silencieux
-***REMOVED*** que ce chantier supprime. Vérifié le 2026-08-21.
+# Espaces de noms RÉSERVÉS des clés d'alerte. La détection est une correspondance EXACTE sur ce
+# motif, jamais une reconnaissance de forme sur le texte : aucune phrase française ne peut
+# ressembler à `alert.<…>`, donc il n'y a pas d'ambiguïté à lever, et rien à deviner.
+#
+# `plugin.<…>` est admis parce que les AVIS de plugins (`advisory`, cf. app/metrics.py) portent
+# des clés qui vivent dans le catalogue du plugin, préfixées `plugin.<type>.*` — c'est la
+# convention i18n du projet. Sans lui, un avis structuré était stocké en texte brut (la clé
+# elle-même), ses paramètres perdus, et SANS erreur au journal : exactement l'échec silencieux
+# que ce chantier supprime. Vérifié le 2026-08-21.
 _ALERT_CLE = re.compile(r"^(?:alert|plugin)\.[A-Za-z0-9_.]+$")
 
 
@@ -3059,18 +3059,18 @@ def _alert_cle(message, params):
     try:
         from . import i18n as _i18n
         if not _i18n.existe(message):
-            ***REMOVED*** Clé absente du catalogue : on l'écrit EN CLAIR et on le dit. La replier
-            ***REMOVED*** silencieusement afficherait `alert.deploy.detruit` comme une phrase plausible —
-            ***REMOVED*** exactement le genre d'oubli qui ne se voit jamais.
+            # Clé absente du catalogue : on l'écrit EN CLAIR et on le dit. La replier
+            # silencieusement afficherait `alert.deploy.detruit` comme une phrase plausible —
+            # exactement le genre d'oubli qui ne se voit jamais.
             log.error("alerte : clé i18n inconnue %r — message écrit en clair", message)
             return None, None, ("%s %s" % (message, p) if p else message)
-        ***REMOVED*** Les sous-clés (listes de paires `[clé, params]`, cf. `i18n._developper_sous_cles`) doivent
-        ***REMOVED*** être développées ICI AUSSI : sans ça, la forme canonique contiendrait la représentation
-        ***REMOVED*** Python de la liste. Ce n'est pas cosmétique — c'est cette colonne qui sert d'INDEX
-        ***REMOVED*** (signature d'anti-rebond, regroupement de l'accueil, recherche `?q=`, et la ligne de
-        ***REMOVED*** journal). Elle serait devenue illisible ET inutilisable pour les trois.
-        ***REMOVED*** On développe sur une COPIE : `msg_params` doit garder les sous-clés brutes, sinon le
-        ***REMOVED*** rendu à la lecture ne pourrait plus les traduire.
+        # Les sous-clés (listes de paires `[clé, params]`, cf. `i18n._developper_sous_cles`) doivent
+        # être développées ICI AUSSI : sans ça, la forme canonique contiendrait la représentation
+        # Python de la liste. Ce n'est pas cosmétique — c'est cette colonne qui sert d'INDEX
+        # (signature d'anti-rebond, regroupement de l'accueil, recherche `?q=`, et la ligne de
+        # journal). Elle serait devenue illisible ET inutilisable pour les trois.
+        # On développe sur une COPIE : `msg_params` doit garder les sous-clés brutes, sinon le
+        # rendu à la lecture ne pourrait plus les traduire.
         fr = _i18n.t(message, lang=_i18n.DEFAULT_LANG,
                      **_i18n._developper_sous_cles(dict(p), _i18n.DEFAULT_LANG))
         blob = json.dumps(p, ensure_ascii=False, default=str) if p else None
@@ -3121,7 +3121,7 @@ def _antirebond(message, niveau, vmid, node_id, kind, maintenant):
             row = db.execute("SELECT * FROM alert_episodes WHERE signature=?", (sig,)).fetchone()
             depuis = _ecart_s(row["last_ts"], maintenant) if row else None
             if row is None or depuis is None or depuis > fenetre:
-                ***REMOVED*** Transition : épisode neuf, ou épisode rouvert après une accalmie.
+                # Transition : épisode neuf, ou épisode rouvert après une accalmie.
                 db.execute(
                     "INSERT INTO alert_episodes (signature, squelette, kind, vmid, node_id, niveau,"
                     " first_ts, last_ts, last_emit_ts, occurrences, muettes, last_message)"
@@ -3139,14 +3139,14 @@ def _antirebond(message, niveau, vmid, node_id, kind, maintenant):
                            " last_message=? WHERE signature=?", (n, ts, message, sig))
                 db.commit()
                 return False, message, None
-            ***REMOVED*** Toujours en cours au bout d'une fenêtre : une ligne, et le compte réel avec.
+            # Toujours en cours au bout d'une fenêtre : une ligne, et le compte réel avec.
             db.execute("UPDATE alert_episodes SET occurrences=?, muettes=0, last_ts=?,"
                        " last_emit_ts=?, last_message=? WHERE signature=?", (n, ts, ts, message, sig))
             db.commit()
             _debut = (row["first_ts"] or "")[11:16] or "?"
-            ***REMOVED*** Le message repris est le plus RÉCENT : sous une même signature, les quantités varient
-            ***REMOVED*** (« depuis 92479 s » → « depuis 93927 s »). On l'annonce en ces termes plutôt que de
-            ***REMOVED*** laisser croire que N lignes identiques ont été vues.
+            # Le message repris est le plus RÉCENT : sous une même signature, les quantités varient
+            # (« depuis 92479 s » → « depuis 93927 s »). On l'annonce en ces termes plutôt que de
+            # laisser croire que N lignes identiques ont été vues.
             canonique = "%s — répété %d fois depuis %s" % (message, n, _debut)
             return True, canonique, {"n": n, "depuis": _debut}
     except Exception:
@@ -3200,15 +3200,15 @@ def db_add_alert(message, niveau="info", vmid=None, node_id=None, kind=None, use
     if user is None:
         user = _acteur_courant()
     maintenant = datetime.now()
-    ***REMOVED*** Un geste HUMAIN n'est jamais rebondi : deux actions identiques sont deux faits distincts,
-    ***REMOVED*** et `alerts` sert aussi de journal d'exploitation (« qui a fait quoi »).
+    # Un geste HUMAIN n'est jamais rebondi : deux actions identiques sont deux faits distincts,
+    # et `alerts` sert aussi de journal d'exploitation (« qui a fait quoi »).
     if antirebond and user is None:
         ecrire, message, repetition = _antirebond(message, niveau, vmid, node_id, kind, maintenant)
         if not ecrire:
             return None
         if repetition and msg_key:
-            ***REMOVED*** Le compte voyage dans les paramètres, pas dans la phrase : c'est ce qui permet au
-            ***REMOVED*** lecteur anglophone de voir « repeated 4 times » plutôt qu'un bout de français.
+            # Le compte voyage dans les paramètres, pas dans la phrase : c'est ce qui permet au
+            # lecteur anglophone de voir « repeated 4 times » plutôt qu'un bout de français.
             from .i18n import ALERTE_REP_N, ALERTE_REP_DEPUIS
             _p = json.loads(msg_params) if msg_params else {}
             _p[ALERTE_REP_N] = repetition["n"]
@@ -3220,9 +3220,9 @@ def db_add_alert(message, niveau="info", vmid=None, node_id=None, kind=None, use
             "msg_key, msg_params) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (message, niveau, maintenant.isoformat(timespec="milliseconds"),
              vmid, node_id, kind, user, msg_key, msg_params))
-        ***REMOVED*** Purge allégée : au lieu d'un DELETE … NOT IN (scan complet) à CHAQUE insert,
-        ***REMOVED*** on ne purge que lorsque la table dépasse RETENTION + marge (≈ tous les 200
-        ***REMOVED*** inserts). Le COUNT(*) est bien moins coûteux que le DELETE corrélé.
+        # Purge allégée : au lieu d'un DELETE … NOT IN (scan complet) à CHAQUE insert,
+        # on ne purge que lorsque la table dépasse RETENTION + marge (≈ tous les 200
+        # inserts). Le COUNT(*) est bien moins coûteux que le DELETE corrélé.
         _ret = _alerts_retention()
         n = db.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
         if n > _ret + ALERTS_PURGE_MARGIN:
@@ -3230,37 +3230,37 @@ def db_add_alert(message, niveau="info", vmid=None, node_id=None, kind=None, use
                 "DELETE FROM alerts WHERE id NOT IN "
                 "(SELECT id FROM alerts ORDER BY id DESC LIMIT ?)",
                 (_ret,))
-            ***REMOVED*** Même occasion : les épisodes clos depuis longtemps (une semaine) n'ont plus de rôle,
-            ***REMOVED*** ni pour l'anti-rebond ni pour la lecture. Purgés dans la MÊME branche que les
-            ***REMOVED*** alertes, donc ~1 fois sur 200 inserts : la table reste bornée sans coût par appel.
+            # Même occasion : les épisodes clos depuis longtemps (une semaine) n'ont plus de rôle,
+            # ni pour l'anti-rebond ni pour la lecture. Purgés dans la MÊME branche que les
+            # alertes, donc ~1 fois sur 200 inserts : la table reste bornée sans coût par appel.
             db.execute("DELETE FROM alert_episodes WHERE last_ts < ?",
                        ((datetime.now() - timedelta(days=7)).isoformat(timespec="seconds"),))
         db.commit()
-    ***REMOVED*** Sortie PUSH (service d'alertes : e-mail, webhook, …) — APRÈS le commit, et strictement hors
-    ***REMOVED*** chemin critique : notify() ne fait qu'empiler en mémoire et réveiller un thread daemon (aucun
-    ***REMOVED*** I/O réseau, aucune lecture DB ici). Un serveur SMTP ou une URL injoignable ne peut donc ni
-    ***REMOVED*** retarder ni faire échouer l'écriture ci-dessus.
-    ***REMOVED*** Import PARESSEUX : le service lit les settings, qui importent ce module.
+    # Sortie PUSH (service d'alertes : e-mail, webhook, …) — APRÈS le commit, et strictement hors
+    # chemin critique : notify() ne fait qu'empiler en mémoire et réveiller un thread daemon (aucun
+    # I/O réseau, aucune lecture DB ici). Un serveur SMTP ou une URL injoignable ne peut donc ni
+    # retarder ni faire échouer l'écriture ci-dessus.
+    # Import PARESSEUX : le service lit les settings, qui importent ce module.
     try:
         from services.alerting import notify as _alerting_notify
         try:
             _alerting_notify(message, niveau, vmid=vmid, node_id=node_id, kind=kind,
                              msg_key=msg_key, msg_params=msg_params)
         except TypeError:
-            ***REMOVED*** Sous-module `services/alerting` ANTÉRIEUR au rendu multilingue : parent et
-            ***REMOVED*** sous-modules sont versionnés séparément, et une désynchronisation des deux est un
-            ***REMOVED*** mode de panne déjà vécu ici. On retombe sur l'appel historique — la sortie push
-            ***REMOVED*** part alors en français, ce qui est dégradé mais pas cassé.
+            # Sous-module `services/alerting` ANTÉRIEUR au rendu multilingue : parent et
+            # sous-modules sont versionnés séparément, et une désynchronisation des deux est un
+            # mode de panne déjà vécu ici. On retombe sur l'appel historique — la sortie push
+            # part alors en français, ce qui est dégradé mais pas cassé.
             _alerting_notify(message, niveau, vmid=vmid, node_id=node_id, kind=kind)
     except Exception:
-        ***REMOVED*** Pas d'`except: pass` : si la sortie push casse, ça doit se voir dans le journal.
+        # Pas d'`except: pass` : si la sortie push casse, ça doit se voir dans le journal.
         log.exception("db_add_alert: mise en file du service d'alertes impossible")
-    ***REMOVED*** Rendu : le message CANONIQUE réellement écrit (None si l'anti-rebond l'a tu). L'appelant
-    ***REMOVED*** journalise ça plutôt que la clé — un `log.info("alert.deploy.detruit")` ne dirait rien à
-    ***REMOVED*** qui lit les journaux.
+    # Rendu : le message CANONIQUE réellement écrit (None si l'anti-rebond l'a tu). L'appelant
+    # journalise ça plutôt que la clé — un `log.info("alert.deploy.detruit")` ne dirait rien à
+    # qui lit les journaux.
     return message
 
-***REMOVED*** ─── Journal d'événements PTP (persisté) ────────────────────
+# ─── Journal d'événements PTP (persisté) ────────────────────
 PTP_EVENTS_RETENTION = 5000
 PTP_EVENTS_PURGE_MARGIN = 500
 
@@ -3271,7 +3271,7 @@ def db_add_ptp_event(node_id, node_name, network_id, network_name, ifname, type_
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (datetime.now().isoformat(timespec="milliseconds"), node_id, node_name,
              network_id, network_name, ifname, type_, detail, level))
-        ***REMOVED*** Purge allégée (cf. db_add_alert) : on ne purge que lorsqu'on dépasse RETENTION + marge.
+        # Purge allégée (cf. db_add_alert) : on ne purge que lorsqu'on dépasse RETENTION + marge.
         n = db.execute("SELECT COUNT(*) FROM ptp_events").fetchone()[0]
         if n > PTP_EVENTS_RETENTION + PTP_EVENTS_PURGE_MARGIN:
             db.execute(
@@ -3332,26 +3332,26 @@ def db_config_rev_auteur(vmid):
 
 
 def db_update_deploy_config(vmid, type_script, params):
-    ***REMOVED*** FILET « params MAIGRES » : `font_library` (jusqu'à 8 Mo de base64 par conteneur) n'est
-    ***REMOVED*** JAMAIS persisté — les références `lib:<sha16>` des params suffisent, la bibliothèque
-    ***REMOVED*** (static/uploads/fonts + table `fonts`) est la source de vérité, et le base64 est ré-injecté
-    ***REMOVED*** à la volée à l'ENVOI vers le conteneur (deploy._gras). Sans ce filet, chaque listing de
-    ***REMOVED*** conteneurs (/api/containers toutes les 5 s, surveillance…) relirait ces mégaoctets.
+    # FILET « params MAIGRES » : `font_library` (jusqu'à 8 Mo de base64 par conteneur) n'est
+    # JAMAIS persisté — les références `lib:<sha16>` des params suffisent, la bibliothèque
+    # (static/uploads/fonts + table `fonts`) est la source de vérité, et le base64 est ré-injecté
+    # à la volée à l'ENVOI vers le conteneur (deploy._gras). Sans ce filet, chaque listing de
+    # conteneurs (/api/containers toutes les 5 s, surveillance…) relirait ces mégaoctets.
     if isinstance(params, dict) and "font_library" in params:
         params = {k: v for k, v in params.items() if k != "font_library"}
     with get_db() as db:
-        ***REMOVED*** `config_rev` : +1 à CHAQUE écriture, quelle qu'en soit la source (déploiement, hot-apply
-        ***REMOVED*** persisté, câblage, macro, restauration de projet). C'est ce compteur que la garde
-        ***REMOVED*** anti-écrasement compare — cf. la migration dans `init_db`.
+        # `config_rev` : +1 à CHAQUE écriture, quelle qu'en soit la source (déploiement, hot-apply
+        # persisté, câblage, macro, restauration de projet). C'est ce compteur que la garde
+        # anti-écrasement compare — cf. la migration dans `init_db`.
         from .edit_lock import auteur_courant
         db.execute("UPDATE containers SET deploy_config=?, deployed_at=?, "
                    "config_rev=COALESCE(config_rev, 0) + 1, config_rev_by=? WHERE vmid=?",
                    (json.dumps({"type": type_script, "params": params}),
                     datetime.now().isoformat(timespec="seconds"), auteur_courant(), vmid))
         db.commit()
-    ***REMOVED*** « Projet vivant » (chantier 3) : toute modif de config d'un container de projet
-    ***REMOVED*** déclenche un re-snapshot débouncé du projet. Import tardif (pas de cycle au boot),
-    ***REMOVED*** best-effort : ne doit jamais faire échouer l'écriture.
+    # « Projet vivant » (chantier 3) : toute modif de config d'un container de projet
+    # déclenche un re-snapshot débouncé du projet. Import tardif (pas de cycle au boot),
+    # best-effort : ne doit jamais faire échouer l'écriture.
     try:
         from .projects import notify_container_changed
         notify_container_changed(vmid)
@@ -3364,7 +3364,7 @@ def db_update_source(vmid, source, shm_out):
                    (source, shm_out, vmid))
         db.commit()
 
-***REMOVED*** ─── Registre des nœuds de fabric (tissu de composition, keyé par signature) ──────────────
+# ─── Registre des nœuds de fabric (tissu de composition, keyé par signature) ──────────────
 @cache_requete
 def db_fabric_all(node_id=None):
     """Tous les nœuds de fabric matérialisés (optionnellement filtrés par nœud)."""
@@ -3419,7 +3419,7 @@ def db_fabric_delete(signature):
         db.execute("DELETE FROM fabric_node_alloc WHERE signature=?", (signature,))
         db.commit()
 
-***REMOVED*** ─── Registre NMOS de niveau cluster (C2a) ───────────────────────────
+# ─── Registre NMOS de niveau cluster (C2a) ───────────────────────────
 def _nmos_row(r):
     d = dict(r)
     try:
@@ -3471,15 +3471,15 @@ def db_nmos_resource_upsert(id, kind, essence, label, group_name, role, transpor
     l'exploitant si la valeur change ensuite. Jusqu'ici cet UPDATE les réécrivait à chaque rebuild
     avec la valeur RECALCULÉE, laquelle dérive du préfixe de libellés : changer ce réglage
     d'affichage réécrivait silencieusement le grouping de tout le parc (BCP-002-01)."""
-    ***REMOVED*** ★ REFUSER LA COLLISION AU MOMENT OÙ ELLE SE CRÉE (BCP-002-01, 2026-08-22).
-    ***REMOVED*** Toutes les ressources vivent sous UN SEUL Device cluster, et la base d'un nom de groupe est
-    ***REMOVED*** le préfixe de libellés du nœud — vide par défaut, donc le littéral « 2110 ». Un SECOND moteur
-    ***REMOVED*** sur un autre nœud sans préfixe distinct émettrait le même `2110 01:video` : même scope, même
-    ***REMOVED*** groupe, même rôle. Un contrôleur fusionnerait alors les Rx de deux nœuds dans un même
-    ***REMOVED*** ensemble, et le MUST d'unicité du rôle dans un groupe tomberait.
-    ***REMOVED*** Depuis que les grouphints sont FIGÉS, une telle collision serait DÉFINITIVE : elle ne se
-    ***REMOVED*** corrigerait plus en posant un préfixe après coup. On la dérive donc à l'écriture, et on le
-    ***REMOVED*** DIT — jamais un doublon en silence.
+    # ★ REFUSER LA COLLISION AU MOMENT OÙ ELLE SE CRÉE (BCP-002-01, 2026-08-22).
+    # Toutes les ressources vivent sous UN SEUL Device cluster, et la base d'un nom de groupe est
+    # le préfixe de libellés du nœud — vide par défaut, donc le littéral « 2110 ». Un SECOND moteur
+    # sur un autre nœud sans préfixe distinct émettrait le même `2110 01:video` : même scope, même
+    # groupe, même rôle. Un contrôleur fusionnerait alors les Rx de deux nœuds dans un même
+    # ensemble, et le MUST d'unicité du rôle dans un groupe tomberait.
+    # Depuis que les grouphints sont FIGÉS, une telle collision serait DÉFINITIVE : elle ne se
+    # corrigerait plus en posant un préfixe après coup. On la dérive donc à l'écriture, et on le
+    # DIT — jamais un doublon en silence.
     if group_name and role:
         try:
             with get_db() as _db:
@@ -3493,7 +3493,7 @@ def db_nmos_resource_upsert(id, kind, essence, label, group_name, role, transpor
                 db_add_alert("alert.nmos.groupe_collision", "warning", kind="advisory",
                              params={"g": _origine, "r": role, "d": group_name})
         except Exception:
-            pass          ***REMOVED*** un garde-fou ne doit jamais empêcher l'enregistrement lui-même
+            pass          # un garde-fou ne doit jamais empêcher l'enregistrement lui-même
     with get_db() as db:
         db.execute('''INSERT INTO nmos_resources
             (id, kind, essence, label, group_name, role, transport, bind_instance_uuid, bind_slot, created_at)
@@ -3531,14 +3531,14 @@ def db_nmos_resource_delete(id):
     with get_db() as db:
         db.execute("DELETE FROM nmos_resources WHERE id=?", (id,))
         db.commit()
-    ***REMOVED*** Libère la réservation multicast associée (voir db_reserve_mcast) — sinon l'adresse reste
-    ***REMOVED*** bloquée indéfiniment pour un owner_ref dont la ressource n'existe plus.
+    # Libère la réservation multicast associée (voir db_reserve_mcast) — sinon l'adresse reste
+    # bloquée indéfiniment pour un owner_ref dont la ressource n'existe plus.
     try:
         db_release_mcast_owner(f"nmos:{id}")
     except Exception:
         pass
 
-***REMOVED*** ─── Snapshots nommés de config NMOS ───────────────────────────────────
+# ─── Snapshots nommés de config NMOS ───────────────────────────────────
 def db_nmos_snapshot_save(name, payload):
     """Crée un snapshot nommé (payload = dict config). Retourne l'id."""
     with get_db() as db:
@@ -3630,9 +3630,9 @@ def db_nmos_resource_rebind(id, bind_instance_uuid, bind_slot):
                    (bind_instance_uuid, bind_slot, id))
         db.commit()
 
-***REMOVED*** Limite d'AFFICHAGE par défaut — délibérément DÉCOUPLÉE de la rétention de stockage. Les deux
-***REMOVED*** étaient la même constante : porter la rétention à 10 000 aurait fait rendre 10 000 lignes à la
-***REMOVED*** page Conteneurs (`db_get_alerts()` sans limite) et à l'API. On stocke long, on affiche court.
+# Limite d'AFFICHAGE par défaut — délibérément DÉCOUPLÉE de la rétention de stockage. Les deux
+# étaient la même constante : porter la rétention à 10 000 aurait fait rendre 10 000 lignes à la
+# page Conteneurs (`db_get_alerts()` sans limite) et à l'API. On stocke long, on affiche court.
 ALERTS_AFFICHAGE_DEFAUT = 1000
 
 
@@ -3642,9 +3642,9 @@ def _normaliser_recherche(s):
     s = unicodedata.normalize("NFKD", str(s or ""))
     return "".join(c for c in s if not unicodedata.combining(c)).lower()
 
-***REMOVED*** Nombre de paramètres liés qu'on s'autorise à ajouter pour le seul terme `msg_key IN (...)` —
-***REMOVED*** marge sous le plafond SQLite (999 par défaut) : le reste de la requête (message/msg_params/
-***REMOVED*** autres filtres) consomme aussi des `?`. Un dépassement est journalisé, jamais silencieux.
+# Nombre de paramètres liés qu'on s'autorise à ajouter pour le seul terme `msg_key IN (...)` —
+# marge sous le plafond SQLite (999 par défaut) : le reste de la requête (message/msg_params/
+# autres filtres) consomme aussi des `?`. Un dépassement est journalisé, jamais silencieux.
 _MAX_CLES_RECHERCHE = 500
 
 def _cles_alertes_matchant(q, lang):
@@ -3688,9 +3688,9 @@ def db_get_alerts(q=None, niveau=None, limit=ALERTS_AFFICHAGE_DEFAUT, vmid=None,
             except Exception:
                 lang = None
         if lang:
-            ***REMOVED*** Un catalogue en défaut ne doit pas faire tomber la LISTE D'ALERTES : le tableau de
-            ***REMOVED*** bord la relit toutes les 5 s, et une recherche dégradée (français seul) vaut
-            ***REMOVED*** infiniment mieux qu'un 500 sur la page qui sert à voir ce qui ne va pas.
+            # Un catalogue en défaut ne doit pas faire tomber la LISTE D'ALERTES : le tableau de
+            # bord la relit toutes les 5 s, et une recherche dégradée (français seul) vaut
+            # infiniment mieux qu'un 500 sur la page qui sert à voir ce qui ne va pas.
             try:
                 cles = _cles_alertes_matchant(q, lang)
             except Exception:
@@ -3714,8 +3714,8 @@ def db_get_alerts(q=None, niveau=None, limit=ALERTS_AFFICHAGE_DEFAUT, vmid=None,
         where.append("kind = ?")
         params.append(str(kind))
     if user:
-        ***REMOVED*** « machine » = les actions SANS acteur (surveillance, réconciliation, watchdog) : c'est un
-        ***REMOVED*** filtre légitime et fréquent — « qu'est-ce qui s'est fait tout seul ? ».
+        # « machine » = les actions SANS acteur (surveillance, réconciliation, watchdog) : c'est un
+        # filtre légitime et fréquent — « qu'est-ce qui s'est fait tout seul ? ».
         if str(user).lower() == "machine":
             where.append("user IS NULL")
         else:
@@ -3740,14 +3740,14 @@ def db_alertes_groupees(fenetre=1000):
     poll cette agrégation toutes les 2 s et c'était devenu le premier poste de CPU du contrôleur
     (mesuré 2026-08-19). Le regroupement se fait là où sont les données. Fenêtre et sémantique
     identiques à l'ancien calcul Python — seul l'endroit du travail change."""
-    ***REMOVED*** ⚠ LA CTE NE PROJETTE QUE CE QU'ELLE GROUPE. La première version faisait
-    ***REMOVED*** `SELECT *` : SQLite matérialisait les 1000 lignes ENTIÈRES — `message` est
-    ***REMOVED*** du texte libre, souvent long — avant d'en agréger 4 colonnes. On ne garde
-    ***REMOVED*** dans la fenêtre que ce dont le GROUP BY a besoin, et on ne va chercher la
-    ***REMOVED*** ligne complète que pour les gagnants (≈770 sur 1000, mais surtout : une
-    ***REMOVED*** jointure par id au lieu d'un tri sur des lignes larges).
-    ***REMOVED*** Mesuré sur 10 033 alertes : 9,1 ms → 4,8 ms, résultats vérifiés IDENTIQUES
-    ***REMOVED*** (mêmes groupes, mêmes id, mêmes comptes, mêmes niveaux).
+    # ⚠ LA CTE NE PROJETTE QUE CE QU'ELLE GROUPE. La première version faisait
+    # `SELECT *` : SQLite matérialisait les 1000 lignes ENTIÈRES — `message` est
+    # du texte libre, souvent long — avant d'en agréger 4 colonnes. On ne garde
+    # dans la fenêtre que ce dont le GROUP BY a besoin, et on ne va chercher la
+    # ligne complète que pour les gagnants (≈770 sur 1000, mais surtout : une
+    # jointure par id au lieu d'un tri sur des lignes larges).
+    # Mesuré sur 10 033 alertes : 9,1 ms → 4,8 ms, résultats vérifiés IDENTIQUES
+    # (mêmes groupes, mêmes id, mêmes comptes, mêmes niveaux).
     sql = """
         WITH f AS (SELECT id, message, niveau, timestamp
                    FROM alerts ORDER BY id DESC LIMIT ?),
@@ -3780,7 +3780,7 @@ def db_alerts_count():
         return int(db.execute("SELECT COUNT(*) FROM alerts").fetchone()[0])
 
 
-***REMOVED*** ─── Projects ───────────────────────────────────────────────
+# ─── Projects ───────────────────────────────────────────────
 
 def _parse_snapshot(row):
     d = dict(row)
@@ -3790,8 +3790,8 @@ def _parse_snapshot(row):
         d["snapshot"] = []
     return d
 
-***REMOVED*** Champs TSL 5.0, dans l'ordre où ils occupaient une base. Cette constante ne sert plus qu'à
-***REMOVED*** NOMMER les niveaux hérités : le « 3 » appartient désormais à TSL seul (cf. services/tsl).
+# Champs TSL 5.0, dans l'ordre où ils occupaient une base. Cette constante ne sert plus qu'à
+# NOMMER les niveaux hérités : le « 3 » appartient désormais à TSL seul (cf. services/tsl).
 _CHAMPS_TSL_HERITES = (("lh", "LH"), ("rh", "RH"), ("tt", "TT"))
 
 
@@ -3909,7 +3909,7 @@ def _migrer_colonnes_libelles(db):
     nombre fait réapparaître les libellés intacts."""
     import json as _json
     if db.execute("SELECT COUNT(*) FROM settings WHERE key='label_cols_actives'").fetchone()[0]:
-        return                                ***REMOVED*** déjà posé — l'idempotence tient à cette ligne
+        return                                # déjà posé — l'idempotence tient à cette ligne
     haute = 2
     try:
         r = db.execute("SELECT value FROM settings WHERE key='tsl_label_names'").fetchone()
@@ -3918,7 +3918,7 @@ def _migrer_colonnes_libelles(db):
                    6: "Label 6", 7: "Label 7", 8: "Label 8", 9: "Label 9"}
         for i in range(2, 10):
             if i < len(noms) and str(noms[i]).strip() not in ("", defauts[i]):
-                haute = max(haute, i - 1)     ***REMOVED*** colonne i = la (i-1)ᵉ personnalisée
+                haute = max(haute, i - 1)     # colonne i = la (i-1)ᵉ personnalisée
     except Exception:
         pass
     try:
@@ -3961,7 +3961,7 @@ def _elaguer_niveaux_projets_dormants(db):
         for x in (v if isinstance(v, list) else [v]):
             if isinstance(x, str) and "-" in x:
                 cites.add(x)
-        return None                      ***REMOVED*** aucune réécriture : on ne fait que lire
+        return None                      # aucune réécriture : on ne fait que lire
 
     _reecrire_magasins(db, _relever)
     for (u,) in db.execute("SELECT level_uuid FROM tsl_connections "
@@ -3998,26 +3998,26 @@ def _migrer_identite_niveaux(db):
     et le geste qui déclenche ça n'a aucun rapport apparent avec le tally. `_reecrire_magasins`
     couvre les six magasins."""
     import uuid as _uuid
-    ***REMOVED*** ⚠ LA COLONNE D'ABORD, LA BASCULE ENSUITE — et jamais l'inverse.
-    ***REMOVED*** `_elaguer_niveaux_projets_dormants`, appelée juste après dans `init_db`, LIT
-    ***REMOVED*** `tsl_connections.level_uuid`. Cet ALTER vivait sous le `return` d'idempotence
-    ***REMOVED*** ci-dessous : sur une base NEUVE il n'y a aucun niveau, donc rien à basculer, donc
-    ***REMOVED*** on sortait avant de créer la colonne — et `init_db()` mourait sur
-    ***REMOVED*** « no such column: level_uuid ». Invisible ici, où la base l'a déjà : le défaut ne
-    ***REMOVED*** frappait QUE l'installation neuve, c'est-à-dire le premier geste d'un nouveau venu.
+    # ⚠ LA COLONNE D'ABORD, LA BASCULE ENSUITE — et jamais l'inverse.
+    # `_elaguer_niveaux_projets_dormants`, appelée juste après dans `init_db`, LIT
+    # `tsl_connections.level_uuid`. Cet ALTER vivait sous le `return` d'idempotence
+    # ci-dessous : sur une base NEUVE il n'y a aucun niveau, donc rien à basculer, donc
+    # on sortait avant de créer la colonne — et `init_db()` mourait sur
+    # « no such column: level_uuid ». Invisible ici, où la base l'a déjà : le défaut ne
+    # frappait QUE l'installation neuve, c'est-à-dire le premier geste d'un nouveau venu.
     cols = {r[1] for r in db.execute("PRAGMA table_info(tsl_connections)").fetchall()}
     if "level_uuid" not in cols:
         db.execute("ALTER TABLE tsl_connections ADD COLUMN level_uuid TEXT")
 
     manquants = db.execute("SELECT id FROM tally_levels WHERE uuid IS NULL OR uuid=''").fetchall()
     if not manquants:
-        return                                ***REMOVED*** déjà basculée — l'idempotence tient à cette ligne
+        return                                # déjà basculée — l'idempotence tient à cette ligne
     ancien_vers_uuid = {}
     for (rowid,) in manquants:
         u = str(_uuid.uuid4())
         db.execute("UPDATE tally_levels SET uuid=? WHERE id=?", (u, rowid))
         ancien_vers_uuid[rowid] = u
-    ***REMOVED*** Les références en base citaient le rowid ; elles citent maintenant l'UUID.
+    # Les références en base citaient le rowid ; elles citent maintenant l'UUID.
     cols = {r[1] for r in db.execute("PRAGMA table_info(tsl_connections)").fetchall()}
     if "level_id" in cols:
         for cid, lid in db.execute("SELECT id, level_id FROM tsl_connections "
@@ -4032,7 +4032,7 @@ def _migrer_identite_niveaux(db):
         out = []
         for x in vals:
             if isinstance(x, str) and "-" in x:
-                out.append(x)                 ***REMOVED*** déjà un UUID
+                out.append(x)                 # déjà un UUID
                 continue
             try:
                 n = int(x)
@@ -4065,15 +4065,15 @@ def _migrer_niveaux_tally(db):
     if "level_id" not in cols:
         db.execute("ALTER TABLE tsl_connections ADD COLUMN level_id INTEGER "
                    "REFERENCES tally_levels(id) ON DELETE SET NULL")
-    ***REMOVED*** ★ DEUX BARREAUX, comme pour un conteneur (cf. CLAUDE.md « Identité d'un conteneur ») :
-    ***REMOVED***   · `uuid` — L'IDENTITÉ. C'est elle, et elle seule, que citent les configurations, les
-    ***REMOVED***     conteneurs et (demain) les Sources IS-07. Elle ne bouge JAMAIS.
-    ***REMOVED***   · `num`  — le RANG VISUEL, 1..N. Purement d'affichage : réordonner le réécrit librement,
-    ***REMOVED***     et rien d'autre n'en dépend.
-    ***REMOVED*** C'est ce qui permet de réordonner pour de bon — la ligne ET son numéro bougent — sans que
-    ***REMOVED*** ce soit une migration. La version précédente confondait les deux dans `id`, ce qui laissait
-    ***REMOVED*** le choix entre un numéro figé (inutilisable) et une renumérotation qui réécrit toutes les
-    ***REMOVED*** configurations du site (une migration déguisée en réglage).
+    # ★ DEUX BARREAUX, comme pour un conteneur (cf. CLAUDE.md « Identité d'un conteneur ») :
+    #   · `uuid` — L'IDENTITÉ. C'est elle, et elle seule, que citent les configurations, les
+    #     conteneurs et (demain) les Sources IS-07. Elle ne bouge JAMAIS.
+    #   · `num`  — le RANG VISUEL, 1..N. Purement d'affichage : réordonner le réécrit librement,
+    #     et rien d'autre n'en dépend.
+    # C'est ce qui permet de réordonner pour de bon — la ligne ET son numéro bougent — sans que
+    # ce soit une migration. La version précédente confondait les deux dans `id`, ce qui laissait
+    # le choix entre un numéro figé (inutilisable) et une renumérotation qui réécrit toutes les
+    # configurations du site (une migration déguisée en réglage).
     db.execute("""CREATE TABLE IF NOT EXISTS tally_levels (
         id         INTEGER PRIMARY KEY,       -- rowid interne : ne SORT jamais de cette table
         uuid       TEXT    NOT NULL DEFAULT '',
@@ -4086,71 +4086,71 @@ def _migrer_niveaux_tally(db):
     if "uuid" not in _tcols:
         db.execute("ALTER TABLE tally_levels ADD COLUMN uuid TEXT NOT NULL DEFAULT ''")
     if "num" not in _tcols:
-        ***REMOVED*** `ord` portait déjà le rang : on le reprend tel quel, l'ordre affiché ne bouge pas.
+        # `ord` portait déjà le rang : on le reprend tel quel, l'ordre affiché ne bouge pas.
         db.execute("ALTER TABLE tally_levels ADD COLUMN num INTEGER NOT NULL DEFAULT 0")
         if "ord" in _tcols:
             db.execute("UPDATE tally_levels SET num = ord")
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_tally_levels_uuid "
                "ON tally_levels(uuid) WHERE uuid <> ''")
-    ***REMOVED*** ⚠ RE-SEMIS D'UNE PREMIÈRE VERSION FAUSSE. Elle créait TROIS niveaux par porteur, un par
-    ***REMOVED*** champ TSL — c'était transposer `base+0/1/2` au lieu de s'en défaire, donc rater le
-    ***REMOVED*** dénouement. Un porteur est UNE chaîne de destination : ses trois champs sont trois façons
-    ***REMOVED*** d'exprimer SON état, pas trois chaînes. La preuve était dans le code : `rouge_field` et
-    ***REMOVED*** `vert_field` désignent lequel des trois porte le rouge et lequel le vert POUR UNE MÊME
-    ***REMOVED*** connexion, et le troisième n'est jamais lu.
-    ***REMOVED*** ⚠⚠ L'IDEMPOTENCE TIENT À UN MARQUEUR, PLUS À LA FORME DES DONNÉES. La version précédente
-    ***REMOVED*** déduisait « déjà migrée » de « aucun porteur n'a plus d'un niveau » — et re-semait sinon,
-    ***REMOVED*** ce qui commence par un `DELETE FROM tally_levels`. Or **une production peut légitimement
-    ***REMOVED*** avoir plusieurs niveaux** : c'est la capacité qu'on a ouverte en dénouant (autant de
-    ***REMOVED*** chaînes de destination qu'elle en a). Le jour où quelqu'un s'en sert, la migration se croit
-    ***REMOVED*** à refaire et EFFACE TOUS LES NIVEAUX au démarrage suivant, renommages compris, pour les
-    ***REMOVED*** remplacer par ceux qu'on déduit des vieilles colonnes `tally_base`.
-    ***REMOVED***
-    ***REMOVED*** Signalé par l'utilisateur le 2026-09-01 (« quand on supprime un niveau, ça supprime tous les
-    ***REMOVED*** niveaux ») : ce n'était pas la suppression, c'était le redémarrage qui suivait.
-    ***REMOVED***
-    ***REMOVED*** ★ RÈGLE GÉNÉRALE : une garde d'idempotence ne doit jamais INFÉRER l'état d'une forme de
-    ***REMOVED*** données que le modèle autorise. Elle se pose explicitement, et une seule fois.
+    # ⚠ RE-SEMIS D'UNE PREMIÈRE VERSION FAUSSE. Elle créait TROIS niveaux par porteur, un par
+    # champ TSL — c'était transposer `base+0/1/2` au lieu de s'en défaire, donc rater le
+    # dénouement. Un porteur est UNE chaîne de destination : ses trois champs sont trois façons
+    # d'exprimer SON état, pas trois chaînes. La preuve était dans le code : `rouge_field` et
+    # `vert_field` désignent lequel des trois porte le rouge et lequel le vert POUR UNE MÊME
+    # connexion, et le troisième n'est jamais lu.
+    # ⚠⚠ L'IDEMPOTENCE TIENT À UN MARQUEUR, PLUS À LA FORME DES DONNÉES. La version précédente
+    # déduisait « déjà migrée » de « aucun porteur n'a plus d'un niveau » — et re-semait sinon,
+    # ce qui commence par un `DELETE FROM tally_levels`. Or **une production peut légitimement
+    # avoir plusieurs niveaux** : c'est la capacité qu'on a ouverte en dénouant (autant de
+    # chaînes de destination qu'elle en a). Le jour où quelqu'un s'en sert, la migration se croit
+    # à refaire et EFFACE TOUS LES NIVEAUX au démarrage suivant, renommages compris, pour les
+    # remplacer par ceux qu'on déduit des vieilles colonnes `tally_base`.
+    #
+    # Signalé par l'utilisateur le 2026-09-01 (« quand on supprime un niveau, ça supprime tous les
+    # niveaux ») : ce n'était pas la suppression, c'était le redémarrage qui suivait.
+    #
+    # ★ RÈGLE GÉNÉRALE : une garde d'idempotence ne doit jamais INFÉRER l'état d'une forme de
+    # données que le modèle autorise. Elle se pose explicitement, et une seule fois.
     _fait = db.execute("SELECT COUNT(*) FROM settings WHERE key='tally_denouement_fait'") \
               .fetchone()[0]
     if _fait:
         return
     if db.execute("SELECT COUNT(*) FROM tally_levels").fetchone()[0]:
-        ***REMOVED*** ⚠⚠ DES NIVEAUX EXISTENT : ON NE TOUCHE À RIEN, ON POSE LE MARQUEUR.
-        ***REMOVED***
-        ***REMOVED*** Cette fonction commence par un `DELETE FROM tally_levels`. Une version précédente
-        ***REMOVED*** décidait de re-semer d'après la FORME DES DONNÉES — « un porteur a plus d'un niveau,
-        ***REMOVED*** donc la base est restée au modèle à trois par porteur ». Or **une production peut
-        ***REMOVED*** légitimement avoir plusieurs niveaux** : c'est la capacité qu'on a ouverte en dénouant.
-        ***REMOVED*** Le jour où quelqu'un s'en sert, le démarrage suivant efface TOUS les niveaux,
-        ***REMOVED*** renommages compris, et les remplace par ceux déduits des vieilles colonnes `tally_base`.
-        ***REMOVED*** Signalé par l'utilisateur le 2026-09-01 (« quand on supprime un niveau, ça supprime tous
-        ***REMOVED*** les niveaux ») : ce n'était pas la suppression, c'était le redémarrage qui suivait.
-        ***REMOVED***
-        ***REMOVED*** Le re-semis corrigeait une première version qui n'est jamais sortie de cette machine. Il
-        ***REMOVED*** est RETIRÉ : plus aucun chemin ne peut détruire des niveaux au démarrage.
-        ***REMOVED***
-        ***REMOVED*** ★ RÈGLE : une garde d'idempotence ne doit jamais INFÉRER l'état d'une forme de données
-        ***REMOVED*** que le modèle autorise. Elle se pose explicitement, et une seule fois.
+        # ⚠⚠ DES NIVEAUX EXISTENT : ON NE TOUCHE À RIEN, ON POSE LE MARQUEUR.
+        #
+        # Cette fonction commence par un `DELETE FROM tally_levels`. Une version précédente
+        # décidait de re-semer d'après la FORME DES DONNÉES — « un porteur a plus d'un niveau,
+        # donc la base est restée au modèle à trois par porteur ». Or **une production peut
+        # légitimement avoir plusieurs niveaux** : c'est la capacité qu'on a ouverte en dénouant.
+        # Le jour où quelqu'un s'en sert, le démarrage suivant efface TOUS les niveaux,
+        # renommages compris, et les remplace par ceux déduits des vieilles colonnes `tally_base`.
+        # Signalé par l'utilisateur le 2026-09-01 (« quand on supprime un niveau, ça supprime tous
+        # les niveaux ») : ce n'était pas la suppression, c'était le redémarrage qui suivait.
+        #
+        # Le re-semis corrigeait une première version qui n'est jamais sortie de cette machine. Il
+        # est RETIRÉ : plus aucun chemin ne peut détruire des niveaux au démarrage.
+        #
+        # ★ RÈGLE : une garde d'idempotence ne doit jamais INFÉRER l'état d'une forme de données
+        # que le modèle autorise. Elle se pose explicitement, et une seule fois.
         db.execute("INSERT OR REPLACE INTO settings (key, value) "
                    "VALUES ('tally_denouement_fait', ?)", (json.dumps(True),))
         return
 
-    ***REMOVED*** Porteurs historiques, dans l'ordre de leur base. Un même niveau absolu ne peut appartenir
-    ***REMOVED*** qu'à UN porteur : en cas de chevauchement (jamais vu, mais rien ne l'interdisait), le
-    ***REMOVED*** premier par base gagne et on le DIT plutôt que d'en perdre un en silence.
+    # Porteurs historiques, dans l'ordre de leur base. Un même niveau absolu ne peut appartenir
+    # qu'à UN porteur : en cas de chevauchement (jamais vu, mais rien ne l'interdisait), le
+    # premier par base gagne et on le DIT plutôt que d'en perdre un en silence.
     porteurs = []
     for r in db.execute("SELECT id, name, tally_base FROM tsl_connections "
                         "WHERE tally_base IS NOT NULL").fetchall():
-        porteurs.append((int(r[2]), "connection", r[0], r[1] or ("TSL ***REMOVED***%s" % r[0])))
+        porteurs.append((int(r[2]), "connection", r[0], r[1] or ("TSL #%s" % r[0])))
     for r in db.execute("SELECT id, name, tally_base FROM projects "
                         "WHERE tally_base IS NOT NULL").fetchall():
-        porteurs.append((int(r[2]), "project", r[0], r[1] or ("Projet ***REMOVED***%s" % r[0])))
+        porteurs.append((int(r[2]), "project", r[0], r[1] or ("Projet #%s" % r[0])))
     porteurs.sort()
 
-    ***REMOVED*** UN niveau par porteur. La table de correspondance associe chacun des trois anciens numéros
-    ***REMOVED*** (base, base+1, base+2) au MÊME nouveau niveau : une référence héritée, quel que soit le
-    ***REMOVED*** champ qu'elle visait, désigne désormais la chaîne entière.
+    # UN niveau par porteur. La table de correspondance associe chacun des trois anciens numéros
+    # (base, base+1, base+2) au MÊME nouveau niveau : une référence héritée, quel que soit le
+    # champ qu'elle visait, désigne désormais la chaîne entière.
     ancien_vers_neuf = {}
     for neuf, (base, genre, oid, nom) in enumerate(porteurs, start=1):
         db.execute("INSERT INTO tally_levels (id, nom, num, owner_kind, owner_id) "
@@ -4167,17 +4167,17 @@ def _migrer_niveaux_tally(db):
              "le pas de 3 de TSL a disparu", len(porteurs), len(porteurs), len(porteurs))
 
 
-***REMOVED*** Paramètres de plugin qui portaient un numéro de niveau absolu. Ils deviennent des LISTES : la
-***REMOVED*** sélection d'un plugin est un ENSEMBLE de niveaux combinés en OU, dont « un seul » n'est que le
-***REMOVED*** cas à un élément (cf. TODO.md § TALLY). Les faire en deux temps voudrait dire toucher deux fois
-***REMOVED*** la même configuration.
+# Paramètres de plugin qui portaient un numéro de niveau absolu. Ils deviennent des LISTES : la
+# sélection d'un plugin est un ENSEMBLE de niveaux combinés en OU, dont « un seul » n'est que le
+# cas à un élément (cf. TODO.md § TALLY). Les faire en deux temps voudrait dire toucher deux fois
+# la même configuration.
 _PARAMS_NIVEAU = ("tally_level", "tally_level_a", "tally_level_b", "tally_level_base")
 
-***REMOVED*** ★ TOUS LES MAGASINS QUI GARDENT UNE COPIE DE CONFIGURATION, pas seulement les conteneurs vivants.
-***REMOVED*** Un projet restauré, une version rappelée ou une disposition rechargée réinjectent des paramètres
-***REMOVED*** écrits AVANT : s'ils portent des numéros de niveau périmés, le tally repart sur le mauvais
-***REMOVED*** signal, et le geste qui déclenche ça (restaurer un projet) n'a aucun rapport apparent avec le
-***REMOVED*** tally. Relevé le 2026-09-01 : 68 références dormaient hors de `containers`.
+# ★ TOUS LES MAGASINS QUI GARDENT UNE COPIE DE CONFIGURATION, pas seulement les conteneurs vivants.
+# Un projet restauré, une version rappelée ou une disposition rechargée réinjectent des paramètres
+# écrits AVANT : s'ils portent des numéros de niveau périmés, le tally repart sur le mauvais
+# signal, et le geste qui déclenche ça (restaurer un projet) n'a aucun rapport apparent avec le
+# tally. Relevé le 2026-09-01 : 68 références dormaient hors de `containers`.
 _MAGASINS_NIVEAU = (("containers", "deploy_config", "vmid"),
                     ("projects", "snapshot", "id"),
                     ("project_versions", "snapshot", "id"),
@@ -4254,22 +4254,22 @@ def _reecrire_niveaux_plugins(db, table):
             if cle not in params:
                 continue
             v = params[cle]
-            if isinstance(v, list):          ***REMOVED*** déjà migré
+            if isinstance(v, list):          # déjà migré
                 continue
             try:
                 ancien = int(v)
             except (TypeError, ValueError):
                 continue
             neuf = table.get(ancien)
-            ***REMOVED*** Un niveau absent de la table venait d'un porteur disparu : on vide plutôt que de
-            ***REMOVED*** pointer un niveau qui appartient désormais à quelqu'un d'autre.
+            # Un niveau absent de la table venait d'un porteur disparu : on vide plutôt que de
+            # pointer un niveau qui appartient désormais à quelqu'un d'autre.
             params[cle] = [neuf] if neuf else []
             change = True
-        ***REMOVED*** ★ TROISIÈME FUITE DU « 3 », et la plus cachée : `flux_config[].tally_level` du multiview
-        ***REMOVED*** n'est pas un niveau mais un NUMÉRO DE BANDE 1-based, que le distributeur reconvertissait
-        ***REMOVED*** en `(niveau-1)*3`. Elle est imbriquée dans les paramètres, donc invisible d'une
-        ***REMOVED*** conversion à plat — c'est exactement le genre de reste qui fait qu'une migration paraît
-        ***REMOVED*** finie et ne l'est pas.
+        # ★ TROISIÈME FUITE DU « 3 », et la plus cachée : `flux_config[].tally_level` du multiview
+        # n'est pas un niveau mais un NUMÉRO DE BANDE 1-based, que le distributeur reconvertissait
+        # en `(niveau-1)*3`. Elle est imbriquée dans les paramètres, donc invisible d'une
+        # conversion à plat — c'est exactement le genre de reste qui fait qu'une migration paraît
+        # finie et ne l'est pas.
         for fc in (params.get("flux_config") or []):
             if not isinstance(fc, dict) or "tally_level" not in fc:
                 continue
@@ -4281,7 +4281,7 @@ def _reecrire_niveaux_plugins(db, table):
             except (TypeError, ValueError):
                 continue
             if bande <= 0:
-                fc["tally_level"] = []          ***REMOVED*** « niveau du projet » : résolu à l'exécution
+                fc["tally_level"] = []          # « niveau du projet » : résolu à l'exécution
             else:
                 niv = table.get((bande - 1) * 3)
                 fc["tally_level"] = [niv] if niv else []
@@ -4363,8 +4363,8 @@ def db_snapshot_for_vmids(vmids):
     snapshot = []
     for r in sorted(rows, key=lambda x: x["vmid"]):
         c = dict(r)
-        ***REMOVED*** Containers de monitoring (un streamer par utilisateur, hostname monitor-u<uid>) :
-        ***REMOVED*** infra par-utilisateur éphémère, jamais clonée dans un projet → exclus.
+        # Containers de monitoring (un streamer par utilisateur, hostname monitor-u<uid>) :
+        # infra par-utilisateur éphémère, jamais clonée dans un projet → exclus.
         if c.get("monitor_user_id"):
             continue
         c.pop("monitor_user_id", None)
@@ -4373,8 +4373,8 @@ def db_snapshot_for_vmids(vmids):
                 c["deploy_config"] = json.loads(c["deploy_config"])
             except Exception:
                 c["deploy_config"] = None
-        ***REMOVED*** Mémoires par-container (plugin_store scopé sur le vmid) : DVE, multiview,
-        ***REMOVED*** presets… embarquées dans le projet pour être restaurées avec le container.
+        # Mémoires par-container (plugin_store scopé sur le vmid) : DVE, multiview,
+        # presets… embarquées dans le projet pour être restaurées avec le container.
         c["memories"] = plugin_store_list_scope(str(c.get("vmid")))
         snapshot.append(c)
     return snapshot
@@ -4393,9 +4393,9 @@ def db_save_project(name, vmids, media_path=None):
         db.commit()
         return cur.lastrowid
 
-***REMOVED*** ─── Versions de projet (« projet vivant », chantier 3) ───────
+# ─── Versions de projet (« projet vivant », chantier 3) ───────
 
-AUTO_VERSIONS_KEEP = 30   ***REMOVED*** rétention des versions automatiques (label NULL) par projet
+AUTO_VERSIONS_KEEP = 30   # rétention des versions automatiques (label NULL) par projet
 
 def db_update_project_snapshot(pid, snapshot):
     with get_db() as db:
@@ -4410,8 +4410,8 @@ def db_add_project_version(pid, snapshot, label=None):
             "VALUES (?,?,?,?)",
             (pid, datetime.now().isoformat(timespec="seconds"), label,
              json.dumps(snapshot)))
-        ***REMOVED*** Rétention : les versions AUTO au-delà de AUTO_VERSIONS_KEEP sont purgées ;
-        ***REMOVED*** les versions nommées sont conservées sans limite.
+        # Rétention : les versions AUTO au-delà de AUTO_VERSIONS_KEEP sont purgées ;
+        # les versions nommées sont conservées sans limite.
         db.execute(
             "DELETE FROM project_versions WHERE project_id=? AND label IS NULL AND id NOT IN "
             "(SELECT id FROM project_versions WHERE project_id=? AND label IS NULL "
@@ -4453,7 +4453,7 @@ def db_delete_project_version(vid):
         db.execute("DELETE FROM project_versions WHERE id=?", (vid,))
         db.commit()
 
-***REMOVED*** ─── Macros + variables de projet (chantier 6) ────────────────
+# ─── Macros + variables de projet (chantier 6) ────────────────
 
 def _parse_macro(r):
     m = dict(r)
@@ -4532,7 +4532,7 @@ def db_set_project_var(pid, name, value):
                    (pid, name, None if value is None else str(value)))
         db.commit()
 
-***REMOVED*** ─── Déclencheurs permanents (chantier 6 suite) ───────────────
+# ─── Déclencheurs permanents (chantier 6 suite) ───────────────
 
 def _parse_trigger(r):
     t = dict(r)
@@ -4594,7 +4594,7 @@ def db_delete_trigger(tid):
         db.execute("DELETE FROM project_triggers WHERE id=?", (tid,))
         db.commit()
 
-***REMOVED*** ─── Ports virtuels de projet (chantier 4) ────────────────────
+# ─── Ports virtuels de projet (chantier 4) ────────────────────
 
 def _parse_port(r):
     p = dict(r)
@@ -4691,7 +4691,7 @@ def db_delete_project(pid):
         db.execute("DELETE FROM project_members WHERE project_id=?", (pid,))
         db.commit()
 
-***REMOVED*** ─── Membres de projet (rôles par projet : owner|editor|operator|viewer) ──
+# ─── Membres de projet (rôles par projet : owner|editor|operator|viewer) ──
 
 def db_project_members(pid):
     """Membres d'un projet, enrichis de l'identité utilisateur."""
@@ -4731,7 +4731,7 @@ def db_project_role(pid, uid):
             (pid, uid)).fetchone()
         return r["role"] if r else None
 
-***REMOVED*** ─── Vues composées d'un projet (chantier 2) ──────────────────
+# ─── Vues composées d'un projet (chantier 2) ──────────────────
 
 def _parse_view(r):
     v = dict(r)
@@ -4788,7 +4788,7 @@ def db_delete_view(vid):
         db.execute("DELETE FROM project_views WHERE id=?", (vid,))
         db.commit()
 
-***REMOVED*** ─── Cable snapshots (configurations de câblage sauvegardées) ──
+# ─── Cable snapshots (configurations de câblage sauvegardées) ──
 
 def db_cable_snapshot_save(name, edges):
     """Stocke un snapshot de câblage. `edges` est une liste de dicts
@@ -4835,16 +4835,16 @@ def db_cable_snapshot_delete(sid):
         return cur.rowcount > 0
 
 
-***REMOVED*** ─── Vues de disposition page Câbles (mode « Libre ») ─────────────
-***REMOVED*** payload = {"positions": {"<vmid>": {"x":…, "y":…}}, "collapsed": [vmid…]}.
+# ─── Vues de disposition page Câbles (mode « Libre ») ─────────────
+# payload = {"positions": {"<vmid>": {"x":…, "y":…}}, "collapsed": [vmid…]}.
 
-***REMOVED*** ─── plugin_store : stockage générique par plugin ────────────────────────────────────────────
-***REMOVED*** La table existait depuis le retrait de `cc_presets` / `dve_memories` (2026-07) mais N'AVAIT
-***REMOVED*** AUCUN helper ni aucun usage. On l'utilise plutôt que d'ajouter une troisième table
-***REMOVED*** spécifique — c'est exactement ce que son commentaire de création annonçait.
-***REMOVED***
-***REMOVED*** `scope` : '' = global au TYPE de plugin (un préréglage de disposition vaut pour tous les
-***REMOVED*** scopes), str(vmid) = propre à un conteneur. `value` est du JSON.
+# ─── plugin_store : stockage générique par plugin ────────────────────────────────────────────
+# La table existait depuis le retrait de `cc_presets` / `dve_memories` (2026-07) mais N'AVAIT
+# AUCUN helper ni aucun usage. On l'utilise plutôt que d'ajouter une troisième table
+# spécifique — c'est exactement ce que son commentaire de création annonçait.
+#
+# `scope` : '' = global au TYPE de plugin (un préréglage de disposition vaut pour tous les
+# scopes), str(vmid) = propre à un conteneur. `value` est du JSON.
 
 def db_plugin_store_set(type_, name, value, scope=""):
     """Crée ou remplace une entrée. Le couple (type, scope, name) fait l'identité : sauver deux
@@ -4871,8 +4871,8 @@ def db_plugin_store_get(type_, name, scope=""):
     try:
         return _json.loads(r["value"])
     except (ValueError, TypeError):
-        ***REMOVED*** Une valeur illisible n'est pas une absence : on le DIT au journal plutôt que de rendre
-        ***REMOVED*** None, qui se lirait comme « ce préréglage n'existe pas ».
+        # Une valeur illisible n'est pas une absence : on le DIT au journal plutôt que de rendre
+        # None, qui se lirait comme « ce préréglage n'existe pas ».
         log.warning("plugin_store %s/%s/%s : JSON illisible", type_, scope, name)
         return None
 
@@ -4937,7 +4937,7 @@ def db_cable_layout_delete(lid):
         return cur.rowcount > 0
 
 
-***REMOVED*** ─── Share links (pages publiques client WebRTC) ─────────────
+# ─── Share links (pages publiques client WebRTC) ─────────────
 
 _SL_COLS = ("token, vmid, path, title, note, created_at, "
             "COALESCE(kind,'webrtc') AS kind, COALESCE(cidrs,'') AS cidrs, "
@@ -4946,8 +4946,8 @@ _SL_COLS = ("token, vmid, path, title, note, created_at, "
 
 def db_create_share_link(token, vmid, path, title=None, note=None, kind="webrtc", cidrs="",
                          instance_uuid=None):
-    ***REMOVED*** Le `vmid` est conservé pour mémoire (affichage, historique) mais ce n'est PLUS lui qui
-    ***REMOVED*** désigne le conteneur : c'est `instance_uuid`. Cf. la migration dans `init_db`.
+    # Le `vmid` est conservé pour mémoire (affichage, historique) mais ce n'est PLUS lui qui
+    # désigne le conteneur : c'est `instance_uuid`. Cf. la migration dans `init_db`.
     if instance_uuid is None:
         with get_db() as db:
             r = db.execute("SELECT instance_uuid FROM containers WHERE vmid=?",
@@ -5022,7 +5022,7 @@ def db_delete_share_link(token):
         return cur.rowcount > 0
 
 
-***REMOVED*** ─── Layouts (presets de multiview) ─────────────────────────
+# ─── Layouts (presets de multiview) ─────────────────────────
 
 def db_save_layout(name, config):
     with get_db() as db:
@@ -5062,8 +5062,8 @@ def db_delete_layout(lid):
         db.execute("DELETE FROM layouts WHERE id=?", (lid,))
         db.commit()
 
-***REMOVED*** ─── Modèles de PiP (bibliothèque composable des multiviews) ─
-***REMOVED*** config = {"components": [{type, x, y, w, h (normalisés 0..1), …}]} — cf. Réglages → PiP.
+# ─── Modèles de PiP (bibliothèque composable des multiviews) ─
+# config = {"components": [{type, x, y, w, h (normalisés 0..1), …}]} — cf. Réglages → PiP.
 
 def db_save_pip_template(name, config, tid=None, tags=None):
     """Crée (tid None) ou met à jour un modèle de PiP. `tags` = liste de chaînes libres
@@ -5111,8 +5111,8 @@ def db_delete_pip_template(tid):
         db.execute("DELETE FROM pip_templates WHERE id=?", (tid,))
         db.commit()
 
-***REMOVED*** ─── Bibliothèque de polices (métadonnées ; le .ttf vit sur disque) ─
-***REMOVED*** Logique métier (validation, hash, usage, export/import) : app/fonts.py.
+# ─── Bibliothèque de polices (métadonnées ; le .ttf vit sur disque) ─
+# Logique métier (validation, hash, usage, export/import) : app/fonts.py.
 
 def db_list_fonts():
     with get_db() as db:
@@ -5142,7 +5142,7 @@ def db_delete_font(sha256):
         db.commit()
         return cur.rowcount > 0
 
-***REMOVED*** ─── Settings (clé/valeur typées via JSON) ─────────────────
+# ─── Settings (clé/valeur typées via JSON) ─────────────────
 
 def db_get_setting(key, default=None):
     with get_db() as db:
@@ -5162,9 +5162,9 @@ def db_set_setting(key, value):
             (key, json.dumps(value)))
         db.commit()
 
-***REMOVED*** ─── Réglages PAR NŒUD (override du global) ─────────────────
+# ─── Réglages PAR NŒUD (override du global) ─────────────────
 
-_NODE_SETTING_SENTINEL = object()   ***REMOVED*** distingue « absent » de « override = null »
+_NODE_SETTING_SENTINEL = object()   # distingue « absent » de « override = null »
 
 def db_get_node_setting(node_id, key, default=_NODE_SETTING_SENTINEL):
     """Override par-nœud d'un réglage, ou `default` (sentinelle) si absent. Distinct d'un override
@@ -5203,18 +5203,18 @@ def db_get_node_settings(node_id):
         except Exception: out[r["key"]] = r["value"]
     return out
 
-***REMOVED*** ─── Users ──────────────────────────────────────────────────
+# ─── Users ──────────────────────────────────────────────────
 
-***REMOVED*** ─── Sessions ouvertes ───────────────────────────────────────────────────────
+# ─── Sessions ouvertes ───────────────────────────────────────────────────────
 
-***REMOVED*** Au-delà, une session est considérée abandonnée et purgée. Aligné sur la durée de vie du
-***REMOVED*** cookie (`PERMANENT_SESSION_LIFETIME`, ~30 jours) : garder des lignes plus longtemps que le
-***REMOVED*** cookie qu'elles décrivent ne servirait qu'à faire grossir la table.
+# Au-delà, une session est considérée abandonnée et purgée. Aligné sur la durée de vie du
+# cookie (`PERMANENT_SESSION_LIFETIME`, ~30 jours) : garder des lignes plus longtemps que le
+# cookie qu'elles décrivent ne servirait qu'à faire grossir la table.
 SESSION_RETENTION_JOURS = 30
 
-***REMOVED*** Fréquence d'écriture de `last_seen`. ⚠ PAS À CHAQUE REQUÊTE : le tableau de bord interroge
-***REMOVED*** /api/containers et /api/alerts toutes les 5 s, par onglet ouvert. Une écriture par requête
-***REMOVED*** transformerait un registre de sessions en générateur d'écritures SQLite permanent.
+# Fréquence d'écriture de `last_seen`. ⚠ PAS À CHAQUE REQUÊTE : le tableau de bord interroge
+# /api/containers et /api/alerts toutes les 5 s, par onglet ouvert. Une écriture par requête
+# transformerait un registre de sessions en générateur d'écritures SQLite permanent.
 SESSION_TOUCH_S = 60
 
 
@@ -5302,7 +5302,7 @@ def db_user_marquer_connexion(user_id):
     db.commit()
 
 
-***REMOVED*** ─── Habilitations (rôles d'AUTORISATION) ───────────────────────────────────────────────────────────────────
+# ─── Habilitations (rôles d'AUTORISATION) ───────────────────────────────────────────────────────────────────
 
 def db_habilitations_semer(defauts):
     """Sème la table depuis les constantes de `auth.py` — UNE SEULE FOIS, si elle est vide.
@@ -5413,8 +5413,8 @@ def db_list_users():
 
 def db_create_user(username, password_hash, role, prenom=None, nom=None, email=None,
                    interface=None):
-    ***REMOVED*** Défaut d'interface à la création : les rôles à accès global atterrissent sur
-    ***REMOVED*** l'UI technique, les autres sur l'accueil projets (/workspaces).
+    # Défaut d'interface à la création : les rôles à accès global atterrissent sur
+    # l'UI technique, les autres sur l'accueil projets (/workspaces).
     if interface not in ("technique", "projets"):
         interface = "technique" if role in ("admin", "operator") else "projets"
     with get_db() as db:
@@ -5444,7 +5444,7 @@ def db_update_user(uid, role=None, password_hash=None, prenom=None, nom=None,
             db.execute("UPDATE users SET role=? WHERE id=?", (role, uid))
         if password_hash is not None:
             db.execute("UPDATE users SET password_hash=? WHERE id=?", (password_hash, uid))
-        ***REMOVED*** prenom/nom/email : "" autorisé (efface), None = ne pas toucher
+        # prenom/nom/email : "" autorisé (efface), None = ne pas toucher
         if prenom is not None:
             db.execute("UPDATE users SET prenom=? WHERE id=?", (prenom, uid))
         if nom is not None:
@@ -5455,17 +5455,17 @@ def db_update_user(uid, role=None, password_hash=None, prenom=None, nom=None,
             db.execute("UPDATE users SET lang=? WHERE id=?", (lang, uid))
         if interface in ("technique", "projets"):
             db.execute("UPDATE users SET interface=? WHERE id=?", (interface, uid))
-        ***REMOVED*** theme : "" remet l'utilisateur sur le défaut du système (colonne NULL)
+        # theme : "" remet l'utilisateur sur le défaut du système (colonne NULL)
         if theme is not None:
             db.execute("UPDATE users SET theme=? WHERE id=?", (theme or None, uid))
-        ***REMOVED*** Fiche : même convention que prenom/nom/email — "" efface, None ne touche pas.
+        # Fiche : même convention que prenom/nom/email — "" efface, None ne touche pas.
         for _c, _v in (("telephone", telephone), ("service", service),
                        ("poste", poste), ("photo_url", photo_url)):
             if _v is not None:
                 db.execute("UPDATE users SET %s=? WHERE id=?" % _c, (_v, uid))
         db.commit()
 
-***REMOVED*** ─── i18n : surcouche de traductions éditée via l'UI ─────────
+# ─── i18n : surcouche de traductions éditée via l'UI ─────────
 
 def db_i18n_overrides():
     """Toutes les surcharges : { lang: { key: value } }."""
@@ -5535,7 +5535,7 @@ def db_get_all_settings():
         return out
 
 
-***REMOVED*** ─── TSL connections ─────────────────────────────────────────
+# ─── TSL connections ─────────────────────────────────────────
 
 def db_get_tsl_connections():
     with get_db() as db:
@@ -5550,10 +5550,10 @@ def db_upsert_tsl_connection(data):
     enabled = int(bool(data.get("enabled")))
     label_col  = int(data.get("label_col") or 2)
 
-    ***REMOVED*** UN niveau par connexion : la chaîne de destination. Ses trois champs TSL ne sont pas trois
-    ***REMOVED*** chaînes, ce sont trois façons d'exprimer l'état de celle-ci — `rouge_field`/`vert_field`
-    ***REMOVED*** disent lesquels. Sans niveau, la connexion n'écrit RIEN plutôt que d'écrire sur un niveau
-    ***REMOVED*** deviné : ce serait allumer un rouge chez quelqu'un d'autre.
+    # UN niveau par connexion : la chaîne de destination. Ses trois champs TSL ne sont pas trois
+    # chaînes, ce sont trois façons d'exprimer l'état de celle-ci — `rouge_field`/`vert_field`
+    # disent lesquels. Sans niveau, la connexion n'écrit RIEN plutôt que d'écrire sur un niveau
+    # deviné : ce serait allumer un rouge chez quelqu'un d'autre.
     _v = data.get("level_uuid")
     level_uuid = str(_v).strip() if _v not in (None, "", 0, "0") else None
     rouge_field = str(data.get("rouge_field") or "tt").lower()
@@ -5568,7 +5568,7 @@ def db_upsert_tsl_connection(data):
         project_id = int(project_id) if project_id not in (None, "", 0, "0") else None
     except (TypeError, ValueError):
         project_id = None
-    ***REMOVED*** Rattachée à un projet et sans niveau propre → elle prend le premier du projet.
+    # Rattachée à un projet et sans niveau propre → elle prend le premier du projet.
     if project_id and not level_uuid:
         niv = db_get_tally_levels_of("project", project_id)
         level_uuid = niv[0] if niv else None
@@ -5601,7 +5601,7 @@ def db_delete_tsl_connection(id_):
         return cur.rowcount > 0
 
 
-***REMOVED*** ─── Source labels (nouvelle architecture) ────────────────────
+# ─── Source labels (nouvelle architecture) ────────────────────
 
 _SL_LABEL_COLS  = [f"label_{i}" for i in range(2, 10)]
 _SL_FIELDS      = {"projet", "parent_shm"} | set(_SL_LABEL_COLS)
@@ -5698,8 +5698,8 @@ def db_purger_libelles_orphelins(con=None):
                     if prod.get("shm"):
                         declares.add(prod["shm"])
             except Exception:
-                ***REMOVED*** Un conteneur illisible ne doit pas rendre ses flux « absents » : on renonce à
-                ***REMOVED*** tout balayer plutôt que de risquer de retirer ce qu'il produisait.
+                # Un conteneur illisible ne doit pas rendre ses flux « absents » : on renonce à
+                # tout balayer plutôt que de risquer de retirer ce qu'il produisait.
                 return 0
         vises = set()
         for t in ("tsl_mapping", "is07_mapping"):
@@ -5715,7 +5715,7 @@ def db_purger_libelles_orphelins(con=None):
             if not shm or shm.startswith("__umd:") or shm in declares or shm in vises:
                 continue
             if any((ligne[c] or "").strip() for c in cols):
-                continue                      ***REMOVED*** CONFIGURÉE : elle attend son conteneur
+                continue                      # CONFIGURÉE : elle attend son conteneur
             db.execute("DELETE FROM source_labels WHERE shm=?", (shm,))
             retires += 1
         if retires:
@@ -5731,19 +5731,19 @@ def db_get_source_labels_by_shm() -> dict:
     for s in db_get_source_labels():
         shm = s["shm"]
         labels = [
-            _resolve_hostname_for_shm(shm) or "",   ***REMOVED*** 0 = hostname
-            shm,                                      ***REMOVED*** 1 = MXL
+            _resolve_hostname_for_shm(shm) or "",   # 0 = hostname
+            shm,                                      # 1 = MXL
         ] + [s.get(f"label_{i}") or "" for i in range(2, 10)]
         out[shm] = {"labels": labels}
     return out
 
-***REMOVED*** ─── IS-07 entrant : connexions et correspondance ─────────────
-***REMOVED***
-***REMOVED*** Volontairement CALQUÉ sur TSL, jusqu'aux noms : une connexion écrit dans UN niveau, et une table
-***REMOVED*** dit quelle adresse de l'émetteur désigne quel signal chez nous. Chez TSL l'adresse est un index
-***REMOVED*** de trame, ici l'UUID d'une Source — c'est la seule différence, et elle ne change rien au geste
-***REMOVED*** de l'exploitant. C'est pour ça que les deux s'éditent dans la MÊME page (Labels), côte à côte :
-***REMOVED*** un site qui reçoit du tally des deux protocoles y lit une seule table.
+# ─── IS-07 entrant : connexions et correspondance ─────────────
+#
+# Volontairement CALQUÉ sur TSL, jusqu'aux noms : une connexion écrit dans UN niveau, et une table
+# dit quelle adresse de l'émetteur désigne quel signal chez nous. Chez TSL l'adresse est un index
+# de trame, ici l'UUID d'une Source — c'est la seule différence, et elle ne change rien au geste
+# de l'exploitant. C'est pour ça que les deux s'éditent dans la MÊME page (Labels), côte à côte :
+# un site qui reçoit du tally des deux protocoles y lit une seule table.
 
 def db_get_is07_connections() -> list:
     with get_db() as db:
@@ -5818,7 +5818,7 @@ def db_get_source_for_is07(connection_id: int, source_id: str):
         return (r["source_shm"] or None) if r else None
 
 
-***REMOVED*** ─── TSL mapping (per-connexion) ──────────────────────────────
+# ─── TSL mapping (per-connexion) ──────────────────────────────
 
 def db_get_tsl_mapping(connection_id: int) -> list:
     with get_db() as db:
@@ -5868,7 +5868,7 @@ def db_set_tsl_mapping_for_source(connection_id: int, source_shm: str, tsl_index
     cid = int(connection_id)
     shm = source_shm or ""
     with get_db() as db:
-        ***REMOVED*** purge l'index actuel de cette source sur cette connexion
+        # purge l'index actuel de cette source sur cette connexion
         db.execute("DELETE FROM tsl_mapping WHERE connection_id=? AND source_shm=?",
                    (cid, shm))
         if tsl_index not in (None, ""):
@@ -5877,7 +5877,7 @@ def db_set_tsl_mapping_for_source(connection_id: int, source_shm: str, tsl_index
                 "VALUES (?, ?, ?)", (cid, int(tsl_index), shm))
         db.commit()
 
-***REMOVED*** ─── Compat legacy tsl_sources (lecture seule, non plus écrit) ────────────────
+# ─── Compat legacy tsl_sources (lecture seule, non plus écrit) ────────────────
 
 def db_get_tsl_sources():
     with get_db() as db:

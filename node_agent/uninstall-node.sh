@@ -1,45 +1,45 @@
-***REMOVED***!/usr/bin/env bash
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** uninstall-node.sh — retire Bobi.Studio d'un nœud. Pendant exact de install-node.sh : ce que
-***REMOVED*** l'installeur (et l'orchestrateur, via l'agent) a POSÉ sur l'hôte, ce script l'enlève.
-***REMOVED***
-***REMOVED*** DOCTRINE — trois règles, dans cet ordre :
-***REMOVED***   1. ON MONTRE AVANT DE FAIRE. Le script dresse d'abord l'inventaire de ce qu'il a RÉELLEMENT
-***REMOVED***      trouvé sur cette machine, puis demande confirmation. `--dry-run` s'arrête après l'inventaire.
-***REMOVED***   2. ON N'EFFACE PAS CE QUI N'EST PAS À NOUS. Les paquets tiers (Docker, pilote NVIDIA, linuxptp,
-***REMOVED***      chrony), la configuration réseau de l'hôte et les DONNÉES média ne partent QUE sur demande
-***REMOVED***      explicite (`--purge-packages`, `--purge-media`) : cette machine sert peut-être à autre chose,
-***REMOVED***      et un média effacé ne revient pas.
-***REMOVED***   3. ON DIT CE QU'ON LAISSE. Le résumé final liste ce qui reste volontairement en place et ce qui
-***REMOVED***      exige un redémarrage — un retrait silencieusement partiel est pire qu'un retrait refusé.
-***REMOVED***
-***REMOVED*** Usage :
-***REMOVED***   ./uninstall-node.sh --dry-run                 ***REMOVED*** inventaire seul, ne touche à rien
-***REMOVED***   ./uninstall-node.sh                           ***REMOVED*** retrait standard (demande confirmation)
-***REMOVED***   ./uninstall-node.sh --yes                     ***REMOVED*** sans question (scripts / pilotage à distance)
-***REMOVED***   ./uninstall-node.sh --yes --purge-images --purge-media --purge-packages   ***REMOVED*** table rase
-***REMOVED***
-***REMOVED*** Options :
-***REMOVED***   --dry-run           n'exécute RIEN : affiche l'inventaire et ce qui serait fait
-***REMOVED***   --yes               pas de confirmation interactive (obligatoire en non-interactif)
-***REMOVED***   --purge-images      supprime aussi les images Docker bobi-* (plusieurs Go)
-***REMOVED***   --purge-media       supprime aussi le CONTENU de la racine média (DONNÉES — irréversible)
-***REMOVED***   --purge-packages    désinstalle aussi les paquets posés par l'install (docker, pilote NVIDIA,
-***REMOVED***                       nvidia-container-toolkit, linuxptp, chrony) — à n'utiliser que si la
-***REMOVED***                       machine ne sert plus qu'à ça
-***REMOVED***   --keep-cmdline      ne touche pas au cmdline noyau (hugepages/IOMMU/isolation de cœurs)
-***REMOVED***   --media-mount <p>   racine média (défaut : lue dans config.json, sinon /srv/mxl-media)
-***REMOVED***   --controller-key <k> clé publique SSH du contrôleur à retirer de authorized_keys (sinon on la
-***REMOVED***                       cherche par son commentaire, et à défaut on le SIGNALE — cf. §7)
-***REMOVED***
-***REMOVED*** Ce script est AUTONOME : il ne dépend ni du contrôleur, ni de l'agent, ni du reste de l'archive.
-***REMOVED*** Il peut donc être lancé à la main sur un nœud dont le contrôleur a déjà disparu.
-***REMOVED***
-***REMOVED*** ⚠ Côté ORCHESTRATEUR : supprimer le nœud dans Réglages → Déploiement → Nœuds (c'est ce geste-là
-***REMOVED*** qui défait aussi les liens RDMA et les emplacements qui pointaient dessus). Ce script ne fait
-***REMOVED*** QUE le ménage sur l'hôte.
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# uninstall-node.sh — retire Bobi.Studio d'un nœud. Pendant exact de install-node.sh : ce que
+# l'installeur (et l'orchestrateur, via l'agent) a POSÉ sur l'hôte, ce script l'enlève.
+#
+# DOCTRINE — trois règles, dans cet ordre :
+#   1. ON MONTRE AVANT DE FAIRE. Le script dresse d'abord l'inventaire de ce qu'il a RÉELLEMENT
+#      trouvé sur cette machine, puis demande confirmation. `--dry-run` s'arrête après l'inventaire.
+#   2. ON N'EFFACE PAS CE QUI N'EST PAS À NOUS. Les paquets tiers (Docker, pilote NVIDIA, linuxptp,
+#      chrony), la configuration réseau de l'hôte et les DONNÉES média ne partent QUE sur demande
+#      explicite (`--purge-packages`, `--purge-media`) : cette machine sert peut-être à autre chose,
+#      et un média effacé ne revient pas.
+#   3. ON DIT CE QU'ON LAISSE. Le résumé final liste ce qui reste volontairement en place et ce qui
+#      exige un redémarrage — un retrait silencieusement partiel est pire qu'un retrait refusé.
+#
+# Usage :
+#   ./uninstall-node.sh --dry-run                 # inventaire seul, ne touche à rien
+#   ./uninstall-node.sh                           # retrait standard (demande confirmation)
+#   ./uninstall-node.sh --yes                     # sans question (scripts / pilotage à distance)
+#   ./uninstall-node.sh --yes --purge-images --purge-media --purge-packages   # table rase
+#
+# Options :
+#   --dry-run           n'exécute RIEN : affiche l'inventaire et ce qui serait fait
+#   --yes               pas de confirmation interactive (obligatoire en non-interactif)
+#   --purge-images      supprime aussi les images Docker bobi-* (plusieurs Go)
+#   --purge-media       supprime aussi le CONTENU de la racine média (DONNÉES — irréversible)
+#   --purge-packages    désinstalle aussi les paquets posés par l'install (docker, pilote NVIDIA,
+#                       nvidia-container-toolkit, linuxptp, chrony) — à n'utiliser que si la
+#                       machine ne sert plus qu'à ça
+#   --keep-cmdline      ne touche pas au cmdline noyau (hugepages/IOMMU/isolation de cœurs)
+#   --media-mount <p>   racine média (défaut : lue dans config.json, sinon /srv/mxl-media)
+#   --controller-key <k> clé publique SSH du contrôleur à retirer de authorized_keys (sinon on la
+#                       cherche par son commentaire, et à défaut on le SIGNALE — cf. §7)
+#
+# Ce script est AUTONOME : il ne dépend ni du contrôleur, ni de l'agent, ni du reste de l'archive.
+# Il peut donc être lancé à la main sur un nœud dont le contrôleur a déjà disparu.
+#
+# ⚠ Côté ORCHESTRATEUR : supprimer le nœud dans Réglages → Déploiement → Nœuds (c'est ce geste-là
+# qui défait aussi les liens RDMA et les emplacements qui pointaient dessus). Ce script ne fait
+# QUE le ménage sur l'hôte.
 set -euo pipefail
 
 DRY=0; ASSUME_YES=0; PURGE_IMAGES=0; PURGE_MEDIA=0; PURGE_PKGS=0; KEEP_CMDLINE=0
@@ -52,7 +52,7 @@ log(){ echo "${c_b}▶${c_0} $*"; }; ok(){ echo "${c_g}✓${c_0} $*"; }
 warn(){ echo "${c_y}!${c_0} $*"; }; die(){ echo "${c_r}✗${c_0} $*" >&2; exit 1; }
 item(){ echo "      ${c_d}·${c_0} $*"; }
 
-while [ $***REMOVED*** -gt 0 ]; do
+while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1; shift;;
     --yes|-y) ASSUME_YES=1; shift;;
@@ -69,9 +69,9 @@ done
 
 [ "$(id -u)" = "0" ] || die "à lancer en root."
 
-***REMOVED*** ─── Réglages du nœud : on les LIT plutôt que de les deviner ─────────────────
-***REMOVED*** Le nom du réseau containers et la racine média ne sont pas figés (ils viennent de l'install et
-***REMOVED*** de l'orchestrateur). Les deviner ferait rater le ménage sur un nœud configuré autrement.
+# ─── Réglages du nœud : on les LIT plutôt que de les deviner ─────────────────
+# Le nom du réseau containers et la racine média ne sont pas figés (ils viennent de l'install et
+# de l'orchestrateur). Les deviner ferait rater le ménage sur un nœud configuré autrement.
 MACVLAN_NAME="bobimacvlan"; MXL_MOUNT="/dev/shm"
 if [ -f "$CONF_DIR/config.json" ] && command -v python3 >/dev/null 2>&1; then
   _cfg="$(python3 - "$CONF_DIR/config.json" <<'PYEOF' 2>/dev/null || true
@@ -93,14 +93,14 @@ PYEOF
 fi
 [ -n "$MEDIA_MOUNT" ] || MEDIA_MOUNT="/srv/mxl-media"
 
-***REMOVED*** Unités systemd posées soit par l'installeur, soit par l'orchestrateur via l'agent (préparation
-***REMOVED*** hôte MTL, RDMA, VLAN…). Liste EXPLICITE : un glob « bobi-* » attraperait un jour l'unité de
-***REMOVED*** quelqu'un d'autre. Les sous-interfaces VLAN sont le seul motif, elles portent le nom de l'iface.
+# Unités systemd posées soit par l'installeur, soit par l'orchestrateur via l'agent (préparation
+# hôte MTL, RDMA, VLAN…). Liste EXPLICITE : un glob « bobi-* » attraperait un jour l'unité de
+# quelqu'un d'autre. Les sous-interfaces VLAN sont le seul motif, elles portent le nom de l'iface.
 UNITS="bobi-node-agent bobi-node-bootstrap mxl-ptp4l mxl-phc2sys bobi-cpufreq-perf
        bobi-irq-housekeeping bobi-mxl-options bobi-nicqueues rdma-netns-exclusive
        bobi-vfio-bind bobi-sriov-vf"
 
-***REMOVED*** Fichiers déposés hors des dossiers applicatifs (chacun est un réglage HÔTE que nous avons posé).
+# Fichiers déposés hors des dossiers applicatifs (chacun est un réglage HÔTE que nous avons posé).
 FILES="/etc/systemd/journald.conf.d/10-bobi.conf
        /etc/sysctl.d/10-bobi-hugepages.conf
        /etc/sysctl.d/10-bobi-rdma-arp.conf
@@ -118,11 +118,11 @@ _scan() {
   for u in $UNITS; do
     if [ -f "/etc/systemd/system/$u.service" ]; then _present_units="$_present_units $u"; fi
   done
-  ***REMOVED*** Unités posées PAR INTERFACE par l'orchestrateur au moment de configurer le réseau containers :
-  ***REMOVED*** `bobi-vlan-<iface>` quand le parent macvlan est une sous-interface VLAN, `bobi-link-<iface>`
-  ***REMOVED*** quand c'est une carte nue (l'unité ne fait que la monter au boot). Ce sont les deux branches du
-  ***REMOVED*** même code (app/routes/node_network.py) : n'en balayer qu'une laissait l'autre derrière — un
-  ***REMOVED*** `bobi-link-eno1.service` survivait au retrait (signalé en recette, 2026-08-21).
+  # Unités posées PAR INTERFACE par l'orchestrateur au moment de configurer le réseau containers :
+  # `bobi-vlan-<iface>` quand le parent macvlan est une sous-interface VLAN, `bobi-link-<iface>`
+  # quand c'est une carte nue (l'unité ne fait que la monter au boot). Ce sont les deux branches du
+  # même code (app/routes/node_network.py) : n'en balayer qu'une laissait l'autre derrière — un
+  # `bobi-link-eno1.service` survivait au retrait (signalé en recette, 2026-08-21).
   for f in $(ls /etc/systemd/system/bobi-vlan-*.service /etc/systemd/system/bobi-link-*.service 2>/dev/null || true); do
     _vlan_units="$_vlan_units $(basename "$f" .service)"
   done
@@ -132,15 +132,15 @@ _scan() {
 }
 _scan
 
-***REMOVED*** Deux formes distinctes, et la distinction compte : `_docker` est TOLÉRANT (sortie vide si docker
-***REMOVED*** n'est pas là) et sert à LISTER ; `_docker_q` propage le vrai code retour et sert à TESTER — les
-***REMOVED*** confondre ferait « voir » un réseau ou une image qui n'existe pas.
+# Deux formes distinctes, et la distinction compte : `_docker` est TOLÉRANT (sortie vide si docker
+# n'est pas là) et sert à LISTER ; `_docker_q` propage le vrai code retour et sert à TESTER — les
+# confondre ferait « voir » un réseau ou une image qui n'existe pas.
 _docker()   { command -v docker >/dev/null 2>&1 && docker "$@" 2>/dev/null || true; }
 _docker_q() { command -v docker >/dev/null 2>&1 && docker "$@" >/dev/null 2>&1; }
 
-***REMOVED*** Conteneurs à retirer : ceux qui tournent sur une image bobi-* (les conteneurs managés) ET ceux
-***REMOVED*** attachés au réseau containers. On ne se fie PAS aux noms (ils viennent des hostnames choisis par
-***REMOVED*** l'exploitant) — un conteneur étranger portant un nom proche ne doit pas être détruit.
+# Conteneurs à retirer : ceux qui tournent sur une image bobi-* (les conteneurs managés) ET ceux
+# attachés au réseau containers. On ne se fie PAS aux noms (ils viennent des hostnames choisis par
+# l'exploitant) — un conteneur étranger portant un nom proche ne doit pas être détruit.
 _containers() {
   { _docker ps -a --filter "ancestor=bobi-compute" --format '{{.Names}}'
     _docker ps -a --format '{{.Names}}\t{{.Image}}' | awk -F'\t' '$2 ~ /^bobi-/ {print $1}'
@@ -150,7 +150,7 @@ _containers() {
 }
 _images() { _docker images --filter 'reference=bobi-*' --format '{{.Repository}}:{{.Tag}}' | sort -u; }
 
-***REMOVED*** ─── 1. Inventaire ────────────────────────────────────────────────────────────
+# ─── 1. Inventaire ────────────────────────────────────────────────────────────
 echo
 echo "  ╔══════════════════════════════════════════════════════╗"
 echo "  ║   B O B I . S T U D I O  —  retrait du nœud          ║"
@@ -200,9 +200,9 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 
-***REMOVED*** ─── 2. Confirmation ──────────────────────────────────────────────────────────
-***REMOVED*** En non-interactif SANS --yes on REFUSE plutôt que de supposer : ce script détruit, et il est
-***REMOVED*** appelable à distance (pipé sur stdin par l'orchestrateur) — le défaut doit être « ne rien faire ».
+# ─── 2. Confirmation ──────────────────────────────────────────────────────────
+# En non-interactif SANS --yes on REFUSE plutôt que de supposer : ce script détruit, et il est
+# appelable à distance (pipé sur stdin par l'orchestrateur) — le défaut doit être « ne rien faire ».
 if [ "$ASSUME_YES" = 0 ]; then
   [ -t 0 ] || die "non-interactif : relancer avec --yes pour confirmer (rien n'a été fait)."
   printf "%b" "${c_y}?${c_0} Retirer Bobi.Studio de ce nœud ? Taper ${c_r}RETIRER${c_0} pour confirmer : "
@@ -211,9 +211,9 @@ if [ "$ASSUME_YES" = 0 ]; then
 fi
 echo
 
-***REMOVED*** ─── 3. Conteneurs ────────────────────────────────────────────────────────────
-***REMOVED*** D'abord les conteneurs : tant qu'ils tournent, ils tiennent le réseau macvlan et les fichiers du
-***REMOVED*** domaine MXL, et le réseau refuserait de partir.
+# ─── 3. Conteneurs ────────────────────────────────────────────────────────────
+# D'abord les conteneurs : tant qu'ils tournent, ils tiennent le réseau macvlan et les fichiers du
+# domaine MXL, et le réseau refuserait de partir.
 if [ "$_n_cont" -gt 0 ]; then
   log "Arrêt et suppression de $_n_cont conteneur(s)…"
   for c in $_c_list; do
@@ -223,11 +223,11 @@ if [ "$_n_cont" -gt 0 ]; then
   ok "conteneurs retirés"
 fi
 
-***REMOVED*** ─── 4. Unités systemd ────────────────────────────────────────────────────────
-***REMOVED*** L'agent est traité EN DERNIER (§10) : ce script tourne peut-être dans un shell qu'il a lancé.
+# ─── 4. Unités systemd ────────────────────────────────────────────────────────
+# L'agent est traité EN DERNIER (§10) : ce script tourne peut-être dans un shell qu'il a lancé.
 log "Arrêt des services…"
 for u in $_present_units $_vlan_units; do
-  if [ "$u" = "bobi-node-agent" ]; then continue; fi   ***REMOVED*** traité en dernier (§10), et détaché
+  if [ "$u" = "bobi-node-agent" ]; then continue; fi   # traité en dernier (§10), et détaché
   systemctl disable --now "$u.service" >/dev/null 2>&1 || true
   rm -f "/etc/systemd/system/$u.service"
   item "$u"
@@ -235,10 +235,10 @@ done
 systemctl daemon-reload >/dev/null 2>&1 || true
 ok "services retirés"
 
-***REMOVED*** ─── 5. Ports réseau rendus au noyau (vfio-pci → ice/mlx5) ───────────────────
-***REMOVED*** Un port laissé sur vfio-pci n'a plus de netdev : la machine perdrait une carte pour toujours,
-***REMOVED*** sans rien afficher d'anormal ailleurs que dans `ip link`. On le rend AVANT d'effacer /etc/bobi
-***REMOVED*** (c'est ce fichier qui dit lesquels sont à rendre).
+# ─── 5. Ports réseau rendus au noyau (vfio-pci → ice/mlx5) ───────────────────
+# Un port laissé sur vfio-pci n'a plus de netdev : la machine perdrait une carte pour toujours,
+# sans rien afficher d'anormal ailleurs que dans `ip link`. On le rend AVANT d'effacer /etc/bobi
+# (c'est ce fichier qui dit lesquels sont à rendre).
 if [ -s /etc/bobi/vfio-binds ]; then
   log "Restitution des ports bindés à vfio-pci…"
   while read -r bdf _rest; do
@@ -255,7 +255,7 @@ if [ -s /etc/bobi/vfio-binds ]; then
   ok "ports restitués"
 fi
 
-***REMOVED*** ─── 6. Réseau containers + domaine MXL ──────────────────────────────────────
+# ─── 6. Réseau containers + domaine MXL ──────────────────────────────────────
 if _docker_q network inspect "$MACVLAN_NAME"; then
   _docker network rm "$MACVLAN_NAME" >/dev/null && ok "réseau containers « $MACVLAN_NAME » supprimé" \
     || warn "réseau « $MACVLAN_NAME » non supprimé (un conteneur y est-il encore attaché ?)"
@@ -265,34 +265,34 @@ if [ -d "$MXL_MOUNT/mxl" ]; then
   ok "domaine MXL $MXL_MOUNT/mxl effacé"
 fi
 
-***REMOVED*** ─── 7. Réglages hôte ─────────────────────────────────────────────────────────
+# ─── 7. Réglages hôte ─────────────────────────────────────────────────────────
 if [ -n "$_present_files" ] || [ -d /etc/bobi ]; then
   log "Retrait des réglages hôte…"
   for f in $_present_files; do rm -f "$f"; item "$f"; done
   rm -rf /etc/bobi
-  ***REMOVED*** `vfio.conf` ne porte que « vfio-pci » et c'est NOUS qui l'avons écrit (préparation MTL) ; on ne
-  ***REMOVED*** l'enlève que s'il ne contient rien d'autre, pour ne pas casser une conf préexistante.
+  # `vfio.conf` ne porte que « vfio-pci » et c'est NOUS qui l'avons écrit (préparation MTL) ; on ne
+  # l'enlève que s'il ne contient rien d'autre, pour ne pas casser une conf préexistante.
   if [ -f /etc/modules-load.d/vfio.conf ] && [ "$(tr -d ' \n' < /etc/modules-load.d/vfio.conf)" = "vfio-pci" ]; then
     rm -f /etc/modules-load.d/vfio.conf; item "/etc/modules-load.d/vfio.conf"
   fi
-  ***REMOVED*** Les valeurs sysctl restent APPLIQUÉES jusqu'au reboot : on les remet à leur défaut tout de suite
-  ***REMOVED*** (un retrait qui ne se voit qu'au prochain démarrage n'est pas un retrait).
+  # Les valeurs sysctl restent APPLIQUÉES jusqu'au reboot : on les remet à leur défaut tout de suite
+  # (un retrait qui ne se voit qu'au prochain démarrage n'est pas un retrait).
   sysctl -qw net.ipv4.conf.all.arp_ignore=0 net.ipv4.conf.all.arp_announce=0 2>/dev/null || true
   systemctl restart systemd-journald >/dev/null 2>&1 || true
   systemctl restart chrony >/dev/null 2>&1 || true
   ok "réglages hôte retirés"
 fi
 
-***REMOVED*** Clé SSH du contrôleur (posée à l'enrôlement). ★ On ne peut pas la deviner à coup sûr : son
-***REMOVED*** commentaire dépend de QUAND elle a été générée (`bobistudio-controller` depuis host_ops, mais les
-***REMOVED*** clés plus anciennes portent le nom d'hôte du contrôleur, ex. « orchestrateur@orchestrateur »).
-***REMOVED*** Trois cas, et surtout : quand on ne sait pas, ON LE DIT. Effacer au hasard une ligne de
-***REMOVED*** authorized_keys couperait l'accès de quelqu'un d'autre ; la laisser en silence rendrait le retrait
-***REMOVED*** faussement complet — un accès root du contrôleur survivrait au « retrait ».
+# Clé SSH du contrôleur (posée à l'enrôlement). ★ On ne peut pas la deviner à coup sûr : son
+# commentaire dépend de QUAND elle a été générée (`bobistudio-controller` depuis host_ops, mais les
+# clés plus anciennes portent le nom d'hôte du contrôleur, ex. « orchestrateur@orchestrateur »).
+# Trois cas, et surtout : quand on ne sait pas, ON LE DIT. Effacer au hasard une ligne de
+# authorized_keys couperait l'accès de quelqu'un d'autre ; la laisser en silence rendrait le retrait
+# faussement complet — un accès root du contrôleur survivrait au « retrait ».
 CLE_RESTANTE=0
 if [ -s /root/.ssh/authorized_keys ]; then
   if [ -n "$CTRL_KEY" ]; then
-    _b64="$(echo "$CTRL_KEY" | awk '{print $2}')"          ***REMOVED*** la partie clé, pas le commentaire
+    _b64="$(echo "$CTRL_KEY" | awk '{print $2}')"          # la partie clé, pas le commentaire
     if [ -n "$_b64" ] && grep -qF "$_b64" /root/.ssh/authorized_keys; then
       grep -vF "$_b64" /root/.ssh/authorized_keys > /root/.ssh/authorized_keys.tmp \
         && mv /root/.ssh/authorized_keys.tmp /root/.ssh/authorized_keys
@@ -309,9 +309,9 @@ if [ -s /root/.ssh/authorized_keys ]; then
   fi
 fi
 
-***REMOVED*** ─── 8. cmdline noyau ─────────────────────────────────────────────────────────
-***REMOVED*** hugepages, isolation de cœurs et IOMMU ont été gravés au boot pour le moteur 2110. Les laisser
-***REMOVED*** geler de la RAM et sortir des cœurs de l'ordonnanceur sur une machine rendue à un autre usage.
+# ─── 8. cmdline noyau ─────────────────────────────────────────────────────────
+# hugepages, isolation de cœurs et IOMMU ont été gravés au boot pour le moteur 2110. Les laisser
+# geler de la RAM et sortir des cœurs de l'ordonnanceur sur une machine rendue à un autre usage.
 REBOOT_REQUIS=0
 if [ "$KEEP_CMDLINE" = 0 ] && [ -f /etc/default/grub ] \
    && grep -qE 'hugepages=|isolcpus=|nohz_full=|rcu_nocbs=|intel_iommu=|iommu=pt|hugepagesz=' /etc/default/grub; then
@@ -323,8 +323,8 @@ if [ "$KEEP_CMDLINE" = 0 ] && [ -f /etc/default/grub ] \
   elif command -v proxmox-boot-tool >/dev/null 2>&1; then
     proxmox-boot-tool refresh >/dev/null 2>&1 || true
   fi
-  ***REMOVED*** Les hugepages déjà réservées le restent jusqu'au reboot : on les rend tout de suite (baisser
-  ***REMOVED*** nr_hugepages réussit toujours, contrairement à monter).
+  # Les hugepages déjà réservées le restent jusqu'au reboot : on les rend tout de suite (baisser
+  # nr_hugepages réussit toujours, contrairement à monter).
   for h in /sys/kernel/mm/hugepages/hugepages-*/nr_hugepages; do
     [ -w "$h" ] && echo 0 > "$h" 2>/dev/null || true
   done
@@ -332,7 +332,7 @@ if [ "$KEEP_CMDLINE" = 0 ] && [ -f /etc/default/grub ] \
   ok "cmdline nettoyé (sauvegarde /etc/default/grub.bak.retrait-*)"
 fi
 
-***REMOVED*** ─── 9. Images / médias / paquets (sur demande explicite) ────────────────────
+# ─── 9. Images / médias / paquets (sur demande explicite) ────────────────────
 if [ "$PURGE_IMAGES" = 1 ] && [ "$_n_img" -gt 0 ]; then
   log "Suppression des images Docker bobi-*…"
   for i in $_i_list; do _docker rmi -f "$i" >/dev/null; item "$i"; done
@@ -340,8 +340,8 @@ if [ "$PURGE_IMAGES" = 1 ] && [ "$_n_img" -gt 0 ]; then
 fi
 
 if [ "$PURGE_MEDIA" = 1 ] && [ -d "$MEDIA_MOUNT" ]; then
-  ***REMOVED*** On vide la racine SANS l'effacer : ce peut être un point de MONTAGE (baie, NFS), et le
-  ***REMOVED*** supprimer masquerait le montage plutôt que d'en retirer le contenu.
+  # On vide la racine SANS l'effacer : ce peut être un point de MONTAGE (baie, NFS), et le
+  # supprimer masquerait le montage plutôt que d'en retirer le contenu.
   log "Suppression du contenu de $MEDIA_MOUNT…"
   find "$MEDIA_MOUNT" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
   ok "racine média vidée (le point de montage lui-même est conservé)"
@@ -352,7 +352,7 @@ if [ "$PURGE_PKGS" = 1 ]; then
   export DEBIAN_FRONTEND=noninteractive
   rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list \
         /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-  ***REMOVED*** `nvidia-*` d'abord (le module DKMS se désinstalle avec son paquet), docker ensuite.
+  # `nvidia-*` d'abord (le module DKMS se désinstalle avec son paquet), docker ensuite.
   apt-get purge -y -qq nvidia-driver nvidia-smi libcuda1 nvidia-kernel-dkms \
       nvidia-container-toolkit nvidia-container-toolkit-base libnvidia-container1 \
       libnvidia-container-tools >/dev/null 2>&1 || true
@@ -364,11 +364,11 @@ if [ "$PURGE_PKGS" = 1 ]; then
   REBOOT_REQUIS=1
 fi
 
-***REMOVED*** ─── 10. L'agent, en dernier — et détaché ────────────────────────────────────
-***REMOVED*** Ce script peut avoir été lancé PAR l'agent (retrait piloté depuis l'orchestrateur : le script est
-***REMOVED*** pipé sur /v1/host/exec). S'arrêter soi-même tuerait le shell avant la fin, et le retrait
-***REMOVED*** resterait à moitié fait. On délègue donc la dernière étape à un processus DÉTACHÉ, qui laisse à
-***REMOVED*** l'appelant le temps de recevoir la sortie ci-dessous.
+# ─── 10. L'agent, en dernier — et détaché ────────────────────────────────────
+# Ce script peut avoir été lancé PAR l'agent (retrait piloté depuis l'orchestrateur : le script est
+# pipé sur /v1/host/exec). S'arrêter soi-même tuerait le shell avant la fin, et le retrait
+# resterait à moitié fait. On délègue donc la dernière étape à un processus DÉTACHÉ, qui laisse à
+# l'appelant le temps de recevoir la sortie ci-dessous.
 if [ -d "$AGENT_DIR" ] || [ -d "$CONF_DIR" ] || [ -f /etc/systemd/system/bobi-node-agent.service ]; then
   setsid nohup bash -c "
     sleep 3
@@ -380,7 +380,7 @@ if [ -d "$AGENT_DIR" ] || [ -d "$CONF_DIR" ] || [ -f /etc/systemd/system/bobi-no
   ok "agent-nœud : arrêt et effacement lancés (token et certificat mTLS compris) — quelques secondes"
 fi
 
-***REMOVED*** ─── 11. Résumé ───────────────────────────────────────────────────────────────
+# ─── 11. Résumé ───────────────────────────────────────────────────────────────
 echo
 ok "Bobi.Studio retiré de ce nœud."
 echo "    Conservé volontairement :"

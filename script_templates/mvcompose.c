@@ -35,15 +35,15 @@
  *   gcc -O3 -march=x86-64-v3 -fopenmp -shared -fPIC mvcompose.c -o libbobi_mvk_v3.so
  */
 
-***REMOVED***include <stdint.h>
-***REMOVED***include <stddef.h>
-***REMOVED***include <math.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <math.h>
 
-***REMOVED***define EXPORT __attribute__((visibility("default")))
+#define EXPORT __attribute__((visibility("default")))
 
 /* Seuil de parallélisation : sous ~32 k éléments (petites bboxes d'horloge/VU) le fork/join
  * OpenMP coûte plus que la passe elle-même → mono-thread. */
-***REMOVED***define PAR_MIN 32768
+#define PAR_MIN 32768
 
 static int g_threads = 1;
 
@@ -59,7 +59,7 @@ EXPORT void mvk_blend_u8(uint8_t *restrict dst, ptrdiff_t dst_stride,
                          const uint8_t *restrict alpha, ptrdiff_t a_stride,
                          int h, int w)
 {
-    ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads) \
+    #pragma omp parallel for schedule(static) num_threads(g_threads) \
             if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)
     for (int r = 0; r < h; r++) {
         uint8_t *d = dst + (size_t)r * dst_stride;
@@ -77,7 +77,7 @@ EXPORT void mvk_blend_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
                           const uint8_t *restrict alpha, ptrdiff_t a_stride,
                           int h, int w)
 {
-    ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads) \
+    #pragma omp parallel for schedule(static) num_threads(g_threads) \
             if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)
     for (int r = 0; r < h; r++) {
         uint16_t *d = dst + (size_t)r * dst_stride;
@@ -100,7 +100,7 @@ EXPORT void mvk_blend_pre_u8(uint8_t *restrict dst, ptrdiff_t dst_stride,
                              const uint16_t *restrict src_a, ptrdiff_t sa_stride,
                              int h, int w)
 {
-    ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads) \
+    #pragma omp parallel for schedule(static) num_threads(g_threads) \
             if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)
     for (int r = 0; r < h; r++) {
         uint8_t *d = dst + (size_t)r * dst_stride;
@@ -116,7 +116,7 @@ EXPORT void mvk_blend_pre_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
                               const uint32_t *restrict src_a, ptrdiff_t sa_stride,
                               int h, int w)
 {
-    ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads) \
+    #pragma omp parallel for schedule(static) num_threads(g_threads) \
             if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)
     for (int r = 0; r < h; r++) {
         uint16_t *d = dst + (size_t)r * dst_stride;
@@ -143,7 +143,7 @@ EXPORT void mvk_place_u8(uint8_t *restrict dst, ptrdiff_t dst_stride,
                          const int32_t *restrict col_idx,
                          int out_h, int out_w)
 {
-    ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads) \
+    #pragma omp parallel for schedule(static) num_threads(g_threads) \
             if(g_threads > 1 && (int64_t)out_h * out_w >= PAR_MIN)
     for (int r = 0; r < out_h; r++) {
         uint8_t *d = dst + (size_t)r * dst_stride;
@@ -166,7 +166,7 @@ EXPORT void mvk_place_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
                           const int32_t *restrict col_idx,
                           int out_h, int out_w)
 {
-    ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads) \
+    #pragma omp parallel for schedule(static) num_threads(g_threads) \
             if(g_threads > 1 && (int64_t)out_h * out_w >= PAR_MIN)
     for (int r = 0; r < out_h; r++) {
         uint16_t *d = dst + (size_t)r * dst_stride;
@@ -207,7 +207,7 @@ static inline void rgba2yuv_px(float r, float g, float b, float scale, float max
 /* Corps générique : IN_T = uint8_t|float, OUT_T = uint8_t|uint16_t. Une bande de `ch` lignes
  * par itération : Y écrit direct, chroma pleine résolution gardée en scratch entier puis
  * réduite par paires (ordre numpy : colonnes puis lignes). VLA scratch : 2 lignes × w u32. */
-***REMOVED***define RGBA2YUV_BODY(IN_T, OUT_T)                                                        \
+#define RGBA2YUV_BODY(IN_T, OUT_T)                                                        \
     _Pragma("omp parallel for schedule(static) num_threads(g_threads) if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)") \
     for (int by = 0; by < h / ch; by++) {                                                 \
         uint32_t cu[2][8192], cv[2][8192];                                                \
@@ -302,7 +302,7 @@ EXPORT int mvk_rgba2yuv_f32_u16(const float *restrict rgba, ptrdiff_t rgba_strid
  * (keyer : région relue puis réécrite — élémentwise pur, sûr). do_clip : l'additif clippe la
  * luma [0, maxv] (np.clip AVANT cast) ; le dissolve/chroma ne clippe pas (comme numpy). */
 
-***REMOVED***define MIXF_BODY(T)                                                                       \
+#define MIXF_BODY(T)                                                                       \
     _Pragma("omp parallel for schedule(static) num_threads(g_threads) if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)") \
     for (int r = 0; r < h; r++) {                                                          \
         T *d = dst + (size_t)r * dst_stride;                                               \
@@ -335,7 +335,7 @@ EXPORT void mvk_mixf_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
 
 /* out = a·(1−m) + b·m, m = masque float32 (wipe). m_colstep : échantillonnage colonne du
  * masque (1 = plein, _CW = chroma sur le masque pleine résolution). Pas de clip (comme numpy). */
-***REMOVED***define MIXMAP_BODY(T)                                                                     \
+#define MIXMAP_BODY(T)                                                                     \
     _Pragma("omp parallel for schedule(static) num_threads(g_threads) if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)") \
     for (int r = 0; r < h; r++) {                                                          \
         T *d = dst + (size_t)r * dst_stride;                                               \
@@ -387,7 +387,7 @@ EXPORT void mvk_mixmap_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
  * Strides en ÉLÉMENTS ; dernier axe contigu (sinon le wrapper bobimxl renvoie False → numpy).
  */
 
-***REMOVED***define SPL_COMPOSE_BODY(T)                                                                 \
+#define SPL_COMPOSE_BODY(T)                                                                 \
     _Pragma("omp parallel for schedule(static) num_threads(g_threads) if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)") \
     for (int r = 0; r < h; r++) {                                                           \
         T *d = dst + (size_t)r * dst_stride;                                                \
@@ -435,7 +435,7 @@ EXPORT void mvk_spl_compose_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
  * dst = clip( (dst·inv_a >> 8) + (src[idx]·A1 >> 8) + C2 , 0, maxv ). Arithmétique uint32
  * IDENTIQUE au numpy du plugin (qui promeut déjà en uint32 sur ce chemin). */
 
-***REMOVED***define SPL_FUSED_BODY(T)                                                                   \
+#define SPL_FUSED_BODY(T)                                                                   \
     _Pragma("omp parallel for schedule(static) num_threads(g_threads) if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)") \
     for (int r = 0; r < h; r++) {                                                           \
         T *d = dst + (size_t)r * dst_stride;                                                \
@@ -478,7 +478,7 @@ EXPORT void mvk_spl_fused_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
 /* solid : blend d'une COULEUR UNIE sous masque (ombre portée du split, couche ART opaque/frange).
  * dst = (dst·(256−a) + val·a) >> 8. Une passe, uint32 (cf. note de débordement plus haut). */
 
-***REMOVED***define SPL_SOLID_BODY(T)                                                                   \
+#define SPL_SOLID_BODY(T)                                                                   \
     _Pragma("omp parallel for schedule(static) num_threads(g_threads) if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)") \
     for (int r = 0; r < h; r++) {                                                           \
         T *d = dst + (size_t)r * dst_stride;                                                \
@@ -557,7 +557,7 @@ static inline void grad_at(double t, int nst, const float *restrict pos,
     *ov = (double)vv[i] * iw + (double)vv[i + 1] * w;
 }
 
-***REMOVED***define SPL_GRAD_BODY(T)                                                                   \
+#define SPL_GRAD_BODY(T)                                                                   \
     const int cw0 = W / cw, ch0 = ch;                                                       \
     const double dcos = (double)cosv, dsin = (double)sinv, dpmin = (double)pmin,            \
                  dinv = (double)inv_range, dsoft = (double)softness, damp = (double)amp;    \
@@ -662,10 +662,10 @@ EXPORT void mvk_spl_blur2_f32(float *restrict m, int h, int w, int r, int iters,
          * colonne (boucle y interne, pas de w) rate le cache à chaque itération — mesuré
          * 20,4 ms/trame sur cette seule passe. L'accumulation reste SÉQUENTIELLE par colonne
          * (scratch[y] = scratch[y-1] + m[y]) donc les octets sont inchangés. */
-        ***REMOVED***define MVK_BLUR_CB 512
+        #define MVK_BLUR_CB 512
         {
             const int nb = (w + MVK_BLUR_CB - 1) / MVK_BLUR_CB;
-            ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads)
+            #pragma omp parallel for schedule(static) num_threads(g_threads)
             for (int b = 0; b < nb; b++) {
                 const int c0 = b * MVK_BLUR_CB;
                 const int c1 = (c0 + MVK_BLUR_CB < w) ? (c0 + MVK_BLUR_CB) : w;
@@ -678,7 +678,7 @@ EXPORT void mvk_spl_blur2_f32(float *restrict m, int h, int w, int r, int iters,
                 }
             }
         }
-        ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads)
+        #pragma omp parallel for schedule(static) num_threads(g_threads)
         for (int y = 0; y < h; y++) {
             const int hi = (y + r < h - 1) ? (y + r) : (h - 1);
             const float *shi = scratch + (size_t)hi * w;
@@ -691,7 +691,7 @@ EXPORT void mvk_spl_blur2_f32(float *restrict m, int h, int w, int r, int iters,
             }
         }
         /* ── passe HORIZONTALE (axis=1) ── */
-        ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads)
+        #pragma omp parallel for schedule(static) num_threads(g_threads)
         for (int y = 0; y < h; y++) {
             float *row = m + (size_t)y * w;
             float *sc = scratch + (size_t)y * w;
@@ -725,7 +725,7 @@ EXPORT void mvk_spl_rotmap(int aw, int ah,
 {
     const int aw2 = (aw + cw - 1) / cw;
     const float fW = (float)(W - 1), fH = (float)(H - 1);
-    ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads)
+    #pragma omp parallel for schedule(static) num_threads(g_threads)
     for (int j = 0; j < ah; j++) {
         const float ysj = ys[j], ycj = yc[j];
         const size_t base = (size_t)j * aw;
@@ -781,7 +781,7 @@ EXPORT void mvk_spl_rotring_u8(int aw, int ah,
                                float Yb, float minv, float maxv,
                                uint16_t *restrict ring_a, uint8_t *restrict ring_y)
 {
-    ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads)
+    #pragma omp parallel for schedule(static) num_threads(g_threads)
     for (int j = 0; j < ah; j++) {
         const float ysj = ys[j], ycj = yc[j];
         const size_t base = (size_t)j * aw;
@@ -819,7 +819,7 @@ EXPORT void mvk_spl_rotring_u16(int aw, int ah,
                                 float Yb, float minv, float maxv,
                                 uint16_t *restrict ring_a, uint16_t *restrict ring_y)
 {
-    ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads)
+    #pragma omp parallel for schedule(static) num_threads(g_threads)
     for (int j = 0; j < ah; j++) {
         const float ysj = ys[j], ycj = yc[j];
         const size_t base = (size_t)j * aw;
@@ -862,7 +862,7 @@ EXPORT void mvk_spl_rotring_u16(int aw, int ah,
  * par construction. `inv_a`/`A1` peuvent être NULL (déjà calculés par un appel précédent : les
  * plans U et V partagent leur alpha et ne diffèrent que par la couleur du ruban).
  */
-***REMOVED***define SPL_PREFUSE_BODY(T)                                                                    \
+#define SPL_PREFUSE_BODY(T)                                                                    \
     _Pragma("omp parallel for schedule(static) num_threads(g_threads)")                        \
     for (int r = 0; r < h; r++) {                                                              \
         const uint16_t *av = a + (size_t)r * a_stride;                                         \
@@ -906,7 +906,7 @@ EXPORT void mvk_spl_prefuse_u16(const uint16_t *restrict a, ptrdiff_t a_stride,
 EXPORT void mvk_spl_outer_u16(uint16_t *restrict out, ptrdiff_t o_stride,
                               const float *restrict vy, const float *restrict vx, int h, int w)
 {
-    ***REMOVED***pragma omp parallel for schedule(static) num_threads(g_threads) \
+    #pragma omp parallel for schedule(static) num_threads(g_threads) \
             if(g_threads > 1 && (int64_t)h * w >= PAR_MIN)
     for (int r = 0; r < h; r++) {
         const float y = vy[r];

@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 import time
 import threading
@@ -14,9 +14,9 @@ from .database import (db_upsert_container, db_update_status, db_delete_containe
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Volume média partagé (plugins Player/Recorder/Storage) : un dossier de l'hôte
-***REMOVED*** bind-monté dans chaque container média → fichiers partagés sans NFS. Valeurs en dur —
-***REMOVED*** éditer ici si besoin.
+# Volume média partagé (plugins Player/Recorder/Storage) : un dossier de l'hôte
+# bind-monté dans chaque container média → fichiers partagés sans NFS. Valeurs en dur —
+# éditer ici si besoin.
 MEDIA_HOST_DIR = "/srv/mxl-media"
 MEDIA_MOUNT    = "/mnt/media"
 
@@ -28,8 +28,8 @@ def ajouter_alerte(message, niveau="info", vmid=None, node_id=None, kind=None, p
     pour tout nouveau site d'appel : elle seule permet de rendre l'alerte dans la langue du
     lecteur (cf. `database._alert_cle`). Une phrase française reste acceptée."""
     canonique = db_add_alert(message, niveau, vmid=vmid, node_id=node_id, kind=kind, params=params)
-    ***REMOVED*** Le journal reçoit la phrase, pas la clé ; et rien du tout si l'anti-rebond a tu la ligne
-    ***REMOVED*** (sinon le journal contredirait la base sur ce qui a été retenu).
+    # Le journal reçoit la phrase, pas la clé ; et rien du tout si l'anti-rebond a tu la ligne
+    # (sinon le journal contredirait la base sur ce qui a été retenu).
     if canonique:
         log.info(f"ALERTE [{niveau}] {canonique}")
 
@@ -50,14 +50,14 @@ def _cleanup_fabric_on_destroy(vmid):
         rows = db_fabric_all()
     except Exception:
         return
-    ***REMOVED*** 1+2. retire la ligne propre à CE conteneur (assembleur du mur, et/ou shard si c'en était un)
+    # 1+2. retire la ligne propre à CE conteneur (assembleur du mur, et/ou shard si c'en était un)
     asm_key = "asm:%s" % vmid
     for r in rows:
         if r["signature"] == asm_key:
             db_fabric_delete(asm_key)
         elif r["kind"] in ("shard", "shared") and str(r.get("ref") or "") == sv:
             db_fabric_delete(r["signature"])
-    ***REMOVED*** 3. shards orphelins : aucun parent (mur logique) n'a plus de ligne assembleur vivante
+    # 3. shards orphelins : aucun parent (mur logique) n'a plus de ligne assembleur vivante
     rows = db_fabric_all()
     live_asm = {str(r["vmid"]) for r in rows if r["kind"] == "assembler" and r.get("vmid") is not None}
     orphan_refs = []
@@ -69,13 +69,13 @@ def _cleanup_fabric_on_destroy(vmid):
         except Exception:
             parents = []
         if not any(str(p) in live_asm for p in parents):
-            db_fabric_delete(r["signature"])       ***REMOVED*** ligne retirée AVANT le teardown → pas de re-cascade
+            db_fabric_delete(r["signature"])       # ligne retirée AVANT le teardown → pas de re-cascade
             ref = r.get("ref")
             if ref and str(ref).isdigit():
                 orphan_refs.append(int(ref))
     for ref in orphan_refs:
         try:
-            detruire_container(ref)                 ***REMOVED*** lignes déjà retirées → cleanup récursif = no-op
+            detruire_container(ref)                 # lignes déjà retirées → cleanup récursif = no-op
         except Exception as _e:
             log.warning("teardown shard orphelin %s : %s", ref, _e)
 
@@ -93,32 +93,32 @@ def detruire_container(vmid, progress=None):
 
 def _detruire_container_locked(vmid, progress=None):
     _p = progress or (lambda m: None)
-    ***REMOVED*** Libère les cœurs CPU épinglés (pool de pinning Docker), quel que soit le backend — évite les
-    ***REMOVED*** allocations orphelines. Best-effort.
+    # Libère les cœurs CPU épinglés (pool de pinning Docker), quel que soit le backend — évite les
+    # allocations orphelines. Best-effort.
     try:
         from . import core_pool
         core_pool.release_cores(vmid)
     except Exception:
         pass
-    ***REMOVED*** Libère le GPU alloué (sélecteur --gpus) — même esprit anti-orphelin. Best-effort, tous backends.
+    # Libère le GPU alloué (sélecteur --gpus) — même esprit anti-orphelin. Best-effort, tous backends.
     try:
         from . import gpu_pool
         gpu_pool.release_gpu(vmid)
     except Exception:
         pass
-    ***REMOVED*** Libère les réservations multicast (ledger atomique, cf. db_reserve_mcast) de tous les flux TX
-    ***REMOVED*** de ce container — sinon ses adresses restent bloquées pour un owner_ref mort à jamais.
+    # Libère les réservations multicast (ledger atomique, cf. db_reserve_mcast) de tous les flux TX
+    # de ce container — sinon ses adresses restent bloquées pour un owner_ref mort à jamais.
     try:
         from .database import db_release_mcast_prefix
         db_release_mcast_prefix(f"tx:{vmid}:")
     except Exception:
         pass
-    ***REMOVED*** Supprime les liens RDMA que ce container ALIMENTAIT (il en était la source) — même famille
-    ***REMOVED*** anti-orphelin que ci-dessus. Un lien réplique le flux d'un producteur PRÉCIS : celui-ci
-    ***REMOVED*** détruit, le lien n'a plus d'objet, et un container recréé plus tard en est un AUTRE (vmid
-    ***REMOVED*** neuf). Le laisser survivre laisserait deux containers de réplication tourner à vide sur deux
-    ***REMOVED*** nœuds, et ferait espérer le retour d'une source qui ne reviendra pas. La suppression est en
-    ***REMOVED*** CASCADE (les consommateurs du flux répliqué sont décâblés) — cf. services/rdma.
+    # Supprime les liens RDMA que ce container ALIMENTAIT (il en était la source) — même famille
+    # anti-orphelin que ci-dessus. Un lien réplique le flux d'un producteur PRÉCIS : celui-ci
+    # détruit, le lien n'a plus d'objet, et un container recréé plus tard en est un AUTRE (vmid
+    # neuf). Le laisser survivre laisserait deux containers de réplication tourner à vide sur deux
+    # nœuds, et ferait espérer le retour d'une source qui ne reviendra pas. La suppression est en
+    # CASCADE (les consommateurs du flux répliqué sont décâblés) — cf. services/rdma.
     try:
         from services import rdma as _rdma
         _liens = _rdma.liberer_liens_du_producteur(vmid)
@@ -126,12 +126,12 @@ def _detruire_container_locked(vmid, progress=None):
             _p(f"RDMA : {len(_liens)} lien(s) supprimé(s) (ce container en était la source)")
     except Exception as _e:
         log.warning(f"libération des liens RDMA du producteur {vmid} : {_e}")
-    ***REMOVED*** …et les liens qui alimentaient ce container en tant que CONSOMMATEUR. Le teardown existait
-    ***REMOVED*** déjà (`release_cable_link`), mais uniquement sur le chemin DÉCÂBLAGE : détruire un
-    ***REMOVED*** consommateur, ou le redéployer sur un autre nœud, laissait ses liens derrière lui pour
-    ***REMOVED*** toujours. Mesuré le 2026-08-07 : 86 liens pour un besoin réel d'environ 21, dont 56 vers deux
-    ***REMOVED*** nœuds sans le moindre consommateur. On libère donc ici aussi, avant que la ligne DB (et donc
-    ***REMOVED*** le câblage dérivé qui sert à décider) ne disparaisse.
+    # …et les liens qui alimentaient ce container en tant que CONSOMMATEUR. Le teardown existait
+    # déjà (`release_cable_link`), mais uniquement sur le chemin DÉCÂBLAGE : détruire un
+    # consommateur, ou le redéployer sur un autre nœud, laissait ses liens derrière lui pour
+    # toujours. Mesuré le 2026-08-07 : 86 liens pour un besoin réel d'environ 21, dont 56 vers deux
+    # nœuds sans le moindre consommateur. On libère donc ici aussi, avant que la ligne DB (et donc
+    # le câblage dérivé qui sert à décider) ne disparaisse.
     try:
         from services import rdma as _rdma
         from .routes.cabling import _flow_consumers_on_node as _conso
@@ -148,23 +148,23 @@ def _detruire_container_locked(vmid, progress=None):
             _shms = {x.get("shm") for x in (_w.get("consumes") or []) if x.get("shm")}
             _n = 0
             for _shm in _shms:
-                ***REMOVED*** `- 1` : CE container compte encore parmi les consommateurs à cet instant.
+                # `- 1` : CE container compte encore parmi les consommateurs à cet instant.
                 if _conso(_shm, _nid) - 1 <= 0 and _rdma.release_cable_link(_shm, _nid):
                     _n += 1
             if _n:
                 _p(f"RDMA : {_n} lien(s) libéré(s) (ce container en était le dernier consommateur)")
     except Exception as _e:
         log.warning(f"libération des liens RDMA du consommateur {vmid} : {_e}")
-    ***REMOVED*** Destruction déléguée au driver. MTL = docker rm -f + xdp off ;
-    ***REMOVED*** compute = docker rm -f simple (pas de NIC/xdp).
+    # Destruction déléguée au driver. MTL = docker rm -f + xdp off ;
+    # compute = docker rm -f simple (pas de NIC/xdp).
     _cd = db_get_container(vmid)
     if _cd:
         from . import docker_compute
-        ***REMOVED*** Garde-fou anti-orphelin : la classification compute/MTL passe par is_mtl_type, qui lit le
-        ***REMOVED*** REGISTRE plugins (needs_dpdk). Dans un contexte où le registre n'est pas chargé, un
-        ***REMOVED*** conteneur MTL serait misclassé « compute » et son conteneur docker (bobi-mtl-<vmid>) resterait
-        ***REMOVED*** orphelin (vécu : coco corrompu détruit côté DB mais bobi-mtl-2010 toujours up). On retire donc
-        ***REMOVED*** explicitement TOUS les noms possibles sur le nœud avant de router le nettoyage spécifique.
+        # Garde-fou anti-orphelin : la classification compute/MTL passe par is_mtl_type, qui lit le
+        # REGISTRE plugins (needs_dpdk). Dans un contexte où le registre n'est pas chargé, un
+        # conteneur MTL serait misclassé « compute » et son conteneur docker (bobi-mtl-<vmid>) resterait
+        # orphelin (vécu : coco corrompu détruit côté DB mais bobi-mtl-2010 toujours up). On retire donc
+        # explicitement TOUS les noms possibles sur le nœud avant de router le nettoyage spécifique.
         try:
             from .database import db_get_node
             _node = db_get_node(_cd.get("node_id"))
@@ -181,31 +181,31 @@ def _detruire_container_locked(vmid, progress=None):
         else:
             from . import docker_driver
             _res = docker_driver.destroy_docker(vmid, progress=_p)
-        ***REMOVED*** Nettoyage du tissu de composition : retire les lignes registre de CE conteneur (assembleur /
-        ***REMOVED*** shard) et torne les shards devenus orphelins (plus aucun mur parent). Sinon, supprimer un mur
-        ***REMOVED*** laissait ses shards + sa ligne asm fantômes (le reconcile ne nettoie pas si fabric_auto off).
+        # Nettoyage du tissu de composition : retire les lignes registre de CE conteneur (assembleur /
+        # shard) et torne les shards devenus orphelins (plus aucun mur parent). Sinon, supprimer un mur
+        # laissait ses shards + sa ligne asm fantômes (le reconcile ne nettoie pas si fabric_auto off).
         try:
             _cleanup_fabric_on_destroy(vmid)
         except Exception as _e:
             log.warning(f"nettoyage tissu après suppression {vmid} : {_e}")
-        ***REMOVED*** Purge des ressources NMOS auto-seedées devenues orphelines (le conteneur n'existe plus →
-        ***REMOVED*** son instance_uuid disparaît). Garde le pool fixe (label_locked)/servi/abonné. Best-effort.
+        # Purge des ressources NMOS auto-seedées devenues orphelines (le conteneur n'existe plus →
+        # son instance_uuid disparaît). Garde le pool fixe (label_locked)/servi/abonné. Best-effort.
         try:
             from services import nmos as _nmos
             _nmos.purge_orphan_resources(dry_run=False)
-            ***REMOVED*** ⚠ La purge ne suffit PAS : elle nettoie le REGISTRE de ressources auto-seedées, mais
-            ***REMOVED*** ne reconstruit pas le modèle en mémoire. Sans cette notification, les ressources du
-            ***REMOVED*** conteneur détruit (ses ports MXL en particulier) restaient annoncées sur /x-nmos/
-            ***REMOVED*** jusqu'à ce qu'un tout autre événement déclenche un rebuild — et, quand on est
-            ***REMOVED*** enregistré auprès d'un registre, elles y restaient jusqu'à l'expiration du Node
-            ***REMOVED*** entier. Un contrôleur continuait donc de proposer un routage vers un flux disparu.
-            ***REMOVED*** Constaté au banc le 2026-08-31 : aucun chemin de destruction compute n'appelait
-            ***REMOVED*** `notify_state_change` (seuls le déploiement et le chemin MTL le faisaient).
+            # ⚠ La purge ne suffit PAS : elle nettoie le REGISTRE de ressources auto-seedées, mais
+            # ne reconstruit pas le modèle en mémoire. Sans cette notification, les ressources du
+            # conteneur détruit (ses ports MXL en particulier) restaient annoncées sur /x-nmos/
+            # jusqu'à ce qu'un tout autre événement déclenche un rebuild — et, quand on est
+            # enregistré auprès d'un registre, elles y restaient jusqu'à l'expiration du Node
+            # entier. Un contrôleur continuait donc de proposer un routage vers un flux disparu.
+            # Constaté au banc le 2026-08-31 : aucun chemin de destruction compute n'appelait
+            # `notify_state_change` (seuls le déploiement et le chemin MTL le faisaient).
             _nmos.notify_state_change()
         except Exception as _e:
             log.warning(f"purge orphelins NMOS après suppression {vmid} : {_e}")
         return _res
-    ***REMOVED*** Ligne introuvable en base : rien à détruire côté nœud, rien à purger.
+    # Ligne introuvable en base : rien à détruire côté nœud, rien à purger.
     _p(f"container {vmid} introuvable en base")
     return
 
@@ -236,14 +236,14 @@ def changer_media_projet(vmid, project_id, media_host_dir):
     label = (c.get("hostname") if c else None) or str(vmid)
     ajouter_alerte("alert.deploy.media_changement_debut", "info", params={"label": label, "vmid": vmid})
 
-    ***REMOVED*** Re-scoper un conteneur « compute » = rattacher le projet puis RECRÉER le conteneur
-    ***REMOVED*** (deploy_compute relit project_id et bind le nouveau sous-dossier média).
+    # Re-scoper un conteneur « compute » = rattacher le projet puis RECRÉER le conteneur
+    # (deploy_compute relit project_id et bind le nouveau sous-dossier média).
     if c:
         import json as _json
         from .deploy import deployer_script
-        ***REMOVED*** deploy_compute relit project_id en DB → il faut le poser AVANT le redéploiement,
-        ***REMOVED*** mais le REMETTRE à l'ancien si le redéploiement échoue (sinon la DB prétend le
-        ***REMOVED*** nouveau projet alors que le conteneur bind encore l'ancien dossier).
+        # deploy_compute relit project_id en DB → il faut le poser AVANT le redéploiement,
+        # mais le REMETTRE à l'ancien si le redéploiement échoue (sinon la DB prétend le
+        # nouveau projet alors que le conteneur bind encore l'ancien dossier).
         prev_project_id = c.get("project_id")
         db_set_project(vmid, project_id)
         try:
@@ -267,13 +267,13 @@ def changer_media_projet(vmid, project_id, media_host_dir):
 
 
 def redemarrer_container(vmid):
-    ***REMOVED*** MTL --rm → re-run depuis le deploy_config. Compute (pas --rm) → docker start (ou
-    ***REMOVED*** re-déploiement si le conteneur a disparu).
-    ***REMOVED*** SÉRIALISÉ PAR VMID (vmlocks) — cf. deployer_script/detruire_container.
+    # MTL --rm → re-run depuis le deploy_config. Compute (pas --rm) → docker start (ou
+    # re-déploiement si le conteneur a disparu).
+    # SÉRIALISÉ PAR VMID (vmlocks) — cf. deployer_script/detruire_container.
     from .vmlocks import verrou_vmid
     with verrou_vmid(vmid, op="restart"):
-        ***REMOVED*** Un restart MANUEL sort le container de la quarantaine crash-loop (audit B3) :
-        ***REMOVED*** l'opérateur reprend la main, l'auto-restart redémarre de zéro (backoff réinitialisé).
+        # Un restart MANUEL sort le container de la quarantaine crash-loop (audit B3) :
+        # l'opérateur reprend la main, l'auto-restart redémarre de zéro (backoff réinitialisé).
         from .metrics import reset_crash_loop
         reset_crash_loop(vmid)
         return _redemarrer_container_locked(vmid)

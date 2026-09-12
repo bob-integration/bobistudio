@@ -1,9 +1,9 @@
-***REMOVED*** docs/reference/PROJETS.md — Le projet comme espace de travail
+# docs/reference/PROJETS.md — Le projet comme espace de travail
 
 > Document de design (2026-07-05). Étudié avec l'état du code au commit 40de898.
 > Statut : **conception validée dans les grandes lignes, chantiers non démarrés.**
 
-***REMOVED******REMOVED*** 1. Vision
+## 1. Vision
 
 Un **projet** cesse d'être un simple snapshot pour devenir un **espace de travail** :
 
@@ -32,7 +32,7 @@ Décisions actées :
   partiel silencieux, pas de préemption).
 - Terminaux cibles : **poste fixe grand écran + tablette tactile** (téléphone hors scope).
 
-***REMOVED******REMOVED*** 2. Ce que l'existant fournit déjà
+## 2. Ce que l'existant fournit déjà
 
 | Brique | État | Référence |
 |---|---|---|
@@ -52,7 +52,7 @@ Décisions actées :
 | Pré-vol de **capacité** (cœurs, queues, GPU) | ❌ | le pré-vol actuel ne vérifie que noms/VMID |
 | Réallocation multicast au chargement | ⚠️ à vérifier/garantir | `mcast_allocations` |
 
-***REMOVED******REMOVED*** 3. Modèle de données cible
+## 3. Modèle de données cible
 
 ```
 projects            += owner_id, slug, state (saved|loading|active|error|unloading),
@@ -82,7 +82,7 @@ project_control_map (project_id, protocol tsl|emberplus, address, role_ref)  -- 
 - Les **vues et les ports font partie de l'export** `.bsproj.json` (bump du schéma
   `bobi.studio.project.v2`), re-mappés à l'import.
 
-***REMOVED******REMOVED*** 4. Cycle de vie : charger / décharger sans conflit
+## 4. Cycle de vie : charger / décharger sans conflit
 
 **Charger** = instancier le snapshot en containers live tagués `project_id`, coexistant avec
 les autres projets actifs. **Décharger** = `detruire_containers_projet` (existe). Exigences :
@@ -110,7 +110,7 @@ les autres projets actifs. **Décharger** = `detruire_containers_projet` (existe
    (rétention N versions auto + versions **nommées** illimitées, ex. « avant émission »)
    avec retour arrière = charger une version comme un snapshot.
 
-***REMOVED******REMOVED*** 5. Frontière du projet : sources/destinations virtuelles (ports)
+## 5. Frontière du projet : sources/destinations virtuelles (ports)
 
 **Idée centrale.** Le projet déclare ses **ports** : des entrées (« sources virtuelles » —
 CAM1, CAM2, EXT…) et des sorties (« destinations virtuelles » — PGM, CLEAN, AUX1…), nommés
@@ -134,7 +134,7 @@ Conséquences :
   flux TX composables du 2110_io). Un port non bindé = source « pas de flux » (comportement
   RX déjà connu et géré).
 
-***REMOVED******REMOVED*** 6. Persistance TSL / Ember+ : le projet se loge dans le contrôleur
+## 6. Persistance TSL / Ember+ : le projet se loge dans le contrôleur
 
 **Problème** : le contrôleur broadcast (pupitres, UMD, systèmes tiers via `services/tsl` et
 `services/emberplus`) est configuré une fois — index tally TSL, arbres de paramètres Ember+.
@@ -156,7 +156,7 @@ Côté code : `services/tsl` et `services/emberplus` gagnent une couche d'indire
 (adresse → role_ref → vmid live) au lieu de référencer des containers en direct ; hook au
 chargement/déchargement de projet.
 
-***REMOVED******REMOVED******REMOVED*** Niveau de tally par projet (décision 2026-07-05)
+### Niveau de tally par projet (décision 2026-07-05)
 
 Chaque projet possède **son niveau de tally, créé automatiquement** (un `tally_base`
 unique alloué au projet). Dans ce niveau peuvent écrire :
@@ -173,7 +173,7 @@ pas à arbitrer. Les consommateurs du niveau : multiviews (distribution `tally_b
 existante, le niveau se choisit déjà par fenêtre), **TSL sortant** (UMD externes),
 et plus tard les widgets tally du workspace (ch. 6).
 
-***REMOVED******REMOVED*** 7. Interfaces composées (vues)
+## 7. Interfaces composées (vues)
 
 - **Widgets niveau 1** (quasi gratuit, aucun plugin à modifier) : UI de plugin complète via
   `MXLPlugins[type].mount()` ; tuile preview WHEP ; tuile statut/fps (`listPreview` +
@@ -310,7 +310,7 @@ et plus tard les widgets tally du workspace (ch. 6).
 - **Chrome projet allégé** : nom du projet, sélecteur de vues, bouton monitoring, logout.
   Pas de nav technique. i18n obligatoire (`window.t`), `.ios-toggle` pour tout booléen.
 
-***REMOVED******REMOVED*** 8. Sécurité : le chantier central
+## 8. Sécurité : le chantier central
 
 Aujourd'hui **tout est global** (`require_perm` sur le rôle, aucun scoping par ressource).
 Sans scoping, le workspace est un décor : n'importe quel utilisateur loggué peut piloter
@@ -323,7 +323,7 @@ n'importe quel container via le proxy. Il faut :
   `/api/home/summary` global aux utilisateurs projet) ;
 - le gating front (`window.hasPerm`) reste cosmétique — l'autorité est côté serveur.
 
-***REMOVED******REMOVED*** 9. Chantiers (séquentiels, un à la fois)
+## 9. Chantiers (séquentiels, un à la fois)
 
 1. **Fondations** — `project_members`, `owner_id`, rôles projet, flag utilisateur
    `interface`, page d'accueil projets, redirection au login, **scoping sécurité** (§8).
@@ -348,7 +348,7 @@ L'ordre 4↔5 peut s'inverser ; 6 peut démarrer dès que 2 est stable — la **
 meilleur premier livrable du chantier 6** : forte valeur, contrat minimal, zéro code plugin
 in-process.
 
-***REMOVED******REMOVED*** 10. Décisions complémentaires (tranchées 2026-07-05)
+## 10. Décisions complémentaires (tranchées 2026-07-05)
 
 - **Sauvegarde = projet vivant + versions** : re-snapshot automatique débouncé (cf. §4.6),
   historique `project_versions`, points nommés, retour arrière. Pas de bouton
@@ -366,7 +366,7 @@ in-process.
   (modèle `streamer.tracks` actuel). Zéro traitement au binding. Un vrai patch audio
   (shuffle multi-sources) viendra éventuellement plus tard comme plugin dédié.
 
-***REMOVED******REMOVED*** 11. Médias : acquis et compléments (audit 2026-07-05)
+## 11. Médias : acquis et compléments (audit 2026-07-05)
 
 **Déjà en place et conforme au design** — l'isolation média est *physique* côté conteneur :
 - Bind par projet : `project_id` → montage `/srv/mxl-media/<slug>` sur `/mnt/media`
@@ -401,13 +401,13 @@ in-process.
    « Points d'attention » du monitoring, suppression explicite avec confirmation —
    jamais de destruction silencieuse de médias. → **Chantier 3**.
 
-***REMOVED******REMOVED*** 12. Plan d'implémentation — Chantier 1 (Fondations)
+## 12. Plan d'implémentation — Chantier 1 (Fondations)
 
 **Périmètre** : membres + rôles projet, flag d'interface par utilisateur, redirection au
 login, accueil projets + page projet minimale, **scoping sécurité des API**. Hors
 périmètre : vues/widgets (ch.2), cycle de vie/chargement (ch.3), ports (ch.4).
 
-***REMOVED******REMOVED******REMOVED*** Règle d'accès (la décision structurante)
+### Règle d'accès (la décision structurante)
 
 - **Accès global** = rôles `admin` et `operator` (rien ne change pour eux).
 - **Tout autre rôle** (`exploitant`, `multiview`, `viewer`) devient **scopé projet** : il
@@ -420,7 +420,7 @@ périmètre : vues/widgets (ch.2), cycle de vie/chargement (ch.3), ports (ch.4).
 - Migration des `exploitant` existants : ils perdent l'accès global → **script/UI d'ajout
   aux projets** au déploiement (pas d'auto-enrôlement silencieux).
 
-***REMOVED******REMOVED******REMOVED*** A. DB (`database.py`, migrations idempotentes dans `init_db`)
+### A. DB (`database.py`, migrations idempotentes dans `init_db`)
 
 1. `ALTER TABLE projects ADD COLUMN owner_id INTEGER` (NULL = legacy, admin de fait).
 2. `CREATE TABLE project_members(project_id, user_id, role TEXT, PRIMARY KEY(project_id,
@@ -431,7 +431,7 @@ périmètre : vues/widgets (ch.2), cycle de vie/chargement (ch.3), ports (ch.4).
 4. Helpers : `db_project_members`, `db_set_project_member`, `db_remove_project_member`,
    `db_user_projects(uid)`, `db_project_role(pid, uid)`.
 
-***REMOVED******REMOVED******REMOVED*** B. Auth (`auth.py`)
+### B. Auth (`auth.py`)
 
 1. `PROJECT_ROLES` + hiérarchie ; `has_global_access(user)` (= admin/operator).
 2. `project_role_for(user, pid)` ; `require_project_role(min_role)` (décorateur, pid en
@@ -440,7 +440,7 @@ périmètre : vues/widgets (ch.2), cycle de vie/chargement (ch.3), ports (ch.4).
    Exception : `monitor_user_id == uid` toujours autorisé.
 3. Exposer au front : `window.MXL_SCOPE` (`global|projects`) + rôles par projet.
 
-***REMOVED******REMOVED******REMOVED*** C. Scoping des API (le gros morceau — audit exhaustif requis à l'implémentation)
+### C. Scoping des API (le gros morceau — audit exhaustif requis à l'implémentation)
 
 Points d'application connus (pour les utilisateurs scopés ; bypass si accès global) :
 - `plugin_proxy` (`plugin_registry.py:529`) : `assert_vmid_access` — y compris les
@@ -460,7 +460,7 @@ Points d'application connus (pour les utilisateurs scopés ; bypass si accès gl
 - **Tests** : cookies forgés (cf. mémoire `flask_secret_key`) — matrice membre/non-membre/
   admin × proxy/config/tally/monitor/listes ; jamais en mutation sur la prod live.
 
-***REMOVED******REMOVED******REMOVED*** D. Login + chrome
+### D. Login + chrome
 
 1. `auth_pages.py` : après login, `interface == 'projets'` → redirect `/workspaces`
    (les techniques gardent `/`). Routes **en anglais** (décision 2026-07-05) :
@@ -472,7 +472,7 @@ Points d'application connus (pour les utilisateurs scopés ; bypass si accès gl
 3. `layout.html` : mode « chrome projet » (nav réduite : nom du projet, monitoring,
    logout) activé sur les pages projet ; nav technique masquée aux `interface=projets`.
 
-***REMOVED******REMOVED******REMOVED*** E. Accueil + page projet minimale
+### E. Accueil + page projet minimale
 
 1. `GET /workspaces` → `workspaces.html` : cartes des projets du membre (nom, état
    chargé/déchargé, nb containers, rôle) ; vide → message explicite (« demandez à un
@@ -482,13 +482,13 @@ Points d'application connus (pour les utilisateurs scopés ; bypass si accès gl
    bandeau d'alertes du projet. C'est le squelette que le ch.2 remplira de vues.
 3. i18n FR/EN complet (`window.t`, catalogue `projects.*`), thèmes OK (tokens existants).
 
-***REMOVED******REMOVED******REMOVED*** Ordre, dépendances, recette
+### Ordre, dépendances, recette
 
 A → B → C et D en parallèle → E. La recette porte sur : matrice d'accès (C, tests
 forgés), parcours login/redirect/URL directe (D), accueil+page projet sur les 3 thèmes
 et tablette (E), non-régression complète de l'UI technique pour admin/operator.
 
-***REMOVED******REMOVED******REMOVED*** État d'avancement — Chantier 6 (2026-07-06)
+### État d'avancement — Chantier 6 (2026-07-06)
 
 **Codé et testé (copie DB + container factice sans IP)** — Contrats **`actions`/`state`**
 déclarés dans les manifestes mixer (take/pgm/pvw ; pgm/pvw/transition), recorder
@@ -672,7 +672,7 @@ projet…) ; banc réel shotbox/macros/triggers/Skaarhoj (+ redéploiement
 multiview ≥ 0.23.0) + vérif visuelle du picker ET de l'éditeur Scénario sur
 tablette (3 thèmes).
 
-***REMOVED******REMOVED******REMOVED*** État d'avancement — Chantiers 4 & 5 (2026-07-05, EN COURS)
+### État d'avancement — Chantiers 4 & 5 (2026-07-05, EN COURS)
 
 **Fait et testé (copie DB)** — Ch.4 : table `project_ports` + CRUD + API
 (`/api/ports` global, `/api/projects/<pid>/ports` : editor déclare, binding SOURCE
@@ -710,7 +710,7 @@ transmis sur le chemin Docker.
 **Reste** : banc réel TSL out (UMD) + publisher mixer + rebind à chaud sur le cluster ;
 Ember+ différé (usage à documenter avec l'utilisateur).
 
-***REMOVED******REMOVED******REMOVED*** État d'avancement — Chantier 3 (2026-07-05)
+### État d'avancement — Chantier 3 (2026-07-05)
 
 **Codé et testé** (copie de DB, sans toucher au cluster) : colonne `projects.state`
 (saved|loading|active|error|unloading) + verrou par projet (anti double-chargement,
@@ -736,7 +736,7 @@ UI panneau « Versions » sur /projects. Reste (différé) : banc réel de
 chargement/déchargement sur le cluster, budget fin de queues XDP au pré-vol (gardé à
 chaud par /flows).
 
-***REMOVED******REMOVED******REMOVED*** État d'avancement — Chantier 2 (2026-07-05)
+### État d'avancement — Chantier 2 (2026-07-05)
 
 **Codé et testé** : table `project_views` + CRUD ; API
 `/api/projects/<pid>/views[...]` (droits : ≥ operator vues privées, ≥ editor partage
@@ -753,7 +753,7 @@ instance_uuid avec repli vmid. Limites connues : le poll 5 s ne rafraîchit que 
 tuiles statut (jamais de re-mount des plugins) ; pas encore de widgets fins (ch. 6) ni
 d'alertes par-projet.
 
-***REMOVED******REMOVED******REMOVED*** État d'avancement — Chantier 1 (2026-07-05)
+### État d'avancement — Chantier 1 (2026-07-05)
 
 **A→E codés et testés** (sessions forgées sur une copie de la DB de prod, matrice
 membre/non-membre/admin entièrement verte ; DB live non touchée — les migrations

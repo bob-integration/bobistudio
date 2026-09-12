@@ -1,4 +1,4 @@
-***REMOVED***!/usr/bin/env python3
+#!/usr/bin/env python3
 """Producteur ANC RFC 8331 du banc croisé — à lancer dans un conteneur bobi-compute.
 
 Publie pendant DURATION s un flux DATA `v210xbench_anc8331` dont le grain est encodé par

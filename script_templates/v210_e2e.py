@@ -1,4 +1,4 @@
-***REMOVED***!/usr/bin/env python3
+#!/usr/bin/env python3
 """E2E interop v210 — À EXÉCUTER DANS un conteneur bobi-compute:0.10 (libmxl + bobimxl + SIMD).
 
 Chaîne réelle sur le bus MXL, noms préfixés v210test_ (aucun flux prod touché) :
@@ -39,13 +39,13 @@ def run(bit_depth):
     print("SIMD:", bx._v210_load() is not None)
     chk("SIMD lib chargée (%s)" % tag, bx._v210_load() is not None)
 
-    ***REMOVED*** 1. producteur planar
+    # 1. producteur planar
     wsrc = bx.Writer(inst, src_name, W, H, "422", bit_depth, 50, 1, index_mode="free")
     frames = [planar_frame(k, bit_depth) for k in range(N)]
     for k in range(N):
         wsrc.write(frames[k], index=k)
 
-    ***REMOVED*** 2. export planar → v210 (au même index)
+    # 2. export planar → v210 (au même index)
     rsrc = bx.Reader(inst, src_name)
     fmt = rsrc.format()
     chk("format source lisible (%s)" % tag, bool(fmt) and fmt["bit_depth"] == bit_depth)
@@ -60,14 +60,14 @@ def run(bit_depth):
                      bit_depth=bit_depth, out=ovw)
         wv.commit(ogi)
 
-    ***REMOVED*** 3. découverte : le miroir doit apparaître en video/v210
+    # 3. découverte : le miroir doit apparaître en video/v210
     flows = {f["id"]: f for f in bx.discover_flows()}
     fid_mirror = bx.flow_id(v210_name)
     seen = flows.get(fid_mirror)
     chk("miroir découvert en video/v210 (%s)" % tag,
         bool(seen) and seen["media_type"] == "video/v210")
 
-    ***REMOVED*** 4. import PAR-FLOWID BRUT du miroir → planar (comme un flux tiers)
+    # 4. import PAR-FLOWID BRUT du miroir → planar (comme un flux tiers)
     rv = bx.Reader(inst, fid_mirror, by_id=True)
     fmt_v = rv.format()
     chk("format miroir lisible par-flowId (%s)" % tag,
@@ -82,7 +82,7 @@ def run(bit_depth):
                        bit_depth=bit_depth, out=ovw)
         wb.commit(ogi)
 
-    ***REMOVED*** 5. round-trip bit-exact planar→v210→planar
+    # 5. round-trip bit-exact planar→v210→planar
     rb = bx.Reader(inst, back_name)
     dt = np.uint8 if bit_depth <= 8 else np.uint16
     alleq = True
@@ -92,7 +92,7 @@ def run(bit_depth):
             alleq = False; break
         _i, gi, view = got
         back = view.view(dt)[:frames[k].size]
-        ***REMOVED*** 10 bits : identité stricte. 8 bits : v210_pack(<<2) puis v210_unpack(>>2) = identité.
+        # 10 bits : identité stricte. 8 bits : v210_pack(<<2) puis v210_unpack(>>2) = identité.
         if not np.array_equal(back, frames[k] & 0xFF if bit_depth <= 8 else frames[k]):
             alleq = False
             print("   diff trame %d : %d/%d samples" %

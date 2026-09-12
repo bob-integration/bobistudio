@@ -1,18 +1,18 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Générateur de flux ANC SYNTHÉTIQUE (outil de banc, NON déployé sur la flotte) — écrit un shm
-***REMOVED*** ANC au format de `plugins/2110_io/mtl_rx.c` (data_rx_thread) avec un paquet RP188/ATC dont le
-***REMOVED*** timecode s'incrémente à la cadence demandée. Permet de valider l'horloge « source ANC » du
-***REMOVED*** multiview SANS matériel MTL/E810.
-***REMOVED***
-***REMOVED*** Le multiview dérive le shm ANC du shm vidéo câblé : '/dev/shm/<name>_<n>' → '<name>_anc_<n>'.
-***REMOVED*** Donc pour une entrée vidéo 'demo_0', lancez :  python3 tools/anc_tc_gen.py demo_0
-***REMOVED*** (crée /dev/shm/demo_anc_0). Doit tourner dans le MÊME /dev/shm que le conteneur multiview
-***REMOVED*** (sur le nœud, ou via le bind-mount mxl du conteneur compute).
-***REMOVED***
-***REMOVED*** Usage : anc_tc_gen.py <shm_video_name> [--fps 25] [--start HH:MM:SS:FF] [--df] [--once]
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Générateur de flux ANC SYNTHÉTIQUE (outil de banc, NON déployé sur la flotte) — écrit un shm
+# ANC au format de `plugins/2110_io/mtl_rx.c` (data_rx_thread) avec un paquet RP188/ATC dont le
+# timecode s'incrémente à la cadence demandée. Permet de valider l'horloge « source ANC » du
+# multiview SANS matériel MTL/E810.
+#
+# Le multiview dérive le shm ANC du shm vidéo câblé : '/dev/shm/<name>_<n>' → '<name>_anc_<n>'.
+# Donc pour une entrée vidéo 'demo_0', lancez :  python3 tools/anc_tc_gen.py demo_0
+# (crée /dev/shm/demo_anc_0). Doit tourner dans le MÊME /dev/shm que le conteneur multiview
+# (sur le nœud, ou via le bind-mount mxl du conteneur compute).
+#
+# Usage : anc_tc_gen.py <shm_video_name> [--fps 25] [--start HH:MM:SS:FF] [--df] [--once]
 import argparse, mmap, os, re, struct, time
 
 ANC_SLOT, ANC_RING, ANC_HDR = 8192, 8, 64
@@ -28,7 +28,7 @@ def parse_tc(s):
     f = [int(x) for x in str(s or "0").split(":") if x != ""]
     while len(f) < 4:
         f = [0] + f
-    return f[-4:]   ***REMOVED*** hh, mm, ss, ff
+    return f[-4:]   # hh, mm, ss, ff
 
 
 def rp188_udw(hh, mm, ss, ff, df):
@@ -57,10 +57,10 @@ def write_grain(mm_, ci, hh, mn_, ss, ff, df):
     slot = ci % ANC_RING
     base = ANC_HDR + slot * ANC_SLOT
     udw = rp188_udw(hh, mn_, ss, ff, df)
-    meta = struct.pack("<8H", 0x60, 0x60, 9, 0, 16, 0, 0, 0)   ***REMOVED*** did,sdid,line,hori,udw_size,udw_offset,c,s
+    meta = struct.pack("<8H", 0x60, 0x60, 9, 0, 16, 0, 0, 0)   # did,sdid,line,hori,udw_size,udw_offset,c,s
     payload = struct.pack("<II", 1, 16) + meta + udw
     mm_[base:base + len(payload)] = payload
-    mm_[0:8] = struct.pack("<Q", ci)            ***REMOVED*** en-tête : index → pointe le dernier grain écrit
+    mm_[0:8] = struct.pack("<Q", ci)            # en-tête : index → pointe le dernier grain écrit
     mm_[8:16] = struct.pack("<Q", time.time_ns())
 
 

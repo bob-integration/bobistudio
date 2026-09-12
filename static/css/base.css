@@ -1,42 +1,42 @@
 /* ─── Variables (surchargées par chaque thème) ──────────── */
 :root {
     /* Couleurs structurelles — dark neutre */
-    --bg:           ***REMOVED***14161a;
-    --bg-elev:      ***REMOVED***1b1e23;
-    --bg-input:     ***REMOVED***181a1f;
-    --bg-hover:     ***REMOVED***23262c;
-    --bg-selected:  ***REMOVED***262a31;
-    --border:       ***REMOVED***2a2d34;
-    --border-soft:  ***REMOVED***23262c;
+    --bg:           #14161a;
+    --bg-elev:      #1b1e23;
+    --bg-input:     #181a1f;
+    --bg-hover:     #23262c;
+    --bg-selected:  #262a31;
+    --border:       #2a2d34;
+    --border-soft:  #23262c;
 
     /* Texte */
-    --text:         ***REMOVED***d4d6da;
-    --text-muted:   ***REMOVED***8a8d94;
-    --text-strong:  ***REMOVED***f0f1f3;
+    --text:         #d4d6da;
+    --text-muted:   #8a8d94;
+    --text-strong:  #f0f1f3;
 
     /* Accent principal — bleu ardoise discret */
-    --accent:       ***REMOVED***7aa2c8;
-    --accent-hover: ***REMOVED***95b7d6;
+    --accent:       #7aa2c8;
+    --accent-hover: #95b7d6;
     --accent-soft:  rgba(122, 162, 200, 0.10);
 
     /* Statuts — saturation réduite */
-    --status-running-bg:   ***REMOVED***1d2e23;
-    --status-running-fg:   ***REMOVED***7ab98a;
-    --status-stopped-bg:   ***REMOVED***322023;
-    --status-stopped-fg:   ***REMOVED***d07a82;
-    --status-warning-bg:   ***REMOVED***2e2a1e;
-    --status-warning-fg:   ***REMOVED***c4a667;
-    --status-unknown-bg:   ***REMOVED***25272c;
-    --status-unknown-fg:   ***REMOVED***8a8d94;
-    --status-info-fg:      ***REMOVED***7aa2c8;
+    --status-running-bg:   #1d2e23;
+    --status-running-fg:   #7ab98a;
+    --status-stopped-bg:   #322023;
+    --status-stopped-fg:   #d07a82;
+    --status-warning-bg:   #2e2a1e;
+    --status-warning-fg:   #c4a667;
+    --status-unknown-bg:   #25272c;
+    --status-unknown-fg:   #8a8d94;
+    --status-info-fg:      #7aa2c8;
 
     /* Boutons — palette neutre uniforme + accents discrets */
-    --btn-red:    ***REMOVED***6e3138;
-    --btn-blue:   ***REMOVED***3b5673;
-    --btn-green:  ***REMOVED***355c43;
-    --btn-orange: ***REMOVED***6a4a2a;
-    --btn-purple: ***REMOVED***4b3e63;
-    --btn-text:   ***REMOVED***f0f1f3;
+    --btn-red:    #6e3138;
+    --btn-blue:   #3b5673;
+    --btn-green:  #355c43;
+    --btn-orange: #6a4a2a;
+    --btn-purple: #4b3e63;
+    --btn-text:   #f0f1f3;
 
     /* Typographie — sans-serif pour l'UI, mono pour les données */
     --font-base:   'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -76,7 +76,7 @@
        vidéo = BLEU · audio = VERT · ANC = VIOLET. Trois mots qui se disent au téléphone.
 
        Choisies par mesure (2026-08-19), pas au jugé, sous quatre contraintes simultanées :
-         · contraste ≥ 3:1 sur les TROIS fonds (***REMOVED***14161a, ***REMOVED***18181b, ***REMOVED***f6f7f9) — mesuré ≥ 3,20.
+         · contraste ≥ 3:1 sur les TROIS fonds (#14161a, #18181b, #f6f7f9) — mesuré ≥ 3,20.
            C'est la contrainte qui mord : une couleur assez claire pour le thème sombre tombe
            sous 2,5 sur le clair. D'où des tons moyens, plus denses que l'ancienne palette.
          · écart perceptuel ΔE ≥ 40 entre essences — mesuré ≥ 52 ;
@@ -85,16 +85,16 @@
            état là où il n'y a qu'une nature de signal ; c'est ce qui a écarté les verts pâles ;
          · les variantes `-active` (survol) gardent la MÊME luminance, avec plus de chroma : les
            éclaircir aurait amélioré le thème sombre en dégradant le clair. */
-    --topo-flow-video:        ***REMOVED***3f92c4;   /* bleu   */
-    --topo-flow-video-active: ***REMOVED***008fe6;
-    --topo-flow-audio:        ***REMOVED***57992c;   /* vert   */
-    --topo-flow-audio-active: ***REMOVED***3d9c00;
-    --topo-flow-data:         ***REMOVED***9d6ad2;   /* violet */
-    --topo-flow-data-active:  ***REMOVED***a854ff;
+    --topo-flow-video:        #3f92c4;   /* bleu   */
+    --topo-flow-video-active: #008fe6;
+    --topo-flow-audio:        #57992c;   /* vert   */
+    --topo-flow-audio-active: #3d9c00;
+    --topo-flow-data:         #9d6ad2;   /* violet */
+    --topo-flow-data-active:  #a854ff;
 
     /* Surface de prévisualisation canvas (multiview, mini-previews).
        Override par thème pour rester lisible en Daylight / Studio. */
-    --canvas-bg: ***REMOVED***0d1117;
+    --canvas-bg: #0d1117;
 
     /* Accent des overlays du composer multiview (texte/horloge/image) : distingue
        les objets d'habillage des fenêtres vidéo. Décliné dans les trois thèmes
@@ -106,20 +106,20 @@
        PGM = à l'antenne (rouge antenne), PVW = preview (vert), DISSOLVE = transition (cyan).
        Convention universelle des consoles de mélange (Sony / Grass Valley / ATEM) :
        non thématisées, identiques sur les trois lumières. OKLCH chroma modéré. */
-    --bus-pgm:      ***REMOVED***c0392b;
-    --bus-pgm-text: ***REMOVED***fff5f0;
-    --bus-pvw:      ***REMOVED***27ae60;
-    --bus-pvw-text: ***REMOVED***f4fff7;
-    --bus-dissolve:      ***REMOVED***2188d6;
-    --bus-dissolve-text: ***REMOVED***f0f8ff;
-    --bus-keyer:      ***REMOVED***d68a1f;          /* ambre — keyer source on PGM only */
-    --bus-keyer-text: ***REMOVED***fff8e0;
+    --bus-pgm:      #c0392b;
+    --bus-pgm-text: #fff5f0;
+    --bus-pvw:      #27ae60;
+    --bus-pvw-text: #f4fff7;
+    --bus-dissolve:      #2188d6;
+    --bus-dissolve-text: #f0f8ff;
+    --bus-keyer:      #d68a1f;          /* ambre — keyer source on PGM only */
+    --bus-keyer-text: #fff8e0;
 
     /* ─── Alias de compatibilité (ne PAS supprimer) ───────────────────────────
        Des pages écrites au fil de l'eau nomment leurs surfaces autrement que la
        charte (--surface, --bg-card, --bg-panel…) — noms qui n'ont JAMAIS été
        définis nulle part. Chacun de ces usages porte un repli en dur choisi
-       pour le thème sombre (`var(--surface, ***REMOVED***1b1e24)`) : en thème CLAIR le repli
+       pour le thème sombre (`var(--surface, #1b1e24)`) : en thème CLAIR le repli
        s'appliquait, donnant un fond gris FONCÉ sous un texte gris foncé
        (--text), donc illisible (remonté par un testeur sur Daylight, ex. les
        noms de serveurs des cartes de nœuds du monitoring).
@@ -273,9 +273,9 @@ code { font-family: var(--font-mono); background: var(--bg-input);
 .io-flow + .io-flow { margin-top: 3px; }
 /* Couleur d'ESSENCE, définie une fois. Elle était écrite en hexadécimal dans les deux fichiers,
  * donc à changer à deux endroits — et à oublier à l'un des deux. */
-.io-flow--v { --io-ess: ***REMOVED***60a5fa; }
-.io-flow--a { --io-ess: ***REMOVED***34d399; }
-.io-flow--d { --io-ess: ***REMOVED***d18616; }
+.io-flow--v { --io-ess: #60a5fa; }
+.io-flow--a { --io-ess: #34d399; }
+.io-flow--d { --io-ess: #d18616; }
 .io-flow-tag {
     font-weight: 600; font-size: 0.78em; letter-spacing: 0.04em;
     min-width: 0; color: var(--io-ess, var(--text));
@@ -618,19 +618,19 @@ button.io-fmt-text:focus-visible { outline: 2px solid var(--accent); outline-off
    MAC) qui débordent de la largeur compacte 90px des formulaires denses. Ici chaque champ se partage
    la largeur de sa ligne et l'input le remplit — la valeur reste lisible en entier, et la ligne se
    réorganise par wrap sur un panneau étroit. */
-***REMOVED***enroll-create .field { flex: 1 1 190px; min-width: 0; }
+#enroll-create .field { flex: 1 1 190px; min-width: 0; }
 /* Descendant (et non enfant direct) : l'input peut être enrobé dans un .num-stepper (boutons −/+).
    ⚠ EXCLURE les cases : ce sélecteur porte un id (spécificité 1,1,1) et écrasait donc le
    `width: 36px` de `input[type="checkbox"].ios-toggle` (0,2,1). Les interrupteurs de la ligne
    « Capacités » s'étiraient sur toute la largeur du champ et débordaient de leur libellé
    (signalé en recette le 2026-08-21). La règle ne vise que les champs de SAISIE. */
-***REMOVED***enroll-create .field input:not([type="checkbox"]):not([type="radio"]) {
+#enroll-create .field input:not([type="checkbox"]):not([type="radio"]) {
     width: 100%; margin-right: 0; box-sizing: border-box;
 }
-***REMOVED***enroll-create .field--name { flex: 1 1 240px; max-width: 340px; }
+#enroll-create .field--name { flex: 1 1 240px; max-width: 340px; }
 /* Valeurs réseau techniques en monospace : les groupes de chiffres/octets d'une IP, d'un CIDR ou
    d'un MAC s'alignent et se relisent sans ambiguïté (cf. règle « Monospace Confinée »). */
-***REMOVED***np_mgmt_cidr, ***REMOVED***np_mgmt_gw, ***REMOVED***np_mgmt_dns, ***REMOVED***np_mgmt_mac { font-family: var(--font-mono); }
+#np_mgmt_cidr, #np_mgmt_gw, #np_mgmt_dns, #np_mgmt_mac { font-family: var(--font-mono); }
 
 label { color: var(--text-muted); font-size: 0.78em; display: block; margin-bottom: 4px;
         font-weight: 500; }
@@ -653,7 +653,7 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
     color: var(--text); font-size: 1.15em; line-height: 1; cursor: pointer;
     user-select: none; touch-action: none; transition: background 0.12s, color 0.12s;
 }
-.num-stepper .num-btn:hover  { background: var(--accent-soft, rgba(96,165,250,0.18)); color: var(--accent, ***REMOVED***60a5fa); }
+.num-stepper .num-btn:hover  { background: var(--accent-soft, rgba(96,165,250,0.18)); color: var(--accent, #60a5fa); }
 /* État PRESSÉ discret : une teinte accent (plus marquée que le hover) plutôt qu'un PLEIN accent +
    texte blanc — ce dernier « s'allumait en orange vif » en thème studio (accent ambre) et se lisait
    comme un clignotement agressif quand on presse le bouton collé au champ. Feedback clair, pas criard. */
@@ -787,7 +787,7 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
     font-size: 0.85em;
 }
 .proj-picker-count { color: var(--text); }
-.proj-picker-count ***REMOVED***proj-selected-count {
+.proj-picker-count #proj-selected-count {
     color: var(--text-strong);
     font-family: var(--font-mono);
     font-weight: 600;
@@ -1020,7 +1020,7 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
 /* ── TABLEAU DE DONNÉES ───────────────────────────────────────────────────────────────────
    ⚠ `.tbl` ÉTAIT UNE CLASSE FANTÔME : deux endroits l'écrivaient, aucun ne la définissait,
    et l'un compensait par du style inline. Pendant ce temps QUATRE fonctionnalités
-   redéfinissaient la même forme chacune de son côté (***REMOVED***nmos_registry_table, .imgx-tbl,
+   redéfinissaient la même forme chacune de son côté (#nmos_registry_table, .imgx-tbl,
    .src-al-tbl, table.clk) — mêmes en-têtes capitales sourdes, mêmes filets, mêmes retraits.
    La dérive n'était pas dans une valeur, elle était dans l'absence du composant. Le voici,
    calé sur la forme que ces quatre-là avaient convergé à écrire.
@@ -1063,8 +1063,8 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
 }
 
 /* ─── Registre NMOS : tableau + badges (sans icône, statut porté par le texte) ───── */
-***REMOVED***nmos_registry_table { width: 100%; border-collapse: collapse; }
-***REMOVED***nmos_registry_table thead th {
+#nmos_registry_table { width: 100%; border-collapse: collapse; }
+#nmos_registry_table thead th {
     padding: 6px 10px;
     font-size: 0.7em;
     font-weight: 600;
@@ -1074,12 +1074,12 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
 }
-***REMOVED***nmos_registry_table thead th.th-sort:hover { color: var(--text); }
-***REMOVED***nmos_registry_table thead th .ind { color: var(--accent); margin-left: 2px; }
-***REMOVED***nmos_registry_table tbody td { padding: 7px 10px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
-***REMOVED***nmos_registry_table tbody tr:last-child td { border-bottom: none; }
-***REMOVED***nmos_registry_table tbody tr { transition: background 0.12s; }
-***REMOVED***nmos_registry_table tbody tr:hover { background: var(--bg-hover); }
+#nmos_registry_table thead th.th-sort:hover { color: var(--text); }
+#nmos_registry_table thead th .ind { color: var(--accent); margin-left: 2px; }
+#nmos_registry_table tbody td { padding: 7px 10px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+#nmos_registry_table tbody tr:last-child td { border-bottom: none; }
+#nmos_registry_table tbody tr { transition: background 0.12s; }
+#nmos_registry_table tbody tr:hover { background: var(--bg-hover); }
 .nmos-uuid { font-family: var(--font-mono); font-size: 0.85em; color: var(--text-muted); }
 .nmos-mcast { font-family: var(--font-mono); font-size: 0.85em; }
 .nmos-mcast.none { color: var(--text-muted); }
@@ -1090,8 +1090,8 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
     font-size: 0.7em; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase;
     border: 1px solid transparent;
 }
-.nmos-type-rx { background: rgba(155, 188, 214, 0.13); color: ***REMOVED***9bbcd6; border-color: rgba(155, 188, 214, 0.28); }
-.nmos-type-tx { background: rgba(128, 196, 170, 0.13); color: ***REMOVED***80c4aa; border-color: rgba(128, 196, 170, 0.28); }
+.nmos-type-rx { background: rgba(155, 188, 214, 0.13); color: #9bbcd6; border-color: rgba(155, 188, 214, 0.28); }
+.nmos-type-tx { background: rgba(128, 196, 170, 0.13); color: #80c4aa; border-color: rgba(128, 196, 170, 0.28); }
 
 /* Essence : texte simple, pas de pictogramme */
 .nmos-essence { color: var(--text); }
@@ -1140,9 +1140,9 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
     width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto;
     background: var(--text-muted); border: 2px solid var(--bg-input); box-sizing: content-box;
 }
-.nmos-dot[data-essence="video"] { background: ***REMOVED***9bbcd6; }
-.nmos-dot[data-essence="audio"] { background: ***REMOVED***80c4aa; }
-.nmos-dot[data-essence="data"]  { background: ***REMOVED***c4a5cf; }
+.nmos-dot[data-essence="video"] { background: #9bbcd6; }
+.nmos-dot[data-essence="audio"] { background: #80c4aa; }
+.nmos-dot[data-essence="data"]  { background: #c4a5cf; }
 .nmos-slot.bound .nmos-dot, .nmos-res.bound .nmos-dot { box-shadow: 0 0 0 2px var(--accent-soft); }
 .nmos-res.bound { opacity: 1; }
 .nmos-res.free .nmos-label { color: var(--text-muted); }
@@ -1150,9 +1150,9 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
 /* Arêtes : bezier teintée par essence (réutilise l'esprit .topo-edge) */
 .nmos-edge { fill: none; stroke: var(--text-muted); stroke-width: 1.5; opacity: 0.85; }
 .nmos-edge:hover { stroke-width: 3; opacity: 1; }
-.nmos-edge-video { stroke: ***REMOVED***9bbcd6; }
-.nmos-edge-audio { stroke: ***REMOVED***80c4aa; }
-.nmos-edge-data  { stroke: ***REMOVED***c4a5cf; stroke-dasharray: 5 3; }
+.nmos-edge-video { stroke: #9bbcd6; }
+.nmos-edge-audio { stroke: #80c4aa; }
+.nmos-edge-data  { stroke: #c4a5cf; stroke-dasharray: 5 3; }
 .nmos-edge-drag  { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 4 3; pointer-events: none; }
 
 /* Marquee (rubber-band) de sélection */
@@ -1518,7 +1518,7 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
     color: var(--text-muted);
 }
 
-/* Sous-groupe (Audio ***REMOVED***1, Audio ***REMOVED***2) à l'intérieur d'un groupe Audio 2110-30.
+/* Sous-groupe (Audio #1, Audio #2) à l'intérieur d'un groupe Audio 2110-30.
    Pas de border + bg : on évite le pattern "card-in-card" (interdit par le DS).
    Hiérarchie portée par un séparateur dashed + un titre fort. */
 .palette-subgroup {
@@ -1592,7 +1592,7 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
     padding-top: 8px;
     margin-top: 8px;
 }
-/* Titre d'un sous-bloc (ex. "Audio ***REMOVED***1") : pas un h3, juste un label fort */
+/* Titre d'un sous-bloc (ex. "Audio #1") : pas un h3, juste un label fort */
 .palette-section-head {
     color: var(--text-strong);
     font-size: 0.8em;
@@ -1797,7 +1797,7 @@ label.toggle-inline {
     gap: var(--space-3);
 }
 
-/* Ligne "vidéo ***REMOVED***N : générateur + pattern" */
+/* Ligne "vidéo #N : générateur + pattern" */
 .rx-sim-vrow {
     display: flex;
     align-items: center;
@@ -2028,11 +2028,11 @@ label.toggle-inline {
 .lat-mode-toggle { display: inline-flex; border: 1px solid var(--border-soft); border-radius: 6px; overflow: hidden; }
 .lat-mode-btn {
     margin: 0; padding: 2px 10px; font-size: 0.82em; line-height: 1.6;
-    background: var(--bg-elev, rgba(255,255,255,0.04)); color: var(--text-muted, ***REMOVED***9aa3b2);
+    background: var(--bg-elev, rgba(255,255,255,0.04)); color: var(--text-muted, #9aa3b2);
     border: none; cursor: pointer; white-space: nowrap;
 }
 .lat-mode-btn + .lat-mode-btn { border-left: 1px solid var(--border-soft); }
-.lat-mode-btn.active { background: var(--accent-bg, rgba(96,165,250,0.18)); color: var(--accent-fg, ***REMOVED***cbd5e1); font-weight: 600; }
+.lat-mode-btn.active { background: var(--accent-bg, rgba(96,165,250,0.18)); color: var(--accent-fg, #cbd5e1); font-weight: 600; }
 
 /* ─── Menu « ＋ Ajouter » des capacités d'un nœud (Réglages → Nœuds) ─── */
 /* Une carte nœud liste ses capacités PRÉSENTES ; ce qui manque n'encombre pas la ligne et se
@@ -2138,7 +2138,7 @@ label.toggle-inline {
 .home-head h1 { grid-column: 2; grid-row: 1; margin: 0; text-align: center; }
 .home-head .meta { font-family: var(--font-mono); font-size: 0.78em; }
 .home-head .home-product { grid-column: 1; grid-row: 1; justify-self: start; text-align: left; }
-.home-head ***REMOVED***home-updated { grid-column: 3; grid-row: 1; justify-self: end; text-align: right; }
+.home-head #home-updated { grid-column: 3; grid-row: 1; justify-self: end; text-align: right; }
 body.home-stale .home-head { opacity: 0.7; }
 
 /* ─── Témoin de connexion (cf. window.MXLConnexion, layout.html) ──────────────────────────────
@@ -2159,24 +2159,24 @@ body.home-stale .home-head { opacity: 0.7; }
     font-size: 0.92rem;
     font-weight: 600;
     text-align: center;
-    color: ***REMOVED***fff;
-    background: var(--status-error-fg, ***REMOVED***ef4444);
+    color: #fff;
+    background: var(--status-error-fg, #ef4444);
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
 }
 .mxl-connexion.visible { display: flex; }
-.mxl-connexion a { color: ***REMOVED***fff; text-decoration: underline; }
+.mxl-connexion a { color: #fff; text-decoration: underline; }
 .mxl-connexion-detail { font-weight: 400; opacity: 0.9; }
 .mxl-connexion-pastille {
     width: 9px; height: 9px; border-radius: 50%;
-    background: ***REMOVED***fff; flex: 0 0 auto;
+    background: #fff; flex: 0 0 auto;
     animation: mxl-connexion-pulse 1.4s ease-in-out infinite;
 }
 /* Session finie ≠ liaison coupée : le serveur répond, c'est l'habilitation qui a expiré. Deux
    pannes distinctes, deux gestes distincts (se reconnecter vs attendre) → deux couleurs. */
-.mxl-connexion.session   { background: var(--status-warning-fg, ***REMOVED***c4a667); color: ***REMOVED***1b1b1b; }
-.mxl-connexion.session a { color: ***REMOVED***1b1b1b; }
-.mxl-connexion.session .mxl-connexion-pastille { background: ***REMOVED***1b1b1b; animation: none; }
-.mxl-connexion.retablie  { background: var(--status-running-fg, ***REMOVED***3f9d5a); }
+.mxl-connexion.session   { background: var(--status-warning-fg, #c4a667); color: #1b1b1b; }
+.mxl-connexion.session a { color: #1b1b1b; }
+.mxl-connexion.session .mxl-connexion-pastille { background: #1b1b1b; animation: none; }
+.mxl-connexion.retablie  { background: var(--status-running-fg, #3f9d5a); }
 .mxl-connexion.retablie .mxl-connexion-pastille { animation: none; }
 @keyframes mxl-connexion-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) {
@@ -2192,8 +2192,8 @@ body.mxl-hors-ligne .content { opacity: 0.55; transition: opacity 0.2s; }
 /* ─── Skaarhoj Quick Bar simulation ──────────────────────────── */
 .skh-panel {
     display: inline-block;
-    background: ***REMOVED***1a1a1a;
-    border: 2px solid ***REMOVED***333;
+    background: #1a1a1a;
+    border: 2px solid #333;
     border-radius: 10px;
     padding: 16px 20px 20px;
     box-shadow: 0 4px 16px rgba(0,0,0,.5);
@@ -2211,9 +2211,9 @@ body.mxl-hors-ligne .content { opacity: 0.55; transition: opacity 0.2s; }
 .skh-oled {
     width: 72px;
     height: 44px;
-    background: ***REMOVED***000;
+    background: #000;
     border-radius: 3px;
-    border: 1px solid ***REMOVED***333;
+    border: 1px solid #333;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -2236,18 +2236,18 @@ body.mxl-hors-ligne .content { opacity: 0.55; transition: opacity 0.2s; }
     text-align: center;
     border-radius: 3px;
     font-size: 0.72em;
-    color: ***REMOVED***bbb;
+    color: #bbb;
     background: rgba(0, 0, 0, .55);
     cursor: pointer;
     opacity: 0;
     transition: opacity .12s, color .12s, background .12s;
 }
 .skh-slot:hover .skh-oled-clear { opacity: 1; }
-.skh-oled-clear:hover { color: ***REMOVED***fff; background: var(--danger, ***REMOVED***a33); }
+.skh-oled-clear:hover { color: #fff; background: var(--danger, #a33); }
 .skh-oled-line1 {
     font-family: var(--font-mono);
     font-size: 0.62em;
-    color: ***REMOVED***ddd;
+    color: #ddd;
     text-align: center;
     white-space: nowrap;
     overflow: hidden;
@@ -2258,7 +2258,7 @@ body.mxl-hors-ligne .content { opacity: 0.55; transition: opacity 0.2s; }
 .skh-oled-line2 {
     font-family: var(--font-mono);
     font-size: 0.55em;
-    color: ***REMOVED***888;
+    color: #888;
     text-align: center;
     white-space: nowrap;
     overflow: hidden;
@@ -2281,13 +2281,13 @@ body.mxl-hors-ligne .content { opacity: 0.55; transition: opacity 0.2s; }
 .skh-btn {
     width: 72px;
     height: 28px;
-    background: ***REMOVED***2a2a2a;
-    border: 1px solid ***REMOVED***444;
-    border-bottom: 3px solid ***REMOVED***111;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-bottom: 3px solid #111;
     border-radius: 5px;
     transition: background 0.1s, border-color 0.2s;
     font-size: 0.6em;
-    color: ***REMOVED***666;
+    color: #666;
     font-family: var(--font-mono);
     display: flex;
     align-items: center;
@@ -2295,15 +2295,15 @@ body.mxl-hors-ligne .content { opacity: 0.55; transition: opacity 0.2s; }
 }
 .skh-slot.drag-over .skh-oled {
     border-color: var(--accent);
-    background: ***REMOVED***0a1a2a;
+    background: #0a1a2a;
 }
 .skh-slot.drag-over .skh-btn {
     border-color: var(--accent);
 }
 .skh-slot.assigned .skh-btn {
-    background: ***REMOVED***222;
-    border-color: ***REMOVED***555;
-    color: ***REMOVED***aaa;
+    background: #222;
+    border-color: #555;
+    color: #aaa;
 }
 
 /* Liste de presets Skaarhoj */
@@ -2354,7 +2354,7 @@ body.mxl-hors-ligne .content { opacity: 0.55; transition: opacity 0.2s; }
 .skh-chip.dragging { opacity: 0.4; }
 
 /* ─── Tooltip flottant Skaarhoj ──────────────────────────────── */
-***REMOVED***skh-tooltip {
+#skh-tooltip {
     position: fixed;
     z-index: 9999;
     background: var(--bg-elev);
@@ -2371,7 +2371,7 @@ body.mxl-hors-ligne .content { opacity: 0.55; transition: opacity 0.2s; }
     transition: opacity 0.12s;
     max-width: 260px;
 }
-***REMOVED***skh-tooltip.visible { opacity: 1; }
+#skh-tooltip.visible { opacity: 1; }
 
 /* ─── Sous-onglets (ex. Pupitres ATEM/Skaarhoj) ──────────────── */
 .subtabs {
@@ -2420,7 +2420,7 @@ body.mxl-hors-ligne .content { opacity: 0.55; transition: opacity 0.2s; }
     transition: background 0.12s ease;
 }
 a.health-item:hover { background: var(--bg-hover, rgba(127,127,127,0.12)); }
-a.health-item:focus-visible { outline: 2px solid var(--accent, ***REMOVED***4a9eff); outline-offset: 1px; }
+a.health-item:focus-visible { outline: 2px solid var(--accent, #4a9eff); outline-offset: 1px; }
 /* Pastille de synthèse : un cran plus appuyée que les autres items. */
 .health-global .health-label { color: var(--text-strong); font-weight: 600;
     text-transform: uppercase; letter-spacing: .04em; font-size: 0.92em; }
@@ -2538,7 +2538,7 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, ***REMOVED***4a9e
    correctement, ce sont ses fournisseurs qui ne suivent pas. Discrète et pleine largeur : c'est
    une explication, pas un badge de plus dans une rangée déjà chargée. */
 .topo-node-content-gap {
-    color: var(--status-warning-fg, ***REMOVED***c4a667);
+    color: var(--status-warning-fg, #c4a667);
     font-size: 0.72em;
     line-height: 1.3;
     padding: 2px 6px 0;
@@ -2564,7 +2564,7 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, ***REMOVED***4a9e
 .topo-node-fps.bas { color: var(--status-warning-fg); }
 
 /* ─── Refonte page Câbles : version/nœud, filtres, collapse, vue libre ─── */
-/* Tête de carte : poignée collapse + host + ***REMOVED***vmid + badges version/nœud (+ 📺 à droite). */
+/* Tête de carte : poignée collapse + host + #vmid + badges version/nœud (+ 📺 à droite). */
 .topo-node-head { align-items: center; justify-content: flex-start; }
 .topo-node-collapse {
     flex-shrink: 0; background: transparent; border: none; cursor: pointer;
@@ -2579,7 +2579,7 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, ***REMOVED***4a9e
     padding: 0 4px;
 }
 .topo-node-onnode {
-    flex-shrink: 0; font-size: 0.7em; color: var(--status-info-fg, ***REMOVED***60a5fa);
+    flex-shrink: 0; font-size: 0.7em; color: var(--status-info-fg, #60a5fa);
     white-space: nowrap;
 }
 .topo-node-head .topo-node-monitor { margin-left: auto; }
@@ -2618,13 +2618,13 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, ***REMOVED***4a9e
     background: var(--bg-elev, rgba(255,255,255,0.04)); color: var(--text-muted); border: none;
 }
 .sig-btn + .sig-btn { border-left: 1px solid var(--border-soft); }
-.sig-btn.active { background: var(--accent-bg, rgba(96,165,250,0.18)); color: var(--accent-fg, ***REMOVED***cbd5e1); font-weight: 600; }
+.sig-btn.active { background: var(--accent-bg, rgba(96,165,250,0.18)); color: var(--accent-fg, #cbd5e1); font-weight: 600; }
 .sig-btn.sig-audio.active { background: rgba(168,85,247,0.20); }
 .sig-btn.sig-data.active  { background: rgba(245,158,11,0.20); }
 .cables-filter-sel { display: inline-flex; align-items: center; gap: 5px; font-size: 0.85em; color: var(--text-muted); }
 .cables-filter-sel select { font-size: 0.9em; }
 
-/* Vue libre : cartes déplaçables en absolu dans ***REMOVED***topo. */
+/* Vue libre : cartes déplaçables en absolu dans #topo. */
 .cables-view-toggle { display: inline-flex; border: 1px solid var(--border-soft); border-radius: 6px; overflow: hidden; }
 .cables-layouts { display: inline-flex; gap: var(--space-2); align-items: center; }
 /* Vue libre = une « fenêtre » : pas de barres de défilement, on navigue en faisant glisser le fond.
@@ -2662,15 +2662,15 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, ***REMOVED***4a9e
     margin: 0; border: none; background: transparent; color: var(--text-muted);
     font-size: 1em; line-height: 1; padding: 6px 11px; cursor: pointer; min-width: 34px;
 }
-.cables-zoom-btn:hover { background: var(--accent-soft, rgba(96,165,250,0.15)); color: var(--accent-fg, ***REMOVED***cbd5e1); }
+.cables-zoom-btn:hover { background: var(--accent-soft, rgba(96,165,250,0.15)); color: var(--accent-fg, #cbd5e1); }
 .cables-zoom-level { font-size: 0.78em; font-family: var(--font-mono); min-width: 48px; }
 .topo-node-avsync {
-    color: var(--status-info-fg, ***REMOVED***60a5fa);
+    color: var(--status-info-fg, #60a5fa);
     font-family: var(--font-mono);
     font-size: 0.74em;
 }
 .topo-node-avsync-warn {
-    color: var(--status-warning-fg, ***REMOVED***f59e0b);
+    color: var(--status-warning-fg, #f59e0b);
 }
 .topo-node-nosignal {
     font-family: var(--font-mono);
@@ -2685,7 +2685,7 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, ***REMOVED***4a9e
     cursor: pointer;
 }
 .topo-node-nosignal:hover {
-    color: var(--text-primary, ***REMOVED***e2e8f0);
+    color: var(--text-primary, #e2e8f0);
     border-color: rgba(255, 255, 255, 0.20);
 }
 .topo-node-own-lat {
@@ -2742,9 +2742,9 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, ***REMOVED***4a9e
    Un point porte déjà une pastille d'ESSENCE (vidéo/audio/données) : une seconde pastille se
    confondrait avec elle et brouillerait la lecture du type de point. Le niveau affiché se choisit
    dans la barre de navigation (window.SourceTally). */
-.topo-port.tally-red   .topo-port-label { color: ***REMOVED***cc2222; font-weight: 600; }
-.topo-port.tally-amber .topo-port-label { color: ***REMOVED***cc8800; font-weight: 600; }
-.topo-port.tally-green .topo-port-label { color: ***REMOVED***22aa44; font-weight: 600; }
+.topo-port.tally-red   .topo-port-label { color: #cc2222; font-weight: 600; }
+.topo-port.tally-amber .topo-port-label { color: #cc8800; font-weight: 600; }
+.topo-port.tally-green .topo-port-label { color: #22aa44; font-weight: 600; }
 /* Les badges (format / délai / alignement) ne se compriment pas et ne se coupent pas. */
 .topo-port-fmt, .topo-port-delay, .topo-port-align, .topo-port-rxlat, .topo-port-rxstall { flex: 0 0 auto; white-space: nowrap; }
 /* « Abonné mais ne reçoit pas » : slot RX mtl sans flux (échec création / pas de trafic). */
@@ -2754,7 +2754,7 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, ***REMOVED***4a9e
     border-radius: 4px;
     font-size: 0.72em;
     font-weight: 600;
-    color: ***REMOVED***3d1500;
+    color: #3d1500;
     background: rgba(251,146,60,0.7);
     border: 1px solid rgba(251,146,60,0.5);
 }
@@ -2765,7 +2765,7 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, ***REMOVED***4a9e
     border-radius: 4px;
     font-size: 0.72em;
     font-variant-numeric: tabular-nums;
-    color: var(--text-muted, ***REMOVED***9aa3b2);
+    color: var(--text-muted, #9aa3b2);
     background: var(--bg-elev, rgba(255,255,255,0.06));
     opacity: 0.85;
 }
@@ -2795,7 +2795,7 @@ body.wiring .topo-port-clash .topo-port-dot {
     border-radius: 4px;
     font-size: 0.72em;
     font-variant-numeric: tabular-nums;
-    color: var(--accent-fg, ***REMOVED***cbd5e1);
+    color: var(--accent-fg, #cbd5e1);
     background: var(--accent-bg, rgba(96,165,250,0.16));
     border: 1px solid rgba(96,165,250,0.35);
 }
@@ -2815,13 +2815,13 @@ body.wiring .topo-port-clash .topo-port-dot {
     border-radius: 4px;
     font-size: 0.72em;
     font-variant-numeric: tabular-nums;
-    color: ***REMOVED***3d2a00;
+    color: #3d2a00;
     background: rgba(251,191,36,0.55);
     border: 1px solid rgba(251,191,36,0.4);
 }
-.topo-port-align.align-ref     { color:***REMOVED***0b3d12; background:rgba(74,222,128,0.55); }   /* immédiat */
-.topo-port-align.align-aligned { color:***REMOVED***cbd5e1; background:rgba(255,255,255,0.10); }  /* aligné (budget) */
-.topo-port-align.align-late    { color:***REMOVED***3d1500; background:rgba(251,146,60,0.65); }   /* attend / en retard */
+.topo-port-align.align-ref     { color:#0b3d12; background:rgba(74,222,128,0.55); }   /* immédiat */
+.topo-port-align.align-aligned { color:#cbd5e1; background:rgba(255,255,255,0.10); }  /* aligné (budget) */
+.topo-port-align.align-late    { color:#3d1500; background:rgba(251,146,60,0.65); }   /* attend / en retard */
 .topo-port-dot {
     flex: 0 0 8px;
     width: 8px; height: 8px;
@@ -3081,12 +3081,12 @@ body.wiring[data-wire-kind="data"]  .topo-node-target .topo-port-in.topo-port-da
     pointer-events: none;
 }
 .topo-edge-rdma-line.rdma-up {
-    stroke: ***REMOVED***f59e0b;
+    stroke: #f59e0b;
     animation: topo-rdma-march 1.6s linear infinite;
 }
-.topo-edge-rdma-line.rdma-wait { stroke: var(--text-muted, ***REMOVED***9aa3b2); opacity: 0.6; }
+.topo-edge-rdma-line.rdma-wait { stroke: var(--text-muted, #9aa3b2); opacity: 0.6; }
 .topo-edge-rdma-line.rdma-ko {
-    stroke: var(--status-error-fg, ***REMOVED***ef4444);
+    stroke: var(--status-error-fg, #ef4444);
     stroke-dasharray: 3 4;
     animation: topo-rdma-blink 1.2s ease-in-out infinite;
 }
@@ -3101,13 +3101,13 @@ body.wiring[data-wire-kind="data"]  .topo-node-target .topo-port-in.topo-port-da
     font-weight: 700;
     pointer-events: none;
     paint-order: stroke;
-    stroke: var(--bg, ***REMOVED***15171c);
+    stroke: var(--bg, #15171c);
     stroke-width: 3px;
     stroke-linejoin: round;
 }
-.topo-edge-rdma-lbl.rdma-up   { fill: ***REMOVED***f59e0b; }
-.topo-edge-rdma-lbl.rdma-wait { fill: var(--text-muted, ***REMOVED***9aa3b2); }
-.topo-edge-rdma-lbl.rdma-ko   { fill: var(--status-error-fg, ***REMOVED***ef4444); }
+.topo-edge-rdma-lbl.rdma-up   { fill: #f59e0b; }
+.topo-edge-rdma-lbl.rdma-wait { fill: var(--text-muted, #9aa3b2); }
+.topo-edge-rdma-lbl.rdma-ko   { fill: var(--status-error-fg, #ef4444); }
 /* Path de DÉTECTION élargi (doublure transparente de chaque arête, frère PRÉCÉDENT du path
    visible) : le hover/clic marche à ~7px du trait sans épaissir visuellement le câble. */
 .topo-edge-hit {
@@ -3128,13 +3128,13 @@ body.wiring[data-wire-kind="data"]  .topo-node-target .topo-port-in.topo-port-da
     font-weight: 600;
     pointer-events: none;
     paint-order: stroke;
-    stroke: var(--bg, ***REMOVED***15171c);
+    stroke: var(--bg, #15171c);
     stroke-width: 3px;
     stroke-linejoin: round;
 }
-.topo-edge-lat.lat-ok   { fill: var(--text-muted, ***REMOVED***9aa3b2); }
-.topo-edge-lat.lat-warn { fill: var(--status-warning-fg, ***REMOVED***c4a667); }
-.topo-edge-lat.lat-err  { fill: var(--status-stopped-fg, ***REMOVED***d07a82); }
+.topo-edge-lat.lat-ok   { fill: var(--text-muted, #9aa3b2); }
+.topo-edge-lat.lat-warn { fill: var(--status-warning-fg, #c4a667); }
+.topo-edge-lat.lat-err  { fill: var(--status-stopped-fg, #d07a82); }
 .topo-node-highlight {
     border-color: var(--accent) !important;
     box-shadow: 0 0 0 1px var(--accent);
@@ -3341,14 +3341,14 @@ body.wiring[data-wire-kind="data"]  .topo-node-target .topo-port-in.topo-port-da
     flex-shrink: 0;
     margin-bottom: 2px;
 }
-.pd-icon-sources      { background: rgba(122,162,200,0.18); color: ***REMOVED***7aa2c8; }
-.pd-icon-traitements  { background: rgba(160,130,200,0.18); color: ***REMOVED***a882c8; }
+.pd-icon-sources      { background: rgba(122,162,200,0.18); color: #7aa2c8; }
+.pd-icon-traitements  { background: rgba(160,130,200,0.18); color: #a882c8; }
 /* Composition : teinte DISTINCTE des cinq autres (bleu/violet/vert/ambre/rouge) — deux
    étages voisins du schéma ne doivent pas se confondre au coup d'œil. */
-.pd-icon-composition  { background: rgba(90,176,168,0.18);  color: ***REMOVED***5ab0a8; }
-.pd-icon-streams      { background: rgba(100,180,130,0.18); color: ***REMOVED***64b482; }
-.pd-icon-destinations { background: rgba(200,160,90,0.18);  color: ***REMOVED***c8a05a; }
-.pd-icon-medias       { background: rgba(200,100,100,0.18); color: ***REMOVED***c86464; }
+.pd-icon-composition  { background: rgba(90,176,168,0.18);  color: #5ab0a8; }
+.pd-icon-streams      { background: rgba(100,180,130,0.18); color: #64b482; }
+.pd-icon-destinations { background: rgba(200,160,90,0.18);  color: #c8a05a; }
+.pd-icon-medias       { background: rgba(200,100,100,0.18); color: #c86464; }
 .pd-label {
     font-size: 0.85em;
     font-weight: 600;
@@ -3729,13 +3729,13 @@ body.wiring[data-wire-kind="data"]  .topo-node-target .topo-port-in.topo-port-da
    On rend donc `main` extensible, mais SUR L'ACCUEIL SEUL : passer toutes les
    pages en flex-colonne changerait la fusion des marges verticales partout, pour
    corriger une page. */
-.page-home ***REMOVED***contenu { display: flex; flex-direction: column; flex: 1 1 auto; }
+.page-home #contenu { display: flex; flex-direction: column; flex: 1 1 auto; }
 .page-home .home-alerts { margin-top: auto; }
 .page-home .app-footer  { margin-top: 0; }
 .home-alerts-empty { font-style: italic; color: var(--text-muted); }
 /* Panneau Logs (page Monitoring) : liste longue défilable. */
 /* ── Table SHM (page Monitoring) ─────────────────────────────────────────── */
-***REMOVED***shm { margin-top: var(--space-5); }
+#shm { margin-top: var(--space-5); }
 .shm-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
 .shm-table th {
     text-align: left;
@@ -3751,10 +3751,10 @@ body.wiring[data-wire-kind="data"]  .topo-node-target .topo-port-in.topo-port-da
     border-bottom: 1px solid rgba(255,255,255,0.04);
     vertical-align: middle;
 }
-.shm-table code { font-size: 0.9em; color: var(--text-secondary, ***REMOVED***cbd5e1); }
+.shm-table code { font-size: 0.9em; color: var(--text-secondary, #cbd5e1); }
 /* Libellé d'exploitation au-dessus du nom technique (niveau choisi dans la barre de navigation) :
    c'est sous ce nom-là que l'opérateur reconnaît la source ; le shm reste pour le diagnostic. */
-.shm-table .shm-label { font-weight: 600; color: var(--text, ***REMOVED***e6edf3); }
+.shm-table .shm-label { font-weight: 600; color: var(--text, #e6edf3); }
 .shm-vmid { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.85em; }
 .shm-state { font-family: var(--font-mono); font-size: 0.82em; padding: 1px 6px; border-radius: 3px; }
 .shm-active .shm-state, .shm-state.shm-active { color: var(--status-running-fg); background: rgba(74,222,128,0.08); }
@@ -4082,7 +4082,7 @@ body.wiring .topo-node-wire-src {
     }
     /* Sous 900 px les cartes sont empilées en UNE colonne : des courbes à tangente horizontale
        entre cartes superposées ne veulent plus rien dire, on masque la couche. Choix DÉLIBÉRÉ —
-       mais il doit se DIRE (cf. ***REMOVED***topo-edges-hidden), sinon il est indiscernable d'une panne. */
+       mais il doit se DIRE (cf. #topo-edges-hidden), sinon il est indiscernable d'une panne. */
     .topo-edges { display: none; }
     .topo-tip   { display: none; }
     .wire-banner { left: 8px; right: 8px; transform: none; }
@@ -4119,7 +4119,7 @@ body.wiring .topo-node-wire-src {
 .create-type-chips { flex-direction: row; flex-wrap: wrap; }
 
 /* Étape 2 : une ligne par container, empilées. */
-***REMOVED***create-step2-rows { display: flex; flex-direction: column; gap: 10px; }
+#create-step2-rows { display: flex; flex-direction: column; gap: 10px; }
 .create-row { padding-bottom: 4px; }
 .create-row + .create-row { border-top: 1px dashed var(--border-soft, var(--border)); padding-top: 10px; }
 .create-row .cc-add,
@@ -4791,7 +4791,7 @@ body.wiring .topo-node-wire-src {
     background: var(--bg-elev); border-radius: var(--radius) var(--radius) 0 0; }
 .bobi-logs-head h2 { margin: 0; font-size: 1rem; flex: 0 0 auto; }
 .bobi-logs-src { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bobi-logs-src.warn { color: var(--status-warning-fg, ***REMOVED***c80); }
+.bobi-logs-src.warn { color: var(--status-warning-fg, #c80); }
 .bobi-logs-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-end;
     padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border);
     background: var(--bg-elev); }
@@ -4927,10 +4927,10 @@ th.mxl-sortable.sort-desc .mxl-sort-icon { opacity: 1; color: var(--accent); }
 .res-compact { position: relative; display: inline-flex; align-items: center; }
 /* Posée dans la barre d'onglets, poussée à droite : la pastille partage leur ligne au lieu
    d'ajouter un étage à l'en-tête.
-   ⚠ NE RIEN redéfinir sur `***REMOVED***ps-tabs` lui-même : `.tabs` est une classe PARTAGÉE par toute
+   ⚠ NE RIEN redéfinir sur `#ps-tabs` lui-même : `.tabs` est une classe PARTAGÉE par toute
    l'application, et y toucher (gap, flex-wrap, alignement) repliait différemment les barres
    chargées — la page I/O, qui a le plus d'onglets, décalait tout. On n'agit que sur la pastille. */
-***REMOVED***ps-tabs .res-compact { margin-left: auto; align-self: center; flex: none; max-width: 46%; }
+#ps-tabs .res-compact { margin-left: auto; align-self: center; flex: none; max-width: 46%; }
 /* Sur une barre chargée (page I/O), la synthèse s'abrège plutôt que de comprimer les onglets. */
 .res-compact-sum { overflow: hidden; text-overflow: ellipsis; }
 /* Même piège que le panneau : `display` bat l'attribut `hidden`. Sans ça, le widget reste visible
@@ -4993,7 +4993,7 @@ th.mxl-sortable.sort-desc .mxl-sort-icon { opacity: 1; color: var(--accent); }
     border-bottom:1px solid var(--border); }
 .mon-tabs .tab { background:none; border:none; border-bottom:2px solid transparent;
     padding:8px 14px; cursor:pointer; color:var(--text-muted); font:inherit; }
-.mon-tabs .tab.active { color:var(--text); border-bottom-color:var(--accent, ***REMOVED***5b8def); }
+.mon-tabs .tab.active { color:var(--text); border-bottom-color:var(--accent, #5b8def); }
 .mon-tabs a.tab { text-decoration:none; display:inline-block; }
 .mon-tabs a.tab:hover { color:var(--text); text-decoration:none; }
 
@@ -5165,8 +5165,8 @@ th.mxl-sortable.sort-desc .mxl-sort-icon { opacity: 1; color: var(--accent); }
 /* Auto-contrôles : le VERT n'est pas donné à « indisponible ». Un contrôle qui n'a pas pu
    tourner n'est pas un contrôle réussi, et les peindre pareil ferait lire une preuve là où il
    n'y a qu'une absence. */
-.tp-ac-ok { color: ***REMOVED***2a8; }
-.tp-ac-échec, .tp-ac-erreur { color: ***REMOVED***d24; font-weight: 600; }
+.tp-ac-ok { color: #2a8; }
+.tp-ac-échec, .tp-ac-erreur { color: #d24; font-weight: 600; }
 .tp-ac-indisponible { color: var(--text-muted); }
 
 /* ── Onglet Réglages → Accès publics ──────────────────────────────────────────────────────

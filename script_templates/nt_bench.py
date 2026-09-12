@@ -1,8 +1,8 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Micro-banc MAGASINS NON TEMPORELS (movnt) contre écritures normales, sur le motif RÉEL
 d'écriture d'un grain MXL.
 
-***REMOVED******REMOVED*** Ce qu'on cherche à trancher
+## Ce qu'on cherche à trancher
 
 Tous nos producteurs écrivent une trame pleine dans le ring MXL par `vw[:n] = <octets>` — une
 copie linéaire de 4 Mo vers de la tmpfs que l'écrivain NE RELIT JAMAIS. Avec des magasins
@@ -16,7 +16,7 @@ normaux, le CPU LIT d'abord chaque ligne de cache qu'il va pourtant écraser ent
 même trame en **10 bits** fait 7,91 Mo → au-dessus, donc déjà non temporelle. Le banc doit voir
 cette marche : si elle n'apparaît pas, l'hypothèse entière tombe.
 
-***REMOVED******REMOVED*** Pourquoi la concurrence est la moitié de la mesure
+## Pourquoi la concurrence est la moitié de la mesure
 
 Le gain d'un magasin non temporel est du TRAFIC MÉMOIRE, pas des cycles CPU. Sur une machine au
 repos, un seul copieur n'est borné ni par le bus ni par le L3 : movnt peut y paraître neutre,
@@ -25,7 +25,7 @@ celui de la prod — N producteurs qui se disputent le bus (cf. multiview memory
 D'où le balayage 1/2/4/8/16 processus : on regarde le débit AGRÉGÉ et le coût CPU PAR TRAME, pas
 le débit d'un copieur isolé.
 
-***REMOVED******REMOVED*** Protocole (les pièges qu'il évite)
+## Protocole (les pièges qu'il évite)
 
 - **Destination en tmpfs, en ANNEAU** : un vrai writer tourne sur N grains. Écrire toujours le
   même buffer le laisserait résident en L1/L2 et rendrait la copie normale artificiellement
@@ -38,9 +38,9 @@ le débit d'un copieur isolé.
 - **Médiane de R passes**, jamais un point unique.
 
 Usage (sur le NŒUD, pas sur l'orchestrateur) :
-    python3 nt_bench.py                      ***REMOVED*** balayage complet
-    python3 nt_bench.py --sizes 4147200      ***REMOVED*** une seule taille de trame
-    python3 nt_bench.py --procs 1,8          ***REMOVED*** concurrence choisie
+    python3 nt_bench.py                      # balayage complet
+    python3 nt_bench.py --sizes 4147200      # une seule taille de trame
+    python3 nt_bench.py --procs 1,8          # concurrence choisie
 """
 import argparse
 import ctypes
@@ -53,12 +53,12 @@ import sys
 import tempfile
 import time
 
-***REMOVED*** --------------------------------------------------------------------------- noyaux C
+# --------------------------------------------------------------------------- noyaux C
 
 C_SRC = r"""
-***REMOVED***include <immintrin.h>
-***REMOVED***include <stdint.h>
-***REMOVED***include <string.h>
+#include <immintrin.h>
+#include <stdint.h>
+#include <string.h>
 
 /* Copie de référence : memcpy glibc (= ce que fait numpy sur une assignation contiguë). */
 void bobi_copy_plain(void *d, const void *s, size_t n) { memcpy(d, s, n); }
@@ -142,7 +142,7 @@ uint64_t bobi_bench(int kind, void *ring, const void *src, size_t n, int grains,
 
 KINDS = {0: "memcpy", 1: "movnt-sse2", 2: "movnt-avx2"}
 
-***REMOVED*** Tailles de trame RÉELLES du parc (planar contigu Y+Cb+Cr, cf. bobimxl.frame_bytes).
+# Tailles de trame RÉELLES du parc (planar contigu Y+Cb+Cr, cf. bobimxl.frame_bytes).
 SIZES = {
     "720p50 422 8b":   1280 * 720 * 2,
     "1080p50 422 8b":  1920 * 1080 * 2,
@@ -150,7 +150,7 @@ SIZES = {
     "2160p50 422 8b":  3840 * 2160 * 2,
 }
 
-RING_GRAINS = 10          ***REMOVED*** comme le ring MXL
+RING_GRAINS = 10          # comme le ring MXL
 
 
 def build(tmpdir):
@@ -159,7 +159,7 @@ def build(tmpdir):
     src = os.path.join(tmpdir, "ntcopy.c")
     so = os.path.join(tmpdir, "libntcopy.so")
     with open(src, "w") as f:
-        f.write("***REMOVED***include <time.h>\n" + C_SRC)
+        f.write("#include <time.h>\n" + C_SRC)
     p = subprocess.run(["gcc", "-O2", "-fPIC", "-shared", "-o", so, src],
                        capture_output=True, text=True)
     if p.returncode != 0:
@@ -180,12 +180,12 @@ def make_ring(n, grains, shm_dir):
     support mémoire d'un fichier tmpfs n'a pas les mêmes propriétés de faute de page ni de
     politique NUMA qu'un tas privé."""
     fd, path = tempfile.mkstemp(dir=shm_dir, prefix="ntbench-")
-    os.unlink(path)                       ***REMOVED*** anonyme mais toujours en tmpfs
+    os.unlink(path)                       # anonyme mais toujours en tmpfs
     total = n * grains
     os.ftruncate(fd, total)
     mm = mmap.mmap(fd, total, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
     os.close(fd)
-    mm.write(b"\0" * total)               ***REMOVED*** pré-faute : ne pas mesurer l'allocation
+    mm.write(b"\0" * total)               # pré-faute : ne pas mesurer l'allocation
     mm.seek(0)
     return mm
 
@@ -200,7 +200,7 @@ def run_one(lib, kind, n, iters, shm_dir):
     src = mmap.mmap(-1, n)
     src.write(bytes(range(256)) * (n // 256) + b"\0" * (n % 256))
     a_ring, a_src = addr(ring), addr(src)
-    lib.bobi_bench(kind, a_ring, a_src, n, RING_GRAINS, 5)   ***REMOVED*** chauffe
+    lib.bobi_bench(kind, a_ring, a_src, n, RING_GRAINS, 5)   # chauffe
     t0 = time.perf_counter()
     cpu_ns = lib.bobi_bench(kind, a_ring, a_src, n, RING_GRAINS, iters)
     wall = time.perf_counter() - t0
@@ -209,7 +209,7 @@ def run_one(lib, kind, n, iters, shm_dir):
 
 
 def child(lib, kind, n, iters, shm_dir, out_fd):
-    ***REMOVED*** La CDLL du parent est héritée par le fork — ne PAS recompiler par enfant.
+    # La CDLL du parent est héritée par le fork — ne PAS recompiler par enfant.
     gbps, cpu_us = run_one(lib, kind, n, iters, shm_dir)
     os.write(out_fd, json.dumps({"gbps": gbps, "cpu_us": cpu_us}).encode())
     os._exit(0)
@@ -317,14 +317,14 @@ def main():
     out = {"meta": meta, "results": {}}
 
     if not a.json:
-        print(f"***REMOVED*** {meta['host']} — {len(CORES)} cœurs physiques NUMA0, AVX2={meta['avx2']}, "
+        print(f"# {meta['host']} — {len(CORES)} cœurs physiques NUMA0, AVX2={meta['avx2']}, "
               f"seuil NT glibc={seuil}")
 
     for label, n in sizes.items():
         out["results"][label] = {}
         if not a.json:
             au_dessus = "≥ seuil (glibc déjà NT)" if seuil and n >= int(seuil, 16) else "< seuil (RFO)"
-            print(f"\n***REMOVED******REMOVED*** {label} — {n/1e6:.2f} Mo/trame — {au_dessus}")
+            print(f"\n## {label} — {n/1e6:.2f} Mo/trame — {au_dessus}")
             print(f"{'procs':>6} | " + " | ".join(f"{KINDS[k]:>22}" for k in kinds))
         for nproc in procs:
             if nproc > len(CORES):

@@ -1,8 +1,8 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Le neutraliseur Jinja de `app/template_check.py` ne doit ni MENTIR ni se TAIRE.
 
@@ -25,11 +25,11 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app import template_check as tc            ***REMOVED*** noqa: E402
+from app import template_check as tc            # noqa: E402
 
-***REMOVED*** (nom, source, doit_etre_signale)
+# (nom, source, doit_etre_signale)
 CAS = [
-    ***REMOVED*** ── SAINS : tout ceci se rend correctement dans le navigateur ────────────────────────────
+    # ── SAINS : tout ceci se rend correctement dans le navigateur ────────────────────────────
     ("ok_toast", """<script>
        function a() { mxlToast("{{ _('settings.public.saved') }}", 'success'); }
      </script>""", False),
@@ -43,7 +43,7 @@ CAS = [
        // l'onglet n'existe pas, et c'est normal — {{ _('x') }}
        const t = `${T('{{ cle }}')}`;
      </script>""", False),
-    ***REMOVED*** ── CASSÉS : le contrôle doit continuer à les voir ───────────────────────────────────────
+    # ── CASSÉS : le contrôle doit continuer à les voir ───────────────────────────────────────
     ("ko_backtick_dans_commentaire", """<script>
        function h(n) { return `<div>
          <!-- le champ `nom` vient d'ailleurs -->

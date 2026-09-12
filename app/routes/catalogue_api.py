@@ -1,13 +1,13 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Routes du catalogue : lire les paquets publiés, en installer un.
-***REMOVED***
-***REMOVED*** ⚠ INSTALLER, C'EST EXÉCUTER. Le corps d'un plugin tourne dans un conteneur,
-***REMOVED*** jamais ici — mais `hooks.py` est l'exception documentée : il est importé DANS
-***REMOVED*** l'orchestrateur. Ces routes exigent donc `settings.edit`, ne travaillent que sur
-***REMOVED*** la LISTE BLANCHE que le catalogue a construite depuis l'organisation configurée,
-***REMOVED*** et ne prennent jamais une URL fournie par l'appelant.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Routes du catalogue : lire les paquets publiés, en installer un.
+#
+# ⚠ INSTALLER, C'EST EXÉCUTER. Le corps d'un plugin tourne dans un conteneur,
+# jamais ici — mais `hooks.py` est l'exception documentée : il est importé DANS
+# l'orchestrateur. Ces routes exigent donc `settings.edit`, ne travaillent que sur
+# la LISTE BLANCHE que le catalogue a construite depuis l'organisation configurée,
+# et ne prennent jamais une URL fournie par l'appelant.
 import tempfile
 import shutil
 
@@ -29,11 +29,11 @@ def catalogue_lister():
     pouvoir afficher la dernière liste connue en disant qu'elle est périmée."""
     force = (request.args.get("force") or "") in ("1", "true", "yes")
     res = _cat.lister(force=force)
-    ***REMOVED*** L'état de l'interrupteur « activer après récupération » voyage avec la liste, comme
-    ***REMOVED*** `actif` : la page ne doit pas avoir à faire un second appel pour savoir dans quel mode
-    ***REMOVED*** elle est, sinon les deux se désynchronisent le temps d'un chargement.
+    # L'état de l'interrupteur « activer après récupération » voyage avec la liste, comme
+    # `actif` : la page ne doit pas avoir à faire un second appel pour savoir dans quel mode
+    # elle est, sinon les deux se désynchronisent le temps d'un chargement.
     res["activer_apres"] = _activer_apres_defaut()
-    ***REMOVED*** L'écran doit savoir s'il peut PROPOSER un jeton, sans jamais le renvoyer.
+    # L'écran doit savoir s'il peut PROPOSER un jeton, sans jamais le renvoyer.
     res["jeton_pose"] = bool(_cat._jeton())
     return jsonify(res)
 
@@ -63,7 +63,7 @@ def catalogue_token():
         return jsonify({"error": "non authentifié"}), 401
     jeton = ((request.get_json(silent=True) or {}).get("token") or "").strip()
 
-    if not jeton:                                   ***REMOVED*** effacement explicite
+    if not jeton:                                   # effacement explicite
         db_set_user_gh_token(uid, "")
         return jsonify({"status": "efface", "jeton_pose": False})
 
@@ -84,8 +84,8 @@ def catalogue_token():
 
     plafond = (((corps or {}).get("resources") or {}).get("core") or {}).get("limit") or 0
     if plafond <= 60:
-        ***REMOVED*** Le jeton est valide mais ne change rien : le dire, plutôt que de l'enregistrer et
-        ***REMOVED*** laisser l'utilisateur se cogner au même plafond en croyant l'avoir levé.
+        # Le jeton est valide mais ne change rien : le dire, plutôt que de l'enregistrer et
+        # laisser l'utilisateur se cogner au même plafond en croyant l'avoir levé.
         return jsonify({"error": "ce jeton n'élargit rien (plafond %s/heure)" % plafond}), 400
     db_set_user_gh_token(uid, jeton)
     db_add_alert("alert.catalogue.jeton_pose", "info", params={"n": plafond})
@@ -127,19 +127,19 @@ def catalogue_installer():
 
     data = request.get_json(silent=True) or {}
     depot = (data.get("depot") or "").strip()
-    ***REMOVED*** ★ ACTIVER OU NON EST UN CHOIX DE L'EXPLOITANT, plus une règle déduite du fait que le
-    ***REMOVED*** type existait déjà. L'ancienne règle — neuf → activé, mise à jour → rangée — était
-    ***REMOVED*** sensée mais INVISIBLE : deux clics identiques donnaient deux résultats différents, et
-    ***REMOVED*** rien ne le disait avant de cliquer. Le corps peut trancher au coup par coup ; sans lui,
-    ***REMOVED*** c'est l'interrupteur de la page (réglage `catalogue_activer`, coché par défaut).
+    # ★ ACTIVER OU NON EST UN CHOIX DE L'EXPLOITANT, plus une règle déduite du fait que le
+    # type existait déjà. L'ancienne règle — neuf → activé, mise à jour → rangée — était
+    # sensée mais INVISIBLE : deux clics identiques donnaient deux résultats différents, et
+    # rien ne le disait avant de cliquer. Le corps peut trancher au coup par coup ; sans lui,
+    # c'est l'interrupteur de la page (réglage `catalogue_activer`, coché par défaut).
     activer = data.get("activer")
     activer = _activer_apres_defaut() if activer is None else bool(activer)
     e = _cat.entree(depot)
     if not e:
         return jsonify({"error": "dépôt absent du catalogue"}), 404
     if not e["manifeste_lu"]:
-        ***REMOVED*** On refuse d'installer ce qu'on n'a pas su lire : sans manifeste, on ne
-        ***REMOVED*** connaît ni le type ni la version, donc on ne sait pas ce qu'on remplace.
+        # On refuse d'installer ce qu'on n'a pas su lire : sans manifeste, on ne
+        # connaît ni le type ni la version, donc on ne sait pas ce qu'on remplace.
         return jsonify({"error": "manifeste illisible sur ce dépôt"}), 400
 
     try:
@@ -156,10 +156,10 @@ def catalogue_installer():
             type_, ver = man["type"], man["version"]
             existait = plugins.is_plugin(type_)
             courante = (plugins.get(type_) or {}).get("version") if existait else None
-            ***REMOVED*** ⚠ RÉINSTALLER LA MÊME VERSION N'EST PAS ANODIN : `install_package`
-            ***REMOVED*** archiverait un doublon sous versions/<ver>/ sans rien changer. La
-            ***REMOVED*** route d'import manuel rend 409 dans ce cas ; on fait pareil, au lieu
-            ***REMOVED*** de laisser croire à une mise à jour qui n'a rien mis à jour.
+            # ⚠ RÉINSTALLER LA MÊME VERSION N'EST PAS ANODIN : `install_package`
+            # archiverait un doublon sous versions/<ver>/ sans rien changer. La
+            # route d'import manuel rend 409 dans ce cas ; on fait pareil, au lieu
+            # de laisser croire à une mise à jour qui n'a rien mis à jour.
             if existait and ver in plugins.versions(type_):
                 return jsonify({"status": "deja_present", "genre": "plugin",
                                 "type": type_, "version": ver,
@@ -169,22 +169,22 @@ def catalogue_installer():
             statut = "installe" if activer else "range"
             db_add_alert("alert.deploy.plugin_importe", "info", kind="deploy",
                          params={"t": type_, "v": ver, "statut": statut})
-            ***REMOVED*** ★ CE QUE L'ACTIVATION LAISSE DERRIÈRE, COMPTÉ. Promouvoir une version ne
-            ***REMOVED*** touche AUCUN conteneur en marche : ils continuent sur le script qu'ils ont
-            ***REMOVED*** reçu, et se retrouvent en DÉRIVE. C'est ce que la page Plugins savait dire et
-            ***REMOVED*** que le catalogue taisait — on rend donc le nombre, pour que le message le
-            ***REMOVED*** dise au lieu d'un « installé et activé » qui laisse croire le parc à jour.
+            # ★ CE QUE L'ACTIVATION LAISSE DERRIÈRE, COMPTÉ. Promouvoir une version ne
+            # touche AUCUN conteneur en marche : ils continuent sur le script qu'ils ont
+            # reçu, et se retrouvent en DÉRIVE. C'est ce que la page Plugins savait dire et
+            # que le catalogue taisait — on rend donc le nombre, pour que le message le
+            # dise au lieu d'un « installé et activé » qui laisse croire le parc à jour.
             derive = _en_derive(type_, ver) if (activer and existait) else 0
             return jsonify({"status": statut, "genre": "plugin", "type": type_,
                             "version": ver, "version_precedente": courante,
                             "activee": activer, "derive": derive})
 
-        ***REMOVED*** ── Service : MÊME chemin que l'import manuel d'un .mxlservice ───────
-        ***REMOVED*** ⚠ Un service a son propre registre versionné (`core_plugins`), au même
-        ***REMOVED*** titre qu'un plugin. La première version de cette route déposait le
-        ***REMOVED*** dossier à la main dans services/<id>/ : ça marchait, et ça contournait
-        ***REMOVED*** la validation, l'archivage de la version précédente et l'activation.
-        ***REMOVED*** Un second chemin d'installation, c'est un chemin qui dérivera.
+        # ── Service : MÊME chemin que l'import manuel d'un .mxlservice ───────
+        # ⚠ Un service a son propre registre versionné (`core_plugins`), au même
+        # titre qu'un plugin. La première version de cette route déposait le
+        # dossier à la main dans services/<id>/ : ça marchait, et ça contournait
+        # la validation, l'archivage de la version précédente et l'activation.
+        # Un second chemin d'installation, c'est un chemin qui dérivera.
         from .core_services import _extract_service_package
         from .. import core_plugins
 
@@ -210,11 +210,11 @@ def catalogue_installer():
                         "genre": "service", "type": svc_id, "version": ver,
                         "version_precedente": courante,
                         "activee": activer,
-                        ***REMOVED*** ★ LE SEUL MESSAGE QUI COMPTE POUR UN SERVICE. `main.py`
-                        ***REMOVED*** importe les services par leur nom au démarrage : tant
-                        ***REMOVED*** que le contrôleur n'a pas redémarré, le paquet est sur
-                        ***REMOVED*** disque et sans effet. Le taire donnerait un service
-                        ***REMOVED*** « installé » qui ne fait rien, sans rien dire.
+                        # ★ LE SEUL MESSAGE QUI COMPTE POUR UN SERVICE. `main.py`
+                        # importe les services par leur nom au démarrage : tant
+                        # que le contrôleur n'a pas redémarré, le paquet est sur
+                        # disque et sans effet. Le taire donnerait un service
+                        # « installé » qui ne fait rien, sans rien dire.
                         "redemarrage_requis": True})
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

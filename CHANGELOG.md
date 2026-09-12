@@ -1,11 +1,11 @@
-***REMOVED*** Mises à jour de l'orchestrateur
+# Mises à jour de l'orchestrateur
 
 Journal des évolutions de l'orchestrateur, du plus récent au plus ancien.
 Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
-***REMOVED******REMOVED*** Le SDK MXL passe en 1.1.0, et un moteur muet se répare tout seul — 2026-09-12
+## Le SDK MXL passe en 1.1.0, et un moteur muet se répare tout seul — 2026-09-12
 
 **La bibliothèque MXL passe de la version candidate à la 1.1.0 définitive** sur les cinq images du
 produit. Ce que ça change pour un consommateur tient en une phrase : la fenêtre de lecture d'un
@@ -38,7 +38,7 @@ sinon la construction est refusée. Elle l'était jusqu'ici choisie en silence.
 
 ---
 
-***REMOVED******REMOVED*** Le bus MXL passe la conformité BCP-007-03 — 2026-09-09
+## Le bus MXL passe la conformité BCP-007-03 — 2026-09-09
 
 L'AMWA a publié **BCP-007-03 « NMOS Support for MXL »**, qui normalise ce que nous faisions déjà :
 exposer le bus interne — mixer, multiview, streamer, ports du moteur 2110 — en ressources NMOS
@@ -72,7 +72,7 @@ référence `NMOS_MXL`, et remontés à l'AMWA.
 
 ---
 
-***REMOVED******REMOVED*** Installer des plugins sans se heurter au quota GitHub — 2026-09-03
+## Installer des plugins sans se heurter au quota GitHub — 2026-09-03
 
 **Le symptôme, signalé à l'usage :** on n'installe pas trois plugins d'affilée sans être arrêté
 par « quota GitHub épuisé ». Sans identification, GitHub accorde 60 requêtes par heure et par
@@ -105,7 +105,7 @@ et n'ont pas de dépôt propre : il bloquait sur du code déjà public.
 
 ---
 
-***REMOVED******REMOVED*** Le premier démarrage dit ce qu'il attend, et la version se voit enfin — 2026-09-03
+## Le premier démarrage dit ce qu'il attend, et la version se voit enfin — 2026-09-03
 
 **Le mot de passe du premier compte.** L'écran de création de l'administrateur n'annonçait aucune
 condition. On remplissait tout, on validait, le formulaire revenait **vide** avec un refus — et
@@ -165,7 +165,7 @@ Les retours sur d'autres iLO, iDRAC ou contrôleurs de gestion sont les bienvenu
 
 ---
 
-***REMOVED******REMOVED*** L'installateur parle anglais, et ne pose plus deux fois la même question — 2026-09-02
+## L'installateur parle anglais, et ne pose plus deux fois la même question — 2026-09-02
 
 Le script d'installation était en français seul. Il choisit désormais sa langue d'après celle de
 la machine, et la demande — en français et en anglais — quand il est lancé à la main. `BOBI_LANG`
@@ -182,7 +182,7 @@ personne pour lire : la pause est sautée.
 
 ---
 
-***REMOVED******REMOVED*** L'installation échouait dès qu'on choisissait une version — 2026-09-02
+## L'installation échouait dès qu'on choisissait une version — 2026-09-02
 
 Signalé par un installateur le jour même. Le script d'installation propose une liste de versions ;
 en choisir une le faisait échouer aussitôt après avoir récupéré le produit, sur son premier
@@ -214,7 +214,7 @@ pouvait pas sortir. L'installation continue désormais, et signale ce qui manque
 
 ---
 
-***REMOVED******REMOVED*** La mise à jour depuis GitHub, en entier — 2026-09-02
+## La mise à jour depuis GitHub, en entier — 2026-09-02
 
 La 0.9.2 savait REGARDER : elle lisait les releases publiées et vous disait qu'une version
 existait. Elle ne savait pas la prendre. C'était la moitié de ce qui était annoncé.
@@ -238,7 +238,7 @@ demander » et « il n'y en a pas » se distinguent maintenant, et le motif s'af
 
 ---
 
-***REMOVED******REMOVED*** Les emplacements se créaient tout seuls, 274 sur 282 pour rien — 2026-08-30
+## Les emplacements se créaient tout seuls, 274 sur 282 pour rien — 2026-08-30
 
 Un emplacement est une position de production — « MULTIVIEW RÉGIE 1 » — donc une décision humaine.
 Le produit en semait pourtant un automatiquement au premier déploiement de chaque conteneur, avec
@@ -258,7 +258,7 @@ retrouvera pas.
 
 ---
 
-***REMOVED******REMOVED*** L'accueil montrait les dernières erreurs, pas celles en cours — 2026-08-30
+## L'accueil montrait les dernières erreurs, pas celles en cours — 2026-08-30
 
 Le bandeau d'alertes affichait les cinq plus saillantes parmi les mille dernières, gravité d'abord.
 Une erreur close depuis trois jours y restait donc en tête indéfiniment, juste sous un en-tête
@@ -275,7 +275,7 @@ un lien toujours affiché, même quand il n'y a rien en cours.
 
 ---
 
-***REMOVED******REMOVED*** Les conteneurs orphelins n'existaient que dans une alerte — 2026-08-30
+## Les conteneurs orphelins n'existaient que dans une alerte — 2026-08-30
 
 L'alerte « conteneur orphelin » nommait un conteneur absent de la base. Or toutes les pages listent
 la base : il n'apparaissait donc nulle part, et aucun bouton ne pouvait le détruire. L'alerte disait
@@ -293,7 +293,7 @@ jamais sur le nom seul, puisque les vmid sont réattribués.
 
 ---
 
-***REMOVED******REMOVED*** Envoyer un fichier vers une racine locale échouait toujours — 2026-08-30
+## Envoyer un fichier vers une racine locale échouait toujours — 2026-08-30
 
 La page Fichiers passait le flux brut de la requête à la fonction d'envoi, et non l'objet de
 Werkzeug qui l'enveloppe. La branche « nœud » lit ce flux par morceaux et fonctionnait ; la branche
@@ -306,7 +306,7 @@ façon, par blocs d'un mégaoctet, ce qui borne aussi la mémoire sur les gros f
 
 ---
 
-***REMOVED******REMOVED*** Les licences des composants tiers manquaient à la redistribution — 2026-08-30
+## Les licences des composants tiers manquaient à la redistribution — 2026-08-30
 
 Apache-2.0 et BSD-3-Clause exigent qu'une copie du texte de licence accompagne toute
 redistribution, source comme binaire. Les mentions étaient présentes, les textes non — alors que
@@ -324,7 +324,7 @@ trois images ne se construisaient plus du tout.
 
 ---
 
-***REMOVED******REMOVED*** Les collisions de grouping BCP-002-01 se voient en exploitation — 2026-08-29
+## Les collisions de grouping BCP-002-01 se voient en exploitation — 2026-08-29
 
 Le MUST de BCP-002-01 est l'unicité du couple `groupe:rôle` dans un même scope de Device. Un banc
 le vérifiait déjà, mais un banc qu'on lance à la main ne surveille rien : l'exploitation ne voyait
@@ -337,7 +337,7 @@ publiés — conforme, en collision, et mesure **indisponible**. Ce troisième c
 tombe ne doit pas afficher « conforme », et un orchestrateur plus ancien qui ne renvoie rien est
 traité comme indisponible, jamais comme sain.
 
-***REMOVED******REMOVED*** Les autorisations deviennent modifiables — 2026-08-29
+## Les autorisations deviennent modifiables — 2026-08-29
 
 Les rôles étaient des constantes Python : ajouter « le monteur pilote les plugins mais ne déploie
 pas » demandait de modifier le code et de redéployer. La page Mon compte affichait donc à chacun
@@ -352,7 +352,7 @@ Au passage, un nom qui trompait : « rôle » désigne deux choses dans ce produ
 (ce qu'on a le droit de faire) et l'emplacement de production (« MULTIVIEW RÉGIE 1 »). Ce sont
 deux notions sans rapport.
 
-***REMOVED******REMOVED*** Mot de passe : confirmation et robustesse, sur les cinq chemins — 2026-08-29
+## Mot de passe : confirmation et robustesse, sur les cinq chemins — 2026-08-29
 
 Le nouveau mot de passe se saisissait **une** fois, sans confirmation : une faute de frappe dans un
 champ masqué verrouillait le compte sans que rien ne l'ait signalé. Et aucune règle de robustesse
@@ -365,7 +365,7 @@ se contentait de six caractères), et l'outil de dépannage en ligne de commande
 des règles enfreintes plutôt qu'un booléen — l'interface doit pouvoir les cocher une par une.
 Politique : 12 signes au minimum, pas de mot de passe courant, pas de reprise de l'identifiant.
 
-***REMOVED******REMOVED*** Une page « Mon compte » — 2026-08-29
+## Une page « Mon compte » — 2026-08-29
 
 Le manque était double, et les deux moitiés se cachaient l'une l'autre. Changer son mot de passe
 n'était possible que depuis Réglages → Utilisateurs, **sous la liste de tous les comptes** — le
@@ -379,7 +379,7 @@ soi-même, et une élévation de privilège par un point d'entrée « de confort
 colonne ajoutée à la table demain n'y entrera pas par inadvertance. La page dit aussi ce qui ne se
 change **pas** soi-même, plutôt que de le taire.
 
-***REMOVED******REMOVED*** Deux sélecteurs de langue, de portée opposée, sur la même ligne — 2026-08-29
+## Deux sélecteurs de langue, de portée opposée, sur la même ligne — 2026-08-29
 
 Il était demandé de préciser qu'un champ réglait « le défaut pour un nouvel utilisateur ». La note
 n'a pas pu être écrite : elle aurait été fausse. Ce champ changeait la langue de l'utilisateur
@@ -391,7 +391,7 @@ Le champ règle désormais le défaut du système, comme son voisin. La préfér
 où le code dit déjà qu'est sa place — dans le menu de l'utilisateur, exactement comme le thème.
 Deux endroits pour la même chose finissent toujours par en désigner deux différentes.
 
-***REMOVED******REMOVED*** Les pages publiques suivent la langue du navigateur du visiteur — 2026-08-29
+## Les pages publiques suivent la langue du navigateur du visiteur — 2026-08-29
 
 Sur une page publique, la langue du système n'est pas la bonne. L'interface interne suit la
 préférence de chaque utilisateur, ce qui est juste — mais un lien public s'ouvre justement chez
@@ -404,7 +404,7 @@ langue du système. La surcharge est donc posée au seul point qui décide, et e
 d'une requête — une variable de module aurait fui sur la requête suivante, celle d'un autre
 visiteur.
 
-***REMOVED******REMOVED*** Un champ hors `.form` n'a aucun style — 2026-08-29
+## Un champ hors `.form` n'a aucun style — 2026-08-29
 
 Signalé à l'écran, et c'est un défaut de fond. Le style de champ du produit est limité à `.form`.
 Ailleurs — dans une cellule de tableau, dans un popover — le navigateur applique **ses** défauts,
@@ -416,7 +416,7 @@ Le piège a frappé trois fois dans la même soirée — le lien, les champs du 
 titre du popover — chaque fois en donnant l'impression d'un bug de thème. D'où une classe dédiée,
 aux mêmes valeurs que la règle d'origine, donc sans dérive possible, posable partout.
 
-***REMOVED******REMOVED*** Un déploiement de moteur révoquait le GPU des conteneurs en marche — 2026-08-29
+## Un déploiement de moteur révoquait le GPU des conteneurs en marche — 2026-08-29
 
 Cause racine d'une panne de neuf jours, trouvée le 2026-08-28 et reproduite au banc.
 
@@ -432,7 +432,7 @@ Preuve : la date de l'unité sur le nœud est à la minute du redémarrage, et l
 après n'ont rien eu. L'A/B au banc confirme les trois états — neuf, révoqué après rechargement, et
 intact avec le nouveau code, qui n'écrit plus rien quand rien n'a changé.
 
-***REMOVED******REMOVED*** Un nœud synchronisé à 1 ns était annoncé « PTP ✗ » — 2026-08-29
+## Un nœud synchronisé à 1 ns était annoncé « PTP ✗ » — 2026-08-29
 
 Le badge de la page Monitoring, la pastille d'accueil, la sonde de conformité et l'étiquetage des
 flux jugeaient tous la synchro sur un seul critère, hérité de l'ère AF_XDP. Sur le socle full-PF
@@ -447,7 +447,7 @@ Constaté sur un nœud : offset corrigé au grandmaster de 1 ns, délai de chemi
 onglet de réglages : l'affichage et l'alarme ne parlaient pas de la même chose. Il devient le point
 de décision **unique** du produit, et les quatre consommateurs y sont rebranchés.
 
-***REMOVED******REMOVED*** Le tampon audio de `stream_in` jetait 40 % du son — 2026-08-29
+## Le tampon audio de `stream_in` jetait 40 % du son — 2026-08-29
 
 Le plafond du tampon était sous la taille des rafales de ffmpeg : 40 % de l'audio jeté, puis autant
 de silence, sur **tous** les `stream_in`. Corrigé et en service.
@@ -458,7 +458,7 @@ configurations identiques) ; le verrou A/V de `stream_in`, qui demande une récu
 avant d'être activable ; et le lecteur audio de la sonde, qui republie une valeur figée après
 recréation de son producteur — un piège à conclusions fausses, à traiter avant toute campagne A/V.
 
-***REMOVED******REMOVED*** Page publique par jeton, et ce qui la verrouille — 2026-08-28
+## Page publique par jeton, et ce qui la verrouille — 2026-08-28
 
 Un lien `/p/<jeton>` monte la console **du plugin** du conteneur visé, quel qu'il soit. Rien dans ce
 mécanisme ne connaît un plugin en particulier : l'écrire dans un plugin aurait garanti qu'on le
@@ -488,7 +488,7 @@ conteneur** — un accès sans identification qui se déplace tout seul. Corolla
 destruction d'un conteneur ne révoque pas ses liens, puisque recréé il garde son identité ; le
 ménage des orphelins est une action voulue, avec son compte affiché.
 
-***REMOVED******REMOVED*** L'instrument de mesure `scope` — 2026-08-25 → 2026-08-27
+## L'instrument de mesure `scope` — 2026-08-25 → 2026-08-27
 
 Un plugin d'instrumentation complet est né en trois jours : waveform, vecteur-scope, goniomètre,
 histogramme, contrôle de gamut RVB, fausse couleur et zébras, bar-graphs audio avec crête vraie et
@@ -510,7 +510,7 @@ côté script (768 Ko → 197 Ko), et la parade R/V/B en trois fils a supprimé 
 (×3,14). En UHD, les bandes parallèles font passer le 2160p50 de 95 % à 37 % du budget — et le gain
 vient des **cœurs**, pas du découpage en tranches, qui seul coûtait quatre images par seconde.
 
-***REMOVED******REMOVED*** Le mode tranche devient obligatoire pour tout nouveau plugin — 2026-08-27
+## Le mode tranche devient obligatoire pour tout nouveau plugin — 2026-08-27
 
 Le scope lit son entrée bande par bande. Mesuré en A/B : le calcul restant après l'arrivée de la
 dernière ligne passe de 5,09 à 1,48 ms, à cadence inchangée.
@@ -521,7 +521,7 @@ et cette dette n'apparaît sur aucun compteur — le plugin affiche une cadence 
 exactement pour ça qu'il fallait une règle et pas un réflexe : le scope a été écrit en image entière,
 et il a fallu y revenir après coup.
 
-***REMOVED******REMOVED*** Supervision SNMPv3 — 2026-08-25 → 2026-08-26
+## Supervision SNMPv3 — 2026-08-25 → 2026-08-26
 
 Un service d'agent SNMPv3 `authPriv` en **lecture seule**, servi par le contrôleur actif, avec sa
 MIB livrable, cinq tables instrumentées et les notifications d'alarme. Deux appels d'offres
@@ -533,7 +533,7 @@ rien à changer : il n'a jamais porté d'OID en dur — c'était tout l'intérê
 qui restait à aligner, c'est ce que lit un humain, dont le descriptif de recette : un NMS
 provisionné avant cette date est à reprendre.
 
-***REMOVED******REMOVED*** L'interface passe en anglais — 2026-08-26
+## L'interface passe en anglais — 2026-08-26
 
 Campagne de recette du 21 au 26 août. Réglages, la dernière grosse page : 159 intitulés de champs et
 55 paragraphes d'explication — une clé par paragraphe, balises comprises, car les découper en
@@ -546,7 +546,7 @@ gabarit par service, et NMOS comme TSL n'avaient aucune clé — 128 textes pour
 d'onglet, qui vient du manifeste d'un sous-module, est traduit centralement par convention de clé,
 sans toucher au manifeste.
 
-***REMOVED******REMOVED*** Un lecteur MXL décroché se raccroche seul — 2026-08-22
+## Un lecteur MXL décroché se raccroche seul — 2026-08-22
 
 Un producteur qui détruit puis recrée son flux sous le même nom laisse tous les lecteurs ouverts
 accrochés à la génération morte. Le piège : cette génération reste **lisible** — des grains sont
@@ -564,7 +564,7 @@ c'est le discriminant entre les deux situations que « périmé » confond — u
 grains à index figé, un producteur arrêté n'en sert aucun et rouvrir n'y changera rien. Sans ce
 garde-fou, une prévisualisation simplement éteinte déclenchait 55 réouvertures par minute.
 
-***REMOVED******REMOVED*** Le délai d'un étage se mesure enfin — 2026-08-22
+## Le délai d'un étage se mesure enfin — 2026-08-22
 
 Un étage publie l'écart, en trames, entre l'index qu'il **lit** et celui qu'il **écrit**. C'est la
 seule mesure directe d'un étage : le temps de calcul dit la marge disponible, pas le retard subi.
@@ -576,7 +576,7 @@ compile » alors qu'un plugin était écarté du registre pour une accolade non 
 peut pas échouer ne vérifie rien. Et un autre refuse désormais une trame en disposition « tranche »
 au lieu de la noter en échec : crier sur une entrée saine apprend à ignorer ses propres alarmes.
 
-***REMOVED******REMOVED*** Trois messages qui accusaient la mauvaise cause — 2026-08-21
+## Trois messages qui accusaient la mauvaise cause — 2026-08-21
 
 Même famille, relevée trois fois en recette : le système affirme quelque chose de faux et envoie
 l'exploitant à l'opposé du problème.
@@ -595,7 +595,7 @@ Enfin, le build d'une image dérivée dont l'image de base manque rendait « pul
 message d'autorisation pour une cause de disponibilité. Le testeur avait cherché du côté des
 identifiants de registre.
 
-***REMOVED******REMOVED*** Une alerte porte une clé et ses paramètres, plus une phrase française — 2026-08-21
+## Une alerte porte une clé et ses paramètres, plus une phrase française — 2026-08-21
 
 Le bandeau « Alertes récentes » restait en français quelle que soit la langue choisie. Ce n'était
 pas une clé de traduction manquante : la fonction d'écriture recevait une phrase **déjà rendue** et
@@ -616,7 +616,7 @@ trop de combinaisons pour une clé par variante, et joindre les causes dans un p
 français au milieu d'une phrase anglaise. Un paramètre peut désormais être une **liste de clés**,
 chacune rendue dans la langue du lecteur.
 
-***REMOVED******REMOVED*** La sonde de latence rendait 0 sur une chaîne réellement retardée — 2026-08-21
+## La sonde de latence rendait 0 sur une chaîne réellement retardée — 2026-08-21
 
 Une entrée passant par un délai réglé à 4 images ressortait à **0,00**. Ni le délai ni la sonde
 n'étaient en panne : c'est la méthode de mesure qui était fausse.
@@ -663,7 +663,7 @@ d'allure crédible.
 
 ---
 
-***REMOVED******REMOVED*** Trois réglages qui n'existaient que sur le papier — 2026-08-21
+## Trois réglages qui n'existaient que sur le papier — 2026-08-21
 
 Même défaut, trois fois, sur deux plugins : une fonction implémentée dans le conteneur, déclarée
 au manifeste, et impossible à activer depuis l'interface. Le code était là ; le chemin ne l'était
@@ -747,7 +747,7 @@ enverrait cent requêtes.
 
 ---
 
-***REMOVED******REMOVED*** La sonde de latence : câblage impossible, puis câbles invisibles — 2026-08-21
+## La sonde de latence : câblage impossible, puis câbles invisibles — 2026-08-21
 
 Câbler une entrée sur la sonde échouait systématiquement : « Erreur 502 : appel sonde_latence :
 HTTP 400 ». Le 502 de l'orchestrateur n'était que l'écho d'un 400 venu du conteneur.
@@ -810,7 +810,7 @@ possible sans l'être. Vérifié sur la page servie : le champ est désormais re
 
 ---
 
-***REMOVED******REMOVED*** Sept correctifs nés d'une nuit de panne — 2026-08-19
+## Sept correctifs nés d'une nuit de panne — 2026-08-19
 
 Une soirée d'incident sur une installation à l'antenne a fait sortir sept défauts. Aucun n'était
 visible de nos instruments : tous ont été trouvés en mesurant, et six sur sept sont des variantes
@@ -873,7 +873,7 @@ désormais aussi les noms de flux — il ne les voyait pas.
 
 ---
 
-***REMOVED******REMOVED*** Les couleurs d'un câble veulent dire la même chose dans tous les thèmes — 2026-08-19
+## Les couleurs d'un câble veulent dire la même chose dans tous les thèmes — 2026-08-19
 
 Deux corrections qui n'en font qu'une, parce que la première a rendu la seconde indispensable.
 
@@ -914,7 +914,7 @@ surcharge — un banc qu'on n'a pas vu échouer ne prouve rien.
 
 ---
 
-***REMOVED******REMOVED*** Une connexion perdue se voit enfin — 2026-08-19
+## Une connexion perdue se voit enfin — 2026-08-19
 
 Quand la liaison au serveur tombe — VPN qui saute, wifi qui décroche, orchestrateur qui
 redémarre — un navigateur ne proteste pas. La page garde son dernier état, répond aux clics, et
@@ -983,7 +983,7 @@ coupure réelle du service.
 
 ---
 
-***REMOVED******REMOVED*** Les alertes de la home : un compte faux, et un coût qui n'apparaît que sous charge — 2026-08-19
+## Les alertes de la home : un compte faux, et un coût qui n'apparaît que sous charge — 2026-08-19
 
 `/api/home/summary` chargeait **1000 lignes d'alertes complètes** à chaque passe — toutes les 2 s,
 depuis trois pages — pour en tirer cinq lignes saillantes et un total.
@@ -1021,7 +1021,7 @@ Effet cumulé avec les deux correctifs précédents, sous la charge réelle de d
 
 ---
 
-***REMOVED******REMOVED*** `/api/nodes` : 12-16 s → 108 ms, en cessant de confirmer qu'un nœud mort est mort — 2026-08-19
+## `/api/nodes` : 12-16 s → 108 ms, en cessant de confirmer qu'un nœud mort est mort — 2026-08-19
 
 La route qui alimente la page Monitoring — pollée toutes les 5 s — prenait **12 à 16 secondes à
 chaque appel**. Un seul nœud éteint (r620-1) en était la cause entière : chaque tentative de le
@@ -1071,7 +1071,7 @@ passage (153 → 93 ms), les mêmes nœuds étant interrogés par les deux route
 
 ---
 
-***REMOVED******REMOVED*** Une alerte allumée en permanence, et aveugle là où elle comptait — 2026-08-18
+## Une alerte allumée en permanence, et aveugle là où elle comptait — 2026-08-18
 
 La page Câbles porte une deuxième ligne sous la cadence d'un nœud : la **cadence de contenu neuf**.
 Elle répond à une question que la cadence de composition ne pose pas — un mur peut composer 50 fois
@@ -1120,7 +1120,7 @@ corriger ni faire taire. Une tuile ne demande plus de proxy quand elle ne rédui
 
 ---
 
-***REMOVED******REMOVED*** Les journaux : chaque ligne écrite deux fois, une rotation qui n'a jamais tourné — 2026-08-15
+## Les journaux : chaque ligne écrite deux fois, une rotation qui n'a jamais tourné — 2026-08-15
 
 Trois défauts qui se tenaient par la main, et personne pour les dire.
 
@@ -1170,12 +1170,12 @@ divergent.
 
 ---
 
-***REMOVED******REMOVED*** Une alerte qui se répète n'est plus une alerte — 2026-08-15
+## Une alerte qui se répète n'est plus une alerte — 2026-08-15
 
 Relevé du jour : **10 068 lignes** dans le journal d'alertes, dont **~80 % faites de quatre
 messages**. Un lien RDMA vers un nœud éteint depuis trois jours en avait écrit 1 145 à lui seul ;
 trois liens audio qui se ré-établissaient en boucle, 680 chacun ; un câblage de pyramide reperdu
-toutes les 2 min 15, 792. Pendant ce temps, un « TX ***REMOVED***1 : source INSTABLE » survenu l'après-midi
+toutes les 2 min 15, 792. Pendant ce temps, un « TX #1 : source INSTABLE » survenu l'après-midi
 était déjà enfoui. Le journal ne manquait pas d'information : il en avait trop de la même.
 
 **Ce qui change.** Une alerte émise par la MACHINE passe désormais par un anti-rebond, avec la règle
@@ -1193,7 +1193,7 @@ ensuite* :
 une aggravation `info → warning → error` est une transition, écrite sans délai. Une alerte portant
 un **acteur** ne l'est jamais non plus — `alerts` est aussi le journal « qui a fait quoi », et deux
 gestes humains identiques sont deux faits distincts. Enfin, la signature distingue un **identifiant**
-d'une **quantité** : `***REMOVED***3800`, `audio_1`, `dl360-1` séparent deux liens, tandis que « depuis 92 479 s »
+d'une **quantité** : `#3800`, `audio_1`, `dl360-1` séparent deux liens, tandis que « depuis 92 479 s »
 et « depuis 93 927 s » sont reconnus comme le même symptôme. Sans cette distinction, l'anti-rebond
 aurait replié trois liens différents sur un seul.
 
@@ -1203,7 +1203,7 @@ Un repli qu'on ne peut pas inspecter serait un échec silencieux de plus.
 
 ---
 
-***REMOVED******REMOVED*** Ne rien tenter, ni annoncer, vers un nœud éteint — 2026-08-15
+## Ne rien tenter, ni annoncer, vers un nœud éteint — 2026-08-15
 
 La réconciliation RDMA retentait chaque minute d'établir un lien vers `r620-1`, éteint depuis trois
 jours, et écrivait une alerte `error` à chaque échec. Un nœud `down` ne répondra ni à l'écriture du
@@ -1220,7 +1220,7 @@ réconciliation suivant le voit `up` et enchaîne.
 
 ---
 
-***REMOVED******REMOVED*** Un nœud ne peut pas joindre ses propres conteneurs — 2026-08-14
+## Un nœud ne peut pas joindre ses propres conteneurs — 2026-08-14
 
 Le chien de garde livré la veille reposait sur une hypothèse jamais vérifiée : que l'agent-nœud
 pouvait atteindre le `:8081` des conteneurs de sa propre machine. Il ne le peut pas. Nos conteneurs
@@ -1253,7 +1253,7 @@ du tout de la topologie réseau.
 
 ---
 
-***REMOVED******REMOVED*** Le nœud veille sur ses scripts quand le contrôleur n'est plus là — 2026-08-13
+## Le nœud veille sur ses scripts quand le contrôleur n'est plus là — 2026-08-13
 
 Un conteneur peut très bien tourner pendant que le script qu'il héberge est mort. Docker n'y voit
 rien : sa politique `--restart` surveille le PID 1, c'est-à-dire l'agent par-conteneur, qui se
@@ -1301,7 +1301,7 @@ portent désormais leur identité.
 
 ---
 
-***REMOVED******REMOVED*** Le lot de synchro RDMA : un réglage qu'on espérait, désormais un fait qu'on vérifie — 2026-08-12
+## Le lot de synchro RDMA : un réglage qu'on espérait, désormais un fait qu'on vérifie — 2026-08-12
 
 `maxSyncBatchSizeHint` fixe combien de tranches l'initiateur RDMA accumule avant de transférer. Au
 défaut du SDK (= toutes), la réplique n'est lisible qu'une fois la trame **entière** arrivée : le
@@ -1336,7 +1336,7 @@ leur prochaine recréation.
 ---
 
 
-***REMOVED******REMOVED*** `/api/home/summary` : 624 → 153 ms, en interrogeant moins et en parallèle — 2026-08-13
+## `/api/home/summary` : 624 → 153 ms, en interrogeant moins et en parallèle — 2026-08-13
 
 Suite du correctif de poll de la veille. Une fois les requêtes empilées supprimées, restait le
 coût de la route elle-même : **624 ms**, pollée toutes les 2 s par trois pages.
@@ -1371,7 +1371,7 @@ parc qui en portait le plus, donc celle où l'empilement coûtait le plus cher.
 
 ---
 
-***REMOVED******REMOVED*** Un poll qui ne s'attendait pas lui-même saturait tout l'orchestrateur — 2026-08-12
+## Un poll qui ne s'attendait pas lui-même saturait tout l'orchestrateur — 2026-08-12
 
 Symptôme : après un rechargement, la page Câbles restait des dizaines de secondes sans un seul
 câble. La mesure a déplacé le problème : ce n'était pas la page. `/api/home/summary` répondait en
@@ -1405,7 +1405,7 @@ vidait donc les câbles sans rien redessiner.
 
 ---
 
-***REMOVED******REMOVED*** Page Câbles : le RDMA se lit sur le trait, plus en étiquettes empilées — 2026-08-12
+## Page Câbles : le RDMA se lit sur le trait, plus en étiquettes empilées — 2026-08-12
 
 Chaque câble inter-nœud portait une étiquette « RDMA » posée en son milieu. Sur une topologie
 réelle, une dizaine de flux répliqués suffisaient à empiler ces étiquettes les unes sur les
@@ -1429,7 +1429,7 @@ Même exception : une entrée **gelée** reste étiquetée « figé » dans tous
 
 ---
 
-***REMOVED******REMOVED*** La cadence affichée répond à « est-ce tenu ? », pas « quel nombre est sorti » — 2026-08-10
+## La cadence affichée répond à « est-ce tenu ? », pas « quel nombre est sorti » — 2026-08-10
 
 Un conteneur parfaitement sain affichait « 49,8 fps », puis « 50,1 », puis « 49,9 ». Le chiffre
 n'était pas faux, il était **trop précis** : les plugins comptent des trames entières sur une
@@ -1460,7 +1460,7 @@ de cadence propre, l'intention qu'il doit tenir est celle de sa source.
 
 ---
 
-***REMOVED******REMOVED*** La profondeur du bus MXL est une durée, pas un compte de trames — 2026-08-09
+## La profondeur du bus MXL est une durée, pas un compte de trames — 2026-08-09
 
 Un retard de lecture sur le bus MXL a longtemps été pensé en trames : combien de cases un
 producteur laisse-t-il derrière lui avant d'écraser ce qu'un consommateur n'a pas encore lu.
@@ -1479,7 +1479,7 @@ buffers MXL ».
 
 ---
 
-***REMOVED******REMOVED*** Nos flux étaient invisibles pour tout ce qui n'est pas nous — 2026-08-08
+## Nos flux étaient invisibles pour tout ce qui n'est pas nous — 2026-08-08
 
 Un récepteur AES67, Ravenna ou Dante ne parle pas NMOS. Il ne sait s'abonner qu'à ce qui lui est
 **annoncé**, sur un groupe multicast, par un protocole que nous n'implémentions pas : SAP. Nos
@@ -1508,7 +1508,7 @@ sa patte.
 
 ---
 
-***REMOVED******REMOVED*** Haute disponibilité : couper l'actif ne provoquait rien, pas même une alarme — 2026-08-07
+## Haute disponibilité : couper l'actif ne provoquait rien, pas même une alarme — 2026-08-07
 
 Test grandeur nature : service de l'actif arrêté, et sur le contrôleur de secours, rien. C'était
 conforme à la conception — la bascule du pilotage est volontairement manuelle — mais la moitié du
@@ -1529,7 +1529,7 @@ voulu — une adresse qui mène au bouton vaut mieux qu'une adresse qui ne mène
 
 ---
 
-***REMOVED******REMOVED*** Haute disponibilité : le secret de réplication n'était réglable nulle part — 2026-08-06
+## Haute disponibilité : le secret de réplication n'était réglable nulle part — 2026-08-06
 
 Configurer une paire de contrôleurs se terminait invariablement sur « ↑ dernier push ÉCHEC — token
 absent ». Le secret partagé qui autorise la réplication n'existait que dans la section « Mise à
@@ -1545,7 +1545,7 @@ refus du standby ne se présente plus comme une panne réseau : il dit que les d
 
 ---
 
-***REMOVED******REMOVED*** La page Aide n'affichait pas le guide d'installation — 2026-08-05
+## La page Aide n'affichait pas le guide d'installation — 2026-08-05
 
 L'article « Installer et mettre en service » restait sur « Chargement… ». Le guide était pourtant
 bien servi : la page le demandait sous un nom que rien ne portait, et abandonnait sans le dire —
@@ -1559,7 +1559,7 @@ re-télécharger le document. Le changelog que vous lisez souffrait du même dé
 
 ---
 
-***REMOVED******REMOVED*** Préparer un patch avant la mise en service — 2026-08-05
+## Préparer un patch avant la mise en service — 2026-08-05
 
 Câbler une source dont le format ne correspond pas à ce qu'attend le consommateur était refusé. La
 règle est juste : une source 25 images/s dans un mélangeur réglé en 50 ne donne pas une image
@@ -1599,7 +1599,7 @@ bien envoyée — l'interface la perdait en relisant deux fois la réponse du se
 
 ---
 
-***REMOVED******REMOVED*** Nos sorties 2110 promettaient une régularité que la carte ne pouvait pas tenir — 2026-08-04
+## Nos sorties 2110 promettaient une régularité que la carte ne pouvait pas tenir — 2026-08-04
 
 Un flux ST 2110 annonce dans son SDP la classe de régularité de son émission : `TP=2110TPN` pour
 narrow, la plus stricte. Ce n'est pas une décoration — un récepteur sérieux applique la fenêtre
@@ -1627,7 +1627,7 @@ présence ou non du limiteur matériel apparaissent maintenant dans l'état du m
 intenable qui n'apparaît dans aucun journal est indétectable en exploitation ; c'est exactement
 ainsi que celle-ci a traversé des mois de production.
 
-***REMOVED******REMOVED*** Le même modèle de supervision, maintenant lisible en HTTP — 2026-08-05
+## Le même modèle de supervision, maintenant lisible en HTTP — 2026-08-05
 
 La supervision des entrées/sorties 2110 livrée hier ne se lisait qu'en **IS-12**, c'est-à-dire par
 une WebSocket qu'il faut ouvrir et tenir. Tous les contrôleurs ne veulent pas de ça : certains
@@ -1656,7 +1656,7 @@ restauration partielle doit se voir.
 À activer dans Réglages → Protocoles → NMOS. Contrairement à IS-12, aucun port supplémentaire :
 c'est du HTTP ordinaire, sur le port de l'interface, comme IS-04 et IS-05.
 
-***REMOVED******REMOVED*** Un groupe de production ne change plus dans le dos du contrôleur — 2026-08-04
+## Un groupe de production ne change plus dans le dos du contrôleur — 2026-08-04
 
 Nos ressources NMOS portent depuis longtemps un *groupe naturel* (BCP-002-01) : c'est ce qui dit à
 un contrôleur que « Rx 3 vidéo », « Rx 3 audio » et « Rx 3 ANC » forment un même ensemble, et c'est
@@ -1688,7 +1688,7 @@ Fabricant, produit, identifiant d'instance et fonction sont maintenant publiés,
 Réglages → Protocoles → NMOS, et servis depuis la **même source** que l'identité annoncée en IS-12 —
 deux protocoles qui décrivent le même appareil ne doivent pas en décrire deux.
 
-***REMOVED******REMOVED*** L'état de nos entrées et sorties 2110 se lit désormais depuis n'importe quel contrôleur — 2026-08-04
+## L'état de nos entrées et sorties 2110 se lit désormais depuis n'importe quel contrôleur — 2026-08-04
 
 Un moteur 2110 sait beaucoup de choses sur ses flux : ce que reçoit chaque entrée, si l'horloge est
 verrouillée, si un lien est tombé, si une sortie rejoue la même image faute de source. Jusqu'ici tout
@@ -1734,7 +1734,7 @@ Comme le reste du provider NMOS, il n'est pas authentifié et suppose un réseau
 Seuls les flux servis par un moteur 2110 ont un moniteur ; les ressources NMOS sans télémétrie
 derrière n'en reçoivent pas, et leur nombre est affiché plutôt que passé sous silence.
 
-***REMOVED******REMOVED*** Un pupitre visait un numéro de conteneur ; il vise maintenant une fonction — 2026-08-04
+## Un pupitre visait un numéro de conteneur ; il vise maintenant une fonction — 2026-08-04
 
 L'arbre Ember+ exposait les conteneurs par leur VMID. Or un VMID est un jeton local et jetable : il
 est réattribué à la création, il change quand on recrée une machine, et il n'a jamais rien promis à
@@ -1765,7 +1765,7 @@ la liste telle qu'elle a été publiée — mais c'est le nom du layout qui déc
 
 Rupture assumée, sans transition : l'ancien arbre `containers.<vmid>` n'existe plus.
 
-***REMOVED******REMOVED*** Préparer une carte pour le RDMA cassait le réseau de cette carte — 2026-08-03
+## Préparer une carte pour le RDMA cassait le réseau de cette carte — 2026-08-03
 
 Activer le rôle RDMA sur une interface charge le pilote InfiniBand correspondant, puis vérifie
 qu'une fonction RoCE apparaît bien ; si rien n'apparaît, la demande est refusée avec la raison,
@@ -1798,7 +1798,7 @@ qui abîme est pire qu'un refus.
 Reste, indépendamment de ce correctif : ces cartes n'exposent aucune fonction RoCE et ne l'annoncent
 par aucune erreur. Elle est vraisemblablement à activer dans la configuration interne de la carte.
 
-***REMOVED******REMOVED*** Un nœud mort restait « up », ses conteneurs « running », et personne n'était prévenu — 2026-08-03
+## Un nœud mort restait « up », ses conteneurs « running », et personne n'était prévenu — 2026-08-03
 
 Le nœud qui porte le moteur ST 2110 s'est arrêté à 22h18, ventilateur en cause. Il était injoignable
 sur ses trois réseaux et muet jusqu'en ARP, donc indiscutablement éteint. Une heure plus tard,
@@ -1840,7 +1840,7 @@ résoudre, sans laisser la moindre trace. Au retour, la durée totale est connue
 dépassait le seuil sans avoir été annoncée, elle est signalée au passé. Mieux vaut une alerte tardive
 qu'une panne qui n'a jamais existé dans le journal.
 
-***REMOVED******REMOVED*** La mire annonçait cinquante images et n'en livrait que vingt-cinq — 2026-08-02
+## La mire annonçait cinquante images et n'en livrait que vingt-cinq — 2026-08-02
 
 Une campagne de nuit destinée à éprouver la flotte en charge a fait sortir un défaut qui durait
 depuis deux versions et que rien ne voyait. Une mire A/V déployée en mille quatre-vingts lignes à
@@ -1869,7 +1869,7 @@ artefact. Le générateur d'images fixes portait le même idiome et le même dé
 avec. La documentation du calcul d'index, qui recommandait la mauvaise valeur et l'avait propagée,
 est corrigée aussi — c'était elle, la vraie source.
 
-***REMOVED******REMOVED*** L'étalonnage ne se périme plus au premier recâblage — 2026-08-02
+## L'étalonnage ne se périme plus au premier recâblage — 2026-08-02
 
 La signature qui identifie un profil de coût condensait tous les paramètres d'un conteneur, faute
 d'une déclaration de ce qui compte. Le câblage en faisait donc partie : brancher un mélangeur sur
@@ -1879,7 +1879,7 @@ une autre source, même à format strictement identique, changeait sa signature 
 moteur 2110 le faisait déjà. Effet visible : cinq mélangeurs réglés à l'identique sur cinq machines
 portent enfin la même signature, donc des mesures comparables entre elles.
 
-***REMOVED******REMOVED*** Un nœud écarté du placement le reste sans le dire — 2026-08-02
+## Un nœud écarté du placement le reste sans le dire — 2026-08-02
 
 Quand le réseau conteneurs d'un nœud dérive, il est écarté du choix automatique et l'exploitant est
 prévenu — une seule fois, pour ne pas noyer le journal. Mais rien ne levait cet écart au retour à la
@@ -1890,7 +1890,7 @@ retour à la normale est désormais annoncé, et il réarme l'alerte.
 
 ---
 
-***REMOVED******REMOVED*** Le mélangeur DVE mesuré là où personne ne regardait — 2026-08-02
+## Le mélangeur DVE mesuré là où personne ne regardait — 2026-08-02
 
 Un cache qui fonctionne parfaitement peut cacher un gouffre. Le compositeur DVE précalcule pour
 chaque incrustation une « empreinte » — carte d'échantillonnage, masques, ruban de bordure — et la
@@ -1922,7 +1922,7 @@ pouvait se voir qu'en déployant le plugin nu — ce que personne n'avait fait.
 
 ---
 
-***REMOVED******REMOVED*** L'orchestrateur constate enfin où tournent vraiment les conteneurs — 2026-08-01
+## L'orchestrateur constate enfin où tournent vraiment les conteneurs — 2026-08-01
 
 Attribuer des cœurs à un conteneur et vérifier qu'il peut s'en servir sont deux choses différentes.
 Jusqu'ici l'orchestrateur ne faisait que la première. Un moteur 2110 épinglé sur seize cœurs dont
@@ -1947,7 +1947,7 @@ précisément là que se cachait le reste du problème. Sur le nœud de banc, qu
 réplication créés hors de son modèle n'avaient aucune restriction de cœurs et pouvaient donc
 s'exécuter sur ceux du moteur.
 
-***REMOVED******REMOVED*** Toute capacité oubliée à l'enrôlement se rattrape sans réinstaller le nœud — 2026-07-30
+## Toute capacité oubliée à l'enrôlement se rattrape sans réinstaller le nœud — 2026-07-30
 
 Les capacités d'un nœud (2110, compute, médias, WebRTC, GPU) se cochent au moment de créer son jeton
 d'enrôlement, et le jeton est consommé une seule fois. Oublier « GPU » sur une machine qui en est
@@ -1987,7 +1987,7 @@ restante, signalée comme telle, pas un échec à réessayer.
 
 ---
 
-***REMOVED******REMOVED*** Deux ports RDMA valent 20 Gb/s, à condition de répartir les liens — 2026-07-28
+## Deux ports RDMA valent 20 Gb/s, à condition de répartir les liens — 2026-07-28
 
 Un nœud plafonnait à 10 Gb/s de réplication RDMA avec six flux à répliquer : 9,95 Gb/s engagés sur
 une capacité de 10, soit 99,5 % du fil. Une seconde interface a été câblée pour doubler la capacité.
@@ -2037,7 +2037,7 @@ les deux, et un port muet pendant qu'un autre travaille est signalé comme tel.
 
 ---
 
-***REMOVED******REMOVED*** Un nœud verrouillé à 28 ns, et 16 minutes hors de la grille — 2026-07-28
+## Un nœud verrouillé à 28 ns, et 16 minutes hors de la grille — 2026-07-28
 
 Sur un site de production, la page Horloges annonçait un nœud 2110 « hors grille » et proposait de
 le remettre d'aplomb en installant chrony. Le nœud n'avait aucun problème d'horloge : `ptp4l` y
@@ -2081,7 +2081,7 @@ qu'elle voit : le décalage vient de la référence, pas du nœud.
 
 ---
 
-***REMOVED******REMOVED*** Les 30 ms d'écart entre machines n'existaient pas : c'était notre règle graduée — 2026-07-28
+## Les 30 ms d'écart entre machines n'existaient pas : c'était notre règle graduée — 2026-07-28
 
 La page Horloges annonçait 20 à 30 ms d'écart entre les nœuds, sans jamais bouger et sans qu'aucune
 horloge ne soit en cause. Elle mesurait sa propre latence.
@@ -2121,7 +2121,7 @@ tout continue de fonctionner avec l'ancienne précision, signalée dans l'interf
 
 ---
 
-***REMOVED******REMOVED*** Un moteur 2110 ne peut plus tourner sur une configuration périmée — 2026-07-27
+## Un moteur 2110 ne peut plus tourner sur une configuration périmée — 2026-07-27
 
 Le moteur 2110 est dimensionné au **débit** qu'il doit traiter : le nombre de cœurs DPDK découle du
 format vidéo, du quota par scheduler et du nombre de slots actifs. Ce calcul n'a lieu qu'au démarrage
@@ -2154,7 +2154,7 @@ disant.
 
 ---
 
-***REMOVED******REMOVED*** Nouveau plugin : générateur de mire audio — 2026-07-26
+## Nouveau plugin : générateur de mire audio — 2026-07-26
 
 Le silence ne coûte plus rien et n'a plus besoin de personne. Restait le **vrai signal**, qui n'avait
 aucune raison d'être calculé une fois par destination : un générateur **mutualisé**, avec plusieurs
@@ -2181,7 +2181,7 @@ lourd en anti-référence ; aucune couleur n'est écrite en dur, les trois lumi�
 
 ---
 
-***REMOVED******REMOVED*** Le silence audio aussi : plus aucun producteur dans la boucle — 2026-07-26
+## Le silence audio aussi : plus aucun producteur dans la boucle — 2026-07-26
 
 Même raisonnement appliqué à l'audio — et réparation d'une régression introduite quelques minutes
 plus tôt : en éteignant le générateur vidéo d'une sortie non câblée, le correctif précédent éteignait
@@ -2202,7 +2202,7 @@ la boucle — ni vidéo, ni audio. Image `bobi-mtl:0.64.0`.
 
 ---
 
-***REMOVED******REMOVED*** Une sortie 2110 non câblée n'a plus besoin de producteur du tout — 2026-07-26
+## Une sortie 2110 non câblée n'a plus besoin de producteur du tout — 2026-07-26
 
 Suite du correctif précédent. La recopie par trame avait disparu, mais un slot provisionné non câblé
 gardait toute une chaîne vivante pour afficher une image **fixe** : un thread Python, un flux MXL, un
@@ -2229,7 +2229,7 @@ exclus — ces cas gardent le générateur, explicitement. Image `bobi-mtl:0.63.
 
 ---
 
-***REMOVED******REMOVED*** Le générateur de mire recopiait 4 Mo par trame pour une image qui ne change jamais — 2026-07-26
+## Le générateur de mire recopiait 4 Mo par trame pour une image qui ne change jamais — 2026-07-26
 
 Les sorties TX en GÉN — mire, et surtout le **fallback noir** d'un slot provisionné non câblé — ne
 tenaient que ~38 des 50 fps demandés. La sous-cadence était **réelle**, pas un artefact de compteur :
@@ -2257,9 +2257,9 @@ DPDK du moteur, en busy-poll à 100 %. Image `bobi-mtl:0.62.0`.
 
 ---
 
-***REMOVED******REMOVED*** Alarmes : ne plus signaler comme panne ce que personne n'a demandé — 2026-07-26
+## Alarmes : ne plus signaler comme panne ce que personne n'a demandé — 2026-07-26
 
-Un mail « TX ***REMOVED***3 : image figée détectée » sur un moteur dont **aucune sortie n'était activée** a servi
+Un mail « TX #3 : image figée détectée » sur un moteur dont **aucune sortie n'était activée** a servi
 de fil : le fil d'alertes de la journée contenait ~70 notifications pour **trois** conditions réelles.
 Trois mécaniques distinctes, une seule racine — une alarme qui compare l'observé à un idéal absolu au
 lieu de le comparer à ce que l'exploitant a *demandé*.
@@ -2288,7 +2288,7 @@ lieu de le comparer à ce que l'exploitant a *demandé*.
 
 ---
 
-***REMOVED******REMOVED*** PTP : un nœud DPDK au repos n'avait plus d'horloge du tout — et l'alarme appelait ça un « holdover » — 2026-07-26
+## PTP : un nœud DPDK au repos n'avait plus d'horloge du tout — et l'alarme appelait ça un « holdover » — 2026-07-26
 
 **Le fil d'alertes répétait « PTP dl360-1 : déverrouillé depuis 30 s — holdover, dérive libre »
 plusieurs fois par heure, pendant que le journal PTP, lui, restait vide.** Ce n'était ni un incident
@@ -2318,7 +2318,7 @@ répété, ni un holdover : trois défauts distincts se superposaient.
 
 ---
 
-***REMOVED******REMOVED*** mTLS conteneur : la panne muette du reboot (certs en tmpfs) + vérification d'identité du client — 2026-07-26
+## mTLS conteneur : la panne muette du reboot (certs en tmpfs) + vérification d'identité du client — 2026-07-26
 
 **Deux multiviews de production ont cessé de fonctionner sans une alerte exploitable.** L'agent-nœud
 matérialise les certificats d'un conteneur dans `/run/bobi-tls/<nom>/` — et **`/run` est un tmpfs**.
@@ -2351,7 +2351,7 @@ re-provisionné) ; les conteneurs compute, simplement relevés, gardaient leur m
   pour ne pas se verrouiller hors d'une installation au CN différent. *Baké dans les images runtime :
   effectif après rebuild + redéploiement.*
 
-***REMOVED******REMOVED*** Moteur 2110 : fin du faux « 38 fps » + épinglage de la fréquence des cœurs isolés (2110_io 0.58.0) — 2026-07-25
+## Moteur 2110 : fin du faux « 38 fps » + épinglage de la fréquence des cœurs isolés (2110_io 0.58.0) — 2026-07-25
 
 **Le « hoquet ~60 s » du moteur n'existait pas.** Toutes les ~60 s, tous les flux publiaient une
 fenêtre à ~76 trames au lieu de ~101 → un faux « 38 fps » alarmant, alors que `frame_index` restait
@@ -2380,7 +2380,7 @@ un bouton de réparation : sans cette visibilité, un simple reboot réintroduis
 
 ---
 
-***REMOVED******REMOVED*** Multiview : modèles de PiP à format libre + auto-réparation des scripts perdus (multiview 0.34.0) — 2026-07-13
+## Multiview : modèles de PiP à format libre + auto-réparation des scripts perdus (multiview 0.34.0) — 2026-07-13
 
 Un modèle de PiP n'est plus figé au 16:9 : l'éditeur (Réglages → PiP) gagne un champ
 « **Format du modèle** » (ratio L:H libre — 16:9, 4:3, 1.85…) et un bouton « **Rogner l'espace
@@ -2398,7 +2398,7 @@ script). La surveillance détecte désormais le script *perdu* (`path: null`) et
 automatiquement** depuis la config persistée ; la branche hot-apply/mur shardé est gatée par
 l'état réel du script (vérifié en prod : mur 163 auto-réparé en 7 s au premier tick).
 
-***REMOVED******REMOVED*** Multiview : l'habillage de mur vit dans les modèles de PiP (multiview 0.33.0) — 2026-07-13
+## Multiview : l'habillage de mur vit dans les modèles de PiP (multiview 0.33.0) — 2026-07-13
 
 Le **cadre** devient une propriété du composant *vidéo* du modèle de PiP (`border` :
 fixe / tally / cadre fin / bezel moniteur / viseur / soulignement — dessiné sur le rectangle
@@ -2415,7 +2415,7 @@ sont désormais routés vers une re-planification du tissu (persistance + re-mat
 signatures) au lieu d'atteindre l'assembleur — le cadre ne se dessine plus autour des blocs de
 shards ; l'assembleur voit aussi son modèle par défaut explicitement nettoyé à la conversion.
 
-***REMOVED******REMOVED*** Multiview : conversion RGBA→YUV fusionnée en C (multiview 0.32.0, bobi-compute 0.12) — 2026-07-12
+## Multiview : conversion RGBA→YUV fusionnée en C (multiview 0.32.0, bobi-compute 0.12) — 2026-07-12
 
 La conversion RGBA→YUV (habillage → plans vidéo) coûtait ~15 passes numpy par appel. Elle passe
 dans le kernel C (`mvk_rgba2yuv`, ABI 2 de l'image **bobi-compute 0.12**, compilée
@@ -2425,7 +2425,7 @@ sur 36 combinaisons). Bénéficiaires : les tuiles VU/horloges/ANC (mur de test 
 du chrome pleine trame à chaque bascule tally** (moins de trames lentes aux commutations).
 Repli numpy verbatim sur image ≤ 0.11.
 
-***REMOVED******REMOVED*** Multiview : VU-mètres sans rendu PIL par trame (multiview 0.31.0) — 2026-07-12
+## Multiview : VU-mètres sans rendu PIL par trame (multiview 0.31.0) — 2026-07-12
 
 Le chemin CPU des VU-mètres redessinait **tout** le meter en PIL à chaque trame (fond,
 graduations dB, numéros de canaux, barres) — ~1-2 ms par meter. Il passe sur la machinerie
@@ -2438,7 +2438,7 @@ Fixes de la même session : threads OpenMP du kernel mvk = cœurs physiques rée
 attente passive libgomp (le spin-wait affamait le process — et le fab non épinglé piétinait
 les cœurs du moteur), champ `mvk_threads` sur `:8080`.
 
-***REMOVED******REMOVED*** Multiview : compositing CPU fusionné en C (multiview 0.30.0, bobi-compute 0.11) — 2026-07-12
+## Multiview : compositing CPU fusionné en C (multiview 0.30.0, bobi-compute 0.11) — 2026-07-12
 
 Le compose CPU du multiview était **borné par la bande passante mémoire** : chaque opération
 numpy (placement de tuile, blend d'habillage) est une passe mémoire séparée, et un mur chargé
@@ -2452,7 +2452,7 @@ sur le code numpy d'origine. Champ `mvk: true` dans les métriques `:8080` pour 
 l'activation. Le kernel est prêt à accueillir un décodage V210 par ligne si le tout-v210 (R3)
 est acté après les bancs. Image GPU rebasée en **bobi-compute-gpu:0.3** (base 0.11).
 
-***REMOVED******REMOVED*** Le binding MXL (bobimxl) est poussé avec les scripts — plus de rebuild d'image pour ses évolutions — 2026-07-12
+## Le binding MXL (bobimxl) est poussé avec les scripts — plus de rebuild d'image pour ses évolutions — 2026-07-12
 
 Le binding Python du SDK MXL (`bobimxl.py`) était **baké dans les images runtime** : ses
 évolutions purement Python (codec ANC RFC 8331, flux data…) n'atteignaient la flotte qu'au
@@ -2463,7 +2463,7 @@ obsolète (écritures et décodages en échec silencieux). Désormais l'orchestr
 container sur la version du contrôleur. Câblage vidéo → **l'audio et l'ANC suivent
 automatiquement** sur les entrées du multiview (mêmes règles que les sorties TX du moteur).
 
-***REMOVED******REMOVED*** Mire A/V : générateur de timecode optionnel — 2026-07-12
+## Mire A/V : générateur de timecode optionnel — 2026-07-12
 
 La mire de synchro (avsync 0.11.0) peut désormais générer un **timecode** (option, panneau ⚙) :
 l'heure du jour (hh:mm:ss:img, calée sur la même horloge de présentation que la trame — grille
@@ -2473,7 +2473,7 @@ la page Câbles quand l'option est active — câblez-le par exemple vers le por
 de multiview pour vérifier toute la chaîne timecode (horloge ANC, bandeau de métadonnées) avec
 un TC de référence parfaitement aligné sur l'image.
 
-***REMOVED******REMOVED*** Câbles : entrées audio du multiview, badge « Tranche », et avsync au format système — 2026-07-12
+## Câbles : entrées audio du multiview, badge « Tranche », et avsync au format système — 2026-07-12
 
 - **Entrées audio du multiview sur la page Câbles** : chaque fenêtre expose désormais un vrai
   port « Audio N » câblable (comme la vidéo et l'ANC). Non câblé, il affiche le flux audio
@@ -2484,7 +2484,7 @@ un TC de référence parfaitement aligné sur l'image.
 - **La mire A/V (avsync) suit le format vidéo par défaut** des Réglages à la création, comme le
   mixer — plus de littéral 1280×720 quand le site est en 1080p50.
 
-***REMOVED******REMOVED*** Éditeur de modèles de PiP : composez librement l'habillage des fenêtres de multiview — 2026-07-12
+## Éditeur de modèles de PiP : composez librement l'habillage des fenêtres de multiview — 2026-07-12
 
 Jusqu'ici, l'habillage d'une fenêtre de multiview était figé : le nom en bas, les VU-mètres à
 gauche ou à droite, le bandeau ANC en haut ou en bas. Un nouvel éditeur, dans
@@ -2526,7 +2526,7 @@ cochées dans le composer n'étaient en réalité **jamais transmises** au conta
 au déploiement), le choix haut/bas n'était pas appliqué à chaud, et l'incrustation plantait le
 rendu de la trame une fois active (`_as_bool`). Le multiviewer passe en **0.29.0**.
 
-***REMOVED******REMOVED*** Multiview : métadonnées ANC affichables dans chaque cellule — 2026-07-12
+## Multiview : métadonnées ANC affichables dans chaque cellule — 2026-07-12
 
 Le multiview savait déjà lire le timecode embarqué. Maintenant qu'un flux ANC est décodé
 intégralement (et plus seulement le timecode), chaque cellule peut afficher **ce que sa source
@@ -2544,7 +2544,7 @@ transporte vraiment** — une information qu'un mur de contrôle ne montre habit
   page Câbles, au lieu d'une dérivation implicite. Les murs existants continuent de fonctionner
   sans rien changer (repli automatique sur l'ancien comportement).
 
-***REMOVED******REMOVED*** ANC : passage au format normatif RFC 8331 (fin d'une perte silencieuse) — 2026-07-12
+## ANC : passage au format normatif RFC 8331 (fin d'une perte silencieuse) — 2026-07-12
 
 Nos données auxiliaires (timecode, tally, sous-titres) voyageaient dans un **format maison** que
 seuls nos propres containers comprenaient. Un banc croisé contre un SDK MXL vierge a montré le
@@ -2563,7 +2563,7 @@ tiers.
   perdu par l'ancien format. Il est maintenant transporté de bout en bout.
 - Prise d'effet au rebuild des images moteur (`bobi-mtl`) et de calcul/média.
 
-***REMOVED******REMOVED*** Interop MXL : convertisseur v210 SIMD + plugin Pont v210 (export/import) — 2026-07-12
+## Interop MXL : convertisseur v210 SIMD + plugin Pont v210 (export/import) — 2026-07-12
 
 Ouverture du chantier interopérabilité inter-éditeurs (`docs/reference/MXL_INTEROP.md`) : échanger des flux
 avec les containers d'autres solutions sur le même serveur, via le SDK MXL **stock** — dont le
@@ -2586,7 +2586,7 @@ pénalité numpy, pas une propriété du format) → le pont de frontière devie
   `mxl-info` non patché doit lire le miroir), ANC RFC 8331 si l'ANC doit passer la frontière,
   et bancs mémoire avant toute décision « tout-v210 ».
 
-***REMOVED******REMOVED*** Mode tranche : réglage global, GPU multiview et robustesse — 2026-07-12
+## Mode tranche : réglage global, GPU multiview et robustesse — 2026-07-12
 
 Consolidation du chantier tranche : l'activation devient un **interrupteur unique**, le chemin
 GPU est validé de bout en bout, et la chaîne encaisse un soak de 4 heures.
@@ -2617,7 +2617,7 @@ GPU est validé de bout en bout, et la chaîne encaisse un soak de 4 heures.
   redéploiement du moteur. Les textes d'aide des champs de configuration (config_schema `help`)
   sont enfin rendus dans la palette et les panneaux ⚙.
 
-***REMOVED******REMOVED*** Plage IP conteneurs par nœud + rôle « Management + Containers » — 2026-07-12
+## Plage IP conteneurs par nœud + rôle « Management + Containers » — 2026-07-12
 
 Un nœud d'un autre réseau peut désormais rejoindre le cluster avec ses conteneurs sur **son**
 subnet (cas réel : nœud GPU dans un autre /24 que le reste du cluster).
@@ -2631,7 +2631,7 @@ subnet (cas réel : nœud GPU dans un autre /24 que le reste du cluster).
   par plage (deux subnets ne se bloquent plus mutuellement) ; stats ventilées par plage dans les
   Réglages. Un nœud sans carte containers configurée garde exactement le comportement actuel.
 
-***REMOVED******REMOVED*** Nuit d'interventions : perfs, UI et finitions — 2026-07-12
+## Nuit d'interventions : perfs, UI et finitions — 2026-07-12
 
 Lot de correctifs et d'améliorations traités en parallèle dans la nuit.
 
@@ -2648,7 +2648,7 @@ Lot de correctifs et d'améliorations traités en parallèle dans la nuit.
   stills re-validés dessus.
 - **Page Câbles** : le détail d'un câble n'affiche plus que SA source et SA destination (au lieu
   de tous les flux des deux extrémités), et la zone de survol/clic des câbles est élargie.
-- **Nommage** : les entrées s'affichent « RX ***REMOVED***1 », « RX ***REMOVED***2 »… (symétriques des TX ***REMOVED***n, les noms
+- **Nommage** : les entrées s'affichent « RX #1 », « RX #2 »… (symétriques des TX #n, les noms
   techniques restent inchangés en interne) ; le badge de type affiche « 2110 » au lieu de « MTL ».
 - **Mélangeur** : un mixer déployé sans format explicite prend le format par défaut des Réglages
   (fini le 720p surprise face à des sources 1080p).
@@ -2661,7 +2661,7 @@ Lot de correctifs et d'améliorations traités en parallèle dans la nuit.
   multiview/mixer. **Page Aide** mise à jour plugin par plugin (LXC/Proxmox purgés, article
   « Mode tranche », aide créée pour la sonde 2110).
 
-***REMOVED******REMOVED*** Émission décalée (TROFF) : le choix du rythme par destination 2110 — 2026-07-11
+## Émission décalée (TROFF) : le choix du rythme par destination 2110 — 2026-07-11
 
 Une chaîne interne dont l'image est prête quelques millisecondes après le début du cycle 2110
 payait une image entière d'attente (l'émission ne peut commencer qu'à la frontière d'epoch).
@@ -2677,7 +2677,7 @@ Chaque destination TX offre désormais le choix :
   **gain ≈ 11 ms**. Mécanique portée par un patch libmtl bobi (grille d'émission décalée d'un
   bloc : fenêtre, acceptation d'epoch, rate-limiter ; le timestamp reste nominal).
 
-***REMOVED******REMOVED*** Mode tranche MXL : la latence passe sous l'image — 2026-07-11
+## Mode tranche MXL : la latence passe sous l'image — 2026-07-11
 
 Chantier majeur : le bus MXL et toute la chaîne de traitement passent en **publication par
 bandes** (opt-in). Au lieu d'attendre une image complète à chaque étage, chaque étage publie et
@@ -2700,7 +2700,7 @@ consomme l'image par tranches de 36 lignes au fil de l'eau.
   retard (alerte orchestrateur avec suggestion de délai d'une image). Le mixer garantit une
   sortie jamais en retard (verrou de référence indexé, budget de trame dur).
 
-***REMOVED******REMOVED*** Fiabilité contrôleur : fuite de descripteurs SQLite résolue — 2026-07-11
+## Fiabilité contrôleur : fuite de descripteurs SQLite résolue — 2026-07-11
 
 L'orchestrateur pouvait devenir injoignable sous une rafale de créations de conteneurs
 (erreur « Errno 24 », interface morte, tempête de logs). Cause racine : une connexion SQLite
@@ -2712,7 +2712,7 @@ descripteurs du service.
 - Limite du service relevée (LimitNOFILE 65536) en ceinture-bretelles.
 
 
-***REMOVED******REMOVED*** Stream In : refonte de l'interface + journal de connexion exportable — 2026-07-09
+## Stream In : refonte de l'interface + journal de connexion exportable — 2026-07-09
 
 Le plugin `stream_in` passe en 0.2.1. Le panneau de contrôle devient l'outil d'exploitation
 de la source, et le formulaire de configuration se dégonfle de 17 champs à 7.
@@ -2735,11 +2735,11 @@ de la source, et le formulaire de configuration se dégonfle de 17 champs à 7.
   à chaque déploiement et au boot du nœud : sans ce volume, le journal disparaissait
   précisément quand il sert. Le panneau avertit si le volume manque (conteneur ancien : le
   recréer depuis la palette).
-- Correctif : les lignes `Stream ***REMOVED***0:x` des sections `Input` et `Output` de ffmpeg ayant la même
+- Correctif : les lignes `Stream #0:x` des sections `Input` et `Output` de ffmpeg ayant la même
   forme, le plugin décrivait sa propre sortie comme étant la source.
 - Le rendu de `config_schema` accepte `visible_if` avec une **liste de valeurs**.
 
-***REMOVED******REMOVED*** Nouveau plugin Stream In : ingest SRT/RTMP vers le bus MXL — 2026-07-09
+## Nouveau plugin Stream In : ingest SRT/RTMP vers le bus MXL — 2026-07-09
 
 Nouvelle **source réseau** dans la rubrique Sources : le plugin `stream_in` (0.1.0) ingère un
 flux SRT ou RTMP via ffmpeg et le publie sur le bus MXL, câblable comme n'importe quelle source.
@@ -2781,7 +2781,7 @@ flux SRT ou RTMP via ffmpeg et le publie sur le bus MXL, câblable comme n'impor
   `before_deploy` levait `UnboundLocalError: _st` (import lié dans une branche conditionnelle),
   laissant les colonnes source/shm_out du dashboard à « — ».
 
-***REMOVED******REMOVED*** Réglages plugins : scope user/system + panneau Réglages sur les pages plugin — 2026-07-05
+## Réglages plugins : scope user/system + panneau Réglages sur les pages plugin — 2026-07-05
 
 Préparation du multi-utilisateurs : chaque champ de `config_schema` porte un **scope**
 (`system` par défaut — structurel, palette Containers ; `user` — exploitation, page plugin).
@@ -2811,7 +2811,7 @@ Préparation du multi-utilisateurs : chaque champ de `config_schema` porte un **
 
 ---
 
-***REMOVED******REMOVED*** Bande passante mémoire : canary embarqué dans l'agent-nœud — 2026-07-05
+## Bande passante mémoire : canary embarqué dans l'agent-nœud — 2026-07-05
 
 Le canary memcpy (indicateur de contention RAM, celui qui alerte « les multiviews vont
 décrocher ») ne passe plus par un exec distant toutes les 60 s : l'**agent-nœud 0.14.0**
@@ -2826,7 +2826,7 @@ le mesure lui-même en tâche de fond et publie le débit dans son heartbeat `/v
 
 ---
 
-***REMOVED******REMOVED*** 2110/NMOS : correctifs d'interopérabilité (diagnostic lab Horace) — 2026-07-04
+## 2110/NMOS : correctifs d'interopérabilité (diagnostic lab Horace) — 2026-07-04
 
 Corrections issues d'un diagnostic terrain complet (switch L2 pur + convertisseurs
 Blackmagic), chaque point prouvé sur le matériel.
@@ -2849,7 +2849,7 @@ Blackmagic), chaque point prouvé sur le matériel.
 
 ---
 
-***REMOVED******REMOVED*** Mélangeur : contrôle via le proxy plugin générique — 2026-07-04
+## Mélangeur : contrôle via le proxy plugin générique — 2026-07-04
 
 Le contrôle live du mélangeur (PGM/PVW, take, T-bar, keyer, DSK, preview) passe par le
 **proxy plugin générique** `/api/containers/<vmid>/plugin/*`, comme les autres plugins
@@ -2863,7 +2863,7 @@ sont supprimées (mixer 0.7.0).
 
 ---
 
-***REMOVED******REMOVED*** Compatibilité Blackmagic, TSL central, IS-05 manuelle — 2026-07-03
+## Compatibilité Blackmagic, TSL central, IS-05 manuelle — 2026-07-03
 
 - **SDP TX enrichis** (moteur 2110_io 0.34.10) : filtre source RFC 4570, TTL, SSRC fixe,
   attributs `fmtp` TCS/RANGE — les récepteurs **Blackmagic** acceptent désormais les
@@ -2877,7 +2877,7 @@ sont supprimées (mixer 0.7.0).
 
 ---
 
-***REMOVED******REMOVED*** Allocation multicast centralisée — 2026-07-01
+## Allocation multicast centralisée — 2026-07-01
 
 Les flux ST 2110 sans adresse imposée reçoivent leur groupe multicast d'un **pool géré
 centralement**, avec des règles fines.
@@ -2892,7 +2892,7 @@ centralement**, avec des règles fines.
 
 ---
 
-***REMOVED******REMOVED*** Accueil & Monitoring : état multi-nœuds, Points d'attention — 2026-07-01
+## Accueil & Monitoring : état multi-nœuds, Points d'attention — 2026-07-01
 
 - **Bandeau d'accueil** refondu pour le cluster : pastille de santé globale, nœuds en
   ligne (X/Y), ressources pire-cas, GPU/RDMA/PTP agrégés — chaque item cliquable vers
@@ -2908,7 +2908,7 @@ centralement**, avec des règles fines.
 
 ---
 
-***REMOVED******REMOVED*** Moteur ST 2110 : capacité à chaud + opérations protégées — 2026-06-30
+## Moteur ST 2110 : capacité à chaud + opérations protégées — 2026-06-30
 
 - **Réserve de files par interface** (Réglages → Réseau : Files RX / Files TX / Marge) :
   tant qu'on reste dans la réserve, on ajoute/retire des flux **sans ré-initialiser le
@@ -2922,7 +2922,7 @@ centralement**, avec des règles fines.
 
 ---
 
-***REMOVED******REMOVED*** Steppers −/+ sur tous les champs numériques — 2026-06-30
+## Steppers −/+ sur tous les champs numériques — 2026-06-30
 
 Le composant stepper du multiview (boutons −/+ avec appui maintenu) est généralisé à
 **toute l'interface** : Réglages, onglets de services, palette de déploiement, wizard et
@@ -2930,7 +2930,7 @@ panneaux de contrôle plugin.
 
 ---
 
-***REMOVED******REMOVED*** ST 2110 multi-NIC : auto-répartition + épinglage — 2026-06-30
+## ST 2110 multi-NIC : auto-répartition + épinglage — 2026-06-30
 
 Le moteur 2110_io exploite désormais **plusieurs ports média** sur un même nœud.
 
@@ -2943,7 +2943,7 @@ Le moteur 2110_io exploite désormais **plusieurs ports média** sur un même n�
 
 ---
 
-***REMOVED******REMOVED*** Monitoring serveurs : santé matérielle + refonte du détail — 2026-06-29
+## Monitoring serveurs : santé matérielle + refonte du détail — 2026-06-29
 
 - **Santé matérielle** : températures (par puce, seuils colorés), ventilateurs et
   consommation quand le matériel les expose (agent 0.12.0). Sur HPE, ventilateurs/conso
@@ -2957,7 +2957,7 @@ Le moteur 2110_io exploite désormais **plusieurs ports média** sur un même n�
 
 ---
 
-***REMOVED******REMOVED*** Réplication RDMA inter-nœuds (mxl-fabrics) — 2026-06-28
+## Réplication RDMA inter-nœuds (mxl-fabrics) — 2026-06-28
 
 Un flux MXL produit sur un nœud peut être **répliqué dans le domaine MXL d'un autre
 nœud par RDMA** (RoCEv2), sans aller-retour ST 2110 — fondation du cluster à rôles.
@@ -2973,7 +2973,7 @@ nœud par RDMA** (RoCEv2), sans aller-retour ST 2110 — fondation du cluster à
 
 ---
 
-***REMOVED******REMOVED*** PTP par nœud : refonte, journal d'événements, logs — 2026-06-28
+## PTP par nœud : refonte, journal d'événements, logs — 2026-06-28
 
 Le PTP est par nœud (chaque nœud a son ptp4l/phc2sys) ; l'UI le reflète enfin.
 
@@ -2989,7 +2989,7 @@ Le PTP est par nœud (chaque nœud a son ptp4l/phc2sys) ; l'UI le reflète enfin
 
 ---
 
-***REMOVED******REMOVED*** Multiview / pyramide / tissu : robustesse d'exploitation — 2026-06-28
+## Multiview / pyramide / tissu : robustesse d'exploitation — 2026-06-28
 
 - **Nettoyage automatique des shards** à la destruction d'un mur ; câblage d'un mur
   shardé via sa définition logique + réconciliation du tissu.
@@ -3002,7 +3002,7 @@ Le PTP est par nœud (chaque nœud a son ptp4l/phc2sys) ; l'UI le reflète enfin
 
 ---
 
-***REMOVED******REMOVED*** Nœuds : GPU NVIDIA, vue réseau par-nœud, install iLO/PXE — 2026-06-27
+## Nœuds : GPU NVIDIA, vue réseau par-nœud, install iLO/PXE — 2026-06-27
 
 - **Compositing multiview sur GPU NVIDIA** (optionnel) : image runtime dédiée, plomberie
   agent (`--gpus`), réglage par mur ; tuile GPU (util/VRAM/PCIe) au Monitoring.
@@ -3016,7 +3016,7 @@ Le PTP est par nœud (chaque nœud a son ptp4l/phc2sys) ; l'UI le reflète enfin
 
 ---
 
-***REMOVED******REMOVED*** Entrelacé champ-natif de bout en bout — 2026-06-25
+## Entrelacé champ-natif de bout en bout — 2026-06-25
 
 La chaîne 1080i est traitée **en champs natifs** de la réception à l'émission.
 
@@ -3031,7 +3031,7 @@ La chaîne 1080i est traitée **en champs natifs** de la réception à l'émissi
 
 ---
 
-***REMOVED******REMOVED*** Page « Recette » — suivi des tests — 2026-06-25
+## Page « Recette » — suivi des tests — 2026-06-25
 
 Nouvelle page `/tests` pour l'équipe de recette : checklist par rubriques (dont
 « Entrelacé » et « 2110 / Multi-ports »), statut par item et **fils de discussion Q/R
@@ -3039,7 +3039,7 @@ horodatés** par point de test.
 
 ---
 
-***REMOVED******REMOVED*** Migration SDK MXL : vidéo, audio et ANC — 2026-06-22
+## Migration SDK MXL : vidéo, audio et ANC — 2026-06-22
 
 Le bus mémoire partagée maison est remplacé par le **SDK MXL** (libmxl) pour tous les
 types de containers.
@@ -3052,7 +3052,7 @@ types de containers.
 
 ---
 
-***REMOVED******REMOVED*** Flux composables Sources/Destinations 2110 — 2026-06-22
+## Flux composables Sources/Destinations 2110 — 2026-06-22
 
 - Les RX/TX du moteur s'ajoutent et se **retirent à chaud** (libération des sessions
   sans redéploiement) ; boutons « Retirer un RX/TX » sur Sources et Destinations.
@@ -3064,7 +3064,7 @@ types de containers.
 
 ---
 
-***REMOVED******REMOVED*** Nœuds : assistant guidé, build & distribution d'images — 2026-06-20
+## Nœuds : assistant guidé, build & distribution d'images — 2026-06-20
 
 - **Assistant de configuration étape par étape** d'un nœud (réseau, queues AF-XDP,
   hugepages, images) avec vérifications réelles à chaque étape.
@@ -3077,7 +3077,7 @@ types de containers.
 
 ---
 
-***REMOVED******REMOVED*** Installeur unifié + enrôlement des nœuds — 2026-06-19
+## Installeur unifié + enrôlement des nœuds — 2026-06-19
 
 - **Installeur unifié sans Proxmox** (menu « Nouveau serveur » : nœud / contrôleur),
   navigation clavier, écrans encadrés plein écran.
@@ -3089,7 +3089,7 @@ types de containers.
 
 ---
 
-***REMOVED******REMOVED*** Bande passante mémoire + capacité MTL réelle — 2026-06-18
+## Bande passante mémoire + capacité MTL réelle — 2026-06-18
 
 - **Mesure et alerte de bande passante mémoire** par nœud (canary memcpy) — la
   contention RAM est le vrai plafond des murs multiview.
@@ -3098,7 +3098,7 @@ types de containers.
 
 ---
 
-***REMOVED******REMOVED*** Réglages : refonte des menus en 7 groupes — 2026-06-17
+## Réglages : refonte des menus en 7 groupes — 2026-06-17
 
 La page **Réglages** passe d'une longue barre d'onglets à plat à une **navigation à deux
 niveaux** : une barre de **groupes** au-dessus, puis les onglets du groupe en dessous.
@@ -3113,7 +3113,7 @@ niveaux** : une barre de **groupes** au-dessus, puis les onglets du groupe en de
 
 ---
 
-***REMOVED******REMOVED*** Haute disponibilité : paire de contrôleurs (warm-standby) — 2026-06-17
+## Haute disponibilité : paire de contrôleurs (warm-standby) — 2026-06-17
 
 L'orchestrateur peut désormais fonctionner en **paire** : un contrôleur **actif** qui pilote
 la production et un **standby** prêt à prendre le relais. Bascule **manuelle** (pas
@@ -3132,7 +3132,7 @@ d'automatisme qui pourrait partir en *split-brain*).
 
 ---
 
-***REMOVED******REMOVED*** Réseau cluster : 3 plans, IPAM centralisé, multicast — 2026-06-16
+## Réseau cluster : 3 plans, IPAM centralisé, multicast — 2026-06-16
 
 Le réseau est maintenant pensé pour un **cluster multi-nœuds**.
 
@@ -3146,7 +3146,7 @@ Le réseau est maintenant pensé pour un **cluster multi-nœuds**.
 
 ---
 
-***REMOVED******REMOVED*** Identités NMOS de niveau cluster — 2026-06-16
+## Identités NMOS de niveau cluster — 2026-06-16
 
 Les ressources NMOS (senders/receivers IS-04/05) ne sont plus liées au cycle de vie d'un
 conteneur : elles vivent dans un **registre de cluster stable**.
@@ -3163,7 +3163,7 @@ conteneur : elles vivent dans un **registre de cluster stable**.
 
 ---
 
-***REMOVED******REMOVED*** Réglages par-nœud (préparation hôte multi-nœuds) — 2026-06-16
+## Réglages par-nœud (préparation hôte multi-nœuds) — 2026-06-16
 
 La préparation matérielle de l'hôte (Ethernet, SR-IOV, PTP, MTL, CPU) est désormais
 **par-nœud**, plus « hôte global ».
@@ -3174,7 +3174,7 @@ La préparation matérielle de l'hôte (Ethernet, SR-IOV, PTP, MTL, CPU) est dé
 
 ---
 
-***REMOVED******REMOVED*** Full-Docker : fin de Proxmox / LXC — 2026-06-16
+## Full-Docker : fin de Proxmox / LXC — 2026-06-16
 
 L'orchestrateur ne dépend plus de Proxmox ni des conteneurs LXC : **tous les types tournent
 en Docker**, sur des nœuds pilotés par un **agent de nœud**.
@@ -3187,7 +3187,7 @@ en Docker**, sur des nœuds pilotés par un **agent de nœud**.
 
 ---
 
-***REMOVED******REMOVED*** VMID : allocation illimitée — 2026-06-15
+## VMID : allocation illimitée — 2026-06-15
 
 La **plage de VMID** n'est plus un plafond : l'allocation est **monotone** (toujours le plus
 petit identifiant libre au-dessus du plancher), un VMID redevenant un simple **handle local**
@@ -3195,7 +3195,7 @@ réattribué librement à l'import d'un projet. Fini l'épuisement de plage.
 
 ---
 
-***REMOVED******REMOVED*** Passerelle WebRTC sous Docker (image pré-bakée) — 2026-06-14
+## Passerelle WebRTC sous Docker (image pré-bakée) — 2026-06-14
 
 La passerelle WebRTC (MediaMTX) peut désormais être déployée en **conteneur Docker**
 sur un nœud, en plus du mode LXC historique.
@@ -3211,7 +3211,7 @@ sur un nœud, en plus du mode LXC historique.
 
 ---
 
-***REMOVED******REMOVED*** Streamer : encodage sur l'image média (ffmpeg) — 2026-06-14
+## Streamer : encodage sur l'image média (ffmpeg) — 2026-06-14
 
 Le **streamer** (encodeur/monitor) est désormais déployé sur l'image **`bobi-media`**
 (qui embarque ffmpeg) et non plus sur l'image de calcul `bobi-compute`.
@@ -3224,7 +3224,7 @@ Le **streamer** (encodeur/monitor) est désormais déployé sur l'image **`bobi-
 
 ---
 
-***REMOVED******REMOVED*** Page Câbles : refonte complète — 2026-06-14
+## Page Câbles : refonte complète — 2026-06-14
 
 La page **Câbles** a été retravaillée en profondeur pour les topologies chargées.
 
@@ -3237,7 +3237,7 @@ La page **Câbles** a été retravaillée en profondeur pour les topologies char
 
 ---
 
-***REMOVED******REMOVED*** Pyramide : nouveau plugin scaler de proxies — 2026-06-14
+## Pyramide : nouveau plugin scaler de proxies — 2026-06-14
 
 Nouveau type **Pyramide** : un générateur de **proxies multi-résolutions** (octaves) d'une
 source, produits **à la demande** et appliqués à chaud.
@@ -3250,7 +3250,7 @@ source, produits **à la demande** et appliqués à chaud.
 
 ---
 
-***REMOVED******REMOVED*** Multiview : habillages, overlays et compositing accéléré — 2026-06-14
+## Multiview : habillages, overlays et compositing accéléré — 2026-06-14
 
 Évolution majeure du **Multiviewer** (composer v0.14.x).
 
@@ -3266,7 +3266,7 @@ source, produits **à la demande** et appliqués à chaud.
 
 ---
 
-***REMOVED******REMOVED*** fps glissant uniformisé + refresh à chaud des consommateurs — 2026-06-14
+## fps glissant uniformisé + refresh à chaud des consommateurs — 2026-06-14
 
 - Le **fps** exposé par tous les plugins est désormais un **débit glissant** (sur ~1 s) et
   non plus un cumul depuis le démarrage, qui pouvait laisser croire à un goulet d'étranglement.
@@ -3275,7 +3275,7 @@ source, produits **à la demande** et appliqués à chaud.
 
 ---
 
-***REMOVED******REMOVED*** TSL 5.0 centralisé + éditeurs de sources — 2026-06-12
+## TSL 5.0 centralisé + éditeurs de sources — 2026-06-12
 
 Refonte **source-centrique** du tally et des labels.
 
@@ -3288,7 +3288,7 @@ Refonte **source-centrique** du tally et des labels.
 
 ---
 
-***REMOVED******REMOVED*** PTP & Sources : SDP TX upgradé + format complet — 2026-06-13
+## PTP & Sources : SDP TX upgradé + format complet — 2026-06-13
 
 - **TX ST 2110** : le SDP annoncé est upgradé avec `ts-refclk:ptp` (référence d'horloge
   PTP réelle), résolu **côté orchestrateur** par nœud du sender (le conteneur ne pouvant
@@ -3298,7 +3298,7 @@ Refonte **source-centrique** du tally et des labels.
 
 ---
 
-***REMOVED******REMOVED*** MTL : santé TX, lcores auto et abonnements RX — 2026-06-12
+## MTL : santé TX, lcores auto et abonnements RX — 2026-06-12
 
 - **Sorties TX** : badge de santé (sous-cadence / « late ») et **budget de lcores** au
   garde-fou d'activation — corrige une saturation du scheduler (sautes, « RTP alignment
@@ -3309,7 +3309,7 @@ Refonte **source-centrique** du tally et des labels.
 
 ---
 
-***REMOVED******REMOVED*** Internationalisation : chrome complet (FR/EN) — 2026-06-12
+## Internationalisation : chrome complet (FR/EN) — 2026-06-12
 
 L'**enrobage i18n** de l'interface est terminé : pages Login, Public Watch, Projets,
 Monitoring, I/O, Containers et la structure commune (layout) sont traduites (FR/EN),
@@ -3318,14 +3318,14 @@ est proposé en première étape de l'installation.
 
 ---
 
-***REMOVED******REMOVED*** Correcteur de couleur : color balance, LUT, glow — 2026-06-13
+## Correcteur de couleur : color balance, LUT, glow — 2026-06-13
 
 Le **correcteur de couleur** gagne un *color balance* en espace YUV, le support des **LUT**
 et un effet *glow* activable, avec divers correctifs de robustesse au câblage.
 
 ---
 
-***REMOVED******REMOVED*** Assistant de création + ATEM 9.6.x — 2026-06-11
+## Assistant de création + ATEM 9.6.x — 2026-06-11
 
 - **Assistant de création** en 2 étapes avec **panier** multi-containers (déploiement groupé).
 - **Pupitres ATEM** : support des versions de firmware **9.6.x** et bouton « Oublier ».
@@ -3334,7 +3334,7 @@ et un effet *glow* activable, avec divers correctifs de robustesse au câblage.
 
 ---
 
-***REMOVED******REMOVED*** Hot-swap monitor : commutation sans coupure entre sources — 2026-06-09
+## Hot-swap monitor : commutation sans coupure entre sources — 2026-06-09
 
 Le monitoring ne recharge plus l'iframe lors d'une commutation entre sources de même
 format vidéo tant que la source audio reste la même (ou absente des deux côtés).
@@ -3350,7 +3350,7 @@ format vidéo tant que la source audio reste la même (ou absente des deux côt�
 
 ---
 
-***REMOVED******REMOVED*** Monitor personnel → Docker compute — 2026-06-09
+## Monitor personnel → Docker compute — 2026-06-09
 
 Les containers **monitor par utilisateur** (et monitors dédiés player) sont désormais
 créés en **Docker compute** plutôt qu'en LXC.
@@ -3362,7 +3362,7 @@ créés en **Docker compute** plutôt qu'en LXC.
 
 ---
 
-***REMOVED******REMOVED*** Délai propre par module (badge ⧖) — 2026-06-09
+## Délai propre par module (badge ⧖) — 2026-06-09
 
 La page **Câbles** affiche maintenant le **délai de traitement propre** de chaque module
 dans sa carte, en complément du délai cumulé sur la sortie.
@@ -3378,7 +3378,7 @@ dans sa carte, en complément du délai cumulé sur la sortie.
 
 ---
 
-***REMOVED******REMOVED*** Badges Δ (délai cumulé) sur les sorties TX ST 2110 — 2026-06-08
+## Badges Δ (délai cumulé) sur les sorties TX ST 2110 — 2026-06-08
 
 Les **badges de délai** de la page Câbles s'affichent désormais correctement
 sur les **slots TX** du moteur MTL et sur tout plugin à latence fixe (Delay, AV Sync).
@@ -3389,12 +3389,12 @@ sur les **slots TX** du moteur MTL et sur tout plugin à latence fixe (Delay, AV
 - **TX MTL** : `inputs_latency_ms` imbriqué dans chaque sender → ignoré par
   `metrics.py`. Maintenant lu. Port d'entrée TX reçoit `delay_in_ms` = délai
   cumulé total (source + chaîne + TX lui-même).
-- **Label tronqué** : "Émetteur 2110-20 ***REMOVED***N" dépassait le `max-width` CSS → badge
-  caché. Label raccourci en "TX ***REMOVED***N" ; `max-width` du label port 120 → 160 px.
+- **Label tronqué** : "Émetteur 2110-20 #N" dépassait le `max-width` CSS → badge
+  caché. Label raccourci en "TX #N" ; `max-width` du label port 120 → 160 px.
 
 ---
 
-***REMOVED******REMOVED*** Sorties ST 2110 MTL : audio ×2 + ANC (2110-30/40) — 2026-06-08
+## Sorties ST 2110 MTL : audio ×2 + ANC (2110-30/40) — 2026-06-08
 
 Les **slots TX du moteur MTL** (`receiver_2110_mtl`) émettent désormais
 **jusqu'à 2 flux audio 2110-30** et **1 flux ANC 2110-40** en parallèle de la
@@ -3411,7 +3411,7 @@ vidéo 2110-20, sans câblage supplémentaire.
 
 ---
 
-***REMOVED******REMOVED*** Page Câbles : suivi des temps de traitement (délai par signal) — 2026-06-07
+## Page Câbles : suivi des temps de traitement (délai par signal) — 2026-06-07
 
 La page **Câbles** affiche désormais les **temps de traitement** le long du pipeline, pour pouvoir
 caler un **délai audio externe** et comprendre l'alignement du mélangeur.
@@ -3431,7 +3431,7 @@ caler un **délai audio externe** et comprendre l'alignement du mélangeur.
 
 ---
 
-***REMOVED******REMOVED*** Synchronisation broadcast : genlock de toute la chaîne + cadences fractionnaires + gating — 2026-06-07
+## Synchronisation broadcast : genlock de toute la chaîne + cadences fractionnaires + gating — 2026-06-07
 
 Refonte complète de la **synchronisation** du pipeline : toute la chaîne (sources → traitements →
 compositeurs → sortie) est désormais **genlockée sur le PTP**, avec **latence minimale** et **support
@@ -3466,7 +3466,7 @@ natif des cadences fractionnaires** (29.97/59.94). Voir Aide → *Synchronisatio
 
 ---
 
-***REMOVED******REMOVED*** Recorder : timecode (0 / 2110-40 / PTP) + Docker média — 2026-06-05
+## Recorder : timecode (0 / 2110-40 / PTP) + Docker média — 2026-06-05
 
 Le **recorder** (v0.5.0) enregistre une **piste timecode** et passe sous Docker média (Phase 3).
 
@@ -3476,7 +3476,7 @@ Le **recorder** (v0.5.0) enregistre une **piste timecode** et passe sous Docker 
 
 ---
 
-***REMOVED******REMOVED*** Player : timecode ST 2110-40 (TC clip + TC antenne) — 2026-06-05
+## Player : timecode ST 2110-40 (TC clip + TC antenne) — 2026-06-05
 
 Le **player** (v0.6.1) sort désormais du **timecode** sur deux flux ST 2110-40 indépendants (Phase 2b).
 
@@ -3486,7 +3486,7 @@ Le **player** (v0.6.1) sort désormais du **timecode** sur deux flux ST 2110-40 
 
 ---
 
-***REMOVED******REMOVED*** Player : moteur GStreamer + Docker média — 2026-06-05
+## Player : moteur GStreamer + Docker média — 2026-06-05
 
 Le **player** (v0.6.0) passe au moteur **GStreamer** et sous Docker média (Phase 2a).
 
@@ -3496,7 +3496,7 @@ Le **player** (v0.6.0) passe au moteur **GStreamer** et sous Docker média (Phas
 
 ---
 
-***REMOVED******REMOVED*** stills + transcoder sous Docker média — 2026-06-05
+## stills + transcoder sous Docker média — 2026-06-05
 
 Premiers plugins média sur le nouveau socle Docker média (Phase 1).
 
@@ -3505,7 +3505,7 @@ Premiers plugins média sur le nouveau socle Docker média (Phase 1).
 
 ---
 
-***REMOVED******REMOVED*** Socle Docker média (chemin compute) — 2026-06-05
+## Socle Docker média (chemin compute) — 2026-06-05
 
 Infrastructure pour faire tourner les plugins **média** (player/recorder/transcoder/stills) sous Docker, avec accès stockage et profils CPU adaptés. Aucun plugin migré à ce stade — uniquement le socle orchestrateur.
 
@@ -3518,7 +3518,7 @@ Infrastructure pour faire tourner les plugins **média** (player/recorder/transc
 
 ---
 
-***REMOVED******REMOVED*** UDC géométrique pur (numpy) sous Docker — 2026-06-05
+## UDC géométrique pur (numpy) sous Docker — 2026-06-05
 
 L'**UDC** (`udc` v0.2.0) est recentré sur la conversion **géométrique** (résolution / frame rate / chroma 4:2:0-4:2:2-4:4:4) et passe en **runtime Docker** (docker-only) sur le chemin compute.
 
@@ -3528,7 +3528,7 @@ L'**UDC** (`udc` v0.2.0) est recentré sur la conversion **géométrique** (rés
 
 ---
 
-***REMOVED******REMOVED*** avsync sous Docker (chemin compute) — 2026-06-05
+## avsync sous Docker (chemin compute) — 2026-06-05
 
 La **mire de synchro A/V** (`avsync` v0.4.0) passe en **runtime Docker** (docker-only) sur le chemin compute : créée depuis **Réglages → Déploiement → Nœuds** sur un nœud compute (plus de vaisseau LXC), avec une IP propre (macvlan) et le `/dev/shm` du pipeline bind-monté.
 
@@ -3537,7 +3537,7 @@ La **mire de synchro A/V** (`avsync` v0.4.0) passe en **runtime Docker** (docker
 
 ---
 
-***REMOVED******REMOVED*** Traitements & Médias sous Docker (chemin compute) — 2026-06-05
+## Traitements & Médias sous Docker (chemin compute) — 2026-06-05
 
 Six plugins de calcul passent en **runtime Docker** (docker-only) sur le chemin compute : ils se créent depuis **Réglages → Déploiement → Nœuds** sur un nœud compute (plus de vaisseau LXC), avec une IP propre (macvlan) et le `/dev/shm` du pipeline bind-monté.
 
@@ -3547,13 +3547,13 @@ Six plugins de calcul passent en **runtime Docker** (docker-only) sur le chemin 
 
 ---
 
-***REMOVED******REMOVED*** Profil ressources par type + allocateur de cœurs — 2026-06-05
+## Profil ressources par type + allocateur de cœurs — 2026-06-05
 
 Chaque type de container peut déclarer ses ressources (`resources: {cores, memory, pin}`) dans son manifeste, appliquées en LXC comme en Docker. `app/core_pool.py` réalise un **pinning Docker non chevauchant** (modèle `nic_pool`). Le `streamer` réclame 4 cœurs : la famine CPU était une cause de dérive A/V. Inclut le **calage A/V manuel** côté streamer (fifo borné).
 
 ---
 
-***REMOVED******REMOVED*** Chemin Docker « compute » généraliste — 2026-06-04
+## Chemin Docker « compute » généraliste — 2026-06-04
 
 Deuxième chemin Docker, distinct du driver MTL : exécuter n'importe quel plugin de **calcul** en conteneur sur un nœud du cluster. Le conteneur embarque l'**agent par-conteneur** (`script_templates/agent.py`, même contrat `:8081` deploy/start/stop que les LXC) ; l'orchestrateur y pousse le `script.py` rendu exactement comme pour un LXC.
 
@@ -3562,7 +3562,7 @@ Deuxième chemin Docker, distinct du driver MTL : exécuter n'importe quel plugi
 
 ---
 
-***REMOVED******REMOVED*** MTL (receiver_2110_mtl) : audio, ANC et entrelacé — 2026-06-04
+## MTL (receiver_2110_mtl) : audio, ANC et entrelacé — 2026-06-04
 
 Le receiver ST 2110 via Media Transport Library s'étend au-delà de la vidéo :
 - **Audio ST 2110-30** RX + TX (Phase B2), **ptime** réglable (Réglages → MXL).
@@ -3572,19 +3572,19 @@ Le receiver ST 2110 via Media Transport Library s'étend au-delà de la vidéo :
 
 ---
 
-***REMOVED******REMOVED*** Sources / Destinations 2110 + câblage bi-rôle — 2026-06-04
+## Sources / Destinations 2110 + câblage bi-rôle — 2026-06-04
 
 Page **/io** scindée en onglets **Sources 2110** / **Destinations 2110**, réutilisant la carte de contrôle riche du plugin (couleurs par essence vidéo/audio/ANC, GÉN/IDENT/SDP). Un moteur MTL **bi-rôle** (`split_io`) apparaît en deux nœuds sur les Câbles (RX à gauche, TX à droite) et autorise le relais RX→TX d'un même moteur.
 
 ---
 
-***REMOVED******REMOVED*** Cluster : abstraction nœud + création unifiée LXC/Docker — 2026-06-03
+## Cluster : abstraction nœud + création unifiée LXC/Docker — 2026-06-03
 
 Premières fondations multi-nœuds : table `nodes`, **driver de déploiement Docker** (`app/docker_driver.py`), et **UI Nœuds** (Réglages → Déploiement). La palette de création unifie LXC et Docker — un « Nœud » est une déclaration de cible. Automatisation orchestrateur du déploiement `receiver_2110_mtl` (BDF VF, cpuset, push du binaire), et **prép MTL du template** automatisée, gardée par la capacité NIC du nœud.
 
 ---
 
-***REMOVED******REMOVED*** Licence : passage en GPL v3 — 2026-06-02
+## Licence : passage en GPL v3 — 2026-06-02
 
 Le projet est désormais publié sous **GNU General Public License v3** (ou version ultérieure).
 Ajout du fichier [`LICENSE`](LICENSE) (texte officiel FSF) + section *Licence* dans le README.
@@ -3592,7 +3592,7 @@ Ajout du fichier [`LICENSE`](LICENSE) (texte officiel FSF) + section *Licence* d
 
 ---
 
-***REMOVED******REMOVED*** Déploiement → Distant : mise à jour entre instances (pull/push) — 2026-06-02
+## Déploiement → Distant : mise à jour entre instances (pull/push) — 2026-06-02
 
 Une instance peut désormais se mettre à jour à partir d'une autre sur le réseau, sans réinstaller, depuis **Réglages → Déploiement → Distant**.
 
@@ -3604,7 +3604,7 @@ Une instance peut désormais se mettre à jour à partir d'une autre sur le rés
 
 ---
 
-***REMOVED******REMOVED*** Déploiement → Local : hub d'installation des prérequis hôte — 2026-06-02
+## Déploiement → Local : hub d'installation des prérequis hôte — 2026-06-02
 
 L'onglet **Réglages → Déploiement** se scinde en deux sous-onglets : **Local** et **Distant**.
 
@@ -3617,7 +3617,7 @@ Prép **MTL / E810** (Media Transport Library, Intel Tiber Broadcast Suite), cib
 
 ---
 
-***REMOVED******REMOVED*** PTP : statistiques de dérive sur 24 h — 2026-06-02
+## PTP : statistiques de dérive sur 24 h — 2026-06-02
 
 La page **Réglages → Réseau → PTP** affiche désormais, sous les graphiques Offset master et Mean path delay, la **moyenne** et le **maximum atteint** sur les dernières 24 h. Le graphique (fenêtre 10 min max) ne permettait pas de quantifier la dérive lente ; ces deux valeurs la mesurent précisément.
 
@@ -3627,7 +3627,7 @@ La page **Réglages → Réseau → PTP** affiche désormais, sous les graphique
 
 ---
 
-***REMOVED******REMOVED*** Déploiement : build sélectif + installation en une commande — 2026-06-01
+## Déploiement : build sélectif + installation en une commande — 2026-06-01
 
 Nouvel onglet **Réglages → Déploiement** pour dupliquer facilement une installation sur plusieurs serveurs.
 
@@ -3641,7 +3641,7 @@ Nouvel onglet **Réglages → Déploiement** pour dupliquer facilement une insta
 
 ---
 
-***REMOVED******REMOVED*** Premier démarrage : assistant de configuration guidé — 2026-06-01
+## Premier démarrage : assistant de configuration guidé — 2026-06-01
 
 Plus de compte `admin/bobistudio` créé en dur (risque de sécurité). À la première installation :
 
@@ -3651,7 +3651,7 @@ Plus de compte `admin/bobistudio` créé en dur (risque de sécurité). À la pr
 
 ---
 
-***REMOVED******REMOVED*** Réglages : réorganisation des onglets — 2026-06-01
+## Réglages : réorganisation des onglets — 2026-06-01
 
 Simplification de la barre d'onglets des Réglages :
 
@@ -3661,57 +3661,57 @@ Simplification de la barre d'onglets des Réglages :
 
 ---
 
-***REMOVED******REMOVED*** webrtc_gateway : migration ServeurStream (service consolidé) — 2026-06-01
+## webrtc_gateway : migration ServeurStream (service consolidé) — 2026-06-01
 
 Le plugin `ServeurStream` est supprimé. Son script MediaMTX vit désormais dans `services/webrtc_gateway/script.py` — le service orchestre tout : déploiement, configuration et script du container. Le type en DB migre automatiquement de `ServeurStream` → `webrtc_gateway` au démarrage.
 
 ---
 
-***REMOVED******REMOVED*** Réglages : correctifs accessibilité, performance et conformité design — 2026-06-01
+## Réglages : correctifs accessibilité, performance et conformité design — 2026-06-01
 
 Passe d'audit sur la page Réglages :
 
 - **Performance** : `AbortController` sur le `setInterval` 2s — les requêtes réseau en vol sont annulées avant chaque nouveau cycle.
 - **Anti-pattern** : `border-left: 3px` sur les cards MXL Pipeline remplacé par `border-color` + `background` teinté (conforme charte design).
-- **Theming** : couleur `***REMOVED***222` hardcodée sur la LED Skaarhoj → `var(--bg-input)` / `var(--accent)`.
+- **Theming** : couleur `#222` hardcodée sur la LED Skaarhoj → `var(--bg-input)` / `var(--accent)`.
 - **Accessibilité** : `aria-label` sur les boutons icône `↻` ; attribut `for` sur 64 labels de formulaire.
 - **Responsive** : `min-width` fixes ≥ 200 px → `min(Npx, 100%)`.
 
 ---
 
-***REMOVED******REMOVED*** Onglet Services : versioning, export/import, toggles — 2026-06-01
+## Onglet Services : versioning, export/import, toggles — 2026-06-01
 
 L'onglet **Réglages → Services** passe au même niveau de fonctionnalité que l'onglet Plugins.
 
-***REMOVED******REMOVED******REMOVED*** Versioning
+### Versioning
 
 - Chaque service déclare un `meta.json` (version, date de publication, nouveautés, corrections, bugs connus).
 - Les versions antérieures sont archivées dans `services/<nom>/versions/<ver>/`.
 - Cliquer une ligne déploie le panneau de gestion des versions.
 - **Activer une version** promeut une version archivée en version courante (redémarrage requis).
 
-***REMOVED******REMOVED******REMOVED*** Export / Import
+### Export / Import
 
 - **Exporter** un service complet (`.mxlservice`) ou une version seule.
 - **Importer** un service complet (nouveau ou mise à jour) ou une version isolée dans un service existant.
 - Gestion des conflits de version : confirmation avant remplacement, proposition d'activation si version plus récente.
 
-***REMOVED******REMOVED******REMOVED*** Activer / désactiver
+### Activer / désactiver
 
 - Toggle switch dans le panneau déplié de chaque service (NMOS, Ember+, ATEM…).
 - Appelle immédiatement `start()` / `stop()` du module en plus de persister le setting.
 
-***REMOVED******REMOVED******REMOVED*** `description` dans les manifestes
+### `description` dans les manifestes
 
 Chaque `manifest.json` porte désormais un champ `description` affiché sous le nom du service dans la liste.
 
-***REMOVED******REMOVED******REMOVED*** Corrections UI
+### Corrections UI
 
 - Les lignes dépliées et les `<details>` de versions restent ouverts lors du rafraîchissement automatique (toutes les 5 s).
 
 ---
 
-***REMOVED******REMOVED*** Service TSL 5.0 centralisé — 2026-06-01
+## Service TSL 5.0 centralisé — 2026-06-01
 
 Nouveau service **TSL 5.0** (`services/tsl/`) dans l'onglet **Réglages → Protocoles → TSL**.
 
@@ -3719,7 +3719,7 @@ Nouveau service **TSL 5.0** (`services/tsl/`) dans l'onglet **Réglages → Prot
 
 **Maintenant** : l'orchestrateur écoute sur un seul port TCP, maintient un état tally global par index TSL (avec TTL adaptatif et gestion des keepalives), et distribue les changements à tous les multiviews concernés via `POST :8082/tally_bulk`.
 
-**Configuration** : tableau de mapping **Index TSL → container multiview + flux ***REMOVED***** dans Réglages → Protocoles → TSL. Un même index peut alimenter plusieurs multiviews.
+**Configuration** : tableau de mapping **Index TSL → container multiview + flux #** dans Réglages → Protocoles → TSL. Un même index peut alimenter plusieurs multiviews.
 
 **Mode orchestrateur dans le multiview** : cocher *« TSL géré par l'orchestrateur »* dans la configuration de déploiement du multiview désactive son serveur TSL local — le container reçoit les tallies de l'orchestrateur uniquement.
 
@@ -3730,11 +3730,11 @@ Nouveau service **TSL 5.0** (`services/tsl/`) dans l'onglet **Réglages → Prot
 
 ---
 
-***REMOVED******REMOVED*** Système de services infrastructure (`services/`) — 2026-06-01
+## Système de services infrastructure (`services/`) — 2026-06-01
 
 Les services infrastructure (NMOS, Ember+, ATEM, Skaarhoj, WebRTC, Stockage) sont désormais des **modules autonomes** dans `services/<nom>/`, sur le même modèle que les container plugins dans `plugins/<type>/`.
 
-***REMOVED******REMOVED******REMOVED*** Structure d'un service
+### Structure d'un service
 
 ```
 services/mon-service/
@@ -3744,25 +3744,25 @@ services/mon-service/
   lxc_script.py      ← (optionnel) script déployé dans le container
 ```
 
-***REMOVED******REMOVED******REMOVED*** Onglet Réglages dynamique
+### Onglet Réglages dynamique
 
 La page Réglages **découvre automatiquement** les services au démarrage. Plus besoin de toucher `settings.html` ou `routes.py` pour ajouter un service. Les onglets *Protocoles* (NMOS + Ember+), *Pupitres* (ATEM + Skaarhoj), *WebRTC* et *Stockage* sont désormais injectés dynamiquement.
 
-***REMOVED******REMOVED******REMOVED*** Stockage migré
+### Stockage migré
 
 Le service Stockage (Filebrowser) quitte la palette de containers et est géré depuis **Réglages → Stockage**, comme la passerelle WebRTC. Son script LXC vit dans `services/storage/lxc_script.py`.
 
-***REMOVED******REMOVED******REMOVED*** Fichier de log renommé
+### Fichier de log renommé
 
 `orchestrateur.log` → `bobistudio.log`.
 
 ---
 
-***REMOVED******REMOVED*** Intégration Skaarhoj Quick Bar — 2026-05-31
+## Intégration Skaarhoj Quick Bar — 2026-05-31
 
 Prise en charge des panels **Skaarhoj Quick Bar** (Raw Panel Protocol TCP) depuis l'onglet **Réglages → Pupitres → Skaarhoj**.
 
-***REMOVED******REMOVED******REMOVED*** Mappings multiples (presets)
+### Mappings multiples (presets)
 
 - Créer, nommer, dupliquer et supprimer des **mappings nommés** réutilisables.
 - Chaque mapping définit le **mode** (Mélangeur, Multiview, DVE, Routing XY) et l'affectation des 6 boutons.
@@ -3771,7 +3771,7 @@ Prise en charge des panels **Skaarhoj Quick Bar** (Raw Panel Protocol TCP) depui
 - Chaque port `produces` d'un container est une chip distincte (vidéo / audio séparés, code couleur).
 - **Tooltip au survol** (70 ms) sur chaque slot affecté : container, flux, SHM, type d'action.
 
-***REMOVED******REMOVED******REMOVED*** Types de boutons
+### Types de boutons
 
 | Type | Effet sur le panel |
 |------|--------------------|
@@ -3781,11 +3781,11 @@ Prise en charge des panels **Skaarhoj Quick Bar** (Raw Panel Protocol TCP) depui
 | **Layout** | Rappelle un layout sur le Multiview / DVE cible |
 | **Rappel mapping** | Bascule le panel vers un autre mapping (chip orange dans la palette) |
 
-***REMOVED******REMOVED******REMOVED*** Routing XY
+### Routing XY
 
 En mode Routing, la palette propose deux sections : **Sources** et **Destinations** (inputs des containers consommateurs). Sur le panel physique : appui destination → arme (LED orange), appui source → route le SHM vers la destination armée.
 
-***REMOVED******REMOVED******REMOVED*** Multi-panels
+### Multi-panels
 
 - Configurer plusieurs panels dans la section **Panels connectés** (IP, port, statut live, mapping affecté).
 - Chaque panel a sa propre connexion TCP indépendante et peut utiliser le même mapping qu'un autre panel.
@@ -3793,13 +3793,13 @@ En mode Routing, la palette propose deux sections : **Sources** et **Destination
 
 ---
 
-***REMOVED******REMOVED*** Accueil : alignement du header — 2026-05-31
+## Accueil : alignement du header — 2026-05-31
 
 Les trois éléments de `.home-head` (nom système, produit, horodatage) s'affichaient sur des lignes différentes à cause du curseur de placement automatique CSS Grid. Corrigé en fixant `grid-row: 1` sur chaque élément.
 
 ---
 
-***REMOVED******REMOVED*** Onglet Pupitres : sous-onglets ATEM / Skaarhoj — 2026-05-31
+## Onglet Pupitres : sous-onglets ATEM / Skaarhoj — 2026-05-31
 
 L'onglet **Pupitres ATEM** est renommé **Pupitres** et divisé en deux sous-onglets :
 - **ATEM** : contenu existant inchangé (émulateur switcher, affectation des pupitres).
@@ -3807,7 +3807,7 @@ L'onglet **Pupitres ATEM** est renommé **Pupitres** et divisé en deux sous-ong
 
 ---
 
-***REMOVED******REMOVED*** RAZ & rappel de projet : destruction fiabilisée + progression verbeuse — 2026-05-30
+## RAZ & rappel de projet : destruction fiabilisée + progression verbeuse — 2026-05-30
 
 Les opérations de masse (**RAZ** des containers et **rappel de projet**) vérifient désormais réellement chaque étape côté Proxmox et affichent leur progression en direct.
 
@@ -3825,7 +3825,7 @@ Les opérations de masse (**RAZ** des containers et **rappel de projet**) vérif
 
 ---
 
-***REMOVED******REMOVED*** Accueil : graphique des stats du pipeline MXL — 2026-05-30
+## Accueil : graphique des stats du pipeline MXL — 2026-05-30
 
 La page d'accueil affiche 4 **cartes-métriques** avec **sparkline live** (historique glissant ~2 min, sans librairie externe — canvas) :
 
@@ -3838,7 +3838,7 @@ Tout est dérivé de `/api/home/summary` (nouvel objet `stats`, agrégé depuis 
 
 ---
 
-***REMOVED******REMOVED*** Sources : incrustation IDENT sur les receivers — 2026-05-30
+## Sources : incrustation IDENT sur les receivers — 2026-05-30
 
 À côté du bouton **GÉN**, chaque slot **vidéo** d'un receiver a désormais un bouton **IDENT** qui incruste **3 lignes** en haut à droite de l'image (fond noir, texte blanc, **taille réglable**) :
 
@@ -3850,7 +3850,7 @@ Bascule et taille **à chaud** depuis I/O Sources (`:8082/ident`, sans respawn f
 
 ---
 
-***REMOVED******REMOVED*** Câbles : insertion automatique d'un UDC en cas de formats différents — 2026-05-30
+## Câbles : insertion automatique d'un UDC en cas de formats différents — 2026-05-30
 
 Sur la page **Câbles**, relier une source à un consommateur à **format fixe** (mélangeur, correcteur, DVE, enregistreur…) dont le format **diffère** (résolution, chroma, cadence ou colorimétrie) proposait jusqu'ici un câble qui donnait une image illisible. Désormais une fenêtre propose d'**insérer un convertisseur UDC**, par ordre de pertinence :
 
@@ -3863,7 +3863,7 @@ Le format produit (`produces[].format`) et le format attendu (`consumes[].format
 
 ---
 
-***REMOVED******REMOVED*** Traitements : nouveau type UDC (convertisseur up/down/cross) — 2026-05-30
+## Traitements : nouveau type UDC (convertisseur up/down/cross) — 2026-05-30
 
 Nouveau plugin **UDC** (rubrique **Traitements**) : adapte n'importe quelle entrée vidéo vers un **format de sortie cible** — **résolution** (up/down), **cadence** (cross, ex. 25→50), **chroma** (4:2:0 / 4:2:2 / 4:4:4) et **colorimétrie** (BT.709 / BT.2020 / PQ / HLG / BT.601). Une entrée, une sortie ; moteur FFmpeg interne (shm → conversion → shm).
 
@@ -3873,7 +3873,7 @@ Nouveau plugin **UDC** (rubrique **Traitements**) : adapte n'importe quelle entr
 
 ---
 
-***REMOVED******REMOVED*** Vidéo : format de flux exposé + chroma 4:2:2 par défaut — 2026-05-30
+## Vidéo : format de flux exposé + chroma 4:2:2 par défaut — 2026-05-30
 
 Tout le pipeline vidéo en mémoire partagée est passé en **4:2:2 par défaut** (au lieu de 4:2:0), avec **chroma configurable** (4:2:0 / 4:2:2 / 4:4:4) — orienté réception **ST 2110-20 broadcast**. Chaque flux **porte désormais son format** (résolution, cadence, chroma, profondeur, colorimétrie), visible en badge sur la page **Câbles** et exploité pour l'insertion auto d'UDC.
 
@@ -3883,13 +3883,13 @@ Tout le pipeline vidéo en mémoire partagée est passé en **4:2:2 par défaut*
 
 ---
 
-***REMOVED******REMOVED*** Plugins : stockage générique (presets / mémoires) — 2026-05-30
+## Plugins : stockage générique (presets / mémoires) — 2026-05-30
 
 Les presets du correcteur et les mémoires du DVE utilisaient des tables + routes dédiées codées en dur. Elles passent sur un **stockage générique par plugin** (`plugin_store`) : n'importe quel plugin peut désormais persister des entrées nommées (globales ou par container) via `GET/POST/PATCH/DELETE /api/plugins/<type>/store`, **sans toucher au cœur**. Données existantes migrées automatiquement (presets + mémoires conservés ; anciennes tables gardées en filet). Pour l'utilisateur : aucun changement, presets et mémoires fonctionnent comme avant.
 
 ---
 
-***REMOVED******REMOVED*** Streams : lien client public pour un flux WebRTC — 2026-05-30
+## Streams : lien client public pour un flux WebRTC — 2026-05-30
 
 Depuis la carte d'un encodeur (page **Streams**), on peut générer un **lien à envoyer à un client** ouvrant une **page publique brandée** qui lit le flux WebRTC — sans compte ni accès à l'orchestrateur.
 
@@ -3899,25 +3899,25 @@ Depuis la carte d'un encodeur (page **Streams**), on peut générer un **lien à
 
 Le jeton protège la *page* (le flux MediaMTX reste diffusé sur la passerelle). Pré-requis : passerelle WebRTC déployée + activée, et **joignable par le client** (`gateway_ip:http_port`) — pour un client externe, cette adresse doit être routable.
 
-***REMOVED******REMOVED*** Correctif : câblage d'un plugin à entrée unique (correcteur) — 2026-05-29
+## Correctif : câblage d'un plugin à entrée unique (correcteur) — 2026-05-29
 
-Câbler une source dans un correcteur de couleur depuis la page Câbles renvoyait « n'a pas d'entrée video ***REMOVED***0 ». Cause : le port unique était numéroté 0 par l'UI alors que l'entrée du plugin n'est pas « slottée ». Le câblage accepte désormais une entrée unique non slottée pour le slot demandé (correctif générique, vaut pour tout plugin mono-entrée).
+Câbler une source dans un correcteur de couleur depuis la page Câbles renvoyait « n'a pas d'entrée video #0 ». Cause : le port unique était numéroté 0 par l'UI alors que l'entrée du plugin n'est pas « slottée ». Le câblage accepte désormais une entrée unique non slottée pour le slot demandé (correctif générique, vaut pour tout plugin mono-entrée).
 
-Harmonisation : **les numéros de slot affichés commencent à 1** (le message d'erreur montrait « ***REMOVED***0 » → désormais « ***REMOVED***1 », comme les libellés PiP/Input/Box/Audio déjà en 1-based). La numérotation interne reste 0-based (clés, API).
+Harmonisation : **les numéros de slot affichés commencent à 1** (le message d'erreur montrait « #0 » → désormais « #1 », comme les libellés PiP/Input/Box/Audio déjà en 1-based). La numérotation interne reste 0-based (clés, API).
 
-***REMOVED******REMOVED*** Plugins : UI embarquée — Mélangeur + Multiview (bespoke supprimés) — 2026-05-30
+## Plugins : UI embarquée — Mélangeur + Multiview (bespoke supprimés) — 2026-05-30
 
 Les 4 types Traitements ont maintenant leur UI entièrement embarquée dans les plugins. Pages bespoke supprimées (mixer.js, multiview.js, traitements_melangeurs.html, traitements_multiview.html). multiview.js reste dans static/ (chargé dynamiquement par le plugin).
 
-***REMOVED******REMOVED*** Plugins : UI embarquée — Mélangeur + Multiview — 2026-05-30
+## Plugins : UI embarquée — Mélangeur + Multiview — 2026-05-30
 
 Les deux derniers types Traitements rejoignent le modèle d'UI embarquée : **Mélangeur** (T-bar, buses PGM/PVW/Keyer, DSK, ATEM) et **Multiview** (composer 3-panneaux, drag-canvas, layouts). Le shell Traitements générique est maintenant utilisé pour les 4 types. Bespoke Mélangeur/Multiview conservés inertes jusqu'à confirmation navigateur.
 
-***REMOVED******REMOVED*** Plugins : UI embarquée — DVE / SuperSource — 2026-05-29
+## Plugins : UI embarquée — DVE / SuperSource — 2026-05-29
 
 Le **DVE** rejoint le Correcteur : son éditeur (canvas drag/resize des 4 PiP, sources, crop, bordure, copier/coller, mémoires recall/save/export/import/envoi) vit désormais dans `plugins/dve/control.{html,js,css}` et se monte dans le shell Traitements générique. Endpoints inchangés (`/plugin/{state,box,input}` + `/dve/*` mémoires/persist). Le Correcteur est confirmé OK ; ses fichiers bespoke ont été supprimés. Reste : Mélangeur, Multiview.
 
-***REMOVED******REMOVED*** Plugins : UI de contrôle embarquée — pilote Correcteur — 2026-05-29
+## Plugins : UI de contrôle embarquée — pilote Correcteur — 2026-05-29
 
 Un plugin peut désormais **embarquer son interface de contrôle riche** (pas seulement les plugins Médias) : un `.mxlplugin` importé amène aussi son UI. Pilote sur le **Correcteur de couleur**.
 
@@ -3926,7 +3926,7 @@ Un plugin peut désormais **embarquer son interface de contrôle riche** (pas se
 
 Backend : shell `templates/traitements_plugin.html` + route inchangée d'URL. dve/mixer/multiview restent en pages bespoke (migration à suivre, même recette).
 
-***REMOVED******REMOVED*** Plugins : désactiver / supprimer — 2026-05-29
+## Plugins : désactiver / supprimer — 2026-05-29
 
 Le cycle de vie des plugins est complet depuis Réglages → Plugins (vue dépliée d'un plugin) :
 
@@ -3935,11 +3935,11 @@ Le cycle de vie des plugins est complet depuis Réglages → Plugins (vue dépli
 
 Backend : routes `POST /api/plugins/<type>/disable` et `DELETE /api/plugins/<type>` ; état désactivé stocké en réglage `plugins_disabled` (hors fichiers du plugin). Frontend : `templates/settings.html`.
 
-***REMOVED******REMOVED*** Plugins : catégories Sources / Destinations / Streams corrigées — 2026-05-29
+## Plugins : catégories Sources / Destinations / Streams corrigées — 2026-05-29
 
 `receiver_2110` (Sources), `sender_2110` (Destinations) et `ServeurStream` (Streams) ont enfin leur **catégorie** au lieu de « — ». Au passage, les chips Receiver/Sender de la palette ne sont plus codés en dur : ils viennent du **registre de plugins** comme tous les autres (le chip disparaît automatiquement si le plugin est retiré/désactivé). `ServeurStream` reste hors palette (déployé via Réglages → WebRTC), avec une catégorie d'affichage « Streams ».
 
-***REMOVED******REMOVED*** Onglet Plugins : filtres + détail enrichi — 2026-05-29
+## Onglet Plugins : filtres + détail enrichi — 2026-05-29
 
 - **Filtres** (comme la page Containers) au-dessus du tableau : par **Catégorie** et par **état de version** (Tous / À jour / Obsolète).
 - Dans le **détail déplié**, les versions sont séparées en colonnes claires : **Version déployée** (sur le container) · **Version actuelle** (du plugin) · **Déployer** (choix de la version) · **Dernier déploiement** · Projets.
@@ -3947,7 +3947,7 @@ Backend : routes `POST /api/plugins/<type>/disable` et `DELETE /api/plugins/<typ
 
 Backend : colonne `deployed_at` (horodatée par `db_update_deploy_config`), exposée par `GET /api/plugins`. Frontend : `templates/settings.html`.
 
-***REMOVED******REMOVED*** Plugins : import / export `.mxlplugin` + activer une version — 2026-05-29
+## Plugins : import / export `.mxlplugin` + activer une version — 2026-05-29
 
 On peut désormais **installer, mettre à jour et exporter** un plugin depuis Réglages → Plugins, sans SSH ni redémarrage.
 
@@ -3962,7 +3962,7 @@ On peut désormais **installer, mettre à jour et exporter** un plugin depuis R�
 
 Backend : `app/plugins.py` (validate/install/activate/export), routes `GET /api/plugins/<type>/export`, `POST /api/plugins/import`, `POST /api/plugins/<type>/activate`. Frontend : `templates/settings.html`.
 
-***REMOVED******REMOVED*** Onglet Plugins : tableau triable + lignes dépliables — 2026-05-29
+## Onglet Plugins : tableau triable + lignes dépliables — 2026-05-29
 
 Le tableau de Réglages → Plugins est plus lisible et actionnable.
 
@@ -3972,7 +3972,7 @@ Le tableau de Réglages → Plugins est plus lisible et actionnable.
 
 Backend : `GET /api/plugins` renvoie désormais le détail des instances (+ projets), nouvelle route `POST /api/containers/<vmid>/redeploy-version`. Frontend : `templates/settings.html`.
 
-***REMOVED******REMOVED*** Plugins multi-versions : choisir la version au déploiement — 2026-05-29
+## Plugins multi-versions : choisir la version au déploiement — 2026-05-29
 
 Un plugin peut désormais avoir **plusieurs versions installées côte à côte**, et on peut **rappeler une version précise** d'un container depuis la palette (page Surveillance).
 
@@ -3983,7 +3983,7 @@ Un plugin peut désormais avoir **plusieurs versions installées côte à côte*
 
 Backend : `app/plugins.py` (`versions()`, rendu par version), propagation `version` dans `scripts.py`/`deploy.py`/`routes.py`/`main.py`. Frontend : sélecteur dans `deploy_palette.html` + `static/scripts.js`.
 
-***REMOVED******REMOVED*** Réglages → onglet « Plugins » (gestion) — 2026-05-29
+## Réglages → onglet « Plugins » (gestion) — 2026-05-29
 
 Nouvel onglet **Réglages → Plugins** pour gérer les plugins de types de containers (phase 1 : visibilité + cycle de vie).
 
@@ -3996,7 +3996,7 @@ Nouvel onglet **Réglages → Plugins** pour gérer les plugins de types de cont
 
 Backend : `app/plugins.py` (capture des erreurs de scan), 3 routes dans `app/routes.py` (`GET /api/plugins`, `POST /api/plugins/reload`, `POST /api/plugins/<type>/redeploy`). Frontend : onglet + JS dans `templates/settings.html`.
 
-***REMOVED******REMOVED*** 🎉 Architecture : 100 % plugin — campagne terminée — 2026-05-29
+## 🎉 Architecture : 100 % plugin — campagne terminée — 2026-05-29
 
 **Tous les types de containers sont désormais des plugins** (`plugins/<type>/`). La série de migrations ci-dessous a transformé chaque type cœur, jusqu'au dernier, en plugin autonome et versionné — sans rien casser pour l'utilisateur.
 
@@ -4004,14 +4004,14 @@ Backend : `app/plugins.py` (capture des erreurs de scan), 3 routes dans `app/rou
 - **Bénéfices** : version par container (mise à jour type par type, détection d'écarts), UI embarquée avec le plugin, ajout d'un nouveau type sans toucher au cœur, et catégories de palette claires.
 - **Pour l'utilisateur, rien ne change** : mêmes pages, mêmes réglages, mêmes câblages. Les containers existants sont **migrés automatiquement au redémarrage** ; un redéploiement les fait passer au script du plugin. Voir la nouvelle section **Aide → Système de plugins**.
 
-***REMOVED******REMOVED*** Plugins : Passerelle WebRTC migrée (→ ServeurStream) — 100% plugin — 2026-05-29
+## Plugins : Passerelle WebRTC migrée (→ ServeurStream) — 100% plugin — 2026-05-29
 
 La **passerelle WebRTC** (MediaMTX) rejoint le système de plugins et est renommée **`ServeurStream`**. C'était le dernier script encore rendu en dur : **plus aucun `script_templates/*.py`** n'est rendu (il ne reste que l'agent, qui vit dans le template LXC).
 
 - **Renommage transparent** : les passerelles existantes sont migrées automatiquement au redémarrage. Le déploiement reste **Réglages → onglet WebRTC** (inchangé pour l'utilisateur) ; le module `app/webrtc_gateway.py` et les réglages `webrtc_*` gardent leur nom.
 - Sous le capot : `plugins/ServeurStream/`, migration DB + renommage dans `app/{scripts,deploy,routes,webrtc_gateway}.py`. L'ancien `script_templates/webrtc_gateway.py` est supprimé.
 
-***REMOVED******REMOVED*** Plugins : Receiver migré (→ receiver_2110) — campagne terminée — 2026-05-29
+## Plugins : Receiver migré (→ receiver_2110) — campagne terminée — 2026-05-29
 
 Le **receiver ST 2110** rejoint le système de plugins et est renommé **`receiver_2110`**. C'était le **dernier type cœur** : **tous les types de containers sont désormais des plugins**.
 
@@ -4022,7 +4022,7 @@ Le **receiver ST 2110** rejoint le système de plugins et est renommé **`receiv
 
 Backend : `plugins/receiver_2110/`, migration DB + `normalize_receiver_params` (`app/scripts.py`), renommage `app/{deploy,nmos,routes,projects,monitor,emberplus}.py`. Frontend : `static/scripts.js`, `templates/{deploy_palette,cards,forms,home,cables,projects,aide}.html`. Les anciens `script_templates/{receiver_nmos,receiver}.py` sont supprimés. **Les receivers existants sont migrés au redémarrage** ; un redéploiement les fait passer au script plugin.
 
-***REMOVED******REMOVED*** Plugins : Sender 2110 migré (→ sender_2110) — 2026-05-29
+## Plugins : Sender 2110 migré (→ sender_2110) — 2026-05-29
 
 Le **sender ST 2110** (vidéo 2110-20 + audio 2110-30) rejoint le système de plugins et est renommé **`sender_2110`**. C'est le premier type **lié NMOS** migré.
 
@@ -4033,7 +4033,7 @@ Le **sender ST 2110** (vidéo 2110-20 + audio 2110-30) rejoint le système de pl
 
 Backend : `plugins/sender_2110/`, migration DB dans `app/database.py`, renommage `app/{deploy,nmos,routes,emberplus,metrics,projects,scripts}.py`. Frontend : `static/scripts.js`, `templates/{deploy_palette,cards,forms,home,cables,projects,aide}.html`. L'ancien `script_templates/worker_2110_sender.py` est supprimé. **Les senders existants sont migrés au redémarrage** ; un redéploiement les fait passer au script plugin.
 
-***REMOVED******REMOVED*** Plugins : Streamer migré (ex-Encoder) — 2026-05-29
+## Plugins : Streamer migré (ex-Encoder) — 2026-05-29
 
 L'**encodeur de streaming** rejoint le système de plugins et change de nom : **« Encoder » devient « Streamer »** (type `streamer`). C'est le dernier gros type non lié au ST 2110 à migrer.
 
@@ -4044,7 +4044,7 @@ L'**encodeur de streaming** rejoint le système de plugins et change de nom : **
 
 Backend : `plugins/streamer/`, migration DB dans `app/database.py`, renommage `app/{deploy,routes,monitor,emberplus,projects}.py`. Frontend : `static/scripts.js`, `templates/{deploy_palette,cards,forms,home,cables,projects,streams,aide}.html`. L'ancien `script_templates/worker_udp.py` est supprimé. **Les Streamers existants sont migrés au redémarrage** ; un redéploiement les fait passer au script plugin.
 
-***REMOVED******REMOVED*** Plugins : Mélangeur + Multiviewer migrés (toute la rubrique Traitements) — 2026-05-29
+## Plugins : Mélangeur + Multiviewer migrés (toute la rubrique Traitements) — 2026-05-29
 
 Suite de la migration des types cœur vers le **système de plugins** : le **Mélangeur** et le **Multiviewer** rejoignent le Correcteur et le DVE → **toute la rubrique Traitements** est désormais en plugins.
 
@@ -4054,7 +4054,7 @@ Suite de la migration des types cœur vers le **système de plugins** : le **Mé
 
 Aucune perte de fonctionnalité ; UI Traitements/ATEM/composer/tally/layouts inchangées. **Les Mélangeurs et Multiviewers existants doivent être redéployés** pour passer au plugin. Backend : `app/plugins.py` (wiring `repeat`/`from_list` + substitution de params), `app/routes.py`, nouveaux `plugins/{mixer,multiview_free}/`.
 
-***REMOVED******REMOVED*** Plugins : config déclarative, câblage multi-entrées, DVE migré — 2026-05-29
+## Plugins : config déclarative, câblage multi-entrées, DVE migré — 2026-05-29
 
 Poursuite de la migration des types cœur vers le **système de plugins** (après le Correcteur). Deux extensions du modèle + un type migré.
 
@@ -4064,7 +4064,7 @@ Poursuite de la migration des types cœur vers le **système de plugins** (aprè
 
 Backend : `app/plugins.py` (coerce_config + slots), `app/routes.py` (wiring/topologie multi-slot), nouveaux `plugins/dve/`. Frontend : `static/scripts.js` (moteur de champs), `templates/{deploy_palette,cables}.html`, `static/dve.js`. **Les containers DVE existants doivent être redéployés** pour passer au plugin.
 
-***REMOVED******REMOVED*** Streams : format de sortie adaptatif (scaling) + mode source — 2026-05-29
+## Streams : format de sortie adaptatif (scaling) + mode source — 2026-05-29
 
 Sur la page **Streams**, le **Format** d'un encodeur (`worker_udp`) est désormais le **format de sortie souhaité**, **toujours appliqué**. L'**entrée** (signal reçu) est **auto-détectée** depuis le shm et **adaptée** si elle diffère : **redimensionnement** (`scale`) et **rééchantillonnage de cadence** (`fps`). Fini les images corrompues quand la résolution configurée ne correspondait pas à la source.
 
@@ -4078,16 +4078,16 @@ Limites : cadence d'entrée supposée 25 fps (pipeline simulé) ; déduction 16:
 
 `script_templates/worker_udp.py` (`_detect_dims`/`_video_filter`/métriques), `app/scripts.py` (`normalize_worker_udp_params`), `app/deploy.py` (défaut `hot_input=False`), `app/routes.py` (`/api/streams`), `templates/streams.html` (sélecteurs format & mode, ligne « Signal reçu »).
 
-***REMOVED******REMOVED*** Containers : champ de recherche — 2026-05-29
+## Containers : champ de recherche — 2026-05-29
 
-La barre de filtres de **Containers / Surveillance** gagne un **champ de recherche** texte (« nom, ***REMOVED***VMID, IP, source… »). Filtrage instantané, insensible à la casse, par sous-chaîne sur **hostname, VMID, IP, source, SHM et type**.
+La barre de filtres de **Containers / Surveillance** gagne un **champ de recherche** texte (« nom, #VMID, IP, source… »). Filtrage instantané, insensible à la casse, par sous-chaîne sur **hostname, VMID, IP, source, SHM et type**.
 
 - Se combine avec les chips Type / Statut / Projet existants ; le compteur affiche `x / total`.
 - Ne persiste pas (réinitialisé à chaque visite, contrairement aux chips de filtre).
 
 Frontend uniquement (`templates/cards.html`, `static/scripts.js` : `setSearch`/`matchesFilter`, `static/css/base.css`).
 
-***REMOVED******REMOVED*** Nouveau type de container : Images fixes (stills) — 2026-05-29
+## Nouveau type de container : Images fixes (stills) — 2026-05-29
 
 **Plugin « Images fixes »** (rubrique Médias) qui affiche une image fixe et la produit dans le pipeline MXL avec **deux sorties vidéo** : **Fill** (l'image) et **Key** (l'alpha en niveaux de gris — blanc opaque, noir transparent ; blanc plein si l'image n'a pas de transparence).
 
@@ -4098,7 +4098,7 @@ Frontend uniquement (`templates/cards.html`, `static/scripts.js` : `setSearch`/`
 
 Nouveau plugin `plugins/stills/` (décodage PIL, conversion BT.601 → YUV420p). Le proxy de contrôle des plugins transmet désormais les query params et le binaire (vignettes `image/jpeg`). Le type apparaît automatiquement à la création de container.
 
-***REMOVED******REMOVED*** Plugins de containers (PoC) + rubrique Medias : Player, Recorder, Stockage — 2026-05-29
+## Plugins de containers (PoC) + rubrique Medias : Player, Recorder, Stockage — 2026-05-29
 
 Introduction d'un **système de plugins** pour les types de containers : chaque type devient un dossier autonome et **versionné** dans `plugins/<type>/` (manifeste + script déployé + UI), chargé par un registre (`app/plugins.py`). Coexiste avec les 8 types historiques **sans les migrer** (un type non hardcodé est rendu/déployé via le registre en repli). Objectifs : déployer/mettre à jour un type sans toucher au reste du système, connaître la version par container, embarquer l'UI avec le plugin.
 
@@ -4120,7 +4120,7 @@ Pour ajouter un futur plugin : déposer `plugins/<type>/` (manifeste `wiring`/`c
 
 Fichiers : `app/plugins.py` (registre, nouveau), `plugins/{player,recorder,storage}/`, `app/{scripts,deploy,routes,containers,template_recreate}.py`, `main.py`, `templates/{layout,medias,cards,forms}.html`. **PoC** : à valider en exploitation réelle ; le serveur de stockage repose sur le bind-mount hôte (pas de NFS).
 
-***REMOVED******REMOVED*** Streams : remap des canaux audio à chaud (sans coupure) — 2026-05-29
+## Streams : remap des canaux audio à chaud (sans coupure) — 2026-05-29
 
 **Changer les canaux source d'une piste audio d'un encodeur ne coupe plus le flux.** Avant, toute modification audio relançait ffmpeg → coupure brève de **toutes** les destinations (UDP/SRT/WebRTC).
 
@@ -4130,7 +4130,7 @@ Fichiers : `app/plugins.py` (registre, nouveau), `plugins/{player,recorder,stora
 
 Fichiers : `script_templates/worker_udp.py` (feeder gather + `:8082/audiomap`), `app/routes.py`. **Les encodeurs existants sont migrés au prochain redéploiement.**
 
-***REMOVED******REMOVED*** Correctif : fps affiché (fenêtre glissante) — 2026-05-29
+## Correctif : fps affiché (fenêtre glissante) — 2026-05-29
 
 **Le fps affiché sous-estimait la cadence réelle** (ex. un player à 25 fps affichait 23, un encodeur « montait » de 13 vers 22 au démarrage). En cause : le fps était une **moyenne cumulée depuis le lancement du process** (`frames / temps_écoulé`), durablement tirée vers le bas par la latence de démarrage de ffmpeg et les éventuelles pauses.
 
@@ -4139,7 +4139,7 @@ Fichiers : `script_templates/worker_udp.py` (feeder gather + `:8082/audiomap`), 
 
 La lecture était déjà correcte (vérifié via `frame_index` : ~25 fps réels) ; seul l'affichage était trompeur. **Les containers existants doivent être redéployés** pour appliquer.
 
-***REMOVED******REMOVED*** Streams : preview repliable, format en liste, débit ffmpeg — 2026-05-29
+## Streams : preview repliable, format en liste, débit ffmpeg — 2026-05-29
 
 Trois améliorations sur la page **Streams** :
 
@@ -4149,16 +4149,16 @@ Trois améliorations sur la page **Streams** :
 
 Backend : `script_templates/worker_udp.py` (nouveau champ metrics `out_bitrate_kbps` via un thread de mesure réseau). Frontend : `templates/streams.html`. Aucun changement d'API (`/api/streams` recopie déjà les metrics). **Les encodeurs existants doivent être redéployés** (« Enregistrer & déployer ») pour exposer le débit.
 
-***REMOVED******REMOVED*** Monitoring : sélecteur de sources persistant — 2026-05-29
+## Monitoring : sélecteur de sources persistant — 2026-05-29
 
 **Le choix de source d'un node multi-sorties (mélangeur PGM/CLEAN/PVW, receiver multi-flux) reste affiché.** Avant, le sélecteur disparaissait dès qu'on cliquait une source (il était rendu dans la zone message, écrasée ensuite).
 
-- Le sélecteur est désormais une zone **persistante** (`***REMOVED***mon-sources`) : on bascule entre les sorties d'un clic sans recliquer « Monitoring ». La source active est **surlignée**.
+- Le sélecteur est désormais une zone **persistante** (`#mon-sources`) : on bascule entre les sorties d'un clic sans recliquer « Monitoring ». La source active est **surlignée**.
 - Si on monitore une source hors de cette liste (bouton d'une autre page), le sélecteur obsolète se masque. Persistance en mémoire le temps de la page (recharger réinitialise).
 
 Frontend uniquement (`templates/layout.html`, `MXLMonitor` : `renderSources`/`highlightSource`).
 
-***REMOVED******REMOVED*** Nommage : champs utilisateur, monitor nommé, préfixe projet — 2026-05-29
+## Nommage : champs utilisateur, monitor nommé, préfixe projet — 2026-05-29
 
 **Trois améliorations de nommage.**
 
@@ -4168,7 +4168,7 @@ Frontend uniquement (`templates/layout.html`, `MXLMonitor` : `renderSources`/`hi
 
 Fichiers : `app/database.py` (colonnes + helpers), `app/monitor.py` (nommage + `monitor_user_id` + `destroy`), `app/projects.py` (`_prefix_snapshot`), `app/routes.py` (users + `/api/monitor/destroy`), `templates/settings.html`. Les monitors existants gardent leur ancien hostname jusqu'à recréation.
 
-***REMOVED******REMOVED*** Création : vérification des noms + historique cumulatif — 2026-05-29
+## Création : vérification des noms + historique cumulatif — 2026-05-29
 
 **Deux corrections du suivi de création (Containers → Création).**
 
@@ -4177,7 +4177,7 @@ Fichiers : `app/database.py` (colonnes + helpers), `app/monitor.py` (nommage + `
 
 Frontend uniquement (`static/scripts.js`, `templates/forms.html`).
 
-***REMOVED******REMOVED*** Création : suivi persistant + bouton « Configurer » — 2026-05-29
+## Création : suivi persistant + bouton « Configurer » — 2026-05-29
 
 **La liste de suivi des créations (Containers → Création) reste affichée après navigation et offre un accès direct à la configuration.** Avant, elle disparaissait dès qu'on changeait de page (état en mémoire seulement).
 
@@ -4186,7 +4186,7 @@ Frontend uniquement (`static/scripts.js`, `templates/forms.html`).
 
 Frontend uniquement (`static/scripts.js`, `templates/forms.html`) — aucun changement backend.
 
-***REMOVED******REMOVED*** Hot-input généralisé : multiview, encodeur, sender 2110 — 2026-05-29
+## Hot-input généralisé : multiview, encodeur, sender 2110 — 2026-05-29
 
 **Le changement de source sans coupure (hot-input), jusqu'ici réservé au mélangeur / DVE / correcteur (et au moniteur), est étendu au multiview, à l'encodeur `worker_udp` et au sender ST 2110.** Recâbler une entrée depuis la page Câbles ne redéploie plus le container quand la nouvelle source a la **même résolution/format** : même process, même sortie, on pointe juste un autre `/dev/shm`.
 
@@ -4198,11 +4198,11 @@ Frontend uniquement (`static/scripts.js`, `templates/forms.html`) — aucun chan
 
 Vérifié en loopback : multiview (re-source d'une fenêtre → sortie change, même PID), sender (swap vidéo même format → même process ffmpeg conservé), et non-régression du chemin non-hot. Un container déployé avant cette fonction bascule en redeploy la première fois, puis devient hot ; redéployer une fois chaque multiview / encodeur / sender pour activer le mode.
 
-***REMOVED******REMOVED*** Fix : audio WebRTC déformé (feeder du worker_udp) — 2026-05-29
+## Fix : audio WebRTC déformé (feeder du worker_udp) — 2026-05-29
 
 **Le son sortant d'un encodeur (ex. 221 abonné à l'audio simulé de 212) était incorrect.** Le format source est pourtant bon (le receiver écrit en **s24le / 48 kHz / 8ch**, chunk 1152, ring 100 — conforme à ce qu'attend le worker). La cause était l'`audio_feeder` (`script_templates/worker_udp.py`) : il échantillonnait le « chunk courant » à la cadence de l'horloge murale en intercalant du silence → audio haché / pitch faux. Réécrit en **streaming séquentiel fidèle** (écrit chaque nouveau `chunk_index` dans l'ordre, comme le sender 2110-30) ; le silence cadencé n'est utilisé **que** s'il n'y a pas de shm audio (pour ne pas bloquer la vidéo). Vérifié : Mire-1_audio_0 avance à ~1000 chunks/s (48 kHz), 221 republie le path WebRTC.
 
-***REMOVED******REMOVED*** Monitoring : changement de source sans coupure — 2026-05-29
+## Monitoring : changement de source sans coupure — 2026-05-29
 
 **Basculer le moniteur entre deux signaux de même résolution ne coupe plus le flux.** Avant, chaque changement de source redéployait l'encodeur (stop+start ffmpeg → le path WebRTC tombait et le lecteur se rechargeait).
 
@@ -4212,7 +4212,7 @@ Vérifié en loopback : multiview (re-source d'une fenêtre → sortie change, m
 
 Vérifié en loopback (faux ffmpeg) : le **même process encodeur** survit au changement de source, fps continu. Le premier choix de source après création du moniteur verrouille la résolution ; les bascules suivantes en même résolution sont fluides.
 
-***REMOVED******REMOVED*** Audio des encodeurs : câblage, sélection des canaux, activé par défaut — 2026-05-29
+## Audio des encodeurs : câblage, sélection des canaux, activé par défaut — 2026-05-29
 
 **Les flux MXL sont en 8 canaux mais un stream H.264 n'en porte souvent que 2 → on choisit lesquels.** Audio désormais **activé par défaut** sur les encodeurs `worker_udp`, **câblable** via la page Câbles, avec **sélection des canaux** en sortie. Code en anglais (dérogation convention française).
 
@@ -4225,13 +4225,13 @@ Vérifié en loopback (faux ffmpeg) : le **même process encodeur** survit au ch
 
 **Limites** : WebRTC = 1 piste audio (les pistes >1 ne sortent que sur UDP/SRT) ; sans `audio_shm` câblé l'audio reste silencieux (pas encodé) ; A/V non synchro PTS.
 
-***REMOVED******REMOVED******REMOVED*** Câblage audio : cible acceptée + libellés + option auto-audio — 2026-05-29
+### Câblage audio : cible acceptée + libellés + option auto-audio — 2026-05-29
 
 - **Fix** : l'entrée audio d'un encodeur n'était pas câblable — `startWire` (`cables.html`) n'acceptait `worker_udp` que comme cible **vidéo**. Désormais accepte aussi l'**audio** (le `kind` vient de la source).
 - **Lisibilité** : les ports d'entrée des encodeurs/senders sont étiquetés **Vidéo / Audio** (au lieu de « slot N (vide) »).
 - **Option « Câbler aussi l'audio associé »** (case en haut de la page Câbles, persistée) : en câblant une sortie **vidéo** vers un encodeur `worker_udp`, l'**audio associé** du producteur (apparié par index, ex. `receiver_0` ↔ `receiver_audio_0`) est joint **dans le même appel** `/api/home/wire` (`audio_shm`) → un seul déploiement atomique (pas de race entre deux wires).
 
-***REMOVED******REMOVED*** Panneau de monitoring WebRTC (par utilisateur) — 2026-05-29
+## Panneau de monitoring WebRTC (par utilisateur) — 2026-05-29
 
 **Panneau latéral global embarquant un flux WebRTC : l'utilisateur visualise en direct le signal qu'il règle, et un bouton « 📺 Monitoring » sur les pages productrices envoie leur sortie dans ce panneau.** Code en anglais (dérogation à la convention française).
 
@@ -4243,7 +4243,7 @@ Vérifié en loopback (faux ffmpeg) : le **même process encodeur** survit au ch
 
 **Limites assumées** : un container monitor par utilisateur (script coupé si inactif, container conservé — suppression manuelle) ; bascule de source ~3 s ; appli multi-pages → l'iframe se reconnecte à chaque navigation ; nécessite la passerelle WebRTC déployée + activée.
 
-***REMOVED******REMOVED******REMOVED*** Correctifs monitoring (icône, layout, flux) — 2026-05-29
+### Correctifs monitoring (icône, layout, flux) — 2026-05-29
 
 - **Icône retirée** des boutons « Monitoring » (pages + onglet du panneau).
 - **Layout des pages traitement réparé** : le bouton inséré entre `<nav>` et `<section>` devenait un 3ᵉ item dans la grille 2 colonnes (`minmax(...) 1fr`) et cassait la mise en page. Déplacé **dans la colonne liste** (`<nav>`), pleine largeur.
@@ -4251,7 +4251,7 @@ Vérifié en loopback (faux ffmpeg) : le **même process encodeur** survit au ch
   1. **Résolution** : le monitor codait 1280×720 en dur ; sur une source 640×360, `ouvrir_shm` rejetait le shm (« trop petit ») → 0 frame → rien publié. Ajout d'un **mode auto-détection** dans `worker_udp.py` : si `width/height = 0`, l'encodeur déduit WxH de la taille du shm (YUV420, ring=10, ratio 16:9). Le monitor utilise ce mode (`_params` width/height=0 ; `normalize_worker_udp_params` préserve le 0). Vérifié : Mire-1_0 (640×360) lu à 25 fps, path `monitor-u2` publié sur la passerelle.
   2. **Timing** : l'`<iframe>` chargeait le lecteur WHEP avant la publication (le lecteur MediaMTX ne se rétablit pas seul). Le panneau attend désormais que le flux publie (`status.publishing`, dérivé du fps `:8080` de l'encodeur) avant de (re)charger l'iframe ; message « source active ? » après timeout. `monitor.status()` expose `publishing`/`live_fps`.
 
-***REMOVED******REMOVED*** Container DVE / SuperSource + pilotage par pupitre ATEM — 2026-05-29
+## Container DVE / SuperSource + pilotage par pupitre ATEM — 2026-05-29
 
 **Nouveau type de container `dve` (SuperSource façon ATEM) et émulateur de switcher ATEM permettant de piloter un mélangeur (et ses SuperSources) depuis un pupitre matériel Blackmagic.** Code de ces features en **anglais** (dérogation à la convention française, demandée par l'utilisateur ; helpers existants inchangés).
 
@@ -4262,7 +4262,7 @@ Vérifié en loopback (faux ffmpeg) : le **même process encodeur** survit au ch
 
 **Limites assumées** : le protocole pupitre↔switcher ATEM (et le SuperSource en particulier) est **reverse-engineeré, non validé sans matériel** — l'émulateur est best-effort, bring-up à faire au banc avec `ATEM_DEBUG=1` (offsets `_top`/`SSBP`/`CSBP`, handshake). Le compositing DVE et les mémoires sont vérifiés en loopback.
 
-***REMOVED******REMOVED******REMOVED*** Choix du type dès la création du container — 2026-05-29
+### Choix du type dès la création du container — 2026-05-29
 
 **On peut désormais choisir un type directement dans le formulaire de création** — fini le round-trip créer → attendre → retrouver le container → définir le type.
 
@@ -4270,7 +4270,7 @@ Vérifié en loopback (faux ffmpeg) : le **même process encodeur** survit au ch
 - **Route** (`POST /api/containers`) : nouveaux champs optionnels `deploy_type` + `deploy_params`. Sans type → création seule (inchangé). Avec type → le thread de création attend l'IP puis l'agent (réutilise `_attendre_ip`/`_attendre_agent` du flux projets) avant d'appeler `deployer_script`. Fonctionne en **batch** (chaque container du lot est typé).
 - **Suivi batch** : nouvelle colonne **Type** (badge du type déployé, ou « <type> · à venir » tant que le déploiement n'a pas abouti).
 
-***REMOVED******REMOVED*** Page Streams : encodage multi-destinations UDP / SRT / WebRTC — 2026-05-29
+## Page Streams : encodage multi-destinations UDP / SRT / WebRTC — 2026-05-29
 
 **Nouvelle page Streams (après Destinations) pour piloter les containers d'encodage/streaming : réglages d'encodage + plusieurs destinations par flux, avec prévisualisation WebRTC.** Code de cette feature en **anglais** (dérogation à la convention française, demandée par l'utilisateur ; les helpers existants gardent leur nom).
 
@@ -4281,11 +4281,11 @@ Vérifié en loopback (faux ffmpeg) : le **même process encodeur** survit au ch
 
 **Limites assumées** : a/v non synchronisés au PTS (monitoring) ; WHIP nécessite ffmpeg ≥ 7.1 (défaut **RTSP**) ; le binaire MediaMTX se télécharge au 1er lancement (le container passerelle doit avoir un accès Internet sortant) ; la preview WebRTC nécessite un codec H.264 (pas HEVC). Déploiement de la passerelle laissé à l'utilisateur (test live de la preview à faire une fois déployée).
 
-***REMOVED******REMOVED******REMOVED*** Déploiement passerelle : choix du VMID + suivi streamé — 2026-05-29
+### Déploiement passerelle : choix du VMID + suivi streamé — 2026-05-29
 
 Suite retour utilisateur : `/api/webrtc/deploy` ne lançait qu'un thread (aucun suivi). Désormais **réponse streamée ligne par ligne** (même contrat que la recréation de template : dernière ligne ✅/❌), affichée dans un journal live sur l'onglet Réglages → WebRTC. Le **VMID cible est sélectionnable** (champ dédié, vide = auto). `webrtc_gateway.deploy_gateway_iter(vmid)` yield chaque étape (clone → IP → déploiement script → polling `:8080` jusqu'au démarrage de MediaMTX avec sa version, ou l'erreur de téléchargement). `deploy_gateway()` conservé comme wrapper bloquant. **Activation auto** : dès que MediaMTX répond `running` sur `:8080`, `webrtc_enabled` passe à `True` (plus besoin de cocher « Activer » manuellement).
 
-***REMOVED******REMOVED******REMOVED*** Onglet WebRTC : 2 sous-onglets + suppression du container — 2026-05-29
+### Onglet WebRTC : 2 sous-onglets + suppression du container — 2026-05-29
 
 Refonte de l'onglet Réglages → WebRTC en deux sous-onglets : **État du serveur** (affiché en premier — badge global, container/VMID/hostname/IP, MediaMTX running + version, WebRTC activé, protocole, ports, URLs ingest/WHEP/player/API, et **table des flux actifs** : path, prêt, source, nb de lecteurs, octets reçus/émis via l'API MediaMTX `:9997`) et **Container** (déploiement avec choix du VMID + log streamé, configuration, et **bouton « Supprimer le container MediaMTX »**). `webrtc_gateway.status()` enrichi (URLs + `paths_detail`), nouveau `destroy_gateway()` (détruit le container + réinitialise `webrtc_gateway_vmid`/`_ip` + désactive `webrtc_enabled`), route `POST /api/webrtc/destroy`.
 
@@ -4293,7 +4293,7 @@ Refonte de l'onglet Réglages → WebRTC en deux sous-onglets : **État du serve
 
 **Fix preview WebRTC qui se réinitialisait toutes les 5s** (`templates/streams.html`) : le poll live (5s) réécrivait `pv.innerHTML` → l'`<iframe>` WHEP était recréée à chaque cycle, reconnectant le flux. La preview n'est désormais re-rendue que si sa **signature** (`path` + `embed_url` + actif/inactif, via `previewSig`) change ; l'iframe reste stable tant que le flux est actif.
 
-***REMOVED******REMOVED*** Fix : sender/receiver NMOS invisible après déploiement — 2026-05-29
+## Fix : sender/receiver NMOS invisible après déploiement — 2026-05-29
 
 **Un flux 2110 fraîchement déployé (sender ou receiver) n'apparaissait ni sur la page Senders ni dans NMOS jusqu'au redémarrage du service.**
 
@@ -4304,7 +4304,7 @@ Refonte de l'onglet Réglages → WebRTC en deux sous-onglets : **État du serve
 - La page Senders (`/api/nmos/senders_detail`) et l'API IS-04 lisent le même modèle en mémoire `_nmos._senders` : aucun filtre séparé, le fix les corrige toutes les deux.
 - Vérifié en live : `TestPaul-4` (vmid 233, sender 1 vidéo + 2 audios) apparaît immédiatement après déploiement, avec son bundle `[video, audio 1, audio 2]`.
 
-***REMOVED******REMOVED*** Natural grouping NMOS : un bundle par ensemble vidéo+audios — 2026-05-29
+## Natural grouping NMOS : un bundle par ensemble vidéo+audios — 2026-05-29
 
 **Les contrôleurs NMOS n'affichaient qu'un seul bundle générique faute de tag de regroupement. Chaque ensemble « 1 vidéo + ses audios » est désormais un bundle distinct.**
 
@@ -4318,7 +4318,7 @@ Sans le tag de natural grouping, un contrôleur (Sony NCS, BBC nmos-js, etc.) ne
 
 **Limites assumées** : le pairing receiver est positionnel (audio _j_ → vidéo _j % n_video_), pas de mapping explicite vidéo↔audios configurable. Le libellé de bundle affiché par le contrôleur est le hostname du container.
 
-***REMOVED******REMOVED*** Refonte UX/a11y page Multiview (audit `/impeccable`) — 2026-05-28
+## Refonte UX/a11y page Multiview (audit `/impeccable`) — 2026-05-28
 
 **Score audit 7/20 → cible ~17/20. Toutes les passes (clarify + distill + polish + adapt + colorize + optimize + onboard) menées d'un trait.**
 
@@ -4328,11 +4328,11 @@ L'écran Multiview portait encore tous les anti-patterns éliminés ailleurs (ne
 - **A11y** — Tous les `<label>` associés à leur `<input>` via `for=`/`id=` (~25 paires). Les 11 boutons d'alignement (`⇤ ⇔ ⇥ ⤒ ⇳ ⤓ ↔ ↕ ⛶ ⇶ ⇲`) reçoivent un `aria-label` français explicite, et la toolbar passe en `role="group" aria-label="Outils d'alignement des entrées"`. Hiérarchie de titres remontée : h1 page → h2 colonnes (Multiviews déployés / Layouts enregistrés) et h2 éditeur (hostname). `<input id="layout-save-name">` reçoit enfin un `<label>` visible. Canvas annoté avec `aria-label`.
 - **Anti-patterns éliminés** — `backdrop-filter: var(--backdrop-blur)` × 2 supprimés (interdit docs/design/DESIGN.md). Animation `mw-editor-flash` (halo accent pulsé `box-shadow` 6px) supprimée. **Aplatissement des nested cards** : `.mw-canvas-wrap` perd sa bordure, `.mw-entry-panel` et `.align-toolbar` passent en surface tonale `bg-input` sans bordure d'encadrement — l'éditeur reste une carte unique, les sous-blocs deviennent des séparateurs.
 - **Toast à la place de `alert()`** — 11 `alert()` natifs remplacés par `showToast(msg, niveau)` qui affiche un bandeau `.mw-toast` sticky en haut de l'éditeur (animation 220ms ease-out-quart, auto-dismiss 4s, `role="status" aria-live="polite"`). Niveaux `info|warning|error` cohérents avec le système d'alertes serveur.
-- **Couleurs canvas tokenisées** — Nouveau token `--canvas-bg` propagé dans les trois thèmes (`***REMOVED***0d1117` dark neutre, `***REMOVED***1e1b2e` tinted indigo en Daylight, `***REMOVED***0f0d0a` warm en Studio). Les chromes UI (rectangles de sélection, guides de snap, texte de meta) lisent l'accent et `--text-muted` via `cssVar()` — fini les `***REMOVED***f97316` orange, `***REMOVED***58a6ff` bleu, `***REMOVED***8b949e` gris en dur dans `dessiner()`. Les valeurs qui miment le rendu réel (label blanc, fond bar 70% noir, badge centré) restent littérales puisqu'elles miment ce que le serveur multiview produit effectivement.
+- **Couleurs canvas tokenisées** — Nouveau token `--canvas-bg` propagé dans les trois thèmes (`#0d1117` dark neutre, `#1e1b2e` tinted indigo en Daylight, `#0f0d0a` warm en Studio). Les chromes UI (rectangles de sélection, guides de snap, texte de meta) lisent l'accent et `--text-muted` via `cssVar()` — fini les `#f97316` orange, `#58a6ff` bleu, `#8b949e` gris en dur dans `dessiner()`. Les valeurs qui miment le rendu réel (label blanc, fond bar 70% noir, badge centré) restent littérales puisqu'elles miment ce que le serveur multiview produit effectivement.
 - **Responsive** — Premier breakpoint de la page. `.compose-layout` passe en `grid-template-columns: 260px 1fr 260px` puis en `1fr` (1 colonne empilée) sous 1100px, avec sidebars scrollables (max-height 340px) pour ne pas dominer la vue. Sous 640px les champs `field-grow` passent en pleine largeur et le toggle snap reflow sous la toolbar. Touch targets ≥ 32px sur les boutons d'alignement (anciennement ~22px) et 28px sur les actions de layout.
 - **Empty states avec CTA** — Liste multiviews vide → lien "Déployer depuis Containers →" ; liste layouts vide → instruction "Composez puis cliquez sur Enregistrer". Éditeur sans sélection → h2 + msg + lien vers `/containers`.
 
-***REMOVED******REMOVED*** Snapshots de câblage sur la page Câbles — 2026-05-28
+## Snapshots de câblage sur la page Câbles — 2026-05-28
 
 **~14h00 — Sauvegarder / rappeler / effacer tous les câbles du pipeline**
 
@@ -4354,7 +4354,7 @@ La page `/cables` reçoit une toolbar `[Sauvegarder le câblage…] [Rappeler �
 - Mixer / color_corrector tracés via leur agent HTTP : si un de ces containers est down au moment de Sauvegarder, ses câbles n'apparaissent pas dans le snapshot (état effectif, pas virtuel).
 - Pas de batching par consumer vmid : N wires sur la même multiview_free déclenchent N redéploiements async successifs. Pour ~10-20 câbles c'est OK, le dernier write gagne après quelques secondes. À monitorer si on dépasse.
 
-***REMOVED******REMOVED*** Projets : filtre/colonne projet, export/import, remap VMID au restore — 2026-05-28
+## Projets : filtre/colonne projet, export/import, remap VMID au restore — 2026-05-28
 
 **Quatre évolutions autour des projets, du plus visible au plus structurel.**
 
@@ -4364,7 +4364,7 @@ La page `/cables` reçoit une toolbar `[Sauvegarder le câblage…] [Rappeler �
 - **Restore : auto-remap VMID + détection de conflits** : `restaurer_projet` ne ré-utilisait plus les VMIDs du snapshot tels quels — bug latent quand on voulait faire tourner deux projets enregistrés à des moments différents. Refonte avec nouveau `planifier_restore(snapshot)` qui retourne `{remaps, hostname_conflicts, shm_conflicts, can_restore, error?}`. Les références inter-containers étant **toutes** par chaînes (hostname, shm_name), changer le VMID est sans impact sur les liens — on profite de cette propriété pour remapper automatiquement via `next_free_vmid()` en réservant les VMIDs alloués à la volée. Les conflits **non auto-résolubles** (hostname Proxmox-level, SHM `/dev/shm` au runtime) bloquent le restore avec une alerte rouge listant les collisions — l'utilisateur doit détruire/renommer. Nouvelle helper `_shm_produced(dc)` qui extrait les SHM *produits* par container selon le type (receiver `{hostname}_N`, multiview `shm_out`, mixer 3 sorties, color_corrector ; workers exclus car consommateurs purs). Route `GET /api/projects/<pid>/restore_preview` (gated `projects.manage`) consommée par `restaurerProjet` côté JS pour un pré-vol : si conflits bloquants → alert détaillé et abandon ; si remaps non triviaux → confirm listant `hostname : VMID X → Y` ; sinon confirm standard. Fallback gracieux si le preview échoue (réseau, etc.).
 - **Schéma DB inchangé** : les snapshots continuent de stocker le VMID — seule la décision au restore change. Compat des projets déjà enregistrés conservée.
 
-***REMOVED******REMOVED*** Refonte UX/a11y pages Containers, Palette de déploiement et Projets — 2026-05-28
+## Refonte UX/a11y pages Containers, Palette de déploiement et Projets — 2026-05-28
 
 **~12h30 — Passe `/impeccable` complète sur les trois surfaces**
 
@@ -4373,27 +4373,27 @@ Pas de nouvelle feature : itération de design sur l'existant. Trois objectifs p
 - **Échelle de tokens** : ajout de `--space-1` (4px) à `--space-7` (48px) dans `:root`. Migration progressive des magic numbers (10, 12, 14, 16, 18) vers ces tokens dans tout le bloc containers + palette + projects.
 - **Page Containers (`cards.html`)** : h2 redondant supprimé, compteur intégré dans une filter-bar allégée (plus de panneau bg-elev, juste une bordure inférieure), chips de filtres groupés en `role="group"`, cards `<div>` → `<article>`, hostname en `<h2 class="card-host">` (hiérarchie h1 → h2 continue), structure interne refondue (`.card-head` flex baseline, `.card-tags`, `<dl class="card-meta">`, `.card-actions` avec wrapper `.card-actions-primary` pour le cluster non destructif + `.btn-red` flex-isolé à droite), boutons de card resserrés (~28px), `:focus-visible` accent partout, `aria-label` contextualisé sur Détruire, `aria-controls`/`aria-expanded` sur Configurer (re-synchro après chaque tick via `_syncConfigureExpanded`), sentinels typographiques (`—`) remplacés par "non assignée" / "aucun" en Inter (`.card-meta dd.dimmed`).
 - **Status & mode badges** : 2 nouveaux tokens `mode-mixer` (rose OKLCH 0.78 0.05 20) et `mode-corrector` (olive OKLCH 0.80 0.05 110) propagés en theme light/studio. Mapping `STATUS_FR` symétrique côté Jinja (`STATUS_FR.get(c.status, c.status)`) et JS (`statusLabel`) : `running → en cours`, `script_stopped → script arrêté`, etc. Plus aucun underscore brut affiché. Nouvelle classe `.badge.ready` (pas de lowercase forcé, font Inter) pour "Container prêt" sur container LXC up sans deploy_config.
-- **Light theme** : override complet des 6 `.mode-*` (text foncé + bg pâle, ratio ≥4.5:1) parce que les couleurs dark étaient illisibles sur `***REMOVED***f6f7f9`. Règle "Trois Lumières" du DS restaurée.
+- **Light theme** : override complet des 6 `.mode-*` (text foncé + bg pâle, ratio ≥4.5:1) parce que les couleurs dark étaient illisibles sur `#f6f7f9`. Règle "Trois Lumières" du DS restaurée.
 - **Performance Containers** : `updateContainers` passe en diff par VMID via une `Map _cardSigs` (signature concaténée des champs mutables : fps, status, ip, cpu rounded, deploy_config). Les cards inchangées entre deux ticks ne sont plus touchées. CPU bar passe de `transition: width` à `transform: scaleX()` (hors layout). Resync ARIA après chaque patch.
-- **Palette de déploiement (`deploy_palette.html`)** : largeur 360 → **440px**. ~15 `style="…"` inlinés extraits en classes (`.palette-divider`, `.palette-section-head`, `.palette-hint`, `.palette-row`, `.palette-field-check`, `.palette-field-format`, `.btn-ghost-icon`). Bouton Fermer passé de `btn-red` à `btn-ghost-icon` (32×32) — fermer ≠ détruire. Sélecteur de type refondu en `palette-group` borderless avec chips touch-friendly (8×14, min-height 34) + ligne récap repliée par défaut sur container déjà déployé (`.dp-type-summary` avec mode-badge intégré aux mêmes couleurs que sur la card). Sections devenues `<fieldset class="palette-group"><legend>` avec ratio rythmique 2:1 (24px entre fieldsets, 12px entre fields). Bouton Déployer passé de `btn-orange` (= Stop sémantiquement) à `--accent`. 25 paires `for=`/`id=` ajoutées sur tous les inputs/selects. `<aside aria-labelledby="dp-palette-heading">`, h2 sémantique pour le hostname. `palette-subgroup` (Audio ***REMOVED***1/***REMOVED***2 dans Sender 2110) débarrassé de son nested-card visuel.
+- **Palette de déploiement (`deploy_palette.html`)** : largeur 360 → **440px**. ~15 `style="…"` inlinés extraits en classes (`.palette-divider`, `.palette-section-head`, `.palette-hint`, `.palette-row`, `.palette-field-check`, `.palette-field-format`, `.btn-ghost-icon`). Bouton Fermer passé de `btn-red` à `btn-ghost-icon` (32×32) — fermer ≠ détruire. Sélecteur de type refondu en `palette-group` borderless avec chips touch-friendly (8×14, min-height 34) + ligne récap repliée par défaut sur container déjà déployé (`.dp-type-summary` avec mode-badge intégré aux mêmes couleurs que sur la card). Sections devenues `<fieldset class="palette-group"><legend>` avec ratio rythmique 2:1 (24px entre fieldsets, 12px entre fields). Bouton Déployer passé de `btn-orange` (= Stop sémantiquement) à `--accent`. 25 paires `for=`/`id=` ajoutées sur tous les inputs/selects. `<aside aria-labelledby="dp-palette-heading">`, h2 sémantique pour le hostname. `palette-subgroup` (Audio #1/#2 dans Sender 2110) débarrassé de son nested-card visuel.
 - **Bloc Simulation receiver (rendu JS)** : module CSS dédié `.rx-sim-*`. Slots audio plus de border encadrée (séparateur top dashed). Canaux 1–8 en **pills toggle** (grid 8 colonnes, état checked = accent-soft + accent border + weight 600, checkbox native cachée mais accessible clavier). Toggles `générateur` (vidéo + audio) en pills cohérentes, taille 28px. Master switch "Activer la simulation par slot" et les 3 checkboxes `.palette-field-check` (incrustation HTML, émission 2110-20) re-stylés en **switch iOS-like** (track 36×20 + thumb 14×14, glissement 220ms ease-out-quart, accent-soft ON / bg-input OFF). **Slot teinté accent** quand `dp-rx-sim-v-on` OU `dp-rx-sim-a-on` est coché (`:has(.a:checked)` CSS, pas de JS) : repérage immédiat des slots qui produisent un signal local vs ceux qui attendent un sender NMOS.
 - **Page Projets (`projects.html`)** : alignement complet sur le pattern containers (cards `<article>`, `.card-head` + `.card-meta` + `.card-actions-primary` + `.btn-red` détaché, `.card-vmid` au lieu de `<small class="meta">`, `aria-label` contextualisé sur les 3 boutons d'action `Restaurer le projet X`, etc., empty-state moderne avec h3 + message conditionnel selon permission, deux em-dashes éliminés). Hint lecture-seule explicite quand l'utilisateur n'a pas `projects.manage`. Sélecteur "Containers à inclure" totalement refait : ancien chip-cloud → **liste verticale scrollable (`<fieldset class="proj-picker">`) avec recherche par nom + chips de filtre par type (7 catégories + Aucun)** + raccourcis "Tout cocher / Tout décocher" qui agissent sur les rows visibles uniquement (intersection recherche × type) + compteur live de sélection. Rows colorées accent quand cochées (`:has(input:checked)`).
 - **docs/design/DESIGN.md** : nouveaux tokens `mode-mixer` et `mode-corrector` documentés (frontmatter + section Modes) avec coordonnées OKLCH.
 
 **Verdict audit** : containers cards 19/20, deploy_palette en cours, projects partiellement remonté. La dette restante (sticky bottom du bouton Déployer, ARIA tab-list complet sur les chips de type, accessibilité des selects pré-populés en JS) est listée dans les findings P3 pour itérations ultérieures.
 
-***REMOVED******REMOVED*** Pliage et recherche sur Sources / Destinations — 2026-05-28
+## Pliage et recherche sur Sources / Destinations — 2026-05-28
 
 **~10h57 — Vue globale plus dense, état de pliage persisté**
 
 Les pages `/nmos/receivers` (Sources) et `/destinations` rendaient une grille de cartes ouvertes par container, ce qui demandait beaucoup de scroll dès qu'on a ~10 containers NMOS. Chaque carte est désormais repliable/dépliable d'un clic sur son en-tête, avec un champ recherche et deux boutons « Tout replier / Tout déplier ».
 
 - **État persisté** : Set des vmids repliés sauvegardé dans `localStorage` (clés `nmr.collapsed` / `nms.collapsed`), pour survivre au refresh auto 5 s et aux rechargements de page.
-- **Header carte** : chevron `▾` qui pivote de -90° en mode replié (transition 120 ms), badge de statut repoussé à droite via `margin-left:auto`. Quand replié, on n'affiche plus que `nom ***REMOVED***vmid — N/M actif(s)` + badge — assez pour scanner l'état sans déplier.
-- **Recherche** : `<input type="search">` filtre les cartes par `hostname`, `***REMOVED***vmid` ou IP (substring case-insensitive). `data-search` pré-calculé sur chaque carte. Les boutons « Tout replier/déplier » ignorent les cartes filtrées (`display:none`).
+- **Header carte** : chevron `▾` qui pivote de -90° en mode replié (transition 120 ms), badge de statut repoussé à droite via `margin-left:auto`. Quand replié, on n'affiche plus que `nom #vmid — N/M actif(s)` + badge — assez pour scanner l'état sans déplier.
+- **Recherche** : `<input type="search">` filtre les cartes par `hostname`, `#vmid` ou IP (substring case-insensitive). `data-search` pré-calculé sur chaque carte. Les boutons « Tout replier/déplier » ignorent les cartes filtrées (`display:none`).
 - Code dupliqué entre les deux templates (fonctions `toggleCollapse`/`collapseAll`/`applyFilter` symétriques, IDs `nmr-*` vs `nms-*`) — assumé : les deux pages ont des structures de données différentes (`receivers` vs `senders`) et factoriser dans un JS partagé ajouterait plus de complexité que ça n'en retire.
 
-***REMOVED******REMOVED*** Boutons NKK sur la page Mélangeurs — 2026-05-28
+## Boutons NKK sur la page Mélangeurs — 2026-05-28
 
 **~10h43 — Look broadcast pour PGM/PVW/CUT/DISSOLVE**
 
@@ -4402,16 +4402,16 @@ Les boutons de la page `/traitements/melangeurs` adoptent un style de poussoirs 
 - `templates/traitements_melangeurs.html` : classe générique `.nkk-btn` (housing) + `.nkk-cap` (capuchon). État éteint = gris-noir terne ; états illuminés via `.on-pgm` (rouge), `.on-pvw` (vert), `.btn-cut` (rouge), `.btn-dissolve` (bleu/cyan), chacun avec halo `box-shadow` extérieur. Enfoncement à `:active` (`translateY(1px)` + ombres atténuées).
 - `static/mixer.js:renderMixerEditor` : chaque bouton de slot et les deux boutons TAKE sont wrappés `<button class="nkk-btn …"><span class="nkk-cap">…</span></button>`. Le `<small>` du nom de shm câblé reste dans le capuchon.
 
-***REMOVED******REMOVED*** Suppression de l'onglet "Créer" du multiview — 2026-05-28
+## Suppression de l'onglet "Créer" du multiview — 2026-05-28
 
 **~10h30 — Le Layout Editor devient la seule vue de `/traitements/multiview`**
 
 Le déploiement d'un nouveau multiview se fait désormais exclusivement via la palette de déploiement globale (`deploy_palette.html`), l'onglet "Créer" faisait doublon.
 
-- `templates/traitements_multiview.html` : suppression du bloc `<div class="tabs">` et du sous-onglet `***REMOVED***tab-create` (formulaire `mv_vmid/mv_shm_out/…` + bouton Déployer). Le panneau `***REMOVED***tab-compose` n'est plus masqué par défaut.
+- `templates/traitements_multiview.html` : suppression du bloc `<div class="tabs">` et du sous-onglet `#tab-create` (formulaire `mv_vmid/mv_shm_out/…` + bouton Déployer). Le panneau `#tab-compose` n'est plus masqué par défaut.
 - `static/multiview.js` : `switchTab()` réduit à un appel direct à `rafraichirListeMw()` + `rafraichirListeLayouts()` (conservé en no-op pour compat avec les liens `?tab=compose` existants depuis la palette et le drag-drop home). `creerMultiview()` supprimée (plus aucun appelant).
 
-***REMOVED******REMOVED*** Latence par câble sur la page Câbles — 2026-05-28
+## Latence par câble sur la page Câbles — 2026-05-28
 
 **~04h45 — Mesure de la latence interne dans chaque script consommateur**
 
@@ -4434,7 +4434,7 @@ Chaque câble de la page `/cables` affiche désormais au milieu de son tracé SV
 
 **Note opérationnelle** : les containers déjà déployés tournent sous l'ancienne version du script. Pour récupérer la mesure, il faut redéployer chaque consommateur (bouton Restart ou Modifier + Déployer dans Containers).
 
-***REMOVED******REMOVED*** Éclatement de la page Traitements en 3 sous-routes — 2026-05-28
+## Éclatement de la page Traitements en 3 sous-routes — 2026-05-28
 
 **~04h35 — Fix Jinja2 : 3 `{% endblock %}` dans le bloc `content`**
 
@@ -4459,7 +4459,7 @@ La page Traitements groupait 3 traitements distincts dans 4 onglets (Créer/Layo
 
 **Bilan** : URLs auto-descriptives et bookmarkables, 1 fichier par traitement (plus facile à éditer), JS de chaque traitement isolé. Le tab bar reste visuellement identique mais les onglets sont maintenant des `<a href>` au lieu de boutons JS.
 
-***REMOVED******REMOVED*** Correcteur de couleur (numpy live) — 2026-05-28
+## Correcteur de couleur (numpy live) — 2026-05-28
 
 **~04h15 — Nouveau type de container : color_corrector**
 
@@ -4498,7 +4498,7 @@ Nouveau traitement 1→1 qui applique de la color correction en temps réel, san
 - Palette de déploiement : option "Correcteur de couleur" dans le `<select>`, section minimale (juste shm sortie). Le câblage et les params se font à chaud depuis l'onglet.
 - Filter chip + mode-badge "Correcteur" dans `cards.html` et `scripts.js`.
 
-***REMOVED******REMOVED*** Système design, page Câbles, câblage interactif — 2026-05-28
+## Système design, page Câbles, câblage interactif — 2026-05-28
 
 **~01h45 — Système de design formalisé (docs/design/PRODUCT.md + docs/design/DESIGN.md)**
 
@@ -4518,7 +4518,7 @@ Nouveau traitement 1→1 qui applique de la color correction en temps réel, san
 - Les `border-left/right ≥ 2px` colorées sont un anti-pattern interdit par docs/design/DESIGN.md. 5 occurrences corrigées :
 - `base.css` `.alert-{info,warning,error}` : `border-left: 2px` → full border colorée 1px + fond teinté via tokens de statut.
 - `multiview.css` `.mw-entry-row.is-primary` : `box-shadow inset 2px 0 0` (stripe latérale) → `inset 0 0 0 1px` (anneau full) + cellule 1 en bold accent.
-- `aide.html` 3 callouts (`.aide-note`, `.aide-warning`, `.changelog-entry`) : `border-left: 3px` → full border 1px + bg teinté. Au passage hardcode `***REMOVED***e8a33d` remplacé par token `--status-warning-fg`.
+- `aide.html` 3 callouts (`.aide-note`, `.aide-warning`, `.changelog-entry`) : `border-left: 3px` → full border 1px + bg teinté. Au passage hardcode `#e8a33d` remplacé par token `--status-warning-fg`.
 
 **~02h05 — Critique UX de la home (heuristiques Nielsen)**
 
@@ -4527,7 +4527,7 @@ Nouveau traitement 1→1 qui applique de la color correction en temps réel, san
 
 **~02h15 — Refonte de la home en vue topologique pipeline**
 
-- Remplacement complet des 12 cards-compteurs par une **topologie 3 colonnes** : Sources / Composition / Sorties. Chaque container = un nœud avec hostname, vmid, badge statut, mode-badge, fps live. Click sur nœud → drill-down vers `/containers***REMOVED***c-X`.
+- Remplacement complet des 12 cards-compteurs par une **topologie 3 colonnes** : Sources / Composition / Sorties. Chaque container = un nœud avec hostname, vmid, badge statut, mode-badge, fps live. Click sur nœud → drill-down vers `/containers#c-X`.
 - **Barre santé système** en une ligne fine au-dessus du graphe : PTP / mDNS / SR-IOV / Containers / NMOS avec dots colorés et tooltips natifs définissant les acronymes (lisibilité démo).
 - **SVG inline** pour les arêtes : courbes Bézier cubiques entre les nœuds, theme-aware via `var(--*)`, pas de canvas. Tooltip flottant au survol d'une arête : nom du flux, source → destination, statut, fps.
 - **Backend** : `/api/home/summary` étendu avec `topology: {nodes, edges}` ; topologie dérivée du `deploy_config` (shms produits/consommés par container).
@@ -4537,9 +4537,9 @@ Nouveau traitement 1→1 qui applique de la color correction en temps réel, san
 **~02h25 — Arêtes audio/vidéo en couleurs distinctes + ports nommés**
 
 - Nouveaux tokens CSS `--topo-flow-video` / `--topo-flow-audio` (+ variantes `-active`), override par thème :
-  - Classic : vidéo = slate, audio = ocre `***REMOVED***d6b08a`.
-  - Daylight : vidéo = indigo, audio = orange brûlé `***REMOVED***c2410c`.
-  - Studio : vidéo = amber, audio = cyan menthe `***REMOVED***5eead4`.
+  - Classic : vidéo = slate, audio = ocre `#d6b08a`.
+  - Daylight : vidéo = indigo, audio = orange brûlé `#c2410c`.
+  - Studio : vidéo = amber, audio = cyan menthe `#5eead4`.
 - Backend `produces`/`consumes` portent désormais `{shm, kind: 'video'|'audio'}`. Edges héritent du kind, rendus avec stroke distincte + chip `VIDÉO`/`AUDIO` dans le tooltip.
 - Chaque nœud expose désormais sa **liste de ports** (entrées à gauche, sorties à droite, débordant `-16px` du card pour que les arêtes y atterrissent) avec un dot coloré par kind. Plus de superposition quand plusieurs shms vont entre la même paire de nœuds.
 
@@ -4586,12 +4586,12 @@ Nouveau traitement 1→1 qui applique de la color correction en temps réel, san
 
 **~03h55 — Sanitizer du champ Hostname (création de container)**
 
-- `templates/forms.html` : nouveau handler `oninput="this.value = sanitizeHostname(this.value)"` sur le champ `***REMOVED***hostname`, plus tooltip explicatif.
+- `templates/forms.html` : nouveau handler `oninput="this.value = sanitizeHostname(this.value)"` sur le champ `#hostname`, plus tooltip explicatif.
 - `static/scripts.js` : fonction `sanitizeHostname(v)` qui décompose les accents (NFD + strip des combining marks U+0300-U+036F), convertit espaces et underscores en tirets, retire tout caractère hors `[A-Za-z0-9-]`, collapse les tirets multiples, strip les tirets en début/fin. La casse est préservée. Exemples : `Caméra Régie 1 (Béta)` → `Camera-Regie-1-Beta`, `cam_1` → `cam-1`, `mxl@local` → `mxllocal`. Sanitization aussi appliquée à la soumission dans `creerMultiple()` en défense contre les copier-coller.
 
 ---
 
-***REMOVED******REMOVED*** Mélangeur PGM/PVW + streamer fps adaptatif — 2026-05-28
+## Mélangeur PGM/PVW + streamer fps adaptatif — 2026-05-28
 
 **~03h25 — Streamer worker_udp : framerate adaptatif**
 
@@ -4649,7 +4649,7 @@ Backend :
 - Boucle principale : la frame "clean" est calculée d'abord en YUV ; si overlay actif, roundtrip RGB pour produire la frame PGM ; PVW est calculée indépendamment depuis l'entrée preview. Les 3 sont écrites avec les mêmes `frame_index`/`time_ns()`.
 - La card container affiche `shm = "PGM:… · clean:… · PVW:…"` pour la lisibilité.
 
-***REMOVED******REMOVED*** Sources / Destinations + générateur par slot — 2026-05-28
+## Sources / Destinations + générateur par slot — 2026-05-28
 
 **~02h00 — Refonte du menu principal**
 
@@ -4660,7 +4660,7 @@ Backend :
 **~02h30 — Page Destinations**
 
 - Nouvelle route `GET /api/nmos/senders_detail` : agrège par container les senders depuis `nmos._senders` + state IS-05 (`_send_state` → multicast/port, essence, audio_idx, subscription receiver_id) + fetch live des fps sur `:8080` du container.
-- Template `destinations.html` : carte par container, table par sender (essence vidéo/audio ***REMOVED***idx, état active/idle, fps, multicast:port, receiver subscribed). Refresh 5s.
+- Template `destinations.html` : carte par container, table par sender (essence vidéo/audio #idx, état active/idle, fps, multicast:port, receiver subscribed). Refresh 5s.
 
 **~02h50 — Adresses MXL + groupement par ensemble**
 
@@ -4668,7 +4668,7 @@ Backend :
 - Receivers : `shm_path` dérivé de `{hostname}_{idx}` (vidéo) ou `{hostname}_audio_{idx}` (audio).
 - Senders : `shm_path` dérivé de `params.video.shm_name` ou `params.audios[i].shm_name` depuis `deploy_config`.
 - Regroupement visuel en **Ensembles** (1 vidéo + N audio) : pour les receivers, vidéo[i] est appairé avec audio[i] (audio surnuméraire rattaché au dernier ensemble) ; pour les senders, un seul ensemble par container puisqu'il y a au max 1 vidéo + 2 audio.
-- Distinction essence : fond bleu + bordure gauche bleue (vidéo), fond vert + bordure gauche verte (audio), tags `VIDÉO ***REMOVED***i` / `AUDIO ***REMOVED***i`.
+- Distinction essence : fond bleu + bordure gauche bleue (vidéo), fond vert + bordure gauche verte (audio), tags `VIDÉO #i` / `AUDIO #i`.
 - Fix collision audio/vidéo : les métriques `/8080` sont désormais indexées par `(essence, idx)` au lieu de `idx` seul.
 
 **~03h00 — Générateur par slot (refonte importante)**
@@ -4695,7 +4695,7 @@ Backend :
   - `— / —` en rouge quand rien n'arrive (silence côté pipeline).
 - Format codé en dur car le 2110-30 est fixé à L24/48k/8ch dans `receiver_nmos.py` et `worker_2110_sender.py`. À ouvrir si on veut supporter L16 ou d'autres sample rates plus tard.
 
-***REMOVED******REMOVED*** Refonte palette de déploiement + renommage projet — 2026-05-27
+## Refonte palette de déploiement + renommage projet — 2026-05-27
 
 - **Renommage projet** : "Orchestrateur MXL" → **BobiBox MXL** (BBM). Logo/titre dans la nav mis à jour. La technologie MXL (pipeline vidéo ST 2110) reste inchangée.
 - **DB renommée** : `orchestrateur.db` → `db_bobiboxmxl.db`.
@@ -4705,14 +4705,14 @@ Backend :
 - **Statut batch** : "script_stopped" sans config affiché "Container prêt". Étapes intermédiaires plus détaillées (Initialisation → Clonage → Configuration → Démarrage → Container prêt).
 - Onglet **Surveillance** défini par défaut dans la page Containers.
 
-***REMOVED******REMOVED*** Robustesse création de containers — 2026-05-27
+## Robustesse création de containers — 2026-05-27
 
 - **Visibilité des erreurs batch** : les lignes en échec sont maintenant mises en évidence (fond rouge, texte rouge). La page scroll automatiquement vers le tableau dès qu'une erreur est détectée. Les premiers polls passent à 1 s (×6) avant de revenir à 3 s pour détecter les erreurs de clonage plus vite.
 - **Message d'erreur Proxmox enrichi** : quand le clonage échoue avec "does not exist" (template absent), le message d'alerte indique explicitement d'aller créer le template dans Réglages → Proxmox.
 - **Protection contre l'écrasement involontaire du template** : avant de recréer le template, l'outil vérifie si le VMID cible est déjà utilisé. Si c'est un container managé par notre outil → bouton désactivé, message bloquant. Si c'est un container Proxmox externe inconnu de notre DB → confirmation explicite avec nom et statut du container avant destruction.
 - Suppression de la phrase redondante dans la section template de Réglages → Proxmox.
 
-***REMOVED******REMOVED*** Création de containers en masse — 2026-05-27
+## Création de containers en masse — 2026-05-27
 
 - La page Containers est restructurée en deux onglets principaux : **Création** et **Surveillance**.
 - **Onglet Création** : formulaire avec un champ "Hostname (préfixe)" et un champ "Nombre" (1–20). Lors d'un batch, les containers sont nommés `<préfixe>-1`, `<préfixe>-2`, etc. (si N=1, le hostname est utilisé tel quel).
@@ -4720,7 +4720,7 @@ Backend :
 - Une zone "Batch en cours" apparaît sous le formulaire après le lancement : table hostname / VMID / statut + log timestampé de chaque requête. Polling automatique toutes les 3 s jusqu'à ce que tous les containers soient `running`.
 - **Onglet Surveillance** : reprend l'ancienne vue "Containers surveillés" (grille de cards + palette de déploiement). Les logs système restent toujours visibles en bas de page, accessibles depuis les deux onglets.
 
-***REMOVED******REMOVED*** Routage MXL via Ember+ — 2026-05-27
+## Routage MXL via Ember+ — 2026-05-27
 
 Journée complète de développement et debug sur le routing Ember+.
 
@@ -4750,39 +4750,39 @@ Journée complète de développement et debug sur le routing Ember+.
 
 **État final :** le nœud `routing` est visible et navigable dans le tree browser VSM. Chaque destination expose un paramètre "source (numéro)" modifiable depuis VSM (0 = déconnecté, N = numéro de la source). La QualifiedMatrix `[App 17]` est disponible sur `GetDirectory([2])` pour les consumers routing natifs.
 
-***REMOVED******REMOVED*** Niveau dBFS configurable du sine audio simulé — 2026-05-26 23:25
+## Niveau dBFS configurable du sine audio simulé — 2026-05-26 23:25
 
 - Nouveau champ "Niveau sine audio (dBFS)" dans la section simulation du receiver. Par défaut **-18 dBFS** (EBU alignment level standard).
 - Avant : la sine était à 0 dBFS (full scale) → ça saturait les meters en permanence. Maintenant, le sine descend à -18 dBFS → utile pour tester un signal de référence broadcast et voir si les meters affichent correctement le niveau attendu.
 - Range : -60 à 0 dBFS. Côté ffmpeg, l'expression devient `<amp>*sin(2*PI*freq*t)` où `amp = 10^(level_db/20)` (ex -18 → 0.125893).
 
-***REMOVED******REMOVED*** Numéro de canal sous chaque meter + rupture per-canal — 2026-05-26 23:00
+## Numéro de canal sous chaque meter + rupture per-canal — 2026-05-26 23:00
 
 - **Numéro de canal** : sous chaque barre du peak meter, label "1" à "8" pour identifier facilement les canaux. Bande de 12 px réservée en bas du meter (les barres et graduations s'affichent au-dessus).
 - **Option "Rupté" par canal** dans le générateur audio simulation : 8 nouvelles checkboxes (en plus des 8 d'activation). Cochée → le canal coupe 100 ms toutes les 1 s (90% ON, 10% OFF). Utile pour identifier visuellement quel canal est quel sur les peak meters d'un multiview (chaque canal rupté flash visiblement).
 - Côté ffmpeg : `aevalsrc` avec expression conditionnelle par canal `if(lt(mod(t\,1)\,0.9), sin(...), 0)` pour les canaux ruptés. Virgules échappées (`\,`) car elles servent de séparateurs d'arguments dans l'expression ffmpeg.
 - Trois états par canal : silence (case active décochée) / sine continu / sine rupté.
 
-***REMOVED******REMOVED*** Graduations meters étendues + sélection canaux audio simulés — 2026-05-26 22:30
+## Graduations meters étendues + sélection canaux audio simulés — 2026-05-26 22:30
 
 - **Graduations meters** : dBFS = ticks à 0/-3/-6/-9/-12/-18/-20/-30/-40/-50, EBU PPM = +12/+9/+6/+3/0/-3/-6/-9/-12. Petite ligne par tick + label texte filtré (apparaît si espace ≥ 9 px), donc les meters compacts gardent les valeurs clés (0/-12/-30/-60) et les meters hauts affichent toutes les marques.
 - **Choix canaux audio sim** : 8 checkboxes dans la section simulation du receiver. Cochée = sine 1 kHz sur ce canal, décochée = silence. Le stream RTP reste L24/48k/8ch (canaux désactivés émettent du silence dans le packet).
 - **Backend** : ffmpeg utilise maintenant `aevalsrc=exprs=…` avec une expression par canal (`sin(2*PI*freq*t)` ou `0`). Permet la sélection per-canal sans changer le format stream.
 
-***REMOVED******REMOVED*** Fix : config peak meters perdue après deploy multiview — 2026-05-26 22:00
+## Fix : config peak meters perdue après deploy multiview — 2026-05-26 22:00
 
 - Symptôme : configurer les meters dans le Layout Editor, déployer, revenir plus tard → meters désactivés.
 - Cause : `deployerEditor()` dans `multiview.js` reconstruit `flux_config` champ-par-champ (au lieu de tout copier) — les 5 nouveaux champs meter (`meter_channels`, `meter_position`, `meter_inside`, `meter_opacity`, `meter_scale`) étaient strippés à l'envoi vers le backend.
 - Fix : ajout explicite des 5 champs dans le `.map()`.
 - Action requise : Ctrl+R navigateur pour charger le nouveau JS, puis reconfigurer + redéployer.
 
-***REMOVED******REMOVED*** Fix CPU 99% sur receivers simu + multiview source path cassé — 2026-05-26 21:30
+## Fix CPU 99% sur receivers simu + multiview source path cassé — 2026-05-26 21:30
 
 - **CPU des générateurs en simulation** : `ffmpeg -f lavfi` (sine/testsrc) tournait sans `-re` → générait son flux à plein régime, ~187% CPU pour le sine 8ch, ~75% pour le pipeline Python derrière. Ajout de `-re` aux deux ffmpeg lavfi dans `receiver_nmos.py` — résout à 5-10% CPU.
 - **Multiview qui ne voit plus rien** : le composer utilisait directement `c.shm_out` du container source pour construire le path `/dev/shm/<shm>`. Avec le receiver unifié, `shm_out` est devenu une chaîne agrégée style `"Mire_0 · Mire_audio_0"`, créant un path invalide. Le composer splitte maintenant sur ` · ` et déplie les ranges `_0..N-1`, filtre les shms audio (un multiview ne consomme que de la vidéo). Lookup container ↔ shm flexible (matche les shms individuels avec un container agrégé).
 - **Action requise** : redéployer les receivers simu existants pour appliquer le `-re`, et reconfigurer les multiviews dont les fenêtres pointent vers des paths agrégés cassés.
 
-***REMOVED******REMOVED*** Peak meters audio sur les multiviews — 2026-05-26 21:00
+## Peak meters audio sur les multiviews — 2026-05-26 21:00
 
 - Chaque fenêtre du multiview peut afficher un peak meter audio (2 / 4 / 6 / 8 canaux). Configuration par fenêtre dans le Layout Editor (panneau de la fenêtre sélectionnée).
 - Paramètres : nombre de canaux, position (gauche / droite), placement (overlay dans l'image avec opacité 10-100%, ou hors image en réduisant la zone vidéo), graduation (dBFS 0/-60 ou EBU PPM ±12).
@@ -4792,7 +4792,7 @@ Journée complète de développement et debug sur le routing Ember+.
 - Preview live dans le Layout Editor (canvas JS) — pas de vrai signal mais représentation visuelle de la position/dimension.
 - Re-rendu par frame (25 fps), parallèle aux layers static (bordures, labels) et dynamic (tally/labels protocole).
 
-***REMOVED******REMOVED*** Unification receiver / sender (vidéo + audio) + simulation toggle — 2026-05-26 20:30
+## Unification receiver / sender (vidéo + audio) + simulation toggle — 2026-05-26 20:30
 
 **Receivers**
 
@@ -4825,7 +4825,7 @@ Journée complète de développement et debug sur le routing Ember+.
 - Code dédié dans `scripts.py`, `deploy.py`, `nmos.py` supprimé
 - Pas de migration auto des anciens deploys (l'utilisateur recrée les containers)
 
-***REMOVED******REMOVED*** SSH : détection d'échec réactive (plus de polling) — 2026-05-26 22:30
+## SSH : détection d'échec réactive (plus de polling) — 2026-05-26 22:30
 
 - Retrait du health check SSH proactif au démarrage et de la card "SSH host Proxmox" sur la home
 - `ssh_run` détecte désormais rc=255 (SSH process error, vs erreur du remote command) et émet une alerte `error` automatiquement
@@ -4833,15 +4833,15 @@ Journée complète de développement et debug sur le routing Ember+.
 - L'orchestrateur ne SSH plus que pour des opérations utiles — pas de polling périodique
 - Aide mise à jour : pré-requis orchestrateur + section dépannage refocalisée sur l'alerte plutôt que la card
 
-***REMOVED******REMOVED*** Journal de changements dynamique — 2026-05-26 22:10
+## Journal de changements dynamique — 2026-05-26 22:10
 
 - Nouveau fichier `CHANGELOG.md` à la racine du projet (ce fichier)
 - Endpoint `GET /api/changelog` lit le markdown et le rend en HTML via la lib Python `markdown`
 - Page Aide → section "Mises à jour" en fin de sommaire, contenu chargé dynamiquement
-- Convention : nouvelles entrées en tête, format `***REMOVED******REMOVED*** Titre — YYYY-MM-DD HH:MM` + liste à puces
+- Convention : nouvelles entrées en tête, format `## Titre — YYYY-MM-DD HH:MM` + liste à puces
 - Plus besoin d'éditer le template HTML pour ajouter des entrées de changelog
 
-***REMOVED******REMOVED*** Health check SSH proactif — 2026-05-26 21:50
+## Health check SSH proactif — 2026-05-26 21:50
 
 - **Card "SSH host Proxmox"** ajoutée en tête de la home (verte ✓ OK / rouge ✕ CASSÉ + message d'erreur)
 - Vérification au démarrage de Flask : si SSH cassé, alerte `error` + log immédiat
@@ -4849,20 +4849,20 @@ Journée complète de développement et debug sur le routing Ember+.
 - `ssh_run` a maintenant un `ConnectTimeout=5` (évite les blocages réseau)
 - Aide → dépannage : nouvelle section "Card SSH host Proxmox rouge" avec checklist
 
-***REMOVED******REMOVED*** Page Aide — 2026-05-26 21:30
+## Page Aide — 2026-05-26 21:30
 
 - Nouvelle route `/aide` + lien dans la nav du haut
 - 13 chapitres : pré-requis, workflows par type, NMOS / SR-IOV / PTP / CPU pinning expliqués, dépannage, lexique
 - Sommaire latéral sticky avec ancres internes
 
-***REMOVED******REMOVED*** Home dashboard data-driven — 2026-05-26 21:00
+## Home dashboard data-driven — 2026-05-26 21:00
 
 - Suppression des raccourcis statiques
 - Endpoint unique `/api/home/summary` agrège PTP, NMOS counts (vidéo / audio), containers, flux MXL, mDNS, SR-IOV, alertes
 - 4 sections sur la home : Synchronisation, Flux NMOS, Pipeline MXL, Système
 - Refresh 2 s + timestamp de dernière mise à jour
 
-***REMOVED******REMOVED*** ST 2110-30 (audio L24/48k/8ch) — 2026-05-26 20:00
+## ST 2110-30 (audio L24/48k/8ch) — 2026-05-26 20:00
 
 - Nouveau type `audio_receiver` (multi-pipeline) + `worker_2110_audio_sender`
 - Format shm audio dédié : chunks 1 ms (1152 B), ring 100 ms, naming `<hostname>_audio_<idx>`
@@ -4871,7 +4871,7 @@ Journée complète de développement et debug sur le routing Ember+.
 - SDP injection PTP commune aux senders vidéo et audio
 - ST 2110-40 (ancillary) explicitement skip : ffmpeg ne supporte pas RFC 8331 nativement
 
-***REMOVED******REMOVED*** PTP (SMPTE 2059-2 / IEEE 1588) — 2026-05-26 19:30
+## PTP (SMPTE 2059-2 / IEEE 1588) — 2026-05-26 19:30
 
 - Nouveau module `ptp.py` : install `linuxptp`, deploy unités systemd `mxl-ptp4l` + `mxl-phc2sys`, status via `pmc`
 - Architecture host : `ptp4l` sur l'host, containers héritent CLOCK_REALTIME (ffmpeg → timestamps PTP-alignés)
@@ -4879,7 +4879,7 @@ Journée complète de développement et debug sur le routing Ember+.
 - Onglet PTP dans Réglages : settings (enabled / ifname / domain / hw_ts), boutons install / apply, état live (port_state, offset, mean path delay, GM ID, badge LOCKED)
 - Limite documentée : ffmpeg utilise CLOCK_REALTIME (pas PHC direct) → sub-µs avec HW timestamping, pas hard-real-time
 
-***REMOVED******REMOVED*** CPU pinning + édition cores/RAM — 2026-05-26 18:30
+## CPU pinning + édition cores/RAM — 2026-05-26 18:30
 
 - Édition cores / RAM live d'un container existant via palette "Configurer" (stop → reconfigure → start)
 - Épinglage CPU via `lxc.cgroup2.cpuset.cpus` en raw .conf (format Linux cpuset : `4,5,6` ou `4-6`)
@@ -4888,7 +4888,7 @@ Journée complète de développement et debug sur le routing Ember+.
 - Choix de design : épinglage souple, pas `isolcpus` strict
 - Validé bout-en-bout sur 261 (cgroup effective = 1-2 confirmé)
 
-***REMOVED******REMOVED*** SR-IOV + nouveaux onglets réseau — 2026-05-26 17:30
+## SR-IOV + nouveaux onglets réseau — 2026-05-26 17:30
 
 - Plumbing SR-IOV complet (testable à l'arrivée de la ConnectX-4) :
     - Settings `nmos_2110_enabled`, `nmos_2110_pf`, `nmos_2110_vf_count`
@@ -4899,7 +4899,7 @@ Journée complète de développement et debug sur le routing Ember+.
 - Affichage CPU% + barre colorée sur les cards containers
 - Page **Receivers NMOS** dédiée listant pipelines + subscription state
 
-***REMOVED******REMOVED*** Bind mount /dev/shm corrigé — 2026-05-26 16:30
+## Bind mount /dev/shm corrigé — 2026-05-26 16:30
 
 - Diagnostic : la recréation des containers avait perdu le bind `/dev/shm`, le pipeline MXL ne fonctionnait plus entre containers
 - `pct set --mp0 /dev/shm` ne marche pas (Proxmox veut un block device) → édition raw `lxc.mount.entry` via SSH
@@ -4907,7 +4907,7 @@ Journée complète de développement et debug sur le routing Ember+.
 - Wipe des fichiers fantômes UID 100000 (anciens containers unprivileged) pour éviter les conflits de permission
 - Template recreate : streaming live de chaque étape (au lieu d'un dump à la fin)
 
-***REMOVED******REMOVED*** NMOS Phase 2 : worker_2110_sender + IS-05 bulk + mDNS — 2026-05-26 15:30
+## NMOS Phase 2 : worker_2110_sender + IS-05 bulk + mDNS — 2026-05-26 15:30
 
 - Nouveau type `worker_2110_sender` : lit shm, ffmpeg yuv422p10le → RTP raw RFC 4175
 - NMOS provider étendu : Source / Flow (2110-20) / Sender exposés en IS-04 ; routes IS-05 single/senders (constraints / staged / active / transportfile)

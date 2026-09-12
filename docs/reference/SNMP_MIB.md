@@ -1,4 +1,4 @@
-***REMOVED*** BOBI-STUDIO-MIB — référence d'intégration SNMP
+# BOBI-STUDIO-MIB — référence d'intégration SNMP
 
 > **Ce document FAIT FOI** (cf. `CLAUDE.md`, rangement de la documentation). Il décrit ce qu'un
 > intégrateur doit savoir pour brancher Bobi.Studio sur un système de supervision.
@@ -10,7 +10,7 @@ Fichier livrable : **`services/snmp/BOBI-STUDIO-MIB.mib`** (SMIv2), télécharge
 
 ---
 
-***REMOVED******REMOVED*** 1. En une page
+## 1. En une page
 
 | | |
 |---|---|
@@ -28,7 +28,7 @@ en mémoire du contrôleur. Il n'y a pas d'agent par machine à provisionner.
 
 ---
 
-***REMOVED******REMOVED*** 2. Le PEN, et la reprise que son attribution impose
+## 2. Le PEN, et la reprise que son attribution impose
 
 Le Private Enterprise Number de **BOBI** a été **attribué par l'IANA le 2026-08-26 : `66633`**
 (contact Cyril Mazouer). L'arbre est donc publié sous `1.3.6.1.4.1.66633`, et c'est définitif.
@@ -64,7 +64,7 @@ identifiants USM sont à re-provisionner. Vérifié le 2026-08-26 en base isolé
 
 ---
 
-***REMOVED******REMOVED*** 3. Ce qui répond aujourd'hui
+## 3. Ce qui répond aujourd'hui
 
 La MIB décrit l'arbre **complet**. Tout n'est pas encore instrumenté, et le fichier le dit à deux
 endroits : la conformance `bsImplementedCompliance`, et la `DESCRIPTION` de chaque table non
@@ -98,7 +98,7 @@ les OIDs ne bougeront plus quand les tables seront peuplées.
 
 ---
 
-***REMOVED******REMOVED*** 4. Cinq pièges d'exploitation
+## 4. Cinq pièges d'exploitation
 
 Ils sont écrits dans les `DESCRIPTION` de la MIB elle-même — c'est l'intégrateur du client qui
 écrira les règles, pas nous.
@@ -136,7 +136,7 @@ handle interne, réattribuable — une règle accrochée dessus finit par désig
 
 ---
 
-***REMOVED******REMOVED*** 5. Notifications
+## 5. Notifications
 
 Neuf notifications typées + `bsGenericAlarm`, toutes portant **le même jeu de varbinds** :
 `bsAlarmKind`, `bsAlarmSeverity`, `bsAlarmNodeIndex`, `bsAlarmContainerVmid`, `bsAlarmRoleNum`,
@@ -158,7 +158,7 @@ autres.
 | `.0.11` | `bsAlarmClear` | **définie, PAS ENCORE ÉMISE** — voir ci-dessous |
 | `.0.12` | `bsAgentStart` | **définie, PAS ENCORE ÉMISE** |
 
-***REMOVED******REMOVED******REMOVED*** Inform ou trap
+### Inform ou trap
 
 **Inform par défaut, et c'est un choix de fiabilité.** Un trap est un datagramme non acquitté :
 sa perte est silencieuse. Un inform est acquitté ; s'il ne l'est pas, l'échec est compté, affiché
@@ -177,7 +177,7 @@ authUser log,execute <utilisateur> authPriv
 En mode **inform**, c'est le récepteur qui fait autorité : un `createUser` sans `-e` suffit,
 la découverte d'engine ID est automatique.
 
-***REMOVED******REMOVED******REMOVED*** Ce que `bsAlarmClear` ne fait pas encore
+### Ce que `bsAlarmClear` ne fait pas encore
 
 Le produit émet bien des événements de résolution (« flux rétabli après 4 min de panne »), mais
 **rien ne les distingue structurellement** d'une alarme ordinaire : ni la nature, ni le niveau,
@@ -192,7 +192,7 @@ C'est une limite connue, écrite ici plutôt que découverte en recette.
 
 ---
 
-***REMOVED******REMOVED*** 6. Exemple d'interrogation
+## 6. Exemple d'interrogation
 
 ```
 snmpwalk -v3 -l authPriv -u <utilisateur> \
@@ -206,7 +206,7 @@ Réglages → Protocoles → SNMP.
 
 ---
 
-***REMOVED******REMOVED*** 7. Matrice de flux
+## 7. Matrice de flux
 
 | Source | Destination | Proto | Port | Sens | Objet | Chiffré |
 |---|---|---|---|---|---|---|
@@ -218,7 +218,7 @@ nœuds : ils ne parlent pas SNMP.
 
 ---
 
-***REMOVED******REMOVED*** 8. Concordance code ↔ MIB
+## 8. Concordance code ↔ MIB
 
 Le fichier `.mib` et le code de l'agent **ne se compilent pas ensemble** : rien n'empêcherait
 structurellement l'un de dériver de l'autre, et la divergence serait invisible chez nous — très
@@ -239,7 +239,7 @@ Le bouton **« Vérifier la concordance »** de l'onglet SNMP pose la même ques
 
 ---
 
-***REMOVED******REMOVED*** 9. Haute disponibilité
+## 9. Haute disponibilité
 
 L'agent tourne sur le **contrôleur actif seulement**. Le rôle ne bascule **jamais à chaud** :
 `promote()` et `demote()` redémarrent le service, et `main.py` ne démarre l'agent que sous
@@ -258,7 +258,7 @@ peut la poser après le service.
 
 ---
 
-***REMOVED******REMOVED*** 10. Coût du sondage
+## 10. Coût du sondage
 
 Mesuré, pas supposé : **13 walks complets consécutifs (~4 900 OID) ne déclenchent aucune connexion
 réseau, aucune requête HTTP et aucun sous-processus** côté orchestrateur. L'agent lit les caches

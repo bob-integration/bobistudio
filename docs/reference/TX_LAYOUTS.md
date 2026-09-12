@@ -1,4 +1,4 @@
-***REMOVED*** Layouts TX/RX par carte — isolation des sorties 2110 (chantier)
+# Layouts TX/RX par carte — isolation des sorties 2110 (chantier)
 
 > Créé 2026-07-13. Contexte : sur le socle narrow (PMD ice + pacing ratelimit), toute création de
 > session TX déclenche `rte_tm_hierarchy_commit` qui **stoppe/redémarre le port entier** (~100 ms-1 s).
@@ -7,13 +7,13 @@
 > detector MTL (qui ne vit que dans le chemin burst) comme du backstop mtl_rx (le feeder resynchronise
 > et paraît vivant). Aucun filet ne rattrape un TX de prod tué ainsi. Cf. docs/chantiers/DPDK_NARROW.md §7.
 
-***REMOVED******REMOVED*** Exigence produit (2026-07-13)
+## Exigence produit (2026-07-13)
 
 **Une action sur un TX ne doit jamais se voir sur un autre TX** — sauf événement de maintenance
 explicitement **déclaré, avertissant et soumis à validation**. Les vrais équipements broadcast pacent
 par-flux en FPGA ; sur E810 l'isolation n'existe que si l'arbre RL est **figé au runtime**.
 
-***REMOVED******REMOVED*** Décisions actées (utilisateur, 2026-07-13)
+## Décisions actées (utilisateur, 2026-07-13)
 
 1. **Le layout vit dans Réglages**, adossé à la bibliothèque de cartes (`nic_profiles`) — pas dans la
    page Destinations 2110 (déjà chargée). La page **Destinations 2110 affiche** le layout appliqué
@@ -25,9 +25,9 @@ par-flux en FPGA ; sur E810 l'isolation n'existe que si l'arbre RL est **figé a
    `narrow_ok`), **sauvegardables** et déployables ; le système fournit des **exemples** (presets
    suggérés par modèle de carte, non contraignants).
 
-***REMOVED******REMOVED*** Les 5 étages
+## Les 5 étages
 
-***REMOVED******REMOVED******REMOVED*** Étage 0 — Filet : patch libmtl « famine builder → auto-récupération » ✅ LIVRÉ (0.48.0)
+### Étage 0 — Filet : patch libmtl « famine builder → auto-récupération » ✅ LIVRÉ (0.48.0)
 Si `rte_pktmbuf_alloc_bulk` échoue en continu hors commit (`inf->resetting`), déclencher la
 récupération EXISTANTE de MTL (`st20_tx_queue_fatal_error` vidéo / `st_audio_queue_fatal_error`
 audio : purge rings + nouvelle queue + reset mempool). Une mort silencieuse devient une coupure
@@ -42,8 +42,8 @@ bugs, tous deux mesurés au banc (moteur 140, nœud 30) et corrigés ensemble :
    l'appel au builder ; `st_audio_queue_fatal_error` reboucle sur toutes les sessions du mgr avec
    `tx_audio_session_get()` = `rte_spinlock_lock()` **bloquant**. `rte_spinlock_t` n'est pas
    récursive ⇒ **le lcore spinne sur son propre verrou, définitivement**, dès la 1ʳᵉ famine audio.
-   Preuve : backtrace gdb de `mtl_sch_0` (état R, 100 % CPU, figé 10 h) `***REMOVED***0 st_audio_queue_fatal_error
-   ← ***REMOVED***1 tx_audio_session_tasklet_frame ← ***REMOVED***2 tx_audio_sessions_tasklet`. Tout le tableau clinique en
+   Preuve : backtrace gdb de `mtl_sch_0` (état R, 100 % CPU, figé 10 h) `#0 st_audio_queue_fatal_error
+   ← #1 tx_audio_session_tasklet_frame ← #2 tx_audio_sessions_tasklet`. Tout le tableau clinique en
    découlait : lcore mort ⇒ toutes les sessions de ce sch à 0 fps ; `stat_build_ret_code` figé à
    -207 et réimprimé toutes les 10 s par le thread de stats (les « 420 -207 / 10 min » n'étaient
    PAS 420 famines, mais UNE famine figée réimprimée) ; le filet lui-même (famine check + zombie
@@ -83,7 +83,7 @@ in-use). Piste dominante, non prouvée formellement : les mbufs déjà postés d
 TX** au moment du stop de port du commit TM sont perdus sans free (memset de `ice_reset_tx_queue`).
 Le filet les rattrape désormais ; supprimer la chute reste préférable à la rattraper.
 
-***REMOVED******REMOVED******REMOVED*** Étage 1 — Layout TX déclaré + arbre statique au boot ✅ LIVRÉ (cb36565, vérifié au banc 2026-07-14)
+### Étage 1 — Layout TX déclaré + arbre statique au boot ✅ LIVRÉ (cb36565, vérifié au banc 2026-07-14)
 Au deploy du moteur : créer TOUTES les sessions du layout (flag `provisioned` du controller, déjà
 codé mais jamais posé), **silencieuses d'abord**, brancher les feeders (fallback black, câbles)
 seulement une fois l'arbre complet. Activation/désactivation d'une sortie = swap de source, zéro
@@ -92,7 +92,7 @@ UI : layout défini dans **Réglages** (section carte/nœud, à côté des rése
 affiché en lecture seule sur Destinations 2110 (+ édition admin), état « appliqué / en attente »,
 bouton « Appliquer le layout » = événement de maintenance (étage 2).
 
-***REMOVED******REMOVED******REMOVED*** Étage 2 — Classification des actions + validation avec avertissement ✅ LIVRÉ (2026-07-14)
+### Étage 2 — Classification des actions + validation avec avertissement ✅ LIVRÉ (2026-07-14)
 Module : `app/tx_maintenance.py`. Le verdict est **CALCULÉ**, jamais codé en dur :
 
 > **Perturbatrice ⟺ l'action fait apparaître une signature de session TX _vidéo_ qui n'existait pas,
@@ -123,7 +123,7 @@ Permission `containers.deploy`. Sur un port **AF-XDP** (cas d'Horace, prod) tout
 3 recréations ; grouper 3 actions sur **la même** sortie n'en coûte **qu'une**. Le bénéfice réel =
 fusion par sortie + **une seule fenêtre annoncée** au lieu de N perturbations dispersées.
 
-***REMOVED******REMOVED******REMOVED*** Étage 3 — Gating de format sur les TX + insertion d'UDC ✅ LIVRÉ (2026-07-14)
+### Étage 3 — Gating de format sur les TX + insertion d'UDC ✅ LIVRÉ (2026-07-14)
 Gate `cabling._tx_slot_mismatch` : format RÉEL du flux (`_flow_def_format`, source de vérité) vs
 format DÉCLARÉ du slot (`tx_slots[i]`). Écart ⇒ 409, **trois issues, jamais « forcer »** (un TX qui
 annonce X et émet Y est une non-conformité 2110) : insérer un UDC / aligner la sortie sur la source
@@ -163,7 +163,7 @@ DÉRIVÉ** → signature changée → commit TM **sans qu'aucun humain n'ait rie
 l'identité d'un slot dont la source a dérivé : le slot reste sur ce qu'il ANNONCE, et c'est le
 watcher (UDC) qui rétablit une source concordante.
 
-***REMOVED******REMOVED******REMOVED*** Feuille RL d'un slot silencieux — la question tranchée (banc 2026-07-14, moteur 140, nœud 30)
+### Feuille RL d'un slot silencieux — la question tranchée (banc 2026-07-14, moteur 140, nœud 30)
 
 **Question** : faut-il patcher libmtl pour pré-provisionner la feuille de pacing au débit nominal,
 afin que la PREMIÈRE ACTIVATION d'une sortie ne paie plus de commit ? **Réponse : non — c'est déjà
@@ -198,7 +198,7 @@ format et de rien d'autre. Il n'y a pas de « débit réel » qui pourrait diver
 sortie, fenêtre de maintenance) ; l'exploitation (activer, couper, router) est **gratuite**. C'était
 l'objectif de l'étage 1 : il est atteint et vérifié.
 
-***REMOVED******REMOVED******REMOVED*** ★★ Étage 0-bis — 2ᵉ mort collatérale : `build ret -203` PERMANENT (trames piégées « inflight »)
+### ★★ Étage 0-bis — 2ᵉ mort collatérale : `build ret -203` PERMANENT (trames piégées « inflight »)
 **Code livré 0.49.0 — ⚠ NON VALIDÉ AU BANC** (moteur 140 occupé par le banc HT ; recette § plus bas)
 
 **Le symptôme.** Au commit de maintenance ci-dessus, une voisine qui émettait à 50 fps est tombée à
@@ -262,7 +262,7 @@ même différé hors spinlock que la v4 du filet famine ; **non observé au banc
 
 **Recette de validation (à lancer moteur libre)** — cf. « Protocole de recette » en fin de document.
 
-***REMOVED******REMOVED******REMOVED*** ★★ La cause première : TROUVÉE ET SUPPRIMÉE (0.50.0) — et ce n'était **pas** DPDK
+### ★★ La cause première : TROUVÉE ET SUPPRIMÉE (0.50.0) — et ce n'était **pas** DPDK
 
 **L'hypothèse du chantier était FAUSSE.** « Le stop de port du commit TM perd les mbufs postés dans
 les descripteurs TX sans les libérer (`memset` de `ice_reset_tx_queue`) » : c'est **faux sur DPDK
@@ -322,7 +322,7 @@ pu être exercée telle quelle — le banc tourne en `tx_fallback=black`, donc u
 disponible : le slot 4 (déclaré, **sans câble**) est resté **intact à 50 fps** avant/pendant/après les
 commits, et **aucun** rappel de trame n'a été déclenché chez lui.
 
-***REMOVED******REMOVED******REMOVED*** Étage 4 (réserve) — Isolation totale : matrice de queues pré-shapées
+### Étage 4 (réserve) — Isolation totale : matrice de queues pré-shapées
 Dans `nic_profiles` : matrice de classes de débit par modèle (ex. E810-C 41 feuilles : N×2,2G vidéo
 1080, M×1,1G 720, X audio, Y anc). Toutes les queues liées à leurs shapers **au boot** ; un
 changement de format = **changer de queue** (matching de profil) au lieu de recommiter l'arbre.
@@ -355,7 +355,7 @@ les mbufs du sw_ring au stop de queue (patch DPDK `ice_tx_queue_stop`/`ice_reset
 `rte_pktmbuf_free` sur les entrées du sw_ring avant le memset). Si ça tient, `-207` **et** `-203`
 disparaissent tous les deux à la source, pour un patch **S**, sans toucher à l'arbre TM.
 
-***REMOVED******REMOVED*** Protocole de recette (0.49.0 — à lancer quand le moteur est libre)
+## Protocole de recette (0.49.0 — à lancer quand le moteur est libre)
 
 **Prérequis** : `bobi-mtl-140` (nœud 30) libre, image **rebuildée** (le patch touche libmtl **et**
 `mtl_rx.c`), ⚠ **redémarrer l'orchestrateur avant tout redéploiement** (le registre de plugins est
@@ -392,7 +392,7 @@ doivent rester le seul point de fuite connu).
 **Test négatif obligatoire** (ne pas l'oublier) : un slot **déclaré sans source** doit rester muet et
 **inchangé** — le filet ne doit **rien** rappeler chez lui (branche « app starvation »).
 
-***REMOVED******REMOVED*** Briques existantes réutilisées
+## Briques existantes réutilisées
 
 | Brique | Où | État |
 |---|---|---|
@@ -403,7 +403,7 @@ doivent rester le seul point de fuite connu).
 | Gating format au câblage | `cabling._format_gate` (+ réglage `wire_format_gating`) | ✅ compute only |
 | Modal + insertion auto UDC | `cabling._insert_udc` + cables.html | ✅ compute only |
 
-***REMOVED******REMOVED*** Ordre / état
+## Ordre / état
 
 | Étage | Rebuild image | Taille | État |
 |---|---|---|---|
@@ -424,7 +424,7 @@ doivent rester le seul point de fuite connu).
   (validée au banc). Reste : le commit TM stoppe toujours le port (**2,2 s** mesurées) — impact
   récepteur **MESURÉ ET QUANTIFIÉ le 2026-07-15**, cf. section ci-dessous.
 
-***REMOVED******REMOVED******REMOVED*** Les 2,2 s de commit : impact récepteur MESURÉ (banc moteur 140, nœud 30, image 0.52.0, 2026-07-15)
+### Les 2,2 s de commit : impact récepteur MESURÉ (banc moteur 140, nœud 30, image 0.52.0, 2026-07-15)
 
 **Question résolue** : après le fix 0.50.0 (0 mbuf perdu), un commit de maintenance stoppe toujours le
 port ~2,2 s. Les sorties **ré-émettent-elles en rafale le retard avec des timestamps RTP en retard**

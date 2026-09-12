@@ -1,4 +1,4 @@
-***REMOVED*** Latence de la chaîne — ce qu'on mesure, ce qu'on affiche, ce qui manque
+# Latence de la chaîne — ce qu'on mesure, ce qu'on affiche, ce qui manque
 
 > **État au 2026-08-18.** Document de RÉFÉRENCE : il fait foi sur la sémantique des grandeurs de
 > latence. Écrit après le constat suivant, page Câbles, mode « Cumulé » : le mur affiche **4,3 ms**
@@ -7,7 +7,7 @@
 
 ---
 
-***REMOVED******REMOVED*** 1. Trois grandeurs, à ne JAMAIS confondre
+## 1. Trois grandeurs, à ne JAMAIS confondre
 
 | grandeur | définition | unité | répond à |
 |---|---|---|---|
@@ -26,7 +26,7 @@ Le plugin multiview le dit dans son propre code :
 > « Délai que CET étage ajoute à la chaîne, en TRAMES (index de sortie − index d'entrée).
 > **C'est la seule mesure directe de la latence d'un étage ; tout le reste est un modèle.** »
 
-***REMOVED******REMOVED******REMOVED*** Le temps de calcul reste PRÉCIEUX — mais pas comme une latence
+### Le temps de calcul reste PRÉCIEUX — mais pas comme une latence
 
 Il ne faut pas le retirer : c'est l'indicateur de **charge et de marge**. Un mur à 4,3 ms sur un
 budget de trame de 20 ms (50 fps) consomme 21 % de son créneau — il a 79 % de marge. C'est cette
@@ -38,7 +38,7 @@ pas être mal lu.
 
 ---
 
-***REMOVED******REMOVED*** 2. Ce que la page Câbles additionne aujourd'hui
+## 2. Ce que la page Câbles additionne aujourd'hui
 
 `app/routes/home_dashboard.py:967`, `_delay_out(vmid)`, le long de l'entrée de RÉFÉRENCE :
 
@@ -58,7 +58,7 @@ aucune trame. Relevé sur le parc, serveur en cours :
 `grep -rn delai_etage_trames app/ templates/ static/` → **aucune occurrence**. La seule mesure
 directe de la chaîne est publiée sur `:8080` et **jetée**.
 
-***REMOVED******REMOVED******REMOVED*** Les shards SONT comptés
+### Les shards SONT comptés
 
 Contrairement à ce qu'on pourrait croire en voyant les internes du tissu repliés dans l'interface :
 `_delay_out` traverse les shards, parce qu'ils sont dans `topology.nodes`/`edges` et que le repli
@@ -67,7 +67,7 @@ n'est donc pas « la composition seule » — il est faux pour une autre raison,
 
 ---
 
-***REMOVED******REMOVED*** 3. Les deux bouts manquants
+## 3. Les deux bouts manquants
 
 | segment | réalité mesurée | dans le cumul |
 |---|---|---|
@@ -83,7 +83,7 @@ le délai à son ENTRÉE (`delay_in_ms`), jamais le coût de sa mise sur le fil.
 
 ---
 
-***REMOVED******REMOVED*** 4. Un bug : la collision de vmid RX/TX corrompt le cumul
+## 4. Un bug : la collision de vmid RX/TX corrompt le cumul
 
 Les deux moitiés du moteur 2110 sont **deux nœuds de topologie portant le MÊME vmid** (619 —
 « (RX) » et « (TX) »). `_delay_out` est keyé sur le vmid seul (`_memo[vmid]`, `in_v_edges[vmid]`).
@@ -102,7 +102,7 @@ Correctif : clé de cumul = **(vmid, rôle)** et non vmid seul, partout où le m
 
 ---
 
-***REMOVED******REMOVED*** 5. Référence mesurée — la chaîne réelle
+## 5. Référence mesurée — la chaîne réelle
 
 Mesure aux bandeaux-sonde du **2026-08-12** (âge absolu du contenu contre horloge TAI ; la seule
 méthode qui ait un contrôle interne, cf. `latence-age-absolu-contre-horloge-tai`) :
@@ -124,7 +124,7 @@ naïvement. Segments composables : réception + [source → sortie du mur] + ém
 
 ---
 
-***REMOVED******REMOVED*** 6. Le segment TX est-il mesurable ? Oui — et les pièces existent
+## 6. Le segment TX est-il mesurable ? Oui — et les pièces existent
 
 La question ouverte était « on ne peut pas vraiment mesurer le TX ». C'est inexact : ce n'est pas
 impossible, c'est **jamais fait**. État du moteur (`plugins/2110_io/mtl_rx.c`) :
@@ -157,7 +157,7 @@ telle est honnête ; une constante silencieuse est un mensonge.
 
 ---
 
-***REMOVED******REMOVED*** 7. Ce qu'il faut afficher — deux axes, pas un
+## 7. Ce qu'il faut afficher — deux axes, pas un
 
 Le tort de l'interface actuelle est d'avoir **un seul sélecteur** (« Par étape ⇄ Cumulé ») pour
 deux questions différentes. Il en faut deux, explicitement nommés :
@@ -179,7 +179,7 @@ total.
 
 ---
 
-***REMOVED******REMOVED*** 8. Plan
+## 8. Plan
 
 1. **Corriger la collision vmid RX/TX** (clé `(vmid, rôle)`) — bug franc, indépendant du reste.
 2. **Intégrer le segment A** : `rx_latency_ms` entre dans le cumul au lieu d'être un badge isolé.
@@ -195,7 +195,7 @@ Les étapes 1 à 4 ne touchent aucun conteneur : orchestrateur et gabarits seule
 
 ---
 
-***REMOVED******REMOVED*** Voir aussi
+## Voir aussi
 
 `docs/reference/PROBE_2110.md`, `docs/reference/TX_LAYOUTS.md`, `docs/chantiers/CPU.md`.
 Mémoires : `latence-chaine-2110-etat-et-leviers` (état mesuré), `latence-age-absolu-contre-horloge-tai`

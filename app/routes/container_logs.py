@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Interrogation des journaux de conteneurs depuis le contrôleur — GÉNÉRIQUE (tout conteneur,
 pas seulement le moteur 2110) et servie par `journalctl` sur l'hôte du nœud, PAS par `docker logs`.
@@ -63,7 +63,7 @@ def _logs_payload(vmid):
         n = int(request.args.get("lines") or 200)
     except (TypeError, ValueError):
         n = 200
-    n = max(1, min(n, _journal.MAX_LINES))           ***REMOVED*** plafond dur (cf. docstring du module)
+    n = max(1, min(n, _journal.MAX_LINES))           # plafond dur (cf. docstring du module)
     c, node, name = _resolve(vmid)
     if not node:
         return {"ok": False, "error": "nœud introuvable pour ce conteneur — s'il a été SUPPRIMÉ "
@@ -77,10 +77,10 @@ def _logs_payload(vmid):
             boot=request.args.get("boot"))
 
     data, status = _lire(name)
-    ***REMOVED*** Conteneur totalement OUBLIÉ de la base (ni ligne, ni type) : `_resolve` doit deviner le
-    ***REMOVED*** préfixe et retombe sur `bobi-cmp-`. Pour un ancien MOTEUR, ce nom est faux → journal vide,
-    ***REMOVED*** SANS rien dire, alors que l'historique est bien là sous `bobi-mtl-<vmid>`. On tente donc
-    ***REMOVED*** l'autre préfixe avant de conclure — c'est exactement le cas d'usage post-mortem.
+    # Conteneur totalement OUBLIÉ de la base (ni ligne, ni type) : `_resolve` doit deviner le
+    # préfixe et retombe sur `bobi-cmp-`. Pour un ancien MOTEUR, ce nom est faux → journal vide,
+    # SANS rien dire, alors que l'historique est bien là sous `bobi-mtl-<vmid>`. On tente donc
+    # l'autre préfixe avant de conclure — c'est exactement le cas d'usage post-mortem.
     if (status == 200 and not (data.get("lines") or []) and not request.args.get("name")
             and not (c or {}).get("vmid")):
         autre = (f"bobi-mtl-{vmid}" if name == f"bobi-cmp-{vmid}" else f"bobi-cmp-{vmid}")
@@ -90,9 +90,9 @@ def _logs_payload(vmid):
     data["vmid"] = vmid
     data["node"] = {"id": node.get("id"), "name": node.get("name"), "host": node.get("host")}
     data["log_driver"] = _journal.driver()
-    ***REMOVED*** RÉTENTION : le journal est plafonné en TAILLE, donc l'ancien est purgé. On publie
-    ***REMOVED*** occupation / plafond / plus ancienne entrée disponible plutôt que de laisser croire à un
-    ***REMOVED*** historique infini (une fenêtre vide peut n'être qu'un trou de rotation).
+    # RÉTENTION : le journal est plafonné en TAILLE, donc l'ancien est purgé. On publie
+    # occupation / plafond / plus ancienne entrée disponible plutôt que de laisser croire à un
+    # historique infini (une fenêtre vide peut n'être qu'un trou de rotation).
     if status == 200:
         data["retention"] = _journal.retention(node)
     return data, status

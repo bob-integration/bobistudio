@@ -1,19 +1,19 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Test OFFLINE de _derive_pacing (profil d'émission 2110-21 → MTL_PACING device-level).
-***REMOVED*** DÉFAUT = narrow ; émis SEULEMENT sur un nœud à port dpdk (af_xdp = iso, rien émis).
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Test OFFLINE de _derive_pacing (profil d'émission 2110-21 → MTL_PACING device-level).
+# DÉFAUT = narrow ; émis SEULEMENT sur un nœud à port dpdk (af_xdp = iso, rien émis).
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import docker_driver as dd
 
-_IFACES = {}   ***REMOVED*** node_id → liste de node_interfaces
+_IFACES = {}   # node_id → liste de node_interfaces
 dd_db = None
 
 def _fake_ifaces(node_id):
     return _IFACES.get(node_id, [])
 
-***REMOVED*** Monkeypatch db_get_node_interfaces (importé dynamiquement dans _derive_pacing)
+# Monkeypatch db_get_node_interfaces (importé dynamiquement dans _derive_pacing)
 import app.database as _adb
 _adb.db_get_node_interfaces = _fake_ifaces
 

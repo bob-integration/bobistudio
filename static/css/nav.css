@@ -208,9 +208,9 @@
     font-size: 0.82em;
     font-weight: 700;
     letter-spacing: 0.05em;
-    color: var(--status-warning-fg, ***REMOVED***fbbf24);
-    background: var(--status-warning-bg, ***REMOVED***3f2b0f);
-    border: 1px solid var(--status-warning-fg, ***REMOVED***fbbf24);
+    color: var(--status-warning-fg, #fbbf24);
+    background: var(--status-warning-bg, #3f2b0f);
+    border: 1px solid var(--status-warning-fg, #fbbf24);
     border-radius: var(--radius-small);
     margin-right: 8px;
     text-decoration: none;
@@ -220,9 +220,9 @@
    seule chose à l'écran qui distingue « en veille, tout va bien » de « en veille, plus personne
    ne pilote la production ». Il devient cliquable (→ Réglages, bouton Promouvoir). */
 .topnav .nav-ha-standby.alerte {
-    color: var(--status-stopped-fg, ***REMOVED***f87171);
-    background: var(--status-stopped-bg, ***REMOVED***3f1414);
-    border-color: var(--status-stopped-fg, ***REMOVED***f87171);
+    color: var(--status-stopped-fg, #f87171);
+    background: var(--status-stopped-bg, #3f1414);
+    border-color: var(--status-stopped-fg, #f87171);
     animation: ha-alerte-pulse 1.4s ease-in-out infinite;
 }
 @keyframes ha-alerte-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.55 } }

@@ -1,4 +1,4 @@
-***REMOVED*** Quel témoin croire, et pour quelle question
+# Quel témoin croire, et pour quelle question
 
 **Ce document fait foi.** Il ne décrit pas un composant : il dit **à quel instrument se fier**
 selon la question posée, et **lesquels mentent** — avec la raison, pour qu'on puisse juger si
@@ -10,7 +10,7 @@ d'un raisonnement fautif : toutes venaient d'une mesure qu'on croyait comprendre
 
 ---
 
-***REMOVED******REMOVED*** La règle générale
+## La règle générale
 
 > **Un chiffre sans contrat n'est pas une mesure, c'est une opinion.**
 > Avant de conclure sur une métrique, chercher ce qu'elle mesure *exactement*, ce qu'elle
@@ -27,9 +27,9 @@ Trois corollaires, chacun payé cher :
 
 ---
 
-***REMOVED******REMOVED*** Par question
+## Par question
 
-***REMOVED******REMOVED******REMOVED*** « Le fil porte-t-il la cadence nominale ? »
+### « Le fil porte-t-il la cadence nominale ? »
 
 **Témoin : un récepteur TIERS.** En pratique l'EVS Neuron
 (`http://192.0.2.221:5055/neuron.json`, cf. `docs/reference/` et la note de mémoire associée) :
@@ -41,20 +41,20 @@ identiques sur les deux ports) : inutilisable pour attribuer un débit à un TX 
 
 ⛔ **NE PAS utiliser `fps` du sender** — voir ci-dessous.
 
-***REMOVED******REMOVED******REMOVED*** « Le TX émet-il du contenu NEUF, ou rejoue-t-il ? »
+### « Le TX émet-il du contenu NEUF, ou rejoue-t-il ? »
 
 **Témoin : `repeats` et `late`**, des compteurs cumulés. Un `fps` bas ne prouve rien.
 
 ⚠ Ni le débit ni le format ne distinguent une trame de tenue d'une trame fraîche : elles partent
 **identiques** sur le fil. Le seul juge final est l'œil sur le retour.
 
-***REMOVED******REMOVED******REMOVED*** « Un mur perd-il des trames ? »
+### « Un mur perd-il des trames ? »
 
 **Témoin : `frames_missed` / `frames_missed_per_s`** — les slots de grille genlock réellement
 sautés. Pas `fps` (fenêtre glissante, « chute » de 20-25 % purement artefactuelle), pas
 `own_latency_ms` (moyenne).
 
-***REMOVED******REMOVED******REMOVED*** « Où part le temps dans un mur ? »
+### « Où part le temps dans un mur ? »
 
 **Deux questions, deux instruments** :
 
@@ -68,7 +68,7 @@ aucune — l'étiquette SILENCE des VU-mètres pesait ainsi **19,6 %** du temps 
 dans `piles_pic`. Et à faible taux de perte il ne récolte plus assez d'échantillons : deux fenêtres
 consécutives ont donné le même appel à 5 % puis à 32 %.
 
-***REMOVED******REMOVED******REMOVED*** « La réplication RDMA délivre-t-elle le flux ? »
+### « La réplication RDMA délivre-t-elle le flux ? »
 
 **Témoin : le CONTENU** — empreintes des grains de l'anneau comparées sur les deux nœuds.
 
@@ -77,7 +77,7 @@ nominale **même sans contenu**. Un écart d'index nul ne prouve rien.
 
 ---
 
-***REMOVED******REMOVED*** Les faux témoins connus
+## Les faux témoins connus
 
 | ce qu'on lit | ce que c'est vraiment | pourquoi |
 |---|---|---|
@@ -90,7 +90,7 @@ nominale **même sans contenu**. Un écart d'index nul ne prouve rien.
 
 ---
 
-***REMOVED******REMOVED*** Les métriques dérivées sont des bombes à retardement
+## Les métriques dérivées sont des bombes à retardement
 
 Une métrique **calculée** à partir d'une formule devient fausse dès qu'on change ce qu'elle
 suppose, et **rien ne le signale**. Vécu : `ov_tiles.lancements_gpu` valait `tuiles × 3` ; le
@@ -103,7 +103,7 @@ un commentaire qui promettait pourtant « on publie ce qui se passe, pas une for
 
 ---
 
-***REMOVED******REMOVED*** Deux prédicats pour la même notion = un bug qui vous attend
+## Deux prédicats pour la même notion = un bug qui vous attend
 
 Le 8 août, `reconcilier_cables` jugeait « ce flux est-il consommé ? » sur le CÂBLE, et
 `purger_liens_sans_consommateur` sur `consumes[].shm`. Le second ne résolvait pas les
@@ -119,7 +119,7 @@ peuvent pas se contredire ».
 
 ---
 
-***REMOVED******REMOVED*** Voir aussi
+## Voir aussi
 
 - `docs/reference/PROBE_2110.md` — l'analyseur de flux (conformité 2110-21)
 - `docs/chantiers/MULTIVIEW_CADENCE_2026-08-08.md` — le journal daté de la campagne

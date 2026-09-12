@@ -1,4 +1,4 @@
-***REMOVED*** ST-2022-7 : un drapeau global sur une carte à quatre ports
+# ST-2022-7 : un drapeau global sur une carte à quatre ports
 
 Relevé le 2026-09-11, à partir d'une question d'exploitation : « une carte comme celle d'Horace a
 quatre ports. On peut très bien déclarer une paire en 2022-7 et deux autres sans. À quoi sert le
@@ -6,7 +6,7 @@ réglage dans le moteur ? Ça peut laisser croire que tout est 2022-7. »
 
 L'intuition est juste, et le défaut est plus grave que l'affichage.
 
-***REMOVED******REMOVED*** Ce que le drapeau fait réellement
+## Ce que le drapeau fait réellement
 
 `params.smpte_2022_7` est **un booléen unique par moteur**. Il est lu à deux endroits, ni l'un ni
 l'autre par flux :
@@ -19,13 +19,13 @@ l'autre par flux :
 L'appariement, lui, est **par interface** : `node_interfaces.pair_role` (red/blue) et
 `pair_group`. La granularité des deux mécanismes ne coïncide pas.
 
-***REMOVED******REMOVED*** Le repli qui fabrique une fausse redondance
+## Le repli qui fabrique une fausse redondance
 
 `app/allocations.py:_egress_iface(..., leg=1)` cherche l'interface de même `pair_group` et de
 `pair_role` opposé. Quand elle n'existe pas :
 
 ```python
-return (row0["ifname"], row0.get("media_network_id"))   ***REMOVED*** la MÊME interface que le leg0
+return (row0["ifname"], row0.get("media_network_id"))   # la MÊME interface que le leg0
 ```
 
 C'est documenté comme un repli délibéré. Mais sur un port non apparié, avec le drapeau armé, le
@@ -44,7 +44,7 @@ Les conséquences se cumulent, et aucune ne se voit :
 C'est un échec silencieux au sens strict : la fonction est annoncée, l'annonce est crue, et rien
 ne dit qu'elle est vide.
 
-***REMOVED******REMOVED*** Ce qu'il faudrait
+## Ce qu'il faudrait
 
 **Le principe** : ne jamais fabriquer une seconde jambe qui ne protège de rien. Mieux vaut un flux
 mono-chemin honnêtement déclaré qu'un faux double-chemin.
@@ -64,7 +64,7 @@ Trois gestes, par ordre de coût :
 des adresses de leg1 allouées sur le repli. Le correctif doit donc être arbitré, et sans doute
 accompagné d'un inventaire des slots concernés avant application.
 
-***REMOVED******REMOVED*** Ce qui a déjà été fait le même jour
+## Ce qui a déjà été fait le même jour
 
 `docker_driver.derive_config_moteur()` signale désormais qu'une configuration réseau enregistrée
 n'est **pas appliquée** par le moteur en marche — l'autre moitié de la même question
@@ -73,14 +73,14 @@ chemin non armé », et son symétrique.
 
 ---
 
-***REMOVED*** Le retirer, et suivre les interfaces — ce que ça demande
+# Le retirer, et suivre les interfaces — ce que ça demande
 
 Proposition d'exploitation : supprimer le réglage du moteur et **dériver la redondance de la
 configuration des interfaces**. C'est la bonne conception, pour une raison simple : **déclarer une
 paire red/blue n'est pas un accident**. Personne ne pose `pair_role` par distraction — c'est déjà
 l'expression de l'intention. Un second drapeau ne sert qu'à laisser deux vérités diverger.
 
-***REMOVED******REMOVED*** C'est plus petit qu'il n'y paraît
+## C'est plus petit qu'il n'y paraît
 
 La granularité par flux **existe déjà** dans le modèle :
 
@@ -95,7 +95,7 @@ Chaque slot TX peut donc déjà porter sa propre valeur ; le drapeau du moteur n
 **défaut**. La bascule consiste à remplacer ce défaut par une dérivation, pas à créer une
 granularité.
 
-***REMOVED******REMOVED*** La forme du changement
+## La forme du changement
 
 1. **Un helper unique**, à côté de `_egress_iface` : `slot_redondant(node_id, params, slot_i)`,
    vrai si et seulement si `_egress_iface(leg=1)` rend une interface **différente** de celle du
@@ -108,7 +108,7 @@ granularité.
 
 Compter une demi-journée avec les tests, l'essentiel du volume étant dans un seul fichier.
 
-***REMOVED******REMOVED*** Le seul vrai point d'arbitrage : la migration
+## Le seul vrai point d'arbitrage : la migration
 
 Le changement modifie l'état de déploiements existants, **dans les deux sens** :
 
@@ -126,9 +126,9 @@ pour porter cet inventaire : il compare déjà le déclaré à l'exécuté.
 
 ---
 
-***REMOVED*** Fait le 2026-09-11 : le réglage est retiré, les interfaces font foi
+# Fait le 2026-09-11 : le réglage est retiré, les interfaces font foi
 
-***REMOVED******REMOVED*** Ce qui a changé
+## Ce qui a changé
 
 **`app/allocations.py`** porte désormais la source unique de vérité :
 
@@ -147,7 +147,7 @@ slot ; côté réception, la capacité à deux jambes suit l'existence d'une pai
 **`plugins/2110_io/plugin.json`** — le champ disparaît du `config_schema`, de `deploy_defaults`
 et de `resources.signature_keys`. Version 0.106.1.
 
-***REMOVED******REMOVED*** Vérifié
+## Vérifié
 
 Sur le parc (un moteur), sans redéploiement et sans aucun drapeau armé : **18 récepteurs annoncent
 deux jambes**, les 238 autres une seule (ce sont d'autres types de conteneurs). Les **émetteurs
@@ -155,7 +155,7 @@ restent à une jambe**, ce qui est correct : leur seconde adresse multicast n'ex
 déploiement qui l'alloue. Aucune sur-annonce — un émetteur ne prétend pas être redondant tant que
 l'adresse n'est pas là.
 
-***REMOVED******REMOVED*** Une conséquence à connaître
+## Une conséquence à connaître
 
 `resources.signature_keys` ne contient plus `smpte_2022_7`, donc **la signature de coût ne capture
 plus le surcoût de la redondance** — un flux protégé consomme pourtant deux fois la bande passante

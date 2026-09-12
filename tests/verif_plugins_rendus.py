@@ -1,4 +1,4 @@
-***REMOVED***!/usr/bin/env python3
+#!/usr/bin/env python3
 """Rend CHAQUE plugin et vérifie que le résultat est du Python valide.
 
 Le garde-fou existant (`plugins._scan`) fait un dry-run `.format` : il attrape les accolades non
@@ -22,21 +22,21 @@ _R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _R)
 os.chdir(_R)
 
-import main                       ***REMOVED*** noqa: E402,F401  (charge la config + le registre)
-from app import plugins           ***REMOVED*** noqa: E402
+import main                       # noqa: E402,F401  (charge la config + le registre)
+from app import plugins           # noqa: E402
 
-***REMOVED*** Params neutres : on vérifie la SYNTAXE du rendu, pas un déploiement. Les plugins qui exigent
-***REMOVED*** d'autres clés les prendront par défaut — `render_script` ne fait qu'un `.format`.
+# Params neutres : on vérifie la SYNTAXE du rendu, pas un déploiement. Les plugins qui exigent
+# d'autres clés les prendront par défaut — `render_script` ne fait qu'un `.format`.
 PARAMS = {"shm_name": "in", "shm_out": "out", "audio_shm": "in_audio"}
 
 
 def run():
     types = sorted(plugins.REGISTRY)
     print("%d type(s) au registre" % len(types))
-    ***REMOVED*** ⚠ UN PLUGIN SKIPPÉ DISPARAÎT DU REGISTRE — et donc de ce banc, qui annonçait alors
-    ***REMOVED*** « tous compilent » en n'en ayant pas vu un seul de cassé. C'est le même angle mort que
-    ***REMOVED*** celui qu'on corrige : l'absence doit être un ÉCHEC, pas un silence. On confronte donc le
-    ***REMOVED*** registre au disque.
+    # ⚠ UN PLUGIN SKIPPÉ DISPARAÎT DU REGISTRE — et donc de ce banc, qui annonçait alors
+    # « tous compilent » en n'en ayant pas vu un seul de cassé. C'est le même angle mort que
+    # celui qu'on corrige : l'absence doit être un ÉCHEC, pas un silence. On confronte donc le
+    # registre au disque.
     sur_disque = {d for d in os.listdir(os.path.join(_R, "plugins"))
                   if os.path.isfile(os.path.join(_R, "plugins", d, "plugin.json"))}
     absents = sorted(sur_disque - set(types))

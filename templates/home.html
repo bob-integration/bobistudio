@@ -23,24 +23,24 @@
         <span class="health-value">—</span>
     </a>
     <span class="health-sep" aria-hidden="true">·</span>
-    <a class="health-item" id="h-nodes" href="/monitoring***REMOVED***view=nodes"
+    <a class="health-item" id="h-nodes" href="/monitoring#view=nodes"
        title="{{ _('home.health.nodes_tip') }}">
         <span class="health-dot health-dot-off"></span>
         <span class="health-label">{{ _('home.health.nodes') }}</span>
         <span class="health-value">—</span>
     </a>
     <span class="health-sep" aria-hidden="true">·</span>
-    <a class="health-item" id="h-resources" href="/monitoring***REMOVED***view=nodes"
+    <a class="health-item" id="h-resources" href="/monitoring#view=nodes"
        title="{{ _('home.health.resources_tip') }}">
         <span class="health-dot health-dot-off"></span>
         <span class="health-label">{{ _('home.health.resources') }}</span>
     </a>
-    <a class="health-item" id="h-gpu" style="display:none" href="/monitoring***REMOVED***view=nodes"
+    <a class="health-item" id="h-gpu" style="display:none" href="/monitoring#view=nodes"
        title="{{ _('home.health.gpu_tip') }}">
         <span class="health-dot health-dot-off"></span>
         <span class="health-label">{{ _('home.health.gpu') }}</span>
     </a>
-    <a class="health-item" id="h-rdma" style="display:none" href="/monitoring***REMOVED***view=rdma"
+    <a class="health-item" id="h-rdma" style="display:none" href="/monitoring#view=rdma"
        title="{{ _('home.health.rdma_tip') }}">
         <span class="health-dot health-dot-off"></span>
         <span class="health-label">{{ _('home.health.rdma') }}</span>
@@ -48,7 +48,7 @@
     </a>
     <span class="health-sep health-sep-group" aria-hidden="true">|</span>
     <!-- Groupe SERVICES : pipeline broadcast. -->
-    <a class="health-item" id="h-ptp" style="display:none" href="/settings***REMOVED***reseau"
+    <a class="health-item" id="h-ptp" style="display:none" href="/settings#reseau"
        title="{{ _('home.health.ptp_tip') }}">
         <span class="health-dot health-dot-off"></span>
         <span class="health-label">PTP</span>
@@ -62,7 +62,7 @@
         <span class="health-value">—</span>
     </a>
     <span class="health-sep" aria-hidden="true">·</span>
-    <a class="health-item" id="h-nmos" href="/settings***REMOVED***nmos"
+    <a class="health-item" id="h-nmos" href="/settings#nmos"
        title="{{ _('home.health.nmos_tip') }}">
         <span class="health-dot health-dot-off"></span>
         <span class="health-label">NMOS</span>
@@ -75,8 +75,8 @@
          Il s'appelait « Flux », ce qui ne décrivait pas ce qu'il compte : ni les proxies orphelins
          ni les collisions multicast ne sont des flux, et le chiffre est un nombre de CATÉGORIES,
          pas de flux en défaut. Il porte désormais le titre exact de la section vers laquelle il
-         renvoie (***REMOVED***home-attention), pour qu'on sache où l'on atterrit avant de cliquer. -->
-    <a class="health-item" id="h-attention" href="***REMOVED***home-attention"
+         renvoie (#home-attention), pour qu'on sache où l'on atterrit avant de cliquer. -->
+    <a class="health-item" id="h-attention" href="#home-attention"
        title="{{ _('home.health.attention_tip') }}">
         <span class="health-dot health-dot-off"></span>
         <span class="health-label">{{ _('home.health.attention') }}</span>
@@ -85,7 +85,7 @@
     <!-- Voyant « log moteur verbeux » : n'apparaît QUE si un moteur 2110_io tourne en debug/info/notice
          (dump de stats libmtl → micro-hoquet de cadence + logs volumineux) OU si le réglage l'est. -->
     <span class="health-sep" id="h-mtl-log-sep" style="display:none" aria-hidden="true">·</span>
-    <a class="health-item" id="h-mtl-log" style="display:none" href="/settings***REMOVED***mxl"
+    <a class="health-item" id="h-mtl-log" style="display:none" href="/settings#mxl"
        title="{{ _('home.health.mtl_log_tip') }}">
         <span class="health-dot health-dot-off"></span>
         <span class="health-label">{{ _('home.health.mtl_log') }}</span>
@@ -143,7 +143,7 @@
 <script>
 function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&***REMOVED***39;'
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
     }[c]));
 }
 function plural(n, word, suffix) {
@@ -290,18 +290,18 @@ const PIPELINE_CATEGORIES = [
         label: window.t('home.pipe.traitements'),
         desc: window.t('home.pipe.traitements.desc'),
         iconKey: 'pd-icon-traitements',
-        {***REMOVED*** ⚠ PAS « TX » : en broadcast TX veut dire TRANSMIT, donc une SORTIE — l'étage d'à côté.
+        {# ⚠ PAS « TX » : en broadcast TX veut dire TRANSMIT, donc une SORTIE — l'étage d'à côté.
            Un code à trois lettres sur un schéma de chaîne est lu avec les réflexes du métier, pas
-           comme une abréviation libre. « FX » est le raccourci usuel du traitement de signal. ***REMOVED***}
+           comme une abréviation libre. « FX » est le raccourci usuel du traitement de signal. #}
         iconText: 'FX',
         types: {{ ((plugin_sections.get('traitements') or {}).get('plugins') or []) | map(attribute='type') | list | tojson }},
         route: '/traitements',
     },
     {
-        {***REMOVED*** Étage à part et non fondu dans Traitements : assembler plusieurs signaux et en corriger
+        {# Étage à part et non fondu dans Traitements : assembler plusieurs signaux et en corriger
            un seul ne se décident pas au même moment de l'exploitation, et ce sont les quatre types
            les plus lourds du parc. Mesure ne figure PAS dans ce schéma : une sonde observe la
-           chaîne, elle n'en est pas un étage. ***REMOVED***}
+           chaîne, elle n'en est pas un étage. #}
         key: 'composition',
         label: window.t('home.pipe.composition'),
         desc: window.t('home.pipe.composition.desc'),
@@ -443,29 +443,29 @@ function fmtAge(s, lowerBound) {
     return lowerBound ? '≥ ' + txt : txt;
 }
 function homeAttentionItem(a) {
-    const slots = (a.slots || []).map(s => '***REMOVED***' + s).join(', ');
+    const slots = (a.slots || []).map(s => '#' + s).join(', ');
     const suff = slots ? ` (${slots})` : '';
     switch (a.kind) {
-        case 'rx_stall': return {title: 'RX ' + (a.host || ('***REMOVED***' + a.vmid)),
+        case 'rx_stall': return {title: 'RX ' + (a.host || ('#' + a.vmid)),
             reason: window.t('monitoring.att_rx_stall').replace('{n}', a.count) + suff,
-            href: '/containers***REMOVED***c-' + a.vmid};
-        case 'tx_stall': return {title: 'TX ' + (a.host || ('***REMOVED***' + a.vmid)),
+            href: '/containers#c-' + a.vmid};
+        case 'tx_stall': return {title: 'TX ' + (a.host || ('#' + a.vmid)),
             reason: window.t('monitoring.att_tx_stall').replace('{n}', a.count) + suff,
-            href: '/containers***REMOVED***c-' + a.vmid};
+            href: '/containers#c-' + a.vmid};
         case 'mcast': return {title: window.t('monitoring.att_mcast_title'),
             reason: window.t('monitoring.att_mcast').replace('{n}', a.count) + ' : ' + (a.items || []).join(', '),
-            href: '/settings***REMOVED***nmos'};
+            href: '/settings#nmos'};
         case 'mcast_range_exhausted': return {title: window.t('monitoring.att_mcast_range_title'),
             reason: window.t('monitoring.att_mcast_range').replace('{n}', a.count) + ' : ' +
                 (a.items || []).map(it => it.label).join(', '),
-            href: '/settings***REMOVED***mcast'};
+            href: '/settings#mcast'};
         case 'pyramide': return {title: 'Pyramide',
             reason: window.t('monitoring.att_pyramide').replace('{o}', a.orphans).replace('{u}', a.unmet),
-            href: '/monitoring***REMOVED***view=fabric'};
+            href: '/monitoring#view=fabric'};
         case 'orphan_container': return {title: a.name || '?',
             reason: window.t('monitoring.att_orphan').replace('{node}', a.node || a.node_id),
-            href: '/monitoring***REMOVED***view=overview'};
-        default: return {title: a.kind || '?', reason: '', href: '/monitoring***REMOVED***view=overview'};
+            href: '/monitoring#view=overview'};
+        default: return {title: a.kind || '?', reason: '', href: '/monitoring#view=overview'};
     }
 }
 function renderAttention(j) {
@@ -529,7 +529,7 @@ function renderAlerts(a) {
     // Le lien vers le journal est TOUJOURS rendu, y compris quand rien n'est en cours :
     // « rien en cours » ne doit pas donner l'impression qu'il ne s'est jamais rien passé.
     const lien = `<div class="meta home-alerts-total">`
-        + `<a href="/monitoring***REMOVED***logs">${window.t('home.alerts.journal_link')
+        + `<a href="/monitoring#logs">${window.t('home.alerts.journal_link')
              .replace('{n}', a.total)}</a></div>`;
     if (!list.length) {
         wrap.innerHTML = `<div class="home-alerts-clear">${window.t('home.alerts.none')}</div>` + lien;
@@ -559,7 +559,7 @@ function renderAlerts(a) {
 // ─── Graphique stats MXL (flux / grains / débit / RAM) — sparklines canvas ───
 const STAT_MAX = 60;   // points d'historique (≈ 2 min à 2s/poll)
 const STAT_HIST = { flows: [], grains: [], bw: [], ram: [] };
-const STAT_COLOR = { flows: '***REMOVED***7aa2c8', grains: '***REMOVED***a882c8', bw: '***REMOVED***64b482', ram: '***REMOVED***c8a05a' };
+const STAT_COLOR = { flows: '#7aa2c8', grains: '#a882c8', bw: '#64b482', ram: '#c8a05a' };
 function _pushHist(k, v) { const a = STAT_HIST[k]; a.push(v); if (a.length > STAT_MAX) a.shift(); }
 function _fmtBps(b) {
     if (b >= 1e9) return (b / 1e9).toFixed(2) + ' Gb/s';

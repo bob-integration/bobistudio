@@ -1,4 +1,4 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Le non temporel paie-t-il sur une écriture de TUILE (le motif des gros consommateurs) ?
 
 `bobimxl.blit` ne concerne que les producteurs qui déversent une trame linéaire. Les plugins qui
@@ -26,10 +26,10 @@ import tempfile
 import time
 
 C_SRC = r"""
-***REMOVED***include <immintrin.h>
-***REMOVED***include <stdint.h>
-***REMOVED***include <string.h>
-***REMOVED***include <time.h>
+#include <immintrin.h>
+#include <stdint.h>
+#include <string.h>
+#include <time.h>
 
 __attribute__((target("avx2")))
 static void nt_row(uint8_t *d, const uint8_t *s, size_t n)
@@ -127,8 +127,8 @@ def main():
 
     tmp = tempfile.mkdtemp(prefix="tb-")
     lib = build(tmp)
-    ***REMOVED*** Plan Y de sortie en tmpfs (comme un grain) + source contiguë généreuse.
-    GRAINS = 10          ***REMOVED*** anneau, comme le ring MXL : la destination ne doit PAS tenir en L3
+    # Plan Y de sortie en tmpfs (comme un grain) + source contiguë généreuse.
+    GRAINS = 10          # anneau, comme le ring MXL : la destination ne doit PAS tenir en L3
     dst = buf(W * H * GRAINS, shm=True)
     src = buf(W * H)
     ad, asrc = addr(dst), addr(src)
@@ -138,7 +138,7 @@ def main():
         ("TUILES (%dx%d de %dx%d)" % (cols, rows_g, tw, th), tw, th),
         ("BANDES (pleine largeur, %d l.)" % (H // 8), W, H // 8),
     ]
-    print("***REMOVED*** %s  %dx%d  tuile %dx%d  anneau %d plans (%.0f Mo)  [1 iter = 1 trame complete]"
+    print("# %s  %dx%d  tuile %dx%d  anneau %d plans (%.0f Mo)  [1 iter = 1 trame complete]"
           % (os.uname().nodename, W, H, tw, th, GRAINS, W * H * GRAINS / 1e6))
     print("%-34s %12s %12s %8s" % ("motif", "memcpy us", "non temp. us", "ecart"))
     for nom, mw, mh in motifs:

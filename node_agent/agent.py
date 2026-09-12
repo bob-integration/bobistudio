@@ -1,13 +1,13 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
-***REMOVED***
-***REMOVED*** bobi-node-agent — daemon par-nœud (Phase B, squelette fonctionnel).
-***REMOVED*** Contrat figé dans NODE_AGENT.md. Stdlib UNIQUEMENT (tourne sur une box nue : python3 + docker).
-***REMOVED*** Pilote le cycle de vie des conteneurs + expose /health & /capabilities + services hôte.
-***REMOVED*** NE rend/exécute AUCUN script de plugin (ça reste l'agent PAR-CONTENEUR baké dans les images).
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+#
+# bobi-node-agent — daemon par-nœud (Phase B, squelette fonctionnel).
+# Contrat figé dans NODE_AGENT.md. Stdlib UNIQUEMENT (tourne sur une box nue : python3 + docker).
+# Pilote le cycle de vie des conteneurs + expose /health & /capabilities + services hôte.
+# NE rend/exécute AUCUN script de plugin (ça reste l'agent PAR-CONTENEUR baké dans les images).
 
 import html
 import json
@@ -25,27 +25,27 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "0.21.0"  ***REMOVED*** 0.21.0 : chien de garde — sonde par docker exec (macvlan isole l hote)
-***REMOVED***                     ciblé sur le bon domaine/uds, et remontée de gm.ClockClass / utcOffsetValid
-***REMOVED*** 0.18.0 : /v1/host/clock — les horloges du nœud en 2 appels système, estampillé
-***REMOVED***                     à la réception ET à l'émission (modèle NTP à 4 estampilles côté contrôleur)
-***REMOVED*** 0.17.0 : spec["log"] = {driver, opts} → journal conteneur DURABLE (journald)
-***REMOVED*** 0.16.0 : cpu_per_core en delta (vraie charge instantanée) + /v1/host/core-snapshot
-***REMOVED*** 0.15.0 : port lié à vfio-pci (DPDK) exposé state:"vfio" au lieu de disparaître
-***REMOVED*** 0.14.0 : canary bande passante mémoire embarqué (`membw` dans /v1/health)
-***REMOVED*** 0.13.1 : bascule TLS par re-exec (os.execv) — indépendant de systemd Restart
-***REMOVED*** 0.13.0 : mTLS plan de contrôle (HTTPS conditionnel + repli HTTP, CSR/enrôlement,
-***REMOVED***                     migration à chaud /v1/tls/*, injection spec["tls"] par-conteneur)
-***REMOVED*** 0.12.0 : santé matérielle hwmon (températures/ventilateurs/conso) dans health
-***REMOVED*** 0.11.0 : speed_mbps par interface dans le débit réseau (barres rx/tx vs lien)
-***REMOVED*** 0.10.0 : spec conteneur RDMA (entrypoint/command/devices/cap_add/ulimits) — chantier RDMA
-***REMOVED*** 0.9.0 : support GPU (--gpus dans la spec conteneur + gpus[] dans capabilities)
+VERSION = "0.21.0"  # 0.21.0 : chien de garde — sonde par docker exec (macvlan isole l hote)
+#                     ciblé sur le bon domaine/uds, et remontée de gm.ClockClass / utcOffsetValid
+# 0.18.0 : /v1/host/clock — les horloges du nœud en 2 appels système, estampillé
+#                     à la réception ET à l'émission (modèle NTP à 4 estampilles côté contrôleur)
+# 0.17.0 : spec["log"] = {driver, opts} → journal conteneur DURABLE (journald)
+# 0.16.0 : cpu_per_core en delta (vraie charge instantanée) + /v1/host/core-snapshot
+# 0.15.0 : port lié à vfio-pci (DPDK) exposé state:"vfio" au lieu de disparaître
+# 0.14.0 : canary bande passante mémoire embarqué (`membw` dans /v1/health)
+# 0.13.1 : bascule TLS par re-exec (os.execv) — indépendant de systemd Restart
+# 0.13.0 : mTLS plan de contrôle (HTTPS conditionnel + repli HTTP, CSR/enrôlement,
+#                     migration à chaud /v1/tls/*, injection spec["tls"] par-conteneur)
+# 0.12.0 : santé matérielle hwmon (températures/ventilateurs/conso) dans health
+# 0.11.0 : speed_mbps par interface dans le débit réseau (barres rx/tx vs lien)
+# 0.10.0 : spec conteneur RDMA (entrypoint/command/devices/cap_add/ulimits) — chantier RDMA
+# 0.9.0 : support GPU (--gpus dans la spec conteneur + gpus[] dans capabilities)
 
-***REMOVED*** ─── Configuration ────────────────────────────────────────────────────────────
-***REMOVED*** Fichier JSON (défaut /etc/bobi-node-agent/config.json), surchargé par l'environnement.
-***REMOVED*** Champs : token, port, capabilities[], mxl_mount, macvlan_network, mtl_iface, lcores,
-***REMOVED***          media_mount, images[] (tags d'intérêt pour le rapport de présence),
-***REMOVED***          membw_interval_s / membw_sample_mb (canary bande passante mémoire, cf. _membw_loop).
+# ─── Configuration ────────────────────────────────────────────────────────────
+# Fichier JSON (défaut /etc/bobi-node-agent/config.json), surchargé par l'environnement.
+# Champs : token, port, capabilities[], mxl_mount, macvlan_network, mtl_iface, lcores,
+#          media_mount, images[] (tags d'intérêt pour le rapport de présence),
+#          membw_interval_s / membw_sample_mb (canary bande passante mémoire, cf. _membw_loop).
 CONFIG_PATH = os.environ.get("BOBI_NODE_AGENT_CONFIG", "/etc/bobi-node-agent/config.json")
 
 
@@ -54,8 +54,8 @@ def _load_config():
         "token": "", "port": 9100, "info_port": 80, "controller_url": "", "capabilities": [],
         "mxl_mount": "/dev/shm", "macvlan_network": "", "mtl_iface": "",
         "lcores": "", "media_mount": "/srv/mxl-media", "images": [],
-        ***REMOVED*** mTLS du plan de contrôle : dossier du matériel TLS de l'agent-nœud
-        ***REMOVED*** (node.key/node.crt/ca.crt). Vide/inexistant → l'agent sert en HTTP clair (repli).
+        # mTLS du plan de contrôle : dossier du matériel TLS de l'agent-nœud
+        # (node.key/node.crt/ca.crt). Vide/inexistant → l'agent sert en HTTP clair (repli).
         "tls_dir": "/etc/bobi-node-agent/tls",
     }
     try:
@@ -65,7 +65,7 @@ def _load_config():
         pass
     except Exception as e:
         print(f"[config] lecture {CONFIG_PATH} échouée : {e}")
-    ***REMOVED*** Surcharges d'environnement (pratique pour le dev / les tests).
+    # Surcharges d'environnement (pratique pour le dev / les tests).
     if os.environ.get("BOBI_NODE_AGENT_TOKEN"):
         cfg["token"] = os.environ["BOBI_NODE_AGENT_TOKEN"]
     if os.environ.get("BOBI_NODE_AGENT_PORT"):
@@ -80,28 +80,28 @@ def _load_config():
 CONFIG = _load_config()
 START_TS = time.time()
 
-***REMOVED*** Dernier contrôleur ayant fait une requête authentifiée (pour la page d'état :80).
+# Dernier contrôleur ayant fait une requête authentifiée (pour la page d'état :80).
 LAST_CONTROLLER = {"ip": None, "ts": None}
-***REMOVED*** Cache de l'identité publique du contrôleur (nom/entreprise/localisation), TTL 60 s.
+# Cache de l'identité publique du contrôleur (nom/entreprise/localisation), TTL 60 s.
 _CTL_ID = {"ip": None, "ts": 0.0, "data": None}
 
-***REMOVED*** État gardé entre deux échantillons pour les deltas (CPU %, débit réseau).
-_PREV_CPU = {}   ***REMOVED*** {"total": int, "idle": int}
-_PREV_CORES = {} ***REMOVED*** idx -> (total, idle) — delta par cœur pour cpu_per_core
-_PREV_NET = {}   ***REMOVED*** iface -> {"rx": int, "tx": int, "ts": float}
+# État gardé entre deux échantillons pour les deltas (CPU %, débit réseau).
+_PREV_CPU = {}   # {"total": int, "idle": int}
+_PREV_CORES = {} # idx -> (total, idle) — delta par cœur pour cpu_per_core
+_PREV_NET = {}   # iface -> {"rx": int, "tx": int, "ts": float}
 
 
 def has_cap(name):
     return name in (CONFIG.get("capabilities") or [])
 
 
-***REMOVED*** ─── mTLS du plan de contrôle ───────────────────────────────────────────────────
-***REMOVED*** L'agent-nœud sert son API (:9100) en HTTPS + mTLS DÈS QUE son matériel TLS est présent
-***REMOVED*** (node.key + node.crt signé par la CA + ca.crt). Sinon → HTTP clair (repli/filet de sécurité :
-***REMOVED*** un push de cert raté ne doit jamais rendre le nœud injoignable). Le token X-MXL-Node-Token
-***REMOVED*** reste le second facteur dans les DEUX modes. openssl (CLI) est utilisé pour la clé/CSR — on ne
-***REMOVED*** dépend PAS de la lib python `cryptography` (pas garantie sur un nœud nu). Le MÊME port sert les
-***REMOVED*** deux modes ; la bascule HTTP→HTTPS se fait par redémarrage du process (systemd Restart=always).
+# ─── mTLS du plan de contrôle ───────────────────────────────────────────────────
+# L'agent-nœud sert son API (:9100) en HTTPS + mTLS DÈS QUE son matériel TLS est présent
+# (node.key + node.crt signé par la CA + ca.crt). Sinon → HTTP clair (repli/filet de sécurité :
+# un push de cert raté ne doit jamais rendre le nœud injoignable). Le token X-MXL-Node-Token
+# reste le second facteur dans les DEUX modes. openssl (CLI) est utilisé pour la clé/CSR — on ne
+# dépend PAS de la lib python `cryptography` (pas garantie sur un nœud nu). Le MÊME port sert les
+# deux modes ; la bascule HTTP→HTTPS se fait par redémarrage du process (systemd Restart=always).
 def _tls_paths():
     d = (CONFIG.get("tls_dir") or "").strip() or "/etc/bobi-node-agent/tls"
     return {
@@ -184,7 +184,7 @@ def _install_cert_material(cert_pem, ca_pem):
         os.makedirs(p["dir"], mode=0o700, exist_ok=True)
     except Exception as e:
         return False, f"création dossier TLS {p['dir']} impossible : {e}"
-    ***REMOVED*** Écriture atomique + validation avant de remplacer l'existant.
+    # Écriture atomique + validation avant de remplacer l'existant.
     for label, dest, pem in (("node.crt", p["crt"], cert_pem), ("ca.crt", p["ca"], ca_pem)):
         tmp = dest + ".tmp"
         try:
@@ -213,7 +213,7 @@ def _make_server_ssl_context():
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.load_cert_chain(certfile=p["crt"], keyfile=p["key"])
     ctx.load_verify_locations(cafile=p["ca"])
-    ctx.verify_mode = ssl.CERT_REQUIRED           ***REMOVED*** mTLS : le client (contrôleur) DOIT présenter un cert signé par la CA
+    ctx.verify_mode = ssl.CERT_REQUIRED           # mTLS : le client (contrôleur) DOIT présenter un cert signé par la CA
     try:
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     except Exception:
@@ -238,7 +238,7 @@ def _schedule_restart(delay=1.0):
     threading.Thread(target=_go, daemon=True).start()
 
 
-***REMOVED*** ─── Exécution de commandes hôte (argv, jamais de shell) ────────────────────────
+# ─── Exécution de commandes hôte (argv, jamais de shell) ────────────────────────
 def run(argv, timeout=60, input_bytes=None):
     """Exécute argv (liste). Retourne (rc, stdout, stderr). Jamais shell=True (anti-injection)."""
     try:
@@ -256,7 +256,7 @@ def docker(*args, timeout=60):
     return run(["docker", *args], timeout=timeout)
 
 
-***REMOVED*** ─── Détection hôte (santé / capacités) ─────────────────────────────────────────
+# ─── Détection hôte (santé / capacités) ─────────────────────────────────────────
 def _docker_info():
     rc, out, _ = docker("version", "--format", "{{.Server.Version}}", timeout=8)
     return {"ok": rc == 0, "version": out.strip() if rc == 0 else None}
@@ -280,9 +280,9 @@ def _nic(iface):
     if not iface:
         return None
     out = {"iface": iface, "link": None, "model": None, "queues": None}
-    ***REMOVED*** Port lié à vfio-pci (chemin DPDK) : plus de netdev dans /sys/class/net → ethtool/operstate
-    ***REMOVED*** muets. On le signale explicitement (state:"vfio") plutôt que de renvoyer des None ambigus ;
-    ***REMOVED*** l'orchestrateur croise avec node_interfaces.pmd. Champ absent = netdev présent (inchangé).
+    # Port lié à vfio-pci (chemin DPDK) : plus de netdev dans /sys/class/net → ethtool/operstate
+    # muets. On le signale explicitement (state:"vfio") plutôt que de renvoyer des None ambigus ;
+    # l'orchestrateur croise avec node_interfaces.pmd. Champ absent = netdev présent (inchangé).
     if not os.path.exists(f"/sys/class/net/{iface}"):
         out["state"] = "vfio"
         return out
@@ -337,10 +337,10 @@ def _all_nics():
                 if "inet" in parts:
                     info["addrs"].append(parts[parts.index("inet") + 1])
         nics.append(info)
-    ***REMOVED*** Interface DÉCLARÉE (mtl_iface) mais absente de /sys/class/net : port passé en vfio-pci
-    ***REMOVED*** (chemin DPDK). Au lieu de la faire disparaître de l'inventaire (l'orchestrateur croirait
-    ***REMOVED*** la NIC débranchée), on l'expose avec state:"vfio" — croisée côté contrôleur avec
-    ***REMOVED*** node_interfaces.pmd (les compteurs viennent alors du moteur, cf. docs/chantiers/DPDK_NARROW.md).
+    # Interface DÉCLARÉE (mtl_iface) mais absente de /sys/class/net : port passé en vfio-pci
+    # (chemin DPDK). Au lieu de la faire disparaître de l'inventaire (l'orchestrateur croirait
+    # la NIC débranchée), on l'expose avec state:"vfio" — croisée côté contrôleur avec
+    # node_interfaces.pmd (les compteurs viennent alors du moteur, cf. docs/chantiers/DPDK_NARROW.md).
     declared = (CONFIG.get("mtl_iface") or "").strip()
     if declared and not any(n.get("name") == declared for n in nics):
         nics.append({"name": declared, "physical": True, "mac": None, "up": None,
@@ -362,7 +362,7 @@ def _ptp_unites():
                     "--no-legend", "--plain", "--type=service"], timeout=6)
     unites = [l.split()[0] for l in (o or "").splitlines() if l.strip()]
     if not unites and run(["systemctl", "is-active", "ptp4l"], timeout=4)[1].strip() == "active":
-        unites = ["ptp4l.service"]          ***REMOVED*** déploiement ptp4l « nu », hors orchestrateur
+        unites = ["ptp4l.service"]          # déploiement ptp4l « nu », hors orchestrateur
     for u in unites:
         conf, dom, uds = None, 0, None
         rc, o, _ = run(["systemctl", "show", u, "-p", "ExecStart"], timeout=5)
@@ -372,7 +372,7 @@ def _ptp_unites():
             try:
                 with open(conf) as f:
                     for ligne in f:
-                        c = ligne.split("***REMOVED***", 1)[0].strip()
+                        c = ligne.split("#", 1)[0].strip()
                         if c.startswith("domainNumber"):
                             dom = int(c.split()[1])
                         elif c.startswith("uds_address"):
@@ -413,7 +413,7 @@ def _ptp():
     m = re.search(r"master_offset\s+(-?\d+)", o)
     if m:
         st["offset_ns"] = int(m.group(1))
-        st["locked"] = abs(st["offset_ns"]) < 1000  ***REMOVED*** < 1 µs ≈ locké
+        st["locked"] = abs(st["offset_ns"]) < 1000  # < 1 µs ≈ locké
     g = re.search(r"gmIdentity\s+(\S+)", o)
     if g:
         st["gm_id"] = g.group(1)
@@ -428,15 +428,15 @@ def _ptp():
     return st
 
 
-***REMOVED*** ─── Horloge du nœud (mesure de précision) ────────────────────────────────────
-***REMOVED*** CLOCK_TAI est la grille de la flotte MXL ; CLOCK_REALTIME sert à situer le nœud par rapport à
-***REMOVED*** l'UTC du contrôleur. Les deux sont lues d'affilée, et LEUR ÉCART EN SECONDES ENTIÈRES EST le
-***REMOVED*** `tai_offset` du noyau — inutile d'appeler adjtimex pour le redemander.
-***REMOVED***
-***REMOVED*** Pourquoi un endpoint natif plutôt que la sonde shell qu'utilisait le contrôleur : cette lecture
-***REMOVED*** doit coûter deux appels système et RIEN d'autre. Faire remonter l'heure par `host/exec`, c'est y
-***REMOVED*** ajouter un `sh -c` puis un démarrage d'interpréteur Python — des dizaines de millisecondes qui
-***REMOVED*** tombent toutes sur l'ALLER, donc un biais qu'aucune moyenne ne rattrape.
+# ─── Horloge du nœud (mesure de précision) ────────────────────────────────────
+# CLOCK_TAI est la grille de la flotte MXL ; CLOCK_REALTIME sert à situer le nœud par rapport à
+# l'UTC du contrôleur. Les deux sont lues d'affilée, et LEUR ÉCART EN SECONDES ENTIÈRES EST le
+# `tai_offset` du noyau — inutile d'appeler adjtimex pour le redemander.
+#
+# Pourquoi un endpoint natif plutôt que la sonde shell qu'utilisait le contrôleur : cette lecture
+# doit coûter deux appels système et RIEN d'autre. Faire remonter l'heure par `host/exec`, c'est y
+# ajouter un `sh -c` puis un démarrage d'interpréteur Python — des dizaines de millisecondes qui
+# tombent toutes sur l'ALLER, donc un biais qu'aucune moyenne ne rattrape.
 CLOCK_TAI = getattr(time, "CLOCK_TAI", 11)
 
 
@@ -473,9 +473,9 @@ def _cpu_real_pct():
     None au tout premier appel (pas de référence). État gardé dans _PREV_CPU."""
     try:
         with open("/proc/stat") as f:
-            parts = f.readline().split()  ***REMOVED*** cpu  user nice system idle iowait irq softirq steal …
+            parts = f.readline().split()  # cpu  user nice system idle iowait irq softirq steal …
         vals = [int(x) for x in parts[1:]]
-        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)  ***REMOVED*** idle + iowait
+        idle = vals[3] + (vals[4] if len(vals) > 4 else 0)  # idle + iowait
         total = sum(vals)
     except Exception:
         return None
@@ -525,7 +525,7 @@ def _resources():
     try:
         la = os.getloadavg()
         res["loadavg"] = [round(x, 2) for x in la]
-        res["cpu_pct"] = round(la[0] / (os.cpu_count() or 1) * 100, 1)  ***REMOVED*** rétro-compat (loadavg)
+        res["cpu_pct"] = round(la[0] / (os.cpu_count() or 1) * 100, 1)  # rétro-compat (loadavg)
     except Exception:
         pass
     res["cpu_pct_real"] = _cpu_real_pct()
@@ -605,7 +605,7 @@ def _read_task_stat(pid, tid):
         line = f.read()
     comm = line[line.index("(") + 1:line.rindex(")")]
     f_ = line.rsplit(")", 1)[1].split()
-    ***REMOVED*** f_[0] = champ 3 (state) → utime=champ 14 → f_[11] ; stime → f_[12] ; processor=champ 39 → f_[36]
+    # f_[0] = champ 3 (state) → utime=champ 14 → f_[11] ; stime → f_[12] ; processor=champ 39 → f_[36]
     return comm, int(f_[11]) + int(f_[12]), int(f_[36])
 
 
@@ -620,7 +620,7 @@ def _core_snapshot(duration=0.5, top_n=3, min_pct=1.0):
         cores_t0 = _read_per_core_stat()
     except Exception:
         return {"ok": False, "error": "/proc/stat illisible"}
-    t0_ticks = {}  ***REMOVED*** (pid, tid) -> ticks
+    t0_ticks = {}  # (pid, tid) -> ticks
     for pid in owners:
         try:
             for tid in os.listdir(f"/proc/{pid}/task"):
@@ -638,7 +638,7 @@ def _core_snapshot(duration=0.5, top_n=3, min_pct=1.0):
     except Exception:
         return {"ok": False, "error": "/proc/stat illisible"}
     clk = os.sysconf("SC_CLK_TCK") or 100
-    per_core = {}  ***REMOVED*** idx -> [{container, tid, comm, pct}]
+    per_core = {}  # idx -> [{container, tid, comm, pct}]
     for (pid, tid), ticks0 in t0_ticks.items():
         try:
             comm, ticks1, psr = _read_task_stat(pid, tid)
@@ -699,7 +699,7 @@ def _net_throughput():
         if prev:
             dt = now - prev["ts"]
             if dt > 0:
-                ***REMOVED*** speed_mbps : vitesse négociée du lien (None/-1 si down) → barres rx/tx vs lien (UI).
+                # speed_mbps : vitesse négociée du lien (None/-1 si down) → barres rx/tx vs lien (UI).
                 spd = None
                 try:
                     with open(f"/sys/class/net/{name}/speed") as f:
@@ -723,14 +723,14 @@ def _host_uptime_s():
         return None
 
 
-***REMOVED*** ─── Canary bande passante mémoire (0.14.0) ────────────────────────────────────
-***REMOVED*** memcpy mono-thread d'un gros buffer, échantillonné en tâche de fond : le débit atteint CHUTE
-***REMOVED*** quand le bus RAM est saturé par la flotte → indicateur de *headroom* mémoire. L'agent ne remonte
-***REMOVED*** que le débit brut dans /v1/health ; la référence par nœud, le ratio et les alertes restent côté
-***REMOVED*** contrôleur (`app/membw.py`, qui garde aussi un canary par exec en repli pour les agents < 0.14.0).
-***REMOVED*** ctypes.memmove relâche le GIL → l'API HTTP reste réactive pendant la copie (~0,3 s / minute).
-***REMOVED*** Config : membw_interval_s (défaut 60 ; ≤ 0 désactive), membw_sample_mb (défaut 128, min 16).
-_MEMBW = {}   ***REMOVED*** {"gbps": float, "ts": float, "sample_mb": int} — dernier échantillon
+# ─── Canary bande passante mémoire (0.14.0) ────────────────────────────────────
+# memcpy mono-thread d'un gros buffer, échantillonné en tâche de fond : le débit atteint CHUTE
+# quand le bus RAM est saturé par la flotte → indicateur de *headroom* mémoire. L'agent ne remonte
+# que le débit brut dans /v1/health ; la référence par nœud, le ratio et les alertes restent côté
+# contrôleur (`app/membw.py`, qui garde aussi un canary par exec en repli pour les agents < 0.14.0).
+# ctypes.memmove relâche le GIL → l'API HTTP reste réactive pendant la copie (~0,3 s / minute).
+# Config : membw_interval_s (défaut 60 ; ≤ 0 désactive), membw_sample_mb (défaut 128, min 16).
+_MEMBW = {}   # {"gbps": float, "ts": float, "sample_mb": int} — dernier échantillon
 
 
 def _membw_measure(mb):
@@ -739,7 +739,7 @@ def _membw_measure(mb):
     a = ctypes.create_string_buffer(n)
     b = ctypes.create_string_buffer(n)
     mm = ctypes.memmove
-    mm(b, a, n)                                   ***REMOVED*** échauffement (fautes de page hors mesure)
+    mm(b, a, n)                                   # échauffement (fautes de page hors mesure)
     r = 8
     t = time.perf_counter()
     for _ in range(r):
@@ -813,7 +813,7 @@ def _sensors():
                 lbl = _read_str(os.path.join(hw, e.replace("_input", "_label"))) or e[:-6]
                 fans.append({"label": lbl, "rpm": v})
             elif e.startswith("power") and e.endswith("_input"):
-                v = _read_int(os.path.join(hw, e))   ***REMOVED*** µW instantané
+                v = _read_int(os.path.join(hw, e))   # µW instantané
                 if v:
                     power = round((power or 0) + v / 1e6, 1)
     out = {}
@@ -909,8 +909,8 @@ def health_payload():
     return h
 
 
-***REMOVED*** ─── Cycle de vie des conteneurs ────────────────────────────────────────────────
-***REMOVED*** Racine des dossiers TLS par-conteneur (montés read-only dans les conteneurs).
+# ─── Cycle de vie des conteneurs ────────────────────────────────────────────────
+# Racine des dossiers TLS par-conteneur (montés read-only dans les conteneurs).
 CONTAINER_TLS_ROOT = "/run/bobi-tls"
 
 
@@ -948,15 +948,15 @@ def _build_run_argv(spec):
     argv = ["docker", "run", "-d", "--name", name]
 
     if spec.get("autoremove"):
-        argv.append("--rm")                       ***REMOVED*** MTL : --rm (pas de --restart en parallèle)
+        argv.append("--rm")                       # MTL : --rm (pas de --restart en parallèle)
     else:
         argv += ["--restart", spec.get("restart_policy") or "unless-stopped"]
 
-    ***REMOVED*** Journal DURABLE (chantier journald) : `log` = {"driver": "journald"|"json-file",
-    ***REMOVED*** "opts": {...}} → `--log-driver <d> --log-opt k=v …`. Le pilote `journald` fait vivre le
-    ***REMOVED*** journal dans systemd-journald (l'HÔTE) : il survit à la destruction du conteneur et au
-    ***REMOVED*** reboot du nœud, alors que le json-file part avec /var/lib/docker/containers/<id>/.
-    ***REMOVED*** Clé ABSENTE (contrôleur antérieur) → aucun flag, pilote par défaut du daemon (rétro-compat).
+    # Journal DURABLE (chantier journald) : `log` = {"driver": "journald"|"json-file",
+    # "opts": {...}} → `--log-driver <d> --log-opt k=v …`. Le pilote `journald` fait vivre le
+    # journal dans systemd-journald (l'HÔTE) : il survit à la destruction du conteneur et au
+    # reboot du nœud, alors que le json-file part avec /var/lib/docker/containers/<id>/.
+    # Clé ABSENTE (contrôleur antérieur) → aucun flag, pilote par défaut du daemon (rétro-compat).
     logspec = spec.get("log") or {}
     if isinstance(logspec, dict) and logspec.get("driver"):
         argv += ["--log-driver", str(logspec["driver"])]
@@ -965,8 +965,8 @@ def _build_run_argv(spec):
 
     net = spec.get("network") or "host"
     argv += ["--network", net]
-    ***REMOVED*** B2-2 : IPAM centralisé orchestrateur → IP fixe imposée (`--ip`). Sans ça, Docker IPAM choisit
-    ***REMOVED*** (collisions multi-nœud sur VLAN partagé, IP non déterministe en séparé). Pas de `--ip` en host.
+    # B2-2 : IPAM centralisé orchestrateur → IP fixe imposée (`--ip`). Sans ça, Docker IPAM choisit
+    # (collisions multi-nœud sur VLAN partagé, IP non déterministe en séparé). Pas de `--ip` en host.
     if spec.get("ip") and net != "host":
         argv += ["--ip", str(spec["ip"])]
     if spec.get("privileged"):
@@ -982,9 +982,9 @@ def _build_run_argv(spec):
     if res.get("cpu_shares"):
         argv += ["--cpu-shares", str(int(res["cpu_shares"]))]
 
-    ***REMOVED*** GPU NVIDIA (chantier multiview-GPU) : `gpus` (ex. "all", "device=0") → `--gpus <val>`.
-    ***REMOVED*** Nécessite nvidia-container-toolkit + runtime nvidia sur l'hôte (cas dl360-2). Émis UNIQUEMENT
-    ***REMOVED*** si la spec porte le champ → un nœud sans GPU ne le reçoit jamais (rien ne casse). NODE_AGENT.md §4.4.
+    # GPU NVIDIA (chantier multiview-GPU) : `gpus` (ex. "all", "device=0") → `--gpus <val>`.
+    # Nécessite nvidia-container-toolkit + runtime nvidia sur l'hôte (cas dl360-2). Émis UNIQUEMENT
+    # si la spec porte le champ → un nœud sans GPU ne le reçoit jamais (rien ne casse). NODE_AGENT.md §4.4.
     gpus = spec.get("gpus")
     if isinstance(gpus, str) and gpus.strip():
         argv += ["--gpus", gpus.strip()]
@@ -992,10 +992,10 @@ def _build_run_argv(spec):
     for mnt in (spec.get("mounts") or []):
         argv += ["-v", f"{mnt['host']}:{mnt['container']}"]
 
-    ***REMOVED*** mTLS par-conteneur (contrat inter-agent) : si le spec porte `tls` = {cert,key,ca} (PEM),
-    ***REMOVED*** on matérialise ce trio dans un dossier hôte par-conteneur et on le bind read-only sur
-    ***REMOVED*** /etc/bobi-tls → l'agent PAR-CONTENEUR (baké dans l'image) y trouve son matériel. Absent →
-    ***REMOVED*** comportement inchangé (on ne casse jamais une spec sans tls).
+    # mTLS par-conteneur (contrat inter-agent) : si le spec porte `tls` = {cert,key,ca} (PEM),
+    # on matérialise ce trio dans un dossier hôte par-conteneur et on le bind read-only sur
+    # /etc/bobi-tls → l'agent PAR-CONTENEUR (baké dans l'image) y trouve son matériel. Absent →
+    # comportement inchangé (on ne casse jamais une spec sans tls).
     tls_dir = _materialize_container_tls(name, spec.get("tls"))
     if tls_dir:
         argv += ["-v", f"{tls_dir}:/etc/bobi-tls:ro"]
@@ -1003,20 +1003,20 @@ def _build_run_argv(spec):
     for k, v in (spec.get("env") or {}).items():
         argv += ["-e", f"{k}={v}"]
 
-    ***REMOVED*** Chantier RDMA (NODE_AGENT.md §4.4) : conteneur mxl-fabrics-demo. Devices/capacités/ulimits +
-    ***REMOVED*** override d'entrypoint requis pour le RDMA verbs (le conteneur ne lance PAS l'agent par-conteneur).
+    # Chantier RDMA (NODE_AGENT.md §4.4) : conteneur mxl-fabrics-demo. Devices/capacités/ulimits +
+    # override d'entrypoint requis pour le RDMA verbs (le conteneur ne lance PAS l'agent par-conteneur).
     for dev in (spec.get("devices") or []):
-        argv += ["--device", str(dev)]                       ***REMOVED*** ex. /dev/infiniband (uverbs)
+        argv += ["--device", str(dev)]                       # ex. /dev/infiniband (uverbs)
     for cap in (spec.get("cap_add") or []):
-        argv += ["--cap-add", str(cap)]                      ***REMOVED*** ex. IPC_LOCK (mémoire RDMA épinglée)
+        argv += ["--cap-add", str(cap)]                      # ex. IPC_LOCK (mémoire RDMA épinglée)
     for k, v in (spec.get("ulimits") or {}).items():
-        argv += ["--ulimit", f"{k}={v}"]                     ***REMOVED*** ex. memlock=-1 (pas de plafond)
+        argv += ["--ulimit", f"{k}={v}"]                     # ex. memlock=-1 (pas de plafond)
     ep = spec.get("entrypoint")
     if isinstance(ep, str) and ep.strip():
-        argv += ["--entrypoint", ep.strip()]                 ***REMOVED*** remplace l'ENTRYPOINT de l'image
+        argv += ["--entrypoint", ep.strip()]                 # remplace l'ENTRYPOINT de l'image
 
     argv.append(image)
-    ***REMOVED*** `command` = argv passé APRÈS l'image (et après l'entrypoint s'il est surchargé).
+    # `command` = argv passé APRÈS l'image (et après l'entrypoint s'il est surchargé).
     for a in (spec.get("command") or []):
         argv.append(str(a))
     return argv
@@ -1040,14 +1040,14 @@ def _container_ip(name, network):
     return ip if (rc == 0 and ip and ip != "<no value>") else None
 
 
-***REMOVED*** ─── Mémoire locale des specs (permet de RECRÉER un conteneur en l'absence du contrôleur) ──────
-***REMOVED*** Seuls les conteneurs en `--rm` (moteur MTL) en ont besoin : les autres portent une politique
-***REMOVED*** `--restart`, donc Docker les relève seul. Un conteneur en --rm qui meurt DISPARAÎT — sans spec
-***REMOVED*** gardée sur place, plus personne ne sait quoi relancer.
-***REMOVED*** ⚠ La spec contient le matériel mTLS du conteneur (clé privée) et son jeton d'agent : dossier 0700,
-***REMOVED*** fichiers 0600, et OUBLI à l'arrêt comme à la destruction. Le cert d'un conteneur porte l'URI
-***REMOVED*** `bobi://container/<vmid>`, précisément l'identité que les autres agents REFUSENT — la portée d'une
-***REMOVED*** fuite reste donc ce conteneur-là. C'est ce qui rend le compromis acceptable ; il reste réel.
+# ─── Mémoire locale des specs (permet de RECRÉER un conteneur en l'absence du contrôleur) ──────
+# Seuls les conteneurs en `--rm` (moteur MTL) en ont besoin : les autres portent une politique
+# `--restart`, donc Docker les relève seul. Un conteneur en --rm qui meurt DISPARAÎT — sans spec
+# gardée sur place, plus personne ne sait quoi relancer.
+# ⚠ La spec contient le matériel mTLS du conteneur (clé privée) et son jeton d'agent : dossier 0700,
+# fichiers 0600, et OUBLI à l'arrêt comme à la destruction. Le cert d'un conteneur porte l'URI
+# `bobi://container/<vmid>`, précisément l'identité que les autres agents REFUSENT — la portée d'une
+# fuite reste donc ce conteneur-là. C'est ce qui rend le compromis acceptable ; il reste réel.
 SPEC_DIR = "/var/lib/bobi-node-agent/specs"
 
 
@@ -1089,13 +1089,13 @@ def create_container(spec):
     name = spec.get("name"); image = spec.get("image")
     if not name or not image:
         return False, "name et image requis"
-    docker("rm", "-f", name, timeout=30)                  ***REMOVED*** réconciliation : repart propre
+    docker("rm", "-f", name, timeout=30)                  # réconciliation : repart propre
     argv = _build_run_argv(spec)
     rc, out, err = run(argv, timeout=90)
     if rc != 0:
         return False, f"docker run échoué : {(err or out).strip()[:300]}"
     _spec_save(spec)
-    ***REMOVED*** IP macvlan (peut mettre un instant à être renseignée).
+    # IP macvlan (peut mettre un instant à être renseignée).
     ip = None
     if (spec.get("network") or "host") != "host":
         for _ in range(10):
@@ -1104,40 +1104,40 @@ def create_container(spec):
                 break
             time.sleep(0.5)
     st = _container_status(name)
-    _WD_RECENT_CREATE[name] = time.time()   ***REMOVED*** cycle de vie en vol → le chien de garde passe son tour
+    _WD_RECENT_CREATE[name] = time.time()   # cycle de vie en vol → le chien de garde passe son tour
     return True, {"name": name, "ip": ip, **st}
 
 
-***REMOVED*** ─── Chien de garde de SCRIPT (quand le contrôleur est absent) ──────────────────
-***REMOVED*** CE QUE ÇA COUVRE, ET RIEN D'AUTRE : un script mort à l'intérieur d'un conteneur qui, lui, tourne
-***REMOVED*** toujours. Docker ne voit pas ce niveau-là (son `--restart` ne surveille que le PID 1, l'agent
-***REMOVED*** par-conteneur, qui va très bien) et l'orchestrateur, seul à relever ce cas, est absent par
-***REMOVED*** hypothèse. C'est exactement le trou : `script_stopped` non relevé pendant une coupure de contrôle.
-***REMOVED***
-***REMOVED*** TROIS GARDE-FOUS, parce qu'un second décideur est plus dangereux qu'un trou :
-***REMOVED***  1. INHIBITION — on n'agit que si le contrôleur n'a rien demandé depuis WATCHDOG_GRACE_S.
-***REMOVED***     LAST_CONTROLLER est déjà tenu à jour par _auth_ok : aucun protocole à inventer.
-***REMOVED***  2. INTENTION — on ne relance QUE ce qu'on a vu tourner au tour précédent. Un script arrêté
-***REMOVED***     volontairement (par le contrôleur, avant sa disparition) est observé « arrêté » et le reste :
-***REMOVED***     on ne le ressuscite pas. C'est ce qui remplace un drapeau `supervise` qu'il faudrait
-***REMOVED***     persister, synchroniser et qui mentirait au premier redémarrage d'agent.
-***REMOVED***  3. PLAFOND — backoff exponentiel puis abandon définitif à WATCHDOG_MAX_TRIES. Un script qui
-***REMOVED***     meurt en boucle est un diagnostic, pas une chose à relancer indéfiniment.
-***REMOVED***
-***REMOVED*** CE QU'IL NE FAIT PAS, par construction : redéployer (rendre un script exige `deploy_config` et le
-***REMOVED*** registre de plugins, donc la base — l'agent ne l'a pas et ne doit pas l'avoir : `/status.path`
-***REMOVED*** vide = on constate et on attend le contrôleur) ; toucher aux conteneurs en `--network host` (le
-***REMOVED*** moteur 2110 a son propre :8081 hors de ce contrat, et relancer un moteur DPDK à l'aveugle masque
-***REMOVED*** une panne matérielle) ; recâbler, réallouer, décider quoi que ce soit d'orchestration.
+# ─── Chien de garde de SCRIPT (quand le contrôleur est absent) ──────────────────
+# CE QUE ÇA COUVRE, ET RIEN D'AUTRE : un script mort à l'intérieur d'un conteneur qui, lui, tourne
+# toujours. Docker ne voit pas ce niveau-là (son `--restart` ne surveille que le PID 1, l'agent
+# par-conteneur, qui va très bien) et l'orchestrateur, seul à relever ce cas, est absent par
+# hypothèse. C'est exactement le trou : `script_stopped` non relevé pendant une coupure de contrôle.
+#
+# TROIS GARDE-FOUS, parce qu'un second décideur est plus dangereux qu'un trou :
+#  1. INHIBITION — on n'agit que si le contrôleur n'a rien demandé depuis WATCHDOG_GRACE_S.
+#     LAST_CONTROLLER est déjà tenu à jour par _auth_ok : aucun protocole à inventer.
+#  2. INTENTION — on ne relance QUE ce qu'on a vu tourner au tour précédent. Un script arrêté
+#     volontairement (par le contrôleur, avant sa disparition) est observé « arrêté » et le reste :
+#     on ne le ressuscite pas. C'est ce qui remplace un drapeau `supervise` qu'il faudrait
+#     persister, synchroniser et qui mentirait au premier redémarrage d'agent.
+#  3. PLAFOND — backoff exponentiel puis abandon définitif à WATCHDOG_MAX_TRIES. Un script qui
+#     meurt en boucle est un diagnostic, pas une chose à relancer indéfiniment.
+#
+# CE QU'IL NE FAIT PAS, par construction : redéployer (rendre un script exige `deploy_config` et le
+# registre de plugins, donc la base — l'agent ne l'a pas et ne doit pas l'avoir : `/status.path`
+# vide = on constate et on attend le contrôleur) ; toucher aux conteneurs en `--network host` (le
+# moteur 2110 a son propre :8081 hors de ce contrat, et relancer un moteur DPDK à l'aveugle masque
+# une panne matérielle) ; recâbler, réallouer, décider quoi que ce soit d'orchestration.
 WATCHDOG_PERIOD_S   = 15
-WATCHDOG_GRACE_S    = 60      ***REMOVED*** silence du contrôleur avant de s'autoriser à agir
+WATCHDOG_GRACE_S    = 60      # silence du contrôleur avant de s'autoriser à agir
 WATCHDOG_MAX_TRIES  = 5
-WATCHDOG_BACKOFF_S  = 10      ***REMOVED*** doublé à chaque tentative, plafonné à 300 s
-WATCHDOG_CREATE_HOLD_S = 120  ***REMOVED*** après un docker run, on laisse le conteneur s'installer
+WATCHDOG_BACKOFF_S  = 10      # doublé à chaque tentative, plafonné à 300 s
+WATCHDOG_CREATE_HOLD_S = 120  # après un docker run, on laisse le conteneur s'installer
 
-_WD_STATE = {}            ***REMOVED*** name -> {prev_running, tries, next_try, scheme, note}
-_WD_EVENTS = []           ***REMOVED*** journal borné, remonté au contrôleur dans health_payload
-_WD_RECENT_CREATE = {}    ***REMOVED*** name -> ts du dernier docker run lancé par NOUS
+_WD_STATE = {}            # name -> {prev_running, tries, next_try, scheme, note}
+_WD_EVENTS = []           # journal borné, remonté au contrôleur dans health_payload
+_WD_RECENT_CREATE = {}    # name -> ts du dernier docker run lancé par NOUS
 
 
 def _wd_enabled():
@@ -1162,14 +1162,14 @@ def _wd_controleur_silencieux():
     return (time.time() - ts) >= WATCHDOG_GRACE_S if ts else True
 
 
-***REMOVED*** SONDE EXÉCUTÉE DANS LE CONTENEUR. Pourquoi pas un simple appel HTTP depuis ici : nos conteneurs
-***REMOVED*** sont en macvlan, et une interface macvlan enfant ne parle JAMAIS à la pile de son interface
-***REMOVED*** parente. Un nœud joint les conteneurs de ses voisins, jamais les siens (mesuré sur dl360-1 :
-***REMOVED*** 100 % de perte vers son propre conteneur, 0 % vers celui d'en face — EHOSTUNREACH). On passe donc
-***REMOVED*** par `docker exec` et on appelle 127.0.0.1 depuis l'espace de noms réseau du conteneur lui-même.
-***REMOVED*** Le matériel TLS et le jeton sont DÉJÀ là-dedans (/etc/bobi-tls, $MXL_AGENT_TOKEN) : rien à
-***REMOVED*** distribuer, rien à router, et ça marchera à l'identique en ipvlan, en bridge ou en topologie
-***REMOVED*** séparée. Stdin plutôt qu'un `-c "…"` : aucun échappement à faire.
+# SONDE EXÉCUTÉE DANS LE CONTENEUR. Pourquoi pas un simple appel HTTP depuis ici : nos conteneurs
+# sont en macvlan, et une interface macvlan enfant ne parle JAMAIS à la pile de son interface
+# parente. Un nœud joint les conteneurs de ses voisins, jamais les siens (mesuré sur dl360-1 :
+# 100 % de perte vers son propre conteneur, 0 % vers celui d'en face — EHOSTUNREACH). On passe donc
+# par `docker exec` et on appelle 127.0.0.1 depuis l'espace de noms réseau du conteneur lui-même.
+# Le matériel TLS et le jeton sont DÉJÀ là-dedans (/etc/bobi-tls, $MXL_AGENT_TOKEN) : rien à
+# distribuer, rien à router, et ça marchera à l'identique en ipvlan, en bridge ou en topologie
+# séparée. Stdin plutôt qu'un `-c "…"` : aucun échappement à faire.
 _WD_SONDE = r'''
 import json, os, ssl, sys, urllib.error, urllib.request
 chemin = os.environ.get("WD_PATH", "/status")
@@ -1218,7 +1218,7 @@ def _wd_sonder(name, path, method="GET", timeout=15):
         return int(res.get("code") or 0), {}
 
 
-_WD_INSPECT_CACHE = {}    ***REMOVED*** name -> network mode ; invalidé quand le conteneur disparaît
+_WD_INSPECT_CACHE = {}    # name -> network mode ; invalidé quand le conteneur disparaît
 
 
 def _wd_reseau_cached(name):
@@ -1246,14 +1246,14 @@ def _wd_tick():
         if not name.startswith("bobi-") or not (c.get("status") or "").startswith("Up"):
             continue
         if _wd_reseau_cached(name) == "host":
-            continue                       ***REMOVED*** moteur 2110 / --network host : hors périmètre, cf. entête
+            continue                       # moteur 2110 / --network host : hors périmètre, cf. entête
         vivants.add(name)
         st = _WD_STATE.setdefault(name, {"prev_running": None, "tries": 0, "next_try": 0.0,
                                          "note": "", "muet": 0, "next_poll": 0.0})
-        ***REMOVED*** Conteneur qui ne répond JAMAIS (image antérieure à l'exemption loopback : la sonde y est
-        ***REMOVED*** refusée) : sans ce ralentissement, on lui rejouerait un `docker exec` voué à l'échec
-        ***REMOVED*** toutes les 15 s, pour toujours. On espace jusqu'à 10 min ; une réponse remet à zéro.
-        ***REMOVED*** Vaut aussi pour un conteneur simplement en train de démarrer.
+        # Conteneur qui ne répond JAMAIS (image antérieure à l'exemption loopback : la sonde y est
+        # refusée) : sans ce ralentissement, on lui rejouerait un `docker exec` voué à l'échec
+        # toutes les 15 s, pour toujours. On espace jusqu'à 10 min ; une réponse remet à zéro.
+        # Vaut aussi pour un conteneur simplement en train de démarrer.
         if maintenant < st.get("next_poll", 0.0):
             continue
         code, data = _wd_sonder(name, "/status")
@@ -1275,7 +1275,7 @@ def _wd_tick():
             st["next_try"] = 0.0
             st["note"] = ""
             continue
-        ***REMOVED*** Script arrêté à partir d'ici.
+        # Script arrêté à partir d'ici.
         if not silencieux:
             st["note"] = "arrêté — le contrôleur est joignable, c'est son affaire"
             continue
@@ -1307,7 +1307,7 @@ def _wd_tick():
                 _wd_note("%s : abandon après %d échecs" % (name, st["tries"]))
     for disparu in set(_WD_STATE) - vivants:
         _WD_STATE.pop(disparu, None)
-        _WD_INSPECT_CACHE.pop(disparu, None)   ***REMOVED*** une recréation doit relire réseau/IP/jeton
+        _WD_INSPECT_CACHE.pop(disparu, None)   # une recréation doit relire réseau/IP/jeton
     if silencieux:
         _wd_recreer_disparus()
 
@@ -1321,7 +1321,7 @@ def _wd_recreate_enabled():
     return str(v).strip().lower() in ("1", "true", "on", "yes")
 
 
-_WD_RECREATED = set()     ***REMOVED*** une seule tentative par nom et par vie d'agent
+_WD_RECREATED = set()     # une seule tentative par nom et par vie d'agent
 
 
 def _wd_recreer_disparus():
@@ -1345,7 +1345,7 @@ def _wd_recreer_disparus():
         if not name or name in presents or name in _WD_RECREATED:
             continue
         if not spec.get("autoremove"):
-            continue          ***REMOVED*** politique --restart : l'affaire de Docker, pas la nôtre
+            continue          # politique --restart : l'affaire de Docker, pas la nôtre
         _WD_RECREATED.add(name)
         ok, res = create_container(spec)
         _wd_note("%s : disparu et recréé depuis la spec locale (%s) — UNE seule tentative"
@@ -1375,12 +1375,12 @@ def _wd_report():
     }
 
 
-***REMOVED*** ─── Serveur HTTP ───────────────────────────────────────────────────────────────
+# ─── Serveur HTTP ───────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     server_version = f"bobi-node-agent/{VERSION}"
 
     def log_message(self, *a):
-        pass  ***REMOVED*** silence (journalisé par systemd au besoin)
+        pass  # silence (journalisé par systemd au besoin)
 
     def _send(self, code, obj):
         body = json.dumps(obj).encode()
@@ -1394,7 +1394,7 @@ class Handler(BaseHTTPRequestHandler):
         expected = CONFIG.get("token") or ""
         given = self.headers.get("X-MXL-Node-Token", "")
         ok = bool(expected) and hmac.compare_digest(str(expected), str(given))
-        if ok:   ***REMOVED*** mémorise le contrôleur (IP source) pour la page d'état :80
+        if ok:   # mémorise le contrôleur (IP source) pour la page d'état :80
             LAST_CONTROLLER["ip"] = self.client_address[0]
             LAST_CONTROLLER["ts"] = time.time()
         return ok
@@ -1427,15 +1427,15 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
         self.wfile.write(tete + corps)
 
-    ***REMOVED*** — Routage —
+    # — Routage —
     def do_GET(self):
-        ***REMOVED*** Lues AVANT tout le reste (parsing d'URL, comparaison de token) : sur la mesure d'horloge,
-        ***REMOVED*** ces quelques microsecondes sont du retard pur ajouté à l'aller. Coût pour les autres
-        ***REMOVED*** routes : deux appels système, ~100 ns.
+        # Lues AVANT tout le reste (parsing d'URL, comparaison de token) : sur la mesure d'horloge,
+        # ces quelques microsecondes sont du retard pur ajouté à l'aller. Coût pour les autres
+        # routes : deux appels système, ~100 ns.
         recu_utc, recu_tai = _horloges_ns()
         u = urlparse(self.path)
         path = u.path.rstrip("/") or "/"
-        if path == "/v1/ping":                       ***REMOVED*** liveness, sans token
+        if path == "/v1/ping":                       # liveness, sans token
             return self._send(200, {"agent": "bobi-node-agent", "version": VERSION})
         if not self._auth_ok():
             return self._send(401, {"ok": False, "error": "token invalide ou absent"})
@@ -1446,8 +1446,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/v1/health":
             return self._send(200, health_payload())
         if path == "/v1/host/core-snapshot":
-            ***REMOVED*** GET (mesure sans effet de bord) : reste utilisable derrière le garde-fou
-            ***REMOVED*** HA readonly du contrôleur. Bloque ~0,5 s — OK, serveur threadé.
+            # GET (mesure sans effet de bord) : reste utilisable derrière le garde-fou
+            # HA readonly du contrôleur. Bloque ~0,5 s — OK, serveur threadé.
             return self._send(200, _core_snapshot())
         if path == "/v1/containers":
             return self._send(200, {"containers": _list_containers()})
@@ -1463,10 +1463,10 @@ class Handler(BaseHTTPRequestHandler):
             if not has_cap("io2110"):
                 return self._send(503, {"ok": False, "error": "capacité io2110 non provisionnée"})
             return self._send(200, _ptp())
-        ***REMOVED*** Export d'image (relais build-on-node → distribution) : stream `docker save <tag>`.
-        ***REMOVED*** L'agent est en HTTP/1.0 → corps délimité par FERMETURE de connexion (pas de Content-Length
-        ***REMOVED*** ni chunked ; le client lit jusqu'à EOF). L'orchestrateur le buffer en fichier temp puis le
-        ***REMOVED*** POST vers les autres nœuds (/v1/host/images/load). Évite tout registry.
+        # Export d'image (relais build-on-node → distribution) : stream `docker save <tag>`.
+        # L'agent est en HTTP/1.0 → corps délimité par FERMETURE de connexion (pas de Content-Length
+        # ni chunked ; le client lit jusqu'à EOF). L'orchestrateur le buffer en fichier temp puis le
+        # POST vers les autres nœuds (/v1/host/images/load). Évite tout registry.
         if path == "/v1/host/images/export":
             tag = (parse_qs(u.query).get("tag") or [""])[0]
             if not tag:
@@ -1479,7 +1479,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Connection", "close")
             self.end_headers()
-            self.close_connection = True            ***REMOVED*** corps terminé par la fermeture (HTTP/1.0)
+            self.close_connection = True            # corps terminé par la fermeture (HTTP/1.0)
             try:
                 while True:
                     chunk = proc.stdout.read(1 << 20)
@@ -1504,8 +1504,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self._auth_ok():
             return self._send(401, {"ok": False, "error": "token invalide ou absent"})
 
-        ***REMOVED*** Chargement d'image : corps BINAIRE (docker save) → `docker load`. Traité AVANT _body()
-        ***REMOVED*** (qui lirait le flux comme du JSON). Lu par morceaux → pas de 2 Go en mémoire.
+        # Chargement d'image : corps BINAIRE (docker save) → `docker load`. Traité AVANT _body()
+        # (qui lirait le flux comme du JSON). Lu par morceaux → pas de 2 Go en mémoire.
         if path == "/v1/host/images/load":
             cl = int(self.headers.get("Content-Length") or 0)
             if cl <= 0:
@@ -1528,9 +1528,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200 if rc == 0 else 500,
                               {"ok": rc == 0, "output": out.strip()[-300:]})
 
-        ***REMOVED*** B3-1 : build d'image — corps BINAIRE (contexte tar.gz), AVANT _body() (qui le lirait en JSON).
-        ***REMOVED*** `docker build` LOCAL avec le contexte en stdin → ferme le dernier root-SSH (build sur le nœud
-        ***REMOVED*** piloté par l'agent). tag = query ?tag=…. Sortie buildkit renvoyée (tail) — pas de live stream.
+        # B3-1 : build d'image — corps BINAIRE (contexte tar.gz), AVANT _body() (qui le lirait en JSON).
+        # `docker build` LOCAL avec le contexte en stdin → ferme le dernier root-SSH (build sur le nœud
+        # piloté par l'agent). tag = query ?tag=…. Sortie buildkit renvoyée (tail) — pas de live stream.
         if path == "/v1/host/images/build":
             tag = (parse_qs(urlparse(self.path).query).get("tag") or [""])[0]
             if not tag:
@@ -1571,8 +1571,8 @@ class Handler(BaseHTTPRequestHandler):
                 rc, o, e = docker("start", name, timeout=30)
             elif action == "stop":
                 rc, o, e = docker("stop", "-t", str(int(body.get("timeout_s") or 10)), name, timeout=40)
-                _spec_forget(name)      ***REMOVED*** intention = arrêté (cf. _spec_forget)
-            else:  ***REMOVED*** destroy
+                _spec_forget(name)      # intention = arrêté (cf. _spec_forget)
+            else:  # destroy
                 rc, o, e = docker("rm", "-f", name, timeout=30)
                 _spec_forget(name)
             return self._send(200 if rc == 0 else 500,
@@ -1621,15 +1621,15 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             if not has_cap("io2110"):
                 return self._send(503, {"ok": False, "error": "capacité io2110 non provisionnée"})
-            ***REMOVED*** Pilote les DEUX unités (mxl-ptp4l + mxl-phc2sys), alignées sur app/ptp.py.
+            # Pilote les DEUX unités (mxl-ptp4l + mxl-phc2sys), alignées sur app/ptp.py.
             rc, o, e = run(["systemctl", m.group(1), "mxl-ptp4l", "mxl-phc2sys"], timeout=15)
             return self._send(200 if rc == 0 else 500, {"ok": rc == 0, "error": (e or o).strip()[:200] if rc else None})
 
-        ***REMOVED*** B3-1 : exec hôte générique (token-gated) — pont qui remplace le root-SSH du contrôleur par
-        ***REMOVED*** le canal agent (token HTTP). Exécute `bash -c cmd` LOCALEMENT sur le nœud et renvoie
-        ***REMOVED*** rc/stdout/stderr (même contrat que host_ops.ssh_run). Les endpoints structurés (containers/
-        ***REMOVED*** images/networks/ptp/xdp) restent préférés ; exec couvre le reste des host-ops (MTL/VF/binds)
-        ***REMOVED*** sans énumérer chaque commande. Durcissement structuré ultérieur possible.
+        # B3-1 : exec hôte générique (token-gated) — pont qui remplace le root-SSH du contrôleur par
+        # le canal agent (token HTTP). Exécute `bash -c cmd` LOCALEMENT sur le nœud et renvoie
+        # rc/stdout/stderr (même contrat que host_ops.ssh_run). Les endpoints structurés (containers/
+        # images/networks/ptp/xdp) restent préférés ; exec couvre le reste des host-ops (MTL/VF/binds)
+        # sans énumérer chaque commande. Durcissement structuré ultérieur possible.
         if path == "/v1/host/exec":
             cmd = body.get("cmd")
             if not cmd:
@@ -1641,18 +1641,18 @@ class Handler(BaseHTTPRequestHandler):
                            input_bytes=inp)
             return self._send(200, {"rc": rc, "stdout": o, "stderr": e})
 
-        ***REMOVED*** ─── mTLS : migration à chaud pilotée par le contrôleur (canal HTTP+token) ───
-        ***REMOVED*** /v1/tls/init : l'agent génère (idempotent pour la clé) sa clé + un CSR et le RENVOIE.
-        ***REMOVED*** Ne bascule PAS encore en HTTPS (pas de cert signé). Le contrôleur fait signer, puis rappelle
-        ***REMOVED*** /v1/tls/install avec {cert, ca_cert}.
+        # ─── mTLS : migration à chaud pilotée par le contrôleur (canal HTTP+token) ───
+        # /v1/tls/init : l'agent génère (idempotent pour la clé) sa clé + un CSR et le RENVOIE.
+        # Ne bascule PAS encore en HTTPS (pas de cert signé). Le contrôleur fait signer, puis rappelle
+        # /v1/tls/install avec {cert, ca_cert}.
         if path == "/v1/tls/init":
             ok, res = _ensure_key_and_csr()
             if not ok:
                 return self._send(500, {"ok": False, "error": res})
             return self._send(200, {"ok": True, "csr": res, "already_tls": _tls_ready()})
 
-        ***REMOVED*** /v1/tls/install {cert, ca_cert} : écrit node.crt + ca.crt (validés), puis programme un
-        ***REMOVED*** redémarrage du process → l'agent repart en HTTPS/mTLS (repli HTTP conservé si le wrap échoue).
+        # /v1/tls/install {cert, ca_cert} : écrit node.crt + ca.crt (validés), puis programme un
+        # redémarrage du process → l'agent repart en HTTPS/mTLS (repli HTTP conservé si le wrap échoue).
         if path == "/v1/tls/install":
             ok, err = _install_cert_material(body.get("cert"), body.get("ca_cert"))
             if not ok:
@@ -1664,13 +1664,13 @@ class Handler(BaseHTTPRequestHandler):
                             else "matériel incomplet — reste en HTTP"}
             self._send(200, resp)
             if restart:
-                _schedule_restart()          ***REMOVED*** après flush de la réponse
+                _schedule_restart()          # après flush de la réponse
             return
 
         return self._send(404, {"ok": False, "error": "route inconnue"})
 
 
-***REMOVED*** ─── Page d'état publique (:80) ──────────────────────────────────────────────
+# ─── Page d'état publique (:80) ──────────────────────────────────────────────
 def _fmt_dur(s):
     if s is None:
         return "—"
@@ -1691,7 +1691,7 @@ def _bar(pct):
     if pct is None:
         return ""
     pct = max(0, min(100, pct))
-    col = "***REMOVED***e0533b" if pct >= 90 else ("***REMOVED***e0a93b" if pct >= 75 else "***REMOVED***3bce82")
+    col = "#e0533b" if pct >= 90 else ("#e0a93b" if pct >= 75 else "#3bce82")
     return (f'<div class="bar"><div class="fill" style="width:{pct:.0f}%;background:{col}"></div></div>'
             f'<span class="pct">{pct:.0f}%</span>')
 
@@ -1733,11 +1733,11 @@ def render_status_html():
     vers = h.get("versions") or {}
     caps = cap.get("capabilities") or []
     host = cap.get("host") or "node"
-    ***REMOVED*** IPs du nœud (depuis l'inventaire NIC).
+    # IPs du nœud (depuis l'inventaire NIC).
     ips = []
     for nic in (cap.get("nics") or []):
         ips += nic.get("addrs") or []
-    ***REMOVED*** Contrôleur : URL mémorisée à l'install (priorité), sinon dernier vu.
+    # Contrôleur : URL mémorisée à l'install (priorité), sinon dernier vu.
     base = _ctl_base()
     ctl_ip = LAST_CONTROLLER.get("ip")
     ctl_ts = LAST_CONTROLLER.get("ts")
@@ -1808,26 +1808,26 @@ def render_status_html():
 <title>{e(host)} — bobi-node-agent</title>
 <style>
 :root {{ color-scheme: dark; }}
-body {{ font-family: system-ui, sans-serif; background:***REMOVED***15171c; color:***REMOVED***e6e8ec; margin:0; padding:28px; }}
+body {{ font-family: system-ui, sans-serif; background:#15171c; color:#e6e8ec; margin:0; padding:28px; }}
 .wrap {{ max-width: 760px; margin: 0 auto; }}
 h1 {{ font-size:1.5rem; margin:0 0 2px; }}
-h1 .v {{ color:***REMOVED***7aa2f7; font-size:.9rem; font-weight:400; }}
-h2 {{ font-size:1rem; margin:26px 0 8px; color:***REMOVED***9aa4b2; border-bottom:1px solid ***REMOVED***2a2e37; padding-bottom:4px; }}
+h1 .v {{ color:#7aa2f7; font-size:.9rem; font-weight:400; }}
+h2 {{ font-size:1rem; margin:26px 0 8px; color:#9aa4b2; border-bottom:1px solid #2a2e37; padding-bottom:4px; }}
 .caps {{ margin:10px 0 4px; }}
-.cap {{ display:inline-block; background:***REMOVED***222732; color:***REMOVED***9ad; border-radius:12px; padding:2px 10px; font-size:.8rem; margin-right:6px; }}
+.cap {{ display:inline-block; background:#222732; color:#9ad; border-radius:12px; padding:2px 10px; font-size:.8rem; margin-right:6px; }}
 table {{ border-collapse:collapse; width:100%; }}
-th {{ text-align:left; color:***REMOVED***8b94a3; font-weight:500; padding:3px 12px 3px 0; white-space:nowrap; vertical-align:top; }}
+th {{ text-align:left; color:#8b94a3; font-weight:500; padding:3px 12px 3px 0; white-space:nowrap; vertical-align:top; }}
 td {{ padding:3px 0; }}
-.dim {{ color:***REMOVED***6b7280; }}
-a {{ color:***REMOVED***7aa2f7; }}
+.dim {{ color:#6b7280; }}
+a {{ color:#7aa2f7; }}
 .conts th, .conts td {{ padding:4px 12px 4px 0; }}
 .u {{ display:flex; align-items:center; gap:10px; margin:6px 0; }}
-.ul {{ width:84px; color:***REMOVED***8b94a3; }}
-.us {{ color:***REMOVED***8b94a3; font-size:.85rem; min-width:140px; }}
-.bar {{ flex:1; height:8px; background:***REMOVED***262a31; border-radius:4px; overflow:hidden; }}
+.ul {{ width:84px; color:#8b94a3; }}
+.us {{ color:#8b94a3; font-size:.85rem; min-width:140px; }}
+.bar {{ flex:1; height:8px; background:#262a31; border-radius:4px; overflow:hidden; }}
 .fill {{ height:100%; }}
 .pct {{ width:42px; text-align:right; }}
-footer {{ margin-top:28px; color:***REMOVED***5b6270; font-size:.78rem; }}
+footer {{ margin-top:28px; color:#5b6270; font-size:.78rem; }}
 </style></head><body><div class="wrap">
 <h1>{e(host)} <span class="v">bobi-node-agent v{VERSION}</span></h1>
 <div class="caps">{caps_html}</div>
@@ -1871,7 +1871,7 @@ def main():
         print("[bobi-node-agent] ⚠ aucun token configuré — toutes les routes (sauf /v1/ping) "
               "renverront 401. Renseignez 'token' dans " + CONFIG_PATH)
     port = int(CONFIG.get("port") or 9100)
-    ***REMOVED*** Page d'état publique (best-effort : ne bloque pas l'agent si :80 est pris / interdit).
+    # Page d'état publique (best-effort : ne bloque pas l'agent si :80 est pris / interdit).
     info_port = int(CONFIG.get("info_port") or 0)
     if info_port:
         try:
@@ -1889,9 +1889,9 @@ def main():
         print("[bobi-node-agent] chien de garde de script DÉSACTIVÉ (réglage `watchdog`)")
     httpd = ThreadingHTTPServer(("0.0.0.0", port), Handler)
 
-    ***REMOVED*** mTLS conditionnel : si le matériel TLS est présent, on wrappe le socket serveur en HTTPS+mTLS.
-    ***REMOVED*** REPLI : toute erreur (cert corrompu, clé illisible…) → on reste en HTTP clair, JAMAIS de crash
-    ***REMOVED*** (un push de cert raté ne doit pas rendre le nœud injoignable). Le token reste requis dans les 2 modes.
+    # mTLS conditionnel : si le matériel TLS est présent, on wrappe le socket serveur en HTTPS+mTLS.
+    # REPLI : toute erreur (cert corrompu, clé illisible…) → on reste en HTTP clair, JAMAIS de crash
+    # (un push de cert raté ne doit pas rendre le nœud injoignable). Le token reste requis dans les 2 modes.
     scheme = "http"
     if _tls_ready():
         try:

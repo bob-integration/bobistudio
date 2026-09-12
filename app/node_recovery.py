@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Auto-recovery de la flotte au reboot d'un nœud.
 
@@ -33,12 +33,12 @@ from . import settings as st
 
 log = logging.getLogger(__name__)
 
-***REMOVED*** Tolérance sur la dérive de boot_ts recalculé (arrondis /proc/uptime, latence de collecte,
-***REMOVED*** NTP) : un « nouveau boot » n'est retenu que s'il est postérieur de plus de BOOT_TOLERANCE_S
-***REMOVED*** au dernier boot connu.
+# Tolérance sur la dérive de boot_ts recalculé (arrondis /proc/uptime, latence de collecte,
+# NTP) : un « nouveau boot » n'est retenu que s'il est postérieur de plus de BOOT_TOLERANCE_S
+# au dernier boot connu.
 BOOT_TOLERANCE_S = 120
 
-_recovery_locks = {}            ***REMOVED*** node_id -> Lock (anti double recovery pendant le même boot)
+_recovery_locks = {}            # node_id -> Lock (anti double recovery pendant le même boot)
 _registry_lock = threading.Lock()
 
 
@@ -79,30 +79,30 @@ def on_health_snapshot(node, snap):
         boot_ts = float(snap.get("ts") or time.time()) - float(uptime)
         last = node.get("last_boot_ts")
         if last is None:
-            ***REMOVED*** Première observation de ce nœud : on initialise SANS alerter ni relever — le boot
-            ***REMOVED*** courant est l'état de référence (sinon chaque enrôlement déclencherait un recovery).
+            # Première observation de ce nœud : on initialise SANS alerter ni relever — le boot
+            # courant est l'état de référence (sinon chaque enrôlement déclencherait un recovery).
             db_set_node_boot(nid, last_boot_ts=boot_ts, recovered_boot_ts=boot_ts)
             return
         if boot_ts <= float(last) + BOOT_TOLERANCE_S:
-            return                          ***REMOVED*** même boot (dérive dans la tolérance)
-        ***REMOVED*** ── Reboot détecté ────────────────────────────────────────────────────────────
+            return                          # même boot (dérive dans la tolérance)
+        # ── Reboot détecté ────────────────────────────────────────────────────────────
         db_set_node_boot(nid, last_boot_ts=boot_ts)
         name = node.get("name") or node.get("host") or f"nœud {nid}"
-        ***REMOVED*** Vérification de la prép hôte : HORS du gate auto_recovery_enabled (lecture seule) et
-        ***REMOVED*** dans son propre thread (elle attend la grace puis fait un aller-retour agent — elle ne
-        ***REMOVED*** doit jamais retenir le sampler santé, ni la reprise des conteneurs ci-dessous).
+        # Vérification de la prép hôte : HORS du gate auto_recovery_enabled (lecture seule) et
+        # dans son propre thread (elle attend la grace puis fait un aller-retour agent — elle ne
+        # doit jamais retenir le sampler santé, ni la reprise des conteneurs ci-dessous).
         threading.Thread(target=_verifier_prep_post_boot, args=(nid, name),
                          daemon=True, name=f"node-prep-check-{nid}").start()
         if not _cfg_node("auto_recovery_enabled", nid, 0):
             db_add_alert("alert.node.reboot_recovery_off", "warning", node_id=nid, kind="node",
                          params={"n": name, "uptime": int(uptime)})
-            ***REMOVED*** Certs mTLS : la CONSTATATION est hors du gate (lecture seule), comme la prép hôte —
-            ***REMOVED*** sinon un parc en auto-recovery OFF (le défaut !) subit la panne de certs sans le
-            ***REMOVED*** moindre message. La RÉPARATION, elle, reste dans _recover_node (gated).
+            # Certs mTLS : la CONSTATATION est hors du gate (lecture seule), comme la prép hôte —
+            # sinon un parc en auto-recovery OFF (le défaut !) subit la panne de certs sans le
+            # moindre message. La RÉPARATION, elle, reste dans _recover_node (gated).
             threading.Thread(target=_certs_conteneurs_node, args=(nid, name, False),
                              daemon=True, name=f"node-tls-check-{nid}").start()
-            ***REMOVED*** recovered_boot_ts suit quand même : si l'opérateur ACTIVE le réglage plus tard,
-            ***REMOVED*** on ne « rattrape » pas un vieux boot déjà géré à la main.
+            # recovered_boot_ts suit quand même : si l'opérateur ACTIVE le réglage plus tard,
+            # on ne « rattrape » pas un vieux boot déjà géré à la main.
             db_set_node_boot(nid, recovered_boot_ts=boot_ts)
             return
         db_add_alert("alert.node.reboot_recovery_lance", "warning", node_id=nid, kind="node",
@@ -114,7 +114,7 @@ def on_health_snapshot(node, snap):
         log.warning("node_recovery snapshot nœud %s : %s", node.get("id"), e)
 
 
-***REMOVED*** ─── Moteur de recovery (étapes 3-4) ──────────────────────────────────────────────────
+# ─── Moteur de recovery (étapes 3-4) ──────────────────────────────────────────────────
 
 def _desired_running(node_id):
     """Conteneurs de ce nœud censés tourner : backend docker + deploy_config non vide +
@@ -125,15 +125,15 @@ def _desired_running(node_id):
         if c.get("node_id") != node_id:
             continue
         if c.get("desired_state") != "running":
-            ***REMOVED*** STRICT : arrêt volontaire ('stopped') OU intention jamais exprimée (NULL = créé
-            ***REMOVED*** mais jamais déployé/démarré) → on ne touche pas.
+            # STRICT : arrêt volontaire ('stopped') OU intention jamais exprimée (NULL = créé
+            # mais jamais déployé/démarré) → on ne touche pas.
             continue
         try:
             dc = json.loads(c.get("deploy_config") or "{}") or {}
         except Exception:
             dc = {}
         if not dc.get("type"):
-            continue                        ***REMOVED*** jamais déployé → rien à relever
+            continue                        # jamais déployé → rien à relever
         (compute if is_compute_container(c) else mtl).append(c)
     return mtl, compute
 
@@ -145,7 +145,7 @@ def _try_start(c, starter, attempts, backoff_s):
     for i in range(max(1, attempts)):
         try:
             ok = starter(vmid)
-            if isinstance(ok, tuple):       ***REMOVED*** stop/start renvoient parfois (ok, msg)
+            if isinstance(ok, tuple):       # stop/start renvoient parfois (ok, msg)
                 ok = ok[0]
             if ok:
                 return True
@@ -176,19 +176,19 @@ def _check_ptp(node):
         log.warning("recovery PTP nœud %s : %s", nid, e)
 
 
-***REMOVED*** ─── Vérification de la prép hôte après un reboot ────────────────────────────────────
-***REMOVED*** POURQUOI : jusqu'ici, un reboot de nœud ne vérifiait RIEN de la préparation hôte. Le seul
-***REMOVED*** contrôle de prép existant (`docker_driver._bind_ports_vfio`) ne se déclenche qu'au moment de
-***REMOVED*** BINDER un port lors d'un DÉPLOIEMENT — or après un reboot le moteur est simplement REDÉMARRÉ,
-***REMOVED*** donc cette porte n'est jamais franchie. `mtl.verifier()` n'était appelé qu'à la demande, quand
-***REMOVED*** un humain ouvre le panneau du nœud. Conséquence : une prép qui se dégrade au boot (unité systemd
-***REMOVED*** en échec, cmdline édité, fréquence retombée au plancher) restait INVISIBLE jusqu'à ce que les
-***REMOVED*** flux tombent — typiquement plusieurs heures plus tard, sans lien apparent avec le reboot.
-***REMOVED***
-***REMOVED*** Cette passe est délibérément INDÉPENDANTE de `auto_recovery_enabled` : constater et alerter est
-***REMOVED*** en lecture seule, et c'est utile même quand on ne veut PAS que l'orchestrateur relève les
-***REMOVED*** conteneurs tout seul. Elle ne tourne que sur les nœuds qui font de la 2110 (ailleurs il n'y a
-***REMOVED*** pas de prép MTL à vérifier, et alerter serait du bruit).
+# ─── Vérification de la prép hôte après un reboot ────────────────────────────────────
+# POURQUOI : jusqu'ici, un reboot de nœud ne vérifiait RIEN de la préparation hôte. Le seul
+# contrôle de prép existant (`docker_driver._bind_ports_vfio`) ne se déclenche qu'au moment de
+# BINDER un port lors d'un DÉPLOIEMENT — or après un reboot le moteur est simplement REDÉMARRÉ,
+# donc cette porte n'est jamais franchie. `mtl.verifier()` n'était appelé qu'à la demande, quand
+# un humain ouvre le panneau du nœud. Conséquence : une prép qui se dégrade au boot (unité systemd
+# en échec, cmdline édité, fréquence retombée au plancher) restait INVISIBLE jusqu'à ce que les
+# flux tombent — typiquement plusieurs heures plus tard, sans lien apparent avec le reboot.
+#
+# Cette passe est délibérément INDÉPENDANTE de `auto_recovery_enabled` : constater et alerter est
+# en lecture seule, et c'est utile même quand on ne veut PAS que l'orchestrateur relève les
+# conteneurs tout seul. Elle ne tourne que sur les nœuds qui font de la 2110 (ailleurs il n'y a
+# pas de prép MTL à vérifier, et alerter serait du bruit).
 
 def _prep_checks():
     """Table des contrôles de prép hôte post-boot : (clé, prédicat sur le dict `verifier`,
@@ -208,42 +208,42 @@ def _prep_checks():
          "alert.prep.controle.vfio"),
         ("hugepages", lambda p: not p.get("hugepages_size_ok") or not p.get("hugepages_total"),
          "error", "alert.prep.controle.hugepages"),
-        ***REMOVED*** Fréquence des cœurs isolés : LE piège du socle DPDK. `nohz_full` prive intel_pstate du
-        ***REMOVED*** retour d'utilisation sur les cœurs tickless → ils restent au plancher à 100 % de
-        ***REMOVED*** busy-poll et le moteur s'étouffe QUELQUES HEURES plus tard. Symptôme différé, cause au
-        ***REMOVED*** boot : exactement ce qu'il faut attraper ici.
+        # Fréquence des cœurs isolés : LE piège du socle DPDK. `nohz_full` prive intel_pstate du
+        # retour d'utilisation sur les cœurs tickless → ils restent au plancher à 100 % de
+        # busy-poll et le moteur s'étouffe QUELQUES HEURES plus tard. Symptôme différé, cause au
+        # boot : exactement ce qu'il faut attraper ici.
         ("cpufreq",   lambda p: bool((p.get("cpufreq") or {}).get("risk")), "error",
          "alert.prep.controle.cpufreq"),
         ("reboot",    lambda p: bool(p.get("reboot_needed")), "warning",
          "alert.prep.controle.reboot"),
-        ***REMOVED*** Isolation des cœurs : `warning` et NON `error`, délibérément. Un nœud sans bande isolée
-        ***REMOVED*** FONCTIONNE — il perd de la marge (IRQ/softirq/RCU préemptent les busy-poll) mais ne casse
-        ***REMOVED*** pas. Mettre `error` ferait hurler tout le parc à chaque reboot tant que la migration n'est
-        ***REMOVED*** pas faite, et une alerte qu'on apprend à ignorer ne vaut plus rien. Le `hint` de la sonde
-        ***REMOVED*** porte le détail (bande attendue vs active).
+        # Isolation des cœurs : `warning` et NON `error`, délibérément. Un nœud sans bande isolée
+        # FONCTIONNE — il perd de la marge (IRQ/softirq/RCU préemptent les busy-poll) mais ne casse
+        # pas. Mettre `error` ferait hurler tout le parc à chaque reboot tant que la migration n'est
+        # pas faite, et une alerte qu'on apprend à ignorer ne vaut plus rien. Le `hint` de la sonde
+        # porte le détail (bande attendue vs active).
         ("isolation", lambda p: bool((p.get("isolation") or {}).get("risk")), "warning",
          "alert.prep.controle.isolation"),
     ]
 
 
-***REMOVED*** État d'alerte de la prép, PARTAGÉ entre la passe post-boot et la re-vérification périodique
-***REMOVED*** (`node_health._check_prep_drift`). Deux détecteurs, UN état : sans ça, un défaut signalé au boot
-***REMOVED*** puis réparé ne produisait AUCUN message de résolution (le détecteur périodique ne savait pas
-***REMOVED*** qu'une alerte était en cours) — l'alerte restait orpheline dans le dashboard.
-***REMOVED*** La clé d'état est (niveau, ENSEMBLE des contrôles cassés) et pas le seul niveau : sinon un
-***REMOVED*** défaut qui en remplace un autre au même niveau passait inaperçu.
-_prep_alert_state = {}       ***REMOVED*** node_id → [niveau, [clés]] | None (cache RAM du chemin chaud)
-***REMOVED*** Le MÊME état, SURVIVANT au redémarrage (cf. app/episodes.py) : une prép hôte cassée le reste
-***REMOVED*** quand l'orchestrateur redémarre.
+# État d'alerte de la prép, PARTAGÉ entre la passe post-boot et la re-vérification périodique
+# (`node_health._check_prep_drift`). Deux détecteurs, UN état : sans ça, un défaut signalé au boot
+# puis réparé ne produisait AUCUN message de résolution (le détecteur périodique ne savait pas
+# qu'une alerte était en cours) — l'alerte restait orpheline dans le dashboard.
+# La clé d'état est (niveau, ENSEMBLE des contrôles cassés) et pas le seul niveau : sinon un
+# défaut qui en remplace un autre au même niveau passait inaperçu.
+_prep_alert_state = {}       # node_id → [niveau, [clés]] | None (cache RAM du chemin chaud)
+# Le MÊME état, SURVIVANT au redémarrage (cf. app/episodes.py) : une prép hôte cassée le reste
+# quand l'orchestrateur redémarre.
 from .episodes import EtatEpisodes as _Episodes
 _episodes = _Episodes("node_prep")
 
-***REMOVED*** Dernier VERDICT complet de la prép, par nœud — publié tel quel dans le snapshot node_health
-***REMOVED*** (onglet Nœuds du Monitoring). Distinct de `_prep_alert_state` (qui ne sert qu'à ne pas répéter
-***REMOVED*** une alerte) : ici on garde de quoi AFFICHER, dont l'horodatage de la sonde. Sans cet horodatage
-***REMOVED*** l'UI mettrait un verdict vieux de 30 min à côté de chiffres CPU vieux de 5 s, sans le dire —
-***REMOVED*** c'est-à-dire un mensonge sur la fraîcheur.
-_prep_verdict = {}           ***REMOVED*** node_id (str) → dict verdict | absent si jamais sondé
+# Dernier VERDICT complet de la prép, par nœud — publié tel quel dans le snapshot node_health
+# (onglet Nœuds du Monitoring). Distinct de `_prep_alert_state` (qui ne sert qu'à ne pas répéter
+# une alerte) : ici on garde de quoi AFFICHER, dont l'horodatage de la sonde. Sans cet horodatage
+# l'UI mettrait un verdict vieux de 30 min à côté de chiffres CPU vieux de 5 s, sans le dire —
+# c'est-à-dire un mensonge sur la fraîcheur.
+_prep_verdict = {}           # node_id (str) → dict verdict | absent si jamais sondé
 
 
 def verdict_prep(node_id):
@@ -252,11 +252,11 @@ def verdict_prep(node_id):
     return _prep_verdict.get(str(node_id))
 
 
-***REMOVED*** Suffixe de clé i18n pour chaque valeur de `contexte` (fragment FRANÇAIS, cf. docstring
-***REMOVED*** d'`evaluer_prep`) : le texte de l'alerte doit être traduisible, mais `contexte` lui-même reste
-***REMOVED*** recopié TEL QUEL dans le verdict affichable (`_verdict_prep["context"]`, lu par l'UI) — on ne
-***REMOVED*** le modifie donc jamais, on se contente de choisir la bonne clé complète à partir de sa valeur.
-***REMOVED*** `.get(contexte, "autre")` couvre un futur appelant qui passerait un fragment non prévu ici.
+# Suffixe de clé i18n pour chaque valeur de `contexte` (fragment FRANÇAIS, cf. docstring
+# d'`evaluer_prep`) : le texte de l'alerte doit être traduisible, mais `contexte` lui-même reste
+# recopié TEL QUEL dans le verdict affichable (`_verdict_prep["context"]`, lu par l'UI) — on ne
+# le modifie donc jamais, on se contente de choisir la bonne clé complète à partir de sa valeur.
+# `.get(contexte, "autre")` couvre un futur appelant qui passerait un fragment non prévu ici.
 _CONTEXTE_SUFFIXES = {
     "après reboot": "reboot",
     "après réparation": "reparation",
@@ -277,20 +277,20 @@ def evaluer_prep(node_id, name, prep, contexte):
               for cle, casse, niv, cle_i18n in _prep_checks() if casse(prep)]
     niveau = ("error" if any(n == "error" for _, n, _, _ in casses)
               else ("warning" if casses else None))
-    ***REMOVED*** Forme LISTE (et non tuple/frozenset) : cet état est persisté en JSON (cf. plus bas), et un
-    ***REMOVED*** tuple relu revient en liste — comparer les deux formes rendrait TOUJOURS « changé », donc une
-    ***REMOVED*** fausse alerte à chaque redémarrage. On normalise donc des deux côtés.
+    # Forme LISTE (et non tuple/frozenset) : cet état est persisté en JSON (cf. plus bas), et un
+    # tuple relu revient en liste — comparer les deux formes rendrait TOUJOURS « changé », donc une
+    # fausse alerte à chaque redémarrage. On normalise donc des deux côtés.
     etat = [niveau, sorted(c for c, _, _, _ in casses)] if niveau else None
     if node_id not in _prep_alert_state:
-        _prep_alert_state[node_id] = _episodes.get(node_id)   ***REMOVED*** reprise après (re)démarrage
+        _prep_alert_state[node_id] = _episodes.get(node_id)   # reprise après (re)démarrage
     prev = _prep_alert_state.get(node_id)
     if etat and etat != prev:
-        ***REMOVED*** `casses` a une longueur VARIABLE (0 à N contrôles simultanément cassés). On envoie la
-        ***REMOVED*** LISTE DE SOUS-CLÉS, pas les clés techniques : réduire l'alerte à « iommu · vfio » ferait
-        ***REMOVED*** perdre à l'exploitant l'explication de CHAQUE contrôle — « IOMMU inactif — le moteur
-        ***REMOVED*** crash-loopera au bind vfio », etc. — c'est-à-dire tout ce qui permet d'agir sans ouvrir
-        ***REMOVED*** l'interface. Le rendu se fait à la lecture, dans la langue du lecteur
-        ***REMOVED*** (`i18n._developper_sous_cles`).
+        # `casses` a une longueur VARIABLE (0 à N contrôles simultanément cassés). On envoie la
+        # LISTE DE SOUS-CLÉS, pas les clés techniques : réduire l'alerte à « iommu · vfio » ferait
+        # perdre à l'exploitant l'explication de CHAQUE contrôle — « IOMMU inactif — le moteur
+        # crash-loopera au bind vfio », etc. — c'est-à-dire tout ce qui permet d'agir sans ouvrir
+        # l'interface. Le rendu se fait à la lecture, dans la langue du lecteur
+        # (`i18n._developper_sous_cles`).
         db_add_alert(f"alert.prep.controles_casses_{_contexte_suffixe(contexte)}", niveau,
                      node_id=node_id, kind="prep",
                      params={"n": name, "_sep": " · ",
@@ -340,8 +340,8 @@ def _verdict_prep(prep, casses, niveau, contexte):
             "max_mhz":     cf.get("max_mhz"),
         },
         "reboot_needed": bool(prep.get("reboot_needed")),
-        "ts": time.time(),           ***REMOVED*** HORODATAGE DE LA SONDE (≠ ts du snapshot, 5 s) — l'UI en a
-        "context": contexte,         ***REMOVED*** besoin pour dire « vérifié il y a N min ».
+        "ts": time.time(),           # HORODATAGE DE LA SONDE (≠ ts du snapshot, 5 s) — l'UI en a
+        "context": contexte,         # besoin pour dire « vérifié il y a N min ».
     }
 
 
@@ -385,9 +385,9 @@ def _reparer_cpufreq(node_id, name, node, prep):
     except Exception:
         neuf = {}
     if neuf.get("error") or not neuf:
-        return prep                      ***REMOVED*** re-sonde impossible : on garde le verdict d'origine
-    ***REMOVED*** VÉRIFICATION EXPLICITE : un `ok` qui laisserait les cœurs au plancher serait exactement
-    ***REMOVED*** l'échec silencieux qu'on corrige — on croit le message, pas la mesure.
+        return prep                      # re-sonde impossible : on garde le verdict d'origine
+    # VÉRIFICATION EXPLICITE : un `ok` qui laisserait les cœurs au plancher serait exactement
+    # l'échec silencieux qu'on corrige — on croit le message, pas la mesure.
     if not bool((neuf.get("cpufreq") or {}).get("risk")):
         cf = neuf.get("cpufreq") or {}
         db_add_alert("alert.prep.cpufreq_repare", "info", node_id=node_id, kind="prep",
@@ -411,27 +411,27 @@ def _verifier_prep_post_boot(node_id, name):
         except Exception:
             caps = []
         if "io2110" not in caps:
-            return                          ***REMOVED*** pas de moteur 2110 ici → pas de prép à vérifier
-        ***REMOVED*** Laisser systemd finir (unités de prép : fréquence, IRQ, rdma) avant de constater.
+            return                          # pas de moteur 2110 ici → pas de prép à vérifier
+        # Laisser systemd finir (unités de prép : fréquence, IRQ, rdma) avant de constater.
         time.sleep(max(0, _cfg_node("auto_recovery_grace_s", node_id, 45)))
         prep = mtl.verifier_node(node) or {}
         if prep.get("error"):
-            ***REMOVED*** NE PAS avaler : une sonde muette qui laisse croire que tout va bien est pire que
-            ***REMOVED*** pas de sonde du tout (cf. le canari qui meurt et fait passer le test au vert).
+            # NE PAS avaler : une sonde muette qui laisse croire que tout va bien est pire que
+            # pas de sonde du tout (cf. le canari qui meurt et fait passer le test au vert).
             db_add_alert("alert.prep.non_sondable_reboot", "error", node_id=node_id, kind="prep",
                          params={"n": name, "e": prep['error']})
             return
         casses = evaluer_prep(node_id, name, prep, "après reboot")
-        ***REMOVED*** ── RÉPARATION AUTOMATIQUE de l'épinglage de fréquence ────────────────────────────────
-        ***REMOVED*** `cpufreq` est le SEUL contrôle de la table qui soit réparable À CHAUD : IOMMU, vfio,
-        ***REMOVED*** hugepages et isolation passent tous par le cmdline noyau, donc par un reboot — qui n'est
-        ***REMOVED*** jamais automatique ici. L'épinglage, lui, est un `systemctl` idempotent qui pose en plus
-        ***REMOVED*** l'unité de persistance : le réparer une fois suffit à ce que le problème ne revienne pas.
-        ***REMOVED*** Sans ça, la sonde répétait à chaque boot un message parfaitement juste que personne
-        ***REMOVED*** n'allait exécuter à la main sur chaque nœud (constaté sur Horace : les schedulers DPDK
-        ***REMOVED*** tournaient à 1000 MHz au lieu de 3700, soit 3,7× de marge perdue, l'unité n'ayant jamais
-        ***REMOVED*** été posée sur ce nœud). Même doctrine que la re-provision des certs : gated par
-        ***REMOVED*** `auto_recovery_enabled`, UNE tentative, verdict re-sondé derrière.
+        # ── RÉPARATION AUTOMATIQUE de l'épinglage de fréquence ────────────────────────────────
+        # `cpufreq` est le SEUL contrôle de la table qui soit réparable À CHAUD : IOMMU, vfio,
+        # hugepages et isolation passent tous par le cmdline noyau, donc par un reboot — qui n'est
+        # jamais automatique ici. L'épinglage, lui, est un `systemctl` idempotent qui pose en plus
+        # l'unité de persistance : le réparer une fois suffit à ce que le problème ne revienne pas.
+        # Sans ça, la sonde répétait à chaque boot un message parfaitement juste que personne
+        # n'allait exécuter à la main sur chaque nœud (constaté sur Horace : les schedulers DPDK
+        # tournaient à 1000 MHz au lieu de 3700, soit 3,7× de marge perdue, l'unité n'ayant jamais
+        # été posée sur ce nœud). Même doctrine que la re-provision des certs : gated par
+        # `auto_recovery_enabled`, UNE tentative, verdict re-sondé derrière.
         if any(k == "cpufreq" for k, _, _, _ in casses) and _cfg_node("auto_recovery_enabled", node_id, 0):
             prep = _reparer_cpufreq(node_id, name, node, prep)
             casses = evaluer_prep(node_id, name, prep, "après réparation")
@@ -445,33 +445,33 @@ def _verifier_prep_post_boot(node_id, name):
         log.warning("vérif prép post-boot nœud %s : %s", node_id, e)
 
 
-***REMOVED*** ─── Certificats mTLS des conteneurs : re-provision après un reboot ───────────────────
-***REMOVED*** LA PANNE (prod, 2026-07) : l'agent-nœud matérialise les PEM d'un conteneur dans
-***REMOVED*** /run/bobi-tls/<nom>/ — et /run est un TMPFS. Au reboot : (1) /run est vidé ; (2) Docker relève
-***REMOVED*** les conteneurs `--restart unless-stopped` AVANT toute reprovision ; (3) la source du bind-mount
-***REMOVED*** n'existant plus, Docker la RECRÉE VIDE ; (4) l'agent du conteneur, qui lit /etc/bobi-tls au
-***REMOVED*** démarrage, ne trouve rien et sert en HTTP CLAIR ; (5) le contrôleur, lui, a tranché HTTPS
-***REMOVED*** globalement → le conteneur est injoignable DÉFINITIVEMENT tout en continuant de tourner.
-***REMOVED*** Empreinte : les dossiers d'AVANT le reboot contiennent 0 fichier, ceux d'APRÈS en contiennent 3.
-***REMOVED*** Le moteur 2110 y échappe (il tourne en --rm : détruit puis RECRÉÉ, donc re-provisionné) ; les
-***REMOVED*** conteneurs compute, simplement relevés, gardent leur montage vide — d'où « seuls les multiviews
-***REMOVED*** sont tombés ».
-***REMOVED***
-***REMOVED*** DÉCISION : on ne persiste PAS les clés sur disque (elles restent en RAM — mesure d'hygiène :
-***REMOVED*** la clé d'un conteneur, cf. volet identité côté agent, est un secret réutilisable). On
-***REMOVED*** RE-PROVISIONNE donc, ce qui passe par le SEUL chemin qui matérialise le trio PEM côté nœud :
-***REMOVED*** la spec de `docker run` (node_driver.run_container). D'où : effacer la signature de spec →
-***REMOVED*** redéployer → l'agent-nœud réécrit /run/bobi-tls/<nom>/ et rebinde → l'agent conteneur relit ses
-***REMOVED*** certs au démarrage. Le redéploiement re-pousse aussi le script (rootfs éphémère recréé).
-***REMOVED***
-***REMOVED*** GARDE-FOUS (ce projet a déjà connu une boucle de recréation, cf. en-tête docker_compute) :
-***REMOVED***   · appelé UNIQUEMENT depuis la passe one-shot par boot (verrou par nœud, recovered_boot_ts
-***REMOVED***     écrit AVANT d'agir) ou depuis la passe de CONSTAT (reparer=False, aucune écriture) ;
-***REMOVED***   · on ne touche QU'aux conteneurs dont le verdict est « clair » — c'est-à-dire ceux dont on a
-***REMOVED***     la PREUVE que l'agent est vivant mais dans le mauvais schéma ; un conteneur sain ou
-***REMOVED***     réellement mort n'est jamais recréé ici ;
-***REMOVED***   · UNE tentative de réparation par conteneur et par boot, puis re-diagnostic et alerte si ça
-***REMOVED***     n'a pas suffi (jamais de nouvelle boucle).
+# ─── Certificats mTLS des conteneurs : re-provision après un reboot ───────────────────
+# LA PANNE (prod, 2026-07) : l'agent-nœud matérialise les PEM d'un conteneur dans
+# /run/bobi-tls/<nom>/ — et /run est un TMPFS. Au reboot : (1) /run est vidé ; (2) Docker relève
+# les conteneurs `--restart unless-stopped` AVANT toute reprovision ; (3) la source du bind-mount
+# n'existant plus, Docker la RECRÉE VIDE ; (4) l'agent du conteneur, qui lit /etc/bobi-tls au
+# démarrage, ne trouve rien et sert en HTTP CLAIR ; (5) le contrôleur, lui, a tranché HTTPS
+# globalement → le conteneur est injoignable DÉFINITIVEMENT tout en continuant de tourner.
+# Empreinte : les dossiers d'AVANT le reboot contiennent 0 fichier, ceux d'APRÈS en contiennent 3.
+# Le moteur 2110 y échappe (il tourne en --rm : détruit puis RECRÉÉ, donc re-provisionné) ; les
+# conteneurs compute, simplement relevés, gardent leur montage vide — d'où « seuls les multiviews
+# sont tombés ».
+#
+# DÉCISION : on ne persiste PAS les clés sur disque (elles restent en RAM — mesure d'hygiène :
+# la clé d'un conteneur, cf. volet identité côté agent, est un secret réutilisable). On
+# RE-PROVISIONNE donc, ce qui passe par le SEUL chemin qui matérialise le trio PEM côté nœud :
+# la spec de `docker run` (node_driver.run_container). D'où : effacer la signature de spec →
+# redéployer → l'agent-nœud réécrit /run/bobi-tls/<nom>/ et rebinde → l'agent conteneur relit ses
+# certs au démarrage. Le redéploiement re-pousse aussi le script (rootfs éphémère recréé).
+#
+# GARDE-FOUS (ce projet a déjà connu une boucle de recréation, cf. en-tête docker_compute) :
+#   · appelé UNIQUEMENT depuis la passe one-shot par boot (verrou par nœud, recovered_boot_ts
+#     écrit AVANT d'agir) ou depuis la passe de CONSTAT (reparer=False, aucune écriture) ;
+#   · on ne touche QU'aux conteneurs dont le verdict est « clair » — c'est-à-dire ceux dont on a
+#     la PREUVE que l'agent est vivant mais dans le mauvais schéma ; un conteneur sain ou
+#     réellement mort n'est jamais recréé ici ;
+#   · UNE tentative de réparation par conteneur et par boot, puis re-diagnostic et alerte si ça
+#     n'a pas suffi (jamais de nouvelle boucle).
 
 def _certs_conteneurs_node(node_id, name, reparer):
     """Diagnostique (et répare si `reparer`) le désaccord de schéma mTLS des conteneurs compute
@@ -482,13 +482,13 @@ def _certs_conteneurs_node(node_id, name, reparer):
         from . import deploy, node_driver
         from .addressing import get_container_ip
         if not deploy.agent_tls_on():
-            return casses, repares, echecs      ***REMOVED*** pas de CA → toute la flotte en http, rien à faire
+            return casses, repares, echecs      # pas de CA → toute la flotte en http, rien à faire
         node = db_get_node(node_id) or {}
         if not node_driver.has_agent(node):
-            ***REMOVED*** Chemin legacy (ssh_run) : il n'injecte AUCUN cert conteneur → hors sujet.
+            # Chemin legacy (ssh_run) : il n'injecte AUCUN cert conteneur → hors sujet.
             return casses, repares, echecs
         if not reparer:
-            ***REMOVED*** Passe de constat : laisser Docker relever les `unless-stopped` avant de conclure.
+            # Passe de constat : laisser Docker relever les `unless-stopped` avant de conclure.
             time.sleep(max(0, _cfg_node("auto_recovery_grace_s", node_id, 45)))
         _, compute = _desired_running(node_id)
         for c in compute:
@@ -497,15 +497,15 @@ def _certs_conteneurs_node(node_id, name, reparer):
             if not ip:
                 continue
             if deploy.diagnostiquer_schema_agent(ip, vmid=vmid) != "clair":
-                continue                        ***REMOVED*** sain, ou muet des deux côtés (→ voie de relance)
+                continue                        # sain, ou muet des deux côtés (→ voie de relance)
             casses.append(vmid)
             if not reparer:
                 continue
             (repares if _reprovisionner_certs(c) else echecs).append(vmid)
-            time.sleep(1)                       ***REMOVED*** ne pas saturer l'agent-nœud / le démon Docker
+            time.sleep(1)                       # ne pas saturer l'agent-nœud / le démon Docker
         if casses and reparer:
-            ***REMOVED*** vmid = identifiant technique (pas une phrase) → paramètre unique, comme les hostnames
-            ***REMOVED*** ou vmid ailleurs dans ce fichier.
+            # vmid = identifiant technique (pas une phrase) → paramètre unique, comme les hostnames
+            # ou vmid ailleurs dans ce fichier.
             if echecs:
                 db_add_alert("alert.agent.certs_reprovisionnes_echecs", "error",
                              node_id=node_id, kind="agent",
@@ -541,13 +541,13 @@ def _reprovisionner_certs(c):
         type_ = dc.get("type")
         if not type_:
             return False
-        db_update_spec_sig(vmid, None)          ***REMOVED*** force la recréation (donc la matérialisation TLS)
+        db_update_spec_sig(vmid, None)          # force la recréation (donc la matérialisation TLS)
         ok = bool(deploy.deployer_script(vmid, type_, dc.get("params") or {}))
         if not ok:
             return False
         ip = get_container_ip(vmid) or c.get("docker_ip")
-        ***REMOVED*** Vérification EXPLICITE : un redéploiement « réussi » qui laisserait l'agent en clair
-        ***REMOVED*** serait exactement l'échec silencieux qu'on corrige.
+        # Vérification EXPLICITE : un redéploiement « réussi » qui laisserait l'agent en clair
+        # serait exactement l'échec silencieux qu'on corrige.
         return deploy.diagnostiquer_schema_agent(ip, vmid=vmid, alerter=False) == "ok"
     except Exception as e:
         log.warning("re-provision certs vmid=%s : %s", vmid, e)
@@ -559,26 +559,26 @@ def _recover_node(node_id, boot_ts):
     verrou AVANT d'agir — un second déclenchement (sampler 5 s) ne fait rien."""
     lk = _lock_for(node_id)
     if not lk.acquire(blocking=False):
-        return                              ***REMOVED*** recovery déjà en cours sur ce nœud
+        return                              # recovery déjà en cours sur ce nœud
     try:
         node = db_get_node(node_id) or {}
         if float(node.get("recovered_boot_ts") or 0) >= float(boot_ts) - 1:
-            return                          ***REMOVED*** déjà traité (contrôleur redémarré entre-temps, etc.)
-        db_set_node_boot(node_id, recovered_boot_ts=boot_ts)   ***REMOVED*** AVANT d'agir (one-shot)
+            return                          # déjà traité (contrôleur redémarré entre-temps, etc.)
+        db_set_node_boot(node_id, recovered_boot_ts=boot_ts)   # AVANT d'agir (one-shot)
         name = node.get("name") or node.get("host") or f"nœud {node_id}"
         grace = _cfg_node("auto_recovery_grace_s", node_id, 45)
         attempts = _cfg_node("auto_recovery_max_attempts", node_id, 2)
         backoff = _cfg_node("auto_recovery_backoff_s", node_id, 20)
-        time.sleep(max(0, grace))           ***REMOVED*** laisser Docker (unless-stopped) et systemd (PTP) agir
+        time.sleep(max(0, grace))           # laisser Docker (unless-stopped) et systemd (PTP) agir
 
-        node = db_get_node(node_id) or node   ***REMOVED*** re-lire (le nœud a pu être édité pendant la grace)
+        node = db_get_node(node_id) or node   # re-lire (le nœud a pu être édité pendant la grace)
         _check_ptp(node)
 
         from . import docker_driver, docker_compute
         mtl, compute = _desired_running(node_id)
         relanced, failed = [], []
 
-        ***REMOVED*** 1) Moteur MTL d'abord (producteur racine des shm ; --rm → absent après reboot).
+        # 1) Moteur MTL d'abord (producteur racine des shm ; --rm → absent après reboot).
         for c in mtl:
             stc = docker_driver.status_docker(c["vmid"])
             if stc == "running":
@@ -586,30 +586,30 @@ def _recover_node(node_id, boot_ts):
             ok = _try_start(c, docker_driver.start_docker, attempts, backoff)
             (relanced if ok else failed).append(c["vmid"])
             if ok:
-                ***REMOVED*** Attendre que le moteur soit réellement up avant les consommateurs (poll borné).
+                # Attendre que le moteur soit réellement up avant les consommateurs (poll borné).
                 for _ in range(15):
                     if docker_driver.status_docker(c["vmid"]) == "running":
                         break
                     time.sleep(2)
 
-        ***REMOVED*** 2) Compute/media/webrtc ensuite. Docker (unless-stopped) a normalement déjà relevé —
-        ***REMOVED***    on ne rattrape que exited/absent. start_compute gère les deux (start ou redéploiement).
+        # 2) Compute/media/webrtc ensuite. Docker (unless-stopped) a normalement déjà relevé —
+        #    on ne rattrape que exited/absent. start_compute gère les deux (start ou redéploiement).
         for c in compute:
             stc = docker_compute.status_compute(c["vmid"])
             if stc == "running":
                 continue
             ok = _try_start(c, docker_compute.start_compute, attempts, backoff)
             (relanced if ok else failed).append(c["vmid"])
-            time.sleep(2)                   ***REMOVED*** ne pas saturer l'agent/le démon Docker
+            time.sleep(2)                   # ne pas saturer l'agent/le démon Docker
 
-        ***REMOVED*** 2bis) Certificats mTLS : les conteneurs relevés par Docker au boot ont un /etc/bobi-tls
-        ***REMOVED***       VIDE (/run est un tmpfs) → leur agent sert en clair et le contrôleur, qui parle
-        ***REMOVED***       mTLS, ne les joindra plus JAMAIS. On re-provisionne ceux dont la sonde prouve le
-        ***REMOVED***       désaccord de schéma. Placé APRÈS la relance (il faut que les conteneurs tournent
-        ***REMOVED***       pour les sonder) et AVANT le reconcile du tissu (qui parle à leurs agents).
+        # 2bis) Certificats mTLS : les conteneurs relevés par Docker au boot ont un /etc/bobi-tls
+        #       VIDE (/run est un tmpfs) → leur agent sert en clair et le contrôleur, qui parle
+        #       mTLS, ne les joindra plus JAMAIS. On re-provisionne ceux dont la sonde prouve le
+        #       désaccord de schéma. Placé APRÈS la relance (il faut que les conteneurs tournent
+        #       pour les sonder) et AVANT le reconcile du tissu (qui parle à leurs agents).
         _tls_casses, _tls_repares, _tls_echecs = _certs_conteneurs_node(node_id, name, True)
 
-        ***REMOVED*** 3) Post-recovery : reconcile du tissu de composition (no-op si fabric_auto off).
+        # 3) Post-recovery : reconcile du tissu de composition (no-op si fabric_auto off).
         try:
             from .deploy import reconcile_fabric_node
             reconcile_fabric_node(node_id)
@@ -617,8 +617,8 @@ def _recover_node(node_id, boot_ts):
             log.warning("recovery fabric nœud %s : %s", node_id, e)
 
         total = len(mtl) + len(compute)
-        ***REMOVED*** Les certs re-provisionnés comptent comme une reprise : sans ça le bilan pouvait dire
-        ***REMOVED*** « rien à relever, tout est up » à propos de conteneurs qu'on venait de recréer.
+        # Les certs re-provisionnés comptent comme une reprise : sans ça le bilan pouvait dire
+        # « rien à relever, tout est up » à propos de conteneurs qu'on venait de recréer.
         relanced = list(relanced) + [v for v in _tls_repares if v not in relanced]
         failed = list(failed) + [v for v in _tls_echecs if v not in failed]
         if relanced or failed:

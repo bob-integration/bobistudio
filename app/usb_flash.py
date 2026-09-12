@@ -1,5 +1,5 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 
 """Gravure de la clé USB d'enrôlement DEPUIS le contrôleur (option « graver sur le serveur »).
 
@@ -25,15 +25,15 @@ log = logging.getLogger(__name__)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD_SCRIPT = os.path.join(ROOT, "node_agent", "iso", "build-node-iso.sh")
-***REMOVED*** Dossier où l'ISO netinst Debian SOURCE est téléchargée (champ « depuis une URL »). Séparé du cache
-***REMOVED*** des ISO préseedées par-nœud (node_iso_cache/) qui est purgé par token. gitignored.
+# Dossier où l'ISO netinst Debian SOURCE est téléchargée (champ « depuis une URL »). Séparé du cache
+# des ISO préseedées par-nœud (node_iso_cache/) qui est purgé par token. gitignored.
 ISO_SRC_DIR = os.path.join(ROOT, "iso_src")
 
-***REMOVED*** État global d'un (unique) téléchargement d'ISO source en cours.
+# État global d'un (unique) téléchargement d'ISO source en cours.
 _dl_status = {"state": "idle", "msg": "", "pct": 0, "at": 0.0}
 _dl_lock = threading.Lock()
 
-***REMOVED*** État global d'une (unique) gravure en cours. Une seule à la fois (un seul dd hôte).
+# État global d'une (unique) gravure en cours. Une seule à la fois (un seul dd hôte).
 _status = {"state": "idle", "msg": "", "device": None, "node_id": None, "at": 0.0}
 _lock = threading.Lock()
 
@@ -171,7 +171,7 @@ def _run(node, enroll_token, controller_url, device):
     from .database import db_add_alert
     out_iso = None
     try:
-        ***REMOVED*** Garde-fou : le device DOIT figurer dans la liste amovible FRAÎCHE (jamais le chemin client brut).
+        # Garde-fou : le device DOIT figurer dans la liste amovible FRAÎCHE (jamais le chemin client brut).
         if device not in [d["path"] for d in list_removable()]:
             return _set("error", f"{device} n'est pas une clé amovible détectée — gravure refusée")
         out_iso = tempfile.NamedTemporaryFile(suffix=".iso", delete=False).name
@@ -255,7 +255,7 @@ def _download(url):
                         _dl_set("running", f"{_human(done)} / {_human(total)}", pct)
                     else:
                         _dl_set("running", _human(done), 0)
-        ***REMOVED*** Garde-fou : un .iso doit commencer par la signature ISO9660 « CD001 » (offset 0x8001).
+        # Garde-fou : un .iso doit commencer par la signature ISO9660 « CD001 » (offset 0x8001).
         with open(tmp, "rb") as f:
             f.seek(0x8001)
             if f.read(5) != b"CD001":

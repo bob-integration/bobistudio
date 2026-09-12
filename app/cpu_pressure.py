@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Pression CPU (PSI) par nœud ET par conteneur — le détecteur de FAMINE.
 
@@ -44,40 +44,40 @@ from . import settings as S
 
 log = logging.getLogger(__name__)
 
-SAMPLE_INTERVAL_S = 10          ***REMOVED*** réglage `cpu_psi_interval_s` (le PSI bouge lentement : avg10/60/300)
-HISTORY_MAX = 120               ***REMOVED*** ~20 min de sparkline
-STATS_MAX = 8640                ***REMOVED*** 24 h à 10 s
+SAMPLE_INTERVAL_S = 10          # réglage `cpu_psi_interval_s` (le PSI bouge lentement : avg10/60/300)
+HISTORY_MAX = 120               # ~20 min de sparkline
+STATS_MAX = 8640                # 24 h à 10 s
 STATS_PERSIST_PATH = os.path.join(os.path.dirname(DB_PATH) or ".", "cpu_pressure_stats.json")
 STATS_FLUSH_S = 300
 
-***REMOVED*** ─── Seuils (mesurés, pas au jugé — relevé dl360-1 du 2026-07-14) ────────────
-***REMOVED*** Relevé : hôte `some avg300` = 45,1 ; mur 145, qui tient 49,7 fps « à la corde », `full avg300`
-***REMOVED*** = 16,2 ; mur 570, 0,5 fps, `full` > 60. Autres nœuds sains de la flotte : `full` ≈ 0.
-***REMOVED***
-***REMOVED*** `full` d'un CONTENEUR = fraction du temps mural pendant laquelle il ne progresse PAS.
-***REMOVED***   - 10 % : à 50 fps (budget 20 ms), c'est 2 ms par trame perdues à attendre un CPU. Un conteneur
-***REMOVED***     temps réel qui perd 10 % de son budget avant même de calculer est en danger — et c'est déjà
-***REMOVED***     au-dessus de tout ce qu'on mesure sur un nœud sain (≈ 0). → warning.
-***REMOVED***   - 25 % : un quart du budget est mangé par l'attente : la cadence n'est plus tenable. → error.
-***REMOVED*** `some` de l'HÔTE = au moins une tâche attend. Sur un nœud correctement dimensionné il reste bas ;
-***REMOVED***   30 % = le nœud sur-souscrit ses cœurs, 60 % = il étouffe. Sert de tuile « santé du nœud ».
+# ─── Seuils (mesurés, pas au jugé — relevé dl360-1 du 2026-07-14) ────────────
+# Relevé : hôte `some avg300` = 45,1 ; mur 145, qui tient 49,7 fps « à la corde », `full avg300`
+# = 16,2 ; mur 570, 0,5 fps, `full` > 60. Autres nœuds sains de la flotte : `full` ≈ 0.
+#
+# `full` d'un CONTENEUR = fraction du temps mural pendant laquelle il ne progresse PAS.
+#   - 10 % : à 50 fps (budget 20 ms), c'est 2 ms par trame perdues à attendre un CPU. Un conteneur
+#     temps réel qui perd 10 % de son budget avant même de calculer est en danger — et c'est déjà
+#     au-dessus de tout ce qu'on mesure sur un nœud sain (≈ 0). → warning.
+#   - 25 % : un quart du budget est mangé par l'attente : la cadence n'est plus tenable. → error.
+# `some` de l'HÔTE = au moins une tâche attend. Sur un nœud correctement dimensionné il reste bas ;
+#   30 % = le nœud sur-souscrit ses cœurs, 60 % = il étouffe. Sert de tuile « santé du nœud ».
 SEUIL_CONT_WARN = 10.0
 SEUIL_CONT_ERR  = 25.0
 SEUIL_HOTE_WARN = 30.0
 SEUIL_HOTE_ERR  = 60.0
-***REMOVED*** « Soutenu » : N échantillons consécutifs au-dessus du seuil avant d'alerter (une rafale de 10 s au
-***REMOVED*** démarrage d'un conteneur n'est pas une famine). N=6 à 10 s ⇒ ~1 min de pression continue.
+# « Soutenu » : N échantillons consécutifs au-dessus du seuil avant d'alerter (une rafale de 10 s au
+# démarrage d'un conteneur n'est pas une famine). N=6 à 10 s ⇒ ~1 min de pression continue.
 ECHANTILLONS_SOUTENUS = 6
-***REMOVED*** Hystérésis de retour à la normale : il faut redescendre sous 60 % du seuil, N fois, pour clore.
+# Hystérésis de retour à la normale : il faut redescendre sous 60 % du seuil, N fois, pour clore.
 HYSTERESIS = 0.6
 
 _lock = threading.Lock()
-_last = {}        ***REMOVED*** node_id(str) → {"ts", "host": {...}, "containers": {vmid: {...}}}
-_hist = {}        ***REMOVED*** node_id(str) → deque (sparkline : some/full hôte)
-_stats = {}       ***REMOVED*** node_id(str) → deque 24 h
-_cnt = {}         ***REMOVED*** (clé) → nb d'échantillons consécutifs au-dessus du seuil
-_etat = {}        ***REMOVED*** (clé) → None|"warning"|"error" (alerte par transition ; cache RAM du chemin chaud)
-_episodes = _Episodes("cpu_pressure")   ***REMOVED*** le MÊME état, SURVIVANT au redémarrage (cf. app/episodes.py)
+_last = {}        # node_id(str) → {"ts", "host": {...}, "containers": {vmid: {...}}}
+_hist = {}        # node_id(str) → deque (sparkline : some/full hôte)
+_stats = {}       # node_id(str) → deque 24 h
+_cnt = {}         # (clé) → nb d'échantillons consécutifs au-dessus du seuil
+_etat = {}        # (clé) → None|"warning"|"error" (alerte par transition ; cache RAM du chemin chaud)
+_episodes = _Episodes("cpu_pressure")   # le MÊME état, SURVIVANT au redémarrage (cf. app/episodes.py)
 _last_sample_m = 0.0
 _last_flush = 0.0
 
@@ -90,10 +90,10 @@ def _cfg(key, default):
         return default
 
 
-***REMOVED*** ─── Collecte (agent-nœud, lecture seule) ────────────────────────────────────
-***REMOVED*** Un seul host_exec par nœud : PSI de l'hôte + PSI du cgroup de CHAQUE conteneur docker. Le chemin
-***REMOVED*** cgroup v2 dépend du driver (systemd → system.slice/docker-<id>.scope ; cgroupfs → docker/<id>) :
-***REMOVED*** on essaie les deux. Sortie ligne à ligne, parsée ci-dessous (pas de dépendance sur le nœud).
+# ─── Collecte (agent-nœud, lecture seule) ────────────────────────────────────
+# Un seul host_exec par nœud : PSI de l'hôte + PSI du cgroup de CHAQUE conteneur docker. Le chemin
+# cgroup v2 dépend du driver (systemd → system.slice/docker-<id>.scope ; cgroupfs → docker/<id>) :
+# on essaie les deux. Sortie ligne à ligne, parsée ci-dessous (pas de dépendance sur le nœud).
 _COLLECTEUR = r"""
 echo "H $(cat /proc/pressure/cpu 2>/dev/null | tr '\n' ';')"
 docker ps --no-trunc --format '{{.ID}} {{.Names}}' 2>/dev/null | while read -r id name; do
@@ -157,7 +157,7 @@ def _collecter(node):
     return {"host": hote, "containers": conts}
 
 
-***REMOVED*** ─── Alertes par transition ──────────────────────────────────────────────────
+# ─── Alertes par transition ──────────────────────────────────────────────────
 def _niveau(val, warn, err):
     if val is None:
         return None
@@ -203,9 +203,9 @@ def _transition(cle, val, warn, err, msg_actif, msg_retour):
         _cnt[cle] = 0
     prev = _etat.get(cle)
     if prev is None and cle not in _etat:
-        ***REMOVED*** Reprise après (re)démarrage : `_etat` vit en RAM, or une famine CPU ne cesse pas parce que
-        ***REMOVED*** l'orchestrateur redémarre. Sans cette relecture, chaque redémarrage ré-annonçait la MÊME
-        ***REMOVED*** famine ~70 s plus tard (17 fois le 2026-07-26 pour un seul conteneur). Cf. app/episodes.py.
+        # Reprise après (re)démarrage : `_etat` vit en RAM, or une famine CPU ne cesse pas parce que
+        # l'orchestrateur redémarre. Sans cette relecture, chaque redémarrage ré-annonçait la MÊME
+        # famine ~70 s plus tard (17 fois le 2026-07-26 pour un seul conteneur). Cf. app/episodes.py.
         prev = _episodes.get(cle)
         _etat[cle] = prev
     if niv and _cnt.get(cle, 0) >= n and _RANG[niv] > _RANG.get(prev, 0):
@@ -256,7 +256,7 @@ def _verifier(node, data):
                 {"h": hn, "vmid": vmid, "n": nom, "v": (v or 0)}))
 
 
-***REMOVED*** ─── Sampler ─────────────────────────────────────────────────────────────────
+# ─── Sampler ─────────────────────────────────────────────────────────────────
 def _sample_one(node):
     try:
         data = _collecter(node)
@@ -356,7 +356,7 @@ def load_persisted():
     _last_flush = time.time()
 
 
-***REMOVED*** ─── Accès API / fusion node_health ──────────────────────────────────────────
+# ─── Accès API / fusion node_health ──────────────────────────────────────────
 def latest(node_id=None):
     with _lock:
         if node_id is None:

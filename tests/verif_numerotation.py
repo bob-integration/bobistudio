@@ -1,8 +1,8 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Garde-fou de la convention « le 0 n'existe pas » — cf. `app/numerotation.py`, qui fait foi.
 
@@ -22,17 +22,17 @@ import sys
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-***REMOVED*** Fichiers qui ont le DROIT de construire ces chaînes à la main : la source de vérité, son
-***REMOVED*** miroir dans l'image du moteur, la migration (qui manipule les DEUX formes par nature), et
-***REMOVED*** ce garde-fou.
+# Fichiers qui ont le DROIT de construire ces chaînes à la main : la source de vérité, son
+# miroir dans l'image du moteur, la migration (qui manipule les DEUX formes par nature), et
+# ce garde-fou.
 EXEMPTS = {
     "app/numerotation.py",
     "app/migration_numerotation.py",
-    "plugins/2110_io/docker/controller.py",   ***REMOVED*** miroir assumé (ne peut pas importer `app`)
+    "plugins/2110_io/docker/controller.py",   # miroir assumé (ne peut pas importer `app`)
     "tools/verif_numerotation.py",
 }
 
-***REMOVED*** Constructions interdites hors des fichiers exempts.
+# Constructions interdites hors des fichiers exempts.
 INTERDITS = [
     (re.compile(r'f"input_\{[A-Za-z_]'),        'f"input_{…}" — utiliser cle_input()'),
     (re.compile(r'"input_%d"'),                 '"input_%d" — utiliser cle_input()'),
@@ -44,15 +44,15 @@ INTERDITS = [
     (re.compile(r'"tx_anc%d_shm"'),             '"tx_anc%d_shm" — utiliser cle_tx_anc_shm()'),
     (re.compile(r'f"tx\{[A-Za-z_][A-Za-z0-9_]*\}:'), 'f"tx{…}:…" — utiliser slot_tx()'),
     (re.compile(r'f"[vad]:\{[A-Za-z_]'),        'f"v:{…}" — utiliser slot_rx()'),
-    ***REMOVED*** ── NOMS DE FLUX MXL (ajouté le 2026-08-19) ──────────────────────────────────────────────
-    ***REMOVED*** ANGLE MORT COMBLÉ : ce garde-fou ne surveillait que les CLÉS indexées. Les NOMS DE FLUX,
-    ***REMOVED*** eux, se construisaient encore à la main un peu partout — et sont donc restés 0-based après
-    ***REMOVED*** la migration du 2026-08-13, en silence. Ce que ça avait déjà cassé, sans une seule erreur :
-    ***REMOVED***   • `metrics.py` : fps par flux et badge « abonné mais ne reçoit pas » relus avec le VRAI
-    ***REMOVED***     nom (1-based) mais rangés sous un nom 0-based → `.get()` ne trouvait plus jamais rien ;
-    ***REMOVED***   • `plugins/2110_io/hooks.py` : le nom PROPOSÉ AU CÂBLAGE — donc du 0-based qui repartait
-    ***REMOVED***     s'écrire dans la config des consommateurs bien après la migration des données.
-    ***REMOVED*** Le nom d'un flux dérive son UUID (uuid5) : une lettre de travers et le flux est un AUTRE.
+    # ── NOMS DE FLUX MXL (ajouté le 2026-08-19) ──────────────────────────────────────────────
+    # ANGLE MORT COMBLÉ : ce garde-fou ne surveillait que les CLÉS indexées. Les NOMS DE FLUX,
+    # eux, se construisaient encore à la main un peu partout — et sont donc restés 0-based après
+    # la migration du 2026-08-13, en silence. Ce que ça avait déjà cassé, sans une seule erreur :
+    #   • `metrics.py` : fps par flux et badge « abonné mais ne reçoit pas » relus avec le VRAI
+    #     nom (1-based) mais rangés sous un nom 0-based → `.get()` ne trouvait plus jamais rien ;
+    #   • `plugins/2110_io/hooks.py` : le nom PROPOSÉ AU CÂBLAGE — donc du 0-based qui repartait
+    #     s'écrire dans la config des consommateurs bien après la migration des données.
+    # Le nom d'un flux dérive son UUID (uuid5) : une lettre de travers et le flux est un AUTRE.
     (re.compile(r'\+\s*\(?\s*"_%d"\s*%'),
      'nom de flux concaténé à la main — utiliser flux_video()/flux_audio()/flux_anc()'),
     (re.compile(r'"\{\}_\{\}"\.format\(\s*(?:hn|hostname|HOSTNAME)\b'),
@@ -61,19 +61,19 @@ INTERDITS = [
      'f"{hostname}_{idx}" — utiliser flux_video()/flux_audio()/flux_anc()'),
 ]
 
-***REMOVED*** Les manifestes ne doivent plus indexer un nom de flux ni un state_field en 0-based.
+# Les manifestes ne doivent plus indexer un nom de flux ni un state_field en 0-based.
 INTERDITS_MANIFESTE = [
     (re.compile(r'"shm"\s*:\s*"[^"]*\{i\}'),          '"shm" avec {i} — utiliser {i1}'),
     (re.compile(r'"state_field"\s*:\s*"[^"]*\{i\}'),  '"state_field" avec {i} — utiliser {i1}'),
 ]
 
 
-***REMOVED*** Les `plugins/<type>/script.py` tournent DANS le conteneur : ils ne peuvent pas importer `app`,
-***REMOVED*** donc pas d'helper. Ils doivent malgré tout être 1-based — on vérifie que tout indice mis en clé
-***REMOVED*** y est explicitement décalé (`% (i + 1)`), et on refuse la forme nue (`% i`).
-***REMOVED*** ⚠ Ne PAS écrire ça avec un lookahead négatif après `\s*` : `\s*` peut revenir en arrière sur
-***REMOVED*** zéro caractère, ce qui rend la garde toujours satisfaite et le test toujours vert. On exige
-***REMOVED*** donc la forme POSITIVE de la faute — un identifiant collé au `%`, sans parenthèse de décalage.
+# Les `plugins/<type>/script.py` tournent DANS le conteneur : ils ne peuvent pas importer `app`,
+# donc pas d'helper. Ils doivent malgré tout être 1-based — on vérifie que tout indice mis en clé
+# y est explicitement décalé (`% (i + 1)`), et on refuse la forme nue (`% i`).
+# ⚠ Ne PAS écrire ça avec un lookahead négatif après `\s*` : `\s*` peut revenir en arrière sur
+# zéro caractère, ce qui rend la garde toujours satisfaite et le test toujours vert. On exige
+# donc la forme POSITIVE de la faute — un identifiant collé au `%`, sans parenthèse de décalage.
 _SCRIPT_CLE_NUE = re.compile(r'"(?:input(?:_[va])?|audio_shm)_%d"\s*%\s*[A-Za-z_]')
 _SCRIPT_CLE_LITTERALE = re.compile(r'"(?:input(?:_[va])?|audio_shm)_0"')
 
@@ -86,11 +86,11 @@ def _fichiers():
         for n in noms:
             if n.endswith(".py") or n == "plugin.json":
                 chemin = os.path.join(base, n)
-                ***REMOVED*** Le vérificateur écrit EN TOUTES LETTRES les motifs qu'il traque : se scanner
-                ***REMOVED*** lui-même produit un rapport où chaque règle se dénonce. Il vivait dans tools/,
-                ***REMOVED*** hors du champ du walk par hasard ; le rangement du 2026-09-01 l'a mis dans
-                ***REMOVED*** tests/, et il s'est mis à échouer sur son propre code — un faux positif qui
-                ***REMOVED*** ne désigne aucun défaut, donc exactement ce qui fait qu'on cesse de lire un test.
+                # Le vérificateur écrit EN TOUTES LETTRES les motifs qu'il traque : se scanner
+                # lui-même produit un rapport où chaque règle se dénonce. Il vivait dans tools/,
+                # hors du champ du walk par hasard ; le rangement du 2026-09-01 l'a mis dans
+                # tests/, et il s'est mis à échouer sur son propre code — un faux positif qui
+                # ne désigne aucun défaut, donc exactement ce qui fait qu'on cesse de lire un test.
                 if os.path.abspath(chemin) == os.path.abspath(__file__):
                     continue
                 yield chemin, os.path.relpath(chemin, RACINE)
@@ -115,8 +115,8 @@ def main():
             regles = INTERDITS
         for i, ligne in enumerate(txt.splitlines(), 1):
             nu = ligne.strip()
-            if nu.startswith("***REMOVED***") or nu.startswith("//"):
-                continue          ***REMOVED*** un commentaire a le droit de CITER la forme interdite
+            if nu.startswith("#") or nu.startswith("//"):
+                continue          # un commentaire a le droit de CITER la forme interdite
             for rx, motif in regles:
                 if rx.search(ligne):
                     fautes.append("%s:%d — %s" % (rel, i, motif))

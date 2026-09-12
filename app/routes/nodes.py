@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Nœuds (cluster multi-hôte) — CRUD, GPU, images vers les nœuds, agent-nœud sans SSH."""
 
@@ -27,10 +27,10 @@ log = logging.getLogger(__name__)
 @require_login
 def api_list_nodes():
     nodes = db_get_nodes()
-    ***REMOVED*** Enrichit : présence de l'image + nombre de conteneurs rattachés + pool de cœurs (pinning).
+    # Enrichit : présence de l'image + nombre de conteneurs rattachés + pool de cœurs (pinning).
     from .. import docker_driver, core_pool, node_health, settings as _st, node_driver as _nd
     import time as _t
-    ***REMOVED*** Auto-réparation : nœud enrôlé mais register raté (capacités DB vides) → ré-enregistrer + relire.
+    # Auto-réparation : nœud enrôlé mais register raté (capacités DB vides) → ré-enregistrer + relire.
     def _reenregistrer(n):
         try:
             if _nd.ensure_registered(n):
@@ -44,18 +44,18 @@ def api_list_nodes():
         with _TPE(max_workers=min(len(nodes), 8)) as _ex0:
             list(_ex0.map(_reenregistrer, nodes))
     conts = db_get_containers()
-    ***REMOVED*** Voyant online : dernier snapshot node_health (sampler /v1/health toutes les ~5 s) — pas de ping
-    ***REMOVED*** supplémentaire ici. online = snapshot frais (< 4× l'intervalle) avec ok=True.
+    # Voyant online : dernier snapshot node_health (sampler /v1/health toutes les ~5 s) — pas de ping
+    # supplémentaire ici. online = snapshot frais (< 4× l'intervalle) avec ok=True.
     snaps = (node_health.latest() or {}).get("nodes", {}) or {}
     interval = float(_st.get("node_health_interval_s") or 5)
     fresh = max(20.0, 4 * interval)
     _now = _t.time()
 
-    ***REMOVED*** Enrichissement PAR NŒUD, exécuté EN PARALLÈLE (cf. plus bas). Le corps ne touche que `n` :
-    ***REMOVED*** aucun état partagé en écriture, donc rien à sérialiser. Séquentiellement, chaque nœud
-    ***REMOVED*** enchaîne plusieurs allers-retours vers son agent, et un nœud injoignable fait attendre son
-    ***REMOVED*** timeout à TOUS les suivants — 16 host_exec en série, 10 s pour cinq nœuds (mesuré
-    ***REMOVED*** 2026-08-19, r620-1 down). En parallèle, le coût est celui du nœud le plus lent.
+    # Enrichissement PAR NŒUD, exécuté EN PARALLÈLE (cf. plus bas). Le corps ne touche que `n` :
+    # aucun état partagé en écriture, donc rien à sérialiser. Séquentiellement, chaque nœud
+    # enchaîne plusieurs allers-retours vers son agent, et un nœud injoignable fait attendre son
+    # timeout à TOUS les suivants — 16 host_exec en série, 10 s pour cinq nœuds (mesuré
+    # 2026-08-19, r620-1 down). En parallèle, le coût est celui du nœud le plus lent.
     def _enrichir(n):
         snap = snaps.get(str(n["id"]))
         age = (_now - snap.get("ts", 0)) if snap else None
@@ -66,14 +66,14 @@ def api_list_nodes():
             n["cores_pool"] = core_pool.cores_status(n["id"])
         except Exception:
             n["cores_pool"] = None
-        ***REMOVED*** ── Charge MESURÉE, à côté de la comptabilité du pool ──────────────────────────────────
-        ***REMOVED*** `cores_pool` compte des RÉSERVATIONS (une intention), pas de la charge : un pool à moitié
-        ***REMOVED*** libre sur un nœud déjà saturé se lit « il reste de la place ». On expose donc aussi le
-        ***REMOVED*** dernier relevé — pris dans `snaps`, DÉJÀ en main : aucune sonde supplémentaire.
-        ***REMOVED*** On préfère la charge des cœurs ORDONNANÇABLES seuls (`cpu_partage`) : sur un nœud très
-        ***REMOVED*** isolé, le pourcentage machine moyenne la bande busy-poll avec le reste et reste au vert
-        ***REMOVED*** pendant la saturation (cf. node_health._merge_cpu_partage). `scope` dit lequel des deux
-        ***REMOVED*** est servi — jamais un chiffre dont on ignore la portée.
+        # ── Charge MESURÉE, à côté de la comptabilité du pool ──────────────────────────────────
+        # `cores_pool` compte des RÉSERVATIONS (une intention), pas de la charge : un pool à moitié
+        # libre sur un nœud déjà saturé se lit « il reste de la place ». On expose donc aussi le
+        # dernier relevé — pris dans `snaps`, DÉJÀ en main : aucune sonde supplémentaire.
+        # On préfère la charge des cœurs ORDONNANÇABLES seuls (`cpu_partage`) : sur un nœud très
+        # isolé, le pourcentage machine moyenne la bande busy-poll avec le reste et reste au vert
+        # pendant la saturation (cf. node_health._merge_cpu_partage). `scope` dit lequel des deux
+        # est servi — jamais un chiffre dont on ignore la portée.
         _res = (snap or {}).get("resources") or {}
         _ord = ((snap or {}).get("cpu_partage") or {}).get("ordonnancables") or {}
         if _ord.get("pct") is not None:
@@ -85,56 +85,56 @@ def api_list_nodes():
             n["cpu_pct"], n["cpu_pct_scope"] = _c, ("machine" if _c is not None else None)
         n["mem_pct"] = (round((_res.get("mem_used_mb") or 0) / _res["mem_total_mb"] * 100, 1)
                         if _res.get("mem_total_mb") else None)
-        ***REMOVED*** GPU : lecture DB seule (table node_gpu_alloc), pas de sonde nœud.
+        # GPU : lecture DB seule (table node_gpu_alloc), pas de sonde nœud.
         try:
             from .. import gpu_pool
             n["gpu_pool"] = gpu_pool.gpu_status(n["id"])
         except Exception:
             n["gpu_pool"] = None
-        ***REMOVED*** Présence PAR IMAGE (compute/media/webrtc/mtl…) → la palette ne grise un nœud que si
-        ***REMOVED*** l'image du TYPE choisi y manque (cf. plugins.image_kind), au lieu d'exiger bobi-mtl partout.
+        # Présence PAR IMAGE (compute/media/webrtc/mtl…) → la palette ne grise un nœud que si
+        # l'image du TYPE choisi y manque (cf. plugins.image_kind), au lieu d'exiger bobi-mtl partout.
         try:
             n["images"] = node_images_state(n)
         except Exception as e:
             n["images"] = {}
             log.warning("node_images_state(%s): %s", n.get("id"), e)
-        ***REMOVED*** Manquantes = ATTENDUES sur ce nœud (capacité déclarée / drapeau matériel) mais absentes.
-        ***REMOVED*** C'est CE champ que le badge de la page Déploiement doit lire : `image_ok` ci-dessous ne
-        ***REMOVED*** parle que de bobi-mtl et criait donc « image absente » sur les nœuds compute/média.
+        # Manquantes = ATTENDUES sur ce nœud (capacité déclarée / drapeau matériel) mais absentes.
+        # C'est CE champ que le badge de la page Déploiement doit lire : `image_ok` ci-dessous ne
+        # parle que de bobi-mtl et criait donc « image absente » sur les nœuds compute/média.
         n["images_missing"] = [{"which": w, "tag": st.get("tag") or ""}
                                for w, st in (n["images"] or {}).items()
                                if st.get("expected") and not st.get("present")]
         mtl = (n["images"] or {}).get("mtl") or {}
         if not mtl.get("expected"):
-            ***REMOVED*** Nœud sans capacité io2110 : bobi-mtl n'a rien à y faire → pas de sonde ssh inutile.
+            # Nœud sans capacité io2110 : bobi-mtl n'a rien à y faire → pas de sonde ssh inutile.
             n["image_ok"] = True
             n["image_msg"] = ""
         else:
             try:
                 ok, msg = docker_driver.verify_image(n)
-                n["image_ok"] = ok        ***REMOVED*** rétro-compat : présence de bobi-mtl UNIQUEMENT (moteur 2110)
+                n["image_ok"] = ok        # rétro-compat : présence de bobi-mtl UNIQUEMENT (moteur 2110)
                 n["image_msg"] = msg
             except Exception as e:
                 n["image_ok"] = False
                 n["image_msg"] = str(e)
-        ***REMOVED*** Flux d'enrôlement (page Déploiement) : un nœud « en attente » = jeton créé, pas encore
-        ***REMOVED*** consommé (status=pending + enroll_token non vide). enroll_token reste exposé (l'UI l'affiche
-        ***REMOVED*** pour l'install manuelle/USB), mais on NE FUITE JAMAIS le mot de passe iLO au navigateur.
+        # Flux d'enrôlement (page Déploiement) : un nœud « en attente » = jeton créé, pas encore
+        # consommé (status=pending + enroll_token non vide). enroll_token reste exposé (l'UI l'affiche
+        # pour l'install manuelle/USB), mais on NE FUITE JAMAIS le mot de passe iLO au navigateur.
         n["pending_enroll"] = (n.get("status") == "pending" and bool(n.get("enroll_token")))
         n.pop("ilo_password", None)
-        ***REMOVED*** ⚠ LE JETON D'AGENT NE SORT PAS. Cette route n'exige que `@require_login` : elle était
-        ***REMOVED*** donc lisible par un compte `lecteur`, qui n'a AUCUNE permission. Or `nodes.agent_token`
-        ***REMOVED*** est le facteur qu'attend l'agent-nœud, lequel expose `/v1/host/exec` — qui exécute
-        ***REMOVED*** `bash -c <chaîne libre>` en root. Du compte le moins privilégié à un shell root sur
-        ***REMOVED*** tous les nœuds, il suffisait d'un GET. Relevé le 2026-09-07 par le dépouillement de
-        ***REMOVED*** conformité sécurité, et vérifié : le jeton sortait bien en clair, 32 caractères.
-        ***REMOVED***
-        ***REMOVED*** Même traitement que pour les conteneurs (`database._container_sans_secret`) : on ne
-        ***REMOVED*** retire pas l'information, on la remplace par ce que l'interface a besoin de savoir —
-        ***REMOVED*** le jeton est-il posé, oui ou non. Vérifié : rien côté interface ne lisait la valeur.
-        ***REMOVED***
-        ***REMOVED*** `node_cert` part pour la même raison : c'est le certificat client du nœud, il n'a rien
-        ***REMOVED*** à faire dans une réponse d'API lue par n'importe quel compte.
+        # ⚠ LE JETON D'AGENT NE SORT PAS. Cette route n'exige que `@require_login` : elle était
+        # donc lisible par un compte `lecteur`, qui n'a AUCUNE permission. Or `nodes.agent_token`
+        # est le facteur qu'attend l'agent-nœud, lequel expose `/v1/host/exec` — qui exécute
+        # `bash -c <chaîne libre>` en root. Du compte le moins privilégié à un shell root sur
+        # tous les nœuds, il suffisait d'un GET. Relevé le 2026-09-07 par le dépouillement de
+        # conformité sécurité, et vérifié : le jeton sortait bien en clair, 32 caractères.
+        #
+        # Même traitement que pour les conteneurs (`database._container_sans_secret`) : on ne
+        # retire pas l'information, on la remplace par ce que l'interface a besoin de savoir —
+        # le jeton est-il posé, oui ou non. Vérifié : rien côté interface ne lisait la valeur.
+        #
+        # `node_cert` part pour la même raison : c'est le certificat client du nœud, il n'a rien
+        # à faire dans une réponse d'API lue par n'importe quel compte.
         n["agent_auth"] = "stored" if (n.pop("agent_token", None) or "") else "absent"
         n.pop("node_cert", None)
 
@@ -144,7 +144,7 @@ def api_list_nodes():
             for _f in [_ex.submit(_enrichir, _n) for _n in nodes]:
                 try:
                     _f.result()
-                except Exception as e:                                     ***REMOVED*** noqa: BLE001
+                except Exception as e:                                     # noqa: BLE001
                     log.warning("enrichissement d'un nœud: %s", e)
     return jsonify({"nodes": nodes, "agent_bundled": _bundled_agent_version()})
 
@@ -240,11 +240,11 @@ def api_node_build_image(node_id):
                 _node_img_build[key] = {"status": "building", "msg": "build sur le nœud (agent)…", "start": _start}
             rc, tail = node_driver.build_image(node, tag, ctx, timeout=2400)
             ok = (rc == 0)
-            ***REMOVED*** Anti-faux-ok : un rc=0 ne suffit pas — l'image DOIT être réellement présente sur le
-            ***REMOVED*** nœud (l'inventaire agent pilote le badge « absent », pas la DB). Sans cette vérif, un
-            ***REMOVED*** « ok » fantôme re-rend le panneau en « Builder/absent » (symptôme « ça recharge / rien »).
-            ***REMOVED*** Présence via l'INVENTAIRE AGENT (pas ssh) : un nœud enrôlé sans root-SSH répondait
-            ***REMOVED*** toujours « absente » → build réussi rapporté en faux-échec. Repli ssh sans agent.
+            # Anti-faux-ok : un rc=0 ne suffit pas — l'image DOIT être réellement présente sur le
+            # nœud (l'inventaire agent pilote le badge « absent », pas la DB). Sans cette vérif, un
+            # « ok » fantôme re-rend le panneau en « Builder/absent » (symptôme « ça recharge / rien »).
+            # Présence via l'INVENTAIRE AGENT (pas ssh) : un nœud enrôlé sans root-SSH répondait
+            # toujours « absente » → build réussi rapporté en faux-échec. Repli ssh sans agent.
             _vu = (_image_present_node(node, tag, force=True) if node.get("agent_url")
                    else _image_present(node.get("host"), tag))
             if ok and not _vu:
@@ -254,9 +254,9 @@ def api_node_build_image(node_id):
             tail = str(e)
         dur = int(_t.time() - _start)
         if ok:
-            ***REMOVED*** Le tag node-only est enregistré sur le NŒUD buildé uniquement (pas d'autofill flotte) :
-            ***REMOVED*** via le `field` du spec (mtl→`image`, compute-gpu→`compute_gpu_image`). Une image
-            ***REMOVED*** node_only est locale au nœud (GPU/E810) → ne pas la propager aux nœuds sans la capacité.
+            # Le tag node-only est enregistré sur le NŒUD buildé uniquement (pas d'autofill flotte) :
+            # via le `field` du spec (mtl→`image`, compute-gpu→`compute_gpu_image`). Une image
+            # node_only est locale au nœud (GPU/E810) → ne pas la propager aux nœuds sans la capacité.
             db_update_node(node_id, **{spec["field"]: tag})
             msg = "%s buildée sur %s en %dm%02ds" % (tag, node.get("name"), dur // 60, dur % 60)
         else:
@@ -291,8 +291,8 @@ def _probe_gpu(host):
     """Probe GPU NVIDIA d'un nœud (orchestrateur, via ssh) : (gpu_capable, gpu_count, runtime_ok, names).
     GPU-capable ⇔ nvidia-smi liste ≥1 GPU ET le runtime `nvidia` est présent dans Docker (sinon
     --gpus échouerait au run). Détection sans dépendre d'une nouvelle version d'agent."""
-    ***REMOVED*** _ssh_bin renvoie des BYTES (text=False) → décoder avant tout traitement str (sinon
-    ***REMOVED*** names=[b'…'] et "nvidia" in bytes lève → runtime_ok=False, détection ratée à tort).
+    # _ssh_bin renvoie des BYTES (text=False) → décoder avant tout traitement str (sinon
+    # names=[b'…'] et "nvidia" in bytes lève → runtime_ok=False, détection ratée à tort).
     names = []
     try:
         rc, out = _ssh_bin(host, "nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null", timeout=20)
@@ -306,11 +306,11 @@ def _probe_gpu(host):
         runtime_ok = (rc == 0 and "nvidia" in (out or b"").decode("utf-8", "replace").lower())
     except Exception:
         pass
-    ***REMOVED*** ★ CUDA RÉELLEMENT UTILISABLE : nvidia-smi peut lister le GPU (via libnvidia-ml) alors que la
-    ***REMOVED*** lib driver CUDA userspace (libcuda1 / libcuda.so.1) MANQUE → CUDA totalement cassé, tout cupy
-    ***REMOVED*** échoue (cudaErrorInsufficientDriver), un mur GPU retombe en numpy CPU EN SILENCE. Symptôme
-    ***REMOVED*** précis et fiable : nvidia-smi affiche « CUDA Version: N/A / Not Found » au lieu d'un numéro.
-    ***REMOVED*** Sans cette vérif, gpu_capable=1 pouvait MENTIR (bug vécu sur dell-1). On l'exige pour le vert.
+    # ★ CUDA RÉELLEMENT UTILISABLE : nvidia-smi peut lister le GPU (via libnvidia-ml) alors que la
+    # lib driver CUDA userspace (libcuda1 / libcuda.so.1) MANQUE → CUDA totalement cassé, tout cupy
+    # échoue (cudaErrorInsufficientDriver), un mur GPU retombe en numpy CPU EN SILENCE. Symptôme
+    # précis et fiable : nvidia-smi affiche « CUDA Version: N/A / Not Found » au lieu d'un numéro.
+    # Sans cette vérif, gpu_capable=1 pouvait MENTIR (bug vécu sur dell-1). On l'exige pour le vert.
     cuda_ok = False
     try:
         rc, out = _ssh_bin(host, "nvidia-smi -q 2>/dev/null | grep -i 'cuda version'", timeout=20)
@@ -338,8 +338,8 @@ def api_node_detect_gpu(node_id):
     elif names and not runtime_ok:
         msg = "GPU(s) vus mais runtime nvidia Docker absent"
     elif names and not cuda_ok:
-        ***REMOVED*** Le piège silencieux : GPU + runtime OK mais CUDA userspace cassé (libcuda1 manquant / driver
-        ***REMOVED*** trop vieux). On REFUSE gpu_capable pour ne pas router de murs GPU qui tomberaient en CPU muet.
+        # Le piège silencieux : GPU + runtime OK mais CUDA userspace cassé (libcuda1 manquant / driver
+        # trop vieux). On REFUSE gpu_capable pour ne pas router de murs GPU qui tomberaient en CPU muet.
         msg = ("GPU(s) vus + runtime nvidia OK mais CUDA INUTILISABLE (nvidia-smi « CUDA Version: N/A ») "
                "— libcuda1 manquant ou driver trop vieux. Nœud NON marqué GPU-ready.")
     else:
@@ -349,24 +349,24 @@ def api_node_detect_gpu(node_id):
     return jsonify({"ok": True, "gpu_capable": cap, "gpu_count": n,
                     "runtime_ok": runtime_ok, "cuda_ok": cuda_ok, "gpus": names, "msg": msg})
 
-***REMOVED*** ─── Rattrapage de capacité (capacité oubliée à l'enrôlement) ──────────────────────────────────
-***REMOVED*** Une capacité oubliée au moment du profil d'enrôlement n'est PAS rattrapable depuis l'UI aujourd'hui :
-***REMOVED*** le profil est consommé une fois, et `nodes.capabilities` n'est réécrite que par `node_driver.register`.
-***REMOVED*** Or une liste périmée a des conséquences MUETTES : node_health ne sonde pas le PTP d'un nœud sans
-***REMOVED*** "io2110" déclaré, images._node_needs_image ne le compte pas comme cible de build, node_recovery en
-***REMOVED*** dépend. D'où ce rattrapage : provisionner l'hôte + fusionner la capacité côté agent + resynchroniser
-***REMOVED*** la base. Les CINQ capacités sont rattrapables (cf. install-node.sh --add-caps).
+# ─── Rattrapage de capacité (capacité oubliée à l'enrôlement) ──────────────────────────────────
+# Une capacité oubliée au moment du profil d'enrôlement n'est PAS rattrapable depuis l'UI aujourd'hui :
+# le profil est consommé une fois, et `nodes.capabilities` n'est réécrite que par `node_driver.register`.
+# Or une liste périmée a des conséquences MUETTES : node_health ne sonde pas le PTP d'un nœud sans
+# "io2110" déclaré, images._node_needs_image ne le compte pas comme cible de build, node_recovery en
+# dépend. D'où ce rattrapage : provisionner l'hôte + fusionner la capacité côté agent + resynchroniser
+# la base. Les CINQ capacités sont rattrapables (cf. install-node.sh --add-caps).
 _CAP_ADDABLE = ("gpu", "io2110", "compute", "media", "webrtc")
-***REMOVED*** Capacités dont le provisioning n'est effectif qu'après redémarrage du nœud : `gpu` (module DKMS à
-***REMOVED*** charger), `io2110` (noyau MTL, cmdline hugepages 1G, DDP relu au probe du driver ice).
+# Capacités dont le provisioning n'est effectif qu'après redémarrage du nœud : `gpu` (module DKMS à
+# charger), `io2110` (noyau MTL, cmdline hugepages 1G, DDP relu au probe du driver ice).
 _CAP_NEEDS_REBOOT = ("gpu", "io2110")
-***REMOVED*** Blob DDP Intel E810 : vendoré dans le dépôt, mais il ne voyage PAS avec le script quand celui-ci est
-***REMOVED*** pipé sur stdin. Sans lui, `ice` démarre en Safe Mode (pas d'horloge PTP matérielle, pas de steering)
-***REMOVED*** → capacité io2110 déclarée mais inopérante. On le dépose donc séparément avant de lancer le script.
+# Blob DDP Intel E810 : vendoré dans le dépôt, mais il ne voyage PAS avec le script quand celui-ci est
+# pipé sur stdin. Sans lui, `ice` démarre en Safe Mode (pas d'horloge PTP matérielle, pas de steering)
+# → capacité io2110 déclarée mais inopérante. On le dépose donc séparément avant de lancer le script.
 _DDP_REL = ("node_agent", "firmware", "ice", "ice_comms-1.3.63.0.pkg")
 _DDP_DEST = "/tmp/bobi-ice-ddp.pkg"
 _cap_lock = threading.Lock()
-_cap_jobs = {}          ***REMOVED*** node_id -> {status: running|done|error, msg, log, reboot_required}
+_cap_jobs = {}          # node_id -> {status: running|done|error, msg, log, reboot_required}
 
 
 def _add_cap_args(node, caps):
@@ -395,7 +395,7 @@ def _add_cap_args(node, caps):
             args += ["--hugepages", str(prof["hugepages"])]
         if prof.get("ptp_domain") is not None:
             args += ["--ptp-domain", str(prof["ptp_domain"])]
-        ***REMOVED*** Noyau MTL : réglage CLUSTER (jamais figé dans le script) — même source que l'enrôlement.
+        # Noyau MTL : réglage CLUSTER (jamais figé dans le script) — même source que l'enrôlement.
         kpkg, kapt = _st.get("io2110_kernel_pkg") or "", _st.get("io2110_kernel_apt") or ""
         if kpkg:
             args += ["--kernel-pkg", kpkg]
@@ -434,9 +434,9 @@ def _add_cap_run(node_id, caps):
 
     args, notes = _add_cap_args(node, caps)
     env = ""
-    ***REMOVED*** DDP E810 : déposé AVANT le script, sinon io2110 serait provisionné avec un `ice` en Safe Mode.
-    ***REMOVED*** Échec du dépôt → on renonce plutôt que de poser une capacité 2110 muette (le script la
-    ***REMOVED*** drapeauterait, mais autant ne pas modifier l'hôte du tout).
+    # DDP E810 : déposé AVANT le script, sinon io2110 serait provisionné avec un `ice` en Safe Mode.
+    # Échec du dépôt → on renonce plutôt que de poser une capacité 2110 muette (le script la
+    # drapeauterait, mais autant ne pas modifier l'hôte du tout).
     if "io2110" in caps:
         try:
             with open(os.path.join(_repo_root(), *_DDP_REL), "rb") as f:
@@ -453,8 +453,8 @@ def _add_cap_run(node_id, caps):
             return
         env = f"DDP_SRC={shlex.quote(_DDP_DEST)} "
 
-    ***REMOVED*** `bash -s -- <args>` : le script vient de stdin, $0 vaut "bash" (SCRIPT_DIR inutilisé en
-    ***REMOVED*** --add-caps). Timeout large : NVIDIA compile un module DKMS, io2110 installe un noyau (minutes).
+    # `bash -s -- <args>` : le script vient de stdin, $0 vaut "bash" (SCRIPT_DIR inutilisé en
+    # --add-caps). Timeout large : NVIDIA compile un module DKMS, io2110 installe un noyau (minutes).
     cmd = env + "bash -s -- --add-caps " + shlex.quote(csv)
     if args:
         cmd += " " + " ".join(shlex.quote(a) for a in args)
@@ -463,9 +463,9 @@ def _add_cap_run(node_id, caps):
     if "io2110" in caps:
         node_driver.host_exec(node, f"rm -f {shlex.quote(_DDP_DEST)}", timeout=30)
 
-    ***REMOVED*** Resync de la base depuis l'agent, MÊME en cas d'échec du provisioning : le script fusionne la
-    ***REMOVED*** capacité dans config.json avant de sortir en erreur, donc la déclaration a pu changer et la base
-    ***REMOVED*** doit refléter ce que le nœud annonce réellement (pas ce qu'on espérait).
+    # Resync de la base depuis l'agent, MÊME en cas d'échec du provisioning : le script fusionne la
+    # capacité dans config.json avant de sortir en erreur, donc la déclaration a pu changer et la base
+    # doit refléter ce que le nœud annonce réellement (pas ce qu'on espérait).
     resync = ""
     try:
         port = int((node.get("agent_url") or "").rsplit(":", 1)[-1] or 9100)
@@ -476,11 +476,11 @@ def _add_cap_run(node_id, caps):
         fresh = node
     else:
         ok_reg, res = node_driver.register(node["host"], port, node.get("agent_token") or "", node=node)
-        ***REMOVED*** L'ajout d'une capacité RELANCE l'agent (il doit relire config.json) : il est donc
-        ***REMOVED*** normalement indisponible une poignée de secondes, juste au moment où l'on vient lire ses
-        ***REMOVED*** capacités. Conclure « resync échouée » sur ce premier refus laisse la base en retard sur
-        ***REMOVED*** le nœud — la capacité est active là-bas, invisible ici, donc jamais utilisée. On retente
-        ***REMOVED*** au-delà de la fenêtre du disjoncteur de transport (5 s) avant de renoncer.
+        # L'ajout d'une capacité RELANCE l'agent (il doit relire config.json) : il est donc
+        # normalement indisponible une poignée de secondes, juste au moment où l'on vient lire ses
+        # capacités. Conclure « resync échouée » sur ce premier refus laisse la base en retard sur
+        # le nœud — la capacité est active là-bas, invisible ici, donc jamais utilisée. On retente
+        # au-delà de la fenêtre du disjoncteur de transport (5 s) avant de renoncer.
         if not ok_reg:
             import time as _tps
             for _essai in range(3):
@@ -491,9 +491,9 @@ def _add_cap_run(node_id, caps):
                     log.info("resync capacités node=%s : obtenue au %de essai (agent en redémarrage)",
                              node_id, _essai + 2)
                     break
-        ***REMOVED*** La NATURE du nœud vient peut-être de changer (ajout d'`io2110`) : le pool doit suivre,
-        ***REMOVED*** sinon des conteneurs de calcul se poseraient sur les lcores busy-poll du moteur. Ne touche
-        ***REMOVED*** rien si l'opérateur a réglé le pool à la main.
+        # La NATURE du nœud vient peut-être de changer (ajout d'`io2110`) : le pool doit suivre,
+        # sinon des conteneurs de calcul se poseraient sur les lcores busy-poll du moteur. Ne touche
+        # rien si l'opérateur a réglé le pool à la main.
         if ok_reg:
             try:
                 from .. import core_pool
@@ -507,9 +507,9 @@ def _add_cap_run(node_id, caps):
             resync = f" — ⚠ resync des capacités échouée ({res}) : la base peut être en retard sur le nœud."
         fresh = db_get_node(node_id) or node
 
-    ***REMOVED*** Suites : les images runtime des capacités macvlan sont PARTAGÉES (buildées une fois, poussées).
-    ***REMOVED*** Elles se poussent depuis les capacités RELUES (`_provision_shared_images` lit la colonne, d'où
-    ***REMOVED*** l'appel APRÈS le resync) — sans elles, la capacité est déclarée mais aucun conteneur ne démarre.
+    # Suites : les images runtime des capacités macvlan sont PARTAGÉES (buildées une fois, poussées).
+    # Elles se poussent depuis les capacités RELUES (`_provision_shared_images` lit la colonne, d'où
+    # l'appel APRÈS le resync) — sans elles, la capacité est déclarée mais aucun conteneur ne démarre.
     suites = list(notes)
     if rc == 0 and set(caps) & {"compute", "media", "webrtc"}:
         try:
@@ -521,7 +521,7 @@ def _add_cap_run(node_id, caps):
             else:
                 suites.append("aucune image poussée (pas encore buildée côté contrôleur, ou ce nœud "
                               "EST l'hôte de build) — vérifier l'onglet Build")
-        except Exception as e:                                 ***REMOVED*** noqa: BLE001 (best-effort, jamais bloquant)
+        except Exception as e:                                 # noqa: BLE001 (best-effort, jamais bloquant)
             log.warning("provision images après rattrapage %s: %s", node_id, e)
             suites.append(f"push des images non effectué ({e}) — le faire depuis l'onglet Build")
     if set(caps) & {"compute", "media", "webrtc"} and not fresh.get("docker_network"):
@@ -534,18 +534,18 @@ def _add_cap_run(node_id, caps):
     queue = (" Suites : " + " · ".join(suites) + ".") if suites else ""
 
     if rc == 0:
-        ***REMOVED*** `msg` alimente AUSSI `_set()` (état pollable relu par l'UI de rattrapage) : il reste EN
-        ***REMOVED*** FRANÇAIS, inchangé. L'alerte, elle, est composée à part depuis une clé i18n — `resync`/
-        ***REMOVED*** `queue` sont eux-mêmes des phrases FRANÇAISES composées de fragments (pas des données),
-        ***REMOVED*** donc pas rejouées ici ; seul le fait « reboot requis » (déjà un booléen) est repris.
+        # `msg` alimente AUSSI `_set()` (état pollable relu par l'UI de rattrapage) : il reste EN
+        # FRANÇAIS, inchangé. L'alerte, elle, est composée à part depuis une clé i18n — `resync`/
+        # `queue` sont eux-mêmes des phrases FRANÇAISES composées de fragments (pas des données),
+        # donc pas rejouées ici ; seul le fait « reboot requis » (déjà un booléen) est repris.
         msg = f"Capacité(s) « {csv} » ajoutée(s) sur {node.get('name')}." + resync + queue
         _set(status="done", msg=msg, log=journal, reboot_required=reboot)
         cle = "alert.node.capacites_ajoutees_reboot" if reboot else "alert.node.capacites_ajoutees"
         db_add_alert(cle, "info", node_id=node_id, kind="node",
                      params={"csv": csv, "n": node.get("name")})
     else:
-        ***REMOVED*** rc 255 = agent injoignable (contrat host_exec) ; sinon échec de provisioning drapeauté par
-        ***REMOVED*** le script. Dans les deux cas la capacité n'est PAS utilisable — le dire, ne pas l'habiller.
+        # rc 255 = agent injoignable (contrat host_exec) ; sinon échec de provisioning drapeauté par
+        # le script. Dans les deux cas la capacité n'est PAS utilisable — le dire, ne pas l'habiller.
         why = "agent injoignable" if rc == 255 else "provisioning hôte en échec"
         msg = (f"Rattrapage « {csv} » sur {node.get('name')} : ÉCHEC ({why}, rc={rc}) — "
                "capacité non utilisable, voir le journal.") + resync + queue
@@ -609,8 +609,8 @@ def api_node_capability_state(node_id):
                     "addable": list(_CAP_ADDABLE), "job": job})
 
 
-***REMOVED*** ─── Mise à jour des images vers les NŒUDS (≠ Flotte = entre orchestrateurs) ────────────────────
-_SHARED_IMAGES = ("compute", "media", "webrtc")   ***REMOVED*** images PARTAGÉES (build-once + push) ; mtl = par-nœud
+# ─── Mise à jour des images vers les NŒUDS (≠ Flotte = entre orchestrateurs) ────────────────────
+_SHARED_IMAGES = ("compute", "media", "webrtc")   # images PARTAGÉES (build-once + push) ; mtl = par-nœud
 
 _IMG_ORDER = ("compute", "compute-gpu", "media", "webrtc", "mtl")
 
@@ -666,8 +666,8 @@ def api_nodes_images_status():
             ptags = [i["tag"] for i in present]
             repo_tag = expected[w]
             used = _used_tag(w, n)
-            ***REMOVED*** Repli : l'agent n'a pas répondu → on ne SAIT pas ce qui est présent. On le dit
-            ***REMOVED*** (`unknown`) au lieu de prétendre « absent » (anti-patron : l'échec silencieux).
+            # Repli : l'agent n'a pas répondu → on ne SAIT pas ce qui est présent. On le dit
+            # (`unknown`) au lieu de prétendre « absent » (anti-patron : l'échec silencieux).
             state = "unknown" if inv_err else _img_state(repo_tag, used, ptags)
             imgs[w] = {"label": _IMAGES[w]["label"], "repo": repo_tag, "used": used,
                        "present": present, "newest": ptags[0] if ptags else "",
@@ -741,7 +741,7 @@ def api_node_provision_images(node_id):
                   "%d image(s) chargée(s)" % n_ok if n_ok else
                   "aucune image à pousser (déjà à jour, pas encore buildée, ou nœud de build)")
             etat = "error" if n_fail else "ok"
-        except Exception as e:                        ***REMOVED*** un thread qui meurt laisserait « pushing » à vie
+        except Exception as e:                        # un thread qui meurt laisserait « pushing » à vie
             n_ok, n_fail, msg, etat = 0, 1, str(e), "error"
         with _img_lock:
             _node_img_push[node_id] = {"status": etat, "msg": msg}
@@ -779,7 +779,7 @@ def api_nodes_sync_images():
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"ok": True, "status": "synchronisation en cours", "nodes": len(nodes)})
 
-***REMOVED*** ─── Mise à jour de l'agent-nœud (bobi-node-agent) sans SSH, via le canal agent ─────────────────
+# ─── Mise à jour de l'agent-nœud (bobi-node-agent) sans SSH, via le canal agent ─────────────────
 def _bundled_agent_version():
     """Version de l'agent EMBARQUÉE dans ce repo (node_agent/agent.py : `VERSION = "x.y.z"`)."""
     import os, re as _re
@@ -864,10 +864,10 @@ def api_delete_node(node_id):
         return jsonify({"error": "des conteneurs sont rattachés à ce nœud",
                         "containers": len(attached)}), 409
     if attached and force:
-        ***REMOVED*** Nœud DÉCOMMISSIONNÉ/injoignable : on PURGE les lignes orphelines en base SANS contacter le
-        ***REMOVED*** nœud (l'agent est mort → detruire_container partirait en timeout et laisserait les lignes).
-        ***REMOVED*** Les vrais conteneurs Docker sont supposés partis avec le nœud. On libère quand même les
-        ***REMOVED*** allocations purement-DB (cœurs/GPU) pour éviter des réservations fantômes.
+        # Nœud DÉCOMMISSIONNÉ/injoignable : on PURGE les lignes orphelines en base SANS contacter le
+        # nœud (l'agent est mort → detruire_container partirait en timeout et laisserait les lignes).
+        # Les vrais conteneurs Docker sont supposés partis avec le nœud. On libère quand même les
+        # allocations purement-DB (cœurs/GPU) pour éviter des réservations fantômes.
         from ..database import db_delete_container
         from .. import core_pool, gpu_pool
         for c in attached:
@@ -892,7 +892,7 @@ def api_delete_node(node_id):
     return jsonify({"status": "ok", "purged": len(attached) if force else 0})
 
 
-***REMOVED*** ─── Prép host DPDK/vfio déclarative (chantier DPDK, Lot A) ─────────────────────
+# ─── Prép host DPDK/vfio déclarative (chantier DPDK, Lot A) ─────────────────────
 @bp.route("/api/nodes/<int:node_id>/dpdk-prep", methods=["POST"])
 @require_perm("settings.edit")
 def api_node_dpdk_prep(node_id):
@@ -928,8 +928,8 @@ def api_node_dpdk_prep(node_id):
 
     if dry:
         etat = mtl.verifier_node(node)
-        ***REMOVED*** Alerte SR-IOV/MMIO (prérequis VF DPDK/narrow) : le noyau a DÉJÀ échoué faute de MMIO →
-        ***REMOVED*** BIOS à régler. Signal SÛR (dmesg), sans dépendance iLO. Levé à la vérif on-demand.
+        # Alerte SR-IOV/MMIO (prérequis VF DPDK/narrow) : le noyau a DÉJÀ échoué faute de MMIO →
+        # BIOS à régler. Signal SÛR (dmesg), sans dépendance iLO. Levé à la vérif on-demand.
         _sr = (etat or {}).get("sriov") or {}
         if _sr.get("mmio_error"):
             db_add_alert("alert.prep.sriov_mmio", "warning", node_id=node_id, kind="prep",
@@ -947,9 +947,9 @@ def api_node_dpdk_prep(node_id):
             ok_b, msg_b, _ = do(node, bdf)
             ok = ok and ok_b
             notes.append(msg_b)
-        ***REMOVED*** Verdict OK/ÉCHEC → deux clés complètes (jamais un paramètre, cf. piège n°3) ; `notes` est
-        ***REMOVED*** un diagnostic dynamique renvoyé par `mtl.appliquer_node`/`vfio_*_apply` (pas une phrase
-        ***REMOVED*** figée d'ici) — comme `{e}` ailleurs dans ce fichier, il voyage tel quel en paramètre.
+        # Verdict OK/ÉCHEC → deux clés complètes (jamais un paramètre, cf. piège n°3) ; `notes` est
+        # un diagnostic dynamique renvoyé par `mtl.appliquer_node`/`vfio_*_apply` (pas une phrase
+        # figée d'ici) — comme `{e}` ailleurs dans ce fichier, il voyage tel quel en paramètre.
         cle = "alert.prep.dpdk_ok" if ok else "alert.prep.dpdk_echec"
         db_add_alert(cle, "info" if ok else "error", node_id=node.get("id"), kind="prep",
                      params={"n": node["name"], "notes": " ; ".join(notes)})
@@ -977,7 +977,7 @@ def api_node_sriov_vf(node_id):
         ok, msg, vf_bdf, checks = mtl.sriov_vf_apply(node, pf_bdf)
     except mtl.GardeFouVfio as e:
         return jsonify({"ok": False, "error": str(e)}), 400
-    if ok and vf_bdf:                                    ***REMOVED*** persiste le VF BDF sur la ligne de la PF
+    if ok and vf_bdf:                                    # persiste le VF BDF sur la ligne de la PF
         ifn = next((r.get("ifname") for r in db_get_node_interfaces(node_id)
                     if (r.get("pci") or "").strip().lower() == pf_bdf.lower()), None)
         if ifn:
@@ -1014,7 +1014,7 @@ def api_node_install_ice(node_id):
     return jsonify({"ok": True, "status": "build ice patché en cours (~2 min, voir alertes)"})
 
 
-***REMOVED*** ─── Sécurité / mTLS du plan de contrôle ────────────────────────────────────────
+# ─── Sécurité / mTLS du plan de contrôle ────────────────────────────────────────
 @bp.route("/api/security/mtls/status", methods=["GET"])
 @require_perm("settings.edit")
 def api_security_mtls_status():
@@ -1050,7 +1050,7 @@ def api_security_mtls_ca_init():
     reissued = existed and force
     if reissued:
         db_add_alert("alert.node.ca_reemise", "warning", kind="node")
-        ***REMOVED*** Les certs installés sur les nœuds ne sont plus signés par la nouvelle CA.
+        # Les certs installés sur les nœuds ne sont plus signés par la nouvelle CA.
         for n in db_get_nodes():
             if int(n.get("tls_ready") or 0):
                 try:
@@ -1083,10 +1083,10 @@ def api_node_nic_queues_get(node_id):
                         "raw": out[:400]}), 502
     hw_max = int(m_max.group(1))
     hw_cur = int(m_cur.group(1))
-    ***REMOVED*** AF-XDP natif sur la PF : le moteur MTL se binde aux files ACTIVES de la carte
-    ***REMOVED*** (1 file par session 2110, queue_id < combined). Il faut donc TOUTES les activer
-    ***REMOVED*** (`ethtool -L combined max`), sinon « no free queue found » → 0 flux. La cible
-    ***REMOVED*** optimale est donc le maximum matériel, et le nœud est prêt quand current == max.
+    # AF-XDP natif sur la PF : le moteur MTL se binde aux files ACTIVES de la carte
+    # (1 file par session 2110, queue_id < combined). Il faut donc TOUTES les activer
+    # (`ethtool -L combined max`), sinon « no free queue found » → 0 flux. La cible
+    # optimale est donc le maximum matériel, et le nœud est prêt quand current == max.
     return jsonify({"max_combined": hw_max, "current_combined": hw_cur,
                     "optimal_combined": hw_max, "ready": hw_cur >= hw_max,
                     "xdp_available": hw_max - hw_cur, "iface": iface})
@@ -1110,9 +1110,9 @@ def api_node_nic_queues_set(node_id):
         return jsonify({"error": "nœud introuvable"}), 404
     iface  = node.get("mtl_iface") or "ens1f0np0"
     target = max(1, int((request.json or {}).get("combined") or 4))
-    ***REMOVED*** Script de boot (recompute la PCI, désactive RDMA, applique les channels) — POSIX sh.
+    # Script de boot (recompute la PCI, désactive RDMA, applique les channels) — POSIX sh.
     boot_sh = (
-        "***REMOVED***!/bin/sh\n"
+        "#!/bin/sh\n"
         "IFACE=%s\nTARGET=%s\n"
         "P=$(basename \"$(readlink -f /sys/class/net/$IFACE/device 2>/dev/null)\")\n"
         "if [ -n \"$P\" ]; then\n"
@@ -1130,7 +1130,7 @@ def api_node_nic_queues_set(node_id):
     ) % iface
     b64s = base64.b64encode(boot_sh.encode()).decode()
     b64u = base64.b64encode(unit.encode()).decode()
-    ***REMOVED*** Application RUNTIME (gate dur sur le résultat d'ethtool) puis persistance best-effort.
+    # Application RUNTIME (gate dur sur le résultat d'ethtool) puis persistance best-effort.
     cmd = (
         "IFACE=" + iface + "; TARGET=" + str(target) + "; "
         "PCI=$(basename \"$(readlink -f /sys/class/net/$IFACE/device 2>/dev/null)\"); "

@@ -20,7 +20,7 @@
 <style>
   /* Page autonome : elle n'hérite pas du thème choisi par un utilisateur connecté — il n'y en
      a pas. On pose donc un fond neutre explicite, comme la page publique. */
-  html, body { height: 100%; margin: 0; background: var(--bg, ***REMOVED***14161a); }
+  html, body { height: 100%; margin: 0; background: var(--bg, #14161a); }
   body {
     display: flex; align-items: center; justify-content: center;
     padding: var(--space-5);
@@ -76,7 +76,7 @@
     {% if titre %}<span>{{ titre }}</span>{% endif %}
     {% if brand_system %}<b>{{ brand_system }}</b>{% endif %}
     {% if brand_org %}<span>{{ brand_org }}</span>{% endif %}
-    {% if brand_location %}<span>&***REMOVED***128205; {{ brand_location }}</span>{% endif %}
+    {% if brand_location %}<span>&#128205; {{ brand_location }}</span>{% endif %}
   </p>
   {% endif %}
 </main>

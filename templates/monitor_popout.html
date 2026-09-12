@@ -1,8 +1,8 @@
-{***REMOVED*** Monitoring DÉTACHÉ (fenêtre à part). Page servie par NOUS — indispensable : le lecteur est une
+{# Monitoring DÉTACHÉ (fenêtre à part). Page servie par NOUS — indispensable : le lecteur est une
    iframe de la passerelle WebRTC (autre origine), on ne peut pas y injecter de code. Or l'encodeur
    du monitoring est TUÉ après IDLE_TIMEOUT sans heartbeat (app/monitor.py, reaper) : la fenêtre
    détachée doit donc porter SON PROPRE heartbeat, sinon le flux se couperait tout seul dès que la
-   page d'origine change ou se ferme. ***REMOVED***}
+   page d'origine change ou se ferme. #}
 <!doctype html>
 <html lang="{{ lang|default('fr') }}" data-theme="{{ theme|default('dark') }}">
 <head>
@@ -16,27 +16,27 @@
      Plus de positionnement absolu : une colonne flex, en-tête figé, lecteur qui prend le reste. */
   html { height:100%; }
   body { margin:0 !important; padding:0 !important; height:100%; min-height:0 !important;
-         display:flex !important; flex-direction:column; background:***REMOVED***000; overflow:hidden; }
-  ***REMOVED***hd { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:6px 10px;
-        background:var(--bg-elev,***REMOVED***161b22); border-bottom:1px solid var(--border,***REMOVED***30363d);
-        font-size:0.85em; color:var(--text,***REMOVED***c9d1d9); }
-  ***REMOVED***src { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-         color:var(--text-muted,***REMOVED***8b949e); }
-  ***REMOVED***hd button { flex:0 0 auto; background:transparent; border:1px solid var(--border,***REMOVED***30363d);
+         display:flex !important; flex-direction:column; background:#000; overflow:hidden; }
+  #hd { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:6px 10px;
+        background:var(--bg-elev,#161b22); border-bottom:1px solid var(--border,#30363d);
+        font-size:0.85em; color:var(--text,#c9d1d9); }
+  #src { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+         color:var(--text-muted,#8b949e); }
+  #hd button { flex:0 0 auto; background:transparent; border:1px solid var(--border,#30363d);
                color:inherit; border-radius:4px; padding:2px 8px; cursor:pointer; font-size:0.95em;
                white-space:nowrap; }
-  ***REMOVED***hd button:hover { border-color:var(--accent,***REMOVED***7aa2c8); color:var(--accent,***REMOVED***7aa2c8); }
-  ***REMOVED***wrap { flex:1 1 auto; min-height:0; }          /* min-height:0 : sinon le flex refuse de rétrécir */
-  iframe { width:100%; height:100%; border:0; display:block; background:***REMOVED***000; }
-  /* Bandeau « contrôleur injoignable » : SUPERPOSÉ, jamais dans le flux. ***REMOVED***msg et ***REMOVED***wrap sont
+  #hd button:hover { border-color:var(--accent,#7aa2c8); color:var(--accent,#7aa2c8); }
+  #wrap { flex:1 1 auto; min-height:0; }          /* min-height:0 : sinon le flex refuse de rétrécir */
+  iframe { width:100%; height:100%; border:0; display:block; background:#000; }
+  /* Bandeau « contrôleur injoignable » : SUPERPOSÉ, jamais dans le flux. #msg et #wrap sont
      deux enfants flex en `flex:1 1 auto` — les afficher ensemble partagerait l'espace et
      réduirait l'image de moitié. Or perdre l'orchestrateur ne doit RIEN retirer à l'image :
      elle vient de la passerelle et continue de tourner. */
-  ***REMOVED***offline { position:fixed; top:0; left:0; right:0; z-index:10; display:none;
+  #offline { position:fixed; top:0; left:0; right:0; z-index:10; display:none;
              padding:4px 10px; font-size:0.8em; text-align:center;
-             background:rgba(204,136,0,.92); color:***REMOVED***1a1200; }
-  ***REMOVED***msg { flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center;
-         color:var(--text-muted,***REMOVED***8b949e); font-size:0.9em; text-align:center; padding:16px; }
+             background:rgba(204,136,0,.92); color:#1a1200; }
+  #msg { flex:1 1 auto; min-height:0; display:flex; align-items:center; justify-content:center;
+         color:var(--text-muted,#8b949e); font-size:0.9em; text-align:center; padding:16px; }
 </style>
 </head>
 <body>
@@ -68,8 +68,8 @@
       const s = await (await fetch('/api/monitor/status')).json();
       $('offline').style.display = 'none';   // le contrôleur répond de nouveau
       $('src').textContent = s.label || s.source || '';
-      // On masque le CONTENEUR (***REMOVED***wrap), pas seulement l'iframe : les deux sont des enfants flex,
-      // laisser ***REMOVED***wrap visible lui ferait prendre la moitié de la place sous le message.
+      // On masque le CONTENEUR (#wrap), pas seulement l'iframe : les deux sont des enfants flex,
+      // laisser #wrap visible lui ferait prendre la moitié de la place sous le message.
       if (s.publishing && s.embed_url) {
         if (cur !== s.embed_url) { cur = s.embed_url; $('frm').src = playerUrl(s.embed_url); }
         $('frm').style.display = 'block'; $('wrap').style.display = 'block'; $('msg').style.display = 'none';
@@ -82,7 +82,7 @@
       // ★ PERDRE L'ORCHESTRATEUR NE DIT RIEN DU FLUX. L'image vient de la passerelle
       // WebRTC en direct : le contrôleur n'est pas dans le chemin média — vérifié,
       // l'encodeur et la passerelle traversent ses redémarrages sans broncher. Cette
-      // branche masquait pourtant ***REMOVED***wrap, donc l'iframe ; or `display:none` sur un
+      // branche masquait pourtant #wrap, donc l'iframe ; or `display:none` sur un
       // ancêtre la sort de l'arbre de rendu et SUSPEND la session WebRTC. Au sondage
       // suivant elle réapparaissait et le lecteur renégociait : 1 à 2 s d'image noire
       // à CHAQUE redémarrage du contrôleur, avec « Load failed » par-dessus.

@@ -1,38 +1,38 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Suite de QUALIFICATION de carte réseau (chantier narrow, cf. docs/chantiers/DPDK_NARROW.md §7).
-***REMOVED***
-***REMOVED*** Pourquoi : certaines capacités narrow (ST 2110 RL) ne sont PAS lisibles du PMD — le max de files TX
-***REMOVED*** EFFECTIF n'apparaît pas dans rte_eth_dev_info (qui rapporte le mur ice natif 8, que patch_tm_hierarchy
-***REMOVED*** transcende jusqu'à la vraie valeur). Il faut donc les MESURER une fois par carte (+ firmware, qui peut
-***REMOVED*** les changer) et enregistrer le profil dans `nic_profiles`. Ce profil MESURÉ prime ensuite sur la
-***REMOVED*** bibliothèque statique (app/mtl.py) au déploiement (docker_driver._node_rl_tx_cap).
-***REMOVED***
-***REMOVED*** Le module est en deux couches :
-***REMOVED***   - PARSEURS purs (device_id / firmware / files TX effectives) — testables sans nœud ;
-***REMOVED***   - wrapper NŒUD (`qualify_node`) qui récolte les sondes via un `run(cmd)` (host-exec agent-nœud) +
-***REMOVED***     le log du daemon mtl_rx d'un moteur 2110_io DÉJÀ déployé, puis écrit le profil.
-***REMOVED***
-***REMOVED*** ⚠ La mesure de capacité s'appuie sur un moteur 2110_io tournant sur la carte (elle lit le log libmtl
-***REMOVED*** « tx_queues N malloc succ » = files réellement allouées). Elle n'a de sens que sous pacing narrow (RL).
-***REMOVED***
-***REMOVED*** ⚠⚠ ET SEULEMENT SI LE PMD A CLAMPÉ. « tx_queues N malloc succ » rapporte ce que libmtl a DEMANDÉ ET
-***REMOVED*** OBTENU, pas le plafond de la carte. La demande suit le nombre de sessions du moteur (mtl_rx.c :
-***REMOVED*** « daemon up (… tx_q[0]=N) » = `p.tx_queues_cnt[0]`, l'ARGUMENT de mtl_init). Tant que la demande
-***REMOVED*** tient sous le plafond, la sonde ne fait que relire sa propre demande : c'est une BORNE INFÉRIEURE,
-***REMOVED*** jamais un cap. La mesure d'origine (banc 2026-07-10, docs/chantiers/DPDK_NARROW.md §7) était valide parce qu'elle
-***REMOVED*** SUR-DEMANDAIT exprès — 80 slots en cold-batch → clamp du PMD ice à 64 → cap 63.
-***REMOVED*** Sans cette garde, chaque requalification d'un moteur peu chargé RABAISSAIT le cap autoritaire d'un
-***REMOVED*** cran, en silence : 63 → 41 → 21 → 14 (dl360-1, E810-C-Q2), jusqu'à rendre rouge la page « Modèles de
-***REMOVED*** carte 2110 » et à brider RL_TX_QUEUES_CAP sur le moteur. D'où `measured_tx_cap()` : pas de preuve de
-***REMOVED*** clamp ⇒ pas de cap écrit (les autres champs mesurés le sont quand même).
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Suite de QUALIFICATION de carte réseau (chantier narrow, cf. docs/chantiers/DPDK_NARROW.md §7).
+#
+# Pourquoi : certaines capacités narrow (ST 2110 RL) ne sont PAS lisibles du PMD — le max de files TX
+# EFFECTIF n'apparaît pas dans rte_eth_dev_info (qui rapporte le mur ice natif 8, que patch_tm_hierarchy
+# transcende jusqu'à la vraie valeur). Il faut donc les MESURER une fois par carte (+ firmware, qui peut
+# les changer) et enregistrer le profil dans `nic_profiles`. Ce profil MESURÉ prime ensuite sur la
+# bibliothèque statique (app/mtl.py) au déploiement (docker_driver._node_rl_tx_cap).
+#
+# Le module est en deux couches :
+#   - PARSEURS purs (device_id / firmware / files TX effectives) — testables sans nœud ;
+#   - wrapper NŒUD (`qualify_node`) qui récolte les sondes via un `run(cmd)` (host-exec agent-nœud) +
+#     le log du daemon mtl_rx d'un moteur 2110_io DÉJÀ déployé, puis écrit le profil.
+#
+# ⚠ La mesure de capacité s'appuie sur un moteur 2110_io tournant sur la carte (elle lit le log libmtl
+# « tx_queues N malloc succ » = files réellement allouées). Elle n'a de sens que sous pacing narrow (RL).
+#
+# ⚠⚠ ET SEULEMENT SI LE PMD A CLAMPÉ. « tx_queues N malloc succ » rapporte ce que libmtl a DEMANDÉ ET
+# OBTENU, pas le plafond de la carte. La demande suit le nombre de sessions du moteur (mtl_rx.c :
+# « daemon up (… tx_q[0]=N) » = `p.tx_queues_cnt[0]`, l'ARGUMENT de mtl_init). Tant que la demande
+# tient sous le plafond, la sonde ne fait que relire sa propre demande : c'est une BORNE INFÉRIEURE,
+# jamais un cap. La mesure d'origine (banc 2026-07-10, docs/chantiers/DPDK_NARROW.md §7) était valide parce qu'elle
+# SUR-DEMANDAIT exprès — 80 slots en cold-batch → clamp du PMD ice à 64 → cap 63.
+# Sans cette garde, chaque requalification d'un moteur peu chargé RABAISSAIT le cap autoritaire d'un
+# cran, en silence : 63 → 41 → 21 → 14 (dl360-1, E810-C-Q2), jusqu'à rendre rouge la page « Modèles de
+# carte 2110 » et à brider RL_TX_QUEUES_CAP sur le moteur. D'où `measured_tx_cap()` : pas de preuve de
+# clamp ⇒ pas de cap écrit (les autres champs mesurés le sont quand même).
 import re
 
 from .database import db_upsert_nic_profile
 
 
-***REMOVED*** ─── Parseurs purs (unit-testables) ──────────────────────────────────────────────────────────────
+# ─── Parseurs purs (unit-testables) ──────────────────────────────────────────────────────────────
 def parse_device_id(lspci_nn):
     """`lspci -nn` d'un port → 'device id' Intel ('0x1592'). Vendor ignoré (on identifie le modèle)."""
     m = re.search(r"\[[0-9a-fA-F]{4}:([0-9a-fA-F]{4})\]", lspci_nn or "")
@@ -166,7 +166,7 @@ def parse_stack_version(mtl_log):
     return " / ".join(parts)
 
 
-***REMOVED*** ─── Calcul + écriture du profil ─────────────────────────────────────────────────────────────────
+# ─── Calcul + écriture du profil ─────────────────────────────────────────────────────────────────
 def parse_engine_healthy(mtl_log):
     """Le moteur 2110 est-il SAIN dans son log ? False si signature de CRASH-LOOP (échec d'init
     DPDK/mtl : `dev_eal_init fail`, `mtl_init fail`, …). Sur un moteur cassé, `tx_queues N malloc succ`
@@ -188,8 +188,8 @@ def qualify_from_probes(device_id, firmware, model, mtl_log,
     `db_upsert_nic_profile` laisse alors intact (il ignore les champs None) → `_node_rl_tx_cap`
     retombe sur la bibliothèque statique, qui est la bonne réponse quand on n'a rien mesuré.
     Retourne `(None, raison)` sans rien écrire si device_id manque OU si le moteur n'est pas sain."""
-    ***REMOVED*** ★ GARDE-FOU (point d'écriture UNIQUE) : ne JAMAIS enregistrer un profil depuis un moteur en
-    ***REMOVED*** crash-loop — la mesure serait faussée et empoisonnerait le cap autoritaire en silence.
+    # ★ GARDE-FOU (point d'écriture UNIQUE) : ne JAMAIS enregistrer un profil depuis un moteur en
+    # crash-loop — la mesure serait faussée et empoisonnerait le cap autoritaire en silence.
     if not parse_engine_healthy(mtl_log):
         return None, "moteur 2110 non sain (crash-loop)"
     if not device_id:
@@ -204,7 +204,7 @@ def qualify_from_probes(device_id, firmware, model, mtl_log,
         {True: "lock", False: "pas de lock", None: "?"}[ptp_ok],
         (ddp_ver or ("chargé" if ddp_ok else ("Safe Mode/absent" if ddp_ok is False else "?"))),
         {True: "OK (cinst≤1, vrx_span 1-5)", False: "NON (wide)", None: "non mesuré (pas de sonde)"}[narrow_ok])
-    _stack = parse_stack_version(mtl_log)   ***REMOVED*** contexte logiciel de la mesure (PMD DPDK/MTL)
+    _stack = parse_stack_version(mtl_log)   # contexte logiciel de la mesure (PMD DPDK/MTL)
     if _stack:
         note += " | stack=%s" % _stack
     db_upsert_nic_profile(
@@ -216,7 +216,7 @@ def qualify_from_probes(device_id, firmware, model, mtl_log,
     return cap, cap_reason
 
 
-***REMOVED*** ─── Wrapper nœud (déploiement) ──────────────────────────────────────────────────────────────────
+# ─── Wrapper nœud (déploiement) ──────────────────────────────────────────────────────────────────
 def _media_nic(node):
     """(pci du port média2110, ifname d'un port ice sœur pour ethtool, model) depuis node_interfaces.
     Le port média est en vfio (pas de netdev) → on lit le firmware sur un AUTRE port ice de la même NIC
@@ -228,7 +228,7 @@ def _media_nic(node):
         return None, None, None
     pci = (media.get("pci") or "").strip()
     model = (media.get("model") or "").strip()
-    ***REMOVED*** port ice sœur = même NIC (préfixe BDF domaine:bus commun), role ≠ vfio/dpdk, ifname présent
+    # port ice sœur = même NIC (préfixe BDF domaine:bus commun), role ≠ vfio/dpdk, ifname présent
     bus = pci.rsplit(".", 1)[0] if "." in pci else pci
     sib = next((r.get("ifname") for r in ifaces
                 if (r.get("pci") or "").startswith(bus) and r.get("pmd") != "dpdk"
@@ -247,28 +247,28 @@ def qualify_node(node, run, mtl_log, metrics=None):
     pci, sib, model = _media_nic(node)
     if not pci:
         return None
-    ***REMOVED*** Refus EXPLICITE (message précis pour l'UI) si le moteur crash-loope : mesurer sur un moteur non
-    ***REMOVED*** sain donne un cap GARBAGE qui empoisonnerait le profil autoritaire (cf. le garde-fou muet dans
-    ***REMOVED*** qualify_from_probes). On distingue « moteur cassé » de « pas de données » par un dict d'erreur.
+    # Refus EXPLICITE (message précis pour l'UI) si le moteur crash-loope : mesurer sur un moteur non
+    # sain donne un cap GARBAGE qui empoisonnerait le profil autoritaire (cf. le garde-fou muet dans
+    # qualify_from_probes). On distingue « moteur cassé » de « pas de données » par un dict d'erreur.
     if not parse_engine_healthy(mtl_log):
         return {"error": "moteur 2110 non sain (crash-loop : échec d'init DPDK/mtl dans le log) — la "
                          "mesure de capacité serait faussée. Réparer le moteur (binding vfio DPDK ou "
                          "AF-XDP) et le laisser tourner en pacing narrow avant de qualifier."}
     device_id = parse_device_id(run("lspci -nn -s %s" % pci) or "")
     firmware = parse_firmware(run("ethtool -i %s" % sib) or "") if sib else ""
-    ptp_ok = parse_ptp_locked(mtl_log)                                  ***REMOVED*** le PHC se discipline (log moteur)
-    ddp_ok, ddp_ver = parse_ddp(run("devlink dev info pci/%s" % pci) or "")  ***REMOVED*** DDP chargé (prérequis narrow)
-    if ddp_ok is None:   ***REMOVED*** devlink KO (port en vfio-pci, full-PF DPDK → pas de netdev) → repli log PMD ice
+    ptp_ok = parse_ptp_locked(mtl_log)                                  # le PHC se discipline (log moteur)
+    ddp_ok, ddp_ver = parse_ddp(run("devlink dev info pci/%s" % pci) or "")  # DDP chargé (prérequis narrow)
+    if ddp_ok is None:   # devlink KO (port en vfio-pci, full-PF DPDK → pas de netdev) → repli log PMD ice
         ddp_ok, ddp_ver = parse_ddp_from_log(mtl_log)
-    narrow_ok, _detail = parse_conformity(metrics)                      ***REMOVED*** cinst/vrx_span (si sonde présente)
+    narrow_ok, _detail = parse_conformity(metrics)                      # cinst/vrx_span (si sonde présente)
     cap, cap_reason = qualify_from_probes(device_id, firmware, model, mtl_log,
                                           narrow_ok=narrow_ok, ptp_ok=ptp_ok, ddp_ok=ddp_ok,
                                           ddp_ver=ddp_ver)
     if cap is None and not device_id:
         return None
-    ***REMOVED*** cap None = capacité non MESURABLE (pas de clamp) : le reste du profil est écrit, et `cap_reason`
-    ***REMOVED*** remonte à l'UI. On ne renvoie PAS None — ce serait un « échec » trompeur alors que la
-    ***REMOVED*** qualification PTP/DDP a bien eu lieu, et ça masquerait la vraie raison.
+    # cap None = capacité non MESURABLE (pas de clamp) : le reste du profil est écrit, et `cap_reason`
+    # remonte à l'UI. On ne renvoie PAS None — ce serait un « échec » trompeur alors que la
+    # qualification PTP/DDP a bien eu lieu, et ça masquerait la vraie raison.
     return {"device_id": device_id, "firmware": firmware, "model": model, "rl_tx_cap": cap,
             "cap_reason": cap_reason,
             "ptp_ok": ptp_ok, "ddp_ok": ddp_ok, "ddp": ddp_ver, "narrow_ok": narrow_ok}
@@ -281,35 +281,35 @@ def qualify_node_via_agent(node, container_name, tail=4000):
     from . import node_driver
 
     def _run(cmd):
-        rc, out, _err = node_driver.host_exec(node, cmd, timeout=20)   ***REMOVED*** (rc, stdout, stderr)
+        rc, out, _err = node_driver.host_exec(node, cmd, timeout=20)   # (rc, stdout, stderr)
         return out if rc == 0 else ""
 
-    ***REMOVED*** Log du moteur : GREP des lignes utiles sur `docker logs 2>&1` (host-exec). Deux raisons :
-    ***REMOVED*** (1) l'endpoint agent /logs ne renvoie QUE stdout, or les lignes libmtl (« tx_queues N malloc
-    ***REMOVED*** succ », « offset … locked ») sont sur STDERR ; (2) la ligne « tx_queues » n'apparaît qu'AU
-    ***REMOVED*** DÉMARRAGE du daemon → un `--tail N` la rate sur un moteur qui tourne depuis longtemps (log
-    ***REMOVED*** volumineux). Le grep la capte quel que soit l'âge, et reste compact.
+    # Log du moteur : GREP des lignes utiles sur `docker logs 2>&1` (host-exec). Deux raisons :
+    # (1) l'endpoint agent /logs ne renvoie QUE stdout, or les lignes libmtl (« tx_queues N malloc
+    # succ », « offset … locked ») sont sur STDERR ; (2) la ligne « tx_queues » n'apparaît qu'AU
+    # DÉMARRAGE du daemon → un `--tail N` la rate sur un moteur qui tourne depuis longtemps (log
+    # volumineux). Le grep la capte quel que soit l'âge, et reste compact.
     import shlex as _shlex
     _cn = _shlex.quote(container_name)
     _logs = "docker logs %s 2>&1" % _cn
-    ***REMOVED*** Deux passes : (1) lignes de DÉMARRAGE (tx_queues, package DDP, version stack, master GM) — en
-    ***REMOVED*** TÊTE du log, prises en `head` ; (2) statut PTP RÉCENT (locked) — en `tail`. Un simple `tail` sur
-    ***REMOVED*** un grep unique jetterait les lignes de démarrage dès que les lignes PTP périodiques s'accumulent.
-    ***REMOVED*** « daemon up (… tx_q[0]=N) » est INDISPENSABLE : c'est la DEMANDE de files passée à mtl_init, donc
-    ***REMOVED*** le témoin de clamp sans lequel « tx_queues N malloc succ » ne prouve aucun plafond (cf. en-tête).
+    # Deux passes : (1) lignes de DÉMARRAGE (tx_queues, package DDP, version stack, master GM) — en
+    # TÊTE du log, prises en `head` ; (2) statut PTP RÉCENT (locked) — en `tail`. Un simple `tail` sur
+    # un grep unique jetterait les lignes de démarrage dès que les lignes PTP périodiques s'accumulent.
+    # « daemon up (… tx_q[0]=N) » est INDISPENSABLE : c'est la DEMANDE de files passée à mtl_init, donc
+    # le témoin de clamp sans lequel « tx_queues N malloc succ » ne prouve aucun plafond (cf. en-tête).
     _startup = _run(_logs + " | grep -aE 'tx_queues [0-9]+ malloc succ|rx_queues [0-9]+ malloc succ|"
                     "daemon up \\(|Active package is:|Safe Mode|MTL version:|master initialized' | head -60")
     _ptp = _run(_logs + " | grep -aE 'offset max [0-9]+, (locked|not locked)' | tail -30")
-    ***REMOVED*** Marqueurs de CRASH-LOOP (init DPDK/mtl échouée) — capturés en TAIL pour refléter l'état RÉCENT :
-    ***REMOVED*** le grep de démarrage (head) les filtrait, d'où une qualification faussée sur moteur cassé.
+    # Marqueurs de CRASH-LOOP (init DPDK/mtl échouée) — capturés en TAIL pour refléter l'état RÉCENT :
+    # le grep de démarrage (head) les filtrait, d'où une qualification faussée sur moteur cassé.
     _fail = _run(_logs + " | grep -aiE 'mt_dev_eal_init[^\\n]*fail|dev_eal_init[^\\n]*fail|mtl_init fail' | tail -8")
     mtl_log = (_startup + "\n" + _ptp + "\n" + _fail).strip()
-    if not mtl_log:   ***REMOVED*** repli : dernières lignes brutes, puis agent /logs si host-exec docker KO
+    if not mtl_log:   # repli : dernières lignes brutes, puis agent /logs si host-exec docker KO
         mtl_log = _run("docker logs --tail %d %s 2>&1" % (int(tail), _cn))
     if not mtl_log:
         lines = node_driver.container_logs(node, container_name, tail=tail)
         mtl_log = "\n".join(lines) if isinstance(lines, list) else str(lines or "")
-    ***REMOVED*** Verdict conformité si le moteur tourne en TIMING_PARSER (sonde/loopback) : :8080 sur le host du nœud.
+    # Verdict conformité si le moteur tourne en TIMING_PARSER (sonde/loopback) : :8080 sur le host du nœud.
     import json as _json
     metrics = None
     try:

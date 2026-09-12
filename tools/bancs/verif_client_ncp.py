@@ -1,19 +1,19 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc des CLIENTS MS-05-02 : `services/nmos/client_ncp.py` (IS-14, REST) et
-***REMOVED*** `services/nmos/client_is12.py` (IS-12, WebSocket).
-***REMOVED***
-***REMOVED*** CONTRE QUI ON TESTE. Contre NOUS-MÊMES : notre serveur IS-14/IS-12 est un pair conforme, et
-***REMOVED*** c'est le seul moyen honnête de savoir si nos clients marchent avant de les brancher sur le
-***REMOVED*** matériel de quelqu'un d'autre. Un client qu'on n'a jamais fait parler à personne n'est pas un
-***REMOVED*** client, c'est une intention.
-***REMOVED***
-***REMOVED*** ⚠ Le banc ACTIVE temporairement IS-14 (et a besoin d'IS-12 en marche), puis restaure les
-***REMOVED*** réglages. Les parties qui exigent un service injoignable sont SAUTÉES, pas mises en échec.
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tools/verif_client_ncp.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc des CLIENTS MS-05-02 : `services/nmos/client_ncp.py` (IS-14, REST) et
+# `services/nmos/client_is12.py` (IS-12, WebSocket).
+#
+# CONTRE QUI ON TESTE. Contre NOUS-MÊMES : notre serveur IS-14/IS-12 est un pair conforme, et
+# c'est le seul moyen honnête de savoir si nos clients marchent avant de les brancher sur le
+# matériel de quelqu'un d'autre. Un client qu'on n'a jamais fait parler à personne n'est pas un
+# client, c'est une intention.
+#
+# ⚠ Le banc ACTIVE temporairement IS-14 (et a besoin d'IS-12 en marche), puis restaure les
+# réglages. Les parties qui exigent un service injoignable sont SAUTÉES, pas mises en échec.
+#
+#   $ ./venv/bin/python tools/verif_client_ncp.py
 import json
 import os
 import sys
@@ -33,14 +33,14 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-from services.nmos import client_ncp as cl                          ***REMOVED*** noqa: E402
-from services.nmos.client_is12 import Client, ErreurIS12            ***REMOVED*** noqa: E402
+from services.nmos import client_ncp as cl                          # noqa: E402
+from services.nmos.client_is12 import Client, ErreurIS12            # noqa: E402
 
 BASE_NODE = "http://127.0.0.1:5000"
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
-***REMOVED*** 1. Logique pure — aucun pair requis
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# 1. Logique pure — aucun pair requis
+# ══════════════════════════════════════════════════════════════════════════════
 print("clients MS-05-02 — logique\n")
 
 _dev = {"controls": [{"type": "urn:x-nmos:control:sr-ctrl/v1.1", "href": "http://x/is05"},
@@ -54,7 +54,7 @@ controle("un Device sans point de contrôle rend None",
 controle("un type DIFFÉRENT n'est pas confondu avec celui qu'on cherche",
          cl.point_de_controle(_dev, cl.TYPE_IS12) is None)
 
-***REMOVED*** ★ Le piège classique de MS-05-02 : le transport réussit, la commande échoue.
+# ★ Le piège classique de MS-05-02 : le transport réussit, la commande échoue.
 try:
     cl._verifier({"status": 417, "errorMessage": "hors bornes"}, "essai")
     controle("★ un NcMethodResult en erreur DANS un 200 HTTP est détecté", False,
@@ -70,11 +70,11 @@ try:
 except cl.ErreurTiers:
     controle("et un résultat valide passe", False)
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
-***REMOVED*** 2. IS-14 contre notre propre serveur
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# 2. IS-14 contre notre propre serveur
+# ══════════════════════════════════════════════════════════════════════════════
 print("\nclient IS-14 — contre notre propre serveur\n")
-from app.database import db_get_setting, db_set_setting                       ***REMOVED*** noqa: E402
+from app.database import db_get_setting, db_set_setting                       # noqa: E402
 _avant14 = db_get_setting("nmos_is14_enabled", None)
 _joignable = False
 try:
@@ -90,8 +90,8 @@ try:
     except cl.ErreurTiers as err:
         _pourquoi = str(err)[:90]
     if not _joignable:
-        ***REMOVED*** ⚠ Une section qui ne dit RIEN se lit comme une section réussie. On énonce le saut, et
-        ***REMOVED*** sa raison : c'est la différence entre « non testé » et « testé, ça marche ».
+        # ⚠ Une section qui ne dit RIEN se lit comme une section réussie. On énonce le saut, et
+        # sa raison : c'est la différence entre « non testé » et « testé, ça marche ».
         print("  SAUTÉ  client IS-14 — %s" % _pourquoi)
     if _joignable:
         base = pts[0][1]
@@ -115,9 +115,9 @@ try:
 finally:
     db_set_setting("nmos_is14_enabled", _avant14 if _avant14 is not None else False)
 
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
-***REMOVED*** 3. IS-12 — commandes ET notifications
-***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. IS-12 — commandes ET notifications
+# ══════════════════════════════════════════════════════════════════════════════
 print("\nclient IS-12 — contre notre propre serveur\n")
 URL = "ws://127.0.0.1:5010/x-nmos/ncp/v1.0"
 try:
@@ -129,18 +129,18 @@ except ErreurIS12 as e:
     print("  (IS-12 injoignable — partie sautée : %s)" % str(e)[:70])
 
 if _ws:
-    ***REMOVED*** Un endpoint HTTP qui n'est PAS du WebSocket doit être refusé, pas interprété comme des trames.
+    # Un endpoint HTTP qui n'est PAS du WebSocket doit être refusé, pas interprété comme des trames.
     try:
         Client("ws://127.0.0.1:5000/x-nmos/", timeout=4).connecter()
         controle("un endpoint non-WebSocket est REFUSÉ", False, "la connexion a été acceptée")
     except ErreurIS12:
         controle("un endpoint non-WebSocket est REFUSÉ", True)
 
-    ***REMOVED*** ★ ET LE CAS VICIEUX : un pair qui répond bien 101, mais avec une mauvaise clé
-    ***REMOVED*** d'acceptation. Le contrôle précédent ne l'attrape PAS — il tombe sur le 200 d'un endpoint
-    ***REMOVED*** HTTP, donc c'est le test du « 101 » qui refuse, et la vérification de la clé n'est jamais
-    ***REMOVED*** sollicitée (constaté par mutation). Sans elle, on interpréterait du HTTP comme des trames
-    ***REMOVED*** binaires : panne muette et illisible. On monte donc un faux pair pour l'éprouver vraiment.
+    # ★ ET LE CAS VICIEUX : un pair qui répond bien 101, mais avec une mauvaise clé
+    # d'acceptation. Le contrôle précédent ne l'attrape PAS — il tombe sur le 200 d'un endpoint
+    # HTTP, donc c'est le test du « 101 » qui refuse, et la vérification de la clé n'est jamais
+    # sollicitée (constaté par mutation). Sans elle, on interpréterait du HTTP comme des trames
+    # binaires : panne muette et illisible. On monte donc un faux pair pour l'éprouver vraiment.
     import socket as _s
 
     _srv = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
@@ -201,7 +201,7 @@ if _ws:
         t = threading.Thread(target=_ecouter)
         t.start()
         time.sleep(1)
-        with Client(URL) as c2:      ***REMOVED*** une SECONDE session provoque le changement
+        with Client(URL) as c2:      # une SECONDE session provoque le changement
             c2.commander(cible["oid"], (1, 2),
                          {"id": {"level": 1, "index": 6}, "value": "banc-client-is12"})
         t.join()

@@ -1,6 +1,6 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
 """La version de Bobi.Studio est VISIBLE, et la page Mises à jour la confronte à l'amont.
 
 ★ CE QU'ON RÉPARE. `app/version.py` fait autorité depuis le 2026-09-02, et deux routes savent
@@ -31,7 +31,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import config, database                                   ***REMOVED*** noqa: E402
+from app import config, database                                   # noqa: E402
 
 ECHECS = []
 
@@ -42,12 +42,12 @@ def verifier(cond, libelle):
         ECHECS.append(libelle)
 
 
-***REMOVED*** Les cinq formes que `GET /api/update/core` peut rendre, et ce qu'on doit lire à l'écran.
-***REMOVED*** ⚠ AUCUN NUMÉRO DE VERSION EN DUR. `ICI` est la version réelle du code — l'y recopier obligerait
-***REMOVED*** à éditer ce fichier à chaque release, et un `sed` global y a déjà rendu la version installée
-***REMOVED*** IDENTIQUE à la publiée, ce qui vidait de son sens le cas « mise à jour disponible ». `AMONT` est
-***REMOVED*** volontairement un numéro distinct et plus élevé.
-from app.version import VERSION as ICI                              ***REMOVED*** noqa: E402
+# Les cinq formes que `GET /api/update/core` peut rendre, et ce qu'on doit lire à l'écran.
+# ⚠ AUCUN NUMÉRO DE VERSION EN DUR. `ICI` est la version réelle du code — l'y recopier obligerait
+# à éditer ce fichier à chaque release, et un `sed` global y a déjà rendu la version installée
+# IDENTIQUE à la publiée, ce qui vidait de son sens le cas « mise à jour disponible ». `AMONT` est
+# volontairement un numéro distinct et plus élevé.
+from app.version import VERSION as ICI                              # noqa: E402
 AMONT = "99.0.0"
 
 CAS = [
@@ -73,8 +73,8 @@ CAS = [
      [ICI, "cat-chip old"], ["cat-core-btn"]),
 ]
 
-***REMOVED*** Le chrome de la page (témoin de connexion, minuteries, stockage local) s'exécute au chargement :
-***REMOVED*** on lui donne de quoi ne pas planter, sans rien simuler de plus que nécessaire.
+# Le chrome de la page (témoin de connexion, minuteries, stockage local) s'exécute au chargement :
+# on lui donne de quoi ne pas planter, sans rien simuler de plus que nécessaire.
 STUB = """
 global.window = global;
 global.window.addEventListener = function(){};
@@ -110,13 +110,13 @@ def main():
     database.db_create_user("essai", hash_password("Tulipe-Vent-9312"), "admin", None, None, None)
     cli = _main.app.test_client()
 
-    ***REMOVED*** ── 1. La version est VISIBLE. `/login` d'abord : sans session, c'est le cas qui prouve
-    ***REMOVED***      que l'injection ne dépend pas d'une route métier.
+    # ── 1. La version est VISIBLE. `/login` d'abord : sans session, c'est le cas qui prouve
+    #      que l'injection ne dépend pas d'une route métier.
     print("\n── la version apparaît dans les pages")
     verifier(VERSION in cli.get("/login").get_data(as_text=True),
              f"/login affiche {VERSION} (sans session)")
-    ***REMOVED*** `/setup` ne s'affiche que tant qu'AUCUN compte n'existe : on l'interroge donc avant de
-    ***REMOVED*** créer l'administrateur, avec un client neuf.
+    # `/setup` ne s'affiche que tant qu'AUCUN compte n'existe : on l'interroge donc avant de
+    # créer l'administrateur, avec un client neuf.
     import main as _m
     _base2 = os.path.join(tempfile.mkdtemp(), "t2.db")
     config.DB_PATH = _base2
@@ -133,7 +133,7 @@ def main():
     for url in ("/", "/aide", "/settings", "/setup/wizard?force=1"):
         verifier(VERSION in cli.get(url).get_data(as_text=True), f"{url} affiche {VERSION}")
 
-    ***REMOVED*** ── 2. Le bloc du cœur, EXÉCUTÉ sur chaque forme de réponse.
+    # ── 2. Le bloc du cœur, EXÉCUTÉ sur chaque forme de réponse.
     print("\n── catCoreCharger() sur les cinq réponses possibles")
     page = cli.get("/settings").get_data(as_text=True)
     blocs = "\n;\n".join(re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", page, re.S))

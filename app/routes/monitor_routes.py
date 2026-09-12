@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Monitoring WebRTC par utilisateur (app/monitor.py) : un container `streamer` dédié par
 utilisateur (hostname `monitor-u<uid>`), créé à la demande, re-pointable sur n'importe quel shm
@@ -139,11 +139,11 @@ def player_dedicated_monitor_create(vmid):
                     mimetype="text/plain; charset=utf-8",
                     headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"})
 
-***REMOVED*** ─── Aperçu dédié d'un conteneur quelconque ────────────────────────────────────────────────
-***REMOVED*** Généralisation des deux routes player ci-dessus. Le player est un cas particulier où la source
-***REMOVED*** se DÉDUIT du hostname ; ailleurs il faut la dire. Un scope, par exemple, ne produit rien : ce
-***REMOVED*** qu'on veut voir est ce qu'il MESURE, une source câblée ailleurs. L'appelant qui connaît cette
-***REMOVED*** source la passe ; le backend ne devine pas.
+# ─── Aperçu dédié d'un conteneur quelconque ────────────────────────────────────────────────
+# Généralisation des deux routes player ci-dessus. Le player est un cas particulier où la source
+# se DÉDUIT du hostname ; ailleurs il faut la dire. Un scope, par exemple, ne produit rien : ce
+# qu'on veut voir est ce qu'il MESURE, une source câblée ailleurs. L'appelant qui connaît cette
+# source la passe ; le backend ne devine pas.
 
 @bp.route("/api/containers/<int:vmid>/preview", methods=["GET"])
 @require_login
@@ -154,8 +154,8 @@ def container_preview_status(vmid):
     if err:
         return err
     st = monitor.dedicated_status(vmid)
-    ***REMOVED*** `gateway_ready` est DANS la réponse : sans passerelle, l'UI doit dire pourquoi le bouton
-    ***REMOVED*** ne servira à rien, pas laisser l'exploitant cliquer et attendre.
+    # `gateway_ready` est DANS la réponse : sans passerelle, l'UI doit dire pourquoi le bouton
+    # ne servira à rien, pas laisser l'exploitant cliquer et attendre.
     st["gateway_ready"] = monitor.gateway_ready()
     return jsonify(st)
 

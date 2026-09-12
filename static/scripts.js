@@ -220,7 +220,7 @@ function matchesFilter(c) {
         return false;
     const q = (filterState.q || '').trim().toLowerCase();
     if (q) {
-        const hay = [c.hostname, '***REMOVED***' + c.vmid, c.vmid, c.ip, c.source, c.shm_out, containerType(c)]
+        const hay = [c.hostname, '#' + c.vmid, c.vmid, c.ip, c.source, c.shm_out, containerType(c)]
             .filter(Boolean).join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
     }
@@ -257,13 +257,13 @@ function switchMainTab(name) {
     // L'onglet vit dans l'ADRESSE : sans ça, recharger renvoie à « Surveillance » et un lien vers
     // « la page Containers, onglet Ressources » n'existe pas. `replaceState` : changer d'onglet ne
     // doit pas remplir l'historique de navigation.
-    const h = '***REMOVED***' + name;
+    const h = '#' + name;
     if (location.hash !== h) history.replaceState(null, '', h);
 }
 
 // Onglet demandé par l'adresse (rechargement, lien partagé, retour navigateur).
 function _mainTabDepuisHash() {
-    const n = (location.hash || '').replace(/^***REMOVED***/, '');
+    const n = (location.hash || '').replace(/^#/, '');
     if (['creation', 'surveillance', 'ressources', 'inventaire'].includes(n)) switchMainTab(n);
 }
 if (document.getElementById('main-tab-surveillance')) {
@@ -403,9 +403,9 @@ function defaultDeployParams(t) {
 // (Container nu) reste toujours visible.
 function selectCreateCat(btn) {
     const cat = btn.dataset.cat || '__all';
-    document.querySelectorAll('***REMOVED***create-type-cats .dp-cat-btn').forEach(b =>
+    document.querySelectorAll('#create-type-cats .dp-cat-btn').forEach(b =>
         b.classList.toggle('active', b === btn));
-    document.querySelectorAll('***REMOVED***create-type-chips .create-type-chip').forEach(chip => {
+    document.querySelectorAll('#create-type-chips .create-type-chip').forEach(chip => {
         const c = chip.dataset.cat;
         chip.style.display = (cat === '__all' || c === cat || c === '__none') ? '' : 'none';
     });
@@ -712,7 +712,7 @@ async function ccRefreshNodes(btn) {
     if (btn) { btn.disabled = true; btn.textContent = '…'; }
     try { _ccNodes = (await (await fetch('/api/nodes')).json()).nodes || []; } catch (e) { /* on garde le relevé précédent */ }
     _ccNodesAt = Date.now();
-    document.querySelectorAll('***REMOVED***create-step2-rows .create-row').forEach(row => {
+    document.querySelectorAll('#create-step2-rows .create-row').forEach(row => {
         const sel = row.querySelector('.cc-node-sel');
         if (sel) {
             const garde = sel.value;
@@ -962,7 +962,7 @@ function removeStep2Row(btn) {
 
 // « + » seulement sur la dernière ligne ; « × » dès qu'il y a plusieurs lignes.
 function _ccRefreshRowButtons() {
-    const rows = [...document.querySelectorAll('***REMOVED***create-step2-rows .create-row')];
+    const rows = [...document.querySelectorAll('#create-step2-rows .create-row')];
     rows.forEach((row, i) => {
         const add = row.querySelector('.cc-add');
         const del = row.querySelector('.cc-del');
@@ -992,7 +992,7 @@ function _createSetWarn(msg) {
 // dans le panier (une par container).
 function addToCart() {
     if (!_curType) { _createSetWarn(window.t('js.create.pick_type_first')); return; }
-    const rows = [...document.querySelectorAll('***REMOVED***create-step2-rows .create-row')];
+    const rows = [...document.querySelectorAll('#create-step2-rows .create-row')];
     if (!rows.length) return;
 
     const lines = [];
@@ -1078,7 +1078,7 @@ function _postCreateOne(line, hostname) {
 }
 
 // Lance toute la fournée : une entrée = un container. Contrôle des collisions,
-// POST en parallèle, puis suivi dans ***REMOVED***batch-box. Bouton « Création… » + toast.
+// POST en parallèle, puis suivi dans #batch-box. Bouton « Création… » + toast.
 async function lancerCreation() {
     if (!_createCart.length) { _createSetWarn(window.t('js.create.cart_empty')); return; }
     _createSetWarn('');
@@ -1305,7 +1305,7 @@ function _batchRenderTable(batch, alerts) {
             const a = alerts ? _lastAlertFor(hn, alerts) : null;
             if (a && a.niveau === 'error') {
                 status = window.t('containers.batch.fail');
-                color  = 'var(--status-error-fg, ***REMOVED***ee0055)';
+                color  = 'var(--status-error-fg, #ee0055)';
                 detail = a.message;
             } else if (a && _ETAPES_LOT[a.msg_key]) {
                 status = window.t(_ETAPES_LOT[a.msg_key]);
@@ -1355,8 +1355,8 @@ async function startScript(vmid) { await fetch('/api/containers/' + vmid + '/sta
 
 async function saveContainerProject() {
     if (selectedDeployVmid === null) return;
-    const sel    = document.querySelector('***REMOVED***deploy-palette .dp-project-sel');
-    const status = document.querySelector('***REMOVED***deploy-palette .dp-project-status');
+    const sel    = document.querySelector('#deploy-palette .dp-project-sel');
+    const status = document.querySelector('#deploy-palette .dp-project-status');
     if (!sel) return;
     const projName = sel.options[sel.selectedIndex]?.text || '—';
     if (!confirm(window.t('js.project.media_restart') + '\n\n' + window.t('js.label.project') + ' : ' + projName + '\n\n' + window.t('js.confirm.continue'))) return;
@@ -1476,7 +1476,7 @@ function _pluginBadgeClass(t) {
 }
 
 // ─── Tier 1 : champs de config déclaratifs des plugins (config_schema) ───────
-function _cfEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&***REMOVED***39;'}[c])); }
+function _cfEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function _pluginFieldHtml(f){
     const k = _cfEsc(f.key), lbl = _cfEsc(f.label || f.key);
@@ -1583,7 +1583,7 @@ function _userScopeKeys(type){
 }
 
 function renderPluginConfig(host, type){
-    const box = host.querySelector('***REMOVED***dp-plugin-config');
+    const box = host.querySelector('#dp-plugin-config');
     if (!box) return;
     // La palette ne rend que les champs structurels (scope "system", défaut) —
     // les champs scope "user" s'éditent depuis la page du plugin (panneau Réglages).
@@ -1599,7 +1599,7 @@ function renderPluginConfig(host, type){
 }
 
 function collectPluginConfig(host){
-    return _readConfigBox(host.querySelector('***REMOVED***dp-plugin-config'));
+    return _readConfigBox(host.querySelector('#dp-plugin-config'));
 }
 
 // Bornes du config_schema (min/max/step sont déjà posés en attributs HTML par _pluginFieldHtml,
@@ -1644,7 +1644,7 @@ function selectedPluginVersion(host){
 
 function restorePluginConfig(host, type, params){
     renderPluginConfig(host, type);
-    const box = host.querySelector('***REMOVED***dp-plugin-config');
+    const box = host.querySelector('#dp-plugin-config');
     if (!box || box.hidden) return;
     box.querySelectorAll('[data-cf]').forEach(el => {
         const k = el.dataset.cf;
@@ -1735,7 +1735,7 @@ function applyDeployType(host, type, opts) {
 // Appelé par le clic sur une chip : met à jour l'input caché, applique le type,
 // et replie le sélecteur (l'utilisateur a confirmé son choix).
 function setDpType(chip, type) {
-    const host = chip.closest('***REMOVED***deploy-palette') || document.getElementById('deploy-palette');
+    const host = chip.closest('#deploy-palette') || document.getElementById('deploy-palette');
     const input = host.querySelector('.dp-type');
     if (input) input.value = type;
     onDeployTypeChange();
@@ -1820,7 +1820,7 @@ async function deployerPalette() {
     const fmtSel = host.querySelector('.dp-format-preset');
     if (_typeNeedsFormat(type) && (!fmtSel || !fmtSel.value)) {
         status.textContent = window.t('js.select_video_format');
-        status.style.color = 'var(--status-warning-fg, ***REMOVED***f5a623)';
+        status.style.color = 'var(--status-warning-fg, #f5a623)';
         return;
     }
     const fmt = _getFormatValues(host);
@@ -1865,7 +1865,7 @@ async function deployerPalette() {
 
     // Bornes du config_schema : refus AVANT l'envoi (le serveur revalide de toute façon —
     // plugins.validate_config → 400). Aucune valeur hors bornes n'est écrêtée en silence.
-    const bad = _cfValidate(host.querySelector('***REMOVED***dp-plugin-config'));
+    const bad = _cfValidate(host.querySelector('#dp-plugin-config'));
     if (bad) {
         status.textContent = '✕ ' + bad;
         status.style.color = 'var(--status-stopped-fg)';
@@ -2079,7 +2079,7 @@ function _renderCardInner(c, canDeploy, canDestroy, canMv) {
         <header class="card-head">
             <div class="card-title">
                 <h2 class="card-host">${escapeHtml(c.hostname)}</h2>
-                <span class="card-vmid">***REMOVED***${c.vmid}</span>
+                <span class="card-vmid">#${c.vmid}</span>
             </div>
             ${fpsBadge(c, dc)}
         </header>
@@ -2087,7 +2087,7 @@ function _renderCardInner(c, canDeploy, canDestroy, canMv) {
             <span class="${statusBadgeClass(c, dc)}" aria-live="polite">${statusLabel(c, dc)}</span>
             ${modeBadge(dc)}
             ${_fabricChildCount[c.vmid] ? `<span class="badge" title="${window.t('js.fabric_internals_title')}" style="cursor:pointer" onclick="event.stopPropagation(); if(!filterState.showFabricInternals) toggleFabricInternals()">⚙ ${window.t('js.fabric_internals_count').replace('{n}', _fabricChildCount[c.vmid])}</span>` : ''}
-            ${c.fabric_role === 'shard' ? `<span class="badge" title="Shard interne du tissu (parent ***REMOVED***${c.fabric_parent})">⊂ shard</span>` : ''}
+            ${c.fabric_role === 'shard' ? `<span class="badge" title="Shard interne du tissu (parent #${c.fabric_parent})">⊂ shard</span>` : ''}
             ${c.fabric_role === 'proxy' ? `<span class="badge" title="${window.t('js.proxy_pyramide_title')}">⊂ proxy</span>` : ''}
             ${c.gpu && c.gpu.gpu ? `<span class="badge ready" title="${window.t('containers.card.gpu_title')}${c.gpu.name ? ' ('+escapeHtml(c.gpu.name)+')' : ''}">⚡ ${window.t('containers.card.gpu')}</span>` : ''}
         </div>
@@ -2207,7 +2207,7 @@ function updateContainers(containers) {
 
 function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, c => ({
-        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&***REMOVED***39;'
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
     }[c]));
 }
 
@@ -2295,7 +2295,7 @@ function _alerteFenetre(ts) {
 function ouvrirJournalAlerte(vmid, ts) {
     const f = _alerteFenetre(ts);
     const c = (window.lastContainers || []).find(x => x.vmid === vmid);
-    BobiLogs.open(vmid, { nom: (c && c.hostname) || ('***REMOVED***' + vmid), since: f.since || '', until: f.until || '' });
+    BobiLogs.open(vmid, { nom: (c && c.hostname) || ('#' + vmid), since: f.since || '', until: f.until || '' });
 }
 
 function updateAlerts(alerts) {
@@ -2358,7 +2358,7 @@ let tallyState = {};
 
 async function ouvrirTally(vmid, hostname) {
     tallyVmid = vmid;
-    document.getElementById('tally-title').textContent = `${hostname} ***REMOVED***${vmid}`;
+    document.getElementById('tally-title').textContent = `${hostname} #${vmid}`;
     const cfg = await fetch('/api/containers/' + vmid + '/config').then(r => r.json());
     let dc = null;
     try { dc = cfg.deploy_config ? JSON.parse(cfg.deploy_config) : null; } catch(e) {}
@@ -2390,7 +2390,7 @@ function renderTallyList() {
         <div style="display:flex; align-items:center; gap:8px; padding:8px;
                     background:var(--bg-input); border:1px solid var(--border); border-radius:4px;
                     ${enabled ? '' : 'opacity:0.4'}">
-            <div style="flex:0 0 30px; color:var(--text-muted)">***REMOVED***${i + 1}</div>
+            <div style="flex:0 0 30px; color:var(--text-muted)">#${i + 1}</div>
             <div style="flex:1">${f.name || f.path.split('/').pop()}</div>
             ${enabled ? `
               ${tallyBtnGroup(i, 'L', cL)}
@@ -2403,16 +2403,16 @@ function renderTallyList() {
 
 function tallyBtnGroup(idx, slot, current) {
     const colors = [
-        { id: 'red',   bg: '***REMOVED***b91c1c', label: 'R' },
-        { id: 'green', bg: '***REMOVED***166534', label: 'V' },
-        { id: 'off',   bg: '***REMOVED***3a3a3a', label: '·' }
+        { id: 'red',   bg: '#b91c1c', label: 'R' },
+        { id: 'green', bg: '#166534', label: 'V' },
+        { id: 'off',   bg: '#3a3a3a', label: '·' }
     ];
     return `<span style="font-size:0.8em; color:var(--text-muted)">${slot}:</span>` +
         colors.map(c => `
             <button onclick="setTally(${idx}, '${slot}', '${c.id}')"
                 style="padding:4px 10px; border:none; border-radius:4px; cursor:pointer;
                        background:${c.bg}; color:white;
-                       outline:${current === c.id ? '2px solid ***REMOVED***ffffff' : 'none'};
+                       outline:${current === c.id ? '2px solid #ffffff' : 'none'};
                        outline-offset:1px;">${c.label}</button>
         `).join('');
 }
@@ -2544,7 +2544,7 @@ async function _restoreRun(pid, name, onlyVmids, preserveUuid) {
         if (failed.length) {
             const retryMsg = document.getElementById('restore-retry-msg');
             retryMsg.textContent = window.t('projects.failed_count').replace('{n}', failed.length) + ' '
-                + failed.map(f => `${f.hostname || ('***REMOVED***' + f.vmid)} (${f.reason})`).join(', ');
+                + failed.map(f => `${f.hostname || ('#' + f.vmid)} (${f.reason})`).join(', ');
             document.getElementById('restore-retry-btn').dataset.vmids =
                 JSON.stringify(failed.map(f => f.vmid));
             retryBar.style.display = 'flex';
@@ -2612,16 +2612,16 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ─── Wire/unwire intent venant de la home ────────────────────────
-// URL : /containers?wire_shm=cam1_0&wire_port=video***REMOVED***c-225
-//       /containers?unwire=1***REMOVED***c-225  (streamer)
-//       /containers?unwire=1&unwire_port=audio&unwire_shm=cam1_audio_0***REMOVED***c-228
+// URL : /containers?wire_shm=cam1_0&wire_port=video#c-225
+//       /containers?unwire=1#c-225  (streamer)
+//       /containers?unwire=1&unwire_port=audio&unwire_shm=cam1_audio_0#c-228
 function handleWireIntent() {
     console.log('[wire-intent] start, URL=', window.location.href);
     const params = new URLSearchParams(window.location.search);
     const wire   = params.get('wire_shm');
     const unwire = params.get('unwire') === '1';
     const hash   = window.location.hash || '';
-    const m = hash.match(/^***REMOVED***c-(\d+)/);
+    const m = hash.match(/^#c-(\d+)/);
     console.log('[wire-intent] parsed', { wire, unwire, hash, matched: !!m });
     if (!m || (!wire && !unwire)) { console.log('[wire-intent] no intent, skip'); return; }
     const vmid = parseInt(m[1]);
@@ -2632,7 +2632,7 @@ function handleWireIntent() {
         const card = document.getElementById('c-' + vmid);
         if (!card) {
             if (tries < 40) { setTimeout(() => waitAndApply(tries + 1), 100); return; }
-            console.error('[wire-intent] card ***REMOVED***c-' + vmid + ' not found after 4s');
+            console.error('[wire-intent] card #c-' + vmid + ' not found after 4s');
             showWireToast(window.t('js.container_not_found').replace('{vmid}', vmid), 'error');
             return;
         }
@@ -2658,7 +2658,7 @@ function handleWireIntent() {
             }
             // Nettoyage URL différé de 3s pour qu'on puisse la voir
             setTimeout(() => {
-                history.replaceState(null, '', window.location.pathname + '***REMOVED***c-' + vmid);
+                history.replaceState(null, '', window.location.pathname + '#c-' + vmid);
             }, 3000);
         }, 80);
     };
@@ -2672,7 +2672,7 @@ function showWireToast(msg, kind) {
     setTimeout(() => { t.classList.add('wire-toast-out'); setTimeout(() => t.remove(), 400); }, 4500);
 }
 function flashDeployButton() {
-    const btn = document.querySelector('***REMOVED***deploy-palette .dp-deploy-btn');
+    const btn = document.querySelector('#deploy-palette .dp-deploy-btn');
     if (!btn) return;
     btn.classList.add('dp-deploy-flash');
     setTimeout(() => btn.classList.remove('dp-deploy-flash'), 2400);
@@ -3061,7 +3061,7 @@ function invTabActivate() {
 
 function _invEsc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, c => (
-        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&***REMOVED***39;' }[c]));
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 function _invBadge(classe) {

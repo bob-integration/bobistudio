@@ -1,11 +1,11 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Surveillance du format des sources câblées aux sorties TX — étage 3 de docs/reference/TX_LAYOUTS.md.
 
-***REMOVED******REMOVED*** Le problème
+## Le problème
 
 Le gate de câblage (`cabling._tx_slot_mismatch`) garantit un INVARIANT au moment du geste :
 **le format de la source câblée à un slot TX concorde avec le format déclaré du slot.** C'est cet
@@ -16,7 +16,7 @@ mur multiview est reconfiguré) : l'invariant se brise **sans geste humain**. La
 alors dans son SDP un format qu'elle n'émet plus — non-conformité 2110, et piège pour l'équipement
 d'en face.
 
-***REMOVED******REMOVED*** Ce qu'on fait (décision produit, dans CET ordre)
+## Ce qu'on fait (décision produit, dans CET ordre)
 
 1. **ALERTER d'abord** — l'opérateur doit savoir AVANT que le système n'agisse (`warning`, texte
    explicite qui nomme la sortie, le format annoncé et le format reçu).
@@ -30,7 +30,7 @@ conteneur UDC démarre.
 
 Réglage coupé (`tx_format_autoudc=False`) ⇒ **l'alerte reste** : jamais de contrôle muet.
 
-***REMOVED******REMOVED*** Source de vérité
+## Source de vérité
 
 Le `flow_def` MXL du producteur (`cabling._flow_def_format`), pas le `deploy_config` — c'est
 précisément le cas où la DB du producteur ment (une source qui a basculé sans redéploiement).
@@ -45,10 +45,10 @@ import time
 log = logging.getLogger(__name__)
 
 _started = False
-_signaled = {}      ***REMOVED*** (vmid, slot) → signature d'écart déjà alertée (cache RAM du chemin chaud)
-***REMOVED*** Le MÊME état, SURVIVANT au redémarrage (cf. app/episodes.py) : une dérive de format dure jusqu'à
-***REMOVED*** correction, la ré-annoncer à chaque boot est du bruit. Purgé des conteneurs disparus — un vmid
-***REMOVED*** recyclé qui hériterait d'une signature resterait SILENCIEUX sur sa propre dérive.
+_signaled = {}      # (vmid, slot) → signature d'écart déjà alertée (cache RAM du chemin chaud)
+# Le MÊME état, SURVIVANT au redémarrage (cf. app/episodes.py) : une dérive de format dure jusqu'à
+# correction, la ré-annoncer à chaque boot est du bruit. Purgé des conteneurs disparus — un vmid
+# recyclé qui hériterait d'une signature resterait SILENCIEUX sur sa propre dérive.
 from .episodes import EtatEpisodes as _Episodes
 _episodes = _Episodes("tx_format")
 
@@ -108,7 +108,7 @@ def _reconfigure_udc(udc_vmid, want):
         p.update(body)
         db_update_deploy_config(udc_vmid, "udc", p)
     except Exception as e:
-        log.warning("UDC ***REMOVED***%s : persistance du format : %s", udc_vmid, e)
+        log.warning("UDC #%s : persistance du format : %s", udc_vmid, e)
     db_add_alert("alert.deploy.udc_reconfigure_format", "info", vmid=udc_vmid, kind="deploy",
                  params={"vmid": udc_vmid, "width": want["width"], "height": want["height"],
                          "scan": want["scan"], "fps": want["fps"]})
@@ -171,7 +171,7 @@ def scan_once():
                 continue
             real = _flow_def_format(src_vmid, shm)
             if not real:
-                continue                        ***REMOVED*** flux absent / illisible → ce n'est pas une dérive
+                continue                        # flux absent / illisible → ce n'est pas une dérive
             axes = _txm.format_diff(real, sf)
             key = (vmid, i)
             if not axes:
@@ -179,9 +179,9 @@ def scan_once():
                 continue
             sig = "|".join("%s=%s" % (a["axis"], a["source"]) for a in axes)
             if key not in _signaled:
-                _signaled[key] = _episodes.get(key)     ***REMOVED*** reprise après (re)démarrage
+                _signaled[key] = _episodes.get(key)     # reprise après (re)démarrage
             if _signaled.get(key) == sig:
-                continue                        ***REMOVED*** déjà alerté pour CETTE dérive : on ne rabâche pas
+                continue                        # déjà alerté pour CETTE dérive : on ne rabâche pas
             _signaled[key] = sig
             _episodes.poser(key, sig)
             label = _txm._slot_label(params, i)
@@ -189,23 +189,23 @@ def scan_once():
                                             f.get("scan") or "p", f.get("fps"))
             drifts.append({"vmid": vmid, "slot": i, "label": label, "shm": shm,
                            "src_vmid": src_vmid, "axes": axes})
-            ***REMOVED*** 1) L'ALERTE D'ABORD : l'opérateur doit savoir avant que le système n'agisse.
+            # 1) L'ALERTE D'ABORD : l'opérateur doit savoir avant que le système n'agisse.
             _cle = "alert.tx_stall.derive_format_auto" if auto else "alert.tx_stall.derive_format_manuel"
             db_add_alert(_cle, "warning", kind="tx_stall",
-                        params={"h": c.get("hostname") or "***REMOVED***%s" % vmid, "label": label, "shm": shm,
+                        params={"h": c.get("hostname") or "#%s" % vmid, "label": label, "shm": shm,
                                 "reel": _fmt(real), "annonce": _fmt(sf)})
             if not auto:
                 continue
-            ***REMOVED*** 2) PUIS l'insertion. Changer la source d'un slot TX n'est PAS dans compute_sig → swap,
-            ***REMOVED***    zéro commit TM. On préfère RÉUTILISER un UDC libre (pas de conteneur de plus).
+            # 2) PUIS l'insertion. Changer la source d'un slot TX n'est PAS dans compute_sig → swap,
+            #    zéro commit TM. On préfère RÉUTILISER un UDC libre (pas de conteneur de plus).
             if _container_type(src_vmid) == "udc":
-                _reconfigure_udc(src_vmid, sf)      ***REMOVED*** jamais d'UDC devant un UDC (cascade)
+                _reconfigure_udc(src_vmid, sf)      # jamais d'UDC devant un UDC (cascade)
                 continue
             pending.append((src_vmid, shm, vmid, i))
     if pending:
-        ***REMOVED*** SÉQUENTIEL, dans UN thread : « UDC libre » = « sortie consommée par personne » — deux
-        ***REMOVED*** insertions en parallèle éliraient le MÊME UDC libre (sa sortie n'est pas encore câblée)
-        ***REMOVED*** et la seconde écraserait le format de la première. Constaté au banc.
+        # SÉQUENTIEL, dans UN thread : « UDC libre » = « sortie consommée par personne » — deux
+        # insertions en parallèle éliraient le MÊME UDC libre (sa sortie n'est pas encore câblée)
+        # et la seconde écraserait le format de la première. Constaté au banc.
         threading.Thread(target=_insert_all, args=(pending,), daemon=True, name="tx-fmt-udc").start()
     return drifts
 
@@ -225,7 +225,7 @@ def _insert_all(pending):
             with verrou_vmid(vmid, op="tx-format-drift"):
                 _insert_udc(src_vmid, shm, vmid, "video", i, "create", None, None)
         except Exception as e:
-            log.error("insertion UDC (dérive de format TX ***REMOVED***%s slot %s) : %s", vmid, i, e)
+            log.error("insertion UDC (dérive de format TX #%s slot %s) : %s", vmid, i, e)
 
 
 def start(interval=60):

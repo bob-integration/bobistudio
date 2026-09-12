@@ -33,9 +33,9 @@
   const STYLE = `<style>
     /* ── Destinations 2110 — styles étendus ──────────────────────────── */
     .io2110-engine{margin:0 0 22px}
-    /* Moteur visé par un deep-link « ***REMOVED***sources_2110/<vmid> » (raccourci de la page Câbles) :
+    /* Moteur visé par un deep-link « #sources_2110/<vmid> » (raccourci de la page Câbles) :
        les moteurs sont empilés sans sélection, il faut un repère visuel qui survive au refresh 3 s. */
-    .io2110-engine.io2110-engine-cible{box-shadow:0 0 0 2px var(--accent,***REMOVED***4a9eff);border-radius:8px;padding:8px 10px;margin-left:-10px;margin-right:-10px}
+    .io2110-engine.io2110-engine-cible{box-shadow:0 0 0 2px var(--accent,#4a9eff);border-radius:8px;padding:8px 10px;margin-left:-10px;margin-right:-10px}
     .io2110-engine > h3{margin:6px 0 8px;font-size:1em;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
     .io2110-engine > h3 small{color:var(--text-muted);font-weight:normal}
 
@@ -44,7 +44,7 @@
     .io2110-repli-lbl{font-size:0.78em;color:var(--text-muted);white-space:nowrap}
     .io2110-repli-sel{font-size:0.78em;padding:2px 6px;border-radius:4px;
       border:1px solid var(--border);background:var(--bg-input);color:var(--text);cursor:pointer}
-    .io2110-repli-sel:focus{outline:none;border-color:var(--accent,***REMOVED***7aa2c8)}
+    .io2110-repli-sel:focus{outline:none;border-color:var(--accent,#7aa2c8)}
 
     /* Bandeau de sûreté du moteur (mode du port + budget RL + layout + bac de maintenance) */
     .io2110-safety{margin:2px 0 10px}
@@ -61,21 +61,21 @@
       flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .io2110-fpsbadge{font-size:0.75em;font-weight:700;padding:2px 6px;border-radius:4px;
       font-family:var(--font-mono,monospace);white-space:nowrap;flex:none}
-    .io2110-fpsbadge.ok  {background:rgba(52,211,153,.13);color:***REMOVED***22c55e}
-    .io2110-fpsbadge.warn{background:rgba(234,179,8,.13);color:***REMOVED***eab308}
+    .io2110-fpsbadge.ok  {background:rgba(52,211,153,.13);color:#22c55e}
+    .io2110-fpsbadge.warn{background:rgba(234,179,8,.13);color:#eab308}
     .io2110-fpsbadge.off {background:rgba(127,127,127,.1);color:var(--text-muted)}
 
     /* La ligne d'essence utilise le gabarit PARTAGÉ «.io-flow» (static/css/base.css), commun
        aux réceptions et aux émissions. Ne restent ici que les pièces propres aux sorties. */
     /* Ressource NMOS liée : le TON la distingue, pas la taille — un 0.82em dans une cellule
        déjà en 0.82em se multipliait, et le nom finissait plus petit que l'adresse qu'il qualifie. */
-    .io2110-bound{color:***REMOVED***7aa2f7;font-weight:600;white-space:nowrap}
+    .io2110-bound{color:#7aa2f7;font-weight:600;white-space:nowrap}
     .io2110-gencell{min-width:86px;display:inline-flex;align-items:center}
     .io2110-identcell{min-width:112px;display:inline-flex;align-items:center;gap:5px}
     .io2110-sdpcell{min-width:64px;display:inline-flex;align-items:center}
-    .io2110-flow.video{background:rgba(96,165,250,.08);border-left:3px solid ***REMOVED***60a5fa}
-    .io2110-flow.audio{background:rgba(52,211,153,.07);border-left:3px solid ***REMOVED***34d399}
-    .io2110-flow.anc  {background:rgba(209,134,22,.08);border-left:3px solid ***REMOVED***d18616}
+    .io2110-flow.video{background:rgba(96,165,250,.08);border-left:3px solid #60a5fa}
+    .io2110-flow.audio{background:rgba(52,211,153,.07);border-left:3px solid #34d399}
+    .io2110-flow.anc  {background:rgba(209,134,22,.08);border-left:3px solid #d18616}
     /* Les boutons d'édition sont des «.btn .btn-sm» ; il leur reste à ne pas se laisser
        comprimer par le conteneur souple qui les entoure. */
     .io2110-editbtn{flex:none}
@@ -93,13 +93,13 @@
      * posée à l'exécution, elle gagne toujours à spécificité égale. */
     .io2110-tone-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;
       display:flex;align-items:center;justify-content:center}
-    .io2110-tone-box{background:var(--surface,***REMOVED***1b1b1f);border:1px solid var(--border);border-radius:10px;
+    .io2110-tone-box{background:var(--surface,#1b1b1f);border:1px solid var(--border);border-radius:10px;
       padding:18px 20px;min-width:340px;max-width:92vw;box-shadow:0 10px 40px rgba(0,0,0,.5)}
     .io2110-tone-box h4{margin:0 0 12px;font-size:1.02em}
     .io2110-tone-box .tt-row{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:0.9em}
     .io2110-tone-box .tt-row label{flex:none;width:90px;color:var(--text-muted)}
     .io2110-tone-box input[type=number]{width:90px;padding:3px 6px;border:1px solid var(--border);
-      border-radius:4px;background:var(--bg,***REMOVED***111);color:var(--text)}
+      border-radius:4px;background:var(--bg,#111);color:var(--text)}
     /* Canaux de tonalité : «.ctl-strips» / «.ctl-strip» du catalogue (une colonne par canal, le
        filet d'1 px EST la séparation). Ne reste ici que le nombre de colonnes. */
     .io2110-tone-chans{grid-template-columns:repeat(8,1fr);margin:10px 0}
@@ -118,7 +118,7 @@
     .io2110-txmodel-note{margin:6px 0;padding:6px 8px;font-size:0.8em;line-height:1.4;
       color:var(--text-muted);border:1px dashed var(--border);border-radius:6px;
       background:var(--accent-soft,rgba(122,162,200,.10))}
-    .io2110-txmodel-note a{color:var(--accent,***REMOVED***7aa2c8);white-space:nowrap}
+    .io2110-txmodel-note a{color:var(--accent,#7aa2c8);white-space:nowrap}
 
     /* « Option A » : flux composables — retrait granulaire + ajout par destination.
        Les boutons ✕ et + sont des COMMANDES du socle («.btn .btn-sm») : il ne reste ici que
@@ -139,13 +139,13 @@
     .nic-xdp-fill{height:100%;border-radius:4px;transition:width .6s}
     .nic-xdp-active{position:absolute;top:0;bottom:0;left:0;border-radius:4px 0 0 4px;transition:width .5s}
     .nic-xdp-pending{position:absolute;top:0;bottom:0;opacity:.5;transition:left .5s,width .5s;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.6) 0 3px,transparent 3px 7px)}
-    .nic-xdp-over{position:absolute;top:0;bottom:0;opacity:.7;transition:left .5s,width .5s;background-color:***REMOVED***e8a33d;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.6) 0 3px,transparent 3px 7px)}
+    .nic-xdp-over{position:absolute;top:0;bottom:0;opacity:.7;transition:left .5s,width .5s;background-color:#e8a33d;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.6) 0 3px,transparent 3px 7px)}
     .nic-xdp-free{position:absolute;top:0;bottom:0;background:var(--text-muted);opacity:.15;transition:left .5s,width .5s}
-    .nic-xdp-mark{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:***REMOVED***fff;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
+    .nic-xdp-mark{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
     .nic-bar-est{font-style:italic;color:var(--text-muted)}
     .nic-model-lbl{font-size:0.76em;color:var(--text-muted);margin:2px 0 1px}
-    .nic-shared{color:***REMOVED***e8a33d}
-    .io2110-bound{color:***REMOVED***7aa2f7;font-size:0.82em;font-weight:600}
+    .nic-shared{color:#e8a33d}
+    .io2110-bound{color:#7aa2f7;font-size:0.82em;font-weight:600}
 
     /* ── Multi-NIC : bande de ports + détail par NIC ─────────────────── */
     .io2110-nicbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 8px}
@@ -157,8 +157,8 @@
     .pc-top{display:flex;align-items:center;gap:6px}
     .pc-name{font-weight:700;font-family:var(--font-mono,monospace)}
     .pc-net{font-size:0.82em;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .pc-prim{font-size:0.62em;font-weight:700;letter-spacing:.04em;color:***REMOVED***e8a33d;flex:none}
-    .pc-down{font-size:0.7em;color:var(--status-stopped-fg,***REMOVED***f87171);flex:none}
+    .pc-prim{font-size:0.62em;font-weight:700;letter-spacing:.04em;color:#e8a33d;flex:none}
+    .pc-down{font-size:0.7em;color:var(--status-stopped-fg,#f87171);flex:none}
     .pc-load{display:flex;align-items:center;gap:5px}
     .pc-loadval{font-variant-numeric:tabular-nums;min-width:78px}
     .pc-loadval.est{font-style:italic;color:var(--text-muted)}
@@ -194,9 +194,9 @@
     });
   }
 
-  const _head = e => '<h3>' + esc(e.hostname) + ' <small>· ' + esc(e.node || '') + ' · ***REMOVED***' + e.vmid + '</small></h3>';
+  const _head = e => '<h3>' + esc(e.hostname) + ' <small>· ' + esc(e.node || '') + ' · #' + e.vmid + '</small></h3>';
 
-  // ── Moteur visé par un deep-link (« /io***REMOVED***sources_2110/<vmid> », raccourci de la page Câbles) ──
+  // ── Moteur visé par un deep-link (« /io#sources_2110/<vmid> », raccourci de la page Câbles) ──
   // Les moteurs sont empilés sans notion de sélection : on se contente de surligner + scroller.
   let _cible = null, _cibleScrolled = false;
   function _viser(vmid) {
@@ -367,7 +367,7 @@
     // Un SDP PAR ESSENCE : c'est ce que NMOS publie, et c'est ce que le Rx propose déjà.
     if (!ess.sdp_href) return '<span class="io-flow-sdp"></span>';
     return `<span class="io-flow-sdp"><button type="button" class="btn btn-sm io2110-sdp"
-        aria-haspopup="dialog" onclick="IO2110.viewSdp('${esc(ess.sdp_href)}','Tx ***REMOVED***${slot + 1} · ${esc(tagLabel)}')"
+        aria-haspopup="dialog" onclick="IO2110.viewSdp('${esc(ess.sdp_href)}','Tx #${slot + 1} · ${esc(tagLabel)}')"
         title="${esc(T('js.io2110.sdp_show_tip', 'Afficher le SDP annoncé pour {label}').replace('{label}', tagLabel))}"><span class="ctl-led on"
         style="--ctl-led-col:var(--status-running-fg)"></span>SDP…</button></span>`;
   }
@@ -709,10 +709,10 @@
   // Badge état PTP d'un port (SLAVE/MASTER/PASSIVE/LISTENING/FAULTY…) — couleur par état.
   function _ptpBadge(state){
     if (!state) return '';
-    const M = {SLAVE:['SLAVE','var(--status-running-fg,***REMOVED***22c55e)'], MASTER:['MASTER','***REMOVED***60a5fa'],
-      GRAND_MASTER:['GRAND MASTER','***REMOVED***60a5fa'], PRE_MASTER:['PRE-MASTER','***REMOVED***60a5fa'],
-      PASSIVE:['PASSIVE','var(--text-muted)'], LISTENING:['LISTENING','***REMOVED***e8a33d'],
-      UNCALIBRATED:['UNCAL','***REMOVED***e8a33d'], FAULTY:['FAULTY','var(--status-stopped-fg,***REMOVED***f87171)'],
+    const M = {SLAVE:['SLAVE','var(--status-running-fg,#22c55e)'], MASTER:['MASTER','#60a5fa'],
+      GRAND_MASTER:['GRAND MASTER','#60a5fa'], PRE_MASTER:['PRE-MASTER','#60a5fa'],
+      PASSIVE:['PASSIVE','var(--text-muted)'], LISTENING:['LISTENING','#e8a33d'],
+      UNCALIBRATED:['UNCAL','#e8a33d'], FAULTY:['FAULTY','var(--status-stopped-fg,#f87171)'],
       DISABLED:['DISABLED','var(--text-muted)'], INITIALIZING:['INIT','var(--text-muted)']};
     const [lbl,c] = M[state] || [state, 'var(--text-muted)'];
     return `<span class="pc-ptp" style="color:${c};border-color:${c}" title="${esc(T('js.io2110.ptp_state_tip', 'État PTP du port : {state}').replace('{state}', state))}">⏱ ${lbl}</span>`;
@@ -819,8 +819,8 @@
     const freeQ = Math.max(0, reserved - planned);
     const overQ = Math.max(0, planned - reserved);
     const pct   = v => Math.min(100, Math.max(0, v / hw * 100));
-    const col   = (active >= reserved) ? 'var(--status-stopped-fg,***REMOVED***f87171)'
-                : (hot <= 1 ? '***REMOVED***e8a33d' : 'var(--status-running-fg,***REMOVED***22c55e)');
+    const col   = (active >= reserved) ? 'var(--status-stopped-fg,#f87171)'
+                : (hot <= 1 ? '#e8a33d' : 'var(--status-running-fg,#22c55e)');
     const aPct = pct(active), rPct = pct(reserved), planPct = pct(planned);
     const hotL = aPct, hotW = Math.max(0, Math.min(planPct, rPct) - aPct);
     const ovrL = Math.max(aPct, rPct), ovrW = Math.max(0, planPct - ovrL);
@@ -831,7 +831,7 @@
       : T('js.io2110.q_ok', '{active} live · +{pend} planifié · {free} libre / {hw} files').replace('{active}', active).replace('{pend}', pend).replace('{free}', freeQ).replace('{hw}', hw)) + (scope || '');
     return `<div class="nic-bar-wrap">
       <span class="nic-bar-lbl">Queues XDP</span>
-      <span class="nic-bar-val" style="color:${overQ ? '***REMOVED***e8a33d' : col}">${txt}</span>
+      <span class="nic-bar-val" style="color:${overQ ? '#e8a33d' : col}">${txt}</span>
       <div class="nic-xdp-track">
         <div class="nic-xdp-free"    style="left:${freeL}%;width:${freeW}%"></div>
         <div class="nic-xdp-pending" style="left:${hotL}%;width:${hotW}%;background-color:${col}"></div>
@@ -851,8 +851,8 @@
     dropped = Math.max(0, dropped || 0);
     const pct  = Math.min(100, Math.round(active / cap * 100));
     const over = dropped > 0 || active > cap;
-    const col  = over ? 'var(--status-stopped-fg,***REMOVED***f87171)'
-               : (active >= cap ? '***REMOVED***e8a33d' : 'var(--status-running-fg,***REMOVED***22c55e)');
+    const col  = over ? 'var(--status-stopped-fg,#f87171)'
+               : (active >= cap ? '#e8a33d' : 'var(--status-running-fg,#22c55e)');
     // Le plafond RL est une limite DURE de la carte : l'atteindre EST l'alerte, le dépasser est
     // la faute. Rien d'intermédiaire à matérialiser → jauge sans trait de seuil.
     const etat = over ? 'over' : (active >= cap ? 'warn' : '');
@@ -1084,7 +1084,7 @@
       }
       return `
       <div class="io2110-engine" id="io2110-eng-${e.vmid}" data-vmid="${e.vmid}">
-        <h3>${esc(e.hostname)} <small>· ${esc(e.node || '')} · ***REMOVED***${e.vmid}</small>
+        <h3>${esc(e.hostname)} <small>· ${esc(e.node || '')} · #${e.vmid}</small>
           <span class="io2110-repli">
             <span class="io2110-repli-lbl">${esc(T('js.io2110.fallback_lbl', 'Repli'))}</span>
             <select class="ctl-select io2110-repli-sel" onchange="IO2110.setFallback(${e.vmid},this.value)">
@@ -1119,7 +1119,7 @@
             return `
           <div class="io2110-txcard">
             <div class="io2110-slothdr ctl-dense">
-              <span class="io2110-slotnum">Tx ***REMOVED***${t.slot + 1}</span>
+              <span class="io2110-slotnum">Tx #${t.slot + 1}</span>
               ${_stateChip(e, t)}
               ${/* L'un OU l'autre, jamais les deux : le sélecteur porte déjà le port effectif dans
                     son « Auto (…) », et l'afficher à côté du badge dirait deux fois la même chose
@@ -1163,7 +1163,7 @@
             ? `<button class="io-addrow" onclick="IO2110.removeTx(${e.vmid})">− Retirer le dernier TX</button>`
             : '';
           const modelNote = dpdkTx
-            ? `<div class="io2110-txmodel-note">${esc(window.t('js.io2110.tx_model_note'))} <a href="/settings***REMOVED***reseau">${esc(window.t('js.io2110.tx_model_link'))}</a></div>`
+            ? `<div class="io2110-txmodel-note">${esc(window.t('js.io2110.tx_model_note'))} <a href="/settings#reseau">${esc(window.t('js.io2110.tx_model_link'))}</a></div>`
             : '';
           // Remède famine : ≥1 destination activée mais sans flux (tx_stalled) → réalignement des files.
           const realignBtn = allTx.some(t => t.tx_stalled)
@@ -1298,9 +1298,9 @@
       document.body.appendChild(modal);
       const close = () => modal.remove();
       modal.addEventListener('click', e => { if (e.target === modal) close(); });
-      modal.querySelector('***REMOVED***io2110-bindcancel').onclick = close;
-      modal.querySelector('***REMOVED***io2110-bindok').onclick = async () => {
-        const rid = modal.querySelector('***REMOVED***io2110-bindsel').value;
+      modal.querySelector('#io2110-bindcancel').onclick = close;
+      modal.querySelector('#io2110-bindok').onclick = async () => {
+        const rid = modal.querySelector('#io2110-bindsel').value;
         close();
         const r = await fetch('/api/nmos/bind', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1343,23 +1343,23 @@
         </div>
         <textarea id="sdp-ta" readonly spellcheck="false" rows="14"
           style="width:100%;box-sizing:border-box;font-family:var(--font-mono,monospace);font-size:0.8em;
-                 padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg,***REMOVED***111);
+                 padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg,#111);
                  color:var(--text);resize:vertical">${esc(txt)}</textarea>`;
       document.body.appendChild(modal);
       const onKey = ev => { if (ev.key === 'Escape') close(); };
       const close = () => { modal.remove(); document.removeEventListener('keydown', onKey); };
       document.addEventListener('keydown', onKey);
       modal.addEventListener('click', ev => { if (ev.target === modal) close(); });
-      modal.querySelector('***REMOVED***sdp-close').addEventListener('click', close);
-      modal.querySelector('***REMOVED***sdp-copy').addEventListener('click', () => {
+      modal.querySelector('#sdp-close').addEventListener('click', close);
+      modal.querySelector('#sdp-copy').addEventListener('click', () => {
         window.copierTexte(txt);
-        const b = modal.querySelector('***REMOVED***sdp-copy'), o = b.textContent;
+        const b = modal.querySelector('#sdp-copy'), o = b.textContent;
         b.textContent = T('js.io2110.copied', 'Copié ✓'); setTimeout(() => { b.textContent = o; }, 1200);
       });
     },
 
     async setDest(vmid, slot, essence, leg, cur, audioIdx) {
-      const aiSuffix = (essence === 'audio' && audioIdx != null) ? ` ***REMOVED***${audioIdx + 1}` : '';
+      const aiSuffix = (essence === 'audio' && audioIdx != null) ? ` #${audioIdx + 1}` : '';
       const lbl = { video: T('js.io2110.ess_video', 'Vidéo'), audio: 'Audio', anc: 'ANC' }[essence] || essence;
       const v = prompt(`Destination 2110 — ${lbl}${aiSuffix}${leg ? ' (leg 2022-7)' : ''} (multicast:port) :`, cur || '239.0.0.1:5000');
       if (!v) return;
@@ -1468,7 +1468,7 @@
       const modal = document.createElement('div');
       modal.className = 'io2110-tone-modal';
       modal.innerHTML = `<div class="io2110-tone-box">
-        <h4>${esc(T('js.io2110.tone_title', '♪ Générateur de tonalité — Tx ***REMOVED***{slot} · audio {ai}')
+        <h4>${esc(T('js.io2110.tone_title', '♪ Générateur de tonalité — Tx #{slot} · audio {ai}')
               .replace('{slot}', slot + 1).replace('{ai}', ai + 1))}</h4>
         <div class="tt-row"><label>${esc(T('js.io2110.tone_enabled', 'Activé'))}</label>
           <input type="checkbox" class="ctl-switch" id="tt-en" ${tn.enabled ? 'checked' : ''}></div>
@@ -1504,11 +1504,11 @@
           el.title = `canal ${c + 1} — ${LBL[st[c]]}`;
         });
       });
-      modal.querySelector('***REMOVED***tt-cancel').addEventListener('click', close);
-      modal.querySelector('***REMOVED***tt-apply').addEventListener('click', async () => {
-        const enabled = modal.querySelector('***REMOVED***tt-en').checked;
-        const freq = parseInt(modal.querySelector('***REMOVED***tt-freq').value, 10) || 1000;
-        const level_db = parseFloat(modal.querySelector('***REMOVED***tt-lvl').value);
+      modal.querySelector('#tt-cancel').addEventListener('click', close);
+      modal.querySelector('#tt-apply').addEventListener('click', async () => {
+        const enabled = modal.querySelector('#tt-en').checked;
+        const freq = parseInt(modal.querySelector('#tt-freq').value, 10) || 1000;
+        const level_db = parseFloat(modal.querySelector('#tt-lvl').value);
         const active = st.map(s => s >= 1);
         const rupted = st.map(s => s === 2);
         const r = await fetch(`/api/containers/${vmid}/control/tone_tx`, {
@@ -1554,8 +1554,8 @@
       if (!r0.ok) { alert(j0.error || `HTTP ${r0.status}`); return; }
       const chg = (j0.diff || []).filter(d => d.etat === 'a_changer');
       if (!chg.length) { alert(window.t('js.io2110.mcast_plan_none')); return; }
-      const lignes = chg.map(d => `TX ***REMOVED***${d.slot + 1} ${d.essence}${
-        d.essence === 'audio' ? ' ***REMOVED***' + (d.audio_idx + 1) : ''} : ${d.de} → ${d.vers}:${d.port}`);
+      const lignes = chg.map(d => `TX #${d.slot + 1} ${d.essence}${
+        d.essence === 'audio' ? ' #' + (d.audio_idx + 1) : ''} : ${d.de} → ${d.vers}:${d.port}`);
       if (!confirm(window.t('js.io2110.mcast_plan_confirm').replace('{n}', chg.length)
                    + '\n\n' + lignes.join('\n'))) return;
       const r = await ioMutate(`/api/mtl/${vmid}/tx/mcast-plan`, {apply: true}, {vmid});

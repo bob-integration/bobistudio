@@ -1,26 +1,26 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc VIVANT du « plan 2 » : le CONTENEUR sert son propre Node API NMOS, et l'orchestrateur
-***REMOVED*** le lit en CLIENT (`services/nmos/conteneur_node.py` + la surface /x-nmos de l'agent).
-***REMOVED***
-***REMOVED*** CE QU'IL PROUVE
-***REMOVED*** ---------------
-***REMOVED*** Que la phrase « nous utilisons NMOS entre nos conteneurs et l'orchestrateur » est VRAIE, et pas
-***REMOVED*** seulement écrite : un conteneur jetable est déployé, il sert ses ressources sur son :8081, et
-***REMOVED*** l'orchestrateur les relit et les compare à ce qu'il a lui-même calculé. Le contrôle qui compte
-***REMOVED*** est le dernier : la comparaison doit savoir dire NON. Une comparaison qui ne détecte jamais
-***REMOVED*** d'écart est une décoration.
-***REMOVED***
-***REMOVED*** ⚠ AVANT LE REBUILD DE L'IMAGE, l'agent cuit dans `bobi-compute` ne connaît pas /x-nmos. Le banc
-***REMOVED*** le détecte et installe l'agent du dépôt dans le conteneur JETABLE (copie + restart). Une fois
-***REMOVED*** l'image reconstruite, cette étape se saute d'elle-même — le banc n'a pas à être modifié.
-***REMOVED***
-***REMOVED*** ⚠ CE BANC MUTE : il crée et détruit un conteneur, et bascule `nmos_conteneur_node`. Tout est
-***REMOVED*** rendu dans un `finally`.
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tools/banc_nmos_plan2_live.py --go [--node <id>]
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc VIVANT du « plan 2 » : le CONTENEUR sert son propre Node API NMOS, et l'orchestrateur
+# le lit en CLIENT (`services/nmos/conteneur_node.py` + la surface /x-nmos de l'agent).
+#
+# CE QU'IL PROUVE
+# ---------------
+# Que la phrase « nous utilisons NMOS entre nos conteneurs et l'orchestrateur » est VRAIE, et pas
+# seulement écrite : un conteneur jetable est déployé, il sert ses ressources sur son :8081, et
+# l'orchestrateur les relit et les compare à ce qu'il a lui-même calculé. Le contrôle qui compte
+# est le dernier : la comparaison doit savoir dire NON. Une comparaison qui ne détecte jamais
+# d'écart est une décoration.
+#
+# ⚠ AVANT LE REBUILD DE L'IMAGE, l'agent cuit dans `bobi-compute` ne connaît pas /x-nmos. Le banc
+# le détecte et installe l'agent du dépôt dans le conteneur JETABLE (copie + restart). Une fois
+# l'image reconstruite, cette étape se saute d'elle-même — le banc n'a pas à être modifié.
+#
+# ⚠ CE BANC MUTE : il crée et détruit un conteneur, et bascule `nmos_conteneur_node`. Tout est
+# rendu dans un `finally`.
+#
+#   $ ./venv/bin/python tools/banc_nmos_plan2_live.py --go [--node <id>]
 import argparse
 import json
 import os
@@ -81,7 +81,7 @@ def principal(node_id):
         if not ip:
             return 1
 
-        ***REMOVED*** ── L'agent sait-il servir /x-nmos ? Sinon, on l'installe dans CE conteneur ──────────
+        # ── L'agent sait-il servir /x-nmos ? Sinon, on l'installe dans CE conteneur ──────────
         r = agent_session().get(agent_url(ip, "/x-nmos/"), timeout=5, headers=agent_headers(vmid))
         if r.status_code == 404:
             print("  (agent d'ancienne image : installation de celui du dépôt dans le conteneur)")
@@ -94,10 +94,10 @@ def principal(node_id):
                                          "/usr/local/bin/agent.py && docker restart %s" % (nom, nom),
                                   timeout=90)
             time.sleep(8)
-            deployer_script(vmid, "hello_world", params)   ***REMOVED*** repousse script + document, et relance
+            deployer_script(vmid, "hello_world", params)   # repousse script + document, et relance
             time.sleep(3)
 
-        ***REMOVED*** ── 1. Le conteneur sert bien un Node API ───────────────────────────────────────────
+        # ── 1. Le conteneur sert bien un Node API ───────────────────────────────────────────
         code, racine = cn.lire(vmid, "/x-nmos/")
         controle("le CONTENEUR sert /x-nmos/", code == 200 and "node/" in (racine or []),
                  "obtenu %s %s" % (code, racine))
@@ -120,7 +120,7 @@ def principal(node_id):
                      s.get("transport") == mxl.TRANSPORT and s.get("manifest_href") is None
                      and s.get("interface_bindings") == [])
 
-        ***REMOVED*** ── 2. Les identités des deux plans sont bien DISJOINTES ────────────────────────────
+        # ── 2. Les identités des deux plans sont bien DISJOINTES ────────────────────────────
         p1, _, _, s1, r1, rs1, ss1 = ({"c": {"senders": [], "receivers": []}}, {}, {}, {}, {}, {}, {})
         mxl._build_one(db_get_container(vmid), p1, {}, {}, s1, r1, rs1, ss1, "c", "1:0")
         code, senders = cn.lire(vmid, "/x-nmos/node/v1.3/senders")
@@ -128,7 +128,7 @@ def principal(node_id):
                  not ({x["id"] for x in (senders or [])} & set(s1)),
                  "le même flux sous deux Devices avec le même id serait invalide en IS-04")
 
-        ***REMOVED*** ── 3. IS-05 en lecture, et le 404 de transportfile ─────────────────────────────────
+        # ── 3. IS-05 en lecture, et le 404 de transportfile ─────────────────────────────────
         code, liste = cn.lire(vmid, "/x-nmos/connection/v1.1/single/senders")
         controle("il sert la liste IS-05 de ses senders", code == 200 and len(liste or []) == 3)
         sid = (liste or ["/"])[0].rstrip("/")
@@ -140,7 +140,7 @@ def principal(node_id):
         controle("/transportfile rend 404 (BCP-007-03 : MXL n'en a pas)", code == 404,
                  "obtenu %s" % code)
 
-        ***REMOVED*** ── 4. LE contrôle décisif : la comparaison sait dire NON ────────────────────────────
+        # ── 4. LE contrôle décisif : la comparaison sait dire NON ────────────────────────────
         v = cn.comparer(vmid)
         controle("orchestrateur et conteneur concordent", v.get("verdict") == "concordant",
                  json.dumps(v, ensure_ascii=False))
@@ -157,7 +157,7 @@ def principal(node_id):
         controle("et un re-push rétablit la concordance",
                  cn.pousser(vmid) and cn.comparer(vmid).get("verdict") == "concordant")
 
-        ***REMOVED*** ── 5. Le réglage ferme bien le push ────────────────────────────────────────────────
+        # ── 5. Le réglage ferme bien le push ────────────────────────────────────────────────
         db_set_setting("nmos_conteneur_node", False)
         controle("réglage fermé : l'orchestrateur ne pousse plus", not cn.pousser(vmid),
                  "pousser un document à chaque déploiement est un effet de bord sur le chemin "
@@ -169,7 +169,7 @@ def principal(node_id):
             try:
                 with verrou_vmid(vmid, op="banc-plan2-destroy"):
                     detruire_container(vmid)
-            except Exception as e:                                   ***REMOVED*** pragma: no cover
+            except Exception as e:                                   # pragma: no cover
                 print("  ⚠ destruction de %s échouée : %s" % (vmid, e), file=sys.stderr)
         time.sleep(3)
         reste = {c["vmid"] for c in db_get_containers()} - avant_vmids

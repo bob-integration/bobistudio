@@ -1,4 +1,4 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: GPL-3.0-or-later
 """Mesure + alerte de la BANDE PASSANTE MÉMOIRE par nœud (canary memcpy).
 
 Le compositing multiview est *memory-bandwidth bound* (cf. test de charge 2026-06 : à
@@ -28,8 +28,8 @@ from . import settings as S
 
 log = logging.getLogger("membw")
 
-***REMOVED*** Canary mono-ligne (python3 -c) : memcpy de N octets r fois → débit copie en Go/s.
-***REMOVED*** Aucune double-quote à l'intérieur (on enrobe la commande en double-quotes côté shell).
+# Canary mono-ligne (python3 -c) : memcpy de N octets r fois → débit copie en Go/s.
+# Aucune double-quote à l'intérieur (on enrobe la commande en double-quotes côté shell).
 _CANARY_TMPL = (
     "python3 -c \""
     "import ctypes,time;"
@@ -41,19 +41,19 @@ _CANARY_TMPL = (
     "print(round(r*N/(time.perf_counter()-t)/1e9,3))\""
 )
 
-***REMOVED*** État en mémoire (process orchestrateur).
-_baseline = {}     ***REMOVED*** node_id -> meilleur Go/s observé (référence « au repos »)
-_last = {}         ***REMOVED*** node_id -> {gbps, ratio, ts}
-_alert_state = {}  ***REMOVED*** node_id -> None|"warning"|"error" (cache RAM du chemin chaud)
-***REMOVED*** Le MÊME état, SURVIVANT au redémarrage de l'orchestrateur (cf. app/episodes.py) : une contention
-***REMOVED*** mémoire ne cesse pas parce que le service redémarre, et la ré-annoncer à chaque boot est la
-***REMOVED*** moitié du spam constaté le 2026-07-26.
+# État en mémoire (process orchestrateur).
+_baseline = {}     # node_id -> meilleur Go/s observé (référence « au repos »)
+_last = {}         # node_id -> {gbps, ratio, ts}
+_alert_state = {}  # node_id -> None|"warning"|"error" (cache RAM du chemin chaud)
+# Le MÊME état, SURVIVANT au redémarrage de l'orchestrateur (cf. app/episodes.py) : une contention
+# mémoire ne cesse pas parce que le service redémarre, et la ré-annoncer à chaque boot est la
+# moitié du spam constaté le 2026-07-26.
 from .episodes import EtatEpisodes as _Episodes
 _episodes = _Episodes("membw")
-_last_sample_m = 0.0  ***REMOVED*** monotone du dernier passage (throttle global)
-_sampling = threading.Lock()  ***REMOVED*** garde anti-chevauchement du cycle de fond
-_ingest_ts = {}    ***REMOVED*** node_id -> ts agent du dernier échantillon ingéré (dédoublonnage)
-_ingest_m = {}     ***REMOVED*** node_id -> monotone de la dernière ingestion (repli exec si trop vieux)
+_last_sample_m = 0.0  # monotone du dernier passage (throttle global)
+_sampling = threading.Lock()  # garde anti-chevauchement du cycle de fond
+_ingest_ts = {}    # node_id -> ts agent du dernier échantillon ingéré (dédoublonnage)
+_ingest_m = {}     # node_id -> monotone de la dernière ingestion (repli exec si trop vieux)
 
 
 def _cfg(key, default):
@@ -99,7 +99,7 @@ def _check_alert(node_id, node, gbps, base):
     level = "error" if ratio < err else ("warning" if ratio < warn else None)
     prev = _alert_state.get(node_id)
     if prev is None and node_id not in _alert_state:
-        prev = _episodes.get(node_id)             ***REMOVED*** reprise après (re)démarrage
+        prev = _episodes.get(node_id)             # reprise après (re)démarrage
         _alert_state[node_id] = prev
     if level and level != prev:
         name = node.get("name") or node.get("host") or f"nœud {node_id}"
@@ -115,7 +115,7 @@ def _check_alert(node_id, node, gbps, base):
                      params={"name": name, "ratio": ratio * 100})
         _alert_state[node_id] = None
         _episodes.retirer(node_id)
-    ***REMOVED*** Zone grise (entre `warn` et `warn × marge`) : ni alerte, ni clôture — l'épisode court encore.
+    # Zone grise (entre `warn` et `warn × marge`) : ni alerte, ni clôture — l'épisode court encore.
     return ratio, level
 
 
@@ -124,7 +124,7 @@ def _apply_sample(nid, node, gbps):
     base = _baseline.get(nid, 0.0)
     if gbps > base:
         base = gbps
-        _baseline[nid] = base   ***REMOVED*** apprentissage de la référence (pic observé = repos)
+        _baseline[nid] = base   # apprentissage de la référence (pic observé = repos)
     ratio, level = _check_alert(nid, node, gbps, base)
     _last[nid] = {"gbps": round(gbps, 1), "baseline": round(base, 1),
                   "ratio": round(ratio, 2), "level": level, "ts": time.time()}
@@ -164,7 +164,7 @@ def _sample_cycle(nodes):
     tournent en parallèle (borné par max(par-nœud), pas la somme — un nœud injoignable
     coûtait jusqu'à 30 s × N en série et calait la surveillance)."""
     if not _sampling.acquire(blocking=False):
-        return                      ***REMOVED*** cycle précédent encore en cours
+        return                      # cycle précédent encore en cours
     try:
         with ThreadPoolExecutor(max_workers=min(len(nodes), 16),
                                 thread_name_prefix="membw") as ex:
@@ -192,7 +192,7 @@ def sample_all(force=False):
     fresh_s = interval * 3
     nodes = [n for n in (db_get_nodes() or [])
              if n.get("host")
-             and (force                                   ***REMOVED*** mesure forcée (API) = tout le monde
+             and (force                                   # mesure forcée (API) = tout le monde
                   or _ingest_m.get(n.get("id")) is None
                   or now_m - _ingest_m[n.get("id")] > fresh_s)]
     if not nodes:

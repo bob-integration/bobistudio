@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Backup / Restauration de la DB."""
 
@@ -44,7 +44,7 @@ def backup_create():
 @bp.route("/api/backup/download/<name>")
 @require_perm("backup.manage")
 def backup_download(name):
-    ***REMOVED*** Anti-traversal : seul un nom de fichier simple dans BACKUP_DIR est servi.
+    # Anti-traversal : seul un nom de fichier simple dans BACKUP_DIR est servi.
     if "/" in name or "\\" in name or not name.endswith(".db"):
         return jsonify({"error": "nom invalide"}), 400
     path = os.path.join(BACKUP_DIR, name)
@@ -69,9 +69,9 @@ def restore_db():
     os.makedirs(BACKUP_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_path = os.path.join(BACKUP_DIR, f"orchestrateur-{ts}.db")
-    ***REMOVED*** Backup atomique de l'existant
+    # Backup atomique de l'existant
     if os.path.exists(DB_PATH):
         shutil.copy2(DB_PATH, backup_path)
-    ***REMOVED*** Écrase la DB courante
+    # Écrase la DB courante
     f.save(DB_PATH)
     return jsonify({"status": "ok", "backup_path": backup_path})

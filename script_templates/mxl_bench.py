@@ -1,7 +1,7 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
 
 """
 mxl_bench — harnais de BANC (jetable) pour la Phase 0 de la migration MXL.
@@ -19,11 +19,11 @@ Critères couverts :
   5. Zéro-copie : payload écrit/lu via vue numpy directe (pas de memcpy parasite).
 
 Usage (2 conteneurs / 2 terminaux, MÊME --domain et --name) :
-  ***REMOVED*** producteur free-run 1080p50 pendant 30 s
+  # producteur free-run 1080p50 pendant 30 s
   python3 mxl_bench.py writer --seconds 30
-  ***REMOVED*** consommateur free-run (preuve N°1)
+  # consommateur free-run (preuve N°1)
   python3 mxl_bench.py latest --seconds 30
-  ***REMOVED*** consommateur calé (futex)            | GC après mort du writer
+  # consommateur calé (futex)            | GC après mort du writer
   python3 mxl_bench.py blocking --seconds 30 ; python3 mxl_bench.py gc
 
 Variables d'env utiles : MXL_LIB_PATH (libmxl.so), MXL_DOMAIN (override --domain).
@@ -38,10 +38,10 @@ import time
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import bobimxl  ***REMOVED*** noqa: E402
+import bobimxl  # noqa: E402
 
-***REMOVED*** En-tête applicatif posé en tête de payload (pour mesurer la latence bout-en-bout) :
-***REMOVED***   uint64 seq | uint64 write_ts_ns (CLOCK_REALTIME du writer)
+# En-tête applicatif posé en tête de payload (pour mesurer la latence bout-en-bout) :
+#   uint64 seq | uint64 write_ts_ns (CLOCK_REALTIME du writer)
 _HDR = struct.Struct("<QQ")
 
 
@@ -51,7 +51,7 @@ def _fmt_args(p):
     p.add_argument("--width", type=int, default=1920)
     p.add_argument("--height", type=int, default=1080)
     p.add_argument("--chroma", default="422")
-    p.add_argument("--bit-depth", type=int, default=10)  ***REMOVED*** v210 = 10-bit (seul type vidéo MXL v1.0)
+    p.add_argument("--bit-depth", type=int, default=10)  # v210 = 10-bit (seul type vidéo MXL v1.0)
     p.add_argument("--fps", type=int, default=50)
     p.add_argument("--seconds", type=float, default=30.0)
 
@@ -63,7 +63,7 @@ def _pcts(samples):
     return (float(np.percentile(a, 50)), float(np.percentile(a, 99)), float(a.max()))
 
 
-***REMOVED*** ------------------------------------------------------------------------------- writer
+# ------------------------------------------------------------------------------- writer
 
 def cmd_writer(args):
     inst = bobimxl.Instance(args.domain)
@@ -72,17 +72,17 @@ def cmd_writer(args):
     period = 1.0 / args.fps
     deadline = time.monotonic() + args.seconds
     seq = 0
-    ***REMOVED*** Motif de remplissage léger : on n'écrit QUE l'en-tête (zéro-copie en place) + un octet
-    ***REMOVED*** marqueur — pas besoin de peindre toute la frame pour mesurer la latence/cadence.
+    # Motif de remplissage léger : on n'écrit QUE l'en-tête (zéro-copie en place) + un octet
+    # marqueur — pas besoin de peindre toute la frame pour mesurer la latence/cadence.
     print(f"[writer] flow={args.name} id={bobimxl.flow_id(args.name)} "
           f"size={w.frame_size}o mode={args.index_mode} created={w.created}", flush=True)
     next_t = time.monotonic()
     while time.monotonic() < deadline:
-        ***REMOVED*** --gap N : saute 1 index tous les N (test trous / grains manquants, critère 2)
+        # --gap N : saute 1 index tous les N (test trous / grains manquants, critère 2)
         if args.gap and seq and seq % args.gap == 0:
-            w._counter += 1  ***REMOVED*** trou volontaire en mode free
+            w._counter += 1  # trou volontaire en mode free
         idx, gi, view = w.open_grain()
-        _HDR.pack_into(view, 0, seq, time.time_ns())  ***REMOVED*** écriture DIRECTE dans le grain (zéro-copie)
+        _HDR.pack_into(view, 0, seq, time.time_ns())  # écriture DIRECTE dans le grain (zéro-copie)
         w.commit(gi)
         seq += 1
         next_t += period
@@ -90,14 +90,14 @@ def cmd_writer(args):
         if sleep > 0:
             time.sleep(sleep)
         else:
-            next_t = time.monotonic()  ***REMOVED*** on a pris du retard : re-cale, ne s'accumule pas
+            next_t = time.monotonic()  # on a pris du retard : re-cale, ne s'accumule pas
     w.close()
     inst.close()
     print(f"[writer] terminé : {seq} grains en {args.seconds:.0f}s "
           f"(~{seq/args.seconds:.1f} fps)", flush=True)
 
 
-***REMOVED*** ------------------------------------------------------------------------------- reader latest (free-run)
+# ------------------------------------------------------------------------------- reader latest (free-run)
 
 def cmd_latest(args):
     inst = bobimxl.Instance(args.domain)
@@ -118,10 +118,10 @@ def cmd_latest(args):
         _idx, _gi, view = got
         seq, wts = _HDR.unpack_from(view, 0)
         if seq != last_seq:
-            lat.append((time.time_ns() - wts) / 1e6)  ***REMOVED*** ms publish→observe
+            lat.append((time.time_ns() - wts) / 1e6)  # ms publish→observe
             last_seq = seq
             seen += 1
-        ***REMOVED*** boucle serrée (poll-like) ; pas de sleep quand on suit le flux
+        # boucle serrée (poll-like) ; pas de sleep quand on suit le flux
     cpu = time.process_time() - cpu0
     p50, p99, mx = _pcts(lat)
     r.close()
@@ -134,7 +134,7 @@ def cmd_latest(args):
           flush=True)
 
 
-***REMOVED*** ------------------------------------------------------------------------------- reader blocking (futex)
+# ------------------------------------------------------------------------------- reader blocking (futex)
 
 def cmd_blocking(args):
     inst = bobimxl.Instance(args.domain)
@@ -144,7 +144,7 @@ def cmd_blocking(args):
     seen = 0
     timeouts = 0
     cpu0 = time.process_time()
-    ***REMOVED*** On se cale : suivre head, puis attendre head+1 via futex (get bloquant).
+    # On se cale : suivre head, puis attendre head+1 via futex (get bloquant).
     idx = r.head_index()
     if idx == bobimxl.MXL_UNDEFINED_INDEX:
         idx = 0
@@ -172,7 +172,7 @@ def cmd_blocking(args):
           flush=True)
 
 
-***REMOVED*** ------------------------------------------------------------------------------- GC
+# ------------------------------------------------------------------------------- GC
 
 def cmd_gc(args):
     inst = bobimxl.Instance(args.domain)

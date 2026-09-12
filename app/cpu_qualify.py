@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Qualification CPU d'un nœud — pendant de `app/nic_qualify.py` pour les processeurs.
 
@@ -55,7 +55,7 @@ def _coeur_hors_moteur(node):
         moteur, _ht = core_pool.engine_cpu_footprint(n_cpus=n_cpus,
                                                      core_of=core_pool.read_cpu_core_map(node))
         libres = [c for c in range(n_cpus) if c not in moteur]
-        return libres[-1] if libres else None      ***REMOVED*** le plus haut : le plus loin du housekeeping
+        return libres[-1] if libres else None      # le plus haut : le plus loin du housekeeping
     except Exception as e:
         log.debug("_coeur_hors_moteur: %s", e)
         return None
@@ -116,15 +116,15 @@ def qualify_node_cpu(node, run=None):
     if not modele:
         return {"ok": False, "error": "modèle de CPU non identifiable sur ce nœud"}
 
-    ***REMOVED*** Identité du nœud : c'est elle qui fait le lien avec la bibliothèque.
+    # Identité du nœud : c'est elle qui fait le lien avec la bibliothèque.
     try:
         db_update_node(node["id"], cpu_model=modele)
     except Exception as e:
         log.warning("qualify_node_cpu(%s): écriture cpu_model : %s", node.get("id"), e)
 
-    ***REMOVED*** ★ Ni `quota_mbs`, ni `measured=1`. On enregistre ce qu'on a VRAIMENT constaté : l'identité et
-    ***REMOVED*** le proxy. Un `quota_mbs` déjà présent (saisi à la main, ou ancré par une campagne) survit —
-    ***REMOVED*** `db_upsert_cpu_profile` ignore les champs None.
+    # ★ Ni `quota_mbs`, ni `measured=1`. On enregistre ce qu'on a VRAIMENT constaté : l'identité et
+    # le proxy. Un `quota_mbs` déjà présent (saisi à la main, ou ancré par une campagne) survit —
+    # `db_upsert_cpu_profile` ignore les champs None.
     _horo = rap.get("horodatage") or ""
     note = ("identité + micro-banc relevés le %s — memcpy %.2f Go/s, parsing %.3f Mpps ; "
             "estimation INDICATIVE %s Mb/s (proxy NON ancré : aucune campagne de charge réelle). "

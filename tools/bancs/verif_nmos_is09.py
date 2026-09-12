@@ -1,15 +1,15 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc d'IS-09 — les paramètres globaux de l'installation (`services/nmos/is09.py`).
-***REMOVED***
-***REMOVED*** CE QUI COMPTE ICI. IS-09 tient en une ressource, mais elle porte le **domaine PTP**, et un
-***REMOVED*** désaccord de domaine se manifeste par des symptômes qui ne lui ressemblent pas. Deux choses
-***REMOVED*** doivent donc être vraies : que ce qu'on PUBLIE soit ce qu'on APPLIQUE, et que ce qu'on LIT chez
-***REMOVED*** l'autre soit COMPARÉ, jamais appliqué en silence.
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tools/verif_nmos_is09.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc d'IS-09 — les paramètres globaux de l'installation (`services/nmos/is09.py`).
+#
+# CE QUI COMPTE ICI. IS-09 tient en une ressource, mais elle porte le **domaine PTP**, et un
+# désaccord de domaine se manifeste par des symptômes qui ne lui ressemblent pas. Deux choses
+# doivent donc être vraies : que ce qu'on PUBLIE soit ce qu'on APPLIQUE, et que ce qu'on LIT chez
+# l'autre soit COMPARÉ, jamais appliqué en silence.
+#
+#   $ ./venv/bin/python tools/verif_nmos_is09.py
 import json
 import os
 import sys
@@ -29,12 +29,12 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-from services.nmos import is09                                      ***REMOVED*** noqa: E402
-import app.database as _db                                          ***REMOVED*** noqa: E402
+from services.nmos import is09                                      # noqa: E402
+import app.database as _db                                          # noqa: E402
 
 print("IS-09 — paramètres globaux\n")
 
-***REMOVED*** ── 1. La ressource publiée ──────────────────────────────────────────────────
+# ── 1. La ressource publiée ──────────────────────────────────────────────────
 _avant = _db.db_get_setting("nmos_is09", None)
 try:
     _db.db_set_setting("nmos_is09", True)
@@ -53,11 +53,11 @@ try:
                  __import__("services.nmos", fromlist=["nmos"]).HEARTBEAT_S),
              "publier un intervalle qu'on n'applique pas ferait battre un tiers au mauvais rythme")
 
-    ***REMOVED*** ★ Ce qu'on publie doit être ce qu'on applique.
+    # ★ Ce qu'on publie doit être ce qu'on applique.
     controle("★ le domaine publié est le réglage GLOBAL du site",
              g["ptp"]["domain_number"] == is09.domaine_ptp())
 
-    ***REMOVED*** ── 2. syslog : publié seulement s'il est configuré ──────────────────────
+    # ── 2. syslog : publié seulement s'il est configuré ──────────────────────
     _sl_avant = _db.db_get_setting("alerting_syslog_host", None)
     try:
         _db.db_set_setting("alerting_syslog_host", "")
@@ -73,16 +73,16 @@ try:
         _db.db_set_setting("alerting_syslog_host",
                            _sl_avant if _sl_avant is not None else "")
 
-    ***REMOVED*** ── 3. Le contrôle de cohérence — et ce qu'il NE fait PAS ────────────────
+    # ── 3. Le contrôle de cohérence — et ce qu'il NE fait PAS ────────────────
     ALERTES = []
     _vrai_add, _vrai_lire = _db.db_add_alert, is09.lire
     _db.db_add_alert = lambda m, n="info", **k: ALERTES.append((m, n, k.get("kind")))
     _avant_domaine = is09.domaine_ptp()
-    ***REMOVED*** ⚠ ON RELÈVE LE DOMAINE POUR LE RENDRE, même si le code éprouvé n'est PAS censé y toucher.
-    ***REMOVED*** Vécu le 2026-08-31 : une mutation qui simulait l'auto-configuration a réellement écrit
-    ***REMOVED*** `ptp_domain = 0` en base. Le contrôle l'a détectée — c'était son travail — mais l'effet de
-    ***REMOVED*** bord a survécu au banc. C'est au banc de savoir ce que le code sous test PEUT toucher, et de
-    ***REMOVED*** le restaurer : sinon il éprouve une garde en cassant ce qu'elle protège.
+    # ⚠ ON RELÈVE LE DOMAINE POUR LE RENDRE, même si le code éprouvé n'est PAS censé y toucher.
+    # Vécu le 2026-08-31 : une mutation qui simulait l'auto-configuration a réellement écrit
+    # `ptp_domain = 0` en base. Le contrôle l'a détectée — c'était son travail — mais l'effet de
+    # bord a survécu au banc. C'est au banc de savoir ce que le code sous test PEUT toucher, et de
+    # le restaurer : sinon il éprouve une garde en cassant ce qu'elle protège.
     try:
         is09.lire = lambda url: {"ptp": {"domain_number": _avant_domaine}}
         r = is09.verifier("http://pair/x-nmos/system/v1.0")
@@ -100,7 +100,7 @@ try:
         controle("son `kind` est `ptp`, dans le vocabulaire fermé",
                  ALERTES[0][2] == "ptp" and ALERTES[0][2] in _db.ALERT_KINDS)
 
-        ***REMOVED*** ★ Le point de doctrine : on ne configure RIEN.
+        # ★ Le point de doctrine : on ne configure RIEN.
         controle("★ notre domaine n'a PAS été modifié par la lecture",
                  is09.domaine_ptp() == _avant_domaine,
                  "appliquer un domaine PTP, c'est reconfigurer ptp4l sur chaque nœud — une "
@@ -115,7 +115,7 @@ try:
         _db.db_add_alert, is09.lire = _vrai_add, _vrai_lire
         _db.db_set_setting("ptp_domain", _avant_domaine)
 
-    ***REMOVED*** ── 4. Découverte : la priorité de développement est ÉCARTÉE ─────────────
+    # ── 4. Découverte : la priorité de développement est ÉCARTÉE ─────────────
     controle("★ `pri` vaut 100 par défaut, c'est-à-dire DÉVELOPPEMENT",
              is09._pri() == 100,
              "une System API qui s'annonce en priorité de production détournerait les équipements "
@@ -123,7 +123,7 @@ try:
 finally:
     _db.db_set_setting("nmos_is09", _avant if _avant is not None else False)
 
-***REMOVED*** ── 5. Sur le HTTP réel ──────────────────────────────────────────────────────
+# ── 5. Sur le HTTP réel ──────────────────────────────────────────────────────
 def _http(url):
     try:
         with urllib.request.urlopen(url, timeout=8) as r:

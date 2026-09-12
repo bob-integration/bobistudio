@@ -1,4 +1,4 @@
-***REMOVED*** Interopérabilité MXL inter-éditeurs — audit de conformité
+# Interopérabilité MXL inter-éditeurs — audit de conformité
 
 Objectif : échanger des grains dans un **même serveur** (même domaine `/dev/shm/mxl`) avec des
 containers d'AUTRES éditeurs, via le SDK MXL (EBU DMF / Linux Foundation) → respecter le **SDK
@@ -9,7 +9,7 @@ Audit 2026-07-07 contre **dmf-mxl/mxl `v1.1.0-beta-1`** — le tag alors buildé
 ne touche ni au type vidéo, ni au parseur ANC, ni au format audio), seul l'outillage de banc a été
 re-tagué `bobi-mxl-stock:1.1-rc1`.
 
-> ***REMOVED******REMOVED*** ⚠ CORRECTION MAJEURE — BANC CROISÉ EXÉCUTÉ 2026-07-12 (lire d'abord)
+> ## ⚠ CORRECTION MAJEURE — BANC CROISÉ EXÉCUTÉ 2026-07-12 (lire d'abord)
 >
 > Le banc croisé stock↔fork a **enfin été exécuté** (image `bobi-mxl-stock:1.1` = libmxl
 > v1.1.0-beta-1 SANS nos patches + sonde C `stock_probe.c` ; producteur fork publiant un flow
@@ -55,7 +55,7 @@ re-tagué `bobi-mxl-stock:1.1-rc1`.
 > Le verdict et la matrice ci-dessous sont conservés comme trace de l'audit statique 2026-07-07 ;
 > lire les lignes « Type vidéo » et « Interop concrète (a) » à la lumière de cette correction.
 
-***REMOVED******REMOVED*** Verdict
+## Verdict
 
 **NON-INTEROPÉRABLE sur la vidéo ; CONFORME sur audio + mécanique (temps/index/slices/domaine).**
 Point de rupture unique mais total : notre type vidéo **`video/x-mxl-planar` n'existe pas dans le
@@ -68,7 +68,7 @@ et `video/v210a` (`FlowParser.cpp:374` lève `Unsupported video media_type` sur 
 embarque le **stock**. Deux `libmxl` différents montent le même tmpfs. La conformité se juge contre
 le stock.
 
-***REMOVED******REMOVED*** Matrice de conformité
+## Matrice de conformité
 
 | Dimension | Verdict |
 |---|---|
@@ -86,7 +86,7 @@ le stock.
 | Identité — NOTRE lecture | **DIVERGENT (unilatéral)** : nos readers prennent un NOM → `uuid5(name)` ; incapables de cibler un flowId tiers arbitraire |
 | Domaine / layout `/dev/shm/mxl` | CONFORME (posé par libmxl, non customisé) |
 
-***REMOVED******REMOVED*** Interop concrète
+## Interop concrète
 
 **(a) Un container tiers (stock) LIT un de nos flows :**
 - ~~**Vidéo → ÉCHEC DUR** : `mxlCreateFlowReader` du tiers parse notre flow_def, voit
@@ -109,14 +109,14 @@ le stock.
 - **Découverte → à bâtir** : pas de mécanisme d'énumération du domaine (`*.mxl-flow/flow_def.json`)
   ni de résolution NMOS IS-04 → flowId. Tout passe aujourd'hui par nos noms internes.
 
-***REMOVED******REMOVED*** Direction décidée (2026-07-07, utilisateur)
+## Direction décidée (2026-07-07, utilisateur)
 
 **R1 uniquement pour l'instant** : garder le planar en interne, exposer un flow v210 miroir aux
 SEULES frontières inter-éditeurs. **R2 (upstream) EN PAUSE** — ne RIEN demander/soumettre à
 l'extérieur (comité DMF-MXL, PR, contact tiers) sans feu vert explicite de l'utilisateur.
 R3 (tout-v210) = repli futur si on a le GPU.
 
-***REMOVED******REMOVED*** Recommandations (type planar)
+## Recommandations (type planar)
 
 - **R1 (RETENUE) — planar en interne + flow `v210` MIROIR aux frontières.** Garder planar pour tous
   les hops internes (0 conversion) ; pont `v210↔planar` à la SEULE frontière inter-éditeurs
@@ -138,7 +138,7 @@ R3 (tout-v210) = repli futur si on a le GPU.
 - **R4 (rejetée) — garder planar seul + exiger que les tiers patchent leur libmxl** : c'est de la
   captivité, pas de l'interop. Contraire à l'objectif.
 
-***REMOVED******REMOVED*** À changer avant d'ouvrir l'interop
+## À changer avant d'ouvrir l'interop
 
 1. **Pont v210 aux frontières** (R1) — sans lui, zéro vidéo inter-éditeurs.
 2. **Reader par-flowId brut** + **découverte par énumération `*.mxl-flow/flow_def.json`** (et/ou
@@ -149,7 +149,7 @@ R3 (tout-v210) = repli futur si on a le GPU.
    sur le flow miroir v210, utiliser la sémantique ligne standard.
 5. **Ne JAMAIS exposer `x-mxl-planar` comme point d'interop** — type interne fork-only.
 
-***REMOVED******REMOVED*** Banc croisé stock↔fork — FAIT (2026-07-12)
+## Banc croisé stock↔fork — FAIT (2026-07-12)
 
 Outillage versionné : **`plugins/_mxl_stock_bench/`** (Dockerfile `bobi-mxl-stock:<MXL_REF>` =
 libmxl stock SANS nos patches, couches identiques au runtime compute jusqu'au configure → cache
@@ -167,9 +167,9 @@ données et slices comprises** (interop prouvée) ; planar **rejeté à l'écrit
 erreur** (⇒ corruption silencieuse si on l'expose) ; **audio float32 lu correctement** (conforme) ;
 **ANC maison → `ANC count: 0` chez le tiers** (perte silencieuse totale).
 
-***REMOVED******REMOVED******REMOVED*** Ce qui reste à traiter (mis à jour 2026-07-12)
+### Ce qui reste à traiter (mis à jour 2026-07-12)
 
-| ***REMOVED*** | Item | État |
+| # | Item | État |
 |---|---|---|
 | 1 | Pont v210 aux frontières | ✅ **FAIT** — plugin `v210_bridge` (export + import), interop prouvée au banc |
 | 2 | Reader par-flowId + découverte du domaine | ✅ **FAIT** — `Reader(by_id=)`, `discover_flows()` |
@@ -177,7 +177,7 @@ erreur** (⇒ corruption silencieuse si on l'expose) ; **audio float32 lu correc
 | 4 | Sémantique slice du flow miroir | ✅ **SANS OBJET** — libmxl calcule les slices du v210 (ligne + padding) |
 | 5 | Ne jamais exposer `x-mxl-planar` | ⚠ **IMPÉRATIF** — aucun garde-fou du SDK côté reader |
 
-***REMOVED******REMOVED*** ANC : le format maison est ABANDONNÉ (2026-07-12)
+## ANC : le format maison est ABANDONNÉ (2026-07-12)
 
 **Décision** : contrairement au planar — qui achète un gain CPU réel (×3 à ×17) sur des trames de
 plusieurs mégaoctets, et dont le fork est donc *payé* — le format ANC maison n'achetait **rien** :
@@ -202,7 +202,7 @@ comme à l'extérieur**.
   avec les primitives libmtl ; codec C du moteur **identique octet pour octet** à `bobimxl` ;
   round-trip et `stream_num` vérifiés.
 
-***REMOVED******REMOVED******REMOVED*** ⚠ Bug upstream constaté dans `mxl-data-probe` (non remonté)
+### ⚠ Bug upstream constaté dans `mxl-data-probe` (non remonté)
 
 Le RFC 8331, libmtl (`st40_set_udw(i + 3, …)` dans `second_hdr_chunk`) et le plugin GStreamer de
 MXL (`rust/gst-mxl-rs/src/format/data.rs`) font tous démarrer le flux de mots de 10 bits des UDW
@@ -214,7 +214,7 @@ revanche correctement `DID`/`SDID`/`Line`/`Data_Count` (situés avant la césure
 le 2026-07-12. **Non signalé en amont** (consigne : ne rien soumettre à l'extérieur sans feu vert).
 Conséquence pratique : ne pas utiliser `mxl-data-probe` pour juger la conformité de nos UDW.
 
-***REMOVED******REMOVED*** Fiabilité
+## Fiabilité
 
 Prouvé (source des deux côtés) : rejet planar (`FlowParser.cpp:374`), ABI grain identique,
 conformité audio/grouphint/index/domaine, contenu ANC maison (`mtl_rx.c:59-63`), patches fork-only
@@ -222,7 +222,7 @@ conformité audio/grouphint/index/domaine, contenu ANC maison (`mtl_rx.c:59-63`)
 Coût de conversion : re-mesuré 2026-07-11 (section ci-dessous) ; le 33 ms/hop initial est caduc.
 Banc croisé stock↔fork à faire.
 
-***REMOVED******REMOVED*** Mise à jour 2026-07-12 — re-mesure SIMD : le coût v210 était un artefact numpy
+## Mise à jour 2026-07-12 — re-mesure SIMD : le coût v210 était un artefact numpy
 
 Re-mesure 2026-07-11 (même Xeon 6240R dl360-1, C `-O3 -march=native` AVX2/512, banc
 `scratchpad/v210_simd.c`, étage 2-entrées dépaq A+B + blend + repaq, 1080p 4:2:2 10 b) :
@@ -252,7 +252,7 @@ choisissable par flow → migration progressive mesurée au banc (membw, capacit
 profonde) avant toute décision tout-v210. Argumentaire chiffré : PDF `/home/bob/Planar_V210.pdf`
 et mémoire `planar-v210-cpu-measure`.
 
-***REMOVED******REMOVED*** Mise à jour 2026-07-13 — banc slice RÉEL : R3 non viable en 10 bits CPU, R1 confirmé bon marché
+## Mise à jour 2026-07-13 — banc slice RÉEL : R3 non viable en 10 bits CPU, R1 confirmé bon marché
 
 Le TODO « recalculer après la phase tranches » est soldé : banc `script_templates/
 v210_slice_bench.py` (nouveau, consigné au repo) sur le **vrai bus MXL** de dl360-1 (conteneur
@@ -292,7 +292,7 @@ même avec la SIMD, et en 10 bits v210 casse le budget) ; v210 aux frontières v
 (`plugins/v210_bridge`). R3 ne redeviendrait d'actualité qu'avec un pipeline GPU (dé-paq bon
 marché + PCIe réduit) ou des convertisseurs multi-threadés — à re-mesurer ce jour-là.
 
-***REMOVED******REMOVED*** Profondeur des ring buffers MXL — une DURÉE, pas un nombre de trames (2026-08-09)
+## Profondeur des ring buffers MXL — une DURÉE, pas un nombre de trames (2026-08-09)
 
 Vérifié dans le SDK stock `v1.1.0-beta-1` (tag alors buildé ; `MXL_REF = v1.1.0-rc1` depuis le
 2026-08-13, mécanique inchangée) : ce que le SDK **règle**
@@ -373,7 +373,7 @@ la traduction pour une cadence donnée.
 jamais eu d'effet sur la profondeur d'un ring buffer MXL. Toute UI ou macro qui l'exposerait comme
 un réglage de latence du bus MXL serait trompeuse.
 
-***REMOVED******REMOVED******REMOVED*** Pourquoi ça compte : la falaise, pas la rampe
+### Pourquoi ça compte : la falaise, pas la rampe
 
 Les 200 ms par défaut sont la fenêtre dont dispose un lecteur en retard avant de retomber sur une
 case déjà recyclée par l'écrivain. **En-deçà de cette fenêtre, un retard se paie en latence** (le
@@ -395,7 +395,7 @@ profondeur du ring buffer n'est pas un levier d'économie mémoire chez nous** �
 massive ; le seul risque réel d'une profondeur trop faible est la corruption de ligne de temps
 ci-dessus, pas la RAM.
 
-***REMOVED******REMOVED*** Mise à jour 2026-08-15 — v210 aux frontières : ce qui reste ouvert n'est plus le CPU, c'est la CONFORMITÉ
+## Mise à jour 2026-08-15 — v210 aux frontières : ce qui reste ouvert n'est plus le CPU, c'est la CONFORMITÉ
 
 La ligne du TODO « trancher v210 vs planar aux frontières » prêtait à confusion : **l'arbitrage
 CPU est clos depuis le 2026-07-13** (section précédente, décision utilisateur) — planar reste le
@@ -403,7 +403,7 @@ bus interne, v210 aux frontières via `plugins/v210_bridge`. Ce qui restait rée
 une question de conformité, posée par BCP-007-03 « NMOS With MXL » : cette BCP exige un
 `media_type` **du registre AMWA**.
 
-***REMOVED******REMOVED******REMOVED*** État du registre, relevé le 2026-08-15 (clone frais de `AMWA-TV/nmos-parameter-registers`)
+### État du registre, relevé le 2026-08-15 (clone frais de `AMWA-TV/nmos-parameter-registers`)
 
 | Élément | État |
 |---|---|
@@ -424,7 +424,7 @@ Conséquence nette : le jour où BCP-007-03 sortira, **seuls nos flux vidéo ser
 > publiée. Le risque résiduel est le refus par un contrôleur strict, pas une valeur instable.
 > Analyse complète et suites : `TODO.md` § BCP-007-03, « Réévaluation du 2026-08-30 ».
 
-***REMOVED******REMOVED******REMOVED*** Les trois options, et laquelle est retenue
+### Les trois options, et laquelle est retenue
 
 | | Coût | Ce que ça achète | Remarque |
 |---|---|---|---|

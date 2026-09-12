@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Helpers transversaux consommés par plusieurs domaines déjà découpés en modules
 (node_network.py, plugin_routes/split.py) ET par le reste de app/routes/__init__.py.
@@ -76,8 +76,8 @@ def _ptp_apply_core(nid, data):
     enabled     = bool(data.get("enabled"))
     ifname      = (data.get("ifname") or "").strip()
     domain      = _clamp(data.get("domain"),      0,   127,   127)
-    ***REMOVED*** hw_ts : si absent du payload (ex. Appliquer par-nœud minimal {enabled:true} depuis le récap
-    ***REMOVED*** réseau), défaut = réglage courant du nœud (ptp_hw_ts, défaut True) — capacité de la carte.
+    # hw_ts : si absent du payload (ex. Appliquer par-nœud minimal {enabled:true} depuis le récap
+    # réseau), défaut = réglage courant du nœud (ptp_hw_ts, défaut True) — capacité de la carte.
     if "hw_ts" in data:
         hw_ts = bool(data.get("hw_ts"))
     else:
@@ -91,18 +91,18 @@ def _ptp_apply_core(nid, data):
     announce_to = _clamp(data.get("announce_to"),  2,   10,     3)
     delay_thresh= _clamp(data.get("delay_thresh"),100,100000,  800)
     utc_offset  = _clamp(data.get("utc_offset"),   0,  255,    37)
-    ***REMOVED*** client_only : si absent du payload (ex. route io2110), défaut = réglage courant du nœud
-    ***REMOVED*** (ptp_client_only, défaut True) — un nœud média ne doit jamais devenir grandmaster.
+    # client_only : si absent du payload (ex. route io2110), défaut = réglage courant du nœud
+    # (ptp_client_only, défaut True) — un nœud média ne doit jamais devenir grandmaster.
     if "client_only" in data:
         client_only = bool(data.get("client_only"))
     else:
         from .. import settings as _st
         client_only = bool(_st.setting_for("ptp_client_only", nid))
 
-    ***REMOVED*** PTP multi-NIC : si le nœud a des NIC media2110 marquées ptp_enabled (node_interfaces),
-    ***REMOVED*** on pilote en JBOD par domaine (une horloge/clockIdentity par domaine, BMCA unique) ;
-    ***REMOVED*** sinon repli mono sur `ifname`. Le chemin multi reste dormant tant qu'aucune NIC n'est
-    ***REMOVED*** flaggée (UI réseau, Phase C) → comportement mono inchangé pour l'existant.
+    # PTP multi-NIC : si le nœud a des NIC media2110 marquées ptp_enabled (node_interfaces),
+    # on pilote en JBOD par domaine (une horloge/clockIdentity par domaine, BMCA unique) ;
+    # sinon repli mono sur `ifname`. Le chemin multi reste dormant tant qu'aucune NIC n'est
+    # flaggée (UI réseau, Phase C) → comportement mono inchangé pour l'existant.
     groups = ptp.groups_from_node_interfaces(nid) if nid is not None else []
     if enabled and not groups and not ifname:
         return False, "ifname requis pour activer PTP (ou marquer des NIC media2110 ptp_enabled)", 400
@@ -131,10 +131,10 @@ def _ptp_apply_core(nid, data):
                      delay_thresh=delay_thresh, utc_offset=utc_offset,
                      client_only=client_only)
     if enabled:
-        ptp.install(host)                                    ***REMOVED*** idempotent (court-circuit si déjà là)
+        ptp.install(host)                                    # idempotent (court-circuit si déjà là)
         if groups:
-            ***REMOVED*** Multi-NIC : le profil PTP vient de CHAQUE RÉSEAU (pas des réglages nœud) ; seul hw_ts
-            ***REMOVED*** est node-global. Les réglages profil de cette page ne pilotent que le chemin mono.
+            # Multi-NIC : le profil PTP vient de CHAQUE RÉSEAU (pas des réglages nœud) ; seul hw_ts
+            # est node-global. Les réglages profil de cette page ne pilotent que le chemin mono.
             ok, msg = ptp.deploy_config_multi(host, groups, hw_ts=hw_ts)
             if not ok:
                 return False, f"deploy_config_multi: {msg}", 500
@@ -145,8 +145,8 @@ def _ptp_apply_core(nid, data):
                 return False, f"deploy_config: {msg}", 500
             ok, msg = ptp.start(host)
         return ok, msg, (200 if ok else 500)
-    ***REMOVED*** Désactivation : en multi, purge complète des unités gérées (sans `groups` → reconcile vers
-    ***REMOVED*** l'ensemble vide, legacy mono compris) ; sinon stop mono.
+    # Désactivation : en multi, purge complète des unités gérées (sans `groups` → reconcile vers
+    # l'ensemble vide, legacy mono compris) ; sinon stop mono.
     if groups:
         ok, msg = ptp.stop_multi(host)
     else:
@@ -154,20 +154,20 @@ def _ptp_apply_core(nid, data):
     return ok, msg, 200
 
 
-***REMOVED*** ─── Inventaire NIC d'un hôte (partagé /api/ethernet/status et /api/nodes/<id>/interfaces) ──
+# ─── Inventaire NIC d'un hôte (partagé /api/ethernet/status et /api/nodes/<id>/interfaces) ──
 _NIC_CAPS_PROBE = r'''
 import os, json, re, subprocess
 E810 = {"0x1592","0x1593","0x1599","0x159a","0x159b","0x159c","0x1891","0x188a","0x188b","0x188c",
         "0x124c","0x124d","0x124e","0x124f","0x1888"}
-***REMOVED*** Table interne d'IDs ConnectX (sans dépendre de la base pci.ids du système, souvent absente/
-***REMOVED*** périmée sur les nœuds → lspci retombe alors sur « Device <hex> » qu'on ne veut pas afficher).
+# Table interne d'IDs ConnectX (sans dépendre de la base pci.ids du système, souvent absente/
+# périmée sur les nœuds → lspci retombe alors sur « Device <hex> » qu'on ne veut pas afficher).
 CONNECTX = {"0x1003":"ConnectX-3","0x1007":"ConnectX-3 Pro","0x1013":"ConnectX-4",
             "0x1015":"ConnectX-4 Lx","0x1017":"ConnectX-5","0x1018":"ConnectX-5",
             "0x1019":"ConnectX-5 Ex","0x101a":"ConnectX-5 Ex","0x101b":"ConnectX-6",
             "0x101d":"ConnectX-6 Dx","0x101e":"ConnectX-6 Lx","0x101f":"ConnectX-6 Lx",
             "0x1021":"ConnectX-7","0x1023":"ConnectX-8"}
 def _clean(s):
-    ***REMOVED*** Rejette les placeholders lspci (« Device 1015 », « Vendor 15b3 ») = pci.ids absente/périmée.
+    # Rejette les placeholders lspci (« Device 1015 », « Vendor 15b3 ») = pci.ids absente/périmée.
     s = (s or "").strip()
     if not s or re.match(r"^(Device|Vendor)\s+[0-9a-fA-F]{4}$", s):
         return None
@@ -177,9 +177,9 @@ def sh(args):
         return subprocess.run(args, capture_output=True, text=True, timeout=4).stdout
     except Exception:
         return ""
-***REMOVED*** Driver ETHERNET → (module IB qui expose le device verbs, famille lisible). Le RoCE n'est pas
-***REMOVED*** l'apanage de Mellanox : Broadcom NetXtreme-E (bnxt_en → bnxt_re) et Intel (ice → irdma) en font
-***REMOVED*** aussi. Sans cette table, une carte Broadcom RDMA passait pour une carte sans RDMA.
+# Driver ETHERNET → (module IB qui expose le device verbs, famille lisible). Le RoCE n'est pas
+# l'apanage de Mellanox : Broadcom NetXtreme-E (bnxt_en → bnxt_re) et Intel (ice → irdma) en font
+# aussi. Sans cette table, une carte Broadcom RDMA passait pour une carte sans RDMA.
 RDMA_MODS = {
     "mlx5_core": ("mlx5_ib", "RoCE (Mellanox)"),
     "mlx4_en":   ("mlx4_ib", "RoCE (Mellanox CX-3)"),
@@ -218,10 +218,10 @@ for ifn in names:
     d["vendor"], d["device"] = vendor or None, device or None
     try: d["driver"] = os.path.basename(os.readlink(dev + "/driver"))
     except Exception: pass
-    ***REMOVED*** `rdma` = un device verbs EXISTE pour cette carte (seule preuve qui compte : sans lui, aucun
-    ***REMOVED*** lien RoCE n'est possible). `rdma_module` = le module noyau qui le fabriquerait pour ce driver
-    ***REMOVED*** — distinguer « carte incapable » de « carte capable, module pas chargé » est ce qui permet
-    ***REMOVED*** d'INSTALLER au lieu de laisser l'utilisateur devant un rôle rdma qui ne marchera jamais.
+    # `rdma` = un device verbs EXISTE pour cette carte (seule preuve qui compte : sans lui, aucun
+    # lien RoCE n'est possible). `rdma_module` = le module noyau qui le fabriquerait pour ce driver
+    # — distinguer « carte incapable » de « carte capable, module pas chargé » est ce qui permet
+    # d'INSTALLER au lieu de laisser l'utilisateur devant un rôle rdma qui ne marchera jamais.
     d["rdma"] = os.path.isdir(dev + "/infiniband")
     drv = d["driver"] or ""
     mod, kind = RDMA_MODS.get(drv, (None, None))
@@ -231,17 +231,17 @@ for ifn in names:
     if d["rdma"]:
         d["rdma_kind"] = kind or "RDMA"
     elif mod:
-        d["rdma_kind"] = kind           ***REMOVED*** capacité POTENTIELLE — pas de device verbs pour l'instant
-    ***REMOVED*** Vitesse via ethtool : Speed courant (fiable, contrairement à /sys/.../speed sur E810) +
-    ***REMOVED*** MAX réel des « Supported/Advertised link modes » (<N>base..., indépendant de l'état du lien).
+        d["rdma_kind"] = kind           # capacité POTENTIELLE — pas de device verbs pour l'instant
+    # Vitesse via ethtool : Speed courant (fiable, contrairement à /sys/.../speed sur E810) +
+    # MAX réel des « Supported/Advertised link modes » (<N>base..., indépendant de l'état du lien).
     et = sh(["ethtool", ifn])
     if et:
         m = re.search(r"Speed:\s*(\d+)\s*Mb/s", et)
         if m: d["speed_mbps"] = int(m.group(1))
         modes = [int(x) for x in re.findall(r"(\d+)base", et)]
         if modes: d["max_speed_mbps"] = max(modes)
-        ***REMOVED*** Medium du port (sans I2C) → étiquette du bouton : RJ45 (cuivre baseT, non cliquable),
-        ***REMOVED*** DAC (direct attach), FIBRE (optique SFP/QSFP, cliquable pour le détail ethtool -m).
+        # Medium du port (sans I2C) → étiquette du bouton : RJ45 (cuivre baseT, non cliquable),
+        # DAC (direct attach), FIBRE (optique SFP/QSFP, cliquable pour le détail ethtool -m).
         mp = re.search(r"(?m)^\s*Port:\s*(.+?)\s*$", et)
         ms = re.search(r"Supported ports:\s*\[(.*?)\]", et)
         port = (mp.group(1).lower() if mp else "")
@@ -254,37 +254,37 @@ for ifn in names:
             d["port_medium"] = "fibre"
         elif "backplane" in port or "backplane" in sup:
             d["port_medium"] = "backplane"
-    if d["speed_mbps"] is None:                        ***REMOVED*** repli /sys (négociée) si ethtool muet
+    if d["speed_mbps"] is None:                        # repli /sys (négociée) si ethtool muet
         try:
             sp = int(open(p + "/speed").read().strip())
             if sp > 0: d["speed_mbps"] = sp
         except Exception: pass
     if d["max_speed_mbps"] is None:
         d["max_speed_mbps"] = d["speed_mbps"]
-    ***REMOVED*** Modèle complet via lspci : on préfère le SOUS-SYSTÈME (SDevice = réf. carte OEM, ex.
-    ***REMOVED*** « Ethernet Network Adapter E810-XXVDA4 ») au device générique.
+    # Modèle complet via lspci : on préfère le SOUS-SYSTÈME (SDevice = réf. carte OEM, ex.
+    # « Ethernet Network Adapter E810-XXVDA4 ») au device générique.
     model = None
     if d["pci"]:
         sdev = ddev = None
         for line in sh(["lspci", "-vmm", "-s", d["pci"]]).splitlines():
             if line.startswith("SDevice:"): sdev = _clean(line.split(":", 1)[1])
             elif line.startswith("Device:"): ddev = _clean(line.split(":", 1)[1])
-        model = sdev or ddev                                   ***REMOVED*** nom résolu (pci.ids présente)
+        model = sdev or ddev                                   # nom résolu (pci.ids présente)
     if vendor == "0x8086" and device in E810:
-        d["nic_2110"] = True                                   ***REMOVED*** E810 (ice) = MTL/DPDK
+        d["nic_2110"] = True                                   # E810 (ice) = MTL/DPDK
         model = model or "Intel E810"
     elif vendor == "0x15b3":
-        ***REMOVED*** ConnectX-4+ (mlx5) = MTL/DPDK ; ConnectX-3 (mlx4) NON (incompatible DPDK/MTL).
+        # ConnectX-4+ (mlx5) = MTL/DPDK ; ConnectX-3 (mlx4) NON (incompatible DPDK/MTL).
         d["nic_2110"] = (d["driver"] or "").startswith("mlx5")
-        ***REMOVED*** Repli table interne (pci.ids absente) → « Mellanox ConnectX-<gen> » plutôt que « Device <hex> ».
+        # Repli table interne (pci.ids absente) → « Mellanox ConnectX-<gen> » plutôt que « Device <hex> ».
         model = model or ("Mellanox " + CONNECTX[device] if device in CONNECTX else "Mellanox ConnectX")
     d["model"] = model
     if d["pci"]:
         d["card_id"] = d["pci"].rsplit(".", 1)[0]
     out[ifn] = d
-***REMOVED*** NIC bindées vfio-pci (moteur DPDK) : plus AUCUN netdev kernel → invisibles de /sys/class/net.
-***REMOVED*** On les énumère via le driver vfio-pci et on ne garde que les périphériques RÉSEAU (classe PCI
-***REMOVED*** 0x02xxxx) Intel (0x8086) / Mellanox (0x15b3), pour qu'une carte 2110 en DPDK reste affichable.
+# NIC bindées vfio-pci (moteur DPDK) : plus AUCUN netdev kernel → invisibles de /sys/class/net.
+# On les énumère via le driver vfio-pci et on ne garde que les périphériques RÉSEAU (classe PCI
+# 0x02xxxx) Intel (0x8086) / Mellanox (0x15b3), pour qu'une carte 2110 en DPDK reste affichable.
 vfio = []
 vdrv = "/sys/bus/pci/drivers/vfio-pci"
 try:
@@ -297,7 +297,7 @@ for bdf in vbdfs:
     def rdv(x):
         try: return open(dd + "/" + x).read().strip().lower()
         except Exception: return ""
-    if not rdv("class").startswith("0x02"):     ***REMOVED*** 0x02 = contrôleur réseau (Ethernet)
+    if not rdv("class").startswith("0x02"):     # 0x02 = contrôleur réseau (Ethernet)
         continue
     vendor, device = rdv("vendor"), rdv("device")
     if vendor not in ("0x8086", "0x15b3"):
@@ -311,7 +311,7 @@ for bdf in vbdfs:
     if vendor == "0x8086" and device in E810:
         nic_2110 = True; model = model or "Intel E810"
     elif vendor == "0x15b3":
-        nic_2110 = True                          ***REMOVED*** ConnectX bindée vfio = utilisée pour DPDK
+        nic_2110 = True                          # ConnectX bindée vfio = utilisée pour DPDK
         model = model or ("Mellanox " + CONNECTX[device] if device in CONNECTX else "Mellanox ConnectX")
     vfio.append({"pci": bdf, "driver": "vfio-pci", "model": model, "nic_2110": nic_2110,
                  "vendor": vendor, "device": device, "card_id": bdf.rsplit(".", 1)[0]})
@@ -324,8 +324,8 @@ def _fetch_host_nics(host):
     Retourne (ok, error, nics). Partagé par /api/ethernet/status et /api/nodes/<id>/interfaces."""
     from .. import settings as st
     from ..host_ops import ssh_run
-    ***REMOVED*** Sonde best-effort (`;` + `|| true`) : si python3 manque, l'échec ne doit pas masquer
-    ***REMOVED*** l'inventaire `ip`. rc≠0 ici = échec du transport SSH lui-même → on remonte l'erreur.
+    # Sonde best-effort (`;` + `|| true`) : si python3 manque, l'échec ne doit pas masquer
+    # l'inventaire `ip`. rc≠0 ici = échec du transport SSH lui-même → on remonte l'erreur.
     cmd = ("ip -j -s link 2>/dev/null; echo '---SEP---'; ip -j addr show 2>/dev/null; "
            "echo '---SEP2---'; python3 - 2>/dev/null <<'PYEOF' || true\n" + _NIC_CAPS_PROBE + "\nPYEOF\n")
     rc, out, err = ssh_run(host, cmd, timeout=15)
@@ -376,7 +376,7 @@ def _fetch_host_nics(host):
             "tx_bytes":  tx,
             "is_pf":     is_pf,
             "is_vf":     is_vf,
-            ***REMOVED*** Capacités matérielles (sonde /sys) : pour le groupement par carte + badges.
+            # Capacités matérielles (sonde /sys) : pour le groupement par carte + badges.
             "pci":            cp.get("pci"),
             "card_id":        cp.get("card_id"),
             "driver":         cp.get("driver"),
@@ -384,7 +384,7 @@ def _fetch_host_nics(host):
             "max_speed_mbps": cp.get("max_speed_mbps"),
             "rdma":           bool(cp.get("rdma")),
             "rdma_kind":      cp.get("rdma_kind"),
-            ***REMOVED*** Capacité POTENTIELLE : module IB attendu pour ce driver, chargé ?, disponible ?
+            # Capacité POTENTIELLE : module IB attendu pour ce driver, chargé ?, disponible ?
             "rdma_module":           cp.get("rdma_module"),
             "rdma_module_loaded":    bool(cp.get("rdma_module_loaded")),
             "rdma_module_available": bool(cp.get("rdma_module_available")),
@@ -392,8 +392,8 @@ def _fetch_host_nics(host):
             "nic_2110":       bool(cp.get("nic_2110")),
             "port_medium":    cp.get("port_medium"),
         })
-    ***REMOVED*** NIC bindées vfio-pci (moteur DPDK) : pas de netdev → entrées synthétiques (name=None), keyées
-    ***REMOVED*** sur le BDF. Restent affichables/configurables via leur ligne node_interfaces (matchée sur `pci`).
+    # NIC bindées vfio-pci (moteur DPDK) : pas de netdev → entrées synthétiques (name=None), keyées
+    # sur le BDF. Restent affichables/configurables via leur ligne node_interfaces (matchée sur `pci`).
     for vf in (caps.get("__vfio__") or []):
         nics.append({
             "name": None, "mac": None, "link": False, "operstate": None, "mtu": None,

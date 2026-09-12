@@ -66,7 +66,7 @@
                     <input type="checkbox" class="proj-vmid-cb" value="{{ c.vmid }}"
                            onchange="updateProjSelectedCount()">
                     <span class="proj-picker-host">{{ c.hostname }}</span>
-                    <span class="card-vmid">***REMOVED***{{ c.vmid }}</span>
+                    <span class="card-vmid">#{{ c.vmid }}</span>
                     {% if mode %}
                     <span class="mode-badge {{ mode[0] }}">{{ mode[1] }}</span>
                     {% else %}
@@ -136,7 +136,7 @@
         <header class="card-head">
             <div class="card-title">
                 <h3 class="card-host">{{ p.name }}</h3>
-                <span class="card-vmid">***REMOVED***{{ p.id }}</span>
+                <span class="card-vmid">#{{ p.id }}</span>
                 {% if p.state == 'active' %}<span class="badge running">{{ _('projects.state_active') }}</span>
                 {% elif p.state in ('loading', 'unloading') %}<span class="badge warn">{{ _('projects.state_' ~ p.state) }}</span>
                 {% elif p.state == 'error' %}<span class="badge stopped">{{ _('projects.state_error') }}</span>
@@ -153,7 +153,7 @@
             {% for c in p.snapshot %}
             <li>
                 {{ c.hostname }}
-                <span class="card-vmid">***REMOVED***{{ c.vmid }}</span>
+                <span class="card-vmid">#{{ c.vmid }}</span>
                 {% if c.deploy_config %}<span class="proj-snapshot-type">: {{ c.deploy_config.type }}</span>{% endif %}
             </li>
             {% endfor %}
@@ -311,7 +311,7 @@ const PROJ_ROLES = ['owner', 'editor', 'operator', 'viewer'];
 let _allUsers = null;   // null = pas encore tenté ; [] = /api/users refusé (repli username)
 
 const _mEsc = s => String(s ?? '').replace(/[&<>"']/g,
-    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&***REMOVED***39;'}[c]));
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const _mRole = r => window.t('projects.role_' + r) || r;
 
 async function toggleMembres(pid) {
@@ -483,7 +483,7 @@ function chargerComposition(pid) {
     const rows = members.map(c => `
         <li style="display:flex; gap:var(--space-2); align-items:center; margin:var(--space-1) 0">
             <b>${_mEsc(c.hostname)}</b>
-            <span class="card-vmid">***REMOVED***${c.vmid}</span>
+            <span class="card-vmid">#${c.vmid}</span>
             <span class="meta">${_mEsc(c.type || '—')}</span>
             <button class="btn btn-red" style="padding:var(--space-1) var(--space-2); font-size:0.8em"
                     onclick="detacherContainerProjet(${pid}, ${c.vmid})">${_mEsc(window.t('projects.compo_detach'))}</button>
@@ -493,7 +493,7 @@ function chargerComposition(pid) {
         !memberVmids.has(c.vmid) && !PROJ_COMPO_EXCLUDED_TYPES.has(c.type));
     const picker = candidates.length
         ? `<select id="compo-add-${pid}">` +
-          candidates.map(c => `<option value="${c.vmid}">${_mEsc(c.hostname)} (***REMOVED***${c.vmid}${c.type ? ' · ' + _mEsc(c.type) : ''})</option>`).join('') +
+          candidates.map(c => `<option value="${c.vmid}">${_mEsc(c.hostname)} (#${c.vmid}${c.type ? ' · ' + _mEsc(c.type) : ''})</option>`).join('') +
           '</select>'
         : `<span class="meta">${_mEsc(window.t('projects.compo_none_avail'))}</span>`;
 
@@ -505,7 +505,7 @@ function chargerComposition(pid) {
             <button class="btn btn-blue" style="padding:var(--space-1) var(--space-2)"
                     ${candidates.length ? '' : 'disabled'}
                     onclick="rattacherContainerProjet(${pid})">${_mEsc(window.t('projects.compo_attach'))}</button>
-            <span class="meta" style="color:var(--warn, ***REMOVED***c77)">⚠ ${_mEsc(window.t('projects.compo_warn'))}</span>
+            <span class="meta" style="color:var(--warn, #c77)">⚠ ${_mEsc(window.t('projects.compo_warn'))}</span>
         </div>`;
 }
 

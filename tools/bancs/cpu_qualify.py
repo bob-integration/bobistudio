@@ -1,42 +1,42 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** cpu_qualify.py — QUALIFICATION du CPU d'un nœud (chantier « quota par modèle de CPU »,
-***REMOVED*** cf. réglage mtl_sch_quota_mbs).
-***REMOVED***
-***REMOVED*** Pourquoi : le quota d'un scheduler libmtl (Mb/s de trafic ST 2110 qu'un lcore busy-poll peut
-***REMOVED*** parser + recopier) est aujourd'hui un réglage GLOBAL (`mtl_sch_quota_mbs`, défaut 2500) alors
-***REMOVED*** que c'est une propriété PHYSIQUE du CPU qui exécute le lcore. L'objectif final est une
-***REMOVED*** bibliothèque de profils par modèle de CPU, sur le modèle de `nic_profiles` (cf. app/nic_qualify.py).
-***REMOVED*** Ce script est la SONDE : il relève l'identité du CPU d'une machine et fait tourner un micro-banc
-***REMOVED*** mono-cœur, puis IMPRIME UN JSON SUR STDOUT. Il n'écrit rien en base, n'ouvre aucune connexion
-***REMOVED*** réseau, et n'importe pas le paquet `app` — il est fait pour tourner isolément sur un nœud distant
-***REMOVED*** via host-exec (agent-nœud), où seule la bibliothèque standard est garantie.
-***REMOVED***
-***REMOVED*** ⚠⚠ DISCIPLINE — LIRE AVANT DE TOUCHER À `quota_mbs_estime` ⚠⚠
-***REMOVED*** Ce script NE MESURE PAS le quota d'un scheduler libmtl. Le seul moyen de mesurer un quota
-***REMOVED*** AUTORITAIRE est de charger un scheduler réel avec du trafic ST 2110 jusqu'au décrochage
-***REMOVED*** (perte de trames / cinst hors bornes) — cf. la discipline équivalente sur les cartes réseau
-***REMOVED*** dans app/nic_qualify.py (`measured_tx_cap` : pas de preuve de clamp ⇒ pas de cap écrit). Un banc
-***REMOVED*** mono-cœur qui recopie de la mémoire et parse des en-têtes RTP synthétiques ne fait tourner NI
-***REMOVED*** libmtl NI DPDK NI de vrai trafic réseau : c'est un PROXY, pas une mesure du plafond. Confondre les
-***REMOVED*** deux — mesurer une DEMANDE ou une capacité brute en croyant mesurer un PLAFOND — est exactement le
-***REMOVED*** bug qui a coûté une panne de production le jour où ce fichier a été écrit (cf. l'historique de
-***REMOVED*** `measured_tx_cap` dans app/nic_qualify.py). En conséquence :
-***REMOVED***   - `quota_mbs_estime` porte TOUJOURS `"indicatif": true` et `"ancrage": null` — il n'y a et il
-***REMOVED***     n'y aura jamais de mesure qui « ancre » ce nombre tant qu'aucun scheduler réel n'a été chargé.
-***REMOVED***   - `avertissements` DOIT toujours contenir le rappel que la valeur est indicative.
-***REMOVED***   - Ne JAMAIS renommer ce champ en quelque chose qui sonnerait comme une capacité prouvée
-***REMOVED***     (« quota_mbs », « rl_quota », « cap_mbs », …) : le nom `_estime` est la garde, pas un détail.
-***REMOVED***
-***REMOVED*** Usage :
-***REMOVED***   ./venv/bin/python tools/cpu_qualify.py            ***REMOVED*** JSON complet sur stdout (défaut)
-***REMOVED***   ./venv/bin/python tools/cpu_qualify.py --court     ***REMOVED*** résumé lisible sur stdout
-***REMOVED***
-***REMOVED*** Code de sortie toujours 0 (sauf erreur Python non rattrapée) : une sonde qui échoue pose un champ
-***REMOVED*** manquant + un avertissement plutôt que de faire planter tout le relevé — un host-exec distant qui
-***REMOVED*** plante sur une machine bizarre est plus coûteux à diagnostiquer qu'un JSON incomplet mais honnête.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# cpu_qualify.py — QUALIFICATION du CPU d'un nœud (chantier « quota par modèle de CPU »,
+# cf. réglage mtl_sch_quota_mbs).
+#
+# Pourquoi : le quota d'un scheduler libmtl (Mb/s de trafic ST 2110 qu'un lcore busy-poll peut
+# parser + recopier) est aujourd'hui un réglage GLOBAL (`mtl_sch_quota_mbs`, défaut 2500) alors
+# que c'est une propriété PHYSIQUE du CPU qui exécute le lcore. L'objectif final est une
+# bibliothèque de profils par modèle de CPU, sur le modèle de `nic_profiles` (cf. app/nic_qualify.py).
+# Ce script est la SONDE : il relève l'identité du CPU d'une machine et fait tourner un micro-banc
+# mono-cœur, puis IMPRIME UN JSON SUR STDOUT. Il n'écrit rien en base, n'ouvre aucune connexion
+# réseau, et n'importe pas le paquet `app` — il est fait pour tourner isolément sur un nœud distant
+# via host-exec (agent-nœud), où seule la bibliothèque standard est garantie.
+#
+# ⚠⚠ DISCIPLINE — LIRE AVANT DE TOUCHER À `quota_mbs_estime` ⚠⚠
+# Ce script NE MESURE PAS le quota d'un scheduler libmtl. Le seul moyen de mesurer un quota
+# AUTORITAIRE est de charger un scheduler réel avec du trafic ST 2110 jusqu'au décrochage
+# (perte de trames / cinst hors bornes) — cf. la discipline équivalente sur les cartes réseau
+# dans app/nic_qualify.py (`measured_tx_cap` : pas de preuve de clamp ⇒ pas de cap écrit). Un banc
+# mono-cœur qui recopie de la mémoire et parse des en-têtes RTP synthétiques ne fait tourner NI
+# libmtl NI DPDK NI de vrai trafic réseau : c'est un PROXY, pas une mesure du plafond. Confondre les
+# deux — mesurer une DEMANDE ou une capacité brute en croyant mesurer un PLAFOND — est exactement le
+# bug qui a coûté une panne de production le jour où ce fichier a été écrit (cf. l'historique de
+# `measured_tx_cap` dans app/nic_qualify.py). En conséquence :
+#   - `quota_mbs_estime` porte TOUJOURS `"indicatif": true` et `"ancrage": null` — il n'y a et il
+#     n'y aura jamais de mesure qui « ancre » ce nombre tant qu'aucun scheduler réel n'a été chargé.
+#   - `avertissements` DOIT toujours contenir le rappel que la valeur est indicative.
+#   - Ne JAMAIS renommer ce champ en quelque chose qui sonnerait comme une capacité prouvée
+#     (« quota_mbs », « rl_quota », « cap_mbs », …) : le nom `_estime` est la garde, pas un détail.
+#
+# Usage :
+#   ./venv/bin/python tools/cpu_qualify.py            # JSON complet sur stdout (défaut)
+#   ./venv/bin/python tools/cpu_qualify.py --court     # résumé lisible sur stdout
+#
+# Code de sortie toujours 0 (sauf erreur Python non rattrapée) : une sonde qui échoue pose un champ
+# manquant + un avertissement plutôt que de faire planter tout le relevé — un host-exec distant qui
+# plante sur une machine bizarre est plus coûteux à diagnostiquer qu'un JSON incomplet mais honnête.
 
 import argparse
 import ctypes
@@ -47,7 +47,7 @@ import subprocess
 import sys
 import time
 
-***REMOVED*** ─── Identité CPU ─────────────────────────────────────────────────────────────────────────────────
+# ─── Identité CPU ─────────────────────────────────────────────────────────────────────────────────
 
 def _read_proc_cpuinfo():
     """Contenu brut de /proc/cpuinfo, ou '' si illisible (conteneur très restreint, non-Linux)."""
@@ -154,8 +154,8 @@ def identite_cpu(avertissements):
     lscpu_txt = _run(["lscpu", "-J"])
     lscpu = _parse_lscpu_json(lscpu_txt)
     lscpu_bytes_txt = _run(["lscpu", "--bytes"])
-    ***REMOVED*** Reparse la sortie --bytes en dict {champ: valeur} texte simple (pas de -J --bytes portable
-    ***REMOVED*** sur toutes les versions d'util-linux → deux appels, l'un pour la structure, l'autre pour les octets).
+    # Reparse la sortie --bytes en dict {champ: valeur} texte simple (pas de -J --bytes portable
+    # sur toutes les versions d'util-linux → deux appels, l'un pour la structure, l'autre pour les octets).
     lscpu_bytes = {}
     for ligne in (lscpu_bytes_txt or "").splitlines():
         if ":" in ligne:
@@ -191,7 +191,7 @@ def identite_cpu(avertissements):
     freq_base = _to_float(lscpu.get("CPU MHz"))
     freq_max = _to_float(lscpu.get("CPU max MHz"))
     if freq_max is None and freq_base is not None:
-        freq_max = freq_base   ***REMOVED*** pas de scaling exposé (repli honnête, pas une estimation cachée)
+        freq_max = freq_base   # pas de scaling exposé (repli honnête, pas une estimation cachée)
 
     return {
         "model_name": info.get("model_name") or "",
@@ -214,7 +214,7 @@ def identite_cpu(avertissements):
     }
 
 
-***REMOVED*** ─── Micro-banc mono-cœur ─────────────────────────────────────────────────────────────────────────
+# ─── Micro-banc mono-cœur ─────────────────────────────────────────────────────────────────────────
 
 def _epingler_coeur_courant(cible_imposee=None):
     """Épingle le process (donc ce thread) sur UN SEUL cœur logique, pour que le banc ne migre pas
@@ -226,10 +226,10 @@ def _epingler_coeur_courant(cible_imposee=None):
         dispo = sorted(os.sched_getaffinity(0))
         if not dispo:
             return None, "aucun cœur disponible via sched_getaffinity"
-        ***REMOVED*** ★ Cœur IMPOSÉ par l'appelant quand il en sait plus que nous : sur un nœud qui fait tourner
-        ***REMOVED*** le moteur 2110, les premiers cœurs logiques sont en busy-poll DPDK. S'y épingler mesure la
-        ***REMOVED*** CONTENTION, pas le processeur (constaté : 3,6 Go/s au lieu du régime réel sur un Xeon Gold).
-        ***REMOVED*** L'appelant (app/cpu_qualify.py) choisit un cœur hors de l'empreinte moteur.
+        # ★ Cœur IMPOSÉ par l'appelant quand il en sait plus que nous : sur un nœud qui fait tourner
+        # le moteur 2110, les premiers cœurs logiques sont en busy-poll DPDK. S'y épingler mesure la
+        # CONTENTION, pas le processeur (constaté : 3,6 Go/s au lieu du régime réel sur un Xeon Gold).
+        # L'appelant (app/cpu_qualify.py) choisit un cœur hors de l'empreinte moteur.
         cible = cible_imposee if (cible_imposee in dispo) else dispo[0]
         os.sched_setaffinity(0, {cible})
         return cible, ("" if cible_imposee is None or cible == cible_imposee
@@ -243,7 +243,7 @@ def bench_memcpy_gbps(avertissements, duree_cible_s=2.5):
     on veut le régime bande-passante-mémoire, pas le régime cache). Repose sur `ctypes.memmove` —
     même primitive que le canary bande-passante mémoire (app/membw.py), aucune dépendance externe.
     Renvoie (gbps, octets_par_transfert, transferts) ou (None, ...) si la sonde échoue."""
-    taille = 128 * 1024 * 1024  ***REMOVED*** 128 Mio : au-delà de tout L3 réaliste (vu ici : 32 Mio)
+    taille = 128 * 1024 * 1024  # 128 Mio : au-delà de tout L3 réaliste (vu ici : 32 Mio)
     try:
         src = ctypes.create_string_buffer(taille)
         dst = ctypes.create_string_buffer(taille)
@@ -252,7 +252,7 @@ def bench_memcpy_gbps(avertissements, duree_cible_s=2.5):
                                "sonde memcpy_gbps non renseignée")
         return None, taille, 0
     mm = ctypes.memmove
-    mm(dst, src, taille)   ***REMOVED*** tour de chauffe (pages touchées, pas dans le chrono)
+    mm(dst, src, taille)   # tour de chauffe (pages touchées, pas dans le chrono)
     transferts = 0
     t0 = time.perf_counter()
     while time.perf_counter() - t0 < duree_cible_s:
@@ -272,13 +272,13 @@ def bench_pkt_parse_mpps(avertissements, duree_cible_s=2.5):
     Boucle Python pure (aucune bibliothèque C dispo à coup sûr côté agent-nœud) : ce n'est donc PAS
     une mesure de ce que ferait libmtl en C/DPDK, seulement un proxy de la vitesse « parsing +
     recopie mémoire » relative d'un cœur à l'autre — cf. garde en tête de module."""
-    entete_rtp = bytes([0x80, 0x60] + [0] * 10)   ***REMOVED*** V=2,P=0,X=0,CC=0 ; PT=0x60 ; seq/ts/ssrc à 0
+    entete_rtp = bytes([0x80, 0x60] + [0] * 10)   # V=2,P=0,X=0,CC=0 ; PT=0x60 ; seq/ts/ssrc à 0
     charge_utile = bytes(1440)
     paquet = entete_rtp + charge_utile
 
     def _lire_entete(pkt):
-        ***REMOVED*** Champs RTP usuels décodés (comme le ferait un parseur ST 2110 minimal) : version/padding/
-        ***REMOVED*** extension/CC, marker/payload-type, séquence, timestamp, SSRC.
+        # Champs RTP usuels décodés (comme le ferait un parseur ST 2110 minimal) : version/padding/
+        # extension/CC, marker/payload-type, séquence, timestamp, SSRC.
         b0, b1 = pkt[0], pkt[1]
         version = b0 >> 6
         marker = (b1 >> 7) & 1
@@ -291,9 +291,9 @@ def bench_pkt_parse_mpps(avertissements, duree_cible_s=2.5):
     compte = 0
     t0 = time.perf_counter()
     while time.perf_counter() - t0 < duree_cible_s:
-        for _ in range(2000):   ***REMOVED*** lot entre deux appels d'horloge (coût de perf_counter() non négligeable)
+        for _ in range(2000):   # lot entre deux appels d'horloge (coût de perf_counter() non négligeable)
             _lire_entete(paquet)
-            _ = paquet[12:]     ***REMOVED*** recopie de la charge utile (bytes → nouvelle allocation, comme un vrai parseur)
+            _ = paquet[12:]     # recopie de la charge utile (bytes → nouvelle allocation, comme un vrai parseur)
             compte += 1
     dt = time.perf_counter() - t0
     if compte == 0 or dt <= 0:
@@ -327,7 +327,7 @@ def executer_banc(avertissements, coeur_cible=None):
     }
 
 
-***REMOVED*** ─── Estimation indicative du quota (JAMAIS une mesure — cf. en-tête) ──────────────────────────────
+# ─── Estimation indicative du quota (JAMAIS une mesure — cf. en-tête) ──────────────────────────────
 
 def estimer_quota(bench, avertissements):
     """Dérive un `quota_mbs_estime` INDICATIF depuis le proxy du banc. Formule volontairement simple
@@ -379,7 +379,7 @@ def estimer_quota(bench, avertissements):
     }
 
 
-***REMOVED*** ─── Avertissements transverses ────────────────────────────────────────────────────────────────────
+# ─── Avertissements transverses ────────────────────────────────────────────────────────────────────
 
 def verifier_charge_machine(avertissements):
     """Avertit si la machine est visiblement chargée pendant la mesure (/proc/loadavg) : un banc
@@ -401,7 +401,7 @@ def verifier_charge_machine(avertissements):
             % (load1, nb_cpu))
 
 
-***REMOVED*** ─── Point d'entrée ────────────────────────────────────────────────────────────────────────────────
+# ─── Point d'entrée ────────────────────────────────────────────────────────────────────────────────
 
 def relever(avertissements, coeur_cible=None):
     cpu = identite_cpu(avertissements)
@@ -469,7 +469,7 @@ def main():
     avertissements = []
     try:
         resultat = relever(avertissements, args.coeur)
-    except Exception as e:  ***REMOVED*** noqa: BLE001 — on ne veut JAMAIS planter côté host-exec distant
+    except Exception as e:  # noqa: BLE001 — on ne veut JAMAIS planter côté host-exec distant
         resultat = {
             "cpu": {}, "bench": {}, "quota_mbs_estime": {
                 "valeur": None, "indicatif": True, "ancrage": None,

@@ -1,20 +1,20 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Un moteur 2110 revenu SANS session RX doit être RÉPARÉ, pas seulement signalé.
-***REMOVED***
-***REMOVED*** Incident du 2026-09-12, qui a produit ce banc. Moteur redémarré à 09:42:21 pour adopter une
-***REMOVED*** nouvelle image. `resync_moteur` a re-poussé les abonnements à +7 s puis à +39 s — deux fois
-***REMOVED*** dans le vide, le moteur n'ayant pas fini son `mtl_init` —, a posé une alerte `error`, et n'a
-***REMOVED*** PLUS RIEN TENTÉ. Le détecteur permanent de `metrics`, lui, a fait ce pour quoi il était écrit :
-***REMOVED*** alerter. Personne n'a réparé. **L'antenne est restée muette 13 minutes**, jusqu'à un
-***REMOVED*** `repush_subscriptions` lancé à la main.
-***REMOVED***
-***REMOVED*** Deux défauts, un seul symptôme :
-***REMOVED***   1. la reprise comptait des ESSAIS (exactement deux) au lieu de tenir une ÉCHÉANCE, alors que
-***REMOVED***      la docstring de la fonction elle-même annonce 30-60 s de `mtl_init` ;
-***REMOVED***   2. le détecteur permanent alertait sans jamais tenter la reprise.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Un moteur 2110 revenu SANS session RX doit être RÉPARÉ, pas seulement signalé.
+#
+# Incident du 2026-09-12, qui a produit ce banc. Moteur redémarré à 09:42:21 pour adopter une
+# nouvelle image. `resync_moteur` a re-poussé les abonnements à +7 s puis à +39 s — deux fois
+# dans le vide, le moteur n'ayant pas fini son `mtl_init` —, a posé une alerte `error`, et n'a
+# PLUS RIEN TENTÉ. Le détecteur permanent de `metrics`, lui, a fait ce pour quoi il était écrit :
+# alerter. Personne n'a réparé. **L'antenne est restée muette 13 minutes**, jusqu'à un
+# `repush_subscriptions` lancé à la main.
+#
+# Deux défauts, un seul symptôme :
+#   1. la reprise comptait des ESSAIS (exactement deux) au lieu de tenir une ÉCHÉANCE, alors que
+#      la docstring de la fonction elle-même annonce 30-60 s de `mtl_init` ;
+#   2. le détecteur permanent alertait sans jamais tenter la reprise.
 import os
 import re
 import sys
@@ -96,17 +96,17 @@ controle("★★ le seuil d'alerte n'a pas bougé",
          "alerter plus tard pour laisser la reprise agir serait un recul : l'exploitant doit "
          "savoir qu'il s'est passé quelque chose, même si c'est réparé")
 
-***REMOVED*** ── ET ON L'EXÉCUTE ─────────────────────────────────────────────────────────
-***REMOVED*** Les contrôles ci-dessus lisent la source. Tous verts du premier coup, donc suspects : ils ne
-***REMOVED*** prouvent pas que la reprise se DÉCLENCHE. On fait tourner le détecteur pour de vrai, avec un
-***REMOVED*** moteur qui doit 6 sessions et n'en sert aucune.
+# ── ET ON L'EXÉCUTE ─────────────────────────────────────────────────────────
+# Les contrôles ci-dessus lisent la source. Tous verts du premier coup, donc suspects : ils ne
+# prouvent pas que la reprise se DÉCLENCHE. On fait tourner le détecteur pour de vrai, avec un
+# moteur qui doit 6 sessions et n'en sert aucune.
 print("\n── Le détecteur, exécuté ───────────────────────────────────────────────")
-import app.metrics as M                                              ***REMOVED*** noqa: E402
+import app.metrics as M                                              # noqa: E402
 
 _appels = []
 M._tenter_reprise_rx = lambda vmid, hn: _appels.append((vmid, hn))
 M._rx_missing_cnt.clear(); M._rx_missing_alert.clear(); M._rx_repair_n.clear()
-M.db_add_alert = lambda *a, **k: None          ***REMOVED*** on ne pollue pas la base du site
+M.db_add_alert = lambda *a, **k: None          # on ne pollue pas la base du site
 M._node_de = lambda v: None
 
 
@@ -117,13 +117,13 @@ class _FauxNmos:
 
 
 sys.modules["services.nmos"] = _FauxNmos
-import services                                                      ***REMOVED*** noqa: E402
+import services                                                      # noqa: E402
 services.nmos = _FauxNmos
 
 MUETS = [{"essence": "video", "mode": "idle"} for _ in range(6)]
 SAINS = [{"essence": "video", "mode": "mtl"} for _ in range(6)]
 
-for i in range(1, 4):                       ***REMOVED*** sous le seuil : on ne doit RIEN tenter
+for i in range(1, 4):                       # sous le seuil : on ne doit RIEN tenter
     M._check_sessions_moteur(42, "moteur-test", MUETS)
 controle("★★★ aucune reprise avant le seuil de %d polls" % M.RX_MISSING_POLLS, not _appels,
          "réparer au premier tick confondrait un démarrage normal avec une panne — un moteur "
@@ -142,7 +142,7 @@ controle("★★★ et elle est BORNÉE", len(_appels) == M.RX_REPAIR_MAX,
          "une source amont éteinte ne doit pas faire marteler le contrôleur indéfiniment. "
          "Obtenu %d tentatives pour un maximum de %d" % (len(_appels), M.RX_REPAIR_MAX))
 
-M._check_sessions_moteur(42, "moteur-test", SAINS)        ***REMOVED*** épisode clos
+M._check_sessions_moteur(42, "moteur-test", SAINS)        # épisode clos
 avant = len(_appels)
 for _ in range(M.RX_REPAIR_TOUS_LES_N_POLLS + M.RX_MISSING_POLLS + 1):
     M._check_sessions_moteur(42, "moteur-test", MUETS)

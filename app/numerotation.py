@@ -1,14 +1,14 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Convention de NUMÉROTATION — source UNIQUE. « Le 0 ne doit pas exister. »
 
 Décision utilisateur du 2026-08-11, exécutée le 2026-08-13, élargie le même jour à TOUS les
 producteurs indexés (pas seulement le moteur 2110) puis au contrat générique d'entrée.
 
-***REMOVED******REMOVED*** La règle, unique et sans exception
+## La règle, unique et sans exception
 
 `idx` reste l'indice de TABLEAU, 0-based : il indexe `tx_slots[]`, `rx_flows[]`, les pools du
 moteur, les listes de `params`. Un indice de tableau qui commencerait à 1 ferait de chaque
@@ -27,7 +27,7 @@ boucle une occasion de décalage d'un cran, pour un gain nul.
 Les graines d'UUID NMOS et de SSRC RTP, elles, restent sur l'indice BRUT — cf. la section
 suivante : c'est ce qui préserve l'identité au lieu de la renouveler.
 
-***REMOVED******REMOVED*** L'identité, elle, ne bouge PAS — et ce n'est pas un hasard
+## L'identité, elle, ne bouge PAS — et ce n'est pas un hasard
 
 L'arbitrage du 2026-08-13 acceptait de perdre les UUID NMOS. Il s'avère que ce n'est pas
 nécessaire, et la raison mérite d'être écrite : `_registry_id()` (services/nmos) retrouve une
@@ -45,7 +45,7 @@ visiblement — le registre sèmerait simplement une ressource NEUVE à côté d
 resterait annoncée. On se retrouverait avec deux jeux de senders NMOS pour le même signal.
 Les deux migrations sont indissociables.
 
-***REMOVED******REMOVED*** Les deux miroirs à tenir
+## Les deux miroirs à tenir
 
 1. `plugins/2110_io/docker/controller.py` porte sa propre copie de `numero()` (il tourne dans
    l'image du moteur, il ne peut pas importer `app`). Le moteur NOMME les flux, l'orchestrateur
@@ -53,7 +53,7 @@ Les deux migrations sont indissociables.
 2. Les `plugins/<type>/script.py` construisent leurs clés d'entrée inline (même raison). Le
    gabarit est `"input_%d" % (i + 1)`.
 
-***REMOVED******REMOVED*** Vérification
+## Vérification
 
 `tools/verif_numerotation.py` échoue s'il reste, hors de ce module, une construction manuelle de
 clé indexée (`"input_%d" % i`, `"tx%d_shm" % i`, …). C'est ce test qui empêche la convention de
@@ -73,9 +73,9 @@ def indice(n):
     return int(n) - 1
 
 
-***REMOVED*** ── Clés d'ENTRÉE (contrat générique du câblage : `state_field` des manifestes) ───────────────
-***REMOVED*** Écrites par `app/routes/cabling._apply_wire`, relues par les scripts de plugins. Trois formes :
-***REMOVED*** générique (`input_{n}`), et les variantes vidéo/audio du plugin `delay`.
+# ── Clés d'ENTRÉE (contrat générique du câblage : `state_field` des manifestes) ───────────────
+# Écrites par `app/routes/cabling._apply_wire`, relues par les scripts de plugins. Trois formes :
+# générique (`input_{n}`), et les variantes vidéo/audio du plugin `delay`.
 
 def cle_input(idx, fmt=False):
     return "input_%d%s" % (numero(idx), "_fmt" if fmt else "")
@@ -89,7 +89,7 @@ def cle_input_a(idx, fmt=False):
     return "input_a_%d%s" % (numero(idx), "_fmt" if fmt else "")
 
 
-***REMOVED*** ── Clés de SORTIE TX du moteur 2110 ─────────────────────────────────────────────────────────
+# ── Clés de SORTIE TX du moteur 2110 ─────────────────────────────────────────────────────────
 
 def cle_tx_shm(idx, fmt=False):
     return "tx%d_shm%s" % (numero(idx), "_fmt" if fmt else "")
@@ -103,9 +103,9 @@ def cle_tx_anc_shm(idx, fmt=False):
     return "tx_anc%d_shm%s" % (numero(idx), "_fmt" if fmt else "")
 
 
-***REMOVED*** ── Noms de FLUX MXL ─────────────────────────────────────────────────────────────────────────
-***REMOVED*** ⚠ MIROIR de `plugins/2110_io/docker/controller.py`. L'UUID MXL d'un flux est dérivé de son NOM
-***REMOVED*** (uuid5) : ces trois fonctions décident donc de l'identité des flux.
+# ── Noms de FLUX MXL ─────────────────────────────────────────────────────────────────────────
+# ⚠ MIROIR de `plugins/2110_io/docker/controller.py`. L'UUID MXL d'un flux est dérivé de son NOM
+# (uuid5) : ces trois fonctions décident donc de l'identité des flux.
 
 def flux_video(hostname, idx):
     return "%s_%d" % (hostname, numero(idx))
@@ -119,7 +119,7 @@ def flux_anc(hostname, idx):
     return "%s_anc_%d" % (hostname, numero(idx))
 
 
-***REMOVED*** ── Slot du registre NMOS (`nmos_resources.bind_slot`) ───────────────────────────────────────
+# ── Slot du registre NMOS (`nmos_resources.bind_slot`) ───────────────────────────────────────
 
 def slot_tx(idx, suffixe):
     """`slot_tx(0, "v")` → `tx1:v`. `suffixe` : `v`, `d`, ou `a<n>`."""

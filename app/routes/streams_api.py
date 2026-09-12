@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """API Streams (encodeur `streamer`) : liste/détail par-vmid (params normalisés + fps/destinations
 live) + sauvegarde de la config d'encodage. Remap audio À CHAUD (POST :8082/audiomap) quand seuls
@@ -31,7 +31,7 @@ def _stream_obj(c):
         return None
     vmid = c["vmid"]
     params = normalize_worker_udp_params(dc.get("params") or {})
-    ***REMOVED*** normalize ne porte pas hot_input → l'exposer pour présélectionner le mode sur la carte.
+    # normalize ne porte pas hot_input → l'exposer pour présélectionner le mode sur la carte.
     params["hot_input"] = bool((dc.get("params") or {}).get("hot_input"))
     ip = c.get("ip") or get_container_ip(vmid)
     live = None
@@ -42,8 +42,8 @@ def _stream_obj(c):
                 live = r.json()
         except Exception:
             live = None
-    ***REMOVED*** Injecter embed_url/whep_url pour les destinations WebRTC sans ces champs
-    ***REMOVED*** (streamer déployé avant que la passerelle soit configurée).
+    # Injecter embed_url/whep_url pour les destinations WebRTC sans ces champs
+    # (streamer déployé avant que la passerelle soit configurée).
     from .. import settings as _st
     gw_ip      = _st.get("webrtc_gateway_ip")
     gw_enabled = bool(_st.get("webrtc_enabled"))
@@ -60,7 +60,7 @@ def _stream_obj(c):
 @require_login
 def api_streams():
     """Liste des containers streamer (params normalisés + live)."""
-    member_pids = scoped_project_ids()   ***REMOVED*** None = accès global (pas de filtre)
+    member_pids = scoped_project_ids()   # None = accès global (pas de filtre)
     rows = db_get_containers()
     if member_pids is not None:
         rows = [c for c in rows if vmid_project_ids(c["vmid"]) & member_pids]
@@ -118,12 +118,12 @@ def api_streams_save(vmid):
     body = request.get_json(force=True, silent=True) or {}
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c)
     if not dc or dc.get("type") != "streamer":
-        return jsonify({"error": f"***REMOVED***{vmid} n'est pas un encodeur (streamer)"}), 400
+        return jsonify({"error": f"#{vmid} n'est pas un encodeur (streamer)"}), 400
 
-    ***REMOVED*** On repart des params existants normalisés + on applique l'édition reçue.
+    # On repart des params existants normalisés + on applique l'édition reçue.
     from ..scripts import normalize_worker_udp_params
     params = normalize_worker_udp_params(dc.get("params") or {})
     v_in = body.get("video") or {}
@@ -132,10 +132,10 @@ def api_streams_save(vmid):
     from ..scripts import VALID_CHROMA
     if v_in.get("chroma") and str(v_in["chroma"]) not in VALID_CHROMA:
         return jsonify({"error": "chroma invalide (420|422|444)"}), 400
-    ***REMOVED*** color_* : whitelistés silencieusement par normalize_worker_udp_params (invalide → "").
-    ***REMOVED*** Champs numériques : refuser tôt (400 propre) une valeur non numérique plutôt que de laisser
-    ***REMOVED*** normalize_worker_udp_params retomber silencieusement sur le défaut (le durcissement _as_int
-    ***REMOVED*** côté scripts.py reste le filet principal contre le 500, ce test rend juste l'erreur explicite).
+    # color_* : whitelistés silencieusement par normalize_worker_udp_params (invalide → "").
+    # Champs numériques : refuser tôt (400 propre) une valeur non numérique plutôt que de laisser
+    # normalize_worker_udp_params retomber silencieusement sur le défaut (le durcissement _as_int
+    # côté scripts.py reste le filet principal contre le 500, ce test rend juste l'erreur explicite).
     def _is_num(x):
         if isinstance(x, bool):
             return False
@@ -165,7 +165,7 @@ def api_streams_save(vmid):
             if not chs or any((not isinstance(ci, int)) or ci < 0 or ci > 7 for ci in chs):
                 return jsonify({"error": "canaux audio invalides (0..7, ≥1 par piste)"}), 400
         params["audio"]["tracks"] = a_in["tracks"]
-    if "audio_shm" in body:   ***REMOVED*** normalement non envoyé (câblage) — toléré
+    if "audio_shm" in body:   # normalement non envoyé (câblage) — toléré
         params["audio_shm"] = body["audio_shm"] or None
     if "destinations" in body:
         if not isinstance(body["destinations"], list):
@@ -178,19 +178,19 @@ def api_streams_save(vmid):
                 if k in d and d[k] not in (None, "") and not _is_num(d[k]):
                     return jsonify({"error": f"destination : « {k} » doit être numérique"}), 400
         params["destinations"] = body["destinations"]
-    ***REMOVED*** Re-normalise (coerce les types, nettoie) avant déploiement.
+    # Re-normalise (coerce les types, nettoie) avant déploiement.
     params = normalize_worker_udp_params(params)
-    ***REMOVED*** Mode source (normalize ne le porte pas) : valeur envoyée par la carte, sinon on
-    ***REMOVED*** préserve l'existant. hot=False → « Adaptation auto » (détection + scaling).
+    # Mode source (normalize ne le porte pas) : valeur envoyée par la carte, sinon on
+    # préserve l'existant. hot=False → « Adaptation auto » (détection + scaling).
     if "hot_input" in body:
         params["hot_input"] = bool(body["hot_input"])
     else:
         params["hot_input"] = bool((dc.get("params") or {}).get("hot_input"))
 
-    ***REMOVED*** Chemin À CHAUD : si seuls les INDICES de canaux audio changent (forme/dest/codec/
-    ***REMOVED*** résolution identiques), on ré-aiguille via POST :8082/audiomap sans tuer ffmpeg →
-    ***REMOVED*** zéro coupure du flux. Sinon (ajout/suppression de piste, mono↔stéréo, codec, dest,
-    ***REMOVED*** résolution) → redéploiement classique. Cf. _run_hot pour le mode source vidéo.
+    # Chemin À CHAUD : si seuls les INDICES de canaux audio changent (forme/dest/codec/
+    # résolution identiques), on ré-aiguille via POST :8082/audiomap sans tuer ffmpeg →
+    # zéro coupure du flux. Sinon (ajout/suppression de piste, mono↔stéréo, codec, dest,
+    # résolution) → redéploiement classique. Cf. _run_hot pour le mode source vidéo.
     old = normalize_worker_udp_params(dc.get("params") or {})
     if _audio_only_remap(old, params):
         from ..addressing import get_container_ip
@@ -199,7 +199,7 @@ def api_streams_save(vmid):
         if ip and _hot_audiomap(ip, params["audio"]["tracks"]):
             db_update_deploy_config(vmid, "streamer", params)
             return jsonify({"status": "remap_a_chaud", "params": params})
-        ***REMOVED*** échec hot (forme refusée / encodeur down) → on retombe sur le redéploiement
+        # échec hot (forme refusée / encodeur down) → on retombe sur le redéploiement
 
     threading.Thread(target=deployer_script, args=(vmid, "streamer", params), daemon=True).start()
     return jsonify({"status": "deploiement_en_cours", "params": params})

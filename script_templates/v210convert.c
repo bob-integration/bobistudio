@@ -21,11 +21,11 @@
  * (fait dans plugins/_compute_runtime/Dockerfile ; binding ctypes dans bobimxl.py).
  */
 
-***REMOVED***include <stdint.h>
-***REMOVED***include <stddef.h>
-***REMOVED***include <string.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
 
-***REMOVED***define EXPORT __attribute__((visibility("default")))
+#define EXPORT __attribute__((visibility("default")))
 
 EXPORT size_t bobi_v210_stride(int width)
 {

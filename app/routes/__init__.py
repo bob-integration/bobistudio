@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 import json
 import logging
@@ -40,14 +40,14 @@ from ..deploy import deployer_script
 from ..vmlocks import verrou_vmid
 from .. import hostnames
 from ..projects import restaurer_projet, detruire_containers_projet, planifier_restore
-***REMOVED*** B1a/B1b-2 : résolveurs d'hôte par-nœud (remplacent le réglage global proxmox_host pour les host-ops).
+# B1a/B1b-2 : résolveurs d'hôte par-nœud (remplacent le réglage global proxmox_host pour les host-ops).
 from ..addressing import primary_host as _primary_host, host_for_vmid as _host_for_vmid, \
     node_host as _node_host, \
     controller_ipv4s as _controller_ipv4s, controller_on_subnet as _controller_on_subnet, \
     controller_route_to as _controller_route_to
-***REMOVED*** Helpers transversaux (utilisés dans tout ce fichier ET par node_network.py/plugin_routes/
-***REMOVED*** split.py) : extraits dans shared.py, sans dépendance sur `bp` → importables ici sans risque
-***REMOVED*** de circularité, quel que soit l'endroit du fichier.
+# Helpers transversaux (utilisés dans tout ce fichier ET par node_network.py/plugin_routes/
+# split.py) : extraits dans shared.py, sans dépendance sur `bp` → importables ici sans risque
+# de circularité, quel que soit l'endroit du fichier.
 from .shared import _load_dc, _mixer_proxy, _ptp_apply_core, _mtl_total_queues, _fetch_host_nics
 
 
@@ -84,12 +84,12 @@ from ..auth import (require_login, require_perm, has_perm, current_user, login_u
 
 bp = Blueprint("routes", __name__)
 
-***REMOVED*** B3-2a : garde-fou « standby = passif ». Un contrôleur en STANDBY sert l'UI en lecture mais ne doit
-***REMOVED*** JAMAIS muter l'état (anti-split-brain : il n'a pas la main sur les nœuds). On refuse donc tout
-***REMOVED*** mutateur /api/* (POST/PATCH/PUT/DELETE) sauf la liste blanche du pilotage HA : /api/ha/*
-***REMOVED*** (réplication + promote à venir) et /api/update/* (sync code entre instances). Le login (/login)
-***REMOVED*** et /setup ne sont pas sous /api/ → déjà autorisés. Les GET/HEAD (UI lecture) passent toujours.
-***REMOVED*** Défaut active → aucun effet.
+# B3-2a : garde-fou « standby = passif ». Un contrôleur en STANDBY sert l'UI en lecture mais ne doit
+# JAMAIS muter l'état (anti-split-brain : il n'a pas la main sur les nœuds). On refuse donc tout
+# mutateur /api/* (POST/PATCH/PUT/DELETE) sauf la liste blanche du pilotage HA : /api/ha/*
+# (réplication + promote à venir) et /api/update/* (sync code entre instances). Le login (/login)
+# et /setup ne sont pas sous /api/ → déjà autorisés. Les GET/HEAD (UI lecture) passent toujours.
+# Défaut active → aucun effet.
 _HA_STANDBY_ALLOW = ("/api/ha/", "/api/update/")
 
 
@@ -124,9 +124,9 @@ def _ha_readonly_guard():
     return None
 
 
-***REMOVED*** Chantier 1 : les utilisateurs `interface=projets` n'ont pas accès aux PAGES techniques
-***REMOVED*** — liste blanche de préfixes (les API ont leur propre scoping, cf. auth.check_vmid_access).
-***REMOVED*** Approche liste blanche : toute page technique future est couverte par défaut.
+# Chantier 1 : les utilisateurs `interface=projets` n'ont pas accès aux PAGES techniques
+# — liste blanche de préfixes (les API ont leur propre scoping, cf. auth.check_vmid_access).
+# Approche liste blanche : toute page technique future est couverte par défaut.
 _PROJECT_UI_ALLOW = ("/workspaces", "/workspace/", "/login", "/logout", "/static/",
                      "/api/", "/aide", "/setup", "/watch")
 
@@ -189,7 +189,7 @@ def _attach_fabric(containers):
     try:
         from .. import compositor_fabric as _cf
         lay = _cf.fabric_layout(containers)
-        ***REMOVED*** parent affiché = 1er parent encore présent dans la flotte (sinon None)
+        # parent affiché = 1er parent encore présent dans la flotte (sinon None)
         present = {c.get("vmid") for c in containers}
         for c in containers:
             info = lay.get(c.get("vmid")) or {}
@@ -205,58 +205,58 @@ def _attach_fabric(containers):
             c.setdefault("fabric_parent", None)
     return containers
 
-***REMOVED*** ─── Login / Logout / Setup / Service systemd ────────────────────────────────
-***REMOVED*** Extraits dans app/routes/auth_pages.py.
+# ─── Login / Logout / Setup / Service systemd ────────────────────────────────
+# Extraits dans app/routes/auth_pages.py.
 
-***REMOVED*** ─── Build de distribution, mise à jour, HA, pairs ───────────────────────────
-***REMOVED*** Extraits dans app/routes/updates.py, ha.py, peers.py (domaines à faible couplage,
-***REMOVED*** tranche 2 du découpage — le garde standby et l'injecteur de rôle ci-dessus RESTENT
-***REMOVED*** ici, ce sont des hooks globaux sur `bp`, pas des routes).
+# ─── Build de distribution, mise à jour, HA, pairs ───────────────────────────
+# Extraits dans app/routes/updates.py, ha.py, peers.py (domaines à faible couplage,
+# tranche 2 du découpage — le garde standby et l'injecteur de rôle ci-dessus RESTENT
+# ici, ce sont des hooks globaux sur `bp`, pas des routes).
 
-***REMOVED*** ─── Pages ────────────────────────────────────────────────
+# ─── Pages ────────────────────────────────────────────────
 
-***REMOVED*** monitoring_page, aide_page+api_changelog, home, containers_page, traitements_index/legacy,
-***REMOVED*** multiview_page, labels_page, tsl_sources_redirect, cables_page, streams_page, share links,
-***REMOVED*** projects_page, backup_page, settings_page — extraits dans app/routes/pages.py.
-
-
-***REMOVED*** Télémétrie/diagnostic infra (fabric overview, panneaux monitoring, pyramide,
-***REMOVED*** membw, santé nœuds, GPU, statut shm) extraits dans app/routes/monitoring_api.py.
+# monitoring_page, aide_page+api_changelog, home, containers_page, traitements_index/legacy,
+# multiview_page, labels_page, tsl_sources_redirect, cables_page, streams_page, share links,
+# projects_page, backup_page, settings_page — extraits dans app/routes/pages.py.
 
 
-
-
-***REMOVED*** Registre des plugins (liste/drift, import/export, versions, activation) + shell
-***REMOVED*** de rubrique + proxy de contrôle générique extraits dans app/routes/plugin_registry.py.
-***REMOVED*** API Streams (encodeur streamer) extraite dans app/routes/streams_api.py.
+# Télémétrie/diagnostic infra (fabric overview, panneaux monitoring, pyramide,
+# membw, santé nœuds, GPU, statut shm) extraits dans app/routes/monitoring_api.py.
 
 
 
 
-***REMOVED*** ─── Settings API ─────────────────────────────────────────
-
-***REMOVED*** API Réglages (get/set/schema/node overrides/logo/stats/logs) extraite dans
-***REMOVED*** app/routes/settings_api.py ; /api/sources + /api/home/summary extraits dans
-***REMOVED*** app/routes/home_dashboard.py.
+# Registre des plugins (liste/drift, import/export, versions, activation) + shell
+# de rubrique + proxy de contrôle générique extraits dans app/routes/plugin_registry.py.
+# API Streams (encodeur streamer) extraite dans app/routes/streams_api.py.
 
 
-***REMOVED*** ─── Câblage en place depuis la home ───────────────────────────
-***REMOVED*** Le user clique source puis destination sur la home → POST direct ici.
-***REMOVED*** Le serveur met à jour le deploy_config du consommateur et redeploie.
-
-***REMOVED*** _load_dc extrait dans app/routes/shared.py (helper le plus transversal du fichier).
-
-***REMOVED*** Câblage en place depuis la home (wire/unwire/insert_udc), snapshots de câblage
-***REMOVED*** + vues de disposition (page Câbles) extraits dans app/routes/cabling.py.
 
 
-***REMOVED*** D Phase 2a : routes Proxmox (connexion/options LXC/recréation template 299) RETIRÉES (full-Docker).
+# ─── Settings API ─────────────────────────────────────────
 
-***REMOVED*** ─── Backup / Restauration de la DB ──────────────────────
-***REMOVED*** Extrait dans app/routes/backup.py.
+# API Réglages (get/set/schema/node overrides/logo/stats/logs) extraite dans
+# app/routes/settings_api.py ; /api/sources + /api/home/summary extraits dans
+# app/routes/home_dashboard.py.
 
-***REMOVED*** Layouts multiview + Projets (CRUD, export/import, restore streamé) extraits
-***REMOVED*** dans app/routes/projects_api.py.
+
+# ─── Câblage en place depuis la home ───────────────────────────
+# Le user clique source puis destination sur la home → POST direct ici.
+# Le serveur met à jour le deploy_config du consommateur et redeploie.
+
+# _load_dc extrait dans app/routes/shared.py (helper le plus transversal du fichier).
+
+# Câblage en place depuis la home (wire/unwire/insert_udc), snapshots de câblage
+# + vues de disposition (page Câbles) extraits dans app/routes/cabling.py.
+
+
+# D Phase 2a : routes Proxmox (connexion/options LXC/recréation template 299) RETIRÉES (full-Docker).
+
+# ─── Backup / Restauration de la DB ──────────────────────
+# Extrait dans app/routes/backup.py.
+
+# Layouts multiview + Projets (CRUD, export/import, restore streamé) extraits
+# dans app/routes/projects_api.py.
 
 
 @bp.route("/api/containers/<int:vmid>/compose", methods=["POST"])
@@ -274,22 +274,22 @@ def compose(vmid):
 def liste_containers():
     from ..metrics import gpu_cache as _gpu
     rows = _attach_fabric(_attach_projects(db_get_containers()))
-    ***REMOVED*** Nom du nœud d'exécution, pour l'affichage par tuile (la table ne porte que node_id).
+    # Nom du nœud d'exécution, pour l'affichage par tuile (la table ne porte que node_id).
     _noms = {n["id"]: (n.get("name") or f"Nœud {n['id']}") for n in db_get_nodes()}
     for c in rows:
         c["node_name"] = _noms.get(c.get("node_id")) if c.get("node_id") else None
-    member_pids = scoped_project_ids()   ***REMOVED*** None = accès global (pas de filtre)
+    member_pids = scoped_project_ids()   # None = accès global (pas de filtre)
     if member_pids is not None:
         uid = (current_user() or {}).get("id")
         rows = [c for c in rows if (vmid_project_ids(c["vmid"]) & member_pids)
                 or c.get("monitor_user_id") == uid]
-    for c in rows:                                  ***REMOVED*** badge GPU : compositing accéléré cupy (:8080 → cache)
+    for c in rows:                                  # badge GPU : compositing accéléré cupy (:8080 → cache)
         g = _gpu.get(c.get("vmid"))
         if g and g.get("gpu"):
             c["gpu"] = g
-    ***REMOVED*** CADENCE prête à afficher : {cible, tenue, mesure}. Le verdict « tenue » est rendu par
-    ***REMOVED*** l'orchestrateur et non par le navigateur, pour que le badge et l'alarme de sous-cadence ne
-    ***REMOVED*** puissent pas se contredire (même cible, même seuil de clôture — cf. metrics.cadence_etat).
+    # CADENCE prête à afficher : {cible, tenue, mesure}. Le verdict « tenue » est rendu par
+    # l'orchestrateur et non par le navigateur, pour que le badge et l'alarme de sous-cadence ne
+    # puissent pas se contredire (même cible, même seuil de clôture — cf. metrics.cadence_etat).
     from ..metrics import cadence_etat as _cadence
     for c in rows:
         try:
@@ -327,7 +327,7 @@ def _raz_infra():
     for c in db_get_containers():
         t_ = _type_of(c)
         if c["vmid"] != gateway_vmid and is_mtl_type(t_) and not _is_probe_type(t_):
-            infra.append((c["vmid"], _t("settings.raz.engine") + " " + (c.get("hostname") or f"***REMOVED***{c['vmid']}")))
+            infra.append((c["vmid"], _t("settings.raz.engine") + " " + (c.get("hostname") or f"#{c['vmid']}")))
     return infra
 
 
@@ -347,7 +347,7 @@ def raz_plan():
     for c in containers:
         plan.append({
             "vmid":     c["vmid"],
-            "hostname": c.get("hostname") or f"***REMOVED***{c['vmid']}",
+            "hostname": c.get("hostname") or f"#{c['vmid']}",
             "status":   c.get("status") or "unknown",
             "is_infra": False,
             "steps":    [_t("settings.raz.step.docker"),
@@ -370,11 +370,11 @@ def raz_plan():
     return jsonify({
         "containers": plan,
         "total":      len(plan),
-        ***REMOVED*** Toujours renvoyée (même sans `del_infra`) : la case doit NOMMER ce qu'elle emporte.
+        # Toujours renvoyée (même sans `del_infra`) : la case doit NOMMER ce qu'elle emporte.
         "infra":      [{"vmid": v, "label": lbl} for v, lbl in infra],
     })
 
-***REMOVED*** Flag d'interruption du RAZ (op admin globale : un seul RAZ à la fois).
+# Flag d'interruption du RAZ (op admin globale : un seul RAZ à la fois).
 _raz_abort = threading.Event()
 
 @bp.route("/api/containers/raz/abort", methods=["POST"])
@@ -396,7 +396,7 @@ def raz_executer():
     gateway_vmid = int(st.get("webrtc_gateway_vmid") or 0)
     infra       = _raz_infra()
     infra_vmids = {v for v, _lbl in infra}
-    ***REMOVED*** Containers explicitement conservés (décochés dans le plan).
+    # Containers explicitement conservés (décochés dans le plan).
     exclude_vmids = {int(v) for v in (data.get("exclude_vmids") or [])}
 
     def _detruire_stream(vmid):
@@ -423,7 +423,7 @@ def raz_executer():
         yield box
 
     def raz_iter():
-        ***REMOVED*** Nouveau RAZ : on repart d'un flag propre.
+        # Nouveau RAZ : on repart d'un flag propre.
         _raz_abort.clear()
         containers = [c for c in db_get_containers()
                       if c["vmid"] not in infra_vmids
@@ -446,7 +446,7 @@ def raz_executer():
                 yield f"⛔ Interruption demandée — arrêt du RAZ ({i-1}/{total} traités).\n"
                 break
             vmid     = c["vmid"]
-            hostname = c.get("hostname") or f"***REMOVED***{vmid}"
+            hostname = c.get("hostname") or f"#{vmid}"
             yield f"[{i}/{total}] {hostname} (vmid {vmid})…\n"
             box = None
             for item in _detruire_stream(vmid):
@@ -461,8 +461,8 @@ def raz_executer():
                 yield f"  ✕ échec : {box.get('err') if box else 'inconnu'}\n"
                 err_count += 1
 
-        ***REMOVED*** L'infrastructure passe EN DERNIER : si l'exploitant interrompt, il garde le moteur
-        ***REMOVED*** 2110 et la passerelle plutôt que de perdre d'abord ce qui ne se recrée pas en palette.
+        # L'infrastructure passe EN DERNIER : si l'exploitant interrompt, il garde le moteur
+        # 2110 et la passerelle plutôt que de perdre d'abord ce qui ne se recrée pas en palette.
         for j, (vmid, libelle) in enumerate(cible_infra, len(containers) + 1):
             if _raz_abort.is_set():
                 interrompu = True
@@ -470,7 +470,7 @@ def raz_executer():
                 break
             yield f"[{j}/{total}] {libelle} (vmid {vmid})…\n"
             if vmid == gateway_vmid:
-                ***REMOVED*** La passerelle a son propre teardown : il coupe AUSSI le réglage webrtc_enabled.
+                # La passerelle a son propre teardown : il coupe AUSSI le réglage webrtc_enabled.
                 try:
                     from services import webrtc_gateway
                     ok, msg = webrtc_gateway.destroy_gateway()
@@ -516,59 +516,59 @@ def creer():
     from .. import plugins
     _dtype = (data.get("deploy_type") or "").strip()
 
-    ***REMOVED*** Full-Docker : un container se crée SUR un nœud. Un `node_id` absent n'est plus « un autre
-    ***REMOVED*** backend » (il n'y en a plus qu'un), c'est une requête incomplète — refusée en fin de fonction.
-    ***REMOVED*** On crée la ligne (vmid synthétique) puis on docker run le contrôleur.
+    # Full-Docker : un container se crée SUR un nœud. Un `node_id` absent n'est plus « un autre
+    # backend » (il n'y en a plus qu'un), c'est une requête incomplète — refusée en fin de fonction.
+    # On crée la ligne (vmid synthétique) puis on docker run le contrôleur.
     if data.get("node_id"):
         from .. import docker_driver, docker_compute
         node_id = data.get("node_id")
-        ***REMOVED*** Hostname : validé ICI, à la FRONTIÈRE de saisie, avant tout thread — c'était le seul
-        ***REMOVED*** champ d'identité sans contrôle serveur. La normalisation JS était la seule barrière :
-        ***REMOVED*** un POST direct écrivait « ma caméra n°1 » en base, d'où un nom de flux MXL et un
-        ***REMOVED*** composant de chemin de bind-mount (/var/lib/bobi/state/<hostname>) dégénérés.
-        ***REMOVED*** Un hostname vide reste permis : les chemins auto-provisionnés (moteur 2110, monitoring)
-        ***REMOVED*** posent eux-mêmes un nom construit plus bas.
+        # Hostname : validé ICI, à la FRONTIÈRE de saisie, avant tout thread — c'était le seul
+        # champ d'identité sans contrôle serveur. La normalisation JS était la seule barrière :
+        # un POST direct écrivait « ma caméra n°1 » en base, d'où un nom de flux MXL et un
+        # composant de chemin de bind-mount (/var/lib/bobi/state/<hostname>) dégénérés.
+        # Un hostname vide reste permis : les chemins auto-provisionnés (moteur 2110, monitoring)
+        # posent eux-mêmes un nom construit plus bas.
         if str(data.get("hostname") or "").strip():
             _hn, _err = hostnames.valider(data.get("hostname"))
             if _err:
                 return jsonify({"error": _err}), 409 if "déjà utilisé" in _err else 400
             data["hostname"] = _hn
-        ***REMOVED*** PAS de repli silencieux sur 2110_io : un type manquant doit ÉCHOUER, sinon une
-        ***REMOVED*** création « Correcteur de couleur » (type non transmis) devenait un receiver MTL en douce.
+        # PAS de repli silencieux sur 2110_io : un type manquant doit ÉCHOUER, sinon une
+        # création « Correcteur de couleur » (type non transmis) devenait un receiver MTL en douce.
         d_type = _dtype
         if not d_type:
             return jsonify({"error": "type de déploiement manquant — sélectionne un type avant de créer."}), 400
-        ***REMOVED*** Un type marqué AUTO-PROVISIONNÉ (manifeste `auto_provision:true`, ex. 2110_io) est géré par le
-        ***REMOVED*** nœud (docker_driver.ensure_node_engine à la config d'un port média 2110) : UN seul moteur par
-        ***REMOVED*** nœud. La création MANUELLE est désactivée (décision 2026-07-09 : éviter doublons/confusion +
-        ***REMOVED*** collision avec la garde « 1 moteur/nœud »). Rejet aligné sur le MÊME flag que le filtre UI
-        ***REMOVED*** (revue m3, générique) — la sonde probe_2110 (sans le flag) reste créable à la main.
+        # Un type marqué AUTO-PROVISIONNÉ (manifeste `auto_provision:true`, ex. 2110_io) est géré par le
+        # nœud (docker_driver.ensure_node_engine à la config d'un port média 2110) : UN seul moteur par
+        # nœud. La création MANUELLE est désactivée (décision 2026-07-09 : éviter doublons/confusion +
+        # collision avec la garde « 1 moteur/nœud »). Rejet aligné sur le MÊME flag que le filtre UI
+        # (revue m3, générique) — la sonde probe_2110 (sans le flag) reste créable à la main.
         if plugins.is_plugin(d_type) and (plugins.get(d_type) or {}).get("auto_provision"):
             return jsonify({"error": "Le type « %s » est auto-provisionné à la configuration d'un port "
                             "média 2110 (Réglages → Réseau) — création manuelle désactivée." % d_type}), 400
         d_params = data.get("deploy_params") or {}
         if plugins.is_plugin(d_type):
             m = plugins.get(d_type)
-            ***REMOVED*** Tier 1 — refus explicite d'une valeur hors bornes (jamais d'écrêtage muet).
+            # Tier 1 — refus explicite d'une valeur hors bornes (jamais d'écrêtage muet).
             errs = plugins.validate_config(d_type, d_params)
             if errs:
                 return jsonify({"error": "Réglages hors bornes : " + " ".join(errs), "errors": errs}), 400
             d_params = {**plugins.effective_deploy_defaults(d_type), **d_params}
             d_params = plugins.coerce_config(d_type, d_params)
 
-        ***REMOVED*** MTL = chemin matériel dédié (controller bâti, NMOS). Sinon = compute générique
-        ***REMOVED*** (conteneur agent macvlan) → création puis déploiement par le chemin agent standard.
+        # MTL = chemin matériel dédié (controller bâti, NMOS). Sinon = compute générique
+        # (conteneur agent macvlan) → création puis déploiement par le chemin agent standard.
         if docker_compute.is_mtl_type(d_type):
-            ***REMOVED*** 2110_io = infra LIÉE AU NŒUD, jamais rattachée à un projet (décision
-            ***REMOVED*** 2026-07-05) : un project_id éventuel est ignoré sur ce chemin.
+            # 2110_io = infra LIÉE AU NŒUD, jamais rattachée à un projet (décision
+            # 2026-07-05) : un project_id éventuel est ignoré sur ce chemin.
             def _creer_docker():
                 vmid = docker_driver.creer_container_docker(
                     int(node_id), hostname=data.get("hostname"), deploy_type=d_type)
                 if vmid:
                     docker_driver.deploy_docker(vmid, d_params, type_script=d_type)
         else:
-            ***REMOVED*** Création DANS un projet (chantier 5) : project_id posé AVANT le deploy →
-            ***REMOVED*** bind média du projet au docker run + niveau de tally du projet par défaut.
+            # Création DANS un projet (chantier 5) : project_id posé AVANT le deploy →
+            # bind média du projet au docker run + niveau de tally du projet par défaut.
             _proj_id = data.get("project_id")
             def _creer_docker():
                 vmid = docker_compute.creer_container_compute(
@@ -591,9 +591,9 @@ def creer():
 @bp.route("/api/containers/<int:vmid>", methods=["DELETE"])
 @require_perm("containers.delete")
 def detruire(vmid):
-    ***REMOVED*** Journal d'exploitation : la ligne de DEMANDE est posée ICI, tant qu'on a encore le contexte
-    ***REMOVED*** de requête (donc l'acteur) ET le hostname — après destruction, plus rien en base ne permet
-    ***REMOVED*** de dire de quoi il s'agissait. Cf. app/audit.py.
+    # Journal d'exploitation : la ligne de DEMANDE est posée ICI, tant qu'on a encore le contexte
+    # de requête (donc l'acteur) ET le hostname — après destruction, plus rien en base ne permet
+    # de dire de quoi il s'agissait. Cf. app/audit.py.
     from ..audit import journal as _journal
     _journal("alert.audit.detruire_conteneur",
              cible=(db_get_container(vmid) or {}).get("hostname"), vmid=vmid, kind="deploy")
@@ -610,12 +610,12 @@ def patch_resources(vmid):
     data = request.json or {}
     cores  = data.get("cores")
     memory = data.get("memory")
-    pinned = data.get("pinned_cores")  ***REMOVED*** str "4,5" / "" / null
+    pinned = data.get("pinned_cores")  # str "4,5" / "" / null
     if cores is not None and (not isinstance(cores, int) or cores < 1 or cores > 256):
         return jsonify({"error": "cores hors plage 1..256"}), 400
     if memory is not None and (not isinstance(memory, int) or memory < 64 or memory > 1024*1024):
         return jsonify({"error": "memory hors plage 64..1048576 MB"}), 400
-    ***REMOVED*** pinned : valider parsing si non vide
+    # pinned : valider parsing si non vide
     if pinned:
         from ..host_ops import parse_cpuset
         try:
@@ -623,9 +623,9 @@ def patch_resources(vmid):
         except Exception as e:
             return jsonify({"error": f"pinned_cores invalide: {e}"}), 400
     from ..audit import journal as _journal
-    ***REMOVED*** Les changements sont des paires `clé=valeur` TECHNIQUES (cores=4, memory=8192) : une
-    ***REMOVED*** donnée, donc un paramètre légitime. Le « sans changement » du repli, lui, est du FRANÇAIS —
-    ***REMOVED*** il devient une clé à part entière, jamais une valeur par défaut.
+    # Les changements sont des paires `clé=valeur` TECHNIQUES (cores=4, memory=8192) : une
+    # donnée, donc un paramètre légitime. Le « sans changement » du repli, lui, est du FRANÇAIS —
+    # il devient une clé à part entière, jamais une valeur par défaut.
     _chgs = ", ".join(f"{k}={v}" for k, v in (("cores", cores), ("memory", memory),
                                               ("pinned_cores", pinned)) if v is not None)
     _journal("alert.audit.modifier_ressources" if _chgs else "alert.audit.modifier_ressources_neant",
@@ -638,7 +638,7 @@ def patch_resources(vmid):
     threading.Thread(target=_resize).start()
     return jsonify({"status": "maj_en_cours", "vmid": vmid})
 
-***REMOVED*** ptp_history/events/log_sources/logs/status extraits dans app/routes/ptp_routes.py.
+# ptp_history/events/log_sources/logs/status extraits dans app/routes/ptp_routes.py.
 
 
 @bp.route("/api/mxl/pipeline", methods=["GET"])
@@ -656,9 +656,9 @@ def mxl_pipeline():
     }
     video_ring = int(st.get("shm_video_ring") or 10)
 
-    ***REMOVED*** ── /dev/shm : index taille des fichiers ─────────────────────
+    # ── /dev/shm : index taille des fichiers ─────────────────────
     shm_total_bytes = 0
-    shm_size_map = {}   ***REMOVED*** nom_fichier → octets
+    shm_size_map = {}   # nom_fichier → octets
     try:
         for entry in os.scandir("/dev/shm"):
             if entry.is_file():
@@ -682,14 +682,14 @@ def mxl_pipeline():
             dc = json.loads(dc_raw) if isinstance(dc_raw, str) else (dc_raw or {})
         except Exception:
             dc = {}
-        t = dc.get("type") or ""   ***REMOVED*** type dans deploy_config, pas de colonne dédiée en DB
+        t = dc.get("type") or ""   # type dans deploy_config, pas de colonne dédiée en DB
         if t not in PIPELINE_TYPES:
             if c.get("status") != "running":
                 continue
         vmid = c["vmid"]
         hostname = c.get("hostname") or f"ct-{vmid}"
 
-        ***REMOVED*** ── Débit théorique via topology_ports (même formule que home/summary) ──
+        # ── Débit théorique via topology_ports (même formule que home/summary) ──
         bw_bps = 0.0
         try:
             kind = t
@@ -734,9 +734,9 @@ def mxl_pipeline():
             "bw_bps":      int(bw_bps),
         })
 
-    ***REMOVED*** ── RAM hôte ─────────────────────────
-    ***REMOVED*** D Phase 2a : full-Docker, plus de RAM hôte via l'API Proxmox. La RAM par-nœud reviendra avec
-    ***REMOVED*** le retargeting hôte-du-nœud (B). Pour l'instant : non renseignée.
+    # ── RAM hôte ─────────────────────────
+    # D Phase 2a : full-Docker, plus de RAM hôte via l'API Proxmox. La RAM par-nœud reviendra avec
+    # le retargeting hôte-du-nœud (B). Pour l'instant : non renseignée.
     mem_available_mb = None
     mem_total_mb = None
 
@@ -749,15 +749,15 @@ def mxl_pipeline():
         "mem_total_mb":     mem_total_mb,
     })
 
-***REMOVED*** ptp_install/ptp_apply extraits dans app/routes/ptp_routes.py.
+# ptp_install/ptp_apply extraits dans app/routes/ptp_routes.py.
 
 
-***REMOVED*** ─── MTL : prép host DPDK/E810 ────────────────────────────────────────────
-***REMOVED*** Extrait dans app/routes/mtl_engine.py (regroupé avec les flux composables RX/TX :
-***REMOVED*** les deux forment le domaine du moteur 2110_io).
+# ─── MTL : prép host DPDK/E810 ────────────────────────────────────────────
+# Extrait dans app/routes/mtl_engine.py (regroupé avec les flux composables RX/TX :
+# les deux forment le domaine du moteur 2110_io).
 
-***REMOVED*** Monitoring WebRTC par utilisateur + monitor dédié par player extraits dans
-***REMOVED*** app/routes/monitor_routes.py.
+# Monitoring WebRTC par utilisateur + monitor dédié par player extraits dans
+# app/routes/monitor_routes.py.
 
 
 @bp.route("/api/cpu/status", methods=["GET"])
@@ -769,13 +769,13 @@ def cpu_status():
     host = _req_host()
     ok, n_cpus, msg = host_cpu_count(host)
     node_id = _eff_node_id()
-    ***REMOVED*** ⚠ FILTRER PAR NŒUD. Sans ça, la carte CPU du nœud sélectionné recevait les épinglages de TOUS
-    ***REMOVED*** les nœuds : conteneurs étrangers listés, et surtout FAUX CONFLITS (deux conteneurs épinglés sur
-    ***REMOVED*** les mêmes NUMÉROS de cœur mais sur des machines différentes étaient signalés en orange alors
-    ***REMOVED*** qu'ils ne se croisent jamais). La partie core_pool ci-dessous était, elle, déjà scopée au nœud.
+    # ⚠ FILTRER PAR NŒUD. Sans ça, la carte CPU du nœud sélectionné recevait les épinglages de TOUS
+    # les nœuds : conteneurs étrangers listés, et surtout FAUX CONFLITS (deux conteneurs épinglés sur
+    # les mêmes NUMÉROS de cœur mais sur des machines différentes étaient signalés en orange alors
+    # qu'ils ne se croisent jamais). La partie core_pool ci-dessous était, elle, déjà scopée au nœud.
     containers = [c for c in db_get_containers()
                   if node_id is None or c.get("node_id") == node_id]
-    ***REMOVED*** Collecte pinning par container
+    # Collecte pinning par container
     by_container = []
     by_cpu = {i: [] for i in range(n_cpus)}
     conflicts = set()
@@ -795,9 +795,9 @@ def cpu_status():
                 if by_cpu[cpu]:
                     conflicts.add(cpu)
                 by_cpu[cpu].append({"vmid": c["vmid"], "hostname": c.get("hostname")})
-    ***REMOVED*** Réservations `core_pool`/node_core_alloc NON reflétées dans containers.pinned_cores : les
-    ***REMOVED*** lcores DPDK des moteurs 2110 (posés par reserve_exact au déploiement). Sans ça, la carte CPU
-    ***REMOVED*** montrait les moteurs comme « rien pinné » alors qu'ils tiennent leurs cœurs en exclusivité.
+    # Réservations `core_pool`/node_core_alloc NON reflétées dans containers.pinned_cores : les
+    # lcores DPDK des moteurs 2110 (posés par reserve_exact au déploiement). Sans ça, la carte CPU
+    # montrait les moteurs comme « rien pinné » alors qu'ils tiennent leurs cœurs en exclusivité.
     from .. import core_pool
     hostname_by_vmid = {c["vmid"]: c.get("hostname") for c in containers}
     for vmid, cores in core_pool.allocations_by_vmid(_eff_node_id()).items():
@@ -821,8 +821,8 @@ def cpu_status():
 @bp.route("/api/containers/<int:vmid>/restart", methods=["POST"])
 @require_perm("containers.deploy")
 def restart(vmid):
-    ***REMOVED*** Garde-fou : redémarrer un MOTEUR 2110_io coupe TOUS ses flux (RX, TX + consommateurs aval) →
-    ***REMOVED*** confirm:true requis. Les autres types (singuliers) restent sans confirmation.
+    # Garde-fou : redémarrer un MOTEUR 2110_io coupe TOUS ses flux (RX, TX + consommateurs aval) →
+    # confirm:true requis. Les autres types (singuliers) restent sans confirmation.
     from ..database import db_get_container
     data = request.get_json(silent=True) or {}
     _c = db_get_container(vmid)
@@ -856,7 +856,7 @@ def recreate(vmid):
     data = request.get_json(silent=True) or {}
     _c = db_get_container(vmid)
     if not _c:
-        return jsonify({"ok": False, "error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"ok": False, "error": f"container #{vmid} introuvable"}), 404
     if not docker_compute.is_compute_container(_c):
         return jsonify({"ok": False,
                         "error": "réservé aux conteneurs compute — un moteur adopte sa nouvelle "
@@ -880,11 +880,11 @@ def patch_container_project(vmid):
     from ..database import db_get_container, db_get_project
     from ..containers import changer_media_projet
     data = request.json or {}
-    project_id = data.get("project_id")  ***REMOVED*** None ou int
+    project_id = data.get("project_id")  # None ou int
     c = db_get_container(vmid)
     if not c:
         return jsonify({"error": "container introuvable"}), 404
-    ***REMOVED*** Infra liée au nœud / partagée (2110_io, passerelle…) : jamais rattachée à un projet.
+    # Infra liée au nœud / partagée (2110_io, passerelle…) : jamais rattachée à un projet.
     from ..projects import PROJECT_EXCLUDED_TYPES
     _t = (_load_dc(c) or {}).get("type")
     if project_id and _t in PROJECT_EXCLUDED_TYPES:
@@ -902,11 +902,11 @@ def patch_container_project(vmid):
     threading.Thread(target=_changer_projet).start()
     return jsonify({"status": "en_cours"})
 
-***REMOVED*** ─── Sauvegardes de config par container (2110_io & co, décision 2026-07-05) ──
-***REMOVED*** Le 2110_io étant lié au nœud (exclu des projets), sa config se sauvegarde ICI :
-***REMOVED*** des snapshots nommés des params (deploy_config), génériques à tous les types.
-***REMOVED*** Stockage : plugin_store scope "cfgsnap:<vmid>" (voyage déjà nulle part, purgé avec rien —
-***REMOVED*** volontairement indépendant des projets).
+# ─── Sauvegardes de config par container (2110_io & co, décision 2026-07-05) ──
+# Le 2110_io étant lié au nœud (exclu des projets), sa config se sauvegarde ICI :
+# des snapshots nommés des params (deploy_config), génériques à tous les types.
+# Stockage : plugin_store scope "cfgsnap:<vmid>" (voyage déjà nulle part, purgé avec rien —
+# volontairement indépendant des projets).
 
 @bp.route("/api/containers/<int:vmid>/config_snapshots", methods=["GET"])
 @require_login
@@ -991,14 +991,14 @@ def deploy(vmid):
     data = request.json
     type_ = data["type"]
     params = data["params"] or {}
-    ***REMOVED*** ── GARDE ANTI-ÉCRASEMENT (édition à plusieurs) ──────────────────────────────────────────
-    ***REMOVED*** Un éditeur qui poste TOUT l'état d'un conteneur (le composer multiview le fait à chaque
-    ***REMOVED*** geste) écrase ce qu'un autre a fait entre son chargement et son envoi : l'image posée par A
-    ***REMOVED*** disparaissait dès que B bougeait quoi que ce soit. `base_rev` = la révision que l'éditeur
-    ***REMOVED*** avait sous les yeux ; si `config_rev` a bougé depuis, on REFUSE plutôt que d'écraser.
-    ***REMOVED*** Optionnel par construction : un client qui ne l'envoie pas garde le comportement historique
-    ***REMOVED*** (palette, macros, page Câbles, restauration de projet — aucun n'écrase un travail humain en
-    ***REMOVED*** cours d'édition). Cf. `app/edit_lock.py` pour l'autre moitié, consultative.
+    # ── GARDE ANTI-ÉCRASEMENT (édition à plusieurs) ──────────────────────────────────────────
+    # Un éditeur qui poste TOUT l'état d'un conteneur (le composer multiview le fait à chaque
+    # geste) écrase ce qu'un autre a fait entre son chargement et son envoi : l'image posée par A
+    # disparaissait dès que B bougeait quoi que ce soit. `base_rev` = la révision que l'éditeur
+    # avait sous les yeux ; si `config_rev` a bougé depuis, on REFUSE plutôt que d'écraser.
+    # Optionnel par construction : un client qui ne l'envoie pas garde le comportement historique
+    # (palette, macros, page Câbles, restauration de projet — aucun n'écrase un travail humain en
+    # cours d'édition). Cf. `app/edit_lock.py` pour l'autre moitié, consultative.
     if data.get("base_rev") is not None:
         from ..database import db_config_rev_auteur
         _rev, _auteur = db_config_rev_auteur(vmid)
@@ -1007,9 +1007,9 @@ def deploy(vmid):
         except (TypeError, ValueError):
             _base = -1
         _moi = (current_user() or {}).get("id")
-        ***REMOVED*** Conflit = la config a bougé ET c'est QUELQU'UN D'AUTRE qui l'a bougée. Nos propres
-        ***REMOVED*** écritures ne nous barrent jamais la route : le déploiement étant asynchrone, l'éditeur
-        ***REMOVED*** ne peut pas connaître la révision qu'il vient lui-même de produire.
+        # Conflit = la config a bougé ET c'est QUELQU'UN D'AUTRE qui l'a bougée. Nos propres
+        # écritures ne nous barrent jamais la route : le déploiement étant asynchrone, l'éditeur
+        # ne peut pas connaître la révision qu'il vient lui-même de produire.
         if _base != _rev and _auteur is not None and _auteur != _moi:
             from ..edit_lock import etat as _verrou_etat
             _v = _verrou_etat(vmid)
@@ -1018,9 +1018,9 @@ def deploy(vmid):
                             "par": ("" if _v.get("libre") else _v.get("user_name") or ""),
                             "reason": "Ce conteneur a été modifié depuis l'ouverture de votre "
                                       "éditeur — votre envoi n'a pas été appliqué."}), 409
-    ***REMOVED*** Garde-fou : RE-déployer un moteur 2110_io DÉJÀ EN MARCHE relance mtl_init → coupure de TOUS les
-    ***REMOVED*** flux. confirm:true requis dans ce cas (le bouton « Redéployer pour réaligner » l'envoie). Le 1er
-    ***REMOVED*** déploiement (conteneur pas encore running) ne coupe rien → pas de confirmation.
+    # Garde-fou : RE-déployer un moteur 2110_io DÉJÀ EN MARCHE relance mtl_init → coupure de TOUS les
+    # flux. confirm:true requis dans ce cas (le bouton « Redéployer pour réaligner » l'envoie). Le 1er
+    # déploiement (conteneur pas encore running) ne coupe rien → pas de confirmation.
     if type_ == "2110_io" and not bool(data.get("confirm")):
         from ..database import db_get_container as _dgc
         _cc = _dgc(vmid)
@@ -1028,10 +1028,10 @@ def deploy(vmid):
             return jsonify({"ok": False, "needs_confirm": True,
                             "reason": "Redéploiement du moteur 2110 — coupure brève de TOUS les flux "
                                       "(RX, TX et consommateurs aval)."}), 409
-    ***REMOVED*** Type plugin déployé depuis la palette : compléter avec les deploy_defaults du
-    ***REMOVED*** manifeste PUIS les params déjà persistés (même type) — une clé absente du POST
-    ***REMOVED*** garde sa valeur courante au lieu de retomber au défaut (la palette n'expose plus
-    ***REMOVED*** tous les champs : scope user → page plugin).
+    # Type plugin déployé depuis la palette : compléter avec les deploy_defaults du
+    # manifeste PUIS les params déjà persistés (même type) — une clé absente du POST
+    # garde sa valeur courante au lieu de retomber au défaut (la palette n'expose plus
+    # tous les champs : scope user → page plugin).
     from .. import plugins
     if plugins.is_plugin(type_):
         m = plugins.get(type_)
@@ -1039,29 +1039,29 @@ def deploy(vmid):
         _dc = _load_dc(db_get_container(vmid)) or {}
         if _dc.get("type") == type_ and isinstance(_dc.get("params"), dict):
             existing = _dc["params"]
-        ***REMOVED*** Tier 1 — les valeurs POSTÉES sont VALIDÉES (refus 400), jamais écrêtées en silence.
+        # Tier 1 — les valeurs POSTÉES sont VALIDÉES (refus 400), jamais écrêtées en silence.
         errs = plugins.validate_config(type_, data.get("params") or {})
         if errs:
             return jsonify({"error": "Réglages hors bornes : " + " ".join(errs), "errors": errs}), 400
         params = {**plugins.effective_deploy_defaults(type_), **existing, **params}
-        params = plugins.coerce_config(type_, params)   ***REMOVED*** filet (params PERSISTÉS hérités → alerte)
-    ***REMOVED*** Version optionnelle : rappeler une version archivée précise (palette). None = courante.
+        params = plugins.coerce_config(type_, params)   # filet (params PERSISTÉS hérités → alerte)
+    # Version optionnelle : rappeler une version archivée précise (palette). None = courante.
     version = (data.get("version") or "").strip() or None
     _path = data.get("path", "/opt/script/main.py")
-    ***REMOVED*** Journal d'exploitation : ligne de DEMANDE, posée avant le dispatch (cf. app/audit.py). Les
-    ***REMOVED*** lignes « déploiement en cours… / déployé et redémarré » émises ensuite par le thread restent
-    ***REMOVED*** sans acteur : elles décrivent le travail de la machine, pas la décision de l'humain.
+    # Journal d'exploitation : ligne de DEMANDE, posée avant le dispatch (cf. app/audit.py). Les
+    # lignes « déploiement en cours… / déployé et redémarré » émises ensuite par le thread restent
+    # sans acteur : elles décrivent le travail de la machine, pas la décision de l'humain.
     from ..audit import journal as _journal
-    ***REMOVED*** Le suffixe de version est un fragment conditionnel : deux clés complètes, pas un suffixe
-    ***REMOVED*** collé — collé, il resterait français au milieu d'une phrase anglaise.
+    # Le suffixe de version est un fragment conditionnel : deux clés complètes, pas un suffixe
+    # collé — collé, il resterait français au milieu d'une phrase anglaise.
     _journal("alert.audit.deployer_script_version" if version else "alert.audit.deployer_script",
              cible=(db_get_container(vmid) or {}).get("hostname"), vmid=vmid, kind="deploy",
              params=({"t": type_, "version": version} if version else {"t": type_}))
     _auteur = (current_user() or {}).get("id")
     def _deploy():
-        ***REMOVED*** Un thread n'hérite ni de la session ni du thread-local : on repose l'auteur nous-mêmes,
-        ***REMOVED*** sinon l'écriture serait attribuée à « la machine » et la garde de révision laisserait
-        ***REMOVED*** passer l'écrasement suivant.
+        # Un thread n'hérite ni de la session ni du thread-local : on repose l'auteur nous-mêmes,
+        # sinon l'écriture serait attribuée à « la machine » et la garde de révision laisserait
+        # passer l'écrasement suivant.
         from ..edit_lock import poser_auteur
         poser_auteur(_auteur)
         with verrou_vmid(vmid, op="deploy"):
@@ -1070,12 +1070,12 @@ def deploy(vmid):
     threading.Thread(target=_deploy).start()
     return jsonify({"status": "deploiement_en_cours", "vmid": vmid})
 
-***REMOVED*** ─── Verrou d'ÉDITION (consultatif) + révision de configuration ──────────────
-***REMOVED*** « Qui a la main sur ce conteneur ? » Le verrou n'interdit rien au serveur (les permissions
-***REMOVED*** restent seules juges) : il évite la collision par la conversation, là où l'utilisateur peut
-***REMOVED*** encore décider. Le filet dur, lui, est la garde `base_rev` du déploiement ci-dessus.
-***REMOVED*** Générique par conteneur : le composer multiview est le premier client, tout éditeur de plugin
-***REMOVED*** qui poste un état complet peut s'en servir.
+# ─── Verrou d'ÉDITION (consultatif) + révision de configuration ──────────────
+# « Qui a la main sur ce conteneur ? » Le verrou n'interdit rien au serveur (les permissions
+# restent seules juges) : il évite la collision par la conversation, là où l'utilisateur peut
+# encore décider. Le filet dur, lui, est la garde `base_rev` du déploiement ci-dessus.
+# Générique par conteneur : le composer multiview est le premier client, tout éditeur de plugin
+# qui poste un état complet peut s'en servir.
 
 @bp.route("/api/containers/<int:vmid>/edit-lock", methods=["GET"])
 @require_login
@@ -1101,7 +1101,7 @@ def edit_lock_post(vmid):
         return err
     u = current_user() or {}
     body = request.get_json(silent=True) or {}
-    ***REMOVED*** Nom LISIBLE : « Vincent » vaut mieux que « vhamon » dans un bandeau lu en régie.
+    # Nom LISIBLE : « Vincent » vaut mieux que « vhamon » dans un bandeau lu en régie.
     _nom = " ".join(x for x in (u.get("prenom"), u.get("nom")) if x).strip() or u.get("username") or ""
     obtenu, st = prendre(vmid, u.get("id"), _nom, force=bool(body.get("force")))
     if body.get("force") and obtenu:
@@ -1117,12 +1117,12 @@ def edit_lock_delete(vmid):
     u = current_user() or {}
     return jsonify({"rendu": rendre(vmid, u.get("id"))})
 
-***REMOVED*** color_corrector est désormais un plugin : son contrôle (/state, /params, /reset,
-***REMOVED*** /input) passe par le proxy plugin générique /api/containers/<vmid>/plugin/<path>.
+# color_corrector est désormais un plugin : son contrôle (/state, /params, /reset,
+# /input) passe par le proxy plugin générique /api/containers/<vmid>/plugin/<path>.
 
-***REMOVED*** ─── Stockage générique par plugin (plugin_store) ────────────
-***REMOVED*** Tout plugin persiste des entrées JSON nommées sans toucher au cœur : presets globaux
-***REMOVED*** (scope=''), mémoires par container (scope=str(vmid))… `unique_name` lu du manifeste `store`.
+# ─── Stockage générique par plugin (plugin_store) ────────────
+# Tout plugin persiste des entrées JSON nommées sans toucher au cœur : presets globaux
+# (scope=''), mémoires par container (scope=str(vmid))… `unique_name` lu du manifeste `store`.
 def _store_opts(type_):
     from .. import plugins
     return (plugins.get(type_) or {}).get("store") or {}
@@ -1168,13 +1168,13 @@ def plugin_store_delete_route(type_, sid):
     from ..database import plugin_store_delete
     return jsonify({"ok": plugin_store_delete(sid)})
 
-***REMOVED*** _mixer_proxy extrait dans app/routes/shared.py (partagé par plugin_routes/split.py).
+# _mixer_proxy extrait dans app/routes/shared.py (partagé par plugin_routes/split.py).
 
-***REMOVED*** ─── Rappel de presets à chaud (réutilisé par le provider Ember+) ────────────
-***REMOVED*** Générique pour la *découverte* (control.recall du manifeste : source du store +
-***REMOVED*** endpoint :8082) ; l'*application* reste bespoke par type (pattern hybride, pas de
-***REMOVED*** transform déclaratif). POST direct vers :8082 (pas via _mixer_proxy, qui renvoie
-***REMOVED*** des réponses Flask et exige un contexte d'app — inutilisable depuis un thread).
+# ─── Rappel de presets à chaud (réutilisé par le provider Ember+) ────────────
+# Générique pour la *découverte* (control.recall du manifeste : source du store +
+# endpoint :8082) ; l'*application* reste bespoke par type (pattern hybride, pas de
+# transform déclaratif). POST direct vers :8082 (pas via _mixer_proxy, qui renvoie
+# des réponses Flask et exige un contexte d'app — inutilisable depuis un thread).
 def recall_presets(vmid, type_):
     """Liste ordonnée des presets rappelables d'un container (selon control.recall).
     Retourne (rc|None, [preset,...]) — chaque preset a au moins une clé 'name'."""
@@ -1223,8 +1223,8 @@ def recall_preset(vmid, type_, index, duration_ms=0):
     if type_ == "color_corrector":
         return _post(endpoint, preset["value"]), name
     if type_ == "multiview":
-        ***REMOVED*** layout global : on pousse la géométrie de chaque fenêtre commune à la cible
-        ***REMOVED*** (le style n'est pas appliqué à chaud) puis on persiste en deploy_config.
+        # layout global : on pousse la géométrie de chaque fenêtre commune à la cible
+        # (le style n'est pas appliqué à chaud) puis on persiste en deploy_config.
         flux = (preset.get("config") or {}).get("flux_config") or []
         c = db_get_container(vmid)
         dc = _load_dc(c) or {}
@@ -1240,32 +1240,32 @@ def recall_preset(vmid, type_, index, duration_ms=0):
                 ok_any = True
                 cur[i] = {**cur[i], **{k: body[k] for k in ("x", "y", "w", "h") if k in body}}
         if len(flux) != len(cur):
-            log.info(f"recall multiview ***REMOVED***{vmid}: layout {len(flux)} fenêtres vs cible {len(cur)} — {n} appliquées")
+            log.info(f"recall multiview #{vmid}: layout {len(flux)} fenêtres vs cible {len(cur)} — {n} appliquées")
         if ok_any:
             try:
                 from ..database import db_update_deploy_config
                 dc["params"]["flux_config"] = cur
                 db_update_deploy_config(vmid, dc["type"], dc["params"])
             except Exception as e:
-                log.warning(f"recall multiview ***REMOVED***{vmid}: persistance échec : {e}")
+                log.warning(f"recall multiview #{vmid}: persistance échec : {e}")
         return ok_any, name
     return False, f"type {type_} non géré pour le recall"
 
-***REMOVED*** Les routes bespoke /api/containers/<vmid>/mixer/* ont été migrées vers le proxy
-***REMOVED*** plugin générique /api/containers/<vmid>/plugin/<path> (endpoints déclarés dans
-***REMOVED*** plugins/mixer/plugin.json:control.endpoints ; /state et /preview.png en lecture
-***REMOVED*** via control.read_endpoints). Le contrôle live du mixer n'a plus de routes dédiées.
+# Les routes bespoke /api/containers/<vmid>/mixer/* ont été migrées vers le proxy
+# plugin générique /api/containers/<vmid>/plugin/<path> (endpoints déclarés dans
+# plugins/mixer/plugin.json:control.endpoints ; /state et /preview.png en lecture
+# via control.read_endpoints). Le contrôle live du mixer n'a plus de routes dédiées.
 
-***REMOVED*** ─── Split / SuperSource — persistance + mémoires ────────────────────────────
-***REMOVED*** Routes bespoke extraites dans app/routes/plugin_routes/split.py (premier module d'un
-***REMOVED*** nouveau paquet — cf. app/routes/plugin_routes/__init__.py pour la convention : un
-***REMOVED*** module par type de plugin qui a besoin de routes touchant la DB au-delà du proxy générique).
+# ─── Split / SuperSource — persistance + mémoires ────────────────────────────
+# Routes bespoke extraites dans app/routes/plugin_routes/split.py (premier module d'un
+# nouveau paquet — cf. app/routes/plugin_routes/__init__.py pour la convention : un
+# module par type de plugin qui a besoin de routes touchant la DB au-delà du proxy générique).
 
 @bp.route("/api/alerts", methods=["GET"])
 @require_login
 def liste_alertes():
-    ***REMOVED*** Les alertes sont des messages libres non rattachés à un projet : un utilisateur
-    ***REMOVED*** scopé reçoit une liste vide (les alertes par-projet arrivent avec le chantier 2/3).
+    # Les alertes sont des messages libres non rattachés à un projet : un utilisateur
+    # scopé reçoit une liste vide (les alertes par-projet arrivent avec le chantier 2/3).
     if scoped_project_ids() is not None:
         return jsonify([])
     q = (request.args.get("q") or "").strip() or None
@@ -1274,8 +1274,8 @@ def liste_alertes():
         limit = max(1, min(int(request.args.get("limit", 1000)), 1000))
     except ValueError:
         limit = 1000
-    ***REMOVED*** Filtres CONTEXTE (colonnes `vmid`/`node_id`/`kind`, cf. database.ALERT_KINDS) : « toutes les
-    ***REMOVED*** alertes de ce conteneur / de ce nœud / de cette nature ». Absents = comportement historique.
+    # Filtres CONTEXTE (colonnes `vmid`/`node_id`/`kind`, cf. database.ALERT_KINDS) : « toutes les
+    # alertes de ce conteneur / de ce nœud / de cette nature ». Absents = comportement historique.
     def _iarg(nom):
         v = (request.args.get(nom) or "").strip()
         try:
@@ -1283,10 +1283,10 @@ def liste_alertes():
         except ValueError:
             return None
     kind = (request.args.get("kind") or "").strip() or None
-    ***REMOVED*** `user=` : filtre du JOURNAL D'EXPLOITATION — « qu'a fait untel ? ». La valeur spéciale
-    ***REMOVED*** `machine` isole les actions sans acteur (surveillance, réconciliation).
-    ***REMOVED*** Rendu à la LECTURE, dans la langue du lecteur : les lignes portant une clé (`msg_key`)
-    ***REMOVED*** sont re-rendues ici, les autres servies telles quelles (cf. `i18n.rendre_alerte`).
+    # `user=` : filtre du JOURNAL D'EXPLOITATION — « qu'a fait untel ? ». La valeur spéciale
+    # `machine` isole les actions sans acteur (surveillance, réconciliation).
+    # Rendu à la LECTURE, dans la langue du lecteur : les lignes portant une clé (`msg_key`)
+    # sont re-rendues ici, les autres servies telles quelles (cf. `i18n.rendre_alerte`).
     from ..i18n import rendre_alertes
     return jsonify(rendre_alertes(db_get_alerts(q=q, niveau=niveau, limit=limit,
                                   vmid=_iarg("vmid"), node_id=_iarg("node_id"), kind=kind,
@@ -1306,8 +1306,8 @@ def liste_episodes_alertes():
     tous = (request.args.get("tous") or "").strip() in ("1", "true", "oui")
     return jsonify(db_alert_episodes(actifs_seulement=not tous))
 
-***REMOVED*** Agrégation NMOS/2110 (SDP parsing, receivers/senders detail, /api/io/mtl,
-***REMOVED*** abonnement manuel receiver) extraite dans app/routes/nmos_detail.py.
+# Agrégation NMOS/2110 (SDP parsing, receivers/senders detail, /api/io/mtl,
+# abonnement manuel receiver) extraite dans app/routes/nmos_detail.py.
 
 
 
@@ -1324,10 +1324,10 @@ def container_control_action(vmid, action):
         return err
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c)
     if not dc:
-        return jsonify({"error": f"***REMOVED***{vmid} sans script déployé"}), 400
+        return jsonify({"error": f"#{vmid} sans script déployé"}), 400
     t = dc.get("type"); params = dict(dc.get("params") or {})
     h = _ctl_pl.get_hook(t, "control_action")
     if not h:
@@ -1362,8 +1362,8 @@ def container_control_action(vmid, action):
         return jsonify({"status": "deploiement_en_cours", "vmid": vmid, **extra})
     return jsonify({"status": "bascule_a_chaud", "vmid": vmid, **extra})
 
-***REMOVED*** _fetch_host_nics + _NIC_CAPS_PROBE extraits dans app/routes/shared.py (helper transversal,
-***REMOVED*** partagé par /api/ethernet/status ici et app/routes/node_network.py).
+# _fetch_host_nics + _NIC_CAPS_PROBE extraits dans app/routes/shared.py (helper transversal,
+# partagé par /api/ethernet/status ici et app/routes/node_network.py).
 
 
 @bp.route("/api/ethernet/status", methods=["GET"])
@@ -1407,7 +1407,7 @@ def export_alertes():
     q = (request.args.get("q") or "").strip() or None
     niveau = (request.args.get("niveau") or "").strip() or None
     fmt = (request.args.get("format") or "csv").lower()
-    ***REMOVED*** L'export part dans la langue de celui qui le déclenche — c'est lui qui lira le fichier.
+    # L'export part dans la langue de celui qui le déclenche — c'est lui qui lira le fichier.
     rows = rendre_alertes(db_get_alerts(q=q, niveau=niveau, limit=1000))
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
@@ -1432,8 +1432,8 @@ def start_script(vmid):
     from ..database import db_get_container
     from .. import docker_compute
     _c = db_get_container(vmid)
-    ***REMOVED*** MTL : start = docker run du controller. Compute : a un agent :8081 → start du SCRIPT via
-    ***REMOVED*** le chemin agent standard (comme un LXC), pas du conteneur.
+    # MTL : start = docker run du controller. Compute : a un agent :8081 → start du SCRIPT via
+    # le chemin agent standard (comme un LXC), pas du conteneur.
     if _c and not docker_compute.is_compute_container(_c):
         from .. import docker_driver
         ok = docker_driver.start_docker(vmid)
@@ -1492,109 +1492,109 @@ def stop_script(vmid):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-***REMOVED*** ─── Nœuds (CRUD, GPU, images, agent) ─────────────────────
-***REMOVED*** Extrait dans app/routes/nodes.py.
+# ─── Nœuds (CRUD, GPU, images, agent) ─────────────────────
+# Extrait dans app/routes/nodes.py.
 
-***REMOVED*** ─── Enrôlement zéro-touch (jeton, USB, ISO iLO, PXE) ────────────────────────
-***REMOVED*** Extrait dans app/routes/enrollment.py.
+# ─── Enrôlement zéro-touch (jeton, USB, ISO iLO, PXE) ────────────────────────
+# Extrait dans app/routes/enrollment.py.
 
-***REMOVED*** ─── Réseau par nœud (containers/io2110/interfaces/macvlan/préflight/stockage) ──
-***REMOVED*** Extrait dans app/routes/node_network.py + mcast_ranges.py + media_networks.py.
+# ─── Réseau par nœud (containers/io2110/interfaces/macvlan/préflight/stockage) ──
+# Extrait dans app/routes/node_network.py + mcast_ranges.py + media_networks.py.
 
-***REMOVED*** ─── Users, i18n ──────────────────────────────────────────
-***REMOVED*** Extraits dans app/routes/users.py et app/routes/i18n.py.
+# ─── Users, i18n ──────────────────────────────────────────
+# Extraits dans app/routes/users.py et app/routes/i18n.py.
 
 
-***REMOVED*** ─── Core plugins (services infrastructure) ──────────────────────────
-***REMOVED*** Extrait dans app/routes/core_services.py (registre core_plugins ; nommé différemment
-***REMOVED*** pour ne pas entrer en collision avec app.core_plugins).
+# ─── Core plugins (services infrastructure) ──────────────────────────
+# Extrait dans app/routes/core_services.py (registre core_plugins ; nommé différemment
+# pour ne pas entrer en collision avec app.core_plugins).
 
-from . import core_services  ***REMOVED*** noqa: F401 — registre de services (core_plugins)
-from . import auth_pages     ***REMOVED*** noqa: F401 — setup/login/logout + widget systemd
+from . import core_services  # noqa: F401 — registre de services (core_plugins)
+from . import auth_pages     # noqa: F401 — setup/login/logout + widget systemd
 
-***REMOVED*** Domaines extraits en modules du paquet (tranche 2 : faible couplage). Chacun importe
-***REMOVED*** `bp` (et au besoin d'autres noms) depuis ce module — importés en dernier, une fois
-***REMOVED*** tout ce dont ils dépendent déjà défini ci-dessus.
-from . import updates    ***REMOVED*** noqa: F401 — build de distribution + mise à jour entre instances
-from . import ha         ***REMOVED*** noqa: F401 — haute disponibilité (paire de contrôleurs)
-from . import peers      ***REMOVED*** noqa: F401 — registre de pairs (dépend de updates._my_identity)
-from . import backup     ***REMOVED*** noqa: F401 — sauvegarde / restauration DB
-from . import users      ***REMOVED*** noqa: F401 — comptes utilisateurs
-from . import i18n       ***REMOVED*** noqa: F401 — éditeur de traductions
+# Domaines extraits en modules du paquet (tranche 2 : faible couplage). Chacun importe
+# `bp` (et au besoin d'autres noms) depuis ce module — importés en dernier, une fois
+# tout ce dont ils dépendent déjà défini ci-dessus.
+from . import updates    # noqa: F401 — build de distribution + mise à jour entre instances
+from . import ha         # noqa: F401 — haute disponibilité (paire de contrôleurs)
+from . import peers      # noqa: F401 — registre de pairs (dépend de updates._my_identity)
+from . import backup     # noqa: F401 — sauvegarde / restauration DB
+from . import users      # noqa: F401 — comptes utilisateurs
+from . import i18n       # noqa: F401 — éditeur de traductions
 
-***REMOVED*** Domaine nœuds/cluster (tranche 3, gros morceau). Ordre de dépendance : images (fondation :
-***REMOVED*** _IMAGES/_image_tag/_repo_root/_img_lock) → nodes (CRUD, GPU, agent — dépend de images) →
-***REMOVED*** enrollment (dépend de images._provision_shared_images) → node_network (dépend de nodes et
-***REMOVED*** images) → mcast_ranges / media_networks (indépendants).
-from . import images          ***REMOVED*** noqa: F401
-from . import nodes           ***REMOVED*** noqa: F401
-from . import enrollment      ***REMOVED*** noqa: F401
-from . import node_network    ***REMOVED*** noqa: F401
-from . import mcast_ranges    ***REMOVED*** noqa: F401
-from . import media_networks  ***REMOVED*** noqa: F401
+# Domaine nœuds/cluster (tranche 3, gros morceau). Ordre de dépendance : images (fondation :
+# _IMAGES/_image_tag/_repo_root/_img_lock) → nodes (CRUD, GPU, agent — dépend de images) →
+# enrollment (dépend de images._provision_shared_images) → node_network (dépend de nodes et
+# images) → mcast_ranges / media_networks (indépendants).
+from . import images          # noqa: F401
+from . import nodes           # noqa: F401
+from . import enrollment      # noqa: F401
+from . import node_network    # noqa: F401
+from . import mcast_ranges    # noqa: F401
+from . import media_networks  # noqa: F401
 
-***REMOVED*** Moteur ST 2110 (2110_io/MTL) : flux composables + prép host DPDK/E810 (tranche 6).
-***REMOVED*** DOIT être importé avant nmos_detail (son domaine désormais réel destinataire de
-***REMOVED*** _mtl_media_port_count/_mtl_active_caps) : nmos_detail fait `from .mtl_engine import …` à son
-***REMOVED*** niveau module — mtl_engine doit déjà être dans sys.modules à ce moment-là.
-from . import mtl_engine  ***REMOVED*** noqa: F401
+# Moteur ST 2110 (2110_io/MTL) : flux composables + prép host DPDK/E810 (tranche 6).
+# DOIT être importé avant nmos_detail (son domaine désormais réel destinataire de
+# _mtl_media_port_count/_mtl_active_caps) : nmos_detail fait `from .mtl_engine import …` à son
+# niveau module — mtl_engine doit déjà être dans sys.modules à ce moment-là.
+from . import mtl_engine  # noqa: F401
 
-***REMOVED*** Agrégation NMOS/2110 (tranche 7) : receivers/senders detail + /api/io/mtl. Dépendance à double
-***REMOVED*** sens avec mtl_engine (cf. docstring de nmos_detail.py) — importé APRÈS mtl_engine.
-from . import nmos_detail  ***REMOVED*** noqa: F401
+# Agrégation NMOS/2110 (tranche 7) : receivers/senders detail + /api/io/mtl. Dépendance à double
+# sens avec mtl_engine (cf. docstring de nmos_detail.py) — importé APRÈS mtl_engine.
+from . import nmos_detail  # noqa: F401
 
-***REMOVED*** Réglages (API get/set/schema/overrides/logo/stats/logs) + home dashboard (tranche 8).
-from . import settings_api    ***REMOVED*** noqa: F401
-from . import home_dashboard  ***REMOVED*** noqa: F401
+# Réglages (API get/set/schema/overrides/logo/stats/logs) + home dashboard (tranche 8).
+from . import settings_api    # noqa: F401
+from . import home_dashboard  # noqa: F401
 
-***REMOVED*** Câblage (wire/unwire/insert_udc, snapshots, vues de disposition) — tranche 9.
-from . import cabling  ***REMOVED*** noqa: F401
+# Câblage (wire/unwire/insert_udc, snapshots, vues de disposition) — tranche 9.
+from . import cabling  # noqa: F401
 
-***REMOVED*** Registre des plugins + shell de rubrique + proxy de contrôle générique, API Streams — tranche 10.
-from . import plugin_registry  ***REMOVED*** noqa: F401
-from . import catalogue_api   ***REMOVED*** noqa: F401
-from . import streams_api      ***REMOVED*** noqa: F401
+# Registre des plugins + shell de rubrique + proxy de contrôle générique, API Streams — tranche 10.
+from . import plugin_registry  # noqa: F401
+from . import catalogue_api   # noqa: F401
+from . import streams_api      # noqa: F401
 
-***REMOVED*** Monitoring WebRTC par utilisateur + monitor dédié par player — tranche 11.
-from . import monitor_routes  ***REMOVED*** noqa: F401
+# Monitoring WebRTC par utilisateur + monitor dédié par player — tranche 11.
+from . import monitor_routes  # noqa: F401
 
-***REMOVED*** Pages (rendu Jinja) + share links (page publique) — tranche 12.
-from . import pages  ***REMOVED*** noqa: F401
+# Pages (rendu Jinja) + share links (page publique) — tranche 12.
+from . import pages  # noqa: F401
 
-***REMOVED*** Télémétrie/diagnostic infra (fabric, monitoring panels, pyramide, membw, santé nœuds, GPU, shm) — tranche 13.
-from . import monitoring_api  ***REMOVED*** noqa: F401
+# Télémétrie/diagnostic infra (fabric, monitoring panels, pyramide, membw, santé nœuds, GPU, shm) — tranche 13.
+from . import monitoring_api  # noqa: F401
 
-***REMOVED*** Layouts multiview + Projets (CRUD, export/import, restore streamé) — tranche 14.
-from . import projects_api  ***REMOVED*** noqa: F401
-from . import macros_api    ***REMOVED*** noqa: F401
-from . import tally_api     ***REMOVED*** noqa: F401
-from . import labels_api    ***REMOVED*** noqa: F401
+# Layouts multiview + Projets (CRUD, export/import, restore streamé) — tranche 14.
+from . import projects_api  # noqa: F401
+from . import macros_api    # noqa: F401
+from . import tally_api     # noqa: F401
+from . import labels_api    # noqa: F401
 
-***REMOVED*** PTP (historique/événements/logs/status/install/apply) — tranche 15 (dernière).
-from . import ptp_routes  ***REMOVED*** noqa: F401
+# PTP (historique/événements/logs/status/install/apply) — tranche 15 (dernière).
+from . import ptp_routes  # noqa: F401
 
-***REMOVED*** Sonde ST 2110 (probe_2110) — analyseur ponctuel piloté par NMOS (Phase A).
-from . import probe  ***REMOVED*** noqa: F401
+# Sonde ST 2110 (probe_2110) — analyseur ponctuel piloté par NMOS (Phase A).
+from . import probe  # noqa: F401
 
-***REMOVED*** Bibliothèque de polices (Réglages → Polices) — cf. app/fonts.py.
-from . import fonts_api  ***REMOVED*** noqa: F401
+# Bibliothèque de polices (Réglages → Polices) — cf. app/fonts.py.
+from . import fonts_api  # noqa: F401
 
-***REMOVED*** Journaux DURABLES de conteneurs (journald lu sur l'hôte du nœud) — cf. app/journal.py.
-from . import container_logs  ***REMOVED*** noqa: F401
+# Journaux DURABLES de conteneurs (journald lu sur l'hôte du nœud) — cf. app/journal.py.
+from . import container_logs  # noqa: F401
 
-***REMOVED*** Routes bespoke par type de plugin (persistance DB — cf. app/routes/plugin_routes/__init__.py).
-***REMOVED*** Importé en dernier : chaque module y importe `bp` depuis ce package (et `_load_dc`/
-***REMOVED*** `_mixer_proxy` depuis .shared), qui doivent déjà exister au moment de l'import.
-from . import plugin_routes  ***REMOVED*** noqa: F401
+# Routes bespoke par type de plugin (persistance DB — cf. app/routes/plugin_routes/__init__.py).
+# Importé en dernier : chaque module y importe `bp` depuis ce package (et `_load_dc`/
+# `_mixer_proxy` depuis .shared), qui doivent déjà exister au moment de l'import.
+from . import plugin_routes  # noqa: F401
 
-***REMOVED*** Étalonnage CPU : campagne de mesure + profils garantis (cf. app/etalonnage.py).
-from . import etalonnage_api  ***REMOVED*** noqa: F401
+# Étalonnage CPU : campagne de mesure + profils garantis (cf. app/etalonnage.py).
+from . import etalonnage_api  # noqa: F401
 
-***REMOVED*** Emplacements (rôles) : identité fonctionnelle stable adressée par les contrôleurs externes.
-from . import roles_api  ***REMOVED*** noqa: F401
+# Emplacements (rôles) : identité fonctionnelle stable adressée par les contrôleurs externes.
+from . import roles_api  # noqa: F401
 
-from . import habilitations_api  ***REMOVED*** noqa: F401
+from . import habilitations_api  # noqa: F401
 
-***REMOVED*** Inventaire Docker par nœud : confronte ce que voit l'agent à la base (orphelins destructibles).
-from . import inventaire  ***REMOVED*** noqa: F401
-from . import journaux_export  ***REMOVED*** noqa: F401
+# Inventaire Docker par nœud : confronte ce que voit l'agent à la base (orphelins destructibles).
+from . import inventaire  # noqa: F401
+from . import journaux_export  # noqa: F401

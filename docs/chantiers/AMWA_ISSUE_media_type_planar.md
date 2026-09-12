@@ -1,4 +1,4 @@
-***REMOVED*** Brouillon d'Issue AMWA — un type de média PLANAR pour la vidéo MXL
+# Brouillon d'Issue AMWA — un type de média PLANAR pour la vidéo MXL
 
 ⚠ **NON PUBLIÉE.** À ouvrir sur <https://github.com/AMWA-TV/nmos-parameter-registers/issues>
 après relecture. Nous ne sommes pas membres AMWA : Issues oui, **pas de Pull Request**.
@@ -24,7 +24,7 @@ We would like to ask whether a **planar** uncompressed video type belongs alongs
 so, what it should be called. We are asking rather than proposing a name, because the answer
 affects the SDK as much as the register.
 
-***REMOVED******REMOVED******REMOVED*** Why the question arises
+### Why the question arises
 
 MXL is shared memory, not a wire. A consuming Media Function maps the buffer and computes on it
 in place. v210's 6-pixels-in-16-bytes packing exists to make efficient use of an RTP payload; in
@@ -59,14 +59,14 @@ line, which gives *better* per-band latency in our measurements (0.34 ms vs 0.53
 trade-off is real. Our reading is that it lands on the side of planar for CPU-based processing
 chains, but we would not claim the question is settled for every implementation.
 
-***REMOVED******REMOVED******REMOVED*** Why we think it is a register question and not just ours
+### Why we think it is a register question and not just ours
 
 The register already contains `audio/float32`, applicable to BCP-007-03, described as "audio
 stored as 32 bit float values". That is precisely an unpacked, compute-friendly representation
 chosen over reusing a packed wire format such as `audio/L24`. The reasoning that justified it for
 audio seems to us to apply to video as well.
 
-***REMOVED******REMOVED******REMOVED*** The interoperability failure mode, which may be the more useful part of this issue
+### The interoperability failure mode, which may be the more useful part of this issue
 
 We currently publish `video/x-mxl-planar` and carry a small patch to the reference SDK to add it.
 While testing against an unpatched SDK (libmxl v1.1.0-beta-1, our patches removed, a consumer
@@ -83,7 +83,7 @@ That is worth flagging independently of whether a planar type is ever registered
 is an SDP to disagree about, but in shared memory an unrecognised `media_type` currently fails
 silently. Rejecting unknown media types on read would turn a wrong picture into an error message.
 
-***REMOVED******REMOVED******REMOVED*** What we are doing meanwhile
+### What we are doing meanwhile
 
 We serve BCP-007-03 resources (IS-04 v1.3 / IS-05 v1.2, `mxl_domain_id` + `mxl_flow_id`,
 `domain_def.json`, BCP-004-01 receiver capabilities) validated against the specification's own

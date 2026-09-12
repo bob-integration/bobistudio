@@ -33,15 +33,15 @@
 
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&***REMOVED***39;" }[c];
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
   function toast(msg, kind) {
     var d = document.createElement("div");
     d.textContent = msg;
     d.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9999;" +
-      "padding:10px 16px;border-radius:8px;color:***REMOVED***fff;font:inherit;" +
-      "background:" + (kind === "error" ? "***REMOVED***c0392b" : "***REMOVED***2e9e5b");
+      "padding:10px 16px;border-radius:8px;color:#fff;font:inherit;" +
+      "background:" + (kind === "error" ? "#c0392b" : "#2e9e5b");
     document.body.appendChild(d);
     setTimeout(function () { d.remove(); }, 3200);
   }
@@ -236,7 +236,7 @@
     if (!box) return;
     if (!list || !list.length) { box.innerHTML = '<span class="muted">' + t("probemon.watch_none") + "</span>"; return; }
     box.innerHTML = list.map(function (w) {
-      var lbl = "***REMOVED***" + w.vmid + "/" + (w.idx || 0) + "/" + (w.essence || "video") + (w.label ? " " + w.label : "");
+      var lbl = "#" + w.vmid + "/" + (w.idx || 0) + "/" + (w.essence || "video") + (w.label ? " " + w.label : "");
       return '<span class="pm-chip" data-vmid="' + esc(w.vmid) + '" data-idx="' + esc(w.idx || 0) +
         '" data-ess="' + esc(w.essence || "video") + '">' + esc(lbl) +
         ' <button class="pm-unwatch" title="' + t("probemon.unwatch") + '">✕</button></span>';

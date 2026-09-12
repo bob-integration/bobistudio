@@ -15,10 +15,10 @@
 // mieux réglée que celle-ci (+17 % pour la nôtre sur une trame 10 bits). L'arbitrage est fait
 // côté Python (bobimxl.blit).
 
-***REMOVED***include <immintrin.h>
-***REMOVED***include <stdint.h>
-***REMOVED***include <string.h>
-***REMOVED***include <unistd.h>
+#include <immintrin.h>
+#include <stdint.h>
+#include <string.h>
+#include <unistd.h>
 
 /* Variante SSE2 (movntdq, 16 o/magasin) — disponible sur TOUT x86-64, y compris les R620
    Sandy Bridge sans AVX2 (cf. le SIGILL en boucle de libmxl sur ces machines). Tête et queue non

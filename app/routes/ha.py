@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Haute disponibilité (paire de contrôleurs) — rôle, réplication, promote/demote.
 
@@ -92,9 +92,9 @@ def ha_status():
     return jsonify(ha.replication_status())
 
 
-***REMOVED*** ─── VIP de management (keepalived) ───────────────────────────────────────────
-***REMOVED*** Sous /api/ha/ → whitelistées par le garde standby : un contrôleur en veille DOIT pouvoir
-***REMOVED*** configurer sa propre VIP (sinon la moitié de la paire reste non configurable).
+# ─── VIP de management (keepalived) ───────────────────────────────────────────
+# Sous /api/ha/ → whitelistées par le garde standby : un contrôleur en veille DOIT pouvoir
+# configurer sa propre VIP (sinon la moitié de la paire reste non configurable).
 
 @bp.route("/api/ha/vip", methods=["GET"])
 @require_perm("settings.edit")
@@ -103,7 +103,7 @@ def ha_vip_get():
     from .. import vip
     st = vip.status()
     st["preview"] = vip.render_config() if st["address"] else ""
-    st["auth_pass"] = vip.config_values()["auth_pass"]   ***REMOVED*** à recopier sur l'autre contrôleur
+    st["auth_pass"] = vip.config_values()["auth_pass"]   # à recopier sur l'autre contrôleur
     return jsonify(st)
 
 
@@ -126,7 +126,7 @@ def ha_vip_set():
     if not data.get("apply", True):
         return jsonify({"ok": True, "msg": "réglages enregistrés (non appliqués)"})
     ok, msg = vip.apply(install_pkg=bool(data.get("install")))
-    if ok is None:      ***REMOVED*** VIP désactivée : enregistrer sans appliquer n'est pas un échec
+    if ok is None:      # VIP désactivée : enregistrer sans appliquer n'est pas un échec
         return jsonify({"ok": True, "msg": msg})
     return jsonify({"ok": bool(ok), "msg": msg}), (200 if ok else 400)
 

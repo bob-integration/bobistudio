@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Registre des services infrastructure + versioning/export/import.
 
@@ -27,10 +27,10 @@ SERVICES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 _SAFE_ID     = re.compile(r'^[A-Za-z0-9_-]+$')
 _REQUIRED    = {"id", "label", "version", "nav_tab", "tab_template", "settings_keys"}
 
-_registry = None  ***REMOVED*** cache : dict id → {"manifest": ..., "module": ..., "dir": ...}
+_registry = None  # cache : dict id → {"manifest": ..., "module": ..., "dir": ...}
 
 
-***REMOVED*** ─── Scan & reload ───────────────────────────────────────────────────────────
+# ─── Scan & reload ───────────────────────────────────────────────────────────
 
 def scan() -> dict:
     global _registry
@@ -85,7 +85,7 @@ def reload():
     scan()
 
 
-***REMOVED*** ─── Helpers registre ────────────────────────────────────────────────────────
+# ─── Helpers registre ────────────────────────────────────────────────────────
 
 def _entry(service_id):
     return next((e for e in scan().values() if e["manifest"]["id"] == service_id), None)
@@ -246,9 +246,9 @@ def tab_groups() -> list:
     return result
 
 
-***REMOVED*** ─── Libellés d'onglet traduits ──────────────────────────────────────────────
-***REMOVED*** Par CONVENTION DE CLÉ, comme pour les plugins : le manifeste d'un sous-module reste en
-***REMOVED*** français et n'a rien à savoir de l'i18n. Sans clé au catalogue, on rend le manifeste.
+# ─── Libellés d'onglet traduits ──────────────────────────────────────────────
+# Par CONVENTION DE CLÉ, comme pour les plugins : le manifeste d'un sous-module reste en
+# français et n'a rien à savoir de l'i18n. Sans clé au catalogue, on rend le manifeste.
 
 def _libelle(sid, defaut):
     from . import i18n
@@ -264,7 +264,7 @@ def _libelle_groupe(nav_tab):
     return nav_tab.capitalize() if v == cle else v
 
 
-***REMOVED*** ─── Versioning ──────────────────────────────────────────────────────────────
+# ─── Versioning ──────────────────────────────────────────────────────────────
 
 def _ver_key(v):
     try:
@@ -313,9 +313,9 @@ def versions_meta(service_id) -> list:
             meta = _read_meta(os.path.join(entry["dir"], "meta.json"))
         else:
             meta = _read_meta(os.path.join(entry["dir"], "versions", v, "meta.json"))
-        ***REMOVED*** Même lecteur que les plugins (app/plugins.parse_meta_changes) : les services titrent
-        ***REMOVED*** eux aussi leurs sections librement (« Corrections (0.3.1) », « Nouveautés (0.1.12) »),
-        ***REMOVED*** et ne lire que les trois clés nues rendait un changelog vide ou périmé.
+        # Même lecteur que les plugins (app/plugins.parse_meta_changes) : les services titrent
+        # eux aussi leurs sections librement (« Corrections (0.3.1) », « Nouveautés (0.1.12) »),
+        # et ne lire que les trois clés nues rendait un changelog vide ou périmé.
         from .plugins import parse_meta_changes
         secs, ch_, fx_, kb_ = parse_meta_changes(meta.get("changes"), v)
         result.append({
@@ -331,7 +331,7 @@ def versions_meta(service_id) -> list:
     return result
 
 
-***REMOVED*** ─── Validation & install ─────────────────────────────────────────────────────
+# ─── Validation & install ─────────────────────────────────────────────────────
 
 def validate_package(src_dir) -> tuple:
     """Valide un dossier service extrait. Retourne (manifest, None) ou (None, raison)."""
@@ -346,10 +346,10 @@ def validate_package(src_dir) -> tuple:
     missing = _REQUIRED - set(manifest.keys())
     if missing:
         return None, f"clés manquantes : {', '.join(sorted(missing))}"
-    ***REMOVED*** ★ EXIGENCE DE VERSION DU CŒUR — même garde que pour les plugins, au même endroit : la
-    ***REMOVED*** fonction de validation, par où passent TOUTES les voies d'installation. Un service peut
-    ***REMOVED*** avoir besoin d'un orchestrateur récent (`services/tsl` importe `app.tally`) ; installé sur
-    ***REMOVED*** un cœur trop ancien, il casse à l'import et ne démarre pas.
+    # ★ EXIGENCE DE VERSION DU CŒUR — même garde que pour les plugins, au même endroit : la
+    # fonction de validation, par où passent TOUTES les voies d'installation. Un service peut
+    # avoir besoin d'un orchestrateur récent (`services/tsl` importe `app.tally`) ; installé sur
+    # un cœur trop ancien, il casse à l'import et ne démarre pas.
     _cmin = _v.core_min_de(manifest)
     if _cmin and not _v.au_moins(_v.VERSION, _cmin):
         return None, ("exige Bobi.Studio >= %s (cette instance est en %s)" % (_cmin, _v.VERSION))
@@ -477,7 +477,7 @@ def activate_version(service_id, version) -> dict:
     return {"id": service_id, "version": version}
 
 
-***REMOVED*** ─── Export ───────────────────────────────────────────────────────────────────
+# ─── Export ───────────────────────────────────────────────────────────────────
 
 def export_dir(service_id):
     """Dossier du service à zipper pour l'export complet. None si inconnu."""

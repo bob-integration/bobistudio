@@ -1,60 +1,60 @@
-***REMOVED***!/usr/bin/env bash
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** uninstall-controller.sh — retire l'ORCHESTRATEUR Bobi.Studio d'une machine.
-***REMOVED*** Pendant de install.py (chemin « Orchestrateur » / « Tout-en-un »), et frère de uninstall-node.sh.
-***REMOVED***
-***REMOVED*** DOCTRINE — la même que pour le nœud, plus une règle qui n'existe QUE ici :
-***REMOVED***   1. ON MONTRE AVANT DE FAIRE (`--dry-run`), 2. ON N'EFFACE PAS CE QUI N'EST PAS À NOUS,
-***REMOVED***   3. ON DIT CE QU'ON LAISSE.
-***REMOVED***   4. ★ ON NE DÉTRUIT PAS LA BASE SANS EN LAISSER UNE COPIE. L'orchestrateur porte l'état de TOUTE
-***REMOVED***      l'installation : la base (nœuds, conteneurs, projets, emplacements, macros, réglages), la CA
-***REMOVED***      du plan de contrôle, les sauvegardes. Par défaut ce script en fait donc une ARCHIVE dans
-***REMOVED***      /root avant d'effacer quoi que ce soit — `--purge-data` pour s'en passer sciemment. Un
-***REMOVED***      désinstalleur qui emporte la seule copie d'une régie n'est pas un outil, c'est un accident.
-***REMOVED***
-***REMOVED*** Usage :
-***REMOVED***   ./uninstall-controller.sh --dry-run      ***REMOVED*** inventaire seul
-***REMOVED***   ./uninstall-controller.sh                ***REMOVED*** retrait (archive les données, demande confirmation)
-***REMOVED***   ./uninstall-controller.sh --yes --purge-data --purge-images --purge-packages   ***REMOVED*** table rase
-***REMOVED***
-***REMOVED*** Options :
-***REMOVED***   --dry-run          n'exécute RIEN : affiche l'inventaire et ce qui serait fait
-***REMOVED***   --yes              pas de confirmation interactive (obligatoire en non-interactif)
-***REMOVED***   --purge-data       n'archive PAS la base/les sauvegardes avant d'effacer (irréversible)
-***REMOVED***   --purge-images     supprime aussi les images Docker bobi-* présentes sur cette machine
-***REMOVED***   --purge-packages   désinstalle aussi ffmpeg, cifs-utils, nfs-common, python3-venv/pip,
-***REMOVED***                      keepalived (JAMAIS python3 ni curl : le système en dépend)
-***REMOVED***   --purge-key        supprime la clé SSH que l'orchestrateur utilisait pour joindre les nœuds
-***REMOVED***   --keep-node        ne touche pas à l'agent-nœud de cette machine (cas « tout-en-un »)
-***REMOVED***   --purge-media      transmis au désinstalleur de NŒUD local : supprime aussi ses médias
-***REMOVED***   --app-dir <p>      racine de l'installation (défaut /opt/bobistudio)
-***REMOVED***
-***REMOVED*** ⚠ Ce script ne touche QUE cette machine. Les NŒUDS enrôlés continueront de tourner avec leurs
-***REMOVED*** conteneurs : les retirer un par un avec `uninstall-node.sh` AVANT de supprimer l'orchestrateur,
-***REMOVED*** sinon plus rien ne sait où ils sont (la liste vit dans la base qu'on efface ici).
+#!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# uninstall-controller.sh — retire l'ORCHESTRATEUR Bobi.Studio d'une machine.
+# Pendant de install.py (chemin « Orchestrateur » / « Tout-en-un »), et frère de uninstall-node.sh.
+#
+# DOCTRINE — la même que pour le nœud, plus une règle qui n'existe QUE ici :
+#   1. ON MONTRE AVANT DE FAIRE (`--dry-run`), 2. ON N'EFFACE PAS CE QUI N'EST PAS À NOUS,
+#   3. ON DIT CE QU'ON LAISSE.
+#   4. ★ ON NE DÉTRUIT PAS LA BASE SANS EN LAISSER UNE COPIE. L'orchestrateur porte l'état de TOUTE
+#      l'installation : la base (nœuds, conteneurs, projets, emplacements, macros, réglages), la CA
+#      du plan de contrôle, les sauvegardes. Par défaut ce script en fait donc une ARCHIVE dans
+#      /root avant d'effacer quoi que ce soit — `--purge-data` pour s'en passer sciemment. Un
+#      désinstalleur qui emporte la seule copie d'une régie n'est pas un outil, c'est un accident.
+#
+# Usage :
+#   ./uninstall-controller.sh --dry-run      # inventaire seul
+#   ./uninstall-controller.sh                # retrait (archive les données, demande confirmation)
+#   ./uninstall-controller.sh --yes --purge-data --purge-images --purge-packages   # table rase
+#
+# Options :
+#   --dry-run          n'exécute RIEN : affiche l'inventaire et ce qui serait fait
+#   --yes              pas de confirmation interactive (obligatoire en non-interactif)
+#   --purge-data       n'archive PAS la base/les sauvegardes avant d'effacer (irréversible)
+#   --purge-images     supprime aussi les images Docker bobi-* présentes sur cette machine
+#   --purge-packages   désinstalle aussi ffmpeg, cifs-utils, nfs-common, python3-venv/pip,
+#                      keepalived (JAMAIS python3 ni curl : le système en dépend)
+#   --purge-key        supprime la clé SSH que l'orchestrateur utilisait pour joindre les nœuds
+#   --keep-node        ne touche pas à l'agent-nœud de cette machine (cas « tout-en-un »)
+#   --purge-media      transmis au désinstalleur de NŒUD local : supprime aussi ses médias
+#   --app-dir <p>      racine de l'installation (défaut /opt/bobistudio)
+#
+# ⚠ Ce script ne touche QUE cette machine. Les NŒUDS enrôlés continueront de tourner avec leurs
+# conteneurs : les retirer un par un avec `uninstall-node.sh` AVANT de supprimer l'orchestrateur,
+# sinon plus rien ne sait où ils sont (la liste vit dans la base qu'on efface ici).
 set -euo pipefail
 
 DRY=0; ASSUME_YES=0; PURGE_DATA=0; PURGE_IMAGES=0; PURGE_PKGS=0; PURGE_KEY=0; KEEP_NODE=0
-PURGE_MEDIA=0          ***REMOVED*** concerne le NŒUD local (tout-en-un) : simple passe-plat vers uninstall-node.sh
+PURGE_MEDIA=0          # concerne le NŒUD local (tout-en-un) : simple passe-plat vers uninstall-node.sh
 APP_DIR="/opt/bobistudio"; NODE_SRC="/opt/bobi-node-src"
 SERVICE="bobistudio"
-EXT_ROOT="/mnt/ext"                       ***REMOVED*** montages CIFS/NFS posés par le gestionnaire de médias
+EXT_ROOT="/mnt/ext"                       # montages CIFS/NFS posés par le gestionnaire de médias
 VIP_CONF="/etc/keepalived/keepalived.conf"
-VIP_MARKER="***REMOVED*** Généré par Bobi.Studio"     ***REMOVED*** ne jamais toucher une conf keepalived qui n'est pas la nôtre
+VIP_MARKER="# Généré par Bobi.Studio"     # ne jamais toucher une conf keepalived qui n'est pas la nôtre
 
 c_g=$'\033[32m'; c_y=$'\033[33m'; c_r=$'\033[31m'; c_b=$'\033[34m'; c_d=$'\033[2m'; c_0=$'\033[0m'
 log(){ echo "${c_b}▶${c_0} $*"; }; ok(){ echo "${c_g}✓${c_0} $*"; }
 warn(){ echo "${c_y}!${c_0} $*"; }; die(){ echo "${c_r}✗${c_0} $*" >&2; exit 1; }
 item(){ echo "      ${c_d}·${c_0} $*"; }
 
-***REMOVED*** Arguments d'origine mémorisés AVANT le parsing : la boucle ci-dessous les consomme (`shift`), or
-***REMOVED*** on se relance plus bas (relocalisation hors de $APP_DIR) et « $@ » serait alors VIDE — un
-***REMOVED*** --dry-run perdu en route, c'est un inventaire qui devient un retrait. Trouvé au premier essai réel.
+# Arguments d'origine mémorisés AVANT le parsing : la boucle ci-dessous les consomme (`shift`), or
+# on se relance plus bas (relocalisation hors de $APP_DIR) et « $@ » serait alors VIDE — un
+# --dry-run perdu en route, c'est un inventaire qui devient un retrait. Trouvé au premier essai réel.
 _ARGS=("$@")
 
-while [ $***REMOVED*** -gt 0 ]; do
+while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1; shift;;
     --yes|-y) ASSUME_YES=1; shift;;
@@ -72,26 +72,26 @@ done
 
 [ "$(id -u)" = "0" ] || die "à lancer en root."
 
-***REMOVED*** ─── Ce script vit peut-être DANS ce qu'il doit effacer ──────────────────────
-***REMOVED*** `node_agent/uninstall-controller.sh` est sous $APP_DIR. Or bash lit son script au fil de
-***REMOVED*** l'exécution : effacer le fichier en cours de route ferait dérailler la fin (comportement
-***REMOVED*** indéfini, retrait à moitié fait). On se recopie donc ailleurs et on se relance de là.
-***REMOVED*** Relocalisation INCONDITIONNELLE (sauf déjà relocalisé) : ce script s'efface lui-même dans DEUX
-***REMOVED*** cas — lancé depuis $APP_DIR/node_agent/, et lancé depuis /opt/bobi-node-src/ (là où l'installeur
-***REMOVED*** extrait sa charge utile, effacée au §8). Plutôt que d'énumérer les emplacements dangereux, on
-***REMOVED*** travaille toujours depuis une copie : le seul cas sûr est celui où l'on ne se lit plus soi-même.
+# ─── Ce script vit peut-être DANS ce qu'il doit effacer ──────────────────────
+# `node_agent/uninstall-controller.sh` est sous $APP_DIR. Or bash lit son script au fil de
+# l'exécution : effacer le fichier en cours de route ferait dérailler la fin (comportement
+# indéfini, retrait à moitié fait). On se recopie donc ailleurs et on se relance de là.
+# Relocalisation INCONDITIONNELLE (sauf déjà relocalisé) : ce script s'efface lui-même dans DEUX
+# cas — lancé depuis $APP_DIR/node_agent/, et lancé depuis /opt/bobi-node-src/ (là où l'installeur
+# extrait sa charge utile, effacée au §8). Plutôt que d'énumérer les emplacements dangereux, on
+# travaille toujours depuis une copie : le seul cas sûr est celui où l'on ne se lit plus soi-même.
 _self="$(readlink -f "$0")"
 if [ "${BOBI_RELOCATED:-0}" != "1" ]; then
   _tmp="$(mktemp -d)/uninstall-controller.sh"
   cp "$_self" "$_tmp"; chmod +x "$_tmp"
   BOBI_RELOCATED=1 BOBI_SELF_ORIG="$_self" exec "$_tmp" ${_ARGS+"${_ARGS[@]}"}
 fi
-***REMOVED*** Après relocalisation, « à côté de moi » ne désigne plus rien d'utile pour trouver
-***REMOVED*** uninstall-node.sh : on repart du chemin d'ORIGINE.
+# Après relocalisation, « à côté de moi » ne désigne plus rien d'utile pour trouver
+# uninstall-node.sh : on repart du chemin d'ORIGINE.
 _self="${BOBI_SELF_ORIG:-$_self}"
 
-***REMOVED*** Le désinstalleur de NŒUD, s'il est à côté (cas « tout-en-un ») : on le met de côté AVANT
-***REMOVED*** d'effacer $APP_DIR, sinon il disparaît juste avant d'avoir servi.
+# Le désinstalleur de NŒUD, s'il est à côté (cas « tout-en-un ») : on le met de côté AVANT
+# d'effacer $APP_DIR, sinon il disparaît juste avant d'avoir servi.
 NODE_UNINSTALLER=""
 for _cand in "$(dirname "$_self")/uninstall-node.sh" "$APP_DIR/node_agent/uninstall-node.sh"; do
   if [ -f "$_cand" ]; then
@@ -113,7 +113,7 @@ if [ "$KEEP_NODE" = 0 ] && { [ -d /etc/bobi-node-agent ] || [ -f /etc/systemd/sy
   _agent_local=1
 fi
 
-***REMOVED*** ─── 1. Inventaire ────────────────────────────────────────────────────────────
+# ─── 1. Inventaire ────────────────────────────────────────────────────────────
 echo
 echo "  ╔══════════════════════════════════════════════════════╗"
 echo "  ║  B O B I . S T U D I O  —  retrait de l'orchestrateur ║"
@@ -171,7 +171,7 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 
-***REMOVED*** ─── 2. Confirmation ──────────────────────────────────────────────────────────
+# ─── 2. Confirmation ──────────────────────────────────────────────────────────
 if [ "$ASSUME_YES" = 0 ]; then
   [ -t 0 ] || die "non-interactif : relancer avec --yes pour confirmer (rien n'a été fait)."
   printf "%b" "${c_y}?${c_0} Retirer l'orchestrateur de cette machine ? Taper ${c_r}RETIRER${c_0} pour confirmer : "
@@ -180,21 +180,21 @@ if [ "$ASSUME_YES" = 0 ]; then
 fi
 echo
 
-***REMOVED*** ─── 3. Archive des données (AVANT tout effacement) ──────────────────────────
-***REMOVED*** Faite en premier : si le reste du retrait échoue à mi-chemin, la copie existe déjà.
+# ─── 3. Archive des données (AVANT tout effacement) ──────────────────────────
+# Faite en premier : si le reste du retrait échoue à mi-chemin, la copie existe déjà.
 ARCHIVE=""
 if [ "$PURGE_DATA" = 0 ] && [ -d "$APP_DIR" ]; then
   ARCHIVE="/root/bobistudio-retrait-$(date +%Y%m%d-%H%M%S).tar.gz"
   log "Archivage des données dans $ARCHIVE…"
-  ***REMOVED*** Liste EXPLICITE : la base et ses journaux WAL, la conf de site, les sauvegardes, la CA, l'état
-  ***REMOVED*** de la recette et l'identité de build. Ni le code ni le venv (ils se réinstallent).
+  # Liste EXPLICITE : la base et ses journaux WAL, la conf de site, les sauvegardes, la CA, l'état
+  # de la recette et l'identité de build. Ni le code ni le venv (ils se réinstallent).
   _inc=""
   for f in db_bobistudio.db db_bobistudio.db-wal db_bobistudio.db-shm config_local.py \
            db_testplan.json build_info.json backups tls static/uploads; do
     if [ -e "$APP_DIR/$f" ]; then _inc="$_inc $f"; fi
   done
   if [ -n "$_inc" ]; then
-    ***REMOVED*** shellcheck disable=SC2086  (word-splitting voulu : liste de chemins relatifs)
+    # shellcheck disable=SC2086  (word-splitting voulu : liste de chemins relatifs)
     if tar -czf "$ARCHIVE" -C "$APP_DIR" $_inc 2>/dev/null; then
       chmod 600 "$ARCHIVE"
       ok "archive écrite : $ARCHIVE ($(_taille "$ARCHIVE"))"
@@ -207,7 +207,7 @@ if [ "$PURGE_DATA" = 0 ] && [ -d "$APP_DIR" ]; then
   fi
 fi
 
-***REMOVED*** ─── 4. Service ───────────────────────────────────────────────────────────────
+# ─── 4. Service ───────────────────────────────────────────────────────────────
 if [ -f "/etc/systemd/system/$SERVICE.service" ] || systemctl is-active "$SERVICE" >/dev/null 2>&1; then
   log "Arrêt de l'orchestrateur…"
   systemctl disable --now "$SERVICE" >/dev/null 2>&1 || true
@@ -216,9 +216,9 @@ if [ -f "/etc/systemd/system/$SERVICE.service" ] || systemctl is-active "$SERVIC
   ok "service $SERVICE arrêté et retiré"
 fi
 
-***REMOVED*** ─── 5. VIP keepalived ────────────────────────────────────────────────────────
-***REMOVED*** UNIQUEMENT si la conf porte NOTRE marqueur : un site peut avoir son propre VRRP, et l'écraser
-***REMOVED*** serait une panne réseau offerte (même garde que app/vip.py à l'écriture).
+# ─── 5. VIP keepalived ────────────────────────────────────────────────────────
+# UNIQUEMENT si la conf porte NOTRE marqueur : un site peut avoir son propre VRRP, et l'écraser
+# serait une panne réseau offerte (même garde que app/vip.py à l'écriture).
 if [ -f "$VIP_CONF" ] && grep -qs "$VIP_MARKER" "$VIP_CONF"; then
   systemctl disable --now keepalived >/dev/null 2>&1 || true
   rm -f "$VIP_CONF"
@@ -227,8 +227,8 @@ elif [ -f "$VIP_CONF" ]; then
   warn "keepalived présent avec une conf qui n'est PAS la nôtre — laissée intacte."
 fi
 
-***REMOVED*** ─── 6. Partages montés ───────────────────────────────────────────────────────
-***REMOVED*** On démonte ce que nous avons monté ; le contenu est DISTANT, il ne nous appartient pas.
+# ─── 6. Partages montés ───────────────────────────────────────────────────────
+# On démonte ce que nous avons monté ; le contenu est DISTANT, il ne nous appartient pas.
 if [ -n "$_mounts" ]; then
   log "Démontage des partages sous $EXT_ROOT…"
   for m in $_mounts; do
@@ -240,20 +240,20 @@ if [ -n "$_mounts" ]; then
   ok "partages démontés (aucun fichier distant touché)"
 fi
 
-***REMOVED*** ─── 7. Agent-nœud local (machine « tout-en-un ») ────────────────────────────
-***REMOVED*** AVANT d'effacer $APP_DIR (le désinstalleur de nœud en vient), et sans -o pipefail surprise :
-***REMOVED*** son échec ne doit pas interrompre le retrait de l'orchestrateur.
+# ─── 7. Agent-nœud local (machine « tout-en-un ») ────────────────────────────
+# AVANT d'effacer $APP_DIR (le désinstalleur de nœud en vient), et sans -o pipefail surprise :
+# son échec ne doit pas interrompre le retrait de l'orchestrateur.
 if [ "$_agent_local" = 1 ] && [ -n "$NODE_UNINSTALLER" ]; then
   log "── retrait de l'agent-nœud local ──"
   _nargs="--yes"
   if [ "$PURGE_IMAGES" = 1 ]; then _nargs="$_nargs --purge-images"; fi
   if [ "$PURGE_MEDIA" = 1 ]; then _nargs="$_nargs --purge-media"; fi
-  ***REMOVED*** shellcheck disable=SC2086
+  # shellcheck disable=SC2086
   bash "$NODE_UNINSTALLER" $_nargs || warn "le retrait de l'agent-nœud a signalé une erreur (voir ci-dessus)"
   echo
 fi
 
-***REMOVED*** ─── 8. Application ───────────────────────────────────────────────────────────
+# ─── 8. Application ───────────────────────────────────────────────────────────
 if [ -d "$APP_DIR" ]; then
   log "Suppression de $APP_DIR…"
   rm -rf "${APP_DIR:?}"
@@ -261,13 +261,13 @@ if [ -d "$APP_DIR" ]; then
 fi
 if [ -d "$NODE_SRC" ]; then rm -rf "${NODE_SRC:?}"; ok "charge utile nœud $NODE_SRC supprimée"; fi
 
-***REMOVED*** ─── 9. Images Docker ─────────────────────────────────────────────────────────
+# ─── 9. Images Docker ─────────────────────────────────────────────────────────
 if [ "$PURGE_IMAGES" = 1 ]; then
-  ***REMOVED*** ★ On RELIT la liste ici plutôt que de réutiliser celle de l'inventaire : sur une machine
-  ***REMOVED*** tout-en-un, le désinstalleur de NŒUD (§7) vient de purger ces mêmes images. Rejouer la liste
-  ***REMOVED*** d'origine affichait huit images « supprimées » qui n'existaient déjà plus — inoffensif pour la
-  ***REMOVED*** machine, mais c'est un compte rendu qui ment, et un compte rendu qui ment sur un retrait est
-  ***REMOVED*** exactement ce qu'on ne veut pas (signalé en recette, 2026-08-21).
+  # ★ On RELIT la liste ici plutôt que de réutiliser celle de l'inventaire : sur une machine
+  # tout-en-un, le désinstalleur de NŒUD (§7) vient de purger ces mêmes images. Rejouer la liste
+  # d'origine affichait huit images « supprimées » qui n'existaient déjà plus — inoffensif pour la
+  # machine, mais c'est un compte rendu qui ment, et un compte rendu qui ment sur un retrait est
+  # exactement ce qu'on ne veut pas (signalé en recette, 2026-08-21).
   _i_list="$(_images)"
   if [ -n "$_i_list" ]; then
     log "Suppression des images Docker bobi-*…"
@@ -276,10 +276,10 @@ if [ "$PURGE_IMAGES" = 1 ]; then
   fi
 fi
 
-***REMOVED*** ─── 10. Clé SSH de l'orchestrateur ──────────────────────────────────────────
-***REMOVED*** Elle sert à joindre les nœuds en root. On ne la supprime QUE si elle est manifestement la nôtre
-***REMOVED*** (commentaire posé par host_ops) ou sur demande : sur une machine partagée, /root/.ssh/id_ed25519
-***REMOVED*** peut très bien être la clé d'ops de l'exploitant, qui ouvre d'autres portes que les nôtres.
+# ─── 10. Clé SSH de l'orchestrateur ──────────────────────────────────────────
+# Elle sert à joindre les nœuds en root. On ne la supprime QUE si elle est manifestement la nôtre
+# (commentaire posé par host_ops) ou sur demande : sur une machine partagée, /root/.ssh/id_ed25519
+# peut très bien être la clé d'ops de l'exploitant, qui ouvre d'autres portes que les nôtres.
 if [ -f /root/.ssh/id_ed25519 ]; then
   if [ "$PURGE_KEY" = 1 ] || grep -qs bobistudio-controller /root/.ssh/id_ed25519.pub; then
     rm -f /root/.ssh/id_ed25519 /root/.ssh/id_ed25519.pub
@@ -289,17 +289,17 @@ if [ -f /root/.ssh/id_ed25519 ]; then
   fi
 fi
 
-***REMOVED*** ─── 11. Paquets ──────────────────────────────────────────────────────────────
+# ─── 11. Paquets ──────────────────────────────────────────────────────────────
 if [ "$PURGE_PKGS" = 1 ]; then
   log "Désinstallation des paquets posés par l'installation…"
   export DEBIAN_FRONTEND=noninteractive
-  ***REMOVED*** JAMAIS python3 ni curl : la machine (et apt lui-même) en dépendent.
+  # JAMAIS python3 ni curl : la machine (et apt lui-même) en dépendent.
   apt-get purge -y -qq ffmpeg cifs-utils nfs-common python3-venv python3-pip keepalived >/dev/null 2>&1 || true
   apt-get autoremove -y -qq >/dev/null 2>&1 || true
   ok "paquets désinstallés (python3, curl et rsync conservés : le système s'en sert)"
 fi
 
-***REMOVED*** ─── 12. Résumé ───────────────────────────────────────────────────────────────
+# ─── 12. Résumé ───────────────────────────────────────────────────────────────
 echo
 ok "Orchestrateur Bobi.Studio retiré de cette machine."
 if [ -n "$ARCHIVE" ]; then

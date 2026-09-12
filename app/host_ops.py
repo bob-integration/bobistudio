@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Opérations SSH sur l'HÔTE d'un nœud (full-Docker) : binds /dev/shm & média, IP de PF
 (plan média 2110 / PTP), pinning CPU. Le host est passé en paramètre (résolu par-nœud, cf.
@@ -21,8 +21,8 @@ log = logging.getLogger(__name__)
 
 import time as _time_mod
 
-***REMOVED*** Dedup des alertes SSH : on n'émet pas deux fois le même message en moins de 60s.
-***REMOVED*** Si le message change, l'alerte est immédiate (= un nouveau symptôme).
+# Dedup des alertes SSH : on n'émet pas deux fois le même message en moins de 60s.
+# Si le message change, l'alerte est immédiate (= un nouveau symptôme).
 _SSH_ALERT_DEBOUNCE_S = 60
 _last_ssh_alert = {"ts": 0.0, "msg": ""}
 
@@ -39,7 +39,7 @@ def _hote_affichable(host):
         host = host.decode("utf-8", "replace")
     if isinstance(host, str):
         return host[:80]
-    ***REMOVED*** Tout ce qui n'est pas une chaîne est un BUG d'appel : on nomme le type, jamais le contenu.
+    # Tout ce qui n'est pas une chaîne est un BUG d'appel : on nomme le type, jamais le contenu.
     return f"<{type(host).__name__} au lieu d'une chaîne>"
 
 
@@ -87,19 +87,19 @@ def ssh_run(host, cmd, input_data=None, timeout=300):
     (token HTTP, /v1/host/exec) au lieu du root-SSH → fin du root-SSH pour les nœuds enrôlés. Repli
     SSH (legacy) pour les nœuds non-agent. Choke-point : tous les callers host-ops en héritent.
     Si rc=255 (SSH lui-même a échoué), émet une alerte avec debounce."""
-    ***REMOVED*** Host falsy = « aucun nœud sélectionné/enrôlé » (0 nœud, ou op host-prep sans node_id), PAS une
-    ***REMOVED*** panne SSH. Court-circuit AVANT tout ssh/alerte : sinon `ssh root@None` rc=255 → alerte trompeuse
-    ***REMOVED*** « SSH vers l'host Proxmox a échoué — None » à chaque poll d'une route host-ops (pool NIC, preflight
-    ***REMOVED*** MTL…). Les appelants gèrent déjà rc≠0 (affichent « aucun nœud »).
+    # Host falsy = « aucun nœud sélectionné/enrôlé » (0 nœud, ou op host-prep sans node_id), PAS une
+    # panne SSH. Court-circuit AVANT tout ssh/alerte : sinon `ssh root@None` rc=255 → alerte trompeuse
+    # « SSH vers l'host Proxmox a échoué — None » à chaque poll d'une route host-ops (pool NIC, preflight
+    # MTL…). Les appelants gèrent déjà rc≠0 (affichent « aucun nœud »).
     if not host:
         return (255, "", "aucun hôte (pas de nœud sélectionné/enrôlé)")
-    ***REMOVED*** Un hôte qui n'est pas une CHAÎNE est une erreur d'appel, pas une panne réseau — typiquement
-    ***REMOVED*** la ligne de nœud passée à la place de son champ `host`. Sans ce garde-fou on forkait
-    ***REMOVED*** `ssh root@{'id': 34, …, 'agent_token': …}` : le shell d'OpenSSH coupe au DERNIER `@` (celui du
-    ***REMOVED*** modèle de CPU, « Xeon … @ 2.40GHz »), d'où le déroutant « remote username contains invalid
-    ***REMOVED*** characters » — et surtout le dict entier, jetons compris, recopié dans l'alerte. On refuse
-    ***REMOVED*** donc AVANT le fork, et on nomme l'appelant dans le journal : sans lui, ce défaut ne laisse
-    ***REMOVED*** aucune trace exploitable (vécu : introuvable après coup, faute de pile).
+    # Un hôte qui n'est pas une CHAÎNE est une erreur d'appel, pas une panne réseau — typiquement
+    # la ligne de nœud passée à la place de son champ `host`. Sans ce garde-fou on forkait
+    # `ssh root@{'id': 34, …, 'agent_token': …}` : le shell d'OpenSSH coupe au DERNIER `@` (celui du
+    # modèle de CPU, « Xeon … @ 2.40GHz »), d'où le déroutant « remote username contains invalid
+    # characters » — et surtout le dict entier, jetons compris, recopié dans l'alerte. On refuse
+    # donc AVANT le fork, et on nomme l'appelant dans le journal : sans lui, ce défaut ne laisse
+    # aucune trace exploitable (vécu : introuvable après coup, faute de pile).
     if not isinstance(host, (str, bytes)):
         import traceback
         appelant = "".join(traceback.format_stack()[-3:-1]).strip().replace("\n", " | ")
@@ -115,7 +115,7 @@ def ssh_run(host, cmd, input_data=None, timeout=300):
         if _node and _node.get("agent_url"):
             return node_driver.host_exec(_node, cmd, input_data=input_data, timeout=timeout)
     except Exception:
-        pass   ***REMOVED*** repli SSH si la résolution échoue
+        pass   # repli SSH si la résolution échoue
     full_cmd = ["ssh", "-o", "StrictHostKeyChecking=accept-new",
                 "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
                 "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=20",
@@ -126,20 +126,20 @@ def ssh_run(host, cmd, input_data=None, timeout=300):
         _emit_ssh_alert(host, p.stderr)
     return p.returncode, p.stdout, p.stderr
 
-***REMOVED*** Alias rétro-compat interne
+# Alias rétro-compat interne
 _ssh = ssh_run
 
 
 
 
-***REMOVED*** ═════════════════════════════════════════════════════════════════════
-***REMOVED*** Plan média 2110 : l'IP de la PF est posée par `docker_driver.ensure_media_ip(s)` (rappelée à
-***REMOVED*** chaque (re)déploiement du moteur), et sa PASSERELLE par `docker_driver.ensure_media_routes`
-***REMOVED*** (routage par leg) ou, pour un port en vfio-pci, par l'env GATEWAYS/NETMASKS du moteur.
-***REMOVED*** `ensure_pf_ip` vivait ici depuis le retrait du passthrough SR-IOV, sans AUCUN appelant : elle
-***REMOVED*** laissait croire qu'une passerelle média était déjà câblée alors qu'elle n'aurait posé qu'une
-***REMOVED*** route connectée. Retirée le 2026-08-22 pour ne pas laisser deux vérités.
-***REMOVED*** ═════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════
+# Plan média 2110 : l'IP de la PF est posée par `docker_driver.ensure_media_ip(s)` (rappelée à
+# chaque (re)déploiement du moteur), et sa PASSERELLE par `docker_driver.ensure_media_routes`
+# (routage par leg) ou, pour un port en vfio-pci, par l'env GATEWAYS/NETMASKS du moteur.
+# `ensure_pf_ip` vivait ici depuis le retrait du passthrough SR-IOV, sans AUCUN appelant : elle
+# laissait croire qu'une passerelle média était déjà câblée alors qu'elle n'aurait posé qu'une
+# route connectée. Retirée le 2026-08-22 pour ne pas laisser deux vérités.
+# ═════════════════════════════════════════════════════════════════════
 
 
 def parse_cpuset(s):
@@ -172,8 +172,8 @@ def host_cpu_count(host):
 
 
 
-***REMOVED*** ── Retiré avec le backend LXC/Proxmox (full-Docker) ─────────────────────────────────────
-***REMOVED*** `ensure_shm_bind`, `ensure_dpdk_access`, `ensure_media_bind`, `replace_media_bind`,
-***REMOVED*** `set_cpu_pinning`, `clear_cpu_pinning` écrivaient dans /etc/pve/lxc/<vmid>.conf. Plus aucun
-***REMOVED*** appelant depuis le passage full-Docker : les binds, l'accès DPDK et le cpuset sont posés au
-***REMOVED*** `docker run` par docker_compute / docker_driver (cf. core_pool.effective_cpuset).
+# ── Retiré avec le backend LXC/Proxmox (full-Docker) ─────────────────────────────────────
+# `ensure_shm_bind`, `ensure_dpdk_access`, `ensure_media_bind`, `replace_media_bind`,
+# `set_cpu_pinning`, `clear_cpu_pinning` écrivaient dans /etc/pve/lxc/<vmid>.conf. Plus aucun
+# appelant depuis le passage full-Docker : les binds, l'accès DPDK et le cpuset sont posés au
+# `docker run` par docker_compute / docker_driver (cf. core_pool.effective_cpuset).

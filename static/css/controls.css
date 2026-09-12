@@ -707,7 +707,7 @@ input[type="checkbox"].ctl-switch[disabled] { opacity: 0.5; cursor: not-allowed;
 .ctl-tool:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* État maintenu, pour un outil qui BASCULE (aimantation, verrou) et non qui agit une fois.
  * Sans lui, rien ne distingue à l'œil un mode armé d'un mode au repos. */
-.ctl-tool.on { background: var(--accent); color: var(--accent-contrast, ***REMOVED***fff); }
+.ctl-tool.on { background: var(--accent); color: var(--accent-contrast, #fff); }
 .ctl-tool.on:hover:not(:disabled) { filter: brightness(1.08); }
 
 @media (hover: hover) {

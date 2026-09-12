@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Registre des plugins (liste/drift, import/export .mxlplugin, versions, activation/
 désactivation/suppression, redéploiement) + shell générique de rubrique (Traitements/Médias/
@@ -54,13 +54,13 @@ def _render_io():
     pl = []
     for sid in ("sources", "streams", "destinations"):
         for m in (secs.get(sid) or {}).get("plugins", []):
-            ***REMOVED*** Le moteur MTL (2110_io) a ses ONGLETS DÉDIÉS « Sources 2110 » + « Destinations 2110 »
-            ***REMOVED*** (RX et TX) ci-dessous. On retire donc son onglet plugin générique, qui ne montrait que
-            ***REMOVED*** les sources (RX) = doublon exact de « Sources 2110 » (même carte de contrôle réutilisée).
+            # Le moteur MTL (2110_io) a ses ONGLETS DÉDIÉS « Sources 2110 » + « Destinations 2110 »
+            # (RX et TX) ci-dessous. On retire donc son onglet plugin générique, qui ne montrait que
+            # les sources (RX) = doublon exact de « Sources 2110 » (même carte de contrôle réutilisée).
             if m.get("type") == "2110_io":
                 continue
             pl.append(_plugin_public(m))
-    ***REMOVED*** Onglets CUSTOM (hors logique plugin) : gestion du transport 2110 du moteur MTL (RX + TX).
+    # Onglets CUSTOM (hors logique plugin) : gestion du transport 2110 du moteur MTL (RX + TX).
     extra_tabs = []
     if plugins.get("2110_io"):
         from ..i18n import t as _t
@@ -114,10 +114,10 @@ def plugin_instances():
     from ..database import db_fabric_all
     want = (request.args.get("type") or "").strip() or None
     proj_by_id = {p["id"]: p for p in db_get_projects()}
-    ***REMOVED*** Nœuds INTERNES du tissu de composition (shards `bobi-fab-*`) : ce sont des multiviews
-    ***REMOVED*** matérialisés automatiquement (parallélisme/dédup), pas des murs éditables → on les masque
-    ***REMOVED*** de la liste d'instances. Les ASSEMBLEURS (kind=assembler) sont les vrais murs (vmid =
-    ***REMOVED*** le mur utilisateur) → conservés. Un shard a vmid=NULL et porte le vmid du conteneur en `ref`.
+    # Nœuds INTERNES du tissu de composition (shards `bobi-fab-*`) : ce sont des multiviews
+    # matérialisés automatiquement (parallélisme/dédup), pas des murs éditables → on les masque
+    # de la liste d'instances. Les ASSEMBLEURS (kind=assembler) sont les vrais murs (vmid =
+    # le mur utilisateur) → conservés. Un shard a vmid=NULL et porte le vmid du conteneur en `ref`.
     fab_shard_vmids = set()
     try:
         for r in db_fabric_all():
@@ -125,7 +125,7 @@ def plugin_instances():
                 fab_shard_vmids.add(int(r["ref"]))
     except Exception:
         pass
-    member_pids = scoped_project_ids()   ***REMOVED*** None = accès global (pas de filtre)
+    member_pids = scoped_project_ids()   # None = accès global (pas de filtre)
     uid = (current_user() or {}).get("id")
     out = []
     for c in db_get_containers():
@@ -157,8 +157,8 @@ def _plugins_overview():
     déployée ≠ version du manifeste), et la liste des instances périmées. `errors` =
     plugins présents sur disque mais non chargés (raison)."""
     from .. import plugins
-    ***REMOVED*** Projets par VMID : un container est « dans » un projet si son vmid figure dans le
-    ***REMOVED*** snapshot du projet (identité sauvegardée). Construit en une passe.
+    # Projets par VMID : un container est « dans » un projet si son vmid figure dans le
+    # snapshot du projet (identité sauvegardée). Construit en une passe.
     proj_by_vmid = {}
     try:
         for p in db_get_projects():
@@ -168,7 +168,7 @@ def _plugins_overview():
                     proj_by_vmid.setdefault(v, []).append(p.get("name"))
     except Exception:
         proj_by_vmid = {}
-    ***REMOVED*** Instances groupées par type (parse unique des deploy_config).
+    # Instances groupées par type (parse unique des deploy_config).
     by_type = {}
     for c in db_get_containers():
         dc = _load_dc(c) or {}
@@ -189,8 +189,8 @@ def _plugins_overview():
             for (c, dv) in insts
         ]
         nav = m.get("nav") or {}
-        ***REMOVED*** Catégorie d'affichage = nav.section si présent, sinon `category` explicite
-        ***REMOVED*** (types hors palette comme webrtc_gateway → "streams" sans émettre de chip).
+        # Catégorie d'affichage = nav.section si présent, sinon `category` explicite
+        # (types hors palette comme webrtc_gateway → "streams" sans émettre de chip).
         category = nav.get("section") or m.get("category")
         out.append({
             "type": t, "label": m.get("label", t), "version": ver,
@@ -241,10 +241,10 @@ def plugins_help():
         if not type_:
             continue
         plugin_dir = manifest.get("_dir") or os.path.join(_pl.PLUGINS_DIR, type_)
-        ***REMOVED*** ⚠ `lang` VIENT D'UNE REQUÊTE. Un code de langue est un fragment de
-        ***REMOVED*** chemin : sans ce filtre, un `lang` fabriqué remonterait l'arborescence.
-        ***REMOVED*** Les codes valides sont dans `i18n.LANG_CODES`, mais on ne s'appuie pas
-        ***REMOVED*** dessus ici — la garde doit tenir même si une langue est ajoutée.
+        # ⚠ `lang` VIENT D'UNE REQUÊTE. Un code de langue est un fragment de
+        # chemin : sans ce filtre, un `lang` fabriqué remonterait l'arborescence.
+        # Les codes valides sont dans `i18n.LANG_CODES`, mais on ne s'appuie pas
+        # dessus ici — la garde doit tenir même si une langue est ajoutée.
         code = re.sub(r"[^a-z0-9_-]", "", str(lang or "").lower())[:8]
         help_path = os.path.join(plugin_dir, "help.md")
         lang_servie = ""
@@ -257,9 +257,9 @@ def plugins_help():
         try:
             with open(help_path, encoding="utf-8") as f:
                 md_text = f.read()
-            ***REMOVED*** Le wrapper d'article rend déjà le titre (label plugin) → retirer le « ***REMOVED*** Titre »
-            ***REMOVED*** de tête du markdown pour éviter un double <h1>.
-            md_text = re.sub(r"^\s****REMOVED***\s+[^\n]*\n", "", md_text, count=1)
+            # Le wrapper d'article rend déjà le titre (label plugin) → retirer le « # Titre »
+            # de tête du markdown pour éviter un double <h1>.
+            md_text = re.sub(r"^\s*#\s+[^\n]*\n", "", md_text, count=1)
             html = _md.markdown(md_text, extensions=["tables", "fenced_code"])
         except Exception as e:
             html = f"<p><em>Erreur de rendu : {e}</em></p>"
@@ -272,7 +272,7 @@ def plugins_help():
             "category": help_meta.get("category") or nav.get("section") or "autres",
             "order":    int(help_meta.get("order") or nav.get("order") or 99),
             "html":     html,
-            ***REMOVED*** "" = le `help.md` générique a servi, la langue est donc inconnue.
+            # "" = le `help.md` générique a servi, la langue est donc inconnue.
             "lang":     lang_servie,
         })
     articles.sort(key=lambda a: (a["category"], a["order"], a["label"]))
@@ -343,11 +343,11 @@ def container_redeploy_version(vmid):
     from .. import plugins
     c = db_get_container(vmid)
     if not c:
-        return jsonify({"error": f"container ***REMOVED***{vmid} introuvable"}), 404
+        return jsonify({"error": f"container #{vmid} introuvable"}), 404
     dc = _load_dc(c) or {}
     t = dc.get("type")
     if not (t and plugins.is_plugin(t)):
-        return jsonify({"error": f"***REMOVED***{vmid} n'est pas un container plugin"}), 400
+        return jsonify({"error": f"#{vmid} n'est pas un container plugin"}), 400
     version = (request.json or {}).get("version") or None
     params = dc.get("params") or {}
     threading.Thread(target=deployer_script, kwargs={
@@ -390,12 +390,12 @@ def plugins_export_version(type_, version):
     d, ver = plugins.export_version_dir(type_, version)
     if not d:
         return jsonify({"error": "version inconnue"}), 404
-    flat = (d == (plugins.get(type_) or {}).get("_dir"))  ***REMOVED*** version courante → dossier plat
+    flat = (d == (plugins.get(type_) or {}).get("_dir"))  # version courante → dossier plat
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for root, dirs, files in _os.walk(d):
             if flat and "versions" in dirs:
-                dirs.remove("versions")  ***REMOVED*** n'embarque pas les autres versions
+                dirs.remove("versions")  # n'embarque pas les autres versions
             for fn in files:
                 full = _os.path.join(root, fn)
                 z.write(full, _os.path.relpath(full, d))
@@ -423,7 +423,7 @@ def _extract_validated_package(raw, tmp):
         _os.makedirs(_os.path.dirname(dest), exist_ok=True)
         with zf.open(info) as src, open(dest, "wb") as out:
             _sh.copyfileobj(src, out)
-    ***REMOVED*** Tolère un dossier racine unique englobant le plugin.
+    # Tolère un dossier racine unique englobant le plugin.
     root = tmp
     if not _os.path.isfile(_os.path.join(root, "plugin.json")):
         subs = [d for d in _os.listdir(root) if _os.path.isdir(_os.path.join(root, d))]
@@ -572,13 +572,13 @@ def plugins_delete(type_):
     db_add_alert("alert.deploy.plugin_supprime", "warning", kind="deploy", params={"t": type_})
     return jsonify({"status": "deleted", "type": type_})
 
-***REMOVED*** ─── Préréglages de plugin ──────────────────────────────────────────────────────────────────
-***REMOVED*** PARTAGÉS, côté serveur, et c'est le point : la disposition d'une grille vit dans le navigateur
-***REMOVED*** (c'est un confort personnel), mais un préréglage NOMMÉ — « Régie 1 », « Contrôle final » — doit
-***REMOVED*** se retrouver depuis n'importe quel poste. Les deux niveaux coexistent sans se contredire.
-***REMOVED***
-***REMOVED*** Le CONTENU est opaque à l'orchestrateur : c'est le plugin qui sait ce qu'il range dedans. On
-***REMOVED*** stocke, on liste, on rend — on n'interprète pas. Un schéma imposé ici vieillirait mal.
+# ─── Préréglages de plugin ──────────────────────────────────────────────────────────────────
+# PARTAGÉS, côté serveur, et c'est le point : la disposition d'une grille vit dans le navigateur
+# (c'est un confort personnel), mais un préréglage NOMMÉ — « Régie 1 », « Contrôle final » — doit
+# se retrouver depuis n'importe quel poste. Les deux niveaux coexistent sans se contredire.
+#
+# Le CONTENU est opaque à l'orchestrateur : c'est le plugin qui sait ce qu'il range dedans. On
+# stocke, on liste, on rend — on n'interprète pas. Un schéma imposé ici vieillirait mal.
 
 @bp.route("/api/plugins/<type_>/presets", methods=["GET"])
 @require_login
@@ -618,10 +618,10 @@ def plugin_preset_delete(type_, nom):
     return jsonify({"ok": db_plugin_store_delete(type_, nom, scope="")})
 
 
-***REMOVED*** ─── Témoins horodatés ──────────────────────────────────────────────────────────────────────
-***REMOVED*** Un témoin qui n'existe que le temps d'une requête ne prouve rien : il est PERSISTÉ ici, pas
-***REMOVED*** laissé au navigateur. `static/uploads` est l'endroit du projet pour les artefacts.
-TEMOINS_MAX = 50          ***REMOVED*** par conteneur
+# ─── Témoins horodatés ──────────────────────────────────────────────────────────────────────
+# Un témoin qui n'existe que le temps d'une requête ne prouve rien : il est PERSISTÉ ici, pas
+# laissé au navigateur. `static/uploads` est l'endroit du projet pour les artefacts.
+TEMOINS_MAX = 50          # par conteneur
 
 
 def _dossier_temoins():
@@ -661,7 +661,7 @@ def container_temoin(vmid):
         return jsonify({"error": "IP container introuvable"}), 404
     try:
         r = _rq.post("http://%s:8082/snapshot" % ip, json={}, timeout=20)
-    except Exception as e:                                          ***REMOVED*** noqa: BLE001
+    except Exception as e:                                          # noqa: BLE001
         return jsonify({"error": str(e)}), 502
     if r.status_code != 200:
         return jsonify(r.json() if r.headers.get("Content-Type", "").startswith("application/json")
@@ -675,8 +675,8 @@ def container_temoin(vmid):
         with open(os.path.join(d, base + ".jpg"), "wb") as f:
             f.write(base64.b64decode(jpg))
         url_img = "/static/uploads/temoins/%s.jpg" % base
-    ***REMOVED*** La vignette sort du JSON et devient un fichier : un témoin qu'on ouvre doit montrer une
-    ***REMOVED*** image, pas 34 Ko de base64 au milieu du texte. Le JSON garde tout le reste, plans compris.
+    # La vignette sort du JSON et devient un fichier : un témoin qu'on ouvre doit montrer une
+    # image, pas 34 Ko de base64 au milieu du texte. Le JSON garde tout le reste, plans compris.
     snap["image"] = url_img
     with open(os.path.join(d, base + ".json"), "w", encoding="utf-8") as f:
         _json.dump(snap, f, ensure_ascii=False)
@@ -698,23 +698,23 @@ def plugin_proxy(vmid, p):
     dc = _load_dc(c) if c else None
     m = plugins.get((dc or {}).get("type"))
     if not m:
-        return jsonify({"error": f"***REMOVED***{vmid} n'est pas un container plugin"}), 400
+        return jsonify({"error": f"#{vmid} n'est pas un container plugin"}), 400
     ctrl = m.get("control") or {}
     read_only = set(ctrl.get("read_endpoints") or [])
     allowed = set(ctrl.get("endpoints") or []) | read_only
     if allowed and ("/" + p) not in allowed:
         return jsonify({"error": f"/{p} n'est pas autorisé pour le type {m['type']} (non listé dans control.endpoints du plugin.json)"}), 403
     is_read = request.method == "GET" and ("/" + p) in read_only
-    ***REMOVED*** Scoping projet (chantier 1) : un utilisateur non-global ne pilote/lit que les
-    ***REMOVED*** containers des projets dont il est membre (lecture dès viewer, action dès operator).
+    # Scoping projet (chantier 1) : un utilisateur non-global ne pilote/lit que les
+    # containers des projets dont il est membre (lecture dès viewer, action dès operator).
     err = check_vmid_access(vmid, "viewer" if is_read else "operator")
     if err:
         return err
     if not is_read and not has_perm("plugins.operate"):
         return jsonify({"error": "forbidden", "missing_permission": "plugins.operate"}), 403
     if request.method == "GET":
-        ***REMOVED*** GET : on forwarde nous-mêmes pour (1) transmettre les query params (que
-        ***REMOVED*** _mixer_proxy ignore) et (2) laisser passer le binaire (vignettes image/*).
+        # GET : on forwarde nous-mêmes pour (1) transmettre les query params (que
+        # _mixer_proxy ignore) et (2) laisser passer le binaire (vignettes image/*).
         from ..addressing import get_container_ip
         import requests as _req
         ip = get_container_ip(vmid)
@@ -724,30 +724,30 @@ def plugin_proxy(vmid, p):
             r = _req.get(f"http://{ip}:8082/{p}", params=request.args, timeout=5)
         except Exception as e:
             return jsonify({"error": str(e)}), 502
-        if r.status_code == 204:   ***REMOVED*** pas de contenu (ex. preview pas encore prête)
+        if r.status_code == 204:   # pas de contenu (ex. preview pas encore prête)
             return ("", 204)
         ctype = r.headers.get("Content-Type", "application/json")
         if ctype.startswith("application/json") or ctype.startswith("text/"):
             return (r.text, r.status_code, {"Content-Type": ctype})
-        ***REMOVED*** Binaire (preview/vignettes) : contenu live, jamais mis en cache navigateur.
+        # Binaire (preview/vignettes) : contenu live, jamais mis en cache navigateur.
         return Response(r.content, status=r.status_code, content_type=ctype,
                         headers={"Cache-Control": "no-store"})
     body = request.get_json(force=True, silent=True)
-    ***REMOVED*** Mur multiview SHARDÉ : le conteneur du vmid est l'ASSEMBLEUR du tissu (copie pure des
-    ***REMOVED*** shards pré-rendus). Ne JAMAIS lui forwarder les hot-applies window/style (le chrome se
-    ***REMOVED*** dessinerait autour de chaque BLOC de shard ; l'idx de fenêtre logique ≠ ses tuiles) : on
-    ***REMOVED*** persiste dans deploy_config puis on RE-PLANIFIE le tissu (les signatures de cellule
-    ***REMOVED*** incluent le style → shards re-matérialisés, assembleur reconfiguré derrière).
+    # Mur multiview SHARDÉ : le conteneur du vmid est l'ASSEMBLEUR du tissu (copie pure des
+    # shards pré-rendus). Ne JAMAIS lui forwarder les hot-applies window/style (le chrome se
+    # dessinerait autour de chaque BLOC de shard ; l'idx de fenêtre logique ≠ ses tuiles) : on
+    # persiste dans deploy_config puis on RE-PLANIFIE le tissu (les signatures de cellule
+    # incluent le style → shards re-matérialisés, assembleur reconfiguré derrière).
     if request.method == "POST" and (m.get("type") == "multiview") and p in ("window", "style") \
             and isinstance(body, dict):
         from ..database import db_fabric_get
         if db_fabric_get(f"asm:{vmid}"):
             try:
-                ***REMOVED*** Rien n'a bougé → NE PAS re-planifier. Le composer poste un hot-apply à chaque
-                ***REMOVED*** relâchement de souris, y compris un simple clic de SÉLECTION qui n'a rien
-                ***REMOVED*** modifié ; un reconcile par clic coûte une lecture :8080 par multiview du nœud
-                ***REMOVED*** et, si `/state` répond mal, un re-push d'assembleur (recuisson des overlays →
-                ***REMOVED*** image figée). Une sélection ne doit rien coûter à la sortie.
+                # Rien n'a bougé → NE PAS re-planifier. Le composer poste un hot-apply à chaque
+                # relâchement de souris, y compris un simple clic de SÉLECTION qui n'a rien
+                # modifié ; un reconcile par clic coûte une lecture :8080 par multiview du nœud
+                # et, si `/state` répond mal, un re-push d'assembleur (recuisson des overlays →
+                # image figée). Une sélection ne doit rien coûter à la sortie.
                 if not _persist_multiview_hot(vmid, dc, p, body):
                     return jsonify({"ok": True, "routed": "fabric", "unchanged": True})
                 from ..deploy import _fabric_refresh_wall
@@ -756,10 +756,10 @@ def plugin_proxy(vmid, p):
                 return jsonify({"error": str(e)}), 500
             return jsonify({"ok": True, "routed": "fabric"})
     result = _mixer_proxy(vmid, "/" + p, method=request.method, body=body)
-    ***REMOVED*** Persistance des hot-applies multiview : window/style ne touchent que le conteneur live (:8082).
-    ***REMOVED*** On reflète la modif dans deploy_config (DB) pour qu'elle SURVIVE à un changement de multiview +
-    ***REMOVED*** rechargement de l'éditeur (sinon la modif reste active sur la SORTIE mais disparaît de l'AFFICHAGE).
-    ***REMOVED*** Best-effort : n'altère jamais la réponse du forward.
+    # Persistance des hot-applies multiview : window/style ne touchent que le conteneur live (:8082).
+    # On reflète la modif dans deploy_config (DB) pour qu'elle SURVIVE à un changement de multiview +
+    # rechargement de l'éditeur (sinon la modif reste active sur la SORTIE mais disparaît de l'AFFICHAGE).
+    # Best-effort : n'altère jamais la réponse du forward.
     if request.method == "POST" and (m.get("type") == "multiview") and p in ("window", "style") \
             and isinstance(body, dict):
         try:
@@ -768,38 +768,38 @@ def plugin_proxy(vmid, p):
             pass
     return result
 
-***REMOVED*** Champs géométrie/affichage d'une fenêtre (POST /plugin/window) reportés dans flux_config[idx].
-***REMOVED*** `name` exclu : c'est le nom d'AFFICHAGE calculé, pas la config de source persistée.
+# Champs géométrie/affichage d'une fenêtre (POST /plugin/window) reportés dans flux_config[idx].
+# `name` exclu : c'est le nom d'AFFICHAGE calculé, pas la config de source persistée.
 _MV_WINDOW_PERSIST = ("x", "y", "w", "h", "hidden", "show_label", "show_tally",
                       "label_proportional", "tsl_index", "meter_channels", "meter_position",
                       "meter_inside", "meter_opacity", "meter_scale",
-                      ***REMOVED*** Métadonnées ANC par fenêtre. Le composer les applique À CHAUD depuis
-                      ***REMOVED*** 0.29.0, mais elles n'étaient PAS persistées : cocher « timecode » se
-                      ***REMOVED*** voyait tout de suite et disparaissait au prochain déploiement complet,
-                      ***REMOVED*** sans trace en base (constaté 2026-08-07 : `anc_tc` à False partout dans
-                      ***REMOVED*** `deploy_config` alors que le mur affichait bien un timecode).
+                      # Métadonnées ANC par fenêtre. Le composer les applique À CHAUD depuis
+                      # 0.29.0, mais elles n'étaient PAS persistées : cocher « timecode » se
+                      # voyait tout de suite et disparaissait au prochain déploiement complet,
+                      # sans trace en base (constaté 2026-08-07 : `anc_tc` à False partout dans
+                      # `deploy_config` alors que le mur affichait bien un timecode).
                       "anc_types", "anc_tc", "anc_cc", "anc_afd", "anc_st352", "anc_scte",
                       "anc_crc", "anc_position", "anc_opacity",
-                      ***REMOVED*** Habillage de la fenêtre : même trou que les drapeaux ANC — appliqué à
-                      ***REMOVED*** chaud, jamais enregistré, donc perdu au déploiement complet suivant.
-                      ***REMOVED*** `template_ref` accompagne OBLIGATOIREMENT `template` : le modèle résolu
-                      ***REMOVED*** sans sa référence de bibliothèque laisse le sélecteur de l'éditeur sur
-                      ***REMOVED*** l'ancienne entrée (le mur rend B, l'éditeur affiche A).
+                      # Habillage de la fenêtre : même trou que les drapeaux ANC — appliqué à
+                      # chaud, jamais enregistré, donc perdu au déploiement complet suivant.
+                      # `template_ref` accompagne OBLIGATOIREMENT `template` : le modèle résolu
+                      # sans sa référence de bibliothèque laisse le sélecteur de l'éditeur sur
+                      # l'ancienne entrée (le mur rend B, l'éditeur affiche A).
                       "label_col", "tally_level", "tally_red", "tally_green",
                       "template", "template_ref",
-                      ***REMOVED*** `audio_path` (source des VU d'une fenêtre) : MÊME trou que les drapeaux ANC
-                      ***REMOVED*** et l'habillage — le composer la pousse à chaud depuis 0.35.0 (c'est
-                      ***REMOVED*** `_do_window` qui purge les états audio ouverts, pas `/reconfigure`), mais
-                      ***REMOVED*** elle n'était pas persistée : le choix tenait jusqu'au premier déploiement
-                      ***REMOVED*** complet, puis les VU repartaient sur la source AUTO. La source VIDÉO
-                      ***REMOVED*** (`path`) n'est volontairement PAS dans cette liste : elle ne transite pas
-                      ***REMOVED*** par ce hot-apply, elle passe par le déploiement (multiview.js:onEntryChange).
+                      # `audio_path` (source des VU d'une fenêtre) : MÊME trou que les drapeaux ANC
+                      # et l'habillage — le composer la pousse à chaud depuis 0.35.0 (c'est
+                      # `_do_window` qui purge les états audio ouverts, pas `/reconfigure`), mais
+                      # elle n'était pas persistée : le choix tenait jusqu'au premier déploiement
+                      # complet, puis les VU repartaient sur la source AUTO. La source VIDÉO
+                      # (`path`) n'est volontairement PAS dans cette liste : elle ne transite pas
+                      # par ce hot-apply, elle passe par le déploiement (multiview.js:onEntryChange).
                       "audio_path")
 
-***REMOVED*** Drapeaux ANC : le composer les poste en 1/0, un déploiement complet les écrit en true/false.
-***REMOVED*** Les deux sont équivalents pour le script (`_as_bool`), mais PAS pour la signature de cellule du
-***REMOVED*** tissu, qui sérialise en JSON — `1` et `true` y donnent deux signatures différentes, donc une
-***REMOVED*** re-matérialisation de shard à chaque va-et-vient entre les deux chemins. On normalise.
+# Drapeaux ANC : le composer les poste en 1/0, un déploiement complet les écrit en true/false.
+# Les deux sont équivalents pour le script (`_as_bool`), mais PAS pour la signature de cellule du
+# tissu, qui sérialise en JSON — `1` et `true` y donnent deux signatures différentes, donc une
+# re-matérialisation de shard à chaque va-et-vient entre les deux chemins. On normalise.
 _MV_BOOL_PERSIST = ("anc_types", "anc_tc", "anc_cc", "anc_afd", "anc_st352", "anc_scte",
                     "anc_crc", "hidden", "show_label", "show_tally", "label_proportional",
                     "meter_inside", "tally_red", "tally_green")
@@ -836,7 +836,7 @@ def _persist_multiview_hot(vmid, dc, kind, body):
         if not change:
             return False
         params["flux_config"] = fc
-    else:  ***REMOVED*** style
+    else:  # style
         change = False
         for k in _MV_STYLE_PERSIST:
             if k in body and (k not in params or params[k] != body[k]):
@@ -848,8 +848,8 @@ def _persist_multiview_hot(vmid, dc, kind, body):
     return True
 
 
-***REMOVED*** Garde anti-rafale : un redeploy déjà en vol pour un vmid → 409 plutôt que d'empiler les threads
-***REMOVED*** (chacun bloquerait jusqu'à 120s sur verrou_vmid). Protégé par _plugin_config_lock.
+# Garde anti-rafale : un redeploy déjà en vol pour un vmid → 409 plutôt que d'empiler les threads
+# (chacun bloquerait jusqu'à 120s sur verrou_vmid). Protégé par _plugin_config_lock.
 _plugin_config_pending = set()
 _plugin_config_lock = threading.Lock()
 
@@ -873,7 +873,7 @@ def _plugin_config_check(vmid, incoming, allow_system, confirm):
     type_ = dc.get("type") if isinstance(dc, dict) else None
     m = plugins.get(type_)
     if not m:
-        raise PluginConfigError(f"***REMOVED***{vmid} n'est pas un container plugin")
+        raise PluginConfigError(f"#{vmid} n'est pas un container plugin")
     if not isinstance(incoming, dict) or not incoming:
         raise PluginConfigError("params manquants")
     user_keys = plugins.config_scope_keys(type_, "user")
@@ -881,8 +881,8 @@ def _plugin_config_check(vmid, incoming, allow_system, confirm):
     unknown = set(incoming) - user_keys - sys_keys
     if unknown:
         raise PluginConfigError(f"clés hors config_schema : {sorted(unknown)}")
-    ***REMOVED*** Bornes du config_schema : une valeur hors bornes est REFUSÉE (message clair) — jamais
-    ***REMOVED*** écrêtée en silence. Générique à tous les plugins (cf. plugins.validate_config).
+    # Bornes du config_schema : une valeur hors bornes est REFUSÉE (message clair) — jamais
+    # écrêtée en silence. Générique à tous les plugins (cf. plugins.validate_config).
     errs = plugins.validate_config(type_, incoming)
     if errs:
         raise PluginConfigError("Réglages hors bornes : " + " ".join(errs), 400, {"errors": errs})
@@ -892,7 +892,7 @@ def _plugin_config_check(vmid, incoming, allow_system, confirm):
                                 {"error": "forbidden", "missing_permission": "containers.deploy",
                                  "system_keys": sorted(touched_sys)})
     running = (c or {}).get("status") == "running"
-    ***REMOVED*** Même garde-fou que /deploy : redéployer un moteur 2110_io en marche coupe tous les flux.
+    # Même garde-fou que /deploy : redéployer un moteur 2110_io en marche coupe tous les flux.
     if type_ == "2110_io" and running and not confirm:
         raise PluginConfigError(
             "Redéploiement du moteur 2110 — coupure brève de TOUS les flux.", 409,
@@ -932,18 +932,18 @@ def _plugin_config_apply(vmid, type_, m, incoming, running):
         return plugins.coerce_config(type_, {**plugins.effective_deploy_defaults(type_),
                                               **persisted, **incoming})
 
-    ***REMOVED*** ★ CERTAINS RÉGLAGES N'EXIGENT PAS DE REDÉPLOYER, et il faut le savoir AVANT de prendre le
-    ***REMOVED*** verrou de déploiement. Un niveau de tally est lu par l'ORCHESTRATEUR (distributeur TSL,
-    ***REMOVED*** hook `tally_targets`), jamais par le conteneur : redéployer pour ça coupe un flux vidéo
-    ***REMOVED*** pour changer une case à cocher — et comme le déploiement est sérialisé, une rafale de
-    ***REMOVED*** gestes se faisait refuser en 409, donc PERDRE. Cf. `plugins.cles_sans_redeploiement`.
+    # ★ CERTAINS RÉGLAGES N'EXIGENT PAS DE REDÉPLOYER, et il faut le savoir AVANT de prendre le
+    # verrou de déploiement. Un niveau de tally est lu par l'ORCHESTRATEUR (distributeur TSL,
+    # hook `tally_targets`), jamais par le conteneur : redéployer pour ça coupe un flux vidéo
+    # pour changer une case à cocher — et comme le déploiement est sérialisé, une rafale de
+    # gestes se faisait refuser en 409, donc PERDRE. Cf. `plugins.cles_sans_redeploiement`.
     _persisted = (_load_dc(db_get_container(vmid)) or {}).get("params") or {}
     _changees = _cles_changees(type_, incoming, _persisted)
-    ***REMOVED*** Rien n'a bougé : on ne redéploie pas, et on n'écrit même pas.
+    # Rien n'a bougé : on ne redéploie pas, et on n'écrit même pas.
     a_chaud = not _changees or _changees <= plugins.cles_sans_redeploiement(type_)
     if not running or a_chaud:
-        ***REMOVED*** Exploitant : ne PAS (re)démarrer un container arrêté (deployer_script force
-        ***REMOVED*** desired_state=running). On persiste seulement les params.
+        # Exploitant : ne PAS (re)démarrer un container arrêté (deployer_script force
+        # desired_state=running). On persiste seulement les params.
         with verrou_vmid(vmid, op="config"):
             fresh = _load_dc(db_get_container(vmid))
             params = _merge_fresh(fresh)
@@ -952,8 +952,8 @@ def _plugin_config_apply(vmid, type_, m, incoming, running):
     with verrou_vmid(vmid, op="deploy"):
         fresh = _load_dc(db_get_container(vmid))
         params = _merge_fresh(fresh)
-        ***REMOVED*** Pin de version : ne jamais upgrader silencieusement un container épinglé sur une
-        ***REMOVED*** version archivée — un simple réglage ne doit changer QUE les params, pas la version.
+        # Pin de version : ne jamais upgrader silencieusement un container épinglé sur une
+        # version archivée — un simple réglage ne doit changer QUE les params, pas la version.
         pv = params.get("plugin_version")
         cur_ver = m.get("version")
         version = pv if (pv and pv != cur_ver and pv in plugins.versions(type_)) else None
@@ -1000,7 +1000,7 @@ def plugin_config_get(vmid):
     dc = _load_dc(c) if c else None
     type_ = dc.get("type") if isinstance(dc, dict) else None
     if not plugins.get(type_):
-        return jsonify({"error": f"***REMOVED***{vmid} n'est pas un container plugin"}), 404
+        return jsonify({"error": f"#{vmid} n'est pas un container plugin"}), 404
     cles = plugins.config_scope_keys(type_, "user") | plugins.config_scope_keys(type_, "system")
     params = (dc or {}).get("params") or {}
     return jsonify({"params": {k: params.get(k) for k in cles if k in params},
@@ -1031,15 +1031,15 @@ def plugin_config(vmid):
         if "needs_confirm" not in body:
             body.setdefault("error", str(e))
         return jsonify(body), e.code
-    ***REMOVED*** La garde anti-rafale protège le DÉPLOIEMENT. Un réglage qui n'en demande pas n'a pas à s'y
-    ***REMOVED*** heurter : c'est ce 409 qui faisait perdre les gestes successifs d'une sélection multiple.
+    # La garde anti-rafale protège le DÉPLOIEMENT. Un réglage qui n'en demande pas n'a pas à s'y
+    # heurter : c'est ce 409 qui faisait perdre les gestes successifs d'une sélection multiple.
     from .. import plugins as _plg
     _incoming = (request.json or {}).get("params") or {}
     _pers = (_load_dc(c) or {}).get("params") or {}
     _chg = _cles_changees(type_, _incoming, _pers)
-    ***REMOVED*** ⚠ ON DÉCIDE SUR CE QUI CHANGE, pas sur ce qui est envoyé. Le panneau ⚙ poste tout le
-    ***REMOVED*** formulaire : sans ce tri, cocher un niveau de tally embarquait `format` dans le lot et
-    ***REMOVED*** forçait un redéploiement — donc la garde anti-rafale, donc les 409 qui perdaient les gestes.
+    # ⚠ ON DÉCIDE SUR CE QUI CHANGE, pas sur ce qui est envoyé. Le panneau ⚙ poste tout le
+    # formulaire : sans ce tri, cocher un niveau de tally embarquait `format` dans le lot et
+    # forçait un redéploiement — donc la garde anti-rafale, donc les 409 qui perdaient les gestes.
     if not _chg or _chg <= _plg.cles_sans_redeploiement(type_):
         _plugin_config_apply(vmid, type_, m, _incoming, running)
         return jsonify({"ok": True, "redeploye": False,

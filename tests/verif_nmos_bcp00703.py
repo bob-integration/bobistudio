@@ -1,18 +1,18 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Conformité AMWA BCP-007-03 « NMOS Support for MXL » v1.0.0 (publiée le 2026-08-18).
-***REMOVED***
-***REMOVED*** Le banc ne relit pas la spec à l'œil : il VALIDE nos ressources réellement servies contre les
-***REMOVED*** schémas JSON de la spec, vendorisés dans `services/nmos/nc_models/schemas/` (provenance et
-***REMOVED*** commit amont dans le NOTICE du dossier). Hors ligne — client de test Flask, aucun réseau.
-***REMOVED***
-***REMOVED*** ⚠ POURQUOI IS-05 v1.2. BCP-007-03 l'exige (« Nodes compliant with this specification MUST
-***REMOVED*** implement IS-05 v1.2 or higher ») et ce n'est PAS une formalité de numéro : en v1.1,
-***REMOVED*** `sender_transport_params.json` est un `anyOf` FERMÉ sur rtp/dash/websocket/mqtt — nos
-***REMOVED*** paramètres MXL y sont INVALIDES, donc un contrôleur strict rejetait nos ressources. Le banc
-***REMOVED*** reproduit cette validation croisée pour que la raison ne se perde pas.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Conformité AMWA BCP-007-03 « NMOS Support for MXL » v1.0.0 (publiée le 2026-08-18).
+#
+# Le banc ne relit pas la spec à l'œil : il VALIDE nos ressources réellement servies contre les
+# schémas JSON de la spec, vendorisés dans `services/nmos/nc_models/schemas/` (provenance et
+# commit amont dans le NOTICE du dossier). Hors ligne — client de test Flask, aucun réseau.
+#
+# ⚠ POURQUOI IS-05 v1.2. BCP-007-03 l'exige (« Nodes compliant with this specification MUST
+# implement IS-05 v1.2 or higher ») et ce n'est PAS une formalité de numéro : en v1.1,
+# `sender_transport_params.json` est un `anyOf` FERMÉ sur rtp/dash/websocket/mqtt — nos
+# paramètres MXL y sont INVALIDES, donc un contrôleur strict rejetait nos ressources. Le banc
+# reproduit cette validation croisée pour que la raison ne se perde pas.
 import json
 import os
 import sys
@@ -50,9 +50,9 @@ def valider(dossier, fichier, instance):
 
 print("Conformité BCP-007-03 v1.0.0 — validation par schéma\n")
 
-import main                                                          ***REMOVED*** noqa: E402
-from app.database import get_db                                      ***REMOVED*** noqa: E402
-from services import nmos                                            ***REMOVED*** noqa: E402
+import main                                                          # noqa: E402
+from app.database import get_db                                      # noqa: E402
+from services import nmos                                            # noqa: E402
 
 main.app.config["TESTING"] = True
 with get_db() as _db:
@@ -71,11 +71,11 @@ def g(chemin):
         return r.status_code, None
 
 
-***REMOVED*** ⚠ LE MODÈLE NE SE CONSTRUIT PAS TOUT SEUL dans un processus de test. Il est bâti par un fil
-***REMOVED*** de fond du serveur ; un client de test neuf voit des listes VIDES. Sans cet appel, la moitié
-***REMOVED*** des contrôles ci-dessous passent À VIDE (`all()` d'une liste vide est vrai) — c'est ce qui
-***REMOVED*** s'est produit au premier jet, et seul le contrôle « il y a des ressources à vérifier » l'a
-***REMOVED*** révélé. Ne jamais le retirer.
+# ⚠ LE MODÈLE NE SE CONSTRUIT PAS TOUT SEUL dans un processus de test. Il est bâti par un fil
+# de fond du serveur ; un client de test neuf voit des listes VIDES. Sans cet appel, la moitié
+# des contrôles ci-dessous passent À VIDE (`all()` d'une liste vide est vrai) — c'est ce qui
+# s'est produit au premier jet, et seul le contrôle « il y a des ressources à vérifier » l'a
+# révélé. Ne jamais le retirer.
 nmos.rebuild_model()
 
 MXL = "urn:x-nmos:transport:mxl"
@@ -102,11 +102,11 @@ controle("★★ la v1.1 reste servie (pas de régression pour un contrôleur 21
          "v1.1/" in (vers or []) and g("/x-nmos/connection/v1.1/single/senders")[0] == 200,
          "couper la v1.1 casserait un contrôleur épinglé dessus, c'est-à-dire le chemin de "
          "PRODUCTION, pour un gain nul")
-***REMOVED*** ★★★ L'INVARIANT QUI COMPTE, et il a failli être enfreint. L'alias des versions secondaires
-***REMOVED*** dépendait d'un appel dans `main.py`. Or le service NMOS se met à jour SEUL depuis la page
-***REMOVED*** Catalogue : sur un cœur resté en arrière, `is05_root` annonçait `v1.1/` que plus aucune route
-***REMOVED*** ne servait → 404. Mesuré. Un contrôleur 2110 épinglé sur v1.1 aurait été coupé par une mise à
-***REMOVED*** jour censée ne rien casser. Le service pose désormais son alias lui-même (`bp.record_once`).
+# ★★★ L'INVARIANT QUI COMPTE, et il a failli être enfreint. L'alias des versions secondaires
+# dépendait d'un appel dans `main.py`. Or le service NMOS se met à jour SEUL depuis la page
+# Catalogue : sur un cœur resté en arrière, `is05_root` annonçait `v1.1/` que plus aucune route
+# ne servait → 404. Mesuré. Un contrôleur 2110 épinglé sur v1.1 aurait été coupé par une mise à
+# jour censée ne rien casser. Le service pose désormais son alias lui-même (`bp.record_once`).
 _muettes = [v for v in (vers or [])
             if g("/x-nmos/connection/%ssingle/senders" % v)[0] != 200]
 controle("★★★ toute version ANNONCÉE répond vraiment", not _muettes,
@@ -144,7 +144,7 @@ for quoi, liste, fichier in (("sender", tx, "sender_transport_params_mxl.json"),
         for ep in ("active", "staged"):
             st, d = g("/x-nmos/connection/%s/single/%ss/%s/%s" % (V, quoi, r["id"], ep))
             tps = (d or {}).get("transport_params") or []
-            ***REMOVED*** MUST : un SEUL jeu de paramètres dans le tableau, staged comme active.
+            # MUST : un SEUL jeu de paramètres dans le tableau, staged comme active.
             if len(tps) != 1:
                 ko.append((r["id"][:8], ep, "%d jeux" % len(tps)))
             for tp in tps:
@@ -162,7 +162,7 @@ for quoi, liste in (("sender", tx), ("receiver", rx)):
         cs = d if isinstance(d, list) else []
         if len(cs) != 1:
             ko.append((r["id"][:8], "%d jeux de contraintes" % len(cs)))
-        ***REMOVED*** MUST NOT : `auto` ne doit JAMAIS être listé comme option des contraintes.
+        # MUST NOT : `auto` ne doit JAMAIS être listé comme option des contraintes.
         if "auto" in json.dumps(cs):
             ko.append((r["id"][:8], "`auto` listé dans les contraintes"))
 controle("★★★ un seul jeu de contraintes, et `auto` n'y est jamais listé", not ko,
@@ -174,12 +174,12 @@ controle("★★ /transportfile d'un Sender MXL rend 404",
          all(g("/x-nmos/connection/%s/single/senders/%s/transportfile" % (V, s["id"]))[0] == 404
              for s in tx[:20]),
          "MUST : « MUST always return a 404 »")
-***REMOVED*** ⚠ CE CONTRÔLE SEUL NE DISTINGUE RIEN — vérifié par mutation : en retirant la garde
-***REMOVED*** BCP-007-03, l'endpoint tombe dans le chemin RTP, interroge le conteneur, n'y trouve pas de
-***REMOVED*** SDP et rend 404 **quand même**. Même code, autre chemin, et 20 allers-retours HTTP de 2 s.
-***REMOVED*** Ce qui sépare les deux, c'est que la garde répond SANS toucher au conteneur. On rend donc le
-***REMOVED*** conteneur injoignable : avec la garde c'est toujours 404, sans elle ce serait 503.
-import services.nmos as _n                                           ***REMOVED*** noqa: E402
+# ⚠ CE CONTRÔLE SEUL NE DISTINGUE RIEN — vérifié par mutation : en retirant la garde
+# BCP-007-03, l'endpoint tombe dans le chemin RTP, interroge le conteneur, n'y trouve pas de
+# SDP et rend 404 **quand même**. Même code, autre chemin, et 20 allers-retours HTTP de 2 s.
+# Ce qui sépare les deux, c'est que la garde répond SANS toucher au conteneur. On rend donc le
+# conteneur injoignable : avec la garde c'est toujours 404, sans elle ce serait 503.
+import services.nmos as _n                                           # noqa: E402
 _vrai = _n.requests.get
 
 
@@ -234,9 +234,9 @@ controle("★★ /transporttype est ANNONCÉ dans la liste des endpoints",
          "un contrôleur qui suit l'arborescence ne le trouverait jamais. Obtenu %r" % (eps,))
 
 print("\n── media_type (§ Flows) ────────────────────────────────────────────────")
-***REMOVED*** ⚠ Le registre AMWA est un SUPPLÉMENT à l'IANA : `video/raw` et `audio/L24` sont légitimes
-***REMOVED*** (« implementers MUST consult the applicable IS-04 schemas in addition to the entries in this
-***REMOVED*** register »). Ne pas les compter comme des écarts — c'est l'erreur facile.
+# ⚠ Le registre AMWA est un SUPPLÉMENT à l'IANA : `video/raw` et `audio/L24` sont légitimes
+# (« implementers MUST consult the applicable IS-04 schemas in addition to the entries in this
+# register »). Ne pas les compter comme des écarts — c'est l'erreur facile.
 REGISTRE_AMWA = {"video/v210", "video/v210a", "video/smpte291", "audio/float32"}
 IANA_IS04 = {"video/raw", "video/jxsv", "audio/L16", "audio/L24", "audio/L32",
              "application/json", "video/H264", "video/H265"}
@@ -248,12 +248,12 @@ for f in (flows or []):
     mt = f.get("media_type")
     if mt not in REGISTRE_AMWA and mt not in IANA_IS04:
         hors[mt] = hors.get(mt, 0) + 1
-***REMOVED*** ★ ÉCART CONNU ET ASSUMÉ, PAS UN DÉFAUT. `video/x-mxl-planar` n'est enregistré nulle part —
-***REMOVED*** c'est l'arbitrage planar contre v210, une DÉCISION PRODUIT en attente (cf. TODO § BCP-007-03).
-***REMOVED*** Verdir ce contrôle en retirant la vérification serait mentir ; le laisser rouge rendrait la CI
-***REMOVED*** rouge en permanence, donc invisible. On BORNE donc l'écart : il doit être exactement celui
-***REMOVED*** qu'on croit. Tout AUTRE media_type hors registre fait échouer — c'est ce qui compte, parce
-***REMOVED*** qu'un nouveau plugin peut en introduire un sans que personne ne le remarque.
+# ★ ÉCART CONNU ET ASSUMÉ, PAS UN DÉFAUT. `video/x-mxl-planar` n'est enregistré nulle part —
+# c'est l'arbitrage planar contre v210, une DÉCISION PRODUIT en attente (cf. TODO § BCP-007-03).
+# Verdir ce contrôle en retirant la vérification serait mentir ; le laisser rouge rendrait la CI
+# rouge en permanence, donc invisible. On BORNE donc l'écart : il doit être exactement celui
+# qu'on croit. Tout AUTRE media_type hors registre fait échouer — c'est ce qui compte, parce
+# qu'un nouveau plugin peut en introduire un sans que personne ne le remarque.
 ECART_ASSUME = {"video/x-mxl-planar"}
 inattendus = {k: v for k, v in hors.items() if k not in ECART_ASSUME}
 controle("★★★ aucun media_type hors registre AUTRE que l'écart assumé", not inattendus,

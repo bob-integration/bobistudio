@@ -1,8 +1,8 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 """API des LIBELLÉS DE SOURCE — `/api/labels/*`.
 
 ★ POURQUOI CE FICHIER EXISTE. Ces routes vivaient dans `services/tsl` et portaient le préfixe
@@ -39,7 +39,7 @@ log = __import__("logging").getLogger(__name__)
 _DEFAULT_SUFFIX_MAP = {"_audio_0": "_A1", "_audio_1": "_A2", "_anc_0": "_Anc"}
 
 
-***REMOVED*** ── Source labels ─────────────────────────────────────────────────────────
+# ── Source labels ─────────────────────────────────────────────────────────
 
 @bp.route("/api/labels", methods=["GET"])
 @require_login
@@ -127,8 +127,8 @@ def source_labels_orphelins():
     out = []
     for l in db_get_source_labels():
         shm = l.get("shm") or ""
-        ***REMOVED*** Les lignes de TEXTE (`__umd:`) n'ont pas de producteur par construction : les
-        ***REMOVED*** compter orphelines les proposerait au nettoyage à chaque passage.
+        # Les lignes de TEXTE (`__umd:`) n'ont pas de producteur par construction : les
+        # compter orphelines les proposerait au nettoyage à chaque passage.
         if not shm or shm.startswith("__umd:") or shm in declares:
             continue
         out.append({"shm": shm,
@@ -184,7 +184,7 @@ def source_labels_suffix_map_set():
     return jsonify({"ok": True})
 
 
-***REMOVED*** ── Noms des colonnes ──────────────────────────────────────────────────────
+# ── Noms des colonnes ──────────────────────────────────────────────────────
 
 @bp.route("/api/labels/names", methods=["GET"])
 @require_login
@@ -210,8 +210,8 @@ def tsl_label_names_set():
     data = request.json
     if not isinstance(data, list) or not (3 <= len(data) <= 10):
         return jsonify({"error": "liste de 3 à 10 noms attendue"}), 400
-    ***REMOVED*** On COMPLÈTE jusqu'à dix avec les noms déjà en base : enregistrer une liste tronquée
-    ***REMOVED*** écraserait le nom des colonnes masquées, qu'on retrouverait anonymes en les rouvrant.
+    # On COMPLÈTE jusqu'à dix avec les noms déjà en base : enregistrer une liste tronquée
+    # écraserait le nom des colonnes masquées, qu'on retrouverait anonymes en les rouvrant.
     anciens = noms_colonnes()
     noms = [str(n) for n in data] + anciens[len(data):]
     db_set_setting("tsl_label_names", noms[:10])
@@ -239,11 +239,11 @@ def tsl_label_cols_set():
     db_set_setting("label_cols_actives", n)
     return jsonify({"ok": True, "actives": n})
 
-***REMOVED*** ─── Compatibilité : les anciennes adresses ─────────────────────────────────────────
-***REMOVED*** ⚠ 308 ET NON 301. Un 301 autorise le client à retomber en GET — un POST de libellés y
-***REMOVED*** perdrait son corps, donc l'écriture, sans erreur visible. Le 308 conserve méthode et
-***REMOVED*** corps. Ces redirections sont éprouvées par `tests/verif_labels_routes.py` : une
-***REMOVED*** compatibilité qu'on n'éprouve pas n'est qu'une intention.
+# ─── Compatibilité : les anciennes adresses ─────────────────────────────────────────
+# ⚠ 308 ET NON 301. Un 301 autorise le client à retomber en GET — un POST de libellés y
+# perdrait son corps, donc l'écriture, sans erreur visible. Le 308 conserve méthode et
+# corps. Ces redirections sont éprouvées par `tests/verif_labels_routes.py` : une
+# compatibilité qu'on n'éprouve pas n'est qu'une intention.
 _ANCIENNES = [
     ("/api/source_labels",             "/api/labels"),
     ("/api/source_labels/batch",       "/api/labels/batch"),

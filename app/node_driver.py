@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Client contrôleur ↔ agent-nœud (`bobi-node-agent`, cf. NODE_AGENT.md /v1).
 
@@ -37,12 +37,12 @@ def has_agent(node):
     return bool((node or {}).get("agent_url"))
 
 
-***REMOVED*** ─── mTLS : transport conditionnel HTTP↔HTTPS ────────────────────────────────
-***REMOVED*** DÉCISION agent_url : on GARDE `agent_url` stocké en `http://ip:port` (jamais réécrit à la
-***REMOVED*** migration) et on DÉRIVE le schéma `https://` à la volée selon `tls_ready`. L'agent-nœud
-***REMOVED*** bascule son listener HTTPS sur le MÊME port (:9100) → seul le schéma change, pas le port.
-***REMOVED*** Le token applicatif (X-MXL-Node-Token) reste envoyé EN PLUS du mTLS (double facteur : TLS
-***REMOVED*** chiffre+authentifie le canal, le token authentifie l'appel applicatif).
+# ─── mTLS : transport conditionnel HTTP↔HTTPS ────────────────────────────────
+# DÉCISION agent_url : on GARDE `agent_url` stocké en `http://ip:port` (jamais réécrit à la
+# migration) et on DÉRIVE le schéma `https://` à la volée selon `tls_ready`. L'agent-nœud
+# bascule son listener HTTPS sur le MÊME port (:9100) → seul le schéma change, pas le port.
+# Le token applicatif (X-MXL-Node-Token) reste envoyé EN PLUS du mTLS (double facteur : TLS
+# chiffre+authentifie le canal, le token authentifie l'appel applicatif).
 def _tls_on(node):
     """True si ce nœud parle HTTPS : cert signé installé (tls_ready) ET CA dispo côté contrôleur."""
     try:
@@ -78,33 +78,33 @@ def node_capabilities(node):
         return []
 
 
-***REMOVED*** ─── Transport ───────────────────────────────────────────────────────────────
-***REMOVED*** DISJONCTEUR par agent. Un nœud dont l'agent ne répond pas ne se signale qu'au bout du timeout
-***REMOVED*** de connexion (~3 s mesurées sur r620-1 éteint, Errno 113). Chaque appel le repayait : `/api/nodes`
-***REMOVED*** enchaînait 16 host_exec dont l'essentiel visait CE nœud-là, soit 10 s par requête, et la page
-***REMOVED*** Monitoring la poll toutes les 5 s (mesuré 2026-08-19).
-***REMOVED***
-***REMOVED*** On mémorise donc l'échec de TRANSPORT quelques secondes et on rend immédiatement la même erreur.
-***REMOVED*** Trois garde-fous, parce qu'un disjoncteur qui ment est pire que la lenteur qu'il évite :
-***REMOVED***   · seuls les échecs de TRANSPORT arment le disjoncteur — un HTTPError signifie que l'agent a
-***REMOVED***     répondu, donc qu'il est vivant, et ne doit surtout pas le couper ;
-***REMOVED***   · fenêtre COURTE (5 s) : un nœud qui revient est repris presque tout de suite, et le sampler de
-***REMOVED***     santé (~5 s) le rétablit de lui-même dès son premier succès ;
-***REMOVED***   · tout succès efface l'entrée.
-***REMOVED*** `bypass_breaker=True` pour un geste d'exploitation explicite (l'opérateur qui retente veut une
-***REMOVED*** vraie tentative, pas un souvenir).
-_breaker = {}          ***REMOVED*** base_url → (monotone de l'échec, message)
-_BREAKER_S = 30.0      ***REMOVED*** la redécouverte ne dépend PAS de cette durée : le sampler de santé sonde
-                       ***REMOVED*** toutes les ~5 s en bypass et son premier succès referme le disjoncteur.
+# ─── Transport ───────────────────────────────────────────────────────────────
+# DISJONCTEUR par agent. Un nœud dont l'agent ne répond pas ne se signale qu'au bout du timeout
+# de connexion (~3 s mesurées sur r620-1 éteint, Errno 113). Chaque appel le repayait : `/api/nodes`
+# enchaînait 16 host_exec dont l'essentiel visait CE nœud-là, soit 10 s par requête, et la page
+# Monitoring la poll toutes les 5 s (mesuré 2026-08-19).
+#
+# On mémorise donc l'échec de TRANSPORT quelques secondes et on rend immédiatement la même erreur.
+# Trois garde-fous, parce qu'un disjoncteur qui ment est pire que la lenteur qu'il évite :
+#   · seuls les échecs de TRANSPORT arment le disjoncteur — un HTTPError signifie que l'agent a
+#     répondu, donc qu'il est vivant, et ne doit surtout pas le couper ;
+#   · fenêtre COURTE (5 s) : un nœud qui revient est repris presque tout de suite, et le sampler de
+#     santé (~5 s) le rétablit de lui-même dès son premier succès ;
+#   · tout succès efface l'entrée.
+# `bypass_breaker=True` pour un geste d'exploitation explicite (l'opérateur qui retente veut une
+# vraie tentative, pas un souvenir).
+_breaker = {}          # base_url → (monotone de l'échec, message)
+_BREAKER_S = 30.0      # la redécouverte ne dépend PAS de cette durée : le sampler de santé sonde
+                       # toutes les ~5 s en bypass et son premier succès referme le disjoncteur.
 _breaker_lock = threading.Lock()
 
 
 _SIGNATURES_TLS_EN_CLAIR = ("WRONG_VERSION_NUMBER", "UNKNOWN_PROTOCOL", "record layer failure",
                             "packet length too long")
-***REMOVED*** Pendant du cas précédent : le nœud parle bien TLS, mais avec un certificat que NOTRE autorité
-***REMOVED*** ne reconnaît pas — c'est le nœud ré-enrôlé sur une AUTRE CA (l'installeur en avertit).
-***REMOVED*** Symptôme voisin, remède OPPOSÉ : là il ne faut surtout pas repasser en clair, il faut
-***REMOVED*** redistribuer la bonne autorité ou ré-enrôler sur la nôtre.
+# Pendant du cas précédent : le nœud parle bien TLS, mais avec un certificat que NOTRE autorité
+# ne reconnaît pas — c'est le nœud ré-enrôlé sur une AUTRE CA (l'installeur en avertit).
+# Symptôme voisin, remède OPPOSÉ : là il ne faut surtout pas repasser en clair, il faut
+# redistribuer la bonne autorité ou ré-enrôler sur la nôtre.
 _SIGNATURES_AUTRE_CA = ("CERTIFICATE_VERIFY_FAILED", "unknown ca", "self signed certificate",
                         "certificate verify failed")
 
@@ -133,10 +133,10 @@ def _agent_repond_en_clair(url_https, token, timeout):
         req = urllib.request.Request(base.rstrip("/") + "/v1/ping", method="GET")
         if token:
             req.add_header(TOKEN_HEADER, token)
-        with urllib.request.urlopen(req, timeout=min(4, timeout)) as r:   ***REMOVED*** noqa: S310
+        with urllib.request.urlopen(req, timeout=min(4, timeout)) as r:   # noqa: S310
             return r.status < 500
     except urllib.error.HTTPError:
-        return True          ***REMOVED*** il a répondu, même en refusant : il est vivant et il parle en clair
+        return True          # il a répondu, même en refusant : il est vivant et il parle en clair
     except Exception:
         return False
 
@@ -164,28 +164,28 @@ def _request(base_url, method, path, token=None, body=None, timeout=15, tls=Fals
         headers[TOKEN_HEADER] = token
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=context) as r:   ***REMOVED*** noqa: S310 (réseau interne)
+        with urllib.request.urlopen(req, timeout=timeout, context=context) as r:   # noqa: S310 (réseau interne)
             txt = r.read().decode()
             with _breaker_lock:
-                _breaker.pop(_cle, None)          ***REMOVED*** l'agent répond : on referme le disjoncteur
+                _breaker.pop(_cle, None)          # l'agent répond : on referme le disjoncteur
             return True, (json.loads(txt) if txt else {})
     except urllib.error.HTTPError as e:
-        ***REMOVED*** L'agent a RÉPONDU (même en erreur) : il est vivant, on n'arme pas le disjoncteur.
+        # L'agent a RÉPONDU (même en erreur) : il est vivant, on n'arme pas le disjoncteur.
         try:
             return False, (json.loads(e.read().decode()).get("error") or f"HTTP {e.code}")
         except Exception:
             return False, f"HTTP {e.code}"
     except Exception as e:
         _msg = f"agent injoignable : {e}"
-        ***REMOVED*** ★ RÉINSTALLER UN NŒUD EFFACE SON mTLS, ET PERSONNE NE PRÉVIENT LE CONTRÔLEUR.
-        ***REMOVED*** `install-node.sh` propose de supprimer le certificat de l'enrôlement précédent
-        ***REMOVED*** (« l'agent repartira en HTTP clair ») et fait ce qu'il annonce. Mais en base le nœud
-        ***REMOVED*** garde `tls_ready=1` + `node_cert` : on continue de l'appeler en HTTPS, l'agent répond
-        ***REMOVED*** en clair, et OpenSSL rend `WRONG_VERSION_NUMBER`. Le nœud passe « down » et l'exploitant
-        ***REMOVED*** lit « agent injoignable » + « images absentes » — DEUX affirmations fausses : l'agent
-        ***REMOVED*** tourne et les images sont là. Le message envoie chercher à l'opposé de la cause
-        ***REMOVED*** (recette Valentin, r620-3-test, 2026-08-21).
-        ***REMOVED*** On ne DEVINE pas : on REDEMANDE en clair. Si l'agent répond, le diagnostic est certain.
+        # ★ RÉINSTALLER UN NŒUD EFFACE SON mTLS, ET PERSONNE NE PRÉVIENT LE CONTRÔLEUR.
+        # `install-node.sh` propose de supprimer le certificat de l'enrôlement précédent
+        # (« l'agent repartira en HTTP clair ») et fait ce qu'il annonce. Mais en base le nœud
+        # garde `tls_ready=1` + `node_cert` : on continue de l'appeler en HTTPS, l'agent répond
+        # en clair, et OpenSSL rend `WRONG_VERSION_NUMBER`. Le nœud passe « down » et l'exploitant
+        # lit « agent injoignable » + « images absentes » — DEUX affirmations fausses : l'agent
+        # tourne et les images sont là. Le message envoie chercher à l'opposé de la cause
+        # (recette Valentin, r620-3-test, 2026-08-21).
+        # On ne DEVINE pas : on REDEMANDE en clair. Si l'agent répond, le diagnostic est certain.
         if tls and _signature_tls_en_clair(e):
             if _agent_repond_en_clair(url, token, timeout):
                 _msg = (_MARQUE_TLS_CLAIR + "le nœud répond en HTTP CLAIR alors que le contrôleur "
@@ -195,8 +195,8 @@ def _request(base_url, method, path, token=None, body=None, timeout=15, tls=Fals
                         "clair. Aucune rétrogradation automatique n'est faite : un pair capable de "
                         "répondre en clair pourrait sinon forcer l'abandon du canal chiffré.")
         elif tls and _signature_autre_ca(e):
-            ***REMOVED*** Le nœud parle TLS, mais sous une autorité que nous ne reconnaissons pas. NE PAS
-            ***REMOVED*** repasser en clair ici : le canal chiffré existe, c'est la confiance qui manque.
+            # Le nœud parle TLS, mais sous une autorité que nous ne reconnaissons pas. NE PAS
+            # repasser en clair ici : le canal chiffré existe, c'est la confiance qui manque.
             _msg = (_MARQUE_AUTRE_CA + "le nœud présente un certificat signé par une AUTRE "
                     "autorité que la nôtre — typiquement un ré-enrôlement sur une autre CA. "
                     "L'agent est vivant et parle bien TLS. Remède : redistribuer notre autorité "
@@ -207,12 +207,12 @@ def _request(base_url, method, path, token=None, body=None, timeout=15, tls=Fals
         return False, _msg
 
 
-***REMOVED*** Marqueurs internes : `_request` ne connaît que l'URL, `_call` connaît le NŒUD. On étiquette le
-***REMOVED*** message pour que l'alerte puisse être posée là où l'identifiant du nœud est disponible.
+# Marqueurs internes : `_request` ne connaît que l'URL, `_call` connaît le NŒUD. On étiquette le
+# message pour que l'alerte puisse être posée là où l'identifiant du nœud est disponible.
 _MARQUE_TLS_CLAIR = "\x00tlsclair\x00"
 _MARQUE_AUTRE_CA = "\x00autreca\x00"
-_derniere_alerte_tls = {}      ***REMOVED*** node_id -> monotone
-_ALERTE_TLS_PERIODE_S = 600.0  ***REMOVED*** une alerte toutes les 10 min par nœud : le sampler passe toutes
+_derniere_alerte_tls = {}      # node_id -> monotone
+_ALERTE_TLS_PERIODE_S = 600.0  # une alerte toutes les 10 min par nœud : le sampler passe toutes
 
 
 def _call(node, method, path, body=None, timeout=15, bypass_breaker=False):
@@ -234,12 +234,12 @@ def _call(node, method, path, body=None, timeout=15, bypass_breaker=False):
     return ok, data
 
 
-***REMOVED*** ─── Découverte / enregistrement ────────────────────────────────────────────
+# ─── Découverte / enregistrement ────────────────────────────────────────────
 def ping(agent_url, timeout=4, tls=False):
     """Liveness sans token. Retourne le dict {agent,version} ou None. tls=True → HTTPS mTLS
     (pour sonder un nœud DÉJÀ migré ; en enrôlement le nœud est encore en HTTP → tls=False)."""
     ok, data = _request(agent_url, "GET", "/v1/ping", timeout=timeout, tls=tls,
-                        bypass_breaker=True)      ***REMOVED*** sonde de liveness : même raison que health()
+                        bypass_breaker=True)      # sonde de liveness : même raison que health()
     return data if ok else None
 
 
@@ -310,7 +310,7 @@ def ensure_registered(node):
         return False
     caps = (node.get("capabilities") or "").strip()
     if caps and caps not in ("[]", "null"):
-        return False                                  ***REMOVED*** déjà enregistré → no-op
+        return False                                  # déjà enregistré → no-op
     import urllib.parse
     host = node.get("host")
     if not host:
@@ -347,7 +347,7 @@ def capabilities(node):
     return data if ok else None
 
 
-***REMOVED*** ─── Cycle de vie des conteneurs (via agent) ─────────────────────────────────
+# ─── Cycle de vie des conteneurs (via agent) ─────────────────────────────────
 def run_container(node, spec):
     """POST /v1/containers (idempotent côté agent). Retourne (ok, {name,ip,status}|err)."""
     return _call(node, "POST", "/v1/containers", body=spec, timeout=90)
@@ -378,14 +378,14 @@ def list_containers(node):
     return (data.get("containers") or []) if ok else None
 
 
-***REMOVED*** ─── mTLS : migration à chaud d'un nœud enrôlé (HTTP+token → HTTPS mTLS) ──────
-***REMOVED*** Contrat attendu de l'agent-nœud (implémenté par l'agent B, canal HTTP+token actuel) :
-***REMOVED***   POST /v1/tls/init    → l'agent génère SA clé privée + un CSR LOCALEMENT (la clé ne sort
-***REMOVED***                          jamais), retourne {"ok": true, "csr": "<PEM>"}.
-***REMOVED***   POST /v1/tls/install  body {"cert": "<PEM signé>", "ca_cert": "<PEM CA>"} → l'agent écrit
-***REMOVED***                          cert/clé/CA sur disque et REBASCULE son listener en HTTPS sur le
-***REMOVED***                          MÊME port. Retourne {"ok": true}. Repli HTTP garanti si cert
-***REMOVED***                          absent/invalide (le nœud reste joignable).
+# ─── mTLS : migration à chaud d'un nœud enrôlé (HTTP+token → HTTPS mTLS) ──────
+# Contrat attendu de l'agent-nœud (implémenté par l'agent B, canal HTTP+token actuel) :
+#   POST /v1/tls/init    → l'agent génère SA clé privée + un CSR LOCALEMENT (la clé ne sort
+#                          jamais), retourne {"ok": true, "csr": "<PEM>"}.
+#   POST /v1/tls/install  body {"cert": "<PEM signé>", "ca_cert": "<PEM CA>"} → l'agent écrit
+#                          cert/clé/CA sur disque et REBASCULE son listener en HTTPS sur le
+#                          MÊME port. Retourne {"ok": true}. Repli HTTP garanti si cert
+#                          absent/invalide (le nœud reste joignable).
 def rotate_tls(node):
     """Migre un nœud DÉJÀ enrôlé (HTTP+token) vers HTTPS mTLS, via le canal HTTP+token actuel.
     2 temps : (a) l'agent génère clé+CSR (/v1/tls/init), (b) le contrôleur signe et pousse
@@ -396,15 +396,15 @@ def rotate_tls(node):
     if not ca.ca_available():
         return False, "CA interne non initialisée (tools/ca-init.py)"
     nid = node["id"]
-    name = node.get("name") or f"***REMOVED***{nid}"
-    ***REMOVED*** (a) l'agent génère sa clé + CSR localement (canal HTTP+token, le nœud est encore en HTTP).
+    name = node.get("name") or f"#{nid}"
+    # (a) l'agent génère sa clé + CSR localement (canal HTTP+token, le nœud est encore en HTTP).
     ok, data = _call(node, "POST", "/v1/tls/init", body={}, timeout=30)
     if not ok or not isinstance(data, dict) or not data.get("csr"):
         db_add_alert("alert.node.mtls_init_echec", "warning", node_id=node.get("id"), kind="node",
                      params={"n": name, "data": str(data)})
         return False, f"tls/init : {data}"
     csr = data["csr"]
-    ***REMOVED*** (b) signe le CSR (SAN fixés par nous : IP de contrôle + URI bobi://node/<id>) puis pousse.
+    # (b) signe le CSR (SAN fixés par nous : IP de contrôle + URI bobi://node/<id>) puis pousse.
     host = node.get("host") or ""
     try:
         cert_pem = ca.sign_csr(csr, ip=host or None, node_id=nid)
@@ -420,14 +420,14 @@ def rotate_tls(node):
         db_add_alert("alert.node.mtls_install_echec", "warning", node_id=node.get("id"), kind="node",
                      params={"n": name, "data": str(data)})
         return False, f"tls/install : {data}"
-    ***REMOVED*** (c) l'agent écoute désormais en HTTPS → node_driver dial en HTTPS à partir d'ici.
+    # (c) l'agent écoute désormais en HTTPS → node_driver dial en HTTPS à partir d'ici.
     db_update_node(nid, tls_ready=1, node_cert=cert_str)
     db_add_alert("alert.node.mtls_migre", "info", node_id=node.get("id"), kind="node",
                  params={"n": name})
     return True, "ok"
 
 
-***REMOVED*** ─── Services hôte (via agent) ───────────────────────────────────────────────
+# ─── Services hôte (via agent) ───────────────────────────────────────────────
 def xdp_off(node, iface=None):
     return _call(node, "POST", "/v1/host/xdp-off", body={"iface": iface} if iface else {})
 
@@ -548,7 +548,7 @@ def export_image(src_node, tag, dest_path, timeout=1800):
         return False, str(e)
 
 
-BUILD_RC_TIMEOUT = 254   ***REMOVED*** le SUIVI a expiré — le build, lui, continue sur le nœud
+BUILD_RC_TIMEOUT = 254   # le SUIVI a expiré — le build, lui, continue sur le nœud
 
 
 def build_image(node, tag, ctx_bytes, timeout=2400):
@@ -576,28 +576,28 @@ def build_image(node, tag, ctx_bytes, timeout=2400):
                           **_requests_tls(node))
         j = r.json() if r.headers.get("Content-Type", "").startswith("application/json") else None
         out = (j.get("output") if isinstance(j, dict) else None) or r.text[:700]
-        ***REMOVED*** Pas de faux-ok : on n'accepte un succès que si l'agent l'AFFIRME explicitement
-        ***REMOVED*** (`ok == True` ET `rc == 0`). Une 200 ambiguë (pas de JSON, pas de `rc`/`ok`) → échec.
+        # Pas de faux-ok : on n'accepte un succès que si l'agent l'AFFIRME explicitement
+        # (`ok == True` ET `rc == 0`). Une 200 ambiguë (pas de JSON, pas de `rc`/`ok`) → échec.
         if r.status_code == 200 and isinstance(j, dict) and j.get("ok") is True and int(j.get("rc", 1)) == 0:
             return (0, out)
         rc = int(j.get("rc", 1)) if isinstance(j, dict) else 1
         return (rc if rc != 0 else 1, out)
     except requests.exceptions.Timeout as e:
-        ***REMOVED*** Le nœud compile toujours : on rend un code DISTINCT pour que l'appelant surveille au
-        ***REMOVED*** lieu de conclure (cf. docstring). Le confondre avec un échec réseau serait le bug.
+        # Le nœud compile toujours : on rend un code DISTINCT pour que l'appelant surveille au
+        # lieu de conclure (cf. docstring). Le confondre avec un échec réseau serait le bug.
         return (BUILD_RC_TIMEOUT, "suivi interrompu après %ss (le build continue sur le nœud) : %s"
                 % (timeout, e))
     except Exception as e:
         return (255, str(e))
 
 
-***REMOVED*** ── Réseau des conteneurs : ce qui est DÉCLARÉ vs ce qui est POSÉ ─────────────────────────────
-***REMOVED*** Un nœud dont le macvlan pend dans le vide reste parfaitement sain de l'extérieur : il répond au
-***REMOVED*** ping, son agent va bien, ses capacités sont déclarées. Seuls ses conteneurs sont muets — et leur
-***REMOVED*** statut Docker affiche « running ». D'où ce constat, partagé par la fiche du nœud ET par le choix
-***REMOVED*** de nœud : sans lui, un déploiement automatique repart sur une machine où rien ne sera joignable.
+# ── Réseau des conteneurs : ce qui est DÉCLARÉ vs ce qui est POSÉ ─────────────────────────────
+# Un nœud dont le macvlan pend dans le vide reste parfaitement sain de l'extérieur : il répond au
+# ping, son agent va bien, ses capacités sont déclarées. Seuls ses conteneurs sont muets — et leur
+# statut Docker affiche « running ». D'où ce constat, partagé par la fiche du nœud ET par le choix
+# de nœud : sans lui, un déploiement automatique repart sur une machine où rien ne sera joignable.
 _RESEAU_TTL_S = 120.0
-_reseau_cache = {}          ***REMOVED*** node_id → (ts, état)
+_reseau_cache = {}          # node_id → (ts, état)
 
 
 def parent_declare(node_id):

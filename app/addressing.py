@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Résolution d'adresse d'un conteneur (cross-backend, full-Docker).
 
@@ -121,10 +121,10 @@ def get_container_ip(vmid):
     return None
 
 
-***REMOVED*** ─── Résolution de l'HÔTE SSH d'un nœud (host-ops : VF SR-IOV, PTP, prép MTL, binds) ──────────
-***REMOVED*** B1a : remplace le réglage GLOBAL `proxmox_host` par l'hôte DU NŒUD concerné. À 1 nœud, identique
-***REMOVED*** (proxmox_host == l'unique node.host) ; habilite le multi-nœud. `primary_host()` = repli de
-***REMOVED*** transition tant que l'op n'a pas de nœud explicite (l'UI par-nœud arrive en B1b).
+# ─── Résolution de l'HÔTE SSH d'un nœud (host-ops : VF SR-IOV, PTP, prép MTL, binds) ──────────
+# B1a : remplace le réglage GLOBAL `proxmox_host` par l'hôte DU NŒUD concerné. À 1 nœud, identique
+# (proxmox_host == l'unique node.host) ; habilite le multi-nœud. `primary_host()` = repli de
+# transition tant que l'op n'a pas de nœud explicite (l'UI par-nœud arrive en B1b).
 
 def node_host(node_id):
     """Hôte SSH d'un nœud (table nodes), ou None."""

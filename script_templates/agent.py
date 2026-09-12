@@ -1,8 +1,8 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Agent par-LXC : expose une API HTTP minimale sur :8081 pour que l'orchestrateur
@@ -33,77 +33,77 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 PORT = 8081
 LAST_PATH = None
 PROC = None
-***REMOVED*** Dernière mort du script : code de sortie et signal. Publié dans `/status` — sans ça, un conteneur
-***REMOVED*** tombe en « script arrêté » SANS CAUSE, et il faut aller lire `docker logs` à la main pour
-***REMOVED*** découvrir un SIGILL (code -4) ou une exception. C'est ce qui a coûté le plus de temps dans le
-***REMOVED*** diagnostic des nœuds Sandy Bridge : l'interface disait « arrêté », jamais « instruction illégale ».
+# Dernière mort du script : code de sortie et signal. Publié dans `/status` — sans ça, un conteneur
+# tombe en « script arrêté » SANS CAUSE, et il faut aller lire `docker logs` à la main pour
+# découvrir un SIGILL (code -4) ou une exception. C'est ce qui a coûté le plus de temps dans le
+# diagnostic des nœuds Sandy Bridge : l'interface disait « arrêté », jamais « instruction illégale ».
 DERNIERE_MORT = {"code": None, "signal": None, "ts": None}
 NMOS_SDP_DIR = "/tmp"
 
-***REMOVED*** Durcissement (hardening/audit-2026-07) :
-***REMOVED***  - ALLOWED_SCRIPT_DIR : /deploy ne peut écrire QUE sous ce préfixe (anti path-traversal).
-***REMOVED***    Défense active pour TOUS les conteneurs, y compris ceux sans token (compat).
-***REMOVED***  - MXL_AGENT_TOKEN : auth OPTIONNELLE. Si l'env est posée (au docker run par l'orchestrateur),
-***REMOVED***    l'agent EXIGE l'en-tête X-MXL-Agent-Token (comparaison hmac.compare_digest). Absente → aucun
-***REMOVED***    contrôle (comportement historique) : les conteneurs LIVE de l'ancienne image continuent de tourner.
+# Durcissement (hardening/audit-2026-07) :
+#  - ALLOWED_SCRIPT_DIR : /deploy ne peut écrire QUE sous ce préfixe (anti path-traversal).
+#    Défense active pour TOUS les conteneurs, y compris ceux sans token (compat).
+#  - MXL_AGENT_TOKEN : auth OPTIONNELLE. Si l'env est posée (au docker run par l'orchestrateur),
+#    l'agent EXIGE l'en-tête X-MXL-Agent-Token (comparaison hmac.compare_digest). Absente → aucun
+#    contrôle (comportement historique) : les conteneurs LIVE de l'ancienne image continuent de tourner.
 ALLOWED_SCRIPT_DIR = "/opt/script"
 AGENT_TOKEN = os.environ.get("MXL_AGENT_TOKEN") or ""
 AUTH_HEADER = "X-MXL-Agent-Token"
 
-***REMOVED*** TLS du plan de contrôle (mTLS, chantier feat/mtls) : le CONTRÔLEUR est le seul appelant de :8081.
-***REMOVED*** Il génère (app/ca.py) un cert conteneur signé par la CA interne et l'INJECTE au `docker run` ;
-***REMOVED*** l'agent-nœud l'écrit ici (bind-mount) sous /etc/bobi-tls/{cert.pem,key.pem,ca.pem}. Présents →
-***REMOVED*** on sert :8081 en HTTPS (cert serveur signé CA + mTLS si ca.pem). Absents → HTTP clair (repli,
-***REMOVED*** ne casse rien). L'auth token (ci-dessus) reste EN PLUS dans les deux cas (double facteur).
+# TLS du plan de contrôle (mTLS, chantier feat/mtls) : le CONTRÔLEUR est le seul appelant de :8081.
+# Il génère (app/ca.py) un cert conteneur signé par la CA interne et l'INJECTE au `docker run` ;
+# l'agent-nœud l'écrit ici (bind-mount) sous /etc/bobi-tls/{cert.pem,key.pem,ca.pem}. Présents →
+# on sert :8081 en HTTPS (cert serveur signé CA + mTLS si ca.pem). Absents → HTTP clair (repli,
+# ne casse rien). L'auth token (ci-dessus) reste EN PLUS dans les deux cas (double facteur).
 TLS_DIR = "/etc/bobi-tls"
 
-***REMOVED*** IDENTITÉ DU PAIR CLIENT (mTLS) — pourquoi ce contrôle existe :
-***REMOVED*** `CERT_REQUIRED` + `load_verify_locations(ca)` ne prouvent qu'UNE chose : le cert client est signé
-***REMOVED*** par notre CA. Or les certs de CONTENEUR sont émis avec EKU serverAuth **+ clientAuth** (app/ca.py)
-***REMOVED*** → la clé privée d'UN conteneur suffit à se faire passer pour le contrôleur auprès de TOUS les
-***REMOVED*** agents de la flotte (mouvement latéral). Le cert du contrôleur porte CN=bobi-controller, ceux des
-***REMOVED*** conteneurs CN=mxl<vmid> : la distinction est donc possible SANS regénérer aucun certificat.
-***REMOVED*** On vérifie le CN (retenu plutôt qu'une URI SAN : le cert contrôleur existant n'en porte pas —
-***REMOVED*** ses SAN sont les IP/DNS de contrôle — et l'exiger rendrait la flotte injoignable le jour du
-***REMOVED*** déploiement d'image ; l'URI SAN `bobi://controller` est acceptée EN PLUS si elle apparaît un jour).
-***REMOVED*** ÉCHAPPATOIRE (une installation dont le CN diffère ne doit pas se verrouiller hors de sa flotte) :
-***REMOVED***   MXL_TLS_CLIENT_CN=<cn>          → CN attendu (défaut bobi-controller)
-***REMOVED***   MXL_TLS_VERIFY_CLIENT_CN=0      → vérification DÉSACTIVÉE (comportement historique)
-***REMOVED*** Le token X-MXL-Agent-Token reste le second facteur, indépendant de ce contrôle.
+# IDENTITÉ DU PAIR CLIENT (mTLS) — pourquoi ce contrôle existe :
+# `CERT_REQUIRED` + `load_verify_locations(ca)` ne prouvent qu'UNE chose : le cert client est signé
+# par notre CA. Or les certs de CONTENEUR sont émis avec EKU serverAuth **+ clientAuth** (app/ca.py)
+# → la clé privée d'UN conteneur suffit à se faire passer pour le contrôleur auprès de TOUS les
+# agents de la flotte (mouvement latéral). Le cert du contrôleur porte CN=bobi-controller, ceux des
+# conteneurs CN=mxl<vmid> : la distinction est donc possible SANS regénérer aucun certificat.
+# On vérifie le CN (retenu plutôt qu'une URI SAN : le cert contrôleur existant n'en porte pas —
+# ses SAN sont les IP/DNS de contrôle — et l'exiger rendrait la flotte injoignable le jour du
+# déploiement d'image ; l'URI SAN `bobi://controller` est acceptée EN PLUS si elle apparaît un jour).
+# ÉCHAPPATOIRE (une installation dont le CN diffère ne doit pas se verrouiller hors de sa flotte) :
+#   MXL_TLS_CLIENT_CN=<cn>          → CN attendu (défaut bobi-controller)
+#   MXL_TLS_VERIFY_CLIENT_CN=0      → vérification DÉSACTIVÉE (comportement historique)
+# Le token X-MXL-Agent-Token reste le second facteur, indépendant de ce contrôle.
 TLS_CLIENT_CN = os.environ.get("MXL_TLS_CLIENT_CN") or "bobi-controller"
 TLS_CLIENT_URI = "bobi://controller"
 TLS_VERIFY_CLIENT_CN = (os.environ.get("MXL_TLS_VERIFY_CLIENT_CN", "1").strip().lower()
                         not in ("0", "false", "off", "no"))
 
-***REMOVED*** TROISIÈME IDENTITÉ : l'AGENT-NŒUD (URI SAN `bobi://node/<id>`, cf. app/ca.py:_san_list).
-***REMOVED*** Motif : quand le contrôleur est absent, plus personne ne relève un script mort à l'intérieur
-***REMOVED*** d'un conteneur qui, lui, tourne toujours (l'état `script_stopped`). Docker ne voit pas ce
-***REMOVED*** niveau-là, et l'agent-nœud — le seul survivant sur place — n'avait pas le droit de nous parler.
-***REMOVED*** On lui ouvre STRICTEMENT ce qu'il faut pour ça, et rien d'autre : constater et relancer.
-***REMOVED*** `/deploy` reste FERMÉ (il n'a pas la base : il ne peut pas rendre un script, seulement en pousser
-***REMOVED*** un — donc lui ouvrir /deploy n'apporterait rien et lui donnerait l'écriture arbitraire de fichier).
-***REMOVED*** `/stop` aussi : un watchdog n'arrête rien, il maintient. La distinction ne coûte rien à établir —
-***REMOVED*** les certs de nœud portent `bobi://node/`, ceux de conteneur `bobi://container/` — donc la barrière
-***REMOVED*** anti-mouvement-latéral d'origine (un conteneur ne pilote pas ses pairs) reste entière.
+# TROISIÈME IDENTITÉ : l'AGENT-NŒUD (URI SAN `bobi://node/<id>`, cf. app/ca.py:_san_list).
+# Motif : quand le contrôleur est absent, plus personne ne relève un script mort à l'intérieur
+# d'un conteneur qui, lui, tourne toujours (l'état `script_stopped`). Docker ne voit pas ce
+# niveau-là, et l'agent-nœud — le seul survivant sur place — n'avait pas le droit de nous parler.
+# On lui ouvre STRICTEMENT ce qu'il faut pour ça, et rien d'autre : constater et relancer.
+# `/deploy` reste FERMÉ (il n'a pas la base : il ne peut pas rendre un script, seulement en pousser
+# un — donc lui ouvrir /deploy n'apporterait rien et lui donnerait l'écriture arbitraire de fichier).
+# `/stop` aussi : un watchdog n'arrête rien, il maintient. La distinction ne coûte rien à établir —
+# les certs de nœud portent `bobi://node/`, ceux de conteneur `bobi://container/` — donc la barrière
+# anti-mouvement-latéral d'origine (un conteneur ne pilote pas ses pairs) reste entière.
 NODE_URI_PREFIX = "bobi://node/"
 NODE_ALLOWED = (("GET", "/status"), ("POST", "/start"))
 TLS_ALLOW_NODE = (os.environ.get("MXL_TLS_ALLOW_NODE", "1").strip().lower()
                   not in ("0", "false", "off", "no"))
 
-***REMOVED*** ... ET LE CHEMIN QUI SERT VRAIMENT : le LOOPBACK.
-***REMOVED*** L'ouverture ci-dessus supposait que l'agent-nœud pouvait joindre notre `:8081`. Il ne le peut PAS :
-***REMOVED*** nos conteneurs sont en macvlan, et une interface macvlan enfant ne parle jamais à la pile de son
-***REMOVED*** interface PARENTE — un nœud atteint les conteneurs de ses voisins, jamais les siens (mesuré :
-***REMOVED*** 100 % de perte vers son propre conteneur, 0 % vers celui d'en face). L'agent-nœud passe donc par
-***REMOVED*** `docker exec` et nous appelle sur 127.0.0.1, depuis NOTRE PROPRE espace de noms réseau.
-***REMOVED*** Il présente alors le seul matériel disponible là : NOTRE cert de conteneur — celui que
-***REMOVED*** `_peer_role` refuse, à raison, quand il arrive par le réseau.
-***REMOVED*** POURQUOI C'EST SÛR : atteindre notre loopback exige d'exécuter du code DANS ce conteneur, donc
-***REMOVED*** d'avoir Docker, donc d'être root sur l'hôte — qui peut déjà tout nous faire. L'exemption
-***REMOVED*** n'accorde aucun pouvoir nouveau ; elle nomme un chemin qui existait déjà.
-***REMOVED*** Elle reste ÉTROITE : loopback ET les deux mêmes endpoints que le nœud (NODE_ALLOWED). Un paquet
-***REMOVED*** venu du réseau avec une source 127.0.0.1 n'arrive pas ici (le noyau jette les sources martiennes
-***REMOVED*** sur une interface non-loopback).
+# ... ET LE CHEMIN QUI SERT VRAIMENT : le LOOPBACK.
+# L'ouverture ci-dessus supposait que l'agent-nœud pouvait joindre notre `:8081`. Il ne le peut PAS :
+# nos conteneurs sont en macvlan, et une interface macvlan enfant ne parle jamais à la pile de son
+# interface PARENTE — un nœud atteint les conteneurs de ses voisins, jamais les siens (mesuré :
+# 100 % de perte vers son propre conteneur, 0 % vers celui d'en face). L'agent-nœud passe donc par
+# `docker exec` et nous appelle sur 127.0.0.1, depuis NOTRE PROPRE espace de noms réseau.
+# Il présente alors le seul matériel disponible là : NOTRE cert de conteneur — celui que
+# `_peer_role` refuse, à raison, quand il arrive par le réseau.
+# POURQUOI C'EST SÛR : atteindre notre loopback exige d'exécuter du code DANS ce conteneur, donc
+# d'avoir Docker, donc d'être root sur l'hôte — qui peut déjà tout nous faire. L'exemption
+# n'accorde aucun pouvoir nouveau ; elle nomme un chemin qui existait déjà.
+# Elle reste ÉTROITE : loopback ET les deux mêmes endpoints que le nœud (NODE_ALLOWED). Un paquet
+# venu du réseau avec une source 127.0.0.1 n'arrive pas ici (le noyau jette les sources martiennes
+# sur une interface non-loopback).
 LOOPBACK = ("127.0.0.1", "::1")
 TLS_ALLOW_LOOPBACK = (os.environ.get("MXL_TLS_ALLOW_LOOPBACK", "1").strip().lower()
                       not in ("0", "false", "off", "no"))
@@ -131,10 +131,10 @@ def _peer_role(conn):
         return "controller"
     getpeercert = getattr(conn, "getpeercert", None)
     if getpeercert is None:
-        return "controller"            ***REMOVED*** socket non-TLS : l'agent tourne en clair (repli assumé)
+        return "controller"            # socket non-TLS : l'agent tourne en clair (repli assumé)
     cert = getpeercert()
     if not cert:
-        ***REMOVED*** CERT_REQUIRED est posé quand ca.pem est présent : pas de cert ici = pas de TLS mutuel.
+        # CERT_REQUIRED est posé quand ca.pem est présent : pas de cert ici = pas de TLS mutuel.
         print("[agent] REFUS : connexion TLS sans certificat client", flush=True)
         return None
     cns, uris = _peer_identities(cert)
@@ -165,14 +165,14 @@ def _safe_script_path(path):
         return rp
     return None
 
-***REMOVED*** ── Surface NMOS du conteneur (« plan 2 » : le conteneur est un Node) ────────────────────────
-***REMOVED*** Le conteneur NE CALCULE RIEN : l'orchestrateur lui POUSSE un document décrivant ses ressources
-***REMOVED*** (POST /nmos), et l'agent le sert découpé sur /x-nmos/. Toute la logique NMOS — dérivation depuis
-***REMOVED*** le manifeste du plugin, identités, contraintes — reste côté orchestrateur, où elle est déjà
-***REMOVED*** écrite et éprouvée. Le conteneur n'embarque pas une seconde implémentation qui divergerait.
-***REMOVED***
-***REMOVED*** ⚠ Pourquoi un POST /nmos et pas /deploy : `/deploy` positionne `LAST_PATH`, que `/start` utilise
-***REMOVED*** pour lancer le script. Y pousser un JSON ferait démarrer le JSON au redémarrage suivant.
+# ── Surface NMOS du conteneur (« plan 2 » : le conteneur est un Node) ────────────────────────
+# Le conteneur NE CALCULE RIEN : l'orchestrateur lui POUSSE un document décrivant ses ressources
+# (POST /nmos), et l'agent le sert découpé sur /x-nmos/. Toute la logique NMOS — dérivation depuis
+# le manifeste du plugin, identités, contraintes — reste côté orchestrateur, où elle est déjà
+# écrite et éprouvée. Le conteneur n'embarque pas une seconde implémentation qui divergerait.
+#
+# ⚠ Pourquoi un POST /nmos et pas /deploy : `/deploy` positionne `LAST_PATH`, que `/start` utilise
+# pour lancer le script. Y pousser un JSON ferait démarrer le JSON au redémarrage suivant.
 NMOS_FICHIER = os.path.join(ALLOWED_SCRIPT_DIR, "nmos.json")
 NMOS_IS04 = "v1.3"
 NMOS_IS05 = "v1.1"
@@ -194,10 +194,10 @@ def _nmos_get(chemin):
     """(status, payload) pour un GET sous /x-nmos/. 404 si inconnu, 503 si rien n'a été poussé."""
     d = _nmos_doc()
     if d is None:
-        ***REMOVED*** 503 et pas 404 : la surface EXISTE, elle n'est simplement pas encore alimentée. Un 404
-        ***REMOVED*** ferait conclure à un agent qui ne sait pas faire de NMOS.
+        # 503 et pas 404 : la surface EXISTE, elle n'est simplement pas encore alimentée. Un 404
+        # ferait conclure à un agent qui ne sait pas faire de NMOS.
         return 503, {"error": "aucune description NMOS poussée par l'orchestrateur"}
-    p = [x for x in chemin.split("?")[0].strip("/").split("/") if x]   ***REMOVED*** ['x-nmos', ...]
+    p = [x for x in chemin.split("?")[0].strip("/").split("/") if x]   # ['x-nmos', ...]
     p = p[1:]
     if not p:
         return 200, ["node/", "connection/"]
@@ -243,8 +243,8 @@ def _nmos_get(chemin):
         if len(p) == 5:
             return 200, ["constraints/", "staged/", "active/", "transportfile/"]
         if p[5] == "transportfile":
-            ***REMOVED*** BCP-007-03 : MXL n'a pas de fichier de transport. L'endpoint doit exister et rendre
-            ***REMOVED*** 404 — c'est le pendant de `manifest_href: null` côté IS-04.
+            # BCP-007-03 : MXL n'a pas de fichier de transport. L'endpoint doit exister et rendre
+            # 404 — c'est le pendant de `manifest_href: null` côté IS-04.
             return 404, {"error": "pas de transport file en MXL"}
         if p[5] in ("constraints", "staged", "active"):
             return 200, etat.get(p[5])
@@ -329,7 +329,7 @@ def _script_pids():
                     args = f.read().split(b"\x00")
             except (FileNotFoundError, ProcessLookupError, PermissionError):
                 continue
-            ***REMOVED*** cmdline = [python, -u, <path>] : on matche le chemin exact du script.
+            # cmdline = [python, -u, <path>] : on matche le chemin exact du script.
             if any(a.decode("utf-8", "replace") == path for a in args if a):
                 pids.append(pid)
     except Exception:
@@ -343,15 +343,15 @@ def _is_running():
     global PROC
     if _script_pids():
         return True
-    ***REMOVED*** Fallback : objet Popen encore vivant (cas où LAST_PATH inconnu)
+    # Fallback : objet Popen encore vivant (cas où LAST_PATH inconnu)
     if PROC is not None and PROC.poll() is None:
         return True
     if PROC is not None:
-        ***REMOVED*** Remontée du code de sortie sur la sortie standard du conteneur : la mort du script est
-        ***REMOVED*** désormais tracée AU MÊME ENDROIT que ce qu'il a imprimé juste avant (docker logs).
+        # Remontée du code de sortie sur la sortie standard du conteneur : la mort du script est
+        # désormais tracée AU MÊME ENDROIT que ce qu'il a imprimé juste avant (docker logs).
         rc = PROC.returncode
-        ***REMOVED*** Convention POSIX de subprocess : un code NÉGATIF est un signal (-4 = SIGILL, -9 = SIGKILL,
-        ***REMOVED*** -11 = SIGSEGV). Les séparer, sinon « -4 » se lit comme un code d'erreur applicatif.
+        # Convention POSIX de subprocess : un code NÉGATIF est un signal (-4 = SIGILL, -9 = SIGKILL,
+        # -11 = SIGSEGV). Les séparer, sinon « -4 » se lit comme un code d'erreur applicatif.
         DERNIERE_MORT["code"] = rc if (rc is None or rc >= 0) else None
         DERNIERE_MORT["signal"] = (-rc) if (rc is not None and rc < 0) else None
         DERNIERE_MORT["ts"] = time.time()
@@ -361,8 +361,8 @@ def _is_running():
 
 
 def _nmos_sdp_path(idx, essence="video", leg=None):
-    ***REMOVED*** Séparation video/audio : nmos_recv_v_<idx>.sdp ou nmos_recv_a_<idx>.sdp.
-    ***REMOVED*** leg=None → nom historique (compat) ; leg=0/1 → nom dual-path SMPTE 2022-7.
+    # Séparation video/audio : nmos_recv_v_<idx>.sdp ou nmos_recv_a_<idx>.sdp.
+    # leg=None → nom historique (compat) ; leg=0/1 → nom dual-path SMPTE 2022-7.
     suffix = "a" if essence == "audio" else "v"
     if leg is None:
         return os.path.join(NMOS_SDP_DIR, f"nmos_recv_{suffix}_{int(idx)}.sdp")
@@ -380,19 +380,19 @@ def _stop_proc():
     if not pids:
         PROC = None
         return
-    ***REMOVED*** SIGTERM sur le groupe de session de chaque PID (le script + ses enfants ffmpeg).
+    # SIGTERM sur le groupe de session de chaque PID (le script + ses enfants ffmpeg).
     for pid in pids:
         try:
             os.killpg(os.getpgid(pid), signal.SIGTERM)
         except (ProcessLookupError, PermissionError):
             pass
-    ***REMOVED*** Grâce : jusqu'à 3 s (marge sous le timeout HTTP de 5 s côté orchestrateur).
+    # Grâce : jusqu'à 3 s (marge sous le timeout HTTP de 5 s côté orchestrateur).
     deadline = _t.monotonic() + 3
     while _t.monotonic() < deadline:
         if not _script_pids() and (PROC is None or PROC.poll() is not None):
             break
         _t.sleep(0.1)
-    ***REMOVED*** SIGKILL sur ce qui reste.
+    # SIGKILL sur ce qui reste.
     for pid in set(_script_pids()) | pids:
         try:
             os.killpg(os.getpgid(pid), signal.SIGKILL)
@@ -432,8 +432,8 @@ def _start_proc():
     env["PYTHONUNBUFFERED"] = "1"
     PROC = subprocess.Popen(
         [sys.executable, "-u", path],
-        stdout=1,               ***REMOVED*** fd 1 de l'agent = sortie standard du conteneur
-        stderr=1,               ***REMOVED*** stderr fusionné dans la même sortie (ordre préservé)
+        stdout=1,               # fd 1 de l'agent = sortie standard du conteneur
+        stderr=1,               # stderr fusionné dans la même sortie (ordre préservé)
         env=env,
         preexec_fn=os.setsid)
     print("[agent] script démarré : %s (pid %d) — sortie sur stdout du conteneur"
@@ -475,9 +475,9 @@ class Handler(BaseHTTPRequestHandler):
         NODE_ALLOWED. La CHAÎNE du cert reste vérifiée par la couche TLS dans tous les cas."""
         chemin = (self.path or "").split("?", 1)[0]
         adresse = (self.client_address[0] if self.client_address else "")
-        ***REMOVED*** Loopback d'abord : c'est le chemin du chien de garde (docker exec), et le tester avant
-        ***REMOVED*** `_peer_role` évite de journaliser un REFUS à chaque sondage — le client y présente notre
-        ***REMOVED*** propre cert de conteneur, que `_peer_role` rejette légitimement quand il vient du réseau.
+        # Loopback d'abord : c'est le chemin du chien de garde (docker exec), et le tester avant
+        # `_peer_role` évite de journaliser un REFUS à chaque sondage — le client y présente notre
+        # propre cert de conteneur, que `_peer_role` rejette légitimement quand il vient du réseau.
         if TLS_ALLOW_LOOPBACK and adresse in LOOPBACK:
             if (method, chemin) in NODE_ALLOWED:
                 return True
@@ -491,7 +491,7 @@ class Handler(BaseHTTPRequestHandler):
             return False
         if role == "controller":
             return True
-        ***REMOVED*** role == "node" : liste blanche stricte. Le chemin est comparé sans query string.
+        # role == "node" : liste blanche stricte. Le chemin est comparé sans query string.
         if (method, chemin) in NODE_ALLOWED:
             return True
         print("[agent] REFUS : l'agent-nœud n'a pas le droit d'appeler %s %s "
@@ -507,7 +507,7 @@ class Handler(BaseHTTPRequestHandler):
             _json(self, 401, {"error": "unauthorized"})
             return
         if self.path == "/status":
-            ***REMOVED*** `_is_running()` d'abord : c'est lui qui constate la mort et renseigne DERNIERE_MORT.
+            # `_is_running()` d'abord : c'est lui qui constate la mort et renseigne DERNIERE_MORT.
             run = _is_running()
             _json(self, 200, {"running": run, "path": LAST_PATH,
                               "last_exit": DERNIERE_MORT["code"],
@@ -570,9 +570,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/nmos":
-            ***REMOVED*** Remplace intégralement la description servie. Écriture ATOMIQUE (fichier temporaire
-            ***REMOVED*** puis rename) : une requête GET concurrente doit voir l'ancienne version ou la
-            ***REMOVED*** nouvelle, jamais un fichier tronqué qu'elle prendrait pour une absence de surface.
+            # Remplace intégralement la description servie. Écriture ATOMIQUE (fichier temporaire
+            # puis rename) : une requête GET concurrente doit voir l'ancienne version ou la
+            # nouvelle, jamais un fichier tronqué qu'elle prendrait pour une absence de surface.
             try:
                 tmp = NMOS_FICHIER + ".tmp"
                 with open(tmp, "w") as f:
@@ -588,7 +588,7 @@ class Handler(BaseHTTPRequestHandler):
                 _json(self, 200, {"status": "already_running"})
                 return
             try:
-                _start_proc()   ***REMOVED*** chemin unique de spawn (idem /nmos/subscribe)
+                _start_proc()   # chemin unique de spawn (idem /nmos/subscribe)
                 _json(self, 200, {"status": "started", "pid": PROC.pid})
             except FileNotFoundError as e:
                 _json(self, 400, {"error": str(e)})
@@ -615,7 +615,7 @@ class Handler(BaseHTTPRequestHandler):
             was_running = _is_running()
             try:
                 if isinstance(sdp, list):
-                    ***REMOVED*** SMPTE 2022-7 dual-path : sdp = [leg0_sdp, leg1_sdp]
+                    # SMPTE 2022-7 dual-path : sdp = [leg0_sdp, leg1_sdp]
                     sdp_paths = [_nmos_sdp_path(idx, essence, leg=i) for i in range(len(sdp))]
                     if enabled:
                         for s, p in zip(sdp, sdp_paths):
@@ -628,7 +628,7 @@ class Handler(BaseHTTPRequestHandler):
                                 os.unlink(p)
                     sdp_path = sdp_paths[0] if sdp_paths else _nmos_sdp_path(idx, essence)
                 else:
-                    ***REMOVED*** Single-path (compat)
+                    # Single-path (compat)
                     sdp_path = _nmos_sdp_path(idx, essence)
                     if enabled:
                         if not sdp:
@@ -670,8 +670,8 @@ def _maybe_wrap_tls(httpd):
     mode = "TLS (serveur)"
     if os.path.exists(ca):
         ctx.load_verify_locations(cafile=ca)
-        ctx.verify_mode = ssl.CERT_REQUIRED   ***REMOVED*** mTLS : exige le cert client du contrôleur (signé CA)
-        ***REMOVED*** …et la CHAÎNE ne suffit pas : l'identité du pair est vérifiée par requête (_peer_autorise).
+        ctx.verify_mode = ssl.CERT_REQUIRED   # mTLS : exige le cert client du contrôleur (signé CA)
+        # …et la CHAÎNE ne suffit pas : l'identité du pair est vérifiée par requête (_peer_autorise).
         mode = ("mTLS + identité client CN=%s" % TLS_CLIENT_CN if TLS_VERIFY_CLIENT_CN
                 else "mTLS SANS vérification d'identité client (MXL_TLS_VERIFY_CLIENT_CN=0)")
     httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)

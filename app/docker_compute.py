@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Driver Docker « compute » — fait tourner un plugin de calcul (color_corrector, mixer, split,
 multiview, avsync…) en conteneur Docker sur un nœud du cluster.
@@ -54,7 +54,7 @@ from . import allocations
 log = logging.getLogger(__name__)
 
 
-***REMOVED*** ─── Prédicats de routage ────────────────────────────────────────────
+# ─── Prédicats de routage ────────────────────────────────────────────
 def is_mtl_type(type_):
     """Vrai si le type est un plugin matériel MTL (chemin docker_driver, --network host,
     controller bâti dans l'image). Faux pour un plugin de calcul générique."""
@@ -120,16 +120,16 @@ def _veut_gpu_instance(deploy_type, c, params=None):
             params = (json.loads((c or {}).get("deploy_config") or "{}") or {}).get("params") or {}
         except (ValueError, AttributeError):
             return False
-    ***REMOVED*** Règle DÉCLARÉE par le manifeste (chemin pointé + valeurs acceptées). C'est la voie normale
-    ***REMOVED*** pour tout nouveau plugin GPU-capable : sans elle, l'orchestrateur accumulerait un `if` par
-    ***REMOVED*** plugin, chacun connaissant le nom d'un paramètre qui ne le regarde pas.
+    # Règle DÉCLARÉE par le manifeste (chemin pointé + valeurs acceptées). C'est la voie normale
+    # pour tout nouveau plugin GPU-capable : sans elle, l'orchestrateur accumulerait un `if` par
+    # plugin, chacun connaissant le nom d'un paramètre qui ne le regarde pas.
     rule = plugins.gpu_instance_rule(deploy_type)
     if rule:
         cur = params
         for seg in rule["param"].split("."):
             cur = (cur or {}).get(seg) if isinstance(cur, dict) else None
         return str(cur or "").lower() in rule["values"]
-    ***REMOVED*** Repli historique (streamer, manifeste sans règle) : NVENC exigé ou préféré.
+    # Repli historique (streamer, manifeste sans règle) : NVENC exigé ou préféré.
     try:
         enc = str(((params.get("video") or {}).get("encoder") or "cpu")).lower()
     except AttributeError:
@@ -137,7 +137,7 @@ def _veut_gpu_instance(deploy_type, c, params=None):
     return enc in ("nvenc", "auto")
 
 
-_reseau_alerte = {}          ***REMOVED*** node_id → dernier motif alerté (anti-répétition)
+_reseau_alerte = {}          # node_id → dernier motif alerté (anti-répétition)
 
 
 def _alerter_reseau(node, etat):
@@ -172,7 +172,7 @@ def _reseau_retabli(node):
     """
     nid = node.get("id")
     if _reseau_alerte.pop(nid, None) is None:
-        return                      ***REMOVED*** aucun écart n'avait été signalé : rien à lever
+        return                      # aucun écart n'avait été signalé : rien à lever
     from .database import db_add_alert
     db_add_alert("alert.node.reseau_retabli", "info", node_id=nid, kind="net",
                  params={"n": node.get("name")})
@@ -209,12 +209,12 @@ def pick_compute_node(prefer_id=None, deploy_type=None):
         if not (n and n.get("compute_image") and n.get("docker_network")
                 and (n.get("status") or "") != "down"):
             return False
-        ***REMOVED*** ⚠ Un nœud dont le RÉSEAU CONTENEURS est mort reste « éligible » à tous les autres titres :
-        ***REMOVED*** image présente, réseau déclaré, statut up, agent joignable. Ses conteneurs y démarrent,
-        ***REMOVED*** prennent leur IP, lancent leur agent — et personne ne peut jamais leur parler, avec un
-        ***REMOVED*** statut Docker « running » parfaitement vert. Constaté sur r620-3 le 2026-08-02 : un
-        ***REMOVED*** monitor y a été placé (par ce même classement, qui répartit enfin la charge) sur un
-        ***REMOVED*** macvlan accroché à une carte sans porteuse. On l'écarte, et on DIT pourquoi.
+        # ⚠ Un nœud dont le RÉSEAU CONTENEURS est mort reste « éligible » à tous les autres titres :
+        # image présente, réseau déclaré, statut up, agent joignable. Ses conteneurs y démarrent,
+        # prennent leur IP, lancent leur agent — et personne ne peut jamais leur parler, avec un
+        # statut Docker « running » parfaitement vert. Constaté sur r620-3 le 2026-08-02 : un
+        # monitor y a été placé (par ce même classement, qui répartit enfin la charge) sur un
+        # macvlan accroché à une carte sans porteuse. On l'écarte, et on DIT pourquoi.
         try:
             from . import node_driver
             e = node_driver.etat_reseau_conteneurs(n)
@@ -257,7 +257,7 @@ def pick_compute_node(prefer_id=None, deploy_type=None):
     return meilleur["id"]
 
 
-***REMOVED*** ─── Cycle de vie ────────────────────────────────────────────────────
+# ─── Cycle de vie ────────────────────────────────────────────────────
 def creer_container_compute(node_id, deploy_type, hostname=None):
     """Alloue un vmid synthétique (unicité globale → topologie/câblage inchangés) et enregistre
     une ligne backend='docker' rattachée au nœud. Pas de `docker run` ici (vient au deploy)."""
@@ -277,34 +277,34 @@ def creer_container_compute(node_id, deploy_type, hostname=None):
 
     vmid = allocations.next_free_vmid()
     if vmid is None:
-        return None   ***REMOVED*** plage de VMID épuisée → alerte déjà émise par next_free_vmid ; pas de ligne vmid=None
+        return None   # plage de VMID épuisée → alerte déjà émise par next_free_vmid ; pas de ligne vmid=None
     if not hostname:
         hostname = f"mxl{vmid}"
     db_upsert_container_docker(vmid, hostname, node_id, _name(vmid), status="created")
-    ***REMOVED*** Persiste le type DÈS la création : si le push d'agent (:8081/deploy) échoue ensuite
-    ***REMOVED*** (ex. IP macvlan en collision avec un équipement LAN), le container reste TYPÉ et
-    ***REMOVED*** reprenable plutôt que de devenir un fantôme deploy_config=None invisible dans l'UI.
+    # Persiste le type DÈS la création : si le push d'agent (:8081/deploy) échoue ensuite
+    # (ex. IP macvlan en collision avec un équipement LAN), le container reste TYPÉ et
+    # reprenable plutôt que de devenir un fantôme deploy_config=None invisible dans l'UI.
     if deploy_type:
-        ***REMOVED*** Format de sortie d'un multiview = défaut SYSTÈME (jamais un littéral en dur). Les autres
-        ***REMOVED*** types compute adaptent leur entrée → pas de format fixe à semer.
+        # Format de sortie d'un multiview = défaut SYSTÈME (jamais un littéral en dur). Les autres
+        # types compute adaptent leur entrée → pas de format fixe à semer.
         _seed = {}
         if deploy_type == "multiview":
             from .scripts import multiview_output_format_defaults
             _seed = multiview_output_format_defaults()
         db_update_deploy_config(vmid, deploy_type, _seed)
     db_update_node(node_id, status="up")
-    ***REMOVED*** `h` = hostname : le suivi de création par lot s'y accroche par comparaison EXACTE
-    ***REMOVED*** (cf. `_lastAlertFor` dans static/scripts.js). Ne pas renommer ce paramètre sans migrer le JS.
+    # `h` = hostname : le suivi de création par lot s'y accroche par comparaison EXACTE
+    # (cf. `_lastAlertFor` dans static/scripts.js). Ne pas renommer ce paramètre sans migrer le JS.
     db_add_alert("alert.deploy.compute.cree", "info", vmid=vmid, node_id=node_id, kind="deploy",
                  params={"h": hostname, "vmid": vmid, "n": node["name"], "t": deploy_type})
     return vmid
 
 
-***REMOVED*** ─── Certificat mTLS du conteneur ────────────────────────────────────
-***REMOVED*** Le trio PEM est produit par le CONTRÔLEUR à chaque `docker run` et injecté dans la spec ; la clé
-***REMOVED*** privée n'est JAMAIS persistée sur le nœud (hygiène délibérée : elle vit en tmpfs, /run/bobi-tls,
-***REMOVED*** et meurt avec le nœud). Corollaire ASSUMÉ : un reboot de nœud efface le matériel → il faut le
-***REMOVED*** RE-PROVISIONNER (cf. app/node_recovery.py), pas le persister.
+# ─── Certificat mTLS du conteneur ────────────────────────────────────
+# Le trio PEM est produit par le CONTRÔLEUR à chaque `docker run` et injecté dans la spec ; la clé
+# privée n'est JAMAIS persistée sur le nœud (hygiène délibérée : elle vit en tmpfs, /run/bobi-tls,
+# et meurt avec le nœud). Corollaire ASSUMÉ : un reboot de nœud efface le matériel → il faut le
+# RE-PROVISIONNER (cf. app/node_recovery.py), pas le persister.
 _CERT_TENTATIVES = 3
 _CERT_BACKOFF_S = 1.0
 
@@ -392,7 +392,7 @@ def _conteneur_deja_conforme(vmid, sig, force):
         return False
     c = db_get_container(vmid) or {}
     if (c.get("runtime_spec_sig") or "") != sig:
-        return False          ***REMOVED*** spec changée (image, cpuset, mounts, IP…) → recréation légitime
+        return False          # spec changée (image, cpuset, mounts, IP…) → recréation légitime
     return status_compute(vmid) == "running"
 
 
@@ -420,7 +420,7 @@ def _diagnose_container(host, name):
     return f"état={state}" + (f" · logs: {logs}" if logs else "")
 
 
-_REF_PIXELS = 1920 * 1080   ***REMOVED*** référence « 1080p » pour le dimensionnement pondéré
+_REF_PIXELS = 1920 * 1080   # référence « 1080p » pour le dimensionnement pondéré
 
 
 def pyramide_input_load(params):
@@ -429,7 +429,7 @@ def pyramide_input_load(params):
     Dimensions résolues via `monitor._shm_fmt` (lecture DB du format du PRODUCTEUR — jamais de
     devinette SHM). Fallback poids 1.0 si le format est introuvable (producteur pas encore en DB).
     Compte tous les input_i quel que soit le type amont (2110, player, mélangeur…)."""
-    from .monitor import _shm_fmt   ***REMOVED*** import paresseux : monitor n'importe pas docker_compute (pas de cycle)
+    from .monitor import _shm_fmt   # import paresseux : monitor n'importe pas docker_compute (pas de cycle)
     p = params or {}
     try:
         n = int(p.get("n_inputs") or 8)
@@ -473,56 +473,56 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
                      kind="deploy", params={"vmid": vmid})
         return False
     from . import plugins, core_pool, gpu_pool, node_driver
-    from . import deploy as _deploy      ***REMOVED*** import tardif : deploy importe docker_compute (circulaire)
-    ***REMOVED*** Image selon la variante déclarée par le plugin : 'media' (bobi-media, GStreamer+ffmpeg) →
-    ***REMOVED*** node.media_image ; sinon 'compute' (bobi-compute) → node.compute_image.
+    from . import deploy as _deploy      # import tardif : deploy importe docker_compute (circulaire)
+    # Image selon la variante déclarée par le plugin : 'media' (bobi-media, GStreamer+ffmpeg) →
+    # node.media_image ; sinon 'compute' (bobi-compute) → node.compute_image.
     variant = plugins.image_variant(deploy_type) if deploy_type else "compute"
     image = node.get("media_image") if variant == "media" else node.get("compute_image")
-    ***REMOVED*** Cas spécial passerelle WebRTC : image dédiée bobi-webrtc (MediaMTX pré-baké). Ce n'est pas un
-    ***REMOVED*** plugin du registre (donc pas de variante) → image lue du setting `webrtc_image` (défaut
-    ***REMOVED*** bobi-webrtc:0.1), avec repli sur node.webrtc_image si la colonne existe.
+    # Cas spécial passerelle WebRTC : image dédiée bobi-webrtc (MediaMTX pré-baké). Ce n'est pas un
+    # plugin du registre (donc pas de variante) → image lue du setting `webrtc_image` (défaut
+    # bobi-webrtc:0.1), avec repli sur node.webrtc_image si la colonne existe.
     if deploy_type == "webrtc_gateway":
         from . import settings as _st
         image = node.get("webrtc_image") or _st.get("webrtc_image") or "bobi-webrtc:0.1"
-    ***REMOVED*** GPU : un plugin GPU-capable (manifest.resources.gpu) sur un nœud GPU-capable (gpu_capable +
-    ***REMOVED*** compute_gpu_image buildée) prend l'image GPU + un sélecteur --gpus alloué (round-robin).
-    ***REMOVED*** Sinon repli TRANSPARENT sur l'image compute CPU : le script.py auto-détecte l'absence de cupy
-    ***REMOVED*** → numpy (aucune erreur). gpu_sel propagé aux DEUX chemins (spec agent + ssh legacy) ci-dessous.
+    # GPU : un plugin GPU-capable (manifest.resources.gpu) sur un nœud GPU-capable (gpu_capable +
+    # compute_gpu_image buildée) prend l'image GPU + un sélecteur --gpus alloué (round-robin).
+    # Sinon repli TRANSPARENT sur l'image compute CPU : le script.py auto-détecte l'absence de cupy
+    # → numpy (aucune erreur). gpu_sel propagé aux DEUX chemins (spec agent + ssh legacy) ci-dessous.
     gpu_sel = None
     if deploy_type and node.get("gpu_capable") and _veut_gpu_instance(deploy_type, c, params):
         if variant == "media":
-            ***REMOVED*** ★ Un plugin MÉDIA porte déjà ses encodeurs (ffmpeg/NVENC est dans bobi-media) : on
-            ***REMOVED*** garde SON image et on n'alloue que la carte. Basculer sur compute_gpu_image le
-            ***REMOVED*** priverait de ffmpeg — ce chemin visait les plugins compute (cupy), pas ceux-ci.
+            # ★ Un plugin MÉDIA porte déjà ses encodeurs (ffmpeg/NVENC est dans bobi-media) : on
+            # garde SON image et on n'alloue que la carte. Basculer sur compute_gpu_image le
+            # priverait de ffmpeg — ce chemin visait les plugins compute (cupy), pas ceux-ci.
             gpu_sel = gpu_pool.allocate_gpu(node["id"], vmid)
         elif node.get("compute_gpu_image"):
             image = node.get("compute_gpu_image")
-            gpu_sel = gpu_pool.allocate_gpu(node["id"], vmid)   ***REMOVED*** ex. "device=0"
+            gpu_sel = gpu_pool.allocate_gpu(node["id"], vmid)   # ex. "device=0"
         if not gpu_sel:
-            ***REMOVED*** Le conteneur PARTIRA sans carte. Sans cette alerte, un `encoder: nvenc` refusé faute
-            ***REMOVED*** de GPU libre se manifesterait seulement par un ffmpeg qui échoue en boucle, avec un
-            ***REMOVED*** « Invalid argument » qui ne nomme rien. On dit ici ce que le déploiement a fait.
+            # Le conteneur PARTIRA sans carte. Sans cette alerte, un `encoder: nvenc` refusé faute
+            # de GPU libre se manifesterait seulement par un ffmpeg qui échoue en boucle, avec un
+            # « Invalid argument » qui ne nomme rien. On dit ici ce que le déploiement a fait.
             db_add_alert("alert.deploy.compute.gpu_indisponible", "warning", vmid=vmid,
                          node_id=node.get("id"), kind="resource",
                          params={"vmid": vmid, "t": deploy_type, "n": node.get("name")})
-    ***REMOVED*** ── EXIGENCE DE VERSION D'IMAGE ────────────────────────────────────────────────────────
-    ***REMOVED*** Deux trains de version indépendants : le script d'un plugin est POUSSÉ (rapide, par
-    ***REMOVED*** conteneur), tandis que `bobimxl.py` et les noyaux C vivent dans l'IMAGE (lente, par nœud,
-    ***REMOVED*** à l'échelle du parc). Un plugin récent peut donc atterrir sur un nœud en retard, et
-    ***REMOVED*** découvrir à l'exécution que la fonction qu'il appelle n'existe pas — boucle de
-    ***REMOVED*** redémarrage, dont la cause n'apparaît nulle part.
-    ***REMOVED*** Un plugin déclare donc `requires.image_min` dans son manifeste, et on REFUSE ici plutôt
-    ***REMOVED*** que de laisser partir un conteneur qui ne peut pas fonctionner. Refuser est brutal, mais
-    ***REMOVED*** l'alerte NOMME la version attendue et celle du nœud : c'est réparable en une lecture.
-    ***REMOVED***
-    ***REMOVED*** ⚠ PORTÉE EXACTE, et elle est plus étroite que ce qu'on aimerait : ce contrôle est à la
-    ***REMOVED*** CRÉATION du conteneur, seul moment où l'image du nœud EST celle du conteneur. Un
-    ***REMOVED*** conteneur créé sur une image ancienne, puis redéployé après que le nœud a été promu,
-    ***REMOVED*** passerait ce test tout en tournant sur l'ancienne image — `containers` ne mémorise pas
-    ***REMOVED*** l'image posée au `docker run`. Ce cas-là n'est PAS couvert ici : il l'est côté script,
-    ***REMOVED*** par un chargement défensif (`getattr(bobimxl, ...)`) et par un repli dont l'état publie
-    ***REMOVED*** qu'il est dégradé. Le vrai correctif serait de stocker l'image à la création — noté, pas
-    ***REMOVED*** fait.
+    # ── EXIGENCE DE VERSION D'IMAGE ────────────────────────────────────────────────────────
+    # Deux trains de version indépendants : le script d'un plugin est POUSSÉ (rapide, par
+    # conteneur), tandis que `bobimxl.py` et les noyaux C vivent dans l'IMAGE (lente, par nœud,
+    # à l'échelle du parc). Un plugin récent peut donc atterrir sur un nœud en retard, et
+    # découvrir à l'exécution que la fonction qu'il appelle n'existe pas — boucle de
+    # redémarrage, dont la cause n'apparaît nulle part.
+    # Un plugin déclare donc `requires.image_min` dans son manifeste, et on REFUSE ici plutôt
+    # que de laisser partir un conteneur qui ne peut pas fonctionner. Refuser est brutal, mais
+    # l'alerte NOMME la version attendue et celle du nœud : c'est réparable en une lecture.
+    #
+    # ⚠ PORTÉE EXACTE, et elle est plus étroite que ce qu'on aimerait : ce contrôle est à la
+    # CRÉATION du conteneur, seul moment où l'image du nœud EST celle du conteneur. Un
+    # conteneur créé sur une image ancienne, puis redéployé après que le nœud a été promu,
+    # passerait ce test tout en tournant sur l'ancienne image — `containers` ne mémorise pas
+    # l'image posée au `docker run`. Ce cas-là n'est PAS couvert ici : il l'est côté script,
+    # par un chargement défensif (`getattr(bobimxl, ...)`) et par un repli dont l'état publie
+    # qu'il est dégradé. Le vrai correctif serait de stocker l'image à la création — noté, pas
+    # fait.
     _req = (plugins.get(deploy_type) or {}).get("requires") if deploy_type else None
     _min = str((_req or {}).get("image_min") or "").strip()
     def _cle(tag):
@@ -560,9 +560,9 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
         return False
 
     name = c.get("docker_name") or _name(vmid)
-    ***REMOVED*** B2-2 : IPAM CENTRALISÉ du plan conteneurs (orchestrateur) si requis (topologie séparée OU
-    ***REMOVED*** multi-nœud) → on alloue l'IP ici et on la passe en `docker run --ip`. Sinon (simple + mono-nœud)
-    ***REMOVED*** : IPAM Docker (comportement actuel, l'IP est relue après le run).
+    # B2-2 : IPAM CENTRALISÉ du plan conteneurs (orchestrateur) si requis (topologie séparée OU
+    # multi-nœud) → on alloue l'IP ici et on la passe en `docker run --ip`. Sinon (simple + mono-nœud)
+    # : IPAM Docker (comportement actuel, l'IP est relue après le run).
     from . import allocations
     alloc_ip = None
     if network != "host" and allocations.centralized_ipam(node["id"]):
@@ -570,22 +570,22 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
         if not alloc_ip:
             db_update_status(vmid, "stopped")
             return False
-    ***REMOVED*** Profil de ressources par type (cohérent avec le préréglage cœurs LXC) : --cpus = quota CPU
-    ***REMOVED*** (≈ cœurs), --memory, et --cpuset-cpus si pin + pool de cœurs déclaré sur le nœud. La priorité
-    ***REMOVED*** 'batch' (transcoder, fichier non temps réel) → --cpu-shares bas + pas de pin → cède aux
-    ***REMOVED*** plugins temps réel (player/recorder, pinnés).
+    # Profil de ressources par type (cohérent avec le préréglage cœurs LXC) : --cpus = quota CPU
+    # (≈ cœurs), --memory, et --cpuset-cpus si pin + pool de cœurs déclaré sur le nœud. La priorité
+    # 'batch' (transcoder, fichier non temps réel) → --cpu-shares bas + pas de pin → cède aux
+    # plugins temps réel (player/recorder, pinnés).
     res = (plugins.get(deploy_type) or {}).get("resources") or {} if deploy_type else {}
-    ***REMOVED*** Profil de ressources : on construit À LA FOIS la chaîne d'options legacy (ssh_run) ET le
-    ***REMOVED*** dict structuré (agent-nœud), à partir de la même logique → pas de divergence.
+    # Profil de ressources : on construit À LA FOIS la chaîne d'options legacy (ssh_run) ET le
+    # dict structuré (agent-nœud), à partir de la même logique → pas de divergence.
     resources = {}
     is_batch = str(res.get("priority") or "").lower() == "batch"
     want = 0
     if res.get("pin") and res.get("cores") and not is_batch:
-        ***REMOVED*** Vrai pinning : cœurs DÉDIÉS non chevauchants demandés au pool du nœud (idempotent).
+        # Vrai pinning : cœurs DÉDIÉS non chevauchants demandés au pool du nœud (idempotent).
         base = int(res["cores"])
-        ***REMOVED*** Dimensionnement DYNAMIQUE optionnel : `cores_per_1080p_input` (override par conteneur dans
-        ***REMOVED*** params, sinon défaut manifeste) → cœurs = clamp(plancher + ratio*charge, plancher, pool libre).
-        ***REMOVED*** `base` reste un PLANCHER. Absent ⇒ per=0 ⇒ comportement legacy (cœurs fixes).
+        # Dimensionnement DYNAMIQUE optionnel : `cores_per_1080p_input` (override par conteneur dans
+        # params, sinon défaut manifeste) → cœurs = clamp(plancher + ratio*charge, plancher, pool libre).
+        # `base` reste un PLANCHER. Absent ⇒ per=0 ⇒ comportement legacy (cœurs fixes).
         _p = params if params is not None else _params_of(c)
         try:
             per = float(_p.get("cores_per_1080p_input") or res.get("cores_per_1080p_input") or 0)
@@ -597,37 +597,37 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
             mine = core_pool.allocated_for(node["id"], vmid)
             free = core_pool.cores_status(node["id"])["free"]
             want = min(max(base, base + math.ceil(per * load)), max(base, free + mine))
-            ***REMOVED*** Le cpuset Docker n'est PAS modifiable à chaud → un resize impose release+realloc (on
-            ***REMOVED*** n'arrive ici, avec un resize, que lors d'un vrai (re)déploiement qui recréera le conteneur).
+            # Le cpuset Docker n'est PAS modifiable à chaud → un resize impose release+realloc (on
+            # n'arrive ici, avec un resize, que lors d'un vrai (re)déploiement qui recréera le conteneur).
             if mine and mine != want:
                 core_pool.release_cores(vmid)
-    ***REMOVED*** CAUSE RACINE corrigée (2026-07-13, nœud 30) : `effective_cpuset` ne renvoie JAMAIS "vide" tant
-    ***REMOVED*** que le nœud a un `compute_cpuset` — que le type n'ait AUCUN profil `resources` (mixer, avsync,
-    ***REMOVED*** color_corrector, delay, split, stills, udc, v210_bridge, probe_2110, webrtc_gateway — pas de
-    ***REMOVED*** plugin.json/manifest « resources » du tout → `res == {}` ci-dessus, `want` reste 0), qu'il
-    ***REMOVED*** demande un pin mais que le pool DÉDIÉ soit plein (`want>0` mais `allocate_cores` échoue), ou
-    ***REMOVED*** qu'il soit `batch` (want=0 volontaire) : dans TOUS les cas on retombe sur le POOL PARTAGÉ du
-    ***REMOVED*** nœud (non-exclusif, mais TOUJOURS hors des lcores busy-poll du moteur 2110 — jamais un
-    ***REMOVED*** conteneur sans cpuset flottant librement, cf. mémoire mtl-tx-frozen-uint64-race / node30-cpu-
-    ***REMOVED*** contention-canary). `dedicated=True` seulement si `n` cœurs EXCLUSIFS ont été obtenus.
-    ***REMOVED*** `effective_cpuset` ALERTE désormais (table alerts, propriétaires nommés) quand il installe le
-    ***REMOVED*** conteneur par-dessus un pool déjà entièrement dédié, et LÈVE `PoolSature` si l'exploitant a
-    ***REMOVED*** activé le refus (`compute_refuse_oversubscribed`) — un mur 50 fps qui n'a nulle part où tourner
-    ***REMOVED*** ne rend service à personne, mais le REFUS reste opt-in : la boucle de surveillance recrée les
-    ***REMOVED*** conteneurs, et refuser par défaut transformerait un pool saturé en panne totale du nœud.
-    ***REMOVED*** NUMA : sur un bi-socket, le GPU appartient à UN socket. Un conteneur GPU épinglé de l'autre
-    ***REMOVED*** côté paie chaque lecture de shm amont et chaque upload H2D au prix du lien inter-socket —
-    ***REMOVED*** mesuré en prod (Horace, mur `multiview-vision` sur nœud NUMA 0 / T4 sur le nœud 1) : segment
-    ***REMOVED*** `inputs` du compositing à 21,9 ms au lieu de 11,1 ms, 25-37 fps au lieu de 50. `prefer_numa`
-    ***REMOVED*** est None quand il n'y a pas de GPU (ou pas de NUMA lisible) : `allocate_cores` garde alors sa
-    ***REMOVED*** règle générale (ne jamais mettre un conteneur à cheval sur deux sockets).
-    ***REMOVED*** Sans GPU, la préférence n'est pas nulle pour autant : un type qui lit les flux RX 2110 en
-    ***REMOVED*** pleine résolution doit viser le socket de la CARTE MÉDIA (c'est elle qui DMA les trames, donc
-    ***REMOVED*** les shm vivent là). Liste FERMÉE (`PREFERE_SOCKET_MEDIA`) et non heuristique : préférer la
-    ***REMOVED*** carte pour tout le compute entasserait le parc sur un seul socket.
+    # CAUSE RACINE corrigée (2026-07-13, nœud 30) : `effective_cpuset` ne renvoie JAMAIS "vide" tant
+    # que le nœud a un `compute_cpuset` — que le type n'ait AUCUN profil `resources` (mixer, avsync,
+    # color_corrector, delay, split, stills, udc, v210_bridge, probe_2110, webrtc_gateway — pas de
+    # plugin.json/manifest « resources » du tout → `res == {}` ci-dessus, `want` reste 0), qu'il
+    # demande un pin mais que le pool DÉDIÉ soit plein (`want>0` mais `allocate_cores` échoue), ou
+    # qu'il soit `batch` (want=0 volontaire) : dans TOUS les cas on retombe sur le POOL PARTAGÉ du
+    # nœud (non-exclusif, mais TOUJOURS hors des lcores busy-poll du moteur 2110 — jamais un
+    # conteneur sans cpuset flottant librement, cf. mémoire mtl-tx-frozen-uint64-race / node30-cpu-
+    # contention-canary). `dedicated=True` seulement si `n` cœurs EXCLUSIFS ont été obtenus.
+    # `effective_cpuset` ALERTE désormais (table alerts, propriétaires nommés) quand il installe le
+    # conteneur par-dessus un pool déjà entièrement dédié, et LÈVE `PoolSature` si l'exploitant a
+    # activé le refus (`compute_refuse_oversubscribed`) — un mur 50 fps qui n'a nulle part où tourner
+    # ne rend service à personne, mais le REFUS reste opt-in : la boucle de surveillance recrée les
+    # conteneurs, et refuser par défaut transformerait un pool saturé en panne totale du nœud.
+    # NUMA : sur un bi-socket, le GPU appartient à UN socket. Un conteneur GPU épinglé de l'autre
+    # côté paie chaque lecture de shm amont et chaque upload H2D au prix du lien inter-socket —
+    # mesuré en prod (Horace, mur `multiview-vision` sur nœud NUMA 0 / T4 sur le nœud 1) : segment
+    # `inputs` du compositing à 21,9 ms au lieu de 11,1 ms, 25-37 fps au lieu de 50. `prefer_numa`
+    # est None quand il n'y a pas de GPU (ou pas de NUMA lisible) : `allocate_cores` garde alors sa
+    # règle générale (ne jamais mettre un conteneur à cheval sur deux sockets).
+    # Sans GPU, la préférence n'est pas nulle pour autant : un type qui lit les flux RX 2110 en
+    # pleine résolution doit viser le socket de la CARTE MÉDIA (c'est elle qui DMA les trames, donc
+    # les shm vivent là). Liste FERMÉE (`PREFERE_SOCKET_MEDIA`) et non heuristique : préférer la
+    # carte pour tout le compute entasserait le parc sur un seul socket.
     prefer_numa = core_pool.numa_of_gpu(node["id"], gpu_sel)
-    ***REMOVED*** `deploy_type` est un argument OPTIONNEL de cette fonction : le type qui fait foi ici est celui
-    ***REMOVED*** de la base quand l'appelant ne l'a pas passé (sinon la préférence sauterait en silence).
+    # `deploy_type` est un argument OPTIONNEL de cette fonction : le type qui fait foi ici est celui
+    # de la base quand l'appelant ne l'a pas passé (sinon la préférence sauterait en silence).
     _t_eff = deploy_type or _type_of(c)
     if prefer_numa is None and _t_eff in core_pool.PREFERE_SOCKET_MEDIA:
         prefer_numa = core_pool.numa_of_media_nic(node["id"])
@@ -641,29 +641,29 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
         db_update_status(vmid, "stopped")
         return False
     if is_batch:
-        resources["cpu_shares"] = 128                        ***REMOVED*** poids CPU faible (défaut 1024)
+        resources["cpu_shares"] = 128                        # poids CPU faible (défaut 1024)
         if res.get("cores"):
-            resources["cpus"] = int(res["cores"])            ***REMOVED*** plafond optionnel
+            resources["cpus"] = int(res["cores"])            # plafond optionnel
     elif res.get("cores") and not dedicated:
-        ***REMOVED*** Pas de pinning dédié (non demandé, ou pool dédié plein) → quota --cpus EN PLUS du cpuset
-        ***REMOVED*** partagé ci-dessous (le cpuset borne la PLACE, --cpus borne la PART de CPU dans cette place).
+        # Pas de pinning dédié (non demandé, ou pool dédié plein) → quota --cpus EN PLUS du cpuset
+        # partagé ci-dessous (le cpuset borne la PLACE, --cpus borne la PART de CPU dans cette place).
         resources["cpus"] = int(res["cores"])
     if cpuset:
         resources["cpuset"] = cpuset
     if res.get("memory"):
         resources["memory_mb"] = int(res["memory"])
-    ***REMOVED*** `containers.pinned_cores` ne reflète QUE le pinning DÉDIÉ/exclusif (celui que `cpu_map`, cf.
-    ***REMOVED*** routes/__init__.py, utilise pour détecter des CONFLITS de cœurs entre containers) — le repli
-    ***REMOVED*** « pool partagé » est INTENTIONNELLEMENT non-exclusif (plusieurs containers dessus n'est pas un
-    ***REMOVED*** conflit) et ne doit donc pas s'y confondre. On efface une valeur pinned_cores devenue stale
-    ***REMOVED*** (ex. l'allocation dédiée précédente a été libérée par un resize) plutôt que de la laisser mentir.
+    # `containers.pinned_cores` ne reflète QUE le pinning DÉDIÉ/exclusif (celui que `cpu_map`, cf.
+    # routes/__init__.py, utilise pour détecter des CONFLITS de cœurs entre containers) — le repli
+    # « pool partagé » est INTENTIONNELLEMENT non-exclusif (plusieurs containers dessus n'est pas un
+    # conflit) et ne doit donc pas s'y confondre. On efface une valeur pinned_cores devenue stale
+    # (ex. l'allocation dédiée précédente a été libérée par un resize) plutôt que de la laisser mentir.
     try:
         db_update_resources(vmid, pinned_cores=(cpuset if dedicated else ""))
     except Exception as _e:
         log.warning("compute %s: maj pinned_cores échouée: %s", vmid, _e)
 
-    ***REMOVED*** Volume média : les plugins qui le déclarent (media_volume) reçoivent un bind du stockage
-    ***REMOVED*** LOCAL du nœud → /mnt/media, scopé au sous-dossier du projet si le container y est rattaché.
+    # Volume média : les plugins qui le déclarent (media_volume) reçoivent un bind du stockage
+    # LOCAL du nœud → /mnt/media, scopé au sous-dossier du projet si le container y est rattaché.
     mounts = [{"host": mxl, "container": "/dev/shm"}]
     media_host_dir = None
     if deploy_type and plugins.wants_media_volume(deploy_type):
@@ -674,20 +674,20 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
             media_host_dir = media_root.rstrip("/") + "/" + os.path.basename(proj["media_path"].rstrip("/"))
         mounts.append({"host": media_host_dir, "container": "/mnt/media"})
 
-    ***REMOVED*** Volume d'état : dossier persistant par container (hôte → /var/lib/bobi). Le rootfs est
-    ***REMOVED*** recréé à chaque déploiement ET au boot du nœud ; ce qui doit survivre (journaux
-    ***REMOVED*** d'exploitation) s'écrit ici. Scopé au hostname : deux instances ne se marchent pas dessus.
+    # Volume d'état : dossier persistant par container (hôte → /var/lib/bobi). Le rootfs est
+    # recréé à chaque déploiement ET au boot du nœud ; ce qui doit survivre (journaux
+    # d'exploitation) s'écrit ici. Scopé au hostname : deux instances ne se marchent pas dessus.
     state_host_dir = None
     if deploy_type and plugins.wants_state_volume(deploy_type):
         state_host_dir = "/var/lib/bobi/state/" + (c.get("hostname") or f"vmid{vmid}")
         mounts.append({"host": state_host_dir, "container": "/var/lib/bobi"})
 
-    ***REMOVED*** Matériel Blackmagic : le plugin déclare la CAPACITÉ `needs_decklink`, et c'est
-    ***REMOVED*** l'orchestrateur qui décide ce qu'elle recouvre — jamais le manifeste (cf. plugins.py).
-    ***REMOVED***
-    ***REMOVED*** ★ Les nœuds `/dev/blackmagic/*` n'existent QUE si une carte est présente et son module
-    ***REMOVED***   chargé : on les ÉNUMÈRE sur le nœud au lieu de les supposer. Un chemin codé en dur
-    ***REMOVED***   donnerait un `docker run` qui échoue, ou pire un conteneur qui démarre et ne voit rien.
+    # Matériel Blackmagic : le plugin déclare la CAPACITÉ `needs_decklink`, et c'est
+    # l'orchestrateur qui décide ce qu'elle recouvre — jamais le manifeste (cf. plugins.py).
+    #
+    # ★ Les nœuds `/dev/blackmagic/*` n'existent QUE si une carte est présente et son module
+    #   chargé : on les ÉNUMÈRE sur le nœud au lieu de les supposer. Un chemin codé en dur
+    #   donnerait un `docker run` qui échoue, ou pire un conteneur qui démarre et ne voit rien.
     decklink_devs = []
     if deploy_type and plugins.needs_decklink(deploy_type):
         try:
@@ -699,53 +699,53 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
         except Exception as _e:
             log.warning("decklink %s: énumération des périphériques échouée: %s", vmid, _e)
         if not decklink_devs:
-            ***REMOVED*** ÉCHEC BRUYANT. Créer le conteneur quand même donnerait un plugin qui démarre,
-            ***REMOVED*** n'énumère aucune carte et n'explique rien — la panne la plus coûteuse à
-            ***REMOVED*** diagnostiquer, parce qu'elle ne ressemble pas à une panne.
+            # ÉCHEC BRUYANT. Créer le conteneur quand même donnerait un plugin qui démarre,
+            # n'énumère aucune carte et n'explique rien — la panne la plus coûteuse à
+            # diagnostiquer, parce qu'elle ne ressemble pas à une panne.
             raise RuntimeError(
                 "aucun périphérique Blackmagic sur %s : /dev/blackmagic est vide ou absent. "
                 "Carte présente ? Pilote Desktop Video installé et module chargé "
                 "(modprobe blackmagic blackmagic-io) ? Micrologiciel à jour "
                 "(DesktopVideoUpdateTool --list) ?" % (node.get("name") or node.get("host")))
-        ***REMOVED*** La bibliothèque du pilote vient de l'HÔTE : le pilote s'installe à la main et rien de
-        ***REMOVED*** Blackmagic n'entre dans nos images (décision §5 du chantier DECKLINK).
+        # La bibliothèque du pilote vient de l'HÔTE : le pilote s'installe à la main et rien de
+        # Blackmagic n'entre dans nos images (décision §5 du chantier DECKLINK).
         mounts.append({"host": "/usr/lib/libDeckLinkAPI.so",
                        "container": "/usr/lib/libDeckLinkAPI.so", "ro": True})
 
-    ***REMOVED*** ─── Chemin AGENT (node.agent_url) vs LEGACY (ssh_run) ───────────────────────
+    # ─── Chemin AGENT (node.agent_url) vs LEGACY (ssh_run) ───────────────────────
     if node_driver.has_agent(node):
         spec = {
             "name": name, "image": image, "network": network,
             "privileged": False, "autoremove": False, "restart_policy": "unless-stopped",
             "mounts": mounts, "resources": resources,
-            ***REMOVED*** Journal DURABLE (cf. app/journal.py) : EXTENSION DE CONTRAT AGENT — `log` =
-            ***REMOVED*** {driver, opts} → `docker run --log-driver … --log-opt …`. Un agent-nœud ANTÉRIEUR
-            ***REMOVED*** à 0.17.0 ignore la clé : le conteneur retombe sur le pilote par défaut du daemon
-            ***REMOVED*** (json-file, non durable) — dégradé mais pas cassé, et la route de journal l'annonce
-            ***REMOVED*** explicitement (`source: "docker"`). Mettre les agents à jour (Réglages → Nœuds).
+            # Journal DURABLE (cf. app/journal.py) : EXTENSION DE CONTRAT AGENT — `log` =
+            # {driver, opts} → `docker run --log-driver … --log-opt …`. Un agent-nœud ANTÉRIEUR
+            # à 0.17.0 ignore la clé : le conteneur retombe sur le pilote par défaut du daemon
+            # (json-file, non durable) — dégradé mais pas cassé, et la route de journal l'annonce
+            # explicitement (`source: "docker"`). Mettre les agents à jour (Réglages → Nœuds).
             "log": _journal.log_opts(name),
         }
         if alloc_ip:
-            spec["ip"] = alloc_ip   ***REMOVED*** B2-2 : IPAM centralisé → l'agent ajoute --ip
+            spec["ip"] = alloc_ip   # B2-2 : IPAM centralisé → l'agent ajoute --ip
         if decklink_devs:
-            ***REMOVED*** EXTENSION DE CONTRAT AGENT : `devices` → `docker run --device` (agent ≥ 0.10.0,
-            ***REMOVED*** chantier RDMA). Un agent plus ancien IGNORE la clé → conteneur sans carte ; le
-            ***REMOVED*** plugin le dira (`sdk_absent` / aucune carte énumérée) plutôt que de tourner à vide.
+            # EXTENSION DE CONTRAT AGENT : `devices` → `docker run --device` (agent ≥ 0.10.0,
+            # chantier RDMA). Un agent plus ancien IGNORE la clé → conteneur sans carte ; le
+            # plugin le dira (`sdk_absent` / aucune carte énumérée) plutôt que de tourner à vide.
             spec["devices"] = list(decklink_devs)
         if gpu_sel:
-            ***REMOVED*** EXTENSION DE CONTRAT AGENT : l'agent-nœud doit traduire spec["gpus"] en `docker run
-            ***REMOVED*** --gpus "<sel>"` (cf. NODE_AGENT.md). Un agent qui l'ignore → conteneur sans GPU →
-            ***REMOVED*** cupy absent → repli numpy (dégradation silencieuse, pas de crash).
+            # EXTENSION DE CONTRAT AGENT : l'agent-nœud doit traduire spec["gpus"] en `docker run
+            # --gpus "<sel>"` (cf. NODE_AGENT.md). Un agent qui l'ignore → conteneur sans GPU →
+            # cupy absent → repli numpy (dégradation silencieuse, pas de crash).
             spec["gpus"] = gpu_sel
-        ***REMOVED*** mTLS du plan de contrôle (chantier feat/mtls) : quand la CA interne est dispo, le CONTRÔLEUR
-        ***REMOVED*** génère un cert conteneur éphémère (signé CA, EKU serveur+client) et l'injecte au run. L'agent-
-        ***REMOVED*** nœud écrit ces PEM dans le conteneur sous /etc/bobi-tls/{cert.pem,key.pem,ca.pem} (bind-mount) →
-        ***REMOVED*** script_templates/agent.py sert :8081 en HTTPS. Le contrôleur (deploy/metrics) valide contre la CA
-        ***REMOVED*** (hostname off). CA absente → clé omise → agent en http (rétro-compat).
-        ***REMOVED***
-        ***REMOVED*** ÉCHEC D'ÉMISSION = ARRÊT. Auparavant l'exception était avalée en `log.warning` : on créait
-        ***REMOVED*** sciemment un conteneur STRUCTURELLEMENT INJOIGNABLE (agent en clair, contrôleur en https),
-        ***REMOVED*** qui tourne et consomme des ressources sans jamais répondre — l'anti-patron n°1 du projet.
+        # mTLS du plan de contrôle (chantier feat/mtls) : quand la CA interne est dispo, le CONTRÔLEUR
+        # génère un cert conteneur éphémère (signé CA, EKU serveur+client) et l'injecte au run. L'agent-
+        # nœud écrit ces PEM dans le conteneur sous /etc/bobi-tls/{cert.pem,key.pem,ca.pem} (bind-mount) →
+        # script_templates/agent.py sert :8081 en HTTPS. Le contrôleur (deploy/metrics) valide contre la CA
+        # (hostname off). CA absente → clé omise → agent en http (rétro-compat).
+        #
+        # ÉCHEC D'ÉMISSION = ARRÊT. Auparavant l'exception était avalée en `log.warning` : on créait
+        # sciemment un conteneur STRUCTURELLEMENT INJOIGNABLE (agent en clair, contrôleur en https),
+        # qui tourne et consomme des ressources sans jamais répondre — l'anti-patron n°1 du projet.
         try:
             _tls = _cert_mtls_conteneur(vmid)
         except CertConteneurIndisponible as _e:
@@ -755,31 +755,31 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
                 params={"vmid": vmid, "n": node["name"], "tentatives": _CERT_TENTATIVES,
                         "e": str(_e), "hint": _ca_dir_hint()})
             db_update_status(vmid, "stopped")
-            db_update_spec_sig(vmid, None)   ***REMOVED*** état inconnu → recréation franche au prochain coup
+            db_update_spec_sig(vmid, None)   # état inconnu → recréation franche au prochain coup
             return False
         if _tls:
             spec["tls"] = _tls
             _env_tls = _env_identite_client()
             if _env_tls:
                 spec.setdefault("env", {}).update(_env_tls)
-        ***REMOVED*** Auth de l'agent conteneur (:8081) — SECOND FACTEUR, indépendant du mTLS ci-dessus (qui ne
-        ***REMOVED*** prouve que « signé par la CA » + CN du contrôleur). L'agent (script_templates/agent.py)
-        ***REMOVED*** n'EXIGE l'en-tête X-MXL-Agent-Token que si MXL_AGENT_TOKEN est posé dans son environnement :
-        ***REMOVED*** c'est ICI (et dans le chemin ssh plus bas, et dans docker_driver) que le contrôle devient
-        ***REMOVED*** effectif. Sans cette ligne, le token existait des deux côtés du code et n'était jamais
-        ***REMOVED*** appliqué nulle part. Le token entre dans la SIGNATURE de spec → un conteneur créé sans
-        ***REMOVED*** token est recréé (avec) au prochain déploiement : c'est la bascule au fil de l'eau.
+        # Auth de l'agent conteneur (:8081) — SECOND FACTEUR, indépendant du mTLS ci-dessus (qui ne
+        # prouve que « signé par la CA » + CN du contrôleur). L'agent (script_templates/agent.py)
+        # n'EXIGE l'en-tête X-MXL-Agent-Token que si MXL_AGENT_TOKEN est posé dans son environnement :
+        # c'est ICI (et dans le chemin ssh plus bas, et dans docker_driver) que le contrôle devient
+        # effectif. Sans cette ligne, le token existait des deux côtés du code et n'était jamais
+        # appliqué nulle part. Le token entre dans la SIGNATURE de spec → un conteneur créé sans
+        # token est recréé (avec) au prochain déploiement : c'est la bascule au fil de l'eau.
         _tok = _deploy.token_a_injecter(vmid)
         if _tok:
             spec.setdefault("env", {})["MXL_AGENT_TOKEN"] = _tok
-        ***REMOVED*** ★ Lot de synchronisation RDMA (`maxSyncBatchSizeHint`), lu par `bobimxl._flow_options()`.
-        ***REMOVED*** UN SEUL point d'injection pour toute la flotte : c'est une option de FLUX, posée à la
-        ***REMOVED*** création, donc invisible pour les plugins — inutile de la propager plugin par plugin.
-        ***REMOVED*** Mesuré le 2026-08-09 : au défaut du SDK (= totalSlices) l'initiateur RDMA attend la trame
-        ***REMOVED*** ENTIÈRE avant de transférer — la 1ʳᵉ bande n'est lisible sur la réplique qu'à 22,63 ms.
-        ***REMOVED*** À 2 tranches : 0,54 ms. Débit et paquets identiques, seul le CPU des initiateurs monte
-        ***REMOVED*** (15 % → 44 % cumulés sur 12 conteneurs). Vide = comportement historique.
-        ***REMOVED*** ⚠ N'agit que sur les flux CRÉÉS ENSUITE : un producteur qui se rattache garde son lot.
+        # ★ Lot de synchronisation RDMA (`maxSyncBatchSizeHint`), lu par `bobimxl._flow_options()`.
+        # UN SEUL point d'injection pour toute la flotte : c'est une option de FLUX, posée à la
+        # création, donc invisible pour les plugins — inutile de la propager plugin par plugin.
+        # Mesuré le 2026-08-09 : au défaut du SDK (= totalSlices) l'initiateur RDMA attend la trame
+        # ENTIÈRE avant de transférer — la 1ʳᵉ bande n'est lisible sur la réplique qu'à 22,63 ms.
+        # À 2 tranches : 0,54 ms. Débit et paquets identiques, seul le CPU des initiateurs monte
+        # (15 % → 44 % cumulés sur 12 conteneurs). Vide = comportement historique.
+        # ⚠ N'agit que sur les flux CRÉÉS ENSUITE : un producteur qui se rattache garde son lot.
         try:
             from . import settings as _st_sb
             _sb = str(_st_sb.get("mxl_sync_batch") or "").strip()
@@ -787,30 +787,30 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
             _sb = ""
         if _sb:
             spec.setdefault("env", {})["MXL_SYNC_BATCH"] = _sb
-        ***REMOVED*** ★ Capacités du pilote NVIDIA. `--gpus` seul n'accorde que `compute,utility` : le toolkit
-        ***REMOVED*** n'injecte PAS `libnvidia-encode.so`, et ffmpeg échoue alors sur « Invalid argument (-22) »
-        ***REMOVED*** — un message qui ne dit rien de la cause (vérifié au banc, ~20 min pour le comprendre).
-        ***REMOVED*** `video` est ce qui rend NVENC/NVDEC utilisables ; on garde compute/utility pour ne pas
-        ***REMOVED*** priver les plugins cupy qui partagent ce chemin.
+        # ★ Capacités du pilote NVIDIA. `--gpus` seul n'accorde que `compute,utility` : le toolkit
+        # n'injecte PAS `libnvidia-encode.so`, et ffmpeg échoue alors sur « Invalid argument (-22) »
+        # — un message qui ne dit rien de la cause (vérifié au banc, ~20 min pour le comprendre).
+        # `video` est ce qui rend NVENC/NVDEC utilisables ; on garde compute/utility pour ne pas
+        # priver les plugins cupy qui partagent ce chemin.
         if decklink_devs:
-            ***REMOVED*** EXTENSION DE CONTRAT AGENT : `devices` → `docker run --device` (agent ≥ 0.10.0,
-            ***REMOVED*** chantier RDMA). Un agent plus ancien IGNORE la clé → conteneur sans carte ; le
-            ***REMOVED*** plugin le dira (`sdk_absent` / aucune carte énumérée) plutôt que de tourner à vide.
+            # EXTENSION DE CONTRAT AGENT : `devices` → `docker run --device` (agent ≥ 0.10.0,
+            # chantier RDMA). Un agent plus ancien IGNORE la clé → conteneur sans carte ; le
+            # plugin le dira (`sdk_absent` / aucune carte énumérée) plutôt que de tourner à vide.
             spec["devices"] = list(decklink_devs)
         if gpu_sel:
             spec.setdefault("env", {})["NVIDIA_DRIVER_CAPABILITIES"] = "video,compute,utility"
         sig = _signature_spec(spec)
         if _conteneur_deja_conforme(vmid, sig, force):
-            ***REMOVED*** Cas NOMINAL d'un simple (re)push de script : le conteneur tourne déjà avec cette
-            ***REMOVED*** spec exacte. Le recréer viderait son rootfs éphémère (script perdu) et couperait
-            ***REMOVED*** la sortie — c'est ce qui entretenait la boucle de recréation. On ne touche à rien.
+            # Cas NOMINAL d'un simple (re)push de script : le conteneur tourne déjà avec cette
+            # spec exacte. Le recréer viderait son rootfs éphémère (script perdu) et couperait
+            # la sortie — c'est ce qui entretenait la boucle de recréation. On ne touche à rien.
             recree = False
-            ***REMOVED*** ── CONTRÔLE D'IMAGE SUR CE QUI TOURNE VRAIMENT ──────────────────────────
-            ***REMOVED*** Le conteneur n'est PAS recréé : il gardera l'image posée à son `docker run`,
-            ***REMOVED*** qui peut être antérieure à celle du nœud si celui-ci a été promu depuis. Le
-            ***REMOVED*** contrôle d'entrée, lui, a jugé l'image du NŒUD — c'est-à-dire la mauvaise.
-            ***REMOVED*** Sans ce second contrôle, un plugin exigeant 0.32 se déployait sur un conteneur
-            ***REMOVED*** tournant en 0.29, et la panne n'apparaissait qu'à l'exécution.
+            # ── CONTRÔLE D'IMAGE SUR CE QUI TOURNE VRAIMENT ──────────────────────────
+            # Le conteneur n'est PAS recréé : il gardera l'image posée à son `docker run`,
+            # qui peut être antérieure à celle du nœud si celui-ci a été promu depuis. Le
+            # contrôle d'entrée, lui, a jugé l'image du NŒUD — c'est-à-dire la mauvaise.
+            # Sans ce second contrôle, un plugin exigeant 0.32 se déployait sur un conteneur
+            # tournant en 0.29, et la panne n'apparaissait qu'à l'exécution.
             _img_reelle = (c or {}).get("image")
             if _min and _img_reelle:
                 _a2, _b2 = _cle(_img_reelle), _cle(_min)
@@ -827,13 +827,13 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
             ip = c.get("docker_ip") or alloc_ip or ""
         else:
             recree = True
-            ok, r = node_driver.run_container(node, spec)   ***REMOVED*** docker auto-crée le dossier de bind média
+            ok, r = node_driver.run_container(node, spec)   # docker auto-crée le dossier de bind média
             if not ok:
                 db_add_alert("alert.deploy.compute.agent_echoue", "error", vmid=vmid,
                              node_id=node.get("id"), kind="deploy",
                              params={"vmid": vmid, "e": str(r)})
                 db_update_status(vmid, "stopped")
-                db_update_spec_sig(vmid, None)   ***REMOVED*** conteneur dans un état inconnu → forcer la recréation au prochain coup
+                db_update_spec_sig(vmid, None)   # conteneur dans un état inconnu → forcer la recréation au prochain coup
                 return False
             ip = (r or {}).get("ip") or alloc_ip or ""
             if not ip and network != "host":
@@ -843,18 +843,18 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
                 db_update_spec_sig(vmid, None)
                 return False
     else:
-        ***REMOVED*** AGENT-NŒUD EXIGÉ (décision 2026-07-26). L'ancien chemin root-SSH construisait un
-        ***REMOVED*** `docker run` à la main, en parallèle de la spec envoyée à l'agent. Deux chemins pour la
-        ***REMOVED*** même chose, dont un régulièrement OUBLIÉ : il n'a jamais reçu les options de journal
-        ***REMOVED*** (conteneur en json-file non durable), ni les variables mTLS (agent en HTTP clair alors
-        ***REMOVED*** que le contrôleur parle HTTPS → conteneur injoignable en silence, la panne même qu'on
-        ***REMOVED*** vient de corriger). Le maintenir revenait à entretenir une voie qui produit des
-        ***REMOVED*** conteneurs dégradés SANS que rien ne le signale.
-        ***REMOVED***
-        ***REMOVED*** Un nœud sans agent ne peut donc plus héberger de conteneur compute. C'est un REFUS
-        ***REMOVED*** explicite et non un repli discret : mieux vaut ne pas créer que créer un conteneur dont
-        ***REMOVED*** on sait qu'il sera à moitié configuré. `ssh_run` (host-ops : prép, vfio, images) garde
-        ***REMOVED*** son repli SSH — il exécute des commandes ponctuelles, pas des conteneurs de production.
+        # AGENT-NŒUD EXIGÉ (décision 2026-07-26). L'ancien chemin root-SSH construisait un
+        # `docker run` à la main, en parallèle de la spec envoyée à l'agent. Deux chemins pour la
+        # même chose, dont un régulièrement OUBLIÉ : il n'a jamais reçu les options de journal
+        # (conteneur en json-file non durable), ni les variables mTLS (agent en HTTP clair alors
+        # que le contrôleur parle HTTPS → conteneur injoignable en silence, la panne même qu'on
+        # vient de corriger). Le maintenir revenait à entretenir une voie qui produit des
+        # conteneurs dégradés SANS que rien ne le signale.
+        #
+        # Un nœud sans agent ne peut donc plus héberger de conteneur compute. C'est un REFUS
+        # explicite et non un repli discret : mieux vaut ne pas créer que créer un conteneur dont
+        # on sait qu'il sera à moitié configuré. `ssh_run` (host-ops : prép, vfio, images) garde
+        # son repli SSH — il exécute des commandes ponctuelles, pas des conteneurs de production.
         db_add_alert(
             "alert.deploy.compute.sans_agent_noeud", "error", vmid=vmid,
             node_id=node.get("id"), kind="deploy",
@@ -865,12 +865,12 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
 
     db_update_docker_ip(vmid, ip)
 
-    ***REMOVED*** Attendre que l'agent :8081 réponde avant de rendre la main (le chemin deploy va POSTer
-    ***REMOVED*** immédiatement /deploy + /start dessus). HTTPS mTLS si la CA est dispo (agent recréé HTTPS-only),
-    ***REMOVED*** sinon http — via le helper partagé de deploy.py (même session/schéma que le POST /deploy suivant).
-    ***REMOVED*** L'en-tête d'auth est OBLIGATOIRE ici : depuis l'injection de MXL_AGENT_TOKEN, un agent sous
-    ***REMOVED*** token répond 401 sans lui → la boucle n'aurait JAMAIS vu 200 et on aurait rendu la main après
-    ***REMOVED*** 10 s en croyant l'agent muet (échec silencieux).
+    # Attendre que l'agent :8081 réponde avant de rendre la main (le chemin deploy va POSTer
+    # immédiatement /deploy + /start dessus). HTTPS mTLS si la CA est dispo (agent recréé HTTPS-only),
+    # sinon http — via le helper partagé de deploy.py (même session/schéma que le POST /deploy suivant).
+    # L'en-tête d'auth est OBLIGATOIRE ici : depuis l'injection de MXL_AGENT_TOKEN, un agent sous
+    # token répond 401 sans lui → la boucle n'aurait JAMAIS vu 200 et on aurait rendu la main après
+    # 10 s en croyant l'agent muet (échec silencieux).
     from .deploy import (agent_session as _agent_session, agent_url as _agent_url,
                          agent_headers as _agent_headers)
     for _ in range(20):
@@ -885,14 +885,14 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
 
     db_update_status(vmid, "running")
     if recree:
-        ***REMOVED*** Signature du conteneur RÉELLEMENT en marche → les prochains push de script n'auront
-        ***REMOVED*** plus rien à recréer tant que la spec ne bouge pas.
+        # Signature du conteneur RÉELLEMENT en marche → les prochains push de script n'auront
+        # plus rien à recréer tant que la spec ne bouge pas.
         db_update_spec_sig(vmid, sig)
-        ***REMOVED*** IMAGE RÉELLEMENT POSÉE, enregistrée ICI et pas à la création de la ligne : c'est
-        ***REMOVED*** au `docker run` que le tag est choisi, et le nœud a pu être promu entre-temps.
-        ***REMOVED*** Sans elle, `requires.image_min` ne protégeait que la création — un conteneur créé
-        ***REMOVED*** sur une image ancienne puis redéployé passait le contrôle en tournant sur
-        ***REMOVED*** l'ancienne. C'est le cas qui a coûté deux recréations le 2026-08-25.
+        # IMAGE RÉELLEMENT POSÉE, enregistrée ICI et pas à la création de la ligne : c'est
+        # au `docker run` que le tag est choisi, et le nœud a pu être promu entre-temps.
+        # Sans elle, `requires.image_min` ne protégeait que la création — un conteneur créé
+        # sur une image ancienne puis redéployé passait le contrôle en tournant sur
+        # l'ancienne. C'est le cas qui a coûté deux recréations le 2026-08-25.
         db_update_container_image(vmid, image)
         db_add_alert("alert.deploy.compute.up", "info", vmid=vmid, node_id=node.get("id"),
                      kind="deploy", params={"h": name, "vmid": vmid, "n": node["name"], "ip": ip})
@@ -910,10 +910,10 @@ def start_compute(vmid):
     if not node:
         return False
     from .database import db_set_desired_state
-    db_set_desired_state(vmid, "running")   ***REMOVED*** intention opérateur, même si la tentative échoue
+    db_set_desired_state(vmid, "running")   # intention opérateur, même si la tentative échoue
     st = status_compute(vmid)
     if st == "absent":
-        ***REMOVED*** conteneur disparu → re-run complet puis re-push du script via le chemin standard
+        # conteneur disparu → re-run complet puis re-push du script via le chemin standard
         import json
         try:
             dc = json.loads(c.get("deploy_config") or "{}")
@@ -936,7 +936,7 @@ def stop_compute(vmid):
     if not node:
         return (False, "nœud introuvable")
     from .database import db_set_desired_state
-    db_set_desired_state(vmid, "stopped")   ***REMOVED*** arrêt VOULU → l'auto-recovery ne le relèvera pas
+    db_set_desired_state(vmid, "stopped")   # arrêt VOULU → l'auto-recovery ne le relèvera pas
     rc, out, err = ssh_run(node["host"], f"docker stop {shlex.quote(name)} 2>&1", timeout=30)
     db_update_status(vmid, "stopped")
     db_add_alert("alert.deploy.compute.arrete", "info" if rc == 0 else "warning", vmid=vmid,
@@ -998,8 +998,8 @@ def recreer_compute(vmid, progress=None):
         return (False, "nœud introuvable")
     avant = image_courante_compute(vmid)
     _p(f"arrêt de {name}…")
-    ***REMOVED*** Arrêt GRACIEUX d'abord (le script a le temps de fermer ses flux MXL et de rendre ses
-    ***REMOVED*** mappings) : un `rm -f` direct laisse des lecteurs accrochés à des générations mortes.
+    # Arrêt GRACIEUX d'abord (le script a le temps de fermer ses flux MXL et de rendre ses
+    # mappings) : un `rm -f` direct laisse des lecteurs accrochés à des générations mortes.
     ssh_run(node["host"], f"docker stop -t 12 {shlex.quote(name)} >/dev/null 2>&1", timeout=45)
     _p(f"retrait du conteneur {name}…")
     ssh_run(node["host"], f"docker rm -f {shlex.quote(name)} >/dev/null 2>&1", timeout=30)
@@ -1008,7 +1008,7 @@ def recreer_compute(vmid, progress=None):
                      node_id=node.get("id"), kind="deploy", params={"h": name, "vmid": vmid})
         return (False, "conteneur toujours présent après rm")
     _p("redéploiement sur l'image courante…")
-    ***REMOVED*** `start_compute` voit « absent » et emprunte `deployer_script`, qui relit `nodes.<image>`.
+    # `start_compute` voit « absent » et emprunte `deployer_script`, qui relit `nodes.<image>`.
     ok = start_compute(vmid)
     apres = image_courante_compute(vmid) if ok else ""
     if ok:

@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Bibliothèque de MODÈLES de carte 2110 (gabarits réutilisables, par TYPE de carte).
 
@@ -29,10 +29,10 @@ import logging
 
 log = logging.getLogger(__name__)
 
-_BIND_KEY = "tx_layout_binding_%d_%s"     ***REMOVED*** (node_id, iface) → {model_id, model_name, applied_at}
+_BIND_KEY = "tx_layout_binding_%d_%s"     # (node_id, iface) → {model_id, model_name, applied_at}
 
 
-***REMOVED*** ─── Types de carte (la bibliothèque de cartes existante) ─────────────────────────────────────────
+# ─── Types de carte (la bibliothèque de cartes existante) ─────────────────────────────────────────
 
 def card_types():
     """Types de carte connus : profils MESURÉS (`nic_profiles`) + modèles réellement présents sur les
@@ -49,7 +49,7 @@ def card_types():
         key = model.lower()
         cap = int(rl_tx_cap or 0) or _mtl.nic_rl_tx_cap(model)
         cur = seen.get(key)
-        ***REMOVED*** Un profil mesuré prime sur une simple présence terrain (même règle que _node_rl_tx_cap).
+        # Un profil mesuré prime sur une simple présence terrain (même règle que _node_rl_tx_cap).
         if cur and not (measured and not cur.get("measured")):
             cur["sources"] = sorted(set(cur["sources"] + [source]))
             return
@@ -67,10 +67,10 @@ def card_types():
             for r in db_get_node_interfaces(n["id"]) or []:
                 if r.get("role") == "media2110":
                     _add(r.get("model"), "node")
-                    ***REMOVED*** Vitesse de lien du TYPE = MAX des speed_mbps des cartes média dont le .model
-                    ***REMOVED*** correspond (sous-chaîne insensible à la casse, comme compatible_models). La
-                    ***REMOVED*** source de débit est node_interfaces (les nic_profiles n'ont pas de speed) → on
-                    ***REMOVED*** attribue chaque interface à TOUS les types dont la clé matche son modèle.
+                    # Vitesse de lien du TYPE = MAX des speed_mbps des cartes média dont le .model
+                    # correspond (sous-chaîne insensible à la casse, comme compatible_models). La
+                    # source de débit est node_interfaces (les nic_profiles n'ont pas de speed) → on
+                    # attribue chaque interface à TOUS les types dont la clé matche son modèle.
                     ispeed = int(r.get("speed_mbps") or 0)
                     if ispeed > 0:
                         imodel = (r.get("model") or "").strip().lower()
@@ -78,7 +78,7 @@ def card_types():
                             k = t["key"]
                             if imodel and (k in imodel or imodel in k):
                                 t["speed_mbps"] = max(int(t.get("speed_mbps") or 0), ispeed)
-    except Exception as e:                                   ***REMOVED*** base incomplète : la liste reste utile
+    except Exception as e:                                   # base incomplète : la liste reste utile
         log.warning("card_types: interfaces nœuds: %s", e)
     return sorted(seen.values(), key=lambda t: t["model"].lower())
 
@@ -94,7 +94,7 @@ def type_caps(nic_model):
             "known": False}
 
 
-***REMOVED*** ─── Validation d'un modèle contre son type de carte ──────────────────────────────────────────────
+# ─── Validation d'un modèle contre son type de carte ──────────────────────────────────────────────
 
 def validate(nic_model, slots, observed=False):
     """Un gabarit qui ne tient pas dans la carte est REFUSÉ — en le disant (jamais de refus muet).
@@ -109,8 +109,8 @@ def validate(nic_model, slots, observed=False):
     slots = _lay._normalize_slots(slots)
     caps = type_caps(nic_model)
     used = sum(_lay.slot_queue_cost(s) for s in slots)
-    ***REMOVED*** Débit vidéo agrégé estimé (garde-fou de lien) : somme des débits par slot (0 pour un slot
-    ***REMOVED*** audio/ANC-seul). L'entrelacé est déjà ramené à la moitié dans `_slot_bw_mbps`.
+    # Débit vidéo agrégé estimé (garde-fou de lien) : somme des débits par slot (0 pour un slot
+    # audio/ANC-seul). L'entrelacé est déjà ramené à la moitié dans `_slot_bw_mbps`.
     bw_mbps = sum(_lay._slot_bw_mbps(s) for s in slots)
     errors, warnings = [], []
     if not (nic_model or "").strip():
@@ -134,7 +134,7 @@ def validate(nic_model, slots, observed=False):
             "used_queues": used, "bw_mbps": round(bw_mbps, 1), **caps}
 
 
-***REMOVED*** ─── CRUD (aucun effet matériel : déclarer un modèle ne coûte RIEN) ───────────────────────────────
+# ─── CRUD (aucun effet matériel : déclarer un modèle ne coûte RIEN) ───────────────────────────────
 
 def list_models():
     from .database import db_all_tx_card_models
@@ -179,7 +179,7 @@ def duplicate_model(mid, actor=""):
                                    m.get("slots") or [], m.get("notes") or "", actor)
 
 
-***REMOVED*** ─── Rattachement carte ↔ modèle (source vs vérité) ───────────────────────────────────────────────
+# ─── Rattachement carte ↔ modèle (source vs vérité) ───────────────────────────────────────────────
 
 def get_binding(node_id, iface):
     """Modèle dont le layout de cette carte est ISSU (dernière application), ou {}."""
@@ -221,7 +221,7 @@ def card_binding(node_id, iface):
     if not b.get("model_id"):
         return {"model": None, "diverged": False}
     m = db_get_tx_card_model(b["model_id"])
-    if not m:                                   ***REMOVED*** modèle supprimé depuis : on garde la trace nominale
+    if not m:                                   # modèle supprimé depuis : on garde la trace nominale
         return {"model": {"id": b["model_id"], "name": b.get("model_name") or "?", "deleted": True},
                 "diverged": False, "applied_at": b.get("applied_at")}
     layout = _lay.get_layout(node_id, iface)
@@ -251,10 +251,10 @@ def compatible_models(node_id, iface):
     return out
 
 
-***REMOVED*** ─── AMORÇAGE : capturer une carte EXISTANTE en modèle ────────────────────────────────────────────
-***REMOVED*** Le premier geste réel n'est pas de remplir un formulaire vide : les cartes sont DÉJÀ configurées.
-***REMOVED*** On capture donc l'existant. ⚠ C'est une LECTURE : capturer ne change RIEN sur la carte (aucun
-***REMOVED*** commit, aucun redéploiement) — l'UI le dit.
+# ─── AMORÇAGE : capturer une carte EXISTANTE en modèle ────────────────────────────────────────────
+# Le premier geste réel n'est pas de remplir un formulaire vide : les cartes sont DÉJÀ configurées.
+# On capture donc l'existant. ⚠ C'est une LECTURE : capturer ne change RIEN sur la carte (aucun
+# commit, aucun redéploiement) — l'UI le dit.
 
 def effective_slots(node_id, iface):
     """Sorties RÉELLES de la carte, telles qu'on les capturerait : le layout DÉCLARÉ s'il existe,
@@ -272,7 +272,7 @@ def effective_slots(node_id, iface):
             continue
         a = s.get("announced")
         if not a or not a.get("w"):
-            continue                     ***REMOVED*** sortie ni déclarée ni annoncée : rien à capturer
+            continue                     # sortie ni déclarée ni annoncée : rien à capturer
         out.append({"video": {"w": a.get("w"), "h": a.get("h"), "fps": a.get("fps") or 25,
                               "bd": a.get("bd") or 10, "scan": a.get("scan") or "p"},
                     "audio_count": int(s.get("audios") or 0), "anc": bool(s.get("anc"))})
@@ -293,7 +293,7 @@ def cards_inventory():
             except Exception as e:
                 log.warning("cards_inventory %s/%s: %s", n["id"], r.get("ifname"), e)
                 slots = []
-            out.append({"node_id": n["id"], "node_name": n.get("name") or n.get("host") or ("***REMOVED***%s" % n["id"]),
+            out.append({"node_id": n["id"], "node_name": n.get("name") or n.get("host") or ("#%s" % n["id"]),
                         "iface": r["ifname"], "nic_model": r.get("model") or "",
                         "pmd": (r.get("pmd") or "af_xdp"), "outputs": len(slots)})
     return out

@@ -1,4 +1,4 @@
-***REMOVED*** NMOS pour le bus MXL — le contrat que nous publions
+# NMOS pour le bus MXL — le contrat que nous publions
 
 **Ce document FAIT FOI** (cf. `CLAUDE.md`, « Où vit la documentation »). Il décrit ce qu'un
 **contrôleur ou un intégrateur tiers** trouve en interrogeant Bobi.Studio — pas comment c'est
@@ -10,7 +10,7 @@ indiquées : si l'une diverge, c'est le code qui a raison et ce document qui doi
 
 ---
 
-***REMOVED******REMOVED*** 1. Ce que Bobi.Studio expose, et sur quoi
+## 1. Ce que Bobi.Studio expose, et sur quoi
 
 Le bus interne **MXL** (mémoire partagée, un domaine par nœud) est publié en ressources NMOS
 standard, à côté des flux ST 2110 déjà exposés. Un contrôleur voit **un seul Node** portant
@@ -30,7 +30,7 @@ entrée** (`consumes`) devient un **Receiver**.
 
 Base : `services/nmos/mxl.py`. Réglage `nmos_mxl` (**activé** par défaut).
 
-***REMOVED******REMOVED*** 2. Ce que BCP-007-03 impose, et que nous respectons
+## 2. Ce que BCP-007-03 impose, et que nous respectons
 
 Spécification : [AMWA BCP-007-03 v1.0.0](https://specs.amwa.tv/bcp-007-03/), publiée le 2026-08-18.
 
@@ -65,7 +65,7 @@ Spécification : [AMWA BCP-007-03 v1.0.0](https://specs.amwa.tv/bcp-007-03/), pu
 - `"auto"` est accepté en `/staged` mais **ne s'énumère jamais** dans `/constraints`.
   Dans `/active`, il est **résolu** vers la valeur réelle.
 
-***REMOVED******REMOVED*** 3. Localité — la contrainte qu'il faut comprendre
+## 3. Localité — la contrainte qu'il faut comprendre
 
 **Le bus MXL est local à un nœud.** Un Receiver ne peut lire que les flux publiés sur **son**
 domaine. `/constraints` le dit : il n'énumère **qu'un seul** `mxl_domain_id` (celui du nœud du
@@ -74,7 +74,7 @@ conteneur servant) et ne liste que les flux de ce nœud.
 Un flux d'un autre nœud n'est atteignable que s'il a été **répliqué** (RDMA) — la réplique est
 alors un flux **local**, avec son propre `mxl_flow_id`.
 
-***REMOVED******REMOVED*** 4. Écriture : lecture seule aujourd'hui
+## 4. Écriture : lecture seule aujourd'hui
 
 Tout `PATCH …/staged` visant une ressource MXL répond **405**, avec le motif et la marche à
 suivre. Cela vaut pour le PATCH unitaire **et pour les endpoints `bulk`**.
@@ -85,7 +85,7 @@ l'autorité du routage n'a pas été formellement basculée vers IS-05.
 
 Les ressources ST 2110 ne sont **pas** concernées : leur IS-05 reste ouvert.
 
-***REMOVED******REMOVED*** 5. Grouping BCP-002-01
+## 5. Grouping BCP-002-01
 
 Chaque ressource MXL porte un `urn:x-nmos:tag:grouphint/v1.0` de la forme `<groupe>:<rôle>`.
 Les flux vidéo ouvrent les bundles ; audio et données rejoignent le bundle de **même rang** dans
@@ -94,7 +94,7 @@ leur propre essence. Un conteneur à une seule vidéo forme un bundle unique.
 > ⚠ **Le câblage est groupé côté orchestrateur** : poser la vidéo pose aussi l'audio et l'ANC
 > associés. Le group hint est là pour que ce comportement soit lisible plutôt que surprenant.
 
-***REMOVED******REMOVED*** 6. Registre IS-04 embarqué
+## 6. Registre IS-04 embarqué
 
 Réglage `nmos_registre` (**fermé** par défaut). Base : `services/nmos/registre.py`, version d'API
 `v1.3`. **Fermé, TOUS les endpoints répondent 501** — écriture comme lecture, Query API comprise. Un service « ouvert mais vide » serait indiscernable d'un service ouvert et cassé.
@@ -123,7 +123,7 @@ entière.
 Après un redémarrage du contrôleur, les Nodes se ré-enregistrent — c'est le comportement prévu par
 la spécification.
 
-***REMOVED******REMOVED*** 7. Découverte DNS-SD
+## 7. Découverte DNS-SD
 
 Réglage `nmos_mdns_enabled`. Quand il est actif, sont annoncés :
 
@@ -137,7 +137,7 @@ Réglage `nmos_mdns_enabled`. Quand il est actif, sont annoncés :
 > Ce défaut est délibéré : s'annoncer d'emblée en priorité de production détournerait vers nous
 > les Nodes d'un registre déjà en place sur le même réseau.
 
-***REMOVED******REMOVED*** 8. Modèle de contrôle MS-05-02 (IS-12 / IS-14)
+## 8. Modèle de contrôle MS-05-02 (IS-12 / IS-14)
 
 Réglage `nmos_plugins_ncp` (**fermé** par défaut). Base : `services/nmos/plugins_ncp.py`.
 Les objets vivent dans le bloc `plugins` de l'appareil.
@@ -161,7 +161,7 @@ valeurs. Un argument inconnu est **refusé**, en nommant les clés attendues.
 Un refus du conteneur remonte en **erreur** : un `Set` ou un `Invoke` qui répond OK a bien été
 appliqué.
 
-***REMOVED******REMOVED******REMOVED*** Clé d'autorité — ce qui changera
+### Clé d'autorité — ce qui changera
 
 Le troisième élément des `classId` ci-dessus (`0`) est la **clé d'autorité** MS-05-02. La spec
 impose l'identifiant IEEE de l'organisation, négativé, ou **`0`** pour une organisation qui n'en
@@ -175,7 +175,7 @@ possède pas.
 > La clé n'existe qu'en **un seul littéral** dans tout le produit :
 > `services/nmos/plugins_ncp.py:CLE_AUTORITE`.
 
-***REMOVED******REMOVED*** 9. Types de média et formats publiés
+## 9. Types de média et formats publiés
 
 | Essence | `format` | `media_type` | Au registre NMOS ? |
 |---|---|---|---|
@@ -188,7 +188,7 @@ consult the applicable IS-04 schemas … in addition to the entries in this regi
 `video/raw` ou un `audio/L24` — que nous publions côté ST 2110 — sont donc parfaitement
 légitimes bien qu'absents de ce registre. Le seul type réellement hors registre est le planar.
 
-***REMOVED******REMOVED*** 10. Limites assumées
+## 10. Limites assumées
 
 Elles sont ici pour qu'un intégrateur les découvre **avant** de câbler, pas après.
 
@@ -223,7 +223,7 @@ Elles sont ici pour qu'un intégrateur les découvre **avant** de câbler, pas a
    périodique uniquement.
 6. **L'écriture IS-05 sur la surface MXL est fermée** (§ 4).
 
-***REMOVED******REMOVED*** 11. Réglages
+## 11. Réglages
 
 | Réglage | Type | Défaut | Effet |
 |---|---|---|---|
@@ -237,21 +237,21 @@ Elles sont ici pour qu'un intégrateur les découvre **avant** de câbler, pas a
 
 Déclarés dans `services/nmos/manifest.json` (`settings_keys`).
 
-***REMOVED******REMOVED*** 12. Vérifier une instance
+## 12. Vérifier une instance
 
 Deux familles, et c'est la famille qui compte : `tests/` rend un verdict sans effet de bord et
 tourne en intégration continue ; `tools/bancs/` exige un système VIVANT.
 
 ```bash
-***REMOVED*** hors ligne — aucun réseau, aucune écriture
-./venv/bin/python tests/verif_nmos_bcp00703.py          ***REMOVED*** conformité BCP-007-03, par SCHÉMA
-./venv/bin/python tests/verif_nmos_surfaces_separees.py ***REMOVED*** bus MXL et 2110 sur deux Devices
-./venv/bin/python tests/verif_nmos_plugins_ncp.py       ***REMOVED*** le contrat MS-05-02 publié
+# hors ligne — aucun réseau, aucune écriture
+./venv/bin/python tests/verif_nmos_bcp00703.py          # conformité BCP-007-03, par SCHÉMA
+./venv/bin/python tests/verif_nmos_surfaces_separees.py # bus MXL et 2110 sur deux Devices
+./venv/bin/python tests/verif_nmos_plugins_ncp.py       # le contrat MS-05-02 publié
 
-***REMOVED*** système vivant
-./venv/bin/python tools/bancs/verif_nmos_mxl.py         ***REMOVED*** dérivation + gardes de lecture seule (HTTP)
-./venv/bin/python tools/bancs/verif_nmos_registre.py    ***REMOVED*** registre : logique, HTTP réel, annonce DNS-SD
-./venv/bin/python tools/bancs/banc_nmos_mxl_live.py --go ***REMOVED*** parc réel : deux conteneurs jetables
+# système vivant
+./venv/bin/python tools/bancs/verif_nmos_mxl.py         # dérivation + gardes de lecture seule (HTTP)
+./venv/bin/python tools/bancs/verif_nmos_registre.py    # registre : logique, HTTP réel, annonce DNS-SD
+./venv/bin/python tools/bancs/banc_nmos_mxl_live.py --go # parc réel : deux conteneurs jetables
 ```
 
 Le premier valide nos ressources contre les **schémas JSON de la spec**, vendorisés dans

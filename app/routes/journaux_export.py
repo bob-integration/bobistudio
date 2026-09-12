@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Export des journaux en CSV — alertes, événements PTP, événements de sonde.
 
@@ -43,18 +43,18 @@ from . import bp
 from ..auth import require_global_access
 from ..database import db_get_alerts, db_get_ptp_events
 
-***REMOVED*** Plafond de lignes. La rétention des alertes est de 1000 (cf. `init_db`) ; les deux autres
-***REMOVED*** journaux sont bornés par leur propre rétention. On plafonne quand même : un export est servi
-***REMOVED*** en une fois, en mémoire, et « tous les logs » ne doit pas devenir « toute la RAM ».
+# Plafond de lignes. La rétention des alertes est de 1000 (cf. `init_db`) ; les deux autres
+# journaux sont bornés par leur propre rétention. On plafonne quand même : un export est servi
+# en une fois, en mémoire, et « tous les logs » ne doit pas devenir « toute la RAM ».
 LIMITE_MAX = 20000
 
-***REMOVED*** Colonnes exportées, par source. EXPLICITES et pas `SELECT *` : une colonne ajoutée en base ne
-***REMOVED*** doit pas apparaître d'elle-même dans un livrable client, et l'ordre des colonnes d'un CSV est
-***REMOVED*** un contrat pour qui l'importe.
+# Colonnes exportées, par source. EXPLICITES et pas `SELECT *` : une colonne ajoutée en base ne
+# doit pas apparaître d'elle-même dans un livrable client, et l'ordre des colonnes d'un CSV est
+# un contrat pour qui l'importe.
 COLONNES = {
-    ***REMOVED*** ⚠ L'ORDRE EST UN CONTRAT ASCENDANT. L'export historique servait `timestamp, niveau,
-    ***REMOVED*** message` : ces trois-là gardent leurs positions, et le contexte est AJOUTÉ derrière.
-    ***REMOVED*** Les intervertir casserait tout import déjà en place chez un client.
+    # ⚠ L'ORDRE EST UN CONTRAT ASCENDANT. L'export historique servait `timestamp, niveau,
+    # message` : ces trois-là gardent leurs positions, et le contexte est AJOUTÉ derrière.
+    # Les intervertir casserait tout import déjà en place chez un client.
     "alertes": [("timestamp", "horodatage"), ("niveau", "niveau"), ("message", "message"),
                 ("kind", "nature"), ("vmid", "vmid"), ("node_id", "noeud_id")],
     "ptp":     [("ts", "horodatage"), ("level", "niveau"), ("type", "type"),
@@ -82,7 +82,7 @@ def _lignes(source, limite):
         lignes = db_get_alerts(q=q, niveau=(request.args.get("niveau") or "").strip() or None,
                                limit=limite, vmid=_entier("vmid"), node_id=_entier("node_id"),
                                kind=(request.args.get("kind") or "").strip() or None)
-        ***REMOVED*** Traduction à la LECTURE, exactement comme l'écran.
+        # Traduction à la LECTURE, exactement comme l'écran.
         return i18n.rendre_alertes(lignes, (request.args.get("lang") or "").strip() or None)
     if source == "ptp":
         return db_get_ptp_events(node_id=_entier("node_id"),
@@ -105,16 +105,16 @@ def _csv(lignes, colonnes, sep):
         ligne = []
         for cle, _titre in colonnes:
             v = l.get(cle)
-            ***REMOVED*** ⚠ ON NEUTRALISE LES FORMULES. Un tableur interprète une cellule commençant par
-            ***REMOVED*** `=`, `+`, `-` ou `@` comme une FORMULE : un message d'alerte contenant du texte
-            ***REMOVED*** d'origine externe (nom de flux, détail d'erreur) deviendrait du code exécuté à
-            ***REMOVED*** l'ouverture. C'est l'injection CSV, et elle est réelle sur un livrable qu'on
-            ***REMOVED*** envoie à un client. Préfixe apostrophe : le tableur affiche le texte tel quel.
+            # ⚠ ON NEUTRALISE LES FORMULES. Un tableur interprète une cellule commençant par
+            # `=`, `+`, `-` ou `@` comme une FORMULE : un message d'alerte contenant du texte
+            # d'origine externe (nom de flux, détail d'erreur) deviendrait du code exécuté à
+            # l'ouverture. C'est l'injection CSV, et elle est réelle sur un livrable qu'on
+            # envoie à un client. Préfixe apostrophe : le tableur affiche le texte tel quel.
             s = "" if v is None else str(v)
             if s[:1] in ("=", "+", "-", "@"):
                 s = "'" + s
-            ***REMOVED*** Un séparateur ou un saut de ligne dans une cellule est géré par `csv` (guillemets) ;
-            ***REMOVED*** les caractères de contrôle, eux, ne le sont pas — on les remplace par un espace.
+            # Un séparateur ou un saut de ligne dans une cellule est géré par `csv` (guillemets) ;
+            # les caractères de contrôle, eux, ne le sont pas — on les remplace par un espace.
             ligne.append(re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", s))
         w.writerow(ligne)
     return buf.getvalue()
@@ -138,14 +138,14 @@ def journaux_export():
         limite = LIMITE_MAX
     sep = ";" if (request.args.get("sep") or ";") != "," else ","
 
-    ***REMOVED*** ⚠ `require_global_access` ET PAS `require_login`, comme `/api/alerts/export` avant lui :
-    ***REMOVED*** un export part en fichier, hors de l'écran et hors du produit. Un utilisateur scopé projet
-    ***REMOVED*** ne lit pas le journal du cluster, et une liste vide serait une réponse ambiguë — le refus
-    ***REMOVED*** est plus honnête.
+    # ⚠ `require_global_access` ET PAS `require_login`, comme `/api/alerts/export` avant lui :
+    # un export part en fichier, hors de l'écran et hors du produit. Un utilisateur scopé projet
+    # ne lit pas le journal du cluster, et une liste vide serait une réponse ambiguë — le refus
+    # est plus honnête.
     lignes = _lignes(source, limite)
 
     corps = _csv(lignes, COLONNES[source], sep)
-    ***REMOVED*** BOM UTF-8 : sans lui, Excel lit le fichier en Latin-1 et rend « dépassé » en « dépassé ».
+    # BOM UTF-8 : sans lui, Excel lit le fichier en Latin-1 et rend « dépassé » en « dépassé ».
     donnees = "﻿" + corps
     horo = datetime.now().strftime("%Y%m%d-%H%M%S")
     nom = "bobistudio-%s-%s.csv" % (source, horo)

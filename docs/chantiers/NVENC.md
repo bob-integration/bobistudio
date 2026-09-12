@@ -1,11 +1,11 @@
-***REMOVED*** Portage NVENC du `streamer` — dossier de relecture
+# Portage NVENC du `streamer` — dossier de relecture
 
 > Préparé le 2026-08-02. **Rien n'est appliqué** : ni le plugin, ni l'orchestrateur, ni les images.
 > Ce document porte les faits vérifiés, les changements exacts, et les arbitrages qui te reviennent.
 
 ---
 
-***REMOVED******REMOVED*** 1. Ce qui est vérifié (mesuré, pas supposé)
+## 1. Ce qui est vérifié (mesuré, pas supposé)
 
 **L'image média a déjà les encodeurs matériels.** Aucun rebuild n'est nécessaire.
 
@@ -37,7 +37,7 @@ campagnes. Les comparaisons **dans** un relevé valent ; d'un relevé à l'autre
 ⚠ **Ne pas surestimer.** Le portage ne déplace que l'encodage : lecture MXL, conversion de chroma
 et tuyau stdin restent sur le CPU et dominent le reste. NVENC coûte encore ~1,1 cœur par flux.
 
-***REMOVED******REMOVED******REMOVED*** Le chiffre de 1,97 cœur (commit 0.15.0) est FAUX
+### Le chiffre de 1,97 cœur (commit 0.15.0) est FAUX
 
 Le message de version 0.15.0 annonce « 353,6 % en x264 contre 156,1 % en NVENC, soit 1,97 cœur
 rendu (−56 %) ». Non reproductible : x264 coûte 161 %, pas 353 %. Deux causes, dont une seule est
@@ -63,9 +63,9 @@ mesure de `streamer` antérieure.
 
 ---
 
-***REMOVED******REMOVED*** 2. Les changements, dans l'ordre
+## 2. Les changements, dans l'ordre
 
-***REMOVED******REMOVED******REMOVED*** 2.1 Orchestrateur — `app/docker_compute.py` (~ligne 336)
+### 2.1 Orchestrateur — `app/docker_compute.py` (~ligne 336)
 
 Le chemin GPU actuel **remplace l'image par `compute_gpu_image`**. Appliqué tel quel au `streamer`,
 il le ferait tourner sur l'image compute — qui n'a pas ffmpeg. Il faut n'allouer que le GPU quand
@@ -75,9 +75,9 @@ le plugin est de variante média :
     gpu_sel = None
     if deploy_type and plugins.wants_gpu(deploy_type) and node.get("gpu_capable"):
         if variant == "media":
-            ***REMOVED*** Le plugin média porte DÉJÀ ses encodeurs (ffmpeg/NVENC dans bobi-media) : on garde
-            ***REMOVED*** son image et on n'alloue que le GPU. Basculer sur compute_gpu_image le priverait de
-            ***REMOVED*** ffmpeg — le chemin GPU historique visait les plugins compute (cupy), pas ceux-ci.
+            # Le plugin média porte DÉJÀ ses encodeurs (ffmpeg/NVENC dans bobi-media) : on garde
+            # son image et on n'alloue que le GPU. Basculer sur compute_gpu_image le priverait de
+            # ffmpeg — le chemin GPU historique visait les plugins compute (cupy), pas ceux-ci.
             gpu_sel = gpu_pool.allocate_gpu(node["id"], vmid)
         elif node.get("compute_gpu_image"):
             image = node.get("compute_gpu_image")
@@ -95,7 +95,7 @@ Et poser la capacité `video` sur le conteneur GPU (sinon `libnvidia-encode` res
 `NODE_AGENT.md`). Vérifier qu'il propage aussi l'environnement — sinon la variable n'arrive pas et
 l'échec est le `-22` opaque ci-dessus.
 
-***REMOVED******REMOVED******REMOVED*** 2.2 Plugin `streamer` — `script.py`
+### 2.2 Plugin `streamer` — `script.py`
 
 Aujourd'hui (ligne 242) :
 
@@ -111,19 +111,19 @@ brancher selon la famille d'encodeur :
 ```python
 _NVENC = {"h264": "h264_nvenc", "h265": "hevc_nvenc"}
 _X26X  = {"h264": "libx264",    "h265": "libx265"}
-_ENC   = str(VIDEO_CFG.get("encoder", "cpu")).lower()      ***REMOVED*** "cpu" | "nvenc"
+_ENC   = str(VIDEO_CFG.get("encoder", "cpu")).lower()      # "cpu" | "nvenc"
 VCODEC = (_NVENC if _ENC == "nvenc" else _X26X).get(VIDEO_CFG.get("codec", "h264"), "libx264")
 
-***REMOVED*** …puis, à la construction de vopts :
+# …puis, à la construction de vopts :
 if _ENC == "nvenc":
     vopts = ["-c:v", VCODEC,
-             "-preset", str(VIDEO_CFG.get("nvenc_preset", "p4")),   ***REMOVED*** p1 rapide … p7 qualité
-             "-tune", str(VIDEO_CFG.get("nvenc_tune", "ll")),        ***REMOVED*** ll = faible latence
+             "-preset", str(VIDEO_CFG.get("nvenc_preset", "p4")),   # p1 rapide … p7 qualité
+             "-tune", str(VIDEO_CFG.get("nvenc_tune", "ll")),        # ll = faible latence
              "-rc", "cbr", "-b:v", str(VIDEO_CFG.get("bitrate", "4M")),
              "-pix_fmt", OUT_PIX_FMT,
              "-g", str(GOP), "-keyint_min", str(GOP), "-no-scenecut", "1"]
 else:
-    vopts = [...]   ***REMOVED*** bloc actuel, inchangé
+    vopts = [...]   # bloc actuel, inchangé
 ```
 
 **Repli** : si `encoder=nvenc` mais qu'aucun GPU n'est alloué, ffmpeg échouera. Le script doit
@@ -131,7 +131,7 @@ détecter l'absence de `libnvidia-encode` au démarrage et **le dire** (état `:
 plutôt que de boucler sur un `-22`. Cf. l'anti-patron de l'échec silencieux — c'est exactement ce
 qui m'a coûté vingt minutes ce soir.
 
-***REMOVED******REMOVED******REMOVED*** 2.3 Manifeste `plugin.json`
+### 2.3 Manifeste `plugin.json`
 
 ```jsonc
 "resources": { "cores": 4, "memory": 1024, "pin": false, "gpu": 1 },
@@ -143,7 +143,7 @@ aujourd'hui), ou accepter qu'un `streamer` réserve un GPU même sans NVENC. **L
 une ressource rare** — je penche pour ajouter au registre la notion de GPU *optionnel*, lu depuis
 les params, mais c'est une modification du modèle qui mérite ta décision.
 
-***REMOVED******REMOVED******REMOVED*** 2.4 Exposition aux macros — **obligatoire**
+### 2.4 Exposition aux macros — **obligatoire**
 
 Toute fonction de plugin doit être pilotable par macro, sinon la capacité est morte. `encoder`,
 `nvenc_preset` et `nvenc_tune` doivent apparaître dans le `config_schema` **et** être joignables :
@@ -152,7 +152,7 @@ n'a que `input` et `log_level` — il n'y a donc rien à étendre, tout est à c
 
 ---
 
-***REMOVED******REMOVED*** 3. Décisions prises (2026-08-02)
+## 3. Décisions prises (2026-08-02)
 
 | point | décision |
 |---|---|
@@ -165,7 +165,7 @@ n'a que `input` et `log_level` — il n'y a donc rien à étendre, tout est à c
 Reste à toi : **la validation visuelle** de la qualité NVENC contre x264 à débit donné. Aucun de mes
 chiffres ne dit quoi que ce soit là-dessus.
 
-***REMOVED******REMOVED*** 4. Ce qui reste ouvert
+## 4. Ce qui reste ouvert
 
 **La qualité — ta validation.** NVENC à 4 Mb/s ne rend pas la même image que x264 à 4 Mb/s. Sur du
 contenu broadcast, l'écart se voit sur les dégradés, les mouvements rapides et les bas débits.
@@ -179,7 +179,7 @@ nœud K620 échouera à l'exécution.
 
 ---
 
-***REMOVED******REMOVED*** 5. Suite proposée
+## 5. Suite proposée
 
 1. Les arbitrages du §3 sont pris ; reste ta validation visuelle.
 2. J'applique — orchestrateur d'abord, plugin ensuite, sur une branche.

@@ -20,11 +20,11 @@ SH_A, SH_B, ASM = 540, 541, 362
 def topo(src_fps=SRC_FPS):
     srcs = [f"cam{i}" for i in range(N_SRC)]
     nodes, producers = [], {}
-    for i, s in enumerate(srcs):                      ***REMOVED*** 16 sources 2110 (pas de fps_content)
+    for i, s in enumerate(srcs):                      # 16 sources 2110 (pas de fps_content)
         nodes.append({"vmid": 1000 + i, "produces": [{"shm": s, "kind": "video",
                       "format": {"fps": src_fps} if src_fps else {}}], "consumes": []})
         producers[s] = [{"vmid": 1000 + i, "kind": "video"}]
-    for v, part in ((SH_A, srcs[:8]), (SH_B, srcs[8:])):   ***REMOVED*** 2 shards → sortent à 50
+    for v, part in ((SH_A, srcs[:8]), (SH_B, srcs[8:])):   # 2 shards → sortent à 50
         nodes.append({"vmid": v, "produces": [{"shm": f"fab_{v}", "kind": "video",
                       "format": {"fps": 50}}],
                       "consumes": [{"shm": s, "kind": "video"} for s in part]})
@@ -50,7 +50,7 @@ def check(nom, cond, detail=""):
     print(("  OK   " if cond else "  ÉCHEC") + f" {nom}" + (f"   {detail}" if detail else ""))
     ok = ok and cond
 
-***REMOVED*** ── 1. Parc SAIN (chiffres réels de la note : shards ~24,7 sur 24,9 dispo, assembleur 50)
+# ── 1. Parc SAIN (chiffres réels de la note : shards ~24,7 sur 24,9 dispo, assembleur 50)
 e = run({SH_A: 24.7, SH_B: 30.3, ASM: 50.0})
 check("shard sain : silencieux", e[SH_A]["tenue"] is True, f"mesure 24,7 / ref {e[SH_A]['ref']}")
 check("shard déphasé (30,3) : silencieux", e[SH_B]["tenue"] is True)
@@ -58,23 +58,23 @@ check("assembleur sain : silencieux", e[ASM]["tenue"] is True, f"mesure 50 / ref
 check("référence d'un shard = cadence TRAME des sources (25), pas 50", e[SH_A]["ref"] == 25.0)
 check("référence de l'assembleur PROPAGÉE depuis les shards (25), pas 50", e[ASM]["ref"] == 25.0)
 
-***REMOVED*** ── 2. Un shard GÈLE son contenu tout en continuant d'émettre à 50 fps
+# ── 2. Un shard GÈLE son contenu tout en continuant d'émettre à 50 fps
 e = run({SH_A: 0.0, SH_B: 30.3, ASM: 50.0})
 check("shard gelé : décroche", e[SH_A]["tenue"] is False)
 check("ASSEMBLEUR : décroche via le maillon (faux négatif d'origine)", e[ASM]["tenue"] is False)
 check("le maillon est NOMMÉ", e[ASM]["maillon"] == "shard-a", f"maillon={e[ASM]['maillon']}")
 check("l'autre shard reste silencieux", e[SH_B]["tenue"] is True)
 
-***REMOVED*** ── 3. Un shard à MOITIÉ de cadence de contenu
+# ── 3. Un shard à MOITIÉ de cadence de contenu
 e = run({SH_A: 12.4, SH_B: 30.3, ASM: 50.0})
 check("shard à demi-cadence : décroche", e[SH_A]["tenue"] is False)
 check("assembleur : décroche", e[ASM]["tenue"] is False)
 
-***REMOVED*** ── 4. AUCUNE référence (format de source non déclaré) → aucun verdict, jamais d'alerte
+# ── 4. AUCUNE référence (format de source non déclaré) → aucun verdict, jamais d'alerte
 e = run({SH_A: 1.0, SH_B: 1.0, ASM: 1.0}, src_fps=None)
 check("sans référence : aucun verdict", all(e[v]["tenue"] is None for v in (SH_A, SH_B, ASM)))
 
-***REMOVED*** ── 5. Mur NON shardé sur sources 50p : le cas d'origine (0.69.0) doit encore se voir
+# ── 5. Mur NON shardé sur sources 50p : le cas d'origine (0.69.0) doit encore se voir
 metrics.fps_content_cache.clear(); metrics.fps_content_cache[ASM] = 38.0
 metrics.fps_plancher = lambda vmid, canal="fps": {ASM: 38.0}.get(vmid)
 nodes = [{"vmid": 900, "produces": [{"shm": "s", "kind": "video", "format": {"fps": 50}}], "consumes": []},

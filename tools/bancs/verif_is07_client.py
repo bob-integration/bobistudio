@@ -1,28 +1,28 @@
-***REMOVED***!/usr/bin/env python3
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED***
-***REMOVED*** Banc du CLIENT IS-07 (`services/nmos/is07_client.py`) — le sens ENTRANT.
-***REMOVED***
-***REMOVED*** LE MONTAGE. On boucle sur NOTRE PROPRE serveur IS-07 : notre émetteur publie, notre client
-***REMOVED*** s'abonne, et on vérifie qu'un tally posé à l'intérieur ressort chez le client. C'est un vrai
-***REMOVED*** test — les deux bouts sont dissymétriques (le client masque ses trames, le serveur jamais ; le
-***REMOVED*** client bat, le serveur compte les battements) — et il ne demande ni réseau ni tiers.
-***REMOVED***
-***REMOVED*** CE QU'IL PROTÈGE, et qui casse en silence :
-***REMOVED***   · pas de masquage → le serveur ferme la connexion (RFC 6455 §5.1), sans erreur côté client ;
-***REMOVED***   · pas de battement → la session est fermée d'en face au bout de 12 s : le client ne voit
-***REMOVED***     aucune erreur, il ne reçoit simplement plus rien ;
-***REMOVED***   · `Sec-WebSocket-Accept` non vérifié → n'importe quel serveur répondant « 101 » passe pour un
-***REMOVED***     pair, et on lit ses octets comme des trames ;
-***REMOVED***   · la déconnexion qui LAISSE le dernier état → un rouge allumé sur un plateau pendant que la
-***REMOVED***     liaison est morte, ce qui est le pire des deux ;
-***REMOVED***   · une valeur inconnue devinée → un émetteur tiers a SA propre énumération, IS-07 laisse le
-***REMOVED***     contenu des enums au constructeur.
-***REMOVED***
-***REMOVED*** ⚠ CE BANC OUVRE `nmos_is07` ET LE SERVEUR WS le temps de la mesure, et referme dans un `finally`.
-***REMOVED***
-***REMOVED***   $ ./venv/bin/python tools/verif_is07_client.py
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Banc du CLIENT IS-07 (`services/nmos/is07_client.py`) — le sens ENTRANT.
+#
+# LE MONTAGE. On boucle sur NOTRE PROPRE serveur IS-07 : notre émetteur publie, notre client
+# s'abonne, et on vérifie qu'un tally posé à l'intérieur ressort chez le client. C'est un vrai
+# test — les deux bouts sont dissymétriques (le client masque ses trames, le serveur jamais ; le
+# client bat, le serveur compte les battements) — et il ne demande ni réseau ni tiers.
+#
+# CE QU'IL PROTÈGE, et qui casse en silence :
+#   · pas de masquage → le serveur ferme la connexion (RFC 6455 §5.1), sans erreur côté client ;
+#   · pas de battement → la session est fermée d'en face au bout de 12 s : le client ne voit
+#     aucune erreur, il ne reçoit simplement plus rien ;
+#   · `Sec-WebSocket-Accept` non vérifié → n'importe quel serveur répondant « 101 » passe pour un
+#     pair, et on lit ses octets comme des trames ;
+#   · la déconnexion qui LAISSE le dernier état → un rouge allumé sur un plateau pendant que la
+#     liaison est morte, ce qui est le pire des deux ;
+#   · une valeur inconnue devinée → un émetteur tiers a SA propre énumération, IS-07 laisse le
+#     contenu des enums au constructeur.
+#
+# ⚠ CE BANC OUVRE `nmos_is07` ET LE SERVEUR WS le temps de la mesure, et referme dans un `finally`.
+#
+#   $ ./venv/bin/python tools/verif_is07_client.py
 import importlib
 import os
 import socket
@@ -55,7 +55,7 @@ def jusqua(predicat, delai=6.0, pas=0.05):
     return predicat()
 
 
-from app.database import db_set_setting, db_get_setting                ***REMOVED*** noqa: E402
+from app.database import db_set_setting, db_get_setting                # noqa: E402
 
 
 def _leve(f, *types):
@@ -100,7 +100,7 @@ def _certificat_bidon():
     open(pk, "wb").write(k.private_bytes(serialization.Encoding.PEM,
                                          serialization.PrivateFormat.TraditionalOpenSSL,
                                          serialization.NoEncryption()))
-    return pc, pk, pc          ***REMOVED*** auto-signé : il est sa propre CA
+    return pc, pk, pc          # auto-signé : il est sa propre CA
 
 
 def _serveur_tls(cert, cle):
@@ -145,8 +145,8 @@ try:
     db_set_setting("nmos_is07", "1")
     db_set_setting("nmos_is07_ws", "1")
     from app import tally
-    from services.nmos import is07                                    ***REMOVED*** noqa: E402
-    from services.nmos import is07_client                             ***REMOVED*** noqa: E402
+    from services.nmos import is07                                    # noqa: E402
+    from services.nmos import is07_client                             # noqa: E402
     importlib.reload(is07)
 
     srcs = is07._sources()
@@ -157,8 +157,8 @@ try:
     sid = is07._sid(shm, niveau)
 
     is07.demarrer()
-    ***REMOVED*** `etat_ws()` expose `actif`, pas `running` — vérifié plutôt que supposé : la première
-    ***REMOVED*** version de ce contrôle échouait sur une clé qui n'existe pas, alors que le serveur écoutait.
+    # `etat_ws()` expose `actif`, pas `running` — vérifié plutôt que supposé : la première
+    # version de ce contrôle échouait sur une clé qui n'existe pas, alors que le serveur écoutait.
     controle("★★ le serveur IS-07 écoute", jusqua(lambda: is07.etat_ws().get("actif")),
              "sans lui, tout ce qui suit ne mesure rien. Obtenu %r" % (is07.etat_ws(),))
 
@@ -178,8 +178,8 @@ try:
              "masquage, Sec-WebSocket-Accept, abonnement : c'est toute la RFC 6455 côté client "
              "qui se vérifie ici. Erreur : %r" % client.derniere_erreur)
 
-    ***REMOVED*** « Each time a client submits its subscriptions list … the server will resend all the
-    ***REMOVED*** current states » : sans ce renvoi, un abonné reste aveugle jusqu'au prochain changement.
+    # « Each time a client submits its subscriptions list … the server will resend all the
+    # current states » : sans ce renvoi, un abonné reste aveugle jusqu'au prochain changement.
     controle("★★★ l'état courant arrive SANS attendre un changement",
              jusqua(lambda: any(s == sid for s, _ in recus)),
              "un abonné qui doit attendre un changement peut rester aveugle indéfiniment — le "
@@ -204,9 +204,9 @@ try:
              "c'est la valeur qui porte le cumul : la perdre en route ramène au modèle "
              "exclusif. Reçus : %r" % recus[:3])
 
-    ***REMOVED*** ── Le battement, mesuré côté SERVEUR ────────────────────────────────
-    ***REMOVED*** Il n'y a pas d'autre façon de le prouver : un client qui ne bat pas ne voit rien changer
-    ***REMOVED*** pendant douze secondes, puis cesse de recevoir. On regarde donc la session d'en face.
+    # ── Le battement, mesuré côté SERVEUR ────────────────────────────────
+    # Il n'y a pas d'autre façon de le prouver : un client qui ne bat pas ne voit rien changer
+    # pendant douze secondes, puis cesse de recevoir. On regarde donc la session d'en face.
     sess = list(is07._sessions)
     controle("★★ le serveur voit UNE session, la nôtre", len(sess) == 1,
              "obtenu %d" % len(sess))
@@ -217,7 +217,7 @@ try:
                  "sans battement, la session est fermée d'en face après %ds — le client ne voit "
                  "aucune erreur, il ne reçoit simplement plus rien" % is07.SANTE_TIMEOUT_S)
 
-    ***REMOVED*** ── Perdre la liaison ÉTEINT ce qu'on affirmait ──────────────────────
+    # ── Perdre la liaison ÉTEINT ce qu'on affirmait ──────────────────────
     with verrou:
         recus.clear()
     client.arreter()
@@ -227,18 +227,18 @@ try:
              "la liaison est morte — c'est le pire des deux. Reçus : %r" % recus[:3])
     client = None
 
-    ***REMOVED*** ── Ce qu'on refuse de deviner ───────────────────────────────────────
+    # ── Ce qu'on refuse de deviner ───────────────────────────────────────
     c2 = is07_client.ClientIS07("ws://127.0.0.1:1/", [], lambda *_: None, nom="muet")
     c2._traiter({"identity": {"source_id": "x"}, "payload": {"value": "PGM"}})
     controle("★★★ une valeur hors de NOTRE énumération n'est pas devinée",
              c2.recus == 1,
              "IS-07 laisse le contenu des enums au constructeur : lire « PGM » comme un rouge "
              "serait inventer une convention que l'émetteur n'a pas déclarée")
-    ***REMOVED*** ── Un serveur qui répond « 101 » n'est pas un pair WebSocket ────────
-    ***REMOVED*** ⚠ CE CONTRÔLE A ÉTÉ AJOUTÉ APRÈS UNE MUTATION MUETTE : en boucle sur notre propre serveur,
-    ***REMOVED*** l'Accept est toujours correct, donc retirer sa vérification ne changeait rien. Il faut un
-    ***REMOVED*** imposteur pour le prouver — sans cette garde, n'importe quel service répondant 101 passe
-    ***REMOVED*** pour un pair et on lit ses octets comme des trames.
+    # ── Un serveur qui répond « 101 » n'est pas un pair WebSocket ────────
+    # ⚠ CE CONTRÔLE A ÉTÉ AJOUTÉ APRÈS UNE MUTATION MUETTE : en boucle sur notre propre serveur,
+    # l'Accept est toujours correct, donc retirer sa vérification ne changeait rien. Il faut un
+    # imposteur pour le prouver — sans cette garde, n'importe quel service répondant 101 passe
+    # pour un pair et on lit ses octets comme des trames.
     import socket as _s
     srv = _s.socket(_s.AF_INET, _s.SOCK_STREAM)
     srv.setsockopt(_s.SOL_SOCKET, _s.SO_REUSEADDR, 1)
@@ -276,7 +276,7 @@ try:
     except Exception:
         pass
 
-    ***REMOVED*** ── wss:// : chiffré, et VÉRIFIÉ ─────────────────────────────────────
+    # ── wss:// : chiffré, et VÉRIFIÉ ─────────────────────────────────────
     h, prt, chem, tls = is07_client._url("wss://exemple/tally")
     controle("★★ `wss://` est reconnu, et son port par défaut est 443",
              (h, prt, chem, tls) == ("exemple", 443, "/tally", True),
@@ -284,9 +284,9 @@ try:
     controle("★ `ws://` reste en clair sur 80", is07_client._url("ws://x/")[1:] == (80, "/", False))
     controle("★★ un schéma inconnu est refusé", _leve(lambda: is07_client._url("ftp://x/")))
 
-    ***REMOVED*** Un vrai serveur TLS auto-signé : c'est le seul moyen de prouver que la vérification MORD.
-    ***REMOVED*** Sans lui on ne testerait que la lecture d'une URL — et un client qui accepte n'importe quel
-    ***REMOVED*** certificat lit l'URL tout aussi bien.
+    # Un vrai serveur TLS auto-signé : c'est le seul moyen de prouver que la vérification MORD.
+    # Sans lui on ne testerait que la lecture d'une URL — et un client qui accepte n'importe quel
+    # certificat lit l'URL tout aussi bien.
     cert, cle, ca = _certificat_bidon()
     srv_tls, port_tls = _serveur_tls(cert, cle)
     try:
@@ -294,10 +294,10 @@ try:
         db_set_setting("is07_tls_verifier", "1")
         c4 = is07_client.ClientIS07("wss://127.0.0.1:%d/" % port_tls, [], lambda *_: None,
                                     nom="tls")
-        ***REMOVED*** ⚠ ON EXIGE UNE ERREUR DE CERTIFICAT, pas n'importe quelle erreur. Une première version
-        ***REMOVED*** acceptait toute `OSError` — or le serveur de banc répond 400 et non 101, donc la
-        ***REMOVED*** poignée de main WebSocket échoue MÊME QUAND TLS PASSE. Le contrôle était donc vert avec
-        ***REMOVED*** ou sans vérification : une mutation l'a montré.
+        # ⚠ ON EXIGE UNE ERREUR DE CERTIFICAT, pas n'importe quelle erreur. Une première version
+        # acceptait toute `OSError` — or le serveur de banc répond 400 et non 101, donc la
+        # poignée de main WebSocket échoue MÊME QUAND TLS PASSE. Le contrôle était donc vert avec
+        # ou sans vérification : une mutation l'a montré.
         err4 = _erreur(c4._session)
         controle("★★★ un certificat non approuvé est REFUSÉ par défaut",
                  isinstance(err4, ssl.SSLCertVerificationError)
@@ -310,8 +310,8 @@ try:
         db_set_setting("is07_tls_ca", ca)
         c5 = is07_client.ClientIS07("wss://127.0.0.1:%d/" % port_tls, [], lambda *_: None,
                                     nom="tls-ca")
-        ***REMOVED*** La poignée de main WebSocket échouera (le serveur de banc ne répond pas 101), mais le
-        ***REMOVED*** TLS, lui, doit être PASSÉ : c'est ce qu'on mesure, et l'erreur le dit.
+        # La poignée de main WebSocket échouera (le serveur de banc ne répond pas 101), mais le
+        # TLS, lui, doit être PASSÉ : c'est ce qu'on mesure, et l'erreur le dit.
         err = _erreur(c5._session)
         controle("★★★ ...et ACCEPTÉ quand la CA du site est déclarée",
                  "certificate" not in str(err).lower() and "ssl" not in type(err).__name__.lower(),

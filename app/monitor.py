@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Per-user WebRTC monitoring encoder.
 
@@ -37,13 +37,13 @@ from .deploy import deployer_script
 
 log = logging.getLogger(__name__)
 
-IDLE_TIMEOUT = 600     ***REMOVED*** 10 min sans activité → stop du script
+IDLE_TIMEOUT = 600     # 10 min sans activité → stop du script
 REAP_INTERVAL = 60
 
-_last_used = {}        ***REMOVED*** uid → timestamp de dernière activité
-_source = {}           ***REMOVED*** uid → {"shm": ..., "label": ...}
-_create_lock = threading.Lock()   ***REMOVED*** sérialise check+create des containers monitor
-                                  ***REMOVED*** (deux requêtes concurrentes = deux containers orphelins sinon)
+_last_used = {}        # uid → timestamp de dernière activité
+_source = {}           # uid → {"shm": ..., "label": ...}
+_create_lock = threading.Lock()   # sérialise check+create des containers monitor
+                                  # (deux requêtes concurrentes = deux containers orphelins sinon)
 
 
 def _sanitize_host(s):
@@ -74,7 +74,7 @@ def _hostname(uid):
 
 
 def _path(uid):
-    ***REMOVED*** Path WebRTC : technique et STABLE (URL-safe), indépendant du hostname affiché.
+    # Path WebRTC : technique et STABLE (URL-safe), indépendant du hostname affiché.
     return f"monitor-u{int(uid)}"
 
 
@@ -130,16 +130,16 @@ def _params(uid, shm="", audio_shm=None, fmt=None, hot=False):
         "shm_name": shm or "",
         "audio_shm": audio_shm or None,
         "hot_input": bool(hot),
-        ***REMOVED*** Format d'ENTRÉE lu dans le shm (top-level CONFIG.chroma/bit_depth côté streamer).
+        # Format d'ENTRÉE lu dans le shm (top-level CONFIG.chroma/bit_depth côté streamer).
         "chroma": chroma,
         "bit_depth": int(f.get("bit_depth") or 8),
         "scan": f.get("scan") or "p",
         "field_order": f.get("field_order") or "",
-        ***REMOVED*** `encoder: auto` — le monitor est le cas d'usage le plus favorable à l'encodage matériel :
-        ***REMOVED*** un encodeur par utilisateur connecté, jetable, à la qualité peu critique, et ~1 cœur
-        ***REMOVED*** économisé par utilisateur (mesuré). En `auto` il prend la carte si le nœud en a une de
-        ***REMOVED*** libre et retombe sur x264 sinon, sans jamais empêcher la création du monitor — un
-        ***REMOVED*** monitoring qui refuse de démarrer faute de GPU serait une régression franche.
+        # `encoder: auto` — le monitor est le cas d'usage le plus favorable à l'encodage matériel :
+        # un encodeur par utilisateur connecté, jetable, à la qualité peu critique, et ~1 cœur
+        # économisé par utilisateur (mesuré). En `auto` il prend la carte si le nœud en a une de
+        # libre et retombe sur x264 sinon, sans jamais empêcher la création du monitor — un
+        # monitoring qui refuse de démarrer faute de GPU serait une régression franche.
         "video": {"codec": "h264", "bitrate": "2M", "preset": "ultrafast",
                   "encoder": "auto", "nvenc_preset": "p1", "nvenc_tune": "ull",
                   "gop": 25, "width": int(f.get("w") or 0), "height": int(f.get("h") or 0),
@@ -172,9 +172,9 @@ def _shm_fmt(shm):
         hn = c.get("hostname") or f"mxl{c['vmid']}"
         if not _plugins.is_plugin(t):
             continue
-        ***REMOVED*** out_width/out_height (multiview) ont priorité, sinon width/height (format).
-        ***REMOVED*** Multiview portrait : le flux émis est tourné 90° → on expose les dims SWAPPÉES (cf
-        ***REMOVED*** scripts.multiview_output_dims), pas le canevas de design vertical.
+        # out_width/out_height (multiview) ont priorité, sinon width/height (format).
+        # Multiview portrait : le flux émis est tourné 90° → on expose les dims SWAPPÉES (cf
+        # scripts.multiview_output_dims), pas le canevas de design vertical.
         _ow = int(p.get("out_width") or p.get("width") or 1280)
         _oh = int(p.get("out_height") or p.get("height") or 720)
         if str(p.get("orientation") or "").strip().lower() in ("portrait_cw", "portrait_ccw"):
@@ -190,9 +190,9 @@ def _shm_fmt(shm):
             "fps":         str(p.get("fps") or ""),
         }
         phn = p.get("hostname") or hn
-        ***REMOVED*** Surcharge PAR-FLUX (2110_io) : scan/dims RÉELS de l'entrée idx, posés par-flux dans
-        ***REMOVED*** `rx_fmt[idx]` à l'abonnement (services/nmos:_propagate_sdp_format, lu du SDP). Sans ça,
-        ***REMOVED*** le scan GLOBAL « dernier flux activé » écrasait les entrées entrelacées en progressif.
+        # Surcharge PAR-FLUX (2110_io) : scan/dims RÉELS de l'entrée idx, posés par-flux dans
+        # `rx_fmt[idx]` à l'abonnement (services/nmos:_propagate_sdp_format, lu du SDP). Sans ça,
+        # le scan GLOBAL « dernier flux activé » écrasait les entrées entrelacées en progressif.
         _rxs = (p.get("rx_fmt") or {}) if t == "2110_io" else {}
         def _ovr(d):
             if d and _rxs:
@@ -209,7 +209,7 @@ def _shm_fmt(shm):
             return d
         for prod in _plugins.derive_wiring(t, phn, p)["produces"]:
             if prod.get("shm") == shm and (prod.get("essence") or "video") == "video":
-                ***REMOVED*** Priorité 1 : format déclaré dans produces[] (ex. mixer, multiview…)
+                # Priorité 1 : format déclaré dans produces[] (ex. mixer, multiview…)
                 pf = prod.get("format") or {}
                 if pf.get("width") and pf.get("height"):
                     return _ovr({
@@ -222,11 +222,11 @@ def _shm_fmt(shm):
                         "colorimetry": str(pf.get("colorimetry") or fmt["colorimetry"]),
                         "fps":         str(pf.get("fps") or fmt["fps"]),
                     })
-                ***REMOVED*** Priorité 2 : params top-level connus (mixer/UDC/color_corrector)
+                # Priorité 2 : params top-level connus (mixer/UDC/color_corrector)
                 if fmt["w"] and fmt["h"]:
                     return _ovr(fmt)
-                ***REMOVED*** Priorité 3 : métriques live du container producteur (2110_io —
-                ***REMOVED*** résolution négociée au SDP, absente du wiring statique).
+                # Priorité 3 : métriques live du container producteur (2110_io —
+                # résolution négociée au SDP, absente du wiring statique).
                 ip = c.get("ip")
                 if ip:
                     try:
@@ -247,7 +247,7 @@ def _shm_fmt(shm):
                                 })
                     except Exception:
                         pass
-                return _ovr(None)   ***REMOVED*** format inconnu → auto-détect côté script
+                return _ovr(None)   # format inconnu → auto-détect côté script
     return None
 
 
@@ -263,8 +263,8 @@ def _fmt_from_flow_def(d):
     comps = {c.get("name"): c for c in (d.get("components") or [])}
     y = comps.get("Y") or {}
     cb = comps.get("Cb") or {}
-    ***REMOVED*** Dims de TRAME d'abord (`frame_width`/`frame_height` : seuls champs qui font foi en
-    ***REMOVED*** entrelacé — un producteur tiers peut déclarer ses composants à la hauteur de CHAMP).
+    # Dims de TRAME d'abord (`frame_width`/`frame_height` : seuls champs qui font foi en
+    # entrelacé — un producteur tiers peut déclarer ses composants à la hauteur de CHAMP).
     w = int(d.get("frame_width") or y.get("width") or 0)
     h = int(d.get("frame_height") or y.get("height") or 0)
     if not (w and h):
@@ -348,7 +348,7 @@ def status(uid):
         "vmid": (c or {}).get("vmid"),
         "ip": ip,
         "script_running": running,
-        "publishing": fps > 0,    ***REMOVED*** flux effectivement poussé vers la passerelle
+        "publishing": fps > 0,    # flux effectivement poussé vers la passerelle
         "live_fps": fps,
         "embed_url": _embed_url(uid),
         "path": _path(uid),
@@ -359,7 +359,7 @@ def status(uid):
 def create_iter(uid):
     """Générateur streamé (contrat ✅/❌) : crée le container monitor Docker de l'utilisateur
     et y déploie l'encodeur streamer."""
-    yield f"Création du monitor de l'utilisateur ***REMOVED***{uid}…"
+    yield f"Création du monitor de l'utilisateur #{uid}…"
     if not gateway_ready():
         yield "❌ La passerelle WebRTC n'est pas déployée/activée (Réglages → WebRTC)."
         return
@@ -367,14 +367,14 @@ def create_iter(uid):
     c = _container_for(uid)
     if c:
         target = c["vmid"]
-        yield f"Réutilisation du container monitor existant ***REMOVED***{target}."
+        yield f"Réutilisation du container monitor existant #{target}."
     else:
         yield f"Création du container Docker {_hostname(uid)}…"
         created = False
         try:
-            ***REMOVED*** PAS de yield sous le verrou (un client HTTP bloqué garderait le lock).
+            # PAS de yield sous le verrou (un client HTTP bloqué garderait le lock).
             with _create_lock:
-                c = _container_for(uid)      ***REMOVED*** re-check sous verrou (double-clic / 2 onglets)
+                c = _container_for(uid)      # re-check sous verrou (double-clic / 2 onglets)
                 if c:
                     target = c["vmid"]
                 else:
@@ -389,8 +389,8 @@ def create_iter(uid):
         if not target:
             yield "❌ Création du container échouée (voir alertes)."
             return
-        yield (f"  → container ***REMOVED***{target} créé." if created
-               else f"Réutilisation du container monitor existant ***REMOVED***{target}.")
+        yield (f"  → container #{target} créé." if created
+               else f"Réutilisation du container monitor existant #{target}.")
 
     yield "Déploiement de l'encodeur monitor…"
     ok = deployer_script(target, "streamer", _params(uid))
@@ -398,7 +398,7 @@ def create_iter(uid):
         yield "❌ Déploiement de l'encodeur échoué."
         return
     touch(uid)
-    yield f"✅ Monitor prêt (***REMOVED***{target}). Sélectionnez une source via un bouton « Monitoring »."
+    yield f"✅ Monitor prêt (#{target}). Sélectionnez une source via un bouton « Monitoring »."
 
 
 def _warm_source(uid, c):
@@ -461,20 +461,20 @@ def set_source(uid, shm, label=None, audio_shm=None, *, _touch=True):
         from .addressing import get_container_ip
         ip = get_container_ip(c["vmid"])
 
-    _warm_source(uid, c)    ***REMOVED*** restaure _source depuis DB si vide (après restart)
+    _warm_source(uid, c)    # restaure _source depuis DB si vide (après restart)
 
-    db_fmt = _shm_fmt(shm)                               ***REMOVED*** format côté DB (référence du suiveur)
-    fmt_video = _shm_fmt_node(c, shm) or db_fmt          ***REMOVED*** SOURCE DE VÉRITÉ = flowDef réel sur le nœud ; repli config DB
+    db_fmt = _shm_fmt(shm)                               # format côté DB (référence du suiveur)
+    fmt_video = _shm_fmt_node(c, shm) or db_fmt          # SOURCE DE VÉRITÉ = flowDef réel sur le nœud ; repli config DB
     prev = _source.get(uid) or {}
-    ***REMOVED*** Hot-swap seulement si le FORMAT COMPLET est identique (résolution/chroma/profondeur/scan) :
-    ***REMOVED*** un changement de chroma/profondeur/balayage impose un redéploiement (ffmpeg relit le layout
-    ***REMOVED*** ET la chaîne de filtre — un passage progressif↔entrelacé doit (dé)activer le bwdif).
+    # Hot-swap seulement si le FORMAT COMPLET est identique (résolution/chroma/profondeur/scan) :
+    # un changement de chroma/profondeur/balayage impose un redéploiement (ffmpeg relit le layout
+    # ET la chaîne de filtre — un passage progressif↔entrelacé doit (dé)activer le bwdif).
     cur_key = _fmt_key6(fmt_video)
     running = _script_running(ip, c.get("vmid"))
-    ***REMOVED*** Hot-swap possible si : format connu + running + même fmt + audio_shm INCHANGÉ.
-    ***REMOVED*** Changer l'audio_shm nécessite un redéploiement (audio_feeder doit être recâblé).
-    ***REMOVED*** Audio → vidéo-seule (audio_shm None→None) : hot, l'audio_feeder envoie silence.
-    ***REMOVED*** Même audio_shm (ex. 2110_audio_0 → 2110_audio_0) : hot, seule la vidéo change.
+    # Hot-swap possible si : format connu + running + même fmt + audio_shm INCHANGÉ.
+    # Changer l'audio_shm nécessite un redéploiement (audio_feeder doit être recâblé).
+    # Audio → vidéo-seule (audio_shm None→None) : hot, l'audio_feeder envoie silence.
+    # Même audio_shm (ex. 2110_audio_0 → 2110_audio_0) : hot, seule la vidéo change.
     hot_ok = (
         fmt_video is not None
         and running
@@ -488,7 +488,7 @@ def set_source(uid, shm, label=None, audio_shm=None, *, _touch=True):
                     "fmt_key": cur_key, "fmt_key_db": _fmt_key6(db_fmt),
                     "hot": fmt_video is not None}
     if _touch:
-        touch(uid)    ***REMOVED*** le chemin auto-follow ne doit PAS rafraîchir _last_used (sinon reaper inopérant)
+        touch(uid)    # le chemin auto-follow ne doit PAS rafraîchir _last_used (sinon reaper inopérant)
 
     if hot_ok:
         try:
@@ -497,12 +497,12 @@ def set_source(uid, shm, label=None, audio_shm=None, *, _touch=True):
                 return {"ok": True, "hot": True, "embed_url": _embed_url(uid), "source": _source[uid]}
         except Exception as e:
             log.warning(f"monitor hot-swap {c['vmid']}: {e}")
-        ***REMOVED*** échec hot → on retombe sur le redéploiement ci-dessous
+        # échec hot → on retombe sur le redéploiement ci-dessous
 
     if fmt_video is not None:
         params = _params(uid, shm, fmt=fmt_video, hot=True, audio_shm=audio_shm or None)
     else:
-        params = _params(uid, shm, audio_shm=audio_shm)             ***REMOVED*** auto-dims (res inconnue)
+        params = _params(uid, shm, audio_shm=audio_shm)             # auto-dims (res inconnue)
     threading.Thread(
         target=deployer_script,
         args=(c["vmid"], "streamer", params),
@@ -555,10 +555,10 @@ def _reap_once():
             try:
                 deploy.agent_session().post(deploy.agent_url(ip, "/stop"), timeout=5,
                                             headers=deploy.agent_headers(c.get("vmid")))
-                log.info(f"monitor: script utilisateur ***REMOVED***{uid} coupé (inactif > {IDLE_TIMEOUT}s)")
+                log.info(f"monitor: script utilisateur #{uid} coupé (inactif > {IDLE_TIMEOUT}s)")
             except Exception as e:
-                ***REMOVED*** Stop non confirmé (agent injoignable…) : on GARDE l'entrée pour retenter
-                ***REMOVED*** au prochain tick — sinon l'encodeur tourne pour toujours.
+                # Stop non confirmé (agent injoignable…) : on GARDE l'entrée pour retenter
+                # au prochain tick — sinon l'encodeur tourne pour toujours.
                 log.warning(f"monitor reap {uid}: {e} (nouvel essai au prochain cycle)")
                 continue
         _last_used.pop(uid, None)
@@ -573,28 +573,28 @@ def _reaper_loop():
             log.warning(f"monitor reaper: {e}")
 
 
-***REMOVED*** ── Auto-suivi de la résolution de la source ──────────────────────────────────
-***REMOVED*** La résolution d'un receiver MTL n'est connue qu'à l'activation du SDP (ex. 720p par défaut
-***REMOVED*** à la création → 1080p quand la source arrive). Un moniteur pointé AVANT l'activation reste
-***REMOVED*** figé (hot, dims fixes) sur l'ancienne résolution → image cassée. Cette boucle re-vérifie
-***REMOVED*** périodiquement le format de la source des moniteurs actifs et les RE-DÉPLOIE si ça a changé.
+# ── Auto-suivi de la résolution de la source ──────────────────────────────────
+# La résolution d'un receiver MTL n'est connue qu'à l'activation du SDP (ex. 720p par défaut
+# à la création → 1080p quand la source arrive). Un moniteur pointé AVANT l'activation reste
+# figé (hot, dims fixes) sur l'ancienne résolution → image cassée. Cette boucle re-vérifie
+# périodiquement le format de la source des moniteurs actifs et les RE-DÉPLOIE si ça a changé.
 FOLLOW_INTERVAL = 5
 
 
 def _follow_resolution(uid):
     src = _source.get(uid)
     if not src or not src.get("shm") or src.get("audio_shm") or not src.get("hot"):
-        return                       ***REMOVED*** seul le mode hot vidéo-seule peut se périmer
+        return                       # seul le mode hot vidéo-seule peut se périmer
     fmt = _shm_fmt(src["shm"])
     if not fmt:
         return
-    ***REMOVED*** Comparer DB↔DB : `fmt_key` (nœud) peut légitimement diverger du format DB — comparer
-    ***REMOVED*** le format DB courant au fmt_key nœud provoquait un redeploy toutes les 5 s.
+    # Comparer DB↔DB : `fmt_key` (nœud) peut légitimement diverger du format DB — comparer
+    # le format DB courant au fmt_key nœud provoquait un redeploy toutes les 5 s.
     cur_key = _fmt_key6(fmt)
     if cur_key != src.get("fmt_key_db"):
-        log.info(f"monitor ***REMOVED***{uid}: format source {src.get('fmt_key_db')} → {cur_key}, redeploy auto")
-        ***REMOVED*** _touch=False : le suivi automatique ne compte pas comme activité utilisateur
-        ***REMOVED*** (sinon _last_used est rafraîchi toutes les 5 s et le reaper ne coupe jamais rien).
+        log.info(f"monitor #{uid}: format source {src.get('fmt_key_db')} → {cur_key}, redeploy auto")
+        # _touch=False : le suivi automatique ne compte pas comme activité utilisateur
+        # (sinon _last_used est rafraîchi toutes les 5 s et le reaper ne coupe jamais rien).
         set_source(uid, src["shm"], src.get("label"), _touch=False)
 
 
@@ -603,7 +603,7 @@ def _follow_loop():
         time.sleep(FOLLOW_INTERVAL)
         for uid in list(_source):
             if time.time() - _last_used.get(uid, 0) > IDLE_TIMEOUT:
-                continue             ***REMOVED*** ne suit que les moniteurs récemment actifs
+                continue             # ne suit que les moniteurs récemment actifs
             try:
                 _follow_resolution(uid)
             except Exception as e:
@@ -615,10 +615,10 @@ def start_reaper():
     threading.Thread(target=_follow_loop, daemon=True).start()
 
 
-***REMOVED*** ── Monitors dédiés par player ────────────────────────────────────────────────
-***REMOVED*** Contrairement aux monitors utilisateur (éphémères, reapés), ces containers
-***REMOVED*** encodent en permanence la sortie d'un player spécifique. Hostname :
-***REMOVED*** mon_<projet>_<hostname_player> (sanitisé). Ils ne sont pas reapés.
+# ── Monitors dédiés par player ────────────────────────────────────────────────
+# Contrairement aux monitors utilisateur (éphémères, reapés), ces containers
+# encodent en permanence la sortie d'un player spécifique. Hostname :
+# mon_<projet>_<hostname_player> (sanitisé). Ils ne sont pas reapés.
 
 import re as _re
 
@@ -706,7 +706,7 @@ def create_dedicated_iter(player_vmid, shm=None, audio_shm=None):
 
     player = db_get_container(player_vmid)
     if not player:
-        yield f"❌ Player ***REMOVED***{player_vmid} introuvable."
+        yield f"❌ Player #{player_vmid} introuvable."
         return
 
     player_hn = player.get("hostname") or f"player{player_vmid}"
@@ -721,18 +721,18 @@ def create_dedicated_iter(player_vmid, shm=None, audio_shm=None):
     target_hn = dedicated_hostname(player_hn, proj_name)
     yield f"Monitor dédié : {target_hn}"
 
-    ***REMOVED*** Réutiliser si déjà existant
+    # Réutiliser si déjà existant
     cont, _ = _dedicated_container(player_vmid)
     if cont:
         target = cont["vmid"]
-        yield f"Container ***REMOVED***{target} déjà existant — redéploiement du script."
+        yield f"Container #{target} déjà existant — redéploiement du script."
     else:
         yield f"Création du container Docker {target_hn}…"
         created = False
         try:
-            ***REMOVED*** PAS de yield sous le verrou (cf. create_iter).
+            # PAS de yield sous le verrou (cf. create_iter).
             with _create_lock:
-                cont, _ = _dedicated_container(player_vmid)   ***REMOVED*** re-check sous verrou
+                cont, _ = _dedicated_container(player_vmid)   # re-check sous verrou
                 if cont:
                     target = cont["vmid"]
                 else:
@@ -744,10 +744,10 @@ def create_dedicated_iter(player_vmid, shm=None, audio_shm=None):
         if not target:
             yield "❌ Création du container échouée (voir alertes)."
             return
-        yield (f"  → container ***REMOVED***{target} créé." if created
-               else f"Container ***REMOVED***{target} déjà existant — redéploiement du script.")
+        yield (f"  → container #{target} créé." if created
+               else f"Container #{target} déjà existant — redéploiement du script.")
 
-    ***REMOVED*** Déploiement
+    # Déploiement
     yield "Déploiement de l'encodeur…"
     path = dedicated_webrtc_path(player_hn)
     vid_shm  = shm or f"{player_hn}_0"
@@ -765,4 +765,4 @@ def create_dedicated_iter(player_vmid, shm=None, audio_shm=None):
     if not ok:
         yield "❌ Déploiement de l'encodeur échoué."
         return
-    yield f"✅ Monitor dédié prêt (***REMOVED***{target})."
+    yield f"✅ Monitor dédié prêt (#{target})."

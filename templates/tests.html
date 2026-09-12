@@ -7,97 +7,97 @@
   .tp-wrap { max-width: 1100px; }
   .tp-head { display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
   .tp-name { display:flex; align-items:center; gap:8px; }
-  .tp-name input { padding:6px 10px; border-radius:6px; border:1px solid var(--border,***REMOVED***444);
-                   background:var(--bg2,***REMOVED***1c1c1c); color:inherit; min-width:180px; }
+  .tp-name input { padding:6px 10px; border-radius:6px; border:1px solid var(--border,#444);
+                   background:var(--bg2,#1c1c1c); color:inherit; min-width:180px; }
   .tp-summary { display:flex; gap:8px; flex-wrap:wrap; }
   .tp-pill { padding:4px 10px; border-radius:999px; font-size:13px; font-weight:600;
              border:1px solid transparent; }
-  .tp-pill.ok       { background:***REMOVED***143d1e; color:***REMOVED***7be29a; border-color:***REMOVED***2c6e43; }
-  .tp-pill.defect   { background:***REMOVED***3d1414; color:***REMOVED***ef8a8a; border-color:***REMOVED***7a2c2c; }
-  .tp-pill.progress { background:***REMOVED***3a3413; color:***REMOVED***e6cf6a; border-color:***REMOVED***7a6f2c; }
-  .tp-pill.untested { background:***REMOVED***26282b; color:***REMOVED***9aa0a6; border-color:***REMOVED***3a3d42; }
+  .tp-pill.ok       { background:#143d1e; color:#7be29a; border-color:#2c6e43; }
+  .tp-pill.defect   { background:#3d1414; color:#ef8a8a; border-color:#7a2c2c; }
+  .tp-pill.progress { background:#3a3413; color:#e6cf6a; border-color:#7a6f2c; }
+  .tp-pill.untested { background:#26282b; color:#9aa0a6; border-color:#3a3d42; }
   .tp-filter { margin-left:auto; display:flex; gap:6px; align-items:center; }
-  .tp-filter select { padding:6px 8px; border-radius:6px; border:1px solid var(--border,***REMOVED***444);
-                      background:var(--bg2,***REMOVED***1c1c1c); color:inherit; }
+  .tp-filter select { padding:6px 8px; border-radius:6px; border:1px solid var(--border,#444);
+                      background:var(--bg2,#1c1c1c); color:inherit; }
 
   .tp-area-h { margin:22px 0 8px; font-size:15px; letter-spacing:.5px; text-transform:uppercase;
-               color:***REMOVED***9aa0a6; border-bottom:1px solid var(--border,***REMOVED***333); padding-bottom:4px; }
-  .tp-item { border:1px solid var(--border,***REMOVED***333); border-radius:10px; padding:12px 14px;
-             margin-bottom:10px; background:var(--bg2,***REMOVED***1a1a1a); }
-  .tp-item.s-ok       { border-left:4px solid ***REMOVED***2c6e43; }
-  .tp-item.s-defect   { border-left:4px solid ***REMOVED***b14242; }
-  .tp-item.s-progress { border-left:4px solid ***REMOVED***b1a142; }
-  .tp-item.s-untested { border-left:4px solid ***REMOVED***44484d; }
+               color:#9aa0a6; border-bottom:1px solid var(--border,#333); padding-bottom:4px; }
+  .tp-item { border:1px solid var(--border,#333); border-radius:10px; padding:12px 14px;
+             margin-bottom:10px; background:var(--bg2,#1a1a1a); }
+  .tp-item.s-ok       { border-left:4px solid #2c6e43; }
+  .tp-item.s-defect   { border-left:4px solid #b14242; }
+  .tp-item.s-progress { border-left:4px solid #b1a142; }
+  .tp-item.s-untested { border-left:4px solid #44484d; }
   .tp-title { font-weight:600; font-size:15px; }
-  .tp-detail { color:***REMOVED***b8bdc2; font-size:13px; margin-top:3px; line-height:1.45; }
+  .tp-detail { color:#b8bdc2; font-size:13px; margin-top:3px; line-height:1.45; }
   .tp-row2 { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-start; margin-top:10px; }
   .tp-status { display:flex; gap:6px; flex-wrap:wrap; }
   .tp-sbtn { cursor:pointer; padding:5px 12px; border-radius:6px; font-size:13px; font-weight:600;
-             border:1px solid var(--border,***REMOVED***444); background:var(--bg,***REMOVED***222); color:***REMOVED***cfd3d7; }
+             border:1px solid var(--border,#444); background:var(--bg,#222); color:#cfd3d7; }
   .tp-sbtn:hover { filter:brightness(1.2); }
-  .tp-sbtn.act.ok       { background:***REMOVED***1e6b3a; color:***REMOVED***fff; border-color:***REMOVED***2c6e43; }
-  .tp-sbtn.act.defect   { background:***REMOVED***9e2f2f; color:***REMOVED***fff; border-color:***REMOVED***7a2c2c; }
-  .tp-sbtn.act.progress { background:***REMOVED***8a7a1e; color:***REMOVED***fff; border-color:***REMOVED***7a6f2c; }
-  .tp-sbtn.act.untested { background:***REMOVED***3a3d42; color:***REMOVED***fff; border-color:***REMOVED***52565b; }
+  .tp-sbtn.act.ok       { background:#1e6b3a; color:#fff; border-color:#2c6e43; }
+  .tp-sbtn.act.defect   { background:#9e2f2f; color:#fff; border-color:#7a2c2c; }
+  .tp-sbtn.act.progress { background:#8a7a1e; color:#fff; border-color:#7a6f2c; }
+  .tp-sbtn.act.untested { background:#3a3d42; color:#fff; border-color:#52565b; }
   /* Gravité : n'apparaît qu'après avoir choisi Défaut. Ton plus sourd que les
      statuts — c'est une PRÉCISION du défaut, pas un statut de plus, et elle ne
      doit pas rivaliser visuellement avec la ligne au-dessus. */
   .tp-sev { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px; }
-  .tp-sev-lbl { font-size:12px; color:***REMOVED***8a8d94; }
+  .tp-sev-lbl { font-size:12px; color:#8a8d94; }
   .tp-sevbtn { cursor:pointer; padding:3px 10px; border-radius:999px; font-size:12px;
-               font-weight:600; background:***REMOVED***26282d; color:***REMOVED***b8bcc2; border:1px solid ***REMOVED***3a3d42; }
+               font-weight:600; background:#26282d; color:#b8bcc2; border:1px solid #3a3d42; }
   .tp-sevbtn:hover { filter:brightness(1.25); }
-  .tp-sevbtn.act.mineur   { background:***REMOVED***4a4426; color:***REMOVED***e8d9a0; border-color:***REMOVED***6b6136; }
-  .tp-sevbtn.act.majeur   { background:***REMOVED***5c3620; color:***REMOVED***f0bd94; border-color:***REMOVED***7d4c2c; }
-  .tp-sevbtn.act.bloquant { background:***REMOVED***7a1f1f; color:***REMOVED***ffd6d6; border-color:***REMOVED***a33; }
+  .tp-sevbtn.act.mineur   { background:#4a4426; color:#e8d9a0; border-color:#6b6136; }
+  .tp-sevbtn.act.majeur   { background:#5c3620; color:#f0bd94; border-color:#7d4c2c; }
+  .tp-sevbtn.act.bloquant { background:#7a1f1f; color:#ffd6d6; border-color:#a33; }
   /* Un défaut BLOQUANT se voit sans lire : la barre de gauche s'épaissit. */
-  .tp-item.sev-bloquant { border-left-width:8px; border-left-color:***REMOVED***e05555; }
+  .tp-item.sev-bloquant { border-left-width:8px; border-left-color:#e05555; }
   .tp-remark { flex:1; min-width:260px; }
   .tp-remark textarea { width:100%; box-sizing:border-box; min-height:42px; resize:vertical;
-                        padding:7px 9px; border-radius:6px; border:1px solid var(--border,***REMOVED***444);
-                        background:var(--bg,***REMOVED***161616); color:inherit; font-family:inherit; font-size:13px; }
-  .tp-meta { font-size:12px; color:***REMOVED***80868c; margin-top:5px; min-height:14px; }
-  .tp-saved { color:***REMOVED***7be29a; }
-  .tp-ctx-t { cursor:pointer; font-size:12px; color:***REMOVED***7aa2d6; user-select:none; margin-top:8px;
+                        padding:7px 9px; border-radius:6px; border:1px solid var(--border,#444);
+                        background:var(--bg,#161616); color:inherit; font-family:inherit; font-size:13px; }
+  .tp-meta { font-size:12px; color:#80868c; margin-top:5px; min-height:14px; }
+  .tp-saved { color:#7be29a; }
+  .tp-ctx-t { cursor:pointer; font-size:12px; color:#7aa2d6; user-select:none; margin-top:8px;
               display:inline-block; margin-right:14px; }
   .tp-ctx { display:none; margin-top:6px; padding:8px 10px; border-radius:6px;
-            background:***REMOVED***101216; border:1px dashed ***REMOVED***3a3d42; color:***REMOVED***9aa7b4; font-size:12px;
+            background:#101216; border:1px dashed #3a3d42; color:#9aa7b4; font-size:12px;
             line-height:1.5; white-space:pre-wrap; }
   .tp-ctx.open { display:block; }
 
-  .tp-thread { display:none; margin-top:10px; border-top:1px solid var(--border,***REMOVED***333); padding-top:10px; }
+  .tp-thread { display:none; margin-top:10px; border-top:1px solid var(--border,#333); padding-top:10px; }
   .tp-thread.open { display:block; }
   .tp-msg { display:flex; gap:8px; margin-bottom:8px; }
   .tp-msg .tp-av { flex:0 0 auto; width:30px; height:30px; border-radius:50%; display:flex;
-                   align-items:center; justify-content:center; font-size:12px; font-weight:700; color:***REMOVED***fff; }
-  .tp-msg.dev .tp-av    { background:***REMOVED***2c5db1; }
-  .tp-msg.tester .tp-av { background:***REMOVED***5a6068; }
+                   align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#fff; }
+  .tp-msg.dev .tp-av    { background:#2c5db1; }
+  .tp-msg.tester .tp-av { background:#5a6068; }
   .tp-msg .tp-body { flex:1; }
-  .tp-msg .tp-by { font-size:12px; color:***REMOVED***aab0b6; }
+  .tp-msg .tp-by { font-size:12px; color:#aab0b6; }
   .tp-msg .tp-by .tp-badge { font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;
                    margin-left:6px; vertical-align:middle; }
-  .tp-msg.dev .tp-badge    { background:***REMOVED***1d3a6b; color:***REMOVED***bcd3f7; }
-  .tp-msg.tester .tp-badge { background:***REMOVED***33373c; color:***REMOVED***c7ccd1; }
+  .tp-msg.dev .tp-badge    { background:#1d3a6b; color:#bcd3f7; }
+  .tp-msg.tester .tp-badge { background:#33373c; color:#c7ccd1; }
   .tp-msg .tp-txt { white-space:pre-wrap; font-size:13.5px; line-height:1.45; margin-top:2px;
-                    color:***REMOVED***dfe3e7; }
-  .tp-msg .tp-ts { font-size:11px; color:***REMOVED***71777d; }
+                    color:#dfe3e7; }
+  .tp-msg .tp-ts { font-size:11px; color:#71777d; }
   .tp-reply { display:flex; gap:8px; margin-top:8px; }
   .tp-reply textarea { flex:1; min-height:38px; resize:vertical; padding:7px 9px; border-radius:6px;
-                       border:1px solid var(--border,***REMOVED***444); background:var(--bg,***REMOVED***161616); color:inherit;
+                       border:1px solid var(--border,#444); background:var(--bg,#161616); color:inherit;
                        font-family:inherit; font-size:13px; }
   .tp-reply button { padding:0 16px; border-radius:6px; border:none; cursor:pointer;
-                     background:***REMOVED***2c5db1; color:***REMOVED***fff; font-weight:600; }
-  .tp-unread { background:***REMOVED***8a3b1e; color:***REMOVED***fff; font-size:10px; font-weight:700; padding:1px 7px;
+                     background:#2c5db1; color:#fff; font-weight:600; }
+  .tp-unread { background:#8a3b1e; color:#fff; font-size:10px; font-weight:700; padding:1px 7px;
                border-radius:999px; margin-left:8px; }
-  .tp-del { cursor:pointer; color:***REMOVED***c06; font-size:12px; margin-left:8px; background:none;
+  .tp-del { cursor:pointer; color:#c06; font-size:12px; margin-left:8px; background:none;
             border:none; }
-  .tp-add { margin:26px 0 10px; padding:14px; border:1px dashed var(--border,***REMOVED***444); border-radius:10px; }
+  .tp-add { margin:26px 0 10px; padding:14px; border:1px dashed var(--border,#444); border-radius:10px; }
   .tp-add input, .tp-add textarea { width:100%; box-sizing:border-box; margin:4px 0; padding:7px 9px;
-            border-radius:6px; border:1px solid var(--border,***REMOVED***444); background:var(--bg,***REMOVED***161616);
+            border-radius:6px; border:1px solid var(--border,#444); background:var(--bg,#161616);
             color:inherit; font-family:inherit; }
   .tp-add button, .tp-name button { padding:7px 14px; border-radius:6px; border:none; cursor:pointer;
-            background:***REMOVED***2c5db1; color:***REMOVED***fff; font-weight:600; }
-  .tp-note { color:***REMOVED***80868c; font-size:12px; margin:6px 0 18px; }
+            background:#2c5db1; color:#fff; font-weight:600; }
+  .tp-note { color:#80868c; font-size:12px; margin:6px 0 18px; }
 
   /* ── Navigation dans les réponses ──────────────────────────────────────────────────────────
      Le fil de discussion était la seule chose qu'on vienne VRAIMENT chercher sur cette page
@@ -106,30 +106,30 @@
      dernier message sur le repli. */
   .tp-tools { position:sticky; top:64px; z-index:5; display:flex; gap:10px; flex-wrap:wrap;
               align-items:center; padding:8px 10px; margin-bottom:14px;
-              background:var(--bg-elev,***REMOVED***1c1c1c); border:1px solid var(--border,***REMOVED***333);
+              background:var(--bg-elev,#1c1c1c); border:1px solid var(--border,#333);
               border-radius:8px; font-size:13px; }
   .tp-tools select, .tp-tools button { padding:5px 9px; border-radius:6px;
-              border:1px solid var(--border,***REMOVED***444); background:var(--bg2,***REMOVED***1c1c1c);
+              border:1px solid var(--border,#444); background:var(--bg2,#1c1c1c);
               color:inherit; font:inherit; cursor:pointer; }
   .tp-tools button:hover:not(:disabled) { filter:brightness(1.3); }
   .tp-tools button:disabled { opacity:.4; cursor:default; }
-  .tp-tools .tp-sep { width:1px; align-self:stretch; background:var(--border,***REMOVED***333); }
+  .tp-tools .tp-sep { width:1px; align-self:stretch; background:var(--border,#333); }
   .tp-tools .tp-grow { flex:1; }
   .tp-unread-nav { display:flex; gap:4px; align-items:center; }
-  .tp-unread-count { font-weight:700; color:***REMOVED***e8a06a; }
-  .tp-unread-count.zero { color:***REMOVED***71777d; font-weight:400; }
+  .tp-unread-count { font-weight:700; color:#e8a06a; }
+  .tp-unread-count.zero { color:#71777d; font-weight:400; }
 
   /* Aperçu du dernier message sur la ligne repliée : savoir QUI a répondu et QUOI, sans ouvrir. */
-  .tp-last { display:block; margin-top:4px; font-size:12px; color:***REMOVED***8b9198; line-height:1.4;
+  .tp-last { display:block; margin-top:4px; font-size:12px; color:#8b9198; line-height:1.4;
              max-width:70ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tp-last b { color:***REMOVED***a9b0b7; font-weight:600; }
-  .tp-last.dev b { color:***REMOVED***8fb3e8; }
+  .tp-last b { color:#a9b0b7; font-weight:600; }
+  .tp-last.dev b { color:#8fb3e8; }
 
-  /* Cible d'un saut (« suivant non lu », lien profond ***REMOVED***test-<id>) : la ligne se signale une
+  /* Cible d'un saut (« suivant non lu », lien profond #test-<id>) : la ligne se signale une
      seconde, sinon on ne sait pas où le défilement nous a posé. */
   .tp-item.tp-flash { animation:tpflash 1.4s ease-out; }
   @keyframes tpflash {
-    0%   { box-shadow:0 0 0 3px ***REMOVED***8a3b1e; }
+    0%   { box-shadow:0 0 0 3px #8a3b1e; }
     100% { box-shadow:0 0 0 3px transparent; }
   }
   .tp-item { scroll-margin-top:130px; }
@@ -140,24 +140,24 @@
      champ de réponse encore après. On ouvre donc sur une FENÊTRE de fin, avec un repère
      « nouveaux » et de quoi remonter par paliers. */
   .tp-thead { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:8px;
-              font-size:12px; color:***REMOVED***8b9198; }
-  .tp-thead .tp-new { color:***REMOVED***e8a06a; font-weight:700; }
-  .tp-thead button { padding:3px 8px; border-radius:6px; border:1px solid var(--border,***REMOVED***444);
-              background:var(--bg2,***REMOVED***1c1c1c); color:inherit; font:inherit; font-size:12px;
+              font-size:12px; color:#8b9198; }
+  .tp-thead .tp-new { color:#e8a06a; font-weight:700; }
+  .tp-thead button { padding:3px 8px; border-radius:6px; border:1px solid var(--border,#444);
+              background:var(--bg2,#1c1c1c); color:inherit; font:inherit; font-size:12px;
               cursor:pointer; }
   .tp-thead button:hover { filter:brightness(1.3); }
   .tp-more { display:block; width:100%; margin:0 0 10px; padding:6px; border-radius:6px;
-             border:1px dashed var(--border,***REMOVED***444); background:transparent; color:***REMOVED***8fb3e8;
+             border:1px dashed var(--border,#444); background:transparent; color:#8fb3e8;
              font:inherit; font-size:12px; cursor:pointer; }
-  .tp-more:hover { background:***REMOVED***14171c; }
+  .tp-more:hover { background:#14171c; }
   .tp-newsep { display:flex; align-items:center; gap:8px; margin:12px 0 10px;
-               color:***REMOVED***e8a06a; font-size:11px; font-weight:700; letter-spacing:.06em;
+               color:#e8a06a; font-size:11px; font-weight:700; letter-spacing:.06em;
                text-transform:uppercase; }
-  .tp-newsep::before, .tp-newsep::after { content:""; flex:1; height:1px; background:***REMOVED***8a3b1e; }
-  .tp-msg.tp-neuf { background:***REMOVED***1b1512; border-radius:6px; padding:4px 6px; margin-left:-6px; }
+  .tp-newsep::before, .tp-newsep::after { content:""; flex:1; height:1px; background:#8a3b1e; }
+  .tp-msg.tp-neuf { background:#1b1512; border-radius:6px; padding:4px 6px; margin-left:-6px; }
   /* Champ de réponse toujours atteignable, même au milieu d'un fil de 121 messages. */
-  .tp-reply { position:sticky; bottom:0; background:var(--bg2,***REMOVED***1a1a1a); padding-top:8px;
-              border-top:1px solid var(--border,***REMOVED***333); }
+  .tp-reply { position:sticky; bottom:0; background:var(--bg2,#1a1a1a); padding-top:8px;
+              border-top:1px solid var(--border,#333); }
 </style>
 
 <div class="tp-wrap">
@@ -185,8 +185,8 @@
     </div>
   </div>
 
-  {***REMOVED*** Barre d'outils COLLANTE : tout ce qui sert à retrouver une réponse. Séparée du bandeau
-     d'en-tête (nom + compteurs), qui lui n'est consulté qu'au début. ***REMOVED***}
+  {# Barre d'outils COLLANTE : tout ce qui sert à retrouver une réponse. Séparée du bandeau
+     d'en-tête (nom + compteurs), qui lui n'est consulté qu'au début. #}
   <div class="tp-tools">
     <span class="tp-unread-nav">
       <span id="tp-unread-count" class="tp-unread-count zero">0 réponse non lue</span>
@@ -456,7 +456,7 @@
     // C'est le seul niveau qui mérite d'attirer l'œil dans une liste de 77 points.
     div.className = "tp-item s-" + status
                   + (status === "defect" && st.severite === "bloquant" ? " sev-bloquant" : "");
-    div.id = "test-" + it.id;          // ancre : lien profond /tests***REMOVED***test-<id> vers une ligne
+    div.id = "test-" + it.id;          // ancre : lien profond /tests#test-<id> vers une ligne
 
     const title = document.createElement("div");
     title.className = "tp-title";
@@ -822,10 +822,10 @@
     });
   });
 
-  // Lien profond : /tests***REMOVED***test-<id> ouvre le fil de cette ligne et l'amène à l'écran — c'est
+  // Lien profond : /tests#test-<id> ouvre le fil de cette ligne et l'amène à l'écran — c'est
   // ainsi qu'on renvoie quelqu'un sur UNE réponse précise plutôt que sur « la page recette ».
   load().then(() => {
-    const m = (location.hash || "").match(/^***REMOVED***test-(.+)$/);
+    const m = (location.hash || "").match(/^#test-(.+)$/);
     if (m) setTimeout(() => sauterVers(m[1], true), 60);
   });
   // refresh partagé (pause si édition) — sans recouvrement, cf. layout.html

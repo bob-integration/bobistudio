@@ -13,7 +13,7 @@
 (function () {
     const grid = document.getElementById('ws-grid');
     const esc = s => String(s ?? '').replace(/[&<>"']/g,
-        c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&***REMOVED***39;'}[c]));
+        c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const roleLabel = r => window.t('projects.role_' + r) || r;
 
     async function load() {

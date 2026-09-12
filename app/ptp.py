@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """PTP (IEEE 1588 / SMPTE 2059-2) — gestion ptp4l + phc2sys côté host Proxmox via SSH.
 
@@ -31,78 +31,78 @@ PTP4L_CONF_PATH    = "/etc/linuxptp/ptp4l.conf"
 PTP4L_UNIT_PATH    = "/etc/systemd/system/mxl-ptp4l.service"
 PHC2SYS_UNIT_PATH  = "/etc/systemd/system/mxl-phc2sys.service"
 
-***REMOVED*** Démons de synchro d'horloge CONCURRENTS de phc2sys. Un seul process doit discipliner
-***REMOVED*** CLOCK_REALTIME : si NTP (timesyncd/chrony/ntp) tourne en parallèle, les deux servos se
-***REMOVED*** battent → phc2sys reste collé à sa butée de fréquence et l'horloge n'est jamais alignée
-***REMOVED*** sur le PHC (TAI). On les coupe à l'activation PTP et on signale leur présence dans status().
+# Démons de synchro d'horloge CONCURRENTS de phc2sys. Un seul process doit discipliner
+# CLOCK_REALTIME : si NTP (timesyncd/chrony/ntp) tourne en parallèle, les deux servos se
+# battent → phc2sys reste collé à sa butée de fréquence et l'horloge n'est jamais alignée
+# sur le PHC (TAI). On les coupe à l'activation PTP et on signale leur présence dans status().
 COMPETING_TIMESYNC = ("systemd-timesyncd", "chrony", "chronyd", "ntp", "ntpsec", "ntpd")
 
-***REMOVED*** ─── Historique des métriques (échantillonnage serveur) ──────────────────────
-***REMOVED*** Ring buffer en mémoire alimenté par un thread de fond, pour que la page PTP
-***REMOVED*** affiche les 10 dernières minutes dès le chargement (le buffer client repartait
-***REMOVED*** de zéro à chaque reload).
+# ─── Historique des métriques (échantillonnage serveur) ──────────────────────
+# Ring buffer en mémoire alimenté par un thread de fond, pour que la page PTP
+# affiche les 10 dernières minutes dès le chargement (le buffer client repartait
+# de zéro à chaque reload).
 SAMPLE_INTERVAL_S = 5
-HISTORY_SECONDS   = 600                                  ***REMOVED*** 10 min
-HISTORY_MAX       = HISTORY_SECONDS // SAMPLE_INTERVAL_S  ***REMOVED*** 120 points
-***REMOVED*** B1b-2 : état/historique PTP keyés par node_id (multi-nœud). node_id int.
-_history = {}            ***REMOVED*** node_id → deque(maxlen=HISTORY_MAX)
+HISTORY_SECONDS   = 600                                  # 10 min
+HISTORY_MAX       = HISTORY_SECONDS // SAMPLE_INTERVAL_S  # 120 points
+# B1b-2 : état/historique PTP keyés par node_id (multi-nœud). node_id int.
+_history = {}            # node_id → deque(maxlen=HISTORY_MAX)
 _history_lock = threading.Lock()
 _sampler_thread = None
 
-***REMOVED*** ─── Statistiques 24 h (moyenne / max de dérive) ─────────────────────────────
-***REMOVED*** Buffer basse résolution distinct du graphe : on ne renvoie pas 17 280 points au
-***REMOVED*** client, on en dérive juste moyenne / max d'|offset| et de mean path delay sur 24 h.
-***REMOVED*** Ça permet de quantifier la dérive que le graphe (fenêtre 10 min max) ne montre pas.
-STATS_SECONDS = 86400                                    ***REMOVED*** 24 h
-STATS_MAX     = STATS_SECONDS // SAMPLE_INTERVAL_S       ***REMOVED*** 17 280 points
-_stats_history = {}      ***REMOVED*** node_id → deque(maxlen=STATS_MAX)
-***REMOVED*** Historique PAR RÉSEAU (multi-NIC) : (node_id, network_id) → deque. En mémoire seulement
-***REMOVED*** (le 24 h persisté reste node-niveau). Permet de grapher chaque réseau 2110 séparément.
-_net_history = {}        ***REMOVED*** (node_id, network_id) → deque(maxlen=HISTORY_MAX)  — 10 min
-_net_stats   = {}        ***REMOVED*** (node_id, network_id) → deque(maxlen=STATS_MAX)    — 24 h (RAM)
+# ─── Statistiques 24 h (moyenne / max de dérive) ─────────────────────────────
+# Buffer basse résolution distinct du graphe : on ne renvoie pas 17 280 points au
+# client, on en dérive juste moyenne / max d'|offset| et de mean path delay sur 24 h.
+# Ça permet de quantifier la dérive que le graphe (fenêtre 10 min max) ne montre pas.
+STATS_SECONDS = 86400                                    # 24 h
+STATS_MAX     = STATS_SECONDS // SAMPLE_INTERVAL_S       # 17 280 points
+_stats_history = {}      # node_id → deque(maxlen=STATS_MAX)
+# Historique PAR RÉSEAU (multi-NIC) : (node_id, network_id) → deque. En mémoire seulement
+# (le 24 h persisté reste node-niveau). Permet de grapher chaque réseau 2110 séparément.
+_net_history = {}        # (node_id, network_id) → deque(maxlen=HISTORY_MAX)  — 10 min
+_net_stats   = {}        # (node_id, network_id) → deque(maxlen=STATS_MAX)    — 24 h (RAM)
 
-***REMOVED*** Persistance « option C » : on ne fait PAS un write disque par échantillon (5 s →
-***REMOVED*** 17 280 fsync/jour). Le ring 24 h vit en mémoire et est flushé en bloc dans un
-***REMOVED*** seul JSON toutes les 5 min (~288 écritures/jour, qq dizaines de Ko). Au pire on
-***REMOVED*** perd 5 min d'historique sur un crash — acceptable pour de la stat moyenne/max.
+# Persistance « option C » : on ne fait PAS un write disque par échantillon (5 s →
+# 17 280 fsync/jour). Le ring 24 h vit en mémoire et est flushé en bloc dans un
+# seul JSON toutes les 5 min (~288 écritures/jour, qq dizaines de Ko). Au pire on
+# perd 5 min d'historique sur un crash — acceptable pour de la stat moyenne/max.
 STATS_PERSIST_PATH = os.path.join(os.path.dirname(DB_PATH) or ".", "ptp_stats.json")
-STATS_FLUSH_S      = 300                                 ***REMOVED*** flush toutes les 5 min
+STATS_FLUSH_S      = 300                                 # flush toutes les 5 min
 _last_flush        = 0.0
 
-***REMOVED*** Dernier status() COMPLET par nœud (l'échantillon réduit de _history ne garde pas grandmaster_id).
-***REMOVED*** {node_id → status dict}. Permet aux routes pollées de lire l'état PTP sans refaire les commandes SSH.
+# Dernier status() COMPLET par nœud (l'échantillon réduit de _history ne garde pas grandmaster_id).
+# {node_id → status dict}. Permet aux routes pollées de lire l'état PTP sans refaire les commandes SSH.
 _last_status = {}
 
-***REMOVED*** État précédent par (node_id, network_id) pour la DÉTECTION D'ÉVÉNEMENTS PTP (journal persisté).
-***REMOVED*** {ifaces_state, grandmaster_id, locked, clock_ok, ptp4l_running}. Cf. _detect_ptp_events.
+# État précédent par (node_id, network_id) pour la DÉTECTION D'ÉVÉNEMENTS PTP (journal persisté).
+# {ifaces_state, grandmaster_id, locked, clock_ok, ptp4l_running}. Cf. _detect_ptp_events.
 _ptp_event_state = {}
 
-***REMOVED*** Alarmes antenne (audit A6) : suivi d'horloge ABSENTE de façon prolongée, par (node_id, network_id).
-***REMOVED*** Une perte brève (resync, bascule GM) reste un warning du journal ; au-delà de `ptp_unlock_err_s`
-***REMOVED*** (défaut 30 s) l'antenne n'est plus alignée → alerte ERROR une fois, info au retour à la normale.
-***REMOVED*** Ces deux structures sont en MÉMOIRE : elles sont re-seedées au boot depuis le journal persisté
-***REMOVED*** (_seed_escalade_depuis_journal), sinon chaque redémarrage ré-émet l'alerte d'un incident en cours.
-_unlocked_since  = {}     ***REMOVED*** (node_id, network_id) → time.time() du passage clock_ok→False
-_unlock_alerted  = set()  ***REMOVED*** clés ayant déjà émis l'alerte error (edge-trigger)
-PTP_UNLOCK_ERR_S = 30.0   ***REMOVED*** setting ptp_unlock_err_s
+# Alarmes antenne (audit A6) : suivi d'horloge ABSENTE de façon prolongée, par (node_id, network_id).
+# Une perte brève (resync, bascule GM) reste un warning du journal ; au-delà de `ptp_unlock_err_s`
+# (défaut 30 s) l'antenne n'est plus alignée → alerte ERROR une fois, info au retour à la normale.
+# Ces deux structures sont en MÉMOIRE : elles sont re-seedées au boot depuis le journal persisté
+# (_seed_escalade_depuis_journal), sinon chaque redémarrage ré-émet l'alerte d'un incident en cours.
+_unlocked_since  = {}     # (node_id, network_id) → time.time() du passage clock_ok→False
+_unlock_alerted  = set()  # clés ayant déjà émis l'alerte error (edge-trigger)
+PTP_UNLOCK_ERR_S = 30.0   # setting ptp_unlock_err_s
 
-***REMOVED*** ── QUALITÉ du servo, distincte de la DISPONIBILITÉ de l'horloge ────────────────────────────────
-***REMOVED*** `clock_ok` (donc l'alarme ci-dessus) répond « y a-t-il une référence de temps ». Le verrou servo
-***REMOVED*** STRICT de libmtl, lui, répond « le servo tient-il sous 100 ns en continu » — une question de
-***REMOVED*** QUALITÉ. Elle n'était pas posable jusqu'au 2026-08-30 : l'asservissement en fréquence du PHC
-***REMOVED*** n'était pas compilé, le verrou ne s'armait JAMAIS, et une alarme dessus aurait hurlé en
-***REMOVED*** permanence sur tout le parc. Depuis le correctif il tient — il devient donc le premier
-***REMOVED*** indicateur de DÉGRADATION d'horloge du produit, là où on ne savait signaler que l'absence.
-_servo_loose_since = {}   ***REMOVED*** (node_id, network_id) → time.time() du passage locked→False
+# ── QUALITÉ du servo, distincte de la DISPONIBILITÉ de l'horloge ────────────────────────────────
+# `clock_ok` (donc l'alarme ci-dessus) répond « y a-t-il une référence de temps ». Le verrou servo
+# STRICT de libmtl, lui, répond « le servo tient-il sous 100 ns en continu » — une question de
+# QUALITÉ. Elle n'était pas posable jusqu'au 2026-08-30 : l'asservissement en fréquence du PHC
+# n'était pas compilé, le verrou ne s'armait JAMAIS, et une alarme dessus aurait hurlé en
+# permanence sur tout le parc. Depuis le correctif il tient — il devient donc le premier
+# indicateur de DÉGRADATION d'horloge du produit, là où on ne savait signaler que l'absence.
+_servo_loose_since = {}   # (node_id, network_id) → time.time() du passage locked→False
 _servo_alerted     = set()
-***REMOVED*** 600 s : très au-dessus de la convergence au démarrage (1 à 2 min mesurées), pour qu'un
-***REMOVED*** déploiement ne déclenche jamais l'alarme. C'est une dégradation DURABLE qu'on veut voir, pas une
-***REMOVED*** excursion passagère — sinon on rejoue l'alarme qui bat et qu'on apprend à ignorer.
-PTP_SERVO_WARN_S = 600.0  ***REMOVED*** setting ptp_servo_warn_s
-***REMOVED*** Anomalies DIFFUSÉES dans le fil d'alertes, par (node_id, network_id, ifname, type) : c'est ce qui
-***REMOVED*** permet de refermer chaque ligne d'alerte quand l'événement inverse arrive (cf. ev()). Re-seedé au
-***REMOVED*** boot depuis le journal persisté (_seed_alertes_depuis_journal) — une anomalie ouverte avant un
-***REMOVED*** redémarrage doit pouvoir se refermer après.
+# 600 s : très au-dessus de la convergence au démarrage (1 à 2 min mesurées), pour qu'un
+# déploiement ne déclenche jamais l'alarme. C'est une dégradation DURABLE qu'on veut voir, pas une
+# excursion passagère — sinon on rejoue l'alarme qui bat et qu'on apprend à ignorer.
+PTP_SERVO_WARN_S = 600.0  # setting ptp_servo_warn_s
+# Anomalies DIFFUSÉES dans le fil d'alertes, par (node_id, network_id, ifname, type) : c'est ce qui
+# permet de refermer chaque ligne d'alerte quand l'événement inverse arrive (cf. ev()). Re-seedé au
+# boot depuis le journal persisté (_seed_alertes_depuis_journal) — une anomalie ouverte avant un
+# redémarrage doit pouvoir se refermer après.
 _alerte_diffusee = set()
 
 
@@ -132,7 +132,7 @@ def _load_stats():
     except (FileNotFoundError, ValueError, OSError):
         return
     if not isinstance(data, dict):
-        return   ***REMOVED*** ancien format mono-hôte (liste) → ignoré
+        return   # ancien format mono-hôte (liste) → ignoré
     cutoff = time.time() - STATS_SECONDS
     n = 0
     with _history_lock:
@@ -178,7 +178,7 @@ def record_sample(node_id, s):
         }
         _hist(node_id).append(sample)
         _stats(node_id).append({"t": t, "offset_ns": sample["offset_ns"], "mpd_ns": sample["mpd_ns"]})
-        ***REMOVED*** Par réseau (un échantillon par domaine de l'agrégat multi-NIC).
+        # Par réseau (un échantillon par domaine de l'agrégat multi-NIC).
         for d in (s.get("domains") or []):
             nid2 = d.get("network_id")
             if nid2 is None:
@@ -229,8 +229,8 @@ def get_stats_24h(node_id, network_id=None):
             return {"mean_ns": None, "mean_abs_ns": None, "max_abs_ns": None}
         return {
             "mean_ns":     sum(vals) / len(vals),
-            ***REMOVED*** Moyenne de la valeur absolue : pour un offset qui oscille autour de 0, la moyenne
-            ***REMOVED*** signée tend vers 0 et masque la dérive réelle → on expose aussi la moyenne des |v|.
+            # Moyenne de la valeur absolue : pour un offset qui oscille autour de 0, la moyenne
+            # signée tend vers 0 et masque la dérive réelle → on expose aussi la moyenne des |v|.
             "mean_abs_ns": sum(abs(v) for v in vals) / len(vals),
             "max_abs_ns":  max(abs(v) for v in vals),
         }
@@ -259,7 +259,7 @@ def clock_ok(d):
 
     ⚠ LE MOTIF A CHANGÉ LE 2026-08-30, la règle non. On écrivait ici que le lock strict « ne s'arme
     pas sur E810 » — c'était un CONSTAT pris pour une fatalité du matériel. La cause réelle était
-    que l'asservissement en FRÉQUENCE du PHC n'était jamais compilé dans libmtl (`***REMOVED***ifdef` dont le
+    que l'asservissement en FRÉQUENCE du PHC n'était jamais compilé dans libmtl (`#ifdef` dont le
     macro n'existait nulle part). Une fois activé, le lock strict s'arme en permanence.
 
     `synced` reste le critère, et pour une raison qui vaut MAINTENANT, pas par compatibilité : les
@@ -276,11 +276,11 @@ def clock_ok(d):
     return bool(d.get("locked"))
 
 
-_clock_ok = clock_ok      ***REMOVED*** alias interne historique
+_clock_ok = clock_ok      # alias interne historique
 
 
-***REMOVED*** Types d'événement d'ESCALADE (horloge perdue) dans le journal ptp_events ; le retour à la normale
-***REMOVED*** est journalisé en `clock_ok`. Ce vocabulaire est relu au boot par _seed_escalade_depuis_journal.
+# Types d'événement d'ESCALADE (horloge perdue) dans le journal ptp_events ; le retour à la normale
+# est journalisé en `clock_ok`. Ce vocabulaire est relu au boot par _seed_escalade_depuis_journal.
 _ESCALADE_TYPES = ("holdover", "clock_absent", "no_gm")
 
 
@@ -346,7 +346,7 @@ def _seed_alertes_depuis_journal(nid, net_id):
     warning/error, l'anomalie est encore ouverte."""
     from .database import db_get_ptp_events
     try:
-        rows = db_get_ptp_events(nid, net_id, limit=200)      ***REMOVED*** ordre DESC (le plus récent d'abord)
+        rows = db_get_ptp_events(nid, net_id, limit=200)      # ordre DESC (le plus récent d'abord)
     except Exception as e:
         log.debug("seed alertes PTP (%s/%s): %s", nid, net_id, e)
         return
@@ -354,7 +354,7 @@ def _seed_alertes_depuis_journal(nid, net_id):
     for r in rows:
         k = (r.get("ifname") or "", r.get("type"))
         if k in vus:
-            continue                                          ***REMOVED*** déjà vu = plus récent, il fait foi
+            continue                                          # déjà vu = plus récent, il fait foi
         vus.add(k)
         if r.get("level") in ("warning", "error"):
             _alerte_diffusee.add((int(nid), int(net_id), k[0], k[1]))
@@ -379,13 +379,13 @@ def _detect_ptp_events(node, s):
             "ifaces_state":   dict(d.get("ifaces_state") or {}),
             "grandmaster_id": d.get("grandmaster_id"),
             "locked":         bool(d.get("locked")),
-            ***REMOVED*** Critère d'ALARME (≠ `locked` brut sur un nœud à PTP moteur) — cf. _clock_ok.
+            # Critère d'ALARME (≠ `locked` brut sur un nœud à PTP moteur) — cf. _clock_ok.
             "clock_ok":       _clock_ok(d),
             "ptp4l_running":  bool(d.get("ptp4l_running")),
         }
         prev = _ptp_event_state.get(key)
         if prev is None:
-            _ptp_event_state[key] = cur          ***REMOVED*** seed muet
+            _ptp_event_state[key] = cur          # seed muet
             _seed_escalade_depuis_journal(key, nid, net_id)
             _seed_alertes_depuis_journal(nid, net_id)
             continue
@@ -397,15 +397,15 @@ def _detect_ptp_events(node, s):
             dans la langue du lecteur, `nname`/`net` injectés automatiquement) ; `detail` reste
             réservé à ptp_events. Sans clé : comportement historique inchangé (f-string brute)."""
             db_add_ptp_event(nid, nname, net_id, net_name, ifn, typ, detail, level)
-            ***REMOVED*** Pont vers le fil d'alertes (audit A6). Les warning/error partent tels quels ; les info
-            ***REMOVED*** NE partent QUE si elles referment une anomalie DÉJÀ DIFFUSÉE sur le même
-            ***REMOVED*** (nœud, réseau, interface, type). Sans cette symétrie, l'alarme est à sens unique :
-            ***REMOVED*** mesuré sur Horace le 2026-07-27 après un redéploiement du moteur — le fil montrait
-            ***REMOVED*** « ens1f0np0 : SLAVE → FAULTY » et « horloge déverrouillée », et JAMAIS le retour à la
-            ***REMOVED*** normale, pourtant bien journalisé 12 s plus tard (le nœud était re-verrouillé, rms
-            ***REMOVED*** ~70 ns). L'exploitant restait devant une panne close depuis des heures. Le filtrage
-            ***REMOVED*** « pas d'info dans le fil » évitait le bruit des changements bénins : on garde ce
-            ***REMOVED*** principe, on ne diffuse un retour à la normale que là où on a diffusé la panne.
+            # Pont vers le fil d'alertes (audit A6). Les warning/error partent tels quels ; les info
+            # NE partent QUE si elles referment une anomalie DÉJÀ DIFFUSÉE sur le même
+            # (nœud, réseau, interface, type). Sans cette symétrie, l'alarme est à sens unique :
+            # mesuré sur Horace le 2026-07-27 après un redéploiement du moteur — le fil montrait
+            # « ens1f0np0 : SLAVE → FAULTY » et « horloge déverrouillée », et JAMAIS le retour à la
+            # normale, pourtant bien journalisé 12 s plus tard (le nœud était re-verrouillé, rms
+            # ~70 ns). L'exploitant restait devant une panne close depuis des heures. Le filtrage
+            # « pas d'info dans le fil » évitait le bruit des changements bénins : on garde ce
+            # principe, on ne diffuse un retour à la normale que là où on a diffusé la panne.
             from .database import db_add_alert
 
             def _emit(lvl):
@@ -435,7 +435,7 @@ def _detect_ptp_events(node, s):
             else:
                 ev(None, "service", "ptp4l arrêté", "error",
                    alert_key="alert.ptp.service_arrete")
-        ***REMOVED*** État de port par interface (la bascule red/blue se voit ici : SLAVE → FAULTY, etc.)
+        # État de port par interface (la bascule red/blue se voit ici : SLAVE → FAULTY, etc.)
         for ifn, stt in cur["ifaces_state"].items():
             old = prev["ifaces_state"].get(ifn)
             if old != stt:
@@ -443,7 +443,7 @@ def _detect_ptp_events(node, s):
                 ev(ifn, "port_state", f"{ifn} : {old or '—'} → {stt}", level,
                    alert_key="alert.ptp.port_etat_change",
                    alert_params={"ifn": ifn, "old": old or "—", "new": stt})
-        for ifn, old in prev["ifaces_state"].items():       ***REMOVED*** interface qui ne reporte plus d'état
+        for ifn, old in prev["ifaces_state"].items():       # interface qui ne reporte plus d'état
             if ifn not in cur["ifaces_state"] and old:
                 ev(ifn, "port_state", f"{ifn} : {old} → —", "warning",
                    alert_key="alert.ptp.port_etat_change",
@@ -462,10 +462,10 @@ def _detect_ptp_events(node, s):
                    alert_key="alert.ptp.horloge_deverrouillee")
         _ptp_event_state[key] = cur
 
-        ***REMOVED*** Horloge absente PROLONGÉE : au-delà du seuil, plus rien n'aligne l'antenne 2110 → escalade
-        ***REMOVED*** en ERROR (une fois), retour à la normale en info. La CAUSE est diagnostiquée par
-        ***REMOVED*** _clock_fault : holdover véritable, absence de grandmaster, ou absence pure et simple de
-        ***REMOVED*** client PTP (moteur sans session) — trois pannes distinctes qui appelaient le même message.
+        # Horloge absente PROLONGÉE : au-delà du seuil, plus rien n'aligne l'antenne 2110 → escalade
+        # en ERROR (une fois), retour à la normale en info. La CAUSE est diagnostiquée par
+        # _clock_fault : holdover véritable, absence de grandmaster, ou absence pure et simple de
+        # client PTP (moteur sans session) — trois pannes distinctes qui appelaient le même message.
         if not cur["clock_ok"]:
             t0 = _unlocked_since.setdefault(key, time.time())
             if key not in _unlock_alerted:
@@ -477,22 +477,22 @@ def _detect_ptp_events(node, s):
                 dur = time.time() - t0
                 if dur >= seuil:
                     typ, phrase, alert_key, alert_params = _clock_fault(d)
-                    ***REMOVED*** Via ev() : l'escalade part dans le journal ptp_events *et* dans le fil
-                    ***REMOVED*** d'alertes. Elle n'était journalisée NULLE PART — d'où un journal PTP vide
-                    ***REMOVED*** (aucune ligne `lock` pour le nœud) pendant que le fil répétait l'erreur.
+                    # Via ev() : l'escalade part dans le journal ptp_events *et* dans le fil
+                    # d'alertes. Elle n'était journalisée NULLE PART — d'où un journal PTP vide
+                    # (aucune ligne `lock` pour le nœud) pendant que le fil répétait l'erreur.
                     ev(None, typ, f"{phrase} (depuis {int(dur)} s)", "error",
                        alert_key=alert_key, alert_params=dict(alert_params, dur=int(dur)))
-                    ***REMOVED*** Edge-trigger posé même si la passerelle d'alertes est coupée : `ptp_alerts_enabled`
-                    ***REMOVED*** décide de la DIFFUSION, pas de la mémoire de l'incident.
+                    # Edge-trigger posé même si la passerelle d'alertes est coupée : `ptp_alerts_enabled`
+                    # décide de la DIFFUSION, pas de la mémoire de l'incident.
                     _unlock_alerted.add(key)
-            ***REMOVED*** Le servo n'est pas jugé pendant que l'horloge est absente : sans référence, « non
-            ***REMOVED*** convergé » est une conséquence, pas une cause. On repart donc de zéro au retour.
+            # Le servo n'est pas jugé pendant que l'horloge est absente : sans référence, « non
+            # convergé » est une conséquence, pas une cause. On repart donc de zéro au retour.
             _servo_loose_since.pop(key, None)
             _servo_alerted.discard(key)
         else:
-            ***REMOVED*** ── QUALITÉ : référence PRÉSENTE mais servo non convergé, durablement ────────────
-            ***REMOVED*** Uniquement sur un nœud à PTP MOTEUR : sur un nœud ptp4l, `locked` EST le critère de
-            ***REMOVED*** disponibilité (déjà traité au-dessus), et le juger deux fois ferait doublon.
+            # ── QUALITÉ : référence PRÉSENTE mais servo non convergé, durablement ────────────
+            # Uniquement sur un nœud à PTP MOTEUR : sur un nœud ptp4l, `locked` EST le critère de
+            # disponibilité (déjà traité au-dessus), et le juger deux fois ferait doublon.
             if d.get("engine_ptp") and not cur["locked"]:
                 t0s = _servo_loose_since.setdefault(key, time.time())
                 if key not in _servo_alerted:
@@ -528,7 +528,7 @@ def _detect_ptp_events(node, s):
                                  params={"nname": nname, "net": net_name or net_id})
             _unlocked_since.pop(key, None)
             _unlock_alerted.discard(key)
-            for _t in _ESCALADE_TYPES:           ***REMOVED*** l'escalade se referme par son propre message
+            for _t in _ESCALADE_TYPES:           # l'escalade se referme par son propre message
                 _alerte_diffusee.discard((int(nid), int(net_id), "", _t))
 
 
@@ -544,8 +544,8 @@ def _sampler_loop():
                 host = node.get("host")
                 if nid is None or not host:
                     continue
-                ***REMOVED*** Nœud full-PF DPDK : ptp_enabled est OFF sur le port vfio (pas de ptp4l), mais le
-                ***REMOVED*** moteur porte un PTP interne → l'échantillonner quand même (sinon panneau vide).
+                # Nœud full-PF DPDK : ptp_enabled est OFF sur le port vfio (pas de ptp4l), mais le
+                # moteur porte un PTP interne → l'échantillonner quand même (sinon panneau vide).
                 _dpdk = False
                 try:
                     from . import docker_driver
@@ -554,8 +554,8 @@ def _sampler_loop():
                     _dpdk = False
                 if not _dpdk and not st.setting_for("ptp_enabled", nid):
                     continue
-                ***REMOVED*** status_for_node = chemin multi-NIC si le nœud a des groupes PTP
-                ***REMOVED*** (node_interfaces), sinon repli mono. Dict plat dans les deux cas.
+                # status_for_node = chemin multi-NIC si le nœud a des groupes PTP
+                # (node_interfaces), sinon repli mono. Dict plat dans les deux cas.
                 s = status_for_node(nid, host, int(st.setting_for("ptp_domain", nid) or 0))
                 with _history_lock:
                     _last_status[int(nid)] = {**s, "t": time.time()}
@@ -564,7 +564,7 @@ def _sampler_loop():
                     _detect_ptp_events(node, s)
                 except Exception as e:
                     log.debug("ptp events detect: %s", e)
-            ***REMOVED*** Flush périodique du ring 24 h (pas à chaque échantillon)
+            # Flush périodique du ring 24 h (pas à chaque échantillon)
             if time.time() - _last_flush >= STATS_FLUSH_S:
                 _flush_stats()
                 _last_flush = time.time()
@@ -579,7 +579,7 @@ def start_sampler():
     if _sampler_thread and _sampler_thread.is_alive():
         return
     _load_stats()
-    _last_flush = time.time()  ***REMOVED*** évite un flush immédiat juste après le reload
+    _last_flush = time.time()  # évite un flush immédiat juste après le reload
     _sampler_thread = threading.Thread(target=_sampler_loop, daemon=True)
     _sampler_thread.start()
     log.info("PTP : échantillonnage historique démarré (%ds, %d points max)",
@@ -595,7 +595,7 @@ def _ptp4l_conf(domain, priority1=128, priority2=128,
     `client_only` (clientOnly 1) : le nœud ne se proclame jamais grandmaster — en perte
     d'Announce il attend en LISTENING au lieu de basculer MASTER (cf. réglage ptp_client_only).
     gmCapable devient sans effet quand clientOnly=1."""
-    return f"""***REMOVED*** Géré par orchestrateur MXL
+    return f"""# Géré par orchestrateur MXL
 [global]
 domainNumber              {int(domain)}
 priority1                 {int(priority1)}
@@ -607,7 +607,7 @@ announceReceiptTimeout    {int(announce_timeout)}
 syncReceiptTimeout        0
 neighborPropDelayThresh   {int(delay_thresh)}
 utc_offset                {int(utc_offset)}
-***REMOVED*** SMPTE 2059-2 (ST 2110-10) profile
+# SMPTE 2059-2 (ST 2110-10) profile
 clientOnly                {1 if client_only else 0}
 gmCapable                 1
 free_running              0
@@ -616,7 +616,7 @@ clock_servo               pi
 
 
 def _systemd_ptp4l(ifname, hw_ts):
-    ts_flag = "" if hw_ts else "-S"  ***REMOVED*** -S = software timestamping
+    ts_flag = "" if hw_ts else "-S"  # -S = software timestamping
     return f"""[Unit]
 Description=MXL ptp4l (IEEE 1588)
 After=network-online.target
@@ -624,9 +624,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-***REMOVED*** L'interface PTP peut être hors d'un bridge / absente de /etc/network/interfaces et donc
-***REMOVED*** rester administrativement DOWN au boot → ptp4l la verrait « link down ». On la monte
-***REMOVED*** nous-mêmes avant de lancer ptp4l ('-' = ne pas échouer si la commande renvoie une erreur).
+# L'interface PTP peut être hors d'un bridge / absente de /etc/network/interfaces et donc
+# rester administrativement DOWN au boot → ptp4l la verrait « link down ». On la monte
+# nous-mêmes avant de lancer ptp4l ('-' = ne pas échouer si la commande renvoie une erreur).
 ExecStartPre=-/sbin/ip link set {ifname} up
 ExecStart=/usr/sbin/ptp4l -f {PTP4L_CONF_PATH} -i {ifname} {ts_flag}
 Restart=on-failure
@@ -638,28 +638,28 @@ WantedBy=multi-user.target
 
 
 def _systemd_phc2sys(ifname, hw_ts, domain=0):
-    ***REMOVED*** phc2sys garde CLOCK_REALTIME aligné sur le PHC de la NIC (hardware) ou sur
-    ***REMOVED*** ptp4l directement via Unix socket (software-only fallback).
-    ***REMOVED*** `-n <domain>` : phc2sys interroge ptp4l (mode -w) sur le bon domaine — sans ça,
-    ***REMOVED*** il parle au domaine 0 par défaut et reste bloqué « Waiting for ptp4l... » si
-    ***REMOVED*** ptp4l tourne sur 127 (profil SMPTE). Cf. PROD-007.
-    ***REMOVED***
-    ***REMOVED*** ⚠ `-O 0` EST VOLONTAIRE — NE PAS « CORRIGER » EN -O -37.
-    ***REMOVED*** Il aligne CLOCK_REALTIME sur le PHC SANS retrancher le décalage TAI↔UTC : l'horloge système du
-    ***REMOVED*** nœud tourne donc en TAI, soit 37 s en avance sur UTC. Ce n'est pas une dérive, c'est la
-    ***REMOVED*** condition pour que le moteur 2110 soit juste : sans PTP interne (AF-XDP, pas de port DPDK), il
-    ***REMOVED*** lit CLOCK_REALTIME et la TRAITE COMME L'HORLOGE PTP (`ptp_from_real_time` de libmtl, cf.
-    ***REMOVED*** plugins/2110_io/mtl_rx.c « libmtl lit CLOCK_REALTIME … discipliné par ptp4l/phc2sys kernel »).
-    ***REMOVED*** Le temps PTP étant du TAI, mettre CLOCK_REALTIME sur UTC décalerait de 37 s TOUS les
-    ***REMOVED*** horodatages RTP émis par ce nœud — flux refusés par les récepteurs, synchro A/V rompue.
-    ***REMOVED*** Conséquence assumée : les horodatages de journaux et de fichiers du nœud sont 37 s devant ceux
-    ***REMOVED*** de l'orchestrateur. En corréler deux exige d'en tenir compte. (Le chemin DPDK aboutit au même
-    ***REMOVED*** résultat par ENGINE_PHC2SYS : le nœud 2110 porte l'heure PTP, dans les deux modes.)
+    # phc2sys garde CLOCK_REALTIME aligné sur le PHC de la NIC (hardware) ou sur
+    # ptp4l directement via Unix socket (software-only fallback).
+    # `-n <domain>` : phc2sys interroge ptp4l (mode -w) sur le bon domaine — sans ça,
+    # il parle au domaine 0 par défaut et reste bloqué « Waiting for ptp4l... » si
+    # ptp4l tourne sur 127 (profil SMPTE). Cf. PROD-007.
+    #
+    # ⚠ `-O 0` EST VOLONTAIRE — NE PAS « CORRIGER » EN -O -37.
+    # Il aligne CLOCK_REALTIME sur le PHC SANS retrancher le décalage TAI↔UTC : l'horloge système du
+    # nœud tourne donc en TAI, soit 37 s en avance sur UTC. Ce n'est pas une dérive, c'est la
+    # condition pour que le moteur 2110 soit juste : sans PTP interne (AF-XDP, pas de port DPDK), il
+    # lit CLOCK_REALTIME et la TRAITE COMME L'HORLOGE PTP (`ptp_from_real_time` de libmtl, cf.
+    # plugins/2110_io/mtl_rx.c « libmtl lit CLOCK_REALTIME … discipliné par ptp4l/phc2sys kernel »).
+    # Le temps PTP étant du TAI, mettre CLOCK_REALTIME sur UTC décalerait de 37 s TOUS les
+    # horodatages RTP émis par ce nœud — flux refusés par les récepteurs, synchro A/V rompue.
+    # Conséquence assumée : les horodatages de journaux et de fichiers du nœud sont 37 s devant ceux
+    # de l'orchestrateur. En corréler deux exige d'en tenir compte. (Le chemin DPDK aboutit au même
+    # résultat par ENGINE_PHC2SYS : le nœud 2110 porte l'heure PTP, dans les deux modes.)
     d = int(domain)
     if hw_ts:
         exec_line = f"/usr/sbin/phc2sys -s {ifname} -O 0 -w -n {d}"
     else:
-        ***REMOVED*** Pas de PHC → on suit ptp4l via SHM/socket
+        # Pas de PHC → on suit ptp4l via SHM/socket
         exec_line = f"/usr/sbin/phc2sys -a -r -r -n {d}"
     return f"""[Unit]
 Description=MXL phc2sys (PHC → system)
@@ -677,27 +677,27 @@ WantedBy=multi-user.target
 """
 
 
-***REMOVED*** ─── PTP multi-NIC : une horloge JBOD par domaine ────────────────────────────
-***REMOVED*** Modèle conforme IEEE/SMPTE pour un hôte à plusieurs NIC 2110 : UN ptp4l multi-port par
-***REMOVED*** domaine PTP (boundary_clock_jbod), donc UN seul clockIdentity et UN seul BMCA qui élit le
-***REMOVED*** meilleur master (port élu = SLAVE, les autres = PASSIVE = redondance 2022-7 chaude). Lancer
-***REMOVED*** un ptp4l par NIC donnerait N clockIdentity / N BMCA non coordonnés → red/blue peuvent
-***REMOVED*** diverger et un validateur PTP management voit plusieurs horloges → échec.
-***REMOVED***
-***REMOVED*** Chaque domaine a ses propres unités/conf/uds (multi-domaine) :
-***REMOVED***   - mxl-ptp4l-d<dom>.service      → ptp4l -f ptp4l-d<dom>.conf (ports déclarés dans la conf)
-***REMOVED***   - mxl-phc2sys-d<dom>.service    → phc2sys -a (mode auto, lit l'uds de SON ptp4l)
-***REMOVED*** Un SEUL phc2sys discipline CLOCK_REALTIME : celui du domaine PRIMAIRE (-r). Les domaines
-***REMOVED*** secondaires tournent SANS -r → ils n'alignent que les PHC non-élus de leur groupe, jamais
-***REMOVED*** l'horloge système (sinon deux servos se battent — cf. PROD-009).
-***REMOVED***
-***REMOVED*** Ce bloc est ADDITIF : les fonctions mono (_ptp4l_conf/_systemd_ptp4l/deploy_config/start/
-***REMOVED*** stop/status ci-dessus) restent la façade de compat utilisée par les routes tant que la
-***REMOVED*** Phase B ne les a pas recâblées sur node_interfaces.
+# ─── PTP multi-NIC : une horloge JBOD par domaine ────────────────────────────
+# Modèle conforme IEEE/SMPTE pour un hôte à plusieurs NIC 2110 : UN ptp4l multi-port par
+# domaine PTP (boundary_clock_jbod), donc UN seul clockIdentity et UN seul BMCA qui élit le
+# meilleur master (port élu = SLAVE, les autres = PASSIVE = redondance 2022-7 chaude). Lancer
+# un ptp4l par NIC donnerait N clockIdentity / N BMCA non coordonnés → red/blue peuvent
+# diverger et un validateur PTP management voit plusieurs horloges → échec.
+#
+# Chaque domaine a ses propres unités/conf/uds (multi-domaine) :
+#   - mxl-ptp4l-d<dom>.service      → ptp4l -f ptp4l-d<dom>.conf (ports déclarés dans la conf)
+#   - mxl-phc2sys-d<dom>.service    → phc2sys -a (mode auto, lit l'uds de SON ptp4l)
+# Un SEUL phc2sys discipline CLOCK_REALTIME : celui du domaine PRIMAIRE (-r). Les domaines
+# secondaires tournent SANS -r → ils n'alignent que les PHC non-élus de leur groupe, jamais
+# l'horloge système (sinon deux servos se battent — cf. PROD-009).
+#
+# Ce bloc est ADDITIF : les fonctions mono (_ptp4l_conf/_systemd_ptp4l/deploy_config/start/
+# stop/status ci-dessus) restent la façade de compat utilisée par les routes tant que la
+# Phase B ne les a pas recâblées sur node_interfaces.
 
-***REMOVED*** Unités/conf/uds keyées par ID DE RÉSEAU (pas par domaine) : deux réseaux peuvent partager un
-***REMOVED*** même numéro de domaine → des noms keyés-domaine entreraient en collision. Le domainNumber du
-***REMOVED*** réseau est posé DANS la conf.
+# Unités/conf/uds keyées par ID DE RÉSEAU (pas par domaine) : deux réseaux peuvent partager un
+# même numéro de domaine → des noms keyés-domaine entreraient en collision. Le domainNumber du
+# réseau est posé DANS la conf.
 def _net_uds(net_id):
     return f"/var/run/ptp4l-net{int(net_id)}"
 
@@ -721,7 +721,7 @@ def _ptp4l_conf_jbod(net_id, domain, ifaces, priority1=128, priority2=128,
     dédié au réseau (pmc/phc2sys ciblent le bon process via -s/-z)."""
     ifaces = [i for i in (ifaces or []) if (i or "").strip()]
     jbod = 1 if len(ifaces) > 1 else 0
-    head = f"""***REMOVED*** Géré par orchestrateur MXL — Réseau 2110 net{int(net_id)} (PTP JBOD), domaine {int(domain)}
+    head = f"""# Géré par orchestrateur MXL — Réseau 2110 net{int(net_id)} (PTP JBOD), domaine {int(domain)}
 [global]
 domainNumber              {int(domain)}
 priority1                 {int(priority1)}
@@ -733,7 +733,7 @@ announceReceiptTimeout    {int(announce_timeout)}
 syncReceiptTimeout        0
 neighborPropDelayThresh   {int(delay_thresh)}
 utc_offset                {int(utc_offset)}
-***REMOVED*** SMPTE 2059-2 (ST 2110-10) profile
+# SMPTE 2059-2 (ST 2110-10) profile
 clientOnly                {1 if client_only else 0}
 gmCapable                 1
 free_running              0
@@ -792,7 +792,7 @@ WantedBy=multi-user.target
 """
 
 
-***REMOVED*** ─── Opérations SSH ─────────────────────────────────────────────
+# ─── Opérations SSH ─────────────────────────────────────────────
 
 def is_installed(host):
     rc, _, _ = ssh_run(host, "which ptp4l && which phc2sys", timeout=10)
@@ -825,7 +825,7 @@ def deploy_config(host, ifname, domain, hw_ts, priority1=128, priority2=128,
                         client_only=client_only)
     ptp_u = _systemd_ptp4l(ifname, hw_ts)
     sys_u = _systemd_phc2sys(ifname, hw_ts, domain)
-    ***REMOVED*** tee plutôt que >> pour idempotence
+    # tee plutôt que >> pour idempotence
     script = f"""set -e
 mkdir -p /etc/linuxptp
 cat > {PTP4L_CONF_PATH} << 'EOF'
@@ -856,20 +856,20 @@ def disable_competing_timesync(host):
 
 
 def start(host):
-    ***REMOVED*** Un seul maître d'horloge : on coupe NTP AVANT de lancer phc2sys (cf. PROD-009).
+    # Un seul maître d'horloge : on coupe NTP AVANT de lancer phc2sys (cf. PROD-009).
     disable_competing_timesync(host)
-    ***REMOVED*** `enable` (persistance reboot) + `restart` (PAS `--now`) : un service déjà
-    ***REMOVED*** actif n'est pas relancé par `enable --now`, donc les changements de conf/unité
-    ***REMOVED*** (HW timestamping, intervalles…) seraient ignorés. `restart` force la reprise
-    ***REMOVED*** de la nouvelle conf. Cf. PROD-006.
+    # `enable` (persistance reboot) + `restart` (PAS `--now`) : un service déjà
+    # actif n'est pas relancé par `enable --now`, donc les changements de conf/unité
+    # (HW timestamping, intervalles…) seraient ignorés. `restart` force la reprise
+    # de la nouvelle conf. Cf. PROD-006.
     cmd = ("systemctl enable mxl-ptp4l.service mxl-phc2sys.service 2>&1; "
            "systemctl restart mxl-ptp4l.service mxl-phc2sys.service 2>&1")
     rc, out, err = ssh_run(host, cmd, timeout=20)
     if rc != 0:
         return False, f"rc={rc} {out.strip()} {err.strip()}"
-    ***REMOVED*** `systemctl --now` renvoie rc=0 dès que le service est lancé, mais ptp4l peut
-    ***REMOVED*** mourir juste après (conf invalide → exit 254, puis crash-loop). On revérifie
-    ***REMOVED*** l'état ~2 s plus tard et on remonte les dernières lignes de log en cas d'échec.
+    # `systemctl --now` renvoie rc=0 dès que le service est lancé, mais ptp4l peut
+    # mourir juste après (conf invalide → exit 254, puis crash-loop). On revérifie
+    # l'état ~2 s plus tard et on remonte les dernières lignes de log en cas d'échec.
     check = ("sleep 2; systemctl is-active mxl-ptp4l 2>&1; "
              "echo '---'; journalctl -u mxl-ptp4l -n 5 --no-pager 2>&1")
     rc2, out2, _ = ssh_run(host, check, timeout=15)
@@ -901,29 +901,29 @@ def status(host, domain=0):
         "grandmaster_id":  None,
         "locked":          False,
         "error":           None,
-        ***REMOVED*** État servo réel de phc2sys (PROD-008) : 'waiting'|'converging'|'locked'|None
+        # État servo réel de phc2sys (PROD-008) : 'waiting'|'converging'|'locked'|None
         "phc2sys_state":         None,
         "phc2sys_sys_offset_ns": None,
         "phc2sys_freq_ppb":      None,
-        ***REMOVED*** Démons NTP concurrents encore actifs (PROD-009) : liste de noms d'unités. Non vide =
-        ***REMOVED*** conflit d'horloge → l'UI invite à ré-appliquer le PTP (qui les coupera).
+        # Démons NTP concurrents encore actifs (PROD-009) : liste de noms d'unités. Non vide =
+        # conflit d'horloge → l'UI invite à ré-appliquer le PTP (qui les coupera).
         "competing_timesync":    [],
     }
-    ***REMOVED*** Service status
+    # Service status
     rc, out, _ = ssh_run(host, "systemctl is-active mxl-ptp4l mxl-phc2sys 2>&1 || true", timeout=8)
     lines = out.strip().splitlines()
     if len(lines) >= 1: out_state["ptp4l_running"]   = lines[0].strip() == "active"
     if len(lines) >= 2: out_state["phc2sys_running"] = lines[1].strip() == "active"
 
-    ***REMOVED*** Démons d'horloge concurrents (tir à la corde sur CLOCK_REALTIME). `is-active` imprime une
-    ***REMOVED*** ligne par unité (active/inactive/failed/unknown) dans l'ordre des arguments.
+    # Démons d'horloge concurrents (tir à la corde sur CLOCK_REALTIME). `is-active` imprime une
+    # ligne par unité (active/inactive/failed/unknown) dans l'ordre des arguments.
     rc, out, _ = ssh_run(host, "systemctl is-active " + " ".join(COMPETING_TIMESYNC) + " 2>&1 || true", timeout=8)
     states = out.strip().splitlines()
     out_state["competing_timesync"] = [u for u, s in zip(COMPETING_TIMESYNC, states)
                                        if s.strip() == "active"]
 
-    ***REMOVED*** État servo phc2sys : un service "active" peut être bloqué « Waiting for ptp4l... »
-    ***REMOVED*** (mauvais domaine, ptp4l down…) — on lit sa dernière ligne de log pour le révéler.
+    # État servo phc2sys : un service "active" peut être bloqué « Waiting for ptp4l... »
+    # (mauvais domaine, ptp4l down…) — on lit sa dernière ligne de log pour le révéler.
     if out_state["phc2sys_running"]:
         rc, jl, _ = ssh_run(host, "journalctl -u mxl-phc2sys -n 1 -o cat 2>&1", timeout=8)
         if rc == 0:
@@ -933,7 +933,7 @@ def status(host, domain=0):
         out_state["error"] = "ptp4l inactif"
         return out_state
 
-    ***REMOVED*** pmc : interrogations sur le domaine configuré (-d) — sinon domaine 0 par défaut
+    # pmc : interrogations sur le domaine configuré (-d) — sinon domaine 0 par défaut
     d = int(domain)
     rc, out, _ = ssh_run(host, f"pmc -u -b 0 -d {d} 'GET CURRENT_DATA_SET' 2>&1", timeout=8)
     if rc == 0:
@@ -945,24 +945,24 @@ def status(host, domain=0):
     if rc == 0:
         out_state.update(_parse_port_dataset(out))
 
-    ***REMOVED*** « Locked » = on a un master ET l'offset est < seuil raisonnable
+    # « Locked » = on a un master ET l'offset est < seuil raisonnable
     if out_state["port_state"] in ("SLAVE", "MASTER", "GRAND_MASTER", "PASSIVE"):
         off = out_state.get("offset_ns")
-        if off is not None and abs(off) < 1_000_000:  ***REMOVED*** < 1 ms
+        if off is not None and abs(off) < 1_000_000:  # < 1 ms
             out_state["locked"] = True
         elif out_state["port_state"] in ("MASTER", "GRAND_MASTER"):
             out_state["locked"] = True
     return out_state
 
 
-***REMOVED*** ─── Pilote PTP multi-NIC par domaine (Phase A — non encore câblé aux routes) ─────────────
+# ─── Pilote PTP multi-NIC par domaine (Phase A — non encore câblé aux routes) ─────────────
 
-***REMOVED*** Paramètres PTP de profil PROPRES AU RÉSEAU (un réseau = une horloge logique → il définit son
-***REMOVED*** profil ; il n'hérite de rien). hw_ts n'en fait PAS partie (capacité de la carte → node-global).
+# Paramètres PTP de profil PROPRES AU RÉSEAU (un réseau = une horloge logique → il définit son
+# profil ; il n'hérite de rien). hw_ts n'en fait PAS partie (capacité de la carte → node-global).
 _NET_PTP_PARAM_KEYS = ("priority1", "priority2", "log_announce", "log_sync", "log_delay_req",
                        "announce_timeout", "delay_thresh", "utc_offset", "client_only")
-***REMOVED*** Valeurs par défaut SMPTE 2059-2 d'un réseau (= défauts des kwargs de _ptp4l_conf_jbod). Servent
-***REMOVED*** de valeurs initiales du formulaire et de repli au déploiement pour toute clé non définie.
+# Valeurs par défaut SMPTE 2059-2 d'un réseau (= défauts des kwargs de _ptp4l_conf_jbod). Servent
+# de valeurs initiales du formulaire et de repli au déploiement pour toute clé non définie.
 SMPTE_DEFAULTS = {"priority1": 128, "priority2": 128, "log_announce": 0, "log_sync": -3,
                   "log_delay_req": -3, "announce_timeout": 3, "delay_thresh": 800,
                   "utc_offset": 37, "client_only": True}
@@ -998,8 +998,8 @@ def groups_from_node_interfaces(node_id):
     if not by_net:
         return []
     net_ids = sorted(by_net)
-    ***REMOVED*** Réseau primaire (discipline CLOCK_REALTIME) : réglage ptp_primary_network, sinon le réseau
-    ***REMOVED*** dont le domaine == ptp_domain du nœud, sinon le plus petit id.
+    # Réseau primaire (discipline CLOCK_REALTIME) : réglage ptp_primary_network, sinon le réseau
+    # dont le domaine == ptp_domain du nœud, sinon le plus petit id.
     node_dom = _norm_domain(st.setting_for("ptp_domain", node_id) or 127)
     default_prim = next((i for i in net_ids if int(nets[i]["domain"]) == node_dom), net_ids[0])
     prim_raw = st.setting_for("ptp_primary_network", node_id)
@@ -1056,7 +1056,7 @@ def deploy_config_multi(host, groups, hw_ts=True):
     for g in groups:
         nid = int(g["network_id"]); dom = int(g["domain"]); ifaces = g["ifaces"]
         primary = bool(g.get("primary")); name = g.get("name") or f"net{nid}"
-        ***REMOVED*** Profil PROPRE au réseau (les clés absentes → défaut SMPTE via les kwargs de la conf).
+        # Profil PROPRE au réseau (les clés absentes → défaut SMPTE via les kwargs de la conf).
         opts = {k: v for k, v in (g.get("ptp_params") or {}).items() if k in _NET_PTP_PARAM_KEYS}
         conf  = _ptp4l_conf_jbod(nid, dom, ifaces, **opts)
         ptp_u = _systemd_ptp4l_net(nid, name, ifaces, hw_ts)
@@ -1088,7 +1088,7 @@ def start_multi(host, groups):
     rc, out, err = ssh_run(host, f"systemctl enable {u} 2>&1; systemctl restart {u} 2>&1", timeout=25)
     if rc != 0:
         return False, f"rc={rc} {out.strip()} {err.strip()}"
-    ***REMOVED*** Revérif ~2 s : un ptp4l peut mourir juste après le start (conf invalide → crash-loop).
+    # Revérif ~2 s : un ptp4l peut mourir juste après le start (conf invalide → crash-loop).
     pu = " ".join(_net_ptp4l_unit(i) for i in nets)
     jflags = " ".join("-u " + _net_ptp4l_unit(i) for i in nets)
     rc2, out2, _ = ssh_run(host, f"sleep 2; systemctl is-active {pu} 2>&1; echo '---'; "
@@ -1122,29 +1122,29 @@ def _pmc(host, dom, query, uds=None):
     return rc, out
 
 
-***REMOVED*** ─── Résolution DÉRIVE réseau↔unité (audit A6 bis) ────────────────────────────
-***REMOVED*** Un `media_networks.id` peut se renuméroter (suppression/recréation d'un réseau 2110) sans
-***REMOVED*** que le nœud soit ré-appliqué (deploy_config_multi/start_multi jamais rejoués) : les unités
-***REMOVED*** systemd posées lors du dernier `apply` restent nommées `mxl-ptp4l-net<ANCIEN_id>` alors que
-***REMOVED*** la DB pointe maintenant vers un nouveau `network_id`. Constaté sur dl360Horace (nœud 31) :
-***REMOVED*** le réseau « 2110 Horace » a été recréé id 1 → 7, le nœud tourne toujours sur
-***REMOVED*** `mxl-ptp4l-net1.service` (SLAVE, verrouillé, offset ~qq ns) pendant que le sampler
-***REMOVED*** interroge `mxl-ptp4l-net7` (jamais posée) → « ptp4l inactif » → fausse alerte holdover
-***REMOVED*** après PTP_UNLOCK_ERR_S alors que l'horloge réelle est verrouillée.
-***REMOVED***
-***REMOVED*** Fix : chemin rapide = l'unité `mxl-ptp4l-net<network_id>` directe si elle est active (cas
-***REMOVED*** nominal, aucun coût supplémentaire). Sinon on scanne les unités `mxl-ptp4l-net*.service`
-***REMOVED*** actives et on retient celle dont la conf déclare EXACTEMENT le même domaine ET le même
-***REMOVED*** ensemble d'interfaces que le groupe attendu (égalité stricte des deux — on ne veut pas
-***REMOVED*** confondre deux réseaux 2110 distincts qui partageraient un domaine). Un scan coûte quelques
-***REMOVED*** ssh_run ; on le cache par (host, network_id) avec un TTL court (UNIT_ALIAS_TTL_S) pour ne
-***REMOVED*** pas payer ce coût à chaque échantillon (5 s) tout en se ré-alignant vite après un vrai
-***REMOVED*** ré-apply qui recrée l'unité sous le bon nom. IMPORTANT : si rien ne matche (scan à vide),
-***REMOVED*** on retombe sur la référence DIRECTE — un ptp4l réellement arrêté doit continuer à déclencher
-***REMOVED*** l'alerte holdover, cette résolution ne doit jamais « aveugler » la détection d'un vrai down.
-_UNIT_ALIAS_CACHE = {}     ***REMOVED*** (host, network_id) → (alias_network_id | None, ts)
+# ─── Résolution DÉRIVE réseau↔unité (audit A6 bis) ────────────────────────────
+# Un `media_networks.id` peut se renuméroter (suppression/recréation d'un réseau 2110) sans
+# que le nœud soit ré-appliqué (deploy_config_multi/start_multi jamais rejoués) : les unités
+# systemd posées lors du dernier `apply` restent nommées `mxl-ptp4l-net<ANCIEN_id>` alors que
+# la DB pointe maintenant vers un nouveau `network_id`. Constaté sur dl360Horace (nœud 31) :
+# le réseau « 2110 Horace » a été recréé id 1 → 7, le nœud tourne toujours sur
+# `mxl-ptp4l-net1.service` (SLAVE, verrouillé, offset ~qq ns) pendant que le sampler
+# interroge `mxl-ptp4l-net7` (jamais posée) → « ptp4l inactif » → fausse alerte holdover
+# après PTP_UNLOCK_ERR_S alors que l'horloge réelle est verrouillée.
+#
+# Fix : chemin rapide = l'unité `mxl-ptp4l-net<network_id>` directe si elle est active (cas
+# nominal, aucun coût supplémentaire). Sinon on scanne les unités `mxl-ptp4l-net*.service`
+# actives et on retient celle dont la conf déclare EXACTEMENT le même domaine ET le même
+# ensemble d'interfaces que le groupe attendu (égalité stricte des deux — on ne veut pas
+# confondre deux réseaux 2110 distincts qui partageraient un domaine). Un scan coûte quelques
+# ssh_run ; on le cache par (host, network_id) avec un TTL court (UNIT_ALIAS_TTL_S) pour ne
+# pas payer ce coût à chaque échantillon (5 s) tout en se ré-alignant vite après un vrai
+# ré-apply qui recrée l'unité sous le bon nom. IMPORTANT : si rien ne matche (scan à vide),
+# on retombe sur la référence DIRECTE — un ptp4l réellement arrêté doit continuer à déclencher
+# l'alerte holdover, cette résolution ne doit jamais « aveugler » la détection d'un vrai down.
+_UNIT_ALIAS_CACHE = {}     # (host, network_id) → (alias_network_id | None, ts)
 _UNIT_ALIAS_LOCK  = threading.Lock()
-_UNIT_ALIAS_LOGGED = set() ***REMOVED*** (host, network_id, alias_id) déjà loggés — 1 warning par dérive, pas par sample
+_UNIT_ALIAS_LOGGED = set() # (host, network_id, alias_id) déjà loggés — 1 warning par dérive, pas par sample
 UNIT_ALIAS_TTL_S  = 60.0
 
 
@@ -1171,11 +1171,11 @@ def _resolve_ptp4l_ref(host, net_id, domain, ifaces):
         rc2, out2, _ = ssh_run(host, f"systemctl is-active {_net_ptp4l_unit(alias_id)} 2>&1 || true", timeout=8)
         if out2.strip() == "active":
             return _net_ptp4l_unit(alias_id), _net_phc2sys_unit(alias_id), _net_uds(alias_id)
-        ***REMOVED*** L'alias caché n'est plus actif non plus (double arrêt / rescan mérité) → on retombe
-        ***REMOVED*** au direct pour laisser la fenêtre de cache expirer naturellement au prochain scan.
+        # L'alias caché n'est plus actif non plus (double arrêt / rescan mérité) → on retombe
+        # au direct pour laisser la fenêtre de cache expirer naturellement au prochain scan.
         return direct_unit, _net_phc2sys_unit(net_id), _net_uds(net_id)
 
-    ***REMOVED*** Scan : unités mxl-ptp4l-net*.service actives, sauf la directe (déjà écartée ci-dessus).
+    # Scan : unités mxl-ptp4l-net*.service actives, sauf la directe (déjà écartée ci-dessus).
     alias_id = None
     rc, out, _ = ssh_run(host, "systemctl list-units 'mxl-ptp4l-net*.service' --all --plain --no-legend 2>&1", timeout=10)
     ifaces_set = set(i for i in (ifaces or []) if i)
@@ -1199,8 +1199,8 @@ def _resolve_ptp4l_ref(host, net_id, domain, ifaces):
             cand_ifaces = set(m.group(1) for m in re.finditer(r"(?m)^\[(\S+)\]", conf)) - {"global"}
             if cand_dom == int(domain) and cand_ifaces and cand_ifaces == ifaces_set:
                 alias_id = cid
-                ***REMOVED*** 1 warning par dérive (host, réseau, alias) — pas à chaque expiration du cache
-                ***REMOVED*** (sampler 5 s → le même message re-partait toutes les ~60 s, log inondé).
+                # 1 warning par dérive (host, réseau, alias) — pas à chaque expiration du cache
+                # (sampler 5 s → le même message re-partait toutes les ~60 s, log inondé).
                 _lk = (host, net_id, cid)
                 if _lk not in _UNIT_ALIAS_LOGGED:
                     _UNIT_ALIAS_LOGGED.add(_lk)
@@ -1226,8 +1226,8 @@ def _host_network_uds_for_domain(host, dom):
             return None
         for g in groups_from_node_interfaces(node["id"]):
             if int(g["domain"]) == int(dom):
-                ***REMOVED*** Résolution dérive network_id↔unité (cf. _resolve_ptp4l_ref) : l'uds « attendu »
-                ***REMOVED*** peut ne plus exister si le réseau a été renuméroné sans re-apply sur le nœud.
+                # Résolution dérive network_id↔unité (cf. _resolve_ptp4l_ref) : l'uds « attendu »
+                # peut ne plus exister si le réseau a été renuméroné sans re-apply sur le nœud.
                 _u, _p, uds = _resolve_ptp4l_ref(host, int(g["network_id"]), int(g["domain"]),
                                                  g.get("ifaces"))
                 return uds
@@ -1249,9 +1249,9 @@ def status_multi(host, groups):
     out["competing_timesync"] = [u for u, s in zip(COMPETING_TIMESYNC, states) if s.strip() == "active"]
     for g in groups:
         nid = int(g["network_id"]); d = int(g["domain"])
-        ***REMOVED*** Unité/uds RÉELS : direct si `mxl-ptp4l-net<nid>` est actif, sinon alias résolu par
-        ***REMOVED*** domaine+interfaces (dérive network_id↔unité, cf. _resolve_ptp4l_ref) — un ptp4l
-        ***REMOVED*** vraiment arrêté continue de sortir "inactif" via ce même chemin.
+        # Unité/uds RÉELS : direct si `mxl-ptp4l-net<nid>` est actif, sinon alias résolu par
+        # domaine+interfaces (dérive network_id↔unité, cf. _resolve_ptp4l_ref) — un ptp4l
+        # vraiment arrêté continue de sortir "inactif" via ce même chemin.
         unit_ptp4l, unit_phc2sys, uds = _resolve_ptp4l_ref(host, nid, d, g.get("ifaces"))
         ds = {"network_id": nid, "name": g.get("name"), "domain": d,
               "primary": bool(g.get("primary")), "ifaces": g.get("ifaces", []),
@@ -1259,7 +1259,7 @@ def status_multi(host, groups):
               "offset_ns": None, "mean_path_delay_ns": None, "grandmaster_id": None,
               "locked": False, "error": None, "phc2sys_state": None,
               "phc2sys_sys_offset_ns": None, "phc2sys_freq_ppb": None,
-              "ifaces_state": {}}     ***REMOVED*** {ifname: SLAVE|PASSIVE|LISTENING|MASTER|…} par port
+              "ifaces_state": {}}     # {ifname: SLAVE|PASSIVE|LISTENING|MASTER|…} par port
         rc, o, _ = ssh_run(host, f"systemctl is-active {unit_ptp4l} {unit_phc2sys} 2>&1 || true", timeout=8)
         ls = o.strip().splitlines()
         if len(ls) >= 1: ds["ptp4l_running"]   = ls[0].strip() == "active"
@@ -1272,19 +1272,19 @@ def status_multi(host, groups):
             ds["error"] = "ptp4l inactif"; out["domains"].append(ds); continue
         for q, parser in (("GET CURRENT_DATA_SET", _parse_current_dataset),
                           ("GET PARENT_DATA_SET",  _parse_parent_dataset),
-                          ***REMOVED*** La QUALITÉ de la référence, pas seulement la qualité du verrou :
-                          ***REMOVED*** sans ce jeu de données, un nœud verrouillé sur un grandmaster en
-                          ***REMOVED*** roue libre est indistinguable d'un nœud verrouillé sur du GPS.
+                          # La QUALITÉ de la référence, pas seulement la qualité du verrou :
+                          # sans ce jeu de données, un nœud verrouillé sur un grandmaster en
+                          # roue libre est indistinguable d'un nœud verrouillé sur du GPS.
                           ("GET TIME_PROPERTIES_DATA_SET", _parse_time_properties)):
             rc, o = _pmc(host, d, q, uds=uds)
             if rc == 0:
                 ds.update(parser(o))
-        ***REMOVED*** PORT_DATA_SET : un ptp4l JBOD a N ports → pmc renvoie l'état de CHACUN (portIdentity
-        ***REMOVED*** …-<n>). On mappe par index sur les ifaces (ordre des sections [iface] de la conf = ordre
-        ***REMOVED*** de g["ifaces"]). port_state d'en-tête = SLAVE si présent (le port élu), sinon le 1er.
+        # PORT_DATA_SET : un ptp4l JBOD a N ports → pmc renvoie l'état de CHACUN (portIdentity
+        # …-<n>). On mappe par index sur les ifaces (ordre des sections [iface] de la conf = ordre
+        # de g["ifaces"]). port_state d'en-tête = SLAVE si présent (le port élu), sinon le 1er.
         rc, o = _pmc(host, d, "GET PORT_DATA_SET", uds=uds)
         if rc == 0:
-            pstates = _parse_port_states(o)                      ***REMOVED*** {portnum -> state}
+            pstates = _parse_port_states(o)                      # {portnum -> state}
             ifs = g.get("ifaces", [])
             ds["ifaces_state"] = {ifs[pn - 1]: stt for pn, stt in pstates.items()
                                   if 0 <= pn - 1 < len(ifs)}
@@ -1315,9 +1315,9 @@ def _aggregate_multi(multi):
         "mean_path_delay_ns": prim.get("mean_path_delay_ns"),
         "grandmaster_id":     prim.get("grandmaster_id"),
         "locked":             bool(prim.get("locked")),
-        ***REMOVED*** Qualité de la RÉFÉRENCE (≠ qualité du verrou, cf. _parse_parent_dataset). Remontée au
-        ***REMOVED*** niveau plat parce que c'est ce niveau que lisent le badge d'accueil et la page Horloges :
-        ***REMOVED*** laisser ça uniquement dans `domains` reviendrait à ne le montrer nulle part.
+        # Qualité de la RÉFÉRENCE (≠ qualité du verrou, cf. _parse_parent_dataset). Remontée au
+        # niveau plat parce que c'est ce niveau que lisent le badge d'accueil et la page Horloges :
+        # laisser ça uniquement dans `domains` reviendrait à ne le montrer nulle part.
         "gm_clock_class":     prim.get("gm_clock_class"),
         "gm_clock_accuracy":  prim.get("gm_clock_accuracy"),
         "utc_offset_valid":   prim.get("utc_offset_valid"),
@@ -1328,7 +1328,7 @@ def _aggregate_multi(multi):
         "phc2sys_sys_offset_ns": prim.get("phc2sys_sys_offset_ns"),
         "phc2sys_freq_ppb":      prim.get("phc2sys_freq_ppb"),
         "competing_timesync":    multi.get("competing_timesync", []),
-        ***REMOVED*** État par-NIC agrégé sur tous les domaines : {ifname -> SLAVE|PASSIVE|LISTENING|…}.
+        # État par-NIC agrégé sur tous les domaines : {ifname -> SLAVE|PASSIVE|LISTENING|…}.
         "port_states":           {k: v for dd in doms for k, v in (dd.get("ifaces_state") or {}).items()},
         "domains":               doms,
     }
@@ -1357,7 +1357,7 @@ def status_for_node(node_id, host, domain=None):
     return _aggregate_multi(status_multi(host, groups))
 
 
-***REMOVED*** ─── Parsers pmc ─────────────────────────────────────────────
+# ─── Parsers pmc ─────────────────────────────────────────────
 
 def _parse_phc2sys_log(line):
     """Dernière ligne de log phc2sys → état servo (PROD-008).
@@ -1430,9 +1430,9 @@ def _parse_time_properties(text):
     return out
 
 
-***REMOVED*** Seuil normatif IEEE 1588 : au-delà, le grandmaster n'est traçable à AUCUNE référence de temps.
-***REMOVED*** Ce n'est pas un réglage — c'est la table de la norme (6/7 = traçable, 13/14 = application
-***REMOVED*** spécifique, 52/58/187/193 = dégradés, 248 = défaut libre, 255 = esclave seulement).
+# Seuil normatif IEEE 1588 : au-delà, le grandmaster n'est traçable à AUCUNE référence de temps.
+# Ce n'est pas un réglage — c'est la table de la norme (6/7 = traçable, 13/14 = application
+# spécifique, 52/58/187/193 = dégradés, 248 = défaut libre, 255 = esclave seulement).
 GM_CLOCK_CLASS_LIBRE = 128
 
 
@@ -1479,22 +1479,22 @@ def sdp_refclk_lines(host):
     s = status(host)
     if not s.get("locked") or not s.get("grandmaster_id"):
         return ""
-    ***REMOVED*** Récupère le domain configuré (depuis settings) pour l'annoncer dans le SDP
+    # Récupère le domain configuré (depuis settings) pour l'annoncer dans le SDP
     from . import settings as st
     domain = int(st.get("ptp_domain") or 127)
-    ***REMOVED*** RFC 7273 §4.8 : le GM s'écrit en TIRETS dans le SDP (AA-BB-…-HH), le dernier `:`
-    ***REMOVED*** étant le séparateur du domaine. Le format interne `:` (UI, _detect_ptp_events)
-    ***REMOVED*** reste inchangé — conversion au moment de fabriquer la ligne seulement.
+    # RFC 7273 §4.8 : le GM s'écrit en TIRETS dans le SDP (AA-BB-…-HH), le dernier `:`
+    # étant le séparateur du domaine. Le format interne `:` (UI, _detect_ptp_events)
+    # reste inchangé — conversion au moment de fabriquer la ligne seulement.
     gm_sdp = s["grandmaster_id"].replace(":", "-")
     return (f"a=ts-refclk:ptp=IEEE1588-2008:{gm_sdp}:{domain}\r\n"
             f"a=mediaclk:direct=0\r\n")
 
 
-***REMOVED*** ─── Refclk PAR HÔTE (caché) — pour le SDP TX d'un sender (nœud du sender) ────
-***REMOVED*** Le SDP d'un sender 2110 doit annoncer le grandmaster du ptp4l qui discipline SON nœud
-***REMOVED*** (pas le proxmox_host global). On interroge ce nœud par SSH pmc et on cache la ligne par
-***REMOVED*** (host, domaine) avec un TTL court : pas de SSH à chaque GET de transportfile (et latence bornée).
-_refclk_cache = {}                ***REMOVED*** (host, domain) -> (line, ts)
+# ─── Refclk PAR HÔTE (caché) — pour le SDP TX d'un sender (nœud du sender) ────
+# Le SDP d'un sender 2110 doit annoncer le grandmaster du ptp4l qui discipline SON nœud
+# (pas le proxmox_host global). On interroge ce nœud par SSH pmc et on cache la ligne par
+# (host, domaine) avec un TTL court : pas de SSH à chaque GET de transportfile (et latence bornée).
+_refclk_cache = {}                # (host, domain) -> (line, ts)
 _refclk_lock = threading.Lock()
 REFCLK_TTL_S = 10.0
 
@@ -1529,7 +1529,7 @@ def refclk_for_host(host, domain=None):
         rc, port = _pmc(host, dom, "GET PORT_DATA_SET", uds=uds)
         state = _parse_port_dataset(port).get("port_state") if rc == 0 else None
         if gm and state in ("SLAVE", "MASTER", "GRAND_MASTER", "PASSIVE"):
-            ***REMOVED*** RFC 7273 §4.8 : GM en tirets dans le SDP (le `:` final sépare le domaine).
+            # RFC 7273 §4.8 : GM en tirets dans le SDP (le `:` final sépare le domaine).
             gm_sdp = gm.replace(":", "-")
             line = (f"a=ts-refclk:ptp=IEEE1588-2008:{gm_sdp}:{dom}\r\n"
                     f"a=mediaclk:direct=0\r\n")
@@ -1568,18 +1568,18 @@ def refclk_from_engine(ip, domain=None):
         if ent and now - ent[1] < REFCLK_TTL_S:
             return ent[0]
     line = ""
-    ***REMOVED*** ★★ DÉSACTIVÉ (2026-07-28) — `gm_identity` publié par le moteur N'EST PAS le grandmaster.
-    ***REMOVED*** Le patch libmtl (plugins/2110_io/docker/patch_ptp_gm_export.py:53) exporte
-    ***REMOVED*** `ptp->master_port_id.clock_identity`, c'est-à-dire la `sourcePortIdentity` de l'en-tête
-    ***REMOVED*** Announce = le MAÎTRE IMMÉDIAT. Dès qu'une horloge de frontière est dans le chemin — le cas
-    ***REMOVED*** normal en broadcast — c'est le BC qu'on annonce, pas le GM. Mesuré en prod : le Nexus est BC
-    ***REMOVED*** (identité 4c:77:6d:ff:fe:fb:c6:03) et relaie le vrai GM 00:09:0d:ff:fe:01:14:d9 ; nos SDP
-    ***REMOVED*** annonçaient le premier. Un récepteur strict (EVS Neuron) compare cette identité à SA
-    ***REMOVED*** référence, ne la reconnaît pas, et REFUSE le flux — en le recevant parfaitement par ailleurs
-    ***REMOVED*** (aucune perte, pacing indifférent, narrow comme wide).
-    ***REMOVED*** Annoncer une référence FAUSSE est pire que n'en annoncer aucune : sans la ligne, le récepteur
-    ***REMOVED*** accepte (comportement d'avant ce correctif, vérifié) ; avec une identité étrangère, il rejette.
-    ***REMOVED*** Réactiver UNIQUEMENT quand le patch exportera le `grandmasterIdentity` du CORPS de l'Announce.
+    # ★★ DÉSACTIVÉ (2026-07-28) — `gm_identity` publié par le moteur N'EST PAS le grandmaster.
+    # Le patch libmtl (plugins/2110_io/docker/patch_ptp_gm_export.py:53) exporte
+    # `ptp->master_port_id.clock_identity`, c'est-à-dire la `sourcePortIdentity` de l'en-tête
+    # Announce = le MAÎTRE IMMÉDIAT. Dès qu'une horloge de frontière est dans le chemin — le cas
+    # normal en broadcast — c'est le BC qu'on annonce, pas le GM. Mesuré en prod : le Nexus est BC
+    # (identité 4c:77:6d:ff:fe:fb:c6:03) et relaie le vrai GM 00:09:0d:ff:fe:01:14:d9 ; nos SDP
+    # annonçaient le premier. Un récepteur strict (EVS Neuron) compare cette identité à SA
+    # référence, ne la reconnaît pas, et REFUSE le flux — en le recevant parfaitement par ailleurs
+    # (aucune perte, pacing indifférent, narrow comme wide).
+    # Annoncer une référence FAUSSE est pire que n'en annoncer aucune : sans la ligne, le récepteur
+    # accepte (comportement d'avant ce correctif, vérifié) ; avec une identité étrangère, il rejette.
+    # Réactiver UNIQUEMENT quand le patch exportera le `grandmasterIdentity` du CORPS de l'Announce.
     return line
     try:
         import requests
@@ -1598,15 +1598,15 @@ def refclk_from_engine(ip, domain=None):
     return line
 
 
-***REMOVED*** ─── PTP MOTEUR (libmtl) — nœud full-PF DPDK, plus de ptp4l kernel ───────────
-***REMOVED*** Socle narrow full-PF DPDK (cf. mémoire narrow-full-pf-dpdk-socle) : le port média E810 est
-***REMOVED*** bindé vfio-pci → plus de netdev kernel → plus de ptp4l/phc2sys → `pmc`/`status()` ne voient
-***REMOVED*** RIEN. La SEULE horloge PTP est le client PTP INTERNE de libmtl, exposé par le moteur 2110_io
-***REMOVED*** sur son :8080 (bloc `ptp` = {locked, offset_ns, gm_id, domain} ; absent/None si pas de PTP
-***REMOVED*** moteur). Ce chemin remplace status()/status_multi pour ces nœuds — dict plat COMPATIBLE (mêmes
-***REMOVED*** clés) + `engine_ptp=True` (l'UI affiche « PTP moteur (libmtl) » au lieu de « ptp4l inactif »).
-_engine_status_cache = {}          ***REMOVED*** node_id → (status_dict, ts)
-ENGINE_STATUS_TTL_S  = 3.0         ***REMOVED*** < SAMPLE_INTERVAL_S : le sampler relit une valeur fraîche
+# ─── PTP MOTEUR (libmtl) — nœud full-PF DPDK, plus de ptp4l kernel ───────────
+# Socle narrow full-PF DPDK (cf. mémoire narrow-full-pf-dpdk-socle) : le port média E810 est
+# bindé vfio-pci → plus de netdev kernel → plus de ptp4l/phc2sys → `pmc`/`status()` ne voient
+# RIEN. La SEULE horloge PTP est le client PTP INTERNE de libmtl, exposé par le moteur 2110_io
+# sur son :8080 (bloc `ptp` = {locked, offset_ns, gm_id, domain} ; absent/None si pas de PTP
+# moteur). Ce chemin remplace status()/status_multi pour ces nœuds — dict plat COMPATIBLE (mêmes
+# clés) + `engine_ptp=True` (l'UI affiche « PTP moteur (libmtl) » au lieu de « ptp4l inactif »).
+_engine_status_cache = {}          # node_id → (status_dict, ts)
+ENGINE_STATUS_TTL_S  = 3.0         # < SAMPLE_INTERVAL_S : le sampler relit une valeur fraîche
 
 
 def _find_node_engine(node_id):
@@ -1657,7 +1657,7 @@ def status_from_engine(node_id):
             return dict(ent[0])
 
     from .database import db_get_node_interfaces
-    ***REMOVED*** Réseaux média portés par un port DPDK (une entrée `domains` par réseau).
+    # Réseaux média portés par un port DPDK (une entrée `domains` par réseau).
     net_ids = []
     for r in db_get_node_interfaces(node_id) or []:
         if r.get("role") != "media2110":
@@ -1673,9 +1673,9 @@ def status_from_engine(node_id):
     except Exception:
         _mn = {}
 
-    ***REMOVED*** Lecture du bloc `ptp` du moteur (:8080), best-effort.
+    # Lecture du bloc `ptp` du moteur (:8080), best-effort.
     ptp = None
-    engine_sessions = None      ***REMOVED*** sessions RX+TX réellement actives dans le moteur (None = inconnu)
+    engine_sessions = None      # sessions RX+TX réellement actives dans le moteur (None = inconnu)
     engine = _find_node_engine(node_id)
     if engine:
         try:
@@ -1687,10 +1687,10 @@ def status_from_engine(node_id):
                 if r.status_code == 200:
                     _payload = r.json() or {}
                     ptp = _payload.get("ptp")
-                    ***REMOVED*** Le client PTP de libmtl n'existe QUE si le daemon mtl_rx tourne, et le moteur ne
-                    ***REMOVED*** le lance que s'il a au moins UNE session (controller.py, `if _mtl_proc is None
-                    ***REMOVED*** and sessions`). Un moteur à 0 session n'a donc AUCUNE horloge — état à ne pas
-                    ***REMOVED*** confondre avec un holdover, d'où la remontée du compte (cf. _clock_fault).
+                    # Le client PTP de libmtl n'existe QUE si le daemon mtl_rx tourne, et le moteur ne
+                    # le lance que s'il a au moins UNE session (controller.py, `if _mtl_proc is None
+                    # and sessions`). Un moteur à 0 session n'a donc AUCUNE horloge — état à ne pas
+                    # confondre avec un holdover, d'où la remontée du compte (cf. _clock_fault).
                     _rl = _payload.get("rl") or {}
                     engine_sessions = (int(_rl.get("rx_sessions") or 0)
                                        + int(_rl.get("tx_sessions") or 0))
@@ -1698,40 +1698,40 @@ def status_from_engine(node_id):
             log.debug("status_from_engine(%s): %s", node_id, e)
 
     locked    = bool(ptp.get("locked")) if ptp else False
-    ***REMOVED*** `synced` = synchro RÉELLE au GM (GM connu + offset corrigé dispo) ; sur E810 DPDK le lock servo
-    ***REMOVED*** STRICT de libmtl (`locked`, delta brut <100ns) reste souvent False alors que la synchro est bonne
-    ***REMOVED*** (delta brut ~1,3µs) → c'est `synced` qui pilote l'état/badge, `locked` reste un détail technique.
+    # `synced` = synchro RÉELLE au GM (GM connu + offset corrigé dispo) ; sur E810 DPDK le lock servo
+    # STRICT de libmtl (`locked`, delta brut <100ns) reste souvent False alors que la synchro est bonne
+    # (delta brut ~1,3µs) → c'est `synced` qui pilote l'état/badge, `locked` reste un détail technique.
     synced    = bool(ptp.get("synced")) if ptp else False
-    offset_ns = ptp.get("offset_ns") if ptp else None          ***REMOVED*** offset CORRIGÉ (≈ offset from master ptp4l)
-    mpd_ns    = ptp.get("path_delay_ns") if ptp else None      ***REMOVED*** mean path delay
-    raw_delta = ptp.get("raw_delta_ns") if ptp else None       ***REMOVED*** delta brut (diagnostic du lock strict)
+    offset_ns = ptp.get("offset_ns") if ptp else None          # offset CORRIGÉ (≈ offset from master ptp4l)
+    mpd_ns    = ptp.get("path_delay_ns") if ptp else None      # mean path delay
+    raw_delta = ptp.get("raw_delta_ns") if ptp else None       # delta brut (diagnostic du lock strict)
     gm        = _norm_gm_id(ptp.get("gm_id") or ptp.get("gm_identity")) if ptp else None
     eng_dom   = ptp.get("domain") if ptp else None
 
-    ***REMOVED*** ★★ RÉFÉRENCE FIGÉE — le verrouillage se PROUVE, il ne se déclare pas.
-    ***REMOVED***
-    ***REMOVED*** Mesuré le 2026-09-10 en retirant `ptp` du port du commutateur qui dessert le nœud : le moteur
-    ***REMOVED*** fige son bloc PTP — `offset_ns` immobile à la valeur du dernier calcul, `raw_delta_ns` et
-    ***REMOVED*** `path_delay_ns` à None — mais continue d'annoncer `locked: true`. Pendant TRENTE MINUTES sans
-    ***REMOVED*** aucune référence, la supervision affichait une horloge verrouillée. Un exploitant ne voyait
-    ***REMOVED*** rien, et n'aurait rien vu jusqu'à ce que la dérive devienne audible.
-    ***REMOVED***
-    ***REMOVED*** Le delta brut et le mean path delay sont les deux seules valeurs qu'un servo ACTIF produit à
-    ***REMOVED*** chaque échange. Leur absence conjointe signifie qu'aucun échange n'a lieu : il n'y a donc pas
-    ***REMOVED*** de verrouillage à annoncer, quoi qu'en dise le drapeau. On exige la preuve.
-    ***REMOVED***
-    ***REMOVED*** Pas de faux positif au démarrage : avant le premier échange, ces deux valeurs sont également
-    ***REMOVED*** absentes — et « pas encore verrouillé » est alors la vérité, pas une alerte abusive.
-    ***REMOVED*** Le VERDICT ne se discute pas : sans échange, pas de verrouillage à annoncer.
+    # ★★ RÉFÉRENCE FIGÉE — le verrouillage se PROUVE, il ne se déclare pas.
+    #
+    # Mesuré le 2026-09-10 en retirant `ptp` du port du commutateur qui dessert le nœud : le moteur
+    # fige son bloc PTP — `offset_ns` immobile à la valeur du dernier calcul, `raw_delta_ns` et
+    # `path_delay_ns` à None — mais continue d'annoncer `locked: true`. Pendant TRENTE MINUTES sans
+    # aucune référence, la supervision affichait une horloge verrouillée. Un exploitant ne voyait
+    # rien, et n'aurait rien vu jusqu'à ce que la dérive devienne audible.
+    #
+    # Le delta brut et le mean path delay sont les deux seules valeurs qu'un servo ACTIF produit à
+    # chaque échange. Leur absence conjointe signifie qu'aucun échange n'a lieu : il n'y a donc pas
+    # de verrouillage à annoncer, quoi qu'en dise le drapeau. On exige la preuve.
+    #
+    # Pas de faux positif au démarrage : avant le premier échange, ces deux valeurs sont également
+    # absentes — et « pas encore verrouillé » est alors la vérité, pas une alerte abusive.
+    # Le VERDICT ne se discute pas : sans échange, pas de verrouillage à annoncer.
     servo_inactif = ptp is not None and raw_delta is None and mpd_ns is None
     if servo_inactif:
         locked = synced = False
-    ***REMOVED*** Le MESSAGE, lui, dépend de ce qu'on sait par ailleurs. Avec un grandmaster connu, on a reçu
-    ***REMOVED*** des Announce puis on a cessé : c'est une référence figée. Sans grandmaster, on n'a jamais
-    ***REMOVED*** commencé — dire « figée » à un moteur qui démarre serait une fausse alarme.
+    # Le MESSAGE, lui, dépend de ce qu'on sait par ailleurs. Avec un grandmaster connu, on a reçu
+    # des Announce puis on a cessé : c'est une référence figée. Sans grandmaster, on n'a jamais
+    # commencé — dire « figée » à un moteur qui démarre serait une fausse alarme.
     reference_figee = servo_inactif and bool(gm)
 
-    ***REMOVED*** synchronisé au GM ⇒ le port suit le GM (esclave), même si le lock servo strict n'est pas armé.
+    # synchronisé au GM ⇒ le port suit le GM (esclave), même si le lock servo strict n'est pas armé.
     port_state = "SLAVE" if (synced or locked) else None
 
     if engine is None:
@@ -1767,9 +1767,9 @@ def status_from_engine(node_id):
         "grandmaster_id": gm,
         "locked":         locked,
         "synced":         synced,
-        ***REMOVED*** Y a-t-il un client PTP DU TOUT (bloc `ptp` publié par le moteur) et combien de sessions le
-        ***REMOVED*** moteur sert-il ? Sans ça, « pas de client PTP » et « client PTP désynchronisé » sont
-        ***REMOVED*** indiscernables en aval — c'est ce qui faisait annoncer un holdover pour un moteur vide.
+        # Y a-t-il un client PTP DU TOUT (bloc `ptp` publié par le moteur) et combien de sessions le
+        # moteur sert-il ? Sans ça, « pas de client PTP » et « client PTP désynchronisé » sont
+        # indiscernables en aval — c'est ce qui faisait annoncer un holdover pour un moteur vide.
         "engine_ptp_client": bool(ptp),
         "engine_sessions":   engine_sessions,
         "raw_delta_ns":   raw_delta,
@@ -1807,7 +1807,7 @@ def status_from_engine(node_id):
     return dict(status_dict)
 
 
-***REMOVED*** ─── Préflight Phase 1 (chantier DPDK, Lot A2) : bascule de la NIC PTP ────────
+# ─── Préflight Phase 1 (chantier DPDK, Lot A2) : bascule de la NIC PTP ────────
 
 def render_switch_plan(node_id, new_iface):
     """RENDU PUR (aucune pose d'unité, aucun accès hôte) du plan de bascule PTP d'un nœud :
@@ -1849,9 +1849,9 @@ def render_switch_plan(node_id, new_iface):
         if new_row.get("ptp_enabled"):
             checklist.append(f"note: {new_iface} porte déjà ptp_enabled=1 — bascule no-op")
 
-    ***REMOVED*** PHC partagé ? Sur E810 bi-port les deux fonctions PCI (…:00.0/…:00.1) partagent UN PHC
-    ***REMOVED*** (vérifié dl360-1, ethtool -T : clock 4 pour les deux ports). Comparaison sur le préfixe
-    ***REMOVED*** domaine:bus:device du BDF.
+    # PHC partagé ? Sur E810 bi-port les deux fonctions PCI (…:00.0/…:00.1) partagent UN PHC
+    # (vérifié dl360-1, ethtool -T : clock 4 pour les deux ports). Comparaison sur le préfixe
+    # domaine:bus:device du BDF.
     def _slot(row):
         pci = ((row or {}).get("pci") or "").strip().lower()
         return pci.rsplit(".", 1)[0] if "." in pci else None
@@ -1892,15 +1892,15 @@ def render_switch_plan(node_id, new_iface):
     }
 
 
-***REMOVED*** ─── Heure CIVILE depuis une horloge de nœud TAI (affichage seulement) ────────
-***REMOVED*** Par conception (docs/reference/PTP_CLOCK.md), CLOCK_REALTIME des nœuds est disciplinée sur l'échelle PTP
-***REMOVED*** (TAI) — c'est la grille média, on n'y touche JAMAIS. L'heure civile affichée (timecode de la
-***REMOVED*** mire, horloge « PTP » du multiview) = horloge nœud − currentUtcOffset (37 s en 2026, bouge
-***REMOVED*** aux leap seconds). Plutôt que de figer 37 en dur, on MESURE l'écart nœud↔contrôleur (le
-***REMOVED*** contrôleur est en NTP/heure civile) arrondi à la seconde ENTIÈRE — auto-recalibré au prochain
-***REMOVED*** leap second, et nul si un nœud est resté en heure civile. Cache par nœud (TTL 1 h).
+# ─── Heure CIVILE depuis une horloge de nœud TAI (affichage seulement) ────────
+# Par conception (docs/reference/PTP_CLOCK.md), CLOCK_REALTIME des nœuds est disciplinée sur l'échelle PTP
+# (TAI) — c'est la grille média, on n'y touche JAMAIS. L'heure civile affichée (timecode de la
+# mire, horloge « PTP » du multiview) = horloge nœud − currentUtcOffset (37 s en 2026, bouge
+# aux leap seconds). Plutôt que de figer 37 en dur, on MESURE l'écart nœud↔contrôleur (le
+# contrôleur est en NTP/heure civile) arrondi à la seconde ENTIÈRE — auto-recalibré au prochain
+# leap second, et nul si un nœud est resté en heure civile. Cache par nœud (TTL 1 h).
 
-_utc_off_cache = {}   ***REMOVED*** node_id → (offset_s, monotonic)
+_utc_off_cache = {}   # node_id → (offset_s, monotonic)
 
 def node_clock_utc_offset_s(node, default=37, ttl_s=3600.0):
     """Offset (s, entier ≥ 0) entre l'horloge du nœud et l'heure civile du contrôleur.

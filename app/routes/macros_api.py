@@ -1,7 +1,7 @@
-***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
-***REMOVED*** Copyright (C) 2026 BOBI SAS, France
-***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Chantier 6 : catalogue d'actions/états, macros (CRUD + run + journal), variables de
 projet, exécution d'action unitaire (shotbox) et lecture d'états en lot (feedback).
@@ -27,23 +27,23 @@ from .. import macros as engine
 from .. import plugins
 
 
-***REMOVED*** ─── Catalogue actions/états (partagé projet / système) ───────
+# ─── Catalogue actions/états (partagé projet / système) ───────
 
 def _with_recall_options(vmid, type_, actions):
     """Options des params `options_from: "recall"` (action « rappeler une mémoire ») :
     résolues côté ORCHESTRATEUR depuis control.recall du manifeste (plugin_store de
     l'instance ou layouts globaux) — le front les reçoit comme des options statiques."""
-    from . import recall_presets   ***REMOVED*** défini dans routes/__init__ (partagé avec Ember+)
+    from . import recall_presets   # défini dans routes/__init__ (partagé avec Ember+)
     try:
         _rc, presets = recall_presets(vmid, type_)
     except Exception:
         presets = []
-    opts = [{"value": pr.get("id"), "label": pr.get("name") or f"***REMOVED***{pr.get('id')}"}
+    opts = [{"value": pr.get("id"), "label": pr.get("name") or f"#{pr.get('id')}"}
             for pr in presets if pr.get("id") is not None]
     out = []
     for a in actions:
         if any(p.get("options_from") == "recall" for p in (a.get("params") or [])):
-            a = json.loads(json.dumps(a))   ***REMOVED*** copie : ne pas muter le manifeste du registre
+            a = json.loads(json.dumps(a))   # copie : ne pas muter le manifeste du registre
             for p in a["params"]:
                 if p.get("options_from") == "recall":
                     p["options"] = opts
@@ -51,14 +51,14 @@ def _with_recall_options(vmid, type_, actions):
     return out
 
 
-***REMOVED*** ─── Contrôlables GÉNÉRIQUES (8e passe ch.6) : rien n'est figé, on DÉCOUVRE ──
-***REMOVED***
-***REMOVED*** En plus des actions/états curatés, le catalogue expose :
-***REMOVED***  - les champs de config_schema (→ « Réglages », écrits via le chemin plugin_config) ;
-***REMOVED***  - les control.endpoints non couverts par une action curatée (→ « action avancée »
-***REMOVED***    générique, advanced:true, POST via le proxy/moteur — toujours whitelistés) ;
-***REMOVED***  - un flag `discoverable` (control.read_endpoints présents) → le front peut appeler
-***REMOVED***    /api/containers/<vmid>/discover_states pour les états découverts sur l'instance.
+# ─── Contrôlables GÉNÉRIQUES (8e passe ch.6) : rien n'est figé, on DÉCOUVRE ──
+#
+# En plus des actions/états curatés, le catalogue expose :
+#  - les champs de config_schema (→ « Réglages », écrits via le chemin plugin_config) ;
+#  - les control.endpoints non couverts par une action curatée (→ « action avancée »
+#    générique, advanced:true, POST via le proxy/moteur — toujours whitelistés) ;
+#  - un flag `discoverable` (control.read_endpoints présents) → le front peut appeler
+#    /api/containers/<vmid>/discover_states pour les états découverts sur l'instance.
 
 def _config_fields(m, params, with_values):
     """Champs du config_schema → contrôlables « réglage ». `with_values` (permission
@@ -98,7 +98,7 @@ def _catalog_containers(pids=None):
     `pids=None` = TOUS les containers plugins
     (catalogue global des macros système) ; sinon filtre au(x) projet(s)."""
     containers = db_get_containers()
-    ***REMOVED*** shm → « hostname · label » : pour nommer les sources câblées sur les entrées.
+    # shm → « hostname · label » : pour nommer les sources câblées sur les entrées.
     shm_label = {}
     for c in containers:
         dc = _load_dc(c) or {}
@@ -115,7 +115,7 @@ def _catalog_containers(pids=None):
         except Exception:
             continue
     out = []
-    with_values = has_perm("plugins.operate")   ***REMOVED*** valeurs courantes des réglages
+    with_values = has_perm("plugins.operate")   # valeurs courantes des réglages
     for c in containers:
         if pids is not None and not (set(pids) & vmid_project_ids(c["vmid"])):
             continue
@@ -131,11 +131,11 @@ def _catalog_containers(pids=None):
         if any(p.get("options_from") == "recall"
                for a in actions for p in (a.get("params") or [])):
             actions = _with_recall_options(c["vmid"], t, actions)
-        ***REMOVED*** `source` sur chaque entrée (curated|config|endpoint|discovered) — copies
-        ***REMOVED*** superficielles pour ne pas muter les manifestes du registre.
+        # `source` sur chaque entrée (curated|config|endpoint|discovered) — copies
+        # superficielles pour ne pas muter les manifestes du registre.
         actions = [dict(a, source="curated") for a in actions]
         state = [dict(s, source="curated") for s in state]
-        ***REMOVED*** Entrées de l'instance : slot + libellé de la source câblée dessus.
+        # Entrées de l'instance : slot + libellé de la source câblée dessus.
         inputs = []
         p = dc.get("params") or {}
         hn = p.get("hostname") or c.get("hostname") or ""
@@ -158,9 +158,9 @@ def _catalog_containers(pids=None):
     return out
 
 
-***REMOVED*** ─── États découverts sur l'instance live (8e passe ch.6) ─────
-***REMOVED*** Interroge les control.read_endpoints (même chemin réseau que fetch_state), aplatit le
-***REMOVED*** JSON en chemins pointés, cache 15 s côté moteur. Lecture pure → login + viewer.
+# ─── États découverts sur l'instance live (8e passe ch.6) ─────
+# Interroge les control.read_endpoints (même chemin réseau que fetch_state), aplatit le
+# JSON en chemins pointés, cache 15 s côté moteur. Lecture pure → login + viewer.
 
 @bp.route("/api/containers/<int:vmid>/discover_states", methods=["GET"])
 @require_login
@@ -195,14 +195,14 @@ def project_action_catalog(pid):
                     "services": core_plugins.service_actions(availability="project", pid=pid)})
 
 
-***REMOVED*** ─── Exécution d'action unitaire (boutons de shotbox) ─────────
+# ─── Exécution d'action unitaire (boutons de shotbox) ─────────
 
 @bp.route("/api/projects/<int:pid>/actions/run", methods=["POST"])
 @require_project_role("operator")
 def project_action_run(pid):
     data = request.json or {}
-    ***REMOVED*** Action de SERVICE (tsl.set_label…) : availability project + bornage aux
-    ***REMOVED*** ressources du projet gérés par core_plugins + le run_action du service.
+    # Action de SERVICE (tsl.set_label…) : availability project + bornage aux
+    # ressources du projet gérés par core_plugins + le run_action du service.
     if data.get("service"):
         try:
             engine.exec_service_action(data["service"], data.get("action_id"),
@@ -218,12 +218,12 @@ def project_action_run(pid):
     kind = data.get("kind") or "action"
     try:
         if kind == "config":
-            ***REMOVED*** Réglage (config_schema) : même chemin d'écriture que plugin_config —
-            ***REMOVED*** scope system gaté par containers.deploy (droits inchangés).
+            # Réglage (config_schema) : même chemin d'écriture que plugin_config —
+            # scope system gaté par containers.deploy (droits inchangés).
             engine.exec_config(vmid, data.get("params") or {}, db_project_vars(pid),
                                allow_system=has_perm("containers.deploy"))
         elif kind == "post":
-            ***REMOVED*** Action avancée : POST libre sur un endpoint whitelisté (control.endpoints).
+            # Action avancée : POST libre sur un endpoint whitelisté (control.endpoints).
             engine.exec_post(vmid, data.get("endpoint"), data.get("params") or {},
                              db_project_vars(pid))
         else:
@@ -234,7 +234,7 @@ def project_action_run(pid):
     return jsonify({"status": "ok"})
 
 
-***REMOVED*** ─── Lecture d'états en lot (feedback shotbox, ~1 requête/s par vue) ──
+# ─── Lecture d'états en lot (feedback shotbox, ~1 requête/s par vue) ──
 
 @bp.route("/api/projects/<int:pid>/states", methods=["POST"])
 @require_project_role("viewer")
@@ -245,7 +245,7 @@ def project_states(pid):
         vmid = engine._resolve_vmid(q)
         val = None
         if vmid and pid in vmid_project_ids(vmid):
-            ***REMOVED*** state_id (curaté) OU endpoint+path (état découvert, borné aux read_endpoints).
+            # state_id (curaté) OU endpoint+path (état découvert, borné aux read_endpoints).
             val = engine.fetch_state(vmid, q.get("state_id"),
                                      endpoint=q.get("endpoint"), path=q.get("path"))
         out.append({"instance_uuid": q.get("instance_uuid"), "vmid": q.get("vmid"),
@@ -254,7 +254,7 @@ def project_states(pid):
     return jsonify({"states": out})
 
 
-***REMOVED*** ─── Variables de projet ──────────────────────────────────────
+# ─── Variables de projet ──────────────────────────────────────
 
 @bp.route("/api/projects/<int:pid>/vars", methods=["GET"])
 @require_project_role("viewer")
@@ -272,12 +272,12 @@ def project_vars_set(pid):
     return jsonify({"status": "ok", "vars": db_project_vars(pid)})
 
 
-***REMOVED*** ─── Macros : CRUD (editor) + run/journal (operator) ──────────
-***REMOVED***
-***REMOVED*** Deux formats de graph cohabitent (9e passe ch.6) : blocks/v1 (éditeur à blocs) et
-***REMOVED*** nodes/v2 (éditeur Scénario nodal). L'API expose `format` + `structured` (un graphe
-***REMOVED*** nodal NON structuré ne s'ouvre qu'en vue nodale — badge « avancé ») et compile à la
-***REMOVED*** volée blocks→graph via `?as=graph` sur le GET d'une macro.
+# ─── Macros : CRUD (editor) + run/journal (operator) ──────────
+#
+# Deux formats de graph cohabitent (9e passe ch.6) : blocks/v1 (éditeur à blocs) et
+# nodes/v2 (éditeur Scénario nodal). L'API expose `format` + `structured` (un graphe
+# nodal NON structuré ne s'ouvre qu'en vue nodale — badge « avancé ») et compile à la
+# volée blocks→graph via `?as=graph` sur le GET d'une macro.
 
 def _graph_error(graph):
     """Valide un graph soumis (les deux formats). Renvoie un message ou None."""
@@ -318,7 +318,7 @@ def _macro_payload(m):
         try:
             out["blocks"] = engine.graph_to_blocks(m.get("graph") or {})
         except engine.UnstructuredGraph:
-            pass   ***REMOVED*** badge « avancé » : la vue Blocs reste indisponible
+            pass   # badge « avancé » : la vue Blocs reste indisponible
     return out
 
 
@@ -336,7 +336,7 @@ def project_macros_list(pid):
     for m in db_project_macros(pid):
         out.append({"id": m["id"], "name": m["name"], "updated_at": m.get("updated_at"),
                     "graph": m.get("graph"), **_macro_meta(m)})
-    ***REMOVED*** Macros système publiées : bouton OPAQUE (ni graph, ni détail — modèle sudo).
+    # Macros système publiées : bouton OPAQUE (ni graph, ni détail — modèle sudo).
     for m in db_macros_published_to(pid):
         out.append({"id": m["id"], "name": m["name"], "system": True})
     return jsonify({"macros": out})
@@ -391,13 +391,13 @@ def project_macros_delete(pid, mid):
 @bp.route("/api/projects/<int:pid>/macros/<int:mid>/run", methods=["POST"])
 @require_project_role("operator")
 def project_macros_run(pid, mid):
-    ***REMOVED*** Macro du projet, OU macro système publiée vers ce projet (elle s'exécute
-    ***REMOVED*** avec sa propre autorité — le moteur tourne côté orchestrateur ; le journal
-    ***REMOVED*** enregistre l'invocateur réel via user=).
+    # Macro du projet, OU macro système publiée vers ce projet (elle s'exécute
+    # avec sa propre autorité — le moteur tourne côté orchestrateur ; le journal
+    # enregistre l'invocateur réel via user=).
     m = db_get_macro(mid)
     if not m or (m.get("project_id") != pid and not _published_macro(pid, mid)):
         return jsonify({"error": "macro introuvable"}), 404
-    ***REMOVED*** nodes/v2 : `entry_id` (optionnel) = démarrer sur UNE entrée précise du graphe.
+    # nodes/v2 : `entry_id` (optionnel) = démarrer sur UNE entrée précise du graphe.
     run, err = engine.run_macro(mid, user=(current_user() or {}).get("username"),
                                 allow_system_config=has_perm("containers.deploy"),
                                 entry_id=(request.get_json(silent=True) or {}).get("entry_id"))
@@ -419,10 +419,10 @@ def project_macros_cancel(pid, mid):
     return jsonify({"cancelled": engine.cancel_run(mid)})
 
 
-***REMOVED*** ─── Macros SYSTÈME (admin, inter-projets) + publication ──────
-***REMOVED*** project_id IS NULL. Création/édition réservée aux accès globaux ; l'admin les
-***REMOVED*** PUBLIE vers des projets (published_to) où elles apparaissent comme des boutons
-***REMOVED*** opaques exécutables (routes projet ci-dessus). Hors exports projet.
+# ─── Macros SYSTÈME (admin, inter-projets) + publication ──────
+# project_id IS NULL. Création/édition réservée aux accès globaux ; l'admin les
+# PUBLIE vers des projets (published_to) où elles apparaissent comme des boutons
+# opaques exécutables (routes projet ci-dessus). Hors exports projet.
 
 @bp.route("/api/macros", methods=["GET"])
 @require_global_access
@@ -528,7 +528,7 @@ def system_macros_catalog():
                     "macros": [{"id": m["id"], "name": m["name"], "system": True}
                                for m in db_system_macros()],
                     "services": core_plugins.service_actions()})
-***REMOVED*** ─── Déclencheurs permanents (editor écrit, operator active/désactive) ──────
+# ─── Déclencheurs permanents (editor écrit, operator active/désactive) ──────
 
 def _trigger_field_error(pid, data):
     """Valide les champs modifiables d'un trigger. Renvoie un message ou None."""
@@ -575,8 +575,8 @@ def project_triggers_update(pid, tid):
     if not tr or tr.get("project_id") != pid:
         return jsonify({"error": "déclencheur introuvable"}), 404
     data = request.json or {}
-    ***REMOVED*** operator peut UNIQUEMENT (dés)activer ; le reste (nom/condition/macro/
-    ***REMOVED*** cooldown) exige editor — vérifié ici car le décorateur ne porte que le min.
+    # operator peut UNIQUEMENT (dés)activer ; le reste (nom/condition/macro/
+    # cooldown) exige editor — vérifié ici car le décorateur ne porte que le min.
     if set(data.keys()) - {"enabled"}:
         if not project_role_at_least(project_role_for(pid, current_user()), "editor"):
             return jsonify({"error": "forbidden", "reason": "editor_required"}), 403

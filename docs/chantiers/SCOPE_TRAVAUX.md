@@ -1,15 +1,15 @@
-***REMOVED*** Scope — compte rendu de la session autonome du 2026-08-25/26
+# Scope — compte rendu de la session autonome du 2026-08-25/26
 
 Journal daté, non maintenu au-delà. Il existe pour qu'on retrouve **pourquoi** chaque décision a
 été prise, pas seulement ce qui a été fait.
 
-***REMOVED******REMOVED*** Ce qui a été livré
+## Ce qui a été livré
 
 **Le plugin est passé de sept capacités déclarées-et-absentes à zéro.** Le garde-fou construit au
 début de la session ne signale plus rien sur `scope`, et douze auto-contrôles rejouables
 protègent les propriétés qui comptent.
 
-***REMOVED******REMOVED******REMOVED*** Socle (proposé en préambule, validé)
+### Socle (proposé en préambule, validé)
 
 | | Ce que c'est | Où |
 |---|---|---|
@@ -17,14 +17,14 @@ protègent les propriétés qui comptent.
 | **Verdict de programme** | l'alarme de loudness est un jugement de PROGRAMME armé/coupé, pas une surveillance d'échantillons | `/programme`, relayé par le canal générique d'avis |
 | **Auto-contrôles** | douze vérifications rejouables DANS le conteneur | `/autotest`, exposé génériquement sur la Recette |
 
-***REMOVED******REMOVED******REMOVED*** Fonctions
+### Fonctions
 
 `/snapshot` (témoin horodaté avec plans bruts, persisté) · `entrelace_mode` (demi-trames par
 défaut) · habillage du tracé (couleur, fond, opacité, épaisseur) · sélection de ligne avec repère
 sur vignette · préréglages de disposition partagés · **sortie vidéo MXL** (six dispositions,
 texte, étiquettes) · cibles couleur du vecteur-scope · **crête vraie dBTP et LRA**.
 
-***REMOVED******REMOVED******REMOVED*** Hors plugin
+### Hors plugin
 
 - `app/metrics.py` : un avis de plugin peut déclarer son **niveau** — un « programme conforme »
   ne doit pas partir en avertissement.
@@ -32,7 +32,7 @@ texte, étiquettes) · cibles couleur du vecteur-scope · **crête vraie dBTP et
   trou de `requires.image_min`.
 - `plugin_store` : première utilisation de la table générique créée en juillet, avec ses helpers.
 
-***REMOVED******REMOVED*** Ce qui a été mesuré
+## Ce qui a été mesuré
 
 | Mesure | Résultat |
 |---|---|
@@ -45,7 +45,7 @@ texte, étiquettes) · cibles couleur du vecteur-scope · **crête vraie dBTP et
 | Cibles couleur | retrouvent **exactement** la table SMPTE en BT.601 |
 | Phase : pouvoir discriminant | **0,77 ms** de dispersion sur un producteur asservi contre **5,99 ms** sur un récepteur logiciel |
 
-***REMOVED******REMOVED*** Décisions de conception, et leurs raisons
+## Décisions de conception, et leurs raisons
 
 - **Le rendu vidéo dessine à partir des mêmes plans que la page.** Un opérateur devant un moniteur
   et un autre devant son écran doivent parler du même signal ; un rendu reconstruit à part aurait
@@ -69,7 +69,7 @@ texte, étiquettes) · cibles couleur du vecteur-scope · **crête vraie dBTP et
   publié ; un programme de moins de 10 s ne reçoit aucun verdict ; une ligne hors image est
   signalée et jamais mesurée ailleurs.
 
-***REMOVED******REMOVED*** Ce que la vérification a rattrapé
+## Ce que la vérification a rattrapé
 
 Trois fois, une correction écrite avec assurance ne faisait rien, ou faisait le contraire :
 
@@ -84,7 +84,7 @@ Trois fois, une correction écrite avec assurance ne faisait rien, ou faisait le
 Et dans l'autre sens : j'ai cru à tort que seules deux cibles couleur sur six apparaissaient, en
 jugeant sur un JPEG à demi-résolution. La mesure des pixels montrait les six.
 
-***REMOVED******REMOVED*** Ce qui reste ouvert
+## Ce qui reste ouvert
 
 - **`mixer` et `split`** : le garde-fou signale des promesses non tenues — `tally_emit` (décrit dans
   le `help.md` du mixer comme un réglage du panneau ⚙) et `tally_level_base` ; `light_altitude`,
@@ -116,10 +116,10 @@ jugeant sur un JPEG à demi-résolution. La mesure des pixels montrait les six.
   COMMITÉE : ces fichiers appartiennent à la campagne i18n d'une autre session, et la clé partira
   avec leur commit. L'alerte fonctionne déjà, le catalogue étant chargé au boot.
 
-***REMOVED******REMOVED*** Banc laissé en place
+## Banc laissé en place
 
-- **`scope-angl` ***REMOVED***1028** — scope sur `2110-io-dl360-1_1` (1080p50) et le générateur de tonalité,
+- **`scope-angl` #1028** — scope sur `2110-io-dl360-1_1` (1080p50) et le générateur de tonalité,
   sortie vidéo active, image `bobi-compute:0.32`.
-- **`mon-scope-angl` ***REMOVED***1026** — aperçu WebRTC dédié.
+- **`mon-scope-angl` #1026** — aperçu WebRTC dédié.
 
 Tu m'avais dit de les garder comme banc. Ils consomment deux conteneurs et un encodeur.
