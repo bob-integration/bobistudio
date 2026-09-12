@@ -1,21 +1,17 @@
 # Bobi.Studio
 
+*[English version](README.en.md)*
+
 > ## Version bêta
 >
-> Bobi.Studio tourne en production, quotidiennement, chez son éditeur. Cette publication est
-> la première hors de ce cadre : votre installation sera la première sur un autre parc.
->
-> Deux choses à savoir avant de commencer :
->
-> - **Les API ne sont pas encore figées** : le proxy de plugins, les endpoints de contrôle et
->   le format `.mxlplugin` peuvent évoluer. Les publications sont datées plutôt que numérotées
->   tant que ce périmètre n'est pas arrêté — un numéro sémantique engagerait une compatibilité
->   qu'on préfère promettre une fois pour toutes, et la tenir.
+> - **Les API ne sont pas figées.** Le proxy de plugins, les endpoints de contrôle et le format
+>   `.mxlplugin` peuvent changer. Les versions sont en `0.x.y` : le majeur à zéro dit exactement
+>   cela. Une `1.0` engagera une compatibilité qu'on préfère promettre une fois, et la tenir.
 > - **Éprouvez-le hors antenne d'abord.** C'est un produit de diffusion : ce qui s'y casse se
 >   voit en direct.
 >
-> Les retours nous sont utiles, et particulièrement deux : ce qui bloque à l'installation, et
-> ce que la documentation ne dit pas. Ouvrez une issue.
+> Deux retours nous sont particulièrement utiles : ce qui bloque à l'installation, et ce que la
+> documentation ne dit pas. Ouvrez une issue.
 
 Interface web d'orchestration du pipeline vidéo **ST 2110** en architecture **full-Docker**.
 Un orchestrateur Flask central (contrôleur) pilote des **nœuds** enrôlés qui exécutent les

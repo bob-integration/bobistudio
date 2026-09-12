@@ -10,6 +10,7 @@ ici car un share link EST une page (client externe, sans compte).
 _attach_projects reste dans __init__.py (aussi utilisé par la route API générique
 `liste_containers`) — importé localement dans les pages qui en ont besoin."""
 
+import re
 import secrets
 
 from flask import (jsonify, request, render_template, redirect, url_for, abort, Response,
@@ -943,6 +944,21 @@ _FAMILLES_CTL = {
 }
 
 
+# Classes de contrôle EMPLOYÉES dans un texte. Une seule passe, là où la version d'origine faisait
+# une recherche par classe et par fichier — 78 classes × 18 plugins = 1 404 balayages de 836 Ko à
+# CHAQUE affichage de la page Réglages, soit 1,5 s des 1,7 s du rendu, pour un onglet de diagnostic
+# que l'exploitant n'ouvre presque jamais.
+# ⚠ Les délimiteurs sont en ASSERTIONS (lookbehind/lookahead), pas consommés : avec une classe de
+# caractères ordinaire, `class="ctl-a ctl-b"` perdrait `ctl-b`, l'espace ayant été mangée par la
+# capture précédente. La condition reste EXACTEMENT celle d'avant — la classe entourée d'un
+# guillemet ou d'une espace — ce qui exclut toujours `ctl-knob-arc` quand on cherche `ctl-knob`.
+_RE_CLASSES_VUES = re.compile(r"""(?<=["'\s])(ctl-[a-z0-9-]+)(?=["'\s])""")
+
+
+def _classes_vues(texte):
+    return set(_RE_CLASSES_VUES.findall(texte or ""))
+
+
 def _adoption_controles(classes):
     """Qui utilise quoi, et ce qui vit encore en privé.
 
@@ -959,6 +975,7 @@ def _adoption_controles(classes):
     import re
     racine = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     adoption = {c: [] for c in classes}
+    jeu = set(classes)
     orphelins = []
     for css in sorted(glob.glob(os.path.join(racine, "plugins", "*", "control.css"))):
         plug = os.path.basename(os.path.dirname(css))
@@ -971,9 +988,8 @@ def _adoption_controles(classes):
                     usage += open(chem, encoding="utf-8", errors="ignore").read()
         except OSError:
             continue
-        for c in classes:
-            if re.search(r"[\"'\s]%s[\"'\s]" % re.escape(c), usage):
-                adoption[c].append(plug)
+        for c in _classes_vues(usage) & jeu:
+            adoption[c].append(plug)
         _orphelins_du_css(orphelins, plug, src_css)
     # Les plugins ne sont pas les seuls consommateurs : des pages entières du produit sont rendues
     # par des scripts partagés (les onglets I/O 2110, le panneau de modèle de carte TX). Tant qu'on
@@ -988,9 +1004,12 @@ def _adoption_controles(classes):
             src = open(js, encoding="utf-8", errors="ignore").read()
         except OSError:
             continue
-        for c in classes:
-            if re.search(r"[\"'\s]%s[\"'\s]" % re.escape(c), src):
-                adoption[c].append(nom)
+        for c in _classes_vues(src) & jeu:
+            adoption[c].append(nom)
+    # L'ordre n'est plus celui de `classes` mais celui d'un ensemble : on retrie pour que la page
+    # affiche toujours la même liste, indépendamment du hachage.
+    for c in adoption:
+        adoption[c].sort()
     return adoption, orphelins
 
 

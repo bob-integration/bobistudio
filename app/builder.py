@@ -54,7 +54,7 @@ CORE_FILES = [
     "install/install_proxmox.py", "build_info.json",
     # Doc publique de la racine. INSTALL/INFRASTRUCTURE/HA/THIRD-PARTY sont rendus par la page
     # Aide (/api/doc) : les OMETTRE ici casserait l'aide en ligne sur toute instance installée.
-    "LICENSE", "CHANGELOG.md", "CLAUDE.md", "README.md", "NODE_AGENT.md",
+    "LICENSE", "CHANGELOG.md", "CLAUDE.md", "README.md", "README.en.md", "NODE_AGENT.md",
     "INSTALL.md", "INFRASTRUCTURE.md", "HA.md", "THIRD-PARTY-NOTICES.md",
     "CONTRIBUTING.md",
     "plugins/AUTHORING.md", "plugins/AUTHORING.fr.md",   # rendu par la page Aide (article « Contribuer ») → doit être embarqué
