@@ -55,12 +55,31 @@ from app.database import get_db                                      # noqa: E40
 from services import nmos                                            # noqa: E402
 
 main.app.config["TESTING"] = True
-with get_db() as _db:
-    _u = _db.execute("SELECT id, username FROM users LIMIT 1").fetchone()
+
+# ★ IL FAUT UN UTILISATEUR RÉEL, et une base neuve n'en a aucun. `current_user()` relit
+# l'utilisateur en base : forger une session sur un identifiant inventé ne passe pas
+# `require_login`. Sur une base peuplée on prend le premier ; sur une base VIERGE — le cas de
+# l'intégration continue — on en crée un jetable.
+#
+# ⚠ Ce banc passait en local et échouait en CI, sur `_u["id"]` avec `_u` à None. Un banc qui
+# dépend de l'état de la base de son auteur ne dit rien de ce qu'il prétend vérifier.
+def _utilisateur():
+    with get_db() as db:
+        u = db.execute("SELECT id, username FROM users LIMIT 1").fetchone()
+        if u is not None:
+            return u["id"], u["username"]
+        db.execute("INSERT INTO users (username, password_hash, role, session_epoch) "
+                   "VALUES ('banc-bcp00703', 'x', 'admin', 0)")
+        db.commit()
+        u = db.execute("SELECT id, username FROM users WHERE username='banc-bcp00703'").fetchone()
+        return u["id"], u["username"]
+
+
+_UID, _UNAME = _utilisateur()
 CLI = main.app.test_client()
 with CLI.session_transaction() as _s:
-    _s["user_id"] = _u["id"]
-    _s["username"] = _u["username"]
+    _s["user_id"] = _UID
+    _s["username"] = _UNAME
 
 
 def g(chemin):
