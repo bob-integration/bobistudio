@@ -138,8 +138,29 @@ controle("★★★ le cœur n'a rien à appeler pour ça",
          "ne se mettent pas à jour ensemble")
 
 print("\n── Ressources IS-04 (§ Senders / Receivers) ────────────────────────────")
+# ★ DEUX ABSENCES QUI NE SE VALENT PAS, et le témoin d'origine les confondait.
+#
+# Sur une installation PEUPLÉE, ne trouver aucune ressource MXL est un vrai défaut : le banc ne
+# prouve rien et ne doit pas passer pour autant — c'est l'intention d'origine, et elle est juste.
+# Les 19 contrôles qui suivent sont des `all(...)` sur des listes : VIDES, ils sont tous vrais.
+#
+# Sur une installation VIDE — l'intégration continue, base neuve, zéro conteneur — il n'y a
+# légitimement rien à vérifier. Échouer là-dessus rend la CI rouge en permanence, et une CI
+# durablement rouge n'est plus lue : on perdrait les 26 contrôles pour en sauver un.
+#
+# On sépare donc sur le SEUL signal qui distingue : l'installation a-t-elle des conteneurs ?
+from app.database import db_get_containers as _dgc                   # noqa: E402
+_parc = len(_dgc() or [])
+if not _parc:
+    print("  ⃠     aucun conteneur sur cette installation — les contrôles de ressources IS-04")
+    print("        ne peuvent RIEN prouver ici et sont SAUTÉS (ils ne sont pas « passés »).")
+    print("\n%d contrôle(s) OK, %d en échec." % (len(reussites), len(echecs)))
+    sys.exit(1 if echecs else 0)
+
 controle("★★ il y a des ressources MXL à vérifier", bool(tx) and bool(rx),
-         "sans conteneur MXL le banc ne prouve rien — il ne doit pas passer pour autant")
+         "sur une installation qui compte %d conteneur(s), ne trouver aucune ressource MXL est "
+         "un défaut : le banc ne prouverait rien et les contrôles suivants, tous des `all(...)` "
+         "sur listes vides, seraient vrais sans rien vérifier" % _parc)
 controle("★★★ tout Sender MXL a un `interface_bindings` VIDE",
          all(s.get("interface_bindings") == [] for s in tx),
          "MUST de la spec : le MXL ne passe par aucune interface réseau")
