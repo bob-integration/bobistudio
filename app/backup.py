@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Sauvegarde de la base SQLite : copie cohérente à chaud (API online `sqlite3.backup`),
@@ -22,7 +22,7 @@ from .database import db_add_alert, db_set_setting
 BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "backups")
 _PREFIX = "db_bobistudio-"
 _SUFFIX = ".db"
-_lock = threading.Lock()   # sérialise backup manuel (requête) et quotidien (surveillance)
+_lock = threading.Lock()   ***REMOVED*** sérialise backup manuel (requête) et quotidien (surveillance)
 
 
 def list_backups():
@@ -71,7 +71,7 @@ def run_backup():
             dst = sqlite3.connect(dest)
             try:
                 with dst:
-                    src.backup(dst)        # copie page-à-page, cohérente même sous écritures
+                    src.backup(dst)        ***REMOVED*** copie page-à-page, cohérente même sous écritures
             finally:
                 dst.close()
         finally:
@@ -98,5 +98,5 @@ def maybe_daily_backup():
     try:
         run_backup()
     except Exception as e:
-        _record(today, f"échec : {e}", "")   # marque le jour pour éviter une boucle d'échecs
+        _record(today, f"échec : {e}", "")   ***REMOVED*** marque le jour pour éviter une boucle d'échecs
         db_add_alert("alert.backup.quotidienne_echouee", "error", kind="node", params={"e": str(e)})

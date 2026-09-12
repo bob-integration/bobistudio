@@ -362,7 +362,7 @@
     }
     return `<ul class="txlib-groups">` + groups.map((g, gi) => {
       const s = g.slot, v = s.video, n = g.idx.length;
-      const open = !!S.open[g.key + '#' + gi];
+      const open = !!S.open[g.key + '***REMOVED***' + gi];
       const orphan = isOrphan(v);
       const first = g.idx[0] + 1, last = g.idx[g.idx.length - 1] + 1;
       // Éditer le GROUPE édite ses N sorties d'un coup : le groupe EST la sélection multiple (pas
@@ -392,7 +392,7 @@
           <button class="txlib-group-x" aria-expanded="${open}"
             title="${esc(open ? T('js.txlib.fold', 'Replier') : T('js.txlib.unfold',
               'Déplier : voir et éditer chaque sortie'))}"
-            onclick="TxModels.toggleGroup('${esc(g.key + '#' + gi)}')">${open ? '▾' : '▸'}</button>
+            onclick="TxModels.toggleGroup('${esc(g.key + '***REMOVED***' + gi)}')">${open ? '▾' : '▸'}</button>
           <span class="txlib-group-n">${n} ×</span>
           ${v
             ? `<select class="txlib-group-fmt" data-fk="g${gi}fmt" oninput="TxModels.setGroupPreset(${gi}, this.value)"

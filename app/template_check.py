@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Contrôle de syntaxe du JavaScript embarqué dans les gabarits HTML.
 
@@ -75,8 +75,8 @@ def _sans_jinja(js):
                 else:
                     j += 1
             out.append("x"); i = j
-        elif js.startswith("{%", i) or js.startswith("{#", i):
-            fin = "%}" if js.startswith("{%", i) else "#}"
+        elif js.startswith("{%", i) or js.startswith("{***REMOVED***", i):
+            fin = "%}" if js.startswith("{%", i) else "***REMOVED***}"
             j = js.find(fin, i)
             i = (j + 2) if j >= 0 else n
         else:
@@ -128,8 +128,8 @@ def verifier(dossier=None):
                 if r.returncode:
                     msg = next((l.strip() for l in r.stderr.splitlines() if "Error" in l),
                                "syntaxe invalide")
-                    # Nom AVEC son dossier parent : tous les onglets de services s'appellent
-                    # `settings_tab.html`, un basename seul ne dirait pas lequel est cassé.
+                    ***REMOVED*** Nom AVEC son dossier parent : tous les onglets de services s'appellent
+                    ***REMOVED*** `settings_tab.html`, un basename seul ne dirait pas lequel est cassé.
                     soucis.append((os.path.join(os.path.basename(os.path.dirname(chemin)),
                                                 os.path.basename(chemin)), ligne, msg))
             except Exception as e:

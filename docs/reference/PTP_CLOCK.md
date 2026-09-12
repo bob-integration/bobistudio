@@ -1,12 +1,12 @@
-# Modèle d'horloge, PTP et synchro — Bobi.Studio
+***REMOVED*** Modèle d'horloge, PTP et synchro — Bobi.Studio
 
 Conception validée en discussion (2026-07-08). Référence pour le chantier « horloge ». Objectif :
 un système broadcast **validable en labo strict**, **multi-domaine PTP** possible, où **aucun
 plugin ne fait de PTP**, où **l'horloge système n'est pas dans le chemin média**, et qui **respecte
-MXL à la lettre** (tout est grain + `media_ts`). Lié : [[docs/chantiers/DPDK_NARROW.md]] (§#20, verdict absolu),
+MXL à la lettre** (tout est grain + `media_ts`). Lié : [[docs/chantiers/DPDK_NARROW.md]] (§***REMOVED***20, verdict absolu),
 [[docs/reference/PROBE_2110.md]] (monitoring/conformité), mémoire `av-sync-deterministic-phaselock`.
 
-## ★ CONCLUSION (2026-07-08) : SR-IOV = la voie de référence (PF kernel-PTP + VF DPDK-narrow)
+***REMOVED******REMOVED*** ★ CONCLUSION (2026-07-08) : SR-IOV = la voie de référence (PF kernel-PTP + VF DPDK-narrow)
 
 Après avoir déroulé PTP/2022-7/narrow puis 2 agents d'investigation (build + source), **l'architecture
 cible est SR-IOV** — et elle **supersède la décision « port DPDK → PTP libmtl »** des sections plus bas.
@@ -85,7 +85,7 @@ l'horloge (linuxptp éprouvé, par-port, redondant), DPDK/VF pour le data-plane 
 ci-dessous restent valides pour la partie MXL/genlock/réf-maison ; seule la ligne « qui possède le PTP »
 bascule sur « ptp4l kernel sur la PF, toujours ».
 
-## 0. Le recadrage : 3 plans distincts (ne pas les confler)
+***REMOVED******REMOVED*** 0. Le recadrage : 3 plans distincts (ne pas les confler)
 
 Le piège historique = confondre **temps média** et **horloge système**. Ce sont trois plans séparés :
 
@@ -101,7 +101,7 @@ ne peut pas être la référence média — elle ne suit qu'un GM. Donc **le mé
 l'horloge système** ; il passe par le PHC *de son interface*, propagé via `media_ts`. Le multi-domaine
 devient gratuit, et MXL est respecté (tout roule sur les timestamps de grains).
 
-## 1. Contraintes matérielles (à poser noir sur blanc)
+***REMOVED******REMOVED*** 1. Contraintes matérielles (à poser noir sur blanc)
 
 - **Les PF d'une même carte partagent UN PHC** (E810 : les 2 ports = clock 4). Donc « interfaces sur
   des PTP différents » ⇒ **cartes différentes**. Deux réseaux média à domaines distincts sur la même
@@ -112,7 +112,7 @@ devient gratuit, et MXL est respecté (tout roule sur les timestamps de grains).
 - Round-trip **vfio→ice** fait perdre le PHC du PF secondaire (récup : `echo 1 > …/remove ; echo 1
   > /sys/bus/pci/rescan`, cf. docs/chantiers/DPDK_NARROW.md).
 
-## 2. Décisions actées (2026-07-08)
+***REMOVED******REMOVED*** 2. Décisions actées (2026-07-08)
 
 | Sujet | Décision |
 |---|---|
@@ -121,7 +121,7 @@ devient gratuit, et MXL est respecté (tout roule sur les timestamps de grains).
 | **Horloge système** | **Découplée (NTP slew).** Le média n'en dépend jamais. (Impact quasi nul, cf. §5.) |
 | **Servo PTP** | **Par interface selon le PMD** : `ptp4l` kernel sur AF_XDP, PTP interne libmtl sur DPDK/vfio. |
 
-## 3. Le pivot unique dont tout découle
+***REMOVED******REMOVED*** 3. Le pivot unique dont tout découle
 
 > **Le moteur 2110_io lit le PHC de l'interface pour stamper `media_ts`, plus `CLOCK_REALTIME`.**
 
@@ -175,36 +175,36 @@ peut pas servir 2 domaines ; des PHC per-interface, oui).
 > GM (fragile, spécifique carte) ; (C) **corriger les timestamps mbuf en SOFT** dans le moteur avec
 > l'offset PTP de libmtl (pas de patch DPDK, code moteur/parser ciblé, mais approximatif).
 
-## 4. Le flux de référence maison (genlock logiciel = « black burst »)
+***REMOVED******REMOVED*** 4. Le flux de référence maison (genlock logiciel = « black burst »)
 
 Pièce **centrale**, pas un accessoire : la source de genlock de **tout producteur** (mélangeur,
 multiview, player, générateur).
 
-### Qui le publie
+***REMOVED******REMOVED******REMOVED*** Qui le publie
 Le **moteur 2110_io** (seul à posséder le PHC), **un flux par (domaine × cadence)**. Aucune
 machinerie de timing nouvelle : sa **boucle TX tique déjà sur l'époque PHC** → il suffit d'écrire un
 grain de référence à chaque époque. Existe **en permanence**, même sans média réel.
 
 ```
-sur chaque époque PHC K :          # la boucle TX fait déjà ce tick
+sur chaque époque PHC K :          ***REMOVED*** la boucle TX fait déjà ce tick
     placer les trames TX sur le fil   (existant)
-    ref_writer.open_grain(index=K)    # NOUVEAU : 1 grain de réf/époque
+    ref_writer.open_grain(index=K)    ***REMOVED*** NOUVEAU : 1 grain de réf/époque
     ref_writer.commit(payload_K)
 ```
 
-### Contenu d'un grain de référence
+***REMOVED******REMOVED******REMOVED*** Contenu d'un grain de référence
 Pas de pixels — sa valeur est son **timing**. Grain minuscule portant : **index de grille K**,
 **media_ts** (TAI ns), **grain_rate**, + bonus **santé** : **identité GM**, **domaine**, **état servo
 PTP** (locké/holdover), **offset courant**. → double emploi comme **signal de santé genlock/PTP** sur
 le bus (monitoring gratuit).
 
-### Cadence
+***REMOVED******REMOVED******REMOVED*** Cadence
 Cadence média (entrelacé → cadence **champ**, 1 grain = 1 champ). Une installation = **une cadence
 dominante** → **un seul flux** en pratique. Cadences multiples → un flux par cadence ; sous-multiple
 (25 depuis réf 50) → 1 grain sur 2. Multi-domaine → un flux par domaine, le producteur choisit celui
 de son **domaine de SORTIE**.
 
-### Comment un plugin s'y verrouille
+***REMOVED******REMOVED******REMOVED*** Comment un plugin s'y verrouille
 On remplace le mode d'index « tai » (`mxlGetCurrentIndex`, qui lit l'horloge **système**) par un mode
 **« genlock »** qui lit l'index de la **référence** (qui vient du **PHC**) :
 
@@ -213,11 +213,11 @@ ref = Reader(inst, ref_name_for(output_domain, rate))
 writer = Writer(..., index_mode="genlock", ref=ref)
 last_k = None
 while running:
-    k = ref.wait_next_index(last_k)      # BLOQUE jusqu'au prochain tick de grille (PHC)
+    k = ref.wait_next_index(last_k)      ***REMOVED*** BLOQUE jusqu'au prochain tick de grille (PHC)
     last_k = k
-    inputs = [rd.get_latest() for rd in input_readers]   # dernier grain dispo/entrée
-    frame  = composite(inputs, k)                        # répète/fallback si retard/absent
-    idx, gi, view = writer.open_grain(index=k)           # sortie sur le MÊME index K
+    inputs = [rd.get_latest() for rd in input_readers]   ***REMOVED*** dernier grain dispo/entrée
+    frame  = composite(inputs, k)                        ***REMOVED*** répète/fallback si retard/absent
+    idx, gi, view = writer.open_grain(index=k)           ***REMOVED*** sortie sur le MÊME index K
     render_into(view, frame); writer.commit()
 ```
 
@@ -225,7 +225,7 @@ Propriétés qui tombent toutes seules : cadence = PHC (régulière, GM-exacte) 
 grille (media_ts correct, phase-aligné avec **tous** les producteurs) ; **zéro appel à l'horloge
 système** (`mxlGetCurrentIndex`/`now_tai` disparaissent → débloque le découplage NTP).
 
-### Cas limites (broadcast-grade)
+***REMOVED******REMOVED******REMOVED*** Cas limites (broadcast-grade)
 | Cas | Comportement |
 |---|---|
 | Démarrage, réf absente | **free-run** cadence nominale, puis **snap** dès que la réf apparaît |
@@ -234,7 +234,7 @@ système** (`mxlGetCurrentIndex`/`now_tai` disparaissent → débloque le décou
 | Cadence sous-multiple | tick 1 grain sur N |
 | Multi-domaine | réf du domaine de sortie ; entrées d'un autre domaine prises au grain le plus proche du tick |
 
-## 5. Mélangeur / multiview : sortie régulière et stable
+***REMOVED******REMOVED*** 5. Mélangeur / multiview : sortie régulière et stable
 
 Un compositeur **consomme N entrées ET produit une sortie**. Trois principes :
 
@@ -251,7 +251,7 @@ Le compositeur **ne fait aucun PTP** : le temps GM l'atteint par (a) le `media_t
 entrées + de la réf maison, (b) le genlock TX. Sa stabilité dépend d'une seule chose côté PTP : **le
 PHC verrouillé sur le GM** (et monitoré).
 
-### Audit — qui pace réellement sur l'horloge système (2026-07-08)
+***REMOVED******REMOVED******REMOVED*** Audit — qui pace réellement sur l'horloge système (2026-07-08)
 Rassurant : l'archi défaut est déjà *free-run + genlock TX*.
 
 | Qui | Dépend de l'horloge système GM ? | Impact passage NTP |
@@ -266,7 +266,7 @@ Donc découpler l'horloge système en NTP est **quasi sans impact** : seuls le `
 (qu'on veut de toute façon passer sur le PHC) et les rares producteurs `tai` (→ réf maison) exigent
 le temps GM. Fraîcheur MXL et contrôle : NTP en **slew** (pas de step) suffit.
 
-## 6. Monitoring (exigence labo)
+***REMOVED******REMOVED*** 6. Monitoring (exigence labo)
 
 Télémétrie **par interface** unifiée quel que soit le servo : offset au GM, path-delay, identité/
 domaine GM, état servo (lock/holdover), transitions. Collecteur = `app/ptp.py` (sampler + journal
@@ -275,7 +275,7 @@ pipeline. **Corréler** avec le FPT/conformité de la sonde (PROBE_2110) : c'est
 **PTP-nœud ⊕ conformité-flux** qui donne le diagnostic strict. Le payload « santé » du flux de
 référence (§4) alimente une tuile genlock/PTP.
 
-## 7. Séquencement (du pivot vers le reste)
+***REMOVED******REMOVED*** 7. Séquencement (du pivot vers le reste)
 
 | Phase | Contenu | Note |
 |---|---|---|
@@ -288,13 +288,13 @@ référence (§4) alimente une tuile genlock/PTP.
 > **Gate 0 — VERDICT 2026-07-08 : NO-GO full-DPDK maintenant (2 verrous caractérisés).**
 > 1. **Pivot PTP incomplet** (encadré §3) : GM locké (~30 ns) mais PHC RX non discipliné → fpt dérive
 >    ~1 440 ns/s. Reste = discipline PHC de l'interface RX (travail libmtl).
-> 2. **Charge TX** : 6 TX RL en rafale au boot → crash-loop daemon (~45 s, issue #13 TM-hierarchy).
->    RX-only STABLE (50 fps, narrow franc, RestartCount 0). Reste = échelonner création TX + patch #13.
+> 2. **Charge TX** : 6 TX RL en rafale au boot → crash-loop daemon (~45 s, issue ***REMOVED***13 TM-hierarchy).
+>    RX-only STABLE (50 fps, narrow franc, RestartCount 0). Reste = échelonner création TX + patch ***REMOVED***13.
 > **Acquis** : lock PTP L4/SMPTE-2059 ~30 ns en DPDK ; RX DPDK 50 fps narrow franc. **Repli hybride
 > confirmé sûr.** NB : en AF_XDP/hybride le PHC est discipliné par ptp4l KERNEL → le verrou n°1 ne se
 > pose PAS (la prod actuelle en témoigne) ; il est spécifique au full-DPDK.
 
-## 8. Ce que ça donne
+***REMOVED******REMOVED*** 8. Ce que ça donne
 
 - Média **per-interface, GM-exact**, porté par les PHC et les `media_ts`.
 - **Aucun conteneur aval ne fait de PTP** (ils rident la réf maison / sont genlockés au TX).
@@ -305,7 +305,7 @@ référence (§4) alimente une tuile genlock/PTP.
 
 Le seul vrai chantier est la **Phase 1** (moteur lit le PHC) ; le reste en découle, incrémental.
 
-## 9. Question ouverte
+***REMOVED******REMOVED*** 9. Question ouverte
 
 Sur les ports **AF_XDP** : le moteur lit-il le **PHC kernel** (`/dev/ptp`, découplé de REALTIME dès
 maintenant, plus propre) ou garde-t-on `CLOCK_REALTIME` tant qu'on n'est pas en DPDK (moins de

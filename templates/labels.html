@@ -6,7 +6,7 @@
 <div class="home-head" style="margin-bottom:var(--space-3)">
     <h1>{{ _('labels.title') }}</h1>
     <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">
-        <a href="/settings#labels" class="btn" style="font-size:0.9em">{{ _('labels.back_settings') }}</a>
+        <a href="/settings***REMOVED***labels" class="btn" style="font-size:0.9em">{{ _('labels.back_settings') }}</a>
         <span class="meta" id="tsl-dirty-badge" style="display:none"></span>
         <input type="text" id="tsl-global-filter" placeholder="{{ _('labels.search_ph') }}"
                style="width:220px;font-size:0.9em" oninput="tslFilter()">
@@ -55,7 +55,7 @@
     </table>
     <div id="tsl-fill-handle" style="
         position:fixed;width:8px;height:8px;
-        background:var(--accent,#2563eb);border:1px solid #fff;border-radius:2px;
+        background:var(--accent,***REMOVED***2563eb);border:1px solid ***REMOVED***fff;border-radius:2px;
         cursor:crosshair;display:none;z-index:200;pointer-events:all"></div>
 </div>
 
@@ -87,67 +87,67 @@ const T = (k) => (window.t ? window.t(k) : k);
             color: var(--status-warning-fg); border-radius: 3px; padding: 0 4px;
             margin-left: 5px; white-space: nowrap; vertical-align: middle; }
 /* ─── Grille labels ──────────────────────────────────────────── */
-#tsl-grid th { padding:4px 8px; border:1px solid var(--border); background:var(--bg-panel);
+***REMOVED***tsl-grid th { padding:4px 8px; border:1px solid var(--border); background:var(--bg-panel);
     white-space:nowrap; font-weight:600; user-select:none; position:relative;
     overflow:hidden; text-overflow:ellipsis; }
 /* Poignée de redimensionnement — chevauche la bordure droite de l'en-tête */
-#tsl-grid th .tsl-col-resizer { position:absolute; top:0; right:0; width:7px; height:100%;
+***REMOVED***tsl-grid th .tsl-col-resizer { position:absolute; top:0; right:0; width:7px; height:100%;
     cursor:col-resize; z-index:12; }
-#tsl-grid th .tsl-col-resizer:hover { background:var(--accent,#2563eb); opacity:.55; }
-#tsl-grid th.tsl-sortable { cursor:pointer; }
-#tsl-grid th.tsl-sortable:hover { background:var(--bg-hover,rgba(255,255,255,.06)); }
-#tsl-grid th .tsl-sort-icon { margin-left:4px; opacity:.4; font-size:0.75em; }
-#tsl-grid th.sort-asc  .tsl-sort-icon,
-#tsl-grid th.sort-desc .tsl-sort-icon { opacity:1; }
-#tsl-grid th input.tsl-col-filter { width:100%; box-sizing:border-box; margin-top:3px;
+***REMOVED***tsl-grid th .tsl-col-resizer:hover { background:var(--accent,***REMOVED***2563eb); opacity:.55; }
+***REMOVED***tsl-grid th.tsl-sortable { cursor:pointer; }
+***REMOVED***tsl-grid th.tsl-sortable:hover { background:var(--bg-hover,rgba(255,255,255,.06)); }
+***REMOVED***tsl-grid th .tsl-sort-icon { margin-left:4px; opacity:.4; font-size:0.75em; }
+***REMOVED***tsl-grid th.sort-asc  .tsl-sort-icon,
+***REMOVED***tsl-grid th.sort-desc .tsl-sort-icon { opacity:1; }
+***REMOVED***tsl-grid th input.tsl-col-filter { width:100%; box-sizing:border-box; margin-top:3px;
     padding:2px 4px; font-size:0.8em; background:var(--bg-input,var(--bg)); color:inherit;
     border:1px solid var(--border); border-radius:3px; }
-#tsl-grid td { padding:3px 6px; border:1px solid var(--border);
+***REMOVED***tsl-grid td { padding:3px 6px; border:1px solid var(--border);
     min-width:0; overflow:hidden; white-space:nowrap; vertical-align:middle; }
-#tsl-grid td.tsl-auto { color:var(--text-muted); font-style:italic; background:rgba(255,255,255,.03); cursor:default; }
-#tsl-grid td.tsl-shm  { font-family:monospace; font-size:0.88em; color:var(--text-muted);
+***REMOVED***tsl-grid td.tsl-auto { color:var(--text-muted); font-style:italic; background:rgba(255,255,255,.03); cursor:default; }
+***REMOVED***tsl-grid td.tsl-shm  { font-family:monospace; font-size:0.88em; color:var(--text-muted);
     background:var(--bg-panel); cursor:default; }
-#tsl-grid td.tsl-edit { cursor:cell; }
-#tsl-grid td.tsl-edit.tsl-editing { padding:0; }
-#tsl-grid td.tsl-edit.tsl-editing input { width:100%; height:100%;
+***REMOVED***tsl-grid td.tsl-edit { cursor:cell; }
+***REMOVED***tsl-grid td.tsl-edit.tsl-editing { padding:0; }
+***REMOVED***tsl-grid td.tsl-edit.tsl-editing input { width:100%; height:100%;
     padding:3px 6px; box-sizing:border-box; border:none; outline:none;
     background:var(--bg-input,var(--bg)); color:inherit; font:inherit; }
 /* Cellule parent (select) */
-#tsl-grid td.tsl-parent { padding:0 2px; }
+***REMOVED***tsl-grid td.tsl-parent { padding:0 2px; }
 /* Cellule héritée du parent : italique + icône */
-#tsl-grid td.tsl-inherited { color:var(--text-muted); font-style:italic; }
-#tsl-grid td.tsl-selected { background:rgba(37,99,235,.15); }
-#tsl-grid th.tsl-th-idx { background:rgba(124,58,237,.16); }
-#tsl-grid td.tsl-tslidx { font-variant-numeric:tabular-nums; background:rgba(124,58,237,.05); }
-#tsl-grid .tsl-live-dot { display:inline-block; width:9px; height:9px; border-radius:50%;
-    margin-left:6px; vertical-align:middle; background:#444; box-shadow:0 0 0 1px rgba(0,0,0,.3) inset; }
+***REMOVED***tsl-grid td.tsl-inherited { color:var(--text-muted); font-style:italic; }
+***REMOVED***tsl-grid td.tsl-selected { background:rgba(37,99,235,.15); }
+***REMOVED***tsl-grid th.tsl-th-idx { background:rgba(124,58,237,.16); }
+***REMOVED***tsl-grid td.tsl-tslidx { font-variant-numeric:tabular-nums; background:rgba(124,58,237,.05); }
+***REMOVED***tsl-grid .tsl-live-dot { display:inline-block; width:9px; height:9px; border-radius:50%;
+    margin-left:6px; vertical-align:middle; background:***REMOVED***444; box-shadow:0 0 0 1px rgba(0,0,0,.3) inset; }
 @keyframes tslFlash { from { background:rgba(245,158,11,.6); } to { background:transparent; } }
-#tsl-grid td.tsl-flash { animation:tslFlash 1.2s ease-out; }
-#tsl-grid td.tsl-tslidx.tsl-selected { background:rgba(37,99,235,.15); }
-#tsl-grid tr.tsl-dirty td.tsl-shm::after { content:'●'; color:var(--status-warn-fg,#f59e0b);
+***REMOVED***tsl-grid td.tsl-flash { animation:tslFlash 1.2s ease-out; }
+***REMOVED***tsl-grid td.tsl-tslidx.tsl-selected { background:rgba(37,99,235,.15); }
+***REMOVED***tsl-grid tr.tsl-dirty td.tsl-shm::after { content:'●'; color:var(--status-warn-fg,***REMOVED***f59e0b);
     margin-left:5px; font-size:0.5em; vertical-align:middle; }
-#tsl-grid tr:hover td { background:var(--bg-hover,rgba(255,255,255,.03)); }
-#tsl-grid tr.tsl-dirty:hover td { background:rgba(245,158,11,.08); }
+***REMOVED***tsl-grid tr:hover td { background:var(--bg-hover,rgba(255,255,255,.03)); }
+***REMOVED***tsl-grid tr.tsl-dirty:hover td { background:rgba(245,158,11,.08); }
 /* Suffix table */
-#tsl-suffix-tbody td { padding:2px 8px; }
-#tsl-suffix-tbody input { padding:2px 5px; font-size:0.9em; width:120px; }
+***REMOVED***tsl-suffix-tbody td { padding:2px 8px; }
+***REMOVED***tsl-suffix-tbody input { padding:2px 5px; font-size:0.9em; width:120px; }
 /* Import diff modal */
-#tsl-import-modal { position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55) }
-#tsl-import-modal .modal-box { background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;
+***REMOVED***tsl-import-modal { position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55) }
+***REMOVED***tsl-import-modal .modal-box { background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;
     width:min(92vw,900px);max-height:85vh;display:flex;flex-direction:column;overflow:hidden }
-#tsl-import-modal .modal-head { padding:var(--space-3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:var(--space-3) }
-#tsl-import-modal .modal-body { overflow-y:auto;flex:1;padding:var(--space-2) var(--space-3) }
-#tsl-import-modal .modal-foot { padding:var(--space-3);border-top:1px solid var(--border);display:flex;gap:var(--space-2);justify-content:flex-end }
-#tsl-import-modal table { width:100%;border-collapse:collapse;font-size:0.83em }
-#tsl-import-modal td,#tsl-import-modal th { padding:3px 7px;border:1px solid var(--border) }
-#tsl-import-modal th { background:var(--bg-panel);font-weight:600;white-space:nowrap }
-#tsl-import-modal tr.imp-new td { background:rgba(34,170,68,.08) }
-#tsl-import-modal tr.imp-mod td { background:rgba(245,158,11,.07) }
-#tsl-import-modal .imp-badge { display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.8em;font-weight:600 }
-#tsl-import-modal .imp-badge.new { background:rgba(34,170,68,.2);color:#22aa44 }
-#tsl-import-modal .imp-badge.mod { background:rgba(245,158,11,.2);color:#cc8800 }
-#tsl-import-modal .diff-old { color:var(--status-stopped-fg,#cc2222);text-decoration:line-through;margin-right:4px }
-#tsl-import-modal .diff-new { color:var(--status-running-fg,#22aa44) }
+***REMOVED***tsl-import-modal .modal-head { padding:var(--space-3);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:var(--space-3) }
+***REMOVED***tsl-import-modal .modal-body { overflow-y:auto;flex:1;padding:var(--space-2) var(--space-3) }
+***REMOVED***tsl-import-modal .modal-foot { padding:var(--space-3);border-top:1px solid var(--border);display:flex;gap:var(--space-2);justify-content:flex-end }
+***REMOVED***tsl-import-modal table { width:100%;border-collapse:collapse;font-size:0.83em }
+***REMOVED***tsl-import-modal td,***REMOVED***tsl-import-modal th { padding:3px 7px;border:1px solid var(--border) }
+***REMOVED***tsl-import-modal th { background:var(--bg-panel);font-weight:600;white-space:nowrap }
+***REMOVED***tsl-import-modal tr.imp-new td { background:rgba(34,170,68,.08) }
+***REMOVED***tsl-import-modal tr.imp-mod td { background:rgba(245,158,11,.07) }
+***REMOVED***tsl-import-modal .imp-badge { display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.8em;font-weight:600 }
+***REMOVED***tsl-import-modal .imp-badge.new { background:rgba(34,170,68,.2);color:***REMOVED***22aa44 }
+***REMOVED***tsl-import-modal .imp-badge.mod { background:rgba(245,158,11,.2);color:***REMOVED***cc8800 }
+***REMOVED***tsl-import-modal .diff-old { color:var(--status-stopped-fg,***REMOVED***cc2222);text-decoration:line-through;margin-right:4px }
+***REMOVED***tsl-import-modal .diff-new { color:var(--status-running-fg,***REMOVED***22aa44) }
 </style>
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -459,7 +459,7 @@ function tslApplyView() {
     if (count) {
         const n = _rows.filter(r => _orphelins.has(r.shm)).length;
         count.innerHTML = `${_view.length} / ${_rows.length} source${_rows.length>1?'s':''}`
-            + (n ? ` · <a href="#" onclick="tslOrphelinsOuvrir();return false">`
+            + (n ? ` · <a href="***REMOVED***" onclick="tslOrphelinsOuvrir();return false">`
                  + T('labels.js.orphan_count').replace('{n}', n) + `</a>` : '');
     }
 }
@@ -712,7 +712,7 @@ document.addEventListener('mousemove', e => {
 document.addEventListener('mouseup', () => { _mouseSelecting = false; });
 
 function tslPartialSelRender() {
-    document.querySelectorAll('#tsl-tbody td').forEach(td => {
+    document.querySelectorAll('***REMOVED***tsl-tbody td').forEach(td => {
         const vi = +td.dataset.vi, c = +td.dataset.c;
         td.classList.toggle('tsl-selected',
             !!(_sel && vi >= _sel.r1 && vi <= _sel.r2 && c >= _sel.c1 && c <= _sel.c2));
@@ -800,7 +800,7 @@ document.addEventListener('keydown', e => {
         let nc = Math.max(0, Math.min(TOTAL_COLS-1, _sel.c1 + dc));
         _sel = { r1: nr, c1: nc, r2: nr, c2: nc };
         tslPartialSelRender();
-        document.querySelector(`#tsl-tbody td[data-vi="${nr}"]`)?.scrollIntoView({ block:'nearest', inline:'nearest' });
+        document.querySelector(`***REMOVED***tsl-tbody td[data-vi="${nr}"]`)?.scrollIntoView({ block:'nearest', inline:'nearest' });
         return;
     }
     if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && colEditable(_sel.c1)) {
@@ -914,7 +914,7 @@ function tslPositionFillHandle() {
     const fh = document.getElementById('tsl-fill-handle');
     if (!fh) return;
     if (!_sel || !colFillable(_sel.c2)) { fh.style.display = 'none'; return; }
-    const lastTd = document.querySelector(`#tsl-tbody td[data-vi="${_sel.r2}"][data-c="${_sel.c2}"]`);
+    const lastTd = document.querySelector(`***REMOVED***tsl-tbody td[data-vi="${_sel.r2}"][data-c="${_sel.c2}"]`);
     if (!lastTd) { fh.style.display = 'none'; return; }
     const rect = lastTd.getBoundingClientRect();
     fh.style.display = 'block';
@@ -934,7 +934,7 @@ document.addEventListener('mousemove', e => {
     const vi = +td.dataset.vi;
     if (vi > _sel.r2) {
         _sel = { ..._sel, _fillTo: vi };
-        document.querySelectorAll('#tsl-tbody td').forEach(t => {
+        document.querySelectorAll('***REMOVED***tsl-tbody td').forEach(t => {
             const tv = +t.dataset.vi, tc = +t.dataset.c;
             t.classList.toggle('tsl-selected',
                 (tv >= _sel.r1 && tv <= _sel.r2 && tc >= _sel.c1 && tc <= _sel.c2) ||
@@ -1242,7 +1242,7 @@ function tslSuffixAddRow() {
     _suffixEdits.push({ tail: '', suffix: '' });
     _suffixTableRender();
     // focus le dernier input
-    const last = document.querySelector('#tsl-suffix-tbody tr:last-child .suf-tail');
+    const last = document.querySelector('***REMOVED***tsl-suffix-tbody tr:last-child .suf-tail');
     if (last) last.focus();
 }
 
@@ -1252,7 +1252,7 @@ function tslSuffixDel(i) {
 }
 
 async function tslSuffixSave() {
-    const rows = [...document.querySelectorAll('#tsl-suffix-tbody tr[data-si]')];
+    const rows = [...document.querySelectorAll('***REMOVED***tsl-suffix-tbody tr[data-si]')];
     const map = {};
     for (const tr of rows) {
         const tail = tr.querySelector('.suf-tail')?.value?.trim() || '';
@@ -1472,9 +1472,9 @@ function _tslImportShowModal(changes) {
             <div class="modal-head">
                 <strong>Import CSV</strong>
                 <span class="meta">
-                    ${nNew ? `<span style="color:#22aa44">${nNew} nouvelle${nNew>1?'s':''}</span>` : ''}
+                    ${nNew ? `<span style="color:***REMOVED***22aa44">${nNew} nouvelle${nNew>1?'s':''}</span>` : ''}
                     ${nNew && nMod ? ' · ' : ''}
-                    ${nMod ? `<span style="color:#cc8800">${nMod} modifiée${nMod>1?'s':''}</span>` : ''}
+                    ${nMod ? `<span style="color:***REMOVED***cc8800">${nMod} modifiée${nMod>1?'s':''}</span>` : ''}
                 </span>
                 <span class="meta" style="margin-left:auto;font-size:0.85em">
                     ${T('labels.js.uncheck_hint')}
@@ -1504,7 +1504,7 @@ function _tslImportShowModal(changes) {
 function _tslImportApply() {
     const changes = _importPendingChanges;
     if (!changes) return;
-    const checks = document.querySelectorAll('#tsl-import-modal .imp-check');
+    const checks = document.querySelectorAll('***REMOVED***tsl-import-modal .imp-check');
     const selected = new Set([...checks].filter(c => c.checked).map(c => +c.dataset.idx));
     if (!selected.size) {
         typeof mxlToast === 'function' && mxlToast(T('labels.js.no_row_selected'), 'warning');
@@ -1571,7 +1571,7 @@ function tslOrphelinsOuvrir() {
                        + (t.length > 12 ? ` … (+${t.length - 12})` : '');
     const el = document.createElement('div');
     el.id = 'tsl-orph-modal';
-    el.style.cssText = 'position:fixed;inset:0;background:#0008;display:flex;'
+    el.style.cssText = 'position:fixed;inset:0;background:***REMOVED***0008;display:flex;'
         + 'align-items:center;justify-content:center;z-index:900';
     el.innerHTML = `<div style="background:var(--bg-elev);border:1px solid var(--border);
         border-radius:var(--radius,6px);padding:var(--space-4);max-width:760px;width:92%">
@@ -1650,7 +1650,7 @@ let _tallyState = {};   // "idx_lvl" → color
 
 // Colore les pastilles en place (ne re-rend pas la grille → pas d'écrasement d'édition)
 function _applyLiveTally() {
-    const DOT = { red:'#cc2222', green:'#22aa44', amber:'#cc8800', off:'#444' };
+    const DOT = { red:'***REMOVED***cc2222', green:'***REMOVED***22aa44', amber:'***REMOVED***cc8800', off:'***REMOVED***444' };
     // ★ UN NIVEAU, LU DIRECTEMENT. On recomposait ici la « bande » LH/RH/TT à partir de
     // `tally_base` — trois clés d'état pour un seul signal, et une pastille qui s'éteignait dès
     // qu'une connexion changeait de base. La connexion porte maintenant SON niveau, dont l'état
@@ -1658,7 +1658,7 @@ function _applyLiveTally() {
     const nivByConn = {}, numByNiv = {};
     for (const c of _tslConns) nivByConn[c.id] = c.level_uuid || '';
     for (const n of (_tslNiveaux || [])) numByNiv[n.uuid] = n.num;
-    document.querySelectorAll('#tsl-tbody .tsl-live-dot').forEach(el => {
+    document.querySelectorAll('***REMOVED***tsl-tbody .tsl-live-dot').forEach(el => {
         const connId = +el.dataset.conn, idx = el.dataset.idx;
         const niv = nivByConn[connId] || '';
         const etat = niv ? (_tallyState[`${idx}_${niv}`] || 'off') : 'off';
@@ -1699,7 +1699,7 @@ function _mergeServerLabels(serverRows) {
 function _flashCells(changed) {
     for (const { ri, key } of changed) {
         const c = keyToCol(key);
-        const td = document.querySelector(`#tsl-tbody td[data-ri="${ri}"][data-c="${c}"]`);
+        const td = document.querySelector(`***REMOVED***tsl-tbody td[data-ri="${ri}"][data-c="${c}"]`);
         if (td) { td.classList.remove('tsl-flash'); void td.offsetWidth; td.classList.add('tsl-flash'); }
     }
 }

@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Layouts TX déclarés par carte (NIC média) — Étage 1 du chantier docs/reference/TX_LAYOUTS.md.
 
@@ -19,7 +19,7 @@ Persistance : un blob JSON par (node_id, iface) dans la table `settings` génér
 `tx_layout_<node_id>_<iface>`, via `db_get_setting`/`db_set_setting` — aucune migration de schéma).
 Le layout vit dans Réglages (édition ADMIN — permission `settings.edit`) ; la page Destinations 2110
 l'affiche en lecture seule + bouton « Appliquer » (permission `containers.deploy`, cf. docs/reference/TX_LAYOUTS.md
-décision #1).
+décision ***REMOVED***1).
 
 Ce module ne fait AUCUN appel réseau lui-même à part via `docker_driver.push_tx_slots` (à l'apply) et
 `allocations.allocate_multicast_for` (réservation d'adresses) — pas de code plugin exécuté in-process.
@@ -32,16 +32,16 @@ import time
 log = logging.getLogger(__name__)
 
 
-# ─── Bibliothèque de PRESETS suggérés (NON contraignants, cf. docs/reference/TX_LAYOUTS.md décision #3) ──────────
-# Clé = sous-chaîne de modèle NIC (lower), comme app.mtl.NIC_RL_TX_CAP. "_default" = repli générique.
-# Chaque preset = liste de slots {video:{w,h,fps,bd,scan}, audio_count, anc}.
+***REMOVED*** ─── Bibliothèque de PRESETS suggérés (NON contraignants, cf. docs/reference/TX_LAYOUTS.md décision ***REMOVED***3) ──────────
+***REMOVED*** Clé = sous-chaîne de modèle NIC (lower), comme app.mtl.NIC_RL_TX_CAP. "_default" = repli générique.
+***REMOVED*** Chaque preset = liste de slots {video:{w,h,fps,bd,scan}, audio_count, anc}.
 def _fmt(w, h, fps, bd=10, scan="p"):
     return {"w": w, "h": h, "fps": fps, "bd": bd, "scan": scan}
 
 
 PRESETS = {
-    # E810-C mesuré (63 sessions TX narrow/port, cf. app/mtl.py NIC_RL_TX_CAP) : quelques
-    # compositions repères, à ajuster (compositions LIBRES, cf. décision produit #3).
+    ***REMOVED*** E810-C mesuré (63 sessions TX narrow/port, cf. app/mtl.py NIC_RL_TX_CAP) : quelques
+    ***REMOVED*** compositions repères, à ajuster (compositions LIBRES, cf. décision produit ***REMOVED***3).
     "e810-c": [
         {"label": "8× 1080p50 + audio embarqué + ANC",
          "slots": [{"video": _fmt(1920, 1080, 50), "audio_count": 1, "anc": True} for _ in range(8)]},
@@ -96,15 +96,15 @@ def _normalize_slots(slots):
         if not isinstance(s, dict):
             continue
         v = s.get("video") or {}
-        # ★ VIDÉO OPTIONNELLE : un slot peut être vidéo (+ audio/ANC), audio-seul ou ANC-seul. La
-        # présence de vidéo se lit sur une largeur > 0 (l'UI d'un slot audio/ANC-seul envoie video=None
-        # ou {}). Les slots hérités portent TOUJOURS une vidéo complète → keyer sur w>0 est rétro-sûr.
+        ***REMOVED*** ★ VIDÉO OPTIONNELLE : un slot peut être vidéo (+ audio/ANC), audio-seul ou ANC-seul. La
+        ***REMOVED*** présence de vidéo se lit sur une largeur > 0 (l'UI d'un slot audio/ANC-seul envoie video=None
+        ***REMOVED*** ou {}). Les slots hérités portent TOUJOURS une vidéo complète → keyer sur w>0 est rétro-sûr.
         has_video = bool(v) and int(v.get("w") or 0) > 0
         audio_count = max(0, int(s.get("audio_count") or 0))
         anc = bool(s.get("anc"))
-        # Un slot doit porter AU MOINS une essence : un slot sans vidéo, sans audio et sans ANC ne
-        # représente rien (et coûterait une file pour du vide) → on ne le matérialise pas. L'UI
-        # empêche déjà de créer un tel slot ; c'est un garde-fou de normalisation, pas un échec muet.
+        ***REMOVED*** Un slot doit porter AU MOINS une essence : un slot sans vidéo, sans audio et sans ANC ne
+        ***REMOVED*** représente rien (et coûterait une file pour du vide) → on ne le matérialise pas. L'UI
+        ***REMOVED*** empêche déjà de créer un tel slot ; c'est un garde-fou de normalisation, pas un échec muet.
         if not has_video and audio_count == 0 and not anc:
             continue
         if has_video:
@@ -119,7 +119,7 @@ def _normalize_slots(slots):
         else:
             video = None
         out.append({
-            "video": video,                               # None = slot audio-seul / ANC-seul
+            "video": video,                               ***REMOVED*** None = slot audio-seul / ANC-seul
             "fmt_label": str(s.get("fmt_label") or "") if has_video else "",
             "audio_count": audio_count,
             "anc": anc,
@@ -160,9 +160,9 @@ def _slot_bw_mbps(slot):
     bw = (int(v.get("w") or 0) * int(v.get("h") or 0) * float(v.get("fps") or 0) * bpp) / 1e6
     if str(v.get("scan") or "p").lower() == "i":
         bw /= 2.0
-    # Audio 2110-30 : ~9,2 Mb/s par flux (L24/48k, 8 canaux). Le nombre EXACT de canaux par flux n'est
-    # pas porté par le modèle → estimation conservatrice (8ch) pour le garde-fou de lien. Compté même
-    # sur une sortie sans vidéo (audio-seul). ANC 2110-40 = variable/bursty et négligeable → ignoré.
+    ***REMOVED*** Audio 2110-30 : ~9,2 Mb/s par flux (L24/48k, 8 canaux). Le nombre EXACT de canaux par flux n'est
+    ***REMOVED*** pas porté par le modèle → estimation conservatrice (8ch) pour le garde-fou de lien. Compté même
+    ***REMOVED*** sur une sortie sans vidéo (audio-seul). ANC 2110-40 = variable/bursty et négligeable → ignoré.
     bw += int(slot.get("audio_count") or 0) * (48000 * 24 * 8 / 1e6)
     return bw
 
@@ -184,8 +184,8 @@ def nic_budget(node_id, iface):
         cap = _dd._node_rl_tx_cap(node) if node else 7
     except Exception:
         cap = 7
-    # Défaut = af_xdp (le moteur y retombe quand aucun PMD n'est déclaré) — MÊME convention que
-    # `tx_maintenance.port_mode`, sinon la même carte s'affichait « kernel » ici et « af_xdp » là.
+    ***REMOVED*** Défaut = af_xdp (le moteur y retombe quand aucun PMD n'est déclaré) — MÊME convention que
+    ***REMOVED*** `tx_maintenance.port_mode`, sinon la même carte s'affichait « kernel » ici et « af_xdp » là.
     pmd = (row.get("pmd") or "").strip().lower()
     return {
         "model": row.get("model") or "",
@@ -248,7 +248,7 @@ def presets_for(node_id, iface):
     return PRESETS["_default"]
 
 
-# ─── Rattachement moteur ↔ NIC + application (provisioning silencieux) ─────────────────────────
+***REMOVED*** ─── Rattachement moteur ↔ NIC + application (provisioning silencieux) ─────────────────────────
 
 def layout_iface_for_container(vmid):
     """NIC média (role=media2110) PRIMAIRE du nœud hébergeant ce moteur — le layout se déclare par
@@ -333,9 +333,9 @@ def port_slots(vmid, iface, params=None, role="tx"):
         n = min(n, len(params.get("tx_slots") or []) or n)
     else:
         n = _dd._pcount(params, "active_rx_count", 0)
-    # `iface` peut être un ifname quelconque de l'unité (l'exploitant clique un port) : on raisonne
-    # sur l'UNITÉ. En 2022-7, les deux legs portent les MÊMES slots — demander « quels slots porte
-    # le leg blue ? » doit rendre tous les slots de la paire, pas la moitié.
+    ***REMOVED*** `iface` peut être un ifname quelconque de l'unité (l'exploitant clique un port) : on raisonne
+    ***REMOVED*** sur l'UNITÉ. En 2022-7, les deux legs portent les MÊMES slots — demander « quels slots porte
+    ***REMOVED*** le leg blue ? » doit rendre tous les slots de la paire, pas la moitié.
     unit = _dd.unit_of_iface(node, iface)
     ifaces = set(unit["ifaces"]) if unit else {iface}
     _, resolve = _dd.engine_slot_ports(node, params, "tx_pins" if role == "tx" else "rx_pins")
@@ -370,14 +370,14 @@ def plan_port_slots(ports, want, owned):
     want = {p: (len(owned.get(p) or []) if want.get(p) is None else max(0, int(want[p])))
             for p in ports}
     total = sum(want.values())
-    # 1) On CONSERVE, port par port, les indices déjà portés qui tiennent dans le nouveau total.
-    #    Trié : un port qui rétrécit garde ses PREMIERS slots (les plus anciens, donc les câblés).
+    ***REMOVED*** 1) On CONSERVE, port par port, les indices déjà portés qui tiennent dans le nouveau total.
+    ***REMOVED***    Trié : un port qui rétrécit garde ses PREMIERS slots (les plus anciens, donc les câblés).
     keep, taken = {}, set()
     for p in ports:
         k = [i for i in sorted(owned.get(p) or []) if 0 <= i < total and i not in taken][:want[p]]
         keep[p] = k
         taken.update(k)
-    # 2) Les indices restants du pool 0..total-1 comblent les ports incomplets, dans l'ordre moteur.
+    ***REMOVED*** 2) Les indices restants du pool 0..total-1 comblent les ports incomplets, dans l'ordre moteur.
     free = [i for i in range(total) if i not in taken]
     pins = {}
     for p in ports:
@@ -419,8 +419,8 @@ def _plan_apply(vmid, iface=None, params=None, slots_decl=None):
             else ((get_layout(node_id, k) or {}).get("slots") or [])
         if d:
             decl_by_unit[k] = d
-    # `None` = « conserve » (≠ 0, qui viderait l'unité) — y compris pour une cible SANS modèle :
-    # `apply_layout` refuse ce cas, donc le plan doit dire « rien ne change ».
+    ***REMOVED*** `None` = « conserve » (≠ 0, qui viderait l'unité) — y compris pour une cible SANS modèle :
+    ***REMOVED*** `apply_layout` refuse ce cas, donc le plan doit dire « rien ne change ».
     want = {k: (len(decl_by_unit[k]) if k in decl_by_unit else None) for k in keys}
     owned = {k: port_slots(vmid, k, params=params) for k in keys}
     tx_pins, total = plan_port_slots(keys, want, owned)
@@ -486,29 +486,29 @@ def layout_status(vmid, iface=None):
         dc = {}
     params = dc.get("params") or {}
     tx_slots = params.get("tx_slots") or []
-    # Slots du MOTEUR que CE port porte (répartition auto + épinglages). Le k-ième slot déclaré du
-    # layout décrit `owned[k]` — l'ancien code lisait `tx_slots[k]`, ce qui ne coïncide QUE sur un
-    # nœud mono-port ; sur bi-port il décrivait les sorties de l'autre carte.
+    ***REMOVED*** Slots du MOTEUR que CE port porte (répartition auto + épinglages). Le k-ième slot déclaré du
+    ***REMOVED*** layout décrit `owned[k]` — l'ancien code lisait `tx_slots[k]`, ce qui ne coïncide QUE sur un
+    ***REMOVED*** nœud mono-port ; sur bi-port il décrivait les sorties de l'autre carte.
     owned = port_slots(vmid, iface, params=params)
     provisioned = sum(1 for k in range(min(len(slots_decl), len(owned)))
                       if (tx_slots[owned[k]] if owned[k] < len(tx_slots) else {}).get("multicast_ip")
                       and (tx_slots[owned[k]] if owned[k] < len(tx_slots) else {}).get("dest_port"))
-    # Modèle multi-port (décision utilisateur 2026-07-27) : le MODÈLE DÉCIDE combien de sorties le
-    # port émet, `plan_port_slots` alloue les indices et `tx_pins` réalise la répartition. Déclarer
-    # plus de sorties que le port n'en porte AUJOURD'HUI est donc l'état normal d'un modèle pas
-    # encore appliqué — « pending », pas une erreur (c'est appliquer qui créera les slots manquants).
+    ***REMOVED*** Modèle multi-port (décision utilisateur 2026-07-27) : le MODÈLE DÉCIDE combien de sorties le
+    ***REMOVED*** port émet, `plan_port_slots` alloue les indices et `tx_pins` réalise la répartition. Déclarer
+    ***REMOVED*** plus de sorties que le port n'en porte AUJOURD'HUI est donc l'état normal d'un modèle pas
+    ***REMOVED*** encore appliqué — « pending », pas une erreur (c'est appliquer qui créera les slots manquants).
     if provisioned >= len(slots_decl) and provisioned:
         state = "applied"
     elif provisioned:
         state = "pending"
     else:
         state = "none"
-    # ÉTAT PAR SORTIE (étage 2) — sans ça, personne ne comprend pourquoi ALLUMER une sortie est
-    # gratuit : c'est parce qu'elle EXISTAIT DÉJÀ (session + feuille RL créées, silencieuses).
-    #   · 'active'       : session vivante ET alimentée (elle émet du contenu)
-    #   · 'provisioned'  : session vivante mais SANS source → silencieuse (l'activer = swap, 0 commit)
-    #   · 'declared'     : déclarée au layout mais pas encore provisionnée (→ « Appliquer le layout »)
-    #   · 'out_of_layout': slot du moteur hors du layout de la carte (l'armer recale l'arbre)
+    ***REMOVED*** ÉTAT PAR SORTIE (étage 2) — sans ça, personne ne comprend pourquoi ALLUMER une sortie est
+    ***REMOVED*** gratuit : c'est parce qu'elle EXISTAIT DÉJÀ (session + feuille RL créées, silencieuses).
+    ***REMOVED***   · 'active'       : session vivante ET alimentée (elle émet du contenu)
+    ***REMOVED***   · 'provisioned'  : session vivante mais SANS source → silencieuse (l'activer = swap, 0 commit)
+    ***REMOVED***   · 'declared'     : déclarée au layout mais pas encore provisionnée (→ « Appliquer le layout »)
+    ***REMOVED***   · 'out_of_layout': slot du moteur hors du layout de la carte (l'armer recale l'arbre)
     slot_states = {}
     try:
         from . import tx_maintenance as _txm
@@ -516,23 +516,23 @@ def layout_status(vmid, iface=None):
         for s in _txm.tx_sessions(vmid, params):
             if s["essence"] == "video":
                 live[s["slot"]] = ("provisioned" if s.get("silent") else "active")
-        # On affiche les sorties du MODÈLE (déclarées) + les slots RÉELLEMENT actifs hors modèle (une
-        # anomalie à surfacer). PAS la réserve structurelle vide (tx_count) au-delà du modèle : montrer
-        # 28 slots « hors layout » vides laissait croire à une limite/capacité de 32, ce qui est FAUX
-        # (le vrai plafond = files RL de la carte). Un slot au-delà du modèle n'apparaît que s'il ÉMET.
-        # États indexés par slot MOTEUR, restreints aux slots de CE port : un slot de l'autre carte
-        # n'est ni « déclaré » ni « hors layout » ici — il relève du layout de sa propre carte.
+        ***REMOVED*** On affiche les sorties du MODÈLE (déclarées) + les slots RÉELLEMENT actifs hors modèle (une
+        ***REMOVED*** anomalie à surfacer). PAS la réserve structurelle vide (tx_count) au-delà du modèle : montrer
+        ***REMOVED*** 28 slots « hors layout » vides laissait croire à une limite/capacité de 32, ce qui est FAUX
+        ***REMOVED*** (le vrai plafond = files RL de la carte). Un slot au-delà du modèle n'apparaît que s'il ÉMET.
+        ***REMOVED*** États indexés par slot MOTEUR, restreints aux slots de CE port : un slot de l'autre carte
+        ***REMOVED*** n'est ni « déclaré » ni « hors layout » ici — il relève du layout de sa propre carte.
         _decl_idx = set(owned[:len(slots_decl)])
         for i in owned:
             if i in _decl_idx:
                 slot_states[i] = live.get(i, "declared")
-            elif i in live:                       # actif hors modèle = orphelin réel (à recaler)
+            elif i in live:                       ***REMOVED*** actif hors modèle = orphelin réel (à recaler)
                 slot_states[i] = "out_of_layout"
     except Exception as e:
         log.warning("layout_status %s: états par sortie: %s", vmid, e)
-    # Budget de files RL consommé par le layout DÉCLARÉ (vidéo + audio + ANC) sur le plafond DE CE
-    # PORT. Chaque port a son propre arbre RL et son propre cap : compter les sorties des deux
-    # cartes sur un seul port doublait la consommation affichée (rouge à tort).
+    ***REMOVED*** Budget de files RL consommé par le layout DÉCLARÉ (vidéo + audio + ANC) sur le plafond DE CE
+    ***REMOVED*** PORT. Chaque port a son propre arbre RL et son propre cap : compter les sorties des deux
+    ***REMOVED*** cartes sur un seul port doublait la consommation affichée (rouge à tort).
     used_queues = sum(slot_queue_cost(s) for s in slots_decl)
     return {"state": state, "iface": iface, "node_id": node_id, "budget": budget,
             "declared": len(slots_decl), "provisioned": provisioned,
@@ -551,7 +551,7 @@ def preview_layout_params(vmid, params, slots_decl=None, iface=None):
     chiffrage AVANT le clic (« ce que vous vous apprêtez à changer coûte N commit(s) et fige ces
     sorties »). Sans lui, on prend le layout enregistré de la NIC."""
     out = dict(params or {})
-    # MÊME planificateur que `apply_layout` : mêmes unités ciblées, mêmes indices, même total.
+    ***REMOVED*** MÊME planificateur que `apply_layout` : mêmes unités ciblées, mêmes indices, même total.
     node_id, decl_by_unit, tx_pins, total = _plan_apply(vmid, iface=iface, params=out,
                                                         slots_decl=slots_decl)
     if not decl_by_unit:
@@ -559,8 +559,8 @@ def preview_layout_params(vmid, params, slots_decl=None, iface=None):
     tx_slots = [dict(s or {}) for s in (out.get("tx_slots") or [])]
     while len(tx_slots) < total:
         tx_slots.append({})
-    # Sorties qui DISPARAISSENT (le total rétrécit) : vidées ici aussi, sinon le verdict compterait
-    # des sessions que l'application supprimerait.
+    ***REMOVED*** Sorties qui DISPARAISSENT (le total rétrécit) : vidées ici aussi, sinon le verdict compterait
+    ***REMOVED*** des sessions que l'application supprimerait.
     from . import docker_driver as _dd0
     for i in range(total, max(_dd0._pcount(out, "active_tx_count", 0), 0)):
         if i < len(tx_slots):
@@ -582,7 +582,7 @@ def preview_layout_params(vmid, params, slots_decl=None, iface=None):
                 if v.get(k_decl):
                     slot[k_slot] = v[k_decl]
         else:
-            # Slot audio-seul / ANC-seul : aucune destination/format vidéo simulé (symétrique d'apply_layout).
+            ***REMOVED*** Slot audio-seul / ANC-seul : aucune destination/format vidéo simulé (symétrique d'apply_layout).
             slot["video_off"] = True
             for _k in ("multicast_ip", "dest_port", "multicast_ip_leg1", "dest_port_leg1",
                        "width", "height"):
@@ -591,9 +591,9 @@ def preview_layout_params(vmid, params, slots_decl=None, iface=None):
         audios = [dict(a or {}) for a in (slot.get("audios") or [])]
         while len(audios) < naud:
             audios.append({"multicast_ip": "0.0.1.%d" % len(audios), "dest_port": 21000 + len(audios)})
-        # naud == 0 signifie ZÉRO audio (sortie vidéo seule) : on tronque à naud, PAS de repli sur la
-        # liste existante — un `audios[:naud] if naud else audios` gardait les audios déjà là quand on
-        # demandait 0, d'où le « je mets 0 audios et il en crée quand même ».
+        ***REMOVED*** naud == 0 signifie ZÉRO audio (sortie vidéo seule) : on tronque à naud, PAS de repli sur la
+        ***REMOVED*** liste existante — un `audios[:naud] if naud else audios` gardait les audios déjà là quand on
+        ***REMOVED*** demandait 0, d'où le « je mets 0 audios et il en crée quand même ».
         slot["audios"] = audios[:naud]
         if decl.get("anc"):
             if not (slot.get("anc_multicast_ip") and slot.get("anc_dest_port")):
@@ -605,8 +605,8 @@ def preview_layout_params(vmid, params, slots_decl=None, iface=None):
         tx_slots[i] = slot
     out["tx_slots"] = tx_slots
     out["tx_pins"] = tx_pins
-    # Le total des modèles fait autorité → le verdict (tx_maintenance.classify → tx_sessions, borné
-    # par active_tx_count) compte les sessions réelles de l'état APRÈS, y compris en RÉDUCTION.
+    ***REMOVED*** Le total des modèles fait autorité → le verdict (tx_maintenance.classify → tx_sessions, borné
+    ***REMOVED*** par active_tx_count) compte les sessions réelles de l'état APRÈS, y compris en RÉDUCTION.
     out["active_tx_count"] = total
     out["tx_count"] = max(_dd0._pcount(out, "tx_count", 0), total)
     return out
@@ -651,7 +651,7 @@ def apply_layout(vmid, iface=None, redeploy=False):
     ctype = dc.get("type") or "2110_io"
     params = dict(dc.get("params") or {})
 
-    # ── Plan (unités ciblées + indices alloués + total) : planificateur COMMUN au pré-vol ─────────
+    ***REMOVED*** ── Plan (unités ciblées + indices alloués + total) : planificateur COMMUN au pré-vol ─────────
     if iface and not _dd.unit_of_iface(_dd.db_get_node(node_id) or {}, iface):
         return False, f"« {iface} » n'est pas une NIC média de ce nœud"
     _nid, decl_by_unit, tx_pins, total = _plan_apply(vmid, iface=iface, params=params)
@@ -664,7 +664,7 @@ def apply_layout(vmid, iface=None, redeploy=False):
     while len(tx_slots) < total:
         tx_slots.append({})
 
-    # ── Sorties SUPPRIMÉES (le total rétrécit) : nommées, jamais perdues en silence ───────────────
+    ***REMOVED*** ── Sorties SUPPRIMÉES (le total rétrécit) : nommées, jamais perdues en silence ───────────────
     removed = []
     for i in range(total, max(old_atx, 0)):
         s = tx_slots[i] if i < len(tx_slots) else {}
@@ -672,7 +672,7 @@ def apply_layout(vmid, iface=None, redeploy=False):
         if s.get("multicast_ip") or src:
             removed.append({"slot": i, "multicast_ip": s.get("multicast_ip") or "",
                             "dest_port": s.get("dest_port"), "source": src})
-        params.pop(cle_tx_shm(i), None)          # câblage perdu avec la sortie
+        params.pop(cle_tx_shm(i), None)          ***REMOVED*** câblage perdu avec la sortie
         if i < len(tx_slots):
             tx_slots[i] = {}
 
@@ -685,12 +685,12 @@ def apply_layout(vmid, iface=None, redeploy=False):
             i = mine[k]
             decl = slots_decl[k]
             slot = dict(tx_slots[i] or {})
-            # Le multicast est alloué avec l'ifname CANONIQUE de l'unité : une plage déclarée par
-            # interface (`mcast_ranges.ifname`) doit être celle du port qui émet réellement.
+            ***REMOVED*** Le multicast est alloué avec l'ifname CANONIQUE de l'unité : une plage déclarée par
+            ***REMOVED*** interface (`mcast_ranges.ifname`) doit être celle du port qui émet réellement.
             iface_alloc = ukey
             v = decl.get("video") or None
             if v:
-                slot.pop("video_off", None)   # (re)devenu un slot vidéo
+                slot.pop("video_off", None)   ***REMOVED*** (re)devenu un slot vidéo
                 if not (slot.get("multicast_ip") and slot.get("dest_port")):
                     mcast, port = _alloc.allocate_multicast_for(
                         node_id, iface_alloc, essence="video", owner_ref=f"tx:{vmid}:{i}:video:layout",
@@ -703,11 +703,11 @@ def apply_layout(vmid, iface=None, redeploy=False):
                 if v.get("bd"):   slot["bit_depth"] = int(v["bd"])
                 if v.get("scan"): slot["scan"] = v["scan"]
             else:
-                # Slot audio-seul / ANC-seul : pas de destination ni de format vidéo → le contrôleur n'émet
-                # AUCUNE session vidéo pour ce slot (l'émission vidéo exige mcast+port vidéo, cf.
-                # controller.py). On purge une éventuelle destination vidéo héritée et on POSE le marqueur
-                # `video_off` — signal explicite (≠ « mcast pas encore alloué ») lu par le builder NMOS pour
-                # ne PAS enregistrer de sender vidéo fantôme sur ce slot.
+                ***REMOVED*** Slot audio-seul / ANC-seul : pas de destination ni de format vidéo → le contrôleur n'émet
+                ***REMOVED*** AUCUNE session vidéo pour ce slot (l'émission vidéo exige mcast+port vidéo, cf.
+                ***REMOVED*** controller.py). On purge une éventuelle destination vidéo héritée et on POSE le marqueur
+                ***REMOVED*** `video_off` — signal explicite (≠ « mcast pas encore alloué ») lu par le builder NMOS pour
+                ***REMOVED*** ne PAS enregistrer de sender vidéo fantôme sur ce slot.
                 slot["video_off"] = True
                 for _k in ("multicast_ip", "dest_port", "multicast_ip_leg1", "dest_port_leg1",
                            "width", "height"):
@@ -721,8 +721,8 @@ def apply_layout(vmid, iface=None, redeploy=False):
                     node_id, iface_alloc, essence="audio", owner_ref=f"tx:{vmid}:{i}:audio:{ai}:layout",
                     slot=i, sub_index=ai)
                 audios.append({"multicast_ip": m2, "dest_port": p2} if m2 else {})
-            # naud == 0 → zéro audio (sortie vidéo seule) : troncature stricte, jamais de repli sur la liste
-            # existante (cf. même correctif dans preview_layout_params).
+            ***REMOVED*** naud == 0 → zéro audio (sortie vidéo seule) : troncature stricte, jamais de repli sur la liste
+            ***REMOVED*** existante (cf. même correctif dans preview_layout_params).
             slot["audios"] = audios[:naud]
 
             if decl.get("anc"):
@@ -733,8 +733,8 @@ def apply_layout(vmid, iface=None, redeploy=False):
                     if m3:
                         slot["anc_multicast_ip"], slot["anc_dest_port"] = m3, p3
             else:
-                # ANC désactivée dans le modèle → retirer la destination ANC (sinon la session ANC restait
-                # provisionnée : symétrique du bug audio ci-dessus, « je mets 0 ANC et il en crée quand même »).
+                ***REMOVED*** ANC désactivée dans le modèle → retirer la destination ANC (sinon la session ANC restait
+                ***REMOVED*** provisionnée : symétrique du bug audio ci-dessus, « je mets 0 ANC et il en crée quand même »).
                 for _k in ("anc_multicast_ip", "anc_dest_port",
                            "anc_multicast_ip_leg1", "anc_dest_port_leg1"):
                     slot.pop(_k, None)
@@ -744,26 +744,26 @@ def apply_layout(vmid, iface=None, redeploy=False):
 
     params["tx_slots"] = tx_slots
     params["tx_pins"] = tx_pins
-    # Le total des modèles fait autorité sur le nombre de sorties. `tx_count` = capacité STRUCTURELLE
-    # (réserve de slots pré-provisionnés), toujours ≥ active.
+    ***REMOVED*** Le total des modèles fait autorité sur le nombre de sorties. `tx_count` = capacité STRUCTURELLE
+    ***REMOVED*** (réserve de slots pré-provisionnés), toujours ≥ active.
     params["active_tx_count"] = total
     params["tx_count"] = max(_dd._pcount(params, "tx_count", 0), total)
-    # ★ tx_flows fait AUTORITÉ : le hook before_deploy (plugins/2110_io/hooks.py) RE-DÉRIVE
-    # active_tx_count depuis tx_flows au (re)déploiement. Poser active_tx_count seul ne suffit donc
-    # PAS — il serait écrasé par l'ancien tx_flows (bug vécu : modèle 32 sorties → active_tx_count
-    # retombait à 6). On REGÉNÈRE tx_flows depuis le layout matérialisé (video_off respecté).
+    ***REMOVED*** ★ tx_flows fait AUTORITÉ : le hook before_deploy (plugins/2110_io/hooks.py) RE-DÉRIVE
+    ***REMOVED*** active_tx_count depuis tx_flows au (re)déploiement. Poser active_tx_count seul ne suffit donc
+    ***REMOVED*** PAS — il serait écrasé par l'ancien tx_flows (bug vécu : modèle 32 sorties → active_tx_count
+    ***REMOVED*** retombait à 6). On REGÉNÈRE tx_flows depuis le layout matérialisé (video_off respecté).
     from . import io2110_flows as _iof
     params["tx_flows"] = _iof.derive_tx_flows(params)
     db_update_deploy_config(vmid, ctype, params)
 
-    # ── Effet sur le moteur ───────────────────────────────────────────────────────────────────────
-    # ACTIVE_TX_COUNT est FIGÉ dans l'env au `docker run` : changer le NOMBRE de sorties (grandir ou
-    # réduire) n'est effectif qu'après recréation du conteneur, donc après coupure de TOUS les flux
-    # 2110 du nœud. DÉCISION UTILISATEUR (2026-07-27) : on ne recrée PAS d'office. On écrit la
-    # déclaration, le moteur continue de tourner, et `docker_driver.reconcile_engine_sizing` signale
-    # « moteur dimensionné sur une configuration périmée — redéploiement requis ». L'exploitant
-    # choisit son moment ; l'écart n'est plus silencieux (c'est ce détecteur qui rend ce report sûr).
-    # `redeploy=True` = l'exploitant a demandé « appliquer ET redéployer maintenant ».
+    ***REMOVED*** ── Effet sur le moteur ───────────────────────────────────────────────────────────────────────
+    ***REMOVED*** ACTIVE_TX_COUNT est FIGÉ dans l'env au `docker run` : changer le NOMBRE de sorties (grandir ou
+    ***REMOVED*** réduire) n'est effectif qu'après recréation du conteneur, donc après coupure de TOUS les flux
+    ***REMOVED*** 2110 du nœud. DÉCISION UTILISATEUR (2026-07-27) : on ne recrée PAS d'office. On écrit la
+    ***REMOVED*** déclaration, le moteur continue de tourner, et `docker_driver.reconcile_engine_sizing` signale
+    ***REMOVED*** « moteur dimensionné sur une configuration périmée — redéploiement requis ». L'exploitant
+    ***REMOVED*** choisit son moment ; l'écart n'est plus silencieux (c'est ce détecteur qui rend ce report sûr).
+    ***REMOVED*** `redeploy=True` = l'exploitant a demandé « appliquer ET redéployer maintenant ».
     booted = _dd.engine_booted_active_tx(vmid)
     redeploy_required = (total != booted) if booted is not None else False
     did_redeploy = False
@@ -777,19 +777,19 @@ def apply_layout(vmid, iface=None, redeploy=False):
             except Exception:
                 pass
         elif not redeploy_required:
-            # Le compte ne bouge pas → application À CHAUD (provisioning des sessions déclarées).
-            # C'est l'événement de maintenance de l'étage 2 (recalcul de l'arbre RL du port), gaté
-            # en amont par la route ; ne PAS pousser quand le compte change, ce serait mi-appliqué.
+            ***REMOVED*** Le compte ne bouge pas → application À CHAUD (provisioning des sessions déclarées).
+            ***REMOVED*** C'est l'événement de maintenance de l'étage 2 (recalcul de l'arbre RL du port), gaté
+            ***REMOVED*** en amont par la route ; ne PAS pousser quand le compte change, ce serait mi-appliqué.
             _dd.push_tx_slots(vmid, params)
     except Exception as e:
         log.warning("apply_layout %s: apply (%s): %s", vmid,
                     "redeploy" if redeploy else "push", e)
 
     _scope = iface or "toutes les cartes"
-    # ★ CHIFFRER LA CONSÉQUENCE du redéploiement qu'on réclame. Le 2026-07-27, l'alerte disait
-    # « redéploiement requis » sans dire À QUOI le moteur reviendrait : l'exploitant a cliqué sur la
-    # seule action proposée, et le moteur est reparti avec 64 sorties pour 16 lcores — 6 RX mortes.
-    # Une alerte qui demande un geste disruptif doit en annoncer le résultat.
+    ***REMOVED*** ★ CHIFFRER LA CONSÉQUENCE du redéploiement qu'on réclame. Le 2026-07-27, l'alerte disait
+    ***REMOVED*** « redéploiement requis » sans dire À QUOI le moteur reviendrait : l'exploitant a cliqué sur la
+    ***REMOVED*** seule action proposée, et le moteur est reparti avec 64 sorties pour 16 lcores — 6 RX mortes.
+    ***REMOVED*** Une alerte qui demande un geste disruptif doit en annoncer le résultat.
     _short = None
     try:
         _besoin, _cap, _trop = _dd.lcore_demand(_dd.db_get_node(node_id) or {}, params)
@@ -798,8 +798,8 @@ def apply_layout(vmid, iface=None, redeploy=False):
     except Exception as e:
         log.warning("apply_layout %s: pré-vol lcores: %s", vmid, e)
     _non_effectif = bool(redeploy_required and not did_redeploy)
-    # Choix de la clé i18n complète selon la combinaison (jamais de demi-phrase composée en
-    # paramètre) : présence de sorties supprimées × non-effectif × conséquence du redéploiement.
+    ***REMOVED*** Choix de la clé i18n complète selon la combinaison (jamais de demi-phrase composée en
+    ***REMOVED*** paramètre) : présence de sorties supprimées × non-effectif × conséquence du redéploiement.
     if _short:
         _queue = "non_effectif_court" if _non_effectif else "court"
     elif _non_effectif:
@@ -813,7 +813,7 @@ def apply_layout(vmid, iface=None, redeploy=False):
     if removed:
         _params["n_removed"] = len(removed)
         _params["removed_list"] = ", ".join(
-            "TX #%s %s%s" % (r["slot"], r["multicast_ip"] or "—",
+            "TX ***REMOVED***%s %s%s" % (r["slot"], r["multicast_ip"] or "—",
                               " ← %s" % r["source"] if r["source"] else "")
             for r in removed)
     if _non_effectif:
@@ -830,12 +830,12 @@ def apply_layout(vmid, iface=None, redeploy=False):
                   "recreated": did_redeploy}
 
 
-# ─── « Modèle d'utilisation de la carte » (vue unique, Réglages) ───────────────────────────────────
-# Toutes les briques du chantier existaient — éparpillées (marquage ambre sur Câbles, modale de
-# format, bac de maintenance, format par slot). Personne ne pouvait VOIR le modèle d'une carte :
-# combien de sorties sont DÉCLARÉES, dans quel format ANNONCÉ (contrat SDP), lesquelles émettent
-# vraiment, et ce qui coûte un `rte_tm_hierarchy_commit` (= gel ~1 s de TOUT le port) vs ce qui est
-# gratuit. `card_model` assemble cette vue en UN appel (le front faisait sinon N fetchs).
+***REMOVED*** ─── « Modèle d'utilisation de la carte » (vue unique, Réglages) ───────────────────────────────────
+***REMOVED*** Toutes les briques du chantier existaient — éparpillées (marquage ambre sur Câbles, modale de
+***REMOVED*** format, bac de maintenance, format par slot). Personne ne pouvait VOIR le modèle d'une carte :
+***REMOVED*** combien de sorties sont DÉCLARÉES, dans quel format ANNONCÉ (contrat SDP), lesquelles émettent
+***REMOVED*** vraiment, et ce qui coûte un `rte_tm_hierarchy_commit` (= gel ~1 s de TOUT le port) vs ce qui est
+***REMOVED*** gratuit. `card_model` assemble cette vue en UN appel (le front faisait sinon N fetchs).
 
 def engine_for_card(node_id, iface):
     """Moteur `2110_io` déployé sur ce nœud et qui ÉMET sur la NIC `iface` (un moteur par nœud, cf.
@@ -863,7 +863,7 @@ def engine_for_card(node_id, iface):
 
 
 def _slot_source(params, i):
-    """Source réellement câblée sur la sortie #i (shm MXL), ou "" si la sortie est silencieuse."""
+    """Source réellement câblée sur la sortie ***REMOVED***i (shm MXL), ou "" si la sortie est silencieuse."""
     return str((params or {}).get(cle_tx_shm(i)) or "").strip()
 
 
@@ -895,8 +895,8 @@ def card_model(node_id, iface):
     import json as _json
     from .database import db_get_node
     from . import docker_driver as _dd
-    # UNITÉ de capacité de cette carte : port autonome, ou paire 2022-7 (les deux legs portent le
-    # MÊME flux → une capacité, pas deux). L'ifname reçu peut être n'importe lequel de ses legs.
+    ***REMOVED*** UNITÉ de capacité de cette carte : port autonome, ou paire 2022-7 (les deux legs portent le
+    ***REMOVED*** MÊME flux → une capacité, pas deux). L'ifname reçu peut être n'importe lequel de ses legs.
     _unit = _dd.unit_of_iface(db_get_node(node_id) or {}, iface) or {
         "key": iface, "ifaces": [iface], "kind": "port", "label": iface}
     budget = nic_budget(node_id, iface)
@@ -916,8 +916,8 @@ def card_model(node_id, iface):
         "used_queues": sum(slot_queue_cost(s) for s in decl),
         "presets": presets_for(node_id, iface),
         "engine": None, "slots": [], "pending": [],
-        # Rattachement au MODÈLE de carte dont ce layout est issu (bibliothèque, app/tx_card_models.py).
-        # Le modèle est une SOURCE ; ce layout reste la VÉRITÉ — d'où `diverged`, qu'on AFFICHE.
+        ***REMOVED*** Rattachement au MODÈLE de carte dont ce layout est issu (bibliothèque, app/tx_card_models.py).
+        ***REMOVED*** Le modèle est une SOURCE ; ce layout reste la VÉRITÉ — d'où `diverged`, qu'on AFFICHE.
         "binding": {"model": None, "diverged": False},
     }
     try:
@@ -926,8 +926,8 @@ def card_model(node_id, iface):
     except Exception as e:
         log.warning("card_model %s/%s: rattachement modèle: %s", node_id, iface, e)
     if not c:
-        # Sans moteur déployé, le modèle reste ÉDITABLE (on déclare avant de déployer) — mais on ne
-        # peut ni l'appliquer ni afficher d'état par sortie : on le dit au lieu d'afficher du vide.
+        ***REMOVED*** Sans moteur déployé, le modèle reste ÉDITABLE (on déclare avant de déployer) — mais on ne
+        ***REMOVED*** peut ni l'appliquer ni afficher d'état par sortie : on le dit au lieu d'afficher du vide.
         out["slots"] = [{"idx": i, "declared": d, "state": "declared", "source": "", "name": "",
                          "dest": None, "queues": slot_queue_cost(d)} for i, d in enumerate(decl)]
         return out
@@ -940,9 +940,9 @@ def card_model(node_id, iface):
     params = dc.get("params") or {}
     tx_slots = params.get("tx_slots") or []
     st = layout_status(vmid, _unit["key"]) or {}
-    # Slots du MOTEUR que cette unité porte réellement (répartition auto + épinglages) : c'est ce qui
-    # explique « porte N sortie(s) » et d'où sortent les indices affichés. Sans ça, l'exploitant lit
-    # des numéros de sortie sans savoir à quoi ils se rattachent.
+    ***REMOVED*** Slots du MOTEUR que cette unité porte réellement (répartition auto + épinglages) : c'est ce qui
+    ***REMOVED*** explique « porte N sortie(s) » et d'où sortent les indices affichés. Sans ça, l'exploitant lit
+    ***REMOVED*** des numéros de sortie sans savoir à quoi ils se rattachent.
     out["owned_slots"] = st.get("owned_slots") or []
     out["planned_active_tx"] = planned_active_tx(vmid, _unit["key"])
     try:
@@ -951,24 +951,24 @@ def card_model(node_id, iface):
         _booted = None
     slot_states = st.get("slot_states") or {}
     out["engine"] = {
-        "vmid": vmid, "hostname": c.get("hostname") or "#%s" % vmid,
+        "vmid": vmid, "hostname": c.get("hostname") or "***REMOVED***%s" % vmid,
         "status": c.get("status") or "", "state": st.get("state") or "none",
         "provisioned": st.get("provisioned") or 0, "declared": len(decl),
-        # Le moteur ne provisionne QUE les slots de son budget bootté : déclarer plus de sorties que
-        # `tx_slots` ne suffit pas (apply_layout ignore le surplus) → le front doit le DIRE.
+        ***REMOVED*** Le moteur ne provisionne QUE les slots de son budget bootté : déclarer plus de sorties que
+        ***REMOVED*** `tx_slots` ne suffit pas (apply_layout ignore le surplus) → le front doit le DIRE.
         "tx_slots_len": len(tx_slots),
-        # DÉCLARÉ (base) vs SERVI (env figé au `docker run`). Les confondre fait croire à l'exploitant
-        # que ses sorties existent dès l'application, alors que le moteur tourne encore sur son ancien
-        # budget : c'est `booted_active_tx` qui dit ce qui émet aujourd'hui.
+        ***REMOVED*** DÉCLARÉ (base) vs SERVI (env figé au `docker run`). Les confondre fait croire à l'exploitant
+        ***REMOVED*** que ses sorties existent dès l'application, alors que le moteur tourne encore sur son ancien
+        ***REMOVED*** budget : c'est `booted_active_tx` qui dit ce qui émet aujourd'hui.
         "active_tx_count": int(params.get("active_tx_count") or 0) or len(tx_slots),
         "booted_active_tx": _booted,
         "owned_slots": out.get("owned_slots") or [],
         "unit_kind": _unit["kind"], "unit_label": _unit["label"],
     }
-    # Slots AFFICHÉS = les DÉCLARÉS (le modèle) + les slots RÉELLEMENT actifs hors modèle (marqués
-    # `out_of_layout` par layout_status = une vraie anomalie à recaler). PAS la réserve structurelle
-    # vide (tx_slots au-delà du modèle) : la montrer affichait N slots « hors modèle » fantômes (ex. 28
-    # sur tx_count=32) et laissait croire à une capacité de 32 — or le vrai plafond = files RL de la carte.
+    ***REMOVED*** Slots AFFICHÉS = les DÉCLARÉS (le modèle) + les slots RÉELLEMENT actifs hors modèle (marqués
+    ***REMOVED*** `out_of_layout` par layout_status = une vraie anomalie à recaler). PAS la réserve structurelle
+    ***REMOVED*** vide (tx_slots au-delà du modèle) : la montrer affichait N slots « hors modèle » fantômes (ex. 28
+    ***REMOVED*** sur tx_count=32) et laissait croire à une capacité de 32 — or le vrai plafond = files RL de la carte.
     _orphans = sorted({int(k) for k, v in slot_states.items()
                        if v == "out_of_layout" and int(k) >= len(decl)})
     for i in list(range(len(decl))) + _orphans:
@@ -983,8 +983,8 @@ def card_model(node_id, iface):
             "state": state,
             "source": src,
             "name": _slot_name(params, i),
-            # Format RÉELLEMENT annoncé par la session (celui que le SDP publie) — peut différer du
-            # layout tant qu'on n'a pas appliqué : c'est PRÉCISÉMENT ce qu'il faut voir.
+            ***REMOVED*** Format RÉELLEMENT annoncé par la session (celui que le SDP publie) — peut différer du
+            ***REMOVED*** layout tant qu'on n'a pas appliqué : c'est PRÉCISÉMENT ce qu'il faut voir.
             "announced": ({"w": t.get("width"), "h": t.get("height"), "fps": t.get("fps"),
                            "scan": t.get("scan") or "p", "bd": t.get("bit_depth") or 8}
                           if t.get("width") else None),

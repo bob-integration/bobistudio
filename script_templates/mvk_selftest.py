@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+***REMOVED***!/usr/bin/env python3
 """Selftest du moteur de compositing mvcompose (fusion d'opérations de compositing).
 
 Vérifie, pour plusieurs géométries (dont tailles impaires, petites bboxes, grandes bboxes) :
@@ -35,15 +35,15 @@ def load_mvk_lib():
     """Charge libbobi_mvk.so selon la chaîne env BOBI_MVK_LIB et les fallbacks."""
     candidates = []
 
-    # 1. env BOBI_MVK_LIB
+    ***REMOVED*** 1. env BOBI_MVK_LIB
     env_lib = os.environ.get("BOBI_MVK_LIB")
     if env_lib:
         candidates.append(env_lib)
 
-    # 2. ./libbobi_mvk.so
+    ***REMOVED*** 2. ./libbobi_mvk.so
     candidates.append("./libbobi_mvk.so")
 
-    # 3. Check for AVX2 in /proc/cpuinfo
+    ***REMOVED*** 3. Check for AVX2 in /proc/cpuinfo
     has_avx2 = False
     try:
         with open("/proc/cpuinfo", "r") as f:
@@ -54,11 +54,11 @@ def load_mvk_lib():
     except OSError:
         pass
 
-    # 4. /usr/local/lib/libbobi_mvk_v3.so (si avx2)
+    ***REMOVED*** 4. /usr/local/lib/libbobi_mvk_v3.so (si avx2)
     if has_avx2:
         candidates.append("/usr/local/lib/libbobi_mvk_v3.so")
 
-    # 5. /usr/local/lib/libbobi_mvk.so
+    ***REMOVED*** 5. /usr/local/lib/libbobi_mvk.so
     candidates.append("/usr/local/lib/libbobi_mvk.so")
 
     for path in candidates:
@@ -69,7 +69,7 @@ def load_mvk_lib():
         except OSError:
             pass
 
-    # Aucune lib trouvée
+    ***REMOVED*** Aucune lib trouvée
     print("ERREUR : aucune libbobi_mvk.so trouvée.", file=sys.stderr)
     print(f"Essayées : {', '.join(candidates)}", file=sys.stderr)
     sys.exit(2)
@@ -78,18 +78,18 @@ def load_mvk_lib():
 def define_mvk_bindings(lib):
     """Définit les signatures ctypes pour les fonctions C."""
 
-    # mvk_set_threads(int n)
+    ***REMOVED*** mvk_set_threads(int n)
     lib.mvk_set_threads.argtypes = [c_int]
     lib.mvk_set_threads.restype = None
 
-    # mvk_get_threads() -> int
+    ***REMOVED*** mvk_get_threads() -> int
     lib.mvk_get_threads.argtypes = []
     lib.mvk_get_threads.restype = c_int
 
-    # mvk_blend_u8(uint8_t *restrict dst, ptrdiff_t dst_stride,
-    #              const uint8_t *restrict src, ptrdiff_t src_stride,
-    #              const uint8_t *restrict alpha, ptrdiff_t a_stride,
-    #              int h, int w)
+    ***REMOVED*** mvk_blend_u8(uint8_t *restrict dst, ptrdiff_t dst_stride,
+    ***REMOVED***              const uint8_t *restrict src, ptrdiff_t src_stride,
+    ***REMOVED***              const uint8_t *restrict alpha, ptrdiff_t a_stride,
+    ***REMOVED***              int h, int w)
     lib.mvk_blend_u8.argtypes = [
         POINTER(c_uint8), c_int64,
         POINTER(c_uint8), c_int64,
@@ -98,10 +98,10 @@ def define_mvk_bindings(lib):
     ]
     lib.mvk_blend_u8.restype = None
 
-    # mvk_blend_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
-    #               const uint16_t *restrict src, ptrdiff_t src_stride,
-    #               const uint8_t *restrict alpha, ptrdiff_t a_stride,
-    #               int h, int w)
+    ***REMOVED*** mvk_blend_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
+    ***REMOVED***               const uint16_t *restrict src, ptrdiff_t src_stride,
+    ***REMOVED***               const uint8_t *restrict alpha, ptrdiff_t a_stride,
+    ***REMOVED***               int h, int w)
     lib.mvk_blend_u16.argtypes = [
         POINTER(c_uint16), c_int64,
         POINTER(c_uint16), c_int64,
@@ -110,10 +110,10 @@ def define_mvk_bindings(lib):
     ]
     lib.mvk_blend_u16.restype = None
 
-    # mvk_blend_pre_u8(uint8_t *restrict dst, ptrdiff_t dst_stride,
-    #                  const uint16_t *restrict inv_a, ptrdiff_t ia_stride,
-    #                  const uint16_t *restrict src_a, ptrdiff_t sa_stride,
-    #                  int h, int w)
+    ***REMOVED*** mvk_blend_pre_u8(uint8_t *restrict dst, ptrdiff_t dst_stride,
+    ***REMOVED***                  const uint16_t *restrict inv_a, ptrdiff_t ia_stride,
+    ***REMOVED***                  const uint16_t *restrict src_a, ptrdiff_t sa_stride,
+    ***REMOVED***                  int h, int w)
     lib.mvk_blend_pre_u8.argtypes = [
         POINTER(c_uint8), c_int64,
         POINTER(c_uint16), c_int64,
@@ -122,10 +122,10 @@ def define_mvk_bindings(lib):
     ]
     lib.mvk_blend_pre_u8.restype = None
 
-    # mvk_blend_pre_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
-    #                   const uint32_t *restrict inv_a, ptrdiff_t ia_stride,
-    #                   const uint32_t *restrict src_a, ptrdiff_t sa_stride,
-    #                   int h, int w)
+    ***REMOVED*** mvk_blend_pre_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
+    ***REMOVED***                   const uint32_t *restrict inv_a, ptrdiff_t ia_stride,
+    ***REMOVED***                   const uint32_t *restrict src_a, ptrdiff_t sa_stride,
+    ***REMOVED***                   int h, int w)
     lib.mvk_blend_pre_u16.argtypes = [
         POINTER(c_uint16), c_int64,
         POINTER(ctypes.c_uint32), c_int64,
@@ -134,12 +134,12 @@ def define_mvk_bindings(lib):
     ]
     lib.mvk_blend_pre_u16.restype = None
 
-    # mvk_place_u8(uint8_t *restrict dst, ptrdiff_t dst_stride,
-    #              const uint8_t *restrict src, ptrdiff_t src_stride,
-    #              const int32_t *restrict row_idx,
-    #              int64_t col0, int64_t col_step,
-    #              const int32_t *restrict col_idx,
-    #              int out_h, int out_w)
+    ***REMOVED*** mvk_place_u8(uint8_t *restrict dst, ptrdiff_t dst_stride,
+    ***REMOVED***              const uint8_t *restrict src, ptrdiff_t src_stride,
+    ***REMOVED***              const int32_t *restrict row_idx,
+    ***REMOVED***              int64_t col0, int64_t col_step,
+    ***REMOVED***              const int32_t *restrict col_idx,
+    ***REMOVED***              int out_h, int out_w)
     lib.mvk_place_u8.argtypes = [
         POINTER(c_uint8), c_int64,
         POINTER(c_uint8), c_int64,
@@ -150,12 +150,12 @@ def define_mvk_bindings(lib):
     ]
     lib.mvk_place_u8.restype = None
 
-    # mvk_place_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
-    #               const uint16_t *restrict src, ptrdiff_t src_stride,
-    #               const int32_t *restrict row_idx,
-    #               int64_t col0, int64_t col_step,
-    #               const int32_t *restrict col_idx,
-    #               int out_h, int out_w)
+    ***REMOVED*** mvk_place_u16(uint16_t *restrict dst, ptrdiff_t dst_stride,
+    ***REMOVED***               const uint16_t *restrict src, ptrdiff_t src_stride,
+    ***REMOVED***               const int32_t *restrict row_idx,
+    ***REMOVED***               int64_t col0, int64_t col_step,
+    ***REMOVED***               const int32_t *restrict col_idx,
+    ***REMOVED***               int out_h, int out_w)
     lib.mvk_place_u16.argtypes = [
         POINTER(c_uint16), c_int64,
         POINTER(c_uint16), c_int64,
@@ -174,25 +174,25 @@ def test_blend_u8(lib):
     print("-- test_blend_u8")
 
     for (h, w) in [(5, 7), (37, 113), (1080, 1920)]:
-        # Données aléatoires
+        ***REMOVED*** Données aléatoires
         dst_init = rng.integers(0, 256, (h, w), dtype=np.uint8)
         src = rng.integers(0, 256, (h, w), dtype=np.uint8)
         alpha = rng.integers(0, 256, (h, w), dtype=np.uint8)
 
-        # Référence numpy
+        ***REMOVED*** Référence numpy
         ref = ((dst_init.astype(np.uint32) * (255 - alpha.astype(np.uint32))
                 + src.astype(np.uint32) * alpha.astype(np.uint32)) // 255).astype(np.uint8)
 
-        # Test avec threads=1 et threads=4
+        ***REMOVED*** Test avec threads=1 et threads=4
         for num_threads in [1, 4]:
             dst = dst_init.copy()
 
-            # Vérifie la contiguïté du dernier axe
+            ***REMOVED*** Vérifie la contiguïté du dernier axe
             assert dst.strides[-1] == dst.itemsize, f"dst non contigu : stride[-1]={dst.strides[-1]} != itemsize={dst.itemsize}"
             assert src.strides[-1] == src.itemsize, f"src non contigu"
             assert alpha.strides[-1] == alpha.itemsize, f"alpha non contigu"
 
-            # Strides en ÉLÉMENTS (pas en octets)
+            ***REMOVED*** Strides en ÉLÉMENTS (pas en octets)
             dst_stride = dst.strides[0] // dst.itemsize
             src_stride = src.strides[0] // src.itemsize
             a_stride = alpha.strides[0] // alpha.itemsize
@@ -214,12 +214,12 @@ def test_blend_u16(lib):
     print("-- test_blend_u16")
 
     for (h, w) in [(5, 7), (37, 113), (1080, 1920)]:
-        # Données 10-bit (0..1023)
+        ***REMOVED*** Données 10-bit (0..1023)
         dst_init = rng.integers(0, 1024, (h, w), dtype=np.uint16)
         src = rng.integers(0, 1024, (h, w), dtype=np.uint16)
         alpha = rng.integers(0, 256, (h, w), dtype=np.uint8)
 
-        # Référence numpy
+        ***REMOVED*** Référence numpy
         ref = ((dst_init.astype(np.uint32) * (255 - alpha.astype(np.uint32))
                 + src.astype(np.uint32) * alpha.astype(np.uint32)) // 255).astype(np.uint16)
 
@@ -258,11 +258,11 @@ def test_blend_pre_u8(lib):
         alpha = rng.integers(0, 256, (h, w), dtype=np.uint8)
         src = rng.integers(0, 256, (h, w), dtype=np.uint8)
 
-        # Pré-calcul des opérandes
+        ***REMOVED*** Pré-calcul des opérandes
         inv_a = (255 - alpha).astype(np.uint16)
         src_a = (src.astype(np.uint16) * alpha.astype(np.uint16))
 
-        # Référence numpy
+        ***REMOVED*** Référence numpy
         ref = ((dst_init.astype(np.uint16) * inv_a + src_a) // 255).astype(np.uint8)
 
         for num_threads in [1, 4]:
@@ -300,11 +300,11 @@ def test_blend_pre_u16(lib):
         alpha = rng.integers(0, 256, (h, w), dtype=np.uint8)
         src = rng.integers(0, 1024, (h, w), dtype=np.uint16)
 
-        # Pré-calcul des opérandes (uint32)
+        ***REMOVED*** Pré-calcul des opérandes (uint32)
         inv_a = (255 - alpha).astype(np.uint32)
         src_a = (src.astype(np.uint32) * alpha.astype(np.uint32))
 
-        # Référence numpy
+        ***REMOVED*** Référence numpy
         ref = ((dst_init.astype(np.uint32) * inv_a + src_a) // 255).astype(np.uint16)
 
         for num_threads in [1, 4]:
@@ -338,13 +338,13 @@ def test_place_u8(lib):
         src = rng.integers(0, 256, (src_h, src_w), dtype=np.uint8)
         row_idx = (np.arange(out_h) * src_h // out_h).astype(np.int32)
 
-        # Test 1 : col_step > 0 (décimation régulière)
+        ***REMOVED*** Test 1 : col_step > 0 (décimation régulière)
         col0 = 0
         col_step = src_w // out_w
 
         dst_init = np.zeros((out_h, out_w), dtype=np.uint8)
 
-        # Référence numpy
+        ***REMOVED*** Référence numpy
         ref = src[np.ix_(row_idx, (col0 + np.arange(out_w) * col_step).astype(int))]
 
         for num_threads in [1, 4]:
@@ -362,14 +362,14 @@ def test_place_u8(lib):
                 src.ctypes.data_as(POINTER(c_uint8)), src_stride,
                 row_idx.ctypes.data_as(POINTER(c_int32)),
                 col0, col_step,
-                None,  # col_idx unused when col_step > 0
+                None,  ***REMOVED*** col_idx unused when col_step > 0
                 out_h, out_w
             )
 
             ok = np.array_equal(dst, ref)
             check(f"place_u8 {src_h}x{src_w}->{out_h}x{out_w} col_step threads={num_threads}", ok)
 
-        # Test 2 : col_step <= 0 (gather générique)
+        ***REMOVED*** Test 2 : col_step <= 0 (gather générique)
         col_idx = (np.arange(out_w) * src_w // out_w).astype(np.int32)
         ref = src[np.ix_(row_idx, col_idx)]
 
@@ -384,7 +384,7 @@ def test_place_u8(lib):
                 dst.ctypes.data_as(POINTER(c_uint8)), dst_stride,
                 src.ctypes.data_as(POINTER(c_uint8)), src_stride,
                 row_idx.ctypes.data_as(POINTER(c_int32)),
-                0, 0,  # col_step = 0 triggers col_idx path
+                0, 0,  ***REMOVED*** col_step = 0 triggers col_idx path
                 col_idx.ctypes.data_as(POINTER(c_int32)),
                 out_h, out_w
             )
@@ -401,7 +401,7 @@ def test_place_u16(lib):
         src = rng.integers(0, 1024, (src_h, src_w), dtype=np.uint16)
         row_idx = (np.arange(out_h) * src_h // out_h).astype(np.int32)
 
-        # Test 1 : col_step > 0
+        ***REMOVED*** Test 1 : col_step > 0
         col0 = 0
         col_step = src_w // out_w
 
@@ -430,7 +430,7 @@ def test_place_u16(lib):
             ok = np.array_equal(dst, ref)
             check(f"place_u16 {src_h}x{src_w}->{out_h}x{out_w} col_step threads={num_threads}", ok)
 
-        # Test 2 : col_step <= 0
+        ***REMOVED*** Test 2 : col_step <= 0
         col_idx = (np.arange(out_w) * src_w // out_w).astype(np.int32)
         ref = src[np.ix_(row_idx, col_idx)]
 
@@ -459,7 +459,7 @@ def test_strided_view(lib):
     canvas_h, canvas_w = 13, 20
     offset_r, offset_c = 4, 6
 
-    # Canvas grand avec vue stridée
+    ***REMOVED*** Canvas grand avec vue stridée
     canvas = np.zeros((canvas_h, canvas_w), dtype=np.uint8)
     dst_init = canvas[offset_r:offset_r+h, offset_c:offset_c+w].copy()
 
@@ -471,7 +471,7 @@ def test_strided_view(lib):
 
     dst = canvas[offset_r:offset_r+h, offset_c:offset_c+w]
 
-    # Vérifie que la vue partage la mémoire
+    ***REMOVED*** Vérifie que la vue partage la mémoire
     assert dst.base is canvas or dst.base is not None
     assert dst.strides[-1] == dst.itemsize
 
@@ -500,7 +500,7 @@ def test_abi23_wrappers():
     if bobimxl._mvk_load() is None:
         print("  SKIP lib introuvable via bobimxl"); return
 
-    # rgba2yuv : C ≡ formules numpy float32 (mêmes ordres), 4 combos entrée/sortie.
+    ***REMOVED*** rgba2yuv : C ≡ formules numpy float32 (mêmes ordres), 4 combos entrée/sortie.
     if getattr(bobimxl, "_MVK_HAS_R2Y", False):
         def r2y_ref(arr, dt, scale, maxv, cw, ch):
             r = arr[..., 0].astype(np.float32); g = arr[..., 1].astype(np.float32)
@@ -528,7 +528,7 @@ def test_abi23_wrappers():
     else:
         print("  SKIP rgba2yuv (ABI < 2)")
 
-    # mixf / mixmap : C ≡ formules float32 du mixer (dissolve/additif/wipe), alias dst=a.
+    ***REMOVED*** mixf / mixmap : C ≡ formules float32 du mixer (dissolve/additif/wipe), alias dst=a.
     if getattr(bobimxl, "_MVK_HAS_MIX", False):
         for dt, maxv in ((np.uint8, 255), (np.uint16, 1023)):
             for alpha in (0.0, 0.13, 0.5, 0.777, 1.0):
@@ -591,7 +591,7 @@ def test_abi4_spl_wrappers():
                 kw = ({"flat": flat} if mode == "flat" else {"row_idx": riy, "col_idx": cix})
                 k0 = (np.take(src.ravel(), flat) if mode == "flat" else src[riy][:, cix])
 
-                # (a) gather + ruban + masque
+                ***REMOVED*** (a) gather + ruban + masque
                 ref = k0.astype(np.uint32)
                 ref = ((ref * (256 - ring_a) + ring_c.astype(np.uint32) * ring_a) >> 8)
                 ref = ((dst0.astype(np.uint32) * (256 - alpha) + ref * alpha) >> 8).astype(dt)
@@ -604,7 +604,7 @@ def test_abi4_spl_wrappers():
                 check(f"spl_compose masque {dt.__name__} {h}x{w} [{mode}]",
                       ok and np.array_equal(d, ref))
 
-                # (b) alpha SCALAIRE (opacité globale), sans ruban
+                ***REMOVED*** (b) alpha SCALAIRE (opacité globale), sans ruban
                 av = 77
                 ref = ((dst0.astype(np.uint32) * (256 - av)
                         + k0.astype(np.uint32) * av) >> 8).astype(dt)
@@ -613,13 +613,13 @@ def test_abi4_spl_wrappers():
                 check(f"spl_compose scalaire {dt.__name__} {h}x{w} [{mode}]",
                       ok and np.array_equal(d, ref))
 
-                # (c) copie directe (alpha 256)
+                ***REMOVED*** (c) copie directe (alpha 256)
                 d = dst0.copy()
                 ok = bobimxl.mvk_spl_compose_into(d, src, a_scalar=256, **kw)
                 check(f"spl_compose copie {dt.__name__} {h}x{w} [{mode}]",
                       ok and np.array_equal(d, k0))
 
-                # (d) chemin FUSIONNÉ
+                ***REMOVED*** (d) chemin FUSIONNÉ
                 inv_a = (256 - alpha).astype(np.uint16)
                 a1 = ((alpha.astype(np.uint32) * (256 - ring_a)) >> 8).astype(np.uint16)
                 c2 = ((ring_c.astype(np.uint32)
@@ -630,14 +630,14 @@ def test_abi4_spl_wrappers():
                 ok = bobimxl.mvk_spl_fused_into(d, src, inv_a, a1, c2, maxv=maxv, **kw)
                 check(f"spl_fused {dt.__name__} {h}x{w} [{mode}]", ok and np.array_equal(d, ref))
 
-            # (e) couleur unie sous masque (ombre portée)
+            ***REMOVED*** (e) couleur unie sous masque (ombre portée)
             val = 33
             ref = ((dst0.astype(np.uint32) * (256 - alpha) + val * alpha) >> 8).astype(dt)
             d = dst0.copy()
             ok = bobimxl.mvk_spl_solid_into(d, alpha, val)
             check(f"spl_solid {dt.__name__} {h}x{w}", ok and np.array_equal(d, ref))
 
-    # Vue STRIDÉE du canvas (cas réel : bbox d'une box) + déterminisme multi-thread.
+    ***REMOVED*** Vue STRIDÉE du canvas (cas réel : bbox d'une box) + déterminisme multi-thread.
     canvas = rng.integers(0, 256, size=(300, 400), dtype=np.uint8)
     src = rng.integers(0, 256, size=(300, 400), dtype=np.uint8)
     flat = rng.integers(0, src.size, size=(120, 150)).astype(np.int64)
@@ -659,7 +659,7 @@ def test_abi4_spl_wrappers():
                       + k.astype(np.uint32) * alpha) >> 8).astype(np.uint8))
     check("spl_compose vue stridée ≡ numpy", np.array_equal(outs[0], ref))
 
-    # Refus PROPRE (→ repli numpy à l'appelant) : dtype/forme non conformes.
+    ***REMOVED*** Refus PROPRE (→ repli numpy à l'appelant) : dtype/forme non conformes.
     bad = np.zeros((10, 10), dtype=np.int16)
     check("spl_compose refuse un dtype non supporté",
           bobimxl.mvk_spl_compose_into(bad, bad) is False)
@@ -707,8 +707,8 @@ def test_abi5_gradient_wrappers():
     for dt, maxv in ((np.uint8, 255), (np.uint16, 1023)):
         for (W, H, cw, ch) in ((256, 144, 2, 2), (128, 72, 2, 1), (96, 48, 1, 1)):
             for angle in (0.0, 27.0, 90.0, 200.0):
-                for soft, pos, cols in ((0.0, [0.0, 1.0], [(20, 40, 60), (200, 210, 220)]),        # wipe
-                                        (1.0, [0.0, 1.0], [(16, 128, 128), (235, 40, 220)]),        # dégradé
+                for soft, pos, cols in ((0.0, [0.0, 1.0], [(20, 40, 60), (200, 210, 220)]),        ***REMOVED*** wipe
+                                        (1.0, [0.0, 1.0], [(16, 128, 128), (235, 40, 220)]),        ***REMOVED*** dégradé
                                         (0.4, [0.0, 0.5, 1.0], [(30, 200, 60), (128, 128, 128), (210, 60, 200)])):
                     pos = np.array(pos, np.float32)
                     yv = np.array([c[0] for c in cols], np.float32) * (maxv // 255 if maxv > 255 else 1)
@@ -721,7 +721,7 @@ def test_abi5_gradient_wrappers():
                     y = np.zeros((H, W), dt); u = np.zeros((H // ch, W // cw), dt); v = np.zeros((H // ch, W // cw), dt)
                     ok = bobimxl.mvk_spl_gradient_into(y, u, v, W, H, cw, ch, 0, H, cos, sin, pmin, inv,
                                                        pos, yv, uv, vv, f32(soft), maxv, AMP, bay_flat)
-                    # référence numpy (float64), MÊME formule que _bg_gradient_np
+                    ***REMOVED*** référence numpy (float64), MÊME formule que _bg_gradient_np
                     dcos = np.float64(cos); dsin = np.float64(sin); dpm = np.float64(pmin); dinv = np.float64(inv)
                     amp = np.float64(AMP); soft64 = float(np.float64(f32(soft))); bayd = bay.astype(np.float64)
                     ys = np.arange(0, H, dtype=np.float64)[:, None]; xs = np.arange(W, dtype=np.float64)[None, :]
@@ -737,7 +737,7 @@ def test_abi5_gradient_wrappers():
                     rv = np.clip(np.floor(Vv2 + dc + 0.5), 0, maxv).astype(dt)
                     good = ok and np.array_equal(y, ry) and np.array_equal(u, ru) and np.array_equal(v, rv)
                     check("gradient %s %dx%d cw%d ch%d a=%g soft=%g n=%d" % (dt.__name__, W, H, cw, ch, angle, soft, len(cols)), good)
-    # refus propre
+    ***REMOVED*** refus propre
     bad = np.zeros((8, 8), np.int16)
     p2 = np.array([0.0, 1.0], np.float32)
     check("gradient refuse un dtype non supporté",

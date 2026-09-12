@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Split / SuperSource — persistance + mémoires (état/contrôle live via le proxy
 plugin générique /api/containers/<vmid>/plugin/{state,input,box,recall})."""
@@ -65,7 +65,7 @@ def split_metrics(vmid):
 @bp.route("/api/containers/<int:vmid>/split/memories", methods=["GET"])
 @require_login
 def split_memories_list_route(vmid):
-    # Stockage générique (type='split', scope=vmid) ; remap value→config pour le front Split.
+    ***REMOVED*** Stockage générique (type='split', scope=vmid) ; remap value→config pour le front Split.
     from ...database import plugin_store_list
     return jsonify([{"id": m["id"], "name": m["name"], "config": m["value"],
                      "created_at": m["created_at"]}
@@ -84,18 +84,18 @@ def split_memory_create_route(vmid):
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"error": "nom requis"}), 400
-    # ★ FORMAT D'UNE MÉMOIRE (0.12.0) : une mémoire ne peut plus être la seule liste des box —
-    # elle porte AUSSI le canal GLOBAL (le calque de transformation du groupe) et le FOND (mode +
-    # couleur). Sans eux, rappeler « groupe hors champ » ou « fond bleu » ne restituerait rien.
-    #   ancien format : [box, box, box, box]                      (toujours accepté, en lecture)
-    #   nouveau        : {"boxes": [...], "global": {...}, "bg": {...}}
+    ***REMOVED*** ★ FORMAT D'UNE MÉMOIRE (0.12.0) : une mémoire ne peut plus être la seule liste des box —
+    ***REMOVED*** elle porte AUSSI le canal GLOBAL (le calque de transformation du groupe) et le FOND (mode +
+    ***REMOVED*** couleur). Sans eux, rappeler « groupe hors champ » ou « fond bleu » ne restituerait rien.
+    ***REMOVED***   ancien format : [box, box, box, box]                      (toujours accepté, en lecture)
+    ***REMOVED***   nouveau        : {"boxes": [...], "global": {...}, "bg": {...}}
     config = data.get("config")
     if isinstance(config, list):
-        value = config[:4]                       # import d'une mémoire ANCIENNE (rétro-compat)
+        value = config[:4]                       ***REMOVED*** import d'une mémoire ANCIENNE (rétro-compat)
     elif isinstance(config, dict) and isinstance(config.get("boxes"), list):
         value = {"boxes": config["boxes"][:4],
                  "global": config.get("global") or {},
-                 "bg": config.get("bg") or {}}   # import / copie vers un autre Split
+                 "bg": config.get("bg") or {}}   ***REMOVED*** import / copie vers un autre Split
     else:
         ip = get_container_ip(vmid)
         if not ip:
@@ -105,9 +105,9 @@ def split_memory_create_route(vmid):
         except Exception as e:
             return jsonify({"error": f"état Split injoignable : {e}"}), 502
         _bg = st.get("bg") or {}
-        # le fond est publié avec sa conversion YUV : on ne persiste QUE le réglage (mode/couleur/
-        # plage + DÉGRADÉ en hex) — jamais des valeurs YUV figées à une profondeur. Le dégradé fait
-        # partie de la mémoire (sans lui, rappeler « wipe bleu→rouge » ne restituerait rien).
+        ***REMOVED*** le fond est publié avec sa conversion YUV : on ne persiste QUE le réglage (mode/couleur/
+        ***REMOVED*** plage + DÉGRADÉ en hex) — jamais des valeurs YUV figées à une profondeur. Le dégradé fait
+        ***REMOVED*** partie de la mémoire (sans lui, rappeler « wipe bleu→rouge » ne restituerait rien).
         _bgv = {k: _bg.get(k) for k in ("mode", "color", "legal") if _bg.get(k) is not None}
         if isinstance(_bg.get("gradient"), dict):
             _bgv["gradient"] = _bg["gradient"]
@@ -141,7 +141,7 @@ def split_memory_recall_route(vmid, mem_id):
         duration = max(0, int(data.get("duration_ms") or 0))
     except Exception:
         duration = 0
-    # Mémoire ANCIENNE (liste de box) ou NOUVELLE (dict boxes/global/bg) — les deux se rappellent.
+    ***REMOVED*** Mémoire ANCIENNE (liste de box) ou NOUVELLE (dict boxes/global/bg) — les deux se rappellent.
     val = mem["value"]
     if isinstance(val, dict):
         body = {"boxes": val.get("boxes") or [], "duration_ms": duration}

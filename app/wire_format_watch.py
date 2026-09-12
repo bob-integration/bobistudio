@@ -1,11 +1,11 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Vérification différée du format des câbles POSÉS EN PRÉ-CÂBLAGE.
 
-## Le problème
+***REMOVED******REMOVED*** Le problème
 
 `cabling._format_gate` refuse un câble dont la source n'a pas le format attendu par le
 consommateur. Mais il compare ce qu'il TROUVE : le flow_def MXL réel quand le flux existe, et à
@@ -14,7 +14,7 @@ en service (moteur pas démarré, RX sans signal), son format déclaré est une 
 juste, parfois périmée, jamais un constat. Refuser sur cette base interdisait de préparer un patch
 avant la mise en service, ce qui est un geste d'exploitation parfaitement normal.
 
-## Ce qu'on fait
+***REMOVED******REMOVED*** Ce qu'on fait
 
 Écart sur un format seulement DÉCLARÉ ⇒ le câble est **posé**, avec une alerte qui le dit, et la
 paire (source, consommateur) est **inscrite ici**. Ce module attend que le flux MXL apparaisse, puis
@@ -29,7 +29,7 @@ Sans cette repasse, tolérer le pré-câblage reviendrait à troquer un refus ex
 silencieux : une image fausse qui ressemble à une image. C'est précisément ce que le gate existe
 pour empêcher.
 
-## Ce qu'on NE fait PAS
+***REMOVED******REMOVED*** Ce qu'on NE fait PAS
 
 Pas d'insertion automatique d'UDC ici, contrairement à `tx_format_watch` : sur une sortie TX 2110,
 l'invariant « format émis = format annoncé » est une exigence de CONFORMITÉ que le système doit
@@ -49,8 +49,8 @@ log = logging.getLogger(__name__)
 _started = False
 
 from .episodes import EtatEpisodes as _Episodes
-# (to_vmid, shm) → {"from_vmid", "type", "why"}. PERSISTÉ : un pré-câblage posé le vendredi doit
-# être vérifié le lundi, redémarrages de l'orchestrateur compris.
+***REMOVED*** (to_vmid, shm) → {"from_vmid", "type", "why"}. PERSISTÉ : un pré-câblage posé le vendredi doit
+***REMOVED*** être vérifié le lundi, redémarrages de l'orchestrateur compris.
 _attente = _Episodes("wire_format_pending")
 
 
@@ -60,7 +60,7 @@ def inscrire(from_vmid, to_vmid, shm, to_type, why):
         _attente.poser((int(to_vmid), shm),
                        {"from_vmid": int(from_vmid or 0), "type": to_type or "", "why": why or ""})
     except Exception as e:
-        log.warning("pré-câblage %s → #%s non inscrit (%s) — l'écart ne sera PAS re-vérifié.",
+        log.warning("pré-câblage %s → ***REMOVED***%s non inscrit (%s) — l'écart ne sera PAS re-vérifié.",
                     shm, to_vmid, e)
 
 
@@ -89,8 +89,8 @@ def scan_once():
     cles = _attente.cles()
     if not cles:
         return confirmes
-    # Un câble défait n'a plus rien à vérifier : on lâche la paire au lieu d'alerter sur un
-    # câblage qui n'existe plus.
+    ***REMOVED*** Un câble défait n'a plus rien à vérifier : on lâche la paire au lieu d'alerter sur un
+    ***REMOVED*** câblage qui n'existe plus.
     try:
         vivants = {(int(e.get("to_vmid")), e.get("shm")) for e in (_collect_current_edges() or [])}
     except Exception as e:
@@ -109,16 +109,16 @@ def scan_once():
             continue
         from_vmid = ent.get("from_vmid") or 0
         if not _flow_def_format(from_vmid, _shm):
-            continue                            # flux toujours pas créé : on attend, sans bruit
+            continue                            ***REMOVED*** flux toujours pas créé : on attend, sans bruit
         c = db_get_container(to_vmid)
         dc = _load_dc(c) if c else None
         if not dc or not dc.get("type"):
             _attente.retirer(cle)
             continue
-        # Le format du producteur est maintenant MESURÉ → `_format_gate` rend "refuse" en cas
-        # d'écart réel (et "ok" si le pré-câblage était bon).
+        ***REMOVED*** Le format du producteur est maintenant MESURÉ → `_format_gate` rend "refuse" en cas
+        ***REMOVED*** d'écart réel (et "ok" si le pré-câblage était bon).
         verdict, why = _format_gate(from_vmid, _shm, dc["type"], dc.get("params") or {})
-        hn = (c.get("hostname") or "#%s" % to_vmid)
+        hn = (c.get("hostname") or "***REMOVED***%s" % to_vmid)
         if verdict == "refuse":
             confirmes.append({"to_vmid": to_vmid, "shm": _shm, "from_vmid": from_vmid, "why": why})
             db_add_alert("alert.net.precablage_ecart_confirme", "error", vmid=to_vmid, kind="deploy",
@@ -126,7 +126,7 @@ def scan_once():
         else:
             db_add_alert("alert.net.precablage_conforme", "info", vmid=to_vmid, kind="deploy",
                         params={"shm": _shm, "hn": hn})
-        _attente.retirer(cle)                   # tranché : la paire sort de l'attente
+        _attente.retirer(cle)                   ***REMOVED*** tranché : la paire sort de l'attente
     _attente.flush(force=True)
     return confirmes
 

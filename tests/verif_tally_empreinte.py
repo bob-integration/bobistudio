@@ -1,26 +1,26 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# EMPREINTE du modèle de tally — le filet du chantier de séparation TSL / modèle.
-#
-# ★ POURQUOI CELUI-CI EN PLUS DES ONZE AUTRES. Les bancs existants vérifient chacun une
-# propriété, et bien. Celui-ci fait autre chose : il rejoue une séquence FIXE et compare la
-# sortie mot pour mot à une référence enregistrée. Il n'attrape pas « la propriété P est
-# fausse » mais « quelque chose a changé, et personne ne l'avait demandé » — le seul défaut
-# qu'un refactoring produit vraiment.
-#
-# Il visait `services.tsl` — qui portait alors le modèle ET le protocole — et vise `app.tally`
-# depuis que la séparation est faite. La référence, elle, N'A PAS BOUGÉ : elle a été figée AVANT
-# le chantier, sur l'ancien module, et c'est exactement ce qui lui donne sa valeur. Le module
-# extrait doit s'y conformer, pas s'y substituer.
-#
-# `--module services.tsl` ne fonctionne plus, et c'est voulu : ce module n'a plus d'état de
-# tally à montrer. Le pont de réexports qui l'aurait laissé passer a été retiré.
-#
-#   $ ./venv/bin/python tests/verif_tally_empreinte.py                  # vérifie
-#   $ ./venv/bin/python tests/verif_tally_empreinte.py --enregistrer    # fige la référence
-#   $ ./venv/bin/python tests/verif_tally_empreinte.py --module app.tally
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** EMPREINTE du modèle de tally — le filet du chantier de séparation TSL / modèle.
+***REMOVED***
+***REMOVED*** ★ POURQUOI CELUI-CI EN PLUS DES ONZE AUTRES. Les bancs existants vérifient chacun une
+***REMOVED*** propriété, et bien. Celui-ci fait autre chose : il rejoue une séquence FIXE et compare la
+***REMOVED*** sortie mot pour mot à une référence enregistrée. Il n'attrape pas « la propriété P est
+***REMOVED*** fausse » mais « quelque chose a changé, et personne ne l'avait demandé » — le seul défaut
+***REMOVED*** qu'un refactoring produit vraiment.
+***REMOVED***
+***REMOVED*** Il visait `services.tsl` — qui portait alors le modèle ET le protocole — et vise `app.tally`
+***REMOVED*** depuis que la séparation est faite. La référence, elle, N'A PAS BOUGÉ : elle a été figée AVANT
+***REMOVED*** le chantier, sur l'ancien module, et c'est exactement ce qui lui donne sa valeur. Le module
+***REMOVED*** extrait doit s'y conformer, pas s'y substituer.
+***REMOVED***
+***REMOVED*** `--module services.tsl` ne fonctionne plus, et c'est voulu : ce module n'a plus d'état de
+***REMOVED*** tally à montrer. Le pont de réexports qui l'aurait laissé passer a été retiré.
+***REMOVED***
+***REMOVED***   $ ./venv/bin/python tests/verif_tally_empreinte.py                  ***REMOVED*** vérifie
+***REMOVED***   $ ./venv/bin/python tests/verif_tally_empreinte.py --enregistrer    ***REMOVED*** fige la référence
+***REMOVED***   $ ./venv/bin/python tests/verif_tally_empreinte.py --module app.tally
 import importlib
 import json
 import os
@@ -28,7 +28,7 @@ import sys
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
-REF = None   # calculé après lecture de --module : une référence PAR module
+REF = None   ***REMOVED*** calculé après lecture de --module : une référence PAR module
 
 MODULE = "app.tally"
 ENREGISTRER = False
@@ -39,10 +39,10 @@ for i, a in enumerate(sys.argv[1:]):
         MODULE = sys.argv[i + 2]
 m = importlib.import_module(MODULE)
 
-# ★ UNE SEULE RÉFÉRENCE, ET C'EST TOUT L'INTÉRÊT. Enregistrer une référence PAR module
-# rendrait le banc circulaire : on figerait ce que `app.tally` fait, puis on vérifierait
-# qu'il fait bien ce qu'il fait — ce qui ne prouve rien. La référence est celle prise sur
-# `services.tsl` AVANT le chantier ; le module extrait doit s'y conformer, pas s'y substituer.
+***REMOVED*** ★ UNE SEULE RÉFÉRENCE, ET C'EST TOUT L'INTÉRÊT. Enregistrer une référence PAR module
+***REMOVED*** rendrait le banc circulaire : on figerait ce que `app.tally` fait, puis on vérifierait
+***REMOVED*** qu'il fait bien ce qu'il fait — ce qui ne prouve rien. La référence est celle prise sur
+***REMOVED*** `services.tsl` AVANT le chantier ; le module extrait doit s'y conformer, pas s'y substituer.
 REF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "verif_tally_empreinte.json")
 
 NA, NB = "niveau-a", "niveau-b"
@@ -69,7 +69,7 @@ def pas(intitule, fn):
     SEQ.append({"pas": intitule, "retour": r, "etat": _etat()})
 
 
-# ─── A2/A5/A7 — cumul, retrait, idempotence ──────────────────────────────────
+***REMOVED*** ─── A2/A5/A7 — cumul, retrait, idempotence ──────────────────────────────────
 _vider()
 pas("A pose rouge", lambda: m.poser_tally("srcA", {(5, NA): "red"}))
 pas("A repose l'identique (doit rendre False)", lambda: m.poser_tally("srcA", {(5, NA): "red"}))
@@ -79,29 +79,29 @@ pas("B repose vert", lambda: m.poser_tally("srcB", {(5, NA): "green"}))
 pas("A se tait — B ne doit PAS etre coupe", lambda: m.poser_tally("srcA", {}))
 pas("B se tait — la case doit DISPARAITRE", lambda: m.poser_tally("srcB", {}))
 
-# ─── A4 — remplacement integral de la contribution d'une source ──────────────
+***REMOVED*** ─── A4 — remplacement integral de la contribution d'une source ──────────────
 _vider()
 pas("A pose deux cases", lambda: m.poser_tally("srcA", {(1, NA): "red", (2, NA): "green"}))
 pas("C pose sur la case 1", lambda: m.poser_tally("srcC", {(1, NA): "green"}))
 pas("A ne garde que la case 3 — 1 et 2 tombent, C SURVIT",
     lambda: m.poser_tally("srcA", {(3, NA): "red"}))
 
-# ─── A8 — etancheite des niveaux ─────────────────────────────────────────────
+***REMOVED*** ─── A8 — etancheite des niveaux ─────────────────────────────────────────────
 _vider()
 pas("meme index, deux niveaux", lambda: m.poser_tally("srcA", {(9, NA): "red", (9, NB): "green"}))
 pas("lecture niveau a", lambda: m.get_tally_level(9, NA))
 pas("lecture niveau b", lambda: m.get_tally_level(9, NB))
 pas("lecture d'une case vide", lambda: m.get_tally_level(9, "niveau-inexistant"))
 
-# ─── A3 — table de verite du cumul ───────────────────────────────────────────
+***REMOVED*** ─── A3 — table de verite du cumul ───────────────────────────────────────────
 _vider()
 CUMUL = [[a, b, m.cumuler(a, b)] for a in ("off", "red", "green", "amber", None)
          for b in ("off", "red", "green", "amber", None)]
 
-# ─── D8 — l'aller-retour du PROTOCOLE, seulement si le module en porte un ────
-# ⚠ Ce banc sert DEUX modules : `services.tsl` (protocole + modèle aujourd'hui) et `app.tally`
-# (le modèle seul). L'encodage de trame n'existe que du côté protocole — l'exiger des deux
-# ferait échouer le modèle pour la seule raison qu'il fait correctement son travail.
+***REMOVED*** ─── D8 — l'aller-retour du PROTOCOLE, seulement si le module en porte un ────
+***REMOVED*** ⚠ Ce banc sert DEUX modules : `services.tsl` (protocole + modèle aujourd'hui) et `app.tally`
+***REMOVED*** (le modèle seul). L'encodage de trame n'existe que du côté protocole — l'exiger des deux
+***REMOVED*** ferait échouer le modèle pour la seule raison qu'il fait correctement son travail.
 if hasattr(m, "encode_tsl_frame"):
     TRAMES = [m.encode_tsl_frame(i, c, t).hex()
               for i, c, t in ((0, 0, ""), (1, 1, "CAM 1"), (255, 0x3F, "ÉÀ"), (4096, 42, "x" * 32))]
@@ -111,7 +111,7 @@ if hasattr(m, "encode_tsl_frame"):
 else:
     TRAMES = CONTROLES = "∅ module sans protocole"
 
-# ─── C1 — resolution de reference ────────────────────────────────────────────
+***REMOVED*** ─── C1 — resolution de reference ────────────────────────────────────────────
 REFS = [[r, m.resolve_ref(r)] for r in ("", "  ", "cam1", " cam1 ", "port:", "port:abc",
                                         "port:999999", "/dev/shm/x")]
 
@@ -138,10 +138,10 @@ for cle in sorted(set(attendu) | set(obtenu)):
     a, b = attendu.get(cle), obtenu.get(cle)
     if a == b:
         continue
-    # ★ EXEMPTION EXPLICITE, ET SEULEMENT CELLE-CI. Un module qui ne porte pas le protocole
-    # n'a ni trames ni mots de contrôle : le lui reprocher serait lui reprocher d'avoir été
-    # correctement séparé. Toute AUTRE différence reste un écart — c'est la nuance qui
-    # empêche cette exemption de devenir un trou.
+    ***REMOVED*** ★ EXEMPTION EXPLICITE, ET SEULEMENT CELLE-CI. Un module qui ne porte pas le protocole
+    ***REMOVED*** n'a ni trames ni mots de contrôle : le lui reprocher serait lui reprocher d'avoir été
+    ***REMOVED*** correctement séparé. Toute AUTRE différence reste un écart — c'est la nuance qui
+    ***REMOVED*** empêche cette exemption de devenir un trou.
     if b == SANS_PROTOCOLE and cle in ("trames", "controles"):
         exemptes.append(cle)
         continue

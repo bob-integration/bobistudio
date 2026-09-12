@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Driver de déploiement Docker — premier citoyen multi-nœud de Bobi.Studio.
 
@@ -49,7 +49,7 @@ def _pcount(params, key, default):
     return default if v is None else int(v)
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────
+***REMOVED*** ─── Helpers ─────────────────────────────────────────────────────────
 def is_docker(vmid_or_row):
     """True si la ligne container existe. Conservé pour les appelants : depuis le retrait du
     backend LXC, TOUT conteneur est Docker — le prédicat ne discrimine plus que l'existence."""
@@ -67,17 +67,17 @@ def _name(vmid, hostname=None):
     return f"bobi-mtl-{vmid}"
 
 
-# ─── Nom du moteur 2110 (identité TECHNIQUE, pas un libellé) ─────────────────
-# Le hostname du moteur n'est PAS décoratif : il sert de racine aux noms de flux MXL
-# (`/dev/shm/<hostname>_<idx>`, `_audio_<idx>`, `_anc_<idx>`, cf. le `wiring` du manifeste) ET de
-# graine aux SSRC des émissions RTP (controller.py). Le renommer renomme donc les flux — tout
-# consommateur câblé dessus perd sa source — et change les SSRC vus par les récepteurs distants.
-# À ne faire qu'à la CRÉATION, jamais sur un moteur en service.
-#
-# Le défaut historique `mtlrx<vmid>` était dérivé du VMID, décrit dans ce projet comme « un handle
-# local jetable » : deux moteurs successifs sur le même nœud portaient des noms différents, et le
-# nom ne disait rien de l'endroit où tourne le moteur. Comme il y a exactement UN moteur par nœud
-# (cf. ensure_node_engine), le nom naturel est celui du nœud.
+***REMOVED*** ─── Nom du moteur 2110 (identité TECHNIQUE, pas un libellé) ─────────────────
+***REMOVED*** Le hostname du moteur n'est PAS décoratif : il sert de racine aux noms de flux MXL
+***REMOVED*** (`/dev/shm/<hostname>_<idx>`, `_audio_<idx>`, `_anc_<idx>`, cf. le `wiring` du manifeste) ET de
+***REMOVED*** graine aux SSRC des émissions RTP (controller.py). Le renommer renomme donc les flux — tout
+***REMOVED*** consommateur câblé dessus perd sa source — et change les SSRC vus par les récepteurs distants.
+***REMOVED*** À ne faire qu'à la CRÉATION, jamais sur un moteur en service.
+***REMOVED***
+***REMOVED*** Le défaut historique `mtlrx<vmid>` était dérivé du VMID, décrit dans ce projet comme « un handle
+***REMOVED*** local jetable » : deux moteurs successifs sur le même nœud portaient des noms différents, et le
+***REMOVED*** nom ne disait rien de l'endroit où tourne le moteur. Comme il y a exactement UN moteur par nœud
+***REMOVED*** (cf. ensure_node_engine), le nom naturel est celui du nœud.
 _NOM_MOTEUR_PREFIXE = "2110-io"
 
 def _slug(s):
@@ -99,10 +99,10 @@ def nom_moteur_defaut(node, vmid=None):
     if not base:
         base = _slug(vmid if vmid is not None else (node or {}).get("id"))
         return f"{_NOM_MOTEUR_PREFIXE}-{base}" if base else _NOM_MOTEUR_PREFIXE
-    # Unicité CLUSTER : deux noms de nœuds distincts peuvent se normaliser pareil (« DL360__1 » et
-    # « dl360-1 » → même slug). Les flux MXL sont répliqués entre nœuds (RDMA mxl-fabrics), donc
-    # des flux homonymes sur deux nœuds collisionneraient à la réplication. En cas d'ambiguïté, on
-    # désambiguïse par l'id du nœud — stable, contrairement au vmid.
+    ***REMOVED*** Unicité CLUSTER : deux noms de nœuds distincts peuvent se normaliser pareil (« DL360__1 » et
+    ***REMOVED*** « dl360-1 » → même slug). Les flux MXL sont répliqués entre nœuds (RDMA mxl-fabrics), donc
+    ***REMOVED*** des flux homonymes sur deux nœuds collisionneraient à la réplication. En cas d'ambiguïté, on
+    ***REMOVED*** désambiguïse par l'id du nœud — stable, contrairement au vmid.
     try:
         from .database import db_get_nodes
         nid = (node or {}).get("id")
@@ -173,10 +173,10 @@ def ensure_media_ip(node):
     cidr  = ((node or {}).get("media_ip") or "").strip()
     if not (node and iface and cidr):
         return (True, "")
-    # Socle full-PF DPDK : un port pmd=dpdk est bindé vfio-pci → il n'a PLUS de netdev kernel
-    # (`ip addr add` échoue « Cannot find device », alerte bruyante à chaque déploiement). L'IP média
-    # d'un port DPDK est portée par libmtl (sip auto-détecté depuis node_interfaces.ip_cidr), pas par
-    # le kernel → no-op ici. On skippe donc l'application kernel quand l'iface est déclarée pmd=dpdk.
+    ***REMOVED*** Socle full-PF DPDK : un port pmd=dpdk est bindé vfio-pci → il n'a PLUS de netdev kernel
+    ***REMOVED*** (`ip addr add` échoue « Cannot find device », alerte bruyante à chaque déploiement). L'IP média
+    ***REMOVED*** d'un port DPDK est portée par libmtl (sip auto-détecté depuis node_interfaces.ip_cidr), pas par
+    ***REMOVED*** le kernel → no-op ici. On skippe donc l'application kernel quand l'iface est déclarée pmd=dpdk.
     try:
         from .database import db_get_node_interfaces
         if any((r.get("ifname") == iface and (r.get("pmd") or "").strip().lower() == "dpdk")
@@ -184,8 +184,8 @@ def ensure_media_ip(node):
             return (True, cidr)
     except Exception as e:
         log.debug("ensure_media_ip: check pmd dpdk (%s): %s", iface, e)
-    # Purge d'abord l'IP d'éventuelles autres NIC (résidu de reconfig), puis pose idempotente :
-    # rc=2 « File exists » si déjà posée sur la bonne iface → toléré.
+    ***REMOVED*** Purge d'abord l'IP d'éventuelles autres NIC (résidu de reconfig), puis pose idempotente :
+    ***REMOVED*** rc=2 « File exists » si déjà posée sur la bonne iface → toléré.
     cmd = (_purge_ip_elsewhere_cmd(iface, cidr) +
            f"ip addr add {shlex.quote(cidr)} dev {shlex.quote(iface)} 2>&1; "
            f"ip link set dev {shlex.quote(iface)} up")
@@ -216,9 +216,9 @@ def _persist_iface_cmd(iface, cidr):
     Le nœud utilise ifupdown, et `/etc/network/interfaces` fait déjà `source interfaces.d/*`.
     Un fichier par interface, réécrit intégralement → idempotent, et retirable proprement."""
     fichier = f"{PERSIST_DIR}/60-bobi-{iface}"
-    stanza = (f"# Posé par Bobi.Studio — NE PAS ÉDITER À LA MAIN (réécrit à chaque enregistrement\n"
-              f"# de l'interface dans Réglages → Nœuds). Sans cette persistance, l'adresse et\n"
-              f"# l'état UP disparaissent au redémarrage et le lien paraît débranché.\n"
+    stanza = (f"***REMOVED*** Posé par Bobi.Studio — NE PAS ÉDITER À LA MAIN (réécrit à chaque enregistrement\n"
+              f"***REMOVED*** de l'interface dans Réglages → Nœuds). Sans cette persistance, l'adresse et\n"
+              f"***REMOVED*** l'état UP disparaissent au redémarrage et le lien paraît débranché.\n"
               f"auto {iface}\n"
               f"iface {iface} inet static\n"
               f"    address {cidr}\n")
@@ -300,10 +300,10 @@ def _media_ifaces(node):
             _pmd = str(r.get("pmd") or "").strip().lower() or None
             _pci = str(r.get("pci") or "").strip() or None
             _sip = cidr.split("/")[0]
-            # SR-IOV (chantier narrow, cf. docs/chantiers/SRIOV_IMPL.md) : le moteur tourne sur la VF (DPDK) ; la PF
-            # reste kernel (ptp4l). On présente au moteur l'identité de la VF — pmd DPDK + VF BDF +
-            # VF IP (sip) — tout en gardant ifname/cidr de la PF (pour qu'ensure_iface_ip pose l'IP
-            # PF sur le netdev kernel → ptp4l L4). VF non provisionnée (vf_bdf absent) → repli af_xdp.
+            ***REMOVED*** SR-IOV (chantier narrow, cf. docs/chantiers/SRIOV_IMPL.md) : le moteur tourne sur la VF (DPDK) ; la PF
+            ***REMOVED*** reste kernel (ptp4l). On présente au moteur l'identité de la VF — pmd DPDK + VF BDF +
+            ***REMOVED*** VF IP (sip) — tout en gardant ifname/cidr de la PF (pour qu'ensure_iface_ip pose l'IP
+            ***REMOVED*** PF sur le netdev kernel → ptp4l L4). VF non provisionnée (vf_bdf absent) → repli af_xdp.
             if _pmd == "sriov":
                 _vf_bdf = str(r.get("vf_bdf") or "").strip() or None
                 _vf_ip = str(r.get("vf_ip") or "").strip() or None
@@ -314,32 +314,32 @@ def _media_ifaces(node):
                                 "host-prep SR-IOV requis) → repli af_xdp", ifn)
                     _pmd = "af_xdp"
             rows.append({"ifname": ifn, "ip": _sip, "cidr": cidr,
-                         # Passerelle DÉCLARÉE de ce port (node_interfaces.gateway). Elle n'a
-                         # longtemps servi qu'à réserver l'adresse dans le pool conteneurs ; elle est
-                         # désormais réellement posée — routage par leg côté kernel (af_xdp) et
-                         # transmise à libmtl côté DPDK, cf. ensure_media_routes / env GATEWAYS.
+                         ***REMOVED*** Passerelle DÉCLARÉE de ce port (node_interfaces.gateway). Elle n'a
+                         ***REMOVED*** longtemps servi qu'à réserver l'adresse dans le pool conteneurs ; elle est
+                         ***REMOVED*** désormais réellement posée — routage par leg côté kernel (af_xdp) et
+                         ***REMOVED*** transmise à libmtl côté DPDK, cf. ensure_media_routes / env GATEWAYS.
                          "gateway": str(r.get("gateway") or "").strip() or None,
                          "network_id": r.get("media_network_id"),
-                         # PMD du port (chantier DPDK) : NULL/'af_xdp' = chemin actuel ; 'dpdk' = port
-                         # vfio-pci (BDF `pci`) ; 'sriov' (remappé dpdk+VF BDF ci-dessus, PF kernel).
+                         ***REMOVED*** PMD du port (chantier DPDK) : NULL/'af_xdp' = chemin actuel ; 'dpdk' = port
+                         ***REMOVED*** vfio-pci (BDF `pci`) ; 'sriov' (remappé dpdk+VF BDF ci-dessus, PF kernel).
                          "pmd": _pmd,
                          "pci": _pci,
-                         # Profil d'émetteur ST 2110-21 (chantier narrow) : ''/NULL = auto |
-                         # 'narrow'/'narrow_linear' → pacing RL device-wide | 'wide' → TSC.
-                         # Dérive MTL_PACING (narrow-wins) dans _build_run_cmd (device-level).
+                         ***REMOVED*** Profil d'émetteur ST 2110-21 (chantier narrow) : ''/NULL = auto |
+                         ***REMOVED*** 'narrow'/'narrow_linear' → pacing RL device-wide | 'wide' → TSC.
+                         ***REMOVED*** Dérive MTL_PACING (narrow-wins) dans _build_run_cmd (device-level).
                          "output_profile": str(r.get("output_profile") or "").strip().lower() or None,
-                         # Alias opérateur (« PGM-Rouge ») pour l'affichage NIC (page 2110, sélecteur port).
+                         ***REMOVED*** Alias opérateur (« PGM-Rouge ») pour l'affichage NIC (page 2110, sélecteur port).
                          "alias": str(r.get("alias") or "").strip() or None,
-                         # pair_group peut être stocké en ENTIER (champ numérique de l'UI)
-                         # → coercition str avant strip (sinon AttributeError dès qu'une
-                         # paire est déclarée, qui tuait /api/io/mtl).
+                         ***REMOVED*** pair_group peut être stocké en ENTIER (champ numérique de l'UI)
+                         ***REMOVED*** → coercition str avant strip (sinon AttributeError dès qu'une
+                         ***REMOVED*** paire est déclarée, qui tuait /api/io/mtl).
                          "pair_role": str(r.get("pair_role") or "").strip() or None,
                          "pair_group": str(r.get("pair_group") or "").strip() or None})
-    if not rows and prim:                                 # repli : la NIC primaire seule
+    if not rows and prim:                                 ***REMOVED*** repli : la NIC primaire seule
         _c = ((node or {}).get("media_ip") or "").strip()
         rows = [{"ifname": prim, "ip": _c.split("/")[0], "cidr": _c, "network_id": None,
                  "gateway": None}]
-    rows.sort(key=lambda x: (x["ifname"] != prim, x["ifname"]))   # primaire en tête, déterministe
+    rows.sort(key=lambda x: (x["ifname"] != prim, x["ifname"]))   ***REMOVED*** primaire en tête, déterministe
     return rows
 
 
@@ -467,17 +467,17 @@ def ensure_media_ips(node):
     chaque PF média, sip=0.0.0.0 sur cette NIC → TX rejeté / RX free-run. La primaire garde le message
     historique (`ensure_media_ip`). Retourne (ok_global, premier_msg_erreur)."""
     ok_all, first_err = True, ""
-    pok, pmsg = ensure_media_ip(node)                     # primaire (media_ip de node)
+    pok, pmsg = ensure_media_ip(node)                     ***REMOVED*** primaire (media_ip de node)
     if not pok:
         ok_all, first_err = False, pmsg
     prim = ((node or {}).get("mtl_iface") or "").strip()
     for ent in _media_ifaces(node):
         if ent["ifname"] == prim or not ent["cidr"]:
             continue
-        # Socle full-PF DPDK : un port pmd=dpdk est bindé vfio-pci → plus de netdev kernel
-        # (`ip addr add` → « Cannot find device », alerte « RX/TX indisponibles » trompeuse à
-        # chaque déploiement — vu sur dl360-1). L'IP média DPDK est portée par libmtl (sip
-        # depuis node_interfaces.ip_cidr) → skip kernel, même logique que ensure_media_ip.
+        ***REMOVED*** Socle full-PF DPDK : un port pmd=dpdk est bindé vfio-pci → plus de netdev kernel
+        ***REMOVED*** (`ip addr add` → « Cannot find device », alerte « RX/TX indisponibles » trompeuse à
+        ***REMOVED*** chaque déploiement — vu sur dl360-1). L'IP média DPDK est portée par libmtl (sip
+        ***REMOVED*** depuis node_interfaces.ip_cidr) → skip kernel, même logique que ensure_media_ip.
         if (ent.get("pmd") or "") == "dpdk":
             continue
         iok, imsg = ensure_iface_ip(node, ent["ifname"], ent["cidr"])
@@ -488,9 +488,9 @@ def ensure_media_ips(node):
     return (ok_all, first_err)
 
 
-# Table de routage dédiée par leg média. Base choisie hors des tables réservées (local=255,
-# main=254, default=253) et hors de ce que posent ifupdown/Docker — un numéro, pas un nom, pour ne
-# pas dépendre de /etc/iproute2/rt_tables.
+***REMOVED*** Table de routage dédiée par leg média. Base choisie hors des tables réservées (local=255,
+***REMOVED*** main=254, default=253) et hors de ce que posent ifupdown/Docker — un numéro, pas un nom, pour ne
+***REMOVED*** pas dépendre de /etc/iproute2/rt_tables.
 _RT_TABLE_BASE = 210
 
 
@@ -510,16 +510,16 @@ def _media_route_cmd(iface, cidr, gateway, table):
     ifq, gwq = shlex.quote(iface), shlex.quote(gateway)
     ip = cidr.split("/")[0]
     t = str(int(table))
-    # `ip route` REFUSE un préfixe dont les bits d'hôte sont posés (« Invalid prefix for given
-    # prefix length ») : 192.168.10.2/30 est une adresse, pas une route. On route le RÉSEAU.
+    ***REMOVED*** `ip route` REFUSE un préfixe dont les bits d'hôte sont posés (« Invalid prefix for given
+    ***REMOVED*** prefix length ») : 192.168.10.2/30 est une adresse, pas une route. On route le RÉSEAU.
     reseau = str(_ipaddress.ip_network(cidr, strict=False))
     return (
-        # 1) le sous-réseau du leg, joignable directement (source forcée : sans `src`, le noyau
-        #    choisirait l'IP primaire de l'hôte et le routeur verrait une source hors segment)
+        ***REMOVED*** 1) le sous-réseau du leg, joignable directement (source forcée : sans `src`, le noyau
+        ***REMOVED***    choisirait l'IP primaire de l'hôte et le routeur verrait une source hors segment)
         f"ip route replace {shlex.quote(reseau)} dev {ifq} src {shlex.quote(ip)} table {t}; "
-        # 2) la sortie par défaut DE CE LEG
+        ***REMOVED*** 2) la sortie par défaut DE CE LEG
         f"ip route replace default via {gwq} dev {ifq} table {t}; "
-        # 3) la règle qui aiguille vers la table — `ip rule add` empile les doublons, on teste avant
+        ***REMOVED*** 3) la règle qui aiguille vers la table — `ip rule add` empile les doublons, on teste avant
         f"ip rule list | grep -qE 'from {ip} lookup {t}\\b' || "
         f"ip rule add from {shlex.quote(ip)} lookup {t}; ")
 
@@ -544,15 +544,15 @@ def ensure_media_routes(node):
         if not (ent.get("cidr") and ent.get("gateway")):
             continue
         if (ent.get("pmd") or "") == "dpdk":
-            continue                                  # pas de netdev : voir docstring
+            continue                                  ***REMOVED*** pas de netdev : voir docstring
         parts.append(_media_route_cmd(ent["ifname"], ent["cidr"], ent["gateway"],
                                       _RT_TABLE_BASE + i))
     if not parts:
         return (True, "")
-    # `set -e` OBLIGATOIRE : les commandes sont chaînées par `;`, donc le code de retour observé
-    # est celui de la DERNIÈRE. Sans lui, un `ip route replace` refusé (préfixe invalide, iface
-    # absente, passerelle hors segment) rendait rc=0 — l'échec passait pour un succès et la seule
-    # trace partait sur stderr, que personne ne lisait. Mesuré au banc le 2026-08-22.
+    ***REMOVED*** `set -e` OBLIGATOIRE : les commandes sont chaînées par `;`, donc le code de retour observé
+    ***REMOVED*** est celui de la DERNIÈRE. Sans lui, un `ip route replace` refusé (préfixe invalide, iface
+    ***REMOVED*** absente, passerelle hors segment) rendait rc=0 — l'échec passait pour un succès et la seule
+    ***REMOVED*** trace partait sur stderr, que personne ne lisait. Mesuré au banc le 2026-08-22.
     rc, out, err = ssh_run(node["host"], "set -e; " + "".join(parts), timeout=20)
     blob = ((out or "") + (err or "")).strip()
     if rc == 0:
@@ -603,9 +603,9 @@ def ensure_vfio_binds(node):
     if not rows:
         return (True, [])
 
-    # PRÉCONDITION prép hôte : sans IOMMU actif + module vfio-pci + hugepages 1G, le bind (et le
-    # moteur DPDK) est voué à l'échec → NE PAS lancer un déploiement crash-loop : alerte claire (quoi
-    # régler) et on S'ABSTIENT du bind.
+    ***REMOVED*** PRÉCONDITION prép hôte : sans IOMMU actif + module vfio-pci + hugepages 1G, le bind (et le
+    ***REMOVED*** moteur DPDK) est voué à l'échec → NE PAS lancer un déploiement crash-loop : alerte claire (quoi
+    ***REMOVED*** régler) et on S'ABSTIENT du bind.
     prep = mtl.verifier_node(node)
     if prep.get("error"):
         db_add_alert("alert.docker.prep_non_sondable", "error",
@@ -620,7 +620,7 @@ def ensure_vfio_binds(node):
             params={"n": nom, "m": ", ".join(manques)})
         return (False, [])
 
-    # BDF + operstate résolus tant que le port est ENCORE sur ice (après bind il perd son netdev).
+    ***REMOVED*** BDF + operstate résolus tant que le port est ENCORE sur ice (après bind il perd son netdev).
     live = _resolve_bdf_operstate(node, [(r.get("ifname") or "").strip() for r in rows])
     bindes, ok_all = [], True
     for r in rows:
@@ -633,8 +633,8 @@ def ensure_vfio_binds(node):
                          params={"n": nom, "ifn": ifn})
             ok_all = False
             continue
-        # Lien DOWN au moment du bind (lisible sur ice AVANT bind) : ni PTP ni trafic 2110 ne
-        # passeront tant que le câble/switch n'est pas up → on prévient, sans bloquer.
+        ***REMOVED*** Lien DOWN au moment du bind (lisible sur ice AVANT bind) : ni PTP ni trafic 2110 ne
+        ***REMOVED*** passeront tant que le câble/switch n'est pas up → on prévient, sans bloquer.
         op = info.get("operstate")
         if op and op not in ("up", "unknown"):
             db_add_alert("alert.docker.pf_lien_down", "warning",
@@ -668,7 +668,7 @@ def ensure_vfio_binds(node):
     return (ok_all, bindes)
 
 
-# ─── Image ───────────────────────────────────────────────────────────
+***REMOVED*** ─── Image ───────────────────────────────────────────────────────────
 def _resolve_mtl_image(node):
     """Tag bobi-mtl du nœud : `node.image` si défini, sinon AUTO-DÉTECTION du tag réellement
     présent sur l'hôte (`docker images bobi-mtl`). Nécessaire car un nœud io2110 RÉ-ENRÔLÉ a
@@ -687,7 +687,7 @@ def _resolve_mtl_image(node):
             if t.strip().startswith("bobi-mtl:") and not t.strip().endswith(":<none>")]
     if not tags:
         return None
-    tags.sort(key=lambda t: t.endswith(":latest"))   # préfère un tag versionné à :latest
+    tags.sort(key=lambda t: t.endswith(":latest"))   ***REMOVED*** préfère un tag versionné à :latest
     found = tags[0]
     try:
         if node.get("id"):
@@ -712,16 +712,16 @@ def verify_image(node):
     return (False, f"image {image} absente sur {node['host']} — la builder sur le nœud")
 
 
-# ─── Cycle de vie ────────────────────────────────────────────────────
-# Sérialise la garde « 1 conteneur MTL par nœud » : le check (SELECT) et l'INSERT de la ligne
-# container n'étaient pas atomiques → deux créations concurrentes sur le même nœud passaient
-# toutes les deux (conflit :8080/:8081/PF, --network host). Un seul processus orchestrateur
-# écrit la table → lock in-process suffisant.
+***REMOVED*** ─── Cycle de vie ────────────────────────────────────────────────────
+***REMOVED*** Sérialise la garde « 1 conteneur MTL par nœud » : le check (SELECT) et l'INSERT de la ligne
+***REMOVED*** container n'étaient pas atomiques → deux créations concurrentes sur le même nœud passaient
+***REMOVED*** toutes les deux (conflit :8080/:8081/PF, --network host). Un seul processus orchestrateur
+***REMOVED*** écrit la table → lock in-process suffisant.
 _create_mtl_lock = threading.Lock()
 
-# Anti-spam de l'alerte « moteur à redéployer » (durcissement B, auto-provision) : on ne ré-alerte
-# QUE si l'ensemble des NIC média non couvertes par le moteur EN MARCHE change (une édition
-# d'interface qui n'y touche pas ne re-spamme pas). node_id → frozenset(ifnames manquants).
+***REMOVED*** Anti-spam de l'alerte « moteur à redéployer » (durcissement B, auto-provision) : on ne ré-alerte
+***REMOVED*** QUE si l'ensemble des NIC média non couvertes par le moteur EN MARCHE change (une édition
+***REMOVED*** d'interface qui n'y touche pas ne re-spamme pas). node_id → frozenset(ifnames manquants).
 _engine_gap_state = {}
 _engine_gap_lock = threading.Lock()
 
@@ -753,17 +753,17 @@ def creer_container_docker(node_id, hostname=None, deploy_type="2110_io"):
     from .database import db_get_containers
     from .docker_compute import is_mtl_type, _type_of
     with _create_mtl_lock:
-        # v1 : 1 conteneur MTL « plein » par nœud (--network host → :8080-8082 + PF uniques).
-        # EXCEPTION : une SONDE (probe_2110) coexiste avec le moteur sur le même nœud (banc de
-        # conformité loopback : générateur port A + sonde port B) car elle offsette ses ports
-        # contrôleur (CONTROLLER_PORT_BASE) ET tourne sur SA PF vfio dédiée distincte. La garde
-        # n'interdit donc QUE deux moteurs « pleins » (mêmes ports 8080-8082, mêmes PF). On ne
-        # compte que les containers MTL (pas les compute/macvlan coexistants).
+        ***REMOVED*** v1 : 1 conteneur MTL « plein » par nœud (--network host → :8080-8082 + PF uniques).
+        ***REMOVED*** EXCEPTION : une SONDE (probe_2110) coexiste avec le moteur sur le même nœud (banc de
+        ***REMOVED*** conformité loopback : générateur port A + sonde port B) car elle offsette ses ports
+        ***REMOVED*** contrôleur (CONTROLLER_PORT_BASE) ET tourne sur SA PF vfio dédiée distincte. La garde
+        ***REMOVED*** n'interdit donc QUE deux moteurs « pleins » (mêmes ports 8080-8082, mêmes PF). On ne
+        ***REMOVED*** compte que les containers MTL (pas les compute/macvlan coexistants).
         new_is_probe = _is_probe_type(deploy_type)
         for c in db_get_containers():
             if c.get("node_id") == node_id and is_mtl_type(_type_of(c)):
                 if new_is_probe or _is_probe_type(_type_of(c)):
-                    continue   # au moins l'un des deux est une sonde à ports offsetés → sûr
+                    continue   ***REMOVED*** au moins l'un des deux est une sonde à ports offsetés → sûr
                 db_add_alert("alert.docker.deja_moteur", "error",
                              node_id=node_id, kind="deploy",
                              params={"n": node["name"], "vmid": c["vmid"]})
@@ -771,16 +771,16 @@ def creer_container_docker(node_id, hostname=None, deploy_type="2110_io"):
 
         vmid = allocations.next_free_vmid()
         if vmid is None:
-            return None   # plage de VMID épuisée → alerte déjà émise par next_free_vmid ; pas de ligne vmid=None
+            return None   ***REMOVED*** plage de VMID épuisée → alerte déjà émise par next_free_vmid ; pas de ligne vmid=None
         if not hostname:
             hostname = nom_moteur_defaut(db_get_node(node_id), vmid)
         db_upsert_container_docker(vmid, hostname, node_id, _name(vmid, hostname), status="created")
-        # Persiste le type DANS le verrou (revue M1 — anti-TOCTOU) : la garde « 1 moteur/nœud »
-        # ci-dessus lit le type via _type_of(deploy_config). Tant que ce write n'a pas eu lieu, une
-        # 2ᵉ création CONCURRENTE (auto-provision de 2 ports média configurés en rafale) lit un type
-        # vide → is_mtl_type("") == False → franchit la garde → DEUX moteurs sur le nœud. On écrit
-        # donc le type AVANT de relâcher `_create_mtl_lock`. (Sans ça il serait aussi perdu : db_upsert
-        # n'écrit pas deploy_config → deploy_docker retomberait en dur sur MTL.)
+        ***REMOVED*** Persiste le type DANS le verrou (revue M1 — anti-TOCTOU) : la garde « 1 moteur/nœud »
+        ***REMOVED*** ci-dessus lit le type via _type_of(deploy_config). Tant que ce write n'a pas eu lieu, une
+        ***REMOVED*** 2ᵉ création CONCURRENTE (auto-provision de 2 ports média configurés en rafale) lit un type
+        ***REMOVED*** vide → is_mtl_type("") == False → franchit la garde → DEUX moteurs sur le nœud. On écrit
+        ***REMOVED*** donc le type AVANT de relâcher `_create_mtl_lock`. (Sans ça il serait aussi perdu : db_upsert
+        ***REMOVED*** n'écrit pas deploy_config → deploy_docker retomberait en dur sur MTL.)
         if deploy_type:
             db_update_deploy_config(vmid, deploy_type, {})
     db_update_node(node_id, status="up")
@@ -873,9 +873,9 @@ def ensure_node_engine(node_id):
 
         engine = _engine()
         if media and not engine:
-            # creer_container_docker prend _create_mtl_lock EN INTERNE (+ garde « 1 moteur/nœud ») → NE
-            # PAS le reprendre ici (verrou non-réentrant). Sa garde couvre la course multi-interfaces :
-            # la 2ᵉ création concurrente est refusée proprement (retourne None), on s'arrête alors.
+            ***REMOVED*** creer_container_docker prend _create_mtl_lock EN INTERNE (+ garde « 1 moteur/nœud ») → NE
+            ***REMOVED*** PAS le reprendre ici (verrou non-réentrant). Sa garde couvre la course multi-interfaces :
+            ***REMOVED*** la 2ᵉ création concurrente est refusée proprement (retourne None), on s'arrête alors.
             vmid = creer_container_docker(node_id, deploy_type="2110_io")
             if not vmid:
                 return
@@ -884,10 +884,10 @@ def ensure_node_engine(node_id):
                          vmid=vmid, node_id=node_id, kind="deploy",
                          params={"vmid": vmid, "n": node["name"]})
         elif media and engine:
-            # Moteur DÉJÀ présent : NE PAS redéployer à chaud (couperait tous les flux RX/TX). On
-            # vérifie seulement que le moteur EN MARCHE couvre toutes les NIC média actuelles du nœud ;
-            # si une NIC a été ajoutée et n'est pas encore prise en compte → ALERTE, PAS de coupure.
-            # Anti-spam : n'émet qu'au CHANGEMENT de l'ensemble manquant (durcissement B).
+            ***REMOVED*** Moteur DÉJÀ présent : NE PAS redéployer à chaud (couperait tous les flux RX/TX). On
+            ***REMOVED*** vérifie seulement que le moteur EN MARCHE couvre toutes les NIC média actuelles du nœud ;
+            ***REMOVED*** si une NIC a été ajoutée et n'est pas encore prise en compte → ALERTE, PAS de coupure.
+            ***REMOVED*** Anti-spam : n'émet qu'au CHANGEMENT de l'ensemble manquant (durcissement B).
             covered = _engine_covered_ifaces(node, engine)
             if covered:
                 missing = {e["ifname"] for e in _media_ifaces(node)} - covered
@@ -904,7 +904,7 @@ def ensure_node_engine(node_id):
         elif not media and engine:
             _stop_engine_script(engine.get("vmid"))
             with _engine_gap_lock:
-                _engine_gap_state.pop(node_id, None)   # moteur arrêté → purge l'état d'alerte B
+                _engine_gap_state.pop(node_id, None)   ***REMOVED*** moteur arrêté → purge l'état d'alerte B
             db_add_alert("alert.docker.arrete_sans_media", "info",
                          vmid=engine.get("vmid"), node_id=node_id, kind="deploy",
                          params={"vmid": engine.get("vmid"), "n": node["name"]})
@@ -914,8 +914,8 @@ def ensure_node_engine(node_id):
                      params={"node_id": node_id, "e": str(e)})
 
 
-_reconcile_last = {}      # node_id → monotone du dernier passage (throttle)
-_reconcile_seen = {}      # node_id → dernier cpuset moteur réconcilié (anti-répétition)
+_reconcile_last = {}      ***REMOVED*** node_id → monotone du dernier passage (throttle)
+_reconcile_seen = {}      ***REMOVED*** node_id → dernier cpuset moteur réconcilié (anti-répétition)
 
 
 def reconcile_engine_pinning(node_id, throttle_s=60.0):
@@ -950,7 +950,7 @@ def reconcile_engine_pinning(node_id, throttle_s=60.0):
                          timeout=10)
     reel = (out or "").strip()
     if rc != 0 or not reel:
-        return                          # moteur sans cpuset (mtl_pin_cores off) → rien à réconcilier
+        return                          ***REMOVED*** moteur sans cpuset (mtl_pin_cores off) → rien à réconcilier
     if _reconcile_seen.get(node_id) == reel:
         return
     from . import core_pool
@@ -960,7 +960,7 @@ def reconcile_engine_pinning(node_id, throttle_s=60.0):
     connus = core_pool.allocations_by_vmid(node_id).get(eng["vmid"]) or []
     _reconcile_seen[node_id] = reel
     if sorted(connus) == cores:
-        return                          # base déjà conforme à la réalité
+        return                          ***REMOVED*** base déjà conforme à la réalité
     log.warning("réconciliation moteur 2110 (nœud %s, vmid %s) : cpuset RÉEL %s ≠ enregistré %s",
                 node_id, eng["vmid"], reel, core_pool.fmt_cpuset(connus))
     db_add_alert("alert.docker.derive_pinning", "warning",
@@ -971,8 +971,8 @@ def reconcile_engine_pinning(node_id, throttle_s=60.0):
                                    core_of=core_pool.core_map_cached(node_id))
 
 
-_sizing_last = {}         # node_id → monotone du dernier passage (throttle)
-_sizing_seen = {}         # node_id → dernier ensemble d'écarts alerté (anti-répétition)
+_sizing_last = {}         ***REMOVED*** node_id → monotone du dernier passage (throttle)
+_sizing_seen = {}         ***REMOVED*** node_id → dernier ensemble d'écarts alerté (anti-répétition)
 
 
 def _engine_expected_sizing(node, params):
@@ -996,7 +996,7 @@ def _engine_expected_sizing(node, params):
         "HEIGHT":            str(int(params.get("height") or _df["height"])),
         "FPS":               str(params.get("fps") or _df["fps"]),
     }
-    # RL_TX_QUEUES_CAP n'est émis qu'en pacing narrow (RL) — même condition que _build_run_cmd.
+    ***REMOVED*** RL_TX_QUEUES_CAP n'est émis qu'en pacing narrow (RL) — même condition que _build_run_cmd.
     try:
         if (_derive_pacing(node) or (None, None))[0] == "rl":
             exp["RL_TX_QUEUES_CAP"] = str(_node_rl_tx_cap(node))
@@ -1012,7 +1012,7 @@ def _sizing_equal(a, b):
     a, b = (a or "").strip(), (b or "").strip()
     if a == b:
         return True
-    if "," in a or "," in b:      # listes de cœurs : comparer les ENSEMBLES
+    if "," in a or "," in b:      ***REMOVED*** listes de cœurs : comparer les ENSEMBLES
         try:
             return (sorted(int(x) for x in a.split(",") if x.strip())
                     == sorted(int(x) for x in b.split(",") if x.strip()))
@@ -1060,7 +1060,7 @@ def reconcile_engine_sizing(node_id, throttle_s=300.0):
     except Exception:
         return
     if not params:
-        return                       # moteur jamais déployé → rien à comparer
+        return                       ***REMOVED*** moteur jamais déployé → rien à comparer
     name = eng.get("docker_name") or _name(eng.get("vmid"))
     rc, out, _ = ssh_run(node["host"],
                          "docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' %s"
@@ -1086,8 +1086,8 @@ def reconcile_engine_sizing(node_id, throttle_s=300.0):
     if not ecarts:
         return
     detail = " ; ".join(f"{k} : posé {r} → requis {a}" for k, r, a in ecarts)
-    # Le manque de lcores est la dérive qui CASSE (sessions refusées) — les autres dégradent ou
-    # mentent sur le format. On monte en 'error' dans ce cas pour que ça ne se noie pas.
+    ***REMOVED*** Le manque de lcores est la dérive qui CASSE (sessions refusées) — les autres dégradent ou
+    ***REMOVED*** mentent sur le format. On monte en 'error' dans ce cas pour que ça ne se noie pas.
     _lc = next((e for e in ecarts if e[0] == "LCORES"), None)
     grave = _lc is not None
     consequence = ""
@@ -1101,8 +1101,8 @@ def reconcile_engine_sizing(node_id, throttle_s=300.0):
                            f"muettes, watchdog en boucle.")
     log.warning("dérive dimensionnement moteur 2110 (nœud %s, vmid %s) : %s",
                 node_id, eng["vmid"], detail)
-    # `consequence` est une sous-phrase française conditionnelle (manque de lcores) : deux clés
-    # complètes plutôt qu'un fragment collé dans un paramètre.
+    ***REMOVED*** `consequence` est une sous-phrase française conditionnelle (manque de lcores) : deux clés
+    ***REMOVED*** complètes plutôt qu'un fragment collé dans un paramètre.
     _params = {"n": node.get("name"), "vmid": eng["vmid"], "detail": detail}
     if consequence:
         db_add_alert("alert.deploy.moteur_dimensionne_perime_lcores",
@@ -1142,11 +1142,11 @@ def backfill_node_engines():
                            if c.get("node_id") == nid
                            and is_mtl_type(_type_of(c)) and not _is_probe_type(_type_of(c))), None)
             if engine:
-                continue    # moteur déjà là → rien à faire (l'arrêt/l'attache sont gérés au hook d'édition)
+                continue    ***REMOVED*** moteur déjà là → rien à faire (l'arrêt/l'attache sont gérés au hook d'édition)
             if not (node.get("host") or "").strip():
-                continue    # nœud sans hôte → on ne peut rien provisionner
-            # Garde de joignabilité SILENCIEUSE (verify_image ne pose aucune alerte). Nœud down au boot
-            # → alerte 'warning' différée, PAS le 'error' de creer_container_docker → pas de spam.
+                continue    ***REMOVED*** nœud sans hôte → on ne peut rien provisionner
+            ***REMOVED*** Garde de joignabilité SILENCIEUSE (verify_image ne pose aucune alerte). Nœud down au boot
+            ***REMOVED*** → alerte 'warning' différée, PAS le 'error' de creer_container_docker → pas de spam.
             ok, msg = verify_image(node)
             if not ok:
                 db_add_alert("alert.docker.provision_differe", "warning",
@@ -1200,20 +1200,20 @@ def _mtl_reserves(node):
     return port_reserve, total_rx, total_tx
 
 
-# Plafond de files TX du mécanisme RL sur E810 dpdk (patch libmtl « arbre TM ramifié », 0.39.6 :
-# le mur des 8 est levé, cf. docs/chantiers/DPDK_NARROW.md § Capacité RL). N'est un plafond QUE sous narrow (RL) —
-# tsc/tsc_narrow ne construisent aucune hiérarchie TM → jamais bornés. Miroir de controller.py
-# (RL_TX_QUEUES_CAP, env même nom) : sert au garde-fou contextuel côté orchestrateur.
+***REMOVED*** Plafond de files TX du mécanisme RL sur E810 dpdk (patch libmtl « arbre TM ramifié », 0.39.6 :
+***REMOVED*** le mur des 8 est levé, cf. docs/chantiers/DPDK_NARROW.md § Capacité RL). N'est un plafond QUE sous narrow (RL) —
+***REMOVED*** tsc/tsc_narrow ne construisent aucune hiérarchie TM → jamais bornés. Miroir de controller.py
+***REMOVED*** (RL_TX_QUEUES_CAP, env même nom) : sert au garde-fou contextuel côté orchestrateur.
 RL_TX_QUEUES_CAP = 63
 
-# SR-IOV (chantier narrow, cf. docs/chantiers/SRIOV_IMPL.md + banc 2026-07-08) : une VF iavf plafonne son arbre RL à
-# 8 leaves PAR VF (« too many TCs » — 1 TC/VF, le multi-TC ADQ n'est pas négocié par le PMD DPDK).
-# Donc par VF-port : budget de 8 files, dont 1 réservée système → 7 sessions TX narrow utilisables.
-# ⚠ BORNE DURE : sur-demander fait échouer TOUT mtl_init (fatal, pas de dégradation) → on plafonne
-# total_q ET le cap RL à ces valeurs quand pmd=sriov. Scaling = MULTI-VF (8 leaves/port, scheduler
-# carte prouvé ≥128 leaves = 16 VF ; le vrai mur est hugepages/cœurs), PAS le VF multi-TC.
-SRIOV_VF_QUEUES  = 8     # leaves RL par VF iavf (budget de files/port)
-SRIOV_VF_TX_CAP  = 7     # sessions TX narrow utilisables/VF (8 − 1 file système)
+***REMOVED*** SR-IOV (chantier narrow, cf. docs/chantiers/SRIOV_IMPL.md + banc 2026-07-08) : une VF iavf plafonne son arbre RL à
+***REMOVED*** 8 leaves PAR VF (« too many TCs » — 1 TC/VF, le multi-TC ADQ n'est pas négocié par le PMD DPDK).
+***REMOVED*** Donc par VF-port : budget de 8 files, dont 1 réservée système → 7 sessions TX narrow utilisables.
+***REMOVED*** ⚠ BORNE DURE : sur-demander fait échouer TOUT mtl_init (fatal, pas de dégradation) → on plafonne
+***REMOVED*** total_q ET le cap RL à ces valeurs quand pmd=sriov. Scaling = MULTI-VF (8 leaves/port, scheduler
+***REMOVED*** carte prouvé ≥128 leaves = 16 VF ; le vrai mur est hugepages/cœurs), PAS le VF multi-TC.
+SRIOV_VF_QUEUES  = 8     ***REMOVED*** leaves RL par VF iavf (budget de files/port)
+SRIOV_VF_TX_CAP  = 7     ***REMOVED*** sessions TX narrow utilisables/VF (8 − 1 file système)
 
 
 def _node_rl_tx_cap(node):
@@ -1234,8 +1234,8 @@ def _node_rl_tx_cap(node):
                 model = r["model"].strip()
                 break
         if model:
-            # 1) profil MESURÉ (prime sur la biblio) : match par sous-chaîne de modèle (les deux
-            #    viennent de la même détection → cohérents). Le plus spécifique gagne (modèle le + long).
+            ***REMOVED*** 1) profil MESURÉ (prime sur la biblio) : match par sous-chaîne de modèle (les deux
+            ***REMOVED***    viennent de la même détection → cohérents). Le plus spécifique gagne (modèle le + long).
             ml = model.lower()
             best = None
             for p in db_all_nic_profiles():
@@ -1247,7 +1247,7 @@ def _node_rl_tx_cap(node):
                         best = p
             if best:
                 return int(best["rl_tx_cap"])
-            # 2) bibliothèque statique
+            ***REMOVED*** 2) bibliothèque statique
             return _mtl.nic_rl_tx_cap(model)
     except Exception:
         pass
@@ -1274,11 +1274,11 @@ def _derive_pacing(node):
         return None, []
     if not rows:
         return None, []
-    # Le pacing n'a d'effet qu'en DPDK ('dpdk' PF-vfio OU 'sriov' = VF DPDK) ; sur af_xdp pur on
-    # n'émet rien (iso-comportement). 'sriov' → le moteur tourne sur la VF DPDK (RL narrow possible).
+    ***REMOVED*** Le pacing n'a d'effet qu'en DPDK ('dpdk' PF-vfio OU 'sriov' = VF DPDK) ; sur af_xdp pur on
+    ***REMOVED*** n'émet rien (iso-comportement). 'sriov' → le moteur tourne sur la VF DPDK (RL narrow possible).
     if not any((r.get("pmd") or "").strip().lower() in ("dpdk", "sriov") for r in rows):
         return None, []
-    # Profil effectif par iface : valeur explicite, sinon DÉFAUT narrow.
+    ***REMOVED*** Profil effectif par iface : valeur explicite, sinon DÉFAUT narrow.
     profs = [(str(r.get("output_profile") or "").strip().lower() or "narrow") for r in rows]
     profs = [p if p in ("narrow", "narrow_linear", "wide") else "narrow" for p in profs]
     return ("tsc" if all(p == "wide" for p in profs) else "rl"), profs
@@ -1362,7 +1362,7 @@ def sch_quota_mbs(node):
     return max(500, int(settings.get("mtl_sch_quota_mbs") or 2500))
 
 
-_lcore_clamp_seen = {}   # node_id → dernière troncature de lcores signalée (anti-répétition)
+_lcore_clamp_seen = {}   ***REMOVED*** node_id → dernière troncature de lcores signalée (anti-répétition)
 
 
 def _auto_lcores(node, params):
@@ -1386,42 +1386,42 @@ def _auto_lcores(node, params):
     import math
     from .routes.mtl_engine import _mtl_per_source_sessions
     quota = sch_quota_mbs(node)
-    # Sessions RÉELLES (1 vidéo + N audio + M ANC par slot) : un slot consomme
-    # `_mtl_per_source_sessions` sessions. Les auxiliaires (audio ~10 Mb/s, ANC ~1 Mb/s) pèsent
-    # peu en débit mais existent dans la comptabilité MTL → forfait AUX_MBS chacune.
+    ***REMOVED*** Sessions RÉELLES (1 vidéo + N audio + M ANC par slot) : un slot consomme
+    ***REMOVED*** `_mtl_per_source_sessions` sessions. Les auxiliaires (audio ~10 Mb/s, ANC ~1 Mb/s) pèsent
+    ***REMOVED*** peu en débit mais existent dans la comptabilité MTL → forfait AUX_MBS chacune.
     AUX_MBS = 15
     per_rx = _mtl_per_source_sessions(params, "rx")
     per_tx = _mtl_per_source_sessions(params, "tx")
-    # Capacité À COUVRIR = max(usage actif, réserve de files réglée par interface). Sinon, en réservant
-    # des files pour une capacité supérieure à active_rx_count, on saturerait les LCORES (no available
-    # lcore) avant les files lors d'un ajout à chaud. Les lcores suivent donc la capacité réservée.
+    ***REMOVED*** Capacité À COUVRIR = max(usage actif, réserve de files réglée par interface). Sinon, en réservant
+    ***REMOVED*** des files pour une capacité supérieure à active_rx_count, on saturerait les LCORES (no available
+    ***REMOVED*** lcore) avant les files lors d'un ajout à chaud. Les lcores suivent donc la capacité réservée.
     _, _res_rx, _res_tx = _mtl_reserves(node)
     cap_rx = max(_pcount(params, "active_rx_count", 6), _res_rx)
     cap_tx = max(_pcount(params, "active_tx_count", 6), _res_tx)
-    n_aux = cap_rx * max(0, per_rx - 1) + cap_tx * max(0, per_tx - 1)   # audio/ANC en sus
-    # Débit vidéo = SOMME des débits RÉELS slot par slot (1 session vidéo par slot), PAS
-    # `n_slots × format_global` : le global ne décrit aucun slot sur un moteur mixte et bascule au
-    # gré des abonnements (cf. _slot_video_formats).
+    n_aux = cap_rx * max(0, per_rx - 1) + cap_tx * max(0, per_tx - 1)   ***REMOVED*** audio/ANC en sus
+    ***REMOVED*** Débit vidéo = SOMME des débits RÉELS slot par slot (1 session vidéo par slot), PAS
+    ***REMOVED*** `n_slots × format_global` : le global ne décrit aucun slot sur un moteur mixte et bascule au
+    ***REMOVED*** gré des abonnements (cf. _slot_video_formats).
     _fx, _ft = _slot_video_formats(params, cap_rx, cap_tx)
     total_mbs = sum(_est_video_mbs(f) for f in _fx + _ft) + n_aux * AUX_MBS
     n_workers = max(1, math.ceil(total_mbs / quota))
-    base = max(1, int(settings.get("mtl_lcore_base") or 1))   # cœur de départ (jamais 0 = housekeeping noyau)
-    cap  = max(2, int(settings.get("mtl_lcore_max")  or 16))  # plafond de sécurité (cœurs réservables MTL)
-    # +1 lcore pour le CNI : depuis MTL_FLAG_DEDICATED_SYS_LCORE (mtl_rx.c), le scheduler système
-    # (CNI/PTP/IGMP/ARP) ne PARTAGE plus son lcore avec la 1ʳᵉ session RX vidéo — il en consomme un
-    # à lui seul. Sans ce +1, la dernière RX échouerait à « no available lcore » (le levier
-    # MTL_FLAG_RX_SEPARATE_VIDEO_LCORE demande déjà 1 scheduler par RX vidéo). Cf. banc 2026-07-14 :
-    # sch0 = CNI + RX vidéo #0 → 3-6 trames incomplètes / 10 s ; les RX seules → 50,000 fps, 0 perte.
-    besoin = 1 + n_workers + 1 + 1                            # CNI + manager + schedulers + 1 marge
+    base = max(1, int(settings.get("mtl_lcore_base") or 1))   ***REMOVED*** cœur de départ (jamais 0 = housekeeping noyau)
+    cap  = max(2, int(settings.get("mtl_lcore_max")  or 16))  ***REMOVED*** plafond de sécurité (cœurs réservables MTL)
+    ***REMOVED*** +1 lcore pour le CNI : depuis MTL_FLAG_DEDICATED_SYS_LCORE (mtl_rx.c), le scheduler système
+    ***REMOVED*** (CNI/PTP/IGMP/ARP) ne PARTAGE plus son lcore avec la 1ʳᵉ session RX vidéo — il en consomme un
+    ***REMOVED*** à lui seul. Sans ce +1, la dernière RX échouerait à « no available lcore » (le levier
+    ***REMOVED*** MTL_FLAG_RX_SEPARATE_VIDEO_LCORE demande déjà 1 scheduler par RX vidéo). Cf. banc 2026-07-14 :
+    ***REMOVED*** sch0 = CNI + RX vidéo ***REMOVED***0 → 3-6 trames incomplètes / 10 s ; les RX seules → 50,000 fps, 0 perte.
+    besoin = 1 + n_workers + 1 + 1                            ***REMOVED*** CNI + manager + schedulers + 1 marge
     n_lcores = min(cap, besoin)
-    # ★ TRONCATURE JAMAIS SILENCIEUSE (incident dl360-1, 2026-07-27 23:55). Deux modèles de 32 sorties
-    # vidéo, un par carte, passent CHACUN la validation de leur port (32 files sur 63, 66 Gb/s sur
-    # 100) : le budget est PAR PORT et il était respecté. Mais leur somme — 64 sessions vidéo sur le
-    # nœud — demande ~70 schedulers, et `min(cap, …)` ramenait ça à 16 SANS UN MOT. Le moteur partait
-    # structurellement incapable de servir : 204 échecs de création dans son log, les 6 RX mortes,
-    # tableau de bord au vert jusqu'à ce qu'on regarde les flux. Le plafond reste (c'est un garde-fou
-    # de cœurs réels), mais il s'ANNONCE — le déploiement continue, l'exploitant sait pourquoi son
-    # moteur ne servira pas tout ce qu'il a déclaré.
+    ***REMOVED*** ★ TRONCATURE JAMAIS SILENCIEUSE (incident dl360-1, 2026-07-27 23:55). Deux modèles de 32 sorties
+    ***REMOVED*** vidéo, un par carte, passent CHACUN la validation de leur port (32 files sur 63, 66 Gb/s sur
+    ***REMOVED*** 100) : le budget est PAR PORT et il était respecté. Mais leur somme — 64 sessions vidéo sur le
+    ***REMOVED*** nœud — demande ~70 schedulers, et `min(cap, …)` ramenait ça à 16 SANS UN MOT. Le moteur partait
+    ***REMOVED*** structurellement incapable de servir : 204 échecs de création dans son log, les 6 RX mortes,
+    ***REMOVED*** tableau de bord au vert jusqu'à ce qu'on regarde les flux. Le plafond reste (c'est un garde-fou
+    ***REMOVED*** de cœurs réels), mais il s'ANNONCE — le déploiement continue, l'exploitant sait pourquoi son
+    ***REMOVED*** moteur ne servira pas tout ce qu'il a déclaré.
     if besoin > n_lcores:
         _sig = (node.get("id"), besoin, n_lcores)
         if _lcore_clamp_seen.get(node.get("id")) != _sig:
@@ -1491,7 +1491,7 @@ def _tls_inject(vmid, name):
     def _w(fname, data, mode):
         b64 = base64.b64encode(data).decode("ascii")
         p = shlex.quote(f"{d}/{fname}")
-        # base64 -d sur l'hôte (évite tout souci de quoting du PEM multi-ligne)
+        ***REMOVED*** base64 -d sur l'hôte (évite tout souci de quoting du PEM multi-ligne)
         return (f"printf %s {shlex.quote(b64)} | base64 -d > {p}; chmod {mode} {p}; ")
     prefix = (f"rm -rf {qd}; mkdir -p {qd}; chmod 700 {qd}; "
               + _w("cert.pem", cert_pem, "644")
@@ -1504,18 +1504,18 @@ def _build_run_cmd(vmid, node, params):
     """Construit la ligne `docker run` du contrôleur. mcast/port/pt NE sont PAS passés ici :
     ils arrivent par NMOS IS-05 → :8081/nmos/subscribe → SDP."""
     _df = _default_video_format()
-    image    = node.get("image") or _resolve_mtl_image(node)   # tolère un nœud ré-enrôlé (image=NULL)
+    image    = node.get("image") or _resolve_mtl_image(node)   ***REMOVED*** tolère un nœud ré-enrôlé (image=NULL)
     name     = _name(vmid, params.get("hostname"))
     mxl      = node.get("mxl_mount") or "/dev/shm"
-    # NIC média du nœud (primaire en tête). SOURCE DE VÉRITÉ UNIQUE de IFACE/SIP scalaires ET de
-    # IFACES/SIPS/PORT_PMDS/PORT_BDFS multi-port → tout reste aligné sur la MÊME liste.
+    ***REMOVED*** NIC média du nœud (primaire en tête). SOURCE DE VÉRITÉ UNIQUE de IFACE/SIP scalaires ET de
+    ***REMOVED*** IFACES/SIPS/PORT_PMDS/PORT_BDFS multi-port → tout reste aligné sur la MÊME liste.
     _mifs    = _media_ifaces(node)
-    # ── Sonde ST 2110 (probe_2110) : profil de MESURE, gaté sur probe_mode (un moteur 2110_io
-    # normal N'a JAMAIS cette clé → sa ligne `docker run` reste OCTET-IDENTIQUE). La sonde reçoit
-    # sur SA PROPRE PF vfio DÉDIÉE (jamais celle du moteur) → on RESTREINT _mifs au seul port choisi
-    # (params['probe_iface'], un ifname de node_interfaces). Le garde-fou « pas la PF du moteur » est
-    # appliqué à la sélection (routes/probe.py) ; ici on refuse juste un probe_iface absent/inconnu
-    # (lancer la sonde sur toutes les NIC média serait un vol de la ressource du moteur). #17
+    ***REMOVED*** ── Sonde ST 2110 (probe_2110) : profil de MESURE, gaté sur probe_mode (un moteur 2110_io
+    ***REMOVED*** normal N'a JAMAIS cette clé → sa ligne `docker run` reste OCTET-IDENTIQUE). La sonde reçoit
+    ***REMOVED*** sur SA PROPRE PF vfio DÉDIÉE (jamais celle du moteur) → on RESTREINT _mifs au seul port choisi
+    ***REMOVED*** (params['probe_iface'], un ifname de node_interfaces). Le garde-fou « pas la PF du moteur » est
+    ***REMOVED*** appliqué à la sélection (routes/probe.py) ; ici on refuse juste un probe_iface absent/inconnu
+    ***REMOVED*** (lancer la sonde sur toutes les NIC média serait un vol de la ressource du moteur). ***REMOVED***17
     if params.get("probe_mode"):
         _pif = str(params.get("probe_iface") or "").strip()
         _match = [e for e in _mifs if e.get("ifname") == _pif] if _pif else []
@@ -1525,45 +1525,45 @@ def _build_run_cmd(vmid, node, params):
                 + ("(probe_iface vide)" if not _pif
                    else "(« {} » n'est pas une NIC media2110 déclarée sur ce nœud)".format(_pif))
                 + " — choisir une PF vfio libre distincte du moteur.")
-        _mifs = _match   # la sonde ne voit QUE sa PF dédiée
-    # IFACE scalaire = 1ʳᵉ NIC média DÉCLARÉE (node_interfaces), PAS node.mtl_iface : en mono-port
-    # DPDK la NIC bindée par BDF peut ≠ la primaire du nœud. _media_ifaces retombe sur
-    # (mtl_iface, media_ip) si aucune media2110 déclarée → strictement iso pour un nœud af_xdp bien
-    # configuré (primaire == unique media2110, ou repli mono-NIC).
+        _mifs = _match   ***REMOVED*** la sonde ne voit QUE sa PF dédiée
+    ***REMOVED*** IFACE scalaire = 1ʳᵉ NIC média DÉCLARÉE (node_interfaces), PAS node.mtl_iface : en mono-port
+    ***REMOVED*** DPDK la NIC bindée par BDF peut ≠ la primaire du nœud. _media_ifaces retombe sur
+    ***REMOVED*** (mtl_iface, media_ip) si aucune media2110 déclarée → strictement iso pour un nœud af_xdp bien
+    ***REMOVED*** configuré (primaire == unique media2110, ou repli mono-NIC).
     iface    = (_mifs[0]["ifname"] if _mifs else node.get("mtl_iface")) or "ens1f0np0"
     lcores   = _auto_lcores(node, params)
-    ring     = int(settings.get("shm_video_ring") or 8)   # suit le réglage (borné [2:8] par le formulaire)
-    # Niveau de log du moteur libmtl (Réglages → MXL). "warning" = silencieux (défaut) ; ≥ INFO fait
-    # sortir le dump de stats périodique de libmtl, volumineux, qui rend les logs illisibles. On
-    # TRACE le niveau effectif dans params.mtl_log_level (persisté par deploy_docker →
-    # db_update_deploy_config) pour qu'un voyant puisse refléter l'état RÉEL des moteurs qui
-    # tournent (pas seulement le réglage courant, qui ne s'applique qu'au prochain déploiement).
+    ring     = int(settings.get("shm_video_ring") or 8)   ***REMOVED*** suit le réglage (borné [2:8] par le formulaire)
+    ***REMOVED*** Niveau de log du moteur libmtl (Réglages → MXL). "warning" = silencieux (défaut) ; ≥ INFO fait
+    ***REMOVED*** sortir le dump de stats périodique de libmtl, volumineux, qui rend les logs illisibles. On
+    ***REMOVED*** TRACE le niveau effectif dans params.mtl_log_level (persisté par deploy_docker →
+    ***REMOVED*** db_update_deploy_config) pour qu'un voyant puisse refléter l'état RÉEL des moteurs qui
+    ***REMOVED*** tournent (pas seulement le réglage courant, qui ne s'applique qu'au prochain déploiement).
     _mtl_node_id = (node or {}).get("id")
     _mtl_log_level = str(settings.setting_for("mtl_log_level", _mtl_node_id) or "warning").strip().lower()
     params["mtl_log_level"] = _mtl_log_level
-    # Période du dump de stats libmtl (secondes), lue par mtl_rx.c:mtl_dump_period_env().
-    #
-    # ⚠ « Bobi ne consomme PAS ce dump » ÉTAIT FAUX, et l'a payé cher. Dans libmtl, la fonction qui
-    # imprime les stats PTP se termine par `ptp_stat_clear(ptp)` : le dump N'EST PAS QU'UN LOG,
-    # c'est aussi le SEUL endroit qui remet à zéro la fenêtre de statistiques. La repousser à ~18 h
-    # « pour ne pas collecter inutilement » gelait donc deux mesures que le produit PUBLIE :
-    #   · `path_delay_ns` = stat_path_delay_sum / stat_path_delay_cnt → moyenne cumulée sur toute la
-    #     fenêtre ; après quelques minutes elle ne bouge plus (mesuré : 184 ns constant sur 85
-    #     relevés consécutifs à 1 Hz, σ = 0). Le graphe « Mean path delay » était plat PAR
-    #     CONSTRUCTION et ne pouvait signaler aucun changement de transit.
-    #   · `raw_delta_ns` = stat_delta_max → le PIRE écart de la fenêtre, donc un pic de convergence
-    #     du démarrage gravé pour 18 h (mesuré : 628 004 ns constant, affiché « Δ 628.00 µs » comme
-    #     s'il décrivait le présent, alors que le régime est ~1,3 µs).
-    # On garde donc TOUJOURS la période par défaut de la lib : c'est `MTL_LOG_LEVEL=warning` qui
-    # supprime la SORTIE (ces lignes sont des `notice()`), pas la période. Le coût résiduel est un
-    # parcours de stats toutes les quelques secondes, sans une ligne de journal.
+    ***REMOVED*** Période du dump de stats libmtl (secondes), lue par mtl_rx.c:mtl_dump_period_env().
+    ***REMOVED***
+    ***REMOVED*** ⚠ « Bobi ne consomme PAS ce dump » ÉTAIT FAUX, et l'a payé cher. Dans libmtl, la fonction qui
+    ***REMOVED*** imprime les stats PTP se termine par `ptp_stat_clear(ptp)` : le dump N'EST PAS QU'UN LOG,
+    ***REMOVED*** c'est aussi le SEUL endroit qui remet à zéro la fenêtre de statistiques. La repousser à ~18 h
+    ***REMOVED*** « pour ne pas collecter inutilement » gelait donc deux mesures que le produit PUBLIE :
+    ***REMOVED***   · `path_delay_ns` = stat_path_delay_sum / stat_path_delay_cnt → moyenne cumulée sur toute la
+    ***REMOVED***     fenêtre ; après quelques minutes elle ne bouge plus (mesuré : 184 ns constant sur 85
+    ***REMOVED***     relevés consécutifs à 1 Hz, σ = 0). Le graphe « Mean path delay » était plat PAR
+    ***REMOVED***     CONSTRUCTION et ne pouvait signaler aucun changement de transit.
+    ***REMOVED***   · `raw_delta_ns` = stat_delta_max → le PIRE écart de la fenêtre, donc un pic de convergence
+    ***REMOVED***     du démarrage gravé pour 18 h (mesuré : 628 004 ns constant, affiché « Δ 628.00 µs » comme
+    ***REMOVED***     s'il décrivait le présent, alors que le régime est ~1,3 µs).
+    ***REMOVED*** On garde donc TOUJOURS la période par défaut de la lib : c'est `MTL_LOG_LEVEL=warning` qui
+    ***REMOVED*** supprime la SORTIE (ces lignes sont des `notice()`), pas la période. Le coût résiduel est un
+    ***REMOVED*** parcours de stats toutes les quelques secondes, sans une ligne de journal.
     _mtl_dump_period = "0"
     env = {
         "HOSTNAME_RX": _hostname_moteur(vmid, params),
-        "VIDEO_COUNT": str(int(params.get("video_count") or 1)),   # slots RX (le contrôleur lit aussi RX_COUNT)
-        "AUDIO_COUNT": str(int(params.get("audio_count") or 0)),   # slots RX audio (st30) ; 0 = pas d'audio
-        "ANC_COUNT":   str(int(params.get("anc_count") or 0)),     # slots RX ANC (st40) ; 0 = pas d'ANC
-        "TX_COUNT":    str(int(params.get("tx_count") or 0)),      # slots TX (émetteurs) ; 0 = receiver pur
+        "VIDEO_COUNT": str(int(params.get("video_count") or 1)),   ***REMOVED*** slots RX (le contrôleur lit aussi RX_COUNT)
+        "AUDIO_COUNT": str(int(params.get("audio_count") or 0)),   ***REMOVED*** slots RX audio (st30) ; 0 = pas d'audio
+        "ANC_COUNT":   str(int(params.get("anc_count") or 0)),     ***REMOVED*** slots RX ANC (st40) ; 0 = pas d'ANC
+        "TX_COUNT":    str(int(params.get("tx_count") or 0)),      ***REMOVED*** slots TX (émetteurs) ; 0 = receiver pur
         "IFACE":       iface,
         "LCORES":      lcores,
         "RING":        str(ring),
@@ -1572,59 +1572,59 @@ def _build_run_cmd(vmid, node, params):
         "FPS":         str(params.get("fps") or _df["fps"]),
         "CHROMA":      str(params.get("chroma") or _df["chroma"]),
         "BIT_DEPTH":   str(int(params.get("bit_depth") or _df["bit_depth"])),
-        # Ptime audio (ST 2110-30) par DÉFAUT, ms — repli quand le SDP n'a pas d'a=ptime (le SDP
-        # prime, auto par entrée). Réglable par installation (Réglages → MXL).
+        ***REMOVED*** Ptime audio (ST 2110-30) par DÉFAUT, ms — repli quand le SDP n'a pas d'a=ptime (le SDP
+        ***REMOVED*** prime, auto par entrée). Réglable par installation (Réglages → MXL).
         "AUDIO_PTIME":      str(settings.get("mtl_audio_ptime") or "1"),
         "ACTIVE_RX_COUNT": str(_pcount(params, "active_rx_count", 6)),
         "ACTIVE_TX_COUNT": str(_pcount(params, "active_tx_count", 6)),
-        # Quota Mb/s par scheduler (lcore) libmtl — LA manette de calibrage CPU (remplissage des
-        # schedulers, dimensionnement _auto_lcores et garde-fou d'admission en dérivent tous).
-        # Réglable par installation (Réglages → MXL).
+        ***REMOVED*** Quota Mb/s par scheduler (lcore) libmtl — LA manette de calibrage CPU (remplissage des
+        ***REMOVED*** schedulers, dimensionnement _auto_lcores et garde-fou d'admission en dérivent tous).
+        ***REMOVED*** Réglable par installation (Réglages → MXL).
         "MTL_SCH_QUOTA_MBS": str(int(settings.get("mtl_sch_quota_mbs") or 2500)),
-        # Niveau de log libmtl (Réglages → MXL). Défaut "warning" = supprime le dump de stats
-        # volumineux. Lu par mtl_rx.c (valeur inconnue → warning).
+        ***REMOVED*** Niveau de log libmtl (Réglages → MXL). Défaut "warning" = supprime le dump de stats
+        ***REMOVED*** volumineux. Lu par mtl_rx.c (valeur inconnue → warning).
         "MTL_LOG_LEVEL":     _mtl_log_level,
-        # Période du dump de stats libmtl : neutralisé en silencieux, défaut lib en diagnostic.
-        # Cf. commentaire au calcul de _mtl_dump_period ci-dessus.
+        ***REMOVED*** Période du dump de stats libmtl : neutralisé en silencieux, défaut lib en diagnostic.
+        ***REMOVED*** Cf. commentaire au calcul de _mtl_dump_period ci-dessus.
         "MTL_STAT_DUMP_PERIOD": _mtl_dump_period,
-        # a=source-filter (SSM) dans les SDP TX — désactivable sur fabric L2 snooping pur
-        # (réglage du service NMOS : Réglages → Protocoles → NMOS).
+        ***REMOVED*** a=source-filter (SSM) dans les SDP TX — désactivable sur fabric L2 snooping pur
+        ***REMOVED*** (réglage du service NMOS : Réglages → Protocoles → NMOS).
         "SDP_SOURCE_FILTER": "1" if settings.get("nmos_sdp_source_filter", True) else "0",
     }
-    # ── Sonde : active le parser de conformité 2110-21 déjà présent dans mtl_rx (env-gaté
-    # TIMING_PARSER=1, défaut OFF côté image, cf. docs/reference/PROBE_2110.md § « Cœur posé »). Le contrôleur
-    # bobi-mtl lance alors chaque session RX avec MTL_FLAG_ENABLE_HW_TIMESTAMP +
-    # ST20P_RX_FLAG_TIMING_PARSER_META et publie le verdict (compliant/cinst/vrx/vrx_span/fpt/
-    # latency) sur :8080. N'est émis QUE pour la sonde (2110_io reste inchangé). #17
+    ***REMOVED*** ── Sonde : active le parser de conformité 2110-21 déjà présent dans mtl_rx (env-gaté
+    ***REMOVED*** TIMING_PARSER=1, défaut OFF côté image, cf. docs/reference/PROBE_2110.md § « Cœur posé »). Le contrôleur
+    ***REMOVED*** bobi-mtl lance alors chaque session RX avec MTL_FLAG_ENABLE_HW_TIMESTAMP +
+    ***REMOVED*** ST20P_RX_FLAG_TIMING_PARSER_META et publie le verdict (compliant/cinst/vrx/vrx_span/fpt/
+    ***REMOVED*** latency) sur :8080. N'est émis QUE pour la sonde (2110_io reste inchangé). ***REMOVED***17
     if params.get("probe_mode") or params.get("timing_parser"):
         env["TIMING_PARSER"] = "1"
-    # ── Offset de ports contrôleur (--network host) : une sonde déployée sur le MÊME nœud qu'un
-    # moteur (banc loopback) doit écouter sur d'autres ports que les :8080-8082 du moteur. N'émis QUE
-    # si params.controller_port_base est posé (deploy_defaults de la sonde) → un moteur 2110_io normal
-    # n'a JAMAIS cette clé et garde une ligne `docker run` OCTET-IDENTIQUE. Lu côté orchestrateur par
-    # deploy.controller_port_base(vmid) pour cibler le bon port (métriques :base, agent :base+1). #17
+    ***REMOVED*** ── Offset de ports contrôleur (--network host) : une sonde déployée sur le MÊME nœud qu'un
+    ***REMOVED*** moteur (banc loopback) doit écouter sur d'autres ports que les :8080-8082 du moteur. N'émis QUE
+    ***REMOVED*** si params.controller_port_base est posé (deploy_defaults de la sonde) → un moteur 2110_io normal
+    ***REMOVED*** n'a JAMAIS cette clé et garde une ligne `docker run` OCTET-IDENTIQUE. Lu côté orchestrateur par
+    ***REMOVED*** deploy.controller_port_base(vmid) pour cibler le bon port (métriques :base, agent :base+1). ***REMOVED***17
     _cpb = params.get("controller_port_base")
     if _cpb:
         env["CONTROLLER_PORT_BASE"] = str(int(_cpb))
-    # Réserve de files PAR INTERFACE réglée par l'opérateur (node_interfaces.media2110). Le moteur
-    # l'utilise comme plancher de réserve par port → capacité « à chaud » prévisible sans ré-init.
-    # Absent → le moteur applique son plancher par défaut (rétro-compat 0.34.4).
+    ***REMOVED*** Réserve de files PAR INTERFACE réglée par l'opérateur (node_interfaces.media2110). Le moteur
+    ***REMOVED*** l'utilise comme plancher de réserve par port → capacité « à chaud » prévisible sans ré-init.
+    ***REMOVED*** Absent → le moteur applique son plancher par défaut (rétro-compat 0.34.4).
     _port_reserve, _, _ = _mtl_reserves(node)
     if _port_reserve:
         env["PORT_RESERVE"] = json.dumps(_port_reserve, separators=(",", ":"))
-    # sip explicite = IP de segment de la 1ʳᵉ NIC média DÉCLARÉE (MÊME source que IFACE ci-dessus et
-    # que SIPS[0] en multi-port) → SIP↔IFACE↔PORT_BDFS toujours cohérents. En PMD DPDK libmtl forge
-    # lui-même l'IGMP report depuis ce sip (le kernel ne fait plus le join) : il DOIT être l'IP réelle
-    # du port physique bindé, sinon le switch (IGMP snooping) ne forwarde jamais le mcast → rx=0
-    # (bug dl360-1 : sip=.99 de la NIC sœur ens1f0np0 poussé sur ens1f1np1/.229, masqué en af_xdp car
-    # le netdev kernel .229 faisait le join). En DPDK _detect_iface_ip est impossible (port en vfio) →
-    # l'IP DOIT venir de la DB. Repli media_ip_addr uniquement si aucune NIC média déclarée (mono-NIC).
+    ***REMOVED*** sip explicite = IP de segment de la 1ʳᵉ NIC média DÉCLARÉE (MÊME source que IFACE ci-dessus et
+    ***REMOVED*** que SIPS[0] en multi-port) → SIP↔IFACE↔PORT_BDFS toujours cohérents. En PMD DPDK libmtl forge
+    ***REMOVED*** lui-même l'IGMP report depuis ce sip (le kernel ne fait plus le join) : il DOIT être l'IP réelle
+    ***REMOVED*** du port physique bindé, sinon le switch (IGMP snooping) ne forwarde jamais le mcast → rx=0
+    ***REMOVED*** (bug dl360-1 : sip=.99 de la NIC sœur ens1f0np0 poussé sur ens1f1np1/.229, masqué en af_xdp car
+    ***REMOVED*** le netdev kernel .229 faisait le join). En DPDK _detect_iface_ip est impossible (port en vfio) →
+    ***REMOVED*** l'IP DOIT venir de la DB. Repli media_ip_addr uniquement si aucune NIC média déclarée (mono-NIC).
     _sip = (_mifs[0]["ip"] if _mifs else "") or media_ip_addr(node)
     if _sip:
         env["SIP"] = _sip
-    # Garde-fou DPDK : un port pmd=dpdk sans IP de segment (node_interfaces.ip_cidr) est en vfio →
-    # aucune auto-détection kernel possible ; pousser sip=vide/faux donne rx=0 SILENCIEUX. On refuse
-    # le déploiement avec une erreur claire plutôt que de lancer un moteur muet.
+    ***REMOVED*** Garde-fou DPDK : un port pmd=dpdk sans IP de segment (node_interfaces.ip_cidr) est en vfio →
+    ***REMOVED*** aucune auto-détection kernel possible ; pousser sip=vide/faux donne rx=0 SILENCIEUX. On refuse
+    ***REMOVED*** le déploiement avec une erreur claire plutôt que de lancer un moteur muet.
     _dpdk_no_ip = [e["ifname"] for e in _mifs
                    if (e.get("pmd") or "").strip() == "dpdk" and not (e.get("ip") or "").strip()]
     if _dpdk_no_ip:
@@ -1632,16 +1632,16 @@ def _build_run_cmd(vmid, node, params):
             "port(s) DPDK sans IP de segment (node_interfaces.ip_cidr) : "
             + ", ".join(_dpdk_no_ip)
             + " — l'IP média est obligatoire en PMD dpdk (port en vfio, pas d'auto-détection kernel)")
-    # Multi-NIC : déclarer TOUTES les NIC média 2110 (node_interfaces) au moteur multi-port. IFACE/SIP
-    # restent la 1ʳᵉ NIC. SOCLE : pas de map d'assignation par-slot (RX/TX_IFACE_MAP) → toutes les
-    # sessions tombent sur la NIC primaire (iso-comportement) ; l'UI d'assignation par-slot l'« allume ».
-    # N'émis QUE si ≥2 NIC média → un nœud mono-NIC est strictement inchangé (pas d'env IFACES/SIPS).
+    ***REMOVED*** Multi-NIC : déclarer TOUTES les NIC média 2110 (node_interfaces) au moteur multi-port. IFACE/SIP
+    ***REMOVED*** restent la 1ʳᵉ NIC. SOCLE : pas de map d'assignation par-slot (RX/TX_IFACE_MAP) → toutes les
+    ***REMOVED*** sessions tombent sur la NIC primaire (iso-comportement) ; l'UI d'assignation par-slot l'« allume ».
+    ***REMOVED*** N'émis QUE si ≥2 NIC média → un nœud mono-NIC est strictement inchangé (pas d'env IFACES/SIPS).
     _n_auto_ports = 1
-    # MASQUE + PASSERELLE PAR PORT → libmtl (mtl_init_params.netmask/gateway). Émis ENSEMBLE et
-    # SEULEMENT si au moins une passerelle est déclarée : sans passerelle, annoncer un masque
-    # changerait à lui seul la décision « sur le lien ou via le routeur » de libmtl, donc le
-    # comportement ARP d'un parc qui tourne. Rien de déclaré → aucune variable, iso-comportement.
-    # C'est le pendant DPDK de `ensure_media_routes` (qui, lui, ne peut rien pour un port en vfio).
+    ***REMOVED*** MASQUE + PASSERELLE PAR PORT → libmtl (mtl_init_params.netmask/gateway). Émis ENSEMBLE et
+    ***REMOVED*** SEULEMENT si au moins une passerelle est déclarée : sans passerelle, annoncer un masque
+    ***REMOVED*** changerait à lui seul la décision « sur le lien ou via le routeur » de libmtl, donc le
+    ***REMOVED*** comportement ARP d'un parc qui tourne. Rien de déclaré → aucune variable, iso-comportement.
+    ***REMOVED*** C'est le pendant DPDK de `ensure_media_routes` (qui, lui, ne peut rien pour un port en vfio).
     if any(e.get("gateway") for e in _mifs):
         def _mask_de(cidr):
             try:
@@ -1653,15 +1653,15 @@ def _build_run_cmd(vmid, node, params):
     if len(_mifs) > 1:
         env["IFACES"] = ",".join(e["ifname"] for e in _mifs)
         env["SIPS"]   = ",".join(e["ip"] for e in _mifs)
-        # Réseau de chaque port (regroupe les ports interchangeables) + réseau primaire (défaut de
-        # la répartition auto). Le contrôleur répartit les sessions non épinglées sur les ports du
-        # réseau primaire (modulo slot) ; un slot épinglé (RX_PINS/TX_PINS) court-circuite.
+        ***REMOVED*** Réseau de chaque port (regroupe les ports interchangeables) + réseau primaire (défaut de
+        ***REMOVED*** la répartition auto). Le contrôleur répartit les sessions non épinglées sur les ports du
+        ***REMOVED*** réseau primaire (modulo slot) ; un slot épinglé (RX_PINS/TX_PINS) court-circuite.
         env["PORT_NETS"]   = ",".join("" if e.get("network_id") is None else str(e["network_id"]) for e in _mifs)
         _prim_net = _primary_network_id(_mifs, node)
         if _prim_net is not None:
             env["PRIMARY_NET"] = str(_prim_net)
-        # Épinglages persistés (survivent au redéploiement) : {slot: ifname}. Filtrés sur les ports
-        # réellement déclarés (un ifname disparu est ignoré → repli auto côté contrôleur).
+        ***REMOVED*** Épinglages persistés (survivent au redéploiement) : {slot: ifname}. Filtrés sur les ports
+        ***REMOVED*** réellement déclarés (un ifname disparu est ignoré → repli auto côté contrôleur).
         _decl = {e["ifname"] for e in _mifs}
         def _pins(key):
             raw = params.get(key) or {}
@@ -1672,72 +1672,72 @@ def _build_run_cmd(vmid, node, params):
             env["RX_PINS"] = json.dumps(_rxp)
         if _txp:
             env["TX_PINS"] = json.dumps(_txp)
-        # Appariement SMPTE 2022-7 (red/blue) : "ifA:ifB[,ifC:ifD…]" par pair_group. Le contrôleur
-        # en dérive _pair_iface(iface) → iface du leg redondant d'une session dual-leg. N'émis que
-        # si une paire complète (red+blue d'un même pair_group) est déclarée.
+        ***REMOVED*** Appariement SMPTE 2022-7 (red/blue) : "ifA:ifB[,ifC:ifD…]" par pair_group. Le contrôleur
+        ***REMOVED*** en dérive _pair_iface(iface) → iface du leg redondant d'une session dual-leg. N'émis que
+        ***REMOVED*** si une paire complète (red+blue d'un même pair_group) est déclarée.
         _pairs = [f"{a}:{b}" for a, b in media_port_pairs(node)]
         if _pairs:
             env["PORT_PAIRS"] = ",".join(_pairs)
-        # Nombre de ports du réseau primaire = diviseur du headroom (la charge est répartie dessus).
+        ***REMOVED*** Nombre de ports du réseau primaire = diviseur du headroom (la charge est répartie dessus).
         _n_auto_ports = max(1, sum(1 for e in _mifs if e.get("network_id") == _prim_net)) if _prim_net is not None \
                         else len(_mifs)
-    # ── PMD par port (chantier DPDK, opt-in par interface : node_interfaces.pmd='dpdk') ──
-    # PORT_PMDS/PORT_BDFS = CSV alignés sur IFACES (et sur IFACE seule en mono-NIC). N'émis QUE si
-    # ≥1 port dpdk + montages vfio/DDP associés → un nœud 100 % af_xdp garde une commande
-    # `docker run` OCTET-IDENTIQUE (règle anti-régression n°1 du chantier, cf. docs/chantiers/DPDK_NARROW.md).
+    ***REMOVED*** ── PMD par port (chantier DPDK, opt-in par interface : node_interfaces.pmd='dpdk') ──
+    ***REMOVED*** PORT_PMDS/PORT_BDFS = CSV alignés sur IFACES (et sur IFACE seule en mono-NIC). N'émis QUE si
+    ***REMOVED*** ≥1 port dpdk + montages vfio/DDP associés → un nœud 100 % af_xdp garde une commande
+    ***REMOVED*** `docker run` OCTET-IDENTIQUE (règle anti-régression n°1 du chantier, cf. docs/chantiers/DPDK_NARROW.md).
     dpdk_v = ""
     if any((e.get("pmd") or "").strip() == "dpdk" for e in _mifs):
         env["PORT_PMDS"] = ",".join(((e.get("pmd") or "").strip() or "af_xdp") for e in _mifs)
         env["PORT_BDFS"] = ",".join(((e.get("pci") or "").strip()
                                      if (e.get("pmd") or "").strip() == "dpdk" else "")
                                     for e in _mifs)
-        # CLASSE 2110-21 PAR PORT (#26) : profil d'émetteur (narrow|narrow_linear|wide) → cible VRX
-        # PAR SESSION TX (ops.transport_pacing, mtl_rx.c), distinct du MÉCANISME device MTL_PACING
-        # (_derive_pacing, narrow-wins). CSV aligné sur IFACES ; défaut narrow (le plus strict).
-        # Émis avec les autres clés dpdk — cf. le bloc « POURQUOI » juste après le `if` : hors dpdk
-        # la classe n'a AUCUN effet mesurable sur le fil, et l'émettre rendrait le SDP menteur.
+        ***REMOVED*** CLASSE 2110-21 PAR PORT (***REMOVED***26) : profil d'émetteur (narrow|narrow_linear|wide) → cible VRX
+        ***REMOVED*** PAR SESSION TX (ops.transport_pacing, mtl_rx.c), distinct du MÉCANISME device MTL_PACING
+        ***REMOVED*** (_derive_pacing, narrow-wins). CSV aligné sur IFACES ; défaut narrow (le plus strict).
+        ***REMOVED*** Émis avec les autres clés dpdk — cf. le bloc « POURQUOI » juste après le `if` : hors dpdk
+        ***REMOVED*** la classe n'a AUCUN effet mesurable sur le fil, et l'émettre rendrait le SDP menteur.
         env["PORT_PROFILES"] = ",".join(
             (lambda p: p if p in ("narrow", "narrow_linear", "wide") else "narrow")(
                 (e.get("output_profile") or "").strip().lower() or "narrow")
             for e in _mifs)
-        # vfio : accès aux groupes IOMMU du/des BDF bindés vfio-pci (host-prep = Phase 2) ;
-        # DDP : le PMD ice DPDK charge le package depuis le chemin firmware standard (sans lui,
-        # E810 en Safe Mode → ni RSS ni fdir). Le conteneur est déjà --privileged.
+        ***REMOVED*** vfio : accès aux groupes IOMMU du/des BDF bindés vfio-pci (host-prep = Phase 2) ;
+        ***REMOVED*** DDP : le PMD ice DPDK charge le package depuis le chemin firmware standard (sans lui,
+        ***REMOVED*** E810 en Safe Mode → ni RSS ni fdir). Le conteneur est déjà --privileged.
         dpdk_v = ("-v /dev/vfio:/dev/vfio "
                   "-v /lib/firmware/intel/ice/ddp/ice.pkg:/lib/firmware/intel/ice/ddp/ice.pkg:ro ")
-    # ── POURQUOI `PORT_PROFILES` N'EST ÉMIS QUE SUR UN NŒUD DPDK (mesuré, 2026-08-06) ──
-    # La clé vit dans le bloc dpdk ci-dessus. J'ai cru voir là un défaut — sur un nœud 100 % AF-XDP
-    # la classe est inatteignable, et `output_profile` (réglage PAR INTERFACE qui existe en base) y
-    # est donc ignoré — et je l'ai « corrigé » en l'émettant inconditionnellement (e559cd0).
-    # C'ÉTAIT UNE ERREUR, à deux niveaux, et la mesure a tranché les deux.
-    #
-    # 1. La classe ne change RIEN au fil en AF-XDP. Capture à Horace des arrivées de notre propre
-    #    flux, horodatées PAR LA CARTE (les horodatages logiciels sont inutilisables : `rx-usecs=50`
-    #    les fait coller par paquets) — trois classes, trois recréations du moteur, même sortie :
-    #        wide          66,5 % de paquets collés au débit ligne, salves moy 3,0 / max 16
-    #        narrow        66,7 %                                    salves moy 3,0 / max 14
-    #        narrow_linear 65,5 %                                    salves moy 2,9 / max 15
-    #    Pour mémoire, une source professionnelle du même site, même instrument, même chemin :
-    #        0,0 % de paquets collés, et exactement autant de silences que de retours de trame.
-    #    Le pacing logiciel émet par salves quoi qu'on lui demande ; seul le limiteur MATÉRIEL
-    #    (DPDK/vfio) espace les paquets. Le commentaire de `node_network.py` avait raison de qualifier
-    #    le sélecteur de profil de contrôle MUET hors dpdk.
-    #
-    # 2. Émettre la clé rend le SDP MENTEUR. Sans elle, `_port_profile_effectif` retombe sur `wide`
-    #    — la déclaration honnête d'un port pacé en logiciel. Avec elle et un `output_profile=narrow`
-    #    en base (le défaut, et la valeur réelle à Horace), le SDP repart en `TP=2110TPN` alors qu'on
-    #    émet en salves : exactement la promesse que le récepteur fait payer, et que la 0.80.0 avait
-    #    supprimée à raison.
-    #
-    # Donc : on laisse la clé dans le bloc dpdk. Le repli `wide` n'est pas un oubli, c'est le
-    # comportement correct. Rendre `output_profile` effectif hors dpdk exigerait d'abord une mécanique
-    # capable de tenir la classe — pas une variable d'environnement de plus.
-    # Pré-réservation de files AF-XDP (MTL_*_QUEUE_HEADROOM, lus par le contrôleur). Le daemon mtl_rx
-    # fixe son nombre de files à mtl_init (1ᵉ lancement, déclenché par la 1ʳᵉ activation NMOS → souvent
-    # UNE seule session). Sans headroom il naît dimensionné pour ~1 file → toute activation suivante
-    # échoue en `rx_create_failed` jusqu'à un relancement disruptif du daemon. On réserve donc d'emblée
-    # de quoi couvrir TOUTE la capacité active provisionnée (active_rx/tx × files par source, cf.
-    # _mtl_per_source_sessions), bornée par le budget de files de la NIC → activations à chaud, 0 restart.
+    ***REMOVED*** ── POURQUOI `PORT_PROFILES` N'EST ÉMIS QUE SUR UN NŒUD DPDK (mesuré, 2026-08-06) ──
+    ***REMOVED*** La clé vit dans le bloc dpdk ci-dessus. J'ai cru voir là un défaut — sur un nœud 100 % AF-XDP
+    ***REMOVED*** la classe est inatteignable, et `output_profile` (réglage PAR INTERFACE qui existe en base) y
+    ***REMOVED*** est donc ignoré — et je l'ai « corrigé » en l'émettant inconditionnellement (e559cd0).
+    ***REMOVED*** C'ÉTAIT UNE ERREUR, à deux niveaux, et la mesure a tranché les deux.
+    ***REMOVED***
+    ***REMOVED*** 1. La classe ne change RIEN au fil en AF-XDP. Capture à Horace des arrivées de notre propre
+    ***REMOVED***    flux, horodatées PAR LA CARTE (les horodatages logiciels sont inutilisables : `rx-usecs=50`
+    ***REMOVED***    les fait coller par paquets) — trois classes, trois recréations du moteur, même sortie :
+    ***REMOVED***        wide          66,5 % de paquets collés au débit ligne, salves moy 3,0 / max 16
+    ***REMOVED***        narrow        66,7 %                                    salves moy 3,0 / max 14
+    ***REMOVED***        narrow_linear 65,5 %                                    salves moy 2,9 / max 15
+    ***REMOVED***    Pour mémoire, une source professionnelle du même site, même instrument, même chemin :
+    ***REMOVED***        0,0 % de paquets collés, et exactement autant de silences que de retours de trame.
+    ***REMOVED***    Le pacing logiciel émet par salves quoi qu'on lui demande ; seul le limiteur MATÉRIEL
+    ***REMOVED***    (DPDK/vfio) espace les paquets. Le commentaire de `node_network.py` avait raison de qualifier
+    ***REMOVED***    le sélecteur de profil de contrôle MUET hors dpdk.
+    ***REMOVED***
+    ***REMOVED*** 2. Émettre la clé rend le SDP MENTEUR. Sans elle, `_port_profile_effectif` retombe sur `wide`
+    ***REMOVED***    — la déclaration honnête d'un port pacé en logiciel. Avec elle et un `output_profile=narrow`
+    ***REMOVED***    en base (le défaut, et la valeur réelle à Horace), le SDP repart en `TP=2110TPN` alors qu'on
+    ***REMOVED***    émet en salves : exactement la promesse que le récepteur fait payer, et que la 0.80.0 avait
+    ***REMOVED***    supprimée à raison.
+    ***REMOVED***
+    ***REMOVED*** Donc : on laisse la clé dans le bloc dpdk. Le repli `wide` n'est pas un oubli, c'est le
+    ***REMOVED*** comportement correct. Rendre `output_profile` effectif hors dpdk exigerait d'abord une mécanique
+    ***REMOVED*** capable de tenir la classe — pas une variable d'environnement de plus.
+    ***REMOVED*** Pré-réservation de files AF-XDP (MTL_*_QUEUE_HEADROOM, lus par le contrôleur). Le daemon mtl_rx
+    ***REMOVED*** fixe son nombre de files à mtl_init (1ᵉ lancement, déclenché par la 1ʳᵉ activation NMOS → souvent
+    ***REMOVED*** UNE seule session). Sans headroom il naît dimensionné pour ~1 file → toute activation suivante
+    ***REMOVED*** échoue en `rx_create_failed` jusqu'à un relancement disruptif du daemon. On réserve donc d'emblée
+    ***REMOVED*** de quoi couvrir TOUTE la capacité active provisionnée (active_rx/tx × files par source, cf.
+    ***REMOVED*** _mtl_per_source_sessions), bornée par le budget de files de la NIC → activations à chaud, 0 restart.
     try:
         from .routes.mtl_engine import _mtl_per_source_sessions
         from .routes.shared import _mtl_total_queues
@@ -1746,92 +1746,92 @@ def _build_run_cmd(vmid, node, params):
         active_rx = _pcount(params, "active_rx_count", 6)
         active_tx = _pcount(params, "active_tx_count", 6)
         total_q = _mtl_total_queues()
-        # SR-IOV : budget de files PAR VF-port = 8 (leaves RL iavf), pas les ~48 de la PF. Borne dure :
-        # au-delà, mtl_init échoue (fatal). Le headroom (clampé ci-dessous à total_q−2) tient alors
-        # dans les 8 leaves de chaque VF. Scaling = plus de VF-ports (÷ _n_auto_ports déjà géré).
+        ***REMOVED*** SR-IOV : budget de files PAR VF-port = 8 (leaves RL iavf), pas les ~48 de la PF. Borne dure :
+        ***REMOVED*** au-delà, mtl_init échoue (fatal). Le headroom (clampé ci-dessous à total_q−2) tient alors
+        ***REMOVED*** dans les 8 leaves de chaque VF. Scaling = plus de VF-ports (÷ _n_auto_ports déjà géré).
         if _sriov_node(node):
             total_q = min(total_q, SRIOV_VF_QUEUES)
-        hr_rx = max(0, active_rx * per_rx - 1)   # −1 : ≥1 session existe déjà au lancement
+        hr_rx = max(0, active_rx * per_rx - 1)   ***REMOVED*** −1 : ≥1 session existe déjà au lancement
         hr_tx = max(0, active_tx * per_tx)
-        # Multi-ports : la charge est répartie sur _n_auto_ports → le headroom devient PAR PORT
-        # (le contrôleur l'applique à chaque port auto). ÷ ports = pas de sur-réservation.
+        ***REMOVED*** Multi-ports : la charge est répartie sur _n_auto_ports → le headroom devient PAR PORT
+        ***REMOVED*** (le contrôleur l'applique à chaque port auto). ÷ ports = pas de sur-réservation.
         if _n_auto_ports > 1:
-            hr_rx = -(-hr_rx // _n_auto_ports)   # ceil-div (réserve suffisante par port)
+            hr_rx = -(-hr_rx // _n_auto_ports)   ***REMOVED*** ceil-div (réserve suffisante par port)
             hr_tx = -(-hr_tx // _n_auto_ports)
-        if hr_rx + hr_tx > total_q - 2:          # garde-fou budget NIC (anti-ENOMEM), par port
+        if hr_rx + hr_tx > total_q - 2:          ***REMOVED*** garde-fou budget NIC (anti-ENOMEM), par port
             scale = (total_q - 2) / float(hr_rx + hr_tx)
             hr_rx, hr_tx = int(hr_rx * scale), int(hr_tx * scale)
         env["MTL_RX_QUEUE_HEADROOM"] = str(hr_rx)
         env["MTL_TX_QUEUE_HEADROOM"] = str(hr_tx)
     except Exception as e:
         log.warning("MTL queue headroom non calculé (vmid %s): %s", vmid, e)
-    # ── Pacing TX 2110-21 (chantier narrow) : MTL_PACING dérivé du profil d'émetteur des NIC média
-    # (node_interfaces.output_profile), narrow-wins, DEVICE-LEVEL. N'émis QUE si ≥1 profil posé →
-    # sans profil, aucune clé → ligne `docker run` OCTET-IDENTIQUE (nœud actuel/af_xdp intact). Le
-    # contrôleur (0.39.7) applique pacing=rl → RL matériel (narrow) ; pacing=tsc → wide. #24
+    ***REMOVED*** ── Pacing TX 2110-21 (chantier narrow) : MTL_PACING dérivé du profil d'émetteur des NIC média
+    ***REMOVED*** (node_interfaces.output_profile), narrow-wins, DEVICE-LEVEL. N'émis QUE si ≥1 profil posé →
+    ***REMOVED*** sans profil, aucune clé → ligne `docker run` OCTET-IDENTIQUE (nœud actuel/af_xdp intact). Le
+    ***REMOVED*** contrôleur (0.39.7) applique pacing=rl → RL matériel (narrow) ; pacing=tsc → wide. ***REMOVED***24
     _pacing, _profs = _derive_pacing(node)
     if _pacing:
         env["MTL_PACING"] = _pacing
-        # Garde-fou contextuel : sous narrow (RL), le mécanisme RL est plafonné à RL_TX_QUEUES_CAP
-        # files TX/port (E810 0.39.6). active_tx est le total nœud → réparti sur les ports auto.
-        # Au-delà, le contrôleur borne (min tx_queues) ; le repli documenté est tsc_narrow (sans
-        # plafond, coût CPU). On avertit — l'admin voit pourquoi la capacité narrow est bornée.
+        ***REMOVED*** Garde-fou contextuel : sous narrow (RL), le mécanisme RL est plafonné à RL_TX_QUEUES_CAP
+        ***REMOVED*** files TX/port (E810 0.39.6). active_tx est le total nœud → réparti sur les ports auto.
+        ***REMOVED*** Au-delà, le contrôleur borne (min tx_queues) ; le repli documenté est tsc_narrow (sans
+        ***REMOVED*** plafond, coût CPU). On avertit — l'admin voit pourquoi la capacité narrow est bornée.
         if _pacing == "rl":
             _atx = _pcount(params, "active_tx_count", 6)
-            _atx_port = -(-_atx // max(1, _n_auto_ports))   # ceil-div : TX/port
-            # Cap RL PAR PORT depuis la BIBLIOTHÈQUE DE CARTES (mtl.nic_rl_tx_cap) : 7 sur une VF SR-IOV
-            # (borne DURE), sinon selon la carte média (E810-C=63 ; autres à qualifier). Le max effectif
-            # n'est pas lisible du PMD (cf. §7) → connu par modèle, pas découvert.
+            _atx_port = -(-_atx // max(1, _n_auto_ports))   ***REMOVED*** ceil-div : TX/port
+            ***REMOVED*** Cap RL PAR PORT depuis la BIBLIOTHÈQUE DE CARTES (mtl.nic_rl_tx_cap) : 7 sur une VF SR-IOV
+            ***REMOVED*** (borne DURE), sinon selon la carte média (E810-C=63 ; autres à qualifier). Le max effectif
+            ***REMOVED*** n'est pas lisible du PMD (cf. §7) → connu par modèle, pas découvert.
             _rl_cap = _node_rl_tx_cap(node)
-            # ÉMIS en env : le contrôleur borne DESSUS la réserve ET les sessions émises (sinon demande >
-            # réserve → boucle de relance). Card-agnostic via la biblio ; overridable (banc).
+            ***REMOVED*** ÉMIS en env : le contrôleur borne DESSUS la réserve ET les sessions émises (sinon demande >
+            ***REMOVED*** réserve → boucle de relance). Card-agnostic via la biblio ; overridable (banc).
             env["RL_TX_QUEUES_CAP"] = str(_rl_cap)
             if _atx_port > _rl_cap:
                 log.warning("2110_io vmid %s : profil narrow (RL) actif mais ~%d TX/port > cap RL %d "
                             "%s— capacité narrow bornée (ajouter des VF-ports pour scaler ; cf. "
                             "docs/chantiers/SRIOV_IMPL.md/DPDK_NARROW.md)", vmid, _atx_port, _rl_cap,
                             "(VF SR-IOV : sur-demander fait ÉCHOUER mtl_init) " if _sriov_node(node) else "")
-    # ── PTP carte-directe (socle narrow full-PF DPDK) : sur une PF PLEINE en DPDK il n'y a plus de
-    # netdev kernel → plus de ptp4l/phc2sys kernel → le moteur DOIT faire son propre PTP (esclave
-    # PTPv2 sur le port DPDK, lit+discipline le PHC). C'est la SEULE horloge disponible dans ce mode.
-    # MTL s'auto-configure (domaine + transport UDP/L2 + join 224.0.1.129 appris du GM). N'émis QUE
-    # si ≥1 port média pmd=dpdk → nœud AF_XDP (prod actuelle) et SR-IOV (PF kernel garde ptp4l)
-    # STRICTEMENT inchangés, ligne `docker run` octet-identique. Overridable par l'env ENGINE_PTP déjà
-    # posé (ex. banc). Validation runtime du lock (join/switch/sip) = hors deploy, cf. socle.
+    ***REMOVED*** ── PTP carte-directe (socle narrow full-PF DPDK) : sur une PF PLEINE en DPDK il n'y a plus de
+    ***REMOVED*** netdev kernel → plus de ptp4l/phc2sys kernel → le moteur DOIT faire son propre PTP (esclave
+    ***REMOVED*** PTPv2 sur le port DPDK, lit+discipline le PHC). C'est la SEULE horloge disponible dans ce mode.
+    ***REMOVED*** MTL s'auto-configure (domaine + transport UDP/L2 + join 224.0.1.129 appris du GM). N'émis QUE
+    ***REMOVED*** si ≥1 port média pmd=dpdk → nœud AF_XDP (prod actuelle) et SR-IOV (PF kernel garde ptp4l)
+    ***REMOVED*** STRICTEMENT inchangés, ligne `docker run` octet-identique. Overridable par l'env ENGINE_PTP déjà
+    ***REMOVED*** posé (ex. banc). Validation runtime du lock (join/switch/sip) = hors deploy, cf. socle.
     if _has_dpdk_pf(node) and "ENGINE_PTP" not in env:
         env["ENGINE_PTP"] = "libmtl"
-        # + ENGINE_PHC2SYS : libmtl discipline AUSSI CLOCK_REALTIME depuis le PHC (remplace phc2sys
-        # kernel). INDISPENSABLE : toute la flotte MXL lit CLOCK_REALTIME (bobimxl now_tai) pour
-        # indexer les grains (media_ts) → sans ça le moteur serait synchro mais pas le reste du nœud
-        # (cf. docs/chantiers/DPDK_NARROW.md §PTP : « le PTP interne libmtl ne discipline pas l'horloge nœud → ne
-        # convient pas seul » ; ENGINE_PHC2SYS lève précisément cette limite).
+        ***REMOVED*** + ENGINE_PHC2SYS : libmtl discipline AUSSI CLOCK_REALTIME depuis le PHC (remplace phc2sys
+        ***REMOVED*** kernel). INDISPENSABLE : toute la flotte MXL lit CLOCK_REALTIME (bobimxl now_tai) pour
+        ***REMOVED*** indexer les grains (media_ts) → sans ça le moteur serait synchro mais pas le reste du nœud
+        ***REMOVED*** (cf. docs/chantiers/DPDK_NARROW.md §PTP : « le PTP interne libmtl ne discipline pas l'horloge nœud → ne
+        ***REMOVED*** convient pas seul » ; ENGINE_PHC2SYS lève précisément cette limite).
         env.setdefault("ENGINE_PHC2SYS", "1")
-        # + NIC_PROMISCUOUS : sur E810/ice en DPDK, le PMD n'admet PAS le mcast rejoint via le seul
-        # filtre MAC (rte_eth_dev_mac_addr_add) → sans promiscuous, rx=0 au niveau port (aucun PTP, ni
-        # session). ABLATION MESURÉE (dl360-1 2026-07-09) : promiscuous INDISPENSABLE, en plus des patchs
-        # Router Alert (0.39.12) + rte_flow PTP→queue CNI (0.39.13) ; set_mc_addr_list (essayé) n'admet
-        # pas non plus. Sans objet en AF_XDP (le noyau programme le filtre mcast) → posé QUE sur PF dpdk.
+        ***REMOVED*** + NIC_PROMISCUOUS : sur E810/ice en DPDK, le PMD n'admet PAS le mcast rejoint via le seul
+        ***REMOVED*** filtre MAC (rte_eth_dev_mac_addr_add) → sans promiscuous, rx=0 au niveau port (aucun PTP, ni
+        ***REMOVED*** session). ABLATION MESURÉE (dl360-1 2026-07-09) : promiscuous INDISPENSABLE, en plus des patchs
+        ***REMOVED*** Router Alert (0.39.12) + rte_flow PTP→queue CNI (0.39.13) ; set_mc_addr_list (essayé) n'admet
+        ***REMOVED*** pas non plus. Sans objet en AF_XDP (le noyau programme le filtre mcast) → posé QUE sur PF dpdk.
         env.setdefault("NIC_PROMISCUOUS", "1")
-    # ── Lot de synchronisation RDMA (`maxSyncBatchSizeHint`), MÊME réglage et MÊME variable que les
-    # conteneurs compute (`docker_compute`) : c'est une option de FLUX posée à la création, et le
-    # moteur crée des flux par DEUX chemins qui la lisent tous les deux — `mtl_rx.c:sync_batch_opts`
-    # (RX 2110, C) et `bobimxl._flow_options` (simu/txgen du contrôleur, Python).
-    # POURQUOI CE SITE MANQUAIT : l'injection avait été faite côté compute seulement, alors que le
-    # flux RX du moteur est répliqué par RDMA comme les autres (constaté le 2026-08-10 : lien
-    # dl360-1 → dell-1 sur `2110-io-dl360-1_0`, 1080p en 30 tranches). Au défaut du SDK le lot vaut
-    # `totalSlices` : l'initiateur attend la trame ENTIÈRE, donc SLICE_MODE payait le découpage sans
-    # rien rendre sur le fil — 22,63 ms pour la 1ʳᵉ bande contre 0,06 ms à un lot de 1.
-    # Vide = aucune clé posée = comportement historique. ⚠ N'agit que sur les flux CRÉÉS ENSUITE.
+    ***REMOVED*** ── Lot de synchronisation RDMA (`maxSyncBatchSizeHint`), MÊME réglage et MÊME variable que les
+    ***REMOVED*** conteneurs compute (`docker_compute`) : c'est une option de FLUX posée à la création, et le
+    ***REMOVED*** moteur crée des flux par DEUX chemins qui la lisent tous les deux — `mtl_rx.c:sync_batch_opts`
+    ***REMOVED*** (RX 2110, C) et `bobimxl._flow_options` (simu/txgen du contrôleur, Python).
+    ***REMOVED*** POURQUOI CE SITE MANQUAIT : l'injection avait été faite côté compute seulement, alors que le
+    ***REMOVED*** flux RX du moteur est répliqué par RDMA comme les autres (constaté le 2026-08-10 : lien
+    ***REMOVED*** dl360-1 → dell-1 sur `2110-io-dl360-1_0`, 1080p en 30 tranches). Au défaut du SDK le lot vaut
+    ***REMOVED*** `totalSlices` : l'initiateur attend la trame ENTIÈRE, donc SLICE_MODE payait le découpage sans
+    ***REMOVED*** rien rendre sur le fil — 22,63 ms pour la 1ʳᵉ bande contre 0,06 ms à un lot de 1.
+    ***REMOVED*** Vide = aucune clé posée = comportement historique. ⚠ N'agit que sur les flux CRÉÉS ENSUITE.
     try:
         _sb = str(settings.get("mxl_sync_batch") or "").strip()
     except Exception:
         _sb = ""
     if _sb:
         env["MXL_SYNC_BATCH"] = _sb
-    # ── Env moteur ADDITIONNEL (réglage `mtl_engine_env`, JSON objet {k:v}) : passthrough générique
-    # pour les capacités env-gatées du moteur (ex. SLICE_MODE=1, SLICE_LINES, TIMING_PARSER — banc/
-    # essais sans code). Réglage absent/invalide → AUCUNE clé, ligne `docker run` octet-identique.
-    # Ne peut qu'AJOUTER des clés (les clés dérivées ci-dessus priment : setdefault-like via filtre).
+    ***REMOVED*** ── Env moteur ADDITIONNEL (réglage `mtl_engine_env`, JSON objet {k:v}) : passthrough générique
+    ***REMOVED*** pour les capacités env-gatées du moteur (ex. SLICE_MODE=1, SLICE_LINES, TIMING_PARSER — banc/
+    ***REMOVED*** essais sans code). Réglage absent/invalide → AUCUNE clé, ligne `docker run` octet-identique.
+    ***REMOVED*** Ne peut qu'AJOUTER des clés (les clés dérivées ci-dessus priment : setdefault-like via filtre).
     try:
         _xenv = json.loads(settings.get("mtl_engine_env") or "{}")
         if isinstance(_xenv, dict):
@@ -1841,31 +1841,31 @@ def _build_run_cmd(vmid, node, params):
                     env[_k] = str(_v)
     except Exception:
         log.warning("mtl_engine_env illisible (JSON objet attendu) — ignoré")
-    # ── MODE TRANCHE DU MOTEUR, piloté par le réglage GLOBAL (2026-08-11).
-    # POURQUOI CE SITE MANQUAIT. `slice_mode_global` posait `slice_mode` sur les PLUGINS (via
-    # `plugins.effective_deploy_defaults`) et ne touchait PAS le moteur, qui lisait sa propre
-    # variable enfouie dans `mtl_engine_env` — un passe-plat prévu pour des essais de banc.
-    # Conséquence constatée en production : le réglage global affichait « tranche activée » alors
-    # que le SEUL étage portant le RX et le TX — les deux bouts de la chaîne — ne l'était pas, et
-    # rien dans l'interface ne permettait de s'en apercevoir. Un opérateur ne pouvait pas le
-    # deviner ; moi non plus, et ça m'a coûté plusieurs diagnostics faux le même jour.
-    # RÈGLE, identique aux plugins : le GLOBAL fixe le défaut, l'EXPLICITE prime. Une clé
-    # `SLICE_MODE` posée à la main dans `mtl_engine_env` reste donc souveraine (échappatoire de
-    # banc), simplement elle n'est plus le seul moyen d'allumer la tranche.
+    ***REMOVED*** ── MODE TRANCHE DU MOTEUR, piloté par le réglage GLOBAL (2026-08-11).
+    ***REMOVED*** POURQUOI CE SITE MANQUAIT. `slice_mode_global` posait `slice_mode` sur les PLUGINS (via
+    ***REMOVED*** `plugins.effective_deploy_defaults`) et ne touchait PAS le moteur, qui lisait sa propre
+    ***REMOVED*** variable enfouie dans `mtl_engine_env` — un passe-plat prévu pour des essais de banc.
+    ***REMOVED*** Conséquence constatée en production : le réglage global affichait « tranche activée » alors
+    ***REMOVED*** que le SEUL étage portant le RX et le TX — les deux bouts de la chaîne — ne l'était pas, et
+    ***REMOVED*** rien dans l'interface ne permettait de s'en apercevoir. Un opérateur ne pouvait pas le
+    ***REMOVED*** deviner ; moi non plus, et ça m'a coûté plusieurs diagnostics faux le même jour.
+    ***REMOVED*** RÈGLE, identique aux plugins : le GLOBAL fixe le défaut, l'EXPLICITE prime. Une clé
+    ***REMOVED*** `SLICE_MODE` posée à la main dans `mtl_engine_env` reste donc souveraine (échappatoire de
+    ***REMOVED*** banc), simplement elle n'est plus le seul moyen d'allumer la tranche.
     try:
         if settings.get("slice_mode_global"):
             env.setdefault("SLICE_MODE", "1")
-    except Exception:                          # réglage illisible → pas de tranche, pas d'exception
+    except Exception:                          ***REMOVED*** réglage illisible → pas de tranche, pas d'exception
         log.warning("slice_mode_global illisible — mode tranche du moteur laissé au défaut")
-    # ── Auth de l'agent :8081 du moteur (SECOND FACTEUR, indépendant du mTLS de _tls_inject).
-    # MÊME variable et MÊME contrat que les conteneurs compute : `MXL_AGENT_TOKEN` posé au run →
-    # l'agent EXIGE l'en-tête X-MXL-Agent-Token. Un seul chemin ici : `_build_run_cmd` produit LA
-    # ligne `docker run`, exécutée par `ssh_run`, qui route lui-même vers l'agent-nœud
-    # (/v1/host/exec) ou le root-SSH legacy — les deux transportent la MÊME commande, donc la
-    # même injection (pas de second site à ne pas oublier, contrairement à docker_compute).
-    # NB : le contrôleur embarqué de l'image 2110_io (plugins/2110_io/docker/controller.py) ne lit
-    # PAS encore MXL_AGENT_TOKEN — il ignore donc cette variable aujourd'hui (aucun risque de
-    # verrouillage), et le jour où il l'implémentera, l'injection sera déjà en place.
+    ***REMOVED*** ── Auth de l'agent :8081 du moteur (SECOND FACTEUR, indépendant du mTLS de _tls_inject).
+    ***REMOVED*** MÊME variable et MÊME contrat que les conteneurs compute : `MXL_AGENT_TOKEN` posé au run →
+    ***REMOVED*** l'agent EXIGE l'en-tête X-MXL-Agent-Token. Un seul chemin ici : `_build_run_cmd` produit LA
+    ***REMOVED*** ligne `docker run`, exécutée par `ssh_run`, qui route lui-même vers l'agent-nœud
+    ***REMOVED*** (/v1/host/exec) ou le root-SSH legacy — les deux transportent la MÊME commande, donc la
+    ***REMOVED*** même injection (pas de second site à ne pas oublier, contrairement à docker_compute).
+    ***REMOVED*** NB : le contrôleur embarqué de l'image 2110_io (plugins/2110_io/docker/controller.py) ne lit
+    ***REMOVED*** PAS encore MXL_AGENT_TOKEN — il ignore donc cette variable aujourd'hui (aucun risque de
+    ***REMOVED*** verrouillage), et le jour où il l'implémentera, l'injection sera déjà en place.
     try:
         from . import deploy as _deploy
         _tok_agent = _deploy.token_a_injecter(vmid)
@@ -1874,56 +1874,56 @@ def _build_run_cmd(vmid, node, params):
     except Exception as _e:
         log.warning("io2110 %s : token d'agent non injecté (%s) — agent :8081 ouvert", vmid, _e)
     e_args = " ".join(f"-e {shlex.quote(f'{k}={v}')}" for k, v in env.items())
-    # Pinning cœurs du moteur (défaut ON, réglage mtl_pin_cores) : cpuset = lcores DPDK + 2 cœurs
-    # pour le contrôleur Python (simu/txgen, métriques) — sinon les threads Python seraient
-    # schedulés SUR les lcores en busy-loop (contention interne). Les cœurs sont RÉSERVÉS dans
-    # node_core_alloc (comptabilité core_pool : jamais donnés aux containers compute pinnés ;
-    # libérés par release_cores à la destruction, comme tous les backends). Garde-fou côté nœud :
-    # le cpuset n'est posé que si la machine a assez de cœurs (sinon docker run échouerait).
+    ***REMOVED*** Pinning cœurs du moteur (défaut ON, réglage mtl_pin_cores) : cpuset = lcores DPDK + 2 cœurs
+    ***REMOVED*** pour le contrôleur Python (simu/txgen, métriques) — sinon les threads Python seraient
+    ***REMOVED*** schedulés SUR les lcores en busy-loop (contention interne). Les cœurs sont RÉSERVÉS dans
+    ***REMOVED*** node_core_alloc (comptabilité core_pool : jamais donnés aux containers compute pinnés ;
+    ***REMOVED*** libérés par release_cores à la destruction, comme tous les backends). Garde-fou côté nœud :
+    ***REMOVED*** le cpuset n'est posé que si la machine a assez de cœurs (sinon docker run échouerait).
     cpuset_prefix = ""
     if settings.get("mtl_pin_cores", True):
         try:
             from . import core_pool
-            # Anti-collision : garantir un compute_cpuset DISJOINT des lcores moteur (auto-dérivé une
-            # fois par nœud si l'opérateur ne l'a pas défini). Sans pool compute, un container compute
-            # non-pinné flotte sous quota sur TOUS les cœurs, dont ceux où le moteur busy-poll. On
-            # SSH `nproc` UNIQUEMENT quand compute_cpuset est absent → ne tourne qu'au 1er déploiement
-            # moteur du nœud (idempotent ensuite).
+            ***REMOVED*** Anti-collision : garantir un compute_cpuset DISJOINT des lcores moteur (auto-dérivé une
+            ***REMOVED*** fois par nœud si l'opérateur ne l'a pas défini). Sans pool compute, un container compute
+            ***REMOVED*** non-pinné flotte sous quota sur TOUS les cœurs, dont ceux où le moteur busy-poll. On
+            ***REMOVED*** SSH `nproc` UNIQUEMENT quand compute_cpuset est absent → ne tourne qu'au 1er déploiement
+            ***REMOVED*** moteur du nœud (idempotent ensuite).
             if not (node.get("compute_cpuset") or "").strip():
                 from .host_ops import host_cpu_count
                 _okn, _ncpu, _ = host_cpu_count(node["host"])
                 if _okn and _ncpu:
-                    # HT-aware : lire la carte cœur-physique → exclure aussi les siblings HT des lcores
-                    # moteur (un compute sur le sibling d'un lcore contend le busy-poll DPDK).
+                    ***REMOVED*** HT-aware : lire la carte cœur-physique → exclure aussi les siblings HT des lcores
+                    ***REMOVED*** moteur (un compute sur le sibling d'un lcore contend le busy-poll DPDK).
                     _core_of = core_pool.read_cpu_core_map(node)
                     core_pool.ensure_compute_cpuset(node["id"], _ncpu, core_of=_core_of)
-                    node = db_get_node(node["id"]) or node          # re-lire (compute_cpuset posé)
+                    node = db_get_node(node["id"]) or node          ***REMOVED*** re-lire (compute_cpuset posé)
             lcore_list = [int(x) for x in lcores.split(",") if x.strip().isdigit()]
             if lcore_list:
-                # Cœurs de SERVICE (contrôleur Python + ~20 threads C de service, dont
-                # audio_rx_thread qui draine le st30p toutes les ms) : `1 + mtl_service_cores`
-                # cœurs après les lcores DPDK. Réglage `mtl_service_cores` (défaut 1) → 2 cœurs,
-                # comportement STRICTEMENT inchangé (ancien `ctrl` fixe à 2). N>1 élargit
-                # l'enveloppe de N-1 cœurs supplémentaires — famine CPU des threads de service
-                # (RX audio back-pressure, framebuff pool empty) sur les nœuds à cpuset étroit.
+                ***REMOVED*** Cœurs de SERVICE (contrôleur Python + ~20 threads C de service, dont
+                ***REMOVED*** audio_rx_thread qui draine le st30p toutes les ms) : `1 + mtl_service_cores`
+                ***REMOVED*** cœurs après les lcores DPDK. Réglage `mtl_service_cores` (défaut 1) → 2 cœurs,
+                ***REMOVED*** comportement STRICTEMENT inchangé (ancien `ctrl` fixe à 2). N>1 élargit
+                ***REMOVED*** l'enveloppe de N-1 cœurs supplémentaires — famine CPU des threads de service
+                ***REMOVED*** (RX audio back-pressure, framebuff pool empty) sur les nœuds à cpuset étroit.
                 _svc = max(1, int(settings.get("mtl_service_cores") or 1))
                 ctrl = [max(lcore_list) + i for i in range(1, _svc + 2)]
-                # Le CŒUR 0 est OBLIGATOIRE dans le cpuset : MTL préfixe TOUJOURS son
-                # main_lcore (jamais posé par mtl_rx → 0) à la liste `-l` de l'EAL
-                # (mt_dev.c dev_eal_init : "%u,%s" % (p->main_lcore, p->lcores)) → DPDK
-                # doit pouvoir s'affiner sur 0, sinon « Cannot set affinity » et
-                # mtl_init échoue en boucle (vu au lab Horace, moteur 100 % à terre).
-                # Le main lcore EAL dort (pas un scheduler busy-loop) : le partager
-                # avec le housekeeping noyau = la situation historique sans pinning.
+                ***REMOVED*** Le CŒUR 0 est OBLIGATOIRE dans le cpuset : MTL préfixe TOUJOURS son
+                ***REMOVED*** main_lcore (jamais posé par mtl_rx → 0) à la liste `-l` de l'EAL
+                ***REMOVED*** (mt_dev.c dev_eal_init : "%u,%s" % (p->main_lcore, p->lcores)) → DPDK
+                ***REMOVED*** doit pouvoir s'affiner sur 0, sinon « Cannot set affinity » et
+                ***REMOVED*** mtl_init échoue en boucle (vu au lab Horace, moteur 100 % à terre).
+                ***REMOVED*** Le main lcore EAL dort (pas un scheduler busy-loop) : le partager
+                ***REMOVED*** avec le housekeeping noyau = la situation historique sans pinning.
                 pin = [0] + lcore_list + ctrl
                 from . import core_pool
-                # ★ Le cpuset RÉELLEMENT POSÉ ci-dessous est la SEULE source de vérité : on
-                # l'enregistre TEL QUEL dans node_core_alloc (en évinçant/nommant d'éventuels
-                # propriétaires) ET on rétrécit le pool compute pour l'exclure. L'ancien
-                # `reserve_exact` n'enregistrait QUE les cœurs libres → core_pool croyait le moteur
-                # sur 0-18 pendant que Docker le pinnait sur 0-21 (dl360-1, 2026-07-14). L'empreinte
-                # dépend de réglages (`mtl_lcore_max`, `mtl_service_cores`) modifiables APRÈS la
-                # dérivation du pool : sans ce rattrapage, elle grandit SILENCIEUSEMENT dans le pool.
+                ***REMOVED*** ★ Le cpuset RÉELLEMENT POSÉ ci-dessous est la SEULE source de vérité : on
+                ***REMOVED*** l'enregistre TEL QUEL dans node_core_alloc (en évinçant/nommant d'éventuels
+                ***REMOVED*** propriétaires) ET on rétrécit le pool compute pour l'exclure. L'ancien
+                ***REMOVED*** `reserve_exact` n'enregistrait QUE les cœurs libres → core_pool croyait le moteur
+                ***REMOVED*** sur 0-18 pendant que Docker le pinnait sur 0-21 (dl360-1, 2026-07-14). L'empreinte
+                ***REMOVED*** dépend de réglages (`mtl_lcore_max`, `mtl_service_cores`) modifiables APRÈS la
+                ***REMOVED*** dérivation du pool : sans ce rattrapage, elle grandit SILENCIEUSEMENT dans le pool.
                 core_pool.reserve_engine_cores(node["id"], vmid, pin,
                                                core_of=core_pool.core_map_cached(node["id"]))
                 cpuset = ",".join(str(c) for c in pin)
@@ -1933,27 +1933,27 @@ def _build_run_cmd(vmid, node, params):
                 )
         except Exception as e:
             log.warning("pinning moteur 2110 non appliqué (vmid %s): %s", vmid, e)
-    # mTLS :8081 — écrit les PEM sur l'hôte (prefix) + monte /etc/bobi-tls (tls_v). Vide si pas de CA.
+    ***REMOVED*** mTLS :8081 — écrit les PEM sur l'hôte (prefix) + monte /etc/bobi-tls (tls_v). Vide si pas de CA.
     tls_prefix, tls_v = _tls_inject(vmid, name)
     return (
         tls_prefix + cpuset_prefix +
-        # Arrêt GRACIEUX d'abord (SIGTERM → le contrôleur purge XDP + règles ntuple via mtl_uninit,
-        # cf. _cleanup) ; sinon `rm -f` (SIGKILL) laisse des règles fdir sur le matériel → « socket
-        # add flow fail » au prochain flow. `rm -f` ensuite = filet (no-op si --rm a déjà retiré).
+        ***REMOVED*** Arrêt GRACIEUX d'abord (SIGTERM → le contrôleur purge XDP + règles ntuple via mtl_uninit,
+        ***REMOVED*** cf. _cleanup) ; sinon `rm -f` (SIGKILL) laisse des règles fdir sur le matériel → « socket
+        ***REMOVED*** add flow fail » au prochain flow. `rm -f` ensuite = filet (no-op si --rm a déjà retiré).
         f"docker stop -t 12 {shlex.quote(name)} >/dev/null 2>&1; "
         f"docker rm -f {shlex.quote(name)} >/dev/null 2>&1; "
-        # Le conteneur tourne avec --rm : sa suppression à l'arrêt est ASYNCHRONE, et un
-        # `docker rm -f` pendant un « removal in progress » n'attend pas → le run suivant
-        # échouait sur « Conflict: name already in use » (vu au redéploiement du 140,
-        # 2026-07-13). On attend que le nom soit réellement libéré (≤15 s) avant le run.
+        ***REMOVED*** Le conteneur tourne avec --rm : sa suppression à l'arrêt est ASYNCHRONE, et un
+        ***REMOVED*** `docker rm -f` pendant un « removal in progress » n'attend pas → le run suivant
+        ***REMOVED*** échouait sur « Conflict: name already in use » (vu au redéploiement du 140,
+        ***REMOVED*** 2026-07-13). On attend que le nom soit réellement libéré (≤15 s) avant le run.
         f"for _i in $(seq 1 30); do docker inspect {shlex.quote(name)} >/dev/null 2>&1 || break; sleep 0.5; done; "
         f"docker run -d --rm --name {shlex.quote(name)} $BOBI_CPUSET "
-        # Journal DURABLE (cf. app/journal.py) : pilote `journald` → le journal appartient à l'HÔTE
-        # et survit à la destruction du conteneur (le moteur tourne en `--rm` et est recréé à chaque
-        # redéploiement : avec l'ancien `json-file`, les traces s'évaporaient exactement au moment où
-        # on en avait besoin) ET au reboot du nœud. Il reste BORNÉ : `SystemMaxUse` côté journald
-        # remplace le `max-size×max-file` d'avant — un moteur dégradé qui spamme (« no available
-        # lcore » en boucle) ne peut plus remplir le disque comme les 225 Go de json.log en ~13 h.
+        ***REMOVED*** Journal DURABLE (cf. app/journal.py) : pilote `journald` → le journal appartient à l'HÔTE
+        ***REMOVED*** et survit à la destruction du conteneur (le moteur tourne en `--rm` et est recréé à chaque
+        ***REMOVED*** redéploiement : avec l'ancien `json-file`, les traces s'évaporaient exactement au moment où
+        ***REMOVED*** on en avait besoin) ET au reboot du nœud. Il reste BORNÉ : `SystemMaxUse` côté journald
+        ***REMOVED*** remplace le `max-size×max-file` d'avant — un moteur dégradé qui spamme (« no available
+        ***REMOVED*** lcore » en boucle) ne peut plus remplir le disque comme les 225 Go de json.log en ~13 h.
         + _journal.docker_flags(name) +
         f"--network host --privileged "
         f"-v {shlex.quote(mxl)}:/dev/shm -v /dev/hugepages:/dev/hugepages "
@@ -1963,29 +1963,29 @@ def _build_run_cmd(vmid, node, params):
     )
 
 
-# SERVIR LA PLUS RÉCENTE : défaut d'un slot qui ne porte PAS la clé. SOURCE UNIQUE — la même
-# valeur était dérivée à deux endroits (ici et `routes/nmos_detail.py`), donc deux occasions de
-# diverger ; il n'y en a plus qu'une.
-#
-# ★ REMIS À 0 LE 2026-08-19, sur incident de production (Horace). Le défaut valait 1 depuis le
-# 2026-08-12 pour un gain réel — une époque de latence en moins, 62,5 → 42,6 ms au banc. Mais un
-# défaut IMPLICITE ne s'applique pas quand on l'écrit : il s'applique quand le moteur apprend à
-# le lire. Les slots d'Horace ne portaient pas la clé ; la 0.80.3 l'ignorait (la fonction
-# n'existait pas), la 0.96.0 l'a honorée. Un simple rebuild d'image a donc ARMÉ le comportement
-# sur une installation à l'antenne, sans que personne ne le choisisse — et une des deux sorties,
-# identiques par ailleurs, est sortie STRIÉE (l'autre non : le résultat dépend de la phase entre
-# la publication du mur et la lecture du TX). Diagnostic complet : mémoire
-# `serve-newest-arme-en-silence-strie-une-sortie-sur-deux`.
-#
-# Ce que l'incident tranche, et qui vaut au-delà de ce réglage : une image cassée coûte plus cher
-# que 20 ms de latence, donc le défaut d'un réglage qui touche CE QU'ON MET SUR LE FIL doit être
-# le comportement historique. Le gain reste disponible, mais il se demande — par slot, à chaud
-# (`POST /api/mtl/<vmid>/tx/<slot>/serve_newest`).
-#
-# ⚠ L'avertissement qui accompagnait le défaut à 1 disait déjà : « peu de recul, le cas non
-# observé est une source IRRÉGULIÈRE ». C'était le bon doute, sur le bon réglage — il manquait
-# seulement de conclure qu'un doute pareil ne se met pas dans un défaut. Ne pas le réactiver
-# globalement sans une campagne sur des sources de plusieurs natures.
+***REMOVED*** SERVIR LA PLUS RÉCENTE : défaut d'un slot qui ne porte PAS la clé. SOURCE UNIQUE — la même
+***REMOVED*** valeur était dérivée à deux endroits (ici et `routes/nmos_detail.py`), donc deux occasions de
+***REMOVED*** diverger ; il n'y en a plus qu'une.
+***REMOVED***
+***REMOVED*** ★ REMIS À 0 LE 2026-08-19, sur incident de production (Horace). Le défaut valait 1 depuis le
+***REMOVED*** 2026-08-12 pour un gain réel — une époque de latence en moins, 62,5 → 42,6 ms au banc. Mais un
+***REMOVED*** défaut IMPLICITE ne s'applique pas quand on l'écrit : il s'applique quand le moteur apprend à
+***REMOVED*** le lire. Les slots d'Horace ne portaient pas la clé ; la 0.80.3 l'ignorait (la fonction
+***REMOVED*** n'existait pas), la 0.96.0 l'a honorée. Un simple rebuild d'image a donc ARMÉ le comportement
+***REMOVED*** sur une installation à l'antenne, sans que personne ne le choisisse — et une des deux sorties,
+***REMOVED*** identiques par ailleurs, est sortie STRIÉE (l'autre non : le résultat dépend de la phase entre
+***REMOVED*** la publication du mur et la lecture du TX). Diagnostic complet : mémoire
+***REMOVED*** `serve-newest-arme-en-silence-strie-une-sortie-sur-deux`.
+***REMOVED***
+***REMOVED*** Ce que l'incident tranche, et qui vaut au-delà de ce réglage : une image cassée coûte plus cher
+***REMOVED*** que 20 ms de latence, donc le défaut d'un réglage qui touche CE QU'ON MET SUR LE FIL doit être
+***REMOVED*** le comportement historique. Le gain reste disponible, mais il se demande — par slot, à chaud
+***REMOVED*** (`POST /api/mtl/<vmid>/tx/<slot>/serve_newest`).
+***REMOVED***
+***REMOVED*** ⚠ L'avertissement qui accompagnait le défaut à 1 disait déjà : « peu de recul, le cas non
+***REMOVED*** observé est une source IRRÉGULIÈRE ». C'était le bon doute, sur le bon réglage — il manquait
+***REMOVED*** seulement de conclure qu'un doute pareil ne se met pas dans un défaut. Ne pas le réactiver
+***REMOVED*** globalement sans une campagne sur des sources de plusieurs natures.
 TX_SERVE_NEWEST_DEFAUT = 0
 
 
@@ -2008,14 +2008,14 @@ def tx_payloads(vmid, params=None):
     slots = params.get("tx_slots") or []
     if not slots:
         return []
-    # « Option A » : nombre/idx des audios PAR slot pilotés par tx_flows (attached_to) — plus de
-    # ratio homogène. Repli dérivé du legacy si la liste est absente.
+    ***REMOVED*** « Option A » : nombre/idx des audios PAR slot pilotés par tx_flows (attached_to) — plus de
+    ***REMOVED*** ratio homogène. Repli dérivé du legacy si la liste est absente.
     from . import io2110_flows as _iof
     tx_flows = _iof.active_flows(params, "tx")
-    # C2b+ : transport d'une ressource NMOS bindée à un slot_key (push-down — la ressource fait
-    # autorité sur mcast/port/format). None si le slot n'est pas bindé (→ valeurs du slot, auto).
+    ***REMOVED*** C2b+ : transport d'une ressource NMOS bindée à un slot_key (push-down — la ressource fait
+    ***REMOVED*** autorité sur mcast/port/format). None si le slot n'est pas bindé (→ valeurs du slot, auto).
     _nmos_bind = params.get("nmos_bind") or {}
-    _tx_pins = params.get("tx_pins") or {}   # épinglage de port par slot TX ({slot: ifname}) ; "" = auto
+    _tx_pins = params.get("tx_pins") or {}   ***REMOVED*** épinglage de port par slot TX ({slot: ifname}) ; "" = auto
     def _bound_tr(slot_key):
         rid = _nmos_bind.get(slot_key)
         if not rid:
@@ -2028,15 +2028,15 @@ def tx_payloads(vmid, params=None):
             return None
     out = []
     for i, t in enumerate(slots):
-        shm_in = params.get(cle_tx_shm(i)) or ""   # shm câblé (state_field, persisté par _apply_wire)
-        # Câblages audio/ANC des sorties (state_field tx_audio{idx}_shm / tx_anc{i}_shm) → resync.
-        # idx audio = pool plat des flux attachés au slot (tx_flows), dans l'ordre (= position ai).
+        shm_in = params.get(cle_tx_shm(i)) or ""   ***REMOVED*** shm câblé (state_field, persisté par _apply_wire)
+        ***REMOVED*** Câblages audio/ANC des sorties (state_field tx_audio{idx}_shm / tx_anc{i}_shm) → resync.
+        ***REMOVED*** idx audio = pool plat des flux attachés au slot (tx_flows), dans l'ordre (= position ai).
         _aud_idxs = _iof.tx_slot_audio_idxs(tx_flows, i)
         audio_shm_in = [params.get(cle_tx_audio_shm(aidx)) or "" for aidx in _aud_idxs]
         anc_shm_in = params.get(cle_tx_anc_shm(i)) or ""
-        # Balayage du passthrough : la VÉRITÉ est le format du PRODUCTEUR du shm câblé (pas le
-        # slot dest). On le résout depuis la topologie → le TX ré-émet le scan réellement reçu.
-        # Sans câble : pas de scan (le slot n'émet pas). Réutilise monitor._shm_fmt (scan/field_order).
+        ***REMOVED*** Balayage du passthrough : la VÉRITÉ est le format du PRODUCTEUR du shm câblé (pas le
+        ***REMOVED*** slot dest). On le résout depuis la topologie → le TX ré-émet le scan réellement reçu.
+        ***REMOVED*** Sans câble : pas de scan (le slot n'émet pas). Réutilise monitor._shm_fmt (scan/field_order).
         _src = {}
         if shm_in:
             try:
@@ -2044,12 +2044,12 @@ def tx_payloads(vmid, params=None):
                 _src = _shm_fmt(shm_in) or {}
             except Exception:
                 _src = {}
-        # Format vidéo poussé au slot : un slot en GÉN impose son format PAR-SLOT (la mire est rendue
-        # à la résolution choisie) ; un slot CÂBLÉ qui SUIT sa source laisse la SOURCE gouverner
-        # (w/h/fps posés par :8082/input) → on envoie 0 (le contrôleur ignore 0 → pas de clobber).
-        # « En GÉN » = pas de câble OU générateur explicitement activé (bouton GEN) — dans ce dernier
-        # cas la mire prime sur le câble attaché, donc le format par-slot doit gouverner. scan : le
-        # slot (GÉN) ou la source (câblé suivi).
+        ***REMOVED*** Format vidéo poussé au slot : un slot en GÉN impose son format PAR-SLOT (la mire est rendue
+        ***REMOVED*** à la résolution choisie) ; un slot CÂBLÉ qui SUIT sa source laisse la SOURCE gouverner
+        ***REMOVED*** (w/h/fps posés par :8082/input) → on envoie 0 (le contrôleur ignore 0 → pas de clobber).
+        ***REMOVED*** « En GÉN » = pas de câble OU générateur explicitement activé (bouton GEN) — dans ce dernier
+        ***REMOVED*** cas la mire prime sur le câble attaché, donc le format par-slot doit gouverner. scan : le
+        ***REMOVED*** slot (GÉN) ou la source (câblé suivi).
         gen = bool(t.get("gen_enabled")) or not shm_in
         if gen:
             _fw, _fh = int(t.get("width") or 0), int(t.get("height") or 0)
@@ -2060,14 +2060,14 @@ def tx_payloads(vmid, params=None):
             _fw = _fh = 0; _ffps = 0
             _fscan = _src.get("scan") or "p"
             _ffo   = _src.get("field_order") or ""
-            # ÉTAGE 3 (docs/reference/TX_LAYOUTS.md) — DÉRIVE DE SOURCE : si le format de la source ne concorde PLUS
-            # avec le format DÉCLARÉ du slot (une caméra a basculé), ne PAS lui pousser le balayage de
-            # la source. MESURÉ AU BANC (moteur 140) : ce re-push (déclenché par `deploy.py` quand le
-            # flux producteur est recréé) clobbe `scan`/`field_order` côté contrôleur → la SIGNATURE de
-            # session change → session recréée → `rte_tm_hierarchy_commit` → stop/start du PORT ENTIER,
-            # sans qu'aucun humain n'ait rien demandé. On gèle donc l'identité du slot sur ce qu'il
-            # ANNONCE ; l'écart est traité par `tx_format_watch` (alerte + UDC), qui rétablit une
-            # source concordante SANS jamais recréer la session. Concordant ⇒ passthrough inchangé.
+            ***REMOVED*** ÉTAGE 3 (docs/reference/TX_LAYOUTS.md) — DÉRIVE DE SOURCE : si le format de la source ne concorde PLUS
+            ***REMOVED*** avec le format DÉCLARÉ du slot (une caméra a basculé), ne PAS lui pousser le balayage de
+            ***REMOVED*** la source. MESURÉ AU BANC (moteur 140) : ce re-push (déclenché par `deploy.py` quand le
+            ***REMOVED*** flux producteur est recréé) clobbe `scan`/`field_order` côté contrôleur → la SIGNATURE de
+            ***REMOVED*** session change → session recréée → `rte_tm_hierarchy_commit` → stop/start du PORT ENTIER,
+            ***REMOVED*** sans qu'aucun humain n'ait rien demandé. On gèle donc l'identité du slot sur ce qu'il
+            ***REMOVED*** ANNONCE ; l'écart est traité par `tx_format_watch` (alerte + UDC), qui rétablit une
+            ***REMOVED*** source concordante SANS jamais recréer la session. Concordant ⇒ passthrough inchangé.
             try:
                 from . import tx_maintenance as _txm
                 _decl = _txm.slot_format(params, i)
@@ -2077,89 +2077,89 @@ def tx_payloads(vmid, params=None):
             except Exception as _e:
                 log.warning("tx_payloads: gel du format du slot %s: %s", i, _e)
         payload = {"idx": i, "enabled": bool(shm_in),
-                   # Étage 1 docs/reference/TX_LAYOUTS.md : destination valide (mcast+port) → session PRÉ-PROVISIONNÉE
-                   # silencieuse dès maintenant (câblage/décâblage = swap de source, zéro commit TM).
+                   ***REMOVED*** Étage 1 docs/reference/TX_LAYOUTS.md : destination valide (mcast+port) → session PRÉ-PROVISIONNÉE
+                   ***REMOVED*** silencieuse dès maintenant (câblage/décâblage = swap de source, zéro commit TM).
                    "provisioned": bool(_provisioning_on and t.get("multicast_ip") and t.get("dest_port")),
-                   # Épinglage de port (multi-NIC) : "" = répartition auto côté contrôleur.
+                   ***REMOVED*** Épinglage de port (multi-NIC) : "" = répartition auto côté contrôleur.
                    "iface": _tx_pins.get(str(i)) or "",
                    "mcast": t.get("multicast_ip"), "udp_port": int(t.get("dest_port") or 0),
                    "pt": int(t.get("payload_type") or 96), "shm_in": shm_in,
                    "width": _fw, "height": _fh,
                    "fps": _ffps, "bit_depth": int(t.get("bit_depth") or 8),
                    "ring": int(t.get("ring") or 8),
-                   # BRIDAGE D'AVANCE (mode tranche) : nombre MAXIMAL de trames prêtes que le
-                   # worker s'autorise à avoir devant celle que la lib émet. 0 = désactivé
-                   # (comportement historique). MESURÉ le 2026-08-12 : la file se stabilise à
-                   # 3 trames avec `slot_wait_ms` à 0,0 — le worker n'est pas étranglé, il a
-                   # simplement pris de l'avance au démarrage et deux débits égaux ne vident
-                   # jamais une file. ⛔ MAIS réduire cette file NE RÉDUIT PAS LA LATENCE :
-                   # mesuré 62,1 ms et +3 trames à profondeur 3, 2 et 1 — et à 1 le TX ne
-                   # consomme plus qu'une trame source sur deux. LAISSER À 0 ; le vrai levier
-                   # est `epoch_shift_us`. Conservé comme instrument de diagnostic.
+                   ***REMOVED*** BRIDAGE D'AVANCE (mode tranche) : nombre MAXIMAL de trames prêtes que le
+                   ***REMOVED*** worker s'autorise à avoir devant celle que la lib émet. 0 = désactivé
+                   ***REMOVED*** (comportement historique). MESURÉ le 2026-08-12 : la file se stabilise à
+                   ***REMOVED*** 3 trames avec `slot_wait_ms` à 0,0 — le worker n'est pas étranglé, il a
+                   ***REMOVED*** simplement pris de l'avance au démarrage et deux débits égaux ne vident
+                   ***REMOVED*** jamais une file. ⛔ MAIS réduire cette file NE RÉDUIT PAS LA LATENCE :
+                   ***REMOVED*** mesuré 62,1 ms et +3 trames à profondeur 3, 2 et 1 — et à 1 le TX ne
+                   ***REMOVED*** consomme plus qu'une trame source sur deux. LAISSER À 0 ; le vrai levier
+                   ***REMOVED*** est `epoch_shift_us`. Conservé comme instrument de diagnostic.
                    "advance": int(t.get("advance") or 0),
-                   # FREIN TEMPOREL (mode tranche) : le worker attend d'être à N µs de
-                   # la prochaine époque avant de saisir la source. 0 = désactivé.
-                   # Ne décale PAS l'émission (fixée par la grille PTP) : met du contenu
-                   # plus frais dans le même créneau. Trop tard = sollicitation ratée =
-                   # répétition ; surveiller `repeats` et `wait_pub_ms`.
+                   ***REMOVED*** FREIN TEMPOREL (mode tranche) : le worker attend d'être à N µs de
+                   ***REMOVED*** la prochaine époque avant de saisir la source. 0 = désactivé.
+                   ***REMOVED*** Ne décale PAS l'émission (fixée par la grille PTP) : met du contenu
+                   ***REMOVED*** plus frais dans le même créneau. Trop tard = sollicitation ratée =
+                   ***REMOVED*** répétition ; surveiller `repeats` et `wait_pub_ms`.
                    "publish_lead_us": int(t.get("publish_lead_us") or 0),
-                   # SERVIR LA PLUS RÉCENTE (cf. TX_SERVE_NEWEST_DEFAUT ci-dessus pour le défaut
-                   # et l'incident qui l'a remis à 0). Le callback rend la trame la plus récemment
-                   # publiée au lieu de la plus ancienne, et libère les périmées : une époque de
-                   # latence en moins quand la source est régulière, une image cassée quand la
-                   # phase de publication tombe mal. Se demande PAR SLOT, à chaud, jamais par
-                   # omission. Surveiller `repeats` et `skipped` après l'avoir posé à 1.
+                   ***REMOVED*** SERVIR LA PLUS RÉCENTE (cf. TX_SERVE_NEWEST_DEFAUT ci-dessus pour le défaut
+                   ***REMOVED*** et l'incident qui l'a remis à 0). Le callback rend la trame la plus récemment
+                   ***REMOVED*** publiée au lieu de la plus ancienne, et libère les périmées : une époque de
+                   ***REMOVED*** latence en moins quand la source est régulière, une image cassée quand la
+                   ***REMOVED*** phase de publication tombe mal. Se demande PAR SLOT, à chaud, jamais par
+                   ***REMOVED*** omission. Surveiller `repeats` et `skipped` après l'avoir posé à 1.
                    "serve_newest": int(TX_SERVE_NEWEST_DEFAUT
                                        if t.get("serve_newest") is None
                                        else t.get("serve_newest")),
                    "scan": _fscan, "field_order": _ffo,
-                   # Rythme d'émission (mode tranche) : 0 = attendre l'image suivante (défaut,
-                   # émission alignée epoch) ; >0 = grille d'émission décalée de N µs (TROFF
-                   # déclaré dans le SDP, timestamp RTP inchangé) — gain ~1 trame de latence TX.
+                   ***REMOVED*** Rythme d'émission (mode tranche) : 0 = attendre l'image suivante (défaut,
+                   ***REMOVED*** émission alignée epoch) ; >0 = grille d'émission décalée de N µs (TROFF
+                   ***REMOVED*** déclaré dans le SDP, timestamp RTP inchangé) — gain ~1 trame de latence TX.
                    "epoch_shift_us": int(t.get("epoch_shift_us") or 0),
-                   # Dest audio (2110-30) : N flux (« Option A » — plus de cap à 2), shm audio
-                   # câblé via audio_shm_in (aligné position↔position avec cette liste).
+                   ***REMOVED*** Dest audio (2110-30) : N flux (« Option A » — plus de cap à 2), shm audio
+                   ***REMOVED*** câblé via audio_shm_in (aligné position↔position avec cette liste).
                    "audios": [
                        {"mcast": a.get("multicast_ip"), "port": int(a.get("dest_port") or 0),
                         "pt": int(a.get("payload_type") or 97),
                         "mcast2": a.get("multicast_ip_leg1") or None,
                         "port2": int(a.get("dest_port_leg1") or 0),
-                        # ptime PAR-SORTIE (ms) : passthrough si déclaré dans tx_slots[].audios[].ptime ;
-                        # None/absent → le contrôleur replie sur le défaut global (rétro-compatible).
+                        ***REMOVED*** ptime PAR-SORTIE (ms) : passthrough si déclaré dans tx_slots[].audios[].ptime ;
+                        ***REMOVED*** None/absent → le contrôleur replie sur le défaut global (rétro-compatible).
                         "ptime": a.get("ptime"),
-                        # Générateur de tonalité (resync de l'état persisté)
+                        ***REMOVED*** Générateur de tonalité (resync de l'état persisté)
                         "tone": a.get("tone")}
                        for a in (t.get("audios") or [])
                    ],
-                   # Dest ANC (2110-40) : le shm ANC suit la vidéo (dérivé côté contrôleur).
+                   ***REMOVED*** Dest ANC (2110-40) : le shm ANC suit la vidéo (dérivé côté contrôleur).
                    "anc_mcast": t.get("anc_multicast_ip"),
                    "anc_port": int(t.get("anc_dest_port") or 0),
                    "anc_pt": int(t.get("anc_payload_type") or 97),
-                   # Leg1 SMPTE 2022-7 (vidéo + ANC) — None si 2022-7 désactivé
+                   ***REMOVED*** Leg1 SMPTE 2022-7 (vidéo + ANC) — None si 2022-7 désactivé
                    "mcast2": t.get("multicast_ip_leg1") or None,
                    "udp_port2": int(t.get("dest_port_leg1") or 0),
                    "anc_mcast2": t.get("anc_multicast_ip_leg1") or None,
                    "anc_port2": int(t.get("anc_dest_port_leg1") or 0),
-                   # Générateur TX (mire interne sans source câblée) + repli automatique
+                   ***REMOVED*** Générateur TX (mire interne sans source câblée) + repli automatique
                    "gen_enabled": bool(t.get("gen_enabled")),
                    "gen_pattern": t.get("gen_pattern") or "bars",
                    "fallback_mode": params.get("tx_fallback") or "black",
-                   # IDENT user incrusté sur la sortie émise (resync de l'état persisté)
+                   ***REMOVED*** IDENT user incrusté sur la sortie émise (resync de l'état persisté)
                    "ident": bool(t.get("ident")),
                    "ident_size": int(t.get("ident_size") or 0),
-                   # Câblages audio/ANC indépendants (resync ; "" = non câblé → silence)
+                   ***REMOVED*** Câblages audio/ANC indépendants (resync ; "" = non câblé → silence)
                    "audio_shm_in": audio_shm_in,
                    "anc_shm_in": anc_shm_in}
-        # C2b+ push-down : si une ressource NMOS est bindée à ce slot, son transport gouverne le
-        # ROUTAGE émis (mcast/port + leg1 2022-7) par essence ; en GÉN, aussi le format vidéo. Un
-        # slot non bindé est inchangé (transport du slot, comportement auto).
+        ***REMOVED*** C2b+ push-down : si une ressource NMOS est bindée à ce slot, son transport gouverne le
+        ***REMOVED*** ROUTAGE émis (mcast/port + leg1 2022-7) par essence ; en GÉN, aussi le format vidéo. Un
+        ***REMOVED*** slot non bindé est inchangé (transport du slot, comportement auto).
         _vt = _bound_tr(slot_tx(i, "v"))
         if _vt:
             if _vt.get("multicast_ip"):      payload["mcast"]    = _vt["multicast_ip"]
             if _vt.get("port"):              payload["udp_port"] = int(_vt["port"])
             if _vt.get("multicast_ip_leg1"): payload["mcast2"]    = _vt["multicast_ip_leg1"]
             if _vt.get("dest_port_leg1"):    payload["udp_port2"] = int(_vt["dest_port_leg1"])
-            if gen:   # mire interne → la ressource gouverne aussi le format émis (SDP fidèle)
+            if gen:   ***REMOVED*** mire interne → la ressource gouverne aussi le format émis (SDP fidèle)
                 if _vt.get("width"):     payload["width"]     = int(_vt["width"])
                 if _vt.get("height"):    payload["height"]    = int(_vt["height"])
                 if _vt.get("bit_depth"): payload["bit_depth"] = int(_vt["bit_depth"])
@@ -2257,28 +2257,28 @@ def push_tx_slots(vmid, params=None):
     host = node.get("host") if node else None
     if not host or not (params.get("tx_slots") or []):
         return
-    # READINESS du contrôleur avant tout push : au boot À FROID du moteur (realign/recréation),
-    # :8081 ne répond qu'après mtl_init (~30-60 s) — les retries courts par-slot (5×~1-5 s)
-    # rataient la fenêtre → sessions TX absentes jusqu'à un re-push manuel (vécu à la bascule
-    # 0.42.0). On attend ici, UNE fois, jusqu'à ~90 s avec backoff ; au-delà on tente quand même
-    # (les retries par-slot restent le filet) et on alerte.
+    ***REMOVED*** READINESS du contrôleur avant tout push : au boot À FROID du moteur (realign/recréation),
+    ***REMOVED*** :8081 ne répond qu'après mtl_init (~30-60 s) — les retries courts par-slot (5×~1-5 s)
+    ***REMOVED*** rataient la fenêtre → sessions TX absentes jusqu'à un re-push manuel (vécu à la bascule
+    ***REMOVED*** 0.42.0). On attend ici, UNE fois, jusqu'à ~90 s avec backoff ; au-delà on tente quand même
+    ***REMOVED*** (les retries par-slot restent le filet) et on alerte.
     from . import deploy
-    # Readiness = `mtl_init` TERMINÉ (ports publiés sur :8080), pas « le contrôleur répond ».
-    # :8081/status dit `running:true` dès que son serveur HTTP est monté, donc bien avant que le
-    # moteur accepte sa configuration — pousser à ce moment-là revient à pousser dans le vide.
+    ***REMOVED*** Readiness = `mtl_init` TERMINÉ (ports publiés sur :8080), pas « le contrôleur répond ».
+    ***REMOVED*** :8081/status dit `running:true` dès que son serveur HTTP est monté, donc bien avant que le
+    ***REMOVED*** moteur accepte sa configuration — pousser à ce moment-là revient à pousser dans le vide.
     _budget = float(settings.get("mtl_tx_push_timeout_s") or 120)
     _ready = moteur_initialise(host, timeout_s=_budget)
     if not _ready:
-        # (db_add_alert vient du module — un import LOCAL ici en ferait une variable locale pour
-        # TOUTE la fonction, donc non liée dans les autres branches : UnboundLocalError.)
+        ***REMOVED*** (db_add_alert vient du module — un import LOCAL ici en ferait une variable locale pour
+        ***REMOVED*** TOUTE la fonction, donc non liée dans les autres branches : UnboundLocalError.)
         db_add_alert("alert.docker.moteur_non_initialise", "warning",
                      vmid=vmid, kind="tx_stall",
                      params={"vmid": vmid, "s": "%.0f" % _budget})
-    # ★ ÉCHÉANCE, PAS COMPTE D'ESSAIS (incident dl360-1, 2026-07-28 00:00). L'ancien `range(5)` donnait
-    # 5 s par slot : après une RECRÉATION, l'agent :8081/status répond bien avant que le contrôleur
-    # n'accepte /tx (mtl_init met 30-60 s). Les 5 essais s'épuisaient, EN SILENCE, pour chaque slot —
-    # le moteur repartait avec ZÉRO sortie et personne ne le disait. C'est exactement la correction
-    # déjà faite sur le chemin RX de `resync_moteur` (cf. son docstring), jamais reportée ici.
+    ***REMOVED*** ★ ÉCHÉANCE, PAS COMPTE D'ESSAIS (incident dl360-1, 2026-07-28 00:00). L'ancien `range(5)` donnait
+    ***REMOVED*** 5 s par slot : après une RECRÉATION, l'agent :8081/status répond bien avant que le contrôleur
+    ***REMOVED*** n'accepte /tx (mtl_init met 30-60 s). Les 5 essais s'épuisaient, EN SILENCE, pour chaque slot —
+    ***REMOVED*** le moteur repartait avec ZÉRO sortie et personne ne le disait. C'est exactement la correction
+    ***REMOVED*** déjà faite sur le chemin RX de `resync_moteur` (cf. son docstring), jamais reportée ici.
     _deadline = time.monotonic() + float(settings.get("mtl_tx_push_timeout_s") or 120)
     _ko = []
     _payloads = tx_payloads(vmid, params)
@@ -2299,16 +2299,16 @@ def push_tx_slots(vmid, params=None):
                 time.sleep(1)
         if not _ok:
             _ko.append((i, _err))
-            continue          # slot non poussé : ne pas re-câbler dans le vide
-        # Câble VIDÉO d'entrée (:8082/input) APRÈS le slot : seul le `cable_shm` VIDÉO fait émettre, et
-        # `:8081/tx` ne le pose PAS (il pose `shm_in`, aussitôt écrasé par `_tx_gen_apply` qui lit
-        # `cable_shm`). Sans ce re-push, une sortie TX vidéo câblée ne survit pas à une recréation du
-        # conteneur (symétrie manquante avec les abonnements RX re-poussés). Les câbles AUDIO/ANC sont
-        # déjà restaurés par `:8081/tx` (audio_shm_in→audio_cable_shm, anc_shm_in→anc_cable_shm).
+            continue          ***REMOVED*** slot non poussé : ne pas re-câbler dans le vide
+        ***REMOVED*** Câble VIDÉO d'entrée (:8082/input) APRÈS le slot : seul le `cable_shm` VIDÉO fait émettre, et
+        ***REMOVED*** `:8081/tx` ne le pose PAS (il pose `shm_in`, aussitôt écrasé par `_tx_gen_apply` qui lit
+        ***REMOVED*** `cable_shm`). Sans ce re-push, une sortie TX vidéo câblée ne survit pas à une recréation du
+        ***REMOVED*** conteneur (symétrie manquante avec les abonnements RX re-poussés). Les câbles AUDIO/ANC sont
+        ***REMOVED*** déjà restaurés par `:8081/tx` (audio_shm_in→audio_cable_shm, anc_shm_in→anc_cable_shm).
         if shm_in:
-            # Contrat :8082/input = clé "slot" (cf. _plugin_input / controller do_POST /input qui lit
-            # body["slot"], défaut 0). Envoyer "idx" faisait retomber TOUT câble vidéo re-poussé sur le
-            # slot 0 (invisible avec 1 seul TX : idx 0 = défaut ; révélé dès Tx2 → inversion des sorties).
+            ***REMOVED*** Contrat :8082/input = clé "slot" (cf. _plugin_input / controller do_POST /input qui lit
+            ***REMOVED*** body["slot"], défaut 0). Envoyer "idx" faisait retomber TOUT câble vidéo re-poussé sur le
+            ***REMOVED*** slot 0 (invisible avec 1 seul TX : idx 0 = défaut ; révélé dès Tx2 → inversion des sorties).
             _wire = {"essence": "video", "shm": shm_in, "slot": i}
             if _src:
                 _wire["format"] = _src
@@ -2323,8 +2323,8 @@ def push_tx_slots(vmid, params=None):
                         _ko.append((i, "câble vidéo : %s" % e))
                         break
                     time.sleep(1)
-    # ★ RENDRE COMPTE. La fonction retournait None quoi qu'il arrive : un push intégralement raté
-    # était indiscernable d'un succès, y compris pour `resync_moteur` qui l'appelle.
+    ***REMOVED*** ★ RENDRE COMPTE. La fonction retournait None quoi qu'il arrive : un push intégralement raté
+    ***REMOVED*** était indiscernable d'un succès, y compris pour `resync_moteur` qui l'appelle.
     _tot = len(_payloads)
     if _ko:
         _ids = [str(i) for i, _ in _ko]
@@ -2400,53 +2400,53 @@ def resync_moteur(vmid, params):
                      params={"h": hn, "vmid": vmid})
         return
 
-    # ★ DEUXIÈME attente, et c'est elle qui compte : :8081/status ci-dessus ne prouve que la VIVACITÉ
-    # du contrôleur (il répond `running:true` dès que son serveur HTTP est monté). Le moteur, lui, met
-    # 30-60 s de plus à finir `mtl_init` sur E810 — entraînement du lien 100G compris. Tout ce qui
-    # suit (slots TX, abonnements RX) le CONFIGURE : le faire trop tôt, c'est pousser dans le vide.
-    # On ne renonce pas si l'échéance passe (le moteur peut finir juste après, et le repli
-    # d'admission de push_tx_slots a sa propre échéance) — mais on le DIT.
+    ***REMOVED*** ★ DEUXIÈME attente, et c'est elle qui compte : :8081/status ci-dessus ne prouve que la VIVACITÉ
+    ***REMOVED*** du contrôleur (il répond `running:true` dès que son serveur HTTP est monté). Le moteur, lui, met
+    ***REMOVED*** 30-60 s de plus à finir `mtl_init` sur E810 — entraînement du lien 100G compris. Tout ce qui
+    ***REMOVED*** suit (slots TX, abonnements RX) le CONFIGURE : le faire trop tôt, c'est pousser dans le vide.
+    ***REMOVED*** On ne renonce pas si l'échéance passe (le moteur peut finir juste après, et le repli
+    ***REMOVED*** d'admission de push_tx_slots a sa propre échéance) — mais on le DIT.
     if not moteur_initialise(host, timeout_s=float(settings.get("mtl_init_wait_s") or 90)):
         db_add_alert("alert.docker.mtl_init_non_termine", "warning",
                      vmid=vmid, node_id=c.get("node_id"), kind="deploy",
                      params={"h": hn, "vmid": vmid})
 
-    # 1) Slots TX. Étage 1 docs/reference/TX_LAYOUTS.md : si un layout est déclaré pour la NIC de ce moteur et
-    # pas encore entièrement appliqué, on l'applique D'ABORD (auto-alloc des destinations
-    # manquantes + `provisioned=True` pour tout l'arbre déclaré) — le déploiement est le moment
-    # SÛR pour recalculer l'arbre RL du port (aucune sortie n'est encore vivante). Sans layout
-    # déclaré (ou déjà appliqué) : simple resync des slots existants.
+    ***REMOVED*** 1) Slots TX. Étage 1 docs/reference/TX_LAYOUTS.md : si un layout est déclaré pour la NIC de ce moteur et
+    ***REMOVED*** pas encore entièrement appliqué, on l'applique D'ABORD (auto-alloc des destinations
+    ***REMOVED*** manquantes + `provisioned=True` pour tout l'arbre déclaré) — le déploiement est le moment
+    ***REMOVED*** SÛR pour recalculer l'arbre RL du port (aucune sortie n'est encore vivante). Sans layout
+    ***REMOVED*** déclaré (ou déjà appliqué) : simple resync des slots existants.
     if (params or {}).get("tx_slots"):
         applied_via_layout = False
         try:
             from . import io2110_layouts as _lay
-            # Multi-port : on regarde TOUTES les cartes, pas seulement la primaire — un modèle
-            # déclaré sur la seconde carte était jusqu'ici invisible ici, donc jamais appliqué.
+            ***REMOVED*** Multi-port : on regarde TOUTES les cartes, pas seulement la primaire — un modèle
+            ***REMOVED*** déclaré sur la seconde carte était jusqu'ici invisible ici, donc jamais appliqué.
             _sts = _lay.layout_status_all(vmid) or {}
             if any(s.get("state") in ("none", "pending") for s in _sts.values()):
-                # `iface=None` → applique les modèles de TOUTES les unités qui en déclarent un.
-                # `redeploy=True` : on est DANS le déploiement, l'env vient d'être posé — si le total
-                # déclaré diffère du booté, il faut recréer maintenant (comportement historique).
-                # Ailleurs, le défaut est le report signalé par reconcile_engine_sizing.
+                ***REMOVED*** `iface=None` → applique les modèles de TOUTES les unités qui en déclarent un.
+                ***REMOVED*** `redeploy=True` : on est DANS le déploiement, l'env vient d'être posé — si le total
+                ***REMOVED*** déclaré diffère du booté, il faut recréer maintenant (comportement historique).
+                ***REMOVED*** Ailleurs, le défaut est le report signalé par reconcile_engine_sizing.
                 ok, _res = _lay.apply_layout(vmid, redeploy=True)
                 applied_via_layout = ok
         except Exception as e:
             log.warning("resync moteur %s: layout TX (étage 1) : %s", vmid, e)
         if not applied_via_layout:
             try:
-                # Sondes de présence signal armées par source : le moteur recréé est reparti sur
-                # son défaut (tout calculer). On lui repousse la configuration — sans quoi
-                # l'économie de CPU disparaît silencieusement à chaque redéploiement.
+                ***REMOVED*** Sondes de présence signal armées par source : le moteur recréé est reparti sur
+                ***REMOVED*** son défaut (tout calculer). On lui repousse la configuration — sans quoi
+                ***REMOVED*** l'économie de CPU disparaît silencieusement à chaque redéploiement.
                 try:
                     from .routes.mtl_engine import push_probes_all as _ppa
                     _ppa(vmid, params)
                 except Exception as _e:
                     log.info("resync moteur %s : repush des sondes : %s", vmid, _e)
                 _res_tx = push_tx_slots(vmid, params) or {}
-                # ★ VÉRIFIER LE VERSANT TX. La vérification finale de ce resync ne compte que les
-                # sessions RX : un moteur revenu avec ZÉRO sortie passait entièrement inaperçu
-                # (vécu le 2026-07-28 — TX muettes jusqu'à un push manuel). `push_tx_slots` alerte
-                # désormais lui-même par slot ; ici on tranche le cas TOTAL, le plus parlant.
+                ***REMOVED*** ★ VÉRIFIER LE VERSANT TX. La vérification finale de ce resync ne compte que les
+                ***REMOVED*** sessions RX : un moteur revenu avec ZÉRO sortie passait entièrement inaperçu
+                ***REMOVED*** (vécu le 2026-07-28 — TX muettes jusqu'à un push manuel). `push_tx_slots` alerte
+                ***REMOVED*** désormais lui-même par slot ; ici on tranche le cas TOTAL, le plus parlant.
                 if _res_tx.get("total") and not _res_tx.get("pushed"):
                     db_add_alert(
                         "alert.docker.revenu_sans_sortie",
@@ -2457,9 +2457,9 @@ def resync_moteur(vmid, params):
                              vmid=vmid, node_id=c.get("node_id"), kind="tx_stall",
                              params={"h": hn, "vmid": vmid, "e": str(e)})
 
-    # 2) Abonnements RX (IS-05) : le contrôleur recréé a perdu ses fichiers SDP (/tmp, rootfs
-    # éphémère), mais l'orchestrateur garde l'état NMOS → on restaure les receivers actifs sans
-    # intervention d'un contrôleur NMOS externe.
+    ***REMOVED*** 2) Abonnements RX (IS-05) : le contrôleur recréé a perdu ses fichiers SDP (/tmp, rootfs
+    ***REMOVED*** éphémère), mais l'orchestrateur garde l'état NMOS → on restaure les receivers actifs sans
+    ***REMOVED*** intervention d'un contrôleur NMOS externe.
     try:
         from services import nmos as _nmos
     except Exception as e:
@@ -2474,38 +2474,117 @@ def resync_moteur(vmid, params):
                      params={"h": hn, "vmid": vmid, "e": str(e)})
         return
     if not attendus:
-        return   # rien d'attendu → un moteur sans session RX est NORMAL, on n'alerte pas
+        return   ***REMOVED*** rien d'attendu → un moteur sans session RX est NORMAL, on n'alerte pas
 
-    # 3) VÉRIFICATION : le moteur crée ses sessions au tour suivant du _manager_loop (≤ ~0,5 s) mais
-    # mtl_rx peut mettre plusieurs secondes à monter → on laisse un délai, puis on RE-POUSSE une
-    # fois avant d'alerter (une seule reprise : au-delà, c'est une panne, pas une course).
-    for tentative in (1, 2):
-        obs = None
-        for _ in range(int(_VERIF_RX_TIMEOUT_S / 2)):
-            time.sleep(2)
-            obs = sessions_rx_actives(vmid, host)
-            if obs is not None and obs >= attendus:
-                if tentative > 1:
-                    db_add_alert("alert.docker.rx_retablies", "info",
-                                 vmid=vmid, node_id=c.get("node_id"), kind="rx_stall",
-                                 params={"h": hn, "vmid": vmid, "obs": obs, "att": attendus})
-                log.info("resync moteur %s: %d/%d sessions RX actives", vmid, obs, attendus)
-                return
-        if tentative == 1:
-            log.warning("resync moteur %s: %s/%d sessions RX après resync — re-poussée",
-                        vmid, obs, attendus)
-            try:
-                _nmos.repush_subscriptions(vmid)
-            except Exception:
-                pass
+    ***REMOVED*** 3) VÉRIFICATION, puis REPRISE JUSQU'À UNE ÉCHÉANCE.
+    ***REMOVED***
+    ***REMOVED*** ⚠ CE BLOC FAISAIT EXACTEMENT DEUX TENTATIVES, au motif écrit ici qu'« au-delà, c'est une
+    ***REMOVED*** panne, pas une course ». Le 2026-09-12 ce raisonnement a coûté 13 MINUTES D'ANTENNE MUETTE :
+    ***REMOVED*** moteur redémarré à 09:42:21, repush à +7 s puis à +39 s — tous deux dans le vide, le moteur
+    ***REMOVED*** n'ayant pas fini `mtl_init` —, alerte posée, et PLUS AUCUNE TENTATIVE. Les flux ne sont
+    ***REMOVED*** revenus qu'après un `repush_subscriptions` lancé à la main.
+    ***REMOVED***
+    ***REMOVED*** Le défaut n'est pas le nombre d'essais, c'est de compter des ESSAIS au lieu de tenir une
+    ***REMOVED*** ÉCHÉANCE. Deux essais de 30 s bornent la reprise à ~60 s, alors que la docstring de cette
+    ***REMOVED*** même fonction dit que le moteur met « 30-60 s de plus » que `:8081/status` à être prêt : le
+    ***REMOVED*** budget pouvait expirer avant que le moteur ne soit en état d'écouter. On tient donc une
+    ***REMOVED*** échéance franche, et on continue de re-pousser tant qu'elle n'est pas atteinte.
+    fin = time.monotonic() + _RESYNC_RX_DEADLINE_S
+    obs = None
+    n_push = 0
+    while True:
+        obs = sessions_rx_actives(vmid, host)
+        if obs is not None and obs >= attendus:
+            if n_push:
+                db_add_alert("alert.docker.rx_retablies", "info",
+                             vmid=vmid, node_id=c.get("node_id"), kind="rx_stall",
+                             params={"h": hn, "vmid": vmid, "obs": obs, "att": attendus})
+            log.info("resync moteur %s: %d/%d sessions RX actives (après %d repush)",
+                     vmid, obs, attendus, n_push)
+            return
+        if time.monotonic() >= fin:
+            break
+        time.sleep(_VERIF_RX_PAS_S)
+        ***REMOVED*** On re-pousse à CHAQUE tour : l'opération est idempotente, et le cas qui nous intéresse
+        ***REMOVED*** est justement celui où le moteur n'était pas prêt à écouter au tour précédent.
+        n_push += 1
+        log.warning("resync moteur %s: %s/%d sessions RX — repush ***REMOVED***%d",
+                    vmid, obs, attendus, n_push)
+        try:
+            _nmos.repush_subscriptions(vmid)
+        except Exception:
+            pass
     db_add_alert(
         "alert.docker.rx_revenu_vide",
         "error", vmid=vmid, node_id=c.get("node_id"), kind="rx_stall",
         params={"h": hn, "vmid": vmid, "obs": 0 if obs is None else obs, "att": attendus})
 
 
-# Délai laissé au moteur pour créer ses sessions RX après un repush (mtl_rx monte en plusieurs s).
+***REMOVED*** Délai laissé au moteur pour créer ses sessions RX après un repush (mtl_rx monte en plusieurs s).
 _VERIF_RX_TIMEOUT_S = 30
+***REMOVED*** Intervalle entre deux tentatives de reprise, et ÉCHÉANCE TOTALE de la reprise. 5 minutes
+***REMOVED*** couvrent largement les 30-60 s de `mtl_init` sur E810 (entraînement du lien 100G compris) et
+***REMOVED*** une nouvelle recréation qui s'enchaînerait. Au-delà, ce n'est plus une course : on alerte.
+_VERIF_RX_PAS_S = 10
+_RESYNC_RX_DEADLINE_S = 300
+
+
+def derive_config_moteur(vmid, payload=None):
+    """Écarts entre la configuration ENREGISTRÉE du nœud et ce que le moteur EXÉCUTE réellement.
+
+    ★ POURQUOI. Un moteur 2110 ne lit sa configuration réseau qu'au DÉPLOIEMENT. Modifier
+    l'adressage d'une interface média la persiste en base, l'interface confirme l'enregistrement,
+    et le moteur continue de tourner sur l'ancienne — sans que rien, nulle part, ne le signale.
+    Les conteneurs compute ont une signature de spec (`containers.runtime_spec_sig`) qui compare
+    ce qui tourne à ce qui est déclaré ; le moteur MTL n'en avait aucune, alors que c'est le
+    conteneur où l'adressage compte le plus.
+
+    Vécu le 2026-09-10, en armant le double chemin ST-2022-7 : `ens1f1np1` déclarée en
+    192.0.2.201 pour porter la jambe « blue », moteur toujours en 192.0.2.202. Enregistré,
+    affiché comme tel, jamais appliqué. La question de l'exploitant — « comment savoir ? » — n'avait
+    pas de réponse : rien ne le disait.
+
+    `payload` permet d'injecter la réponse du moteur (banc/tests) au lieu de l'interroger.
+    Renvoie [] quand tout concorde, sinon une liste de dicts {iface, declare, execute, quoi}.
+    """
+    from .database import db_get_container, db_get_node_interfaces
+    from .addressing import get_container_ip
+    c = db_get_container(vmid) or {}
+    if payload is None:
+        ip = get_container_ip(vmid)
+        if not ip:
+            return []
+        try:
+            import requests
+            r = requests.get(f"http://{ip}:8080", timeout=3)
+            payload = r.json() if r.status_code == 200 else None
+        except Exception as e:
+            log.debug("derive_config_moteur(%s) : moteur injoignable (%s)", vmid, e)
+            return []
+    if not isinstance(payload, dict):
+        return []
+
+    vivant = {}
+    for p in ((payload.get("nic") or {}).get("ports") or []):
+        if p.get("iface"):
+            vivant[p["iface"]] = (p.get("sip") or "").strip()
+
+    ecarts = []
+    for r in (db_get_node_interfaces(c.get("node_id")) or []):
+        if (r.get("role") or "") != "media2110":
+            continue
+        ifn = r.get("ifname")
+        ***REMOVED*** `ip_cidr` porte le masque, le moteur publie l'adresse seule : on compare les adresses.
+        declare = (r.get("ip_cidr") or "").split("/")[0].strip()
+        if not ifn or not declare:
+            continue
+        if ifn not in vivant:
+            ecarts.append({"iface": ifn, "quoi": "interface_absente",
+                           "declare": declare, "execute": None})
+        elif vivant[ifn] != declare:
+            ecarts.append({"iface": ifn, "quoi": "adresse",
+                           "declare": declare, "execute": vivant[ifn]})
+    return ecarts
 
 
 def deploy_docker(vmid, params, type_script=None):
@@ -2524,10 +2603,10 @@ def deploy_docker(vmid, params, type_script=None):
                      vmid=vmid, node_id=c.get("node_id"), kind="deploy",
                      params={"vmid": vmid})
         return False
-    # AGENT-NŒUD EXIGÉ (décision 2026-07-26), comme pour les conteneurs compute. Sans agent,
-    # `ssh_run` retombe sur le root-SSH : le moteur démarrerait, mais privé de ce que seul le
-    # contrat d'agent transporte. Un moteur 2110 à moitié configuré est pire qu'un moteur absent —
-    # il produit du signal qu'on croit bon. On refuse explicitement plutôt que de déployer à demi.
+    ***REMOVED*** AGENT-NŒUD EXIGÉ (décision 2026-07-26), comme pour les conteneurs compute. Sans agent,
+    ***REMOVED*** `ssh_run` retombe sur le root-SSH : le moteur démarrerait, mais privé de ce que seul le
+    ***REMOVED*** contrat d'agent transporte. Un moteur 2110 à moitié configuré est pire qu'un moteur absent —
+    ***REMOVED*** il produit du signal qu'on croit bon. On refuse explicitement plutôt que de déployer à demi.
     from . import node_driver as _nd
     if not _nd.has_agent(node):
         db_add_alert(
@@ -2535,7 +2614,7 @@ def deploy_docker(vmid, params, type_script=None):
             "error", vmid=vmid, node_id=node.get("id"), kind="deploy",
             params={"vmid": vmid, "n": node.get("name")})
         return False
-    # Type : argument explicite → type persisté en deploy_config → défaut MTL bespoke.
+    ***REMOVED*** Type : argument explicite → type persisté en deploy_config → défaut MTL bespoke.
     type_script = type_script or docker_compute._type_of(c) or "2110_io"
     if not docker_compute.is_mtl_type(type_script):
         db_add_alert("alert.docker.type_non_mtl", "error",
@@ -2550,30 +2629,30 @@ def deploy_docker(vmid, params, type_script=None):
     params = dict(params or {})
     params.setdefault("hostname", _hostname_moteur(vmid, None, c))
 
-    # Remplir les clés ABSENTES depuis deploy_defaults du manifeste (sans écraser les valeurs
-    # déjà explicites en DB) : garantit qu'un nouveau champ ajouté dans plugin.json s'applique
-    # même aux containers existants au prochain redéploiement.
+    ***REMOVED*** Remplir les clés ABSENTES depuis deploy_defaults du manifeste (sans écraser les valeurs
+    ***REMOVED*** déjà explicites en DB) : garantit qu'un nouveau champ ajouté dans plugin.json s'applique
+    ***REMOVED*** même aux containers existants au prochain redéploiement.
     _p_manifest = (plugins.get(type_script) or {}).get("deploy_defaults") or {}
     for _k, _v in _p_manifest.items():
         params.setdefault(_k, _v)
 
-    # Capacité TX = nombre de slots émetteurs provisionnés dans le contrôleur (N_TX). C'est une
-    # capacité STRUCTURELLE (comme video_count côté RX) que active_tx_count plafonne ensuite par
-    # le budget de queues XDP. On la migre VERS LE HAUT depuis le manifeste (jamais à la baisse) :
-    # un container legacy provisionné avec peu de slots (ex. tx_count=6) adopte la capacité courante
-    # au prochain redéploiement → le bouton « + Ajouter un TX » retrouve de la marge.
+    ***REMOVED*** Capacité TX = nombre de slots émetteurs provisionnés dans le contrôleur (N_TX). C'est une
+    ***REMOVED*** capacité STRUCTURELLE (comme video_count côté RX) que active_tx_count plafonne ensuite par
+    ***REMOVED*** le budget de queues XDP. On la migre VERS LE HAUT depuis le manifeste (jamais à la baisse) :
+    ***REMOVED*** un container legacy provisionné avec peu de slots (ex. tx_count=6) adopte la capacité courante
+    ***REMOVED*** au prochain redéploiement → le bouton « + Ajouter un TX » retrouve de la marge.
     _tx_default = int(_p_manifest.get("tx_count") or 0)
     if _tx_default:
         params["tx_count"] = max(int(params.get("tx_count") or 0), _tx_default)
 
-    # Format de placeholder/simu = format vidéo PAR DÉFAUT des réglages (pas de valeur figée).
-    # Injecté dans les params → atterrit dans deploy_config (topologie/moniteur avant SDP) ET
-    # dans l'env du contrôleur. La réception réelle s'adapte ensuite au SDP (propagation).
+    ***REMOVED*** Format de placeholder/simu = format vidéo PAR DÉFAUT des réglages (pas de valeur figée).
+    ***REMOVED*** Injecté dans les params → atterrit dans deploy_config (topologie/moniteur avant SDP) ET
+    ***REMOVED*** dans l'env du contrôleur. La réception réelle s'adapte ensuite au SDP (propagation).
     _df = _default_video_format()
     for _k in ("width", "height", "fps", "scan", "chroma", "bit_depth", "colorimetry"):
         params.setdefault(_k, _df[_k])
 
-    # Hook before_deploy : normalise video_count/format (réutilise le receiver 2110).
+    ***REMOVED*** Hook before_deploy : normalise video_count/format (réutilise le receiver 2110).
     _hook = plugins.get_hook(type_script, "before_deploy")
     if _hook:
         try:
@@ -2586,9 +2665,9 @@ def deploy_docker(vmid, params, type_script=None):
         except Exception as e:
             log.warning("hook before_deploy %s: %s", type_script, e)
 
-    # Profondeur de bits du pipeline shm (force8 par défaut) — comme le chemin LXC (deploy.py).
-    # Sans ça, mtl_rx écrirait du 10 bits natif alors que les consommateurs lisent du 8 bits
-    # → image verte/fantôme. Le contrôleur passe ce bit_depth à mtl_rx (output_fmt) + à la simu.
+    ***REMOVED*** Profondeur de bits du pipeline shm (force8 par défaut) — comme le chemin LXC (deploy.py).
+    ***REMOVED*** Sans ça, mtl_rx écrirait du 10 bits natif alors que les consommateurs lisent du 8 bits
+    ***REMOVED*** → image verte/fantôme. Le contrôleur passe ce bit_depth à mtl_rx (output_fmt) + à la simu.
     try:
         from .deploy import _apply_pipeline_bit_depth
         _apply_pipeline_bit_depth(params, settings.get("mxl_pipeline_bit_depth") or "force8")
@@ -2602,25 +2681,25 @@ def deploy_docker(vmid, params, type_script=None):
                      params={"vmid": vmid, "msg": msg})
         return False
 
-    # Plan média 2110 : (ré)assigner l'IPv4 de CHAQUE PF média AVANT le run (le contrôleur les
-    # auto-détecte au démarrage). Idempotent ; un échec n'empêche pas le déploiement mais est signalé.
+    ***REMOVED*** Plan média 2110 : (ré)assigner l'IPv4 de CHAQUE PF média AVANT le run (le contrôleur les
+    ***REMOVED*** auto-détecte au démarrage). Idempotent ; un échec n'empêche pas le déploiement mais est signalé.
     _mok, _mmsg = ensure_media_ips(node)
     if not _mok:
         db_add_alert("alert.docker.ip_media_non_assignee", "warning",
                      vmid=vmid, node_id=node.get("id"), kind="net",
                      params={"vmid": vmid, "msg": _mmsg, "ifn": node.get("mtl_iface")})
-    # Passerelle déclarée des NIC média (routage par leg). No-op si aucune n'est renseignée —
-    # c'est le cas de tout parc antérieur. Un échec est signalé, jamais avalé.
+    ***REMOVED*** Passerelle déclarée des NIC média (routage par leg). No-op si aucune n'est renseignée —
+    ***REMOVED*** c'est le cas de tout parc antérieur. Un échec est signalé, jamais avalé.
     _rok, _rmsg = ensure_media_routes(node)
     if not _rok:
         db_add_alert("alert.docker.route_media_non_posee", "warning",
                      vmid=vmid, node_id=node.get("id"), kind="net",
                      params={"vmid": vmid, "msg": _rmsg, "ifn": node.get("mtl_iface")})
 
-    # AUTO-BIND vfio-pci des PF media2110 pmd=dpdk AVANT le run : sans ce bind, une PF dpdk restée sur
-    # `ice` fait crash-looper le moteur DPDK (« dev_eal_init fail -1 ») SILENCIEUSEMENT. Idempotent ;
-    # préconditions (IOMMU/vfio/hugepages) vérifiées, échecs remontés en alerte (jamais muet), mais un
-    # échec de bind ne PLANTE pas le déploiement (best-effort visible).
+    ***REMOVED*** AUTO-BIND vfio-pci des PF media2110 pmd=dpdk AVANT le run : sans ce bind, une PF dpdk restée sur
+    ***REMOVED*** `ice` fait crash-looper le moteur DPDK (« dev_eal_init fail -1 ») SILENCIEUSEMENT. Idempotent ;
+    ***REMOVED*** préconditions (IOMMU/vfio/hugepages) vérifiées, échecs remontés en alerte (jamais muet), mais un
+    ***REMOVED*** échec de bind ne PLANTE pas le déploiement (best-effort visible).
     try:
         ensure_vfio_binds(node)
     except Exception as _ve:
@@ -2630,7 +2709,7 @@ def deploy_docker(vmid, params, type_script=None):
 
     try:
         cmd = _build_run_cmd(vmid, node, params)
-    except ValueError as _e:   # garde-fou config média (ex. port DPDK sans IP de segment)
+    except ValueError as _e:   ***REMOVED*** garde-fou config média (ex. port DPDK sans IP de segment)
         db_add_alert("alert.docker.refuse_config", "error",
                      vmid=vmid, node_id=node.get("id"), kind="deploy",
                      params={"vmid": vmid, "e": str(_e)})
@@ -2646,7 +2725,7 @@ def deploy_docker(vmid, params, type_script=None):
 
     db_update_status(vmid, "running")
 
-    # source/shm via wiring déclaratif (identique au fallback LXC de deploy.py).
+    ***REMOVED*** source/shm via wiring déclaratif (identique au fallback LXC de deploy.py).
     hn = _hostname_moteur(vmid, params)
     try:
         w = plugins.derive_wiring(type_script, hn, params)
@@ -2657,7 +2736,7 @@ def deploy_docker(vmid, params, type_script=None):
     db_update_source(vmid, "NMOS (IS-05)", prod or f"{hn}_0")
     db_update_deploy_config(vmid, type_script, params)
 
-    # Notify NMOS/Ember+ après écriture du deploy_config (rebuild_model lit deploy_config.type).
+    ***REMOVED*** Notify NMOS/Ember+ après écriture du deploy_config (rebuild_model lit deploy_config.type).
     for _mod, _fn in (("nmos", "notify_state_change"), ("emberplus", "notify_change")):
         try:
             from services import nmos, emberplus
@@ -2665,16 +2744,16 @@ def deploy_docker(vmid, params, type_script=None):
         except Exception:
             pass
 
-    # Resync du moteur (slots TX + abonnements RX IS-05) : le contrôleur recréé a perdu son état
-    # (_tx en mémoire, fichiers SDP dans /tmp du rootfs ÉPHÉMÈRE) → l'orchestrateur, qui ne
-    # redémarre pas, le lui rend. UN SEUL thread, SÉQUENTIEL et VÉRIFIÉ (cf. _resync_moteur).
+    ***REMOVED*** Resync du moteur (slots TX + abonnements RX IS-05) : le contrôleur recréé a perdu son état
+    ***REMOVED*** (_tx en mémoire, fichiers SDP dans /tmp du rootfs ÉPHÉMÈRE) → l'orchestrateur, qui ne
+    ***REMOVED*** redémarre pas, le lui rend. UN SEUL thread, SÉQUENTIEL et VÉRIFIÉ (cf. _resync_moteur).
     import threading as _th
     _th.Thread(target=resync_moteur, args=(vmid, params), daemon=True).start()
 
-    # Auto-qualification de la carte (bibliothèque nic_profiles) : au 1er déploiement d'un moteur sur
-    # un nœud (par cycle de vie du contrôleur), on qualifie la carte en fond — cap RL TX + PTP + DDP,
-    # lus du log/sondes du moteur qui vient de démarrer. narrow_ok reste manuel (exige une sonde
-    # loopback). Best-effort, non bloquant : attend la readiness du moteur puis mesure une fois.
+    ***REMOVED*** Auto-qualification de la carte (bibliothèque nic_profiles) : au 1er déploiement d'un moteur sur
+    ***REMOVED*** un nœud (par cycle de vie du contrôleur), on qualifie la carte en fond — cap RL TX + PTP + DDP,
+    ***REMOVED*** lus du log/sondes du moteur qui vient de démarrer. narrow_ok reste manuel (exige une sonde
+    ***REMOVED*** loopback). Best-effort, non bloquant : attend la readiness du moteur puis mesure une fois.
     try:
         if node.get("id") not in _auto_qualified_nodes:
             _auto_qualified_nodes.add(node.get("id"))
@@ -2690,9 +2769,9 @@ def deploy_docker(vmid, params, type_script=None):
     return True
 
 
-# Nœuds déjà auto-qualifiés dans ce cycle de vie du contrôleur (évite de re-qualifier à chaque
-# redéploiement ; un restart du contrôleur re-qualifie une fois — acceptable). Le bouton « Qualifier »
-# (route /api/nodes/<id>/qualify-nic) reste dispo pour forcer une re-mesure.
+***REMOVED*** Nœuds déjà auto-qualifiés dans ce cycle de vie du contrôleur (évite de re-qualifier à chaque
+***REMOVED*** redéploiement ; un restart du contrôleur re-qualifie une fois — acceptable). Le bouton « Qualifier »
+***REMOVED*** (route /api/nodes/<id>/qualify-nic) reste dispo pour forcer une re-mesure.
 _auto_qualified_nodes = set()
 
 
@@ -2706,8 +2785,8 @@ def _auto_qualify_nic(node_id, vmid):
     node = db_get_node(node_id)
     if not node:
         return
-    # Laisser le moteur démarrer (daemon mtl_rx → « tx_queues N malloc succ ») et le PTP tenter son
-    # lock (~1-2 min) pour renseigner ptp_ok. Best-effort, une seule passe.
+    ***REMOVED*** Laisser le moteur démarrer (daemon mtl_rx → « tx_queues N malloc succ ») et le PTP tenter son
+    ***REMOVED*** lock (~1-2 min) pour renseigner ptp_ok. Best-effort, une seule passe.
     _t.sleep(90)
     try:
         prof = nic_qualify.qualify_node_via_agent(node, _name(vmid))
@@ -2717,7 +2796,7 @@ def _auto_qualify_nic(node_id, vmid):
                      ("" if prof.get("rl_tx_cap") else
                       " — capacité TX NON mesurée : %s" % (prof.get("cap_reason") or "?")))
         else:
-            _auto_qualified_nodes.discard(node_id)   # échec → réessai au prochain déploiement
+            _auto_qualified_nodes.discard(node_id)   ***REMOVED*** échec → réessai au prochain déploiement
     except Exception as e:
         log.warning("auto-qualif carte nœud %s : %s", node_id, e)
         _auto_qualified_nodes.discard(node_id)
@@ -2731,9 +2810,9 @@ def stop_docker(vmid):
     if not node:
         return (False, "nœud introuvable")
     from .database import db_set_desired_state
-    db_set_desired_state(vmid, "stopped")   # arrêt VOULU → l'auto-recovery ne le relèvera pas
+    db_set_desired_state(vmid, "stopped")   ***REMOVED*** arrêt VOULU → l'auto-recovery ne le relèvera pas
     rc, out, err = ssh_run(node["host"], f"docker stop {shlex.quote(name)} 2>&1", timeout=30)
-    _xdp_off(node)   # impératif : MtlManager n'a pas eu le temps de détacher
+    _xdp_off(node)   ***REMOVED*** impératif : MtlManager n'a pas eu le temps de détacher
     db_update_status(vmid, "stopped")
     db_add_alert("alert.docker.arrete",
                  "info" if rc == 0 else "warning",
@@ -2746,7 +2825,7 @@ def start_docker(vmid):
     """--rm → le conteneur arrêté est supprimé ; on RE-RUN depuis le deploy_config stocké."""
     import json
     from .database import db_set_desired_state
-    db_set_desired_state(vmid, "running")   # intention opérateur, même si la tentative échoue
+    db_set_desired_state(vmid, "running")   ***REMOVED*** intention opérateur, même si la tentative échoue
     c = db_get_container(vmid) or {}
     try:
         dc = json.loads(c.get("deploy_config") or "{}")
@@ -2790,7 +2869,7 @@ def destroy_docker(vmid, progress=None):
         ssh_run(node["host"],
                 f"docker stop -t 12 {shlex.quote(name)} >/dev/null 2>&1; "
                 f"docker rm -f {shlex.quote(name)} >/dev/null 2>&1; "
-                # Purge du matériel mTLS bind-monté (best-effort, no-op si HTTP clair)
+                ***REMOVED*** Purge du matériel mTLS bind-monté (best-effort, no-op si HTTP clair)
                 f"rm -rf {shlex.quote(_tls_host_dir(name))} >/dev/null 2>&1", timeout=45)
         _xdp_off(node)
     db_delete_container(vmid)

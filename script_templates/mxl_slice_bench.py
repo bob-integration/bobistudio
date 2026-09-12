@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
 
 """
 mxl_slice_bench — harnais de BANC (jetable) pour la Phase 3 du chantier DPDK/latence
@@ -23,7 +23,7 @@ trame, stalls. Comparer N=8 (tranches) vs N=1 (référence trame entière).
 Usage (2 conteneurs, MÊME --domain et --name, domaine ISOLÉ hors prod) :
   python3 mxl_slice_bench.py writer --slices 8 --seconds 30
   python3 mxl_slice_bench.py reader --slices 8 --seconds 30
-  python3 mxl_slice_bench.py unpack --slices 8 --seconds 10   # dé-packing 2110-20 (sans MXL)
+  python3 mxl_slice_bench.py unpack --slices 8 --seconds 10   ***REMOVED*** dé-packing 2110-20 (sans MXL)
   python3 mxl_slice_bench.py gc
 """
 
@@ -37,10 +37,10 @@ import time
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import bobimxl  # noqa: E402
+import bobimxl  ***REMOVED*** noqa: E402
 
-# En-tête posé en tête de CHAQUE bande : uint64 seq | uint32 bande | uint64 ts_ns (posé
-# juste avant le commit de la bande — CLOCK_REALTIME, writer et reader sur le MÊME hôte).
+***REMOVED*** En-tête posé en tête de CHAQUE bande : uint64 seq | uint32 bande | uint64 ts_ns (posé
+***REMOVED*** juste avant le commit de la bande — CLOCK_REALTIME, writer et reader sur le MÊME hôte).
 _HDR = struct.Struct("<QIQ")
 
 
@@ -61,7 +61,7 @@ def _common_args(p):
     p.add_argument("--seconds", type=float, default=30.0)
 
 
-# ------------------------------------------------------------------------------- writer
+***REMOVED*** ------------------------------------------------------------------------------- writer
 
 def cmd_writer(args):
     n = int(args.slices)
@@ -86,7 +86,7 @@ def cmd_writer(args):
         if band_bytes is None:
             band_bytes = view.size // n
         for i in range(n):
-            # La bande i « arrive » à (i+1)/N de la période (modèle RX 2110 ligne à ligne).
+            ***REMOVED*** La bande i « arrive » à (i+1)/N de la période (modèle RX 2110 ligne à ligne).
             avail = frame_start + (i + 1) * period / n
             slack = avail - time.monotonic()
             if slack > 0:
@@ -94,27 +94,27 @@ def cmd_writer(args):
             else:
                 late += 1
             b0 = i * band_bytes
-            # Remplissage de TOUTE la bande (simule le coût mémoire du dé-packing en place).
+            ***REMOVED*** Remplissage de TOUTE la bande (simule le coût mémoire du dé-packing en place).
             view[b0:b0 + band_bytes] = (seq + i) & 0xFF
-            _HDR.pack_into(view, b0, seq, i, time.time_ns())  # ts JUSTE avant le commit
+            _HDR.pack_into(view, b0, seq, i, time.time_ns())  ***REMOVED*** ts JUSTE avant le commit
             w.commit(gi, valid_slices=i + 1)
         seq += 1
         if time.monotonic() > frame_start + 2 * period:
-            t0 = time.monotonic() - seq * period  # gros retard : re-cale la grille
+            t0 = time.monotonic() - seq * period  ***REMOVED*** gros retard : re-cale la grille
     w.close()
     inst.close()
     print(f"[writer] terminé : {seq} trames (~{seq / args.seconds:.1f} fps), "
           f"bandes en retard={late}", flush=True)
 
 
-# ------------------------------------------------------------------------------- reader
+***REMOVED*** ------------------------------------------------------------------------------- reader
 
 def cmd_reader(args):
     n = int(args.slices)
     if not bobimxl.HAS_SLICES:
         raise SystemExit("[reader] libmxl sans mxlFlowReaderGetGrainSlice (HAS_SLICES=False)")
     inst = bobimxl.Instance(args.domain)
-    # Le flux peut ne pas encore exister (writer pas démarré) → retry ~10 s.
+    ***REMOVED*** Le flux peut ne pas encore exister (writer pas démarré) → retry ~10 s.
     r = None
     for _ in range(100):
         try:
@@ -125,13 +125,13 @@ def cmd_reader(args):
     if r is None:
         raise SystemExit(f"[reader] flux {args.name} introuvable dans {args.domain}")
     deadline = time.monotonic() + args.seconds
-    lat = []          # ms commit bande → observation (toutes bandes)
-    lat_last = []     # ms pour la DERNIÈRE bande seulement (≈ latence pleine trame)
-    spans = []        # ms 1ʳᵉ bande observée → dernière bande observée (par trame)
-    stalls = 0        # timeouts futex (bande pas arrivée à temps)
+    lat = []          ***REMOVED*** ms commit bande → observation (toutes bandes)
+    lat_last = []     ***REMOVED*** ms pour la DERNIÈRE bande seulement (≈ latence pleine trame)
+    spans = []        ***REMOVED*** ms 1ʳᵉ bande observée → dernière bande observée (par trame)
+    stalls = 0        ***REMOVED*** timeouts futex (bande pas arrivée à temps)
     frames = 0
     band_bytes = None
-    # Se caler sur head+1 (premier grain FRAIS — head peut être déjà entamé/complet).
+    ***REMOVED*** Se caler sur head+1 (premier grain FRAIS — head peut être déjà entamé/complet).
     idx = r.head_index()
     idx = 0 if idx == bobimxl.MXL_UNDEFINED_INDEX else idx + 1
     cpu0 = time.process_time()
@@ -147,7 +147,7 @@ def cmd_reader(args):
                 stalls += 1
                 head = r.head_index()
                 if head != bobimxl.MXL_UNDEFINED_INDEX and head > idx:
-                    gave_up = True   # le writer est déjà plus loin : grain abandonné
+                    gave_up = True   ***REMOVED*** le writer est déjà plus loin : grain abandonné
                     break
                 if time.monotonic() >= deadline:
                     gave_up = True
@@ -159,7 +159,7 @@ def cmd_reader(args):
             for j in range(seen, min(int(gi.validSlices), n)):
                 seq, band, wts = _HDR.unpack_from(view, j * band_bytes)
                 if band != j:
-                    continue  # grain recyclé/écrasé — on ne compte pas de fausse mesure
+                    continue  ***REMOVED*** grain recyclé/écrasé — on ne compte pas de fausse mesure
                 lat.append((t_obs - wts) / 1e6)
                 if j == n - 1:
                     lat_last.append((t_obs - wts) / 1e6)
@@ -196,10 +196,10 @@ def cmd_reader(args):
     }), flush=True)
 
 
-# --------------------------------------------------------------- dé-packing 2110-20 par bande
-# Générateur synthétique de lignes ST 2110-20 (pgroups 4:2:2 10-bit big-endian, 5 octets pour
-# 2 pixels : Cb Y0 Cr Y1 sur 40 bits) + unpack numpy BE→planar 10-bit (uint16) par bande.
-# AUCUN MXL requis : mesure pure CPU/mémoire sur 1 cœur (pinner le conteneur : --cpuset-cpus).
+***REMOVED*** --------------------------------------------------------------- dé-packing 2110-20 par bande
+***REMOVED*** Générateur synthétique de lignes ST 2110-20 (pgroups 4:2:2 10-bit big-endian, 5 octets pour
+***REMOVED*** 2 pixels : Cb Y0 Cr Y1 sur 40 bits) + unpack numpy BE→planar 10-bit (uint16) par bande.
+***REMOVED*** AUCUN MXL requis : mesure pure CPU/mémoire sur 1 cœur (pinner le conteneur : --cpuset-cpus).
 
 def _unpack_band(src_band, y_out, cb_out, cr_out):
     """src_band : uint8 (n_pgroups*5,) — unpack vers les vues planar (déjà dimensionnées).
@@ -214,16 +214,16 @@ def _unpack_band(src_band, y_out, cb_out, cr_out):
 
 def cmd_unpack(args):
     w, h, n = int(args.width), int(args.height), int(args.slices)
-    line_bytes = (w // 2) * 5                     # 4800 o pour 1920 (pgroup 4:2:2-10)
-    frame_in = h * line_bytes                     # 5 184 000 o (payload RTP d'une trame)
+    line_bytes = (w // 2) * 5                     ***REMOVED*** 4800 o pour 1920 (pgroup 4:2:2-10)
+    frame_in = h * line_bytes                     ***REMOVED*** 5 184 000 o (payload RTP d'une trame)
     band_lines = h // n
     rng = np.random.default_rng(7)
     src = rng.integers(0, 256, size=frame_in, dtype=np.uint8)
     y = np.empty(w * h, dtype=np.uint16)
     cb = np.empty((w // 2) * h, dtype=np.uint16)
     cr = np.empty((w // 2) * h, dtype=np.uint16)
-    need_mbps = frame_in * args.fps / 1e6         # besoin 1080p50 : ~259 Mo/s d'entrée
-    # warmup (alloc/JIT numpy)
+    need_mbps = frame_in * args.fps / 1e6         ***REMOVED*** besoin 1080p50 : ~259 Mo/s d'entrée
+    ***REMOVED*** warmup (alloc/JIT numpy)
     _unpack_band(src[:band_lines * line_bytes], y[:band_lines * w],
                  cb[:band_lines * (w // 2)], cr[:band_lines * (w // 2)])
     deadline = time.monotonic() + args.seconds

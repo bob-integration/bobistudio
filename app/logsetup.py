@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
 
 """Rotation du journal de l'orchestrateur — anti-saturation disque.
 
@@ -23,18 +23,18 @@ class SizedTimedRotatingFileHandler(logging.handlers.RotatingFileHandler):
     def __init__(self, filename, maxBytes=0, backupCount=0, rotate_seconds=0, **kw):
         super().__init__(filename, maxBytes=maxBytes, backupCount=backupCount, **kw)
         self.rotate_seconds = rotate_seconds
-        # ⚠ La date de référence est celle du FICHIER, pas celle du démarrage du process.
-        # Avec `time.time()`, la rotation par temps ne se déclenchait jamais : elle exige que
-        # l'orchestrateur tourne `log_rotate_days` jours d'affilée, alors qu'il redémarre à
-        # chaque livraison. Constaté le 2026-08-15 : archives figées au 11 juillet, réglage
-        # « rotation tous les 7 jours » actif depuis, et jamais honoré une seule fois.
+        ***REMOVED*** ⚠ La date de référence est celle du FICHIER, pas celle du démarrage du process.
+        ***REMOVED*** Avec `time.time()`, la rotation par temps ne se déclenchait jamais : elle exige que
+        ***REMOVED*** l'orchestrateur tourne `log_rotate_days` jours d'affilée, alors qu'il redémarre à
+        ***REMOVED*** chaque livraison. Constaté le 2026-08-15 : archives figées au 11 juillet, réglage
+        ***REMOVED*** « rotation tous les 7 jours » actif depuis, et jamais honoré une seule fois.
         try:
             self._last_rollover = os.path.getmtime(filename)
         except OSError:
             self._last_rollover = time.time()
 
     def shouldRollover(self, record):
-        # Taille d'abord (borne dure du disque), puis temps.
+        ***REMOVED*** Taille d'abord (borne dure du disque), puis temps.
         if super().shouldRollover(record):
             return 1
         if self.rotate_seconds and (time.time() - self._last_rollover) >= self.rotate_seconds:
@@ -63,7 +63,7 @@ def _reglages():
     return rotation, max(1, max_mb), max(0, backups), max(0, days)
 
 
-_handler = None     # handler VIVANT, pour appliquer les réglages sans redémarrer
+_handler = None     ***REMOVED*** handler VIVANT, pour appliquer les réglages sans redémarrer
 _chemin = None
 
 
@@ -125,8 +125,8 @@ def _fichiers(path):
     return out
 
 
-# Marge avant de crier au dépassement : le fichier actif peut légitimement dépasser sa taille
-# maximale entre deux rollovers, et la somme se compare à un plafond, pas à une limite dure.
+***REMOVED*** Marge avant de crier au dépassement : le fichier actif peut légitimement dépasser sa taille
+***REMOVED*** maximale entre deux rollovers, et la somme se compare à un plafond, pas à une limite dure.
 _MARGE_PLAFOND = 1.25
 
 
@@ -166,7 +166,7 @@ def etat(path=None):
 
 _VERIF_INTERVALLE_S = 300
 _verif_ts = [0.0]
-_etats = {}          # motif → en cours ? (alerte à la TRANSITION, dans les deux sens)
+_etats = {}          ***REMOVED*** motif → en cours ? (alerte à la TRANSITION, dans les deux sens)
 
 
 def verifier():

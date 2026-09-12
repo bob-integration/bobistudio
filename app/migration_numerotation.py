@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Migration « le 0 n'existe pas » — renumérotation 1-based des flux du moteur 2110_io.
 
@@ -47,17 +47,17 @@ import re
 
 MARQUEUR = "migration_numerotation_1based"
 
-# Types de conteneurs dont un NOM DE FLUX porte un indice (miroir des manifestes — cf. le
-# gabarit `{i1}` dans `wiring.produces`). `mixer` (`_pgm`/`_clean`/`_pvw`), `color_corrector`
-# (`_cc`), `split`, `udc`, `stills`, `avsync`, `stream_in`, `multiview` (`shm_out` libre) et
-# `sonde_latence` n'indexent pas leurs sorties : rien à décaler chez eux.
+***REMOVED*** Types de conteneurs dont un NOM DE FLUX porte un indice (miroir des manifestes — cf. le
+***REMOVED*** gabarit `{i1}` dans `wiring.produces`). `mixer` (`_pgm`/`_clean`/`_pvw`), `color_corrector`
+***REMOVED*** (`_cc`), `split`, `udc`, `stills`, `avsync`, `stream_in`, `multiview` (`shm_out` libre) et
+***REMOVED*** `sonde_latence` n'indexent pas leurs sorties : rien à décaler chez eux.
 TYPES_INDEXES = ("2110_io", "delay", "probe_2110", "tone_gen", "player")
 
-# Suffixes de flux dérivés d'un slot du moteur, tous construits sur `<hostname>_<n>` :
-#   ''          → le flux vidéo lui-même
-#   '_ident'    → mire d'identification RX
-#   '__p2'…     → étages de pyramide, '__s946x540' → sorties de scaler (tissu)
-# La frontière est donc « le nombre N'EST PAS suivi d'un autre chiffre ».
+***REMOVED*** Suffixes de flux dérivés d'un slot du moteur, tous construits sur `<hostname>_<n>` :
+***REMOVED***   ''          → le flux vidéo lui-même
+***REMOVED***   '_ident'    → mire d'identification RX
+***REMOVED***   '__p2'…     → étages de pyramide, '__s946x540' → sorties de scaler (tissu)
+***REMOVED*** La frontière est donc « le nombre N'EST PAS suivi d'un autre chiffre ».
 _FIN_NOMBRE = r"(?![0-9])"
 
 
@@ -69,15 +69,15 @@ def _motifs(hostname):
     """
     hn = re.escape(hostname)
     gabarits = [
-        r"(?P<pre>%s)_(?P<n>\d+)%s" % (hn, _FIN_NOMBRE),                    # <hn>_0, <hn>_0__p2
-        r"(?P<pre>%s_audio)_(?P<n>\d+)%s" % (hn, _FIN_NOMBRE),              # <hn>_audio_0
-        r"(?P<pre>%s_anc)_(?P<n>\d+)%s" % (hn, _FIN_NOMBRE),                # <hn>_anc_0
-        r"(?P<pre>%s_txgen)_(?P<n>\d+)%s" % (hn, _FIN_NOMBRE),              # <hn>_txgen_0
-        r"(?P<pre>%s_tx)(?P<n>\d+)(?=_ident|_static)" % hn,                 # <hn>_tx0_ident/_static
+        r"(?P<pre>%s)_(?P<n>\d+)%s" % (hn, _FIN_NOMBRE),                    ***REMOVED*** <hn>_0, <hn>_0__p2
+        r"(?P<pre>%s_audio)_(?P<n>\d+)%s" % (hn, _FIN_NOMBRE),              ***REMOVED*** <hn>_audio_0
+        r"(?P<pre>%s_anc)_(?P<n>\d+)%s" % (hn, _FIN_NOMBRE),                ***REMOVED*** <hn>_anc_0
+        r"(?P<pre>%s_txgen)_(?P<n>\d+)%s" % (hn, _FIN_NOMBRE),              ***REMOVED*** <hn>_txgen_0
+        r"(?P<pre>%s_tx)(?P<n>\d+)(?=_ident|_static)" % hn,                 ***REMOVED*** <hn>_tx0_ident/_static
     ]
-    # Les variantes préfixées (_audio/_anc/_txgen/_tx) DOIVENT passer avant le motif nu, sinon
-    # `<hn>_audio_0` serait vu par le motif nu comme `<hn>` suivi de… rien (il ne matche pas),
-    # mais l'ordre reste explicite pour ne pas dépendre de cette subtilité.
+    ***REMOVED*** Les variantes préfixées (_audio/_anc/_txgen/_tx) DOIVENT passer avant le motif nu, sinon
+    ***REMOVED*** `<hn>_audio_0` serait vu par le motif nu comme `<hn>` suivi de… rien (il ne matche pas),
+    ***REMOVED*** mais l'ordre reste explicite pour ne pas dépendre de cette subtilité.
     ordre = gabarits[1:] + gabarits[:1]
     return [re.compile(g) for g in ordre]
 
@@ -118,15 +118,15 @@ def _decale_dans(obj, motifs):
 
 
 _CLES_SLOT = (
-    # Sorties TX du moteur 2110.
+    ***REMOVED*** Sorties TX du moteur 2110.
     (re.compile(r"^tx(\d+)_shm(_fmt)?$"), "tx%d_shm%s"),
     (re.compile(r"^tx_audio(\d+)_shm(_fmt)?$"), "tx_audio%d_shm%s"),
     (re.compile(r"^tx_anc(\d+)_shm(_fmt)?$"), "tx_anc%d_shm%s"),
 )
 
-# Les clés d'entrée ont trois formes (`input_{i}`, `input_v_{i}`, `input_a_{i}`), chacune avec un
-# suffixe `_fmt` optionnel. Un seul motif générique les couvre : préfixe capturé tel quel, seul le
-# NOMBRE est décalé.
+***REMOVED*** Les clés d'entrée ont trois formes (`input_{i}`, `input_v_{i}`, `input_a_{i}`), chacune avec un
+***REMOVED*** suffixe `_fmt` optionnel. Un seul motif générique les couvre : préfixe capturé tel quel, seul le
+***REMOVED*** NOMBRE est décalé.
 _CLE_INPUT = re.compile(r"^(input(?:_[va])?|audio_shm)_(\d+)(_fmt)?$")
 
 
@@ -153,7 +153,7 @@ def _decale_cles(params, entrees_seulement=False):
             neuve = gabarit % (n + 1, suf)
             params[neuve] = params.pop(cle)
             renommees.append((cle, neuve))
-    # Entrées génériques (tous types).
+    ***REMOVED*** Entrées génériques (tous types).
     cibles = []
     for cle in list(params.keys()):
         m = _CLE_INPUT.match(cle)
@@ -191,12 +191,12 @@ def migrer(conn, simulation=True):
         rap["deja_faite"] = True
         return rap
 
-    # 1. Tous les producteurs dont le NOM DE FLUX porte un indice — leur hostname est la racine
-    #    des noms à décaler. Élargi le 2026-08-13 au-delà du seul moteur 2110 : le 0 ne doit plus
-    #    exister NULLE PART, et `delay`/`probe_2110`/`tone_gen`/`player` suffixaient aussi à 0
-    #    (gabarits `{i}` dans `wiring.produces`, littéraux `_anc_0`/`_anc_1` pour `player`).
-    #    ⚠ Cette liste DOIT rester le miroir des manifestes : un plugin qui gagne un `{i1}` dans
-    #    un `shm` sans être ajouté ici verrait ses flux renommés par le moteur et pas en base.
+    ***REMOVED*** 1. Tous les producteurs dont le NOM DE FLUX porte un indice — leur hostname est la racine
+    ***REMOVED***    des noms à décaler. Élargi le 2026-08-13 au-delà du seul moteur 2110 : le 0 ne doit plus
+    ***REMOVED***    exister NULLE PART, et `delay`/`probe_2110`/`tone_gen`/`player` suffixaient aussi à 0
+    ***REMOVED***    (gabarits `{i}` dans `wiring.produces`, littéraux `_anc_0`/`_anc_1` pour `player`).
+    ***REMOVED***    ⚠ Cette liste DOIT rester le miroir des manifestes : un plugin qui gagne un `{i1}` dans
+    ***REMOVED***    un `shm` sans être ajouté ici verrait ses flux renommés par le moteur et pas en base.
     moteurs = []
     for vmid, hostname, dc in conn.execute(
             "select vmid, hostname, deploy_config from containers"):
@@ -213,7 +213,7 @@ def migrer(conn, simulation=True):
     for _v, hn, _t in moteurs:
         motifs.extend(_motifs(hn))
 
-    # 2. deploy_config de TOUS les conteneurs : valeurs (noms de flux) + clés (moteurs seulement).
+    ***REMOVED*** 2. deploy_config de TOUS les conteneurs : valeurs (noms de flux) + clés (moteurs seulement).
     for vmid, hostname, dc, src, shm_out in conn.execute(
             "select vmid, hostname, deploy_config, source, shm_out from containers"):
         try:
@@ -222,7 +222,7 @@ def migrer(conn, simulation=True):
             continue
         avant = json.dumps(d, sort_keys=True)
         d, n_noms = _decale_dans(d, motifs)
-        # Clés : les sorties TX pour le moteur, les entrées de câblage pour TOUS les types.
+        ***REMOVED*** Clés : les sorties TX pour le moteur, les entrées de câblage pour TOUS les types.
         renommees = _decale_cles(d.setdefault("params", {}),
                                  entrees_seulement=(d.get("type") != "2110_io"))
         n_src, n_out = 0, 0
@@ -236,8 +236,8 @@ def migrer(conn, simulation=True):
             conn.execute("update containers set deploy_config = ?, source = ?, shm_out = ? "
                          "where vmid = ?", (json.dumps(d), src2, out2, vmid))
 
-    # 3. Liens RDMA — le nom du flux source. Les répliques sont à RECRÉER derrière (l'UUID MXL
-    #    est dérivé du nom : l'ancienne réplique pointe sur un flux qui n'existe plus).
+    ***REMOVED*** 3. Liens RDMA — le nom du flux source. Les répliques sont à RECRÉER derrière (l'UUID MXL
+    ***REMOVED***    est dérivé du nom : l'ancienne réplique pointe sur un flux qui n'existe plus).
     for lid, flow in conn.execute("select id, src_flow from rdma_links"):
         neuf, k = _decale_noms(flow, motifs)
         if k:
@@ -245,8 +245,8 @@ def migrer(conn, simulation=True):
             if not simulation:
                 conn.execute("update rdma_links set src_flow = ? where id = ?", (neuf, lid))
 
-    # 4. Registre NMOS — `bind_slot`. SANS ce décalage, `_registry_id()` ne retrouve plus le slot
-    #    et sème une ressource NEUVE à côté de l'ancienne, qui resterait annoncée : doublons.
+    ***REMOVED*** 4. Registre NMOS — `bind_slot`. SANS ce décalage, `_registry_id()` ne retrouve plus le slot
+    ***REMOVED***    et sème une ressource NEUVE à côté de l'ancienne, qui resterait annoncée : doublons.
     for rid, slot in conn.execute("select id, bind_slot from nmos_resources"):
         neuf = _decale_bind_slot(slot)
         if neuf != slot:
@@ -254,12 +254,12 @@ def migrer(conn, simulation=True):
             if not simulation:
                 conn.execute("update nmos_resources set bind_slot = ? where id = ?", (neuf, rid))
 
-    # 5. Abonnements NMOS persistés — `recv_idx`.
-    # ⚠ `settings.value` est DOUBLEMENT encodé pour cette clé : la colonne contient le json.dumps
-    #   d'une CHAÎNE qui est elle-même du JSON. Un seul json.loads rend une `str`, pas un dict —
-    #   et la version précédente de cette migration sautait alors les 16 abonnements SANS RIEN
-    #   DIRE. On décode jusqu'au dict, et on RÉ-ENCODE dans la même forme (sinon le lecteur,
-    #   qui refait deux décodages, casse).
+    ***REMOVED*** 5. Abonnements NMOS persistés — `recv_idx`.
+    ***REMOVED*** ⚠ `settings.value` est DOUBLEMENT encodé pour cette clé : la colonne contient le json.dumps
+    ***REMOVED***   d'une CHAÎNE qui est elle-même du JSON. Un seul json.loads rend une `str`, pas un dict —
+    ***REMOVED***   et la version précédente de cette migration sautait alors les 16 abonnements SANS RIEN
+    ***REMOVED***   DIRE. On décode jusqu'au dict, et on RÉ-ENCODE dans la même forme (sinon le lecteur,
+    ***REMOVED***   qui refait deux décodages, casse).
     row = conn.execute("select value from settings where key = 'nmos_subscriptions'").fetchone()
     if row and row[0]:
         subs, profondeur = row[0], 0
@@ -272,20 +272,20 @@ def migrer(conn, simulation=True):
                 subs = None
                 break
         if isinstance(subs, dict):
-            # ⚠ NE PAS TOUCHER `recv_idx` — c'est un INDICE DE TABLEAU, pas un numéro.
-            # Il part tel quel dans `receiver_index` vers l'agent, qui s'en sert comme SUBSCRIPT
-            # de slot. L'incrémenter réabonne le slot d'à côté — sans erreur, sans alerte : les
-            # sources apparaissent simplement une entrée plus loin.
-            # C'est ce qu'a fait cette migration le 2026-08-13 : les six sources sont passées des
-            # slots 0-5 aux slots 1-6, toute la chaîne est tombée, et la cause a d'abord été
-            # attribuée à la recréation du moteur. Corrigé le 2026-08-15.
-            # La règle (app/numerotation.py) ne vise QUE ce qui sort en CHAÎNE — nom de flux, clé,
-            # libellé. Un indice qui sert à adresser un tableau n'en fait pas partie, où qu'il
-            # soit stocké.
+            ***REMOVED*** ⚠ NE PAS TOUCHER `recv_idx` — c'est un INDICE DE TABLEAU, pas un numéro.
+            ***REMOVED*** Il part tel quel dans `receiver_index` vers l'agent, qui s'en sert comme SUBSCRIPT
+            ***REMOVED*** de slot. L'incrémenter réabonne le slot d'à côté — sans erreur, sans alerte : les
+            ***REMOVED*** sources apparaissent simplement une entrée plus loin.
+            ***REMOVED*** C'est ce qu'a fait cette migration le 2026-08-13 : les six sources sont passées des
+            ***REMOVED*** slots 0-5 aux slots 1-6, toute la chaîne est tombée, et la cause a d'abord été
+            ***REMOVED*** attribuée à la recréation du moteur. Corrigé le 2026-08-15.
+            ***REMOVED*** La règle (app/numerotation.py) ne vise QUE ce qui sort en CHAÎNE — nom de flux, clé,
+            ***REMOVED*** libellé. Un indice qui sert à adresser un tableau n'en fait pas partie, où qu'il
+            ***REMOVED*** soit stocké.
             pass
             if not simulation and rap["abonnements"]:
                 val = json.dumps(subs)
-                for _ in range(profondeur - 1):      # ré-encapsule autant de fois qu'on a décodé
+                for _ in range(profondeur - 1):      ***REMOVED*** ré-encapsule autant de fois qu'on a décodé
                     val = json.dumps(val)
                 conn.execute("update settings set value = ? where key = 'nmos_subscriptions'",
                              (val,))
@@ -294,12 +294,12 @@ def migrer(conn, simulation=True):
         conn.execute("insert or replace into settings (key, value) values (?, ?)",
                      (MARQUEUR, json.dumps({"fait": True})))
         conn.commit()
-        # ── RELECTURE APRÈS COMMIT ────────────────────────────────────────────────────────────
-        # Les compteurs ci-dessus comptent les lignes CANDIDATES, pas les écritures effectives :
-        # ils ont affiché « 210 ressources NMOS » le 2026-08-13 alors que zéro n'avait survécu
-        # (un autre processus les réécrivait derrière). Un rapport qui ne peut pas mentir doit
-        # RELIRE. Si quelque chose est resté 0-based, on lève : mieux vaut un échec bruyant
-        # qu'un parc à moitié migré dont personne ne sait qu'il l'est.
+        ***REMOVED*** ── RELECTURE APRÈS COMMIT ────────────────────────────────────────────────────────────
+        ***REMOVED*** Les compteurs ci-dessus comptent les lignes CANDIDATES, pas les écritures effectives :
+        ***REMOVED*** ils ont affiché « 210 ressources NMOS » le 2026-08-13 alors que zéro n'avait survécu
+        ***REMOVED*** (un autre processus les réécrivait derrière). Un rapport qui ne peut pas mentir doit
+        ***REMOVED*** RELIRE. Si quelque chose est resté 0-based, on lève : mieux vaut un échec bruyant
+        ***REMOVED*** qu'un parc à moitié migré dont personne ne sait qu'il l'est.
         restes = []
         n = conn.execute("select count(*) from nmos_resources "
                          "where bind_slot like 'tx0:%' or bind_slot like '%:0'").fetchone()[0]

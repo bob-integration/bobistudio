@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Horloges du cluster — sonde et cohérence inter-nœuds.
 
@@ -46,18 +46,18 @@ from .database import DB_PATH, db_get_nodes
 
 log = logging.getLogger(__name__)
 
-# Décalage TAI↔UTC courant (secondes). Constante des tables de secondes intercalaires, pas un
-# réglage : la changer ici ne changerait pas l'heure des nœuds, seulement notre jugement sur elle.
+***REMOVED*** Décalage TAI↔UTC courant (secondes). Constante des tables de secondes intercalaires, pas un
+***REMOVED*** réglage : la changer ici ne changerait pas l'heure des nœuds, seulement notre jugement sur elle.
 TAI_UTC_OFFSET_S = 37
 
-# Seuil d'écart inter-nœuds : UN GRAIN. Au-delà, deux nœuds ne désignent plus la même image, ce
-# qui est le point de rupture pour MXL. Dérivé de la cadence du site (`_fps_reference`) plutôt que
-# posé en dur — 20 ms à 50 fps, 40 ms à 25, 16,7 ms à 60 — et surchargeable par le réglage
-# `clock_spread_ms` pour l'exploitant qui sait quelque chose que la dérivation ignore.
-#
-# Ce seuil est resté INAPPLIQUÉ tant que l'écart se mesurait à travers `host/exec` : avec ±25 ms
-# d'incertitude, il n'aurait fait que signaler le temps de réponse du réseau. L'endpoint natif
-# (agent ≥ 0.18.0) descend à quelques centaines de µs, donc il peut enfin porter quelque chose.
+***REMOVED*** Seuil d'écart inter-nœuds : UN GRAIN. Au-delà, deux nœuds ne désignent plus la même image, ce
+***REMOVED*** qui est le point de rupture pour MXL. Dérivé de la cadence du site (`_fps_reference`) plutôt que
+***REMOVED*** posé en dur — 20 ms à 50 fps, 40 ms à 25, 16,7 ms à 60 — et surchargeable par le réglage
+***REMOVED*** `clock_spread_ms` pour l'exploitant qui sait quelque chose que la dérivation ignore.
+***REMOVED***
+***REMOVED*** Ce seuil est resté INAPPLIQUÉ tant que l'écart se mesurait à travers `host/exec` : avec ±25 ms
+***REMOVED*** d'incertitude, il n'aurait fait que signaler le temps de réponse du réseau. L'endpoint natif
+***REMOVED*** (agent ≥ 0.18.0) descend à quelques centaines de µs, donc il peut enfin porter quelque chose.
 def _seuil_ecart_ms():
     from . import settings as _s
     try:
@@ -69,23 +69,23 @@ def _seuil_ecart_ms():
     fps = _fps_reference()
     return 1000.0 / fps, "un grain à %g fps" % fps
 
-# ─── Seuils de discipline locale : DÉRIVÉS du métier du nœud, pas posés au jugé ────────────────
-#
-# Il n'y a pas UN seuil, il y en a deux, parce que les nœuds ne font pas le même métier.
-#
-# · Nœud COMPUTE : son horloge ne sert qu'à tomber sur le MÊME GRAIN que ses pairs. Au-delà d'un
-#   DEMI-GRAIN, il désigne l'image d'à côté — c'est là, et pas ailleurs, qu'est la limite de tenue.
-#   La durée de grain se déduit du format vidéo par défaut (réglage `video_format_default`).
-# · Nœud portant un MOTEUR 2110 : il ne se contente pas de désigner des grains, il CADENCE DES
-#   PAQUETS sur le fil. C'est le modèle temporel ST 2110-21 qui commande, à la microseconde.
-#
-# Un seuil unique serait à la fois dix fois trop strict pour le compute et des milliers de fois
-# trop permissif pour le 2110 : il ne protégerait personne.
+***REMOVED*** ─── Seuils de discipline locale : DÉRIVÉS du métier du nœud, pas posés au jugé ────────────────
+***REMOVED***
+***REMOVED*** Il n'y a pas UN seuil, il y en a deux, parce que les nœuds ne font pas le même métier.
+***REMOVED***
+***REMOVED*** · Nœud COMPUTE : son horloge ne sert qu'à tomber sur le MÊME GRAIN que ses pairs. Au-delà d'un
+***REMOVED***   DEMI-GRAIN, il désigne l'image d'à côté — c'est là, et pas ailleurs, qu'est la limite de tenue.
+***REMOVED***   La durée de grain se déduit du format vidéo par défaut (réglage `video_format_default`).
+***REMOVED*** · Nœud portant un MOTEUR 2110 : il ne se contente pas de désigner des grains, il CADENCE DES
+***REMOVED***   PAQUETS sur le fil. C'est le modèle temporel ST 2110-21 qui commande, à la microseconde.
+***REMOVED***
+***REMOVED*** Un seuil unique serait à la fois dix fois trop strict pour le compute et des milliers de fois
+***REMOVED*** trop permissif pour le 2110 : il ne protégerait personne.
 SEUIL_2110_US = 1.0
 
-# Cadence PLANCHER pour la dérivation. Entre 50 et 60 l'écart est mince (10 ms contre 8,33 ms de
-# demi-grain) : on prend systématiquement la plus contraignante, ce qui évite de re-régler le seuil
-# à chaque changement de format et ne coûte que 1,7 ms de marge.
+***REMOVED*** Cadence PLANCHER pour la dérivation. Entre 50 et 60 l'écart est mince (10 ms contre 8,33 ms de
+***REMOVED*** demi-grain) : on prend systématiquement la plus contraignante, ce qui évite de re-régler le seuil
+***REMOVED*** à chaque changement de format et ne coûte que 1,7 ms de marge.
 FPS_PLANCHER = 60.0
 
 
@@ -149,19 +149,19 @@ def _alertes_actives():
     except Exception:
         return True
 
-_TTL_S = 20.0          # les horloges ne bougent pas vite ; inutile de harceler les nœuds
+_TTL_S = 20.0          ***REMOVED*** les horloges ne bougent pas vite ; inutile de harceler les nœuds
 _cache = {"ts": 0.0, "data": None}
 _lock = threading.Lock()
 
-# Historique par nœud, pour la courbe : un point par relevé NON caché (~20 s), 90 points ≈ 30 min.
-#
-# PERSISTÉ, contrairement à ce que j'avais d'abord décidé. Le raisonnement « une horloge qui dérive
-# se voit en minutes, pas en jours » était juste sur la physique et faux sur l'exploitation : cet
-# orchestrateur redémarre à CHAQUE livraison, et un anneau en mémoire pure repart alors de zéro.
-# Résultat observé — la page n'affichait jamais que « historique en cours de constitution », parce
-# qu'on ne la regardait jamais plus de quelques minutes après un redémarrage. Une fenêtre de 30 min
-# qui ne survit pas à un redémarrage n'est pas une fenêtre de 30 min.
-# Même mécanique que les autres samplers (node_health, cpu_pressure) : écriture atomique throttlée.
+***REMOVED*** Historique par nœud, pour la courbe : un point par relevé NON caché (~20 s), 90 points ≈ 30 min.
+***REMOVED***
+***REMOVED*** PERSISTÉ, contrairement à ce que j'avais d'abord décidé. Le raisonnement « une horloge qui dérive
+***REMOVED*** se voit en minutes, pas en jours » était juste sur la physique et faux sur l'exploitation : cet
+***REMOVED*** orchestrateur redémarre à CHAQUE livraison, et un anneau en mémoire pure repart alors de zéro.
+***REMOVED*** Résultat observé — la page n'affichait jamais que « historique en cours de constitution », parce
+***REMOVED*** qu'on ne la regardait jamais plus de quelques minutes après un redémarrage. Une fenêtre de 30 min
+***REMOVED*** qui ne survit pas à un redémarrage n'est pas une fenêtre de 30 min.
+***REMOVED*** Même mécanique que les autres samplers (node_health, cpu_pressure) : écriture atomique throttlée.
 _HIST_MAX = 90
 _HIST_PATH = os.path.join(os.path.dirname(DB_PATH) or ".", "clocks_hist.json")
 _HIST_FLUSH_S = 60.0
@@ -178,7 +178,7 @@ def _charger_hist():
             brut = json.load(f) or {}
     except (OSError, ValueError):
         return
-    limite = time.time() - _HIST_MAX * 30       # marge : ~30 s par point au pire
+    limite = time.time() - _HIST_MAX * 30       ***REMOVED*** marge : ~30 s par point au pire
     for k, pts in brut.items():
         gardes = [p for p in pts if isinstance(p, dict) and (p.get("t") or 0) >= limite]
         if gardes:
@@ -211,18 +211,18 @@ def _pousser_hist(n):
         return
     dq = _hist.setdefault(n["id"], deque(maxlen=_HIST_MAX))
     dq.append({"t": round(time.time()),
-               # La MÉTHODE est estampillée avec le point, parce que la fenêtre survit aux
-               # redémarrages et donc au changement de règle graduée. Sans ça, le passage de la
-               # sonde shell (±25 ms) à l'endpoint natif (±0,2 ms) fabriquerait une marche de
-               # ~25 ms au milieu de la série, que la régression lirait comme une dérive
-               # spectaculaire — une panne inventée par notre propre correctif.
+               ***REMOVED*** La MÉTHODE est estampillée avec le point, parce que la fenêtre survit aux
+               ***REMOVED*** redémarrages et donc au changement de règle graduée. Sans ça, le passage de la
+               ***REMOVED*** sonde shell (±25 ms) à l'endpoint natif (±0,2 ms) fabriquerait une marche de
+               ***REMOVED*** ~25 ms au milieu de la série, que la régression lirait comme une dérive
+               ***REMOVED*** spectaculaire — une panne inventée par notre propre correctif.
                "m": n.get("mesure"),
                "ecart_ms": n.get("ecart_ms"),
                "offset_us": (round(n["offset_s"] * 1e6, 1)
                              if n.get("offset_s") is not None else None)})
 
-# Sonde exécutée SUR le nœud, en un seul appel : les trois horloges et le tai_offset doivent être
-# lus au même instant, sinon on mesure le RTT en plus de l'écart. Sortie JSON sur une ligne.
+***REMOVED*** Sonde exécutée SUR le nœud, en un seul appel : les trois horloges et le tai_offset doivent être
+***REMOVED*** lus au même instant, sinon on mesure le RTT en plus de l'écart. Sortie JSON sur une ligne.
 _SONDE = r"""python3 -c '
 import ctypes, json, subprocess
 class TS(ctypes.Structure): _fields_=[("s",ctypes.c_long),("ns",ctypes.c_long)]
@@ -240,10 +240,10 @@ def clk(cid):
     t = TS()
     return (t.s*10**9 + t.ns) if l.clock_gettime(cid, ctypes.byref(t)) == 0 else None
 tx = TX(); l.adjtimex(ctypes.byref(tx))
-# Les horloges se lisent ICI, en tete de programme, PAS dans le print final : les appels
-# systemctl/chronyc qui suivent prennent une dizaine de millisecondes, et les y laisser
-# revenait a dater le noeud a la FIN de la fenetre en pretendant le dater au MILIEU.
-# (Chemin de repli seulement : le chemin nominal passe par /v1/host/clock, cf. _echange_clock.)
+***REMOVED*** Les horloges se lisent ICI, en tete de programme, PAS dans le print final : les appels
+***REMOVED*** systemctl/chronyc qui suivent prennent une dizaine de millisecondes, et les y laisser
+***REMOVED*** revenait a dater le noeud a la FIN de la fenetre en pretendant le dater au MILIEU.
+***REMOVED*** (Chemin de repli seulement : le chemin nominal passe par /v1/host/clock, cf. _echange_clock.)
 _rt, _tai, _mono = clk(0), clk(11), clk(1)
 def actif(u):
     try:
@@ -252,11 +252,11 @@ def actif(u):
     except Exception:
         return False
 def unites_actives(motif):
-    # Les unites PTP sont nommees PAR RESEAU (mxl-ptp4l-net1, mxl-phc2sys-net1) depuis le
-    # multi-NIC ; interroger le nom NU (mxl-ptp4l) demande a systemd des nouvelles dune unite
-    # qui nexiste pas, et repond « inactive » quel que soit letat reel. Cest exactement ce qui
-    # sest passe en prod sur Horace (2026-07-28) : ptp4l verrouille depuis quatre jours, sonde
-    # aveugle, page qui conclut « aucune source de temps ». On enumere donc par GLOB.
+    ***REMOVED*** Les unites PTP sont nommees PAR RESEAU (mxl-ptp4l-net1, mxl-phc2sys-net1) depuis le
+    ***REMOVED*** multi-NIC ; interroger le nom NU (mxl-ptp4l) demande a systemd des nouvelles dune unite
+    ***REMOVED*** qui nexiste pas, et repond « inactive » quel que soit letat reel. Cest exactement ce qui
+    ***REMOVED*** sest passe en prod sur Horace (2026-07-28) : ptp4l verrouille depuis quatre jours, sonde
+    ***REMOVED*** aveugle, page qui conclut « aucune source de temps ». On enumere donc par GLOB.
     try:
         r = subprocess.run(["systemctl","list-units",motif,"--state=active",
                             "--no-legend","--plain","--type=service"],
@@ -297,16 +297,16 @@ for ligne in (det or "").splitlines():
         try: offset_s = float(ligne.split(":",1)[1].strip().split()[0])
         except Exception: pass
     elif ligne.startswith("Reference ID"):
-        # « B92D7079 (185.45.112.121) » -> on garde IP ou nom, pas identifiant hexa.
-        # (aucune apostrophe ici : ce programme est enveloppe dans des quotes simples cote shell)
+        ***REMOVED*** « B92D7079 (185.45.112.121) » -> on garde IP ou nom, pas identifiant hexa.
+        ***REMOVED*** (aucune apostrophe ici : ce programme est enveloppe dans des quotes simples cote shell)
         v = ligne.split(":",1)[1].strip()
         ref = v.split("(")[-1].rstrip(")").strip() if "(" in v else v
     elif ligne.startswith("Stratum"):
         try: strate = int(ligne.split(":",1)[1].strip())
         except Exception: pass
     elif ligne.startswith("Ref time"):
-        # Instant du DERNIER echange retenu avec la source. Une horloge peut paraitre saine sans
-        # avoir rien recu depuis des heures : ce champ est le seul a le dire.
+        ***REMOVED*** Instant du DERNIER echange retenu avec la source. Une horloge peut paraitre saine sans
+        ***REMOVED*** avoir rien recu depuis des heures : ce champ est le seul a le dire.
         maj = ligne.split(":",1)[1].strip()
 if src == "timesyncd":
     try:
@@ -332,15 +332,15 @@ print(json.dumps({"realtime_ns": _rt, "tai_ns": _tai, "monotonic_ns": _mono,
 ' 2>/dev/null || true"""
 
 
-# ─── Source NTP commune ────────────────────────────────────────────────────────────────────────
-# Une source COMMUNE rend les nœuds comparables : deux serveurs différents, ce sont deux idées du
-# temps qui divergent de leur propre écart, et cet écart se retrouve entre les nœuds sans qu on
-# sache d ou il vient.
-#
-# Test SNTP en clair (48 octets, mode 3) plutot que de faire confiance a chrony pour le dire APRES
-# coup : on veut savoir si le serveur repond AVANT de le poser sur toute la flotte, et depuis
-# CHAQUE noeud — un pare-feu ou une route peuvent differer d une machine a l autre.
-# (Programme execute a distance : AUCUNE apostrophe, cf. le garde-fou de _SONDE.)
+***REMOVED*** ─── Source NTP commune ────────────────────────────────────────────────────────────────────────
+***REMOVED*** Une source COMMUNE rend les nœuds comparables : deux serveurs différents, ce sont deux idées du
+***REMOVED*** temps qui divergent de leur propre écart, et cet écart se retrouve entre les nœuds sans qu on
+***REMOVED*** sache d ou il vient.
+***REMOVED***
+***REMOVED*** Test SNTP en clair (48 octets, mode 3) plutot que de faire confiance a chrony pour le dire APRES
+***REMOVED*** coup : on veut savoir si le serveur repond AVANT de le poser sur toute la flotte, et depuis
+***REMOVED*** CHAQUE noeud — un pare-feu ou une route peuvent differer d une machine a l autre.
+***REMOVED*** (Programme execute a distance : AUCUNE apostrophe, cf. le garde-fou de _SONDE.)
 _TEST_NTP = r"""python3 -c '
 import socket, struct, sys, time
 h = sys.argv[1]
@@ -352,14 +352,14 @@ try:
     t3 = time.time()
     li = d[0] >> 6
     strate = d[1]
-    # Horodatage de transmission : secondes depuis 1900 -> epoch Unix.
+    ***REMOVED*** Horodatage de transmission : secondes depuis 1900 -> epoch Unix.
     tx = struct.unpack("!I", d[40:44])[0] - 2208988800
     frac = struct.unpack("!I", d[44:48])[0] / 2**32
-    # Un serveur qui REPOND n est pas un serveur UTILISABLE. Deux refus explicites du protocole :
-    #   LI = 3        -> alarme : le serveur declare lui-meme ne PAS etre synchronise ;
-    #   strate 0      -> non specifiee, ou Kiss-o-Death (le serveur demande qu on cesse).
-    # Les ignorer donnait un feu vert mensonger : chrony, lui, ecarte ces sources, et on cherchait
-    # ensuite pourquoi « rien ne change » alors que le serveur repondait parfaitement.
+    ***REMOVED*** Un serveur qui REPOND n est pas un serveur UTILISABLE. Deux refus explicites du protocole :
+    ***REMOVED***   LI = 3        -> alarme : le serveur declare lui-meme ne PAS etre synchronise ;
+    ***REMOVED***   strate 0      -> non specifiee, ou Kiss-o-Death (le serveur demande qu on cesse).
+    ***REMOVED*** Les ignorer donnait un feu vert mensonger : chrony, lui, ecarte ces sources, et on cherchait
+    ***REMOVED*** ensuite pourquoi « rien ne change » alors que le serveur repondait parfaitement.
     if li == 3:
         print("KO le serveur se declare NON SYNCHRONISE (LI=3), strate annoncee %d" % strate)
     elif strate == 0:
@@ -393,8 +393,8 @@ def tester_ntp(serveurs, node=None):
             out.append({"serveur": srv, "ok": True, "strate": int(ch[1]),
                         "offset_s": float(ch[2]), "rtt_ms": float(ch[3]), "li": int(ch[4])})
         else:
-            # Le programme distant prefixe ses refus par « KO » : c est un marqueur de protocole
-            # entre lui et nous, pas un message pour l exploitant. On le retire.
+            ***REMOVED*** Le programme distant prefixe ses refus par « KO » : c est un marqueur de protocole
+            ***REMOVED*** entre lui et nous, pas un message pour l exploitant. On le retire.
             motif = (txt or "sans reponse")
             if motif.startswith("KO "):
                 motif = motif[3:]
@@ -428,8 +428,8 @@ def _etat_source(node, serveur):
         ch = ligne.split()
         if len(ch) >= 7 and ch[1] == serveur:
             code, libelle = _ETAT_SRC.get(ligne[1:2], ("inconnu", ligne[:2]))
-            # « ^x x.x.x.x 1 6 37 47 +101ms[ +101ms] +/- 10ms » : le dernier echantillon est en
-            # 7e colonne (index 6), suffixe [ a retirer. Les colonnes suivantes sont la marge.
+            ***REMOVED*** « ^x x.x.x.x 1 6 37 47 +101ms[ +101ms] +/- 10ms » : le dernier echantillon est en
+            ***REMOVED*** 7e colonne (index 6), suffixe [ a retirer. Les colonnes suivantes sont la marge.
             ecart = ch[6].rstrip("[") if len(ch) > 6 else ""
             return {"serveur": serveur, "code": code, "libelle": libelle, "dernier_ecart": ecart}
     return {"serveur": serveur, "code": "absente", "libelle": "pas dans la liste de chrony"}
@@ -463,14 +463,14 @@ def appliquer_ntp(serveurs):
                                "aucune source retenue — vérifier la joignabilité depuis ce nœud"})
         except Exception as e:
             res.append({"node": node.get("name"), "ok": False, "msg": str(e)[:100]})
-    # L orchestrateur n est pas un nœud, mais c est une horloge du site — et surtout celle par
-    # laquelle passent toutes les mesures. Le laisser sur une autre source, c est garder l écart
-    # qu on cherche justement à supprimer. Il tourne sous timesyncd : drop-in, pas de chrony.
+    ***REMOVED*** L orchestrateur n est pas un nœud, mais c est une horloge du site — et surtout celle par
+    ***REMOVED*** laquelle passent toutes les mesures. Le laisser sur une autre source, c est garder l écart
+    ***REMOVED*** qu on cherche justement à supprimer. Il tourne sous timesyncd : drop-in, pas de chrony.
     import subprocess as _sp
     try:
         if lignes:
-            # chrony si présent (c est ce que pose install.sh), sinon repli timesyncd pour ne pas
-            # laisser un contrôleur ancien sans configuration. Les deux écrivent les MÊMES serveurs.
+            ***REMOVED*** chrony si présent (c est ce que pose install.sh), sinon repli timesyncd pour ne pas
+            ***REMOVED*** laisser un contrôleur ancien sans configuration. Les deux écrivent les MÊMES serveurs.
             a_chrony = _sp.run(["/bin/sh", "-c", "command -v chronyd >/dev/null && echo oui"],
                                capture_output=True, text=True, timeout=10).stdout.strip() == "oui"
             if a_chrony:
@@ -494,7 +494,7 @@ def appliquer_ntp(serveurs):
     return res
 
 
-# Qui discipline l'horloge d'un nœud — caché 5 min (ça ne change qu'au redéploiement du moteur).
+***REMOVED*** Qui discipline l'horloge d'un nœud — caché 5 min (ça ne change qu'au redéploiement du moteur).
 _disc_cache = {}
 _DISC_TTL_S = 300.0
 
@@ -549,13 +549,13 @@ def _derive(pts):
     partir une horloge que la position ne savait pas situer.
 
     Renvoie (None, None) tant que la fenêtre est trop courte pour conclure."""
-    # On ne régresse QUE sur des points mesurés avec la même règle graduée (cf. `_pousser_hist`) :
-    # celle du point le plus récent. Mélanger deux méthodes ne donnerait pas une dérive bruitée,
-    # mais une dérive FAUSSE — la marche entre les deux biais dominerait la pente.
+    ***REMOVED*** On ne régresse QUE sur des points mesurés avec la même règle graduée (cf. `_pousser_hist`) :
+    ***REMOVED*** celle du point le plus récent. Mélanger deux méthodes ne donnerait pas une dérive bruitée,
+    ***REMOVED*** mais une dérive FAUSSE — la marche entre les deux biais dominerait la pente.
     courante = next((p.get("m") for p in reversed(pts) if p.get("ecart_ms") is not None), None)
     v = [(p["t"], p["ecart_ms"]) for p in pts
          if p.get("ecart_ms") is not None and p.get("m") == courante]
-    if len(v) < 10 or (v[-1][0] - v[0][0]) < 600:      # < 10 points ou < 10 min : on ne conclut pas
+    if len(v) < 10 or (v[-1][0] - v[0][0]) < 600:      ***REMOVED*** < 10 points ou < 10 min : on ne conclut pas
         return None, None
     n = len(v)
     tm = sum(t for t, _ in v) / n
@@ -563,7 +563,7 @@ def _derive(pts):
     denom = sum((t - tm) ** 2 for t, _ in v)
     if denom <= 0:
         return None, None
-    pente = sum((t - tm) * (e - em) for t, e in v) / denom          # ms par seconde
+    pente = sum((t - tm) * (e - em) for t, e in v) / denom          ***REMOVED*** ms par seconde
     resid = [e - (em + pente * (t - tm)) for t, e in v]
     ecart_type = (sum(r * r for r in resid) / n) ** 0.5
     return round(pente * 3600.0, 2), round(ecart_type, 2)
@@ -594,25 +594,25 @@ if _SONDE.count(_APOS) != 2:
         % _SONDE.count(_APOS))
 
 
-# ─── Mesure de précision : /v1/host/clock, modèle NTP à 4 estampilles ─────────────────────────
-# La sonde shell ci-dessus reste utile pour le CONTEXTE (qui discipline, quelle référence, quelle
-# strate). Elle est en revanche incapable de dater un nœud à mieux que la dizaine de millisecondes,
-# et pas pour une raison de réseau : le lien est à 0,3 ms. Le retard est logiciel et, surtout,
-# ASYMÉTRIQUE — `host/exec` monte la connexion, lance un `sh -c`, démarre un interpréteur Python,
-# et tout cela est sur l'ALLER. Dater le nœud au milieu de l'aller-retour revient alors à le
-# déclarer systématiquement EN AVANCE de ~25 ms. Les 20 à 30 ms qu'affichait cette page étaient
-# cela, et rien d'autre : les horloges, elles, étaient d'accord à quelques dizaines de µs.
-#
-# On mesure donc comme NTP mesure, avec quatre estampilles :
-#     t0 contrôleur émet · t1 nœud reçoit · t2 nœud répond · t3 contrôleur reçoit
-#     offset = ((t1 - t0) + (t2 - t3)) / 2        délai = (t3 - t0) - (t2 - t1)
-# Le temps passé DANS le nœud (t2 - t1) sort ainsi de l'équation : seul le trajet reste, et lui est
-# symétrique. Reste l'hypothèse de NTP — aller et retour de même durée — qui borne l'erreur à la
-# demi-asymétrie résiduelle, d'où `incertitude_ms = délai / 2`.
-#
-# ⚠ Le chronomètre ne démarre qu'APRÈS l'établissement de la connexion (TCP + poignée de main TLS).
-# Cet établissement coûte plusieurs millisecondes et tombe entièrement sur l'aller : le laisser
-# dans la fenêtre réintroduirait, à l'identique, le biais qu'on vient de retirer.
+***REMOVED*** ─── Mesure de précision : /v1/host/clock, modèle NTP à 4 estampilles ─────────────────────────
+***REMOVED*** La sonde shell ci-dessus reste utile pour le CONTEXTE (qui discipline, quelle référence, quelle
+***REMOVED*** strate). Elle est en revanche incapable de dater un nœud à mieux que la dizaine de millisecondes,
+***REMOVED*** et pas pour une raison de réseau : le lien est à 0,3 ms. Le retard est logiciel et, surtout,
+***REMOVED*** ASYMÉTRIQUE — `host/exec` monte la connexion, lance un `sh -c`, démarre un interpréteur Python,
+***REMOVED*** et tout cela est sur l'ALLER. Dater le nœud au milieu de l'aller-retour revient alors à le
+***REMOVED*** déclarer systématiquement EN AVANCE de ~25 ms. Les 20 à 30 ms qu'affichait cette page étaient
+***REMOVED*** cela, et rien d'autre : les horloges, elles, étaient d'accord à quelques dizaines de µs.
+***REMOVED***
+***REMOVED*** On mesure donc comme NTP mesure, avec quatre estampilles :
+***REMOVED***     t0 contrôleur émet · t1 nœud reçoit · t2 nœud répond · t3 contrôleur reçoit
+***REMOVED***     offset = ((t1 - t0) + (t2 - t3)) / 2        délai = (t3 - t0) - (t2 - t1)
+***REMOVED*** Le temps passé DANS le nœud (t2 - t1) sort ainsi de l'équation : seul le trajet reste, et lui est
+***REMOVED*** symétrique. Reste l'hypothèse de NTP — aller et retour de même durée — qui borne l'erreur à la
+***REMOVED*** demi-asymétrie résiduelle, d'où `incertitude_ms = délai / 2`.
+***REMOVED***
+***REMOVED*** ⚠ Le chronomètre ne démarre qu'APRÈS l'établissement de la connexion (TCP + poignée de main TLS).
+***REMOVED*** Cet établissement coûte plusieurs millisecondes et tombe entièrement sur l'aller : le laisser
+***REMOVED*** dans la fenêtre réintroduirait, à l'identique, le biais qu'on vient de retirer.
 def _echange_clock(node, timeout=5.0):
     """Un aller-retour horaire avec l'agent-nœud. Retourne
     `(offset_utc_ns, offset_tai_ns, tai_offset_s, delai_ns)` ou lève."""
@@ -625,13 +625,13 @@ def _echange_clock(node, timeout=5.0):
            % (u.hostname, node_driver.TOKEN_HEADER, node.get("agent_token") or "")).encode()
     s = socket.create_connection((u.hostname, port), timeout=timeout)
     try:
-        # Nagle retiendrait la requête ; et c'est la fenêtre de mesure elle-même qu'il retarderait.
+        ***REMOVED*** Nagle retiendrait la requête ; et c'est la fenêtre de mesure elle-même qu'il retarderait.
         s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         if u.scheme == "https":
             from . import ca
             s = ca.controller_client_context().wrap_socket(s, server_hostname=u.hostname)
         s.settimeout(timeout)
-        # ── Fenêtre de mesure : tout ce qui précède (connexion, TLS) en est DEHORS ──────────────
+        ***REMOVED*** ── Fenêtre de mesure : tout ce qui précède (connexion, TLS) en est DEHORS ──────────────
         t0 = time.clock_gettime_ns(time.CLOCK_REALTIME)
         s.sendall(req)
         brut = b""
@@ -643,7 +643,7 @@ def _echange_clock(node, timeout=5.0):
             if b"\r\n\r\n" in brut and brut.split(b"\r\n\r\n", 1)[1].endswith(b"}"):
                 break
         t3 = time.clock_gettime_ns(time.CLOCK_REALTIME)
-        # ───────────────────────────────────────────────────────────────────────────────────────
+        ***REMOVED*** ───────────────────────────────────────────────────────────────────────────────────────
     finally:
         try:
             s.close()
@@ -674,7 +674,7 @@ def _mesurer_clock(node, essais=9):
             o_utc, o_tai, tai_off, delai = _echange_clock(node)
         except Exception as e:
             erreur = e
-            break                     # inutile d'insister : c'est l'endpoint ou le lien, pas l'aléa
+            break                     ***REMOVED*** inutile d'insister : c'est l'endpoint ou le lien, pas l'aléa
         if meilleur is None or delai < meilleur["delai_ns"]:
             meilleur = {"offset_utc_ns": o_utc, "offset_tai_ns": o_tai,
                         "tai_offset": tai_off, "delai_ns": delai}
@@ -707,12 +707,12 @@ def _sonder(node, essais=9):
     if m:
         e["realtime_vs_utc_ns"] = m["offset_utc_ns"]
         e["tai_vs_utc_ns"] = m["offset_tai_ns"]
-        e["tai_offset"] = m["tai_offset"]      # CLOCK_TAI − CLOCK_REALTIME : la définition même
+        e["tai_offset"] = m["tai_offset"]      ***REMOVED*** CLOCK_TAI − CLOCK_REALTIME : la définition même
         e["incertitude_ms"] = round(m["delai_ns"] / 2e6, 3)
         e["mesure"] = "agent_natif"
         _poser_verdicts(e)
         return e
-    # Repli : on rejoue la sonde shell pour garder le relevé au RTT le plus court, comme avant.
+    ***REMOVED*** Repli : on rejoue la sonde shell pour garder le relevé au RTT le plus court, comme avant.
     for _ in range(4):
         e2 = _sonder_une_fois(node)
         if e2.get("joignable") and e2.get("incertitude_ms", 1e9) < e.get("incertitude_ms", 1e9):
@@ -736,7 +736,7 @@ def _sonder_une_fois(node):
     except Exception as e:
         return {"id": node.get("id"), "name": node.get("name"), "joignable": False, "erreur": str(e)[:120]}
 
-    utc_ctrl_ns = int(((t0 + t1) / 2.0) * 1e9)     # milieu de la fenêtre = meilleure estimation
+    utc_ctrl_ns = int(((t0 + t1) / 2.0) * 1e9)     ***REMOVED*** milieu de la fenêtre = meilleure estimation
     tai_ns = d.get("tai_ns")
     rt_ns = d.get("realtime_ns")
     e = {
@@ -746,26 +746,26 @@ def _sonder_une_fois(node):
         "leap": d.get("leap") or "", "offset_s": d.get("offset_s"),
         "ref": d.get("ref") or "", "strate": d.get("strate"), "maj": d.get("maj") or "",
         "maxerror_us": d.get("maxerror_us"),
-        # Unités RÉELLEMENT actives (nommées par réseau) — sert au diagnostic et, surtout, à
-        # savoir si un servo tient déjà CLOCK_REALTIME avant de proposer d'en poser un second.
+        ***REMOVED*** Unités RÉELLEMENT actives (nommées par réseau) — sert au diagnostic et, surtout, à
+        ***REMOVED*** savoir si un servo tient déjà CLOCK_REALTIME avant de proposer d'en poser un second.
         "ptp_unites": d.get("ptp_unites") or [],
         "phc2sys_unites": d.get("phc2sys_unites") or [],
-        # ± DEMI aller-retour : la lecture a eu lieu quelque part dans [t0, t1], on l'estime au
-        # milieu, donc l'erreur est bornée par la demi-fenêtre — pas par la fenêtre entière.
+        ***REMOVED*** ± DEMI aller-retour : la lecture a eu lieu quelque part dans [t0, t1], on l'estime au
+        ***REMOVED*** milieu, donc l'erreur est bornée par la demi-fenêtre — pas par la fenêtre entière.
         "incertitude_ms": round((t1 - t0) * 500.0, 1),
-        # Convention détectée : REALTIME porte-t-il du TAI (nœud 2110 discipliné par libmtl) ou de
-        # l'UTC (nœud NTP) ? Déduit de l'écart REALTIME↔UTC du contrôleur, arrondi à la seconde.
+        ***REMOVED*** Convention détectée : REALTIME porte-t-il du TAI (nœud 2110 discipliné par libmtl) ou de
+        ***REMOVED*** l'UTC (nœud NTP) ? Déduit de l'écart REALTIME↔UTC du contrôleur, arrondi à la seconde.
         "convention": None,
     }
     if e["source"] == "aucune" and _a_un_moteur_2110(node):
-        # Pas « aucune » : sur un nœud 2110 en DPDK, il n'y a ni ptp4l ni chrony parce que l'horloge
-        # système est disciplinée par le client PTP interne de libmtl, DANS le moteur. Annoncer
-        # « aucune source » là où il y en a une, et une bonne, c'est envoyer chercher un problème
-        # qui n'existe pas.
+        ***REMOVED*** Pas « aucune » : sur un nœud 2110 en DPDK, il n'y a ni ptp4l ni chrony parce que l'horloge
+        ***REMOVED*** système est disciplinée par le client PTP interne de libmtl, DANS le moteur. Annoncer
+        ***REMOVED*** « aucune source » là où il y en a une, et une bonne, c'est envoyer chercher un problème
+        ***REMOVED*** qui n'existe pas.
         e["source"] = "moteur 2110"
-    # Grandeurs PRIMITIVES : les écarts bruts nœud↔contrôleur. Tous les verdicts en découlent, et
-    # eux seuls changent selon la méthode de mesure — d'où la séparation avec `_poser_verdicts`,
-    # qu'on rejoue tel quel après une mesure fine.
+    ***REMOVED*** Grandeurs PRIMITIVES : les écarts bruts nœud↔contrôleur. Tous les verdicts en découlent, et
+    ***REMOVED*** eux seuls changent selon la méthode de mesure — d'où la séparation avec `_poser_verdicts`,
+    ***REMOVED*** qu'on rejoue tel quel après une mesure fine.
     e["realtime_vs_utc_ns"] = (rt_ns - utc_ctrl_ns) if rt_ns else None
     e["tai_vs_utc_ns"] = (tai_ns - utc_ctrl_ns) if tai_ns else None
     e["mesure"] = "sonde_shell"
@@ -780,52 +780,52 @@ def _poser_verdicts(e):
     grandeurs avec des précisions différentes, et rien d'autre ne doit changer entre les deux."""
     rt_delta = e.get("realtime_vs_utc_ns")
     tai_delta = e.get("tai_vs_utc_ns")
-    # Convention détectée : REALTIME porte-t-il du TAI (nœud 2110 discipliné par libmtl) ou de
-    # l'UTC (nœud NTP) ? Déduit de l'écart REALTIME↔UTC du contrôleur, arrondi à la seconde.
+    ***REMOVED*** Convention détectée : REALTIME porte-t-il du TAI (nœud 2110 discipliné par libmtl) ou de
+    ***REMOVED*** l'UTC (nœud NTP) ? Déduit de l'écart REALTIME↔UTC du contrôleur, arrondi à la seconde.
     e["convention"] = None
     if rt_delta is not None:
         delta_s = round(rt_delta / 1e9)
         e["convention"] = "realtime_tai" if abs(delta_s - TAI_UTC_OFFSET_S) <= 1 else (
             "realtime_utc" if abs(delta_s) <= 1 else "inconnue")
         e["realtime_vs_utc_s"] = delta_s
-    # Le verdict par nœud ne porte QUE sur CLOCK_TAI — le reste est du contexte pour comprendre.
-    #
-    # L'écart est gardé en MILLISECONDES depuis les nanosecondes brutes, JAMAIS reconstruit depuis
-    # une valeur arrondie à la seconde : la question posée est « ces nœuds tombent-ils sur le même
-    # grain » (20 ms à 50 fps), donc un écart arrondi à la seconde ne répondrait à rien — il ne
-    # pourrait valoir que 0 ou ±1000 et laisserait passer exactement les dérives qu'on traque.
+    ***REMOVED*** Le verdict par nœud ne porte QUE sur CLOCK_TAI — le reste est du contexte pour comprendre.
+    ***REMOVED***
+    ***REMOVED*** L'écart est gardé en MILLISECONDES depuis les nanosecondes brutes, JAMAIS reconstruit depuis
+    ***REMOVED*** une valeur arrondie à la seconde : la question posée est « ces nœuds tombent-ils sur le même
+    ***REMOVED*** grain » (20 ms à 50 fps), donc un écart arrondi à la seconde ne répondrait à rien — il ne
+    ***REMOVED*** pourrait valoir que 0 ou ±1000 et laisserait passer exactement les dérives qu'on traque.
     if tai_delta is not None:
         e["tai_vs_utc_ms"] = round(tai_delta / 1e6, 3)
-        # Écart à la grille de référence (UTC contrôleur + 37 s) : c'est ça, « être à l'heure ».
+        ***REMOVED*** Écart à la grille de référence (UTC contrôleur + 37 s) : c'est ça, « être à l'heure ».
         e["ecart_ms"] = round(e["tai_vs_utc_ms"] - TAI_UTC_OFFSET_S * 1000.0, 3)
-        # Le verdict « juste » tolère la seconde : le contrôleur n'est pas une référence de
-        # précision, et un décalage qui compte se voit en secondes entières (tai_offset oublié).
+        ***REMOVED*** Le verdict « juste » tolère la seconde : le contrôleur n'est pas une référence de
+        ***REMOVED*** précision, et un décalage qui compte se voit en secondes entières (tai_offset oublié).
         e["tai_juste"] = abs(e["ecart_ms"]) < 1000.0
     else:
         e["tai_juste"] = None
-    # Offset noyau ATTENDU pour CE nœud : 0 là où REALTIME porte déjà du TAI, 37 là où il porte
-    # l'UTC. Sans cette valeur à côté, un « 0 » et un « 37 » dans la même colonne se lisent comme
-    # une incohérence alors que les deux sont corrects, chacun chez soi.
+    ***REMOVED*** Offset noyau ATTENDU pour CE nœud : 0 là où REALTIME porte déjà du TAI, 37 là où il porte
+    ***REMOVED*** l'UTC. Sans cette valeur à côté, un « 0 » et un « 37 » dans la même colonne se lisent comme
+    ***REMOVED*** une incohérence alors que les deux sont corrects, chacun chez soi.
     e["tai_offset_attendu"] = 0 if e.get("convention") == "realtime_tai" else TAI_UTC_OFFSET_S
     e["tai_offset_ok"] = (e.get("tai_offset") == e["tai_offset_attendu"])
-    # (6) Y a-t-il quelque chose à corriger ? L'action ne doit être proposée que dans ce cas.
-    #
-    # …et SEULEMENT si l'action proposée est la bonne. Le bouton n'a qu'un geste : installer
-    # chrony. Sur un nœud où un servo tient déjà CLOCK_REALTIME — phc2sys depuis le PHC, ou le
-    # client PTP interne de libmtl — le proposer revient à offrir un SECOND maître pour la même
-    # horloge. Deux servos sur un même CLOCK_REALTIME, c'est la panne PROD-009, et sur un nœud
-    # qui cadence du 2110 elle se paie en pacing.
-    #
-    # Le garde-fou de `appliquer_ntp_tai` ne couvrait que la convention `realtime_tai`. Il ratait
-    # donc le cas d'Horace (2026-07-28) : phc2sys verrouillé à ±50 ns, REALTIME portant de l'UTC,
-    # nœud hors grille pour une tout autre raison — le bouton était proposé et serait passé.
+    ***REMOVED*** (6) Y a-t-il quelque chose à corriger ? L'action ne doit être proposée que dans ce cas.
+    ***REMOVED***
+    ***REMOVED*** …et SEULEMENT si l'action proposée est la bonne. Le bouton n'a qu'un geste : installer
+    ***REMOVED*** chrony. Sur un nœud où un servo tient déjà CLOCK_REALTIME — phc2sys depuis le PHC, ou le
+    ***REMOVED*** client PTP interne de libmtl — le proposer revient à offrir un SECOND maître pour la même
+    ***REMOVED*** horloge. Deux servos sur un même CLOCK_REALTIME, c'est la panne PROD-009, et sur un nœud
+    ***REMOVED*** qui cadence du 2110 elle se paie en pacing.
+    ***REMOVED***
+    ***REMOVED*** Le garde-fou de `appliquer_ntp_tai` ne couvrait que la convention `realtime_tai`. Il ratait
+    ***REMOVED*** donc le cas d'Horace (2026-07-28) : phc2sys verrouillé à ±50 ns, REALTIME portant de l'UTC,
+    ***REMOVED*** nœud hors grille pour une tout autre raison — le bouton était proposé et serait passé.
     e["servo_present"] = bool(e.get("phc2sys_unites") or e.get("convention") == "realtime_tai")
     e["a_corriger"] = bool((e.get("tai_juste") is False or not e["tai_offset_ok"]
                             or e.get("source") == "aucune")
                            and not e["servo_present"])
     if e["servo_present"] and (e.get("tai_juste") is False or not e["tai_offset_ok"]):
-        # Rien à proposer ne veut pas dire rien à signaler : on nomme ce qu'on voit, et on laisse
-        # le diagnostic à l'humain plutôt que de tendre un bouton qui aggraverait.
+        ***REMOVED*** Rien à proposer ne veut pas dire rien à signaler : on nomme ce qu'on voit, et on laisse
+        ***REMOVED*** le diagnostic à l'humain plutôt que de tendre un bouton qui aggraverait.
         e["a_diagnostiquer"] = ("un servo discipline déjà cette horloge (%s) — le décalage vient de "
                                 "sa RÉFÉRENCE, pas du nœud : vérifier le grandmaster PTP"
                                 % (", ".join(e.get("phc2sys_unites") or []) or "client PTP du moteur"))
@@ -855,15 +855,15 @@ def _sonder_controleur():
         e["convention"] = "realtime_tai" if abs(delta) < 1 and False else "realtime_utc"
         e["tai_offset_attendu"] = TAI_UTC_OFFSET_S
         e["tai_offset_ok"] = (e["tai_offset"] == TAI_UTC_OFFSET_S)
-        e["ecart_ms"] = 0.0                    # repère de mesure : nul par construction
+        e["ecart_ms"] = 0.0                    ***REMOVED*** repère de mesure : nul par construction
         e["tai_juste"] = e["tai_offset_ok"]
     e["a_corriger"] = not e.get("tai_offset_ok", False) or e.get("source") == "aucune"
     return e
 
 
-# Traçabilité d'une source, du plus au moins solide. Sert à choisir le RÉFÉRENT du cluster : c'est
-# le nœud le mieux accroché qui fait foi, pas le contrôleur — une machine NTP ordinaire n'a aucune
-# raison d'arbitrer des horloges verrouillées sur un grandmaster.
+***REMOVED*** Traçabilité d'une source, du plus au moins solide. Sert à choisir le RÉFÉRENT du cluster : c'est
+***REMOVED*** le nœud le mieux accroché qui fait foi, pas le contrôleur — une machine NTP ordinaire n'a aucune
+***REMOVED*** raison d'arbitrer des horloges verrouillées sur un grandmaster.
 _RANG_SOURCE = {"moteur 2110": 3, "ptp4l": 3, "chrony": 2, "timesyncd": 1, "aucune": 0}
 
 
@@ -877,10 +877,10 @@ def etat(force=False):
         if not force and _cache["data"] and (time.time() - _cache["ts"]) < _TTL_S:
             return _cache["data"]
     noeuds = [_sonder(n) for n in db_get_nodes()]
-    # Indicateur de précision LOCAL au nœud, donc sans RTT — la seule mesure fine crédible ici :
-    #   · nœud NTP    → offset rapporté par chrony (relevé par la sonde) ;
-    #   · nœud 2110   → offset du client PTP interne du moteur, déjà échantillonné par node_health.
-    # Absent tant que le sampler n'a pas tourné : on laisse vide plutôt que d'inventer.
+    ***REMOVED*** Indicateur de précision LOCAL au nœud, donc sans RTT — la seule mesure fine crédible ici :
+    ***REMOVED***   · nœud NTP    → offset rapporté par chrony (relevé par la sonde) ;
+    ***REMOVED***   · nœud 2110   → offset du client PTP interne du moteur, déjà échantillonné par node_health.
+    ***REMOVED*** Absent tant que le sampler n'a pas tourné : on laisse vide plutôt que d'inventer.
     try:
         from . import node_health
         snaps = (node_health.latest() or {}).get("nodes") or {}
@@ -891,21 +891,21 @@ def etat(force=False):
             if off is not None and n.get("offset_s") is None:
                 n["offset_s"] = float(off) / 1e9
                 n["offset_src"] = "ptp_moteur"
-                # La SOURCE d'un nœud 2110, c'est le grandmaster PTP — pas « le moteur », qui n'est
-                # que l'outil, exactement comme chrony n'est pas un serveur NTP.
+                ***REMOVED*** La SOURCE d'un nœud 2110, c'est le grandmaster PTP — pas « le moteur », qui n'est
+                ***REMOVED*** que l'outil, exactement comme chrony n'est pas un serveur NTP.
                 if ptp.get("gm_id") and not n.get("ref"):
                     n["ref"] = "GM %s" % ptp["gm_id"]
-                # ── Qualité de la RÉFÉRENCE, distincte de la qualité du verrou ────────────────
-                # Un esclave se verrouille à la nanoseconde sur un grandmaster en roue libre
-                # exactement comme sur du GPS. Sans ce report, `offset_s = 121 ns` se lit comme
-                # « horloge excellente » alors que le nœud peut être à des minutes de l'UTC —
-                # mesuré sur Horace le 2026-07-28 (clockClass 248, 16,2 min d'écart).
+                ***REMOVED*** ── Qualité de la RÉFÉRENCE, distincte de la qualité du verrou ────────────────
+                ***REMOVED*** Un esclave se verrouille à la nanoseconde sur un grandmaster en roue libre
+                ***REMOVED*** exactement comme sur du GPS. Sans ce report, `offset_s = 121 ns` se lit comme
+                ***REMOVED*** « horloge excellente » alors que le nœud peut être à des minutes de l'UTC —
+                ***REMOVED*** mesuré sur Horace le 2026-07-28 (clockClass 248, 16,2 min d'écart).
                 n["gm_clock_class"] = ptp.get("gm_clock_class")
                 n["utc_offset_valid"] = ptp.get("utc_offset_valid")
-                # Le verdict est DÉRIVÉ ici des champs bruts, jamais repris tel quel du producteur.
-                # Deux producteurs alimentent ce bloc — le relevé pmc de l'orchestrateur et
-                # l'agent-nœud — et seul le premier calcule `gm_saine`. Le lire au lieu de le
-                # dériver rendait l'alarme muette sur l'autre chemin, en silence.
+                ***REMOVED*** Le verdict est DÉRIVÉ ici des champs bruts, jamais repris tel quel du producteur.
+                ***REMOVED*** Deux producteurs alimentent ce bloc — le relevé pmc de l'orchestrateur et
+                ***REMOVED*** l'agent-nœud — et seul le premier calcule `gm_saine`. Le lire au lieu de le
+                ***REMOVED*** dériver rendait l'alarme muette sur l'autre chemin, en silence.
                 from .ptp import gm_reference_saine
                 n["gm_saine"], n["gm_raison"] = gm_reference_saine(ptp)
                 if ptp.get("phc2sys_running"):
@@ -938,12 +938,12 @@ def etat(force=False):
             problemes.append("%s : aucune source de temps active" % n.get("name"))
     flou = max([n.get("incertitude_ms") or 0.0 for n in mesurables] or [0.0])
 
-    # ── Écart inter-nœuds : le seuil ne s'applique QUE si la mesure peut le trancher ────────────
-    # La règle est celle de tout le reste de ce module : on ne signale que ce qu'on sait mesurer.
-    # Ici elle devient une CONDITION explicite plutôt qu'un renoncement — l'écart n'est jugé que
-    # s'il dépasse à la fois le grain ET l'incertitude du relevé. Sur un agent ancien (repli sonde
-    # shell, ±25 ms) la seconde condition n'est jamais remplie et l'alarme se tait d'elle-même :
-    # pas de cas particulier à écrire, c'est la mesure qui dit si elle a le droit de conclure.
+    ***REMOVED*** ── Écart inter-nœuds : le seuil ne s'applique QUE si la mesure peut le trancher ────────────
+    ***REMOVED*** La règle est celle de tout le reste de ce module : on ne signale que ce qu'on sait mesurer.
+    ***REMOVED*** Ici elle devient une CONDITION explicite plutôt qu'un renoncement — l'écart n'est jugé que
+    ***REMOVED*** s'il dépasse à la fois le grain ET l'incertitude du relevé. Sur un agent ancien (repli sonde
+    ***REMOVED*** shell, ±25 ms) la seconde condition n'est jamais remplie et l'alarme se tait d'elle-même :
+    ***REMOVED*** pas de cas particulier à écrire, c'est la mesure qui dit si elle a le droit de conclure.
     seuil_ecart, raison_ecart = _seuil_ecart_ms()
     if len(ecarts) >= 2 and ecart_max > seuil_ecart and ecart_max > flou:
         pire = max(mesurables, key=lambda n: n["ecart_ms"])
@@ -953,17 +953,17 @@ def etat(force=False):
                          % (ecart_max, moins.get("name"), pire.get("name"),
                             seuil_ecart, raison_ecart, flou))
 
-    # ── La RÉFÉRENCE vaut-elle quelque chose ? ─────────────────────────────────────────────────
-    # Signalé AVANT les seuils de précision locale, et c'est délibéré : un nœud verrouillé sur un
-    # grandmaster en roue libre passe tous les tests de précision avec les meilleures notes du
-    # parc. Sa discipline est parfaite ; c'est ce sur quoi il est discipliné qui ne vaut rien.
-    # Aucun autre indicateur de cette page n'attrape ce cas — celui-ci existe pour ça.
+    ***REMOVED*** ── La RÉFÉRENCE vaut-elle quelque chose ? ─────────────────────────────────────────────────
+    ***REMOVED*** Signalé AVANT les seuils de précision locale, et c'est délibéré : un nœud verrouillé sur un
+    ***REMOVED*** grandmaster en roue libre passe tous les tests de précision avec les meilleures notes du
+    ***REMOVED*** parc. Sa discipline est parfaite ; c'est ce sur quoi il est discipliné qui ne vaut rien.
+    ***REMOVED*** Aucun autre indicateur de cette page n'attrape ce cas — celui-ci existe pour ça.
     for n in noeuds:
         if n.get("joignable") and n.get("gm_saine") is False:
             problemes.append("%s : %s" % (n.get("name"), n.get("gm_raison") or "référence PTP douteuse"))
 
-    # La discipline LOCALE est relevée sur le nœud (offset chrony / verrou PTP du moteur), donc
-    # sans aller-retour : elle se juge en microsecondes, indépendamment de tout ça.
+    ***REMOVED*** La discipline LOCALE est relevée sur le nœud (offset chrony / verrou PTP du moteur), donc
+    ***REMOVED*** sans aller-retour : elle se juge en microsecondes, indépendamment de tout ça.
     par_id = {int(x.get("id")): x for x in db_get_nodes()}
     for n in noeuds:
         seuil_n, raison = _seuil_local_us(par_id.get(n.get("id")) or {})
@@ -973,17 +973,17 @@ def etat(force=False):
             problemes.append("%s : horloge locale à %.0f µs de sa référence (seuil %g µs — %s)"
                              % (n.get("name"), abs(o) * 1e6, seuil_n, raison))
     if not _alertes_actives():
-        problemes = []          # l'exploitant a coupé le signalement : on mesure toujours, on ne crie plus
-    # ── Choix du RÉFÉRENT ─────────────────────────────────────────────────────────────────────
-    # Le contrôleur n'a aucune légitimité pour arbitrer : c'est une machine NTP ordinaire, et sa
-    # propre dérive se retrouvait à l'identique sur toutes les lignes. On prend le nœud le mieux
-    # TRACÉ (PTP verrouillé sur un grandmaster > NTP > rien) et on exprime les écarts par rapport à
-    # LUI. Le biais du contrôleur, commun à toutes les mesures, s'annule dans la différence —
-    # exactement le même mécanisme que pour la dérive.
+        problemes = []          ***REMOVED*** l'exploitant a coupé le signalement : on mesure toujours, on ne crie plus
+    ***REMOVED*** ── Choix du RÉFÉRENT ─────────────────────────────────────────────────────────────────────
+    ***REMOVED*** Le contrôleur n'a aucune légitimité pour arbitrer : c'est une machine NTP ordinaire, et sa
+    ***REMOVED*** propre dérive se retrouvait à l'identique sur toutes les lignes. On prend le nœud le mieux
+    ***REMOVED*** TRACÉ (PTP verrouillé sur un grandmaster > NTP > rien) et on exprime les écarts par rapport à
+    ***REMOVED*** LUI. Le biais du contrôleur, commun à toutes les mesures, s'annule dans la différence —
+    ***REMOVED*** exactement le même mécanisme que pour la dérive.
     candidats = [n for n in noeuds if n.get("joignable") and n.get("ecart_ms") is not None]
     referent = max(candidats, key=lambda n: (_RANG_SOURCE.get(n.get("source"), 0),
                                              -abs(n.get("offset_s") or 1))) if candidats else None
-    # Historique du RÉFÉRENT, indexé par instant : sert à rendre les séries relatives.
+    ***REMOVED*** Historique du RÉFÉRENT, indexé par instant : sert à rendre les séries relatives.
     href = {p["t"]: p["ecart_ms"] for p in (referent or {}).get("hist", [])
             if p.get("ecart_ms") is not None}
     for n in noeuds:
@@ -992,13 +992,13 @@ def etat(force=False):
             n["est_referent"] = (n is referent)
         else:
             n["ecart_ref_ms"], n["est_referent"] = None, False
-        # ── La DÉRIVE se mesure CONTRE LE RÉFÉRENT, pas contre le contrôleur ──────────────────
-        # Sinon elle mesure le mauvais couple : chaque nœud paraissait dériver de ~10 ms/h alors
-        # que c était le contrôleur — simple machine NTP — qui bougeait sous eux tous. Un nœud
-        # verrouillé sur le grandmaster ne « dérive » pas par rapport à la grille : il EST la
-        # grille. Ce qui intéresse ici, c est la vitesse à laquelle un nœud s en éloigne.
+        ***REMOVED*** ── La DÉRIVE se mesure CONTRE LE RÉFÉRENT, pas contre le contrôleur ──────────────────
+        ***REMOVED*** Sinon elle mesure le mauvais couple : chaque nœud paraissait dériver de ~10 ms/h alors
+        ***REMOVED*** que c était le contrôleur — simple machine NTP — qui bougeait sous eux tous. Un nœud
+        ***REMOVED*** verrouillé sur le grandmaster ne « dérive » pas par rapport à la grille : il EST la
+        ***REMOVED*** grille. Ce qui intéresse ici, c est la vitesse à laquelle un nœud s en éloigne.
         if n["est_referent"]:
-            n["derive_ms_h"], n["repetabilite_ms"] = None, None      # référence : 0 par définition
+            n["derive_ms_h"], n["repetabilite_ms"] = None, None      ***REMOVED*** référence : 0 par définition
         else:
             rel = [{"t": p["t"], "m": p.get("m"), "ecart_ms": p["ecart_ms"] - href[p["t"]]}
                    for p in (n.get("hist") or [])
@@ -1006,12 +1006,12 @@ def etat(force=False):
             n["derive_ms_h"], n["repetabilite_ms"] = _derive(rel)
     ctrl = _sonder_controleur()
     if ctrl.get("joignable") and referent is not None:
-        # Le contrôleur est mesuré SANS aller-retour, mais le référent l'est AVEC : son écart au
-        # référent porte donc l'incertitude de cette mesure-là, pas zéro.
+        ***REMOVED*** Le contrôleur est mesuré SANS aller-retour, mais le référent l'est AVEC : son écart au
+        ***REMOVED*** référent porte donc l'incertitude de cette mesure-là, pas zéro.
         ctrl["ecart_ref_ms"] = round(-referent["ecart_ms"], 3)
         ctrl["incertitude_ms"] = referent.get("incertitude_ms") or 0.0
-        # Le contrôleur n a pas d historique propre (il est le point de mesure) : sa dérive
-        # relative au référent est l OPPOSÉE de celle du référent vue depuis lui.
+        ***REMOVED*** Le contrôleur n a pas d historique propre (il est le point de mesure) : sa dérive
+        ***REMOVED*** relative au référent est l OPPOSÉE de celle du référent vue depuis lui.
         rel = [{"t": p["t"], "m": p.get("m"), "ecart_ms": -p["ecart_ms"]}
                for p in (referent.get("hist") or []) if p.get("ecart_ms") is not None]
         ctrl["derive_ms_h"], ctrl["repetabilite_ms"] = _derive(rel)
@@ -1029,10 +1029,10 @@ def etat(force=False):
             "seuil_force": _force,
             "pire_local_us": round(max(locaux), 1) if locaux else None,
             "seuil_ecart_ms": round(seuil_ecart, 1), "seuil_ecart_raison": raison_ecart,
-            # Quelle méthode a parlé — l'endpoint natif de l'agent (µs) ou le repli sonde shell
-            # (dizaines de ms). Ça se voit dans l'incertitude, mais autant le nommer : sans ça, un
-            # nœud à l'agent périmé affiche un écart dix fois plus gros que ses voisins sans que
-            # rien ne dise que c'est la RÈGLE qui a changé, pas l'horloge.
+            ***REMOVED*** Quelle méthode a parlé — l'endpoint natif de l'agent (µs) ou le repli sonde shell
+            ***REMOVED*** (dizaines de ms). Ça se voit dans l'incertitude, mais autant le nommer : sans ça, un
+            ***REMOVED*** nœud à l'agent périmé affiche un écart dix fois plus gros que ses voisins sans que
+            ***REMOVED*** rien ne dise que c'est la RÈGLE qui a changé, pas l'horloge.
             "mesure": ("agent_natif" if all(n.get("mesure") == "agent_natif" for n in mesurables)
                        else "mixte" if any(n.get("mesure") == "agent_natif" for n in mesurables)
                        else "sonde_shell"),
@@ -1073,19 +1073,19 @@ def appliquer_ntp_tai(node_id):
         return False, ("ce nœud tient son heure du client PTP interne du moteur 2110 "
                        "(REALTIME = TAI) — installer chrony ferait battre deux disciplines "
                        "sur la même horloge"), None, None
-    # Même refus, cause différente : phc2sys discipline CLOCK_REALTIME depuis le PHC. La
-    # convention reste `realtime_utc` (phc2sys applique le décalage), donc le test ci-dessus ne
-    # voit rien — c'est le cas d'Horace, où le bouton était proposé sur un nœud dont l'horloge
-    # était tenue à ±50 ns. Ce qu'il faut réparer là, c'est le grandmaster, pas le nœud.
+    ***REMOVED*** Même refus, cause différente : phc2sys discipline CLOCK_REALTIME depuis le PHC. La
+    ***REMOVED*** convention reste `realtime_utc` (phc2sys applique le décalage), donc le test ci-dessus ne
+    ***REMOVED*** voit rien — c'est le cas d'Horace, où le bouton était proposé sur un nœud dont l'horloge
+    ***REMOVED*** était tenue à ±50 ns. Ce qu'il faut réparer là, c'est le grandmaster, pas le nœud.
     if e.get("phc2sys_unites"):
         return False, ("phc2sys discipline déjà CLOCK_REALTIME sur ce nœud (%s) : installer chrony "
                        "mettrait deux servos sur la même horloge. Si le nœud est hors grille alors "
                        "que phc2sys est verrouillé, le décalage vient de la RÉFÉRENCE PTP "
                        "(grandmaster) — vérifier son clockClass avant toute chose."
                        % ", ".join(e["phc2sys_unites"])), None, None
-    conf = ("# Bobi.Studio — la grille média MXL est indexée sur CLOCK_TAI ; sans table de\n"
-            "# secondes intercalaires le noyau garde tai_offset=0 et CLOCK_TAI vaut l'UTC,\n"
-            "# soit %d s d'écart avec la grille du cluster.\n"
+    conf = ("***REMOVED*** Bobi.Studio — la grille média MXL est indexée sur CLOCK_TAI ; sans table de\n"
+            "***REMOVED*** secondes intercalaires le noyau garde tai_offset=0 et CLOCK_TAI vaut l'UTC,\n"
+            "***REMOVED*** soit %d s d'écart avec la grille du cluster.\n"
             "leapseclist /usr/share/zoneinfo/leap-seconds.list\n" % TAI_UTC_OFFSET_S)
     cmd = ("set -e; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq chrony >/dev/null 2>&1; "
            "mkdir -p /etc/chrony/conf.d; "
@@ -1096,10 +1096,10 @@ def appliquer_ntp_tai(node_id):
     if rc != 0 or "applique" not in (out or ""):
         return False, (err or out or "échec")[:200], None, None
     with _lock:
-        _cache["data"] = None          # le prochain affichage doit montrer le résultat, pas le cache
+        _cache["data"] = None          ***REMOVED*** le prochain affichage doit montrer le résultat, pas le cache
     nom = node.get("name")
     return (True, "chrony + leapseclist appliqués sur %s" % nom,
             "alert.ptp.ntp_tai_applique", {"n": nom})
 
 
-_charger_hist()      # au chargement du module : la fenêtre reprend là où le redémarrage l'a laissée
+_charger_hist()      ***REMOVED*** au chargement du module : la fenêtre reprend là où le redémarrage l'a laissée

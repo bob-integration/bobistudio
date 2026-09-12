@@ -1,4 +1,4 @@
-# INFRASTRUCTURE.md — dimensionnement matériel et réseau
+***REMOVED*** INFRASTRUCTURE.md — dimensionnement matériel et réseau
 
 > Une fois le matériel choisi et câblé, la mise en service est décrite dans
 > [`INSTALL.md`](INSTALL.md).
@@ -11,7 +11,7 @@ imposée par le code mais relève d'un ordre de grandeur non vérifié, c'est di
 Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle vit dans
 `config_local.py`, non versionné (cf. CLAUDE.md § Sécurité).
 
-## Vue d'ensemble : trois rôles de machine
+***REMOVED******REMOVED*** Vue d'ensemble : trois rôles de machine
 
 1. **Contrôleur** — Flask + SQLite, ne fait QUE piloter (déploiement, monitoring, API). N'exécute
    jamais de conteneur de production.
@@ -25,7 +25,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ---
 
-## 1. Contrôleur
+***REMOVED******REMOVED*** 1. Contrôleur
 
 - **Rôle strictement de pilotage** : Flask (`main.py`), SQLite (`db_bobistudio.db`), thread de
   surveillance qui poll les nœuds toutes les 5 s (`CHECK_INTERVAL`). Aucune charge vidéo ne
@@ -50,9 +50,9 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ---
 
-## 2. Nœuds de calcul — CPU, RAM, NUMA
+***REMOVED******REMOVED*** 2. Nœuds de calcul — CPU, RAM, NUMA
 
-### CPU : réservation, isolation, NUMA
+***REMOVED******REMOVED******REMOVED*** CPU : réservation, isolation, NUMA
 
 - Chaque nœud publie un **pool de cœurs** (`nodes.compute_cpuset`) que `core_pool.py` répartit par
   conteneur, sans chevauchement, de façon idempotente au redéploiement (`allocate_cores`).
@@ -96,7 +96,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
   `variante_mxl`) : détecter un CPU AVX2-capable qui charge par erreur la variante baseline
   (surcoût mesuré ~20 % CPU) — mais rien n'empêche activement le déploiement sur un CPU sans AVX2.
 
-### RAM et bande passante mémoire
+***REMOVED******REMOVED******REMOVED*** RAM et bande passante mémoire
 
 - Le bus MXL vit dans `/dev/shm` (tmpfs = RAM). La ressource qui plafonne réellement le
   compositing multiview n'est **pas le CPU** mais la **bande passante mémoire** : un test de charge
@@ -121,7 +121,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
   valeur retenue) de hugepages** — cette réservation est soustraite du pool disponible pour le
   reste du système et des autres conteneurs colocalisés.
 
-### Disque
+***REMOVED******REMOVED******REMOVED*** Disque
 
 - **Aucune exigence de type de disque (NVMe/SSD) n'est codée dans le dépôt** (`app/`,
   `services/storage`, `services/files`, `services/media_manager` ne portent aucun contrôle de
@@ -136,9 +136,9 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ---
 
-## 3. Cartes réseau — trois usages, trois profils différents
+***REMOVED******REMOVED*** 3. Cartes réseau — trois usages, trois profils différents
 
-### Plan ST 2110 (nœuds `io2110`)
+***REMOVED******REMOVED******REMOVED*** Plan ST 2110 (nœuds `io2110`)
 
 - Le plugin `2110_io` déclare explicitement `needs_nic: true, needs_dpdk: true` — **NIC dédiée,
   kernel-bypass obligatoire**, pas de carte partagée avec un autre trafic.
@@ -173,7 +173,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
   plus haut. Un lien 100G a été observé en production (mémoire d'équipe, incident de link-training
   E810 100G) — présenté ici comme fait observé, pas comme prescription générale.
 
-### Plan conteneurs partagés (macvlan)
+***REMOVED******REMOVED******REMOVED*** Plan conteneurs partagés (macvlan)
 
 - Une IP par conteneur sur un subnet du cluster — l'orchestrateur joint les conteneurs
   directement, l'agent-nœud ne gère que le lifecycle Docker.
@@ -188,7 +188,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
   carte réseau standard convient, dimensionnée au débit agrégé des flux non-2110 attendus
   (streaming de sortie, RDMA excepté — voir § RDMA).
 
-### Plan de contrôle
+***REMOVED******REMOVED******REMOVED*** Plan de contrôle
 
 - IP statique posée au preseed pour chaque nœud, port agent-nœud **9100** par défaut (token par
   nœud). Trafic : API HTTP orchestrateur ↔ agents-nœuds, polling santé/PTP/membw. Volumétrie
@@ -197,7 +197,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ---
 
-## 4. GPU — quand, et sous quelles contraintes
+***REMOVED******REMOVED*** 4. GPU — quand, et sous quelles contraintes
 
 - **Quand** : compositing multiview accéléré (mode GPU), kernels CUDA du plugin `split` (DVE)
   compilés à chaud par NVRTC. Un nœud porte la capacité `gpu` en plus de `compute` — le GPU n'est
@@ -227,7 +227,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ---
 
-## 5. RDMA — réplication inter-nœuds du bus MXL
+***REMOVED******REMOVED*** 5. RDMA — réplication inter-nœuds du bus MXL
 
 - **Quand** : réplication de flux MXL entre nœuds (`services/rdma`), technologie `mxl-fabrics`
   (libfabric), providers `tcp` ou `verbs` (RoCEv2). Pas nécessaire pour un nœud isolé qui ne fait
@@ -252,7 +252,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ---
 
-## 6. PTP / horloge
+***REMOVED******REMOVED*** 6. PTP / horloge
 
 - **Profil** : SMPTE 2059-2 (ST 2110-10) sur `ptp4l` en BMCA actif — priorités et intervalles par
   défaut définis dans le code (`priority1=128, priority2=128, log_sync=-3, log_delay_req=-3,
@@ -280,7 +280,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ---
 
-## 7. Multicast / IGMP
+***REMOVED******REMOVED*** 7. Multicast / IGMP
 
 - Les flux ST 2110 utilisent des adresses multicast allouées depuis un pool dédié
   (`mcast_pool_base` par défaut `239.100.0.0`, `mcast_pool_size` par défaut **4096** adresses,
@@ -303,9 +303,9 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ---
 
-## 8. Redondance
+***REMOVED******REMOVED*** 8. Redondance
 
-### Contrôleur (HA.md)
+***REMOVED******REMOVED******REMOVED*** Contrôleur (HA.md)
 
 - **Modèle : paire de contrôleurs en warm-standby, bascule MANUELLE** — pas de quorum, pas de
   failover automatique (choix assumé : "un broadcast n'a pas besoin d'un basculement automatique
@@ -323,7 +323,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
   disponible mais pas éprouvé en conditions réelles multi-machines au moment de la rédaction de ce
   document.
 
-### Flux média
+***REMOVED******REMOVED******REMOVED*** Flux média
 
 - **ST 2110** : le plugin `2110_io` expose une option `smpte_2022_7` (double-chemin redondant,
   ST 2022-7) dans son schéma de configuration, **désactivée par défaut**. Une redondance de flux
@@ -339,7 +339,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ---
 
-## Checklist d'achat — synthèse
+***REMOVED******REMOVED*** Checklist d'achat — synthèse
 
 | Rôle | Point dur | Source |
 |---|---|---|
@@ -352,7 +352,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 | Réseau conteneurs | Plan macvlan sur un subnet dédié, **sans chevauchement avec le LAN existant** ; passerelle = route par défaut du nœud | `node-bootstrap.sh`, `allocations.py` |
 | Réseau contrôle | Simple, IP statique par nœud, port agent 9100, faible débit | NODE_AGENT.md |
 
-## Points non documentables faute d'information dans le dépôt
+***REMOVED******REMOVED*** Points non documentables faute d'information dans le dépôt
 
 - Débit de lien réseau minimal pour le plan ST 2110 (10G/25G/100G) : aucun chiffre plancher codé —
   dépend entièrement du nombre et de la définition des flux portés.

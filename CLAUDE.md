@@ -1,17 +1,17 @@
-# CLAUDE.md
+***REMOVED*** CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# Projet Bobi.Studio
+***REMOVED*** Projet Bobi.Studio
 
-## Architecture
+***REMOVED******REMOVED*** Architecture
 - **Full-Docker** : conteneurs Docker sur des **nœuds** enrôlés (table `nodes`, pilotés par
   `node_driver` + agent-nœud). Le backend LXC/Proxmox a été **retiré** : plus de `proxmox.py`, plus de
   clonage de template ; création via `docker_driver` (MTL) / `docker_compute` (compute/média).
 - Orchestrateur Flask central (rôle contrôleur) ; les nœuds exécutent les conteneurs.
 - Pipeline vidéo/audio ST 2110 sur le **bus MXL** (SDK MXL, domaine `/dev/shm/mxl`) — production broadcast.
 
-## Types de containers
+***REMOVED******REMOVED*** Types de containers
 
 **Il n'y a pas de liste fixe, et il ne faut pas en écrire une.** Tout type est un **plugin**
 (cf. « Système de plugins » plus bas) : le registre les découvre au scan de `plugins/`, et ce
@@ -30,13 +30,13 @@ les autres plugins se contentent du bus MXL.
 
 > Les VMID ne sont plus fixes (plage allouée dynamiquement ; un vmid = handle local jetable).
 
-## Stack technique
+***REMOVED******REMOVED*** Stack technique
 - Python 3.13, Flask, SQLite
 - Scripts vidéo : bus MXL (SDK MXL via `script_templates/bobimxl.py`), FFmpeg/GStreamer, numpy
 - Agent dans chaque conteneur : port 8081 (deploy/start/stop) ; agent-nœud : lifecycle Docker + host-ops
 - Métriques fps : port 8080
 
-## Structure fichiers
+***REMOVED******REMOVED*** Structure fichiers
 
 Racine `/opt/bobistudio/` : `main.py` (point d'entrée Flask), les deux AMORCES d'installation
 (`install.sh` — source locale ; `get.sh` — depuis GitHub, machine vierge ; toutes deux se bornent à
@@ -143,7 +143,7 @@ script_templates/ ← CODE EXÉCUTÉ DANS LE CONTENEUR, pas dans l'orchestrateur
                    appelle — donc rien ne les empêche de se périmer : à vérifier avant de s'y fier.
 ```
 
-## Où vit la documentation (rangé 2026-08-05)
+***REMOVED******REMOVED*** Où vit la documentation (rangé 2026-08-05)
 
 **Racine = doc PUBLIQUE uniquement**, plus les deux fichiers de travail. Tout le reste est
 sous `docs/`. Un nouveau document se range selon son PUBLIC, pas selon son sujet :
@@ -178,7 +178,7 @@ Trois règles qui vont avec :
 > « Convention de nommage » plus bas. Les **ids de type** sont nommés librement
 > (`2110_io`) — pas forcément snake_case.
 
-## Système de plugins (TOUS les types de containers)
+***REMOVED******REMOVED*** Système de plugins (TOUS les types de containers)
 
 Depuis 2026-05, **chaque type de container est un plugin** dans `plugins/<type>/`
 (`plugin.json` + `script.py` + UI optionnelle). Registre : `app/plugins.py`
@@ -239,11 +239,11 @@ Depuis 2026-05, **chaque type de container est un plugin** dans `plugins/<type>/
   (param_tree + caps live), `mixer` (bornes déclarées + surcharge `path`), `multiview`
   (params par élément + actions horloge/texte).
 
-## Problèmes connus résolus
+***REMOVED******REMOVED*** Problèmes connus résolus
 - Bus error streamer (ex-worker UDP) → signal SIGBUS intercepté, reconnexion auto
 - Bus MXL recréé au redémarrage d'un producteur → les consommateurs gèrent la reconnexion (SIGBUS)
 
-## Lancement
+***REMOVED******REMOVED*** Lancement
 
 Pas de build. Un seul venv à `./venv`.
 
@@ -266,10 +266,10 @@ personne le sache. Avant de pousser : `./venv/bin/python tests/<le vôtre>.py`, 
 `pyflakes` après tout retrait de code — il attrape les orphelins.
 
 ```bash
-./venv/bin/python main.py     # Flask sur 0.0.0.0:5000 + thread surveillance()
+./venv/bin/python main.py     ***REMOVED*** Flask sur 0.0.0.0:5000 + thread surveillance()
 ```
 
-## Convention de nommage : **anglais**
+***REMOVED******REMOVED*** Convention de nommage : **anglais**
 
 **Tout nouveau symbole s'écrit en anglais** — fonctions, variables, classes, colonnes,
 clés de réglage, routes. Le dépôt est public et s'adresse à un public international
@@ -292,7 +292,7 @@ vocabulaire fermé déjà persistées en base (niveaux d'alerte `info|warning|er
 
 L'INTERFACE reste bilingue et passe par `i18n/` — un libellé n'est jamais écrit en dur.
 
-## Contrat HTTP de l'agent par-conteneur
+***REMOVED******REMOVED*** Contrat HTTP de l'agent par-conteneur
 
 L'agent vit dans l'image runtime (hors de ce repo). Chaque conteneur managé est supposé exposer :
 
@@ -303,7 +303,7 @@ L'agent vit dans l'image runtime (hors de ce repo). Chaque conteneur managé est
 
 Les `plugins/<type>/script.py` embarquent inline le HTTPServer `:8080`. Toute modification du contrat impacte à la fois `deploy.py` / `metrics.py` / `routes/` **et** les scripts de plugin — bouger les deux côtés ensemble.
 
-## Boucle de surveillance
+***REMOVED******REMOVED*** Boucle de surveillance
 
 `main.py:surveillance()` tourne dans un thread daemon, poll toutes les `CHECK_INTERVAL = 5s` :
 - Container dont le statut Docker (`docker inspect`) n'est pas `running` → `redemarrer_container` + alerte
@@ -311,7 +311,7 @@ Les `plugins/<type>/script.py` embarquent inline le HTTPServer `:8080`. Toute mo
 
 Ajouter un nouveau statut implique d'ajouter le badge CSS correspondant dans `static/css/base.css` (le dashboard, rendu via `templates/layout.html`, se rafraîchit toutes les 5s en JS via `/api/containers` + `/api/alerts`).
 
-## Modèle de threading
+***REMOVED******REMOVED*** Modèle de threading
 
 Les routes Flask retournent immédiatement et dispatchent dans `threading.Thread`. Les opérations
 de cycle de vie sont **sérialisées par VMID** depuis 2026-07-04 : `app/vmlocks.py` (`verrou_vmid`,
@@ -329,7 +329,7 @@ Des vmid différents restent parallèles.
 SQLite ouvre une connexion fraîche par appel (`get_db()`), donc les writes depuis les threads de
 fond sont OK, mais il n'y a **pas de transaction entre helpers** — c'est la race qui reste.
 
-## DB : `init_db` + migrations de type
+***REMOVED******REMOVED*** DB : `init_db` + migrations de type
 
 `init_db()` crée désormais `containers` **et** `alerts` (table durcie en 2026-05 ; auparavant
 `alerts` n'était jamais créée et casser la DB cassait silencieusement les alertes). Fichier DB :
@@ -353,7 +353,7 @@ Pas de reprise rétroactive (décision) : la rétention à 1000 lignes renouvell
 (scan `deploy_config LIKE '%…%'` + égalité stricte sur `type`).
 Ajouter une migration ici quand un type est renommé.
 
-## Encodage source/shm_out (couplage front ↔ back)
+***REMOVED******REMOVED*** Encodage source/shm_out (couplage front ↔ back)
 
 `deploy.py` dénormalise les params de script dans les colonnes `source` / `shm_out` selon le type :
 - `multiview` → `source = "{cols}x{rows}"`, `shm_out = shm_out`
@@ -361,7 +361,7 @@ Ajouter une migration ici quand un type est renommé.
 
 **Encodeur (deploy) et décodeur (front) doivent rester synchros.**
 
-### streamer (ex-worker_udp) : schéma multi-destinations normalisé
+***REMOVED******REMOVED******REMOVED*** streamer (ex-worker_udp) : schéma multi-destinations normalisé
 
 `streamer` n'a plus une seule sortie UDP. Son `deploy_config.params` suit désormais
 `{shm_name, audio_shm, video:{codec(h264|h265),bitrate,preset,gop,width,height,fps},
@@ -386,11 +386,11 @@ immédiatement et écrit du **silence** quand pas de frame audio fraîche (ne ja
 si `video.width`/`height` valent `0`, l'encodeur déduit WxH de la taille du shm (YUV420, ring=10,
 ratio 16:9) — utilisé par le monitoring pour prévisualiser une source de résolution inconnue.
 
-### Monitoring WebRTC par utilisateur (`app/monitor.py`)
+***REMOVED******REMOVED******REMOVED*** Monitoring WebRTC par utilisateur (`app/monitor.py`)
 
 Panneau latéral global (dans `templates/layout.html`, objet JS `window.MXLMonitor`) présent sur toutes les pages, qui embarque un flux WebRTC. **Un encodeur monitor par utilisateur** : un container `streamer` (hostname `monitor-u<uid>`, où `uid = current_user()["id"]`) qui pousse un path WebRTC fixe `monitor-u<uid>` vers la passerelle. Créé à la demande (1er usage, streamé). Re-pointé sur n'importe quel shm via les boutons « 📺 Monitoring » des pages productrices (`MXLMonitor.send(shm,label)` ou `MXLMonitor.monitorVmid(vmid)` qui lit les `produces[]` de `/api/home/summary`). **Reaper** (`start_reaper`, lancé depuis `main.py`) : coupe le script (`:8081/stop`) après 10 min sans heartbeat ; réactivé (`:8081/start`) à la réouverture. Routes `/api/monitor/{status,create,source,activate,heartbeat}` (`@require_login`). Le path WebRTC étant constant par utilisateur, changer de source ne recharge pas l'`<iframe>` (anti-reconnexion). Prérequis : passerelle WebRTC déployée + activée.
 
-### Passerelle WebRTC (MediaMTX) — service `webrtc_gateway`
+***REMOVED******REMOVED******REMOVED*** Passerelle WebRTC (MediaMTX) — service `webrtc_gateway`
 
 WebRTC = un container dédié exécutant **MediaMTX** (ingest RTSP/WHIP + playout WHEP + page
 de lecture embarquable). C'est le **service `services/webrtc_gateway/`** (sous-module :
@@ -402,7 +402,7 @@ absent (accès Internet sortant requis ; erreur remontée sur `:8080` sinon). Le
 poussent vers la passerelle (`deploy._resolve_webrtc_destinations` injecte `ingest_url`/`whep_url`/
 `embed_url` depuis les settings `webrtc_*`), et la page Streams embarque la preview WHEP en `<iframe>`.
 
-## Identité d'un conteneur : trois barreaux
+***REMOVED******REMOVED*** Identité d'un conteneur : trois barreaux
 
 1. **`vmid`** — handle local jetable (réattribué, change au recreate). Interne : chemins d'API,
    verrous, logs. **Jamais** une adresse exposée à l'extérieur.
@@ -425,7 +425,7 @@ poussent vers la passerelle (`deploy._resolve_webrtc_destinations` injecte `inge
 (arbre `emplacements.<num>`, cf. `services/emberplus`) ; TSL, le pont ATEM et les macros publiées
 visent encore le vmid/l'uuid — à migrer sur les emplacements, pas à re-dériver une identité.
 
-## Réseau des conteneurs (full-Docker)
+***REMOVED******REMOVED*** Réseau des conteneurs (full-Docker)
 
 Trois plans : (1) **ST 2110** (NIC dédiée, AF-XDP/DPDK pour `2110_io`) ; (2) **conteneurs partagés**
 via réseau **macvlan** (une IP par conteneur, subnet du cluster — l'orchestrateur joint les conteneurs
@@ -436,7 +436,7 @@ Le pool SR-IOV (`nic_pool.py`) a été **retiré** : le moteur `2110_io` tourne 
 L'allocation **multicast** est centralisée (tables `mcast_ranges`/`mcast_allocations`, réservation
 atomique dans `allocations.py`). Aucune valeur de site n'est codée en dur (cf. `config_local.py`).
 
-## Piège des scripts de plugin `str.format`
+***REMOVED******REMOVED*** Piège des scripts de plugin `str.format`
 
 Les fichiers `plugins/<type>/script.py` sont passés dans `str.format()` par `plugins.render_script`
 (placeholders `{config}`/`{hostname}`/`{plugin_version}`). Tout `{` `}` littéral dans le code (dicts,
@@ -444,7 +444,7 @@ sets, f-strings, **commentaires**) doit être doublé `{{` `}}`. Garde-fou : `pl
 dry-run `.format` au démarrage et **skip** (log) un plugin dont une accolade n'est pas doublée — donc
 un plugin cassé n'apparaît simplement pas dans le registre plutôt que de planter au déploiement.
 
-## Sécurité
+***REMOVED******REMOVED*** Sécurité
 
 - Les **valeurs propres au site** (hôtes/SSH, tokens d'agent-nœud, secrets) vivent dans
   **`config_local.py`** à la racine (non versionné, `.gitignore`). `app/config.py` ne porte que des
@@ -463,7 +463,7 @@ un plugin cassé n'apparaît simplement pas dans le registre plutôt que de plan
   réglage `agent_token_inject=0` (aucune injection → agent ouvert, comportement historique).
   Distinct du token de l'agent-NŒUD (`:9100`, `nodes.agent_token`) et du mTLS (premier facteur).
 
-## Référence
+***REMOVED******REMOVED*** Référence
 
 `old/orchestrateur.py` est le monolithe pré-split : utile pour retrouver une intention
 d'origine, importé nulle part. **Absent du dépôt public** (cf. l'avertissement de la section

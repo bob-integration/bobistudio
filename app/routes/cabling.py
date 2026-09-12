@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Câblage en place depuis la home : le user clique source puis destination → POST direct ici.
 Le serveur met à jour le deploy_config du consommateur (hot-wire :8082 si possible, sinon
@@ -86,8 +86,8 @@ def _flow_def_format(from_vmid, shm):
         d = json.loads(s)
         comps = {c.get("name"): c for c in (d.get("components") or [])}
         y, cb = comps.get("Y") or {}, comps.get("Cb") or {}
-        # Dims de TRAME d'abord (`frame_*`) : en ENTRELACÉ, seules elles font foi (un producteur
-        # tiers peut déclarer ses composants à la hauteur de CHAMP → 540 pris pour du 1080).
+        ***REMOVED*** Dims de TRAME d'abord (`frame_*`) : en ENTRELACÉ, seules elles font foi (un producteur
+        ***REMOVED*** tiers peut déclarer ses composants à la hauteur de CHAMP → 540 pris pour du 1080).
         w = int(d.get("frame_width") or y.get("width") or 0)
         h = int(d.get("frame_height") or y.get("height") or 0)
         if not (w and h):
@@ -162,26 +162,26 @@ def _fetch_plugin_state(ip, endpoint="/state"):
         pass
     return {}
 
-# ─── États live des plugins : « périmé pendant rafraîchissement » ────────────
-# ★ POURQUOI CE CACHE. `_fetch_plugin_states` interroge chaque conteneur en HTTP.
-# Même en parallèle, ça reste 24 ms sur `/api/home/summary` — le deuxième poste
-# de la requête, mesuré. Or cette donnée n'a pas besoin d'être fraîche à la
-# milliseconde : elle dit quel shm est câblé où, et ça ne change que sur un geste
-# d'exploitation, alors que la page interroge toutes les 2 s.
-#
-# ⚠ ET SURTOUT : PAS D'ÉCHANTILLONNEUR PERPÉTUEL. Un thread de fond qui sonderait
-# le parc en continu ferait payer le coût même quand personne ne regarde — c'est
-# la forme de sondage sans contre-pression qui a déjà saturé ce contrôleur. Ici
-# le rafraîchissement n'existe que TANT QUE des requêtes arrivent : on sert la
-# valeur en cache immédiatement et on relance en tâche de fond si elle a dépassé
-# l'âge tiède. Sans trafic, plus rien ne tourne.
-#
-# Trois âges, et le troisième est le garde-fou : au-delà de `_ETATS_MAX_S` la
-# donnée est trop vieille pour être servie, on attend le fetch. Sans cette borne,
-# une page rouverte après une heure afficherait un câblage d'il y a une heure —
-# une valeur périmée mais plausible, exactement ce qu'on cherche à éviter.
-_ETATS_TIEDE_S = 1.0     # au-delà : on sert le cache ET on rafraîchit derrière
-_ETATS_MAX_S   = 10.0    # au-delà : trop vieux, on attend
+***REMOVED*** ─── États live des plugins : « périmé pendant rafraîchissement » ────────────
+***REMOVED*** ★ POURQUOI CE CACHE. `_fetch_plugin_states` interroge chaque conteneur en HTTP.
+***REMOVED*** Même en parallèle, ça reste 24 ms sur `/api/home/summary` — le deuxième poste
+***REMOVED*** de la requête, mesuré. Or cette donnée n'a pas besoin d'être fraîche à la
+***REMOVED*** milliseconde : elle dit quel shm est câblé où, et ça ne change que sur un geste
+***REMOVED*** d'exploitation, alors que la page interroge toutes les 2 s.
+***REMOVED***
+***REMOVED*** ⚠ ET SURTOUT : PAS D'ÉCHANTILLONNEUR PERPÉTUEL. Un thread de fond qui sonderait
+***REMOVED*** le parc en continu ferait payer le coût même quand personne ne regarde — c'est
+***REMOVED*** la forme de sondage sans contre-pression qui a déjà saturé ce contrôleur. Ici
+***REMOVED*** le rafraîchissement n'existe que TANT QUE des requêtes arrivent : on sert la
+***REMOVED*** valeur en cache immédiatement et on relance en tâche de fond si elle a dépassé
+***REMOVED*** l'âge tiède. Sans trafic, plus rien ne tourne.
+***REMOVED***
+***REMOVED*** Trois âges, et le troisième est le garde-fou : au-delà de `_ETATS_MAX_S` la
+***REMOVED*** donnée est trop vieille pour être servie, on attend le fetch. Sans cette borne,
+***REMOVED*** une page rouverte après une heure afficherait un câblage d'il y a une heure —
+***REMOVED*** une valeur périmée mais plausible, exactement ce qu'on cherche à éviter.
+_ETATS_TIEDE_S = 1.0     ***REMOVED*** au-delà : on sert le cache ET on rafraîchit derrière
+_ETATS_MAX_S   = 10.0    ***REMOVED*** au-delà : trop vieux, on attend
 _etats_cache = {"ts": 0.0, "cles": None, "val": {}}
 _etats_lock = threading.Lock()
 _etats_envol = [False]
@@ -198,7 +198,7 @@ def _fetch_plugin_states_cache(cibles, max_parallele=16):
         val = dict(_etats_cache["val"]) if _etats_cache["cles"] == cles else None
         envol = _etats_envol[0]
 
-    # Cibles changées (câblage modifié) ou cache trop vieux → on attend.
+    ***REMOVED*** Cibles changées (câblage modifié) ou cache trop vieux → on attend.
     if val is None or frais is False or frais > _ETATS_MAX_S:
         val = _fetch_plugin_states(cibles, max_parallele)
         with _etats_lock:
@@ -206,8 +206,8 @@ def _fetch_plugin_states_cache(cibles, max_parallele=16):
         return val
 
     if frais > _ETATS_TIEDE_S and not envol:
-        # Rafraîchissement DERRIÈRE la réponse. Un seul en vol : sans ce drapeau,
-        # dix onglets déclencheraient dix rafraîchissements simultanés du parc.
+        ***REMOVED*** Rafraîchissement DERRIÈRE la réponse. Un seul en vol : sans ce drapeau,
+        ***REMOVED*** dix onglets déclencheraient dix rafraîchissements simultanés du parc.
         with _etats_lock:
             if _etats_envol[0]:
                 return val
@@ -218,7 +218,7 @@ def _fetch_plugin_states_cache(cibles, max_parallele=16):
                 v = _fetch_plugin_states(cibles, max_parallele)
                 with _etats_lock:
                     _etats_cache.update({"ts": time.time(), "cles": cles, "val": dict(v)})
-            except Exception:                                            # noqa: BLE001
+            except Exception:                                            ***REMOVED*** noqa: BLE001
                 log.debug("rafraîchissement des états de plugins échoué", exc_info=True)
             finally:
                 with _etats_lock:
@@ -249,7 +249,7 @@ def _fetch_plugin_states(cibles, max_parallele=16):
         for f, cle in futs.items():
             try:
                 out[cle] = f.result()
-            except Exception:                                              # noqa: BLE001
+            except Exception:                                              ***REMOVED*** noqa: BLE001
                 out[cle] = {}
     return out
 
@@ -363,10 +363,10 @@ def _format_gate(from_vmid, shm, to_type, params):
     if not (g is True or str(g).strip().lower() in ("1", "true", "yes", "on")):
         return "ok", None
     if (_pl.get(to_type) or {}).get("adapts_input"):
-        return "ok", None                       # convertisseur : accepte n'importe quel format
+        return "ok", None                       ***REMOVED*** convertisseur : accepte n'importe quel format
     pf, _mesure = _producer_format_ex(from_vmid, shm)
     if not pf:
-        return "ok", None                       # format producteur inconnu → ne bloque pas
+        return "ok", None                       ***REMOVED*** format producteur inconnu → ne bloque pas
     _ko = "refuse" if _mesure else "warn"
     cw = int(params.get("width") or params.get("out_width") or 0)
     ch = int(params.get("height") or params.get("out_height") or 0)
@@ -377,7 +377,7 @@ def _format_gate(from_vmid, shm, to_type, params):
     pc, cc = str(pf.get("chroma") or ""), str(params.get("chroma") or "")
     if pc and cc and pc != cc:
         return _ko, f"chroma source {pc} ≠ {cc} attendu par le {to_type} → insérer un UDC"
-    # Cadence : comparaison rationnelle EXACTE (num/den), gère le fractionnaire.
+    ***REMOVED*** Cadence : comparaison rationnelle EXACTE (num/den), gère le fractionnaire.
     pn, pd = pf.get("fps_num"), pf.get("fps_den")
     if not (pn and pd) and pf.get("fps"):
         pn, pd = _pl.rate_nd(pf.get("fps"))
@@ -397,7 +397,7 @@ def _wire_format_pending(from_vmid, to_vmid, shm, to_type, why):
         from .. import wire_format_watch as _wfw
         _wfw.inscrire(from_vmid, to_vmid, shm, to_type, why)
     except Exception as e:
-        log.warning("pré-câblage %s → #%s : inscription impossible (%s)", shm, to_vmid, e)
+        log.warning("pré-câblage %s → ***REMOVED***%s : inscription impossible (%s)", shm, to_vmid, e)
 
 
 def _wire_format_en_attente(to_vmid, shm):
@@ -443,21 +443,21 @@ def _tx_slot_mismatch(from_vmid, shm, to_vmid, to_slot, kind="video"):
         return None
     sf = _txm.slot_format(params, slot)
     if not sf or not (sf.get("width") and sf.get("height")):
-        return None                      # slot sans format déclaré → rien à comparer
+        return None                      ***REMOVED*** slot sans format déclaré → rien à comparer
     pf = _producer_format(from_vmid, shm)
     if not pf:
-        return None                      # format source inconnu → on ne crie pas dans le vide
+        return None                      ***REMOVED*** format source inconnu → on ne crie pas dans le vide
     axes = _txm.format_diff(pf, sf)
     if not axes:
         return None
-    out = {"engine": to_vmid, "hostname": (c.get("hostname") or "#%s" % to_vmid),
+    out = {"engine": to_vmid, "hostname": (c.get("hostname") or "***REMOVED***%s" % to_vmid),
            "slot": slot, "label": _txm._slot_label(params, slot),
            "shm": shm, "from_vmid": from_vmid,
            "axes": axes, "source": pf,
            "slot_format": dict(sf, chroma=str(params.get("chroma") or "422"))}
-    # CHROMA : n'entre NI dans compute_sig NI dans /input (la chroma du moteur est une constante
-    # d'image) → aucun commit, donc PAS un motif de blocage. Mais un écart y rend l'image illisible :
-    # on le signale dans la même modale au lieu de le taire.
+    ***REMOVED*** CHROMA : n'entre NI dans compute_sig NI dans /input (la chroma du moteur est une constante
+    ***REMOVED*** d'image) → aucun commit, donc PAS un motif de blocage. Mais un écart y rend l'image illisible :
+    ***REMOVED*** on le signale dans la même modale au lieu de le taire.
     _pc, _cc = str(pf.get("chroma") or ""), str(params.get("chroma") or "422")
     if _pc and _cc and _pc != _cc:
         out["chroma"] = {"source": _pc, "engine": _cc}
@@ -466,7 +466,7 @@ def _tx_slot_mismatch(from_vmid, shm, to_vmid, to_slot, kind="video"):
             to_vmid, _txm.preview(to_vmid, "tx_wire",
                                   {"slot": slot, "shm": shm, "kind": "video"}), op="tx_wire")
     except Exception as e:
-        log.warning("gate format TX %s#%s : verdict incalculable : %s", to_vmid, slot, e)
+        log.warning("gate format TX %s***REMOVED***%s : verdict incalculable : %s", to_vmid, slot, e)
     return out
 
 
@@ -507,17 +507,17 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
         return False, 400, {"error": "params manquants"}
     target = db_get_container(to_vmid)
     if not target:
-        return False, 404, {"error": f"container #{to_vmid} introuvable"}
+        return False, 404, {"error": f"container ***REMOVED***{to_vmid} introuvable"}
     dc = _load_dc(target)
     if not dc or not dc.get("type"):
-        return False, 400, {"error": f"#{to_vmid} n'a pas de script déployé"}
+        return False, 400, {"error": f"***REMOVED***{to_vmid} n'a pas de script déployé"}
     t      = dc["type"]
     params = dict(dc.get("params") or {})
 
-    # Câblage INTER-NŒUD transparent : si le producteur et le consommateur sont sur des nœuds
-    # différents, le flux n'existe pas dans le domaine MXL du consommateur → on provisionne
-    # automatiquement la réplication RDMA (src_node → dst_node, même nom). Best-effort, dédup côté
-    # service ; un échec (pas de NIC rdma) lève une alerte mais ne bloque pas le câble.
+    ***REMOVED*** Câblage INTER-NŒUD transparent : si le producteur et le consommateur sont sur des nœuds
+    ***REMOVED*** différents, le flux n'existe pas dans le domaine MXL du consommateur → on provisionne
+    ***REMOVED*** automatiquement la réplication RDMA (src_node → dst_node, même nom). Best-effort, dédup côté
+    ***REMOVED*** service ; un échec (pas de NIC rdma) lève une alerte mais ne bloque pas le câble.
     try:
         from ..database import db_get_container as _dgc
         _prod = _dgc(from_vmid) if from_vmid else None
@@ -532,10 +532,10 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                     db_add_alert("alert.cablage.rdma_indisponible", "warning", vmid=to_vmid,
                                  kind="rx_stall", params={"shm": _fl, "vmid": to_vmid, "e": _r})
     except Exception as _e:
-        log.warning("auto-RDMA câble %s → #%s : %s", shm, to_vmid, _e)
+        log.warning("auto-RDMA câble %s → ***REMOVED***%s : %s", shm, to_vmid, _e)
 
-    # Gating broadcast : refuse une source incompatible (résolution/chroma/cadence) avec un
-    # consommateur non-adaptateur, avec une raison (#27). Profondeur de bits = avertissement seul.
+    ***REMOVED*** Gating broadcast : refuse une source incompatible (résolution/chroma/cadence) avec un
+    ***REMOVED*** consommateur non-adaptateur, avec une raison (***REMOVED***27). Profondeur de bits = avertissement seul.
     if kind == "video":
         try:
             _verdict, _why = _format_gate(from_vmid, shm, t, params)
@@ -546,13 +546,13 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
             if _verdict == "refuse":
                 db_add_alert("alert.cablage.refuse_ecart_format", "error", vmid=to_vmid,
                              kind="deploy", params={"shm": shm, "vmid": to_vmid, "why": _why})
-                # Le refus doit PORTER SA RÉSOLUTION : les deux formats en cause, pour que l'UI
-                # ouvre la modale « insérer un UDC / réutiliser / forcer » au lieu d'un message
-                # d'erreur dans un coin. La détection côté client ne suffit pas — elle compare les
-                # formats DÉCLARÉS de la topologie, alors que le refus se prononce sur le format
-                # MESURÉ : quand les deux divergent (le cas exact d'un RX 2110 dont le moteur
-                # annonce sa cadence globale), le client ne voit aucun écart et l'utilisateur
-                # n'obtenait que le toast.
+                ***REMOVED*** Le refus doit PORTER SA RÉSOLUTION : les deux formats en cause, pour que l'UI
+                ***REMOVED*** ouvre la modale « insérer un UDC / réutiliser / forcer » au lieu d'un message
+                ***REMOVED*** d'erreur dans un coin. La détection côté client ne suffit pas — elle compare les
+                ***REMOVED*** formats DÉCLARÉS de la topologie, alors que le refus se prononce sur le format
+                ***REMOVED*** MESURÉ : quand les deux divergent (le cas exact d'un RX 2110 dont le moteur
+                ***REMOVED*** annonce sa cadence globale), le client ne voit aucun écart et l'utilisateur
+                ***REMOVED*** n'obtenait que le toast.
                 return False, 409, {"error": _why, "measured": True,
                                     "format_conflict": {
                                         "why": _why,
@@ -561,10 +561,10 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                                         "from_vmid": from_vmid, "to_vmid": to_vmid,
                                         "shm": shm, "to_slot": to_slot}}
             if _verdict == "warn":
-                # PRÉ-CÂBLAGE : le flux n'existe pas encore, l'écart est prédit sur le format
-                # DÉCLARÉ. On pose le câble et on inscrit la vérification à faire à l'apparition du
-                # flux — un câble « toléré » qu'on oublierait de re-contrôler serait exactement
-                # l'échec silencieux que ce gate existe pour empêcher.
+                ***REMOVED*** PRÉ-CÂBLAGE : le flux n'existe pas encore, l'écart est prédit sur le format
+                ***REMOVED*** DÉCLARÉ. On pose le câble et on inscrit la vérification à faire à l'apparition du
+                ***REMOVED*** flux — un câble « toléré » qu'on oublierait de re-contrôler serait exactement
+                ***REMOVED*** l'échec silencieux que ce gate existe pour empêcher.
                 db_add_alert("alert.cablage.pre_cablage_ecart", "warning", vmid=to_vmid,
                              kind="deploy", params={"shm": shm, "vmid": to_vmid, "why": _why})
                 _wire_format_pending(from_vmid, to_vmid, shm, t, _why)
@@ -595,7 +595,7 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
             if not skip_hot:
                 if kind == "video":
                     from ..monitor import _shm_dims
-                    _tf = _flow_def_format(from_vmid, shm)   # source de vérité (flow_def), repli DB
+                    _tf = _flow_def_format(from_vmid, shm)   ***REMOVED*** source de vérité (flow_def), repli DB
                     want = (_tf["width"], _tf["height"]) if _tf else _shm_dims(shm)
                     v = params.get("video") or {}
                     cur = (int(v.get("width") or 0), int(v.get("height") or 0))
@@ -626,9 +626,9 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
             return True, 200, {"to_vmid": to_vmid, "type": t}
 
     if _plugins_is(t):
-        # Plugin câblable (manifest.wiring.mode == hot-wire) : POST :8082/input
-        # {essence, shm, slot?}. Persiste le shm dans deploy_config (champ state_field).
-        # Multi-entrées : la spec est choisie par (essence, slot) si un slot est fourni.
+        ***REMOVED*** Plugin câblable (manifest.wiring.mode == hot-wire) : POST :8082/input
+        ***REMOVED*** {essence, shm, slot?}. Persiste le shm dans deploy_config (champ state_field).
+        ***REMOVED*** Multi-entrées : la spec est choisie par (essence, slot) si un slot est fourni.
         from .. import plugins as _pl
         w = _pl.derive_wiring(t, target.get("hostname") or "", params)
         if w["mode"] != "hot-wire":
@@ -637,28 +637,28 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
         if to_slot is not None:
             try: want_slot = int(to_slot)
             except (TypeError, ValueError): want_slot = None
-            # Slot exact ; sinon repli sur une spec SANS slot (entrée unique non slottée,
-            # ex. color_corrector : le front numérote le port à 0 alors que la spec n'a pas
-            # de slot). Évite un faux « n'a pas d'entrée video #0 ».
+            ***REMOVED*** Slot exact ; sinon repli sur une spec SANS slot (entrée unique non slottée,
+            ***REMOVED*** ex. color_corrector : le front numérote le port à 0 alors que la spec n'a pas
+            ***REMOVED*** de slot). Évite un faux « n'a pas d'entrée video ***REMOVED***0 ».
             spec = (next((x for x in cands if x.get("slot") == want_slot), None)
                     or next((x for x in cands if x.get("slot") is None), None))
         else:
             spec = cands[0] if cands else None
         if not spec:
-            return False, 400, {"error": f"{t} n'a pas d'entrée {kind}" + (f" #{(want_slot if want_slot is not None else 0) + 1}" if to_slot is not None else "")}
+            return False, 400, {"error": f"{t} n'a pas d'entrée {kind}" + (f" ***REMOVED***{(want_slot if want_slot is not None else 0) + 1}" if to_slot is not None else "")}
         slot = spec.get("slot")
 
         if spec.get("from_list"):
-            # Entrée d'une liste à géométrie (ex. multiview flux_config). On édite l'entrée
-            # existante (le slot doit exister — l'éditeur en ajoute), puis hot-input si la
-            # résolution correspond, sinon redéploiement.
+            ***REMOVED*** Entrée d'une liste à géométrie (ex. multiview flux_config). On édite l'entrée
+            ***REMOVED*** existante (le slot doit exister — l'éditeur en ajoute), puis hot-input si la
+            ***REMOVED*** résolution correspond, sinon redéploiement.
             lst_name = spec["from_list"]; sf = spec.get("shm_field", "shm"); pref = spec.get("shm_prefix", "")
             lst = list(params.get(lst_name) or [])
             if slot is None or not (0 <= slot < len(lst)):
-                return False, 400, {"error": f"entrée #{(slot or 0) + 1} inexistante (ajoute-la via l'éditeur)"}
+                return False, 400, {"error": f"entrée ***REMOVED***{(slot or 0) + 1} inexistante (ajoute-la via l'éditeur)"}
             newval = pref + shm
-            # Pas de dédoublonnage : une même source peut alimenter plusieurs entrées
-            # (ex. afficher le même flux dans plusieurs fenêtres multiview).
+            ***REMOVED*** Pas de dédoublonnage : une même source peut alimenter plusieurs entrées
+            ***REMOVED*** (ex. afficher le même flux dans plusieurs fenêtres multiview).
             entry = dict(lst[slot]); entry[sf] = newval
             nf = spec.get("name_field")
             if nf:
@@ -670,7 +670,7 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                     entry[nf] = (producer or {}).get("hostname") or shm
             lst[slot] = entry; params[lst_name] = lst
             from ..monitor import _shm_dims
-            _tf = _flow_def_format(from_vmid, shm)   # source de vérité (flow_def), repli DB
+            _tf = _flow_def_format(from_vmid, shm)   ***REMOVED*** source de vérité (flow_def), repli DB
             want = (_tf["width"], _tf["height"]) if _tf else _shm_dims(shm)
             dims = spec.get("dims_fields") or []
             cur = None
@@ -678,19 +678,19 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                 cur = (int(entry.get(dims[0]) or 0), int(entry.get(dims[1]) or 0))
                 cur = cur if cur[0] else None
             ikey = spec.get("input_key", "idx")
-            # Plugin adaptatif (multiview…) : hot-swap inconditionnel (auto-détecte le format).
-            # On met à jour les dims stockées de l'entrée AVANT le hot pour que deploy_config et le
-            # chip « format source » reflètent la nouvelle source sans redéploiement.
+            ***REMOVED*** Plugin adaptatif (multiview…) : hot-swap inconditionnel (auto-détecte le format).
+            ***REMOVED*** On met à jour les dims stockées de l'entrée AVANT le hot pour que deploy_config et le
+            ***REMOVED*** chip « format source » reflètent la nouvelle source sans redéploiement.
             _adapts = bool((_pl.get(t) or {}).get("adapts_input"))
             if _adapts and want and len(dims) == 2:
                 entry[dims[0]], entry[dims[1]] = want
                 lst[slot] = entry; params[lst_name] = lst
-            # TISSU : si la cible est un ASSEMBLEUR shardé, NE PAS hot-inputer l'assembleur (il lit les
-            # sorties de ses shards, pas les sources → un hot-input direct DÉBRANCHE le shard de la
-            # tuile). On persiste le câblage LOGIQUE (flux_config) puis on RE-RÉCONCILIE le tissu : la
-            # cellule change de signature → son shard est re-planifié sur la nouvelle source (via
-            # pyramide) et l'assembleur reconfiguré sur la nouvelle sortie de shard. Même chemin que
-            # l'éditeur de mur (cohérent). Cf. compositor_fabric.reconcile_fabric.
+            ***REMOVED*** TISSU : si la cible est un ASSEMBLEUR shardé, NE PAS hot-inputer l'assembleur (il lit les
+            ***REMOVED*** sorties de ses shards, pas les sources → un hot-input direct DÉBRANCHE le shard de la
+            ***REMOVED*** tuile). On persiste le câblage LOGIQUE (flux_config) puis on RE-RÉCONCILIE le tissu : la
+            ***REMOVED*** cellule change de signature → son shard est re-planifié sur la nouvelle source (via
+            ***REMOVED*** pyramide) et l'assembleur reconfiguré sur la nouvelle sortie de shard. Même chemin que
+            ***REMOVED*** l'éditeur de mur (cohérent). Cf. compositor_fabric.reconcile_fabric.
             if _is_sharded_assembler(to_vmid):
                 try:
                     from ..database import db_update_deploy_config
@@ -703,17 +703,17 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                     with verrou_vmid(to_vmid, op="fabric-wire"):
                         try:
                             reconcile_fabric_node(_nid)
-                            reconcile_pyramide_sizes(_nid)   # provisionne le proxy de la nouvelle source
+                            reconcile_pyramide_sizes(_nid)   ***REMOVED*** provisionne le proxy de la nouvelle source
                         except Exception as _e:
                             log.warning("reconcile tissu (câble %s slot %s): %s", to_vmid, slot, _e)
                 threading.Thread(target=_async_fabric_wire, daemon=True).start()
                 return True, 200, {"to_vmid": to_vmid, "type": t, "fabric_reconciled": True}
-            # SUIVEURS des listes à géométrie (multiview) : câbler la VIDÉO d'une entrée fait
-            # SUIVRE l'audio et l'ANC de la même entrée depuis les shm RÉELS produits par la
-            # source (mêmes règles que wire_followers 2110_io : appariement par rang de vidéo,
-            # groupage divisible, « toujours resuivre » — la source sans flux compagnon VIDE le
-            # champ, le moteur retombe alors sur sa dérivation par nom). Un câble audio/ANC
-            # direct ne déclenche AUCUN suiveur.
+            ***REMOVED*** SUIVEURS des listes à géométrie (multiview) : câbler la VIDÉO d'une entrée fait
+            ***REMOVED*** SUIVRE l'audio et l'ANC de la même entrée depuis les shm RÉELS produits par la
+            ***REMOVED*** source (mêmes règles que wire_followers 2110_io : appariement par rang de vidéo,
+            ***REMOVED*** groupage divisible, « toujours resuivre » — la source sans flux compagnon VIDE le
+            ***REMOVED*** champ, le moteur retombe alors sur sa dérivation par nom). Un câble audio/ANC
+            ***REMOVED*** direct ne déclenche AUCUN suiveur.
             _fl_bodies = []
             if kind == "video":
                 _mates = [x for x in w["consumes"]
@@ -748,8 +748,8 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                                  {ikey: slot, "shm": shm, "essence": kind}, want, cur,
                                  adapts=_adapts)
             if res:
-                # Câble principal appliqué à chaud (params persistés) → suiveurs à chaud aussi
-                # (best-effort : au pire ils prendront effet au prochain redéploiement).
+                ***REMOVED*** Câble principal appliqué à chaud (params persistés) → suiveurs à chaud aussi
+                ***REMOVED*** (best-effort : au pire ils prendront effet au prochain redéploiement).
                 if _fl_bodies:
                     from ..addressing import get_container_ip
                     _fip = target.get("ip") or get_container_ip(to_vmid)
@@ -760,13 +760,13 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
             if want and len(dims) == 2:
                 entry[dims[0]], entry[dims[1]] = want
                 lst[slot] = entry; params[lst_name] = lst
-            # pas de return → redéploiement (tail _async_deploy)
+            ***REMOVED*** pas de return → redéploiement (tail _async_deploy)
         else:
             from ..addressing import get_container_ip
             ip = target.get("ip") or get_container_ip(to_vmid)
             if not ip:
                 return False, 500, {"error": f"IP de {t} introuvable"}
-            # Format du producteur injecté dans le consommateur (exploité par l'UDC).
+            ***REMOVED*** Format du producteur injecté dans le consommateur (exploité par l'UDC).
             fmt = _producer_format(from_vmid, shm) if kind == "video" else None
             ok, detail = _plugin_input(ip, kind, shm, slot, fmt)
             if not ok:
@@ -774,15 +774,15 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
             if spec.get("state_field"):
                 params[spec["state_field"]] = shm
                 if fmt:
-                    # Stocke par state_field (ex. "input_v_0_fmt") pour les plugins
-                    # multi-entrées, ET dans "input_format" pour les plugins mono-entrée
-                    # passthrough (delay, avsync) qui n'ont pas width/height dans leurs params.
+                    ***REMOVED*** Stocke par state_field (ex. "input_v_0_fmt") pour les plugins
+                    ***REMOVED*** multi-entrées, ET dans "input_format" pour les plugins mono-entrée
+                    ***REMOVED*** passthrough (delay, avsync) qui n'ont pas width/height dans leurs params.
                     params[spec["state_field"] + "_fmt"] = fmt
                     params["input_format"] = fmt
-                # Câbles « suiveurs » (ex. 2110_io : l'audio/ANC d'une sortie TX suit le câble vidéo)
-                # — best-effort, appliqués à chaud + persistés avec le câble principal. On résout les
-                # shm RÉELS produits par la SOURCE (produces du wiring) → le suiveur ne devine pas les
-                # noms (le player produit p1_audio / p1_anc_0, pas p1_audio_0).
+                ***REMOVED*** Câbles « suiveurs » (ex. 2110_io : l'audio/ANC d'une sortie TX suit le câble vidéo)
+                ***REMOVED*** — best-effort, appliqués à chaud + persistés avec le câble principal. On résout les
+                ***REMOVED*** shm RÉELS produits par la SOURCE (produces du wiring) → le suiveur ne devine pas les
+                ***REMOVED*** noms (le player produit p1_audio / p1_anc_0, pas p1_audio_0).
                 _flw = _pl.get_hook(t, "wire_followers")
                 if _flw:
                     _prod_produces = []
@@ -833,16 +833,16 @@ def api_home_wire():
         to_vmid   = int(data.get("to_vmid")   or 0)
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "vmids invalides"}), 400
-    # Étage 2 (docs/reference/TX_LAYOUTS.md) : câbler une sortie 2110 est SÛR (swap de source, zéro commit) tant que
-    # le format de la source CONCORDE avec le format provisionné du slot ; sinon la session est
-    # recréée → `rte_tm_hierarchy_commit` → stop/start du port (MESURÉ au banc : +2 commits). On
-    # calcule le verdict et on exige une confirmation NOMMANT les sorties qui vont figer. Gaté ICI
-    # (geste humain) et pas dans `_apply_wire`, qui sert aussi aux restaurations/projets automatiques.
-    # Étage 3 : ÉCART DE FORMAT sur un slot TX → refus SANS porte de sortie. Trois issues côté UI
-    # (insérer un UDC / aligner le slot sur la source / annuler) — jamais « forcer ». Un TX qui
-    # ANNONCE un format et en ÉMET un autre est une non-conformité 2110 ; et l'écart recrée la
-    # session (commit TM = gel de toutes les sorties de la carte). Le gate est ici (geste humain),
-    # pas dans `_apply_wire` (qui sert aussi aux restaurations, à l'insertion d'UDC et au watcher).
+    ***REMOVED*** Étage 2 (docs/reference/TX_LAYOUTS.md) : câbler une sortie 2110 est SÛR (swap de source, zéro commit) tant que
+    ***REMOVED*** le format de la source CONCORDE avec le format provisionné du slot ; sinon la session est
+    ***REMOVED*** recréée → `rte_tm_hierarchy_commit` → stop/start du port (MESURÉ au banc : +2 commits). On
+    ***REMOVED*** calcule le verdict et on exige une confirmation NOMMANT les sorties qui vont figer. Gaté ICI
+    ***REMOVED*** (geste humain) et pas dans `_apply_wire`, qui sert aussi aux restaurations/projets automatiques.
+    ***REMOVED*** Étage 3 : ÉCART DE FORMAT sur un slot TX → refus SANS porte de sortie. Trois issues côté UI
+    ***REMOVED*** (insérer un UDC / aligner le slot sur la source / annuler) — jamais « forcer ». Un TX qui
+    ***REMOVED*** ANNONCE un format et en ÉMET un autre est une non-conformité 2110 ; et l'écart recrée la
+    ***REMOVED*** session (commit TM = gel de toutes les sorties de la carte). Le gate est ici (geste humain),
+    ***REMOVED*** pas dans `_apply_wire` (qui sert aussi aux restaurations, à l'insertion d'UDC et au watcher).
     try:
         _mm = _tx_slot_mismatch(from_vmid, (data.get("shm") or "").strip(),
                                 to_vmid, data.get("to_slot"), data.get("kind") or "video")
@@ -876,8 +876,8 @@ def api_home_wire():
                                        force=bool(data.get("force")))
     if ok and data.get("anc_shm"):
         _apply_wire(from_vmid, to_vmid, data["anc_shm"], "data")
-    # PRÉ-CÂBLAGE : le câble est posé mais l'écart de format prédit n'est pas tranché (le flux
-    # n'existe pas encore). L'UI doit le dire — un succès muet ferait croire à un patch validé.
+    ***REMOVED*** PRÉ-CÂBLAGE : le câble est posé mais l'écart de format prédit n'est pas tranché (le flux
+    ***REMOVED*** n'existe pas encore). L'UI doit le dire — un succès muet ferait croire à un patch validé.
     if ok:
         _att = _wire_format_en_attente(to_vmid, (data.get("shm") or "").strip())
         if _att:
@@ -893,10 +893,10 @@ def _target_input_format(to_vmid, kind="video", to_slot=None):
     dc = _load_dc(c) if c else None
     if not dc or not dc.get("type") or not _pl.is_plugin(dc["type"]):
         return None
-    # Moteur 2110_io : le format attendu d'une sortie TX est celui DÉCLARÉ par le slot (tx_slots[i]),
-    # pas un format de wiring (le manifeste n'en déclare aucun : un slot TX suit sa source). Sans ça,
-    # l'UDC inséré devant un TX était créé au format PAR DÉFAUT (1280×720p25) — donc en écart avec le
-    # slot, donc recréant la session : exactement ce que l'insertion doit éviter.
+    ***REMOVED*** Moteur 2110_io : le format attendu d'une sortie TX est celui DÉCLARÉ par le slot (tx_slots[i]),
+    ***REMOVED*** pas un format de wiring (le manifeste n'en déclare aucun : un slot TX suit sa source). Sans ça,
+    ***REMOVED*** l'UDC inséré devant un TX était créé au format PAR DÉFAUT (1280×720p25) — donc en écart avec le
+    ***REMOVED*** slot, donc recréant la session : exactement ce que l'insertion doit éviter.
     if dc["type"] == "2110_io" and (kind or "video") == "video" and to_slot is not None:
         from .. import tx_maintenance as _txm
         sf = _txm.slot_format(dc.get("params") or {}, to_slot)
@@ -972,11 +972,11 @@ def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, n
     import requests as _req
 
     out_fmt = _target_input_format(to_vmid, kind, to_slot) or {}
-    # BALAYAGE : l'UDC 0.9.0 sait sortir en ENTRELACÉ NATIF (les 4 combinaisons p→p, i→p, p→i, i→i).
-    # On lui demande donc EXACTEMENT le format de la cible, ordre de champ et profondeur compris —
-    # c'est ce qui rend l'insertion gratuite devant un slot TX (signature de session inchangée).
-    # `fps` est passé en cadence TRAME : `udc._out_rate_nd` ne divise qu'au-dessus de 30, donc une
-    # cadence trame (25/30) traverse intacte.
+    ***REMOVED*** BALAYAGE : l'UDC 0.9.0 sait sortir en ENTRELACÉ NATIF (les 4 combinaisons p→p, i→p, p→i, i→i).
+    ***REMOVED*** On lui demande donc EXACTEMENT le format de la cible, ordre de champ et profondeur compris —
+    ***REMOVED*** c'est ce qui rend l'insertion gratuite devant un slot TX (signature de session inchangée).
+    ***REMOVED*** `fps` est passé en cadence TRAME : `udc._out_rate_nd` ne divise qu'au-dessus de 30, donc une
+    ***REMOVED*** cadence trame (25/30) traverse intacte.
     _scan = "i" if str(out_fmt.get("scan") or "p").lower() == "i" else "p"
     _fps = float(out_fmt.get("fps") or 25) or 25
     udc_params = {
@@ -992,8 +992,8 @@ def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, n
         udc_params["bit_depth"] = int(out_fmt["bit_depth"])
 
     udc_vmid = None
-    # La PROFONDEUR n'est pas reconfigurable à chaud (l'UDC lit BIT_DEPTH de son CONFIG au démarrage)
-    # → un UDC libre dont la profondeur diffère de la cible ne peut pas la servir : on en crée un.
+    ***REMOVED*** La PROFONDEUR n'est pas reconfigurable à chaud (l'UDC lit BIT_DEPTH de son CONFIG au démarrage)
+    ***REMOVED*** → un UDC libre dont la profondeur diffère de la cible ne peut pas la servir : on en crée un.
     if mode == "reuse" and reuse_vmid and udc_params.get("bit_depth"):
         _rc = db_get_container(int(reuse_vmid))
         _rdc = _load_dc(_rc) if _rc else None
@@ -1011,8 +1011,8 @@ def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, n
             db_add_alert("alert.cablage.udc_ip_introuvable", "error", vmid=udc_vmid,
                          kind="deploy", params={"vmid": udc_vmid})
             return
-        # Reconfigure la sortie à chaud (balayage compris — sinon un UDC libre repris devant un slot
-        # entrelacé ressortait en progressif et l'écart persistait).
+        ***REMOVED*** Reconfigure la sortie à chaud (balayage compris — sinon un UDC libre repris devant un slot
+        ***REMOVED*** entrelacé ressortait en progressif et l'écart persistait).
         try:
             _req.post(f"http://{ip}:8082/params", json={
                 "width": udc_params["width"], "height": udc_params["height"],
@@ -1021,8 +1021,8 @@ def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, n
         except Exception as e:
             db_add_alert("alert.cablage.udc_reconfig_echouee", "warning", vmid=udc_vmid,
                          kind="deploy", params={"vmid": udc_vmid, "e": e})
-        # Le format vient de la DB (cf. monitor._shm_fmt) : un /params qui ne serait pas persisté
-        # serait perdu au premier redéploiement → l'écart réapparaîtrait sans prévenir.
+        ***REMOVED*** Le format vient de la DB (cf. monitor._shm_fmt) : un /params qui ne serait pas persisté
+        ***REMOVED*** serait perdu au premier redéploiement → l'écart réapparaîtrait sans prévenir.
         try:
             from ..database import db_update_deploy_config
             _p = dict(((_load_dc(c) or {}).get("params")) or {})
@@ -1030,27 +1030,27 @@ def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, n
                        if k in ("width", "height", "fps", "scan", "field_order", "chroma")})
             db_update_deploy_config(udc_vmid, "udc", _p)
         except Exception as e:
-            log.warning("UDC #%s : persistance du format : %s", udc_vmid, e)
+            log.warning("UDC ***REMOVED***%s : persistance du format : %s", udc_vmid, e)
         db_add_alert("alert.cablage.udc_reutilise", "info", vmid=udc_vmid,
                      kind="deploy", params={"vmid": udc_vmid})
     else:
-        # Création d'un nouvel UDC sur le chemin Docker compute (udc = docker-only).
+        ***REMOVED*** Création d'un nouvel UDC sur le chemin Docker compute (udc = docker-only).
         node_id = docker_compute.pick_compute_node(node_id)
         if not node_id:
             db_add_alert("alert.cablage.udc_aucun_noeud_compute", "error", kind="deploy")
             return
-        # Le hostname dérive le shm de sortie ({hostname}_udc) → il doit être UNIQUE PAR CIBLE RÉELLE.
-        # Sans le slot, deux sorties TX du MÊME moteur alimentées par la MÊME source (formats de slot
-        # différents) créaient deux UDC de même hostname, donc DEUX ÉCRIVAINS SUR LE MÊME FLUX MXL.
-        # Constaté au banc (moteur 140, slots TX#1 1080i25 et TX#3 720p50 tirés d'avsync).
+        ***REMOVED*** Le hostname dérive le shm de sortie ({hostname}_udc) → il doit être UNIQUE PAR CIBLE RÉELLE.
+        ***REMOVED*** Sans le slot, deux sorties TX du MÊME moteur alimentées par la MÊME source (formats de slot
+        ***REMOVED*** différents) créaient deux UDC de même hostname, donc DEUX ÉCRIVAINS SUR LE MÊME FLUX MXL.
+        ***REMOVED*** Constaté au banc (moteur 140, slots TX***REMOVED***1 1080i25 et TX***REMOVED***3 720p50 tirés d'avsync).
         hostname = f"udc-{from_vmid}-{to_vmid}" + (f"-s{int(to_slot) + 1}" if to_slot is not None else "")
         db_add_alert("alert.cablage.udc_insertion_auto", "info", kind="deploy", params={"h": hostname})
         udc_vmid = docker_compute.creer_container_compute(node_id, "udc", hostname=hostname)
         if not udc_vmid:
             db_add_alert("alert.cablage.udc_creation_echouee", "error", kind="deploy")
             return
-        # deployer_script route vers deploy_compute (docker run macvlan + attente agent :8081),
-        # puis rend et POST le script.
+        ***REMOVED*** deployer_script route vers deploy_compute (docker run macvlan + attente agent :8081),
+        ***REMOVED*** puis rend et POST le script.
         if not deployer_script(udc_vmid, "udc", udc_params):
             db_add_alert("alert.cablage.udc_deploiement_echoue", "error", vmid=udc_vmid,
                          kind="deploy", params={"vmid": udc_vmid})
@@ -1060,7 +1060,7 @@ def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, n
             db_add_alert("alert.cablage.udc_sans_ip", "error", vmid=udc_vmid,
                          kind="deploy", params={"vmid": udc_vmid})
             return
-        # Attente que le contrôle :8082 réponde.
+        ***REMOVED*** Attente que le contrôle :8082 réponde.
         ready = False
         for _ in range(20):
             try:
@@ -1073,7 +1073,7 @@ def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, n
             db_add_alert("alert.cablage.udc_controle_non_pret", "warning", vmid=udc_vmid,
                          kind="deploy", params={"vmid": udc_vmid})
 
-    # Câblage producteur → UDC (injecte input_format) puis UDC → destination.
+    ***REMOVED*** Câblage producteur → UDC (injecte input_format) puis UDC → destination.
     ok1, st1, p1 = _apply_wire(from_vmid, udc_vmid, shm, kind)
     if not ok1:
         db_add_alert("alert.cablage.udc_source_echouee", "error", vmid=udc_vmid,
@@ -1110,10 +1110,10 @@ def api_home_insert_udc():
     reuse_vmid = data.get("reuse_vmid")
     kind = data.get("kind") or "video"
     to_slot = data.get("to_slot")
-    node_id = data.get("node_id")   # optionnel : nœud compute cible (défaut = auto-pick)
-    # Insertion UDC : reconfigure le CONSOMMATEUR `to_vmid` (source seulement lue ; l'UDC est
-    # créé à la volée, vmid encore inconnu des autres opérations → pas de course dessus). On
-    # sérialise donc sur `to_vmid`, l'entité partagée.
+    node_id = data.get("node_id")   ***REMOVED*** optionnel : nœud compute cible (défaut = auto-pick)
+    ***REMOVED*** Insertion UDC : reconfigure le CONSOMMATEUR `to_vmid` (source seulement lue ; l'UDC est
+    ***REMOVED*** créé à la volée, vmid encore inconnu des autres opérations → pas de course dessus). On
+    ***REMOVED*** sérialise donc sur `to_vmid`, l'entité partagée.
     def _insert_udc_locked():
         with verrou_vmid(to_vmid, op="insert-udc"):
             _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid, node_id)
@@ -1176,7 +1176,7 @@ def decable_flow_on_node(shm, node_id):
             if ok:
                 n += 1
         except Exception as _e:
-            log.warning("cascade décâble %s @ #%s : %s", shm, vmid, _e)
+            log.warning("cascade décâble %s @ ***REMOVED***%s : %s", shm, vmid, _e)
     return n
 
 
@@ -1192,7 +1192,7 @@ def _maybe_release_rdma(to_vmid, shm, kind):
         from services import rdma as _rdma
         _rdma.release_cable_link(shm, nid, still_consumed=_flow_consumers_on_node(shm, nid) > 0)
     except Exception as _e:
-        log.warning("release RDMA après décâble %s @ #%s : %s", shm, to_vmid, _e)
+        log.warning("release RDMA après décâble %s @ ***REMOVED***%s : %s", shm, to_vmid, _e)
 
 
 def _apply_unwire(to_vmid, shm, kind):
@@ -1204,11 +1204,11 @@ def _apply_unwire(to_vmid, shm, kind):
         return False, 400, {"error": "params manquants"}
     target = db_get_container(to_vmid)
     if not target:
-        return False, 404, {"error": f"container #{to_vmid} introuvable"}
+        return False, 404, {"error": f"container ***REMOVED***{to_vmid} introuvable"}
 
     dc = _load_dc(target)
     if not dc or not dc.get("type"):
-        return False, 400, {"error": f"#{to_vmid} n'a pas de script déployé"}
+        return False, 400, {"error": f"***REMOVED***{to_vmid} n'a pas de script déployé"}
 
     t      = dc["type"]
     params = dict(dc.get("params") or {})
@@ -1243,7 +1243,7 @@ def _apply_unwire(to_vmid, shm, kind):
         from .. import plugins as _pl
         w = _pl.derive_wiring(t, target.get("hostname") or "", params)
         cands = [x for x in w["consumes"] if (x.get("essence") or "video") == kind]
-        # On décâble le slot portant ce shm (from_list : shm résolu ; state_field : params).
+        ***REMOVED*** On décâble le slot portant ce shm (from_list : shm résolu ; state_field : params).
         spec = next((x for x in cands if x.get("from_list") and x.get("shm") == shm), None) \
                or next((x for x in cands if x.get("state_field") and params.get(x["state_field"]) == shm), None) \
                or (cands[0] if cands else None)
@@ -1257,8 +1257,8 @@ def _apply_unwire(to_vmid, shm, kind):
             lst = list(params.get(lst_name) or [])
             if slot is not None and 0 <= slot < len(lst):
                 entry = dict(lst[slot]); entry[sf] = ""; lst[slot] = entry; params[lst_name] = lst
-            # TISSU (symétrique du câblage) : assembleur shardé → modifier la définition LOGIQUE puis
-            # re-réconcilier, jamais hot-unwirer l'assembleur (qui lit les sorties de shards).
+            ***REMOVED*** TISSU (symétrique du câblage) : assembleur shardé → modifier la définition LOGIQUE puis
+            ***REMOVED*** re-réconcilier, jamais hot-unwirer l'assembleur (qui lit les sorties de shards).
             if _is_sharded_assembler(to_vmid):
                 try:
                     from ..database import db_update_deploy_config
@@ -1279,7 +1279,7 @@ def _apply_unwire(to_vmid, shm, kind):
             res = _try_unwire_hot(to_vmid, target, t, params, {ikey: slot, "shm": ""})
             if res:
                 return res
-            # pas de return → redéploiement (tail _async_deploy)
+            ***REMOVED*** pas de return → redéploiement (tail _async_deploy)
         else:
             from ..addressing import get_container_ip
             ip = target.get("ip") or get_container_ip(to_vmid)
@@ -1290,7 +1290,7 @@ def _apply_unwire(to_vmid, shm, kind):
                 return False, 502, {"error": f"appel {t} : {detail}"}
             if spec.get("state_field"):
                 params[spec["state_field"]] = ""
-                # Décâblage vidéo → les câbles « suiveurs » (audio/ANC dérivés) sont vidés aussi.
+                ***REMOVED*** Décâblage vidéo → les câbles « suiveurs » (audio/ANC dérivés) sont vidés aussi.
                 _flw = _pl.get_hook(t, "wire_followers")
                 if _flw:
                     try:
@@ -1328,7 +1328,7 @@ def api_home_unwire():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "vmid invalide"}), 400
     ok, status, payload = _apply_unwire(to_vmid, data.get("shm"), data.get("kind"))
-    if ok:                                      # teardown auto du lien RDMA inter-nœud si plus consommé
+    if ok:                                      ***REMOVED*** teardown auto du lien RDMA inter-nœud si plus consommé
         _maybe_release_rdma(to_vmid, (data.get("shm") or "").strip(), data.get("kind"))
     return jsonify({"ok": ok, **payload}), status
 
@@ -1338,8 +1338,8 @@ def _collect_current_edges():
     {from_vmid, to_vmid, shm, kind, to_slot?}. to_slot rempli pour multiview/mixer."""
     from .. import plugins as _pl
     containers = db_get_containers()
-    producers = {}   # shm → vmid (premier producteur trouvé)
-    consumers = []   # liste de {to_vmid, shm, kind, to_slot?}
+    producers = {}   ***REMOVED*** shm → vmid (premier producteur trouvé)
+    consumers = []   ***REMOVED*** liste de {to_vmid, shm, kind, to_slot?}
     for c in containers:
         dc = _load_dc(c)
         if not dc:
@@ -1347,7 +1347,7 @@ def _collect_current_edges():
         t = dc.get("type")
         p = dc.get("params") or {}
         hn = p.get("hostname") or c.get("hostname") or f"mxl{c['vmid']}"
-        # Produces
+        ***REMOVED*** Produces
         _ps_hook = _pl.get_hook(t, "produced_shms") if t else None
         if _ps_hook:
             for s in (_ps_hook(hn, p, {}) or []):
@@ -1356,7 +1356,7 @@ def _collect_current_edges():
             for prod in _pl.derive_wiring(t, hn, p)["produces"]:
                 if prod.get("shm"):
                     producers.setdefault(prod["shm"], c["vmid"])
-        # Consumes
+        ***REMOVED*** Consumes
         _tp2_hook = _pl.get_hook(t, "topology_ports") if t else None
         if _tp2_hook:
             for port in (_tp2_hook(hn, p, {}) or {}).get("consumes") or []:
@@ -1381,7 +1381,7 @@ def _collect_current_edges():
     for cn in consumers:
         from_vmid = producers.get(cn["shm"])
         if from_vmid is None:
-            continue   # consommateur orphelin (producteur introuvable) : skip
+            continue   ***REMOVED*** consommateur orphelin (producteur introuvable) : skip
         e = {"from_vmid": from_vmid, "to_vmid": cn["to_vmid"],
              "shm": cn["shm"], "kind": cn["kind"]}
         if "to_slot" in cn:
@@ -1436,14 +1436,14 @@ def api_cable_snapshot_restore(sid):
     if not snap:
         return jsonify({"ok": False, "error": "snapshot introuvable"}), 404
     saved_edges = (snap.get("payload") or {}).get("edges") or []
-    # 1) Décâble tout l'existant pour partir d'une page blanche
+    ***REMOVED*** 1) Décâble tout l'existant pour partir d'une page blanche
     current = _collect_current_edges()
     errors_clear = []
     for e in current:
         ok, _, payload = _apply_unwire(e["to_vmid"], e["shm"], e["kind"])
         if not ok and payload.get("error"):
             errors_clear.append(payload["error"])
-    # 2) Recâble selon le snapshot
+    ***REMOVED*** 2) Recâble selon le snapshot
     errors_wire = []
     applied = 0
     for e in saved_edges:
@@ -1458,9 +1458,9 @@ def api_cable_snapshot_restore(sid):
                     "total": len(saved_edges), "errors": errors_wire,
                     "clear_errors": errors_clear})
 
-# ─── Vues de DISPOSITION de la page Câbles (mode « Libre ») ───────────────────
-# Ne touchent JAMAIS au câblage (≠ snapshots) : on stocke uniquement les positions des
-# cartes et l'état replié, partagés entre utilisateurs.
+***REMOVED*** ─── Vues de DISPOSITION de la page Câbles (mode « Libre ») ───────────────────
+***REMOVED*** Ne touchent JAMAIS au câblage (≠ snapshots) : on stocke uniquement les positions des
+***REMOVED*** cartes et l'état replié, partagés entre utilisateurs.
 
 @bp.route("/api/cables/layouts", methods=["GET"])
 @require_login

@@ -1,4 +1,4 @@
-# Installation et mise en service — Bobi.Studio
+***REMOVED*** Installation et mise en service — Bobi.Studio
 
 > Guide de bout en bout : d'une machine nue à un premier flux ST 2110 qui passe. Pour le
 > dimensionnement matériel (serveurs, cartes réseau, cluster), voir **`INFRASTRUCTURE.md`** —
@@ -9,20 +9,20 @@
 > production, pilotée par un **agent-nœud** (`bobi-node-agent`, port 9100). Contrôleur et
 > nœud peuvent être la même machine (« tout-en-un »).
 
-## Table des matières
+***REMOVED******REMOVED*** Table des matières
 
-1. [Pré-requis](#1-pré-requis)
-2. [Installation du contrôleur](#2-installation-du-contrôleur)
-3. [Réglages initiaux indispensables](#3-réglages-initiaux-indispensables)
-4. [Enrôlement d'un nœud](#4-enrôlement-dun-nœud)
-5. [Préparation d'un nœud média (ST 2110)](#5-préparation-dun-nœud-média-st-2110)
-6. [Premier flux de bout en bout](#6-premier-flux-de-bout-en-bout)
-7. [Vérification et diagnostic](#7-vérification-et-diagnostic)
-8. [Mise à jour et sauvegarde](#8-mise-à-jour-et-sauvegarde)
+1. [Pré-requis](***REMOVED***1-pré-requis)
+2. [Installation du contrôleur](***REMOVED***2-installation-du-contrôleur)
+3. [Réglages initiaux indispensables](***REMOVED***3-réglages-initiaux-indispensables)
+4. [Enrôlement d'un nœud](***REMOVED***4-enrôlement-dun-nœud)
+5. [Préparation d'un nœud média (ST 2110)](***REMOVED***5-préparation-dun-nœud-média-st-2110)
+6. [Premier flux de bout en bout](***REMOVED***6-premier-flux-de-bout-en-bout)
+7. [Vérification et diagnostic](***REMOVED***7-vérification-et-diagnostic)
+8. [Mise à jour et sauvegarde](***REMOVED***8-mise-à-jour-et-sauvegarde)
 
 ---
 
-## 1. Pré-requis
+***REMOVED******REMOVED*** 1. Pré-requis
 
 Le matériel (serveurs, cartes réseau Intel E810 pour le plan média, topologie cluster,
 commutation multicast/PTP) est détaillé dans **`INFRASTRUCTURE.md`**. Ne pas commencer une
@@ -38,7 +38,7 @@ Résumé logiciel minimal :
 
 ---
 
-## 2. Installation du contrôleur
+***REMOVED******REMOVED*** 2. Installation du contrôleur
 
 Deux chemins : l'**installeur unifié** (`install.py`, recommandé — menu interactif, gère
 aussi les nœuds) et l'**amorce locale** (`install.sh`, depuis une source déjà présente : clone
@@ -47,7 +47,7 @@ vérifie python3 — en proposant de l'installer s'il manque — puis passe la m
 `install/install.py` : venv Python, `config_local.py`, service
 systemd `bobistudio`, base SQLite initialisée.
 
-### 2.0 Depuis GitHub, sur une machine vierge (le plus court)
+***REMOVED******REMOVED******REMOVED*** 2.0 Depuis GitHub, sur une machine vierge (le plus court)
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/bob-integration/bobistudio/main/get.sh)
@@ -73,7 +73,7 @@ nomme pas la cause. Tout le reste (les autres services, tous les plugins) s'inst
 la **page Catalogue** de l'interface, qui lit la même organisation GitHub. C'est le chemin prévu
 pour un exploitant : il n'a pas à cloner un dépôt pour ajouter un traitement vidéo.
 
-### 2.1 Installeur unifié (recommandé)
+***REMOVED******REMOVED******REMOVED*** 2.1 Installeur unifié (recommandé)
 
 ```bash
 git clone --recurse-submodules https://github.com/bob-integration/bobistudio /opt/bobistudio
@@ -110,13 +110,13 @@ seulement s'il n'existe pas déjà — si un `config_local.py` traîne d'une ten
 il est conservé tel quel (« config_local.py déjà présent — conservé »), y compris s'il est
 incomplet.
 
-### 2.2 Installation manuelle
+***REMOVED******REMOVED******REMOVED*** 2.2 Installation manuelle
 
 ```bash
 cd /opt/bobistudio
 cp config_local.example.py config_local.py
-nano config_local.py         # valeurs de site (cf. §2.3)
-bash install.sh               # amorce : python3 si besoin, puis install/install.py
+nano config_local.py         ***REMOVED*** valeurs de site (cf. §2.3)
+bash install.sh               ***REMOVED*** amorce : python3 si besoin, puis install/install.py
 systemctl start bobistudio
 systemctl status bobistudio
 ```
@@ -146,7 +146,7 @@ Le contrôleur lui-même **ne produit aucun flux MXL**, mais c'est l'horloge par
 passent toutes les mesures affichées : sa dérive se reporte sur chaque ligne de la page
 Horloges.
 
-### 2.3 `config_local.py`
+***REMOVED******REMOVED******REMOVED*** 2.3 `config_local.py`
 
 Fichier **non versionné**, à la racine, pour les valeurs propres au site (secrets, hôtes).
 Le modèle `config_local.example.py` est volontairement quasi vide : depuis le retrait du
@@ -154,7 +154,7 @@ backend Proxmox/LXC, les hôtes vivent dans la table `nodes` (déclarés depuis 
 cf. §4), pas dans un fichier. `app/config.py` porte les défauts neutres (chemins DB/logs,
 `TLS_DIR`) ; toute clé posée dans `config_local.py` les surcharge à l'import.
 
-### 2.4 Service systemd
+***REMOVED******REMOVED******REMOVED*** 2.4 Service systemd
 
 ```ini
 [Service]
@@ -174,8 +174,8 @@ la rotation, donc continue d'alimenter l'archive que plus rien ne borne.
 
 ```bash
 systemctl {start|stop|restart|status} bobistudio
-journalctl -u bobistudio -f     # démarrages, arrêts, et ce qui échappe au logging applicatif
-tail -f /opt/bobistudio/bobistudio.log   # le journal applicatif lui-même
+journalctl -u bobistudio -f     ***REMOVED*** démarrages, arrêts, et ce qui échappe au logging applicatif
+tail -f /opt/bobistudio/bobistudio.log   ***REMOVED*** le journal applicatif lui-même
 ```
 
 Le process écoute en **HTTP simple sur `0.0.0.0:5000`** (Waitress si disponible, sinon repli
@@ -184,7 +184,7 @@ sur le serveur de développement Werkzeug avec un avertissement dans les logs �
 géré par l'application elle-même : placer un reverse-proxy devant si l'exposition doit être
 chiffrée/authentifiée en amont.
 
-### 2.5 Premier compte administrateur
+***REMOVED******REMOVED******REMOVED*** 2.5 Premier compte administrateur
 
 Deux chemins, au choix :
 
@@ -205,7 +205,7 @@ Deux chemins, au choix :
   Interactif (demande username/mot de passe) ou non-interactif :
   ```bash
   ./venv/bin/python tools/create_admin.py --username alice --password 'changeme'
-  ./venv/bin/python tools/create_admin.py --username alice --password 'nouveau' --reset   # réinitialise un mot de passe existant
+  ./venv/bin/python tools/create_admin.py --username alice --password 'nouveau' --reset   ***REMOVED*** réinitialise un mot de passe existant
   ```
 
 L'assistant `/setup/wizard` ne se réaffiche plus une fois terminé (réglage
@@ -213,13 +213,13 @@ L'assistant `/setup/wizard` ne se réaffiche plus une fois terminé (réglage
 
 ---
 
-## 3. Réglages initiaux indispensables
+***REMOVED******REMOVED*** 3. Réglages initiaux indispensables
 
 Ces réglages n'ont **pas de valeur de site par défaut** (ou une valeur neutre qui empêchera
 tout déploiement tant qu'elle n'est pas posée). À faire **avant** de déployer le moindre
 conteneur — plusieurs sont lus au moment du déploiement, pas seulement à l'usage.
 
-### Réseau conteneurs (Réglages → Réseau)
+***REMOVED******REMOVED******REMOVED*** Réseau conteneurs (Réglages → Réseau)
 
 - `net_mode` (`dhcp` par défaut) et, si `static`, `ip_start`/`ip_end`/`netmask_bits`/`gateway` :
   pool d'adresses pour le réseau **macvlan** des conteneurs compute/média/webrtc. Sans ce plan
@@ -240,7 +240,7 @@ conteneur — plusieurs sont lus au moment du déploiement, pas seulement à l'u
   écarts entre nœuds impossibles à diagnostiquer (deux idées différentes du temps, sans savoir
   laquelle a raison). Sans effet sur un nœud `io2110` (son heure vient du grandmaster PTP).
 
-### PTP (Réglages → Réseau → PTP)
+***REMOVED******REMOVED******REMOVED*** PTP (Réglages → Réseau → PTP)
 
 `ptp_enabled` est `False` par défaut et `ptp_ifname` vide : le PTP par nœud ne démarre nulle
 part tant que ces réglages ne sont pas posés — un nœud `io2110` sans PTP verrouillé **peut
@@ -250,7 +250,7 @@ grandmaster du site. Le profil ptp4l posé par `install-node.sh` (voir §5) est 
 ces mêmes valeurs — les deux sources doivent rester synchrones si l'une est modifiée après
 coup.
 
-### NMOS (Réglages → Protocoles → NMOS)
+***REMOVED******REMOVED******REMOVED*** NMOS (Réglages → Protocoles → NMOS)
 
 Tous les réglages `nmos_*` sont désactivés/vides par défaut (`nmos_enabled: false`,
 `nmos_registry_url: ""`). Sans `nmos_registry_url` renseigné et `nmos_enabled` activé, aucun
@@ -258,20 +258,20 @@ Node/Device/Receiver/Sender n'est publié — ce n'est pas bloquant pour un flux
 interne (câblage manuel dans Bobi.Studio), mais indispensable dès qu'un système de contrôle
 externe (routeur broadcast, régie tierce) doit découvrir les flux via IS-04/05.
 
-### Formats vidéo (Réglages → Vidéo)
+***REMOVED******REMOVED******REMOVED*** Formats vidéo (Réglages → Vidéo)
 
 `video_formats` porte une palette par défaut (test 640×360p25, HD 1080i50, UHD 2160p50…) et
 `video_format_default` est **vide** — sans sélection explicite d'un format par défaut, la
 palette de déploiement demande à chaque fois de choisir. À adapter à la matrice de formats
 réellement utilisée sur le site (ligne `Nom;Largeur;Hauteur;FPS;Scan;Chroma;BitDepth;Colorimétrie`).
 
-### Sauvegarde (Réglages → Système → Sauvegarde)
+***REMOVED******REMOVED******REMOVED*** Sauvegarde (Réglages → Système → Sauvegarde)
 
 `backup_enabled` est `False` par défaut : sans l'activer explicitement (+ `backup_time`,
 `backup_retention`), **aucune sauvegarde automatique** de la base SQLite n'est produite. Voir
 §8 pour la sauvegarde manuelle.
 
-### Alarmes (Réglages → Système → Alarmes)
+***REMOVED******REMOVED******REMOVED*** Alarmes (Réglages → Système → Alarmes)
 
 `alert_webhook_enabled` est `0` par défaut : toute la chaîne d'alerte reste en **pull** (il
 faut ouvrir la page pour la voir) tant qu'aucun canal (webhook, e-mail) n'est activé — c'est
@@ -280,7 +280,7 @@ la cause documentée d'une panne restée huit jours sans réaction sur une insta
 
 ---
 
-## 4. Enrôlement d'un nœud
+***REMOVED******REMOVED*** 4. Enrôlement d'un nœud
 
 Un nœud = une machine Debian 13 + l'agent `bobi-node-agent` + un jeu de **capacités**
 choisies à l'installation : `io2110` (E810, moteur ST 2110), `compute` (traitements numpy),
@@ -288,7 +288,7 @@ choisies à l'installation : `io2110` (E810, moteur ST 2110), `compute` (traitem
 NVIDIA). Les capacités sont **rattrapables après coup** (§4.3) mais jamais retirées par ce
 mécanisme (pas de désinstallation automatique).
 
-### 4.1 Installation directe (`install-node.sh`)
+***REMOVED******REMOVED******REMOVED*** 4.1 Installation directe (`install-node.sh`)
 
 ```bash
 ./node_agent/install-node.sh --with compute,media \
@@ -333,7 +333,7 @@ Points d'attention :
   client PTP interne de libmtl ; faire battre chrony ET libmtl sur la même horloge ramènerait
   `REALTIME` vers l'UTC, soit 37 s d'erreur pour le moteur, sans aucun signal).
 
-### 4.2 Enrôlement zéro-touch (recommandé pour plusieurs nœuds)
+***REMOVED******REMOVED******REMOVED*** 4.2 Enrôlement zéro-touch (recommandé pour plusieurs nœuds)
 
 Depuis Réglages → Déploiement → Nœuds, générer un **jeton d'enrôlement** (one-time), puis sur
 le nœud vierge (via `install.py` → « Nœud de process », qui demande l'adresse du contrôleur et
@@ -342,7 +342,7 @@ l'annonce (`POST /api/nodes/enroll`). Le nœud **s'annonce** au contrôleur, qui
 profil (capacités, réseau, PTP, lcores) déjà configuré côté serveur — rien d'autre à saisir
 manuellement, le nœud apparaît de lui-même dans Monitoring → Serveurs.
 
-### 4.3 Rattraper une capacité oubliée (`--add-caps`)
+***REMOVED******REMOVED******REMOVED*** 4.3 Rattraper une capacité oubliée (`--add-caps`)
 
 ```bash
 ./node_agent/install-node.sh --add-caps io2110 --mtl-iface ens1f0np0
@@ -357,7 +357,7 @@ macvlan, par exemple, n'est pas stocké en base), elle blanchirait la configurat
 existante, et **sans `--token` elle régénère le token de l'agent** — le contrôleur perd le
 nœud.
 
-### 4.4 Vérifier que l'enrôlement a réussi
+***REMOVED******REMOVED******REMOVED*** 4.4 Vérifier que l'enrôlement a réussi
 
 - Le nœud apparaît dans **Monitoring → Serveurs** avec un `last_seen` récent (heartbeat
   `GET /v1/health` périodique).
@@ -369,7 +369,7 @@ nœud.
   peut coexister avec une capacité inutilisable si le code de sortie du script est resté à 0
   sur un avertissement non bloquant (réseau containers différé, carte E810 non fournie…).
 
-### 4.5 Installation sans accès direct au nœud (PXE / USB / iLO)
+***REMOVED******REMOVED******REMOVED*** 4.5 Installation sans accès direct au nœud (PXE / USB / iLO)
 
 > ⚠ **CES TROIS CHEMINS NE SONT PAS VALIDÉS DE BOUT EN BOUT. Aucun n'a encore abouti à un nœud
 > réellement enrôlé.** Utilisez `install-node.sh` lancé à la main (§4.1) pour toute mise en
@@ -432,13 +432,13 @@ mené jusqu'à un nœud enrôlé.
 
 ---
 
-## 5. Préparation d'un nœud média (ST 2110)
+***REMOVED******REMOVED*** 5. Préparation d'un nœud média (ST 2110)
 
 Un nœud avec la capacité `io2110` a besoin de plus que l'agent : le moteur MTL/DPDK
 (`2110_io`) exige un état hôte précis, vérifiable et corrigeable depuis Réglages → nœud →
 Préparation MTL (`app/mtl.py:verifier`/`appliquer`, lecture seule puis application).
 
-### Ce qui doit être vrai
+***REMOVED******REMOVED******REMOVED*** Ce qui doit être vrai
 
 1. **IOMMU actif** : `intel_iommu=on iommu=pt` dans le cmdline kernel — sans lui, DPDK ne peut
    pas mapper la mémoire des NIC en espace utilisateur.
@@ -473,7 +473,7 @@ Préparation MTL (`app/mtl.py:verifier`/`appliquer`, lecture seule puis applicat
    restent « actifs », tout le trafic ressort par un seul fil). Posé inconditionnellement par
    `install-node.sh`, sans effet sur un nœud mono-port.
 
-### Flux recommandé
+***REMOVED******REMOVED******REMOVED*** Flux recommandé
 
 1. Enrôler le nœud avec la capacité `io2110` (§4), carte E810 identifiée
    (`--mtl-iface` ou différé + choix dans l'UI).
@@ -488,7 +488,7 @@ Préparation MTL (`app/mtl.py:verifier`/`appliquer`, lecture seule puis applicat
 
 ---
 
-## 6. Premier flux de bout en bout
+***REMOVED******REMOVED*** 6. Premier flux de bout en bout
 
 Séquence minimale pour voir une image, une fois un nœud `compute` et un nœud `io2110` prêts
 (peuvent être le même nœud) :
@@ -521,7 +521,7 @@ l'ensemble.
 
 ---
 
-## 7. Vérification et diagnostic
+***REMOVED******REMOVED*** 7. Vérification et diagnostic
 
 - **Dashboard principal** (`/`) : statut de chaque conteneur (`running`, `stopped`,
   `script_stopped` — conteneur Docker up mais agent embarqué qui répond `running:false`),
@@ -546,9 +546,9 @@ l'ensemble.
 
 ---
 
-## 8. Mise à jour et sauvegarde
+***REMOVED******REMOVED*** 8. Mise à jour et sauvegarde
 
-### 8.1 Sauvegarde de la base
+***REMOVED******REMOVED******REMOVED*** 8.1 Sauvegarde de la base
 
 La base SQLite porte **tout** l'état applicatif (conteneurs, nœuds, réglages, alertes,
 projets) — une sauvegarde = une copie cohérente de ce fichier unique
@@ -563,7 +563,7 @@ projets) — une sauvegarde = une copie cohérente de ce fichier unique
 - Les sauvegardes vivent dans `backups/` à la racine du dépôt — à répliquer hors de la
   machine si la rétention locale ne suffit pas comme politique de sauvegarde.
 
-### 8.2 Mise à jour entre instances (push/pull)
+***REMOVED******REMOVED******REMOVED*** 8.2 Mise à jour entre instances (push/pull)
 
 `app/updater.py` tire une nouvelle version depuis une autre instance Bobi.Studio servant son
 propre code (`update_server_enabled` + `update_token`, cf. Réglages → Système → Mise à jour) :
@@ -581,7 +581,7 @@ plugin nouveau côté source n'apparaît jamais tout seul sur un site qui ne l'a
 Un **rollback** restaure la dernière sauvegarde de code (`app/updater.rollback()`) et relance
 le service — à utiliser si une mise à jour laisse le service dans un état dégradé.
 
-### 8.3 Installation sans accès Internet (bundle hors-ligne)
+***REMOVED******REMOVED******REMOVED*** 8.3 Installation sans accès Internet (bundle hors-ligne)
 
 Pour un site sans sortie réseau vers PyPI/apt/Docker Hub, `tools/build_dist.py --offline`
 (exécuté sur une machine **de build**, avec accès réseau et root pour apt) pré-télécharge :

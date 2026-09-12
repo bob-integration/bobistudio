@@ -804,7 +804,7 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 <li>Configurer le contrôleur VSM pour envoyer les tallies sur <code>IP-orchestrateur:12345</code></li>
 </ol>
 <h2>Mapping</h2>
-<p>Dans le tableau <em>Mapping TSL → Multiviews</em> : associer chaque <strong>index TSL</strong> (numéro de source dans VSM) au container multiview et au numéro de flux vidéo (#0, #1…) qui doit recevoir ce tally. Un même index peut alimenter plusieurs multiviews.</p>
+<p>Dans le tableau <em>Mapping TSL → Multiviews</em> : associer chaque <strong>index TSL</strong> (numéro de source dans VSM) au container multiview et au numéro de flux vidéo (***REMOVED***0, ***REMOVED***1…) qui doit recevoir ce tally. Un même index peut alimenter plusieurs multiviews.</p>
 <h2>Mode orchestrateur dans le multiview</h2>
 <p>Dans la palette de déploiement d'un multiview, cocher <em>« TSL géré par l'orchestrateur »</em> désactive le serveur TSL local du container. Le multiview reçoit ses tallies de l'orchestrateur uniquement, via <code>POST :8082/tally_bulk</code>.</p>
 <div class="wiki-note">Le champ <em>Port TSL 5.0</em> du multiview est ignoré quand ce mode est actif.</div>
@@ -870,7 +870,7 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 <p>La connexion est retentée <strong>toutes les 5 secondes</strong> tant qu'elle échoue, et le mapping est renvoyé au pupitre à chaque (re)connexion : débrancher puis rebrancher le réseau ne demande aucune intervention.</p>
 
 <h2>« Connecté » ne veut pas dire « qui se comprend »</h2>
-<p>Bobi.Studio ne lit qu'une seule chose : des lignes ASCII <code>HWC#&lt;numéro&gt;=&lt;valeur&gt;</code> terminées par un saut de ligne, et ne déclenche une macro que sur <code>=1</code> (l'appui ; le relâchement est ignoré). Tout le reste est ignoré silencieusement.</p>
+<p>Bobi.Studio ne lit qu'une seule chose : des lignes ASCII <code>HWC***REMOVED***&lt;numéro&gt;=&lt;valeur&gt;</code> terminées par un saut de ligne, et ne déclenche une macro que sur <code>=1</code> (l'appui ; le relâchement est ignoré). Tout le reste est ignoré silencieusement.</p>
 <p>Conséquence à connaître avant de chercher ailleurs : si le pupitre est en mode <strong>binaire</strong> plutôt qu'en Raw Panel ASCII, la connexion TCP s'établit, l'état affiche <em>connecté</em>… et aucune touche ne fait rien. Le seul test qui prouve l'entente est <strong>d'appuyer sur une touche</strong> et de voir la macro partir.</p>
 
 <h2>Diagnostic</h2>
@@ -911,7 +911,7 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 <p>Le moteur MTL fait simultanément réception (RX, réseau→shm) et émission (TX, shm→réseau) sur la même NIC E810. Chaque <strong>slot TX</strong> émet :</p>
 <ul>
 <li><strong>Vidéo 2110-20</strong> — câblé depuis la page Câbles (colonne Destinations)</li>
-<li><strong>Audio 2110-30 #1 et #2</strong> — suit automatiquement le shm vidéo câblé (<code>host_0</code> → <code>host_audio_0/1</code>)</li>
+<li><strong>Audio 2110-30 ***REMOVED***1 et ***REMOVED***2</strong> — suit automatiquement le shm vidéo câblé (<code>host_0</code> → <code>host_audio_0/1</code>)</li>
 <li><strong>ANC 2110-40</strong> — suit automatiquement le shm vidéo câblé (<code>host_0</code> → <code>host_anc_0</code>)</li>
 </ul>
 <p>Les destinations IP multicast sont auto-allouées au déploiement (plages <code>239.10.40-41.x</code> audio, <code>239.10.50.x</code> ANC). Elles sont modifiables à chaud via l'API <code>POST /api/mtl/&lt;vmid&gt;/tx/&lt;slot&gt;/dest</code> (paramètre <code>audio_idx</code> pour cibler le flux audio 0 ou 1). Les senders NMOS IS-04 correspondants (2110-30 ×2 + 2110-40 par slot) sont enregistrés automatiquement.</p>
@@ -926,7 +926,7 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 
 <template id="wiki-art-genlock">
 <p>Toute la chaîne vidéo est <strong>genlockée</strong> : cadencée sur la même référence de temps (le
-<a href="#ptp-explique">PTP</a>), de la source jusqu'à la sortie antenne, pour qu'aucune trame ne soit
+<a href="***REMOVED***ptp-explique">PTP</a>), de la source jusqu'à la sortie antenne, pour qu'aucune trame ne soit
 dupliquée ni sautée et que les sources composées soient alignées à l'image près.</p>
 
 <h2>Principe : genlock par propagation (latence minimale)</h2>
@@ -1644,7 +1644,7 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 <template id="wiki-art-mises-a-jour">
 <p><strong>Cette instance tourne en Bobi.Studio {{ app_version|default('?') }}.</strong>
    La version publiée la plus récente, et la mise à jour quand il y en a une, se trouvent dans
-   <a href="/settings#catalogue">Réglages → Mises à jour</a>.</p>
+   <a href="/settings***REMOVED***catalogue">Réglages → Mises à jour</a>.</p>
 <p class="meta">Contenu chargé depuis <code>CHANGELOG.md</code> — <span id="wiki-changelog-mtime">…</span></p>
 <div id="wiki-changelog-content">Chargement…</div>
 </template>
@@ -2023,7 +2023,7 @@ function renderArticle(art){
   // (`search('')` appelle renderArticle directement). Le conteneur déclare LUI-MÊME son document
   // (`data-doc`) : aucune table id d'article → nom de document à tenir à jour.
   contentEl.querySelectorAll('.wiki-doc-content[data-doc]').forEach(el => loadDoc(el.dataset.doc));
-  if (contentEl.querySelector('#wiki-changelog-content')) loadChangelog();
+  if (contentEl.querySelector('***REMOVED***wiki-changelog-content')) loadChangelog();
 }
 
 // ── Table des matières « Sur cette page » ─────────────────────────────────
@@ -2045,14 +2045,14 @@ function buildToc(){
     used.add(id); h.id = id;
   }
   tocEl.innerHTML = `<div class="wiki-toc-hd">Sur cette page</div>` + heads.map(h =>
-    `<a class="wiki-toc-item lvl-${h.tagName==='H3'?3:2}" href="#" data-tid="${esc(h.id)}">${esc(h.textContent)}</a>`).join('');
+    `<a class="wiki-toc-item lvl-${h.tagName==='H3'?3:2}" href="***REMOVED***" data-tid="${esc(h.id)}">${esc(h.textContent)}</a>`).join('');
   doc.classList.add('has-toc');
   const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches, byId = {};
   tocEl.querySelectorAll('.wiki-toc-item').forEach(a => {
     byId[a.dataset.tid] = a;
     a.addEventListener('click', e => {
       e.preventDefault();
-      const t = article.querySelector('#' + CSS.escape(a.dataset.tid));
+      const t = article.querySelector('***REMOVED***' + CSS.escape(a.dataset.tid));
       if (t) t.scrollIntoView({ behavior: smooth?'smooth':'auto', block:'start' });
     });
   });

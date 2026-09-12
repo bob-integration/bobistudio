@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Bibliothèque de POLICES côté orchestrateur (Réglages → Polices).
 
@@ -57,20 +57,20 @@ from . import config
 
 FONTS_DIR = os.path.join(config.UPLOADS_DIR, "fonts")
 
-# Garde-fous d'upload (un upload de fichier est une surface d'attaque).
-MAX_FONT_BYTES = 4 * 1024 * 1024       # 4 Mo par police (une TTF réaliste : 50 Ko – 1,5 Mo)
-MAX_LIBRARY_BYTES = 64 * 1024 * 1024   # bibliothèque entière (garde-fou disque)
-MAX_INJECT_BYTES = 8 * 1024 * 1024     # total embarqué dans les params d'UN script
+***REMOVED*** Garde-fous d'upload (un upload de fichier est une surface d'attaque).
+MAX_FONT_BYTES = 4 * 1024 * 1024       ***REMOVED*** 4 Mo par police (une TTF réaliste : 50 Ko – 1,5 Mo)
+MAX_LIBRARY_BYTES = 64 * 1024 * 1024   ***REMOVED*** bibliothèque entière (garde-fou disque)
+MAX_INJECT_BYTES = 8 * 1024 * 1024     ***REMOVED*** total embarqué dans les params d'UN script
 ALLOWED_EXTS = ("ttf", "otf", "ttc")
-# Signatures sfnt réelles (le type est validé sur le CONTENU, pas sur l'extension) :
-#   \x00\x01\x00\x00 TrueType · 'true' TrueType (Apple) · 'OTTO' CFF/OpenType · 'ttcf' collection
+***REMOVED*** Signatures sfnt réelles (le type est validé sur le CONTENU, pas sur l'extension) :
+***REMOVED***   \x00\x01\x00\x00 TrueType · 'true' TrueType (Apple) · 'OTTO' CFF/OpenType · 'ttcf' collection
 _SFNT_MAGIC = (b"\x00\x01\x00\x00", b"true", b"OTTO", b"ttcf")
 
-# Police de repli (celle qui est codée en dur aujourd'hui dans les scripts de plugin).
+***REMOVED*** Police de repli (celle qui est codée en dur aujourd'hui dans les scripts de plugin).
 DEFAULT_FONT_KEY = "dejavu-sans-bold"
 
-# Polices EMBARQUÉES dans les images runtime — miroir de `_FONT_FILES` du script multiview.
-# Sert à alimenter un sélecteur (builtins + bibliothèque) sans interroger les conteneurs.
+***REMOVED*** Polices EMBARQUÉES dans les images runtime — miroir de `_FONT_FILES` du script multiview.
+***REMOVED*** Sert à alimenter un sélecteur (builtins + bibliothèque) sans interroger les conteneurs.
 BUILTIN_FONTS = [
     {"key": "dejavu-sans",          "name": "DejaVu Sans"},
     {"key": "dejavu-sans-bold",     "name": "DejaVu Sans Bold"},
@@ -88,7 +88,7 @@ BUILTIN_KEYS = {f["key"] for f in BUILTIN_FONTS}
 _KEY_RE = re.compile(r"^lib:([0-9a-f]{16})$")
 
 
-# ─── Clés & chemins ──────────────────────────────────────────
+***REMOVED*** ─── Clés & chemins ──────────────────────────────────────────
 
 def font_key(sha256):
     """Clé d'usage d'une police de la bibliothèque (celle stockée dans les configs)."""
@@ -108,7 +108,7 @@ def font_path(row):
     return os.path.join(FONTS_DIR, "%s.%s" % (row["sha256"], row.get("ext") or "ttf"))
 
 
-# ─── Bibliothèque ────────────────────────────────────────────
+***REMOVED*** ─── Bibliothèque ────────────────────────────────────────────
 
 def _public(row):
     """Ligne DB → objet d'API (sans le binaire)."""
@@ -150,14 +150,14 @@ def library_bytes():
     return sum(int(r.get("size") or 0) for r in db_list_fonts())
 
 
-# ─── Validation & ajout ──────────────────────────────────────
+***REMOVED*** ─── Validation & ajout ──────────────────────────────────────
 
 class FontError(ValueError):
     """Upload refusé (message destiné à l'utilisateur, déjà i18n-isé par l'appelant)."""
 
     def __init__(self, code, detail=""):
         super().__init__(code)
-        self.code = code          # clé i18n courte : too_big | bad_type | unreadable | library_full
+        self.code = code          ***REMOVED*** clé i18n courte : too_big | bad_type | unreadable | library_full
         self.detail = detail
 
 
@@ -169,8 +169,8 @@ def _probe(data):
     try:
         from PIL import ImageFont
         f = ImageFont.truetype(io.BytesIO(data), 24)
-        name = f.getname()          # (family, style)
-        f.getbbox("Ag0")            # rendu réel : une police tronquée échoue ici
+        name = f.getname()          ***REMOVED*** (family, style)
+        f.getbbox("Ag0")            ***REMOVED*** rendu réel : une police tronquée échoue ici
     except FontError:
         raise
     except Exception as e:
@@ -212,8 +212,8 @@ def add_font(data, filename="", created_by="", name=None):
     if library_bytes() + len(data) > MAX_LIBRARY_BYTES:
         raise FontError("library_full")
 
-    # Extension dérivée du CONTENU (jamais du nom fourni) ; le nom d'origine ne sert qu'à
-    # proposer un libellé lisible en repli, et n'est jamais utilisé comme chemin.
+    ***REMOVED*** Extension dérivée du CONTENU (jamais du nom fourni) ; le nom d'origine ne sert qu'à
+    ***REMOVED*** proposer un libellé lisible en repli, et n'est jamais utilisé comme chemin.
     ext = "ttc" if data[:4] == b"ttcf" else ("otf" if data[:4] == b"OTTO" else "ttf")
     label = (name or "").strip() or " ".join(x for x in (family, style) if x).strip()
     if not label:
@@ -249,7 +249,7 @@ def delete_font(key, force=False):
     return True, used
 
 
-# ─── Références (scan récursif des configs) ──────────────────
+***REMOVED*** ─── Références (scan récursif des configs) ──────────────────
 
 def collect_refs(obj, out=None):
     """Toutes les clés `lib:<sha16>` référencées quelque part dans une structure JSON
@@ -309,7 +309,7 @@ def usage(key):
     return out
 
 
-# ─── Distribution aux conteneurs (embarqué dans les params) ──
+***REMOVED*** ─── Distribution aux conteneurs (embarqué dans les params) ──
 
 def resolve_params(params):
     """Hook de déploiement : injecte `params["font_library"]` = les polices RÉELLEMENT
@@ -344,7 +344,7 @@ def resolve_params(params):
     return params
 
 
-# ─── Export / import (dédup par HASH) ────────────────────────
+***REMOVED*** ─── Export / import (dédup par HASH) ────────────────────────
 
 def export_bundle(obj):
     """Polices utilisées par `obj` (layout, modèle de PiP, projet…), embarquées :
@@ -386,8 +386,8 @@ def import_bundle(bundle, refs=(), created_by=""):
             continue
         real = hashlib.sha256(data).hexdigest()
         if declared and declared != real:
-            # Le hash annoncé ne correspond pas au contenu : on fait foi au CONTENU (le hash
-            # est l'identité), mais on le signale — export corrompu ou trafiqué.
+            ***REMOVED*** Le hash annoncé ne correspond pas au contenu : on fait foi au CONTENU (le hash
+            ***REMOVED*** est l'identité), mais on le signale — export corrompu ou trafiqué.
             warnings.append({"code": "font_hash_mismatch", "name": ent.get("name") or ""})
         src_key = font_key(declared) if declared else font_key(real)
         try:
@@ -403,9 +403,9 @@ def import_bundle(bundle, refs=(), created_by=""):
     for key in sorted(set(refs) | set()):
         if not is_library_key(key) or key in mapping:
             continue
-        row = resolve(key)                       # déjà en bibliothèque (export sans binaire)
+        row = resolve(key)                       ***REMOVED*** déjà en bibliothèque (export sans binaire)
         if row:
             mapping[key] = font_key(row["sha256"])
         else:
-            warnings.append({"code": "missing_font", "key": key})   # → repli DejaVu
+            warnings.append({"code": "missing_font", "key": key})   ***REMOVED*** → repli DejaVu
     return {"mapping": mapping, "added": added, "reused": reused, "warnings": warnings}

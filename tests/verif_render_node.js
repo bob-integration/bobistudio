@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+***REMOVED***!/usr/bin/env node
 // Détecte les LOCALES ORPHELINES de `renderNode` (page Câbles) — un usage qui a survécu à sa
 // déclaration après un retrait de code.
 //
@@ -23,8 +23,8 @@
 //
 // La matrice couvre les formes du parc, `fps_nominal` absent EN TÊTE : c'est le cas qui cassait.
 //
-//   node tools/verif_render_node.js                 # le gabarit courant
-//   node tools/verif_render_node.js <cables.html>    # une autre version (bissection)
+//   node tools/verif_render_node.js                 ***REMOVED*** le gabarit courant
+//   node tools/verif_render_node.js <cables.html>    ***REMOVED*** une autre version (bissection)
 
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const cible = process.argv[2] || path.join(__dirname, '..', 'templates', 'cables.html');

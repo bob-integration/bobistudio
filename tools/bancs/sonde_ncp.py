@@ -1,24 +1,24 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# Sonde MS-05-02 : lit le modèle de contrôle d'un appareil TIERS par IS-14, et sait le piloter.
-#
-# À QUOI ÇA SERT. En salle d'interopérabilité, la première question est toujours « qu'est-ce que
-# ton appareil expose, exactement ? ». Cet outil répond sans rien savoir de l'implémentation du
-# pair : il part de son Node IS-04, y trouve le point de contrôle ANNONCÉ dans `controls[]`, et
-# parcourt le modèle. Aucune URL n'est devinée — un appareil qui n'annonce pas son point de
-# contrôle n'en a pas, et fabriquer l'adresse à sa place produirait des 404 pris pour des pannes.
-#
-#   # inventaire du modèle d'un pair (lecture seule)
-#   $ ./venv/bin/python tools/sonde_ncp.py http://10.0.0.9:5000
-#
-#   # un objet en particulier
-#   $ ./venv/bin/python tools/sonde_ncp.py http://10.0.0.9:5000 --objet root.plugins.plugin_42
-#
-#   # écrire une propriété / invoquer une méthode (⚠ MUTE le pair)
-#   $ ./venv/bin/python tools/sonde_ncp.py <base> --objet <chemin> --ecrire 3p3=37
-#   $ ./venv/bin/python tools/sonde_ncp.py <base> --objet <chemin> --invoquer 3m1 --args '{}'
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** Sonde MS-05-02 : lit le modèle de contrôle d'un appareil TIERS par IS-14, et sait le piloter.
+***REMOVED***
+***REMOVED*** À QUOI ÇA SERT. En salle d'interopérabilité, la première question est toujours « qu'est-ce que
+***REMOVED*** ton appareil expose, exactement ? ». Cet outil répond sans rien savoir de l'implémentation du
+***REMOVED*** pair : il part de son Node IS-04, y trouve le point de contrôle ANNONCÉ dans `controls[]`, et
+***REMOVED*** parcourt le modèle. Aucune URL n'est devinée — un appareil qui n'annonce pas son point de
+***REMOVED*** contrôle n'en a pas, et fabriquer l'adresse à sa place produirait des 404 pris pour des pannes.
+***REMOVED***
+***REMOVED***   ***REMOVED*** inventaire du modèle d'un pair (lecture seule)
+***REMOVED***   $ ./venv/bin/python tools/sonde_ncp.py http://10.0.0.9:5000
+***REMOVED***
+***REMOVED***   ***REMOVED*** un objet en particulier
+***REMOVED***   $ ./venv/bin/python tools/sonde_ncp.py http://10.0.0.9:5000 --objet root.plugins.plugin_42
+***REMOVED***
+***REMOVED***   ***REMOVED*** écrire une propriété / invoquer une méthode (⚠ MUTE le pair)
+***REMOVED***   $ ./venv/bin/python tools/sonde_ncp.py <base> --objet <chemin> --ecrire 3p3=37
+***REMOVED***   $ ./venv/bin/python tools/sonde_ncp.py <base> --objet <chemin> --invoquer 3m1 --args '{}'
 import argparse
 import json
 import os
@@ -27,7 +27,7 @@ import sys
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 
-from services.nmos import client_ncp as cl                          # noqa: E402
+from services.nmos import client_ncp as cl                          ***REMOVED*** noqa: E402
 
 
 def _base(cible):

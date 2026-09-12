@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Build de distribution + mise à jour entre instances (pull/push, identité publique)."""
 
@@ -12,13 +12,13 @@ from flask import jsonify, request, Response, send_file, abort
 from . import bp
 from ..auth import require_perm, require_login
 
-# Le nœud Proxmox télécharge le bootstrap + le zip sans session : routes PUBLIQUES,
-# gardées par le réglage install_hosting_enabled. Le zip est nettoyé de tout secret
-# par app.builder (garde-fou). One-liner : bash <(curl -fsSL http://<host>/install.sh)
+***REMOVED*** Le nœud Proxmox télécharge le bootstrap + le zip sans session : routes PUBLIQUES,
+***REMOVED*** gardées par le réglage install_hosting_enabled. Le zip est nettoyé de tout secret
+***REMOVED*** par app.builder (garde-fou). One-liner : bash <(curl -fsSL http://<host>/install.sh)
 
 _INSTALL_FILES = {
-    "install.py":         "text/x-python",   # installeur unifié (menu : nœud / orchestrateur / …)
-    "install_proxmox.py": "text/x-python",   # flux legacy Proxmox (délégué par install.py)
+    "install.py":         "text/x-python",   ***REMOVED*** installeur unifié (menu : nœud / orchestrateur / …)
+    "install_proxmox.py": "text/x-python",   ***REMOVED*** flux legacy Proxmox (délégué par install.py)
     "bobistudio.zip":     "application/zip",
 }
 
@@ -32,7 +32,7 @@ def install_sh():
         abort(404)
     base = request.host_url.rstrip("/")
     script = (
-        "#!/usr/bin/env bash\n"
+        "***REMOVED***!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         f'BASE="${{BOBI_BASE:-{base}}}"\n'
         'TMP="$(mktemp -d)"; cd "$TMP"\n'
@@ -82,7 +82,7 @@ def api_build():
         return jsonify({"ok": False, "error": str(e)}), 500
     return jsonify(res)
 
-# ─── Mise à jour entre instances (pull / push) ────────────────────────────────
+***REMOVED*** ─── Mise à jour entre instances (pull / push) ────────────────────────────────
 
 def _update_token_ok():
     """Vrai si le mode serveur est actif et le token de la requête correspond."""
@@ -119,8 +119,8 @@ def update_core():
     """
     from .. import catalogue
     from ..version import VERSION
-    # `?force=1` : même convention que /api/catalogue. C'est ce que demande le bouton
-    # « Relire les publications » — sans quoi il rafraîchirait la liste et pas le cœur.
+    ***REMOVED*** `?force=1` : même convention que /api/catalogue. C'est ce que demande le bouton
+    ***REMOVED*** « Relire les publications » — sans quoi il rafraîchirait la liste et pas le cœur.
     force = (request.args.get("force") or "") in ("1", "true", "yes")
     dispo, info = catalogue.maj_core_disponible(force=force)
     return jsonify({"version_installee": VERSION, "disponible": dispo, "derniere": info})

@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
 
 """
 v210_slice_bench — banc jetable PLANAR vs V210 sur le VRAI bus MXL en mode TRANCHE.
@@ -32,8 +32,8 @@ Mesures :
 Usage (DANS un conteneur bobi-compute ≥ 0.10, domaine ISOLÉ hors prod) :
   python3 v210_slice_bench.py run --fmt planar8 --seconds 20
   python3 v210_slice_bench.py run --fmt v210x10 --seconds 20
-  python3 v210_slice_bench.py all --seconds 20          # les 4 formats, JSON final agrégé
-  python3 v210_slice_bench.py gc                        # nettoie le domaine du banc
+  python3 v210_slice_bench.py all --seconds 20          ***REMOVED*** les 4 formats, JSON final agrégé
+  python3 v210_slice_bench.py gc                        ***REMOVED*** nettoie le domaine du banc
 
 Caveat de représentativité : le « travail utile » est un blend 50/50 par bande (1 op numpy) —
 un étage réel (multiview compose mvk, correction colo) travaille plus, ce qui DILUE le surcoût
@@ -52,17 +52,17 @@ import time
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import bobimxl  # noqa: E402
+import bobimxl  ***REMOVED*** noqa: E402
 
 W, H, FPS = 1920, 1080, 50
-BAND_LINES = 36                    # = slice_lines prod (tissu en tranches)
-NB = H // BAND_LINES               # 30 bandes
+BAND_LINES = 36                    ***REMOVED*** = slice_lines prod (tissu en tranches)
+NB = H // BAND_LINES               ***REMOVED*** 30 bandes
 DOMAIN_DEFAULT = "/dev/shm/mxl-bench-v210"
 
-# En-tête posé en tête de CHAQUE bande (écrase les 20 premiers octets du payload de la bande —
-# sans importance : le banc mesure des temps, la bit-exactitude est prouvée par v210_selftest) :
-# uint64 seq | uint32 bande | uint64 ts_ns (CLOCK_REALTIME juste avant le commit CHEZ LA SOURCE,
-# recopié verbatim par l'étage → le sink mesure la latence de CHAÎNE src→stage→sink).
+***REMOVED*** En-tête posé en tête de CHAQUE bande (écrase les 20 premiers octets du payload de la bande —
+***REMOVED*** sans importance : le banc mesure des temps, la bit-exactitude est prouvée par v210_selftest) :
+***REMOVED*** uint64 seq | uint32 bande | uint64 ts_ns (CLOCK_REALTIME juste avant le commit CHEZ LA SOURCE,
+***REMOVED*** recopié verbatim par l'étage → le sink mesure la latence de CHAÎNE src→stage→sink).
 _HDR = struct.Struct("<QIQ")
 
 FMTS = ("planar8", "planar10", "v210x8", "v210x10")
@@ -87,7 +87,7 @@ def _band_bytes(fmt):
 
 
 def _total_slices(fmt):
-    # v210 stock : 1 slice par LIGNE ; planar patché : N tranches (slice_height).
+    ***REMOVED*** v210 stock : 1 slice par LIGNE ; planar patché : N tranches (slice_height).
     return H if _is_v210(fmt) else NB
 
 
@@ -132,7 +132,7 @@ def _emit(tag, obj):
     print("JSON %s %s" % (tag, json.dumps(obj)), flush=True)
 
 
-# ---------------------------------------------------------------------------- src
+***REMOVED*** ---------------------------------------------------------------------------- src
 
 def cmd_src(args):
     fmt = args.fmt
@@ -140,14 +140,14 @@ def cmd_src(args):
     w = _make_writer(inst, args.name, fmt)
     period = 1.0 / FPS
     bb = _band_bytes(fmt)
-    # Contenu pré-généré (2 jeux alternés pour ne pas mesurer la génération) : bandes planar
-    # contiguës — la source planar memcpy sa bande, la source v210 la PACKE (SIMD, zéro-copie
-    # vers la vue grain) : c'est exactement le travail d'un producteur dans chaque monde.
+    ***REMOVED*** Contenu pré-généré (2 jeux alternés pour ne pas mesurer la génération) : bandes planar
+    ***REMOVED*** contiguës — la source planar memcpy sa bande, la source v210 la PACKE (SIMD, zéro-copie
+    ***REMOVED*** vers la vue grain) : c'est exactement le travail d'un producteur dans chaque monde.
     bands = [[_band_planar(fmt, s * 1000 + i) for i in range(NB)] for s in (0, 1)]
     bands_u8 = [[b.view(np.uint8).reshape(-1) for b in s] for s in bands]
     deadline = time.monotonic() + args.seconds
     seq = late = 0
-    work_ns = []            # travail producteur par TRAME (memcpy/pack, hors attente)
+    work_ns = []            ***REMOVED*** travail producteur par TRAME (memcpy/pack, hors attente)
     t0 = time.monotonic()
     while time.monotonic() < deadline:
         frame_start = t0 + seq * period
@@ -157,7 +157,7 @@ def cmd_src(args):
                              f"(fmt={fmt}) — libmxl sans le patch attendu ?")
         acc = 0
         for i in range(NB):
-            avail = frame_start + (i + 1) * period / NB   # arrivée « ligne à ligne » (modèle RX)
+            avail = frame_start + (i + 1) * period / NB   ***REMOVED*** arrivée « ligne à ligne » (modèle RX)
             slack = avail - time.monotonic()
             if slack > 0:
                 time.sleep(slack)
@@ -185,7 +185,7 @@ def cmd_src(args):
                                            "max": round(mx, 3)}})
 
 
-# ---------------------------------------------------------------------------- stage
+***REMOVED*** ---------------------------------------------------------------------------- stage
 
 def cmd_stage(args):
     fmt = args.fmt
@@ -195,7 +195,7 @@ def cmd_stage(args):
     rb = _open_reader(inst, args.name + "-b")
     w = _make_writer(inst, args.name + "-out", fmt)
     bb = _band_bytes(fmt)
-    # Scratchs par bande (préalloués : rien d'autre que le travail dans la boucle chaude).
+    ***REMOVED*** Scratchs par bande (préalloués : rien d'autre que le travail dans la boucle chaude).
     dt = np.uint8 if bd <= 8 else np.uint16
     npx = bobimxl.frame_bytes(W, BAND_LINES, "422", bd) // dt().nbytes
     bufA = np.empty(npx, dtype=dt)
@@ -203,7 +203,7 @@ def cmd_stage(args):
     bufO = np.empty(npx, dtype=dt)
     deadline = time.monotonic() + args.seconds
     frames = stalls = 0
-    work_ns = []            # travail par TRAME : (unpack×2 + blend + pack) | blend seul
+    work_ns = []            ***REMOVED*** travail par TRAME : (unpack×2 + blend + pack) | blend seul
     idx = ra.head_index()
     idx = 0 if idx == bobimxl.MXL_UNDEFINED_INDEX else idx + 1
     while time.monotonic() < deadline:
@@ -218,19 +218,19 @@ def cmd_stage(args):
                 stalls += 1
                 head = ra.head_index()
                 if head != bobimxl.MXL_UNDEFINED_INDEX and head > idx:
-                    break              # la source est déjà plus loin : trame abandonnée
+                    break              ***REMOVED*** la source est déjà plus loin : trame abandonnée
                 if time.monotonic() >= deadline:
                     break
                 continue
             _, _, va = ga
             _, _, vb = gb
             b0 = i * bb
-            hdr = bytes(va[b0:b0 + _HDR.size])      # ts source recopié verbatim
+            hdr = bytes(va[b0:b0 + _HDR.size])      ***REMOVED*** ts source recopié verbatim
             t1 = time.perf_counter_ns()
             if _is_v210(fmt):
                 bobimxl.v210_unpack(va[b0:b0 + bb], W, BAND_LINES, bd, out=bufA)
                 bobimxl.v210_unpack(vb[b0:b0 + bb], W, BAND_LINES, bd, out=bufB)
-                np.add(bufA >> 1, bufB >> 1, out=bufO)          # travail utile (identique)
+                np.add(bufA >> 1, bufB >> 1, out=bufO)          ***REMOVED*** travail utile (identique)
                 bobimxl.v210_pack(bufO, W, BAND_LINES, bd, out=oview[b0:b0 + bb])
             else:
                 a = va[b0:b0 + bb].view(dt)
@@ -244,7 +244,7 @@ def cmd_stage(args):
             frames += 1
             work_ns.append(acc)
         else:
-            w.commit(ogi)   # grain incomplet : marqué complet pour ne pas bloquer le ring
+            w.commit(ogi)   ***REMOVED*** grain incomplet : marqué complet pour ne pas bloquer le ring
             head = ra.head_index()
             if head != bobimxl.MXL_UNDEFINED_INDEX and head > idx:
                 idx = head
@@ -257,7 +257,7 @@ def cmd_stage(args):
                                 "max": round(mx, 3)}})
 
 
-# ---------------------------------------------------------------------------- sink
+***REMOVED*** ---------------------------------------------------------------------------- sink
 
 def cmd_sink(args):
     fmt = args.fmt
@@ -295,11 +295,11 @@ def cmd_sink(args):
                 b0 = j * bb
                 seq, band, wts = _HDR.unpack_from(view, b0)
                 if band != j:
-                    continue                        # grain recyclé — mesure écartée
+                    continue                        ***REMOVED*** grain recyclé — mesure écartée
                 lat.append((t_obs - wts) / 1e6)
                 if j == NB - 1:
                     lat_last.append((t_obs - wts) / 1e6)
-                if _is_v210(fmt):                   # coût consommateur : dé-packing SIMD
+                if _is_v210(fmt):                   ***REMOVED*** coût consommateur : dé-packing SIMD
                     t1 = time.perf_counter_ns()
                     bobimxl.v210_unpack(view[b0:b0 + bb], W, BAND_LINES, bd, out=scratch)
                     unpack_ns.append(time.perf_counter_ns() - t1)
@@ -321,7 +321,7 @@ def cmd_sink(args):
                    "consumer_unpack_ms_per_frame": round(u50 * NB, 3) if unpack_ns else 0.0})
 
 
-# ---------------------------------------------------------------------------- run / all
+***REMOVED*** ---------------------------------------------------------------------------- run / all
 
 def _spawn(role, args, extra):
     cmd = [sys.executable, os.path.abspath(__file__), role,

@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Bobi.Studio — Installeur unifié (sans Proxmox)
@@ -47,9 +47,9 @@ REVERSE = "\033[7m"
 
 APP_DIR = "/opt/bobistudio"
 NODE_SRC = "/opt/bobi-node-src"
-BACK = object()   # sentinelle « revenir en arrière »
+BACK = object()   ***REMOVED*** sentinelle « revenir en arrière »
 
-# ─── i18n minimal de l'installeur (stdlib, pas de dépendance) ────────────────
+***REMOVED*** ─── i18n minimal de l'installeur (stdlib, pas de dépendance) ────────────────
 LANG = "fr"
 STR = {
     "fr": {
@@ -92,7 +92,7 @@ STR = {
         "del_fallback": "absent de l'archive — on utilise la copie installée : {d}",
         "del_done": "Retrait terminé.",
         "del_failed": "Le retrait a signalé une erreur — relire la sortie ci-dessus.",
-        # nœud
+        ***REMOVED*** nœud
         "h_node": "Nœud de process",
         "caps_title": "Capacités du nœud — cochez avec Espace",
         "cap_compute_d": "Traitements numpy (mixer, multiview, UDC, correcteur…).",
@@ -112,14 +112,14 @@ STR = {
                          "Réglages → Déploiement → Nœuds). Rien d'autre à saisir.",
         "io2110_pending": "io2110 : choisis la carte E810 et active le PTP depuis l'orchestrateur "
                           "(Réglages → Déploiement → Nœuds) une fois le nœud enrôlé.",
-        # contrôleur
+        ***REMOVED*** contrôleur
         "h_ctrl": "Orchestrateur (contrôleur Flask)",
         "ctrl_exists": "{d} contient déjà du code — mettre à jour (config/DB conservées) ?",
         "code_deployed": "Code déployé dans {d}",
         "ctrl_ready": "Orchestrateur prêt.",
         "access": "Accès : {url}  (créer le compte admin à la 1ʳᵉ visite)",
         "aio_ready": "Tout-en-un prêt (orchestrateur + nœud local).",
-        # deps / service
+        ***REMOVED*** deps / service
         "h_deps": "Dépendances (Python, venv, paquets système)",
         "apt_update": "apt-get update…", "apt_install": "Installation des paquets système…",
         "apt_offline": "Installation des paquets système (bundle hors-ligne)…",
@@ -135,7 +135,7 @@ STR = {
         "cfg_written": "config_local.py écrit (sans Proxmox)",
         "agent_local_ok": "Agent local enregistré (127.0.0.1:9100)",
         "agent_local_bad": "Agent local à enregistrer depuis l'UI (Réglages → Déploiement → Nœuds).",
-        # erreurs
+        ***REMOVED*** erreurs
         "e_aptupdate": "apt-get update a échoué.", "e_aptinstall": "apt-get install a échoué.",
         "e_venv": "Création du venv échouée.", "e_pip": "pip install a échoué.",
         "e_initdb": "init_db() a échoué.", "e_zip": "bobistudio.zip introuvable à côté de l'installeur ({d}).",
@@ -281,10 +281,10 @@ def _banner():
     print(f"  {CYAN}{BOLD}╚{bar}╝{R}")
 
 
-# ─── Navigation clavier (mode brut termios/tty) ──────────────────────────────
+***REMOVED*** ─── Navigation clavier (mode brut termios/tty) ──────────────────────────────
 def _interactive():
     try:
-        import termios  # noqa: F401
+        import termios  ***REMOVED*** noqa: F401
         return sys.stdin.isatty() and sys.stdout.isatty()
     except Exception:
         return False
@@ -317,16 +317,16 @@ def _read_key():
         return "enter"
     if ch == b" ":
         return "space"
-    if ch in (b"\x03", b"\x04"):          # Ctrl-C / Ctrl-D
+    if ch in (b"\x03", b"\x04"):          ***REMOVED*** Ctrl-C / Ctrl-D
         return "quit"
-    if ch in (b"\x7f", b"\x08"):          # Backspace = retour
+    if ch in (b"\x7f", b"\x08"):          ***REMOVED*** Backspace = retour
         return "back"
-    if ch == b"\x1b":                     # séquence d'échappement (flèches) ou ESC seul
+    if ch == b"\x1b":                     ***REMOVED*** séquence d'échappement (flèches) ou ESC seul
         r, _, _ = select.select([fd], [], [], 0.05)
         if not r:
             return "back"
         seq = os.read(fd, 2)
-        if seq[:1] in (b"[", b"O") and len(seq) == 1:   # 'A'..'D' arrivé en retard
+        if seq[:1] in (b"[", b"O") and len(seq) == 1:   ***REMOVED*** 'A'..'D' arrivé en retard
             seq += os.read(fd, 1)
         return {b"[A": "up", b"[B": "down", b"[C": "right", b"[D": "left",
                 b"OA": "up", b"OB": "down", b"OC": "right", b"OD": "left"}.get(seq, "other")
@@ -348,11 +348,11 @@ class _AltScreen:
 
 
 _ANSI = re.compile(r"\033\[[0-9;?]*[A-Za-z]")
-def _vlen(s):  return len(_ANSI.sub("", s))                       # longueur visible (sans ANSI)
-def _pad(s, w): return s + " " * max(0, w - _vlen(s))            # complète à droite
-def _center(s, w):                                              # centre dans w colonnes
+def _vlen(s):  return len(_ANSI.sub("", s))                       ***REMOVED*** longueur visible (sans ANSI)
+def _pad(s, w): return s + " " * max(0, w - _vlen(s))            ***REMOVED*** complète à droite
+def _center(s, w):                                              ***REMOVED*** centre dans w colonnes
     return " " * max(0, (w - _vlen(s)) // 2) + s
-def _trunc(s, w):                                               # tronque le texte brut (… si trop long)
+def _trunc(s, w):                                               ***REMOVED*** tronque le texte brut (… si trop long)
     s = s or ""
     return s if len(s) <= w else s[:max(0, w - 1)] + "…"
 
@@ -387,7 +387,7 @@ def _menu_lines(title, items, idx, checks=None, multi=False, allow_back=True, wi
 def _frame(body_lines, color=CYAN):
     """Dessine un panneau plein écran : bannière + corps, encadré et centré (H et V)."""
     cols, rows = _term_size()
-    iw = min(max(cols - 6, 32), 74)                  # largeur intérieure du cadre
+    iw = min(max(cols - 6, 32), 74)                  ***REMOVED*** largeur intérieure du cadre
     banner = [
         "",
         _center(f"{WHITE}{BOLD}B O B I . S T U D I O{R}", iw - 2),
@@ -461,7 +461,7 @@ def menu_multi(title, items, preselected=None, allow_back=True):
     print(); bail(t("cancelled"))
 
 
-# Replis hors-TTY (sortie tuyautée / pas de terminal) ─────────────────────────
+***REMOVED*** Replis hors-TTY (sortie tuyautée / pas de terminal) ─────────────────────────
 def _select_fallback(title, items, default, allow_back):
     print(f"\n  {BOLD}{title}{R}")
     for i, (key, label, desc) in enumerate(items):
@@ -513,7 +513,7 @@ def _input_lines(prompt, buf, default, secret, allow_back, help=None, width=70):
         field = f"{DIM}{_trunc(str(default), iw - 4)}{R}"
     else:
         field = ""
-    lines.append(f"{CYAN}❯{R} {field}{REVERSE} {R}")          # bloc inversé = faux curseur
+    lines.append(f"{CYAN}❯{R} {field}{REVERSE} {R}")          ***REMOVED*** bloc inversé = faux curseur
     lines += ["", f"{DIM}{t('nav_input_back') if allow_back else t('nav_input')}{R}"]
     return lines
 
@@ -528,7 +528,7 @@ def ask(prompt, default=None, secret=False, required=True, allow_back=False, hel
         while True:
             _frame(_input_lines(prompt, buf, default, secret, allow_back, help, width=_panel_width()))
             ch = os.read(fd, 1)
-            if not ch or ch in (b"\x03", b"\x04"):            # EOF / Ctrl-C / Ctrl-D
+            if not ch or ch in (b"\x03", b"\x04"):            ***REMOVED*** EOF / Ctrl-C / Ctrl-D
                 break
             if ch in (b"\r", b"\n"):
                 val = buf.decode("utf-8", "ignore").strip()
@@ -539,20 +539,20 @@ def ask(prompt, default=None, secret=False, required=True, allow_back=False, hel
                 if not required:
                     return ""
                 continue
-            if ch in (b"\x7f", b"\x08"):                      # Backspace
+            if ch in (b"\x7f", b"\x08"):                      ***REMOVED*** Backspace
                 buf = _utf8_pop(buf)
-            elif ch == b"\x15":                               # Ctrl-U : efface la ligne
+            elif ch == b"\x15":                               ***REMOVED*** Ctrl-U : efface la ligne
                 buf = b""
-            elif ch == b"\x1b":                               # Échap seul = retour ; flèches ignorées (← = retour)
+            elif ch == b"\x1b":                               ***REMOVED*** Échap seul = retour ; flèches ignorées (← = retour)
                 r, _, _ = select.select([fd], [], [], 0.05)
                 if not r:
                     if allow_back:
                         return BACK
                     continue
                 seq = os.read(fd, 2)
-                if seq == b"[D" and allow_back:               # flèche gauche
+                if seq == b"[D" and allow_back:               ***REMOVED*** flèche gauche
                     return BACK
-            elif ch >= b"\x20":                               # caractère imprimable / octet UTF-8
+            elif ch >= b"\x20":                               ***REMOVED*** caractère imprimable / octet UTF-8
                 buf += ch
     print(); bail(t("cancelled"))
 
@@ -585,12 +585,12 @@ def ask_yn_menu(prompt, default=False, allow_back=True):
     return sel
 
 
-# ─── Archive / système ───────────────────────────────────────────────────────
-# Deux sources possibles, et une seule notion en aval : la SOURCE. Historiquement c'était un zip
-# (paquet de distribution, servi par un orchestrateur déjà installé). Depuis `get.sh`, ce peut être
-# un ARBRE déjà déplié — les archives récupérées depuis GitHub par simple curl, sans git ni zip.
-# On ne duplique pas le chemin d'installation pour autant : tout ce qui suit manipule « la source »
-# et ne sait pas d'où elle vient.
+***REMOVED*** ─── Archive / système ───────────────────────────────────────────────────────
+***REMOVED*** Deux sources possibles, et une seule notion en aval : la SOURCE. Historiquement c'était un zip
+***REMOVED*** (paquet de distribution, servi par un orchestrateur déjà installé). Depuis `get.sh`, ce peut être
+***REMOVED*** un ARBRE déjà déplié — les archives récupérées depuis GitHub par simple curl, sans git ni zip.
+***REMOVED*** On ne duplique pas le chemin d'installation pour autant : tout ce qui suit manipule « la source »
+***REMOVED*** et ne sait pas d'où elle vient.
 def _find_source():
     """(kind, chemin) — 'zip' si un bobistudio.zip est à côté de l'installeur, sinon 'tree' si
     l'installeur vit DANS un arbre source complet. Sort en erreur sinon.
@@ -607,8 +607,8 @@ def _find_source():
             if not any(n == "main.py" or n.endswith("/main.py") for n in zf.namelist()):
                 bail(t("e_zipbad"))
         return ("zip", z)
-    # Les trois marqueurs qui distinguent une source complète d'un dossier quelconque. On regarde
-    # le parent d'abord (disposition normale), puis `here` (installeur posé à la racine, hérité).
+    ***REMOVED*** Les trois marqueurs qui distinguent une source complète d'un dossier quelconque. On regarde
+    ***REMOVED*** le parent d'abord (disposition normale), puis `here` (installeur posé à la racine, hérité).
     for racine in (os.path.dirname(here), here):
         if all(os.path.exists(os.path.join(racine, x))
                for x in ("main.py", "app", os.path.join("node_agent", "install-node.sh"))):
@@ -616,10 +616,10 @@ def _find_source():
     bail(t("e_zip", d=here))
 
 
-# Ce qui ne doit JAMAIS voyager vers /opt/bobistudio : l'historique git (lourd, et il porte des
-# identités), le venv de la machine d'origine (chemins absolus figés → venv cassé), les artefacts
-# de build et les caches. La base et la conf de site n'y sont pas non plus : elles appartiennent à
-# la machine cible, pas à la source.
+***REMOVED*** Ce qui ne doit JAMAIS voyager vers /opt/bobistudio : l'historique git (lourd, et il porte des
+***REMOVED*** identités), le venv de la machine d'origine (chemins absolus figés → venv cassé), les artefacts
+***REMOVED*** de build et les caches. La base et la conf de site n'y sont pas non plus : elles appartiennent à
+***REMOVED*** la machine cible, pas à la source.
 _EXCLUS_ARBRE = {".git", ".github", "venv", "dist", "__pycache__", ".claude", "node_iso_cache",
                  "pxe_root", "backups", "config_local.py", "db_bobistudio.db"}
 
@@ -632,7 +632,7 @@ def _extract(src, dest):
             zf.extractall(dest)
         return
     if os.path.abspath(src) == os.path.abspath(dest):
-        return                      # déjà en place (arbre déplié directement dans la destination)
+        return                      ***REMOVED*** déjà en place (arbre déplié directement dans la destination)
     for nom in os.listdir(src):
         if nom in _EXCLUS_ARBRE or nom.endswith(".pyc"):
             continue
@@ -688,8 +688,8 @@ def _hdr(title):
     print(f"  {CYAN}{_line()}{R}")
 
 
-# ─── Étapes bare (transposition de install_proxmox.step5/step6, sans pct_exec) ───
-# Paquets système (miroir de app/offline_bundle.APT_PACKAGES + python3 de base).
+***REMOVED*** ─── Étapes bare (transposition de install_proxmox.step5/step6, sans pct_exec) ───
+***REMOVED*** Paquets système (miroir de app/offline_bundle.APT_PACKAGES + python3 de base).
 APT_PACKAGES = ["python3", "python3-venv", "python3-pip",
                 "ffmpeg", "rsync", "curl", "cifs-utils", "nfs-common"]
 
@@ -709,11 +709,11 @@ def _install_debs_offline(debs_dir):
                 "-o", "Dir::Etc::sourceparts=-",
                 "-o", "APT::Get::List-Cleanup=0"]
     try:
-        # Indexer UNIQUEMENT le dépôt local : aucune source réseau n'est connue de ces commandes,
-        # donc l'install est hors-ligne de fait (une dép absente → erreur nette, jamais de réseau).
-        # NE PAS passer --no-download : sur un dépôt file://, il fait passer un chemin RELATIF à
-        # dpkg (« Pathname to install is not absolute ») quand le .deb n'est pas déjà en cache.
-        # Sans le flag, apt recopie le .deb localement (pas de réseau) et l'installe correctement.
+        ***REMOVED*** Indexer UNIQUEMENT le dépôt local : aucune source réseau n'est connue de ces commandes,
+        ***REMOVED*** donc l'install est hors-ligne de fait (une dép absente → erreur nette, jamais de réseau).
+        ***REMOVED*** NE PAS passer --no-download : sur un dépôt file://, il fait passer un chemin RELATIF à
+        ***REMOVED*** dpkg (« Pathname to install is not absolute ») quand le .deb n'est pas déjà en cache.
+        ***REMOVED*** Sans le flag, apt recopie le .deb localement (pas de réseau) et l'installe correctement.
         run(["apt-get"] + apt_opts + ["update"], check=False)
         rc = run_stream(["env", "DEBIAN_FRONTEND=noninteractive", "apt-get"] + apt_opts
                         + ["install", "-y", "--no-install-recommends"]
@@ -733,7 +733,7 @@ def install_deps_bare(dest):
     offline_wheels = glob.glob(os.path.join(wheels_dir, "*.whl"))
     offline_debs = glob.glob(os.path.join(debs_dir, "*.deb"))
 
-    # ── Paquets système : bundle hors-ligne si présent, sinon apt en ligne ──
+    ***REMOVED*** ── Paquets système : bundle hors-ligne si présent, sinon apt en ligne ──
     if offline_debs:
         info(t("apt_offline"))
         if not _install_debs_offline(debs_dir):
@@ -753,7 +753,7 @@ def install_deps_bare(dest):
     if run(["python3", "-m", "venv", venv], check=False)[0] != 0:
         bail(t("e_venv"))
 
-    # ── Roues Python : embarquées (hors-ligne) si présentes, sinon PyPI en ligne ──
+    ***REMOVED*** ── Roues Python : embarquées (hors-ligne) si présentes, sinon PyPI en ligne ──
     if offline_wheels:
         info(t("pip_offline"))
         rc = run_stream([f"{venv}/bin/python", "-m", "pip", "install", "--quiet",
@@ -796,14 +796,14 @@ def install_clock_bare(dest):
         return
     os.makedirs("/etc/chrony/conf.d", exist_ok=True)
     with open("/etc/chrony/conf.d/bobi-tai.conf", "w") as f:
-        f.write("# Bobi.Studio — offset TAI du noyau (cf. INSTALL.md).\n"
-                "# Sans table de secondes intercalaires, le noyau garde tai_offset=0 et CLOCK_TAI\n"
-                "# vaut l'UTC : 37 s d'écart avec la grille média, et rien ne le signale.\n"
+        f.write("***REMOVED*** Bobi.Studio — offset TAI du noyau (cf. INSTALL.md).\n"
+                "***REMOVED*** Sans table de secondes intercalaires, le noyau garde tai_offset=0 et CLOCK_TAI\n"
+                "***REMOVED*** vaut l'UTC : 37 s d'écart avec la grille média, et rien ne le signale.\n"
                 "leapseclist /usr/share/zoneinfo/leap-seconds.list\n")
     run(["systemctl", "disable", "--now", "systemd-timesyncd"], check=False)
     run(["systemctl", "restart", "chrony"], check=False)
-    # On VÉRIFIE au lieu de supposer — mais chrony ne pose l'offset qu'APRÈS sa première synchro :
-    # mesurer aussitôt donnerait 0 sur une machine parfaitement saine (constaté en recette).
+    ***REMOVED*** On VÉRIFIE au lieu de supposer — mais chrony ne pose l'offset qu'APRÈS sa première synchro :
+    ***REMOVED*** mesurer aussitôt donnerait 0 sur une machine parfaitement saine (constaté en recette).
     run(["chronyc", "waitsync", "6", "0", "0", "5"], check=False)
     tai = None
     for _ in range(6):
@@ -851,8 +851,8 @@ def write_config_local(dest):
         return
     with open(path, "w") as f:
         f.write(textwrap.dedent('''\
-            # Généré par install.py — déploiement SANS Proxmox.
-            # Proxmox vide → l'orchestrateur build les images en local (pas de nœud hyperviseur).
+            ***REMOVED*** Généré par install.py — déploiement SANS Proxmox.
+            ***REMOVED*** Proxmox vide → l'orchestrateur build les images en local (pas de nœud hyperviseur).
             PROXMOX_HOST  = ""
             PROXMOX_NODE  = ""
             PROXMOX_TOKEN = ""
@@ -860,7 +860,7 @@ def write_config_local(dest):
     ok(t("cfg_written"))
 
 
-# ─── Chemin 1 : nœud de process (agent seul) ─────────────────────────────────
+***REMOVED*** ─── Chemin 1 : nœud de process (agent seul) ─────────────────────────────────
 def _cap_items():
     return [
         ("compute", "compute", t("cap_compute_d")),
@@ -888,7 +888,7 @@ def _enroll(controller_url, token, caps_local):
         warn(t("enroll_err", e=ex))
         return None
     args = ["--with", ",".join(prof.get("capabilities") or caps_local)]
-    args += ["--controller-url", controller_url]                 # l'agent retient son contrôleur
+    args += ["--controller-url", controller_url]                 ***REMOVED*** l'agent retient son contrôleur
     parent = ice or mgmt
     vlan = prof.get("macvlan_vlan")
     if parent and vlan:
@@ -900,8 +900,8 @@ def _enroll(controller_url, token, caps_local):
                ("--mtl-iface", ice), ("--ptp-domain", prof.get("ptp_domain")),
                ("--hugepages", prof.get("hugepages")), ("--lcores", prof.get("lcores")),
                ("--registry", prof.get("registry")),
-               # Tags d'images RÉELS fournis par le contrôleur (meta.json) : sans eux l'installeur
-               # retombe sur ses défauts codés en dur, périmés depuis longtemps.
+               ***REMOVED*** Tags d'images RÉELS fournis par le contrôleur (meta.json) : sans eux l'installeur
+               ***REMOVED*** retombe sur ses défauts codés en dur, périmés depuis longtemps.
                ("--images", prof.get("images")),
                ("--kernel-pkg", prof.get("kernel_pkg")), ("--kernel-apt", prof.get("kernel_apt"))]
     for flag, val in mapping:
@@ -938,11 +938,11 @@ def path_uninstall(zip_path):
         return BACK
 
     _hdr(t("del_hdr"))
-    # L'avertissement « les nœuds enrôlés ne sont pas touchés » est imprimé par le script lui-même,
-    # juste après son inventaire — le répéter ici le faisait apparaître DEUX FOIS à l'écran.
+    ***REMOVED*** L'avertissement « les nœuds enrôlés ne sont pas touchés » est imprimé par le script lui-même,
+    ***REMOVED*** juste après son inventaire — le répéter ici le faisait apparaître DEUX FOIS à l'écran.
 
-    # Les scripts viennent de l'ARCHIVE (donc de la version qu'on est en train de servir), pas
-    # d'une copie installée qui pourrait être plus ancienne que le parc.
+    ***REMOVED*** Les scripts viennent de l'ARCHIVE (donc de la version qu'on est en train de servir), pas
+    ***REMOVED*** d'une copie installée qui pourrait être plus ancienne que le parc.
     _extract(zip_path, NODE_SRC)
     def _script(nom):
         """Trouve le script de retrait. L'ARCHIVE d'abord (version servie par le contrôleur), puis
@@ -990,14 +990,14 @@ def path_uninstall(zip_path):
         args_node.append("--dry-run"); args_ctrl.append("--dry-run")
 
     rc = 0
-    # « Les deux » = un seul appel : le désinstalleur d'orchestrateur enchaîne lui-même celui du
-    # nœud (il doit le faire AVANT d'effacer /opt/bobistudio, d'où il vient).
+    ***REMOVED*** « Les deux » = un seul appel : le désinstalleur d'orchestrateur enchaîne lui-même celui du
+    ***REMOVED*** nœud (il doit le faire AVANT d'effacer /opt/bobistudio, d'où il vient).
     if cible == "controller":
         rc = run_tty(["bash", _script("uninstall-controller.sh"), "--keep-node", *args_ctrl])
     elif cible == "both":
-        # En retrait RÉEL : un seul appel — le script orchestrateur enchaîne lui-même celui du nœud
-        # (il doit le faire AVANT d'effacer /opt/bobistudio, d'où ce dernier vient).
-        # En INVENTAIRE : il s'arrête avant de chaîner, donc on affiche les deux à la suite.
+        ***REMOVED*** En retrait RÉEL : un seul appel — le script orchestrateur enchaîne lui-même celui du nœud
+        ***REMOVED*** (il doit le faire AVANT d'effacer /opt/bobistudio, d'où ce dernier vient).
+        ***REMOVED*** En INVENTAIRE : il s'arrête avant de chaîner, donc on affiche les deux à la suite.
         rc = run_tty(["bash", _script("uninstall-controller.sh"), *args_ctrl, *args_node])
         if dry and rc == 0:
             rc = run_tty(["bash", _script("uninstall-node.sh"), *args_node])
@@ -1027,8 +1027,8 @@ def path_node(zip_path):
         caps = menu_multi(t("caps_title"), _cap_items(), preselected=["compute"], allow_back=True)
         if caps is BACK:
             return BACK
-        # La carte E810 (io2110) est auto-détectée par _enroll (driver `ice`) et le reste
-        # du réseau est réglé après coup depuis l'orchestrateur → aucune saisie ici.
+        ***REMOVED*** La carte E810 (io2110) est auto-détectée par _enroll (driver `ice`) et le reste
+        ***REMOVED*** du réseau est réglé après coup depuis l'orchestrateur → aucune saisie ici.
         url = ask(t("ctrl_url"), allow_back=True, help=t("enroll_help"))
         if url is BACK:
             continue
@@ -1050,7 +1050,7 @@ def path_node(zip_path):
     return None
 
 
-# ─── Chemins 2 & 3 : orchestrateur (bare) ± nœud local ───────────────────────
+***REMOVED*** ─── Chemins 2 & 3 : orchestrateur (bare) ± nœud local ───────────────────────
 def install_controller(zip_path):
     _hdr(t("h_ctrl"))
     if os.path.isfile(os.path.join(APP_DIR, "main.py")):
@@ -1059,11 +1059,11 @@ def install_controller(zip_path):
             return BACK
         if not upd:
             bail(t("cancelled"))
-    # ★ `main.py` importe `services.nmos` au NIVEAU MODULE. Si le dossier est vide, Python en fait
-    # un « namespace package » : l'import RÉUSSIT, le module est creux, et le démarrage casse une
-    # ligne plus loin sur un AttributeError qui ne nomme pas la cause. On refuse donc ici, en le
-    # disant — les autres services (rdma, emberplus, atem, skaarhoj) sont importés dans des `try`
-    # et s'installent après coup depuis la page Catalogue.
+    ***REMOVED*** ★ `main.py` importe `services.nmos` au NIVEAU MODULE. Si le dossier est vide, Python en fait
+    ***REMOVED*** un « namespace package » : l'import RÉUSSIT, le module est creux, et le démarrage casse une
+    ***REMOVED*** ligne plus loin sur un AttributeError qui ne nomme pas la cause. On refuse donc ici, en le
+    ***REMOVED*** disant — les autres services (rdma, emberplus, atem, skaarhoj) sont importés dans des `try`
+    ***REMOVED*** et s'installent après coup depuis la page Catalogue.
     _src_dir = zip_path if os.path.isdir(zip_path) else None
     if _src_dir and not os.path.isfile(os.path.join(_src_dir, "services", "nmos", "__init__.py")):
         bail(t("e_nonmos"))
@@ -1094,7 +1094,7 @@ def path_controller(zip_path):
 
 
 def path_all_in_one(zip_path):
-    # Capacités du nœud LOCAL (comme pour un nœud dédié) : compute/io2110/media/webrtc.
+    ***REMOVED*** Capacités du nœud LOCAL (comme pour un nœud dédié) : compute/io2110/media/webrtc.
     caps = menu_multi(t("caps_title"), _cap_items(), preselected=["compute"], allow_back=True)
     if caps is BACK:
         return BACK
@@ -1110,29 +1110,29 @@ def path_all_in_one(zip_path):
     return None
 
 
-# ─── Menu / boucle principale (avec retour en arrière) ───────────────────────
+***REMOVED*** ─── Menu / boucle principale (avec retour en arrière) ───────────────────────
 def main():
     global LANG
-    # ★ NE PAS REPOSER UNE QUESTION DÉJÀ RÉPONDUE. `get.sh` demande la langue avant de nous
-    # lancer et la transmet par BOBI_LANG : la redemander ici donnait deux fois la même question
-    # à trois secondes d'intervalle, ce qui fait douter que la première ait servi à quelque chose.
-    #
-    # ⚠ SEULEMENT AU PREMIER PASSAGE. Reculer depuis le menu principal ramène ici — c'est le seul
-    # moyen de changer de langue une fois entré. La sauter DÉFINITIVEMENT enfermerait dans un
-    # choix fait à l'étape d'avant, éventuellement par erreur.
+    ***REMOVED*** ★ NE PAS REPOSER UNE QUESTION DÉJÀ RÉPONDUE. `get.sh` demande la langue avant de nous
+    ***REMOVED*** lancer et la transmet par BOBI_LANG : la redemander ici donnait deux fois la même question
+    ***REMOVED*** à trois secondes d'intervalle, ce qui fait douter que la première ait servi à quelque chose.
+    ***REMOVED***
+    ***REMOVED*** ⚠ SEULEMENT AU PREMIER PASSAGE. Reculer depuis le menu principal ramène ici — c'est le seul
+    ***REMOVED*** moyen de changer de langue une fois entré. La sauter DÉFINITIVEMENT enfermerait dans un
+    ***REMOVED*** choix fait à l'étape d'avant, éventuellement par erreur.
     _herite = (os.environ.get("BOBI_LANG") or "").strip().lower()
     _premier = _herite in ("fr", "en")
     if _premier:
         LANG = _herite
     while True:
-        # Étape 1 : langue (pas de retour avant elle).
+        ***REMOVED*** Étape 1 : langue (pas de retour avant elle).
         if _premier:
             _premier = False
         else:
             LANG = menu_select(t("lang_title"), [("fr", "Français", None), ("en", "English", None)],
                                default=(1 if LANG == "en" else 0), allow_back=False)
         _banner()
-        # Étape 2 : menu principal (← revient au choix de langue ; ← d'un chemin revient ici).
+        ***REMOVED*** Étape 2 : menu principal (← revient au choix de langue ; ← d'un chemin revient ici).
         while True:
             sel = menu_select(t("menu_title"), [
                 ("node", t("o_node_l"), t("o_node_d")),
@@ -1142,15 +1142,15 @@ def main():
                 ("uninstall", t("o_del_l"), t("o_del_d")),
             ], default=0, allow_back=True)
             if sel is BACK:
-                break                       # ← retour au choix de la langue
+                break                       ***REMOVED*** ← retour au choix de la langue
             if sel == "proxmox":
-                ip.main()                   # flux legacy inchangé (crée la VM orchestrateur)
+                ip.main()                   ***REMOVED*** flux legacy inchangé (crée la VM orchestrateur)
                 return
             zip_path = _find_source()[1]
             res = {"node": path_node, "controller": path_controller, "all": path_all_in_one,
                    "uninstall": path_uninstall}[sel](zip_path)
             if res is BACK:
-                continue                    # ← retour au menu principal
+                continue                    ***REMOVED*** ← retour au menu principal
             return
 
 

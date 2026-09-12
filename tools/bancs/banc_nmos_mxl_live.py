@@ -1,28 +1,28 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# Banc VIVANT de l'étape 2 du chantier « NMOS dans les conteneurs » : déploie deux
-# `hello_world` jetables, les câble, et vérifie que la surface BCP-007-03 dérivée
-# par `services/nmos/mxl.py` dit la VÉRITÉ sur un parc réel — dans les deux sens.
-#
-# CE QU'IL PROUVE, ET QUE LE BANC PUR NE PEUT PAS PROUVER
-# -------------------------------------------------------
-# `tools/verif_nmos_mxl.py` éprouve la DÉRIVATION (fonctions pures, aucun conteneur).
-# Il ne peut rien dire du seul risque qui compte vraiment : **deux vérités de routage**.
-# Ici on décâble par le chemin de la page Câbles, SANS toucher à NMOS, et on exige que
-# `/active` retombe à `null` tout seul. Si un jour la surface NMOS se met à mémoriser
-# son propre état au lieu de constater celui du graphe, c'est CE contrôle qui tombe —
-# et lui seul.
-#
-# ⚠ CE BANC MUTE. Il crée et détruit des conteneurs. Garde-fous :
-#   - il REFUSE de tourner sans `--go` ;
-#   - il ne touche QUE les deux conteneurs qu'il crée, jamais un existant ;
-#   - il refuse de démarrer si ses hostnames sont déjà pris ;
-#   - il détruit ses conteneurs dans un `finally` — y compris si un contrôle échoue ;
-#   - il compare le parc AVANT/APRÈS et le signale s'il a laissé quoi que ce soit.
-#
-#   $ ./venv/bin/python tools/banc_nmos_mxl_live.py --go [--node <id>]
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** Banc VIVANT de l'étape 2 du chantier « NMOS dans les conteneurs » : déploie deux
+***REMOVED*** `hello_world` jetables, les câble, et vérifie que la surface BCP-007-03 dérivée
+***REMOVED*** par `services/nmos/mxl.py` dit la VÉRITÉ sur un parc réel — dans les deux sens.
+***REMOVED***
+***REMOVED*** CE QU'IL PROUVE, ET QUE LE BANC PUR NE PEUT PAS PROUVER
+***REMOVED*** -------------------------------------------------------
+***REMOVED*** `tools/verif_nmos_mxl.py` éprouve la DÉRIVATION (fonctions pures, aucun conteneur).
+***REMOVED*** Il ne peut rien dire du seul risque qui compte vraiment : **deux vérités de routage**.
+***REMOVED*** Ici on décâble par le chemin de la page Câbles, SANS toucher à NMOS, et on exige que
+***REMOVED*** `/active` retombe à `null` tout seul. Si un jour la surface NMOS se met à mémoriser
+***REMOVED*** son propre état au lieu de constater celui du graphe, c'est CE contrôle qui tombe —
+***REMOVED*** et lui seul.
+***REMOVED***
+***REMOVED*** ⚠ CE BANC MUTE. Il crée et détruit des conteneurs. Garde-fous :
+***REMOVED***   - il REFUSE de tourner sans `--go` ;
+***REMOVED***   - il ne touche QUE les deux conteneurs qu'il crée, jamais un existant ;
+***REMOVED***   - il refuse de démarrer si ses hostnames sont déjà pris ;
+***REMOVED***   - il détruit ses conteneurs dans un `finally` — y compris si un contrôle échoue ;
+***REMOVED***   - il compare le parc AVANT/APRÈS et le signale s'il a laissé quoi que ce soit.
+***REMOVED***
+***REMOVED***   $ ./venv/bin/python tools/banc_nmos_mxl_live.py --go [--node <id>]
 import argparse
 import json
 import os
@@ -55,12 +55,12 @@ def _params(hostname):
     return p
 
 
-# ⚠ ÉTAT PERSISTANT ENTRE LES RECONSTRUCTIONS — et ce n'est pas un détail de banc.
-# `rebuild_model` garde `_recv_state`/`_send_state` en globals de module : ils SURVIVENT à
-# chaque reconstruction. Si le banc repartait de dictionnaires neufs à chaque `_vue()`, le
-# contrôle décisif (« /active retombe à null tout seul ») passerait TRIVIALEMENT — il n'y
-# aurait rien à mémoriser. On reproduit donc la persistance réelle, sinon on teste un modèle
-# que le produit n'exécute jamais.
+***REMOVED*** ⚠ ÉTAT PERSISTANT ENTRE LES RECONSTRUCTIONS — et ce n'est pas un détail de banc.
+***REMOVED*** `rebuild_model` garde `_recv_state`/`_send_state` en globals de module : ils SURVIVENT à
+***REMOVED*** chaque reconstruction. Si le banc repartait de dictionnaires neufs à chaque `_vue()`, le
+***REMOVED*** contrôle décisif (« /active retombe à null tout seul ») passerait TRIVIALEMENT — il n'y
+***REMOVED*** aurait rien à mémoriser. On reproduit donc la persistance réelle, sinon on teste un modèle
+***REMOVED*** que le produit n'exécute jamais.
 _RS, _SS = {}, {}
 
 
@@ -73,7 +73,7 @@ def _vue():
     mxl.build(dev, src, flw, snd, rcv, _RS, _SS, did, "%d:0" % int(time.time()))
     mxl.reindex(_SS)
     mxl.resync_subscriptions(rcv, _RS, snd, _SS)
-    # Purge des ressources disparues, comme le fait `rebuild_model` sous verrou.
+    ***REMOVED*** Purge des ressources disparues, comme le fait `rebuild_model` sous verrou.
     for orphelin in [k for k in _RS if k not in rcv]:
         del _RS[orphelin]
     for orphelin in [k for k in _SS if k not in snd]:
@@ -107,9 +107,9 @@ def principal(node_id):
               "n'a pas créé." % (HOTE_A, HOTE_B), file=sys.stderr)
         return 2
 
-    # ⚠ MÊME NŒUD OBLIGATOIRE : le bus MXL est LOCAL à un nœud. Deux hello_world sur des
-    # nœuds différents ne pourraient pas se câbler (sauf réplication RDMA), et le banc
-    # échouerait pour une raison qui n'a rien à voir avec ce qu'il teste.
+    ***REMOVED*** ⚠ MÊME NŒUD OBLIGATOIRE : le bus MXL est LOCAL à un nœud. Deux hello_world sur des
+    ***REMOVED*** nœuds différents ne pourraient pas se câbler (sauf réplication RDMA), et le banc
+    ***REMOVED*** échouerait pour une raison qui n'a rien à voir avec ce qu'il teste.
     noeuds = [n for n in db_get_nodes()
               if n["compute_image"] and n["docker_network"] and n["status"] == "up"]
     if node_id:
@@ -123,7 +123,7 @@ def principal(node_id):
 
     crees = []
     try:
-        # ── Déploiement ──────────────────────────────────────────────────────
+        ***REMOVED*** ── Déploiement ──────────────────────────────────────────────────────
         for hote in (HOTE_A, HOTE_B):
             v = docker_compute.creer_container_compute(noeud["id"], "hello_world", hostname=hote)
             if not v:
@@ -134,8 +134,8 @@ def principal(node_id):
         vmid_a, vmid_b = crees
         print("déployés : %s=%s  %s=%s" % (HOTE_A, vmid_a, HOTE_B, vmid_b))
 
-        # Les flux MXL n'existent qu'une fois le script démarré : on attend l'OBSERVABLE
-        # (le dossier de flux), jamais une durée fixe qui serait fausse sur un nœud chargé.
+        ***REMOVED*** Les flux MXL n'existent qu'une fois le script démarré : on attend l'OBSERVABLE
+        ***REMOVED*** (le dossier de flux), jamais une durée fixe qui serait fausse sur un nœud chargé.
         cible = mxl.flow_uuid("%s_hello" % HOTE_A)
         vus = False
         for _ in range(30):
@@ -150,7 +150,7 @@ def principal(node_id):
         if not vus:
             return 1
 
-        # ── 1. Le modèle dérivé décrit le parc réel ──────────────────────────
+        ***REMOVED*** ── 1. Le modèle dérivé décrit le parc réel ──────────────────────────
         vue = _vue()
         tx_a, rx_b = _tx_de(vue, vmid_a), _rx_de(vue, vmid_b)
         controle("A expose 3 Senders (video/audio/data)",
@@ -166,10 +166,10 @@ def principal(node_id):
                      and st["active"]["transport_params"][0]["mxl_flow_id"] is None
                      for st in rx_b.values()))
 
-        # ── 1bis. Localité : /constraints ne doit annoncer QUE le nœud de la ressource ──
-        # Le bus MXL est LOCAL au nœud. Énumérer les domaines des autres nœuds du cluster, c'est
-        # publier des routes impossibles — le contrôleur les propose, et l'échec n'arrive qu'à
-        # l'activation. Vu en vrai sur le HTTP le 2026-08-31 : les 4 domaines étaient annoncés.
+        ***REMOVED*** ── 1bis. Localité : /constraints ne doit annoncer QUE le nœud de la ressource ──
+        ***REMOVED*** Le bus MXL est LOCAL au nœud. Énumérer les domaines des autres nœuds du cluster, c'est
+        ***REMOVED*** publier des routes impossibles — le contrôleur les propose, et l'échec n'arrive qu'à
+        ***REMOVED*** l'activation. Vu en vrai sur le HTTP le 2026-08-31 : les 4 domaines étaient annoncés.
         _c = mxl.constraints(
             [r for r, st in vue["recv_state"].items() if st["vmid"] == vmid_b][0],
             vue["send_state"], vue["recv_state"]) or [{}]
@@ -181,7 +181,7 @@ def principal(node_id):
                            for s in vue["send_state"].values() if s.get("mxl")]
                      for f in (_c[0].get("mxl_flow_id", {}).get("enum") or [])))
 
-        # ── 2. Câblage par le chemin de la page Câbles ───────────────────────
+        ***REMOVED*** ── 2. Câblage par le chemin de la page Câbles ───────────────────────
         shm_a = "%s_hello" % HOTE_A
         with verrou_vmid(vmid_b, op="banc-nmos-wire"):
             ok, _s, _p = _apply_wire(vmid_a, vmid_b, shm_a, "video")
@@ -197,14 +197,14 @@ def principal(node_id):
                  rx_b["video"]["active"]["sender_id"] == tx_a["video"][0])
         controle("le Sender de A annonce l'abonnement en retour",
                  vue["senders"][tx_a["video"][0]]["subscription"]["active"] is True)
-        # Le câblage est GROUPÉ : poser la vidéo pose aussi l'audio et l'ANC. Un contrôleur
-        # tiers verra donc trois Receivers bouger pour un seul PATCH — c'est ce que le
-        # grouping BCP-002-01 sert à exprimer, et nos ressources MXL n'en portent pas encore.
+        ***REMOVED*** Le câblage est GROUPÉ : poser la vidéo pose aussi l'audio et l'ANC. Un contrôleur
+        ***REMOVED*** tiers verra donc trois Receivers bouger pour un seul PATCH — c'est ce que le
+        ***REMOVED*** grouping BCP-002-01 sert à exprimer, et nos ressources MXL n'en portent pas encore.
         controle("le câblage groupé entraîne AUSSI l'audio et l'ANC",
                  all(rx_b[e]["shm"] for e in ("audio", "data")),
                  "si ce contrôle tombe, c'est le comportement de _apply_wire qui a changé")
 
-        # ── 3. LE contrôle décisif : décâbler HORS de NMOS ───────────────────
+        ***REMOVED*** ── 3. LE contrôle décisif : décâbler HORS de NMOS ───────────────────
         with verrou_vmid(vmid_b, op="banc-nmos-unwire"):
             ok, _s, _p = _apply_unwire(vmid_b, shm_a, "video")
         controle("le décâblage par la page Câbles aboutit", ok)
@@ -217,7 +217,7 @@ def principal(node_id):
                  "c'est LE contrôle qui interdit une seconde vérité de routage : la surface "
                  "NMOS doit CONSTATER le graphe, jamais mémoriser un état parallèle")
 
-        # ── 4. Sens inverse : un PATCH IS-05 pose vraiment le câble ──────────
+        ***REMOVED*** ── 4. Sens inverse : un PATCH IS-05 pose vraiment le câble ──────────
         vue = _vue()
         rid_id = [r for r, st in vue["recv_state"].items()
                   if st["vmid"] == vmid_b and st["essence"] == "video"][0]
@@ -246,12 +246,12 @@ def principal(node_id):
                  "sinon le contrôleur affiche un abonnement actif « connecté à rien »")
 
     finally:
-        # ── Remise en état, quoi qu'il arrive ────────────────────────────────
+        ***REMOVED*** ── Remise en état, quoi qu'il arrive ────────────────────────────────
         for v in reversed(crees):
             try:
                 with verrou_vmid(v, op="banc-nmos-destroy"):
                     detruire_container(v)
-            except Exception as e:                                   # pragma: no cover
+            except Exception as e:                                   ***REMOVED*** pragma: no cover
                 print("  ⚠ destruction de %s échouée : %s" % (v, e), file=sys.stderr)
         time.sleep(3)
         reste = {c["vmid"] for c in db_get_containers()} - avant

@@ -1,13 +1,13 @@
 {% if has_perm('containers.create') %}
-{# ─── Assistant de création (2 étapes + panier) ──────────────────────────────
+{***REMOVED*** ─── Assistant de création (2 étapes + panier) ──────────────────────────────
    Étape 1 : choisir un type (palette de chips, depuis plugin_sections).
    Étape 2 : une ligne par container du type choisi. « + Container » empile une
    nouvelle ligne du même type (hostname auto-incrémenté, réglages clonés) ;
    « Ajouter à la liste » (sous les lignes) pousse tout dans « À créer ».
-   Panier : entrées de types variés, puis « Lancer la création » d'un coup. #}
+   Panier : entrées de types variés, puis « Lancer la création » d'un coup. ***REMOVED***}
 <div class="form create-wizard">
 
-    {# ─── Étape 1 : type ─── #}
+    {***REMOVED*** ─── Étape 1 : type ─── ***REMOVED***}
     <div class="create-step">
         <div class="create-step-head"><span class="create-step-num">{{ _('containers.create.step1') }}</span> {{ _('containers.create.what') }}</div>
         <div class="dp-type-cats-nav" role="tablist" id="create-type-cats">
@@ -19,22 +19,22 @@
             {% endfor %}
         </div>
         <div class="dp-type-chips create-type-chips" id="create-type-chips">
-            {# Le chip « Container nu » (type vide, runtime lxc) a été RETIRÉ avec le backend
+            {***REMOVED*** Le chip « Container nu » (type vide, runtime lxc) a été RETIRÉ avec le backend
                LXC : sans nœud il tombait sur le 400 « Backend LXC retiré », avec un nœud sur
                le 400 « type de déploiement manquant ». Il ne menait nulle part.
                `auto_provision` : type provisionné automatiquement (ex. moteur 2110_io créé
-               à la config d'un port média) → jamais de chip de création manuelle. #}
+               à la config d'un port média) → jamais de chip de création manuelle. ***REMOVED***}
             {% for sid, s in (plugin_sections or {}).items() %}
                 {% for p in s.plugins if not p.auto_provision %}
                 <button type="button" class="dp-chip create-type-chip" data-cat="{{ sid }}"
                         data-type="{{ p.type }}" data-label="{{ p.label }}"
                         data-runtime="{{ (plugin_runtimes or {}).get(p.type, 'docker') }}"
                         data-image-kind="{{ (plugin_image_kinds or {}).get(p.type, 'compute') }}"
-                        {# Profil de ressources déclaré : ce que le container VA prendre sur le nœud.
-                           Absent = type sans bloc `resources` → pool partagé (cf. cc-nodes). #}
-                        {# Attribut en guillemets SIMPLES : `tojson` échappe `<`, `>`, `&` et `'`
+                        {***REMOVED*** Profil de ressources déclaré : ce que le container VA prendre sur le nœud.
+                           Absent = type sans bloc `resources` → pool partagé (cf. cc-nodes). ***REMOVED***}
+                        {***REMOVED*** Attribut en guillemets SIMPLES : `tojson` échappe `<`, `>`, `&` et `'`
                            mais PAS le guillemet double — en attribut double il fermerait
-                           l'attribut au premier `"` du JSON et le profil arriverait vide. #}
+                           l'attribut au premier `"` du JSON et le profil arriverait vide. ***REMOVED***}
                         data-resources='{{ (plugin_resources or {}).get(p.type, {})|tojson }}'
                         onclick="selectCreateType(this)">{{ p.label }}</button>
                 {% endfor %}
@@ -42,7 +42,7 @@
         </div>
     </div>
 
-    {# ─── Étape 2 : une ligne par container ─── #}
+    {***REMOVED*** ─── Étape 2 : une ligne par container ─── ***REMOVED***}
     <div class="create-step" id="create-step2" style="display:none">
         <div class="create-step-head">
             <span class="create-step-num">{{ _('containers.create.step2') }}</span> {{ _('containers.create.settings') }} — <span id="create-step2-type"></span>
@@ -53,7 +53,7 @@
         </div>
     </div>
 
-    {# ─── Panier : entrées empilées + lancement ─── #}
+    {***REMOVED*** ─── Panier : entrées empilées + lancement ─── ***REMOVED***}
     <div class="create-step create-cart" id="create-cart-zone" style="display:none">
         <div class="create-step-head">{{ _('containers.create.cart_title') }} — <span id="cart-total" class="create-cart-total"></span></div>
         <table class="create-cart-table">
@@ -70,39 +70,39 @@
         </div>
     </div>
 
-    {# Bandeau d'erreur de l'assistant — au niveau du WIZARD, pas dans l'étape 2 : celle-ci est
+    {***REMOVED*** Bandeau d'erreur de l'assistant — au niveau du WIZARD, pas dans l'étape 2 : celle-ci est
        repliée (display:none) par `_resetStep2()` dès que le panier est alimenté, et tout refus
        émis ensuite par « Lancer la création » (hostname déjà utilisé, panier vide, refus serveur)
-       s'affichait alors DANS un conteneur caché — l'utilisateur ne voyait strictement rien. #}
+       s'affichait alors DANS un conteneur caché — l'utilisateur ne voyait strictement rien. ***REMOVED***}
     <div id="create-warning" role="alert"
          style="display:none; margin-top:8px; padding:6px 10px; font-size:0.85em;
                 border:1px solid var(--status-stopped-fg); background:var(--status-stopped-bg);
                 color:var(--status-stopped-fg); border-radius:var(--radius-small)"></div>
 </div>
 
-{# Gabarit d'une ligne de l'étape 2 (un container). Cloné par _ccBuildRow ;
-   ids conservés en classes (cc-*) car répété. #}
+{***REMOVED*** Gabarit d'une ligne de l'étape 2 (un container). Cloné par _ccBuildRow ;
+   ids conservés en classes (cc-*) car répété. ***REMOVED***}
 <template id="cc-row-tpl">
     <div class="create-row row">
         <div class="field"><label>{{ _('containers.create.col_hostname') }}</label>
             <input type="text" class="cc-hostname wide"
                    oninput="ccHostnameInput(this)" onblur="ccHostnameBlur(this)"
                    title="{{ _('containers.create.hostname_title') }}">
-            {# La règle est ÉCRITE sous le champ, pas seulement en tooltip : le champ réécrit la
+            {***REMOVED*** La règle est ÉCRITE sous le champ, pas seulement en tooltip : le champ réécrit la
                frappe (espace → tiret, point supprimé) et un title= au survol n'est jamais lu au
                moment où la surprise arrive. Le texte bascule en explication de ce qui vient
-               d'être corrigé (ccHostnameInput). #}
+               d'être corrigé (ccHostnameInput). ***REMOVED***}
             <div class="meta cc-hostname-hint">{{ _('containers.create.hostname_help') }}</div></div>
-        {# Le <select> reste la SOURCE DE VÉRITÉ de la valeur (lu par lancerCreation, cloné par
+        {***REMOVED*** Le <select> reste la SOURCE DE VÉRITÉ de la valeur (lu par lancerCreation, cloné par
            addStep2Row, accessible au clavier). Le panneau `.cc-nodes` ci-dessous en est une vue
            enrichie : il montre la charge de chaque serveur et, au clic, ce que la création va y
-           prendre. Les deux restent synchronisés dans les deux sens (_ccSyncNodePanel). #}
+           prendre. Les deux restent synchronisés dans les deux sens (_ccSyncNodePanel). ***REMOVED***}
         <div class="field cc-node"><label class="cc-node-label">{{ _('containers.create.node') }}</label>
             <span class="cc-node-pick">
                 <select class="cc-node-sel" style="min-width:150px"
                         onchange="ccNodeSelChange(this)"></select>
-                {# Vue par défaut = le menu déroulant seul (empiler dix containers ne doit pas
-                   afficher dix tableaux de charge). Le panneau est à un clic, par ligne. #}
+                {***REMOVED*** Vue par défaut = le menu déroulant seul (empiler dix containers ne doit pas
+                   afficher dix tableaux de charge). Le panneau est à un clic, par ligne. ***REMOVED***}
                 <button type="button" class="btn btn-ghost cc-load-toggle" aria-expanded="false"
                         onclick="ccToggleLoad(this)"
                         title="{{ _('containers.create.load.toggle_title') }}"

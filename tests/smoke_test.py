@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
 """Smoke test autonome (sans pytest) : attrape les régressions de boot AVANT un restart en prod.
 
 Vérifie, dans l'ordre :
@@ -42,8 +42,8 @@ SERVICES_DIR = os.path.join(ROOT, "services")
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-FAILURES = []   # [(step, detail)]
-PASSES = []     # [step]
+FAILURES = []   ***REMOVED*** [(step, detail)]
+PASSES = []     ***REMOVED*** [step]
 
 
 def ok(step):
@@ -66,9 +66,9 @@ def _import_app_modules():
         f[:-3] for f in os.listdir(APP_DIR)
         if f.endswith(".py") and not f.startswith("__")
     )
-    # app.database en premier et isolément : on doit pouvoir surcharger son DB_PATH avant
-    # que quoi que ce soit d'autre ne soit importé, par prudence (aucun module n'ouvre la
-    # DB au niveau module d'après revue de code, mais on ne prend pas de risque).
+    ***REMOVED*** app.database en premier et isolément : on doit pouvoir surcharger son DB_PATH avant
+    ***REMOVED*** que quoi que ce soit d'autre ne soit importé, par prudence (aucun module n'ouvre la
+    ***REMOVED*** DB au niveau module d'après revue de code, mais on ne prend pas de risque).
     database_mod = None
     try:
         database_mod = importlib.import_module("app.database")
@@ -87,7 +87,7 @@ def _import_app_modules():
         except Exception:
             fail(f"import {modname}", traceback.format_exc())
 
-    # sous-paquet routes/ (Blueprint unique, cf. CLAUDE.md)
+    ***REMOVED*** sous-paquet routes/ (Blueprint unique, cf. CLAUDE.md)
     if os.path.isdir(os.path.join(APP_DIR, "routes")):
         try:
             importlib.import_module("app.routes")

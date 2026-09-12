@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+***REMOVED***!/usr/bin/env python3
 
 """
 git-filter-repo filters git repositories, similar to git filter-branch, BFG
@@ -51,8 +51,8 @@ __all__ = ["Blob", "Reset", "FileChange", "Commit", "Tag", "Progress",
            "string_to_date", "date_to_string",
            "record_id_rename", "GitUtils", "FilteringOptions", "RepoFilter"]
 
-# The globals to make visible to callbacks. They will see all our imports for
-# free, as well as our public API.
+***REMOVED*** The globals to make visible to callbacks. They will see all our imports for
+***REMOVED*** free, as well as our public API.
 public_globals = ["__builtins__", "argparse", "collections", "fnmatch",
                   "gettext", "io", "os", "platform", "re", "shutil",
                   "subprocess", "sys", "time", "textwrap", "tzinfo",
@@ -63,8 +63,8 @@ write_marks = True
 date_format_permissive = True
 
 def gettext_poison(msg):
-  if "GIT_TEST_GETTEXT_POISON" in os.environ: # pragma: no cover
-    return "# GETTEXT POISON #"
+  if "GIT_TEST_GETTEXT_POISON" in os.environ: ***REMOVED*** pragma: no cover
+    return "***REMOVED*** GETTEXT POISON ***REMOVED***"
   return gettext.gettext(msg)
 
 _ = gettext_poison
@@ -72,18 +72,18 @@ _ = gettext_poison
 def setup_gettext():
   TEXTDOMAIN="git-filter-repo"
   podir = os.environ.get("GIT_TEXTDOMAINDIR") or "@@LOCALEDIR@@"
-  if not os.path.isdir(podir): # pragma: no cover
-    podir = None  # Python has its own fallback; use that
+  if not os.path.isdir(podir): ***REMOVED*** pragma: no cover
+    podir = None  ***REMOVED*** Python has its own fallback; use that
 
-  ## This looks like the most straightforward translation of the relevant
-  ## code in git.git:gettext.c and git.git:perl/Git/I18n.pm:
-  #import locale
-  #locale.setlocale(locale.LC_MESSAGES, "");
-  #locale.setlocale(locale.LC_TIME, "");
-  #locale.textdomain(TEXTDOMAIN);
-  #locale.bindtextdomain(TEXTDOMAIN, podir);
-  ## but the python docs suggest using the gettext module (which doesn't
-  ## have setlocale()) instead, so:
+  ***REMOVED******REMOVED*** This looks like the most straightforward translation of the relevant
+  ***REMOVED******REMOVED*** code in git.git:gettext.c and git.git:perl/Git/I18n.pm:
+  ***REMOVED***import locale
+  ***REMOVED***locale.setlocale(locale.LC_MESSAGES, "");
+  ***REMOVED***locale.setlocale(locale.LC_TIME, "");
+  ***REMOVED***locale.textdomain(TEXTDOMAIN);
+  ***REMOVED***locale.bindtextdomain(TEXTDOMAIN, podir);
+  ***REMOVED******REMOVED*** but the python docs suggest using the gettext module (which doesn't
+  ***REMOVED******REMOVED*** have setlocale()) instead, so:
   gettext.textdomain(TEXTDOMAIN);
   gettext.bindtextdomain(TEXTDOMAIN, podir);
 
@@ -134,28 +134,28 @@ def decode(bytestr):
 def glob_to_regex(glob_bytestr):
   'Translate glob_bytestr into a regex on bytestrings'
 
-  # fnmatch.translate is idiotic and won't accept bytestrings
-  if (decode(glob_bytestr).encode() != glob_bytestr): # pragma: no cover
+  ***REMOVED*** fnmatch.translate is idiotic and won't accept bytestrings
+  if (decode(glob_bytestr).encode() != glob_bytestr): ***REMOVED*** pragma: no cover
     raise SystemExit(_("Error: Cannot handle glob %s").format(glob_bytestr))
 
-  # Create regex operating on string
+  ***REMOVED*** Create regex operating on string
   regex = fnmatch.translate(decode(glob_bytestr))
 
-  # FIXME: This is an ugly hack...
-  # fnmatch.translate tries to do multi-line matching and wants the glob to
-  # match up to the end of the input, which isn't relevant for us, so we
-  # have to modify the regex.  fnmatch.translate has used different regex
-  # constructs to achieve this with different python versions, so we have
-  # to check for each of them and then fix it up.  It would be much better
-  # if fnmatch.translate could just take some flags to allow us to specify
-  # what we want rather than employing this hackery, but since it
-  # doesn't...
-  if regex.endswith(r'\Z(?ms)'): # pragma: no cover
+  ***REMOVED*** FIXME: This is an ugly hack...
+  ***REMOVED*** fnmatch.translate tries to do multi-line matching and wants the glob to
+  ***REMOVED*** match up to the end of the input, which isn't relevant for us, so we
+  ***REMOVED*** have to modify the regex.  fnmatch.translate has used different regex
+  ***REMOVED*** constructs to achieve this with different python versions, so we have
+  ***REMOVED*** to check for each of them and then fix it up.  It would be much better
+  ***REMOVED*** if fnmatch.translate could just take some flags to allow us to specify
+  ***REMOVED*** what we want rather than employing this hackery, but since it
+  ***REMOVED*** doesn't...
+  if regex.endswith(r'\Z(?ms)'): ***REMOVED*** pragma: no cover
     regex = regex[0:-7]
-  elif regex.startswith(r'(?s:') and regex.endswith(r')\Z'): # pragma: no cover
+  elif regex.startswith(r'(?s:') and regex.endswith(r')\Z'): ***REMOVED*** pragma: no cover
     regex = regex[4:-3]
 
-  # Finally, convert back to regex operating on bytestr
+  ***REMOVED*** Finally, convert back to regex operating on bytestr
   return regex.encode()
 
 class PathQuoting:
@@ -191,10 +191,10 @@ class PathQuoting:
 
   @staticmethod
   def enquote(unquoted_string):
-    # Option 1: Quoting when fast-export would:
-    #    pqsc = PathQuoting._special_chars
-    #    if any(pqsc[x] for x in set(unquoted_string)):
-    # Option 2, perf hack: do minimal amount of quoting required by fast-import
+    ***REMOVED*** Option 1: Quoting when fast-export would:
+    ***REMOVED***    pqsc = PathQuoting._special_chars
+    ***REMOVED***    if any(pqsc[x] for x in set(unquoted_string)):
+    ***REMOVED*** Option 2, perf hack: do minimal amount of quoting required by fast-import
     if unquoted_string.startswith(b'"') or b'\n' in unquoted_string:
       pqe = PathQuoting._escape
       return b'"' + b''.join(pqe[x] for x in unquoted_string) + b'"'
@@ -227,33 +227,33 @@ class AncestryGraph(object):
   """
 
   def __init__(self):
-    # The next internal identifier we will use; increments with every commit
-    # added to the AncestryGraph
+    ***REMOVED*** The next internal identifier we will use; increments with every commit
+    ***REMOVED*** added to the AncestryGraph
     self.cur_value = 0
 
-    # A mapping from the external identifers given to us to the simple integers
-    # we use in self.graph
+    ***REMOVED*** A mapping from the external identifers given to us to the simple integers
+    ***REMOVED*** we use in self.graph
     self.value = {}
 
-    # A tuple of (depth, list-of-ancestors).  Values and keys in this graph are
-    # all integers from the (values of the) self.value dict.  The depth of a
-    # commit is one more than the max depth of any of its ancestors.
+    ***REMOVED*** A tuple of (depth, list-of-ancestors).  Values and keys in this graph are
+    ***REMOVED*** all integers from the (values of the) self.value dict.  The depth of a
+    ***REMOVED*** commit is one more than the max depth of any of its ancestors.
     self.graph = {}
 
-    # A mapping from external identifier (i.e. from the keys of self.value) to
-    # the hash of the given commit.  Only populated for graphs based on
-    # commit.old_id, since we won't know until later what the git_hash for
-    # graphs based on commit.id (since we have to wait for fast-import to
-    # create the commit and notify us of its hash; see _pending_renames).
-    # elsewhere
+    ***REMOVED*** A mapping from external identifier (i.e. from the keys of self.value) to
+    ***REMOVED*** the hash of the given commit.  Only populated for graphs based on
+    ***REMOVED*** commit.old_id, since we won't know until later what the git_hash for
+    ***REMOVED*** graphs based on commit.id (since we have to wait for fast-import to
+    ***REMOVED*** create the commit and notify us of its hash; see _pending_renames).
+    ***REMOVED*** elsewhere
     self.git_hash = {}
 
-    # Reverse maps; only populated if needed.  Caller responsible to check
-    # and ensure they are populated
+    ***REMOVED*** Reverse maps; only populated if needed.  Caller responsible to check
+    ***REMOVED*** and ensure they are populated
     self._reverse_value = {}
     self._hash_to_id = {}
 
-    # Cached results from previous calls to is_ancestor().
+    ***REMOVED*** Cached results from previous calls to is_ancestor().
     self._cached_is_ancestor = {}
 
   def record_external_commits(self, external_commits):
@@ -279,14 +279,14 @@ class AncestryGraph(object):
     assert all(p in self.value for p in parents)
     assert commit not in self.value
 
-    # Get values for commit and parents
+    ***REMOVED*** Get values for commit and parents
     self.cur_value += 1
     self.value[commit] = self.cur_value
     if githash:
       self.git_hash[commit] = githash
     graph_parents = [self.value[x] for x in parents]
 
-    # Determine depth for commit, then insert the info into the graph
+    ***REMOVED*** Determine depth for commit, then insert the info into the graph
     depth = 1
     if parents:
       depth += max(self.graph[p][0] for p in graph_parents)
@@ -311,14 +311,14 @@ class AncestryGraph(object):
     '''
     Given a commit_hash, return its parents hashes
     '''
-    #
-    # We have to map:
-    #    commit hash -> fast export stream id -> graph id
-    # then lookup
-    #    parent graph ids for given graph id
-    # then we need to map
-    #    parent graph ids -> parent fast export ids -> parent commit hashes
-    #
+    ***REMOVED***
+    ***REMOVED*** We have to map:
+    ***REMOVED***    commit hash -> fast export stream id -> graph id
+    ***REMOVED*** then lookup
+    ***REMOVED***    parent graph ids for given graph id
+    ***REMOVED*** then we need to map
+    ***REMOVED***    parent graph ids -> parent fast export ids -> parent commit hashes
+    ***REMOVED***
     self._ensure_reverse_maps_populated()
     commit_fast_export_id = self._hash_to_id[commit_hash]
     commit_graph_id = self.value[commit_fast_export_id]
@@ -370,17 +370,17 @@ class MailmapInfo(object):
 
   def _parse_file(self, filename):
     name_and_email_re = re.compile(br'(.*?)\s*<([^>]*)>\s*')
-    comment_re = re.compile(br'\s*#.*')
+    comment_re = re.compile(br'\s****REMOVED***.*')
     if not os.access(filename, os.R_OK):
       raise SystemExit(_("Cannot read %s") % decode(filename))
     with open(filename, 'br') as f:
       count = 0
       for line in f:
         count += 1
-        err = "Unparseable mailmap file: line #{} is bad: {}".format(count, line)
-        # Remove comments
+        err = "Unparseable mailmap file: line ***REMOVED***{} is bad: {}".format(count, line)
+        ***REMOVED*** Remove comments
         line = comment_re.sub(b'', line)
-        # Remove leading and trailing whitespace
+        ***REMOVED*** Remove leading and trailing whitespace
         line = line.strip()
         if not line:
           continue
@@ -460,13 +460,13 @@ class _IDs(object):
     """
     Init
     """
-    # The id for the next created blob/commit object
+    ***REMOVED*** The id for the next created blob/commit object
     self._next_id = 1
 
-    # A map of old-ids to new-ids (1:1 map)
+    ***REMOVED*** A map of old-ids to new-ids (1:1 map)
     self._translation = {}
 
-    # A map of new-ids to every old-id that points to the new-id (1:N map)
+    ***REMOVED*** A map of new-ids to every old-id that points to the new-id (1:N map)
     self._reverse_translation = {}
 
   def has_renames(self):
@@ -489,18 +489,18 @@ class _IDs(object):
     Record that old_id is being renamed to new_id.
     """
     if old_id != new_id or old_id in self._translation:
-      # old_id -> new_id
+      ***REMOVED*** old_id -> new_id
       self._translation[old_id] = new_id
 
-      # Transitivity will be needed if new commits are being inserted mid-way
-      # through a branch.
+      ***REMOVED*** Transitivity will be needed if new commits are being inserted mid-way
+      ***REMOVED*** through a branch.
       if handle_transitivity:
-        # Anything that points to old_id should point to new_id
+        ***REMOVED*** Anything that points to old_id should point to new_id
         if old_id in self._reverse_translation:
           for id_ in self._reverse_translation[old_id]:
             self._translation[id_] = new_id
 
-      # Record that new_id is pointed to by old_id
+      ***REMOVED*** Record that new_id is pointed to by old_id
       if new_id not in self._reverse_translation:
         self._reverse_translation[new_id] = []
       self._reverse_translation[new_id].append(old_id)
@@ -524,7 +524,7 @@ class _IDs(object):
 
     rv += "Reverse translation:\n"
     reverse_keys = list(self._reverse_translation.keys())
-    if None in reverse_keys: # pragma: no cover
+    if None in reverse_keys: ***REMOVED*** pragma: no cover
       reverse_keys.remove(None)
       reverse_keys = sorted(reverse_keys)
       reverse_keys.append(None)
@@ -539,12 +539,12 @@ class _GitElement(object):
   """
 
   def __init__(self):
-    # A string that describes what type of Git element this is
+    ***REMOVED*** A string that describes what type of Git element this is
     self.type = None
 
-    # A flag telling us if this Git element has been dumped
-    # (i.e. printed) or skipped.  Typically elements that have been
-    # dumped or skipped will not be dumped again.
+    ***REMOVED*** A flag telling us if this Git element has been dumped
+    ***REMOVED*** (i.e. printed) or skipped.  Typically elements that have been
+    ***REMOVED*** dumped or skipped will not be dumped again.
     self.dumped = 0
 
   def dump(self, file_):
@@ -555,7 +555,7 @@ class _GitElement(object):
     fast-export.
     """
     raise SystemExit(_("Unimplemented function: %s") % type(self).__name__
-                     +".dump()") # pragma: no cover
+                     +".dump()") ***REMOVED*** pragma: no cover
 
   def __bytes__(self):
     """
@@ -584,10 +584,10 @@ class _GitElementWithId(_GitElement):
   def __init__(self):
     _GitElement.__init__(self)
 
-    # The mark (short, portable id) for this element
+    ***REMOVED*** The mark (short, portable id) for this element
     self.id = _IDS.new()
 
-    # The previous mark for this element
+    ***REMOVED*** The previous mark for this element
     self.old_id = None
 
   def skip(self, new_id=None):
@@ -609,13 +609,13 @@ class Blob(_GitElementWithId):
   def __init__(self, data, original_id = None):
     _GitElementWithId.__init__(self)
 
-    # Denote that this is a blob
+    ***REMOVED*** Denote that this is a blob
     self.type = 'blob'
 
-    # Record original id
+    ***REMOVED*** Record original id
     self.original_id = original_id
 
-    # Stores the blob's data
+    ***REMOVED*** Stores the blob's data
     assert(type(data) == bytes)
     self.data = data
 
@@ -643,13 +643,13 @@ class Reset(_GitElement):
   def __init__(self, ref, from_ref = None):
     _GitElement.__init__(self)
 
-    # Denote that this is a reset
+    ***REMOVED*** Denote that this is a reset
     self.type = 'reset'
 
-    # The name of the branch being (re)created
+    ***REMOVED*** The name of the branch being (re)created
     self.ref = ref
 
-    # Some reference to the branch/commit we are resetting from
+    ***REMOVED*** Some reference to the branch/commit we are resetting from
     self.from_ref = from_ref
 
   def dump(self, file_):
@@ -675,25 +675,25 @@ class FileChange(_GitElement):
   def __init__(self, type_, filename = None, id_ = None, mode = None):
     _GitElement.__init__(self)
 
-    # Denote the type of file-change (b'M' for modify, b'D' for delete, etc)
-    # We could
-    #   assert(type(type_) == bytes)
-    # here but I don't just due to worries about performance overhead...
+    ***REMOVED*** Denote the type of file-change (b'M' for modify, b'D' for delete, etc)
+    ***REMOVED*** We could
+    ***REMOVED***   assert(type(type_) == bytes)
+    ***REMOVED*** here but I don't just due to worries about performance overhead...
     self.type = type_
 
-    # Record the name of the file being changed
+    ***REMOVED*** Record the name of the file being changed
     self.filename = filename
 
-    # Record the mode (mode describes type of file entry (non-executable,
-    # executable, or symlink)).
+    ***REMOVED*** Record the mode (mode describes type of file entry (non-executable,
+    ***REMOVED*** executable, or symlink)).
     self.mode = mode
 
-    # blob_id is the id (mark) of the affected blob
+    ***REMOVED*** blob_id is the id (mark) of the affected blob
     self.blob_id = id_
 
     if type_ == b'DELETEALL':
       assert filename is None and id_ is None and mode is None
-      self.filename = b'' # Just so PathQuoting.enquote doesn't die
+      self.filename = b'' ***REMOVED*** Just so PathQuoting.enquote doesn't die
     else:
       assert filename is not None
 
@@ -701,7 +701,7 @@ class FileChange(_GitElement):
       assert id_ is not None and mode is not None
     elif type_ == b'D':
       assert id_ is None and mode is None
-    elif type_ == b'R':  # pragma: no cover (now avoid fast-export renames)
+    elif type_ == b'R':  ***REMOVED*** pragma: no cover (now avoid fast-export renames)
       assert mode is None
       if id_ is None:
         raise SystemExit(_("new name needed for rename of %s") % filename)
@@ -726,7 +726,7 @@ class FileChange(_GitElement):
     elif self.type == b'DELETEALL':
       file_.write(b'deleteall\n')
     else:
-      raise SystemExit(_("Unhandled filechange type: %s") % self.type) # pragma: no cover
+      raise SystemExit(_("Unhandled filechange type: %s") % self.type) ***REMOVED*** pragma: no cover
 
 class Commit(_GitElementWithId):
   """
@@ -741,44 +741,44 @@ class Commit(_GitElementWithId):
                file_changes,
                parents,
                original_id = None,
-               encoding = None, # encoding for message; None implies UTF-8
+               encoding = None, ***REMOVED*** encoding for message; None implies UTF-8
                **kwargs):
     _GitElementWithId.__init__(self)
     self.old_id = self.id
 
-    # Denote that this is a commit element
+    ***REMOVED*** Denote that this is a commit element
     self.type = 'commit'
 
-    # Record the affected branch
+    ***REMOVED*** Record the affected branch
     self.branch = branch
 
-    # Record original id
+    ***REMOVED*** Record original id
     self.original_id = original_id
 
-    # Record author's name
+    ***REMOVED*** Record author's name
     self.author_name  = author_name
 
-    # Record author's email
+    ***REMOVED*** Record author's email
     self.author_email = author_email
 
-    # Record date of authoring
+    ***REMOVED*** Record date of authoring
     self.author_date  = author_date
 
-    # Record committer's name
+    ***REMOVED*** Record committer's name
     self.committer_name  = committer_name
 
-    # Record committer's email
+    ***REMOVED*** Record committer's email
     self.committer_email = committer_email
 
-    # Record date the commit was made
+    ***REMOVED*** Record date the commit was made
     self.committer_date  = committer_date
 
-    # Record commit message and its encoding
+    ***REMOVED*** Record commit message and its encoding
     self.encoding = encoding
     self.message = message
 
-    # List of file-changes associated with this commit. Note that file-changes
-    # are also represented as git elements
+    ***REMOVED*** List of file-changes associated with this commit. Note that file-changes
+    ***REMOVED*** are also represented as git elements
     self.file_changes = file_changes
 
     self.parents = parents
@@ -789,8 +789,8 @@ class Commit(_GitElementWithId):
     """
     self.dumped = 1
 
-    # Make output to fast-import slightly easier for humans to read if the
-    # message has no trailing newline of its own; cosmetic, but a nice touch...
+    ***REMOVED*** Make output to fast-import slightly easier for humans to read if the
+    ***REMOVED*** message has no trailing newline of its own; cosmetic, but a nice touch...
     extra_newline = b'\n'
     if self.message.endswith(b'\n') or not (self.parents or self.file_changes):
       extra_newline = b''
@@ -819,8 +819,8 @@ class Commit(_GitElementWithId):
     for change in self.file_changes:
       change.dump(file_)
     if not self.parents and not self.file_changes:
-      # Workaround a bug in pre-git-2.22 versions of fast-import with
-      # the get-mark directive.
+      ***REMOVED*** Workaround a bug in pre-git-2.22 versions of fast-import with
+      ***REMOVED*** the get-mark directive.
       file_.write(b'\n')
     file_.write(b'\n')
 
@@ -847,28 +847,28 @@ class Tag(_GitElementWithId):
     _GitElementWithId.__init__(self)
     self.old_id = self.id
 
-    # Denote that this is a tag element
+    ***REMOVED*** Denote that this is a tag element
     self.type = 'tag'
 
-    # Store the name of the tag
+    ***REMOVED*** Store the name of the tag
     self.ref = ref
 
-    # Store the entity being tagged (this should be a commit)
+    ***REMOVED*** Store the entity being tagged (this should be a commit)
     self.from_ref = from_ref
 
-    # Record original id
+    ***REMOVED*** Record original id
     self.original_id = original_id
 
-    # Store the name of the tagger
+    ***REMOVED*** Store the name of the tagger
     self.tagger_name  = tagger_name
 
-    # Store the email of the tagger
+    ***REMOVED*** Store the email of the tagger
     self.tagger_email = tagger_email
 
-    # Store the date
+    ***REMOVED*** Store the date
     self.tagger_date  = tagger_date
 
-    # Store the tag message
+    ***REMOVED*** Store the tag message
     self.message = tag_msg
 
   def dump(self, file_):
@@ -900,10 +900,10 @@ class Progress(_GitElement):
   def __init__(self, message):
     _GitElement.__init__(self)
 
-    # Denote that this is a progress element
+    ***REMOVED*** Denote that this is a progress element
     self.type = 'progress'
 
-    # Store the progress message
+    ***REMOVED*** Store the progress message
     self.message = message
 
   def dump(self, file_):
@@ -926,7 +926,7 @@ class Checkpoint(_GitElement):
   def __init__(self):
     _GitElement.__init__(self)
 
-    # Denote that this is a checkpoint element
+    ***REMOVED*** Denote that this is a checkpoint element
     self.type = 'checkpoint'
 
   def dump(self, file_):
@@ -947,10 +947,10 @@ class LiteralCommand(_GitElement):
   def __init__(self, line):
     _GitElement.__init__(self)
 
-    # Denote that this is a literal element
+    ***REMOVED*** Denote that this is a literal element
     self.type = 'literal'
 
-    # Store the command
+    ***REMOVED*** Store the command
     self.line = line
 
   def dump(self, file_):
@@ -970,7 +970,7 @@ class Alias(_GitElement):
 
   def __init__(self, ref, to_ref):
     _GitElement.__init__(self)
-    # Denote that this is a reset
+    ***REMOVED*** Denote that this is a reset
     self.type = 'alias'
 
     self.ref = ref
@@ -1001,8 +1001,8 @@ class FastExportParser(object):
                blob_callback = None,  progress_callback = None,
                reset_callback = None, checkpoint_callback = None,
                done_callback = None):
-    # Members below simply store callback functions for the various git
-    # elements
+    ***REMOVED*** Members below simply store callback functions for the various git
+    ***REMOVED*** elements
     self._tag_callback        = tag_callback
     self._blob_callback       = blob_callback
     self._reset_callback      = reset_callback
@@ -1011,34 +1011,34 @@ class FastExportParser(object):
     self._checkpoint_callback = checkpoint_callback
     self._done_callback       = done_callback
 
-    # Keep track of which refs appear from the export, and which make it to
-    # the import (pruning of empty commits, renaming of refs, and creating
-    # new manual objects and inserting them can cause these to differ).
+    ***REMOVED*** Keep track of which refs appear from the export, and which make it to
+    ***REMOVED*** the import (pruning of empty commits, renaming of refs, and creating
+    ***REMOVED*** new manual objects and inserting them can cause these to differ).
     self._exported_refs = set()
     self._imported_refs = set()
 
-    # A list of the branches we've seen, plus the last known commit they
-    # pointed to.  An entry in latest_*commit will be deleted if we get a
-    # reset for that branch.  These are used because of fast-import's weird
-    # decision to allow having an implicit parent via naming the branch
-    # instead of requiring branches to be specified via 'from' directives.
+    ***REMOVED*** A list of the branches we've seen, plus the last known commit they
+    ***REMOVED*** pointed to.  An entry in latest_*commit will be deleted if we get a
+    ***REMOVED*** reset for that branch.  These are used because of fast-import's weird
+    ***REMOVED*** decision to allow having an implicit parent via naming the branch
+    ***REMOVED*** instead of requiring branches to be specified via 'from' directives.
     self._latest_commit = {}
     self._latest_orig_commit = {}
 
-    # A handle to the input source for the fast-export data
+    ***REMOVED*** A handle to the input source for the fast-export data
     self._input = None
 
-    # A handle to the output file for the output we generate (we call dump
-    # on many of the git elements we create).
+    ***REMOVED*** A handle to the output file for the output we generate (we call dump
+    ***REMOVED*** on many of the git elements we create).
     self._output = None
 
-    # Stores the contents of the current line of input being parsed
+    ***REMOVED*** Stores the contents of the current line of input being parsed
     self._currentline = ''
 
-    # Tracks LFS objects we have found
+    ***REMOVED*** Tracks LFS objects we have found
     self._lfs_object_tracker = None
 
-    # Compile some regexes and cache those
+    ***REMOVED*** Compile some regexes and cache those
     self._mark_re = re.compile(br'mark :(\d+)\n$')
     self._parent_regexes = {}
     parent_regex_rules = (br' :(\d+)\n$', br' ([0-9a-f]{40})\n')
@@ -1083,8 +1083,8 @@ class FastExportParser(object):
     matches = rule.match(self._currentline)
     if matches:
       orig_baseref = int(matches.group(1))
-      # We translate the parent commit mark to what it needs to be in
-      # our mark namespace
+      ***REMOVED*** We translate the parent commit mark to what it needs to be in
+      ***REMOVED*** our mark namespace
       baseref = _IDS.translate(orig_baseref)
       self._advance_currentline()
     else:
@@ -1109,11 +1109,11 @@ class FastExportParser(object):
       if idnum[0:1] == b':':
         idnum = idnum[1:]
       path = path.rstrip(b'\n')
-      # Check for LFS objects from sources before we might toss this filechange
+      ***REMOVED*** Check for LFS objects from sources before we might toss this filechange
       if self._lfs_object_tracker:
         value = int(idnum) if len(idnum) != 40 else idnum
         self._lfs_object_tracker.check_file_change_data(value, True)
-      # We translate the idnum to our id system
+      ***REMOVED*** We translate the idnum to our id system
       if len(idnum) != 40:
         idnum = _IDS.translate( int(idnum) )
       if idnum is not None:
@@ -1130,7 +1130,7 @@ class FastExportParser(object):
         path = PathQuoting.dequote(path)
       filechange = FileChange(b'D', path)
       self._advance_currentline()
-    elif changetype == b'R':  # pragma: no cover (now avoid fast-export renames)
+    elif changetype == b'R':  ***REMOVED*** pragma: no cover (now avoid fast-export renames)
       rest = self._currentline[2:-1]
       if rest.startswith(b'"'):
         m = self._quoted_string_re.match(rest)
@@ -1167,7 +1167,7 @@ class FastExportParser(object):
     if not matches:
       raise SystemExit(_("Malformed %(refname)s line: '%(line)s'") %
                        ({'refname': refname, 'line':self._currentline})
-                       ) # pragma: no cover
+                       ) ***REMOVED*** pragma: no cover
     ref = matches.group(1)
     self._advance_currentline()
     return ref
@@ -1205,7 +1205,7 @@ class FastExportParser(object):
     to _output once everything else is done (unless it has been skipped by
     the callback).
     """
-    # Parse the Blob
+    ***REMOVED*** Parse the Blob
     self._advance_currentline()
     id_ = self._parse_optional_mark()
 
@@ -1217,24 +1217,24 @@ class FastExportParser(object):
     if self._currentline == b'\n':
       self._advance_currentline()
 
-    # Create the blob
+    ***REMOVED*** Create the blob
     blob = Blob(data, original_id)
 
-    # If fast-export text had a mark for this blob, need to make sure this
-    # mark translates to the blob's true id.
+    ***REMOVED*** If fast-export text had a mark for this blob, need to make sure this
+    ***REMOVED*** mark translates to the blob's true id.
     if id_:
       blob.old_id = id_
       _IDS.record_rename(id_, blob.id)
 
-    # Check for LFS objects
+    ***REMOVED*** Check for LFS objects
     if self._lfs_object_tracker:
       self._lfs_object_tracker.check_blob_data(data, blob.old_id, True)
 
-    # Call any user callback to allow them to use/modify the blob
+    ***REMOVED*** Call any user callback to allow them to use/modify the blob
     if self._blob_callback:
       self._blob_callback(blob)
 
-    # Now print the resulting blob
+    ***REMOVED*** Now print the resulting blob
     if not blob.dumped:
       blob.dump(self._output)
 
@@ -1246,34 +1246,34 @@ class FastExportParser(object):
     to _output once everything else is done (unless it has been skipped by
     the callback).
     """
-    # Parse the Reset
+    ***REMOVED*** Parse the Reset
     ref = self._parse_ref_line(b'reset')
     self._exported_refs.add(ref)
     ignoreme, from_ref = self._parse_optional_parent_ref(b'from')
     if self._currentline == b'\n':
       self._advance_currentline()
 
-    # fast-export likes to print extraneous resets that serve no purpose.
-    # While we could continue processing such resets, that is a waste of
-    # resources.  Also, we want to avoid recording that this ref was
-    # seen in such cases, since this ref could be rewritten to nothing.
+    ***REMOVED*** fast-export likes to print extraneous resets that serve no purpose.
+    ***REMOVED*** While we could continue processing such resets, that is a waste of
+    ***REMOVED*** resources.  Also, we want to avoid recording that this ref was
+    ***REMOVED*** seen in such cases, since this ref could be rewritten to nothing.
     if not from_ref:
       self._latest_commit.pop(ref, None)
       self._latest_orig_commit.pop(ref, None)
       return
 
-    # Create the reset
+    ***REMOVED*** Create the reset
     reset = Reset(ref, from_ref)
 
-    # Call any user callback to allow them to modify the reset
+    ***REMOVED*** Call any user callback to allow them to modify the reset
     if self._reset_callback:
       self._reset_callback(reset)
 
-    # Update metadata
+    ***REMOVED*** Update metadata
     self._latest_commit[reset.ref] = reset.from_ref
     self._latest_orig_commit[reset.ref] = reset.from_ref
 
-    # Now print the resulting reset
+    ***REMOVED*** Now print the resulting reset
     if not reset.dumped:
       self._imported_refs.add(reset.ref)
       reset.dump(self._output)
@@ -1286,8 +1286,8 @@ class FastExportParser(object):
     to _output once everything else is done (unless it has been skipped by
     the callback OR the callback has removed all file-changes from the commit).
     """
-    # Parse the Commit. This may look involved, but it's pretty simple; it only
-    # looks bad because a commit object contains many pieces of data.
+    ***REMOVED*** Parse the Commit. This may look involved, but it's pretty simple; it only
+    ***REMOVED*** looks bad because a commit object contains many pieces of data.
     branch = self._parse_ref_line(b'commit')
     self._exported_refs.add(branch)
     id_ = self._parse_optional_mark()
@@ -1315,30 +1315,30 @@ class FastExportParser(object):
     commit_msg = self._parse_data()
 
     pinfo = [self._parse_optional_parent_ref(b'from')]
-    # Due to empty pruning, we can have real 'from' and 'merge' lines that
-    # due to commit rewriting map to a parent of None.  We need to record
-    # 'from' if its non-None, and we need to parse all 'merge' lines.
+    ***REMOVED*** Due to empty pruning, we can have real 'from' and 'merge' lines that
+    ***REMOVED*** due to commit rewriting map to a parent of None.  We need to record
+    ***REMOVED*** 'from' if its non-None, and we need to parse all 'merge' lines.
     while self._currentline.startswith(b'merge '):
       pinfo.append(self._parse_optional_parent_ref(b'merge'))
     orig_parents, parents = [list(tmp) for tmp in zip(*pinfo)]
 
-    # No parents is oddly represented as [None] instead of [], due to the
-    # special 'from' handling.  Convert it here to a more canonical form.
+    ***REMOVED*** No parents is oddly represented as [None] instead of [], due to the
+    ***REMOVED*** special 'from' handling.  Convert it here to a more canonical form.
     if parents == [None]:
       parents = []
     if orig_parents == [None]:
       orig_parents = []
 
-    # fast-import format is kinda stupid in that it allows implicit parents
-    # based on the branch name instead of requiring them to be specified by
-    # 'from' directives.  The only way to get no parent is by using a reset
-    # directive first, which clears the latest_commit_for_this_branch tracking.
+    ***REMOVED*** fast-import format is kinda stupid in that it allows implicit parents
+    ***REMOVED*** based on the branch name instead of requiring them to be specified by
+    ***REMOVED*** 'from' directives.  The only way to get no parent is by using a reset
+    ***REMOVED*** directive first, which clears the latest_commit_for_this_branch tracking.
     if not orig_parents and self._latest_commit.get(branch):
       parents = [self._latest_commit[branch]]
     if not orig_parents and self._latest_orig_commit.get(branch):
       orig_parents = [self._latest_orig_commit[branch]]
 
-    # Get the list of file changes
+    ***REMOVED*** Get the list of file changes
     file_changes = []
     file_change = self._parse_optional_filechange()
     had_file_changes = file_change is not None
@@ -1349,35 +1349,35 @@ class FastExportParser(object):
     if self._currentline == b'\n':
       self._advance_currentline()
 
-    # Okay, now we can finally create the Commit object
+    ***REMOVED*** Okay, now we can finally create the Commit object
     commit = Commit(branch,
                     author_name,    author_email,    author_date,
                     committer_name, committer_email, committer_date,
                     commit_msg, file_changes, parents, original_id, encoding)
 
-    # If fast-export text had a mark for this commit, need to make sure this
-    # mark translates to the commit's true id.
+    ***REMOVED*** If fast-export text had a mark for this commit, need to make sure this
+    ***REMOVED*** mark translates to the commit's true id.
     if id_:
       commit.old_id = id_
       _IDS.record_rename(id_, commit.id)
 
-    # refs/notes/ put commit-message-related material in blobs, and name their
-    # files according to the hash of other commits.  That totally messes with
-    # all normal callbacks; fast-export should really export these as different
-    # kinds of objects.  Until then, let's just pass these commits through as-is
-    # and hope the blob callbacks don't mess things up.
+    ***REMOVED*** refs/notes/ put commit-message-related material in blobs, and name their
+    ***REMOVED*** files according to the hash of other commits.  That totally messes with
+    ***REMOVED*** all normal callbacks; fast-export should really export these as different
+    ***REMOVED*** kinds of objects.  Until then, let's just pass these commits through as-is
+    ***REMOVED*** and hope the blob callbacks don't mess things up.
     if commit.branch.startswith(b'refs/notes/'):
       self._imported_refs.add(commit.branch)
       commit.dump(self._output)
       return
 
-    # Call any user callback to allow them to modify the commit
+    ***REMOVED*** Call any user callback to allow them to modify the commit
     aux_info = {'orig_parents': orig_parents,
                 'had_file_changes': had_file_changes}
     if self._commit_callback:
       self._commit_callback(commit, aux_info)
 
-    # Now print the resulting commit, or if prunable skip it
+    ***REMOVED*** Now print the resulting commit, or if prunable skip it
     self._latest_orig_commit[branch] = commit.id
     if not (commit.old_id or commit.id) in _SKIPPED_COMMITS:
       self._latest_commit[branch] = commit.id
@@ -1393,7 +1393,7 @@ class FastExportParser(object):
     to _output once everything else is done (unless it has been skipped by
     the callback).
     """
-    # Parse the Tag
+    ***REMOVED*** Parse the Tag
     tag = self._parse_ref_line(b'tag')
     self._exported_refs.add(b'refs/tags/'+tag)
     id_ = self._parse_optional_mark()
@@ -1410,26 +1410,26 @@ class FastExportParser(object):
     if self._currentline == b'\n':
       self._advance_currentline()
 
-    # Create the tag
+    ***REMOVED*** Create the tag
     tag = Tag(tag, from_ref,
               tagger_name, tagger_email, tagger_date, tag_msg,
               original_id)
 
-    # If fast-export text had a mark for this tag, need to make sure this
-    # mark translates to the tag's true id.
+    ***REMOVED*** If fast-export text had a mark for this tag, need to make sure this
+    ***REMOVED*** mark translates to the tag's true id.
     if id_:
       tag.old_id = id_
       _IDS.record_rename(id_, tag.id)
 
-    # Call any user callback to allow them to modify the tag
+    ***REMOVED*** Call any user callback to allow them to modify the tag
     if self._tag_callback:
       self._tag_callback(tag)
 
-    # The tag might not point at anything that still exists (self.from_ref
-    # will be None if the commit it pointed to and all its ancestors were
-    # pruned due to being empty)
+    ***REMOVED*** The tag might not point at anything that still exists (self.from_ref
+    ***REMOVED*** will be None if the commit it pointed to and all its ancestors were
+    ***REMOVED*** pruned due to being empty)
     if tag.from_ref:
-      # Print out this tag's information
+      ***REMOVED*** Print out this tag's information
       if not tag.dumped:
         self._imported_refs.add(b'refs/tags/'+tag.ref)
         tag.dump(self._output)
@@ -1444,23 +1444,23 @@ class FastExportParser(object):
     progress data. The Progress will be dumped to _output once
     everything else is done (unless it has been skipped by the callback).
     """
-    # Parse the Progress
+    ***REMOVED*** Parse the Progress
     message = self._parse_ref_line(b'progress')
     if self._currentline == b'\n':
       self._advance_currentline()
 
-    # Create the progress message
+    ***REMOVED*** Create the progress message
     progress = Progress(message)
 
-    # Call any user callback to allow them to modify the progress messsage
+    ***REMOVED*** Call any user callback to allow them to modify the progress messsage
     if self._progress_callback:
       self._progress_callback(progress)
 
-    # NOTE: By default, we do NOT print the progress message; git
-    # fast-import would write it to fast_import_pipes which could mess with
-    # our parsing of output from the 'ls' and 'get-mark' directives we send
-    # to fast-import.  If users want these messages, they need to process
-    # and handle them in the appropriate callback above.
+    ***REMOVED*** NOTE: By default, we do NOT print the progress message; git
+    ***REMOVED*** fast-import would write it to fast_import_pipes which could mess with
+    ***REMOVED*** our parsing of output from the 'ls' and 'get-mark' directives we send
+    ***REMOVED*** to fast-import.  If users want these messages, they need to process
+    ***REMOVED*** and handle them in the appropriate callback above.
 
   def _parse_checkpoint(self):
     """
@@ -1470,33 +1470,33 @@ class FastExportParser(object):
     checkpoint data. The Checkpoint will be dumped to _output once
     everything else is done (unless it has been skipped by the callback).
     """
-    # Parse the Checkpoint
+    ***REMOVED*** Parse the Checkpoint
     self._advance_currentline()
     if self._currentline == b'\n':
       self._advance_currentline()
 
-    # Create the checkpoint
+    ***REMOVED*** Create the checkpoint
     checkpoint = Checkpoint()
 
-    # Call any user callback to allow them to drop the checkpoint
+    ***REMOVED*** Call any user callback to allow them to drop the checkpoint
     if self._checkpoint_callback:
       self._checkpoint_callback(checkpoint)
 
-    # NOTE: By default, we do NOT print the checkpoint message; although it
-    # we would only realistically get them with --stdin, the fact that we
-    # are filtering makes me think the checkpointing is less likely to be
-    # reasonable.  In fact, I don't think it's necessary in general.  If
-    # users do want it, they should process it in the checkpoint_callback.
+    ***REMOVED*** NOTE: By default, we do NOT print the checkpoint message; although it
+    ***REMOVED*** we would only realistically get them with --stdin, the fact that we
+    ***REMOVED*** are filtering makes me think the checkpointing is less likely to be
+    ***REMOVED*** reasonable.  In fact, I don't think it's necessary in general.  If
+    ***REMOVED*** users do want it, they should process it in the checkpoint_callback.
 
   def _parse_literal_command(self):
     """
     Parse literal command.  Then just dump the line as is.
     """
-    # Create the literal command object
+    ***REMOVED*** Create the literal command object
     command = LiteralCommand(self._currentline)
     self._advance_currentline()
 
-    # Now print the resulting literal command
+    ***REMOVED*** Now print the resulting literal command
     if not command.dumped:
       command.dump(self._output)
 
@@ -1512,11 +1512,11 @@ class FastExportParser(object):
     """
     This method filters fast export output.
     """
-    # Set input. If no args provided, use stdin.
+    ***REMOVED*** Set input. If no args provided, use stdin.
     self._input = input
     self._output = output
 
-    # Run over the input and do the filtering
+    ***REMOVED*** Run over the input and do the filtering
     self._advance_currentline()
     while self._currentline:
       if   self._currentline.startswith(b'blob'):
@@ -1539,10 +1539,10 @@ class FastExportParser(object):
         if self._done_callback:
           self._done_callback()
         self._parse_literal_command()
-        # Prevent confusion from others writing additional stuff that'll just
-        # be ignored
+        ***REMOVED*** Prevent confusion from others writing additional stuff that'll just
+        ***REMOVED*** be ignored
         self._output.close()
-      elif self._currentline.startswith(b'#'):
+      elif self._currentline.startswith(b'***REMOVED***'):
         self._parse_literal_command()
       elif self._currentline.startswith(b'get-mark') or \
            self._currentline.startswith(b'cat-blob') or \
@@ -1561,7 +1561,7 @@ def record_id_rename(old_id, new_id):
   handle_transitivity = True
   _IDS.record_rename(old_id, new_id, handle_transitivity)
 
-# Internal globals
+***REMOVED*** Internal globals
 _IDS = _IDs()
 _SKIPPED_COMMITS = set()
 BLOB_HASH_TO_NEW_ID = {}
@@ -1608,7 +1608,7 @@ class SubprocessWrapper(object):
     return subprocess.check_output(SubprocessWrapper.decodify(*args), **kwargs)
 
   @staticmethod
-  def check_call(*args, **kwargs): # pragma: no cover  # used by filter-lamely
+  def check_call(*args, **kwargs): ***REMOVED*** pragma: no cover  ***REMOVED*** used by filter-lamely
     if 'cwd' in kwargs:
       kwargs['cwd'] = decode(kwargs['cwd'])
     return subprocess.check_call(SubprocessWrapper.decodify(*args), **kwargs)
@@ -1649,7 +1649,7 @@ class GitUtils(object):
     p1 = subproc.Popen(["git", "count-objects", "-v"],
                           stdout=subprocess.PIPE, cwd=repo)
     lines = p1.stdout.read().splitlines()
-    # Return unpacked objects + packed-objects
+    ***REMOVED*** Return unpacked objects + packed-objects
     return int(lines[0].split()[1]) + int(lines[2].split()[1])
 
   @staticmethod
@@ -1672,8 +1672,8 @@ class GitUtils(object):
       output = subproc.check_output('git show-ref'.split(),
                                     cwd=repo_working_dir)
     except subprocess.CalledProcessError as e:
-      # If error code is 1, there just aren't any refs; i.e. new repo.
-      # If error code is other than 1, some other error (e.g. not a git repo)
+      ***REMOVED*** If error code is 1, there just aren't any refs; i.e. new repo.
+      ***REMOVED*** If error code is other than 1, some other error (e.g. not a git repo)
       if e.returncode != 1:
         raise SystemExit('fatal: {}'.format(e))
       output = ''
@@ -1685,10 +1685,10 @@ class GitUtils(object):
     try:
       output = subproc.check_output('git config --list'.split(),
                                     cwd=repo_working_dir)
-    except subprocess.CalledProcessError as e: # pragma: no cover
+    except subprocess.CalledProcessError as e: ***REMOVED*** pragma: no cover
       raise SystemExit('fatal: {}'.format(e))
 
-    # FIXME: Ignores multi-valued keys, just let them overwrite for now
+    ***REMOVED*** FIXME: Ignores multi-valued keys, just let them overwrite for now
     return dict(line.split(b'=', maxsplit=1)
                 for line in output.strip().split(b"\n"))
 
@@ -1698,7 +1698,7 @@ class GitUtils(object):
     num_blobs = 0
     processed_blobs_msg = _("Processed %d blob sizes")
 
-    # Get sizes of blobs by sha1
+    ***REMOVED*** Get sizes of blobs by sha1
     cmd = '--batch-check=%(objectname) %(objecttype) ' + \
           '%(objectsize) %(objectsize:disk)'
     cf = subproc.Popen(['git', 'cat-file', '--batch-all-objects', cmd],
@@ -1714,7 +1714,7 @@ class GitUtils(object):
           unpacked_size[sha] = objsize
           packed_size[sha] = objdisksize
           num_blobs += 1
-      except ValueError: # pragma: no cover
+      except ValueError: ***REMOVED*** pragma: no cover
         sys.stderr.write(_("Error: unexpected `git cat-file` output: \"%s\"\n") % line)
       if not quiet:
         blob_size_progress.show(processed_blobs_msg % num_blobs)
@@ -1743,7 +1743,7 @@ class GitUtils(object):
       elif changetype in (b'A', b'M', b'T'):
         identifier = BLOB_HASH_TO_NEW_ID.get(newhash, newhash)
         file_changes.append(FileChange(b'M', path, identifier, mode))
-      else: # pragma: no cover
+      else: ***REMOVED*** pragma: no cover
         raise SystemExit("Unknown change type for line {}".format(line))
 
     return file_changes
@@ -1752,10 +1752,10 @@ class GitUtils(object):
   def print_my_version():
     with open(__file__, 'br') as f:
       contents = f.read()
-    # If people replaced @@LOCALEDIR@@ string to point at their local
-    # directory, undo it so we can get original source version.
-    contents = re.sub(br'\A#\!.*',
-                      br'#!/usr/bin/env python3', contents)
+    ***REMOVED*** If people replaced @@LOCALEDIR@@ string to point at their local
+    ***REMOVED*** directory, undo it so we can get original source version.
+    contents = re.sub(br'\A***REMOVED***\!.*',
+                      br'***REMOVED***!/usr/bin/env python3', contents)
     contents = re.sub(br'(\("GIT_TEXTDOMAINDIR"\) or ").*"',
                       br'\1@@LOCALEDIR@@"', contents)
 
@@ -1816,7 +1816,7 @@ class FilteringOptions(object):
         af(parser, namespace, b':'+dirname, '--path-rename')
       else:
         raise SystemExit(_("Error: HelperFilter given invalid option_string: %s")
-                         % option_string) # pragma: no cover
+                         % option_string) ***REMOVED*** pragma: no cover
 
   class FileWithPathsFilter(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
@@ -1826,7 +1826,7 @@ class FilteringOptions(object):
 
   @staticmethod
   def create_arg_parser():
-    # Include usage in the summary, so we can put the description first
+    ***REMOVED*** Include usage in the summary, so we can put the description first
     summary = _('''Rewrite (or analyze) repository history
 
     git-filter-repo destructively rewrites history (unless --analyze or
@@ -1841,7 +1841,7 @@ class FilteringOptions(object):
     See EXAMPLES section for details.
     ''').rstrip()
 
-    # Provide a long helpful examples section
+    ***REMOVED*** Provide a long helpful examples section
     example_text = _('''CALLBACKS
 
     Most callback functions are of the same general format.  For a command line
@@ -1892,7 +1892,7 @@ class FilteringOptions(object):
     of b'100644', b'100755', b'120000', or b'160000'.
 
     For more detailed examples and explanations AND caveats, see
-      https://htmlpreview.github.io/?https://github.com/newren/git-filter-repo/blob/docs/html/git-filter-repo.html#CALLBACKS
+      https://htmlpreview.github.io/?https://github.com/newren/git-filter-repo/blob/docs/html/git-filter-repo.html***REMOVED***CALLBACKS
 
 EXAMPLES
 
@@ -1924,9 +1924,9 @@ EXAMPLES
       git filter-repo --path src/ --to-subdirectory-filter my-module --tag-rename '':'my-module-'
 
     For more detailed examples and explanations, see
-      https://htmlpreview.github.io/?https://github.com/newren/git-filter-repo/blob/docs/html/git-filter-repo.html#EXAMPLES''')
+      https://htmlpreview.github.io/?https://github.com/newren/git-filter-repo/blob/docs/html/git-filter-repo.html***REMOVED***EXAMPLES''')
 
-    # Create the basic parser
+    ***REMOVED*** Create the basic parser
     parser = argparse.ArgumentParser(description=summary,
                                      usage = argparse.SUPPRESS,
                                      add_help = False,
@@ -1999,7 +1999,7 @@ EXAMPLES
                "per line.  Lines with '==>' in them specify path renames, "
                "and lines can begin with 'literal:' (the default), 'glob:', "
                "or 'regex:' to specify different matching styles.  Blank "
-               "lines and lines starting with a '#' are ignored."))
+               "lines and lines starting with a '***REMOVED***' are ignored."))
     helpers.add_argument('--subdirectory-filter', metavar='DIRECTORY',
         action=FilteringOptions.HelperFilter, type=os.fsencode,
         help=_("Only look at history that touches the given subdirectory "
@@ -2202,11 +2202,11 @@ EXAMPLES
                "refs and keep the old ones around.  Use with caution."))
     misc.add_argument('--no-gc', action='store_true',
         help=_("Do not run 'git gc' after filtering."))
-    # WARNING: --refs presents a problem with become-degenerate pruning:
-    #   * Excluding a commit also excludes its ancestors so when some other
-    #     commit has an excluded ancestor as a parent we have no way of
-    #     knowing what it is an ancestor of without doing a special
-    #     full-graph walk.
+    ***REMOVED*** WARNING: --refs presents a problem with become-degenerate pruning:
+    ***REMOVED***   * Excluding a commit also excludes its ancestors so when some other
+    ***REMOVED***     commit has an excluded ancestor as a parent we have no way of
+    ***REMOVED***     knowing what it is an ancestor of without doing a special
+    ***REMOVED***     full-graph walk.
     misc.add_argument('--refs', nargs='+',
         help=_("Limit history rewriting to the specified refs.  Implies "
                "--partial.  In addition to the normal caveats of --partial "
@@ -2227,22 +2227,22 @@ EXAMPLES
                "performed and commands being run.  When used together "
                "with --dry-run, also show extra information about what "
                "would be run."))
-    # WARNING: --state-branch has some problems:
-    #   * It does not work well with manually inserted objects (user creating
-    #     Blob() or Commit() or Tag() objects and calling
-    #     RepoFilter.insert(obj) on them).
-    #   * It does not work well with multiple source or multiple target repos
-    #   * It doesn't work so well with pruning become-empty commits (though
-    #     --refs doesn't work so well with it either)
-    # These are probably fixable, given some work (e.g. re-importing the
-    # graph at the beginning to get the AncestryGraph right, doing our own
-    # export of marks instead of using fast-export --export-marks, etc.), but
-    # for now just hide the option.
+    ***REMOVED*** WARNING: --state-branch has some problems:
+    ***REMOVED***   * It does not work well with manually inserted objects (user creating
+    ***REMOVED***     Blob() or Commit() or Tag() objects and calling
+    ***REMOVED***     RepoFilter.insert(obj) on them).
+    ***REMOVED***   * It does not work well with multiple source or multiple target repos
+    ***REMOVED***   * It doesn't work so well with pruning become-empty commits (though
+    ***REMOVED***     --refs doesn't work so well with it either)
+    ***REMOVED*** These are probably fixable, given some work (e.g. re-importing the
+    ***REMOVED*** graph at the beginning to get the AncestryGraph right, doing our own
+    ***REMOVED*** export of marks instead of using fast-export --export-marks, etc.), but
+    ***REMOVED*** for now just hide the option.
     misc.add_argument('--state-branch',
-        #help=_("Enable incremental filtering by saving the mapping of old "
-        #       "to new objects to the specified branch upon exit, and"
-        #       "loading that mapping from that branch (if it exists) "
-        #       "upon startup."))
+        ***REMOVED***help=_("Enable incremental filtering by saving the mapping of old "
+        ***REMOVED***       "to new objects to the specified branch upon exit, and"
+        ***REMOVED***       "loading that mapping from that branch (if it exists) "
+        ***REMOVED***       "upon startup."))
         help=argparse.SUPPRESS)
     misc.add_argument('--stdin', action='store_true',
         help=_("Instead of running `git fast-export` and filtering its "
@@ -2260,54 +2260,54 @@ EXAMPLES
                          "it's a read-only operation."))
     if args.analyze and args.stdin:
       raise SystemExit(_("Error: --analyze is incompatible with --stdin."))
-    # If no path_changes are found, initialize with empty list but mark as
-    # not inclusive so that all files match
+    ***REMOVED*** If no path_changes are found, initialize with empty list but mark as
+    ***REMOVED*** not inclusive so that all files match
     if args.path_changes == None:
       args.path_changes = []
       args.inclusive = False
     else:
-      # Similarly, if we have no filtering paths, then no path should be
-      # filtered out.  Based on how newname() works, the easiest way to
-      # achieve that is setting args.inclusive to False.
+      ***REMOVED*** Similarly, if we have no filtering paths, then no path should be
+      ***REMOVED*** filtered out.  Based on how newname() works, the easiest way to
+      ***REMOVED*** achieve that is setting args.inclusive to False.
       if not any(x[0] == 'filter' for x in args.path_changes):
         args.inclusive = False
-      # Also check for incompatible --use-base-name and --path-rename flags.
+      ***REMOVED*** Also check for incompatible --use-base-name and --path-rename flags.
       if args.use_base_name:
         if any(x[0] == 'rename' for x in args.path_changes):
           raise SystemExit(_("Error: --use-base-name and --path-rename are "
                              "incompatible."))
-    # Also throw some sanity checks on git version here;
-    # PERF: remove these checks once new enough git versions are common
+    ***REMOVED*** Also throw some sanity checks on git version here;
+    ***REMOVED*** PERF: remove these checks once new enough git versions are common
     p = subproc.Popen('git fast-export -h'.split(),
                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     output = p.stdout.read()
-    if b'--anonymize-map' not in output: # pragma: no cover
+    if b'--anonymize-map' not in output: ***REMOVED*** pragma: no cover
       global date_format_permissive
       date_format_permissive = False
-    if not any(x in output for x in [b'--mark-tags',b'--[no-]mark-tags']): # pragma: no cover
+    if not any(x in output for x in [b'--mark-tags',b'--[no-]mark-tags']): ***REMOVED*** pragma: no cover
       global write_marks
       write_marks = False
       if args.state_branch:
-        # We need a version of git-fast-export with --mark-tags
+        ***REMOVED*** We need a version of git-fast-export with --mark-tags
         raise SystemExit(_("Error: need git >= 2.24.0"))
-    if not any(x in output for x in [b'--reencode',  b'--[no-]reencode']): # pragma: no cover
+    if not any(x in output for x in [b'--reencode',  b'--[no-]reencode']): ***REMOVED*** pragma: no cover
       if args.preserve_commit_encoding:
-        # We need a version of git-fast-export with --reencode
+        ***REMOVED*** We need a version of git-fast-export with --reencode
         raise SystemExit(_("Error: need git >= 2.23.0"))
       else:
-        # Set args.preserve_commit_encoding to None which we'll check for later
-        # to avoid passing --reencode=yes to fast-export (that option was the
-        # default prior to git-2.23)
+        ***REMOVED*** Set args.preserve_commit_encoding to None which we'll check for later
+        ***REMOVED*** to avoid passing --reencode=yes to fast-export (that option was the
+        ***REMOVED*** default prior to git-2.23)
         args.preserve_commit_encoding = None
-      # If we don't have fast-exoprt --reencode, we may also be missing
-      # diff-tree --combined-all-paths, which is even more important...
+      ***REMOVED*** If we don't have fast-exoprt --reencode, we may also be missing
+      ***REMOVED*** diff-tree --combined-all-paths, which is even more important...
       p = subproc.Popen('git diff-tree -h'.split(),
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
       output = p.stdout.read()
       if b'--combined-all-paths' not in output:
-        # We need a version of git-diff-tree with --combined-all-paths
+        ***REMOVED*** We need a version of git-diff-tree with --combined-all-paths
         raise SystemExit(_("Error: need git >= 2.22.0"))
-    # End of sanity checks on git version
+    ***REMOVED*** End of sanity checks on git version
     if args.max_blob_size:
       suffix = args.max_blob_size[-1]
       if suffix not in '1234567890':
@@ -2332,12 +2332,12 @@ EXAMPLES
       for line in f:
         line = line.rstrip(b'\r\n')
 
-        # Determine the replacement
+        ***REMOVED*** Determine the replacement
         replacement = FilteringOptions.default_replace_text
         if b'==>' in line:
           line, replacement = line.rsplit(b'==>', 1)
 
-        # See if we need to match via regex
+        ***REMOVED*** See if we need to match via regex
         regex = None
         if line.startswith(b'regex:'):
           regex = line[6:]
@@ -2346,7 +2346,7 @@ EXAMPLES
         if regex:
           replace_regexes.append((re.compile(regex), replacement))
         else:
-          # Otherwise, find the literal we need to replace
+          ***REMOVED*** Otherwise, find the literal we need to replace
           if line.startswith(b'literal:'):
             line = line[8:]
           if not line:
@@ -2361,20 +2361,20 @@ EXAMPLES
       for line in f:
         line = line.rstrip(b'\r\n')
 
-        # Skip blank lines
+        ***REMOVED*** Skip blank lines
         if not line:
           continue
-        # Skip comment lines
-        if line.startswith(b'#'):
+        ***REMOVED*** Skip comment lines
+        if line.startswith(b'***REMOVED***'):
           continue
 
-        # Determine the replacement
+        ***REMOVED*** Determine the replacement
         match_type, repl = 'literal', None
         if b'==>' in line:
           line, repl = line.rsplit(b'==>', 1)
 
-        # See if we need to match via regex
-        match_type = 'match' # a.k.a. 'literal'
+        ***REMOVED*** See if we need to match via regex
+        match_type = 'match' ***REMOVED*** a.k.a. 'literal'
         if line.startswith(b'regex:'):
           match_type = 'regex'
           match = re.compile(line[6:])
@@ -2394,7 +2394,7 @@ EXAMPLES
                                  "and NEW_NAME are both non-empty and either "
                                  "ends with a slash then both must."))
 
-        # Record the filter or rename
+        ***REMOVED*** Record the filter or rename
         if repl is not None:
           new_path_changes.append(['rename', match_type, (match, repl)])
         else:
@@ -2448,7 +2448,7 @@ EXAMPLES
 
 class RepoAnalyze(object):
 
-  # First, several helper functions for analyze_commit()
+  ***REMOVED*** First, several helper functions for analyze_commit()
 
   @staticmethod
   def equiv_class(stats, filename):
@@ -2456,11 +2456,11 @@ class RepoAnalyze(object):
 
   @staticmethod
   def setup_equivalence_for_rename(stats, oldname, newname):
-    # if A is renamed to B and B is renamed to C, then the user thinks of
-    # A, B, and C as all being different names for the same 'file'.  We record
-    # this as an equivalence class:
-    #   stats['equivalence'][name] = (A,B,C)
-    # for name being each of A, B, and C.
+    ***REMOVED*** if A is renamed to B and B is renamed to C, then the user thinks of
+    ***REMOVED*** A, B, and C as all being different names for the same 'file'.  We record
+    ***REMOVED*** this as an equivalence class:
+    ***REMOVED***   stats['equivalence'][name] = (A,B,C)
+    ***REMOVED*** for name being each of A, B, and C.
     old_tuple = stats['equivalence'].get(oldname, ())
     if newname in old_tuple:
       return
@@ -2490,23 +2490,23 @@ class RepoAnalyze(object):
   def handle_file(stats, graph, commit, modes, shas, filenames):
     mode, sha, filename = modes[-1], shas[-1], filenames[-1]
 
-    # Figure out kind of deletions to undo for this file, and update lists
-    # of all-names-by-sha and all-filenames
+    ***REMOVED*** Figure out kind of deletions to undo for this file, and update lists
+    ***REMOVED*** of all-names-by-sha and all-filenames
     delmode = 'tree_deletions'
     if mode != b'040000':
       delmode = 'file_deletions'
       stats['names'][sha].add(filename)
       stats['allnames'].add(filename)
 
-    # If the file (or equivalence class of files) was recorded as deleted,
-    # clearly it isn't anymore
+    ***REMOVED*** If the file (or equivalence class of files) was recorded as deleted,
+    ***REMOVED*** clearly it isn't anymore
     equiv = RepoAnalyze.equiv_class(stats, filename)
     for f in equiv:
       stats[delmode].pop(f, None)
 
-    # If we get a modify/add for a path that was renamed, we may need to break
-    # the equivalence class.  However, if the modify/add was on a branch that
-    # doesn't have the rename in its history, we are still okay.
+    ***REMOVED*** If we get a modify/add for a path that was renamed, we may need to break
+    ***REMOVED*** the equivalence class.  However, if the modify/add was on a branch that
+    ***REMOVED*** doesn't have the rename in its history, we are still okay.
     need_to_break_equivalence = False
     if equiv[-1] != filename:
       for rename_commit in stats['rename_history'][filename]:
@@ -2524,11 +2524,11 @@ class RepoAnalyze(object):
     for change in file_changes:
       modes, shas, change_types, filenames = change
       if len(parents) == 1 and change_types.startswith(b'R'):
-        change_types = b'R'  # remove the rename score; we don't care
+        change_types = b'R'  ***REMOVED*** remove the rename score; we don't care
       if modes[-1] == b'160000':
         continue
       elif modes[-1] == b'000000':
-        # Track when files/directories are deleted
+        ***REMOVED*** Track when files/directories are deleted
         for f in RepoAnalyze.equiv_class(stats, filenames[-1]):
           if any(x == b'040000' for x in modes[0:-1]):
             stats['tree_deletions'][f] = date
@@ -2545,7 +2545,7 @@ class RepoAnalyze(object):
         raise SystemExit(_("Unhandled change type(s): %(change_type)s "
                            "(in commit %(commit)s)")
                          % ({'change_type': change_types, 'commit': commit})
-                         ) # pragma: no cover
+                         ) ***REMOVED*** pragma: no cover
 
   @staticmethod
   def gather_data(args):
@@ -2560,7 +2560,7 @@ class RepoAnalyze(object):
              'packed_size': packed_size,
              'num_commits': 0}
 
-    # Setup the rev-list/diff-tree process
+    ***REMOVED*** Setup the rev-list/diff-tree process
     processed_commits_msg = _("Processed %d commits")
     commit_parse_progress = ProgressWriter()
     num_commits = 0
@@ -2579,17 +2579,17 @@ class RepoAnalyze(object):
       parents = f.readline().split()
       date = f.readline().rstrip()
 
-      # We expect a blank line next; if we get a non-blank line then
-      # this commit modified no files and we need to move on to the next.
-      # If there is no line, we've reached end-of-input.
+      ***REMOVED*** We expect a blank line next; if we get a non-blank line then
+      ***REMOVED*** this commit modified no files and we need to move on to the next.
+      ***REMOVED*** If there is no line, we've reached end-of-input.
       line = f.readline()
       if not line:
         cont = False
       line = line.rstrip()
 
-      # If we haven't reached end of input, and we got a blank line meaning
-      # a commit that has modified files, then get the file changes associated
-      # with this commit.
+      ***REMOVED*** If we haven't reached end of input, and we got a blank line meaning
+      ***REMOVED*** a commit that has modified files, then get the file changes associated
+      ***REMOVED*** with this commit.
       file_changes = []
       if cont and not line:
         cont = False
@@ -2609,26 +2609,26 @@ class RepoAnalyze(object):
           filenames = [PathQuoting.dequote(x) for x in splits[1:]]
           file_changes.append([modes, shas, change_types, filenames])
 
-      # If someone is trying to analyze a subset of the history, make sure
-      # to avoid dying on commits with parents that we haven't seen before
+      ***REMOVED*** If someone is trying to analyze a subset of the history, make sure
+      ***REMOVED*** to avoid dying on commits with parents that we haven't seen before
       if args.refs:
         graph.record_external_commits([p for p in parents
                                        if not p in graph.value])
 
-      # Analyze this commit and update progress
+      ***REMOVED*** Analyze this commit and update progress
       RepoAnalyze.analyze_commit(stats, graph, commit, parents, date,
                                  file_changes)
       num_commits += 1
       commit_parse_progress.show(processed_commits_msg % num_commits)
 
-    # Show the final commits processed message and record the number of commits
+    ***REMOVED*** Show the final commits processed message and record the number of commits
     commit_parse_progress.finish()
     stats['num_commits'] = num_commits
 
-    # Close the output, ensure rev-list|diff-tree pipeline completed successfully
+    ***REMOVED*** Close the output, ensure rev-list|diff-tree pipeline completed successfully
     dtp.stdout.close()
     if dtp.wait():
-      raise SystemExit(_("Error: rev-list|diff-tree pipeline failed; see above.")) # pragma: no cover
+      raise SystemExit(_("Error: rev-list|diff-tree pipeline failed; see above.")) ***REMOVED*** pragma: no cover
 
     return stats
 
@@ -2644,7 +2644,7 @@ class RepoAnalyze(object):
         if path == b'':
           break
 
-    # Compute aggregate size information for paths, extensions, and dirs
+    ***REMOVED*** Compute aggregate size information for paths, extensions, and dirs
     total_size = {'packed': 0, 'unpacked': 0}
     path_size = {'packed': collections.defaultdict(int),
                  'unpacked': collections.defaultdict(int)}
@@ -2664,12 +2664,12 @@ class RepoAnalyze(object):
           for dirname in dirnames(name):
             dir_size[which][dirname] += size[which]
 
-    # Determine if and when extensions and directories were deleted
+    ***REMOVED*** Determine if and when extensions and directories were deleted
     ext_deleted_data = {}
     for name in stats['allnames']:
       when = stats['file_deletions'].get(name, None)
 
-      # Update the extension
+      ***REMOVED*** Update the extension
       basename, ext = os.path.splitext(name)
       if when is None:
         ext_deleted_data[ext] = None
@@ -2684,7 +2684,7 @@ class RepoAnalyze(object):
       dir_deleted_data[name] = stats['tree_deletions'].get(name, None)
 
     with open(os.path.join(reportdir, b"README"), 'bw') as f:
-      # Give a basic overview of this file
+      ***REMOVED*** Give a basic overview of this file
       f.write(b"== %s ==\n" % _("Overall Statistics").encode())
       f.write(("  %s: %d\n" % (_("Number of commits"),
                                stats['num_commits'])).encode())
@@ -2701,7 +2701,7 @@ class RepoAnalyze(object):
                                total_size['packed'])).encode())
       f.write(b"\n")
 
-      # Mention issues with the report
+      ***REMOVED*** Mention issues with the report
       f.write(("== %s ==\n" % _("Caveats")).encode())
       f.write(("=== %s ===\n" % _("Sizes")).encode())
       f.write(textwrap.dedent(_("""
@@ -2770,9 +2770,9 @@ class RepoAnalyze(object):
         """)[1:]).encode())
       f.write(b"\n")
 
-    # Equivalence classes for names, so if folks only want to keep a
-    # certain set of paths, they know the old names they want to include
-    # too.
+    ***REMOVED*** Equivalence classes for names, so if folks only want to keep a
+    ***REMOVED*** certain set of paths, they know the old names they want to include
+    ***REMOVED*** too.
     with open(os.path.join(reportdir, b"renames.txt"), 'bw') as f:
       seen = set()
       for pathname,equiv_group in sorted(stats['equivalence'].items(),
@@ -2784,7 +2784,7 @@ class RepoAnalyze(object):
                      "\n    ".join(decode(x) for x in equiv_group[1:]) +
                  "\n").encode())
 
-    # List directories in reverse sorted order of unpacked size
+    ***REMOVED*** List directories in reverse sorted order of unpacked size
     with open(os.path.join(reportdir, b"directories-deleted-sizes.txt"), 'bw') as f:
       msg = "=== %s ===\n" % _("Deleted directories by reverse size")
       f.write(msg.encode())
@@ -2809,7 +2809,7 @@ class RepoAnalyze(object):
                                             datestr(dir_deleted_data[dirname]),
                                             dirname or _("<toplevel>").encode()))
 
-    # List extensions in reverse sorted order of unpacked size
+    ***REMOVED*** List extensions in reverse sorted order of unpacked size
     with open(os.path.join(reportdir, b"extensions-deleted-sizes.txt"), 'bw') as f:
       msg = "=== %s ===\n" % _("Deleted extensions by reverse size")
       f.write(msg.encode())
@@ -2834,7 +2834,7 @@ class RepoAnalyze(object):
                                             datestr(ext_deleted_data[extname]),
                                             extname or _('<no extension>').encode()))
 
-    # List files in reverse sorted order of unpacked size
+    ***REMOVED*** List files in reverse sorted order of unpacked size
     with open(os.path.join(reportdir, b"path-deleted-sizes.txt"), 'bw') as f:
       msg = "=== %s ===\n" % _("Deleted paths by reverse accumulated size")
       f.write(msg.encode())
@@ -2862,15 +2862,15 @@ class RepoAnalyze(object):
                                             datestr(when),
                                             pathname))
 
-    # List of filenames and sizes in descending order
+    ***REMOVED*** List of filenames and sizes in descending order
     with open(os.path.join(reportdir, b"blob-shas-and-paths.txt"), 'bw') as f:
       f.write(("=== %s ===\n" % _("Files by sha and associated pathnames in reverse size")).encode())
       f.write(_("Format: sha, unpacked size, packed size, filename(s) object stored as\n").encode())
       for sha, size in sorted(stats['packed_size'].items(),
                               key=lambda x:(x[1],x[0]), reverse=True):
         if sha not in stats['names']:
-          # Some objects in the repository might not be referenced, or not
-          # referenced by the branches/tags the user cares about; skip them.
+          ***REMOVED*** Some objects in the repository might not be referenced, or not
+          ***REMOVED*** referenced by the branches/tags the user cares about; skip them.
           continue
         names_with_sha = stats['names'][sha]
         if len(names_with_sha) == 1:
@@ -2889,7 +2889,7 @@ class RepoAnalyze(object):
     else:
       git_dir = GitUtils.determine_git_dir(b'.')
 
-    # Create the report directory as necessary
+    ***REMOVED*** Create the report directory as necessary
       results_tmp_dir = os.path.join(git_dir, b'filter-repo')
       if not os.path.isdir(results_tmp_dir):
         os.mkdir(results_tmp_dir)
@@ -2905,10 +2905,10 @@ class RepoAnalyze(object):
 
     os.mkdir(reportdir)
 
-    # Gather the data we need
+    ***REMOVED*** Gather the data we need
     stats = RepoAnalyze.gather_data(args)
 
-    # Write the reports
+    ***REMOVED*** Write the reports
     sys.stdout.write(_("Writing reports to %s...") % decode(reportdir))
     sys.stdout.flush()
     RepoAnalyze.write_report(reportdir, stats)
@@ -2938,17 +2938,17 @@ class FileInfoValueHelper:
     except ValueError:
       assert(line == blobhash+b" missing\n")
       return None
-    size = int(size) # Convert e.g. b'6283' to 6283
+    size = int(size) ***REMOVED*** Convert e.g. b'6283' to 6283
     assert(oidtype == b'blob')
     contents_plus_newline = self._cat_file_process.stdout.read(size+1)
-    return contents_plus_newline[:-1] # return all but the newline
+    return contents_plus_newline[:-1] ***REMOVED*** return all but the newline
 
   def get_size_by_identifier(self, blobhash):
     self._cat_file_process.stdin.write(b'info '+blobhash+b'\n')
     self._cat_file_process.stdin.flush()
     line = self._cat_file_process.stdout.readline()
     (oid, oidtype, size) = line.split()
-    size = int(size) # Convert e.g. b'6283' to 6283
+    size = int(size) ***REMOVED*** Convert e.g. b'6283' to 6283
     assert(oidtype == b'blob')
     return size
 
@@ -3047,7 +3047,7 @@ class LFSObjectTracker:
       try:
         (git_oid, filename) = line.split()
       except ValueError:
-        # Commit and tree objects only have oid
+        ***REMOVED*** Commit and tree objects only have oid
         continue
 
       mymap = self.source_objects if source else self.target_objects
@@ -3114,97 +3114,97 @@ class RepoFilter(object):
 
     self._args = args
 
-    # Repo we are exporting
+    ***REMOVED*** Repo we are exporting
     self._repo_working_dir = None
 
-    # Store callbacks for acting on objects printed by FastExport
+    ***REMOVED*** Store callbacks for acting on objects printed by FastExport
     self._blob_callback        = blob_callback
     self._commit_callback      = commit_callback
     self._tag_callback         = tag_callback
     self._reset_callback       = reset_callback
     self._done_callback        = done_callback
 
-    # Store callbacks for acting on slices of FastExport objects
-    self._filename_callback    = filename_callback  # filenames from commits
-    self._message_callback     = message_callback   # commit OR tag message
-    self._name_callback        = name_callback      # author, committer, tagger
-    self._email_callback       = email_callback     # author, committer, tagger
-    self._refname_callback     = refname_callback   # from commit/tag/reset
-    self._file_info_callback   = file_info_callback # various file info
+    ***REMOVED*** Store callbacks for acting on slices of FastExport objects
+    self._filename_callback    = filename_callback  ***REMOVED*** filenames from commits
+    self._message_callback     = message_callback   ***REMOVED*** commit OR tag message
+    self._name_callback        = name_callback      ***REMOVED*** author, committer, tagger
+    self._email_callback       = email_callback     ***REMOVED*** author, committer, tagger
+    self._refname_callback     = refname_callback   ***REMOVED*** from commit/tag/reset
+    self._file_info_callback   = file_info_callback ***REMOVED*** various file info
     self._handle_arg_callbacks()
 
-    # Helpers for callbacks
+    ***REMOVED*** Helpers for callbacks
     self._file_info_value = None
 
-    # Defaults for input
+    ***REMOVED*** Defaults for input
     self._input = None
-    self._fep = None  # Fast Export Process
-    self._fe_orig = None  # Path to where original fast-export output stored
-    self._fe_filt = None  # Path to where filtered fast-export output stored
-    self._parser = None # FastExportParser object we are working with
+    self._fep = None  ***REMOVED*** Fast Export Process
+    self._fe_orig = None  ***REMOVED*** Path to where original fast-export output stored
+    self._fe_filt = None  ***REMOVED*** Path to where filtered fast-export output stored
+    self._parser = None ***REMOVED*** FastExportParser object we are working with
 
-    # Defaults for output
+    ***REMOVED*** Defaults for output
     self._output = None
-    self._fip = None  # Fast Import Process
+    self._fip = None  ***REMOVED*** Fast Import Process
     self._import_pipes = None
     self._managed_output = True
 
-    # A tuple of (depth, list-of-ancestors).  Commits and ancestors are
-    # identified by their id (their 'mark' in fast-export or fast-import
-    # speak).  The depth of a commit is one more than the max depth of any
-    # of its ancestors.
+    ***REMOVED*** A tuple of (depth, list-of-ancestors).  Commits and ancestors are
+    ***REMOVED*** identified by their id (their 'mark' in fast-export or fast-import
+    ***REMOVED*** speak).  The depth of a commit is one more than the max depth of any
+    ***REMOVED*** of its ancestors.
     self._graph = AncestryGraph()
-    # Another one, for ancestry of commits in the original repo
+    ***REMOVED*** Another one, for ancestry of commits in the original repo
     self._orig_graph = AncestryGraph()
 
-    # Names of files that were tweaked in any commit; such paths could lead
-    # to subsequent commits being empty
+    ***REMOVED*** Names of files that were tweaked in any commit; such paths could lead
+    ***REMOVED*** to subsequent commits being empty
     self._files_tweaked = set()
 
-    # A set of commit hash pairs (oldhash, newhash) which used to be merge
-    # commits but due to filtering were turned into non-merge commits.
-    # The commits probably have suboptimal commit messages (e.g. "Merge branch
-    # next into master").
+    ***REMOVED*** A set of commit hash pairs (oldhash, newhash) which used to be merge
+    ***REMOVED*** commits but due to filtering were turned into non-merge commits.
+    ***REMOVED*** The commits probably have suboptimal commit messages (e.g. "Merge branch
+    ***REMOVED*** next into master").
     self._commits_no_longer_merges = []
 
-    # A dict of original_ids to new_ids; filtering commits means getting
-    # new commit hash (sha1sums), and we record the mapping both for
-    # diagnostic purposes and so we can rewrite commit messages.  Note that
-    # the new_id can be None rather than a commit hash if the original
-    # commit became empty and was pruned or was otherwise dropped.
+    ***REMOVED*** A dict of original_ids to new_ids; filtering commits means getting
+    ***REMOVED*** new commit hash (sha1sums), and we record the mapping both for
+    ***REMOVED*** diagnostic purposes and so we can rewrite commit messages.  Note that
+    ***REMOVED*** the new_id can be None rather than a commit hash if the original
+    ***REMOVED*** commit became empty and was pruned or was otherwise dropped.
     self._commit_renames = {}
 
-    # A set of original_ids (i.e. original hashes) for which we have not yet
-    # gotten the new hashses; the value is always the corresponding fast-export
-    # id (i.e. commit.id)
+    ***REMOVED*** A set of original_ids (i.e. original hashes) for which we have not yet
+    ***REMOVED*** gotten the new hashses; the value is always the corresponding fast-export
+    ***REMOVED*** id (i.e. commit.id)
     self._pending_renames = collections.OrderedDict()
 
-    # A dict of commit_hash[0:7] -> set(commit_hashes with that prefix).
-    #
-    # It's common for commit messages to refer to commits by abbreviated
-    # commit hashes, as short as 7 characters.  To facilitate translating
-    # such short hashes, we have a mapping of prefixes to full old hashes.
+    ***REMOVED*** A dict of commit_hash[0:7] -> set(commit_hashes with that prefix).
+    ***REMOVED***
+    ***REMOVED*** It's common for commit messages to refer to commits by abbreviated
+    ***REMOVED*** commit hashes, as short as 7 characters.  To facilitate translating
+    ***REMOVED*** such short hashes, we have a mapping of prefixes to full old hashes.
     self._commit_short_old_hashes = collections.defaultdict(set)
 
-    # A set of commit hash references appearing in commit messages which
-    # mapped to a valid commit that was removed entirely in the filtering
-    # process.  The commit message will continue to reference the
-    # now-missing commit hash, since there was nothing to map it to.
+    ***REMOVED*** A set of commit hash references appearing in commit messages which
+    ***REMOVED*** mapped to a valid commit that was removed entirely in the filtering
+    ***REMOVED*** process.  The commit message will continue to reference the
+    ***REMOVED*** now-missing commit hash, since there was nothing to map it to.
     self._commits_referenced_but_removed = set()
 
-    # Other vars related to metadata tracking
+    ***REMOVED*** Other vars related to metadata tracking
     self._already_ran = False
     self._changed_refs = set()
     self._lfs_object_tracker = None
 
-    # Progress handling (number of commits parsed, etc.)
+    ***REMOVED*** Progress handling (number of commits parsed, etc.)
     self._progress_writer = ProgressWriter()
     self._num_commits = 0
 
-    # Size of blobs in the repo
+    ***REMOVED*** Size of blobs in the repo
     self._unpacked_size = {}
 
-    # Other vars
+    ***REMOVED*** Other vars
     self._sanity_checks_handled = False
     self._finalize_handled = False
     self._orig_refs = None
@@ -3212,10 +3212,10 @@ class RepoFilter(object):
     self._newnames = {}
     self._stash = None
 
-    # Cache a few message translations for performance reasons
+    ***REMOVED*** Cache a few message translations for performance reasons
     self._parsed_message = _("Parsed %d commits")
 
-    # Compile some regexes and cache those
+    ***REMOVED*** Compile some regexes and cache those
     self._hash_re = re.compile(br'(\b[0-9a-f]{7,40}\b)')
 
   def _handle_arg_callbacks(self):
@@ -3261,21 +3261,21 @@ class RepoFilter(object):
     self._sanity_checks_handled = True
     if not self._managed_output:
       if not self._args.replace_refs:
-        # If not _managed_output we don't want to make extra changes to the
-        # repo, so set default to no-op 'update-no-add'
+        ***REMOVED*** If not _managed_output we don't want to make extra changes to the
+        ***REMOVED*** repo, so set default to no-op 'update-no-add'
         self._args.replace_refs = 'update-no-add'
       return
 
     if self._args.debug:
       print("[DEBUG] Passed arguments:\n{}".format(self._args))
 
-    # Determine basic repository information
+    ***REMOVED*** Determine basic repository information
     target_working_dir = self._args.target or b'.'
     self._orig_refs = GitUtils.get_refs(target_working_dir)
     is_bare = GitUtils.is_repository_bare(target_working_dir)
     self._config_settings = GitUtils.get_config_settings(target_working_dir)
 
-    # Determine if this is second or later run of filter-repo
+    ***REMOVED*** Determine if this is second or later run of filter-repo
     tmp_dir = self.results_tmp_dir(create_if_missing=False)
     ran_path = os.path.join(tmp_dir, b'already_ran')
     self._already_ran = os.path.isfile(ran_path)
@@ -3283,7 +3283,7 @@ class RepoFilter(object):
       current_time = time.time()
       file_mod_time = os.path.getmtime(ran_path)
       file_age = current_time - file_mod_time
-      if file_age > 86400: # file older than a day
+      if file_age > 86400: ***REMOVED*** file older than a day
         msg = (f"The previous run is older than a day ({decode(ran_path)} already exists).\n"
                f"See \"Already Ran\" section in the manual for more information.\n"
                f"Treat this run as a continuation of filtering in the previous run (Y/N)? ")
@@ -3293,7 +3293,7 @@ class RepoFilter(object):
           os.remove(ran_path)
           self._already_ran = False
 
-    # Interaction between --already-ran and --sensitive_data_removal
+    ***REMOVED*** Interaction between --already-ran and --sensitive_data_removal
     msg = textwrap.dedent(_("""\
       Error: Cannot specify --sensitive-data-removal on a follow-up invocation
              of git-filter-repo unless it was specified in previously runs."""))
@@ -3302,12 +3302,12 @@ class RepoFilter(object):
       sdr_previously = os.path.isfile(sdr_path)
       if not sdr_previously and self._args.sensitive_data_removal:
         raise SystemExit(msg)
-      # Treat this as a --sensitive-data-removal run if a previous run was,
-      # even if it wasn't specified this time
+      ***REMOVED*** Treat this as a --sensitive-data-removal run if a previous run was,
+      ***REMOVED*** even if it wasn't specified this time
       self._args.sensitive_data_removal = sdr_previously
 
-    # Have to check sensitive_data_removal interactions here instead of
-    # sanity_check_args because of the above interaction with already_ran stuff
+    ***REMOVED*** Have to check sensitive_data_removal interactions here instead of
+    ***REMOVED*** sanity_check_args because of the above interaction with already_ran stuff
     if self._args.sensitive_data_removal:
       if self._args.stdin:
         msg = _("Error: sensitive data removal is incompatible with --stdin")
@@ -3316,14 +3316,14 @@ class RepoFilter(object):
         msg = _("Error: sensitive data removal is incompatible with --source and --target")
         raise SystemExit(msg)
 
-    # Default for --replace-refs
+    ***REMOVED*** Default for --replace-refs
     if not self._args.replace_refs:
       self._args.replace_refs = 'delete-no-add'
     if self._args.replace_refs == 'old-default':
       self._args.replace_refs = ('update-or-add' if self._already_ran
                                  else 'update-and-add')
 
-    # Do sanity checks from the correct directory
+    ***REMOVED*** Do sanity checks from the correct directory
     if not self._args.force and not self._already_ran:
       cwd = os.getcwd()
       os.chdir(target_working_dir)
@@ -3331,38 +3331,38 @@ class RepoFilter(object):
       os.chdir(cwd)
 
   def _setup_lfs_orphaning_checks(self):
-    # Do a couple checks to see if we want to do lfs orphaning checks
+    ***REMOVED*** Do a couple checks to see if we want to do lfs orphaning checks
     if not self._args.sensitive_data_removal:
       return
     metadata_dir = self.results_tmp_dir()
     lfs_objects_file = os.path.join(metadata_dir, b'original_lfs_objects')
     if self._already_ran:
-      # Check if we did lfs filtering in the previous run
+      ***REMOVED*** Check if we did lfs filtering in the previous run
       if not os.path.isfile(lfs_objects_file):
         return
 
-    # Set up self._file_info_value so we can query git for stuff
+    ***REMOVED*** Set up self._file_info_value so we can query git for stuff
     source_working_dir = self._args.source or b'.'
     self._file_info_value = FileInfoValueHelper(self._args.replace_text,
                                                 self.insert,
                                                 source_working_dir)
 
-    # One more check to see if we want to do lfs orphaning checks
+    ***REMOVED*** One more check to see if we want to do lfs orphaning checks
     if not self._already_ran:
-      # Check if lfs filtering is active in HEAD's .gitattributes file
+      ***REMOVED*** Check if lfs filtering is active in HEAD's .gitattributes file
       a = self._file_info_value.get_contents_by_identifier(b"HEAD:.gitattributes")
       if not a or not re.search(rb'\bfilter=lfs\b', a):
         return
 
-    # Set up the object tracker
+    ***REMOVED*** Set up the object tracker
     check_sources = not self._already_ran and not self._args.partial
     check_targets = not self._args.partial
     self._lfs_object_tracker = LFSObjectTracker(self._file_info_value,
                                                 check_sources,
                                                 check_targets)
-    self._parser._lfs_object_tracker = self._lfs_object_tracker # kinda gross
+    self._parser._lfs_object_tracker = self._lfs_object_tracker ***REMOVED*** kinda gross
 
-    # Get initial objects
+    ***REMOVED*** Get initial objects
     if self._already_ran:
       with open(lfs_objects_file, 'br') as f:
         for line in f:
@@ -3405,15 +3405,15 @@ class RepoFilter(object):
           "Please operate on a fresh clone instead.  If you want to proceed\n"
           "anyway, use --force.") % (reason, msg))
 
-    # Avoid letting people running with weird setups and overwriting GIT_DIR
-    # elsewhere
+    ***REMOVED*** Avoid letting people running with weird setups and overwriting GIT_DIR
+    ***REMOVED*** elsewhere
     git_dir = GitUtils.determine_git_dir(b'.')
     if is_bare and git_dir != b'.':
       abort(_("GIT_DIR must be ."))
     elif not is_bare and git_dir != b'.git':
       abort(_("GIT_DIR must be .git"))
 
-    # Check for refname collisions
+    ***REMOVED*** Check for refname collisions
     if config_settings.get(b'core.ignorecase', b'false') == b'true':
       collisions = collections.defaultdict(list)
       for ref in refs:
@@ -3428,7 +3428,7 @@ class RepoFilter(object):
             "filesystem since you have refs that differ in case only:\n"
             "%s") % msg)
     if config_settings.get(b'core.precomposeunicode', b'false') == b'true':
-      import unicodedata # Mac users need to have python-3.8
+      import unicodedata ***REMOVED*** Mac users need to have python-3.8
       collisions = collections.defaultdict(list)
       for ref in refs:
         strref = decode(ref)
@@ -3443,10 +3443,10 @@ class RepoFilter(object):
             "filesystem since you have refs that differ in normalization:\n"
             "%s") % msg)
 
-    # Make sure repo is fully packed, just like a fresh clone would be.
-    # Note that transfer.unpackLimit defaults to 100, meaning that a
-    # repository with no packs and less than 100 objects should be considered
-    # fully packed.
+    ***REMOVED*** Make sure repo is fully packed, just like a fresh clone would be.
+    ***REMOVED*** Note that transfer.unpackLimit defaults to 100, meaning that a
+    ***REMOVED*** repository with no packs and less than 100 objects should be considered
+    ***REMOVED*** fully packed.
     output = subproc.check_output('git count-objects -v'.split())
     stats = dict(x.split(b': ') for x in output.splitlines())
     num_packs = int(stats[b'packs'])
@@ -3458,13 +3458,13 @@ class RepoFilter(object):
                                                       num_loose_objects)):
       abort(_("expected freshly packed repo"))
 
-    # Make sure there is precisely one remote, named "origin"...or that this
-    # is a new bare repo with no packs and no remotes
+    ***REMOVED*** Make sure there is precisely one remote, named "origin"...or that this
+    ***REMOVED*** is a new bare repo with no packs and no remotes
     output = subproc.check_output('git remote'.split()).strip()
     if not (output == b"origin" or (num_packs == 0 and not output)):
       abort(_("expected one remote, origin"))
 
-    # Make sure that all reflogs have precisely one entry
+    ***REMOVED*** Make sure that all reflogs have precisely one entry
     reflog_dir=os.path.join(git_dir, b'logs')
     for root, dirs, files in os.walk(reflog_dir):
       for filename in files:
@@ -3475,13 +3475,13 @@ class RepoFilter(object):
             abort(_("expected at most one entry in the reflog for %s") %
                   decode(shortpath))
 
-    # Make sure there are no stashed changes
+    ***REMOVED*** Make sure there are no stashed changes
     if b'refs/stash' in refs:
       abort(_("has stashed changes"))
 
-    # Do extra checks in non-bare repos
+    ***REMOVED*** Do extra checks in non-bare repos
     if not is_bare:
-      # Avoid uncommitted, unstaged, or untracked changes
+      ***REMOVED*** Avoid uncommitted, unstaged, or untracked changes
       if subproc.call('git diff --staged --quiet'.split()):
         abort(_("you have uncommitted changes"))
       if subproc.call('git diff --quiet'.split()):
@@ -3489,15 +3489,15 @@ class RepoFilter(object):
       untracked_output = subproc.check_output('git ls-files -o'.split())
       if len(untracked_output) > 0:
         uf = untracked_output.rstrip(b'\n').split(b'\n')
-        # Since running git-filter-repo can result in files being written to
-        # __pycache__ (depending on python version, env vars, etc.), let's
-        # ignore those as far as "clean clone" is concerned.
+        ***REMOVED*** Since running git-filter-repo can result in files being written to
+        ***REMOVED*** __pycache__ (depending on python version, env vars, etc.), let's
+        ***REMOVED*** ignore those as far as "clean clone" is concerned.
         relevant_uf = [x for x in uf
                        if not x.startswith(b'__pycache__/git_filter_repo.')]
         if len(relevant_uf) > 0:
           abort(_("you have untracked changes"))
 
-      # Avoid unpushed changes
+      ***REMOVED*** Avoid unpushed changes
       for refname, rev in refs.items():
         if not refname.startswith(b'refs/heads/'):
           continue
@@ -3509,7 +3509,7 @@ class RepoFilter(object):
           abort(_('%s does not match %s') % (decode(refname),
                                              decode(origin_ref)))
 
-      # Make sure there is only one worktree
+      ***REMOVED*** Make sure there is only one worktree
       output = subproc.check_output('git worktree list'.split())
       if len(output.splitlines()) > 1:
         abort(_('you have multiple worktrees'))
@@ -3542,27 +3542,27 @@ class RepoFilter(object):
         self._write_stash()
 
   def _get_rename(self, old_hash):
-    # If we already know the rename, just return it
+    ***REMOVED*** If we already know the rename, just return it
     new_hash = self._commit_renames.get(old_hash, None)
     if new_hash:
       return new_hash
 
-    # If it's not in the remaining pending renames, we don't know it
+    ***REMOVED*** If it's not in the remaining pending renames, we don't know it
     if old_hash is not None and old_hash not in self._pending_renames:
       return None
 
-    # Read through the pending renames until we find it or we've read them all,
-    # and return whatever we might find
+    ***REMOVED*** Read through the pending renames until we find it or we've read them all,
+    ***REMOVED*** and return whatever we might find
     self._flush_renames(old_hash)
     return self._commit_renames.get(old_hash, None)
 
   def _flush_renames(self, old_hash=None, limit=0):
-    # Parse through self._pending_renames until we have read enough.  We have
-    # read enough if:
-    #   self._pending_renames is empty
-    #   old_hash != None and we found a rename for old_hash
-    #   limit > 0 and len(self._pending_renames) started less than 2*limit
-    #   limit > 0 and len(self._pending_renames) < limit
+    ***REMOVED*** Parse through self._pending_renames until we have read enough.  We have
+    ***REMOVED*** read enough if:
+    ***REMOVED***   self._pending_renames is empty
+    ***REMOVED***   old_hash != None and we found a rename for old_hash
+    ***REMOVED***   limit > 0 and len(self._pending_renames) started less than 2*limit
+    ***REMOVED***   limit > 0 and len(self._pending_renames) < limit
     if limit and len(self._pending_renames) < 2 * limit:
       return
     fi_input, fi_output = self._import_pipes
@@ -3609,40 +3609,40 @@ class RepoFilter(object):
 
     always_prune = (self._args.prune_degenerate == 'always')
 
-    # Pruning of empty commits means multiple things:
-    #   * An original parent of this commit may have been pruned causing the
-    #     need to rewrite the reported parent to the nearest ancestor.  We
-    #     want to know when we're dealing with such a parent.
-    #   * Further, there may be no "nearest ancestor" if the entire history
-    #     of that parent was also pruned.  (Detectable by the parent being
-    #     'None')
-    # Remove all parents rewritten to None, and keep track of which parents
-    # were rewritten to an ancestor.
+    ***REMOVED*** Pruning of empty commits means multiple things:
+    ***REMOVED***   * An original parent of this commit may have been pruned causing the
+    ***REMOVED***     need to rewrite the reported parent to the nearest ancestor.  We
+    ***REMOVED***     want to know when we're dealing with such a parent.
+    ***REMOVED***   * Further, there may be no "nearest ancestor" if the entire history
+    ***REMOVED***     of that parent was also pruned.  (Detectable by the parent being
+    ***REMOVED***     'None')
+    ***REMOVED*** Remove all parents rewritten to None, and keep track of which parents
+    ***REMOVED*** were rewritten to an ancestor.
     tmp = zip(parents,
               orig_parents,
               [(x in _SKIPPED_COMMITS or always_prune) for x in orig_parents])
     tmp2 = [x for x in tmp if x[0] is not None]
     if not tmp2:
-      # All ancestors have been pruned; we have no parents.
+      ***REMOVED*** All ancestors have been pruned; we have no parents.
       return [], None
     parents, orig_parents, is_rewritten = [list(x) for x in zip(*tmp2)]
 
-    # We can't have redundant parents if we don't have at least 2 parents
+    ***REMOVED*** We can't have redundant parents if we don't have at least 2 parents
     if len(parents) < 2:
       return parents, None
 
-    # Don't remove redundant parents if user doesn't want us to
+    ***REMOVED*** Don't remove redundant parents if user doesn't want us to
     if self._args.prune_degenerate == 'never':
       return parents, None
 
-    # Remove duplicate parents (if both sides of history have lots of commits
-    # which become empty due to pruning, the most recent ancestor on both
-    # sides may be the same commit), except only remove parents that have
-    # been rewritten due to previous empty pruning.
+    ***REMOVED*** Remove duplicate parents (if both sides of history have lots of commits
+    ***REMOVED*** which become empty due to pruning, the most recent ancestor on both
+    ***REMOVED*** sides may be the same commit), except only remove parents that have
+    ***REMOVED*** been rewritten due to previous empty pruning.
     seen = set()
     seen_add = seen.add
-    # Deleting duplicate rewritten parents means keeping parents if either
-    # they have not been seen or they are ones that have not been rewritten.
+    ***REMOVED*** Deleting duplicate rewritten parents means keeping parents if either
+    ***REMOVED*** they have not been seen or they are ones that have not been rewritten.
     parents_copy = parents
     uniq = [[p, orig_parents[i], is_rewritten[i]] for i, p in enumerate(parents)
             if not (p in seen or seen_add(p)) or not is_rewritten[i]]
@@ -3650,10 +3650,10 @@ class RepoFilter(object):
     if len(parents) < 2:
       return parents_copy, parents[0]
 
-    # Flatten unnecessary merges.  (If one side of history is entirely
-    # empty commits that were pruned, we may end up attempting to
-    # merge a commit with its ancestor.  Remove parents that are an
-    # ancestor of another parent.)
+    ***REMOVED*** Flatten unnecessary merges.  (If one side of history is entirely
+    ***REMOVED*** empty commits that were pruned, we may end up attempting to
+    ***REMOVED*** merge a commit with its ancestor.  Remove parents that are an
+    ***REMOVED*** ancestor of another parent.)
     num_parents = len(parents)
     to_remove = []
     for cur in range(num_parents):
@@ -3664,24 +3664,24 @@ class RepoFilter(object):
           continue
         if not self._graph.is_ancestor(parents[cur], parents[other]):
           continue
-        # parents[cur] is an ancestor of parents[other], so parents[cur]
-        # seems redundant.  However, if it was intentionally redundant
-        # (e.g. a no-ff merge) in the original, then we want to keep it.
+        ***REMOVED*** parents[cur] is an ancestor of parents[other], so parents[cur]
+        ***REMOVED*** seems redundant.  However, if it was intentionally redundant
+        ***REMOVED*** (e.g. a no-ff merge) in the original, then we want to keep it.
         if not always_prune and \
            self._orig_graph.is_ancestor(orig_parents[cur],
                                         orig_parents[other]):
           continue
-        # Some folks want their history to have all first parents be merge
-        # commits (except for any root commits), and always do a merge --no-ff.
-        # For such folks, don't remove the first parent even if it's an
-        # ancestor of other commits.
+        ***REMOVED*** Some folks want their history to have all first parents be merge
+        ***REMOVED*** commits (except for any root commits), and always do a merge --no-ff.
+        ***REMOVED*** For such folks, don't remove the first parent even if it's an
+        ***REMOVED*** ancestor of other commits.
         if self._args.no_ff and cur == 0:
           continue
-        # Okay so the cur-th parent is an ancestor of the other-th parent,
-        # and it wasn't that way in the original repository; mark the
-        # cur-th parent as removable.
+        ***REMOVED*** Okay so the cur-th parent is an ancestor of the other-th parent,
+        ***REMOVED*** and it wasn't that way in the original repository; mark the
+        ***REMOVED*** cur-th parent as removable.
         to_remove.append(cur)
-        break # cur removed, so skip rest of others -- i.e. check cur+=1
+        break ***REMOVED*** cur removed, so skip rest of others -- i.e. check cur+=1
     for x in reversed(to_remove):
       parents.pop(x)
     if len(parents) < 2:
@@ -3696,73 +3696,73 @@ class RepoFilter(object):
       return False
     always_prune = (self._args.prune_empty == 'always')
 
-    # For merge commits, unless there are prunable (redundant) parents, we
-    # do not want to prune
+    ***REMOVED*** For merge commits, unless there are prunable (redundant) parents, we
+    ***REMOVED*** do not want to prune
     if len(parents) >= 2 and not new_1st_parent:
       return False
 
     if len(parents) < 2:
-      # Special logic for commits that started empty...
+      ***REMOVED*** Special logic for commits that started empty...
       if not had_file_changes and not always_prune:
         had_parents_pruned = (len(parents) < len(orig_parents) or
                               (len(orig_parents) == 1 and
                                orig_parents[0] in _SKIPPED_COMMITS))
-        # If the commit remains empty and had parents which were pruned,
-        # then prune this commit; otherwise, retain it
+        ***REMOVED*** If the commit remains empty and had parents which were pruned,
+        ***REMOVED*** then prune this commit; otherwise, retain it
         return (not commit.file_changes and had_parents_pruned)
 
-      # We can only get here if the commit didn't start empty, so if it's
-      # empty now, it obviously became empty
+      ***REMOVED*** We can only get here if the commit didn't start empty, so if it's
+      ***REMOVED*** empty now, it obviously became empty
       if not commit.file_changes:
         return True
 
-    # If there are no parents of this commit and we didn't match the case
-    # above, then this commit cannot be pruned.  Since we have no parent(s)
-    # to compare to, abort now to prevent future checks from failing.
+    ***REMOVED*** If there are no parents of this commit and we didn't match the case
+    ***REMOVED*** above, then this commit cannot be pruned.  Since we have no parent(s)
+    ***REMOVED*** to compare to, abort now to prevent future checks from failing.
     if not parents:
       return False
 
-    # Similarly, we cannot handle the hard cases if we don't have a pipe
-    # to communicate with fast-import
+    ***REMOVED*** Similarly, we cannot handle the hard cases if we don't have a pipe
+    ***REMOVED*** to communicate with fast-import
     if not self._import_pipes:
       return False
 
-    # If there have not been renames/remappings of IDs (due to insertion of
-    # new blobs), then we can sometimes know things aren't prunable with a
-    # simple check
+    ***REMOVED*** If there have not been renames/remappings of IDs (due to insertion of
+    ***REMOVED*** new blobs), then we can sometimes know things aren't prunable with a
+    ***REMOVED*** simple check
     if not _IDS.has_renames():
-      # non-merge commits can only be empty if blob/file-change editing caused
-      # all file changes in the commit to have the same file contents as
-      # the parent.
+      ***REMOVED*** non-merge commits can only be empty if blob/file-change editing caused
+      ***REMOVED*** all file changes in the commit to have the same file contents as
+      ***REMOVED*** the parent.
       changed_files = set(change.filename for change in commit.file_changes)
       if len(orig_parents) < 2 and changed_files - self._files_tweaked:
         return False
 
-    # Finally, the hard case: due to either blob rewriting, or due to pruning
-    # of empty commits wiping out the first parent history back to the merge
-    # base, the list of file_changes we have may not actually differ from our
-    # (new) first parent's version of the files, i.e. this would actually be
-    # an empty commit.  Check by comparing the contents of this commit to its
-    # (remaining) parent.
-    #
-    # NOTE on why this works, for the case of original first parent history
-    # having been pruned away due to being empty:
-    #     The first parent history having been pruned away due to being
-    #     empty implies the original first parent would have a tree (after
-    #     filtering) that matched the merge base's tree.  Since
-    #     file_changes has the changes needed to go from what would have
-    #     been the first parent to our new commit, and what would have been
-    #     our first parent has a tree that matches the merge base, then if
-    #     the new first parent has a tree matching the versions of files in
-    #     file_changes, then this new commit is empty and thus prunable.
+    ***REMOVED*** Finally, the hard case: due to either blob rewriting, or due to pruning
+    ***REMOVED*** of empty commits wiping out the first parent history back to the merge
+    ***REMOVED*** base, the list of file_changes we have may not actually differ from our
+    ***REMOVED*** (new) first parent's version of the files, i.e. this would actually be
+    ***REMOVED*** an empty commit.  Check by comparing the contents of this commit to its
+    ***REMOVED*** (remaining) parent.
+    ***REMOVED***
+    ***REMOVED*** NOTE on why this works, for the case of original first parent history
+    ***REMOVED*** having been pruned away due to being empty:
+    ***REMOVED***     The first parent history having been pruned away due to being
+    ***REMOVED***     empty implies the original first parent would have a tree (after
+    ***REMOVED***     filtering) that matched the merge base's tree.  Since
+    ***REMOVED***     file_changes has the changes needed to go from what would have
+    ***REMOVED***     been the first parent to our new commit, and what would have been
+    ***REMOVED***     our first parent has a tree that matches the merge base, then if
+    ***REMOVED***     the new first parent has a tree matching the versions of files in
+    ***REMOVED***     file_changes, then this new commit is empty and thus prunable.
     fi_input, fi_output = self._import_pipes
-    self._flush_renames()  # Avoid fi_output having other stuff present
-    # Optimization note: we could have two loops over file_changes, the
-    # first doing all the self._output.write() calls, and the second doing
-    # the rest.  But I'm worried about fast-import blocking on fi_output
-    # buffers filling up so I instead read from it as I go.
+    self._flush_renames()  ***REMOVED*** Avoid fi_output having other stuff present
+    ***REMOVED*** Optimization note: we could have two loops over file_changes, the
+    ***REMOVED*** first doing all the self._output.write() calls, and the second doing
+    ***REMOVED*** the rest.  But I'm worried about fast-import blocking on fi_output
+    ***REMOVED*** buffers filling up so I instead read from it as I go.
     for change in commit.file_changes:
-      parent = new_1st_parent or commit.parents[0] # exists due to above checks
+      parent = new_1st_parent or commit.parents[0] ***REMOVED*** exists due to above checks
       quoted_filename = PathQuoting.enquote(change.filename)
       if isinstance(parent, int):
         self._output.write(b"ls :%d %s\n" % (parent, quoted_filename))
@@ -3786,19 +3786,19 @@ class RepoFilter(object):
 
   def _record_remapping(self, commit, orig_parents):
     new_id = None
-    # Record the mapping of old commit hash to new one
+    ***REMOVED*** Record the mapping of old commit hash to new one
     if commit.original_id and self._import_pipes:
       fi_input, fi_output = self._import_pipes
       self._output.write(b"get-mark :%d\n" % commit.id)
       self._output.flush()
       orig_id = commit.original_id
       self._commit_short_old_hashes[orig_id[0:7]].add(orig_id)
-      # Note that we have queued up an id for later reading; flush a
-      # few of the older ones if we have too many queued up
+      ***REMOVED*** Note that we have queued up an id for later reading; flush a
+      ***REMOVED*** few of the older ones if we have too many queued up
       self._pending_renames[orig_id] = commit.id
       self._flush_renames(None, limit=40)
-    # Also, record if this was a merge commit that turned into a non-merge
-    # commit.
+    ***REMOVED*** Also, record if this was a merge commit that turned into a non-merge
+    ***REMOVED*** commit.
     if len(orig_parents) >= 2 and len(commit.parents) < 2:
       self._commits_no_longer_merges.append((commit.original_id, new_id))
 
@@ -3817,7 +3817,7 @@ class RepoFilter(object):
 
     if ( self._args.replace_text
         and not self._file_info_callback
-        # not (if blob contains zero byte in the first 8Kb, that is, if blob is binary data)
+        ***REMOVED*** not (if blob contains zero byte in the first 8Kb, that is, if blob is binary data)
         and not b"\0" in blob.data[0:8192]
     ):
       for literal, replacement in self._args.replace_text['literals']:
@@ -3864,23 +3864,23 @@ class RepoFilter(object):
             wanted = True
         elif mod_type == 'rename':
           match, repl = path_exp
-          assert match_type in ('match','regex') # glob was translated to regex
+          assert match_type in ('match','regex') ***REMOVED*** glob was translated to regex
           if match_type == 'match' and filename_matches(match, full_pathname):
             full_pathname = full_pathname.replace(match, repl, 1)
-            pathname = full_pathname # rename incompatible with use_base_name
+            pathname = full_pathname ***REMOVED*** rename incompatible with use_base_name
           if match_type == 'regex':
             full_pathname = match.sub(repl, full_pathname)
-            pathname = full_pathname # rename incompatible with use_base_name
+            pathname = full_pathname ***REMOVED*** rename incompatible with use_base_name
       return full_pathname if (wanted == filtering_is_inclusive) else None
 
     args = self._args
-    new_file_changes = {}  # Assumes no renames or copies, otherwise collisions
+    new_file_changes = {}  ***REMOVED*** Assumes no renames or copies, otherwise collisions
     for change in commit.file_changes:
-      # NEEDSWORK: _If_ we ever want to pass `--full-tree` to fast-export and
-      # parse that output, we'll need to modify this block; `--full-tree`
-      # issues a deleteall directive which has no filename, and thus this
-      # block would normally strip it.  Of course, FileChange() and
-      # _parse_optional_filechange() would need updates too.
+      ***REMOVED*** NEEDSWORK: _If_ we ever want to pass `--full-tree` to fast-export and
+      ***REMOVED*** parse that output, we'll need to modify this block; `--full-tree`
+      ***REMOVED*** issues a deleteall directive which has no filename, and thus this
+      ***REMOVED*** block would normally strip it.  Of course, FileChange() and
+      ***REMOVED*** _parse_optional_filechange() would need updates too.
       if change.type == b'DELETEALL':
         new_file_changes[b''] = change
         continue
@@ -3894,45 +3894,45 @@ class RepoFilter(object):
           change.filename = self._filename_callback(change.filename)
         self._newnames[original_filename] = change.filename
       if not change.filename:
-        continue # Filtering criteria excluded this file; move on to next one
+        continue ***REMOVED*** Filtering criteria excluded this file; move on to next one
       if change.filename in new_file_changes:
-        # Getting here means that path renaming is in effect, and caused one
-        # path to collide with another.  That's usually bad, but can be okay
-        # under two circumstances:
-        #   1) Sometimes people have a file named OLDFILE in old revisions of
-        #      history, and they rename to NEWFILE, and would like to rewrite
-        #      history so that all revisions refer to it as NEWFILE.  As such,
-        #      we can allow a collision when (at least) one of the two paths
-        #      is a deletion.  Note that if OLDFILE and NEWFILE are unrelated
-        #      this also allows the rewrite to continue, which makes sense
-        #      since OLDFILE is no longer in the way.
-        #   2) If OLDFILE and NEWFILE are exactly equal, then writing them
-        #      both to the same location poses no problem; we only need one
-        #      file.  (This could come up if someone copied a file in some
-        #      commit, then later either deleted the file or kept it exactly
-        #      in sync with the original with any changes, and then decides
-        #      they want to rewrite history to only have one of the two files)
+        ***REMOVED*** Getting here means that path renaming is in effect, and caused one
+        ***REMOVED*** path to collide with another.  That's usually bad, but can be okay
+        ***REMOVED*** under two circumstances:
+        ***REMOVED***   1) Sometimes people have a file named OLDFILE in old revisions of
+        ***REMOVED***      history, and they rename to NEWFILE, and would like to rewrite
+        ***REMOVED***      history so that all revisions refer to it as NEWFILE.  As such,
+        ***REMOVED***      we can allow a collision when (at least) one of the two paths
+        ***REMOVED***      is a deletion.  Note that if OLDFILE and NEWFILE are unrelated
+        ***REMOVED***      this also allows the rewrite to continue, which makes sense
+        ***REMOVED***      since OLDFILE is no longer in the way.
+        ***REMOVED***   2) If OLDFILE and NEWFILE are exactly equal, then writing them
+        ***REMOVED***      both to the same location poses no problem; we only need one
+        ***REMOVED***      file.  (This could come up if someone copied a file in some
+        ***REMOVED***      commit, then later either deleted the file or kept it exactly
+        ***REMOVED***      in sync with the original with any changes, and then decides
+        ***REMOVED***      they want to rewrite history to only have one of the two files)
         colliding_change = new_file_changes[change.filename]
         if change.type == b'D':
-          # We can just throw this one away and keep the other
+          ***REMOVED*** We can just throw this one away and keep the other
           continue
         elif change.type == b'M' and (
             change.mode == colliding_change.mode and
             change.blob_id == colliding_change.blob_id):
-          # The two are identical, so we can throw this one away and keep other
+          ***REMOVED*** The two are identical, so we can throw this one away and keep other
           continue
         elif new_file_changes[change.filename].type != b'D':
           raise SystemExit(_("File renaming caused colliding pathnames!\n") +
                            _("  Commit: {}\n").format(commit.original_id) +
                            _("  Filename: {}").format(change.filename))
-      # Strip files that are too large
+      ***REMOVED*** Strip files that are too large
       if self._args.max_blob_size and \
          self._unpacked_size.get(change.blob_id, 0) > self._args.max_blob_size:
         continue
       if self._args.strip_blobs_with_ids and \
          change.blob_id in self._args.strip_blobs_with_ids:
         continue
-      # Otherwise, record the change
+      ***REMOVED*** Otherwise, record the change
       new_file_changes[change.filename] = change
     commit.file_changes = [v for k,v in sorted(new_file_changes.items())]
 
@@ -3945,19 +3945,19 @@ class RepoFilter(object):
     if self._message_callback:
       commit.message = self._message_callback(commit.message)
 
-    # Change the commit message according to callback
+    ***REMOVED*** Change the commit message according to callback
     if not self._args.preserve_commit_hashes:
       commit.message = self._hash_re.sub(self._translate_commit_hash,
                                          commit.message)
 
-    # Change the author & committer according to mailmap rules
+    ***REMOVED*** Change the author & committer according to mailmap rules
     args = self._args
     if args.mailmap:
       commit.author_name, commit.author_email = \
           args.mailmap.translate(commit.author_name, commit.author_email)
       commit.committer_name, commit.committer_email = \
           args.mailmap.translate(commit.committer_name, commit.committer_email)
-    # Change author & committer according to callbacks
+    ***REMOVED*** Change author & committer according to callbacks
     if self._name_callback:
       commit.author_name = self._name_callback(commit.author_name)
       commit.committer_name = self._name_callback(commit.committer_name)
@@ -3965,114 +3965,114 @@ class RepoFilter(object):
       commit.author_email = self._email_callback(commit.author_email)
       commit.committer_email = self._email_callback(commit.committer_email)
 
-    # Sometimes the 'branch' given is a tag; if so, rename it as requested so
-    # we don't get any old tagnames
+    ***REMOVED*** Sometimes the 'branch' given is a tag; if so, rename it as requested so
+    ***REMOVED*** we don't get any old tagnames
     if self._args.tag_rename:
       commit.branch = RepoFilter._do_tag_rename(args.tag_rename, commit.branch)
     if self._refname_callback:
       commit.branch = self._refname_callback(commit.branch)
 
-    # Filter or rename the list of file changes
+    ***REMOVED*** Filter or rename the list of file changes
     orig_file_changes = set(commit.file_changes)
     self._filter_files(commit)
 
-    # Record ancestry graph
+    ***REMOVED*** Record ancestry graph
     parents, orig_parents = commit.parents, aux_info['orig_parents']
     if self._args.state_branch:
       external_parents = parents
     else:
       external_parents = [p for p in parents if not isinstance(p, int)]
-    # The use of 'reversed' is intentional here; there is a risk that we have
-    # duplicates in parents, and we want to map from parents to the first
-    # entry we find in orig_parents in such cases.
+    ***REMOVED*** The use of 'reversed' is intentional here; there is a risk that we have
+    ***REMOVED*** duplicates in parents, and we want to map from parents to the first
+    ***REMOVED*** entry we find in orig_parents in such cases.
     parent_reverse_dict = dict(zip(reversed(parents), reversed(orig_parents)))
 
     self._graph.record_external_commits(external_parents)
     self._orig_graph.record_external_commits(external_parents)
-    self._graph.add_commit_and_parents(commit.id, parents) # new githash unknown
+    self._graph.add_commit_and_parents(commit.id, parents) ***REMOVED*** new githash unknown
     self._orig_graph.add_commit_and_parents(commit.old_id, orig_parents,
                                             commit.original_id)
 
-    # Prune parents (due to pruning of empty commits) if relevant, note that
-    # new_1st_parent is None unless this was a merge commit that is becoming
-    # a non-merge
+    ***REMOVED*** Prune parents (due to pruning of empty commits) if relevant, note that
+    ***REMOVED*** new_1st_parent is None unless this was a merge commit that is becoming
+    ***REMOVED*** a non-merge
     prev_1st_parent = parents[0] if parents else None
     parents, new_1st_parent = self._maybe_trim_extra_parents(orig_parents,
                                                              parents)
     commit.parents = parents
 
-    # If parents were pruned, then we need our file changes to be relative
-    # to the new first parent
-    #
-    # Notes:
-    #   * new_1st_parent and new_1st_parent != parents[0] uniquely happens for example when:
-    #       working on merge, selecting subset of files and merge base still
-    #       valid while first parent history doesn't touch any of those paths,
-    #       but second parent history does.  prev_1st_parent had already been
-    #       rewritten to the non-None first ancestor and it remains valid.
-    #       self._maybe_trim_extra_parents() avoids removing this first parent
-    #       because it'd make the commit a non-merge.  However, if there are
-    #       no file_changes of note, we'll drop this commit and mark
-    #       new_1st_parent as the new replacement.  To correctly determine if
-    #       there are no file_changes of note, we need to have the list of
-    #       file_changes relative to new_1st_parent.
-    #       (See t9390#3, "basic -> basic-ten using '--path ten'")
-    #   * prev_1st_parent != parents[0] happens for example when:
-    #       similar to above, but the merge base is no longer valid and was
-    #       pruned away as well.  Then parents started as e.g. [None, $num],
-    #       and both prev_1st_parent and new_1st_parent are None, while parents
-    #       after self._maybe_trim_extra_parents() becomes just [$num].
-    #       (See t9390#67, "degenerate merge with non-matching filename".)
-    #       Since $num was originally a second parent, we need to rewrite
-    #       file changes to be relative to parents[0].
-    #   * TODO: We should be getting the changes relative to the new first
-    #     parent even if self._fep is None, BUT we can't.  Our method of
-    #     getting the changes right now is an external git diff invocation,
-    #     which we can't do if we just have a fast export stream.  We can't
-    #     really work around it by querying the fast-import stream either,
-    #     because the 'ls' directive only allows us to list info about
-    #     specific paths, but we need to find out which paths exist in two
-    #     commits and then query them.  We could maybe force checkpointing in
-    #     fast-import, then doing a diff from what'll be the new first parent
-    #     back to prev_1st_parent (which may be None, i.e. empty tree), using
-    #     the fact that in A->{B,C}->D, where D is merge of B & C, the diff
-    #     from C->D == C->A + A->B + B->D, and in these cases A==B, so it
-    #     simplifies to C->D == C->A + B->D, and C is our new 1st parent
-    #     commit, A is prev_1st_commit, and B->D is commit.file_changes that
-    #     we already have.  However, checkpointing the fast-import process
-    #     and figuring out how long to wait before we can run our diff just
-    #     seems excessive. For now, just punt and assume the merge wasn't
-    #     "evil" (i.e. that it's remerge-diff is empty, as is true for most
-    #     merges).  If the merge isn't evil, no further steps are necessary.
+    ***REMOVED*** If parents were pruned, then we need our file changes to be relative
+    ***REMOVED*** to the new first parent
+    ***REMOVED***
+    ***REMOVED*** Notes:
+    ***REMOVED***   * new_1st_parent and new_1st_parent != parents[0] uniquely happens for example when:
+    ***REMOVED***       working on merge, selecting subset of files and merge base still
+    ***REMOVED***       valid while first parent history doesn't touch any of those paths,
+    ***REMOVED***       but second parent history does.  prev_1st_parent had already been
+    ***REMOVED***       rewritten to the non-None first ancestor and it remains valid.
+    ***REMOVED***       self._maybe_trim_extra_parents() avoids removing this first parent
+    ***REMOVED***       because it'd make the commit a non-merge.  However, if there are
+    ***REMOVED***       no file_changes of note, we'll drop this commit and mark
+    ***REMOVED***       new_1st_parent as the new replacement.  To correctly determine if
+    ***REMOVED***       there are no file_changes of note, we need to have the list of
+    ***REMOVED***       file_changes relative to new_1st_parent.
+    ***REMOVED***       (See t9390***REMOVED***3, "basic -> basic-ten using '--path ten'")
+    ***REMOVED***   * prev_1st_parent != parents[0] happens for example when:
+    ***REMOVED***       similar to above, but the merge base is no longer valid and was
+    ***REMOVED***       pruned away as well.  Then parents started as e.g. [None, $num],
+    ***REMOVED***       and both prev_1st_parent and new_1st_parent are None, while parents
+    ***REMOVED***       after self._maybe_trim_extra_parents() becomes just [$num].
+    ***REMOVED***       (See t9390***REMOVED***67, "degenerate merge with non-matching filename".)
+    ***REMOVED***       Since $num was originally a second parent, we need to rewrite
+    ***REMOVED***       file changes to be relative to parents[0].
+    ***REMOVED***   * TODO: We should be getting the changes relative to the new first
+    ***REMOVED***     parent even if self._fep is None, BUT we can't.  Our method of
+    ***REMOVED***     getting the changes right now is an external git diff invocation,
+    ***REMOVED***     which we can't do if we just have a fast export stream.  We can't
+    ***REMOVED***     really work around it by querying the fast-import stream either,
+    ***REMOVED***     because the 'ls' directive only allows us to list info about
+    ***REMOVED***     specific paths, but we need to find out which paths exist in two
+    ***REMOVED***     commits and then query them.  We could maybe force checkpointing in
+    ***REMOVED***     fast-import, then doing a diff from what'll be the new first parent
+    ***REMOVED***     back to prev_1st_parent (which may be None, i.e. empty tree), using
+    ***REMOVED***     the fact that in A->{B,C}->D, where D is merge of B & C, the diff
+    ***REMOVED***     from C->D == C->A + A->B + B->D, and in these cases A==B, so it
+    ***REMOVED***     simplifies to C->D == C->A + B->D, and C is our new 1st parent
+    ***REMOVED***     commit, A is prev_1st_commit, and B->D is commit.file_changes that
+    ***REMOVED***     we already have.  However, checkpointing the fast-import process
+    ***REMOVED***     and figuring out how long to wait before we can run our diff just
+    ***REMOVED***     seems excessive. For now, just punt and assume the merge wasn't
+    ***REMOVED***     "evil" (i.e. that it's remerge-diff is empty, as is true for most
+    ***REMOVED***     merges).  If the merge isn't evil, no further steps are necessary.
     if parents and self._fep and (
         prev_1st_parent != parents[0] or
         new_1st_parent and new_1st_parent != parents[0]):
-      # Get the id from the original fast export stream corresponding to the
-      # new 1st parent.  As noted above, that new 1st parent might be
-      # new_1st_parent, or if that is None, it'll be parents[0].
+      ***REMOVED*** Get the id from the original fast export stream corresponding to the
+      ***REMOVED*** new 1st parent.  As noted above, that new 1st parent might be
+      ***REMOVED*** new_1st_parent, or if that is None, it'll be parents[0].
       will_be_1st = new_1st_parent or parents[0]
       old_id = parent_reverse_dict[will_be_1st]
-      # Now, translate that to a hash
+      ***REMOVED*** Now, translate that to a hash
       will_be_1st_commit_hash = self._orig_graph.map_to_hash(old_id)
-      # Get the changes from what is going to be the new 1st parent to this
-      # merge commit.  Note that since we are going from the new 1st parent
-      # to the merge commit, we can just replace the existing
-      # commit.file_changes rather than getting something we need to combine
-      # with the existing commit.file_changes.  Also, we can just replace
-      # because prev_1st_parent is an ancestor of will_be_1st_commit_hash
-      # (or prev_1st_parent is None and first parent history is gone), so
-      # even if we retain prev_1st_parent and do not prune it, the changes
-      # will still work given the snapshot-based way fast-export/fast-import
-      # work.
+      ***REMOVED*** Get the changes from what is going to be the new 1st parent to this
+      ***REMOVED*** merge commit.  Note that since we are going from the new 1st parent
+      ***REMOVED*** to the merge commit, we can just replace the existing
+      ***REMOVED*** commit.file_changes rather than getting something we need to combine
+      ***REMOVED*** with the existing commit.file_changes.  Also, we can just replace
+      ***REMOVED*** because prev_1st_parent is an ancestor of will_be_1st_commit_hash
+      ***REMOVED*** (or prev_1st_parent is None and first parent history is gone), so
+      ***REMOVED*** even if we retain prev_1st_parent and do not prune it, the changes
+      ***REMOVED*** will still work given the snapshot-based way fast-export/fast-import
+      ***REMOVED*** work.
       commit.file_changes = GitUtils.get_file_changes(self._repo_working_dir,
                                                       will_be_1st_commit_hash,
                                                       commit.original_id)
 
-      # Save these and filter them
+      ***REMOVED*** Save these and filter them
       orig_file_changes = set(commit.file_changes)
       self._filter_files(commit)
 
-    # Process the --file-info-callback
+    ***REMOVED*** Process the --file-info-callback
     if self._file_info_callback:
       if self._file_info_value is None:
         source_working_dir = self._args.source or b'.'
@@ -4089,28 +4089,28 @@ class RepoFilter(object):
                                      change.blob_id,
                                      self._file_info_value)
           if mode is None:
-            # TODO: Should deletion of the file even be a feature?  Might
-            # want to remove this branch of the if-elif-else.
+            ***REMOVED*** TODO: Should deletion of the file even be a feature?  Might
+            ***REMOVED*** want to remove this branch of the if-elif-else.
             assert(filename is not None)
             assert(blob_id is not None)
             new_change = FileChange(b'D', filename)
           elif filename is None:
-            continue # Drop the FileChange from this commit
+            continue ***REMOVED*** Drop the FileChange from this commit
           else:
             new_change = FileChange(b'M', filename, blob_id, mode)
         else:
-          new_change = change  # use change as-is for deletions
+          new_change = change  ***REMOVED*** use change as-is for deletions
         new_file_changes.append(new_change)
       commit.file_changes = new_file_changes
 
-    # Call the user-defined callback, if any
+    ***REMOVED*** Call the user-defined callback, if any
     if self._commit_callback:
       self._commit_callback(commit, self.callback_metadata(aux_info))
 
-    # Find out which files were modified by the callbacks.  Such paths could
-    # lead to subsequent commits being empty (e.g. if removing a line containing
-    # a password from every version of a file that had the password, and some
-    # later commit did nothing more than remove that line)
+    ***REMOVED*** Find out which files were modified by the callbacks.  Such paths could
+    ***REMOVED*** lead to subsequent commits being empty (e.g. if removing a line containing
+    ***REMOVED*** a password from every version of a file that had the password, and some
+    ***REMOVED*** later commit did nothing more than remove that line)
     final_file_changes = set(commit.file_changes)
     if self._args.replace_text or self._blob_callback:
       differences = orig_file_changes.union(final_file_changes)
@@ -4118,7 +4118,7 @@ class RepoFilter(object):
       differences = orig_file_changes.symmetric_difference(final_file_changes)
     self._files_tweaked.update(x.filename for x in differences)
 
-    # Now print the resulting commit, or if prunable skip it
+    ***REMOVED*** Now print the resulting commit, or if prunable skip it
     if not commit.dumped:
       if not self._prunable(commit, new_1st_parent,
                             aux_info['had_file_changes'], orig_parents):
@@ -4131,15 +4131,15 @@ class RepoFilter(object):
           alias = Alias(commit.old_id or commit.id, rewrite_to or deleted_hash)
           self._insert_into_stream(alias)
         if commit.branch.startswith(b'refs/') or commit.branch == b'HEAD':
-          # The special check above is because when direct revisions are passed
-          # along to fast-export (such as with stashes), there is a chance the
-          # revision is rewritten to nothing.  In such cases, we don't want to
-          # point an invalid ref that just names a revision to some other point.
+          ***REMOVED*** The special check above is because when direct revisions are passed
+          ***REMOVED*** along to fast-export (such as with stashes), there is a chance the
+          ***REMOVED*** revision is rewritten to nothing.  In such cases, we don't want to
+          ***REMOVED*** point an invalid ref that just names a revision to some other point.
           reset = Reset(commit.branch, rewrite_to or deleted_hash)
           self._insert_into_stream(reset)
         self._commit_renames[commit.original_id] = None
 
-    # Show progress
+    ***REMOVED*** Show progress
     self._num_commits += 1
     if not self._args.quiet:
       self._progress_writer.show(self._parsed_message % self._num_commits)
@@ -4153,7 +4153,7 @@ class RepoFilter(object):
     return tagname
 
   def _tweak_tag(self, tag):
-    # Tweak the tag message according to callbacks
+    ***REMOVED*** Tweak the tag message according to callbacks
     if self._args.replace_message:
       for literal, replacement in self._args.replace_message['literals']:
         tag.message = tag.message.replace(literal, replacement)
@@ -4162,7 +4162,7 @@ class RepoFilter(object):
     if self._message_callback:
       tag.message = self._message_callback(tag.message)
 
-    # Tweak the tag name according to tag-name-related callbacks
+    ***REMOVED*** Tweak the tag name according to tag-name-related callbacks
     tag_prefix = b'refs/tags/'
     fullref = tag_prefix+tag.ref
     if self._args.tag_rename:
@@ -4175,7 +4175,7 @@ class RepoFilter(object):
         raise SystemExit(msg)
     tag.ref = fullref[len(tag_prefix):]
 
-    # Tweak the tagger according to callbacks
+    ***REMOVED*** Tweak the tagger according to callbacks
     if self._args.mailmap:
       tag.tagger_name, tag.tagger_email = \
           self._args.mailmap.translate(tag.tagger_name, tag.tagger_email)
@@ -4184,7 +4184,7 @@ class RepoFilter(object):
     if self._email_callback:
       tag.tagger_email = self._email_callback(tag.tagger_email)
 
-    # Call general purpose tag callback
+    ***REMOVED*** Call general purpose tag callback
     if self._tag_callback:
       self._tag_callback(tag, self.callback_metadata())
 
@@ -4215,7 +4215,7 @@ class RepoFilter(object):
              '%s:%s' % (full_branch, decode(marks_basename))]
       try:
         contents = subproc.check_output(cmd)
-      except subprocess.CalledProcessError as e: # pragma: no cover
+      except subprocess.CalledProcessError as e: ***REMOVED*** pragma: no cover
         raise SystemExit(_("Failed loading %s from %s") %
                          (decode(marks_basename), full_branch))
     if contents:
@@ -4229,24 +4229,24 @@ class RepoFilter(object):
     basenames = [b'source-marks', b'target-marks']
     working_dir = self._args.target or b'.'
 
-    # Check whether the branch exists
+    ***REMOVED*** Check whether the branch exists
     parent = []
     full_branch = 'refs/heads/{}'.format(self._args.state_branch)
     cmd = ['git', '-C', working_dir, 'show-ref', full_branch]
     if subproc.call(cmd, stdout=subprocess.DEVNULL) == 0:
       parent = ['-p', full_branch]
 
-    # Run 'git hash-object $MARKS_FILE' for each marks file, save result
+    ***REMOVED*** Run 'git hash-object $MARKS_FILE' for each marks file, save result
     blob_hashes = {}
     for marks_basename in basenames:
       marks_file = os.path.join(self.results_tmp_dir(), marks_basename)
-      if not os.path.isfile(marks_file): # pragma: no cover
+      if not os.path.isfile(marks_file): ***REMOVED*** pragma: no cover
         raise SystemExit(_("Failed to find %s to save to %s")
                          % (marks_file, self._args.state_branch))
       cmd = ['git', '-C', working_dir, 'hash-object', '-w', marks_file]
       blob_hashes[marks_basename] = subproc.check_output(cmd).strip()
 
-    # Run 'git mktree' to create a tree out of it
+    ***REMOVED*** Run 'git mktree' to create a tree out of it
     p = subproc.Popen(['git', '-C', working_dir, 'mktree'],
                       stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     for b in basenames:
@@ -4255,7 +4255,7 @@ class RepoFilter(object):
     p.wait()
     tree = p.stdout.read().strip()
 
-    # Create the new commit
+    ***REMOVED*** Create the new commit
     cmd = (['git', '-C', working_dir, 'commit-tree', '-m', 'New mark files',
             tree] + parent)
     commit = subproc.check_output(cmd).strip()
@@ -4268,16 +4268,16 @@ class RepoFilter(object):
   def set_output(self, outputRepoFilter):
     assert outputRepoFilter._output
 
-    # set_output implies this RepoFilter is doing exporting, though may not
-    # be the only one.
+    ***REMOVED*** set_output implies this RepoFilter is doing exporting, though may not
+    ***REMOVED*** be the only one.
     self._setup_input(use_done_feature = False)
 
-    # Set our output management up to pipe to outputRepoFilter's locations
+    ***REMOVED*** Set our output management up to pipe to outputRepoFilter's locations
     self._managed_output = False
     self._output = outputRepoFilter._output
     self._import_pipes = outputRepoFilter._import_pipes
 
-    # Handle sanity checks, though currently none needed for export-only cases
+    ***REMOVED*** Handle sanity checks, though currently none needed for export-only cases
     self._run_sanity_checks()
 
   def _read_stash(self):
@@ -4314,7 +4314,7 @@ class RepoFilter(object):
   def _setup_input(self, use_done_feature):
     if self._args.stdin:
       self._input = sys.stdin.detach()
-      sys.stdin = None # Make sure no one tries to accidentally use it
+      sys.stdin = None ***REMOVED*** Make sure no one tries to accidentally use it
       self._fe_orig = None
     else:
       self._read_stash()
@@ -4336,7 +4336,7 @@ class RepoFilter(object):
         source_marks_file = self._load_marks_file(b'source-marks')
         extra_flags.extend([b'--export-marks='+source_marks_file,
                             b'--import-marks='+source_marks_file])
-      if self._args.preserve_commit_encoding is not None: # pragma: no cover
+      if self._args.preserve_commit_encoding is not None: ***REMOVED*** pragma: no cover
         reencode = 'no' if self._args.preserve_commit_encoding else 'yes'
         extra_flags.append('--reencode='+reencode)
       if self._args.date_order:
@@ -4411,16 +4411,16 @@ class RepoFilter(object):
         p.stdin.write(b'delete %s %s\n' % (ref, self._orig_refs[ref]))
         del self._orig_refs[ref]
       p.stdin.close()
-      if p.wait(): # pragma: no cover
+      if p.wait(): ***REMOVED*** pragma: no cover
         msg = _("git update-ref failed; see above")
         raise SystemExit(msg)
 
     if b'remote.origin.url' not in self._config_settings:
       return
 
-    # For sensitive data removals, fetch ALL refs.  Non-mirror clones normally
-    # only grab branches and tags, but other refs may hold on to the sensitive
-    # data as well.
+    ***REMOVED*** For sensitive data removals, fetch ALL refs.  Non-mirror clones normally
+    ***REMOVED*** only grab branches and tags, but other refs may hold on to the sensitive
+    ***REMOVED*** data as well.
     if self._args.sensitive_data_removal and \
        not self._args.no_fetch and \
        not self._already_ran and \
@@ -4438,7 +4438,7 @@ class RepoFilter(object):
 
         if response.lower() != 'y':
           self._args.no_fetch = True
-          # Don't do the fetch, and don't remove the origin remote
+          ***REMOVED*** Don't do the fetch, and don't remove the origin remote
           return
 
       cmd = 'git fetch -q --prune --update-head-ok --refmap "" origin +refs/*:refs/*'
@@ -4448,13 +4448,13 @@ class RepoFilter(object):
       print(m)
       ret = subproc.call([arg if arg != '""' else '' for arg in cmd.split()],
                          cwd=source_working_dir)
-      if ret != 0: # pragma: no cover
+      if ret != 0: ***REMOVED*** pragma: no cover
         m = _("WARNING: Fetching all refs from origin failed")
         print(m)
     if self._args.sensitive_data_removal:
       return
 
-    # Now remove the origin remote
+    ***REMOVED*** Now remove the origin remote
     url = self._config_settings[b'remote.origin.url'].decode(errors='replace')
     m = _("NOTICE: Removing 'origin' remote; see 'Why is my origin removed?'\n"
           "        in the manual if you want to push back there.\n"
@@ -4472,12 +4472,12 @@ class RepoFilter(object):
       self._progress_writer.finish()
 
   def _ref_update(self, target_working_dir):
-    # Start the update-ref process
+    ***REMOVED*** Start the update-ref process
     p = subproc.Popen('git update-ref --no-deref --stdin'.split(),
                       stdin=subprocess.PIPE,
                       cwd=target_working_dir)
 
-    # Remove replace_refs from _orig_refs
+    ***REMOVED*** Remove replace_refs from _orig_refs
     replace_refs = {k:v for k, v in self._orig_refs.items()
                     if k.startswith(b'refs/replace/')}
     reverse_replace_refs = collections.defaultdict(list)
@@ -4485,11 +4485,11 @@ class RepoFilter(object):
       reverse_replace_refs[v].append(k)
     all(map(self._orig_refs.pop, replace_refs))
 
-    # Remove unused refs
+    ***REMOVED*** Remove unused refs
     exported_refs, imported_refs = self.get_exported_and_imported_refs()
     refs_to_nuke = exported_refs - imported_refs
-    # Because revisions can be passed to fast-export which handles them as
-    # though they were refs, we might have bad "refs" to nuke; strip them out.
+    ***REMOVED*** Because revisions can be passed to fast-export which handles them as
+    ***REMOVED*** though they were refs, we might have bad "refs" to nuke; strip them out.
     refs_to_nuke = [x for x in refs_to_nuke
                     if x.startswith(b'refs/') or x == b'HEAD']
     if self._args.partial:
@@ -4500,34 +4500,34 @@ class RepoFilter(object):
     p.stdin.write(b''.join([b"delete %s\n" % x
                            for x in refs_to_nuke]))
 
-    # Delete or update and add replace_refs; note that fast-export automatically
-    # handles 'update-no-add', we only need to take action for the other four
-    # choices for replace_refs.
+    ***REMOVED*** Delete or update and add replace_refs; note that fast-export automatically
+    ***REMOVED*** handles 'update-no-add', we only need to take action for the other four
+    ***REMOVED*** choices for replace_refs.
     self._flush_renames()
     actual_renames = {k:v for k,v in self._commit_renames.items() if k != v}
     if self._args.replace_refs in ['delete-no-add', 'delete-and-add']:
-      # Delete old replace refs, if unwanted
+      ***REMOVED*** Delete old replace refs, if unwanted
       replace_refs_to_nuke = set(replace_refs)
       if self._args.replace_refs == 'delete-and-add':
-        # git-update-ref won't allow us to update a ref twice, so be careful
-        # to avoid deleting refs we'll later update
+        ***REMOVED*** git-update-ref won't allow us to update a ref twice, so be careful
+        ***REMOVED*** to avoid deleting refs we'll later update
         replace_refs_to_nuke = replace_refs_to_nuke.difference(
                                  [b'refs/replace/'+x for x in actual_renames])
       p.stdin.write(b''.join([b"delete %s\n" % x
                              for x in replace_refs_to_nuke]))
     if self._args.replace_refs in ['delete-and-add', 'update-or-add',
                                    'update-and-add']:
-      # Add new replace refs
+      ***REMOVED*** Add new replace refs
       update_only = (self._args.replace_refs == 'update-or-add')
       p.stdin.write(b''.join([b"update refs/replace/%s %s\n" % (old, new)
                               for old,new in actual_renames.items()
                               if new and not (update_only and
                                               old in reverse_replace_refs)]))
 
-    # Complete the update-ref process
+    ***REMOVED*** Complete the update-ref process
     p.stdin.close()
     if p.wait():
-      raise SystemExit(_("git update-ref failed; see above")) # pragma: no cover
+      raise SystemExit(_("git update-ref failed; see above")) ***REMOVED*** pragma: no cover
 
   def _remap_to(self, oldish_hash):
     '''
@@ -4543,36 +4543,36 @@ class RepoFilter(object):
     return new_hash
 
   def _compute_metadata(self, metadata_dir, orig_refs):
-    #
-    # First, handle commit_renames
-    #
+    ***REMOVED***
+    ***REMOVED*** First, handle commit_renames
+    ***REMOVED***
     old_commit_renames = dict()
     if not self._already_ran:
       commit_renames = {old: new
                         for old, new in self._commit_renames.items()
                        }
     else:
-      # Read commit-map into old_commit_renames
+      ***REMOVED*** Read commit-map into old_commit_renames
       with open(os.path.join(metadata_dir, b'commit-map'), 'br') as f:
-        f.readline() # Skip the header line
+        f.readline() ***REMOVED*** Skip the header line
         for line in f:
           (old,new) = line.split()
           old_commit_renames[old] = new
-      # Use A->B mappings in old_commit_renames, and B->C mappings in
-      # self._commit_renames to yield A->C mappings in commit_renames
+      ***REMOVED*** Use A->B mappings in old_commit_renames, and B->C mappings in
+      ***REMOVED*** self._commit_renames to yield A->C mappings in commit_renames
       commit_renames = {old: self._commit_renames.get(newish, newish)
                         for old, newish in old_commit_renames.items()}
-      # If there are any B->C mappings in self._commit_renames for which
-      # there was no A->B mapping in old_commit_renames, then add the
-      # B->C mapping to commit_renames too.
+      ***REMOVED*** If there are any B->C mappings in self._commit_renames for which
+      ***REMOVED*** there was no A->B mapping in old_commit_renames, then add the
+      ***REMOVED*** B->C mapping to commit_renames too.
       seen = set(old_commit_renames.values())
       commit_renames.update({old: new
                              for old, new in self._commit_renames.items()
                              if old not in seen})
 
-    #
-    # Second, handle ref_maps
-    #
+    ***REMOVED***
+    ***REMOVED*** Second, handle ref_maps
+    ***REMOVED***
     exported_refs, imported_refs = self.get_exported_and_imported_refs()
 
     old_commit_unrenames = dict()
@@ -4581,28 +4581,28 @@ class RepoFilter(object):
                          for refname, old_hash in orig_refs.items()
                          if refname in exported_refs)
     else:
-      # old_commit_renames talk about how commits were renamed in the original
-      # run.  Let's reverse it to find out how to get from the intermediate
-      # commit name, back to the original.  Because everything in orig_refs
-      # right now refers to the intermediate commits after the first run(s),
-      # and we need to map them back to what they were before any changes.
+      ***REMOVED*** old_commit_renames talk about how commits were renamed in the original
+      ***REMOVED*** run.  Let's reverse it to find out how to get from the intermediate
+      ***REMOVED*** commit name, back to the original.  Because everything in orig_refs
+      ***REMOVED*** right now refers to the intermediate commits after the first run(s),
+      ***REMOVED*** and we need to map them back to what they were before any changes.
       old_commit_unrenames = dict((v,k) for (k,v) in old_commit_renames.items())
 
       old_ref_map = {}
-      # Populate old_ref_map from the 'ref-map' file
+      ***REMOVED*** Populate old_ref_map from the 'ref-map' file
       with open(os.path.join(metadata_dir, b'ref-map'), 'br') as f:
-        f.readline() # Skip the header line
+        f.readline() ***REMOVED*** Skip the header line
         for line in f:
           (old,intermediate,ref) = line.split()
           old_ref_map[ref] = (old, intermediate)
-      # Append to old_ref_map items from orig_refs that were exported, but
-      # get the actual original commit name
+      ***REMOVED*** Append to old_ref_map items from orig_refs that were exported, but
+      ***REMOVED*** get the actual original commit name
       for refname, old_hash in orig_refs.items():
         if refname in old_ref_map:
           continue
         if refname not in exported_refs:
           continue
-        # Compute older_hash
+        ***REMOVED*** Compute older_hash
         original_hash = old_commit_unrenames.get(old_hash, old_hash)
         old_ref_map[refname] = (original_hash, deleted_hash)
 
@@ -4620,7 +4620,7 @@ class RepoFilter(object):
           new_hash = self._remap_to(intermediate)
         else:
           new_hash = intermediate
-      else: # Must be either an annotated tag, or a ref whose tip was pruned
+      else: ***REMOVED*** Must be either an annotated tag, or a ref whose tip was pruned
         if not new_refs_initialized:
           target_working_dir = self._args.target or b'.'
           new_refs = GitUtils.get_refs(target_working_dir)
@@ -4638,28 +4638,28 @@ class RepoFilter(object):
           old_hash = b'0'*len(new_hash)
           ref_maps[ref] = (old_hash, new_hash)
 
-    #
-    # Third, handle first_changes
-    #
+    ***REMOVED***
+    ***REMOVED*** Third, handle first_changes
+    ***REMOVED***
 
     old_first_changes = dict()
     if self._already_ran:
-      # Read first_changes into old_first_changes
+      ***REMOVED*** Read first_changes into old_first_changes
       with open(os.path.join(metadata_dir, b'first-changed-commits'), 'br') as f:
         for line in f:
           changed_commit, undeleted_self_or_ancestor = line.strip().split()
           old_first_changes[changed_commit] = undeleted_self_or_ancestor
-    # We need to find the commits that were modified whose parents were not.
-    # To be able to find parents, we need the commit names as of the beginning
-    # of this run, and then when we are done, we need to map them back to the
-    # name of the commits from before any git-filter-repo runs.
-    #
-    # We are excluding here any commits deleted in previous git-filter-repo
-    # runs
+    ***REMOVED*** We need to find the commits that were modified whose parents were not.
+    ***REMOVED*** To be able to find parents, we need the commit names as of the beginning
+    ***REMOVED*** of this run, and then when we are done, we need to map them back to the
+    ***REMOVED*** name of the commits from before any git-filter-repo runs.
+    ***REMOVED***
+    ***REMOVED*** We are excluding here any commits deleted in previous git-filter-repo
+    ***REMOVED*** runs
     undo_old_commit_renames = dict((v,k) for (k,v) in old_commit_renames.items()
                                    if v != deleted_hash)
-    # Get a list of all commits that were changed, as of the beginning of
-    # this latest run.
+    ***REMOVED*** Get a list of all commits that were changed, as of the beginning of
+    ***REMOVED*** this latest run.
     changed_commits = {new
                        for (old,new) in old_commit_renames.items()
                        if old != new and new != deleted_hash} | \
@@ -4672,61 +4672,61 @@ class RepoFilter(object):
     first_changes = dict()
     for (old,new) in self._commit_renames.items():
       if old == new:
-        # old wasn't modified, can't be first change if not even a change
+        ***REMOVED*** old wasn't modified, can't be first change if not even a change
         continue
       if old_commit_unrenames.get(old,old) != old:
-        # old was already modified in previous run; while it might represent
-        # something that is still a first change, we'll handle that as we
-        # loop over old_first_changes below
+        ***REMOVED*** old was already modified in previous run; while it might represent
+        ***REMOVED*** something that is still a first change, we'll handle that as we
+        ***REMOVED*** loop over old_first_changes below
         continue
       if any(parent in changed_commits
              for parent in self._orig_graph.get_parent_hashes(old)):
-        # a parent of old was modified, so old is not a first change
+        ***REMOVED*** a parent of old was modified, so old is not a first change
         continue
-      # At this point, old IS a first change.  We need to find out what new
-      # commit it maps to, or if it doesn't map to one, what new commit was
-      # its most recent ancestor that wasn't pruned.
+      ***REMOVED*** At this point, old IS a first change.  We need to find out what new
+      ***REMOVED*** commit it maps to, or if it doesn't map to one, what new commit was
+      ***REMOVED*** its most recent ancestor that wasn't pruned.
       if new is None:
         new = self._remap_to(old)
       first_changes[old] = (new if new is not None else deleted_hash)
     for (old,undeleted_self_or_ancestor) in old_first_changes.items():
       if undeleted_self_or_ancestor == deleted_hash:
-        # old represents a commit that was pruned and whose entire ancestry
-        # was pruned.  So, old is still a first change
+        ***REMOVED*** old represents a commit that was pruned and whose entire ancestry
+        ***REMOVED*** was pruned.  So, old is still a first change
         first_changes[old] = undeleted_self_or_ancestor
         continue
       intermediate = old_commit_renames.get(old, old)
       usoa = undeleted_self_or_ancestor
       new_ancestor = self._commit_renames.get(usoa, usoa)
       if intermediate == deleted_hash:
-        # old was pruned in previous rewrite
+        ***REMOVED*** old was pruned in previous rewrite
         if usoa != new_ancestor:
-          # old's ancestor got rewritten in this filtering run; we can drop
-          # this one from first_changes.
+          ***REMOVED*** old's ancestor got rewritten in this filtering run; we can drop
+          ***REMOVED*** this one from first_changes.
           continue
-        # Getting here means old was a first change and old was pruned in a
-        # previous run, and its ancestors that survived were non rewritten in
-        # this run, so old remains a first change
-        first_changes[old] = new_ancestor # or usoa, since new_ancestor == usoa
+        ***REMOVED*** Getting here means old was a first change and old was pruned in a
+        ***REMOVED*** previous run, and its ancestors that survived were non rewritten in
+        ***REMOVED*** this run, so old remains a first change
+        first_changes[old] = new_ancestor ***REMOVED*** or usoa, since new_ancestor == usoa
         continue
-      assert(usoa == intermediate) # old wasn't pruned => usoa == intermediate
+      assert(usoa == intermediate) ***REMOVED*** old wasn't pruned => usoa == intermediate
 
-      # Check whether parents of intermediate were rewritten.  Note that
-      # intermediate in self._commit_renames only means that intermediate was
-      # processed by the latest filtering (not necessarily that it changed),
-      # but we need to know that before we can check for parent hashes having
-      # changed.
+      ***REMOVED*** Check whether parents of intermediate were rewritten.  Note that
+      ***REMOVED*** intermediate in self._commit_renames only means that intermediate was
+      ***REMOVED*** processed by the latest filtering (not necessarily that it changed),
+      ***REMOVED*** but we need to know that before we can check for parent hashes having
+      ***REMOVED*** changed.
       if intermediate not in self._commit_renames:
-        # This commit was not processed by this run, so it remains a first
-        # change
+        ***REMOVED*** This commit was not processed by this run, so it remains a first
+        ***REMOVED*** change
         first_changes[old] = usoa
         continue
       if any(parent in changed_commits
              for parent in self._orig_graph.get_parent_hashes(intermediate)):
-        # An ancestor was modified by this run, so it is no longer a first
-        # change; continue to the next one.
+        ***REMOVED*** An ancestor was modified by this run, so it is no longer a first
+        ***REMOVED*** change; continue to the next one.
         continue
-      # This change is a first_change; find the new commit its usoa maps to
+      ***REMOVED*** This change is a first_change; find the new commit its usoa maps to
       new = self._remap_to(intermediate)
       assert(new is not None)
       first_changes[old] = new
@@ -4769,15 +4769,15 @@ class RepoFilter(object):
     if self._args.sensitive_data_removal:
       changed_commits = sum(k!=v for (k,v) in commit_renames.items())
       print(f"You rewrote {changed_commits} (of {len(commit_renames)}) commits.")
-      print("") # Add a blank line before important rewrite information
+      print("") ***REMOVED*** Add a blank line before important rewrite information
       print(f"NOTE: First Changed Commit(s) is/are:\n  "
             + decode(b"\n  ".join(x for x in first_changes)))
 
       with open(os.path.join(metadata_dir, b'sensitive_data_removal'), 'bw') as f:
-        pass # Write nothing; we only need the file created
+        pass ***REMOVED*** Write nothing; we only need the file created
 
       self._handle_lfs_metadata(metadata_dir)
-      print("") # Add a blank line after important rewrite information
+      print("") ***REMOVED*** Add a blank line after important rewrite information
 
     with open(os.path.join(metadata_dir, b'commit-map'), 'bw') as f:
       f.write(("%-40s %s\n" % (_("old"), _("new"))).encode())
@@ -4881,7 +4881,7 @@ class RepoFilter(object):
     assert self._sanity_checks_handled
 
     if self._input:
-      # Create and run the filter
+      ***REMOVED*** Create and run the filter
       self._repo_working_dir = self._args.source or b'.'
       self._parser = FastExportParser(blob_callback   = self._tweak_blob,
                                       commit_callback = self._tweak_commit,
@@ -4893,31 +4893,31 @@ class RepoFilter(object):
       if not self._finalize_handled:
         self._final_commands()
 
-      # Make sure fast-export completed successfully
+      ***REMOVED*** Make sure fast-export completed successfully
       if not self._args.stdin and self._fep.wait():
-        raise SystemExit(_("Error: fast-export failed; see above.")) # pragma: no cover
+        raise SystemExit(_("Error: fast-export failed; see above.")) ***REMOVED*** pragma: no cover
       self._input.close()
 
-    # If we're not the manager of self._output, we should avoid post-run cleanup
+    ***REMOVED*** If we're not the manager of self._output, we should avoid post-run cleanup
     if not self._managed_output:
       return
 
-    # Close the output and ensure fast-import successfully completes
+    ***REMOVED*** Close the output and ensure fast-import successfully completes
     self._output.close()
     if not self._args.dry_run and self._fip.wait():
-      raise SystemExit(_("Error: fast-import failed; see above.")) # pragma: no cover
+      raise SystemExit(_("Error: fast-import failed; see above.")) ***REMOVED*** pragma: no cover
 
-    # With fast-export and fast-import complete, update state if requested
+    ***REMOVED*** With fast-export and fast-import complete, update state if requested
     if self._args.state_branch:
       self._save_marks_files()
 
-    # Notify user how long it took, before doing a gc and such
+    ***REMOVED*** Notify user how long it took, before doing a gc and such
     msg = "New history written in {:.2f} seconds..."
     if self._args.repack:
       msg = "New history written in {:.2f} seconds; now repacking/cleaning..."
     print(msg.format(time.time()-start))
 
-    # Exit early, if requested
+    ***REMOVED*** Exit early, if requested
     if self._args.dry_run:
       print(_("NOTE: Not running fast-import or cleaning up; --dry-run passed."))
       if self._fe_orig:
@@ -4932,22 +4932,22 @@ class RepoFilter(object):
     if self._input:
       self._ref_update(target_working_dir)
 
-      # Write out data about run
+      ***REMOVED*** Write out data about run
       self._record_metadata(self.results_tmp_dir(), self._orig_refs)
 
-    # Final cleanup:
-    #   If we need a repack, then nuke the reflogs and repack.
-    #   If we need a reset, do a reset --hard
+    ***REMOVED*** Final cleanup:
+    ***REMOVED***   If we need a repack, then nuke the reflogs and repack.
+    ***REMOVED***   If we need a reset, do a reset --hard
     reset = not GitUtils.is_repository_bare(target_working_dir)
     self.cleanup(target_working_dir, self._args.repack, reset,
                  run_quietly=self._args.quiet,
                  show_debuginfo=self._args.debug)
 
-    # Let user know how long it took
+    ***REMOVED*** Let user know how long it took
     print(_("Completely finished after {:.2f} seconds.")
           .format(time.time()-start))
 
-    # Give post-rewrite instructions for cleaning up other copies for SDR
+    ***REMOVED*** Give post-rewrite instructions for cleaning up other copies for SDR
     if self._args.sensitive_data_removal:
       lfs_note = ""
       if self._lfs_object_tracker and \

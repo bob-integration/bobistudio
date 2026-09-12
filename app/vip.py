@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """VIP de management (keepalived / VRRP) — bascule AUTOMATIQUE de l'adresse, pas du rôle.
 
@@ -36,9 +36,9 @@ log = logging.getLogger(__name__)
 CONF_PATH = "/etc/keepalived/keepalived.conf"
 SERVICE = "keepalived"
 INSTANCE = "BOBI_VIP"
-# Marqueur d'en-tête : on ne réécrit JAMAIS une conf keepalived qui n'est pas la nôtre (un site
-# peut avoir un VRRP préexistant — l'écraser en silence serait une panne réseau offerte).
-MARKER = "# Généré par Bobi.Studio (Réglages → Haute disponibilité → VIP)"
+***REMOVED*** Marqueur d'en-tête : on ne réécrit JAMAIS une conf keepalived qui n'est pas la nôtre (un site
+***REMOVED*** peut avoir un VRRP préexistant — l'écraser en silence serait une panne réseau offerte).
+MARKER = "***REMOVED*** Généré par Bobi.Studio (Réglages → Haute disponibilité → VIP)"
 
 
 def _run(cmd, timeout=120):
@@ -109,8 +109,8 @@ def validate(v):
     if not v["auth_pass"]:
         pbs.append("secret VRRP vide")
     elif len(v["auth_pass"]) > 8:
-        # Le protocole tronque à 8 octets : accepter plus long, c'est laisser deux contrôleurs
-        # « au même secret » diverger sur le 9ᵉ caractère et ne jamais se voir.
+        ***REMOVED*** Le protocole tronque à 8 octets : accepter plus long, c'est laisser deux contrôleurs
+        ***REMOVED*** « au même secret » diverger sur le 9ᵉ caractère et ne jamais se voir.
         pbs.append("secret VRRP limité à 8 caractères (contrainte du protocole)")
     return pbs
 
@@ -119,12 +119,12 @@ def render_config(v=None):
     """Rend le keepalived.conf (texte). Aperçu dans l'UI avant d'écrire quoi que ce soit."""
     v = v or config_values()
     return f"""{MARKER}
-# NE PAS ÉDITER À LA MAIN : ce fichier est réécrit à chaque promote/demote (la priorité VRRP
-# est dérivée du rôle de contrôle). Rôle au moment du rendu : {v['role']}.
+***REMOVED*** NE PAS ÉDITER À LA MAIN : ce fichier est réécrit à chaque promote/demote (la priorité VRRP
+***REMOVED*** est dérivée du rôle de contrôle). Rôle au moment du rendu : {v['role']}.
 
 vrrp_script chk_bobistudio {{
-    # L'orchestrateur répond-il ? (identité publique, sans secret) — si non, priorité en chute
-    # et l'autre contrôleur prend l'adresse.
+    ***REMOVED*** L'orchestrateur répond-il ? (identité publique, sans secret) — si non, priorité en chute
+    ***REMOVED*** et l'autre contrôleur prend l'adresse.
     script "{_curl()} -sf -m 2 -o /dev/null http://127.0.0.1:5000/api/update/ping"
     interval 2
     fall 2

@@ -1,8 +1,8 @@
-# Contribuer à Bobi.Studio
+***REMOVED*** Contribuer à Bobi.Studio
 
 Guide court et pratique. Pour l'architecture, voir `CLAUDE.md` (source de vérité).
 
-## Convention de nommage FR / EN
+***REMOVED******REMOVED*** Convention de nommage FR / EN
 
 Le code mélange français et anglais **par époque**, pas par caprice :
 
@@ -23,14 +23,14 @@ Le code mélange français et anglais **par époque**, pas par caprice :
   librement par l'utilisateur (`2110_io`, …) — pas forcément snake_case, pas forcément
   anglais. Ne les « corrigez » pas.
 
-### Règle d'or : AUCUN rename opportuniste
+***REMOVED******REMOVED******REMOVED*** Règle d'or : AUCUN rename opportuniste
 
 On ne renomme **jamais** un symbole juste parce qu'il est en français « à l'ancienne ».
 Un rename ne se fait **que** lors d'une réécriture complète du module concerné (et alors
 il faut suivre toute la chaîne : appels, JS, templates, migrations de type dans `init_db`).
 Renommer à la volée casse les diffs, les grep et les migrations DB pour zéro bénéfice.
 
-### Mini-glossaire FR → EN (symboles cœur)
+***REMOVED******REMOVED******REMOVED*** Mini-glossaire FR → EN (symboles cœur)
 
 | Français (existant)      | Sens / équivalent EN            |
 |--------------------------|---------------------------------|
@@ -46,25 +46,25 @@ Renommer à la volée casse les diffs, les grep et les migrations DB pour zéro 
 
 Utilisez cette table comme repère de lecture, pas comme une TODO de renommage.
 
-## Textes UI : toujours via l'i18n
+***REMOVED******REMOVED*** Textes UI : toujours via l'i18n
 
 Tout **nouveau texte d'interface** passe par le catalogue i18n : `_("clé")` côté Jinja,
 `t("clé")` / `window.t` côté JS (voir `app/i18n.py` et le `js_catalog`). **Jamais** de
 chaîne française (ou anglaise) codée en dur dans un template ou dans `static/scripts.js`.
 Ajoutez la clé aux catalogues FR **et** EN. Un texte en dur = régression i18n.
 
-## Garde-fous locaux (avant de pousser)
+***REMOVED******REMOVED*** Garde-fous locaux (avant de pousser)
 
 Il n'y a pas de build/lint/test lourd. Deux vérifications gratuites existent et tournent
 aussi en CI (`.github/workflows/ci.yml`) :
 
 ```bash
-# 1) Smoke import — attrape les circularités d'import de app/
+***REMOVED*** 1) Smoke import — attrape les circularités d'import de app/
 ./venv/bin/python -c "import app.routes, app.plugins, app.database, app.deploy"
 ./venv/bin/python -c "import main"
 
-# 2) Scan des plugins — un plugin dont une accolade { } littérale n'est pas doublée
-#    dans script.py est silencieusement écarté du registre ; ce script le fait échouer.
+***REMOVED*** 2) Scan des plugins — un plugin dont une accolade { } littérale n'est pas doublée
+***REMOVED***    dans script.py est silencieusement écarté du registre ; ce script le fait échouer.
 ./venv/bin/python tests/check_plugins.py
 ```
 
@@ -72,7 +72,7 @@ Rappel du piège plugins : `plugins/<type>/script.py` est passé dans `str.forma
 (placeholders `{config}` / `{hostname}` / `{plugin_version}`) → **toute** accolade
 littérale (dict, set, f-string, commentaire) doit être doublée `{{ }}`.
 
-## Sous-modules git
+***REMOVED******REMOVED*** Sous-modules git
 
 `services/*` et `plugins/*` sont des **sous-modules** (dépôts privés).
 
@@ -99,7 +99,7 @@ En **CI**, `actions/checkout` laisse les sous-modules en HEAD détaché : le doc
 en mode *advisory* (non bloquant). En **local**, il fait autorité — corrigez les désyncs
 avant de committer un bump de sous-module.
 
-## Git
+***REMOVED******REMOVED*** Git
 
 - Ne committez / ne poussez **que** sur demande explicite.
 - Un bump de sous-module = commit dans le sous-module (sur `main`) **puis** commit du

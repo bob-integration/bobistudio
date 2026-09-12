@@ -1,6 +1,6 @@
-# Bobi.Studio
+***REMOVED*** Bobi.Studio
 
-> ## Version bêta
+> ***REMOVED******REMOVED*** Version bêta
 >
 > Bobi.Studio tourne en production, quotidiennement, chez son éditeur. Cette publication est
 > la première hors de ce cadre : votre installation sera la première sur un autre parc.
@@ -22,7 +22,7 @@ Un orchestrateur Flask central (contrôleur) pilote des **nœuds** enrôlés qui
 conteneurs de production : réception/émission 2110, mixage, multiview, encodage, enregistrement.
 Le transport vidéo/audio interne passe par le **bus MXL** (SDK MXL, mémoire partagée `/dev/shm/mxl`).
 
-## Fonctionnalités principales
+***REMOVED******REMOVED*** Fonctionnalités principales
 
 - **Moteur ST 2110 bi-rôle** (`2110_io`) : réception + émission via MTL/DPDK (AF-XDP, kernel-bypass), flux composables vidéo/audio/ANC, classes d'émission narrow/wide, chaîne entrelacée champ-natif
 - **Streams** : encodage multi-destinations (UDP / SRT / WebRTC), audio multi-pistes, preview WHEP
@@ -42,13 +42,13 @@ Le transport vidéo/audio interne passe par le **bus MXL** (SDK MXL, mémoire pa
 - **Projets** : snapshots du câblage et de la configuration, rappel avec progression, accès restreint par utilisateur
 - **i18n** : interface bilingue FR/EN
 
-## Architecture
+***REMOVED******REMOVED*** Architecture
 
 - **Contrôleur** : application Flask (port 5000) + thread de surveillance. Aucun conteneur de production ne tourne dessus (sauf mode « tout-en-un »).
 - **Nœuds** : machines Debian enrôlées (table `nodes`), pilotées par `app/node_driver.py` via un **agent-nœud** HTTP (`node_agent/agent.py`, token par nœud) qui gère le lifecycle Docker et les opérations hôte.
 - **Conteneurs** : créés par `app/docker_driver.py` (moteur ST 2110 MTL, NIC dédiée AF-XDP) et `app/docker_compute.py` (compute/média, réseau **macvlan** — une IP par conteneur).
 
-## Documentation
+***REMOVED******REMOVED*** Documentation
 
 | Document | Pour qui |
 |---|---|
@@ -61,9 +61,9 @@ Le transport vidéo/audio interne passe par le **bus MXL** (SDK MXL, mémoire pa
 Ces documents sont aussi rendus **dans l'interface**, page **Aide** — même source, pas de copie
 à maintenir. L'aide en ligne couvre en plus une rubrique par plugin (`plugins/<type>/help.md`).
 
-## Déploiement
+***REMOVED******REMOVED*** Déploiement
 
-### Sur une machine vierge, en une commande
+***REMOVED******REMOVED******REMOVED*** Sur une machine vierge, en une commande
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/bob-integration/bobistudio/main/get.sh)
@@ -77,22 +77,22 @@ développement), récupère la source, puis ouvre le menu de l'installeur unifi�
 Options utiles : `--liste` affiche les versions disponibles et s'arrête, `--ref <tag|branche>`
 en vise une précise sans passer par le menu, et `--dry-run` récupère et vérifie la source **sans
 rien installer** — de quoi regarder avant de se lancer. Détail complet dans
-[INSTALL.md](INSTALL.md#20-depuis-github-sur-une-machine-vierge-le-plus-court).
+[INSTALL.md](INSTALL.md***REMOVED***20-depuis-github-sur-une-machine-vierge-le-plus-court).
 
-### Installeur unifié
+***REMOVED******REMOVED******REMOVED*** Installeur unifié
 
 `install.py` s'exécute **en root, à côté d'un `bobistudio.zip`** : c'est un installeur de
 paquet, pas un script à lancer depuis un clone git. `get.sh` ci-dessus le met en place pour
 vous ; sinon, deux façons de l'obtenir :
 
 ```bash
-# Depuis un contrôleur déjà en service (l'installeur et le zip y sont servis) :
+***REMOVED*** Depuis un contrôleur déjà en service (l'installeur et le zip y sont servis) :
 curl -O http://<controleur>:5000/install/install.py
 curl -O http://<controleur>:5000/install/bobistudio.zip
 sudo python3 install.py
 
-# Ou en construisant le paquet depuis les sources :
-python3 tools/build_dist.py      # produit dist/bobistudio.zip + dist/install.py
+***REMOVED*** Ou en construisant le paquet depuis les sources :
+python3 tools/build_dist.py      ***REMOVED*** produit dist/bobistudio.zip + dist/install.py
 cd dist && sudo python3 install.py
 ```
 
@@ -102,40 +102,40 @@ ou **tout-en-un** (orchestrateur + nœud local).
 
 Pour installer **depuis un clone git**, lancer `bash install.sh` : l'amorce vérifie python3 (et propose de l'installer), puis passe la main à l'installeur unifié `install/install.py`.
 
-### Installation manuelle du contrôleur
+***REMOVED******REMOVED******REMOVED*** Installation manuelle du contrôleur
 
 ```bash
 cd /opt/bobistudio
 cp config_local.example.py config_local.py
-nano config_local.py     # valeurs de site (hôtes, tokens, secrets)
-bash install.sh          # venv + dépendances + service systemd
+nano config_local.py     ***REMOVED*** valeurs de site (hôtes, tokens, secrets)
+bash install.sh          ***REMOVED*** venv + dépendances + service systemd
 systemctl start bobistudio
 ```
 
-### Enrôler un nœud
+***REMOVED******REMOVED******REMOVED*** Enrôler un nœud
 
 ```bash
-# Sur la machine nœud (Debian 13), capacités à la carte :
+***REMOVED*** Sur la machine nœud (Debian 13), capacités à la carte :
 ./node_agent/install-node.sh --with compute,media \
     --macvlan-parent eno1 --macvlan-subnet 10.x.x.0/24 --macvlan-gateway 10.x.x.254
 ```
 
 Puis déclarer le nœud (URL + token affiché en fin d'installation) dans l'interface.
 
-### Gestion du service
+***REMOVED******REMOVED******REMOVED*** Gestion du service
 
 ```bash
 systemctl {start|stop|restart|status} bobistudio
-journalctl -u bobistudio -f    # logs en direct
+journalctl -u bobistudio -f    ***REMOVED*** logs en direct
 ```
 
-### Lancement manuel (dev)
+***REMOVED******REMOVED******REMOVED*** Lancement manuel (dev)
 
 ```bash
-./venv/bin/python main.py      # Flask sur 0.0.0.0:5000
+./venv/bin/python main.py      ***REMOVED*** Flask sur 0.0.0.0:5000
 ```
 
-## Configuration
+***REMOVED******REMOVED*** Configuration
 
 | Fichier | Rôle |
 |---|---|
@@ -146,7 +146,7 @@ journalctl -u bobistudio -f    # logs en direct
 Les autres réglages (réseau ST 2110, NMOS, TSL, WebRTC, PTP, thème, utilisateurs…) se
 configurent depuis l'interface web — **Réglages**.
 
-## Structure
+***REMOVED******REMOVED*** Structure
 
 ```
 main.py               ← point d'entrée Flask (port 5000) + thread de surveillance
@@ -174,20 +174,20 @@ NODE_AGENT.md         ← contrat HTTP de l'agent-nœud
 CHANGELOG.md          ← historique des versions (rendu sur la page Aide)
 ```
 
-## Créer un compte administrateur
+***REMOVED******REMOVED*** Créer un compte administrateur
 
 ```bash
 ./venv/bin/python tools/create_admin.py
 ```
 
-## Prérequis infrastructure
+***REMOVED******REMOVED*** Prérequis infrastructure
 
 - Contrôleur : Debian 13 (trixie) avec Python 3.13 (VM ou machine dédiée)
 - Nœuds : Debian 13 (trixie) avec Docker ; pour le rôle `io2110`, NIC Intel E810 (MTL/DPDK AF-XDP) + hugepages + PTP
 - Réseau : un plan média ST 2110, un segment macvlan pour les conteneurs compute/média, un plan de contrôle
 - Pour WebRTC : la passerelle MediaMTX se déploie depuis Réglages → WebRTC
 
-## Licence
+***REMOVED******REMOVED*** Licence
 
 Copyright (C) 2026 BOBI SAS, France
 Auteur : Cyril Mazouer, pour le compte de BOBI SAS.
@@ -204,14 +204,14 @@ PARTICULIER. Voir la GNU General Public License pour plus de détails.
 Le texte complet est dans le fichier [`LICENSE`](LICENSE) ou sur
 <https://www.gnu.org/licenses/gpl-3.0.html>.
 
-### Composants tiers
+***REMOVED******REMOVED******REMOVED*** Composants tiers
 
 Bobi.Studio intègre des composants tiers (SDK MXL, Intel Media Transport Library, DPDK,
 FFmpeg, MediaMTX…) qui restent soumis à leur propre licence. L'inventaire, les mentions de
 copyright à conserver et les points de vigilance sont dans
 [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md).
 
-## Développement
+***REMOVED******REMOVED*** Développement
 
 Ce projet a été développé avec l'assistance de Claude (Anthropic)
 comme outil de génération de code, sous la direction et supervision

@@ -1,8 +1,12 @@
 {
-  "version": "0.19.0",
-  "date": "2026-08-31",
-  "image_tag": "bobi-media:0.19",
+  "version": "0.20.0",
+  "date": "2026-09-12",
+  "image_tag": "bobi-media:0.20",
   "changes": {
+    "libmxl v1.1.0 finale (0.20.0)": [
+      "★ libmxl passe de `v1.1.0-rc1` à la **v1.1.0 finale** (amont du 2026-09-08). Aucune rupture d'API ; nos patches et les 16 fichiers modifiés amont n'ont aucun fichier en commun. Vérifié sur l'image bâtie par le HASH DE COMMIT (`g8f3f1096e804` = « 1.1.0 GA release »), pas par le tag.",
+      "L'effet mesurable pour un consommateur : la fenêtre lisible d'un flux à GRAINS (vidéo, ANC) perd exactement un grain — le correctif amont `6d5ac9c6` réserve la case de queue à l'écrivain. Mesuré 9 → 8 grains, stable sur cinq relevés (banc `script_templates/mxl_fenetre_lisible.py`). ⚠ L'audio n'est PAS concerné : c'est un flux continu, qui avait déjà ce comportement."
+    ],
     "Surface NMOS par conteneur (plan 2) (0.19.0)": [
       "★ L'agent embarqué sert désormais `/x-nmos/` : chaque conteneur expose SON Node NMOS, alimenté par un document que l'orchestrateur lui pousse (POST /nmos, écriture atomique).",
       "⚠ BUMP NÉCESSAIRE, pas cosmétique : un conteneur n'est recréé que si sa signature `docker run` change, image comprise. Reconstruire sans changer `image_tag` laissait le nouvel agent dans l'image et AUCUN conteneur ne l'adoptait jamais."

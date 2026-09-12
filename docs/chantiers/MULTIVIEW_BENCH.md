@@ -1,6 +1,6 @@
-# Banc de performance du multiview — nœud 30 (CPU pur)
+***REMOVED*** Banc de performance du multiview — nœud 30 (CPU pur)
 
-> ## ⏩ SUITE (2026-07-14, multiview 0.40.0) — les deux recommandations chaudes sont livrées
+> ***REMOVED******REMOVED*** ⏩ SUITE (2026-07-14, multiview 0.40.0) — les deux recommandations chaudes sont livrées
 > - **Reco n°4 (VU-mètres : fond caché en YUV, barres peintes en YUV)** — ✅ **livrée**, validée par
 >   l'utilisateur. Mesuré sur le mur de PROD 333 : `ov_meters` **2,4 → 0,50 ms**. Micro-banc (tuile
 >   44×540, 2 canaux) : **1,118 → 0,098 ms/tuile (11×)**. L'écart de bit-exactitude annoncé au §6.1
@@ -32,7 +32,7 @@
 
 ---
 
-## 1. Conclusion (à lire en premier)
+***REMOVED******REMOVED*** 1. Conclusion (à lire en premier)
 
 **Un bug a été trouvé et corrigé : le noyau de fusion C (`mvk`) ne s'appliquait JAMAIS au plan Y
 des tuiles d'habillage.** `rgba_to_yuv` renvoyait l'alpha sous la forme d'une vue stridée
@@ -72,7 +72,7 @@ faites sur le cpuset partagé, donnaient n'importe quoi (le même mur mesurait 1
 
 ---
 
-## 2. Le correctif livré (0.39.3) — chiffré
+***REMOVED******REMOVED*** 2. Le correctif livré (0.39.3) — chiffré
 
 `plugins/multiview/script.py`, `rgba_to_yuv` : l'alpha est compactée (`np.ascontiguousarray`) une
 fois au bake, au lieu d'être renvoyée comme vue de pas 4.
@@ -114,12 +114,12 @@ Micro-banc des primitives dans le conteneur (`micro.py`, tuile de frise 1920×25
 
 ---
 
-## 3. Coût de l'habillage, élément par élément
+***REMOVED******REMOVED*** 3. Coût de l'habillage, élément par élément
 
 4 fenêtres 1080p (source 1920×1080), sortie 1920×1080p50, 4 cœurs. Cumulatif : chaque ligne ajoute
 un élément à la précédente. (`final.log`, série H — audio présent, VU réellement rendus.)
 
-| # | Config | fps | `own` ms | inputs | overlays | output | dont VU | dont frises | dont horloges | dont blend chrome | dont blend tuiles |
+| ***REMOVED*** | Config | fps | `own` ms | inputs | overlays | output | dont VU | dont frises | dont horloges | dont blend chrome | dont blend tuiles |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | H1 | vidéo nue (aucun habillage) | 50,0 | **5,7** | 4,5 | 0,1 | 1,1 | 0,0 | 0,0 | 0,0 | 0,0 | 0,0 |
 | H2 | + bordure viewfinder | 50,0 | 5,5 | 3,8 | 0,9 | 0,9 | 0,0 | 0,0 | 0,0 | 0,85 | 0,0 |
@@ -142,7 +142,7 @@ un élément à la précédente. (`final.log`, série H — audio présent, VU r
 
 ---
 
-## 4. Passage à l'échelle : nombre de fenêtres
+***REMOVED******REMOVED*** 4. Passage à l'échelle : nombre de fenêtres
 
 Habillage prod complet + 1 frise audio, 1920×1080p50, **4 cœurs**. Deux séries indépendantes
 (`b9.log`, `final.log`) — écart entre séries ≤ 0,3 ms, donc reproductible.
@@ -166,7 +166,7 @@ Les deux postes qui explosent avec le nombre de fenêtres :
 
 ---
 
-## 5. Les deux frises : leur coût RÉEL
+***REMOVED******REMOVED*** 5. Les deux frises : leur coût RÉEL
 
 C'était la question explicite. Réponse en trois chiffres.
 
@@ -223,7 +223,7 @@ se recompose qu'à l'arrivée d'une vignette (≈ 1 Hz) contre 5 Hz pour l'envel
 
 ---
 
-## 5 bis. Format de sortie, cadence, entrelacé, mode tranche
+***REMOVED******REMOVED*** 5 bis. Format de sortie, cadence, entrelacé, mode tranche
 
 4 fenêtres, habillage + horloge + texte + 1 frise. ⚠️ **Ces points ont été relevés pendant une
 disparition du flux audio du nœud (§7.4) : les VU-mètres n'y sont donc PAS rendus** — il faut y
@@ -252,9 +252,9 @@ indépendantes, `final.log` et `fill.log`, s'accordent à ±0,3 ms sauf `1080i50
 
 ---
 
-## 6. Points chauds restants, chiffrés
+***REMOVED******REMOVED*** 6. Points chauds restants, chiffrés
 
-### 6.1 VU-mètres : 86 % du coût est une conversion RGBA→YUV inutile — **la meilleure optimisation restante**
+***REMOVED******REMOVED******REMOVED*** 6.1 VU-mètres : 86 % du coût est une conversion RGBA→YUV inutile — **la meilleure optimisation restante**
 
 Micro-banc dans le conteneur (`micro4.py`), coût **par mètre et par trame** :
 
@@ -286,7 +286,7 @@ bit-exactitude CPU/GPU. **Décision produit requise.** Le chantier est petit (`_
 kernel (0,238 ms) alors que l'appel direct en **uint8** coûte 0,189 ms — **−20 % gratuitement**, sans
 aucun changement de rendu, si la tuile est déjà en uint8. À vérifier côté `_meter_tile_gpu`.
 
-### 6.2 Le re-bake du chrome coûte une trame entière — mais il est bien caché
+***REMOVED******REMOVED******REMOVED*** 6.2 Le re-bake du chrome coûte une trame entière — mais il est bien caché
 
 Micro-banc plein cadre 1920×1080 (`micro.py`) :
 
@@ -303,13 +303,13 @@ problème du mur de prod 333 — churn TSL — traité en parallèle par l'autre
 Ce tableau donne l'ordre de grandeur du **prix d'un re-bake** : tout ce qui salit l'habillage à la
 trame est catastrophique.
 
-### 6.3 Étage `output` : 0,8-1,3 ms, rien à gratter
+***REMOVED******REMOVED******REMOVED*** 6.3 Étage `output` : 0,8-1,3 ms, rien à gratter
 
 `np.concatenate` des 3 plans = 0,246 ms mesuré, la copie dans le grain MXL le reste. Une écriture
 directe dans un buffer pré-alloué (sans `concatenate`) coûte **exactement pareil** (0,246 ms) — testé,
 **aucun gain**. Ne pas y toucher.
 
-### 6.4 Étage `inputs` : c'est lui qui explose avec le nombre de fenêtres
+***REMOVED******REMOVED******REMOVED*** 6.4 Étage `inputs` : c'est lui qui explose avec le nombre de fenêtres
 
 2,0 ms (1 fenêtre) → 10,1 ms (16 fenêtres). `mvk_place_into` (redimensionnement + placement fusionné
 en C) est déjà 2× plus rapide que le numpy stridé (0,118 vs 0,223 ms sur un plan Y 1080p→540p) et
@@ -320,7 +320,7 @@ grain) sur le chemin whole-frame — le mode tranche le fait déjà (vues zéro-
 
 ---
 
-## 7. Ce que ce banc a appris sur la MÉTHODE (important)
+***REMOVED******REMOVED*** 7. Ce que ce banc a appris sur la MÉTHODE (important)
 
 1. **Le nœud 30 est sur-souscrit et rend toute mesure absurde sans cpuset dédié.** Le moteur MTL tient
    les cœurs 0-21 (3 cœurs à 100 % en polling) ; 7 conteneurs compute sont empilés sur `19-23,43-47`.
@@ -343,7 +343,7 @@ grain) sur le chemin whole-frame — le mode tranche le fait déjà (vues zéro-
 
 ---
 
-## 8. Ce que je n'ai PAS pu faire / hypothèses écartées
+***REMOVED******REMOVED*** 8. Ce que je n'ai PAS pu faire / hypothèses écartées
 
 - **Le mur de prod 333 n'a pas été touché** (lecture seule, consigne). Le correctif §2 **ne
   l'améliorera pas** : c'est un mur GPU, ses blends passent par cupy. Il bénéficie en revanche du
@@ -367,9 +367,9 @@ grain) sur le chemin whole-frame — le mode tranche le fait déjà (vues zéro-
 
 ---
 
-## 9. Recommandations
+***REMOVED******REMOVED*** 9. Recommandations
 
-| # | Action | Gain | Risque | Statut |
+| ***REMOVED*** | Action | Gain | Risque | Statut |
 |---|---|---|---|---|
 | 1 | Correctif alpha contiguë (mvk s'applique enfin au plan Y) | −1,2 à −2,8 ms | nul (bit-exact) | ✅ **commité 0.39.3** |
 | 2 | Redéployer **tous les murs CPU** du parc pour qu'ils prennent 0.39.3 | idem | nul | à faire |
@@ -383,13 +383,13 @@ grain) sur le chemin whole-frame — le mode tranche le fait déjà (vues zéro-
 
 ---
 
-## 10. Reproduire le banc
+***REMOVED******REMOVED*** 10. Reproduire le banc
 
 Tout est dans le scratchpad de la session (`mvbench.py`, `run_*.py`, `micro*.py`, `*.log`).
 
 ```python
-import mvbench as B                      # déploie sur le vmid 345, repose le cpuset, relance, échantillonne
-B.run("mon cas", B.build(n=4,            # 4 fenêtres
+import mvbench as B                      ***REMOVED*** déploie sur le vmid 345, repose le cpuset, relance, échantillonne
+B.run("mon cas", B.build(n=4,            ***REMOVED*** 4 fenêtres
                          parts=("video","border","umd","tally","meters"),
                          overlays=("clock","text"), ahist=1))
 ```

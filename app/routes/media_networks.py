@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """« Réseaux 2110 » — CRUD global (cluster) : identités de réseau logique (nom, domaine PTP,
 surcharges SMPTE 2059-2), agrégat d'état PTP live par réseau, topologie du cluster (Vue
@@ -50,7 +50,7 @@ def media_networks_overview():
     from .. import ptp
     nets = db_get_media_networks()
     nodes = db_get_nodes() or []
-    # Cache des status par nœud (un seul appel cached_status par nœud) + interfaces par nœud.
+    ***REMOVED*** Cache des status par nœud (un seul appel cached_status par nœud) + interfaces par nœud.
     node_status = {n["id"]: (ptp.cached_status(n["id"]) or {}) for n in nodes}
     node_ifaces = {n["id"]: db_get_node_interfaces(n["id"]) for n in nodes}
     out = []
@@ -69,9 +69,9 @@ def media_networks_overview():
             if dom.get("grandmaster_id") and not grandmaster:
                 grandmaster = dom["grandmaster_id"]
             slave_if = next((nm for nm in ist if ist[nm] == "SLAVE"), None)
-            # Nœud full-PF DPDK : pas de ptp_enabled kernel, mais PTP porté par le moteur libmtl
-            # (dom.engine_ptp). On le compte comme participant (has_ptp) pour qu'il apparaisse dans
-            # les sélecteurs de graphe et affiche son état verrou/offset.
+            ***REMOVED*** Nœud full-PF DPDK : pas de ptp_enabled kernel, mais PTP porté par le moteur libmtl
+            ***REMOVED*** (dom.engine_ptp). On le compte comme participant (has_ptp) pour qu'il apparaisse dans
+            ***REMOVED*** les sélecteurs de graphe et affiche son état verrou/offset.
             engine_ptp = bool(dom.get("engine_ptp"))
             has_ptp = any(m.get("ptp_enabled") for m in members) or engine_ptp
             net_nodes.append({
@@ -79,13 +79,13 @@ def media_networks_overview():
                 "primary": str(st.setting_for("ptp_primary_network", node["id"]) or "") == str(nid),
                 "ptp4l_running": bool(dom.get("ptp4l_running")),
                 "engine_ptp": engine_ptp,
-                # ⚠ `locked` seul ne suffit PAS à décider si l'horloge va bien : c'est le verrou
-                # servo STRICT de libmtl, qui pouvait rester faux (cf. ptp.clock_ok, dont la
-                # docstring raconte l'alarme « holdover » criée sur un nœud parfaitement
-                # synchronisé). La carte n'avait que `locked` et affichait donc « en attente d'un
-                # grandmaster » à côté de l'identifiant DUDIT grandmaster et de l'offset mesuré
-                # contre lui. On envoie le verdict CANONIQUE : le front n'a pas à re-dériver une
-                # doctrine qui vit déjà ici.
+                ***REMOVED*** ⚠ `locked` seul ne suffit PAS à décider si l'horloge va bien : c'est le verrou
+                ***REMOVED*** servo STRICT de libmtl, qui pouvait rester faux (cf. ptp.clock_ok, dont la
+                ***REMOVED*** docstring raconte l'alarme « holdover » criée sur un nœud parfaitement
+                ***REMOVED*** synchronisé). La carte n'avait que `locked` et affichait donc « en attente d'un
+                ***REMOVED*** grandmaster » à côté de l'identifiant DUDIT grandmaster et de l'offset mesuré
+                ***REMOVED*** contre lui. On envoie le verdict CANONIQUE : le front n'a pas à re-dériver une
+                ***REMOVED*** doctrine qui vit déjà ici.
                 "locked": bool(dom.get("locked")),
                 "synced": bool(dom.get("synced")),
                 "sync_ok": ptp.clock_ok(dom),
@@ -93,8 +93,8 @@ def media_networks_overview():
                 "phc2sys_offset_ns": dom.get("phc2sys_sys_offset_ns"),
                 "offset_ns": dom.get("offset_ns"),
                 "slave_iface": slave_if,
-                # has_ptp = au moins une NIC ptp_enabled → ce nœud participe au PTP de ce réseau
-                # (sinon « Appliquer » n'a rien à démarrer). needs_apply (front) = has_ptp ∧ ¬ptp4l_running.
+                ***REMOVED*** has_ptp = au moins une NIC ptp_enabled → ce nœud participe au PTP de ce réseau
+                ***REMOVED*** (sinon « Appliquer » n'a rien à démarrer). needs_apply (front) = has_ptp ∧ ¬ptp4l_running.
                 "has_ptp": has_ptp,
                 "members": [{"ifname": m["ifname"], "pair_role": m.get("pair_role"),
                              "ptp_enabled": bool(m.get("ptp_enabled")),
@@ -121,8 +121,8 @@ def cluster_topology():
         orch_ip = socket.gethostbyname(socket.getfqdn())
     except Exception:
         orch_ip = None
-    # Débit live par interface (cache node_health, pas de SSH). RoCE bypasse la pile kernel → le
-    # débit RDMA réel vient du sampler IB (cf. bloc rdma plus bas), pas de net[] ; ici = ports kernel.
+    ***REMOVED*** Débit live par interface (cache node_health, pas de SSH). RoCE bypasse la pile kernel → le
+    ***REMOVED*** débit RDMA réel vient du sampler IB (cf. bloc rdma plus bas), pas de net[] ; ici = ports kernel.
     try:
         from .. import node_health
         _nh = (node_health.latest() or {}).get("nodes") or {}
@@ -145,7 +145,7 @@ def cluster_topology():
         })
     networks = [{"id": m["id"], "name": m["name"], "domain": m["domain"]}
                 for m in db_get_media_networks()]
-    # Plan RDMA : état des NIC rôle rdma + classification du raccordement (direct vs switch via LLDP).
+    ***REMOVED*** Plan RDMA : état des NIC rôle rdma + classification du raccordement (direct vs switch via LLDP).
     try:
         from services import rdma as _rdma
         rdma_topo = _rdma.rdma_topology()
@@ -155,7 +155,7 @@ def cluster_topology():
                     "orchestrator": {"name": socket.gethostname(), "ip": orch_ip},
                     "networks": networks, "nodes": nodes, "rdma": rdma_topo})
 
-# Surcharges PTP de profil par réseau : bornes de validation (mêmes que la page PTP nœud).
+***REMOVED*** Surcharges PTP de profil par réseau : bornes de validation (mêmes que la page PTP nœud).
 _NET_PTP_PARAM_RANGES = {
     "priority1": (0, 255), "priority2": (0, 255), "log_announce": (-3, 4),
     "log_sync": (-7, 0), "log_delay_req": (-7, 0), "announce_timeout": (2, 10),
@@ -209,7 +209,7 @@ def media_networks_update(net_id):
         except (TypeError, ValueError, AssertionError):
             return jsonify({"error": "domaine invalide (0-127)"}), 400
     kw = dict(name=name, domain=domain)
-    if "ptp_params" in d:                       # présent → applique (vide = hérite tout)
+    if "ptp_params" in d:                       ***REMOVED*** présent → applique (vide = hérite tout)
         kw["ptp_params"] = _ptp_params_from_payload(d.get("ptp_params")) or None
     db_update_media_network(net_id, **kw)
     return jsonify({"ok": True})
@@ -263,11 +263,11 @@ def cluster_clock_ntp_test():
     res = {"controleur": clocks.tester_ntp(srv)}
     for n in db_get_nodes():
         if clocks._a_un_moteur_2110(n):
-            # Ce nœud ne PRENDRA pas ces serveurs (son heure vient du grandmaster), mais il est le
-            # meilleur JUGE dont on dispose : il est verrouillé sur le GM au nanoseconde près. Y
-            # interroger un serveur NTP, c'est le confronter à la référence de temps du site.
-            # C'est ce contrôle qui manquait : un GM dont le service NTP est en retard de 100 ms
-            # sur son PROPRE PTP passait pour une bonne source parce qu'il annonce « strate 1 ».
+            ***REMOVED*** Ce nœud ne PRENDRA pas ces serveurs (son heure vient du grandmaster), mais il est le
+            ***REMOVED*** meilleur JUGE dont on dispose : il est verrouillé sur le GM au nanoseconde près. Y
+            ***REMOVED*** interroger un serveur NTP, c'est le confronter à la référence de temps du site.
+            ***REMOVED*** C'est ce contrôle qui manquait : un GM dont le service NTP est en retard de 100 ms
+            ***REMOVED*** sur son PROPRE PTP passait pour une bonne source parce qu'il annonce « strate 1 ».
             res["%s (juge PTP)" % n.get("name")] = [
                 {**r, "vs_ptp_ms": round((r["offset_s"] + clocks.TAI_UTC_OFFSET_S) * 1000, 1)}
                 if r.get("ok") else r

@@ -1,7 +1,58 @@
 {
-  "version": "0.34.0",
-  "date": "2026-08-31",
+  "version": "0.46.0",
+  "date": "2026-09-12",
   "changes": {
+    "libmxl passe en v1.1.0 finale (0.46.0)": [
+      "★ Le SDK MXL était épinglé sur `v1.1.0-rc1` (5 août) ; la finale est sortie le 8 septembre, 18 commits plus loin. Aucune rupture d'API — le seul changement des en-têtes publics est un commentaire. Nos cinq patches et les 16 fichiers modifiés amont n'ont AUCUN fichier en commun, et aucun de nos fichiers patchés n'inclut un fichier qui a bougé.",
+      "Le correctif qui motive la bascule est `6d5ac9c6` : sur les flux DISCRETS (audio, ANC), la queue de l'anneau et `headIndex+1` désignaient la même case physique — un lecteur pouvait lire celle que l'écrivain était en train d'écrire. La borne basse passe de +1 à +2 pour réserver cette case. C'est la forme de plusieurs symptômes audio que nous traînons.",
+      "Viennent aussi : les writers qui sautent en avant (`_lastCommittedIndex` explicite sur les writers continus et discrets), `FabricsInstance` rendu réellement thread-safe, et une correction de portée sur le writer discret."
+    ],
+    "Glissement NET, et non compteur de répétitions (0.45.0)": [
+      "★ `slip_hours` était déduit du seul compteur de répétitions, et se trompait d'un facteur 240 : mesuré sur 2101 s, 5 répétitions pour 105 052 trames émises annoncent 47,6 ppm de glissement, quand la cadence mesurée sur la même fenêtre vaut +0,20 ppm. Une répétition est presque toujours de la gigue de phase — la source n'avait rien de neuf à cet instant, elle livrera deux grains au suivant. Répétitions et sauts se compensent ; seul leur SOLDE est du glissement.",
+      "Il se mesure désormais comme l'écart entre l'avance de l'index de grain SOURCE et le nombre de trames émises sur la fenêtre. Un seuil posé sur l'ancienne grandeur aurait crié « un glissement toutes les 7 minutes » sur une chaîne qui en connaît un toutes les 140 heures."
+    ],
+    "Le `else` d'un `&&` n'est pas celui qu'on croit (0.44.0)": [
+      "★ Le correctif d'amorçage de 0.43 a produit PIRE que le défaut qu'il corrigeait : écrite `if (!ancre && emises > 250) … else …`, la garde envoyait les 250 premières trames dans la branche de CALCUL, avec l'ancre encore à zéro. dt valait alors l'époque UNIX entière — donc supérieure à la fenêtre — et on publiait `−1 000 000 ppm`, une demi-heure durant. Les deux conditions ne sont pas de même nature : « pas encore d'ancre » choisit la branche, « assez de trames » n'est qu'un délai.",
+      "Et une valeur absurde ne se publie plus : elle s'omet. Un `null` se lit comme un blanc ; `−1 000 000 ppm` se lit comme une mesure."
+    ],
+    "Amorçage : ne plus ancrer la fenêtre de mesure dessus (0.43.0)": [
+      "★ La première fenêtre de dérive du TX decklink englobait la pré-charge — sortie déjà cadencée, source pas encore là. Mesuré : première fenêtre à −1,12 ppm, les suivantes à 0,00 et +0,11 sur la même chaîne. Un transitoire de 2 ms sur l'ancre suffit à cela sur 1800 s. L'ancre saute désormais les 250 premières trames (5 s).",
+      "Même cause pour `slip_hours` : la première fenêtre comptait les 23 répétitions d'amorçage et annonçait « un glissement toutes les 72 secondes » sur une chaîne saine. Le compteur de répétitions est ancré en même temps que la fenêtre.",
+      "★ La fenêtre de 1800 s est confirmée par la mesure : 0,00 et +0,11 ppm publiés, contre des contrôles indépendants à −0,027 ppm (1200 s), +0,072 (2401 s) et +0,039 (3602 s)."
+    ],
+    "Fenêtre de dérive calibrée par la mesure (0.42.0)": [
+      "★ La fenêtre de publication de `card_vs_node_ppm` passe de 300 s à 1800 s. Neuf fenêtres de 300 s consécutives ont donné −1,30 à +1,46 ppm (écart-type 0,94) pour une moyenne de −0,04 ppm : du bruit autour de zéro, sur une chaîne dont la fenêtre longue donne −0,06 ppm. Un seuil d'alerte à 1 ppm aurait crié plusieurs fois par heure sans qu'il ne se passe rien.",
+      "La cause est la gigue d'ordonnancement du callback (~300 µs), qui borne la résolution à gigue/fenêtre : ±1,0 ppm à 300 s, ±0,17 ppm à 1800 s. Trente minutes avant la première valeur, mais une valeur qui veut dire quelque chose ; `null` d'ici là."
+    ],
+    "Dérive de sortie : la CADENCE, plus l'horodatage (0.41.0)": [
+      "★ `card_vs_node_ppm` se calcule désormais sur la cadence réellement ÉMISE (compte de trames + instant, pris ensemble dans le callback), et non plus sur `GetFrameCompletionReferenceTimestamp`. Un contrôle a montré que cet horodatage ne suit PAS la référence : sortie asservie ou non, il donnait le même +1,5 à +1,9 ppm. La grandeur publiée était donc du bruit portant un nom de mesure — et j'en avais tiré la conclusion inverse de la vérité.",
+      "La cadence, elle, est imposée par l'horloge de sortie de la carte : elle EST genlock-sensible. Mesurée ainsi : +0,035 ppm sur 1577 s, +0,094 ppm sur 1830 s — soit, sur cette installation, une image de glissement toutes les 159 heures."
+    ],
+    "Cadence de SORTIE mesurable (0.40.0)": [
+      "★ decklink_tx publie `t_frame_ns`, l'instant de la dernière trame ÉMISE pris dans le callback. Couplé à `frame_index`, il donne la cadence réelle de la sortie contre l'horloge du nœud — et la sortie EST asservie à la référence, contrairement à la source. C'est donc la mesure qui tranche la relation synchro-maison ↔ nœud."
+    ],
+    "Mesure de cadence : paire atomique (0.38.0)": [
+      "★ Les stats de capture portent `t_frame_ns` — l'horloge du nœud prise DANS le callback, au moment même où le compteur de trames avance. C'est ce qui rend mesurable la cadence RÉELLE de la source, et donc l'écart entre la synchro maison et l'horloge du nœud.",
+      "Datée depuis la boucle principale, l'horloge aurait été décalée de 200 ms au pire, soit 22 ppm sur une fenêtre de 900 s — alors qu'on cherche à en résoudre 1."
+    ],
+    "Glissement MESURÉ, plus dérivé (0.37.0)": [
+      "★ decklink_tx publie `slip_hours` MESURÉ sur les répétitions réellement survenues, et non plus calculé depuis une dérive d'horodatage.",
+      "Un contrôle a montré que GetFrameCompletionReferenceTimestamp rend la MÊME dérive que la sortie soit asservie au genlock ou non (+1,6 contre +1,5 ppm sur 900 s) : il ne suit pas la référence, et rien de ce qu'on en déduit ne prédit le glissement. Le champ devient `card_vs_node_ppm`, pour le diagnostic seul.",
+      "⚠ BUMP NÉCESSAIRE : la 0.36 embarque l'indicateur FAUX, qui aurait annoncé un glissement toutes les 3,2 h là où il n'y en a peut-être aucun."
+    ],
+    "Binaires DeckLink corrigés (0.36.0)": [
+      "★ decklink_mxl embarque le GARDE-FOU DE DÉBORDEMENT : sans lui, une source entrelacée faisait écrire une trame entière dans un grain de CHAMP, ce qui écrasait l'anneau MXL — et le symptôme n'apparaissait qu'à l'exécution suivante, ailleurs.",
+      "Écriture par CHAMP pour l'entrelacé (deux grains par trame). NON VÉRIFIÉE sur matériel : aucune source entrelacée n'était branchée au moment de l'écrire.",
+      "Cadence de flux CANONIQUE (25/1, pas 25000/1000), miroir de fps_to_rational dans mtl_rx.c.",
+      "Deux correctifs ANC : l'index se calcule sur la grille du flux ANC et non sur celle du vidéo (décalage d'un facteur deux en entrelacé), et le flux ANC est créé APRÈS détection du format — il portait sinon la cadence par défaut.",
+      "⚠ BUMP NÉCESSAIRE : sans changement d'image_tag, aucun conteneur n'adopterait ces binaires."
+    ],
+    "Binaires DeckLink (plugin decklink_io) (0.35.0)": [
+      "★ L'image embarque `decklink_mxl` (capture SDI → grains MXL) et `decklink_tx` (flux MXL → SDI), le chemin de données du plugin `decklink_io`.",
+      "RIEN de Blackmagic n'est embarqué : seuls les EN-TÊTES du SDK entrent dans l'étage de compilation. `libDeckLinkAPI.so` est chargée à l'exécution et MONTÉE depuis l'hôte — le pilote Desktop Video s'installe à la main sur le nœud, et rien de propriétaire ne transite par nos images.",
+      "⚠ BUMP NÉCESSAIRE : un conteneur n'est recréé que si sa signature `docker run` change, image comprise. Reconstruire sans changer `image_tag` laisserait les nouveaux binaires dans l'image sans qu'aucun conteneur ne les adopte.",
+      "Un nœud sans carte porte ces binaires sans pouvoir les utiliser — quelques centaines de kilo-octets, et ils ne démarrent que si un `decklink_io` y est déployé."
+    ],
     "Surface NMOS par conteneur (plan 2) (0.34.0)": [
       "★ L'agent embarqué sert désormais `/x-nmos/` : chaque conteneur expose SON Node NMOS, alimenté par un document que l'orchestrateur lui pousse (POST /nmos, écriture atomique).",
       "⚠ BUMP NÉCESSAIRE, pas cosmétique : un conteneur n'est recréé que si sa signature `docker run` change, image comprise. Reconstruire sans changer `image_tag` laissait le nouvel agent dans l'image et AUCUN conteneur ne l'adoptait jamais."
@@ -149,5 +200,5 @@
     ],
     "Bugs connus": []
   },
-  "image_tag": "bobi-compute:0.34"
+  "image_tag": "bobi-compute:0.46"
 }

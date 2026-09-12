@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """CA interne du plan de contrôle (mTLS).
 
@@ -39,11 +39,11 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from . import config
 
 _CA_CN   = "Bobi.Studio Internal CA"
-_LEAF_DAYS_DEFAULT = 825          # < 825 j : borne CA/Browser, sans objet en interne mais raisonnable
-_lock = threading.Lock()          # sérialise l'accès disque à la CA (numéro de série, écritures)
+_LEAF_DAYS_DEFAULT = 825          ***REMOVED*** < 825 j : borne CA/Browser, sans objet en interne mais raisonnable
+_lock = threading.Lock()          ***REMOVED*** sérialise l'accès disque à la CA (numéro de série, écritures)
 
 
-# ── Chemins ───────────────────────────────────────────────────────────────────
+***REMOVED*** ── Chemins ───────────────────────────────────────────────────────────────────
 def _dir():
     return getattr(config, "TLS_DIR", "/opt/bobistudio/tls")
 
@@ -100,7 +100,7 @@ def ca_info():
         return {"available": True, "error": str(e)}
 
 
-# ── Helpers internes ──────────────────────────────────────────────────────────
+***REMOVED*** ── Helpers internes ──────────────────────────────────────────────────────────
 def _load_ca():
     p = paths()
     with open(p["ca_cert"], "rb") as f:
@@ -119,7 +119,7 @@ def _san_list(ip=None, node_id=None, uri=None, dns=None):
         try:
             sans.append(x509.IPAddress(ipaddress.ip_address(str(ip))))
         except ValueError:
-            pass  # une valeur non-IP est ignorée plutôt que de faire échouer la signature
+            pass  ***REMOVED*** une valeur non-IP est ignorée plutôt que de faire échouer la signature
     if uri:
         sans.append(x509.UniformResourceIdentifier(str(uri)))
     elif node_id is not None:
@@ -147,7 +147,7 @@ def _leaf_builder(subject_cn, public_key, ca_cert, sans, days):
         .issuer_name(ca_cert.subject)
         .public_key(public_key)
         .serial_number(x509.random_serial_number())
-        .not_valid_before(now - datetime.timedelta(minutes=5))   # tolérance de dérive d'horloge
+        .not_valid_before(now - datetime.timedelta(minutes=5))   ***REMOVED*** tolérance de dérive d'horloge
         .not_valid_after(now + datetime.timedelta(days=int(days)))
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(
@@ -162,7 +162,7 @@ def _leaf_builder(subject_cn, public_key, ca_cert, sans, days):
             x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH, ExtendedKeyUsageOID.CLIENT_AUTH]),
             critical=False,
         )
-        # SKI/AKI : requis par la validation stricte d'OpenSSL (chaîne RFC 5280).
+        ***REMOVED*** SKI/AKI : requis par la validation stricte d'OpenSSL (chaîne RFC 5280).
         .add_extension(x509.SubjectKeyIdentifier.from_public_key(public_key), critical=False)
         .add_extension(
             x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_cert.public_key()),
@@ -174,7 +174,7 @@ def _leaf_builder(subject_cn, public_key, ca_cert, sans, days):
     return b
 
 
-# ── API d'émission ────────────────────────────────────────────────────────────
+***REMOVED*** ── API d'émission ────────────────────────────────────────────────────────────
 def sign_csr(csr_pem, *, common_name=None, ip=None, node_id=None, uri=None,
              days=_LEAF_DAYS_DEFAULT):
     """Signe un CSR (nœud). La clé publique vient du CSR ; les SAN sont FIXÉS par nous.
@@ -205,7 +205,7 @@ def generate_leaf(common_name, *, ip=None, node_id=None, uri=None, days=_LEAF_DA
     return cert.public_bytes(serialization.Encoding.PEM), _pem_private(key)
 
 
-# ── Contextes SSL (côté contrôleur) ───────────────────────────────────────────
+***REMOVED*** ── Contextes SSL (côté contrôleur) ───────────────────────────────────────────
 def controller_client_context():
     """Contexte pour les connexions SORTANTES du contrôleur vers un agent (urllib.urlopen
     context=…). Vérifie le pair contre la CA et présente le cert client du contrôleur."""
@@ -232,7 +232,7 @@ def server_ssl_context(cert_path=None, key_path=None, *, require_client_cert=Tru
     return ctx
 
 
-# ── Création du matériel (tools/ca-init.py) ───────────────────────────────────
+***REMOVED*** ── Création du matériel (tools/ca-init.py) ───────────────────────────────────
 def create_ca_material(controller_sans=None, *, overwrite=False, days_ca=3650,
                        days_controller=_LEAF_DAYS_DEFAULT):
     """Génère la CA racine + le cert contrôleur dans TLS_DIR. Idempotent : ne réécrit rien
@@ -245,7 +245,7 @@ def create_ca_material(controller_sans=None, *, overwrite=False, days_ca=3650,
         return []
 
     now = datetime.datetime.now(datetime.timezone.utc)
-    # CA racine (EC P-384).
+    ***REMOVED*** CA racine (EC P-384).
     ca_key = ec.generate_private_key(ec.SECP384R1())
     ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, _CA_CN)])
     ca_cert = _sign(
@@ -268,7 +268,7 @@ def create_ca_material(controller_sans=None, *, overwrite=False, days_ca=3650,
         ca_key,
     )
 
-    # Cert contrôleur (serveur + client), signé par la CA fraîche.
+    ***REMOVED*** Cert contrôleur (serveur + client), signé par la CA fraîche.
     sans = []
     for s in (controller_sans or []):
         try:
@@ -322,4 +322,4 @@ def _write(path, data, mode):
         os.write(fd, data)
     finally:
         os.close(fd)
-    os.chmod(path, mode)   # force le mode même si le fichier préexistait
+    os.chmod(path, mode)   ***REMOVED*** force le mode même si le fichier préexistait

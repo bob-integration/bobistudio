@@ -26,20 +26,20 @@ noms de flux de moteurs en service). C'est ICI, et ici seulement, que vit la rè
 import re
 import unicodedata
 
-# Docker impose 63 caractères à un hostname réseau ; on s'aligne, même si notre hostname n'est pas
-# passé à `docker run` (le nom de conteneur est `bobi-cmp-<vmid>`) — il finit dans des chemins et
-# des noms de flux, où une chaîne sans limite ne rend service à personne.
+***REMOVED*** Docker impose 63 caractères à un hostname réseau ; on s'aligne, même si notre hostname n'est pas
+***REMOVED*** passé à `docker run` (le nom de conteneur est `bobi-cmp-<vmid>`) — il finit dans des chemins et
+***REMOVED*** des noms de flux, où une chaîne sans limite ne rend service à personne.
 LONGUEUR_MAX = 63
 
-# Préfixes que l'orchestrateur s'attribue : les laisser saisir crée un conteneur que du code
-# traitera comme de l'infra. Seuls les préfixes RÉELLEMENT testés ailleurs sont réservés —
-#   `bobi-fab-` : tissu compositeur, exclu du reconcile (deploy.py:1829, migration.py:272,
-#                 plugin_registry.py:116, cpu_pressure.py:131)
-#   `bobi-mtl-` / `bobi-cmp-` : noms de conteneurs Docker générés (docker_driver / docker_compute)
-#   `monitor-u` : repli de compat pour retrouver l'encodeur monitor d'un utilisateur (monitor.py:108)
-# `mon-` (préfixe des monitors dédiés, monitor.py:631) n'est PAS réservé : il n'est testé nulle
-# part — ces conteneurs sont retrouvés par la colonne `monitor_user_id` — et le réserver
-# interdirait « mon-mur », « mon-multiview »… pour rien.
+***REMOVED*** Préfixes que l'orchestrateur s'attribue : les laisser saisir crée un conteneur que du code
+***REMOVED*** traitera comme de l'infra. Seuls les préfixes RÉELLEMENT testés ailleurs sont réservés —
+***REMOVED***   `bobi-fab-` : tissu compositeur, exclu du reconcile (deploy.py:1829, migration.py:272,
+***REMOVED***                 plugin_registry.py:116, cpu_pressure.py:131)
+***REMOVED***   `bobi-mtl-` / `bobi-cmp-` : noms de conteneurs Docker générés (docker_driver / docker_compute)
+***REMOVED***   `monitor-u` : repli de compat pour retrouver l'encodeur monitor d'un utilisateur (monitor.py:108)
+***REMOVED*** `mon-` (préfixe des monitors dédiés, monitor.py:631) n'est PAS réservé : il n'est testé nulle
+***REMOVED*** part — ces conteneurs sont retrouvés par la colonne `monitor_user_id` — et le réserver
+***REMOVED*** interdirait « mon-mur », « mon-multiview »… pour rien.
 PREFIXES_RESERVES = ("bobi-fab-", "bobi-mtl-", "bobi-cmp-", "monitor-u")
 
 
@@ -53,7 +53,7 @@ def normaliser(v):
     espace et ``_`` sont CONVERTIS en tiret, tout le reste est SUPPRIMÉ.
     """
     s = unicodedata.normalize("NFD", str(v or ""))
-    s = "".join(c for c in s if not unicodedata.combining(c))   # é → e
+    s = "".join(c for c in s if not unicodedata.combining(c))   ***REMOVED*** é → e
     s = re.sub(r"[\s_]+", "-", s)
     s = re.sub(r"[^A-Za-z0-9-]", "", s)
     s = re.sub(r"-+", "-", s)
@@ -85,5 +85,5 @@ def valider(v, exclure_vmid=None):
             continue
         if str(c.get("hostname") or "").lower() == bas:
             return nom, (f"Le hostname « {nom} » est déjà utilisé par le conteneur "
-                         f"#{c.get('vmid')} — les noms de flux MXL collisionneraient.")
+                         f"***REMOVED***{c.get('vmid')} — les noms de flux MXL collisionneraient.")
     return nom, None

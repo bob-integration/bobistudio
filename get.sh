@@ -1,69 +1,69 @@
-#!/usr/bin/env bash
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# get.sh — amorce d'installation depuis GitHub, sur une machine VIERGE.
-#
-#     bash <(curl -fsSL https://raw.githubusercontent.com/bob-integration/bobistudio/main/get.sh)
-#
-# Équivalent, sans orchestrateur préexistant, du one-liner que sert une instance déjà installée
-# (`bash <(curl -fsSL http://<orchestrateur>:5000/install.sh)`) : il récupère la source et lance le
-# même installeur unifié (menu : nœud / orchestrateur / tout-en-un / désinstaller).
-#
-# ★ CURL SEUL — NI git, NI paquet à construire au préalable.
-# GitHub sert une archive par dépôt (`codeload`), donc `curl` + `tar` suffisent : pas de `git` à
-# installer sur une machine vierge, pas de release à publier. C'est déjà le mécanisme du catalogue
-# de plugins (`app/catalogue.py`), on ne fait que l'appliquer plus tôt.
-#
-# ★ CE QU'ON RÉCUPÈRE, ET POURQUOI PAS LE RESTE.
-# Le dépôt compte 28 sous-modules (plugins et services), et une archive de code source GitHub ne
-# contient PAS leur contenu. On ne prend donc QUE le minimum qui conditionne le démarrage :
-#   · le dépôt principal — le produit, l'installeur, l'agent-nœud, et les contextes d'images
-#     runtime (plugins/_compute_runtime, _media_runtime, _webrtc_runtime, qui n'en sont pas) ;
-#   · services/nmos — SEUL service importé au niveau module par main.py. Un dossier vide serait
-#     traité par Python comme un « namespace package » : l'import réussirait, le module serait
-#     creux, et le démarrage casserait plus loin sur un AttributeError qui ne nomme pas la cause.
-# Tout le reste — les autres services, tous les plugins — s'installe APRÈS, depuis la page
-# Catalogue de l'interface, qui lit la même organisation GitHub. C'est le chemin prévu pour un
-# exploitant : il n'a pas à cloner un dépôt pour ajouter un traitement vidéo.
-#
-# Options :
-#   --ref <branche|tag>  version à installer, sans rien demander (défaut : la choisir au menu)
-#   --liste              affiche les versions disponibles et s'arrête
-#   --dry-run            récupère et vérifie la source, puis s'arrête — n'installe RIEN
-#   --keep               conserve le dossier de travail (débogage)
-#
-# Variables d'environnement :
-#   BOBI_REPO      dépôt principal      (défaut : bob-integration/bobistudio)
-#   BOBI_REF       comme --ref
-#   GITHUB_TOKEN   jeton — nécessaire tant que les dépôts sont PRIVÉS (sinon GitHub renvoie une
-#                  page de connexion, et l'on déballerait du HTML en croyant avoir une archive).
-#   BOBI_CODELOAD  base des archives (défaut : https://codeload.github.com). Sert à un miroir
-#                  interne, à un GitHub Enterprise, ou à éprouver ce script hors ligne.
-#   BOBI_API       base de l'API (défaut : https://api.github.com) — même usage, pour la liste
-#                  des versions.
+***REMOVED***!/usr/bin/env bash
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** get.sh — amorce d'installation depuis GitHub, sur une machine VIERGE.
+***REMOVED***
+***REMOVED***     bash <(curl -fsSL https://raw.githubusercontent.com/bob-integration/bobistudio/main/get.sh)
+***REMOVED***
+***REMOVED*** Équivalent, sans orchestrateur préexistant, du one-liner que sert une instance déjà installée
+***REMOVED*** (`bash <(curl -fsSL http://<orchestrateur>:5000/install.sh)`) : il récupère la source et lance le
+***REMOVED*** même installeur unifié (menu : nœud / orchestrateur / tout-en-un / désinstaller).
+***REMOVED***
+***REMOVED*** ★ CURL SEUL — NI git, NI paquet à construire au préalable.
+***REMOVED*** GitHub sert une archive par dépôt (`codeload`), donc `curl` + `tar` suffisent : pas de `git` à
+***REMOVED*** installer sur une machine vierge, pas de release à publier. C'est déjà le mécanisme du catalogue
+***REMOVED*** de plugins (`app/catalogue.py`), on ne fait que l'appliquer plus tôt.
+***REMOVED***
+***REMOVED*** ★ CE QU'ON RÉCUPÈRE, ET POURQUOI PAS LE RESTE.
+***REMOVED*** Le dépôt compte 28 sous-modules (plugins et services), et une archive de code source GitHub ne
+***REMOVED*** contient PAS leur contenu. On ne prend donc QUE le minimum qui conditionne le démarrage :
+***REMOVED***   · le dépôt principal — le produit, l'installeur, l'agent-nœud, et les contextes d'images
+***REMOVED***     runtime (plugins/_compute_runtime, _media_runtime, _webrtc_runtime, qui n'en sont pas) ;
+***REMOVED***   · services/nmos — SEUL service importé au niveau module par main.py. Un dossier vide serait
+***REMOVED***     traité par Python comme un « namespace package » : l'import réussirait, le module serait
+***REMOVED***     creux, et le démarrage casserait plus loin sur un AttributeError qui ne nomme pas la cause.
+***REMOVED*** Tout le reste — les autres services, tous les plugins — s'installe APRÈS, depuis la page
+***REMOVED*** Catalogue de l'interface, qui lit la même organisation GitHub. C'est le chemin prévu pour un
+***REMOVED*** exploitant : il n'a pas à cloner un dépôt pour ajouter un traitement vidéo.
+***REMOVED***
+***REMOVED*** Options :
+***REMOVED***   --ref <branche|tag>  version à installer, sans rien demander (défaut : la choisir au menu)
+***REMOVED***   --liste              affiche les versions disponibles et s'arrête
+***REMOVED***   --dry-run            récupère et vérifie la source, puis s'arrête — n'installe RIEN
+***REMOVED***   --keep               conserve le dossier de travail (débogage)
+***REMOVED***
+***REMOVED*** Variables d'environnement :
+***REMOVED***   BOBI_REPO      dépôt principal      (défaut : bob-integration/bobistudio)
+***REMOVED***   BOBI_REF       comme --ref
+***REMOVED***   GITHUB_TOKEN   jeton — nécessaire tant que les dépôts sont PRIVÉS (sinon GitHub renvoie une
+***REMOVED***                  page de connexion, et l'on déballerait du HTML en croyant avoir une archive).
+***REMOVED***   BOBI_CODELOAD  base des archives (défaut : https://codeload.github.com). Sert à un miroir
+***REMOVED***                  interne, à un GitHub Enterprise, ou à éprouver ce script hors ligne.
+***REMOVED***   BOBI_API       base de l'API (défaut : https://api.github.com) — même usage, pour la liste
+***REMOVED***                  des versions.
 set -euo pipefail
 
 REPO="${BOBI_REPO:-bob-integration/bobistudio}"
 CODELOAD="${BOBI_CODELOAD:-https://codeload.github.com}"
 API="${BOBI_API:-https://api.github.com}"
-REF="${BOBI_REF:-}"          # vide = on demandera, ou « main » hors terminal
+REF="${BOBI_REF:-}"          ***REMOVED*** vide = on demandera, ou « main » hors terminal
 LISTER=0
 DRY=0
 KEEP=0
 
-# Composants qu'on POSE D'EMBLÉE parce qu'ils rendent l'installation immédiatement utile, sans
-# aller au catalogue. Format : <chemin dans l'arbre>:<dépôt GitHub>.
-#
-# ⚠ AUCUN N'EST INDISPENSABLE, et cette liste ne doit plus jamais le devenir. Elle l'a été :
-# `services/nmos` y figurait comme obligatoire, l'installation ABANDONNAIT s'il était injoignable,
-# et le message affirmait que « l'orchestrateur ne démarrerait pas ». C'était vrai à l'époque —
-# `main.py` l'importait sans garde — et ça ne l'est plus : l'import est enveloppé, l'API NMOS
-# n'est simplement pas servie, une alerte le dit, et le composant s'installe depuis le Catalogue.
-#
-# Faire échouer une installation ENTIÈRE pour un composant absent est disproportionné, et le
-# remède qu'on suggérait — installer depuis le catalogue — exige que le produit TOURNE. Un cercle
-# dont l'utilisateur ne peut pas sortir. Constaté chez un installateur le 2026-09-02.
+***REMOVED*** Composants qu'on POSE D'EMBLÉE parce qu'ils rendent l'installation immédiatement utile, sans
+***REMOVED*** aller au catalogue. Format : <chemin dans l'arbre>:<dépôt GitHub>.
+***REMOVED***
+***REMOVED*** ⚠ AUCUN N'EST INDISPENSABLE, et cette liste ne doit plus jamais le devenir. Elle l'a été :
+***REMOVED*** `services/nmos` y figurait comme obligatoire, l'installation ABANDONNAIT s'il était injoignable,
+***REMOVED*** et le message affirmait que « l'orchestrateur ne démarrerait pas ». C'était vrai à l'époque —
+***REMOVED*** `main.py` l'importait sans garde — et ça ne l'est plus : l'import est enveloppé, l'API NMOS
+***REMOVED*** n'est simplement pas servie, une alerte le dit, et le composant s'installe depuis le Catalogue.
+***REMOVED***
+***REMOVED*** Faire échouer une installation ENTIÈRE pour un composant absent est disproportionné, et le
+***REMOVED*** remède qu'on suggérait — installer depuis le catalogue — exige que le produit TOURNE. Un cercle
+***REMOVED*** dont l'utilisateur ne peut pas sortir. Constaté chez un installateur le 2026-09-02.
 SOUS_MODULES_UTILES=(
   "services/nmos:bobistudio-service-nmos"
 )
@@ -72,7 +72,7 @@ c_g=$'\033[32m'; c_y=$'\033[33m'; c_r=$'\033[31m'; c_b=$'\033[34m'; c_0=$'\033[0
 log(){ echo "  ${c_b}·${c_0} $*"; }; ok(){ echo "  ${c_g}✓${c_0} $*"; }
 warn(){ echo "  ${c_y}!${c_0} $*"; }; die(){ echo "  ${c_r}✗${c_0} $*" >&2; exit 1; }
 
-while [ $# -gt 0 ]; do
+while [ $***REMOVED*** -gt 0 ]; do
   case "$1" in
     --ref) REF="$2"; shift 2;;
     --liste|--list) LISTER=1; shift;;
@@ -83,41 +83,41 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Version de CET INSTALLATEUR — pas celle du produit, qui n'est pas encore choisie à ce stade.
-#
-# ★ À QUOI ELLE SERT : quand une installation échoue, on demande à la personne le numéro affiché.
-# Sans lui, impossible de savoir si elle a un `get.sh` d'aujourd'hui ou celui de la semaine
-# dernière — le script est servi par le site, donc mis en cache un peu partout, et rien ne dit
-# lequel elle exécute. Une date se lit sans table de correspondance : « 2026-08-20 » dit tout de
-# suite qu'il est vieux de deux semaines.
-#
-# ⚠ À BUMPER À CHAQUE MODIFICATION DE CE FICHIER, sinon elle ment — et une version qui ment est
-# pire que pas de version, puisqu'on lui fait confiance pour écarter une piste.
+***REMOVED*** Version de CET INSTALLATEUR — pas celle du produit, qui n'est pas encore choisie à ce stade.
+***REMOVED***
+***REMOVED*** ★ À QUOI ELLE SERT : quand une installation échoue, on demande à la personne le numéro affiché.
+***REMOVED*** Sans lui, impossible de savoir si elle a un `get.sh` d'aujourd'hui ou celui de la semaine
+***REMOVED*** dernière — le script est servi par le site, donc mis en cache un peu partout, et rien ne dit
+***REMOVED*** lequel elle exécute. Une date se lit sans table de correspondance : « 2026-08-20 » dit tout de
+***REMOVED*** suite qu'il est vieux de deux semaines.
+***REMOVED***
+***REMOVED*** ⚠ À BUMPER À CHAQUE MODIFICATION DE CE FICHIER, sinon elle ment — et une version qui ment est
+***REMOVED*** pire que pas de version, puisqu'on lui fait confiance pour écarter une piste.
 INSTALLEUR_VERSION="2026.09.02c"
 
-# ─── Langue de l'installateur ────────────────────────────────
-#
-# ★ LE DÉFAUT VIENT DE L'ENVIRONNEMENT. Une machine configurée en anglais parle anglais sans
-# qu'on ait à le demander ; la question ne sert qu'à contredire ce défaut. Demander sans proposer
-# de défaut sensé ajoute une étape à qui n'en avait pas besoin.
-#
-# `BOBI_LANG=fr|en` court-circuite tout — indispensable en non-interactif, où aucune question ne
-# peut être posée et où les journaux doivent pourtant être lisibles par leur destinataire.
+***REMOVED*** ─── Langue de l'installateur ────────────────────────────────
+***REMOVED***
+***REMOVED*** ★ LE DÉFAUT VIENT DE L'ENVIRONNEMENT. Une machine configurée en anglais parle anglais sans
+***REMOVED*** qu'on ait à le demander ; la question ne sert qu'à contredire ce défaut. Demander sans proposer
+***REMOVED*** de défaut sensé ajoute une étape à qui n'en avait pas besoin.
+***REMOVED***
+***REMOVED*** `BOBI_LANG=fr|en` court-circuite tout — indispensable en non-interactif, où aucune question ne
+***REMOVED*** peut être posée et où les journaux doivent pourtant être lisibles par leur destinataire.
 UI="${BOBI_LANG:-}"
 if [ -z "$UI" ]; then
   case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
     fr*|FR*) UI="fr" ;;
-    "")      UI="fr" ;;      # environnement muet : on reste sur la langue du produit
+    "")      UI="fr" ;;      ***REMOVED*** environnement muet : on reste sur la langue du produit
     *)       UI="en" ;;
   esac
 fi
 
-# Table des messages. Une clé, deux langues, et `printf` pour les valeurs interpolées : PAS de
-# concaténation, qui rendrait certaines phrases intraduisibles — l'ordre des mots change d'une
-# langue à l'autre, et un morceau de phrase ne se traduit pas isolément.
-#
-# Une clé sans traduction anglaise retombe sur le français plutôt que d'afficher la clé brute :
-# un texte dans la mauvaise langue reste lisible, une clé ne l'est pas.
+***REMOVED*** Table des messages. Une clé, deux langues, et `printf` pour les valeurs interpolées : PAS de
+***REMOVED*** concaténation, qui rendrait certaines phrases intraduisibles — l'ordre des mots change d'une
+***REMOVED*** langue à l'autre, et un morceau de phrase ne se traduit pas isolément.
+***REMOVED***
+***REMOVED*** Une clé sans traduction anglaise retombe sur le français plutôt que d'afficher la clé brute :
+***REMOVED*** un texte dans la mauvaise langue reste lisible, une clé ne l'est pas.
 _t() {
   local k="$1"; shift
   local fr="" en=""
@@ -182,17 +182,17 @@ _t() {
   else printf "%b" "$(printf "$fr" "$@")"; fi
 }
 
-# Centre un texte dans le cadre. CALCULÉ, pas compté à la main : le sous-titre était décalé de
-# deux caractères parce que son remplissage avait été posé à l'œil (corrigé le 2026-09-02), et un
-# numéro de version change de longueur à chaque bump.
-_cadre_ligne() {   # <texte>
+***REMOVED*** Centre un texte dans le cadre. CALCULÉ, pas compté à la main : le sous-titre était décalé de
+***REMOVED*** deux caractères parce que son remplissage avait été posé à l'œil (corrigé le 2026-09-02), et un
+***REMOVED*** numéro de version change de longueur à chaque bump.
+_cadre_ligne() {   ***REMOVED*** <texte>
   local t="$1" l=54 g
-  g=$(( (l - ${#t}) / 2 ))
-  printf "  ║%*s%s%*s║\n" "$g" "" "$t" "$(( l - ${#t} - g ))" ""
+  g=$(( (l - ${***REMOVED***t}) / 2 ))
+  printf "  ║%*s%s%*s║\n" "$g" "" "$t" "$(( l - ${***REMOVED***t} - g ))" ""
 }
 
-# La question n'est posée QU'EN INTERACTIF, et seulement si l'exploitant n'a pas déjà tranché
-# par BOBI_LANG. Elle est bilingue par nécessité : on ne sait pas encore quelle langue il lit.
+***REMOVED*** La question n'est posée QU'EN INTERACTIF, et seulement si l'exploitant n'a pas déjà tranché
+***REMOVED*** par BOBI_LANG. Elle est bilingue par nécessité : on ne sait pas encore quelle langue il lit.
 if [ -z "${BOBI_LANG:-}" ] && [ -t 0 ]; then
   echo
   printf "%b" "$(_t langue)"
@@ -211,8 +211,8 @@ echo
 [ "$(id -u)" = "0" ] || die "$(_t root)"
 command -v curl    >/dev/null 2>&1 || die "$(_t requis curl curl)"
 command -v tar     >/dev/null 2>&1 || die "$(_t requis tar tar)"
-# python3 sert à déballer les métadonnées et à exécuter l'installeur. Sur une Debian minimale il
-# peut manquer : on le pose plutôt que de renvoyer l'exploitant à une commande qu'on sait taper.
+***REMOVED*** python3 sert à déballer les métadonnées et à exécuter l'installeur. Sur une Debian minimale il
+***REMOVED*** peut manquer : on le pose plutôt que de renvoyer l'exploitant à une commande qu'on sait taper.
 if ! command -v python3 >/dev/null 2>&1; then
   warn "$(_t py_absent)"
   _rep="o"
@@ -228,7 +228,7 @@ if ! command -v python3 >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq || die "$(_t apt_update)"
   apt-get install -y -qq python3 || die "$(_t apt_install)"
-  # apt peut rendre 0 sans avoir posé le binaire (miroir partiel, paquet retenu). On CONSTATE.
+  ***REMOVED*** apt peut rendre 0 sans avoir posé le binaire (miroir partiel, paquet retenu). On CONSTATE.
   command -v python3 >/dev/null 2>&1 \
     || die "$(_t apt_muet)"
   ok "$(_t py_ok "$(python3 --version 2>&1)")"
@@ -240,9 +240,9 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
   log "$(_t jeton)"
 fi
 
-# ─── Quelles versions existent ────────────────────────────────────────────────
-# Les étiquettes du dépôt principal font foi. UNE requête à l'API GitHub (quota anonyme : 60/h,
-# largement suffisant), et un `python3` déjà exigé par ailleurs — donc pas de `jq` à installer.
+***REMOVED*** ─── Quelles versions existent ────────────────────────────────────────────────
+***REMOVED*** Les étiquettes du dépôt principal font foi. UNE requête à l'API GitHub (quota anonyme : 60/h,
+***REMOVED*** largement suffisant), et un `python3` déjà exigé par ailleurs — donc pas de `jq` à installer.
 _etiquettes() {
   "${_curl[@]}" "$API/repos/$REPO/tags?per_page=20" 2>/dev/null \
     | python3 -c 'import json,sys
@@ -258,9 +258,9 @@ _choisir_version() {
   local -a tags=()
   log "$(_t lecture_vers)"
   mapfile -t tags < <(_etiquettes)
-  if [ "${#tags[@]}" -eq 0 ]; then
-    # Aucune étiquette (ou API injoignable) : la branche principale reste installable. On le DIT,
-    # plutôt que d'installer « main » en laissant croire qu'une version a été choisie.
+  if [ "${***REMOVED***tags[@]}" -eq 0 ]; then
+    ***REMOVED*** Aucune étiquette (ou API injoignable) : la branche principale reste installable. On le DIT,
+    ***REMOVED*** plutôt que d'installer « main » en laissant croire qu'une version a été choisie.
     warn "$(_t aucune_vers)"
     REF="main"; return 0
   fi
@@ -280,7 +280,7 @@ _choisir_version() {
   case "${rep_:-1}" in
     d|D|main) REF="main";;
     *[!0-9]*|"") REF="${tags[0]}";;
-    *) if [ "$rep_" -ge 1 ] && [ "$rep_" -le "${#tags[@]}" ]; then REF="${tags[$((rep_ - 1))]}"
+    *) if [ "$rep_" -ge 1 ] && [ "$rep_" -le "${***REMOVED***tags[@]}" ]; then REF="${tags[$((rep_ - 1))]}"
        else REF="${tags[0]}"; fi;;
   esac
   ok "$(_t vers_retenue "$REF")"
@@ -294,7 +294,7 @@ if [ "$LISTER" = 1 ]; then
 fi
 
 if [ -z "$REF" ]; then
-  # Hors terminal (script, pipe), on ne peut pas demander : « main » et on le dit.
+  ***REMOVED*** Hors terminal (script, pipe), on ne peut pas demander : « main » et on le dit.
   if [ -t 0 ]; then _choisir_version; else REF="main"; log "$(_t non_interactif)"; fi
 fi
 
@@ -304,20 +304,20 @@ trap _menage EXIT
 if [ "$KEEP" = 1 ]; then log "$(_t dossier_garde "$TMP")"; fi
 SRC="$TMP/src"; mkdir -p "$SRC"
 
-# Récupère l'archive d'un dépôt et la déplie DANS $2. `--strip-components=1` retire le dossier
-# racine que GitHub ajoute (« <dépôt>-<ref>/ »), qu'on ne veut pas voir apparaître dans l'arbre.
-# SHA du sous-module `$1` tel qu'il est ÉPINGLÉ dans le dépôt principal à la ref installée.
-#
-# ★ POURQUOI CE DÉTOUR. `_recuperer` employait la MÊME ref pour le produit et pour ses
-# sous-modules. Tant qu'on installait « main », présente partout, ça passait. Depuis qu'on
-# installe par ÉTIQUETTE, ça ne peut plus : il n'existe aucun « v0.9.3 » dans
-# `bobistudio-service-nmos`, qui vit sur ses propres numéros. L'installation échouait donc au
-# premier sous-module — constaté chez un installateur le 2026-09-02.
-#
-# L'API rend le SHA exact que le dépôt principal épingle à cette étiquette : c'est LE commit
-# contre lequel la release a été construite, donc la seule réponse reproductible. Une étiquette
-# du composant serait un à-peu-près ; sa branche, pas une version du tout.
-_sha_sous_module() {   # <chemin>
+***REMOVED*** Récupère l'archive d'un dépôt et la déplie DANS $2. `--strip-components=1` retire le dossier
+***REMOVED*** racine que GitHub ajoute (« <dépôt>-<ref>/ »), qu'on ne veut pas voir apparaître dans l'arbre.
+***REMOVED*** SHA du sous-module `$1` tel qu'il est ÉPINGLÉ dans le dépôt principal à la ref installée.
+***REMOVED***
+***REMOVED*** ★ POURQUOI CE DÉTOUR. `_recuperer` employait la MÊME ref pour le produit et pour ses
+***REMOVED*** sous-modules. Tant qu'on installait « main », présente partout, ça passait. Depuis qu'on
+***REMOVED*** installe par ÉTIQUETTE, ça ne peut plus : il n'existe aucun « v0.9.3 » dans
+***REMOVED*** `bobistudio-service-nmos`, qui vit sur ses propres numéros. L'installation échouait donc au
+***REMOVED*** premier sous-module — constaté chez un installateur le 2026-09-02.
+***REMOVED***
+***REMOVED*** L'API rend le SHA exact que le dépôt principal épingle à cette étiquette : c'est LE commit
+***REMOVED*** contre lequel la release a été construite, donc la seule réponse reproductible. Une étiquette
+***REMOVED*** du composant serait un à-peu-près ; sa branche, pas une version du tout.
+_sha_sous_module() {   ***REMOVED*** <chemin>
   "${_curl[@]}" "$API/repos/$REPO/contents/$1?ref=$REF" 2>/dev/null \
     | python3 -c 'import json,sys
 try:
@@ -327,25 +327,25 @@ except Exception:
     pass' 2>/dev/null
 }
 
-_recuperer() {   # <dépôt> <destination> <étiquette> [ref]
+_recuperer() {   ***REMOVED*** <dépôt> <destination> <étiquette> [ref]
   local depot="$1" dest="$2" quoi="$3" ref="${4:-$REF}"
   local url="$CODELOAD/$depot/tar.gz/refs/heads/$ref"
   mkdir -p "$dest"
-  # Les deux tentatives sont MUETTES : une ref peut être une branche ou une étiquette, GitHub les
-  # sert sur des chemins différents, et l'échec de la première est donc NORMAL une fois sur deux.
-  # Laisser curl le crier ferait passer une installation saine pour une panne. Si les deux
-  # échouent, l'appelant produit un message qui, lui, nomme les causes possibles.
+  ***REMOVED*** Les deux tentatives sont MUETTES : une ref peut être une branche ou une étiquette, GitHub les
+  ***REMOVED*** sert sur des chemins différents, et l'échec de la première est donc NORMAL une fois sur deux.
+  ***REMOVED*** Laisser curl le crier ferait passer une installation saine pour une panne. Si les deux
+  ***REMOVED*** échouent, l'appelant produit un message qui, lui, nomme les causes possibles.
   if ! "${_curl[@]}" -o "$TMP/a.tar.gz" "$url" 2>/dev/null; then
     url="$CODELOAD/$depot/tar.gz/refs/tags/$ref"
     if ! "${_curl[@]}" -o "$TMP/a.tar.gz" "$url" 2>/dev/null; then
-      # Ni branche ni étiquette : un SHA brut, que codeload sert aussi. C'est le cas d'un
-      # sous-module épinglé, dont le commit ne porte ni l'une ni l'autre.
+      ***REMOVED*** Ni branche ni étiquette : un SHA brut, que codeload sert aussi. C'est le cas d'un
+      ***REMOVED*** sous-module épinglé, dont le commit ne porte ni l'une ni l'autre.
       url="$CODELOAD/$depot/tar.gz/$ref"
       "${_curl[@]}" -o "$TMP/a.tar.gz" "$url" 2>/dev/null || return 1
     fi
   fi
-  # Un HTML de page de connexion se déballe mal : on le dit ici plutôt que de laisser un arbre
-  # à moitié rempli passer pour une source valide.
+  ***REMOVED*** Un HTML de page de connexion se déballe mal : on le dit ici plutôt que de laisser un arbre
+  ***REMOVED*** à moitié rempli passer pour une source valide.
   tar -xzf "$TMP/a.tar.gz" -C "$dest" --strip-components=1 2>/dev/null || return 2
   rm -f "$TMP/a.tar.gz"
   log "  $quoi ✓"
@@ -359,33 +359,33 @@ fi
 
 manques=()
 for entree in "${SOUS_MODULES_UTILES[@]}"; do
-  chemin="${entree%%:*}"; depot="${entree#*:}"
-  # Le SHA épinglé d'abord ; à défaut (API injoignable, quota épuisé, ref = branche) on retombe
-  # sur « main » du composant, qui reste installable — mieux qu'un échec sec.
+  chemin="${entree%%:*}"; depot="${entree***REMOVED****:}"
+  ***REMOVED*** Le SHA épinglé d'abord ; à défaut (API injoignable, quota épuisé, ref = branche) on retombe
+  ***REMOVED*** sur « main » du composant, qui reste installable — mieux qu'un échec sec.
   ref_sm="$(_sha_sous_module "$chemin")"
   [ -n "$ref_sm" ] || ref_sm="main"
   if ! _recuperer "${REPO%/*}/$depot" "$SRC/$chemin" "$chemin" "$ref_sm"; then
-    # ON CONTINUE. Le produit s'installe et démarre sans lui ; on le DIT ici, une fois, plutôt
-    # que de laisser la personne le découvrir à l'usage.
+    ***REMOVED*** ON CONTINUE. Le produit s'installe et démarre sans lui ; on le DIT ici, une fois, plutôt
+    ***REMOVED*** que de laisser la personne le découvrir à l'usage.
     rmdir "$SRC/$chemin" 2>/dev/null || true
     manques+=("$chemin")
     warn "$(_t comp_absent "$chemin")"
   fi
 done
-if [ ${#manques[@]} -gt 0 ]; then
+if [ ${***REMOVED***manques[@]} -gt 0 ]; then
   echo
-  warn "$(_t comp_recap "${#manques[@]}" "${manques[*]}")"
+  warn "$(_t comp_recap "${***REMOVED***manques[@]}" "${manques[*]}")"
 fi
 
-# Contrôle de ce qu'on a VRAIMENT obtenu, plutôt que de faire confiance à des codes retour :
-# l'installeur applique le même critère (install.py:_find_source), on échoue donc ici, où le
-# message peut encore être utile.
+***REMOVED*** Contrôle de ce qu'on a VRAIMENT obtenu, plutôt que de faire confiance à des codes retour :
+***REMOVED*** l'installeur applique le même critère (install.py:_find_source), on échoue donc ici, où le
+***REMOVED*** message peut encore être utile.
 python3 - "$SRC" <<'PY' || die "$(_t src_incomplete)"
 import os, sys
 src = sys.argv[1]
-# ⚠ SEULEMENT LE PRODUIT. `services/nmos/__init__.py` figurait ici : le contrôle annulait donc
-# l'installation quelques lignes après qu'on ait décidé de continuer sans lui. Un composant
-# facultatif n'a rien à faire dans un contrôle d'intégrité — il s'installe depuis le Catalogue.
+***REMOVED*** ⚠ SEULEMENT LE PRODUIT. `services/nmos/__init__.py` figurait ici : le contrôle annulait donc
+***REMOVED*** l'installation quelques lignes après qu'on ait décidé de continuer sans lui. Un composant
+***REMOVED*** facultatif n'a rien à faire dans un contrôle d'intégrité — il s'installe depuis le Catalogue.
 manque = [c for c in ("main.py", "app", "install/install.py", "node_agent/install-node.sh",
                       "plugins/_compute_runtime/meta.json")
           if not os.path.exists(os.path.join(src, c))]
@@ -404,12 +404,12 @@ fi
 echo
 log "$(_t lancement)"
 
-# ★ UNE PAUSE COURTE, ET SEULEMENT EN INTERACTIF. L'installeur efface l'écran en démarrant : sans
-# ce temps d'arrêt, tout ce que get.sh vient d'afficher — versions, composants récupérés,
-# avertissements sur ce qui manque — disparaît avant d'avoir été lu. Or c'est précisément là que
-# se lisent les anomalies non bloquantes.
-#
-# En non-interactif (CI, script), attendre ne montre rien à personne : on saute.
+***REMOVED*** ★ UNE PAUSE COURTE, ET SEULEMENT EN INTERACTIF. L'installeur efface l'écran en démarrant : sans
+***REMOVED*** ce temps d'arrêt, tout ce que get.sh vient d'afficher — versions, composants récupérés,
+***REMOVED*** avertissements sur ce qui manque — disparaît avant d'avoir été lu. Or c'est précisément là que
+***REMOVED*** se lisent les anomalies non bloquantes.
+***REMOVED***
+***REMOVED*** En non-interactif (CI, script), attendre ne montre rien à personne : on saute.
 if [ -t 0 ]; then
   for _s in 3 2 1; do
     printf "\r  ${c_b}·${c_0} %s   " "$(_t pause "$_s")"
@@ -419,6 +419,6 @@ if [ -t 0 ]; then
 fi
 echo
 cd "$SRC"
-# La langue choisie plus haut suit : l'installeur ne repose pas la question.
+***REMOVED*** La langue choisie plus haut suit : l'installeur ne repose pas la question.
 export BOBI_LANG="$UI"
 exec python3 install/install.py

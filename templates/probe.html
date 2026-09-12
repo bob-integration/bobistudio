@@ -5,8 +5,8 @@
 {% block head %}
 <style>
 .probe-intro { color:var(--text-muted); max-width:70ch; margin:0 0 var(--space-3); }
-.probe-ptp { border:1px solid var(--border); border-left:3px solid #d9a441;
-    background:color-mix(in srgb, #d9a441 8%, transparent); border-radius:8px;
+.probe-ptp { border:1px solid var(--border); border-left:3px solid ***REMOVED***d9a441;
+    background:color-mix(in srgb, ***REMOVED***d9a441 8%, transparent); border-radius:8px;
     padding:8px 12px; margin:0 0 var(--space-4); color:var(--text); font-size:.9em; }
 .probe-panel { border:1px solid var(--border); border-radius:10px; padding:var(--space-3);
     margin-bottom:var(--space-4); background:var(--bg-card, var(--surface)); }
@@ -18,12 +18,12 @@
     background:var(--surface); color:var(--text); border:1px solid var(--border);
     border-radius:6px; padding:6px 8px; font:inherit; min-width:220px; }
 .probe-panel textarea { width:100%; min-height:70px; font-family:monospace; font-size:.85em; }
-.btn-probe { background:var(--accent, #5b8def); color:#fff; border:none; border-radius:6px;
+.btn-probe { background:var(--accent, ***REMOVED***5b8def); color:***REMOVED***fff; border:none; border-radius:6px;
     padding:7px 14px; cursor:pointer; font:inherit; }
 .btn-probe[disabled] { opacity:.5; cursor:not-allowed; }
 .btn-ghost { background:none; border:1px solid var(--border); color:var(--text-muted);
     border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
-.iface-busy { color:#c0553b; }
+.iface-busy { color:***REMOVED***c0553b; }
 
 .probe-cards { display:grid; gap:var(--space-4);
     grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); }
@@ -37,16 +37,16 @@
 .light { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:12px;
     font-size:.78em; font-weight:700; letter-spacing:.03em; }
 .light::before { content:""; width:9px; height:9px; border-radius:50%; background:currentColor; }
-.light.narrow   { color:#2e9e5b; background:color-mix(in srgb,#2e9e5b 15%,transparent); }
-.light.wide     { color:#c98a1e; background:color-mix(in srgb,#c98a1e 15%,transparent); }
-.light.failed   { color:#c0392b; background:color-mix(in srgb,#c0392b 15%,transparent); }
-.light.nosignal { color:var(--text-muted); background:color-mix(in srgb,#888 12%,transparent); }
+.light.narrow   { color:***REMOVED***2e9e5b; background:color-mix(in srgb,***REMOVED***2e9e5b 15%,transparent); }
+.light.wide     { color:***REMOVED***c98a1e; background:color-mix(in srgb,***REMOVED***c98a1e 15%,transparent); }
+.light.failed   { color:***REMOVED***c0392b; background:color-mix(in srgb,***REMOVED***c0392b 15%,transparent); }
+.light.nosignal { color:var(--text-muted); background:color-mix(in srgb,***REMOVED***888 12%,transparent); }
 .gauges { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:12px; }
 .gauge { border:1px solid var(--border); border-radius:8px; padding:8px 10px; }
 .gauge .k { font-size:.72em; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; }
 .gauge .v { font-size:1.35em; font-weight:700; font-variant-numeric:tabular-nums; }
 .gauge .u { font-size:.7em; color:var(--text-muted); }
-.cause { margin-top:10px; font-size:.85em; color:#c0392b; }
+.cause { margin-top:10px; font-size:.85em; color:***REMOVED***c0392b; }
 .transport { margin-top:12px; font-size:.83em; color:var(--text-muted); }
 .transport .t-row { display:flex; justify-content:space-between; border-top:1px dashed var(--border); padding:3px 0; }
 .card-actions { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
@@ -66,30 +66,30 @@
 .pm-timeline { display:flex; flex-direction:column; gap:1px; }
 .pm-ev { display:grid; grid-template-columns:150px 90px 1fr auto; gap:10px; align-items:baseline;
     padding:7px 10px; border-left:3px solid var(--border); background:var(--surface); font-size:.86em; }
-.pm-ev.error   { border-left-color:#c0392b; }
-.pm-ev.warning { border-left-color:#c98a1e; }
-.pm-ev.info    { border-left-color:#2e9e5b; }
+.pm-ev.error   { border-left-color:***REMOVED***c0392b; }
+.pm-ev.warning { border-left-color:***REMOVED***c98a1e; }
+.pm-ev.info    { border-left-color:***REMOVED***2e9e5b; }
 .pm-ev .pm-ts { color:var(--text-muted); font-variant-numeric:tabular-nums; font-size:.92em; }
 .pm-ev .pm-flow { font-weight:600; }
 .pm-ev .pm-msg { color:var(--text); }
 .pm-badge { font-size:.72em; font-weight:700; padding:2px 8px; border-radius:10px; text-transform:uppercase;
     letter-spacing:.03em; align-self:center; }
-.pm-badge.open  { color:#c0392b; background:color-mix(in srgb,#c0392b 14%,transparent); }
-.pm-badge.closed{ color:var(--text-muted); background:color-mix(in srgb,#888 12%,transparent); }
+.pm-badge.open  { color:***REMOVED***c0392b; background:color-mix(in srgb,***REMOVED***c0392b 14%,transparent); }
+.pm-badge.closed{ color:var(--text-muted); background:color-mix(in srgb,***REMOVED***888 12%,transparent); }
 .pm-kind { color:var(--text-muted); font-size:.9em; }
 </style>
 {% endblock %}
 
 {% block content %}
-{# Barre d'onglets MIROIR de Monitoring : la Sonde n'a plus de lien de premier niveau, elle vit
-   dans la famille Monitoring. Les autres onglets renvoient sur /monitoring#<vue> (la page lit
-   déjà le hash au chargement). #}
+{***REMOVED*** Barre d'onglets MIROIR de Monitoring : la Sonde n'a plus de lien de premier niveau, elle vit
+   dans la famille Monitoring. Les autres onglets renvoient sur /monitoring***REMOVED***<vue> (la page lit
+   déjà le hash au chargement). ***REMOVED***}
 <div class="mon-tabs" role="tablist">
-    <a class="tab" href="/monitoring#overview" role="tab">{{ _('monitoring.tab_overview') }}</a>
-    <a class="tab" href="/monitoring#nodes"    role="tab">{{ _('monitoring.tab_nodes') }}</a>
-    <a class="tab" href="/monitoring#fabric"   role="tab">{{ _('monitoring.tab_fabric') }}</a>
-    <a class="tab" href="/monitoring#rdma"     role="tab">{{ _('monitoring.tab_rdma') }}</a>
-    <a class="tab" href="/monitoring#logs"     role="tab">{{ _('monitoring.tab_logs') }}</a>
+    <a class="tab" href="/monitoring***REMOVED***overview" role="tab">{{ _('monitoring.tab_overview') }}</a>
+    <a class="tab" href="/monitoring***REMOVED***nodes"    role="tab">{{ _('monitoring.tab_nodes') }}</a>
+    <a class="tab" href="/monitoring***REMOVED***fabric"   role="tab">{{ _('monitoring.tab_fabric') }}</a>
+    <a class="tab" href="/monitoring***REMOVED***rdma"     role="tab">{{ _('monitoring.tab_rdma') }}</a>
+    <a class="tab" href="/monitoring***REMOVED***logs"     role="tab">{{ _('monitoring.tab_logs') }}</a>
     <a class="tab active" href="/probe" role="tab" aria-current="page">{{ _('nav.probe') }}</a>
 </div>
 

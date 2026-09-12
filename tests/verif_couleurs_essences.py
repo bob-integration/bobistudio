@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+***REMOVED***!/usr/bin/env python3
 """Vérifie les couleurs d'ESSENCE des flux (vidéo / audio / ANC) de la page Câbles.
 
 À lancer à la main :  ./venv/bin/python tools/verif_couleurs_essences.py
@@ -17,14 +17,14 @@ import math, re, sys, os
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSS = os.path.join(RACINE, "static", "css")
-FONDS = {"sombre": "#14161a", "studio": "#18181b", "clair": "#f6f7f9"}
-STATUTS = {"running": "#7ab98a", "stopped": "#d07a82", "warning": "#c4a667",
-           "ambre RDMA": "#f59e0b", "error": "#ef4444"}
+FONDS = {"sombre": "***REMOVED***14161a", "studio": "***REMOVED***18181b", "clair": "***REMOVED***f6f7f9"}
+STATUTS = {"running": "***REMOVED***7ab98a", "stopped": "***REMOVED***d07a82", "warning": "***REMOVED***c4a667",
+           "ambre RDMA": "***REMOVED***f59e0b", "error": "***REMOVED***ef4444"}
 SEUIL_CONTRASTE, SEUIL_ESSENCES, SEUIL_STATUT = 3.0, 40.0, 30.0
 
 
 def _rgb(h):
-    h = h.lstrip("#")
+    h = h.lstrip("***REMOVED***")
     return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
 
 
@@ -71,11 +71,11 @@ def main():
     essences = {"vidéo": "--topo-flow-video", "audio": "--topo-flow-audio", "ANC": "--topo-flow-data"}
     echecs = []
 
-    # 1. Une seule définition, dans base.css, et AUCUNE surcharge par thème.
+    ***REMOVED*** 1. Une seule définition, dans base.css, et AUCUNE surcharge par thème.
     couleurs = {}
     for nom, var in essences.items():
         base = lire("base.css", var)
-        if not base or not base.startswith("#"):
+        if not base or not base.startswith("***REMOVED***"):
             echecs.append(f"{var} : attendue littérale dans base.css, trouvé {base!r} "
                           f"(une valeur dérivée du thème — var(--accent) — est précisément le défaut corrigé)")
             continue

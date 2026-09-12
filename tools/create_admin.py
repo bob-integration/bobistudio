@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Bootstrap CLI : crée le premier utilisateur admin de l'orchestrateur.
@@ -65,8 +65,8 @@ def main():
             print("Confirmation différente, abandon.", file=sys.stderr)
             sys.exit(1)
 
-    # Même règle que l'interface. Cet outil crée des ADMINISTRATEURS depuis un shell : c'est le
-    # chemin le plus discret du produit, donc le dernier où tolérer « admin/admin ».
+    ***REMOVED*** Même règle que l'interface. Cet outil crée des ADMINISTRATEURS depuis un shell : c'est le
+    ***REMOVED*** chemin le plus discret du produit, donc le dernier où tolérer « admin/admin ».
     fautes = valider_motdepasse(password, username)
     if fautes:
         from app.i18n import t as _t

@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Calcul des VMIDs et IPs libres en croisant settings, DB locale et liste LXC Proxmox.
@@ -156,19 +156,19 @@ def allocate_container_ip(vmid, node_id=None):
     if node_id is None:
         node_id = c.get("node_id")
     rng = _ip_range(node_id)
-    # Redeploy du même vmid : on relâche d'abord SES propres réservations, sinon on se bloquerait
-    # nous-même (idempotence — le container ré-obtient son IP collante ou une nouvelle).
+    ***REMOVED*** Redeploy du même vmid : on relâche d'abord SES propres réservations, sinon on se bloquerait
+    ***REMOVED*** nous-même (idempotence — le container ré-obtient son IP collante ou une nouvelle).
     db_release_ip_reservations_for_vmid(vmid)
-    blocked = (_used_ips(exclude_vmid=vmid) | _reserved_ips(node_id)   # conteneurs pris + passerelle/orchestrateur/nœuds
-               | db_used_ip_reservations())                     # + IP réservées par une alloc concurrente
+    blocked = (_used_ips(exclude_vmid=vmid) | _reserved_ips(node_id)   ***REMOVED*** conteneurs pris + passerelle/orchestrateur/nœuds
+               | db_used_ip_reservations())                     ***REMOVED*** + IP réservées par une alloc concurrente
     cur = c.get("docker_ip")
     if cur and cur in rng and cur not in blocked:
-        # STICKY : docker_ip existant fait déjà autorité (présent dans _used_ips) → inutile de réserver.
+        ***REMOVED*** STICKY : docker_ip existant fait déjà autorité (présent dans _used_ips) → inutile de réserver.
         return cur
     for ip in rng:
         if ip in blocked:
             continue
-        if db_reserve_ip(ip, vmid):   # INSERT atomique : tranche la course, le perdant continue
+        if db_reserve_ip(ip, vmid):   ***REMOVED*** INSERT atomique : tranche la course, le perdant continue
             return ip
     _s, _e, _scope = node_ip_bounds(node_id)
     db_add_alert("alert.net.ipam_plan_epuise", "error", vmid=vmid, kind="net",
@@ -177,8 +177,8 @@ def allocate_container_ip(vmid, node_id=None):
 
 
 def vmid_stats():
-    # Allocation monotone illimitée → plus de notion de « libres / total ». On expose le plancher,
-    # le prochain vmid et le nombre utilisés (≥ plancher).
+    ***REMOVED*** Allocation monotone illimitée → plus de notion de « libres / total ». On expose le plancher,
+    ***REMOVED*** le prochain vmid et le nombre utilisés (≥ plancher).
     floor = int(settings.get("vmid_start"))
     used  = _used_vmids()
     above = sorted(v for v in used if isinstance(v, int) and v >= floor)
@@ -217,35 +217,35 @@ def ip_stats():
 
 
 def next_free_vmid():
-    # Handle LOCAL : allocation MONOTONE illimitée (plus de plafond `vmid_end`). next = max(utilisés
-    # ≥ plancher) + 1 → jamais d'épuisement, numéros croissants (audit clair, pas de réutilisation de
-    # trous). Le cross-check Proxmox (si configuré) garantit l'absence de collision avec un LXC réel.
-    #
-    # ATOMIQUE : le vmid retenu est RÉSERVÉ en base (vmid_reservations, PK sur vmid) — deux créations
-    # concurrentes ne peuvent plus obtenir le même numéro (le perdant sur l'INSERT incrémente et
-    # retente). Le vmid étant monotone/jamais réutilisé, la réservation reste comme marqueur permanent
-    # (élaguée seulement une fois le container réellement présent, cf. db_prune_consumed_vmid_reservations).
+    ***REMOVED*** Handle LOCAL : allocation MONOTONE illimitée (plus de plafond `vmid_end`). next = max(utilisés
+    ***REMOVED*** ≥ plancher) + 1 → jamais d'épuisement, numéros croissants (audit clair, pas de réutilisation de
+    ***REMOVED*** trous). Le cross-check Proxmox (si configuré) garantit l'absence de collision avec un LXC réel.
+    ***REMOVED***
+    ***REMOVED*** ATOMIQUE : le vmid retenu est RÉSERVÉ en base (vmid_reservations, PK sur vmid) — deux créations
+    ***REMOVED*** concurrentes ne peuvent plus obtenir le même numéro (le perdant sur l'INSERT incrémente et
+    ***REMOVED*** retente). Le vmid étant monotone/jamais réutilisé, la réservation reste comme marqueur permanent
+    ***REMOVED*** (élaguée seulement une fois le container réellement présent, cf. db_prune_consumed_vmid_reservations).
     from .database import (db_add_alert, db_reserve_vmid, db_used_vmid_reservations,
                            db_prune_consumed_vmid_reservations)
-    db_prune_consumed_vmid_reservations()             # allège la table (réservations déjà consommées)
+    db_prune_consumed_vmid_reservations()             ***REMOVED*** allège la table (réservations déjà consommées)
     floor = int(settings.get("vmid_start"))
-    used  = _used_vmids() | db_used_vmid_reservations()   # containers réels + réservations en vol
+    used  = _used_vmids() | db_used_vmid_reservations()   ***REMOVED*** containers réels + réservations en vol
     above = [v for v in used if isinstance(v, int) and v >= floor]
     nxt   = (max(above) if above else floor - 1) + 1
-    for _ in range(100_000):          # borne anti-boucle (course extrême) ; en pratique 1 tour
-        if nxt > floor + 1_000_000:   # garde-fou absurde (jamais atteint en pratique)
+    for _ in range(100_000):          ***REMOVED*** borne anti-boucle (course extrême) ; en pratique 1 tour
+        if nxt > floor + 1_000_000:   ***REMOVED*** garde-fou absurde (jamais atteint en pratique)
             msg = f"Allocation VMID anormale (next={nxt} > plancher+1e6) — vérifier la DB."
             log.error(msg)
             db_add_alert("alert.deploy.vmid_anormal", "error", kind="deploy", params={"nxt": nxt})
             return None
-        if db_reserve_vmid(nxt):      # INSERT atomique : tranche la course
+        if db_reserve_vmid(nxt):      ***REMOVED*** INSERT atomique : tranche la course
             return nxt
-        nxt += 1                      # perdu la course sur ce numéro → suivant
+        nxt += 1                      ***REMOVED*** perdu la course sur ce numéro → suivant
     log.error("next_free_vmid: impossible de réserver un vmid après 100000 tentatives")
     return None
 
 
-# ─── B2-3 : multicast cluster-unique (pool alloué dans le registre NMOS) ──────────────────────
+***REMOVED*** ─── B2-3 : multicast cluster-unique (pool alloué dans le registre NMOS) ──────────────────────
 def _registry_transports():
     """(resource_id, transport) du registre NMOS — source de vérité cluster du multicast."""
     try:
@@ -305,7 +305,7 @@ def _reuse_owner_reservation(owner_ref, port, in_range=None):
             ok = False
     if ok:
         return (eip, int(port))
-    db_release_mcast_owner(owner_ref)   # port/plage changé → ne pas laisser d'orphelin
+    db_release_mcast_owner(owner_ref)   ***REMOVED*** port/plage changé → ne pas laisser d'orphelin
     return None
 
 
@@ -334,7 +334,7 @@ def allocate_multicast(port=None, owner_ref=None):
     if reused:
         return reused
     used = _used_multicasts()
-    for i in range(1, size):   # i=0 == base (adresse réseau du bloc, ex. .0) → jamais allouée
+    for i in range(1, size):   ***REMOVED*** i=0 == base (adresse réseau du bloc, ex. .0) → jamais allouée
         ip = str(ipaddress.IPv4Address(a + i))
         key = f"{ip}:{port}"
         if key in used:
@@ -370,10 +370,10 @@ def next_free_ip(node_id=None):
     return None
 
 
-# ─── B2-4 : plages multicast STRICTES par port (règles réseau logique / interface physique) ───
-# Un switch qui contraint les adresses multicast autorisées PAR PORT (IGMP snooping / forwarding
-# statique) impose une plage stricte — pas de repli sur le pool global si la plage dédiée est
-# épuisée (le switch rejetterait physiquement une adresse hors plage). Voir mcast_ranges (DB).
+***REMOVED*** ─── B2-4 : plages multicast STRICTES par port (règles réseau logique / interface physique) ───
+***REMOVED*** Un switch qui contraint les adresses multicast autorisées PAR PORT (IGMP snooping / forwarding
+***REMOVED*** statique) impose une plage stricte — pas de repli sur le pool global si la plage dédiée est
+***REMOVED*** épuisée (le switch rejetterait physiquement une adresse hors plage). Voir mcast_ranges (DB).
 
 def _regle_correspond(r, essence, leg, fmt):
     """None si la règle `r` ne s'applique pas à (essence, leg, fmt) ; sinon un tuple de score de
@@ -437,18 +437,18 @@ def port_default_for(node_id, ifname, media_network_id, essence, leg, fmt, fallb
     return int(rule.get(f"port_default_{essence}") or rule.get("port_default") or fallback)
 
 
-# ─── PLAN D'ADRESSAGE multicast : UNE ADRESSE PAR FLUX, déduite du rang ──────────────────────────
-# La granularité d'un abonnement IGMP est le GROUPE, pas le port : deux flux qui partagent une
-# adresse et ne diffèrent que par le port ne sont PAS dissociables côté récepteur. Un décodeur qui
-# s'abonne à l'audio d'une sortie encaisse alors AUSSI la vidéo (~2,6 Gb/s en 1080p50 10 bits) du
-# même groupe — vécu en prod : le scan « première (ip, port) libre » empilait TOUS les audios et
-# TOUTES les ANC du moteur sur l'adresse de la vidéo TX0 (seul le port variait), et un EVS Neuron
-# n'arrivait pas à s'abonner. Le plan rend l'adresse DÉDUCTIBLE du rang du flux :
-#
-#     adresse = base_plage + décalage_essence + (n° d'audio × pas_audio) + (n° de sortie + 1)
-#
-# Convention par défaut (réglable par plage, cf. mcast_ranges.ip_offset_*) : vidéo en .1, .2, …,
-# ANC en .51, .52, …, 1ᵉʳ audio en .101, .102, …, 2ᵉ audio en .201, .202, …
+***REMOVED*** ─── PLAN D'ADRESSAGE multicast : UNE ADRESSE PAR FLUX, déduite du rang ──────────────────────────
+***REMOVED*** La granularité d'un abonnement IGMP est le GROUPE, pas le port : deux flux qui partagent une
+***REMOVED*** adresse et ne diffèrent que par le port ne sont PAS dissociables côté récepteur. Un décodeur qui
+***REMOVED*** s'abonne à l'audio d'une sortie encaisse alors AUSSI la vidéo (~2,6 Gb/s en 1080p50 10 bits) du
+***REMOVED*** même groupe — vécu en prod : le scan « première (ip, port) libre » empilait TOUS les audios et
+***REMOVED*** TOUTES les ANC du moteur sur l'adresse de la vidéo TX0 (seul le port variait), et un EVS Neuron
+***REMOVED*** n'arrivait pas à s'abonner. Le plan rend l'adresse DÉDUCTIBLE du rang du flux :
+***REMOVED***
+***REMOVED***     adresse = base_plage + décalage_essence + (n° d'audio × pas_audio) + (n° de sortie + 1)
+***REMOVED***
+***REMOVED*** Convention par défaut (réglable par plage, cf. mcast_ranges.ip_offset_*) : vidéo en .1, .2, …,
+***REMOVED*** ANC en .51, .52, …, 1ᵉʳ audio en .101, .102, …, 2ᵉ audio en .201, .202, …
 MCAST_PLAN_DEFAUT = {"video": 0, "anc": 50, "audio": 100}
 MCAST_PLAN_PAS_AUDIO_DEFAUT = 100
 
@@ -510,13 +510,13 @@ def allocate_multicast_for(node_id, ifname, media_network_id=None, essence=None,
     try:
         a = int(ipaddress.IPv4Address(base))
     except Exception as e:
-        log.warning(f"mcast_ranges#{rule.get('id')} base_ip invalide ({base}): {e}")
+        log.warning(f"mcast_ranges***REMOVED***{rule.get('id')} base_ip invalide ({base}): {e}")
         return (None, None)
-    # ── PLAN d'adressage (une adresse par flux, déduite du rang) — prioritaire sur le scan.
-    # On RÉSERVE d'abord l'adresse planifiée, on rend l'ancienne ENSUITE (keep=) : l'inverse
-    # ouvrirait une fenêtre où un autre flux souffle l'adresse qu'on vient de lâcher. Adresse
-    # planifiée déjà tenue par un AUTRE flux → on garde l'existante / on retombe sur le scan
-    # (jamais de vol : le plan converge au prochain passage, une fois l'occupant replanifié).
+    ***REMOVED*** ── PLAN d'adressage (une adresse par flux, déduite du rang) — prioritaire sur le scan.
+    ***REMOVED*** On RÉSERVE d'abord l'adresse planifiée, on rend l'ancienne ENSUITE (keep=) : l'inverse
+    ***REMOVED*** ouvrirait une fenêtre où un autre flux souffle l'adresse qu'on vient de lâcher. Adresse
+    ***REMOVED*** planifiée déjà tenue par un AUTRE flux → on garde l'existante / on retombe sur le scan
+    ***REMOVED*** (jamais de vol : le plan converge au prochain passage, une fois l'occupant replanifié).
     off = _plan_offset(rule, essence, slot, sub_index, leg)
     if off is not None and 1 <= off < max(size, 0):
         ip_plan = str(ipaddress.IPv4Address(a + off))
@@ -527,24 +527,83 @@ def allocate_multicast_for(node_id, ifname, media_network_id=None, essence=None,
         log.info("plan multicast %s: %s:%s déjà pris pour %s — repli scan",
                  owner_ref, ip_plan, port, essence)
     elif off is not None:
-        label = rule.get("label") or f"{rule.get('scope')}#{rule.get('id')}"
+        label = rule.get("label") or f"{rule.get('scope')}***REMOVED***{rule.get('id')}"
         db_add_alert("alert.net.plan_multicast_hors_plage", "warning", kind="net",
                      params={"label": label, "base": base, "size": size, "essence": essence, "off": off})
     reused = _reuse_owner_reservation(owner_ref, port, in_range=(a, max(size, 0)))
     if reused:
         return reused
     used = _used_multicasts()
-    for i in range(1, max(size, 0)):   # i=0 == base (adresse réseau du bloc, ex. .0) → jamais allouée
+    for i in range(1, max(size, 0)):   ***REMOVED*** i=0 == base (adresse réseau du bloc, ex. .0) → jamais allouée
         ip = str(ipaddress.IPv4Address(a + i))
         key = f"{ip}:{port}"
         if key in used:
             continue
         if db_reserve_mcast(ip, port, owner_ref):
             return (ip, port)
-    label = rule.get("label") or f"{rule.get('scope')}#{rule.get('id')}"
+    label = rule.get("label") or f"{rule.get('scope')}***REMOVED***{rule.get('id')}"
     db_add_alert("alert.net.plage_multicast_epuisee", "error", kind="net",
                  params={"label": label, "base": base, "size": size, "port": port})
     return (None, None)
+
+
+def interface_appairee(node_id, ifname):
+    """L'interface média appairée à `ifname` (même `pair_group`, `pair_role` opposé), ou None.
+
+    ★ C'EST LA SOURCE UNIQUE DE LA REDONDANCE ST-2022-7. Déclarer une paire red/blue sur la page
+    des interfaces n'est pas un geste accidentel : c'est déjà l'expression de l'intention « ces
+    deux ports portent les mêmes flux, l'un protégeant l'autre ». Un second réglage par moteur ne
+    servirait qu'à laisser deux vérités diverger — et c'est ce qui arrivait : un booléen global
+    sur une carte à quatre ports armait la redondance pour TOUS les flux, y compris ceux qui
+    sortaient d'un port sans paire, à qui l'on allouait alors une seconde adresse multicast SUR LE
+    MÊME PORT. Deux jambes dans le même câble : aucune protection, le double de débit, et NMOS qui
+    l'annonçait comme redondant. Cf. docs/chantiers/2026-09-11-2022-7-global-vs-par-port.md.
+    """
+    if not node_id or not ifname:
+        return None
+    try:
+        from .database import db_get_node_interfaces
+        ifaces = [r for r in db_get_node_interfaces(node_id) if r.get("role") == "media2110"]
+        moi = next((r for r in ifaces if r.get("ifname") == ifname), None)
+        if not moi or moi.get("pair_group") is None or not moi.get("pair_role"):
+            return None
+        return next((r for r in ifaces
+                     if r.get("pair_group") == moi.get("pair_group")
+                     and r.get("pair_role") and r.get("pair_role") != moi.get("pair_role")), None)
+    except Exception as e:
+        log.warning(f"interface_appairee(node {node_id}, {ifname}): {e}")
+        return None
+
+
+def slot_redondant(node_id, params, slot_i):
+    """Le slot TX `slot_i` sort-il par une interface APPAIRÉE ? (donc ST-2022-7 pour ce flux)
+
+    Remplace le booléen global `smpte_2022_7` du moteur : la redondance est une propriété d'un
+    CHEMIN, pas d'un équipement. Un même moteur peut légitimement porter des flux protégés et des
+    flux qui ne le sont pas."""
+    ifn0, _ = _egress_iface(node_id, params, slot_i, leg=0)
+    return interface_appairee(node_id, ifn0) is not None
+
+
+def rx_redondant(node_id, params, slot_i):
+    """Le slot RX `slot_i` entre-t-il par une interface APPAIRÉE ? Même règle que l'émission,
+    l'épinglage se lisant dans `rx_pins` au lieu de `tx_pins`."""
+    if not node_id:
+        return False
+    try:
+        from .database import db_get_node_interfaces, db_get_node
+        pin = (params.get("rx_pins") or {}).get(str(slot_i))
+        if not pin:
+            ifaces = [r for r in db_get_node_interfaces(node_id) if r.get("role") == "media2110"]
+            if not ifaces:
+                return False
+            primary = (db_get_node(node_id) or {}).get("mtl_iface")
+            row = next((r for r in ifaces if r.get("ifname") == primary), None) or ifaces[0]
+            pin = row.get("ifname")
+        return interface_appairee(node_id, pin) is not None
+    except Exception as e:
+        log.warning(f"rx_redondant(node {node_id}, slot {slot_i}): {e}")
+        return False
 
 
 def _egress_iface(node_id, params, slot_i, leg=0):
@@ -602,7 +661,7 @@ def plages_epuisees(transports=None):
     return out
 
 
-# ─── Re-planification d'un moteur 2110 déjà adressé ───────────────────────────────────────────────
+***REMOVED*** ─── Re-planification d'un moteur 2110 déjà adressé ───────────────────────────────────────────────
 
 def _plan_ip_flux(node_id, params, slot_i, essence, sub_index=0, fmt=None):
     """Adresse que le PLAN impose à ce flux (slot/essence/rang d'audio), ou None si le plan ne
@@ -663,9 +722,9 @@ def plan_tx_multicast(vmid, appliquer=False):
         if t.get("multicast_ip"):
             cibles.append(("video", 0, t.get("multicast_ip"), t.get("dest_port"),
                            f"tx:{vmid}:{i}:video:leg0", fmt_v))
-        # owner_ref audio : indexé par l'idx FLAT du flux (comme l'allocation automatique du hook
-        # 2110_io) — pas par le rang dans le slot, sinon la réservation replanifiée ne retomberait
-        # pas sur la même clé que celle du prochain déploiement (ledger dédoublé).
+        ***REMOVED*** owner_ref audio : indexé par l'idx FLAT du flux (comme l'allocation automatique du hook
+        ***REMOVED*** 2110_io) — pas par le rang dans le slot, sinon la réservation replanifiée ne retomberait
+        ***REMOVED*** pas sur la même clé que celle du prochain déploiement (ledger dédoublé).
         aud_idxs = _iof.tx_slot_audio_idxs(params.get("tx_flows") or [], i)
         for ai, a in enumerate(t.get("audios") or []):
             if a.get("multicast_ip"):
@@ -685,12 +744,12 @@ def plan_tx_multicast(vmid, appliquer=False):
                      "etat": "inchange" if ip_plan == ip_cur else "a_changer"}
             if appliquer and ligne["etat"] == "a_changer":
                 if not db_reserve_mcast(ip_plan, port, owner_ref):
-                    ligne["etat"] = "conflit"     # tenue par un autre flux → on ne touche à rien
+                    ligne["etat"] = "conflit"     ***REMOVED*** tenue par un autre flux → on ne touche à rien
                 else:
                     db_release_mcast_owner(owner_ref, keep=(ip_plan, port))
-                    # Rendre l'ANCIENNE adresse : son owner_ref historique peut différer de celui
-                    # de l'allocation courante (':layout', ancien index de flux…) — sans ça elle
-                    # resterait marquée occupée par un flux qui ne l'émet plus.
+                    ***REMOVED*** Rendre l'ANCIENNE adresse : son owner_ref historique peut différer de celui
+                    ***REMOVED*** de l'allocation courante (':layout', ancien index de flux…) — sans ça elle
+                    ***REMOVED*** resterait marquée occupée par un flux qui ne l'émet plus.
                     db_release_mcast_addr(ip_cur, port, owner_prefix=f"tx:{vmid}:")
                     if essence == "video":
                         t["multicast_ip"] = ip_plan

@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """PTP (IEEE 1588 / SMPTE 2059-2) par nœud : historique/stats échantillonnés, journal
 d'événements (bascules de port, grandmaster, lock, service), tail des logs ptp4l/phc2sys,
@@ -27,7 +27,7 @@ def ptp_history():
     from . import _eff_node_id
     from .. import ptp
     nid = _eff_node_id()
-    # ?network=<id> → historique/stat d'un RÉSEAU précis (multi-NIC) ; sinon node-niveau (primaire).
+    ***REMOVED*** ?network=<id> → historique/stat d'un RÉSEAU précis (multi-NIC) ; sinon node-niveau (primaire).
     _net = request.args.get("network")
     net_id = int(_net) if (_net not in (None, "")) else None
     return jsonify({
@@ -118,7 +118,7 @@ def ptp_status():
     from .. import ptp
     nid  = _eff_node_id()
     host = _node_host(nid) or _primary_host()
-    sf   = lambda k: st.setting_for(k, nid)   # réglage PTP par-nœud (override > global > défaut)
+    sf   = lambda k: st.setting_for(k, nid)   ***REMOVED*** réglage PTP par-nœud (override > global > défaut)
     s = ptp.status_for_node(nid, host, int(sf("ptp_domain") or 0)) if host else {"ptp4l_running": False}
     s["settings"] = {
         "enabled":      bool(sf("ptp_enabled")),
@@ -139,15 +139,15 @@ def ptp_status():
     s["host"] = host
     s["node_id"] = nid
     s["stats_24h"] = ptp.get_stats_24h(nid)
-    # PTP multi-NIC : si le nœud a des NIC media2110 PTP (node_interfaces), l'interface unique de
-    # cette page est sans objet (les NIC + domaines sont réglés dans Vue d'ensemble). On expose les
-    # groupes pour que l'UI masque le champ interface et affiche la liste à la place.
+    ***REMOVED*** PTP multi-NIC : si le nœud a des NIC media2110 PTP (node_interfaces), l'interface unique de
+    ***REMOVED*** cette page est sans objet (les NIC + domaines sont réglés dans Vue d'ensemble). On expose les
+    ***REMOVED*** groupes pour que l'UI masque le champ interface et affiche la liste à la place.
     _grp = ptp.groups_from_node_interfaces(nid) if nid is not None else []
     s["multi"] = bool(_grp)
     s["ptp_networks"] = [{"network_id": g["network_id"], "name": g["name"], "domain": g["domain"],
                           "ifaces": g["ifaces"], "ptp_params": g.get("ptp_params") or {}} for g in _grp]
-    # Valeurs par défaut SMPTE 2059-2 (valeurs initiales du formulaire réseau ; un réseau ne hérite
-    # pas du nœud).
+    ***REMOVED*** Valeurs par défaut SMPTE 2059-2 (valeurs initiales du formulaire réseau ; un réseau ne hérite
+    ***REMOVED*** pas du nœud).
     s["ptp_defaults"] = dict(ptp.SMPTE_DEFAULTS)
     return jsonify(s)
 
@@ -160,7 +160,7 @@ def ptp_install():
     ok, msg = ptp.install(_req_host())
     return jsonify({"ok": ok, "msg": msg})
 
-# _ptp_apply_core extrait dans app/routes/shared.py (partagé par app/routes/node_network.py).
+***REMOVED*** _ptp_apply_core extrait dans app/routes/shared.py (partagé par app/routes/node_network.py).
 
 @bp.route("/api/ptp/apply", methods=["POST"])
 @require_perm("settings.edit")

@@ -1,11 +1,11 @@
-# Cadence des murs — où on en est, et ce qu'il reste
+***REMOVED*** Cadence des murs — où on en est, et ce qu'il reste
 
 **8 août 2026.** Séance d'optimisation du multiview, du diagnostic à l'état actuel, puis les
 pistes restantes avec leurs contreparties. Tous les chiffres viennent de relevés sur le parc, avec
 écart-type et nombre d'échantillons — la variance de ces murs est du même ordre que les effets
 recherchés, et l'ignorer m'a fait tirer trois conclusions fausses dans la soirée.
 
-## Où on en est
+***REMOVED******REMOVED*** Où on en est
 
 | | cadence | `own` | pic | trames perdues/s |
 |---|---|---|---|---|
@@ -20,7 +20,7 @@ Point de départ de la soirée : 34 et 40 fps, avec 10 à 27 trames perdues par 
 **La moyenne n'est plus le problème** — 11 à 13 ms pour un budget de 20. Ce qui coûte encore des
 trames, ce sont les **pics à 27-33 ms**, qui dépassent le créneau et en font rater un.
 
-## Ce qui a payé, et ce qui n'a rien donné
+***REMOVED******REMOVED*** Ce qui a payé, et ce qui n'a rien donné
 
 | changement | effet mesuré | verdict |
 |---|---|---|
@@ -41,7 +41,7 @@ relâche pas le verrou bloque la composition quels que soient son cœur et sa pr
 marche n'est pas de déplacer le travail mais de **le supprimer** — c'est ce qu'ont fait tous les
 gains ci-dessus.
 
-## Où vont les 13,3 ms qui restent (shard 926)
+***REMOVED******REMOVED*** Où vont les 13,3 ms qui restent (shard 926)
 
 ```
 ov_blend     5,02 ms   ← le plus gros poste
@@ -56,9 +56,9 @@ Et sur l'assembleur 906, dont le profil est différent (il recopie deux trames p
 redimensionner des tuiles) : `ov_meters` 3,24 et `output` 2,18 y dominent — c'est là qu'il faudrait
 regarder s'il devenait un jour le maillon lent, ce qu'il n'est pas aujourd'hui.
 
-## Les pistes qui restent
+***REMOVED******REMOVED*** Les pistes qui restent
 
-### 1. Grouper les lancements de blend — le plus gros poste
+***REMOVED******REMOVED******REMOVED*** 1. Grouper les lancements de blend — le plus gros poste
 
 `ov_blend` fait 5,3 ms de moyenne et pique à 12,6. Chaque tuile d'habillage coûte trois
 lancements de kernel (un par plan) ; à dix tuiles, une trentaine par trame, pour 345 kpixels —
@@ -73,7 +73,7 @@ demande une table d'offsets et un index par tuile. C'est plus délicat que le ga
 et une erreur d'offset se voit à l'écran sous forme de tuile décalée. À faire avec un repli
 compté, comme pour le placement.
 
-### 2. Rendre le texte à variables moins cher — le pic restant
+***REMOVED******REMOVED******REMOVED*** 2. Rendre le texte à variables moins cher — le pic restant
 
 Le pic d'`ov_clock` (12,3 ms) est maintenant celui de ce seul élément : un texte multi-ligne
 re-rendu toutes les 2 secondes dans une boîte large.
@@ -90,7 +90,7 @@ re-rendu toutes les 2 secondes dans une boîte large.
   qui convient à un timecode mais déforme un texte courant. Il faudrait un atlas à chasse
   variable, donc gérer l'alignement chroma par glyphe — nettement plus de travail.
 
-### 3. Écrire la sortie directement dans le grain
+***REMOVED******REMOVED******REMOVED*** 3. Écrire la sortie directement dans le grain
 
 `output` fait 1,16 ms : on concatène les trois plans en une trame complète, puis on recopie cette
 trame dans le grain MXL. Écrire les trois plans directement dans la vue du grain économise
@@ -100,7 +100,7 @@ l'allocation et une passe mémoire.
 *Inconvénient* — c'est le chemin de sortie, le plus critique de tous : une erreur d'offset ne
 produit pas une tuile décalée mais une image corrompue. À faire avec un contrôle de taille strict.
 
-### 4. Supprimer la copie hôte à la lecture
+***REMOVED******REMOVED******REMOVED*** 4. Supprimer la copie hôte à la lecture
 
 `in_read` fait 1,76 ms, dont l'essentiel est une copie de chaque plan depuis le mmap du grain vers
 un tableau numpy, avant le transfert épinglé vers le GPU.
@@ -111,7 +111,7 @@ murs.
 producteur ne réécrit pas le grain pendant la copie. Le contrat MXL le permet sur un grain
 commité, mais c'est une garantie qu'il faut vérifier plutôt que supposer.
 
-### 5. Sharding : ESSAI FAIT, et il s'inverse ★
+***REMOVED******REMOVED******REMOVED*** 5. Sharding : ESSAI FAIT, et il s'inverse ★
 
 Le mur est découpé en trois processus sur un seul GPU. J'ai mesuré cette nuit qu'un mur seul
 occupe 16 % du GPU et trois murs 40 % : **le nombre de clients CUDA pèse**.
@@ -140,7 +140,7 @@ le fera pas, mais la marge est de 5,6 ms : ajouter des fenêtres ou de l'habilla
 l'y ramener. Le garde-fou à écrire n'est donc pas « ne jamais sharder sur GPU » (j'ai essayé, c'était
 fondé sur une mesure fausse) mais « vérifier que le découpage rapporte avant de le garder ».
 
-### 6. Ce qui est fermé
+***REMOVED******REMOVED******REMOVED*** 6. Ce qui est fermé
 
 - **Paralléliser** (thread, boulanger dédié, cœur réservé) : trois échecs mesurés, cause GIL.
 - **Un second GPU** : les deux T4 du parc sont sur les R620, qui n'ont pas AVX2 — un multiview y
@@ -148,7 +148,7 @@ fondé sur une mesure fausse) mais « vérifier que le découpage rapporte avant
 - **`gpu_slice`** : le banc a montré que le découpage en bandes coûte du temps de trame ; c'est une
   fonctionnalité de latence, pas de débit.
 
-## Recommandation
+***REMOVED******REMOVED*** Recommandation
 
 L'essai monolithe est **fait, et il a gagné** : le mur tourne désormais en un seul processus, et
 six cœurs sont rendus au pool. C'est le plus gros gain de la matinée, et il ne coûte aucune ligne

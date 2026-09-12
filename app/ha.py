@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Rôle de contrôle (paire HA warm-standby) — B3-2a.
 
@@ -33,18 +33,18 @@ log = logging.getLogger(__name__)
 
 ROLES = ("active", "standby")
 
-TOKEN_HEADER = "X-MXL-Update-Token"   # secret partagé = `update_token` (réutilisé du pull/push code)
+TOKEN_HEADER = "X-MXL-Update-Token"   ***REMOVED*** secret partagé = `update_token` (réutilisé du pull/push code)
 _SQLITE_MAGIC = b"SQLite format 3\x00"
 
-# Réplica reçu par le standby — stagé sur disque (PAS en DB : la DB est justement ce qu'on remplace
-# au promote ; métadonnée façon updater.deploy_info.json).
+***REMOVED*** Réplica reçu par le standby — stagé sur disque (PAS en DB : la DB est justement ce qu'on remplace
+***REMOVED*** au promote ; métadonnée façon updater.deploy_info.json).
 STAGING_DIR = os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), "ha_staging")
 STAGING_DB = os.path.join(STAGING_DIR, "db_replica.db")
 STAGING_META = os.path.join(STAGING_DIR, "ha_replica.json")
 
-# Statut du dernier push (côté actif) — en mémoire, pour l'UI.
+***REMOVED*** Statut du dernier push (côté actif) — en mémoire, pour l'UI.
 _last_push = {"at": None, "ok": None, "msg": "—", "bytes": 0}
-_last_fail_sig = None   # anti-spam des alertes d'échec (motif B2-3 mcast)
+_last_fail_sig = None   ***REMOVED*** anti-spam des alertes d'échec (motif B2-3 mcast)
 
 
 def role():
@@ -61,7 +61,7 @@ def is_standby():
     return role() == "standby"
 
 
-# ─── Réplication d'état (B3-2b) ───────────────────────────────────────────────
+***REMOVED*** ─── Réplication d'état (B3-2b) ───────────────────────────────────────────────
 def snapshot_db(dest):
     """Copie cohérente à chaud de la DB live vers `dest` (API online sqlite3.backup, comme
     backup.run_backup mais SANS alerte ni rétention — silencieux, appelé toutes les N min)."""
@@ -158,7 +158,7 @@ def push_replica():
                                      headers={TOKEN_HEADER: token,
                                               "Content-Type": "application/octet-stream",
                                               "Content-Length": str(size)})
-        with urllib.request.urlopen(req, timeout=60) as r:   # noqa: S310 (réseau interne)
+        with urllib.request.urlopen(req, timeout=60) as r:   ***REMOVED*** noqa: S310 (réseau interne)
             txt = r.read().decode()
         j = json.loads(txt) if txt else {}
         if j.get("ok"):
@@ -167,8 +167,8 @@ def push_replica():
         _set_push(False, j.get("error") or "réponse inattendue")
         return False, j.get("error") or "échec"
     except urllib.error.HTTPError as e:
-        # Un 401 ici ne veut pas dire « pas de token » mais « pas LE MÊME token » : le standby a
-        # comparé et refusé. Le distinguer épargne la chasse au mauvais bout de la chaîne.
+        ***REMOVED*** Un 401 ici ne veut pas dire « pas de token » mais « pas LE MÊME token » : le standby a
+        ***REMOVED*** comparé et refusé. Le distinguer épargne la chasse au mauvais bout de la chaîne.
         msg = ("le standby a REFUSÉ le secret partagé (les deux contrôleurs doivent porter la "
                "MÊME valeur)") if e.code == 401 else f"HTTP {e.code} depuis le standby"
         _set_push(False, msg)
@@ -183,11 +183,11 @@ def push_replica():
             pass
 
 
-# ─── Chien de garde du standby ────────────────────────────────────────────────
-# Le standby est passif PAR CONCEPTION : quand l'actif meurt, rien ne bouge et rien ne le DIT —
-# l'opérateur découvrait la panne en constatant que la production ne répondait plus. On ne bascule
-# toujours pas tout seul (pas de quorum → risque de split-brain), mais on ARME une alarme et on
-# l'expose à l'UI : la décision reste humaine, l'information ne l'attend plus.
+***REMOVED*** ─── Chien de garde du standby ────────────────────────────────────────────────
+***REMOVED*** Le standby est passif PAR CONCEPTION : quand l'actif meurt, rien ne bouge et rien ne le DIT —
+***REMOVED*** l'opérateur découvrait la panne en constatant que la production ne répondait plus. On ne bascule
+***REMOVED*** toujours pas tout seul (pas de quorum → risque de split-brain), mais on ARME une alarme et on
+***REMOVED*** l'expose à l'UI : la décision reste humaine, l'information ne l'attend plus.
 _peer = {"checked_at": None, "alive": None, "fails": 0, "down_since": None, "reason": "—"}
 
 
@@ -207,7 +207,7 @@ def probe_peer():
     token = (settings.get("update_token") or "").strip()
     req = urllib.request.Request(url + "/api/ha/peer", headers={TOKEN_HEADER: token})
     try:
-        with urllib.request.urlopen(req, timeout=5) as r:   # noqa: S310 (réseau interne)
+        with urllib.request.urlopen(req, timeout=5) as r:   ***REMOVED*** noqa: S310 (réseau interne)
             j = json.loads(r.read().decode() or "{}")
         return True, f"répond (rôle {j.get('role') or '?'})"
     except urllib.error.HTTPError as e:
@@ -242,7 +242,7 @@ def _watchdog_loop():
             alive, why = probe_peer()
             _peer["checked_at"] = datetime.now().isoformat(timespec="seconds")
             _peer["alive"], _peer["reason"] = alive, why
-            if alive is None:            # pas configuré → on ne prétend rien surveiller
+            if alive is None:            ***REMOVED*** pas configuré → on ne prétend rien surveiller
                 _peer["fails"] = 0
                 _peer["down_since"] = None
             elif alive:
@@ -282,9 +282,9 @@ def replication_status():
     """État pour l'UI : rôle + (actif) dernier push + (standby) réplica stagé + config."""
     return {"role": role(),
             "standby_url": (settings.get("ha_standby_url") or "").strip(),
-            # Le secret partagé conditionne la réplication DES DEUX CÔTÉS (l'actif le présente,
-            # le standby le compare au sien) — l'UI doit pouvoir dire « absent ici » avant que
-            # l'utilisateur ne découvre l'échec au premier push. Booléen : jamais la valeur.
+            ***REMOVED*** Le secret partagé conditionne la réplication DES DEUX CÔTÉS (l'actif le présente,
+            ***REMOVED*** le standby le compare au sien) — l'UI doit pouvoir dire « absent ici » avant que
+            ***REMOVED*** l'utilisateur ne découvre l'échec au premier push. Booléen : jamais la valeur.
             "token_set": bool((settings.get("update_token") or "").strip()),
             "interval_min": int(settings.get("ha_replicate_interval_min") or 5),
             "last_push": dict(_last_push),
@@ -325,7 +325,7 @@ def start_replication():
     threading.Thread(target=_replication_loop, daemon=True).start()
 
 
-# ─── Bascule manuelle promote / demote (B3-2c) ────────────────────────────────
+***REMOVED*** ─── Bascule manuelle promote / demote (B3-2c) ────────────────────────────────
 def _purge_sidecars(path):
     """Supprime les fichiers annexes SQLite (-wal/-shm/-journal) d'une DB après swap. La DB live
     est en journal_mode=delete (pas de WAL persistant) → défensif au cas où le mode changerait."""
@@ -358,7 +358,7 @@ def apply_replica_to(src, target):
                 dcon.close()
         finally:
             scon.close()
-    # Copie src → tmp à côté de target, puis replace atomique (ne pas consommer le staging).
+    ***REMOVED*** Copie src → tmp à côté de target, puis replace atomique (ne pas consommer le staging).
     tmp = target + ".incoming"
     with open(src, "rb") as fi, open(tmp, "wb") as fo:
         fo.write(fi.read())
@@ -370,7 +370,7 @@ def apply_replica_to(src, target):
 def promote():
     """STANDBY → ACTIVE : applique le dernier replica stagé sur la DB live (après backup de sûreté),
     bascule le rôle, puis redémarre le service (il repart en pilotant). Retourne (ok, msg)."""
-    from . import backup as _bk  # noqa: F401 (assure l'import de BACKUP_DIR via apply_replica_to)
+    from . import backup as _bk  ***REMOVED*** noqa: F401 (assure l'import de BACKUP_DIR via apply_replica_to)
     from . import updater
     from .database import db_set_setting, db_add_alert
     if is_active():
@@ -381,7 +381,7 @@ def promote():
         safety = apply_replica_to(STAGING_DB, DB_PATH)
     except Exception as e:
         return False, f"application du replica échouée : {e}"
-    # Marque le replica comme appliqué (trace).
+    ***REMOVED*** Marque le replica comme appliqué (trace).
     try:
         meta = staged_replica() or {}
         meta["applied_at"] = datetime.now().isoformat(timespec="seconds")
@@ -392,8 +392,8 @@ def promote():
     db_set_setting("control_role", "active")
     db_add_alert("alert.node.ha_promote", "warning", kind="node",
                  params={"safety": os.path.basename(safety)})
-    # VIP : la priorité VRRP suit le rôle → re-rendre AVANT le redémarrage (si la VIP n'est pas
-    # activée, no-op silencieux et l'opérateur la déplace à la main comme avant).
+    ***REMOVED*** VIP : la priorité VRRP suit le rôle → re-rendre AVANT le redémarrage (si la VIP n'est pas
+    ***REMOVED*** activée, no-op silencieux et l'opérateur la déplace à la main comme avant).
     from . import vip as _vip
     _vip.refresh_for_role()
     updater.restart_service()

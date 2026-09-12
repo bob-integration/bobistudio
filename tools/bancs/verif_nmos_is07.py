@@ -1,15 +1,15 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# Banc d'IS-07 — le tally publié en NMOS (`services/nmos/is07.py`).
-#
-# Ce module publie une FORME exigée par une spécification : la moindre clé mal nommée dans un
-# message STATE rend l'événement inexploitable par un contrôleur, sans erreur nulle part. Le banc
-# porte donc surtout sur la conformité de ce qui sort, et sur les deux décisions de modélisation
-# qui ne se devinent pas (l'énumération plutôt qu'un booléen, l'absence de Sender).
-#
-#   $ ./venv/bin/python tools/verif_nmos_is07.py
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** Banc d'IS-07 — le tally publié en NMOS (`services/nmos/is07.py`).
+***REMOVED***
+***REMOVED*** Ce module publie une FORME exigée par une spécification : la moindre clé mal nommée dans un
+***REMOVED*** message STATE rend l'événement inexploitable par un contrôleur, sans erreur nulle part. Le banc
+***REMOVED*** porte donc surtout sur la conformité de ce qui sort, et sur les deux décisions de modélisation
+***REMOVED*** qui ne se devinent pas (l'énumération plutôt qu'un booléen, l'absence de Sender).
+***REMOVED***
+***REMOVED***   $ ./venv/bin/python tools/verif_nmos_is07.py
 import json
 import os
 import sys
@@ -29,11 +29,11 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-from services.nmos import is07                                      # noqa: E402
+from services.nmos import is07                                      ***REMOVED*** noqa: E402
 
 print("IS-07 — tally publié en NMOS\n")
 
-# ── 1. Les deux décisions de modélisation ────────────────────────────────────
+***REMOVED*** ── 1. Les deux décisions de modélisation ────────────────────────────────────
 controle("★ le type d'événement est une ÉNUMÉRATION, pas un booléen",
          is07.TYPE_EVENEMENT == "string/enum/Tally",
          "notre tally vaut off/red/green/amber ; le réduire à un booléen aurait demandé de "
@@ -48,7 +48,7 @@ controle("les trois niveaux TSL sont publiés tels quels",
          "les traduire en « program »/« preview » serait une convention de site : la présumer "
          "ferait mentir l'étiquette chez qui ne l'applique pas")
 
-# ── 2. Identité : dérivée du FLUX, pas de l'index TSL ────────────────────────
+***REMOVED*** ── 2. Identité : dérivée du FLUX, pas de l'index TSL ────────────────────────
 a = is07._sid("flux_a", 0)
 controle("l'identité d'une Source est déterministe", a == is07._sid("flux_a", 0))
 controle("★ elle dépend du FLUX et du niveau, jamais de l'index TSL",
@@ -58,7 +58,7 @@ controle("★ elle dépend du FLUX et du niveau, jamais de l'index TSL",
 controle("Source et Flow ne partagent pas le même identifiant",
          is07._sid("flux_a", 0) != is07._fid("flux_a", 0))
 
-# ── 3. Conformité du message STATE ───────────────────────────────────────────
+***REMOVED*** ── 3. Conformité du message STATE ───────────────────────────────────────────
 _par = is07._par_id()
 if not _par:
     print("  SAUTÉ  aucun flux tallyé au mapping TSL — le reste du banc n'a rien à décrire")
@@ -83,16 +83,16 @@ else:
 
 
 
-# ── 4. Un flux mappé sur DEUX pupitres ne compte qu'une fois ─────────────────
-# ⚠ Éprouvé sur un JEU D'ESSAI, pas sur la table réelle : celle du site n'a aujourd'hui aucun flux
-# mappé deux fois, donc la garde y serait invisible — vérifié par mutation, elle passait même
-# désarmée. Un contrôle dont le résultat dépend des données du moment ne prouve rien.
-import app.database as _db_is07                                     # noqa: E402
+***REMOVED*** ── 4. Un flux mappé sur DEUX pupitres ne compte qu'une fois ─────────────────
+***REMOVED*** ⚠ Éprouvé sur un JEU D'ESSAI, pas sur la table réelle : celle du site n'a aujourd'hui aucun flux
+***REMOVED*** mappé deux fois, donc la garde y serait invisible — vérifié par mutation, elle passait même
+***REMOVED*** désarmée. Un contrôle dont le résultat dépend des données du moment ne prouve rien.
+import app.database as _db_is07                                     ***REMOVED*** noqa: E402
 
 _vrai_map = _db_is07.db_get_tsl_mappings_all
 _db_is07.db_get_tsl_mappings_all = lambda: [
     {"connection_id": 1, "tsl_index": 5, "source_shm": "flux_partage"},
-    {"connection_id": 2, "tsl_index": 9, "source_shm": "flux_partage"},   # MÊME flux, 2e pupitre
+    {"connection_id": 2, "tsl_index": 9, "source_shm": "flux_partage"},   ***REMOVED*** MÊME flux, 2e pupitre
     {"connection_id": 1, "tsl_index": 6, "source_shm": "flux_seul"},
 ]
 try:
@@ -106,7 +106,7 @@ finally:
     _db_is07.db_get_tsl_mappings_all = _vrai_map
 
 
-# ── 5. Sur le HTTP réel : la surface, et son absence de Sender ───────────────
+***REMOVED*** ── 5. Sur le HTTP réel : la surface, et son absence de Sender ───────────────
 def _http(url):
     try:
         with urllib.request.urlopen(url, timeout=8) as r:
@@ -137,10 +137,10 @@ else:
     code, senders = _http(B + "/x-nmos/node/v1.3/senders")
     if code == 200:
         _ws7 = [x for x in senders if "websocket" in (x.get("transport") or "")]
-        # ★ La règle n'est pas « pas de Sender », c'est « un Sender SI ET SEULEMENT SI le
-        # transport est servi ». Ce contrôle a été écrit avant que le transport existe, et il
-        # affirmait l'absence : il est tombé dès qu'on a livré le serveur, ce qui est exactement
-        # ce qu'un banc doit faire quand la vérité change.
+        ***REMOVED*** ★ La règle n'est pas « pas de Sender », c'est « un Sender SI ET SEULEMENT SI le
+        ***REMOVED*** transport est servi ». Ce contrôle a été écrit avant que le transport existe, et il
+        ***REMOVED*** affirmait l'absence : il est tombé dès qu'on a livré le serveur, ce qui est exactement
+        ***REMOVED*** ce qu'un banc doit faire quand la vérité change.
         controle("★ un Sender est annoncé SI ET SEULEMENT SI le transport est servi",
                  bool(_ws7) == is07.ws_actif(),
                  "annoncer un Sender sans serveur promettrait un abonnement qui n'arriverait "
@@ -155,7 +155,7 @@ else:
         controle("les Sources IS-07 sont bien dans le modèle IS-04, en format `data`",
                  bool(ev) and all(x["format"] == "urn:x-nmos:format:data" for x in ev))
 
-# ── 6. Transport WebSocket ───────────────────────────────────────────────────
+***REMOVED*** ── 6. Transport WebSocket ───────────────────────────────────────────────────
 print("\nIS-07 — transport WebSocket\n")
 
 controle("le délai de garde vaut 12 s, comme la spec le CHIFFRE",
@@ -177,10 +177,10 @@ if _par:
     controle("mais chacune a son propre ext_is_07_source_id",
              _tp["ext_is_07_source_id"] == _sid7)
 
-# ★ Le Sender n'existe QUE si le transport est servi.
-# ⚠ On bascule LES DEUX réglages : `ressources()` ne publie rien tant qu'IS-07 est globalement
-# fermé, donc ne toucher que `nmos_is07_ws` rendait ce contrôle dépendant de l'état du site — il
-# passait avec IS-07 ouvert et échouait avec IS-07 fermé, sans rien dire du code.
+***REMOVED*** ★ Le Sender n'existe QUE si le transport est servi.
+***REMOVED*** ⚠ On bascule LES DEUX réglages : `ressources()` ne publie rien tant qu'IS-07 est globalement
+***REMOVED*** fermé, donc ne toucher que `nmos_is07_ws` rendait ce contrôle dépendant de l'état du site — il
+***REMOVED*** passait avec IS-07 ouvert et échouait avec IS-07 fermé, sans rien dire du code.
 _avant_ws = _avant_07 = None
 try:
     from app.database import db_get_setting as _g7, db_set_setting as _s7
@@ -200,7 +200,7 @@ finally:
     if _avant_07 is not None:
         _s7("nmos_is07", _avant_07)
 
-# ── Le push ne va QU'aux abonnés de la source ────────────────────────────────
+***REMOVED*** ── Le push ne va QU'aux abonnés de la source ────────────────────────────────
 class _FausseSession:
     def __init__(self, sources):
         self.sources, self.recu = set(sources), []
@@ -227,9 +227,9 @@ if _par:
             is07._sessions.discard(_s_abonne)
             is07._sessions.discard(_s_autre)
 
-# ── Vivant : poignée de main, abonnement, battement ──────────────────────────
+***REMOVED*** ── Vivant : poignée de main, abonnement, battement ──────────────────────────
 if is07.ws_actif() and _par:
-    from services.nmos.client_is12 import Client, ErreurIS12   # couche WebSocket générique
+    from services.nmos.client_is12 import Client, ErreurIS12   ***REMOVED*** couche WebSocket générique
     import time as _t7
     try:
         _c7 = Client("ws://127.0.0.1:%d/" % is07._port(), timeout=6).connecter()

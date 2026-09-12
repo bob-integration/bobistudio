@@ -1,20 +1,20 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# Banc du `NcWorker.enabled` des scripts (services/nmos/plugins_ncp.py:Script).
-#
-# CE QUI COMPTE. Exposer la propriété est facile ; ce qui est difficile, c'est qu'elle TIENNE.
-# Deux façons pour ce pilotage d'être un leurre, et le banc les vise toutes les deux :
-#   1. la consigne est acceptée mais le script continue de tourner ;
-#   2. la consigne est appliquée puis DÉFAITE au premier redéploiement — l'orchestrateur fait
-#      /stop puis /start, et le contrôleur n'en saura rien. C'est ce cas-là qui est vicieux :
-#      tout paraît marcher le jour du test.
-#
-# ⚠ MUTANT : ce banc ARRÊTE puis REDÉMARRE un vrai script. Il choisit son cobaye et restaure son
-#    état dans un `finally`, intention comprise.
-#
-#   $ ./venv/bin/python tools/verif_nmos_script_enabled.py [vmid]
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** Banc du `NcWorker.enabled` des scripts (services/nmos/plugins_ncp.py:Script).
+***REMOVED***
+***REMOVED*** CE QUI COMPTE. Exposer la propriété est facile ; ce qui est difficile, c'est qu'elle TIENNE.
+***REMOVED*** Deux façons pour ce pilotage d'être un leurre, et le banc les vise toutes les deux :
+***REMOVED***   1. la consigne est acceptée mais le script continue de tourner ;
+***REMOVED***   2. la consigne est appliquée puis DÉFAITE au premier redéploiement — l'orchestrateur fait
+***REMOVED***      /stop puis /start, et le contrôleur n'en saura rien. C'est ce cas-là qui est vicieux :
+***REMOVED***      tout paraît marcher le jour du test.
+***REMOVED***
+***REMOVED*** ⚠ MUTANT : ce banc ARRÊTE puis REDÉMARRE un vrai script. Il choisit son cobaye et restaure son
+***REMOVED***    état dans un `finally`, intention comprise.
+***REMOVED***
+***REMOVED***   $ ./venv/bin/python tools/verif_nmos_script_enabled.py [vmid]
 import json
 import os
 import sys
@@ -25,7 +25,7 @@ RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 
 BASE = "http://127.0.0.1:5000/x-nmos/configuration/v1.0/rolePaths"
-ENABLED = "2p1"                      # NcWorker.enabled — inscriptible (NcBlock.enabled ne l'est pas)
+ENABLED = "2p1"                      ***REMOVED*** NcWorker.enabled — inscriptible (NcBlock.enabled ne l'est pas)
 echecs, reussites = [], []
 
 
@@ -62,8 +62,8 @@ def ecrire(chemin, v):
     return j.get("status"), j.get("errorMessage")
 
 
-from app.database import db_get_container, db_script_enabled, db_set_script_enabled  # noqa: E402
-from app import deploy                                                              # noqa: E402
+from app.database import db_get_container, db_script_enabled, db_set_script_enabled  ***REMOVED*** noqa: E402
+from app import deploy                                                              ***REMOVED*** noqa: E402
 
 print("NcWorker.enabled — pilotage du script depuis un contrôleur NMOS\n")
 
@@ -90,7 +90,7 @@ try:
     controle("la lecture rend le CONSTAT, pas une valeur en dur", lire(CHEMIN) == _tournait,
              "obtenu %r alors que l'agent dit %r" % (lire(CHEMIN), _tournait))
 
-    # ── Arrêt ────────────────────────────────────────────────────────────────
+    ***REMOVED*** ── Arrêt ────────────────────────────────────────────────────────────────
     c, msg = ecrire(CHEMIN, False)
     controle("l'écriture de `enabled=false` est acceptée", c == 200, "statut %s (%s)" % (c, msg))
     time.sleep(6)
@@ -102,7 +102,7 @@ try:
     controle("★ l'intention est PERSISTÉE en base", db_script_enabled(VMID) is False,
              "sans persistance, le prochain déploiement la défait en silence")
 
-    # ── Le piège : un redéploiement ne doit PAS rallumer ──────────────────────
+    ***REMOVED*** ── Le piège : un redéploiement ne doit PAS rallumer ──────────────────────
     from app.deploy import deployer_script
     c_ = db_get_container(VMID)
     dc = json.loads(c_["deploy_config"] or "{}")
@@ -113,14 +113,14 @@ try:
              "l'orchestrateur fait /stop puis /start : sans la garde sur l'intention, la consigne "
              "du contrôleur serait défaite ici, et personne ne le verrait")
 
-    # ── Redémarrage ──────────────────────────────────────────────────────────
+    ***REMOVED*** ── Redémarrage ──────────────────────────────────────────────────────────
     c, msg = ecrire(CHEMIN, True)
     controle("l'écriture de `enabled=true` est acceptée", c == 200, "statut %s (%s)" % (c, msg))
     time.sleep(6)
     controle("★★ le script est REPARTI", deploy._agent_script_running(ip, VMID))
     controle("l'intention est revenue à vrai", db_script_enabled(VMID) is True)
 
-    # ── NcBlock.enabled doit rester en LECTURE SEULE ─────────────────────────
+    ***REMOVED*** ── NcBlock.enabled doit rester en LECTURE SEULE ─────────────────────────
     bloc = CHEMIN.rsplit(".", 1)[0]
     c, msg = ecrire(bloc, False)
     controle("★ écrire `enabled` sur le BLOC est refusé (405)", c == 405,

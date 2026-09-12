@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Réglages globaux + par-nœud (get/set), schéma enrichi (page Réglages générique),
 logo entreprise, stats VMID/IP, occupation et purge des journaux."""
@@ -17,8 +17,8 @@ from .. import config
 from ..auth import require_login, require_perm
 from ..database import db_add_alert
 
-# svg volontairement EXCLU : un SVG uploadé est servi tel quel depuis /static et peut
-# embarquer du JS (<script>) → XSS stockée. On n'accepte que des formats raster inertes.
+***REMOVED*** svg volontairement EXCLU : un SVG uploadé est servi tel quel depuis /static et peut
+***REMOVED*** embarquer du JS (<script>) → XSS stockée. On n'accepte que des formats raster inertes.
 log = logging.getLogger(__name__)
 
 _LOGO_EXTS = ("png", "jpg", "jpeg", "webp", "gif")
@@ -28,10 +28,10 @@ _UPLOAD_DIR = config.UPLOADS_DIR
 @bp.route("/api/settings", methods=["GET"])
 @require_login
 def api_get_settings():
-    # NB : reste @require_login (pas @require_perm("settings.edit")) — des pages non-admin
-    # consomment cette API pour des réglages légitimes (formats vidéo dans static/scripts.js
-    # et static/io2110.js, branding/thème). La protection NON-NÉGOCIABLE est le filtrage des
-    # secrets via st.public() : la clé de signature de session et les tokens ne sortent JAMAIS.
+    ***REMOVED*** NB : reste @require_login (pas @require_perm("settings.edit")) — des pages non-admin
+    ***REMOVED*** consomment cette API pour des réglages légitimes (formats vidéo dans static/scripts.js
+    ***REMOVED*** et static/io2110.js, branding/thème). La protection NON-NÉGOCIABLE est le filtrage des
+    ***REMOVED*** secrets via st.public() : la clé de signature de session et les tokens ne sortent JAMAIS.
     from .. import settings as st
     return jsonify(st.public())
 
@@ -41,17 +41,17 @@ def api_set_settings():
     from .. import settings as st
     data = request.json or {}
     n, ignored = st.update_bulk(data)
-    # Rotation du journal : APPLIQUÉE À CHAUD. Elle ne l'était qu'au (re)démarrage — donc un
-    # opérateur qui voit son journal grossir pouvait poser le bon réglage, lire « enregistré »,
-    # et regarder le fichier continuer de grimper sans comprendre.
+    ***REMOVED*** Rotation du journal : APPLIQUÉE À CHAUD. Elle ne l'était qu'au (re)démarrage — donc un
+    ***REMOVED*** opérateur qui voit son journal grossir pouvait poser le bon réglage, lire « enregistré »,
+    ***REMOVED*** et regarder le fichier continuer de grimper sans comprendre.
     if any(k.startswith("log_") for k in data):
         try:
             from .. import logsetup
             logsetup.appliquer_reglages()
         except Exception:
             log.exception("application à chaud des réglages de journal")
-    # `ignored` = clés absentes de settings.DEFAULTS. Avant, elles étaient jetées en silence et la
-    # route répondait ok : un champ d'UI oublié dans DEFAULTS semblait s'enregistrer sans effet.
+    ***REMOVED*** `ignored` = clés absentes de settings.DEFAULTS. Avant, elles étaient jetées en silence et la
+    ***REMOVED*** route répondait ok : un champ d'UI oublié dans DEFAULTS semblait s'enregistrer sans effet.
     return jsonify({"status": "ok", "updated": n, "ignored": ignored})
 
 
@@ -70,8 +70,8 @@ def api_get_node_settings(node_id):
     Portée « global + override par nœud » de la refonte Réglages."""
     from .. import settings as st
     from ..database import db_get_node_settings
-    # Expurgé des clés sensibles (même contrat que /api/settings) : ce chemin renvoie les
-    # valeurs effectives résolues, secrets inclus si on ne filtre pas.
+    ***REMOVED*** Expurgé des clés sensibles (même contrat que /api/settings) : ce chemin renvoie les
+    ***REMOVED*** valeurs effectives résolues, secrets inclus si on ne filtre pas.
     overrides = {k: v for k, v in (db_get_node_settings(node_id) or {}).items()
                  if not st._is_secret_key(k)}
     defaults = st.public()
@@ -184,10 +184,10 @@ def api_logs_purge():
     return jsonify({"ok": True, "freed_bytes": freed})
 
 
-# ─── Sortie PUSH du journal d'alertes (canal webhook) ────────────────────────
-# La logique vit désormais dans le service `services/alerting/` (couche de décision unique + N
-# canaux) ; ces deux routes restent en place parce que l'onglet Réglages → Alarmes les appelle
-# déjà — elles ne font plus que déléguer au canal `webhook`.
+***REMOVED*** ─── Sortie PUSH du journal d'alertes (canal webhook) ────────────────────────
+***REMOVED*** La logique vit désormais dans le service `services/alerting/` (couche de décision unique + N
+***REMOVED*** canaux) ; ces deux routes restent en place parce que l'onglet Réglages → Alarmes les appelle
+***REMOVED*** déjà — elles ne font plus que déléguer au canal `webhook`.
 @bp.route("/api/settings/alert_webhook/state", methods=["GET"])
 @require_perm("settings.edit")
 def api_alert_webhook_state():
@@ -224,7 +224,7 @@ def _sait_trancher(type_plugin):
     try:
         from .. import plugins as _pl
         cs = (_pl.get(type_plugin) or {}).get("config_schema") or []
-        if isinstance(cs, dict):                       # tolère l'autre forme si elle réapparaît
+        if isinstance(cs, dict):                       ***REMOVED*** tolère l'autre forme si elle réapparaît
             return "slice_mode" in cs
         return any(isinstance(e, dict) and (e.get("name") or e.get("key")) == "slice_mode"
                    for e in cs)
@@ -277,8 +277,8 @@ def api_slice_etat():
             continue
         typ, par = cfg.get("type"), (cfg.get("params") or {})
         if typ == "2110_io":
-            # Le moteur ne porte pas `slice_mode` : son mode vient du global, qu'une clé
-            # explicite dans `mtl_engine_env` peut encore surcharger (échappatoire de banc).
+            ***REMOVED*** Le moteur ne porte pas `slice_mode` : son mode vient du global, qu'une clé
+            ***REMOVED*** explicite dans `mtl_engine_env` peut encore surcharger (échappatoire de banc).
             conf = (_forcage in ("1", "true", "yes", "on")) if _forcage else out["global"]
             out["etages"].append({"vmid": r["vmid"], "hostname": r["hostname"], "type": typ,
                                   "configure": conf, "surcharge": bool(_forcage),
@@ -288,9 +288,9 @@ def api_slice_etat():
                                   "configure": bool(par.get("slice_mode")),
                                   "surcharge": True, "porte_rx_tx": False})
         elif _sait_trancher(typ):
-            # SANS surcharge : l'étage SUIT le global. Il doit apparaître quand même — une vue
-            # d'état qui n'affiche que les exceptions laisse croire que le reste n'existe pas,
-            # et c'est exactement l'angle mort qu'on corrige ici.
+            ***REMOVED*** SANS surcharge : l'étage SUIT le global. Il doit apparaître quand même — une vue
+            ***REMOVED*** d'état qui n'affiche que les exceptions laisse croire que le reste n'existe pas,
+            ***REMOVED*** et c'est exactement l'angle mort qu'on corrige ici.
             out["etages"].append({"vmid": r["vmid"], "hostname": r["hostname"], "type": typ,
                                   "configure": out["global"], "surcharge": False,
                                   "porte_rx_tx": False})

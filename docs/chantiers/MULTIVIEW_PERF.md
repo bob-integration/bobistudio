@@ -1,8 +1,8 @@
-# Multiview — où passent vraiment les 20 ms
+***REMOVED*** Multiview — où passent vraiment les 20 ms
 
-> ## ⏩ SUITE 2 (2026-07-14, multiview 0.42.0) — la métrique mentait, et le levier 2 est livré
+> ***REMOVED******REMOVED*** ⏩ SUITE 2 (2026-07-14, multiview 0.42.0) — la métrique mentait, et le levier 2 est livré
 >
-> ### 1. `fps` était FAUX (artefact de fenêtre) — il ne l'est plus
+> ***REMOVED******REMOVED******REMOVED*** 1. `fps` était FAUX (artefact de fenêtre) — il ne l'est plus
 > Sur le 333 : `fps` 46-48 (« chute » 20-25 % du temps) pendant que `bakes_per_s.frames` = 50,1.
 > **Les deux comptaient la même chose** — les trames composées. L'écart était 100 % un artefact
 > d'échantillonnage : `fps` était mesuré sur une fenêtre à **nombre de trames FIXE** (tous les 25
@@ -22,7 +22,7 @@
 > de **SORTIE** (50, = la cadence du format déclaré → un mur i50 sain ne paraît pas à moitié mort) ;
 > `frames_per_s` (25) expose les trames composées ; `fps_unit` (`fields`/`frames`) lève l'ambiguïté.
 >
-> ### 2. Levier 2 (re-bake du chrome) — LIVRÉ, mais pas comme prévu
+> ***REMOVED******REMOVED******REMOVED*** 2. Levier 2 (re-bake du chrome) — LIVRÉ, mais pas comme prévu
 > Le re-bake plein cadre (≈25 ms) sort de la trame par un **thread boulanger** (motif 0.40.0).
 > ★ **Sortir le bake du thread ne suffit PAS** : `alpha_composite` plein cadre est un appel C qui
 > **garde le GIL** de bout en bout — la boucle de compo, *même prioritaire*, ne peut pas se réveiller
@@ -46,7 +46,7 @@
 > mais **plus jamais par une trame**. Le pré-blend du fond (≈13 ms, caché dans `inputs`) sort aussi.
 > **Non vérifié** : le gain sur le 333 lui-même (Horace en lecture seule) — il faut y redéployer.
 
-> ## ⏩ SUITE (2026-07-14, multiview 0.40.0) — le mur 333 est à 50 fps
+> ***REMOVED******REMOVED*** ⏩ SUITE (2026-07-14, multiview 0.40.0) — le mur 333 est à 50 fps
 > Le correctif TSL de cette nuit (0.39.2) a bien tué le churn de chrome (`bakes_per_s.chrome = 0`),
 > mais le mur est resté à **45-46 fps**. La mesure a désigné un **deuxième** pic, de même nature :
 > **la recomposition d'une FRISE** (`hist_bake_ms.max = 29,6 ms`), qui tombait elle aussi ENTIÈRE
@@ -77,7 +77,7 @@ qui ne l'est pas est signalé comme tel (§7).
 
 ---
 
-## 1. Conclusion (à lire en 30 secondes)
+***REMOVED******REMOVED*** 1. Conclusion (à lire en 30 secondes)
 
 **Le mur n'était limité ni par le GPU, ni par le compositing, ni par les entrées. Il était limité
 par un RE-BAKE D'HABILLAGE PLEIN CADRE déclenché 8 à 10 fois par seconde par le service TSL.**
@@ -118,7 +118,7 @@ Les deux autres questions, en une ligne chacune :
 
 ---
 
-## 2. Ventilation du temps (mur 333, avant correctif)
+***REMOVED******REMOVED*** 2. Ventilation du temps (mur 333, avant correctif)
 
 Relevé `:8080` (deux échantillons, 21 h et 01 h) :
 
@@ -146,7 +146,7 @@ re-bake `bg` caché dans `inputs` (≈ 8 ms par re-bake). Une trame qui prend 20
 `gpu = true`, `gpu_util = 5-7 %`, `mem = 137 Mo / 15 Go`, `docker stats` : **136 % CPU** sur un
 cpuset de 3 cœurs. Un seul thread fait le compose.
 
-## 3. Instrumentation ajoutée (multiview 0.39.1)
+***REMOVED******REMOVED*** 3. Instrumentation ajoutée (multiview 0.39.1)
 
 Édition chirurgicale de `plugins/multiview/script.py` (aucun changement de rendu) :
 
@@ -158,7 +158,7 @@ cpuset de 3 cœurs. Un seul thread fait le compose.
   unitaire, qui trahit un churn** — sans ce compteur le bug est invisible ;
 - `mvk_host` — le kernel C est-il disponible pour les conversions hôte (vrai même sur mur GPU).
 
-## 4. La preuve (banc nœud 30, réplique du 333)
+***REMOVED******REMOVED*** 4. La preuve (banc nœud 30, réplique du 333)
 
 Mur jetable `mvperf` (vmid 346), config **clonée du 333** (4 cellules dont 3 masquées, frise audio,
 horloge PTP, overlay texte sourcé TSL), sources recâblées sur `/dev/shm/avsync`.
@@ -205,7 +205,7 @@ Décomposition d'un re-bake (micro-banc `scratchpad/bake_bench.py`, contrôleur 
 Le poste le plus lourd est **PIL** (composition RGBA plein cadre), pas la conversion — la
 conversion est déjà fusionnée en C sur les nœuds (`mvk_host: true`).
 
-## 5. Verdict `mvk`
+***REMOVED******REMOVED*** 5. Verdict `mvk`
 
 - `_MVK = (not GPU) and mvk_available()` — **CPU-only par construction**. Sur un mur GPU, les blends
   et le placement passent par des kernels cupy équivalents ; le kernel C n'a pas sa place dans ce
@@ -220,7 +220,7 @@ conversion est déjà fusionnée en C sur les nœuds (`mvk_host: true`).
   le rendu **PIL**, qui n'est fusionné nulle part. Le seul remède au re-bake est de **ne pas le
   faire** — c'est le correctif livré.
 
-## 6. Verdict GPU
+***REMOVED******REMOVED*** 6. Verdict GPU
 
 Le GPU fait exactement ce qu'on lui demande, et on lui demande très peu : 1 tuile placée, quelques
 blends de bbox, un D2H. À 50 fps cela représente ~310 Mo/s de PCIe (1 H2D groupé de 3,1 Mo + 1 D2H
@@ -235,7 +235,7 @@ de 3,1 Mo par trame) et 5-7 % d'occupation.
 - **Un mur GPU ne sera jamais rapide tant que la boucle hôte est chargée** : le compose est
   mono-thread, et le GPU n'est qu'un des maillons de cette boucle sérielle.
 
-## 7. Ce que je n'ai PAS pu mesurer (franchise)
+***REMOVED******REMOVED*** 7. Ce que je n'ai PAS pu mesurer (franchise)
 
 - **Le gain sur le 333 lui-même n'est pas mesuré.** Horace était en lecture seule ; le correctif
   n'y sera visible qu'après un redéploiement du mur (multiview ≥ 0.39.2). La valeur annoncée
@@ -250,9 +250,9 @@ de 3,1 Mo par trame) et 5-7 % d'occupation.
 - Je n'ai **pas** touché au chemin de composition (`_place_batch`, blends, mode tranche) : c'est le
   terrain de l'agent parallèle.
 
-## 8. Leviers restants, classés par gain estimé
+***REMOVED******REMOVED*** 8. Leviers restants, classés par gain estimé
 
-| # | levier | gain estimé | risque | état |
+| ***REMOVED*** | levier | gain estimé | risque | état |
 |---|---|---|---|---|
 | **1** | **Ne re-baker que sur changement réel** (TSL keepalive) | **−7 à −10 ms/trame** sur tout mur avec tally/UMD centralisé | nul (comparaison de valeur) | ✅ **livré** (0.39.2 + `services/tsl`) |
 | 2 | Re-bake **incrémental** : le chrome est recomposé plein cadre alors que 99 % des changements sont locaux (un texte UMD, une bordure de tally). Ne re-baker que la bbox de la couche qui change. | −10 à −20 ms **par re-bake** (donc sur les vrais changements : bascule tally, changement d'UMD) | moyen (z-ordre) | à faire |
@@ -261,7 +261,7 @@ de 3,1 Mo par trame) et 5-7 % d'occupation.
 | 5 | `inputs` 4,7 ms pour **une seule tuile** 1920×1080 gathered depuis un proxy : à re-profiler une fois le bruit du re-bake `bg` retiré (il en faisait partie). | inconnu | — | à mesurer **après** redéploiement |
 | 6 | Le compose est **mono-thread** : sur un mur GPU, `nvidia-smi` à 5 % et 136 % de CPU disent qu'on est borné par un cœur. Toute optimisation qui ne réduit pas le travail *hôte sérialisé* ne donnera rien. | — | — | principe de conception |
 
-## 9. Fichiers touchés
+***REMOVED******REMOVED*** 9. Fichiers touchés
 
 - `plugins/multiview/script.py` — 0.39.1 : instrumentation (`ov_bake`, `ov_bg`, `bakes_per_s`,
   `mvk_host`). 0.39.2 : garde de valeur dans `/tally_bulk` (tally, texte de label, overlays).
@@ -271,7 +271,7 @@ de 3,1 Mo par trame) et 5-7 % d'occupation.
   (le thread distributeur est en vol). Le correctif côté mur, lui, ne demande qu'un redéploiement
   du mur — et suffit à lui seul à tuer le churn.
 
-## 10. Pour appliquer sur la prod
+***REMOVED******REMOVED*** 10. Pour appliquer sur la prod
 
 1. Redémarrer l'orchestrateur (prend le correctif `services/tsl` + le registre plugin 0.39.2).
 2. Redéployer le mur 333 (`Redéployer` sur la page Traitements) — il prendra 0.39.2.

@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Télémétrie GPU par nœud (NVIDIA) — utilisation, mémoire, et surtout l'ÉCHANGE RAM↔GPU.
 
@@ -28,27 +28,27 @@ from . import settings as S
 
 log = logging.getLogger("gpu")
 
-# Capacité PCIe USABLE par voie et par sens (MB/s ≈ MiB/s, suffisant pour un % de headroom).
-# PCIe 3.0 = 8 GT/s ≈ 985 MB/s/voie ; ×16 ≈ 15,8 GB/s/sens.
+***REMOVED*** Capacité PCIe USABLE par voie et par sens (MB/s ≈ MiB/s, suffisant pour un % de headroom).
+***REMOVED*** PCIe 3.0 = 8 GT/s ≈ 985 MB/s/voie ; ×16 ≈ 15,8 GB/s/sens.
 _PCIE_LANE_MBPS = {1: 250, 2: 500, 3: 985, 4: 1969, 5: 3938}
 
-# Champs interrogés en une passe (ordre = parsing positionnel). nounits → valeurs nues.
+***REMOVED*** Champs interrogés en une passe (ordre = parsing positionnel). nounits → valeurs nues.
 _QUERY_FIELDS = (
     "index,name,driver_version,utilization.gpu,utilization.memory,"
     "memory.used,memory.total,temperature.gpu,power.draw,power.limit,"
     "clocks.sm,clocks.mem,pcie.link.gen.current,pcie.link.gen.max,"
     "pcie.link.width.current,pcie.link.width.max,utilization.encoder,utilization.decoder"
 )
-# Une seule connexion SSH : query-gpu (CSV), un marqueur, puis dmon -s t (rx/txpci par GPU).
+***REMOVED*** Une seule connexion SSH : query-gpu (CSV), un marqueur, puis dmon -s t (rx/txpci par GPU).
 _PROBE_CMD = (
     "nvidia-smi --query-gpu=" + _QUERY_FIELDS + " --format=csv,noheader,nounits"
     " && echo '@@DMON@@' && nvidia-smi dmon -s t -c 1"
 )
 
-# État en mémoire (process orchestrateur).
-_last = {}            # node_id -> {"gpus":[...], "ts":...}
-_absent = {}          # node_id -> monotone du dernier constat « pas de GPU » (re-sonde espacée)
-_last_sample_m = 0.0  # throttle global
+***REMOVED*** État en mémoire (process orchestrateur).
+_last = {}            ***REMOVED*** node_id -> {"gpus":[...], "ts":...}
+_absent = {}          ***REMOVED*** node_id -> monotone du dernier constat « pas de GPU » (re-sonde espacée)
+_last_sample_m = 0.0  ***REMOVED*** throttle global
 
 
 def _cfg(key, default):
@@ -76,7 +76,7 @@ def _parse_dmon(text):
     out = {}
     for line in (text or "").splitlines():
         line = line.strip()
-        if not line or line.startswith("#"):
+        if not line or line.startswith("***REMOVED***"):
             continue
         cols = line.split()
         if len(cols) < 3:
@@ -118,7 +118,7 @@ def _parse(out):
             "name": f[1] or None,
             "driver": f[2] or None,
             "util_pct": _num(f[3]),
-            "mem_util_pct": _num(f[4]),         # % du temps où le bus VRAM est sollicité
+            "mem_util_pct": _num(f[4]),         ***REMOVED*** % du temps où le bus VRAM est sollicité
             "mem_used_mb": mem_used,
             "mem_total_mb": mem_total,
             "mem_pct": round(mem_used / mem_total * 100, 1) if (mem_used and mem_total) else None,
@@ -134,10 +134,10 @@ def _parse(out):
             "pcie_gen_max": _num(f[13], int),
             "pcie_width": width,
             "pcie_width_max": _num(f[15], int),
-            "pcie_rx_mbps": rx,                 # RAM → GPU (host-to-device)
-            "pcie_tx_mbps": tx,                 # GPU → RAM (device-to-host)
-            "pcie_link_mbps": link_mbps,        # capacité théorique du lien (gen × largeur)
-            "pcie_pct": pcie_pct,               # % du lien utilisé (headroom de l'échange)
+            "pcie_rx_mbps": rx,                 ***REMOVED*** RAM → GPU (host-to-device)
+            "pcie_tx_mbps": tx,                 ***REMOVED*** GPU → RAM (device-to-host)
+            "pcie_link_mbps": link_mbps,        ***REMOVED*** capacité théorique du lien (gen × largeur)
+            "pcie_pct": pcie_pct,               ***REMOVED*** % du lien utilisé (headroom de l'échange)
         })
     return gpus
 
@@ -150,7 +150,7 @@ def measure_host(host):
         log.debug("gpu ssh %s: %s", host, e)
         return None
     if rc != 0:
-        # nvidia-smi absent (command not found) ou pas de carte → nœud sans GPU.
+        ***REMOVED*** nvidia-smi absent (command not found) ou pas de carte → nœud sans GPU.
         return None
     gpus = _parse(out)
     return gpus or None

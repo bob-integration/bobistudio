@@ -1,20 +1,20 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# Vérifie que le plugin d'EXEMPLE `hello_world` honore encore le contrat qu'il
-# est censé enseigner.
-#
-# POURQUOI CE FICHIER EXISTE. Une documentation que rien n'exécute dérive, et
-# personne ne s'en aperçoit : `plugins/AUTHORING.md` a passé trois mois à décrire
-# un contrat qui avait changé sous lui. Un plugin d'exemple a exactement le même
-# défaut par défaut — sauf s'il est VÉRIFIÉ. Si le contrat évolue sans que
-# l'exemple suive, ce banc échoue, et la CI avec lui.
-#
-# Ce qu'il vérifie est délibérément le CONTRAT, pas le style : chaque contrôle
-# correspond à une règle dont l'oubli produit une panne SILENCIEUSE.
-#
-#   $ ./venv/bin/python tools/verif_plugin_hello_world.py
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** Vérifie que le plugin d'EXEMPLE `hello_world` honore encore le contrat qu'il
+***REMOVED*** est censé enseigner.
+***REMOVED***
+***REMOVED*** POURQUOI CE FICHIER EXISTE. Une documentation que rien n'exécute dérive, et
+***REMOVED*** personne ne s'en aperçoit : `plugins/AUTHORING.md` a passé trois mois à décrire
+***REMOVED*** un contrat qui avait changé sous lui. Un plugin d'exemple a exactement le même
+***REMOVED*** défaut par défaut — sauf s'il est VÉRIFIÉ. Si le contrat évolue sans que
+***REMOVED*** l'exemple suive, ce banc échoue, et la CI avec lui.
+***REMOVED***
+***REMOVED*** Ce qu'il vérifie est délibérément le CONTRAT, pas le style : chaque contrôle
+***REMOVED*** correspond à une règle dont l'oubli produit une panne SILENCIEUSE.
+***REMOVED***
+***REMOVED***   $ ./venv/bin/python tools/verif_plugin_hello_world.py
 import json
 import os
 import sys
@@ -38,12 +38,12 @@ def lire(nom):
         return f.read()
 
 
-# ── 0. Le plugin existe et se charge ─────────────────────────────────────────
+***REMOVED*** ── 0. Le plugin existe et se charge ─────────────────────────────────────────
 if not os.path.isdir(DOSSIER) or not os.path.isfile(os.path.join(DOSSIER, "plugin.json")):
-    # ⚠ DEUX PANNES TRÈS DIFFÉRENTES, ET LE MÊME DOSSIER VIDE. `hello_world` est un
-    # SOUS-MODULE : un clone sans `--recursive` laisse le dossier là, vide. Dire
-    # « l'exemple a disparu » enverrait chercher un fichier supprimé alors qu'il
-    # suffit d'initialiser le sous-module. On distingue donc les deux cas.
+    ***REMOVED*** ⚠ DEUX PANNES TRÈS DIFFÉRENTES, ET LE MÊME DOSSIER VIDE. `hello_world` est un
+    ***REMOVED*** SOUS-MODULE : un clone sans `--recursive` laisse le dossier là, vide. Dire
+    ***REMOVED*** « l'exemple a disparu » enverrait chercher un fichier supprimé alors qu'il
+    ***REMOVED*** suffit d'initialiser le sous-module. On distingue donc les deux cas.
     if os.path.isdir(os.path.join(RACINE, ".git")) and os.path.isfile(
             os.path.join(RACINE, ".gitmodules")):
         print("ÉCHEC : plugins/hello_world est vide — sous-module non initialisé.\n"
@@ -57,9 +57,9 @@ manifeste = json.loads(lire("plugin.json"))
 script = lire("script.py")
 controle_js = lire("control.js")
 
-# ── 1. Gabarit str.format : il doit se rendre ET compiler ────────────────────
-# `.format` seul ne suffit pas : un script qui se rend peut très bien ne pas
-# compiler, et le conteneur boucle alors en silence.
+***REMOVED*** ── 1. Gabarit str.format : il doit se rendre ET compiler ────────────────────
+***REMOVED*** `.format` seul ne suffit pas : un script qui se rend peut très bien ne pas
+***REMOVED*** compiler, et le conteneur boucle alors en silence.
 params = dict(manifeste.get("deploy_defaults") or {})
 try:
     rendu = script.format(config=repr(params), hostname="hello-1",
@@ -78,7 +78,7 @@ if rendu:
         controle("le script rendu compile", False,
                  "SyntaxError ligne %s : %s" % (e.lineno, e.msg))
 
-# ── 2. Mode tranche — obligatoire pour tout nouveau plugin ───────────────────
+***REMOVED*** ── 2. Mode tranche — obligatoire pour tout nouveau plugin ───────────────────
 controle("le mode tranche est actif par défaut",
          manifeste.get("deploy_defaults", {}).get("slice_mode") is True,
          "deploy_defaults.slice_mode doit valoir true : l'exemple doit montrer la règle, pas l'exception")
@@ -96,7 +96,7 @@ controle("le repli image entière est explicite",
          "slice_height_pour" in script and "return 0" in script,
          "une hauteur sans diviseur doit retomber en image entière, pas produire des bandes bancales")
 
-# ── 3. Exposition aux macros — sinon la capacité est morte ───────────────────
+***REMOVED*** ── 3. Exposition aux macros — sinon la capacité est morte ───────────────────
 pt = (manifeste.get("param_tree") or {}).get("global_groups") or []
 champs = {c for g in pt for c in (g.get("fields") or {})}
 controle("les paramètres continus sont exposés en param_tree",
@@ -113,13 +113,13 @@ controle("chaque cible de macro est déclarée dans control.endpoints",
          not manquants,
          "le proxy REFUSE un chemin non déclaré : %s" % ", ".join(manquants))
 
-# ── 4. Observabilité — dire si l'étage fait ce qu'on a demandé ───────────────
-# ⚠ CE BLOC A ÉTÉ DURCI APRÈS COUP. Sa première version cherchait le nom de la
-# métrique N'IMPORTE OÙ dans le fichier : retirer la clé du dictionnaire publié
-# la laissait passer, parce que le nom subsistait dans la boucle. Un banc qui ne
-# peut pas échouer ne vérifie rien — y compris quand c'est le banc d'un exemple
-# censé enseigner cette règle. On lit donc l'AST : la clé doit être DÉCLARÉE dans
-# le dictionnaire `metrics` ET mise à jour ailleurs.
+***REMOVED*** ── 4. Observabilité — dire si l'étage fait ce qu'on a demandé ───────────────
+***REMOVED*** ⚠ CE BLOC A ÉTÉ DURCI APRÈS COUP. Sa première version cherchait le nom de la
+***REMOVED*** métrique N'IMPORTE OÙ dans le fichier : retirer la clé du dictionnaire publié
+***REMOVED*** la laissait passer, parce que le nom subsistait dans la boucle. Un banc qui ne
+***REMOVED*** peut pas échouer ne vérifie rien — y compris quand c'est le banc d'un exemple
+***REMOVED*** censé enseigner cette règle. On lit donc l'AST : la clé doit être DÉCLARÉE dans
+***REMOVED*** le dictionnaire `metrics` ET mise à jour ailleurs.
 def _cles_du_dict_metrics(source):
     import ast
     try:
@@ -149,9 +149,9 @@ controle("l'état est lisible en condition de macro",
          "/state" in (manifeste.get("control", {}).get("read_endpoints") or []),
          "un état non publié est un état sur lequel aucun automatisme ne peut décider")
 
-# ── 4 bis. Les trois essences, en entrée comme en sortie ─────────────────────
-# Un plugin mono-essence n'apprend pas à en câbler trois : c'est justement là que
-# les erreurs coûtent (audio muet, ANC perdu, entrée confondue avec une autre).
+***REMOVED*** ── 4 bis. Les trois essences, en entrée comme en sortie ─────────────────────
+***REMOVED*** Un plugin mono-essence n'apprend pas à en câbler trois : c'est justement là que
+***REMOVED*** les erreurs coûtent (audio muet, ANC perdu, entrée confondue avec une autre).
 w = manifeste.get("wiring") or {}
 ess_in = {c.get("essence") for c in (w.get("consumes") or [])}
 ess_out = {p.get("essence") for p in (w.get("produces") or [])}
@@ -177,7 +177,7 @@ controle("la latence est publiée PAR entrée",
          "inputs_latency_ms" in script,
          "avec trois essences, un chiffre global ne dit pas laquelle décroche")
 
-# ── 5. Robustesse — les pannes de ce produit sont silencieuses ───────────────
+***REMOVED*** ── 5. Robustesse — les pannes de ce produit sont silencieuses ───────────────
 controle("SIGBUS est intercepté",
          "SIGBUS" in script,
          "un producteur qui recrée son flux tue sinon le processus, et Docker le relance en boucle")
@@ -185,7 +185,7 @@ controle("la boucle survit à une exception",
          "except Exception" in script,
          "une exception non rattrapée fait redémarrer le conteneur sans jamais dire pourquoi")
 
-# ── 6. Page publique — le contrat que l'orchestrateur exige ──────────────────
+***REMOVED*** ── 6. Page publique — le contrat que l'orchestrateur exige ──────────────────
 controle("le manifeste déclare ui.public_page",
          (manifeste.get("ui") or {}).get("public_page") is True,
          "sans cette déclaration l'orchestrateur REFUSE de créer un lien public")
@@ -196,7 +196,7 @@ controle("la console arrête son sondage au démontage",
          "clearInterval" in controle_js,
          "sinon le sondage survit à la page et se cumule à chaque montage")
 
-# ── Verdict ──────────────────────────────────────────────────────────────────
+***REMOVED*** ── Verdict ──────────────────────────────────────────────────────────────────
 print("hello_world — vérification du contrat de plugin\n")
 for r in reussites:
     print("  OK    %s" % r)

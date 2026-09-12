@@ -1,36 +1,36 @@
 /* ─── Thème Studio : broadcast pro, dark warm, accent amber ── */
 :root {
-    --bg:           #18181b;
-    --bg-elev:      #23232a;
-    --bg-input:     #1c1c22;
-    --bg-hover:     #2d2d36;
-    --bg-selected:  #3a2f1f;
-    --border:       #36363f;
-    --border-soft:  #2a2a32;
+    --bg:           ***REMOVED***18181b;
+    --bg-elev:      ***REMOVED***23232a;
+    --bg-input:     ***REMOVED***1c1c22;
+    --bg-hover:     ***REMOVED***2d2d36;
+    --bg-selected:  ***REMOVED***3a2f1f;
+    --border:       ***REMOVED***36363f;
+    --border-soft:  ***REMOVED***2a2a32;
 
-    --text:         #e4e4e7;
-    --text-muted:   #a1a1aa;
-    --text-strong:  #fafafa;
+    --text:         ***REMOVED***e4e4e7;
+    --text-muted:   ***REMOVED***a1a1aa;
+    --text-strong:  ***REMOVED***fafafa;
 
-    --accent:       #f59e0b;   /* amber broadcast */
-    --accent-hover: #fbbf24;
+    --accent:       ***REMOVED***f59e0b;   /* amber broadcast */
+    --accent-hover: ***REMOVED***fbbf24;
     --accent-soft:  rgba(245, 158, 11, 0.12);
 
-    --status-running-bg:   #064e3b;
-    --status-running-fg:   #34d399;
-    --status-stopped-bg:   #4c1d24;
-    --status-stopped-fg:   #fb7185;
-    --status-warning-bg:   #3f2b0f;
-    --status-warning-fg:   #fbbf24;
-    --status-unknown-bg:   #2e2e36;
-    --status-unknown-fg:   #a1a1aa;
+    --status-running-bg:   ***REMOVED***064e3b;
+    --status-running-fg:   ***REMOVED***34d399;
+    --status-stopped-bg:   ***REMOVED***4c1d24;
+    --status-stopped-fg:   ***REMOVED***fb7185;
+    --status-warning-bg:   ***REMOVED***3f2b0f;
+    --status-warning-fg:   ***REMOVED***fbbf24;
+    --status-unknown-bg:   ***REMOVED***2e2e36;
+    --status-unknown-fg:   ***REMOVED***a1a1aa;
 
-    --btn-red:    #dc2626;
-    --btn-blue:   #2563eb;
-    --btn-green:  #059669;
-    --btn-orange: #d97706;
-    --btn-purple: #7c3aed;
-    --btn-text:   #ffffff;
+    --btn-red:    ***REMOVED***dc2626;
+    --btn-blue:   ***REMOVED***2563eb;
+    --btn-green:  ***REMOVED***059669;
+    --btn-orange: ***REMOVED***d97706;
+    --btn-purple: ***REMOVED***7c3aed;
+    --btn-text:   ***REMOVED***ffffff;
 
     --font-base: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
     --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, monospace;
@@ -51,7 +51,7 @@
        chose dans les trois thèmes. */
 
     /* Canvas preview multiview : warm-tinted pour rester cohérent avec le studio */
-    --canvas-bg: #0f0d0a;
+    --canvas-bg: ***REMOVED***0f0d0a;
 
     /* Accent overlays composer multiview : même rôle que default, hue légèrement
        réchauffée pour la régie sombre. */

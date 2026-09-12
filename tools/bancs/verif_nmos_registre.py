@@ -1,19 +1,19 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# Banc du registre IS-04 embarqué (`services/nmos/registre.py`).
-#
-# Deux parties, et la seconde ne remplace pas la première :
-#   · logique PURE (cascade, expiration, rattachement) — en processus, instantané, toujours jouée ;
-#   · protocole HTTP RÉEL (codes 201/200/204/404, en-tête Location, battement) contre le service
-#     qui tourne — seule façon de vérifier ce qu'un contrôleur tiers verra vraiment.
-# La partie HTTP est SAUTÉE si le service ne répond pas, plutôt que de faire échouer le banc pour
-# une raison qui n'est pas un défaut du code.
-#
-# ⚠ Le banc ACTIVE puis REMET le réglage `nmos_registre` à son état d'origine.
-#
-#   $ ./venv/bin/python tools/verif_nmos_registre.py
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** Banc du registre IS-04 embarqué (`services/nmos/registre.py`).
+***REMOVED***
+***REMOVED*** Deux parties, et la seconde ne remplace pas la première :
+***REMOVED***   · logique PURE (cascade, expiration, rattachement) — en processus, instantané, toujours jouée ;
+***REMOVED***   · protocole HTTP RÉEL (codes 201/200/204/404, en-tête Location, battement) contre le service
+***REMOVED***     qui tourne — seule façon de vérifier ce qu'un contrôleur tiers verra vraiment.
+***REMOVED*** La partie HTTP est SAUTÉE si le service ne répond pas, plutôt que de faire échouer le banc pour
+***REMOVED*** une raison qui n'est pas un défaut du code.
+***REMOVED***
+***REMOVED*** ⚠ Le banc ACTIVE puis REMET le réglage `nmos_registre` à son état d'origine.
+***REMOVED***
+***REMOVED***   $ ./venv/bin/python tools/verif_nmos_registre.py
 import json
 import os
 import sys
@@ -39,9 +39,9 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-from services.nmos import registre as R                            # noqa: E402
+from services.nmos import registre as R                            ***REMOVED*** noqa: E402
 
-# ── Jeu d'essai : un Node tiers plausible ────────────────────────────────────
+***REMOVED*** ── Jeu d'essai : un Node tiers plausible ────────────────────────────────────
 NID = "11111111-0000-4000-8000-000000000001"
 DID = "11111111-0000-4000-8000-000000000002"
 SID = "11111111-0000-4000-8000-000000000003"
@@ -50,9 +50,9 @@ DEV = {"id": DID, "label": "Device tiers", "node_id": NID}
 SND = {"id": SID, "label": "Sender tiers", "device_id": DID,
        "transport": "urn:x-nmos:transport:mxl"}
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 1. Logique pure
-# ══════════════════════════════════════════════════════════════════════════════
+***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
+***REMOVED*** 1. Logique pure
+***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
 print("registre IS-04 — logique\n")
 R.vider()
 with R._verrou:
@@ -68,7 +68,7 @@ controle("une ressource dont le Device est inconnu n'a pas de Node",
          R._node_proprietaire("sender", {"id": "x", "device_id": "inconnu"}) is None,
          "on remonte la chaîne DANS le registre, on ne fait pas confiance à un node_id déclaré")
 
-# Expiration : « both the Node and all registered sub-resources SHOULD be removed »
+***REMOVED*** Expiration : « both the Node and all registered sub-resources SHOULD be removed »
 with R._verrou:
     R._sante[NID] = time.monotonic() - (R._gc_s() + 1)
     morts = R._expirer()
@@ -78,7 +78,7 @@ controle("★ son Device ET son Sender disparaissent avec lui",
          "un enfant survivant serait un fantôme : plus aucun battement ne le démentirait, et "
          "il resterait dans l'inventaire pour toujours")
 
-# Suppression explicite : même cascade, immédiate
+***REMOVED*** Suppression explicite : même cascade, immédiate
 R.vider()
 with R._verrou:
     R._res["node"][NID] = {"data": NODE}
@@ -93,15 +93,15 @@ controle("le délai de ramasse-miettes ne peut pas descendre sous deux battement
          "un GC plus court que l'intervalle de battement ferait expirer des Nodes vivants")
 R.vider()
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 1bis. Annonce DNS-SD — sans elle, personne ne TROUVE le registre
-# ══════════════════════════════════════════════════════════════════════════════
-# Un registre qu'il faut configurer à la main dans chaque équipement ne tient pas la promesse du
-# chantier : « un tiers apparaît sans qu'on l'ait déclaré ». C'est le bootstrapping DNS-SD qui la
-# tient. On éprouve la COMPOSITION de l'annonce ici (pure) ; sa publication réelle sur le LAN a
-# été vérifiée à la main le 2026-08-31 — les trois services sont bien vus par un navigateur mDNS.
-from services import nmos as N                                     # noqa: E402
-import socket as _socket                                           # noqa: E402
+***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
+***REMOVED*** 1bis. Annonce DNS-SD — sans elle, personne ne TROUVE le registre
+***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
+***REMOVED*** Un registre qu'il faut configurer à la main dans chaque équipement ne tient pas la promesse du
+***REMOVED*** chantier : « un tiers apparaît sans qu'on l'ait déclaré ». C'est le bootstrapping DNS-SD qui la
+***REMOVED*** tient. On éprouve la COMPOSITION de l'annonce ici (pure) ; sa publication réelle sur le LAN a
+***REMOVED*** été vérifiée à la main le 2026-08-31 — les trois services sont bien vus par un navigateur mDNS.
+from services import nmos as N                                     ***REMOVED*** noqa: E402
+import socket as _socket                                           ***REMOVED*** noqa: E402
 
 _addr = _socket.inet_aton("127.0.0.1")
 _avant_reg = None
@@ -140,9 +140,9 @@ finally:
     if _avant_reg is not None:
         _s("nmos_registre", _avant_reg)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# 2. Protocole HTTP réel
-# ══════════════════════════════════════════════════════════════════════════════
+***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
+***REMOVED*** 2. Protocole HTTP réel
+***REMOVED*** ══════════════════════════════════════════════════════════════════════════════
 
 
 def _http(methode, url, corps=None):
@@ -164,14 +164,14 @@ if code != 200:
     print("  (service injoignable — partie HTTP sautée, ce n'est pas un échec du code)")
 else:
     from app.database import db_get_setting, db_set_setting
-    # ⚠ TOUT réglage touché est relevé AVANT le try et restauré dans le finally. Une restauration
-    # posée au fil du try saute dès qu'un contrôle lève — et laisserait ici un ramasse-miettes à
-    # 4 secondes dans la configuration du site, ce qui ferait expirer des Nodes parfaitement
-    # vivants. Un banc qui abîme la configuration qu'il éprouve est pire qu'un banc absent.
+    ***REMOVED*** ⚠ TOUT réglage touché est relevé AVANT le try et restauré dans le finally. Une restauration
+    ***REMOVED*** posée au fil du try saute dès qu'un contrôle lève — et laisserait ici un ramasse-miettes à
+    ***REMOVED*** 4 secondes dans la configuration du site, ce qui ferait expirer des Nodes parfaitement
+    ***REMOVED*** vivants. Un banc qui abîme la configuration qu'il éprouve est pire qu'un banc absent.
     avant = db_get_setting("nmos_registre", "0")
     gc_avant = db_get_setting("nmos_registre_gc_s", "")
     try:
-        # Le réglage est lu à CHAQUE requête (pas au boot) → pas besoin de redémarrer.
+        ***REMOVED*** Le réglage est lu à CHAQUE requête (pas au boot) → pas besoin de redémarrer.
         db_set_setting("nmos_registre", "1")
         code, corps, _h = _http("POST", REG + "/resource", {"type": "node", "data": NODE})
         controle("enregistrement d'un Node → 201", code == 201, "obtenu %s : %s" % (code, corps[:120]))
@@ -217,19 +217,19 @@ else:
         controle("★ son Sender a disparu de la Query API avec lui",
                  code == 200 and SID not in corps)
 
-        # ── Expiration DE BOUT EN BOUT, par le thread ─────────────────────────────────────
-        # ⚠ Les contrôles pures plus haut appellent `_expirer()` DIRECTEMENT : ils passeraient
-        # même si le ramasse-miettes ne démarrait jamais. Or `_assurer_reaper()` est appelé au
-        # premier enregistrement, et un thread qui ne part pas est exactement le genre de panne
-        # muette qu'on ne verrait qu'en exploitation, des semaines plus tard, sur un registre qui
-        # accumule des Nodes morts. On l'éprouve donc pour de vrai, avec un GC raccourci.
+        ***REMOVED*** ── Expiration DE BOUT EN BOUT, par le thread ─────────────────────────────────────
+        ***REMOVED*** ⚠ Les contrôles pures plus haut appellent `_expirer()` DIRECTEMENT : ils passeraient
+        ***REMOVED*** même si le ramasse-miettes ne démarrait jamais. Or `_assurer_reaper()` est appelé au
+        ***REMOVED*** premier enregistrement, et un thread qui ne part pas est exactement le genre de panne
+        ***REMOVED*** muette qu'on ne verrait qu'en exploitation, des semaines plus tard, sur un registre qui
+        ***REMOVED*** accumule des Nodes morts. On l'éprouve donc pour de vrai, avec un GC raccourci.
         db_set_setting("nmos_registre_gc_s", "4")
         _http("POST", REG + "/resource", {"type": "node", "data": NODE})
         _http("POST", REG + "/resource", {"type": "device", "data": DEV})
         _http("POST", REG + "/resource", {"type": "sender", "data": SND})
         code, corps, _h = _http("GET", QRY + "/nodes")
         present = code == 200 and NID in corps
-        time.sleep(9)                       # > GC(4 s) + période du reaper (2 s), avec marge
+        time.sleep(9)                       ***REMOVED*** > GC(4 s) + période du reaper (2 s), avec marge
         code, corps, _h = _http("GET", QRY + "/nodes")
         code2, corps2, _h = _http("GET", QRY + "/senders")
         controle("★ le ramasse-miettes RETIRE vraiment un Node qui ne bat plus",
@@ -241,9 +241,9 @@ else:
         db_set_setting("nmos_registre", "0")
         code, _c, _h = _http("POST", REG + "/resource", {"type": "node", "data": NODE})
         controle("registre désactivé → 501 à l'écriture", code == 501)
-        # ⚠ La LECTURE doit se fermer aussi. Un premier jet ne gardait que l'écriture : la Query
-        # API rendait 200 avec des listes vides alors que l'exploitant croyait la surface fermée.
-        # « Ouvert mais vide » est indiscernable d'« ouvert et cassé ».
+        ***REMOVED*** ⚠ La LECTURE doit se fermer aussi. Un premier jet ne gardait que l'écriture : la Query
+        ***REMOVED*** API rendait 200 avec des listes vides alors que l'exploitant croyait la surface fermée.
+        ***REMOVED*** « Ouvert mais vide » est indiscernable d'« ouvert et cassé ».
         c1, _b1, _h = _http("GET", QRY + "/nodes")
         c2, _b2, _h = _http("GET", QRY + "/subscriptions")
         c3, _b3, _h = _http("GET", REG + "/resource/nodes/" + NID)

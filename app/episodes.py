@@ -34,8 +34,8 @@ from .config import DB_PATH
 
 log = logging.getLogger(__name__)
 
-FLUSH_S = 30.0          # écriture au plus toutes les 30 s (l'état change à la transition, c'est rare)
-_SEP = "\x1f"           # séparateur de clé composite (une clé JSON doit être une chaîne)
+FLUSH_S = 30.0          ***REMOVED*** écriture au plus toutes les 30 s (l'état change à la transition, c'est rare)
+_SEP = "\x1f"           ***REMOVED*** séparateur de clé composite (une clé JSON doit être une chaîne)
 
 
 def _chemin(nom):
@@ -142,8 +142,8 @@ class EtatEpisodes:
                 json.dump(data, f)
             os.replace(tmp, self.chemin)
         except OSError as e:
-            # Jamais silencieux : si l'état n'est pas sauvegardé, la prochaine relance re-notifiera
-            # et l'exploitant doit pouvoir relier les deux.
+            ***REMOVED*** Jamais silencieux : si l'état n'est pas sauvegardé, la prochaine relance re-notifiera
+            ***REMOVED*** et l'exploitant doit pouvoir relier les deux.
             with self._lock:
                 self._dirty = True
             log.warning("Épisodes « %s » : écriture de l'état impossible (%s) — les incidents en "

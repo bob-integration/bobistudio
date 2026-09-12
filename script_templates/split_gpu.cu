@@ -22,7 +22,7 @@
  * plan (le sous-échantillonnage chroma passe par cw/ch), coordonnées locales en pixels LUMA.
  */
 
-#define SPL_CLAMPF(v, lo, hi) ((v) < (lo) ? (lo) : ((v) > (hi) ? (hi) : (v)))
+***REMOVED***define SPL_CLAMPF(v, lo, hi) ((v) < (lo) ? (lo) : ((v) > (hi) ? (hi) : (v)))
 
 /* ── Composition d'UNE box sur UN plan ────────────────────────────────────────────────────────
  * Un thread = un pixel de l'AABB de la box. Hors du quadrilatère incliné, alpha vaut 0 et le
@@ -160,7 +160,7 @@ extern "C" __global__ void spl_silhouette(
  *   GPU, pour ce seul flou). Chaque thread traite donc un SEGMENT de SPL_CHUNK pixels et
  *   recalcule sa fenêtre d'amorce — 2r additions redondantes, ~15 %, contre un parallélisme
  *   multiplié par w/SPL_CHUNK. Résultat : 9,3 → 2,2 ms. */
-#define SPL_CHUNK 128
+***REMOVED***define SPL_CHUNK 128
 
 extern "C" __global__ void spl_blur_h(const float* __restrict__ in, float* __restrict__ out,
                                       int h, int w, int r)

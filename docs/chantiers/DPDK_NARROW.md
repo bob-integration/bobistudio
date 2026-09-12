@@ -1,4 +1,4 @@
-# Socle narrow DPDK — doc de référence du chantier
+***REMOVED*** Socle narrow DPDK — doc de référence du chantier
 
 Branche : `feat/2110-dpdk-narrow` (parent) + sous-module `plugins/2110_io`.
 Objectif du chantier : faire tourner le moteur ST 2110 (`2110_io`) en **narrow 2110-21 matériellement
@@ -11,7 +11,7 @@ garanti**, avec **PTP fiable** et **latence minimale**, en production, sans SR-I
 
 ---
 
-## 1. Décision socle : full-PF DPDK
+***REMOVED******REMOVED*** 1. Décision socle : full-PF DPDK
 
 **Le média tourne sur la PF PLEINE en DPDK/vfio** (driver `ice` en vfio-pci, moteur MTL user-space),
 avec pacing **RL (rate-limit matériel)** pour le narrow. Conséquences :
@@ -34,7 +34,7 @@ avec pacing **RL (rate-limit matériel)** pour le narrow. Conséquences :
 
 ---
 
-## 2. PTP carte-directe (`ENGINE_PTP=libmtl`)
+***REMOVED******REMOVED*** 2. PTP carte-directe (`ENGINE_PTP=libmtl`)
 
 En full-PF DPDK, **il n'y a plus de netdev kernel** sur la PF média → plus de `ptp4l`/`phc2sys`
 kernel. Le moteur fait donc **son propre PTP** : libmtl devient **esclave PTPv2** sur le port DPDK
@@ -47,7 +47,7 @@ configure (domaine 127, transport, join `224.0.1.129`) à partir du GM.
   Sans lui le moteur serait synchro mais pas le reste du nœud.
 - Défaut OFF (0.39.11) : le mode historique lit `CLOCK_REALTIME` discipliné par le kernel.
 
-### Les deux blocages RX résolus (patchs libmtl vendorés, 0.39.12/0.39.13)
+***REMOVED******REMOVED******REMOVED*** Les deux blocages RX résolus (patchs libmtl vendorés, 0.39.12/0.39.13)
 
 Le PTP interne ne recevait **aucun paquet** sur E810/ice DPDK. Deux causes distinctes, chacune
 prouvée strictement nécessaire par ablation (banc dl360-1 2026-07-09) :
@@ -69,7 +69,7 @@ prouvée strictement nécessaire par ablation (banc dl360-1 2026-07-09) :
    `mt_mcast_l2_join`, poser 2 règles rte_flow (event 319 / general 320) vers la rxq CNI via
    `mt_rx_flow_create`, libérées dans `ptp_uinit`. **Sans → rx 8, pas de lock.**
 
-### Admission du mcast : `NIC_PROMISCUOUS=1`
+***REMOVED******REMOVED******REMOVED*** Admission du mcast : `NIC_PROMISCUOUS=1`
 
 Sur ice DPDK, **ni `mac_addr_add` ni `set_mc_addr_list` n'admettent le mcast** au niveau port
 (`rx_packets=0`). L'ablation (dl360-1 2026-07-09) désigne `MTL_FLAG_NIC_RX_PROMISCUOUS`
@@ -77,21 +77,21 @@ Sur ice DPDK, **ni `mac_addr_add` ni `set_mc_addr_list` n'admettent le mcast** a
 **« Fix B » = `set_mc_addr_list` → dead-end** (essayé, n'admet pas). Posé automatiquement par
 l'orchestrateur sur toute PF dpdk (§5). Sans objet en AF-XDP (le noyau programme le filtre).
 
-### Ablation — les 3 leviers sont tous nécessaires
+***REMOVED******REMOVED******REMOVED*** Ablation — les 3 leviers sont tous nécessaires
 Router Alert **ET** rte_flow PTP→CNI **ET** promiscuous : retirer l'un → pas de lock RX PTP.
 
-### Résultat mesuré
+***REMOVED******REMOVED******REMOVED*** Résultat mesuré
 Lock **~30 ns** au grandmaster, validé live sur le banc. `ptp4l` kernel n'est plus dans la boucle
 (la PF est en vfio, pas de netdev).
 
-### ⚠ Piège diagnostic
+***REMOVED******REMOVED******REMOVED*** ⚠ Piège diagnostic
 Un **SPAN switch résiduel** (Eth1/53 en source, laissé `admin shut`) cassait la réception du port et
 avait **faussé tout le diagnostic amont**. Le retirer a débloqué le forward. → toujours vérifier
 qu'aucun SPAN/mirror ne pollue le port avant de conclure un `rx=0`.
 
 ---
 
-## 3. Conformité 2110-21
+***REMOVED******REMOVED*** 3. Conformité 2110-21
 
 Mesure via la **sonde embarquée** (`TIMING_PARSER=1`, 0.39.4) : `MTL_FLAG_ENABLE_HW_TIMESTAMP` +
 `ST20P_RX_FLAG_TIMING_PARSER_META` par session → Cinst/VRX/FPT/latency par trame + verdict
@@ -115,13 +115,13 @@ Mesure via la **sonde embarquée** (`TIMING_PARSER=1`, 0.39.4) : `MTL_FLAG_ENABL
     fpt absolu (prod)**. Reste ouvert : une mesure conformité ABSOLUE **unifiée** sur le socle exige un
     TX genlocké — le banc `mtl_rx`/`mxl_bench` free-run ne le fournit pas (cf. §7).
 - **Mécanisme vs classe** : le VRX filaire est dominé par le **mécanisme** (rl/tsc/tsc_narrow) ;
-  la **classe** 2110-21 par session (`ops.transport_pacing`, #26) pose la cible/budget VRX interne
+  la **classe** 2110-21 par session (`ops.transport_pacing`, ***REMOVED***26) pose la cible/budget VRX interne
   (log-observable, VRX interne wide=130 vs narrow=8), sans élargir proportionnellement l'émission
-  réelle en loopback. La preuve #26 repose sur le log libmtl + le VRX interne, pas sur le span sonde.
+  réelle en loopback. La preuve ***REMOVED***26 repose sur le log libmtl + le VRX interne, pas sur le span sonde.
 
 ---
 
-## 4. Capacité
+***REMOVED******REMOVED*** 4. Capacité
 
 - **Mur des 8 files TX RL LEVÉ** (0.39.6, `patch_tm_hierarchy.py`). Le « 8 » n'était pas une limite
   E810 mais la **forme** de l'arbre TM construit par libmtl (toutes les feuilles sous un unique nœud
@@ -145,7 +145,7 @@ Mesure via la **sonde embarquée** (`TIMING_PARSER=1`, 0.39.4) : `MTL_FLAG_ENABL
 
 ---
 
-## 5. Auto-provisionnement (1 moteur/nœud)
+***REMOVED******REMOVED*** 5. Auto-provisionnement (1 moteur/nœud)
 
 Décision produit 2026-07-09 : **un seul moteur `2110_io` (bi-rôle RX+TX, multi-ports) par nœud**,
 provisionné automatiquement à la configuration d'un port média 2110. Plus de création manuelle.
@@ -178,7 +178,7 @@ provisionné automatiquement à la configuration d'un port média 2110. Plus de 
 
 ---
 
-## 6. Exploitation
+***REMOVED******REMOVED*** 6. Exploitation
 
 - **Image `bobi-mtl`** (par-nœud, build E810-only). Patchs libmtl **vendorés**, appliqués au build
   **avant** `./build.sh`, fail-fast idempotents contre le SHA épinglé. `routes/images.py` ajoute les
@@ -211,7 +211,7 @@ provisionné automatiquement à la configuration d'un port média 2110. Plus de 
 
 ---
 
-## 7. Reste à faire
+***REMOVED******REMOVED*** 7. Reste à faire
 
 - **Bascule prod** : écrire la colonne `nodes.image` (image 0.39.13) + `node_interfaces.pmd=dpdk`
   sur le(s) nœud(s) cible(s) ; garantir le **repli AF-XDP** (chemin par défaut) tant que la batterie
@@ -381,23 +381,23 @@ provisionné automatiquement à la configuration d'un port média 2110. Plus de 
 
 ---
 
-## 8. Bancs & commandes (recettes reproductibles)
+***REMOVED******REMOVED*** 8. Bancs & commandes (recettes reproductibles)
 
 **Nœud de banc** : dl360-1 (node 30, 192.0.2.251). E810 bi-port `ens1f0np0` (`0000:11:00.0`) /
 `ens1f1np1` (`0000:11:00.1`), PHC partagé (clock 4). Le port DPDK a été `ens1f1np1` (seul câblé sur
 le switch média). Sonde possible sur `ens1f0np0` (PF vfio) joignant le mcast de `ens1f1np1`.
 
-### Bind d'une PF en vfio-pci
+***REMOVED******REMOVED******REMOVED*** Bind d'une PF en vfio-pci
 ```
 echo vfio-pci > /sys/bus/pci/devices/0000:11:00.1/driver_override
 echo 0000:11:00.1 > /sys/bus/pci/devices/0000:11:00.1/driver/unbind
 echo 0000:11:00.1 > /sys/bus/pci/drivers/vfio-pci/bind
-# ⚠ rollback SÛR = reboot iLO ForceRestart. NE PAS tenter le teardown vfio→ice manuel
-#   (remove/rescan) : il a WEDGÉ le nœud (deadlock rtnl, cf. §6). Le reboot restaure f0/f1→ice.
+***REMOVED*** ⚠ rollback SÛR = reboot iLO ForceRestart. NE PAS tenter le teardown vfio→ice manuel
+***REMOVED***   (remove/rescan) : il a WEDGÉ le nœud (deadlock rtnl, cf. §6). Le reboot restaure f0/f1→ice.
 ```
 Prérequis déjà en cmdline sur le banc : IOMMU + hugepages 1G, `vfio-pci` chargé (pas de reboot).
 
-### docker run du moteur full-PF DPDK (mono-port)
+***REMOVED******REMOVED******REMOVED*** docker run du moteur full-PF DPDK (mono-port)
 ```
 docker run -d --name bobi-mtl-<vmid> --network host --privileged \
   --log-opt max-file=5 --log-opt max-size=50m \
@@ -415,19 +415,19 @@ l'IGMPv3 depuis le sip → le switch ne forwarde que si le report vient d'une IP
 mismap SIPS↔IFACES donne rx=0 (masqué en AF-XDP par le netdev kernel). En prod ces envs sont posés
 automatiquement (§5) — ne les mettre à la main que pour un banc.
 
-### Config JSON bi-port (2022-7 / sonde+générateur)
+***REMOVED******REMOVED******REMOVED*** Config JSON bi-port (2022-7 / sonde+générateur)
 - 2022-7 : `PORT_PAIRS` dérivé de `node_interfaces.pair_group`/`pair_role` (`num_leg=2`, red/blue).
 - Sonde + générateur coexistant sur un même nœud : `CONTROLLER_PORT_BASE` (0.39.7) décale les 3 serveurs
   HTTP du contrôleur (BASE métriques / BASE+1 agent / BASE+2 contrôle). Émis seulement si
   `params.controller_port_base` posé → un nœud mono-moteur reste octet-identique.
 
-### Sonde de conformité (verdict narrow/wide)
+***REMOVED******REMOVED******REMOVED*** Sonde de conformité (verdict narrow/wide)
 ```
-# côté conteneur sonde : -e TIMING_PARSER=1  (+ PF en vfio pour le HW timestamp)
-# lecture verdict sur :8080 (ou BASE si offset), par receiver vidéo :
-#   compliant (narrow|wide|failed), failed_cause, cinst_max/avg, vrx_max/min/avg/span, fpt, latency
-# interpréter : cinst_max=1 + vrx_span 1-5 = narrow franc ; le failed (fpt exceed tr_offset)
-# sans grandmaster est STRUCTUREL — lire cinst/vrx_span (invariants à la dérive), pas `compliant`.
+***REMOVED*** côté conteneur sonde : -e TIMING_PARSER=1  (+ PF en vfio pour le HW timestamp)
+***REMOVED*** lecture verdict sur :8080 (ou BASE si offset), par receiver vidéo :
+***REMOVED***   compliant (narrow|wide|failed), failed_cause, cinst_max/avg, vrx_max/min/avg/span, fpt, latency
+***REMOVED*** interpréter : cinst_max=1 + vrx_span 1-5 = narrow franc ; le failed (fpt exceed tr_offset)
+***REMOVED*** sans grandmaster est STRUCTUREL — lire cinst/vrx_span (invariants à la dérive), pas `compliant`.
 ```
 **Banc GM bi-port validé (socle, 2026-07-10)** : bind f0 ET f1 → vfio, puis UN SEUL `mtl_rx --config`
 bi-port (TX narrow RL sur f1 + sonde `TIMING_PARSER` sur f0 joignant le mcast) avec `ENGINE_PTP=libmtl`
@@ -438,49 +438,49 @@ DPDK). Verdict lu dans le fichier `stats` de la cible sonde. ⚠ Le TX du banc l
 (Réserve loopback câble-direct historique : le lien n'est UP que si les 2 ports sont `mtl_init`'és →
 abonner la sonde avant que le générateur linke, sinon `dev_detect_link fail -5`.)
 
-### Générateur de flux narrow (banc)
+***REMOVED******REMOVED******REMOVED*** Générateur de flux narrow (banc)
 Moteur `2110_io` avec un slot TX câblé + `MTL_PACING=rl` + `PORT_PROFILES=narrow` ; ou endpoints de
 contrôle `/tone_tx` (attend `idx`/`ai`). Démo wide franche pour A/B : `MTL_PACING=tsc` plain +
 `PORT_PROFILES=wide` → cinst 5 / vrx_span ~920k (5 ordres de grandeur vs narrow).
 
-### mxl_bench writer (mode tranche)
+***REMOVED******REMOVED******REMOVED*** mxl_bench writer (mode tranche)
 `script_templates/mxl_bench.py` + patch `mxl-planar-slices.patch` (N tranches via `slice_height`).
 Repère mesuré 1080p50 N=8 : commit→observe p50 0,14 ms / p99 0,27 ms / 0 stall ;
 1ʳᵉ→dernière bande p50 17,5 ms (= gain structurel/étage) ; dé-packing BE par bande 449 Mo/s.
 
 ---
 
-## 9. Recette dpdk — plan de bascule prod (par nœud)
+***REMOVED******REMOVED*** 9. Recette dpdk — plan de bascule prod (par nœud)
 
 **Objet** : la checklist ORDONNÉE qui transforme « le narrow marche au banc » en « on peut déployer ».
 Tant qu'elle n'est pas verte sur ≥1 nœud, le **repli AF-XDP reste** (mode prod actuel, intouché).
 
-### Principe
+***REMOVED******REMOVED******REMOVED*** Principe
 - **Bascule PAR NŒUD**, jamais la flotte d'un coup. Un nœud en dpdk, le reste en AF-XDP.
 - **Rollback** = repli soft : `nodes.image` ← ancienne + `node_interfaces.pmd=af_xdp` → redeploy (le port
   revient au kernel `ice`). Si le port vfio est wedgé (teardown vfio→ice, cf. §6) : **reboot iLO ForceRestart**.
 - **Ne PAS retirer le repli AF-XDP** (généraliser) avant recette G complète + soak 24-48 h.
 
-### Prérequis nœud cible
+***REMOVED******REMOVED******REMOVED*** Prérequis nœud cible
 - Carte **qualifiée** (`nic_profiles` : `ddp_ok`, `ptp_ok`, `rl_tx_cap` connu — sinon `POST /api/nodes/<id>/qualify-nic`).
 - **GM PTP** joignable sur le réseau média (le socle dpdk n'a plus de ptp4l kernel → lock via libmtl, §2).
 - Hugepages 1G + IOMMU en cmdline, `vfio-pci` chargé ; port média bindable vfio (§8) ; `sip` = IP réelle du segment.
 
-### Étape 0 — Bascule
-| # | Action | Critère |
+***REMOVED******REMOVED******REMOVED*** Étape 0 — Bascule
+| ***REMOVED*** | Action | Critère |
 |---|---|---|
 | B0 | `nodes.image`=dpdk (0.39.13+) + `node_interfaces.pmd=dpdk` sur le port média, redéployer le moteur | Conteneur up, `:8081/status` OK, port `pmd=dpdk` dans `mtl_ports.json` |
 
-### Étape R — Régressions (DÉJÀ prouvées ailleurs — re-vérifier après bascule)
-| # | Item | Procédure | Critère | Statut socle |
+***REMOVED******REMOVED******REMOVED*** Étape R — Régressions (DÉJÀ prouvées ailleurs — re-vérifier après bascule)
+| ***REMOVED*** | Item | Procédure | Critère | Statut socle |
 |---|---|---|---|---|
 | R1 | Lock PTP carte-directe | GM présent, `ENGINE_PTP=libmtl` | `system clock offset … locked`, offset stable < qq 100 ns | ✅ prouvé |
 | R2 | RX complète | abonner un flux 2110 réel | fps stable, pas de gel, `signal` frais | ✅ prouvé |
 | R3 | TX narrow | 1 sender RL + sonde/log | `cinst_max=1`, `vrx_span 4-5` (sonde) ; pas de `fatal_error` | ✅ prouvé (banc GM) |
 | R4 | Capacité | empiler jusqu'au `rl_tx_cap` de la carte | pas de boucle de relance ; N sessions stables | ✅ ~63 mesuré |
 
-### Étape G — Batterie GATE (à RE-VALIDER sur le socle dpdk — le vrai bloquant)
-| # | Item | Procédure | Critère | Statut socle |
+***REMOVED******REMOVED******REMOVED*** Étape G — Batterie GATE (à RE-VALIDER sur le socle dpdk — le vrai bloquant)
+| ***REMOVED*** | Item | Procédure | Critère | Statut socle |
 |---|---|---|---|---|
 | G1 | **Entrelacé 1080i50** | RX 1080i50 → TX passthrough → moniteur/analyseur | pas de peigne, parité champ conservée, `exactframerate=25;interlace` dans le SDP | ✅ data 2026-07-11 (SDP TX0 = 1920x1080 interlace, parité 250/250, 0 drop) ; peigne visuel = user |
 | G2 | **2022-7 hitless** | 2 legs red/blue, débrancher un câble en direct | AUCUNE coupure visible ; reprise silencieuse au retour lien | ✅✅ 2026-07-11 HITLESS FRANC (coupure physique : 0 unrecovered, fps stable ; retour lien : re-join auto ~30s) sur bi-port même carte E810 (ring 4096 + RX sched dédié, 0.39.18) |
@@ -492,7 +492,7 @@ Tant qu'elle n'est pas verte sur ≥1 nœud, le **repli AF-XDP reste** (mode pro
 - **Leviers d'amélioration** (chantiers, pas one-liners) : 1) isoler files/cœurs RX du TX (scheduler MTL) ; 2) augmenter profondeur ring RX (patch libmtl) ; 3) exploitation : nœud récepteur = pas de TX lourd, ou 2 cartes pour indépendance ressources.
 - Verdict : 2022-7 mono-carte VALIDÉ pour un usage récepteur ; hitless-sous-charge-TX nécessite l'isolation RX/TX.
 - ★★ **HITLESS FRANC prouvé (coupure physique, 0.39.18 ring4096+RX-sched-dédié)** : 0 `unrecovered`, fps rock-stable 50, save_rate 100% pendant toute la transition ; retour du lien = re-join auto ~30s, redondance restaurée sans glitch. Progression coupures : ring2048/6mires=3292 unrec (fps→33) ; ring2048/TX-léger=500 (fps→42) ; ring4096+RX-dédié=**0** (fps stable).
-- ★ **RÉSOLU 2026-07-11 (0.39.17)** : la perte corrélée venait du **ring de descripteurs RX trop court** (2048), PAS de la topologie. `nb_rx_desc` porté à **4096** (env RX_NB_DESC, défaut DPDK) → à charge identique (6 mires ~13 Gbps), `rx_hw_dropped` **0,18 % → 0,0000 %** sur les 2 ports, `unrecovered` **1290/fenêtre → 0**, `save_rate` **66,8 % → 100 %**. Le 2022-7 sur UNE carte E810 bi-port est propre sous TX lourd. Levier #2 (isolation scheduler) non nécessaire. Reste : finding « un leg ne re-joint pas toujours après restart » (indépendant).
+- ★ **RÉSOLU 2026-07-11 (0.39.17)** : la perte corrélée venait du **ring de descripteurs RX trop court** (2048), PAS de la topologie. `nb_rx_desc` porté à **4096** (env RX_NB_DESC, défaut DPDK) → à charge identique (6 mires ~13 Gbps), `rx_hw_dropped` **0,18 % → 0,0000 %** sur les 2 ports, `unrecovered` **1290/fenêtre → 0**, `save_rate` **66,8 % → 100 %**. Le 2022-7 sur UNE carte E810 bi-port est propre sous TX lourd. Levier ***REMOVED***2 (isolation scheduler) non nécessaire. Reste : finding « un leg ne re-joint pas toujours après restart » (indépendant).
 | G3 | **Restart moteur** | `redemarrer` le moteur en charge | RX+TX repris, TX re-poussés, pas de gel résiduel | ✅ 2026-07-11 (12 sessions, 6 TX ré-émis, PTP re-locké 232 ns, 0 backstop) |
 | G4 | **Recovery reboot nœud** | reboot du nœud | auto-recovery flotte (node_recovery), moteur+flux remontent | ✅ COMPLET 2026-07-11 (0.39.16 : f1 vfio auto + recovery + PTP locké 219 ns à froid + 0 backstop) |
 | G5 | **Redeploy à chaud** | changer la config (ajout/retrait flux) | les flux NON touchés ne blippent pas ; le nouveau monte | ✅ 2026-07-11 (hot-add wire : RX 2022-7 0 perte/0 drop, PTP jamais dé-locké, nouveau flux monté ; résidu 1 mire repli décroche vs 5 avant ring4096) |
@@ -534,13 +534,13 @@ Tant qu'elle n'est pas verte sur ≥1 nœud, le **repli AF-XDP reste** (mode pro
 | G6 | **Formats par flux** | mix i/p et résolutions par slot | chaque session au bon format ; changement = recréation propre | ✅ partiel 2026-07-11 (SDP i50 correct, chgt p→i = recréation propre) ; FINDING hot-add écroule mires voisines (cf. G5/E2) |
 | G7 | **Monitoring / preview** | multiview + monitor WebRTC lisent les flux dpdk | preview correcte, pas de « No Signal » | ✅ data 2026-07-11 (monitor WebRTC sur mtlrx95_0, entrelacé détecté, hot+publishing, 0 No Signal) ; visuel = user |
 
-### Étape E — Exploitation (finitions, non bloquantes pour la faisabilité)
-| # | Item | Critère | Statut |
+***REMOVED******REMOVED******REMOVED*** Étape E — Exploitation (finitions, non bloquantes pour la faisabilité)
+| ***REMOVED*** | Item | Critère | Statut |
 |---|---|---|---|
 | E1 | Routage de contenu à chaud (swap de source) | `mtl_init Δ0`, PTP jamais dé-locké, émission continue | ✅ validé (découplage) |
 | E2 | Ajout d'une NOUVELLE destination | blip flotte ~20-30 s (dé-lock PTP au commit RL) — MESURER l'impact acceptable, sinon traiter (PTP-hold) | ✅ MESURÉ 2026-07-11 : flag `locked` JAMAIS tombé (découplage), dé-lock transitoire ~15 s auto-résorbé (offset pic ~1 ms → <µs en ~90 s), 0 backstop, pas de coupure flotte dure |
 
-### Sortie de recette
+***REMOVED******REMOVED******REMOVED*** Sortie de recette
 Repli AF-XDP retirable sur un nœud quand **R1-R4 + G1-G7 verts + soak 24-48 h sans incident**. E2 =
 décision produit (acceptable en l'état, ou on traite le PTP-hold avant généralisation). Généralisation
 flotte = nœud par nœud, chacun repassant R+G.

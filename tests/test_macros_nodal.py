@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
 """Tests OFFLINE du moteur nodal nodes/v2 (9e passe ch.6) + non-régression blocks/v1.
 
 Sans pytest (comme tests/smoke_test.py) :
@@ -37,16 +37,16 @@ import traceback
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-# DB temporaire = copie de la prod, AVANT tout usage de get_db().
+***REMOVED*** DB temporaire = copie de la prod, AVANT tout usage de get_db().
 _tmp = tempfile.mkdtemp(prefix="bobi_macros_test_")
 _db_copy = os.path.join(_tmp, "db.sqlite")
 shutil.copy2(os.path.join(ROOT, "db_bobistudio.db"), _db_copy)
 
-from app import database  # noqa: E402
+from app import database  ***REMOVED*** noqa: E402
 database.DB_PATH = _db_copy
 
-from app import macros as M  # noqa: E402
-from app.database import (db_create_macro, db_get_macro, db_project_macros,  # noqa: E402
+from app import macros as M  ***REMOVED*** noqa: E402
+from app.database import (db_create_macro, db_get_macro, db_project_macros,  ***REMOVED*** noqa: E402
                           db_system_macros, db_project_vars, db_set_project_var,
                           get_db)
 
@@ -97,7 +97,7 @@ def _pid():
 
 PID = _pid()
 
-# ─── Mocks réseau : recorder d'actions (aucun HTTP) ───────────
+***REMOVED*** ─── Mocks réseau : recorder d'actions (aucun HTTP) ───────────
 CALLS = []
 
 
@@ -118,7 +118,7 @@ def run_graph_macro(graph, name="t", entry_id=None):
     return wait_run(run)
 
 
-# ─── 1. validate_graph ────────────────────────────────────────
+***REMOVED*** ─── 1. validate_graph ────────────────────────────────────────
 
 def t_validate():
     g = {"format": "nodes/v2",
@@ -133,7 +133,7 @@ def t_validate():
     assert any("port" in e for e in errs), errs
     assert M.validate_graph({"format": "nodes/v2", "nodes": [], "edges": []}) \
         == ["aucune entrée (nœud entry)"]
-    assert M.validate_graph({"format": "blocks/v1"})  # mauvais format
+    assert M.validate_graph({"format": "blocks/v1"})  ***REMOVED*** mauvais format
     ok = {"format": "nodes/v2",
           "nodes": [{"id": "e", "type": "entry", "params": {}},
                     {"id": "c", "type": "cond", "params": {"cond": {}}}],
@@ -142,7 +142,7 @@ def t_validate():
     assert M.validate_graph(ok) == [], M.validate_graph(ok)
 
 
-# ─── 2. round-trip blocks ↔ graph ─────────────────────────────
+***REMOVED*** ─── 2. round-trip blocks ↔ graph ─────────────────────────────
 
 def t_roundtrip_synthetic():
     cases = [
@@ -158,13 +158,13 @@ def t_roundtrip_synthetic():
         [{"type": "parallel", "branches": [[{"type": "sleep", "ms": 1}], [],
                                            [{"type": "set_var", "name": "b", "value": "2"}]]},
          {"type": "macro", "macro_id": 1}],
-        # if suivi d'un parallel → insertion d'un join « any » (transparent au retour)
+        ***REMOVED*** if suivi d'un parallel → insertion d'un join « any » (transparent au retour)
         [{"type": "if", "cond": {}, "then": [{"type": "sleep", "ms": 1}],
           "else": [{"type": "sleep", "ms": 2}]},
          {"type": "parallel", "branches": [[{"type": "sleep", "ms": 3}],
                                            [{"type": "sleep", "ms": 4}]]},
          {"type": "config", "vmid": 200, "params": {"k": "v"}}],
-        # parallel dont une branche contient un if
+        ***REMOVED*** parallel dont une branche contient un if
         [{"type": "parallel", "branches": [
             [{"type": "if", "cond": {}, "then": [{"type": "sleep", "ms": 1}], "else": []}],
             [{"type": "wait", "cond": {}, "timeout_ms": 100}]]}],
@@ -196,41 +196,41 @@ def t_roundtrip_db():
     print(f"      ({n} macros blocks/v1 de la DB, round-trip exact)")
 
 
-# ─── 3. détection « avancé » ──────────────────────────────────
+***REMOVED*** ─── 3. détection « avancé » ──────────────────────────────────
 
 def t_unstructured():
     def g(nodes, edges):
         return {"format": "nodes/v2", "nodes": nodes, "edges": edges}
     E = {"id": "e", "type": "entry", "params": {}}
-    # choice → nodal only
+    ***REMOVED*** choice → nodal only
     assert not M.graph_is_structured(g(
         [E, {"id": "c", "type": "choice", "params": {"branches": [{}]}}],
         [{"from": "e", "port": 0, "to": "c"}]))
-    # deux entrées
+    ***REMOVED*** deux entrées
     assert not M.graph_is_structured(g(
         [E, {"id": "e2", "type": "entry", "params": {}},
          {"id": "s", "type": "sleep", "params": {"ms": 1}}],
         [{"from": "e", "port": 0, "to": "s"}, {"from": "e2", "port": 0, "to": "s"}]))
-    # entrée trigger
+    ***REMOVED*** entrée trigger
     assert not M.graph_is_structured(g(
         [{"id": "e", "type": "entry", "params": {"mode": "trigger"}}], []))
-    # cycle
+    ***REMOVED*** cycle
     assert not M.graph_is_structured(g(
         [E, {"id": "s", "type": "sleep", "params": {"ms": 1}}],
         [{"from": "e", "port": 0, "to": "s"}, {"from": "s", "port": 0, "to": "s"}]))
-    # saut entre branches d'un fan-out (pas de jointure)
+    ***REMOVED*** saut entre branches d'un fan-out (pas de jointure)
     assert not M.graph_is_structured(g(
         [E, {"id": "a", "type": "sleep", "params": {"ms": 1}},
          {"id": "b", "type": "sleep", "params": {"ms": 1}}],
         [{"from": "e", "port": 0, "to": "a"}, {"from": "e", "port": 0, "to": "b"},
          {"from": "a", "port": 0, "to": "b"}]))
-    # mais un graphe structuré « manuel » (sans passer par blocks_to_graph) est reconnu
+    ***REMOVED*** mais un graphe structuré « manuel » (sans passer par blocks_to_graph) est reconnu
     assert M.graph_is_structured(g(
         [E, {"id": "s", "type": "sleep", "params": {"ms": 1}}],
         [{"from": "e", "port": 0, "to": "s"}]))
 
 
-# ─── 4-10. exécution nodale ───────────────────────────────────
+***REMOVED*** ─── 4-10. exécution nodale ───────────────────────────────────
 
 def _events(run, node, event):
     return [j for j in run.journal if j.get("node") == node and j.get("event") == event]
@@ -269,8 +269,8 @@ def t_run_fanout_join_all():
     acts = sorted(c[2] for c in CALLS if c[0] == "action")
     assert acts == ["b1", "b2", "b3", "prep"], acts
     assert db_project_vars(PID).get("done") == "yes"
-    assert len(_events(run, "v", "finished")) == 1   # la jointure n'a laissé passer qu'un jeton
-    assert len(_events(run, "no", "started")) == 0   # branche fausse jamais exécutée
+    assert len(_events(run, "v", "finished")) == 1   ***REMOVED*** la jointure n'a laissé passer qu'un jeton
+    assert len(_events(run, "no", "started")) == 0   ***REMOVED*** branche fausse jamais exécutée
     assert run.snapshot()["active_nodes"] == []
 
 
@@ -288,7 +288,7 @@ def t_join_any():
     ]}
     run = run_graph_macro(g, "any")
     assert run.error is None, run.error
-    assert len(_events(run, "v", "finished")) == 1   # le 2e jeton est mort à la jointure
+    assert len(_events(run, "v", "finished")) == 1   ***REMOVED*** le 2e jeton est mort à la jointure
     assert len(_events(run, "j", "finished")) == 1
 
 
@@ -313,7 +313,7 @@ def t_cancel():
     assert err is None
     time.sleep(0.2)
     snap = M.run_status(mid)
-    assert "s" in snap["active_nodes"], snap["active_nodes"]   # (10) surlignage live
+    assert "s" in snap["active_nodes"], snap["active_nodes"]   ***REMOVED*** (10) surlignage live
     t0 = time.monotonic()
     assert M.cancel_run(mid)
     wait_run(run, timeout=3)
@@ -364,12 +364,12 @@ def t_entry_id_and_trigger_entries():
     assert run.error is None, run.error
     assert db_project_vars(PID).get("who") == "deux"
     assert len(_events(run, "v1", "started")) == 0
-    # sans entry_id : toutes les manual démarrent, l'entrée trigger reste inerte
+    ***REMOVED*** sans entry_id : toutes les manual démarrent, l'entrée trigger reste inerte
     run = run_graph_macro(g, "entries2")
     assert len(_events(run, "vt", "started")) == 0
     assert len(_events(run, "v1", "started")) == 1
     assert len(_events(run, "v2", "started")) == 1
-    # graphe SANS entrée manuelle → erreur explicite
+    ***REMOVED*** graphe SANS entrée manuelle → erreur explicite
     g2 = {"format": "nodes/v2",
           "nodes": [{"id": "et", "type": "entry", "params": {"mode": "trigger"}}],
           "edges": []}
@@ -377,7 +377,7 @@ def t_entry_id_and_trigger_entries():
     assert run.error and "manuelle" in run.error, run.error
 
 
-# ─── 11. non-régression blocks/v1 ─────────────────────────────
+***REMOVED*** ─── 11. non-régression blocks/v1 ─────────────────────────────
 
 def t_blocks_regression():
     CALLS.clear()
@@ -410,7 +410,7 @@ def t_blocks_regression():
     assert ("action", 200, "take") in CALLS
     assert dt < 1.0, f"branches parallel non concurrentes ? ({dt:.2f}s)"
     assert run.journal[-1]["msg"] == "terminé"
-    assert run.snapshot()["active_nodes"] == []   # champ présent, vide en blocks
+    assert run.snapshot()["active_nodes"] == []   ***REMOVED*** champ présent, vide en blocks
 
 
 def t_blocks_calls_nodal_submacro():
@@ -427,7 +427,7 @@ def t_blocks_calls_nodal_submacro():
     wait_run(run)
     assert run.error is None, run.error
     assert db_project_vars(PID).get("sub") == "ok"
-    # profondeur : nodal → nodal auto-récursif borné par MAX_DEPTH
+    ***REMOVED*** profondeur : nodal → nodal auto-récursif borné par MAX_DEPTH
     rec = db_create_macro(PID, "rec-nodal", None, graph={"format": "blocks/v1", "steps": []})
     database.db_update_macro(rec, graph={
         "format": "nodes/v2", "nodes": [

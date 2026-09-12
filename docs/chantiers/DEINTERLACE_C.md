@@ -1,10 +1,10 @@
-# Chantier DIFFÉRÉ — désentrelaceur adaptatif (bwdif/yadif) en noyau C
+***REMOVED*** Chantier DIFFÉRÉ — désentrelaceur adaptatif (bwdif/yadif) en noyau C
 
 > Créé 2026-07-14. Décidé après **mesure** : bwdif en numpy est deux fois hors budget de trame.
 > Le portage C est le **seul** moyen d'avoir un désentrelaceur adaptatif utilisable. Rien ne presse :
 > `bob` est livré (udc 0.10.0), il tient largement le budget et supprime le peigne.
 
-## 1. Pourquoi ce chantier existe
+***REMOVED******REMOVED*** 1. Pourquoi ce chantier existe
 
 L'UDC (`plugins/udc`) sait faire les 4 combinaisons de balayage. En **i → p**, il propose :
 
@@ -22,7 +22,7 @@ Précédent dans le projet : le noyau fusionné de l'UDC lui-même (`tools/fused
 et la fusion `mvk` du multiview bat numpy de **7 à 40×** (cf. `docs/chantiers/MULTIVIEW_BENCH.md`).
 ⇒ objectif réaliste : **bwdif < 8 ms/champ**, donc dans le budget.
 
-## 2. Ce que fait bwdif (et pourquoi ça vaut le coup)
+***REMOVED******REMOVED*** 2. Ce que fait bwdif (et pourquoi ça vaut le coup)
 
 Désentrelaceur **adaptatif au mouvement**, décision **par pixel** :
 - zone **fixe** → **tissage** : la résolution verticale est **intégralement conservée** ;
@@ -36,11 +36,11 @@ Coûts intrinsèques :
 - calcul lourd (détection de mouvement sur plusieurs champs) ;
 - **+1 champ de latence** (~20 ms en 50i) : il a besoin du champ **suivant** pour décider.
 
-## 3. LE MODÈLE À SUIVRE — `plugins/udc/tools/fused_resize.c` (ne réinvente rien)
+***REMOVED******REMOVED*** 3. LE MODÈLE À SUIVRE — `plugins/udc/tools/fused_resize.c` (ne réinvente rien)
 
 Deux modèles de distribution de C coexistent dans le projet. **Prends le premier.**
 
-### (a) ✅ `.so` pré-buildé, embarqué dans le plugin — CE QU'IL FAUT FAIRE
+***REMOVED******REMOVED******REMOVED*** (a) ✅ `.so` pré-buildé, embarqué dans le plugin — CE QU'IL FAUT FAIRE
 `plugins/udc/tools/` contient déjà : `fused_resize.c`, `build_fused.sh`, `embed_so.py`,
 `bench_fused.py`, `test_integration.py`, `fused_resize.so`.
 
@@ -60,13 +60,13 @@ Deux modèles de distribution de C coexistent dans le projet. **Prends le premie
     **SEGFAULTE ce process**. Le `replace` laisse l'ancien inode vivant pour les mappings existants ;
   - **toute** anomalie (arch, AVX2, ABI, écriture, chargement) → **repli numpy** + log, jamais un crash.
 
-### (b) ❌ noyau buildé dans l'image runtime — À ÉVITER ICI
+***REMOVED******REMOVED******REMOVED*** (b) ❌ noyau buildé dans l'image runtime — À ÉVITER ICI
 `plugins/_compute_runtime/Dockerfile` construit `libbobi_mvk.so` (`mvcompose.c`) avec deux variantes
 (`-march=x86-64-v2` et `-v3`, + OpenMP). C'est le modèle du multiview.
 **Inconvénient rédhibitoire pour ce chantier** : il impose un **rebuild + push de l'image runtime**
 sur toute la flotte. Le modèle (a) ne demande qu'un bump de plugin.
 
-## 4. Contrat attendu
+***REMOVED******REMOVED*** 4. Contrat attendu
 
 Le côté Python existe déjà et attend le noyau :
 - réglage `deint` : `weave` | `bob` | `bwdif` — **`bwdif` est aujourd'hui affiché DÉSACTIVÉ avec sa raison
@@ -78,7 +78,7 @@ Le noyau doit traiter **les 3 plans** (Y, Cb, Cr) et les profondeurs **8 et 10/1
 comme `fused_resize`. Il a besoin des champs **n−2, n−1, n, n+1** (bwdif) ou **n−1, n, n+1** (yadif
 simple) → l'appelant doit maintenir un petit anneau de champs.
 
-## 5. ★ Le genlock — le piège de ce chantier
+***REMOVED******REMOVED*** 5. ★ Le genlock — le piège de ce chantier
 
 La sortie de l'UDC est calée en **phase sur la grille PTP** (`index_mode=tai` : l'index de trame **EST**
 l'index de grille TAI). `bob` n'ajoute **aucune** latence (un champ suffit) → rien à compenser.
@@ -89,7 +89,7 @@ un champ de retard mal compensé = une image **en avance ou en retard d'une tram
 ≥ 30 s (l'agent de la 0.9.0 a mesuré `index_trame − index_grille_TAI` = **0**, min = max = 0, sur
 1500 champs — garde ce niveau d'exigence).
 
-## 6. Critères d'acceptation (chiffrés, non négociables)
+***REMOVED******REMOVED*** 6. Critères d'acceptation (chiffrés, non négociables)
 
 1. **Coût < 8 ms/champ** en 1080i (Y+Cb+Cr), mesuré sur le banc — sinon le chantier a échoué.
 2. **Score de peigne** au moins aussi bon que `bob` (métrique déjà en place :
@@ -101,7 +101,7 @@ un champ de retard mal compensé = une image **en avance ou en retard d'une tram
 5. **Repli numpy** fonctionnel si le noyau ne charge pas (arch, AVX2, ABI).
 6. Non-régression des 4 combinaisons de balayage (harnais 0.9.0 déjà écrit).
 
-## 7. Pièges déjà payés (ne les repaie pas)
+***REMOVED******REMOVED*** 7. Pièges déjà payés (ne les repaie pas)
 
 - **La phase de parité.** La ligne *k* du champ de parité *p* occupe la ligne de trame *2k+p* → la grille
   de rééchantillonnage est décalée de **±¼ ligne de champ** (`_plane_map(yshift=…)`). Sans cette
@@ -113,7 +113,7 @@ un champ de retard mal compensé = une image **en avance ou en retard d'une tram
 - **La mire statique ne prouve rien** d'un désentrelaceur. Il faut du **mouvement** (le harnais existe :
   barre à 32 px/champ, `scratchpad/deint_*` et `ab_*`).
 
-## 8. Où sont les choses
+***REMOVED******REMOVED*** 8. Où sont les choses
 
 - Plugin : `plugins/udc/` (sous-module git). Script : `script.py` (passe dans `str.format` → **accolades
   littérales doublées `{{ }}`**). Noyau existant : `tools/fused_resize.c` + `build_fused.sh` + `embed_so.py`.

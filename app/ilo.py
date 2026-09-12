@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
 
 """Client Redfish minimal multi-constructeur (BMC) — HPe iLO 5 ET Dell iDRAC 9 — pour le montage
 automatique de l'ISO d'enrôlement en CD/DVD virtuel + boot one-time + redémarrage, plus la lecture
@@ -25,8 +25,8 @@ log = logging.getLogger(__name__)
 
 _TIMEOUT = 30
 
-# Profils Redfish par constructeur. iLO 5 : Manager 1, Virtual Media index 2 = CD/DVD. iDRAC 9 :
-# Manager iDRAC.Embedded.1, le Virtual Media CD est sous Systems (System.Embedded.1/VirtualMedia/CD).
+***REMOVED*** Profils Redfish par constructeur. iLO 5 : Manager 1, Virtual Media index 2 = CD/DVD. iDRAC 9 :
+***REMOVED*** Manager iDRAC.Embedded.1, le Virtual Media CD est sous Systems (System.Embedded.1/VirtualMedia/CD).
 _VENDORS = {
     "hpe": {
         "label":   "iLO",
@@ -73,8 +73,8 @@ def _req(method, node, path, token=None, **kw):
     kw.setdefault("verify", False)
     kw.setdefault("timeout", _TIMEOUT)
     if token:
-        # Réutilise une session ouverte (X-Auth-Token) au lieu d'une auth Basic (qui crée une session
-        # iLO PAR requête → épuise le pool en rafale = NoValidSession).
+        ***REMOVED*** Réutilise une session ouverte (X-Auth-Token) au lieu d'une auth Basic (qui crée une session
+        ***REMOVED*** iLO PAR requête → épuise le pool en rafale = NoValidSession).
         kw.setdefault("headers", {})["X-Auth-Token"] = token
     else:
         kw.setdefault("auth", auth)
@@ -213,7 +213,7 @@ def sriov_bios(node):
             if not out["ready"]:
                 out["hint"] = ("RBSU/BIOS : Sriov=Enabled + PciResourcePadding=High "
                                "(réserve le MMIO pour l'aperture VF SR-IOV)")
-        else:  # dell / iDRAC (et repli générique)
+        else:  ***REMOVED*** dell / iDRAC (et repli générique)
             out["mmio_attr"] = "MmioAbove4GB"
             out["sriov_enabled"] = (attrs.get("SriovGlobalEnable") == "Enabled")
             out["mmio"] = attrs.get("MmioAbove4GB")
@@ -258,7 +258,7 @@ def _nic_link_map(node, token=None):
                 port = _get_json(node, pid, token) if pid else None
                 if not port:
                     continue
-                link = (port.get("LinkStatus") or "").lower()  # "linkup"/"linkdown"/""
+                link = (port.get("LinkStatus") or "").lower()  ***REMOVED*** "linkup"/"linkdown"/""
                 link = "up" if "up" in link else ("down" if "down" in link else "unknown")
                 for mac in (port.get("AssociatedNetworkAddresses") or []):
                     if mac:
@@ -297,7 +297,7 @@ def _storage_inventory(node, p, token=None):
             cap = dd.get("CapacityGB")
             media = dd.get("MediaType") or ""
             model = dd.get("Model") or ""
-            # Disque physique : pas toujours de WWN exposé → by-id par serial si présent (moins sûr).
+            ***REMOVED*** Disque physique : pas toujours de WWN exposé → by-id par serial si présent (moins sûr).
             ser = (dd.get("SerialNumber") or "").strip()
             by_id = ("ata-" + model.replace(" ", "_") + "_" + ser) if (model and ser) else ""
             label = f"Disque {loc} · {cap} GB {media} {model}".strip()
@@ -323,7 +323,7 @@ def _nic_inventory(node, p, token=None):
         out.append({"mac": mac, "label": model or mac, "model": model,
                     "port": info.get("port_id") or ei.get("Id"),
                     "link": info.get("link", "unknown"), "speed_mbps": speed})
-    # Lien up d'abord, puis par MAC pour un ordre stable.
+    ***REMOVED*** Lien up d'abord, puis par MAC pour un ordre stable.
     out.sort(key=lambda n: (0 if n["link"] == "up" else 1 if n["link"] == "unknown" else 2, n["mac"]))
     return out
 
@@ -337,8 +337,8 @@ def inventory(node):
     if not (node.get("ilo_host") or "").strip():
         out["error"] = "identifiants BMC non configurés"
         return out
-    # UNE session réutilisée pour toute la rafale de GET (sinon Basic auth = 1 session iLO/requête →
-    # épuise le pool → NoValidSession). Repli sur Basic auth si l'ouverture de session échoue.
+    ***REMOVED*** UNE session réutilisée pour toute la rafale de GET (sinon Basic auth = 1 session iLO/requête →
+    ***REMOVED*** épuise le pool → NoValidSession). Repli sur Basic auth si l'ouverture de session échoue.
     token, location = _session_open(node)
     try:
         g = _req("GET", node, p["sys"], token=token)
@@ -373,11 +373,11 @@ def insert_media(node, iso_url, token=None):
              json={"Image": iso_url}, token=token)
     if r.status_code not in (200, 202, 204):
         detail = _err(r)
-        # iLO Standard/Unlicensed → le Virtual Media par URL est une fonction iLO Advanced (firmware).
+        ***REMOVED*** iLO Standard/Unlicensed → le Virtual Media par URL est une fonction iLO Advanced (firmware).
         if "LicenseKeyRequired" in detail:
             return False, ("iLO Advanced requis : le montage Virtual Media par URL est une fonction "
                            "licenciée (cet iLO est en Standard/Unlicensed). → utiliser la clé USB ou le boot PXE.")
-        # Sinon, cause fréquente : le BMC ne joint pas l'URL (localhost/IP non routable depuis son réseau).
+        ***REMOVED*** Sinon, cause fréquente : le BMC ne joint pas l'URL (localhost/IP non routable depuis son réseau).
         return False, f"{detail} [URL envoyée : {iso_url}]"
     return True, "ISO montée"
 
@@ -396,7 +396,7 @@ def set_boot_once_cd(node, token=None):
             if r.status_code in (200, 202, 204):
                 return True, "boot one-time = CD (BootOnNextServerReset)"
         except Exception:
-            pass   # repli sur le BootSourceOverride standard ci-dessous
+            pass   ***REMOVED*** repli sur le BootSourceOverride standard ci-dessous
     r = _req("PATCH", node, _paths(node)["sys"],
              json={"Boot": {"BootSourceOverrideTarget": "Cd",
                             "BootSourceOverrideEnabled": "Once"}}, token=token)
@@ -455,8 +455,8 @@ def deploy_node(node, iso_url):
     token, location = _session_open(node)
     steps = []
     try:
-        # Ordre IMPÉRATIF : éteindre AVANT de régler le boot. L'iLO refuse toute modif de boot pendant
-        # le POST → on passe par l'état Off (hors POST), puis on rallume (le boot CD est alors actif).
+        ***REMOVED*** Ordre IMPÉRATIF : éteindre AVANT de régler le boot. L'iLO refuse toute modif de boot pendant
+        ***REMOVED*** le POST → on passe par l'état Off (hors POST), puis on rallume (le boot CD est alors actif).
         for label, fn in (("Montage de l'ISO", lambda: insert_media(node, iso_url, token=token)),
                           ("Extinction (pour régler le boot)", lambda: power_off_wait(node, token=token)),
                           ("Boot one-time CD", lambda: set_boot_once_cd(node, token=token)),

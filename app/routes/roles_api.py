@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Emplacements (rôles) : CRUD de l'identité FONCTIONNELLE des conteneurs.
 
@@ -38,8 +38,8 @@ def _role_public(r):
     if c:
         from .shared import _load_dc
         out["type"] = (_load_dc(c) or {}).get("type")
-    # Divergence de type : l'emplacement attend un multiview, on y a lié un mixer → les
-    # paramètres exposés ne correspondront pas à ce que le pupitre croit piloter.
+    ***REMOVED*** Divergence de type : l'emplacement attend un multiview, on y a lié un mixer → les
+    ***REMOVED*** paramètres exposés ne correspondront pas à ce que le pupitre croit piloter.
     out["type_mismatch"] = bool(out["type"] and r.get("expect_type")
                                 and out["type"] != r["expect_type"])
     return out
@@ -57,10 +57,10 @@ def roles_list():
     for c in sorted(db_get_containers(), key=lambda x: x["vmid"]):
         if c.get("monitor_user_id") or not c.get("instance_uuid"):
             continue
-        # L'infra portant un préfixe réservé (shards du tissu `bobi-fab-*`, conteneurs Docker
-        # générés, encodeurs de monitoring) n'est pas une fonction de production : elle n'a rien
-        # à faire dans un sélecteur d'emplacement. C'est elle qui avait rempli la table quand le
-        # semage était automatique — l'écarter ici évite de la proposer à la main.
+        ***REMOVED*** L'infra portant un préfixe réservé (shards du tissu `bobi-fab-*`, conteneurs Docker
+        ***REMOVED*** générés, encodeurs de monitoring) n'est pas une fonction de production : elle n'a rien
+        ***REMOVED*** à faire dans un sélecteur d'emplacement. C'est elle qui avait rempli la table quand le
+        ***REMOVED*** semage était automatique — l'écarter ici évite de la proposer à la main.
         if any(str(c.get("hostname") or "").startswith(p) for p in _hn.PREFIXES_RESERVES):
             continue
         candidats.append({

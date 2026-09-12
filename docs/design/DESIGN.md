@@ -2,42 +2,42 @@
 name: Bobi.Studio
 description: Console d'orchestration de containers LXC pour pipeline vidéo ST 2110 simulé, trois lumières (dark, light, studio).
 colors:
-  slate-signal: "#7aa2c8"
-  slate-signal-hover: "#95b7d6"
-  daylight-indigo: "#4f46e5"
-  daylight-indigo-hover: "#6366f1"
-  studio-amber: "#f59e0b"
-  studio-amber-hover: "#fbbf24"
-  default-bg: "#14161a"
-  default-bg-elev: "#1b1e23"
-  default-bg-input: "#181a1f"
-  default-bg-hover: "#23262c"
-  default-bg-selected: "#262a31"
-  default-border: "#2a2d34"
-  default-border-soft: "#23262c"
-  default-text: "#d4d6da"
-  default-text-muted: "#8a8d94"
-  default-text-strong: "#f0f1f3"
-  light-bg: "#f6f7f9"
-  light-bg-elev: "#ffffff"
-  light-border: "#e5e7eb"
-  light-text: "#1f2937"
-  light-text-muted: "#6b7280"
-  light-text-strong: "#111827"
-  studio-bg: "#18181b"
-  studio-bg-elev: "#23232a"
-  studio-text-strong: "#fafafa"
-  status-running-fg: "#7ab98a"
-  status-running-bg: "#1d2e23"
-  status-stopped-fg: "#d07a82"
-  status-stopped-bg: "#322023"
-  status-warning-fg: "#c4a667"
-  status-warning-bg: "#2e2a1e"
-  status-unknown-fg: "#8a8d94"
-  status-unknown-bg: "#25272c"
-  # Les couleurs de mode (badges de type de container) ne sont plus des tokens figés :
-  # elles sont déclarées par chaque plugin (plugin.json:badge.oklch) et générées au
-  # rendu par templates/layout.html. Voir « Modes » plus bas.
+  slate-signal: "***REMOVED***7aa2c8"
+  slate-signal-hover: "***REMOVED***95b7d6"
+  daylight-indigo: "***REMOVED***4f46e5"
+  daylight-indigo-hover: "***REMOVED***6366f1"
+  studio-amber: "***REMOVED***f59e0b"
+  studio-amber-hover: "***REMOVED***fbbf24"
+  default-bg: "***REMOVED***14161a"
+  default-bg-elev: "***REMOVED***1b1e23"
+  default-bg-input: "***REMOVED***181a1f"
+  default-bg-hover: "***REMOVED***23262c"
+  default-bg-selected: "***REMOVED***262a31"
+  default-border: "***REMOVED***2a2d34"
+  default-border-soft: "***REMOVED***23262c"
+  default-text: "***REMOVED***d4d6da"
+  default-text-muted: "***REMOVED***8a8d94"
+  default-text-strong: "***REMOVED***f0f1f3"
+  light-bg: "***REMOVED***f6f7f9"
+  light-bg-elev: "***REMOVED***ffffff"
+  light-border: "***REMOVED***e5e7eb"
+  light-text: "***REMOVED***1f2937"
+  light-text-muted: "***REMOVED***6b7280"
+  light-text-strong: "***REMOVED***111827"
+  studio-bg: "***REMOVED***18181b"
+  studio-bg-elev: "***REMOVED***23232a"
+  studio-text-strong: "***REMOVED***fafafa"
+  status-running-fg: "***REMOVED***7ab98a"
+  status-running-bg: "***REMOVED***1d2e23"
+  status-stopped-fg: "***REMOVED***d07a82"
+  status-stopped-bg: "***REMOVED***322023"
+  status-warning-fg: "***REMOVED***c4a667"
+  status-warning-bg: "***REMOVED***2e2a1e"
+  status-unknown-fg: "***REMOVED***8a8d94"
+  status-unknown-bg: "***REMOVED***25272c"
+  ***REMOVED*** Les couleurs de mode (badges de type de container) ne sont plus des tokens figés :
+  ***REMOVED*** elles sont déclarées par chaque plugin (plugin.json:badge.oklch) et générées au
+  ***REMOVED*** rendu par templates/layout.html. Voir « Modes » plus bas.
 typography:
   display:
     fontFamily: "Inter, 'Segoe UI', system-ui, -apple-system, sans-serif"
@@ -125,11 +125,11 @@ components:
     textColor: "{colors.slate-signal}"
 ---
 
-# Design System: Bobi.Studio
+***REMOVED*** Design System: Bobi.Studio
 
 > Statut : vérifié contre le code (base.css, layout.html, plugins) le **2026-07-04**.
 
-## 1. Overview
+***REMOVED******REMOVED*** 1. Overview
 
 **Creative North Star: "Le tableau de bord vidéo IP"**
 
@@ -146,34 +146,34 @@ Le système rejette le **corporate broadcast lourd** (grilles serrées Windows-X
 - Monospace réservée aux valeurs techniques (fps, timestamps, badges, champs numériques), jamais pour la prose.
 - Interface **i18n FR/EN** : tout texte UI passe par une clé de traduction — `_('cle')` côté Jinja, `window.t('cle')` côté JS (catalogue injecté `window.I18N = js_catalog` dans layout.html ; admin des traductions : templates/i18n.html). Le français reste la langue de référence des clés et des valeurs par défaut. Jamais de texte codé en dur.
 
-## 2. Colors
+***REMOVED******REMOVED*** 2. Colors
 
 Le système distingue trois rôles d'accent (un par thème), un vocabulaire de statuts partagé, et quatre couleurs de mode pour typer les containers par rôle dans le pipeline.
 
-### Primary (varie selon le thème)
+***REMOVED******REMOVED******REMOVED*** Primary (varie selon le thème)
 
-- **Slate Signal** (`#7aa2c8`) : accent du thème par défaut. Bleu ardoise désaturé, lisible sur dark neutre, jamais agressif. Utilisé pour les liens, le focus de champ, l'état actif des onglets et des chips de filtre, le titre actif dans la nav.
-- **Daylight Indigo** (`#4f46e5`) : accent du thème Daylight. Indigo franc qui ressort sur fond blanc cassé.
-- **Studio Amber** (`#f59e0b`) : accent du thème Studio. Référence directe à la tally lamp broadcast, lisible à distance en régie sombre.
+- **Slate Signal** (`***REMOVED***7aa2c8`) : accent du thème par défaut. Bleu ardoise désaturé, lisible sur dark neutre, jamais agressif. Utilisé pour les liens, le focus de champ, l'état actif des onglets et des chips de filtre, le titre actif dans la nav.
+- **Daylight Indigo** (`***REMOVED***4f46e5`) : accent du thème Daylight. Indigo franc qui ressort sur fond blanc cassé.
+- **Studio Amber** (`***REMOVED***f59e0b`) : accent du thème Studio. Référence directe à la tally lamp broadcast, lisible à distance en régie sombre.
 
-### Neutral (varie selon le thème, mêmes rôles)
+***REMOVED******REMOVED******REMOVED*** Neutral (varie selon le thème, mêmes rôles)
 
 Trois couches de fond par thème : **bg** (surface), **bg-elev** (cards, formulaires, nav, palette), **bg-input** (champs, lignes de liste). Trois niveaux de texte : **text** (lecture courante), **text-muted** (labels, meta, timestamps), **text-strong** (titres, valeurs actives). Les borders sont toujours présentes, jamais imitées par des shadows.
 
-- Default (dark neutre) : `bg #14161a`, `bg-elev #1b1e23`, `border #2a2d34`, `text #d4d6da`, `text-strong #f0f1f3`.
-- Daylight (clean light) : `bg #f6f7f9`, `bg-elev #ffffff`, `border #e5e7eb`, `text #1f2937`, `text-strong #111827`.
-- Studio (dark warm) : `bg #18181b`, `bg-elev #23232a`, `border #36363f`, `text #e4e4e7`, `text-strong #fafafa`.
+- Default (dark neutre) : `bg ***REMOVED***14161a`, `bg-elev ***REMOVED***1b1e23`, `border ***REMOVED***2a2d34`, `text ***REMOVED***d4d6da`, `text-strong ***REMOVED***f0f1f3`.
+- Daylight (clean light) : `bg ***REMOVED***f6f7f9`, `bg-elev ***REMOVED***ffffff`, `border ***REMOVED***e5e7eb`, `text ***REMOVED***1f2937`, `text-strong ***REMOVED***111827`.
+- Studio (dark warm) : `bg ***REMOVED***18181b`, `bg-elev ***REMOVED***23232a`, `border ***REMOVED***36363f`, `text ***REMOVED***e4e4e7`, `text-strong ***REMOVED***fafafa`.
 
-### Statuts (partagés tous thèmes, rôles fixes)
+***REMOVED******REMOVED******REMOVED*** Statuts (partagés tous thèmes, rôles fixes)
 
 Couples fond+texte calibrés pour chaque thème ; les rôles sémantiques ne bougent jamais.
 
-- **Running** (vert, ex `#7ab98a` sur `#1d2e23`) : container up + script actif.
-- **Stopped** (rouge, ex `#d07a82` sur `#322023`) : container down ou erreur grave.
-- **Warning / script_stopped** (jaune amber, ex `#c4a667` sur `#2e2a1e`) : container up mais script arrêté côté agent.
-- **Unknown** (gris, ex `#8a8d94` sur `#25272c`) : état indéterminé, timeout agent.
+- **Running** (vert, ex `***REMOVED***7ab98a` sur `***REMOVED***1d2e23`) : container up + script actif.
+- **Stopped** (rouge, ex `***REMOVED***d07a82` sur `***REMOVED***322023`) : container down ou erreur grave.
+- **Warning / script_stopped** (jaune amber, ex `***REMOVED***c4a667` sur `***REMOVED***2e2a1e`) : container up mais script arrêté côté agent.
+- **Unknown** (gris, ex `***REMOVED***8a8d94` sur `***REMOVED***25272c`) : état indéterminé, timeout agent.
 
-### Modes (rôle du container dans le pipeline)
+***REMOVED******REMOVED******REMOVED*** Modes (rôle du container dans le pipeline)
 
 Teintes basse-saturation qui typent les containers sans hiérarchie de gravité (ce n'est pas un statut, c'est une catégorie). **Système ouvert, piloté par les plugins** : il n'existe plus de liste figée de classes `.mode-*` à couleurs hex dans le CSS.
 
@@ -184,7 +184,7 @@ Teintes basse-saturation qui typent les containers sans hiérarchie de gravité 
 
 Ajouter un type = déclarer un `badge.oklch` dans son manifeste (chroma mesuré ≈ 0.05, L ≈ 0.78 pour rester dans la famille), pas toucher au CSS.
 
-### Familles de tokens spécialisées (base.css)
+***REMOVED******REMOVED******REMOVED*** Familles de tokens spécialisées (base.css)
 
 - **`--space-1..7`** : échelle d'espacement explicite (4 / 8 / 12 / 16 / 24 / 32 / 48 px). Le nouveau code l'utilise ; `--gap` / `--card-padding` restent pour la compat.
 - **`--topo-flow-video|audio|data`** (+ variantes `-active`) : couleurs des arêtes de la topologie pipeline (page Câbles) — vidéo sur l'accent du thème, audio ocre, data violet.
@@ -192,7 +192,7 @@ Ajouter un type = déclarer un `badge.oklch` dans son manifeste (chroma mesuré 
 - **`--overlay-accent` / `--overlay-accent-soft`** : accent OKLCH (`0.74 0.11 315`) des overlays du composer multiview (texte/horloge/image), décliné dans les trois thèmes.
 - **`--canvas-bg`** : fond des surfaces de prévisualisation canvas (multiview, mini-previews), overridé par thème.
 
-### Named Rules
+***REMOVED******REMOVED******REMOVED*** Named Rules
 
 **La règle Statut > Couleur.** Un statut critique (running, stopped) n'est jamais identifiable par la couleur seule. Toujours coupler avec le label texte du badge. Lisibilité conservée en N&B (captures, projection dégradée).
 
@@ -202,7 +202,7 @@ Ajouter un type = déclarer un `badge.oklch` dans son manifeste (chroma mesuré 
 
 **La règle OKLCH pour les ajouts.** Le système actuel est en hex pour raisons historiques. Tout nouveau token doit être défini en OKLCH avec chroma réduit aux extrêmes de luminosité.
 
-## 3. Typography
+***REMOVED******REMOVED*** 3. Typography
 
 **Display Font:** Inter (avec fallback `'Segoe UI', system-ui, -apple-system, sans-serif`).
 **Body Font:** Inter (même famille, une seule famille pour l'UI).
@@ -210,7 +210,7 @@ Ajouter un type = déclarer un `badge.oklch` dans son manifeste (chroma mesuré 
 
 **Character:** Sans-serif neutre, lisible à toutes les tailles, qui disparaît au profit de l'information. La monospace est réservée aux valeurs techniques (fps, timestamps, IP, paths, badges de statut, champs numériques). Aucune typo d'affichage décorative.
 
-### Hierarchy
+***REMOVED******REMOVED******REMOVED*** Hierarchy
 
 - **Display** (h1, weight 600–700, `1.35em`, letter-spacing `-0.01em`) : titre de page unique en haut de chaque vue.
 - **Headline** (h3, weight 600, `0.95em`) : titres de cards et de sections d'éditeur.
@@ -219,48 +219,48 @@ Ajouter un type = déclarer un `badge.oklch` dans son manifeste (chroma mesuré 
 - **Label** (weight 500, `0.78em`) : labels de formulaire, meta, timestamps. `text-muted` par défaut.
 - **Mono** (weight 400, `0.88em`) : valeurs techniques. Jamais pour la prose courante, jamais pour les labels d'interface.
 
-### Named Rules
+***REMOVED******REMOVED******REMOVED*** Named Rules
 
 **La règle Monospace Confinée.** La monospace ne sert qu'aux *valeurs* techniques (fps, timestamps, IP, chemins shm, badges). Jamais pour les labels, jamais pour les boutons, jamais pour la prose. Si un humain le lit comme une phrase, c'est Inter.
 
 **La règle Échelle Serrée.** Ratio ~1.15 entre les pas de l'échelle. Beaucoup d'éléments cohabitent sur une vue (cards × N containers + nav + sidebar + alertes) ; un contraste typographique exagéré crée du bruit.
 
-## 4. Elevation
+***REMOVED******REMOVED*** 4. Elevation
 
 Le système est **majoritairement flat**. La hiérarchie de profondeur passe par le contraste de fond entre `bg`, `bg-elev` et `bg-input` (couches tonales), pas par les ombres.
 
-### Shadow Vocabulary
+***REMOVED******REMOVED******REMOVED*** Shadow Vocabulary
 
 - **Default** (`box-shadow: none`) : aucune ombre. La séparation est portée par les borders 1px et les changements de surface.
 - **Daylight** (`0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.06)`) : ombre tactile très discrète, posée sur les cards, formulaires et nav pour compenser l'absence de contraste de fond sur surface blanche.
 - **Studio** (`0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25)`) : ombre fine sur dark warm, équivalente à Daylight pour matérialiser les surfaces sans relief excessif.
 
-### Named Rules
+***REMOVED******REMOVED******REMOVED*** Named Rules
 
 **La règle Flat par Défaut.** Les surfaces sont plates au repos. Pas de glow décoratif, pas de drop-shadow épaisse, pas de relief 3D sur les boutons. La profondeur, c'est le contraste tonal.
 
 **La règle Pas de Glassmorphism.** Pas de `backdrop-filter: blur`. Pas de gradient violet en arrière-plan. Le système a déjà rejeté un thème glass (Aurora) pour cette raison. Si une surface a besoin d'attirer l'œil, c'est par sa hiérarchie ou son accent, pas par un effet matériau.
 
-## 5. Components
+***REMOVED******REMOVED*** 5. Components
 
-### Buttons
+***REMOVED******REMOVED******REMOVED*** Buttons
 - **Shape:** rayon `var(--radius-small)` = 4–6px. Pas pill, pas square.
-- **Primary (`.btn` + couleur):** `.btn-blue`, `.btn-green`, `.btn-red`, `.btn-orange`, `.btn-purple` portent une couleur d'intention pleine désaturée (`#3b5673`, `#355c43`, `#6e3138`…). Texte `#f0f1f3`, padding `6px 12px`, font-size `0.85em`, weight 500.
+- **Primary (`.btn` + couleur):** `.btn-blue`, `.btn-green`, `.btn-red`, `.btn-orange`, `.btn-purple` portent une couleur d'intention pleine désaturée (`***REMOVED***3b5673`, `***REMOVED***355c43`, `***REMOVED***6e3138`…). Texte `***REMOVED***f0f1f3`, padding `6px 12px`, font-size `0.85em`, weight 500.
 - **Hover / Active:** `filter: brightness(1.10)` au hover, `0.95` au press. Pas de translation, pas de scale.
 - **Transition:** 120ms sur background, border-color, color. Aucune choreography.
 - **Don't:** ne jamais composer un bouton avec gradient text, glow, ou border-radius pill par défaut.
 
-### Status Badges (`.badge.running` / `.stopped` / `.script_stopped` / `.unknown`)
+***REMOVED******REMOVED******REMOVED*** Status Badges (`.badge.running` / `.stopped` / `.script_stopped` / `.unknown`)
 - **Shape:** rayon `3px`, padding `2px 8px`, font-size `0.75em`, weight 600, `lowercase`, letter-spacing `0.3px`.
 - **Family:** monospace.
 - **Rule:** background et texte du même rôle sémantique. Le texte du label EST le statut (jamais juste la couleur).
 
-### Mode Badges (`.mode-badge` + classe couleur générée / `.mode-none`)
+***REMOVED******REMOVED******REMOVED*** Mode Badges (`.mode-badge` + classe couleur générée / `.mode-none`)
 - **Shape (`.mode-badge`, base.css):** rayon `3px`, padding `2px 8px`, font-size `0.72em`, weight 600, `UPPERCASE`, letter-spacing `0.5px`.
 - **Couleur:** générée depuis `plugin.json:badge.oklch` par layout.html (voir « Modes » en section Colors) : fond `oklch(L C H / 14%)`, texte `oklch(L C H)`, border `oklch(L C H / 32%)` ; dérivation auto `L - 0.33` en thème light. Aucune classe couleur codée en dur dans le CSS.
 - **mode-none:** transparent, border dashed, `text-muted`. État "rien déployé".
 
-### Cards (`.card`)
+***REMOVED******REMOVED******REMOVED*** Cards (`.card`)
 - **Corner:** `var(--radius)` = 6px (default/studio), 8px (light).
 - **Background:** `var(--bg-elev)`.
 - **Border:** 1px solid `var(--border)`. Toujours présente.
@@ -268,36 +268,36 @@ Le système est **majoritairement flat**. La hiérarchie de profondeur passe par
 - **Padding:** `var(--card-padding)` = 16–18px.
 - **Grid:** `grid-template-columns: repeat(auto-fill, minmax(280px, 1fr))`, gap 12–14px.
 
-### Forms (`.form`, `.palette-field`)
+***REMOVED******REMOVED******REMOVED*** Forms (`.form`, `.palette-field`)
 - **Container:** même style que card (`bg-elev` + border + radius).
 - **Input / Select:** fond `var(--bg-input)`, border 1px `var(--border)`, padding `6px 9px` (compact) ou `8px 11px` (palette).
 - **Focus:** border-color `var(--accent)`, background passe à `var(--bg)`. En Daylight, un glow accent `box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12)` complète.
 - **Family:** monospace pour `input[type=number|text]` et `select` (valeurs techniques).
 - **Width:** par défaut 90px ; `.wide` 200px ; `.xwide` 360px. Palette : `width: 100%`.
 
-### Switch iOS (`input[type=checkbox].ios-toggle`, base.css)
+***REMOVED******REMOVED******REMOVED*** Switch iOS (`input[type=checkbox].ios-toggle`, base.css)
 - **Usage — règle projet:** TOUT booléen d'interface (feature-toggle « Activer … », capacités, options) utilise `.ios-toggle`. **Jamais de checkbox nue.**
 - **Anatomie:** classe posée directement sur l'`<input type="checkbox">` (`appearance: none`) : track pill `36×20px` (`bg-input` + border), thumb rond `14px` en `::before`.
 - **États:** off = thumb `text-muted` ; checked = track `var(--accent-soft)` + border accent, thumb accent translaté de `16px` ; `:focus-visible` = outline accent 2px.
 - **Motion:** track 180ms ease-out, thumb 220ms `cubic-bezier(0.22, 1, 0.36, 1)`.
 - **Groupes horizontaux:** envelopper dans `label.toggle-inline` (inline-flex, gap `7px`, weight 500, texte `var(--text)`).
 
-### Nav Réglages à 2 niveaux (templates/settings.html)
+***REMOVED******REMOVED******REMOVED*** Nav Réglages à 2 niveaux (templates/settings.html)
 - **Niveau 0 — groupes:** rangée `.tabs.set-groups` de 7 groupes de haut niveau (Général, Cluster & réseau, Nœuds & matériel, Signal & format, Médias, Protocoles & pupitres, Système).
 - **Niveau 1 — onglets:** rangée `.tabs.set-subnav` des onglets existants, **filtrée** au groupe actif par `switchSetGroup()` (mapping `SET_GROUPS` → `SET_TABS`, permissions respectées). Les sous-onglets internes des pages restent inchangés.
 - **Style:** les deux niveaux réutilisent le composant Tabs standard ; aucun style bespoke.
 
-### Filter Chips (`.filter-chip`)
+***REMOVED******REMOVED******REMOVED*** Filter Chips (`.filter-chip`)
 - **Shape:** pill, border 1px, padding `3px 10px`, font-size `0.82em`.
 - **Default:** fond transparent, texte `var(--text)`, border `var(--border)`.
 - **Active:** fond `var(--accent-soft)` (10% accent), border et texte `var(--accent)`. Toujours associé à un label texte.
 
-### Tabs (`.tabs` / `.tab`)
+***REMOVED******REMOVED******REMOVED*** Tabs (`.tabs` / `.tab`)
 - **Style:** onglets plats sous une bordure inférieure. Pas d'onglet 3D.
 - **Default:** fond transparent, `text-muted`.
 - **Active:** fond `bg-elev`, border 1px `var(--border)` sans bordure basse, texte `text-strong`. Coins supérieurs arrondis seulement.
 
-### Top Navigation (`.topnav`)
+***REMOVED******REMOVED******REMOVED*** Top Navigation (`.topnav`)
 - **Container:** `bg-elev` + border + radius + shadow du thème, padding `10px 16px`.
 - **Brand:** weight 700, letter-spacing `2px` (le seul endroit avec un letter-spacing aussi marqué), `text-strong`.
 - **Liens:** padding `7px 14px`, radius small, weight 500.
@@ -305,18 +305,18 @@ Le système est **majoritairement flat**. La hiérarchie de profondeur passe par
 - **Active:** fond `var(--bg-selected)`, couleur accent.
 - **Settings (icone-action):** lien encadré (border 1px), hover passe border + texte à l'accent.
 
-### Alerts (`.alert.alert-info` / `alert-warning` / `alert-error`)
+***REMOVED******REMOVED******REMOVED*** Alerts (`.alert.alert-info` / `alert-warning` / `alert-error`)
 - **Shape:** rayon small, padding `8px 12px`, font-size `0.85em`.
 - **Default:** `bg-elev` + border 1px `var(--border)`.
 - **Variant:** full 1px border + fond teinté pris sur les tokens de statut. `info` = `--accent` + `--accent-soft`. `warning` = `--status-warning-fg` + `--status-warning-bg`. `error` = `--status-stopped-fg` + `--status-stopped-bg`. Pas de side-stripe.
 
-### Multiview / Layout List Items (`.mw-list li` / `.layout-list li`)
+***REMOVED******REMOVED******REMOVED*** Multiview / Layout List Items (`.mw-list li` / `.layout-list li`)
 - **Style:** carte mini avec preview canvas, padding `8px 10px`, radius small, border soft, fond `bg-input`.
 - **Selected:** fond `bg-selected`, border accent.
 
-## 6. Do's and Don'ts
+***REMOVED******REMOVED*** 6. Do's and Don'ts
 
-### Do:
+***REMOVED******REMOVED******REMOVED*** Do:
 - **Do** utiliser **Inter** pour toute l'UI et la **monospace** uniquement pour les valeurs techniques (fps, IP, timestamps, paths shm, champs numériques).
 - **Do** définir tout nouveau token couleur en **OKLCH** avec chroma réduit (`<0.1`) aux extrêmes de luminosité, même si l'historique du fichier est en hex.
 - **Do** rendre tout statut identifiable sans la couleur : badge avec **label texte** (`running`, `stopped`), pas seulement une pastille colorée.
@@ -326,7 +326,7 @@ Le système est **majoritairement flat**. La hiérarchie de profondeur passe par
 - **Do** propager toute nouvelle couleur structurelle dans **les trois thèmes** (default, light, studio) avec le même rôle sémantique.
 - **Do** garder l'**accent ≤10% de la surface** : liens, focus, état actif, état sélectionné. Jamais en décoration.
 
-### Don't:
+***REMOVED******REMOVED******REMOVED*** Don't:
 - **Don't** introduire de **glassmorphism** (`backdrop-filter: blur`, surfaces translucides, gradients radiaux violets). Le thème Aurora a été retiré du système pour cette raison.
 - **Don't** utiliser de **border-left/right > 1px comme bande colorée** sur cards, alertes, list items. La règle s'applique aussi aux alertes actuelles (`alert-info|warning|error`), à corriger lors d'une passe `polish`.
 - **Don't** utiliser de **gradient text** (`background-clip: text` + gradient). Aucun titre, aucune valeur ne doit être colorée par gradient.
@@ -337,4 +337,4 @@ Le système est **majoritairement flat**. La hiérarchie de profondeur passe par
 - **Don't** dépendre de la **couleur seule** pour signaler un statut critique. Toujours coupler avec un label texte.
 - **Don't** introduire de **modale** quand un panel inline ou une palette latérale suffit. Le pattern dominant est la palette de déploiement sticky à droite.
 - **Don't** créer une couleur visible uniquement dans un seul thème (sauf l'accent).
-- **Don't** utiliser `#000` ou `#fff` purs pour de nouveaux tokens : tinter légèrement vers le hue du thème.
+- **Don't** utiliser `***REMOVED***000` ou `***REMOVED***fff` purs pour de nouveaux tokens : tinter légèrement vers le hue du thème.

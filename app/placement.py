@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """CONSTAT du placement CPU réel des conteneurs d'un nœud — le pendant de `core_pool`.
 
@@ -66,19 +66,19 @@ log = logging.getLogger(__name__)
 
 _episodes = _Episodes("placement")
 
-# Le relevé fait un exec sur le nœud : throttle par nœud (la surveillance tourne toutes les 5 s).
+***REMOVED*** Le relevé fait un exec sur le nœud : throttle par nœud (la surveillance tourne toutes les 5 s).
 RELEVE_TTL_S = 120.0
-_dernier = {}          # node_id → (monotone, relevé|None)
+_dernier = {}          ***REMOVED*** node_id → (monotone, relevé|None)
 
 
-# ─── Sonde nœud (lecture seule) ──────────────────────────────────────────────
-# Exécutée par `python3 -` via l'agent (stdin) : aucune citation shell à échapper, et python3 est
-# garanti présent (l'agent-nœud lui-même est en python). Elle ne fait QUE lire : /sys pour la bande
-# isolée, `docker ps/inspect` pour les cpusets posés, /proc pour la localisation RÉELLE des threads.
-#
-# `psr` (champ 39 de /proc/<pid>/task/<tid>/stat) est le dernier cœur sur lequel le thread a tourné.
-# Pour un thread endormi c'est un souvenir, pas une position — d'où le principe : la répartition
-# observée sert de PREUVE à l'appui d'un défaut structurel (I1/I2), jamais de défaut à elle seule.
+***REMOVED*** ─── Sonde nœud (lecture seule) ──────────────────────────────────────────────
+***REMOVED*** Exécutée par `python3 -` via l'agent (stdin) : aucune citation shell à échapper, et python3 est
+***REMOVED*** garanti présent (l'agent-nœud lui-même est en python). Elle ne fait QUE lire : /sys pour la bande
+***REMOVED*** isolée, `docker ps/inspect` pour les cpusets posés, /proc pour la localisation RÉELLE des threads.
+***REMOVED***
+***REMOVED*** `psr` (champ 39 de /proc/<pid>/task/<tid>/stat) est le dernier cœur sur lequel le thread a tourné.
+***REMOVED*** Pour un thread endormi c'est un souvenir, pas une position — d'où le principe : la répartition
+***REMOVED*** observée sert de PREUVE à l'appui d'un défaut structurel (I1/I2), jamais de défaut à elle seule.
 _SONDE = r'''
 import json, os, re, subprocess
 
@@ -169,10 +169,10 @@ def releve_cache(node_id, ttl=RELEVE_TTL_S, force=False):
     return r
 
 
-# ─── Application des invariants ──────────────────────────────────────────────
+***REMOVED*** ─── Application des invariants ──────────────────────────────────────────────
 
-# Variante libmxl réellement chargée, par nœud. Cachée longuement : elle ne change qu'au
-# redéploiement d'une image ou au remplacement d'un CPU.
+***REMOVED*** Variante libmxl réellement chargée, par nœud. Cachée longuement : elle ne change qu'au
+***REMOVED*** redéploiement d'une image ou au remplacement d'un CPU.
 _variante_cache = {}
 _VARIANTE_TTL_S = 3600.0
 
@@ -265,18 +265,18 @@ def constater(node_id, releve=None, force=False):
         total_th = sum(threads.values())
         est_moteur = nom in moteurs or nom.startswith("bobi-mtl-")
 
-        # ── I1 : tout cœur donné doit être ordonnançable ──────────────────────
-        #
-        # ⚠ SAUF pour le moteur 2110, et ce n'est pas une exception de complaisance : ses lcores
-        # busy-poll DOIVENT être isolés (c'est leur raison d'être) et DOIVENT figurer dans son
-        # cpuset (Docker n'y ferait pas tourner ses threads sinon). L'intersection est donc
-        # structurellement non vide, et l'invariant tel qu'énoncé ne pouvait JAMAIS être satisfait :
-        # il criait au défaut sur la configuration correcte. Ce qui compte pour un moteur n'est pas
-        # que l'intersection soit vide, mais qu'il lui reste assez de cœurs ORDONNANÇABLES pour ses
-        # threads de service. On compare donc à l'INTENTION — le nombre de cœurs de service que les
-        # réglages lui destinent — au lieu d'un idéal qui ne s'applique pas à lui.
-        # (Reformulé le 2026-08-02, après que le correctif de la bande isolée a rendu la
-        # configuration correcte sans faire taire l'alarme.)
+        ***REMOVED*** ── I1 : tout cœur donné doit être ordonnançable ──────────────────────
+        ***REMOVED***
+        ***REMOVED*** ⚠ SAUF pour le moteur 2110, et ce n'est pas une exception de complaisance : ses lcores
+        ***REMOVED*** busy-poll DOIVENT être isolés (c'est leur raison d'être) et DOIVENT figurer dans son
+        ***REMOVED*** cpuset (Docker n'y ferait pas tourner ses threads sinon). L'intersection est donc
+        ***REMOVED*** structurellement non vide, et l'invariant tel qu'énoncé ne pouvait JAMAIS être satisfait :
+        ***REMOVED*** il criait au défaut sur la configuration correcte. Ce qui compte pour un moteur n'est pas
+        ***REMOVED*** que l'intersection soit vide, mais qu'il lui reste assez de cœurs ORDONNANÇABLES pour ses
+        ***REMOVED*** threads de service. On compare donc à l'INTENTION — le nombre de cœurs de service que les
+        ***REMOVED*** réglages lui destinent — au lieu d'un idéal qui ne s'applique pas à lui.
+        ***REMOVED*** (Reformulé le 2026-08-02, après que le correctif de la bande isolée a rendu la
+        ***REMOVED*** configuration correcte sans faire taire l'alarme.)
         if cpuset:
             perdus = cpuset & iso
             restants = cpuset - iso
@@ -285,12 +285,12 @@ def constater(node_id, releve=None, force=False):
                     attendus = len(core_pool.engine_service_cpus(n_cpus=nproc, core_of=None))
                 except Exception:
                     attendus = 2
-                # +1 : le cœur 0 porte le main_lcore EAL et le housekeeping du noyau ; il ne compte
-                # pas comme cœur de service utilisable.
+                ***REMOVED*** +1 : le cœur 0 porte le main_lcore EAL et le housekeeping du noyau ; il ne compte
+                ***REMOVED*** pas comme cœur de service utilisable.
                 if len(restants) >= max(2, attendus // 2 + 1):
                     continue
             if perdus:
-                # Gravité par CONSÉQUENCE, pas par proportion : ce qui compte est ce qu'il RESTE.
+                ***REMOVED*** Gravité par CONSÉQUENCE, pas par proportion : ce qui compte est ce qu'il RESTE.
                 niveau = "error" if len(restants) <= 1 else "warning"
                 sur = sorted(threads.items(), key=lambda kv: -kv[1])[:1]
                 preuve = ""
@@ -304,12 +304,12 @@ def constater(node_id, releve=None, force=False):
                         f"réellement ordonnançables "
                         f"({'« ' + core_pool.fmt_cpuset(restants) + ' »' if restants else 'AUCUN'})"
                         f".{preuve}")
-                # Le moteur à bout de cœurs de service est LE cas dégénéré : ses threads applicatifs
-                # (contrôleur, métriques, drain audio st30p) se retrouvent sur le cœur laissé au
-                # housekeeping du noyau, pendant que ses lcores DPDK tournent en boucle active juste
-                # à côté. On le nomme À PART — un même constat, mais une cause et un remède propres.
-                # Canal i18n en plus de "message" (texte FR figé, consommé tel quel par
-                # /api/nodes/<id>/placement → JS, cf. app/routes/monitoring_api.py) : PAS touché.
+                ***REMOVED*** Le moteur à bout de cœurs de service est LE cas dégénéré : ses threads applicatifs
+                ***REMOVED*** (contrôleur, métriques, drain audio st30p) se retrouvent sur le cœur laissé au
+                ***REMOVED*** housekeeping du noyau, pendant que ses lcores DPDK tournent en boucle active juste
+                ***REMOVED*** à côté. On le nomme À PART — un même constat, mais une cause et un remède propres.
+                ***REMOVED*** Canal i18n en plus de "message" (texte FR figé, consommé tel quel par
+                ***REMOVED*** /api/nodes/<id>/placement → JS, cf. app/routes/monitoring_api.py) : PAS touché.
                 _mp = {
                     "nom": nom, "cpuset": core_pool.fmt_cpuset(cpuset), "n_cpuset": len(cpuset),
                     "perdus": len(perdus), "fmt_perdus": core_pool.fmt_cpuset(perdus),
@@ -337,7 +337,7 @@ def constater(node_id, releve=None, force=False):
                                     "msg_key": ("alert.resource.placement_coeurs_isoles_mesure" if _mesure
                                                 else "alert.resource.placement_coeurs_isoles"),
                                     "msg_params": _mp})
-        # ── I2 : la bande isolée appartient au moteur ─────────────────────────
+        ***REMOVED*** ── I2 : la bande isolée appartient au moteur ─────────────────────────
         elif iso:
             occupes_iso = sorted(cpu for cpu in threads if cpu in iso)
             if occupes_iso:
@@ -356,9 +356,9 @@ def constater(node_id, releve=None, force=False):
             else:
                 sans_cpuset.append(nom)
 
-    # RISQUE (par opposition aux constats ci-dessus) : agrégé en UN défaut de nœud. Quatorze
-    # conteneurs RDMA sans cpuset, c'est UNE chose à réparer, pas quatorze alertes — un fil d'alertes
-    # qu'on apprend à ignorer coûte plus cher que l'incident (cf. app/episodes.py).
+    ***REMOVED*** RISQUE (par opposition aux constats ci-dessus) : agrégé en UN défaut de nœud. Quatorze
+    ***REMOVED*** conteneurs RDMA sans cpuset, c'est UNE chose à réparer, pas quatorze alertes — un fil d'alertes
+    ***REMOVED*** qu'on apprend à ignorer coûte plus cher que l'incident (cf. app/episodes.py).
     if sans_cpuset:
         defauts.append({
             "code": "sans_cpuset", "conteneur": "*", "niveau": "warning",
@@ -373,7 +373,7 @@ def constater(node_id, releve=None, force=False):
             "msg_params": {"n_conteneurs": len(sans_cpuset), "n_iso": len(iso),
                            "fmt_iso": core_pool.fmt_cpuset(iso),
                            "liste": ", ".join(sorted(sans_cpuset))}})
-    # ── Variante libmxl : un CPU capable qui charge la baseline perd ~20 % EN SILENCE ──────
+    ***REMOVED*** ── Variante libmxl : un CPU capable qui charge la baseline perd ~20 % EN SILENCE ──────
     v = variante_mxl(node_id, force=force)
     if v and v["avx2"] and v["variante"] == "baseline":
         defauts.append({
@@ -406,24 +406,24 @@ def verifier(node_id):
     for d in res["defauts"]:
         cle = (str(node_id), d["conteneur"], d["code"])
         vus.add(cle)
-        # L'état mémorisé n'est pas « déjà annoncé » mais CE QU'ON A ANNONCÉ : pour un défaut agrégé,
-        # la liste des conteneurs concernés. Sans ça, un 15ᵉ conteneur sans cpuset resterait muet
-        # derrière l'alerte des quatorze premiers.
+        ***REMOVED*** L'état mémorisé n'est pas « déjà annoncé » mais CE QU'ON A ANNONCÉ : pour un défaut agrégé,
+        ***REMOVED*** la liste des conteneurs concernés. Sans ça, un 15ᵉ conteneur sans cpuset resterait muet
+        ***REMOVED*** derrière l'alerte des quatorze premiers.
         etat = d["niveau"] + "|" + ",".join(d.get("detail") or [])
         if _episodes.get(cle) == etat:
-            continue                                   # déjà annoncé à l'identique → silence
+            continue                                   ***REMOVED*** déjà annoncé à l'identique → silence
         _episodes.poser(cle, etat)
         if d.get("msg_key"):
             _params = dict(d.get("msg_params") or {})
             _params["n"] = nom_noeud
             db_add_alert(d["msg_key"], d["niveau"], node_id=node_id, kind="resource", params=_params)
         else:
-            # Repli défensif (ne devrait plus arriver : les 5 codes de `constater()` posent tous
-            # msg_key/msg_params) — jamais un code d'alerte inconnu ne doit rester muet.
+            ***REMOVED*** Repli défensif (ne devrait plus arriver : les 5 codes de `constater()` posent tous
+            ***REMOVED*** msg_key/msg_params) — jamais un code d'alerte inconnu ne doit rester muet.
             db_add_alert(f"Nœud {nom_noeud} — placement CPU : {d['message']}", d["niveau"],
                          node_id=node_id, kind="resource")
-    # Levée : un défaut disparu doit être DIT, sinon l'exploitant ne sait jamais qu'il a réparé.
-    # `cles()` rend des clés TEXTE (tuple aplati par le séparateur) → on les redécoupe.
+    ***REMOVED*** Levée : un défaut disparu doit être DIT, sinon l'exploitant ne sait jamais qu'il a réparé.
+    ***REMOVED*** `cles()` rend des clés TEXTE (tuple aplati par le séparateur) → on les redécoupe.
     from .episodes import _SEP
     for txt in _episodes.cles():
         parts = txt.split(_SEP)
@@ -458,12 +458,12 @@ def verifier_tous():
                 verifier(n["id"])
             except Exception as e:
                 log.warning("placement.verifier(%s): %s", n.get("id"), e)
-        # ⚠ INDISPENSABLE. `EtatEpisodes.flush` est débouncé (30 s) et n'est appelé QUE depuis
-        # `poser`/`retirer` : un défaut annoncé puis stable n'est donc JAMAIS écrit sur disque, et
-        # un redémarrage de l'orchestrateur le ré-annonce comme s'il naissait — exactement ce que le
-        # module d'épisodes existe pour empêcher. Constaté en branchant ce module le 2026-08-01 :
-        # deux alertes émises, `episodes_placement.json` absent. La passe de surveillance donne le
-        # battement qui manquait ; l'appel est un no-op tant que rien n'est sale.
+        ***REMOVED*** ⚠ INDISPENSABLE. `EtatEpisodes.flush` est débouncé (30 s) et n'est appelé QUE depuis
+        ***REMOVED*** `poser`/`retirer` : un défaut annoncé puis stable n'est donc JAMAIS écrit sur disque, et
+        ***REMOVED*** un redémarrage de l'orchestrateur le ré-annonce comme s'il naissait — exactement ce que le
+        ***REMOVED*** module d'épisodes existe pour empêcher. Constaté en branchant ce module le 2026-08-01 :
+        ***REMOVED*** deux alertes émises, `episodes_placement.json` absent. La passe de surveillance donne le
+        ***REMOVED*** battement qui manquait ; l'appel est un no-op tant que rien n'est sale.
         _episodes.flush()
     finally:
         _passe_en_cours.release()

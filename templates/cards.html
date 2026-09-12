@@ -30,8 +30,8 @@
     <span role="group" aria-label="{{ _('containers.filter.by_type_aria') }}" class="filter-group">
         <span class="filter-label" aria-hidden="true">{{ _('containers.filter.type') }}</span>
         <button class="filter-chip active" data-group="type" data-value="all"  onclick="setFilter('type','all')">{{ _('containers.filter.all') }}</button>
-        {# Un chip par type de plugin, généré depuis le registre (pas de doublon, libellés corrects).
-           data-section = catégorie du type, utilisé pour masquer les chips hors catégorie active. #}
+        {***REMOVED*** Un chip par type de plugin, généré depuis le registre (pas de doublon, libellés corrects).
+           data-section = catégorie du type, utilisé pour masquer les chips hors catégorie active. ***REMOVED***}
         {% for sid, s in (plugin_sections or {}).items() %}{% for p in s.plugins %}
         <button class="filter-chip" data-group="type" data-value="{{ p.type }}" data-section="{{ sid }}" onclick="setFilter('type','{{ p.type }}')">{{ p.label }}</button>
         {% endfor %}{% endfor %}
@@ -90,11 +90,11 @@
         <header class="card-head">
             <div class="card-title">
                 <h2 class="card-host">{{ c.hostname }}</h2>
-                <span class="card-vmid">#{{ c.vmid }}</span>
+                <span class="card-vmid">***REMOVED***{{ c.vmid }}</span>
             </div>
-            {# Cadence : chiffre SEULEMENT quand elle vient d'être mesurée. Sans mesure fraîche, la
+            {***REMOVED*** Cadence : chiffre SEULEMENT quand elle vient d'être mesurée. Sans mesure fraîche, la
                colonne fps est NULL (metrics._fps_sans_mesure) et on l'affiche INCONNUE — jamais la
-               dernière valeur connue, qui faisait passer un conteneur mort pour un conteneur à 49,8 fps. #}
+               dernière valeur connue, qui faisait passer un conteneur mort pour un conteneur à 49,8 fps. ***REMOVED***}
             {% if dc.type not in ['webrtc_gateway', 'ServeurStream'] %}
                 {% if c.fps %}<span class="fps">{{ c.fps }} fps</span>
                 {% elif dc and c.status not in ['stopped', 'script_stopped'] %}<span class="fps fps-unknown" title="{{ _('containers.card.fps_unknown_title') }}">{{ _('containers.card.fps_unknown') }}</span>{% endif %}
@@ -107,9 +107,9 @@
             {% else %}
                 <span class="badge {{ c.status }}" aria-live="polite"
                       {% if c.status_cause %}title="{{ c.status_cause }}"{% endif %}>{{ STATUS_FR.get(c.status, c.status) }}</span>
-                {# La CAUSE d'un arrêt, en clair. « script arrêté » sans cause obligeait à ouvrir un
+                {***REMOVED*** La CAUSE d'un arrêt, en clair. « script arrêté » sans cause obligeait à ouvrir un
                    terminal et lire `docker logs` : c'est ce qui a coûté le plus de temps du chantier
-                   CPU, où ce badge cachait un SIGILL en boucle. #}
+                   CPU, où ce badge cachait un SIGILL en boucle. ***REMOVED***}
                 {% if c.status_cause %}<span class="status-cause" title="{{ c.status_cause }}">{{ c.status_cause }}</span>{% endif %}
             {% endif %}
             {% if dc and dc.type %}
@@ -149,9 +149,9 @@
             </dd>
         </dl>
 
-        {# Menu ACTIONS — MÊME structure que le rendu JS (`_renderCardInner`), qui remplace ce
+        {***REMOVED*** Menu ACTIONS — MÊME structure que le rendu JS (`_renderCardInner`), qui remplace ce
            balisage dès le premier rafraîchissement. Toute divergence entre les deux se voit une
-           seconde puis disparaît : c'est exactement comme ça qu'un bouton devient invisible. #}
+           seconde puis disparaît : c'est exactement comme ça qu'un bouton devient invisible. ***REMOVED***}
         <div class="card-actions">
             <div class="card-menu">
                 <button class="btn card-menu-btn" aria-haspopup="menu" aria-expanded="false"

@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Version de Bobi.Studio — la SOURCE UNIQUE, et le comparateur qui va avec.
 
@@ -20,7 +20,7 @@ de publier sur un désaccord : deux sources recopiées à la main finissent touj
 et c'est le genre d'écart que personne ne remarque avant d'en avoir besoin.
 """
 
-VERSION = "0.9.7"
+VERSION = "0.9.8"
 
 
 def analyser(v):

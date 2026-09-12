@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Habilitations : CRUD des RÔLES D'AUTORISATION et de ce qu'ils permettent.
 
@@ -30,8 +30,8 @@ from ..auth import require_perm, PERMISSIONS, current_user
 from ..database import (db_habilitations_lister, db_habilitation_get, db_habilitation_upsert,
                         db_habilitation_supprimer, db_habilitation_compte_utilisateurs)
 
-# Identifiant technique : il finit en base et dans des comparaisons `role == "…"`. Pas d'espace,
-# pas d'accent, pas de majuscule — le libellé, lui, est libre.
+***REMOVED*** Identifiant technique : il finit en base et dans des comparaisons `role == "…"`. Pas d'espace,
+***REMOVED*** pas d'accent, pas de majuscule — le libellé, lui, est libre.
 _ID_VALIDE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 
 
@@ -51,8 +51,8 @@ def api_habilitations():
         "habilitations": [_vue(h) for h in db_habilitations_lister(set(PERMISSIONS))],
         "permissions": PERMISSIONS,
         "intouchable": auth.ROLE_INTOUCHABLE,
-        # Le rôle de l'appelant : l'interface s'en sert pour prévenir avant de se retirer un
-        # droit à soi-même (un administrateur ne peut pas, mais un rôle personnalisé le peut).
+        ***REMOVED*** Le rôle de l'appelant : l'interface s'en sert pour prévenir avant de se retirer un
+        ***REMOVED*** droit à soi-même (un administrateur ne peut pas, mais un rôle personnalisé le peut).
         "mon_role": (current_user() or {}).get("role"),
     })
 
@@ -91,9 +91,9 @@ def api_habilitation_modifier(rid):
     if not h:
         return jsonify({"error": "habilitation inconnue"}), 404
     if rid == auth.ROLE_INTOUCHABLE:
-        # Refus EXPLICITE plutôt qu'une modification silencieusement ignorée : `auth` remettrait
-        # de toute façon toutes les autorisations au rechargement, et l'interface afficherait
-        # une opération « réussie » sans effet.
+        ***REMOVED*** Refus EXPLICITE plutôt qu'une modification silencieusement ignorée : `auth` remettrait
+        ***REMOVED*** de toute façon toutes les autorisations au rechargement, et l'interface afficherait
+        ***REMOVED*** une opération « réussie » sans effet.
         return jsonify({"error": "le rôle administrateur n'est pas modifiable : il doit rester "
                                  "capable de rouvrir les droits qu'on vient de retirer"}), 400
     d = request.json or {}
@@ -121,8 +121,8 @@ def api_habilitation_supprimer(rid):
         return jsonify({"error": "le rôle administrateur ne se supprime pas"}), 400
     n = db_habilitation_compte_utilisateurs(rid)
     if n:
-        # On ne propose PAS de réaffecter d'office : choisir à la place de l'administrateur vers
-        # quel rôle basculer des comptes, c'est décider de leurs droits sans le lui demander.
+        ***REMOVED*** On ne propose PAS de réaffecter d'office : choisir à la place de l'administrateur vers
+        ***REMOVED*** quel rôle basculer des comptes, c'est décider de leurs droits sans le lui demander.
         return jsonify({"error": "%d compte(s) portent cette habilitation : "
                                  "changez-les de rôle avant de la supprimer" % n}), 400
     db_habilitation_supprimer(rid)

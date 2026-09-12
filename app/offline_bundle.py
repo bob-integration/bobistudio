@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Fabrication du bundle hors-ligne (`vendor/`) — pré-téléchargement des dépendances pour un
@@ -39,22 +39,22 @@ IMAGES_DIR = os.path.join(VENDOR_DIR, "images")
 REQ_PATH = os.path.join(ROOT, "requirements.txt")
 STAMP_PATH = os.path.join(VENDOR_DIR, "stamp.json")
 
-# Image runtime → capacité de nœud qui l'exécute (cf. node_agent/install-node.sh). Sert à ne charger
-# sur un nœud QUE les images de ses capacités (pas la lourde image mtl sur un nœud compute-only).
+***REMOVED*** Image runtime → capacité de nœud qui l'exécute (cf. node_agent/install-node.sh). Sert à ne charger
+***REMOVED*** sur un nœud QUE les images de ses capacités (pas la lourde image mtl sur un nœud compute-only).
 IMAGE_CAPS = {"compute": "compute", "compute-gpu": "compute",
               "media": "media", "webrtc": "webrtc", "mtl": "io2110"}
 
-# Paquets système embarqués pour le mode hors-ligne. La clôture récursive de cette union est
-# téléchargée : l'orchestrateur (install.py) et le nœud (node_agent/install-node.sh) y puisent
-# chacun leur sous-ensemble depuis le MÊME dépôt local.
-# Orchestrateur (cf. install.py:install_deps_bare).
+***REMOVED*** Paquets système embarqués pour le mode hors-ligne. La clôture récursive de cette union est
+***REMOVED*** téléchargée : l'orchestrateur (install.py) et le nœud (node_agent/install-node.sh) y puisent
+***REMOVED*** chacun leur sous-ensemble depuis le MÊME dépôt local.
+***REMOVED*** Orchestrateur (cf. install.py:install_deps_bare).
 ORCH_PACKAGES = ["python3", "python3-venv", "python3-pip",
                  "ffmpeg", "rsync", "curl", "cifs-utils", "nfs-common"]
-# Nœud de process (cf. node_agent/install-node.sh) : l'agent est stdlib pur (aucune roue), mais il
-# faut Docker + outils système. Le noyau MTL/DPDK (io2110) reste hors bundle (version-spécifique).
-# docker-cli + docker-buildx explicites : Debian 13 les a scindés de docker.io (Recommends), la
-# clôture .deb ne suit que les Depends → sans eux le bundle hors-ligne pose le daemon mais pas le
-# binaire `docker` (preflight KO) ni le builder BuildKit (« buildx component is missing » au build).
+***REMOVED*** Nœud de process (cf. node_agent/install-node.sh) : l'agent est stdlib pur (aucune roue), mais il
+***REMOVED*** faut Docker + outils système. Le noyau MTL/DPDK (io2110) reste hors bundle (version-spécifique).
+***REMOVED*** docker-cli + docker-buildx explicites : Debian 13 les a scindés de docker.io (Recommends), la
+***REMOVED*** clôture .deb ne suit que les Depends → sans eux le bundle hors-ligne pose le daemon mais pas le
+***REMOVED*** binaire `docker` (preflight KO) ni le builder BuildKit (« buildx component is missing » au build).
 NODE_PACKAGES = ["docker.io", "docker-cli", "docker-buildx", "ethtool", "ca-certificates", "linuxptp"]
 APT_PACKAGES = sorted(set(ORCH_PACKAGES + NODE_PACKAGES))
 
@@ -96,7 +96,7 @@ def _run(cmd, cwd=None):
     return r.returncode, (r.stdout or ""), (r.stderr or "")
 
 
-# ─── Roues Python ────────────────────────────────────────────────────────────
+***REMOVED*** ─── Roues Python ────────────────────────────────────────────────────────────
 
 def ensure_wheels(force=False, log=None):
     """Télécharge les roues de requirements.txt dans vendor/wheels/. Idempotent.
@@ -128,7 +128,7 @@ def ensure_wheels(force=False, log=None):
     return {"ok": True, "count": len(wheels), "skipped": False}
 
 
-# ─── Paquets .deb ────────────────────────────────────────────────────────────
+***REMOVED*** ─── Paquets .deb ────────────────────────────────────────────────────────────
 
 def _apt_closure(packages):
     """Liste des noms de paquets de la clôture récursive (Depends only)."""
@@ -138,8 +138,8 @@ def _apt_closure(packages):
                          "--no-pre-depends"] + list(packages))
     if rc != 0:
         return None, (out + err)
-    # Les vrais noms de paquets commencent en colonne 0 ; les dépendances virtuelles / alternatives
-    # sont indentées ou entre chevrons — on les écarte. On parse stdout SEUL (stderr = bruit).
+    ***REMOVED*** Les vrais noms de paquets commencent en colonne 0 ; les dépendances virtuelles / alternatives
+    ***REMOVED*** sont indentées ou entre chevrons — on les écarte. On parse stdout SEUL (stderr = bruit).
     names = sorted({ln.strip() for ln in out.splitlines()
                     if ln and not ln[0].isspace() and not ln.startswith("<")})
     return names, out
@@ -157,9 +157,9 @@ def ensure_debs(force=False, log=None):
     stamp = _read_stamp()
     if (not force and existing and stamp.get("debs_pkgs_key") == pkgs_key
             and os.path.exists(os.path.join(DEBS_DIR, "Packages.gz"))):
-        # Téléchargement sauté (déjà en cache), MAIS l'index est TOUJOURS régénéré : un index issu
-        # d'un build antérieur (code de génération bogué) doit être réécrit proprement, jamais
-        # réembarqué tel quel. La génération est rapide (~1 s) et sans réseau.
+        ***REMOVED*** Téléchargement sauté (déjà en cache), MAIS l'index est TOUJOURS régénéré : un index issu
+        ***REMOVED*** d'un build antérieur (code de génération bogué) doit être réécrit proprement, jamais
+        ***REMOVED*** réembarqué tel quel. La génération est rapide (~1 s) et sans réseau.
         _log(f"vendor/debs en cache ({len(existing)} paquets) — régénération de l'index")
         if not _gen_packages_index(DEBS_DIR):
             return {"ok": False, "error": "régénération de l'index Packages a échoué."}
@@ -169,7 +169,7 @@ def ensure_debs(force=False, log=None):
         return {"ok": False, "error": "root requis pour télécharger les .deb (apt)."}
 
     os.makedirs(DEBS_DIR, exist_ok=True)
-    # Index apt frais : sinon un point-release peut avoir retiré du pool la version indexée (404).
+    ***REMOVED*** Index apt frais : sinon un point-release peut avoir retiré du pool la version indexée (404).
     _log("apt-get update…")
     _run(["apt-get", "update", "-qq"])
 
@@ -184,14 +184,14 @@ def ensure_debs(force=False, log=None):
         except OSError:
             pass
     _log(f"Téléchargement de {len(names)} paquets .deb…")
-    # -o APT::Sandbox::User=root : écrire les .deb dans DEBS_DIR (l'utilisateur _apt n'y a pas accès).
+    ***REMOVED*** -o APT::Sandbox::User=root : écrire les .deb dans DEBS_DIR (l'utilisateur _apt n'y a pas accès).
     rc, out, err = _run(["apt-get", "download", "-o", "APT::Sandbox::User=root"] + names,
                         cwd=DEBS_DIR)
     got = sorted(glob.glob(os.path.join(DEBS_DIR, "*.deb")))
     if not got:
         return {"ok": False, "error": "apt-get download n'a produit aucun .deb :\n" + (out + err)[-1500:]}
-    # Un 404 isolé (version retirée du pool) ne doit pas tout casser : on vérifie plutôt que les
-    # paquets DEMANDÉS ont bien un .deb.
+    ***REMOVED*** Un 404 isolé (version retirée du pool) ne doit pas tout casser : on vérifie plutôt que les
+    ***REMOVED*** paquets DEMANDÉS ont bien un .deb.
     missing = [p for p in APT_PACKAGES
                if not glob.glob(os.path.join(DEBS_DIR, p.replace("+", "%2b") + "_*.deb"))
                and not glob.glob(os.path.join(DEBS_DIR, p + "_*.deb"))]
@@ -213,8 +213,8 @@ def _gen_packages_index(debs_dir):
     """Écrit debs_dir/Packages(.gz) via dpkg-scanpackages, repli apt-ftparchive."""
     import gzip
     pkgs_txt = None
-    # stdout SEUL : dpkg-scanpackages écrit « info: N entrées écrites… » sur stderr — l'y mêler
-    # produirait une section sans en-tête Package: → apt échoue (« section with no Package: header »).
+    ***REMOVED*** stdout SEUL : dpkg-scanpackages écrit « info: N entrées écrites… » sur stderr — l'y mêler
+    ***REMOVED*** produirait une section sans en-tête Package: → apt échoue (« section with no Package: header »).
     rc, out, err = _run(["dpkg-scanpackages", "--multiversion", "."], cwd=debs_dir)
     if rc == 0 and out.strip():
         pkgs_txt = out
@@ -234,7 +234,7 @@ def _gen_packages_index(debs_dir):
     return True
 
 
-# ─── Images Docker runtime ───────────────────────────────────────────────────
+***REMOVED*** ─── Images Docker runtime ───────────────────────────────────────────────────
 
 def ensure_images(which_list=None, log=None):
     """`docker save` chaque image runtime dans vendor/images/<which>.tar + manifeste.
@@ -252,7 +252,7 @@ def ensure_images(which_list=None, log=None):
 
     keys = which_list if which_list is not None else list(img_routes._IMAGES.keys())
     os.makedirs(IMAGES_DIR, exist_ok=True)
-    # Purge des anciens tars (un rebuild doit refléter l'état courant, jamais un résidu).
+    ***REMOVED*** Purge des anciens tars (un rebuild doit refléter l'état courant, jamais un résidu).
     for old in glob.glob(os.path.join(IMAGES_DIR, "*.tar")):
         try:
             os.remove(old)
@@ -294,11 +294,11 @@ def ensure_images(which_list=None, log=None):
         return {"ok": False, "error": f"manifeste images : {ex}", "images": manifest,
                 "count": len(manifest), "missing": missing}
 
-    # ok tant qu'AU MOINS une image est embarquée (sinon le bundle « images » est vide → échec net).
+    ***REMOVED*** ok tant qu'AU MOINS une image est embarquée (sinon le bundle « images » est vide → échec net).
     return {"ok": bool(manifest), "images": manifest, "count": len(manifest), "missing": missing}
 
 
-# ─── Orchestration + état ────────────────────────────────────────────────────
+***REMOVED*** ─── Orchestration + état ────────────────────────────────────────────────────
 
 def ensure_all(force=False, log=None, images=False):
     """Prépare wheels + debs (+ images si demandé). Retourne {ok, wheels, debs, images}."""

@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Images runtime Docker (build SUR L'HÔTE via ssh + report dans les nœuds).
 
@@ -21,6 +21,7 @@ DEUX régimes de build, à ne pas confondre :
 Module FONDATION du domaine nœuds/cluster : `nodes.py`, `enrollment.py` en dépendent
 (_IMAGES, _image_tag, _repo_root, _stage_tar, _img_lock, _node_img_build, _image_present…)."""
 
+import logging
 import os
 import re
 import subprocess
@@ -33,171 +34,177 @@ from ..auth import require_perm
 from ..addressing import primary_host as _primary_host
 from ..database import db_get_node, db_get_nodes, db_update_node, db_add_alert
 
-# Conformité de redistribution : Apache-2.0 §4(a) et BSD-3-Clause exigent qu'une COPIE du texte
-# de licence accompagne le BINAIRE redistribué. Les images embarquent libmxl et libmtl, donc
-# elles doivent embarquer les licences. Cf. licenses/README.md et THIRD-PARTY-NOTICES.md.
+***REMOVED*** Conformité de redistribution : Apache-2.0 §4(a) et BSD-3-Clause exigent qu'une COPIE du texte
+***REMOVED*** de licence accompagne le BINAIRE redistribué. Les images embarquent libmxl et libmtl, donc
+***REMOVED*** elles doivent embarquer les licences. Cf. licenses/README.md et THIRD-PARTY-NOTICES.md.
 _LICENCES = [("licenses/README.md", "licenses/README.md"),
              ("licenses/Apache-2.0.txt", "licenses/Apache-2.0.txt"),
              ("licenses/BSD-3-Clause-MTL.txt", "licenses/BSD-3-Clause-MTL.txt"),
              ("THIRD-PARTY-NOTICES.md", "THIRD-PARTY-NOTICES.md")]
 
 _AGENT = ("script_templates/agent.py", "script_templates/agent.py")
-# bobimxl : binding ctypes libmxl, COPY-é dans l'image compute (chantier MXL Phase 0).
+***REMOVED*** bobimxl : binding ctypes libmxl, COPY-é dans l'image compute (chantier MXL Phase 0).
 _BOBIMXL = ("script_templates/bobimxl.py", "script_templates/bobimxl.py")
-# Patch libmxl (type vidéo planar) appliqué dans le builder de l'image compute (Phase 1).
+***REMOVED*** Patch libmxl (type vidéo planar) appliqué dans le builder de l'image compute (Phase 1).
 _PLANAR_PATCH = ("plugins/_compute_runtime/patches/mxl-planar-type.patch",
                  "plugins/_compute_runtime/patches/mxl-planar-type.patch")
-# Patch libmxl (grain planar en N tranches — slice_height du flowDef → commit progressif, latence
-# sous-trame). Appliqué APRÈS mxl-planar-type dans les Dockerfiles compute/media/mtl (chantier slice).
+***REMOVED*** Patch libmxl (grain planar en N tranches — slice_height du flowDef → commit progressif, latence
+***REMOVED*** sous-trame). Appliqué APRÈS mxl-planar-type dans les Dockerfiles compute/media/mtl (chantier slice).
 _PLANAR_SLICES_PATCH = ("plugins/_compute_runtime/patches/mxl-planar-slices.patch",
                         "plugins/_compute_runtime/patches/mxl-planar-slices.patch")
-# Patch mxl-fabrics : le curseur de tranche n'était pas réinitialisé au changement de grain dans
-# l'initiateur → les premières tranches du grain suivant n'étaient jamais transférées, et la cible
-# committait quand même le grain comme complet. Bandes venant d'une autre trame sur toute réplique
-# de flux TRANCHÉ. Appliqué dans le builder MXL de l'image mtl (cf. MXL_FABRICS_SLICE_CORRUPTION).
+***REMOVED*** Patch mxl-fabrics : le curseur de tranche n'était pas réinitialisé au changement de grain dans
+***REMOVED*** l'initiateur → les premières tranches du grain suivant n'étaient jamais transférées, et la cible
+***REMOVED*** committait quand même le grain comme complet. Bandes venant d'une autre trame sur toute réplique
+***REMOVED*** de flux TRANCHÉ. Appliqué dans le builder MXL de l'image mtl (cf. MXL_FABRICS_SLICE_CORRUPTION).
 _FABRICS_SLICE_PATCH = ("plugins/_compute_runtime/patches/mxl-fabrics-slice-reset.patch",
                         "plugins/_compute_runtime/patches/mxl-fabrics-slice-reset.patch")
-# Patch mxl-fabrics : FI_FENCE sur l'écriture qui porte la donnée immédiate d'un lot MULTI-PLANS.
-# Rien n'ordonne les écritures RMA (aucun FI_ORDER_WAW demandé) → la notification pouvait précéder
-# la charge utile qu'elle annonce, et la cible publiait des tranches encore en vol. SECONDE cause.
+***REMOVED*** Patch mxl-fabrics : FI_FENCE sur l'écriture qui porte la donnée immédiate d'un lot MULTI-PLANS.
+***REMOVED*** Rien n'ordonne les écritures RMA (aucun FI_ORDER_WAW demandé) → la notification pouvait précéder
+***REMOVED*** la charge utile qu'elle annonce, et la cible publiait des tranches encore en vol. SECONDE cause.
 _FABRICS_FENCE_PATCH = ("plugins/_compute_runtime/patches/mxl-fabrics-fence-notification.patch",
                         "plugins/_compute_runtime/patches/mxl-fabrics-fence-notification.patch")
-# Convertisseur v210↔planar (C auto-vectorisé) compilé dans l'étage v210-builder de l'image
-# compute → libbobi_v210.so (+ variante AVX2), chargée par bobimxl (chantier interop MXL).
+***REMOVED*** Convertisseur v210↔planar (C auto-vectorisé) compilé dans l'étage v210-builder de l'image
+***REMOVED*** compute → libbobi_v210.so (+ variante AVX2), chargée par bobimxl (chantier interop MXL).
 _V210_CONV = ("script_templates/v210convert.c", "script_templates/v210convert.c")
-# Kernel compose multiview fusionné (blend/blend_pre/place en 1 passe, chantier fusion numpy→C)
-# compilé dans le même étage v210-builder → libbobi_mvk.so (+ variante AVX2), chargé par bobimxl.
+***REMOVED*** Kernel compose multiview fusionné (blend/blend_pre/place en 1 passe, chantier fusion numpy→C)
+***REMOVED*** compilé dans le même étage v210-builder → libbobi_mvk.so (+ variante AVX2), chargé par bobimxl.
 _MVK = ("script_templates/mvcompose.c", "script_templates/mvcompose.c")
-# Copie non temporelle (chantier « 80 % du coût d'un producteur = déplacement de données ») :
-# écrit le grain sans lire d'abord la ligne de cache qu'on écrase (pas de read-for-ownership).
-# Compilé en x86-64-v2 dans les DEUX images (compute ET média) → doit figurer dans les deux
-# contextes de build, sinon le COPY échoue et l'image entière ne se construit plus.
+***REMOVED*** Copie non temporelle (chantier « 80 % du coût d'un producteur = déplacement de données ») :
+***REMOVED*** écrit le grain sans lire d'abord la ligne de cache qu'on écrase (pas de read-for-ownership).
+***REMOVED*** Compilé en x86-64-v2 dans les DEUX images (compute ET média) → doit figurer dans les deux
+***REMOVED*** contextes de build, sinon le COPY échoue et l'image entière ne se construit plus.
 _NTCOPY = ("script_templates/ntcopy.c", "script_templates/ntcopy.c")
-# Kernel CUDA du split (chantier GPU) : source .cu COPY-ée telle quelle dans l'image GPU, compilée
-# à chaud côté conteneur. Le plugin `split` la lit à côté de bobimxl (cf. plugins/split/script.py).
-# ⚠ Elle DOIT figurer dans le staging de `compute-gpu` : ce contexte ne contenait que le Dockerfile
-# (« le reste vient de l'image de base »), et le COPY ajouté au Dockerfile a rendu l'image
-# inconstruisible — le contexte n'a pas de dossier script_templates, donc `lstat` échoue au
-# calcul de la clé de cache, sans que rien ne désigne la cause. Même piège que _NTCOPY plus haut.
-# Noyaux de mesure du plugin `scope` (waveform, vecteur-scope, extrêmes), compilés dans le même
-# étage v210-builder → libbobi_scope.so (+ variante AVX2), chargés par bobimxl.charger_noyau().
+***REMOVED*** Kernel CUDA du split (chantier GPU) : source .cu COPY-ée telle quelle dans l'image GPU, compilée
+***REMOVED*** à chaud côté conteneur. Le plugin `split` la lit à côté de bobimxl (cf. plugins/split/script.py).
+***REMOVED*** ⚠ Elle DOIT figurer dans le staging de `compute-gpu` : ce contexte ne contenait que le Dockerfile
+***REMOVED*** (« le reste vient de l'image de base »), et le COPY ajouté au Dockerfile a rendu l'image
+***REMOVED*** inconstruisible — le contexte n'a pas de dossier script_templates, donc `lstat` échoue au
+***REMOVED*** calcul de la clé de cache, sans que rien ne désigne la cause. Même piège que _NTCOPY plus haut.
+***REMOVED*** Noyaux de mesure du plugin `scope` (waveform, vecteur-scope, extrêmes), compilés dans le même
+***REMOVED*** étage v210-builder → libbobi_scope.so (+ variante AVX2), chargés par bobimxl.charger_noyau().
 _SCOPEK = ("script_templates/scopekernel.c", "script_templates/scopekernel.c")
 _SPLIT_GPU = ("script_templates/split_gpu.cu", "script_templates/split_gpu.cu")
+***REMOVED*** Chemin de données du plugin decklink_io, compilé dans l'image compute (étage decklink-builder).
+***REMOVED*** Les en-têtes du SDK sont un DOSSIER : le garde-fou de COPY ci-dessous les vérifie comme tel.
+_DECKLINK = [("plugins/decklink_io/decklink_sdk", "plugins/decklink_io/decklink_sdk"),
+             ("plugins/decklink_io/anc_rfc8331.h", "plugins/decklink_io/anc_rfc8331.h"),
+             ("plugins/decklink_io/decklink_mxl.cpp", "plugins/decklink_io/decklink_mxl.cpp"),
+             ("plugins/decklink_io/decklink_tx.cpp", "plugins/decklink_io/decklink_tx.cpp")]
 _IMAGES = {
     "compute": {"label": "bobi-compute (calcul)", "meta": "plugins/_compute_runtime/meta.json",
                 "prefix": "bobi-compute", "field": "compute_image",
                 "stage": [("plugins/_compute_runtime/Dockerfile", "Dockerfile"), _AGENT, _BOBIMXL,
                           _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH, _V210_CONV, _MVK, _NTCOPY, _SCOPEK]
-                         + _LICENCES},
-    # Variante GPU/NVIDIA de l'image compute : fine couche FROM bobi-compute:<ver> + cupy[ctk]
-    # (cf. plugins/_compute_gpu_runtime/Dockerfile). node_only = buildée SUR le nœud GPU (image
-    # CUDA lourde, locale, pas de push flotte — comme bobi-mtl). Le FROM résout l'image compute
-    # présente sur le nœud → stage = Dockerfile seul (agent/bobimxl/libmxl viennent du base).
+                         + _DECKLINK + _LICENCES},
+    ***REMOVED*** Variante GPU/NVIDIA de l'image compute : fine couche FROM bobi-compute:<ver> + cupy[ctk]
+    ***REMOVED*** (cf. plugins/_compute_gpu_runtime/Dockerfile). node_only = buildée SUR le nœud GPU (image
+    ***REMOVED*** CUDA lourde, locale, pas de push flotte — comme bobi-mtl). Le FROM résout l'image compute
+    ***REMOVED*** présente sur le nœud → stage = Dockerfile seul (agent/bobimxl/libmxl viennent du base).
     "compute-gpu": {"label": "bobi-compute-gpu (calcul GPU/NVIDIA)",
                     "meta": "plugins/_compute_gpu_runtime/meta.json",
                     "prefix": "bobi-compute-gpu", "field": "compute_gpu_image", "node_only": True,
-                    # Capacité REQUISE pour ce node_only : la liste `capabilities` OU le drapeau
-                    # matériel `gpu_capable` (les deux dérivent, cf. _image_target_nodes).
+                    ***REMOVED*** Capacité REQUISE pour ce node_only : la liste `capabilities` OU le drapeau
+                    ***REMOVED*** matériel `gpu_capable` (les deux dérivent, cf. _image_target_nodes).
                     "cap": "gpu", "cap_flag": "gpu_capable",
-                    # base_from : le FROM de cette couche fine est RÉÉCRIT au staging vers l'image_tag
-                    # COURANT de l'image `compute` (cf. _stage_tar) → plus de bump manuel du BASE_IMAGE à
-                    # tenir synchro (la désync silencieuse 0.13→0.16 tentait un pull docker.io = échec).
+                    ***REMOVED*** base_from : le FROM de cette couche fine est RÉÉCRIT au staging vers l'image_tag
+                    ***REMOVED*** COURANT de l'image `compute` (cf. _stage_tar) → plus de bump manuel du BASE_IMAGE à
+                    ***REMOVED*** tenir synchro (la désync silencieuse 0.13→0.16 tentait un pull docker.io = échec).
                     "base_from": "compute",
-                    # Dockerfile + les sources qu'il COPY : toute ligne COPY ajoutée au Dockerfile
-                    # doit avoir son entrée ICI, sinon l'image ne se construit plus du tout.
+                    ***REMOVED*** Dockerfile + les sources qu'il COPY : toute ligne COPY ajoutée au Dockerfile
+                    ***REMOVED*** doit avoir son entrée ICI, sinon l'image ne se construit plus du tout.
                     "stage": [("plugins/_compute_gpu_runtime/Dockerfile", "Dockerfile"),
                               _SPLIT_GPU] + _LICENCES},
     "media":   {"label": "bobi-media (média)", "meta": "plugins/_media_runtime/meta.json",
                 "prefix": "bobi-media", "field": "media_image",
                 "stage": [("plugins/_media_runtime/Dockerfile", "Dockerfile"), _AGENT, _BOBIMXL,
                           _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH, _NTCOPY] + _LICENCES},
-    # Passerelle WebRTC (MediaMTX pré-baké). Pas de colonne nœud : le tag est stocké dans le
-    # setting `webrtc_image` (commun à tous les nœuds) — cf. _autofill_nodes_image (cas spécial).
+    ***REMOVED*** Passerelle WebRTC (MediaMTX pré-baké). Pas de colonne nœud : le tag est stocké dans le
+    ***REMOVED*** setting `webrtc_image` (commun à tous les nœuds) — cf. _autofill_nodes_image (cas spécial).
     "webrtc":  {"label": "bobi-webrtc (passerelle)", "meta": "plugins/_webrtc_runtime/meta.json",
                 "prefix": "bobi-webrtc", "field": "webrtc_image", "setting": "webrtc_image",
                 "stage": [("plugins/_webrtc_runtime/Dockerfile", "Dockerfile"), _AGENT]},
-    # MTL : Dockerfile dans docker/ + mtl_rx.c (racine plugin) + controller/entrypoint.
-    # NB : normalement buildé sur le nœud cible (clone MTL Internet + E810).
+    ***REMOVED*** MTL : Dockerfile dans docker/ + mtl_rx.c (racine plugin) + controller/entrypoint.
+    ***REMOVED*** NB : normalement buildé sur le nœud cible (clone MTL Internet + E810).
     "mtl":     {"label": "bobi-mtl (ST 2110 / E810)", "meta": "plugins/2110_io/meta.json",
                 "prefix": "bobi-mtl", "field": "image", "node_only": True,
-                # Capacité REQUISE : capabilities contient "io2110" OU drapeau `mtl_capable`.
+                ***REMOVED*** Capacité REQUISE : capabilities contient "io2110" OU drapeau `mtl_capable`.
                 "cap": "io2110", "cap_flag": "mtl_capable",
                 "stage": [("plugins/2110_io/docker/Dockerfile", "Dockerfile"),
                           ("plugins/2110_io/mtl_rx.c", "mtl_rx.c"),
                           ("plugins/2110_io/docker/controller.py", "controller.py"),
                           ("plugins/2110_io/docker/entrypoint.sh", "entrypoint.sh"),
-                          # Patch libmtl st40/AF-XDP (RX ANC : mbuf port=UINT16_MAX → fallback mono-port).
+                          ***REMOVED*** Patch libmtl st40/AF-XDP (RX ANC : mbuf port=UINT16_MAX → fallback mono-port).
                           ("plugins/2110_io/docker/patch_st40_afxdp_port.py", "patch_st40_afxdp_port.py"),
-                          # Patch libmtl 2022-7 hitless TX (port au lien mort ⇒ drop, cf. 0.38.0).
+                          ***REMOVED*** Patch libmtl 2022-7 hitless TX (port au lien mort ⇒ drop, cf. 0.38.0).
                           ("plugins/2110_io/docker/patch_afxdp_tx_link_drop.py", "patch_afxdp_tx_link_drop.py"),
-                          # Patch libmtl RX+TX resetting guard (RX+TX pacing RL même port, cf. 0.39.5).
+                          ***REMOVED*** Patch libmtl RX+TX resetting guard (RX+TX pacing RL même port, cf. 0.39.5).
                           ("plugins/2110_io/docker/patch_rx_resetting_guard.py", "patch_rx_resetting_guard.py"),
-                          # Patch libmtl TX burst rendezvous (fix racine morts silencieuses TX au
-                          # commit RL — compteur atomique per-port autour des bursts RX/TX + spin-wait
-                          # borné avant le commit, cf. 0.45.0). DOIT suivre patch_rx_resetting_guard.
+                          ***REMOVED*** Patch libmtl TX burst rendezvous (fix racine morts silencieuses TX au
+                          ***REMOVED*** commit RL — compteur atomique per-port autour des bursts RX/TX + spin-wait
+                          ***REMOVED*** borné avant le commit, cf. 0.45.0). DOIT suivre patch_rx_resetting_guard.
                           ("plugins/2110_io/docker/patch_tx_burst_rendezvous.py", "patch_tx_burst_rendezvous.py"),
-                          # Patch libmtl garde TX hang au commit RL (stall d'ajout ≠ wedge, cf. 0.39.x).
+                          ***REMOVED*** Patch libmtl garde TX hang au commit RL (stall d'ajout ≠ wedge, cf. 0.39.x).
                           ("plugins/2110_io/docker/patch_tx_hang_resetting_guard.py", "patch_tx_hang_resetting_guard.py"),
-                          # Patch libmtl builder famine recovery (vidéo+audio) : session TX déjà vivante
-                          # qui perd son mempool hdr au commit RL d'une AUTRE session → alloc-fail muet
-                          # (hang detector natif jamais atteint) → déclenche la récupération existante
-                          # (queue_fatal_error) après 2 s de famine confirmée (cf. 0.44.0).
+                          ***REMOVED*** Patch libmtl builder famine recovery (vidéo+audio) : session TX déjà vivante
+                          ***REMOVED*** qui perd son mempool hdr au commit RL d'une AUTRE session → alloc-fail muet
+                          ***REMOVED*** (hang detector natif jamais atteint) → déclenche la récupération existante
+                          ***REMOVED*** (queue_fatal_error) après 2 s de famine confirmée (cf. 0.44.0).
                           ("plugins/2110_io/docker/patch_tx_builder_famine_recovery.py", "patch_tx_builder_famine_recovery.py"),
-                          # Patch libmtl TX inflight frame reclaim (0.49.0) : 2ᵉ mode de mort du commit RL,
-                          # DISTINCT de la famine mempool. Les mbufs perdus sans free au stop de port tiennent
-                          # encore une ref extbuf sur la TRAME en vol ⇒ jamais rendue à l'app ⇒ get_next_frame
-                          # rend -EBUSY à vie (`build ret -203`) sur une session qui n'échoue jamais à allouer
-                          # (donc invisible du filet famine). Rappelle les trames orphelines SANS récupération
-                          # de queue (zéro commit TM). DOIT suivre patch_tx_builder_famine_recovery.
+                          ***REMOVED*** Patch libmtl TX inflight frame reclaim (0.49.0) : 2ᵉ mode de mort du commit RL,
+                          ***REMOVED*** DISTINCT de la famine mempool. Les mbufs perdus sans free au stop de port tiennent
+                          ***REMOVED*** encore une ref extbuf sur la TRAME en vol ⇒ jamais rendue à l'app ⇒ get_next_frame
+                          ***REMOVED*** rend -EBUSY à vie (`build ret -203`) sur une session qui n'échoue jamais à allouer
+                          ***REMOVED*** (donc invisible du filet famine). Rappelle les trames orphelines SANS récupération
+                          ***REMOVED*** de queue (zéro commit TM). DOIT suivre patch_tx_builder_famine_recovery.
                           ("plugins/2110_io/docker/patch_tx_frame_inflight_reclaim.py", "patch_tx_frame_inflight_reclaim.py"),
-                          # Patch libmtl TX reset no-drop (0.50.0) : LA FUITE de mbufs du commit TM, À LA
-                          # SOURCE. Le PMD ice libère bien les mbufs postés au stop de queue (DPDK 26.03,
-                          # ice_rxtx.c:1196 → common/tx.h:360) : la fuite venait de NOTRE hang-guard, qui
-                          # retournait nb_pkts (« émis ») pendant la fenêtre de commit — les transmetteurs
-                          # vidéo/audio lâchaient alors les mbufs SANS free (mempool vidé = -207 ; ref extbuf
-                          # jamais rendue sur la trame = -203 permanent). Fix : retourner 0 (« queue pleine »),
-                          # les paquets restent en inflight et sont ré-émis au redémarrage du port.
-                          # DOIT suivre patch_tx_hang_resetting_guard / famine / inflight_reclaim.
+                          ***REMOVED*** Patch libmtl TX reset no-drop (0.50.0) : LA FUITE de mbufs du commit TM, À LA
+                          ***REMOVED*** SOURCE. Le PMD ice libère bien les mbufs postés au stop de queue (DPDK 26.03,
+                          ***REMOVED*** ice_rxtx.c:1196 → common/tx.h:360) : la fuite venait de NOTRE hang-guard, qui
+                          ***REMOVED*** retournait nb_pkts (« émis ») pendant la fenêtre de commit — les transmetteurs
+                          ***REMOVED*** vidéo/audio lâchaient alors les mbufs SANS free (mempool vidé = -207 ; ref extbuf
+                          ***REMOVED*** jamais rendue sur la trame = -203 permanent). Fix : retourner 0 (« queue pleine »),
+                          ***REMOVED*** les paquets restent en inflight et sont ré-émis au redémarrage du port.
+                          ***REMOVED*** DOIT suivre patch_tx_hang_resetting_guard / famine / inflight_reclaim.
                           ("plugins/2110_io/docker/patch_tx_reset_no_drop.py", "patch_tx_reset_no_drop.py"),
-                          # Patch libmtl hiérarchie TM ramifiée (>8 senders RL/port, cf. 0.39.6).
+                          ***REMOVED*** Patch libmtl hiérarchie TM ramifiée (>8 senders RL/port, cf. 0.39.6).
                           ("plugins/2110_io/docker/patch_tm_hierarchy.py", "patch_tm_hierarchy.py"),
-                          # Patch libmtl option IP Router Alert aux reports IGMP (PTP carte-directe, cf. 0.39.12).
+                          ***REMOVED*** Patch libmtl option IP Router Alert aux reports IGMP (PTP carte-directe, cf. 0.39.12).
                           ("plugins/2110_io/docker/patch_igmp_router_alert.py", "patch_igmp_router_alert.py"),
-                          # Patch libmtl répondeur ICMP echo : un port en vfio-pci n'a plus de netdev
-                          # kernel — personne ne répond au ping, et libmtl ne connaît que l'ARP.
+                          ***REMOVED*** Patch libmtl répondeur ICMP echo : un port en vfio-pci n'a plus de netdev
+                          ***REMOVED*** kernel — personne ne répond au ping, et libmtl ne connaît que l'ARP.
                           ("plugins/2110_io/docker/patch_icmp_echo.py", "patch_icmp_echo.py"),
-                          # Patch libmtl règle rte_flow admettant le mcast PTP sur la queue CNI (E810/ice, cf. 0.39.13).
+                          ***REMOVED*** Patch libmtl règle rte_flow admettant le mcast PTP sur la queue CNI (E810/ice, cf. 0.39.13).
                           ("plugins/2110_io/docker/patch_ptp_mcast_flow.py", "patch_ptp_mcast_flow.py"),
-                          # Patch libmtl getter d'état PTP stable pour le backstop TX de mtl_rx (cf. 0.39.15).
+                          ***REMOVED*** Patch libmtl getter d'état PTP stable pour le backstop TX de mtl_rx (cf. 0.39.15).
                           ("plugins/2110_io/docker/patch_ptp_stable_getter.py", "patch_ptp_stable_getter.py"),
-                          # Patch libmtl export du grandmaster PTP pour a=ts-refclk:ptp du SDP TX (cf. 0.39.19).
+                          ***REMOVED*** Patch libmtl export du grandmaster PTP pour a=ts-refclk:ptp du SDP TX (cf. 0.39.19).
                           ("plugins/2110_io/docker/patch_ptp_gm_export.py", "patch_ptp_gm_export.py"),
-                          # Patch libmtl export de l'OFFSET PTP (mt_bobi_ptp_offset) → métriques :8080
-                          # pour l'onglet PTP en socle DPDK (ptp4l absent). Cf. 0.54.0.
+                          ***REMOVED*** Patch libmtl export de l'OFFSET PTP (mt_bobi_ptp_offset) → métriques :8080
+                          ***REMOVED*** pour l'onglet PTP en socle DPDK (ptp4l absent). Cf. 0.54.0.
                           ("plugins/2110_io/docker/patch_ptp_offset_getter.py", "patch_ptp_offset_getter.py"),
-                          # Patch libmtl : ACTIVE l'asservissement en fréquence du PHC (la branche
-                          # existe mais son macro n'est défini nulle part en amont — sans lui le servo
-                          # ne fait que sauter la phase à chaque Sync).
+                          ***REMOVED*** Patch libmtl : ACTIVE l'asservissement en fréquence du PHC (la branche
+                          ***REMOVED*** existe mais son macro n'est défini nulle part en amont — sans lui le servo
+                          ***REMOVED*** ne fait que sauter la phase à chaque Sync).
                           ("plugins/2110_io/docker/patch_ptp_adjust_freq.py", "patch_ptp_adjust_freq.py"),
-                          # Patch libmtl DEV LINK WAIT : budget dev_detect_link 90s->120s
-                          # (MT_DEV_LINK_POLL_COUNT 300->400) pour l'entraînement autoneg+FEC E810 100G DPDK.
+                          ***REMOVED*** Patch libmtl DEV LINK WAIT : budget dev_detect_link 90s->120s
+                          ***REMOVED*** (MT_DEV_LINK_POLL_COUNT 300->400) pour l'entraînement autoneg+FEC E810 100G DPDK.
                           ("plugins/2110_io/docker/patch_dev_link_wait.py", "patch_dev_link_wait.py"),
-                          # Patch libmtl EPOCH-SHIFT TX (émission décalée après l'epoch, stamp nominal, cf. 0.41.0).
+                          ***REMOVED*** Patch libmtl EPOCH-SHIFT TX (émission décalée après l'epoch, stamp nominal, cf. 0.41.0).
                           ("plugins/2110_io/docker/patch_epoch_shift.py", "patch_epoch_shift.py"),
-                          # Patch DPDK ice_tm move retry (fix RACINE sessions TX mortes en cold-batch,
-                          # cf. 0.46.0) : cible ice_tm.c (driver DPDK), pas libmtl — dépose un .patch
-                          # dans patches/dpdk/<ver>/ du clone MTL, appliqué par build_dpdk.sh lui-même.
-                          # Retry borné (5×20ms) du move admin-queue firmware + dégradation (queue
-                          # laissée en place) au lieu de tuer le port entier si le move échoue quand même.
+                          ***REMOVED*** Patch DPDK ice_tm move retry (fix RACINE sessions TX mortes en cold-batch,
+                          ***REMOVED*** cf. 0.46.0) : cible ice_tm.c (driver DPDK), pas libmtl — dépose un .patch
+                          ***REMOVED*** dans patches/dpdk/<ver>/ du clone MTL, appliqué par build_dpdk.sh lui-même.
+                          ***REMOVED*** Retry borné (5×20ms) du move admin-queue firmware + dégradation (queue
+                          ***REMOVED*** laissée en place) au lieu de tuer le port entier si le move échoue quand même.
                           ("plugins/2110_io/docker/patch_ice_tm_move_retry.py", "patch_ice_tm_move_retry.py"),
-                          # Chantier MXL : mtl_rx.c lie libmxl (étage builder identique à compute,
-                          # patché planar) et controller.py importe bobimxl pour la simu/txgen.
+                          ***REMOVED*** Chantier MXL : mtl_rx.c lie libmxl (étage builder identique à compute,
+                          ***REMOVED*** patché planar) et controller.py importe bobimxl pour la simu/txgen.
                           _BOBIMXL, _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH]},
 }
 _img_build = {w: {"status": "idle", "msg": ""} for w in _IMAGES}
 _img_lock = threading.Lock()
-_node_img_build = {}   # "{node_id}:{which}" → {status:idle|building|ok|error, msg} (build PAR-NŒUD via agent)
-_node_img_push = {}    # node_id → {status:idle|pushing|ok|error, msg, start} (push des images PARTAGÉES)
+_node_img_build = {}   ***REMOVED*** "{node_id}:{which}" → {status:idle|building|ok|error, msg} (build PAR-NŒUD via agent)
+_node_img_push = {}    ***REMOVED*** node_id → {status:idle|pushing|ok|error, msg, start} (push des images PARTAGÉES)
 
 def _repo_root():
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -216,8 +223,8 @@ def _build_target():
         n = db_get_node(int(sel))
         if n and (n.get("agent_url") or "").strip():
             return ("node", n)
-        return ("local", None)                       # nœud choisi introuvable/sans agent → local
-    # auto (rétro-compat) :
+        return ("local", None)                       ***REMOVED*** nœud choisi introuvable/sans agent → local
+    ***REMOVED*** auto (rétro-compat) :
     if _st.get("image_build_local"):
         return ("local", None)
     h = (_primary_host() or "").strip()
@@ -274,19 +281,43 @@ def _ssh_stream(host, cmd, input_bytes, on_line, timeout=2400):
     return (p.returncode if p.returncode is not None else 1), "\n".join(tail)
 
 def _image_tag(which):
-    """Tag de l'image : `image_tag` du meta.json, sinon `<prefix>:<version>` (repli)."""
+    """Tag de l'image : `image_tag` du meta.json, sinon `<prefix>:<version>` (repli).
+
+    ⚠ CES DEUX CHAMPS PEUVENT DIVERGER, ET C'EST UN PIÈGE PAYÉ LE 2026-09-12. `image_tag` est
+    prioritaire, mais c'est `version` qu'on pense bumper — en montant `version` à 0.46.0 sans
+    toucher `image_tag`, le build est reparti sur `bobi-compute:0.45` et allait ÉCRASER l'image
+    de référence du parc avec un contenu différent (libmxl bumpé). Rattrapé au vol en lisant la
+    ligne de commande `docker build` sur le nœud, pas par un contrôle.
+
+    On refuse désormais un désaccord plutôt que d'en choisir un silencieusement : même règle que
+    `tools/publier.sh`, qui refuse de publier quand `app/version.py` et le tag divergent. Deux
+    sources recopiées à la main finissent toujours par diverger."""
     import json as _json
     spec = _IMAGES[which]
+    ***REMOVED*** ⚠ LE `try` NE COUVRE QUE LA LECTURE. Y laisser le contrôle de cohérence le rendait MUET :
+    ***REMOVED*** l'exception était avalée et la fonction rendait `<prefix>:latest` — donc on aurait bâti
+    ***REMOVED*** sous un tag encore différent, en silence, au lieu de refuser. Vérifié par mutation, le
+    ***REMOVED*** premier jet faisait exactement ça.
     try:
         with open(os.path.join(_repo_root(), spec["meta"])) as f:
             meta = _json.load(f)
-        tag = (meta.get("image_tag") or "").strip()
-        if tag:
-            return tag
-        ver = (meta.get("version") or "").strip()
-        return "%s:%s" % (spec["prefix"], ver) if ver else spec["prefix"] + ":latest"
     except Exception:
         return spec["prefix"] + ":latest"
+    tag = (meta.get("image_tag") or "").strip()
+    ver = (meta.get("version") or "").strip()
+    if tag and ver:
+        ***REMOVED*** On compare sur les segments COMMUNS : `version` est en trois segments (0.46.0), le tag
+        ***REMOVED*** en deux (bobi-compute:0.46). Comparer les chaînes entières refuserait tout.
+        v_tag = (tag.split(":", 1)[1] if ":" in tag else "").split(".")
+        v_meta = ver.split(".")
+        n = min(len(v_tag), len(v_meta))
+        if n and v_tag[:n] != v_meta[:n]:
+            raise ValueError(
+                "meta.json incohérent pour « %s » : image_tag=%r et version=%r ne désignent pas "
+                "la même version. Bumper LES DEUX." % (which, tag, ver))
+    if tag:
+        return tag
+    return "%s:%s" % (spec["prefix"], ver) if ver else spec["prefix"] + ":latest"
 
 def _present_tags(imgs):
     """Tags réellement présents depuis l'inventaire agent. Tolère les 2 formats : liste de
@@ -300,9 +331,9 @@ def _present_tags(imgs):
             out.add(str(t))
     return out
 
-_inv_cache = {}          # node_id → (ts, [{tag, id, created, size}], err)
+_inv_cache = {}          ***REMOVED*** node_id → (ts, [{tag, id, created, size}], err)
 _inv_lock = threading.Lock()
-_INV_TTL = 20            # s — l'inventaire `docker images` d'un nœud est stable, on évite le martèlement
+_INV_TTL = 20            ***REMOVED*** s — l'inventaire `docker images` d'un nœud est stable, on évite le martèlement
 
 def _ver_key(tag):
     """Clé de tri d'un tag `prefix:version` — tri DÉCROISSANT attendu (0.15 > 0.9 > 0.2.3).
@@ -437,16 +468,16 @@ def node_images_state(node):
             exp = bool(tag)
         inconnu = False
         if not tag:
-            ok = False                                   # image non configurée → un run échouerait
+            ok = False                                   ***REMOVED*** image non configurée → un run échouerait
         elif err:
-            # Inventaire agent KO. Le repli ssh n'est autoritatif que sur un nœud SANS agent : sur un
-            # nœud enrôlé B3-1 il n'y a plus de root-SSH et `docker image inspect` répond « absente »
-            # quoi qu'il arrive (cf. `_present_on_build_target`). L'appeler quand l'agent existe mais
-            # ne répond pas, c'est donc payer un timeout ssh (3,1 s par image, 9,4 s des 12 s de
-            # /api/nodes — mesuré 2026-08-19) pour une réponse sans valeur, à chaque poll.
-            # On ne sonde donc que les nœuds legacy ; ailleurs on rend la MÊME valeur, tout de suite,
-            # en marquant `unknown` pour que « pas pu vérifier » ne se confonde pas avec « vérifié
-            # absent » côté diagnostic.
+            ***REMOVED*** Inventaire agent KO. Le repli ssh n'est autoritatif que sur un nœud SANS agent : sur un
+            ***REMOVED*** nœud enrôlé B3-1 il n'y a plus de root-SSH et `docker image inspect` répond « absente »
+            ***REMOVED*** quoi qu'il arrive (cf. `_present_on_build_target`). L'appeler quand l'agent existe mais
+            ***REMOVED*** ne répond pas, c'est donc payer un timeout ssh (3,1 s par image, 9,4 s des 12 s de
+            ***REMOVED*** /api/nodes — mesuré 2026-08-19) pour une réponse sans valeur, à chaque poll.
+            ***REMOVED*** On ne sonde donc que les nœuds legacy ; ailleurs on rend la MÊME valeur, tout de suite,
+            ***REMOVED*** en marquant `unknown` pour que « pas pu vérifier » ne se confonde pas avec « vérifié
+            ***REMOVED*** absent » côté diagnostic.
             if node.get("agent_url"):
                 ok, inconnu = False, True
             else:
@@ -461,7 +492,7 @@ def node_images_state(node):
 
 def _autofill_nodes_image(which, tag):
     """Met à jour le tag dans tous les nœuds concernés après un build réussi."""
-    # Image sans colonne nœud (ex. webrtc) : stockée dans un setting commun à tous les nœuds.
+    ***REMOVED*** Image sans colonne nœud (ex. webrtc) : stockée dans un setting commun à tous les nœuds.
     setting_key = _IMAGES[which].get("setting")
     if setting_key:
         from .. import settings as _st
@@ -472,15 +503,15 @@ def _autofill_nodes_image(which, tag):
     filled = 0
     non_verifies = []
     for n in db_get_nodes():
-        # ★ NE PAS INSCRIRE UN TAG QU'ON N'A PAS VU SUR LE NŒUD (2026-08-21).
-        # Cette fonction écrivait le tag sur TOUS les nœuds dès qu'un build réussissait, sans
-        # vérifier que les bits y étaient arrivés. Un nœud ÉTEINT pendant la distribution gardait
-        # donc ses vieilles images tandis que la base affirmait qu'il avait la neuve — et la
-        # distribution ratée ne se rejoue pas au rallumage. Le mensonge ne se voyait qu'au
-        # premier build DÉRIVÉ sur ce nœud (`FROM bobi-compute:0.29` absent), où Docker part
-        # chercher l'image sur Docker Hub et rend « pull access denied » : un message
-        # d'AUTORISATION pour une cause de DISPONIBILITÉ. Le testeur a cherché du côté des
-        # identifiants de registre — exactement la mauvaise piste (recette Valentin, 2026-08-21).
+        ***REMOVED*** ★ NE PAS INSCRIRE UN TAG QU'ON N'A PAS VU SUR LE NŒUD (2026-08-21).
+        ***REMOVED*** Cette fonction écrivait le tag sur TOUS les nœuds dès qu'un build réussissait, sans
+        ***REMOVED*** vérifier que les bits y étaient arrivés. Un nœud ÉTEINT pendant la distribution gardait
+        ***REMOVED*** donc ses vieilles images tandis que la base affirmait qu'il avait la neuve — et la
+        ***REMOVED*** distribution ratée ne se rejoue pas au rallumage. Le mensonge ne se voyait qu'au
+        ***REMOVED*** premier build DÉRIVÉ sur ce nœud (`FROM bobi-compute:0.29` absent), où Docker part
+        ***REMOVED*** chercher l'image sur Docker Hub et rend « pull access denied » : un message
+        ***REMOVED*** d'AUTORISATION pour une cause de DISPONIBILITÉ. Le testeur a cherché du côté des
+        ***REMOVED*** identifiants de registre — exactement la mauvaise piste (recette Valentin, 2026-08-21).
         if not _node_expects_image(which, n):
             continue
         if not _image_present_node(n, tag, force=True):
@@ -490,14 +521,14 @@ def _autofill_nodes_image(which, tag):
             db_update_node(n["id"], **{field: tag})
             filled += 1
     for n in non_verifies:
-        # Visible, et NOMMÉ : « 1 échec(s) » se lit comme un détail, « échec vers r620-1 » se lit
-        # comme une panne. Le tag précédent du nœud est LAISSÉ EN PLACE : il décrit ce qu'il a.
+        ***REMOVED*** Visible, et NOMMÉ : « 1 échec(s) » se lit comme un détail, « échec vers r620-1 » se lit
+        ***REMOVED*** comme une panne. Le tag précédent du nœud est LAISSÉ EN PLACE : il décrit ce qu'il a.
         db_add_alert("alert.image.tag_non_confirme", "warning", node_id=n.get("id"), kind="prep",
                      params={"tag": tag, "n": n.get("name") or n.get("id")})
     return filled
 
-_derive_vue = {}          # node_id -> monotone du dernier contrôle de dérive
-_DERIVE_PERIODE_S = 900.0  # 15 min : la dérive d'images n'est pas un phénomène rapide
+_derive_vue = {}          ***REMOVED*** node_id -> monotone du dernier contrôle de dérive
+_DERIVE_PERIODE_S = 900.0  ***REMOVED*** 15 min : la dérive d'images n'est pas un phénomène rapide
 
 
 def verifier_derive_images(node):
@@ -524,7 +555,7 @@ def verifier_derive_images(node):
     manquantes = []
     for which in _IMAGES:
         if _IMAGES[which].get("node_only"):
-            continue                     # buildée SUR le nœud : pas distribuée, hors sujet ici
+            continue                     ***REMOVED*** buildée SUR le nœud : pas distribuée, hors sujet ici
         if not _node_expects_image(which, node):
             continue
         tag = _image_tag(which)
@@ -545,17 +576,17 @@ def _stage_tar(which):
     missing = [src for src, _ in _IMAGES[which]["stage"]
                if not os.path.exists(os.path.join(root, src))]
     if missing:
-        # Cas typique : instance DÉPLOYÉE (build) où les contextes d'image n'ont pas été embarqués
-        # (corrigé dans builder.py:RUNTIME_IMAGE_DIRS) → il faut re-builder/mettre à jour l'instance.
+        ***REMOVED*** Cas typique : instance DÉPLOYÉE (build) où les contextes d'image n'ont pas été embarqués
+        ***REMOVED*** (corrigé dans builder.py:RUNTIME_IMAGE_DIRS) → il faut re-builder/mettre à jour l'instance.
         raise FileNotFoundError(
             "contexte de build incomplet sur cette instance (%s). "
             "Mettre à jour l'instance (re-build incluant plugins/_compute_runtime & _media_runtime)."
             % ", ".join(missing))
-    # GARDE-FOU : tout ce que le Dockerfile COPY doit exister DANS le contexte. Sans ce contrôle,
-    # une ligne COPY ajoutée sans entrée de staging correspondante rend l'image inconstruisible et
-    # buildkit ne rend qu'un `lstat …/buildkit-mount…/<dir>: no such file or directory` — un chemin
-    # temporaire qui ne désigne ni le fichier manquant ni la liste à corriger. On échoue ici, avec
-    # le nom du fichier et l'endroit à modifier. (Piège récurrent : cf. _NTCOPY et _SPLIT_GPU.)
+    ***REMOVED*** GARDE-FOU : tout ce que le Dockerfile COPY doit exister DANS le contexte. Sans ce contrôle,
+    ***REMOVED*** une ligne COPY ajoutée sans entrée de staging correspondante rend l'image inconstruisible et
+    ***REMOVED*** buildkit ne rend qu'un `lstat …/buildkit-mount…/<dir>: no such file or directory` — un chemin
+    ***REMOVED*** temporaire qui ne désigne ni le fichier manquant ni la liste à corriger. On échoue ici, avec
+    ***REMOVED*** le nom du fichier et l'endroit à modifier. (Piège récurrent : cf. _NTCOPY et _SPLIT_GPU.)
     _dockerfile = next((s for s, d in _IMAGES[which]["stage"] if d == "Dockerfile"), None)
     if _dockerfile:
         _fournis = {dst for _s, dst in _IMAGES[which]["stage"]}
@@ -577,10 +608,10 @@ def _stage_tar(which):
                 "(app/routes/images.py) — un COPY sans staging rend l'image inconstruisible."
                 % (which, ", ".join(_absents), which))
 
-    # Couche fine (base_from) : on réécrit le `ARG BASE_IMAGE=` du Dockerfile vers l'image_tag
-    # COURANT de l'image parente (ex. compute) au lieu de dépendre de la valeur figée dans le
-    # fichier — sinon un bump de l'image parente désync silencieusement (FROM inexistant en local
-    # → pull docker.io → échec d'auth). Repli : si rien à réécrire, le Dockerfile passe tel quel.
+    ***REMOVED*** Couche fine (base_from) : on réécrit le `ARG BASE_IMAGE=` du Dockerfile vers l'image_tag
+    ***REMOVED*** COURANT de l'image parente (ex. compute) au lieu de dépendre de la valeur figée dans le
+    ***REMOVED*** fichier — sinon un bump de l'image parente désync silencieusement (FROM inexistant en local
+    ***REMOVED*** → pull docker.io → échec d'auth). Repli : si rien à réécrire, le Dockerfile passe tel quel.
     base_from = _IMAGES[which].get("base_from")
     base_tag = _image_tag(base_from) if base_from else None
     buf = io.BytesIO()
@@ -635,7 +666,7 @@ def _build_local_stream(ctx_bytes, tag, on_line, timeout=2400):
     tail = collections.deque(maxlen=80)
     try:
         with tarfile.open(fileobj=io.BytesIO(ctx_bytes), mode="r:gz") as t:
-            t.extractall(d)   # noqa: S202 (contexte produit par nous)
+            t.extractall(d)   ***REMOVED*** noqa: S202 (contexte produit par nous)
         env = dict(os.environ, DOCKER_BUILDKIT="1")
         p = subprocess.Popen(["docker", "build", "--progress=plain", "-t", tag,
                               "-f", os.path.join(d, "Dockerfile"), d],
@@ -650,10 +681,10 @@ def _build_local_stream(ctx_bytes, tag, on_line, timeout=2400):
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
-# Parsers de la sortie `docker build --progress=plain` (buildkit) :
-#  · étape Dockerfile     : `#12 [ 9/15] RUN …`  → numéro d'étape + commande
-#  · sous-progression ninja: `[1234/2451] Compiling …` (DPDK/MTL = meson+ninja) → barre fine
-_STEP_RE  = re.compile(r'^#\d+\s+\[\s*(\d+)/(\d+)\]\s+(.*)$')
+***REMOVED*** Parsers de la sortie `docker build --progress=plain` (buildkit) :
+***REMOVED***  · étape Dockerfile     : `***REMOVED***12 [ 9/15] RUN …`  → numéro d'étape + commande
+***REMOVED***  · sous-progression ninja: `[1234/2451] Compiling …` (DPDK/MTL = meson+ninja) → barre fine
+_STEP_RE  = re.compile(r'^***REMOVED***\d+\s+\[\s*(\d+)/(\d+)\]\s+(.*)$')
 _NINJA_RE = re.compile(r'\[(\d+)/(\d+)\]\s+(Compiling|Linking|Generating|Installing)')
 
 def _materialize_image_tar(which, tag, dest, build_node=None):
@@ -699,9 +730,9 @@ def _distribute_image(which, tag, build_node):
     try:
         ok, msg = _materialize_image_tar(which, tag, tmp.name, build_node)
         if not ok:
-            # Export raté = TOUTES les cibles restent en retard. On comptait `len(targets)` échecs
-            # sans nommer personne NI poser la moindre alerte par nœud : le seul chemin où le parc
-            # divergeait en silence. Chaque cible est désormais signalée comme les autres.
+            ***REMOVED*** Export raté = TOUTES les cibles restent en retard. On comptait `len(targets)` échecs
+            ***REMOVED*** sans nommer personne NI poser la moindre alerte par nœud : le seul chemin où le parc
+            ***REMOVED*** divergeait en silence. Chaque cible est désormais signalée comme les autres.
             echecs = [(n.get("name"), "export image échoué : %s" % msg) for n in targets]
             for n in targets:
                 db_add_alert("alert.image.distribution_echouee", "warning", node_id=n.get("id"),
@@ -746,7 +777,7 @@ def _provision_shared_images(node, progress=None):
         if which not in caps:
             continue
         if bnode and node.get("id") == bnode.get("id"):
-            continue                                  # build host = ce nœud → image déjà présente
+            continue                                  ***REMOVED*** build host = ce nœud → image déjà présente
         tag = _image_tag(which)
         _dire("%s : préparation de l'archive…" % tag)
         tmp = tempfile.NamedTemporaryFile(prefix="bobi-prov-", suffix=".tar", delete=False)
@@ -755,17 +786,17 @@ def _provision_shared_images(node, progress=None):
             ok, _msg = _materialize_image_tar(which, tag, tmp.name)
             if not ok:
                 _dire("%s : pas encore buildée côté contrôleur — ignorée" % tag)
-                continue                              # image pas encore buildée → on n'échoue pas
+                continue                              ***REMOVED*** image pas encore buildée → on n'échoue pas
             try:
                 _taille = " (%.1f Go)" % (os.path.getsize(tmp.name) / 1e9)
             except OSError:
                 _taille = ""
             _dire("%s : transfert vers le nœud%s…" % (tag, _taille))
             o, m = _nd.load_image_file(node, tag, tmp.name)
-            # ★ CONSTATER, PAS CROIRE (2026-08-22). On comptait un succès sur le seul retour de
-            # `load_image_file`. Un transfert « ok » qui n'aboutit pas laisse le nœud sans image
-            # pendant qu'on annonce l'inverse — et le mensonge ne se voit qu'au premier build
-            # dérivé, avec un message d'autorisation trompeur. On relit donc l'inventaire du nœud.
+            ***REMOVED*** ★ CONSTATER, PAS CROIRE (2026-08-22). On comptait un succès sur le seul retour de
+            ***REMOVED*** `load_image_file`. Un transfert « ok » qui n'aboutit pas laisse le nœud sans image
+            ***REMOVED*** pendant qu'on annonce l'inverse — et le mensonge ne se voit qu'au premier build
+            ***REMOVED*** dérivé, avec un message d'autorisation trompeur. On relit donc l'inventaire du nœud.
             if o and not _image_present_node(node, tag, force=True):
                 o, m = False, "chargement rapporté OK mais l'image reste ABSENTE de l'inventaire du nœud"
             if o:
@@ -784,9 +815,9 @@ def _provision_shared_images(node, progress=None):
     return (n_ok, n_fail)
 
 
-# Combien de temps on surveille l'apparition de l'image APRÈS un suivi HTTP expiré. Le build
-# continue sur le nœud : à Horace le 2026-08-19, `bobi-mtl:0.96.0` est sortie 13 min après le
-# timeout de 40 min. 30 min laissent de la marge sans immobiliser le statut indéfiniment.
+***REMOVED*** Combien de temps on surveille l'apparition de l'image APRÈS un suivi HTTP expiré. Le build
+***REMOVED*** continue sur le nœud : à Horace le 2026-08-19, `bobi-mtl:0.96.0` est sortie 13 min après le
+***REMOVED*** timeout de 40 min. 30 min laissent de la marge sans immobiliser le statut indéfiniment.
 _BUILD_SUIVI_APRES_TIMEOUT_S = 1800
 
 
@@ -844,12 +875,12 @@ def _build_node_only_worker(which):
         ok, tail = False, ""
         try:
             rc, tail = _nd.build_image(node, tag, ctx, timeout=2400)
-            # ANTI-FAUX-ÉCHEC (2026-08-19, incident Horace) : le timeout ne coupe que l'attente
-            # HTTP, jamais le `docker build` du nœud. Déclarer « échec » à cet instant est un
-            # MENSONGE qui coûte cher : il invite à relancer, donc à lancer une seconde
-            # compilation en parallèle sur un nœud qui porte l'antenne. On surveille l'apparition
-            # de l'image au lieu de conclure — c'est exactement ce qu'un opérateur ferait à la
-            # main, et ce qui a effectivement récupéré bobi-mtl:0.96.0 ce jour-là.
+            ***REMOVED*** ANTI-FAUX-ÉCHEC (2026-08-19, incident Horace) : le timeout ne coupe que l'attente
+            ***REMOVED*** HTTP, jamais le `docker build` du nœud. Déclarer « échec » à cet instant est un
+            ***REMOVED*** MENSONGE qui coûte cher : il invite à relancer, donc à lancer une seconde
+            ***REMOVED*** compilation en parallèle sur un nœud qui porte l'antenne. On surveille l'apparition
+            ***REMOVED*** de l'image au lieu de conclure — c'est exactement ce qu'un opérateur ferait à la
+            ***REMOVED*** main, et ce qui a effectivement récupéré bobi-mtl:0.96.0 ce jour-là.
             if rc == _nd.BUILD_RC_TIMEOUT:
                 _fin = _t.time() + _BUILD_SUIVI_APRES_TIMEOUT_S
                 with _img_lock:
@@ -869,7 +900,7 @@ def _build_node_only_worker(which):
                         % (2400 // 60, tag, _BUILD_SUIVI_APRES_TIMEOUT_S // 60, nname))
             else:
                 ok = (rc == 0)
-            # Anti-faux-ok : rc=0 ne suffit pas, l'image doit être RÉELLEMENT présente sur ce nœud.
+            ***REMOVED*** Anti-faux-ok : rc=0 ne suffit pas, l'image doit être RÉELLEMENT présente sur ce nœud.
             if ok and not _image_present_node(node, tag, force=True):
                 ok, tail = False, ("build rc=0 mais %s introuvable sur %s (faux-ok). %s"
                                    % (tag, nname, str(tail)[-400:]))
@@ -878,7 +909,7 @@ def _build_node_only_worker(which):
         dur = int(_t.time() - n_start)
         _min, _sec = dur // 60, dur % 60
         if ok:
-            # Le tag n'est écrit QUE sur ce nœud, et seulement parce que l'image y est présente.
+            ***REMOVED*** Le tag n'est écrit QUE sur ce nœud, et seulement parce que l'image y est présente.
             db_update_node(nid, **{spec["field"]: tag})
             nmsg = "%s buildée sur %s en %dm%02ds" % (tag, nname, _min, _sec)
             db_add_alert("alert.image.build_noeud_ok", "info", node_id=nid, kind="prep",
@@ -890,10 +921,10 @@ def _build_node_only_worker(which):
         with _img_lock:
             _node_img_build[key] = {"status": "ok" if ok else "error", "msg": nmsg}
         results.append({"id": nid, "name": nname, "ok": ok, "msg": nmsg})
-    # Nettoyage du MENSONGE inverse : l'ancien autofill flotte a laissé le tag d'une image node_only
-    # sur des nœuds qui ne l'exécutent pas et ne l'ont jamais eue (ex. `nodes.image = bobi-mtl:x` sur
-    # un nœud sans io2110). On efface le champ sur les nœuds hors cible dont la valeur porte le
-    # préfixe de CETTE image — jamais une valeur d'une autre image.
+    ***REMOVED*** Nettoyage du MENSONGE inverse : l'ancien autofill flotte a laissé le tag d'une image node_only
+    ***REMOVED*** sur des nœuds qui ne l'exécutent pas et ne l'ont jamais eue (ex. `nodes.image = bobi-mtl:x` sur
+    ***REMOVED*** un nœud sans io2110). On efface le champ sur les nœuds hors cible dont la valeur porte le
+    ***REMOVED*** préfixe de CETTE image — jamais une valeur d'une autre image.
     tgt_ids = {n["id"] for n in targets}
     pfx = spec["prefix"] + ":"
     for n in db_get_nodes():
@@ -923,12 +954,22 @@ def _build_node_only_worker(which):
 def _build_image_worker(which):
     import shlex as _sh, time as _t
     if _IMAGES[which].get("node_only"):
-        # node_only = build PAR NŒUD porteur de la capacité (jamais sur le nœud de build global).
+        ***REMOVED*** node_only = build PAR NŒUD porteur de la capacité (jamais sur le nœud de build global).
         return _build_node_only_worker(which)
-    tag = _image_tag(which)
+    ***REMOVED*** ⚠ CE THREAD EST LE SEUL À POUVOIR SORTIR `_img_build` DE L'ÉTAT « building ». S'il meurt
+    ***REMOVED*** sur une exception, l'écran reste à « en cours » indéfiniment et personne ne sait pourquoi
+    ***REMOVED*** — un refus qui se présente comme une attente est pire qu'un refus. `_image_tag` LÈVE
+    ***REMOVED*** désormais sur un meta.json incohérent : il faut donc le dire.
+    try:
+        tag = _image_tag(which)
+    except Exception as e:
+        with _img_lock:
+            _img_build[which] = {"status": "error", "msg": str(e)}
+        logging.getLogger(__name__).warning("images: build %s refusé — %s", which, e)
+        return
     host = _build_host()
     local = _build_is_local()
-    build_node = None       # nœud de build (si build sur un nœud) → source d'export pour la distribution
+    build_node = None       ***REMOVED*** nœud de build (si build sur un nœud) → source d'export pour la distribution
     if not local and not host:
         with _img_lock:
             _img_build[which] = {"status": "error", "msg": "aucun hôte de build (Build → « Construire sur »)"}
@@ -944,7 +985,7 @@ def _build_image_worker(which):
         if m:
             st["step"], st["total"] = int(m.group(1)), int(m.group(2))
             st["phase"] = m.group(3).strip()[:90]
-            st["sd"] = st["stt"] = None        # nouvelle étape → on remet la sous-barre à zéro
+            st["sd"] = st["stt"] = None        ***REMOVED*** nouvelle étape → on remet la sous-barre à zéro
         else:
             mn = _NINJA_RE.search(line)
             if mn:
@@ -964,13 +1005,13 @@ def _build_image_worker(which):
             b["pct"] = round(st["sd"] / st["stt"] * 100) if st["stt"] else None
             b["elapsed"] = el
     try:
-        # ★ CONTRÔLE AVANT VOL : l'image de BASE d'une couche fine doit être PRÉSENTE sur la
-        # cible. Sans ce contrôle, Docker ne trouve pas le `FROM` en local, part le chercher sur
-        # Docker Hub, et rend « pull access denied, repository does not exist or may require
-        # authorization ». Le message parle d'AUTORISATION quand la cause est une image
-        # MANQUANTE : le testeur est allé vérifier ses identifiants de registre, à l'opposé de la
-        # cause (recette Valentin, r620-3/r620-1, 2026-08-21). On échoue ici, en nommant l'image,
-        # le nœud, et le geste qui répare.
+        ***REMOVED*** ★ CONTRÔLE AVANT VOL : l'image de BASE d'une couche fine doit être PRÉSENTE sur la
+        ***REMOVED*** cible. Sans ce contrôle, Docker ne trouve pas le `FROM` en local, part le chercher sur
+        ***REMOVED*** Docker Hub, et rend « pull access denied, repository does not exist or may require
+        ***REMOVED*** authorization ». Le message parle d'AUTORISATION quand la cause est une image
+        ***REMOVED*** MANQUANTE : le testeur est allé vérifier ses identifiants de registre, à l'opposé de la
+        ***REMOVED*** cause (recette Valentin, r620-3/r620-1, 2026-08-21). On échoue ici, en nommant l'image,
+        ***REMOVED*** le nœud, et le geste qui répare.
         _bf = _IMAGES[which].get("base_from")
         if _bf:
             _bt = _image_tag(_bf)
@@ -990,14 +1031,14 @@ def _build_image_worker(which):
                              % ((_cible or {}).get("name") or host)), _bt, _bf))
         ctx = _stage_tar(which)
         if local:
-            # Build LOCAL (subprocess docker) — contrôleur sur box Docker autonome / bare Debian.
+            ***REMOVED*** Build LOCAL (subprocess docker) — contrôleur sur box Docker autonome / bare Debian.
             rc, tail = _build_local_stream(ctx, tag, _on_line, timeout=2400)
             present = _docker_local_present(tag)
             where = "localement"
         else:
-            # B3-1 : si l'hôte est un NŒUD-AGENT → build via l'agent (POST contexte tar, plus de
-            # root-SSH ; pas de stream live → message « build en cours… » jusqu'au résultat). Sinon
-            # SSH brut (legacy) : extrait le contexte dans un tmpdir, build progress=plain streamé.
+            ***REMOVED*** B3-1 : si l'hôte est un NŒUD-AGENT → build via l'agent (POST contexte tar, plus de
+            ***REMOVED*** root-SSH ; pas de stream live → message « build en cours… » jusqu'au résultat). Sinon
+            ***REMOVED*** SSH brut (legacy) : extrait le contexte dans un tmpdir, build progress=plain streamé.
             from ..database import db_get_node_by_host
             from .. import node_driver as _nd
             _node = db_get_node_by_host(host)
@@ -1017,12 +1058,21 @@ def _build_image_worker(which):
             where = host
         if rc == 0 and present:
             filled = _autofill_nodes_image(which, tag)
-            # Auto-distribution des BITS aux nœuds concernés (sauf le nœud de build).
+            ***REMOVED*** Auto-distribution des BITS aux nœuds concernés (sauf le nœud de build).
             with _img_lock:
                 if _img_build.get(which, {}).get("status") == "building":
                     _img_build[which]["msg"] = "distribution aux nœuds…"
             d_ok, d_fail, _dmsg, d_echecs = _distribute_image(which, tag, build_node)
-            # Les NOMS, pas le compte : c'est ce qui dit à l'exploitant quel nœud rallumer.
+            ***REMOVED*** ★ SECOND PASSAGE, APRÈS LA DISTRIBUTION (2026-09-08). Le premier ne pouvait
+            ***REMOVED*** renseigner QUE le nœud de build : à ce moment-là, les bits ne sont arrivés nulle
+            ***REMOVED*** part ailleurs, et la garde de 2026-08-21 refuse — à raison — d'inscrire un tag
+            ***REMOVED*** qu'elle n'a pas vu sur le nœud. Conséquence, mesurée le 2026-09-08 : après un build
+            ***REMOVED*** réussi ET distribué à 3 nœuds, un seul avait le nouveau tag en base ; les autres
+            ***REMOVED*** continuaient d'exécuter l'ANCIENNE image, avec les bits neufs sur leur disque. Il
+            ***REMOVED*** fallait un DEUXIÈME build du même tag pour que la flotte l'adopte — et rien ne le
+            ***REMOVED*** disait. La garde était juste, c'est le moment de l'appel qui ne l'était pas.
+            filled += _autofill_nodes_image(which, tag)
+            ***REMOVED*** Les NOMS, pas le compte : c'est ce qui dit à l'exploitant quel nœud rallumer.
             d_noms = ", ".join(nom or "?" for nom, _m in d_echecs)
             import datetime as _dt
             _ts = _dt.datetime.now().strftime("%H:%M:%S")
@@ -1036,13 +1086,13 @@ def _build_image_worker(which):
                                             (" · renseignée sur %d nœud(s)" % filled) if filled else "",
                                             dist_note),
                                      "built_at": _ts}
-            # « localement » n'est pas une donnée (adverbe FR) : deux clés selon l'hôte de build,
-            # plutôt qu'un fragment français glissé dans un paramètre. Les compteurs (renseignée/
-            # distribuée/échecs) restent toujours affichés (donnée pure), au lieu d'être omis à zéro.
+            ***REMOVED*** « localement » n'est pas une donnée (adverbe FR) : deux clés selon l'hôte de build,
+            ***REMOVED*** plutôt qu'un fragment français glissé dans un paramètre. Les compteurs (renseignée/
+            ***REMOVED*** distribuée/échecs) restent toujours affichés (donnée pure), au lieu d'être omis à zéro.
             _params = {"tag": tag, "filled": filled or 0, "d_ok": d_ok or 0, "d_fail": d_fail or 0}
-            # Deux clés COMPLÈTES plutôt qu'un fragment optionnel en paramètre : la variante « avec
-            # échecs » nomme les nœuds ET monte en `warning` — un parc qui diverge n'est pas un
-            # `info`. Le paramètre `noms` est une donnée pure (des noms de nœuds), jamais une phrase.
+            ***REMOVED*** Deux clés COMPLÈTES plutôt qu'un fragment optionnel en paramètre : la variante « avec
+            ***REMOVED*** échecs » nomme les nœuds ET monte en `warning` — un parc qui diverge n'est pas un
+            ***REMOVED*** `info`. Le paramètre `noms` est une donnée pure (des noms de nœuds), jamais une phrase.
             if d_fail:
                 _params["noms"] = d_noms
             _cle = ("alert.image.buildee_locale" if where == "localement"
@@ -1069,8 +1119,8 @@ def api_images_status():
             bs = dict(_img_build[which])
         building = bs["status"] == "building"
         node_only = bool(spec.get("node_only"))
-        # node_only : la présence se juge SUR LES NŒUDS QUI EN ONT BESOIN (inventaire agent, caché),
-        # pas sur l'hôte de build global — c'est exactement le mensonge « à jour » du bug de prod.
+        ***REMOVED*** node_only : la présence se juge SUR LES NŒUDS QUI EN ONT BESOIN (inventaire agent, caché),
+        ***REMOVED*** pas sur l'hôte de build global — c'est exactement le mensonge « à jour » du bug de prod.
         nodes_state = None
         if node_only:
             nodes_state = [{"id": n["id"], "name": n.get("name"),
@@ -1078,7 +1128,7 @@ def api_images_status():
                            for n in _image_target_nodes(which)]
             present = bool(nodes_state) and all(n["present"] for n in nodes_state)
         elif building:
-            present = True                     # on évite l'inspect quand un build tourne (poll rapide)
+            present = True                     ***REMOVED*** on évite l'inspect quand un build tourne (poll rapide)
         else:
             present = _present_on_build_target(tag)
         out[which] = {"tag": tag, "label": spec["label"],
@@ -1088,7 +1138,7 @@ def api_images_status():
                       "node_only": node_only,
                       "status": bs["status"], "msg": bs["msg"],
                       "built_at": bs.get("built_at"),
-                      # Avancement live (build streamé) — null hors build.
+                      ***REMOVED*** Avancement live (build streamé) — null hors build.
                       "step": bs.get("step"), "step_total": bs.get("step_total"),
                       "phase": bs.get("phase"), "pct": bs.get("pct"),
                       "sub_done": bs.get("sub_done"), "sub_total": bs.get("sub_total"),
@@ -1099,8 +1149,8 @@ def api_images_status():
 @require_perm("settings.edit")
 def api_images_build():
     which = (request.json or {}).get("which") or "all"
-    # 'all' ne build PAS les images node_only (MTL, compute-gpu) : elles se construisent sur CHAQUE
-    # nœud porteur de la capacité (long : clone MTL/CUDA) → build explicite seulement.
+    ***REMOVED*** 'all' ne build PAS les images node_only (MTL, compute-gpu) : elles se construisent sur CHAQUE
+    ***REMOVED*** nœud porteur de la capacité (long : clone MTL/CUDA) → build explicite seulement.
     targets = ([w for w in _IMAGES if not _IMAGES[w].get("node_only")] if which == "all"
                else [which])
     started = []

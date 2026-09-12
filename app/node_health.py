@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Santé matérielle des nœuds (remplacement de la console Proxmox).
 
@@ -34,26 +34,26 @@ from . import settings as S
 
 log = logging.getLogger(__name__)
 
-# ─── Cadence & rétention (mêmes ordres de grandeur que ptp.py) ───────────────
+***REMOVED*** ─── Cadence & rétention (mêmes ordres de grandeur que ptp.py) ───────────────
 SAMPLE_INTERVAL_S = 5
-HISTORY_SECONDS   = 600                                   # 10 min
-HISTORY_MAX       = HISTORY_SECONDS // SAMPLE_INTERVAL_S   # 120 points (sparklines)
-STATS_SECONDS     = 86400                                  # 24 h
-STATS_MAX         = STATS_SECONDS // SAMPLE_INTERVAL_S     # 17 280 points
+HISTORY_SECONDS   = 600                                   ***REMOVED*** 10 min
+HISTORY_MAX       = HISTORY_SECONDS // SAMPLE_INTERVAL_S   ***REMOVED*** 120 points (sparklines)
+STATS_SECONDS     = 86400                                  ***REMOVED*** 24 h
+STATS_MAX         = STATS_SECONDS // SAMPLE_INTERVAL_S     ***REMOVED*** 17 280 points
 STATS_PERSIST_PATH = os.path.join(os.path.dirname(DB_PATH) or ".", "node_health_stats.json")
-STATS_FLUSH_S      = 300                                   # flush 24 h toutes les 5 min
+STATS_FLUSH_S      = 300                                   ***REMOVED*** flush 24 h toutes les 5 min
 
-# ─── État en mémoire (process contrôleur) ────────────────────────────────────
-_last = {}            # node_key → dernier snapshot complet (pour l'API/UI)
-_hist = {}            # node_key → deque(maxlen=HISTORY_MAX) (sparklines 10 min)
-_stats = {}           # node_key → deque(maxlen=STATS_MAX)  (agrégats 24 h)
+***REMOVED*** ─── État en mémoire (process contrôleur) ────────────────────────────────────
+_last = {}            ***REMOVED*** node_key → dernier snapshot complet (pour l'API/UI)
+_hist = {}            ***REMOVED*** node_key → deque(maxlen=HISTORY_MAX) (sparklines 10 min)
+_stats = {}           ***REMOVED*** node_key → deque(maxlen=STATS_MAX)  (agrégats 24 h)
 _lock = threading.Lock()
-_alert_state = {}     # node_key → None|"warning"|"error" (disque ; cache RAM du chemin chaud)
-_episodes = _Episodes("node_disk")        # idem : l'épisode disque survit au redémarrage
-_last_sample_m = 0.0  # monotone du dernier passage (throttle global)
+_alert_state = {}     ***REMOVED*** node_key → None|"warning"|"error" (disque ; cache RAM du chemin chaud)
+_episodes = _Episodes("node_disk")        ***REMOVED*** idem : l'épisode disque survit au redémarrage
+_last_sample_m = 0.0  ***REMOVED*** monotone du dernier passage (throttle global)
 _last_flush = 0.0
 
-# État pour les deltas LOCAUX du contrôleur (CPU %, débit réseau).
+***REMOVED*** État pour les deltas LOCAUX du contrôleur (CPU %, débit réseau).
 _ctl_prev_cpu = {}
 _ctl_prev_net = {}
 
@@ -68,7 +68,7 @@ def _cfg(key, default):
         return default
 
 
-# ─── Lecture LOCALE (hôte contrôleur) ────────────────────────────────────────
+***REMOVED*** ─── Lecture LOCALE (hôte contrôleur) ────────────────────────────────────────
 def _local_cpu_real_pct():
     try:
         with open("/proc/stat") as f:
@@ -189,8 +189,8 @@ def _controller_snapshot():
     }
 
 
-# ─── Collecteur legacy (nœud sans agent, via ssh_run) ────────────────────────
-# python one-shot émettant le même schéma en JSON (pas de delta CPU/net : one-shot).
+***REMOVED*** ─── Collecteur legacy (nœud sans agent, via ssh_run) ────────────────────────
+***REMOVED*** python one-shot émettant le même schéma en JSON (pas de delta CPU/net : one-shot).
 _COLLECTOR_PY = (
     "import json,os,platform,shutil\n"
     "r={'cpu_count':os.cpu_count(),'cpu_model':None,'cpu_pct':None,'loadavg':None,"
@@ -242,7 +242,7 @@ def _ssh_snapshot(host):
     return data
 
 
-# ─── Échantillonnage ─────────────────────────────────────────────────────────
+***REMOVED*** ─── Échantillonnage ─────────────────────────────────────────────────────────
 def _hist_dq(key):
     return _hist.setdefault(str(key), deque(maxlen=HISTORY_MAX))
 
@@ -268,10 +268,10 @@ def _record(key, snap):
         "mem": mem_pct,
         "shm": (disks.get("shm") or {}).get("pct"),
         "membw": mb.get("gbps"),
-        "ptp_off": (snap.get("ptp") or {}).get("offset_ns"),   # offset PTP (ns) → mini-graphe UI
-        # Charge des cœurs ORDONNANÇABLES seuls (cf. _merge_cpu_partage) : sur un nœud très isolé
-        # c'est la seule courbe qui dise quelque chose — `cpu` moyenne les 42 cœurs réservés avec
-        # les 6 qui portent réellement le système, et reste au vert pendant la saturation.
+        "ptp_off": (snap.get("ptp") or {}).get("offset_ns"),   ***REMOVED*** offset PTP (ns) → mini-graphe UI
+        ***REMOVED*** Charge des cœurs ORDONNANÇABLES seuls (cf. _merge_cpu_partage) : sur un nœud très isolé
+        ***REMOVED*** c'est la seule courbe qui dise quelque chose — `cpu` moyenne les 42 cœurs réservés avec
+        ***REMOVED*** les 6 qui portent réellement le système, et reste au vert pendant la saturation.
         "cpu_ord": ((snap.get("cpu_partage") or {}).get("ordonnancables") or {}).get("pct"),
     }
     with _lock:
@@ -303,7 +303,7 @@ def _merge_cpu_partage(nid, snap):
         return
     iso = core_pool.isolated_cached(nid)
     if not iso:
-        return                      # None = illisible, set() = nœud sans isolation : rien à partager
+        return                      ***REMOVED*** None = illisible, set() = nœud sans isolation : rien à partager
     n = len(per_core)
     grp = {"isoles": [], "ordonnancables": []}
     for cpu, pct in enumerate(per_core):
@@ -335,10 +335,10 @@ def _check_disk_alert(key, name, disks):
     level = None
     if worst is not None:
         level = "error" if worst >= err else ("warning" if worst >= warn else None)
-    # Épisode PERSISTÉ + hystérésis (balayage des alarmes du 2026-07-27) : un disque plein le reste
-    # au travers d'un redémarrage du service, et un remplissage qui oscille autour du seuil (85 %
-    # est exactement le régime d'un disque qui se remplit lentement) notifiait chaque franchissement.
-    # Le retour à la normale exige une MARGE (`node_health_disk_clear_margin`, 5 points par défaut).
+    ***REMOVED*** Épisode PERSISTÉ + hystérésis (balayage des alarmes du 2026-07-27) : un disque plein le reste
+    ***REMOVED*** au travers d'un redémarrage du service, et un remplissage qui oscille autour du seuil (85 %
+    ***REMOVED*** est exactement le régime d'un disque qui se remplit lentement) notifiait chaque franchissement.
+    ***REMOVED*** Le retour à la normale exige une MARGE (`node_health_disk_clear_margin`, 5 points par défaut).
     k = str(key)
     prev = _alert_state.get(k)
     if prev is None and k not in _alert_state:
@@ -357,19 +357,19 @@ def _check_disk_alert(key, name, disks):
         _episodes.retirer(k)
 
 
-# ─── Dérive de la prép hôte MTL (hors reboot) ────────────────────────────────────────
-# La vérification post-boot (`node_recovery`) attrape ce qui casse AU redémarrage. Mais la prép
-# peut se dégrader SANS reboot : unité systemd qui passe en `failed`, `irqbalance` réinstallé qui
-# ré-étale les IRQ sur la bande isolée, cmdline édité à la main, ou simplement `mtl_lcore_max`
-# modifié dans les réglages — auquel cas la bande ATTENDUE change et celle qui est active devient
-# obsolète. Sans ce contrôle, ces cas ne se voyaient que si un humain ouvrait le panneau du nœud.
-#
-# Cadence LENTE (défaut 30 min) : la sonde est un aller-retour agent complet, hors de question de
-# la jouer au rythme du sampler (5 s). Alerte À TRANSITION (pattern `_check_disk_alert`) : on ne
-# répète pas une anomalie qui persiste, et le retour à la normale est signalé.
-_prep_drift_at = {}      # node_id → time.monotonic() du prochain contrôle
-# L'état de transition vit dans node_recovery (`_prep_alert_state`), PARTAGÉ avec la passe
-# post-boot — ici on ne garde que la cadence.
+***REMOVED*** ─── Dérive de la prép hôte MTL (hors reboot) ────────────────────────────────────────
+***REMOVED*** La vérification post-boot (`node_recovery`) attrape ce qui casse AU redémarrage. Mais la prép
+***REMOVED*** peut se dégrader SANS reboot : unité systemd qui passe en `failed`, `irqbalance` réinstallé qui
+***REMOVED*** ré-étale les IRQ sur la bande isolée, cmdline édité à la main, ou simplement `mtl_lcore_max`
+***REMOVED*** modifié dans les réglages — auquel cas la bande ATTENDUE change et celle qui est active devient
+***REMOVED*** obsolète. Sans ce contrôle, ces cas ne se voyaient que si un humain ouvrait le panneau du nœud.
+***REMOVED***
+***REMOVED*** Cadence LENTE (défaut 30 min) : la sonde est un aller-retour agent complet, hors de question de
+***REMOVED*** la jouer au rythme du sampler (5 s). Alerte À TRANSITION (pattern `_check_disk_alert`) : on ne
+***REMOVED*** répète pas une anomalie qui persiste, et le retour à la normale est signalé.
+_prep_drift_at = {}      ***REMOVED*** node_id → time.monotonic() du prochain contrôle
+***REMOVED*** L'état de transition vit dans node_recovery (`_prep_alert_state`), PARTAGÉ avec la passe
+***REMOVED*** post-boot — ici on ne garde que la cadence.
 PREP_DRIFT_INTERVAL_S = 1800
 
 
@@ -386,28 +386,28 @@ def _check_prep_drift(node_id, name, node):
         _prep_drift_at[node_id] = now_m + _cfg("node_health_prep_drift_interval_s",
                                                PREP_DRIFT_INTERVAL_S)
         if due is None:
-            return               # 1er passage : on ARME seulement (pas de sonde au démarrage du
-                                 # contrôleur — le post-boot s'en charge, inutile de doubler).
+            return               ***REMOVED*** 1er passage : on ARME seulement (pas de sonde au démarrage du
+                                 ***REMOVED*** contrôleur — le post-boot s'en charge, inutile de doubler).
         _sonder_prep(node_id, name, node, "dérive détectée")
     except Exception as e:
         log.debug("node_health dérive prép nœud %s: %s", node_id, e)
 
 
-# ─── Dérive du gouverneur de fréquence (TOUS les nœuds) ──────────────────────────────
-# ★ POURQUOI CE CONTRÔLE EXISTE, ET POURQUOI IL N'EST PAS DANS LA PRÉP MTL.
-# La sonde de prép ci-dessus est conditionnée à la capacité `io2110` : un nœud qui ne fait que
-# du compute (murs, traitements) n'est JAMAIS vérifié. Or le couplage fréquence×temps-réel n'a
-# rien de spécifique au 2110 — mesuré le 2026-08-08 sur dell-1 (aucune capacité io2110) : le
-# gouverneur `schedutil` garait les cœurs du mur 906 à 1,2 GHz pour 3,6 max, parce qu'un fil de
-# compo sérialisé par le GIL n'occupe que 57 % d'UN cœur sur trois alloués et que les cœurs
-# paraissent donc oisifs. Résultat : des effondrements à 25 fps, une à deux fois par minute,
-# avec TOUS les postes de compo qui doublent ensemble. A/B alterné : 112 → 68 trames perdues/min
-# et zéro effondrement sur 300 s. Le réglage se pose à chaud mais un REBOOT le perd — et sans
-# ce contrôle, la régression serait totalement muette. Cf. [[silent-failure-antipattern]].
-#
-# Cadence lente et alerte à transition, comme la dérive de prép : c'est un aller-retour agent.
-_freq_drift_at = {}          # node_id → time.monotonic() du prochain contrôle
-_freq_alert_state = {}       # node_id → dernier niveau alerté (None = sain)
+***REMOVED*** ─── Dérive du gouverneur de fréquence (TOUS les nœuds) ──────────────────────────────
+***REMOVED*** ★ POURQUOI CE CONTRÔLE EXISTE, ET POURQUOI IL N'EST PAS DANS LA PRÉP MTL.
+***REMOVED*** La sonde de prép ci-dessus est conditionnée à la capacité `io2110` : un nœud qui ne fait que
+***REMOVED*** du compute (murs, traitements) n'est JAMAIS vérifié. Or le couplage fréquence×temps-réel n'a
+***REMOVED*** rien de spécifique au 2110 — mesuré le 2026-08-08 sur dell-1 (aucune capacité io2110) : le
+***REMOVED*** gouverneur `schedutil` garait les cœurs du mur 906 à 1,2 GHz pour 3,6 max, parce qu'un fil de
+***REMOVED*** compo sérialisé par le GIL n'occupe que 57 % d'UN cœur sur trois alloués et que les cœurs
+***REMOVED*** paraissent donc oisifs. Résultat : des effondrements à 25 fps, une à deux fois par minute,
+***REMOVED*** avec TOUS les postes de compo qui doublent ensemble. A/B alterné : 112 → 68 trames perdues/min
+***REMOVED*** et zéro effondrement sur 300 s. Le réglage se pose à chaud mais un REBOOT le perd — et sans
+***REMOVED*** ce contrôle, la régression serait totalement muette. Cf. [[silent-failure-antipattern]].
+***REMOVED***
+***REMOVED*** Cadence lente et alerte à transition, comme la dérive de prép : c'est un aller-retour agent.
+_freq_drift_at = {}          ***REMOVED*** node_id → time.monotonic() du prochain contrôle
+_freq_alert_state = {}       ***REMOVED*** node_id → dernier niveau alerté (None = sain)
 FREQ_DRIFT_INTERVAL_S = 1800
 
 _FREQ_PROBE = (
@@ -435,16 +435,16 @@ def _check_freq_drift(node_id, name, node):
         _freq_drift_at[node_id] = now_m + _cfg("node_health_freq_drift_interval_s",
                                                FREQ_DRIFT_INTERVAL_S)
         if due is None:
-            return               # 1er passage : on ARME seulement (cf. _check_prep_drift).
+            return               ***REMOVED*** 1er passage : on ARME seulement (cf. _check_prep_drift).
         from . import node_driver
         rc, out, _err = node_driver.host_exec(node, _FREQ_PROBE, timeout=30)
         parts = (out or "").split()
         if rc != 0 or len(parts) < 2:
-            return               # sonde illisible : on ne fabrique pas un verdict
+            return               ***REMOVED*** sonde illisible : on ne fabrique pas un verdict
         total, perf = int(parts[0]), int(parts[1])
         unit_ok = len(parts) > 2 and parts[2].strip() == "enabled"
         if total == 0:
-            return               # pas d'interface cpufreq → rien à garder
+            return               ***REMOVED*** pas d'interface cpufreq → rien à garder
         casse = perf < total
         etat = _freq_alert_state.get(node_id)
         if casse and etat is None:
@@ -461,21 +461,21 @@ def _check_freq_drift(node_id, name, node):
         log.debug("node_health dérive fréquence nœud %s: %s", node_id, e)
 
 
-# ─── Dérive de la profondeur des ring buffers MXL (TOUS les nœuds) ───────────────────────────
-# Même schéma que la dérive de fréquence ci-dessus : `/dev/shm/mxl/options.json` vit dans un
-# tmpfs (perdu au reboot, cf. `mtl.ensure_mxl_history`), et RIEN ne dit qu'il a survécu au
-# dernier redémarrage tant qu'on ne le vérifie pas. RÈGLE DU PROJET (cf. [[alarm-must-compare-
-# to-intent]]) : on ne compare PAS à une constante en dur, on compare à l'INTENTION — le réglage
-# `mxl_history_ms` — pour que l'alarme reste correcte si l'exploitant change ce réglage.
-_mxl_history_drift_at = {}       # node_id → time.monotonic() du prochain contrôle
-_mxl_history_alert_state = {}    # node_id → dernier niveau alerté (None = sain)
+***REMOVED*** ─── Dérive de la profondeur des ring buffers MXL (TOUS les nœuds) ───────────────────────────
+***REMOVED*** Même schéma que la dérive de fréquence ci-dessus : `/dev/shm/mxl/options.json` vit dans un
+***REMOVED*** tmpfs (perdu au reboot, cf. `mtl.ensure_mxl_history`), et RIEN ne dit qu'il a survécu au
+***REMOVED*** dernier redémarrage tant qu'on ne le vérifie pas. RÈGLE DU PROJET (cf. [[alarm-must-compare-
+***REMOVED*** to-intent]]) : on ne compare PAS à une constante en dur, on compare à l'INTENTION — le réglage
+***REMOVED*** `mxl_history_ms` — pour que l'alarme reste correcte si l'exploitant change ce réglage.
+_mxl_history_drift_at = {}       ***REMOVED*** node_id → time.monotonic() du prochain contrôle
+_mxl_history_alert_state = {}    ***REMOVED*** node_id → dernier niveau alerté (None = sain)
 MXL_HISTORY_DRIFT_INTERVAL_S = 1800
 
-# ★ On sonde AUSSI l'existence du domaine. Un nœud enrôlé qui n'a jamais fait tourner de
-# conteneur MXL n'a pas de `/dev/shm/mxl` du tout : il n'y a alors AUCUNE intention à laquelle
-# comparer, et alerter reviendrait à reprocher à un nœud de ne pas servir un bus qu'on ne lui a
-# jamais demandé de servir. Le domaine est créé par `mxlCreateInstance` (bobimxl fait un
-# `makedirs`) ou par la prép hôte — sa présence est donc le signal « ce nœud porte du MXL ».
+***REMOVED*** ★ On sonde AUSSI l'existence du domaine. Un nœud enrôlé qui n'a jamais fait tourner de
+***REMOVED*** conteneur MXL n'a pas de `/dev/shm/mxl` du tout : il n'y a alors AUCUNE intention à laquelle
+***REMOVED*** comparer, et alerter reviendrait à reprocher à un nœud de ne pas servir un bus qu'on ne lui a
+***REMOVED*** jamais demandé de servir. Le domaine est créé par `mxlCreateInstance` (bobimxl fait un
+***REMOVED*** `makedirs`) ou par la prép hôte — sa présence est donc le signal « ce nœud porte du MXL ».
 _MXL_HISTORY_PROBE = (
     "d=/dev/shm/mxl; [ -d \"$d\" ] || { echo 'sansdomaine -'; exit 0; }; "
     "f=/dev/shm/mxl/options.json; "
@@ -483,14 +483,14 @@ _MXL_HISTORY_PROBE = (
     "  cur=$(grep -o '\"urn:x-mxl:option:history_duration/v1.0\"[[:space:]]*:[[:space:]]*[0-9]*' \"$f\" "
     "        | grep -o '[0-9]*$'); "
     "fi; "
-    # Persistance au boot : config tmpfiles.d (et non plus une unité systemd — poser une unité
-    # exige un daemon-reload, qui révoque le GPU des conteneurs en marche, cf. mtl.MXL_TMPFILES_PATH).
-    # 3e champ — SECONDS DOMAINES. Le SDK règle la profondeur par DOMAINE ; tout notre outillage
-    # (pose du fichier, tmpfiles.d, cette sonde) suppose qu'un nœud n'en a qu'un, le défaut. Un
-    # conteneur qui poserait `MXL_DOMAIN` ailleurs créerait un domaine sans `options.json`, donc
-    # à 200 ms, INVISIBLE partout — on compte donc les valeurs non-défaut plutôt que de croire
-    # l'hypothèse sur parole. Un domaine n'existe que si un conteneur l'utilise : inspecter les
-    # conteneurs suffit, inutile de balayer le disque.
+    ***REMOVED*** Persistance au boot : config tmpfiles.d (et non plus une unité systemd — poser une unité
+    ***REMOVED*** exige un daemon-reload, qui révoque le GPU des conteneurs en marche, cf. mtl.MXL_TMPFILES_PATH).
+    ***REMOVED*** 3e champ — SECONDS DOMAINES. Le SDK règle la profondeur par DOMAINE ; tout notre outillage
+    ***REMOVED*** (pose du fichier, tmpfiles.d, cette sonde) suppose qu'un nœud n'en a qu'un, le défaut. Un
+    ***REMOVED*** conteneur qui poserait `MXL_DOMAIN` ailleurs créerait un domaine sans `options.json`, donc
+    ***REMOVED*** à 200 ms, INVISIBLE partout — on compte donc les valeurs non-défaut plutôt que de croire
+    ***REMOVED*** l'hypothèse sur parole. Un domaine n'existe que si un conteneur l'utilise : inspecter les
+    ***REMOVED*** conteneurs suffit, inutile de balayer le disque.
     "n=$(docker ps -q 2>/dev/null | xargs -r docker inspect "
     "     -f '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null "
     "   | grep '^MXL_DOMAIN=' | grep -v '^MXL_DOMAIN=/dev/shm/mxl$' | sort -u | wc -l); "
@@ -515,16 +515,16 @@ def _check_mxl_history_drift(node_id, name, node):
         _mxl_history_drift_at[node_id] = now_m + _cfg(
             "node_health_mxl_history_drift_interval_s", MXL_HISTORY_DRIFT_INTERVAL_S)
         if due is None:
-            return               # 1er passage : on ARME seulement (cf. _check_prep_drift).
+            return               ***REMOVED*** 1er passage : on ARME seulement (cf. _check_prep_drift).
         from . import node_driver, mtl
         rc, out, _err = node_driver.host_exec(node, _MXL_HISTORY_PROBE, timeout=30)
         parts = (out or "").split()
         if rc != 0 or not parts:
-            return               # sonde illisible : on ne fabrique pas un verdict
+            return               ***REMOVED*** sonde illisible : on ne fabrique pas un verdict
         cur_raw = parts[0]
         if cur_raw == "sansdomaine":
-            # Pas de domaine MXL sur ce nœud → rien à vérifier. On DÉSARME une alerte
-            # éventuellement en cours (un nœud vidé de ses conteneurs MXL doit se taire).
+            ***REMOVED*** Pas de domaine MXL sur ce nœud → rien à vérifier. On DÉSARME une alerte
+            ***REMOVED*** éventuellement en cours (un nœud vidé de ses conteneurs MXL doit se taire).
             if _mxl_history_alert_state.get(node_id) is not None:
                 _mxl_history_alert_state[node_id] = None
             return
@@ -532,16 +532,16 @@ def _check_mxl_history_drift(node_id, name, node):
         want_ms = _cfg("mxl_history_ms", mtl.MXL_HISTORY_MS_DEFAULT)
         want_ns = int(want_ms) * 1_000_000
         cur_ns = int(cur_raw) if cur_raw.isdigit() else None
-        # Second domaine détecté → notre hypothèse « un nœud = un domaine » est tombée, et le
-        # réglage ne couvre PAS ce domaine-là. On le dit plutôt que de continuer à supposer.
+        ***REMOVED*** Second domaine détecté → notre hypothèse « un nœud = un domaine » est tombée, et le
+        ***REMOVED*** réglage ne couvre PAS ce domaine-là. On le dit plutôt que de continuer à supposer.
         autres = int(parts[2]) if len(parts) > 2 and parts[2].strip().isdigit() else 0
         casse = (cur_ns != want_ns) or autres > 0
         etat = _mxl_history_alert_state.get(node_id)
         if casse and etat is None:
-            # « profondeur inconnue » (fichier introuvable) est une VALEUR DE REPLI française : elle
-            # ne peut pas voyager en paramètre (piège n°3), donc clé complète par branche — de même
-            # pour les deux suffixes conditionnels (unité tmpfiles.d, domaines secondaires), qui sont
-            # des demi-phrases de diagnostic et non des données. 2×2×2 = 8 clés, une par combinaison.
+            ***REMOVED*** « profondeur inconnue » (fichier introuvable) est une VALEUR DE REPLI française : elle
+            ***REMOVED*** ne peut pas voyager en paramètre (piège n°3), donc clé complète par branche — de même
+            ***REMOVED*** pour les deux suffixes conditionnels (unité tmpfiles.d, domaines secondaires), qui sont
+            ***REMOVED*** des demi-phrases de diagnostic et non des données. 2×2×2 = 8 clés, une par combinaison.
             cle = "alert.prep.mxl_profondeur_derive_{}_{}_{}".format(
                 "connue" if cur_ns is not None else "inconnue",
                 "unitok" if unit_ok else "unitko",
@@ -561,22 +561,22 @@ def _check_mxl_history_drift(node_id, name, node):
         log.debug("node_health dérive profondeur MXL nœud %s: %s", node_id, e)
 
 
-# ─── Identité du domaine MXL : `domain_def.json` (BCP-007-03) ────────────────────────────────
-# Pendant de `_check_mxl_history_drift`, avec une différence de NATURE : ici on RÉPARE au lieu
-# d'alerter. Une alerte se justifie quand la remise en état demande un arbitrage (la profondeur
-# des ring buffers ne prend effet qu'en recréant les flux : c'est à l'exploitant de choisir son
-# moment). `domain_def.json` est purement DESCRIPTIF — aucun conteneur en marche n'en dépend, le
-# réécrire ne perturbe rien — donc lever une alerte « allez cliquer sur Préparation hôte » serait
-# du bruit pour une chose qu'on sait faire soi-même. Le tmpfs le perd à chaque reboot ; c'est ce
-# passage-là qui le repose sur les nœuds qui ne repassent jamais par la prép hôte MTL.
-_mxl_domain_def_at = {}          # node_id → time.monotonic() du prochain contrôle
+***REMOVED*** ─── Identité du domaine MXL : `domain_def.json` (BCP-007-03) ────────────────────────────────
+***REMOVED*** Pendant de `_check_mxl_history_drift`, avec une différence de NATURE : ici on RÉPARE au lieu
+***REMOVED*** d'alerter. Une alerte se justifie quand la remise en état demande un arbitrage (la profondeur
+***REMOVED*** des ring buffers ne prend effet qu'en recréant les flux : c'est à l'exploitant de choisir son
+***REMOVED*** moment). `domain_def.json` est purement DESCRIPTIF — aucun conteneur en marche n'en dépend, le
+***REMOVED*** réécrire ne perturbe rien — donc lever une alerte « allez cliquer sur Préparation hôte » serait
+***REMOVED*** du bruit pour une chose qu'on sait faire soi-même. Le tmpfs le perd à chaque reboot ; c'est ce
+***REMOVED*** passage-là qui le repose sur les nœuds qui ne repassent jamais par la prép hôte MTL.
+_mxl_domain_def_at = {}          ***REMOVED*** node_id → time.monotonic() du prochain contrôle
 MXL_DOMAIN_DEF_INTERVAL_S = 1800
 
-# ★ Même garde que la sonde de profondeur : PAS de `/dev/shm/mxl` = ce nœud ne porte pas de MXL,
-# et on ne va pas lui fabriquer un domaine vide juste pour le nommer. Ce serait doublement
-# nuisible : la présence du répertoire est précisément le signal sur lequel `_check_mxl_history_
-# drift` décide s'il a quelque chose à vérifier — créer le domaine partout le ferait alerter sur
-# des nœuds qui n'ont jamais servi une trame.
+***REMOVED*** ★ Même garde que la sonde de profondeur : PAS de `/dev/shm/mxl` = ce nœud ne porte pas de MXL,
+***REMOVED*** et on ne va pas lui fabriquer un domaine vide juste pour le nommer. Ce serait doublement
+***REMOVED*** nuisible : la présence du répertoire est précisément le signal sur lequel `_check_mxl_history_
+***REMOVED*** drift` décide s'il a quelque chose à vérifier — créer le domaine partout le ferait alerter sur
+***REMOVED*** des nœuds qui n'ont jamais servi une trame.
 _MXL_DOMAIN_DEF_PROBE = (
     "d=/dev/shm/mxl; [ -d \"$d\" ] || { echo sansdomaine; exit 0; }; "
     "f=$d/domain_def.json; [ -f \"$f\" ] || { echo absent; exit 0; }; "
@@ -601,30 +601,30 @@ def _check_mxl_domain_def(node_id, name, node):
         _mxl_domain_def_at[node_id] = now_m + _cfg(
             "node_health_mxl_domain_def_interval_s", MXL_DOMAIN_DEF_INTERVAL_S)
         if due is None:
-            return               # 1er passage : on ARME seulement (cf. _check_prep_drift).
+            return               ***REMOVED*** 1er passage : on ARME seulement (cf. _check_prep_drift).
         from . import node_driver, mtl
         from .database import db_node_mxl_domain_id
         rc, out, _err = node_driver.host_exec(node, _MXL_DOMAIN_DEF_PROBE, timeout=30)
         cur = (out or "").strip()
         if rc != 0 or not cur or cur == "sansdomaine":
-            return               # injoignable, illisible, ou pas de MXL ici : rien à faire.
-        # On ne CRÉE l'identité en base que si le nœud porte bien un domaine — inutile de semer
-        # un UUID pour un nœud qui n'en aura jamais l'usage.
+            return               ***REMOVED*** injoignable, illisible, ou pas de MXL ici : rien à faire.
+        ***REMOVED*** On ne CRÉE l'identité en base que si le nœud porte bien un domaine — inutile de semer
+        ***REMOVED*** un UUID pour un nœud qui n'en aura jamais l'usage.
         voulu = db_node_mxl_domain_id(node_id)
         if voulu and cur == voulu:
             return
         ok, msg = mtl.ensure_mxl_domain_def(node)
         if ok:
-            # Pas de log de succès ici : `ensure_mxl_domain_def` journalise elle-même son écriture,
-            # pour TOUS ses appelants (cf. son commentaire). Doubler la ligne n'ajouterait rien.
+            ***REMOVED*** Pas de log de succès ici : `ensure_mxl_domain_def` journalise elle-même son écriture,
+            ***REMOVED*** pour TOUS ses appelants (cf. son commentaire). Doubler la ligne n'ajouterait rien.
             pass
         else:
-            # WARNING, pas DEBUG (corrigé le 2026-08-15) : à ce stade on SAIT que le nœud porte un
-            # domaine et que son fichier est absent ou faux — un échec de pose est donc un fait
-            # constaté, pas du bruit de sonde. En DEBUG il était invisible en production, et la
-            # seule trace d'une réparation était celle des réparations RÉUSSIES : on n'aurait vu
-            # que les succès, jamais les échecs, ce qui est précisément la façon dont un défaut
-            # se déguise en « ça marche » (cf. l'enquête qui a suivi la pose initiale).
+            ***REMOVED*** WARNING, pas DEBUG (corrigé le 2026-08-15) : à ce stade on SAIT que le nœud porte un
+            ***REMOVED*** domaine et que son fichier est absent ou faux — un échec de pose est donc un fait
+            ***REMOVED*** constaté, pas du bruit de sonde. En DEBUG il était invisible en production, et la
+            ***REMOVED*** seule trace d'une réparation était celle des réparations RÉUSSIES : on n'aurait vu
+            ***REMOVED*** que les succès, jamais les échecs, ce qui est précisément la façon dont un défaut
+            ***REMOVED*** se déguise en « ça marche » (cf. l'enquête qui a suivi la pose initiale).
             log.warning("node_health : domain_def.json NON posé sur %s : %s", name, msg)
     except Exception as e:
         log.debug("node_health domain_def MXL nœud %s: %s", node_id, e)
@@ -639,13 +639,13 @@ def _sonder_prep(node_id, name, node, contexte):
     demande sans attendre le prochain tour."""
     from . import node_driver, node_recovery, mtl
     if "io2110" not in (node_driver.node_capabilities(node) or []):
-        return None              # pas de 2110 sur ce nœud → aucune prép MTL à vérifier
+        return None              ***REMOVED*** pas de 2110 sur ce nœud → aucune prép MTL à vérifier
     prep = mtl.verifier_node(node) or {}
     if prep.get("error"):
-        return None              # nœud injoignable : c'est déjà signalé ailleurs, pas de doublon
-    # Décision + alerte à transition déléguées à node_recovery : état PARTAGÉ avec la passe
-    # post-boot, sinon un défaut signalé au boot puis réparé n'aurait jamais son message de
-    # résolution (et inversement, on ré-alerterait un défaut déjà signalé au reboot).
+        return None              ***REMOVED*** nœud injoignable : c'est déjà signalé ailleurs, pas de doublon
+    ***REMOVED*** Décision + alerte à transition déléguées à node_recovery : état PARTAGÉ avec la passe
+    ***REMOVED*** post-boot, sinon un défaut signalé au boot puis réparé n'aurait jamais son message de
+    ***REMOVED*** résolution (et inversement, on ré-alerterait un défaut déjà signalé au reboot).
     node_recovery.evaluer_prep(node_id, name, prep, contexte)
     return node_recovery.verdict_prep(node_id)
 
@@ -683,13 +683,13 @@ def forcer_prep(node_id):
     except Exception as e:
         log.debug("node_health re-sonde prép nœud %s: %s", node_id, e)
         return {"ok": False, "error": str(e)}
-    # Cadence repoussée d'un intervalle plein : on vient de sonder, inutile de recommencer tout de
-    # suite. `_prep_drift_at` est aussi le drapeau d'armement — le poser ici évite qu'une re-sonde
-    # manuelle sur un nœud jamais armé soit suivie d'une seconde sonde au tour suivant.
+    ***REMOVED*** Cadence repoussée d'un intervalle plein : on vient de sonder, inutile de recommencer tout de
+    ***REMOVED*** suite. `_prep_drift_at` est aussi le drapeau d'armement — le poser ici évite qu'une re-sonde
+    ***REMOVED*** manuelle sur un nœud jamais armé soit suivie d'une seconde sonde au tour suivant.
     _prep_drift_at[node_id] = time.monotonic() + _cfg("node_health_prep_drift_interval_s",
                                                       PREP_DRIFT_INTERVAL_S)
-    # Le snapshot déjà en cache porte l'ANCIEN verdict : le remettre à jour tout de suite, sinon
-    # l'UI rafraîchie dans la seconde réafficherait l'horodatage périmé (échec silencieux).
+    ***REMOVED*** Le snapshot déjà en cache porte l'ANCIEN verdict : le remettre à jour tout de suite, sinon
+    ***REMOVED*** l'UI rafraîchie dans la seconde réafficherait l'horodatage périmé (échec silencieux).
     if verdict is not None:
         with _lock:
             last = _last.get(str(node_id))
@@ -705,7 +705,7 @@ def _merge_membw(node_id, snap):
     — même schéma pour l'UI quel que soit le chemin de mesure (agent ou repli exec)."""
     try:
         from . import membw
-        # snap porte déjà name/host — les seules clés lues pour nommer l'alerte.
+        ***REMOVED*** snap porte déjà name/host — les seules clés lues pour nommer l'alerte.
         membw.ingest(node_id, snap, snap.get("membw"))
         mb = membw.latest().get(node_id)
         if mb:
@@ -747,17 +747,17 @@ def _merge_ptp(node_id, snap):
     champ agent (ou son absence) tel quel."""
     try:
         from . import ptp, settings as st
-        # ── Ce que « PTP est activé sur ce nœud » veut dire ────────────────────────────────────
-        # Le réglage `ptp_enabled` vaut False PAR DÉFAUT et n'est jamais semé à l'installation.
-        # Or le déploiement PTP réel, lui, est piloté par `node_interfaces.ptp_enabled` — c'est
-        # lui qui pose les unités `mxl-ptp4l-net<id>`. Les deux pouvaient donc se contredire, et
-        # ça s'est vu en prod (Horace, 2026-07-28) : quatre interfaces à ptp_enabled=1, ptp4l
-        # verrouillé depuis quatre jours, et le réglage de nœud jamais posé → cette ligne rendait
-        # None → tout le relevé pmc AUTORITAIRE de l'orchestrateur (le seul qui cible le bon
-        # domaine et le bon socket) ne tournait pas une seule fois. La page Horloges retombait
-        # alors sur le bloc de l'agent, muet, et concluait « aucune source de temps ».
-        # La présence de groupes PTP est un FAIT ; le réglage n'est qu'une intention. On lit les
-        # deux, et un fait suffit.
+        ***REMOVED*** ── Ce que « PTP est activé sur ce nœud » veut dire ────────────────────────────────────
+        ***REMOVED*** Le réglage `ptp_enabled` vaut False PAR DÉFAUT et n'est jamais semé à l'installation.
+        ***REMOVED*** Or le déploiement PTP réel, lui, est piloté par `node_interfaces.ptp_enabled` — c'est
+        ***REMOVED*** lui qui pose les unités `mxl-ptp4l-net<id>`. Les deux pouvaient donc se contredire, et
+        ***REMOVED*** ça s'est vu en prod (Horace, 2026-07-28) : quatre interfaces à ptp_enabled=1, ptp4l
+        ***REMOVED*** verrouillé depuis quatre jours, et le réglage de nœud jamais posé → cette ligne rendait
+        ***REMOVED*** None → tout le relevé pmc AUTORITAIRE de l'orchestrateur (le seul qui cible le bon
+        ***REMOVED*** domaine et le bon socket) ne tournait pas une seule fois. La page Horloges retombait
+        ***REMOVED*** alors sur le bloc de l'agent, muet, et concluait « aucune source de temps ».
+        ***REMOVED*** La présence de groupes PTP est un FAIT ; le réglage n'est qu'une intention. On lit les
+        ***REMOVED*** deux, et un fait suffit.
         actif = bool(st.setting_for("ptp_enabled", node_id))
         if not actif:
             try:
@@ -766,13 +766,13 @@ def _merge_ptp(node_id, snap):
                 actif = False
         s = ptp.cached_status(node_id) if actif else None
         if not s:
-            # Nœud full-PF DPDK : ses ports média sont sur vfio, donc PAS de netdev noyau, donc ni
-            # ptp4l ni pmc — `cached_status` reste vide À JAMAIS et le bloc PTP restait nul. Son
-            # horloge existe pourtant : elle est disciplinée par le client PTP INTERNE de libmtl,
-            # qui publie son offset sur le :8080 du moteur. On va le chercher là.
-            # Sans ça, un nœud 2110 s'affichait sans aucune mesure de synchro — sur la page
-            # Monitoring comme sur Réglages → Réseau → Horloges — alors qu'il est le mieux
-            # discipliné du parc.
+            ***REMOVED*** Nœud full-PF DPDK : ses ports média sont sur vfio, donc PAS de netdev noyau, donc ni
+            ***REMOVED*** ptp4l ni pmc — `cached_status` reste vide À JAMAIS et le bloc PTP restait nul. Son
+            ***REMOVED*** horloge existe pourtant : elle est disciplinée par le client PTP INTERNE de libmtl,
+            ***REMOVED*** qui publie son offset sur le :8080 du moteur. On va le chercher là.
+            ***REMOVED*** Sans ça, un nœud 2110 s'affichait sans aucune mesure de synchro — sur la page
+            ***REMOVED*** Monitoring comme sur Réglages → Réseau → Horloges — alors qu'il est le mieux
+            ***REMOVED*** discipliné du parc.
             eng = (_io_engine_snapshot(node_id) or {}).get("ptp") or {}
             if not eng:
                 return
@@ -792,17 +792,17 @@ def _merge_ptp(node_id, snap):
             })
             snap["ptp"] = base
             return
-        base = dict(snap.get("ptp") or {})   # garde l'iface remontée par l'agent
+        base = dict(snap.get("ptp") or {})   ***REMOVED*** garde l'iface remontée par l'agent
         base.update({
-            # `running` : sur un nœud full-PF DPDK il n'y a PAS de ptp4l — le client PTP est celui
-            # de libmtl, dans le moteur. Se contenter de ptp4l_running affichait « PTP arrêté ».
+            ***REMOVED*** `running` : sur un nœud full-PF DPDK il n'y a PAS de ptp4l — le client PTP est celui
+            ***REMOVED*** de libmtl, dans le moteur. Se contenter de ptp4l_running affichait « PTP arrêté ».
             "running":   bool(s.get("ptp4l_running") or s.get("engine_ptp_client")),
             "locked":    bool(s.get("locked")),
-            # Synchro RÉELLE au GM, et critère d'affichage/alarme (cf. ptp.clock_ok). `locked` seul
-            # est le critère de l'ère AF_XDP : sur PTP moteur c'est le lock servo STRICT, qui restait
-            # False tant que l'asservissement en fréquence n'était pas compilé (corrigé 2026-08-30).
-            # Il s'arme désormais — mais `synced` reste le critère parce qu'il dit la DISPONIBILITÉ
-            # d'une référence, quand `locked` dit la CONVERGENCE du servo (cf. ptp.clock_ok).
+            ***REMOVED*** Synchro RÉELLE au GM, et critère d'affichage/alarme (cf. ptp.clock_ok). `locked` seul
+            ***REMOVED*** est le critère de l'ère AF_XDP : sur PTP moteur c'est le lock servo STRICT, qui restait
+            ***REMOVED*** False tant que l'asservissement en fréquence n'était pas compilé (corrigé 2026-08-30).
+            ***REMOVED*** Il s'arme désormais — mais `synced` reste le critère parce qu'il dit la DISPONIBILITÉ
+            ***REMOVED*** d'une référence, quand `locked` dit la CONVERGENCE du servo (cf. ptp.clock_ok).
             "synced":    bool(s.get("synced")),
             "engine_ptp": bool(s.get("engine_ptp")),
             "sync_ok":   ptp.clock_ok(s),
@@ -813,17 +813,17 @@ def _merge_ptp(node_id, snap):
             "gm_id":     s.get("grandmaster_id"),
             "port_state": s.get("port_state"),
             "phc2sys_state": s.get("phc2sys_state"),
-            # Qualité de la RÉFÉRENCE : un verrou nanométrique sur une horloge en roue libre
-            # doit se voir, sinon `locked: true` raconte que tout va bien (cf. ptp.gm_reference_saine).
+            ***REMOVED*** Qualité de la RÉFÉRENCE : un verrou nanométrique sur une horloge en roue libre
+            ***REMOVED*** doit se voir, sinon `locked: true` raconte que tout va bien (cf. ptp.gm_reference_saine).
             "gm_clock_class":  s.get("gm_clock_class"),
             "utc_offset_valid": s.get("utc_offset_valid"),
             "gm_saine":        s.get("gm_saine"),
             "gm_raison":       s.get("gm_raison"),
-            # phc2sys discipline-t-il CLOCK_REALTIME sur ce nœud ? Consommé par clocks.py pour
-            # REFUSER de proposer chrony là où un servo tient déjà l'horloge.
+            ***REMOVED*** phc2sys discipline-t-il CLOCK_REALTIME sur ce nœud ? Consommé par clocks.py pour
+            ***REMOVED*** REFUSER de proposer chrony là où un servo tient déjà l'horloge.
             "phc2sys_running": bool(s.get("phc2sys_running")),
         })
-        # Interfaces porteuses de PTP (node_interfaces.ptp_enabled) → liste affichée dans le détail.
+        ***REMOVED*** Interfaces porteuses de PTP (node_interfaces.ptp_enabled) → liste affichée dans le détail.
         try:
             from .database import db_get_node_interfaces
             base["interfaces"] = [{"ifname": i.get("ifname"), "role": i.get("role")}
@@ -835,20 +835,20 @@ def _merge_ptp(node_id, snap):
         pass
 
 
-# ─── Ports média en DPDK/vfio (chantier DPDK/narrow, cf. docs/chantiers/DPDK_NARROW.md) ─────
-# Quand `node_interfaces.pmd == "dpdk"`, le port média est lié à vfio-pci : il DISPARAÎT de
-# /sys/class/net (plus d'ethtool -S ni de compteurs kernel) → l'agent ne peut plus mesurer son
-# débit. Les compteurs viennent alors du moteur 2110_io (snapshot :8080, champ
-# `nic.ports[i].mtl_stats`, contrat /tmp/mtl_ports.json — cf. docs/chantiers/DPDK_NARROW.md « Contrats de la
-# nuit »). Deux formes d'agent tolérées : ancien agent (< 0.15.0 : l'interface disparaît de
-# net/nics) et agent ≥ 0.15.0 (entrée `{"state": "vfio"}`) — dans les deux cas l'absence du
-# netdev est NORMALE, ce n'est PAS une « interface disparue ». Un nœud sans interface
-# pmd=dpdk (flotte af_xdp actuelle) n'est PAS touché : aucun fetch, aucun changement.
-_mtl_prev = {}          # (node_id, ifname) → {"rx","tx","pkts","ts"} (deltas débit + gel)
-_vfio_frozen_cnt = {}   # (node_id, ifname) → nb d'échantillons consécutifs à compteurs figés
-_vfio_alert_state = {}  # (node_id, ifname) → True si l'alerte « port vfio muet » est posée (cache RAM)
-_episodes_vfio = _Episodes("node_vfio")   # le MÊME état, SURVIVANT au redémarrage (cf. episodes.py)
-VFIO_FROZEN_SAMPLES = 6  # ≈ 30 s à 5 s/échantillon (setting node_health_vfio_frozen_samples)
+***REMOVED*** ─── Ports média en DPDK/vfio (chantier DPDK/narrow, cf. docs/chantiers/DPDK_NARROW.md) ─────
+***REMOVED*** Quand `node_interfaces.pmd == "dpdk"`, le port média est lié à vfio-pci : il DISPARAÎT de
+***REMOVED*** /sys/class/net (plus d'ethtool -S ni de compteurs kernel) → l'agent ne peut plus mesurer son
+***REMOVED*** débit. Les compteurs viennent alors du moteur 2110_io (snapshot :8080, champ
+***REMOVED*** `nic.ports[i].mtl_stats`, contrat /tmp/mtl_ports.json — cf. docs/chantiers/DPDK_NARROW.md « Contrats de la
+***REMOVED*** nuit »). Deux formes d'agent tolérées : ancien agent (< 0.15.0 : l'interface disparaît de
+***REMOVED*** net/nics) et agent ≥ 0.15.0 (entrée `{"state": "vfio"}`) — dans les deux cas l'absence du
+***REMOVED*** netdev est NORMALE, ce n'est PAS une « interface disparue ». Un nœud sans interface
+***REMOVED*** pmd=dpdk (flotte af_xdp actuelle) n'est PAS touché : aucun fetch, aucun changement.
+_mtl_prev = {}          ***REMOVED*** (node_id, ifname) → {"rx","tx","pkts","ts"} (deltas débit + gel)
+_vfio_frozen_cnt = {}   ***REMOVED*** (node_id, ifname) → nb d'échantillons consécutifs à compteurs figés
+_vfio_alert_state = {}  ***REMOVED*** (node_id, ifname) → True si l'alerte « port vfio muet » est posée (cache RAM)
+_episodes_vfio = _Episodes("node_vfio")   ***REMOVED*** le MÊME état, SURVIVANT au redémarrage (cf. episodes.py)
+VFIO_FROZEN_SAMPLES = 6  ***REMOVED*** ≈ 30 s à 5 s/échantillon (setting node_health_vfio_frozen_samples)
 
 
 def _io_engine_snapshot(node_id):
@@ -893,7 +893,7 @@ def _merge_dpdk_net(node_id, snap):
         log.debug("node_health node_interfaces nœud %s: %s", node_id, e)
         return
     if not dpdk_ifaces:
-        return                                   # nœud 100 % af_xdp/kernel → strictement inchangé
+        return                                   ***REMOVED*** nœud 100 % af_xdp/kernel → strictement inchangé
     eng = _io_engine_snapshot(node_id) or {}
     ports = (eng.get("nic") or {}).get("ports") or []
     now = time.time()
@@ -905,20 +905,20 @@ def _merge_dpdk_net(node_id, snap):
         ifname = itf.get("ifname")
         if not ifname:
             continue
-        # Le moteur peut désigner le port par son ifname (héritage af_xdp) ou par son BDF PCI
-        # (port vfio) → on matche sur les deux (colonne `pci` de node_interfaces).
+        ***REMOVED*** Le moteur peut désigner le port par son ifname (héritage af_xdp) ou par son BDF PCI
+        ***REMOVED*** (port vfio) → on matche sur les deux (colonne `pci` de node_interfaces).
         idents = {ifname, (itf.get("pci") or "").strip()} - {""}
         port = next((p for p in ports if isinstance(p, dict)
                      and (p.get("iface") in idents
                           or (p.get("mtl_stats") or {}).get("port") in idents)), None)
         stats = (port or {}).get("mtl_stats")
-        # L'entrée réseau existe TOUJOURS pour un port dpdk (l'agent, lui, ne la voit plus) :
-        # l'UI continue d'afficher l'interface au lieu de la faire disparaître.
+        ***REMOVED*** L'entrée réseau existe TOUJOURS pour un port dpdk (l'agent, lui, ne la voit plus) :
+        ***REMOVED*** l'UI continue d'afficher l'interface au lieu de la faire disparaître.
         entry = dict(net.get(ifname) or {})
         entry.setdefault("rx_bps", None)
         entry.setdefault("tx_bps", None)
         entry["pmd"] = "dpdk"
-        entry["source"] = "mtl"                  # provenance des compteurs (≠ agent)
+        entry["source"] = "mtl"                  ***REMOVED*** provenance des compteurs (≠ agent)
         cap = (port or {}).get("port_capacity_gbps")
         if not entry.get("speed_mbps") and cap:
             entry["speed_mbps"] = int(float(cap) * 1000)
@@ -929,14 +929,14 @@ def _merge_dpdk_net(node_id, snap):
             pkts = (int(stats.get("rx_packets") or 0), int(stats.get("tx_packets") or 0))
             prev = _mtl_prev.get(key)
             if prev and now - prev["ts"] > 0 and rx >= prev["rx"] and tx >= prev["tx"]:
-                # compteurs cumulés : delta négatif = moteur redémarré → on saute un cycle
+                ***REMOVED*** compteurs cumulés : delta négatif = moteur redémarré → on saute un cycle
                 dt = now - prev["ts"]
                 entry["rx_bps"] = round((rx - prev["rx"]) * 8 / dt)
                 entry["tx_bps"] = round((tx - prev["tx"]) * 8 / dt)
             _mtl_prev[key] = {"rx": rx, "tx": tx, "pkts": pkts, "ts": now}
-            # « Port vfio muet » : paquets figés alors que le moteur a des sessions actives sur
-            # le port (`nic.ports[i].active` = sessions live). Sans session, un port silencieux
-            # est normal (rien d'abonné) → compteur remis à zéro.
+            ***REMOVED*** « Port vfio muet » : paquets figés alors que le moteur a des sessions actives sur
+            ***REMOVED*** le port (`nic.ports[i].active` = sessions live). Sans session, un port silencieux
+            ***REMOVED*** est normal (rien d'abonné) → compteur remis à zéro.
             sessions = (port or {}).get("active")
             try:
                 sessions = int(sessions) if sessions is not None else 0
@@ -950,7 +950,7 @@ def _merge_dpdk_net(node_id, snap):
             entry["frozen"] = muet
             prev_alert = _vfio_alert_state.get(key)
             if prev_alert is None and key not in _vfio_alert_state:
-                prev_alert = bool(_episodes_vfio.get(key))   # reprise après (re)démarrage
+                prev_alert = bool(_episodes_vfio.get(key))   ***REMOVED*** reprise après (re)démarrage
                 _vfio_alert_state[key] = prev_alert
             if muet and not prev_alert:
                 db_add_alert(
@@ -965,8 +965,8 @@ def _merge_dpdk_net(node_id, snap):
                 _vfio_alert_state[key] = False
                 _episodes_vfio.retirer(key)
         else:
-            # Pas de mtl_stats (moteur arrêté, ancien controller.py, port inconnu) : on n'invente
-            # ni débit ni alerte gel — l'entrée reste affichée avec des débits inconnus.
+            ***REMOVED*** Pas de mtl_stats (moteur arrêté, ancien controller.py, port inconnu) : on n'invente
+            ***REMOVED*** ni débit ni alerte gel — l'entrée reste affichée avec des débits inconnus.
             _vfio_frozen_cnt[key] = 0
         net[ifname] = entry
 
@@ -981,27 +981,27 @@ def _sample_one(node):
     try:
         if node.get("agent_url"):
             from . import node_driver
-            # Auto-réparation : nœud enrôlé mais register raté (capacités vides) → ré-enregistrer.
+            ***REMOVED*** Auto-réparation : nœud enrôlé mais register raté (capacités vides) → ré-enregistrer.
             if node_driver.ensure_registered(node):
                 from .database import db_get_node
                 node = db_get_node(nid) or node
-            snap = node_driver.health(node)        # /v1/health (riche)
+            snap = node_driver.health(node)        ***REMOVED*** /v1/health (riche)
         else:
-            snap = _ssh_snapshot(host)             # legacy ssh (réduit)
+            snap = _ssh_snapshot(host)             ***REMOVED*** legacy ssh (réduit)
         if not snap:
             with _lock:
                 last = _last.get(str(nid))
                 if last:
-                    last["ok"] = False              # marque stale sans écraser les données
+                    last["ok"] = False              ***REMOVED*** marque stale sans écraser les données
             return
         snap.setdefault("ts", time.time())
         snap["ok"] = True
         snap["name"] = node.get("name") or host
         snap["host"] = host
         snap["capabilities"] = node.get("capabilities")
-        # Heartbeat nœud : persiste agent_version/last_seen/status dans la table `nodes` (self-heal du
-        # « ? » de version dans l'UI). refresh() n'était câblé nulle part → agent_version n'était posé
-        # qu'au 1er enroll (perdu si timing/maj agent). Nœuds à agent uniquement.
+        ***REMOVED*** Heartbeat nœud : persiste agent_version/last_seen/status dans la table `nodes` (self-heal du
+        ***REMOVED*** « ? » de version dans l'UI). refresh() n'était câblé nulle part → agent_version n'était posé
+        ***REMOVED*** qu'au 1er enroll (perdu si timing/maj agent). Nœuds à agent uniquement.
         try:
             av = snap.get("agent_version")
             if av and av != node.get("agent_version"):
@@ -1011,9 +1011,9 @@ def _sample_one(node):
                                last_seen=_dt.now().isoformat(timespec="seconds"), status="up")
         except Exception:
             pass
-        # Dérive d'images : ce nœud a-t-il vraiment ce que la base lui prête ? Contrôle throttlé
-        # (15 min) et NON bloquant — il ne rapatrie rien, il rend l'écart visible. Cf.
-        # `verifier_derive_images` pour la raison de ne pas rattraper automatiquement.
+        ***REMOVED*** Dérive d'images : ce nœud a-t-il vraiment ce que la base lui prête ? Contrôle throttlé
+        ***REMOVED*** (15 min) et NON bloquant — il ne rapatrie rien, il rend l'écart visible. Cf.
+        ***REMOVED*** `verifier_derive_images` pour la raison de ne pas rattraper automatiquement.
         try:
             from .routes.images import verifier_derive_images
             verifier_derive_images(node)
@@ -1024,30 +1024,30 @@ def _sample_one(node):
         _merge_rdma(nid, snap)
         _merge_ptp(nid, snap)
         try:
-            _merge_dpdk_net(nid, snap)           # ports média vfio/DPDK (best-effort)
+            _merge_dpdk_net(nid, snap)           ***REMOVED*** ports média vfio/DPDK (best-effort)
         except Exception as e:
             log.debug("node_health dpdk net nœud %s: %s", nid, e)
         try:
-            _merge_cpu_partage(nid, snap)        # isolés vs ordonnançables (best-effort)
+            _merge_cpu_partage(nid, snap)        ***REMOVED*** isolés vs ordonnançables (best-effort)
         except Exception as e:
             log.debug("node_health partage CPU nœud %s: %s", nid, e)
-        # Prép hôte AVANT `_record` : la dérive (sonde lente, ≤1×/30 min) peut rafraîchir le
-        # verdict que `_merge_prep` publie dans CE snapshot — sinon le verdict tout juste calculé
-        # n'apparaîtrait qu'au tour suivant.
+        ***REMOVED*** Prép hôte AVANT `_record` : la dérive (sonde lente, ≤1×/30 min) peut rafraîchir le
+        ***REMOVED*** verdict que `_merge_prep` publie dans CE snapshot — sinon le verdict tout juste calculé
+        ***REMOVED*** n'apparaîtrait qu'au tour suivant.
         _check_prep_drift(nid, snap["name"], node)
-        # Fréquence : contrôle SÉPARÉ de la prép MTL, parce qu'il vaut pour TOUS les nœuds et pas
-        # seulement ceux qui portent du 2110 (cf. le commentaire de _check_freq_drift).
+        ***REMOVED*** Fréquence : contrôle SÉPARÉ de la prép MTL, parce qu'il vaut pour TOUS les nœuds et pas
+        ***REMOVED*** seulement ceux qui portent du 2110 (cf. le commentaire de _check_freq_drift).
         _check_freq_drift(nid, snap["name"], node)
-        # Profondeur MXL : même raisonnement que la fréquence — tous les nœuds qui portent le
-        # domaine MXL (donc tous les nœuds Docker, pas seulement l'io2110), cf. _check_mxl_history_drift.
+        ***REMOVED*** Profondeur MXL : même raisonnement que la fréquence — tous les nœuds qui portent le
+        ***REMOVED*** domaine MXL (donc tous les nœuds Docker, pas seulement l'io2110), cf. _check_mxl_history_drift.
         _check_mxl_history_drift(nid, snap["name"], node)
-        # Identité du domaine MXL : même cadence, mais RÉPARE au lieu d'alerter (cf.
-        # _check_mxl_domain_def) — le tmpfs perd le fichier à chaque reboot du nœud.
+        ***REMOVED*** Identité du domaine MXL : même cadence, mais RÉPARE au lieu d'alerter (cf.
+        ***REMOVED*** _check_mxl_domain_def) — le tmpfs perd le fichier à chaque reboot du nœud.
         _check_mxl_domain_def(nid, snap["name"], node)
         _merge_prep(nid, snap, node)
         _record(nid, snap)
         _check_disk_alert(nid, snap["name"], snap.get("disks"))
-        # Détection de reboot du nœud (+ auto-recovery si activé) — best-effort, ne lève jamais.
+        ***REMOVED*** Détection de reboot du nœud (+ auto-recovery si activé) — best-effort, ne lève jamais.
         try:
             from . import node_recovery
             node_recovery.on_health_snapshot(node, snap)
@@ -1069,16 +1069,16 @@ def sample_all(force=False):
         return
     _last_sample_m = now_m
 
-    # 1) Contrôleur (toujours, lecture locale).
+    ***REMOVED*** 1) Contrôleur (toujours, lecture locale).
     try:
         _record(CONTROLLER_KEY, _controller_snapshot())
     except Exception as e:
         log.debug("node_health contrôleur: %s", e)
 
-    # 2) Nœuds enrôlés — EN PARALLÈLE (un thread par nœud, borné). Sinon la boucle série calait sur un
-    # nœud injoignable (timeout ~8 s/health, 20 s/ssh) → le snapshot des nœuds VIVANTS vieillissait
-    # au-delà du seuil de fraîcheur et ils passaient « hors-ligne » à tort. Le cycle est désormais
-    # borné par max(par-nœud), plus par la somme.
+    ***REMOVED*** 2) Nœuds enrôlés — EN PARALLÈLE (un thread par nœud, borné). Sinon la boucle série calait sur un
+    ***REMOVED*** nœud injoignable (timeout ~8 s/health, 20 s/ssh) → le snapshot des nœuds VIVANTS vieillissait
+    ***REMOVED*** au-delà du seuil de fraîcheur et ils passaient « hors-ligne » à tort. Le cycle est désormais
+    ***REMOVED*** borné par max(par-nœud), plus par la somme.
     nodes = [n for n in (db_get_nodes() or []) if n.get("id") is not None and n.get("host")]
     if nodes:
         from concurrent.futures import ThreadPoolExecutor
@@ -1086,13 +1086,13 @@ def sample_all(force=False):
                                 thread_name_prefix="node-health") as ex:
             list(ex.map(_sample_one, nodes))
 
-    # 3) Flush périodique du ring 24 h.
+    ***REMOVED*** 3) Flush périodique du ring 24 h.
     if time.time() - _last_flush >= STATS_FLUSH_S:
         _flush_stats()
         _last_flush = time.time()
 
 
-# ─── Persistance 24 h (modèle ptp._flush_stats / _load_stats) ─────────────────
+***REMOVED*** ─── Persistance 24 h (modèle ptp._flush_stats / _load_stats) ─────────────────
 def _flush_stats():
     with _lock:
         snapshot = {k: list(dq) for k, dq in _stats.items()}
@@ -1132,7 +1132,7 @@ def load_persisted():
     _last_flush = time.time()
 
 
-# ─── Accès API ────────────────────────────────────────────────────────────────
+***REMOVED*** ─── Accès API ────────────────────────────────────────────────────────────────
 def latest():
     """{nodes:{node_id→snapshot}, controller:snapshot}. node_id en str pour le JSON."""
     with _lock:

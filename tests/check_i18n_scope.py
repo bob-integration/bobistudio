@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
 """Empêche les clés i18n d'un plugin de retomber dans le catalogue du cœur.
 
 ★ POURQUOI. Un plugin est un dépôt indépendant, distribuable en `.mxlplugin` et
@@ -33,8 +33,8 @@ import sys
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
 
-# `service.group.*` n'appartient à aucun service : c'est le nom des GROUPES de la
-# navigation, rendu par le cœur. Il reste au cœur, et ce n'est pas une dérive.
+***REMOVED*** `service.group.*` n'appartient à aucun service : c'est le nom des GROUPES de la
+***REMOVED*** navigation, rendu par le cœur. Il reste au cœur, et ce n'est pas une dérive.
 EXEMPT_SERVICE = {"group"}
 
 
@@ -45,7 +45,7 @@ def _lire(p):
         return d if isinstance(d, dict) else {}
     except FileNotFoundError:
         return {}
-    except Exception as e:                                    # JSON cassé = échec net
+    except Exception as e:                                    ***REMOVED*** JSON cassé = échec net
         print(f"  ✗ {p} illisible : {e}")
         sys.exit(2)
 

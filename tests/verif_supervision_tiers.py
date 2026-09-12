@@ -1,20 +1,20 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# Banc de `services/nmos/supervision_tiers.py` — les statuts BCP-008 d'un appareil TIERS
-# traduits en alertes chez nous.
-#
-# CE QUI EST ÉPROUVÉ ICI. Les RÈGLES de traduction, qui sont le cœur du raccordement et qui sont
-# pures : quel statut mérite une alerte, à quel niveau, et combien de fois. Se tromper là ne
-# casse rien visiblement — ça noie l'exploitant sous des alertes qui ne veulent rien dire, ou ça
-# reste muet sur une panne. Les deux se découvrent trop tard.
-#
-# La partie vivante (découverte du pair, session IS-12, abonnement) a été éprouvée le 2026-08-31
-# contre notre propre orchestrateur enregistré dans son propre registre : 1 session ouverte,
-# monitors trouvés par classId, abonnement accepté, états initiaux lus.
-#
-#   $ ./venv/bin/python tools/verif_supervision_tiers.py
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** Banc de `services/nmos/supervision_tiers.py` — les statuts BCP-008 d'un appareil TIERS
+***REMOVED*** traduits en alertes chez nous.
+***REMOVED***
+***REMOVED*** CE QUI EST ÉPROUVÉ ICI. Les RÈGLES de traduction, qui sont le cœur du raccordement et qui sont
+***REMOVED*** pures : quel statut mérite une alerte, à quel niveau, et combien de fois. Se tromper là ne
+***REMOVED*** casse rien visiblement — ça noie l'exploitant sous des alertes qui ne veulent rien dire, ou ça
+***REMOVED*** reste muet sur une panne. Les deux se découvrent trop tard.
+***REMOVED***
+***REMOVED*** La partie vivante (découverte du pair, session IS-12, abonnement) a été éprouvée le 2026-08-31
+***REMOVED*** contre notre propre orchestrateur enregistré dans son propre registre : 1 session ouverte,
+***REMOVED*** monitors trouvés par classId, abonnement accepté, états initiaux lus.
+***REMOVED***
+***REMOVED***   $ ./venv/bin/python tools/verif_supervision_tiers.py
 import os
 import sys
 
@@ -31,13 +31,13 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-from services.nmos import supervision_tiers as S                    # noqa: E402
+from services.nmos import supervision_tiers as S                    ***REMOVED*** noqa: E402
 
 print("supervision des tiers — règles de traduction\n")
 
-# On capture les alertes au lieu de les écrire.
+***REMOVED*** On capture les alertes au lieu de les écrire.
 ALERTES = []
-import app.database as _db                                          # noqa: E402
+import app.database as _db                                          ***REMOVED*** noqa: E402
 _vrai_add = _db.db_add_alert
 _db.db_add_alert = lambda msg, niveau="info", **kw: ALERTES.append((msg, niveau, kw.get("kind")))
 
@@ -45,7 +45,7 @@ try:
     S._dernier.clear()
     URL, LBL = "ws://pair/x", "Éditeur tiers"
 
-    # ── Ce qui NE doit PAS alerter ────────────────────────────────────────────
+    ***REMOVED*** ── Ce qui NE doit PAS alerter ────────────────────────────────────────────
     S._signaler(URL, LBL, 1, "rx1", "rx", S.INACTIVE, None)
     controle("★ un monitor INACTIF ne produit AUCUNE alerte", not ALERTES,
              "un receiver inactif décrit une ressource qu'on n'a pas demandé d'utiliser — "
@@ -53,7 +53,7 @@ try:
     S._signaler(URL, LBL, 2, "rx2", "rx", S.HEALTHY, None)
     controle("un monitor SAIN non plus", not ALERTES)
 
-    # ── Ce qui doit alerter, et à quel niveau ─────────────────────────────────
+    ***REMOVED*** ── Ce qui doit alerter, et à quel niveau ─────────────────────────────────
     S._signaler(URL, LBL, 3, "rx3", "rx", S.PARTIALLY_HEALTHY, "perte partielle")
     controle("« partiellement dégradé » → warning",
              len(ALERTES) == 1 and ALERTES[0][1] == "warning", "obtenu %s" % ALERTES)
@@ -71,7 +71,7 @@ try:
     controle("« en panne » → error", len(ALERTES) == 1 and ALERTES[0][1] == "error")
     controle("un sender est nommé « sender », pas « receiver »", "sender" in ALERTES[0][0])
 
-    # ── Répétition et retour à la normale ─────────────────────────────────────
+    ***REMOVED*** ── Répétition et retour à la normale ─────────────────────────────────────
     ALERTES.clear()
     for _ in range(4):
         S._signaler(URL, LBL, 4, "tx1", "tx", S.UNHEALTHY, None)
@@ -88,7 +88,7 @@ try:
              "le retour à la normale doit être MÉMORISÉ, sinon la rechute passerait pour un "
              "doublon et resterait silencieuse")
 
-    # ── Découverte des monitors : par classId, jamais par le nom du rôle ──────
+    ***REMOVED*** ── Découverte des monitors : par classId, jamais par le nom du rôle ──────
     class _FauxClient:
         def commander(self, oid, mid, args=None):
             return {"status": 200, "value": [
@@ -104,7 +104,7 @@ try:
              "un éditeur nomme ses blocs comme il veut : filtrer sur « receiver » dans le rôle "
              "marcherait chez nous et nulle part ailleurs — obtenu %s" % mons)
 
-    # ── Découverte des pairs : sur le type de contrôle, depuis le registre ────
+    ***REMOVED*** ── Découverte des pairs : sur le type de contrôle, depuis le registre ────
     from services.nmos import registre as R
     from services.nmos.client_ncp import TYPE_IS12, TYPE_IS14
     R.vider()
@@ -120,7 +120,7 @@ try:
              "un appareil sans point de contrôle IS-12 ne peut pas notifier — obtenu %s" % p)
     R.vider()
 
-    # ── Le réglage ferme bien la surface ─────────────────────────────────────
+    ***REMOVED*** ── Le réglage ferme bien la surface ─────────────────────────────────────
     from app.database import db_get_setting, db_set_setting
     avant = db_get_setting("nmos_supervision_tiers", None)
     try:

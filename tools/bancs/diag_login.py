@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Diagnostic login : où vit la DB que lit l'orchestrateur, quels utilisateurs
@@ -35,7 +35,7 @@ def main():
     print(f"Fichier existe       : {exists}  | taille {size} octets")
     print(f"Répertoire courant   : {os.getcwd()}")
 
-    # Autres db_bobistudio.db visibles (piège du mauvais cwd)
+    ***REMOVED*** Autres db_bobistudio.db visibles (piège du mauvais cwd)
     here = os.path.join(os.getcwd(), "db_bobistudio.db")
     if os.path.abspath(here) != os.path.abspath(DB_PATH) and os.path.exists(here):
         print(f"⚠  Autre DB dans le cwd : {here} ({os.path.getsize(here)} octets) — IGNORÉE par l'app")

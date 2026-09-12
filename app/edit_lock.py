@@ -23,13 +23,13 @@ juges de qui a le droit d'écrire.
 import threading
 import time
 
-# TTL : au-delà, le verrou est considéré abandonné. L'éditeur bat toutes les BATTEMENT_S ;
-# la marge (4 battements) absorbe une page en arrière-plan, dont le navigateur ralentit les
-# minuteries, sans laisser un mur bloqué plus d'une minute et demie après une fermeture.
+***REMOVED*** TTL : au-delà, le verrou est considéré abandonné. L'éditeur bat toutes les BATTEMENT_S ;
+***REMOVED*** la marge (4 battements) absorbe une page en arrière-plan, dont le navigateur ralentit les
+***REMOVED*** minuteries, sans laisser un mur bloqué plus d'une minute et demie après une fermeture.
 BATTEMENT_S = 20
 TTL_S = 90
 
-_verrous = {}          # vmid (int) → {"user_id", "user_name", "depuis", "vu"}
+_verrous = {}          ***REMOVED*** vmid (int) → {"user_id", "user_name", "depuis", "vu"}
 _lock = threading.Lock()
 
 
@@ -66,7 +66,7 @@ def prendre(vmid, user_id, user_name, force=False):
         if v and v["user_id"] != user_id and not force:
             return False, {"libre": False, "a_moi": False, "user_id": v["user_id"],
                            "user_name": v["user_name"], "depuis_s": int(maintenant - v["depuis"])}
-        # Reprise de main : le compteur « depuis » repart, c'est un NOUVEL éditeur.
+        ***REMOVED*** Reprise de main : le compteur « depuis » repart, c'est un NOUVEL éditeur.
         depuis = v["depuis"] if (v and v["user_id"] == user_id) else maintenant
         _verrous[vmid] = {"user_id": user_id, "user_name": user_name or "", "depuis": depuis,
                           "vu": maintenant}
@@ -86,17 +86,17 @@ def rendre(vmid, user_id):
     return False
 
 
-# ─── AUTEUR de l'écriture en cours ───────────────────────────────────────────
-# La garde de révision doit distinguer « quelqu'un d'autre a écrit » de « j'ai écrit moi-même ».
-# Sans cette distinction elle est inutilisable : le déploiement s'exécute dans un THREAD, la
-# nouvelle révision n'existe donc pas encore quand la réponse HTTP part — un éditeur ne peut pas
-# tenir son compteur à jour, et se ferait refuser ses PROPRES gestes suivants.
-#
-# On mémorise donc, à côté de la révision, QUI l'a produite : un conflit n'existe que si la
-# dernière écriture vient d'un autre. Le porteur est un thread-local posé par `before_request`
-# (thread de requête) et repropagé explicitement par les threads de déploiement, qui n'héritent
-# de rien. Absent (None) = écriture MACHINE — surveillance, réconciliation, agent — jamais
-# considérée comme un conflit humain.
+***REMOVED*** ─── AUTEUR de l'écriture en cours ───────────────────────────────────────────
+***REMOVED*** La garde de révision doit distinguer « quelqu'un d'autre a écrit » de « j'ai écrit moi-même ».
+***REMOVED*** Sans cette distinction elle est inutilisable : le déploiement s'exécute dans un THREAD, la
+***REMOVED*** nouvelle révision n'existe donc pas encore quand la réponse HTTP part — un éditeur ne peut pas
+***REMOVED*** tenir son compteur à jour, et se ferait refuser ses PROPRES gestes suivants.
+***REMOVED***
+***REMOVED*** On mémorise donc, à côté de la révision, QUI l'a produite : un conflit n'existe que si la
+***REMOVED*** dernière écriture vient d'un autre. Le porteur est un thread-local posé par `before_request`
+***REMOVED*** (thread de requête) et repropagé explicitement par les threads de déploiement, qui n'héritent
+***REMOVED*** de rien. Absent (None) = écriture MACHINE — surveillance, réconciliation, agent — jamais
+***REMOVED*** considérée comme un conflit humain.
 _local = threading.local()
 
 

@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 """Lecture du réglage `video_formats` — pendant PYTHON de `static/video_formats.js`.
 
 Le réglage est la SOURCE UNIQUE des formats vidéo du site (Réglages → Vidéo). Une ligne =
@@ -101,12 +101,12 @@ def frame_rate(fmt):
     if fmt.get("scan") == "i":
         fps /= 2.0
     entier = round(fps)
-    # Cadence « /1.001 » (23,976 / 29,97 / 59,94…) : l'entier le plus proche divisé par 1,001.
+    ***REMOVED*** Cadence « /1.001 » (23,976 / 29,97 / 59,94…) : l'entier le plus proche divisé par 1,001.
     if entier and abs(fps - (entier * 1000.0 / 1001.0)) < 0.01:
         return entier * 1000, 1001
     if abs(fps - entier) < 0.001:
         return int(entier), 1
-    # Cadence exotique : on la rend en millièmes plutôt que d'arrondir en silence.
+    ***REMOVED*** Cadence exotique : on la rend en millièmes plutôt que d'arrondir en silence.
     return int(round(fps * 1000)), 1000
 
 
@@ -127,11 +127,11 @@ def anomalie(fmt):
     fps = float(fmt.get("fps") or 0)
     label = str(fmt.get("label") or "")
 
-    # Règle 1 — L'INTENTION DÉCLARÉE DANS LE LIBELLÉ. Nos libellés encodent le format
-    # (« HD 1920×1080i50 », « 3G 1080p59.94 ») : le nombre qui suit le `i`/`p` EST la cadence
-    # voulue par l'exploitant, dans la convention de la colonne (champs si entrelacé). On compare
-    # donc la valeur à l'intention plutôt qu'à une liste de cadences « standard » qu'il faudrait
-    # tenir à jour. C'est cette règle qui attrape « HD 1920×1080i59.94 » déclaré à 29,97.
+    ***REMOVED*** Règle 1 — L'INTENTION DÉCLARÉE DANS LE LIBELLÉ. Nos libellés encodent le format
+    ***REMOVED*** (« HD 1920×1080i50 », « 3G 1080p59.94 ») : le nombre qui suit le `i`/`p` EST la cadence
+    ***REMOVED*** voulue par l'exploitant, dans la convention de la colonne (champs si entrelacé). On compare
+    ***REMOVED*** donc la valeur à l'intention plutôt qu'à une liste de cadences « standard » qu'il faudrait
+    ***REMOVED*** tenir à jour. C'est cette règle qui attrape « HD 1920×1080i59.94 » déclaré à 29,97.
     m = re.search(r"[ip](\d+(?:[.,]\d+)?)\s*$", label.strip(), re.IGNORECASE)
     if m:
         voulu = float(m.group(1).replace(",", "."))
@@ -140,9 +140,9 @@ def anomalie(fmt):
                     "l'entrelacé cette colonne compte les CHAMPS (1080i50 → 50) — la ligne devrait "
                     "vraisemblablement porter %g." % (label, voulu, fps, voulu))
 
-    # Règle 2 — repli STRUCTUREL quand le libellé ne dit rien (« SD-SDI PAL »). Aucun seuil
-    # arbitraire : une trame vaut exactement deux champs, donc un nombre IMPAIR de champs par
-    # seconde décrit une cadence de trames demi-entière, qui n'existe pas.
+    ***REMOVED*** Règle 2 — repli STRUCTUREL quand le libellé ne dit rien (« SD-SDI PAL »). Aucun seuil
+    ***REMOVED*** arbitraire : une trame vaut exactement deux champs, donc un nombre IMPAIR de champs par
+    ***REMOVED*** seconde décrit une cadence de trames demi-entière, qui n'existe pas.
     if fmt.get("scan") == "i" and abs(fps - round(fps)) < 0.001 and int(round(fps)) % 2:
         return ("format entrelacé « %s » à %g champs/s : nombre de champs IMPAIR, soit %g trames/s. "
                 "La colonne `fps` compte les CHAMPS pour l'entrelacé (1080i50 → 50) — cette ligne "

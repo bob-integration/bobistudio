@@ -223,26 +223,26 @@ const STATUS_LABEL = {
     unknown:        'unknown',
 };
 
-// URL de config par type = shell de la rubrique + #type → l'onglet du plugin est reflété dans
+// URL de config par type = shell de la rubrique + ***REMOVED***type → l'onglet du plugin est reflété dans
 // l'adresse ET sélectionné à l'arrivée. On dérive de nav.section (les nav.route sont legacy et
-// incohérents : certains sans #hash ouvraient la rubrique sur l'onglet par défaut, pas le bon
+// incohérents : certains sans ***REMOVED***hash ouvraient la rubrique sur l'onglet par défaut, pas le bon
 // plugin). Sources/streams/destinations sont agrégées sous /io ; traitements/medias ont leur shell.
 // 2110_io est traité à part (onglets custom « Sources/Destinations 2110 »), aiguillé par la colonne.
 {% set _io_secs = ['sources', 'streams', 'destinations'] %}
 const CONFIG_ROUTE = {
 {% for sid, s in (plugin_sections or {}).items() %}{% for p in s.plugins %}{% if p.type != '2110_io' %}
-    {{ p.type|tojson }}: {{ (('/io' if sid in _io_secs else '/' ~ sid) ~ '#' ~ p.type)|tojson }},{% endif %}{% endfor %}{% endfor %}
+    {{ p.type|tojson }}: {{ (('/io' if sid in _io_secs else '/' ~ sid) ~ '***REMOVED***' ~ p.type)|tojson }},{% endif %}{% endfor %}{% endfor %}
 };
 // Le hash porte « <onglet>/<vmid> » : l'onglet SEUL amenait toujours sur la PREMIÈRE instance du
 // type (plugin_section.html sélectionne items[0] faute de mieux) — donc sur le mauvais conteneur
 // dès qu'il y en a deux du même type. Le vmid est optionnel côté rubrique : les vieilles URL
-// « #<type> » gardent le comportement d'avant.
+// « ***REMOVED***<type> » gardent le comportement d'avant.
 function configHref(n) {
     // 2110_io = moteur bi-rôle : carte en colonne « sources » → RX (Sources 2110), « sinks » → TX (Destinations 2110).
     if (n.kind === '2110_io')
-        return (n.col === 'sinks' ? '/io#destinations_2110/' : '/io#sources_2110/') + n.vmid;
+        return (n.col === 'sinks' ? '/io***REMOVED***destinations_2110/' : '/io***REMOVED***sources_2110/') + n.vmid;
     const route = CONFIG_ROUTE[n.kind];
-    return route ? (route + '/' + n.vmid) : ('/containers#c-' + n.vmid);
+    return route ? (route + '/' + n.vmid) : ('/containers***REMOVED***c-' + n.vmid);
 }
 // Bouton 📺 d'un node : empêche le drill-down et ouvre le moniteur sur ce container.
 // MXLMonitor.monitorVmid propose toutes ses sorties vidéo (sélecteur si plusieurs).
@@ -254,7 +254,7 @@ function monitorNode(event, vmid) {
 
 function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&***REMOVED***39;'
     }[c]));
 }
 
@@ -548,7 +548,7 @@ function renderNode(n) {
     // Badge "aucun signal" : container running mais shm figé.
     // Cliquable → page Monitoring (section SHM).
     const noSignalBadge = isRunningNoSignal
-        ? `<a href="/monitoring#shm" class="topo-node-nosignal" title="${T('cables.nosignal_title')}">${T('cables.nosignal_label')}</a>`
+        ? `<a href="/monitoring***REMOVED***shm" class="topo-node-nosignal" title="${T('cables.nosignal_title')}">${T('cables.nosignal_label')}</a>`
         : '';
 
     // Badge latence du nœud selon le mode : « Par étape » = traitement PROPRE (own, ⧖) ; « Cumulé » =
@@ -692,11 +692,11 @@ function renderNode(n) {
                         title="${collapsed ? T('cables.expand') : T('cables.collapse')}"
                         onclick="toggleCollapse(event, '${escapeHtml(_nid)}')">${collapsed ? '⊞' : '⊟'}</button>
                 <span class="topo-node-host">${escapeHtml(n.hostname || `vmid${n.vmid}`)}</span>
-                <span class="topo-node-vmid">#${escapeHtml(n.vmid)}</span>
+                <span class="topo-node-vmid">***REMOVED***${escapeHtml(n.vmid)}</span>
                 ${verBadge}
                 ${nodeBadge}
                 ${(n.produces || []).some(p => p.kind === 'video' && p.shm)
-                    ? `<button type="button" class="topo-node-monitor" title="${T('cables.monitor_of')} ${escapeHtml(n.hostname || ('#'+n.vmid))}"
+                    ? `<button type="button" class="topo-node-monitor" title="${T('cables.monitor_of')} ${escapeHtml(n.hostname || ('***REMOVED***'+n.vmid))}"
                               onclick="monitorNode(event, ${escapeHtml(n.vmid)})">📺</button>`
                     : ''}
             </div>
@@ -1010,12 +1010,12 @@ function showEdgeTip(path, evt) {
         <div class="topo-tip-flow">
             <span class="topo-tip-node">
                 <span class="topo-tip-host">${escapeHtml(a.hostname || `vmid${from}`)}</span>
-                <span class="topo-tip-vmid">#${escapeHtml(from)}</span>
+                <span class="topo-tip-vmid">***REMOVED***${escapeHtml(from)}</span>
             </span>
             <span class="topo-tip-arrow" aria-hidden="true">→</span>
             <span class="topo-tip-node">
                 <span class="topo-tip-host">${escapeHtml(b.hostname || `vmid${to}`)}</span>
-                <span class="topo-tip-vmid">#${escapeHtml(to)}</span>
+                <span class="topo-tip-vmid">***REMOVED***${escapeHtml(to)}</span>
             </span>
         </div>
         <dl class="topo-tip-grid">
@@ -1178,7 +1178,7 @@ async function commitWire(targetVmid, portEl, toSlot) {
     if (!target || !wireSrc) return;
     const src = wireSrc;
     if (portEl) portEl.classList.add('topo-port-drop-flash');
-    showToast((window.t('cables.js.wiring').replace('{src}', src.shm).replace('{dst}', target.hostname || '#' + targetVmid)));
+    showToast((window.t('cables.js.wiring').replace('{src}', src.shm).replace('{dst}', target.hostname || '***REMOVED***' + targetVmid)));
     // Arme la garde anti-nav : le click qui suit le mousedown ne doit pas
     // déclencher un drill-down même si le hit-test rate le port.
     _wireCancelAt = Date.now();
@@ -1280,14 +1280,14 @@ async function _postWire(payload, src, target, targetVmid, autoA, autoAnc) {
             // qu'une prédiction. Le dire ici, sinon le succès laisse croire à un patch validé.
             if (j.format_unverified) {
                 const why = (typeof j.format_unverified === 'string') ? ` (${j.format_unverified})` : '';
-                showToast(T('cables.js.prewire').replace('{src}', src.shm).replace('{dst}', target.hostname || '#' + targetVmid).replace('{why}', why), 'warn');
+                showToast(T('cables.js.prewire').replace('{src}', src.shm).replace('{dst}', target.hostname || '***REMOVED***' + targetVmid).replace('{why}', why), 'warn');
                 setTimeout(rafraichirCables, 300);
                 setTimeout(rafraichirCables, 2000);
                 return;
             }
             showToast(window.t('cables.js.cable_created')
                           .replace('{src}', src.shm + (autoA ? ' + ' + autoA : '') + (autoAnc ? ' + ' + autoAnc : ''))
-                          .replace('{dst}', target.hostname || '#' + targetVmid) + '. ' + suite, 'ok');
+                          .replace('{dst}', target.hostname || '***REMOVED***' + targetVmid) + '. ' + suite, 'ok');
             setTimeout(rafraichirCables, 300);
             setTimeout(rafraichirCables, 2000);
         } else {
@@ -1472,10 +1472,10 @@ function openTxFormatModal(mm, ctx) {
             .replace('{s}', escapeHtml(mm.chroma.source)).replace('{e}', escapeHtml(mm.chroma.engine))}</p>` : ''}
         <div class="txf-actions">
           ${matchUdc != null ? `<button type="button" class="btn btn-green" id="txf-tap">${
-              T('cables.tx.act_tap')} #${matchUdc.vmid}</button>` : ''}
+              T('cables.tx.act_tap')} ***REMOVED***${matchUdc.vmid}</button>` : ''}
           <button type="button" class="btn btn-blue" id="txf-udc">${T('cables.tx.act_udc')}</button>
           ${freeUdc != null ? `<button type="button" class="btn btn-purple" id="txf-reuse">${
-              T('cables.tx.act_reuse')} #${freeUdc}</button>` : ''}
+              T('cables.tx.act_reuse')} ***REMOVED***${freeUdc}</button>` : ''}
           <button type="button" class="btn" id="txf-align">${T('cables.tx.act_align')
               .replace('{f}', escapeHtml(fmtSummary(srcFmt)))}</button>
           <p class="meta txf-cost">${escapeHtml(cost)}</p>
@@ -1679,7 +1679,7 @@ function showEdgeMenu(path, evt) {
     const consumer = nodesByVmid[to] || {};
     const producer = nodesByVmid[from] || {};
     const shmJs   = shm.replace(/'/g, "\\'");
-    const labelJs = `${producer.hostname || ('#' + from)} · ${shm}`.replace(/'/g, "\\'");
+    const labelJs = `${producer.hostname || ('***REMOVED***' + from)} · ${shm}`.replace(/'/g, "\\'");
     // Monitoring : un câble est un signal shm → on le pousse au moniteur WebRTC.
     // Réservé à la vidéo (le pipeline moniteur encode de la vidéo).
     const monBtn = kind === 'video'
@@ -1694,7 +1694,7 @@ function showEdgeMenu(path, evt) {
             <span class="edge-menu-shm">${escapeHtml(shm)}</span>
         </div>
         <div class="edge-menu-body">
-            ${escapeHtml(producer.hostname || `#${from}`)} → ${escapeHtml(consumer.hostname || `#${to}`)}
+            ${escapeHtml(producer.hostname || `***REMOVED***${from}`)} → ${escapeHtml(consumer.hostname || `***REMOVED***${to}`)}
         </div>
         <div class="edge-menu-actions">
             ${monBtn}
@@ -1715,7 +1715,7 @@ function closeEdgeMenu() {
     document.getElementById('edge-menu')?.remove();
 }
 document.addEventListener('click', e => {
-    if (!e.target.closest('#edge-menu') && !e.target.closest('.topo-edge, .topo-edge-hit')) closeEdgeMenu();
+    if (!e.target.closest('***REMOVED***edge-menu') && !e.target.closest('.topo-edge, .topo-edge-hit')) closeEdgeMenu();
 }, false);
 
 let failCount = 0;
@@ -2416,7 +2416,7 @@ document.addEventListener('mousedown', e => {
         return;
     }
     // 2) Pan du fond : clic sur le vide du viewport (ni carte, ni port, ni câble, ni contrôle).
-    if (!e.target.closest('#topo')) return;
+    if (!e.target.closest('***REMOVED***topo')) return;
     if (e.target.closest('.topo-node') || e.target.closest('.topo-port') ||
         e.target.closest('.topo-edge') || e.target.closest('.cables-zoom')) return;
     e.preventDefault();
@@ -2513,7 +2513,7 @@ async function deleteCableLayout(lid, name, evt) {
         showToast((window.t('cables.js.deleted').replace('{name}', name)), 'ok');
         // Re-render la liste si le menu est encore ouvert.
         const menu = document.getElementById('cables-layouts-menu');
-        const btn = document.querySelector('#cables-layouts-wrap [aria-controls="cables-layouts-menu"]');
+        const btn = document.querySelector('***REMOVED***cables-layouts-wrap [aria-controls="cables-layouts-menu"]');
         if (menu && !menu.hidden && btn) { menu.hidden = true; toggleLayoutsMenu({ currentTarget: btn }); }
     } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
 }

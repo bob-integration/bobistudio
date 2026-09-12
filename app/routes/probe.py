@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Sonde ST 2110 (probe_2110) — analyseur ponctuel piloté par NMOS (Phase A).
 
@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 PROBE_TYPE = "probe_2110"
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
+***REMOVED*** ─── Helpers ─────────────────────────────────────────────────────────────────
 def _load_dc(c):
     try:
         return json.loads(c.get("deploy_config") or "{}")
@@ -74,8 +74,8 @@ def _candidate_ifaces(node_id):
             "pci": r.get("pci") or "",
             "pmd": pmd,
             "ip": r.get("ip") or "",
-            "conformance_ready": pmd == "dpdk",   # HW timestamp → verdict Cinst/VRX fiable
-            "busy": busy,                          # PF réclamée par le moteur du nœud
+            "conformance_ready": pmd == "dpdk",   ***REMOVED*** HW timestamp → verdict Cinst/VRX fiable
+            "busy": busy,                          ***REMOVED*** PF réclamée par le moteur du nœud
         })
     return out
 
@@ -122,7 +122,7 @@ def _list_senders():
     """
     senders = []
     seen = set()
-    # 1) Senders locaux (2110_io) — chemin fiable, entièrement en dépôt.
+    ***REMOVED*** 1) Senders locaux (2110_io) — chemin fiable, entièrement en dépôt.
     try:
         from .nmos_detail import _compute_senders_detail
         for blk in _compute_senders_detail():
@@ -148,7 +148,7 @@ def _list_senders():
                 })
     except Exception as e:
         log.warning("probe: liste senders locaux échouée: %s", e)
-    # 2) Registre complet (best-effort) : senders sans notre tag vmid = découverts/distants.
+    ***REMOVED*** 2) Registre complet (best-effort) : senders sans notre tag vmid = découverts/distants.
     try:
         from services import nmos as _nmos
         with _nmos._lock:
@@ -172,7 +172,7 @@ def _list_senders():
     return senders
 
 
-# ─── Page ────────────────────────────────────────────────────────────────────
+***REMOVED*** ─── Page ────────────────────────────────────────────────────────────────────
 @bp.route("/probe")
 @require_login
 def probe_page():
@@ -181,7 +181,7 @@ def probe_page():
                            probe_available=bool(plugins.get(PROBE_TYPE)))
 
 
-# ─── API ─────────────────────────────────────────────────────────────────────
+***REMOVED*** ─── API ─────────────────────────────────────────────────────────────────────
 @bp.route("/api/probe/engines", methods=["GET"])
 @require_login
 def api_probe_engines():
@@ -196,7 +196,7 @@ def api_probe_engines():
         node = db_get_node(c.get("node_id")) or {}
         probes.append({
             "vmid": vmid,
-            "hostname": c.get("hostname") or f"#{vmid}",
+            "hostname": c.get("hostname") or f"***REMOVED***{vmid}",
             "node": node.get("name") or node.get("host") or "",
             "node_id": c.get("node_id"),
             "status": c.get("status"),
@@ -204,7 +204,7 @@ def api_probe_engines():
             "measure_audio": bool(params.get("measure_audio")),
             "report": _read_report(vmid),
         })
-    # PF candidates par nœud (pour le déploiement d'une nouvelle sonde).
+    ***REMOVED*** PF candidates par nœud (pour le déploiement d'une nouvelle sonde).
     nodes = []
     from ..database import db_get_nodes
     for n in db_get_nodes():
@@ -212,7 +212,7 @@ def api_probe_engines():
         if not ifaces:
             continue
         nodes.append({"node_id": n["id"],
-                      "name": n.get("name") or n.get("host") or f"#{n['id']}",
+                      "name": n.get("name") or n.get("host") or f"***REMOVED***{n['id']}",
                       "ifaces": ifaces})
     return jsonify({"probes": probes, "nodes": nodes})
 
@@ -321,7 +321,7 @@ def api_probe_report(vmid):
     return jsonify(_read_report(vmid))
 
 
-# ─── Phase B : monitoring longue durée + journal d'événements ────────────────
+***REMOVED*** ─── Phase B : monitoring longue durée + journal d'événements ────────────────
 @bp.route("/api/probe/events", methods=["GET"])
 @require_login
 def api_probe_events():

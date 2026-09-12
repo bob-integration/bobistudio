@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Service `files` : gestionnaire de fichiers générique, multi-racines.
 
@@ -22,8 +22,8 @@ log = logging.getLogger(__name__)
 PLUGIN_VERSION = "0.1.0"
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_MAX_EDIT_BYTES = 2 * 1024 * 1024          # 2 Mio : borne lecture/édition texte
-# Fichiers JAMAIS exposés (secrets) — masqués au listing et refusés en lecture/écriture.
+_MAX_EDIT_BYTES = 2 * 1024 * 1024          ***REMOVED*** 2 Mio : borne lecture/édition texte
+***REMOVED*** Fichiers JAMAIS exposés (secrets) — masqués au listing et refusés en lecture/écriture.
 _DENY_NAMES = {"config_local.py"}
 _DENY_EXTS  = {".db", ".db-wal", ".db-shm", ".pem", ".key"}
 
@@ -40,8 +40,8 @@ def _roots():
         for n in db_get_nodes():
             if not n.get("host"):
                 continue
-            # Racine média du nœud : media_mount réglé, sinon défaut /srv/mxl-media (le bind par
-            # défaut du chemin compute) → le dossier des médias est toujours atteignable.
+            ***REMOVED*** Racine média du nœud : media_mount réglé, sinon défaut /srv/mxl-media (le bind par
+            ***REMOVED*** défaut du chemin compute) → le dossier des médias est toujours atteignable.
             mm = (n.get("media_mount") or "").strip() or "/srv/mxl-media"
             roots.append({
                 "id": "media_%s" % n["id"], "label": "Média — %s" % n["name"],
@@ -52,7 +52,7 @@ def _roots():
     return roots
 
 
-# Options ssh communes (clé seule, comme les autres actions hôte).
+***REMOVED*** Options ssh communes (clé seule, comme les autres actions hôte).
 _SSH_OPTS = ["-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes",
              "-o", "ConnectTimeout=8"]
 
@@ -90,7 +90,7 @@ def _denied(name):
     return base in _DENY_NAMES or os.path.splitext(base)[1].lower() in _DENY_EXTS
 
 
-# ─── Accès LOCAL (système de l'orchestrateur) ────────────────────────────────
+***REMOVED*** ─── Accès LOCAL (système de l'orchestrateur) ────────────────────────────────
 def _local_abspath(root, rel):
     base = os.path.realpath(root["base"])
     full = os.path.realpath(os.path.join(base, rel))
@@ -139,9 +139,9 @@ def _write_local(root, rel, content):
         f.write(content)
 
 
-# ─── Accès NODE (média d'un nœud, via ssh sur l'hôte) ────────────────────────
+***REMOVED*** ─── Accès NODE (média d'un nœud, via ssh sur l'hôte) ────────────────────────
 def _node_abspath(root, rel):
-    # base + rel déjà sanitisé (_safe_rel) → pas d'évasion. On garde une base sans / final.
+    ***REMOVED*** base + rel déjà sanitisé (_safe_rel) → pas d'évasion. On garde une base sans / final.
     base = root["base"].rstrip("/")
     return base + ("/" + rel if rel else "")
 
@@ -153,7 +153,7 @@ def _ssh(host, cmd, input_data=None, timeout=30):
 
 def _list_node(root, rel):
     full = _node_abspath(root, rel)
-    # GNU find : type(%y) \t taille(%s) \t mtime(%T@) \t nom(%f)
+    ***REMOVED*** GNU find : type(%y) \t taille(%s) \t mtime(%T@) \t nom(%f)
     cmd = ("find %s -mindepth 1 -maxdepth 1 -printf '%%y\\t%%s\\t%%T@\\t%%f\\n' 2>/dev/null"
            % shlex.quote(full))
     rc, out, _ = _ssh(root["host"], cmd, timeout=20)
@@ -175,7 +175,7 @@ def _read_node(root, rel):
     full = _node_abspath(root, rel)
     if _denied(full):
         raise ValueError("fichier refusé")
-    # garde-fou taille puis lecture (tête binaire détectée côté contenu).
+    ***REMOVED*** garde-fou taille puis lecture (tête binaire détectée côté contenu).
     rc, out, _ = _ssh(root["host"], "stat -c %%s %s 2>/dev/null" % shlex.quote(full), timeout=15)
     try:
         if int((out or "0").strip()) > _MAX_EDIT_BYTES:
@@ -199,7 +199,7 @@ def _write_node(root, rel, content):
         raise ValueError("écriture échouée : %s" % (err or out)[:200])
 
 
-# ─── Opérations fichiers (download / upload / rename / delete) ────────────────
+***REMOVED*** ─── Opérations fichiers (download / upload / rename / delete) ────────────────
 import subprocess
 
 
@@ -276,11 +276,11 @@ def upload(root, rel_dir, filename, fileobj):
         full = _local_abspath(root, rel)
         if _denied(full):
             raise ValueError("cible refusée")
-        # `fileobj` est un FLUX (l'appelant passe `f.stream`), pas le `FileStorage` de Werkzeug :
-        # `.save()` n'existe donc pas dessus et tout envoi vers une racine LOCALE échouait
-        # (« 'SpooledTemporaryFile' object has no attribute 'save' » au-delà de 500 ko, « BytesIO »
-        # en dessous). La branche « nœud » ci-dessus lit déjà le flux par morceaux ; on fait pareil
-        # ici, ce qui aligne les deux chemins sur le même contrat et borne la mémoire.
+        ***REMOVED*** `fileobj` est un FLUX (l'appelant passe `f.stream`), pas le `FileStorage` de Werkzeug :
+        ***REMOVED*** `.save()` n'existe donc pas dessus et tout envoi vers une racine LOCALE échouait
+        ***REMOVED*** (« 'SpooledTemporaryFile' object has no attribute 'save' » au-delà de 500 ko, « BytesIO »
+        ***REMOVED*** en dessous). La branche « nœud » ci-dessus lit déjà le flux par morceaux ; on fait pareil
+        ***REMOVED*** ici, ce qui aligne les deux chemins sur le même contrat et borne la mémoire.
         with open(full, "wb") as sortie:
             shutil.copyfileobj(fileobj, sortie, 1024 * 1024)
     return rel
@@ -312,7 +312,7 @@ def delete(root, rel):
         full = _node_abspath(root, rel)
         if _denied(full):
             raise ValueError("cible refusée")
-        # fichier → rm -f ; dossier vide → rmdir (jamais récursif, sécurité).
+        ***REMOVED*** fichier → rm -f ; dossier vide → rmdir (jamais récursif, sécurité).
         rc, out, err = _ssh(root["host"],
                             "if [ -d %s ]; then rmdir %s; else rm -f %s; fi"
                             % (shlex.quote(full), shlex.quote(full), shlex.quote(full)), timeout=20)
@@ -323,12 +323,12 @@ def delete(root, rel):
         if _denied(full):
             raise ValueError("cible refusée")
         if os.path.isdir(full):
-            os.rmdir(full)   # dossier vide uniquement
+            os.rmdir(full)   ***REMOVED*** dossier vide uniquement
         else:
             os.remove(full)
 
 
-# ─── Routes ───────────────────────────────────────────────────────────────────
+***REMOVED*** ─── Routes ───────────────────────────────────────────────────────────────────
 def register_routes(bp):
     from flask import request, jsonify
     from app.auth import require_perm

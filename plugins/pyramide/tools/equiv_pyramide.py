@@ -10,7 +10,7 @@ import ast, os, sys
 import numpy as np
 
 sys.path.insert(0, "/opt/bobistudio")
-sys.path.insert(0, "/opt/bobistudio/script_templates")   # import bobimxl (gate _MVK du script)
+sys.path.insert(0, "/opt/bobistudio/script_templates")   ***REMOVED*** import bobimxl (gate _MVK du script)
 os.environ["BOBI_MVK_LIB"] = "/tmp/claude-0/-opt-bobistudio/61bf488d-b0a5-4fb8-a840-43d7ca28b39e/scratchpad/libbobi_mvk.so"
 
 from app import plugins
@@ -75,7 +75,7 @@ def check_whole_frame(ns, label, w, h, level, chroma="420", bit_depth=8):
     ok_u = ns["_mvk_place_plane"](got_u, u0, uh, uw)
     ok_v = ns["_mvk_place_plane"](got_v, v0, uh, uw)
     if not (ok_y and ok_u and ok_v):
-        return None   # mvk non applicable pour cette géométrie -> pas de comparaison possible
+        return None   ***REMOVED*** mvk non applicable pour cette géométrie -> pas de comparaison possible
 
     dY = int(np.abs(ref_y.astype(np.int64) - got_y.astype(np.int64)).max()) if ref_y.size else 0
     dU = int(np.abs(ref_u.astype(np.int64) - got_u.astype(np.int64)).max()) if ref_u.size else 0
@@ -98,16 +98,16 @@ def check_band(ns, label, w, h, level, chroma="420", bit_depth=8, n_bands=5, for
     cw, ch = lyt["cw"], lyt["ch"]
     pw, ph = ns["_proxy_dims"](w, h, level, cw, ch)
     if force_gather:
-        pw -= 1 if pw % 2 == 0 else 0   # casse le ratio entier -> force le chemin gather
-        pw = max(cw * 2, pw - (pw % (2 * cw)) + cw)  # garder pair/aligné chroma mais non-diviseur
+        pw -= 1 if pw % 2 == 0 else 0   ***REMOVED*** casse le ratio entier -> force le chemin gather
+        pw = max(cw * 2, pw - (pw % (2 * cw)) + cw)  ***REMOVED*** garder pair/aligné chroma mais non-diviseur
     pd = _make_pd(lyt, pw, ph)
     uw, uh = pd["uw"], pd["uh"]
     rng = np.random.default_rng(hash((label, w, h, level, force_gather)) & 0xffffffff)
     y0, u0, v0 = _rand_planes(rng, lyt)
     dt = lyt["np_dt"]
 
-    # Découpe le proxy en n_bands bandes de lignes (alignées chp) -> commit progressif, comme
-    # le worker (upto croissant).
+    ***REMOVED*** Découpe le proxy en n_bands bandes de lignes (alignées chp) -> commit progressif, comme
+    ***REMOVED*** le worker (upto croissant).
     step = max(pd["chp"], (ph // n_bands) - ((ph // n_bands) % pd["chp"]) or pd["chp"])
     bounds = list(range(step, ph, step)) + [ph]
 
@@ -125,9 +125,9 @@ def check_band(ns, label, w, h, level, chroma="420", bit_depth=8, n_bands=5, for
                 assert ns["_mvk_band"](out, y0, u0, v0, lyt, a, b, qa, qb), "mvk_band a échoué (géométrie non applicable)"
                 out[5] = b
             else:
-                # _emit_band tente mvk lui-même si _MVK ; on veut le chemin numpy PUR ici pour
-                # calculer la référence -> on ré-implémente son repli directement (identique au
-                # code source, cf. plugins/pyramide/script.py::_emit_band, branche numpy).
+                ***REMOVED*** _emit_band tente mvk lui-même si _MVK ; on veut le chemin numpy PUR ici pour
+                ***REMOVED*** calculer la référence -> on ré-implémente son repli directement (identique au
+                ***REMOVED*** code source, cf. plugins/pyramide/script.py::_emit_band, branche numpy).
                 b = min(pd["ph"], int(upto)); b -= b % pd["chp"]
                 a = out[5]
                 if b <= a:

@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Inventaire docker de la flotte + réconciliation DB↔réalité (audit B5/B2).
 
@@ -28,12 +28,12 @@ from .episodes import EtatEpisodes as _Episodes
 
 log = logging.getLogger(__name__)
 
-# États de transition (mémoire process, reset au restart → seed muet au 1er passage)
-_gone_prev = {}      # vmid → bool (True = déjà alerté disparu) — cache RAM du chemin chaud
-_orphan_prev = {}    # (node_id, name) → bool — idem
-# Les MÊMES états, SURVIVANT au redémarrage (cf. app/episodes.py) : un conteneur DISPARU le reste
-# quand l'orchestrateur redémarre, et le ré-annoncer à chaque boot est du bruit pur. `_orphan_prev`
-# garde en plus sa purge par-nœud existante (un résiduel détruit n'a rien à « résoudre »).
+***REMOVED*** États de transition (mémoire process, reset au restart → seed muet au 1er passage)
+_gone_prev = {}      ***REMOVED*** vmid → bool (True = déjà alerté disparu) — cache RAM du chemin chaud
+_orphan_prev = {}    ***REMOVED*** (node_id, name) → bool — idem
+***REMOVED*** Les MÊMES états, SURVIVANT au redémarrage (cf. app/episodes.py) : un conteneur DISPARU le reste
+***REMOVED*** quand l'orchestrateur redémarre, et le ré-annoncer à chaque boot est du bruit pur. `_orphan_prev`
+***REMOVED*** garde en plus sa purge par-nœud existante (un résiduel détruit n'a rien à « résoudre »).
 _episodes_gone = _Episodes("fleet_gone")
 _episodes_orphan = _Episodes("fleet_orphan")
 _MANAGED_RE = re.compile(r"^bobi-(?:mtl|cmp)-(\d+)$")
@@ -85,7 +85,7 @@ def status_of(states, unreachable, sans_agent, c):
         return "fallback"
     name = c.get("docker_name") or ""
     if not name:
-        # Nom docker inconnu en DB (ligne jamais déployée en docker) : dériver du vmid.
+        ***REMOVED*** Nom docker inconnu en DB (ligne jamais déployée en docker) : dériver du vmid.
         name = f"bobi-cmp-{c['vmid']}"
     return states[nid].get(name, "absent")
 
@@ -120,44 +120,44 @@ def oublier_orphelin(node_id, name):
     _orphan_prev.pop((int(node_id), name), None)
 
 
-# ═══ NŒUD TOMBÉ ═════════════════════════════════════════════════════════════════════════════
-#
-# Constaté le 2026-08-02 : dl360-1 (le nœud du moteur 2110) s'est arrêté à 22h18 — injoignable sur
-# ses TROIS réseaux, ARP muet depuis le même segment L2. Une heure plus tard, `nodes.status` disait
-# toujours `up`, `last_seen` était figé, ses trois conteneurs s'affichaient `running` avec des `fps`
-# gelés à leur dernière valeur, et AUCUNE alerte ne nommait le nœud. Deux causes distinctes :
-#
-#   1. `node_driver.refresh()` est la SEULE fonction qui écrive `status="down"` périodiquement, et
-#      elle n'a AUCUN APPELANT. Toutes les autres écritures forcent `"up"` ; les seuls `"down"` du
-#      dépôt sont dans les routes d'enrôlement, donc des gestes MANUELS. Le statut d'un nœud ne
-#      pouvait que monter. Conséquence armée depuis longtemps : `docker_compute._eligible()` teste
-#      `status != "down"` — condition jamais satisfaite — donc un nœud MORT restait éligible aux
-#      déploiements.
-#   2. `poll_nodes()` calcule pourtant `unreachable` à CHAQUE tour, en parallèle, un appel par
-#      nœud. L'information existait déjà et était JETÉE : elle ne servait qu'à empêcher les
-#      transitions de conteneurs.
-#
-# On ne sonde donc rien de plus : on exploite le poll qui a déjà lieu. `refresh()` reste sans
-# appelant — un second aller-retour HTTP par nœud et par tour n'apprendrait rien de neuf.
-#
-# ⚠ Un agent qui ne répond pas n'est PAS forcément une machine morte, et les remèdes n'ont rien à
-# voir (relancer un service / aller voir la machine). D'où la sonde `_sonde_hote`.
+***REMOVED*** ═══ NŒUD TOMBÉ ═════════════════════════════════════════════════════════════════════════════
+***REMOVED***
+***REMOVED*** Constaté le 2026-08-02 : dl360-1 (le nœud du moteur 2110) s'est arrêté à 22h18 — injoignable sur
+***REMOVED*** ses TROIS réseaux, ARP muet depuis le même segment L2. Une heure plus tard, `nodes.status` disait
+***REMOVED*** toujours `up`, `last_seen` était figé, ses trois conteneurs s'affichaient `running` avec des `fps`
+***REMOVED*** gelés à leur dernière valeur, et AUCUNE alerte ne nommait le nœud. Deux causes distinctes :
+***REMOVED***
+***REMOVED***   1. `node_driver.refresh()` est la SEULE fonction qui écrive `status="down"` périodiquement, et
+***REMOVED***      elle n'a AUCUN APPELANT. Toutes les autres écritures forcent `"up"` ; les seuls `"down"` du
+***REMOVED***      dépôt sont dans les routes d'enrôlement, donc des gestes MANUELS. Le statut d'un nœud ne
+***REMOVED***      pouvait que monter. Conséquence armée depuis longtemps : `docker_compute._eligible()` teste
+***REMOVED***      `status != "down"` — condition jamais satisfaite — donc un nœud MORT restait éligible aux
+***REMOVED***      déploiements.
+***REMOVED***   2. `poll_nodes()` calcule pourtant `unreachable` à CHAQUE tour, en parallèle, un appel par
+***REMOVED***      nœud. L'information existait déjà et était JETÉE : elle ne servait qu'à empêcher les
+***REMOVED***      transitions de conteneurs.
+***REMOVED***
+***REMOVED*** On ne sonde donc rien de plus : on exploite le poll qui a déjà lieu. `refresh()` reste sans
+***REMOVED*** appelant — un second aller-retour HTTP par nœud et par tour n'apprendrait rien de neuf.
+***REMOVED***
+***REMOVED*** ⚠ Un agent qui ne répond pas n'est PAS forcément une machine morte, et les remèdes n'ont rien à
+***REMOVED*** voir (relancer un service / aller voir la machine). D'où la sonde `_sonde_hote`.
 
-# ⚠ Les seuils sont en TEMPS RÉEL, pas en nombre de tours — et c'est la première version de ce
-# code qui l'a appris. Un tour de surveillance dure normalement 5 s, mais il attend les timeouts
-# des nœuds qui ne répondent pas : avec dl360-1 mort, le tour est passé à 65 s. « 3 tours ≈ 15 s »
-# devenait donc « 3 tours ≈ 3 minutes » EXACTEMENT dans la situation où la détection sert. Un seuil
-# compté en tours se dilate avec la panne qu'il doit détecter.
-NODE_KO_S       = 15.0      # injoignable depuis 15 s → bascule `nodes.status` à "down"
-NODE_KO_ALERT_S = 60.0      # depuis 60 s → épisode persisté + alerte `error` (absorbe un agent
-                            # relancé, un `docker restart`, une reconfiguration réseau brève)
-LAST_SEEN_S     = 30.0      # `last_seen` réécrit au plus toutes les 30 s par nœud (c'est un
-                            # horodatage de fraîcheur, pas une métrique : inutile d'écrire à 5 s)
+***REMOVED*** ⚠ Les seuils sont en TEMPS RÉEL, pas en nombre de tours — et c'est la première version de ce
+***REMOVED*** code qui l'a appris. Un tour de surveillance dure normalement 5 s, mais il attend les timeouts
+***REMOVED*** des nœuds qui ne répondent pas : avec dl360-1 mort, le tour est passé à 65 s. « 3 tours ≈ 15 s »
+***REMOVED*** devenait donc « 3 tours ≈ 3 minutes » EXACTEMENT dans la situation où la détection sert. Un seuil
+***REMOVED*** compté en tours se dilate avec la panne qu'il doit détecter.
+NODE_KO_S       = 15.0      ***REMOVED*** injoignable depuis 15 s → bascule `nodes.status` à "down"
+NODE_KO_ALERT_S = 60.0      ***REMOVED*** depuis 60 s → épisode persisté + alerte `error` (absorbe un agent
+                            ***REMOVED*** relancé, un `docker restart`, une reconfiguration réseau brève)
+LAST_SEEN_S     = 30.0      ***REMOVED*** `last_seen` réécrit au plus toutes les 30 s par nœud (c'est un
+                            ***REMOVED*** horodatage de fraîcheur, pas une métrique : inutile d'écrire à 5 s)
 
-_node_ko_depuis = {}        # node_id → monotonic du PREMIER poll en échec de la série
-_node_ko_prev = {}          # node_id → bool (« déjà annoncé injoignable »)
-_last_seen_ecrit = {}       # node_id → monotonic de la dernière écriture de last_seen
-_cont_absent_prev = {}      # vmid → bool (conteneur déjà marqué `unreachable` pour cause de nœud)
+_node_ko_depuis = {}        ***REMOVED*** node_id → monotonic du PREMIER poll en échec de la série
+_node_ko_prev = {}          ***REMOVED*** node_id → bool (« déjà annoncé injoignable »)
+_last_seen_ecrit = {}       ***REMOVED*** node_id → monotonic de la dernière écriture de last_seen
+_cont_absent_prev = {}      ***REMOVED*** vmid → bool (conteneur déjà marqué `unreachable` pour cause de nœud)
 _episodes_node = _Episodes("node_gone")
 
 
@@ -218,7 +218,7 @@ def _redemarrage(node, outage_s):
         return None
     if up <= 0:
         return None
-    return up < (float(outage_s) + 60.0)     # marge : la panne inclut le temps de POST/boot
+    return up < (float(outage_s) + 60.0)     ***REMOVED*** marge : la panne inclut le temps de POST/boot
 
 
 def evaluer_noeuds(states, unreachable):
@@ -240,32 +240,32 @@ def evaluer_noeuds(states, unreachable):
     for n in nodes:
         nid = n.get("id")
         if not (n.get("agent_url") or "").strip():
-            continue                       # nœud legacy sans agent : hors de ce modèle
+            continue                       ***REMOVED*** nœud legacy sans agent : hors de ce modèle
         if nid not in unreachable and nid not in states:
-            continue                       # pas sondé à ce tour : ne rien conclure
+            continue                       ***REMOVED*** pas sondé à ce tour : ne rien conclure
         if nid not in _node_ko_prev:
-            _node_ko_prev[nid] = bool(_episodes_node.get(nid))    # reprise après (re)démarrage
+            _node_ko_prev[nid] = bool(_episodes_node.get(nid))    ***REMOVED*** reprise après (re)démarrage
         nom = n.get("name") or n.get("host") or str(nid)
 
-        # ── Le nœud ne répond pas ───────────────────────────────────────────────────────────
+        ***REMOVED*** ── Le nœud ne répond pas ───────────────────────────────────────────────────────────
         if nid in unreachable:
             t0 = _node_ko_depuis.setdefault(nid, now)
             depuis = int(now - t0)
             if depuis < NODE_KO_S:
-                continue                   # fenêtre normale d'un agent lent : on ne dit rien
+                continue                   ***REMOVED*** fenêtre normale d'un agent lent : on ne dit rien
             quoi = _sonde_hote(n)
             if quoi == "agent_vivant" and depuis < NODE_KO_ALERT_S:
-                continue                   # l'agent écoute mais traîne : lenteur, pas panne
+                continue                   ***REMOVED*** l'agent écoute mais traîne : lenteur, pas panne
             if (n.get("status") or "") != "down":
                 try:
                     db_update_node(nid, status="down")
                 except Exception as e:
                     log.error(f"fleet_status: statut down {nom}: {e}")
-            # ⚠ La cause est un champ VIVANT, affiché tel quel sur la fiche du conteneur : elle
-            # porte donc un HORODATAGE ABSOLU, jamais une durée. Écrite une seule fois (voir
-            # `marquer_absent`), une durée y vieillirait sans se corriger — « injoignable depuis
-            # 81 s » resterait à l'écran une heure plus tard, ce qui est exactement le genre de
-            # demi-vérité que cette fonction existe pour supprimer.
+            ***REMOVED*** ⚠ La cause est un champ VIVANT, affiché tel quel sur la fiche du conteneur : elle
+            ***REMOVED*** porte donc un HORODATAGE ABSOLU, jamais une durée. Écrite une seule fois (voir
+            ***REMOVED*** `marquer_absent`), une durée y vieillirait sans se corriger — « injoignable depuis
+            ***REMOVED*** 81 s » resterait à l'écran une heure plus tard, ce qui est exactement le genre de
+            ***REMOVED*** demi-vérité que cette fonction existe pour supprimer.
             infos[nid] = {"nom": nom, "depuis_s": depuis, "quoi": quoi,
                           "cause": "nœud %s injoignable depuis %s" % (
                               nom, datetime.now().strftime("%H:%M:%S"))}
@@ -282,18 +282,18 @@ def evaluer_noeuds(states, unreachable):
                 _episodes_node.poser(nid, True)
             continue
 
-        # ── Le nœud répond ──────────────────────────────────────────────────────────────────
+        ***REMOVED*** ── Le nœud répond ──────────────────────────────────────────────────────────────────
         t0 = _node_ko_depuis.pop(nid, None)
         outage = int(now - t0) if t0 else 0
-        # ⚠ PANNE VUE SEULEMENT APRÈS COUP. Les seuils ne sont évalués qu'aux instants d'ÉCHANTILLON,
-        # et un tour de surveillance dure normalement 5 s… mais 65 s quand un nœud mort fait traîner
-        # les sondes de la boucle. Une panne plus longue que le seuil d'alerte peut donc n'être
-        # échantillonnée qu'AVANT ce seuil, puis se résoudre : aucune alerte, pour une coupure d'une
-        # minute et demie sur un nœud de production. Constaté en éprouvant ce code sur r620-3 le
-        # 2026-08-03 (110 s d'absence, statut basculé, zéro alerte).
-        # Au rétablissement la durée TOTALE est connue exactement : si elle dépassait le seuil sans
-        # avoir été annoncée, on le dit une fois, au passé. Mieux vaut une alerte tardive qu'une
-        # panne qui n'a jamais existé dans le journal.
+        ***REMOVED*** ⚠ PANNE VUE SEULEMENT APRÈS COUP. Les seuils ne sont évalués qu'aux instants d'ÉCHANTILLON,
+        ***REMOVED*** et un tour de surveillance dure normalement 5 s… mais 65 s quand un nœud mort fait traîner
+        ***REMOVED*** les sondes de la boucle. Une panne plus longue que le seuil d'alerte peut donc n'être
+        ***REMOVED*** échantillonnée qu'AVANT ce seuil, puis se résoudre : aucune alerte, pour une coupure d'une
+        ***REMOVED*** minute et demie sur un nœud de production. Constaté en éprouvant ce code sur r620-3 le
+        ***REMOVED*** 2026-08-03 (110 s d'absence, statut basculé, zéro alerte).
+        ***REMOVED*** Au rétablissement la durée TOTALE est connue exactement : si elle dépassait le seuil sans
+        ***REMOVED*** avoir été annoncée, on le dit une fois, au passé. Mieux vaut une alerte tardive qu'une
+        ***REMOVED*** panne qui n'a jamais existé dans le journal.
         if outage >= NODE_KO_ALERT_S and not _node_ko_prev.get(nid):
             db_add_alert("alert.node.injoignable_resolu_tardif", "warning",
                          node_id=nid, kind="node", params={"n": nom, "outage": outage})
@@ -309,9 +309,9 @@ def evaluer_noeuds(states, unreachable):
                          params={"n": nom, "outage": outage or "?"})
             _node_ko_prev[nid] = False
             _episodes_node.retirer(nid)
-        # `last_seen` à CHAQUE poll réussi (throttlé) : il ne s'écrivait qu'au changement de
-        # version d'agent, d'où un horodatage figé des jours durant — donc inutilisable pour
-        # juger de la fraîcheur d'un nœud, ce qui est pourtant son seul rôle.
+        ***REMOVED*** `last_seen` à CHAQUE poll réussi (throttlé) : il ne s'écrivait qu'au changement de
+        ***REMOVED*** version d'agent, d'où un horodatage figé des jours durant — donc inutilisable pour
+        ***REMOVED*** juger de la fraîcheur d'un nœud, ce qui est pourtant son seul rôle.
         if (n.get("status") or "") != "up" or now - _last_seen_ecrit.get(nid, 0) >= LAST_SEEN_S:
             _last_seen_ecrit[nid] = now
             try:
@@ -336,13 +336,13 @@ def marquer_absent(c, infos):
     nid = c.get("node_id")
     info = infos.get(nid)
     if not info:
-        return                              # pas encore au seuil : la prudence reste de mise
+        return                              ***REMOVED*** pas encore au seuil : la prudence reste de mise
     vmid = c.get("vmid")
     if _cont_absent_prev.get(vmid):
-        return                              # déjà marqué : ne pas réécrire à chaque tour
+        return                              ***REMOVED*** déjà marqué : ne pas réécrire à chaque tour
     try:
         db_update_status(vmid, "unreachable", cause=info["cause"])
-        db_update_fps(vmid, None)           # une cadence figée est un MENSONGE, pas une mesure
+        db_update_fps(vmid, None)           ***REMOVED*** une cadence figée est un MENSONGE, pas une mesure
     except Exception as e:
         log.error(f"fleet_status: marquage absent {vmid}: {e}")
         return
@@ -361,7 +361,7 @@ def oublier_absent(vmid):
 def reconcile(states, unreachable):
     """Réconciliation DB↔réalité (B2) sur les nœuds JOIGNABLES uniquement."""
     from .node_recovery import _desired_running
-    # ── Direction 1 : DISPARU (censé tourner, absent de docker ps) ──
+    ***REMOVED*** ── Direction 1 : DISPARU (censé tourner, absent de docker ps) ──
     for nid, inv in states.items():
         try:
             mtl, compute = _desired_running(nid)
@@ -374,7 +374,7 @@ def reconcile(states, unreachable):
             name = c.get("docker_name") or f"{prefix}-{vmid}"
             gone = name not in inv
             if vmid not in _gone_prev:
-                _gone_prev[vmid] = bool(_episodes_gone.get(vmid))   # reprise après (re)démarrage
+                _gone_prev[vmid] = bool(_episodes_gone.get(vmid))   ***REMOVED*** reprise après (re)démarrage
             if gone and not _gone_prev.get(vmid):
                 try:
                     db_update_status(vmid, "stopped")
@@ -395,22 +395,22 @@ def reconcile(states, unreachable):
             else:
                 _episodes_gone.retirer(vmid)
 
-    # ── Direction 2 : ORPHELIN (bobi-* sur le nœud, inconnu de la DB / mauvais nœud) ──
+    ***REMOVED*** ── Direction 2 : ORPHELIN (bobi-* sur le nœud, inconnu de la DB / mauvais nœud) ──
     for nid, inv in states.items():
         for name in inv:
             m = _MANAGED_RE.match(name or "")
             if not m:
-                continue          # conteneur non géré par nous (passerelle tierce, etc.)
+                continue          ***REMOVED*** conteneur non géré par nous (passerelle tierce, etc.)
             key = (nid, name)
             try:
                 c = db_get_container(int(m.group(1)))
             except Exception:
                 c = None
             if not c:
-                orphan = True                                    # vmid inconnu de la DB
+                orphan = True                                    ***REMOVED*** vmid inconnu de la DB
             else:
-                # Ligne DB trouvée : orphelin si le conteneur vit sur le MAUVAIS nœud, ou si
-                # son nom ne correspond pas au docker_name enregistré (résidu d'un ancien run).
+                ***REMOVED*** Ligne DB trouvée : orphelin si le conteneur vit sur le MAUVAIS nœud, ou si
+                ***REMOVED*** son nom ne correspond pas au docker_name enregistré (résidu d'un ancien run).
                 orphan = (c.get("node_id") != nid) or ((c.get("docker_name") or name) != name)
             if key not in _orphan_prev:
                 _orphan_prev[key] = bool(_episodes_orphan.get(key))
@@ -425,8 +425,8 @@ def reconcile(states, unreachable):
                 _episodes_orphan.poser(key, True)
             else:
                 _episodes_orphan.retirer(key)
-        # purge des clés d'orphelins qui ont physiquement disparu du nœud (pas d'info « résolu » :
-        # la résolution normale EST la destruction du résiduel)
+        ***REMOVED*** purge des clés d'orphelins qui ont physiquement disparu du nœud (pas d'info « résolu » :
+        ***REMOVED*** la résolution normale EST la destruction du résiduel)
         for key in [k for k in _orphan_prev if k[0] == nid and k[1] not in inv]:
             _orphan_prev.pop(key, None)
             _episodes_orphan.retirer(key)

@@ -1,4 +1,4 @@
-# Pyramide de proxies
+***REMOVED*** Pyramide de proxies
 
 La **pyramide** pré-calcule des versions réduites (« proxies ») de chaque source vidéo, pour que
 les consommateurs (multiviewers, monitoring…) lisent une image **déjà à la bonne taille** au lieu de
@@ -9,7 +9,7 @@ fois, mutualisé**, et **hors de la boucle temps réel** du multiview.
 > fortement (≈ −65 à −70 % sur la lecture+redimensionnement des entrées) — il tient le 1080p50 là où
 > il décrochait.
 
-## Deux familles de proxies
+***REMOVED******REMOVED*** Deux familles de proxies
 
 1. **Octaves** (socle générique, toujours là) : ½, ¼, ⅛, 1/16 de la source. Filet immédiat utilisable
    par n'importe quel consommateur, sans configuration.
@@ -21,7 +21,7 @@ Pour une source dont le shm s'appelle `S` : octaves `S__p2 / S__p4 / S__p8 / S__
 `S__s<largeur>x<hauteur>` (ex. `S__s952x536`). Le format (chroma, profondeur) est conservé ; seules
 les dimensions changent.
 
-## Auto-câblage (piloté par la demande)
+***REMOVED******REMOVED*** Auto-câblage (piloté par la demande)
 
 Tu n'as **pas besoin de câbler la pyramide à la main**. Dès qu'un consommateur (multiview, monitoring)
 référence une source, l'orchestrateur **assigne automatiquement** cette source à un slot libre de
@@ -30,7 +30,7 @@ de la source est résolu via la base (qui sait quel conteneur produit quoi) et *
 elle n'a rien à deviner. Si toutes les sources demandées dépassent le **nombre de slots** (`n_inputs`),
 une alerte invite à augmenter `n_inputs` ou à ajouter une pyramide.
 
-## Cœurs dynamiques
+***REMOVED******REMOVED*** Cœurs dynamiques
 
 Les **cœurs CPU** de la pyramide sont dimensionnés **à la charge** : `cœurs = plancher + ` **`cores_per_1080p_input`** ` × Σ(résolution_source / 1080p)`, clampé au pool de cœurs du nœud. Une source 4K
 pèse ~4× une 1080p. Le plancher est `resources.cores` (6). Comme le cpuset d'un conteneur Docker n'est
@@ -39,7 +39,7 @@ pèse ~4× une 1080p. Le plancher est `resources.cores` (6). Comme le cpuset d'u
 consommateur*, sinon il émet une **alerte** (jamais de coupure subie). Le **cap réactif** déleste des
 proxies à chaud si un worker frôle son budget de trame (latence).
 
-## Réglages
+***REMOVED******REMOVED*** Réglages
 
 - **Cœurs par source 1080p** (`cores_per_1080p_input`, défaut 0,5) : ratio de dimensionnement
   dynamique des cœurs (voir ci-dessus). `0` = cœurs fixes (plancher seul). Petit = nœud léger ;
@@ -59,7 +59,7 @@ proxies à chaud si un worker frôle son budget de trame (latence).
   d'image, au prix d'un peu plus de RAM par proxy ; la valeur par défaut convient à l'usage normal
   (consommateurs sur le même nœud ou en LAN direct).
 
-## Comportement temps réel
+***REMOVED******REMOVED*** Comportement temps réel
 
 - **Un thread par source**, verrouillé à l'entrée **1:1** : il attend une nouvelle image puis émet
   les proxies en **propageant la `frame_index`** de la source. Aucune grille PTP maître, aucun
@@ -70,7 +70,7 @@ proxies à chaud si un worker frôle son budget de trame (latence).
 - Les tailles sur-mesure sont appliquées **à chaud** (sans coupure) : ajouter/retirer une taille ne
   redémarre pas la pyramide et ne perturbe pas les proxies déjà produits.
 
-## Mode tranche (latence réduite)
+***REMOVED******REMOVED*** Mode tranche (latence réduite)
 
 La pyramide peut suivre chaque source **au fil de l'arrivée de ses bandes** et publier ses proxies
 **bande par bande**, au lieu d'attendre l'image complète (mode tranche MXL) : l'étage pyramide
@@ -84,7 +84,7 @@ la première bande d'un proxy.
 - Les proxies produits sont identiques au mode classique (mêmes images) ; une source en retard est
   simplement republiée depuis sa dernière image complète, sans jamais bloquer les autres.
 
-## Journal (diagnostic)
+***REMOVED******REMOVED*** Journal (diagnostic)
 
 `log_level` (défaut « Événements ») : les événements marquants (source qui apparaît/disparaît,
 recalcul des tailles sur-mesure, repli sur un chemin dégradé) sont toujours écrits ; passer en
@@ -92,7 +92,7 @@ recalcul des tailles sur-mesure, repli sur un chemin dégradé) sont toujours é
 Docker n'est pas roté. Réglable à chaud (`/log_level`, sans redéploiement) ou en persistant
 (config_schema, survit au redéploiement).
 
-## Mise en service
+***REMOVED******REMOVED*** Mise en service
 
 1. **Créer** un conteneur *Pyramide* sur un nœud (Réglages → Déploiement → Nœuds — c'est un type
    Docker « compute »).
@@ -109,7 +109,7 @@ Docker n'est pas roté. Réglable à chaud (`/log_level`, sans redéploiement) o
 C'est **opportuniste** : sans pyramide (ou proxy absent), le consommateur lit la source pleine comme
 avant — rien ne casse, chaque tuile décide seule.
 
-## Console de monitoring
+***REMOVED******REMOVED*** Console de monitoring
 
 La page du plugin (Traitements → Pyramide, sélectionner une instance) affiche, **par source** :
 

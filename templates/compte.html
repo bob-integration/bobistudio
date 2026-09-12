@@ -2,10 +2,10 @@
 {% set page = 'compte' %}
 {% block title %}{{ _('compte.titre') }}{% endblock %}
 
-{# Fiche du compte COURANT. Elle existe parce qu'un utilisateur ne pouvait ni corriger son
+{***REMOVED*** Fiche du compte COURANT. Elle existe parce qu'un utilisateur ne pouvait ni corriger son
    adresse (seul un administrateur le pouvait), ni trouver où changer son mot de passe : le
    formulaire vivait dans Réglages → Utilisateurs, sous la liste de TOUS les comptes. On cherche
-   ses propres réglages dans son propre menu, pas dans l'administration des autres. #}
+   ses propres réglages dans son propre menu, pas dans l'administration des autres. ***REMOVED***}
 {% block content %}
 <div class="home-head" style="margin-bottom:var(--space-4)">
     <h1>{{ _('compte.titre') }}</h1>
@@ -17,8 +17,8 @@
         <div class="form">
         <div class="meta cpt-note">{{ _('compte.identite_note') }}</div>
         <div class="cpt-identite">
-            {# La photo À GAUCHE des champs : c'est elle qu'on reconnaît, et la mettre en
-               bandeau au-dessus l'aurait éloignée du nom qu'elle illustre. #}
+            {***REMOVED*** La photo À GAUCHE des champs : c'est elle qu'on reconnaît, et la mettre en
+               bandeau au-dessus l'aurait éloignée du nom qu'elle illustre. ***REMOVED***}
             <div class="cpt-photo-bloc">
                 <div class="cpt-photo" id="cpt_photo" aria-hidden="true">—</div>
                 <input type="file" id="cpt_photo_f" accept="image/*" hidden>
@@ -103,9 +103,9 @@
         </div>
     </section>
 
-    {# MON MONITORING : chaque utilisateur a un encodeur WebRTC dédié qui consomme un conteneur
+    {***REMOVED*** MON MONITORING : chaque utilisateur a un encodeur WebRTC dédié qui consomme un conteneur
        et du CPU sur un nœud. Il était totalement invisible — on ne savait ni qu'il existait, ni
-       sur quoi il pointait, ni comment le libérer. #}
+       sur quoi il pointait, ni comment le libérer. ***REMOVED***}
     <section class="cpt-bloc">
         <h2>{{ _('compte.monitoring') }}</h2>
         <div class="form">
@@ -115,7 +115,7 @@
         {% else %}
         <dl class="cpt-dl">
             <dt>{{ _('compte.monitoring_conteneur') }}</dt>
-            <dd class="mono">#{{ monitor.vmid }}</dd>
+            <dd class="mono">***REMOVED***{{ monitor.vmid }}</dd>
             <dt>{{ _('compte.monitoring_etat') }}</dt>
             <dd>
                 {% if monitor.publishing %}<span class="badge running">{{ _('compte.monitoring_actif') }}</span>
@@ -133,9 +133,9 @@
         </div>
     </section>
 
-    {# MES CONNEXIONS. Une session Flask est un cookie signé : jusqu'ici le serveur ne savait
+    {***REMOVED*** MES CONNEXIONS. Une session Flask est un cookie signé : jusqu'ici le serveur ne savait
        ni combien étaient ouvertes, ni les fermer. Un registre les rend visibles ET révocables,
-       ce qui est la seule chose à faire quand on soupçonne un accès qu'on n'a pas ouvert. #}
+       ce qui est la seule chose à faire quand on soupçonne un accès qu'on n'a pas ouvert. ***REMOVED***}
     <section class="cpt-bloc cpt-bloc--large">
         <h2>{{ _('compte.sessions') }}</h2>
         <div class="form">
@@ -154,8 +154,8 @@
         </div>
     </section>
 
-    {# CE QUE LE RÔLE AUTORISE, en clair et en entier. Un utilisateur découvrait ses droits en
-       SE HEURTANT à un refus ; les montrer répond avant qu'on ne demande. #}
+    {***REMOVED*** CE QUE LE RÔLE AUTORISE, en clair et en entier. Un utilisateur découvrait ses droits en
+       SE HEURTANT à un refus ; les montrer répond avant qu'on ne demande. ***REMOVED***}
     <section class="cpt-bloc cpt-bloc--large">
         <h2>{{ _('compte.acces') }}</h2>
         <div class="form">

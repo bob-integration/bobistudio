@@ -21,7 +21,7 @@
   'use strict';
   const T = (k, d) => (window.t ? window.t(k) : null) || d;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
-    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&***REMOVED***39;' }[c]));
 
   let box = null, etat = { vmid: null, nom: '', since: '', until: '' };
 
@@ -61,10 +61,10 @@
       </div>`;
     document.body.appendChild(box);
     box.addEventListener('click', e => { if (e.target === box) fermer(); });
-    box.querySelector('#bl-close').onclick = fermer;
-    box.querySelector('#bl-refresh').onclick = charger;
-    box.querySelector('#bl-grep').addEventListener('keydown', e => { if (e.key === 'Enter') charger(); });
-    box.querySelector('#bl-since').addEventListener('keydown', e => { if (e.key === 'Enter') charger(); });
+    box.querySelector('***REMOVED***bl-close').onclick = fermer;
+    box.querySelector('***REMOVED***bl-refresh').onclick = charger;
+    box.querySelector('***REMOVED***bl-grep').addEventListener('keydown', e => { if (e.key === 'Enter') charger(); });
+    box.querySelector('***REMOVED***bl-since').addEventListener('keydown', e => { if (e.key === 'Enter') charger(); });
     document.addEventListener('keydown', e => { if (!box.hidden && e.key === 'Escape') fermer(); });
     return box;
   }
@@ -72,16 +72,16 @@
   function fermer() { if (box) box.hidden = true; }
 
   async function charger() {
-    const body = box.querySelector('#bl-body');
-    const foot = box.querySelector('#bl-foot');
-    const src  = box.querySelector('#bl-src');
+    const body = box.querySelector('***REMOVED***bl-body');
+    const foot = box.querySelector('***REMOVED***bl-foot');
+    const src  = box.querySelector('***REMOVED***bl-src');
     body.textContent = T('js.logs.loading', 'Lecture du journal sur le nœud…');
     foot.textContent = ''; src.textContent = '';
     const p = new URLSearchParams();
-    p.set('lines', box.querySelector('#bl-lines').value || '200');
-    const prio = box.querySelector('#bl-prio').value;   if (prio) p.set('priority', prio);
-    const grep = box.querySelector('#bl-grep').value.trim(); if (grep) p.set('grep', grep);
-    const since = box.querySelector('#bl-since').value.trim(); if (since) p.set('since', since);
+    p.set('lines', box.querySelector('***REMOVED***bl-lines').value || '200');
+    const prio = box.querySelector('***REMOVED***bl-prio').value;   if (prio) p.set('priority', prio);
+    const grep = box.querySelector('***REMOVED***bl-grep').value.trim(); if (grep) p.set('grep', grep);
+    const since = box.querySelector('***REMOVED***bl-since').value.trim(); if (since) p.set('since', since);
     if (etat.until) p.set('until', etat.until);
     // Conteneur oublié de la base : le vmid ne suffit plus à retrouver son nom Docker ni son nœud.
     // On passe alors les deux, seuls identifiants que le journal de l'hôte connaisse encore.
@@ -124,10 +124,10 @@
     construire();
     etat = { vmid, nom: opts.nom || '', since: opts.since || '', until: opts.until || '',
              name: opts.name || '', node_id: (opts.node_id != null ? opts.node_id : '') };
-    box.querySelector('#bl-title').textContent =
-      opts.titre || `${T('js.logs.title', 'Journal')} — ${etat.nom || '#' + vmid}`;
-    box.querySelector('#bl-since').value = etat.since || '';
-    box.querySelector('#bl-grep').value = '';
+    box.querySelector('***REMOVED***bl-title').textContent =
+      opts.titre || `${T('js.logs.title', 'Journal')} — ${etat.nom || '***REMOVED***' + vmid}`;
+    box.querySelector('***REMOVED***bl-since').value = etat.since || '';
+    box.querySelector('***REMOVED***bl-grep').value = '';
     box.hidden = false;
     charger();
   }

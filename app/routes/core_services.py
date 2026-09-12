@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Core plugins (services infrastructure) — manifeste, cycle de vie (enable/export/import/
 versions/activate) des services (NMOS, Ember+, TSL, ATEM, Skaarhoj, RDMA…). Nommé
@@ -44,12 +44,12 @@ def api_services():
                 except Exception:
                     pass
                 break
-        # ★ CE QUE LE SERVICE DIT PRIME SUR CE QU'UN RÉGLAGE LAISSE SUPPOSER.
-        # Chercher une clé `*_enabled` dans le manifeste ne marche que pour les
-        # services à interrupteur unique. TSL, lui, s'active PAR CONNEXION (table
-        # `tsl_connections`, un port chacune) : aucune clé à trouver, donc « — »
-        # affiché sur un service qui écoutait sur deux ports TCP. Un service qui
-        # publie son `enabled` fait donc foi ; le réglage n'est que le repli.
+        ***REMOVED*** ★ CE QUE LE SERVICE DIT PRIME SUR CE QU'UN RÉGLAGE LAISSE SUPPOSER.
+        ***REMOVED*** Chercher une clé `*_enabled` dans le manifeste ne marche que pour les
+        ***REMOVED*** services à interrupteur unique. TSL, lui, s'active PAR CONNEXION (table
+        ***REMOVED*** `tsl_connections`, un port chacune) : aucune clé à trouver, donc « — »
+        ***REMOVED*** affiché sur un service qui écoutait sur deux ports TCP. Un service qui
+        ***REMOVED*** publie son `enabled` fait donc foi ; le réglage n'est que le repli.
         if "enabled" in status:
             enabled = None if status["enabled"] is None else bool(status["enabled"])
         else:
@@ -57,27 +57,27 @@ def api_services():
                                 if k.endswith("_enabled")), None)
             enabled = bool(_st.get(enabled_key)) if enabled_key else None
 
-        # ★ UNE ANOMALIE SE COMPARE À UNE INTENTION. Il n'y a plus de colonne
-        # « État », et c'est une correction, pas un retrait : le badge vert/rouge
-        # mélangeait trois notions sans rapport —
-        #
-        #   la SANTÉ      : le thread tourne, le port est pris ;
-        #   l'ACTIVITÉ    : un pupitre est connecté, un lien est monté ;
-        #   l'INTENTION   : le réglage `*_enabled`, qui a déjà sa colonne.
-        #
-        # D'où un rouge alarmant sur « aucun pupitre connecté », qui n'est pas une
-        # panne mais un service qui attend. Un feu rouge qu'on apprend à ignorer ne
-        # protège plus de rien.
-        #
-        # On ne signale donc QUE ce que le service DÉCLARE lui-même en défaut, et
-        # seulement s'il a été activé : on n'alarme pas sur ce qu'on n'a pas
-        # demandé. Rien n'est DÉDUIT d'un compteur d'activité.
-        #
-        # ⚠ LIMITE ASSUMÉE : un thread qui meurt sans poser son champ d'erreur
-        # passe inaperçu. La déduire d'un `running` faux était précisément le
-        # défaut qu'on corrige — mieux vaut un manque connu qu'une fausse alarme
-        # quotidienne. Les services qui publient une erreur : atem, emberplus,
-        # nmos, sap, snmp, tsl.
+        ***REMOVED*** ★ UNE ANOMALIE SE COMPARE À UNE INTENTION. Il n'y a plus de colonne
+        ***REMOVED*** « État », et c'est une correction, pas un retrait : le badge vert/rouge
+        ***REMOVED*** mélangeait trois notions sans rapport —
+        ***REMOVED***
+        ***REMOVED***   la SANTÉ      : le thread tourne, le port est pris ;
+        ***REMOVED***   l'ACTIVITÉ    : un pupitre est connecté, un lien est monté ;
+        ***REMOVED***   l'INTENTION   : le réglage `*_enabled`, qui a déjà sa colonne.
+        ***REMOVED***
+        ***REMOVED*** D'où un rouge alarmant sur « aucun pupitre connecté », qui n'est pas une
+        ***REMOVED*** panne mais un service qui attend. Un feu rouge qu'on apprend à ignorer ne
+        ***REMOVED*** protège plus de rien.
+        ***REMOVED***
+        ***REMOVED*** On ne signale donc QUE ce que le service DÉCLARE lui-même en défaut, et
+        ***REMOVED*** seulement s'il a été activé : on n'alarme pas sur ce qu'on n'a pas
+        ***REMOVED*** demandé. Rien n'est DÉDUIT d'un compteur d'activité.
+        ***REMOVED***
+        ***REMOVED*** ⚠ LIMITE ASSUMÉE : un thread qui meurt sans poser son champ d'erreur
+        ***REMOVED*** passe inaperçu. La déduire d'un `running` faux était précisément le
+        ***REMOVED*** défaut qu'on corrige — mieux vaut un manque connu qu'une fausse alarme
+        ***REMOVED*** quotidienne. Les services qui publient une erreur : atem, emberplus,
+        ***REMOVED*** nmos, sap, snmp, tsl.
         anomalie = None
         if enabled is not False:
             for cle in ("last_error", "error", "erreur", "erreurs"):
@@ -94,8 +94,8 @@ def api_services():
             "version":      m.get("version", ""),
             "versions":     core_plugins.versions(m["id"]),
             "versions_meta": core_plugins.versions_meta(m["id"]),
-            # `anomalie` : null quand tout va bien — donc RIEN à l'écran dans le
-            # cas normal. L'onglet du service reste l'endroit où lire son détail.
+            ***REMOVED*** `anomalie` : null quand tout va bien — donc RIEN à l'écran dans le
+            ***REMOVED*** cas normal. L'onglet du service reste l'endroit où lire son détail.
             "anomalie":     anomalie,
             "has_runtime":  bool(m.get("runtime", True)),
             "enabled":      enabled,
@@ -156,7 +156,7 @@ def services_enable(svc_id):
     mod = entry["module"]
     try:
         if enabled:
-            # Récupère le port si nécessaire (clé _port dans les settings)
+            ***REMOVED*** Récupère le port si nécessaire (clé _port dans les settings)
             port_key = next((k for k in m.get("settings_keys", {}) if k.endswith("_port")), None)
             port = int(_st.get(port_key) or 0) if port_key else None
             fn = getattr(mod, "start", None)

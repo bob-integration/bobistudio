@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Moteur de macros/scénarios (chantier 6, cf. docs/reference/PROJETS.md §7).
 
@@ -56,11 +56,11 @@ from .addressing import get_container_ip
 
 log = logging.getLogger(__name__)
 
-MAX_DEPTH = 5          # imbrication macro→macro (anti-boucle)
-STEP_TIMEOUT_S = 5.0   # timeout HTTP par étape
-JOURNAL_KEEP = 200     # entrées de journal conservées par run
+MAX_DEPTH = 5          ***REMOVED*** imbrication macro→macro (anti-boucle)
+STEP_TIMEOUT_S = 5.0   ***REMOVED*** timeout HTTP par étape
+JOURNAL_KEEP = 200     ***REMOVED*** entrées de journal conservées par run
 
-# Un run à la fois par macro : {mid: _Run}
+***REMOVED*** Un run à la fois par macro : {mid: _Run}
 _runs = {}
 _runs_lock = threading.Lock()
 
@@ -69,15 +69,15 @@ class _Run:
     def __init__(self, mid, user, allow_system_config=False):
         self.macro_id = mid
         self.user = user
-        # Droit d'écrire les champs config_schema scope "system" (= containers.deploy),
-        # capturé AU DÉCLENCHEMENT (le run tourne en thread, hors contexte requête).
+        ***REMOVED*** Droit d'écrire les champs config_schema scope "system" (= containers.deploy),
+        ***REMOVED*** capturé AU DÉCLENCHEMENT (le run tourne en thread, hors contexte requête).
         self.allow_system_config = bool(allow_system_config)
         self.running = True
         self.started = time.time()
         self.finished = None
         self.error = None
-        self.journal = []      # [{ts, msg, ok} (+ node/event pour les runs nodaux)]
-        self.active_nodes = set()   # nodes/v2 : nœuds en cours (surlignage live UI)
+        self.journal = []      ***REMOVED*** [{ts, msg, ok} (+ node/event pour les runs nodaux)]
+        self.active_nodes = set()   ***REMOVED*** nodes/v2 : nœuds en cours (surlignage live UI)
         self._cancel = threading.Event()
 
     def logline(self, msg, ok=True):
@@ -129,7 +129,7 @@ def exec_action(vmid, action_id, params, variables=None):
     """Exécute UNE action de plugin (aussi utilisée par la shotbox). Lève sur erreur."""
     c = db_get_container(vmid)
     if not c:
-        raise RuntimeError(f"container #{vmid} introuvable")
+        raise RuntimeError(f"container ***REMOVED***{vmid} introuvable")
     dc = c.get("deploy_config")
     dc = json.loads(dc) if isinstance(dc, str) else (dc or {})
     t = dc.get("type")
@@ -137,14 +137,14 @@ def exec_action(vmid, action_id, params, variables=None):
                 if a.get("id") == action_id), None)
     if not act:
         raise RuntimeError(f"action « {action_id} » inconnue pour le type {t}")
-    # Action CŒUR (pas un POST direct au conteneur) : `core: "recall"` = rappeler une
-    # mémoire/preset du store ORCHESTRATEUR (control.recall du manifeste).
+    ***REMOVED*** Action CŒUR (pas un POST direct au conteneur) : `core: "recall"` = rappeler une
+    ***REMOVED*** mémoire/preset du store ORCHESTRATEUR (control.recall du manifeste).
     if act.get("core") == "recall":
         return _exec_recall(vmid, t, act, params, variables)
     ip = get_container_ip(vmid)
     if not ip:
-        raise RuntimeError(f"IP de #{vmid} introuvable")
-    body = dict(act.get("body") or {})   # champs FIXES portés par l'action (ex. all:true)
+        raise RuntimeError(f"IP de ***REMOVED***{vmid} introuvable")
+    body = dict(act.get("body") or {})   ***REMOVED*** champs FIXES portés par l'action (ex. all:true)
     for pdef in (act.get("params") or []):
         k = pdef["key"]
         if params and k in params:
@@ -156,12 +156,12 @@ def exec_action(vmid, action_id, params, variables=None):
                 except (TypeError, ValueError):
                     pass
             elif pdef.get("type") == "bool":
-                # Les valeurs arrivent en texte depuis l'UI : bool("false") serait True.
+                ***REMOVED*** Les valeurs arrivent en texte depuis l'UI : bool("false") serait True.
                 v = str(v).strip().lower() in ("1", "true", "on", "oui", "yes")
             body[k] = v
         elif "default" in pdef and not pdef.get("optional"):
             body[k] = pdef["default"]
-    # Port par action (défaut :8082 = contrôle plugin ; ex. multiview tally sur :8080).
+    ***REMOVED*** Port par action (défaut :8082 = contrôle plugin ; ex. multiview tally sur :8080).
     port = int(act.get("port") or 8082)
     r = requests.post(f"http://{ip}:{port}{act['endpoint']}", json=body,
                       timeout=STEP_TIMEOUT_S)
@@ -175,7 +175,7 @@ def _exec_recall(vmid, type_, act, params, variables):
     mémoires vient du store ORCHESTRATEUR (plugin_store ou layouts, selon control.recall)
     et l'application réutilise routes.recall_preset — même chemin que le provider Ember+.
     Le param dont `options_from == "recall"` porte l'id de la mémoire choisie."""
-    from .routes import recall_presets, recall_preset   # lazy : évite l'import circulaire
+    from .routes import recall_presets, recall_preset   ***REMOVED*** lazy : évite l'import circulaire
     key = next((p.get("key") for p in (act.get("params") or [])
                 if p.get("options_from") == "recall"), "memory")
     raw = _tmpl((params or {}).get(key), variables or {})
@@ -186,7 +186,7 @@ def _exec_recall(vmid, type_, act, params, variables):
     _rc, presets = recall_presets(vmid, type_)
     idx = next((i for i, pr in enumerate(presets) if pr.get("id") == mem_id), None)
     if idx is None:
-        raise RuntimeError(f"mémoire #{mem_id} introuvable (supprimée ?)")
+        raise RuntimeError(f"mémoire ***REMOVED***{mem_id} introuvable (supprimée ?)")
     try:
         duration_ms = max(0, int(float(_tmpl((params or {}).get("duration_ms"),
                                              variables or {}) or 0)))
@@ -217,7 +217,7 @@ def exec_config(vmid, params, variables=None, allow_system=False, confirm=False)
     """Écrit des champs déclaratifs (config_schema) d'un container plugin — RÉUTILISE le
     chemin d'écriture de la route plugin_config (validation scopes/clés, merge frais sous
     verrou, redeploy si le container tourne), en SYNCHRONE. Lève sur erreur."""
-    from .routes.plugin_registry import apply_plugin_config, PluginConfigError  # lazy : évite l'import circulaire
+    from .routes.plugin_registry import apply_plugin_config, PluginConfigError  ***REMOVED*** lazy : évite l'import circulaire
     vals = {k: _tmpl(v, variables or {}) for k, v in (params or {}).items()}
     if not vals:
         raise RuntimeError("réglage sans champ")
@@ -234,7 +234,7 @@ def exec_post(vmid, endpoint, params, variables=None):
     La découverte n'ouvre aucune nouvelle surface : endpoint non listé → refus."""
     c = db_get_container(vmid)
     if not c:
-        raise RuntimeError(f"container #{vmid} introuvable")
+        raise RuntimeError(f"container ***REMOVED***{vmid} introuvable")
     dc = c.get("deploy_config")
     dc = json.loads(dc) if isinstance(dc, str) else (dc or {})
     t = dc.get("type")
@@ -245,7 +245,7 @@ def exec_post(vmid, endpoint, params, variables=None):
         raise RuntimeError(f"{endpoint or '(vide)'} n'est pas whitelisté pour le type {t}")
     ip = get_container_ip(vmid)
     if not ip:
-        raise RuntimeError(f"IP de #{vmid} introuvable")
+        raise RuntimeError(f"IP de ***REMOVED***{vmid} introuvable")
     body = {k: _coerce_free(_tmpl(v, variables or {}))
             for k, v in (params or {}).items() if str(k).strip()}
     r = requests.post(f"http://{ip}:{ep['port']}{endpoint}",
@@ -314,20 +314,20 @@ def fetch_state(vmid, state_id=None, endpoint=None, path=None):
         return None
 
 
-# ─── Découverte d'états sur l'instance live (8e passe ch.6) ─────────────
-#
-# `discover_states(vmid)` interroge les `control.read_endpoints` du plugin (même chemin
-# réseau que fetch_state), aplatit récursivement le JSON en chemins pointés
-# (`params.saturation`, listes indexées avec prudence), infère le type, et renvoie des
-# états utilisables dans les conditions/feedback/triggers via l'opérande
-# {kind:"state", endpoint, path}. Cache court (15 s), échec silencieux par endpoint.
+***REMOVED*** ─── Découverte d'états sur l'instance live (8e passe ch.6) ─────────────
+***REMOVED***
+***REMOVED*** `discover_states(vmid)` interroge les `control.read_endpoints` du plugin (même chemin
+***REMOVED*** réseau que fetch_state), aplatit récursivement le JSON en chemins pointés
+***REMOVED*** (`params.saturation`, listes indexées avec prudence), infère le type, et renvoie des
+***REMOVED*** états utilisables dans les conditions/feedback/triggers via l'opérande
+***REMOVED*** {kind:"state", endpoint, path}. Cache court (15 s), échec silencieux par endpoint.
 
 DISCOVER_CACHE_S = 15.0
-DISCOVER_MAX_DEPTH = 4      # profondeur d'aplatissement
-DISCOVER_MAX_ITEMS = 150    # nb max d'états renvoyés par instance
-DISCOVER_LIST_MAX = 8       # nb max d'éléments de liste indexés
+DISCOVER_MAX_DEPTH = 4      ***REMOVED*** profondeur d'aplatissement
+DISCOVER_MAX_ITEMS = 150    ***REMOVED*** nb max d'états renvoyés par instance
+DISCOVER_LIST_MAX = 8       ***REMOVED*** nb max d'éléments de liste indexés
 
-_disc_cache = {}            # vmid → (ts, result)
+_disc_cache = {}            ***REMOVED*** vmid → (ts, result)
 _disc_lock = threading.Lock()
 
 
@@ -344,7 +344,7 @@ def _flatten_state_json(val, prefix, out, depth=0):
             return
         for i, v in enumerate(val[:DISCOVER_LIST_MAX]):
             _flatten_state_json(v, f"{prefix}.{i}" if prefix else str(i), out, depth + 1)
-    elif prefix:   # feuille (le document racine entier n'est pas un état)
+    elif prefix:   ***REMOVED*** feuille (le document racine entier n'est pas un état)
         t = ("bool" if isinstance(val, bool)
              else "number" if isinstance(val, (int, float)) else "text")
         out.append({"path": prefix, "type": t, "value": val})
@@ -376,13 +376,13 @@ def discover_states(vmid):
             r = requests.get(f"http://{ip}:{port}{ep}", timeout=1.5)
             doc = r.json()
         except Exception:
-            result["partial"] = True   # instance éteinte / endpoint non-JSON (preview…)
+            result["partial"] = True   ***REMOVED*** instance éteinte / endpoint non-JSON (preview…)
             continue
         flat = []
         _flatten_state_json(doc, "", flat)
         for f in flat:
             result["states"].append({
-                "id": f"disc:{ep}#{f['path']}",
+                "id": f"disc:{ep}***REMOVED***{f['path']}",
                 "label": (f["path"] if ep == "/state" else ep.lstrip("/") + " · " + f["path"]),
                 "endpoint": ep, "path": f["path"], "type": f["type"],
                 "value": f["value"], "source": "discovered"})
@@ -391,14 +391,14 @@ def discover_states(vmid):
     return result
 
 
-# ─── Arbre de paramètres (chantier convivialité macros, 2026-07) ──────────────
-# Le plugin déclare la STRUCTURE (`param_tree` du manifeste : boxes, groupes, libellés
-# humains) ; les BORNES [min,max,défaut] viennent EN DIRECT de `/state.caps` (règle du
-# projet : aucune constante de format en dur, l'UI lit caps). On fusionne les deux + les
-# libellés d'entrées câblées (`wiring.consumes`) → un arbre résolu élément→groupe→paramètre.
-# Chaque feuille porte de quoi POSER une valeur (endpoint + idx + wrap + key) ET la LIRE
-# (path dans /state) — même paramètre, deux usages (action « régler » et condition
-# « attendre »). Cache court comme discover_states ; instance éteinte → partial:true.
+***REMOVED*** ─── Arbre de paramètres (chantier convivialité macros, 2026-07) ──────────────
+***REMOVED*** Le plugin déclare la STRUCTURE (`param_tree` du manifeste : boxes, groupes, libellés
+***REMOVED*** humains) ; les BORNES [min,max,défaut] viennent EN DIRECT de `/state.caps` (règle du
+***REMOVED*** projet : aucune constante de format en dur, l'UI lit caps). On fusionne les deux + les
+***REMOVED*** libellés d'entrées câblées (`wiring.consumes`) → un arbre résolu élément→groupe→paramètre.
+***REMOVED*** Chaque feuille porte de quoi POSER une valeur (endpoint + idx + wrap + key) ET la LIRE
+***REMOVED*** (path dans /state) — même paramètre, deux usages (action « régler » et condition
+***REMOVED*** « attendre »). Cache court comme discover_states ; instance éteinte → partial:true.
 
 PARAMTREE_CACHE_S = 15.0
 _pt_cache = {}
@@ -438,26 +438,26 @@ def _pt_group(g, caps, path_prefix, endpoint_idx):
         spec = fv if isinstance(fv, dict) else {"label": fv}
         label = spec.get("label") or key
         ftype = spec.get("type") or "number"
-        # Chemin de LECTURE dans /state : par défaut path_prefix[.wrap].clé, mais surchargeable
-        # par `path` quand la clé POST diffère du nom d'état (ex mixer : POST `enabled` →
-        # état `overlay_enabled`). Sinon la condition lirait un chemin inexistant.
+        ***REMOVED*** Chemin de LECTURE dans /state : par défaut path_prefix[.wrap].clé, mais surchargeable
+        ***REMOVED*** par `path` quand la clé POST diffère du nom d'état (ex mixer : POST `enabled` →
+        ***REMOVED*** état `overlay_enabled`). Sinon la condition lirait un chemin inexistant.
         path = spec.get("path") or ".".join([p for p in (path_prefix, wrap, key) if p])
         leaf = {"key": key, "label": label, "type": ftype, "endpoint": g.get("endpoint"),
                 "wrap": wrap, "idx": endpoint_idx, "path": path}
         if ftype == "bool":
             leaf["default"] = bool(spec.get("default", False))
         elif ftype == "text":
-            leaf["default"] = spec.get("default", "")   # champ libre : pas de bornes
+            leaf["default"] = spec.get("default", "")   ***REMOVED*** champ libre : pas de bornes
         elif ftype == "enum":
             opts = (caps.get(spec.get("enum_caps") or "") or {}).get(key) or spec.get("options")
             if not opts:
-                continue   # options ni dans caps ni déclarées → on ne devine pas
+                continue   ***REMOVED*** options ni dans caps ni déclarées → on ne devine pas
             leaf["options"] = list(opts)
             leaf["default"] = spec.get("default", opts[0])
         else:
             bnd = _caps_bounds(caps, g.get("caps"), key) or _declared_bounds(spec)
             if bnd is None:
-                continue   # ni caps ni bornes déclarées → sauté (pas d'échec muet)
+                continue   ***REMOVED*** ni caps ni bornes déclarées → sauté (pas d'échec muet)
             leaf.update(bnd)
         out.append(leaf)
     return {"label": g.get("label"), "params": out}
@@ -492,7 +492,7 @@ def param_tree(vmid):
     result = {"type": t, "elements": [], "partial": False}
     if not spec:
         return result
-    # /state live : caps (bornes) + n_boxes.
+    ***REMOVED*** /state live : caps (bornes) + n_boxes.
     ctrl = m.get("control") or {}
     ip = get_container_ip(vmid) if c else None
     doc = None
@@ -502,15 +502,15 @@ def param_tree(vmid):
             doc = r.json()
         except Exception:
             doc = None
-    # /state absent (instance éteinte, ou plugin sans /state) → on construit quand même
-    # l'arbre depuis le manifeste (bornes déclarées), sans caps ni valeurs live. `partial`
-    # signale que les LECTURES d'état (conditions) ne sont pas garanties ; les ÉCRITURES
-    # (actions) restent valides.
+    ***REMOVED*** /state absent (instance éteinte, ou plugin sans /state) → on construit quand même
+    ***REMOVED*** l'arbre depuis le manifeste (bornes déclarées), sans caps ni valeurs live. `partial`
+    ***REMOVED*** signale que les LECTURES d'état (conditions) ne sont pas garanties ; les ÉCRITURES
+    ***REMOVED*** (actions) restent valides.
     if not isinstance(doc, dict):
         result["partial"] = True
         doc = {}
     caps = doc.get("caps") or {}
-    # Libellés des entrées câblées (« Box 1 »…« Fond ») depuis wiring.consumes.
+    ***REMOVED*** Libellés des entrées câblées (« Box 1 »…« Fond ») depuis wiring.consumes.
     p = dc.get("params") or {}
     hn = p.get("hostname") or (c.get("hostname") if c else "") or ""
     slot_label = {}
@@ -523,13 +523,13 @@ def param_tree(vmid):
     elements = []
     boxes = spec.get("boxes") or {}
     if boxes:
-        # Compte d'éléments : fixe (`count`) OU lu dans /state (`count_from`).
+        ***REMOVED*** Compte d'éléments : fixe (`count`) OU lu dans /state (`count_from`).
         n = boxes.get("count")
         if n is None:
             n = doc.get(boxes.get("count_from") or "n_boxes")
         n = int(n or 0)
         prefix = boxes.get("path_prefix") or "boxes"
-        label_prefix = boxes.get("label") or "Box"   # « Box 1 » (split) / « PiP 1 » (multiview)…
+        label_prefix = boxes.get("label") or "Box"   ***REMOVED*** « Box 1 » (split) / « PiP 1 » (multiview)…
         for i in range(n):
             groups = [_pt_group(g, caps, f"{prefix}.{i}", i) for g in (spec.get("box_groups") or [])]
             groups = [g for g in groups if g["params"]]
@@ -555,7 +555,7 @@ def _operand(o, pid, variables):
         return variables.get(o.get("name"))
     if kind == "state":
         vmid = _resolve_vmid(o)
-        # state_id (catalogue curaté) OU endpoint+path (état découvert) — même format.
+        ***REMOVED*** state_id (catalogue curaté) OU endpoint+path (état découvert) — même format.
         return fetch_state(vmid, o.get("state_id"),
                            endpoint=o.get("endpoint"), path=o.get("path")) if vmid else None
     return None
@@ -597,7 +597,7 @@ def _exec_leaf_step(step, pid, run):
             if not vmid:
                 raise RuntimeError("cible d'action introuvable (container disparu ?)")
             exec_action(vmid, step.get("action_id"), step.get("params") or {}, variables)
-            run.logline(f"action {step.get('action_id')} → #{vmid}")
+            run.logline(f"action {step.get('action_id')} → ***REMOVED***{vmid}")
     elif t == "config":
         vmid = _resolve_vmid(step)
         if not vmid:
@@ -605,21 +605,21 @@ def _exec_leaf_step(step, pid, run):
         exec_config(vmid, step.get("params") or {}, variables,
                     allow_system=run.allow_system_config,
                     confirm=bool(step.get("confirm")))
-        run.logline(f"réglage {', '.join((step.get('params') or {}).keys())} → #{vmid}")
+        run.logline(f"réglage {', '.join((step.get('params') or {}).keys())} → ***REMOVED***{vmid}")
     elif t == "post":
         vmid = _resolve_vmid(step)
         if not vmid:
             raise RuntimeError("cible d'appel introuvable (container disparu ?)")
         exec_post(vmid, step.get("endpoint"), step.get("params") or {}, variables)
-        run.logline(f"POST {step.get('endpoint')} → #{vmid}")
+        run.logline(f"POST {step.get('endpoint')} → ***REMOVED***{vmid}")
     elif t == "sleep":
         ms = max(0, int(step.get("ms") or 0))
         run.logline(f"pause {ms} ms")
         if run._cancel.wait(timeout=ms / 1000.0):
             raise RuntimeError("annulé")
     elif t == "wait":
-        # Attendre qu'une condition devienne vraie (borné par timeout_ms).
-        # Pas de busy-loop : cadence 0,3 s via l'Event d'annulation.
+        ***REMOVED*** Attendre qu'une condition devienne vraie (borné par timeout_ms).
+        ***REMOVED*** Pas de busy-loop : cadence 0,3 s via l'Event d'annulation.
         cond = step.get("cond") or {}
         timeout_ms = max(0, int(step.get("timeout_ms") or 30000))
         run.logline(f"attente… (max {timeout_ms} ms)")
@@ -671,7 +671,7 @@ def _run_steps(steps, pid, run, depth):
                 raise RuntimeError(f"imbrication de macros > {MAX_DEPTH}")
             sub = db_get_macro(step.get("macro_id"))
             if not sub:
-                raise RuntimeError(f"macro #{step.get('macro_id')} introuvable")
+                raise RuntimeError(f"macro ***REMOVED***{step.get('macro_id')} introuvable")
             run.logline(f"macro « {sub['name']} »")
             _run_subgraph(sub.get("graph") or {}, pid, run, depth + 1)
         elif not _exec_leaf_step(step, pid, run):
@@ -687,34 +687,34 @@ def _run_subgraph(graph, pid, run, depth):
         _run_steps((graph or {}).get("steps"), pid, run, depth)
 
 
-# ─── Moteur nodal `nodes/v2` (9e passe ch.6) ────────────────────────────────
-#
-# Format : {format:"nodes/v2", nodes:[{id,type,params,x,y}], edges:[{from,port,to}]}.
-# Les DEUX moteurs cohabitent (décision 2026-07-10) : blocks/v1 reste STRICTEMENT
-# inchangé ; nodes/v2 est un interpréteur de graphe À JETONS :
-#   - un jeton démarre à chaque nœud `entry` activé (mode manual, ou entry_id précis) ;
-#   - plusieurs arêtes sortantes d'un même port = fan-out parallèle (threads, comme le
-#     bloc parallel) ; le jeton meurt en bout de chemin ;
-#   - `cond` route port 0 (vrai) / port 1 (faux) ; `choice` évalue params.branches dans
-#     l'ordre (port i) avec défaut (port N) ;
-#   - `join` mode "all" : compteur d'arrivées vs nb d'arêtes entrantes ATTEIGNABLES
-#     depuis les entrées activées (choix pragmatique v1, documenté : une branche tuée en
-#     amont par un cond n'arrivera jamais → la jointure ne se déclenche pas ; re-armée
-#     après déclenchement pour les boucles). mode "any" : la première arrivée passe, les
-#     suivantes meurent (pour tout le run) ;
-#   - boucles autorisées mais bornées : NODE_VISITS_MAX passages par nœud ;
-#   - mêmes annulation/journal/timeouts que blocks ; événements par nœud
-#     (started/finished/error) dans le journal + `active_nodes` dans le snapshot ;
-#   - nœuds feuilles = MÊMES exécutions unitaires que les étapes blocks
-#     (_exec_leaf_step) ; `macro` = même borne de profondeur (MAX_DEPTH).
-# Les entrées `mode:"trigger"` sont stockées/validées mais PAS encore évaluées par le
-# poller (différé, cf. docs/reference/PROJETS.md) : un trigger classique pointant sur une macro nodale
-# démarre ses entrées manual.
+***REMOVED*** ─── Moteur nodal `nodes/v2` (9e passe ch.6) ────────────────────────────────
+***REMOVED***
+***REMOVED*** Format : {format:"nodes/v2", nodes:[{id,type,params,x,y}], edges:[{from,port,to}]}.
+***REMOVED*** Les DEUX moteurs cohabitent (décision 2026-07-10) : blocks/v1 reste STRICTEMENT
+***REMOVED*** inchangé ; nodes/v2 est un interpréteur de graphe À JETONS :
+***REMOVED***   - un jeton démarre à chaque nœud `entry` activé (mode manual, ou entry_id précis) ;
+***REMOVED***   - plusieurs arêtes sortantes d'un même port = fan-out parallèle (threads, comme le
+***REMOVED***     bloc parallel) ; le jeton meurt en bout de chemin ;
+***REMOVED***   - `cond` route port 0 (vrai) / port 1 (faux) ; `choice` évalue params.branches dans
+***REMOVED***     l'ordre (port i) avec défaut (port N) ;
+***REMOVED***   - `join` mode "all" : compteur d'arrivées vs nb d'arêtes entrantes ATTEIGNABLES
+***REMOVED***     depuis les entrées activées (choix pragmatique v1, documenté : une branche tuée en
+***REMOVED***     amont par un cond n'arrivera jamais → la jointure ne se déclenche pas ; re-armée
+***REMOVED***     après déclenchement pour les boucles). mode "any" : la première arrivée passe, les
+***REMOVED***     suivantes meurent (pour tout le run) ;
+***REMOVED***   - boucles autorisées mais bornées : NODE_VISITS_MAX passages par nœud ;
+***REMOVED***   - mêmes annulation/journal/timeouts que blocks ; événements par nœud
+***REMOVED***     (started/finished/error) dans le journal + `active_nodes` dans le snapshot ;
+***REMOVED***   - nœuds feuilles = MÊMES exécutions unitaires que les étapes blocks
+***REMOVED***     (_exec_leaf_step) ; `macro` = même borne de profondeur (MAX_DEPTH).
+***REMOVED*** Les entrées `mode:"trigger"` sont stockées/validées mais PAS encore évaluées par le
+***REMOVED*** poller (différé, cf. docs/reference/PROJETS.md) : un trigger classique pointant sur une macro nodale
+***REMOVED*** démarre ses entrées manual.
 
 GRAPH_FORMAT = "nodes/v2"
 GRAPH_NODE_TYPES = ("entry", "action", "config", "post", "sleep", "set_var",
                     "wait", "macro", "cond", "choice", "join")
-NODE_VISITS_MAX = 1000   # plafond de passages par nœud (boucles bornées)
+NODE_VISITS_MAX = 1000   ***REMOVED*** plafond de passages par nœud (boucles bornées)
 
 
 def _node_out_ports(node):
@@ -723,7 +723,7 @@ def _node_out_ports(node):
     if t == "cond":
         return 2
     if t == "choice":
-        return len(((node.get("params") or {}).get("branches")) or []) + 1  # + défaut
+        return len(((node.get("params") or {}).get("branches")) or []) + 1  ***REMOVED*** + défaut
     return 1
 
 
@@ -770,18 +770,18 @@ class _GraphCtx:
 
     def __init__(self, graph, pid, run, depth):
         self.nodes = {n["id"]: n for n in graph.get("nodes") or []}
-        self.out = {}    # nid → port → [to, …] (ordre des arêtes = ordre des branches)
+        self.out = {}    ***REMOVED*** nid → port → [to, …] (ordre des arêtes = ordre des branches)
         self.edges = list(graph.get("edges") or [])
         for e in self.edges:
             self.out.setdefault(e["from"], {}).setdefault(
                 int(e.get("port") or 0), []).append(e["to"])
         self.pid, self.run, self.depth = pid, run, depth
         self.lock = threading.Lock()
-        self.visits = {}         # nid → nb de passages (boucles bornées)
-        self.errors = []         # erreurs de jetons (le run continue, cf. bloc parallel)
-        self.threads = []        # tous les jetons (y compris spawnés en cours de route)
-        self.join_state = {}     # nid → {"arrived": int, "fired": bool}
-        self.expected_in = {}    # join nid → nb d'arêtes entrantes atteignables
+        self.visits = {}         ***REMOVED*** nid → nb de passages (boucles bornées)
+        self.errors = []         ***REMOVED*** erreurs de jetons (le run continue, cf. bloc parallel)
+        self.threads = []        ***REMOVED*** tous les jetons (y compris spawnés en cours de route)
+        self.join_state = {}     ***REMOVED*** nid → {"arrived": int, "fired": bool}
+        self.expected_in = {}    ***REMOVED*** join nid → nb d'arêtes entrantes atteignables
 
     def reachable(self, starts):
         """Nœuds atteignables depuis `starts` en suivant TOUTES les arêtes (tous ports —
@@ -818,13 +818,13 @@ class _GraphCtx:
             mode = (node.get("params") or {}).get("mode") or "all"
             if mode == "any":
                 if st["fired"]:
-                    return False   # premier arrivé déjà passé : le jeton meurt
+                    return False   ***REMOVED*** premier arrivé déjà passé : le jeton meurt
                 st["fired"] = True
                 return True
             st["arrived"] += 1
             if st["arrived"] < max(1, self.expected_in.get(nid, 1)):
-                return False       # on attend les autres branches : le jeton meurt
-            st["arrived"] = 0      # ré-armée (boucles à travers la jointure)
+                return False       ***REMOVED*** on attend les autres branches : le jeton meurt
+            st["arrived"] = 0      ***REMOVED*** ré-armée (boucles à travers la jointure)
             return True
 
     def _token(self, nid):
@@ -843,7 +843,7 @@ class _GraphCtx:
                         raise RuntimeError(
                             f"boucle : nœud {nid} exécuté plus de {NODE_VISITS_MAX} fois")
                 if node.get("type") == "join" and not self._join_pass(nid, node):
-                    return   # le jeton meurt à la jointure (journal silencieux)
+                    return   ***REMOVED*** le jeton meurt à la jointure (journal silencieux)
                 run.node_event(nid, "started")
                 try:
                     port = self._exec_node(nid, node)
@@ -879,17 +879,17 @@ class _GraphCtx:
                 cond = br.get("cond") if isinstance(br, dict) and "cond" in br else br
                 if eval_cond(cond or {}, self.pid, variables):
                     return i
-            return len(branches)   # port défaut
+            return len(branches)   ***REMOVED*** port défaut
         if t == "macro":
             if self.depth >= MAX_DEPTH:
                 raise RuntimeError(f"imbrication de macros > {MAX_DEPTH}")
             sub = db_get_macro(params.get("macro_id"))
             if not sub:
-                raise RuntimeError(f"macro #{params.get('macro_id')} introuvable")
+                raise RuntimeError(f"macro ***REMOVED***{params.get('macro_id')} introuvable")
             self.run.logline(f"macro « {sub['name']} »")
             _run_subgraph(sub.get("graph") or {}, self.pid, self.run, self.depth + 1)
             return 0
-        # Nœud feuille = même exécution unitaire que l'étape blocks correspondante.
+        ***REMOVED*** Nœud feuille = même exécution unitaire que l'étape blocks correspondante.
         step = dict(params)
         step["type"] = t
         if not _exec_leaf_step(step, self.pid, self.run):
@@ -915,8 +915,8 @@ def _run_graph(graph, pid, run, depth, entry_id=None):
                   and ((n.get("params") or {}).get("mode") or "manual") == "manual"]
         if not starts:
             raise RuntimeError("aucune entrée manuelle (entries trigger seulement)")
-    # `join all` : arrivées attendues = arêtes entrantes depuis les nœuds atteignables
-    # des entrées ACTIVÉES (statique, pragmatique v1 — cf. bandeau de section).
+    ***REMOVED*** `join all` : arrivées attendues = arêtes entrantes depuis les nœuds atteignables
+    ***REMOVED*** des entrées ACTIVÉES (statique, pragmatique v1 — cf. bandeau de section).
     reach = ctx.reachable(starts)
     for e in ctx.edges:
         to = e.get("to")
@@ -929,18 +929,18 @@ def _run_graph(graph, pid, run, depth, entry_id=None):
         raise RuntimeError(" ; ".join(ctx.errors))
 
 
-# ─── Conversion blocks/v1 ↔ nodes/v2 (compilation + détection structurée) ───
-#
-# `blocks_to_graph` : compilation SANS PERTE blocs → graphe (positions x,y par layout en
-# couches gauche→droite). Un bloc `if` = nœud cond dont les deux branches convergent sur
-# l'étape suivante ; un bloc `parallel` = fan-out + nœud join "all". Quand un parallel
-# suit un if (plusieurs queues), un join "any" est inséré comme point de convergence
-# explicite (un seul jeton vivant → sémantique inchangée, et la structure reste
-# détectable). `graph_to_blocks` : reconstruction (lève UnstructuredGraph si le graphe
-# n'est pas série-parallèle bien imbriqué : une seule entry manual, régions cond/parallel
-# refermées, pas de saut entre branches, pas de cycle, pas de choice/join any libres).
-# Round-trip garanti : graph_to_blocks(blocks_to_graph(b)) == b (modulo normalisation
-# then/else/branches absents → listes vides).
+***REMOVED*** ─── Conversion blocks/v1 ↔ nodes/v2 (compilation + détection structurée) ───
+***REMOVED***
+***REMOVED*** `blocks_to_graph` : compilation SANS PERTE blocs → graphe (positions x,y par layout en
+***REMOVED*** couches gauche→droite). Un bloc `if` = nœud cond dont les deux branches convergent sur
+***REMOVED*** l'étape suivante ; un bloc `parallel` = fan-out + nœud join "all". Quand un parallel
+***REMOVED*** suit un if (plusieurs queues), un join "any" est inséré comme point de convergence
+***REMOVED*** explicite (un seul jeton vivant → sémantique inchangée, et la structure reste
+***REMOVED*** détectable). `graph_to_blocks` : reconstruction (lève UnstructuredGraph si le graphe
+***REMOVED*** n'est pas série-parallèle bien imbriqué : une seule entry manual, régions cond/parallel
+***REMOVED*** refermées, pas de saut entre branches, pas de cycle, pas de choice/join any libres).
+***REMOVED*** Round-trip garanti : graph_to_blocks(blocks_to_graph(b)) == b (modulo normalisation
+***REMOVED*** then/else/branches absents → listes vides).
 
 
 class UnstructuredGraph(Exception):
@@ -972,7 +972,7 @@ def blocks_to_graph(steps):
                 tails = (_build(step.get("then") or [], [(c, 0)])
                          + _build(step.get("else") or [], [(c, 1)]))
             elif t == "parallel":
-                if len(tails) > 1:   # point de convergence explicite avant le fan-out
+                if len(tails) > 1:   ***REMOVED*** point de convergence explicite avant le fan-out
                     m = _new("join", {"mode": "any"})
                     _attach(tails, m)
                     tails = [(m, 0)]
@@ -995,7 +995,7 @@ def blocks_to_graph(steps):
 def _layout(nodes, edges):
     """Positions x,y par couches (plus long chemin depuis les racines, gauche→droite)."""
     layer = {n["id"]: 0 for n in nodes}
-    # Itération bornée (le graphe compilé est un DAG ; borne = nb de nœuds passes).
+    ***REMOVED*** Itération bornée (le graphe compilé est un DAG ; borne = nb de nœuds passes).
     for _ in range(len(nodes)):
         moved = False
         for e in edges:
@@ -1108,7 +1108,7 @@ def graph_to_blocks(graph):
         if t == "join":
             if ((node.get("params") or {}).get("mode") or "all") != "any":
                 _fail("jointure « all » hors d'un parallèle")
-            _consume(nid)   # join any en séquence = point de convergence transparent
+            _consume(nid)   ***REMOVED*** join any en séquence = point de convergence transparent
             return _parse_outs(nid, 0, stop)
         if t in ("entry", "choice"):
             _fail(f"nœud {t} non représentable en blocs")
@@ -1197,20 +1197,20 @@ def cancel_run(mid):
     return False
 
 
-# ─── Déclencheurs permanents (project_triggers, docs/reference/PROJETS.md §7) ─────────────
-#
-# Poller mutualisé (~1 s) : évalue chaque règle active et lance sa macro sur
-# FRONT MONTANT (la condition passe de faux à vrai) — jamais sur niveau — avec
-# un cooldown_ms anti-rafale par règle. Une règle qui vient d'apparaître (ou
-# d'être ré-activée) est seulement INITIALISÉE au premier passage : activer un
-# trigger dont la condition est déjà vraie ne déclenche pas.
+***REMOVED*** ─── Déclencheurs permanents (project_triggers, docs/reference/PROJETS.md §7) ─────────────
+***REMOVED***
+***REMOVED*** Poller mutualisé (~1 s) : évalue chaque règle active et lance sa macro sur
+***REMOVED*** FRONT MONTANT (la condition passe de faux à vrai) — jamais sur niveau — avec
+***REMOVED*** un cooldown_ms anti-rafale par règle. Une règle qui vient d'apparaître (ou
+***REMOVED*** d'être ré-activée) est seulement INITIALISÉE au premier passage : activer un
+***REMOVED*** trigger dont la condition est déjà vraie ne déclenche pas.
 
 TRIGGER_POLL_S = 1.0
 
 _trig_thread = None
 _trig_stop = threading.Event()
-_trig_prev = {}    # trigger id → dernier état booléen de la condition
-_trig_last = {}    # trigger id → time.monotonic() du dernier déclenchement
+_trig_prev = {}    ***REMOVED*** trigger id → dernier état booléen de la condition
+_trig_last = {}    ***REMOVED*** trigger id → time.monotonic() du dernier déclenchement
 
 
 def _triggers_tick():
@@ -1224,7 +1224,7 @@ def _triggers_tick():
             prev = _trig_prev.get(tid)
             _trig_prev[tid] = cur
             if prev is None or not cur or prev:
-                continue   # premier passage (init), condition fausse, ou pas de front
+                continue   ***REMOVED*** premier passage (init), condition fausse, ou pas de front
             now = time.monotonic()
             cd = max(0, int(tr.get("cooldown_ms") or 0)) / 1000.0
             if now - _trig_last.get(tid, float("-inf")) < cd:
@@ -1232,7 +1232,7 @@ def _triggers_tick():
             if not tr.get("macro_id"):
                 continue
             _trig_last[tid] = now
-            name = tr.get("name") or f"#{tid}"
+            name = tr.get("name") or f"***REMOVED***{tid}"
             run, err = run_macro(tr["macro_id"], user=f"trigger:{name}")
             if err:
                 log.debug("trigger %s : macro %s non lancée (%s)", tid, tr["macro_id"], err)
@@ -1242,8 +1242,8 @@ def _triggers_tick():
                          params={"name": name, "macro": m.get('name') or tr['macro_id']})
         except Exception as e:
             log.debug("trigger %s : évaluation en échec : %s", tid, e)
-    # Purge de l'état des règles disparues/désactivées → une ré-activation repart
-    # d'une initialisation propre (pas de faux front avec un état périmé).
+    ***REMOVED*** Purge de l'état des règles disparues/désactivées → une ré-activation repart
+    ***REMOVED*** d'une initialisation propre (pas de faux front avec un état périmé).
     for tid in [k for k in _trig_prev if k not in seen]:
         _trig_prev.pop(tid, None)
 
@@ -1259,7 +1259,7 @@ def start_triggers():
         while not _trig_stop.wait(TRIGGER_POLL_S):
             try:
                 _triggers_tick()
-            except Exception as e:   # ceinture ET bretelles : le poller survit à tout
+            except Exception as e:   ***REMOVED*** ceinture ET bretelles : le poller survit à tout
                 log.debug("triggers : tick en échec : %s", e)
 
     _trig_thread = threading.Thread(target=_loop, daemon=True, name="triggers-poller")

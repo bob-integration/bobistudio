@@ -1,4 +1,4 @@
-# Writing a Bobi.Studio plugin
+***REMOVED*** Writing a Bobi.Studio plugin
 
 *[Version française](AUTHORING.fr.md)*
 
@@ -17,7 +17,7 @@ A plugin is a **type of Docker container** driven by the orchestrator. It lives 
 
 ---
 
-## Layout
+***REMOVED******REMOVED*** Layout
 
 ```
 plugins/<type>/
@@ -33,12 +33,12 @@ plugins/<type>/
 
 ---
 
-## The five rules that matter
+***REMOVED******REMOVED*** The five rules that matter
 
 The rest of this guide is reference material. These five decide whether your plugin is usable in
 production, and forgetting them produces **no error at all** — just a product that lies.
 
-### 1. Slice mode — mandatory for every new plugin
+***REMOVED******REMOVED******REMOVED*** 1. Slice mode — mandatory for every new plugin
 
 Read the input band by band (`get_slice`) and publish by progressive commit
 (`commit(gi, valid_slices=k)`), instead of waiting for the whole frame.
@@ -61,7 +61,7 @@ line selection are the documented exceptions.
 switch under Settings → Video. A plugin exposing its own would leave a fleet configured at
 random.
 
-### 2. Expose everything to macros
+***REMOVED******REMOVED******REMOVED*** 2. Expose everything to macros
 
 Any feature or parameter not exposed to the macro system is a **dead capability**: it exists,
 nobody can trigger it, and nothing says so.
@@ -75,7 +75,7 @@ nobody can trigger it, and nothing says so.
 Every action or `param_tree` target must appear in `control.endpoints`: the proxy **refuses** an
 undeclared path, and the macro then "succeeds" while changing nothing.
 
-### 3. Metrics that say whether the stage does what it was asked to
+***REMOVED******REMOVED******REMOVED*** 3. Metrics that say whether the stage does what it was asked to
 
 `fps` only says the loop is turning. Publish at least:
 
@@ -87,7 +87,7 @@ And per input when there is more than one: "nothing is arriving" does not say **
 missing, and "not wired" is not "wired but silent" — those are opposite faults, one is fixed at
 the patch, the other at the producer.
 
-### 4. The output does not depend on its producer
+***REMOVED******REMOVED******REMOVED*** 4. The output does not depend on its producer
 
 Publish your flows **even with no input at all**: coloured background, audio silence, regenerated
 ANC. A subscribed downstream must not see its chain go dark because an upstream source fell over.
@@ -95,7 +95,7 @@ ANC. A subscribed downstream must not see its chain go dark because an upstream 
 That is also what makes a plugin deployable **with nothing wired** — hence usable as a smoke test
 on installation day, precisely when no chain exists yet.
 
-### 5. Survive SIGBUS and exceptions
+***REMOVED******REMOVED******REMOVED*** 5. Survive SIGBUS and exceptions
 
 A producer that re-creates its flow invalidates the readers' memory mapping. The trap: the dead
 generation stays **readable** — grains are served, the index frozen, no exception. Without a
@@ -107,7 +107,7 @@ operator reads "restarted" in the alerts, and nothing more.
 
 ---
 
-## `script.py` — the template
+***REMOVED******REMOVED*** `script.py` — the template
 
 The script is a **`str.format()` template** with exactly three substitutions:
 
@@ -120,11 +120,11 @@ The script is a **`str.format()` template** with exactly three substitutions:
 **Critical rule**: every literal brace must be **doubled**, comments and f-strings included.
 
 ```python
-# ✅ correct
+***REMOVED*** ✅ correct
 state = {{"running": False, "fps": 0}}
 url = f"http://{{ip}}:{{port}}/path"
 
-# ❌ the plugin vanishes from the registry
+***REMOVED*** ❌ the plugin vanishes from the registry
 state = {"running": False}
 ```
 
@@ -147,7 +147,7 @@ print("render + compile OK")
 EOF
 ```
 
-### Reaching the parameters
+***REMOVED******REMOVED******REMOVED*** Reaching the parameters
 
 ```python
 CONFIG = {config}
@@ -157,7 +157,7 @@ PLUGIN_VERSION = "{plugin_version}"
 my_value = CONFIG.get("my_key") or "default"
 ```
 
-### The two ports
+***REMOVED******REMOVED******REMOVED*** The two ports
 
 | Port | Role |
 |---|---|
@@ -169,7 +169,7 @@ server would answer 501 and the tally would never arrive, with nothing to signal
 
 ---
 
-## `hooks.py` — what runs in the orchestrator
+***REMOVED******REMOVED*** `hooks.py` — what runs in the orchestrator
 
 This is the **one exception** to the rule "no plugin code in the controller". The file is
 imported and executed by the orchestrator, with its rights: the database, the agent tokens, the
@@ -178,7 +178,7 @@ called on the path of an operator's gesture.
 
 A hook that raises is ignored with a warning in the log; it does not block the deployment.
 
-### The recognised hooks
+***REMOVED******REMOVED******REMOVED*** The recognised hooks
 
 | Hook | When |
 |---|---|
@@ -198,7 +198,7 @@ Read `plugins/hello_world/hooks.py`: it implements three of them (`before_deploy
 once, at scan time. Without a reload the hook **never fires**: a perfectly silent failure.
 Settings → Plugins → *Reload*, or `POST /api/plugins/reload`.
 
-### What a hook is allowed to do
+***REMOVED******REMOVED******REMOVED*** What a hook is allowed to do
 
 Contrary to what an earlier version of this guide claimed, a hook **may** read the database and
 the settings: that is often its very purpose, since the container has no access to them.
@@ -210,7 +210,7 @@ depend on mutable global state.
 
 ---
 
-## `plugin.json` — the manifest
+***REMOVED******REMOVED*** `plugin.json` — the manifest
 
 Required fields: `type`, `label`, `version`, `script_template`.
 
@@ -230,7 +230,7 @@ Notable ones:
 
 ---
 
-## Control console
+***REMOVED******REMOVED*** Control console
 
 `control.js` exposes `window.MXLPlugins.<type> = { mount, unmount }`.
 
@@ -267,7 +267,7 @@ existed, got it right.
 
 ---
 
-## Versions
+***REMOVED******REMOVED*** Versions
 
 `meta.json` carries the version and the changelog. To publish:
 
@@ -281,7 +281,7 @@ until they are redeployed: the Plugins page shows the drift.
 
 ---
 
-## Git submodules
+***REMOVED******REMOVED*** Git submodules
 
 Each plugin is an independent repository.
 
@@ -299,7 +299,7 @@ Clone the superproject with its plugins: `git clone --recurse-submodules <url>`.
 
 ---
 
-## Creating a plugin
+***REMOVED******REMOVED*** Creating a plugin
 
 1. **Copy `plugins/hello_world/`** rather than starting from a blank page.
 2. Rename the `type` in `plugin.json`, strip what you do not need.
@@ -309,7 +309,7 @@ Clone the superproject with its plugins: `git clone --recurse-submodules <url>`.
 
 ---
 
-## Proposing a plugin
+***REMOVED******REMOVED*** Proposing a plugin
 
 The catalogue reads a single trusted GitHub organisation, and that is not a convenience:
 installing a plugin runs its `hooks.py` **inside the orchestrator**. A third-party plugin
@@ -328,7 +328,7 @@ and pass the conformance checks before proposing.
 
 ---
 
-## Security
+***REMOVED******REMOVED*** Security
 
 - `script.py` runs **inside the container only**, never in the orchestrator — the controller's
   credentials do not leak. `hooks.py` is the exception, see above.

@@ -8,7 +8,7 @@
         <div class="palette-header-id">
             <h2 id="dp-palette-heading" class="palette-host">
                 <span class="dp-hostname"></span>
-                <span class="card-vmid">#<span class="dp-vmid"></span></span>
+                <span class="card-vmid">***REMOVED***<span class="dp-vmid"></span></span>
             </h2>
             <span class="badge dp-status" aria-live="polite"></span>
         </div>
@@ -24,16 +24,16 @@
             <span class="dp-type-summary-value"></span>
             <span class="dp-type-summary-action">{{ _('containers.palette.change') }}</span>
         </button>
-        {# Chips groupés par catégorie : types cœur + plugins déclarant la même
-           `nav.section`. Médias = catégorie des plugins média (comme les autres). #}
+        {***REMOVED*** Chips groupés par catégorie : types cœur + plugins déclarant la même
+           `nav.section`. Médias = catégorie des plugins média (comme les autres). ***REMOVED***}
         {% set PS = plugin_sections or {} %}
-        {# `auto_provision` : type provisionné automatiquement (ex. moteur 2110_io) → pas de
+        {***REMOVED*** `auto_provision` : type provisionné automatiquement (ex. moteur 2110_io) → pas de
            chip pour le (re)typer manuellement. L'édition d'un moteur existant reste intacte :
-           son type est porté par l'input caché .dp-type + la ligne récap (label via JS). #}
-        {# Sous-groupes (`nav.group`) : dans Sources, « ce qui arrive d'ailleurs » et « ce qu'on
+           son type est porté par l'input caché .dp-type + la ligne récap (label via JS). ***REMOVED***}
+        {***REMOVED*** Sous-groupes (`nav.group`) : dans Sources, « ce qui arrive d'ailleurs » et « ce qu'on
            fabrique ici » ne se cherchent pas dans le même état d'esprit. Purement visuel — un
            groupe ne crée ni catégorie, ni route. Une rubrique sans groupe rend exactement comme
-           avant : `groupes` est vide et on retombe sur la liste plate. #}
+           avant : `groupes` est vide et on retombe sur la liste plate. ***REMOVED***}
         {% macro chips_de(liste) %}
             {% for p in liste if not p.auto_provision %}
                 <button type="button" class="dp-chip" data-type="{{ p.type }}"
@@ -52,9 +52,9 @@
             {% endif %}
         {% endmacro %}
         {% set KNOWN = ['sources','traitements','destinations','streams','medias'] %}
-        {# Niveau 1 : onglets de catégorie (peuplés par JS depuis les .dp-type-cat) #}
+        {***REMOVED*** Niveau 1 : onglets de catégorie (peuplés par JS depuis les .dp-type-cat) ***REMOVED***}
         <div class="dp-type-cats-nav" role="tablist" aria-label="{{ _('containers.filter.category') }}"></div>
-        {# Niveau 2 : chips du plugin, une catégorie visible à la fois #}
+        {***REMOVED*** Niveau 2 : chips du plugin, une catégorie visible à la fois ***REMOVED***}
         <div class="dp-type-chips" role="group" aria-label="{{ _('containers.palette.type_aria') }}">
             <div class="dp-type-cat">
                 <span class="dp-type-cat-label">{{ _('containers.palette.sources') }}</span>
@@ -78,7 +78,7 @@
                 {{ plug_chips('medias') }}
             </div>
             {% endif %}
-            {# Sections plugin hors catégories connues : un groupe par section #}
+            {***REMOVED*** Sections plugin hors catégories connues : un groupe par section ***REMOVED***}
             {% for sid, s in PS.items() if sid not in KNOWN and s.plugins %}
             <div class="dp-type-cat">
                 <span class="dp-type-cat-label">{{ s.label }}</span>
@@ -144,9 +144,9 @@
             </div>
         </fieldset>
 
-        {# La section Simulateur a été retirée de la palette : la simu (GÉN/IDENT,
+        {***REMOVED*** La section Simulateur a été retirée de la palette : la simu (GÉN/IDENT,
            patterns, audio) se pilote en live depuis la page Sources 2110. Les params
-           sim_* persistés sont préservés au redeploy (merge params existants). #}
+           sim_* persistés sont préservés au redeploy (merge params existants). ***REMOVED***}
     </div>
 
     <!-- Action principale -->

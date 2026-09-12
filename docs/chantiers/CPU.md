@@ -1,4 +1,4 @@
-# Gestion du CPU — état, règles et méthode
+***REMOVED*** Gestion du CPU — état, règles et méthode
 
 > Rédigé le 2026-08-01 au terme d'une journée de mesures sur le parc. Ce document dit **ce qu'on
 > sait maintenant**, **ce qu'on ne savait pas hier**, et **comment mesurer** pour ne pas retomber
@@ -6,7 +6,7 @@
 
 ---
 
-## 1. Le constat qui recadre tout
+***REMOVED******REMOVED*** 1. Le constat qui recadre tout
 
 L'attribution CPU d'un nœud 2110 en production, relevée par delta de `/proc/*/stat` :
 
@@ -33,9 +33,9 @@ boucles**, et les six CPU restants portent tout le reste.
 
 ---
 
-## 2. Les trois notions qui manquaient
+***REMOVED******REMOVED*** 2. Les trois notions qui manquaient
 
-### 2.1 Un cœur ATTRIBUÉ n'est pas un cœur UTILISABLE
+***REMOVED******REMOVED******REMOVED*** 2.1 Un cœur ATTRIBUÉ n'est pas un cœur UTILISABLE
 
 `isolcpus=domain` ne rend pas un cœur inutilisable : il le retire de l'**équilibrage de charge**.
 Un thread qu'on y affine explicitement (un lcore DPDK) y tourne ; un thread ordinaire n'y est
@@ -46,7 +46,7 @@ c'était le cas du moteur de dl360-1, avec **274 threads sur le cœur 0**.
 sur la carte CPU de Monitoring, et historisé (`cpu_ord`, la seule courbe qui dise quelque chose sur
 un nœud isolé). `capacite()` et `cores_status()` ne comptent plus que des cœurs ordonnançables.
 
-### 2.2 Un placement CALCULÉ n'est pas un placement CONSTATÉ
+***REMOVED******REMOVED******REMOVED*** 2.2 Un placement CALCULÉ n'est pas un placement CONSTATÉ
 
 `core_pool` a reçu neuf correctifs, chacun rattrapant une qualité du cœur que le modèle ignorait
 (jumeau HT, nœud NUMA, dédié/partagé, fréquence, cpuset absent…). **Les neuf calculent en amont ;
@@ -60,7 +60,7 @@ des threads. Deux invariants, sans seuil :
 - **I1** `cpuset ∩ bande_isolée = ∅` — tout cœur donné doit être un cœur où l'ordonnanceur ira ;
 - **I2** `threads(conteneur ≠ moteur) ∩ bande_isolée = ∅` — la bande appartient au moteur.
 
-### 2.3 Un coût DÉCLARÉ n'est pas un coût MESURÉ
+***REMOVED******REMOVED******REMOVED*** 2.3 Un coût DÉCLARÉ n'est pas un coût MESURÉ
 
 Les profils `resources.cores` des manifestes n'étaient confrontés à rien. `streamer` annonce
 4 cœurs depuis 2026-06 ; personne n'avait vérifié.
@@ -72,7 +72,7 @@ consomme le p95 **mesuré** quand il existe et **nomme la source** de chaque chi
 
 ---
 
-## 3. Coûts mesurés (2026-08-01)
+***REMOVED******REMOVED*** 3. Coûts mesurés (2026-08-01)
 
 | charge | coût | note |
 |---|---|---|
@@ -96,7 +96,7 @@ en entrée, flux compressé en sortie).
 
 ---
 
-## 4. La méthode — et ses pièges
+***REMOVED******REMOVED*** 4. La méthode — et ses pièges
 
 > Trois inférences se sont trompées dans la même journée, dont une d'un facteur 30. **Un écart se
 > mesure toutes choses égales par ailleurs, ou ne se déclare pas.**
@@ -125,7 +125,7 @@ remettre trop tôt fait repartir le conteneur sur l'ancienne image. Contrôler p
 
 ---
 
-## 5. Ce qui reste à faire, par ordre de valeur
+***REMOVED******REMOVED*** 5. Ce qui reste à faire, par ordre de valeur
 
 1. **Redimensionner la bande isolée.** `mtl_lcore_max` = 16 réserve 42 CPU pour 10 lcores réels.
    Un réglage, un reboot, vérification par le partage du §1. C'est le seul levier à l'échelle du

@@ -1,4 +1,4 @@
-# HA — Paire de contrôleurs (warm-standby) & bascule manuelle
+***REMOVED*** HA — Paire de contrôleurs (warm-standby) & bascule manuelle
 
 Bobi.Studio se déploie en **paire de contrôleurs** : un **actif** (pilote la production — surveillance
 des nœuds, NMOS/Ember+/ATEM/TSL, sampler PTP, sauvegardes) et un **standby** (boote passif, UI en
@@ -17,7 +17,7 @@ Deux mécanismes complètent ce choix sans le contredire :
 Implémentation : `app/ha.py` (rôle, réplication, chien de garde) + `app/vip.py` (keepalived) +
 Réglages → **Haute disponibilité**.
 
-## Modèle
+***REMOVED******REMOVED*** Modèle
 
 | Rôle | `control_role` | Pilote ? | UI |
 |------|----------------|----------|-----|
@@ -33,7 +33,7 @@ Réglages → **Haute disponibilité**.
   configuré (ci-dessous) elle **suit toute seule** ; sans, elle se déplace **à la main**. Le plan
   ST 2110 (médias) n'est pas concerné.
 
-## Pré-requis (à froid, une fois)
+***REMOVED******REMOVED*** Pré-requis (à froid, une fois)
 
 1. Sur **chaque** contrôleur : le **même** secret partagé (Réglages → Haute disponibilité →
    « Secret partagé (token de réplication) »). **Générer** sur un des deux, puis **recopier** la
@@ -48,7 +48,7 @@ Réglages → **Haute disponibilité**.
 4. Choisir la **VIP** (ex. `192.0.2.250/24`) et l'interface management (ex. `eth0`). Soit on la pose
    à la main sur l'actif, soit on active keepalived (ci-dessous) sur les **deux** contrôleurs.
 
-## VIP automatique (keepalived / VRRP) — opt-in
+***REMOVED******REMOVED*** VIP automatique (keepalived / VRRP) — opt-in
 
 Réglages → Haute disponibilité → **VIP de management**. À configurer sur les **deux** machines, avec
 la **même** adresse, le **même** VRID et le **même** secret (8 caractères max — le protocole tronque
@@ -73,7 +73,7 @@ n'est pas le nôtre n'est **jamais** écrasé) :
 > supérieure), mais il repart en **pilotant** — c'est le split-brain que la règle d'or interdit.
 > Rétrograder avant de rallumer.
 
-## Bascule planifiée (maintenance de l'actif) — ordre anti-split-brain
+***REMOVED******REMOVED*** Bascule planifiée (maintenance de l'actif) — ordre anti-split-brain
 
 > Règle d'or : **un seul actif à la fois** et **un seul porteur de VIP à la fois**.
 
@@ -83,12 +83,12 @@ n'est pas le nôtre n'est **jamais** écrasé) :
 3. **Déplacer la VIP** — *rien à faire si keepalived est configuré* (l'étape 2 a déjà re-rendu la
    priorité et l'adresse a migré). Sinon, à la main :
    ```bash
-   # sur l'ANCIEN actif (qu'on vient de démettre) :
+   ***REMOVED*** sur l'ANCIEN actif (qu'on vient de démettre) :
    ip addr del <VIP>/<bits> dev <mgmt-if>
-   # sur le FUTUR actif (le standby) :
+   ***REMOVED*** sur le FUTUR actif (le standby) :
    ip addr add <VIP>/<bits> dev <mgmt-if>
-   # (rafraîchir le cache ARP des voisins)
-   arping -U -c 3 -I <mgmt-if> <VIP>   # ou ndppd/gratuitous selon le réseau
+   ***REMOVED*** (rafraîchir le cache ARP des voisins)
+   arping -U -c 3 -I <mgmt-if> <VIP>   ***REMOVED*** ou ndppd/gratuitous selon le réseau
    ```
 4. **Promouvoir le standby** : Réglages → Haute disponibilité → **Promouvoir (devenir actif)**.
    (= applique le dernier replica stagé sur sa DB **après un backup de sûreté** `db_bobistudio-
@@ -96,7 +96,7 @@ n'est pas le nôtre n'est **jamais** écrasé) :
 5. **Vérifs post-bascule** sur le nouvel actif : rôle ACTIF (badge disparu), NMOS
    (`/x-nmos/node/v1.3/{senders,receivers}`), PTP locké, conteneurs des nœuds présents/au débit.
 
-## Bascule d'urgence (actif HS / injoignable)
+***REMOVED******REMOVED*** Bascule d'urgence (actif HS / injoignable)
 
 L'ancien actif est déjà down → pas de démote possible. Le standby a levé l'alarme « L'ACTIF NE
 RÉPOND PLUS » (badge rouge sur toutes les pages) au bout d'une minute environ.
@@ -107,14 +107,14 @@ RÉPOND PLUS » (badge rouge sur toutes les pages) au bout d'une minute environ.
 3. **Promouvoir** le standby (Réglages → Haute disponibilité → Promouvoir). Il applique le dernier
    replica reçu — l'écart de fraîcheur = au plus `ha_replicate_interval_min` minutes.
 
-## Retour arrière
+***REMOVED******REMOVED*** Retour arrière
 
 - Le **backup de sûreté** pré-promote est dans `backups/db_bobistudio-prepromote-<ts>.db` : pour annuler
   une promotion, arrêter le service, restaurer ce fichier sur `db_bobistudio.db`, remettre
   `control_role` au besoin, redémarrer.
 - Tant qu'un standby n'est pas promu, il est sans risque (lecture seule) — on peut le laisser tourner.
 
-## Limites connues (assumées)
+***REMOVED******REMOVED*** Limites connues (assumées)
 
 - **Bascule du pilotage manuelle** (par conception : pas de quorum → pas d'auto-promotion). Le standby
   alerte, il ne décide pas. La VIP, elle, bascule automatiquement dès que keepalived est configuré.

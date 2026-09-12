@@ -1,4 +1,4 @@
-# Composants tiers
+***REMOVED*** Composants tiers
 
 Bobi.Studio est distribué sous **GPL-3.0-or-later** (cf. [`LICENSE`](LICENSE)). Il s'appuie
 sur les composants tiers listés ci-dessous, qui restent soumis à **leur propre licence** et
@@ -8,7 +8,7 @@ Ce fichier est une aide à la conformité, pas un avis juridique.
 
 ---
 
-## Composants intégrés aux images d'exécution
+***REMOVED******REMOVED*** Composants intégrés aux images d'exécution
 
 Compilés ou installés dans les images Docker distribuées avec le produit.
 
@@ -25,7 +25,7 @@ Compilés ou installés dans les images Docker distribuées avec le produit.
 | **CuPy** (`cupy-cuda12x`) | `13.4.1` | Calcul GPU (image `_compute_gpu_runtime`) | **MIT** — ⚠️ voir ci-dessous | <https://github.com/cupy/cupy> |
 | **NumPy** | via pip | Calcul numérique dans les scripts de plugin | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | <https://numpy.org/> |
 
-### Mentions à conserver
+***REMOVED******REMOVED******REMOVED*** Mentions à conserver
 
 **Intel Media Transport Library** — BSD-3-Clause, *Copyright (c) 2022, Intel Corporation.*
 Cette licence impose de reproduire la mention de copyright, la liste des conditions et
@@ -53,7 +53,7 @@ Aucun autre fichier du SDK n'est modifié. Le texte intégral de la licence est 
 > Le dépôt amont ne contient pas de fichier `NOTICE` (vérifié le 2026-08-30) : l'obligation
 > §4(d) est donc sans objet. À reprendre s'il en ajoute un.
 
-### FFmpeg est en GPL, pas en LGPL
+***REMOVED******REMOVED******REMOVED*** FFmpeg est en GPL, pas en LGPL
 
 FFmpeg est LGPL-2.1+ à la base, mais le paquet Debian utilisé par les images est construit avec
 `--enable-gpl --enable-libx264 --enable-libx265`. Il incorpore donc x264 et x265, tous deux en
@@ -64,7 +64,7 @@ est invoqué comme **processus séparé**, jamais lié à notre code.
 À noter : le paquet est lié à **GnuTLS** et non à OpenSSL, ce qui évite l'incompatibilité
 historique entre la licence OpenSSL et la GPL.
 
-### GStreamer : LGPL pour l'essentiel, et un point de vigilance qui n'est pas la licence
+***REMOVED******REMOVED******REMOVED*** GStreamer : LGPL pour l'essentiel, et un point de vigilance qui n'est pas la licence
 
 L'image média installe `gstreamer1.0-plugins-{base,good,bad,ugly}` et `gstreamer1.0-libav`.
 Le relevé des fichiers de copyright Debian donne, en nombre de déclarations :
@@ -90,13 +90,13 @@ n'a aucun effet sur la GPL de Bobi.Studio, mais c'est à évaluer avant toute **
 publique d'images binaires**, en particulier hors d'Europe. Le jeu `ugly` peut être retiré de
 l'image média s'il n'est pas requis par les pipelines réellement utilisés.
 
-### ⚠️ `libmtl` et DPDK sont modifiés
+***REMOVED******REMOVED******REMOVED*** ⚠️ `libmtl` et DPDK sont modifiés
 
 L'image du moteur ST 2110 applique des **correctifs** à l'Intel Media Transport Library et à
 DPDK avant compilation ; ces correctifs sont versionnés dans ce dépôt. La redistribution de
 code BSD-3-Clause modifié reste soumise aux obligations de mention ci-dessus.
 
-### ⚠️ CuPy et les bibliothèques CUDA
+***REMOVED******REMOVED******REMOVED*** ⚠️ CuPy et les bibliothèques CUDA
 
 CuPy lui-même est sous licence MIT, mais les roues `cupy-cuda12x` embarquent des bibliothèques
 **CUDA de NVIDIA**, soumises à l'accord de licence propriétaire de NVIDIA et **non** à une
@@ -105,7 +105,7 @@ conditions de redistribution de NVIDIA. Voir <https://docs.nvidia.com/cuda/eula/
 
 ---
 
-## Composants téléchargés à l'exécution
+***REMOVED******REMOVED*** Composants téléchargés à l'exécution
 
 Non redistribués avec le produit : récupérés depuis leur source officielle au premier lancement.
 
@@ -115,7 +115,7 @@ Non redistribués avec le produit : récupérés depuis leur source officielle a
 
 ---
 
-## Outils de construction
+***REMOVED******REMOVED*** Outils de construction
 
 Utilisés pour produire les images ; non embarqués dans le produit distribué.
 
@@ -125,7 +125,7 @@ Utilisés pour produire les images ; non embarqués dans le produit distribué.
 
 ---
 
-## Dépendances Python du contrôleur
+***REMOVED******REMOVED*** Dépendances Python du contrôleur
 
 ⚠️ **Ces paquets sont redistribués.** `app/offline_bundle.py` télécharge les roues de
 `requirements.txt` dans `vendor/wheels/` pour permettre l'installation sans accès Internet :
@@ -165,16 +165,40 @@ séparément.
 
 ---
 
-## Spécifications et modèles AMWA NMOS
+***REMOVED******REMOVED*** Spécifications et modèles AMWA NMOS
 
-L'implémentation NMOS s'appuie sur les spécifications **AMWA** (IS-04, IS-05, IS-12, MS-05-02,
-BCP-002, BCP-008), publiées par l'Advanced Media Workflow Association sous **Apache-2.0**.
-Les modèles de données vendorisés dans `services/nmos/is12_models/` conservent leurs mentions
-de copyright d'origine. Voir <https://specs.amwa.tv/nmos/>.
+L'implémentation NMOS s'appuie sur les spécifications **AMWA** (IS-04, IS-05, IS-12, IS-14,
+MS-05-02, BCP-002, BCP-004-01, BCP-007-03, BCP-008), publiées par l'Advanced Media Workflow
+Association sous **Apache-2.0**. Les modèles de données et les schémas JSON vendorisés dans
+`services/nmos/nc_models/` (dont `nc_models/schemas/`) sont repris **verbatim** et conservent
+leurs mentions de copyright d'origine ; le commit amont exact de chacun est inscrit dans
+`services/nmos/nc_models/NOTICE`. Voir <https://specs.amwa.tv/nmos/>.
 
 ---
 
-## Micrologiciel redistribué dans le dépôt
+***REMOVED******REMOVED*** En-têtes tiers versionnés dans le dépôt
+
+Comme le micrologiciel ci-dessous, ces fichiers sont **versionnés dans le dépôt** et non
+construits dans une image.
+
+| Composant | Version | Rôle | Licence |
+|---|---|---|---|
+| **Blackmagic DeckLink SDK** (en-têtes) | `12.2.2` | Déclarations de l'API DeckLink, nécessaires pour compiler la sonde d'énumération SDI (`plugins/decklink_io/decklink_sdk/`). Repris de la source Debian `gst-plugins-bad1.0` 1.26.2 (`sys/decklink/linux/`), composant `main`. | **Licence Blackmagic Design** — voir ci-dessous |
+
+***REMOVED******REMOVED******REMOVED*** La licence autorise cette redistribution, sous condition
+
+Le bloc `-LICENSE-START-` en tête de chaque fichier accorde le droit d'utiliser, reproduire,
+distribuer et sous-licencier, ainsi que de préparer des travaux dérivés — selon l'EULA du SDK si
+les fichiers viennent de Blackmagic, ou **selon les termes notifiés par le tiers** s'ils viennent
+d'ailleurs, ce qui est notre cas (Debian). C'est à ce titre que Debian les publie dans `main`.
+
+La condition à tenir est simple et **doit être respectée** : les mentions de copyright et le
+bloc de licence entier sont conservés en tête de chaque fichier. **Ne pas éditer ces fichiers.**
+
+⚠️ Le **pilote** Desktop Video, lui, n'est pas redistribuable et n'est embarqué nulle part : il
+s'installe à la main sur le nœud (cf. `docs/chantiers/DECKLINK.md`, §5). Seuls les en-têtes sont ici.
+
+***REMOVED******REMOVED*** Micrologiciel redistribué dans le dépôt
 
 Contrairement à tout ce qui précède, ce fichier est **versionné dans le dépôt lui-même**
 (`node_agent/firmware/ice/`), pas construit dans une image ni téléchargé à l'exécution.
@@ -183,7 +207,7 @@ Contrairement à tout ce qui précède, ce fichier est **versionné dans le dép
 |---|---|---|---|
 | **Intel Ethernet 800 Series DDP** (`ice_comms-1.3.63.0.pkg`) | `1.3.63.0` | Profil *Dynamic Device Personalization* chargé par le pilote noyau `ice` dans une NIC Intel E810. Sans lui, la carte démarre en **Safe Mode** : pas d'horodatage PTP matériel, pas de *steering* des flux ST 2110. | **Licence propriétaire Intel** — voir ci-dessous |
 
-### ⚠️ Ce fichier n'est PAS sous GPL-3.0
+***REMOVED******REMOVED******REMOVED*** ⚠️ Ce fichier n'est PAS sous GPL-3.0
 
 Il est couvert par sa **propre licence**, reproduite intégralement dans
 `licenses/Intel-DDP-800-series.txt` et à côté du fichier lui-même
@@ -216,7 +240,7 @@ responsables d'un dommage direct, indirect, accessoire, spécial, exemplaire ou 
 d'usage, de données ou de profits, ou l'interruption d'activité), quelle qu'en soit la cause.
 *(Le texte anglais faisant foi figure dans `licenses/Intel-DDP-800-series.txt`.)*
 
-## Compatibilité des licences
+***REMOVED******REMOVED*** Compatibilité des licences
 
 Toutes les licences libres listées ci-dessus (Apache-2.0, BSD, MIT, MPL-2.0, LGPL, ZPL,
 GPL-2.0+) sont compatibles avec une distribution sous **GPL-3.0-or-later**.
@@ -234,7 +258,7 @@ Deux réserves, toutes deux hors du champ de la GPL et signalées comme telles :
 
 Aucun des deux n'est lié à nos programmes, et aucun ne peut être relicencié sous GPL.
 
-## Signaler un oubli
+***REMOVED******REMOVED*** Signaler un oubli
 
 Un composant manquant ou une licence mal attribuée dans ce fichier est un bug. Merci d'ouvrir
 une issue.

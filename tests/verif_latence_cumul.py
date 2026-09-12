@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+***REMOVED***!/usr/bin/env python3
 """Vérifie la SÉMANTIQUE du cumul de latence de la page Câbles (cf. docs/reference/LATENCE_CHAINE.md).
 
 DÉTERMINISTE : on INJECTE des latences connues dans les caches de `app.metrics`, puis on contrôle
@@ -24,17 +24,17 @@ _R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _R)
 os.chdir(_R)
 
-import main                                     # noqa: E402  (threads seulement sous __main__)
-from app import metrics                         # noqa: E402
-from app.database import db_list_users          # noqa: E402
+import main                                     ***REMOVED*** noqa: E402  (threads seulement sous __main__)
+from app import metrics                         ***REMOVED*** noqa: E402
+from app.database import db_list_users          ***REMOVED*** noqa: E402
 
-# Valeurs injectées, choisies distinctes et non multiples les unes des autres : toute confusion
-# entre deux termes se voit dans le total.
-SEG_A   = 20.0     # capture 2110 → shm (segment A), par flux du moteur scindé
-TRANSIT = 1.0      # arête → mur
-OWN_MUR = 4.0      # temps de CALCUL du mur (ne doit JAMAIS remonter en amont)
-TR_TX   = 2.0      # arête mur → TX
-DE_MUR  = 2.0      # DÉLAI D'ÉTAGE du mur, en TRAMES (axe B — sans rapport avec OWN_MUR)
+***REMOVED*** Valeurs injectées, choisies distinctes et non multiples les unes des autres : toute confusion
+***REMOVED*** entre deux termes se voit dans le total.
+SEG_A   = 20.0     ***REMOVED*** capture 2110 → shm (segment A), par flux du moteur scindé
+TRANSIT = 1.0      ***REMOVED*** arête → mur
+OWN_MUR = 4.0      ***REMOVED*** temps de CALCUL du mur (ne doit JAMAIS remonter en amont)
+TR_TX   = 2.0      ***REMOVED*** arête mur → TX
+DE_MUR  = 2.0      ***REMOVED*** DÉLAI D'ÉTAGE du mur, en TRAMES (axe B — sans rapport avec OWN_MUR)
 
 
 def _admin():
@@ -58,7 +58,7 @@ def run():
     if uid is None:
         print("aucun utilisateur admin — banc inapplicable"); return 0
 
-    # 1er passage À VIDE : uniquement pour découvrir la topologie réelle (qui produit quoi).
+    ***REMOVED*** 1er passage À VIDE : uniquement pour découvrir la topologie réelle (qui produit quoi).
     d = _sommaire(uid)
     scindes = [n for n in d["topology"]["nodes"] if n.get("split")]
     if not scindes:
@@ -76,20 +76,20 @@ def run():
         print("aucun consommateur vidéo branché sur le moteur — banc NON CONCLUANT"); return 2
     vmid_mur = conso[0]
 
-    # ── INJECTION (mutation EN PLACE : le routeur importe ces dicts par référence) ───────────
+    ***REMOVED*** ── INJECTION (mutation EN PLACE : le routeur importe ces dicts par référence) ───────────
     metrics.rx_latency_cache[vmid_moteur] = {s: SEG_A for s in shms_rx}
     metrics.own_latency_cache[vmid_mur] = OWN_MUR
-    metrics.own_latency_cache.pop(vmid_moteur, None)      # le moteur ne déclare pas de calcul
+    metrics.own_latency_cache.pop(vmid_moteur, None)      ***REMOVED*** le moteur ne déclare pas de calcul
     metrics.latency_cache[vmid_mur] = {"*": TRANSIT}
-    metrics.latency_cache[vmid_moteur] = {"*": TR_TX}     # arête mur → TX
+    metrics.latency_cache[vmid_moteur] = {"*": TR_TX}     ***REMOVED*** arête mur → TX
     metrics.delai_etage_cache[vmid_mur] = {"trames": DE_MUR, "trames_max": DE_MUR}
-    metrics.delai_etage_cache.pop(vmid_moteur, None)      # le moteur n'a pas d'« étage »
-    # ⚠ TOUT INTERMÉDIAIRE EN AMONT DU MUR doit mesurer, sinon la chaîne est légitimement
-    # INCOMPLÈTE et le contrôle « chaîne complète » échoue pour une raison qui n'a rien à voir
-    # avec le code. Le banc supposait que le mur n'avait que le moteur en amont ; le 2026-08-21
-    # le parc a été recâblé (mur alimenté via mixer-test) et il est tombé. On neutralise donc
-    # tous les autres étages à 0 trame — leur présence ne doit pas changer le total attendu,
-    # puisque le cumul retient le MAX des chemins.
+    metrics.delai_etage_cache.pop(vmid_moteur, None)      ***REMOVED*** le moteur n'a pas d'« étage »
+    ***REMOVED*** ⚠ TOUT INTERMÉDIAIRE EN AMONT DU MUR doit mesurer, sinon la chaîne est légitimement
+    ***REMOVED*** INCOMPLÈTE et le contrôle « chaîne complète » échoue pour une raison qui n'a rien à voir
+    ***REMOVED*** avec le code. Le banc supposait que le mur n'avait que le moteur en amont ; le 2026-08-21
+    ***REMOVED*** le parc a été recâblé (mur alimenté via mixer-test) et il est tombé. On neutralise donc
+    ***REMOVED*** tous les autres étages à 0 trame — leur présence ne doit pas changer le total attendu,
+    ***REMOVED*** puisque le cumul retient le MAX des chemins.
     _amont = {e["from"] for e in d["topology"]["edges"]
               if e["to"] == vmid_mur and (e.get("kind") or "video") == "video"}
     for _v in _amont:
@@ -113,7 +113,7 @@ def run():
     print("injecté : segment A=%.1f  transit=%.1f  calcul du mur=%.1f  transit TX=%.1f\n"
           % (SEG_A, TRANSIT, OWN_MUR, TR_TX))
 
-    # ── 1. Les sorties du RX portent le SEGMENT A — ni 0, ni le calcul d'un nœud aval ────────
+    ***REMOVED*** ── 1. Les sorties du RX portent le SEGMENT A — ni 0, ni le calcul d'un nœud aval ────────
     rxn = noeuds.get((vmid_moteur, "sources"))
     for p in rxn["produces"]:
         if p["shm"] not in shms_rx:
@@ -126,14 +126,14 @@ def run():
            "sortie RX %s ≠ calcul du mur (non-régression collision vmid)" % p["shm"],
            "delay_total_ms=%s == own(mur)" % p.get("delay_total_ms"))
 
-    # ── 2. Cumul à l'arrivée sur le mur = segment A + transit ────────────────────────────────
+    ***REMOVED*** ── 2. Cumul à l'arrivée sur le mur = segment A + transit ────────────────────────────────
     for e in aretes:
         if e["from"] == vmid_moteur and e["to"] == vmid_mur and e["shm"] in shms_rx:
             ok(egal(e.get("cum_ms"), SEG_A + TRANSIT),
                "arête RX→mur (%s) : cumul = %.1f" % (e["shm"], SEG_A + TRANSIT),
                "cum_ms=%s" % e.get("cum_ms"))
 
-    # ── 3. Sortie du mur = segment A + transit + son calcul (le télescopage) ─────────────────
+    ***REMOVED*** ── 3. Sortie du mur = segment A + transit + son calcul (le télescopage) ─────────────────
     mur = noeuds.get((vmid_mur, "composition")) or noeuds.get((vmid_mur, "sinks")) \
         or next(n for (v, _c), n in noeuds.items() if v == vmid_mur)
     attendu = SEG_A + TRANSIT + OWN_MUR
@@ -142,7 +142,7 @@ def run():
            "sortie du mur %s = %.1f (A + transit + calcul)" % (p["shm"], attendu),
            "delay_total_ms=%s" % p.get("delay_total_ms"))
 
-    # ── 4. Entrée du TX = sortie du mur + transit (le bout aval de la chaîne) ────────────────
+    ***REMOVED*** ── 4. Entrée du TX = sortie du mur + transit (le bout aval de la chaîne) ────────────────
     tx = noeuds.get((vmid_moteur, "sinks"))
     if tx:
         shms_mur = {p["shm"] for p in mur["produces"]}
@@ -154,7 +154,7 @@ def run():
         if not vus:
             print("  n/a  aucune entrée TX alimentée par le mur")
 
-    # ══ AXE B — le délai du SIGNAL, en trames. Grandeur DISTINCTE de l'axe A ci-dessus. ══════
+    ***REMOVED*** ══ AXE B — le délai du SIGNAL, en trames. Grandeur DISTINCTE de l'axe A ci-dessus. ══════
     print()
     per = None
     f = mur.get("fps_nominal") or (mur.get("cadence") or {}).get("cible")
@@ -172,8 +172,8 @@ def run():
            "délai d'étage du mur = %.1f ms (trames × période)" % (DE_MUR * per),
            "delai_etage=%s période=%.1f" % (de, per))
 
-        # Le SIGNAL en sortie du mur = segment A + délai d'étage. Le temps de CALCUL (OWN_MUR)
-        # ne doit PAS y entrer : c'est tout l'objet de la séparation des deux axes.
+        ***REMOVED*** Le SIGNAL en sortie du mur = segment A + délai d'étage. Le temps de CALCUL (OWN_MUR)
+        ***REMOVED*** ne doit PAS y entrer : c'est tout l'objet de la séparation des deux axes.
         att_ms = SEG_A + DE_MUR * per
         for p_ in mur["produces"]:
             sig = p_.get("delai_signal") or {}
@@ -190,8 +190,8 @@ def run():
                "chaîne COMPLÈTE quand tous les étages mesurent",
                "complet=%s manquants=%s" % (sig.get("complet"), sig.get("manquants")))
 
-        # Retrait de la mesure : le total doit devenir INCOMPLET et NOMMER l'étage fautif —
-        # surtout pas retomber silencieusement sur zéro ou sur le temps de calcul.
+        ***REMOVED*** Retrait de la mesure : le total doit devenir INCOMPLET et NOMMER l'étage fautif —
+        ***REMOVED*** surtout pas retomber silencieusement sur zéro ou sur le temps de calcul.
         metrics.delai_etage_cache.pop(vmid_mur, None)
         d2 = _sommaire(uid)
         mur2 = next(n for n in d2["topology"]["nodes"] if n["vmid"] == vmid_mur and n["produces"])
@@ -208,13 +208,13 @@ def run():
            "étage non mesuré → delai_etage absent, pas un zéro",
            "delai_etage=%s" % mur2.get("delai_etage"))
 
-        # ── MUR SHARDÉ : le cumul doit suivre la PLUS VIEILLE entrée, pas la première ────────
-        # Le mur lit plusieurs flux du moteur. On donne à l'un d'eux un segment A plus grand :
-        # le cumul du mur doit adopter CELUI-LÀ. Suivre `edges[0]` rendrait invisible un shard
-        # en retard alors que ses tuiles sont dans l'image composée.
-        # La cible doit être un flux RÉELLEMENT consommé par le mur — majorer un flux qu'il
-        # n'écoute pas ne prouverait rien (première rédaction : elle majorait `_5`, absent de
-        # ses entrées, et le banc l'a démentie).
+        ***REMOVED*** ── MUR SHARDÉ : le cumul doit suivre la PLUS VIEILLE entrée, pas la première ────────
+        ***REMOVED*** Le mur lit plusieurs flux du moteur. On donne à l'un d'eux un segment A plus grand :
+        ***REMOVED*** le cumul du mur doit adopter CELUI-LÀ. Suivre `edges[0]` rendrait invisible un shard
+        ***REMOVED*** en retard alors que ses tuiles sont dans l'image composée.
+        ***REMOVED*** La cible doit être un flux RÉELLEMENT consommé par le mur — majorer un flux qu'il
+        ***REMOVED*** n'écoute pas ne prouverait rien (première rédaction : elle majorait `_5`, absent de
+        ***REMOVED*** ses entrées, et le banc l'a démentie).
         _in_mur = sorted({e["shm"] for e in aretes
                           if e["to"] == vmid_mur and e["shm"] in shms_rx})
         if not _in_mur:
@@ -236,7 +236,7 @@ def run():
                    "delai_signal=%s ; le suivi de edges[0] aurait donné %.1f" % (sig, SEG_A + DE_MUR * per))
             metrics.rx_latency_cache[vmid_moteur] = {s_: SEG_A for s_ in shms_rx}
 
-        # Émission 2110 : constante, mais ÉTIQUETÉE comme non mesurée.
+        ***REMOVED*** Émission 2110 : constante, mais ÉTIQUETÉE comme non mesurée.
         tx2 = next((n for n in d2["topology"]["nodes"]
                     if n["vmid"] == vmid_moteur and n.get("col") == "sinks"), None)
         if tx2:

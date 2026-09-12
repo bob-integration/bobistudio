@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
 """Déclarer les composants qu'un test exige, et se SAUTER proprement s'ils manquent.
 
 ★ POURQUOI. Les plugins et services sont des dépôts indépendants : tous ne sont pas
@@ -17,8 +17,8 @@ ignorer la couleur, et le jour où elle dit vrai, plus personne ne regarde.
 Usage, en tête du test :
 
     from _composants import exiger
-    exiger("plugins/split")                      # un seul
-    exiger("services/tsl", "plugins/mixer")      # ou plusieurs
+    exiger("plugins/split")                      ***REMOVED*** un seul
+    exiger("services/tsl", "plugins/mixer")      ***REMOVED*** ou plusieurs
 """
 import os
 import pathlib

@@ -1,11 +1,11 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Lecture d'un SDP ST 2110 — ce que la source DÉCLARE, et rien d'autre.
 
-## Pourquoi ce module s'appelle « déclaré » et pas « format »
+***REMOVED******REMOVED*** Pourquoi ce module s'appelle « déclaré » et pas « format »
 
 ⚠ **UN SDP EST UNE INTENTION, PAS UNE MESURE.** Tout ce qu'on lit ici est une affirmation de
 l'émetteur sur lui-même. Aucune de ces valeurs n'a été vérifiée en arrivant sur le fil, et
@@ -25,7 +25,7 @@ Le troisième cas est le plus important à ne pas oublier. `colorimetry` en fait
 sur elle que le reste du produit calcule le gamut et la parade. Un `BT709` faux fausse tout ça
 sans que rien ne bronche : la seule protection honnête est d'écrire qu'on ne l'a pas vérifié.
 
-## Le payload type, cas d'école
+***REMOVED******REMOVED*** Le payload type, cas d'école
 
 `ops.payload_type` est passé à libmtl comme **filtre**. Une source qui émet un PT différent de
 celui du SDP voit tous ses paquets jetés : zéro trame, « pas de signal », alors que le flux
@@ -35,8 +35,8 @@ le PT réellement reçu.
 """
 import re
 
-# Ce que chaque champ déclaré peut affronter. Table EXPLICITE et pas une heuristique : un champ
-# oublié ici doit apparaître comme non classé plutôt que de se faire passer pour vérifié.
+***REMOVED*** Ce que chaque champ déclaré peut affronter. Table EXPLICITE et pas une heuristique : un champ
+***REMOVED*** oublié ici doit apparaître comme non classé plutôt que de se faire passer pour vérifié.
 CONFRONTATION = {
     "fps":          ("mesure",   "cadence mesurée par le moteur"),
     "tp":           ("mesure",   "Cinst et VRX — le gabarit 2110-21 dit si la classe est tenue"),
@@ -69,8 +69,8 @@ def _fmtp(txt):
                 k, v = morceau.split("=", 1)
                 out[k.strip()] = v.strip()
             else:
-                # Certains paramètres sont des DRAPEAUX sans valeur (`interlace`). Les jeter
-                # ferait passer un flux entrelacé pour progressif — un défaut d'une trame.
+                ***REMOVED*** Certains paramètres sont des DRAPEAUX sans valeur (`interlace`). Les jeter
+                ***REMOVED*** ferait passer un flux entrelacé pour progressif — un défaut d'une trame.
                 out[morceau] = True
     return out
 
@@ -89,8 +89,8 @@ def lire(sdp):
     src = re.findall(r"source-filter:\s*incl IN IP4 [\d.]+ ([\d.]+)", sdp)
     fps = f.get("exactframerate")
     if isinstance(fps, str) and "/" in fps:
-        # `30000/1001` : on garde la fraction ET sa valeur, parce que 29,97 arrondi à 30
-        # ferait conclure à un désaccord là où il n'y en a pas.
+        ***REMOVED*** `30000/1001` : on garde la fraction ET sa valeur, parce que 29,97 arrondi à 30
+        ***REMOVED*** ferait conclure à un désaccord là où il n'y en a pas.
         a, b = fps.split("/", 1)
         try:
             fps_val = float(a) / float(b)
@@ -108,8 +108,8 @@ def lire(sdp):
         "udp_port": int(ports[0][1]) if ports else None,
         "mcast": mc[:2],
         "source_ip": src[0] if src else None,
-        # `a=group:DUP` = la source PROPOSE la redondance 2022-7. Qu'on s'y abonne ou non est
-        # une autre question, et c'est justement la confrontation qui a de la valeur.
+        ***REMOVED*** `a=group:DUP` = la source PROPOSE la redondance 2022-7. Qu'on s'y abonne ou non est
+        ***REMOVED*** une autre question, et c'est justement la confrontation qui a de la valeur.
         "dup": "group:DUP" in sdp,
         "legs": len(mc),
         "gm": refclk[0][0] if refclk else None,
@@ -128,7 +128,7 @@ def lire(sdp):
         "pm": f.get("PM"),
         "ssn": f.get("SSN"),
         "tp": f.get("TP"),
-        # Audio : le nombre de canaux et le temps de paquet sont dans `rtpmap`/`ptime`.
+        ***REMOVED*** Audio : le nombre de canaux et le temps de paquet sont dans `rtpmap`/`ptime`.
         "canaux": None,
         "ptime": None,
     }

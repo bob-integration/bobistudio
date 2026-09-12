@@ -1,4 +1,4 @@
-# Chantier — Observabilité / outillage de debug
+***REMOVED*** Chantier — Observabilité / outillage de debug
 
 Ouvert le **2026-08-13**. Rétrospective : au vu de tous les chantiers menés (2110, MXL, multiview,
 RDMA, PTP, CPU), quelles capacités de **monitoring** nous ont manqué ? Chaque famille ci-dessous
@@ -14,7 +14,7 @@ Statut : **à faire**, rien d'implémenté. Ce document est la spécification d'
 
 ---
 
-## 0. Le principe directeur
+***REMOVED******REMOVED*** 0. Le principe directeur
 
 Notre supervision répond à « est-ce que ça tourne ? ». Aucun de nos gros bugs n'a été détecté par
 là — ils tournaient tous. Les questions auxquelles il faut savoir répondre sont :
@@ -29,7 +29,7 @@ Cf. mémoires `alarm-must-compare-to-intent`, `silent-failure-antipattern`,
 
 ---
 
-## 1. Écart intention → réalisé (socle)
+***REMOVED******REMOVED*** 1. Écart intention → réalisé (socle)
 
 Table unique par conteneur : `demandé | mesuré | écart`, pour fps, format, scan, cadence,
 cœurs, débit, profondeur d'anneau, résolution. **L'alarme porte sur l'écart**, jamais sur la
@@ -42,7 +42,7 @@ Incidents couverts :
 - `reserved-cores-not-exclusive-in-practice` — `garantir()` réserve, la réalité partage.
 - `wall-fps-deficit-is-cpufreq-not-work` — le mur sous sa cible sans que rien ne l'indique.
 
-## 2. Âge absolu du grain, de bout en bout
+***REMOVED******REMOVED*** 2. Âge absolu du grain, de bout en bout
 
 Chaque étage publie pour le grain qu'il vient de servir : `index`, `timestamp d'origine`,
 `âge à la sortie`. Vue cascade : une barre par étage → on lit **où** la latence est dépensée.
@@ -58,7 +58,7 @@ Incidents couverts :
 - `flux-repliquee-detruite-sert-anneau-perime`.
 - `rdma-source-tranchee-replique-12-images-torn`.
 
-## 3. Graphe vivant OBSERVÉ (≠ graphe déclaré)
+***REMOVED******REMOVED*** 3. Graphe vivant OBSERVÉ (≠ graphe déclaré)
 
 Construire le graphe producteurs/consommateurs depuis les **mappings shm réellement ouverts**
 (et les sessions 2110/RDMA actives), pas depuis `deploy_config`. Diff permanent
@@ -70,7 +70,7 @@ Incidents couverts :
   `fabric-assembler-script-loss-restart`.
 - `orphan-pyramide-invisible-ui`.
 
-## 4. Détecteur de chemin dégradé (repli silencieux)
+***REMOVED******REMOVED*** 4. Détecteur de chemin dégradé (repli silencieux)
 
 Chaque étage déclare dans `/state` le **chemin effectivement pris** (`gpu_slice`, `cpu`,
 `fallback strided`, `AVX2`, `scalaire`, `blend groupé` / `blend naïf`) **et la raison du refus**
@@ -85,7 +85,7 @@ Incidents couverts :
 - `libmxl-requires-avx2-sandy-bridge-nodes-unusable` (SIGILL, pas un repli mais même famille :
   capacité matérielle non vérifiée avant usage).
 
-## 5. Ressources : alloué ≠ obtenu
+***REMOVED******REMOVED*** 5. Ressources : alloué ≠ obtenu
 
 Par conteneur : cpuset **posé** vs demandé, **fréquence réelle** des cœurs, nœud NUMA effectif vs
 celui de la mémoire, GPU encore visible par le processus, bande passante mémoire consommée,
@@ -98,7 +98,7 @@ Incidents couverts :
 - `mtl-hyperthreading-lcores-dead`.
 - `node-host-ram-bandwidth-dl360`, `multiview-loadtest-memory-bound`.
 
-## 6. Détection de la MORT (pas seulement de la vie)
+***REMOVED******REMOVED*** 6. Détection de la MORT (pas seulement de la vie)
 
 Watchdog symétrique : l'absence de heartbeat doit produire un **état descendant** explicite
 (nœud, conteneur, flux). Distinguer trois choses qu'on confond aujourd'hui : *processus vivant*,
@@ -111,7 +111,7 @@ Incidents couverts :
 - `multiview-stale-proxy-no-signal` — « No Signal » sur proxy périmé.
 - `mxl-generation-strand-detection-lastwritetime`.
 
-## 7. Horloge unique et timeline corrélée
+***REMOVED******REMOVED*** 7. Horloge unique et timeline corrélée
 
 Une timeline unique (orchestrateur, agents-nœuds, conteneurs, PTP, Docker) sur **une référence
 temporelle explicitement étiquetée** — jamais devinée. Marqueurs d'événements superposés aux
@@ -126,7 +126,7 @@ Incidents couverts :
 - `sdp-tsrefclk-announces-boundary-clock-not-gm`.
 - `daemon-reload-revokes-gpu-from-running-containers` (l'événement déclencheur était invisible).
 
-## 8. Témoin de contenu (voir, pas compter)
+***REMOVED******REMOVED*** 8. Témoin de contenu (voir, pas compter)
 
 Capture à la demande d'une trame de n'importe quel flux (bricolé : `grab` depuis le conteneur +
 `static/uploads`), plus une empreinte de contenu pour détecter **sans œil humain** : trame
@@ -142,7 +142,7 @@ Incidents couverts :
 - `tx0-serves-one-frame-in-four-repeated`, `slice-planar-layout-tears-at-chroma-boundary`,
   `io2110-interlace-tx-halfrate-fix`, `multiview-interlace-lie-and-consumer-fallout`.
 
-## 9. Boîte noire (enregistreur en anneau)
+***REMOVED******REMOVED*** 9. Boîte noire (enregistreur en anneau)
 
 Anneau permanent de N minutes de métriques haute fréquence + derniers événements, **vidé sur
 disque à tout incident** (crash, chute de fps, alerte). Post-mortem attaché à l'alerte : on ouvre
@@ -151,7 +151,7 @@ l'alerte, on a les 60 s qui précèdent.
 Incidents couverts : `mxl-mapping-freed-under-compose-loop` (SIGSEGV du mur),
 `fps-dip-quantized-dt-artifact` (hoquets de 60 s), `rdma-cm-teardown-hangs-d-state-r620`.
 
-## 10. Instrumentation qui ne tue pas le patient
+***REMOVED******REMOVED*** 10. Instrumentation qui ne tue pas le patient
 
 Leçon dure : la mesure a ÉTÉ la panne. Budget explicite pour l'observabilité (coût CPU de chaque
 sonde, affiché). Toute sonde en best-effort non bloquant, jamais dans le chemin critique, avec
@@ -163,7 +163,7 @@ Incidents couverts :
 - `rdma-reconcile-inline-blocked-surveillance-loop`.
 - `orchestrator-fd-leak-sqlite`, `bobistudio-log-lines-are-duplicated`.
 
-## 11. Diff de configuration et d'artefacts
+***REMOVED******REMOVED*** 11. Diff de configuration et d'artefacts
 
 « Ce que la base dit » vs « ce qui est réellement déployé » : version de plugin, tag d'image,
 empreinte du script servi par l'agent, params rendus. Plus un historique : qui a changé quoi,
@@ -174,7 +174,7 @@ Incidents couverts :
 - `deployer-script-hot-apply-skips-if-db-written-first`.
 - `node-hugepages-runtime-vs-cmdline-drift`.
 
-## 12. Injecteur de pannes + bancs rejouables
+***REMOVED******REMOVED*** 12. Injecteur de pannes + bancs rejouables
 
 Provoquer à la demande : perte multicast, nœud coupé, GM perdu, disque plein, RDMA arraché,
 redémarrage producteur, `daemon-reload`. Rejouer un scénario à l'identique pour valider un
@@ -182,7 +182,7 @@ correctif — fait à la main sur chaque chantier jusqu'ici.
 
 ---
 
-## Priorisation
+***REMOVED******REMOVED*** Priorisation
 
 Si on n'en construit que quatre :
 
@@ -199,7 +199,7 @@ rejoint la règle « exposer aux macros » (`expose-plugin-features-to-macros`).
 
 ---
 
-## Annexe — les briques GStreamer du SDK MXL (vérifié le 2026-08-13, `main` et `v1.1.0-rc1`)
+***REMOVED******REMOVED*** Annexe — les briques GStreamer du SDK MXL (vérifié le 2026-08-13, `main` et `v1.1.0-rc1`)
 
 Le SDK en contient **deux**, à ne pas confondre :
 

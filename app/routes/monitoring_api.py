@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Télémétrie/diagnostic infra pour la page Monitoring : tissu de composition (fabric overview),
 onglets contribués par les plugins, pyramide (reconcile/overview), bande passante mémoire,
@@ -33,8 +33,8 @@ def api_fabric_overview():
     from ..database import db_fabric_all, db_get_nodes
     conts = {c["vmid"]: c for c in db_get_containers()}
     _nodes = {n["id"]: (n.get("name") or ("serveur " + str(n["id"]))) for n in db_get_nodes()}
-    # Nom de shm SOURCE → serveur producteur (depuis shm_out dénormalisé) : pour repérer les flux
-    # qui TRAVERSENT un serveur (échange inter-nœuds) côté UI.
+    ***REMOVED*** Nom de shm SOURCE → serveur producteur (depuis shm_out dénormalisé) : pour repérer les flux
+    ***REMOVED*** qui TRAVERSENT un serveur (échange inter-nœuds) côté UI.
     _shm_node = {}
     for _c in conts.values():
         for _tok in (_c.get("shm_out") or "").split("·"):
@@ -67,7 +67,7 @@ def api_fabric_overview():
         ref = r.get("ref")
         rvmid = int(ref) if ref and str(ref).isdigit() else None
         sp = _params(rvmid) if rvmid is not None else {}
-        # Sources amont du shard (dédupliquées) = ce qu'il lit (cellules de son deploy_config).
+        ***REMOVED*** Sources amont du shard (dédupliquées) = ce qu'il lit (cellules de son deploy_config).
         srcs, seen = [], set()
         for w in (sp.get("flux_config") or []):
             s = (w.get("path") or "").replace("/dev/shm/", "")
@@ -90,7 +90,7 @@ def api_fabric_overview():
         a["node_name"] = _nodes.get(a.get("node_id"))
         a["format"] = _fmt(_params(vmid))
         try:
-            a["fps"] = float(_params(vmid).get("fps") or 0) or None   # pour le verdict « > 1 image » côté UI
+            a["fps"] = float(_params(vmid).get("fps") or 0) or None   ***REMOVED*** pour le verdict « > 1 image » côté UI
         except (TypeError, ValueError):
             a["fps"] = None
         a["own_latency_ms"] = _m.own_latency_cache.get(vmid)
@@ -106,7 +106,7 @@ def api_fabric_overview():
         if dc.get("type") == "pyramide":
             proxies.append({"vmid": c["vmid"], "hostname": c.get("hostname"),
                             "own_latency_ms": _m.own_latency_cache.get(c["vmid"])})
-    # Serveur de chaque source référencée (pour le rendu multi-serveur côté UI).
+    ***REMOVED*** Serveur de chaque source référencée (pour le rendu multi-serveur côté UI).
     src_nodes = {}
     for a in out:
         for s in a["shards"]:
@@ -125,7 +125,7 @@ def api_monitoring_panels():
     Monitoring charge son fragment UI via /api/plugins/<type>/ui/monitoring_html + monitoring_js.
     Aucun panneau n'est codé en dur côté page : tout vient des plugins."""
     from .. import plugins
-    # Compte d'instances par type (parse unique des deploy_config).
+    ***REMOVED*** Compte d'instances par type (parse unique des deploy_config).
     counts = {}
     for c in db_get_containers():
         t = (_load_dc(c) or {}).get("type")
@@ -168,7 +168,7 @@ def api_pyramide_reconcile():
 @bp.route("/api/pyramide/overview", methods=["GET"])
 @require_login
 def api_pyramide_overview():
-    """Console Pyramide (P3) : par pyramide → proxies (taille, #conso, orphelin), besoins non
+    """Console Pyramide (P3) : par pyramide → proxies (taille, ***REMOVED***conso, orphelin), besoins non
     couverts, réglages ; + KPIs. `node_id` optionnel. Lecture cache (pas d'appel réseau)."""
     from ..metrics import pyramide_overview
     nid = request.args.get("node_id")
@@ -237,7 +237,7 @@ def api_nodes_health_stats_24h(node_key):
 def api_nodes_health_refresh():
     """Force un échantillon immédiat (sinon throttlé ~5 s)."""
     from .. import node_health, gpu
-    gpu.sample_all(force=True)        # GPU avant santé → le merge lit le cache frais
+    gpu.sample_all(force=True)        ***REMOVED*** GPU avant santé → le merge lit le cache frais
     node_health.sample_all(force=True)
     return jsonify(node_health.latest())
 
@@ -269,9 +269,9 @@ def api_node_cpu_map(node_id):
     node = db_get_node(node_id)
     if not node:
         return jsonify({"ok": False, "error": "nœud inconnu"}), 404
-    engine_cores = core_pool.allocations_by_vmid(node_id)  # {vmid: [cores]} pins + moteurs
-    # Conteneurs qui TIENNENT un GPU : leurs cœurs se distinguent des cœurs de calcul ordinaires
-    # dans la carte CPU. C'est ce qui rend visible un mur GPU épinglé du mauvais côté du bus.
+    engine_cores = core_pool.allocations_by_vmid(node_id)  ***REMOVED*** {vmid: [cores]} pins + moteurs
+    ***REMOVED*** Conteneurs qui TIENNENT un GPU : leurs cœurs se distinguent des cœurs de calcul ordinaires
+    ***REMOVED*** dans la carte CPU. C'est ce qui rend visible un mur GPU épinglé du mauvais côté du bus.
     gpu_de = gpu_pool.gpu_par_vmid(node_id)
     out, by_cpu = [], {}
     for c in db_get_containers():
@@ -291,9 +291,9 @@ def api_node_cpu_map(node_id):
             "cpu_percent": c.get("cpu_percent"), "mem_used": c.get("mem_used"),
             "pinned_cores": pin, "cores": cores, "source": source,
             "gpu_index": gpu_de.get(c["vmid"]),
-            # Pression CPU du conteneur (PSI cgroup v2) : `full` = fraction du temps où TOUTES ses
-            # tâches sont bloquées en attente de cœur. Le CPU% ne dit PAS ça (un conteneur affamé
-            # consomme peu de CPU — c'est justement le problème). Cf. app/cpu_pressure.py.
+            ***REMOVED*** Pression CPU du conteneur (PSI cgroup v2) : `full` = fraction du temps où TOUTES ses
+            ***REMOVED*** tâches sont bloquées en attente de cœur. Le CPU% ne dit PAS ça (un conteneur affamé
+            ***REMOVED*** consomme peu de CPU — c'est justement le problème). Cf. app/cpu_pressure.py.
             "psi": _psi.for_container(c["vmid"]) or {},
         })
         for cpu in (cores or []):
@@ -302,19 +302,19 @@ def api_node_cpu_map(node_id):
                  "gpu_index": gpu_de.get(c["vmid"])})
     out.sort(key=lambda x: -(x["cpu_percent"] or -1))
     psi_node = _psi.latest(node_id) or {}
-    # VENTILATION PAR SOCKET : l'agrégat `capacite` ne suffit pas — « il reste 2 cœurs » se lit
-    # « il reste de la place » alors que ces cœurs peuvent être tous du mauvais côté du bus (cf.
-    # core_pool.capacite_par_socket). `numa` sert à découper la bande de cœurs par socket dans l'UI.
-    # Liste vide / dict vide = topologie non lisible → l'UI retombe sur l'affichage agrégé.
+    ***REMOVED*** VENTILATION PAR SOCKET : l'agrégat `capacite` ne suffit pas — « il reste 2 cœurs » se lit
+    ***REMOVED*** « il reste de la place » alors que ces cœurs peuvent être tous du mauvais côté du bus (cf.
+    ***REMOVED*** core_pool.capacite_par_socket). `numa` sert à découper la bande de cœurs par socket dans l'UI.
+    ***REMOVED*** Liste vide / dict vide = topologie non lisible → l'UI retombe sur l'affichage agrégé.
     return jsonify({"ok": True, "node_id": node_id,
                     "compute_cpuset": node.get("compute_cpuset") or "",
                     "capacite": core_pool.cores_status(node_id),
                     "sockets": core_pool.capacite_par_socket(node_id),
                     "numa": {str(k): v for k, v in (core_pool.numa_map_cached(node_id) or {}).items()},
-                    # {cpu logique: cœur PHYSIQUE} — deux threads HyperThreading d'un même cœur
-                    # partagent les unités d'exécution. C'est pour ça que la capacité se compte en
-                    # cœurs physiques ; encore faut-il que l'UI puisse MONTRER l'appariement (les
-                    # jumeaux sont `i` et `i+48`, donc invisibles dans une bande ordonnée par index).
+                    ***REMOVED*** {cpu logique: cœur PHYSIQUE} — deux threads HyperThreading d'un même cœur
+                    ***REMOVED*** partagent les unités d'exécution. C'est pour ça que la capacité se compte en
+                    ***REMOVED*** cœurs physiques ; encore faut-il que l'UI puisse MONTRER l'appariement (les
+                    ***REMOVED*** jumeaux sont `i` et `i+48`, donc invisibles dans une bande ordonnée par index).
                     "cores_phys": {str(k): v for k, v in (core_pool.core_map_cached(node_id) or {}).items()},
                     "psi_host": psi_node.get("host") or {},
                     "containers": out, "by_cpu": by_cpu})
@@ -336,7 +336,7 @@ def api_node_core_snapshot(node_id):
         return jsonify({"ok": False, "error": "agent_required"})
     ok, data = node_driver.core_snapshot(node)
     if not ok or not isinstance(data, dict) or "cores" not in data:
-        # 404 « route inconnue » = agent < 0.16.0 → l'UI propose la MAJ agent.
+        ***REMOVED*** 404 « route inconnue » = agent < 0.16.0 → l'UI propose la MAJ agent.
         return jsonify({"ok": False, "error": "agent_too_old",
                         "agent_version": node.get("agent_version")})
     by_name = {c.get("docker_name"): c for c in db_get_containers()
@@ -366,7 +366,7 @@ def api_node_placement(node_id):
         return jsonify({"ok": False, "error": "nœud inconnu"}), 404
     force = request.args.get("force") in ("1", "true", "on")
     res = placement.constater(node_id, force=force)
-    res["releve"] = placement.releve_cache(node_id)          # déjà en cache : pas de second exec
+    res["releve"] = placement.releve_cache(node_id)          ***REMOVED*** déjà en cache : pas de second exec
     return jsonify(res)
 
 
@@ -406,10 +406,10 @@ def api_shm_status():
     containers = db_list_containers()
     vmid_info = {c["vmid"]: c for c in containers}
 
-    # Reconstituer le graphe shm → producteur / consommateurs depuis deploy_config
+    ***REMOVED*** Reconstituer le graphe shm → producteur / consommateurs depuis deploy_config
     from .. import plugins as _plugins
     import json as _json
-    shm_map = {}   # shm_name → {producer, consumers, fps, shm_active, frame_index}
+    shm_map = {}   ***REMOVED*** shm_name → {producer, consumers, fps, shm_active, frame_index}
 
     for c in containers:
         vmid = c["vmid"]
@@ -476,7 +476,7 @@ def api_fabric_mur(vmid):
             continue
         try:
             parents = json.loads(r.get("parents")) if r.get("parents") else []
-        except Exception:                                                  # noqa: BLE001
+        except Exception:                                                  ***REMOVED*** noqa: BLE001
             parents = []
         if str(vmid) not in [str(p) for p in parents]:
             continue

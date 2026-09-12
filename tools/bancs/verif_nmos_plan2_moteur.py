@@ -1,18 +1,18 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# Banc DIFFÉRENTIEL de la surface plan 2 : l'agent générique contre le contrôleur du moteur 2110.
-#
-# POURQUOI DIFFÉRENTIEL. Le moteur 2110 n'embarque pas `script_templates/agent.py` — il a son
-# propre :8081. Il y a donc DEUX implémentations de `/x-nmos/` dans le produit, et la seconde est
-# un décalque de la première. Deux décalques finissent toujours par diverger ; ce qui est
-# dangereux ici, c'est que la divergence ne se voit pas : chacune répond 200 à sa façon, et c'est
-# le contrôleur tiers qui découvre l'écart, chez le client.
-#
-# On ne teste donc pas « le moteur répond correctement » mais « le moteur répond LA MÊME CHOSE ».
-#
-#   $ ./venv/bin/python tools/verif_nmos_plan2_moteur.py
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** Banc DIFFÉRENTIEL de la surface plan 2 : l'agent générique contre le contrôleur du moteur 2110.
+***REMOVED***
+***REMOVED*** POURQUOI DIFFÉRENTIEL. Le moteur 2110 n'embarque pas `script_templates/agent.py` — il a son
+***REMOVED*** propre :8081. Il y a donc DEUX implémentations de `/x-nmos/` dans le produit, et la seconde est
+***REMOVED*** un décalque de la première. Deux décalques finissent toujours par diverger ; ce qui est
+***REMOVED*** dangereux ici, c'est que la divergence ne se voit pas : chacune répond 200 à sa façon, et c'est
+***REMOVED*** le contrôleur tiers qui découvre l'écart, chez le client.
+***REMOVED***
+***REMOVED*** On ne teste donc pas « le moteur répond correctement » mais « le moteur répond LA MÊME CHOSE ».
+***REMOVED***
+***REMOVED***   $ ./venv/bin/python tools/verif_nmos_plan2_moteur.py
 import ast
 import json
 import os
@@ -109,7 +109,7 @@ controle("★★★ les deux implémentations répondent à l'identique sur %d c
          "une divergence ne se voit pas : chacune répond 200 à sa façon, et c'est le contrôleur "
          "tiers qui la découvre chez le client — %s" % ecarts[:2])
 
-# ── Le cas « rien n'a été poussé » ──────────────────────────────────────────
+***REMOVED*** ── Le cas « rien n'a été poussé » ──────────────────────────────────────────
 vide_a = _charger(AGENT, None)["_nmos_get"]("/x-nmos/node/v1.3/self")
 vide_m = _charger(MOTEUR, None)["_nmos_get"]("/x-nmos/node/v1.3/self")
 controle("★★ sans document poussé, les deux rendent 503 (pas 404)",
@@ -119,7 +119,7 @@ controle("★★ sans document poussé, les deux rendent 503 (pas 404)",
          % (vide_a[0], vide_m[0]))
 controle("et le même message", vide_a[1] == vide_m[1])
 
-# ── Les invariants qui comptent, vérifiés côté moteur ───────────────────────
+***REMOVED*** ── Les invariants qui comptent, vérifiés côté moteur ───────────────────────
 controle("★★ `transportfile` EXISTE et rend 404 (BCP-007-03, pendant de manifest_href:null)",
          ns_moteur["_nmos_get"](
              "/x-nmos/connection/v1.1/single/senders/snd-1/transportfile")[0] == 404)
@@ -128,7 +128,7 @@ controle("★ une version d'API non servie rend 404, pas 200",
 controle("★ la racine liste exactement node/ et connection/",
          ns_moteur["_nmos_get"]("/x-nmos/")[1] == ["node/", "connection/"])
 
-# ── Le POST /nmos ne doit pas se confondre avec /nmos/subscribe ─────────────
+***REMOVED*** ── Le POST /nmos ne doit pas se confondre avec /nmos/subscribe ─────────────
 src_m = open(MOTEUR, encoding="utf-8").read()
 i_desc, i_sub = src_m.find('route == "/nmos"'), src_m.find('route == "/nmos/subscribe"')
 controle("★★★ POST /nmos est traité AVANT /nmos/subscribe, et distinctement",

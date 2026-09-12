@@ -1,20 +1,20 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-#
-# Banc de l'ÉNUMÉRATION des Sources IS-07 : qui décide quels signaux sont publiés.
-#
-# ★ LE DÉFAUT CORRIGÉ. `_sources()` ne lisait QUE la table de correspondance TSL. Un site qui ne
-# fait pas de TSL — tally reçu en IS-07, ou produit par ses propres mélangeurs — ne publiait
-# AUCUNE Source IS-07 : sa publication NMOS dépendait d'un protocole absent de son chemin. C'est
-# la même faute que la lecture d'état avant le passage à l'adressage par source, un cran plus haut.
-#
-# La règle du module, elle, est CONSERVÉE et vérifiée ici : un flux n'a que les niveaux que
-# quelqu'un déclare lui adresser. Publier (tous les flux × tous les niveaux) inventerait des
-# Sources qui ne changent jamais, et un contrôleur ne pourrait plus distinguer un signal qu'on ne
-# tallye pas d'un signal éteint.
-#
-#   $ ./venv/bin/python tests/verif_is07_sources_declarants.py
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED***
+***REMOVED*** Banc de l'ÉNUMÉRATION des Sources IS-07 : qui décide quels signaux sont publiés.
+***REMOVED***
+***REMOVED*** ★ LE DÉFAUT CORRIGÉ. `_sources()` ne lisait QUE la table de correspondance TSL. Un site qui ne
+***REMOVED*** fait pas de TSL — tally reçu en IS-07, ou produit par ses propres mélangeurs — ne publiait
+***REMOVED*** AUCUNE Source IS-07 : sa publication NMOS dépendait d'un protocole absent de son chemin. C'est
+***REMOVED*** la même faute que la lecture d'état avant le passage à l'adressage par source, un cran plus haut.
+***REMOVED***
+***REMOVED*** La règle du module, elle, est CONSERVÉE et vérifiée ici : un flux n'a que les niveaux que
+***REMOVED*** quelqu'un déclare lui adresser. Publier (tous les flux × tous les niveaux) inventerait des
+***REMOVED*** Sources qui ne changent jamais, et un contrôleur ne pourrait plus distinguer un signal qu'on ne
+***REMOVED*** tallye pas d'un signal éteint.
+***REMOVED***
+***REMOVED***   $ ./venv/bin/python tests/verif_is07_sources_declarants.py
 import json
 import os
 import sys
@@ -32,10 +32,10 @@ def controle(intitule, condition, explication=""):
         print("        → %s" % explication)
 
 
-from services.nmos import is07                                       # noqa: E402
-from app.numerotation import cle_input                               # noqa: E402
-import app.database as db                                            # noqa: E402
-import app.tally as tally                                            # noqa: E402
+from services.nmos import is07                                       ***REMOVED*** noqa: E402
+from app.numerotation import cle_input                               ***REMOVED*** noqa: E402
+import app.database as db                                            ***REMOVED*** noqa: E402
+import app.tally as tally                                            ***REMOVED*** noqa: E402
 
 print("IS-07 — qui déclare les Sources publiées\n")
 
@@ -55,29 +55,29 @@ db.db_get_tally_levels_of   = lambda t, i: []
 def _sources(**kw):
     for k in _ETAT:
         _ETAT[k] = list(kw.get(k) or [])
-    is07._src_cache["ts"] = 0.0            # l'instantané ne doit pas masquer le changement
+    is07._src_cache["ts"] = 0.0            ***REMOVED*** l'instantané ne doit pas masquer le changement
     return sorted((s, n) for s, n, _ in is07._sources())
 
 
 def _mixer(entrees, niveaux=(NA,), emit=True, vmid=1):
     p = {"tally_emit": emit, "tally_level_base": list(niveaux)}
-    for k, v in enumerate(entrees):          # `cle_input` prend un indice 0-BASED
+    for k, v in enumerate(entrees):          ***REMOVED*** `cle_input` prend un indice 0-BASED
         p[cle_input(k)] = v
-        # ⚠ DEUX FORMES, ET DEUX GARDES DISTINCTS. Un `_fmt` en dictionnaire est écarté par le
-        # test de TYPE ; un `_fmt` en chaîne — les configurations héritées en portent — ne l'est
-        # que par le test de SUFFIXE. Mon premier fixture n'avait que la forme dictionnaire :
-        # muté, le banc restait vert et ne prouvait qu'un garde sur deux.
+        ***REMOVED*** ⚠ DEUX FORMES, ET DEUX GARDES DISTINCTS. Un `_fmt` en dictionnaire est écarté par le
+        ***REMOVED*** test de TYPE ; un `_fmt` en chaîne — les configurations héritées en portent — ne l'est
+        ***REMOVED*** que par le test de SUFFIXE. Mon premier fixture n'avait que la forme dictionnaire :
+        ***REMOVED*** muté, le banc restait vert et ne prouvait qu'un garde sur deux.
         p[cle_input(k, fmt=True)] = {"width": 1920} if k % 2 else "1920x1080p50"
-    # ★ CLÉ RÉELLE, relevée dans la configuration de production : elle commence par `input_`
-    # et ne finit PAS par `_fmt`. Seul le test de TYPE l'écarte — sans lui, un dictionnaire de
-    # format serait publié comme une Source IS-07, avec un nom illisible et une valeur
-    # éternellement « off ».
+    ***REMOVED*** ★ CLÉ RÉELLE, relevée dans la configuration de production : elle commence par `input_`
+    ***REMOVED*** et ne finit PAS par `_fmt`. Seul le test de TYPE l'écarte — sans lui, un dictionnaire de
+    ***REMOVED*** format serait publié comme une Source IS-07, avec un nom illisible et une valeur
+    ***REMOVED*** éternellement « off ».
     p["input_format"] = {"width": 1920, "height": 1080}
     return {"vmid": vmid, "hostname": "mix", "project_id": None,
             "deploy_config": json.dumps({"type": "mixer", "params": p})}
 
 
-# ═══ 1. CHAQUE DÉCLARANT, SEUL ══════════════════════════
+***REMOVED*** ═══ 1. CHAQUE DÉCLARANT, SEUL ══════════════════════════
 controle("★★ TSL seul déclare ses correspondances",
          _sources(tsl_map=[{"connection_id": 1, "source_shm": "cam1", "tsl_index": 3}],
                   tsl_conn=[{"id": 1, "level_uuid": NA}]) == [("cam1", NA)])
@@ -93,7 +93,7 @@ controle("★★★ un MÉLANGEUR ÉMETTEUR seul publie ses entrées, SANS TSL",
          _sources(cts=[_mixer(["cam1", "cam2"])]) == [("cam1", NA), ("cam2", NA)],
          "un site dont le tally naît de ses propres mélangeurs ne publiait rien non plus")
 
-# ═══ 2. CE QUI NE DOIT PAS ÊTRE PUBLIÉ ═══════════════════
+***REMOVED*** ═══ 2. CE QUI NE DOIT PAS ÊTRE PUBLIÉ ═══════════════════
 controle("★★ une connexion TSL SANS niveau n'écrit rien, donc ne publie rien",
          _sources(tsl_map=[{"connection_id": 1, "source_shm": "cam1", "tsl_index": 3}],
                   tsl_conn=[{"id": 1, "level_uuid": None}]) == [])
@@ -111,7 +111,7 @@ controle("★★★ les champs voisins d'une entrée ne sont pas pris pour des f
          "pour une valeur de format — dictionnaire OU chaîne. Obtenu %s"
          % _sources(cts=[_mixer(["cam1", "cam2"])]))
 
-# ═══ 3. L'UNION, ET LA DÉDUPLICATION ═════════════════════
+***REMOVED*** ═══ 3. L'UNION, ET LA DÉDUPLICATION ═════════════════════
 u = _sources(tsl_map=[{"connection_id": 1, "source_shm": "cam1", "tsl_index": 3}],
              tsl_conn=[{"id": 1, "level_uuid": NA}],
              cts=[_mixer(["cam1", "cam3"])])
@@ -128,7 +128,7 @@ controle("★★★ le MÊME flux sur DEUX niveaux fait DEUX Sources",
          "ce sont deux signaux distincts — deux productions peuvent tallyer la même caméra "
          "indépendamment. Obtenu %s" % u)
 
-# ═══ 4. LA RÉFÉRENCE EST RÉSOLUE ═══════════════════════
+***REMOVED*** ═══ 4. LA RÉFÉRENCE EST RÉSOLUE ═══════════════════════
 tally._ports_cache["by_id"] = {42: {"kind": "source", "binding": {"shm": "cam9"}}}
 tally._ports_cache["ts"] = 1e18
 u = _sources(tsl_map=[{"connection_id": 1, "source_shm": "port:42", "tsl_index": 3}],
@@ -139,7 +139,7 @@ controle("★★★ un `port:<id>` est publié sous le flux auquel il est lié",
          "n'existerait jamais, et personne n'aurait de quoi le comprendre. Obtenu %s" % u)
 tally._ports_cache["ts"] = 0
 
-# ═══ 5. UN DÉCLARANT QUI TOMBE N'EMPORTE PAS LES AUTRES ══════════
+***REMOVED*** ═══ 5. UN DÉCLARANT QUI TOMBE N'EMPORTE PAS LES AUTRES ══════════
 _boom = is07._paires_melangeur
 
 
@@ -158,7 +158,7 @@ controle("★★ un déclarant en erreur ne fait pas disparaître les Sources de
          "toutes les Sources s'évanouiraient du registre IS-04 d'un coup, sans rien pour "
          "l'expliquer côté contrôleur. Obtenu %s" % u)
 
-# ═══ 6. STABILITÉ ═════════════════════════════════
+***REMOVED*** ═══ 6. STABILITÉ ═════════════════════════════════
 _ETAT["tsl_map"] = [{"connection_id": 1, "source_shm": s, "tsl_index": i}
                     for i, s in enumerate(("camZ", "camA", "camM"), 1)]
 _ETAT["tsl_conn"] = [{"id": 1, "level_uuid": NA}]

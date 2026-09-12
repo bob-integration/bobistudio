@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Routes BESPOKE par type de plugin (persistance DB, logique métier propre à un type).
 
@@ -18,4 +18,4 @@ le registre de plugins massivement importé via `from . import plugins` dans
 depuis `app.routes` et déclare ses routes avec `@bp.route(...)` comme n'importe quelle
 route du paquet."""
 
-from . import split  # noqa: F401 — l'import déclenche l'enregistrement des routes sur bp
+from . import split  ***REMOVED*** noqa: F401 — l'import déclenche l'enregistrement des routes sur bp

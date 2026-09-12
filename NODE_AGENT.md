@@ -1,4 +1,4 @@
-# Agent-nœud Bobi.Studio — contrat d'API & modèle de capacités
+***REMOVED*** Agent-nœud Bobi.Studio — contrat d'API & modèle de capacités
 
 > **Statut : IMPLÉMENTÉ (en production)** — ce document est le **contrat d'API** d'une
 > implémentation vivante. Version courante : **0.14.x**. Code : `node_agent/agent.py`
@@ -6,7 +6,7 @@
 > séparation control-plane / node-plane (cf. mémoires `control-node-separation-next`,
 > `standalone-node-agent-design`) — le contrat ci-dessous fait foi et suit le code.
 
-## 1. Rôle & positionnement
+***REMOVED******REMOVED*** 1. Rôle & positionnement
 
 L'**agent-nœud** (`bobi-node-agent`) est un **daemon unique par machine**, seul composant à
 installer sur un hôte Linux nu pour en faire un nœud Bobi.Studio **sans Proxmox**. Il offre au
@@ -18,7 +18,7 @@ Il **absorbe** tout ce que le contrôleur fait actuellement en `ssh_run` sur l'h
 - services hôte : `ip link … xdp off` (teardown MTL), `mkdir` de binds, montage `/dev/hugepages` ;
 - **PTP** (`ptp4l`/`phc2sys`) aujourd'hui piloté en SSH par `app/ptp.py`.
 
-### Ce qu'il N'EST PAS (garde-fou de périmètre)
+***REMOVED******REMOVED******REMOVED*** Ce qu'il N'EST PAS (garde-fou de périmètre)
 - **≠ agent par-conteneur** (`script_templates/agent.py`, `:8081 deploy/start/stop/status`,
   `:8080` métriques) : celui-ci reste **dans** chaque conteneur et exécute le `script.py` du
   plugin. L'agent-nœud ne rend/exécute **aucun** script de plugin.
@@ -27,7 +27,7 @@ Il **absorbe** tout ce que le contrôleur fait actuellement en `ssh_run` sur l'h
 - L'agent-nœud ne prend **aucune décision de routage broadcast** : il exécute des ordres de
   cycle de vie + expose santé/capacités. La logique reste au contrôleur.
 
-## 2. Modèle de capacités
+***REMOVED******REMOVED*** 2. Modèle de capacités
 
 Un nœud = un **hôte** + un **ensemble de capacités** choisies **à l'installation** (et
 ré-éditables en relançant l'installeur). L'agent ne provisionne et n'expose que le sélectionné.
@@ -49,7 +49,7 @@ ré-éditables en relançant l'installeur). L'agent ne provisionne et n'expose q
   choisissant la carte parent dans l'inventaire `nics` de `/v1/capabilities`, puis crée le réseau via
   `/v1/host/networks/ensure`. subnet/passerelle = pool d'IP cluster ; VLAN = `net_vlan_tag`.
 
-### Rattraper une capacité oubliée à l'enrôlement (`--add-caps`)
+***REMOVED******REMOVED******REMOVED*** Rattraper une capacité oubliée à l'enrôlement (`--add-caps`)
 
 Le profil d'enrôlement est **consommé une fois** : une capacité non cochée n'était pas rattrapable
 sans réinstaller. Une liste `capabilities` périmée n'est pas cosmétique — elle est MUETTE et
@@ -100,7 +100,7 @@ l'agent**, ce qui fait perdre le nœud au contrôleur.
   pousse les images runtime PARTAGÉES (`_provision_shared_images`, appelé **après** le resync
   puisqu'il lit les capacités relues) et signale si le réseau containers manque encore.
 
-## 3. Modifications du schéma `nodes`
+***REMOVED******REMOVED*** 3. Modifications du schéma `nodes`
 
 Ajouts (migrations idempotentes dans `init_db`, motif existant) :
 
@@ -119,7 +119,7 @@ Ajouts (migrations idempotentes dans `init_db`, motif existant) :
 - `kind` conserve sa valeur (`docker`/`docker-mtl`/`proxmox-lxc`) ; un nœud à agent ⇒ `kind`
   reste mais le dispatch passe par le client agent (cf. §7).
 
-## 4. API HTTP — contrat `/v1`
+***REMOVED******REMOVED*** 4. API HTTP — contrat `/v1`
 
 - **Base** : `http://<host>:<port>/v1` (port par défaut **9100**, configurable).
 - **Auth** : en-tête `X-MXL-Node-Token: <token>` sur **toutes** les routes (sauf `/v1/ping`).
@@ -129,14 +129,14 @@ Ajouts (migrations idempotentes dans `init_db`, motif existant) :
 - **Idempotence** : `POST /containers` avec un `name` existant **réconcilie** (recrée si la spec
   diffère, no-op sinon) — pas d'erreur 409 par défaut.
 
-### 4.1 Découverte & santé (non authentifié : `/ping` seulement)
+***REMOVED******REMOVED******REMOVED*** 4.1 Découverte & santé (non authentifié : `/ping` seulement)
 ```
 GET /v1/ping            → { "agent": "bobi-node-agent", "version": "x.y.z" }   (liveness, no token)
 GET /v1/capabilities    → (cf. §5) alimente la ligne nodes
 GET /v1/health          → (cf. §6) heartbeat riche pour le dashboard
 ```
 
-### 4.2 Cycle de vie des conteneurs
+***REMOVED******REMOVED******REMOVED*** 4.2 Cycle de vie des conteneurs
 ```
 POST /v1/containers                      → crée+démarre (spec §4.4) ; idempotent
 GET  /v1/containers                      → [ {name,status,image,started_at} ]
@@ -154,7 +154,7 @@ conteneur en `--rm` (moteur MTL) qui a DISPARU (cf. §4.5). ⚠ La spec contient
 conteneur et son jeton d'agent ; la portée d'une fuite reste ce conteneur-là, dont l'identité
 (`bobi://container/<vmid>`) est justement celle que les agents refusent.
 
-### 4.5 Chien de garde de script (agent ≥ 0.20.0)
+***REMOVED******REMOVED******REMOVED*** 4.5 Chien de garde de script (agent ≥ 0.20.0)
 
 **Transport : `docker exec`, pas le réseau (0.21.0).** Nos conteneurs sont en macvlan, et une
 interface macvlan enfant ne parle **jamais** à la pile de son interface parente : un nœud joint les
@@ -196,7 +196,7 @@ Réglages `config.json` : `watchdog` (défaut **actif**), `watchdog_recreate` (d
 recréation d'un conteneur `--rm` disparu depuis la spec locale, UNE tentative ; à armer site par
 site en connaissance de cause). Tout ce qu'il fait est journalisé et remonté dans `/v1/health`.
 
-### 4.3 Services hôte (gatés par capacité → 503 si absente)
+***REMOVED******REMOVED******REMOVED*** 4.3 Services hôte (gatés par capacité → 503 si absente)
 ```
 POST /v1/host/xdp-off          { iface }                 (io2110)
 POST /v1/host/images/ensure    { image, source? }        → pull/load si absente
@@ -205,7 +205,7 @@ POST /v1/host/ptp/{start|stop|restart}                   (io2110)
 POST /v1/host/networks/ensure  { name, parent, subnet, gateway, vlan?, ip_range? }  → macvlan idempotent
 ```
 
-### 4.3 ter Horloge (`/v1/host/clock`, agent ≥ 0.18.0) — le seul endpoint où le TEMPS DE RÉPONSE FAIT PARTIE DU CONTRAT
+***REMOVED******REMOVED******REMOVED*** 4.3 ter Horloge (`/v1/host/clock`, agent ≥ 0.18.0) — le seul endpoint où le TEMPS DE RÉPONSE FAIT PARTIE DU CONTRAT
 ```
 GET  /v1/host/clock  → { ok, version, recv_utc_ns, recv_tai_ns, send_utc_ns, send_tai_ns }
 ```
@@ -229,7 +229,7 @@ le démarrage du chronomètre. Sinon son coût, entièrement à l'aller, redevie
 Agent < 0.18.0 → 404, et le contrôleur retombe sur sa sonde shell (`host/exec`), avec ±25 ms
 d'incertitude annoncée. C'est le champ `mesure` (`agent_natif` / `sonde_shell`) qui le dit.
 
-### 4.3 bis Images & exec hôte (non gatés par capacité)
+***REMOVED******REMOVED******REMOVED*** 4.3 bis Images & exec hôte (non gatés par capacité)
 ```
 GET  /v1/host/images/export?tag=…   → stream binaire `docker save <tag>` (application/octet-stream)
 POST /v1/host/images/load           corps = archive binaire (docker save) → `docker load`
@@ -256,7 +256,7 @@ POST /v1/host/exec                  { cmd, input?, timeout? } → { rc, stdout, 
   structurés (containers/images/networks/ptp/xdp) restent préférés ; `exec` couvre le reste
   des host-ops (MTL/VF/binds) sans énumérer chaque commande.
 
-### 4.4 Spécification de conteneur (corps de `POST /v1/containers`)
+***REMOVED******REMOVED******REMOVED*** 4.4 Spécification de conteneur (corps de `POST /v1/containers`)
 Doit exprimer **fidèlement** les deux `docker run` actuels :
 ```json
 {
@@ -317,7 +317,7 @@ Doit exprimer **fidèlement** les deux `docker run` actuels :
 - L'agent lit l'**IP macvlan attribuée** (IPAM Docker) et la renvoie dans `status` (remplace
   `docker_compute._read_container_ip`).
 
-## 5. Charge utile `/v1/capabilities` (→ table `nodes`)
+***REMOVED******REMOVED*** 5. Charge utile `/v1/capabilities` (→ table `nodes`)
 ```json
 {
   "capabilities": ["io2110", "compute", "media"],
@@ -333,7 +333,7 @@ Doit exprimer **fidèlement** les deux `docker run` actuels :
 }
 ```
 
-## 6. Charge utile `/v1/health` (heartbeat / dashboard)
+***REMOVED******REMOVED*** 6. Charge utile `/v1/health` (heartbeat / dashboard)
 ```json
 {
   "ok": true, "agent_version": "0.12.0", "uptime_s": 1234,
@@ -372,7 +372,7 @@ Doit exprimer **fidèlement** les deux `docker run` actuels :
   certains serveurs (ex. HPE) ventilateurs/conso passent par l'IPMI/BMC et n'apparaissent pas
   en hwmon → seules les températures coretemp/k10temp sont remontées.
 
-## 7. Intégration contrôleur & migration
+***REMOVED******REMOVED*** 7. Intégration contrôleur & migration
 - Nouveau `app/node_driver.py` : dispatch sur `node.kind`. Pour un nœud à agent → **client HTTP**
   (`agent_url`+token) ; pour `proxmox-lxc` → chemin Proxmox legacy ; pour `docker` sans agent →
   chemin `ssh_run` legacy. **Coexistence, pas de big-bang.**
@@ -383,7 +383,7 @@ Doit exprimer **fidèlement** les deux `docker run` actuels :
   réseaux, NIC). Heartbeat `/v1/health` périodique → `last_seen`/`status` (remplace le sondage
   Proxmox/SSH dans `surveillance()`).
 
-### 7b. Retrait — `node_agent/uninstall-node.sh` et `uninstall-controller.sh`
+***REMOVED******REMOVED******REMOVED*** 7b. Retrait — `node_agent/uninstall-node.sh` et `uninstall-controller.sh`
 Pendant de l'installeur : ce que l'install (et l'orchestrateur via l'agent) a posé sur l'hôte, ce
 script l'enlève. **Autonome** — ni contrôleur, ni agent, ni archive requis : il tourne encore sur un
 nœud dont le contrôleur a disparu.
@@ -427,7 +427,7 @@ ou sur `--purge-key` ; sinon il le SIGNALE, cette clé ouvrant encore un accès 
 Les deux sont accessibles sans ligne de commande : menu de l'installeur → **Désinstaller**
 (cf. INSTALL.md §2.1).
 
-## 8. Sécurité
+***REMOVED******REMOVED*** 8. Sécurité
 - Token par-nœud (≥ 24 octets urlsafe), en-tête `X-MXL-Node-Token`. Stockage : `nodes.agent_token`
   (ou settings chiffrés). **Supprime le besoin de root-SSH du contrôleur vers chaque nœud** (item
   D de l'audit fiabilité).
@@ -473,7 +473,7 @@ Les deux sont accessibles sans ligne de commande : menu de l'installeur → **D�
   **Échappatoire** : réglage `agent_token_inject=0` → plus aucune injection au run (agent ouvert,
   comportement historique) dès le redéploiement du conteneur concerné.
 
-## 9b. Topologies de déploiement (co-location autorisée)
+***REMOVED******REMOVED*** 9b. Topologies de déploiement (co-location autorisée)
 
 La séparation control-plane / node-plane est **logique** (deux rôles, deux contrats), **pas**
 une obligation de deux machines. Les rôles se **co-localisent ou se séparent** librement :
@@ -498,7 +498,7 @@ machine qui est aussi un nœud, ni à y être seul.
 - *HA* : si le contrôleur partage la box d'un nœud et que la box tombe, on perd les deux → la
   standby vit **ailleurs**.
 
-## 9. Décisions & questions ouvertes
+***REMOVED******REMOVED*** 9. Décisions & questions ouvertes
 **Décidé :**
 - **Packaging agent = Python + systemd sur l'hôte** (venv + unit `bobi-node-agent.service`,
   `Restart=on-failure`). Réutilise les helpers existants ; accès direct docker/hugepages/xdp/

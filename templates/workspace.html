@@ -225,7 +225,7 @@
               z-index: 999; display: flex; flex-direction: column; gap: var(--space-2); }
 .toast { background: var(--bg-elev); border: 1px solid var(--border, var(--bg-hover));
          border-radius: var(--radius); padding: var(--space-2) var(--space-4); }
-.toast.error { border-color: var(--btn-red, #c33); }
+.toast.error { border-color: var(--btn-red, ***REMOVED***c33); }
 
 /* Shotbox : quadrillage — un bouton occupe 1..n cases (gx/gy/gw/gh) */
 .wsp-sb { display: grid; grid-template-columns: repeat(auto-fill, 84px);
@@ -242,13 +242,13 @@
 .wsp-edit .wsp-sb-rsz { display: block; }
 .wsp-sb-btn:active { transform: scale(0.97); }
 .wsp-sb-btn.on { outline: 3px solid var(--accent); background: var(--accent-soft, var(--bg-hover)); }
-.wsp-sb-btn.c-red.on    { outline-color: var(--btn-red, #c33); }
-.wsp-sb-btn.c-green.on  { outline-color: var(--btn-green, #2a4); }
-.wsp-sb-btn.c-red    { border-left: 5px solid var(--btn-red, #c33); }
-.wsp-sb-btn.c-green  { border-left: 5px solid var(--btn-green, #2a4); }
-.wsp-sb-btn.c-blue   { border-left: 5px solid var(--btn-blue, #36c); }
-.wsp-sb-btn.c-orange { border-left: 5px solid var(--btn-orange, #c82); }
-.wsp-sb-btn.c-purple { border-left: 5px solid var(--btn-purple, #85c); }
+.wsp-sb-btn.c-red.on    { outline-color: var(--btn-red, ***REMOVED***c33); }
+.wsp-sb-btn.c-green.on  { outline-color: var(--btn-green, ***REMOVED***2a4); }
+.wsp-sb-btn.c-red    { border-left: 5px solid var(--btn-red, ***REMOVED***c33); }
+.wsp-sb-btn.c-green  { border-left: 5px solid var(--btn-green, ***REMOVED***2a4); }
+.wsp-sb-btn.c-blue   { border-left: 5px solid var(--btn-blue, ***REMOVED***36c); }
+.wsp-sb-btn.c-orange { border-left: 5px solid var(--btn-orange, ***REMOVED***c82); }
+.wsp-sb-btn.c-purple { border-left: 5px solid var(--btn-purple, ***REMOVED***85c); }
 .wsp-sb-btn .wsp-sb-del { position: absolute; top: 0; right: 2px; display: none;
     background: none; border: none; color: var(--text-muted); cursor: pointer; }
 .wsp-edit .wsp-sb-btn .wsp-sb-del { display: block; }
@@ -465,17 +465,17 @@
 .wsp-scn-wrap.panning { cursor: grabbing; }
 .wsp-scn-world { position: absolute; left: 0; top: 0; width: 0; height: 0;
     transform-origin: 0 0; }
-#scn-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
-#scn-edges path.edge { fill: none; stroke: var(--text-muted); stroke-width: 1.6;
+***REMOVED***scn-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+***REMOVED***scn-edges path.edge { fill: none; stroke: var(--text-muted); stroke-width: 1.6;
     opacity: 0.75; }
-#scn-edges path.edge.sel { stroke: var(--accent); opacity: 1; stroke-width: 2.2; }
-#scn-edges path.edge.hot { stroke: var(--accent); opacity: 1; stroke-width: 2; }
-#scn-edges path.hit { fill: none; stroke: transparent; stroke-width: 16;
+***REMOVED***scn-edges path.edge.sel { stroke: var(--accent); opacity: 1; stroke-width: 2.2; }
+***REMOVED***scn-edges path.edge.hot { stroke: var(--accent); opacity: 1; stroke-width: 2; }
+***REMOVED***scn-edges path.hit { fill: none; stroke: transparent; stroke-width: 16;
     pointer-events: stroke; cursor: pointer; }
-#scn-edges path.temp { fill: none; stroke: var(--accent); stroke-width: 1.6;
+***REMOVED***scn-edges path.temp { fill: none; stroke: var(--accent); stroke-width: 1.6;
     stroke-dasharray: 5 4; }
 @media (prefers-reduced-motion: no-preference) {
-    #scn-edges path.edge.hot { stroke-dasharray: 7 5; animation: scn-flow 0.6s linear infinite; }
+    ***REMOVED***scn-edges path.edge.hot { stroke-dasharray: 7 5; animation: scn-flow 0.6s linear infinite; }
     @keyframes scn-flow { to { stroke-dashoffset: -12; } }
 }
 /* Nœuds-cartes */
@@ -597,7 +597,7 @@
 
     const T = k => window.t(k);
     const esc = s => String(s ?? '').replace(/[&<>"']/g,
-        c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&***REMOVED***39;'}[c]));
     const uid6 = () => Math.random().toString(36).slice(2, 8);
 
     const grid = document.getElementById('wsp-grid');
@@ -754,7 +754,7 @@
         if (w.widget === 'monitor') return '📺 ' + T('projects.ws_widget_monitor');
         if (w.widget === 'shotbox') return '⚡ ' + esc(w.title || T('projects.ws_widget_shotbox'));
         const inst = resolveInst(w);
-        return esc((inst && inst.hostname) || w.hostname || ('#' + (w.vmid || '?')));
+        return esc((inst && inst.hostname) || w.hostname || ('***REMOVED***' + (w.vmid || '?')));
     }
 
     function renderLayout() {
@@ -1349,8 +1349,8 @@
                 : ((cc.state || []).length || cc.discoverable || cc.has_param_tree);
             if (!has) continue;
             targets.push({kind: 'container', family: 'plugins', cc,
-                head: cc.hostname || ('#' + cc.vmid), type: cc.type || '',
-                search: norm(cc.hostname) + ' ' + norm(cc.type) + ' #' + cc.vmid});
+                head: cc.hostname || ('***REMOVED***' + cc.vmid), type: cc.type || '',
+                search: norm(cc.hostname) + ' ' + norm(cc.type) + ' ***REMOVED***' + cc.vmid});
         }
         if (mode === 'action') {
             for (const sv of (CATALOG?.services || []))
@@ -1397,9 +1397,9 @@
                 if (sts.length) secs.push({label: T('projects.pick_states'), items: sts});
                 if (cc.discoverable) {
                     const d = _discClient[cc.vmid];
-                    const seen = new Set((cc.state || []).map(s => (s.endpoint || '/state') + '#' + (s.path || '')));
+                    const seen = new Set((cc.state || []).map(s => (s.endpoint || '/state') + '***REMOVED***' + (s.path || '')));
                     const items = (d?.states || [])
-                        .filter(x => !seen.has(x.endpoint + '#' + x.path))
+                        .filter(x => !seen.has(x.endpoint + '***REMOVED***' + x.path))
                         .map(x => ({kind: 'disc', cc, d: x, label: x.label, hint: x.type,
                                     search: base + norm(x.label) + ' ' + norm(x.path)}));
                     secs.push({label: T('projects.pick_discovered'), items,
@@ -1690,7 +1690,7 @@
         if (o.kind === 'var') return o.name ? '𝑥 ' + o.name : '';
         if (o.kind === 'state') {
             const cc = catInst(o);
-            const name = cc ? (cc.hostname || cc.vmid) : ('#' + (o.vmid || '?'));
+            const name = cc ? (cc.hostname || cc.vmid) : ('***REMOVED***' + (o.vmid || '?'));
             if (o.state_id) {
                 const st = cc && (cc.state || []).find(s => s.id === o.state_id);
                 return name + ' · ' + ((st && st.label) || o.state_id);
@@ -1810,7 +1810,7 @@
     }
 
     const fbKey = f => (f.instance_uuid || '') + '|' + (f.vmid || '') + '|' +
-        (f.state_id || ((f.endpoint || '') + '#' + (f.path || '')));
+        (f.state_id || ((f.endpoint || '') + '***REMOVED***' + (f.path || '')));
     function fbEval(f) {
         const v = FEEDBACK[fbKey(f)];
         if (v === undefined || v === null) return false;
@@ -1992,7 +1992,7 @@
         if (!s) return '';
         if (s.kind === 'macro') {
             const m = (CATALOG?.macros || []).find(x => x.id === s.id);
-            return '⚡ ' + (m ? (m.system ? '🛡 ' : '') + m.name : '#' + s.id);
+            return '⚡ ' + (m ? (m.system ? '🛡 ' : '') + m.name : '***REMOVED***' + s.id);
         }
         if (s.kind === 'svc') {
             const sv = (CATALOG?.services || []).find(x => x.service === s.service);
@@ -2000,7 +2000,7 @@
             return '⚙ ' + (sv ? sv.label : s.service) + ' · ' + ((a && a.label) || s.action_id);
         }
         const cc = catInst(s.ref || {});
-        const name = cc ? (cc.hostname || cc.vmid) : ('#' + ((s.ref || {}).vmid || '?'));
+        const name = cc ? (cc.hostname || cc.vmid) : ('***REMOVED***' + ((s.ref || {}).vmid || '?'));
         if (s.kind === 'config') {
             const f = cc && (cc.config || []).find(x => x.key === s.key);
             return name + ' · ' + ((f && f.label) || s.key);
@@ -2065,7 +2065,7 @@
         if (_sbFbManual) return;
         const {cc, a} = _sbSel && _sbSel.kind === 'action' ? sbCurAction() : {};
         const def = cc && a && sbDefaultFb(cc, a, key => {
-            const el = document.querySelector('#sb-params [data-sbp="' + key + '"]');
+            const el = document.querySelector('***REMOVED***sb-params [data-sbp="' + key + '"]');
             return el ? el.value : ((a.params || []).find(p => p.key === key) || {}).default;
         });
         _sbFb = def ? {instance_uuid: cc.instance_uuid || null, vmid: cc.vmid || null,
@@ -2177,7 +2177,7 @@
         const noLabel = !document.getElementById('sb-label').value.trim();
         const readParams = () => {
             const params = {};
-            document.querySelectorAll('#sb-params [data-sbp]').forEach(el => {
+            document.querySelectorAll('***REMOVED***sb-params [data-sbp]').forEach(el => {
                 if (el.type === 'checkbox') params[el.dataset.sbp] = el.checked;
                 else if (el.value !== '') params[el.dataset.sbp] = el.value;
             });
@@ -2249,7 +2249,7 @@
             }
             return '<div class="wsp-pal-item">' +
                 '<span class="wsp-pal-name">' + (p.kind === 'source' ? '⇥' : '⤇') + ' ' +
-                esc(p.name) + ' <small>#' + (p.ord || 0) + ' · ' + esc(p.media) + '</small></span>' +
+                esc(p.name) + ' <small>***REMOVED***' + (p.ord || 0) + ' · ' + esc(p.media) + '</small></span>' +
                 detail +
                 '<button type="button" class="btn btn-red" style="float:right;padding:2px 8px" ' +
                 'onclick="wspDelPort(' + p.id + ')">✕</button></div>';
@@ -2557,7 +2557,7 @@
         if (!s.action_id && !s.endpoint && !Object.keys(s.params || {}).length &&
             s.type === 'action') return '';
         const cc = catInst(s);
-        const name = cc ? (cc.hostname || cc.vmid) : ('#' + (s.vmid || '?'));
+        const name = cc ? (cc.hostname || cc.vmid) : ('***REMOVED***' + (s.vmid || '?'));
         if (s.type === 'config') {
             const key = Object.keys(s.params || {})[0];
             const f = cc && (cc.config || []).find(x => x.key === key);
@@ -3092,7 +3092,7 @@
             return esc(p.mode === 'any' ? T('projects.scn_join_any') : T('projects.scn_join_all'));
         if (n.type === 'macro') {
             const m = (CATALOG?.macros || []).find(x => String(x.id) === String(p.macro_id));
-            return '⚡ <span class="mono">' + esc(m ? m.name : (p.macro_id ? '#' + p.macro_id : '…')) + '</span>';
+            return '⚡ <span class="mono">' + esc(m ? m.name : (p.macro_id ? '***REMOVED***' + p.macro_id : '…')) + '</span>';
         }
         if (n.type === 'entry')
             return scnKind(n) === 'trigger'

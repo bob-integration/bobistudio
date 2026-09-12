@@ -321,7 +321,7 @@
       <details class="txmo-slot${willCommit ? ' commit' : ''}"${open ? ' open' : ''}
         ontoggle="TxModel.slotToggle(${i}, this.open)">
         <summary class="txmo-slot-sum">
-          <span class="txmo-idx">Tx #${i + 1}</span>
+          <span class="txmo-idx">Tx ***REMOVED***${i + 1}</span>
           ${live.name ? `<span class="txmo-name">${esc(live.name)}</span>` : ''}
           <span class="txmo-fmt">${esc(_fmtLabel(v))}</span>
           ${s.audio_count ? `<span class="txmo-chip" title="${esc(T('js.txmodel.audio', 'Flux audio'))}">${
@@ -346,7 +346,7 @@
     const orphans = (m.slots || []).filter(x => x.state === 'out_of_layout').map(x => `
       <div class="txmo-slot orphan">
         <div class="txmo-slot-head">
-          <span class="txmo-idx">Tx #${x.idx + 1}</span>
+          <span class="txmo-idx">Tx ***REMOVED***${x.idx + 1}</span>
           <span class="io2110-state out_of_layout">${esc(T('js.txmodel.st_out', 'hors modèle'))}</span>
           <span class="meta">${esc(T('js.txmodel.orphan_hint',
             'Sortie du moteur non déclarée dans le modèle de la carte — la déclarer ci-dessus pour la figer dans l’arbre.'))}</span>
@@ -417,7 +417,7 @@
     } else if (pv) {
       const changed = (pv.diff || []).filter(d => d.op !== 'same');
       const diffHtml = changed.length
-        ? `<ul class="txmo-diff">${changed.map(d => `<li class="${esc(d.op)}">Tx #${d.idx + 1} — ${
+        ? `<ul class="txmo-diff">${changed.map(d => `<li class="${esc(d.op)}">Tx ***REMOVED***${d.idx + 1} — ${
             d.op === 'add' ? esc(T('js.txmodel.d_add', 'ajoutée')) + ' : ' + esc(_fmtLabel(d.after.video))
             : d.op === 'remove' ? esc(T('js.txmodel.d_rm', 'retirée'))
             : esc(T('js.txmodel.d_chg', 'reformatée')) + ' : ' + esc(_fmtLabel(d.before.video))

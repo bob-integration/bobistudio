@@ -28,35 +28,35 @@ import time
 
 log = logging.getLogger(__name__)
 
-# Champs PER-CELLULE qui déterminent les pixels rendus (la POSITION x/y dans le mur n'en fait PAS
-# partie — elle relève du layout de la région/sortie, pas des pixels propres de la cellule).
-# Signature de cellule : TOUT le cfg SAUF les champs de pure DISPOSITION (liste NOIRE).
-# Historique : c'était une liste BLANCHE (_CELL_PIXEL_FIELDS) — 4 instances du même bug en
-# 2026-07-12 (flags ANC 0.29.0, ports audio_path/anc_path, puis template/template_ref/
-# template_none : changer le modèle de PiP d'une fenêtre shardée ne changeait pas la
-# signature → le shard restait STALE, la moitié du mur gardait l'ancien habillage).
-# INVERSION du modèle : tout champ, présent ou futur, qui change les pixels est couvert PAR
-# DÉFAUT ; on n'exclut que ce qui relève du layout de la sortie (position dans le mur) ou de
-# la visibilité (gérée en amont par _visible_cells). Un champ purement informatif qui change
-# (rare) coûte au pire une re-matérialisation inutile — jamais un shard périmé silencieux.
-# `ratio` = format VOULU de la fenêtre (aspect du modèle de PiP / de la source), référence de
-# l'aimant et de « Remplir » côté composer. La cellule est rendue à w×h quoi qu'il arrive : ce
-# champ ne change AUCUN pixel, il ne doit donc pas re-matérialiser un shard.
+***REMOVED*** Champs PER-CELLULE qui déterminent les pixels rendus (la POSITION x/y dans le mur n'en fait PAS
+***REMOVED*** partie — elle relève du layout de la région/sortie, pas des pixels propres de la cellule).
+***REMOVED*** Signature de cellule : TOUT le cfg SAUF les champs de pure DISPOSITION (liste NOIRE).
+***REMOVED*** Historique : c'était une liste BLANCHE (_CELL_PIXEL_FIELDS) — 4 instances du même bug en
+***REMOVED*** 2026-07-12 (flags ANC 0.29.0, ports audio_path/anc_path, puis template/template_ref/
+***REMOVED*** template_none : changer le modèle de PiP d'une fenêtre shardée ne changeait pas la
+***REMOVED*** signature → le shard restait STALE, la moitié du mur gardait l'ancien habillage).
+***REMOVED*** INVERSION du modèle : tout champ, présent ou futur, qui change les pixels est couvert PAR
+***REMOVED*** DÉFAUT ; on n'exclut que ce qui relève du layout de la sortie (position dans le mur) ou de
+***REMOVED*** la visibilité (gérée en amont par _visible_cells). Un champ purement informatif qui change
+***REMOVED*** (rare) coûte au pire une re-matérialisation inutile — jamais un shard périmé silencieux.
+***REMOVED*** `ratio` = format VOULU de la fenêtre (aspect du modèle de PiP / de la source), référence de
+***REMOVED*** l'aimant et de « Remplir » côté composer. La cellule est rendue à w×h quoi qu'il arrive : ce
+***REMOVED*** champ ne change AUCUN pixel, il ne doit donc pas re-matérialiser un shard.
 _CELL_LAYOUT_SKIP_FIELDS = ("x", "y", "hidden", "ratio")
 
-# Style GLOBAL du multiview qui affecte le rendu de CHAQUE cellule (donc partie du contexte de
-# signature : une cellule n'est partageable entre deux multiviews que s'ils ont le même style).
-# default_template : le MODÈLE DE PIP PAR DÉFAUT du mur est du style global — chaque fenêtre
-# sans modèle explicite en hérite (résolution script : explicite > défaut du mur > « Classique »
-# généré) → il change les pixels de chaque cellule ET doit suivre jusqu'aux shards
-# (cf. _mv_params). L'habillage legacy (frame_style/label_size/border_w) a été MIGRÉ dans les
-# modèles (multiview 0.33.0) → la liste blanche rétrécit d'autant (classe de bug liste-blanche,
-# cf. les 5 variantes du 2026-07-12).
+***REMOVED*** Style GLOBAL du multiview qui affecte le rendu de CHAQUE cellule (donc partie du contexte de
+***REMOVED*** signature : une cellule n'est partageable entre deux multiviews que s'ils ont le même style).
+***REMOVED*** default_template : le MODÈLE DE PIP PAR DÉFAUT du mur est du style global — chaque fenêtre
+***REMOVED*** sans modèle explicite en hérite (résolution script : explicite > défaut du mur > « Classique »
+***REMOVED*** généré) → il change les pixels de chaque cellule ET doit suivre jusqu'aux shards
+***REMOVED*** (cf. _mv_params). L'habillage legacy (frame_style/label_size/border_w) a été MIGRÉ dans les
+***REMOVED*** modèles (multiview 0.33.0) → la liste blanche rétrécit d'autant (classe de bug liste-blanche,
+***REMOVED*** cf. les 5 variantes du 2026-07-12).
 _STYLE_FIELDS = ("chroma", "bit_depth", "colorimetry",
                  "default_template", "default_template_ref")
 
-# Champs d'un overlay à EXCLURE de sa signature : identifiant/position (layout, pas pixels) ; la
-# valeur dynamique (heure d'une horloge) n'est jamais un champ de config → exclue naturellement.
+***REMOVED*** Champs d'un overlay à EXCLURE de sa signature : identifiant/position (layout, pas pixels) ; la
+***REMOVED*** valeur dynamique (heure d'une horloge) n'est jamais un champ de config → exclue naturellement.
 _OVERLAY_SKIP_FIELDS = ("id", "x", "y")
 
 
@@ -84,7 +84,7 @@ def cell_signature(cfg, style):
     for k, v in cfg.items():
         if k in _CELL_LAYOUT_SKIP_FIELDS:
             continue
-        # Chemins normalisés (avec ou sans /dev/shm/ → même signature) : path + suiveurs.
+        ***REMOVED*** Chemins normalisés (avec ou sans /dev/shm/ → même signature) : path + suiveurs.
         body[k] = _norm_path(v) if k in ("path", "audio_path", "anc_path") else v
     return _h(body)
 
@@ -107,7 +107,7 @@ def region_signature(members, region_wh, style):
     return _h({"_t": "region", "members": canon, "wh": list(region_wh), "style": style})
 
 
-# ─── Décomposition d'un multiview en éléments ────────────────────────────────
+***REMOVED*** ─── Décomposition d'un multiview en éléments ────────────────────────────────
 
 def _visible_cells(params):
     """Cellules visibles (non masquées, avec source) d'un multiview, avec leur signature."""
@@ -124,7 +124,7 @@ def _visible_cells(params):
             "x": int(cfg.get("x") or 0), "y": int(cfg.get("y") or 0),
             "w": int(cfg.get("w") or 0), "h": int(cfg.get("h") or 0),
             "src": _norm_path(cfg.get("path")),
-            "cfg": dict(cfg),                 # config rendable (pour la matérialisation)
+            "cfg": dict(cfg),                 ***REMOVED*** config rendable (pour la matérialisation)
         })
     return out
 
@@ -142,7 +142,7 @@ def _overlays(params):
             "x": int(ov.get("x") or 0), "y": int(ov.get("y") or 0),
             "w": int(ov.get("w") or 0), "h": int(ov.get("h") or 0),
             "kind": ov.get("kind") or "text",
-            "ov": dict(ov),                   # config rendable
+            "ov": dict(ov),                   ***REMOVED*** config rendable
         })
     return out
 
@@ -177,7 +177,7 @@ def decompose_multiview(params):
     }
 
 
-# ─── Détection des éléments / blocs COMMUNS à plusieurs multiviews ────────────
+***REMOVED*** ─── Détection des éléments / blocs COMMUNS à plusieurs multiviews ────────────
 
 def shared_elements(decomps):
     """Éléments (cellules + overlays) dont la SIGNATURE apparaît dans ≥2 multiviews → candidats à
@@ -186,7 +186,7 @@ def shared_elements(decomps):
     for key, d in decomps.items():
         seen = set()
         for e in d["cells"] + d["overlays"]:
-            if e["sig"] in seen:           # même sig répétée dans le même mv = 1 occurrence mv
+            if e["sig"] in seen:           ***REMOVED*** même sig répétée dans le même mv = 1 occurrence mv
                 continue
             seen.add(e["sig"])
             by_sig.setdefault(e["sig"], []).append(key)
@@ -212,11 +212,11 @@ def shared_block(decomp_a, decomp_b):
     dans B ; retenir la translation au plus grand bloc."""
     a = decomp_a["cells"] + decomp_a["overlays"]
     b = decomp_b["cells"] + decomp_b["overlays"]
-    # index B : (sig) → set des positions ; et (sig, x, y) → (w, h)
+    ***REMOVED*** index B : (sig) → set des positions ; et (sig, x, y) → (w, h)
     b_pos = {}
     for e in b:
         b_pos.setdefault(e["sig"], set()).add((e["x"], e["y"]))
-    # éléments de A par signature
+    ***REMOVED*** éléments de A par signature
     best = []
     tried = set()
     for ea in a:
@@ -238,20 +238,20 @@ def shared_block(decomp_a, decomp_b):
     return sorted((e["sig"], e["x"] - ox, e["y"] - oy, e["w"], e["h"]) for e in best)
 
 
-# ─── Planificateur (pur) : multiviews → ensemble de nœuds de fabric + assembleurs ────────────
-#
-# Décide CE QU'IL FAUT matérialiser, sans rien déployer :
-#   1. Déduplication : chaque ÉLÉMENT (cellule/overlay) de signature présente sur ≥2 multiviews
-#      devient un nœud PARTAGÉ (rendu une fois, lu par tous). Capture « horloge commune », « VU de
-#      la source X partagé sur N murs », etc.
-#   2. Parallélisme : le RESTE des cellules de chaque multiview est découpé en SHARDS (≤
-#      max_cells_per_shard cellules), groupés spatialement → plusieurs process concurrents.
-#   3. Assembleur : un nœud par multiview qui TUILE les nœuds (partagés + ses shards + ses overlays
-#      résiduels) à leurs offsets dans le mur.
-#
-# Un nœud est identifié par sa signature et porte sa disposition CANONIQUE (éléments à positions
-# RELATIVES à son propre coin, donc indépendante de l'offset dans tel ou tel mur) + sa taille de
-# sortie. L'assembleur place la sortie d'un nœud à l'offset (x,y) propre à chaque multiview.
+***REMOVED*** ─── Planificateur (pur) : multiviews → ensemble de nœuds de fabric + assembleurs ────────────
+***REMOVED***
+***REMOVED*** Décide CE QU'IL FAUT matérialiser, sans rien déployer :
+***REMOVED***   1. Déduplication : chaque ÉLÉMENT (cellule/overlay) de signature présente sur ≥2 multiviews
+***REMOVED***      devient un nœud PARTAGÉ (rendu une fois, lu par tous). Capture « horloge commune », « VU de
+***REMOVED***      la source X partagé sur N murs », etc.
+***REMOVED***   2. Parallélisme : le RESTE des cellules de chaque multiview est découpé en SHARDS (≤
+***REMOVED***      max_cells_per_shard cellules), groupés spatialement → plusieurs process concurrents.
+***REMOVED***   3. Assembleur : un nœud par multiview qui TUILE les nœuds (partagés + ses shards + ses overlays
+***REMOVED***      résiduels) à leurs offsets dans le mur.
+***REMOVED***
+***REMOVED*** Un nœud est identifié par sa signature et porte sa disposition CANONIQUE (éléments à positions
+***REMOVED*** RELATIVES à son propre coin, donc indépendante de l'offset dans tel ou tel mur) + sa taille de
+***REMOVED*** sortie. L'assembleur place la sortie d'un nœud à l'offset (x,y) propre à chaque multiview.
 
 def _even(n):
     """Arrondit au PAIR supérieur (alignement chroma)."""
@@ -278,10 +278,10 @@ def _free_cuts(cells, axis):
     lo = "x" if axis == "x" else "y"
     sz = "w" if axis == "x" else "h"
     out = []
-    for c in sorted({e[lo] + e[sz] for e in cells}):     # bords 'fin de cellule' = coupes candidates
+    for c in sorted({e[lo] + e[sz] for e in cells}):     ***REMOVED*** bords 'fin de cellule' = coupes candidates
         left = [e for e in cells if e[lo] + e[sz] <= c]
         right = [e for e in cells if e[lo] >= c]
-        if len(left) + len(right) == len(cells) and left and right:   # partition propre, sans straddler
+        if len(left) + len(right) == len(cells) and left and right:   ***REMOVED*** partition propre, sans straddler
             out.append((c, left, right))
     return out
 
@@ -295,7 +295,7 @@ def _best_cut(cells):
         for c, left, right in _free_cuts(cells, axis):
             al = _bbox(left)
             ar = _bbox(right)
-            score = abs(al[2] * al[3] - ar[2] * ar[3])   # |aire_gauche − aire_droite|
+            score = abs(al[2] * al[3] - ar[2] * ar[3])   ***REMOVED*** |aire_gauche − aire_droite|
             if best_score is None or score < best_score:
                 best_score = score
                 best = (axis, c, left, right)
@@ -323,22 +323,22 @@ def _guillotine_partition(cells, max_cells, area_budget, force=False):
     est donc traité en aval : la bascule est rendue INVISIBLE (cf. `pret_fn` dans reconcile_fabric)
     au lieu d'être évitée."""
     bx0, by0, bw, bh = _bbox(cells)
-    # `force` : on n'appelle ce partitionneur QUE pour un mur qui SATURE. La condition de feuille
-    # (≤ max_cells cellules ET aire ≤ budget) le déclarait pourtant indivisible d'entrée — un mur
-    # de 3 fenêtres dont la bbox tient dans la moitié du canevas repartait en UN seul groupe, donc
-    # un seul shard, donc aucun parallélisme : le tissu ne pouvait plus rien pour lui, et il
-    # plafonnait (26 fps pour 50, mesuré le 2026-08-06 sur le mur 333, alors que DEUX coupes
-    # propres existaient). Saturer EST la raison de découper : on impose donc la première coupe
-    # quand elle est possible, et les conditions normales reprennent en dessous.
+    ***REMOVED*** `force` : on n'appelle ce partitionneur QUE pour un mur qui SATURE. La condition de feuille
+    ***REMOVED*** (≤ max_cells cellules ET aire ≤ budget) le déclarait pourtant indivisible d'entrée — un mur
+    ***REMOVED*** de 3 fenêtres dont la bbox tient dans la moitié du canevas repartait en UN seul groupe, donc
+    ***REMOVED*** un seul shard, donc aucun parallélisme : le tissu ne pouvait plus rien pour lui, et il
+    ***REMOVED*** plafonnait (26 fps pour 50, mesuré le 2026-08-06 sur le mur 333, alors que DEUX coupes
+    ***REMOVED*** propres existaient). Saturer EST la raison de découper : on impose donc la première coupe
+    ***REMOVED*** quand elle est possible, et les conditions normales reprennent en dessous.
     if not force and len(cells) <= max_cells and bw * bh <= area_budget:
         return [cells]
     cut = _best_cut(cells)
-    if cut is None:                       # aucune coupe propre (cellules jointives/chevauchantes)
+    if cut is None:                       ***REMOVED*** aucune coupe propre (cellules jointives/chevauchantes)
         s = sorted(cells, key=lambda e: (e["y"], e["x"]))
         return [s[i:i + max_cells] for i in range(0, len(s), max_cells)]
     _axis, _c, left, right = cut
     return (_guillotine_partition(left, max_cells, area_budget)
-            + _guillotine_partition(right, max_cells, area_budget))   # `force` : premier niveau seul
+            + _guillotine_partition(right, max_cells, area_budget))   ***REMOVED*** `force` : premier niveau seul
 
 
 def plan_fabric(multiviews, max_cells_per_shard=6, shard_area_frac=0.5):
@@ -348,15 +348,15 @@ def plan_fabric(multiviews, max_cells_per_shard=6, shard_area_frac=0.5):
          "outputs": {key: {"tiles": [(node_sig, x, y, w, h)…]}}}
     où chaque `tile` place la sortie d'un nœud à son offset dans le mur `key`. Pur, déterministe."""
     decomps = {k: decompose_multiview(p) for k, p in multiviews.items()}
-    shared = shared_elements(decomps)          # {elem_sig: [keys]} présents sur ≥2 multiviews
+    shared = shared_elements(decomps)          ***REMOVED*** {elem_sig: [keys]} présents sur ≥2 multiviews
     nodes = {}
-    # chaque output (assembleur) : `tiles` = réfs à des nœuds (shm enfants) placées à leur offset ;
-    # `overlays` = overlays NON partagés rendus directement par l'assembleur (cheap, sur place).
-    # orientation : portée par l'ASSEMBLEUR seulement (il émet le flux du mur → rotation 90°). Les
-    # shards/nœuds composent des régions en portrait LOGIQUE non tourné (cf build_assembler_params).
-    # meter_blocks : comme les overlays non partagés, rendus DIRECTEMENT par l'assembleur (cheap,
-    # coordonnées déjà en fractions du canvas ENTIER) — jamais partagés/dédupliqués (cf.
-    # decompose_multiview), donc simplement recopiés depuis les params logiques du mur.
+    ***REMOVED*** chaque output (assembleur) : `tiles` = réfs à des nœuds (shm enfants) placées à leur offset ;
+    ***REMOVED*** `overlays` = overlays NON partagés rendus directement par l'assembleur (cheap, sur place).
+    ***REMOVED*** orientation : portée par l'ASSEMBLEUR seulement (il émet le flux du mur → rotation 90°). Les
+    ***REMOVED*** shards/nœuds composent des régions en portrait LOGIQUE non tourné (cf build_assembler_params).
+    ***REMOVED*** meter_blocks : comme les overlays non partagés, rendus DIRECTEMENT par l'assembleur (cheap,
+    ***REMOVED*** coordonnées déjà en fractions du canvas ENTIER) — jamais partagés/dédupliqués (cf.
+    ***REMOVED*** decompose_multiview), donc simplement recopiés depuis les params logiques du mur.
     outputs = {k: {"tiles": [], "overlays": [], "meter_blocks": decomps[k]["meter_blocks"],
                    "video_history_blocks": decomps[k]["video_history_blocks"],
                    "audio_history_blocks": decomps[k]["audio_history_blocks"],
@@ -365,28 +365,28 @@ def plan_fabric(multiviews, max_cells_per_shard=6, shard_area_frac=0.5):
                    "orientation": str((multiviews[k] or {}).get("orientation") or "landscape")}
                for k in multiviews}
 
-    # 1+3a. Éléments PARTAGÉS → un nœud par signature (contenu rendable canonique à l'origine 0,0) ;
-    # chaque mur le tuile à SON offset.
+    ***REMOVED*** 1+3a. Éléments PARTAGÉS → un nœud par signature (contenu rendable canonique à l'origine 0,0) ;
+    ***REMOVED*** chaque mur le tuile à SON offset.
     for k, d in decomps.items():
         for e in d["cells"] + d["overlays"]:
             if e["sig"] not in shared:
                 continue
-            ow, oh = _even(e["w"]), _even(e["h"])    # dims PAIRES (chroma) — cf. _bbox
+            ow, oh = _even(e["w"]), _even(e["h"])    ***REMOVED*** dims PAIRES (chroma) — cf. _bbox
             if e["sig"] not in nodes:
                 n = {"kind": "shared", "out_wh": (ow, oh),
                      "elements": [(e["sig"], 0, 0, ow, oh)],
                      "shared_by": shared[e["sig"]], "windows": [], "overlays": [],
                      "chroma": d["style"].get("chroma"), "bit_depth": d["style"].get("bit_depth"), "default_template": d["style"].get("default_template"), "default_template_ref": d["style"].get("default_template_ref")}
-                if "cfg" in e:                       # cellule
+                if "cfg" in e:                       ***REMOVED*** cellule
                     c = dict(e["cfg"]); c["x"] = 0; c["y"] = 0; n["windows"].append(c)
-                else:                                # overlay (ex. horloge)
+                else:                                ***REMOVED*** overlay (ex. horloge)
                     o = dict(e["ov"]); o["x"] = 0; o["y"] = 0; n["overlays"].append(o)
                 nodes[e["sig"]] = n
             outputs[k]["tiles"].append((e["sig"], e["x"], e["y"], ow, oh))
 
-    # 2+3b. RESTE de chaque mur → shards de parallélisme (cellules non partagées), partitionnés en
-    # régions guillotine NON-CHEVAUCHANTES (cf. _guillotine_partition). Overlays non partagés →
-    # rendus directement par l'assembleur (cheap).
+    ***REMOVED*** 2+3b. RESTE de chaque mur → shards de parallélisme (cellules non partagées), partitionnés en
+    ***REMOVED*** régions guillotine NON-CHEVAUCHANTES (cf. _guillotine_partition). Overlays non partagés →
+    ***REMOVED*** rendus directement par l'assembleur (cheap).
     for k, d in decomps.items():
         residual = [e for e in d["cells"] if e["sig"] not in shared]
         if not residual:
@@ -394,11 +394,11 @@ def plan_fabric(multiviews, max_cells_per_shard=6, shard_area_frac=0.5):
                 if e["sig"] not in shared:
                     outputs[k]["overlays"].append(dict(e["ov"]))
             continue
-        # Découpage en shards : partition guillotine → bboxes NON-CHEVAUCHANTES, compactes et
-        # équilibrées (≤ max_cells_per_shard cellules ET aire ≤ shard_area_frac du mur). Remplace
-        # le chunk-par-index (qui produisait des bandes 1920×720 chevauchantes : la tuile la plus
-        # basse écrasait en noir une cellule de la tuile du dessus côté assembleur, et le travail
-        # memory-bound n'était quasi pas divisé). Aire-budget dérivée des dims du mur (point C).
+        ***REMOVED*** Découpage en shards : partition guillotine → bboxes NON-CHEVAUCHANTES, compactes et
+        ***REMOVED*** équilibrées (≤ max_cells_per_shard cellules ET aire ≤ shard_area_frac du mur). Remplace
+        ***REMOVED*** le chunk-par-index (qui produisait des bandes 1920×720 chevauchantes : la tuile la plus
+        ***REMOVED*** basse écrasait en noir une cellule de la tuile du dessus côté assembleur, et le travail
+        ***REMOVED*** memory-bound n'était quasi pas divisé). Aire-budget dérivée des dims du mur (point C).
         _ow, _oh = d["out_wh"]
         _area_budget = max(1, int(_ow) * int(_oh)) * shard_area_frac if (_ow and _oh) else float("inf")
         for group in _guillotine_partition(residual, max_cells_per_shard, _area_budget, force=True):
@@ -420,48 +420,48 @@ def plan_fabric(multiviews, max_cells_per_shard=6, shard_area_frac=0.5):
     return {"nodes": nodes, "outputs": outputs}
 
 
-# ─── Matérialiseur : plan → conteneurs (deploy/destroy injectables → testable & réutilisable) ──
-#
-# Chaque nœud du plan devient un conteneur multiview qui REND son contenu (windows/overlays) dans
-# un shm `<prefix>_<signature>`. Chaque output (mur logique) devient un ASSEMBLEUR : un multiview
-# qui TUILE les sorties des nœuds (copie) à leurs offsets + rend ses overlays non partagés. Le
-# registre `fabric_node_alloc` (DB) déduplique (un nœud partagé = 1 conteneur) et porte le cycle de
-# vie (teardown des nœuds qui ne sont plus dans le plan).
+***REMOVED*** ─── Matérialiseur : plan → conteneurs (deploy/destroy injectables → testable & réutilisable) ──
+***REMOVED***
+***REMOVED*** Chaque nœud du plan devient un conteneur multiview qui REND son contenu (windows/overlays) dans
+***REMOVED*** un shm `<prefix>_<signature>`. Chaque output (mur logique) devient un ASSEMBLEUR : un multiview
+***REMOVED*** qui TUILE les sorties des nœuds (copie) à leurs offsets + rend ses overlays non partagés. Le
+***REMOVED*** registre `fabric_node_alloc` (DB) déduplique (un nœud partagé = 1 conteneur) et porte le cycle de
+***REMOVED*** vie (teardown des nœuds qui ne sont plus dans le plan).
 
 from .database import db_fabric_get, db_fabric_upsert, db_fabric_touch, db_fabric_delete, db_fabric_all
 
 _RING = 8
 
-# Dernière config d'assembleur RÉELLEMENT poussée à chaque mur : {vmid: (empreinte, instant)}.
-# En mémoire de processus, volontairement : au redémarrage de l'orchestrateur on repousse une fois
-# (inoffensif) plutôt que de traîner une colonne de plus dans le registre.
-# ⚠ REPLI SEULEMENT (voir `_asm_en_place`) : ce chemin mémorise l'empreinte AVANT l'envoi, donc un
-# envoi ÉCHOUÉ est retenu comme fait et le mur reste non configuré jusqu'au rafraîchissement.
+***REMOVED*** Dernière config d'assembleur RÉELLEMENT poussée à chaque mur : {vmid: (empreinte, instant)}.
+***REMOVED*** En mémoire de processus, volontairement : au redémarrage de l'orchestrateur on repousse une fois
+***REMOVED*** (inoffensif) plutôt que de traîner une colonne de plus dans le registre.
+***REMOVED*** ⚠ REPLI SEULEMENT (voir `_asm_en_place`) : ce chemin mémorise l'empreinte AVANT l'envoi, donc un
+***REMOVED*** envoi ÉCHOUÉ est retenu comme fait et le mur reste non configuré jusqu'au rafraîchissement.
 _asm_pousse = {}
-# Plancher de rafraîchissement du repli : même inchangée, la config est re-poussée au moins toutes
-# les 10 min. Sans ce filet, un conteneur redémarré en silence (script relancé, rootfs éphémère)
-# resterait sans sa config d'assembleur jusqu'à la prochaine VRAIE modification — on échangerait
-# une image figée toutes les 35 s contre un mur muet pendant des heures.
+***REMOVED*** Plancher de rafraîchissement du repli : même inchangée, la config est re-poussée au moins toutes
+***REMOVED*** les 10 min. Sans ce filet, un conteneur redémarré en silence (script relancé, rootfs éphémère)
+***REMOVED*** resterait sans sa config d'assembleur jusqu'à la prochaine VRAIE modification — on échangerait
+***REMOVED*** une image figée toutes les 35 s contre un mur muet pendant des heures.
 _ASM_REFRESH_S = 600
 
-# Reports consécutifs tolérés avant de basculer un mur SANS attendre la cadence de ses nouveaux
-# shards (cf. le bloc anti-blocage dans reconcile_fabric). Deux passes = ~2×40 s d'attente réelle :
-# au-delà, le témoin de production est plus probablement en panne que le shard.
+***REMOVED*** Reports consécutifs tolérés avant de basculer un mur SANS attendre la cadence de ses nouveaux
+***REMOVED*** shards (cf. le bloc anti-blocage dans reconcile_fabric). Deux passes = ~2×40 s d'attente réelle :
+***REMOVED*** au-delà, le témoin de production est plus probablement en panne que le shard.
 _differe_ctr = {}
 _DIFFERE_MAX = 2
 
-# Passes tolérées où un shard orphelin est encore RAPPORTÉ LU par un mur avant qu'on le détruise
-# quand même (cf. étape 3). Trois passes ≈ 1 min 30 : au-delà, c'est le rapport du mur qui est
-# suspect, pas le shard.
+***REMOVED*** Passes tolérées où un shard orphelin est encore RAPPORTÉ LU par un mur avant qu'on le détruise
+***REMOVED*** quand même (cf. étape 3). Trois passes ≈ 1 min 30 : au-delà, c'est le rapport du mur qui est
+***REMOVED*** suspect, pas le shard.
 _tear_ctr = {}
 _TEARDOWN_MAX = 3
 
-# ÉTAT VISIBLE du tissu, par mur : {vmid: (etat, instant)} avec etat ∈ {"reorganisation"}.
-# Sert UNIQUEMENT à l'interface. Une retouche de contenu est mutée à chaud (quasi instantanée) ;
-# un déplacement qui recompose les régions demande un conteneur neuf, donc ~5-10 s avant que la
-# sortie bascule. Vu de l'utilisateur, la même action produit tantôt un effet immédiat, tantôt
-# une attente inexpliquée. On publie donc l'état pour que l'éditeur puisse l'ANNONCER, au lieu de
-# laisser croire à un raté. En mémoire de processus : c'est de l'affichage, pas de la vérité.
+***REMOVED*** ÉTAT VISIBLE du tissu, par mur : {vmid: (etat, instant)} avec etat ∈ {"reorganisation"}.
+***REMOVED*** Sert UNIQUEMENT à l'interface. Une retouche de contenu est mutée à chaud (quasi instantanée) ;
+***REMOVED*** un déplacement qui recompose les régions demande un conteneur neuf, donc ~5-10 s avant que la
+***REMOVED*** sortie bascule. Vu de l'utilisateur, la même action produit tantôt un effet immédiat, tantôt
+***REMOVED*** une attente inexpliquée. On publie donc l'état pour que l'éditeur puisse l'ANNONCER, au lieu de
+***REMOVED*** laisser croire à un raté. En mémoire de processus : c'est de l'affichage, pas de la vérité.
 _etat_mur = {}
 
 
@@ -561,14 +561,14 @@ def _asm_en_place(etat, asm):
 def _mv_params(out_w, out_h, shm_out, flux_config, overlays, fps, chroma, bit_depth,
                genlock=True, cadence="input", scan=None,
                slice_mode=False, slice_lines=36, default_template=None, default_template_ref=""):
-    # cadence="input" par défaut : les nœuds du tissu sont DATA-DRIVEN (suivent l'entrée, pas la
-    # grille) → latence cumulée du DAG = Σ calcul, pas N×intervalle (cf. plugin INPUT_LOCKED).
-    # L'habillage vit dans les MODÈLES DE PIP (embarqués par cellule dans flux_config, +
-    # default_template ci-dessous) — plus aucun champ d'habillage global de mur.
-    # TISSU EN TRANCHES (docs/chantiers/TISSU_SLICE.md) : slice_mode=True → nœuds/assembleurs en cadence "flow"
-    # (data-flow aligné sur la grille TAI : composition ciblée sur l'index d'epoch, sortie écrite
-    # au même index → alignement inter-étages) + publication bande par bande. Défaut OFF →
-    # params STRICTEMENT identiques à l'historique (cadence "input", pas de clés slice).
+    ***REMOVED*** cadence="input" par défaut : les nœuds du tissu sont DATA-DRIVEN (suivent l'entrée, pas la
+    ***REMOVED*** grille) → latence cumulée du DAG = Σ calcul, pas N×intervalle (cf. plugin INPUT_LOCKED).
+    ***REMOVED*** L'habillage vit dans les MODÈLES DE PIP (embarqués par cellule dans flux_config, +
+    ***REMOVED*** default_template ci-dessous) — plus aucun champ d'habillage global de mur.
+    ***REMOVED*** TISSU EN TRANCHES (docs/chantiers/TISSU_SLICE.md) : slice_mode=True → nœuds/assembleurs en cadence "flow"
+    ***REMOVED*** (data-flow aligné sur la grille TAI : composition ciblée sur l'index d'epoch, sortie écrite
+    ***REMOVED*** au même index → alignement inter-étages) + publication bande par bande. Défaut OFF →
+    ***REMOVED*** params STRICTEMENT identiques à l'historique (cadence "input", pas de clés slice).
     out = {"out_width": int(out_w), "out_height": int(out_h), "chroma": chroma,
            "bit_depth": bit_depth, "shm_video_ring": _RING, "fps": fps, "genlock": genlock,
            "cadence": ("flow" if slice_mode else cadence), "shm_out": shm_out,
@@ -576,16 +576,16 @@ def _mv_params(out_w, out_h, shm_out, flux_config, overlays, fps, chroma, bit_de
     if slice_mode:
         out["slice_mode"] = True
         out["slice_lines"] = int(slice_lines or 36)
-    # Modèle de PiP PAR DÉFAUT du mur : hérité par les fenêtres des SHARDS (résolution script :
-    # explicite > défaut du mur > « Classique » généré). L'ASSEMBLEUR, lui, ne le reçoit
-    # PAS (build_assembler_params ne le passe pas) : ses fenêtres sont des shards pré-rendus
-    # posés 1:1 (show_label/show_tally faux → « Classique » généré = vidéo nue = copie pure) —
-    # lui appliquer un modèle re-doublerait l'habillage par-dessus les pixels.
-    # ★ SCAN EXPLICITE. Ne PAS omettre cette clé : `plugins.render_script` comble toute clé de
-    # format absente d'un multiview avec le FORMAT DE SORTIE PAR DÉFAUT DU SYSTÈME
-    # (`scripts.multiview_output_format_defaults`). Un nœud de tissu sans `scan` héritait donc du
-    # scan du site — sur un site en 1080i50, les liens INTERNES du tissu partaient en entrelacé.
-    # Cf. build_node_params pour ce que ça coûtait.
+    ***REMOVED*** Modèle de PiP PAR DÉFAUT du mur : hérité par les fenêtres des SHARDS (résolution script :
+    ***REMOVED*** explicite > défaut du mur > « Classique » généré). L'ASSEMBLEUR, lui, ne le reçoit
+    ***REMOVED*** PAS (build_assembler_params ne le passe pas) : ses fenêtres sont des shards pré-rendus
+    ***REMOVED*** posés 1:1 (show_label/show_tally faux → « Classique » généré = vidéo nue = copie pure) —
+    ***REMOVED*** lui appliquer un modèle re-doublerait l'habillage par-dessus les pixels.
+    ***REMOVED*** ★ SCAN EXPLICITE. Ne PAS omettre cette clé : `plugins.render_script` comble toute clé de
+    ***REMOVED*** format absente d'un multiview avec le FORMAT DE SORTIE PAR DÉFAUT DU SYSTÈME
+    ***REMOVED*** (`scripts.multiview_output_format_defaults`). Un nœud de tissu sans `scan` héritait donc du
+    ***REMOVED*** scan du site — sur un site en 1080i50, les liens INTERNES du tissu partaient en entrelacé.
+    ***REMOVED*** Cf. build_node_params pour ce que ça coûtait.
     if scan:
         out["scan"] = scan
     if default_template is not None:
@@ -601,17 +601,17 @@ def build_node_params(node, shm, fps=50, chroma=None, bit_depth=None, slice_mode
     ow, oh = node["out_wh"]
     ch = node.get("chroma") or chroma or "422"
     bd = node.get("bit_depth") or bit_depth or 8
-    # Shard : reproduit l'habillage RÉEL du mur (modèles embarqués par cellule + modèle par
-    # défaut du mur) → l'assembleur n'a plus qu'à recopier.
-    # ★ LIEN INTERNE = TOUJOURS PROGRESSIF. Un shard COMPOSE en progressif ; le laisser ÉMETTRE en
-    # entrelacé (ce qui arrivait dès que le format par défaut du site était en « i », cf. _mv_params)
-    # faisait découper sa trame en deux champs, que l'assembleur relisait comme une source
-    # entrelacée — donc en n'en prenant QU'UN. La moitié de la résolution verticale du mur était
-    # jetée au tout dernier étage, après le filtrage et le désentrelacement des sources (constaté
-    # sur trame capturée : texte d'UMD en marches de 2 px). Découper puis retisser un lien interne
-    # est de toute façon du travail pur : trois étages pour revenir au point de départ.
-    # L'entrelacement n'a de sens que sur la sortie RÉELLE du mur (l'assembleur), pas entre deux
-    # étages de calcul du même nœud.
+    ***REMOVED*** Shard : reproduit l'habillage RÉEL du mur (modèles embarqués par cellule + modèle par
+    ***REMOVED*** défaut du mur) → l'assembleur n'a plus qu'à recopier.
+    ***REMOVED*** ★ LIEN INTERNE = TOUJOURS PROGRESSIF. Un shard COMPOSE en progressif ; le laisser ÉMETTRE en
+    ***REMOVED*** entrelacé (ce qui arrivait dès que le format par défaut du site était en « i », cf. _mv_params)
+    ***REMOVED*** faisait découper sa trame en deux champs, que l'assembleur relisait comme une source
+    ***REMOVED*** entrelacée — donc en n'en prenant QU'UN. La moitié de la résolution verticale du mur était
+    ***REMOVED*** jetée au tout dernier étage, après le filtrage et le désentrelacement des sources (constaté
+    ***REMOVED*** sur trame capturée : texte d'UMD en marches de 2 px). Découper puis retisser un lien interne
+    ***REMOVED*** est de toute façon du travail pur : trois étages pour revenir au point de départ.
+    ***REMOVED*** L'entrelacement n'a de sens que sur la sortie RÉELLE du mur (l'assembleur), pas entre deux
+    ***REMOVED*** étages de calcul du même nœud.
     return _mv_params(ow, oh, shm, list(node.get("windows") or []),
                       list(node.get("overlays") or []), fps, ch, bd, slice_mode=slice_mode,
                       scan="p",
@@ -638,23 +638,23 @@ def build_assembler_params(output, shm_out, sig_to_shm, fps=50, chroma=None, bit
                    "show_label": False, "show_tally": False, "tsl_index": 0,
                    "label_source": "hostname", "meter_channels": 0, "meter_position": "right",
                    "meter_inside": False, "meter_opacity": 70, "meter_scale": "dbfs"})
-    # Assembleur = COPIE PURE des sorties de shards (qui portent déjà l'habillage du mur) → AUCUN
-    # chrome propre : pas de default_template, fenêtres show_label/show_tally faux → modèle
-    # « Classique » généré = vidéo nue → _chrome_pre None → pas de blend_pre plein écran à
-    # chaque trame (c'était ~13 ms, le goulet après le sharding). Seuls les overlays non
-    # partagés (horloges) sont composés sur place.
+    ***REMOVED*** Assembleur = COPIE PURE des sorties de shards (qui portent déjà l'habillage du mur) → AUCUN
+    ***REMOVED*** chrome propre : pas de default_template, fenêtres show_label/show_tally faux → modèle
+    ***REMOVED*** « Classique » généré = vidéo nue → _chrome_pre None → pas de blend_pre plein écran à
+    ***REMOVED*** chaque trame (c'était ~13 ms, le goulet après le sharding). Seuls les overlays non
+    ***REMOVED*** partagés (horloges) sont composés sur place.
     params = _mv_params(ow, oh, shm_out, fc, list(output.get("overlays") or []),
                         fps, chroma, bit_depth, slice_mode=slice_mode)
-    # L'assembleur émet le flux EXTERNE du mur → c'est lui qui tourne 90° en portrait (les shards
-    # restent non tournés). out_width/out_height = canevas portrait logique ; le moteur swappe à l'émission.
+    ***REMOVED*** L'assembleur émet le flux EXTERNE du mur → c'est lui qui tourne 90° en portrait (les shards
+    ***REMOVED*** restent non tournés). out_width/out_height = canevas portrait logique ; le moteur swappe à l'émission.
     params["orientation"] = str(output.get("orientation") or "landscape")
-    # meter_blocks : VU-mètres de MUR — recopiés TELS QUELS (fractions du canvas entier, déjà dans
-    # le bon référentiel ; le moteur sait les rendre indépendamment du rôle assembleur/monolithe,
-    # cf. render_meters). Pas de résolution de dims/proxy (juste une source audio par bloc, comme
-    # _multiview_hot_apply). L'assembleur reste le MÊME conteneur/vmid que le mur logique (jamais
-    # un nouveau conteneur créé) → le câblage audio_path (shm local au nœud) reste valide tel quel.
+    ***REMOVED*** meter_blocks : VU-mètres de MUR — recopiés TELS QUELS (fractions du canvas entier, déjà dans
+    ***REMOVED*** le bon référentiel ; le moteur sait les rendre indépendamment du rôle assembleur/monolithe,
+    ***REMOVED*** cf. render_meters). Pas de résolution de dims/proxy (juste une source audio par bloc, comme
+    ***REMOVED*** _multiview_hot_apply). L'assembleur reste le MÊME conteneur/vmid que le mur logique (jamais
+    ***REMOVED*** un nouveau conteneur créé) → le câblage audio_path (shm local au nœud) reste valide tel quel.
     params["meter_blocks"] = list(output.get("meter_blocks") or [])
-    # Frises d'historique de MUR (0.37.0) : même transit tel quel que meter_blocks ci-dessus.
+    ***REMOVED*** Frises d'historique de MUR (0.37.0) : même transit tel quel que meter_blocks ci-dessus.
     params["video_history_blocks"] = list(output.get("video_history_blocks") or [])
     params["audio_history_blocks"] = list(output.get("audio_history_blocks") or [])
     return params
@@ -670,7 +670,7 @@ def materialize(plan, deploy_fn, destroy_fn, shm_out_by_key, fps=50, chroma=None
     orphelins (plus dans le plan). Renvoie {"nodes_created":[…], "nodes_kept":[…], "torn_down":[…]}."""
     res = {"nodes_created": [], "nodes_kept": [], "torn_down": []}
     sig_to_shm = {}
-    # 1. Nœuds (shards + partagés)
+    ***REMOVED*** 1. Nœuds (shards + partagés)
     for sig, node in plan["nodes"].items():
         shm = f"{name_prefix}_{sig}"
         sig_to_shm[sig] = shm
@@ -683,12 +683,12 @@ def materialize(plan, deploy_fn, destroy_fn, shm_out_by_key, fps=50, chroma=None
         db_fabric_upsert(sig, None, None, shm, node["kind"], int(ow), int(oh),
                          ref=str(ref), parents=node.get("shared_by"))
         res["nodes_created"].append(sig)
-    # 2. Assembleurs (un par mur logique)
+    ***REMOVED*** 2. Assembleurs (un par mur logique)
     for key, output in plan["outputs"].items():
         params = build_assembler_params(output, shm_out_by_key[key], sig_to_shm, fps, chroma,
                                         bit_depth, slice_mode=slice_mode)
         deploy_fn(f"bobi-{name_prefix}-asm-{key}", params, f"asm-{key}")
-    # 3. Teardown des nœuds orphelins (plus dans le plan)
+    ***REMOVED*** 3. Teardown des nœuds orphelins (plus dans le plan)
     for row in db_fabric_all():
         if row["signature"] not in plan["nodes"]:
             try: destroy_fn(f"bobi-{name_prefix}-{row['signature']}")
@@ -698,33 +698,33 @@ def materialize(plan, deploy_fn, destroy_fn, shm_out_by_key, fps=50, chroma=None
     return res
 
 
-# ─── Auto-trigger : compiler les multiviews SATURÉS en fabric (réactif, calqué reconcile pyramide) ──
-#
-# Un multiview qui sature (own_latency mesuré > budget de trame) ET qui a au moins 2 tuiles câblées à
-# répartir (sinon rien à paralléliser) → on matérialise ses shards (+ dédup avec les autres multiviews
-# lourds) et on RECONFIGURE son conteneur en ASSEMBLEUR (hot, même shm_out → transparent pour l'aval).
-# Un multiview qui ne sature plus → restauré en monolithe + ses shards exclusifs détruits. État
-# « assembleur » suivi par une ligne registre `asm:<vmid>` (kind='assembler').
-#
-# Le déclenchement est piloté par la SATURATION (own_latency > budget), pas par un nombre de fenêtres
-# fixe : un mur saturé à 5 tuiles doit être shardé. `min_shard_cells` (défaut 2) n'est qu'un plancher
-# de « splittabilité » — il faut ≥2 tuiles pour répartir sur des shards parallèles.
+***REMOVED*** ─── Auto-trigger : compiler les multiviews SATURÉS en fabric (réactif, calqué reconcile pyramide) ──
+***REMOVED***
+***REMOVED*** Un multiview qui sature (own_latency mesuré > budget de trame) ET qui a au moins 2 tuiles câblées à
+***REMOVED*** répartir (sinon rien à paralléliser) → on matérialise ses shards (+ dédup avec les autres multiviews
+***REMOVED*** lourds) et on RECONFIGURE son conteneur en ASSEMBLEUR (hot, même shm_out → transparent pour l'aval).
+***REMOVED*** Un multiview qui ne sature plus → restauré en monolithe + ses shards exclusifs détruits. État
+***REMOVED*** « assembleur » suivi par une ligne registre `asm:<vmid>` (kind='assembler').
+***REMOVED***
+***REMOVED*** Le déclenchement est piloté par la SATURATION (own_latency > budget), pas par un nombre de fenêtres
+***REMOVED*** fixe : un mur saturé à 5 tuiles doit être shardé. `min_shard_cells` (défaut 2) n'est qu'un plancher
+***REMOVED*** de « splittabilité » — il faut ≥2 tuiles pour répartir sur des shards parallèles.
 
 def _n_visible(params):
     return sum(1 for c in (params.get("flux_config") or [])
                if isinstance(c, dict) and not c.get("hidden") and _norm_path(c.get("path")))
 
 
-# ─── Emplacements : l'identité STABLE d'un shard, par opposition à sa signature de contenu ───
-#
-# Un nœud du tissu est adressé par son CONTENU (signature) — c'est ce qui rend la déduplication et
-# le partage entre murs corrects par construction. Mais un conteneur, lui, est une ressource
-# COÛTEUSE à créer : quelques secondes de boot pendant lesquelles la région du mur est vide. Or la
-# très grande majorité des re-planifications ne déplacent rien : elles changent le contenu d'une
-# région qui reste au même endroit, à la même taille, au même format. Ces trois-là forment
-# l'EMPLACEMENT — la partie de l'identité d'un shard que l'assembleur observe (il ne connaît qu'un
-# shm, une position et une taille). Tant que l'emplacement ne bouge pas, on peut remplacer le
-# contenu du conteneur sans que rien en aval ne s'en aperçoive.
+***REMOVED*** ─── Emplacements : l'identité STABLE d'un shard, par opposition à sa signature de contenu ───
+***REMOVED***
+***REMOVED*** Un nœud du tissu est adressé par son CONTENU (signature) — c'est ce qui rend la déduplication et
+***REMOVED*** le partage entre murs corrects par construction. Mais un conteneur, lui, est une ressource
+***REMOVED*** COÛTEUSE à créer : quelques secondes de boot pendant lesquelles la région du mur est vide. Or la
+***REMOVED*** très grande majorité des re-planifications ne déplacent rien : elles changent le contenu d'une
+***REMOVED*** région qui reste au même endroit, à la même taille, au même format. Ces trois-là forment
+***REMOVED*** l'EMPLACEMENT — la partie de l'identité d'un shard que l'assembleur observe (il ne connaît qu'un
+***REMOVED*** shm, une position et une taille). Tant que l'emplacement ne bouge pas, on peut remplacer le
+***REMOVED*** contenu du conteneur sans que rien en aval ne s'en aperçoive.
 
 def _node_fmt(node, fps, chroma, bit_depth, slice_mode):
     """Empreinte du FORMAT de sortie d'un nœud — ce qu'un `/reconfigure` à chaud ne peut PAS
@@ -743,10 +743,10 @@ def _emplacements_liberes(node_id, want):
             continue
         try:
             par = json.loads(row["parents"]) if row["parents"] else []
-        except Exception:                                                  # noqa: BLE001
+        except Exception:                                                  ***REMOVED*** noqa: BLE001
             continue
         if len(par) != 1 or row["tile_x"] is None or not row["fmt"]:
-            continue   # ligne d'avant l'introduction des emplacements → pas de rebind possible
+            continue   ***REMOVED*** ligne d'avant l'introduction des emplacements → pas de rebind possible
         cle = (str(par[0]), int(row["tile_x"]), int(row["tile_y"] or 0),
                int(row["out_w"] or 0), int(row["out_h"] or 0), str(row["fmt"]))
         libres.setdefault(cle, []).append(dict(row))
@@ -768,7 +768,7 @@ def _rendre_emplacement(libres, row):
     """Remet un emplacement dans le pot (rebind refusé/échoué) — il redeviendra un teardown."""
     try:
         par = json.loads(row["parents"]) if row["parents"] else []
-    except Exception:                                                      # noqa: BLE001
+    except Exception:                                                      ***REMOVED*** noqa: BLE001
         return
     if len(par) != 1:
         return
@@ -812,17 +812,17 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
         nwin = _n_visible(p)
         already = db_fabric_get(f"asm:{vmid}") is not None
         if already:
-            # DÉJÀ shardé : la latence mesurée est celle de l'ASSEMBLEUR (basse car shardé) → ne PAS
-            # s'en servir pour décider (sinon flap shard↔restore). Deux sorties, et deux seulement :
-            #
-            #  - STRUCTURELLE : plus assez de tuiles câblées pour paralléliser.
-            #  - ★ ÉCONOMIQUE (`restaurables`) : le découpage ne rapporte PLUS. Le critère ne peut pas
-            #    être la latence de l'assembleur ; c'est l'orchestrateur qui l'établit, en sommant le
-            #    coût des shards (majorant du monolithe) et en exigeant une MARGE et une PERSISTANCE
-            #    — cf. `deploy._restaurables_tissu`. Sans cette sortie, un mur shardé par accident ne
-            #    redevenait JAMAIS monolithe : le critère était le NOMBRE DE TUILES, jamais le gain.
-            #    Vécu le 2026-08-08 : un simple redéploiement a fait passer le mur 906 de 3 à 9 cœurs
-            #    et 3 processus, définitivement, pour un travail qu'il tenait à 3.
+            ***REMOVED*** DÉJÀ shardé : la latence mesurée est celle de l'ASSEMBLEUR (basse car shardé) → ne PAS
+            ***REMOVED*** s'en servir pour décider (sinon flap shard↔restore). Deux sorties, et deux seulement :
+            ***REMOVED***
+            ***REMOVED***  - STRUCTURELLE : plus assez de tuiles câblées pour paralléliser.
+            ***REMOVED***  - ★ ÉCONOMIQUE (`restaurables`) : le découpage ne rapporte PLUS. Le critère ne peut pas
+            ***REMOVED***    être la latence de l'assembleur ; c'est l'orchestrateur qui l'établit, en sommant le
+            ***REMOVED***    coût des shards (majorant du monolithe) et en exigeant une MARGE et une PERSISTANCE
+            ***REMOVED***    — cf. `deploy._restaurables_tissu`. Sans cette sortie, un mur shardé par accident ne
+            ***REMOVED***    redevenait JAMAIS monolithe : le critère était le NOMBRE DE TUILES, jamais le gain.
+            ***REMOVED***    Vécu le 2026-08-08 : un simple redéploiement a fait passer le mur 906 de 3 à 9 cœurs
+            ***REMOVED***    et 3 processus, définitivement, pour un travail qu'il tenait à 3.
             if nwin >= min_shard_cells and vmid not in (restaurables or ()):
                 heavy[vmid] = p
             else:
@@ -830,35 +830,35 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
                 db_fabric_delete(f"asm:{vmid}")
                 res["restored"].append(vmid)
         else:
-            # PAS encore shardé : la SATURATION pilote le déclenchement (own_latency du monolithe vs
-            # budget PROPRE au multiview — intention de cadence — sinon budget global). min_shard_cells
-            # = simple plancher de splittabilité (il faut ≥2 tuiles pour des shards parallèles), PAS un
-            # seuil de taille : un mur saturé à 5 tuiles doit être shardé.
+            ***REMOVED*** PAS encore shardé : la SATURATION pilote le déclenchement (own_latency du monolithe vs
+            ***REMOVED*** budget PROPRE au multiview — intention de cadence — sinon budget global). min_shard_cells
+            ***REMOVED*** = simple plancher de splittabilité (il faut ≥2 tuiles pour des shards parallèles), PAS un
+            ***REMOVED*** seuil de taille : un mur saturé à 5 tuiles doit être shardé.
             lat = latency_ms.get(vmid)
             _budget = budget_by_vmid.get(vmid, budget_ms)
             if lat is not None and lat > _budget and nwin >= min_shard_cells:
                 heavy[vmid] = p
     plan = (plan_fabric({str(v): p for v, p in heavy.items()}, max_cells_per_shard)
             if heavy else {"nodes": {}, "outputs": {}})
-    # ── SHARDER EN UNE SEULE TUILE NE SERT À RIEN ────────────────────────────────────────────
-    # La saturation décide de sharder, mais elle ne dit pas que la découpe SERA parallèle. Un mur
-    # dont le plan ne produit qu'UNE tuile ne gagne aucun parallélisme : tout le travail reste
-    # dans un seul conteneur, et on lui ajoute une recopie plein cadre chez l'assembleur, un
-    # conteneur de plus et un étage de latence. C'est STRICTEMENT pire que le monolithe.
-    # Mesuré le 2026-08-06 sur le mur 333 (3 fenêtres, dont deux de 832×482) :
-    #   monolithe          33 fps, own 27 ms
-    #   1 shard + assembleur  25 fps VISIBLES (shard 27,2 ms dont 21,4 de gather ; assembleur 7,3)
-    # Le mur restait shardé en boucle parce que la sortie de sharding se décide sur le NOMBRE DE
-    # TUILES (≥ 2 → on reste) et non sur le gain réel. Le parallélisme exige au moins deux nœuds ;
-    # en dessous, on garde — ou on restaure — le monolithe.
-    _restaures = set()      # murs remis en monolithe à CETTE passe (à interroger avant teardown)
-    # ── LA DÉCOUPE S'ADAPTE À LA MACHINE ────────────────────────────────────────────────────
-    # Le tissu décidait du nombre de shards sans jamais demander si le nœud pouvait les ÉPINGLER.
-    # Constaté le 2026-08-07 sur dl360-1 : pool de 6 cœurs physiques, un mur + deux shards à 3
-    # cœurs chacun → `physical_free = 0`, `oversub = true`, et un shard placé sur les jumeaux HT
-    # du mur lui-même (ils se disputent le même cœur physique). Plutôt que de refuser de sharder —
-    # le monolithe saturé est MESURÉ pire (33 fps contre 50) — on ré-agrège : des groupes plus
-    # gros, donc moins de conteneurs, jusqu'à tenir dans ce que le nœud sait épingler.
+    ***REMOVED*** ── SHARDER EN UNE SEULE TUILE NE SERT À RIEN ────────────────────────────────────────────
+    ***REMOVED*** La saturation décide de sharder, mais elle ne dit pas que la découpe SERA parallèle. Un mur
+    ***REMOVED*** dont le plan ne produit qu'UNE tuile ne gagne aucun parallélisme : tout le travail reste
+    ***REMOVED*** dans un seul conteneur, et on lui ajoute une recopie plein cadre chez l'assembleur, un
+    ***REMOVED*** conteneur de plus et un étage de latence. C'est STRICTEMENT pire que le monolithe.
+    ***REMOVED*** Mesuré le 2026-08-06 sur le mur 333 (3 fenêtres, dont deux de 832×482) :
+    ***REMOVED***   monolithe          33 fps, own 27 ms
+    ***REMOVED***   1 shard + assembleur  25 fps VISIBLES (shard 27,2 ms dont 21,4 de gather ; assembleur 7,3)
+    ***REMOVED*** Le mur restait shardé en boucle parce que la sortie de sharding se décide sur le NOMBRE DE
+    ***REMOVED*** TUILES (≥ 2 → on reste) et non sur le gain réel. Le parallélisme exige au moins deux nœuds ;
+    ***REMOVED*** en dessous, on garde — ou on restaure — le monolithe.
+    _restaures = set()      ***REMOVED*** murs remis en monolithe à CETTE passe (à interroger avant teardown)
+    ***REMOVED*** ── LA DÉCOUPE S'ADAPTE À LA MACHINE ────────────────────────────────────────────────────
+    ***REMOVED*** Le tissu décidait du nombre de shards sans jamais demander si le nœud pouvait les ÉPINGLER.
+    ***REMOVED*** Constaté le 2026-08-07 sur dl360-1 : pool de 6 cœurs physiques, un mur + deux shards à 3
+    ***REMOVED*** cœurs chacun → `physical_free = 0`, `oversub = true`, et un shard placé sur les jumeaux HT
+    ***REMOVED*** du mur lui-même (ils se disputent le même cœur physique). Plutôt que de refuser de sharder —
+    ***REMOVED*** le monolithe saturé est MESURÉ pire (33 fps contre 50) — on ré-agrège : des groupes plus
+    ***REMOVED*** gros, donc moins de conteneurs, jusqu'à tenir dans ce que le nœud sait épingler.
     if max_noeuds and heavy and len(plan["nodes"]) > max_noeuds:
         _mc = max_cells_per_shard
         while len(plan["nodes"]) > max_noeuds and _mc < 64:
@@ -867,8 +867,8 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
         log.info("tissu : découpe ré-agrégée à %d nœud(s) (max_cells %d → %d) — le nœud n'en "
                  "épingle que %d", len(plan["nodes"]), max_cells_per_shard, _mc, max_noeuds)
         if len(plan["nodes"]) > max_noeuds:
-            # Irréductible (le parallélisme minimal dépasse déjà la capacité) : on shard quand
-            # même, mais l'exploitant doit savoir que ces shards ne seront pas épinglés seuls.
+            ***REMOVED*** Irréductible (le parallélisme minimal dépasse déjà la capacité) : on shard quand
+            ***REMOVED*** même, mais l'exploitant doit savoir que ces shards ne seront pas épinglés seuls.
             log.warning("tissu : %d nœud(s) planifiés pour %d épinglables — le nœud est "
                         "sur-souscrit, les shards partageront des cœurs physiques",
                         len(plan["nodes"]), max_noeuds)
@@ -891,36 +891,36 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
         plan = (plan_fabric({str(v): p for v, p in heavy.items()}, max_cells_per_shard)
                 if heavy else {"nodes": {}, "outputs": {}})
     want = set(plan["nodes"])
-    # EMPLACEMENT de chaque nœud dans son mur : sig → [(mv_key, x, y, w, h)] (cf. rebind).
+    ***REMOVED*** EMPLACEMENT de chaque nœud dans son mur : sig → [(mv_key, x, y, w, h)] (cf. rebind).
     places = {}
     for _k, _out in plan["outputs"].items():
         for (_ns, _x, _y, _w, _h) in _out["tiles"]:
             places.setdefault(_ns, []).append((str(_k), int(_x), int(_y), int(_w), int(_h)))
-    # Nœuds qui SORTENT du plan, indexés par emplacement : candidats à la mutation à chaud.
+    ***REMOVED*** Nœuds qui SORTENT du plan, indexés par emplacement : candidats à la mutation à chaud.
     libres = _emplacements_liberes(node_id, want) if rebind_fn is not None else {}
-    # 1. matérialiser les NŒUDS (shards/partagés) manquants ; dédup via registre
+    ***REMOVED*** 1. matérialiser les NŒUDS (shards/partagés) manquants ; dédup via registre
     sig_to_shm = {}
-    shm_to_ref = {}     # {shm de sortie: ref du conteneur} — sert au contrôle de production
+    shm_to_ref = {}     ***REMOVED*** {shm de sortie: ref du conteneur} — sert au contrôle de production
     for sig, node in plan["nodes"].items():
         row = db_fabric_get(sig)
         if row:
-            # shm du REGISTRE et non `prefix_sig` : un nœud REBINDÉ garde le shm de l'emplacement
-            # qu'il occupe (c'est ce qui laisse le câblage de l'assembleur intact), donc le nom ne
-            # se dérive plus de la signature.
+            ***REMOVED*** shm du REGISTRE et non `prefix_sig` : un nœud REBINDÉ garde le shm de l'emplacement
+            ***REMOVED*** qu'il occupe (c'est ce qui laisse le câblage de l'assembleur intact), donc le nom ne
+            ***REMOVED*** se dérive plus de la signature.
             sig_to_shm[sig] = row["shm"] or f"{name_prefix}_{sig}"
             shm_to_ref[sig_to_shm[sig]] = row["ref"]
             db_fabric_touch([sig]); continue
         ow, oh = node["out_wh"]
         fmt = _node_fmt(node, fps, chroma, bit_depth, slice_mode)
-        # ── REBIND : même emplacement, même taille, même format, contenu différent ──────────
-        # Sans lui, la moindre retouche d'une cellule (un libellé, un modèle de PiP, une source)
-        # change la signature de la région → conteneur DÉTRUIT et REMPLACÉ : plusieurs secondes de
-        # boot pendant lesquelles l'assembleur pointe un shm qui n'existe pas encore (région
-        # noire), plus une reconfiguration de l'assembleur (recuisson des overlays) et deux
-        # conteneurs rendant la même région le temps du recouvrement. Muter le shard en place ne
-        # coûte RIEN de visible : même conteneur, même shm, l'assembleur n'est même pas touché.
-        # Réservé aux shards à parent UNIQUE : un nœud PARTAGÉ entre deux murs ne peut pas être
-        # muté (on changerait aussi les pixels de l'autre mur) — il est forké, comme aujourd'hui.
+        ***REMOVED*** ── REBIND : même emplacement, même taille, même format, contenu différent ──────────
+        ***REMOVED*** Sans lui, la moindre retouche d'une cellule (un libellé, un modèle de PiP, une source)
+        ***REMOVED*** change la signature de la région → conteneur DÉTRUIT et REMPLACÉ : plusieurs secondes de
+        ***REMOVED*** boot pendant lesquelles l'assembleur pointe un shm qui n'existe pas encore (région
+        ***REMOVED*** noire), plus une reconfiguration de l'assembleur (recuisson des overlays) et deux
+        ***REMOVED*** conteneurs rendant la même région le temps du recouvrement. Muter le shard en place ne
+        ***REMOVED*** coûte RIEN de visible : même conteneur, même shm, l'assembleur n'est même pas touché.
+        ***REMOVED*** Réservé aux shards à parent UNIQUE : un nœud PARTAGÉ entre deux murs ne peut pas être
+        ***REMOVED*** muté (on changerait aussi les pixels de l'autre mur) — il est forké, comme aujourd'hui.
         _pl = places.get(sig) or []
         _cand = None
         if (rebind_fn is not None and node["kind"] == "shard" and len(_pl) == 1
@@ -939,8 +939,8 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
                 shm_to_ref[_shm] = _cand["ref"]
                 res.setdefault("rebound", []).append(sig)
                 continue
-            # Refus ou échec du push à chaud → on REND l'emplacement et on repart sur
-            # créer+détruire. Jamais un shard laissé à un contenu périmé en silence.
+            ***REMOVED*** Refus ou échec du push à chaud → on REND l'emplacement et on repart sur
+            ***REMOVED*** créer+détruire. Jamais un shard laissé à un contenu périmé en silence.
             _rendre_emplacement(libres, _cand)
         shm = f"{name_prefix}_{sig}"; sig_to_shm[sig] = shm
         if perime_fn is not None and perime_fn():
@@ -948,11 +948,11 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
             res.setdefault("abandonne", []).append(sig)
             return res
         _name = f"bobi-{name_prefix}-{sig}"
-        # ⚠ AVANT `deploy_fn`, pas après. La création du conteneur + le déploiement de son script
-        # prennent ~3 s : marquer ensuite faisait apparaître « Réorganisation du mur » alors que
-        # l'essentiel de l'attente était déjà passé — un indicateur qui arrive à la fin n'informe
-        # personne. Ici, on vient de DÉCIDER de créer (rebind impossible ou refusé) : c'est le
-        # premier instant où l'on sait que ce sera lent, donc le bon moment pour le dire.
+        ***REMOVED*** ⚠ AVANT `deploy_fn`, pas après. La création du conteneur + le déploiement de son script
+        ***REMOVED*** prennent ~3 s : marquer ensuite faisait apparaître « Réorganisation du mur » alors que
+        ***REMOVED*** l'essentiel de l'attente était déjà passé — un indicateur qui arrive à la fin n'informe
+        ***REMOVED*** personne. Ici, on vient de DÉCIDER de créer (rebind impossible ou refusé) : c'est le
+        ***REMOVED*** premier instant où l'on sait que ce sera lent, donc le bon moment pour le dire.
         _marquer_reorganisation(node.get("shared_by"))
         ref = deploy_fn(_name, build_node_params(node, shm, fps, chroma, bit_depth,
                                                  slice_mode=slice_mode), _name) or _name
@@ -962,37 +962,37 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
                          tile_x=_tx, tile_y=_ty, fmt=fmt)
         shm_to_ref[shm] = str(ref)
         res["nodes_created"].append(sig)
-    # 2. reconfigurer chaque multiview lourd en assembleur (même shm_out)
+    ***REMOVED*** 2. reconfigurer chaque multiview lourd en assembleur (même shm_out)
     differes = set()
     for vmid, p in heavy.items():
         asm = build_assembler_params(plan["outputs"][str(vmid)], p.get("shm_out"),
                                      sig_to_shm, fps, chroma, bit_depth, slice_mode=slice_mode)
-        # IDEMPOTENCE DE L'ENVOI — pas seulement du registre. Cette boucle est appelée toutes les
-        # ~30 s par la surveillance (main.py), et elle re-poussait /style + /overlays +
-        # /reconfigure À CHAQUE PASSE même quand rien n'avait changé. Or côté mur chaque
-        # /reconfigure purge le cache de polices et lève `overlay_dirty` → RECUISSON complète des
-        # overlays → une trame lente (25-47 ms mesurées) → le TX ne trouve pas de grain neuf et
-        # ré-émet le précédent : une image figée toutes les ~34,7 s, en production, sans que rien
-        # n'ait bougé. Diagnostiqué sur Horace le 2026-08-05 (la période des `[fonts]` du mur, celle
-        # des commits tardifs et le 5 s × 6 de la boucle coïncidaient exactement).
-        # Le garde-fou `if not db_fabric_get(...)` juste dessous ne protégeait que l'ÉCRITURE EN
-        # BASE, et il vient APRÈS l'envoi : l'idempotence était intentionnelle mais pas effective.
-        # ÉTAT OBSERVÉ plutôt que minuteur aveugle : on interroge le mur (`/state`, aucun coût de
-        # recuisson) et on ne repousse que s'il ne rapporte PAS déjà le câblage attendu. Le
-        # rafraîchissement périodique qu'on remplace, lui, provoquait la recuisson qu'il fallait
-        # éviter — 2 images figées par 20 min sur un mur shardé, mesurées à Horace.
-        # Un `etat_fn` qui lève ne doit JAMAIS interrompre la réconciliation des autres murs : on
-        # retombe sur « état inconnu » → False → on repousse (le pire cas reste un push inutile).
-        # ⚠ DEUX questions, pas une : « le mur a-t-il perdu son câblage ? » (état observé) ET
-        # « avons-nous changé quelque chose ? » (empreinte de ce qu'on s'apprête à pousser). Le
-        # témoin d'état ne couvre PAS les overlays au-delà de (id, kind), ni les VU-mètres, ni les
-        # frises — s'y fier seul rendait un déplacement d'horloge sans effet (cf. `_asm_inchange`).
+        ***REMOVED*** IDEMPOTENCE DE L'ENVOI — pas seulement du registre. Cette boucle est appelée toutes les
+        ***REMOVED*** ~30 s par la surveillance (main.py), et elle re-poussait /style + /overlays +
+        ***REMOVED*** /reconfigure À CHAQUE PASSE même quand rien n'avait changé. Or côté mur chaque
+        ***REMOVED*** /reconfigure purge le cache de polices et lève `overlay_dirty` → RECUISSON complète des
+        ***REMOVED*** overlays → une trame lente (25-47 ms mesurées) → le TX ne trouve pas de grain neuf et
+        ***REMOVED*** ré-émet le précédent : une image figée toutes les ~34,7 s, en production, sans que rien
+        ***REMOVED*** n'ait bougé. Diagnostiqué sur Horace le 2026-08-05 (la période des `[fonts]` du mur, celle
+        ***REMOVED*** des commits tardifs et le 5 s × 6 de la boucle coïncidaient exactement).
+        ***REMOVED*** Le garde-fou `if not db_fabric_get(...)` juste dessous ne protégeait que l'ÉCRITURE EN
+        ***REMOVED*** BASE, et il vient APRÈS l'envoi : l'idempotence était intentionnelle mais pas effective.
+        ***REMOVED*** ÉTAT OBSERVÉ plutôt que minuteur aveugle : on interroge le mur (`/state`, aucun coût de
+        ***REMOVED*** recuisson) et on ne repousse que s'il ne rapporte PAS déjà le câblage attendu. Le
+        ***REMOVED*** rafraîchissement périodique qu'on remplace, lui, provoquait la recuisson qu'il fallait
+        ***REMOVED*** éviter — 2 images figées par 20 min sur un mur shardé, mesurées à Horace.
+        ***REMOVED*** Un `etat_fn` qui lève ne doit JAMAIS interrompre la réconciliation des autres murs : on
+        ***REMOVED*** retombe sur « état inconnu » → False → on repousse (le pire cas reste un push inutile).
+        ***REMOVED*** ⚠ DEUX questions, pas une : « le mur a-t-il perdu son câblage ? » (état observé) ET
+        ***REMOVED*** « avons-nous changé quelque chose ? » (empreinte de ce qu'on s'apprête à pousser). Le
+        ***REMOVED*** témoin d'état ne couvre PAS les overlays au-delà de (id, kind), ni les VU-mètres, ni les
+        ***REMOVED*** frises — s'y fier seul rendait un déplacement d'horloge sans effet (cf. `_asm_inchange`).
         _etat = None
         if etat_fn is not None:
             try:
                 _etat = etat_fn(vmid)
                 _saute = _asm_en_place(_etat, asm) and _asm_inchange(vmid, asm)
-            except Exception as _ee:                                        # noqa: BLE001
+            except Exception as _ee:                                        ***REMOVED*** noqa: BLE001
                 log.warning("tissu : état du mur %s illisible (%s) — on repousse", vmid, _ee)
                 _saute = False
         else:
@@ -1002,17 +1002,17 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
             _etat_mur.pop(str(vmid), None)
             res.setdefault("sharded_inchanges", []).append(vmid)
             continue
-        # ── BASCULE INVISIBLE (déplacement de fenêtre) ─────────────────────────────────────
-        # Déplacer une fenêtre change la découpe : il FAUT de nouveaux conteneurs, on ne peut pas
-        # l'éviter (cf. _guillotine_partition). Mais rien n'oblige à ce que ça se VOIE. L'assembleur
-        # était repointé aussitôt après la création, sur un shm que le conteneur n'avait pas encore
-        # créé : la région restait noire pendant tout le boot (docker run + démarrage du script +
-        # création du flux MXL), puis se rallumait — et l'ancien shard était détruit dans la foulée.
-        # On exige désormais que TOUT shm vers lequel le mur ne pointe pas déjà soit RÉELLEMENT en
-        # production avant de basculer. Sinon on ne touche ni l'assembleur ni les anciens shards
-        # (cf. étape 3) : le mur continue d'afficher sa composition actuelle, et la bascule se fait
-        # d'un coup quand elle est prête. Le critère porte sur « ce vers quoi on va basculer », pas
-        # sur « ce qu'on vient de créer » : un shard encore muet à la passe suivante reste couvert.
+        ***REMOVED*** ── BASCULE INVISIBLE (déplacement de fenêtre) ─────────────────────────────────────
+        ***REMOVED*** Déplacer une fenêtre change la découpe : il FAUT de nouveaux conteneurs, on ne peut pas
+        ***REMOVED*** l'éviter (cf. _guillotine_partition). Mais rien n'oblige à ce que ça se VOIE. L'assembleur
+        ***REMOVED*** était repointé aussitôt après la création, sur un shm que le conteneur n'avait pas encore
+        ***REMOVED*** créé : la région restait noire pendant tout le boot (docker run + démarrage du script +
+        ***REMOVED*** création du flux MXL), puis se rallumait — et l'ancien shard était détruit dans la foulée.
+        ***REMOVED*** On exige désormais que TOUT shm vers lequel le mur ne pointe pas déjà soit RÉELLEMENT en
+        ***REMOVED*** production avant de basculer. Sinon on ne touche ni l'assembleur ni les anciens shards
+        ***REMOVED*** (cf. étape 3) : le mur continue d'afficher sa composition actuelle, et la bascule se fait
+        ***REMOVED*** d'un coup quand elle est prête. Le critère porte sur « ce vers quoi on va basculer », pas
+        ***REMOVED*** sur « ce qu'on vient de créer » : un shard encore muet à la passe suivante reste couvert.
         if pret_fn is not None:
             _vus = {str(w.get("path") or "") for w in ((_etat or {}).get("windows") or [])}
             _refs = {shm_to_ref.get(_norm_path(w.get("path")))
@@ -1022,13 +1022,13 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
             if _refs:
                 _prets = pret_fn(sorted(_refs)) or set()
                 _muets = sorted(r for r in _refs if r not in _prets)
-                # ANTI-BLOCAGE — un contrôle de SÛRETÉ ne doit jamais pouvoir figer le système.
-                # Différer indéfiniment, c'est « plus rien ne se met à jour », et c'est
-                # exactement ce qui est arrivé le 2026-08-06 : le témoin de production lisait une
-                # clé que le multiview ne publie pas, donc AUCUN shard n'était jamais déclaré
-                # prêt. Au-delà de _DIFFERE_MAX reports consécutifs, on bascule quand même (on
-                # retrouve le comportement d'avant : au pire une région noire transitoire) et on
-                # ALERTE, plutôt que de laisser le mur muet sans que personne ne le sache.
+                ***REMOVED*** ANTI-BLOCAGE — un contrôle de SÛRETÉ ne doit jamais pouvoir figer le système.
+                ***REMOVED*** Différer indéfiniment, c'est « plus rien ne se met à jour », et c'est
+                ***REMOVED*** exactement ce qui est arrivé le 2026-08-06 : le témoin de production lisait une
+                ***REMOVED*** clé que le multiview ne publie pas, donc AUCUN shard n'était jamais déclaré
+                ***REMOVED*** prêt. Au-delà de _DIFFERE_MAX reports consécutifs, on bascule quand même (on
+                ***REMOVED*** retrouve le comportement d'avant : au pire une région noire transitoire) et on
+                ***REMOVED*** ALERTE, plutôt que de laisser le mur muet sans que personne ne le sache.
                 if _muets and _differe_ctr.get(vmid, 0) >= _DIFFERE_MAX:
                     log.warning("tissu : mur %s — %d report(s) consécutif(s), shard(s) %s toujours "
                                 "sans cadence : on bascule quand même", vmid,
@@ -1038,9 +1038,9 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
                 elif _muets:
                     differes.add(str(vmid))
                     _differe_ctr[vmid] = _differe_ctr.get(vmid, 0) + 1
-                    # Le repli par empreinte mémorise AVANT l'envoi (cf. `_asm_deja_pousse`) : sans
-                    # cet oubli, une bascule différée serait retenue comme faite et le mur ne
-                    # basculerait JAMAIS. Sans effet sur le chemin nominal (état observé).
+                    ***REMOVED*** Le repli par empreinte mémorise AVANT l'envoi (cf. `_asm_deja_pousse`) : sans
+                    ***REMOVED*** cet oubli, une bascule différée serait retenue comme faite et le mur ne
+                    ***REMOVED*** basculerait JAMAIS. Sans effet sur le chemin nominal (état observé).
                     _asm_pousse.pop(vmid, None)
                     res.setdefault("differes", []).append(vmid)
                     log.info("tissu : mur %s — bascule différée (%d), shard(s) %s pas encore en "
@@ -1052,40 +1052,40 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
             return res
         _differe_ctr.pop(vmid, None)
         reconfigure_fn(vmid, asm)
-        # Empreinte mémorisée APRÈS l'envoi (le repli historique le faisait AVANT, si bien qu'un
-        # envoi échoué était retenu comme fait et le mur restait sur l'ancienne config).
+        ***REMOVED*** Empreinte mémorisée APRÈS l'envoi (le repli historique le faisait AVANT, si bien qu'un
+        ***REMOVED*** envoi échoué était retenu comme fait et le mur restait sur l'ancienne config).
         _asm_pousse[vmid] = (_asm_empreinte(asm), time.monotonic())
-        _etat_mur.pop(str(vmid), None)      # la sortie a basculé : plus rien à annoncer
+        _etat_mur.pop(str(vmid), None)      ***REMOVED*** la sortie a basculé : plus rien à annoncer
         if not db_fabric_get(f"asm:{vmid}"):
             db_fabric_upsert(f"asm:{vmid}", node_id, vmid, p.get("shm_out") or "", "assembler", 0, 0)
         res["sharded"].append(vmid)
-    # 3. teardown des nœuds (shard/partagé) orphelins (plus dans le plan courant). Les nœuds
-    # REBINDÉS ont été ré-enregistrés sous leur nouvelle signature à l'étape 1 (donc dans `want`)
-    # et leur ancienne ligne supprimée : ils ne passent jamais par ici.
-    #
-    # ── ON NE DÉTRUIT PAS UN PRODUCTEUR QUE QUELQU'UN LIT ENCORE ──────────────────────────────
-    # Détruire le conteneur d'un shard supprime son flux MXL. Un mur qui le mappe encore accède
-    # alors à une zone démontée : le process meurt en SIGSEGV, sans trace. Le handler SIGBUS du
-    # script ne couvre pas ce cas (il vise le mmap TRONQUÉ d'un producteur qui se recrée, il ne
-    # s'exécute que dans le thread principal, et la faute survient ici dans un thread de calcul
-    # ou d'échantillonnage). Mesuré sur le mur 333 le 2026-08-06 : 34 morts dans la journée,
-    # dont 24 à moins de 30 s d'une destruction de shard, et 20 de ces 24 APRÈS elle — la
-    # plupart en 0,2 à 4 s. Reconfigurer l'assembleur ne suffit pas : il referme ses Readers
-    # synchrones, mais les échantillonneurs (frises, VU) se referment d'eux-mêmes, plus tard.
-    # Règle : on lit ce que les murs RAPPORTENT après reconfiguration, et un shm encore listé
-    # n'est pas détruit — on réessaie à la passe suivante. Même philosophie que `_asm_en_place`
-    # et `_pret` : un état OBSERVÉ, pas un minuteur.
+    ***REMOVED*** 3. teardown des nœuds (shard/partagé) orphelins (plus dans le plan courant). Les nœuds
+    ***REMOVED*** REBINDÉS ont été ré-enregistrés sous leur nouvelle signature à l'étape 1 (donc dans `want`)
+    ***REMOVED*** et leur ancienne ligne supprimée : ils ne passent jamais par ici.
+    ***REMOVED***
+    ***REMOVED*** ── ON NE DÉTRUIT PAS UN PRODUCTEUR QUE QUELQU'UN LIT ENCORE ──────────────────────────────
+    ***REMOVED*** Détruire le conteneur d'un shard supprime son flux MXL. Un mur qui le mappe encore accède
+    ***REMOVED*** alors à une zone démontée : le process meurt en SIGSEGV, sans trace. Le handler SIGBUS du
+    ***REMOVED*** script ne couvre pas ce cas (il vise le mmap TRONQUÉ d'un producteur qui se recrée, il ne
+    ***REMOVED*** s'exécute que dans le thread principal, et la faute survient ici dans un thread de calcul
+    ***REMOVED*** ou d'échantillonnage). Mesuré sur le mur 333 le 2026-08-06 : 34 morts dans la journée,
+    ***REMOVED*** dont 24 à moins de 30 s d'une destruction de shard, et 20 de ces 24 APRÈS elle — la
+    ***REMOVED*** plupart en 0,2 à 4 s. Reconfigurer l'assembleur ne suffit pas : il referme ses Readers
+    ***REMOVED*** synchrones, mais les échantillonneurs (frises, VU) se referment d'eux-mêmes, plus tard.
+    ***REMOVED*** Règle : on lit ce que les murs RAPPORTENT après reconfiguration, et un shm encore listé
+    ***REMOVED*** n'est pas détruit — on réessaie à la passe suivante. Même philosophie que `_asm_en_place`
+    ***REMOVED*** et `_pret` : un état OBSERVÉ, pas un minuteur.
     lus, etat_inconnu = set(), False
     if etat_fn is not None:
-        # `heavy` PLUS les murs qu'on vient de remettre en monolithe : ils viennent de relâcher
-        # leur shard, mais leurs échantillonneurs se referment d'eux-mêmes, un peu plus tard.
+        ***REMOVED*** `heavy` PLUS les murs qu'on vient de remettre en monolithe : ils viennent de relâcher
+        ***REMOVED*** leur shard, mais leurs échantillonneurs se referment d'eux-mêmes, un peu plus tard.
         for _v in list(heavy) + sorted(_restaures):
             try:
                 _e = etat_fn(_v)
-            except Exception:                                              # noqa: BLE001
+            except Exception:                                              ***REMOVED*** noqa: BLE001
                 _e = None
             if not isinstance(_e, dict) or "windows" not in _e:
-                etat_inconnu = True     # on ignore ce que ce mur lit → on ne détruit rien ce tour
+                etat_inconnu = True     ***REMOVED*** on ignore ce que ce mur lit → on ne détruit rien ce tour
             else:
                 lus.update(_norm_path(str(w.get("path") or ""))
                            for w in (_e.get("windows") or []))
@@ -1093,9 +1093,9 @@ def reconcile_fabric(node_id, mvs, latency_ms, deploy_fn, destroy_fn, reconfigur
         if row["kind"] in ("shard", "shared") and row["signature"] not in want:
             _sig = row["signature"]
             if etat_fn is not None and (etat_inconnu or row["shm"] in lus):
-                # ANTI-BLOCAGE (même leçon que la bascule) : une garde de sûreté ne doit pas
-                # pouvoir empêcher indéfiniment le ramassage. Au-delà de _TEARDOWN_MAX passes,
-                # on détruit quand même et on l'écrit au journal.
+                ***REMOVED*** ANTI-BLOCAGE (même leçon que la bascule) : une garde de sûreté ne doit pas
+                ***REMOVED*** pouvoir empêcher indéfiniment le ramassage. Au-delà de _TEARDOWN_MAX passes,
+                ***REMOVED*** on détruit quand même et on l'écrit au journal.
                 _n = _tear_ctr.get(_sig, 0) + 1
                 if _n <= _TEARDOWN_MAX:
                     _tear_ctr[_sig] = _n
@@ -1127,7 +1127,7 @@ def shards_par_parent():
             continue
         try:
             parents = _json.loads(row["parents"]) if row.get("parents") else []
-        except Exception:                                                  # noqa: BLE001
+        except Exception:                                                  ***REMOVED*** noqa: BLE001
             parents = []
         for pv in parents:
             try:
@@ -1145,7 +1145,7 @@ def fabric_layout(containers):
     `containers` = liste de dicts {vmid, deploy_config}. Renvoie {vmid: {role, parents:[vmid…]}}."""
     import json as _json
     by_ref = {}
-    shard_count = {}   # {parent_vmid: nb de shards internes} → un multiview parallélisé en a ≥1
+    shard_count = {}   ***REMOVED*** {parent_vmid: nb de shards internes} → un multiview parallélisé en a ≥1
     for row in db_fabric_all():
         if row.get("kind") in ("shard", "shared") and row.get("ref"):
             try:
@@ -1172,7 +1172,7 @@ def fabric_layout(containers):
         elif t == "pyramide":
             out[vmid] = {"role": "proxy", "parents": [], "shards": 0}
         else:
-            # 'logical' : multiview/conteneur normal. `shards` > 0 → multiview PARALLÉLISÉ
-            # (c'est l'assembleur du tissu) ; 0 → autonome.
+            ***REMOVED*** 'logical' : multiview/conteneur normal. `shards` > 0 → multiview PARALLÉLISÉ
+            ***REMOVED*** (c'est l'assembleur du tissu) ; 0 → autonome.
             out[vmid] = {"role": "logical", "parents": [], "shards": shard_count.get(vmid, 0)}
     return out

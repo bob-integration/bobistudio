@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Réseau par nœud : plan conteneurs (macvlan, assigné après l'enrôlement), carte E810/PTP
 (io2110), et vue « interface → rôle » (management/containers/media2110/rdma/bmc)."""
@@ -27,11 +27,11 @@ from ..database import (db_get_node, db_get_nodes, db_get_containers, db_update_
                         db_delete_node_interface, get_db)
 
 
-# ─── Réseau containers par nœud (assigné APRÈS l'enrôlement, via l'agent) ───────
-# Phase 2 : le réseau containers (macvlan) n'est plus figé à l'install. L'agent remonte l'inventaire
-# NIC (/v1/capabilities) → l'opérateur choisit le parent depuis l'UI → l'orchestrateur crée le réseau
-# via /v1/host/networks/ensure. subnet/gw/range = réglages CLUSTER (pool d'IP) ; carte parent + VLAN
-# (si trunk) = PAR-NŒUD (saisis dans le form de la carte du nœud).
+***REMOVED*** ─── Réseau containers par nœud (assigné APRÈS l'enrôlement, via l'agent) ───────
+***REMOVED*** Phase 2 : le réseau containers (macvlan) n'est plus figé à l'install. L'agent remonte l'inventaire
+***REMOVED*** NIC (/v1/capabilities) → l'opérateur choisit le parent depuis l'UI → l'orchestrateur crée le réseau
+***REMOVED*** via /v1/host/networks/ensure. subnet/gw/range = réglages CLUSTER (pool d'IP) ; carte parent + VLAN
+***REMOVED*** (si trunk) = PAR-NŒUD (saisis dans le form de la carte du nœud).
 def _controller_reach(subnet, gateway=""):
     """Synthèse de la joignabilité orchestrateur → plan conteneurs : IP DIRECTE (L2) OU ROUTE (L3).
     {on_subnet, route:{has_route,direct,via,dev}, probe_ip}. probe_ip = passerelle (ou 1er host du
@@ -86,9 +86,9 @@ def api_node_container_network_get(node_id):
         return jsonify({"error": "nœud sans agent (enrôlement non finalisé ?)"}), 409
     caps = node_driver.capabilities(node) or {}
     sug = _macvlan_suggest(node_id)
-    # Divergence entre le réseau RÉELLEMENT posé et ce que les rôles déclarent. Sans ce constat, un
-    # nœud dont le macvlan pend dans le vide s'affiche parfaitement sain : il répond au ping, son
-    # agent va bien, ses capacités sont déclarées — et aucun de ses conteneurs n'est joignable.
+    ***REMOVED*** Divergence entre le réseau RÉELLEMENT posé et ce que les rôles déclarent. Sans ce constat, un
+    ***REMOVED*** nœud dont le macvlan pend dans le vide s'affiche parfaitement sain : il répond au ping, son
+    ***REMOVED*** agent va bien, ses capacités sont déclarées — et aucun de ses conteneurs n'est joignable.
     etat_res = node_driver.etat_reseau_conteneurs(node)
     return jsonify({
         "nics": caps.get("nics") or [],
@@ -97,8 +97,8 @@ def api_node_container_network_get(node_id):
         "parent_declare": etat_res["declare"],
         "parent_reel": etat_res["reel"],
         "parent_porteuse": etat_res["porteuse"],
-        # `derive` = le réseau contredit les rôles ; `sans_lien` = il pointe une carte sans porteuse.
-        # Deux défauts distincts : le premier se corrige en recréant le réseau, le second au câblage.
+        ***REMOVED*** `derive` = le réseau contredit les rôles ; `sans_lien` = il pointe une carte sans porteuse.
+        ***REMOVED*** Deux défauts distincts : le premier se corrige en recréant le réseau, le second au câblage.
         "parent_derive": etat_res["derive"],
         "parent_sans_lien": etat_res["sans_lien"],
         "suggest": sug,
@@ -121,13 +121,13 @@ def api_node_container_network_set(node_id):
     parent = (d.get("parent") or "").strip()
     declare = _parent_declare(node_id)
     if not parent:
-        parent = declare                       # défaut : ce que les rôles déclarent
+        parent = declare                       ***REMOVED*** défaut : ce que les rôles déclarent
     if not parent:
         return jsonify({"error": "interface parent requise — ou déclarer le rôle « Management + "
                                  "Containers » sur la carte concernée (Réseau → Interfaces)"}), 400
-    # Un parent CONTRAIRE au rôle déclaré est refusé, pas appliqué en silence : c'est exactement la
-    # divergence qui a rendu r620-3 inutilisable pendant des jours. Comparaison sur la carte de base
-    # (un VLAN taggé donne `eno1.20`, qui reste porté par `eno1`).
+    ***REMOVED*** Un parent CONTRAIRE au rôle déclaré est refusé, pas appliqué en silence : c'est exactement la
+    ***REMOVED*** divergence qui a rendu r620-3 inutilisable pendant des jours. Comparaison sur la carte de base
+    ***REMOVED*** (un VLAN taggé donne `eno1.20`, qui reste porté par `eno1`).
     if declare and parent.split(".")[0] != declare:
         return jsonify({"error": "parent « %s » contraire au rôle déclaré : la carte des conteneurs "
                                  "de ce nœud est « %s » (Réseau → Interfaces). Corriger le rôle, ou "
@@ -139,10 +139,10 @@ def api_node_container_network_set(node_id):
     iprange = (d.get("ip_range") or sug.get("ip_range") or "").strip()
     if not subnet:
         return jsonify({"error": "subnet introuvable — configurer le pool d'IP (Réseau → IP statiques)"}), 400
-    # Passerelle macvlan : un conteneur macvlan ne peut JAMAIS joindre son hôte parent. Si la passerelle
-    # est vide ou pointe sur une IP de l'hôte du nœud, on la DÉRIVE de la route par défaut du nœud (le vrai
-    # routeur du segment). Garde-fou : refuser explicitement une passerelle == IP de l'hôte (sinon les
-    # conteneurs n'ont aucune route off-subnet → l'orchestrateur ne les joint pas, et inversement).
+    ***REMOVED*** Passerelle macvlan : un conteneur macvlan ne peut JAMAIS joindre son hôte parent. Si la passerelle
+    ***REMOVED*** est vide ou pointe sur une IP de l'hôte du nœud, on la DÉRIVE de la route par défaut du nœud (le vrai
+    ***REMOVED*** routeur du segment). Garde-fou : refuser explicitement une passerelle == IP de l'hôte (sinon les
+    ***REMOVED*** conteneurs n'ont aucune route off-subnet → l'orchestrateur ne les joint pas, et inversement).
     _hip = _node_host_ipv4s(node.get("host"))
     _ngw = _node_default_gateway(node.get("host"))
     if (not gateway or gateway in _hip) and _ngw and _ngw not in _hip:
@@ -152,9 +152,9 @@ def api_node_container_network_set(node_id):
                         "conteneur ne peut pas joindre son hôte parent, donc aucune route hors subnet). "
                         "Utilise le routeur du segment%s — Réglages → Réseau → passerelle."
                         % (gateway, (" (ex. %s)" % _ngw) if _ngw else "")}), 400
-    # VLAN taggé (réglage PAR-NŒUD : seulement si la carte parent est un port trunk) : parent =
-    # <nic>.<vid>. La sous-interface est créée sur le nœud via l'agent ET persistée (unité systemd
-    # oneshot, comme install-node.sh) → survit au reboot. Sinon (port access/untagged), parent nu.
+    ***REMOVED*** VLAN taggé (réglage PAR-NŒUD : seulement si la carte parent est un port trunk) : parent =
+    ***REMOVED*** <nic>.<vid>. La sous-interface est créée sur le nœud via l'agent ET persistée (unité systemd
+    ***REMOVED*** oneshot, comme install-node.sh) → survit au reboot. Sinon (port access/untagged), parent nu.
     vlan = str(d.get("vlan") or "").strip()
     if vlan and vlan != "0" and "." not in parent:
         vif = "%s.%s" % (parent, vlan)
@@ -162,7 +162,7 @@ def api_node_container_network_set(node_id):
         cmd = (
             "set -e; modprobe 8021q 2>/dev/null || true; "
             "cat > %s <<'SH'\n"
-            "#!/bin/sh\n"
+            "***REMOVED***!/bin/sh\n"
             "ip link show %s >/dev/null 2>&1 || ip link add link %s name %s type vlan id %s\n"
             "ip link set %s up; ip link set %s up\n"
             "SH\n"
@@ -181,9 +181,9 @@ def api_node_container_network_set(node_id):
             return jsonify({"error": "création/persistance VLAN %s échouée : %s" % (vif, res)}), 500
         parent = vif
     else:
-        # Pas de VLAN : la carte parent macvlan n'a pas besoin d'IP, mais doit être MONTÉE (porteur).
-        # On la monte + persiste (unité oneshot, comme le chemin VLAN) → up au reboot. Best-effort :
-        # `docker network create` peut réussir si elle est déjà up, on ne bloque pas la création.
+        ***REMOVED*** Pas de VLAN : la carte parent macvlan n'a pas besoin d'IP, mais doit être MONTÉE (porteur).
+        ***REMOVED*** On la monte + persiste (unité oneshot, comme le chemin VLAN) → up au reboot. Best-effort :
+        ***REMOVED*** `docker network create` peut réussir si elle est déjà up, on ne bloque pas la création.
         unit = "bobi-link-%s" % parent
         cmd = (
             "ip link set %s up 2>/dev/null || true; "
@@ -199,16 +199,16 @@ def api_node_container_network_set(node_id):
             node_driver.host_exec(node, cmd, timeout=20)
         except Exception:
             pass
-    # IPAM CENTRALISÉ (séparé OU multi-nœud) : l'orchestrateur impose chaque IP (`docker run --ip`),
-    # qui doit juste être dans le `--subnet`. On N'impose PAS `--ip-range` (le plus grand bloc CIDR du
-    # pool ne couvre pas forcément tout `ip_start..ip_end` → un --ip hors range échouerait). En IPAM
-    # Docker (simple mono-nœud), on GARDE `--ip-range` pour confiner l'auto-allocation au pool.
+    ***REMOVED*** IPAM CENTRALISÉ (séparé OU multi-nœud) : l'orchestrateur impose chaque IP (`docker run --ip`),
+    ***REMOVED*** qui doit juste être dans le `--subnet`. On N'impose PAS `--ip-range` (le plus grand bloc CIDR du
+    ***REMOVED*** pool ne couvre pas forcément tout `ip_start..ip_end` → un --ip hors range échouerait). En IPAM
+    ***REMOVED*** Docker (simple mono-nœud), on GARDE `--ip-range` pour confiner l'auto-allocation au pool.
     from .. import allocations
     iprange_eff = "" if allocations.centralized_ipam(node_id) else iprange
-    # RECRÉATION SI PARAMÈTRES CHANGÉS : `ensure_network` est idempotent (create-si-absent). Un réseau
-    # déjà présent avec une AUTRE passerelle/subnet/parent ne serait donc JAMAIS mis à jour (cas vécu :
-    # passerelle restée à l'IP de l'hôte). On inspecte l'existant ; s'il diffère, on le DÉTRUIT (avec ses
-    # conteneurs attachés, forcément à redéployer) puis on le recrée avec les bons paramètres.
+    ***REMOVED*** RECRÉATION SI PARAMÈTRES CHANGÉS : `ensure_network` est idempotent (create-si-absent). Un réseau
+    ***REMOVED*** déjà présent avec une AUTRE passerelle/subnet/parent ne serait donc JAMAIS mis à jour (cas vécu :
+    ***REMOVED*** passerelle restée à l'IP de l'hôte). On inspecte l'existant ; s'il diffère, on le DÉTRUIT (avec ses
+    ***REMOVED*** conteneurs attachés, forcément à redéployer) puis on le recrée avec les bons paramètres.
     import json as _json
     rc_i, out_i, _e = node_driver.host_exec(node, "docker network inspect %s 2>/dev/null" % _sh.quote(name), timeout=15)
     try:
@@ -230,7 +230,7 @@ def api_node_container_network_set(node_id):
             for v in removed:
                 try: destroy_compute(v)
                 except Exception: pass
-            # rm résiduel (conteneurs non suivis en DB) + suppression du réseau
+            ***REMOVED*** rm résiduel (conteneurs non suivis en DB) + suppression du réseau
             node_driver.host_exec(node,
                 "for c in $(docker network inspect -f '{{range .Containers}}{{.Name}} {{end}}' %s 2>/dev/null); do "
                 "docker rm -f \"$c\" >/dev/null 2>&1; done; docker network rm %s >/dev/null 2>&1"
@@ -243,13 +243,13 @@ def api_node_container_network_set(node_id):
     if not ok:
         return jsonify({"error": "création réseau via agent échouée : %s" % res}), 500
     db_update_node(node_id, docker_network=name)
-    # Joignabilité orchestrateur ↔ subnet conteneurs (le point clé du mode fusionné).
+    ***REMOVED*** Joignabilité orchestrateur ↔ subnet conteneurs (le point clé du mode fusionné).
     reach = _controller_reach(subnet, gateway)
     on_subnet = reach["on_subnet"]
     has_route = bool(reach["route"].get("has_route"))
     allinone = (node.get("host") or "") in _controller_ipv4s()
     warning = None
-    # Rouge seulement si NI IP directe NI route : sinon le routage (L3) peut suffire.
+    ***REMOVED*** Rouge seulement si NI IP directe NI route : sinon le routage (L3) peut suffire.
     if on_subnet is False and not has_route:
         warning = ("l'orchestrateur n'a ni IP ni route vers %s → il ne pourra pas joindre les conteneurs "
                    "(fusionné : mets l'orchestrateur sur ce LAN ; séparé : provisionne sa patte "
@@ -257,9 +257,9 @@ def api_node_container_network_set(node_id):
     elif allinone:
         warning = ("orchestrateur et nœud sur la même machine : l'isolation macvlan empêche l'hôte de "
                    "joindre ses propres conteneurs (shim macvlan requis)")
-    # `warning` alimente AUSSI `resp["warning"]` (retour UI) : on ne le touche pas — l'alerte est
-    # composée à part, en clé complète par variante (ce n'est PAS une liste de données, mais deux
-    # diagnostics distincts, cf. piège n°3).
+    ***REMOVED*** `warning` alimente AUSSI `resp["warning"]` (retour UI) : on ne le touche pas — l'alerte est
+    ***REMOVED*** composée à part, en clé complète par variante (ce n'est PAS une liste de données, mais deux
+    ***REMOVED*** diagnostics distincts, cf. piège n°3).
     if on_subnet is False and not has_route:
         _cle_net = "alert.net.macvlan_pret_sans_route"
         _params_net = {"name": name, "n": node.get("name"), "parent": parent, "subnet": subnet}
@@ -295,9 +295,9 @@ def api_net_topology_status():
         "controller_ips": _controller_ipv4s(),
     })
 
-# ─── io2110 d'un nœud : choix de la carte E810 + PTP (config différée post-enrôlement) ──────────
-# Phase 2 : l'install io2110 est différée (pas de carte/PTP) ; ici on choisit l'E810 (inventaire
-# remonté par l'agent) et on pousse le PTP. Réutilise _ptp_apply_core (cœur PTP) + ptp.py.
+***REMOVED*** ─── io2110 d'un nœud : choix de la carte E810 + PTP (config différée post-enrôlement) ──────────
+***REMOVED*** Phase 2 : l'install io2110 est différée (pas de carte/PTP) ; ici on choisit l'E810 (inventaire
+***REMOVED*** remonté par l'agent) et on pousse le PTP. Réutilise _ptp_apply_core (cœur PTP) + ptp.py.
 def _push_agent_mtl_iface(node, iface):
     """Écrit mtl_iface dans /etc/bobi-node-agent/config.json du nœud + restart agent (relit CONFIG
     chargé une fois à l'import) → corrige l'auto-report agent + la page :80. Best-effort : l'orchestrateur
@@ -330,25 +330,25 @@ def api_node_io2110(node_id):
     d = request.json or {}
     mtl_iface  = (d.get("mtl_iface") or "").strip()
     enable_ptp = bool(d.get("enable_ptp"))
-    media_ip   = (d.get("media_ip") or "").strip()   # IP du plan média 2110 (CIDR), '' = inchangé
+    media_ip   = (d.get("media_ip") or "").strip()   ***REMOVED*** IP du plan média 2110 (CIDR), '' = inchangé
     if not mtl_iface:
         return jsonify({"error": "carte E810 (mtl_iface) requise"}), 400
     if media_ip:
         import re as _re
         if not _re.match(r"^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$", media_ip):
             return jsonify({"error": "IP média invalide — attendu en CIDR (ex. 198.51.100.60/24)"}), 400
-    # 1) Persister la carte choisie + l'IP média sur le nœud (whitelist db_update_node).
+    ***REMOVED*** 1) Persister la carte choisie + l'IP média sur le nœud (whitelist db_update_node).
     db_update_node(node_id, mtl_iface=mtl_iface)
     if media_ip:
         db_update_node(node_id, media_ip=media_ip)
-    # 2) Migration + hygiène horloge (via l'agent, AVANT de déployer les mxl-*) :
-    #    - couper d'éventuelles vieilles unités ptp4l/phc2sys (nœuds pré-Phase-2), sinon deux
-    #      servos se battent pour le PHC ;
-    #    - quand on prend la main sur l'horloge (PTP activé), couper aussi les démons NTP
-    #      concurrents (timesyncd/chrony/ntp) qui ramèneraient CLOCK_REALTIME à l'UTC contre
-    #      phc2sys → servo en butée, jamais calé (PROD-009). ptp.start() le refait par SSH (filet
-    #      pour le bouton « Appliquer »), mais on le pose ici explicitement au « Rendre Opérationnel ».
-    #    No-op si absents.
+    ***REMOVED*** 2) Migration + hygiène horloge (via l'agent, AVANT de déployer les mxl-*) :
+    ***REMOVED***    - couper d'éventuelles vieilles unités ptp4l/phc2sys (nœuds pré-Phase-2), sinon deux
+    ***REMOVED***      servos se battent pour le PHC ;
+    ***REMOVED***    - quand on prend la main sur l'horloge (PTP activé), couper aussi les démons NTP
+    ***REMOVED***      concurrents (timesyncd/chrony/ntp) qui ramèneraient CLOCK_REALTIME à l'UTC contre
+    ***REMOVED***      phc2sys → servo en butée, jamais calé (PROD-009). ptp.start() le refait par SSH (filet
+    ***REMOVED***      pour le bouton « Appliquer »), mais on le pose ici explicitement au « Rendre Opérationnel ».
+    ***REMOVED***    No-op si absents.
     _hygiene = "systemctl disable --now ptp4l phc2sys 2>/dev/null || true"
     if enable_ptp:
         _hygiene += ("; timedatectl set-ntp false 2>/dev/null || true"
@@ -357,18 +357,18 @@ def api_node_io2110(node_id):
         node_driver.host_exec(node, _hygiene, timeout=20)
     except Exception:
         pass
-    # 2b) Assigner l'IP du plan média 2110 sur la carte (idempotent, via l'agent). AVANT le restart
-    #     agent. Sans elle : sip=0.0.0.0 → TX rejeté + IGMPv3 SSM KO → rx_gbps=0 (free-run noir).
+    ***REMOVED*** 2b) Assigner l'IP du plan média 2110 sur la carte (idempotent, via l'agent). AVANT le restart
+    ***REMOVED***     agent. Sans elle : sip=0.0.0.0 → TX rejeté + IGMPv3 SSM KO → rx_gbps=0 (free-run noir).
     if media_ip:
         from .. import docker_driver as _dd
         _node_fresh = dict(node); _node_fresh["mtl_iface"] = mtl_iface; _node_fresh["media_ip"] = media_ip
         _mok, _mmsg = _dd.ensure_media_ip(_node_fresh)
     host = _node_host(node_id) or node.get("host")
     if enable_ptp:
-        ptp.install(host)                                    # idempotent
-    # 3) Appliquer le PTP via le cœur commun (domaine cluster par défaut). TOUTES les ops agent
-    #    (disable/install/deploy) se font AVANT le restart de l'agent (étape 4), sinon elles tapent
-    #    l'agent pendant son redémarrage → Connection refused.
+        ptp.install(host)                                    ***REMOVED*** idempotent
+    ***REMOVED*** 3) Appliquer le PTP via le cœur commun (domaine cluster par défaut). TOUTES les ops agent
+    ***REMOVED***    (disable/install/deploy) se font AVANT le restart de l'agent (étape 4), sinon elles tapent
+    ***REMOVED***    l'agent pendant son redémarrage → Connection refused.
     domain_default = int(_st.get("ptp_domain") or 127)
     data = {
         "enabled": enable_ptp, "ifname": mtl_iface,
@@ -380,13 +380,13 @@ def api_node_io2110(node_id):
         "delay_thresh": d.get("delay_thresh"), "utc_offset": d.get("utc_offset"),
     }
     ok, msg, code = _ptp_apply_core(node_id, data)
-    # 4) EN DERNIER : pousser mtl_iface dans la config agent + restart différé (l'agent devient
-    #    injoignable ~2 s — plus aucune op agent après ce point).
+    ***REMOVED*** 4) EN DERNIER : pousser mtl_iface dans la config agent + restart différé (l'agent devient
+    ***REMOVED***    injoignable ~2 s — plus aucune op agent après ce point).
     _push_agent_mtl_iface(node, mtl_iface)
-    # Deux conditions indépendantes, chacune avec un VERDICT (OK/échec) : ni l'une ni l'autre ne
-    # peut voyager en paramètre (piège n°3) → une clé complète par combinaison (3 états PTP ×
-    # 3 états média = 9). `_mmsg` (diagnostic dynamique de `ensure_media_ip`) reste, lui, un
-    # paramètre — comme `{e}` ailleurs, ce n'est pas une phrase figée d'ici.
+    ***REMOVED*** Deux conditions indépendantes, chacune avec un VERDICT (OK/échec) : ni l'une ni l'autre ne
+    ***REMOVED*** peut voyager en paramètre (piège n°3) → une clé complète par combinaison (3 états PTP ×
+    ***REMOVED*** 3 états média = 9). `_mmsg` (diagnostic dynamique de `ensure_media_ip`) reste, lui, un
+    ***REMOVED*** paramètre — comme `{e}` ailleurs, ce n'est pas une phrase figée d'ici.
     _ptp_etat = ("ptpok" if (enable_ptp and ok) else "ptpko" if enable_ptp else "noptp")
     _media_etat = ("mediaok" if (media_ip and _mok) else "mediako" if media_ip else "nomedia")
     _cle_io = f"alert.net.io2110_carte_{_ptp_etat}_{_media_etat}"
@@ -399,10 +399,10 @@ def api_node_io2110(node_id):
     return jsonify(body), code
 
 
-# ─── Vue réseau par nœud : modèle « interface → rôle » (refonte réseau) ──────
-# mgmt_containers = rôle COMBINÉ « Management + Containers » : la carte porte à la fois l'IP de
-# contrôle du nœud et le parent macvlan des conteneurs (nœud sur un autre LAN que le cluster).
-# Tests de rôle : database.role_is_management / role_is_containers (jamais de littéral).
+***REMOVED*** ─── Vue réseau par nœud : modèle « interface → rôle » (refonte réseau) ──────
+***REMOVED*** mgmt_containers = rôle COMBINÉ « Management + Containers » : la carte porte à la fois l'IP de
+***REMOVED*** contrôle du nœud et le parent macvlan des conteneurs (nœud sur un autre LAN que le cluster).
+***REMOVED*** Tests de rôle : database.role_is_management / role_is_containers (jamais de littéral).
 NODE_IFACE_ROLES = ("management", "mgmt_containers", "containers", "media2110", "rdma", "bmc", "unused")
 
 def _engine_state(node_id):
@@ -426,7 +426,7 @@ def _engine_state(node_id):
         return {"present": bool(eng),
                 "vmid": eng.get("vmid") if eng else None,
                 "media_ports": len(media),
-                # Le seul cas qui appelle une action : des ports média, pas de moteur.
+                ***REMOVED*** Le seul cas qui appelle une action : des ports média, pas de moteur.
                 "manquant": bool(media) and not eng}
     except Exception as e:
         log.warning("état moteur 2110 (nœud %s) : %s", node_id, e)
@@ -471,24 +471,24 @@ def api_node_interfaces(node_id):
     cfg = {r["ifname"]: r for r in db_get_node_interfaces(node_id) if r.get("ifname")}
     from ..database import db_get_media_networks as _dgmn, db_media_network_in_use as _dmniu
     _all_nets = _dgmn()
-    for _n in _all_nets:                 # nb de NIC rattachées (tous nœuds) — colonne + garde ✕
+    for _n in _all_nets:                 ***REMOVED*** nb de NIC rattachées (tous nœuds) — colonne + garde ✕
         _n["in_use"] = _dmniu(_n["id"])
     _nets_by_id = {n["id"]: n for n in _all_nets}
     ok_live, live_err, nics = _fetch_host_nics(host) if host else (False, "hôte indéterminé", [])
     live = {n["name"]: n for n in nics if n.get("name")}
-    # Cartes bindées vfio-pci (moteur DPDK) : pas de netdev → keyées sur le BDF. Servent à retrouver
-    # une media2110 qui a « disparu » de /sys/class/net parce qu'elle est passée en vfio-pci.
+    ***REMOVED*** Cartes bindées vfio-pci (moteur DPDK) : pas de netdev → keyées sur le BDF. Servent à retrouver
+    ***REMOVED*** une media2110 qui a « disparu » de /sys/class/net parce qu'elle est passée en vfio-pci.
     vfio_by_bdf = {n["pci"]: n for n in nics if n.get("vfio_bound") and n.get("pci")}
-    # Lock PTP (par-hôte aujourd'hui ; étiquette les media2110). cached_status = lecture cache, pas de SSH.
+    ***REMOVED*** Lock PTP (par-hôte aujourd'hui ; étiquette les media2110). cached_status = lecture cache, pas de SSH.
     try:
         ptp_st = ptp.cached_status(node_id) or {}
     except Exception:
         ptp_st = {}
-    # Synchro au GM (ptp.clock_ok) — `locked` seul est le critère de l'ère AF_XDP et étiquetait
-    # « non verrouillé » les media2110 d'un nœud DPDK parfaitement synchronisé.
+    ***REMOVED*** Synchro au GM (ptp.clock_ok) — `locked` seul est le critère de l'ère AF_XDP et étiquetait
+    ***REMOVED*** « non verrouillé » les media2110 d'un nœud DPDK parfaitement synchronisé.
     ptp_locked = ptp.clock_ok(ptp_st)
-    _ptp_port_states = ptp_st.get("port_states") or {}    # {ifname -> SLAVE|PASSIVE|LISTENING|…}
-    # État des ports IB relevé par le sampler RDMA (cache, pas de SSH) → {ifname: device}.
+    _ptp_port_states = ptp_st.get("port_states") or {}    ***REMOVED*** {ifname -> SLAVE|PASSIVE|LISTENING|…}
+    ***REMOVED*** État des ports IB relevé par le sampler RDMA (cache, pas de SSH) → {ifname: device}.
     try:
         from services import rdma as _rdma_svc
         _rdma_ports = {d.get("net"): d for d in (_rdma_svc.stats_for_node(node_id).get("devices") or [])
@@ -496,18 +496,18 @@ def api_node_interfaces(node_id):
     except Exception:
         _rdma_ports = {}
 
-    # Union des interfaces connues (config ∪ live). Le BMC est out-of-band → ligne config sans live.
+    ***REMOVED*** Union des interfaces connues (config ∪ live). Le BMC est out-of-band → ligne config sans live.
     names = list(dict.fromkeys(list(cfg.keys()) + [n["name"] for n in nics if n.get("name")]))
-    # Plafond de files AF-XDP par port (E810). Budget live du moteur si dispo, sinon réglage
-    # `mtl_xdp_total_queues` (défaut 48). Sert à borner les champs « files à réserver » des media2110.
+    ***REMOVED*** Plafond de files AF-XDP par port (E810). Budget live du moteur si dispo, sinon réglage
+    ***REMOVED*** `mtl_xdp_total_queues` (défaut 48). Sert à borner les champs « files à réserver » des media2110.
     _xdp_hw = _mtl_total_queues()
     out = []
     for name in names:
         c = cfg.get(name) or {}
         lv = live.get(name) or {}
         role = c.get("role") or "unused"
-        # Carte media2110 « disparue » de /sys/class/net car bindée vfio-pci : on la retrouve par son
-        # BDF persisté (`pci`, figé tant qu'elle était sur ice). Le moteur DPDK la pilote → PRÉSENTE.
+        ***REMOVED*** Carte media2110 « disparue » de /sys/class/net car bindée vfio-pci : on la retrouve par son
+        ***REMOVED*** BDF persisté (`pci`, figé tant qu'elle était sur ice). Le moteur DPDK la pilote → PRÉSENTE.
         _vf = vfio_by_bdf.get(c.get("pci")) if (role == "media2110" and c.get("pci")) else None
         ip_cidr = c.get("ip_cidr")
         if not ip_cidr and lv.get("ipv4"):
@@ -527,26 +527,26 @@ def api_node_interfaces(node_id):
             "ptp_domain":  c.get("ptp_domain"),
             "media_network_id":   c.get("media_network_id"),
             "media_network_name": (_nets_by_id.get(c.get("media_network_id")) or {}).get("name"),
-            # Réserve de files 2110 par interface (capacité « à chaud » choisie ; NULL = auto) + plafond
-            # de files du port (E810). N'a de sens que sur les media2110.
+            ***REMOVED*** Réserve de files 2110 par interface (capacité « à chaud » choisie ; NULL = auto) + plafond
+            ***REMOVED*** de files du port (E810). N'a de sens que sur les media2110.
             "rx_reserve":   c.get("rx_reserve"),
             "tx_reserve":   c.get("tx_reserve"),
             "queue_margin": c.get("queue_margin"),
-            # Profil d'émetteur ST 2110-21 (chantier narrow) + alias opérateur (schéma partagé,
-            # commit 7975640). N'ont de sens que sur les media2110 (profil) ; alias affiché partout.
+            ***REMOVED*** Profil d'émetteur ST 2110-21 (chantier narrow) + alias opérateur (schéma partagé,
+            ***REMOVED*** commit 7975640). N'ont de sens que sur les media2110 (profil) ; alias affiché partout.
             "output_profile": c.get("output_profile") if role == "media2110" else None,
-            # Mode PMD (af_xdp | dpdk) : détermine si le rate limiter matériel (narrow) EXISTE sur ce
-            # port — donc si le profil d'émission ci-dessus est actif ou inerte (cf. docs/reference/TX_LAYOUTS.md).
+            ***REMOVED*** Mode PMD (af_xdp | dpdk) : détermine si le rate limiter matériel (narrow) EXISTE sur ce
+            ***REMOVED*** port — donc si le profil d'émission ci-dessus est actif ou inerte (cf. docs/reference/TX_LAYOUTS.md).
             "pmd":            (c.get("pmd") or "af_xdp") if role == "media2110" else None,
             "alias":          c.get("alias"),
-            # Plage IP conteneurs PAR NŒUD (cartes containers/mgmt_containers uniquement).
+            ***REMOVED*** Plage IP conteneurs PAR NŒUD (cartes containers/mgmt_containers uniquement).
             "ct_ip_start":  c.get("ct_ip_start"),
             "ct_ip_end":    c.get("ct_ip_end"),
             "xdp_hw":       _xdp_hw if role == "media2110" else None,
             "mtu":         lv.get("mtu") or c.get("mtu"),
             "configured":  name in cfg,
-            # DPDK (vfio-pci) : la carte n'a plus de netdev kernel — c'est NORMAL, le moteur la
-            # pilote. On la marque présente (link « up » logique) au lieu de down/absente.
+            ***REMOVED*** DPDK (vfio-pci) : la carte n'a plus de netdev kernel — c'est NORMAL, le moteur la
+            ***REMOVED*** pilote. On la marque présente (link « up » logique) au lieu de down/absente.
             "dpdk_bound":  bool(_vf),
             "link_up":     True if _vf else lv.get("link"),
             "operstate":   "dpdk" if _vf else lv.get("operstate"),
@@ -556,16 +556,16 @@ def api_node_interfaces(node_id):
             "is_vf":       lv.get("is_vf"),
             "ptp_locked":  ptp_locked if role == "media2110" else None,
             "ptp_port_state": _ptp_port_states.get(name) if role == "media2110" else None,
-            # Capacités matérielles (sonde /sys) : groupement par carte + badges 2110/RDMA/débit.
+            ***REMOVED*** Capacités matérielles (sonde /sys) : groupement par carte + badges 2110/RDMA/débit.
             "card_id":     lv.get("card_id") or (_vf and _vf.get("card_id")),
             "driver":      lv.get("driver") or (_vf and "vfio-pci"),
             "speed_mbps":  lv.get("speed_mbps"),
             "max_speed_mbps": lv.get("max_speed_mbps"),
             "rdma":        bool(lv.get("rdma")),
             "rdma_kind":   lv.get("rdma_kind"),
-            # État RDMA RÉEL du port, seulement là où il est promis (rôle rdma) : device verbs
-            # présent ? module IB attendu/chargé ? état du port IB (sampler). Sans ça, la ligne
-            # n'affichait que la porteuse Ethernet — un point vert sur une carte incapable de RoCE.
+            ***REMOVED*** État RDMA RÉEL du port, seulement là où il est promis (rôle rdma) : device verbs
+            ***REMOVED*** présent ? module IB attendu/chargé ? état du port IB (sampler). Sans ça, la ligne
+            ***REMOVED*** n'affichait que la porteuse Ethernet — un point vert sur une carte incapable de RoCE.
             "rdma_state":  ({
                 "verbs":            bool(lv.get("rdma")),
                 "module":           lv.get("rdma_module"),
@@ -579,9 +579,9 @@ def api_node_interfaces(node_id):
             "nic_2110":    bool(lv.get("nic_2110") or (_vf and _vf.get("nic_2110"))),
             "port_medium": lv.get("port_medium"),
         })
-    # Persistance opportuniste : le probe vient de résoudre modèle (lspci) + vitesse (ethtool) de
-    # chaque carte. On les fige dans node_interfaces pour les interfaces DÉJÀ configurées → la page
-    # Sources/Destinations 2110 lira le modèle exact + l'agrégat sans SSH (cf. _compute_receivers_detail).
+    ***REMOVED*** Persistance opportuniste : le probe vient de résoudre modèle (lspci) + vitesse (ethtool) de
+    ***REMOVED*** chaque carte. On les fige dans node_interfaces pour les interfaces DÉJÀ configurées → la page
+    ***REMOVED*** Sources/Destinations 2110 lira le modèle exact + l'agrégat sans SSH (cf. _compute_receivers_detail).
     if ok_live:
         for name in cfg:
             lv = live.get(name) or {}
@@ -592,26 +592,26 @@ def api_node_interfaces(node_id):
                 _upd["model"] = _m
             if _sp and _sp != _row.get("speed_mbps"):
                 _upd["speed_mbps"] = int(_sp)
-            # Fige le BDF tant que la carte est sur ice → on la retrouvera quand elle passera en
-            # vfio-pci (plus de netdev), keyée sur l'ifname qu'elle avait (cf. vfio_by_bdf ci-dessus).
+            ***REMOVED*** Fige le BDF tant que la carte est sur ice → on la retrouvera quand elle passera en
+            ***REMOVED*** vfio-pci (plus de netdev), keyée sur l'ifname qu'elle avait (cf. vfio_by_bdf ci-dessus).
             if _pci and _pci != _row.get("pci"):
                 _upd["pci"] = _pci
             if _upd:
                 db_upsert_node_interface(node_id, name, **_upd)
     bmc_tile = bmc.status(node) if (node.get("ilo_host") or "").strip() else None
-    # « Réseaux 2110 » : liste GLOBALE (dropdown) + groupes du nœud (un par réseau) avec statut
-    # live par réseau (agrégat caché, keyé network_id) + réseau primaire du nœud. Alimente le
-    # panneau « Réseaux 2110 ».
+    ***REMOVED*** « Réseaux 2110 » : liste GLOBALE (dropdown) + groupes du nœud (un par réseau) avec statut
+    ***REMOVED*** live par réseau (agrégat caché, keyé network_id) + réseau primaire du nœud. Alimente le
+    ***REMOVED*** panneau « Réseaux 2110 ».
     from .. import settings as _st
     _net_st = {d.get("network_id"): d for d in (ptp_st.get("domains") or [])}
-    # Surcharges PTP par réseau : exposer ptp_params parsé (dict) pour la modale d'édition.
+    ***REMOVED*** Surcharges PTP par réseau : exposer ptp_params parsé (dict) pour la modale d'édition.
     for _n in _all_nets:
         try:
             _n["ptp_params"] = json.loads(_n["ptp_params"]) if _n.get("ptp_params") else {}
         except Exception:
             _n["ptp_params"] = {}
-    # Valeurs par défaut SMPTE 2059-2 d'un réseau (valeurs initiales du formulaire). Un réseau
-    # définit son propre profil — il n'hérite PAS du nœud.
+    ***REMOVED*** Valeurs par défaut SMPTE 2059-2 d'un réseau (valeurs initiales du formulaire). Un réseau
+    ***REMOVED*** définit son propre profil — il n'hérite PAS du nœud.
     ptp_defaults = dict(ptp.SMPTE_DEFAULTS)
     ptp_block = {
         "primary_network": _st.setting_for("ptp_primary_network", node_id),
@@ -627,11 +627,11 @@ def api_node_interfaces(node_id):
     return jsonify({
         "ok": True, "node_id": node_id, "name": node.get("name"), "host": host,
         "live_ok": ok_live, "live_error": live_err,
-        # Rôles ASSIGNABLES depuis la liste : on retire 'bmc' — un BMC dédié n'est pas un netdev
-        # de l'OS (donc absent de la liste) et est déjà représenté par la tuile Redfish. Le rôle
-        # reste accepté côté POST (cas LOM partagé NC-SI via API) et rendu s'il existe déjà.
+        ***REMOVED*** Rôles ASSIGNABLES depuis la liste : on retire 'bmc' — un BMC dédié n'est pas un netdev
+        ***REMOVED*** de l'OS (donc absent de la liste) et est déjà représenté par la tuile Redfish. Le rôle
+        ***REMOVED*** reste accepté côté POST (cas LOM partagé NC-SI via API) et rendu s'il existe déjà.
         "roles": [r for r in NODE_IFACE_ROLES if r != "bmc"],
-        # Plage cluster (affichage de l'option « Plage du cluster » du bloc plage conteneurs).
+        ***REMOVED*** Plage cluster (affichage de l'option « Plage du cluster » du bloc plage conteneurs).
         "cluster_ip_range": {"start": (_st.get("ip_start") or "").strip(),
                              "end": (_st.get("ip_end") or "").strip()},
         "interfaces": out,
@@ -654,9 +654,9 @@ def api_node_interface_set(node_id, ifname):
     if not ifname:
         return jsonify({"error": "interface requise"}), 400
     d = request.json or {}
-    # Rôle courant (AVANT modif) : sert à ne déclencher l'auto-provisionnement QUE pour un changement
-    # touchant un port média 2110 (revue m2 — sinon chaque édition d'interface anodine, management/rdma,
-    # spawn un thread ensure_node_engine → verify_image inutile + aggrave la fenêtre TOCTOU M1).
+    ***REMOVED*** Rôle courant (AVANT modif) : sert à ne déclencher l'auto-provisionnement QUE pour un changement
+    ***REMOVED*** touchant un port média 2110 (revue m2 — sinon chaque édition d'interface anodine, management/rdma,
+    ***REMOVED*** spawn un thread ensure_node_engine → verify_image inutile + aggrave la fenêtre TOCTOU M1).
     from ..database import db_get_node_interfaces as _dgni
     _old_role = next((r.get("role") for r in _dgni(node_id) if r.get("ifname") == ifname), None)
 
@@ -668,27 +668,27 @@ def api_node_interface_set(node_id, ifname):
 
     if d.get("delete"):
         db_delete_node_interface(node_id, ifname)
-        # Même raison qu'au changement de rôle : ne pas laisser derrière soi une stanza qui
-        # ferait échouer `ifup -a` si la carte est un jour bindée à vfio-pci.
+        ***REMOVED*** Même raison qu'au changement de rôle : ne pas laisser derrière soi une stanza qui
+        ***REMOVED*** ferait échouer `ifup -a` si la carte est un jour bindée à vfio-pci.
         if _old_role == "rdma":
             try:
                 from .. import docker_driver as _dd
                 _dd.oublier_iface_persistante(node, ifname)
             except Exception:
                 pass
-        # Le port retiré peut être le DERNIER média 2110 → reconcile (arrête le moteur s'il ne reste
-        # plus aucun port média). Idempotent, en thread. Uniquement si le port supprimé ÉTAIT média.
+        ***REMOVED*** Le port retiré peut être le DERNIER média 2110 → reconcile (arrête le moteur s'il ne reste
+        ***REMOVED*** plus aucun port média). Idempotent, en thread. Uniquement si le port supprimé ÉTAIT média.
         _reprovision_if_media(None)
         return jsonify({"ok": True, "deleted": ifname})
 
     role = (d.get("role") or "").strip() or None
     if role and role not in NODE_IFACE_ROLES:
         return jsonify({"error": "rôle invalide : %s" % role}), 400
-    # ★ Activer le rôle rdma = PRÉPARER la carte, puis vérifier. On charge le module IB qui va avec
-    # son driver (mlx5_ib, bnxt_re, irdma…) et on le grave pour le prochain boot ; s'il n'en sort
-    # AUCUN device verbs, la carte ne fera jamais de RoCE et on refuse (409) avec la raison plutôt
-    # que d'enregistrer un rôle inerte — le point vert de la ligne se lisait « tout va bien ».
-    # `force` = passer outre en connaissance de cause (l'UI le propose après avoir montré la raison).
+    ***REMOVED*** ★ Activer le rôle rdma = PRÉPARER la carte, puis vérifier. On charge le module IB qui va avec
+    ***REMOVED*** son driver (mlx5_ib, bnxt_re, irdma…) et on le grave pour le prochain boot ; s'il n'en sort
+    ***REMOVED*** AUCUN device verbs, la carte ne fera jamais de RoCE et on refuse (409) avec la raison plutôt
+    ***REMOVED*** que d'enregistrer un rôle inerte — le point vert de la ligne se lisait « tout va bien ».
+    ***REMOVED*** `force` = passer outre en connaissance de cause (l'UI le propose après avoir montré la raison).
     rdma_msg = ""
     if role == "rdma" and _old_role != "rdma":
         try:
@@ -713,13 +713,13 @@ def api_node_interface_set(node_id, ifname):
         return jsonify({"error": "pair_role doit être 'red' ou 'blue'"}), 400
     pg = d.get("pair_group")
     pair_group = int(pg) if (pg is not None and str(pg) != "") else None
-    # ★ TOUT OU RIEN. Le groupe n'existe QUE pour apparier un leg red à un leg blue : l'un sans
-    # l'autre ne veut rien dire, et ce demi-état était librement enregistrable. Vécu sur dl360-1 :
-    # deux ports en `pair_group=1` sans aucun rôle — inerte pour `media_port_pairs` (qui exige les
-    # deux), mais pas partout : `mtl._vfio_precheck` teste `pair_group` SEUL et annonçait une
-    # « paire 2022-7 incohérente » à propos d'une paire inexistante. Et surtout c'est un piège armé :
-    # compléter le rôle manquant transforme d'un coup deux capacités en une seule (une paire porte le
-    # MÊME flux sur ses deux legs), ce qui divise par deux la capacité déclarable du nœud.
+    ***REMOVED*** ★ TOUT OU RIEN. Le groupe n'existe QUE pour apparier un leg red à un leg blue : l'un sans
+    ***REMOVED*** l'autre ne veut rien dire, et ce demi-état était librement enregistrable. Vécu sur dl360-1 :
+    ***REMOVED*** deux ports en `pair_group=1` sans aucun rôle — inerte pour `media_port_pairs` (qui exige les
+    ***REMOVED*** deux), mais pas partout : `mtl._vfio_precheck` teste `pair_group` SEUL et annonçait une
+    ***REMOVED*** « paire 2022-7 incohérente » à propos d'une paire inexistante. Et surtout c'est un piège armé :
+    ***REMOVED*** compléter le rôle manquant transforme d'un coup deux capacités en une seule (une paire porte le
+    ***REMOVED*** MÊME flux sur ses deux legs), ce qui divise par deux la capacité déclarable du nœud.
     if (pair_group is None) != (pair_role is None):
         return jsonify({"error":
             "Redondance 2022-7 : le groupe et le leg vont ENSEMBLE. "
@@ -727,8 +727,8 @@ def api_node_interface_set(node_id, ifname):
                if pair_role is None else
                "Un leg est renseigné sans groupe : un leg seul n'a pas de partenaire.")
             + " Renseigner les deux, ou vider les deux (pas de 2022-7)."}), 400
-    # Réseau 2110 de la NIC (id de media_networks). Le domaine PTP en est DÉRIVÉ (pont de compat
-    # ptp_domain). Vide → la NIC n'est rattachée à aucun réseau.
+    ***REMOVED*** Réseau 2110 de la NIC (id de media_networks). Le domaine PTP en est DÉRIVÉ (pont de compat
+    ***REMOVED*** ptp_domain). Vide → la NIC n'est rattachée à aucun réseau.
     from ..database import db_get_media_networks
     mn = d.get("media_network_id")
     media_network_id = None
@@ -745,15 +745,15 @@ def api_node_interface_set(node_id, ifname):
 
     gateway = (d.get("gateway") or "").strip() or None
     vlan    = (d.get("vlan") or "").strip() or None
-    # Réserve de files 2110 par interface (capacité « à chaud » choisie par l'opérateur). Présent vide
-    # → NULL (auto). Entier ≥ 0. Bornée au budget de files du port — la file 0 est réservée au
-    # kernel/PTP (steering RSS) → max = xdp_hw - 1.
+    ***REMOVED*** Réserve de files 2110 par interface (capacité « à chaud » choisie par l'opérateur). Présent vide
+    ***REMOVED*** → NULL (auto). Entier ≥ 0. Bornée au budget de files du port — la file 0 est réservée au
+    ***REMOVED*** kernel/PTP (steering RSS) → max = xdp_hw - 1.
     def _opt_q(key):
         if key not in d:
-            return (False, None)              # absent → ne pas toucher
+            return (False, None)              ***REMOVED*** absent → ne pas toucher
         s = str(d.get(key) if d.get(key) is not None else "").strip()
         if s == "":
-            return (True, None)               # présent vide → vidage (NULL = auto)
+            return (True, None)               ***REMOVED*** présent vide → vidage (NULL = auto)
         if not s.isdigit():
             raise ValueError(key)
         return (True, int(s))
@@ -763,32 +763,32 @@ def api_node_interface_set(node_id, ifname):
         mg_present, queue_margin = _opt_q("queue_margin")
     except ValueError:
         return jsonify({"error": "réserve de files invalide (entier ≥ 0 attendu)"}), 400
-    # Profil d'émetteur ST 2110-21 (chantier narrow) : classe de sender par interface média.
-    # ''/absent → auto (NULL). Hors média 2110 → forcé NULL (le pacing ne concerne que la TX 2110).
+    ***REMOVED*** Profil d'émetteur ST 2110-21 (chantier narrow) : classe de sender par interface média.
+    ***REMOVED*** ''/absent → auto (NULL). Hors média 2110 → forcé NULL (le pacing ne concerne que la TX 2110).
     output_profile = (str(d.get("output_profile") or "")).strip().lower() or None
     if output_profile and output_profile not in ("narrow", "narrow_linear", "wide"):
         return jsonify({"error": "profil d'émission invalide (narrow | narrow_linear | wide)"}), 400
     if role != "media2110":
         output_profile = None
-    # Mode PMD du port média : 'af_xdp' (défaut : pacing logiciel TSC — aucun rate limiter, donc
-    # aucune action TX n'est perturbatrice) ou 'dpdk' (PF pleine DPDK = socle narrow, rate limiter
-    # matériel). C'est CE champ qui rend `output_profile` effectif : sans lui, le sélecteur de profil
-    # d'émission était un contrôle MUET (déclaré, sans effet, sans l'expliquer — cf. docs/reference/TX_LAYOUTS.md
-    # étage 2). Pris en compte au prochain (re)déploiement du moteur 2110_io. 'sriov' reste posable
-    # en base (chantier historique) mais n'est pas proposé à l'UI.
+    ***REMOVED*** Mode PMD du port média : 'af_xdp' (défaut : pacing logiciel TSC — aucun rate limiter, donc
+    ***REMOVED*** aucune action TX n'est perturbatrice) ou 'dpdk' (PF pleine DPDK = socle narrow, rate limiter
+    ***REMOVED*** matériel). C'est CE champ qui rend `output_profile` effectif : sans lui, le sélecteur de profil
+    ***REMOVED*** d'émission était un contrôle MUET (déclaré, sans effet, sans l'expliquer — cf. docs/reference/TX_LAYOUTS.md
+    ***REMOVED*** étage 2). Pris en compte au prochain (re)déploiement du moteur 2110_io. 'sriov' reste posable
+    ***REMOVED*** en base (chantier historique) mais n'est pas proposé à l'UI.
     pmd = (str(d.get("pmd") or "")).strip().lower() or None
     if pmd and pmd not in ("af_xdp", "dpdk", "sriov"):
         return jsonify({"error": "mode PMD invalide (af_xdp | dpdk)"}), 400
     if role != "media2110":
         pmd = None
-    # ★ Cohérence MODE ↔ HORLOGE, refusée ICI (à l'enregistrement) et plus seulement au déploiement
-    # (mtl.py:_vfio_gardefous). `ptp_enabled` = « ptp4l tourne sur CETTE interface » — en DPDK la PF
-    # passe en vfio-pci : plus de netdev noyau, donc plus de PHC → ptp4l ne PEUT pas y tourner. Le PTP
-    # ne disparaît pas pour autant : en DPDK l'horloge est portée par le moteur 2110 (libmtl, client
-    # PTP interne — c'est aussi le GM des ts-refclk SDP). Sans ce garde-fou, la combinaison était
-    # acceptée puis échouait bien plus tard, au (re)déploiement du moteur.
-    # État EFFECTIF après enregistrement : champ du payload s'il est présent, sinon valeur en base
-    # (un POST partiel ne doit pas pouvoir contourner le garde-fou).
+    ***REMOVED*** ★ Cohérence MODE ↔ HORLOGE, refusée ICI (à l'enregistrement) et plus seulement au déploiement
+    ***REMOVED*** (mtl.py:_vfio_gardefous). `ptp_enabled` = « ptp4l tourne sur CETTE interface » — en DPDK la PF
+    ***REMOVED*** passe en vfio-pci : plus de netdev noyau, donc plus de PHC → ptp4l ne PEUT pas y tourner. Le PTP
+    ***REMOVED*** ne disparaît pas pour autant : en DPDK l'horloge est portée par le moteur 2110 (libmtl, client
+    ***REMOVED*** PTP interne — c'est aussi le GM des ts-refclk SDP). Sans ce garde-fou, la combinaison était
+    ***REMOVED*** acceptée puis échouait bien plus tard, au (re)déploiement du moteur.
+    ***REMOVED*** État EFFECTIF après enregistrement : champ du payload s'il est présent, sinon valeur en base
+    ***REMOVED*** (un POST partiel ne doit pas pouvoir contourner le garde-fou).
     _row = next((r for r in _dgni(node_id) if r.get("ifname") == ifname), {}) or {}
     _pmd_eff = pmd if "pmd" in d else (_row.get("pmd") or None)
     _ptp_eff = bool(d["ptp_enabled"]) if "ptp_enabled" in d else bool(_row.get("ptp_enabled"))
@@ -798,11 +798,11 @@ def api_node_interface_set(node_id, ifname):
                                  "— ptp4l ne peut pas y tourner. L'horloge PTP est alors portée par le "
                                  "moteur 2110 (libmtl). Retirer « ptp4l sur cette carte », ou rester "
                                  "en AF-XDP."}), 400
-    # Alias opérateur libre (« PGM-Rouge ») — sur toute interface, affiché à côté du nom.
+    ***REMOVED*** Alias opérateur libre (« PGM-Rouge ») — sur toute interface, affiché à côté du nom.
     alias = (str(d.get("alias") or "")).strip() or None
-    # Plage IP conteneurs PAR NŒUD : uniquement sur une carte containers/mgmt_containers. Les deux
-    # bornes vont ensemble ; validées dans le subnet de la carte (si ip_cidr posé), début ≤ fin, et
-    # sans chevaucher l'IP de contrôle de la carte, sa passerelle, ni l'IP `host` du nœud.
+    ***REMOVED*** Plage IP conteneurs PAR NŒUD : uniquement sur une carte containers/mgmt_containers. Les deux
+    ***REMOVED*** bornes vont ensemble ; validées dans le subnet de la carte (si ip_cidr posé), début ≤ fin, et
+    ***REMOVED*** sans chevaucher l'IP de contrôle de la carte, sa passerelle, ni l'IP `host` du nœud.
     from ..database import role_is_containers as _role_is_ct
     ct_start = (str(d.get("ct_ip_start") or "")).strip() or None
     ct_end   = (str(d.get("ct_ip_end") or "")).strip() or None
@@ -818,7 +818,7 @@ def api_node_interface_set(node_id, ifname):
             return jsonify({"error": "plage conteneurs invalide — deux IPv4 attendues"}), 400
         if int(_a) > int(_b):
             return jsonify({"error": "plage conteneurs invalide — l'IP de début doit être ≤ l'IP de fin"}), 400
-        _blockers = []                      # IP à ne pas englober : contrôle carte, passerelle, host nœud
+        _blockers = []                      ***REMOVED*** IP à ne pas englober : contrôle carte, passerelle, host nœud
         if ip_cidr:
             try:
                 _net = _ipa.ip_network(ip_cidr, strict=False)
@@ -842,13 +842,13 @@ def api_node_interface_set(node_id, ifname):
     if _sum_q > max(1, _xdp_hw - 1):
         return jsonify({"error": "réserve totale RX+TX+marge (%d) dépasse le budget de files du port "
                                  "(%d, file 0 réservée PTP/kernel)" % (_sum_q, _xdp_hw - 1)}), 400
-    # Vidage explicite : un champ PRÉSENT dans le payload mais vide → remis à NULL (sinon None =
-    # « ne pas toucher » et on ne pourrait jamais retirer p.ex. l'appariement red/blue ou le réseau).
+    ***REMOVED*** Vidage explicite : un champ PRÉSENT dans le payload mais vide → remis à NULL (sinon None =
+    ***REMOVED*** « ne pas toucher » et on ne pourrait jamais retirer p.ex. l'appariement red/blue ou le réseau).
     clear = [k for k, v in (("ip_cidr", ip_cidr or None), ("gateway", gateway), ("vlan", vlan),
                             ("pair_role", pair_role), ("pair_group", pair_group),
                             ("media_network_id", media_network_id))
              if k in d and v is None]
-    # Plage conteneurs : champ présent mais vide (ou rôle non containers) → retour plage cluster.
+    ***REMOVED*** Plage conteneurs : champ présent mais vide (ou rôle non containers) → retour plage cluster.
     for _ck, _cv in (("ct_ip_start", ct_start), ("ct_ip_end", ct_end)):
         if _ck in d and _cv is None:
             clear.append(_ck)
@@ -858,7 +858,7 @@ def api_node_interface_set(node_id, ifname):
         if _qp and _qv is None:
             clear.append(_qk)
     if "media_network_id" in d and media_network_id is None:
-        clear.append("ptp_domain")        # plus de réseau → plus de domaine dérivé
+        clear.append("ptp_domain")        ***REMOVED*** plus de réseau → plus de domaine dérivé
     db_upsert_node_interface(
         node_id, ifname, clear=clear,
         role=role, ip_cidr=ip_cidr or None,
@@ -869,21 +869,21 @@ def api_node_interface_set(node_id, ifname):
         mac=(d.get("mac") or "").strip() or None,
         pci=(d.get("pci") or "").strip() or None,
         notes=(d.get("notes") or "").strip() or None,
-        # Modèle (lspci) + vitesse de lien (ethtool) résolus par le probe du front → persistés pour
-        # l'affichage NIC de la page 2110 (modèle exact + agrégat = somme des vitesses), sans re-SSH.
+        ***REMOVED*** Modèle (lspci) + vitesse de lien (ethtool) résolus par le probe du front → persistés pour
+        ***REMOVED*** l'affichage NIC de la page 2110 (modèle exact + agrégat = somme des vitesses), sans re-SSH.
         model=(d.get("model") or "").strip() or None,
         speed_mbps=(int(d["speed_mbps"]) if str(d.get("speed_mbps") or "").isdigit() else None),
         rx_reserve=rx_reserve, tx_reserve=tx_reserve, queue_margin=queue_margin,
         ct_ip_start=ct_start, ct_ip_end=ct_end,
-        pmd=pmd,                       # (dans NODE_IFACE_FIELDS → écrit par l'upsert)
+        pmd=pmd,                       ***REMOVED*** (dans NODE_IFACE_FIELDS → écrit par l'upsert)
     )
 
-    # output_profile / alias : colonnes du schéma partagé (commit 7975640) HORS NODE_IFACE_FIELDS →
-    # db_upsert_node_interface ne les écrit pas. On les pose ici en SQL direct (database.py hors du
-    # périmètre de ce lot). ⚠ CONSOLIDATION recommandée : ajouter 'output_profile','alias' au tuple
-    # NODE_IFACE_FIELDS et router par l'upsert (signalé dans la revue #24). La ligne existe déjà
-    # (créée/mise à jour par l'upsert ci-dessus, role toujours fourni). N'écrit que les clés PRÉSENTES
-    # dans le payload (absente → « ne pas toucher »).
+    ***REMOVED*** output_profile / alias : colonnes du schéma partagé (commit 7975640) HORS NODE_IFACE_FIELDS →
+    ***REMOVED*** db_upsert_node_interface ne les écrit pas. On les pose ici en SQL direct (database.py hors du
+    ***REMOVED*** périmètre de ce lot). ⚠ CONSOLIDATION recommandée : ajouter 'output_profile','alias' au tuple
+    ***REMOVED*** NODE_IFACE_FIELDS et router par l'upsert (signalé dans la revue ***REMOVED***24). La ligne existe déjà
+    ***REMOVED*** (créée/mise à jour par l'upsert ci-dessus, role toujours fourni). N'écrit que les clés PRÉSENTES
+    ***REMOVED*** dans le payload (absente → « ne pas toucher »).
     _sets, _args = [], []
     if "output_profile" in d:
         _sets.append("output_profile=?"); _args.append(output_profile)
@@ -895,14 +895,14 @@ def api_node_interface_set(node_id, ifname):
                         _args + [node_id, ifname])
             _db.commit()
 
-    # Pont de compatibilité : la ligne media2110/red reste la source de mtl_iface/media_ip que lit le
-    # chemin de déploiement 2110_io (docker_driver.ensure_media_ip). On resynchronise après upsert.
+    ***REMOVED*** Pont de compatibilité : la ligne media2110/red reste la source de mtl_iface/media_ip que lit le
+    ***REMOVED*** chemin de déploiement 2110_io (docker_driver.ensure_media_ip). On resynchronise après upsert.
     media_msg = ""
     if role == "media2110" and (pair_role in (None, "red")):
         db_update_node(node_id, mtl_iface=ifname)
         if ip_cidr:
             db_update_node(node_id, media_ip=ip_cidr)
-            # Applique l'IP sur la carte (idempotent, via l'agent) si l'enrôlement est finalisé.
+            ***REMOVED*** Applique l'IP sur la carte (idempotent, via l'agent) si l'enrôlement est finalisé.
             if (node.get("agent_url") or "").strip():
                 try:
                     from .. import docker_driver as _dd
@@ -912,8 +912,8 @@ def api_node_interface_set(node_id, ifname):
                 except Exception as e:
                     media_msg = " — IP média ÉCHEC (%s)" % e
     elif role == "media2110" and ip_cidr and (node.get("agent_url") or "").strip():
-        # NIC média SECONDAIRE (multi-NIC) : pose son IPv4 immédiatement (le moteur multi-port la
-        # déclare comme port distinct ; sans IP+UP, sip=0.0.0.0 → TX/RX KO sur cette NIC).
+        ***REMOVED*** NIC média SECONDAIRE (multi-NIC) : pose son IPv4 immédiatement (le moteur multi-port la
+        ***REMOVED*** déclare comme port distinct ; sans IP+UP, sip=0.0.0.0 → TX/RX KO sur cette NIC).
         try:
             from .. import docker_driver as _dd
             _iok, _imsg = _dd.ensure_iface_ip(node, ifname, ip_cidr)
@@ -921,32 +921,32 @@ def api_node_interface_set(node_id, ifname):
         except Exception as e:
             media_msg = " — IP média ÉCHEC (%s)" % e
 
-    # Rôle RDMA : pose l'IP + monte l'interface sur l'hôte (mlx5/RoCE). Sans ça la NIC reste admin
-    # DOWN sans IP → port IB DOWN, aucun endpoint fabric joignable (cf. chantier RDMA). Idempotent.
+    ***REMOVED*** Rôle RDMA : pose l'IP + monte l'interface sur l'hôte (mlx5/RoCE). Sans ça la NIC reste admin
+    ***REMOVED*** DOWN sans IP → port IB DOWN, aucun endpoint fabric joignable (cf. chantier RDMA). Idempotent.
     elif role == "rdma" and ip_cidr and (node.get("agent_url") or "").strip():
         try:
             from .. import docker_driver as _dd
-            # persist=True : sans gravure, l'adresse et l'état UP disparaissent au reboot du nœud
-            # et le lien RDMA paraît débranché (une carte down ne détecte aucune porteuse).
+            ***REMOVED*** persist=True : sans gravure, l'adresse et l'état UP disparaissent au reboot du nœud
+            ***REMOVED*** et le lien RDMA paraît débranché (une carte down ne détecte aucune porteuse).
             _rok, _rmsg = _dd.ensure_iface_ip(node, ifname, ip_cidr, persist=True)
             media_msg = " — IP RDMA appliquée + interface montée" if _rok else (" — IP RDMA ÉCHEC (%s)" % _rmsg)
         except Exception as e:
             media_msg = " — IP RDMA ÉCHEC (%s)" % e
-        # lldpd : détection du voisin (direct vs switch) dans la Vue d'ensemble. Best-effort.
+        ***REMOVED*** lldpd : détection du voisin (direct vs switch) dans la Vue d'ensemble. Best-effort.
         try:
             from services import rdma as _rdma
             _rdma.ensure_lldpd(node)
         except Exception:
             pass
 
-    # Auto-provisionnement du moteur 2110_io UNIQUE du nœud : dès qu'un port média 2110 (avec IP) est
-    # configuré → garantir l'existence du moteur ; si un rôle média est retiré et qu'il ne reste plus
-    # aucun port média → arrêter le moteur. Idempotent (no-op si déjà cohérent), en thread (creer/deploy
-    # lourds) — l'IP média vient d'être posée juste au-dessus. Uniquement si le changement touche un
-    # port média (nouveau ou ancien rôle media2110, revue m2).
-    # L'interface QUITTE le rôle rdma : retirer sa configuration gravée. Une stanza orpheline
-    # n'est pas inerte — si la carte est plus tard bindée à vfio-pci pour DPDK, elle n'a plus de
-    # netdev kernel et `ifup -a` échoue au démarrage sur une interface introuvable.
+    ***REMOVED*** Auto-provisionnement du moteur 2110_io UNIQUE du nœud : dès qu'un port média 2110 (avec IP) est
+    ***REMOVED*** configuré → garantir l'existence du moteur ; si un rôle média est retiré et qu'il ne reste plus
+    ***REMOVED*** aucun port média → arrêter le moteur. Idempotent (no-op si déjà cohérent), en thread (creer/deploy
+    ***REMOVED*** lourds) — l'IP média vient d'être posée juste au-dessus. Uniquement si le changement touche un
+    ***REMOVED*** port média (nouveau ou ancien rôle media2110, revue m2).
+    ***REMOVED*** L'interface QUITTE le rôle rdma : retirer sa configuration gravée. Une stanza orpheline
+    ***REMOVED*** n'est pas inerte — si la carte est plus tard bindée à vfio-pci pour DPDK, elle n'a plus de
+    ***REMOVED*** netdev kernel et `ifup -a` échoue au démarrage sur une interface introuvable.
     if _old_role == "rdma" and role != "rdma":
         try:
             from .. import docker_driver as _dd
@@ -956,8 +956,41 @@ def api_node_interface_set(node_id, ifname):
 
     _reprovision_if_media(role)
 
+    ***REMOVED*** ★ ENREGISTRÉ ≠ APPLIQUÉ. Un moteur 2110 ne relit sa configuration réseau qu'au DÉPLOIEMENT :
+    ***REMOVED*** l'adressage et l'appariement red/blue posés ici ne prennent effet qu'après. Sans ce retour,
+    ***REMOVED*** l'opérateur voit « interface enregistrée », le croit à raison, et n'a aucun moyen de savoir
+    ***REMOVED*** que le moteur tourne encore sur l'ancienne — c'est exactement la question posée en
+    ***REMOVED*** exploitation le 2026-09-10. Et comme armer une paire demande DEUX éditions (le rouge puis le
+    ***REMOVED*** bleu), on ne redéploie pas à chaque enregistrement : on signale, et l'opérateur applique une
+    ***REMOVED*** fois qu'il a fini.
+    moteurs_a_redeployer = []
+    try:
+        import json as _json
+        from ..database import db_get_containers
+        from ..docker_driver import derive_config_moteur
+        for _c in db_get_containers():
+            if _c.get("node_id") != node_id:
+                continue
+            try:
+                if _json.loads(_c.get("deploy_config") or "{}").get("type") != "2110_io":
+                    continue
+            except Exception:
+                continue
+            if derive_config_moteur(_c["vmid"]):
+                moteurs_a_redeployer.append({"vmid": _c["vmid"],
+                                             "hostname": _c.get("hostname") or "***REMOVED***%s" % _c["vmid"]})
+    except Exception as _e:
+        log.debug("api_node_iface: détection du redéploiement requis échouée : %s", _e)
+
+    msg = "interface enregistrée" + media_msg + rdma_msg
+    if moteurs_a_redeployer:
+        _noms = ", ".join(m["hostname"] for m in moteurs_a_redeployer)
+        msg += (" — ⚠ enregistré mais PAS encore appliqué : le moteur 2110 (%s) tourne toujours "
+                "sur la configuration précédente. Terminez vos modifications d'interfaces, puis "
+                "redéployez-le une seule fois." % _noms)
     return jsonify({"ok": True, "ifname": ifname, "role": role,
-                    "msg": "interface enregistrée" + media_msg + rdma_msg})
+                    "moteurs_a_redeployer": moteurs_a_redeployer,
+                    "msg": msg})
 
 @bp.route("/api/nodes/<int:node_id>/ptp-primary-network", methods=["POST"])
 @require_perm("settings.edit")
@@ -969,7 +1002,7 @@ def api_node_ptp_primary_network(node_id):
     from ..database import db_set_node_setting
     v = (request.json or {}).get("network_id")
     if v is None or str(v).strip() == "":
-        db_set_node_setting(node_id, "ptp_primary_network", "")   # "" → repli auto côté pilote
+        db_set_node_setting(node_id, "ptp_primary_network", "")   ***REMOVED*** "" → repli auto côté pilote
         return jsonify({"ok": True, "primary_network": None})
     try:
         net_id = int(v)
@@ -979,9 +1012,9 @@ def api_node_ptp_primary_network(node_id):
     return jsonify({"ok": True, "primary_network": net_id})
 
 
-# ─── Réseau Docker macvlan (création sur l'hôte + report dans les nœuds) ───────
-# Réutilise le pool d'IP des réglages (ip_start/ip_end/gateway) pour dériver subnet/gateway/range.
-# Seul l'`parent` (interface L2 de l'hôte) n'est pas dérivable → saisi par l'utilisateur.
+***REMOVED*** ─── Réseau Docker macvlan (création sur l'hôte + report dans les nœuds) ───────
+***REMOVED*** Réutilise le pool d'IP des réglages (ip_start/ip_end/gateway) pour dériver subnet/gateway/range.
+***REMOVED*** Seul l'`parent` (interface L2 de l'hôte) n'est pas dérivable → saisi par l'utilisateur.
 def _parent_declare(node_id):
     """Alias de `node_driver.parent_declare` — l'interface qui, D'APRÈS LES RÔLES DÉCLARÉS, porte
     les conteneurs de ce nœud (`containers` ou `mgmt_containers`). "" si aucune.
@@ -1008,13 +1041,13 @@ def _macvlan_suggest(node_id=None):
     it = allocations._node_ct_iface(node_id) if node_id else None
     if it:
         start = it["ct_ip_start"].strip(); end = it["ct_ip_end"].strip()
-        gw = (it.get("gateway") or "").strip()   # vide → dérivée de la route par défaut du nœud (POST)
+        gw = (it.get("gateway") or "").strip()   ***REMOVED*** vide → dérivée de la route par défaut du nœud (POST)
         subnet = ""; iprange = ""
         try:
             a = _ip.IPv4Address(start); b = _ip.IPv4Address(end)
             if int(a) > int(b):
                 a, b = b, a
-            # Subnet : celui de la carte (ip_cidr) si posé — sinon /24 autour de la plage.
+            ***REMOVED*** Subnet : celui de la carte (ip_cidr) si posé — sinon /24 autour de la plage.
             ref = (it.get("ip_cidr") or "").strip() or (str(a) + "/24")
             subnet = str(_ip.ip_network(ref, strict=False))
             cidrs = list(_ip.summarize_address_range(a, b))
@@ -1036,7 +1069,7 @@ def _macvlan_suggest(node_id=None):
         subnet = str(_ip.ip_network(ref + "/24", strict=False))
         cidrs = list(_ip.summarize_address_range(a, b))
         if cidrs:
-            iprange = str(max(cidrs, key=lambda n: n.num_addresses))   # plus grand bloc du pool
+            iprange = str(max(cidrs, key=lambda n: n.num_addresses))   ***REMOVED*** plus grand bloc du pool
     except Exception:
         pass
     return {"name": "bobimacvlan", "subnet": subnet, "gateway": gw, "ip_range": iprange,
@@ -1076,7 +1109,7 @@ def _host_interfaces(host, gateway):
     seen = {}
     rc, out, _ = ssh_run(host, "ip -o link show 2>/dev/null", timeout=15)
     for line in (out or "").splitlines():
-        # "2: eth0: <...>" ou "5: eth0.10@eth0: <...>"
+        ***REMOVED*** "2: eth0: <...>" ou "5: eth0.10@eth0: <...>"
         try:
             name = line.split(":")[1].strip().split("@")[0]
         except Exception:
@@ -1141,7 +1174,7 @@ def _ensure_vlan_parent(host, parent):
         rc, out, err = ssh_run(host, create, timeout=20)
         if rc != 0:
             return False, "création %s échouée : %s" % (parent, (err or out)[:200])
-    # Persistance idempotente (ifupdown2). Tab d'indentation comme Proxmox.
+    ***REMOVED*** Persistance idempotente (ifupdown2). Tab d'indentation comme Proxmox.
     persist = (
         "grep -q 'iface %s ' /etc/network/interfaces || { "
         "cp -a /etc/network/interfaces /etc/network/interfaces.bak-bobistudio-$(date +%%s); "
@@ -1166,7 +1199,7 @@ def api_docker_network_create():
     iprange = (d.get("ip_range") or "").strip()
     if not (name and parent and subnet):
         return jsonify({"error": "nom, interface parent et subnet requis"}), 400
-    # Crée/persiste l'interface VLAN parent si nécessaire (macvlan sur VLAN taggé).
+    ***REMOVED*** Crée/persiste l'interface VLAN parent si nécessaire (macvlan sur VLAN taggé).
     ok, vmsg = _ensure_vlan_parent(host, parent)
     if not ok:
         return jsonify({"error": vmsg}), 500
@@ -1176,20 +1209,20 @@ def api_docker_network_create():
     if iprange:
         opts += "--ip-range %s " % _sh.quote(iprange)
     opts += "-o parent=%s " % _sh.quote(parent)
-    # Idempotent : ne (re)crée pas s'il existe déjà.
+    ***REMOVED*** Idempotent : ne (re)crée pas s'il existe déjà.
     remote = ("docker network inspect %s >/dev/null 2>&1 || "
               "docker network create -d macvlan %s%s") % (_sh.quote(name), opts, _sh.quote(name))
     rc, out = _ssh_bin(host, remote, timeout=60)
     if rc != 0:
         return jsonify({"error": out.decode("utf-8", "replace")[-500:]}), 500
-    # Report dans les nœuds dont le réseau Docker est vide.
+    ***REMOVED*** Report dans les nœuds dont le réseau Docker est vide.
     filled = 0
     for n in db_get_nodes():
         if not (n.get("docker_network") or "").strip():
             db_update_node(n["id"], docker_network=name)
             filled += 1
-    # `filled` (compte de nœuds) est une DONNÉE, pas une phrase : toujours en paramètre — la clé
-    # l'affiche systématiquement (léger reformulage : « 0 nœud(s) » remplace la clause absente).
+    ***REMOVED*** `filled` (compte de nœuds) est une DONNÉE, pas une phrase : toujours en paramètre — la clé
+    ***REMOVED*** l'affiche systématiquement (léger reformulage : « 0 nœud(s) » remplace la clause absente).
     db_add_alert("alert.net.macvlan_manuel_pret", "info", kind="net",
                  params={"name": name, "host": host, "parent": parent, "vmsg": vmsg,
                          "filled": filled})
@@ -1277,9 +1310,9 @@ def api_node_interface_module(node_id, ifname):
         return jsonify({"error": "interface requise"}), 400
     rc, out, err = ssh_run(host, "ethtool -m %s 2>&1" % _sh.quote(ifn), timeout=12)
     low = ((out or "") + " " + (err or "")).lower()
-    # Port en DPDK (vfio-pci) : plus de netdev kernel → `ethtool -m` échoue « no such device » (erreur
-    # netlink). On le DIT proprement au lieu de laisser fuir l'erreur brute : le module optique n'est
-    # pas interrogeable via ethtool dans ce mode (la carte est pilotée par le moteur en kernel-bypass).
+    ***REMOVED*** Port en DPDK (vfio-pci) : plus de netdev kernel → `ethtool -m` échoue « no such device » (erreur
+    ***REMOVED*** netlink). On le DIT proprement au lieu de laisser fuir l'erreur brute : le module optique n'est
+    ***REMOVED*** pas interrogeable via ethtool dans ce mode (la carte est pilotée par le moteur en kernel-bypass).
     if "no such device" in low or "no device matches" in low:
         from ..database import db_get_node_interfaces
         _dpdk = any((r.get("ifname") == ifn and (r.get("pmd") or "").strip().lower() == "dpdk")
@@ -1298,8 +1331,8 @@ def api_node_interface_module(node_id, ifname):
     return jsonify(mod)
 
 
-# ─── Préflight nœud : prérequis hôte pour le déploiement Docker ────────────────
-_SHM_MIN_GIB = 1.0   # seuil d'alerte pour /dev/shm (rings vidéo MXL)
+***REMOVED*** ─── Préflight nœud : prérequis hôte pour le déploiement Docker ────────────────
+_SHM_MIN_GIB = 1.0   ***REMOVED*** seuil d'alerte pour /dev/shm (rings vidéo MXL)
 
 def _node_preflight(host):
     """Checks exécutés sur l'HÔTE via ssh : moteur Docker, taille /dev/shm, accès Internet.
@@ -1310,7 +1343,7 @@ def _node_preflight(host):
         return [{"key": "host", "label": "Hôte", "status": "fail",
                  "msg": "hôte non configuré (Réglages → Proxmox)"}]
 
-    # 1) Moteur Docker (présent + daemon up).
+    ***REMOVED*** 1) Moteur Docker (présent + daemon up).
     rc, out, _ = ssh_run(host, "docker version --format '{{.Server.Version}}' 2>/dev/null", timeout=20)
     ver = (out or "").strip()
     if rc == 0 and ver:
@@ -1321,7 +1354,7 @@ def _node_preflight(host):
         msg = "binaire absent" if rc2 != 0 else "installé mais daemon arrêté/injoignable"
         checks.append({"key": "docker", "label": "Moteur Docker", "status": "fail", "msg": msg})
 
-    # 2) /dev/shm (pipeline MXL) : place dispo.
+    ***REMOVED*** 2) /dev/shm (pipeline MXL) : place dispo.
     rc, out, _ = ssh_run(host, "df -PB1 /dev/shm 2>/dev/null | awk 'NR==2{print $2, $4}'", timeout=15)
     try:
         total, avail = (int(x) for x in (out or "").split()[:2])
@@ -1334,7 +1367,7 @@ def _node_preflight(host):
         checks.append({"key": "shm", "label": "/dev/shm (pipeline MXL)", "status": "warn",
                        "msg": "taille indéterminée"})
 
-    # 3) Accès Internet sortant (apt + clone libmtl au build d'image).
+    ***REMOVED*** 3) Accès Internet sortant (apt + clone libmtl au build d'image).
     net_cmd = ("bash -c 'getent hosts deb.debian.org >/dev/null 2>&1 && "
                "timeout 5 bash -c \"exec 3<>/dev/tcp/deb.debian.org/443\" && echo NETOK'")
     rc, out, _ = ssh_run(host, net_cmd, timeout=15)
@@ -1345,7 +1378,7 @@ def _node_preflight(host):
         checks.append({"key": "internet", "label": "Accès Internet (hôte)", "status": "warn",
                        "msg": "DNS/HTTPS sortant non confirmé (requis pour builder les images)"})
 
-    # 4) Cohérence hôte de build/réseau (proxmox_host) vs hôtes des nœuds (côté orchestrateur).
+    ***REMOVED*** 4) Cohérence hôte de build/réseau (proxmox_host) vs hôtes des nœuds (côté orchestrateur).
     node_hosts = sorted({(n.get("host") or "").strip() for n in db_get_nodes() if n.get("host")})
     if node_hosts and host not in node_hosts:
         checks.append({"key": "host_match", "label": "Hôte build vs nœuds", "status": "warn",
@@ -1369,10 +1402,10 @@ def api_docker_install():
     host = _build_host()
     if not host:
         return jsonify({"ok": False, "msg": "hôte non configuré"}), 400
-    # Debian 13 (trixie) a scindé `docker.io` : le client `docker` est dans `docker-cli` (Recommends)
-    # et le builder `buildx` dans `docker-buildx` (non tiré non plus). Avec --no-install-recommends il
-    # faut les nommer explicitement, sinon le daemon tourne mais `docker` manque (preflight boucle) et
-    # `docker build` échoue (« buildx component is missing »).
+    ***REMOVED*** Debian 13 (trixie) a scindé `docker.io` : le client `docker` est dans `docker-cli` (Recommends)
+    ***REMOVED*** et le builder `buildx` dans `docker-buildx` (non tiré non plus). Avec --no-install-recommends il
+    ***REMOVED*** faut les nommer explicitement, sinon le daemon tourne mais `docker` manque (preflight boucle) et
+    ***REMOVED*** `docker build` échoue (« buildx component is missing »).
     cmd = ("export DEBIAN_FRONTEND=noninteractive; "
            "apt-get update && apt-get install -y --no-install-recommends docker.io docker-cli docker-buildx && "
            "systemctl enable --now docker")
@@ -1402,14 +1435,14 @@ def api_node_readiness(node_id):
         live = node_driver.capabilities(node) or {}
     except Exception:
         live = {}
-    # Auto-réparation : nœud enrôlé mais register raté (capacités DB vides) → ré-enregistrer + relire.
+    ***REMOVED*** Auto-réparation : nœud enrôlé mais register raté (capacités DB vides) → ré-enregistrer + relire.
     try:
         if not caps_list and node_driver.ensure_registered(node):
             node = db_get_node(node_id) or node
             caps_list = json.loads(node.get("capabilities") or "[]")
     except Exception:
         pass
-    # Repli : si la DB est encore vide, utiliser les capacités LIVE de l'agent (résilience d'affichage).
+    ***REMOVED*** Repli : si la DB est encore vide, utiliser les capacités LIVE de l'agent (résilience d'affichage).
     if not caps_list:
         caps_list = live.get("capabilities") or []
     nics = live.get("nics") or []
@@ -1422,18 +1455,18 @@ def api_node_readiness(node_id):
             "configured": bool((node.get("docker_network") or "").strip()),
             "name": node.get("docker_network") or "",
             "nics": nics,
-            # subnet/passerelle/plage = CLUSTER (lecture seule) ; VLAN = saisi PAR-NŒUD dans le form.
+            ***REMOVED*** subnet/passerelle/plage = CLUSTER (lecture seule) ; VLAN = saisi PAR-NŒUD dans le form.
             "cluster": sug,
-            # Joignabilité orchestrateur ↔ subnet conteneurs : IP directe (L2) OU route (L3).
+            ***REMOVED*** Joignabilité orchestrateur ↔ subnet conteneurs : IP directe (L2) OU route (L3).
             "controller_on_subnet": _controller_on_subnet(sug.get("subnet")),
             "controller_reach": _controller_reach(sug.get("subnet"), sug.get("gateway")),
             "allinone": (node.get("host") or "") in _controller_ipv4s(),
         },
     }
-    # La CAPACITÉ DÉCLARÉE fait foi, pas la présence d'une carte : `mtl_capable` est vrai dès qu'une
-    # E810 OU une ConnectX-4+ est détectée (mtl.py) — or une ConnectX peut n'être là que pour le RDMA
-    # (mxl-fabrics), pas le MTL. Gater l'UI 2110 sur la présence produisait un faux positif sur un nœud
-    # RDMA-only jamais déclaré io2110 (feedback utilisateur 2026-07-23).
+    ***REMOVED*** La CAPACITÉ DÉCLARÉE fait foi, pas la présence d'une carte : `mtl_capable` est vrai dès qu'une
+    ***REMOVED*** E810 OU une ConnectX-4+ est détectée (mtl.py) — or une ConnectX peut n'être là que pour le RDMA
+    ***REMOVED*** (mxl-fabrics), pas le MTL. Gater l'UI 2110 sur la présence produisait un faux positif sur un nœud
+    ***REMOVED*** RDMA-only jamais déclaré io2110 (feedback utilisateur 2026-07-23).
     if "io2110" in caps_list:
         mtl_iface = (node.get("mtl_iface") or "").strip()
         prep, e810 = {}, []
@@ -1443,14 +1476,14 @@ def api_node_readiness(node_id):
                 prep = {k: v.get(k) for k in ("iommu_cmdline", "iommu_active", "hugepages_total",
                         "hugepages_size_ok", "ice_present", "vfio_present", "rdma_unit",
                         "reboot_needed", "bootloader", "sriov", "cpufreq",
-                        # ⚠ toute clé ABSENTE de cette liste blanche est filtrée ici et devient
-                        # INVISIBLE côté UI (échec silencieux d'affichage).
+                        ***REMOVED*** ⚠ toute clé ABSENTE de cette liste blanche est filtrée ici et devient
+                        ***REMOVED*** INVISIBLE côté UI (échec silencieux d'affichage).
                         "isolation", "isolated_cpus")}
                 e810 = [n for n in (v.get("nics") or [])
                         if n.get("mtl_capable") or n.get("family") == "e810"]
         except Exception:
             pass
-        if not e810:                                          # repli : cartes pilotées par `ice`
+        if not e810:                                          ***REMOVED*** repli : cartes pilotées par `ice`
             e810 = [{"iface": n.get("name"), "model": n.get("driver") or "", "driver": n.get("driver"),
                      "mtl_capable": n.get("driver") == "ice"}
                     for n in nics if n.get("driver") == "ice"]
@@ -1467,7 +1500,7 @@ def api_node_readiness(node_id):
             ptp_enabled = False
         huge = live.get("hugepages") if isinstance(live.get("hugepages"), dict) else \
             {"total": prep.get("hugepages_total") or 0}
-        # IP du plan média 2110 : valeur configurée (DB) + IP réellement posée sur la carte (live).
+        ***REMOVED*** IP du plan média 2110 : valeur configurée (DB) + IP réellement posée sur la carte (live).
         media_ip_cfg = (node.get("media_ip") or "").strip()
         media_ip_live = ""
         if mtl_iface:
@@ -1488,7 +1521,7 @@ def api_node_readiness(node_id):
             "media_ip_ok": bool(media_ip_live),
             "cluster": {"ptp_domain": int(_st.get("ptp_domain") or 127)},
             "hugepages": huge, "mtl_prep": prep,
-            "mtl_build": _node_build_status(node_id, "mtl"),   # build en cours/ok/échec (suivi + reload)
+            "mtl_build": _node_build_status(node_id, "mtl"),   ***REMOVED*** build en cours/ok/échec (suivi + reload)
         }
     try:
         checks = _node_preflight(host)
@@ -1501,17 +1534,17 @@ def api_node_readiness(node_id):
         }
     except Exception:
         out["preflight"] = {}
-    # Présence des images : on inspecte DIRECTEMENT le tag ATTENDU sur le nœud (autoritatif).
-    # L'inventaire agent (`live.images`) est peu fiable ici : c'est une liste de {tag, present}
-    # (≠ liste de chaînes — l'ancien `str(t).startswith(...)` matchait donc TOUJOURS faux → image
-    # « toujours absente »), et l'agent ne suit qu'une liste de tags figée (souvent `:latest`),
-    # pas le tag réellement buildé. `_image_present` règle les deux : `docker image inspect <tag attendu>`.
+    ***REMOVED*** Présence des images : on inspecte DIRECTEMENT le tag ATTENDU sur le nœud (autoritatif).
+    ***REMOVED*** L'inventaire agent (`live.images`) est peu fiable ici : c'est une liste de {tag, present}
+    ***REMOVED*** (≠ liste de chaînes — l'ancien `str(t).startswith(...)` matchait donc TOUJOURS faux → image
+    ***REMOVED*** « toujours absente »), et l'agent ne suit qu'une liste de tags figée (souvent `:latest`),
+    ***REMOVED*** pas le tag réellement buildé. `_image_present` règle les deux : `docker image inspect <tag attendu>`.
     present_tags = _present_tags(live.get("images"))
     def _img_ok(which):
         tag = _image_tag(which)
-        if tag in present_tags:                       # l'agent confirme le tag exact
+        if tag in present_tags:                       ***REMOVED*** l'agent confirme le tag exact
             return True
-        return _image_present(host, tag)              # sinon, inspection autoritative du tag attendu
+        return _image_present(host, tag)              ***REMOVED*** sinon, inspection autoritative du tag attendu
     out["images"] = {
         "compute": _img_ok("compute") if "compute" in caps_list else False,
         "media":   _img_ok("media") if "media" in caps_list else False,
@@ -1529,8 +1562,8 @@ def api_node_docker_install(node_id):
     if not node:
         return jsonify({"ok": False, "error": "nœud introuvable"}), 404
     host = _node_host(node_id) or node.get("host")
-    # Debian 13 : client `docker` dans `docker-cli`, builder dans `docker-buildx` (cf. api_docker_install).
-    # Les nommer explicitement, sinon --no-install-recommends laisse le nœud sans `docker` ni `docker build`.
+    ***REMOVED*** Debian 13 : client `docker` dans `docker-cli`, builder dans `docker-buildx` (cf. api_docker_install).
+    ***REMOVED*** Les nommer explicitement, sinon --no-install-recommends laisse le nœud sans `docker` ni `docker build`.
     cmd = ("export DEBIAN_FRONTEND=noninteractive; "
            "apt-get update && apt-get install -y --no-install-recommends docker.io docker-cli docker-buildx && "
            "systemctl enable --now docker")
@@ -1540,9 +1573,9 @@ def api_node_docker_install(node_id):
                  "info" if ok else "error", node_id=node_id, kind="prep", params={"n": node.get("name")})
     return jsonify({"ok": ok, "msg": (out or err or "").strip()[-300:]})
 
-# ─── Prérequis stockage externe (cifs-utils / nfs-common) — LOCAL à l'orchestrateur ──
-# Le montage des partages externes (Gestionnaire de Médias) se fait DANS le process orchestrateur
-# (mount local), donc ces outils doivent être présents ICI (pas sur proxmox_host).
+***REMOVED*** ─── Prérequis stockage externe (cifs-utils / nfs-common) — LOCAL à l'orchestrateur ──
+***REMOVED*** Le montage des partages externes (Gestionnaire de Médias) se fait DANS le process orchestrateur
+***REMOVED*** (mount local), donc ces outils doivent être présents ICI (pas sur proxmox_host).
 @bp.route("/api/storage-prereq", methods=["GET"])
 @require_perm("settings.edit")
 def api_storage_prereq():

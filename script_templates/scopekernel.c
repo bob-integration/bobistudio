@@ -26,9 +26,9 @@
  * lève SIGILL, on s'en est fait piéger le 2026-08-22 en transportant une image Cascade Lake vers
  * un Broadwell.
  */
-#include <stdint.h>
-#include <stddef.h>
-#include <string.h>
+***REMOVED***include <stdint.h>
+***REMOVED***include <stddef.h>
+***REMOVED***include <string.h>
 
 /* ── Waveform : luminance en fonction de la position horizontale ────────────────────────────────
  * `colbin[c]` donne la colonne d'histogramme du pixel c — précalculé côté Python une fois pour

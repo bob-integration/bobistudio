@@ -1,9 +1,12 @@
 {
-  "version": "0.11.0",
-  "date": "2026-08-31",
-  "image_tag": "bobi-compute-gpu:0.11",
+  "version": "0.12.0",
+  "date": "2026-09-12",
+  "image_tag": "bobi-compute-gpu:0.12",
   "base_image": "bobi-compute:0.27",
   "changes": {
+    "rebâtie sur bobi-compute:0.46 — libmxl v1.1.0 (0.12.0)": [
+      "★ Couche fine : elle n'épingle pas libmxl elle-même, elle HÉRITE de sa base. Un bump de `bobi-compute` sans rebuild ici laisserait la variante GPU sur l'ancienne libmxl, sans que rien ne le signale — la route réécrit `ARG BASE_IMAGE=` vers le tag courant de compute au moment du build."
+    ],
     "Surface NMOS par conteneur (plan 2) (0.11.0)": [
       "★ L'agent embarqué sert désormais `/x-nmos/` : chaque conteneur expose SON Node NMOS, alimenté par un document que l'orchestrateur lui pousse (POST /nmos, écriture atomique).",
       "⚠ BUMP NÉCESSAIRE, pas cosmétique : un conteneur n'est recréé que si sa signature `docker run` change, image comprise. Reconstruire sans changer `image_tag` laissait le nouvel agent dans l'image et AUCUN conteneur ne l'adoptait jamais."

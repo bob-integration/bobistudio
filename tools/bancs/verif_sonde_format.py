@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+***REMOVED***!/usr/bin/env python3
 """Décode les BANDEAUX-SONDE d'une trame RÉELLE, à toutes les échelles de proxy.
 
 Le générateur (plugins/avsync) et la sonde (plugins/sonde_latence) sont deux scripts autonomes :
@@ -21,7 +21,7 @@ import numpy as np
 from PIL import Image
 
 FORMATS = (32, 24, 20)
-ZONE_X = (0.135, 0.985)          # zone des blocs, mode cartouche
+ZONE_X = (0.135, 0.985)          ***REMOVED*** zone des blocs, mode cartouche
 FRAC_BORDS = (0.10, 0.90)
 BANDE_BAS = 15
 ko = []
@@ -87,11 +87,11 @@ def run(path):
     print("image %dx%d · zone de blocs %d px · format attendu %d blocs (%.0f px/bloc)\n"
           % (W, H, zone, attendu_nb, zone / attendu_nb))
 
-    # ── L'image doit être EN DISPOSITION « BORDS » ───────────────────────────────────────
-    # Ce banc ne vérifie que le cartouche. Une trame en disposition « tranche » est parfaitement
-    # valide, mais ses bandeaux sont ailleurs et pleine largeur : la relire avec la géométrie du
-    # cartouche donne cinq « ÉCHEC » qui n'accusent rien. Un banc qui crie sur une entrée saine
-    # apprend à ignorer ses propres alarmes — on refuse l'entrée, on ne la note pas.
+    ***REMOVED*** ── L'image doit être EN DISPOSITION « BORDS » ───────────────────────────────────────
+    ***REMOVED*** Ce banc ne vérifie que le cartouche. Une trame en disposition « tranche » est parfaitement
+    ***REMOVED*** valide, mais ses bandeaux sont ailleurs et pleine largeur : la relire avec la géométrie du
+    ***REMOVED*** cartouche donne cinq « ÉCHEC » qui n'accusent rien. Un banc qui crie sur une entrée saine
+    ***REMOVED*** apprend à ignorer ses propres alarmes — on refuse l'entrée, on ne la note pas.
     if lire_bords(luma(src))[0] is None:
         print("Cette image ne porte pas de cartouche lisible à 1/1.\n"
               "Si elle est en disposition « tranche » (bandeaux pleine largeur), c'est NORMAL :\n"
@@ -116,10 +116,10 @@ def run(path):
                "index %s ≠ %s" % (idx, ref))
 
 
-    # ── L'ÂGE se calcule modulo la largeur d'index DÉTECTÉE, jamais 2^24 en dur ──────────────
-    # Le mode cartouche code l'index sur 16 ou 12 bits selon la largeur source. Un modulo 2^24
-    # figé rendrait un âge absurde dès qu'on quitte les 32 blocs — faux, et d'allure crédible.
-    # Contrôle statique : c'est une régression facile à réintroduire d'un copier-coller.
+    ***REMOVED*** ── L'ÂGE se calcule modulo la largeur d'index DÉTECTÉE, jamais 2^24 en dur ──────────────
+    ***REMOVED*** Le mode cartouche code l'index sur 16 ou 12 bits selon la largeur source. Un modulo 2^24
+    ***REMOVED*** figé rendrait un âge absurde dès qu'on quitte les 32 blocs — faux, et d'allure crédible.
+    ***REMOVED*** Contrôle statique : c'est une régression facile à réintroduire d'un copier-coller.
     src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             "plugins", "sonde_latence", "script.py"), encoding="utf8").read()
     ok("(1 << idx_bits)" in src, "l'âge utilise la largeur d'index DÉTECTÉE",
@@ -127,10 +127,10 @@ def run(path):
     ok("% (1 << 24)" not in src, "aucun modulo 2^24 codé en dur ne subsiste",
        "un `% (1 << 24)` figé demeure dans le script")
 
-    # ── Panneau : `zip(bornes, vals)` TRONQUE EN SILENCE si les deux listes divergent ────────
-    # Ajouter une colonne d'en-tête sans sa valeur (ou l'inverse) ne lève rien : la colonne
-    # disparaît simplement du panneau. On compte donc les trois listes — en-têtes, largeurs,
-    # valeurs — et on exige qu'elles s'accordent.
+    ***REMOVED*** ── Panneau : `zip(bornes, vals)` TRONQUE EN SILENCE si les deux listes divergent ────────
+    ***REMOVED*** Ajouter une colonne d'en-tête sans sa valeur (ou l'inverse) ne lève rien : la colonne
+    ***REMOVED*** disparaît simplement du panneau. On compte donc les trois listes — en-têtes, largeurs,
+    ***REMOVED*** valeurs — et on exige qu'elles s'accordent.
     import re as _re
     _i = src.index("        vals = [")
     _b = src[_i:src.index("\n        ]", _i)]

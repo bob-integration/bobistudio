@@ -1,6 +1,6 @@
-# Implémentation SR-IOV (PF kernel-PTP + VF DPDK-narrow) — design
+***REMOVED*** Implémentation SR-IOV (PF kernel-PTP + VF DPDK-narrow) — design
 
-> ## ⛔ SUPERSEDED (2026-07-09) — PIVOT vers **full-PF DPDK**
+> ***REMOVED******REMOVED*** ⛔ SUPERSEDED (2026-07-09) — PIVOT vers **full-PF DPDK**
 > **Le SR-IOV est abandonné pour le narrow.** Banc direct `mtl_rx` (0.39.10, VF `0000:11:11.0`) : sous
 > `pacing=rl` → **SEGFAULT** (rte_tm de l'iavf cassé ; corroboré par `testpmd show port tm cap` qui HANGE
 > sur la VF), alors que `pacing=tsc` tourne. **Le RL (narrow HW conforme) est PF-ONLY** — il ne tourne PAS
@@ -19,7 +19,7 @@ Rendre DÉPLOYABLE par l'orchestrateur l'architecture validée en réel (cf. `do
 dl360-1 2026-07-08). Aujourd'hui c'est manuel (SSH). Objectif : le narrow HW en production, une carte,
 2022-7, PTP kernel fiable, zéro port dédié.
 
-## 0. Ce que le banc a prouvé (= ce qu'on automatise)
+***REMOVED******REMOVED*** 0. Ce que le banc a prouvé (= ce qu'on automatise)
 Sur une PF média E810 : **la PF reste sur `ice` KERNEL** (ptp4l/phc2sys disciplinent le PHC), on crée
 **une VF**, bindée **vfio-pci**, et le **moteur 2110_io tourne sur la VF** en DPDK avec **RL narrow
 matériel**. Prérequis : driver `ice` **patché Kahawai 2.6.6** + BIOS **`PciResourcePadding=High`** (MMIO).
@@ -27,7 +27,7 @@ Résultats : VF RX 50 fps narrow franc, RL TX HW OK (pas de fallback tsc), ptp4l
 Limite : la **mesure de conformité** (verdict absolu) ne marche pas sur VF (mbuf untrusted) → **la
 sonde va sur PF**, pas la prod (hors périmètre de CE chantier).
 
-## 0.bis Capacité narrow SR-IOV — banc caractérisation (2026-07-08)
+***REMOVED******REMOVED*** 0.bis Capacité narrow SR-IOV — banc caractérisation (2026-07-08)
 - **8 leaves RL PAR VF, indépendamment** (mesuré 1/2/4/8/16 VF). Le scheduler de CARTE ne s'épuise PAS
   jusqu'à **16 VF × 8 = 128 leaves** ; le vrai mur est **hugepages/cœurs/nb VF**, pas le NIC.
 - **7 sessions TX narrow UTILISABLES par VF-port** (8 leaves − 1 file système). ⚠ **borne DURE** :
@@ -37,7 +37,7 @@ sonde va sur PF**, pas la prod (hors périmètre de CE chantier).
   Ex. 8 VF-ports = 56 sessions narrow. **VF multi-TC (>8/VF) = dead-end** : l'ADQ multi-TC n'est pas
   négocié par le PMD iavf DPDK (config perdue au rebind vfio) → aucune modif de code libmtl/PMD.
 
-## 0.ter Bande passante & 2022-7 (matériel dl360-1, relevé 2026-07-08)
+***REMOVED******REMOVED*** 0.ter Bande passante & 2022-7 (matériel dl360-1, relevé 2026-07-08)
 - **Carte = Intel E810-C for QSFP `[8086:1592]`** (silicium 2×100G). FW 4.80, ice Kahawai_2.6.6.
 - **Lien PCIe = Gen3 x16 (8 GT/s), downgradé** de Gen4 (LnkCap 16 GT/s). Gen3 x16 ≈ **126 Gb/s/sens** →
   plafond pratique **~100G/sens** (full-duplex : ~100 TX + ~100 RX). **CHOIX SERVEUR ASSUMÉ** (ce
@@ -52,7 +52,7 @@ sonde va sur PF**, pas la prod (hors périmètre de CE chantier).
   Gb/s** (PCIe ~126). **2 cartes = ~100G utile + vraie redondance** (chaque carte porte 1× sur SON PCIe).
   Mettre red+blue sur 2 PF de la MÊME carte ne change rien (même lien x16 partagé).
 
-## 0.quater Stratégie pacing nœuds mixtes — tsc_narrow vs 2 moteurs (banc 2026-07-08/09)
+***REMOVED******REMOVED*** 0.quater Stratégie pacing nœuds mixtes — tsc_narrow vs 2 moteurs (banc 2026-07-08/09)
 - **tsc_narrow LÈVE le cap 8-leaves (PROUVÉ A/B)** : 20 RX + 10 TX narrow dans UN moteur (RL échoue).
   tsc/tsc_narrow ne construisent aucun arbre TM → jamais bornés (controller.py:2328). RX libre + TX
   narrow en 1 `mtl_init` = oui.
@@ -72,7 +72,7 @@ sonde va sur PF**, pas la prod (hors périmètre de CE chantier).
   port de la même carte. Impacte l'ordre du host-prep SR-IOV (créer/binder VF avant de lancer ptp, ou
   accepter un relock).
 
-## 1. Modèle de données (`node_interfaces`)
+***REMOVED******REMOVED*** 1. Modèle de données (`node_interfaces`)
 Aujourd'hui : `pmd ∈ {af_xdp, dpdk}` (dpdk = PF en vfio, qui TUE le PTP → chemin de banc, pas la cible).
 
 **Proposition** : ajouter un mode **`pmd = "sriov"`** sur une interface `media2110` = « PF kernel-PTP +
@@ -87,7 +87,7 @@ Champs à ajouter à `node_interfaces` (migrations idempotentes `init_db`, motif
   ci-dessous.**
 - (`pci` reste le BDF de la **PF** ; `ip`/`cidr` = IP de la PF, kernel, pour PTP/contrôle.)
 
-## 2. Cycle de vie de la VF (host-prep, persistant)
+***REMOVED******REMOVED*** 2. Cycle de vie de la VF (host-prep, persistant)
 La VF n'est PAS persistante (`sriov_numvfs` retombe à 0 au reboot) → il faut un **host-prep dédié +
 persistance systemd** (comme `vfio_bind_plan` le fait pour le PF). Nouveau plan `mtl.sriov_vf_plan(node,
 pf_bdf, ...)` (miroir de `vfio_bind_plan`, mais pour VF) :
@@ -100,7 +100,7 @@ pf_bdf, ...)` (miroir de `vfio_bind_plan`, mais pour VF) :
 ⚠ Garde-fou inverse de `vfio_bind_plan` : ici on **NE bind PAS la PF** (elle reste kernel pour le PTP) ;
 on bind la VF. Le `GardeFouVfio` anti-PTP s'applique à la PF (ne jamais la vfio-er en mode sriov).
 
-## 3. Driver `ice` patché (host-prep)
+***REMOVED******REMOVED*** 3. Driver `ice` patché (host-prep)
 Le RL narrow sur VF exige l'`ice` Kahawai (sinon fallback tsc). Nouveau host-prep `mtl.install_patched_ice
 (node)` : build sur le nœud (clone MTL + ice 2.6.6 + patches `ice_drv/2.6.6`, `make`), install
 `/lib/modules/$(uname -r)/updates/ice.ko` + depmod, charge (gérer la dépendance **irdma** : rmmod irdma
@@ -108,7 +108,7 @@ Le RL narrow sur VF exige l'`ice` Kahawai (sinon fallback tsc). Nouveau host-pre
 Persistant (updates/ + depmod survivent au reboot). Idempotent (skip si `modinfo ice`=Kahawai_2.6.6).
 **Gate** : `verifier().sriov.mmio_error` doit être faux (BIOS OK) avant — sinon la VF ne se crée pas.
 
-## 4. Déploiement du moteur sur la VF (`docker_driver`)
+***REMOVED******REMOVED*** 4. Déploiement du moteur sur la VF (`docker_driver`)
 `_media_ifaces` : pour une iface `pmd=sriov`, exposer au moteur le **VF BDF** (`vf_bdf`) comme port DPDK,
 et le **VF IP** comme sip. Donc :
 - `PORT_PMDS` = `dpdk` pour cette iface (le moteur voit un port DPDK — il est déjà agnostique BDF).
@@ -118,12 +118,12 @@ et le **VF IP** comme sip. Donc :
 - `MTL_PACING` = rl (dérivé du profil narrow, existant).
 Le reste du moteur (sessions, headroom, pacing) est **inchangé** (il ne voit qu'un port DPDK).
 
-## 5. PTP (inchangé, ou presque)
+***REMOVED******REMOVED*** 5. PTP (inchangé, ou presque)
 La PF reste kernel → `app/ptp.py` (ptp4l/phc2sys par nœud/iface) fonctionne **tel quel** sur la PF. Rien
 à refondre côté PTP. C'est tout l'intérêt : le PTP kernel éprouvé reste en place, par-port (pas de SPOF),
 compatible 2022-7. (Le moteur sur la VF lit REALTIME, discipliné par ce ptp4l — cf. banc.)
 
-## 6. Addressing — TRANCHÉ (D1)
+***REMOVED******REMOVED*** 6. Addressing — TRANCHÉ (D1)
 La PF et la VF sont 2 fonctions distinctes sur le **même subnet média** → **2 IP inhérentes** (ce n'est
 pas un choix de conception, c'est ce que le réseau impose avec un PTP **L4/UDP**, le profil SMPTE 2059-2
 standard vu au banc) :
@@ -132,7 +132,7 @@ standard vu au banc) :
 Descendre à 1 IP = seulement si un réseau tourne en **PTP L2** (PF juste up, sans IP) → optim future,
 contingent au transport du GM. Défaut = 2 IP (matche le banc : PF .229 PTP / VF .230 média).
 
-## 7. UI / config réseau — décisions (2026-07-08, validées utilisateur)
+***REMOVED******REMOVED*** 7. UI / config réseau — décisions (2026-07-08, validées utilisateur)
 Tout se passe dans l'éditeur d'interface PAR PORT (`_netIfaceEditForm`, settings.html), là où on choisit
 déjà le **rôle** et le **profil narrow** (« Profil d'émission 2110-21 », gaté sur role=media2110).
 - **Rôle par port** conservé (2110 / management / RDMA / containers…). Chaque PF = fonction indépendante.
@@ -152,7 +152,7 @@ déjà le **rôle** et le **profil narrow** (« Profil d'émission 2110-21 », g
   sans garde et réécrivent la table → panneau effacé. Fix : préserver/rouvrir le panneau `edit` ouvert
   après un refresh non-`sig`, éviter les re-render inutiles quand un edit est actif.
 
-## 8. Phases proposées
+***REMOVED******REMOVED*** 8. Phases proposées
 1. ✅ **FAIT — Schéma + host-prep VF** : colonnes `vf_bdf`/`vf_ip` (+ whitelist) ; `mtl.sriov_vf_plan/
    apply` (create VF + mac déterministe + trust + bind VF vfio + persist unité `bobi-sriov-vf`) ;
    route `POST /api/nodes/<id>/sriov-vf` (persiste `vf_bdf`). **Testé bout-en-bout dl360-1** : VF
@@ -167,7 +167,7 @@ déjà le **rôle** et le **profil narrow** (« Profil d'émission 2110-21 », g
 4. ⬜ **UI** : mode `sriov` par iface + affichage VF/état (checklist SR-IOV déjà posée).
 5. ⬜ **Persistance/robustesse** : unités boot (VF ✅ + ice patché ✅ via updates/), auto-recovery, doc.
 
-## Décisions à trancher (avant de coder)
+***REMOVED******REMOVED*** Décisions à trancher (avant de coder)
 - **D1 — Addressing** : Option A (PF IP + VF IP séparée) ou B (VF prend l'IP média, PF contrôle) ?
 - **D2 — Portée mode** : garde-t-on `pmd=dpdk` (PF-vfio) pour la sonde/banc, ou on le supprime au profit
   de `af_xdp` + `sriov` seulement ?

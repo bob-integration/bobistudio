@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
 """Tests OFFLINE du Lot 14 (chantier DPDK/narrow — alignement SIP↔IFACE↔PORT_BDFS).
 
 Prouve, SANS toucher un nœud ni la prod, que `app.docker_driver._build_run_cmd` :
@@ -44,7 +44,7 @@ def git_show(repo, path):
                           capture_output=True, text=True, check=True).stdout
 
 
-# ── env parsing (-e KEY=VALUE ; shlex.quote ne cite pas les CSV sans espace) ──
+***REMOVED*** ── env parsing (-e KEY=VALUE ; shlex.quote ne cite pas les CSV sans espace) ──
 _ENV_RE = re.compile(r"-e ([A-Z_]+)=(\S+)")
 
 
@@ -55,7 +55,7 @@ def parse_env(cmd):
     return env
 
 
-# ── stubs (repris de test_lot_c.py) ──
+***REMOVED*** ── stubs (repris de test_lot_c.py) ──
 class _FakeSettings:
     VALUES = {"mtl_pin_cores": False, "nmos_sdp_source_filter": True}
     @classmethod
@@ -102,14 +102,14 @@ PARAMS = {"hostname": "io2110-test", "video_count": 4, "tx_count": 2,
           "active_rx_count": 4, "active_tx_count": 2}
 
 
-# ─────────────── 1. mono-port DPDK : NIC bindée ≠ NIC primaire ───────────────
+***REMOVED*** ─────────────── 1. mono-port DPDK : NIC bindée ≠ NIC primaire ───────────────
 
 def test_dpdk_mono_sip():
     print("1. mono-port DPDK : sip = IP réelle de l'iface dpdk (bug dl360-1)")
     import app.docker_driver as dd
     old = _load_old_docker_driver()
-    # Nœud dont la PRIMAIRE (mtl_iface/media_ip) est ens1f0np0/.99, mais la SEULE NIC média
-    # déclarée est le port DPDK ens1f1np1/.229 (bindé par BDF). C'est la topo dl360-1.
+    ***REMOVED*** Nœud dont la PRIMAIRE (mtl_iface/media_ip) est ens1f0np0/.99, mais la SEULE NIC média
+    ***REMOVED*** déclarée est le port DPDK ens1f1np1/.229 (bindé par BDF). C'est la topo dl360-1.
     node = {"id": 1, "host": "198.51.100.251", "image": "bobi-mtl:test", "mxl_mount": None,
             "mtl_iface": "ens1f0np0", "media_ip": "198.51.100.99/24"}
     rows = [{"ifname": "ens1f1np1", "role": "media2110", "ip_cidr": "198.51.100.229/24",
@@ -127,12 +127,12 @@ def test_dpdk_mono_sip():
     check("PORT_BDFS = 0000:11:00.1", env.get("PORT_BDFS") == "0000:11:00.1", env.get("PORT_BDFS"))
     check("mono-port : pas d'IFACES/SIPS émis", "IFACES=" not in cmd and "SIPS=" not in cmd)
     check("montage /dev/vfio présent", "-v /dev/vfio:/dev/vfio" in cmd)
-    # NB : la « preuve de régression » contre HEAD a été retirée — le fix EST désormais mergé dans
-    # HEAD (commit 23a4d6d), donc `git show HEAD` ne reproduit plus le bug. La correction est prouvée
-    # par les assertions forward ci-dessus (SIP=.229, ≠.99) ; env_old sert encore à l'iso-af_xdp (§4).
+    ***REMOVED*** NB : la « preuve de régression » contre HEAD a été retirée — le fix EST désormais mergé dans
+    ***REMOVED*** HEAD (commit 23a4d6d), donc `git show HEAD` ne reproduit plus le bug. La correction est prouvée
+    ***REMOVED*** par les assertions forward ci-dessus (SIP=.229, ≠.99) ; env_old sert encore à l'iso-af_xdp (§4).
 
 
-# ─────────────── 2. multi-port 2022-7 : alignement iface↔sip↔bdf ───────────────
+***REMOVED*** ─────────────── 2. multi-port 2022-7 : alignement iface↔sip↔bdf ───────────────
 
 def test_multiport_alignment():
     print("2. multi-port (af_xdp + dpdk) : IFACES/SIPS/PORT_PMDS/PORT_BDFS alignés")
@@ -160,7 +160,7 @@ def test_multiport_alignment():
     check("PORT_PMDS aligné = af_xdp,dpdk", pmds == ["af_xdp", "dpdk"], pmds)
     check("PORT_BDFS aligné = '',0000:11:00.1 (af_xdp leg vide)",
           bdfs == ["", "0000:11:00.1"], bdfs)
-    # Alignement STRICT index par index : le leg dpdk (pmd) porte bien SON bdf ET SON sip.
+    ***REMOVED*** Alignement STRICT index par index : le leg dpdk (pmd) porte bien SON bdf ET SON sip.
     aligned = {i: {"iface": ifaces[i], "sip": sips[i], "pmd": pmds[i], "bdf": bdfs[i]}
                for i in range(len(ifaces))}
     dpdk_leg = next(v for v in aligned.values() if v["pmd"] == "dpdk")
@@ -171,7 +171,7 @@ def test_multiport_alignment():
     check("IFACE scalaire = IFACES[0] (primaire)", env.get("IFACE") == ifaces[0], env.get("IFACE"))
 
 
-# ─────────────── 3. port dpdk sans IP → refus ───────────────
+***REMOVED*** ─────────────── 3. port dpdk sans IP → refus ───────────────
 
 def test_dpdk_no_ip_rejected():
     print("3. garde-fou : port dpdk sans IP de segment → déploiement refusé")
@@ -190,13 +190,13 @@ def test_dpdk_no_ip_rejected():
         check("message cite l'iface fautive (ens1f1np1)", "ens1f1np1" in str(e), str(e))
 
 
-# ─────────────── 4. iso-comportement af_xdp (octet-identique à HEAD) ───────────────
+***REMOVED*** ─────────────── 4. iso-comportement af_xdp (octet-identique à HEAD) ───────────────
 
 def test_afxdp_iso():
     print("4. iso-comportement af_xdp : docker run OCTET-IDENTIQUE à HEAD")
     import app.docker_driver as dd
     old = _load_old_docker_driver()
-    # 4a. multi-NIC af_xdp bien configuré (primaire déclarée = media_ip).
+    ***REMOVED*** 4a. multi-NIC af_xdp bien configuré (primaire déclarée = media_ip).
     node = {"id": 1, "host": "198.51.100.251", "image": "bobi-mtl:test", "mxl_mount": None,
             "mtl_iface": "ens1f0np0", "media_ip": "198.51.100.10/24"}
     rows = [
@@ -215,7 +215,7 @@ def test_afxdp_iso():
           "new={!r}\nold={!r}".format(cmd_new, cmd_old))
     check("af_xdp multi-NIC : pas de PORT_PMDS/vfio",
           "PORT_PMDS" not in cmd_new and "/dev/vfio" not in cmd_new)
-    # 4b. repli mono-NIC (aucune media2110 déclarée → _media_ifaces retombe sur mtl_iface/media_ip).
+    ***REMOVED*** 4b. repli mono-NIC (aucune media2110 déclarée → _media_ifaces retombe sur mtl_iface/media_ip).
     node2 = {"id": 2, "host": "198.51.100.252", "image": "bobi-mtl:test", "mxl_mount": None,
              "mtl_iface": "ens1f0np0", "media_ip": "198.51.100.10/24"}
     _patch_module(dd, [])

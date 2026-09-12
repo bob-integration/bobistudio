@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Users (admin uniquement, via settings.edit) + préférences du compte courant."""
 
@@ -26,8 +26,8 @@ def _t(cle, repli):
 @require_perm("settings.edit")
 def api_list_users():
     users = db_list_users()
-    # Enrichit chaque user avec son container de monitoring (lien stable monitor_user_id,
-    # repli sur l'ancien hostname monitor-u<id>). Un seul fetch des containers.
+    ***REMOVED*** Enrichit chaque user avec son container de monitoring (lien stable monitor_user_id,
+    ***REMOVED*** repli sur l'ancien hostname monitor-u<id>). Un seul fetch des containers.
     containers = db_get_containers()
     by_uid = {}
     for c in containers:
@@ -45,10 +45,10 @@ def api_list_users():
         u["monitor_vmid"] = mc["vmid"] if mc else None
         u["monitor_hostname"] = (mc.get("hostname") if mc else None)
     return jsonify({"users": users,
-                    # Nom TRADUIT du rôle (cf. `_libelle_role`). Cette liste est la SOURCE
-                    # UNIQUE : le formulaire de création la consomme aussi, sinon les deux
-                    # divergent — c'était le cas (langue ET contenu : « exploitant » manquait
-                    # à la création).
+                    ***REMOVED*** Nom TRADUIT du rôle (cf. `_libelle_role`). Cette liste est la SOURCE
+                    ***REMOVED*** UNIQUE : le formulaire de création la consomme aussi, sinon les deux
+                    ***REMOVED*** divergent — c'était le cas (langue ET contenu : « exploitant » manquait
+                    ***REMOVED*** à la création).
                     "roles": [{"id": r, "label": _libelle_role(r)} for r in ROLES.keys()],
                     "permissions": PERMISSIONS,
                     "role_permissions": {r: sorted(list(perms)) for r, perms in ROLES.items()}})
@@ -96,8 +96,8 @@ def api_fermer_autres_sessions():
     u = current_user()
     sid = session.get("sid")
     n, epoque = db_sessions_fermer_autres(u["id"], sid or "")
-    # ⚠ L'époque vient d'avancer : sans cette ligne, la session qui a demandé la fermeture se
-    # fermerait elle-même à la requête suivante.
+    ***REMOVED*** ⚠ L'époque vient d'avancer : sans cette ligne, la session qui a demandé la fermeture se
+    ***REMOVED*** fermerait elle-même à la requête suivante.
     session["session_epoch"] = epoque
     return jsonify({"status": "ok", "fermees": n})
 
@@ -160,7 +160,7 @@ def api_update_user(uid):
     pwd  = data.get("password")
     if role is not None and role not in ROLES:
         return jsonify({"error": f"role inconnu: {role}"}), 400
-    # Empêche de retirer le dernier admin
+    ***REMOVED*** Empêche de retirer le dernier admin
     if pwd:
         refus = _refus_motdepasse(pwd, target.get("username"),
                                   (target.get("prenom"), target.get("nom"), target.get("email")))
@@ -170,7 +170,7 @@ def api_update_user(uid):
         admins = [u for u in db_list_users() if u["role"] == "admin"]
         if len(admins) <= 1:
             return jsonify({"error": "impossible : c'est le dernier administrateur"}), 400
-    # prenom/nom/email : présents dans le body → mis à jour ("" efface, absent = inchangé)
+    ***REMOVED*** prenom/nom/email : présents dans le body → mis à jour ("" efface, absent = inchangé)
     db_update_user(uid,
                    role=role,
                    password_hash=hash_password(pwd) if pwd else None,
@@ -244,17 +244,17 @@ def api_moi():
         d = {k: u.get(k) for k in
              ("id", "username", "role", "prenom", "nom", "email", "lang", "theme",
               "interface", "telephone", "service", "poste", "photo_url", "created_at")}
-        # ★ LES PERMISSIONS SONT RENDUES EN CLAIR, toutes, cochées ou non. Un utilisateur
-        # découvrait ses droits en SE HEURTANT à un refus ; les lui montrer répond à
-        # « pourquoi ce bouton ne marche pas pour moi ? » avant qu'il ne le demande.
+        ***REMOVED*** ★ LES PERMISSIONS SONT RENDUES EN CLAIR, toutes, cochées ou non. Un utilisateur
+        ***REMOVED*** découvrait ses droits en SE HEURTANT à un refus ; les lui montrer répond à
+        ***REMOVED*** « pourquoi ce bouton ne marche pas pour moi ? » avant qu'il ne le demande.
         accordees = ROLES.get(u.get("role")) or set()
         d["permissions"] = [{"cle": p, "accordee": p in accordees} for p in PERMISSIONS]
         return jsonify(d)
     data = request.json or {}
     champs = {}
-    # ★ LISTE BLANCHE, PAS NOIRE. Ni `role`, ni `interface`, ni `username` : on ne se donne
-    # pas de droits à soi-même, et une colonne ajoutée demain n'entre pas ici par
-    # inadvertance. `theme` et `lang` en font partie — ce sont des préférences, pas des droits.
+    ***REMOVED*** ★ LISTE BLANCHE, PAS NOIRE. Ni `role`, ni `interface`, ni `username` : on ne se donne
+    ***REMOVED*** pas de droits à soi-même, et une colonne ajoutée demain n'entre pas ici par
+    ***REMOVED*** inadvertance. `theme` et `lang` en font partie — ce sont des préférences, pas des droits.
     for k in ("prenom", "nom", "email", "telephone", "service", "poste"):
         if isinstance(data.get(k), str):
             champs[k] = data[k].strip()
@@ -266,7 +266,7 @@ def api_moi():
     if isinstance(data.get("theme"), str):
         from .. import settings as _st
         valides = {t["id"] for t in _st.THEMES}
-        # "" est LÉGITIME : il remet l'utilisateur sur le défaut du système.
+        ***REMOVED*** "" est LÉGITIME : il remet l'utilisateur sur le défaut du système.
         if data["theme"] and data["theme"] not in valides:
             return jsonify({"error": "thème inconnu"}), 400
         champs["theme"] = data["theme"]
@@ -299,9 +299,9 @@ def api_ma_photo():
     u = current_user()
     if not u:
         return jsonify({"error": "non authentifié"}), 401
-    # UNE SEULE DÉFINITION DU DOSSIER D'UPLOADS. Le recalculer à la main ici marchait, et
-    # aurait cessé de marcher le jour où `config.UPLOADS_DIR` change — sans que rien ne le
-    # signale, puisque l'écriture aurait simplement atterri ailleurs.
+    ***REMOVED*** UNE SEULE DÉFINITION DU DOSSIER D'UPLOADS. Le recalculer à la main ici marchait, et
+    ***REMOVED*** aurait cessé de marcher le jour où `config.UPLOADS_DIR` change — sans que rien ne le
+    ***REMOVED*** signale, puisque l'écriture aurait simplement atterri ailleurs.
     dossier = config.UPLOADS_DIR
     motif = os.path.join(dossier, "avatar-%d.*" % int(u["id"]))
 
@@ -332,8 +332,8 @@ def api_ma_photo():
         except OSError:
             pass
     f.save(os.path.join(dossier, "avatar-%d.%s" % (int(u["id"]), ext)))
-    # Anti-cache : sans lui, le navigateur garde l'ANCIENNE photo à la même URL, et
-    # l'utilisateur croit que le téléversement a échoué.
+    ***REMOVED*** Anti-cache : sans lui, le navigateur garde l'ANCIENNE photo à la même URL, et
+    ***REMOVED*** l'utilisateur croit que le téléversement a échoué.
     url = "/static/uploads/avatar-%d.%s?v=%d" % (int(u["id"]), ext, int(time.time()))
     db_update_user(u["id"], photo_url=url)
     return jsonify({"status": "ok", "photo_url": url})
@@ -350,8 +350,8 @@ def api_change_own_password():
     u = current_user()
     if not verify_password(old, u["password_hash"]):
         return jsonify({"error": "ancien mot de passe incorrect"}), 403
-    # ⚠ APRÈS la vérification de l'ancien : sinon la page dit à un inconnu quelles règles
-    # s'appliquent avant même de savoir s'il est le titulaire du compte.
+    ***REMOVED*** ⚠ APRÈS la vérification de l'ancien : sinon la page dit à un inconnu quelles règles
+    ***REMOVED*** s'appliquent avant même de savoir s'il est le titulaire du compte.
     refus = _refus_motdepasse(new, u.get("username"), (u.get("prenom"), u.get("nom"), u.get("email")))
     if refus:
         return refus

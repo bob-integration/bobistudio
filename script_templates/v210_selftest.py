@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+***REMOVED***!/usr/bin/env python3
 """Selftest du convertisseur v210↔planar (bobimxl.v210_pack/v210_unpack).
 
 Vérifie, pour plusieurs géométries (dont largeur non multiple de 6 → queue de groupe) :
@@ -65,13 +65,13 @@ def main():
                 check(f"unpack C ≡ numpy {bd}b",
                       np.array_equal(unpacked, with_fallback(bx.v210_unpack, packed,
                                                              w, h, bit_depth=bd)))
-        # padding : les octets au-delà des groupes utiles doivent être à zéro
+        ***REMOVED*** padding : les octets au-delà des groupes utiles doivent être à zéro
         stride, ngrp = bx.v210_stride(w), -(-w // 6)
         if 16 * ngrp < stride:
             pad = packed.reshape(h, stride)[:, 16 * ngrp:]
             check("padding stride à zéro", not pad.any())
 
-    # -- débit 1080p (chemin actif)
+    ***REMOVED*** -- débit 1080p (chemin actif)
     w, h, n = 1920, 1080, 50
     src10 = rand_planar(w, h, 10)
     packed = bx.v210_pack(src10, w, h, bit_depth=10)
@@ -81,7 +81,7 @@ def main():
         ("unpack10", lambda: bx.v210_unpack(packed, w, h, bit_depth=10)),
         ("unpack8 ", lambda: bx.v210_unpack(packed, w, h, bit_depth=8)),
     ]:
-        f()                                     # chauffe
+        f()                                     ***REMOVED*** chauffe
         t0 = time.perf_counter()
         for _ in range(n):
             f()

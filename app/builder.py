@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """
 Génération du paquet de distribution (`dist/bobistudio.zip`).
@@ -21,84 +21,84 @@ import uuid
 import zipfile
 from datetime import datetime
 
-# Racine du dépôt = parent de app/
+***REMOVED*** Racine du dépôt = parent de app/
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST_DIR = os.path.join(ROOT, "dist")
 DEFAULT_DEST = os.path.join(DIST_DIR, "bobistudio.zip")
 MANIFEST_PATH = os.path.join(DIST_DIR, "build_manifest.json")
-# Identité de build embarquée dans le zip (lue par une instance pour rapporter sa version).
+***REMOVED*** Identité de build embarquée dans le zip (lue par une instance pour rapporter sa version).
 BUILD_INFO_PATH = os.path.join(ROOT, "build_info.json")
 
-# ── Cœur : toujours inclus ───────────────────────────────────
-# Dossiers embarqués intégralement (hors motifs exclus ci-dessous).
+***REMOVED*** ── Cœur : toujours inclus ───────────────────────────────────
+***REMOVED*** Dossiers embarqués intégralement (hors motifs exclus ci-dessous).
 CORE_DIRS = ["app", "templates", "static", "script_templates", "i18n", "node_agent", "tools",
-             # docs/ : conception, références et dossiers de chantier. Embarqué parce que la page
-             # Aide rend certains de ces markdown depuis la SEULE source versionnée (/api/doc).
+             ***REMOVED*** docs/ : conception, références et dossiers de chantier. Embarqué parce que la page
+             ***REMOVED*** Aide rend certains de ces markdown depuis la SEULE source versionnée (/api/doc).
              "docs",
-             # licenses/ : textes intégraux des licences tierces. Apache-2.0 §4(a) et BSD-3-Clause
-             # exigent qu'une COPIE accompagne la redistribution — les omettre de la liste blanche
-             # rendrait chaque paquet installé non conforme, alors que le dépôt l'est.
+             ***REMOVED*** licenses/ : textes intégraux des licences tierces. Apache-2.0 §4(a) et BSD-3-Clause
+             ***REMOVED*** exigent qu'une COPIE accompagne la redistribution — les omettre de la liste blanche
+             ***REMOVED*** rendrait chaque paquet installé non conforme, alors que le dépôt l'est.
              "licenses"]
-# Contextes de build des images runtime Docker (PAS des plugins : pas de plugin.json, donc absents
-# de la liste sélectionnable). Toujours embarqués : l'onglet Réglages → Déploiement → Local en a
-# besoin pour builder bobi-compute/bobi-media sur l'hôte. (Le contexte MTL voyage avec le plugin
-# 2110_io/docker.)
+***REMOVED*** Contextes de build des images runtime Docker (PAS des plugins : pas de plugin.json, donc absents
+***REMOVED*** de la liste sélectionnable). Toujours embarqués : l'onglet Réglages → Déploiement → Local en a
+***REMOVED*** besoin pour builder bobi-compute/bobi-media sur l'hôte. (Le contexte MTL voyage avec le plugin
+***REMOVED*** 2110_io/docker.)
 RUNTIME_IMAGE_DIRS = ["plugins/_compute_runtime", "plugins/_compute_gpu_runtime",
                       "plugins/_media_runtime", "plugins/_webrtc_runtime"]
-# Agent-nœud + installeur (bobi-node-agent) : embarqués pour que le contrôleur puisse les
-# distribuer/installer sur les nœuds (séparation control/node-plane, cf. NODE_AGENT.md).
-# Fichiers individuels à la racine.
+***REMOVED*** Agent-nœud + installeur (bobi-node-agent) : embarqués pour que le contrôleur puisse les
+***REMOVED*** distribuer/installer sur les nœuds (séparation control/node-plane, cf. NODE_AGENT.md).
+***REMOVED*** Fichiers individuels à la racine.
 CORE_FILES = [
     "main.py", "requirements.txt", "bobistudio.service",
     "config_local.example.py", "install.sh", "install/install.py",
     "install/install_proxmox.py", "build_info.json",
-    # Doc publique de la racine. INSTALL/INFRASTRUCTURE/HA/THIRD-PARTY sont rendus par la page
-    # Aide (/api/doc) : les OMETTRE ici casserait l'aide en ligne sur toute instance installée.
+    ***REMOVED*** Doc publique de la racine. INSTALL/INFRASTRUCTURE/HA/THIRD-PARTY sont rendus par la page
+    ***REMOVED*** Aide (/api/doc) : les OMETTRE ici casserait l'aide en ligne sur toute instance installée.
     "LICENSE", "CHANGELOG.md", "CLAUDE.md", "README.md", "NODE_AGENT.md",
     "INSTALL.md", "INFRASTRUCTURE.md", "HA.md", "THIRD-PARTY-NOTICES.md",
     "CONTRIBUTING.md",
-    "plugins/AUTHORING.md", "plugins/AUTHORING.fr.md",   # rendu par la page Aide (article « Contribuer ») → doit être embarqué
+    "plugins/AUTHORING.md", "plugins/AUTHORING.fr.md",   ***REMOVED*** rendu par la page Aide (article « Contribuer ») → doit être embarqué
 ]
 
-# Sélection par défaut (paquet « broadcast » minimal).
+***REMOVED*** Sélection par défaut (paquet « broadcast » minimal).
 DEFAULT_PLUGINS = ["2110_io", "streamer"]
 DEFAULT_SERVICES = ["nmos", "webrtc_gateway", "files", "media_manager"]
 
-# ── Exclusions (n'importe où dans le chemin relatif) ─────────
-# Secrets / état local : JAMAIS dans le zip.
-# ⚠ `static/uploads/` en fait partie : c'est de l'état d'instance, pas un secret au sens strict,
-# mais le publier revient à diffuser ce que les utilisateurs de cette installation ont déposé.
-# Le mettre ICI en plus de `EXCLUDE_PATHS` est délibéré : l'exclusion peut être défaite par une
-# refonte de la liste blanche, le garde-fou de sortie, lui, REFUSE le build. Deux mécanismes
-# indépendants pour la même règle, parce que celle-ci ne pardonne pas.
-SECRET_PATTERNS = ["config_local.py", "backups/", "static/uploads/"]   # + tout .db (cf. _is_secret)
+***REMOVED*** ── Exclusions (n'importe où dans le chemin relatif) ─────────
+***REMOVED*** Secrets / état local : JAMAIS dans le zip.
+***REMOVED*** ⚠ `static/uploads/` en fait partie : c'est de l'état d'instance, pas un secret au sens strict,
+***REMOVED*** mais le publier revient à diffuser ce que les utilisateurs de cette installation ont déposé.
+***REMOVED*** Le mettre ICI en plus de `EXCLUDE_PATHS` est délibéré : l'exclusion peut être défaite par une
+***REMOVED*** refonte de la liste blanche, le garde-fou de sortie, lui, REFUSE le build. Deux mécanismes
+***REMOVED*** indépendants pour la même règle, parce que celle-ci ne pardonne pas.
+SECRET_PATTERNS = ["config_local.py", "backups/", "static/uploads/"]   ***REMOVED*** + tout .db (cf. _is_secret)
 
-# Bruit / non pertinent au déploiement.
+***REMOVED*** Bruit / non pertinent au déploiement.
 EXCLUDE_DIRS = {
     "venv", ".git", "__pycache__", ".claude", ".agents", "_infos",
     "old", "dist", "node_modules", ".pytest_cache",
 }
-# `web/` n'a pas besoin d'y figurer : CORE_DIRS est une liste BLANCHE et ne le nomme pas.
-# (`push_to_github.sh` et `skills-lock.json` ont été supprimés le 2026-09-01 ; `sync_repos.sh`
-#  est parti dans old/, déjà couvert par EXCLUDE_DIRS.)
+***REMOVED*** `web/` n'a pas besoin d'y figurer : CORE_DIRS est une liste BLANCHE et ne le nomme pas.
+***REMOVED*** (`push_to_github.sh` et `skills-lock.json` ont été supprimés le 2026-09-01 ; `sync_repos.sh`
+***REMOVED***  est parti dans old/, déjà couvert par EXCLUDE_DIRS.)
 EXCLUDE_FILES = {
     "config_local.py", ".impeccable",
 }
-# ── Chemins d'ÉTAT D'INSTANCE, exclus par PRÉFIXE ────────────────────────────
-#
-# ⚠ `static/` est embarqué en entier par CORE_DIRS, et `static/uploads/` s'y trouve — or ce
-# dossier est GITIGNORÉ : ce n'est pas du code, c'est ce que les utilisateurs de CETTE
-# installation y ont déposé. Logo de marque, polices téléversées, et surtout les images servies
-# depuis l'interface : sur le contrôleur de l'éditeur, 76 fichiers nommés d'après des machines
-# de production, soit 14 Mo. Un paquet construit depuis le dépôt de travail les emportait donc
-# dans une release publique — vérifié le 2026-09-03, à un clic près.
-#
-# Les releases publiques échappaient au problème PAR ACCIDENT DE MÉTHODE : elles sont
-# construites depuis l'arbre de publication, qui ne contient que du versionné et n'a donc pas ce
-# dossier. Un garde-fou qui dépend de l'endroit d'où l'on lance la commande n'en est pas un.
-#
-# Exclu par CHEMIN et non par nom : `EXCLUDE_DIRS` écarterait tout dossier « uploads », y
-# compris celui qu'un plugin aurait le droit de porter.
+***REMOVED*** ── Chemins d'ÉTAT D'INSTANCE, exclus par PRÉFIXE ────────────────────────────
+***REMOVED***
+***REMOVED*** ⚠ `static/` est embarqué en entier par CORE_DIRS, et `static/uploads/` s'y trouve — or ce
+***REMOVED*** dossier est GITIGNORÉ : ce n'est pas du code, c'est ce que les utilisateurs de CETTE
+***REMOVED*** installation y ont déposé. Logo de marque, polices téléversées, et surtout les images servies
+***REMOVED*** depuis l'interface : sur le contrôleur de l'éditeur, 76 fichiers nommés d'après des machines
+***REMOVED*** de production, soit 14 Mo. Un paquet construit depuis le dépôt de travail les emportait donc
+***REMOVED*** dans une release publique — vérifié le 2026-09-03, à un clic près.
+***REMOVED***
+***REMOVED*** Les releases publiques échappaient au problème PAR ACCIDENT DE MÉTHODE : elles sont
+***REMOVED*** construites depuis l'arbre de publication, qui ne contient que du versionné et n'a donc pas ce
+***REMOVED*** dossier. Un garde-fou qui dépend de l'endroit d'où l'on lance la commande n'en est pas un.
+***REMOVED***
+***REMOVED*** Exclu par CHEMIN et non par nom : `EXCLUDE_DIRS` écarterait tout dossier « uploads », y
+***REMOVED*** compris celui qu'un plugin aurait le droit de porter.
 EXCLUDE_PATHS = (
     "static/uploads",
 )
@@ -132,9 +132,9 @@ def _excluded(rel):
 def _add_dir(zf, abs_dir, arc_prefix):
     """Ajoute récursivement un dossier au zip en filtrant les exclusions."""
     for dirpath, dirnames, filenames in os.walk(abs_dir):
-        # Élagage des dossiers exclus (perf + cohérence). On élague AUSSI sur le chemin
-        # d'archive, sans quoi `os.walk` descendrait dans `static/uploads` pour ne rien en
-        # garder — inutile, et trompeur à la lecture.
+        ***REMOVED*** Élagage des dossiers exclus (perf + cohérence). On élague AUSSI sur le chemin
+        ***REMOVED*** d'archive, sans quoi `os.walk` descendrait dans `static/uploads` pour ne rien en
+        ***REMOVED*** garder — inutile, et trompeur à la lecture.
         arc_dir = os.path.join(arc_prefix, os.path.relpath(dirpath, abs_dir)).replace("\\", "/")
         arc_dir = arc_dir[2:] if arc_dir.startswith("./") else arc_dir
         dirnames[:] = [d for d in dirnames
@@ -163,8 +163,8 @@ def _git_hash():
         h = out.stdout.strip()
         if not h:
             return None
-        # `--porcelain` : non vide = arbre modifié (fichiers suivis). Les sous-modules « sales »
-        # comptent aussi — un plugin modifié change bien le contenu de l'artefact.
+        ***REMOVED*** `--porcelain` : non vide = arbre modifié (fichiers suivis). Les sous-modules « sales »
+        ***REMOVED*** comptent aussi — un plugin modifié change bien le contenu de l'artefact.
         st = subprocess.run(["git", "-C", ROOT, "status", "--porcelain", "--untracked-files=no"],
                             capture_output=True, text=True, timeout=10)
         if st.returncode == 0 and st.stdout.strip():
@@ -236,7 +236,7 @@ def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=Fa
     plugins = list(plugins) if plugins is not None else list(DEFAULT_PLUGINS)
     services = list(services) if services is not None else list(DEFAULT_SERVICES)
 
-    # Pré-téléchargement des dépendances (+ images) pour l'embarquement (avant d'ouvrir le zip).
+    ***REMOVED*** Pré-téléchargement des dépendances (+ images) pour l'embarquement (avant d'ouvrir le zip).
     embed_vendor = offline or images
     if offline:
         from . import offline_bundle
@@ -247,7 +247,7 @@ def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=Fa
                    or "échec du pré-téléchargement hors-ligne")
             raise RuntimeError("Bundle hors-ligne : " + err)
     elif images:
-        # Images sans deps hors-ligne : matérialiser seulement les tars.
+        ***REMOVED*** Images sans deps hors-ligne : matérialiser seulement les tars.
         from . import offline_bundle
         res = offline_bundle.ensure_images(log=log)
         if not res.get("ok"):
@@ -258,8 +258,8 @@ def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=Fa
     if os.path.exists(tmp):
         os.remove(tmp)
 
-    # Identité de build : écrite AVANT le zip pour être embarquée (build_info.json est
-    # dans CORE_FILES). Permet à l'instance déployée de rapporter sa version.
+    ***REMOVED*** Identité de build : écrite AVANT le zip pour être embarquée (build_info.json est
+    ***REMOVED*** dans CORE_FILES). Permet à l'instance déployée de rapporter sa version.
     existing = current_build_info() if os.path.exists(BUILD_INFO_PATH) else None
     if stamp or not existing or not existing.get("build_id"):
         built_at = datetime.now().isoformat(timespec="seconds")
@@ -289,7 +289,7 @@ def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=Fa
             absd = os.path.join(ROOT, "plugins", p)
             if os.path.isdir(absd):
                 _add_dir(zf, absd, os.path.join("plugins", p))
-        # Contextes d'images runtime (toujours, indépendamment de la sélection de plugins).
+        ***REMOVED*** Contextes d'images runtime (toujours, indépendamment de la sélection de plugins).
         for d in RUNTIME_IMAGE_DIRS:
             absd = os.path.join(ROOT, d)
             if os.path.isdir(absd):
@@ -298,17 +298,17 @@ def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=Fa
             absd = os.path.join(ROOT, "services", s)
             if os.path.isdir(absd):
                 _add_dir(zf, absd, os.path.join("services", s))
-        # services/__init__.py est nécessaire pour que `services` soit un package.
+        ***REMOVED*** services/__init__.py est nécessaire pour que `services` soit un package.
         init_abs = os.path.join(ROOT, "services", "__init__.py")
         if os.path.isfile(init_abs):
             zf.write(init_abs, os.path.join("services", "__init__.py"))
-        # Bundle embarqué : roues pip + .deb système + images Docker (vendor/), déploiement sans réseau.
+        ***REMOVED*** Bundle embarqué : roues pip + .deb système + images Docker (vendor/), déploiement sans réseau.
         if embed_vendor:
             vendor_abs = os.path.join(ROOT, "vendor")
             if os.path.isdir(vendor_abs):
                 _add_dir(zf, vendor_abs, "vendor")
 
-    # ── Garde-fou : aucun secret ne doit avoir fui ───────────
+    ***REMOVED*** ── Garde-fou : aucun secret ne doit avoir fui ───────────
     with zipfile.ZipFile(tmp) as zf:
         names = zf.namelist()
         leaked = [n for n in names if _is_secret(n)]
@@ -319,13 +319,13 @@ def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=Fa
 
     os.replace(tmp, dest)
 
-    # Rafraîchir les installeurs servis à côté du zip (/install/install.py + install_proxmox.py).
+    ***REMOVED*** Rafraîchir les installeurs servis à côté du zip (/install/install.py + install_proxmox.py).
     import shutil
     for _inst in ("install/install.py", "install/install_proxmox.py"):
         _src = os.path.join(ROOT, _inst)
         if os.path.isfile(_src):
-            # basename : la ROUTE sert « /install/install.py » depuis DIST_DIR à plat, et
-            # l'installeur téléchargé doit atterrir À CÔTÉ du zip (cf. install.py:_find_source).
+            ***REMOVED*** basename : la ROUTE sert « /install/install.py » depuis DIST_DIR à plat, et
+            ***REMOVED*** l'installeur téléchargé doit atterrir À CÔTÉ du zip (cf. install.py:_find_source).
             shutil.copy2(_src, os.path.join(DIST_DIR, os.path.basename(_inst)))
 
     size = os.path.getsize(dest)
@@ -333,7 +333,7 @@ def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=Fa
     if embed_vendor:
         from . import offline_bundle
         offline_info = offline_bundle.status()
-    # Manifeste de build (mémorise la sélection pour l'UI).
+    ***REMOVED*** Manifeste de build (mémorise la sélection pour l'UI).
     try:
         with open(MANIFEST_PATH, "w") as f:
             json.dump({"plugins": plugins, "services": services,

@@ -1,10 +1,10 @@
-# Analyseur / sonde de flux ST 2110 (`probe_2110`)
+***REMOVED*** Analyseur / sonde de flux ST 2110 (`probe_2110`)
 
 Outil de mesure et de monitoring des flux ST 2110, né du chantier DPDK/narrow (besoin de valider
 la conformité 2110-21 sans scope matériel) mais **produit à part entière**. Chantier de conformité
 narrow associé : `docs/chantiers/DPDK_NARROW.md`.
 
-## Orientation (2026-07-07)
+***REMOVED******REMOVED*** Orientation (2026-07-07)
 
 Deux usages complémentaires :
 - **Analyseur ponctuel généraliste, piloté par NMOS** (usage de base) : on braque l'outil sur
@@ -12,7 +12,7 @@ Deux usages complémentaires :
 - **Surveillance longue durée** sur les signaux importants, avec **journal d'événements horodatés**
   (silence, black, freeze, hors-normes vidéo/audio, pertes, sortie du gabarit narrow, PTP…).
 
-## Fait structurant : le palier conformité est DÉJÀ dans libmtl (wrapping, pas build)
+***REMOVED******REMOVED*** Fait structurant : le palier conformité est DÉJÀ dans libmtl (wrapping, pas build)
 
 `lib/src/st2110/st_rx_timing_parser.c` (SHA MTL épinglé 32b1b4e) : `rv_tp_on_packet` calcule
 Cinst/VRX/IPT/FPT/latency par paquet ; `rv_tp_compliant` rend un verdict par trame
@@ -23,7 +23,7 @@ Activé par le flag public `ST20P_RX_FLAG_TIMING_PARSER_META` → lu via `st_fra
 On compile déjà libmtl dans l'image `bobi-mtl` → l'analyseur est un **wrapper**. EBU LIST (stack
 web+Mongo+Influx) écarté comme moteur, gardé comme oracle de validation croisée pcap ponctuel.
 
-## Cœur posé + première mesure narrow réelle (2026-07-07)
+***REMOVED******REMOVED*** Cœur posé + première mesure narrow réelle (2026-07-07)
 
 **Cœur de la sonde committé** (0.39.4, `mtl_rx.c`) : parser env-gaté `TIMING_PARSER=1` (défaut OFF)
 → `MTL_FLAG_ENABLE_HW_TIMESTAMP` + `ST20P_RX_FLAG_TIMING_PARSER_META` + lecture `st_frame_tp_meta`
@@ -40,7 +40,7 @@ câble → analyseur `TIMING_PARSER=1` port B. Verdict par mode de pacing TX :
 | **tsc** (plain) | 4–7 | **~920 000** (trame en rafale) | **WIDE/burst** — parser classe bien wide |
 
 - **RL = vrai narrow, confirmé.** À préférer quand le budget files le permet (≤7 TX/port mono-port
-  avant patchs #13/#18). tsc_narrow = repli narrow SANS plafond de files, mais plus lâche → à
+  avant patchs ***REMOVED***13/***REMOVED***18). tsc_narrow = repli narrow SANS plafond de files, mais plus lâche → à
   valider contre le récepteur cible ; pas équivalent au RL matériel.
 - L'écart RL(5)→tsc_narrow(10–16)→tsc(920k) couvre 5 ordres de grandeur → le parser discrimine bien.
 
@@ -53,7 +53,7 @@ prod** (ptp4l+phc2sys → REALTIME=TAI=grandmaster), le verdict absolu est valab
 (hors périmètre) : aligner l'horloge de pacing TX sur le PHC de capture (les 2 ports partagent le
 PHC clock 4) via `ptp_get_time_fn` utilisateur ou phc2sys → verdict `compliant` absolu au loopback.
 
-**✅ CONFIRMÉ EN PROD AVEC GRANDMASTER (2026-07-08, cf. docs/chantiers/DPDK_NARROW.md §#20).** Sur un vrai flux
+**✅ CONFIRMÉ EN PROD AVEC GRANDMASTER (2026-07-08, cf. docs/chantiers/DPDK_NARROW.md §***REMOVED***20).** Sur un vrai flux
 narrow (VTX-02, `239.4.21.2:2120`, GM domaine 127) reçu en sonde DPDK/vfio, `fpt` passe de multi-ms
 (loopback) à **~782 µs STABLE ≈ tr_offset** (collapse ×1000), `cinst_max=1`, `vrx_span=1` = narrow
 franc. Le `failed (fpt exceed tr_offset)` résiduel est **STRUCTUREL libmtl↔libmtl** : l'émetteur pose
@@ -66,7 +66,7 @@ la sonde rend « failed » sur des flux narrow parfaitement conformes. NB : le m
 `fpt` dérive ~200 ns/s → pour un verdict rock-stable, activer le PTP interne libmtl (mt_ptp.c,
 domaine 127) sur le port sonde. **Mesurer vite** après bascule vfio.
 
-## Les trois paliers de mesure et leurs prérequis
+***REMOVED******REMOVED*** Les trois paliers de mesure et leurs prérequis
 
 | Palier | Ce qu'il sort | Prérequis | Où c'est gratuit |
 |---|---|---|---|
@@ -78,7 +78,7 @@ domaine 127) sur le port sonde. **Mesurer vite** après bascule vfio.
 planar (luma max, diff inter-trame), silence = sur les samples PCM, hors-norme = min/max/plage
 Y/U/V, loudness = R128 → surveiller plusieurs signaux en parallèle reste raisonnable.
 
-## Architecture : moteur d'événements PARTAGÉ + sonde « receiver de mesure »
+***REMOVED******REMOVED*** Architecture : moteur d'événements PARTAGÉ + sonde « receiver de mesure »
 
 Le **journal d'événements** (seuils → événements horodatés → alertes + persistance) est une capacité
 réutilisable sur **n'importe quelle session RX**, pas propre à la sonde :
@@ -91,7 +91,7 @@ réutilisable sur **n'importe quelle session RX**, pas propre à la sonde :
 pas déjà** (notre propre TX ; une source à laquelle aucun receiver n'est abonné). Pour tout flux
 qu'un RX consomme déjà, transport+contenu (partout) et conformité (si DPDK) sont **en ligne**.
 
-## Le point dur : la capture
+***REMOVED******REMOVED*** Le point dur : la capture
 
 Le parser conformité tourne DANS une session RX MTL → il faut **recevoir vraiment le flux** sur une
 PF (un `mtl_init`/PF, jamais celle du moteur). Chemins :
@@ -108,7 +108,7 @@ direct entre les 2 ports** = banc de conformité self-contained (moteur mire-TX 
 câble direct → sonde port B vfio, parser Cinst/VRX), sans switch ni scope. Câble à poser (l'utilisateur
 peut le faire).
 
-## Design du plugin
+***REMOVED******REMOVED*** Design du plugin
 
 - **Type** `probe_2110`, runtime docker, **réutilise l'image `bobi-mtl`** (même libmtl → aucune image
   à builder). Fork RX-only de `plugins/2110_io/mtl_rx.c` + flag timing parser.
@@ -125,7 +125,7 @@ peut le faire).
   monitoring avec timeline d'incidents par signal.
 - **Alertes** : narrow→wide=warning, →failed=error(+cause) ; silence/black/freeze/pertes>seuil=error.
 
-## Plan par phases (priorité : ponctuel généraliste, puis monitoring)
+***REMOVED******REMOVED*** Plan par phases (priorité : ponctuel généraliste, puis monitoring)
 
 - **Phase A — Analyseur ponctuel généraliste NMOS** : sélection d'un flux IS-04 → abonnement →
   rapport live (transport + conformité si DPDK + contenu). Un flux à la fois par port. Prérequis
@@ -137,7 +137,7 @@ peut le faire).
 - **Track parallèle (complémentaire)** : greffer le moteur d'événements (transport+contenu, gratuit ;
   conformité si RX en DPDK) aux **receivers de prod** → journalisation des signaux déjà reçus.
 
-## Fichiers de référence
+***REMOVED******REMOVED*** Fichiers de référence
 Moteur à forker : `plugins/2110_io/mtl_rx.c` (`st20p_rx_create`, `st20p_rx_get_frame`, stats writer),
 `plugins/2110_io/plugin.json`, `plugins/2110_io/docker/controller.py` (relais :8080, /nmos/subscribe).
 libmtl (32b1b4e) : `lib/src/st2110/st_rx_timing_parser.c`, `include/st20_api.h:451`,

@@ -1,32 +1,32 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
-# Veilleur d'artefacts d'image sur des flux MXL — attrape l'evenement au lieu de le deduire.
-#
-# Pourquoi : le defaut signale est INTERMITTENT. Des captures d'une demi-seconde analysees apres
-# coup ne le voient pas, et chercher a le prouver dessus mene a inventer des metriques qui disent
-# ce qu'on cherche (vecu le 2026-08-13). On surveille donc en continu et on JOURNALISE l'evenement.
-#
-# Deux defauts guettes, chacun avec un TEMOIN de reference :
-#
-#   1. DECALAGE LUMA/CHROMA — correlation des profils de bords horizontaux de Y et de la chroma.
-#      Un ecart de d colonnes chroma = les deux plans viennent d'instants differents. Sur une
-#      chaine saine la mesure sort 0 avec un ecart-type nul (verifie sur mire a barres defilantes).
-#      N'est significatif que si la correlation est FRANCHE (sinon l'image n'a pas assez de bords
-#      chromatiques pour conclure — on s'abstient plutot que de rapporter du bruit).
-#
-#   2. DECHIRURE PAR BANDES — un meme grain portant des bandes de trames differentes.
-#      ⚠ NE PAS confondre avec « des bandes bougent, d'autres non » : c'est la description d'un
-#      sujet mobile sur fond fixe, donc de TOUTE video normale (premiere version de ce veilleur,
-#      qui flaggait chaque trame). Le vrai critere est temporel : une bande DECHIREE porte deja
-#      la trame SUIVANTE (elle est arrivee en avance) pendant que ses voisines portent encore la
-#      courante. On compare donc chaque bande a la trame precedente ET a la suivante, et on
-#      n'examine que les bandes reellement ACTIVES — une bande immobile ne dit rien.
-#
-# Sortie : une ligne par evenement dans le journal + la trame fautive en PNG (bornee en nombre).
+***REMOVED*** Veilleur d'artefacts d'image sur des flux MXL — attrape l'evenement au lieu de le deduire.
+***REMOVED***
+***REMOVED*** Pourquoi : le defaut signale est INTERMITTENT. Des captures d'une demi-seconde analysees apres
+***REMOVED*** coup ne le voient pas, et chercher a le prouver dessus mene a inventer des metriques qui disent
+***REMOVED*** ce qu'on cherche (vecu le 2026-08-13). On surveille donc en continu et on JOURNALISE l'evenement.
+***REMOVED***
+***REMOVED*** Deux defauts guettes, chacun avec un TEMOIN de reference :
+***REMOVED***
+***REMOVED***   1. DECALAGE LUMA/CHROMA — correlation des profils de bords horizontaux de Y et de la chroma.
+***REMOVED***      Un ecart de d colonnes chroma = les deux plans viennent d'instants differents. Sur une
+***REMOVED***      chaine saine la mesure sort 0 avec un ecart-type nul (verifie sur mire a barres defilantes).
+***REMOVED***      N'est significatif que si la correlation est FRANCHE (sinon l'image n'a pas assez de bords
+***REMOVED***      chromatiques pour conclure — on s'abstient plutot que de rapporter du bruit).
+***REMOVED***
+***REMOVED***   2. DECHIRURE PAR BANDES — un meme grain portant des bandes de trames differentes.
+***REMOVED***      ⚠ NE PAS confondre avec « des bandes bougent, d'autres non » : c'est la description d'un
+***REMOVED***      sujet mobile sur fond fixe, donc de TOUTE video normale (premiere version de ce veilleur,
+***REMOVED***      qui flaggait chaque trame). Le vrai critere est temporel : une bande DECHIREE porte deja
+***REMOVED***      la trame SUIVANTE (elle est arrivee en avance) pendant que ses voisines portent encore la
+***REMOVED***      courante. On compare donc chaque bande a la trame precedente ET a la suivante, et on
+***REMOVED***      n'examine que les bandes reellement ACTIVES — une bande immobile ne dit rien.
+***REMOVED***
+***REMOVED*** Sortie : une ligne par evenement dans le journal + la trame fautive en PNG (bornee en nombre).
 import sys, os, time, json
 import numpy as np
 import bobimxl
@@ -34,8 +34,8 @@ import bobimxl
 FLUX     = sys.argv[1].split(",")
 DUREE    = float(sys.argv[2]) if len(sys.argv) > 2 else 3600.0
 SORTIE   = sys.argv[3] if len(sys.argv) > 3 else "/tmp/veille"
-MAX_PNG  = 40                 # borne dure : un veilleur ne doit pas remplir le disque
-BANDES   = 12                 # decoupe horizontale pour la detection de dechirure
+MAX_PNG  = 40                 ***REMOVED*** borne dure : un veilleur ne doit pas remplir le disque
+BANDES   = 12                 ***REMOVED*** decoupe horizontale pour la detection de dechirure
 
 os.makedirs(SORTIE, exist_ok=True)
 JOURNAL = open(os.path.join(SORTIE, "veille.log"), "a", buffering=1)
@@ -55,10 +55,10 @@ def decalage(Y, U, V):
     bords chromatiques pour conclure — l'abstention est un resultat, pas un echec."""
     a, sa = profil(Y)
     bu, su = profil(U); bv, sv = profil(V)
-    # ⚠ Seuil d'ABSTENTION. A 1.0 il laissait passer des scenes quasi monochromes (facade grise
-    # d'un plan de ville) : la correlation portait alors sur du bruit et sortait « +8 colonnes,
-    # corr 0.53 » 147 fois de suite — un faux positif franc, verifie a l'image le 2026-08-13.
-    # 4.0 exige de vrais bords COLORES avant de conclure quoi que ce soit.
+    ***REMOVED*** ⚠ Seuil d'ABSTENTION. A 1.0 il laissait passer des scenes quasi monochromes (facade grise
+    ***REMOVED*** d'un plan de ville) : la correlation portait alors sur du bruit et sortait « +8 colonnes,
+    ***REMOVED*** corr 0.53 » 147 fois de suite — un faux positif franc, verifie a l'image le 2026-08-13.
+    ***REMOVED*** 4.0 exige de vrais bords COLORES avant de conclure quoi que ce soit.
     if sa < 1.0 or (su + sv) < 4.0:
         return None, 0.0
     b = bu + bv; b = (b - b.mean()) / (b.std() + 1e-9)
@@ -84,20 +84,20 @@ def dechirure(Yprec, Y, Ysuiv):
         dp = float(np.abs(a - Yprec[i * h:(i + 1) * h]).mean())
         ds = float(np.abs(a - Ysuiv[i * h:(i + 1) * h]).mean())
         if max(dp, ds) < 2.0:
-            r.append(None); continue          # bande immobile : sans opinion
+            r.append(None); continue          ***REMOVED*** bande immobile : sans opinion
         r.append(ds / (dp + ds + 1e-9)); actives.append(i)
     if len(actives) < 4:
-        return None, 0.0                       # trop peu de matiere pour conclure
+        return None, 0.0                       ***REMOVED*** trop peu de matiere pour conclure
     vals = np.array([r[i] for i in actives])
-    # ⚠ PLANCHER CONNU : un FONDU ENCHAINE produit un large ecart de r sans aucune dechirure
-    # (verifie a l'image le 2026-08-14). Il vaut ~3 evenements/min sur du contenu a transitions.
-    # Une tentative de le supprimer en exigeant la bimodalite (min<0.20 et max>0.60) a SUPPRIME
-    # AUSSI la detection des vraies dechirures : calibre sur mire volontairement cassee, une
-    # vraie dechirure donne min=0.50 max=1.00, ecart 0.50 — soit juste au seuil. Ce detecteur
-    # sait donc distinguer 18/min de 5/min, PAS 5 de 3. Ne pas lui faire dire plus que ca.
+    ***REMOVED*** ⚠ PLANCHER CONNU : un FONDU ENCHAINE produit un large ecart de r sans aucune dechirure
+    ***REMOVED*** (verifie a l'image le 2026-08-14). Il vaut ~3 evenements/min sur du contenu a transitions.
+    ***REMOVED*** Une tentative de le supprimer en exigeant la bimodalite (min<0.20 et max>0.60) a SUPPRIME
+    ***REMOVED*** AUSSI la detection des vraies dechirures : calibre sur mire volontairement cassee, une
+    ***REMOVED*** vraie dechirure donne min=0.50 max=1.00, ecart 0.50 — soit juste au seuil. Ce detecteur
+    ***REMOVED*** sait donc distinguer 18/min de 5/min, PAS 5 de 3. Ne pas lui faire dire plus que ca.
     if vals.max() - vals.min() < 0.55:
         return None, float(vals.max() - vals.min())
-    # frontiere = la transition la plus franche entre bandes actives VOISINES
+    ***REMOVED*** frontiere = la transition la plus franche entre bandes actives VOISINES
     saut, frontiere = 0.0, None
     for j in range(len(actives) - 1):
         if actives[j + 1] == actives[j] + 1:
@@ -118,12 +118,12 @@ def png(nom, Y, U, V):
     except Exception as e:
         dire("  (PNG impossible : %s)" % e)
 
-# ── Mode CALIBRAGE ───────────────────────────────────────────────────────────────────────────
-# `--calibrer <flux>` : au lieu de guetter, imprime les valeurs de `r` par bande sur la première
-# trame suspecte. C'est ainsi qu'on RE-RÈGLE un seuil au lieu de le deviner — mesuré le
-# 2026-08-14 sur `mire_couleur.py --dechire` (déchirure CONNUE), une vraie déchirure donne
-# min=0,50 max=1,00, soit un écart de 0,50 : juste au seuil. Un durcissement « raisonnable »
-# (exiger min<0,20) supprimait la détection des vraies déchirures — d'où ce mode.
+***REMOVED*** ── Mode CALIBRAGE ───────────────────────────────────────────────────────────────────────────
+***REMOVED*** `--calibrer <flux>` : au lieu de guetter, imprime les valeurs de `r` par bande sur la première
+***REMOVED*** trame suspecte. C'est ainsi qu'on RE-RÈGLE un seuil au lieu de le deviner — mesuré le
+***REMOVED*** 2026-08-14 sur `mire_couleur.py --dechire` (déchirure CONNUE), une vraie déchirure donne
+***REMOVED*** min=0,50 max=1,00, soit un écart de 0,50 : juste au seuil. Un durcissement « raisonnable »
+***REMOVED*** (exiger min<0,20) supprimait la détection des vraies déchirures — d'où ce mode.
 if "--calibrer" in sys.argv:
     _f = FLUX[0]
     _rd = bobimxl.Reader(bobimxl.Instance(), _f)
@@ -158,8 +158,8 @@ if "--calibrer" in sys.argv:
 inst = bobimxl.Instance()
 etat = {}
 for n in FLUX:
-    # `tampon` = les 3 derniers grains (N-1, N, N+1) : la dechirure s'evalue sur celui du MILIEU,
-    # puisqu'il faut la trame SUIVANTE pour dire qu'une bande a pris de l'avance.
+    ***REMOVED*** `tampon` = les 3 derniers grains (N-1, N, N+1) : la dechirure s'evalue sur celui du MILIEU,
+    ***REMOVED*** puisqu'il faut la trame SUIVANTE pour dire qu'une bande a pris de l'avance.
     etat[n] = {"rd": None, "tampon": [], "fi": None, "n": 0, "png": 0, "evt": 0}
 
 dire("=== veille demarree sur %s (%.0f s) ===" % (", ".join(FLUX), DUREE))
@@ -176,12 +176,12 @@ while time.time() - t0 < DUREE:
             g = st["rd"].get_latest()
             if g is None or g[0] == st["fi"]:
                 continue
-            # ⚠⚠ N'EXAMINER QUE DES GRAINS COMPLETS. `get_latest()` peut rendre le grain EN COURS
-            # d'ecriture (sa docstring le dit) : sur un flux TRANCHE il est alors partiellement
-            # valide, et les bandes pas encore ecrites portent la trame precedente. Un lecteur
-            # qui ignore validSlices FABRIQUE donc la « dechirure » qu'il croit observer — c'est
-            # ce que faisaient les mesures du 2026-08-14 (18/min a lot=2, 5/min a lot=30 : on
-            # mesurait la FREQUENCE DES COMMITS, pas un defaut de la chaine).
+            ***REMOVED*** ⚠⚠ N'EXAMINER QUE DES GRAINS COMPLETS. `get_latest()` peut rendre le grain EN COURS
+            ***REMOVED*** d'ecriture (sa docstring le dit) : sur un flux TRANCHE il est alors partiellement
+            ***REMOVED*** valide, et les bandes pas encore ecrites portent la trame precedente. Un lecteur
+            ***REMOVED*** qui ignore validSlices FABRIQUE donc la « dechirure » qu'il croit observer — c'est
+            ***REMOVED*** ce que faisaient les mesures du 2026-08-14 (18/min a lot=2, 5/min a lot=30 : on
+            ***REMOVED*** mesurait la FREQUENCE DES COMMITS, pas un defaut de la chaine).
             if g[1].validSlices != g[1].totalSlices:
                 st["partiels"] = st.get("partiels", 0) + 1
                 continue
@@ -189,7 +189,7 @@ while time.time() - t0 < DUREE:
             w, h = st["w"], st["h"]
             yb, ub = w * h, (w // 2) * h
             v = g[2]
-            Y = np.array(v[:yb].view(np.uint8).reshape(h, w)[:, ::2])       # grille chroma
+            Y = np.array(v[:yb].view(np.uint8).reshape(h, w)[:, ::2])       ***REMOVED*** grille chroma
             U = np.array(v[yb:yb + ub].view(np.uint8).reshape(h, w // 2))
             V = np.array(v[yb + ub:yb + 2 * ub].view(np.uint8).reshape(h, w // 2))
             st["tampon"].append((g[0], Y, U, V))
@@ -198,9 +198,9 @@ while time.time() - t0 < DUREE:
             st["tampon"] = st["tampon"][-3:]
             (i0, Y0, _, _), (i1, Y1, U1, V1), (i2, Y2, _, _) = st["tampon"]
             fautes = []
-            # Un decalage luma/chroma REEL est une propriete de la chaine : il est CONSTANT.
-            # Le bruit, lui, erre d'une trame a l'autre. On n'annonce donc qu'une valeur STABLE
-            # sur plusieurs trames consecutives, et une seule fois par episode.
+            ***REMOVED*** Un decalage luma/chroma REEL est une propriete de la chaine : il est CONSTANT.
+            ***REMOVED*** Le bruit, lui, erre d'une trame a l'autre. On n'annonce donc qu'une valeur STABLE
+            ***REMOVED*** sur plusieurs trames consecutives, et une seule fois par episode.
             lag, force = decalage(Y1, U1, V1)
             hist = st.setdefault("lags", [])
             if lag is not None and force > 0.55:

@@ -16,7 +16,7 @@ const _t = (k, fb) => {
 };
 const $ = id => document.getElementById(id);
 const esc = s => String(s || '').replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&***REMOVED***39;' }[c]));
 
 // Réplique JS de _meter_fit_dims (plugins/multiview/script.py) : en mode width_mode='fit',
 // SEULES les barres de canaux s'élargissent pour remplir rw — la zone de graduations (tick,
@@ -54,10 +54,10 @@ const NEW_COMP = {
     // Vidéo : TOUJOURS 16:9 dans l'éditeur — en coordonnées normalisées sur une cellule 16:9,
     // 16:9 ⇔ w == h. La contrainte est maintenue par _enforceVideoRatio (drag, champs, outils).
     video:  { x: 0, y: 0, w: 1, h: 1, fit: 'fill', border: 'none', border_w: 3,
-              border_color: '#ffffff' },
+              border_color: '***REMOVED***ffffff' },
     umd:    { x: 0.15, y: 0.86, w: 0.7, h: 0.12, text_source: 'name', text: '',
               tally_bg: true, tally_text: false, font_size: 0, align: 'center',
-              color: '#ffffff', bg_color: '#000000', bg_opacity: 75 },
+              color: '***REMOVED***ffffff', bg_color: '***REMOVED***000000', bg_opacity: 75 },
     tally:  { x: 0.02, y: 0.87, w: 0.06, h: 0.1, shape: 'lamp', slot: 'dominant', thickness: 4 },
     meters: { x: 0.9, y: 0, w: 0.1, h: 0.86, channels: 2, ch_start: 1, scale: 'dbfs',
               opacity: 100, align: 'right', width_mode: 'auto',
@@ -67,11 +67,11 @@ const NEW_COMP = {
               anc_opacity: 60, font_size: 0, align: 'left' },
     clock:  { x: 0.3, y: 0.05, w: 0.4, h: 0.12, clock_source: 'ptp', tz: '',
               show_hh: true, show_mm: true, show_ss: true, show_ff: false, offset_ms: 0,
-              font_size: 0, align: 'center', color: '#ffffff', bg_color: '#000000', bg_opacity: 60 },
+              font_size: 0, align: 'center', color: '***REMOVED***ffffff', bg_color: '***REMOVED***000000', bg_opacity: 60 },
     text:   { x: 0.25, y: 0.4, w: 0.5, h: 0.15, text: 'TEXTE', font_size: 0, align: 'center',
-              color: '#ffffff', bg_color: '', bg_opacity: 100 },
+              color: '***REMOVED***ffffff', bg_color: '', bg_opacity: 100 },
     format: { x: 0.55, y: 0.02, w: 0.42, h: 0.08, font_size: 0, align: 'center',
-              color: '#d2d4da', bg_color: '#000000', bg_opacity: 65 },
+              color: '***REMOVED***d2d4da', bg_color: '***REMOVED***000000', bg_opacity: 65 },
     // Frises d'historique (multiview 0.37.0) : la source est celle de la FENÊTRE (vidéo pour
     // video_history, audio pour audio_history) — rien à câbler dans le modèle.
     video_history: { x: 0.02, y: 0.66, w: 0.96, h: 0.16, duration: 30, opacity: 100, events: true },
@@ -738,7 +738,7 @@ function pxRect(c) {
 }
 
 function hexA(hex, a) {
-    hex = (hex || '#000000').replace('#', '');
+    hex = (hex || '***REMOVED***000000').replace('***REMOVED***', '');
     if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
     const n = parseInt(hex, 16) || 0;
     return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
@@ -772,17 +772,17 @@ function drawMock(ctx, c, r) {
     ctx.font = 'bold ' + fs + 'px ' + fam;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
-    const tallyCol = simTally === 'red' ? '#dc2828' : (simTally === 'green' ? '#28c850' : '#3a3a42');
+    const tallyCol = simTally === 'red' ? '***REMOVED***dc2828' : (simTally === 'green' ? '***REMOVED***28c850' : '***REMOVED***3a3a42');
     if (c.type === 'video') {
         // Filigrane DISCRET (pas la taille auto des composants texte — le composant vidéo
         // remplit souvent toute la cellule, l'auto donnait un « VIDÉO » géant).
         ctx.font = 'bold ' + Math.max(10, Math.min(r.h * 0.12, 24)) + 'px system-ui';
         const g = ctx.createLinearGradient(r.x, r.y, r.x + r.w, r.y + r.h);
-        g.addColorStop(0, '#28303c'); g.addColorStop(1, '#101418');
+        g.addColorStop(0, '***REMOVED***28303c'); g.addColorStop(1, '***REMOVED***101418');
         ctx.fillStyle = g; ctx.fillRect(r.x, r.y, r.w, r.h);
         if (simSignal === 'nosignal') {
-            ctx.fillStyle = '#16181c'; ctx.fillRect(r.x, r.y, r.w, r.h);
-            ctx.fillStyle = '#8b929e'; ctx.fillText('NO SIGNAL', cx, cy);
+            ctx.fillStyle = '***REMOVED***16181c'; ctx.fillRect(r.x, r.y, r.w, r.h);
+            ctx.fillStyle = '***REMOVED***8b929e'; ctx.fillText('NO SIGNAL', cx, cy);
         } else {
             ctx.strokeStyle = 'rgba(255,255,255,0.12)';
             ctx.beginPath(); ctx.moveTo(r.x, r.y); ctx.lineTo(r.x + r.w, r.y + r.h);
@@ -798,12 +798,12 @@ function drawMock(ctx, c, r) {
             const tallyOr = (neutral) => simTally !== 'off' ? tallyCol : neutral;
             if (bmode === 'stylized') {
                 const t = Math.max(4, Math.round(bw * 2.2));
-                ctx.strokeStyle = '#2e2e35'; ctx.lineWidth = t;
+                ctx.strokeStyle = '***REMOVED***2e2e35'; ctx.lineWidth = t;
                 ctx.strokeRect(r.x + t / 2, r.y + t / 2, r.w - t, r.h - t);
-                ctx.strokeStyle = '#62626c'; ctx.lineWidth = 1;
+                ctx.strokeStyle = '***REMOVED***62626c'; ctx.lineWidth = 1;
                 ctx.strokeRect(r.x + t, r.y + t, r.w - 2 * t, r.h - 2 * t);
             } else if (bmode === 'viewfinder') {
-                const col = tallyOr('#e1e1e8');
+                const col = tallyOr('***REMOVED***e1e1e8');
                 const arm = Math.max(8, Math.round(Math.min(r.w, r.h) * 0.14));
                 const bt = Math.max(2, bw);
                 ctx.fillStyle = col;
@@ -816,12 +816,12 @@ function drawMock(ctx, c, r) {
                 }
             } else if (bmode === 'flat') {
                 const t = Math.max(2, bw);
-                ctx.fillStyle = tallyOr('#5a5a62');
+                ctx.fillStyle = tallyOr('***REMOVED***5a5a62');
                 ctx.fillRect(r.x, r.y + r.h - t, r.w, t);
             } else {
-                ctx.strokeStyle = bmode === 'tally' ? tallyOr('#46464e')
-                                : bmode === 'classic' ? '#82828a'
-                                : (c.border_color || '#ffffff');
+                ctx.strokeStyle = bmode === 'tally' ? tallyOr('***REMOVED***46464e')
+                                : bmode === 'classic' ? '***REMOVED***82828a'
+                                : (c.border_color || '***REMOVED***ffffff');
                 ctx.lineWidth = bmode === 'classic' ? Math.max(2, bw) : bw;
                 ctx.strokeRect(r.x + bw / 2, r.y + bw / 2, r.w - bw, r.h - bw);
             }
@@ -829,10 +829,10 @@ function drawMock(ctx, c, r) {
     } else if (c.type === 'umd') {
         ctx.fillStyle = (c.tally_bg && simTally !== 'off')
             ? (simTally === 'red' ? 'rgba(120,20,20,0.92)' : 'rgba(20,90,35,0.92)')
-            : hexA(c.bg_color || '#000000', (c.bg_opacity ?? 75) / 100);
+            : hexA(c.bg_color || '***REMOVED***000000', (c.bg_opacity ?? 75) / 100);
         ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.fillStyle = (c.tally_text && simTally === 'red') ? '#ff5a5a'
-                      : (c.tally_text && simTally === 'green') ? '#78ff8c' : (c.color || '#ffffff');
+        ctx.fillStyle = (c.tally_text && simTally === 'red') ? '***REMOVED***ff5a5a'
+                      : (c.tally_text && simTally === 'green') ? '***REMOVED***78ff8c' : (c.color || '***REMOVED***ffffff');
         const txt = c.text_source === 'fixed' ? (c.text || '—')
                   : c.text_source === 'tsl' ? 'UMD TSL' : 'CAM 1';
         ctx.fillText(txt, cx, cy);
@@ -870,7 +870,7 @@ function drawMock(ctx, c, r) {
         }
         ctx.fillStyle = 'rgba(0,0,0,' + (0.7 * (c.opacity ?? 100) / 100) + ')';
         ctx.fillRect(mx, r.y, mw + 1, r.h);
-        ctx.fillStyle = '#b4b4b4';
+        ctx.fillStyle = '***REMOVED***b4b4b4';
         ctx.font = '8px monospace'; ctx.textAlign = 'left';
         ['0', '-12', '-30'].forEach((lbl, k) => {
             ctx.fillText(lbl, mx + 1, r.y + 8 + k * (r.h - 20) / 2.4);
@@ -879,19 +879,19 @@ function drawMock(ctx, c, r) {
         for (let i = 0; i < n; i++) {
             const lvl = 0.55 + 0.3 * Math.sin((s1 + i) * 1.7);
             const bx = mx + TICK + i * (BW + GAP);
-            ctx.fillStyle = '#3cc83c'; ctx.fillRect(bx, r.y + barsH * (1 - lvl * 0.7), BW, barsH * lvl * 0.7);
-            ctx.fillStyle = '#dcb428'; ctx.fillRect(bx, r.y + barsH * (1 - lvl), BW, barsH * (lvl - lvl * 0.7));
+            ctx.fillStyle = '***REMOVED***3cc83c'; ctx.fillRect(bx, r.y + barsH * (1 - lvl * 0.7), BW, barsH * lvl * 0.7);
+            ctx.fillStyle = '***REMOVED***dcb428'; ctx.fillRect(bx, r.y + barsH * (1 - lvl), BW, barsH * (lvl - lvl * 0.7));
         }
         // Numéros de canaux réels (affectation ch_start) sous les barres
-        ctx.fillStyle = '#c8c8d0';
+        ctx.fillStyle = '***REMOVED***c8c8d0';
         ctx.font = '8px monospace'; ctx.textAlign = 'center';
         for (let i = 0; i < n; i++) {
             ctx.fillText(String(s1 + i), mx + TICK + i * (BW + GAP) + BW / 2, r.y + r.h - 3);
         }
     } else if (c.type === 'anc') {
-        ctx.fillStyle = hexA('#000000', (c.anc_opacity ?? 60) / 100);
+        ctx.fillStyle = hexA('***REMOVED***000000', (c.anc_opacity ?? 60) / 100);
         ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.fillStyle = '#ebebeb'; ctx.textAlign = 'left';
+        ctx.fillStyle = '***REMOVED***ebebeb'; ctx.textAlign = 'left';
         const parts = [];
         if (c.anc_types) parts.push('ATC RP188 AFD');
         if (c.anc_tc) parts.push('10:00:00:00');
@@ -902,9 +902,9 @@ function drawMock(ctx, c, r) {
         ctx.font = Math.max(8, Math.min(r.h * 0.6, 18)) + 'px ' + fam;
         ctx.fillText(parts.join('  ') || 'ANC --', r.x + 4, cy);
     } else if (c.type === 'clock') {
-        ctx.fillStyle = hexA(c.bg_color || '#000000', (c.bg_opacity ?? 60) / 100);
+        ctx.fillStyle = hexA(c.bg_color || '***REMOVED***000000', (c.bg_opacity ?? 60) / 100);
         ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.fillStyle = c.color || '#ffffff';
+        ctx.fillStyle = c.color || '***REMOVED***ffffff';
         const seg = [];
         if (c.show_hh !== false) seg.push('12'); if (c.show_mm !== false) seg.push('34');
         if (c.show_ss !== false) seg.push('56');
@@ -912,12 +912,12 @@ function drawMock(ctx, c, r) {
         ctx.fillText(txt || '12:34:56', cx, cy);
     } else if (c.type === 'text') {
         if (c.bg_color) { ctx.fillStyle = hexA(c.bg_color, (c.bg_opacity ?? 100) / 100); ctx.fillRect(r.x, r.y, r.w, r.h); }
-        ctx.fillStyle = c.color || '#ffffff';
+        ctx.fillStyle = c.color || '***REMOVED***ffffff';
         ctx.fillText(c.text || 'TEXTE', cx, cy);
     } else if (c.type === 'format') {
-        ctx.fillStyle = hexA(c.bg_color || '#000000', (c.bg_opacity ?? 65) / 100);
+        ctx.fillStyle = hexA(c.bg_color || '***REMOVED***000000', (c.bg_opacity ?? 65) / 100);
         ctx.fillRect(r.x, r.y, r.w, r.h);
-        ctx.fillStyle = c.color || '#d2d4da';
+        ctx.fillStyle = c.color || '***REMOVED***d2d4da';
         ctx.font = Math.max(8, Math.min(r.h * 0.6, 16)) + 'px ' + fam;
         ctx.fillText('1920×1080p25', cx, cy);
     } else if (c.type === 'video_history') {
@@ -964,7 +964,7 @@ function draw() {
     const cv = cvs();
     if (!cv) return;
     const ctx = cv.getContext('2d');
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = '***REMOVED***000';
     ctx.fillRect(0, 0, cv.width, cv.height);
     const list = comps();
     // vidéo d'abord (fond), puis le reste dans l'ordre
@@ -977,19 +977,19 @@ function draw() {
         if (!list[i]) return;
         const r = pxRect(list[i]);
         const primary = (i === selIdx);
-        ctx.strokeStyle = primary ? '#ffffff' : '#58a6ff';
+        ctx.strokeStyle = primary ? '***REMOVED***ffffff' : '***REMOVED***58a6ff';
         ctx.lineWidth = 2;
         ctx.setLineDash(primary ? [6, 3] : [3, 3]);
         ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
         ctx.setLineDash([]);
         if (primary) {
-            ctx.fillStyle = '#58a6ff';
+            ctx.fillStyle = '***REMOVED***58a6ff';
             ctx.fillRect(r.x + r.w - 8, r.y + r.h - 8, 8, 8);
         }
     });
     // Lignes guides de snap (pendant le drag) — même rendu que le composer.
     if (drag && snapGuides.length) {
-        ctx.strokeStyle = '#e3b341';
+        ctx.strokeStyle = '***REMOVED***e3b341';
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         snapGuides.forEach(g => {
@@ -1335,7 +1335,7 @@ function refreshProps() {
         } else if (f.type === 'color') {
             html += '<div class="field field-color"><label for="' + id + '">' + esc(f.label) +
                 '</label><input type="color" id="' + id + '" value="' +
-                esc(c[f.k] || '#000000') + '"></div>' +
+                esc(c[f.k] || '***REMOVED***000000') + '"></div>' +
                 (f.empty ? '<label class="field field-inline" for="' + id + '_off">' +
                     '<input type="checkbox" class="ios-toggle" id="' + id + '_off"' +
                     (!c[f.k] ? ' checked' : '') + '> <span>' +
@@ -1485,7 +1485,7 @@ function _pipIdle(fn) {
 // synchrone (JS mono-thread, rien ne s'exécute entre la neutralisation et la restauration).
 function renderTemplateThumb(cv, config) {
     const ctx = cv.getContext('2d');
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = '***REMOVED***000';
     ctx.fillRect(0, 0, cv.width, cv.height);
     const a = (config && parseFloat(config.aspect) > 0.1 && parseFloat(config.aspect) < 10)
         ? parseFloat(config.aspect) : 16 / 9;
@@ -1949,7 +1949,7 @@ function initUI() {
    d'affichage du canvas est fixée en px par _resizeCanvasDisplay (comme resizeCanvas du
    composer) — la RÉSOLUTION interne, elle, suit la taille de tuile simulée. */
 .pip-compose .mw-canvas-wrap { margin: 0 auto; }
-.pip-compose .mw-canvas-wrap canvas { background:#000; }
+.pip-compose .mw-canvas-wrap canvas { background:***REMOVED***000; }
 .pip-compose .mw-hint, .pip-compose .mw-editor-row { justify-content:center; }
 .pip-compose .mw-hint { text-align:center; }
 /* Sélecteur de REFERENCE d'alignement. La classe .tool-select est definie dans multiview.css,
@@ -1958,11 +1958,11 @@ function initUI() {
    ATTENTION : ce bloc vit DANS le template literal assigne a root.innerHTML. N'y mettre AUCUN
    accent grave ni interpolation : ils terminent la chaine, l'editeur reste vide, et ni node
    --check ni le chargement du module ne signalent quoi que ce soit. */
-.pip-compose .tool-select, #pip_toolbar .tool-select {
+.pip-compose .tool-select, ***REMOVED***pip_toolbar .tool-select {
   height: 26px; padding: 0 4px; margin-left: 6px; font-size: 0.8em;
   border: 1px solid var(--border); border-radius: 5px;
   background: var(--bg-soft); color: var(--text); cursor: pointer; }
-#pip_toolbar .tool-select:hover { background: var(--bg-hover); color: var(--text-strong); }
+***REMOVED***pip_toolbar .tool-select:hover { background: var(--bg-hover); color: var(--text-strong); }
 /* Éditeur de tags du modèle en cours (section Nom du modèle). */
 .pip-tag-editor { flex-direction:column; align-items:stretch; gap:6px; }
 .pip-tag-chips { display:flex; flex-wrap:wrap; gap:4px; min-height:22px; }
@@ -1990,7 +1990,7 @@ function initUI() {
   gap:4px; transition: border-color 0.12s; }
 .pip-lib-card:hover { border-color: var(--accent); }
 .pip-lib-card:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.pip-lib-thumb { width:100%; height:auto; aspect-ratio:16/9; display:block; border-radius:3px; background:#000; }
+.pip-lib-thumb { width:100%; height:auto; aspect-ratio:16/9; display:block; border-radius:3px; background:***REMOVED***000; }
 .pip-lib-meta { display:flex; align-items:center; justify-content:space-between; gap:4px; }
 .pip-lib-name { font-size:0.78em; font-weight:500; overflow:hidden; text-overflow:ellipsis;
   white-space:nowrap; min-width:0; }

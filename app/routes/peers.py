@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
-# Auteur : Cyril Mazouer, pour le compte de BOBI SAS
-# Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** Auteur : Cyril Mazouer, pour le compte de BOBI SAS
+***REMOVED*** Distribué sous licence GNU GPL v3 (ou ultérieure) ; voir le fichier LICENSE.
 
 """Registre de pairs (flotte d'instances Bobi.Studio) — CRUD + pull/push/preview."""
 
@@ -59,10 +59,10 @@ def peers_discover():
     data = request.json or {}
     cidr = (data.get("cidr") or "").strip()
     if not cidr:
-        # ⚠ PAS DE REPLI CODÉ EN DUR. Il portait une adresse de SITE — donc une valeur
-        # juste sur une installation et fausse sur toutes les autres, sans que rien
-        # ne le dise. Sans réglage, on rend une chaîne vide : l'absence se traite,
-        # une mauvaise adresse se diagnostique.
+        ***REMOVED*** ⚠ PAS DE REPLI CODÉ EN DUR. Il portait une adresse de SITE — donc une valeur
+        ***REMOVED*** juste sur une installation et fausse sur toutes les autres, sans que rien
+        ***REMOVED*** ne le dise. Sans réglage, on rend une chaîne vide : l'absence se traite,
+        ***REMOVED*** une mauvaise adresse se diagnostique.
         gw = st.get("gateway") or ""
         bits = int(st.get("netmask_bits") or 24)
         cidr = f"{gw}/{bits}"
@@ -95,8 +95,8 @@ def peers_push(pid):
     if not st.get("update_server_enabled") or not st.get("update_token"):
         return jsonify({"ok": False, "error": "active d'abord le mode serveur (token) sur cette instance"}), 400
     my_url = request.host_url.rstrip("/")
-    # Opt-in de NOUVEAUX composants pour la cible (composition par instance) : relayé tel
-    # quel au /api/update/apply du pair, qui l'applique lors de son pull vers nous.
+    ***REMOVED*** Opt-in de NOUVEAUX composants pour la cible (composition par instance) : relayé tel
+    ***REMOVED*** quel au /api/update/apply du pair, qui l'applique lors de son pull vers nous.
     _inew = (request.json or {}).get("install_new") if request.is_json else None
     body = _json.dumps({"source_url": my_url, "token": st.get("update_token"),
                         "install_new": _inew}).encode()
@@ -104,7 +104,7 @@ def peers_push(pid):
                                  headers={"Content-Type": "application/json",
                                           "X-MXL-Update-Token": p.get("token") or ""})
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:   # noqa: S310
+        with urllib.request.urlopen(req, timeout=30) as r:   ***REMOVED*** noqa: S310
             res = _json.loads(r.read().decode())
     except Exception as e:
         return jsonify({"ok": False, "error": f"pair injoignable : {e}"}), 502
@@ -127,7 +127,7 @@ def peers_preview(pid):
     can_apply = True
     reason = None
 
-    # Manifeste local (toujours dispo) et celui du pair (peut échouer si injoignable).
+    ***REMOVED*** Manifeste local (toujours dispo) et celui du pair (peut échouer si injoignable).
     local = updater.current_manifest()
     try:
         remote = updater.fetch_manifest(p["url"], p.get("token") or "")
@@ -136,16 +136,16 @@ def peers_preview(pid):
         warning = f"pair injoignable : {e}"
 
     if direction == "pull":
-        # On tire le pair → cette instance redémarre. Ancien = local, nouveau = pair.
+        ***REMOVED*** On tire le pair → cette instance redémarre. Ancien = local, nouveau = pair.
         old, new = local, remote
         target = {"label": (local.get("label") or "?"), "url": request.host_url.rstrip("/"),
                   "is_local": True}
         source = {"label": remote.get("label") or "?", "git_hash": remote.get("git_hash"),
                   "built_at": remote.get("built_at")}
         if warning:
-            can_apply, reason = False, warning   # rien à tirer si le pair ne répond pas
-    else:  # push
-        # On pousse vers le pair → le pair redémarre. Ancien = pair, nouveau = local.
+            can_apply, reason = False, warning   ***REMOVED*** rien à tirer si le pair ne répond pas
+    else:  ***REMOVED*** push
+        ***REMOVED*** On pousse vers le pair → le pair redémarre. Ancien = pair, nouveau = local.
         old, new = remote, local
         target = {"label": remote.get("label") or "?", "url": p["url"], "is_local": False}
         source = {"label": local.get("label") or "?", "git_hash": local.get("git_hash"),
@@ -153,8 +153,8 @@ def peers_preview(pid):
         if not st.get("update_server_enabled") or not st.get("update_token"):
             can_apply, reason = False, "active d'abord le mode serveur (token) sur cette instance"
 
-    # Si le pair est injoignable, son manifeste est vide → un diff serait trompeur
-    # (tout « ajouté » ou « retiré »). On ne calcule le diff que si les deux côtés sont là.
+    ***REMOVED*** Si le pair est injoignable, son manifeste est vide → un diff serait trompeur
+    ***REMOVED*** (tout « ajouté » ou « retiré »). On ne calcule le diff que si les deux côtés sont là.
     if warning:
         diff = {"components": [], "counts": {"added": 0, "updated": 0,
                                              "removed": 0, "unchanged": 0}}

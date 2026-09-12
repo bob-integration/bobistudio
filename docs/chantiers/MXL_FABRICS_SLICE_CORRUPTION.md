@@ -1,11 +1,11 @@
-# Réplication fabrics d'un flux TRANCHÉ : grains corrompus + ~12 images de retard
+***REMOVED*** Réplication fabrics d'un flux TRANCHÉ : grains corrompus + ~12 images de retard
 
 **Statut : reproduit, isolé, non corrigé. À remonter au projet MXL (bêta).**
 Mesuré le 2026-08-11 sur MXL `v1.1.0-beta-1` (`mxl-info` : `1.1.0-beta-1+0 g81738a15adb5`).
 
 ---
 
-## Le symptôme
+***REMOVED******REMOVED*** Le symptôme
 
 Un flux vidéo publié **en tranches** (commit progressif, `validSlices` croissant) ne se réplique
 pas correctement par `mxl-fabrics-demo`. Sa réplique porte :
@@ -15,7 +15,7 @@ pas correctement par `mxl-fabrics-demo`. Sa réplique porte :
 
 Un flux **monolithique**, sur le même lien, ne présente ni l'un ni l'autre.
 
-## La preuve
+***REMOVED******REMOVED*** La preuve
 
 Mire avec **timecode incrusté** et barre verticale mobile. Lecture d'un grain à `tête − 8` —
 donc achevé depuis 8 trames, il **ne peut pas** être en cours d'écriture :
@@ -31,14 +31,14 @@ le grain est complet, et il contient malgré tout deux trames.
 Méthode : âge ABSOLU du contenu — heure TAI lue une fois, moins le timecode affiché ; contrôle
 intégré (la source doit ressortir à ~2 images, ce qu'elle fait).
 
-## A/B, une seule variable
+***REMOVED******REMOVED*** A/B, une seule variable
 
 Même lien, même tout, seul le `slice_mode` du producteur amont change :
 
     source TRANCHÉE ....... 11,75 images, image DÉCHIRÉE
     source monolithique ...  1,75 image,  image propre
 
-## Ce qui a été éliminé par mesure
+***REMOVED******REMOVED*** Ce qui a été éliminé par mesure
 
 | piste | résultat |
 |---|---|
@@ -48,7 +48,7 @@ Même lien, même tout, seul le `slice_mode` du producteur amont change :
 | décrochage d'index de l'initiateur | tête de la réplique **sur la grille** (−1) — il ne décroche pas |
 | profondeur de l'anneau TX, mode tranche du moteur/mur | sans rapport |
 
-## L'initiateur EST HORS DE CAUSE — instrumenté, pas déduit
+***REMOVED******REMOVED*** L'initiateur EST HORS DE CAUSE — instrumenté, pas déduit
 
 Build de diagnostic (mêmes sources, `SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_DEBUG` + `spdlog::set_level`
 ajouté dans `main()`) : les `MXL_DEBUG` de `runDiscrete` deviennent visibles.
@@ -73,7 +73,7 @@ processus**, ou par une sonde interne comme celle-ci.
 → La corruption est donc EN AVAL de l'initiateur : côté cible, ou dans la sémantique du transfert
 par tranches. C'est là qu'il faut chercher.
 
-## Piste non vérifiée
+***REMOVED******REMOVED*** Piste non vérifiée
 
 `RCInitiator::transferGrain` transfère de la case locale `grainIndex % N` vers la case distante de
 même rang, **sans retenir le grain source**. Le RDMA lit la mémoire de façon asynchrone : rien
@@ -81,7 +81,7 @@ n'empêche le producteur de réécrire la case pendant que le transfert est en v
 la fenêtre est de l'ordre de la milliseconde ; en tranche, l'initiateur ouvre un transfert par lot
 et la fenêtre s'étale sur toute la période de trame. **Hypothèse, non démontrée.**
 
-## Contexte utile
+***REMOVED******REMOVED*** Contexte utile
 
 `tools/mxl-fabrics-demo/demo.cpp:runDiscrete()` avance `grainIndex` de 1 par grain et ne se
 recale (`mxlGetCurrentIndex`) que sur `MXL_ERR_OUT_OF_RANGE_TOO_LATE` — le chemin audio
@@ -91,7 +91,7 @@ conforme au modèle de temps MXL (`docs/Timing.md`), c'étaient nos producteurs 
 l'étaient pas. Ils sont depuis tous sur la grille TAI, et **le décrochage d'index n'est pas la
 cause ici** (mesuré ci-dessus).
 
-## Ce qu'on a fait en attendant
+***REMOVED******REMOVED*** Ce qu'on a fait en attendant
 
 Aucun contournement de comportement — seulement une **alerte** à l'établissement de tout lien
 répliquant un flux tranché (`services/rdma`). Sans elle, le réglage global de tranche s'active d'un
@@ -99,7 +99,7 @@ clic et un producteur tranché dont le consommateur est sur un autre nœud paie 
 images fausses**, sans qu'aucun compteur ne bronche : cadence nominale, lien `running`, aucune
 erreur journalisée.
 
-## Pour aller plus loin
+***REMOVED******REMOVED*** Pour aller plus loin
 
 `MXL_DEBUG("Transferred grain index={} slices {}-{}")` existe déjà dans `runDiscrete`, mais c'est
 un `SPDLOG_DEBUG` compilé hors du binaire en Release, et `Logging.cpp` ne règle aucun niveau à

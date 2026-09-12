@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
+***REMOVED***!/usr/bin/env python3
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
 """Page Aide : tout article listé doit avoir un gabarit, et réciproquement.
 
 ★ POURQUOI. Les articles vivent à DEUX endroits dans `templates/aide.html` : une entrée dans le
@@ -22,7 +22,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import config, database                                   # noqa: E402
+from app import config, database                                   ***REMOVED*** noqa: E402
 
 ECHECS = []
 
@@ -72,8 +72,8 @@ def main():
              "toutes les catégories d'article existent — " + (
                  ", ".join(inconnues) if inconnues else "ok"))
 
-    # L'onglet Réglages → Mises à jour a son article : c'est la page par laquelle on installe
-    # un plugin et on met le produit à jour, elle n'en avait aucun jusqu'au 2026-09-03.
+    ***REMOVED*** L'onglet Réglages → Mises à jour a son article : c'est la page par laquelle on installe
+    ***REMOVED*** un plugin et on met le produit à jour, elle n'en avait aucun jusqu'au 2026-09-03.
     verifier("mises-a-jour-page" in ids and "mises-a-jour-page" in gabarits,
              "la page « Mises à jour » a bien un article d'aide")
 

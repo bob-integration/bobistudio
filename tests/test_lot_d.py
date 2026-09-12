@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright (C) 2026 BOBI SAS, France
+***REMOVED*** SPDX-License-Identifier: GPL-3.0-or-later
+***REMOVED*** Copyright (C) 2026 BOBI SAS, France
 """Tests Lot D — observabilité sans ethtool (port média en vfio/DPDK).
 
 Vérifie `app.node_health._merge_dpdk_net` (+ la forme agent 0.15.0) contre des snapshots
@@ -39,18 +39,18 @@ def check(name, cond, detail=""):
         FAILURES.append(f"{name}: {detail}")
 
 
-# ─── DB jetable + fixtures node_interfaces ────────────────────────────────────
+***REMOVED*** ─── DB jetable + fixtures node_interfaces ────────────────────────────────────
 _tmpdir = tempfile.mkdtemp(prefix="bobi-test-lot-d-")
 _db_path = os.path.join(_tmpdir, "db_test.db")
 
-import app.database as database                       # noqa: E402
+import app.database as database                       ***REMOVED*** noqa: E402
 database.DB_PATH = _db_path
-import app.config as config                           # noqa: E402
+import app.config as config                           ***REMOVED*** noqa: E402
 config.DB_PATH = _db_path
 database.init_db()
 
 with database.get_db() as _db:
-    # Nœud 1 : banc DPDK (blue en vfio, red resté af_xdp) — nœud 2 : flotte 100 % af_xdp.
+    ***REMOVED*** Nœud 1 : banc DPDK (blue en vfio, red resté af_xdp) — nœud 2 : flotte 100 % af_xdp.
     _db.execute("INSERT INTO node_interfaces (node_id, ifname, pci, role, pmd) "
                 "VALUES (1, 'ens1f0np0', '0000:12:00.0', 'media2110', 'dpdk')")
     _db.execute("INSERT INTO node_interfaces (node_id, ifname, pci, role, pmd) "
@@ -59,20 +59,20 @@ with database.get_db() as _db:
                 "VALUES (2, 'ens2f0', 'media2110')")
     _db.commit()
 
-import app.node_health as nh                          # noqa: E402
+import app.node_health as nh                          ***REMOVED*** noqa: E402
 
-# Capture des alertes (db_add_alert est importé DANS le namespace node_health).
+***REMOVED*** Capture des alertes (db_add_alert est importé DANS le namespace node_health).
 ALERTS = []
-# ⚠ Le bouchon doit suivre la VRAIE signature, sinon il ment sur le contrat.
-# Celui-ci est resté à `(msg, niveau)` alors que `db_add_alert` accepte depuis 2026-07
-# le contexte structuré (`vmid`, `node_id`, `kind`, `params`) — cf. CLAUDE.md. Le code
-# de production passe `node_id=`, la lambda le refusait, et le test échouait sur un
-# TypeError qui ne désignait AUCUN défaut du produit. Un bouchon trop étroit transforme
-# une évolution correcte en échec, ce qui revient à décourager l'évolution.
+***REMOVED*** ⚠ Le bouchon doit suivre la VRAIE signature, sinon il ment sur le contrat.
+***REMOVED*** Celui-ci est resté à `(msg, niveau)` alors que `db_add_alert` accepte depuis 2026-07
+***REMOVED*** le contexte structuré (`vmid`, `node_id`, `kind`, `params`) — cf. CLAUDE.md. Le code
+***REMOVED*** de production passe `node_id=`, la lambda le refusait, et le test échouait sur un
+***REMOVED*** TypeError qui ne désignait AUCUN défaut du produit. Un bouchon trop étroit transforme
+***REMOVED*** une évolution correcte en échec, ce qui revient à décourager l'évolution.
 nh.db_add_alert = (lambda msg, niveau="info", vmid=None, node_id=None, kind=None,
                           params=None: ALERTS.append((niveau, msg, params or {})))
 
-# Stub du snapshot moteur (compte les appels pour le test « af_xdp intact »).
+***REMOVED*** Stub du snapshot moteur (compte les appels pour le test « af_xdp intact »).
 ENGINE = {"snap": None, "calls": 0}
 
 
@@ -115,12 +115,12 @@ def _node_snap():
             "net": {"ens1f1np1": {"rx_bps": 1000, "tx_bps": 2000, "speed_mbps": 100000}}}
 
 
-# ─── 1) Port dpdk vivant : débits calculés par delta mtl_stats ────────────────
+***REMOVED*** ─── 1) Port dpdk vivant : débits calculés par delta mtl_stats ────────────────
 def test_dpdk_alive():
     _reset_state()
     ENGINE["snap"] = _engine_snap(rx_bytes=0, tx_bytes=0, rx_pkts=0, tx_pkts=0)
     snap = _node_snap()
-    nh._merge_dpdk_net(1, snap)                        # 1er passage : amorçage des deltas
+    nh._merge_dpdk_net(1, snap)                        ***REMOVED*** 1er passage : amorçage des deltas
     e = snap["net"].get("ens1f0np0")
     check("dpdk vivant : entrée net créée malgré l'absence côté agent", e is not None)
     check("dpdk vivant : 1er passage sans débit (amorçage)",
@@ -130,7 +130,7 @@ def test_dpdk_alive():
     check("dpdk vivant : speed_mbps dérivé de port_capacity_gbps",
           e and e.get("speed_mbps") == 100000, str(e))
 
-    # 2e passage : +1,25 Go RX / +0,125 Go TX sur 10 s ⇒ 1 Gb/s RX, 100 Mb/s TX.
+    ***REMOVED*** 2e passage : +1,25 Go RX / +0,125 Go TX sur 10 s ⇒ 1 Gb/s RX, 100 Mb/s TX.
     key = (str(1), "ens1f0np0")
     nh._mtl_prev[key]["ts"] = time.time() - 10.0
     ENGINE["snap"] = _engine_snap(rx_bytes=1_250_000_000, tx_bytes=125_000_000,
@@ -147,7 +147,7 @@ def test_dpdk_alive():
           snap2["net"]["ens1f1np1"] == {"rx_bps": 1000, "tx_bps": 2000, "speed_mbps": 100000},
           str(snap2["net"]["ens1f1np1"]))
 
-    # Restart moteur (compteurs cumulés qui RECULENT) : pas de débit négatif, on saute un cycle.
+    ***REMOVED*** Restart moteur (compteurs cumulés qui RECULENT) : pas de débit négatif, on saute un cycle.
     nh._mtl_prev[key]["ts"] = time.time() - 5.0
     ENGINE["snap"] = _engine_snap(rx_bytes=1_000, tx_bytes=0, rx_pkts=10, tx_pkts=0)
     snap3 = _node_snap()
@@ -157,21 +157,21 @@ def test_dpdk_alive():
           e3["rx_bps"] is None and e3["tx_bps"] is None, str(e3))
 
 
-# ─── 2) Compteurs figés + sessions actives → alerte « port vfio muet » ────────
+***REMOVED*** ─── 2) Compteurs figés + sessions actives → alerte « port vfio muet » ────────
 def test_dpdk_frozen():
     _reset_state()
     ENGINE["snap"] = _engine_snap(rx_bytes=5_000, tx_bytes=5_000, rx_pkts=500, tx_pkts=500,
                                   active=3)
-    for _ in range(nh.VFIO_FROZEN_SAMPLES + 2):       # compteurs identiques à chaque échantillon
+    for _ in range(nh.VFIO_FROZEN_SAMPLES + 2):       ***REMOVED*** compteurs identiques à chaque échantillon
         nh._merge_dpdk_net(1, _node_snap())
     warns = [a for a in ALERTS if a[0] == "warning"]
     check("figé : exactement UNE alerte warning (à transition)", len(warns) == 1, str(ALERTS))
-    # ⚠ UNE ALERTE EST UNE CLÉ + DES PARAMS, plus une phrase. Ce contrôle cherchait
-    # « ens1f0np0 » et « dl360-1 » DANS LE MESSAGE : il datait d'avant l'i18n des alertes, où
-    # le texte était interpolé à l'émission. Depuis, `db_add_alert` reçoit `alert.net.port_muet`
-    # et un dict — le port n'est plus dans le message, il est dans les params, et le rendu se
-    # fait à l'affichage, dans la langue du lecteur. On vérifie donc ce qui est vrai
-    # aujourd'hui : la bonne clé, et le port nommé dans les params.
+    ***REMOVED*** ⚠ UNE ALERTE EST UNE CLÉ + DES PARAMS, plus une phrase. Ce contrôle cherchait
+    ***REMOVED*** « ens1f0np0 » et « dl360-1 » DANS LE MESSAGE : il datait d'avant l'i18n des alertes, où
+    ***REMOVED*** le texte était interpolé à l'émission. Depuis, `db_add_alert` reçoit `alert.net.port_muet`
+    ***REMOVED*** et un dict — le port n'est plus dans le message, il est dans les params, et le rendu se
+    ***REMOVED*** fait à l'affichage, dans la langue du lecteur. On vérifie donc ce qui est vrai
+    ***REMOVED*** aujourd'hui : la bonne clé, et le port nommé dans les params.
     check("figé : l'alerte porte la clé port_muet et nomme le port",
           warns and warns[0][1] == "alert.net.port_muet"
           and warns[0][2].get("ifname") == "ens1f0np0", str(warns))
@@ -182,18 +182,18 @@ def test_dpdk_frozen():
     nh._merge_dpdk_net(1, snap)
     check("figé : entrée marquée frozen", snap["net"]["ens1f0np0"].get("frozen") is True)
 
-    # Retour du trafic → info « revenu », une seule fois.
+    ***REMOVED*** Retour du trafic → info « revenu », une seule fois.
     ENGINE["snap"] = _engine_snap(rx_bytes=9_000_000, tx_bytes=6_000, rx_pkts=9_000, tx_pkts=600,
                                   active=3)
     nh._merge_dpdk_net(1, _node_snap())
     nh._merge_dpdk_net(1, _node_snap())
     infos = [a for a in ALERTS if a[0] == "info"]
-    # Même correction que ci-dessus : la clé fait foi, pas le mot français « revenu »
-    # qui n'apparaît plus que dans le catalogue i18n.
+    ***REMOVED*** Même correction que ci-dessus : la clé fait foi, pas le mot français « revenu »
+    ***REMOVED*** qui n'apparaît plus que dans le catalogue i18n.
     check("figé : retour du trafic → UNE alerte info port_retabli",
           len(infos) == 1 and infos[0][1] == "alert.net.port_retabli", str(ALERTS))
 
-    # Compteurs figés SANS session active (rien d'abonné) → silence normal, aucune alerte.
+    ***REMOVED*** Compteurs figés SANS session active (rien d'abonné) → silence normal, aucune alerte.
     _reset_state()
     ENGINE["snap"] = _engine_snap(rx_bytes=5_000, tx_bytes=5_000, rx_pkts=500, tx_pkts=500,
                                   active=0)
@@ -202,10 +202,10 @@ def test_dpdk_frozen():
     check("figé sans session : aucune alerte (port silencieux = normal)", not ALERTS, str(ALERTS))
 
 
-# ─── 3) Port absent du snapshot moteur / moteur injoignable → pas de crash ────
+***REMOVED*** ─── 3) Port absent du snapshot moteur / moteur injoignable → pas de crash ────
 def test_dpdk_absent():
     _reset_state()
-    # a) Le moteur ne connaît pas ce port (vieux controller.py sans mtl_stats).
+    ***REMOVED*** a) Le moteur ne connaît pas ce port (vieux controller.py sans mtl_stats).
     ENGINE["snap"] = {"fps": 50.0, "nic": {"ports": [
         {"iface": "ens1f1np1", "rx_gbps": 1.0, "active": 1}]}}
     snap = _node_snap()
@@ -216,51 +216,51 @@ def test_dpdk_absent():
     check("port absent : débits inconnus (pas inventés)",
           e and e["rx_bps"] is None and e["tx_bps"] is None, str(e))
     check("port absent : aucune alerte", not ALERTS, str(ALERTS))
-    # b) Moteur injoignable / pas de moteur sur le nœud.
+    ***REMOVED*** b) Moteur injoignable / pas de moteur sur le nœud.
     ENGINE["snap"] = None
     snap2 = _node_snap()
     nh._merge_dpdk_net(1, snap2)
     check("moteur injoignable : pas de crash, entrée affichable",
           snap2["net"].get("ens1f0np0", {}).get("pmd") == "dpdk")
     check("moteur injoignable : aucune alerte", not ALERTS, str(ALERTS))
-    # c) Snapshot moteur malformé (nic = None) → pas de crash.
+    ***REMOVED*** c) Snapshot moteur malformé (nic = None) → pas de crash.
     ENGINE["snap"] = {"fps": 50.0, "nic": None}
     nh._merge_dpdk_net(1, _node_snap())
     check("nic:None : aucune alerte, pas de crash", not ALERTS, str(ALERTS))
-    # d) Forme agent ≥ 0.15.0 : l'iface est déjà là avec state:"vfio" → enrichie, pas écrasée.
+    ***REMOVED*** d) Forme agent ≥ 0.15.0 : l'iface est déjà là avec state:"vfio" → enrichie, pas écrasée.
     ENGINE["snap"] = _engine_snap(rx_bytes=0, tx_bytes=0, rx_pkts=0, tx_pkts=0)
     snap4 = _node_snap()
-    snap4["net"]["ens1f0np0"] = {"state": "vfio"}     # posé par le futur agent
+    snap4["net"]["ens1f0np0"] = {"state": "vfio"}     ***REMOVED*** posé par le futur agent
     nh._merge_dpdk_net(1, snap4)
     e4 = snap4["net"]["ens1f0np0"]
     check("agent 0.15.0 (state:vfio) : entrée conservée et enrichie",
           e4.get("state") == "vfio" and e4.get("pmd") == "dpdk" and "rx_bps" in e4, str(e4))
 
 
-# ─── 4) Nœud 100 % af_xdp : comportement STRICTEMENT inchangé ────────────────
+***REMOVED*** ─── 4) Nœud 100 % af_xdp : comportement STRICTEMENT inchangé ────────────────
 def test_afxdp_untouched():
     _reset_state()
     ENGINE["snap"] = _engine_snap(rx_bytes=123, tx_bytes=456, rx_pkts=1, tx_pkts=2)
     snap = {"ts": time.time(), "ok": True, "name": "dl360-2", "host": "198.51.100.252",
             "net": {"ens2f0": {"rx_bps": 5000, "tx_bps": 6000, "speed_mbps": 25000}}}
     ref = copy.deepcopy(snap)
-    nh._merge_dpdk_net(2, snap)                        # nœud 2 : aucune interface pmd=dpdk
+    nh._merge_dpdk_net(2, snap)                        ***REMOVED*** nœud 2 : aucune interface pmd=dpdk
     check("af_xdp : snapshot STRICTEMENT inchangé", snap == ref,
           f"{snap} != {ref}")
     check("af_xdp : aucune alerte", not ALERTS, str(ALERTS))
     check("af_xdp : aucun fetch du moteur :8080", ENGINE["calls"] == 0, str(ENGINE["calls"]))
-    # Idem pour un nœud inconnu de node_interfaces.
+    ***REMOVED*** Idem pour un nœud inconnu de node_interfaces.
     snap9 = copy.deepcopy(ref)
     nh._merge_dpdk_net(999, snap9)
     check("nœud sans node_interfaces : inchangé, aucun fetch",
           snap9 == ref and ENGINE["calls"] == 0 and not ALERTS)
 
 
-# ─── 5) Agent : _all_nics/_nic exposent state:"vfio" (forme neuve) ────────────
+***REMOVED*** ─── 5) Agent : _all_nics/_nic exposent state:"vfio" (forme neuve) ────────────
 def test_agent_vfio_shape():
     sys.path.insert(0, os.path.join(ROOT, "node_agent"))
     import agent
-    agent.CONFIG["mtl_iface"] = "ifacetest-vfio0"      # déclaré mais absent de /sys/class/net
+    agent.CONFIG["mtl_iface"] = "ifacetest-vfio0"      ***REMOVED*** déclaré mais absent de /sys/class/net
     nics = agent._all_nics()
     entry = next((n for n in nics if n.get("name") == "ifacetest-vfio0"), None)
     check("agent : iface déclarée absente de /sys/class/net présente dans _all_nics",
