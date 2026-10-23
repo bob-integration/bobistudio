@@ -1,3 +1,14 @@
+<!-- Tables des plugins lues par la palette ET par l'onglet Création (forms.html). HORS du
+     <template> ci-dessous : un <script> de template ne s'exécute qu'au clonage, c'est-à-dire à la
+     première ouverture de la palette. Tant qu'on ne l'avait pas ouverte, l'onglet Création voyait
+     ces tables indéfinies et retombait sur les défauts — format vidéo demandé à TOUS les types,
+     console audio comprise (constaté le 2026-10-18). -->
+<script>
+window.PLUGIN_VIDEO_FORMAT = {{ plugin_video_format | tojson }};
+window.PLUGIN_VERSIONS = {{ plugin_versions | tojson }};
+window.PLUGIN_CONFIG_SCHEMAS = {{ plugin_config_schemas | tojson }};
+</script>
+
 <!-- Palette de déploiement (cachée par défaut, ouverte par le bouton Configurer) -->
 <aside class="deploy-palette" id="deploy-palette" hidden
        aria-labelledby="dp-palette-heading"></aside>
@@ -89,8 +100,8 @@
         <input type="hidden" class="dp-type" value="2110_io">
     </div>
 
-    <!-- Format vidéo : universel, sauf plugins format-agnostiques (video_format:false) -->
-    <script>window.PLUGIN_VIDEO_FORMAT = {{ plugin_video_format | tojson }};</script>
+    <!-- Format vidéo : universel, sauf plugins format-agnostiques (video_format:false) — cf.
+         window.PLUGIN_VIDEO_FORMAT, posé HORS du <template> en tête de fichier. -->
     <div class="palette-field palette-field-format">
         <label for="dp-format-preset">{{ _('containers.create.video_format') }}</label>
         <select class="dp-format-preset" id="dp-format-preset"
@@ -101,7 +112,6 @@
 
     <!-- Version du plugin : visible seulement si le type a >1 version installée
          (versions archivées dans plugins/<type>/versions/). Défaut = version courante. -->
-    <script>window.PLUGIN_VERSIONS = {{ plugin_versions | tojson }};</script>
     <div class="palette-field dp-plugin-version-field" hidden>
         <label for="dp-plugin-version">{{ _('containers.palette.plugin_version') }}</label>
         <select class="dp-plugin-version" id="dp-plugin-version"></select>
@@ -109,7 +119,6 @@
 
     <!-- Champs de config déclaratifs des plugins (Tier 1) — rendus dynamiquement
          depuis window.PLUGIN_CONFIG_SCHEMAS selon le type sélectionné. -->
-    <script>window.PLUGIN_CONFIG_SCHEMAS = {{ plugin_config_schemas | tojson }};</script>
     <div class="dp-section dp-plugin-config" id="dp-plugin-config" hidden></div>
 
     <!-- ─── Receiver ───────────────────────────────────────── -->
@@ -185,11 +194,19 @@
         <div class="palette-hint">
             {{ _('containers.palette.resources_hint') }}
         </div>
+        <div class="palette-field dp-r-cpumode-field" style="display:none">
+            <label for="dp-r-cpumode">{{ _('containers.palette.cpu_mode') }}</label>
+            <select class="dp-r-cpumode" id="dp-r-cpumode">
+                <option value="shared">{{ _('containers.palette.cpu_mode_shared') }}</option>
+                <option value="reserved">{{ _('containers.palette.cpu_mode_reserved') }}</option>
+            </select>
+            <div class="palette-hint">{{ _('containers.palette.cpu_mode_hint') }}</div>
+        </div>
         <div class="palette-row">
             <div class="palette-field">
                 <label for="dp-r-cores">{{ _('containers.card.cores') }}</label>
                 <input type="number" class="dp-r-cores" id="dp-r-cores"
-                       min="1" max="64" value="2">
+                       min="1" max="256" value="2">
             </div>
             <div class="palette-field">
                 <label for="dp-r-memory">{{ _('containers.create.ram_mb') }}</label>

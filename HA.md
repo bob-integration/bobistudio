@@ -8,14 +8,15 @@ qui pourrait partir en split-brain ; l'opérateur décide).
 
 Deux mécanismes complètent ce choix sans le contredire :
 
-- **Le standby ne se tait plus.** Il sonde l'actif toutes les 15 s (`/api/ha/peer`, auth par le secret
-  partagé) et, après `ha_watchdog_fails` échecs (~60 s), lève une **alarme** : badge de navigation rouge
+- **Le standby ne se tait plus.** Il sonde l'actif toutes les 15 s (`/api/ha/peer`, en mTLS) et, après `ha_watchdog_fails` échecs (~60 s), lève une **alarme** : badge de navigation rouge
   et clignotant sur toutes les pages, bandeau dans Réglages → Haute disponibilité. Il ne se promeut
   toujours pas tout seul — mais l'opérateur n'a plus à découvrir la panne par lui-même.
 - **La VIP, elle, bascule toute seule** (keepalived/VRRP, opt-in — cf. plus bas).
 
-Implémentation : `app/ha.py` (rôle, réplication, chien de garde) + `app/vip.py` (keepalived) +
-Réglages → **Haute disponibilité**.
+Implémentation : `app/ha.py` (rôle, réplication, chien de garde) + `app/ha_appairage.py` (partage
+de l'autorité) + `app/ha_tls.py` (transport mTLS) + `app/vip.py` (keepalived) + Réglages → **Haute
+disponibilité** (section de l'onglet Réglages → Cluster & Réseau → Cluster ; c'est elle que ce
+document désigne par « Réglages → Haute disponibilité »).
 
 ## Modèle
 
@@ -27,21 +28,35 @@ Réglages → **Haute disponibilité**.
 - **Réplication d'état** (B3-2b) : l'actif pousse un **snapshot SQLite cohérent** vers le standby
   (`ha_standby_url`) toutes les `ha_replicate_interval_min` minutes. Le standby **stage** le snapshot
   (`ha_staging/db_replica.db`) — il ne l'applique PAS tant qu'on ne le promeut pas.
-- **Secret partagé** : `update_token` (le même que la mise à jour entre instances) — à régler identique
-  sur les deux contrôleurs.
+- **Une seule autorité pour la paire.** Depuis la migration mTLS du plan de contrôle (2026-08-30), un
+  agent-nœud n'accepte que les contrôleurs signés par la CA qui l'a enrôlé. Les deux contrôleurs
+  doivent donc partager **la même CA**, faute de quoi un standby promu ne pilote **aucun** nœud — ce
+  qui était le cas jusqu'au 2026-10-10 : rien ne la transmettait. C'est l'**appairage** qui la
+  transmet (cf. pré-requis).
+- **Transport mTLS dédié** : la réplication et la sonde de pair passent par une écoute à part
+  (`ha_tls_port`, **5444** par défaut) qui n'accepte **que des certificats de contrôleur** de la
+  CA commune — pas ceux des nœuds ni des conteneurs, pourtant signés par la même CA. Le secret
+  partagé (`update_token`) ne sert **plus** à la HA ; il reste celui des mises à jour entre instances.
+  Jusqu'au 2026-10-10, la base entière partait en HTTP clair avec ce secret en en-tête, rejouable.
 - **VIP de management** : une IP flottante que la production/les opérateurs visent. Avec keepalived
   configuré (ci-dessous) elle **suit toute seule** ; sans, elle se déplace **à la main**. Le plan
   ST 2110 (médias) n'est pas concerné.
 
 ## Pré-requis (à froid, une fois)
 
-1. Sur **chaque** contrôleur : le **même** secret partagé (Réglages → Haute disponibilité →
-   « Secret partagé (token de réplication) »). **Générer** sur un des deux, puis **recopier** la
-   valeur dans le champ de l'autre — la **régénérer** des deux côtés donne deux valeurs
-   différentes, et la réplication sera refusée (401) par le standby. Le champ reste accessible
-   sur un contrôleur déjà passé en standby (route whitelistée par le garde lecture seule).
-   C'est le même réglage que le token de « Mise à jour entre instances ».
-2. Sur **l'actif** : `ha_standby_url = http://<standby>:5000` + intervalle (Réglages → Haute
+1. **Appairer** les deux contrôleurs (Réglages → Haute disponibilité → Appairage) :
+   - sur **l'actif** : « Générer un code d'appairage » — un code de 32 caractères, valable
+     **10 minutes**, **une seule fois** ;
+   - sur **le standby** : l'adresse de l'actif et ce code, puis « Appairer ».
+
+   Le standby adopte la CA de l'actif ; **l'ancienne est conservée** dans `tls.avant-appairage-<horodatage>`
+   (réversible). Vérifier que **les deux écrans affichent la même empreinte d'autorité** — c'est la
+   vraie preuve de l'appairage. Le code ne passe jamais sur le réseau : il sert à prouver la demande,
+   à authentifier l'actif en retour, et à chiffrer l'autorité pendant son transfert. Cinq preuves
+   fausses le détruisent (alerte dans la piste d'audit).
+
+   **Pare-feu** : ouvrir le port `ha_tls_port` (5444) entre les deux contrôleurs, dans les deux sens.
+2. Sur **l'actif** : `ha_standby_url = http://<standby>:5000` (seul l'**hôte** compte : la réplication passe par `ha_tls_port`) + intervalle (Réglages → Haute
    disponibilité → Enregistrer). Vérifier que le statut passe à « ↑ dernier push OK ».
 3. Sur **le standby** : `control_role = standby` (Réglages → Haute disponibilité → Appliquer) puis
    **redémarrer le service**. Le badge **STANDBY** apparaît ; le statut montre « ↓ replica reçu il y a … ».
@@ -72,6 +87,16 @@ n'est pas le nôtre n'est **jamais** écrasé) :
 > Il ne volera pas l'adresse au maître en place (VRRP ne préempte qu'à priorité *strictement*
 > supérieure), mais il repart en **pilotant** — c'est le split-brain que la règle d'or interdit.
 > Rétrograder avant de rallumer.
+
+**La VIP est inscrite dans le certificat des DEUX contrôleurs.** En mode web `tls`, le navigateur
+compare l'adresse visée aux adresses du certificat : sans elle, la VIP donnerait un cadenas rouge
+(dès que la CA interne est installée sur les postes), et pareil sur le standby après bascule. Elle y
+entre toute seule — à l'enregistrement de la VIP (même sans keepalived : une VIP posée à la main
+compte aussi), au démarrage de chaque contrôleur, et dans le certificat que l'actif émet au standby
+à l'appairage. Même clé, même échéance ; les écoutes HTTPS et HA servent le nouveau certificat
+sans redémarrage. Ajout seulement : une ancienne VIP reste dans le certificat (elle n'ouvre rien
+sans notre clé). Les agents-nœuds et la réplication ne vérifient aucune adresse : rien ne change
+pour eux.
 
 ## Bascule planifiée (maintenance de l'actif) — ordre anti-split-brain
 

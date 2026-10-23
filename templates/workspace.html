@@ -84,6 +84,19 @@
 </div>
 
 <!-- Gestionnaire / éditeur de macros (overlay) -->
+{# Gestionnaire de médias COMPLET : inclus UNE fois (ses identifiants sont fixes), en réserve ;
+   le widget « manager » le prend à l'affichage et le rend avant chaque redessin de la grille. #}
+<div id="wsp-mm-holder" hidden>{% include 'media_manager/embed.html' %}</div>
+<div class="wsp-overlay" id="wsp-fnedit" hidden>
+    <div class="wsp-overlay-box">
+        <h3 style="margin-top:0">{{ _('projects.fn_settings') }}</h3>
+        <div class="wsp-form" id="wsp-fnedit-form"></div>
+        <div class="wsp-edit-btns" style="margin-top:var(--space-3)">
+            <button type="button" class="btn" onclick="wspFnEditClose()">{{ _('projects.fn_cancel') }}</button>
+            <button type="button" class="btn btn-blue" onclick="wspFnEditSave()">{{ _('projects.fn_apply') }}</button>
+        </div>
+    </div>
+</div>
 <div class="wsp-overlay" id="wsp-macros" hidden>
     <div class="wsp-overlay-box wsp-overlay-wide">
         <h3>⚡ {{ _('projects.macros') }}</h3>
@@ -256,6 +269,121 @@
     border: 1px dashed var(--border, var(--bg-hover)); background: none;
     color: var(--text-muted); font-size: 1.4em; cursor: pointer; }
 .wsp-w-dock { margin-left: auto; font: inherit; font-size: 0.9em; max-width: 9em; }
+
+/* Panneaux de fonctions : des commandes de plusieurs sources, rangées ensemble */
+.wsp-panel.active { outline: 2px solid var(--accent); }
+.wsp-pn-title { flex: 1; min-width: 0; font: inherit; background: var(--bg-input, var(--bg));
+    color: var(--text); border: 1px solid var(--border, var(--bg-hover)); border-radius: 4px; padding: 2px 6px; }
+.wsp-pn { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: flex-start; position: relative; }
+.wsp-pn.free { display: block; min-height: 40px; }
+.wsp-pn.free > .wsp-fn { position: absolute; }
+.wsp-edit .wsp-pn > .wsp-fn { cursor: grab; touch-action: none; user-select: none; }
+.wsp-pn > .wsp-fn.dragging { opacity: 0.85; z-index: 5; cursor: grabbing; outline: 2px solid var(--accent); }
+.wsp-pn-guide { position: absolute; pointer-events: none; z-index: 6; background: #f59e0b; }
+.wsp-pn-guide.v { top: 0; bottom: 0; width: 1px; }
+.wsp-pn-guide.h { left: 0; right: 0; height: 1px; }
+.wsp-fn-rsz { position: absolute; right: -6px; bottom: -6px; width: 18px; height: 18px; line-height: 18px;
+    font-size: 12px; text-align: center; color: var(--text-muted); cursor: ew-resize; z-index: 2; }
+.wsp-fn { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: 100%; }
+.wsp-fn-cap { font-size: 0.78em; color: var(--text-muted); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+.wsp-fn .ctl-bus-row { flex-wrap: wrap; }
+.wsp-fn .ctl-readout { font-size: 1.2em; }
+.wsp-fn.ctl-large .ctl-readout { font-size: 1.8em; }
+.wsp-fn .ctl-gauge { --ctl-gauge-w: 100%; display: block; min-width: 160px; }
+/* Longueur des faders et vu-mètres : la variable du catalogue (`--ctl-len`), que suivent barres
+   ET graduation — une hauteur imposée à l'élément comprimait les barres et laissait déborder la
+   graduation (2026-10-20). */
+.wsp-fn-mount.ctl-fader--vertical, .wsp-fn-mount.ctl-vu--vertical { --ctl-len: 9rem; }
+.wsp-fn.ctl-large .wsp-fn-mount.ctl-fader--vertical, .wsp-fn.ctl-large .wsp-fn-mount.ctl-vu--vertical { --ctl-len: 14rem; }
+.wsp-fn.ctl-dense .wsp-fn-mount.ctl-fader--vertical, .wsp-fn.ctl-dense .wsp-fn-mount.ctl-vu--vertical { --ctl-len: 6rem; }
+.wsp-fn-mount.ctl-fader--horizontal { width: 220px; }
+.wsp-fn-vux { color: var(--status-warning-fg); min-height: 1em; }
+.wsp-fne-n { width: 1.6em; color: var(--text-muted); text-align: right; flex: 0 0 auto; }
+.wsp-fne-opt select { flex: 1; min-width: 0; }
+.wsp-fnc-prev .n { font-size: 0.75em; color: var(--text-muted); }
+.wsp-w-body > #mm-embed { min-height: 100%; }
+.wsp-mm-lay { max-width: 14em; }
+.wsp-fn.wsp-fn-media { width: 640px; max-width: 100%; }
+.wsp-fn.wsp-fn-widget { min-width: 320px; }
+.wsp-fn-videobox { width: 480px; max-width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 4px;
+    overflow: hidden; position: relative; }
+.wsp-fn.ctl-dense .wsp-fn-videobox { width: 320px; }
+.wsp-fn.ctl-large .wsp-fn-videobox { width: 720px; }
+.wsp-fn.full .wsp-fn-videobox, .wsp-fn.grow .wsp-fn-videobox { width: 100%; }
+.wsp-fn-videobox iframe { width: 100%; height: 100%; border: 0; display: block; }
+.wsp-fn.c-red .wsp-fn-videobox { box-shadow: 0 0 0 3px var(--bus-pgm); }
+.wsp-fn.c-green .wsp-fn-videobox { box-shadow: 0 0 0 3px var(--bus-pvw); }
+.wsp-fn.c-blue .wsp-fn-videobox { box-shadow: 0 0 0 3px var(--bus-dissolve); }
+.wsp-fn-videoempty { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px;
+    align-items: center; justify-content: center; padding: 10px; text-align: center; }
+.wsp-fn-videolog { max-height: 40%; overflow: auto; font-size: 0.7em; margin: 0; color: var(--text-muted); width: 100%; }
+.wsp-pn-br { flex-basis: 100%; height: 0; }
+/* « Bloc unique » : une seule surface, sections séparées par un filet, pas d'espace perdu */
+.wsp-grid.compact { gap: 0; grid-auto-rows: 8px; background: var(--bg-elev);
+    border: 1px solid var(--border, var(--bg-hover)); border-radius: var(--radius); overflow: hidden; }
+.wsp-grid.compact > .wsp-w { border: none; border-radius: 0; background: transparent;
+    box-shadow: inset -1px -1px 0 var(--border-soft, var(--border)); }
+.wsp-grid.compact .wsp-w-head { border-bottom: none; padding-top: 8px; font-size: 0.72em; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em; }
+.wsp-grid.compact .wsp-w-body { padding-top: 2px; overflow: visible; }
+.wsp-grid.compact .wsp-pn { gap: var(--space-2); }
+.wsp-compact-opt { display: flex; gap: 6px; align-items: center; margin: var(--space-2) 0; }
+.wsp-fn.grow { flex: 1 1 160px; }
+.wsp-fn.full { flex: 1 1 100%; width: 100%; }
+.wsp-fn.grow .ctl-bus-row > .ctl-push, .wsp-fn.full .ctl-bus-row > .ctl-push { flex: 1; justify-content: center; }
+.wsp-fn.full .ctl-list { width: 100%; }   /* la poignée de largeur (pw) l'élargit */
+.wsp-fn-medialib { width: 100%; height: 360px; display: flex; flex-direction: column; min-height: 0; }
+.wsp-fn.ctl-dense .wsp-fn-medialib { height: 240px; }
+.wsp-fn.ctl-large .wsp-fn-medialib { height: 560px; }
+.wsp-fne-mt { flex: 1; min-width: 0; font-size: 0.85em; }
+.wsp-fn-img { width: 240px; max-width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #000;
+    border-radius: 4px; }
+.wsp-fn.full .wsp-fn-img, .wsp-fn.grow .wsp-fn-img { width: 100%; }
+.wsp-fn.c-red .wsp-fn-img { box-shadow: 0 0 0 3px var(--bus-pgm); }
+.wsp-fn.c-green .wsp-fn-img { box-shadow: 0 0 0 3px var(--bus-pvw); }
+.wsp-fn.c-blue .wsp-fn-img { box-shadow: 0 0 0 3px var(--bus-dissolve); }
+.wsp-fn-tools { position: absolute; top: -10px; right: -4px; display: flex; gap: 2px; z-index: 2; }
+.wsp-fn-tools button { font: inherit; font-size: 0.75em; padding: 1px 5px; border-radius: 3px; cursor: pointer;
+    border: 1px solid var(--border, var(--bg-hover)); background: var(--bg-elev); color: var(--text-muted); }
+.wsp-edit .wsp-fn { outline: 1px dashed var(--border, var(--bg-hover)); outline-offset: 4px; padding-top: 6px; }
+.wsp-fnc-search { width: 100%; box-sizing: border-box; margin-bottom: var(--space-2); min-height: 36px; }
+.wsp-palette { width: min(460px, 94vw); padding-top: 72px; }   /* sous le menu flottant du projet */
+.wsp-fnc-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: var(--space-2); }
+.wsp-fnc-chip { font: inherit; font-size: 0.8em; padding: 5px 10px; border-radius: 14px; cursor: pointer; min-height: 32px;
+    border: 1px solid var(--border, var(--bg-hover)); background: none; color: var(--text-muted); }
+.wsp-fnc-chip.on { background: var(--bg-hover); color: var(--text); border-color: var(--text-muted); }
+.wsp-fnc-sel { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-bottom: var(--space-3); font-size: 0.8em; color: var(--text-muted); }
+.wsp-fnc-sel label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wsp-fnc-sel select { font: inherit; min-height: 32px; min-width: 0; }
+.wsp-fnc-sel .toggle-inline { flex-direction: row; align-items: center; gap: 6px; grid-column: 1 / -1; }
+.wsp-fnc-card { display: flex; flex-direction: column; gap: 6px; width: 100%; text-align: left; cursor: grab;
+    background: var(--bg-input, var(--bg)); color: var(--text); font: inherit; touch-action: none;
+    border: 1px solid var(--border, var(--bg-hover)); border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+.wsp-fnc-card:hover { background: var(--bg-hover); }
+.wsp-fnc-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.wsp-fnc-top .t { font-weight: 600; font-size: 0.9em; }
+.wsp-fnc-top small, .wsp-fnc-src { color: var(--text-muted); font-size: 0.75em; }
+.wsp-fnc-prev { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; min-height: 22px; pointer-events: none; }
+.wsp-fnc-prev .img { width: 48px; aspect-ratio: 16 / 9; background: #000; border-radius: 2px; }
+.wsp-fnc-prev img.th { width: 56px; aspect-ratio: 16 / 9; object-fit: cover; background: #000; border-radius: 2px; }
+.wsp-fnc-ghost { position: fixed; z-index: 2000; width: 260px; pointer-events: none; opacity: 0.9;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.wsp-palette.dragging-out { opacity: 0.35; }
+.wsp-panel.drop { outline: 3px dashed var(--accent); }
+.wsp-fnc-help { font-size: 0.82em; margin: 0 0 var(--space-2); }
+.wsp-fnc-grp { margin-bottom: var(--space-3); }
+.wsp-fnc-head { font-weight: 600; font-size: 0.85em; margin-bottom: 4px; word-break: break-all; }
+.wsp-fnc-item { display: flex; width: 100%; justify-content: space-between; gap: 6px; text-align: left;
+    background: var(--bg-input, var(--bg)); color: var(--text); font: inherit; font-size: 0.85em;
+    border: 1px solid var(--border, var(--bg-hover)); border-radius: 4px; padding: 6px 8px;
+    margin-bottom: 3px; cursor: pointer; min-height: 36px; align-items: center; }
+.wsp-fnc-item small { color: var(--text-muted); flex: 0 0 auto; }
+.wsp-fnc-item:hover { background: var(--bg-hover); }
+.wsp-fnc-pt { width: 100%; min-height: 36px; font-size: 0.85em; }
+.wsp-fne-opts { border: 1px solid var(--border, var(--bg-hover)); border-radius: 6px; max-height: 40vh; overflow: auto; }
+.wsp-fne-opt { display: flex; gap: 6px; align-items: center; margin: 3px 0; }
+.wsp-fne-opt input[type=text] { flex: 1; min-width: 0; }
 .wsp-w-dock + .wsp-w-del { margin-left: var(--space-1); }
 
 /* Shotbox aimantée à un bord : toujours visible au défilement (vue seule) */
@@ -620,7 +748,15 @@
     let currentView = null;      // null = vue auto (tuiles statut)
     let editMode = false;
     let layout = [];             // copie de travail en édition
-    const mountedTypes = new Set();
+    // Interfaces complètes de plugin montées dans la vue (2026-10-23). On retient l'OBJET monté, pas le type :
+    // `window.MXLPlugins[type]` ne désigne que le dernier script chargé, et deux instances à des versions
+    // différentes en chargent chacune une copie — démonter « l'enregistré » laissait l'autre sonder son conteneur.
+    const mountedApis = new Set();
+    // Un type par vue, sauf si l'interface déclare `multiMount` : la plupart tiennent leur état au niveau du
+    // module (conteneur, élément, sondage) et leurs boutons appellent un objet global. Deux mélangeurs dans la
+    // même vue réécrivaient les boutons l'un de l'autre, et un clic dans le premier commandait le second.
+    const claimedTypes = new Map();   // type → id du panneau qui l'affiche
+    let mountGen = 0;                 // un rendu plus récent invalide les montages encore en cours
     const LS_KEY = 'wsp-last-view:' + PID;
 
     const byUuid = u => SUMMARY.containers.find(c => c.instance_uuid && c.instance_uuid === u);
@@ -657,20 +793,31 @@
     }
 
     // Chargement idempotent des assets plugin (même contrat que plugin_section.html).
+    // Un chargement EN COURS est partagé : deux lecteurs dans la même vue demandent le même script
+    // au même instant. Avant (2026-10-21), le second recevait « déjà là » alors que le script n'était
+    // pas chargé, ou retirait la balise du premier, dont la promesse ne se résolvait jamais — le
+    // bloc transport du Lecteur 1 restait vide, sans erreur.
+    const _assetLoads = new Map();
     function ensureAsset(type, kind, vmid, version) {
         const domId = 'plugin-' + kind + '-' + (type + '@' + (version || 'current')).replace(/[^a-zA-Z0-9_-]/g, '_');
+        if (_assetLoads.has(domId)) return _assetLoads.get(domId);
         if (document.getElementById(domId)) return Promise.resolve();
         document.querySelectorAll('[data-mxl-type="' + type + '"][data-mxl-kind="' + kind + '"]')
-            .forEach(el => el.remove());
-        const qs = vmid ? '?vmid=' + vmid : '';
-        return new Promise(res => {
+            .forEach(el => { if (el._done) el._done(); el.remove(); });
+        // la VERSION dans l'URL : sans elle le navigateur resservait de son cache le script
+        // d'avant la mise à jour (la réponse ne porte aucun Cache-Control)
+        const qs = (vmid ? '?vmid=' + vmid : '') + (version ? (vmid ? '&' : '?') + 'v=' + encodeURIComponent(version) : '');
+        const p = new Promise(res => {
             let el;
             if (kind === 'js') { el = document.createElement('script'); el.src = '/api/plugins/' + type + '/ui/js' + qs; }
             else { el = document.createElement('link'); el.rel = 'stylesheet'; el.href = '/api/plugins/' + type + '/ui/css' + qs; }
             el.id = domId; el.dataset.mxlType = type; el.dataset.mxlKind = kind;
-            el.onload = () => res(); el.onerror = () => res();
+            el._done = () => { _assetLoads.delete(domId); res(); };
+            el.onload = el._done; el.onerror = el._done;
             document.head.appendChild(el);
         });
+        _assetLoads.set(domId, p);
+        return p;
     }
     function ensureExtra(type) {   // assets additionnels (multiview : canvas composer)
         if (type !== 'multiview') return Promise.resolve();
@@ -694,25 +841,66 @@
         const inst = resolveInst(w);
         if (!inst) { bodyEl.innerHTML = '<span class="meta">' + esc(T('projects.ws_gone')) + '</span>'; return; }
         window.MXLPlugins = window.MXLPlugins || {};
+        const gen = mountGen;
+        // Réservé AVANT tout await : les panneaux d'un même rendu se montent en parallèle.
+        const holder = claimedTypes.get(inst.type);
+        const second = holder != null && holder !== w.id;
+        if (!second) claimedTypes.set(inst.type, w.id);
         bodyEl.innerHTML = '<span class="meta">…</span>';
         let html = '';
-        try { html = await (await fetch('/api/plugins/' + inst.type + '/ui/html?vmid=' + inst.vmid)).text(); }
+        try { html = await (await fetch('/api/plugins/' + inst.type + '/ui/html?vmid=' + inst.vmid + (inst.plugin_version ? '&v=' + encodeURIComponent(inst.plugin_version) : ''))).text(); }
         catch (e) { bodyEl.innerHTML = '<span class="meta">✗</span>'; return; }
         bodyEl.innerHTML = html;
         await ensureExtra(inst.type);
         await ensureAsset(inst.type, 'css', inst.vmid, inst.plugin_version);
         await ensureAsset(inst.type, 'js', inst.vmid, inst.plugin_version);
+        if (gen !== mountGen) return;
         const api = window.MXLPlugins[inst.type];
+        if (second && !(api && api.multiMount)) {
+            const k = 'projects.ws_ui_once', v = T(k);
+            bodyEl.innerHTML = '<span class="meta">' + esc(v && v !== k ? v
+                : "Cette interface est déjà ouverte dans un autre panneau de la vue : une seule à la fois.") + '</span>';
+            return;
+        }
         if (api && typeof api.mount === 'function') {
             try {
                 api.mount(bodyEl, inst.vmid, {toast, type: inst.type,
                     instance: {...inst, version: inst.plugin_version}});
-                mountedTypes.add(inst.type);
+                mountedApis.add(api);
             } catch (e) { console.error(e); toast(e.message, 'error'); }
         } else {
             bodyEl.innerHTML = '<span class="meta">' + esc(T('projects.ws_no_ui')) + '</span>';
         }
     }
+
+    // ── Gestionnaire de médias COMPLET (un par vue) : le vrai gestionnaire, ouvert sur une
+    //    disposition enregistrée (« Mes dispositions ») ou sur celle du poste.
+    let MM_LAYOUTS = null;
+    async function loadMmLayouts() {
+        if (MM_LAYOUTS) return MM_LAYOUTS;
+        try { const r = await fetch('/api/media-manager/layouts'); MM_LAYOUTS = r.ok ? ((await r.json()).layouts || []) : []; }
+        catch (e) { MM_LAYOUTS = []; }
+        return MM_LAYOUTS;
+    }
+    async function mountManager(w, bodyEl) {
+        const mm = document.getElementById('mm-embed');
+        if (!mm || !window.mmLoad) { bodyEl.innerHTML = '<span class="meta">' + esc(T('projects.ws_mm_unavailable')) + '</span>'; return; }
+        bodyEl.appendChild(mm);
+        await window.mmLoad();
+        if (!w.mm_layout) return;
+        // Même geste que choisir la disposition dans son sélecteur : la liste arrive en différé.
+        for (let i = 0; i < 40; i++) {
+            const sel = document.getElementById('mm-dir');
+            const opt = sel && [...sel.options].find(o => o.value === 'saved:' + w.mm_layout);
+            if (opt) { sel.value = opt.value; sel.dispatchEvent(new Event('change')); return; }
+            await new Promise(r => setTimeout(r, 150));
+        }
+        toast(T('projects.ws_mm_layout_gone'), 'warning');
+    }
+    window.wspMmLayout = function (wid, v) {
+        const w = layout.find(x => x.id === wid);
+        if (w) { w.mm_layout = v ? Number(v) : undefined; renderLayout(); }
+    };
 
     let monitorHb = null;
     async function mountMonitor(bodyEl) {
@@ -743,16 +931,21 @@
 
     /* ─── Rendu de la grille ───────────────────────────── */
     function unmountAll() {
-        mountedTypes.forEach(t => {
-            try { window.MXLPlugins?.[t]?.unmount?.(); } catch (_) {}
-        });
-        mountedTypes.clear();
+        const mm = document.getElementById('mm-embed'), holder = document.getElementById('wsp-mm-holder');
+        if (mm && holder && mm.parentElement !== holder) holder.appendChild(mm);
+        for (const [k, inst] of MOUNTED) { try { inst.destroy(); } catch (e) { /* déjà détruit */ } MOUNTED.delete(k); }
+        mountGen++;
+        mountedApis.forEach(api => { try { api.unmount?.(); } catch (_) {} });
+        mountedApis.clear();
+        claimedTypes.clear();
         if (monitorHb) { clearInterval(monitorHb); monitorHb = null; }
     }
 
     function widgetTitle(w) {
         if (w.widget === 'monitor') return '📺 ' + T('projects.ws_widget_monitor');
+        if (w.widget === 'manager') return esc(T('projects.ws_widget_manager'));
         if (w.widget === 'shotbox') return '⚡ ' + esc(w.title || T('projects.ws_widget_shotbox'));
+        if (w.widget === 'panel') return esc(w.title || '');
         const inst = resolveInst(w);
         return esc((inst && inst.hostname) || w.hostname || ('#' + (w.vmid || '?')));
     }
@@ -763,11 +956,15 @@
         emptyEl.hidden = true;
         document.querySelectorAll('.wsp-dock').forEach(el => el.remove());
         const items = editMode ? layout : normItems((currentView && currentView.layout) || autoLayout());
-        if (!items.length) {
+        if (!items.filter(w => w.widget !== '_opts').length) {
             emptyEl.textContent = editMode ? T('projects.ws_edit_hint') : T('projects.ws_no_containers');
             emptyEl.hidden = false;
         }
+        // « Bloc unique » (option de la vue) : en VUE, la grille devient un seul bloc à fins
+        // séparateurs, au pas de 8 px ; en édition, la grille habituelle reste, pour manipuler.
+        grid.classList.toggle('compact', !editMode && !!viewOpts(items).compact);
         for (const w of items) {
+            if (w.widget === '_opts') continue;
             // Shotbox aimantée : en VUE elle sort de la grille pour une barre fixe
             // au bord choisi (toujours visible au défilement). En édition elle reste
             // dans la grille (drag/resize), le select « Aimanter » porte le choix.
@@ -793,18 +990,38 @@
                       esc(T('projects.sb_dock')) + ' ' +
                       esc(T('projects.sb_dock_' + (d || 'none'))) + '</option>').join('') + '</select>'
                 : '';
-            el.innerHTML = '<div class="wsp-w-head"><span>' + widgetTitle(w) + '</span>' + dockSel +
+            const mmSel = (editMode && w.widget === 'manager')
+                ? '<select class="wsp-w-dock wsp-mm-lay" onchange="wspMmLayout(\'' + w.id + '\', this.value)" aria-label="' +
+                  esc(T('projects.ws_mm_layout')) + '"><option value="">' + esc(T('projects.ws_mm_layout_post')) + '</option>' +
+                  (MM_LAYOUTS || []).map(l => '<option value="' + l.id + '"' + (String(w.mm_layout || '') === String(l.id) ? ' selected' : '') +
+                      '>' + esc(l.name) + '</option>').join('') + '</select>'
+                : '';
+            const head = (editMode && w.widget === 'panel')
+                ? '<input type="text" class="wsp-pn-title" value="' + esc(w.title || '') + '" placeholder="' +
+                  esc(T('projects.fn_panel_title')) + '" onchange="wspPanelTitle(\'' + w.id + '\', this.value)">'
+                : '<span>' + widgetTitle(w) + '</span>';
+            el.innerHTML = '<div class="wsp-w-head">' + head + dockSel + mmSel +
                 '<button type="button" class="wsp-w-del" title="✕" onclick="wspDelWidget(\'' + w.id + '\')">✕</button></div>' +
                 '<div class="wsp-w-body"></div><div class="wsp-w-resize">◢</div>';
             grid.appendChild(el);
             const body = el.querySelector('.wsp-w-body');
             if (w.widget === 'status') body.innerHTML = statusHtml(resolveInst(w));
             else if (w.widget === 'monitor') mountMonitor(body);
+            else if (w.widget === 'manager') mountManager(w, body);
             else if (w.widget === 'plugin') mountPlugin(w, body);
             else if (w.widget === 'shotbox') { loadCatalog().then(() => renderShotbox(w, body)); }
+            else if (w.widget === 'panel') {
+                el.classList.add('wsp-panel');
+                if (editMode) {
+                    el.classList.toggle('active', w.id === activePanel);
+                    el.addEventListener('pointerdown', () => setActivePanel(w.id));
+                }
+                loadCatalog().then(() => renderPanel(w, body));
+            }
             if (editMode) attachDrag(el, w);
         }
         padForDocks();
+        scheduleFit();
     }
     // Les barres aimantées ne doivent pas masquer le bas/les côtés de la grille.
     function padForDocks() {
@@ -839,18 +1056,71 @@
         }
     }
 
+    /* ─── Grille ajustée au contenu (vue seulement) ───────
+       Un panneau prend la hauteur de ce qu'il contient, et la grille se RESSERRE vers le haut :
+       pas de vide sous un panneau court (« on est loin de la maquette », 2026-10-20). En édition,
+       la géométrie enregistrée reste affichée, pour qu'on puisse la régler. `h_fixed` sur un
+       panneau garde sa hauteur enregistrée. */
+    let _fitT = null;
+    function scheduleFit() { clearTimeout(_fitT); _fitT = setTimeout(fitGrid, 80); }
+    // Un contenu qui se dessine APRÈS le panneau (bibliothèque de médias, bloc d'un plugin) change
+    // sa hauteur sans prévenir : sans cet observateur, « Médias du projet » restait à la hauteur de
+    // sa barre d'outils, vignettes coupées (2026-10-21).
+    const _fitRO = window.ResizeObserver ? new ResizeObserver(() => scheduleFit()) : null;
+    function fitGrid() {
+        if (editMode) return;
+        const items = normItems((currentView && currentView.layout) || []);
+        if (!items.length) return;
+        const unit = gridMetrics().cellH, gap = grid.classList.contains('compact') ? 0 : unit - 40;
+        const boxes = [];
+        for (const w of items) {
+            if (w.widget === '_opts') continue;
+            const el = grid.querySelector('.wsp-w[data-wid="' + w.id + '"]');
+            if (!el) continue;
+            let h = Math.max(1, Math.round(w.h * 48 / unit));   // hauteur enregistrée, au pas courant
+            if (w.widget === 'panel' && !w.h_fixed) {
+                const head = el.querySelector('.wsp-w-head'), pn = el.querySelector('.wsp-pn'),
+                      body = el.querySelector('.wsp-w-body');
+                if (pn && body) {
+                    const cs = getComputedStyle(body);
+                    const need = (head ? head.offsetHeight : 0) + pn.offsetHeight +
+                        parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + 4;
+                    h = Math.max(1, Math.ceil((need + gap) / unit));
+                }
+            }
+            boxes.push({el, x: w.x, y: w.y, wd: w.w, h});
+        }
+        boxes.sort((a, b) => a.y - b.y || a.x - b.x);
+        const placed = [];
+        for (const b of boxes) {
+            let y = 0;
+            for (const q of placed) if (q.x < b.x + b.wd && b.x < q.x + q.wd) y = Math.max(y, q.y + q.h);
+            b.y = y; placed.push(b);
+            b.el.style.gridRow = (b.y + 1) + ' / span ' + b.h;
+        }
+    }
+    window.addEventListener('resize', scheduleFit);
+
     /* ─── Drag / resize (pointer events, tactile) ──────── */
     function gridMetrics() {
-        const r = grid.getBoundingClientRect();
-        const gap = parseFloat(getComputedStyle(grid).gap) || 8;
+        const r = grid.getBoundingClientRect(), cs = getComputedStyle(grid);
+        const gap = grid.classList.contains('compact') ? 0 : (parseFloat(cs.gap) || 8);
+        const row = parseFloat(cs.gridAutoRows) || 40;
         return {left: r.left, top: r.top,
-                cellW: (r.width - gap * (COLS - 1)) / COLS + gap, cellH: 40 + gap};
+                cellW: (r.width - gap * (COLS - 1)) / COLS + gap, cellH: row + gap};
     }
+    const viewOpts = items => (items || []).find(w => w.widget === '_opts') || {};
+    window.wspViewCompact = function (on) {
+        let o = layout.find(w => w.widget === '_opts');
+        if (!o) { o = {id: '_opts', widget: '_opts'}; layout.push(o); }
+        o.compact = !!on;
+    };
     function attachDrag(el, w) {
         const head = el.querySelector('.wsp-w-head');
         const rsz = el.querySelector('.wsp-w-resize');
         const start = (mode) => (ev) => {
-            if (ev.target.closest('.wsp-w-del') || ev.target.closest('.wsp-w-dock')) return;
+            if (ev.target.closest('.wsp-w-del') || ev.target.closest('.wsp-w-dock') ||
+                ev.target.closest('.wsp-pn-title')) return;
             ev.preventDefault();
             const m = gridMetrics();
             const sx = ev.clientX, sy = ev.clientY;
@@ -895,7 +1165,24 @@
             '<div class="wsp-pal-item"><span class="wsp-pal-name">⚡ ' +
             esc(T('projects.ws_widget_shotbox')) + '</span>' +
             '<button type="button" class="btn btn-blue" onclick="wspAdd(\'shotbox\')">＋ ' +
-            esc(T('projects.ws_add')) + '</button></div>';
+            esc(T('projects.ws_add')) + '</button></div>' +
+            '<div class="wsp-pal-item"><span class="wsp-pal-name">' + esc(T('projects.ws_widget_manager')) + '</span>' +
+            '<button type="button" class="btn btn-blue" ' + (layout.some(w => w.widget === 'manager') ? 'disabled title="' +
+            esc(T('projects.ws_mm_one')) + '"' : '') + ' onclick="wspAdd(\'manager\')">＋ ' + esc(T('projects.ws_add')) + '</button></div>' +
+            '<div class="wsp-pal-item"><span class="wsp-pal-name">▤ ' +
+            esc(T('projects.ws_widget_panel')) + '</span>' +
+            '<button type="button" class="btn btn-blue" onclick="wspAdd(\'panel\')">＋ ' +
+            esc(T('projects.ws_add')) + '</button></div>' +
+            '<label class="toggle-inline wsp-compact-opt"><input type="checkbox"' +
+            (viewOpts(layout).compact ? ' checked' : '') + ' onchange="wspViewCompact(this.checked)"> ' +
+            esc(T('projects.ws_compact')) + '</label>' +
+            '<h4>' + esc(T('projects.fn_functions')) + '</h4>' +
+            '<p class="meta wsp-fnc-help">' + esc(T('projects.fn_help')) + '</p>' +
+            '<input type="search" class="wsp-fnc-search" value="' + esc(fnSearch) + '" placeholder="' +
+            esc(T('projects.fn_search')) + '" oninput="wspFnSearch(this.value)">' +
+            '<div id="wsp-fn-ctl"></div>' +
+            '<div id="wsp-fn-list"></div>' +
+            '<h4>' + esc(T('projects.fn_whole')) + '</h4>';
         if (!SUMMARY.containers.length) {
             html += '<p class="meta">' + esc(T('projects.ws_no_containers')) + '</p>';
         }
@@ -911,15 +1198,20 @@
                 '</div>';
         }
         host.innerHTML = html;
+        loadCatalog().then(renderFnCatalog);
+        loadLabels();
+        if (MM_LAYOUTS === null)   // premier chargement : le sélecteur de l'en-tête gagne ses choix
+            loadMmLayouts().then(() => { if (editMode && layout.some(w => w.widget === 'manager')) renderLayout(); });
     }
     window.wspAdd = function (widget, key) {
         const c = key ? (SUMMARY.containers.find(x => (x.instance_uuid || ('v' + x.vmid)) === key)) : null;
-        const maxY = layout.reduce((m, w) => Math.max(m, w.y + w.h), 0);
+        const maxY = layout.reduce((m, w) => w.widget === '_opts' ? m : Math.max(m, w.y + w.h), 0);
         const size = widget === 'plugin' ? [16, 10] : widget === 'monitor' ? [8, 8]
-                   : widget === 'shotbox' ? [8, 4] : [6, 4];
+                   : widget === 'shotbox' ? [8, 4] : widget === 'panel' ? [12, 5] : widget === 'manager' ? [24, 14] : [6, 4];
         const item = {id: uid6(), widget, instance_uuid: c?.instance_uuid || null,
                       vmid: c?.vmid || null, x: 0, y: maxY, w: size[0], h: size[1], g: COLS};
         if (widget === 'shotbox') item.buttons = [];
+        if (widget === 'panel') { item.items = []; item.title = ''; activePanel = item.id; }
         layout.push(item);
         renderLayout(); renderPalette();
     };
@@ -1066,6 +1358,7 @@
         closeDrawer();
     });
     window.wspSaveView = async function () {
+        captureMediaStates();
         const name = document.getElementById('wsp-view-name').value.trim();
         if (!name) { toast(T('projects.ws_view_name'), 'error'); return; }
         const body = {name, layout};
@@ -1091,13 +1384,21 @@
     let CATALOG = null;      // {containers:[{vmid,instance_uuid,hostname,type,actions,state}], macros:[]}
     const FEEDBACK = {};     // "uuid|vmid|state_id" → valeur
 
+    // UNE requête en vol à la fois : chaque panneau appelle loadCatalog au rendu, et le catalogue
+    // coûte plusieurs secondes — cinq panneaux lançaient cinq requêtes lentes en parallèle (~50 s
+    // avant que tout s'affiche, 2026-10-20). Les appelants concurrents partagent la même promesse.
+    let _catLoading = null;
     async function loadCatalog(force) {
         if (CATALOG && !force) return CATALOG;
-        try {
-            const r = await fetch('/api/projects/' + PID + '/action_catalog');
-            CATALOG = r.ok ? await r.json() : {containers: [], macros: []};
-        } catch (e) { CATALOG = {containers: [], macros: []}; }
-        return CATALOG;
+        if (_catLoading) return _catLoading;
+        _catLoading = (async () => {
+            try {
+                const r = await fetch('/api/projects/' + PID + '/action_catalog');
+                CATALOG = r.ok ? await r.json() : {containers: [], macros: []};
+            } catch (e) { CATALOG = {containers: [], macros: []}; }
+            return CATALOG;
+        })();
+        try { return await _catLoading; } finally { _catLoading = null; }
     }
     const catInst = ref => (CATALOG?.containers || []).find(x =>
         (ref.instance_uuid && x.instance_uuid === ref.instance_uuid) || x.vmid === ref.vmid);
@@ -1111,7 +1412,11 @@
         const cur = val ?? p.default ?? '';
         // Options STATIQUES résolues côté serveur (actions de services : panels, presets…).
         if ((p.options || []).length) {
-            return '<select ' + attrs + '>' + p.options.map(o =>
+            // Valeur enregistrée absente de la liste (ancienne saisie libre — un nom de média —, ou
+            // élément disparu) : gardée en tête, jamais remplacée en silence par la première option.
+            const keep = (cur !== '' && !p.options.some(o => String(o.value) === String(cur)))
+                ? '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>' : '';
+            return '<select ' + attrs + '>' + keep + p.options.map(o =>
                 '<option value="' + esc(o.value) + '"' +
                 (String(o.value) === String(cur) ? ' selected' : '') + '>' +
                 esc(o.label ?? o.value) + '</option>').join('') + '</select>';
@@ -1163,7 +1468,9 @@
         if (!el) return;
         el.innerHTML = '<option value="">—</option>' + items.map(it => {
             const v = (typeof it === 'string') ? it : (it[p.option_value || 'value'] ?? '');
-            const l = (typeof it === 'string') ? it : (it[p.option_label || p.option_value || 'label'] ?? v);
+            let l = (typeof it === 'string') ? it : (it[p.option_label || p.option_value || 'label'] ?? v);
+            // option nommée par une CLÉ i18n (texte du plugin, pas une donnée) : rendue dans la langue du lecteur
+            if (it && typeof it === 'object' && it.label_key && window.I18N && window.I18N[it.label_key]) l = window.I18N[it.label_key];
             return '<option value="' + esc(v) + '"' + (String(v) === String(cur) ? ' selected' : '') + '>' +
                 esc(l) + '</option>';
         }).join('');
@@ -1264,6 +1571,11 @@
     // Le paramètre typé derrière l'opérande GAUCHE d'une condition (ou null). Déclenche le
     // chargement de l'arbre si besoin (rerender = re-render de la vue qui appelle).
     function condParamForLeft(left, rerender) {
+        if (left && left.kind === 'state' && left.service) {
+            const sv = (CATALOG?.services || []).find(x => x.service === left.service);
+            const st = sv && (sv.states || []).find(x => x.id === left.state_id);
+            return st ? {type: st.type, options: st.options} : null;
+        }
         if (!left || left.kind !== 'state' || !left.path) return null;
         const cc = catInst(left);
         if (!cc || !cc.has_param_tree) return null;
@@ -1321,6 +1633,9 @@
     function ptPayload(pl) {
         const params = {};
         if (pl.idx !== null && pl.idx !== undefined) params.idx = pl.idx;
+        // `fixed` : champs constants de la feuille (arbre par ID : {path:'strips.s_in1.…'}),
+        // posés AVANT la clé de valeur (ptLocator prend la dernière clé simple).
+        if (pl.fixed) Object.assign(params, pl.fixed);
         if (pl.wrap) params[pl.wrap] = {[pl.key]: pl.default};
         else params[pl.key] = pl.default;
         return params;
@@ -1363,6 +1678,13 @@
                         item: {kind: 'macro', m}, head: m.name, icon: m.system ? '🛡' : '⚡',
                         type: '', search: norm(m.name)});
         } else {
+            // États de SERVICES / fonctions du cœur (ferme de transcodage…) : lisibles en
+            // condition, pas en retour de bouton (le feedback de shotbox ne suit que les conteneurs).
+            if (!opts.noServices)
+                for (const sv of (CATALOG?.services || []))
+                    if ((sv.states || []).length)
+                        targets.push({kind: 'service', family: 'services', sv, icon: '⚙',
+                            head: sv.label, type: '', search: norm(sv.label)});
             for (const n of Object.keys(VARS))
                 targets.push({kind: 'var', family: 'vars', terminal: true,
                     item: {kind: 'var', name: n}, head: n, icon: '𝑥', type: '', search: norm(n)});
@@ -1406,6 +1728,12 @@
                                folded: true, loading: !!d?.loading, partial: !!d?.partial, discover: cc});
                 }
             }
+        } else if (target.kind === 'service' && mode !== 'action') {
+            const sv = target.sv;
+            const items = (sv.states || []).map(st =>
+                ({kind: 'svcstate', sv, s: st, label: st.label || st.id,
+                  search: norm(sv.label) + ' ' + norm(st.label) + ' ' + norm(st.id)}));
+            if (items.length) secs.push({label: T('projects.pick_states'), items});
         } else if (target.kind === 'service') {
             const sv = target.sv;
             const items = (sv.actions || []).map(a =>
@@ -1523,7 +1851,7 @@
         const idx = _pkFlat.length;
         const leaf = _pkMode === 'action'
             ? {kind: 'ptset', cc: _pkTarget.cc, pl: pp}
-            : {kind: 'ptstate', cc: _pkTarget.cc, path: pp.path};
+            : {kind: 'ptstate', cc: _pkTarget.cc, path: pp.path, endpoint: pp.read_endpoint || '/state'};
         _pkFlat.push({_t: 'leaf', leaf});
         const lbl = crumb ? (el.label + ' › ' + g.label + ' › ' + pp.label) : pp.label;
         return '<div class="wsp-picker-it' + (idx === _pkSel ? ' sel' : '') +
@@ -1633,7 +1961,7 @@
     window.wspPickOpen = function (anchor, mode, ctxStr) {
         pickerClose();
         const ctx = JSON.parse(ctxStr);
-        _pkMode = mode; _pkOpts = {macros: ctx.t === 'sbt', none: !!ctx.none};
+        _pkMode = mode; _pkOpts = {macros: ctx.t === 'sbt', none: !!ctx.none, noServices: ctx.t === 'sbf'};
         _pkUnfold = new Set(); _pkSel = 0; _pkStage = 1; _pkTarget = null;
         _pkOnPick = it => pickApply(ctx, it);
         _pkEl = document.createElement('div');
@@ -1688,6 +2016,11 @@
     function condLeftLabel(o) {
         o = o || {};
         if (o.kind === 'var') return o.name ? '𝑥 ' + o.name : '';
+        if (o.kind === 'state' && o.service) {
+            const sv = (CATALOG?.services || []).find(x => x.service === o.service);
+            const st = sv && (sv.states || []).find(x => x.id === o.state_id);
+            return '⚙ ' + (sv ? sv.label : o.service) + ' · ' + ((st && st.label) || o.state_id);
+        }
         if (o.kind === 'state') {
             const cc = catInst(o);
             const name = cc ? (cc.hostname || cc.vmid) : ('#' + (o.vmid || '?'));
@@ -1728,7 +2061,8 @@
         const left = it.kind === 'var' ? {kind: 'var', name: it.name}
             : it.kind === 'state' ? {kind: 'state', ...ccRef(it.cc), state_id: it.s.id}
             : it.kind === 'disc' ? {kind: 'state', ...ccRef(it.cc), endpoint: it.d.endpoint, path: it.d.path}
-            : it.kind === 'ptstate' ? {kind: 'state', ...ccRef(it.cc), endpoint: '/state', path: it.path}
+            : it.kind === 'ptstate' ? {kind: 'state', ...ccRef(it.cc), endpoint: it.endpoint || '/state', path: it.path}
+            : it.kind === 'svcstate' ? {kind: 'state', service: it.sv.service, state_id: it.s.id}
             : null;
         if (ctx.t === 'mact') {          // bloc ▶ de l'éditeur de macros (cible d'exécution)
             const s = mSteps(ctx.path)[ctx.i];
@@ -1911,14 +2245,20 @@
                 }
             }
         }
+        for (const q of panelQueries(items))
+            if (!seenQ.has(fbKey(q))) { seenQ.add(fbKey(q)); qs.push(q); }
         if (!qs.length) return;
         try {
-            const r = await fetch('/api/projects/' + PID + '/states', {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({queries: qs})});
-            if (!r.ok) return;
-            for (const s of (await r.json()).states || []) FEEDBACK[fbKey(s)] = s.value;
+            // lots de 96 (plafond serveur) : une vue de régie lit quelques dizaines de valeurs
+            for (let i = 0; i < qs.length; i += 96) {
+                const r = await fetch('/api/projects/' + PID + '/states', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({queries: qs.slice(i, i + 96)})});
+                if (!r.ok) return;
+                for (const s of (await r.json()).states || []) FEEDBACK[fbKey(s)] = s.value;
+            }
             refreshShotboxes();
+            updatePanelValues();
         } catch (e) { /* silencieux */ }
     }
     window.MXLPoll(pollFeedback, 1500);   // poll sans recouvrement (cf. layout.html)
@@ -1954,6 +2294,1194 @@
         if (!w) return;
         w.buttons = (w.buttons || []).filter(b => b.id !== bid);
         renderLayout(); renderPalette();
+    };
+
+    /* ─── Panneaux de fonctions ─────────────────────────────────────────────────
+       Un panneau réunit des FONCTIONS de n'importe quel conteneur du projet : la rangée PGM
+       du mélangeur, REC/STOP d'un enregistreur, la durée d'un enregistrement, un fader de la
+       console. Elles sont DÉDUITES de ce que chaque plugin déclare déjà
+       (app/workspace_functions.py ; curseurs et interrupteurs : arbre de paramètres vivant) —
+       aucun plugin n'écrit d'interface pour ça. Les états se lisent dans le même lot que le
+       feedback de shotbox (pollFeedback) et se reportent SUR PLACE (updatePanelValues) : un
+       curseur qu'on tient n'est jamais redessiné sous le doigt. */
+    let activePanel = null;            // panneau qui reçoit la prochaine fonction (édition)
+    let fnSearch = '';
+    const fnRef = f => ({instance_uuid: f.instance_uuid || null, vmid: f.vmid || null});
+    const fnLabel = f => {
+        if (f.label_custom) return f.label_custom;
+        const k = f.label_key && window.I18N?.[f.label_key];
+        return k ? k.replace('{x}', f.label || '') : (f.label || '?');
+    };
+    const btnLabel = b => b.label_custom || (b.label_key && window.I18N?.[b.label_key]) || b.label || '?';
+
+    // Couleur d'allumage par défaut : la convention régie (PGM rouge, PVW vert, REC rouge).
+    function fnDefaultColor(f) {
+        const id = String(f.action_id || f.state_id || f.fid || '').toLowerCase();
+        if (/(^|[^a-z])(pgm|program)/.test(id) || /record/.test(id)) return 'red';
+        if (/(^|[^a-z])(pvw|preview)/.test(id)) return 'green';
+        return 'blue';
+    }
+    // « Entrée 1 — mire-cam1 · PGM » → « mire-cam1 · PGM » : sur un bouton, la source compte.
+    const shortInput = l => { const i = String(l).indexOf(' — '); return i < 0 ? String(l) : String(l).slice(i + 3); };
+
+    // Libellés de source (Labels & Tally) : par flux, colonnes nommées par le site.
+    let LABELS = null, LABEL_COLS = [];
+    async function loadLabels() {
+        if (LABELS) return;
+        LABELS = {};
+        try {
+            const [a, b] = await Promise.all([fetch('/api/labels/by_shm'), fetch('/api/labels/names')]);
+            LABELS = a.ok ? await a.json() : {};
+            LABEL_COLS = b.ok ? await b.json() : [];
+        } catch (e) { /* sans libellés : on retombe sur la source câblée */ }
+        refreshPanels(); renderFnCatalog();
+    }
+    const labelCol = (shm, i) => (((LABELS || {})[shm] || {}).labels || [])[i] || '';
+    // Nom d'une entrée : la source câblée (défaut), le numéro d'entrée, ou une colonne de
+    // Labels & Tally — au choix de qui compose la vue (réglage de la fonction).
+    function inputLabel(o, mode) {
+        if (mode === 'num') return o.input || String(Number(o.value) + 1);
+        if (mode && mode.startsWith('col:')) {
+            const v = labelCol(o.shm, Number(mode.slice(4)));
+            if (v) return v;
+        }
+        return o.source || (o.shm ? o.shm : (o.input ? o.input : shortInput(o.label)));
+    }
+    const _fnOpts = {};   // vmid+endpoint → {ts, items}
+    function fnOptions(f) {
+        const cc = catInst(f);
+        if (f.options_from === 'inputs')
+            return (cc?.inputs || []).map(o => ({value: o.value, label: inputLabel(o, f.label_mode)}));
+        if ((f.options || []).length)
+            return f.options.map(o => ({value: o.value, label: String(o.label ?? o.value)}));
+        if (f.options_from) {   // recall / tool_memories : options résolues par le catalogue
+            const a = (cc?.actions || []).find(x => x.id === f.action_id);
+            const p = (a?.params || []).find(x => x.key === f.param);
+            return (p?.options || []).map(o => ({value: o.value, label: String(o.label ?? o.value)}));
+        }
+        if (f.options_endpoint && cc) {
+            const key = cc.vmid + f.options_endpoint;
+            const hit = _fnOpts[key];
+            if (!hit || Date.now() - hit.ts > 15000) fnFetchOptions(key, cc.vmid, f);
+            return hit ? hit.items : [];
+        }
+        return [];
+    }
+    async function fnFetchOptions(key, vmid, f) {
+        _fnOpts[key] = {ts: Date.now(), items: (_fnOpts[key] || {}).items || []};
+        let items;
+        try {
+            const r = await fetch('/api/containers/' + vmid + '/plugin' + f.options_endpoint);
+            const j = r.ok ? await r.json() : {};
+            const raw = Array.isArray(j) ? j : (j[f.options_path || 'items'] || []);
+            items = raw.map(it => {
+                const v = typeof it === 'string' ? it : (it[f.option_value || 'value'] ?? '');
+                let l = typeof it === 'string' ? it : (it[f.option_label || f.option_value || 'label'] ?? v);
+                if (it && typeof it === 'object' && it.label_key && window.I18N?.[it.label_key]) l = window.I18N[it.label_key];
+                return {value: v, label: String(l)};
+            });
+        } catch (e) { return; }
+        const before = JSON.stringify((_fnOpts[key] || {}).items || []);
+        _fnOpts[key] = {ts: Date.now(), items};
+        if (JSON.stringify(items) !== before) refreshPanels();
+    }
+
+    // Requêtes d'état d'une fonction : [{instance_uuid, vmid, state_id | endpoint+path}].
+    function fnQueries(f) {
+        const r = fnRef(f), q = [];
+        if ((f.kind === 'select' || f.kind === 'display') && f.state_id) q.push({...r, state_id: f.state_id});
+        if (f.kind === 'display' && f.total_state) q.push({...r, state_id: f.total_state});
+        if (f.kind === 'select' && f.state2_id) q.push({...r, state_id: f.state2_id});
+        if (f.kind === 'display' && !f.state_id && f.endpoint) q.push({...r, endpoint: f.endpoint, path: f.path});
+        if (f.kind === 'buttons')
+            for (const b of (f.buttons || [])) if (b.lit) q.push({...r, state_id: b.lit.state_id});
+        if ((f.kind === 'slider' || f.kind === 'switch') && f.read_endpoint)
+            q.push({...r, endpoint: f.read_endpoint, path: f.path});
+        return q;
+    }
+    function panelQueries(items) {
+        const out = [];
+        for (const w of items) if (w.widget === 'panel') for (const f of (w.items || [])) out.push(...fnQueries(f));
+        return out;
+    }
+
+    function fnFormat(v, fmt, unit) {
+        if (v === undefined || v === null || v === '') return '—';
+        if (fmt === 'bool') return (v === true || String(v).toLowerCase() === 'true') ? T('projects.yes') : T('projects.no');
+        if (fmt === 'duration') {
+            const s = Math.max(0, Math.floor(Number(v) || 0));
+            const p = n => String(n).padStart(2, '0');
+            return p(Math.floor(s / 3600)) + ':' + p(Math.floor(s / 60) % 60) + ':' + p(s % 60);
+        }
+        if (fmt === 'bytes') {
+            const n = Number(v) || 0;
+            return n >= 1e12 ? (n / 1e12).toFixed(1) + ' To' : n >= 1e9 ? (n / 1e9).toFixed(1) + ' Go' : (n / 1e6).toFixed(0) + ' Mo';
+        }
+        if (fmt === 'number' || typeof v === 'number') {
+            const n = Number(v);
+            return (Number.isInteger(n) ? String(n) : n.toFixed(1)) + (unit ? ' ' + unit : '');
+        }
+        return String(v);
+    }
+    const sameVal = (a, b) => {
+        if (a === undefined || a === null) return false;
+        const x = String(a).trim().toLowerCase(), y = String(b).trim().toLowerCase();
+        if (x === y) return true;
+        const nx = parseFloat(x), ny = parseFloat(y);
+        return !isNaN(nx) && !isNaN(ny) && nx === ny && /^-?[\d.]+$/.test(x) && /^-?[\d.]+$/.test(y);
+    };
+
+    // ── Rendu : TOUT passe par le catalogue de contrôles partagés (static/css/controls.css,
+    //    BobiControls). Rien n'est dessiné ici — cf. CLAUDE.md « Interface : TOUJOURS les
+    //    contrôles partagés » (le 2026-10-20, ce fichier avait ses propres touches, faders et
+    //    vu-mètres : c'est exactement ce que la règle interdit).
+    const BUS_OF = {red: 'pgm', green: 'pvw', amber: 'dsk', blue: 'dis'};
+    const TONE_OF = {red: ' ctl-push--danger', green: ' ctl-push--ok', amber: ' ctl-push--warn', blue: ''};
+    const fnColor = f => f.color || fnDefaultColor(f);
+    const isBusRow = f => f.kind === 'select' && f.options_from === 'inputs';
+    // Style d'une rangée : bouton de bus (aplat / bandeau de tally), poussoir à témoin, vignette.
+    const fnStyle = f => {
+        const v = f.btn_style;
+        if (['solid', 'tally', 'led', 'tile', 'list'].includes(v) && (v !== 'tile' || f.option_thumb)) return v;
+        return isBusRow(f) ? 'solid' : (f.kind === 'select' && f.option_thumb ? 'tile' : 'led');
+    };
+    const thumbUrl = (f, v) => '/api/containers/' + f.vmid + '/plugin' +
+        f.option_thumb.replace('{value}', encodeURIComponent(v));
+    const busName = f => (f.bus_name != null && f.bus_name !== '') ? f.bus_name : fnLabel(f).replace(/^Rang[ée]e\s+/i, '');
+    // Les boutons d'une rangée : la liste ORDONNÉE posée dans les réglages (`slots` : nombre de
+    // boutons, source et libellé de chacun), sinon tous les choix dans l'ordre du plugin.
+    function fnSlots(f) {
+        const opts = fnOptions(f);
+        if (Array.isArray(f.slots) && f.slots.length)
+            return f.slots.map(sl => {
+                const o = opts.find(x => sameVal(x.value, sl.value));
+                return {value: sl.value, label: sl.label || (o ? o.label : '—')};
+            });
+        const hidden = new Set((f.hidden || []).map(String));   // vues d'avant les `slots`
+        return opts.filter(o => !hidden.has(String(o.value)))
+            .map(o => ({value: o.value, label: (f.labels || {})[String(o.value)] || o.label}));
+    }
+
+    function fnHtml(w, f) {
+        const da = 'data-wid="' + esc(w.id) + '" data-fn="' + esc(f.id) + '"';
+        const ctx = f.size === 's' ? ' ctl-dense' : f.size === 'l' ? ' ctl-large' : '';
+        const tools = editMode ? '<span class="wsp-fn-tools">' +
+            '<button type="button" data-act="edit" ' + da + ' aria-label="' + esc(T('projects.fn_settings')) + '">⚙</button>' +
+            '<button type="button" data-act="del" ' + da + ' aria-label="✕">✕</button></span>' +
+            '<span class="wsp-fn-rsz" aria-hidden="true">◢</span>' : '';
+        // Placement libre (px/py posés au glisser) ; largeur réglée à la poignée (pw).
+        const pos = Number.isFinite(f.px)
+            ? ' style="left:' + f.px + 'px;top:' + f.py + 'px' + (f.pw ? ';width:' + f.pw + 'px' : '') + '"'
+            : (f.pw ? ' style="width:' + f.pw + 'px"' : '');
+        // Une rangée de bus porte son nom à GAUCHE (pastille) : pas de titre au-dessus en plus.
+        const cap = (f.hide_label || isBusRow(f)) ? '' : '<div class="wsp-fn-cap">' + esc(fnLabel(f)) + '</div>';
+        const r = fnRef(f), col = fnColor(f);
+        let ctl = '';
+        if (f.kind === 'select') {
+            const fk = f.state_id ? fbKey({...r, state_id: f.state_id}) : '';
+            const st = fnStyle(f), slots = fnSlots(f);
+            const showTag = isBusRow(f) ? f.show_bus !== false : !!f.show_bus;
+            const tag = showTag ? '<span class="ctl-bus-lab ctl-bus-lab--tag" data-bus="' + BUS_OF[col] + '">' +
+                esc(busName(f)) + '</span>' : '';
+            // Second état (réglage) : un autre état du même conteneur sur la même liste —
+            // l'image en SORTIE quand la rangée choisit l'image PRÊTE.
+            const sk = f.state2_id ? fbKey({...r, state_id: f.state2_id}) : '';
+            const flags = (f.tag1 ? '<span class="ctl-flag ctl-flag--1">' + esc(f.tag1) + '</span>' : '') +
+                          (sk && f.tag2 ? '<span class="ctl-flag ctl-flag--2">' + esc(f.tag2) + '</span>' : '');
+            const keys = slots.map((o, i) => {
+                const common = ' data-act="sel" ' + da + ' data-val="' + esc(o.value) + '" data-fk="' + esc(fk) +
+                    '" data-lit="' + esc(o.value) + '"' + (sk ? ' data-sk="' + esc(sk) + '"' : '');
+                if (st === 'list')
+                    return '<div role="option" aria-selected="false" class="ctl-list__item"' + common + '>' +
+                        '<span class="ctl-list__num">' + (i + 1) + '</span>' +
+                        (f.option_thumb ? '<img class="ctl-list__thumb" loading="lazy" alt="" src="' + esc(thumbUrl(f, o.value)) + '">' : '') +
+                        '<span class="ctl-list__label">' + esc(o.label) + '</span>' + flags + '</div>';
+                if (st === 'tile')
+                    return '<button type="button" class="ctl-push ctl-push--tile' + TONE_OF[col] + '" aria-pressed="false"' +
+                        common + '><img loading="lazy" alt="" src="' + esc(thumbUrl(f, o.value)) + '">' +
+                        '<span class="ctl-push__foot"><span>' + esc(o.label) + '</span>' + flags + '</span></button>';
+                if (st === 'led')
+                    return '<button type="button" class="ctl-push ctl-push--led' + TONE_OF[col] + '" aria-pressed="false"' +
+                        common + '><span class="ctl-led"></span>' + esc(o.label) + '</button>';
+                return '<button type="button" role="radio" aria-checked="false" class="ctl-bus ctl-bus--label ctl-bus--' +
+                    st + '" data-bus="' + BUS_OF[col] + '"' + common + '>' + esc(o.label) + '</button>';
+            }).join('');
+            ctl = st === 'list'
+                ? '<div class="ctl-list ctl-list--rows' + TONE_OF[col] + '" role="listbox" aria-label="' + esc(fnLabel(f)) + '">' +
+                  (keys || '<span class="meta">' + esc(T('projects.fn_no_choice')) + '</span>') + '</div>'
+                : '<div class="ctl-bus-row" role="radiogroup" aria-label="' + esc(fnLabel(f)) + '">' + tag +
+                  (keys || '<span class="meta">' + esc(T('projects.fn_no_choice')) + '</span>') + '</div>';
+        } else if (f.kind === 'buttons') {
+            ctl = '<div class="ctl-bus-row">' + (f.buttons || []).map((b, i) => {
+                const fk = b.lit ? fbKey({...r, state_id: b.lit.state_id}) : '';
+                return '<button type="button" class="ctl-push' + (b.lit ? ' ctl-push--led' + TONE_OF[col] : '') +
+                    '" aria-pressed="false" data-act="btn" data-i="' + i + '" ' + da +
+                    ' data-fk="' + esc(fk) + '" data-lit="' + esc(b.lit ? b.lit.value : '') + '">' +
+                    (b.lit ? '<span class="ctl-led"></span>' : '') + esc(btnLabel(b)) + '</button>';
+            }).join('') + '</div>';
+        } else if (f.kind === 'switch') {
+            const fk = fbKey({...r, endpoint: f.read_endpoint, path: f.path});
+            ctl = '<button type="button" role="switch" class="ctl-push ctl-push--led' + TONE_OF[col] +
+                '" aria-pressed="false" data-act="switch" ' + da + ' data-fk="' + esc(fk) + '" data-lit="true">' +
+                '<span class="ctl-led"></span>' + esc(f.on_label || fnLabel(f)) + '</button>';
+        } else if (f.kind === 'display') {
+            const fk = fbKey(f.state_id ? {...r, state_id: f.state_id} : {...r, endpoint: f.endpoint, path: f.path});
+            const fk2 = f.total_state ? fbKey({...r, state_id: f.total_state}) : '';
+            ctl = '<span class="ctl-readout">' + (f.format === 'bool' ? '<span class="ctl-led" data-fk="' + esc(fk) +
+                '" data-lit="true"></span>' : '') + '<b class="wsp-fn-val" data-fk="' + esc(fk) + '" data-fk2="' + esc(fk2) +
+                '" data-fmt="' + esc(f.format || 'text') + '" data-unit="' + esc(f.unit || '') + '">—</b></span>' +
+                (f.format === 'remaining' ? '<span class="ctl-gauge ctl-gauge--sans-seuil"><span class="ctl-gauge-fill" data-gauge="' +
+                    esc(fk) + '" style="transform:scaleX(0)"></span></span>' : '');
+        } else if (f.kind === 'image') {
+            ctl = '<img class="wsp-fn-img" alt="' + esc(fnLabel(f)) + '" data-img="' + esc(String(f.vmid) + '|' + f.endpoint) + '">';
+        } else if (f.kind === 'media') {
+            ctl = '<div class="wsp-fn-mount wsp-fn-medialib" data-mount="media" ' + da + '></div>';
+        } else if (f.kind === 'widget') {
+            ctl = '<div class="wsp-fn-mount wsp-fn-pwidget" data-mount="widget" ' + da + '></div>';
+        } else if (f.kind === 'video') {
+            ctl = '<div class="wsp-fn-mount wsp-fn-videobox" data-mount="video" ' + da + '></div>';
+        } else if (f.kind === 'slider' || f.kind === 'meter') {
+            // Monté APRÈS le rendu par BobiControls (mountControls) : fader et vu-mètre du catalogue.
+            ctl = '<div class="wsp-fn-mount" data-mount="' + esc(f.kind) + '" ' + da + '></div>' +
+                (f.kind === 'meter' ? '<span class="ctl-ui-label wsp-fn-vux" data-vux="' + esc(String(f.vmid) + '|' + f.mid) + '"></span>' : '');
+        }
+        const flex = (f.grow ? ' grow' : '') + (f.full ? ' full' : '') + ((f.kind === 'video' || f.kind === 'image') && f.color ? ' c-' + esc(f.color) : '');
+        return (f.brk && !Number.isFinite(f.px) ? '<div class="wsp-pn-br" aria-hidden="true"></div>' : '') +
+            '<div class="wsp-fn wsp-fn-' + esc(f.kind) + ctx + flex + '" ' + da + pos + '>' + tools + cap + ctl + '</div>';
+    }
+
+    // Contrôles vivants du catalogue montés dans les panneaux : "wid|fid" → instance BobiControls.
+    const MOUNTED = new Map();
+    const _held = {};   // "wid|fid" → dernier geste (ms) : l'état relu n'écrase pas un fader tenu
+    // Une VUE DE MÉDIAS survit au redessin de son panneau : on la met de côté puis on la replace
+    // (bin, défilement, sélection gardés) au lieu de la recréer — un panneau se redessine à chaque
+    // liste d'options arrivée. `keepMedia=false` (vue changée, fonction retirée) la détruit.
+    function unmountPanel(wid, keepMedia) {
+        for (const [k, inst] of MOUNTED) if (k.startsWith(wid + '|')) {
+            if (keepMedia !== false && inst && (inst.mediaFn || inst.keepEl)) {
+                if (inst.hostEl && inst.hostEl.parentElement) inst.hostEl.remove();
+                continue;
+            }
+            try { inst.destroy(); } catch (e) { /* déjà détruit */ }
+            MOUNTED.delete(k);
+        }
+    }
+    function mountControls(w, pn) {
+        if (!window.BobiControls) return;
+        pn.querySelectorAll('[data-mount]').forEach(el => {
+            const f = (w.items || []).find(x => x.id === el.dataset.fn);
+            if (!f) return;
+            const key = w.id + '|' + f.id;
+            let inst;
+            if (f.kind === 'slider') {
+                inst = BobiControls.create(f.vertical ? 'fader' : 'hfader', el, {
+                    min: f.min, max: f.max, step: f.step, unit: f.unit || '',
+                    scale: /db/i.test(f.unit || '') ? 'db' : undefined, label: fnLabel(f), showLabel: false});
+                if (!editMode) {
+                    inst.on('input', v => { _held[key] = Date.now(); fnSlide(f, v, false); });
+                    inst.on('change', v => { _held[key] = Date.now(); fnSlide(f, v, true); });
+                }
+            } else if (f.kind === 'video') {
+                const kept = MOUNTED.get(key);
+                if (kept && kept.keepEl && kept.shm === f.shm) { el.replaceWith(kept.hostEl); return; }
+                if (kept) { try { kept.destroy(); } catch (e) { /* déjà parti */ } MOUNTED.delete(key); }
+                inst = mountVideo(f, el);
+                inst.keepEl = true; inst.hostEl = el; inst.shm = f.shm;
+            } else if (f.kind === 'widget') {
+                const kept = MOUNTED.get(key);
+                if (kept && kept.keepEl) { el.replaceWith(kept.hostEl); return; }   // déjà monté : on le remet
+                inst = mountPluginWidget(f, el);
+                if (!inst) return;
+                inst.keepEl = true; inst.hostEl = el;
+            } else if (f.kind === 'media') {
+                const kept = MOUNTED.get(key);
+                if (kept && kept.mediaFn && kept.hostEl && JSON.stringify(kept.mediaFn.targets) === JSON.stringify(f.targets)) {
+                    el.replaceWith(kept.hostEl);   // la même bibliothèque, remise à sa place
+                    kept.mediaFn = f;
+                    return;
+                }
+                if (kept) { try { kept.destroy(); } catch (e) { /* déjà détruite */ } MOUNTED.delete(key); }
+                inst = mountMediaView(f, el);
+                if (!inst) return;
+                inst.hostEl = el;
+            } else {
+                inst = BobiControls.create('meter', el, {channels: f.nch === 1 ? 1 : 2,
+                    floor: (catInst(f)?.meters || {}).min ?? -60, ceil: (catInst(f)?.meters || {}).max ?? 0,
+                    label: fnLabel(f)});
+                inst.nch = f.nch === 1 ? 1 : 2;
+            }
+            MOUNTED.set(key, inst);
+        });
+    }
+
+    // ── Image d'une sortie (WebRTC) : l'aperçu dédié PAR SORTIE de app/monitor.py (un encodeur par
+    //    flux regardé, créé à la demande par le bouton — jamais en silence, il coûte un encodage).
+    function mountVideo(f, el) {
+        const handle = {destroy() { this.dead = true; el.innerHTML = ''; }};
+        (async () => {
+            let s = {};
+            try {
+                const r = await fetch('/api/containers/' + f.vmid + '/preview?flow=' + encodeURIComponent(f.shm));
+                s = r.ok ? await r.json() : {};
+            } catch (e) { /* passerelle injoignable : dit ci-dessous */ }
+            if (handle.dead) return;
+            if (s.exists && s.embed_url) {
+                const url = s.embed_url.replace(/\/?$/, '/') + '?controls=false&muted=true&autoplay=true&playsinline=true';
+                el.innerHTML = '<iframe allow="autoplay" title="' + esc(fnLabel(f)) + '" src="' + esc(url) + '"></iframe>';
+            } else {
+                el.innerHTML = '<div class="wsp-fn-videoempty"><span class="meta">' +
+                    esc(T(s.gateway_ready === false ? 'projects.fn_video_nogw' : 'projects.fn_video_none')) + '</span>' +
+                    (s.gateway_ready === false ? '' : '<button type="button" class="ctl-push" data-act="mkvideo" data-wid="' +
+                        esc(el.dataset.wid) + '" data-fn="' + esc(el.dataset.fn) + '">' + esc(T('projects.fn_video_create')) + '</button>') +
+                    '<pre class="wsp-fn-videolog" hidden></pre></div>';
+            }
+            scheduleFit();
+        })();
+        return handle;
+    }
+    async function createVideo(w, f, btn) {
+        const log = btn.parentElement.querySelector('.wsp-fn-videolog');
+        btn.disabled = true; log.hidden = false; log.textContent = '';
+        try {
+            const r = await fetch('/api/containers/' + f.vmid + '/preview', {method: 'POST',
+                headers: {'Content-Type': 'application/json'}, body: JSON.stringify({shm: f.shm, per_flow: true})});
+            const rd = r.body.getReader(), dec = new TextDecoder();
+            for (;;) { const {done, value} = await rd.read(); if (done) break; log.textContent += dec.decode(value); }
+        } catch (e) { log.textContent += '\n✗ ' + (e.message || e); }
+        const key = w.id + '|' + f.id, inst = MOUNTED.get(key);
+        if (inst) { try { inst.destroy(); } catch (e) { /* */ } MOUNTED.delete(key); }
+        const body = document.querySelector('[data-wid="' + w.id + '"] .wsp-w-body');
+        if (body) renderPanel(w, body);
+    }
+
+    // ── Morceau d'interface EXPORTÉ par un plugin (`ui.widgets`) : le plugin le dessine lui-même,
+    //    avec ses contrôles — le cas avancé (le transport complet du player). Ses assets sont ceux
+    //    de son interface entière (même chargement, même version) ; plusieurs instances par page.
+    function mountPluginWidget(f, el) {
+        const inst = SUMMARY.containers.find(c => c.vmid === f.vmid) || catInst(f) || {};
+        const type = inst.type;
+        if (!type) { el.textContent = T('projects.ws_gone'); return null; }
+        const handle = {destroy() { this.dead = true; try { this.h && this.h.unmount && this.h.unmount(); } catch (e) { /* déjà parti */ } }};
+        (async () => {
+            await ensureAsset(type, 'css', inst.vmid, inst.plugin_version);
+            await ensureAsset(type, 'js', inst.vmid, inst.plugin_version);
+            if (handle.dead) return;
+            const api = window.MXLPlugins && window.MXLPlugins[type];
+            const wdg = api && api.widgets && api.widgets[f.widget_id];
+            if (!wdg || typeof wdg.mount !== 'function') {
+                el.innerHTML = '<span class="meta">' + esc(T('projects.fn_widget_missing')) + '</span>';
+                return;
+            }
+            try {
+                handle.h = wdg.mount(el, f.vmid, {toast, type, editMode,
+                    T: (k, fb) => { const v = window.t ? window.t(k) : k; return (v && v !== k) ? v : (fb !== undefined ? fb : k); },
+                    instance: {...inst, version: inst.plugin_version}});
+            } catch (e) { console.error(e); el.textContent = '✗ ' + (e.message || e); }
+            scheduleFit();
+        })();
+        return handle;
+    }
+
+    // ── Vue de médias : la bibliothèque commune (static/js/media_library.js), réglée sur un bin, une
+    //    recherche, une vue, et qui ENVOIE vers un ou plusieurs conteneurs du projet. Une cible =
+    //    une fonction de choix à vignette (player « Charger », images fixes « Afficher ») : la
+    //    même action, le même paramètre que la rangée de vignettes — rien de neuf côté plugin.
+    //    Réglage : en édition, on navigue dans la bibliothèque ; son état est gardé avec la vue.
+    function mediaTargets() {
+        const out = [];
+        for (const cc of (CATALOG?.containers || []))
+            for (const f of (cc.functions || []))
+                if (f.kind === 'select' && f.option_thumb)
+                    out.push({vmid: cc.vmid, instance_uuid: cc.instance_uuid, action_id: f.action_id, param: f.param,
+                              kinds: /image/i.test(f.options_endpoint || '') ? ['image'] : ['video', 'audio'],
+                              label: (cc.hostname || ('#' + cc.vmid)) + ' · ' + fnLabel(f), short: cc.hostname || ('#' + cc.vmid)});
+        return out;
+    }
+    const IMG_EXT = /\.(png|jpe?g|gif|webp|tiff?|bmp|svg)$/i, AUD_EXT = /\.(wav|mp3|aac|m4a|flac|ogg|aiff?)$/i;
+    function mediaKind(m) {
+        const k = m && m.asset && m.asset.tech && m.asset.tech.kind;
+        if (k) return k;
+        const n = (m && (m.name || m.path)) || '';
+        return IMG_EXT.test(n) ? 'image' : AUD_EXT.test(n) ? 'audio' : 'video';
+    }
+    function mountMediaView(f, el) {
+        if (!window.MediaLibrary) { el.textContent = '—'; return null; }
+        const targets = (f.targets || []).filter(t => (CATALOG?.containers || []).some(c => c.vmid === t.vmid));
+        const kinds = [...new Set(targets.flatMap(t => t.kinds || []))];
+        const ml = window.MediaLibrary.mount(el, {
+            vmid: targets[0] ? targets[0].vmid : undefined, toast,
+            // même contrat que dans un plugin : T(clé, repli)
+            T: (k, fb) => { const v = window.t ? window.t(k) : k; return (v && v !== k) ? v : (fb !== undefined ? fb : k); },
+            kinds: kinds.length ? kinds : null, view: f.view || 'grid', fill: true, upload: false,
+            projectFilter: true,
+            actions: targets.map((t, i) => ({id: 't' + i, label: t.button || t.short || t.label, primary: i === 0})),
+            onAction: (id, m) => {
+                if (!m || !m.path || editMode) return;
+                let t = targets[Number(String(id).slice(1))];
+                // Le double-clic (action principale) va à la première cible qui SAIT lire ce type :
+                // une image aux images fixes, un clip au player — jamais une image à un player.
+                const k = mediaKind(m);
+                if (t && k && !(t.kinds || []).includes(k)) {
+                    const fit = targets.find(x => (x.kinds || []).includes(k));
+                    if (id !== 't0' || !fit) { toast(T('projects.fn_media_wrong_kind').replace('{x}', t.button || t.short || t.label), 'error'); return; }
+                    t = fit;
+                }
+                if (t) fnRun(t, {kind: 'action', action_id: t.action_id, params: {[t.param]: m.path}});
+            },
+        });
+        if (f.lib_state) { try { ml.setState(f.lib_state); } catch (e) { /* état d'une version précédente */ } }
+        ml.mediaFn = f;
+        return ml;
+    }
+    // Avant d'enregistrer une vue : l'état de chaque bibliothèque (bin, recherche, vue) suit la fonction.
+    function captureMediaStates() {
+        for (const w of layout) {
+            if (w.widget !== 'panel') continue;
+            for (const f of (w.items || [])) {
+                const ml = f.kind === 'media' && MOUNTED.get(w.id + '|' + f.id);
+                if (ml && ml.getState) { try { f.lib_state = ml.getState(); } catch (e) { /* garde l'ancien */ } }
+            }
+        }
+    }
+
+    function renderPanel(w, bodyEl) {
+        w.items = w.items || [];
+        unmountPanel(w.id);
+        const free = w.items.some(f => Number.isFinite(f.px));
+        bodyEl.innerHTML = '<div class="wsp-pn' + (free ? ' free' : '') + '">' + w.items.map(f => fnHtml(w, f)).join('') +
+            (editMode && !w.items.length ? '<p class="meta">' + esc(T('projects.fn_panel_empty')) + '</p>' : '') +
+            '<div class="wsp-pn-guide v" hidden></div><div class="wsp-pn-guide h" hidden></div></div>';
+        const pn = bodyEl.querySelector('.wsp-pn');
+        if (_fitRO) _fitRO.observe(pn);
+        mountControls(w, pn);
+        if (free) placeNewcomers(w, pn);
+        fitPanel(pn);
+        updatePanelValues(bodyEl);
+        if (editMode) attachFnDrag(w, pn);
+        scheduleFit();
+    }
+
+    /* ── Placement libre des fonctions dans un panneau : glisser, aimantage, largeur ──
+       Aimantage sur une grille de 8 px ET sur les bords des voisines (alignées à gauche, en
+       haut, ou accolées avec un écart de 8 px) ; une ligne repère montre l'alignement retenu.
+       Lâchée au-dessus d'un AUTRE panneau, la fonction y change de panneau. */
+    const SNAP_GRID = 8, SNAP_DIST = 10, SNAP_GAP = 8;
+    const fnEls = pn => [...pn.querySelectorAll(':scope > .wsp-fn')];
+    // Une fonction ajoutée à un panneau déjà disposé se pose sous les autres.
+    function placeNewcomers(w, pn) {
+        let bottom = 0;
+        for (const el of fnEls(pn)) {
+            const f = w.items.find(x => x.id === el.dataset.fn);
+            if (f && Number.isFinite(f.px)) bottom = Math.max(bottom, f.py + el.offsetHeight);
+        }
+        for (const el of fnEls(pn)) {
+            const f = w.items.find(x => x.id === el.dataset.fn);
+            if (!f || Number.isFinite(f.px)) continue;
+            const x = 0, y = bottom ? bottom + SNAP_GAP * 2 : 0;
+            el.style.left = x + 'px'; el.style.top = y + 'px';
+            if (editMode) { f.px = x; f.py = y; }
+            bottom = y + el.offsetHeight;
+        }
+    }
+    function fitPanel(pn) {
+        if (!pn.classList.contains('free')) { pn.style.height = ''; return; }
+        let h = 0;
+        for (const el of fnEls(pn)) h = Math.max(h, el.offsetTop + el.offsetHeight);
+        pn.style.height = (h + 12) + 'px';
+    }
+    // Passage au placement libre : chaque fonction garde la place qu'elle avait dans le flux.
+    function freezePanel(w, pn) {
+        if (pn.classList.contains('free')) return;
+        const pos = fnEls(pn).map(el => [el, el.offsetLeft, el.offsetTop]);
+        for (const [el, x, y] of pos) {
+            const f = w.items.find(i => i.id === el.dataset.fn);
+            if (!f) continue;
+            f.px = x; f.py = y;
+            el.style.left = x + 'px'; el.style.top = y + 'px';
+        }
+        pn.classList.add('free');
+        fitPanel(pn);
+    }
+    function snapAxis(v, size, edges) {
+        // edges : positions candidates pour le bord de DÉBUT (déjà décalées pour fin/accolé)
+        let best = null;
+        for (const e of edges) if (Math.abs(e.v - v) <= SNAP_DIST && (!best || Math.abs(e.v - v) < Math.abs(best.v - v))) best = e;
+        return best || {v: Math.round(v / SNAP_GRID) * SNAP_GRID, line: null};
+    }
+    function attachFnDrag(w, pn) {
+        for (const el of fnEls(pn)) {
+            const f = w.items.find(i => i.id === el.dataset.fn);
+            if (!f) continue;
+            el.addEventListener('pointerdown', ev => {
+                // La bibliothèque de médias se MANIPULE en édition (choisir son bin) : on la
+                // déplace par son titre, pas par son contenu.
+                if (ev.button > 0 || ev.target.closest('.wsp-fn-tools') || ev.target.closest('.wsp-fn-medialib')) return;
+                const resize = !!ev.target.closest('.wsp-fn-rsz');
+                ev.preventDefault(); ev.stopPropagation();
+                setActivePanel(w.id);
+                freezePanel(w, pn);
+                const sx = ev.clientX, sy = ev.clientY;
+                const r0 = el.getBoundingClientRect(), grabX = sx - r0.left, grabY = sy - r0.top;
+                const ox = f.px, oy = f.py, ow = el.offsetWidth, oh = el.offsetHeight;
+                const others = fnEls(pn).filter(o => o !== el).map(o => ({
+                    x: o.offsetLeft, y: o.offsetTop, w: o.offsetWidth, h: o.offsetHeight}));
+                const gv = pn.querySelector('.wsp-pn-guide.v'), gh = pn.querySelector('.wsp-pn-guide.h');
+                el.classList.add('dragging');
+                let moved = false;
+                const move = e => {
+                    const dx = e.clientX - sx, dy = e.clientY - sy;
+                    if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+                    moved = true;
+                    if (resize) {
+                        const ex = others.flatMap(o => [{v: o.x + o.w - ox, line: o.x + o.w}]);
+                        const r = snapAxis(ow + dx, 0, ex);
+                        f.pw = Math.max(64, r.v);
+                        el.style.width = f.pw + 'px';
+                        gv.hidden = r.line === null; if (r.line !== null) gv.style.left = r.line + 'px';
+                        gh.hidden = true;
+                    } else {
+                        el.style.pointerEvents = 'none';   // laisser voir le panneau sous le pointeur
+                        const xs = others.flatMap(o => [
+                            {v: o.x, line: o.x}, {v: o.x + o.w - ow, line: o.x + o.w},
+                            {v: o.x + o.w + SNAP_GAP, line: o.x + o.w + SNAP_GAP}]);
+                        const ys = others.flatMap(o => [
+                            {v: o.y, line: o.y}, {v: o.y + o.h - oh, line: o.y + o.h},
+                            {v: o.y + o.h + SNAP_GAP, line: o.y + o.h + SNAP_GAP}]);
+                        const rx = snapAxis(ox + dx, ow, xs), ry = snapAxis(oy + dy, oh, ys);
+                        f.px = Math.max(0, rx.v); f.py = Math.max(0, ry.v);
+                        el.style.left = f.px + 'px'; el.style.top = f.py + 'px';
+                        gv.hidden = rx.line === null; if (rx.line !== null) gv.style.left = rx.line + 'px';
+                        gh.hidden = ry.line === null; if (ry.line !== null) gh.style.top = ry.line + 'px';
+                    }
+                    fitPanel(pn);
+                };
+                const up = e => {
+                    window.removeEventListener('pointermove', move);
+                    window.removeEventListener('pointerup', up);
+                    el.classList.remove('dragging'); el.style.pointerEvents = '';
+                    gv.hidden = gh.hidden = true;
+                    if (!moved || resize) { fitPanel(pn); return; }
+                    // Lâchée sur un autre panneau : elle y passe, à l'endroit du lâcher.
+                    const under = document.elementFromPoint(e.clientX, e.clientY);
+                    const tgtEl = under && under.closest('.wsp-panel');
+                    if (tgtEl && tgtEl.dataset.wid !== w.id) {
+                        const to = layout.find(x => x.id === tgtEl.dataset.wid);
+                        const tpn = tgtEl.querySelector('.wsp-pn');
+                        if (to && tpn) {
+                            const r = tpn.getBoundingClientRect();
+                            w.items = w.items.filter(x => x.id !== f.id);
+                            f.px = Math.max(0, Math.round((e.clientX - r.left - grabX) / SNAP_GRID) * SNAP_GRID);
+                            f.py = Math.max(0, Math.round((e.clientY - r.top - grabY) / SNAP_GRID) * SNAP_GRID);
+                            to.items = to.items || [];
+                            if (!to.items.some(x => Number.isFinite(x.px))) f.px = f.py = undefined;
+                            to.items.push(f);
+                            activePanel = to.id;
+                            renderLayout();
+                            return;
+                        }
+                    }
+                    fitPanel(pn);
+                };
+                window.addEventListener('pointermove', move);
+                window.addEventListener('pointerup', up);
+            });
+        }
+    }
+    function panelItems() {
+        return editMode ? layout : normItems((currentView && currentView.layout) || []);
+    }
+    function refreshPanels() {
+        for (const w of panelItems()) {
+            if (w.widget !== 'panel') continue;
+            const el = document.querySelector('[data-wid="' + w.id + '"] .wsp-w-body');
+            // Un fader tenu au doigt n'est pas redessiné : on attend qu'il soit lâché.
+            const held = (w.items || []).some(f => Date.now() - (_held[w.id + '|' + f.id] || 0) < 1500);
+            if (el && !held) renderPanel(w, el);
+        }
+    }
+    function updatePanelValues(root) {
+        const scope = root || document;
+        scope.querySelectorAll('.wsp-pn [data-fk]').forEach(el => {
+            const fk = el.dataset.fk;
+            if (!fk) return;
+            const v = FEEDBACK[fk];
+            if (el.classList.contains('wsp-fn-val')) {
+                if (el.dataset.fmt === 'remaining') {
+                    const tot = Number(FEEDBACK[el.dataset.fk2]), pos = Number(v);
+                    const ok = isFinite(tot) && isFinite(pos) && tot > 0;
+                    el.textContent = ok ? fnFormat(Math.max(0, tot - pos), 'duration') : '—';
+                    const g = el.closest('.wsp-fn').querySelector('[data-gauge]');
+                    if (g) g.style.transform = 'scaleX(' + (ok ? Math.min(1, pos / tot) : 0) + ')';
+                    return;
+                }
+                const host = el.closest('.wsp-fn');
+                const {f: df} = host ? findFn(host.dataset.wid, host.dataset.fn) : {};
+                if (df && df.choice && v !== undefined && v !== null) {
+                    const o = fnOptions({...df.choice, ...fnRef(df), label_mode: df.label_mode})
+                        .find(x => sameVal(x.value, v));
+                    el.textContent = o ? o.label : fnFormat(v, el.dataset.fmt, el.dataset.unit);
+                } else el.textContent = fnFormat(v, el.dataset.fmt, el.dataset.unit);
+            } else if (el.classList.contains('ctl-led') && !el.closest('button')) {
+                el.classList.toggle('on', sameVal(v, el.dataset.lit));
+            } else if (el.getAttribute('role') === 'radio') {
+                el.setAttribute('aria-checked', String(sameVal(v, el.dataset.lit)));
+            } else if (el.getAttribute('role') === 'option') {
+                const on = sameVal(v, el.dataset.lit);
+                el.setAttribute('aria-selected', String(on)); el.classList.toggle('on', on);
+            } else if (el.tagName === 'BUTTON') {
+                el.setAttribute('aria-pressed', String(sameVal(v, el.dataset.lit)));
+            }
+        });
+        // Second état (l'image en SORTIE sur une rangée « preview ») : classe `on2` du catalogue.
+        scope.querySelectorAll('.wsp-pn [data-sk]').forEach(el =>
+            el.classList.toggle('on2', sameVal(FEEDBACK[el.dataset.sk], el.dataset.lit)));
+        // Faders du catalogue : la valeur relue, sauf pendant le geste.
+        for (const w of panelItems()) {
+            if (w.widget !== 'panel') continue;
+            for (const f of (w.items || [])) {
+                if (f.kind !== 'slider') continue;
+                const key = w.id + '|' + f.id, inst = MOUNTED.get(key);
+                const v = FEEDBACK[fbKey({...fnRef(f), endpoint: f.read_endpoint, path: f.path})];
+                if (inst && v !== undefined && v !== null && Date.now() - (_held[key] || 0) > 1500) inst.set(Number(v));
+            }
+        }
+    }
+
+    // Vu-mètres : déclarés par le plugin (control.meters), dessinés par le vu-mètre du catalogue
+    // (balistique, maintien de crête, voyant de saturation : c'est lui qui les porte). Une requête
+    // par conteneur pour tous les mètres affichés (`ids=`), à la cadence déclarée.
+    let _vuBusy = false;
+    async function pollMeters() {
+        if (_vuBusy || document.hidden) return;
+        const want = {};   // vmid → {id → [[key, f], …]}
+        for (const w of panelItems()) {
+            if (w.widget !== 'panel') continue;
+            for (const f of (w.items || [])) {
+                if (f.kind !== 'meter' || !MOUNTED.has(w.id + '|' + f.id)) continue;
+                ((want[f.vmid] = want[f.vmid] || {})[f.mid] = want[f.vmid][f.mid] || []).push([w.id + '|' + f.id, f, w]);
+            }
+        }
+        if (!Object.keys(want).length) return;
+        _vuBusy = true;
+        try {
+            await Promise.all(Object.entries(want).map(async ([vm, byId]) => {
+                const cc = (CATALOG?.containers || []).find(x => String(x.vmid) === vm);
+                const mt = cc && cc.meters;
+                if (!mt) return;
+                const q = '?ids=' + encodeURIComponent(Object.keys(byId).join(',')) + (mt.extras_query ? '&' + mt.extras_query : '');
+                const r = await fetch('/api/containers/' + vm + '/plugin' + mt.endpoint + q);
+                if (!r.ok) return;
+                const j = await r.json();
+                for (const row of (j.m || [])) {
+                    const [id, , nch] = row;
+                    const pk = row.slice(3, 3 + nch), rms = row.slice(3 + nch, 3 + 2 * nch);
+                    for (const [key, f, w] of (byId[id] || [])) {
+                        if (f.nch !== nch) {   // mono ou stéréo : su à la première relève
+                            f.nch = nch;
+                            const el = document.querySelector('[data-wid="' + w.id + '"] .wsp-w-body');
+                            if (el) renderPanel(w, el);
+                            continue;
+                        }
+                        const inst = MOUNTED.get(key);
+                        if (inst) inst.set({peak: pk, rms});
+                    }
+                    const am = (j.am || {})[id], afv = (j.afv || {})[id];
+                    document.querySelectorAll('[data-vux="' + vm + '|' + id + '"]').forEach(x => {
+                        const parts = [];
+                        if (afv !== undefined && afv < -0.5) parts.push('AFV ' + (afv <= -119 ? '−∞' : afv.toFixed(0)));
+                        if (am !== undefined && am < -0.5) parts.push('auto ' + am.toFixed(0));
+                        x.textContent = parts.join(' · ');
+                    });
+                }
+            }));
+        } catch (e) { /* silencieux : un mètre figé, jamais une erreur en boucle */ }
+        _vuBusy = false;
+    }
+    setInterval(pollMeters, 100);
+
+    // Vignettes : une image par seconde au plus, seulement page visible.
+    setInterval(() => {
+        if (document.hidden) return;
+        document.querySelectorAll('.wsp-pn img[data-img]').forEach(img => {
+            const [vmid, ep] = img.dataset.img.split('|');
+            if (img.dataset.busy) return;
+            img.dataset.busy = '1';
+            const done = () => { delete img.dataset.busy; };
+            img.onload = done; img.onerror = done;
+            img.src = '/api/containers/' + vmid + '/plugin' + ep + '?t=' + Date.now();
+        });
+    }, 1000);
+
+    function findFn(wid, fid) {
+        const w = panelItems().find(x => x.id === wid);
+        return {w, f: w && (w.items || []).find(x => x.id === fid)};
+    }
+    async function fnRun(f, body) {
+        const r = await fetch('/api/projects/' + PID + '/actions/run', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({...fnRef(f), ...body})});
+        if (!r.ok) toast((await r.json().catch(() => ({}))).error || r.statusText, 'error');
+        setTimeout(pollFeedback, 250);
+    }
+    const _slideTimers = {};
+    function fnSlide(f, value, final) {
+        const send = () => fnRun(f, {kind: 'post', endpoint: f.endpoint,
+                                     params: {...(f.fixed || {}), [f.key || 'value']: Number(value)}});
+        clearTimeout(_slideTimers[f.id]);
+        if (final) { send(); return; }
+        if (!_slideTimers[f.id + ':t'] || Date.now() - _slideTimers[f.id + ':t'] > 80) {
+            _slideTimers[f.id + ':t'] = Date.now(); send();
+        } else _slideTimers[f.id] = setTimeout(send, 90);
+    }
+
+    // Délégation : un seul écouteur pour tous les panneaux (le DOM est redessiné souvent).
+    grid.addEventListener('click', e => {
+        const el = e.target.closest('[data-act]');
+        if (!el || !el.closest('.wsp-pn')) return;
+        const {w, f} = findFn(el.dataset.wid, el.dataset.fn);
+        if (!f) return;
+        const act = el.dataset.act;
+        if (act === 'del') { w.items = w.items.filter(x => x.id !== f.id); renderLayout(); return; }
+        if (act === 'edit') { wspFnEdit(w.id, f.id); return; }
+        if (act === 'mkvideo') { createVideo(w, f, el); return; }   // en vue comme en édition
+        if (editMode) return;   // en édition, les commandes ne partent pas
+        if (act === 'sel') {
+            let v = el.dataset.val;
+            if (f.value_type === 'number' && v !== '' && !isNaN(Number(v))) v = Number(v);
+            fnRun(f, {kind: 'action', action_id: f.action_id, params: {[f.param]: v}});
+        } else if (act === 'btn') {
+            const b = (f.buttons || [])[Number(el.dataset.i)];
+            if (b) fnRun(f, {kind: 'action', action_id: b.action_id, params: b.params || {}});
+        } else if (act === 'switch') {
+            const cur = sameVal(FEEDBACK[el.dataset.fk], 'true');   // état RELU, pas le bouton
+            fnRun(f, {kind: 'post', endpoint: f.endpoint, params: {...(f.fixed || {}), [f.key || 'value']: !cur}});
+        }
+    });
+    function setActivePanel(wid) {
+        activePanel = wid;
+        document.querySelectorAll('.wsp-w.wsp-panel').forEach(el =>
+            el.classList.toggle('active', el.dataset.wid === wid));
+    }
+    window.wspPanelTitle = function (wid, v) {
+        const w = layout.find(x => x.id === wid);
+        if (w) w.title = v.trim();
+    };
+
+    // ── Catalogue de fonctions (édition) : déduites par le serveur + arbre de paramètres ──
+    // Les réglages qu'un exploitant pose sur un poste ; le reste (EQ, dynamique, plugins…)
+    // reste disponible sous « diagnostic et réglages fins ».
+    const PT_ESSENTIAL = /^(fader|mute|pan|trim|gain)$/i;
+    function ptFunctions(cc) {
+        const tree = (_ptClient[cc.vmid] || {}).tree;
+        if (!tree) return null;
+        const out = [];
+        for (const el of (tree.elements || [])) {
+            // « Tranche — Entrée 1 » → « Entrée 1 » : la liste est déjà rangée par conteneur.
+            const elName = String(el.label || el.id).replace(/^[^—]*—\s*/, '');
+            const sep = String(el.id || '').indexOf(':');
+            const mid = sep >= 0 ? el.id.slice(sep + 1) : el.id;
+            if (cc.meters && (el.kind === 'strip' || el.kind === 'bus'))
+                out.push({fid: 'vu:' + el.id, kind: 'meter', label: elName, label_key: 'projects.fn_name_vu',
+                          mid, group: 'command'});
+            for (const g of (el.groups || [])) for (const p of (g.params || [])) {
+                const isBool = p.type === 'bool';
+                const isNum = (p.type === 'number' || p.type === 'scale' || p.type === 'position' || p.type === 'ratio')
+                    && p.min !== undefined && p.max !== undefined;
+                if (!isBool && !isNum) continue;
+                const parts = [elName, g.label, (g.params.length > 1 ? p.label : '')].filter(Boolean);
+                out.push({fid: 'pt:' + (p.id || p.path), kind: isBool ? 'switch' : 'slider',
+                          label: parts.join(' · '), endpoint: p.endpoint, fixed: p.fixed || {}, key: p.key || 'value',
+                          read_endpoint: p.read_endpoint, path: p.path,
+                          min: p.min, max: p.max, step: p.step, unit: p.unit || '',
+                          group: PT_ESSENTIAL.test(String(g.label || '').trim()) ? 'command' : 'more',
+                          vertical: isNum && /fader/i.test(g.label || '')});
+            }
+        }
+        return out;
+    }
+    // ── Liste des fonctions : filtres, tri, nommage des conteneurs, aperçu de chaque élément ──
+    let fnKind = 'all', fnSrc = 'all', fnSort = 'src', fnMore = false, fnNaming = 'type';
+    const FN_KINDS = ['select', 'buttons', 'display', 'slider', 'meter', 'media', 'widget'];
+    const kindOf = f => f.kind === 'switch' ? 'slider' : (f.kind === 'image' || f.kind === 'video') ? 'display' : f.kind;
+    function ccName(cc) {
+        const host = cc.hostname || ('#' + cc.vmid);
+        if (fnNaming === 'host') return host;
+        if (fnNaming.startsWith('col:')) {
+            const sc = SUMMARY.containers.find(x => x.vmid === cc.vmid);
+            const shm = ((sc && sc.produces) || [])[0]?.shm;
+            return (shm && labelCol(shm, Number(fnNaming.slice(4)))) || host;
+        }
+        return (cc.type_label || cc.type || '') + ' · ' + host;
+    }
+    // Aperçu : ce que la fonction posera, en miniature — une touche ou dix, un chrono, un fader.
+    function fnPreview(cc, f) {
+        // Aperçu = les VRAIS contrôles du catalogue, en contexte dense (cf. fnHtml).
+        const ref = {instance_uuid: cc.instance_uuid, vmid: cc.vmid}, ff = {...f, ...ref};
+        const col = fnColor(ff);
+        if (f.kind === 'select') {
+            const o = fnOptions(ff);
+            if (!o.length) return '<span class="n">…</span>';
+            if (f.option_thumb)
+                return o.slice(0, 4).map(x => '<img class="th" loading="lazy" alt="" src="' +
+                    esc(thumbUrl(ff, x.value)) + '">').join('') + '<span class="n">' + o.length + ' ' + esc(T('projects.fn_keys')) + '</span>';
+            const bus = isBusRow(ff);
+            return '<span class="ctl-bus-row">' + (bus ? '<span class="ctl-bus-lab ctl-bus-lab--tag" data-bus="' + BUS_OF[col] + '">' +
+                esc(busName(ff)) + '</span>' : '') + o.slice(0, 6).map((x, i) => bus
+                ? '<span class="ctl-bus ctl-bus--label ctl-bus--solid" role="radio" data-bus="' + BUS_OF[col] + '" aria-checked="' + (i === 0) + '">' + esc(x.label) + '</span>'
+                : '<span class="ctl-push ctl-push--led' + TONE_OF[col] + '" aria-pressed="' + (i === 0) + '"><span class="ctl-led"></span>' + esc(x.label) + '</span>').join('') +
+                '</span><span class="n">' + o.length + ' ' + esc(T('projects.fn_keys')) + '</span>';
+        }
+        if (f.kind === 'buttons')
+            return (f.buttons || []).map((b, i) => '<span class="ctl-push' + (b.lit ? ' ctl-push--led' + TONE_OF[col] : '') +
+                '" aria-pressed="' + (i === 0 && !!b.lit) + '">' + (b.lit ? '<span class="ctl-led"></span>' : '') + esc(btnLabel(b)) + '</span>').join('');
+        if (f.kind === 'switch')
+            return '<span class="ctl-push ctl-push--led" aria-pressed="true"><span class="ctl-led"></span>' + esc(T('projects.fn_on')) + '</span>';
+        if (f.kind === 'slider')
+            return '<span class="n">' + esc(T(f.vertical ? 'projects.fn_prev_fader' : 'projects.fn_prev_slider')) + ' · ' +
+                esc(f.min) + ' … ' + esc(f.max) + (f.unit ? ' ' + esc(f.unit) : '') + '</span>';
+        if (f.kind === 'meter') return '<span class="n">' + esc(T('projects.fn_prev_meter')) + '</span>';
+        if (f.kind === 'image') return '<span class="img"></span>';
+        if (f.kind === 'media') return '<span class="n">' + esc(T('projects.fn_prev_media')) + '</span>';
+        if (f.kind === 'widget') return '<span class="n">' + esc(T('projects.fn_prev_widget')) + '</span>';
+        if (f.kind === 'video') return '<span class="img"></span><span class="n">' + esc(T('projects.fn_prev_video')) + '</span>';
+        const sample = f.format === 'duration' || f.format === 'remaining' ? '00:12:47'
+            : f.format === 'bool' ? T('projects.yes') : f.choice ? 'CAM 1' : f.format === 'number' ? '42' : 'abc';
+        return '<span class="ctl-readout"><b>' + esc(sample) + '</b></span>' +
+            (f.format === 'remaining' ? '<span class="ctl-gauge ctl-gauge--sans-seuil"><span class="ctl-gauge-fill" style="transform:scaleX(.4)"></span></span>' : '');
+    }
+    // Fonctions de PROJET (pas d'un conteneur) : la vue de médias.
+    const MEDIA_CC = {vmid: 0, hostname: '', type: 'media_manager', type_label: '', instance_uuid: null};
+    function projectFunctions() {
+        if (!mediaTargets().length) return [];
+        return [{fid: 'media:view', kind: 'media', label: T('projects.fn_media_view'), group: 'command'}];
+    }
+    function fnCatalogItems() {
+        const q = norm(fnSearch), out = [];
+        let hiddenMore = 0;
+        if (fnSrc === 'all' && (fnKind === 'all' || fnKind === 'media'))
+            for (const f of projectFunctions())
+                if (!q || norm(fnLabel(f) + ' ' + T('projects.fn_media_group')).includes(q))
+                    out.push({cc: {...MEDIA_CC, type_label: T('projects.fn_media_group')}, f});
+        for (const cc of (CATALOG?.containers || [])) {
+            if (fnSrc !== 'all' && String(cc.vmid) !== fnSrc) continue;
+            const all = (cc.functions || []).concat(ptFunctions(cc) || []);
+            for (const f of all) {
+                if (fnKind !== 'all' && kindOf(f) !== fnKind) continue;
+                if (q && !norm(fnLabel(f) + ' ' + ccName(cc) + ' ' + (cc.type || '')).includes(q)) continue;
+                if (f.group === 'more' && !fnMore && !q) { hiddenMore++; continue; }
+                out.push({cc, f});
+            }
+        }
+        const rank = {command: 0, display: 1, more: 2};
+        if (fnSort === 'az') out.sort((a, b) => fnLabel(a.f).localeCompare(fnLabel(b.f)));
+        else if (fnSort === 'kind') out.sort((a, b) => FN_KINDS.indexOf(kindOf(a.f)) - FN_KINDS.indexOf(kindOf(b.f)));
+        else out.sort((a, b) => (rank[a.f.group] ?? 1) - (rank[b.f.group] ?? 1));
+        return {items: out, hiddenMore};
+    }
+    function fnCardHtml(cc, f, withSrc) {
+        return '<button type="button" class="wsp-fnc-card" data-vmid="' + cc.vmid + '" data-fid="' + esc(f.fid) + '">' +
+            '<span class="wsp-fnc-top"><span class="t">' + esc(fnLabel(f)) + '</span><small>' +
+            esc(T('projects.fn_kind_' + f.kind)) + '</small></span>' +
+            (withSrc ? '<span class="wsp-fnc-src">' + esc(ccName(cc)) + '</span>' : '') +
+            '<span class="wsp-fnc-prev ctl-dense">' + fnPreview(cc, f) + '</span></button>';
+    }
+    function fnCatalogHtml() {
+        const {items, hiddenMore} = fnCatalogItems();
+        let html = '';
+        const ccs = CATALOG?.containers || [];
+        if (fnSort === 'src') {
+            const proj = items.filter(x => x.cc.vmid === 0);
+            if (proj.length)
+                html += '<div class="wsp-fnc-grp"><div class="wsp-fnc-head">' + esc(T('projects.fn_media_group')) + '</div>' +
+                    proj.map(x => fnCardHtml(x.cc, x.f, false)).join('') + '</div>';
+            for (const cc of ccs) {
+                const mine = items.filter(x => x.cc === cc);
+                const pt = cc.has_param_tree && !ptFunctions(cc);
+                if (!mine.length && !pt) continue;
+                html += '<div class="wsp-fnc-grp"><div class="wsp-fnc-head">' + esc(ccName(cc)) + '</div>' +
+                    mine.slice(0, 80).map(x => fnCardHtml(cc, x.f, false)).join('') +
+                    (mine.length > 80 ? '<p class="meta">… ' + (mine.length - 80) + ' ' + esc(T('projects.fn_more')) + '</p>' : '') +
+                    (pt ? '<button type="button" class="btn wsp-fnc-pt" onclick="wspFnLoadParams(' + cc.vmid + ')">' +
+                          esc(T('projects.fn_load_params')) + '</button>' : '') + '</div>';
+            }
+        } else {
+            html = items.slice(0, 150).map(x => fnCardHtml(x.cc, x.f, true)).join('');
+            if (items.length > 150) html += '<p class="meta">… ' + (items.length - 150) + ' ' + esc(T('projects.fn_more')) + '</p>';
+        }
+        if (hiddenMore) html += '<button type="button" class="btn wsp-fnc-pt" onclick="wspFnOpt(\'more\', true)">' +
+            esc(T('projects.fn_show_more').replace('{n}', hiddenMore)) + '</button>';
+        return html || '<p class="meta">' + esc(T(ccs.length ? 'projects.fn_no_match' : 'projects.fn_none')) + '</p>';
+    }
+    function fnControlsHtml() {
+        const opt = (v, cur, l) => '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(l) + '</option>';
+        const chips = ['all'].concat(FN_KINDS).map(k => '<button type="button" class="wsp-fnc-chip' + (fnKind === k ? ' on' : '') +
+            '" onclick="wspFnOpt(\'kind\', \'' + k + '\')">' + esc(T('projects.fn_filter_' + k)) + '</button>').join('');
+        const srcs = opt('all', fnSrc, T('projects.fn_src_all')) + (CATALOG?.containers || []).map(cc =>
+            opt(String(cc.vmid), fnSrc, ccName(cc))).join('');
+        const cols = LABEL_COLS.map((n, i) => i < 2 ? '' : opt('col:' + i, fnNaming, T('projects.fn_naming_col').replace('{x}', n))).join('');
+        return '<div class="wsp-fnc-chips" role="group" aria-label="' + esc(T('projects.fn_filter')) + '">' + chips + '</div>' +
+            '<div class="wsp-fnc-sel">' +
+            '<label>' + esc(T('projects.fn_src')) + '<select onchange="wspFnOpt(\'src\', this.value)">' + srcs + '</select></label>' +
+            '<label>' + esc(T('projects.fn_sort')) + '<select onchange="wspFnOpt(\'sort\', this.value)">' +
+            ['src', 'kind', 'az'].map(v => opt(v, fnSort, T('projects.fn_sort_' + v))).join('') + '</select></label>' +
+            '<label>' + esc(T('projects.fn_naming')) + '<select onchange="wspFnOpt(\'naming\', this.value)">' +
+            opt('type', fnNaming, T('projects.fn_naming_type')) + opt('host', fnNaming, T('projects.fn_naming_host')) + cols +
+            '</select></label>' +
+            '<label class="toggle-inline"><input type="checkbox"' + (fnMore ? ' checked' : '') +
+            ' onchange="wspFnOpt(\'more\', this.checked)"> ' + esc(T('projects.fn_more_toggle')) + '</label></div>';
+    }
+    function renderFnCatalog() {
+        const host = document.getElementById('wsp-fn-list');
+        if (host) host.innerHTML = fnCatalogHtml();
+        const ctl = document.getElementById('wsp-fn-ctl');
+        if (ctl) ctl.innerHTML = fnControlsHtml();
+    }
+    window.wspFnSearch = function (v) { fnSearch = v; renderFnCatalog(); };
+    window.wspFnOpt = function (k, v) {
+        if (k === 'kind') fnKind = v; else if (k === 'src') fnSrc = v; else if (k === 'sort') fnSort = v;
+        else if (k === 'naming') fnNaming = v; else if (k === 'more') fnMore = !!v;
+        renderFnCatalog();
+    };
+    window.wspFnLoadParams = function (vmid) {
+        const cc = (CATALOG?.containers || []).find(x => x.vmid === vmid);
+        if (cc) ptFetch(cc, renderFnCatalog);
+    };
+
+    // Clic = ajout au panneau sélectionné ; glisser = dépôt à l'endroit voulu d'un panneau
+    // (ou, lâché sur la grille hors panneau, dans un panneau neuf).
+    document.addEventListener('pointerdown', ev => {
+        const card = ev.target.closest('.wsp-fnc-card');
+        if (!card || ev.button > 0) return;
+        const sx = ev.clientX, sy = ev.clientY;
+        let ghost = null;
+        const move = e => {
+            if (!ghost) {
+                if (Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) < 8) return;
+                ghost = card.cloneNode(true);
+                ghost.classList.add('wsp-fnc-ghost');
+                document.body.appendChild(ghost);
+                drawer.classList.add('dragging-out');
+            }
+            ghost.style.left = (e.clientX + 8) + 'px'; ghost.style.top = (e.clientY + 8) + 'px';
+            document.querySelectorAll('.wsp-panel.drop').forEach(x => x.classList.remove('drop'));
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            const pnl = under && under.closest('.wsp-panel');
+            if (pnl) pnl.classList.add('drop');
+        };
+        const up = e => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            if (!ghost) { wspFnAdd(Number(card.dataset.vmid), card.dataset.fid); return; }
+            ghost.remove(); drawer.classList.remove('dragging-out');
+            document.querySelectorAll('.wsp-panel.drop').forEach(x => x.classList.remove('drop'));
+            const under = document.elementFromPoint(e.clientX, e.clientY);
+            if (!under || under.closest('.wsp-palette')) return;
+            const pnl = under.closest('.wsp-panel');
+            wspFnAdd(Number(card.dataset.vmid), card.dataset.fid, pnl ? {wid: pnl.dataset.wid, x: e.clientX, y: e.clientY} : null);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+    });
+    window.wspFnAdd = function (vmid, fid, drop) {
+        let cc, tpl;
+        if (vmid === 0) {
+            cc = MEDIA_CC;
+            tpl = projectFunctions().find(f => f.fid === fid);
+            if (tpl) tpl = {...tpl, targets: mediaTargets().slice(0, 4), view: 'grid', size: 'm'};
+        } else {
+            cc = (CATALOG?.containers || []).find(x => x.vmid === vmid);
+            if (!cc) return;
+            tpl = (cc.functions || []).concat(ptFunctions(cc) || []).find(f => f.fid === fid);
+        }
+        if (!tpl) return;
+        let w = layout.find(x => x.id === ((drop && drop.wid) || activePanel) && x.widget === 'panel');
+        if (!w) { wspAdd('panel'); w = layout[layout.length - 1]; }
+        w.items = w.items || [];
+        const fn = {...JSON.parse(JSON.stringify(tpl)), id: uid6(),
+                    instance_uuid: cc.instance_uuid || null, vmid: cc.vmid || null};
+        if (drop && drop.wid === w.id) {
+            // Dépôt à un endroit précis : le panneau passe en placement libre, la fonction se
+            // pose sous le pointeur (aimantée à la grille).
+            const pn = document.querySelector('[data-wid="' + w.id + '"] .wsp-pn');
+            if (pn) {
+                freezePanel(w, pn);
+                const r = pn.getBoundingClientRect();
+                fn.px = Math.max(0, Math.round((drop.x - r.left - 12) / SNAP_GRID) * SNAP_GRID);
+                fn.py = Math.max(0, Math.round((drop.y - r.top - 12) / SNAP_GRID) * SNAP_GRID);
+            }
+        }
+        w.items.push(fn);
+        renderLayout(); setActivePanel(w.id);
+    };
+
+    // ── Réglages d'une fonction (overlay) ──
+    let _fnEdit = null;
+    window.wspFnEdit = function (wid, fid) {
+        const {w, f} = findFn(wid, fid);
+        if (!f) return;
+        _fnEdit = {wid, fid};
+        const opt = (v, cur, l) => '<option value="' + esc(v) + '"' + (String(v) === String(cur) ? ' selected' : '') + '>' + esc(l) + '</option>';
+        let h = '<label>' + esc(T('projects.fn_label')) +
+            '<input type="text" id="fne-label" value="' + esc(fnLabel(f)) + '"></label>';
+        if (!isBusRow(f))
+            h += '<label class="toggle-inline"><input type="checkbox" id="fne-hide"' + (f.hide_label ? ' checked' : '') + '> ' +
+                esc(T('projects.fn_hide_label')) + '</label>';
+        h += '<label>' + esc(T('projects.fn_size')) + '<select id="fne-size">' +
+            ['s', 'm', 'l'].map(sz => opt(sz, f.size || 'm', T('projects.fn_size_' + sz))).join('') + '</select></label>';
+        if (['select', 'buttons', 'switch', 'video', 'image'].includes(f.kind))
+            h += '<label>' + esc(T('projects.fn_color')) + '<select id="fne-color">' +
+                ['red', 'green', 'amber', 'blue'].map(c => opt(c, fnColor(f), T('projects.fn_color_' + c))).join('') +
+                '</select></label>';
+        if (f.kind === 'slider')
+            h += '<label class="toggle-inline"><input type="checkbox" id="fne-vert"' + (f.vertical ? ' checked' : '') + '> ' +
+                esc(T('projects.fn_vertical')) + '</label>';
+        h += '<label class="toggle-inline"><input type="checkbox" id="fne-brk"' + (f.brk ? ' checked' : '') + '> ' +
+                esc(T('projects.fn_brk')) + '</label>' +
+             '<label class="toggle-inline"><input type="checkbox" id="fne-grow"' + (f.grow ? ' checked' : '') + '> ' +
+                esc(T('projects.fn_grow')) + '</label>' +
+             '<label class="toggle-inline"><input type="checkbox" id="fne-full"' + (f.full ? ' checked' : '') + '> ' +
+                esc(T('projects.fn_full')) + '</label>';
+        if (f.kind === 'select') {
+            const cc = catInst(f);
+            const also = f.also_states || [];
+            const sname = id => ((cc?.state || []).find(x => x.id === id) || {}).label || id;
+            h += '<label>' + esc(T('projects.fn_tag1')) + '<input type="text" id="fne-tag1" value="' + esc(f.tag1 || '') + '"></label>';
+            if (also.length)
+                h += '<label>' + esc(T('projects.fn_state2')) + '<select id="fne-s2"><option value="">—</option>' +
+                    also.map(id => opt(id, f.state2_id || '', sname(id))).join('') + '</select></label>' +
+                    '<label>' + esc(T('projects.fn_tag2')) + '<input type="text" id="fne-tag2" value="' + esc(f.tag2 || '') + '"></label>';
+        }
+        if (f.kind === 'select') {
+            const styles = ['solid', 'tally', 'led', 'list'].concat(f.option_thumb ? ['tile'] : []);
+            h += '<label>' + esc(T('projects.fn_style')) + '<select id="fne-style">' +
+                styles.map(v => opt(v, fnStyle(f), T('projects.fn_style_' + v))).join('') + '</select></label>' +
+                '<label>' + esc(T('projects.fn_bus_name')) + '<input type="text" id="fne-bus" value="' +
+                esc(f.bus_name || '') + '" placeholder="' + esc(busName({...f, bus_name: ''})) + '"></label>' +
+                '<label class="toggle-inline"><input type="checkbox" id="fne-showbus"' +
+                ((isBusRow(f) ? f.show_bus !== false : !!f.show_bus) ? ' checked' : '') + '> ' + esc(T('projects.fn_bus_show')) + '</label>';
+            if (f.options_from === 'inputs')
+                h += '<label>' + esc(T('projects.fn_labels_mode')) + '<select id="fne-lmode">' +
+                    opt('', f.label_mode || '', T('projects.fn_lm_source')) + opt('num', f.label_mode || '', T('projects.fn_lm_num')) +
+                    LABEL_COLS.map((n, i) => opt('col:' + i, f.label_mode || '', T('projects.fn_naming_col').replace('{x}', n))).join('') +
+                    '</select></label>';
+            // Boutons de la rangée : combien, et pour chacun SA source et son libellé (comme on
+            // affecte les touches d'un mélangeur) — l'ordre est celui des boutons.
+            const slots = fnSlots(f);
+            h += '<label>' + esc(T('projects.fn_count')) + '<input type="number" id="fne-count" min="1" max="40" value="' +
+                slots.length + '" onchange="wspFnSlots(this.value)"></label>' +
+                '<fieldset class="wsp-fne-opts"><legend>' + esc(T('projects.fn_slots')) + '</legend><div id="fne-slots"></div></fieldset>';
+        }
+        if (f.kind === 'media') {
+            const cur = f.targets || [];
+            h += '<fieldset class="wsp-fne-opts"><legend>' + esc(T('projects.fn_media_targets')) + '</legend>' +
+                mediaTargets().map((t, i) => {
+                    const on = cur.find(x => x.vmid === t.vmid && x.action_id === t.action_id);
+                    return '<div class="wsp-fne-opt"><input type="checkbox" data-mt="' + i + '"' + (on ? ' checked' : '') +
+                        ' aria-label="' + esc(t.label) + '"><span class="wsp-fne-mt">' + esc(t.label) + '</span>' +
+                        '<input type="text" data-mtl="' + i + '" value="' + esc((on && on.button) || '') + '" placeholder="' +
+                        esc(t.short) + '"></div>';
+                }).join('') + '</fieldset><p class="meta">' + esc(T('projects.fn_media_help')) + '</p>';
+        }
+        if (f.kind === 'buttons')
+            h += '<fieldset class="wsp-fne-opts"><legend>' + esc(T('projects.fn_buttons')) + '</legend>' +
+                (f.buttons || []).map((b, i) => '<div class="wsp-fne-opt"><input type="text" data-b="' + i +
+                    '" value="' + esc(b.label_custom || '') + '" placeholder="' + esc(btnLabel({...b, label_custom: ''})) + '"></div>').join('') +
+                '</fieldset>';
+        const panels = layout.filter(x => x.widget === 'panel');
+        if (panels.length > 1)
+            h += '<label>' + esc(T('projects.fn_panel')) + '<select id="fne-panel">' +
+                panels.map(pn => opt(pn.id, wid, pn.title || T('projects.ws_widget_panel'))).join('') + '</select></label>';
+        document.getElementById('wsp-fnedit-form').innerHTML = h;
+        if (f.kind === 'select') { _fnEditSlots = fnSlots(f).map(x => ({value: x.value, label: (f.slots ? x.label : '')})); renderSlotRows(f); }
+        document.getElementById('wsp-fnedit').hidden = false;
+    };
+    let _fnEditSlots = [];
+    function renderSlotRows(f) {
+        const host = document.getElementById('fne-slots');
+        if (!host) return;
+        const opts = fnOptions(f);
+        host.innerHTML = _fnEditSlots.map((sl, i) => '<div class="wsp-fne-opt"><span class="wsp-fne-n">' + (i + 1) + '</span>' +
+            '<select data-s="' + i + '" aria-label="' + esc(T('projects.fn_slot').replace('{n}', i + 1)) + '">' +
+            opts.map(o => '<option value="' + esc(o.value) + '"' + (sameVal(o.value, sl.value) ? ' selected' : '') + '>' +
+                esc(o.label) + '</option>').join('') + '</select>' +
+            '<input type="text" data-l="' + i + '" value="' + esc(sl.label || '') + '" placeholder="' +
+            esc(T('projects.fn_slot_label')) + '"></div>').join('');
+    }
+    function readSlotRows() {
+        document.querySelectorAll('#fne-slots .wsp-fne-opt').forEach((row, i) => {
+            const sel = row.querySelector('select'), inp = row.querySelector('input');
+            if (!_fnEditSlots[i]) return;
+            const o = sel && sel.options[sel.selectedIndex];
+            if (o) _fnEditSlots[i].value = o.value;
+            _fnEditSlots[i].label = inp ? inp.value.trim() : '';
+        });
+    }
+    window.wspFnSlots = function (n) {
+        if (!_fnEdit) return;
+        const {f} = findFn(_fnEdit.wid, _fnEdit.fid);
+        if (!f) return;
+        readSlotRows();
+        n = Math.max(1, Math.min(40, Number(n) || 1));
+        const opts = fnOptions(f);
+        while (_fnEditSlots.length < n) {   // un bouton ajouté prend la source suivante non utilisée
+            const used = new Set(_fnEditSlots.map(x => String(x.value)));
+            const next = opts.find(o => !used.has(String(o.value))) || opts[0];
+            _fnEditSlots.push({value: next ? next.value : '', label: ''});
+        }
+        _fnEditSlots.length = n;
+        renderSlotRows(f);
+    };
+    window.wspFnEditClose = function () { document.getElementById('wsp-fnedit').hidden = true; _fnEdit = null; };
+    window.wspFnEditSave = function () {
+        if (!_fnEdit) return;
+        const {w, f} = findFn(_fnEdit.wid, _fnEdit.fid);
+        if (!f) return wspFnEditClose();
+        const val = id => { const el = document.getElementById(id); return el ? el.value : null; };
+        const chk = id => { const el = document.getElementById(id); return el ? el.checked : null; };
+        const lbl = (val('fne-label') || '').trim();
+        f.label_custom = (lbl && lbl !== (f.label_key && window.I18N?.[f.label_key] ? fnLabel({...f, label_custom: ''}) : f.label)) ? lbl : undefined;
+        if (chk('fne-hide') !== null) f.hide_label = chk('fne-hide') || undefined;
+        f.size = val('fne-size') || 'm';
+        if (val('fne-color')) f.color = val('fne-color');
+        if (chk('fne-vert') !== null) f.vertical = chk('fne-vert');
+        f.brk = chk('fne-brk') || undefined; f.grow = chk('fne-grow') || undefined; f.full = chk('fne-full') || undefined;
+        if (val('fne-tag1') !== null) f.tag1 = val('fne-tag1').trim() || undefined;
+        if (val('fne-s2') !== null) f.state2_id = val('fne-s2') || undefined;
+        if (val('fne-tag2') !== null) f.tag2 = val('fne-tag2').trim() || undefined;
+        if (f.kind === 'select') {
+            f.btn_style = val('fne-style');
+            f.bus_name = (val('fne-bus') || '').trim() || undefined;
+            f.show_bus = chk('fne-showbus');
+            if (val('fne-lmode') !== null) f.label_mode = val('fne-lmode') || undefined;
+            readSlotRows();
+            const opts = fnOptions(f);
+            f.slots = _fnEditSlots.map(sl => {
+                const o = opts.find(x => sameVal(x.value, sl.value));
+                // valeur typée comme le choix d'origine (numéro d'entrée ≠ texte)
+                return {value: o ? o.value : sl.value, label: sl.label || undefined};
+            });
+            delete f.hidden; delete f.labels;   // remplacés par `slots`
+        }
+        if (f.kind === 'media') {
+            const all = mediaTargets();
+            f.targets = [...document.querySelectorAll('#wsp-fnedit-form input[data-mt]')]
+                .filter(c => c.checked).map(c => {
+                    const t = all[Number(c.dataset.mt)];
+                    const b = document.querySelector('#wsp-fnedit-form input[data-mtl="' + c.dataset.mt + '"]').value.trim();
+                    return {...t, button: b || undefined};
+                });
+        }
+        if (f.kind === 'buttons')
+            document.querySelectorAll('#wsp-fnedit-form input[data-b]').forEach(inp => {
+                const b = f.buttons[Number(inp.dataset.b)];
+                if (b) b.label_custom = inp.value.trim() || undefined;
+            });
+        const dest = val('fne-panel');
+        if (dest && dest !== w.id) {
+            const to = layout.find(x => x.id === dest);
+            if (to) { w.items = w.items.filter(x => x.id !== f.id); (to.items = to.items || []).push(f); }
+        }
+        wspFnEditClose(); renderLayout();
     };
 
     /* Éditeur de bouton (overlay) — création (wspSbAdd) ET modification (clic sur
@@ -2419,6 +3947,7 @@
                 '<input type="text" value="' + esc(tr.name || '') + '" placeholder="' +
                 esc(T('projects.trg_name_ph')) + '" style="width:7em"' + dis +
                 ' onchange="wspTrgPatch(' + tr.id + ',{name:this.value})">' +
+                (c.kind === 'fader' ? trgFaderHtml(tr, dis) :
                 '<span class="wsp-mword">' + esc(T('projects.trg_when')) + '</span>' +
                 (canShare
                     ? pickBtnHtml(condLeftLabel(c.left), 'state', {t: 'trg', tid: tr.id},
@@ -2427,12 +3956,17 @@
                 condOpSelect(condParamForLeft(c.left, renderMacros), c.op,
                     'wspTrgSetCond(' + tr.id + ',\'op\',this.value)', dis) +
                 condRightHtml(condParamForLeft(c.left, renderMacros), (c.right || {}).value,
-                    'wspTrgSetCond(' + tr.id + ',\'right\',{kind:\'const\',value:this.value})', dis) +
+                    'wspTrgSetCond(' + tr.id + ',\'right\',{kind:\'const\',value:this.value})', dis)) +
+                // lien « fader start » d'une console (services/audio/console_fader_links.py) : une ACTION directe, pas une macro —
+                // il se règle et se retire depuis la tranche de la console
+                (tr.action ? '<span class="wsp-mword" title="' + esc(T('projects.trg_link_hint')) + '">→ ' +
+                    esc(T('projects.trg_link_action')) + ' <span class="mono">' + esc(tr.action.action_id || '') +
+                    ((tr.action.params || {}).player ? ' #' + esc(tr.action.params.player) : '') + '</span></span>' :
                 '<span class="wsp-mword">→ ' + esc(T('projects.trg_launch')) + '</span>' +
                 '<select' + dis + ' onchange="wspTrgPatch(' + tr.id + ',{macro_id:parseInt(this.value)||null})">' +
                 '<option value="">—</option>' + MACROS.map(m =>
                     '<option value="' + m.id + '"' + (m.id === tr.macro_id ? ' selected' : '') + '>' +
-                    esc(m.name) + '</option>').join('') + '</select>' +
+                    esc(m.name) + '</option>').join('') + '</select>') +
                 '<span class="wsp-mword">(' + esc(T('projects.trg_cooldown')) + '</span>' +
                 '<input type="number" value="' + (tr.cooldown_ms ?? 2000) + '" min="0" step="500" style="width:5.5em"' + dis +
                 ' onchange="wspTrgPatch(' + tr.id + ',{cooldown_ms:parseInt(this.value)||0})">' +
@@ -2445,9 +3979,90 @@
             html += '<div class="wsp-mempty">' + esc(T('projects.trg_empty')) + '</div>';
         if (canShare)
             html += '<div class="wsp-madd"><button type="button" onclick="wspTrgAdd()">＋ ' +
-                esc(T('projects.trg_add')) + '</button></div>';
+                esc(T('projects.trg_add')) + '</button>' +
+                (trgFaderConsoles().length ? ' <button type="button" onclick="wspTrgAddFader()">＋ ' +
+                    esc(T('projects.trg_fader_add')) + '</button>' : '') + '</div>';
         return html;
     }
+
+    /* ─── Fader start (services/audio/fader_triggers.py) ──────────
+       « Quand le fader de <console> <tranche> s'ouvre|se ferme (seuil, hystérésis,
+       mute, VCA) → lancer <macro> ». Consoles = instances du projet qui déclarent
+       control.fader_start ; tranches = liste VIVANTE (/api/containers/<vmid>/faders). */
+    const FADER_LISTS = {};   // vmid → {options:[…]} | 'loading'
+    const trgFaderConsoles = () => (CATALOG?.containers || []).filter(x => x.fader_start);
+    function trgFaderList(vmid) {
+        if (!vmid) return null;
+        const cur = FADER_LISTS[vmid];
+        if (cur === undefined) {
+            FADER_LISTS[vmid] = 'loading';
+            fetch('/api/containers/' + vmid + '/faders')
+                .then(r => r.ok ? r.json() : {options: []})
+                .catch(() => ({options: []}))
+                .then(d => { FADER_LISTS[vmid] = d; if (_mTab === 'triggers') renderMacros(); });
+            return null;
+        }
+        return cur === 'loading' ? null : cur;
+    }
+    function trgFaderHtml(tr, dis) {
+        const c = tr.condition || {}, tid = tr.id;
+        const inst = c.instance_uuid || c.vmid ? catInst(c) : null;
+        const consoles = trgFaderConsoles();
+        let h = '<span class="wsp-mword">' + esc(T('projects.trg_fader_when')) + '</span>' +
+            '<select' + dis + ' onchange="wspTrgFaderConsole(' + tid + ',parseInt(this.value)||null)">' +
+            '<option value="">—</option>' + consoles.map(x =>
+                '<option value="' + x.vmid + '"' + (inst && inst.vmid === x.vmid ? ' selected' : '') + '>' +
+                esc(x.hostname || ('#' + x.vmid)) + '</option>').join('') + '</select>';
+        const lst = inst ? trgFaderList(inst.vmid) : null;
+        const opts = (lst && lst.options) || [];
+        const known = opts.some(o => o.value === c.target);
+        h += '<select' + dis + ' onchange="wspTrgSetCond(' + tid + ',\'target\',this.value||null)">' +
+            '<option value="">' + (inst && !lst ? '…' : '—') + '</option>' +
+            (c.target && !known ? '<option value="' + esc(c.target) + '" selected>' + esc(c.target) + '</option>' : '') +
+            opts.map(o => '<option value="' + esc(o.value) + '"' + (o.value === c.target ? ' selected' : '') + '>' +
+                esc(o.label) + (o.kind === 'bus' ? ' (' + esc(T('projects.trg_fader_bus')) + ')' : '') +
+                '</option>').join('') + '</select>' +
+            '<select' + dis + ' onchange="wspTrgSetCond(' + tid + ',\'edge\',this.value)">' +
+            ['open', 'close'].map(e => '<option value="' + e + '"' + ((c.edge || 'open') === e ? ' selected' : '') + '>' +
+                esc(T(e === 'open' ? 'projects.trg_fader_open' : 'projects.trg_fader_close')) + '</option>').join('') + '</select>' +
+            '<span class="wsp-mword" title="' + esc(T('projects.trg_fader_threshold_hint')) + '">' +
+                esc(T('projects.trg_fader_threshold')) + '</span>' +
+            '<input type="number" value="' + (c.threshold_db ?? -120) + '" min="-120" max="24" step="1" style="width:4.5em"' + dis +
+            ' title="' + esc(T('projects.trg_fader_threshold_hint')) + '"' +
+            ' onchange="wspTrgSetCond(' + tid + ',\'threshold_db\',parseFloat(this.value))">' +
+            '<span class="wsp-mword" title="' + esc(T('projects.trg_fader_hysteresis_hint')) + '">' +
+                esc(T('projects.trg_fader_hysteresis')) + '</span>' +
+            '<input type="number" value="' + (c.hysteresis_db ?? 3) + '" min="0" max="60" step="1" style="width:3.8em"' + dis +
+            ' title="' + esc(T('projects.trg_fader_hysteresis_hint')) + '"' +
+            ' onchange="wspTrgSetCond(' + tid + ',\'hysteresis_db\',parseFloat(this.value))">' +
+            '<label class="toggle-inline" style="margin:0" title="' + esc(T('projects.trg_fader_respect_mute_hint')) + '">' +
+            '<input type="checkbox"' + (c.respect_mute !== false ? ' checked' : '') + dis +
+            ' onchange="wspTrgSetCond(' + tid + ',\'respect_mute\',this.checked)"> ' +
+            esc(T('projects.trg_fader_respect_mute')) + '</label>' +
+            '<label class="toggle-inline" style="margin:0" title="' + esc(T('projects.trg_fader_with_vca_hint')) + '">' +
+            '<input type="checkbox"' + (c.with_vca ? ' checked' : '') + dis +
+            ' onchange="wspTrgSetCond(' + tid + ',\'with_vca\',this.checked)"> ' +
+            esc(T('projects.trg_fader_with_vca')) + '</label>';
+        return h;
+    }
+    window.wspTrgAddFader = async function () {
+        const r = await fetch('/api/projects/' + PID + '/triggers', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({condition: {kind: 'fader', target: null, edge: 'open',
+                                              threshold_db: -120, hysteresis_db: 3,
+                                              respect_mute: true, with_vca: false},
+                                  cooldown_ms: 500, enabled: false})});
+        if (!r.ok) { toast((await r.json().catch(() => ({}))).error || r.statusText, 'error'); return; }
+        await loadTriggers(); renderMacros();
+    };
+    window.wspTrgFaderConsole = function (tid, vmid) {
+        const tr = TRIGGERS.find(x => x.id === tid);
+        if (!tr) return;
+        const inst = vmid ? catInst({vmid}) : null;
+        const c = Object.assign({}, tr.condition || {},
+            {instance_uuid: inst ? inst.instance_uuid || null : null, vmid: vmid || null, target: null});
+        wspTrgPatch(tid, {condition: c});
+    };
     window.wspTrgAdd = async function () {
         const r = await fetch('/api/projects/' + PID + '/triggers', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -2609,9 +4224,16 @@
         if (!key) return null;
         for (const el of (st.tree.elements || [])) {
             if (el.kind === 'box' && el.idx !== idx) continue;
-            for (const g of el.groups) for (const pp of g.params)
+            for (const g of el.groups) for (const pp of g.params) {
+                if (pp.fixed) {   // feuille adressée par ID : tous les champs constants égaux
+                    if (pp.endpoint === s.endpoint && pp.key === key &&
+                        Object.keys(pp.fixed).every(k => (s.params || {})[k] === pp.fixed[k]))
+                        return {el, g, pp};
+                    continue;
+                }
                 if (pp.endpoint === s.endpoint && (pp.wrap || null) === wrap && pp.key === key)
                     return {el, g, pp};
+            }
         }
         return null;
     }

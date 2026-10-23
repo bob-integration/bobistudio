@@ -99,6 +99,8 @@ def api_fermer_autres_sessions():
     # ⚠ L'époque vient d'avancer : sans cette ligne, la session qui a demandé la fermeture se
     # fermerait elle-même à la requête suivante.
     session["session_epoch"] = epoque
+    from ..security_log import sessions_revoquees
+    sessions_revoquees(u.get("username"), n)
     return jsonify({"status": "ok", "fermees": n})
 
 
@@ -147,6 +149,8 @@ def api_create_user():
                          nom=(data.get("nom") or "").strip() or None,
                          email=(data.get("email") or "").strip() or None,
                          interface=(data.get("interface") or "").strip() or None)
+    from ..security_log import compte_cree
+    compte_cree(username, role)
     return jsonify({"status": "ok", "id": uid})
 
 @bp.route("/api/users/<int:uid>", methods=["PATCH"])
@@ -178,6 +182,19 @@ def api_update_user(uid):
                    nom=(data.get("nom").strip() if isinstance(data.get("nom"), str) else None),
                    email=(data.get("email").strip() if isinstance(data.get("email"), str) else None),
                    interface=(data.get("interface") or "").strip() or None)
+    # Journal de sécurité. TROIS lignes possibles et pas une seule fourre-tout : un changement
+    # d'habilitation et une remise à zéro de mot de passe par un administrateur ne se relisent
+    # pas comme une correction de courriel, et un auditeur cherche les deux premiers NOMMÉMENT.
+    from ..security_log import compte_modifie, role_change, motdepasse_change
+    cible = target.get("username")
+    if role and role != target.get("role"):
+        role_change(cible, target.get("role"), role)
+    if pwd:
+        motdepasse_change(cible, par_admin=True)
+    champs = [c for c in ("prenom", "nom", "email", "interface")
+              if isinstance(data.get(c), str)]
+    if champs:
+        compte_modifie(cible, champs)
     return jsonify({"status": "ok"})
 
 @bp.route("/api/users/<int:uid>", methods=["DELETE"])
@@ -193,6 +210,8 @@ def api_delete_user(uid):
         if len(admins) <= 1:
             return jsonify({"error": "impossible : c'est le dernier administrateur"}), 400
     db_delete_user(uid)
+    from ..security_log import compte_supprime
+    compte_supprime(target.get("username"))
     return jsonify({"status": "ok"})
 
 @bp.route("/api/users/me/lang", methods=["POST"])
@@ -358,4 +377,6 @@ def api_change_own_password():
     if verify_password(new, u["password_hash"]):
         return jsonify({"error": "le nouveau mot de passe est identique à l'ancien"}), 400
     db_update_user(u["id"], password_hash=hash_password(new))
+    from ..security_log import motdepasse_change
+    motdepasse_change(u.get("username"))
     return jsonify({"status": "ok"})

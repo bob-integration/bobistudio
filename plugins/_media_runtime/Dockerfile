@@ -102,6 +102,46 @@ RUN cmake -S . -B build-v3 $MXL_CMAKE_ARGS \
 COPY script_templates/ntcopy.c /src/ntcopy.c
 RUN mkdir -p /out && gcc -O3 -march=x86-64-v2 -shared -fPIC /src/ntcopy.c -o /out/libbobi_nt.so
 
+# ---------------------------------------------------------------- étage playout-builder
+# Plugin GStreamer « bobimxl » (élément bobiplayout) : le chemin temps réel du player, en Rust
+# (cf. docs/chantiers/PLAYER_NATIF.md). Compilé contre les en-têtes MXL AMONT (bindgen) du même
+# clone v1.1.0 que l'étage libmxl ; à l'exécution il charge NOTRE libmxl patchée par son nom.
+# Rust ÉPINGLÉ : le SDK exige ≥ 1.87 (édition 2024), celui de trixie est en 1.85. `--locked` : le
+# Cargo.lock versionné fait foi.
+FROM debian:trixie-slim AS playout-builder
+ARG RUST_TOOLCHAIN=1.88.0
+ENV DEBIAN_FRONTEND=noninteractive CARGO_HOME=/opt/cargo RUSTUP_HOME=/opt/rustup
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential pkg-config curl ca-certificates clang libclang-dev \
+      libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "${RUST_TOOLCHAIN}" --no-modify-path
+COPY --from=mxl-builder /src/mxl/rust /src/mxl/rust
+COPY --from=mxl-builder /src/mxl/lib/include /src/mxl/lib/include
+COPY --from=mxl-builder /src/mxl/LICENSE.txt /src/mxl/LICENSE.txt
+COPY plugins/_media_runtime/gst-bobimxl /src/gst-bobimxl
+RUN cd /src/gst-bobimxl && /opt/cargo/bin/cargo build --release --locked \
+ && cp target/release/libgstbobimxl.so /out-libgstbobimxl.so
+
+# ---------------------------------------------------------------- étage bmx (MXF growing)
+# bmx (BBC, BSD-3-Clause) : écrit le MXF « lisible pendant l'enregistrement » du recorder —
+# partitions indexées à l'intervalle choisi (`raw2bmx --part`), là où le MXF d'ffmpeg n'en écrit
+# qu'une toutes les 250 unités en débit variable et AUCUNE en DNxHD (relevé 2026-10-11). ffmpeg
+# garde l'ENCODAGE ; bmx ne fait que l'emballage. Tag ÉPINGLÉ ; bibliothèques statiques (libMXF,
+# libMXF++ et bmx dans les exécutables), seules uuid/expat/uriparser restent dynamiques.
+# Compilé sans -march : exécutable sur les R620 (Sandy Bridge).
+FROM debian:trixie-slim AS bmx-builder
+ARG BMX_REF=v1.6
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates git cmake make g++ pkg-config uuid-dev liburiparser-dev libexpat1-dev \
+ && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch ${BMX_REF} https://github.com/bbc/bmx /src/bmx \
+ && cmake -S /src/bmx -B /src/bmx/out -DCMAKE_BUILD_TYPE=Release -DBMX_BUILD_TESTING=OFF -DBUILD_SHARED_LIBS=OFF \
+ && cmake --build /src/bmx/out -j"$(nproc)" --target raw2bmx mxf2raw bmxtranswrap \
+ && mkdir -p /out && cp /src/bmx/out/apps/raw2bmx/raw2bmx /src/bmx/out/apps/mxf2raw/mxf2raw \
+      /src/bmx/out/apps/bmxtranswrap/bmxtranswrap /out/ \
+ && cp /src/bmx/COPYING /out/bmx-COPYING
+
 # ---------------------------------------------------------------- image finale : runtime média
 FROM debian:trixie-slim
 
@@ -118,6 +158,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav \
       gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 \
       rdma-core ibverbs-providers libibverbs1 librdmacm1 \
+      libuuid1 libexpat1 liburiparser1 \
  && rm -rf /var/lib/apt/lists/*
 
 # libmxl + libmxl-common + outils mxl-info/mxl-fabrics-demo + libmxl-fabrics.so (cf. bobi-compute).
@@ -147,6 +188,15 @@ COPY script_templates/bobimxl.py /usr/local/lib/mxl-python/bobimxl.py
 # de la variante UNIQUE (aiguillage SSE2/AVX2 à l'exécution) et de la calibration par nœud.
 # Construite dans l'étage mxl-builder, qui a déjà gcc.
 COPY --from=mxl-builder /out/libbobi_nt.so /usr/local/lib/libbobi_nt.so
+# Élément GStreamer bobiplayout (player natif) — dans le chemin de plugins système de GStreamer.
+COPY --from=playout-builder /out-libgstbobimxl.so /usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstbobimxl.so
+# bmx : raw2bmx (MXF growing du recorder), mxf2raw et bmxtranswrap (diagnostic). Garde-fou : un
+# exécutable dont une bibliothèque manque échouerait à l'enregistrement, pas à la construction.
+COPY --from=bmx-builder /out/raw2bmx /out/mxf2raw /out/bmxtranswrap /usr/local/bin/
+COPY --from=bmx-builder /out/bmx-COPYING /usr/share/doc/bobistudio/licenses/BSD-3-Clause-bmx.txt
+RUN if ldd /usr/local/bin/raw2bmx 2>&1 | grep -q "not found"; then \
+      echo "ERREUR: raw2bmx a une dépendance non résolue :"; ldd /usr/local/bin/raw2bmx | grep "not found"; false; \
+    fi && raw2bmx -v
 ENV PYTHONPATH=/usr/local/lib/mxl-python
 RUN mkdir -p /opt/script /var/log /mnt/media
 

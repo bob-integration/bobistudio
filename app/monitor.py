@@ -78,10 +78,12 @@ def _path(uid):
     return f"monitor-u{int(uid)}"
 
 
-def _create_monitor_container(hostname, deploy_type="streamer"):
-    """Crée un container monitor Docker compute. Lève RuntimeError si aucun nœud disponible."""
+def _create_monitor_container(hostname, deploy_type="streamer", prefer_node=None):
+    """Crée un container monitor Docker compute. Lève RuntimeError si aucun nœud disponible.
+    `prefer_node` : le nœud de la SOURCE, quand on la connaît — l'encodeur y lit le bus local au
+    lieu d'attendre une réplique RDMA (cf. create_dedicated_iter)."""
     from .docker_compute import pick_compute_node, creer_container_compute
-    node_id = pick_compute_node(deploy_type=deploy_type)
+    node_id = pick_compute_node(prefer_id=prefer_node, deploy_type=deploy_type)
     if not node_id:
         raise RuntimeError("Aucun nœud compute disponible (Réglages → Nœuds).")
     return creer_container_compute(node_id, deploy_type, hostname=hostname)
@@ -116,7 +118,105 @@ def _container_for(uid):
     return None
 
 
-def _params(uid, shm="", audio_shm=None, fmt=None, hot=False):
+# ── Monitoring FLUIDE (préférence PAR UTILISATEUR) ─────────────────────────────────────────────
+# Par défaut le moniteur sort à 25 i/s, quelle que soit la source : c'est le choix de l'exploitation
+# (un encodeur par utilisateur connecté, souvent logiciel). « Fluide » = la cadence de sortie SUIT
+# la cadence déclarée de la source (50p → 50), plafonnée à FLUID_MAX_FPS, GOP = 1 s à cette cadence.
+# Coût : ~2× d'encodage et 1,5 à 2× de débit à 50 — sensible en x264, d'où l'option et pas le défaut.
+# Persisté côté serveur (réglage `monitor_fluid_users` = liste d'uid) : il suit l'utilisateur d'un
+# navigateur à l'autre et survit à la destruction de son conteneur moniteur.
+DEFAULT_FPS = 25
+FLUID_MAX_FPS = 60
+FLUID_SETTING = "monitor_fluid_users"
+_fluid_lock = threading.Lock()   # lecture-modification-écriture de la liste (deux bascules concurrentes)
+
+
+def _rate_value(v):
+    """Cadence déclarée → float (> 0) ou None. Accepte 25, 29.97, "50", "30000/1001", "50/1"."""
+    if v is None or v == "":
+        return None
+    try:
+        s = str(v).strip()
+        if "/" in s:
+            n, d = s.split("/", 1)
+            r = float(n) / float(d or 1)
+        else:
+            r = float(s)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    return r if r > 0 else None
+
+
+def output_rate(fmt, fluid):
+    """(fps, gop) de SORTIE du moniteur. Entiers : le normaliseur du streamer
+    (scripts.normalize_worker_udp_params) arrondit `video.fps` à l'entier — 59.94 sort à 60, soit
+    une image répétée toutes les ~17 s, invisible sur un aperçu (le moniteur échantillonne de toute
+    façon la DERNIÈRE image du bus à sa propre horloge).
+    - défaut, ou cadence de source inconnue : DEFAULT_FPS ;
+    - source ENTRELACÉE : DEFAULT_FPS — le streamer tisse les deux champs puis désentrelace à la
+      cadence TRAME (bwdif send_frame) ; pas de désentrelacement à la cadence champ ici."""
+    if not fluid or not fmt:
+        return DEFAULT_FPS, DEFAULT_FPS
+    if str(fmt.get("scan") or "p").strip().lower().startswith("i"):
+        return DEFAULT_FPS, DEFAULT_FPS
+    r = _rate_value(fmt.get("fps"))
+    if not r:
+        return DEFAULT_FPS, DEFAULT_FPS
+    fps = max(1, int(round(min(r, FLUID_MAX_FPS))))
+    return fps, fps
+
+
+BASE_BITRATE_KBPS = 8000   # débit du moniteur à 25 i/s (cf. _params : en dessous, macroblocs en 1080)
+
+
+def output_bitrate(fps):
+    """Débit de SORTIE pour la cadence `fps`. L'encodeur est en débit CONSTANT (NVENC `-rc cbr`,
+    x264 `-b:v`) : à 50 i/s sous le même débit, chaque image reçoit moitié moins de bits — mesuré
+    le 2026-10-12 (1131, NVENC) : 8,3 Mb/s à 25 comme à 50. On donne ×(0,5 + 0,5·fps/25), soit ×1,5
+    à 50 et ×1,7 à 60 (deux fois plus d'images ne demandent pas deux fois plus de bits : l'écart
+    entre deux images consécutives est moitié moindre). Cadence ≤ 25 : débit de base, inchangé."""
+    k = max(1.0, 0.5 + 0.5 * float(fps or DEFAULT_FPS) / DEFAULT_FPS)
+    return "8M" if k == 1.0 else "%dk" % int(round(BASE_BITRATE_KBPS * k))
+
+
+def fluid_enabled(uid):
+    try:
+        return int(uid) in {int(x) for x in (st.get(FLUID_SETTING) or [])}
+    except (TypeError, ValueError):
+        return False
+
+
+def _store_fluid(uid, on):
+    with _fluid_lock:
+        try:
+            cur = {int(x) for x in (st.get(FLUID_SETTING) or [])}
+        except (TypeError, ValueError):
+            cur = set()
+        (cur.add if on else cur.discard)(int(uid))
+        st.set(FLUID_SETTING, sorted(cur))
+
+
+def set_fluid(uid, on, *, _touch=True):
+    """Bascule « monitoring fluide » de l'utilisateur et l'APPLIQUE tout de suite : la source
+    courante est re-pointée (set_source), ce qui redéploie l'encodeur si la cadence de sortie
+    change (25p : rien ne change, rien n'est redémarré)."""
+    on = bool(on)
+    _store_fluid(uid, on)
+    out = {"ok": True, "fluid": on, "restarted": False}
+    c = _container_for(uid)
+    if not c:
+        return out
+    _warm_source(uid, c)
+    src = _source.get(uid) or {}
+    if not src.get("shm"):
+        return out
+    r = set_source(uid, src["shm"], src.get("label"), src.get("audio_shm"), _touch=_touch)
+    out["restarted"] = bool(r.get("ok")) and not r.get("hot")
+    out["out_fps"] = (_source.get(uid) or {}).get("out_fps")
+    return out
+
+
+def _params(uid, shm="", audio_shm=None, fmt=None, hot=False, fluid=False):
     """Params du monitor : encode `shm` (vidéo) + `audio_shm` optionnel en H.264/Opus et pousse
     un leg WebRTC sur le path per-user. Le format d'ENTRÉE (résolution, chroma, profondeur,
     colorimétrie) SUIT la source (`fmt` issu de `_shm_fmt`) — aucune valeur statique : un
@@ -126,6 +226,7 @@ def _params(uid, shm="", audio_shm=None, fmt=None, hot=False):
     - sinon : fmt absent → width/height=0 → auto-détection (dernier recours, résolution inconnue)."""
     f = fmt or {}
     chroma = f.get("chroma") or "422"
+    out_fps, gop = output_rate(fmt, fluid)
     return {
         "shm_name": shm or "",
         "audio_shm": audio_shm or None,
@@ -140,10 +241,17 @@ def _params(uid, shm="", audio_shm=None, fmt=None, hot=False):
         # économisé par utilisateur (mesuré). En `auto` il prend la carte si le nœud en a une de
         # libre et retombe sur x264 sinon, sans jamais empêcher la création du monitor — un
         # monitoring qui refuse de démarrer faute de GPU serait une régression franche.
-        "video": {"codec": "h264", "bitrate": "2M", "preset": "ultrafast",
-                  "encoder": "auto", "nvenc_preset": "p1", "nvenc_tune": "ull",
-                  "gop": 25, "width": int(f.get("w") or 0), "height": int(f.get("h") or 0),
-                  "fps": 25, "chroma": chroma, "colorimetry": f.get("colorimetry") or ""},
+        # Qualité : 8 Mb/s, NVENC p4 (x264 superfast sans carte). À 2 Mb/s en NVENC p1, une image
+        # 1080 sombre et détaillée sortait en macroblocs — alors que la trame lue sur le bus,
+        # capturée en PNG, était propre (constaté le 2026-10-11). `tune ull` garde la latence basse.
+        "video": {"codec": "h264", "bitrate": output_bitrate(out_fps), "preset": "superfast",
+                  "encoder": "auto", "nvenc_preset": "p4", "nvenc_tune": "ull",
+                  "gop": gop, "width": int(f.get("w") or 0), "height": int(f.get("h") or 0),
+                  # Chroma de SORTIE : 4:2:0, quel que soit celui de la source (l'entrée, elle,
+                  # suit la source — clé `chroma` du haut). Le WebRTC des navigateurs ne décode que
+                  # du H.264 4:2:0 ; une source 4:2:2 partait en « High 4:4:4 Predictive »
+                  # (`h264_nvenc` ne sait pas le 4:2:2, ffmpeg choisissait le 4:4:4 seul).
+                  "fps": out_fps, "chroma": "420", "colorimetry": f.get("colorimetry") or ""},
         "audio": {"enabled": bool(audio_shm), "bitrate": "128k",
                   "tracks": [{"channels": [0, 1]}] if audio_shm else []},
         "destinations": [{"type": "webrtc", "path": _path(uid), "enabled": True}],
@@ -353,6 +461,7 @@ def status(uid):
         "embed_url": _embed_url(uid),
         "path": _path(uid),
         "source": _source.get(uid),
+        "fluid": fluid_enabled(uid),
     }
 
 
@@ -434,6 +543,7 @@ def _warm_source(uid, c):
         "fmt_key":   key,
         "fmt_key_db": _fmt_key6(_shm_fmt(shm_name)) or key,
         "hot":       True,
+        "out_fps":   int(vid.get("fps") or DEFAULT_FPS),
     }
 
 
@@ -470,6 +580,13 @@ def set_source(uid, shm, label=None, audio_shm=None, *, _touch=True):
     # un changement de chroma/profondeur/balayage impose un redéploiement (ffmpeg relit le layout
     # ET la chaîne de filtre — un passage progressif↔entrelacé doit (dé)activer le bwdif).
     cur_key = _fmt_key6(fmt_video)
+    # Cadence de SORTIE : 25, ou celle de la source en mode fluide. Le flowDef du nœud peut ne pas
+    # porter de cadence lisible : repli sur la cadence déclarée en base.
+    _rate_fmt = dict(fmt_video or db_fmt or {})
+    if fmt_video and not _rate_value(fmt_video.get("fps")) and db_fmt:
+        _rate_fmt["fps"] = db_fmt.get("fps")
+    fluid = fluid_enabled(uid)
+    out_fps = output_rate(_rate_fmt or None, fluid)[0]
     running = _script_running(ip, c.get("vmid"))
     # Hot-swap possible si : format connu + running + même fmt + audio_shm INCHANGÉ.
     # Changer l'audio_shm nécessite un redéploiement (audio_feeder doit être recâblé).
@@ -481,12 +598,15 @@ def set_source(uid, shm, label=None, audio_shm=None, *, _touch=True):
         and prev.get("fmt_key") is not None
         and prev.get("fmt_key") == cur_key
         and (audio_shm or None) == prev.get("audio_shm")
+        # Cadence de sortie inchangée : passer d'une source 25p à une 50p en mode fluide (ou basculer
+        # l'option) change `-r` et le GOP de ffmpeg → redéploiement, pas de hot-swap.
+        and prev.get("out_fps", DEFAULT_FPS) == out_fps
     )
 
     _source[uid] = {"shm": shm, "label": label or shm, "audio_shm": audio_shm or None,
                     "w": fmt_video["w"] if fmt_video else None, "h": fmt_video["h"] if fmt_video else None,
                     "fmt_key": cur_key, "fmt_key_db": _fmt_key6(db_fmt),
-                    "hot": fmt_video is not None}
+                    "hot": fmt_video is not None, "out_fps": out_fps}
     if _touch:
         touch(uid)    # le chemin auto-follow ne doit PAS rafraîchir _last_used (sinon reaper inopérant)
 
@@ -500,9 +620,10 @@ def set_source(uid, shm, label=None, audio_shm=None, *, _touch=True):
         # échec hot → on retombe sur le redéploiement ci-dessous
 
     if fmt_video is not None:
-        params = _params(uid, shm, fmt=fmt_video, hot=True, audio_shm=audio_shm or None)
+        params = _params(uid, shm, fmt=_rate_fmt, hot=True, audio_shm=audio_shm or None,
+                         fluid=fluid)
     else:
-        params = _params(uid, shm, audio_shm=audio_shm)             # auto-dims (res inconnue)
+        params = _params(uid, shm, audio_shm=audio_shm)             # auto-dims (res inconnue) → 25
     threading.Thread(
         target=deployer_script,
         args=(c["vmid"], "streamer", params),
@@ -628,25 +749,39 @@ def _san(s):
     return _re.sub(r'-+', '-', s).strip('-')
 
 
-def dedicated_hostname(player_hostname, project_name=None):
+# ── Aperçu PAR SORTIE (2026-10-20, panneaux de workspace) ─────────────────────────────────────
+# Le moniteur dédié est indexé par CONTENEUR : une source, qu'on re-pointe (un scope montre ce qu'il
+# mesure). Un mélangeur a pourtant plusieurs sorties à regarder EN MÊME TEMPS (PGM et PVW). `suffix`
+# — demandé explicitement, jamais déduit — donne un moniteur PAR SORTIE : `mon-<proj>-<hn>-<suffix>`,
+# chemin WebRTC `mon-<hn>-<suffix>`. Sans suffixe, noms et comportement d'avant, inchangés.
+def flow_suffix(hostname, shm):
+    """« rl-mix_pvw » d'un conteneur « rl-mix » → « pvw » ; sa sortie principale (« rl-mix ») → None."""
+    hn, sh = (hostname or ""), (shm or "")
+    if not sh or sh == hn:
+        return None
+    rest = sh[len(hn) + 1:] if sh.startswith(hn + "_") else sh
+    return _san(rest) or None
+
+
+def dedicated_hostname(player_hostname, project_name=None, suffix=None):
     proj = _san(project_name)
-    hn   = _san(player_hostname)
+    hn   = _san(player_hostname) + ("-" + _san(suffix) if suffix else "")
     return f"mon-{proj}-{hn}" if proj else f"mon-{hn}"
 
 
-def dedicated_webrtc_path(player_hostname):
-    return "mon-" + _re.sub(r'[^a-z0-9-]', '-', (player_hostname or "").lower())
+def dedicated_webrtc_path(player_hostname, suffix=None):
+    return "mon-" + _re.sub(r'[^a-z0-9-]', '-', (player_hostname or "").lower()) + ("-" + _san(suffix) if suffix else "")
 
 
-def dedicated_embed_url(player_hostname):
+def dedicated_embed_url(player_hostname, suffix=None):
     ip = st.get("webrtc_gateway_ip")
     if not ip:
         return None
     port = int(st.get("webrtc_http_port") or 8889)
-    return f"http://{ip}:{port}/{dedicated_webrtc_path(player_hostname)}"
+    return f"http://{ip}:{port}/{dedicated_webrtc_path(player_hostname, suffix)}"
 
 
-def _dedicated_container(player_vmid):
+def _dedicated_container(player_vmid, suffix=None):
     """Retrouve le container monitor dédié au player vmid (par hostname calculé)."""
     from .database import db_get_projects
     c = db_get_container(player_vmid)
@@ -660,34 +795,56 @@ def _dedicated_container(player_vmid):
             if p["id"] == pid:
                 proj_name = p["name"]
                 break
-    target_hn = dedicated_hostname(hn, proj_name)
+    target_hn = dedicated_hostname(hn, proj_name, suffix)
     for cont in db_get_containers():
         if cont.get("hostname") == target_hn:
             return cont, target_hn
     return None, target_hn
 
 
-def dedicated_status(player_vmid):
+def dedicated_status(player_vmid, suffix=None):
     """Statut du monitor dédié : exists, hostname, vmid, status, embed_url."""
-    cont, target_hn = _dedicated_container(player_vmid)
+    cont, target_hn = _dedicated_container(player_vmid, suffix)
     player = db_get_container(player_vmid) or {}
     player_hn = player.get("hostname") or f"player{player_vmid}"
     if not cont:
         return {
             "exists": False,
             "hostname": target_hn,
-            "embed_url": dedicated_embed_url(player_hn),
+            "embed_url": dedicated_embed_url(player_hn, suffix),
         }
     return {
         "exists": True,
         "hostname": target_hn,
         "vmid": cont["vmid"],
         "status": cont.get("status"),
-        "embed_url": dedicated_embed_url(player_hn),
+        "embed_url": dedicated_embed_url(player_hn, suffix),
     }
 
 
-def create_dedicated_iter(player_vmid, shm=None, audio_shm=None):
+def _produced_av(cont, hostname):
+    """(vidéo, audio) PUBLIÉS par le conteneur, lus dans le `wiring.produces` de son plugin.
+    Le défaut supposait `<hn>_0` / `<hn>_audio_0` ; le player publie `<hn>` / `<hn>_audio` — le
+    moniteur dédié encodait un flux inexistant et la passerelle répondait « stream not found »
+    (constaté le 2026-10-11)."""
+    import json as _json
+    from . import plugins
+    dc = cont.get("deploy_config") or {}
+    if isinstance(dc, str):
+        try:
+            dc = _json.loads(dc)
+        except ValueError:
+            dc = {}
+    w = plugins.derive_wiring(dc.get("type") or "", hostname, dc.get("params") or {})
+    prods = [p for p in w.get("produces") or [] if p.get("shm")]
+    first = lambda e: next((p["shm"] for p in prods if p.get("essence", p.get("kind")) == e), None)
+    # Un flux audio d'ÉCOUTE déclaré (`monitor: true`, ex. la sortie monitoring du player) passe
+    # avant la sortie antenne : c'est lui que l'exploitant règle pour ce qu'il veut entendre.
+    mon = next((p["shm"] for p in prods if p.get("monitor") and p.get("essence", p.get("kind")) == "audio"), None)
+    return first("video"), mon or first("audio")
+
+
+def create_dedicated_iter(player_vmid, shm=None, audio_shm=None, suffix=None):
     """Générateur streamé : crée le container monitor Docker dédié au container `player_vmid`.
 
     `shm` / `audio_shm` explicites quand la source N'EST PAS déductible du hostname. C'était le
@@ -718,11 +875,11 @@ def create_dedicated_iter(player_vmid, shm=None, audio_shm=None):
                 proj_name = p["name"]
                 break
 
-    target_hn = dedicated_hostname(player_hn, proj_name)
+    target_hn = dedicated_hostname(player_hn, proj_name, suffix)
     yield f"Monitor dédié : {target_hn}"
 
     # Réutiliser si déjà existant
-    cont, _ = _dedicated_container(player_vmid)
+    cont, _ = _dedicated_container(player_vmid, suffix)
     if cont:
         target = cont["vmid"]
         yield f"Container #{target} déjà existant — redéploiement du script."
@@ -732,11 +889,15 @@ def create_dedicated_iter(player_vmid, shm=None, audio_shm=None):
         try:
             # PAS de yield sous le verrou (cf. create_iter).
             with _create_lock:
-                cont, _ = _dedicated_container(player_vmid)   # re-check sous verrou
+                cont, _ = _dedicated_container(player_vmid, suffix)   # re-check sous verrou
                 if cont:
                     target = cont["vmid"]
                 else:
-                    target = _create_monitor_container(target_hn)
+                    # Sur le nœud du conteneur monitoré : un moniteur dédié a une seule source,
+                    # connue d'avance. Placé ailleurs, il dépend d'une réplique RDMA — posé sur
+                    # r620-1, le lien était créé mais jamais alimenté, et l'aperçu restait sur
+                    # « stream not found » (constaté le 2026-10-11).
+                    target = _create_monitor_container(target_hn, prefer_node=player.get("node_id"))
                     created = bool(target)
         except RuntimeError as e:
             yield f"❌ {e}"
@@ -749,9 +910,13 @@ def create_dedicated_iter(player_vmid, shm=None, audio_shm=None):
 
     # Déploiement
     yield "Déploiement de l'encodeur…"
-    path = dedicated_webrtc_path(player_hn)
-    vid_shm  = shm or f"{player_hn}_0"
-    aud_shm  = audio_shm if shm else f"{player_hn}_audio_0"
+    path = dedicated_webrtc_path(player_hn, suffix)
+    vid_shm, aud_shm = shm, audio_shm
+    if not shm:
+        vid_shm, aud_shm = _produced_av(player, player_hn)
+    if not vid_shm:
+        yield "❌ Ce conteneur ne publie aucun flux vidéo à monitorer."
+        return
     fmt_ded  = _shm_fmt(vid_shm) or {}
     params = _params(
         uid=0,
@@ -766,3 +931,39 @@ def create_dedicated_iter(player_vmid, shm=None, audio_shm=None):
         yield "❌ Déploiement de l'encodeur échoué."
         return
     yield f"✅ Monitor dédié prêt (#{target})."
+
+
+# ── Macros : « monitoring fluide » de l'utilisateur qui lance la macro ────────────────────────────
+# Fournisseur du cœur (core_plugins.CORE_PROVIDERS). La cible est l'utilisateur de la macro
+# (`ctx["user"]` = son identifiant de connexion) : une préférence personnelle n'a de sens que pour
+# quelqu'un. Un déclencheur ou un pupitre n'en a pas (`trigger:…`, `skaarhoj:…`) → refus explicite.
+# Pas d'ÉTAT lisible en condition : `read_state` ne reçoit que le projet, jamais l'utilisateur.
+MACRO_PROVIDER = {
+    "id": "monitor",
+    "label": "Monitoring personnel",
+    "actions": [
+        {"id": "set_fluid", "label": "Monitoring fluide (suit la source) — utilisateur qui lance la macro",
+         "availability": "project", "params": [
+             {"key": "enabled", "label": "Fluide", "type": "bool", "default": "true"}]},
+    ],
+    "states": [],
+}
+
+
+def _macro_uid(ctx):
+    from .database import db_get_user
+    name = str((ctx or {}).get("user") or "").strip()
+    u = db_get_user(name) if name and ":" not in name else None
+    if not u:
+        raise RuntimeError("monitoring fluide : préférence PERSONNELLE — la macro doit être lancée "
+                           "par un utilisateur (pas par un déclencheur ni un pupitre)")
+    return u["id"]
+
+
+def run_action(action_id, params, ctx):
+    if action_id != "set_fluid":
+        raise RuntimeError("action inconnue : %s" % action_id)
+    v = (params or {}).get("enabled", "true")
+    on = str(v).strip().lower() in ("1", "true", "yes", "oui", "on")
+    # _touch=False : une macro n'est pas une activité de l'utilisateur devant son panneau.
+    return set_fluid(_macro_uid(ctx), on, _touch=False)

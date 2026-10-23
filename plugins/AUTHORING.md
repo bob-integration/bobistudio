@@ -167,6 +167,25 @@ my_value = CONFIG.get("my_key") or "default"
 Port 8080 also receives **pushes from the TSL service** (tally and live labels): a GET-only
 server would answer 501 and the tally would never arrive, with nothing to signal it.
 
+### Live reconfiguration — `control.hot_config`
+
+By default every settings change or cable **restarts the script**, and with it everything the
+script runs. A plugin that drives several independent things (one process per connector, per
+output…) can declare
+
+```json
+"control": { "hot_config": { "port": 8082, "path": "/config" } }
+```
+
+The orchestrator still writes the new script file and persists the settings, then, **instead of
+restarting**, POSTs `{plugin_version, hostname, config}` to that route — `config` is exactly what
+`{config}` holds in the freshly written script. The script compares it with what runs and
+restarts only what changed. It must answer **409** when `plugin_version` or `hostname` differ from
+its own (other code, other default flow names): the orchestrator then restarts it as before. Any
+non-200 answer falls back to a restart, so a script that does not know the route is safe.
+Model: `decklink_io` (one worker per connector, keyed by its persistent id; bench
+`verif_reconfig_a_chaud.py`).
+
 ---
 
 ## `hooks.py` — what runs in the orchestrator
@@ -224,9 +243,32 @@ Notable ones:
 | `control.endpoints` | allow-list of proxy paths — anything else gets a 403 |
 | `control.read_endpoints` | subset readable with the login alone (state, preview) |
 | `param_tree` / `actions` | the surface exposed to macros |
-| `ui.public_page` | allows a public `/p/<token>` link |
+| `ui.public_page` | allows a public `/p/<token>` link (read-only by default) |
+| `ui.public_tabs` | read endpoint listing the plugin's tabs (`{items: [{value, label}]}`): the share dialog then offers to share ONE tab — `mount()` receives `ctx.tab` |
+| `control.public_actions` | the ONLY paths a public link created with "allow playing" may POST through the relay (`/p/<token>/plugin/<path>`); `mount()` receives `ctx.play`. The relay sets `X-Bobi-Public-Scope: {"tab", "play"}` itself — the container must refuse (403) any request carrying it that targets something outside that tab, or a path outside this list. Model: `cartouchier` |
 | `nav` | section and route. **Without `nav`**, no palette chip and no nav entry |
 | `help.category` / `help.order` | placement of the help article |
+| `files` | extra files pushed next to the script (see below) |
+
+### `files` — shipping modules next to the script
+
+```json
+"files": [
+  {"src": "src/model.py", "dest": "model.py"},
+  {"src": "build/dsp.so", "dest": "dsp.so.b64", "transport": "base64"}
+]
+```
+
+`src` is relative to the plugin folder, `dest` relative to `/opt/script` (where `main.py` lives).
+Pushed **before** `bobimxl.py` and the script, which goes last. **No fallback**: if one push
+fails the deploy is aborted (error alert) and the script is never started.
+
+- The agent writes in **text** mode: a binary must use `"transport": "base64"`; the orchestrator
+  writes the base64 text, **decoding is the plugin's job at startup** (atomic write, e.g. to `/tmp`).
+- Rejected at scan time (the plugin is then skipped, reason shown in the plugin manager): absolute
+  path or `..`, `src` missing or leaving the plugin folder (symlinks included), duplicate `dest`,
+  `dest` equal to `main.py` / `bobimxl.py` / `agent.py` / `nmos.json` / the script itself, more than
+  8 MB per file or 16 MB in all.
 
 ---
 
@@ -250,6 +292,19 @@ Four rules, each for a fault already seen in the wild:
 **i18n is mandatory, and it lives in the plugin**: labels go in the plugin's own
 `i18n/{fr,en}.json` — prefix `plugin.<type>.` for the console, `type.<type>.*` for the palette
 and the wiring ports. French remains the reference for default values.
+
+The boundary between the two prefixes: `type.<type>.*` is the ORCHESTRATOR's vocabulary *about*
+the plugin (what it shows by itself — palette, deploy forms, ports); `plugin.<type>.*` is the
+plugin's OWN vocabulary — anything the container produces or names, including the codes of the
+events it publishes to the operations journal (`plugin.<type>.event.<code>`, cf.
+`docs/reference/PLUGIN_JOURNAL.md`). Practical consequence: only `plugin.*` is served to the
+browser catalogue (`window.I18N`); a `type.*` key is unreachable from JavaScript.
+
+**Fill BOTH catalogues, not just English.** Without the French key, French only works *by
+accident*: `plugins._traduit` falls back to the manifest's `label`/`help`, which happen to be
+written in French today. The day a manifest is written in English — which this repo's naming
+convention asks of new code — French starts showing English, and nothing signals it. The manifest
+text is a last-resort fallback for a plugin that ships untranslated, not the French source.
 
 ⚠ **Never put them in the core catalogue** (`i18n/<lang>.json` at the repo root). Two things
 break, both silently:

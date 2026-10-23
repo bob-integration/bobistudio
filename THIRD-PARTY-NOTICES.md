@@ -19,6 +19,7 @@ Compilés ou installés dans les images Docker distribuées avec le produit.
 | **DPDK** | via MTL | Pilotes réseau en espace utilisateur | BSD-3-Clause | <https://www.dpdk.org/> |
 | **FFmpeg** | `7:7.1.5` (Debian trixie) | Encodage, décodage, conversion (processus séparé) | **GPL-2.0+** — voir ci-dessous | <https://ffmpeg.org/> |
 | **GStreamer** | `1.26.2` / `1.26.3` (Debian trixie) | Pipelines média (player, recorder) — jeux `base`, `good`, `bad`, `ugly`, `libav` | **LGPL-2.0+** pour l'essentiel — voir ci-dessous | <https://gstreamer.freedesktop.org/> |
+| **bmx** (BBC, avec libMXF / libMXF++) | `v1.6` | Écriture du MXF « lisible pendant l'enregistrement » du recorder (`raw2bmx`) — image média | **BSD-3-Clause** — texte copié dans l'image (`licenses/BSD-3-Clause-bmx.txt`) | <https://github.com/bbc/bmx> |
 | **x264** | `0.164.3108` (Debian trixie) | Encodage H.264 | **GPL-2.0+**, *Copyright 2003-2022 x264 project* | <https://www.videolan.org/developers/x264.html> |
 | **x265** | `4.1-2` (Debian trixie) | Encodage H.265 / HEVC | **GPL-2.0+** | <https://www.videolan.org/developers/x265.html> |
 | **libsrt** | paquet Debian | Transport SRT | **MPL-2.0** | <https://github.com/Haivision/srt> |
@@ -112,6 +113,18 @@ Non redistribués avec le produit : récupérés depuis leur source officielle a
 | Composant | Rôle | Licence | Source |
 |---|---|---|---|
 | **MediaMTX** | Passerelle WebRTC / RTSP (ingest et lecture WHEP) | **MIT** | <https://github.com/bluenviron/mediamtx> |
+| **Kokoro-82M** (poids du modèle) | Synthèse vocale optionnelle (service `tts`, installé à la demande) | **Apache-2.0** | <https://huggingface.co/hexgrad/Kokoro-82M> |
+| **kokoro-onnx** | Exécution du modèle Kokoro | **MIT** | <https://github.com/thewh1teagle/kokoro-onnx> |
+| **ONNX Runtime** | Inférence du modèle | **MIT** | <https://github.com/microsoft/onnxruntime> |
+| **phonemizer** · **espeak-ng** (via espeakng-loader) | Phonétisation du texte | **GPL-3.0** | <https://github.com/bootphon/phonemizer> · <https://github.com/espeak-ng/espeak-ng> |
+
+**Voix française de la synthèse vocale** : la voix `ff_siwis` de Kokoro est entraînée sur la base
+*SIWIS French Speech Synthesis Database*, diffusée sous **CC BY 4.0** — attribution (citation
+officielle) : Yamagishi, Junichi; Honnet, Pierre-Edouard; Garner, Philip; Lazaridis, Alexandros. (2017).
+*The SIWIS French Speech Synthesis Database, 2016* [dataset]. University of Edinburgh. School of
+Informatics. The Centre for Speech Technology Research. <https://doi.org/10.7488/ds/1705>. Les voix françaises de Piper ont été écartées : siwis et
+upmc y sont affinées depuis une voix anglaise sous licence de RECHERCHE (Lessac / Blizzard 2013), gilles et
+les variantes « low » depuis une voix sous CC BY-NC-SA (non commerciale), tom est sous AGPL-3.0.
 
 ---
 
@@ -142,15 +155,18 @@ Licences relevées sur les versions effectivement installées :
 | certifi | 2026.5.20 | MPL-2.0 |
 | cffi | 2.0.0 | MIT |
 | charset-normalizer | 3.4.7 | MIT |
+| cheroot | 11.1.2 | BSD-3-Clause |
 | click | 8.4.1 | BSD-3-Clause |
 | cryptography | 49.0.0 | Apache-2.0 OR BSD-3-Clause |
 | Flask | 3.1.3 | BSD-3-Clause |
 | idna | 3.16 | BSD-3-Clause |
 | ifaddr | 0.2.0 | MIT |
 | itsdangerous | 2.2.0 | BSD-3-Clause |
+| jaraco.functools | 4.6.0 | MIT |
 | Jinja2 | 3.1.6 | BSD-3-Clause |
 | Markdown | 3.10.2 | BSD-3-Clause |
 | MarkupSafe | 3.0.3 | BSD-3-Clause |
+| more-itertools | 11.1.0 | MIT |
 | Pillow | 12.2.0 | MIT-CMU |
 | pycparser | 3.0 | BSD-3-Clause |
 | requests | 2.34.2 | Apache-2.0 |
@@ -173,6 +189,40 @@ Association sous **Apache-2.0**. Les modèles de données et les schémas JSON v
 `services/nmos/nc_models/` (dont `nc_models/schemas/`) sont repris **verbatim** et conservent
 leurs mentions de copyright d'origine ; le commit amont exact de chacun est inscrit dans
 `services/nmos/nc_models/NOTICE`. Voir <https://specs.amwa.tv/nmos/>.
+
+## Interfaces de plugins audio : LV2, CLAP, VST3
+
+L'hôte de plugins tiers de la console audio (`plugins/audio_console/host`, Rust) charge des plugins
+**LV2**, **CLAP** et **VST3**. **Aucun plugin n'est livré** avec le produit : l'exploitant les installe
+lui-même (Réglages › Plugins audio). Aucun SDK n'est lié ni copié : les structures, tables de fonctions
+et identifiants d'interface nécessaires sont réécrits à la main dans `host/src/clap.rs` et
+`host/src/vst3.rs` à partir des en-têtes publiés, ce qui reste une reprise partielle de leur contenu —
+d'où les avis ci-dessous, à conserver.
+
+| Interface | Version de référence | Licence | Source |
+|---|---|---|---|
+| **LV2** (spécification, via `liblilv` chargée à l'exécution) | 1.18 | **ISC** | <https://lv2plug.in/> |
+| **CLAP** (en-têtes C) | 1.2.x | **MIT**, *Copyright (c) 2021 Alexandre BIQUE* — texte : `licenses/MIT-CLAP.txt` | <https://github.com/free-audio/clap> |
+| **VST 3** (`pluginterfaces` du VST SDK) | 3.8.0 | **MIT**, *Copyright (c) 2025, Steinberg Media Technologies GmbH* — texte : `licenses/MIT-VST3-SDK.txt` | <https://github.com/steinbergmedia/vst3sdk> |
+
+**VST 3 sous MIT.** Vérifié à la source le 2026-10-18 : le fichier `LICENSE.txt` de l'étiquette
+`v3.8.0_build_66` du dépôt `steinbergmedia/vst3sdk` est la licence MIT ci-dessus (la branche principale
+porte aujourd'hui « Copyright (c) 2026 »), et le `README.md` précise que les licences GPLv3 et
+propriétaire Steinberg « ne sont plus disponibles ». Annonce de Steinberg sur son forum : 21 octobre 2025
+(« VST 3 is now open source, released under the MIT license »). L'ancienne « Steinberg VST3 usage
+agreement » n'est donc plus requise. Obligation de la MIT : reproduire l'avis de copyright et de licence
+dans toute copie ou partie substantielle — fait ici et en tête des deux fichiers sources.
+
+**Marque VST.** « VST » est une marque de Steinberg Media Technologies GmbH. Selon le `README.md` du SDK
+(« Trademark and Logo Usage »), l'usage de la marque et du logo est **facultatif** sous la MIT mais, s'il
+a lieu, doit suivre les *Steinberg VST Usage Guidelines* ; il est interdit de mettre « VST » dans un nom
+de société ou de produit. Le produit **nomme seulement le format** (« VST3 », en texte, dans le sélecteur
+de plugins et la bibliothèque, comme « LV2 » et « CLAP ») : aucun logo, aucune mention « VST » dans un
+nom de produit ou de module. Toute évolution qui afficherait le logo « VST Compatible » devra suivre les
+directives de Steinberg.
+
+**Les plugins eux-mêmes** gardent leur propre licence (GPL, LGPL, MIT, propriétaire…) ; ils tournent
+dans un processus séparé et confiné, jamais liés au code du produit.
 
 ---
 

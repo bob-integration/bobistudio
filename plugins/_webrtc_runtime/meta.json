@@ -1,8 +1,15 @@
 {
-  "version": "0.5.0",
-  "date": "2026-08-31",
-  "image_tag": "bobi-webrtc:0.5",
+  "version": "0.6.1",
+  "date": "2026-10-16",
+  "image_tag": "bobi-webrtc:0.6.1",
   "changes": {
+    "ffmpeg embarqué : relais d'écoute des consoles en Opus (0.6.1)": [
+      "Paquet Debian `ffmpeg` (libopus) ajouté : la passerelle relaie à la demande le flux d'écoute L16 d'une console audio (`:8082/listen.pcm`) en Opus/WebRTC (services/webrtc_gateway 0.3.1, `runOnDemand`). Sans ce paquet, la passerelle n'annonce pas le relais (`listen_relay: false` sur :8080) et l'orchestrateur répond `gateway_no_relay`.",
+      "`image_tag` changé avec la version : il GAGNE sur `version` (un bump de `version` seul relancerait le build sous l'ancien tag) et c'est lui qui fait recréer le conteneur."
+    ],
+    "MediaMTX 1.21.1 pré-baké, empreinte vérifiée (0.6.0)": [
+      "Binaire MediaMTX 1.21.1 (au lieu de 1.9.3), archive vérifiée par SHA-256 au build. Même version que services/webrtc_gateway : avec une image ≤ 0.5, le script de la passerelle retélécharge 1.21.1 au démarrage (empreinte vérifiée) — l'image n'est donc pas obligatoire, elle évite seulement ce téléchargement."
+    ],
     "Surface NMOS par conteneur (plan 2) (0.5.0)": [
       "★ L'agent embarqué sert désormais `/x-nmos/` : chaque conteneur expose SON Node NMOS, alimenté par un document que l'orchestrateur lui pousse (POST /nmos, écriture atomique).",
       "⚠ BUMP NÉCESSAIRE, pas cosmétique : un conteneur n'est recréé que si sa signature `docker run` change, image comprise. Reconstruire sans changer `image_tag` laissait le nouvel agent dans l'image et AUCUN conteneur ne l'adoptait jamais."

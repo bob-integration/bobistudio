@@ -1,0 +1,99 @@
+{
+   "blockdevices": [
+      {
+         "name": "sda",
+         "path": "/dev/sda",
+         "kname": "sda",
+         "type": "disk",
+         "size": 299439751168,
+         "model": "PERC H710",
+         "serial": "00d9de0907d4dd691a0006e9dce03f08",
+         "tran": null,
+         "rota": true,
+         "ro": false,
+         "rm": false,
+         "fstype": null,
+         "uuid": null,
+         "label": null,
+         "mountpoints": [],
+         "pkname": null,
+         "children": [
+            {
+               "name": "sda1",
+               "path": "/dev/sda1",
+               "kname": "sda1",
+               "type": "part",
+               "size": 1023410176,
+               "model": null,
+               "serial": null,
+               "tran": null,
+               "rota": true,
+               "ro": false,
+               "rm": false,
+               "fstype": "vfat",
+               "uuid": "5139-9F7F",
+               "label": null,
+               "mountpoints": [
+                   "/boot/efi"
+               ],
+               "pkname": "sda"
+            },{
+               "name": "sda2",
+               "path": "/dev/sda2",
+               "kname": "sda2",
+               "type": "part",
+               "size": 282969767936,
+               "model": null,
+               "serial": null,
+               "tran": null,
+               "rota": true,
+               "ro": false,
+               "rm": false,
+               "fstype": "ext4",
+               "uuid": "8b030fef-add8-4e82-9d69-f5f003085842",
+               "label": null,
+               "mountpoints": [
+                   "/"
+               ],
+               "pkname": "sda"
+            },{
+               "name": "sda3",
+               "path": "/dev/sda3",
+               "kname": "sda3",
+               "type": "part",
+               "size": 15444475904,
+               "model": null,
+               "serial": null,
+               "tran": null,
+               "rota": true,
+               "ro": false,
+               "rm": false,
+               "fstype": "swap",
+               "uuid": "944b0bc6-5c5a-4e4f-860e-4a68c79c25c6",
+               "label": null,
+               "mountpoints": [
+                   "[SWAP]"
+               ],
+               "pkname": "sda"
+            }
+         ]
+      },{
+         "name": "sr0",
+         "path": "/dev/sr0",
+         "kname": "sr0",
+         "type": "rom",
+         "size": 1073741312,
+         "model": "HL-DT-ST DVD+/-RW GU90N",
+         "serial": "KM5ZA6G0949",
+         "tran": "sata",
+         "rota": false,
+         "ro": false,
+         "rm": true,
+         "fstype": null,
+         "uuid": null,
+         "label": null,
+         "mountpoints": [],
+         "pkname": null
+      }
+   ]
+}

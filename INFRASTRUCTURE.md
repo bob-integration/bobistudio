@@ -190,10 +190,14 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ### Plan de contrôle
 
-- IP statique posée au preseed pour chaque nœud, port agent-nœud **9100** par défaut (token par
-  nœud). Trafic : API HTTP orchestrateur ↔ agents-nœuds, polling santé/PTP/membw. Volumétrie
+- IP statique posée au preseed pour chaque nœud, port agent-nœud **9100** par défaut : HTTPS
+  mutuellement authentifié par la CA interne (seul un certificat de **contrôleur** est accepté)
+  + jeton par nœud. Trafic : API orchestrateur ↔ agents-nœuds, polling santé/PTP/membw. Volumétrie
   faible, aucune exigence de débit particulière trouvée dans le code — une carte de gestion
   standard 1G suffit largement au regard de la nature du trafic (API REST, pas de flux média).
+- Côté contrôleur : **5000** (interface et API, ou machines seulement en mode web `tls`), **443**
+  en mode `tls`, et **5444 entre les deux contrôleurs** d'une paire HA (réplication mTLS). Voir
+  INSTALL.md §2.4 et HA.md.
 
 ---
 

@@ -42,6 +42,7 @@ import shutil
 import sys
 import time
 import uuid
+import weakref
 
 import numpy as np
 
@@ -106,6 +107,63 @@ def _flow_options():
 
 MXL_STATUS_OK = 0
 MXL_UNDEFINED_INDEX = (1 << 64) - 1  # UINT64_MAX — « pas encore de grain » côté headIndex
+
+# flow.h : un grain MARQUÉ INVALIDE est un BOUCHE-TROU posé par le writer, pas une image.
+# `PosixDiscreteFlowWriter::openGrain` : quand un producteur saute des index, la lib invalide
+# toutes les cases que l'écriture continue aurait traversées — elle y pose le bon `index`,
+# `validSlices = 0` et le drapeau, en laissant le CONTENU PÉRIMÉ de la case (l'image d'il y a
+# `grainCount` grains). Intention amont : « a consumer may choose to repeat the previous grain,
+# insert silence, etc. »
+#
+# ⚠ DEUX PIÈGES qui en font un défaut SILENCIEUX (vérifié dans la v1.1.0 que nous faisons tourner) :
+#   1. `PosixDiscreteFlowReader::getGrainImpl` rend MXL_STATUS_OK sur ce grain en COURT-CIRCUITANT
+#      le test de tranches (`validSlices >= min(...) || (flags & INVALID)`). Un `get_slice(i, k)`
+#      RÉUSSIT donc avec zéro tranche prête — ni l'index, ni le statut, ni la cadence ne bougent.
+#   2. L'idiome répandu chez nos consommateurs — `int(gi.validSlices or k)` — retourne ce zéro en
+#      « k tranches valides », et `int(gi.validSlices or total)` en « trame complète ». Le
+#      bouche-trou est alors composité comme une image, à pleine confiance.
+# D'où le filtrage ICI, au seul endroit que toute la flotte traverse, plutôt que dans 10 plugins.
+MXL_GRAIN_FLAG_INVALID = 0x00000001
+
+
+def grain_is_invalid(grain_info):
+    """True si `grain_info` est un bouche-trou du writer (cf. MXL_GRAIN_FLAG_INVALID).
+
+    Tolérant au canard : accepte tout objet portant `.flags` (grainInfo, double de test)."""
+    try:
+        return bool(int(grain_info.flags) & MXL_GRAIN_FLAG_INVALID)
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
+# Tous les Reader VIVANTS de ce processus (peuplé par Reader.__init__, vidé par le GC). Sert
+# l'agrégat ci-dessous : sans lui, publier le compteur demanderait à chaque plugin de tenir la
+# liste de ses propres lecteurs — or ils en ouvrent et en ferment en vol (tuiles, couches, slots).
+_live_readers = weakref.WeakSet()
+
+
+def invalid_grains_report():
+    """Bouches-trous écartés, TOUS les lecteurs de ce processus confondus — à publier sur :8080.
+
+    Rend `{"total": n, "flows": {nom: n}}`. `total` est CUMULÉ depuis le démarrage : c'est sa
+    DÉRIVÉE qui a un sens pour la supervision (un total figé = aucun trou depuis le dernier
+    relevé). `flows` désigne l'entrée fautive, ce qu'un total seul ne dit pas.
+
+    Un lecteur fermé puis rouvert (garde de génération, `_drop_input`) laisse son compteur dans
+    le total tant qu'il est référencé : c'est voulu, le cumul ne doit pas reculer.
+
+    ⚠ Ce compteur est le SEUL témoin du comblement d'un trou amont : la cadence, l'index et le
+    statut de lecture restent tous parfaits pendant l'épisode."""
+    total, flows = 0, {}
+    for r in list(_live_readers):
+        n = int(getattr(r, "invalid_grains", 0) or 0)
+        if n <= 0:
+            continue
+        total += n
+        nom = str(getattr(r, "name", "?"))
+        flows[nom] = flows.get(nom, 0) + n
+    return {"total": total, "flows": flows}
+
 
 # Décalage TAI↔UTC (secondes) centralisé et fail-fast (cf. risque temporel du plan).
 # mxlGetTime() rend des ns TAI (epoch ST 2059) ; notre media_ts (mtl_rx.c) est déjà TAI →
@@ -1069,8 +1127,20 @@ class Reader(_StaleGuard):
     d'un nom maison, chantier interop). Commodité : si `name` est déjà un UUID littéral,
     il est pris comme flowId direct."""
 
+    # Bouches-trous écartés (cf. MXL_GRAIN_FLAG_INVALID). PUBLIABLE : un consommateur qui expose
+    # des compteurs sur :8080 doit remonter `invalid_grains` — sans quoi le comblement d'un trou
+    # amont reste invisible, l'écart ne se voyant sur AUCUN compteur de cadence.
+    invalid_grains = 0
+    last_invalid_index = None
+    _invalid_log_ns = 0          # les trois en attributs de CLASSE : `_is_filler` doit tenir sur un
+                                 # Reader construit sans __init__ (introspection, bancs hors libmxl)
+
     def __init__(self, instance: Instance, name, options=None, by_id=False):
         _load()
+        self.invalid_grains = 0
+        self.last_invalid_index = None
+        self._invalid_log_ns = 0
+        _live_readers.add(self)          # cf. invalid_grains_report()
         self.inst = instance
         self.name = name
         self.fid = str(name).strip() if (by_id or is_flow_uuid(name)) else flow_id(name)
@@ -1176,7 +1246,23 @@ class Reader(_StaleGuard):
         except Exception:
             return None
 
-    def get_latest(self):
+    def _is_filler(self, index, grain_info):
+        """Comptabilise et JOURNALISE (au plus 1 ligne/s) un bouche-trou ; True s'il faut l'écarter.
+
+        Ne touche pas `_auto_vu` : un writer qui comble des trous est VIVANT, et désarmer la garde
+        de génération ici la rendrait aveugle au décrochage pendant tout un épisode de trous."""
+        if not grain_is_invalid(grain_info):
+            return False
+        self.invalid_grains += 1
+        self.last_invalid_index = int(index)
+        maintenant = time.monotonic_ns()
+        if maintenant - self._invalid_log_ns >= 1_000_000_000:
+            self._invalid_log_ns = maintenant
+            print(f"bobimxl: {self.name!r} grain {int(index)} INVALIDE (bouche-trou amont, "
+                  f"{self.invalid_grains} au total) — écarté", flush=True)
+        return True
+
+    def get_latest(self, accept_invalid=False):
         """NON-BLOQUANT — dernier grain disponible (chemin free-run « au plus tôt »).
         `headIndex` peut désigner le grain EN COURS d'écriture (pas encore commité) → on tente
         head puis head-1. Renvoie (index, grainInfo, vue_numpy) ou None si rien de lisible.
@@ -1197,10 +1283,12 @@ class Reader(_StaleGuard):
                 self._h, cand, ctypes.byref(gi), ctypes.byref(payload))
             if st == MXL_STATUS_OK:
                 self._auto_vu = True
+                if not accept_invalid and self._is_filler(cand, gi):
+                    continue        # bouche-trou : reculer d'une case vaut mieux que servir du périmé
                 return cand, gi, _np_view(payload, gi.grainSize)
         return None
 
-    def get(self, index, timeout_ns=100_000_000):
+    def get(self, index, timeout_ns=100_000_000, accept_invalid=False):
         """BLOQUANT (futex) — attend le grain `index` jusqu'à timeout_ns. Chemin « se caler »
         (genlock), remplace le poll. Renvoie (index, grainInfo, vue_numpy) ou None si timeout.
 
@@ -1214,14 +1302,19 @@ class Reader(_StaleGuard):
         if st != MXL_STATUS_OK:
             return None
         self._auto_vu = True
+        if not accept_invalid and self._is_filler(index, gi):
+            return None
         return index, gi, _np_view(payload, gi.grainSize)
 
-    def get_slice(self, index, min_valid_slices, timeout_ns=100_000_000):
+    def get_slice(self, index, min_valid_slices, timeout_ns=100_000_000, accept_invalid=False):
         """BLOQUANT (futex) — attend que le grain `index` ait AU MOINS `min_valid_slices`
         tranches valides (réveil à CHAQUE commit partiel du writer). Latence sous-trame :
         le consommateur traite la bande k dès qu'elle est publiée, sans attendre la trame.
         Renvoie (index, grainInfo, vue_numpy) — lire grainInfo.validSlices pour savoir
-        combien de tranches sont réellement là — ou None si timeout. Requiert HAS_SLICES."""
+        combien de tranches sont réellement là — ou None si timeout. Requiert HAS_SLICES.
+
+        ⚠ `None` couvre AUSSI le bouche-trou écarté (cf. MXL_GRAIN_FLAG_INVALID) : le grain
+        existait, mais ne porte aucune donnée. Le repli est le même — tenir l'image précédente."""
         gi = mxlGrainInfo()
         payload = _PU8()
         st = _lib.mxlFlowReaderGetGrainSlice(
@@ -1229,9 +1322,11 @@ class Reader(_StaleGuard):
             ctypes.byref(gi), ctypes.byref(payload))
         if st != MXL_STATUS_OK:
             return None
+        if not accept_invalid and self._is_filler(index, gi):
+            return None
         return index, gi, _np_view(payload, gi.grainSize)
 
-    def get_slice_nonblocking(self, index, min_valid_slices):
+    def get_slice_nonblocking(self, index, min_valid_slices, accept_invalid=False):
         """NON-BLOQUANT — le grain `index` s'il a ≥ min_valid_slices tranches valides, sinon
         None (TOO_EARLY compris). Même contrat de retour que get_slice(). Requiert HAS_SLICES."""
         gi = mxlGrainInfo()
@@ -1239,6 +1334,8 @@ class Reader(_StaleGuard):
         st = _lib.mxlFlowReaderGetGrainSliceNonBlocking(
             self._h, index, int(min_valid_slices), ctypes.byref(gi), ctypes.byref(payload))
         if st != MXL_STATUS_OK:
+            return None
+        if not accept_invalid and self._is_filler(index, gi):
             return None
         return index, gi, _np_view(payload, gi.grainSize)
 
@@ -2006,6 +2103,58 @@ def _audio_planes(slc, n_frames):
     return out
 
 
+# ⚠ libmxl 1.1.0 LEAKS A TEMPORARY DIRECTORY each time an AUDIO writer is created on a flow that
+# already exists. `FlowManager::createContinuousFlow` builds the flow in `.mxl-tmp-…` (definition,
+# channel buffers: ~600 KB for 8 channels) and renames it into place; when the flow is already
+# there the rename fails, the existing flow is opened instead — and the temporary directory is
+# only removed on the EXCEPTION path. The discrete (video/data) path removes it in a `defer`,
+# always. Measured on dl360-1 (2026-10-12 → 13): a plugin re-creating its writers once a second
+# filled the 47 GB /dev/shm with 74 388 of them in 21 hours, and every producer of the node then
+# failed with "No space left on device".
+# Hence the sweep below, run only when `created` comes back False — the one path that leaks.
+_TMP_PREFIX = ".mxl-tmp-"
+_TMP_MIN_AGE_OWN_S = 2.0       # ours: published or abandoned long ago — never a creation in flight
+_TMP_MIN_AGE_ANY_S = 600.0     # anyone's: a creation lasts milliseconds, ten minutes is debris
+
+
+def sweep_leaked_flow_tmp(domain, flow_id_str=None, now=None):
+    """Remove the temporary flow directories libmxl left behind in `domain`. Returns the count.
+
+    Two rules, both by AGE so a creation in flight is never touched: a directory carrying
+    `flow_id_str` older than `_TMP_MIN_AGE_OWN_S` (its rename can only fail now — the flow
+    exists), and ANY temporary directory older than `_TMP_MIN_AGE_ANY_S`. Named flow
+    directories are never looked at: only the `.mxl-tmp-` prefix is. Never raises."""
+    now = time.time() if now is None else now
+    removed = 0
+    try:
+        entries = list(os.scandir(domain))
+    except OSError:
+        return 0
+    for e in entries:
+        if not e.name.startswith(_TMP_PREFIX):
+            continue
+        try:
+            if not e.is_dir(follow_symlinks=False):
+                continue
+            age = now - e.stat(follow_symlinks=False).st_mtime
+            if age < _TMP_MIN_AGE_OWN_S:
+                continue
+            if age < _TMP_MIN_AGE_ANY_S:
+                if not flow_id_str:
+                    continue
+                try:
+                    with open(os.path.join(e.path, "flow_def.json")) as f:
+                        if json.load(f).get("id") != flow_id_str:
+                            continue
+                except (OSError, ValueError, AttributeError):
+                    continue
+            shutil.rmtree(e.path)
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
 class AudioWriter:
     """Producteur audio MXL (samples float32 par canal). `write(arr)` où arr = (n_samples, channels)."""
 
@@ -2022,6 +2171,9 @@ class AudioWriter:
             instance._h, self.flow_def.encode(), _flow_options(),
             ctypes.byref(self._h), None, ctypes.byref(created)))
         self.created = bool(created.value)
+        if not self.created:
+            # The flow already existed: libmxl has just left its temporary copy behind.
+            self.leaked_tmp_swept = sweep_leaked_flow_tmp(instance.domain, flow_id(name))
 
 
     def index_time_ns(self, index):

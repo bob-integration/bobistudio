@@ -89,7 +89,18 @@ _SPLIT_GPU = ("script_templates/split_gpu.cu", "script_templates/split_gpu.cu")
 _DECKLINK = [("plugins/decklink_io/decklink_sdk", "plugins/decklink_io/decklink_sdk"),
              ("plugins/decklink_io/anc_rfc8331.h", "plugins/decklink_io/anc_rfc8331.h"),
              ("plugins/decklink_io/decklink_mxl.cpp", "plugins/decklink_io/decklink_mxl.cpp"),
-             ("plugins/decklink_io/decklink_tx.cpp", "plugins/decklink_io/decklink_tx.cpp")]
+             ("plugins/decklink_io/decklink_tx.cpp", "plugins/decklink_io/decklink_tx.cpp"),
+             # La sonde : l'inventaire de la carte se lit depuis le CONTENEUR (seul à avoir
+             # les périphériques montés), jamais depuis le contrôleur.
+             ("plugins/decklink_io/tools/probe/decklink_probe.cpp",
+              "plugins/decklink_io/tools/probe/decklink_probe.cpp"),
+             # Outil de profil : le changement de profil se fait depuis l'interface, donc le
+             # binaire doit être dans l'image — pas seulement sur le poste d'un développeur.
+             ("plugins/decklink_io/tools/profile/decklink_profile.cpp",
+              "plugins/decklink_io/tools/profile/decklink_profile.cpp")]
+# Plugin GStreamer du player natif (Rust) : le dossier de la crate, COPY-é dans l'étage
+# playout-builder de l'image média. Sans cette entrée, le COPY échoue (cf. _NTCOPY).
+_PLAYOUT = ("plugins/_media_runtime/gst-bobimxl", "plugins/_media_runtime/gst-bobimxl")
 _IMAGES = {
     "compute": {"label": "bobi-compute (calcul)", "meta": "plugins/_compute_runtime/meta.json",
                 "prefix": "bobi-compute", "field": "compute_image",
@@ -117,7 +128,26 @@ _IMAGES = {
     "media":   {"label": "bobi-media (média)", "meta": "plugins/_media_runtime/meta.json",
                 "prefix": "bobi-media", "field": "media_image",
                 "stage": [("plugins/_media_runtime/Dockerfile", "Dockerfile"), _AGENT, _BOBIMXL,
-                          _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH, _NTCOPY] + _LICENCES},
+                          _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH, _NTCOPY,
+                          _PLAYOUT] + _LICENCES},
+    # Interfaces NATIVES des plugins LV2 (plugin plugin_gui, 2026-10-18) : fine couche FROM bobi-compute (comme
+    # compute-gpu : base_from réécrit le FROM vers l'image_tag compute courant), Xvfb + x11vnc + suil + Mesa
+    # llvmpipe + bobi_ui_host compilé dans l'étage builder. node_only : construite sur le nœud qui portera le
+    # conteneur (capacité « gui » à déclarer), jamais poussée à la flotte — les autres nœuds n'en paient rien.
+    # Tag commun dans le réglage `gui_image` (pas de colonne nœud).
+    "gui":     {"label": "bobi-gui (interfaces natives LV2, VST3, CLAP)", "meta": "plugins/plugin_gui/image/meta.json",
+                "prefix": "bobi-gui", "field": "gui_image", "setting": "gui_image", "node_only": True,
+                "cap": "gui", "base_from": "compute",
+                # Toute ligne COPY du Dockerfile a son entrée ICI (atom_wire.h manquait depuis la 0.1.1 : la
+                # page Images ne pouvait plus construire bobi-gui ; garde tests/verif_capacite_gui.py).
+                "stage": [("plugins/plugin_gui/image/Dockerfile", "Dockerfile"),
+                          ("plugins/plugin_gui/image/uihost.c", "plugins/plugin_gui/image/uihost.c"),
+                          ("plugins/plugin_gui/image/sandbox.h", "plugins/plugin_gui/image/sandbox.h"),
+                          ("plugins/plugin_gui/image/atom_wire.h", "plugins/plugin_gui/image/atom_wire.h"),
+                          # éditeurs VST3 et CLAP (plugin_gui 0.1.4, image 0.1.3)
+                          ("plugins/plugin_gui/image/native_fmt.h", "plugins/plugin_gui/image/native_fmt.h"),
+                          ("plugins/plugin_gui/image/vst3_gui.h", "plugins/plugin_gui/image/vst3_gui.h"),
+                          ("plugins/plugin_gui/image/clap_gui.h", "plugins/plugin_gui/image/clap_gui.h")]},
     # Passerelle WebRTC (MediaMTX pré-baké). Pas de colonne nœud : le tag est stocké dans le
     # setting `webrtc_image` (commun à tous les nœuds) — cf. _autofill_nodes_image (cas spécial).
     "webrtc":  {"label": "bobi-webrtc (passerelle)", "meta": "plugins/_webrtc_runtime/meta.json",
@@ -186,6 +216,10 @@ _IMAGES = {
                           # existe mais son macro n'est défini nulle part en amont — sans lui le servo
                           # ne fait que sauter la phase à chaque Sync).
                           ("plugins/2110_io/docker/patch_ptp_adjust_freq.py", "patch_ptp_adjust_freq.py"),
+                          # Patch libmtl PHC2SYS SERVO BOUND : borne la demande de fréquence de
+                          # CLOCK_REALTIME à la plage du noyau, anti-windup, re-saut au-delà de 1 ms
+                          # (emballements de dl360-1 du 16 et du 17/10). APRÈS patch_ptp_adjust_freq.
+                          ("plugins/2110_io/docker/patch_phc2sys_servo_bound.py", "patch_phc2sys_servo_bound.py"),
                           # Patch libmtl DEV LINK WAIT : budget dev_detect_link 90s->120s
                           # (MT_DEV_LINK_POLL_COUNT 300->400) pour l'entraînement autoneg+FEC E810 100G DPDK.
                           ("plugins/2110_io/docker/patch_dev_link_wait.py", "patch_dev_link_wait.py"),
@@ -490,6 +524,19 @@ def node_images_state(node):
     return out
 
 
+def record_node_only_tag(which, node_id, tag):
+    """Tag d'une image node_only CONSTRUITE et VÉRIFIÉE présente sur `node_id`. Colonne du nœud (mtl → `image`,
+    compute-gpu → `compute_gpu_image`) ou, pour une image sans colonne (bobi-gui : réglage commun `gui_image`),
+    le réglage. Avant le 2026-10-18 les deux builds node_only appelaient `db_update_node(gui_image=…)`, que
+    `db_update_node` AVALE (colonne hors liste) : build « ok », réglage inchangé, le conteneur partait sur
+    l'ancien tag ou sur aucun."""
+    spec = _IMAGES[which]
+    if spec.get("setting"):
+        _autofill_nodes_image(which, tag)
+    else:
+        db_update_node(node_id, **{spec["field"]: tag})
+
+
 def _autofill_nodes_image(which, tag):
     """Met à jour le tag dans tous les nœuds concernés après un build réussi."""
     # Image sans colonne nœud (ex. webrtc) : stockée dans un setting commun à tous les nœuds.
@@ -594,13 +641,17 @@ def _stage_tar(which):
             _lignes = _f.read().splitlines()
         _absents = []
         for _l in _lignes:
-            _m = re.match(r'^\s*COPY\s+(?!--from)(?:--\S+\s+)*(\S+)\s+\S+\s*$', _l)
-            if not _m:
+            # COPY [--opt…] <src…> <dst> : TOUTES les sources, pas seulement la forme à une source — la
+            # forme multiple (bobi-gui : `COPY uihost.c sandbox.h atom_wire.h /src/`) passait sans contrôle,
+            # et atom_wire.h a manqué au staging sans que rien ne le dise (2026-10-18).
+            _toks = _l.split()
+            if len(_toks) < 3 or _toks[0].upper() != "COPY" or any(t.startswith("--from") for t in _toks):
                 continue
-            _src = _m.group(1).strip('"')
-            if _src not in _fournis and not any(d.startswith(_src.rstrip("/") + "/")
-                                                for d in _fournis):
-                _absents.append(_src)
+            _srcs = [t for t in _toks[1:-1] if not t.startswith("--")]
+            for _src in (s.strip('"') for s in _srcs):
+                if _src not in _fournis and not any(d.startswith(_src.rstrip("/") + "/")
+                                                    for d in _fournis):
+                    _absents.append(_src)
         if _absents:
             raise FileNotFoundError(
                 "Dockerfile de l'image « %s » : %s COPY-é(s) mais absent(s) du contexte de build. "
@@ -910,7 +961,7 @@ def _build_node_only_worker(which):
         _min, _sec = dur // 60, dur % 60
         if ok:
             # Le tag n'est écrit QUE sur ce nœud, et seulement parce que l'image y est présente.
-            db_update_node(nid, **{spec["field"]: tag})
+            record_node_only_tag(which, nid, tag)
             nmsg = "%s buildée sur %s en %dm%02ds" % (tag, nname, _min, _sec)
             db_add_alert("alert.image.build_noeud_ok", "info", node_id=nid, kind="prep",
                          params={"tag": tag, "n": nname, "min": _min, "sec": _sec})

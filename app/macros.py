@@ -38,6 +38,9 @@ Opérande  : {kind:"const", value} | {kind:"var", name}
           | {kind:"state", instance_uuid?/vmid?, state_id}      — catalogue `state` du plugin
           | {kind:"state", instance_uuid?/vmid?, endpoint, path} — état DÉCOUVERT sur
             l'instance (borné aux control.read_endpoints, cf. discover_states)
+Condition « fader start » : {kind:"fader", instance_uuid?/vmid?, target, edge, threshold_db,
+          hysteresis_db, respect_mute, with_vca} — état ouvert/fermé d'un fader de console
+          (services/audio/fader_triggers.py, qui porte aussi le poller rapide des déclencheurs de ce type)
 """
 
 import json
@@ -125,8 +128,10 @@ def _tmpl(value, variables):
                   lambda m: str(variables.get(m.group(1), "")), value)
 
 
-def exec_action(vmid, action_id, params, variables=None):
-    """Exécute UNE action de plugin (aussi utilisée par la shotbox). Lève sur erreur."""
+def exec_action(vmid, action_id, params, variables=None, actor=None):
+    """Exécute UNE action de plugin (aussi utilisée par la shotbox). Lève sur erreur.
+    `actor` : auteur pour le journal d'exploitation (`_run_actor(run)` depuis une macro) ;
+    None = déduit du contexte de requête (clic de shotbox), « automatique » hors requête."""
     c = db_get_container(vmid)
     if not c:
         raise RuntimeError(f"container #{vmid} introuvable")
@@ -141,9 +146,25 @@ def exec_action(vmid, action_id, params, variables=None):
     # mémoire/preset du store ORCHESTRATEUR (control.recall du manifeste).
     if act.get("core") == "recall":
         return _exec_recall(vmid, t, act, params, variables)
+    # `core: "voice_ident"` = announce a strip / bus by voice: synthesis BY THE CONTROLLER, clip pushed,
+    # generator switched to voice (app/voice_ident.py) — works with no console UI open.
+    if act.get("core") == "voice_ident":
+        from . import voice_ident
+        voice_ident.run_macro_action(vmid, plugins.get(t) or {}, act, params, variables)
+        return True
+    # `core: "tool_memory"` = recall a memory of the COMMON tool library on one tool of a console (services/audio/console_tools.py):
+    # the library lives in the orchestrator, the console applies it hot.
+    if act.get("core") == "tool_memory":
+        try:
+            from services.audio import console_tools
+        except ImportError:
+            raise RuntimeError("tool memories need the audio service (services/audio), absent on this instance")
+        return console_tools.run_macro_action(vmid, plugins.get(t) or {}, act, params, variables)
     ip = get_container_ip(vmid)
     if not ip:
         raise RuntimeError(f"IP de #{vmid} introuvable")
+    from . import plugin_zones
+    plugin_zones.macro_guard(plugins.get(t) or {}, act.get("endpoint"))   # structure : jamais par macro
     body = dict(act.get("body") or {})   # champs FIXES portés par l'action (ex. all:true)
     for pdef in (act.get("params") or []):
         k = pdef["key"]
@@ -167,6 +188,14 @@ def exec_action(vmid, action_id, params, variables=None):
                       timeout=STEP_TIMEOUT_S)
     if r.status_code >= 400:
         raise RuntimeError(f"{act['endpoint']} → HTTP {r.status_code}")
+    _persist_after(vmid, t, act['endpoint'], r.status_code)
+    # Journal d'exploitation : après la réponse acceptée, et seulement sur le port de CONTRÔLE (une
+    # action sur un autre port n'est pas un endpoint de `control.endpoints`). Ne lève jamais.
+    if port == int(((plugins.get(t) or {}).get("control") or {}).get("port") or 8082):
+        from . import ops_journal
+        ops_journal.record_post(vmid, plugins.get(t) or {}, act['endpoint'], body, r.status_code, actor=actor)
+        _library_after_post(vmid, plugins.get(t) or {}, act['endpoint'], r.status_code, getattr(r, "text", ""))
+    _voice_follow(vmid, t, act['endpoint'], body, r.status_code)
     return True
 
 
@@ -183,7 +212,8 @@ def _exec_recall(vmid, type_, act, params, variables):
         mem_id = int(float(raw))
     except (TypeError, ValueError):
         raise RuntimeError(f"mémoire invalide : {raw!r}")
-    _rc, presets = recall_presets(vmid, type_)
+    kind = act.get("recall_kind")      # kinded library (app/plugin_library.py): that kind's list only
+    _rc, presets = recall_presets(vmid, type_, kind)
     idx = next((i for i, pr in enumerate(presets) if pr.get("id") == mem_id), None)
     if idx is None:
         raise RuntimeError(f"mémoire #{mem_id} introuvable (supprimée ?)")
@@ -192,10 +222,37 @@ def _exec_recall(vmid, type_, act, params, variables):
                                              variables or {}) or 0)))
     except (TypeError, ValueError):
         duration_ms = 0
-    ok, detail = recall_preset(vmid, type_, idx, duration_ms=duration_ms)
+    extra = _recall_extra(act, key, params, variables) if kind else None
+    ok, detail = recall_preset(vmid, type_, idx, duration_ms=duration_ms, kind=kind, extra=extra)
     if not ok:
         raise RuntimeError(f"rappel en échec : {detail}")
     return True
+
+
+def _recall_extra(act, mem_key, params, variables):
+    """The other params of a kinded recall action (target page, add…), templated and typed like the
+    params of a plain action. An optional param left empty is not sent (the container's default)."""
+    extra = {}
+    for pdef in (act.get("params") or []):
+        k = pdef.get("key")
+        if k in (mem_key, "duration_ms"):
+            continue
+        v = (params or {}).get(k)
+        if v is None or v == "":
+            if "default" in pdef and not pdef.get("optional"):
+                extra[k] = pdef["default"]
+            continue
+        v = _tmpl(v, variables or {})
+        if pdef.get("type") == "bool":
+            v = str(v).strip().lower() in ("1", "true", "on", "oui", "yes")
+        elif pdef.get("type") == "number":
+            try:
+                v = float(v)
+                v = int(v) if v == int(v) else v
+            except (TypeError, ValueError):
+                pass
+        extra[k] = v
+    return extra
 
 
 def _coerce_free(v):
@@ -228,7 +285,7 @@ def exec_config(vmid, params, variables=None, allow_system=False, confirm=False)
     return True
 
 
-def exec_post(vmid, endpoint, params, variables=None):
+def exec_post(vmid, endpoint, params, variables=None, actor=None):
     """« Action avancée » générique : POST sur un endpoint whitelisté du plugin
     (control.endpoints — même bornage que le proxy), params libres clé/valeur.
     La découverte n'ouvre aucune nouvelle surface : endpoint non listé → refus."""
@@ -243,6 +300,8 @@ def exec_post(vmid, endpoint, params, variables=None):
     ep = next((e for e in plugins.control_post_endpoints(m) if e["path"] == endpoint), None)
     if not ep:
         raise RuntimeError(f"{endpoint or '(vide)'} n'est pas whitelisté pour le type {t}")
+    from . import plugin_zones
+    plugin_zones.macro_guard(m, endpoint)                                  # structure : jamais par macro
     ip = get_container_ip(vmid)
     if not ip:
         raise RuntimeError(f"IP de #{vmid} introuvable")
@@ -252,7 +311,52 @@ def exec_post(vmid, endpoint, params, variables=None):
                       json=body, timeout=STEP_TIMEOUT_S)
     if r.status_code >= 400:
         raise RuntimeError(f"{endpoint} → HTTP {r.status_code}")
+    _persist_after(vmid, t, endpoint, r.status_code)
+    from . import ops_journal                           # après la réponse acceptée ; ne lève jamais
+    ops_journal.record_post(vmid, m, endpoint, body, r.status_code, actor=actor)
+    _library_after_post(vmid, m, endpoint, r.status_code, getattr(r, "text", ""))   # counts like one from the desk
+    _voice_follow(vmid, t, endpoint, body, r.status_code)
     return True
+
+
+def _voice_follow(vmid, type_, endpoint, body, status):
+    """Générateur passé en « voix » par une macro de réglage brut : le clip suit (app/voice_ident.follow_set)."""
+    try:
+        from . import voice_ident
+        voice_ident.follow_set(vmid, plugins.get(type_) or {}, endpoint, body, status)
+    except Exception:
+        log.exception("voice follow after %s (#%s)", endpoint, vmid)
+
+
+def _persist_after(vmid, type_, endpoint, status):
+    """Réglage posé par une macro : même persistance déclarative que par le proxy (un réglage
+    de pupitre doit survivre au redémarrage autant qu'un réglage à la souris). Jamais bloquant."""
+    try:
+        from . import plugin_persist
+        plugin_persist.after_post(vmid, plugins.get(type_) or {}, endpoint, status)
+    except Exception:
+        log.exception("persistance après macro (#%s %s)", vmid, endpoint)
+
+
+# ─── Audio service (services/audio): optional, absent on some instances ───────────────────────────
+
+def _fader_triggers():
+    """services.audio.fader_triggers, or None when the audio service is not installed (no fader start)."""
+    try:
+        from services.audio import fader_triggers
+    except ImportError:
+        return None
+    return fader_triggers
+
+
+def _library_after_post(vmid, manifest, endpoint, status, text):
+    """Scene recall / next / prev by macro counted like one from the desk (services.audio.console_library).
+    No-op without the audio service; never raises (after_post itself never does)."""
+    try:
+        from services.audio import console_library
+    except ImportError:
+        return
+    console_library.after_post(vmid, manifest, endpoint, status, text)
 
 
 def exec_service_action(service_id, action_id, params, pid=None, user=None,
@@ -275,43 +379,69 @@ def _walk_path(val, path):
             val = val.get(part)
         elif isinstance(val, list) and part.isdigit() and int(part) < len(val):
             val = val[int(part)]
+        elif isinstance(val, list) and not part.isdigit():
+            # liste d'objets à `id` (document adressé par ID : `strips.s_in1.chain.e_fad1…`)
+            val = next((x for x in val if isinstance(x, dict) and x.get("id") == part), None)
         else:
             return None
     return val
 
 
-def fetch_state(vmid, state_id=None, endpoint=None, path=None):
+def fetch_state(vmid, state_id=None, endpoint=None, path=None, cache=None):
     """Lit UNE valeur d'état (feedback/conditions) :
     - `state_id` → catalogue `state` curaté du plugin (comme avant) ;
     - sinon `endpoint`+`path` → état DÉCOUVERT, borné aux `control.read_endpoints`
-      (même chemin réseau, aucune nouvelle surface)."""
-    c = db_get_container(vmid)
-    if not c:
+      (même chemin réseau, aucune nouvelle surface).
+    `cache` (dict, optional): responses already fetched in the same batch, keyed by
+    (vmid, endpoint) — a failed read is cached too, so a dead container costs one timeout.
+    The container row, its manifest and its IP are cached there too: a panel reads a dozen
+    values of the same container, and each lookup used to hit the database again."""
+    vm = cache.get(("vm", vmid)) if cache is not None else None
+    if vm is None:
+        c = db_get_container(vmid)
+        if not c:
+            vm = (None, None)
+        else:
+            dc = c.get("deploy_config")
+            dc = json.loads(dc) if isinstance(dc, str) else (dc or {})
+            vm = (plugins.get(dc.get("type")) or {}, None)
+        if cache is not None:
+            cache[("vm", vmid)] = vm
+    m = vm[0]
+    if m is None:
         return None
-    dc = c.get("deploy_config")
-    dc = json.loads(dc) if isinstance(dc, str) else (dc or {})
-    t = dc.get("type")
-    m = plugins.get(t) or {}
     if state_id:
         sdef = next((s for s in (m.get("state") or []) if s.get("id") == state_id), None)
         if not sdef:
             return None
     elif endpoint:
         ctrl = m.get("control") or {}
-        if endpoint not in set(ctrl.get("read_endpoints") or []):
+        # liste blanche sur le CHEMIN : la query (`/doc?live=1`) voyage mais n'ouvre rien de plus
+        if str(endpoint).split("?", 1)[0] not in set(ctrl.get("read_endpoints") or []):
             return None
         sdef = {"endpoint": endpoint, "path": path, "port": ctrl.get("port")}
     else:
         return None
-    ip = get_container_ip(vmid)
+    ip = cache.get(("ip", vmid)) if cache is not None else None
+    if ip is None:
+        ip = get_container_ip(vmid)
+        if cache is not None:
+            cache[("ip", vmid)] = ip or ""
     if not ip:
         return None
-    try:
-        r = requests.get(f"http://{ip}:{int(sdef.get('port') or 8082)}"
-                         f"{sdef.get('endpoint') or '/state'}", timeout=1.5)
-        return _walk_path(r.json(), sdef.get("path"))
-    except Exception:
-        return None
+    key = (vmid, sdef.get("endpoint") or "/state")
+    if cache is not None and key in cache:
+        doc = cache[key]
+    else:
+        try:
+            r = requests.get(f"http://{ip}:{int(sdef.get('port') or 8082)}"
+                             f"{sdef.get('endpoint') or '/state'}", timeout=1.5)
+            doc = r.json()
+        except Exception:
+            doc = None
+        if cache is not None:
+            cache[key] = doc
+    return None if doc is None else _walk_path(doc, sdef.get("path"))
 
 
 # ─── Découverte d'états sur l'instance live (8e passe ch.6) ─────────────
@@ -474,6 +604,12 @@ def _declared_bounds(spec):
             "step": spec.get("step", 1 if is_int else 0.01)}
 
 
+def invalidate_param_tree(vmid):
+    """Oublie l'arbre en cache (structure modifiée : les chemins par ID ont changé)."""
+    with _pt_lock:
+        _pt_cache.pop(vmid, None)
+
+
 def param_tree(vmid):
     """Arbre de paramètres résolu de l'instance (structure manifeste × caps live).
     {type, elements:[{id,label,kind,idx,groups:[{label,params:[{key,label,endpoint,
@@ -535,6 +671,15 @@ def param_tree(vmid):
             groups = [g for g in groups if g["params"]]
             elements.append({"id": f"box:{i}", "kind": "box", "idx": i,
                              "label": slot_label.get(i) or f"{label_prefix} {i + 1}", "groups": groups})
+    by_id = spec.get("by_id")
+    if by_id:
+        # Éléments dérivés du DOCUMENT persisté, adressés par ID (stables à l'insertion d'une
+        # tranche) : la source est deploy_config (instance éteinte OK), pas /state.
+        from . import param_tree_id
+        try:
+            elements += param_tree_id.build_elements(by_id, m, p, caps)
+        except Exception:
+            log.exception("param_tree par id (#%s)", vmid)
     gg = [_pt_group(g, caps, g.get("path_prefix") or "", None) for g in (spec.get("global_groups") or [])]
     gg = [g for g in gg if g["params"]]
     if gg:
@@ -553,6 +698,14 @@ def _operand(o, pid, variables):
         return _tmpl(o.get("value"), variables)
     if kind == "var":
         return variables.get(o.get("name"))
+    if kind == "state" and o.get("service"):
+        # État d'un service / fournisseur du cœur (ex. ferme de transcodage), borné au projet.
+        from . import core_plugins
+        try:
+            return core_plugins.read_service_state(o["service"], o.get("state_id"), {"project_id": pid})
+        except Exception as e:
+            log.debug("état %s.%s illisible : %s", o.get("service"), o.get("state_id"), e)
+            return None
     if kind == "state":
         vmid = _resolve_vmid(o)
         # state_id (catalogue curaté) OU endpoint+path (état découvert) — même format.
@@ -562,6 +715,11 @@ def _operand(o, pid, variables):
 
 
 def eval_cond(cond, pid, variables):
+    if (cond or {}).get("kind") == "fader":
+        # Fader start condition (services/audio/fader_triggers.py): instantaneous open state here; the
+        # permanent trigger with hysteresis and edge detection is evaluated by its own poller.
+        fader_triggers = _fader_triggers()
+        return bool(fader_triggers and fader_triggers.is_open_now(cond, _resolve_vmid))
     left = _operand(cond.get("left"), pid, variables)
     right = _operand(cond.get("right"), pid, variables)
     op = cond.get("op") or "=="
@@ -575,6 +733,13 @@ def eval_cond(cond, pid, variables):
         return l < r if op == "<" else l > r
     eq = str(left).strip().lower() == str(right).strip().lower()
     return eq if op == "==" else not eq
+
+
+def _run_actor(run):
+    """Auteur d'une étape pour le journal d'exploitation : la macro (son nom) et qui l'a lancée
+    (`_Run.user` : un login, ou `trigger:<nom>` pour un déclencheur automatique)."""
+    from . import ops_journal
+    return ops_journal.macro_actor(getattr(run, "user", None), getattr(run, "macro_name", None))
 
 
 def _exec_leaf_step(step, pid, run):
@@ -596,7 +761,8 @@ def _exec_leaf_step(step, pid, run):
             vmid = _resolve_vmid(step)
             if not vmid:
                 raise RuntimeError("cible d'action introuvable (container disparu ?)")
-            exec_action(vmid, step.get("action_id"), step.get("params") or {}, variables)
+            exec_action(vmid, step.get("action_id"), step.get("params") or {}, variables,
+                        actor=_run_actor(run))
             run.logline(f"action {step.get('action_id')} → #{vmid}")
     elif t == "config":
         vmid = _resolve_vmid(step)
@@ -610,7 +776,8 @@ def _exec_leaf_step(step, pid, run):
         vmid = _resolve_vmid(step)
         if not vmid:
             raise RuntimeError("cible d'appel introuvable (container disparu ?)")
-        exec_post(vmid, step.get("endpoint"), step.get("params") or {}, variables)
+        exec_post(vmid, step.get("endpoint"), step.get("params") or {}, variables,
+                  actor=_run_actor(run))
         run.logline(f"POST {step.get('endpoint')} → #{vmid}")
     elif t == "sleep":
         ms = max(0, int(step.get("ms") or 0))
@@ -1159,6 +1326,7 @@ def run_macro(mid, user=None, allow_system_config=False, entry_id=None):
         if cur and cur.running:
             return None, "exécution déjà en cours"
         run = _Run(mid, user, allow_system_config=allow_system_config)
+        run.macro_name = m.get("name")                 # auteur du journal d'exploitation
         _runs[mid] = run
 
     def _go():
@@ -1217,6 +1385,8 @@ def _triggers_tick():
     seen = set()
     for tr in db_all_enabled_triggers():
         tid = tr["id"]
+        if (tr.get("condition") or {}).get("kind") == "fader":
+            continue   # fader start: own fast poller (services/audio/fader_triggers.py), not this 1 s one
         seen.add(tid)
         try:
             pid = tr.get("project_id")
@@ -1264,10 +1434,16 @@ def start_triggers():
 
     _trig_thread = threading.Thread(target=_loop, daemon=True, name="triggers-poller")
     _trig_thread.start()
+    fader_triggers = _fader_triggers()
+    if fader_triggers:
+        fader_triggers.start()
 
 
 def stop_triggers():
     global _trig_thread
+    fader_triggers = _fader_triggers()
+    if fader_triggers:
+        fader_triggers.stop()
     _trig_stop.set()
     if _trig_thread:
         _trig_thread.join(timeout=3)

@@ -84,12 +84,13 @@
 {# Barre d'onglets MIROIR de Monitoring : la Sonde n'a plus de lien de premier niveau, elle vit
    dans la famille Monitoring. Les autres onglets renvoient sur /monitoring#<vue> (la page lit
    déjà le hash au chargement). #}
-<div class="mon-tabs" role="tablist">
+<div class="mon-tabs subnav-deck" role="tablist">
     <a class="tab" href="/monitoring#overview" role="tab">{{ _('monitoring.tab_overview') }}</a>
     <a class="tab" href="/monitoring#nodes"    role="tab">{{ _('monitoring.tab_nodes') }}</a>
     <a class="tab" href="/monitoring#fabric"   role="tab">{{ _('monitoring.tab_fabric') }}</a>
     <a class="tab" href="/monitoring#rdma"     role="tab">{{ _('monitoring.tab_rdma') }}</a>
     <a class="tab" href="/monitoring#logs"     role="tab">{{ _('monitoring.tab_logs') }}</a>
+    <a class="tab" href="/ops-journal"         role="tab">{{ _('monitoring.tab_opsj') }}</a>
     <a class="tab active" href="/probe" role="tab" aria-current="page">{{ _('nav.probe') }}</a>
 </div>
 
@@ -153,5 +154,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/subnav_deck.js?v={{ asset_v('subnav_deck.js') }}"></script>
 <script src="/static/probe.js?v={{ asset_v('probe.js') }}"></script>
 {% endblock %}

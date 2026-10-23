@@ -77,6 +77,7 @@
 <div class="pub-hote" id="pub_hote"></div>
 
 <script>window.I18N = {{ js_catalog | tojson }};</script>
+<script src="/static/js/bobi-controls.js?v={{ asset_v('js/bobi-controls.js') }}"></script>
 <script src="/static/js/controls.js?v={{ asset_v('js/controls.js') }}"></script>
 <script src="/static/js/layout_engine.js?v={{ asset_v('js/layout_engine.js') }}"></script>
 <script src="/static/num_stepper.js?v={{ asset_v('num_stepper.js') }}"></script>
@@ -84,6 +85,9 @@
 (function () {
   "use strict";
   var TYPE = {{ type | tojson }}, VMID = {{ vmid | tojson }}, BASE = {{ base | tojson }};
+  // Portée du lien (2026-10-18) : l'onglet qu'il partage et s'il peut le jouer. `{}` pour tout lien
+  // sans portée — la console se monte alors comme avant (toute la page, lecture seule).
+  var SCOPE = {{ (scope or {}) | tojson }};
 
   // Épinglage RETENU PAR NAVIGATEUR : qui veut voir en permanence d'où vient l'image ne doit
   // pas le redemander à chaque ouverture. C'est un confort par poste, pas un réglage du
@@ -114,7 +118,8 @@
       s.onload = function () {
         var P = (window.MXLPlugins || {})[TYPE];
         if (!P || !P.mount) { souci("Plugin " + TYPE + " : pas de console montable."); return; }
-        P.mount(hote.firstElementChild || hote, VMID, { base: BASE });
+        P.mount(hote.firstElementChild || hote, VMID,
+                { base: BASE, tab: SCOPE.tab || null, play: SCOPE.play === true });
       };
       s.onerror = function () { souci("Console du plugin " + TYPE + " illisible."); };
       document.body.appendChild(s);

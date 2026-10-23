@@ -95,6 +95,51 @@ def is_service(service_id) -> bool:
     return _entry(service_id) is not None
 
 
+# ─── Fournisseurs d'actions du CŒUR ──────────────────────────────────────────
+# Une fonction de l'orchestrateur qui n'est ni un plugin (pas de conteneur) ni un service (pas de
+# sous-module) doit pourtant être pilotable par les macros — sinon elle est « morte » pour
+# l'automatisation (cf. CLAUDE.md, « Exposer aux macros »). Elle se déclare ici : son module porte
+# `MACRO_PROVIDER` = {id, label, actions: [...], states: [...]} (même forme d'actions qu'un
+# manifeste de service), `run_action(action_id, params, ctx)`, et au besoin `action_options`,
+# `read_state(state_id, ctx)`, `macro_available()`. Elle apparaît alors dans les catalogues et
+# s'exécute EXACTEMENT comme une action de service : l'éditeur de macros, les shotbox et les
+# scénarios n'ont rien de particulier à savoir. Liste FERMÉE : c'est du code du cœur, pas un
+# point d'extension pour des tiers (eux ont les services).
+#
+# `services.audio.afv` (audio follows video) moved to the audio service on 2026-10-23 but STAYS a provider here:
+# its id `afv` is what the stored macros name, and the service id is `audio`. The service may be absent on an
+# instance: then the provider is simply not offered (no warning).
+CORE_PROVIDERS = ("app.transcode_farm", "app.media_registry", "app.monitor", "app.media_sharing", "services.audio.afv",
+                  "app.ops_journal", "app.playout_groups", "app.sync_groups")
+OPTIONAL_PROVIDERS = ("services.audio.afv",)
+
+
+def _core_entries():
+    out = []
+    for modname in CORE_PROVIDERS:
+        try:
+            mod = importlib.import_module(modname)
+        except ModuleNotFoundError as e:
+            if modname in OPTIONAL_PROVIDERS and (e.name or "").startswith("services.audio"):
+                continue          # audio service not installed on this instance
+            log.warning(f"core_plugins: fournisseur du cœur {modname} : {e}")
+            continue
+        except Exception as e:
+            log.warning(f"core_plugins: fournisseur du cœur {modname} : {e}")
+            continue
+        m = getattr(mod, "MACRO_PROVIDER", None)
+        avail = getattr(mod, "macro_available", None)
+        if not m or (callable(avail) and not avail()):
+            continue
+        out.append({"manifest": m, "module": mod, "dir": None})
+    return out
+
+
+def _action_entry(service_id):
+    """Service OU fournisseur du cœur qui porte `service_id` (même espace de noms)."""
+    return _entry(service_id) or next((e for e in _core_entries() if e["manifest"]["id"] == service_id), None)
+
+
 def service_actions(availability=None, pid=None):
     """Catalogue des ACTIONS DE SERVICES (chantier 6) : les manifestes de services
     déclarent `actions: [{id, label, params, availability: project|system}]`. Les
@@ -105,10 +150,11 @@ def service_actions(availability=None, pid=None):
     `availability="project"` ne renvoie que les actions utilisables par les macros de PROJET."""
     import inspect
     out = []
-    for entry in scan().values():
+    for entry in list(scan().values()) + _core_entries():
         m = entry["manifest"]
         acts = m.get("actions") or []
-        if not acts:
+        states = m.get("states") or []
+        if not acts and not states:
             continue
         hook = getattr(entry["module"], "action_options", None)
         try:
@@ -134,9 +180,9 @@ def service_actions(availability=None, pid=None):
                 params.append(p)
             a["params"] = params
             resolved.append(a)
-        if resolved:
+        if resolved or states:
             out.append({"service": m["id"], "label": m.get("label") or m["id"],
-                        "actions": resolved})
+                        "actions": resolved, "states": states})
     return out
 
 
@@ -144,7 +190,7 @@ def run_service_action(service_id, action_id, params, ctx=None):
     """Exécute une action de service (in-process — les services SONT l'orchestrateur).
     Valide contre le manifeste (id + availability selon ctx.project_id) puis délègue
     au hook `run_action(action_id, params, ctx)` du module. Lève sur erreur."""
-    entry = _entry(service_id)
+    entry = _action_entry(service_id)
     if not entry:
         raise RuntimeError(f"service inconnu : {service_id}")
     act = next((a for a in (entry["manifest"].get("actions") or [])
@@ -158,6 +204,20 @@ def run_service_action(service_id, action_id, params, ctx=None):
     if not callable(fn):
         raise RuntimeError(f"le service {service_id} n'expose pas run_action")
     return fn(action_id, params or {}, ctx)
+
+
+def read_service_state(service_id, state_id, ctx=None):
+    """Valeur d'un ÉTAT de service / fournisseur du cœur, pour une condition de macro ou de
+    déclencheur. Lève si l'état n'est pas déclaré."""
+    entry = _action_entry(service_id)
+    if not entry:
+        raise RuntimeError(f"service inconnu : {service_id}")
+    if not any(st.get("id") == state_id for st in (entry["manifest"].get("states") or [])):
+        raise RuntimeError(f"état « {state_id} » inconnu pour {service_id}")
+    fn = getattr(entry["module"], "read_state", None)
+    if not callable(fn):
+        raise RuntimeError(f"{service_id} n'expose pas read_state")
+    return fn(state_id, ctx or {})
 
 
 def register_all_routes(bp):
@@ -222,6 +282,10 @@ def tab_groups() -> list:
     entries.sort(key=lambda x: (x[0], x[1]))
     for _, name, entry in entries:
         m = entry["manifest"]
+        if not m.get("tab_template"):
+            # No Settings tab of its own (services/audio: its LV2 tab is a fixed tab of the Signal group, and
+            # `nav_tab` only names where the Services list sends « Configure »).
+            continue
         tg = m.get("tab_group")
         if tg:
             if tg not in groups:

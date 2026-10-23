@@ -27,6 +27,7 @@ CONTRÔLEUR (jamais recopiés aveuglément du CSR) : IP de contrôle + URI d'ide
 
 import datetime
 import ipaddress
+import logging
 import os
 import ssl
 import threading
@@ -37,6 +38,8 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from . import config
+
+log = logging.getLogger(__name__)
 
 _CA_CN   = "Bobi.Studio Internal CA"
 _LEAF_DAYS_DEFAULT = 825          # < 825 j : borne CA/Browser, sans objet en interne mais raisonnable
@@ -176,9 +179,9 @@ def _leaf_builder(subject_cn, public_key, ca_cert, sans, days):
 
 # ── API d'émission ────────────────────────────────────────────────────────────
 def sign_csr(csr_pem, *, common_name=None, ip=None, node_id=None, uri=None,
-             days=_LEAF_DAYS_DEFAULT):
+             days=_LEAF_DAYS_DEFAULT, ips_sup=()):
     """Signe un CSR (nœud). La clé publique vient du CSR ; les SAN sont FIXÉS par nous.
-    `common_name` par défaut = CN du CSR. Retourne le cert PEM (bytes)."""
+    `common_name` par défaut = CN du CSR — sauf celui du contrôleur, refusé. → cert PEM (bytes)."""
     csr = x509.load_pem_x509_csr(csr_pem if isinstance(csr_pem, bytes) else csr_pem.encode())
     if not csr.is_signature_valid:
         raise ValueError("signature de CSR invalide")
@@ -187,9 +190,17 @@ def sign_csr(csr_pem, *, common_name=None, ip=None, node_id=None, uri=None,
             common_name = csr.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
         except (IndexError, x509.ExtensionNotFound):
             common_name = f"node-{node_id}" if node_id is not None else "bobi-leaf"
+        # Le CN du contrôleur ne se DEMANDE pas : l'agent par-conteneur (:8081) et le repli des
+        # agents-nœuds d'avant le marqueur le prennent pour une identité. Le seul chemin légitime
+        # qui l'émet le fixe lui-même (`signer_controleur`, `common_name` explicite).
+        if str(common_name).strip().lower() == "bobi-controller":
+            raise ValueError("CSR refusé : CN « bobi-controller » réservé au contrôleur")
     with _lock:
         ca_cert, ca_key = _load_ca()
         sans = _san_list(ip=ip, node_id=node_id, uri=uri)
+        for x in (_ip_san(i) for i in (ips_sup or ()) if i):
+            if x is not None and x not in sans:
+                sans.append(x)
         cert = _sign(_leaf_builder(common_name, csr.public_key(), ca_cert, sans, days), ca_key)
     return cert.public_bytes(serialization.Encoding.PEM)
 
@@ -203,6 +214,119 @@ def generate_leaf(common_name, *, ip=None, node_id=None, uri=None, days=_LEAF_DA
         sans = _san_list(ip=ip, node_id=node_id, uri=uri)
         cert = _sign(_leaf_builder(common_name, key.public_key(), ca_cert, sans, days), ca_key)
     return cert.public_bytes(serialization.Encoding.PEM), _pem_private(key)
+
+
+# ── Identité de CONTRÔLEUR ────────────────────────────────────────────────────
+# Une même CA signe TROIS sortes de certificats : contrôleurs, nœuds (`bobi://node/<id>`) et
+# conteneurs (`bobi://container/<vmid>`) — et les conteneurs exécutent du code de plugin TIERS.
+# « Signé par notre CA » ne dit donc PAS « c'est un contrôleur ». Le CN non plus : `sign_csr` reprend
+# celui du CSR, un nœud peut demander `bobi-controller` et l'obtenir. Ce qui distingue un
+# contrôleur, c'est une URI de SAN que SEUL le code du contrôleur émet — les trois chemins
+# d'émission fixent eux-mêmes leur URI, aucun ne la prend d'un client (relevé le 2026-10-10).
+# C'est sur ce marqueur que la réplication HA décide d'accepter un pair : sans lui, n'importe quel
+# conteneur compromis pourrait pousser une base au standby.
+MARQUEUR_CONTROLEUR = "bobi://controller/"
+
+
+def uris_san(cert):
+    """Les URI du SAN d'un certificat (objet x509 ou PEM)."""
+    if isinstance(cert, (bytes, str)):
+        cert = x509.load_pem_x509_certificate(cert if isinstance(cert, bytes) else cert.encode())
+    try:
+        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    except x509.ExtensionNotFound:
+        return []
+    return [str(u) for u in san.get_values_for_type(x509.UniformResourceIdentifier)]
+
+
+def est_controleur(cert):
+    return any(u.startswith(MARQUEUR_CONTROLEUR) for u in uris_san(cert))
+
+
+def _ecrire_atomique(path, data, mode):
+    """Comme `_write`, mais sans fenêtre où le fichier est tronqué : on écrit à côté puis on
+    remplace. Pour une clé privée, une coupure au mauvais moment ne doit pas laisser un demi-PEM."""
+    tmp = path + ".tmp"
+    _write(tmp, data, mode)
+    os.replace(tmp, path)
+
+
+def _ip_san(valeur):
+    """`x509.IPAddress` d'une IP (un masque CIDR est ignoré), ou None si ce n'est pas une IP."""
+    try:
+        return x509.IPAddress(ipaddress.ip_address(str(valeur).split("/")[0].strip()))
+    except ValueError:
+        return None
+
+
+def fin_validite(cert):
+    """Date d'expiration (datetime UTC) d'un certificat PEM (bytes/str) ou déjà chargé."""
+    if isinstance(cert, str):
+        cert = cert.encode()
+    if isinstance(cert, bytes):
+        cert = x509.load_pem_x509_certificate(cert)
+    return cert.not_valid_after_utc
+
+
+def assurer_certificat_controleur(ips=(), ident=None, renouveler=False):
+    """Ré-émet le certificat de CE contrôleur s'il lui manque le marqueur OU l'une des `ips`
+    (l'IP virtuelle HA, cf. app/vip.py:synchroniser_certificat). → True si ré-émis.
+
+    Même clé, mêmes SAN, plus ce qui manque : rien ne change pour les nœuds, qui vérifient la
+    chaîne et le rôle, jamais l'adresse. AJOUT SEULEMENT — une IP virtuelle abandonnée reste dans
+    le certificat : elle n'ouvre rien (il faudrait aussi notre clé), et la retirer exigerait de
+    savoir laquelle des IP était virtuelle. Durée de vie conservée. L'ancien certificat est gardé
+    (`.avant-marqueur` à la première pose du marqueur, `.precedent` ensuite).
+
+    `renouveler=True` : ré-émet en tout cas, avec une durée de vie NEUVE (`_LEAF_DAYS_DEFAULT`)
+    — c'est le renouvellement avant expiration (cf. app/cert_expiry.py). Même clé : les agents
+    ne voient qu'une nouvelle échéance."""
+    p = paths()
+    voulues = [x for x in (_ip_san(i) for i in (ips or ()) if i) if x is not None]
+    with _lock:
+        with open(p["ctrl_cert"], "rb") as f:
+            ancien = x509.load_pem_x509_certificate(f.read())
+        try:
+            sans = list(ancien.extensions.get_extension_for_class(
+                x509.SubjectAlternativeName).value)
+        except x509.ExtensionNotFound:
+            sans = []
+        marque = est_controleur(ancien)
+        manquantes = [v for v in voulues if v not in sans]
+        if marque and not manquantes and not renouveler:
+            return False
+        with open(p["ctrl_key"], "rb") as f:
+            cle = serialization.load_pem_private_key(f.read(), password=None)
+        ca_cert, ca_key = _load_ca()
+        if not marque:
+            ip = next((str(x.value) for x in sans if isinstance(x, x509.IPAddress)), None)
+            sans.append(x509.UniformResourceIdentifier(
+                MARQUEUR_CONTROLEUR + (ident or ip or "local")))
+        sans.extend(manquantes)
+        jours = _LEAF_DAYS_DEFAULT if renouveler else max(1, (
+            ancien.not_valid_after_utc - datetime.datetime.now(datetime.timezone.utc)).days)
+        neuf = _sign(_leaf_builder("bobi-controller", cle.public_key(), ca_cert, sans, jours), ca_key)
+        _write(p["ctrl_cert"] + (".precedent" if marque else ".avant-marqueur"),
+               ancien.public_bytes(serialization.Encoding.PEM), 0o644)
+        _ecrire_atomique(p["ctrl_cert"], neuf.public_bytes(serialization.Encoding.PEM), 0o644)
+    log.info("certificat du contrôleur ré-émis%s%s%s",
+             " (RENOUVELÉ, %d jours)" % jours if renouveler else "",
+             "" if marque else " avec le marqueur " + MARQUEUR_CONTROLEUR,
+             (" ; IP ajoutée(s) : " + ", ".join(str(m.value) for m in manquantes))
+             if manquantes else "")
+    return True
+
+
+def assurer_marqueur_controleur(ident=None):
+    """Pose le marqueur seul (cf. assurer_certificat_controleur). → True si ré-émis."""
+    return assurer_certificat_controleur(ident=ident)
+
+
+def signer_controleur(csr_pem, ip, ips_sup=()):
+    """Certificat d'un AUTRE contrôleur (le standby, à l'appairage). CN et marqueur fixés ici,
+    jamais pris du CSR. `ips_sup` : l'IP virtuelle, qu'il portera s'il est promu."""
+    return sign_csr(csr_pem, common_name="bobi-controller", ip=ip, ips_sup=ips_sup,
+                    uri=MARQUEUR_CONTROLEUR + (ip or "pair"))
 
 
 # ── Contextes SSL (côté contrôleur) ───────────────────────────────────────────
@@ -275,6 +399,10 @@ def create_ca_material(controller_sans=None, *, overwrite=False, days_ca=3650,
             sans.append(x509.IPAddress(ipaddress.ip_address(str(s))))
         except ValueError:
             sans.append(x509.DNSName(str(s)))
+    # Le marqueur dès la naissance : sans lui, ce contrôleur ne pourrait pas servir de pair HA
+    # (cf. MARQUEUR_CONTROLEUR) avant d'avoir été ré-émis par `assurer_marqueur_controleur`.
+    sans.append(x509.UniformResourceIdentifier(
+        MARQUEUR_CONTROLEUR + (str(controller_sans[0]) if controller_sans else "local")))
     ctrl_key = ec.generate_private_key(ec.SECP256R1())
     ctrl_cert = _sign(_leaf_builder("bobi-controller", ctrl_key.public_key(), ca_cert,
                                     sans, days_controller), ca_key)

@@ -92,6 +92,24 @@
     --topo-flow-data:         #9d6ad2;   /* violet */
     --topo-flow-data-active:  #a854ff;
 
+    /* Couleurs d'IDENTIFICATION (2026-10-17) — tranches et bus de la console audio (champ `color`,
+       palette FERMÉE de noms : plugins/audio_console/src/console_model.py:COLORS). Même règle que
+       les essences : « la tranche rouge » se dit au téléphone et sur l'intercom, elle doit désigner
+       la même tranche sur l'écran de l'autre, quel que soit son thème. Donc définies ICI, une fois,
+       et surchargées par AUCUN thème (garde : tests/verif_console_memoires.py).
+       Choisies par mesure : luminance relative ≈ 0,20, soit un contraste ≥ 3:1 sur les trois fonds
+       (#14161a, #18181b, #f6f7f9) — mesuré ≥ 3,65. Le jaune paie la contrainte (ocre) : un jaune vif
+       disparaît sur le thème clair. Toujours accompagnées du NOM de la tranche : jamais la couleur seule. */
+    --ident-red:    #e04141;
+    --ident-orange: #bd641f;
+    --ident-yellow: #8f7b17;
+    --ident-green:  #178f17;
+    --ident-cyan:   #188895;
+    --ident-blue:   #377ade;
+    --ident-violet: #9e59e4;
+    --ident-pink:   #dd309e;
+    --ident-gray:   #7d8189;
+
     /* Surface de prévisualisation canvas (multiview, mini-previews).
        Override par thème pour rester lisible en Daylight / Studio. */
     --canvas-bg: #0d1117;
@@ -149,6 +167,10 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { min-height: 100%; }
+/* iPad/Safari dessine ⏮ ⏸ ⏭ ▶ ⚠ ⚙… en emoji couleur (carrés bleus) quand rien ne demande la forme
+   texte : on la demande partout. Les emoji sans forme texte (📺, ✅) restent en couleur. Repli pour un
+   Safari antérieur à 17.5 : U+FE0E derrière le symbole (cf. transport du player). */
+html { font-variant-emoji: text; }
 body {
     min-height: 100vh;
     display: flex;
@@ -5444,3 +5466,36 @@ th.mxl-sortable.sort-desc .mxl-sort-icon { opacity: 1; color: var(--accent); }
     margin-top: var(--space-5); padding-top: var(--space-4);
     border-top: 1px solid var(--border);
 }
+
+/* ---- Bande de sous-menu, collée sous la barre du haut ----------------------------------------
+   Les onglets d'une page (rubriques de plugins, Containers, Monitoring, Sonde) forment une seconde
+   bande collée sous la barre du haut, dont ils sont le sous-menu ; un chevron (static/subnav_deck.js)
+   la relie à l'entrée allumée. Sur ces pages seulement, la barre perd ses coins du bas et son ombre
+   tant qu'elle est DÉPLOYÉE ; condensée (page défilée, la bande — non collante — est passée sous
+   elle), elle retrouve son dessin. Sa marge reste à 0 dans les deux états : la faire varier avec
+   `condensed` changerait la hauteur au-dessus du contenu et relancerait la boucle d'ancrage de
+   défilement décrite dans layout.html.
+   ⚠ La bande doit être le PREMIER élément du contenu de page (sinon elle n'est pas collée), et
+   n'impose aucune largeur minimale : plus large que la barre, elle ferait déborder la page sur
+   iPad (viewport calculé par layout.html). Placée APRÈS `.tabs` et `.mon-tabs` : à spécificité
+   égale, elle doit gagner. */
+body:has(.subnav-deck) .topnav { margin-bottom: 0; }
+body:has(.subnav-deck) .topnav:not(.condensed) {
+    border-bottom-left-radius: 0; border-bottom-right-radius: 0; box-shadow: none; }
+.subnav-deck { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0;
+    margin: 0 0 var(--space-4); padding: 4px 10px;
+    background: var(--bg); border: 1px solid var(--border); border-top: 0;
+    border-radius: 0 0 var(--radius) var(--radius); }
+.subnav-deck > .tab { min-height: 44px; display: inline-flex; align-items: center; position: relative;
+    padding: 0 14px; border: 0; background: transparent; border-radius: var(--radius-small);
+    color: var(--text-muted); text-decoration: none; }
+.subnav-deck > .tab:hover { background: var(--bg-hover); color: var(--text); text-decoration: none; }
+/* Onglet-LIEN (« Sonde 2110 », barre de /probe) : `.mon-tabs a.tab` lui impose inline-block, plus
+   spécifique que `.subnav-deck > .tab` — son texte remontait en haut de la cible de 44 px. */
+.subnav-deck > a.tab { display: inline-flex; }
+.subnav-deck > .tab.active { background: transparent; color: var(--text-strong, var(--text)); font-weight: 600; }
+.subnav-deck > .tab.active::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 5px;
+    height: 2px; border-radius: 2px; background: var(--accent); }
+.subnav-deck-notch { position: absolute; top: 0; width: 0; height: 0; transform: translateX(-50%);
+    border: 6px solid transparent; border-top-color: var(--border); pointer-events: none; }
+.subnav-deck-notch[hidden] { display: none; }

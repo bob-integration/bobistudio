@@ -33,16 +33,20 @@ warn(){ echo "  ${c_y}!${c_0} $*"; }; die(){ echo "  ${c_r}✗${c_0} $*" >&2; ex
 TAG="${1:-}"; shift || true
 BROUILLON=0
 AVEC_PRIVES=0
+DEFINITIVE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --brouillon|--draft) BROUILLON=1; shift;;
     # Confirme d'avance qu'on publie des modules non encore publics (cf. l'alerte
     # plus bas). Nécessaire hors terminal ; en interactif, la question est posée.
     --avec-modules-prives) AVEC_PRIVES=1; shift;;
+    # Sort de la bêta pour CETTE release : étiquette ordinaire et titre sans « — bêta »,
+    # même sur un majeur 0. À n'utiliser que délibérément.
+    --definitive) DEFINITIVE=1; shift;;
     *) die "option inconnue : $1";;
   esac
 done
-[ -n "$TAG" ] || die "usage : tools/publier_release.sh <tag> [--brouillon]   (ex. v1.4.0)"
+[ -n "$TAG" ] || die "usage : tools/publier_release.sh <tag> [--brouillon] [--definitive]   (ex. v1.4.0)"
 
 command -v gh >/dev/null 2>&1 || die "gh est requis (https://cli.github.com), puis « gh auth login »."
 gh auth status >/dev/null 2>&1 || die "gh n'est pas authentifié — lancer « gh auth login »."
@@ -70,11 +74,20 @@ z = zipfile.ZipFile(sys.argv[1]); noms = z.namelist()
 manque = [f for f in ("main.py", "install/install.py", "install/install_proxmox.py") if f not in noms]
 if manque:
     sys.exit("fichiers absents du paquet : " + ", ".join(manque))
-plugins = {n.split("/")[1] for n in noms if n.startswith("plugins/") and n.count("/") > 1}
-vides = [p for p in plugins if not any(n.startswith(f"plugins/{p}/") and not n.endswith("/") for n in noms)]
-if vides:
-    sys.exit("sous-modules VIDES dans le paquet : " + ", ".join(sorted(vides)))
-print("  -> %d plugin(s) peuplé(s), installeur embarqué" % len(plugins))
+# ⚠ LES DEUX FAMILLES. Ce contrôle ne regardait que `plugins/` — or `services/nmos` est le
+# sous-module dont l'absence est FATALE : `main.py` fait `from services import nmos` sans
+# garde et meurt sur un ImportError avant d'afficher une page. Un paquet avec un nmos vide
+# passait donc la garde chargée précisément d'empêcher ça. Signalé le 2026-10-23.
+peuples = {}
+for prefixe in ("plugins", "services"):
+    mods = {n.split("/")[1] for n in noms if n.startswith(prefixe + "/") and n.count("/") > 1}
+    vides = [m for m in mods
+             if not any(n.startswith(f"{prefixe}/{m}/") and not n.endswith("/") for n in noms)]
+    if vides:
+        sys.exit(f"sous-modules VIDES dans le paquet ({prefixe}/) : " + ", ".join(sorted(vides)))
+    peuples[prefixe] = len(mods)
+print("  -> %d plugin(s) et %d service(s) peuplé(s), installeur embarqué"
+      % (peuples["plugins"], peuples["services"]))
 PY
 
 # ─── Alerte : modules non publiés dans une release PUBLIQUE ──────────────────
@@ -200,8 +213,25 @@ PYEOF
 # chaque sous-module à la version épinglée, avec `curl` seul. La confusion a été signalée par un
 # lecteur de la 0.9.7 ; elle vient de deux vraies qui se lisaient comme une fausse.
 # On énonce donc d'abord le chemin NORMAL, puis à quoi sert le zip, puis l'avertissement.
+# ★ TANT QUE LE MAJEUR EST 0, C'EST UNE PRÉ-VERSION, ET LE TITRE LE DIT.
+# Les huit premières releases (0.9.1 à 0.9.8) portaient « — bêta » et l'étiquette
+# Pre-release — posées À LA MAIN dans l'interface GitHub, ce script ne les reproduisait pas.
+# La 0.9.9 est donc sortie en « Latest », et ce n'est pas un détail d'affichage :
+# `catalogue._derniere_release()` et la mise à jour depuis GitHub interrogent
+# `releases/latest`, qui EXCLUT les pré-versions. Une release mal étiquetée change le
+# comportement du produit déjà installé — elle se propose en mise à jour.
+# Constaté le 2026-10-23. Garde : tests/verif_publier_release_prerelease.py.
+TITRE="Bobi.Studio ${TAG#v}"
+PRE=1
+case "${TAG#v}" in
+  0.*) ;;                       # majeur 0 → bêta, c'est la décision prise en septembre
+  *)   PRE=0;;                  # 1.0.0 et au-delà → release ordinaire
+esac
+[ "$DEFINITIVE" = 1 ] && PRE=0
+[ "$PRE" = 1 ] && TITRE="$TITRE — bêta"
+
 _args=(release create "$TAG" "$ZIP" dist/SHA256SUMS
-       --title "Bobi.Studio $TAG"
+       --title "$TITRE"
        --notes "$NOTES_CORPS
 
 ---
@@ -230,6 +260,7 @@ Les deux archives *Source code* générées automatiquement ci-dessous ne contie
 contenu des sous-modules** : \`plugins/\` et \`services/\` y sont vides, et une installation
 faite à partir d'elles ne démarre pas. Prenez \`get.sh\` ou \`bobistudio.zip\`.")
 if [ "$BROUILLON" = 1 ]; then _args+=(--draft); fi   # (pas de « && » : faux ⇒ rc=1 ⇒ set -e sortirait)
+if [ "$PRE" = 1 ]; then _args+=(--prerelease); fi
 
 log "publication de la release $TAG…"
 gh "${_args[@]}"

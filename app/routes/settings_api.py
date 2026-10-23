@@ -40,6 +40,38 @@ def api_get_settings():
 def api_set_settings():
     from .. import settings as st
     data = request.json or {}
+    # `update_bulk` n'a pas de notion de valeurs permises : une faute de frappe dans le mode web
+    # s'enregistrerait, et le démarrage suivant retomberait sur `http` en silence. On refuse
+    # donc ICI, à la saisie, là où l'exploitant peut encore lire l'erreur.
+    if "web_mode" in data:
+        from .. import web_mode
+        try:
+            data["web_mode"] = web_mode.valider(data["web_mode"])
+        except ValueError as e:
+            return jsonify({"error": str(e), "key": "web_mode"}), 400
+    if "web_tls_port" in data:
+        # 5000 et 8000 sont déjà pris par l'orchestrateur lui-même (écoute HTTP, PXE) : les
+        # accepter ferait échouer l'écoute HTTPS au prochain démarrage, donc un repli en clair.
+        from .. import pxe, web_mode
+        try:
+            port = int(data["web_tls_port"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "web_tls_port doit être un entier", "key": "web_tls_port"}), 400
+        if not 0 < port < 65536 or port in (web_mode.PORT_HTTP, pxe.PXE_HTTP_PORT):
+            return jsonify({"error": "web_tls_port invalide ou déjà pris par l'orchestrateur "
+                                     "(%d)" % port, "key": "web_tls_port"}), 400
+        data["web_tls_port"] = port
+    if "ha_tls_port" in data:
+        from .. import pxe, web_mode
+        try:
+            port = int(data["ha_tls_port"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "ha_tls_port doit être un entier", "key": "ha_tls_port"}), 400
+        pris = (web_mode.PORT_HTTP, pxe.PXE_HTTP_PORT, web_mode.port_https())
+        if not 0 < port < 65536 or port in pris:
+            return jsonify({"error": "ha_tls_port invalide ou déjà pris par l'orchestrateur "
+                                     "(%d)" % port, "key": "ha_tls_port"}), 400
+        data["ha_tls_port"] = port
     n, ignored = st.update_bulk(data)
     # Rotation du journal : APPLIQUÉE À CHAUD. Elle ne l'était qu'au (re)démarrage — donc un
     # opérateur qui voit son journal grossir pouvait poser le bon réglage, lire « enregistré »,
@@ -53,6 +85,18 @@ def api_set_settings():
     # `ignored` = clés absentes de settings.DEFAULTS. Avant, elles étaient jetées en silence et la
     # route répondait ok : un champ d'UI oublié dans DEFAULTS semblait s'enregistrer sans effet.
     return jsonify({"status": "ok", "updated": n, "ignored": ignored})
+
+
+@bp.route("/api/web-mode", methods=["GET"])
+@require_perm("settings.edit")
+def api_web_mode():
+    """Le mode web ACTIF (figé au démarrage) et le mode ENREGISTRÉ, et s'ils diffèrent.
+
+    L'interface en a besoin pour ne pas afficher « enregistré » sur un réglage qui ne prendra
+    effet qu'au prochain redémarrage — c'est l'écart entre l'intention et l'état qu'il faut
+    montrer, pas l'intention seule."""
+    from .. import web_mode
+    return jsonify(web_mode.etat())
 
 
 @bp.route("/api/settings/schema", methods=["GET"])

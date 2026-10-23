@@ -1,0 +1,322 @@
+{# SPDX-License-Identifier: GPL-3.0-or-later
+   Réglages → Médias → Base des médias : analyse des volumes, intégrité, champs personnalisés,
+   sauvegarde / export / import. Cf. app/media_registry.py et docs/chantiers/MEDIAS_REGISTRE.md. #}
+<div id="set-tab-media_registry" class="set-tab-content" style="display:none">
+  <h2>{{ _('settings.mreg.title') }}</h2>
+  <p class="meta mreg-lead">{{ _('settings.mreg.lead') }}</p>
+
+  <section class="mreg-block">
+    <div class="mreg-head">
+      <h3>{{ _('settings.mreg.integrity') }}</h3>
+      <span class="mreg-job" id="mreg-job"></span>
+      <button type="button" class="btn" id="mreg-scan">{{ _('settings.mreg.scan') }}</button>
+    </div>
+    <div class="mreg-counts" id="mreg-counts"></div>
+    <div id="mreg-report"></div>
+  </section>
+
+  <section class="mreg-block">
+    <div class="mreg-head"><h3>{{ _('settings.mreg.fields') }}</h3></div>
+    <p class="meta">{{ _('settings.mreg.fields_lead') }}</p>
+    <table class="mreg-table" id="mreg-fields"><thead><tr>
+      <th>{{ _('settings.mreg.f_label') }}</th><th>{{ _('settings.mreg.f_key') }}</th>
+      <th>{{ _('settings.mreg.f_type') }}</th><th>{{ _('settings.mreg.f_options') }}</th><th></th></tr></thead><tbody></tbody></table>
+    <form class="mreg-field-form" id="mreg-field-form">
+      <input id="mreg-f-label" placeholder="{{ _('settings.mreg.f_label') }}" required>
+      <input id="mreg-f-key" placeholder="{{ _('settings.mreg.f_key_ph') }}" pattern="[a-z][a-z0-9_]{0,39}" required>
+      <select id="mreg-f-type">
+        <option value="text">{{ _('settings.mreg.t_text') }}</option>
+        <option value="longtext">{{ _('settings.mreg.t_longtext') }}</option>
+        <option value="number">{{ _('settings.mreg.t_number') }}</option>
+        <option value="date">{{ _('settings.mreg.t_date') }}</option>
+        <option value="enum">{{ _('settings.mreg.t_enum') }}</option>
+        <option value="bool">{{ _('settings.mreg.t_bool') }}</option>
+      </select>
+      <input id="mreg-f-options" placeholder="{{ _('settings.mreg.f_options_ph') }}" hidden>
+      <button type="submit" class="btn btn-blue">{{ _('settings.mreg.f_add') }}</button>
+    </form>
+  </section>
+
+  <section class="mreg-block">
+    <div class="mreg-head"><h3>{{ _('settings.mreg.copy') }}</h3></div>
+    <p class="meta">{{ _('settings.mreg.copy_lead') }}</p>
+    <form class="mreg-row" id="mreg-rate-form">
+      <label for="mreg-rate">{{ _('settings.mreg.copy_rate') }}</label>
+      <input id="mreg-rate" type="number" min="0" max="10000" step="10" style="width:110px"> <span class="meta">Mo/s</span>
+      <button type="submit" class="btn">{{ _('settings.mreg.save') }}</button>
+    </form>
+    <table class="mreg-table" id="mreg-transport" style="margin-top:10px"><tbody></tbody></table>
+  </section>
+
+  <section class="mreg-block">
+    <div class="mreg-head"><h3>{{ _('mediareg.px_title') }}</h3></div>
+    <p class="meta">{{ _('mediareg.px_lead') }}</p>
+    <label class="mreg-row"><input type="checkbox" id="mreg-px-auto"> {{ _('mediareg.px_auto') }}</label>
+    <table class="mreg-table" id="mreg-px-jobs" style="margin-top:10px"><tbody></tbody></table>
+    {# Planches d'images (app/media_storyboard.py) : faites par le transcoder avec le proxy ; rattrapage des proxys d'avant. #}
+    <p class="meta" style="margin-top:12px">{{ _('settings.mreg.sb_lead') }}</p>
+    <div class="mreg-row">
+      <span id="mreg-sb-status" class="meta"></span>
+      <button type="button" class="btn" id="mreg-sb-make">{{ _('settings.mreg.sb_make') }}</button>
+    </div>
+  </section>
+
+  <section class="mreg-block">
+    <div class="mreg-head"><h3>{{ _('settings.mreg.edit_title') }}</h3></div>
+    <p class="meta">{{ _('settings.mreg.edit_lead') }}</p>
+    <label class="mreg-row"><input type="radio" name="mreg-edit-out" value="asset"> <span><b>{{ _('settings.mreg.edit_asset') }}</b><br><span class="meta">{{ _('settings.mreg.edit_asset_help') }}</span></span></label>
+    <label class="mreg-row"><input type="radio" name="mreg-edit-out" value="version"> <span><b>{{ _('settings.mreg.edit_version') }}</b><br><span class="meta">{{ _('settings.mreg.edit_version_help') }}</span></span></label>
+  </section>
+
+  <section class="mreg-block">
+    <div class="mreg-head"><h3>{{ _('settings.mreg.up_title') }}</h3></div>
+    <p class="meta">{{ _('settings.mreg.up_lead') }}</p>
+    <form class="mreg-row" id="mreg-up-form">
+      <label for="mreg-up-max">{{ _('settings.mreg.up_max') }}</label>
+      <input id="mreg-up-max" type="number" min="0.01" max="100000" step="1" style="width:110px"> <span class="meta">{{ _('settings.mreg.up_gb') }}</span>
+      <button type="submit" class="btn">{{ _('settings.mreg.save') }}</button>
+    </form>
+  </section>
+
+  <section class="mreg-block">
+    <div class="mreg-head"><h3>{{ _('settings.mreg.backup') }}</h3></div>
+    <p class="meta">{{ _('settings.mreg.backup_lead') }}</p>
+    <div class="mreg-row">
+      <button type="button" class="btn" id="mreg-backup">{{ _('settings.mreg.backup_now') }}</button>
+      <a class="btn" href="/api/media/export">{{ _('settings.mreg.export') }}</a>
+      <label class="btn mreg-file">{{ _('settings.mreg.import') }}<input type="file" id="mreg-import-file" accept=".gz,.tgz,application/gzip" hidden></label>
+      <select id="mreg-import-mode">
+        <option value="merge">{{ _('settings.mreg.mode_merge') }}</option>
+        <option value="replace">{{ _('settings.mreg.mode_replace') }}</option>
+      </select>
+    </div>
+    <ul class="mreg-backups" id="mreg-backups"></ul>
+  </section>
+</div>
+
+<style>
+.mreg-lead { max-width:75ch; }
+.mreg-block { border:1px solid var(--border-soft); border-radius:8px; padding:14px 16px; margin:14px 0; background:var(--bg-elev); }
+.mreg-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+.mreg-head h3 { margin:0; font-size:1em; }
+.mreg-head .btn { margin-left:auto; }
+.mreg-job { font-size:0.82em; color:var(--text-muted); }
+.mreg-counts { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.mreg-chip { font-size:0.82em; padding:3px 10px; border-radius:999px; background:var(--bg-hover); color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.mreg-chip.bad { background:var(--status-stopped-bg); color:var(--status-stopped-fg); }
+.mreg-chip.warn { background:var(--status-warning-bg); color:var(--status-warning-fg); }
+.mreg-chip.ok { background:var(--status-running-bg); color:var(--status-running-fg); }
+.mreg-sec { margin-top:12px; }
+.mreg-sec > summary { cursor:pointer; font-weight:600; font-size:0.9em; padding:4px 0; }
+.mreg-sec-acts { display:flex; gap:6px; margin:6px 0; flex-wrap:wrap; }
+.mreg-table { width:100%; border-collapse:collapse; font-size:0.84em; }
+.mreg-table th { text-align:left; color:var(--text-muted); font-weight:500; padding:5px 8px; border-bottom:1px solid var(--border-soft); }
+.mreg-table td { padding:5px 8px; border-bottom:1px solid var(--border-soft); vertical-align:middle; }
+.mreg-table td.mono { font-family:var(--font-mono); font-size:0.92em; overflow-wrap:anywhere; }
+.mreg-table .btn { font-size:0.85em; padding:2px 8px; min-height:0; }
+.mreg-scroll { max-height:360px; overflow:auto; }
+.mreg-field-form, .mreg-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+.mreg-field-form input, .mreg-field-form select, .mreg-row select { background:var(--bg-input); color:var(--text); border:1px solid var(--border-soft); border-radius:4px; padding:6px 9px; }
+.mreg-backups { margin:10px 0 0; padding-left:18px; font-size:0.84em; color:var(--text-muted); font-family:var(--font-mono); }
+.mreg-file { cursor:pointer; }
+</style>
+
+<script>
+(function(){
+  const T = (k, d) => (window.t ? window.t(k) : d) || d;
+  const $ = id => document.getElementById(id);
+  // Onglet absent de la page (droit « gestion des médias » manquant, ou page rendue à part) : ne
+  // rien brancher — une exception ici arrêtait tout le script qui suit dans Réglages.
+  if (!$('mreg-f-type')) return;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const fmtSize = b => !b ? '' : b >= 1e9 ? (b/1e9).toFixed(1)+' Go' : b >= 1e6 ? (b/1e6).toFixed(1)+' Mo' : Math.max(1, Math.round(b/1e3))+' Ko';
+  const toast = (m, k) => (window.mxlToast ? window.mxlToast(m, k) : console.log(m));
+  async function j(url, opts){ const r = await fetch(url, opts); const d = await r.json().catch(() => ({})); if(!r.ok && d.ok !== true) throw new Error(d.error || ('HTTP ' + r.status)); return d; }
+  const post = (url, body, method) => j(url, {method: method || 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})});
+
+  let _poll = null;
+  async function job(){
+    try{
+      const s = await j('/api/media/scan');
+      const el = $('mreg-job');
+      if(s.running){ el.textContent = T('settings.mreg.job_running', 'En cours : ') + (s.kind === 'import' ? T('settings.mreg.job_import', 'import') : T('settings.mreg.job_scan', 'analyse des volumes')) + '…';
+        $('mreg-scan').disabled = true; clearTimeout(_poll); _poll = setTimeout(job, 1500); return; }
+      $('mreg-scan').disabled = false;
+      if(s.ended){ el.textContent = s.error ? ('⚠ ' + s.error) : T('settings.mreg.job_done', 'Terminé à ') + new Date(s.ended * 1000).toLocaleTimeString();
+        if(_poll){ _poll = null; report(); } }
+    }catch(e){}
+  }
+
+  function section(title, n, cls, body, acts){
+    if(!n) return '';
+    return `<details class="mreg-sec"${cls === 'bad' ? ' open' : ''}><summary>${esc(title)} <span class="mreg-chip ${cls}">${n}</span></summary>
+      ${acts ? `<div class="mreg-sec-acts">${acts}</div>` : ''}<div class="mreg-scroll"><table class="mreg-table">${body}</table></div></details>`;
+  }
+
+  async function report(){
+    let r;
+    try{ r = await j('/api/media/integrity'); }catch(e){ $('mreg-report').textContent = e.message; return; }
+    const c = r.counts || {};
+    const chip = (n, label, bad) => `<span class="mreg-chip ${n ? bad : 'ok'}">${esc(label)} : ${n||0}</span>`;
+    $('mreg-counts').innerHTML = `<span class="mreg-chip">${esc(T('settings.mreg.c_assets', 'Médias'))} : ${c.assets||0}</span>`
+      + chip(c.offline, T('settings.mreg.c_offline', 'Hors ligne'), 'bad')
+      + chip(c.missing_copies, T('settings.mreg.c_missing', 'Copies manquantes'), 'warn')
+      + chip(c.unreferenced, T('settings.mreg.c_unref', 'Non référencés'), 'warn')
+      + chip(c.fingerprint_mismatch, T('settings.mreg.c_fp', 'Contenu modifié'), 'bad')
+      + chip((c.unknown_projects||0), T('settings.mreg.c_proj', 'Projets disparus'), 'warn')
+      + chip(c.no_thumb, T('settings.mreg.c_nothumb', 'Sans vignette'), 'warn');
+    let h = '';
+    h += section(T('settings.mreg.s_offline', 'Référencés mais introuvables (aucune copie sur un nœud)'), r.offline.length, 'bad',
+      r.offline.map(o => `<tr><td>${esc(o.name)}</td><td>${esc((o.projects||[]).join(', '))}</td><td>${o.on_share ? esc(T('settings.mreg.on_share', 'copie sur un partage')) : ''}</td></tr>`).join(''));
+    h += section(T('settings.mreg.s_missing', 'Copies attendues mais absentes'), r.missing_copies.length, 'warn',
+      r.missing_copies.map(m => `<tr><td>${esc(m.name)}</td><td>${esc(m.node)}</td><td class="mono">${esc(m.path)}</td><td>${esc(m.seen_at||'')}</td>
+        <td><button type="button" class="btn" data-forget="${esc(m.id)}" data-node="${esc(m.node_id ?? '')}" data-path="${esc(m.path)}">${esc(T('settings.mreg.forget', 'Oublier'))}</button></td></tr>`).join(''));
+    const byNode = {};
+    (r.unreferenced||[]).forEach(u => (byNode[u.node_id] = byNode[u.node_id] || []).push(u));
+    h += section(T('settings.mreg.s_unref', 'Présents sur les volumes mais non référencés'), r.unreferenced.length, 'warn',
+      r.unreferenced.map(u => `<tr><td><input type="checkbox" class="mreg-unref" data-node="${u.node_id}" data-path="${esc(u.path)}"></td><td>${esc(u.node)}</td><td class="mono">${esc(u.path)}</td><td>${fmtSize(u.size)}</td></tr>`).join(''),
+      `<button type="button" class="btn" id="mreg-import-sel">${esc(T('settings.mreg.import_sel', 'Importer la sélection'))}</button>
+       <button type="button" class="btn" id="mreg-import-all">${esc(T('settings.mreg.import_all', 'Tout importer'))}</button>`);
+    h += section(T('settings.mreg.s_fp', 'Copies dont le contenu ne correspond plus au média'), r.fingerprint_mismatch.length, 'bad',
+      r.fingerprint_mismatch.map(m => `<tr><td>${esc(m.name)}</td><td>${esc(m.node)}</td><td class="mono">${esc(m.path)}</td></tr>`).join(''));
+    h += section(T('settings.mreg.s_proj', 'Rattachements à des projets disparus'), r.unknown_projects.length, 'warn',
+      r.unknown_projects.map(p => `<tr><td>#${esc(p.project_id)}</td><td class="mono">${esc(p.asset_id)}</td></tr>`).join(''));
+    if(!h) h = `<p class="meta">${esc(T('settings.mreg.all_good', 'Rien à signaler.'))}</p>`;
+    $('mreg-report').innerHTML = h;
+    const sel = $('mreg-import-sel');
+    if(sel) sel.onclick = async () => {
+      const by = {};
+      document.querySelectorAll('.mreg-unref:checked').forEach(x => (by[x.dataset.node] = by[x.dataset.node] || []).push(x.dataset.path));
+      if(!Object.keys(by).length){ toast(T('settings.mreg.nothing_sel', 'Aucun fichier coché'), 'warning'); return; }
+      try{ let n = 0; for(const [node, paths] of Object.entries(by)){ n += (await post('/api/media/import', {node_id: +node, paths})).ids.length; }
+        toast(T('settings.mreg.imported', '{n} média(s) importé(s)').replace('{n}', n), 'info'); report(); }
+      catch(e){ toast(e.message, 'error'); }
+    };
+    const all = $('mreg-import-all');
+    if(all) all.onclick = async () => {
+      const okc = window.mxlConfirm ? await window.mxlConfirm({message: T('settings.mreg.import_all_confirm', 'Importer les {n} fichiers non référencés ? Leur identité sera écrite dans leur sidecar (.xml).').replace('{n}', r.unreferenced.length)}) : true;
+      if(!okc) return;
+      try{ await post('/api/media/import', {all: true}); _poll = 1; job(); }catch(e){ toast(e.message, 'error'); }
+    };
+    document.querySelectorAll('[data-forget]').forEach(b => b.onclick = async () => {
+      try{ await post('/api/media/assets/' + b.dataset.forget + '/forget', {node_id: +b.dataset.node || 0, path: b.dataset.path}); report(); }
+      catch(e){ toast(e.message, 'error'); }
+    });
+  }
+
+  async function fields(){
+    let d; try{ d = await j('/api/media/fields'); }catch(e){ return; }
+    const tl = {text: T('settings.mreg.t_text','Texte'), longtext: T('settings.mreg.t_longtext','Texte long'), number: T('settings.mreg.t_number','Nombre'),
+                date: T('settings.mreg.t_date','Date'), enum: T('settings.mreg.t_enum','Liste'), bool: T('settings.mreg.t_bool','Case à cocher')};
+    const tb = $('mreg-fields').querySelector('tbody');
+    tb.innerHTML = d.fields.length ? d.fields.map(f => `<tr><td>${esc(f.label)}</td><td class="mono">${esc(f.key)}</td><td>${esc(tl[f.type]||f.type)}</td>
+        <td>${esc((f.options||[]).join(', '))}</td><td><button type="button" class="btn" data-del="${esc(f.key)}">${esc(T('settings.mreg.f_del', 'Retirer'))}</button></td></tr>`).join('')
+      : `<tr><td colspan="5" class="meta">${esc(T('settings.mreg.f_none', 'Aucun champ personnalisé. Titre, description et mots-clés sont toujours disponibles.'))}</td></tr>`;
+    tb.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      const okc = window.mxlConfirm ? await window.mxlConfirm({message: T('settings.mreg.f_del_confirm', 'Retirer ce champ ? Les valeurs déjà saisies sont conservées et réapparaîtront si le champ est recréé.')}) : true;
+      if(!okc) return;
+      try{ await j('/api/media/fields/' + encodeURIComponent(b.dataset.del), {method: 'DELETE'}); fields(); }catch(e){ toast(e.message, 'error'); }
+    });
+  }
+  $('mreg-f-type').onchange = e => { $('mreg-f-options').hidden = e.target.value !== 'enum'; };
+  $('mreg-f-label').oninput = e => { const k = $('mreg-f-key'); if(!k.dataset.touched) k.value = e.target.value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^[^a-z]+/, '').slice(0, 40); };
+  $('mreg-f-key').oninput = e => { e.target.dataset.touched = '1'; };
+  $('mreg-field-form').onsubmit = async e => {
+    e.preventDefault();
+    const type = $('mreg-f-type').value;
+    try{
+      await post('/api/media/fields', {key: $('mreg-f-key').value, label: $('mreg-f-label').value, type,
+        options: type === 'enum' ? $('mreg-f-options').value.split(',').map(s => s.trim()).filter(Boolean) : []});
+      e.target.reset(); delete $('mreg-f-key').dataset.touched; $('mreg-f-options').hidden = true; fields();
+    }catch(err){ toast(err.message, 'error'); }
+  };
+
+  async function backups(){
+    try{ const d = await j('/api/media/backups');
+      $('mreg-backups').innerHTML = (d.backups||[]).slice(0, 8).map(b => `<li>${esc(b.name)} · ${fmtSize(b.size)}</li>`).join(''); }catch(e){}
+  }
+  $('mreg-backup').onclick = async () => { try{ const d = await post('/api/media/backups'); toast(T('settings.mreg.backup_done', 'Sauvegarde faite : ') + d.name, 'info'); backups(); }catch(e){ toast(e.message, 'error'); } };
+  $('mreg-import-file').onchange = async e => {
+    const f = e.target.files[0]; if(!f) return;
+    const mode = $('mreg-import-mode').value;
+    if(mode === 'replace' && window.mxlConfirm && !(await window.mxlConfirm({danger: true, message: T('settings.mreg.replace_confirm', 'Remplacer toute la base des médias par cette archive ? Une sauvegarde de l\'état actuel est faite avant.')}))){ e.target.value = ''; return; }
+    const fd = new FormData(); fd.append('file', f); fd.append('mode', mode);
+    try{ const d = await j('/api/media/import_db', {method: 'POST', body: fd});
+      toast(T('settings.mreg.import_done', 'Importé : {a} média(s)').replace('{a}', d.imported.assets), 'info'); report(); fields(); backups(); }
+    catch(err){ toast(err.message, 'error'); }
+    e.target.value = '';
+  };
+  $('mreg-scan').onclick = async () => { try{ await post('/api/media/scan', {}); _poll = 1; job(); }catch(e){ toast(e.message, 'error'); } };
+
+  async function copySettings(){
+    try{
+      const d = await j('/api/media/settings');
+      $('mreg-rate').value = d.copy_rate_mbps;
+      $('mreg-px-auto').checked = !!d.proxy_auto;
+      document.querySelectorAll('input[name=mreg-edit-out]').forEach(r => { r.checked = r.value === (d.edit_output || 'asset'); });
+      $('mreg-transport').querySelector('tbody').innerHTML = (d.nodes || []).map(n => `<tr><td>${esc(n.name)}</td>
+        <td class="mono">${esc(n.agent_version || '?')}</td><td>${n.direct
+          ? '<span class="mreg-chip ok">' + esc(T('settings.mreg.copy_direct', 'direct entre nœuds')) + '</span>'
+          : '<span class="mreg-chip warn">' + esc(T('settings.mreg.copy_ssh', 'repli SSH (agent à mettre à jour)')) + '</span>'}</td></tr>`).join('');
+    }catch(e){}
+  }
+  $('mreg-rate-form').onsubmit = async e => {
+    e.preventDefault();
+    try{ await post('/api/media/settings', {copy_rate_mbps: parseFloat($('mreg-rate').value)}); toast(T('settings.mreg.saved', 'Enregistré'), 'info'); copySettings(); }
+    catch(err){ toast(err.message, 'error'); }
+  };
+  // Envoi depuis le poste : taille maximale d'un fichier (Go).
+  (async () => { try{ const d = await j('/api/media/upload/config'); $('mreg-up-max').value = Math.round(d.max_gb * 100) / 100; }catch(e){} })();
+  $('mreg-up-form').onsubmit = async e => {
+    e.preventDefault();
+    try{ await post('/api/media/upload/settings', {max_gb: parseFloat($('mreg-up-max').value)}); toast(T('settings.mreg.saved', 'Enregistré'), 'info'); }
+    catch(err){ toast(err.message, 'error'); }
+  };
+  document.querySelectorAll('input[name=mreg-edit-out]').forEach(r => { r.onchange = async e => {
+    try{ await post('/api/media/settings', {edit_output: e.target.value}); toast(T('settings.mreg.saved', 'Enregistré'), 'info'); }
+    catch(err){ toast(err.message, 'error'); copySettings(); }
+  }; });
+  $('mreg-px-auto').onchange = async e => {
+    try{ await post('/api/media/settings', {proxy_auto: e.target.checked}); toast(T('settings.mreg.saved', 'Enregistré'), 'info'); }
+    catch(err){ toast(err.message, 'error'); e.target.checked = !e.target.checked; }
+  };
+  // Générations de proxys (file centrale, une à la fois par nœud) : suivies tant que l'onglet est affiché.
+  let _pxPoll = null;
+  async function pxJobs(){
+    clearTimeout(_pxPoll);
+    const tb = $('mreg-px-jobs').querySelector('tbody');
+    let d; try{ d = await j('/api/media/proxies'); }catch(e){ return; }
+    const st = {queued: T('medialib.px_st_queued', 'en file'), running: T('medialib.px_st_running', 'en cours'), done: T('medialib.px_st_done', 'fait'),
+                failed: T('medialib.px_st_failed', 'en échec'), cancelled: T('medialib.px_st_cancelled', 'annulé')};
+    const jobs = (d.jobs || []).slice().reverse();
+    // Jobs de la FERME de transcodage : nœud de la copie, transcoder qui fait le travail (et son nœud).
+    tb.innerHTML = jobs.length ? jobs.map(x => `<tr><td>${esc(x.name)}</td><td>${esc(x.node || '')}${x.worker ? ' ← ' + esc(x.worker) + ' (' + esc(x.worker_node || '?') + ')' : ''}</td>
+        <td>#${esc(x.id)} · ${esc(x.waiting ? T('medialib.px_st_waiting', 'en attente d\'un transcoder') : (st[x.state] || x.state))}${x.state === 'running' ? ' · ' + Math.round((x.progress || 0) * 100) + ' %' : ''}${x.encode_s ? ' · ' + x.encode_s + ' s' : ''}</td>
+        <td>${esc(x.error || '')}</td><td>${(x.state === 'queued' || x.state === 'running') ? `<button type="button" class="btn" data-pxc="${esc(x.id)}">${esc(T('medialib.cancel', 'Annuler'))}</button>` : ''}</td></tr>`).join('')
+      : `<tr><td class="meta">${esc(T('medialib.px_no_jobs', 'Aucune génération récente.'))}</td></tr>`;
+    tb.querySelectorAll('[data-pxc]').forEach(b => b.onclick = async () => { try{ await post('/api/media/proxies/' + b.dataset.pxc + '/cancel'); pxJobs(); }catch(e){ toast(e.message, 'error'); } });
+    if(jobs.some(x => x.state === 'queued' || x.state === 'running') && document.getElementById('set-tab-media_registry').offsetParent) _pxPoll = setTimeout(pxJobs, 2000);
+  }
+  // Planches d'images : avancement du rattrapage, suivi tant que des jobs sont en route et l'onglet affiché.
+  let _sbPoll = null;
+  async function sbStatus(){
+    clearTimeout(_sbPoll);
+    let d; try{ d = await j('/api/media/storyboards'); }catch(e){ return; }
+    const parts = [T('settings.mreg.sb_have', 'Planches : {a} sur {b} médias à proxy vidéo').replace('{a}', d.with_storyboard).replace('{b}', d.proxied)];
+    if(d.missing) parts.push(T('settings.mreg.sb_missing', '{n} manquante(s)').replace('{n}', d.missing));
+    if(d.queued) parts.push(T('settings.mreg.sb_queued', '{n} en file').replace('{n}', d.queued));
+    if(d.running) parts.push(T('settings.mreg.sb_running', '{n} en cours').replace('{n}', d.running));
+    if(d.waiting) parts.push(T('settings.mreg.sb_waiting', '{n} en attente d\'un transcoder (aucun inscrit à la ferme, ou aucun en 0.11.0 ou plus)').replace('{n}', d.waiting));
+    if(d.failed) parts.push(T('settings.mreg.sb_failed', '{n} en échec').replace('{n}', d.failed));
+    $('mreg-sb-status').textContent = parts.join(' · ');
+    $('mreg-sb-make').disabled = !d.missing;
+    if((d.queued || d.running) && document.getElementById('set-tab-media_registry').offsetParent) _sbPoll = setTimeout(sbStatus, 3000);
+  }
+  $('mreg-sb-make').onclick = async () => {
+    try{ const d = await post('/api/media/storyboards', {});
+      toast(T('settings.mreg.sb_done', '{n} planche(s) mise(s) en file').replace('{n}', d.queued), 'info'); sbStatus(); }
+    catch(e){ toast(e.message, 'error'); }
+  };
+  window.mregLoad = function(){ report(); fields(); copySettings(); backups(); job(); pxJobs(); sbStatus(); };
+})();
+</script>

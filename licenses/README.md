@@ -8,6 +8,8 @@ copie de la licence accompagne toute redistribution**, source comme binaire. Les
 |---|---|---|
 | `Apache-2.0.txt` | **MXL SDK** — <https://github.com/dmf-mxl/mxl> | `libmxl`, `libmxl-common`, `libmxl-fabrics` compilés dans les images `bobi-compute` et `bobi-media` |
 | `BSD-3-Clause-MTL.txt` | **Intel Media Transport Library** — *Copyright (c) 2022, Intel Corporation* | image `bobi-mtl` (moteur `2110_io`) |
+| `MIT-CLAP.txt` | **CLAP** (en-têtes) — *Copyright (c) 2021 Alexandre BIQUE* | structures réécrites dans l'hôte de plugins de la console (`host/src/clap.rs`, binaire `bobi_plugin_host`) |
+| `MIT-VST3-SDK.txt` | **VST 3 SDK** 3.8.0 (`pluginterfaces`) — *Copyright (c) 2025, Steinberg Media Technologies GmbH* | tables et identifiants réécrits dans l'hôte de plugins de la console (`host/src/vst3.rs`) |
 
 Les textes sont repris **tels quels depuis les dépôts amont**, sans reformatage : une licence
 retouchée n'est plus la licence.

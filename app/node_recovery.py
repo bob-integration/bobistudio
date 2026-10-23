@@ -88,6 +88,13 @@ def on_health_snapshot(node, snap):
         # ── Reboot détecté ────────────────────────────────────────────────────────────
         db_set_node_boot(nid, last_boot_ts=boot_ts)
         name = node.get("name") or node.get("host") or f"nœud {nid}"
+        # Une carte ajoutée ou déplacée pendant l'arrêt peut avoir RENOMMÉ les autres : on
+        # n'attend pas la cadence lente de la vérification des interfaces.
+        try:
+            from . import iface_identity
+            iface_identity.schedule_now(nid)
+        except Exception as e:
+            log.debug("node_recovery iface_identity nœud %s : %s", nid, e)
         # Vérification de la prép hôte : HORS du gate auto_recovery_enabled (lecture seule) et
         # dans son propre thread (elle attend la grace puis fait un aller-retour agent — elle ne
         # doit jamais retenir le sampler santé, ni la reprise des conteneurs ci-dessous).

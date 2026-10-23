@@ -62,7 +62,8 @@ CORE_FILES = [
 
 # Sélection par défaut (paquet « broadcast » minimal).
 DEFAULT_PLUGINS = ["2110_io", "streamer"]
-DEFAULT_SERVICES = ["nmos", "webrtc_gateway", "files", "media_manager"]
+DEFAULT_SERVICES = ["nmos", "webrtc_gateway", "files", "media_manager", "storage",   # storage : partages réseau dont dépend media_manager
+                    "audio"]   # audio : côté orchestrateur de la console audio, sorti du cœur (app/) le 2026-10-23 — embarqué par défaut comme avant
 
 # ── Exclusions (n'importe où dans le chemin relatif) ─────────
 # Secrets / état local : JAMAIS dans le zip.
@@ -216,7 +217,7 @@ def last_selection():
 
 
 def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=False,
-          images=False, log=None):
+          images=False, log=None, nvidia_driver=False):
     """Construit le zip de distribution. Retourne un dict résumé.
 
     plugins/services : listes d'ids à inclure (None → défauts).
@@ -226,6 +227,8 @@ def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=Fa
     offline : si True, pré-télécharge les dépendances (roues pip + .deb système) dans `vendor/`
     et les EMBARQUE dans le zip → l'installeur pourra déployer SANS réseau. Zip beaucoup plus
     lourd (~300 Mo). Défaut False = zip léger (code seul, deps installées en ligne).
+    nvidia_driver : si True, télécharge l'installeur .run NVIDIA (vendor/nvidia/, ~400 Mo, jamais
+    commité) et l'EMBARQUE avec son texte de licence → pilote installable sur un nœud sans Internet.
     images : si True, `docker save` les images runtime Docker dans `vendor/images/` et les EMBARQUE
     (chargées via `docker load` à l'install du nœud) → nœud opérationnel sans registre. Alourdit
     fortement le zip (plusieurs Go). Implique l'inclusion de `vendor/` dans le zip.
@@ -235,17 +238,27 @@ def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=Fa
     """
     plugins = list(plugins) if plugins is not None else list(DEFAULT_PLUGINS)
     services = list(services) if services is not None else list(DEFAULT_SERVICES)
+    # The orchestrator side of the audio console was core code until 2026-10-23 (now services/audio): a package
+    # that ships the console plugin ships it too, whatever an older selection (build_manifest.json) listed.
+    if "audio_console" in plugins and "audio" not in services:
+        services.append("audio")
 
     # Pré-téléchargement des dépendances (+ images) pour l'embarquement (avant d'ouvrir le zip).
-    embed_vendor = offline or images
+    embed_vendor = offline or images or nvidia_driver
     if offline:
         from . import offline_bundle
-        res = offline_bundle.ensure_all(log=log, images=images)
+        res = offline_bundle.ensure_all(log=log, images=images, nvidia_driver=nvidia_driver)
         if not res.get("ok"):
             err = (res.get("wheels", {}).get("error") or res.get("debs", {}).get("error")
-                   or (res.get("images") or {}).get("error")
+                   or (res.get("images") or {}).get("error") or (res.get("nvidia") or {}).get("error")
                    or "échec du pré-téléchargement hors-ligne")
             raise RuntimeError("Bundle hors-ligne : " + err)
+    elif nvidia_driver:
+        # Installeur NVIDIA seul (sans roues ni .deb) : matérialiser vendor/nvidia/ uniquement.
+        from . import offline_bundle
+        res = offline_bundle.ensure_nvidia(log=log)
+        if not res.get("ok"):
+            raise RuntimeError("Bundle pilote NVIDIA : " + (res.get("error") or "échec"))
     elif images:
         # Images sans deps hors-ligne : matérialiser seulement les tars.
         from . import offline_bundle

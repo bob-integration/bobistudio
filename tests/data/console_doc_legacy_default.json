@@ -1,0 +1,262 @@
+{
+ "version": 1,
+ "block_samples": 240,
+ "zones": [],
+ "strips": [
+  {
+   "id": "s_in1",
+   "label": "Entrée 1",
+   "width": 2,
+   "input": {
+    "kind": "flow",
+    "flow": "audio_in_1",
+    "channels": [
+     0,
+     1
+    ]
+   },
+   "chain": [
+    {
+     "id": "e_trim1",
+     "kind": "trim",
+     "params": {
+      "gain_db": 0.0
+     }
+    },
+    {
+     "id": "m_hpf1",
+     "kind": "module",
+     "type": "filter",
+     "params": {
+      "mode": "hpf",
+      "freq": 80.0
+     }
+    },
+    {
+     "id": "m_cmp1",
+     "kind": "module",
+     "type": "comp",
+     "params": {
+      "threshold": -18.0,
+      "ratio": 3.0,
+      "attack_ms": 10.0,
+      "release_ms": 120.0
+     }
+    },
+    {
+     "id": "e_mute1",
+     "kind": "mute",
+     "params": {
+      "on": false
+     }
+    },
+    {
+     "id": "e_fad1",
+     "kind": "fader",
+     "params": {
+      "gain_db": 0.0
+     }
+    },
+    {
+     "id": "e_pan1",
+     "kind": "pan",
+     "params": {
+      "pos": 0.0
+     }
+    }
+   ],
+   "sends": [
+    {
+     "id": "x_pgm1",
+     "bus": "b_pgm",
+     "after": "e_pan1",
+     "level_db": 0.0
+    },
+    {
+     "id": "x_aux1",
+     "bus": "b_aux1",
+     "after": "m_cmp1",
+     "level_db": -6.0
+    },
+    {
+     "id": "x_nm1",
+     "bus": "b_nm1",
+     "after": "e_pan1",
+     "level_db": 0.0
+    }
+   ],
+   "direct_outs": [],
+   "mixminus_out": {
+    "bus": "b_nm1",
+    "chain": [],
+    "compensation": "aligned"
+   }
+  },
+  {
+   "id": "s_in2",
+   "label": "Entrée 2",
+   "width": 2,
+   "input": {
+    "kind": "flow",
+    "flow": "audio_in_2",
+    "channels": [
+     0,
+     1
+    ]
+   },
+   "chain": [
+    {
+     "id": "e_trim2",
+     "kind": "trim",
+     "params": {
+      "gain_db": 0.0
+     }
+    },
+    {
+     "id": "e_mute2",
+     "kind": "mute",
+     "params": {
+      "on": false
+     }
+    },
+    {
+     "id": "e_fad2",
+     "kind": "fader",
+     "params": {
+      "gain_db": 0.0
+     }
+    },
+    {
+     "id": "e_pan2",
+     "kind": "pan",
+     "params": {
+      "pos": 0.0
+     }
+    }
+   ],
+   "sends": [
+    {
+     "id": "x_pgm2",
+     "bus": "b_pgm",
+     "after": "e_pan2",
+     "level_db": 0.0
+    },
+    {
+     "id": "x_nm2",
+     "bus": "b_nm1",
+     "after": "e_pan2",
+     "level_db": 0.0
+    }
+   ],
+   "direct_outs": [],
+   "mixminus_out": null
+  },
+  {
+   "id": "s_gen",
+   "label": "Générateur",
+   "width": 1,
+   "input": {
+    "kind": "generator",
+    "gen": "tone",
+    "level_dbfs": -20.0
+   },
+   "chain": [
+    {
+     "id": "e_mutg",
+     "kind": "mute",
+     "params": {
+      "on": true
+     }
+    },
+    {
+     "id": "e_fadg",
+     "kind": "fader",
+     "params": {
+      "gain_db": 0.0
+     }
+    },
+    {
+     "id": "e_pang",
+     "kind": "pan",
+     "params": {
+      "pos": 0.0
+     }
+    }
+   ],
+   "sends": [
+    {
+     "id": "x_pgmg",
+     "bus": "b_pgm",
+     "after": "e_pang",
+     "level_db": 0.0
+    }
+   ],
+   "direct_outs": [],
+   "mixminus_out": null
+  }
+ ],
+ "buses": [
+  {
+   "id": "b_pgm",
+   "kind": "master",
+   "label": "PGM",
+   "width": 2,
+   "output": true,
+   "chain": [
+    {
+     "id": "m_lim",
+     "kind": "module",
+     "type": "limiter",
+     "params": {
+      "ceiling_db": -1.0,
+      "lookahead_ms": 1.0,
+      "release_ms": 50.0
+     }
+    }
+   ]
+  },
+  {
+   "id": "b_aux1",
+   "kind": "aux",
+   "label": "Retour plateau",
+   "width": 2,
+   "output": true,
+   "compensation": "minimal",
+   "chain": []
+  },
+  {
+   "id": "b_nm1",
+   "kind": "mixminus",
+   "label": "N-1",
+   "width": 2,
+   "chain": []
+  },
+  {
+   "id": "b_lst",
+   "kind": "listen",
+   "label": "Écoute",
+   "width": 2,
+   "output": true,
+   "compensation": "minimal",
+   "fallback": "b_pgm",
+   "chain": [],
+   "level_db": 0.0,
+   "dim": false,
+   "dim_db": -20.0,
+   "mono": false,
+   "cut": false
+  }
+ ],
+ "talkback": {
+  "input": {
+   "kind": "flow",
+   "flow": "",
+   "channels": [
+    0
+   ]
+  },
+  "level_db": 0.0,
+  "dim_db": -20.0
+ },
+ "listen_mode": "pfl"
+}

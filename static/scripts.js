@@ -370,6 +370,10 @@ function ccHostnameInput(input) {
     if (d.accents) faits.push(window.t('containers.create.hostname_fix_accent'));
     if (d.retires.length) faits.push(window.t('containers.create.hostname_fix_drop')
                                        .replace('{chars}', d.retires.join(' ')));
+    // Doublon signalé À LA FRAPPE (avant : seulement au lancement, panier déjà rempli). Les autres
+    // lignes sont réévaluées : renommer celle-ci peut lever ou créer leur doublon.
+    _ccRefreshDupHints(input);
+    if (_ccIsTaken(input)) return;
     if (faits.length) {
         hint.textContent = window.t('containers.create.hostname_fixed').replace('{list}', faits.join(' · '));
         hint.classList.add('warn');
@@ -385,6 +389,57 @@ function ccHostnameBlur(input) {
     input.value = sanitizeHostname(input.value);
     const hint = input.parentNode.querySelector('.cc-hostname-hint');
     if (hint) { hint.textContent = window.t('containers.create.hostname_help'); hint.classList.remove('warn'); }
+    _ccRefreshDupHints(null);
+}
+
+// ─── Hostnames déjà pris ─────────────────────────────────────────────────────
+// Conteneurs existants (minuscules, comme app/hostnames.py:valider()), relus à chaque ouverture de
+// l'étape 2. Best-effort : si la lecture échoue, la garde de lancerCreation() reste le filet.
+let _ccExisting = new Set();
+async function _ccLoadExisting() {
+    try {
+        const r = await fetch('/api/containers');
+        if (r.ok) _ccExisting = new Set((await r.json()).map(c => (c.hostname || '').toLowerCase()).filter(Boolean));
+    } catch (e) { /* best-effort */ }
+}
+
+// Noms pris : conteneurs existants + panier + les AUTRES lignes de l'étape 2 (sauf `except`).
+function _ccTakenNames(except) {
+    const s = new Set(_ccExisting);
+    (_createCart || []).forEach(l => l.prefix && s.add(l.prefix.toLowerCase()));
+    document.querySelectorAll('#create-step2-rows .cc-hostname').forEach(i => {
+        if (i !== except && i.value) s.add(sanitizeHostname(i.value).toLowerCase());
+    });
+    return s;
+}
+
+function _ccIsTaken(input) {
+    const v = sanitizeHostname(input.value).toLowerCase();
+    return !!v && _ccTakenNames(input).has(v);
+}
+
+// Pose ou retire l'avertissement de doublon sous chaque ligne. `typing` = le champ en cours de
+// frappe : quand son doublon se lève, ccHostnameInput repose lui-même son message (aide ou nettoyage).
+function _ccRefreshDupHints(typing) {
+    document.querySelectorAll('#create-step2-rows .cc-hostname').forEach(i => {
+        const hint = i.parentNode.querySelector('.cc-hostname-hint');
+        if (!hint) return;
+        if (_ccIsTaken(i)) {
+            hint.textContent = window.t('containers.create.hostname_dup_live')
+                .replace('{h}', sanitizeHostname(i.value));
+            hint.classList.add('warn');
+            hint.dataset.dup = '1';
+            i.setAttribute('aria-invalid', 'true');
+        } else if (hint.dataset.dup) {
+            // Doublon levé : retour à l'aide (le champ en frappe repose ensuite son propre message).
+            delete hint.dataset.dup;
+            i.removeAttribute('aria-invalid');
+            if (i !== typing) {
+                hint.textContent = window.t('containers.create.hostname_help');
+                hint.classList.remove('warn');
+            }
+        }
+    });
 }
 
 // Params par défaut déployés à la création quand un type est choisi.
@@ -449,6 +504,26 @@ document.addEventListener('DOMContentLoaded', () => {
     chips.addEventListener('focusin', chauffer, { once: true });
 });
 
+// Type MÉDIA sur un nœud SANS la capacité `media` : l'API refuse la création (routes.creer) — on
+// le grise donc ici, avec la même raison, plutôt que de laisser cliquer vers un refus.
+function _ccMediaMissing(n) {
+    if (!(_curType && _curType.needsMedia)) return false;
+    let caps = n.capabilities || [];
+    if (typeof caps === 'string') { try { caps = JSON.parse(caps) || []; } catch (e) { caps = []; } }
+    return !caps.includes('media');
+}
+// Capacité de nœud qui MANQUE au type choisi ('media', 'gui') ou '' — même refus que l'API (routes.creer) :
+// les interfaces natives (image bobi-gui, node_only) n'existent que sur un nœud qui déclare `gui`.
+function _ccCapMissing(n) {
+    if (_ccMediaMissing(n)) return 'media';
+    if (_curType && _curType.imageKind === 'gui') {
+        let caps = n.capabilities || [];
+        if (typeof caps === 'string') { try { caps = JSON.parse(caps) || []; } catch (e) { caps = []; } }
+        if (!caps.includes('gui')) return 'gui';
+    }
+    return '';
+}
+
 // <option> du sélecteur de nœud. Full-Docker : tout container se crée SUR un nœud — plus de tête
 // « — LXC (par défaut) — », qui laissait choisir « aucun nœud » pour finir sur un refus serveur.
 function _ccNodeOptionsHtml() {
@@ -459,8 +534,11 @@ function _ccNodeOptionsHtml() {
     const kind = (_curType && _curType.imageKind) || 'compute';
     return _ccNodes.map(n => {
         const st = (n.images || {})[kind];
-        const missing = st ? st.present === false : (n.image_ok === false && kind === 'mtl');
-        return `<option value="${n.id}"${missing ? ' disabled' : ''}>${escapeHtml(n.name)} · ${escapeHtml(n.host)}${missing ? escapeHtml(window.t('js.node_image_missing')) : ''}</option>`;
+        const noCap = _ccCapMissing(n);
+        const missing = !!noCap || (st ? st.present === false : (n.image_ok === false && kind === 'mtl'));
+        const why = noCap === 'gui' ? window.t('js.node_no_gui_cap')
+                  : noCap ? window.t('js.node_no_media_cap') : window.t('js.node_image_missing');
+        return `<option value="${n.id}"${missing ? ' disabled' : ''}>${escapeHtml(n.name)} · ${escapeHtml(n.host)}${missing ? escapeHtml(why) : ''}</option>`;
     }).join('');
 }
 // ─── Panneau « charge des serveurs » de l'étape 2 ───────────────────────────────────────────
@@ -665,7 +743,8 @@ function _ccNodesPanelHtml(selectedId, openId) {
     const kind = (_curType && _curType.imageKind) || 'compute';
     return head + _ccNodes.map(n => {
         const st = (n.images || {})[kind];
-        const missing = st ? st.present === false : (n.image_ok === false && kind === 'mtl');
+        const noMedia = !!_ccCapMissing(n);
+        const missing = noMedia || (st ? st.present === false : (n.image_ok === false && kind === 'mtl'));
         const sel = String(n.id) === String(selectedId);
         const open = String(n.id) === String(openId);
         const pool = n.cores_pool || {};
@@ -684,7 +763,7 @@ function _ccNodesPanelHtml(selectedId, openId) {
                     ? T('containers.create.load.cpu_scope_sched') : T('containers.create.load.cpu_scope_machine')}"
                     >${T('containers.create.load.cpu')} ${_ccPct(n.cpu_pct)}</span>
                 ${_ccQuickGpu(n, cost)}
-                ${missing ? `<span class="cc-node-flag">${T('containers.create.load.image_missing')}</span>` : '<span></span>'}
+                ${missing ? `<span class="cc-node-flag">${noMedia ? T('containers.create.load.no_media_cap') : T('containers.create.load.image_missing')}</span>` : '<span></span>'}
                 <span class="cc-node-chev" aria-hidden="true">${open ? '▾' : '▸'}</span>
             </button>
             ${open && !missing ? _ccNodeDetailHtml(n, cost) : ''}
@@ -753,6 +832,8 @@ function _ccNodeAlerte(n, cost) {
     const T = window.t;
     const kind = (_curType && _curType.imageKind) || 'compute';
     const st = (n.images || {})[kind];
+    const _noCap = _ccCapMissing(n);
+    if (_noCap) return T(_noCap === 'gui' ? 'containers.create.load.attn_no_gui' : 'containers.create.load.attn_no_media');
     const imageAbsente = st ? st.present === false : (n.image_ok === false && kind === 'mtl');
     if (imageAbsente) return T('containers.create.load.attn_image');
     if (n.online === false) return T('containers.create.load.attn_offline');
@@ -863,7 +944,8 @@ async function selectCreateType(chip) {
     let resources = {};
     try { resources = JSON.parse(chip.dataset.resources || '{}') || {}; } catch (e) { resources = {}; }
     document.querySelectorAll('.create-type-chip').forEach(c => c.classList.toggle('active', c === chip));
-    _curType = { type, label, runtime, imageKind, resources };
+    const needsMedia = chip.dataset.needsMedia === '1';      // type MÉDIA → nœud à capacité `media`
+    _curType = { type, label, runtime, imageKind, resources, needsMedia };
 
     // Full-Docker : tout type se crée sur un nœud. `_curVis` ne porte plus que ce qui VARIE
     // encore d'un type à l'autre.
@@ -890,7 +972,7 @@ async function selectCreateType(chip) {
     // première ligne va apparaître.
     const host = document.getElementById('create-step2-rows');
     host.innerHTML = `<div class="meta cc-loading">${window.t('containers.create.loading_options')}</div>`;
-    await _ccEnsureOptions();
+    await Promise.all([_ccEnsureOptions(), _ccLoadExisting()]);
 
     host.innerHTML = '';
     host.appendChild(_ccBuildRow(0));
@@ -898,9 +980,14 @@ async function selectCreateType(chip) {
 }
 
 // Hostname par défaut de la ligne d'index i (slug du type, incrémenté).
-function _ccDefaultHostname(i) {
+// Premier nom LIBRE : base, puis base-2, base-3… en sautant ce qui existe déjà (conteneurs, panier,
+// autres lignes). Avant, la 1re ligne prenait toujours la base nue : doublon garanti au 2e conteneur
+// du même type, découvert seulement au lancement.
+function _ccDefaultHostname() {
     const base = sanitizeHostname(_curType ? _curType.type : '') || 'container';
-    return i === 0 ? base : `${base}-${i + 1}`;
+    const taken = _ccTakenNames();
+    if (!taken.has(base)) return base;
+    for (let n = 2; ; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
 }
 
 // Construit une ligne (un container) depuis le gabarit, options + visibilité injectées.
@@ -910,7 +997,7 @@ function _ccBuildRow(index, values) {
     const row = tpl.content.firstElementChild.cloneNode(true);
     const v = _curVis || {};
 
-    row.querySelector('.cc-hostname').value = _ccDefaultHostname(index);
+    row.querySelector('.cc-hostname').value = _ccDefaultHostname();
 
     // Libellé du champ : posé par le gabarit (donc traduit) — il ne dépend plus du runtime.
     row.querySelector('.cc-node-sel').innerHTML = _ccNodeOptionsHtml();
@@ -1417,8 +1504,17 @@ function renderDeployPalette(c) {
     st.classList.add(c.status || 'unknown');
 
     // Pré-remplit le bloc Ressources du conteneur
-    host.querySelector('.dp-r-cores').value  = c.cores  || 2;
-    host.querySelector('.dp-r-memory').value = c.memory || 2048;
+    // Valeurs EFFECTIVES (manifeste ou réglage propre) — pas les colonnes cores/memory, qui
+    // portent des défauts d'insertion. `defaultValue` mémorise ce qui a été affiché : seul un
+    // champ MODIFIÉ est envoyé (sinon le défaut affiché deviendrait un réglage propre).
+    const _eff = c.resources_effective || {};
+    const _rc = host.querySelector('.dp-r-cores'), _rm = host.querySelector('.dp-r-memory');
+    _rc.value = _rc.defaultValue = _eff.cores  || '';
+    _rm.value = _rm.defaultValue = _eff.memory || '';
+    // Mode CPU : seulement pour les types qui l'offrent (`resources.reservable`, ex. transcoder).
+    const _rmode = host.querySelector('.dp-r-cpumode');
+    host.querySelector('.dp-r-cpumode-field').style.display = _eff.cpu_mode ? '' : 'none';
+    _rmode.value = _rmode.dataset.initial = _eff.cpu_mode || '';
 
     // Section projet : visible pour les plugins media_volume
     const dcType = (() => { try { return (typeof c.deploy_config==='string' ? JSON.parse(c.deploy_config) : c.deploy_config)?.type || ''; } catch(e){ return ''; } })();
@@ -1435,7 +1531,10 @@ function renderDeployPalette(c) {
             }).catch(()=>{});
         }
     }
-    host.querySelector('.dp-r-pinned').value = c.pinned_cores || '';
+    // Cpuset attribué par core_pool : AFFICHÉ, plus réglable (le serveur refuse toute autre valeur).
+    const _rp = host.querySelector('.dp-r-pinned');
+    _rp.value = c.pinned_cores || '';
+    _rp.readOnly = true;
     if (c.assigned_vf) {
         host.querySelector('.dp-r-pinned-hint').textContent =
             window.t('js.vf_assigned').replace('{vf}', c.assigned_vf);
@@ -1783,11 +1882,29 @@ async function majRessources() {
     if (selectedDeployVmid === null) return;
     const host = document.getElementById('deploy-palette');
     const status = host.querySelector('.dp-r-status');
-    const payload = {
-        cores:         parseInt(host.querySelector('.dp-r-cores').value)  || null,
-        memory:        parseInt(host.querySelector('.dp-r-memory').value) || null,
-        pinned_cores:  host.querySelector('.dp-r-pinned').value.trim(),
-    };
+    // N'envoyer que ce qui a CHANGÉ : un champ envoyé devient un réglage propre au conteneur,
+    // qui prime ensuite sur le manifeste du plugin.
+    const payload = {};
+    for (const [k, sel] of [['cores', '.dp-r-cores'], ['memory', '.dp-r-memory']]) {
+        const el = host.querySelector(sel);
+        const v = parseInt(el.value);
+        if (v && String(v) !== String(el.defaultValue)) payload[k] = v;
+    }
+    const _rmode = host.querySelector('.dp-r-cpumode');
+    if (_rmode.dataset.initial && _rmode.value !== _rmode.dataset.initial) {
+        payload.cpu_mode = _rmode.value;
+        if (_rmode.value === 'reserved' && !parseInt(host.querySelector('.dp-r-cores').value)) {
+            status.textContent = '✕ ' + window.t('js.resources.reserved_needs_cores');
+            status.style.color = 'var(--status-stopped-fg)';
+            return;
+        }
+    }
+    if (!Object.keys(payload).length) {
+        status.textContent = window.t('js.resources.unchanged');
+        status.style.color = 'var(--text-muted)';
+        setTimeout(() => { status.textContent = ''; }, 6000);
+        return;
+    }
     if (!confirm(window.t('js.resources.confirm_prefix') + ' ' + selectedDeployVmid + ' ?\n' + window.t('js.resources.confirm_restart'))) return;
     status.textContent = window.t('js.status.updating');
     status.style.color = 'var(--text-muted)';
@@ -1796,7 +1913,9 @@ async function majRessources() {
         body: JSON.stringify(payload),
     });
     if (r.ok) {
-        status.textContent = window.t('js.update_in_progress');
+        const j = await r.json().catch(() => ({}));
+        status.textContent = window.t(j.status === 'differe_prochain_demarrage'
+            ? 'js.resources.deferred' : 'js.update_in_progress');
         status.style.color = 'var(--status-running-fg)';
     } else {
         const j = await r.json().catch(() => ({}));

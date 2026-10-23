@@ -36,6 +36,7 @@ VENDOR_DIR = os.path.join(ROOT, "vendor")
 WHEELS_DIR = os.path.join(VENDOR_DIR, "wheels")
 DEBS_DIR = os.path.join(VENDOR_DIR, "debs")
 IMAGES_DIR = os.path.join(VENDOR_DIR, "images")
+NVIDIA_DIR = os.path.join(VENDOR_DIR, "nvidia")
 REQ_PATH = os.path.join(ROOT, "requirements.txt")
 STAMP_PATH = os.path.join(VENDOR_DIR, "stamp.json")
 
@@ -55,7 +56,11 @@ ORCH_PACKAGES = ["python3", "python3-venv", "python3-pip",
 # docker-cli + docker-buildx explicites : Debian 13 les a scindés de docker.io (Recommends), la
 # clôture .deb ne suit que les Depends → sans eux le bundle hors-ligne pose le daemon mais pas le
 # binaire `docker` (preflight KO) ni le builder BuildKit (« buildx component is missing » au build).
-NODE_PACKAGES = ["docker.io", "docker-cli", "docker-buildx", "ethtool", "ca-certificates", "linuxptp"]
+# dkms + build-essential : le pilote NVIDIA (capacité gpu) se compile en DKMS sur le nœud, y compris
+# l'installeur .run embarqué (vendor/nvidia/). Les en-têtes du noyau EN COURS ne sont pas
+# prévisibles à la construction du bundle : ils doivent déjà être sur le nœud ou venir d'un miroir.
+NODE_PACKAGES = ["docker.io", "docker-cli", "docker-buildx", "ethtool", "ca-certificates", "linuxptp",
+                 "dkms", "build-essential"]
 APT_PACKAGES = sorted(set(ORCH_PACKAGES + NODE_PACKAGES))
 
 
@@ -298,10 +303,61 @@ def ensure_images(which_list=None, log=None):
     return {"ok": bool(manifest), "images": manifest, "count": len(manifest), "missing": missing}
 
 
+# ─── Pilote NVIDIA (installeur .run) ─────────────────────────────────────────
+
+def _nvidia_driver_constants():
+    """Version/URL de l'installeur : lues dans le script hôte qui l'INSTALLE (source unique)."""
+    import importlib.util
+    p = os.path.join(ROOT, "node_agent", "host_drivers", "nvidia.py")
+    spec = importlib.util.spec_from_file_location("bobi_nvidia_host_driver", p)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.RUN_FILENAME, mod.RUN_URL
+
+
+def ensure_nvidia(log=None):
+    """Télécharge l'installeur .run NVIDIA (génération Maxwell/Pascal/Volta, et repli hors-ligne des
+    Turing+) dans vendor/nvidia/, à la CONSTRUCTION du bundle : jamais commité (vendor/ est gitignoré),
+    jamais retouché (la licence NVIDIA n'autorise la redistribution que du binaire INCHANGÉ, accompagné
+    de son accord). Le texte de la licence est extrait du .run lui-même (NVIDIA-LICENSE.txt) pour
+    voyager à côté. Retourne {ok, file, size, error}."""
+    _log = log or (lambda m: None)
+    import shutil
+    import tempfile
+    name, url = _nvidia_driver_constants()
+    dest = os.path.join(NVIDIA_DIR, name)
+    os.makedirs(NVIDIA_DIR, exist_ok=True)
+    if not os.path.isfile(dest):
+        _log(f"Téléchargement de l'installeur NVIDIA {name} (~400 Mo)…")
+        rc, out, err = _run(["curl", "-fsSL", "--retry", "2", "-o", dest + ".part", url])
+        if rc != 0:
+            return {"ok": False, "error": "téléchargement de %s échoué : %s" % (url, (err or out)[-300:])}
+        os.replace(dest + ".part", dest)
+    rc, out, err = _run(["sh", dest, "--check"])
+    if rc != 0:
+        os.remove(dest)
+        return {"ok": False, "error": "contrôle d'intégrité de l'installeur NVIDIA échoué : "
+                                      + (out + err)[-300:]}
+    lic = os.path.join(NVIDIA_DIR, "NVIDIA-LICENSE.txt")
+    if not os.path.isfile(lic):
+        tmp = tempfile.mkdtemp(prefix="nvx-")
+        try:
+            _run(["sh", dest, "--extract-only", "--target", os.path.join(tmp, "x")])
+            src = os.path.join(tmp, "x", "LICENSE")
+            if not os.path.isfile(src):
+                return {"ok": False, "error": "texte de licence introuvable dans l'installeur NVIDIA : "
+                                              "bundle refusé (la licence doit accompagner le binaire)"}
+            shutil.copyfile(src, lic)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    _log(f"installeur NVIDIA prêt : {name}")
+    return {"ok": True, "file": name, "size": os.path.getsize(dest)}
+
+
 # ─── Orchestration + état ────────────────────────────────────────────────────
 
-def ensure_all(force=False, log=None, images=False):
-    """Prépare wheels + debs (+ images si demandé). Retourne {ok, wheels, debs, images}."""
+def ensure_all(force=False, log=None, images=False, nvidia_driver=False):
+    """Prépare wheels + debs (+ images, + installeur NVIDIA si demandés). Retourne {ok, wheels, debs, ...}."""
     w = ensure_wheels(force=force, log=log)
     d = ensure_debs(force=force, log=log)
     ok = bool(w.get("ok") and d.get("ok"))
@@ -310,6 +366,10 @@ def ensure_all(force=False, log=None, images=False):
         im = ensure_images(log=log)
         result["images"] = im
         result["ok"] = ok and bool(im.get("ok"))
+    if nvidia_driver:
+        nv = ensure_nvidia(log=log)
+        result["nvidia"] = nv
+        result["ok"] = result["ok"] and bool(nv.get("ok"))
     return result
 
 
@@ -323,6 +383,7 @@ def status():
         "wheels": len(wheels),
         "debs": len(debs),
         "images": len(images),
+        "nvidia": len(glob.glob(os.path.join(NVIDIA_DIR, "*.run"))),
         "has_index": os.path.exists(os.path.join(DEBS_DIR, "Packages.gz")),
         "req_hash": _req_hash(),
         "wheels_req_hash": stamp.get("wheels_req_hash"),

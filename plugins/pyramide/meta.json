@@ -1,7 +1,10 @@
 {
-  "version": "0.18.0",
-  "date": "2026-08-19",
+  "version": "0.18.1",
+  "date": "2026-10-16",
   "changes": {
+    "Les bouches-trous amont ne sont plus composités comme des images (0.18.1)": [
+      "★ TÉMOIN `invalid_grains` SUR :8080. Un grain BOUCHE-TROU posé par un producteur qui saute des index revenait MXL_STATUS_OK avec `validSlices = 0`, et notre idiome `int(gi.validSlices or k)` retournait ce zéro en « k tranches valides » : le bouche-trou était composité comme une image, à pleine confiance. Écarté désormais dans `bobimxl` (le seul point que toute la flotte traverse), et le compte publié par flux sur :8080 — cadence, index et statut de lecture restant tous PARFAITS pendant l'épisode, ce compteur en est le seul témoin."
+    ],
     "Une entrée inexploitable se VOIT : tracée, publiée dans /state, et retentée en palier (0.18.0)": [
       "★ INCIDENT HORACE 2026-08-19 : trois workers sur seize n'ont jamais réussi à ouvrir leur source et ont bouclé **43 heures à 20 Hz** sans une ligne au journal. Le seul indice était une ABSENCE — leur slot manquait dans `/state.sources` — pendant que l'état périodique continuait d'ANNONCER les proxys correspondants. En aval, les murs tournaient à vide sur des proxys jamais écrits, et leur propre boucle de reconnexion a fini par saturer la mémoire noyau d'un nœud.",
       "Les deux `except` fautifs (`Reader` qui lève, `flow_def` illisible) faisaient `time.sleep(0.05); continue` — muets, sans état, sans palier. Ils TRACENT désormais (3 premières tentatives puis une sur cent), PUBLIENT dans `metrics[\"entrees_ko\"]` {shm, motif, tentatives, depuis_s}, et ESPACENT les tentatives de 50 ms à 2 s.",

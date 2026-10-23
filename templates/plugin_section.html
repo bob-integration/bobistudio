@@ -12,9 +12,81 @@
 {% block head %}
 {% if has_mv %}<link rel="stylesheet" href="/api/plugins/multiview/ui/extra_css">{% endif %}
 <style>
-.tp-cols { display:grid; grid-template-columns:minmax(220px,280px) 1fr; gap:14px; align-items:start; margin-top:14px; }
-.tp-side { border:1px solid var(--border-soft); border-radius:6px; padding:8px; }
-.tp-side h3 { margin:0 0 8px; font-size:0.95em; }
+/* Bande de rubrique : style commun dans base.css (`.subnav-deck`) ; ici, le propre aux rubriques.
+   Pas de marge sous la bande : `.tp-cols` porte déjà la sienne. */
+.ps-deck { margin-bottom:0; }
+/* Modes de la page Médias : sélecteur segmenté en bout de bande. */
+.ps-deck #medias-mode { display:inline-flex; align-self:center; flex:none; gap:0; margin:0 0 0 8px;
+    border:1px solid var(--border); border-radius:var(--radius-small); overflow:hidden; }
+.ps-deck #medias-mode .tab { min-height:40px; border:0; border-radius:0; }
+.ps-deck #medias-mode .tab + .tab { border-left:1px solid var(--border); }
+.ps-deck #medias-mode .tab.active { background:var(--bg-selected); color:var(--accent); }
+.ps-deck.ps-deck-other > :not(#medias-mode):not(.subnav-deck-notch) { display:none; }
+.ps-deck.ps-deck-other #medias-mode { margin-left:auto; }
+
+/* Liste des instances REPLIÉE par défaut : la zone du plugin prend toute la largeur (iPad paysage :
+   la colonne fixe en mangeait 270 px sur 1194). Repliée, elle n'est plus qu'un FILET dans la marge
+   gauche (un trait par instance, couleur = état) ; elle s'ouvre en TIROIR par-dessus le plugin, sans
+   le pousser — à l'approche de la souris, ou au toucher du filet ou de l'étiquette d'instance posée
+   dans la barre d'onglets. Épinglée, elle redevient une colonne — et c'est l'état PAR DÉFAUT depuis le
+   2026-10-18 : la replier est un choix de l'utilisateur, retenu par navigateur (cf. TP_PIN_KEY). */
+.tp-cols { position:relative; display:grid; grid-template-columns:minmax(0,1fr); gap:14px; align-items:start; margin-top:14px; }
+.tp-cols.pinned { grid-template-columns:minmax(220px,280px) minmax(0,1fr); }
+.tp-side { position:absolute; z-index:40; left:0; top:0; width:300px; max-width:calc(100% - 32px);
+    max-height:calc(100vh - 140px); overflow-y:auto; padding:8px;
+    background:var(--bg-elev); border:1px solid var(--border); border-radius:6px; box-shadow:var(--shadow);
+    visibility:hidden; opacity:0; transform:translateX(-12px);
+    transition:opacity 160ms, transform 180ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 180ms; }
+.tp-side.open { visibility:visible; opacity:1; transform:none; transition-delay:0s; }
+.tp-cols.pinned > .tp-side { position:static; width:auto; max-width:none; max-height:none; overflow:visible;
+    visibility:visible; opacity:1; transform:none; transition:none; box-shadow:none;
+    background:transparent; border-color:var(--border-soft); }
+.tp-side[hidden] { display:none; }
+.tp-side-head { display:flex; align-items:center; gap:6px; margin:0 0 6px; }
+.tp-side-head h3 { flex:1; min-width:0; margin:0 0 0 4px; font-size:0.95em; }
+.tp-cols.pinned #tp-side-close { display:none; }
+#tp-pin[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); background:var(--bg-selected); }
+/* Le filet : trait visible de 6 px dans la marge. Décoratif pour les lecteurs d'écran : l'étiquette
+   d'instance est le vrai bouton, accessible au clavier.
+   Zone active : la MARGE seule (16 px) à la souris — à 44 px, elle mordait de 28 px sur le plugin, sur
+   toute la hauteur, et le tiroir s'ouvrait en visant une ligne de la grille (constaté 2026-10-18).
+   Les 44 px de toucher ne valent que sur un écran tactile : `any-pointer`, pas `pointer`, car l'iPad
+   avec clavier se déclare `pointer: fine`. */
+.tp-edge { position:absolute; z-index:30; top:0; bottom:0; left:-16px; width:16px; cursor:pointer; }
+@media (any-pointer: coarse) { .tp-edge { width:44px; } }
+.tp-edge[hidden] { display:none; }
+.tp-edge-marks { position:sticky; top:6px; display:flex; flex-direction:column; gap:4px; box-sizing:border-box;
+    width:16px; padding:6px 5px; }   /* traits de 6 px ; la marge autour sert de cible au survol */
+.tp-edge-marks i { display:block; height:24px; border-radius:3px; background:var(--status-running-fg); opacity:0.55; }
+.tp-edge-marks i.bad { background:var(--status-stopped-fg); }
+.tp-edge-marks i.warn { background:var(--status-warning-fg); }
+.tp-edge-marks i.active { opacity:1; box-shadow:0 0 0 2px var(--accent); }
+.tp-edge:hover .tp-edge-marks i { opacity:1; }
+/* État d'une instance : forme ET couleur (rond = en marche, carré = arrêté, anneau = autre). */
+.tp-dot { width:10px; height:10px; flex:none; display:inline-block; border-radius:50%; background:var(--status-running-fg); }
+.tp-dot.bad { border-radius:2px; background:var(--status-stopped-fg); }
+.tp-dot.warn { background:transparent; border:2.5px solid var(--status-warning-fg); }
+/* Outils de l'instance active, dans la barre d'onglets (aucun étage de plus).
+   ⚠ Rien sur `#ps-tabs` lui-même (cf. base.css, `.res-compact`) : on n'agit que sur l'enfant. */
+#ps-tabs .tp-ident { margin-left:auto; align-self:center; display:flex; align-items:center; gap:6px; flex:none; min-width:0; max-width:46%; }
+#ps-tabs .tp-ident + .res-compact { margin-left:8px; }
+.tp-head { display:flex; align-items:center; gap:7px; min-height:44px; min-width:0; max-width:320px;
+    margin:0 0 0 6px; padding:0 10px; align-self:center; flex:0 1 auto; position:relative;
+    border:0; border-radius:var(--radius-small); background:transparent;
+    color:var(--text-muted); font:inherit; font-size:0.85em; cursor:pointer; }
+/* Sobre : c'est une précision sur l'onglet actif, pas un titre. Un filet vertical la sépare des
+   onglets de type, pour qu'on ne la prenne pas pour un onglet de plus. */
+.tp-head::before { content:""; flex:none; width:1px; height:20px; margin-right:7px; background:var(--border); }
+.tp-head[hidden] { display:none; }
+.tp-head:hover, .tp-head[aria-expanded="true"] { background:var(--bg-hover); }
+.tp-head:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.tp-head.static { cursor:default; background:transparent; }
+.tp-head .tp-dot { width:8px; height:8px; }
+.tp-head .tp-dot.warn { border-width:2px; }
+.tp-ident-name { color:var(--text); font-weight:500; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tp-ident-status { white-space:nowrap; }
+.tp-ident-caret { font-size:0.85em; }
+.tp-head.static .tp-ident-caret { display:none; }
 .tp-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:2px; }
 .tp-inst { display:flex; align-items:center; gap:8px; width:100%; text-align:left; padding:6px 8px;
     border-radius:4px; background:transparent; border:1px solid transparent; color:var(--text);
@@ -35,9 +107,10 @@
    droite de la zone plugin (même vocabulaire que le ⚙ de la topnav : encadré 1px,
    hover accent), popover sur la surface élevée du thème. */
 .tp-main { position:relative; min-width:0; }
-.tp-settings-btn { position:absolute; top:8px; right:8px; z-index:5;
-    display:inline-flex; align-items:center; justify-content:center;
-    width:28px; height:28px;
+/* Outils de l'instance (Monitoring, lien public, réglages) : boutons de 44 px dans la barre
+   d'onglets — ils chevauchaient auparavant le coin du plugin. */
+.tp-settings-btn { display:inline-flex; align-items:center; justify-content:center; flex:none;
+    width:44px; height:44px; padding:0;
     background:var(--bg-elev); border:1px solid var(--border);
     border-radius:var(--radius-small); color:var(--text-muted);
     font-size:0.95em; cursor:pointer;
@@ -48,7 +121,8 @@
 .tp-settings-btn[aria-expanded="true"] { border-color:var(--accent); color:var(--accent);
     background:var(--bg-selected); }
 .tp-settings-btn:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-.tp-settings-pop { position:absolute; top:42px; right:8px; z-index:6; width:300px; max-width:90%;
+.tp-settings-btn svg { width:20px; height:20px; }
+.tp-settings-pop { position:absolute; top:0; right:0; z-index:6; width:300px; max-width:90%;
     max-height:70vh; overflow-y:auto;
     background:var(--bg-elev); border:1px solid var(--border);
     border-radius:var(--radius); padding:var(--space-3);
@@ -68,61 +142,54 @@
 .toast.info { background:var(--accent-soft); color:var(--accent); }
 .toast.warning { background:var(--status-warning-bg); color:var(--status-warning-fg); }
 .toast.error { background:var(--status-stopped-bg); color:var(--status-stopped-fg); }
-{% if is_medias %}
-/* ── Bibliothèque clips ─────────────────────────────────── */
-.mxl-lib { margin-top:22px; border:1px solid var(--border-soft); border-radius:6px; padding:14px; }
-.mxl-lib-header { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
-.mxl-lib-header h2 { margin:0; font-size:1em; font-weight:600; }
-.mxl-lib-meta { color:var(--text-muted); font-size:0.82em; }
-.mxl-lib-search { margin-left:auto; background:var(--bg-panel); color:var(--text);
-    border:1px solid var(--border-soft); border-radius:4px; padding:5px 9px;
-    font-size:0.85em; min-width:180px; }
-.mxl-lib-refresh { background:none; border:none; color:var(--text-muted);
-    cursor:pointer; font-size:1em; padding:0 4px; }
-.mxl-lib-refresh:hover { color:var(--text); }
-.mxl-lib-sort { display:flex; gap:0; border-bottom:1px solid var(--border-soft); padding-bottom:6px; margin-bottom:4px; }
-.mxl-lib-sort button { background:none; border:none; color:var(--text-muted); cursor:pointer;
-    font-size:0.78em; padding:3px 8px; border-radius:3px; font-family:var(--font-mono); }
-.mxl-lib-sort button.active { color:var(--text); background:var(--bg-panel); }
-.mxl-lib-list { display:flex; flex-direction:column; gap:3px; max-height:480px; overflow-y:auto; }
-.mxl-lib-empty { font-size:0.85em; color:var(--text-muted); padding:12px 0; text-align:center; }
-.mxl-clip-row { display:grid;
-    grid-template-columns: minmax(0,1fr) 130px 70px 80px 130px 80px;
-    align-items:center; gap:10px;
-    padding:6px 10px; border-radius:4px;
-    background:var(--bg-card);
-    font-family:var(--font-mono); font-size:0.8em; }
-.mxl-clip-row:hover { background:var(--bg-panel); }
-.mxl-clip-row.live { outline:1px solid #f87171; }
-.mxl-clip-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text); }
-.mxl-clip-source { color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.mxl-clip-dur { color:var(--text-muted); white-space:nowrap; }
-.mxl-clip-size, .mxl-clip-date { color:var(--text-muted); white-space:nowrap; }
-.mxl-clip-del { justify-self:end; background:none; border:1px solid var(--border-soft);
-    color:var(--text-muted); border-radius:3px; padding:2px 8px; cursor:pointer;
-    font-size:0.85em; white-space:nowrap; font-family:inherit; }
-.mxl-clip-del:hover { border-color:#f87171; color:#f87171; }
-.mxl-clip-live-badge { padding:1px 5px; border-radius:3px; background:#f87171;
-    color:#000; font-size:0.75em; font-weight:600; }
-{% endif %}
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap">
-  <h1 style="margin:0 auto 0 0">{{ section_label }}</h1>
-  {% if is_medias and has_perm('media.manage') %}
-  <div class="tabs" id="medias-mode">
-    <button class="tab active" id="medias-mode-plugins" onclick="mediasMode('plugins')">{{ _('section.medias.mode_plugins') }}</button>
-    <button class="tab" id="medias-mode-manager" onclick="mediasMode('manager')">{{ _('section.medias.mode_manager') }}</button>
-  </div>
-  {% endif %}
-</div>
-<div id="medias-plugins-view">
-<div class="tabs" id="ps-tabs">
+{# Le titre de rubrique n'est plus AFFICHÉ : l'entrée allumée de la barre du haut le dit déjà, et sa
+   ligne coûtait ~40 px de hauteur à chaque plugin. Il reste pour les lecteurs d'écran. Les modes
+   de la page Médias, qui partageaient sa ligne, passent en bout de bande. #}
+<h1 class="sr-only">{{ section_label }}</h1>
+{# BANDE de rubrique : les onglets de type, collés sous la barre du haut dont ils sont le
+   sous-menu (`.subnav-deck`, base.css + static/subnav_deck.js). #}
+<div class="tabs ps-deck subnav-deck" id="ps-tabs">
   {# Repliable par construction : une SEULE ligne dans le flux (la synthèse), et le détail en
      SURCOUCHE absolue. Un panneau déplié ne doit jamais décaler la page — l'utilisateur consulte
      ses ressources en réglant son conteneur, pas l'inverse. #}
+  {# Nom de l'instance active, juste APRÈS les onglets de type (insérés en tête par psBuildTabs) :
+     à gauche, du côté du tiroir qu'il ouvre — le menu s'ouvre sous le doigt. Seul point d'entrée
+     au clavier vers la liste : le filet est décoratif. #}
+  <button type="button" class="tp-head" id="tp-ident-pick" hidden
+          aria-haspopup="true" aria-expanded="false" aria-controls="tp-side"
+          title="{{ _('section.instances_open') }}">
+    <span class="tp-dot" id="tp-ident-dot" aria-hidden="true"></span>
+    <span class="tp-ident-name" id="tp-ident-name"></span>
+    <span class="tp-ident-status" id="tp-ident-status"></span>
+    <span class="tp-ident-caret" aria-hidden="true">▾</span>
+  </button>
+  {# Outils de l'instance active, poussés à droite. #}
+  <div class="tp-ident" id="tp-ident">
+    <button type="button" class="tp-settings-btn" id="tp-monitor" hidden onclick="tpMonitor()"
+            title="{{ _('section.monitoring') }}" aria-label="{{ _('section.monitoring') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+    {# Journal d'exploitation de l'instance (qui a fait quoi) : seulement si le plugin déclare
+       `control.journal` (cf. tpJournalMaj). Un lien, pas un bouton : il s'ouvre aussi dans un onglet. #}
+    <a class="tp-settings-btn" id="tp-journal" hidden href="/ops-journal"
+       title="{{ _('section.ops_journal') }}" aria-label="{{ _('section.ops_journal') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 4h11v16H7z"/><path d="M4 7h3M4 12h3M4 17h3M10 8h5M10 12h5M10 16h3"/></svg></a>
+    <!-- LIEN PUBLIC — fonction d'ORCHESTRATEUR, offerte à tout plugin qui déclare
+         `ui.public_page`. Elle est ici et pas dans la console d'un plugin : c'est un
+         mécanisme du produit, et l'écrire dans un plugin garantirait qu'on le recopie au
+         suivant (l'éditeur de layout en est à sa quatrième copie). -->
+    <button type="button" class="tp-settings-btn" id="tp-public-btn" hidden
+            title="{{ _('section.public_btn_title') }}"
+            aria-label="{{ _('section.public_btn_title') }}"
+            aria-haspopup="true" aria-expanded="false"
+            aria-controls="tp-public"><span aria-hidden="true">🔗</span></button>
+    <button type="button" class="tp-settings-btn" id="tp-settings-btn" hidden
+            title="{{ _('section.settings_btn_title') }}"
+            aria-label="{{ _('section.settings_btn_title') }}"
+            aria-haspopup="true" aria-expanded="false"
+            aria-controls="tp-settings"><span aria-hidden="true">⚙</span></button>
+  </div>
   <div class="res-compact" id="res-compact" hidden>
     <button type="button" class="res-compact-toggle" id="res-compact-toggle"
             aria-expanded="false" aria-controls="res-compact-panel">
@@ -140,33 +207,38 @@
       <div class="res-compact-list" id="res-compact-list"></div>
     </div>
   </div>
+  {% set medias_modes = is_medias and (has_perm('media.manage') or has_playout) %}
+  {% if medias_modes %}
+  {# Modes de la page Médias, en bout de bande : seule chose qu'elle garde dans les autres modes.
+     « Lecture A/B » (groupes de lecture) relève du pilotage, pas de la gestion des médias : visible sans
+     `media.manage`, dès que le plugin player est installé. #}
+  <div class="tabs" id="medias-mode">
+    <button class="tab active" id="medias-mode-plugins" onclick="mediasMode('plugins')">{{ _('section.medias.mode_plugins') }}</button>
+    {% if has_playout %}<button class="tab" id="medias-mode-playout" onclick="mediasMode('playout')">{{ _('section.medias.mode_playout') }}</button>
+    {# « Lecture synchrone » (app/sync_groups.py) : players qui lisent ENSEMBLE — même condition que la Lecture A/B. #}
+    <button class="tab" id="medias-mode-syncplay" onclick="mediasMode('syncplay')">{{ _('section.medias.mode_syncplay') }}</button>{% endif %}
+    {% if has_perm('media.manage') %}<button class="tab" id="medias-mode-manager" onclick="mediasMode('manager')">{{ _('section.medias.mode_manager') }}</button>
+    {% if has_farm %}<button class="tab" id="medias-mode-farm" onclick="mediasMode('farm')">{{ _('section.medias.mode_farm') }}</button>{% endif %}{% endif %}
+  </div>
+  {% endif %}
 </div>
-<div class="tp-cols">
-    <nav class="tp-side" aria-label="{{ _('section.instances_aria') }}">
-        <h3 id="ps-side-title">{{ _('section.deployed') }}</h3>
+<div id="medias-plugins-view">
+<div class="tp-cols" id="tp-cols">
+    <div class="tp-edge" id="tp-edge" hidden aria-hidden="true"><span class="tp-edge-marks" id="tp-edge-marks"></span></div>
+    <nav class="tp-side" id="tp-side" aria-label="{{ _('section.instances_aria') }}" inert>
+        <div class="tp-side-head">
+            <h3 id="ps-side-title">{{ _('section.deployed') }}</h3>
+            <button type="button" class="tp-settings-btn" id="tp-pin" aria-pressed="false"
+                    title="{{ _('section.instances_pin') }}" aria-label="{{ _('section.instances_pin') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/></svg></button>
+            <button type="button" class="tp-settings-btn" id="tp-side-close"
+                    title="{{ _('section.instances_close') }}" aria-label="{{ _('section.instances_close') }}"><span aria-hidden="true">✕</span></button>
+        </div>
         <ul class="tp-list" id="tp-list"><li class="meta">{{ _('section.loading') }}</li></ul>
-        <button type="button" class="btn" style="width:100%; margin-top:8px"
-                id="tp-monitor" hidden onclick="tpMonitor()">{{ _('section.monitoring') }}</button>
     </nav>
     <section class="tp-main">
-        <!-- LIEN PUBLIC — fonction d'ORCHESTRATEUR, offerte à tout plugin qui déclare
-             `ui.public_page`. Elle est ici et pas dans la console d'un plugin : c'est un
-             mécanisme du produit, et l'écrire dans un plugin garantirait qu'on le recopie au
-             suivant (l'éditeur de layout en est à sa quatrième copie). -->
-        <button type="button" class="tp-settings-btn" id="tp-public-btn" hidden
-                style="right:52px"
-                title="{{ _('section.public_btn_title') }}"
-                aria-label="{{ _('section.public_btn_title') }}"
-                aria-haspopup="true" aria-expanded="false"
-                aria-controls="tp-public"><span aria-hidden="true">🔗</span></button>
-        <div class="tp-settings-pop" id="tp-public" hidden style="right:52px">
+        <div class="tp-settings-pop" id="tp-public" hidden>
             <div class="tp-settings-body" id="tp-public-body"></div>
         </div>
-        <button type="button" class="tp-settings-btn" id="tp-settings-btn" hidden
-                title="{{ _('section.settings_btn_title') }}"
-                aria-label="{{ _('section.settings_btn_title') }}"
-                aria-haspopup="true" aria-expanded="false"
-                aria-controls="tp-settings"><span aria-hidden="true">⚙</span></button>
         <div class="tp-settings-pop" id="tp-settings" hidden>
             <div class="tp-settings-body"></div>
         </div>
@@ -177,45 +249,55 @@
 </div>
 <div class="toast-host" id="toast-host" role="status" aria-live="polite"></div>
 
-{% if is_medias %}
-<section class="mxl-lib" id="mxl-lib" aria-label="{{ _('section.lib_aria') }}">
-  <div class="mxl-lib-header">
-    <h2>{{ _('section.lib_title') }}</h2>
-    <span class="mxl-lib-meta" id="mxl-lib-count"></span>
-    <input class="mxl-lib-search" id="mxl-lib-search" placeholder="{{ _('section.lib_filter') }}" autocomplete="off">
-    <button class="mxl-lib-refresh" id="mxl-lib-refresh" title="{{ _('section.refresh') }}">↺</button>
-  </div>
-  <div class="mxl-lib-sort">
-    <button data-sort="date" class="active">{{ _('section.sort_date') }} ↓</button>
-    <button data-sort="name">{{ _('section.sort_name') }}</button>
-    <button data-sort="size">{{ _('section.sort_size') }}</button>
-    <button data-sort="source">{{ _('section.sort_source') }}</button>
-  </div>
-  <div class="mxl-lib-list" id="mxl-lib-list">
-    <div class="mxl-lib-empty">{{ _('section.loading') }}</div>
-  </div>
-</section>
-{% endif %}
 </div><!-- /medias-plugins-view -->
-{% if is_medias and has_perm('media.manage') %}
+{% if medias_modes %}
+{% if has_perm('media.manage') %}
 <div id="medias-mgr-view" hidden>
 {% include 'media_manager/embed.html' %}
 </div>
+{% if has_farm %}
+<div id="medias-farm-view" hidden>
+{% include 'transcode_farm_embed.html' %}
+</div>
+{% endif %}
+{% endif %}
+{% if has_playout %}
+<div id="medias-playout-view" hidden>
+{% include 'playout_groups_embed.html' %}
+</div>
+<div id="medias-syncplay-view" hidden>
+{% include 'sync_groups_embed.html' %}
+</div>
+{% endif %}
 <script>
 let _mgrLoaded = false;
 function mediasMode(m){
-  const pv=document.getElementById('medias-plugins-view'), mv=document.getElementById('medias-mgr-view');
-  const onP=(m!=='manager');
-  if(pv)pv.hidden=!onP; if(mv)mv.hidden=onP;
-  const bp=document.getElementById('medias-mode-plugins'), bm=document.getElementById('medias-mode-manager');
-  if(bp)bp.classList.toggle('active',onP); if(bm)bm.classList.toggle('active',!onP);
-  if(!onP && !_mgrLoaded && window.mmLoad){ _mgrLoaded=true; mmLoad(); }
+  const views = {plugins:'medias-plugins-view', manager:'medias-mgr-view', farm:'medias-farm-view', playout:'medias-playout-view', syncplay:'medias-syncplay-view'};
+  for (const [k, id] of Object.entries(views)) {
+    const v=document.getElementById(id); if(v) v.hidden=(k!==m);
+    const b=document.getElementById('medias-mode-'+k); if(b) b.classList.toggle('active', k===m);
+  }
+  // La bande reste (elle porte les modes), mais ses onglets de type et outils d'instance n'ont
+  // de sens que dans le mode Plugins.
+  const deck=document.getElementById('ps-tabs'); if(deck) deck.classList.toggle('ps-deck-other', m!=='plugins');
+  if(m==='manager' && !_mgrLoaded && window.mmLoad){ _mgrLoaded=true; mmLoad(); }
+  // La ferme se rafraîchit seule tant qu'elle est affichée, et plus du tout ailleurs.
+  if(m==='farm' && window.farmLoad) farmLoad(); else if(window.farmStop) farmStop();
+  if(m==='playout' && window.playoutLoad) playoutLoad(); else if(window.playoutStop) playoutStop();
+  if(m==='syncplay' && window.syncplayLoad) syncplayLoad(); else if(window.syncplayStop) syncplayStop();
+  // Lien direct : `/medias#farm` / `#playout` / `#syncplay` ouvre l'onglet (l'adresse suit l'onglet, sans recharger).
+  try{ history.replaceState(null, '', (m==='farm' || m==='playout' || m==='syncplay') ? '#' + m : location.pathname + location.search); }catch(e){}
 }
+// Ouverture par `/medias#farm` ou `#playout`, et lien suivi dans la page déjà ouverte. Sans la vue, sans effet.
+(function(){ const go = () => { const h = location.hash.slice(1);
+    if((h === 'farm' || h === 'playout' || h === 'syncplay') && document.getElementById('medias-' + h + '-view')) mediasMode(h); };
+  go(); window.addEventListener('hashchange', go); })();
 </script>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/subnav_deck.js?v={{ asset_v('subnav_deck.js') }}"></script>
 {% if has_mv %}<script src="/api/plugins/multiview/ui/extra_js"></script>{% endif %}
 {% if extra_tabs %}<script src="/static/io2110.js?v={{ asset_v('io2110.js') }}"></script>{% endif %}
 <script>
@@ -224,7 +306,7 @@ const SECTION_PLUGINS = {{ plugins | tojson }};   // [{type, label, version, …
 // Le bouton n'apparaît que pour les types qui DÉCLARENT savoir se monter en page publique.
 // Le proposer partout créerait des liens qui s'ouvrent sur une console appelant l'API privée :
 // 401 en boucle, et personne pour l'expliquer à qui a reçu le lien.
-let _tpPublicVmid = null, _tpPublicCidrs = null;
+let _tpPublicVmid = null, _tpPublicCidrs = null, _tpPublicType = null;
 
 function tpPublicSupporte(type) {
     // Le drapeau vit dans `ui` du manifeste, pas à la racine : `_plugin_public` renvoie le
@@ -238,6 +320,7 @@ function tpPublicMaj(it) {
     const b = document.getElementById('tp-public-btn');
     if (!b) return;
     _tpPublicVmid = it ? it.vmid : null;
+    _tpPublicType = it ? it.type : null;
     b.hidden = !(it && tpPublicSupporte(it.type));
     const pop = document.getElementById('tp-public');
     if (pop && !pop.hidden) tpPublicCharger();
@@ -266,7 +349,11 @@ async function tpPublicCharger() {
         // ★ LE MÊME CONTRÔLE QU'À LA PAGE RÉGLAGES. Un champ texte ici et des puces là-bas
         // pour LA MÊME donnée, c'est deux vocabulaires de formulaire dans un produit — le
         // défaut qui fait douter du reste de l'interface.
-        '<div id="tp-public-cidrs" style="margin-bottom:var(--space-2)"></div>';
+        '<div id="tp-public-cidrs" style="margin-bottom:var(--space-2)"></div>' +
+        // PORTÉE (2026-10-18) : un plugin qui déclare `ui.public_tabs` (liste vivante de ses onglets)
+        // peut partager UN onglet ; s'il déclare aussi `control.public_actions`, le lien peut être
+        // autorisé à JOUER cet onglet sans compte. Éteint par défaut, et dit ce que cela ouvre.
+        '<div id="tp-public-scope"></div>';
     if (!liens.length) {
         h += '<p class="meta">' + psEsc({{ _('section.public_none') | tojson }}) + '</p>';
     } else {
@@ -275,12 +362,15 @@ async function tpPublicCharger() {
             '<input type="text" readonly style="flex:1;font-size:.85em" value="' +
             psEsc(l.url) + '" onclick="this.select()">' +
             (l.cidrs ? '<span class="badge" title="' + psEsc(l.cidrs) + '">🔒</span>' : '') +
+            (l.scope && l.scope.tab ? '<span class="badge" data-ps-tab="' + psEsc(l.scope.tab) + '" title="' + psEsc({{ _('section.public_scope_tab') | tojson }}) + '">' +
+                '<span class="ps-tab-n">' + psEsc(l.scope.tab) + '</span>' + (l.scope.play ? ' ▶ ' + psEsc({{ _('section.public_play_badge') | tojson }}) : '') + '</span>' : '') +
             '<button type="button" class="btn" onclick="tpPublicCopier(this)">⧉</button>' +
             '<button type="button" class="btn" onclick="tpPublicRevoquer(\'' +
             psEsc(l.token) + '\')" title="' +
             psEsc({{ _('section.public_revoke') | tojson }}) + '">✕</button></div>').join('');
     }
     body.innerHTML = h;
+    tpPublicPortee();
     const zc = document.getElementById('tp-public-cidrs');
     if (zc && window.MXLControls) {
         _tpPublicCidrs = MXLControls.cidrList(zc, {
@@ -290,12 +380,53 @@ async function tpPublicCharger() {
     }
 }
 
+async function tpPublicPortee() {
+    const zone = document.getElementById('tp-public-scope');
+    const p = (SECTION_PLUGINS || []).find(x => x.type === _tpPublicType);
+    const ep = p && p.ui && p.ui.public_tabs;
+    if (!zone || !ep) return;
+    let tabs = [];
+    try {
+        const r = await fetch('/api/containers/' + _tpPublicVmid + '/plugin' + ep, { cache: 'no-store' });
+        tabs = r.ok ? ((await r.json()).items || []) : [];
+    } catch (e) { tabs = []; }
+    // le badge d'un lien nommait l'onglet par son identifiant : son NOM, dès que la liste est lue (2026-10-18)
+    document.querySelectorAll('[data-ps-tab]').forEach(b => {
+        const t = tabs.find(x => x.value === b.dataset.psTab), n = b.querySelector('.ps-tab-n');
+        if (t && n) n.textContent = t.label;
+    });
+    const jouable = !!(p.control && (p.control.public_actions || []).length);
+    zone.innerHTML =
+        '<label class="ctl-field" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">' +
+        '<span>' + psEsc({{ _('section.public_scope_tab') | tojson }}) + '</span>' +
+        '<select class="ctl-input" id="tp-public-tab" style="flex:1;min-height:44px">' +
+        '<option value="">' + psEsc({{ _('section.public_scope_all') | tojson }}) + '</option>' +
+        tabs.map(t => '<option value="' + psEsc(t.value) + '">' + psEsc(t.label) + '</option>').join('') +
+        '</select></label>' +
+        (jouable ? '<label style="display:flex;gap:6px;align-items:center;min-height:44px">' +
+            '<input type="checkbox" class="ctl-switch" id="tp-public-play" disabled> ' +
+            psEsc({{ _('section.public_play') | tojson }}) + '</label>' +
+            '<p class="meta" id="tp-public-play-warn" hidden>' + psEsc({{ _('section.public_play_warn') | tojson }}) + '</p>' : '');
+    const sel = document.getElementById('tp-public-tab'), sw = document.getElementById('tp-public-play');
+    if (sw) {
+        const maj = () => {
+            sw.disabled = !sel.value;
+            if (!sel.value) sw.checked = false;
+            document.getElementById('tp-public-play-warn').hidden = !sw.checked;
+        };
+        sel.addEventListener('change', maj);
+        sw.addEventListener('change', maj);
+    }
+}
+
 async function tpPublicCreer() {
     const t = document.getElementById('tp-public-titre');
+    const sel = document.getElementById('tp-public-tab'), sw = document.getElementById('tp-public-play');
+    const scope = sel && sel.value ? { tab: sel.value, play: !!(sw && sw.checked) } : null;
     try {
         const r = await fetch('/api/containers/' + _tpPublicVmid + '/share_page', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: (t && t.value) || '',
+            body: JSON.stringify({ title: (t && t.value) || '', scope: scope,
                                    cidrs: _tpPublicCidrs ? _tpPublicCidrs.value() : '' }) });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
@@ -374,9 +505,30 @@ function tpToast(msg, kind='info'){
 }
 function tpMonitor(){ if(tpSelectedVmid!=null && window.MXLMonitor) MXLMonitor.monitorVmid(tpSelectedVmid); }
 
+// Lien vers le journal d'exploitation FILTRÉ sur l'instance (instance_uuid : survit au recreate ;
+// repli vmid). Affiché seulement si le manifeste déclare `control.journal`.
+function tpJournalMaj(it){
+    const a=document.getElementById('tp-journal');
+    if(!a) return;
+    const p=it ? (SECTION_PLUGINS||[]).find(x=>x.type===it.type) : null;
+    a.hidden=!(p && p.control && p.control.journal);
+    if(it) a.href='/ops-journal?'+(it.instance_uuid ? 'instance_uuid='+encodeURIComponent(it.instance_uuid) : 'vmid='+it.vmid);
+}
+
 // Chargement idempotent des assets d'un plugin, keyé par (type@version, kind).
 // Si vmid est fourni, les assets sont chargés avec ?vmid=X pour servir la bonne version archivée.
 // Quand la version change pour un type, les anciens tags sont purgés et remplacés.
+// `ui=` = version COURANTE du plugin sur le disque : `v` (version déployée de l'instance) ne bouge pas
+// quand seule l'interface change (fichiers servis du dossier à plat), et Safari gardait l'ancien script
+// en cache — un correctif d'interface n'atteignait pas l'iPad (2026-10-19).
+function tpAssetQs(vmid, version, type){
+    const q=[];
+    if(vmid) q.push('vmid='+vmid);
+    if(version) q.push('v='+encodeURIComponent(version));
+    const cur=type ? (SECTION_PLUGINS||[]).find(x=>x.type===type) : null;
+    if(cur && cur.version && cur.version!==version) q.push('ui='+encodeURIComponent(cur.version));
+    return q.length ? '?'+q.join('&') : '';
+}
 function tpEnsureAsset(type, kind, vmid, version){
     const vtag = type+'@'+(version||'current');
     const domId='plugin-'+kind+'-'+vtag.replace(/[^a-zA-Z0-9_-]/g,'_');
@@ -384,7 +536,9 @@ function tpEnsureAsset(type, kind, vmid, version){
     // Purger l'asset du même (type, kind) pour une autre version
     document.querySelectorAll('[data-mxl-type="'+type+'"][data-mxl-kind="'+kind+'"]')
             .forEach(el=>el.remove());
-    const qs = vmid ? '?vmid='+vmid : '';
+    // la VERSION dans l'URL : sans elle, le navigateur (Safari surtout) resservait de son cache le
+    // script d'avant la mise à jour — la réponse ne porte aucun Cache-Control
+    const qs = tpAssetQs(vmid, version, type);
     return new Promise(res=>{
         let el;
         if(kind==='js'){ el=document.createElement('script'); el.src='/api/plugins/'+type+'/ui/js'+qs; }
@@ -395,9 +549,38 @@ function tpEnsureAsset(type, kind, vmid, version){
     });
 }
 
+// Fragment HTML + style + script d'un plugin (version de l'instance) : LE chargement des UI de plugin de cette
+// page. Exposé (window.MXLPluginUI) pour qu'une UI de plugin en MONTE une autre dans un panneau — la console
+// audio monte le cartouchier — sans recopier ni l'interface ni ce chargement. Lève si le fragment manque.
+async function tpLoadUi(type, vmid, version){
+    const r = await fetch('/api/plugins/'+type+'/ui/html'+tpAssetQs(vmid, version, type));
+    if(!r.ok) throw new Error('fragment');
+    const html = await r.text();
+    await tpEnsureAsset(type,'css',vmid,version);
+    await tpEnsureAsset(type,'js',vmid,version);
+    return html;
+}
+window.MXLPluginUI = { load: tpLoadUi };
+
+// L'UI MONTÉE, pas celle qui est enregistrée. `window.MXLPlugins[type]` désigne le DERNIER script chargé :
+// deux instances d'un même type à des versions différentes (rl-mix 0.23.2, mixer-Satis 0.23.3), ou la
+// relecture de la liste qui charge la version courante, y remplacent l'objet sans arrêter celui qui est
+// monté. Démonter « l'enregistré » laissait l'ancien vivant : son sondage de 2 s réécrivait les boutons de
+// la nouvelle instance avec les sources de l'autre — noms qui clignotent (Recette, Paul, 2026-10-23).
+let tpMountedApi = null, tpMountSeq = 0;
+function tpUnmountCurrent(){
+    const seen = new Set();
+    [tpMountedApi, window.MXLPlugins[TP_TYPE]].forEach(a => {
+        if(!a || seen.has(a) || typeof a.unmount !== 'function') return;
+        seen.add(a);
+        try { a.unmount(); } catch(_){}
+    });
+    tpMountedApi = null;
+}
+
 async function tpMount(inst, mountEl){
     // Démonte proprement l'instance précédente (timers de polling, resize, etc.).
-    try { window.MXLPlugins[TP_TYPE] && window.MXLPlugins[TP_TYPE].unmount && window.MXLPlugins[TP_TYPE].unmount(); } catch(_){}
+    tpUnmountCurrent();
     // La feuille de style d'un plugin DÉMONTÉ doit partir avec lui. Sans ça elle restait dans le
     // <head> pour toute la session : deux plugins qui partagent un nom de classe (cas vécu
     // split ↔ color_corrector, 12 classes .cc-* communes) se recouvraient selon l'ORDRE de
@@ -411,15 +594,17 @@ async function tpMount(inst, mountEl){
     const vmid = inst ? inst.vmid : null;
     const version = inst ? inst.version : null;
     let html='';
-    const htmlQs = vmid ? '?vmid='+vmid : '';
-    try { html = await (await fetch('/api/plugins/'+TP_TYPE+'/ui/html'+htmlQs)).text(); }
-    catch(e){ mountEl.innerHTML='<div class="meta">'+window.t('section.fragment_missing')+'</div>'; return; }
+    // Un montage plus récent (autre instance cliquée pendant le chargement) gagne : celui-ci abandonne,
+    // sinon les deux montaient l'un après l'autre et le premier n'était jamais démonté.
+    const seq = ++tpMountSeq;
+    try { html = await tpLoadUi(TP_TYPE, vmid, version); }
+    catch(e){ if(seq===tpMountSeq) mountEl.innerHTML='<div class="meta">'+window.t('section.fragment_missing')+'</div>'; return; }
+    if(seq!==tpMountSeq) return;
+    tpUnmountCurrent();
     mountEl.innerHTML = html;
-    await tpEnsureAsset(TP_TYPE,'css',vmid,version);
-    await tpEnsureAsset(TP_TYPE,'js',vmid,version);
     const api = window.MXLPlugins[TP_TYPE];
     if(api && typeof api.mount==='function'){
-        try { api.mount(mountEl, inst.vmid, {toast:tpToast, type:TP_TYPE, instance:inst}); }
+        try { api.mount(mountEl, inst.vmid, {toast:tpToast, type:TP_TYPE, instance:inst}); tpMountedApi = api; }
         catch(e){ console.error(e); tpToast(window.t('section.mount_error')+' '+e.message,'error'); }
     } else {
         mountEl.innerHTML='<div class="meta">'+window.t('section.no_ui')+'</div>';
@@ -436,9 +621,14 @@ function tpSelectInstance(vmid){
     tpSelectedVmid=it.vmid;
     list.querySelectorAll('.tp-inst').forEach(b=>b.classList.toggle('active', +b.dataset.vmid===it.vmid));
     tpPublicMaj(it);
+    // Pas de scrollIntoView quand le tiroir est fermé : sur un élément invisible, il fait défiler
+    // la PAGE.
     const btn=list.querySelector('.tp-inst[data-vmid="'+it.vmid+'"]');
-    if(btn && btn.scrollIntoView) btn.scrollIntoView({block:'nearest'});
+    if(btn && btn.scrollIntoView && tpSideVisible()) btn.scrollIntoView({block:'nearest'});
     document.getElementById('tp-monitor').hidden=false;
+    tpJournalMaj(it);
+    tpRenderIdent();
+    if(!tpPinned) tpSideOpen(false);
     tpMount(it, document.getElementById('tp-mount'));
     tpRenderSettings(it);
     return true;
@@ -458,13 +648,23 @@ async function tpLoadInstances(){
     const preview = (window.MXLPlugins[type] || {}).listPreview;
     list.innerHTML='';
     tpItems=items;
-    if(!items.length){ list.innerHTML='<li class="meta">'+psEsc(window.t('section.none_deployed').replace('{label}',TP_LABEL))+'</li>'; tpSelectedVmid=null; tpWantVmid=null; tpRenderSettings(null); return; }
+    tpRenderIdent();
+    if(!items.length){
+        // Aucune instance : ni filet ni étiquette — le message va dans la zone du plugin, seule
+        // chose encore visible.
+        const none=window.t('section.none_deployed').replace('{label}',TP_LABEL);
+        list.innerHTML='<li class="meta">'+psEsc(none)+'</li>';
+        const mountEl=document.getElementById('tp-mount');
+        mountEl.className='tp-mount empty'; mountEl.innerHTML='<div>'+psEsc(none)+'</div>';
+        tpSelectedVmid=null; tpWantVmid=null; tpRenderSettings(null); return;
+    }
     items.forEach(it=>{
         const li=document.createElement('li');
         const btn=document.createElement('button'); btn.type='button'; btn.className='tp-inst'; btn.dataset.vmid=it.vmid;
         if(it.vmid===tpSelectedVmid) btn.classList.add('active');
-        btn.innerHTML='<span class="tp-inst-main">'+psEsc(it.hostname||('#'+it.vmid))+' #'+it.vmid+
-            '<span class="tp-inst-status">'+psEsc(it.status||'?')+'</span></span>'+
+        btn.innerHTML='<span class="tp-dot '+tpStatusClass(it.status)+'" aria-hidden="true"></span>'+
+            '<span class="tp-inst-main">'+psEsc(it.hostname||('#'+it.vmid))+' #'+it.vmid+
+            '<span class="tp-inst-status">'+psEsc(tpStatusLabel(it.status))+'</span></span>'+
             '<span class="tp-inst-ver">v'+psEsc(it.version||'?')+'</span>';
         btn.onclick=()=>tpSelectInstance(it.vmid);
         li.appendChild(btn);
@@ -484,6 +684,170 @@ async function tpLoadInstances(){
     if(tpSelectedVmid==null) tpSelectInstance(items[0].vmid);
 }
 window.tpLoadInstances = tpLoadInstances;   // appelé par multiview.js après déploiement
+
+// ÉTAT DES INSTANCES TENU À JOUR (2026-10-18). La liste n'était lue qu'à l'ouverture de la rubrique et après un
+// déploiement : une console créée affichait « script arrêté » (l'état pendant son démarrage) pour toujours, alors
+// qu'elle tournait. On relit les états toutes les 5 s et on ne touche QU'AUX repères (point, libellé) : la console
+// montée n'est jamais remontée, la liste n'est reconstruite que si des instances apparaissent ou disparaissent.
+const TP_STATUS_MS = 5000;
+async function tpRefreshStatuses(){
+    if(!TP_TYPE || document.hidden) return;
+    const type=TP_TYPE;
+    let items;
+    try { const r = await fetch('/api/plugins/instances?type='+type, {cache:'no-store'}); if(!r.ok) return; items = await r.json(); }
+    catch(e){ return; }
+    if(type!==TP_TYPE || !Array.isArray(items)) return;
+    const ids = a => a.map(x => +x.vmid).sort((x, y) => x - y).join(',');
+    if(ids(items) !== ids(tpItems)){ await tpLoadInstances(); return; }
+    let changed = false;
+    items.forEach(n => {
+        const it = tpItems.find(x => +x.vmid === +n.vmid);
+        if(!it || it.status === n.status) return;
+        it.status = n.status; changed = true;
+        const btn = document.querySelector('#tp-list .tp-inst[data-vmid="'+n.vmid+'"]');
+        if(btn){
+            const dot = btn.querySelector('.tp-dot'), lab = btn.querySelector('.tp-inst-status');
+            if(dot) dot.className = 'tp-dot ' + tpStatusClass(n.status);
+            if(lab) lab.textContent = tpStatusLabel(n.status);
+        }
+    });
+    if(changed) tpRenderIdent();
+}
+document.addEventListener('DOMContentLoaded', () => { if(window.MXLPoll) window.MXLPoll(tpRefreshStatuses, TP_STATUS_MS, {immediate: false}); });
+
+
+// ── Liste des instances : filet, tiroir, épingle ─────────────────────────────────────────────
+// ÉPINGLÉE par défaut (demandé le 2026-10-18) : seul un geste de l'utilisateur la replie, et ce choix
+// est retenu (« 0 »). Une clé absente — navigateur neuf, ou qui n'a jamais touché l'épingle — vaut donc
+// épinglé. Préférence commune à toutes les rubriques — on la replie parce qu'on préfère la pleine
+// largeur, pas pour un type donné.
+const TP_PIN_KEY = 'ps-instances-pinned';
+let tpPinned = true;
+try { tpPinned = localStorage.getItem(TP_PIN_KEY) !== '0'; } catch(_){}
+let tpHoverOpened = false, tpOpenTimer = null, tpCloseTimer = null;
+const TP_HOVER_OPEN_MS = 400;   // arrêt de la souris sur le filet avant ouverture
+
+// En marche / arrêté / autre : la classe porte la FORME et la couleur du repère (cf. `.tp-dot`).
+function tpStatusClass(st){
+    if(st === 'running') return '';
+    if(st === 'stopped' || st === 'crash_loop' || st === 'unreachable') return 'bad';
+    return 'warn';
+}
+function tpStatusLabel(st){
+    const k = 'containers.status.' + (st || 'unknown');
+    const v = window.t(k);
+    return (v && v !== k) ? v : (st || '?');
+}
+function tpSideVisible(){
+    return document.getElementById('tp-side').classList.contains('open')
+        || document.getElementById('tp-cols').classList.contains('pinned');
+}
+// Une instance seule n'a rien à choisir : ni filet ni flèche, l'étiquette reste pour dire laquelle
+// on pilote. Les onglets custom (2110) n'ont pas d'instances par vmid : rien de tout ça.
+function tpRenderIdent(){
+    const custom = TP_TYPE && _isCustomTab(TP_TYPE);
+    const items = custom ? [] : tpItems;
+    const it = items.find(x => +x.vmid === +tpSelectedVmid);
+    const many = items.length > 1;
+    const pick = document.getElementById('tp-ident-pick');
+    pick.hidden = !it;
+    const pinnedNow = tpPinned && items.length > 0;
+    pick.classList.toggle('static', !many || pinnedNow);
+    pick.disabled = !many || pinnedNow;
+    if(it){
+        document.getElementById('tp-ident-dot').className = 'tp-dot ' + tpStatusClass(it.status);
+        document.getElementById('tp-ident-name').textContent = it.hostname || ('#' + it.vmid);
+        document.getElementById('tp-ident-status').textContent = tpStatusLabel(it.status);
+    }
+    const cols = document.getElementById('tp-cols');
+    const side = document.getElementById('tp-side');
+    const pinned = tpPinned && items.length > 0;
+    cols.classList.toggle('pinned', pinned);
+    side.hidden = custom;
+    if(pinned) side.removeAttribute('inert');
+    else if(!side.classList.contains('open')) side.setAttribute('inert', '');
+    document.getElementById('tp-pin').setAttribute('aria-pressed', tpPinned ? 'true' : 'false');
+    const edge = document.getElementById('tp-edge');
+    edge.hidden = !many || pinned;
+    document.getElementById('tp-edge-marks').innerHTML = items.map(x =>
+        '<i class="' + tpStatusClass(x.status) + (+x.vmid === +tpSelectedVmid ? ' active' : '') + '"></i>').join('');
+    if(!many && !pinned) tpSideOpen(false);
+}
+function tpSideOpen(open, opts){
+    const side = document.getElementById('tp-side');
+    const pick = document.getElementById('tp-ident-pick');
+    clearTimeout(tpOpenTimer); clearTimeout(tpCloseTimer);
+    if(document.getElementById('tp-cols').classList.contains('pinned')) return;
+    if(open){
+        // Le tiroir s'ouvre sous l'en-tête qui le commande, ou là où l'on regarde si la page a
+        // défilé sous une console longue.
+        const r = document.getElementById('tp-cols').getBoundingClientRect();
+        const under = pick.hidden ? 0 : (pick.getBoundingClientRect().bottom - r.top + 4);
+        side.style.top = Math.max(under, 8 - r.top) + 'px';
+        side.removeAttribute('inert');
+        side.classList.add('open');
+        tpHoverOpened = !!(opts && opts.hover);
+        if(opts && opts.focus){
+            const a = side.querySelector('.tp-inst.active') || side.querySelector('.tp-inst');
+            if(a) a.focus({preventScroll:true});
+        }
+    } else {
+        side.classList.remove('open');
+        side.setAttribute('inert', '');
+        tpHoverOpened = false;
+    }
+    pick.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+document.addEventListener('DOMContentLoaded', () => {
+    const side = document.getElementById('tp-side');
+    const edge = document.getElementById('tp-edge');
+    const pick = document.getElementById('tp-ident-pick');
+    // Souris : ouverture si le pointeur S'ARRÊTE sur les traits du filet (pas en traversant la marge
+    // ni en longeant le bord du plugin : à 150 ms sur toute la hauteur, le tiroir s'ouvrait sans qu'on
+    // le veuille), fermeture quand il s'éloigne — seulement si c'est l'approche qui a ouvert.
+    // Clic n'importe où sur le filet : ouverture immédiate. Doigt : un toucher sur le filet ou l'étiquette.
+    const marks = document.getElementById('tp-edge-marks');
+    marks.addEventListener('pointerenter', e => {
+        if(e.pointerType !== 'mouse' || side.classList.contains('open')) return;
+        clearTimeout(tpOpenTimer);
+        tpOpenTimer = setTimeout(() => tpSideOpen(true, {hover:true}), TP_HOVER_OPEN_MS);
+    });
+    marks.addEventListener('pointerleave', e => {
+        if(e.pointerType === 'mouse' && !side.classList.contains('open')) clearTimeout(tpOpenTimer);
+    });
+    const leave = e => {
+        if(e.pointerType !== 'mouse') return;
+        clearTimeout(tpOpenTimer);
+        const to = e.relatedTarget;
+        if(to && to.closest && to.closest('#tp-side, #tp-edge')) return;
+        if(tpHoverOpened) tpCloseTimer = setTimeout(() => tpSideOpen(false), 350);
+    };
+    edge.addEventListener('pointerleave', leave);
+    side.addEventListener('pointerleave', leave);
+    side.addEventListener('pointerenter', () => clearTimeout(tpCloseTimer));
+    edge.addEventListener('click', () => tpSideOpen(true));
+    pick.addEventListener('click', () => {
+        if(document.getElementById('tp-cols').classList.contains('pinned')) return;
+        tpSideOpen(!side.classList.contains('open'), {focus:true});
+    });
+    document.getElementById('tp-side-close').addEventListener('click', () => { tpSideOpen(false); pick.focus(); });
+    document.getElementById('tp-pin').addEventListener('click', () => {
+        tpPinned = !tpPinned;
+        try { localStorage.setItem(TP_PIN_KEY, tpPinned ? '1' : '0'); } catch(_){}
+        side.classList.remove('open');
+        tpRenderIdent();
+        if(!tpPinned) tpSideOpen(false);
+    });
+    // Toucher ou clic hors du tiroir : il se referme (sans avaler le geste).
+    document.addEventListener('pointerdown', e => {
+        if(!side.classList.contains('open')) return;
+        if(e.target.closest('#tp-side, #tp-edge, #tp-ident-pick')) return;
+        tpSideOpen(false);
+    });
+    document.addEventListener('keydown', e => {
+        if(e.key === 'Escape' && side.classList.contains('open')){ tpSideOpen(false); pick.focus(); }
+    });
+});
 
 // Rafraîchit l'aperçu d'une instance dans la sidebar (utilisé p.ex. par split).
 window.tpRefreshPreview = function(vmid){
@@ -805,7 +1169,7 @@ async function activateTab(type, wantVmid){
         } else tpSelectInstance(wantVmid);
         return;
     }
-    try { window.MXLPlugins[TP_TYPE] && window.MXLPlugins[TP_TYPE].unmount && window.MXLPlugins[TP_TYPE].unmount(); } catch(_){}
+    tpUnmountCurrent();
     // La feuille de style d'un plugin DÉMONTÉ doit partir avec lui. Sans ça elle restait dans le
     // <head> pour toute la session : deux plugins qui partagent un nom de classe (cas vécu
     // split ↔ color_corrector, 12 classes .cc-* communes) se recouvraient selon l'ORDRE de
@@ -823,10 +1187,12 @@ async function activateTab(type, wantVmid){
     // rechargement (F5, partage du lien) sur la 1re instance du type.
     const _h='#'+type+(wantVmid==null?'':('/'+wantVmid));
     if(history.replaceState) history.replaceState(null, '', _h); else location.hash=_h.slice(1);
-    document.querySelectorAll('#ps-tabs .tab').forEach(t=>t.classList.toggle('active', t.dataset.type===type));
-    const side=document.querySelector('.tp-side');
+    document.querySelectorAll('#ps-tabs > .tab').forEach(t=>t.classList.toggle('active', t.dataset.type===type));
     const mountEl=document.getElementById('tp-mount');
     document.getElementById('tp-monitor').hidden=true;
+    tpJournalMaj(null);
+    tpSideOpen(false);
+    tpRenderIdent();
     tpRenderSettings(null);
     if(_isCustomTab(type)) tpRenderSettingsEngine();   // ⚙ du moteur 2110 (réglages système)
 
@@ -834,8 +1200,6 @@ async function activateTab(type, wantVmid){
         // Onglet custom (vue 2110) : pas d'instances par-vmid → on masque la sidebar et on monte
         // la vue NMOS-centric en pleine largeur.
         TP_LABEL=(EXTRA_TABS.find(t=>t.id===type)||{}).label||type;
-        if(side) side.style.display='none';
-        const cols=document.querySelector('.tp-cols'); if(cols) cols.style.gridTemplateColumns='1fr';
         mountEl.className='tp-mount'; mountEl.innerHTML='<div class="meta">'+window.t('section.loading')+'</div>';
         const api=window.MXLPlugins[type];
         if(api && typeof api.mount==='function'){
@@ -845,8 +1209,6 @@ async function activateTab(type, wantVmid){
         return;
     }
 
-    if(side) side.style.display='';
-    const cols=document.querySelector('.tp-cols'); if(cols) cols.style.gridTemplateColumns='';
     const p=SECTION_PLUGINS.find(x=>x.type===type); TP_LABEL=p?p.label:type;
     document.getElementById('ps-side-title').textContent = window.t('section.label_deployed').replace('{label}', TP_LABEL);
     mountEl.className='tp-mount empty'; mountEl.innerHTML='<div>'+window.t('section.pick_hint')+'</div>';
@@ -861,9 +1223,9 @@ function psBuildTabs(){
         '<button type="button" class="tab tab-custom" data-type="'+psEsc(t.id)+'">'+psEsc(t.label)+'</button>').join('');
     // ⚠ NE PAS écraser `innerHTML` : la barre d'onglets héberge aussi le widget de ressources.
     // On ne retire que les onglets et on réinsère avant lui.
-    tabs.querySelectorAll('.tab').forEach(b => b.remove());
+    tabs.querySelectorAll(':scope > .tab').forEach(b => b.remove());
     tabs.insertAdjacentHTML('afterbegin', plug + extra);
-    tabs.querySelectorAll('.tab').forEach(b => b.onclick=()=>activateTab(b.dataset.type));
+    tabs.querySelectorAll(':scope > .tab').forEach(b => b.onclick=()=>activateTab(b.dataset.type));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1047,151 +1409,5 @@ window.addEventListener('hashchange', () => {
     });
 })();
 
-{% if is_medias %}
-// ── Bibliothèque clips ───────────────────────────────────────────────────────
-(function(){
-    let allClips = [];   // [{name, size_bytes, mtime, vmid, source}]
-    let sortKey  = 'date';
-    let sortAsc  = false;
-    let filter   = '';
-
-    function fmtSize(b){
-        if(!b) return '0 '+window.t('section.unit_mb');
-        return b < 1073741824
-            ? (b/1048576).toFixed(1)+' '+window.t('section.unit_mb')
-            : (b/1073741824).toFixed(2)+' '+window.t('section.unit_gb');
-    }
-    function fmtDur(s){
-        if(s == null) return '…';
-        s = Math.floor(s);
-        const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=s%60;
-        return h>0
-            ? h+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0')
-            : m+':'+String(sec).padStart(2,'0');
-    }
-    function fmtDate(ts){
-        const d = new Date(ts*1000);
-        const loc = (window.LANG==='en')?'en-GB':'fr-FR';
-        return d.toLocaleDateString(loc,{day:'2-digit',month:'2-digit',year:'2-digit'})
-            +' '+d.toLocaleTimeString(loc,{hour:'2-digit',minute:'2-digit'});
-    }
-    function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-    async function loadClips(){
-        const listEl = document.getElementById('mxl-lib-list');
-        const countEl = document.getElementById('mxl-lib-count');
-        listEl.innerHTML = '<div class="mxl-lib-empty">'+window.t('section.loading')+'</div>';
-        countEl.textContent = '';
-        let recorders = [];
-        try { recorders = await (await fetch('/api/plugins/instances?type=recorder')).json(); }
-        catch(e){}
-        if(!recorders.length){
-            listEl.innerHTML = '<div class="mxl-lib-empty">'+window.t('section.no_recorder')+'</div>';
-            return;
-        }
-        const results = await Promise.allSettled(recorders.map(async r => {
-            const res = await fetch('/api/containers/'+r.vmid+'/plugin/clips');
-            const j   = await res.json();
-            return (j.clips||[]).map(c => ({
-                ...c,
-                vmid:   r.vmid,
-                source: r.hostname || ('#'+r.vmid),
-                live:   false,
-            }));
-        }));
-        // fetch live status to mark live clips
-        const statusResults = await Promise.allSettled(recorders.map(async r => {
-            const res = await fetch('/api/containers/'+r.vmid+'/plugin/status');
-            const j   = await res.json();
-            return { vmid: r.vmid, file: j.file ? j.file.split('/').pop() : '', recording: j.recording };
-        }));
-        const liveMap = {};
-        statusResults.forEach(r => { if(r.status==='fulfilled' && r.value.recording) liveMap[r.value.vmid] = r.value.file; });
-
-        allClips = [];
-        results.forEach(r => {
-            if(r.status==='fulfilled') allClips.push(...r.value.map(c => ({
-                ...c,
-                live: liveMap[c.vmid] === c.name,
-            })));
-        });
-        render();
-    }
-
-    function render(){
-        const listEl  = document.getElementById('mxl-lib-list');
-        const countEl = document.getElementById('mxl-lib-count');
-        let clips = allClips.filter(c =>
-            !filter
-            || c.name.toLowerCase().includes(filter)
-            || c.source.toLowerCase().includes(filter)
-        );
-        clips = clips.slice().sort((a,b) => {
-            let va, vb;
-            if(sortKey==='name')   { va=a.name;       vb=b.name; }
-            else if(sortKey==='size')   { va=a.size_bytes; vb=b.size_bytes; }
-            else if(sortKey==='source') { va=a.source;     vb=b.source; }
-            else                        { va=a.mtime;      vb=b.mtime; }
-            if(va < vb) return sortAsc ? -1 : 1;
-            if(va > vb) return sortAsc ?  1 : -1;
-            return 0;
-        });
-        countEl.textContent = window.t('section.clips_count').replace('{n}', clips.length);
-        if(!clips.length){
-            listEl.innerHTML = '<div class="mxl-lib-empty">'
-                +(filter ? window.t('section.no_result').replace('{q}', esc(filter)) : window.t('section.no_clips'))
-                +'</div>';
-            return;
-        }
-        listEl.innerHTML = clips.map((c,i) =>
-            '<div class="mxl-clip-row'+(c.live?' live':'')+'" data-i="'+i+'">'
-            +'<span class="mxl-clip-name" title="'+esc(c.name)+'">'+esc(c.name)+'</span>'
-            +'<span class="mxl-clip-source">'+esc(c.source)+'</span>'
-            +'<span class="mxl-clip-dur">'+fmtDur(c.duration_s)+'</span>'
-            +'<span class="mxl-clip-size">'+fmtSize(c.size_bytes)+'</span>'
-            +'<span class="mxl-clip-date">'+fmtDate(c.mtime)+'</span>'
-            +(c.live
-                ? '<span class="mxl-clip-live-badge">live</span>'
-                : '<button class="mxl-clip-del" data-i="'+i+'">'+window.t('section.delete')+'</button>')
-            +'</div>'
-        ).join('');
-        listEl.querySelectorAll('.mxl-clip-del').forEach(btn => {
-            btn.onclick = async () => {
-                const c = clips[+btn.dataset.i];
-                if(!confirm(window.t('section.delete_confirm').replace('{name}', c.name))) return;
-                const r = await fetch('/api/containers/'+c.vmid+'/plugin/clips/delete', {
-                    method:'POST', headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({name:c.name}),
-                });
-                const j = await r.json();
-                if(j.ok){ tpToast(window.t('section.clip_deleted'),'info'); allClips.splice(allClips.indexOf(c),1); render(); }
-                else tpToast(j.error||window.t('section.delete_error'),'error');
-            };
-        });
-    }
-
-    document.getElementById('mxl-lib-refresh').onclick = loadClips;
-    document.getElementById('mxl-lib-search').oninput = function(){
-        filter = this.value.trim().toLowerCase(); render();
-    };
-    document.querySelectorAll('.mxl-lib-sort button').forEach(btn => {
-        btn.onclick = () => {
-            if(sortKey === btn.dataset.sort){ sortAsc = !sortAsc; }
-            else { sortKey = btn.dataset.sort; sortAsc = (sortKey==='name'||sortKey==='source'); }
-            document.querySelectorAll('.mxl-lib-sort button').forEach(b=>{
-                b.classList.toggle('active', b.dataset.sort===sortKey);
-                const _lbl = k => ({date:window.t('section.sort_date'),name:window.t('section.sort_name'),size:window.t('section.sort_size'),source:window.t('section.sort_source')}[k]);
-                if(b.dataset.sort===sortKey)
-                    b.textContent = _lbl(sortKey) + (sortAsc ? ' ↑' : ' ↓');
-                else
-                    b.textContent = _lbl(b.dataset.sort);
-            });
-            render();
-        };
-    });
-
-    document.addEventListener('DOMContentLoaded', loadClips);
-})();
-{% endif %}
 </script>
 {% endblock %}

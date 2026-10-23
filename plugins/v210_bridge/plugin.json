@@ -8,7 +8,7 @@
     "class": "mode-corrector",
     "oklch": "0.78 0.06 260"
   },
-  "version": "0.7.0",
+  "version": "0.7.1",
   "adapts_input": true,
   "description": "Pont d'interopérabilité MXL (R1), bi-directionnel. Export : lit un flux vidéo planar interne et publie son MIROIR au format standard video/v210 (SDK MXL stock), lisible par les containers d'autres éditeurs sur le même serveur (le flux miroir n'apparaît pas dans Câbles ; son flowId — l'UUID à donner au tiers — est sur /state). Import : lit un flux video/v210 TIERS du domaine (flowId UUID brut, candidats listés par GET /flows) et publie sa conversion planar interne, câblable normalement. Conversion SIMD (libbobi_v210) ~2-5 ms/image 1080p, index de grain propagé. 4:2:2 progressif uniquement (v1).",
   "nav": { "section": "traitements", "label": "Traitements", "route": "/traitements", "order": 30 },

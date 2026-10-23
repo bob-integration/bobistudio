@@ -15,7 +15,7 @@ from . import bp
 from .images import (_IMAGES, _img_lock, _node_img_build, _node_img_push, _image_tag, _stage_tar,
                      _image_present, _image_present_node, _repo_root, _ssh_bin,
                      _provision_shared_images, _node_image_inventory, _used_tag,
-                     node_images_state)
+                     node_images_state, record_node_only_tag)
 from ..auth import require_perm, require_login
 from ..database import (db_get_nodes, db_get_node, db_get_containers, db_add_node,
                         db_update_node, db_add_alert, db_delete_node)
@@ -257,7 +257,8 @@ def api_node_build_image(node_id):
             # Le tag node-only est enregistré sur le NŒUD buildé uniquement (pas d'autofill flotte) :
             # via le `field` du spec (mtl→`image`, compute-gpu→`compute_gpu_image`). Une image
             # node_only est locale au nœud (GPU/E810) → ne pas la propager aux nœuds sans la capacité.
-            db_update_node(node_id, **{spec["field"]: tag})
+            # bobi-gui n'a pas de colonne nœud (réglage commun gui_image) : record_node_only_tag le sait.
+            record_node_only_tag(which, node_id, tag)
             msg = "%s buildée sur %s en %dm%02ds" % (tag, node.get("name"), dur // 60, dur % 60)
         else:
             msg = "échec build %s : %s" % (tag, str(tail)[-600:])
@@ -355,8 +356,13 @@ def api_node_detect_gpu(node_id):
 # Or une liste périmée a des conséquences MUETTES : node_health ne sonde pas le PTP d'un nœud sans
 # "io2110" déclaré, images._node_needs_image ne le compte pas comme cible de build, node_recovery en
 # dépend. D'où ce rattrapage : provisionner l'hôte + fusionner la capacité côté agent + resynchroniser
-# la base. Les CINQ capacités sont rattrapables (cf. install-node.sh --add-caps).
-_CAP_ADDABLE = ("gpu", "io2110", "compute", "media", "webrtc")
+# la base. Les SIX capacités sont rattrapables (cf. install-node.sh --add-caps).
+# `gui` (2026-10-18, plugin plugin_gui) ne provisionne RIEN sur l'hôte : c'est une déclaration — « ce nœud
+# porte les interfaces natives LV2 » — qui en fait une cible de build de l'image node_only bobi-gui (couche
+# fine FROM bobi-compute, construite SUR le nœud, cf. images._IMAGES["gui"]). Elle exige `compute` (même
+# réseau macvlan, même image de base) : refusée sans lui.
+_CAP_ADDABLE = ("gpu", "io2110", "compute", "media", "webrtc", "gui")
+_CAP_REQUIRES = {"gui": "compute"}
 # Capacités dont le provisioning n'est effectif qu'après redémarrage du nœud : `gpu` (module DKMS à
 # charger), `io2110` (noyau MTL, cmdline hugepages 1G, DDP relu au probe du driver ice).
 _CAP_NEEDS_REBOOT = ("gpu", "io2110")
@@ -434,6 +440,16 @@ def _add_cap_run(node_id, caps):
 
     args, notes = _add_cap_args(node, caps)
     env = ""
+    # `gpu` : provision_gpu délègue au script de pilote hôte (même logique que le bouton « Installer le
+    # pilote »). Le script d'installation arrive par stdin, donc sans fichier voisin : on dépose celui
+    # du pilote avant, là où provision_gpu le cherche. Échec du dépôt → on renonce, hôte inchangé.
+    if "gpu" in caps:
+        from .host_drivers import push_scripts
+        ok_s, msg_s = push_scripts(node, only="nvidia")
+        if not ok_s:
+            _set(status="error", msg="nvidia host-driver script could not be deployed to the node "
+                                     "(%s) — gpu capability NOT provisioned, host unchanged." % msg_s)
+            return
     # DDP E810 : déposé AVANT le script, sinon io2110 serait provisionné avec un `ice` en Safe Mode.
     # Échec du dépôt → on renonce plutôt que de poser une capacité 2110 muette (le script la
     # drapeauterait, mais autant ne pas modifier l'hôte du tout).
@@ -481,12 +497,23 @@ def _add_cap_run(node_id, caps):
         # capacités. Conclure « resync échouée » sur ce premier refus laisse la base en retard sur
         # le nœud — la capacité est active là-bas, invisible ici, donc jamais utilisée. On retente
         # au-delà de la fenêtre du disjoncteur de transport (5 s) avant de renoncer.
+        # ⚠ Un register RÉUSSI peut aussi être trop TÔT : le script programme le redémarrage de l'agent 2 s
+        # APRÈS avoir rendu la main, et une capacité sans provisioning (`gui`) rend la main en quelques ms — on
+        # lit alors l'ANCIEN agent, qui annonce l'ancienne liste. Vécu le 2026-10-18 (dell-1 : « gui ajoutée »,
+        # base sans gui). Une resync n'est donc acquise que si les capacités demandées y figurent.
+        def _vues():
+            return set(caps) <= set(node_driver.node_capabilities(db_get_node(node_id) or {}))
+        if ok_reg and not _vues():
+            ok_reg = False
         if not ok_reg:
             import time as _tps
             for _essai in range(3):
                 _tps.sleep(6)
                 ok_reg, res = node_driver.register(node["host"], port,
                                                    node.get("agent_token") or "", node=node)
+                if ok_reg and not _vues():
+                    ok_reg, res = False, "l'agent annonce encore l'ancienne liste"
+                    continue
                 if ok_reg:
                     log.info("resync capacités node=%s : obtenue au %de essai (agent en redémarrage)",
                              node_id, _essai + 2)
@@ -527,6 +554,9 @@ def _add_cap_run(node_id, caps):
     if set(caps) & {"compute", "media", "webrtc"} and not fresh.get("docker_network"):
         suites.append("réseau containers non configuré sur ce nœud → Configuration → Réseau "
                       "(la carte parente n'est pas déductible, elle doit être choisie)")
+    if rc == 0 and "gui" in caps:
+        # Rien à installer sur l'hôte : l'image se construit SUR ce nœud depuis la page Images (node_only).
+        suites.append("image bobi-gui à construire sur ce nœud : Réglages → Images → bobi-gui")
     reboot = bool(set(caps) & set(_CAP_NEEDS_REBOOT))
     if reboot:
         suites.append("REBOOT du nœud requis pour que la/les capacité(s) soient effectives"
@@ -586,6 +616,13 @@ def api_node_add_capability(node_id):
     caps = [c for c in caps if c not in already]
     if not caps:
         return jsonify({"ok": True, "status": "déjà déclarée", "noop": True})
+    for c in caps:
+        need = _CAP_REQUIRES.get(c)
+        if need and need not in already and need not in caps:
+            from ..i18n import t as _t
+            return jsonify({"ok": False, "error": _t("api.nodes.cap_requires", cap=c, need=need,
+                                                     n=node.get("name")),
+                            "error_code": "cap_requires", "requires": need}), 400
     with _cap_lock:
         if (_cap_jobs.get(node_id) or {}).get("status") == "running":
             return jsonify({"ok": True, "status": "rattrapage déjà en cours"})
@@ -612,7 +649,7 @@ def api_node_capability_state(node_id):
 # ─── Mise à jour des images vers les NŒUDS (≠ Flotte = entre orchestrateurs) ────────────────────
 _SHARED_IMAGES = ("compute", "media", "webrtc")   # images PARTAGÉES (build-once + push) ; mtl = par-nœud
 
-_IMG_ORDER = ("compute", "compute-gpu", "media", "webrtc", "mtl")
+_IMG_ORDER = ("compute", "compute-gpu", "media", "webrtc", "mtl", "gui")
 
 def _node_wants(which, node, caps):
     """Ce nœud exécute-t-il cette image ? (capacités déclarées + flag GPU pour la variante GPU)."""
@@ -804,6 +841,15 @@ def _update_agent_on_node(node):
             content = f.read()
     except Exception as e:
         return False, "agent.py introuvable côté contrôleur : %s" % e
+    # Les scripts de pilotes hôte voyagent AVEC l'agent (0.22.0+) : poussés avant lui, car l'agent
+    # redémarre juste après et ne répondrait plus. Best-effort — l'agent seul reste utile sans eux.
+    try:
+        from .host_drivers import push_scripts
+        _ok_s, _m_s = push_scripts(node)
+        if not _ok_s:
+            log.warning("host driver scripts not pushed to node %s: %s", node.get("id"), _m_s)
+    except Exception as e:                                     # noqa: BLE001
+        log.warning("host driver scripts push failed for node %s: %s", node.get("id"), e)
     cmd = ("set -e; T=/opt/bobi-node-agent/agent.py.new; cat > \"$T\"; "
            "python3 -m py_compile \"$T\"; mv \"$T\" /opt/bobi-node-agent/agent.py; "
            "systemd-run --on-active=2 --quiet systemctl restart bobi-node-agent; echo OK")
@@ -1020,12 +1066,56 @@ def api_node_install_ice(node_id):
 def api_security_mtls_status():
     """État de la CA interne + inventaire des nœuds (badge HTTP/HTTPS). AUCUN secret
     (ca.ca_info est déjà sûr : sujet/empreinte/validité/SAN, pas de clé)."""
-    from .. import ca
+    from .. import ca, cert_expiry
+    try:
+        echeances = cert_expiry.etat_pour_ui()
+    except Exception as e:
+        log.error("échéances des certificats illisibles : %s", e)
+        echeances = {}
     nodes = [{"id": n["id"], "name": n.get("name"), "tls_ready": int(n.get("tls_ready") or 0),
-              "agent_url": n.get("agent_url") or "", "status": n.get("status") or ""}
+              "agent_url": n.get("agent_url") or "", "status": n.get("status") or "",
+              "cert": echeances.get("noeud:%s" % n["id"])}
              for n in db_get_nodes()]
     return jsonify({"ca": ca.ca_info(), "nodes": nodes,
+                    "ca_cert": echeances.get("ca"), "controleur_cert": echeances.get("controleur"),
+                    "seuils": {"paliers": list(cert_expiry.PALIERS), "continu": cert_expiry.CONTINU},
                     "detected_control_ip": ca._detect_control_ip()})
+
+
+@bp.route("/api/security/mtls/controller/renew", methods=["POST"])
+@require_perm("settings.edit")
+def api_security_controller_renew():
+    """Renouvelle le certificat de CE contrôleur : même clé, mêmes adresses, durée neuve.
+    Rien à pousser aux nœuds (ils vérifient la chaîne et le rôle, pas une échéance précise)."""
+    from .. import cert_expiry
+    from ..auth import current_user
+    try:
+        fin = cert_expiry.renouveler_controleur()
+    except Exception as e:
+        log.error("renouvellement du certificat du contrôleur en échec : %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+    qui = (current_user() or {}).get("username") or "?"
+    db_add_alert("alert.securite.cert_controleur_renouvele", "info", kind="auth",
+                 params={"date": fin[:10], "par": qui})
+    return jsonify({"ok": True, "fin": fin})
+
+@bp.route("/api/security/ca.crt", methods=["GET"])
+@require_login
+def api_security_ca_download():
+    """Certificat de la CA interne, en téléchargement — pour l'installer sur les postes des
+    exploitants (mode web tls : sans lui, le navigateur avertit à chaque connexion).
+
+    Le certificat d'une autorité est PUBLIC par nature : les nœuds le reçoivent à l'enrôlement,
+    et tout client HTTPS le voit passer. D'où `require_login` et non `settings.edit` : un
+    exploitant sans droit de réglage doit pouvoir équiper son poste. La CLÉ, elle, n'est lue
+    par aucun chemin de cette route — `ca_cert_pem` ne connaît que `ca.crt`."""
+    from flask import Response
+    from .. import ca
+    if not ca.ca_available():
+        return jsonify({"ok": False, "error": "aucune autorité de certification interne"}), 404
+    return Response(ca.ca_cert_pem(), mimetype="application/x-x509-ca-cert",
+                    headers={"Content-Disposition": 'attachment; filename="bobistudio-ca.crt"',
+                             "Cache-Control": "no-store"})
 
 @bp.route("/api/security/mtls/ca/init", methods=["POST"])
 @require_perm("settings.edit")

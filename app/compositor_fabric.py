@@ -68,7 +68,32 @@ def _h(obj):
 
 def style_context(params):
     """Sous-ensemble du style global d'un multiview qui influe sur le rendu de chaque cellule."""
-    return {k: (params or {}).get(k) for k in _STYLE_FIELDS}
+    ctx = {k: (params or {}).get(k) for k in _STYLE_FIELDS}
+    # ★ `force_cpu` VOYAGE AVEC LE STYLE — mais SEULEMENT quand il est posé (2026-10-06).
+    #
+    # Le réglage posé sur un mur ne descendait JAMAIS à ses nœuds : il n'apparaissait nulle part
+    # dans ce module. Horace, 2026-10-06 : deux murs basculés à la main en CPU, et leurs quatre
+    # shards repartis sur l'UNIQUE Tesla T4 du nœud — cinq contextes CUDA en temps partagé
+    # (98 % d'occupation pour 2 % de trafic mémoire), shards à 16-25 fps pour 50, et la tuile PGM
+    # qui flickait (une trame sautée fait basculer l'appariement du weave d'un champ). Boucle
+    # perverse : mur en CPU → dépasse le budget → le tissu le sharde → les shards reprennent la
+    # carte que le mur venait de quitter. Le remède avait fabriqué la panne.
+    #
+    # Pourquoi dans le STYLE, et pas seulement dans les params du nœud : la signature d'une région
+    # inclut le style. Basculer `force_cpu` change donc la signature des shards du mur, et le
+    # mécanisme de REBIND existant les mute EN PLACE (même conteneur, même shm, assembleur non
+    # touché). Sans ça, un shard déjà matérialisé est gardé tel quel — `db_fabric_touch` puis
+    # `continue` — et ne recevrait jamais le réglage : le correctif ne toucherait que les shards
+    # créés APRÈS. Corollaire voulu : deux murs qui ne s'accordent pas sur `force_cpu` ne
+    # partagent plus de nœud — chaque intention s'applique à ses propres pixels.
+    #
+    # ⚠ « SEULEMENT QUAND IL EST POSÉ » N'EST PAS UNE COQUETTERIE. Ajouter la clé avec `None` à tous
+    # les styles changerait la signature de TOUS les murs de TOUS les sites : la mise à jour
+    # elle-même déclencherait un re-sharding complet du parc, à l'antenne. Un mur sans `force_cpu`
+    # doit garder une signature octet pour octet identique à l'historique (garde : tests/).
+    if (params or {}).get("force_cpu"):
+        ctx["force_cpu"] = True
+    return ctx
 
 
 def _norm_path(p):
@@ -376,7 +401,7 @@ def plan_fabric(multiviews, max_cells_per_shard=6, shard_area_frac=0.5):
                 n = {"kind": "shared", "out_wh": (ow, oh),
                      "elements": [(e["sig"], 0, 0, ow, oh)],
                      "shared_by": shared[e["sig"]], "windows": [], "overlays": [],
-                     "chroma": d["style"].get("chroma"), "bit_depth": d["style"].get("bit_depth"), "default_template": d["style"].get("default_template"), "default_template_ref": d["style"].get("default_template_ref")}
+                     "chroma": d["style"].get("chroma"), "bit_depth": d["style"].get("bit_depth"), "default_template": d["style"].get("default_template"), "default_template_ref": d["style"].get("default_template_ref"), "force_cpu": bool(d["style"].get("force_cpu"))}
                 if "cfg" in e:                       # cellule
                     c = dict(e["cfg"]); c["x"] = 0; c["y"] = 0; n["windows"].append(c)
                 else:                                # overlay (ex. horloge)
@@ -412,7 +437,7 @@ def plan_fabric(multiviews, max_cells_per_shard=6, shard_area_frac=0.5):
                     windows.append(c)
                 nodes[nsig] = {"kind": "shard", "out_wh": (bw, bh), "elements": members,
                                "shared_by": [k], "windows": windows, "overlays": [],
-                               "chroma": d["style"].get("chroma"), "bit_depth": d["style"].get("bit_depth"), "default_template": d["style"].get("default_template"), "default_template_ref": d["style"].get("default_template_ref")}
+                               "chroma": d["style"].get("chroma"), "bit_depth": d["style"].get("bit_depth"), "default_template": d["style"].get("default_template"), "default_template_ref": d["style"].get("default_template_ref"), "force_cpu": bool(d["style"].get("force_cpu"))}
             outputs[k]["tiles"].append((nsig, ox, oy, bw, bh))
         for e in d["overlays"]:
             if e["sig"] not in shared:
@@ -560,7 +585,8 @@ def _asm_en_place(etat, asm):
 
 def _mv_params(out_w, out_h, shm_out, flux_config, overlays, fps, chroma, bit_depth,
                genlock=True, cadence="input", scan=None,
-               slice_mode=False, slice_lines=36, default_template=None, default_template_ref=""):
+               slice_mode=False, slice_lines=36, default_template=None, default_template_ref="",
+               force_cpu=False):
     # cadence="input" par défaut : les nœuds du tissu sont DATA-DRIVEN (suivent l'entrée, pas la
     # grille) → latence cumulée du DAG = Σ calcul, pas N×intervalle (cf. plugin INPUT_LOCKED).
     # L'habillage vit dans les MODÈLES DE PIP (embarqués par cellule dans flux_config, +
@@ -591,6 +617,11 @@ def _mv_params(out_w, out_h, shm_out, flux_config, overlays, fps, chroma, bit_de
     if default_template is not None:
         out["default_template"] = default_template
         out["default_template_ref"] = default_template_ref or ""
+    # Clé absente = auto-détection GPU dans le script (comportement historique, params inchangés).
+    # Présente = le script ne lance JAMAIS la sonde GPU et ne touche aucun /dev/nvidia* — poser
+    # le paramètre suffit à libérer la carte, sans recréer le conteneur. Cf. style_context.
+    if force_cpu:
+        out["force_cpu"] = True
     return out
 
 
@@ -616,7 +647,8 @@ def build_node_params(node, shm, fps=50, chroma=None, bit_depth=None, slice_mode
                       list(node.get("overlays") or []), fps, ch, bd, slice_mode=slice_mode,
                       scan="p",
                       default_template=node.get("default_template"),
-                      default_template_ref=node.get("default_template_ref") or "")
+                      default_template_ref=node.get("default_template_ref") or "",
+                      force_cpu=bool(node.get("force_cpu")))
 
 
 def build_assembler_params(output, shm_out, sig_to_shm, fps=50, chroma=None, bit_depth=None,
@@ -644,7 +676,8 @@ def build_assembler_params(output, shm_out, sig_to_shm, fps=50, chroma=None, bit
     # chaque trame (c'était ~13 ms, le goulet après le sharding). Seuls les overlays non
     # partagés (horloges) sont composés sur place.
     params = _mv_params(ow, oh, shm_out, fc, list(output.get("overlays") or []),
-                        fps, chroma, bit_depth, slice_mode=slice_mode)
+                        fps, chroma, bit_depth, slice_mode=slice_mode,
+                        force_cpu=bool(_stl.get("force_cpu")))
     # L'assembleur émet le flux EXTERNE du mur → c'est lui qui tourne 90° en portrait (les shards
     # restent non tournés). out_width/out_height = canevas portrait logique ; le moteur swappe à l'émission.
     params["orientation"] = str(output.get("orientation") or "landscape")

@@ -36,6 +36,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # liblilv : l'hôte de plugins tiers de la console audio la charge (dlopen) pour les vrais plugins LV2 —
+          # tests/verif_console_plugins_lv2_state.py en compile un et ÉCHOUE sans elle (jamais vert à l'aveugle)
+          sudo apt-get update -qq && sudo apt-get install -y -qq liblilv-0-0
 
       - name: Chemin d'installation (/opt/bobistudio)
         # L'app référence des chemins absolus /opt/bobistudio (LOG_PATH, DB_PATH).

@@ -30,6 +30,7 @@
                         data-type="{{ p.type }}" data-label="{{ p.label }}"
                         data-runtime="{{ (plugin_runtimes or {}).get(p.type, 'docker') }}"
                         data-image-kind="{{ (plugin_image_kinds or {}).get(p.type, 'compute') }}"
+                        data-needs-media="{{ 1 if (plugin_needs_media or {}).get(p.type) else 0 }}"
                         {# Profil de ressources déclaré : ce que le container VA prendre sur le nœud.
                            Absent = type sans bloc `resources` → pool partagé (cf. cc-nodes). #}
                         {# Attribut en guillemets SIMPLES : `tojson` échappe `<`, `>`, `&` et `'`

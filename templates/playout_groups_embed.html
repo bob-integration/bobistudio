@@ -1,0 +1,162 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+{# Groupes de lecture A/B/C… (app/playout_groups.py) : des players ordinaires réunis en N sorties sur une
+   playlist. Inclus dans la page Médias (mode « Lecture A/B »). N'auto-charge PAS : l'appelant invoque
+   window.playoutLoad() ; window.playoutStop() coupe le rafraîchissement en quittant le mode.
+   Tactile d'abord (iPad) : tout se fait par boutons — réordonner = ▲ ▼, jamais un glisser seul. #}
+<style>
+#po-embed { display:flex; flex-direction:column; gap:12px; margin-top:10px; }
+#po-embed .po-lead { color:var(--text-muted); font-size:0.88em; }
+#po-embed .po-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+#po-embed .po-chip { border:1px solid var(--border-soft); border-radius:16px; padding:6px 14px; background:none; color:inherit; cursor:pointer; min-height:36px; }
+#po-embed .po-chip.active { border-color:var(--accent, #5b8cff); background:var(--accent-soft, rgba(80,140,255,0.15)); }
+#po-embed .po-spacer { flex:1; }
+#po-embed .po-box { border:1px solid var(--border-soft); border-radius:6px; padding:10px 12px; }
+#po-embed .po-fail { border:1px solid var(--status-stopped-fg); color:var(--status-stopped-fg); border-radius:6px; padding:8px 12px; }
+#po-embed .po-outs { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:10px; }
+#po-embed .po-out { border:2px solid var(--border-soft); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px; }
+#po-embed .po-out[data-s="air"] { border-color:var(--status-stopped-fg); }
+#po-embed .po-out[data-s="ready"] { border-color:var(--status-running-fg); }
+#po-embed .po-out[data-s="taking"] { border-color:var(--status-warning-fg); }
+#po-embed .po-out-head { display:flex; align-items:baseline; gap:8px; }
+#po-embed .po-letter { font-size:2em; font-weight:700; line-height:1; }
+#po-embed .po-host { color:var(--text-muted); font-size:0.82em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#po-embed .po-st { font-size:0.78em; padding:2px 8px; border-radius:10px; border:1px solid var(--border-soft); white-space:nowrap; margin-left:auto; }
+#po-embed .po-st[data-s="air"] { background:var(--status-stopped-fg); color:#fff; border-color:transparent; }
+#po-embed .po-st[data-s="ready"] { color:var(--status-running-fg); border-color:var(--status-running-fg); }
+#po-embed .po-st[data-s="error"], #po-embed .po-st[data-s="offline"] { color:var(--status-stopped-fg); border-color:var(--status-stopped-fg); }
+#po-embed .po-st[data-s="taking"], #po-embed .po-st[data-s="fetching"], #po-embed .po-st[data-s="protected"] { color:var(--status-warning-fg); border-color:var(--status-warning-fg); }
+#po-embed .po-title { font-weight:600; min-height:1.3em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#po-embed .po-sub { color:var(--text-muted); font-size:0.8em; min-height:1.2em; }
+#po-embed .po-bar-p { height:5px; background:var(--border-soft); border-radius:3px; overflow:hidden; }
+#po-embed .po-bar-p > span { display:block; height:100%; background:var(--accent, #5b8cff); }
+#po-embed .po-out-acts { display:flex; gap:6px; }
+#po-embed .po-out-acts .btn { flex:1; min-height:40px; font-weight:600; }
+#po-embed .po-next-row { display:flex; gap:10px; align-items:stretch; flex-wrap:wrap; }
+#po-embed .po-next { flex:1; min-width:240px; min-height:64px; font-size:1.25em; font-weight:700; border-radius:8px; }
+#po-embed .po-next small { display:block; font-size:0.62em; font-weight:400; opacity:0.85; }
+#po-embed table { width:100%; border-collapse:collapse; font-size:0.9em; }
+#po-embed th { text-align:left; color:var(--text-muted); font-weight:500; padding:4px 6px; border-bottom:1px solid var(--border-soft); }
+#po-embed td { padding:4px 6px; border-bottom:1px solid var(--border-soft); vertical-align:middle; }
+#po-embed tr[data-s="air"] td { background:rgba(220,60,60,0.10); }
+#po-embed tr[data-s="cued"] td.po-o { color:var(--status-running-fg); font-weight:700; }
+#po-embed tr[data-s="played"] td, #po-embed tr[data-s="skipped"] td { color:var(--text-muted); }
+#po-embed tr[data-s="skipped"] td.po-t { text-decoration:line-through; }
+#po-embed td.po-o { font-weight:600; width:3em; text-align:center; }
+#po-embed td.po-acts { white-space:nowrap; text-align:right; }
+#po-embed td.po-acts .btn { min-width:38px; min-height:34px; padding:2px 8px; }
+#po-embed .po-empty { color:var(--text-muted); padding:20px 0; }
+#po-embed .po-add { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+#po-embed .po-lib { min-height:280px; }
+#po-dlg { max-width:560px; width:calc(100% - 32px); }
+#po-dlg h2 { margin-top:0; font-size:1.1em; }
+#po-dlg label.po-f { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; font-size:0.9em; }
+#po-dlg .po-desc { color:var(--text-muted); font-size:0.85em; margin:2px 0 8px; }
+#po-dlg .po-mem { display:flex; align-items:center; gap:6px; padding:4px 0; border-bottom:1px solid var(--border-soft); }
+#po-dlg .po-mem .po-letter { font-size:1.1em; width:1.4em; }
+#po-dlg .po-mem .btn { min-width:36px; min-height:32px; }
+#po-dlg .po-mem span.po-host { flex:1; }
+#po-dlg .po-opt { display:flex; gap:8px; align-items:flex-start; margin:6px 0; }
+#po-dlg .po-chan { display:grid; grid-template-columns:2em 1fr 1fr; gap:6px; align-items:center; padding:3px 0; }
+#po-dlg .po-chan select { min-height:32px; width:100%; }
+#po-dlg .po-chan .po-sug { font-size:0.75em; color:var(--text-muted); }
+#po-embed .po-warn { border:1px solid var(--status-warning-fg); border-radius:6px; padding:8px 12px; font-size:0.9em; }
+#po-dlg .po-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-wrap:wrap; }
+#po-dlg .po-actions .po-del { margin-right:auto; }
+</style>
+
+<div id="po-embed">
+  <div class="po-lead">{{ _('section.playout.lead') }}</div>
+  <div class="po-bar">
+    <span id="po-chips"></span>
+    <span class="po-spacer"></span>
+    <button class="btn" type="button" id="po-new">{{ _('section.playout.new_group') }}</button>
+    <button class="btn" type="button" id="po-settings" aria-haspopup="dialog" hidden
+            title="{{ _('section.playout.settings') }}" aria-label="{{ _('section.playout.settings') }}">⚙︎</button>
+  </div>
+  <div class="po-empty" id="po-empty" hidden>{{ _('section.playout.empty') }}</div>
+
+  <div id="po-group" hidden>
+    <div class="po-fail" id="po-fail" role="alert" hidden></div>
+    <div class="po-warn" id="po-issues" role="status" hidden></div>
+    <div class="po-outs" id="po-outs"></div>
+    <div class="po-next-row">
+      <button class="btn btn-green po-next" type="button" id="po-next"></button>
+      <button class="btn" type="button" id="po-reset" title="{{ _('section.playout.reset_tip') }}">{{ _('section.playout.reset') }}</button>
+    </div>
+    <div class="po-box">
+      <table>
+        <thead><tr>
+          <th>#</th><th>{{ _('section.playout.col_output') }}</th><th>{{ _('section.playout.col_title') }}</th>
+          <th>{{ _('section.playout.col_state') }}</th><th></th>
+        </tr></thead>
+        <tbody id="po-items"></tbody>
+      </table>
+      <div class="po-empty" id="po-noitem" hidden>{{ _('section.playout.no_item') }}</div>
+    </div>
+    <div class="po-box">
+      <div class="po-add">
+        <label>{{ _('section.playout.saved_list') }} <select id="po-lists"></select></label>
+        <button class="btn" type="button" id="po-list-replace">{{ _('section.playout.list_replace') }}</button>
+        <button class="btn" type="button" id="po-list-append">{{ _('section.playout.list_append') }}</button>
+      </div>
+      <div class="po-lead">{{ _('section.playout.lib_hint') }}</div>
+      <div class="po-lib" id="po-lib"></div>
+    </div>
+  </div>
+</div>
+
+<dialog id="po-dlg" aria-labelledby="po-dlg-t">
+  <form method="dialog" id="po-form">
+    <h2 id="po-dlg-t"></h2>
+    <label class="po-f">{{ _('section.playout.name') }}<input type="text" id="po-name" maxlength="80" required></label>
+    <div class="po-f">
+      <strong>{{ _('section.playout.outputs') }}</strong>
+      <p class="po-desc">{{ _('section.playout.outputs_desc') }}</p>
+      <div id="po-mems"></div>
+      <label class="po-f" style="margin-top:8px">{{ _('section.playout.add_output') }}<select id="po-addmem"></select></label>
+    </div>
+    <fieldset>
+      <legend>{{ _('section.playout.designation') }}</legend>
+      <p class="po-desc">{{ _('section.playout.designation_desc') }}</p>
+      <label class="po-f">{{ _('section.playout.mixer') }}<select id="po-mixer"></select></label>
+      <label class="po-f">{{ _('section.playout.console') }}<select id="po-console"></select></label>
+      <div id="po-chans"></div>
+      <button type="button" class="btn" id="po-suggest">{{ _('section.playout.suggest') }}</button>
+      <p class="po-desc">{{ _('section.playout.suggest_desc') }}</p>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _('section.playout.trigger') }}</legend>
+      <label class="po-opt"><input type="radio" name="po-trig" value="manual">
+        <span><b>{{ _('section.playout.trigger_manual') }}</b><br><span class="po-desc">{{ _('section.playout.trigger_manual_desc') }}</span></span></label>
+      <label class="po-opt"><input type="radio" name="po-trig" value="mixer">
+        <span><b>{{ _('section.playout.trigger_mixer') }}</b><br><span class="po-desc">{{ _('section.playout.trigger_mixer_desc') }}</span></span></label>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _('section.playout.ooo') }}</legend>
+      <p class="po-desc">{{ _('section.playout.ooo_desc') }}</p>
+      <label class="po-opt"><input type="radio" name="po-ooo" value="skip">
+        <span><b>{{ _('section.playout.ooo_skip') }}</b><br><span class="po-desc">{{ _('section.playout.ooo_skip_desc') }}</span></span></label>
+      <label class="po-opt"><input type="radio" name="po-ooo" value="requeue">
+        <span><b>{{ _('section.playout.ooo_requeue') }}</b><br><span class="po-desc">{{ _('section.playout.ooo_requeue_desc') }}</span></span></label>
+      <label class="po-opt"><input type="radio" name="po-ooo" value="refuse">
+        <span><b>{{ _('section.playout.ooo_refuse') }}</b><br><span class="po-desc">{{ _('section.playout.ooo_refuse_desc') }}</span></span></label>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _('section.playout.auto_next') }}</legend>
+      <label class="po-opt"><input type="checkbox" id="po-autonext">
+        <span><b>{{ _('section.playout.auto_next_lbl') }}</b><br><span class="po-desc">{{ _('section.playout.auto_next_desc') }}</span></span></label>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _('section.playout.release') }}</legend>
+      <p class="po-desc">{{ _('section.playout.release_manual_desc') }}</p>
+      <label class="po-opt"><input type="checkbox" id="po-auto">
+        <span><b>{{ _('section.playout.auto_release') }}</b><br><span class="po-desc">{{ _('section.playout.auto_release_desc') }}</span></span></label>
+    </fieldset>
+    <div class="po-actions">
+      <button type="button" class="btn po-del" id="po-del" hidden>{{ _('section.playout.delete') }}</button>
+      <button type="button" class="btn" id="po-cancel">{{ _('section.playout.cancel') }}</button>
+      <button type="submit" class="btn btn-green" id="po-save">{{ _('section.playout.save') }}</button>
+    </div>
+  </form>
+</dialog>
+<script src="/static/js/playout_groups.js?v={{ asset_v('js/playout_groups.js') }}"></script>

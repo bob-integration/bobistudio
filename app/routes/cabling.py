@@ -11,6 +11,7 @@ et la persistance des snapshots de câblage / vues de disposition (page Câbles,
 _fetch_plugin_state est aussi consommé par app/routes/home_dashboard.py (import local, résolu à
 l'exécution d'une requête — cf. sa docstring)."""
 
+import copy
 import json
 import logging
 import os
@@ -21,7 +22,9 @@ from flask import jsonify, request
 
 from . import bp
 from .shared import _load_dc
-from ..auth import require_login, require_perm
+from ..auth import (require_login, require_perm, require_global_access, has_global_access,
+                    check_vmid_access, current_user, vmid_project_ids, project_role_at_least,
+                    shm_producer_vmids)
 from ..database import (db_get_container, db_get_containers, db_add_alert,
                       db_cable_snapshot_save, db_cable_snapshots_list,
                       db_cable_snapshot_get, db_cable_snapshot_delete,
@@ -488,6 +491,81 @@ def _is_sharded_assembler(vmid):
     return False
 
 
+def _wd_pick(cands, to_slot):
+    """Port d'un document visé par `to_slot` (clé exacte, sinon position). Cf. wiring_document.pick."""
+    from ..wiring_document import pick
+    return pick(cands, to_slot)
+
+
+def _wire_document(to_vmid, target, t, params, spec, shm):
+    """Câble / décâble (shm "") un port dont le flux vit dans le DOCUMENT du plugin : écriture par
+    clé stable sous verrou, config relue fraîche (cf. app/wiring_document.py). Retourne
+    (ok, status, payload). Conteneur hors ligne : la clé est écrite en base, puis redéploiement."""
+    from .. import plugins as _pl
+    from ..wiring_document import wire
+    ok, status, payload = wire(to_vmid, _pl.get(t) or {}, spec, spec["key"], shm)
+    if not ok:
+        return False, status, payload
+    if payload.get("applied"):
+        return True, 200, {"to_vmid": to_vmid, "type": t, "hot_wired": True}
+    def _async_redeploy():
+        with verrou_vmid(to_vmid, op="wire-deploy"):
+            from ..database import db_get_container as _dgc
+            from .shared import _load_dc as _ld
+            dc = _ld(_dgc(to_vmid)) or {}
+            deployer_script(to_vmid, t, dict(dc.get("params") or {}))
+    threading.Thread(target=_async_redeploy, daemon=True).start()
+    return True, 200, {"to_vmid": to_vmid, "type": t}
+
+
+
+# ★★ UN CÂBLE EN ATTENTE NE DOIT PAS EFFACER CELUI QUI LE PRÉCÈDE (21/10, signalé en recette).
+#    Le câble lit les params en BASE, y pose sa modification, puis lance un redéploiement qui
+#    attend le verrou du conteneur. Or la base n'est écrite qu'au BOUT de chaque redéploiement
+#    (≈ 1 min mesurée sur decklink_io). Deux câbles posés à la suite partaient donc de la même
+#    base : le second, à son tour, redéployait SANS le premier et l'écrivait ainsi en base.
+#    Vécu : l'audio câblé sur deux sorties SDI, une seule le garde — sans un message.
+#    Remède, même principe que `_plugin_config_apply` (`_merge_fresh`) : on retient CE QUE ce
+#    câble a changé, et on le réapplique, sous le verrou, sur les params relus À CE MOMENT-LÀ.
+#    Les listes à géométrie (ports d'un plugin, fenêtres d'un mur) sont fusionnées ÉLÉMENT par
+#    élément : deux câbles sur deux ports d'une même liste ne s'écrasent plus.
+def _merge_wire_change(orig, new, fresh):
+    """`fresh` + ce qui a changé entre `orig` (lu au geste) et `new` (après le geste)."""
+    out = dict(fresh)
+    for k in set(orig) | set(new):
+        if k not in new:
+            if orig.get(k) == fresh.get(k):
+                out.pop(k, None)          # retiré par ce geste, et personne n'y a touché depuis
+            continue
+        a, b = orig.get(k), new[k]
+        if a == b:
+            continue
+        f = fresh.get(k)
+        if (isinstance(a, list) and isinstance(b, list) and isinstance(f, list)
+                and len(a) == len(b) == len(f)):
+            merged = list(f)
+            for i, (x, y) in enumerate(zip(a, b)):
+                if x != y:
+                    merged[i] = y
+            out[k] = merged
+        else:
+            # Forme changée entre-temps (liste allongée…) : on ne sait pas aligner, on reprend
+            # la valeur du geste — le comportement d'avant, pas pire.
+            out[k] = b
+    return out
+
+
+def _fresh_wire_params(vmid, orig, new):
+    """Params à déployer, relus SOUS LE VERROU puis corrigés du seul geste en cours."""
+    try:
+        cur = db_get_container(vmid)
+        fresh = ((_load_dc(cur) or {}).get("params") or {}) if cur else None
+    except Exception:
+        fresh = None
+    if not isinstance(fresh, dict):
+        return new
+    return _merge_wire_change(orig, new, fresh)
+
 def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, force=False):
     """Applique un câble. Retourne (ok, status, payload).
 
@@ -513,6 +591,7 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
         return False, 400, {"error": f"#{to_vmid} n'a pas de script déployé"}
     t      = dc["type"]
     params = dict(dc.get("params") or {})
+    _orig_params = copy.deepcopy(params)     # cf. _merge_wire_change
 
     # Câblage INTER-NŒUD transparent : si le producteur et le consommateur sont sur des nœuds
     # différents, le flux n'existe pas dans le domaine MXL du consommateur → on provisionne
@@ -621,7 +700,7 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                             return True, 200, {"to_vmid": to_vmid, "type": t, "hot_wired": True}
             def _async_wire():
                 with verrou_vmid(to_vmid, op="wire"):
-                    deployer_script(to_vmid, t, params)
+                    deployer_script(to_vmid, t, _fresh_wire_params(to_vmid, _orig_params, params))
             threading.Thread(target=_async_wire, daemon=True).start()
             return True, 200, {"to_vmid": to_vmid, "type": t}
 
@@ -631,9 +710,30 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
         # Multi-entrées : la spec est choisie par (essence, slot) si un slot est fourni.
         from .. import plugins as _pl
         w = _pl.derive_wiring(t, target.get("hostname") or "", params)
-        if w["mode"] != "hot-wire":
-            return False, 400, {"error": f"{t} n'est pas câblable depuis la home (mode {w['mode']})"}
         cands = [x for x in w["consumes"] if (x.get("essence") or "video") == kind]
+        _keyed = [x for x in cands if x.get("key") is not None]    # ports d'un document (wiring_document)
+        # ★ LES PLUGINS EN MODE `redeploy` SONT CÂBLABLES D'ICI (2026-10-19). Seul « hot-wire »
+        #   était accepté, et un port parfaitement déclaré se voyait refuser par un HTTP 400 :
+        #   « decklink_io n'est pas câblable depuis la home (mode redeploy) ». Conséquence
+        #   mesurée : impossible d'affecter une source à une sortie SDI depuis la page Câbles
+        #   alors que le manifeste déclare le port — l'exploitant s'est retrouvé sans aucun
+        #   chemin, la console ayant par ailleurs retiré son champ en croyant que le câblage
+        #   prenait le relais.
+        #   La machinerie existait déjà : la branche `from_list` ci-dessous tente le câblage à
+        #   chaud puis RETOMBE sur un redéploiement. Il ne manquait que l'autorisation. On exige
+        #   un port issu d'une LISTE (`from_list`) ou d'un document : sans l'un des deux, on ne
+        #   saurait pas OÙ écrire le flux dans les params, et on redéploierait sans rien changer.
+        _listes = [x for x in cands if x.get("from_list")]
+        if w["mode"] not in ("hot-wire", "redeploy") and not _keyed:
+            return False, 400, {"error": f"{t} n'est pas câblable depuis la home (mode {w['mode']})"}
+        if w["mode"] == "redeploy" and not _keyed and not _listes:
+            return False, 400, {"error": f"{t} : port {kind} sans liste de rattachement — "
+                                         f"le flux n'aurait nulle part où être écrit"}
+        if _keyed:
+            spec = _wd_pick(_keyed, to_slot)
+            if not spec:
+                return False, 400, {"error": f"{t} n'a pas d'entrée {kind} « {to_slot} »"}
+            return _wire_document(to_vmid, target, t, params, spec, shm)
         if to_slot is not None:
             try: want_slot = int(to_slot)
             except (TypeError, ValueError): want_slot = None
@@ -744,9 +844,13 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                         entry[_mf] = (_mp + _fshm) if _fshm else ""
                         _fl_bodies.append({ikey: slot, "shm": _fshm, "essence": _ess})
                     lst[slot] = entry; params[lst_name] = lst
-            res = _try_hot_input(to_vmid, target, t, params,
-                                 {ikey: slot, "shm": shm, "essence": kind}, want, cur,
-                                 adapts=_adapts)
+            # Un plugin qui déclare `redeploy` n'a PAS d'endpoint d'entrée à chaud : le tenter
+            # ajoute un aller-retour voué à échouer et une erreur trompeuse dans le journal.
+            # On respecte ce que le manifeste annonce plutôt que de l'éprouver.
+            res = (_try_hot_input(to_vmid, target, t, params,
+                                  {ikey: slot, "shm": shm, "essence": kind}, want, cur,
+                                  adapts=_adapts)
+                   if w["mode"] == "hot-wire" else None)
             if res:
                 # Câble principal appliqué à chaud (params persistés) → suiveurs à chaud aussi
                 # (best-effort : au pire ils prendront effet au prochain redéploiement).
@@ -819,9 +923,54 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
 
     def _async_deploy():
         with verrou_vmid(to_vmid, op="wire-deploy"):
-            deployer_script(to_vmid, t, params)
+            deployer_script(to_vmid, t, _fresh_wire_params(to_vmid, _orig_params, params))
     threading.Thread(target=_async_deploy, daemon=True).start()
     return True, 200, {"to_vmid": to_vmid, "type": t}
+
+
+# ─── Scoping du câblage (utilisateurs scopés projet) ──────────────────────────────────────
+# `containers.deploy` est une permission de RÔLE : un administrateur peut l'accorder à un rôle
+# scopé (Réglages → Rôles). Sans ces gardes, ce membre câblerait n'importe quel conteneur du parc
+# sur n'importe quel flux. Règle (docs/reference/PROJETS.md §4-5) : un membre `editor` câble à
+# l'INTÉRIEUR de son projet ; un câble entre projets est un objet d'admin. Les gardes sont dans les
+# ROUTES, pas dans `_apply_wire` : celui-ci sert aussi aux restaurations, à la réaffectation des
+# ports, à Ember+ et au watcher de format — appels sans utilisateur derrière.
+
+WIRE_MIN_PROJECT_ROLE = "editor"
+
+
+def _wire_scope_err(to_vmid, from_vmid=None, shm=None, extra_shms=()):
+    """None si l'utilisateur courant peut poser ce câble, sinon la réponse (401/403) à retourner.
+
+    Accès global → toujours None. Sinon : `to_vmid` dans un projet où il est au moins `editor`, et
+    chaque shm produit par un conteneur d'un de CES projets. Le shm principal doit en outre être
+    produit par `from_vmid` lui-même : le vmid annoncé par le client sert au gate de format et à
+    la réplication RDMA, il ne doit pas pouvoir désigner autre chose que la vraie source."""
+    if has_global_access():
+        return None
+    err = check_vmid_access(to_vmid, WIRE_MIN_PROJECT_ROLE)
+    if err:
+        return err
+    from ..database import db_project_role
+    uid = current_user()["id"]
+    pids = {p for p in vmid_project_ids(to_vmid)
+            if project_role_at_least(db_project_role(p, uid), WIRE_MIN_PROJECT_ROLE)}
+    shms = [s.strip() for s in ((shm,) + tuple(extra_shms)) if s and str(s).strip()]
+    producers = shm_producer_vmids(shms)
+    refused = []
+    for s in shms:
+        vmids = producers.get(s) or set()
+        if s == (shm or "").strip():
+            try:
+                vmids = vmids & {int(from_vmid)}
+            except (TypeError, ValueError):
+                vmids = set()
+        if not any(vmid_project_ids(v) & pids for v in vmids):
+            refused.append(s)
+    if refused:
+        return (jsonify({"ok": False, "error": "forbidden", "reason": "shm_not_in_project",
+                         "shm": refused}), 403)
+    return None
 
 
 @bp.route("/api/home/wire", methods=["POST"])
@@ -833,6 +982,10 @@ def api_home_wire():
         to_vmid   = int(data.get("to_vmid")   or 0)
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "vmids invalides"}), 400
+    err = _wire_scope_err(to_vmid, from_vmid, data.get("shm"),
+                          (data.get("audio_shm"), data.get("anc_shm")))
+    if err:
+        return err
     # Étage 2 (docs/reference/TX_LAYOUTS.md) : câbler une sortie 2110 est SÛR (swap de source, zéro commit) tant que
     # le format de la source CONCORDE avec le format provisionné du slot ; sinon la session est
     # recréée → `rte_tm_hierarchy_commit` → stop/start du port (MESURÉ au banc : +2 commits). On
@@ -907,7 +1060,9 @@ def _target_input_format(to_vmid, kind="video", to_slot=None):
     w = _pl.derive_wiring(dc["type"], (c.get("hostname") or ""), dc.get("params") or {})
     cands = [x for x in w.get("consumes") or [] if (x.get("essence") or "video") == kind]
     spec = None
-    if to_slot is not None:
+    if to_slot is not None and any(x.get("key") is not None for x in cands):
+        spec = _wd_pick([x for x in cands if x.get("key") is not None], to_slot)
+    elif to_slot is not None:
         try: ws = int(to_slot)
         except (TypeError, ValueError): ws = None
         spec = (next((x for x in cands if x.get("slot") == ws), None)
@@ -1096,6 +1251,7 @@ def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, n
 
 @bp.route("/api/home/insert_udc", methods=["POST"])
 @require_perm("containers.deploy")
+@require_global_access
 def api_home_insert_udc():
     data = request.json or {}
     try:
@@ -1212,6 +1368,7 @@ def _apply_unwire(to_vmid, shm, kind):
 
     t      = dc["type"]
     params = dict(dc.get("params") or {})
+    _orig_params = copy.deepcopy(params)     # cf. _merge_wire_change
 
     from .. import plugins as _pl_unwire
     _unwire_hook = _pl_unwire.get_hook(t, "unwire_input")
@@ -1235,7 +1392,7 @@ def _apply_unwire(to_vmid, shm, kind):
                     return res
             def _async_unwire():
                 with verrou_vmid(to_vmid, op="unwire"):
-                    deployer_script(to_vmid, t, params)
+                    deployer_script(to_vmid, t, _fresh_wire_params(to_vmid, _orig_params, params))
             threading.Thread(target=_async_unwire, daemon=True).start()
             return True, 200, {"to_vmid": to_vmid, "type": t}
 
@@ -1243,6 +1400,9 @@ def _apply_unwire(to_vmid, shm, kind):
         from .. import plugins as _pl
         w = _pl.derive_wiring(t, target.get("hostname") or "", params)
         cands = [x for x in w["consumes"] if (x.get("essence") or "video") == kind]
+        _dk = next((x for x in cands if x.get("key") is not None and x.get("shm") == shm), None)
+        if _dk:                                        # port d'un document : vider le champ par sa clé
+            return _wire_document(to_vmid, target, t, params, _dk, "")
         # On décâble le slot portant ce shm (from_list : shm résolu ; state_field : params).
         spec = next((x for x in cands if x.get("from_list") and x.get("shm") == shm), None) \
                or next((x for x in cands if x.get("state_field") and params.get(x["state_field"]) == shm), None) \
@@ -1315,7 +1475,7 @@ def _apply_unwire(to_vmid, shm, kind):
 
     def _async_deploy():
         with verrou_vmid(to_vmid, op="wire-deploy"):
-            deployer_script(to_vmid, t, params)
+            deployer_script(to_vmid, t, _fresh_wire_params(to_vmid, _orig_params, params))
     threading.Thread(target=_async_deploy, daemon=True).start()
     return True, 200, {"to_vmid": to_vmid, "type": t}
 
@@ -1327,6 +1487,9 @@ def api_home_unwire():
         to_vmid = int(data.get("to_vmid") or 0)
     except (TypeError, ValueError):
         return jsonify({"ok": False, "error": "vmid invalide"}), 400
+    err = check_vmid_access(to_vmid, WIRE_MIN_PROJECT_ROLE)
+    if err:
+        return err
     ok, status, payload = _apply_unwire(to_vmid, data.get("shm"), data.get("kind"))
     if ok:                                      # teardown auto du lien RDMA inter-nœud si plus consommé
         _maybe_release_rdma(to_vmid, (data.get("shm") or "").strip(), data.get("kind"))
@@ -1401,6 +1564,7 @@ def api_cable_snapshots_list():
 
 @bp.route("/api/cables/snapshots", methods=["POST"])
 @require_perm("containers.deploy")
+@require_global_access
 def api_cable_snapshot_create():
     data = request.json or {}
     name = (data.get("name") or "").strip()
@@ -1412,12 +1576,14 @@ def api_cable_snapshot_create():
 
 @bp.route("/api/cables/snapshots/<int:sid>", methods=["DELETE"])
 @require_perm("containers.deploy")
+@require_global_access
 def api_cable_snapshot_delete(sid):
     ok = db_cable_snapshot_delete(sid)
     return jsonify({"ok": ok})
 
 @bp.route("/api/cables/clear", methods=["POST"])
 @require_perm("containers.deploy")
+@require_global_access
 def api_cables_clear():
     """Décâble tout le pipeline (boucle d'unwire sur l'état courant)."""
     edges = _collect_current_edges()
@@ -1431,6 +1597,7 @@ def api_cables_clear():
 
 @bp.route("/api/cables/snapshots/<int:sid>/restore", methods=["POST"])
 @require_perm("containers.deploy")
+@require_global_access
 def api_cable_snapshot_restore(sid):
     snap = db_cable_snapshot_get(sid)
     if not snap:

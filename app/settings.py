@@ -90,6 +90,26 @@ _BASE_DEFAULTS = {
     "fps_target_ratio":   0.90,   # fraction de la cible sous laquelle on considère qu'il a décroché
     "fps_low_samples":    12,     # ticks CONSÉCUTIFS avant d'armer (1 tick = 5 s → ~60 s)
 
+    # ── Journal : rétention et anti-rebond ───────────────────────────────────────────────────
+    # ⚠ CES TROIS CLÉS ÉTAIENT ABSENTES D'ICI alors que les champs existent dans Réglages →
+    # Alertes depuis leur création. `update_bulk` ne stocke QUE les clés connues : régler la
+    # rétention depuis l'interface remontait « enregistré », jetait la valeur, et le défaut
+    # continuait de s'appliquer. Constaté le 2026-09-15 en raccordant la piste d'audit, dont la
+    # rétention n'aurait servi à rien si elle n'était pas réglable. Les valeurs répètent les
+    # défauts de `app/database.py` — c'est LUI qui fait foi sur le chemin d'écriture, via
+    # `_alerts_retention*()` ; ici, il ne s'agit que de rendre la clé ACCEPTABLE à l'écriture.
+    "alerts_retention":          10000,   # cf. database.ALERTS_RETENTION_DEFAUT
+    "alerts_security_retention": 50000,   # cf. database.ALERTS_RETENTION_SECURITE_DEFAUT — quota
+                                          # PROPRE à la piste d'audit (kinds `auth`/`account`)
+    "alerts_antirebond_s":       900,     # cf. database.ANTIREBOND_DEFAUT_S ; 0 = désactivé
+    # Journal d'exploitation des plugins (app/ops_journal.py, docs/reference/PLUGIN_JOURNAL.md) :
+    # sa PROPRE table, donc sa propre rétention, en JOURS glissants (décision 2026-10-17 : 7 par
+    # défaut ; bornée 1..366 par `ops_journal._retention_days`). `ops_journal_forward` recopie
+    # chaque ligne vers les canaux du service d'alertes (syslog, SNMP…) au niveau « info » : éteint
+    # par défaut, parce que ces canaux sont communs (un e-mail au seuil info recevrait chaque mute).
+    "ops_journal_retention_days": 7,
+    "ops_journal_forward":        False,
+
     # B3-2 — paire de contrôleurs HA. Rôle de CE contrôleur : "active" pilote (surveillance,
     # services NMOS/Ember+/ATEM/TSL, sampler PTP, backup) ; "standby" boote passif (UI lecture
     # seule, aucun pilotage) en attente d'une bascule manuelle. Défaut "active" = boot actuel.
@@ -360,12 +380,18 @@ _BASE_DEFAULTS = {
     "brand_org_name":    "",
     "brand_logo_url":    "",
     "brand_location":    "",
-    # ⚠ N'ACTIVER QUE SI L'ORCHESTRATEUR N'EST JOIGNABLE QU'À TRAVERS UN REVERSE-PROXY DE
-    # CONFIANCE. `X-Forwarded-For` est envoyé par le CLIENT : si la machine est joignable en
-    # direct, n'importe qui peut s'annoncer à l'adresse de son choix, et le filtre d'adresses
-    # des liens publics n'aurait plus que l'apparence d'un filtre. Off par défaut : on prend
-    # alors le vrai pair TCP, inforgeable.
-    "public_trust_proxy": False,
+    # Mode d'exposition du port web (cf. app/web_mode.py) : `http` (défaut) ou `proxy`.
+    # C'est LUI, et lui seul, qui décide si l'on croit `X-Forwarded-*`. Il remplace
+    # `public_trust_proxy`, qui ne couvrait que les liens publics — pendant que la connexion,
+    # elle, croyait l'en-tête sans condition. Lu AU DÉMARRAGE : changer de mode exige de
+    # redémarrer l'orchestrateur, et l'onglet Sécurité le dit quand les deux diffèrent.
+    "web_mode": "http",
+    # Port de l'écoute HTTPS en mode `tls`. 443 : c'est l'adresse qu'un navigateur essaie
+    # sans qu'on la lui dise. Le :5000 reste ouvert, réduit aux appelants machines.
+    "web_tls_port": 443,
+    # Écoute mTLS de la réplication HA (cf. app/ha_tls.py), distincte du port web : elle
+    # n'accepte QUE des certificats de contrôleur de notre CA, et ne sert que la réplication.
+    "ha_tls_port": 5444,
 
     # Sauvegarde quotidienne automatisée de la DB (vers backups/)
     "backup_enabled":   False,

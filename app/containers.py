@@ -210,19 +210,72 @@ def _detruire_container_locked(vmid, progress=None):
     return
 
 
-def update_resources(vmid, cores=None, memory=None, pinned_cores=None):
-    """Persiste les ressources (cores/RAM/pinning) en DB. D Phase 2a : full-Docker — plus de
-    reconfiguration Proxmox à chaud. Les cores/RAM s'appliquent au prochain (re)déploiement du
-    conteneur Docker ; le pinning CPU est géré par core_pool au run."""
-    from .database import db_update_resources, db_get_container
+def update_resources(vmid, cores=None, memory=None, pinned_cores=None, reset=False, cpu_mode=None):
+    """Pose le réglage de cœurs/mémoire PROPRE à ce conteneur et l'APPLIQUE.
+
+    Avant le 2026-10-11, cette fonction n'écrivait que les colonnes `cores`/`memory`/`pinned_cores`
+    et annonçait « mises à jour » — or `docker_compute` ne les relisait jamais (profil du
+    manifeste seul) : réglage accepté, journalisé, annoncé… et sans aucun effet, même recréé.
+
+    Désormais :
+    - le réglage va dans `cores_override`/`memory_override` (NULL = manifeste), relus par
+      `docker_compute.effective_resources` ; `reset=True` rend le conteneur au manifeste ;
+    - il est APPLIQUÉ par redéploiement (`deployer_script`) : les ressources entrent dans la
+      signature de spec, donc le conteneur est RECRÉÉ avec les nouvelles limites — coupure de
+      quelques secondes, annoncée comme telle. Pas de `docker update` : le cpuset dédié ne se
+      change pas à chaud, et un `docker update` laisserait la signature mentir (le redéploiement
+      suivant recréerait de toute façon) ;
+    - un conteneur ARRÊTÉ volontairement n'est pas rallumé : l'alerte dit que les limites
+      s'appliqueront à sa prochaine recréation (`docker start` reprend l'ancienne spec) ;
+    - `pinned_cores` n'est plus accepté comme réglage (le cpuset appartient à `core_pool`) : la
+      route le refuse en amont ; l'argument reste pour compatibilité d'appel et est ignoré.
+    - le moteur 2110 (`docker_driver`) ne lit aucun de ces champs : refus explicite.
+    - `cpu_mode` ('shared'|'reserved', types `reservable` seulement) : partager le pool du nœud à
+      poids faible, ou prendre `cores` cœurs DÉDIÉS (cf. `docker_compute.effective_resources`).
+
+    Retourne True si le réglage est enregistré ET appliqué (ou différé et annoncé comme tel)."""
+    import json as _json
+    from .database import db_set_resources_override, db_get_container
+    from . import docker_compute
     c = db_get_container(vmid)
     if not c:
-        ajouter_alerte("alert.deploy.resources_introuvable", "error",
+        ajouter_alerte("alert.deploy.resources_introuvable", "error", vmid=vmid, kind="deploy",
                        params={"vmid": vmid})
         return False
-    db_update_resources(vmid, cores=cores, memory=memory, pinned_cores=pinned_cores)
-    ajouter_alerte("alert.deploy.resources_maj", "info", params={"vmid": vmid})
-    return True
+    try:
+        _dc = c.get("deploy_config")
+        _dc = _json.loads(_dc) if isinstance(_dc, str) else (_dc or {})
+    except (ValueError, TypeError):
+        _dc = {}
+    type_ = (_dc or {}).get("type") or ""
+    label = c.get("hostname") or str(vmid)
+    if docker_compute.is_mtl_type(type_):
+        ajouter_alerte("alert.deploy.resources_moteur_refuse", "error", vmid=vmid, kind="deploy",
+                       params={"label": label})
+        return False
+    db_set_resources_override(vmid, cores=cores, memory=memory, reset=reset, cpu_mode=cpu_mode)
+    c = db_get_container(vmid) or c
+    eff = docker_compute.effective_resources(type_, c)
+    _p = {"label": label, "cores": eff.get("cores") or "—", "memory": eff.get("memory") or "—"}
+    if c.get("desired_state") == "stopped" or not type_:
+        ajouter_alerte("alert.deploy.resources_differe", "warning", vmid=vmid, kind="deploy",
+                       params=_p)
+        return True
+    if reset:
+        # `allocate_cores` est idempotent : sans libération, le conteneur garderait le nombre de
+        # cœurs dédiés de l'ancien réglage. Sous le verrou du vmid, recréation immédiate.
+        try:
+            from . import core_pool
+            core_pool.release_cores(vmid)
+        except Exception as _e:
+            log.warning("update_resources %s : libération des cœurs échouée : %s", vmid, _e)
+    from .deploy import deployer_script
+    if deployer_script(vmid, type_, (_dc or {}).get("params") or {}):
+        ajouter_alerte("alert.deploy.resources_appliquees", "info", vmid=vmid, kind="deploy",
+                       params=_p)
+        return True
+    ajouter_alerte("alert.deploy.resources_echec", "error", vmid=vmid, kind="deploy", params=_p)
+    return False
 
 
 def changer_media_projet(vmid, project_id, media_host_dir):

@@ -13,15 +13,20 @@
 # (agent) · :8080 (métriques) directement sur l'IP du conteneur, comme un LXC.
 #
 # Build (contexte = RACINE du repo, pour COPY script_templates/agent.py) :
-#   docker build -t bobi-webrtc:0.1 -f plugins/_webrtc_runtime/Dockerfile .
+#   docker build -t bobi-webrtc:0.6.1 -f plugins/_webrtc_runtime/Dockerfile .
 FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG MTX_VERSION=1.9.3
+# Même version et même empreinte que services/webrtc_gateway (MEDIAMTX_VERSION / script.py:MTX_SHA256) :
+# un binaire pré-baké d'une autre version est ignoré par le script, qui retélécharge la sienne.
+ARG MTX_VERSION=1.21.1
+ARG MTX_SHA256=653abc672a3e693f8d3b2717752492fdcfb8072291ec108d03d3dd857411b0ee
 ARG TARGETARCH=amd64
 
+# ffmpeg (libopus) : relais d'écoute des consoles audio (L16 → Opus, lancé à la demande par MediaMTX,
+# cf. services/webrtc_gateway/script.py LISTEN_RELAY_*). Sans lui, la passerelle n'annonce pas le relais.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 ca-certificates curl \
+      python3 ca-certificates curl ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 # MediaMTX PRÉ-BAKÉ (binaire statique) — pinné à MTX_VERSION. Au même chemin que celui attendu par
@@ -30,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL \
       "https://github.com/bluenviron/mediamtx/releases/download/v${MTX_VERSION}/mediamtx_v${MTX_VERSION}_linux_${TARGETARCH}.tar.gz" \
       -o /tmp/mediamtx.tar.gz \
+ && echo "${MTX_SHA256}  /tmp/mediamtx.tar.gz" | sha256sum -c - \
  && tar -xzf /tmp/mediamtx.tar.gz -C /usr/local/bin mediamtx \
  && chmod 0755 /usr/local/bin/mediamtx \
  && rm -f /tmp/mediamtx.tar.gz \

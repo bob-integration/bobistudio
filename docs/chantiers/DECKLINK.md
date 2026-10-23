@@ -1448,6 +1448,96 @@ redéploiement. Personne ne l'avait prévu ; c'est le meilleur test qu'on ait eu
 
 ---
 
+## 9 novemvicies. §4 RÉPONDU : la latence jusqu'au FIL, et sa loi (2026-10-02)
+
+Bouclage physique enfin établi — une sortie de la carte vers une entrée de la même carte, par un
+câble que le testeur avait déjà posé sans que personne ne sache ce qu'il reliait. Mesure par
+appariement de signatures spatiales entre le flux SOURCE et le flux RETOUR, historique gardé **en
+mémoire** : l'anneau MXL ne conserve que **9 champs (180 ms)**, bien moins que le retard cherché —
+c'est ce qui a fait échouer les quatre premières tentatives.
+
+| Pré-charge | Retard aller-retour | Trames perdues | Répétées |
+|---|---|---|---|
+| 1 | **160 ms** (8 champs) | 0 | 0 |
+| 2 | **200 ms** (10 champs) | 0 | 0 |
+| 3 (défaut) | **240 ms** (12 champs) | 0 | 0 |
+
+> **retard = 120 ms + 40 ms × pré-charge**
+
+La loi est exacte : une trame de pré-charge vaut une trame de 25 i/s, soit 40 ms. Les **120 ms**
+restants sont le socle incompressible mesuré — capture, bus MXL, sortie de carte, fil, entrée de
+carte. C'est la première fois que ce chiffre existe : tout ce qu'on mesurait jusqu'ici s'arrêtait
+à ce que le pilote rapporte.
+
+**Validation causale, pas simple répétition.** Le retard à pré-charge 3 a été mesuré DEUX fois
+(240 ms), puis la pré-charge a été changée et le retard a bougé **de la valeur prédite** : −80 ms
+pour −2 trames. Une mesure qui se contente de se répéter ne prouve que sa propre stabilité ; celle
+qui bouge comme on l'a prédit prouve qu'elle mesure bien ce qu'on croit.
+
+> ★★ **ET LE RÉGLAGE N'ARRIVAIT PAS AU BINAIRE.** Les deux premières mesures à pré-charge 3 puis 1
+> ont donné **le même chiffre**. J'ai failli en conclure que la pré-charge n'était pas dans le
+> chemin de latence. Elle y était : la recopie `CONFIG["outputs"] → SORTIES` du superviseur ne
+> reportait pas le champ, qui existait pourtant dans le hook, en base et dans la boucle de
+> lancement. **Un réglage présent de bout en bout SAUF à un maillon, et muet à ce maillon.** Ce
+> qui a tranché, c'est d'avoir lu la ligne de commande RÉELLE du processus au lieu de croire la
+> configuration. Avant de conclure qu'un levier n'agit pas, vérifier qu'on l'a actionné.
+
+**Ce qui reste à décider** : la pré-charge est désormais exposée par sortie (bornée 1 à 10) et
+garde le défaut du binaire si elle n'est pas renseignée. Les trois valeurs ont tourné sans une
+seule trame perdue, mais sur une à deux minutes chacune — pas de quoi recommander 1 en production
+sans une veille plus longue.
+
+---
+
+## 9 duodevicies. 240 ms → 120 ms : les deux tiers du budget étaient NOTRE file (2026-10-02 au soir)
+
+L'exploitant a réagi au chiffre du §9 novemvicies : « c'est énorme comme valeur ». Il avait raison —
+240 ms, c'est **six trames** sur une chaîne SDI → SDI, hors de proportion pour une carte d'E/S.
+
+**En allant vérifier plutôt qu'en défendant le chiffre**, le code disait :
+
+```c
+for (int i = 0; i < preroll + 2; i++)   // on met preroll + DEUX trames en file
+```
+
+Ce « + 2 » n'était documenté nulle part et n'avait jamais été mesuré. L'arithmétique devient alors
+exacte sur les trois points déjà relevés — **le reste est constant** :
+
+| Pré-charge affichée | File RÉELLE | Mesuré | Reste |
+|---|---|---|---|
+| 1 | 3 trames | 160 ms | 40 ms |
+| 2 | 4 trames | 200 ms | 40 ms |
+| 3 | 5 trames | 240 ms | 40 ms |
+
+> ⚠ **J'avais annoncé « 120 ms de socle incompressible ». C'était faux : le socle vaut 40 ms**, une
+> trame — la capture. Les 80 ms que j'attribuais au matériel étaient notre propre boucle. Attribuer
+> au matériel ce qu'on n'a pas lu dans son propre code, c'est s'interdire de le corriger.
+
+**La pré-charge veut désormais dire ce qu'elle dit**, et la mesure confirme le modèle :
+
+| File demandée | `queued_now` (dit par la CARTE) | Latence | Trames perdues |
+|---|---|---|---|
+| 1 | 1 | — | **367 sur 368** · sortie à 12,5 i/s |
+| **2** | **2** | **120 ms** | **0** |
+| 3 | 3 | 160 ms | 0 |
+
+**Ce que le « + 2 » protégeait est maintenant établi, pas supposé** : à une seule trame en vol,
+l'ordonnanceur de la carte n'a pas le temps de se recharger et la sortie tombe à **demi-cadence**.
+La marge est donc réelle — mais elle valait **deux trames, pas quatre**.
+
+**Gain net : 240 → 120 ms à sécurité égale** (zéro trame perdue), soit la moitié du budget, sur
+toute chaîne SDI → bus → SDI.
+
+> ★ **`GetBufferedVideoFrameCount` a été ajouté par la même occasion** : la carte dit ce qu'elle
+> garde réellement, à côté de ce que nous demandons. Les trois relevés concordent (`queued_now` =
+> file demandée) — donc aucune latence cachée côté carte, et le chiffre n'est plus une déduction
+> tirée de la lecture de notre propre code.
+
+**Reste ouvert** : `DisplayVideoFrameSync`, un envoi direct sans file programmée, jamais essayé.
+Et le socle de 40 ms n'a jamais été décomposé entre capture et sortie.
+
+---
+
 ## 10. Ce qui reste ouvert
 
 Les quatre points laissés en suspens à l'ouverture ont été tranchés le 2026-09-07 : surface NMOS

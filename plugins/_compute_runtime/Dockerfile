@@ -188,8 +188,17 @@ COPY plugins/decklink_io/decklink_sdk /src/decklink_sdk
 COPY plugins/decklink_io/anc_rfc8331.h /src/anc_rfc8331.h
 COPY plugins/decklink_io/decklink_mxl.cpp /src/decklink_mxl.cpp
 COPY plugins/decklink_io/decklink_tx.cpp /src/decklink_tx.cpp
+# ★ La SONDE entre aussi dans l'image (2026-09-21). L'inventaire de la carte — prises, rôles,
+#   duplex, prises INACTIVES — ne peut être lu que depuis le conteneur : c'est lui qui a les
+#   périphériques montés, et le contrôleur n'exécute jamais de code plugin. Sans elle, l'exploitant
+#   devait trouver les `persistent_id` en ligne de commande pour remplir un champ JSON à la main.
+COPY plugins/decklink_io/tools/probe/decklink_probe.cpp /src/decklink_probe.cpp
+# L'outil de PROFIL entre aussi : changer le profil d'une carte est une opération d'exploitant,
+# elle ne peut pas exiger une ligne de commande sur le nœud (décision du 16/10). Il porte ses
+# propres garde-fous — refus si une entrée est verrouillée, ciblage par identité stable.
+COPY plugins/decklink_io/tools/profile/decklink_profile.cpp /src/decklink_profile.cpp
 WORKDIR /src
-RUN for b in decklink_mxl decklink_tx; do \
+RUN for b in decklink_mxl decklink_tx decklink_probe decklink_profile; do \
       g++ -O2 -Wall -Wextra -Wno-deprecated-declarations -std=c++11 -fno-rtti \
         -I/src -I/usr/local/include -o /$b $b.cpp decklink_sdk/DeckLinkAPIDispatch.cpp \
         -L/usr/local/lib -lmxl -lcrypto -ldl -lpthread || exit 1; \
@@ -236,7 +245,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-numpy python3-pil ca-certificates libstdc++6 libgomp1 \
       fonts-dejavu-core fonts-liberation fonts-inter fonts-roboto fonts-firacode \
       rdma-core ibverbs-providers libibverbs1 librdmacm1 \
- && rm -rf /var/lib/apt/lists/*
+      liblilv-0-0 \
+      libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libfftw3-single3 libsamplerate0 libsndfile1 \
+      libzita-convolver4 libltc11 \
+      libxrandr2 libxcursor1 libfontconfig1 \
+ && cd /tmp && apt-get download libglvnd0 libglx0 libgl1 \
+ && for d in libglvnd0_*.deb libglx0_*.deb libgl1_*.deb; do dpkg-deb -x "$d" /; done \
+ && rm -f /tmp/*.deb && ldconfig \
+ && mkdir -p /usr/share/doc/libgl1 && cp /usr/share/doc/libglvnd0/copyright /usr/share/doc/libgl1/ 2>/dev/null; \
+    rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /usr/local/lib/lv2 /usr/local/lib/clap /usr/local/lib/vst3
+# liblilv (ISC) + serd / sord / sratom : le CHARGEUR de plugins LV2 de l'hôte de plugins tiers de la console
+# audio (plugins/audio_console/host, ouvert par dlopen dans un bac à sable). AUCUN plugin dans l'image : ils
+# sont distribués par l'orchestrateur et montés en lecture seule sous /usr/local/lib/lv2 — une mise à jour de
+# plugin ne reconstruit pas l'image, et les autres conteneurs compute ne portent pas d'audio inutile.
+# Ligne suivante (0.63) : les bibliothèques que lient les BINAIRES DSP des meilleurs plugins libres (pas leurs
+# interfaces) — cairo (x42 fil4 / dpl / darc / meters, LSP : rendu « inline display », jamais appelé par notre
+# hôte), pango + pangocairo (x42 meters), fftw3f (fat1, phaserotate, zeroconvo), sndfile (LSP, zeroconvo),
+# samplerate + zita-convolver (ZamVerb, ZamHeadX2, zeroconvo), ltc (mixtri). Mesuré le 2026-10-17 : +19 Mo.
+# libfluidsynth3 (Calf) volontairement ABSENT : +207 Mo (llvm, mesa, SDL2, pipewire, une banque de sons).
+# 0.64 (plugins CLAP / VST3) : un plugin CLAP ou VST3 est UN seul binaire, interface comprise — ses dépendances
+# (NEEDED) doivent être là pour qu'il se CHARGE, même si l'hôte n'ouvre jamais son interface : libGL.so.1 (DPF :
+# Dragonfly ; LSP), Xrandr / Xcursor (DPF), fontconfig (LSP). libGL vient de libglvnd (libglvnd0 + libglx0 + libgl1,
+# MIT-like, ~1,5 Mo) EXTRAIT SANS SON PILOTE : `apt install libgl1` tire libglx-mesa0, Mesa et LLVM — mesuré
+# +204 Mo le 2026-10-18 pour une bibliothèque que rien n'appelle (libglvnd ne charge un pilote qu'à la création
+# d'un contexte OpenGL, ce que l'hôte ne fait jamais). Aucun serveur d'affichage, aucun plugin dans l'image.
 
 # libfabric : celle qu'on a COMPILÉE (v2.5.1), surtout pas `libfabric1` d'apt (2.1.0 sur trixie).
 # Les deux portent le même soname `libfabric.so.1` : garder le paquet ferait charger l'ANCIENNE au
@@ -268,6 +301,8 @@ COPY --from=mxl-builder /opt/mxl-install-v3/lib/ /usr/local/lib/glibc-hwcaps/x86
 COPY --from=v210-builder /out/ /usr/local/lib/
 COPY --from=decklink-builder /decklink_mxl /usr/local/bin/decklink_mxl
 COPY --from=decklink-builder /decklink_tx /usr/local/bin/decklink_tx
+COPY --from=decklink-builder /decklink_probe /usr/local/bin/decklink_probe
+COPY --from=decklink-builder /decklink_profile /usr/local/bin/decklink_profile
 RUN ldconfig
 
 # ⚠ GARDE-FOU DE L'ÉTAGE RUNTIME — l'étage builder ne prouve RIEN sur l'image livrée.

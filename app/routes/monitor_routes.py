@@ -12,7 +12,8 @@ from flask import jsonify, request, Response, stream_with_context
 
 from . import bp
 from ..auth import (require_login, require_perm, current_user, has_global_access,
-                    check_vmid_access)
+                    check_vmid_access, shm_producer_vmids)
+from ..database import db_get_container
 
 
 def _shm_access_err(*shms):
@@ -22,29 +23,14 @@ def _shm_access_err(*shms):
     confiance au client. Renvoie None si OK, sinon la réponse 403 à retourner."""
     if has_global_access():
         return None
-    from .. import plugins as _plugins
-    from ..database import db_get_containers
-    from .shared import _load_dc
     want = {s for s in shms if s}
     if not want:
         return None
-    for c in db_get_containers():
-        dc = _load_dc(c) or {}
-        kind = dc.get("type")
-        if not _plugins.is_plugin(kind):
-            continue
-        p = dc.get("params") or {}
-        hn = p.get("hostname") or c.get("hostname") or f"mxl{c['vmid']}"
-        try:
-            produced = {pr.get("shm") for pr in
-                        _plugins.derive_wiring(kind, hn, p)["produces"]}
-        except Exception:
-            continue
-        for s in list(want & produced):
-            if check_vmid_access(c["vmid"], "viewer") is None:
-                want.discard(s)
-        if not want:
-            return None
+    for s, vmids in shm_producer_vmids(want).items():
+        if any(check_vmid_access(v, "viewer") is None for v in vmids):
+            want.discard(s)
+    if not want:
+        return None
     return (jsonify({"error": "forbidden", "reason": "shm_not_accessible",
                      "shm": sorted(want)}), 403)
 
@@ -100,6 +86,16 @@ def monitor_source():
         return err
     return jsonify(monitor.set_source(uid, shm, body.get("label"), audio_shm))
 
+@bp.route("/api/monitor/fluid", methods=["POST"])
+@require_login
+def monitor_fluid():
+    """« Monitoring fluide (suit la source) » de l'utilisateur connecté : {enabled: bool}.
+    Persisté, et appliqué tout de suite (l'encodeur redémarre si la cadence de sortie change)."""
+    from .. import monitor
+    uid = (current_user() or {}).get("id")
+    body = request.get_json(force=True, silent=True) or {}
+    return jsonify(monitor.set_fluid(uid, bool(body.get("enabled"))))
+
 @bp.route("/api/monitor/activate", methods=["POST"])
 @require_login
 def monitor_activate():
@@ -153,7 +149,10 @@ def container_preview_status(vmid):
     err = check_vmid_access(vmid, "viewer")
     if err:
         return err
-    st = monitor.dedicated_status(vmid)
+    # `?flow=<shm>` : l'aperçu PAR SORTIE (un moniteur par flux de ce conteneur, cf. monitor.flow_suffix).
+    flow = (request.args.get("flow") or "").strip()
+    suffix = monitor.flow_suffix((db_get_container(vmid) or {}).get("hostname"), flow) if flow else None
+    st = monitor.dedicated_status(vmid, suffix)
     # `gateway_ready` est DANS la réponse : sans passerelle, l'UI doit dire pourquoi le bouton
     # ne servira à rien, pas laisser l'exploitant cliquer et attendre.
     st["gateway_ready"] = monitor.gateway_ready()
@@ -171,12 +170,15 @@ def container_preview_create(vmid):
     body = request.get_json(force=True, silent=True) or {}
     shm = (body.get("shm") or "").strip()
     audio_shm = (body.get("audio_shm") or "").strip() or None
+    # `per_flow` : un aperçu PAR SORTIE (PGM et PVW d'un même mélangeur, en même temps).
+    suffix = (monitor.flow_suffix((db_get_container(vmid) or {}).get("hostname"), shm)
+              if body.get("per_flow") else None)
     def gen():
         if not shm:
             yield "❌ Aucune source à encoder : le conteneur n'a rien de câblé.\n"
             return
         try:
-            for line in monitor.create_dedicated_iter(vmid, shm=shm, audio_shm=audio_shm):
+            for line in monitor.create_dedicated_iter(vmid, shm=shm, audio_shm=audio_shm, suffix=suffix):
                 yield line + "\n"
         except Exception as e:
             yield f"❌ Erreur inattendue : {e}\n"
@@ -218,3 +220,11 @@ def monitor_destroy():
     except (TypeError, ValueError):
         return jsonify({"error": "uid invalide"}), 400
     return jsonify(monitor.destroy(uid))
+
+
+# Groupes de lecture A/B/C… (players réunis sur une playlist, app/playout_groups.py) : routes enregistrées
+# avec ce module — routes/__init__.py est en cours dans une autre session. À y déplacer ensuite.
+from . import playout_group_api as _playout_routes  # noqa: E402
+# Lecture synchrone (players qui lisent ENSEMBLE, app/sync_groups.py) : même raison, même endroit.
+from . import sync_group_api as _sync_routes  # noqa: E402
+_REGISTERED_WITH = (_playout_routes, _sync_routes)

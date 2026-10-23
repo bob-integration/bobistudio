@@ -6,6 +6,9 @@
     top: 0;
     z-index: 40;
     display: flex;
+    flex-wrap: wrap;              /* trop étroit (iPad : 1180 px, il en faut ~1290) → 2e ligne, plutôt
+                                     que des menus qui débordent hors de la barre et de l'écran */
+    row-gap: 4px;
     align-items: center;
     gap: 4px;
     background: var(--bg-elev);
@@ -84,7 +87,10 @@
     color: var(--accent);
 }
 
-.topnav .spacer { flex: 1; }
+/* Groupe de droite (aide, compte, service, Réglages). `margin-left: auto` le cale à droite et
+   remplace l'ancien `.spacer` ; insécable, il passe EN BLOC sur la 2e ligne quand la barre
+   déborde (iPad), au lieu de laisser « Réglages » seul à gauche. */
+.topnav .nav-right { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
 
 .topnav a.nav-settings {
     display: inline-flex;
@@ -282,3 +288,24 @@
     color: var(--text-muted); font-size: 0.8em;
 }
 .app-footer-attr { margin-left: auto; }
+
+/* Ce qu'on entend dans ce navigateur (window.BobiListen, layout.html) : une icône, la liste au toucher */
+/* Pastille dans le coin HAUT-DROIT de la barre (au-dessus de « Réglages », dans la marge intérieure) : position
+   absolue, AUCUNE largeur prise — la barre est déjà pleine à la largeur d'un iPad (mesuré 2026-10-17 : < 26 px libres) */
+.topnav .nav-listen-wrap { position: absolute; right: 0; top: 0; z-index: 3; display: inline-flex; }
+.topnav .nav-listen { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border-radius: 50%; cursor: pointer; font: inherit; font-size: 1em;
+  line-height: 1; background: transparent; border: 1px solid var(--status-running-fg); color: var(--status-running-fg);
+  font-variant-emoji: text; }
+.topnav .nav-listen[hidden] { display: none; }
+.topnav .nav-listen.wait { border-color: var(--status-warning-fg); color: var(--status-warning-fg); }
+.topnav .nav-listen:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.topnav .nav-listen { position: relative; width: 16px; height: 16px; border-width: 0; margin: 1px; }
+.topnav .nav-listen svg { width: 13px; height: 13px; }
+.topnav .nav-listen::after { content: ""; position: absolute; inset: -1px -1px -14px -14px; }   /* vers le coin : ne mord pas sur « Réglages » */   
+.topnav .nav-listen-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; min-width: 220px; max-width: min(420px, 90vw);
+  padding: 8px 10px; border-radius: var(--radius-small, 4px); background: var(--bg-elev); border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .35); font-size: 0.85em; }
+.topnav .nav-listen-pop[hidden] { display: none; }
+.topnav .nav-listen-row { padding: 4px 0; color: var(--text); }
+.topnav .nav-listen-row + .nav-listen-row { border-top: 1px solid var(--border-soft); }
+.topnav .nav-listen-hint { color: var(--status-warning-fg); font-size: 0.9em; }

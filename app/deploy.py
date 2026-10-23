@@ -1386,6 +1386,38 @@ def version_en_cours(ip, vmid=None, timeout=2.0):
     return str(v) if v else None
 
 
+def _hot_config(ip, vmid, type_script, params, version):
+    """Pousse la configuration rendue au script VIVANT (`control.hot_config`). True si appliquée.
+
+    Envoie exactement ce que `{config}` vaut dans le script qu'on vient d'écrire, avec la version
+    et le nom d'hôte rendus : le script refuse si l'un des deux diffère du sien — son code n'est
+    alors plus celui du fichier, et seul un redémarrage le remet d'accord."""
+    import json
+    from . import plugins
+    if not plugins.is_plugin(type_script):
+        return False
+    hc = plugins.hot_config_endpoint(type_script)
+    if not hc or not ip:
+        return False
+    port, chemin = hc
+    corps = {"plugin_version": plugins.resolved_version(type_script, version),
+             "hostname": params.get("hostname", "mxl"),
+             "config": plugins.render_config(type_script, _gras(params))}
+    try:
+        r = agent_session().post("http://%s:%d%s" % (ip, port, chemin),
+                                 data=json.dumps(corps, default=str),
+                                 headers={"Content-Type": "application/json"}, timeout=15)
+    except Exception as e:
+        log.info("deploy %s: hot config unreachable (%s) — falling back to restart", vmid, e)
+        return False
+    if r.status_code != 200:
+        log.info("deploy %s: hot config refused (HTTP %s: %s) — falling back to restart",
+                 vmid, r.status_code, (r.text or "")[:200])
+        return False
+    log.info("deploy %s: hot config applied (%s)", vmid, (r.text or "")[:300])
+    return True
+
+
 def deployer_script(vmid, type_script, params, script_path="/opt/script/main.py", version=None,
                     script_content=None):
     """Point d'entrée déploiement — SÉRIALISÉ PAR VMID (vmlocks) : deux opérations de
@@ -1603,6 +1635,19 @@ def _deployer_script_locked(vmid, type_script, params, script_path="/opt/script/
         diagnostiquer_schema_agent(ip, vmid=vmid)
 
     try:
+        # Fichiers déclarés par le manifeste (`files`) : poussés AVANT bobimxl et le script (l'agent
+        # retient le DERNIER /deploy comme script à lancer). SANS repli : un module manquant =
+        # script démarré à moitié, donc tout échec avorte le déploiement (alerte « deploy.erreur »).
+        _base_dir = os.path.dirname(script_path)
+        for _dest, _txt in plugins.deploy_files(type_script, version) if plugins.is_plugin(type_script) else ():
+            _rf = agent_session().post(
+                agent_url(ip, "/deploy"),
+                json={"path": os.path.join(_base_dir, _dest), "content": _txt},
+                headers=agent_headers(vmid),
+                timeout=30)
+            if _rf.status_code != 200:
+                raise RuntimeError("push du fichier %s refusé par l'agent (HTTP %s) — "
+                                   "déploiement avorté, script non poussé" % (_dest, _rf.status_code))
         # bobimxl.py POUSSÉ AVEC LE SCRIPT (modèle « script poussé » étendu au binding) : déposé
         # à côté de main.py, il SHADOWE le module baké dans l'image runtime (sys.path[0] =
         # /opt/script) → les évolutions PUR-PYTHON du binding (codec ANC RFC 8331, data flows…)
@@ -1709,6 +1754,21 @@ def _deployer_script_locked(vmid, type_script, params, script_path="/opt/script/
             # Différé (shm recréé à sa nouvelle taille) ; no-op si pas de consommateur / dims inchangées.
             _schedule_consumer_refresh(vmid)
 
+            # ★★ RECONFIGURATION À CHAUD AVANT TOUT REDÉMARRAGE (21/10, demandé en recette).
+            #    Redémarrer le script relance TOUT ce qu'il fait tourner : sur decklink_io, un câble
+            #    audio posé sur une sortie coupait les douze connecteurs des deux cartes. Le fichier
+            #    vient d'être écrit et la base est à jour : il ne reste qu'à faire PRENDRE la nouvelle
+            #    configuration. Un plugin qui déclare `control.hot_config` la reçoit vivant, compare
+            #    et ne relance que ce qui a changé. S'il refuse (autre version, nom d'hôte changé,
+            #    script trop ancien pour connaître la route), on retombe sur l'arrêt/démarrage.
+            #    Le fichier sur disque porte la même configuration : un redémarrage ultérieur du
+            #    conteneur repart bien sur ce qui a été appliqué à chaud.
+            from .database import db_script_enabled as _db_se
+            if _db_se(vmid) and _hot_config(ip, vmid, type_script, params, version):
+                db_add_alert("alert.deploy.script_reconfigure_a_chaud", "info", vmid=vmid,
+                             kind="deploy", params={"t": type_script, "vmid": vmid})
+                return True
+
             # Relancer le script pour qu'il prenne le nouveau code
             try:
                 agent_session().post(agent_url(ip, "/stop"), timeout=5, headers=agent_headers(vmid))
@@ -1735,6 +1795,10 @@ def _deployer_script_locked(vmid, type_script, params, script_path="/opt/script/
                     db_add_alert(
                         "alert.deploy.script_deploie_redemarre",
                         "info", vmid=vmid, kind="deploy", params={"t": type_script, "vmid": vmid})
+                    # état déclaré par le plugin (control.persist) : la base reprend la forme
+                    # canonique que le conteneur en a faite (migrations d'une nouvelle version)
+                    from . import plugin_persist
+                    plugin_persist.after_deploy(vmid, type_script)
                 else:
                     db_add_alert(
                         "alert.deploy.script_start_code",
@@ -2246,7 +2310,8 @@ def _reconcile_fabric_node_impl(node_id, perime=None):
         seulement si le shard a réellement pris la nouvelle config — sinon l'appelant repart sur
         créer+détruire, qui repose un script neuf.
 
-        Deux refus délibérés :
+        Trois refus délibérés :
+          • champ structurel modifié → seul un script neuf le lit ;
           • script pas à la version du manifeste → un vieux script ignorerait les champs récents
             (même raisonnement que la garde de `deployer_script`) ; on préfère le remplacement ;
           • échec d'un des trois POST → on ne garde pas un shard au contenu périmé.
@@ -2263,6 +2328,12 @@ def _reconcile_fabric_node_impl(node_id, perime=None):
         try:
             _old = (_json_rb.loads(c.get("deploy_config") or "{}") or {}).get("params") or {}
         except Exception:                                                  # noqa: BLE001
+            return False
+        # Troisième refus : un champ STRUCTUREL qui change (force_cpu, gpu_slice, cadence…) est lu
+        # à l'import du script — l'envoi à chaud ci-dessous ne le transmet pas. Sans ce refus, la
+        # base annonçait la nouvelle valeur et le shard tournait toujours avec l'ancienne (Horace,
+        # 2026-10-06 : quatre shards en `force_cpu` en base, tous encore sur la T4).
+        if not _multiview_only_hot_changed(_old, params):
             return False
         _ver = (plugins.get("multiview") or {}).get("version")
         ip = c.get("ip") or get_container_ip(svmid)

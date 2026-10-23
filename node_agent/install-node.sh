@@ -13,12 +13,12 @@
 #       --hugepages 2048 --macvlan-parent ens1f0np0 --macvlan-subnet x.x.x.x/24 ...
 #
 # Options :
-#   --with <caps>          liste CSV parmi io2110,compute,media,webrtc,gpu      (défaut: compute)
-#                          (gpu = pilote NVIDIA Debian + container-toolkit ; reboot requis)
+#   --with <caps>          liste CSV parmi io2110,compute,media,webrtc,gpu,gui  (défaut: compute)
+#                          (gpu = pilote NVIDIA choisi selon la génération du GPU + container-toolkit ; reboot requis)
 #   --add-caps <caps>      RATTRAPAGE : ajoute une/des capacité(s) à un nœud DÉJÀ installé, puis sort.
 #                          Ne provisionne QUE ces capacités et FUSIONNE la liste dans config.json
 #                          (token, TLS, unité systemd, réglages non concernés : intacts).
-#                          Accepte les 5 capacités. Réglages amenés par la capacité : passer
+#                          Accepte les 6 capacités (gui : déclaration seule, exige compute). Réglages amenés par la capacité : passer
 #                          --mtl-iface/--lcores (io2110), --media-mount (media) comme à l'install.
 #                          Code de sortie ≠ 0 si le provisioning hôte a échoué.
 #   DDP_SRC=<path>         (env) chemin du blob DDP E810 quand le script est PIPÉ sur stdin (le
@@ -157,6 +157,28 @@ provision_media() {
   else
     warn "media : création de $MEDIA_MOUNT impossible — les conteneurs média n'auront pas de stockage."
     MACVLAN_FAIL=1
+  fi
+  # Outils de montage des partages réseau (service storage) : un nœud média monte les serveurs
+  # SMB/NFS en lecture seule pour ses conteneurs. Absents, le montage échoue sur « outils de
+  # montage absents » — non bloquant pour le reste du nœud, donc un avertissement, pas un arrêt.
+  if command -v mount.cifs >/dev/null 2>&1 && command -v mount.nfs >/dev/null 2>&1; then
+    ok "media : outils de montage SMB/NFS présents"
+  elif apt-get "${APT_OPTS[@]}" install -y -qq --no-install-recommends cifs-utils nfs-common >/dev/null 2>&1; then
+    ok "media : outils de montage SMB/NFS installés (cifs-utils, nfs-common)"
+  else
+    warn "media : installation de cifs-utils / nfs-common échouée — les partages réseau ne pourront pas être montés sur ce nœud (Réglages → Médias → Stockage propose de les installer)."
+  fi
+  # Gestion des disques depuis l'interface (agent >= 0.28.0) : sfdisk/lsblk (util-linux) et
+  # mkfs.ext4 (e2fsprogs) sont de base ; `hdparm` ne sert qu'à la mise en veille des disques
+  # rotatifs. On interroge apt plutôt que de supposer le paquet (cf. provision Docker plus bas) ;
+  # son absence n'est qu'un avertissement : l'interface grise alors la veille.
+  if command -v hdparm >/dev/null 2>&1; then
+    ok "media : hdparm présent (mise en veille des disques)"
+  elif apt-cache show hdparm 2>/dev/null | grep -q "^Package: hdparm\$" \
+       && apt-get "${APT_OPTS[@]}" install -y -qq --no-install-recommends hdparm >/dev/null 2>&1; then
+    ok "media : hdparm installé (mise en veille des disques)"
+  else
+    warn "media : hdparm indisponible — la mise en veille des disques rotatifs ne sera pas proposée."
   fi
 }
 
@@ -369,135 +391,42 @@ UNIT
   fi
 }
 
-# Capacité GPU (NVIDIA : pilote Debian + container-toolkit).
-# Pose le stack NVIDIA : pilote (paquet Debian `nvidia-driver`, module DKMS) + `nvidia-container-toolkit`
-# (dépôt NVIDIA) + configuration du runtime `nvidia` de Docker. Après un REBOOT (chargement du module),
-# `nvidia-smi` répond et « Détecter GPU » passe au vert. Cf. NODE_AGENT.md.
+# Capacité GPU (NVIDIA : pilote + container-toolkit + runtime docker).
+# Toute la logique (détection de la génération du GPU SANS pilote, choix du pilote, prérequis, purge de
+# l'ancien, installation, toolkit, runtime docker) vit dans UN SEUL script hôte,
+# `host_drivers/nvidia.py`, partagé avec le bouton « Installer / mettre à jour le pilote » de l'interface
+# (job de l'agent) : les deux chemins ne peuvent pas diverger. Ce n'est plus `apt-get install
+# nvidia-driver` : le pilote Debian 13 (550.163.01) est trop vieux pour le runtime CUDA 12.8 de l'image
+# GPU (>= 570) et le mur de visualisation retombait sur le CPU sans le dire.
+# Code retour du script : 0 = rien à faire/terminé ; 10 = REBOOT requis ; autre = échec (GPU_FAIL).
 provision_gpu() {
-  # Garde matérielle : pas de GPU NVIDIA présent → inutile d'installer un pilote. On avertit et on
-  # saute (même logique que io2110 qui diffère sans carte E810). Provisioning non bloqué.
-  # ATTENTION `set -o pipefail` (haut du script) : ne PAS utiliser `lspci | grep -qi` — `grep -q`
-  # quitte au 1er match et ferme le tube → lspci meurt en SIGPIPE (141) → pipefail rend le tube
-  # non-zéro ALORS QU'un GPU EST présent → fausse conclusion « aucun GPU ». On compte (grep -c lit
-  # tout le flux, pas de SIGPIPE) et on tolère l'absence (|| true) → robuste sous pipefail.
-  if [ "$(lspci 2>/dev/null | grep -ci nvidia || true)" -eq 0 ]; then
-    warn "gpu : aucun GPU NVIDIA détecté (lspci) — stack NVIDIA non installé. Cocher « gpu » n'a d'effet que sur un nœud équipé."
-    # PAS un échec de provisioning : le script a fait ce qu'il pouvait sur un nœud sans carte. Le
-    # drapeau reste à 0 (rc=0) ; l'UI distingue le cas au texte, et « Détecter GPU » restera rouge.
-    return 0
-  fi
-  # `head` ferme le tube tôt → SIGPIPE en amont → sous set -e+pipefail l'assignation tuerait le
-  # script ; `|| true` neutralise (le modèle n'est qu'informatif).
-  _gpu_model="$(lspci 2>/dev/null | grep -iE 'vga|3d|display' | grep -i nvidia | head -1 | sed 's/.*: //' || true)"
-  log "gpu : GPU NVIDIA détecté (${_gpu_model:-inconnu}) — installation pilote + container-toolkit…"
-
-  # 1) Composants apt `contrib` + `non-free` + `non-free-firmware` : le pilote Debian a besoin des
-  #    TROIS — `nvidia-driver` et `nvidia-kernel-dkms` sont en non-free, ses dépendances
-  #    `nvidia-support` / `nvidia-installer-cleanup` sont en CONTRIB, et `nvidia-kernel-dkms` a un
-  #    `Depends: firmware-nvidia-gsp (= <version>)` (firmware GSP) qui vit en NON-FREE-FIRMWARE —
-  #    dépendance DURE et versionnée, donc composant manquant = `apt-get install nvidia-driver`
-  #    échoue franchement (vérifié sur r620-3, trixie/550.163.01-2). Ne PAS confondre avec
-  #    `firmware-nvidia-graphics` (source firmware-nonfree) qui est le firmware du pilote LIBRE.
-  #    L'installateur trixie active non-free-firmware par défaut, mais notre preseed ne fixe aucun
-  #    `apt-setup/*` : on ne dépend pas d'un défaut qu'on ne contrôle pas. On ajoute chaque composant
-  #    manquant (comme composant autonome), deb822 (debian.sources) ou une-ligne. Garde
-  #    `(^|[ ,])$_c([ ,]|$)` : « non-free » ne matche PAS dans « non-free-firmware » (le tiret n'est
-  #    ni [ ,] ni fin) — les deux sont donc traités indépendamment, et un composant déjà présent
-  #    n'est pas dupliqué ; ne PAS utiliser `\bnon-free\b` (il matcherait DANS non-free-firmware).
-  #    Idempotent.
-  #    ★ On ne regarde QUE les lignes ACTIVES : l'installeur trixie laisse en tête de
-  #    `/etc/apt/sources.list` une ligne `#deb cdrom:[…]/ trixie contrib main non-free-firmware`
-  #    COMMENTÉE. Un grep naïf y voyait « contrib » et concluait « déjà présent » → contrib jamais
-  #    ajouté → `apt-get install nvidia-driver` échoue (nvidia-installer-cleanup / nvidia-support /
-  #    glx-alternative-nvidia / nvidia-legacy-check vivent en CONTRIB) → pas de pilote, et le nœud
-  #    invitait quand même à rebooter (vécu sur r620-3, 2026-08-19). D'où le filtre `^[[:space:]]*#`.
-  #    `grep -c` (pas `-q`) : lit tout le flux, donc pas de SIGPIPE sous `set -o pipefail`.
-  _apt_changed=0
-  for _c in contrib non-free non-free-firmware; do
-    _vu="$(grep -rh '' /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null \
-             | grep -vE '^[[:space:]]*#' \
-             | grep -cE "(^|[ ,])$_c([ ,]|\$)" || true)"
-    if [ "${_vu:-0}" -gt 0 ]; then continue; fi
-    if [ -f /etc/apt/sources.list.d/debian.sources ]; then
-      sed -i -E "/^Components:/ s/\$/ $_c/" /etc/apt/sources.list.d/debian.sources; _apt_changed=1
-    elif [ -f /etc/apt/sources.list ]; then
-      sed -i -E "/^deb .*debian/ s/\$/ $_c/" /etc/apt/sources.list; _apt_changed=1
-    fi
+  # Introuvable = installation incomplète (le script voyage avec l'archive, ou a été déposé par le
+  # contrôleur dans $AGENT_DIR avant un rattrapage `--add-caps`) : on le dit, sans rien improviser.
+  local _nv=""
+  for _c in "$SCRIPT_DIR/host_drivers/nvidia.py" "$AGENT_DIR/host_drivers/nvidia.py"; do
+    [ -f "$_c" ] && { _nv="$_c"; break; }
   done
-  if [ "$_apt_changed" = 1 ]; then
-    log "gpu : composants apt contrib/non-free/non-free-firmware activés"
-    apt-get "${APT_OPTS[@]}" update -qq || warn "gpu : apt-get update après activation contrib/non-free/non-free-firmware a échoué."
+  if [ -z "$_nv" ]; then
+    warn "gpu : script host_drivers/nvidia.py introuvable (à côté du script d'installation, ni dans $AGENT_DIR/host_drivers) — pilote NVIDIA NON installé."
+    GPU_FAIL=1; return 0
   fi
-
-  # 2) En-têtes noyau (compilation DKMS) + pilote Debian + nvidia-smi + libcuda1. `nvidia-smi` ET
-  #    `libcuda1` sont des paquets SÉPARÉS (Recommends de nvidia-driver) : avec --no-install-recommends
-  #    il faut les NOMMER, sinon ils sont sautés. `nvidia-smi` manquant → détection « command not
-  #    found ». ★ `libcuda1` manquant (= libcuda.so.1, driver CUDA userspace) = PIÈGE SILENCIEUX :
-  #    nvidia-smi liste quand même le GPU (via libnvidia-ml) mais affiche « CUDA Version: Not Found »,
-  #    et TOUT cupy échoue (cudaErrorInsufficientDriver) → un mur GPU retombe en numpy CPU SANS un mot,
-  #    alors que « Détecter GPU » passait au vert (bug vécu sur dell-1, cf. mémoire). On l'installe
-  #    explicitement + on vérifie le CUDA userspace côté détection (_probe_gpu).
-  log "gpu : installation linux-headers + nvidia-driver + nvidia-smi + libcuda1 (DKMS)…"
-  apt-get "${APT_OPTS[@]}" install -y -qq linux-headers-amd64 "linux-headers-$(uname -r)" >/dev/null 2>&1 \
-    || apt-get "${APT_OPTS[@]}" install -y -qq linux-headers-amd64 >/dev/null 2>&1 \
-    || warn "gpu : en-têtes noyau non installés — la compilation DKMS du pilote peut échouer."
-  if apt-get "${APT_OPTS[@]}" install -y -qq nvidia-driver nvidia-smi libcuda1 >/dev/null 2>&1; then
-    ok "gpu : nvidia-driver + nvidia-smi + libcuda1 installés (module DKMS)."
-    # Le code retour d'apt ne dit PAS que le module existe : DKMS peut avoir échoué à compiler
-    # (en-têtes absents, noyau exotique) et l'install se terminerait sur un « REBOOT requis »
-    # suivi d'un « Détecter GPU » rouge, sans que rien n'ait signalé le vrai problème.
-    if ! ls /lib/modules/"$(uname -r)"/updates/dkms/nvidia*.ko* >/dev/null 2>&1 \
-       && ! dkms status 2>/dev/null | grep -q ': *installed'; then
-      warn "gpu : pilote installé mais AUCUN module noyau compilé pour $(uname -r) (DKMS) — le GPU restera indisponible. Vérifier « dkms status » et les en-têtes du noyau courant."
-      GPU_FAIL=1
-    fi
-    # Secure Boot : le module DKMS n'est pas signé par une clé connue du firmware → le noyau
-    # REFUSE de le charger au boot. Le stack paraît parfait jusqu'au reboot, où rien ne marche.
-    if command -v mokutil >/dev/null 2>&1 && mokutil --sb-state 2>/dev/null | grep -qi enabled; then
-      warn "gpu : Secure Boot ACTIVÉ — le module DKMS non signé sera REFUSÉ au chargement. Enrôler la clé (mokutil --import /var/lib/dkms/mok.pub, puis validation à l'écran au reboot) ou désactiver Secure Boot dans le BIOS."
-      GPU_FAIL=1
-    fi
-  else
-    warn "gpu : échec install nvidia-driver/nvidia-smi/libcuda1 (composants contrib+non-free actifs ? accès réseau ?) — GPU non exploitable."
-    GPU_FAIL=1
+  command -v python3 >/dev/null 2>&1 || { warn "gpu : python3 requis."; GPU_FAIL=1; return 0; }
+  # Bundle hors-ligne : l'installeur .run embarqué (vendor/nvidia/) est déposé là où le script le cherche.
+  local _vn _dd="/var/lib/bobi-node-agent/drivers/nvidia"
+  _vn="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd)/vendor/nvidia"
+  if ls "$_vn"/*.run >/dev/null 2>&1; then
+    install -d "$_dd"
+    cp -n "$_vn"/*.run "$_vn"/NVIDIA-LICENSE* "$_dd"/ 2>/dev/null || true
+    log "gpu : installeur NVIDIA du bundle hors-ligne déposé dans $_dd"
   fi
-
-  # 3) nvidia-container-toolkit (dépôt NVIDIA, hors Debian → Internet requis) + runtime Docker.
-  #    Sans lui, `docker run --gpus` échoue et « Détecter GPU » reste rouge malgré le pilote.
-  if ! command -v nvidia-ctk >/dev/null 2>&1; then
-    log "gpu : installation nvidia-container-toolkit (dépôt NVIDIA)…"
-    _nvkey=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-    _nvrepo=/etc/apt/sources.list.d/nvidia-container-toolkit.list
-    # `gpg` (gnupg) est requis pour dérober la clé du dépôt ; souvent absent d'une install minimale.
-    command -v gpg >/dev/null 2>&1 || apt-get "${APT_OPTS[@]}" install -y -qq gnupg >/dev/null 2>&1 || true
-    # N'écrire le dépôt QUE si la clé a bien été posée : sinon le .list non signé casse tout
-    # `apt-get update` du nœud (dépôt « InRelease n'est pas signé »).
-    install -m 0755 -d /usr/share/keyrings
-    if curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey 2>/dev/null | gpg --dearmor -o "$_nvkey" 2>/dev/null && [ -s "$_nvkey" ]; then
-      curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list 2>/dev/null \
-        | sed "s#deb https://#deb [signed-by=$_nvkey] https://#g" > "$_nvrepo"
-      apt-get update -qq || true
-      apt-get install -y -qq nvidia-container-toolkit >/dev/null 2>&1 \
-        && ok "gpu : nvidia-container-toolkit installé" \
-        || { warn "gpu : échec install nvidia-container-toolkit (dépôt NVIDIA joignable ?) — « docker run --gpus » indispo."; GPU_FAIL=1; }
-    else
-      rm -f "$_nvkey"
-      warn "gpu : clé GPG NVIDIA non récupérée (réseau ? gnupg ?) — nvidia-container-toolkit NON installé (dépôt non ajouté pour ne pas casser apt)."
-      GPU_FAIL=1
-    fi
-  fi
-  if command -v nvidia-ctk >/dev/null 2>&1; then
-    nvidia-ctk runtime configure --runtime=docker >/dev/null 2>&1 \
-      && { systemctl restart docker 2>/dev/null || true; ok "gpu : runtime « nvidia » configuré dans Docker (restart docker)."; } \
-      || { warn "gpu : « nvidia-ctk runtime configure » a échoué — configurer le runtime nvidia à la main."; GPU_FAIL=1; }
-  fi
-  # Ne PAS inviter à rebooter quand le pilote n'est pas installé : un reboot ne charge pas un module
-  # absent, et le testeur repart sur un « Détecter GPU » rouge sans savoir que l'install a échoué.
-  if [ "${GPU_FAIL:-0}" = 1 ]; then
-    warn "gpu : stack NVIDIA INCOMPLET (cf. échec(s) ci-dessus) — un REBOOT n'y changera rien tant que le pilote n'est pas installé."
-  else
-    warn "gpu : REBOOT du nœud requis pour charger le pilote NVIDIA — ensuite « Détecter GPU » passera au vert."
-  fi
+  local _rc=0
+  BOBI_APT_OPTS="${APT_OPTS[*]:-}" python3 "$_nv" run || _rc=$?
+  case "$_rc" in
+    0)  ok "gpu : rien d'autre à faire (pilote déjà conforme, ou aucun GPU NVIDIA détecté).";;
+    10) warn "gpu : REBOOT du nœud requis pour charger le pilote NVIDIA — ensuite « Détecter GPU » passera au vert.";;
+    *)  warn "gpu : installation du pilote NVIDIA en ÉCHEC (rc=$_rc, cf. journal ci-dessus) — GPU non exploitable."
+        GPU_FAIL=1;;
+  esac
   return 0
 }
 
@@ -561,7 +490,7 @@ if [ -n "$ADD_CAPS" ]; then
   #    invalide (sinon on sort en erreur après avoir déjà modifié la machine).
   for _cap in ${ADD_CAPS//,/ }; do
     case "$_cap" in
-      gpu|io2110|compute|media|webrtc) ;;
+      gpu|io2110|compute|media|webrtc|gui) ;;
       *) die "--add-caps : capacité inconnue « $_cap »";;
     esac
   done
@@ -569,6 +498,13 @@ if [ -n "$ADD_CAPS" ]; then
   #    l'hôte laisserait une capacité installée mais jamais annoncée par l'agent — le pire des deux.
   [ -f "$CONF_DIR/config.json" ] || die "--add-caps : $CONF_DIR/config.json introuvable — ce nœud n'a pas d'agent installé (utiliser l'installation complète)."
   command -v python3 >/dev/null 2>&1 || die "--add-caps : python3 requis (fusion de config.json)."
+  # `gui` (interfaces natives LV2) exige `compute` : même macvlan, et son image est une couche FROM bobi-compute.
+  case ",$ADD_CAPS," in *",gui,"*)
+    case ",$ADD_CAPS," in *",compute,"*) ;; *)
+      python3 -c 'import json,sys; sys.exit(0 if "compute" in (json.load(open(sys.argv[1])).get("capabilities") or []) else 1)' \
+        "$CONF_DIR/config.json" || die "--add-caps : « gui » exige « compute » sur ce nœud (l'ajouter d'abord, ou les deux ensemble).";;
+    esac;;
+  esac
   # 3) Provisionner. `_extra` accumule les clés de config.json à poser EN PLUS des capacités : une
   #    capacité ajoutée après coup amène ses propres réglages (la carte E810 et les lcores pour
   #    io2110, la racine média pour media), que l'agent lit dans son config.json. Les omettre
@@ -592,6 +528,10 @@ if [ -n "$ADD_CAPS" ]; then
         log "── rattrapage capacité « media » ──"; provision_media
         [ "$MACVLAN_FAIL" = 0 ] || _fail=1
         _extra="$(_extra_set "$_extra" media_mount "$MEDIA_MOUNT")";;
+      gui)
+        # Rien à installer sur l'hôte : l'image bobi-gui (Xvfb, x11vnc, suil, Mesa) se construit SUR ce nœud depuis
+        # l'orchestrateur (Réglages → Images, node_only). La capacité en fait une cible de build et de déploiement.
+        log "── capacité « gui » : déclaration seule (image bobi-gui construite ensuite par l'orchestrateur) ──";;
     esac
   done
 
@@ -984,6 +924,11 @@ fi
 
 mkdir -p "$TLS_DIR"; chmod 700 "$TLS_DIR"
 install -m 0644 "$SCRIPT_DIR/agent.py" "$AGENT_DIR/agent.py"
+# Pilotes hôte (agent >= 0.28.0) : un script par « kind », piloté par l'agent (/v1/host/drivers/*).
+if [ -d "$SCRIPT_DIR/host_drivers" ]; then
+  install -d -m 0755 "$AGENT_DIR/host_drivers"
+  install -m 0755 "$SCRIPT_DIR"/host_drivers/*.py "$AGENT_DIR/host_drivers/"
+fi
 # config.json (capabilities en tableau JSON, images en tableau JSON)
 caps_json="$(echo "$CAPS"  | tr ',' '\n' | sed 's/.*/"&"/' | paste -sd, -)"
 imgs_json="$(echo "$IMAGES"| tr ' ' '\n' | grep -v '^$' | sed 's/.*/"&"/' | paste -sd, -)"

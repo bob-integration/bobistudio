@@ -1,8 +1,45 @@
 {
-  "version": "0.20.0",
-  "date": "2026-09-12",
-  "image_tag": "bobi-media:0.20",
+  "version": "0.28.0",
+  "date": "2026-10-17",
+  "image_tag": "bobi-media:0.28",
   "changes": {
+    "bobiplayout 0.3.2 : commandes datées pour la lecture synchrone (0.28.0)": [
+      "★ L'élément bobiplayout accepte des commandes DATÉES (`schedule` : « id|instant TAI ns|tête|temps média|vitesse|noir ») : au créneau de grille de l'instant demandé, il met la tête à l'antenne et ANCRE l'horloge de présentation sur ce créneau-là (temps média, vitesse ; 0 = image figée). Une commande appliquée en retard rattrape sur la grille au lieu de glisser — c'est ce qui permet à plusieurs players de montrer la même image au même créneau (lecture synchrone, player ≥ 0.41.3, app/sync_groups.py).",
+      "Témoin `sync-state` (JSON) : index de grille et instant TAI du dernier créneau écrit, temps de présentation, image RÉELLEMENT écrite (tête, PTS), retard en images sur l'horloge de présentation, commandes appliquées avec leur retard en créneaux, têtes en file. `sync-release` rend l'ancre ordinaire. Hors mode synchrone, comportement inchangé.",
+      "Mesuré le 2026-10-17 sur dl360-1 (élément construit dans bobi-rust-dev, deux players 720p25, bus MXL lu par tools/bancs/banc_sync_play.py) : départ commun, pause, reprise, 2×, 0,25× et changement de ligne au même index de grille, 0 image d'écart sur 154 à 379 grains par essai, 0 échantillon d'écart audio, A/V +0,04 ms ; commande reçue 1,56 s en retard : 39 créneaux de retard constatés, 3 images répétées, puis 0 image d'écart."
+    ],
+    "bobiplayout 0.3.1 : le solo devient une écoute (0.27.0)": [
+      "★ `audio-solo` ne coupe plus les autres sorties de l'antenne : il remplace ce qu'entend le flux monitoring (1 sortie = sur les deux côtés, 2 = gauche/droite, plus = somme), à partir des sorties telles qu'elles partent (après routage, gain, mute). Sans solo, le monitoring suit `monitor-route`. Requis par player 0.34.0."
+    ],
+    "bobiplayout 0.3.0 : sortie MONITORING à part (0.26.0)": [
+      "★ Nouvelle sortie audio de l'élément bobiplayout : un second flux MXL de 2 canaux (`monitor-flow-def`), écrit au même bloc et aux mêmes index que la sortie antenne, donc calé à l'échantillon. Chaque côté reçoit un canal SOURCE du clip (`monitor-route` « g,d », 1-based, 0 = silence) ; ni gain, ni mute, ni solo : c'est une écoute, elle ne change rien à l'antenne. Requis par player 0.33.0 (lignes « monitoring G/D » de la matrice de routage).",
+      "Écriture d'un bloc audio factorisée (`write_samples`), commune aux deux flux."
+    ],
+    "bobiplayout 0.2.0 : réduction 10/12 → 8 bits dans l'élément (0.25.0)": [
+      "★ L'élément bobiplayout réduit lui-même une trame 10/12 bits vers un flux 8 bits (le pipeline est en 8 bits par défaut, `mxl_pipeline_bit_depth=force8`), à l'ENTRÉE (fil de la tête, priorité abaissée, hors verrou, en bandes sur plusieurs fils au-delà du 1080) : arrondi (v + 2^(s−1)) >> s. Le player ≥ 0.30 laisse alors passer le 10 bits jusqu'à l'élément au lieu de le convertir par videoconvert. Les trames en file pèsent moitié moins.",
+      "Mesuré le 2026-10-11 (UHD 2160p50, fichiers de 20 s) : sur 6 cœurs, DNxHR HQX 2,90 → 2,44 cœurs et AVC-Intra 4:2:2 3,09 → 2,10, 0 créneau manqué (4 et 8 avant) ; sur 3 cœurs, AVC-Intra 39 → 50 images neuves/s. Sortie IDENTIQUE au pixel près à la réduction de référence (ffmpeg 10 bits + même arrondi) ; videoconvert arrondissait à ±1 près sur 0,9 % des pixels.",
+      "Écarté : la réduction dans le fil de GRILLE (une seule passe avec la copie) le mettait en retard sur 3 cœurs saturés (71 créneaux manqués en 12 s)."
+    ],
+    "bobigrowsrc : mode « unités de taille fixe » — relecture des clips Avid OP-Atom (0.24.0)": [
+      "★ Nouveau mode de bobigrowsrc (`frame-size` > 0, avec `data-offset`, `length-offset`, `rate-n`/`rate-d`, `caps`) : la source saute l'en-tête, sort des tampons de taille fixe horodatés, en format temps, seeks par numéro d'unité. Pour l'OP-Atom « growing » d'Avid, où bmx laisse NULLE la longueur de la KLV d'essence tant que le clip n'est pas clos : ni mxfdemux ni ffmpeg n'y trouvent rien, Media Composer déduit la durée de la taille du fichier. Requis par player 0.29.0.",
+      "Fin d'essence : dès que la longueur est écrite (non nulle), elle VAUT « clos » — sans attendre le pilote. Sans cela, la source lisait le pied de fichier comme une unité de plus (une unité audio de trop, mesuré). Seek arrondi à l'unité précédente : l'audio (unités de 20 ms) couvre l'instant visé. `start-time` / `stop-time` posent départ et point de sortie AVANT la mise en route : une tête Avid compte une source par piste, et un seek envoyé à chacune en plein démarrage en faisait échouer certaines (« Internal data stream error »).",
+      "Mesuré le 2026-10-11 (DNxHD, 2 pistes mono) : clip en cours relu en entier (700/700 trames, audio 0 → 13,98 s), seek à 2 s (image et audio à 2,0 s), fin à la fermeture sans délai, 1080p50 et 1080i25 (unité de 606 208 octets, CID 1242)."
+    ],
+    "bmx (BBC) : MXF lisible pendant l'enregistrement (0.23.0)": [
+      "★ L'image embarque bmx v1.6 (BBC, BSD-3-Clause, tag épinglé, compilé dans un étage dédié sans -march) : raw2bmx, mxf2raw, bmxtranswrap. Le recorder ≥ 0.21 s'en sert pour son MXF « lisible pendant l'enregistrement » : ffmpeg n'encode plus que la vidéo, raw2bmx emballe avec une partition indexée par seconde.",
+      "Pourquoi : le MXF d'ffmpeg n'écrit une partition indexée que toutes les 250 unités en débit variable (5 s à 50 i/s) et AUCUNE en DNxHD ; un logiciel de montage qui suit les partitions voit l'enregistrement par paliers, ou pas du tout. Mesuré le 2026-10-11 (GStreamer 1.26.2) : MXF bmx relu pendant l'écriture et après seek en DNxHD (avec `--index-follows`) et ProRes, lecture en différé par le player comprise. ⚠ H.264 GOP long : un seek près du direct d'un MXF H.264 en cours fait planter mxfdemux 1.26.2 — le recorder ne l'écrit pas.",
+      "Licence : texte BSD-3 de bmx copié dans /usr/share/doc/bobistudio/licenses/BSD-3-Clause-bmx.txt. Dépendances d'exécution ajoutées : libuuid1, libexpat1, liburiparser1 (garde-fou ldd à la construction)."
+    ],
+    "Lecture d'un fichier en cours d'enregistrement : élément bobigrowsrc (0.22.0)": [
+      "★ Le plugin GStreamer « bobimxl » gagne l'élément `bobigrowsrc` (URI `bobigrow://`) : il lit un fichier PENDANT son écriture. Une lecture qui dépasse la fin actuelle ATTEND la suite au lieu de finir ; la fin devient une vraie fin de flux quand le player lui dit que le fichier est clos (`growing` = faux), ou après 15 s sans octet neuf (`idle-timeout`, recorder mort). Requis par player 0.28.0 (lecture en différé) avec recorder 0.20.0 (fichiers lisibles en cours d'écriture).",
+      "Pourquoi une source et pas un réglage : en lecture directe, qtdemux et mxfdemux lisent un fichier en cours jusqu'à sa fin DU MOMENT puis rendent EOS ; en flux poussé, mxfdemux refuse le MXF d'ffmpeg même complet. La source garde le mode tiré des démuxeurs, donc leurs seeks. Mesuré le 2026-10-11 (GStreamer 1.26.2), lecture lancée 5 à 8 s après le début d'un enregistrement de 15 s : toutes les trames et tout l'audio lus, seek compris, fin de flux à la fin de l'écriture, en MOV fragmenté (ProRes, x264, DNxHR) et en MXF (DNxHD, DNxHR, ProRes, FFV1).",
+      "⚠ Connu, amont : un seek dans un MXF H.264 en GOP long fait PLANTER mxfdemux (SIGSEGV), même sur un fichier clos lu par filesrc. Le recorder n'écrit donc pas de x264 en MXF. FFV1 en MOV : avdec_ffv1 n'en décode rien — le recorder l'écrit en MXF."
+    ],
+    "Player natif : élément GStreamer bobiplayout (0.21.0)": [
+      "★ L'image embarque le plugin GStreamer « bobimxl » (élément bobiplayout, Rust) : chemin temps réel du player — sortie cadencée par la grille TAI, têtes de lecture A/B (boucle et enchaînement sans trame tenue), audio multi-pistes routé, TC ANC au même index que la trame. Cf. docs/chantiers/PLAYER_NATIF.md.",
+      "Nouvel étage de construction playout-builder (Rust 1.88.0 épinglé, Cargo.lock versionné, compilé contre les en-têtes MXL v1.1.0 du même clone que libmxl). Le plugin charge NOTRE libmxl patchée par son nom (variante glibc-hwcaps).",
+      "Aucun changement de comportement tant que le player n'est pas réglé sur le moteur natif : le moteur Python reste le défaut."
+    ],
     "libmxl v1.1.0 finale (0.20.0)": [
       "★ libmxl passe de `v1.1.0-rc1` à la **v1.1.0 finale** (amont du 2026-09-08). Aucune rupture d'API ; nos patches et les 16 fichiers modifiés amont n'ont aucun fichier en commun. Vérifié sur l'image bâtie par le HASH DE COMMIT (`g8f3f1096e804` = « 1.1.0 GA release »), pas par le tag.",
       "L'effet mesurable pour un consommateur : la fenêtre lisible d'un flux à GRAINS (vidéo, ANC) perd exactement un grain — le correctif amont `6d5ac9c6` réserve la case de queue à l'écrivain. Mesuré 9 → 8 grains, stable sur cinq relevés (banc `script_templates/mxl_fenetre_lisible.py`). ⚠ L'audio n'est PAS concerné : c'est un flux continu, qui avait déjà ce comportement."

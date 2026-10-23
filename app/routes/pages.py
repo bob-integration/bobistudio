@@ -10,6 +10,7 @@ ici car un share link EST une page (client externe, sans compte).
 _attach_projects reste dans __init__.py (aussi utilisé par la route API générique
 `liste_containers`) — importé localement dans les pages qui en ont besoin."""
 
+import json
 import re
 import secrets
 
@@ -51,6 +52,25 @@ def workspace_page(pid):
                            # accès global → section « Macros système » de l'overlay ⚡
                            # (édition des macros système via l'éditeur Scénario)
                            is_global=has_global_access())
+
+
+@bp.route("/plugin-window/<int:vmid>")
+@require_login
+def plugin_window(vmid):
+    """FENÊTRE DÉTACHÉE d'un plugin (?view=<vue>) : sa console montée seule, pour un 2e écran.
+    Le plugin déclare les vues qu'il sait servir seules (`ui.windows`) ; une autre est refusée (404)
+    plutôt que d'ouvrir une fenêtre qui monterait toute l'interface. Les droits restent ceux de
+    l'interface normale : la fenêtre passe par les mêmes routes (proxy du plugin, zones)."""
+    from .. import plugins
+    c = db_get_container(vmid)
+    dc = _load_dc(c) if c else None
+    m = plugins.get((dc or {}).get("type")) if dc else None
+    view = request.args.get("view", "")
+    if not m or view not in ((m.get("ui") or {}).get("windows") or []):
+        abort(404)
+    return render_template("plugin_window.html", hide_topnav=True, type=m["type"], vmid=vmid, view=view,
+                           version=((dc or {}).get("params") or {}).get("plugin_version") or m.get("version") or "",
+                           title="%s · %s" % (c.get("hostname") or m["type"], view))
 
 
 @bp.route("/monitoring")
@@ -281,8 +301,74 @@ def _share_public(link):
     # ça a pris, et c'est exactement le moment où il veut en être sûr.
     return {"token": link["token"], "title": link.get("title") or "",
             "note": link.get("note") or "", "created_at": link.get("created_at"),
-            "cidrs": link.get("cidrs") or "",
+            "cidrs": link.get("cidrs") or "", "scope": _scope_du_lien(link),
             "url": _share_url(link["token"])}
+
+
+# ─── Portée d'un lien de page publique (2026-10-18) ──────────────────────────────────────────
+# Un lien de page peut porter une PORTÉE `{"tab": "<id>", "play": bool}` : la page ne montre que cet
+# onglet, et — seulement si `play` — elle peut y JOUER sans compte, par le relais POST ci-dessous.
+# NULL (tous les liens d'avant, tous les autres plugins) = la page entière, en lecture seule.
+_SCOPE_TAB = re.compile(r"^[\w-]{1,32}$")
+PUBLIC_SCOPE_HEADER = "X-Bobi-Public-Scope"
+PUBLIC_BODY_MAX = 16 * 1024          # un appui de touche tient en 100 octets ; rien de plus n'a à passer
+
+
+def _scope_du_lien(link):
+    """La portée lue en base, normalisée ({} = aucune). Une valeur illisible vaut AUCUNE portée —
+    donc lecture seule : on ne devine jamais un droit de jouer."""
+    raw = (link or {}).get("scope")
+    try:
+        s = json.loads(raw) if isinstance(raw, str) and raw else {}
+    except ValueError:
+        return {}
+    if not isinstance(s, dict):
+        return {}
+    tab = s.get("tab") if isinstance(s.get("tab"), str) and _SCOPE_TAB.match(s.get("tab") or "") else None
+    out = {}
+    if tab:
+        out["tab"] = tab
+    if s.get("play") is True and tab:
+        out["play"] = True
+    return out
+
+
+def _relais_public_entetes(link):
+    """LES en-têtes envoyés au conteneur par le relais public — GET comme POST, et nulle part ailleurs.
+
+    ⚠ ILS SONT CONSTRUITS DE ZÉRO, JAMAIS COPIÉS DE LA REQUÊTE. C'est ce qui « retire » un
+    `X-Bobi-Public-Scope` envoyé par le visiteur : le conteneur fait confiance à cet en-tête pour
+    savoir QUEL onglet le porteur du jeton peut jouer ; s'il pouvait l'écrire lui-même, il
+    s'accorderait n'importe quel onglet. Recopier « les en-têtes utiles » de la requête, un jour,
+    rouvrirait exactement cette porte — d'où une seule fonction, et ce commentaire.
+
+    ⚠ ET L'EN-TÊTE EST POSÉ MÊME QUAND LA PORTÉE EST VIDE (`{}`) : une requête relayée doit toujours
+    se présenter comme publique au conteneur, qui refuse alors tout ce qui n'est pas permis — un
+    en-tête absent ressemblerait, lui, à l'interface interne."""
+    return {"Content-Type": "application/json",
+            PUBLIC_SCOPE_HEADER: json.dumps(_scope_du_lien(link), sort_keys=True)}
+
+
+def _scope_demande(body, m):
+    """(portée, erreur) d'une création de lien. `play` exige un onglet, un plugin qui déclare
+    `control.public_actions`, et — vérifié par l'appelant — le droit d'agir soi-même sur ce conteneur."""
+    s = body.get("scope") if isinstance(body.get("scope"), dict) else {}
+    tab = s.get("tab")
+    if tab in (None, ""):
+        tab = None
+    elif not (isinstance(tab, str) and _SCOPE_TAB.match(tab)):
+        return None, "onglet illisible"
+    play = s.get("play") is True
+    if play and not tab:
+        return None, "jouer exige un onglet"
+    if play and not ((m.get("control") or {}).get("public_actions")):
+        return None, "le plugin %s ne déclare aucune action publique (control.public_actions)" % m.get("type")
+    out = {}
+    if tab:
+        out["tab"] = tab
+    if play:
+        out["play"] = True
+    return (out or None), None
 
 @bp.route("/api/streams/<int:vmid>/share", methods=["GET"])
 @require_login
@@ -354,19 +440,26 @@ def public_watch(token):
 def _ip_client_pour_filtre():
     """L'adresse à confronter à la liste blanche d'un lien public.
 
-    ⚠ CE CHOIX EST LA SÉCURITÉ ELLE-MÊME, et il n'est pas évident. `ProxyFix` est monté avec
-    `x_proto=1, x_host=1` — mais `x_for` vaut **1 par défaut**, donc `request.remote_addr` est
-    déjà réécrit depuis `X-Forwarded-For`. Cet en-tête est envoyé par le CLIENT : si
-    l'orchestrateur est joignable en direct, n'importe qui peut s'annoncer à l'adresse de son
-    choix, et un filtre bâti dessus ne filtrerait RIEN tout en ayant l'air de filtrer. C'est
-    la pire forme de garde-fou.
+    ⚠ CE CHOIX EST LA SÉCURITÉ ELLE-MÊME. `X-Forwarded-For` est envoyé par le CLIENT : si on le
+    croyait sans proxy, n'importe qui s'annoncerait à l'adresse de son choix, et un filtre bâti
+    dessus ne filtrerait RIEN tout en ayant l'air de filtrer.
 
-    Par défaut on prend donc le VRAI pair TCP, que Werkzeug conserve dans
-    `werkzeug.proxy_fix.orig` — inforgeable. Le réglage `public_trust_proxy` bascule sur
-    l'adresse transmise, et il n'a de sens QUE si l'orchestrateur n'est joignable qu'à travers
-    un reverse-proxy de confiance : sinon on rouvre soi-même la porte qu'on croit fermer."""
-    from .. import settings as _st
-    if _st.get("public_trust_proxy"):
+    Cette page l'avait vu AVANT le reste du produit : quand `ProxyFix` était monté pour tout le
+    monde, elle allait chercher le vrai pair TCP dans `werkzeug.proxy_fix.orig`, derrière un
+    réglage `public_trust_proxy`. La connexion, elle, ne l'avait pas vu — son plafond d'essais
+    se contournait (cf. app/web_mode.py).
+
+    Depuis le 2026-10-10, c'est le MODE WEB qui décide, pour toute l'application et une seule
+    fois : `ProxyFix` n'est monté qu'en mode `proxy`. `request.remote_addr` est donc juste dans
+    tous les modes — le pair TCP en `http`, l'adresse transmise derrière un proxy — et cette
+    fonction n'a plus de raison d'en douter. `public_trust_proxy` a été RETIRÉ : il disait la
+    même chose que le mode, et deux réglages pour un fait finissent par se contredire.
+
+    On garde la lecture de `werkzeug.proxy_fix.orig` en CEINTURE : si un `ProxyFix` venait à
+    être remonté ailleurs sans passer par le mode, on retomberait sur le pair TCP plutôt que
+    sur un en-tête forgeable."""
+    from ..web_mode import croire_entetes_transmis
+    if croire_entetes_transmis():
         return request.remote_addr or ""
     orig = (request.environ.get("werkzeug.proxy_fix.orig") or {})
     return orig.get("REMOTE_ADDR") or request.remote_addr or ""
@@ -511,11 +604,24 @@ def api_page_share_create(vmid):
     cidrs, refusees = _cidrs_valides(body.get("cidrs"))
     if refusees:
         return jsonify({"error": "adresses illisibles : " + ", ".join(refusees)}), 400
+    scope, serr = _scope_demande(body, m)
+    if serr:
+        return jsonify({"error": serr}), 400
+    if scope and scope.get("play"):
+        # ⚠ ON NE DÉLÈGUE PAS UN DROIT QU'ON N'A PAS. Un lien jouable donne à QUICONQUE le détient ce
+        # que le proxy de plugin n'accorde qu'avec `plugins.operate` et le rôle opérateur sur le
+        # conteneur : il faut donc les avoir soi-même pour le créer.
+        from ..auth import has_perm, check_vmid_access
+        err = check_vmid_access(vmid, "operator")
+        if err:
+            return err
+        if not has_perm("plugins.operate"):
+            return jsonify({"error": "forbidden", "missing_permission": "plugins.operate"}), 403
     token = secrets.token_urlsafe(16)     # 128 bits : non devinable, non énumérable
     db_create_share_link(token, vmid, m["type"],
                          (body.get("title") or "").strip() or (c.get("hostname") or m["type"]),
                          (body.get("note") or "").strip(), kind="page", cidrs=cidrs,
-                         instance_uuid=c.get("instance_uuid") or "")
+                         instance_uuid=c.get("instance_uuid") or "", scope=scope)
     d = _share_public(db_get_share_link(token))
     d["url"] = request.host_url.rstrip("/") + url_for("routes.public_page", token=token)
     return jsonify(d)
@@ -598,7 +704,7 @@ def public_page(token):
                                brand_location=_st.get("brand_location") or ""), 403
     return render_template("public_page.html",
                            token=token, vmid=link["vmid"], type=m["type"],
-                           base="/p/" + token,
+                           base="/p/" + token, scope=_scope_du_lien(link),
                            title=link.get("title") or c.get("hostname") or m["type"],
                            note=link.get("note") or "",
                            adresse=request.host,
@@ -659,15 +765,71 @@ def public_page_proxy(token, p):
     lecture = set(((m.get("control") or {}).get("read_endpoints")) or [])
     if ("/" + p) not in lecture:
         return jsonify({"error": "lecture seule : /%s n'est pas un endpoint de lecture" % p}), 403
-    ip = get_container_ip(link["vmid"])
+    ip = get_container_ip(_c["vmid"]) if _c and _c.get("vmid") is not None else None
     if not ip:
         return jsonify({"error": "container injoignable"}), 502
     try:
-        r = _req.get(f"http://{ip}:8082/{p}", params=request.args, timeout=5)
+        r = _req.get(f"http://{ip}:8082/{p}", params=request.args, timeout=5,
+                     headers=_relais_public_entetes(link))
     except Exception as e:                                          # noqa: BLE001
         return jsonify({"error": str(e)}), 502
     if r.status_code == 204:
         return ("", 204)
+    return Response(r.content, status=r.status_code,
+                    content_type=r.headers.get("Content-Type", "application/json"))
+
+
+@bp.route("/p/<token>/plugin/<path:p>", methods=["POST"])
+def public_page_action(token, p):
+    """Relais ACTION d'une page publique : seulement pour un lien créé avec « jouer » (portée
+    `play`), et seulement vers un chemin de `control.public_actions` du manifeste.
+
+    Trois serrures, et aucune ne suffit seule :
+      1. ICI, la liste blanche du MANIFESTE (`control.public_actions`, jamais une copie locale :
+         une copie divergerait du côté permissif) et la portée du lien ;
+      2. ICI, l'en-tête de portée posé par `_relais_public_entetes` — jamais celui du visiteur ;
+      3. LE CONTENEUR, seul à savoir à quel onglet appartient une touche ou un lecteur : il refuse
+         (403) une action marquée publique hors de l'onglet du lien.
+    Même filtre d'adresses et même règle d'identité (instance_uuid) que la page et le relais de
+    lecture. Chaque action acceptée laisse une ligne au journal d'exploitation, au nom du lien."""
+    from ..addressing import get_container_ip
+    import requests as _req
+    link, c, m = _lien_page(token)
+    if not link:
+        abort(404)
+    ok, ip = _ip_autorisee(link)
+    if not ok:
+        return jsonify({"error": "adresse %s non autorisée pour ce lien" % (ip or "?")}), 403
+    scope = _scope_du_lien(link)
+    if not scope.get("play"):
+        return jsonify({"error": "read_only"}), 403
+    actions = set(((m.get("control") or {}).get("public_actions")) or [])
+    if ("/" + p) not in actions:
+        return jsonify({"error": "not_public"}), 403
+    if (request.content_length or 0) > PUBLIC_BODY_MAX:
+        return jsonify({"error": "too_large"}), 413
+    raw = request.get_data(cache=False)
+    if len(raw) > PUBLIC_BODY_MAX:
+        return jsonify({"error": "too_large"}), 413
+    try:
+        body = json.loads(raw or b"{}")
+    except ValueError:
+        return jsonify({"error": "bad_json"}), 400
+    if not isinstance(body, dict):
+        return jsonify({"error": "bad_json"}), 400
+    cip = get_container_ip(c["vmid"])
+    if not cip:
+        return jsonify({"error": "container injoignable"}), 502
+    try:
+        r = _req.post(f"http://{cip}:8082/{p}", data=json.dumps(body), timeout=5,
+                      headers=_relais_public_entetes(link))
+    except Exception as e:                                          # noqa: BLE001
+        return jsonify({"error": str(e)}), 502
+    try:
+        from .. import ops_journal
+        ops_journal.record_public(c["vmid"], link, "/" + p, body, r.status_code)
+    except Exception:                                               # noqa: BLE001
+        pass                                                        # record_public ne lève pas ; ceinture
     return Response(r.content, status=r.status_code,
                     content_type=r.headers.get("Content-Type", "application/json"))
 
@@ -738,6 +900,8 @@ def settings_page():
     # l'écran avant la première lecture de l'API.
     from ..catalogue import _reglages as _cat_reglages
     return render_template("settings.html", core_tabs=tabs,
+                           # the Audio plugins tab (LV2 library) is the audio service's template
+                           audio_service=core_plugins.is_service("audio"),
                            timezones=_timezones_par_region(),
                            catalogue_org=_cat_reglages()[0],
                            controls_inventory=_inventaire_controles(),

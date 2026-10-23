@@ -467,7 +467,7 @@
 <p>La préparation matérielle (Ethernet, SR-IOV, PTP, MTL, CPU) est <strong>par-nœud</strong> : un sélecteur de nœud coiffe les onglets <em>Réseau hôte</em>, <em>CPU</em> et <em>Déploiement → Local</em>. Le moniteur PTP échantillonne chaque nœud.</p>
 
 <h2>Haute disponibilité (paire de contrôleurs)</h2>
-<p>L'orchestrateur peut tourner en <strong>paire warm-standby</strong> : un <strong>actif</strong> pilote, un <strong>standby</strong> démarre passif (interface en lecture seule). L'actif <strong>réplique</strong> sa base vers le standby ; la <strong>bascule est manuelle</strong> (promouvoir/rétrograder), VIP de management déplacée à la main. Détails : voir le fichier <code>HA.md</code> et Réglages → Cluster & Réseau → Haute disponibilité.</p>
+<p>L'orchestrateur peut tourner en <strong>paire warm-standby</strong> : un <strong>actif</strong> pilote, un <strong>standby</strong> démarre passif (interface en lecture seule). Les deux contrôleurs sont d'abord <strong>appairés</strong> une fois, par un code à usage unique : ils partagent alors la même autorité de certification, sans laquelle un standby promu ne pourrait piloter aucun nœud. L'actif <strong>réplique</strong> ensuite sa base vers le standby en mTLS (port 5444, contrôleurs seulement). La <strong>bascule du pilotage est manuelle</strong> (promouvoir/rétrograder) ; la VIP de management, elle, peut suivre seule avec keepalived. Détails : article <em>Haute disponibilité</em>, et Réglages → Cluster & Réseau → Cluster.</p>
 
 <div class="wiki-note">Les anciens articles « Pré-requis orchestrateur » et « Pré-requis containers LXC » décrivent le modèle Proxmox/LXC <strong>historique</strong> et ne s'appliquent plus.</div>
 </template>
@@ -524,7 +524,7 @@
 <tr><td>Émulateur ATEM</td><td><code>services/atem/</code></td><td>Pupitres → ATEM</td></tr>
 <tr><td>Skaarhoj Quick Bar</td><td><code>services/skaarhoj/</code></td><td>Pupitres → Skaarhoj</td></tr>
 <tr><td>Passerelle WebRTC</td><td><code>services/webrtc_gateway/</code></td><td>WebRTC</td></tr>
-<tr><td>Volume média (Filebrowser)</td><td><code>services/storage/</code></td><td>Stockage</td></tr>
+<tr><td>Stockage (volumes des nœuds, partages SMB/NFS, accès par dossier)</td><td><code>services/storage/</code></td><td>Médias → Stockage</td></tr>
 </table>
 <h3>Anatomie d'un service</h3>
 <ul>
@@ -784,6 +784,16 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 <p>Premier usage : "Créer mon moniteur" dans le panneau. Un container streamer dédié est créé par utilisateur.</p>
 <h2>Changer de source</h2>
 <p>Bouton "Monitoring" sur les pages productrices (mélangeur, correcteur, multiview, DVE, streams, sources). Bascule sans coupure si même résolution.</p>
+<h2>Cadence : 25 images/s, ou celle de la source</h2>
+<p>Par défaut le moniteur sort à <strong>25 images/s</strong>, quelle que soit la source. Le bouton <strong>⚙ Réglages du monitoring</strong> de l'en-tête du panneau propose l'autre choix, « Cadence de la source » : le flux sort alors à la cadence de la source — 50 images/s pour une source 50p, 59,94 → 60, plafond 60. GOP = 1 s à cette cadence.</p>
+<ul>
+<li><strong>Quand s'en servir</strong> : seulement pour juger un mouvement (défilement, panoramique, saccade suspectée sur une source 50p/60p). Pour un cadrage, un titre, une couleur, une coupe ou le son, 25 images/s suffisent — c'est le réglage recommandé.</li>
+<li><strong>Coût</strong> : environ deux fois plus d'images à encoder, et un débit relevé en proportion (8 Mb/s à 25 ; 12 Mb/s à 50 ; 13,6 Mb/s à 60) — l'encodeur est à débit constant, sans cette hausse chaque image recevrait moitié moins de bits. Mesuré sur un moniteur NVENC en 1080p50 : CPU du conteneur 43 % → 68 % d'un cœur. Avec l'encodeur logiciel (x264) la hausse est nettement plus sensible.</li>
+<li><strong>Source entrelacée</strong> (1080i50) : reste à 25 images/s. Les deux champs sont tissés puis désentrelacés à la cadence trame ; il n'y a pas de désentrelacement à la cadence des champs ici.</li>
+<li><strong>Antenne</strong> : rien ne change pour ce qui part à l'antenne, seul votre moniteur est concerné.</li>
+<li><strong>Réglage personnel</strong>, mémorisé par le serveur (il vous suit d'un poste à l'autre). Il s'applique tout de suite : si la cadence change, l'encodeur redémarre comme à un changement de source (quelques secondes sans image).</li>
+<li><strong>Macros</strong> : action « Monitoring personnel → Monitoring fluide », pour l'utilisateur qui lance la macro (refusée depuis un déclencheur ou un pupitre, qui n'ont pas d'utilisateur).</li>
+</ul>
 <h2>Mise en veille</h2>
 <p>Après 10 min sans heartbeat, le script est coupé (CPU libéré). Réactivé automatiquement à la réouverture du panneau.</p>
 <div class="wiki-warn">Prérequis : passerelle WebRTC déployée et activée.</div>
@@ -1358,6 +1368,150 @@ anneau vidéo (8 trames) ........... 25 Mo par flux
 <p>Tout le pipeline est en <strong>10-bit</strong> (standard broadcast actuel). Le seul cas où v210 redeviendrait intéressant est un déport du calcul sur <strong>GPU</strong> (dé-package quasi gratuit, transfert PCIe plus petit) — c'est un chantier matériel séparé ; le patch planar se retire alors proprement.</p>
 </template>
 
+<template id="wiki-art-base-medias">
+<p>La <strong>base des médias</strong> donne à chaque média une <strong>identité</strong> qui le suit d'un serveur à l'autre : son titre, ses métadonnées, sa vignette et son historique restent attachés au média, quelle que soit la copie que l'on regarde. Un média peut avoir plusieurs <strong>copies</strong> (une par nœud, ou sur un partage réseau) ; la base sait lesquelles sont présentes, absentes ou altérées.</p>
+<div class="wiki-note">Rien n'entre dans la base sans un geste explicite : les clips du Recorder et les sorties du Transcoder y entrent d'eux-mêmes, le reste s'<strong>importe</strong> (depuis l'ordinateur, depuis l'onglet « Serveur réseau » d'une bibliothèque, ou depuis Réglages → Médias → Base des médias pour les fichiers déjà présents sur les volumes). Un fichier simplement déposé dans un dossier de dépôt du Transcoder n'est pas importé : seule sa sortie l'est.</div>
+
+<h2>La bibliothèque commune</h2>
+<p>La même bibliothèque sert dans le Player, les Images fixes, le Recorder et le Gestionnaire de médias. Dans un conteneur de projet, elle est <strong>filtrée sur le projet</strong> d'office (une puce le montre, on peut la retirer).</p>
+<ul>
+<li><strong>Sélection</strong> : un clic sur la ligne. <kbd>Ctrl</kbd> (ou <kbd>Cmd</kbd>) ajoute ou retire une ligne, <kbd>Maj</kbd> étend la sélection, <kbd>Ctrl+A</kbd> sélectionne tout. Glisser une ligne sélectionnée emporte <strong>toute la sélection</strong>.</li>
+<li><strong>Clic droit</strong> : un menu pour la ligne, un autre pour la sélection, un troisième pour un bin (créer un sous-bin, renommer, supprimer, copier le contenu…).</li>
+<li><strong>Colonnes</strong> : <em>Copies</em> est un nombre ; dans un conteneur, une marque ✓ « présent en local » indique que le média est déjà sur le nœud du conteneur. Sans copie locale, charger un média la <strong>rapatrie</strong> d'abord (copie vérifiée).</li>
+</ul>
+
+<h2>Modes d'affichage</h2>
+<p>Les icônes à côté de la recherche changent la façon de voir la même liste. Le mode choisi est retenu <strong>par conteneur</strong> sur ce poste ; au Gestionnaire, il est retenu <strong>par panneau</strong> et entre dans les dispositions enregistrées. Par défaut : la liste (Player, Recorder, Gestionnaire), les vignettes (Images fixes). Dans tous les modes, la sélection (clic, <kbd>Ctrl</kbd>, <kbd>Maj</kbd>, <kbd>Ctrl+A</kbd>), le glisser, le clic droit, le double-clic et le dépôt de fichiers du bureau marchent comme dans la liste.</p>
+<table>
+<tr><th>Mode</th><th>Ce qu'il montre</th></tr>
+<tr><td>Liste</td><td>Une ligne par média, colonnes triables. <strong>Clic droit sur l'en-tête</strong> : cocher les colonnes à afficher (titre, description, mots-clés, projet, origine, définition, cadence, codec, timecode, proxy… et les champs personnalisés de la base). La poignée au bord droit d'un en-tête règle sa largeur (double-clic : largeur automatique).</td></tr>
+<tr><td>Vignettes</td><td>Une grille : le nom sur deux lignes, la présence (point plein : une copie sur le nœud du conteneur ; rond vide : pas de copie ici), la définition et la cadence, le codec ; sur l'image, la durée et un badge <strong>P</strong> si le média a un proxy. Le curseur <em>Taille</em> agrandit les vignettes. Le parcours au survol y marche.</td></tr>
+<tr><td>Cartes</td><td>Titre, description, fichier, format, projet, mots-clés ; « Pas de description » et « aucun mot-clé » signalent une fiche incomplète. Le bouton <em>Champs</em> choisit ce que montrent les cartes.</td></tr>
+<tr><td>Pellicule</td><td>Chaque média sur une ligne avec <strong>8 images réparties sur sa durée</strong>, tirées de sa planche d'images. Un clic sur une image ouvre la fiche Infos, dont le lecteur part de cet instant. Tant que la planche d'un média n'est pas prête, la ligne le dit et répète sa vignette.</td></tr>
+<tr><td>Liste + aperçu</td><td>Une liste compacte et, à côté, le <strong>lecteur du proxy</strong> (son compris), une fiche résumée et les actions (Charger, + Playlist, Infos…). <kbd>↑</kbd> <kbd>↓</kbd> passent d'un média à l'autre, <kbd>Espace</kbd> lance ou arrête la lecture. Sans proxy : la vignette et « Créer le proxy ». Sur un écran étroit, l'aperçu passe sous la liste.</td></tr>
+</table>
+<p><strong>Grouper par</strong> (liste, vignettes, cartes) : aucun, jour d'entrée dans la base, projet, nœud, origine (Recorder, Transcoder, envoi depuis le poste…) ou codec. Chaque groupe a un en-tête qui reste visible au défilement, avec le nombre de médias et leur durée totale ; un <strong>clic sur l'en-tête sélectionne tout le groupe</strong> (<kbd>Ctrl</kbd> : l'ajoute à la sélection), par exemple pour copier une journée de tournage. Un média de deux projets, ou copié sur deux nœuds, apparaît dans les deux groupes.</p>
+<p>Une bibliothèque de 2000 médias s'affiche par morceaux au fil du défilement ; <kbd>Ctrl+A</kbd> et <kbd>Maj</kbd> portent quand même sur toute la liste.</p>
+
+
+<h2>Importer depuis l'ordinateur</h2>
+<p>Bouton <strong>Importer depuis l'ordinateur…</strong> de la bibliothèque (Player, Images fixes, Recorder, Gestionnaire), ou <strong>déposer des fichiers du bureau</strong> sur la liste ou sur un bin. Vidéo, audio et image seulement (MXF, MOV, MP4, MKV, TS, WAV, MP3, AAC, FLAC, JPEG, PNG, TIFF…) ; un autre type est refusé avec un avertissement. Le fichier va sur le <strong>volume média d'un nœud</strong>, puis il est <strong>importé</strong> dans la base (origine « upload », vignette, proxy automatique si le réglage est actif) :</p>
+<ul>
+<li>dans un <strong>conteneur</strong> : sur son nœud, dans le dossier de son projet, et rattaché au projet ;</li>
+<li>au <strong>Gestionnaire</strong> : on choisit le nœud et le dossier (le dernier choix est proposé) ; un filtre « projet » actif y rattache le média ;</li>
+<li>déposé sur un <strong>bin manuel</strong> (ou envoyé pendant qu'un bin manuel est affiché) : le média y est rangé à l'arrivée ;</li>
+<li>un fichier du même nom dans le dossier n'est <strong>plus un conflit</strong> : le fichier envoyé porte le code de son média (<code>clip__3f9a1c.mov</code>, voir « Nom du média et nom de fichier »), aucun nom n'est jamais écrasé ni à changer. Seule reste la question du <strong>même contenu</strong> déjà présent, ci-dessous.</li>
+</ul>
+<p><strong>Même contenu déjà dans la base</strong> : avant l'envoi, la page calcule l'empreinte du fichier (la même que la base : taille, 4 Mo de début et 4 Mo de fin — quelques dixièmes de seconde, sans lire tout le fichier) et demande au serveur. Si un média identique a une copie présente, une fenêtre le dit (« Ce média est déjà présent : <em>nœud · chemin</em> (même contenu) ») avec <strong>Ne pas l'envoyer</strong> — proposé d'abord quand une copie est déjà dans le dossier de destination de ce nœud ; le média existant est alors rangé dans le projet et le bin en cours, comme l'aurait été l'envoi — ou <strong>L'envoyer quand même</strong> — proposé d'abord ailleurs (autre dossier de projet, autre nœud) : le fichier arrivé devient une copie de plus du même média, une seule ligne dans la liste. Plusieurs fichiers : « Même choix pour les suivants ».</p>
+<p>Rien n'est jamais écrasé : dans le cas rare où le nom codé est déjà occupé (fichier déposé à la main sous ce nom), le code passe à 8 caractères (le panneau le signale). La <strong>reprise</strong> d'un envoi interrompu passe avant toute question : re-choisir le même fichier vers la même destination reprend, sans fenêtre — même s'il avait été renommé.</p>
+<p>Une vidéo de plusieurs Go part <strong>par morceaux de 16 Mo</strong>, un fichier à la fois ; un panneau en bas à droite montre pour chacun les octets envoyés, le débit et le temps restant, avec <strong>Annuler</strong>. Un morceau en échec est réessayé de lui-même. Si le réseau tombe ou si la page est rechargée, <strong>re-choisir le même fichier</strong> (même nom, même taille, même date) reprend là où le nœud en est : le panneau liste les envois interrompus, et « Abandonner » efface ce qui a déjà été reçu. Le navigateur prévient si l'on quitte la page pendant un envoi.</p>
+<div class="wiki-note">Il faut la permission « gestion des médias » et un agent-nœud 0.26.0 ou plus récent sur le nœud de destination. Le fichier ne passe ni en entier en mémoire ni sur le disque de l'orchestrateur : chaque morceau est relayé vers le nœud. La taille maximale d'un fichier (200 Go par défaut) se règle dans Réglages → Médias → Base des médias ; un nœud dont le volume n'a pas la place refuse l'envoi d'emblée.</div>
+<h2>Bins</h2>
+<p>Un <strong>bin</strong> range des médias (par identité, pas par chemin). Les bins se <strong>plient</strong> (l'état est retenu par poste) et peuvent contenir des <strong>sous-bins</strong> ; l'option « avec le contenu des sous-bins » affiche le tout. Glisser des médias sur un bin les y range.</p>
+<p>Un <strong>bin intelligent</strong> est une recherche enregistrée : son contenu est recalculé à chaque affichage (« créés dans la dernière heure » reste juste). On n'y range rien à la main.</p>
+<p><strong>Copier tout le contenu</strong> d'un bin (clic droit) : vers un nœud depuis le Gestionnaire, ou <strong>en local</strong> depuis un conteneur. Les copies sont vérifiées, l'avancement s'affiche, et les médias déjà présents sont comptés sans être recopiés.</p>
+
+<h2>Recherche avancée</h2>
+<p>La recherche simple porte sur le nom, le titre et les mots-clés. La recherche avancée construit des conditions sur une ligne <strong>[champ] [opérateur] [valeur]</strong> :</p>
+<ul>
+<li>le <strong>champ</strong> est n'importe quelle information du média : nom, dates, origine, fiche technique (durée, définition, cadence, balayage, codec, pistes audio…), métadonnées de base ou personnalisées, disponibilité (copie locale, sur tel nœud, sur un partage, hors ligne), projet, présence d'un proxy ;</li>
+<li>l'<strong>opérateur</strong> : contient, égal, comparaisons, vide, « dans les N dernières heures ou jours » ;</li>
+<li>les <strong>valeurs sont proposées</strong> à partir de ce que contient la base (valeurs distinctes, avec leur nombre) ;</li>
+<li>les conditions se combinent en ET / OU ; les conditions actives restent visibles en puces que l'on retire une à une. Une recherche peut être enregistrée comme bin intelligent.</li>
+</ul>
+
+<h2>Gestionnaire de médias</h2>
+<p>Le Gestionnaire (Médias → Gestionnaire de médias) occupe toute la hauteur de la page et peut afficher <strong>plusieurs panneaux</strong> (jusqu'à 6) disposés en <strong>mosaïque</strong> : « Disposition » propose 1 panneau, 2 côte à côte, 2 l'un sous l'autre, 2 + 2 ou un grand et deux empilés. On <strong>glisse la barre de titre</strong> d'un panneau sur un autre pour l'y accoler (lâché sur un bord) ou les échanger (lâché au centre) — ou on passe par son bouton « Déplacer… » ; ↔ et ↕ découpent un panneau, les séparateurs redimensionnent, et chaque panneau garde son onglet, son bin et sa recherche. Sur un écran étroit, tout passe en une colonne. La disposition courante est retenue par poste ; <strong>Enregistrer…</strong> la garde sous un nom, dans « Mes dispositions » (sous les dispositions intégrées de la liste) — elles sont propres à chaque utilisateur et le suivent d'un poste à l'autre (30 au plus). En choisir une la rappelle en réutilisant les panneaux ouverts ; un nom déjà pris est remplacé après confirmation, et « Supprimer » retire celle qui est choisie. On <strong>glisse</strong> des médias d'un panneau à l'autre (déposer sur un bin manuel l'y range). Depuis le menu : copier vers un nœud (copie vérifiée), transcoder, importer depuis un serveur réseau, et <strong>Envoyer vers</strong> un Player ou des Images fixes démarrés (en sélection multiple, l'envoi vers un Player alimente sa playlist).</p>
+
+<h2>La fiche Infos</h2>
+<p>Menu d'un média → <strong>Infos…</strong>. Une fenêtre à onglets :</p>
+<ul>
+<li><strong>Infos</strong> : durée, vidéo (définition, cadence, balayage, codec, colorimétrie), audio, timecode de départ, origine, dates — ceux de l'original.</li>
+<li><strong>Métadonnées</strong> : titre, description, mots-clés et champs personnalisés (définis dans Réglages → Médias → Base des médias). Ils valent pour la fiche, donc pour toutes ses versions.</li>
+<li><strong>Versions</strong> : l'original et les autres essences du même média (transcodage de diffusion, MXF de livraison…), chacune avec son format, sa taille et les nœuds qui la portent ; choisir la <strong>version par défaut</strong>, supprimer une version (ses copies sur les nœuds avec elle). Voir « Versions d'un média ».</li>
+<li><strong>Emplacements</strong> : chaque copie (nœud ou partage, version, chemin, état, dernière vérification) ; copier ou rapatrier ; <strong>renommer le fichier</strong> d'une copie (son sidecar suit, l'identité et le nom du média ne bougent pas, le code du média reste à la fin du nom ; refusé si le nom est déjà pris) ; consulter le <strong>sidecar brut</strong> copie par copie ; les <strong>projets</strong> auxquels le média appartient (on l'y ajoute ou l'en retire à la main) ; le proxy de lecture (voir l'article suivant).</li>
+<li><strong>Vignette</strong> : choisir l'instant qui sert de vignette.</li>
+</ul>
+<p>Supprimer, au choix : <strong>une copie</strong> (le média et ses métadonnées restent tant qu'il en reste une) ou <strong>le média entier</strong> (toutes ses copies).</p>
+
+<h2>Réglages → Médias → Base des médias</h2>
+<ul>
+<li><strong>Intégrité</strong> (bouton « Analyser les volumes ») : médias sans aucune copie, copies manquantes ou dont le contenu ne correspond plus, fichiers présents mais non référencés (à importer un par un ou « Tout importer »), rattachements à des projets disparus, médias sans vignette.</li>
+<li><strong>Champs personnalisés</strong> ajoutés à la fiche de chaque média (texte, nombre, date, liste, case à cocher…).</li>
+<li><strong>Copies entre nœuds</strong> : débit maximal d'une copie (0 = sans plafond). Une copie va directement d'un nœud à l'autre, à basse priorité, vérifiée par son empreinte et reprise après une coupure ; les conteneurs à l'antenne passent avant.</li>
+<li><strong>Proxys de lecture</strong> : création automatique et suivi (voir l'article suivant).</li>
+<li><strong>Sauvegarde, export, import</strong> de la base (fusion ou remplacement).</li>
+</ul>
+
+<h2>Versions d'un média</h2>
+<p>Toutes les essences d'un média sont sous <strong>la même fiche</strong> : l'<strong>original</strong> (la référence : sa fiche technique, son empreinte) et ses <strong>versions</strong> — une sortie du Transcoder n'ouvre jamais une fiche à part, elle devient une version du média de sa source, nommée par le nom court de son préréglage (<code>h264</code>, <code>xdcam</code>, <code>proreshq</code>…). La bibliothèque n'affiche qu'<strong>une ligne par média</strong> ; titre, champs, bins, partages et projets sont ceux de la fiche, pour toutes ses versions.</p>
+<ul>
+<li><strong>Nom de fichier</strong> : même code que l'original, la clé de version en suffixe — <code>clip__a1b2c3.mov</code>, <code>clip__a1b2c3_h264.mp4</code>, <code>clip__a1b2c3_xdcam.mxf</code> ; le proxy reste <code>…_proxy.mp4</code>. Code et clé de version sont retirés à la sortie du nœud (export, téléchargement).</li>
+<li><strong>Charger un média</strong> (Player, Images fixes, rapatriement, « Envoyer vers ») charge sa <strong>version par défaut</strong> — l'original, sauf choix dans l'onglet Versions. Une version précise : « Charger une version » au menu du Gestionnaire, la macro <em>Charger un média dans un conteneur</em> (base des médias), ou le paramètre <code>version</code> de l'API (<code>/api/media/send</code>, <code>/api/media/fetch</code>, <code>/api/media/copy</code>).</li>
+<li><strong>Même contenu</strong> : un fichier identique à une version (envoi, import, analyse) est une copie de plus de <strong>cette</strong> version. Un transcodage refait à l'identique remplace sa version au lieu de la doubler.</li>
+<li>Source sans identité (dossier de dépôt, partage) : la sortie rejoint le média de ce contenu s'il est connu ; sinon la fiche naît de la version, et la source analysée plus tard en devient l'original.</li>
+<li>Macros (base des médias) : <em>Charger un média dans un conteneur</em> (conteneur, média, version, geste — rapatrié d'abord au besoin), <em>Choisir la version par défaut d'un média</em>. Recherche : « Nombre de versions », « A la version ».</li>
+<li>Une retouche de l'<strong>éditeur d'image</strong> est, par défaut, un média à part (une autre fiche) lié à son original ; le réglage <em>Où va la retouche</em> (Réglages → Médias) peut en faire une <strong>version</strong> de l'original (<code>edit</code>, <code>edit2</code>…).</li>
+</ul>
+
+<h2>Nom du média et nom de fichier</h2>
+<p>Un média se désigne par son <strong>identité</strong> ; son <strong>nom</strong> (celui de la fiche) est libre et deux médias peuvent porter le même — le projet, à défaut le nœud et le dossier, s'affiche alors en petit à côté. Le <strong>nom de fichier</strong> est technique : tout fichier que le système crée sur le stockage d'un nœud (envoi depuis l'ordinateur, enregistrement du Recorder, sortie du Transcoder, variante de l'éditeur d'image, copie, rapatriement, import d'un partage ou d'un projet) porte à la fin le <strong>code du média</strong>, les 6 premiers caractères de son identité : <code>interview__3f9a1c.mov</code> (8 dans le cas rare où un autre média occupe déjà ce nom). Le même média garde le même code sur tous les nœuds, et deux médias ne se disputent jamais un nom de fichier : la question « nom déjà pris » ne se pose plus à l'envoi, seule reste « ce contenu est déjà là ».</p>
+<ul>
+<li>Partout, c'est le <strong>nom du média</strong> qui s'affiche ; le nom de fichier complet est dans la fiche Infos → Emplacements et en infobulle.</li>
+<li>Le code est <strong>retiré</strong> quand le fichier sort du nœud : export de projet (archive), téléchargement.</li>
+<li>Pas de code sur un <strong>stockage réseau</strong> (un enregistrement écrit directement sur un partage, pour monter pendant l'enregistrement, garde le nom du modèle), ni sur les fichiers déjà présents (rien n'est renommé) ou importés d'un volume tels quels.</li>
+<li>Un nom tapé à la main (macro, API) n'est jamais refusé quand plusieurs médias le portent : le média du projet du conteneur d'abord, puis celui présent sur son nœud, puis le plus récent ; le choix est inscrit au journal.</li>
+</ul>
+
+<h2>Portée par projets</h2>
+<p>Un utilisateur dont le rôle n'a pas l'accès global ne voit et n'atteint que les médias rattachés à l'un de <strong>ses projets</strong> ; un média sans projet lui est invisible. Les listes, la recherche, les valeurs proposées, les bins et leurs compteurs sont filtrés ; un bin d'un autre projet est invisible, un bin sans projet ne montre que les médias de sa portée. Un média hors de sa portée est « introuvable » (son existence n'est pas confirmée), et un projet ou un bin d'un autre projet est refusé. Ce qu'il crée (envoi depuis l'ordinateur, import) entre dans l'un de ses projets : celui demandé, du bin, du conteneur, ou son projet unique. L'accès global (administrateur, opérateur) voit tout.</p>
+
+<h2>Partager un média ou un bin</h2>
+<p>Pour donner accès à des médias hors de ses projets (médias sans projet compris) : clic droit sur un média, une sélection ou un bin → <strong>Partager…</strong>. On choisit un ou plusieurs destinataires — un <strong>utilisateur</strong>, un <strong>groupe d'utilisateurs</strong> ou les <strong>membres d'un projet</strong> —, un niveau et, si l'on veut, une date de fin. Il faut la permission « gestion des médias » (sans elle, l'entrée <strong>Partager…</strong> n'est pas proposée) et que le média ou le bin soit dans ses propres projets (un partage reçu ne se repartage pas). Les groupes se gèrent dans <strong>Réglages → Utilisateurs → Groupes d'utilisateurs</strong> (page <code>/groups</code>).</p>
+<ul>
+<li><strong>Consulter et utiliser</strong> : voir, lire, le proxy, charger dans ses conteneurs, rapatrier, mettre en playlist ; aussi l'<strong>envoi depuis l'ordinateur</strong> (un fichier déjà présent comme média partagé est reconnu en doublon ; « Ne pas l'envoyer » ne le rattache pas à votre projet : il reste un partage) et l'<strong>éditeur d'image</strong> (la retouche devient <em>votre</em> fiche, rangée dans vos projets).</li>
+<li><strong>Modifier</strong> : en plus, la fiche (métadonnées, vignette, proxy) et, pour un bin, y ranger ou en retirer des médias ; ranger une retouche d'image comme <em>version</em> de la fiche (réglage Médias) ; demander un travail à la <strong>ferme de transcodage</strong> sur ce média (sa sortie devient une version de la fiche partagée, donc la toucher).</li>
+<li>Jamais, par un partage : supprimer le média ou ses fichiers, renommer ses fichiers, le rattacher à un projet, gérer ses partages.</li>
+</ul>
+<p>Un <strong>bin partagé est vivant</strong> : ses sous-bins et ce qui y entre ensuite sont partagés aussi, mais jamais plus que ce que voit celui qui partage (un bin intelligent ne livre que les résultats qu'il verrait). Le destinataire retrouve tout sous <strong>Partagés avec moi</strong>, dans l'arbre des bins, marqué du nom du partageur. Un média partagé chargé dans un conteneur n'entre pas dans le projet de ce conteneur. Les partages en cours, leur niveau, leur retrait (immédiat) et leur journal sont dans la fenêtre « Partager… » et dans la fiche, onglet <strong>Partages</strong>. Les groupes se gèrent sur la page <code>/groups</code> (droit « réglages »).</p>
+
+<h2>Projets : emporter ses médias</h2>
+<p>À l'export d'un projet (page Projets → Exporter), le choix est <strong>Références seules</strong> (.json : la fiche de chaque média — identité, métadonnées, vignette, filiation — sans les fichiers) ou <strong>Avec les médias</strong> (archive .tar contenant aussi une copie de chaque média et son sidecar). À l'import, on choisit le <strong>nœud qui reçoit les médias</strong> : les fichiers sont déposés dans le dossier du nouveau projet, jamais par-dessus un fichier existant, et rattachés à leur fiche. Un média déjà connu de l'installation garde sa fiche locale (seuls les champs vides sont complétés) ; un média sans copie apparaît <strong>hors ligne</strong> avec toute sa fiche, et ses copies sont retrouvées à la prochaine analyse. Voir aussi « Projets &amp; RAZ ».</p>
+</template>
+
+<template id="wiki-art-medias-proxys-edition">
+<h2>Proxys de lecture</h2>
+<p>Un <strong>proxy</strong> est une copie légère d'un média (MP4 H.264 en 540 lignes avec son stéréo ; M4A pour un média audio seul) qui permet de <strong>le lire dans le navigateur</strong>, directement dans la fiche Infos, sans toucher à l'original. Il est rangé à côté de l'original, sur le même nœud, dans un dossier caché <code>.proxies</code>. Ce n'est jamais un média à part : il n'est pas compté dans les copies, et il n'est pas envoyé à l'antenne. Une image fixe n'a pas de proxy.</p>
+<ul>
+<li><strong>Où le créer</strong> : menu d'une ligne, d'une sélection ou d'un bin → « Créer le(s) proxy(s) », ou fiche Infos. Dans l'onglet Emplacements : où il a été fait (transcoder, nœud, numéro de job), avancement, <strong>Annuler</strong>, <strong>Recréer</strong>, <strong>Supprimer le proxy</strong>. La recherche avancée a un critère « a un proxy ».</li>
+<li><strong>Qui le fabrique</strong> : la ferme de transcodage (Médias → Ferme de transcodage, lien direct <code>/medias#farm</code>), à priorité basse, avec le préréglage fixe « Proxy de lecture » du Transcoder. Si aucun transcoder n'est inscrit à la ferme, la demande <strong>attend</strong> et la fiche affiche « en attente d'un transcoder » (comme la page de la ferme) ; elle repart dès qu'un transcoder s'inscrit.</li>
+<li><strong>Automatique</strong> : Réglages → Médias → Base des médias → « Créer le proxy automatiquement » (à l'import d'un média vidéo, à la fin d'un enregistrement, à l'arrivée d'une sortie du Transcoder). <strong>Activé par défaut</strong> ; le décocher si les cœurs du cluster doivent rester à l'antenne (un proxy en mobilise, à priorité basse).</li>
+<li><strong>Parcourir au survol</strong> : dans la bibliothèque (liste, vignettes, cartes, liste + aperçu), la vignette d'une vidéo qui a un proxy devient une vidéo quand la souris s'y attarde ; déplacer la souris de gauche à droite parcourt le média (bord gauche = début, bord droit = fin), avec une fine barre et l'instant. Ouvrir ensuite la fiche Infos lance le lecteur à cet instant. Quand le média a sa <strong>planche d'images</strong> (préparée avec le proxy), le survol affiche instantanément la case correspondant à la position, sans requête vidéo ; si le pointeur s'arrête plus d'un tiers de seconde, l'image <strong>exacte</strong> vient du proxy par-dessus. Un média sans planche utilise directement le proxy, comme avant. Rien au toucher ; le clic, le double-clic, le glisser et le clic droit gardent leur sens.</li>
+<li><strong>Planche d'images</strong> : avec le proxy d'une vidéo, le Transcoder fabrique aussi une <strong>planche</strong> — jusqu'à 120 images réparties sur la durée (une par seconde au plus), en une seule image — qu'utilise le mode « Pellicule » de la bibliothèque. Elle est gardée par l'orchestrateur (rien sur le nœud) et refaite quand le proxy est recréé ; supprimer le média la supprime. Pour les proxys faits avant : Réglages → Médias → Base des médias → Proxys → <strong>Préparer les planches manquantes</strong> (priorité basse, avancement affiché ; « en attente d'un transcoder » tant qu'aucun transcoder 0.11.0 ou plus n'est inscrit à la ferme). Quand la création automatique est active, les planches manquantes sont demandées d'elles-mêmes. Macro : « préparer la planche d'un média ».</li>
+<li><strong>Vérification</strong> : l'analyse des volumes contrôle le proxy ; absent ou de taille inattendue, il est signalé et peut être recréé.</li>
+<li><strong>Copie d'un média vers un autre nœud</strong> : le proxy ne suit pas (on le recrée sur place). Supprimer la dernière copie d'un média sur un nœud supprime son proxy.</li>
+<li><strong>Macros</strong> : l'action « créer le proxy » et les états de la file sont disponibles comme un service de la base des médias.</li>
+</ul>
+
+<h2>Éditeur d'image</h2>
+<p>Menu d'une <strong>image</strong> de la bibliothèque → <strong>Éditer…</strong> (aussi proposé depuis les Images fixes). L'aperçu se met à jour en direct dans le navigateur ; l'enregistrement produit l'image en <strong>pleine résolution</strong> côté serveur, identique à l'aperçu.</p>
+<table>
+<tr><th>Onglet</th><th>Ce qu'on y règle</th></tr>
+<tr><td>Cadrage</td><td>Format de sortie (HD par défaut, UHD, carré, vertical, libre ; ou celui du conteneur Images fixes qui a ouvert l'éditeur) ; recadrage, zoom et déplacement à la souris et à la molette ; Ajuster, Remplir, Pixel à pixel, Centrer ; rotation (quarts de tour et redressement fin), miroir.</td></tr>
+<tr><td>Fond</td><td>Ce qui remplit la zone non couverte par l'image : transparent, couleur unie, <strong>l'image elle-même agrandie et floutée</strong> (photo verticale dans un cadre 16:9), ou une autre image de la base.</td></tr>
+<tr><td>Zones</td><td>Zones <strong>floutées ou pixelisées</strong> (rectangle ou ellipse, bords nets ou adoucis) pour masquer une marque ; elles suivent le recadrage, le zoom et la rotation.</td></tr>
+<tr><td>Cadre</td><td>Bordure (épaisseur, couleur), coins arrondis, ombre portée.</td></tr>
+<tr><td>Retouches</td><td>Luminosité, contraste, saturation.</td></tr>
+<tr><td>Texte</td><td>Plusieurs blocs déplaçables : police de la bibliothèque de polices, taille, couleur, graisse, alignement, contour, ombre, bandeau de fond.</td></tr>
+</table>
+<p>Les éléments sont des <strong>calques</strong> listés sur le côté : sélectionner, masquer, réordonner, supprimer ; annuler / rétablir.</p>
+<ul>
+<li><strong>Enregistrer (nouvelle variante)</strong> crée une <strong>nouvelle image à côté de l'originale</strong> (<code>nom_edit1.png</code>…), importée dans la base avec sa filiation, ses métadonnées héritées et la recette complète. <strong>L'originale n'est jamais modifiée.</strong></li>
+<li>Éditer à nouveau une image déjà éditée rouvre l'originale <strong>avec ses calques</strong>. « Écraser » l'édition existante n'a lieu qu'après confirmation.</li>
+<li><strong>Où va la retouche</strong> se règle dans <strong>Réglages → Médias</strong> : <em>une fiche à part</em> (défaut : média indépendant, lié à l'original par sa filiation) ou <em>une version de son original</em> (rangée sous la fiche, clés <code>edit</code>, <code>edit2</code>… à côté des transcodages ; aucune nouvelle ligne dans la bibliothèque, champs et partages de l'original partagés ; sur un média seulement partagé avec vous, il faut le niveau « Modifier », sinon une fiche à part est créée). Le choix s'applique aux enregistrements suivants.</li>
+</ul>
+</template>
+
 <template id="wiki-art-projets-raz">
 <p>Un projet est un <strong>espace de travail</strong> : snapshot de la flotte (containers, câblage, réglages) chargeable et déchargeable. Les utilisateurs membres retrouvent leurs projets sur l'accueil (vues composables par widgets) ; un projet chargé est isolé des autres.</p>
 <h2>Rappel de projet</h2>
@@ -1368,6 +1522,31 @@ anneau vidéo (8 trames) ........... 25 Mo par flux
 <li>Les VMIDs déjà pris sont remappés automatiquement</li>
 </ul>
 <div class="wiki-note">Un conflit de hostname ou de SHM avec des containers existants bloque le rappel : détruire ou renommer les containers en conflit d'abord.</div>
+<h2>Lecture A/B/C… (groupes de lecture)</h2>
+<p>Pour enchaîner les clips d'une playlist sur <strong>plusieurs sorties</strong>, on réunit des players ordinaires en un <strong>groupe de lecture</strong> : <strong>Médias → Lecture A/B</strong>. Chaque player reste un conteneur et une sortie (on les câble où l'on veut, par exemple sur deux entrées du mélangeur) ; le groupe porte <strong>une seule playlist</strong> et répartit ses éléments tour à tour sur les sorties A, B, C… Pendant qu'une sortie est à l'antenne, les autres ont déjà chargé leur élément et attendent sur sa première image.</p>
+<ul>
+<li><strong>Play</strong> d'une sortie lance l'élément qu'elle attend ; <strong>Cue</strong> l'arrête et la recale sur l'élément qui lui revient. <strong>Suivant</strong> = Play de la sortie qui attend l'élément suivant. Le déclenchement vient de l'interface, d'une macro ou du <strong>mélangeur</strong> (option du groupe : couper sur l'entrée d'une sortie qui attend vaut son Play).</li>
+<li>Une prise n'est <strong>acquise</strong> que lorsque la lecture est <strong>constatée</strong> sur le player. Pas constatée en 3 s : l'antenne ne bouge pas, rien n'est libéré, une alerte et un bandeau le disent.</li>
+<li>La sortie qui quitte l'antenne passe <strong>« à libérer »</strong> et continue de jouer : on la libère par son <strong>Cue</strong>. Option <strong>libération automatique</strong> (⚙, désactivée par défaut) : on désigne le mélangeur, la console, et pour chaque sortie son entrée de mélangeur et sa tranche ; la sortie n'est libérée que si son entrée n'est plus utilisée au mélangeur (programme, transition, incrustation — l'aperçu ne compte pas) <strong>et</strong> que sa tranche est fermée (fader en bas, coupée, ou fermée par l'audio suit la vidéo). Sinon elle attend, et la raison s'affiche.</li>
+<li><strong>Drop</strong> (retirer, deux appuis) et <strong>Skip</strong> (sauter, rétablissable) sur chaque ligne, ▲▼ pour réordonner : la répartition est recalculée et seules les sorties <strong>en attente</strong> rechargent — une sortie à l'antenne n'est jamais touchée.</li>
+<li>Réglages du groupe (⚙) : <strong>Play hors ordre</strong> (marquer sautés les éléments dépassés — défaut —, les remettre juste après, ou refuser) et <strong>enchaînement automatique</strong> en fin de clip (désactivé par défaut).</li>
+<li>Un player ne fait partie que d'<strong>un seul groupe</strong> (A/B ou synchrone). Sa console affiche « Sortie B du groupe … » : on le pilote depuis le groupe.</li>
+</ul>
+
+<h2>Lecture synchrone</h2>
+<p>Pour lire des médias <strong>ensemble</strong> sur plusieurs canaux — même image au même instant, audio compris, à l'image près (fill et key, mur d'images, multi-caméra) : <strong>Médias → Lecture synchrone</strong>. C'est un groupe distinct de la lecture A/B. La playlist est en <strong>lignes</strong> : une ligne donne un clip par canal (case vide = noir), et les canaux d'une ligne démarrent ensemble.</p>
+<ul>
+<li><strong>Toutes les commandes</strong> s'appliquent à tous les canaux au même instant : Play, Pause, Cue, recherche par timecode, pas à pas, vitesse (0,25× à 4×), boucle (ligne ou playlist), ligne suivante ou précédente. L'orchestrateur fixe un instant commun légèrement dans le futur (marge réglable dans ⚙, 400 ms recommandé) ; un canal qui reçoit la commande en retard rattrape, il ne se décale pas.</li>
+<li><strong>Durées inégales</strong> sur une ligne (⚙) : passer à la suivante à la fin du plus long (défaut : les plus courts tiennent leur dernière image), du plus court, ou au bout de la durée de la ligne.</li>
+<li><strong>Tolérance zéro</strong> : un écart d'une seule image entre canaux, ou une image répétée sur un canal et pas sur les autres, est un défaut — alerte, canal marqué dans la vue, état de macro. L'écart d'horloge entre nœuds est mesuré et signalé lui aussi.</li>
+<li><strong>Paire fill / key</strong> (⚙) : deux canaux marqués « paire » doivent être sur le même nœud, au même format, et chaque ligne doit leur donner les mêmes points de départ et durées ; ils ne démarrent qu'avec leur file d'images pleine, et un fichier qui ne se décode pas assez vite est refusé. Chaque refus est expliqué. En lecture, une image répétée met la paire en défaut sans couper l'antenne ; la ligne suivante repasse les contrôles. Une ligne déjà jouée en entier sans défaut par la paire (« ✓ A+B » dans la playlist) n'est plus refusée pour un décodage lent, en boucle comme en relecture — jusqu'à la moindre modification de la ligne ou au premier défaut.</li>
+<li><strong>Canal qui ne s'ouvre pas</strong> (⚙) : les autres partent sans lui et c'est signalé (défaut), ou le départ de tout le groupe est refusé. Une paire refuse toujours.</li>
+<li>Canaux sur <strong>plusieurs nœuds</strong> : la synchro repose sur l'horloge PTP de chaque nœud. Un nœud dont l'horloge est fausse est refusé, avec une alerte, plutôt que de partir décalé.</li>
+<li>Limite : l'audio est muet à une autre vitesse que 1×. Un geste de transport fait directement sur un player du groupe le sort du mode synchrone, et c'est signalé.</li>
+</ul>
+
+<h2>Exporter et importer avec les médias</h2>
+<p>Page Projets → <strong>Exporter</strong> : <em>Références seules</em> (.bsproj.json) emporte la configuration et les fiches des médias (identité, métadonnées, vignettes, filiation), pas les fichiers ; <em>Avec les médias</em> (.bsproj.tar) emporte aussi une copie de chaque média. <strong>Importer</strong> accepte les deux ; pour une archive, on choisit le <strong>nœud qui reçoit les médias</strong>. Les médias absents du serveur restent visibles <strong>hors ligne</strong> avec leur fiche, et les playlists du Player qui les désignent retrouvent la copie présente sur leur nœud. Détails dans l'article « Base des médias et bibliothèque ».</p>
 <h2>RAZ</h2>
 <p>Réglages → RAZ : liste les containers à supprimer (décochables), détruit en streaming avec confirmation à chaque étape. La suppression est vérifiée (status = stopped) avant le DELETE.</p>
 </template>
@@ -1774,6 +1953,73 @@ chemin, ou quand la réconciliation crée des liens d'elle-même.</p>
 </ul>
 </template>
 
+<template id="wiki-art-securite-acces">
+<p>Cet article répond à trois questions : par où passe chaque échange, comment l'orchestrateur est joint (mode web), et comment un script ou un agent y accède sans mot de passe (jetons d'API, serveur MCP).</p>
+
+<h2>Quatre canaux, quatre protections</h2>
+<p>Ils se ressemblent, et les confondre fait chercher au mauvais endroit : le chiffrement de l'un ne dit rien de l'autre.</p>
+<table>
+<tr><th>Canal</th><th>Port</th><th>Protection</th></tr>
+<tr><td>Navigateurs, scripts, serveur MCP → orchestrateur</td><td>5000, ou 443 en mode tls</td><td>Selon le <strong>mode web</strong> ci-dessous. En <code>http</code>, mots de passe, cookies et jetons passent <strong>en clair</strong>.</td></tr>
+<tr><td>Orchestrateur → agents-nœuds</td><td>9100</td><td>mTLS par la CA interne. Depuis l'agent 0.23.0, le nœud vérifie aussi que le certificat est celui d'un <strong>contrôleur</strong> : un conteneur ou un autre nœud, signés par la même CA, sont refusés. Le jeton par nœud reste exigé en plus.</td></tr>
+<tr><td>Contrôleur ↔ contrôleur (haute disponibilité)</td><td>5444</td><td>mTLS, réservé aux contrôleurs appairés. Voir <em>Haute disponibilité</em>.</td></tr>
+<tr><td>Orchestrateur → agent d'un conteneur</td><td>8081</td><td>HTTPS + jeton par conteneur ; le contrôle d'identité dépend de la version de l'image.</td></tr>
+</table>
+
+<h2>Le mode web</h2>
+<p>Réglages → Système → Sécurité → <strong>Accès web</strong>. Le mode est lu <strong>au démarrage</strong> : l'enregistrer ne change rien avant un redémarrage de l'orchestrateur, et l'onglet le rappelle tant que les deux diffèrent.</p>
+<ul>
+<li><strong>HTTP direct</strong> (défaut) — l'orchestrateur est joint sur le port 5000, sans chiffrement. Réservé à un réseau de régie maîtrisé. Les en-têtes <code>X-Forwarded-*</code> sont ignorés : l'adresse d'un client est celle de sa connexion, ce qui empêche de contourner le plafond d'essais de connexion en se faisant passer pour une autre adresse.</li>
+<li><strong>Chiffré par l'orchestrateur</strong> (<code>tls</code>) — HTTPS sur le port 443 (réglable), avec le certificat émis par la CA interne. Le port 5000 ne sert plus que les <strong>machines</strong> qui ne connaissent pas encore notre CA : enrôlement d'un nœud, média virtuel de l'iLO, sonde keepalived, demande d'appairage. Tout le reste y est redirigé vers HTTPS (lecture) ou refusé (écriture).</li>
+<li><strong>Derrière un reverse proxy</strong> — le proxy chiffre et relaie. Les en-têtes <code>X-Forwarded-*</code> sont alors crus : ne choisissez ce mode que si le proxy est le <strong>seul</strong> chemin vers l'orchestrateur, sinon n'importe qui peut choisir l'adresse qu'il prétend avoir.</li>
+</ul>
+<div class="wiki-note"><strong>Le navigateur affichera un avertissement en mode tls</strong> tant que la CA interne n'est pas installée sur les postes : aucun système ne la connaît d'office. Le bouton <strong>Télécharger le certificat de l'autorité</strong> (Réglages → Système → Sécurité, section <em>Autorité de certification interne</em>) le fournit ; être connecté suffit, aucun droit de réglage n'est exigé. Installez-le comme <strong>autorité de confiance</strong>, puis vérifiez que l'empreinte SHA-256 affichée par le système est celle de l'onglet. Il ne contient aucun secret : la clé de l'autorité ne quitte jamais le contrôleur.</div>
+<p>Si le chiffrement est demandé mais ne peut pas démarrer (port occupé, certificat illisible, dépendance absente), l'orchestrateur <strong>repasse en HTTP complet</strong> pour rester joignable, et le dit par une alerte d'erreur. Un redémarrage n'y change rien tant que la cause demeure.</p>
+<p><strong>L'IP virtuelle de haute disponibilité est inscrite dans le certificat</strong> automatiquement : un navigateur qui vise la VIP la trouve dans le certificat, sur l'actif comme sur le standby après bascule.</p>
+
+<h2>Échéance des certificats</h2>
+<p>Les certificats du plan de contrôle ont une durée de vie : environ deux ans et trois mois pour le contrôleur et les nœuds, dix ans pour l'autorité. À l'échéance, le contrôleur ne peut plus piloter le nœud concerné — ou plus aucun nœud, si c'est son propre certificat qui expire. Réglages → Système → Sécurité affiche chaque échéance, en orange à l'approche, en rouge dans les cinq derniers jours.</p>
+<ul>
+<li><strong>Alertes</strong> : une à <strong>J-30</strong>, une à <strong>J-10</strong>, puis <strong>en continu</strong> (toutes les heures) à partir de <strong>J-5</strong> et au-delà de l'échéance, jusqu'au renouvellement. Celles du contrôleur et de l'autorité sont inscrites au journal de sécurité.</li>
+<li><strong>Nœud</strong> : bouton <strong>Renouveler</strong> dans le tableau des nœuds. L'agent garde sa clé et reçoit un certificat neuf ; il redémarre quelques secondes pour le charger, les conteneurs ne sont pas touchés. Le renouvellement fonctionne <strong>aussi sur un certificat déjà expiré</strong>.</li>
+<li><strong>Contrôleur</strong> : bouton <strong>Renouveler le certificat du contrôleur</strong>. Même clé, mêmes adresses : rien à refaire sur les nœuds, et les écoutes chiffrées servent le nouveau certificat immédiatement.</li>
+<li><strong>Autorité</strong> : elle ne se renouvelle pas, elle se <strong>réémet</strong> — ce qui invalide tous les certificats émis : chaque nœud est alors à re-migrer, et le standby à ré-appairer.</li>
+</ul>
+
+<h2>Jetons d'API</h2>
+<p>Réglages → Général → <strong>Jetons d'API</strong>. Un jeton donne accès à l'API <strong>sous l'identité d'un compte, avec les habilitations de ce compte</strong> — il ne porte aucun droit propre. Pour un accès en lecture seule, créez d'abord un compte en lecture seule, puis un jeton pour lui.</p>
+<ul>
+<li>Le jeton (<code>bobi_…</code>) n'est affiché <strong>qu'une fois</strong>, à la création. Seule son empreinte est conservée : perdu, il ne se récupère pas — on en crée un autre et on révoque l'ancien.</li>
+<li>La révocation est immédiate. Création et révocation sont inscrites au journal de sécurité ; la dernière utilisation (date et adresse) est affichée pour chaque jeton.</li>
+<li>Il se présente dans l'en-tête <code>Authorization: Bearer bobi_…</code> (ou <code>X-API-Token</code>).</li>
+<li>Il voyage comme un mot de passe : en mode web <code>http</code>, il passe en clair.</li>
+<li>Sur le contrôleur, la même gestion existe en ligne de commande : <code>./venv/bin/python tools/jeton_api.py lister | creer &lt;compte&gt; [libellé] | revoquer &lt;id&gt;</code>.</li>
+</ul>
+
+<h2>Serveur MCP (agents IA)</h2>
+<p><code>tools/mcp_bobi.py</code> expose l'orchestrateur à un agent compatible MCP (Claude Code, par exemple) par sept outils de <strong>lecture</strong> : nœuds, santé des nœuds, conteneurs, alertes, topologie, réseaux 2110 et PTP. Il ne peut rien écrire, par construction : son seul transport n'émet que des GET, et seuls ces sept chemins sont atteignables.</p>
+<p>Il s'authentifie par un jeton d'API (ci-dessus), donc avec les droits d'un compte — de préférence un compte en lecture seule dédié. L'enregistrement se fait par un humain, sur la machine de l'agent :</p>
+<pre>claude mcp add bobi --env BOBI_URL=http://&lt;contrôleur&gt;:5000 \
+  --env BOBI_TOKEN='bobi_…' \
+  -- /opt/bobistudio/venv/bin/python /opt/bobistudio/tools/mcp_bobi.py</pre>
+<p>En mode web <code>tls</code>, visez l'écoute HTTPS et indiquez la CA interne : <code>BOBI_URL=https://&lt;contrôleur&gt;:443</code> et <code>BOBI_CA=/chemin/vers/ca.crt</code>. Le serveur ne suit <strong>jamais</strong> une redirection : sur le port 5000 d'un orchestrateur en tls, il s'arrête en nommant l'adresse HTTPS à viser, plutôt que de renvoyer le jeton une seconde fois.</p>
+</template>
+
+<template id="wiki-art-haute-dispo">
+<p class="meta">Contenu chargé depuis <code>HA.md</code> — <span class="wiki-doc-mtime" data-doc="ha">…</span></p>
+<div class="wiki-doc-content" data-doc="ha">Chargement…</div>
+</template>
+
+<template id="wiki-art-agent-noeud">
+<p class="meta">Contenu chargé depuis <code>NODE_AGENT.md</code> — <span class="wiki-doc-mtime" data-doc="node-agent">…</span></p>
+<div class="wiki-doc-content" data-doc="node-agent">Chargement…</div>
+</template>
+
+<template id="wiki-art-licences-tierces">
+<p class="meta">Contenu chargé depuis <code>THIRD-PARTY-NOTICES.md</code> — <span class="wiki-doc-mtime" data-doc="third-party">…</span></p>
+<div class="wiki-doc-content" data-doc="third-party">Chargement…</div>
+</template>
+
 <!-- ════════════════════════════════════════════════════════════════════════
      WIKI SCRIPT
      ══════════════════════════════════════════════════════════════════════ -->
@@ -1809,6 +2055,9 @@ const CORE_ARTICLES = [
   { id: 'mxl-format',           title: 'MXL (bus shm) & format vidéo', cat: 'infra' },
   { id: 'jeux-instructions',    title: 'Jeux d\'instructions CPU (deux variantes)', cat: 'infra' },
   { id: 'rdma-replication',     title: 'Réplication RDMA & agrégation de ports', cat: 'infra' },
+  { id: 'agent-noeud',          title: 'Agent-nœud (contrat et sécurité)', cat: 'infra' },
+  { id: 'base-medias',          title: 'Base des médias et bibliothèque', cat: 'medias' },
+  { id: 'medias-proxys-edition', title: 'Proxys de lecture et éditeur d\'image', cat: 'medias' },
   { id: 'projets-raz',          title: 'Projets & RAZ',               cat: 'operations' },
   { id: 'hot-input',            title: 'Changement de source à chaud', cat: 'operations' },
   { id: 'recette',              title: 'Recette : suivi de campagne',  cat: 'operations' },
@@ -1818,9 +2067,12 @@ const CORE_ARTICLES = [
   { id: 'dev-plugin',           title: 'Écrire un plugin',            cat: 'dev' },
   { id: 'dev-service',          title: 'Écrire un service',           cat: 'dev' },
   { id: 'dev-contribuer',       title: 'Contribuer',                  cat: 'dev' },
+  { id: 'securite-acces',       title: 'Sécurité et accès (mode web, jetons, MCP)', cat: 'operations' },
+  { id: 'haute-dispo',          title: 'Haute disponibilité (paire de contrôleurs)', cat: 'operations' },
   { id: 'mises-a-jour-page',    title: 'Page Mises à jour',           cat: 'operations' },
   { id: 'mises-a-jour',         title: 'Liste des évolutions',        cat: 'about' },
   { id: 'obtenir-aide',         title: 'Obtenir de l\'aide',          cat: 'about' },
+  { id: 'licences-tierces',     title: 'Licences des composants tiers', cat: 'about' },
 ];
 
 const CATEGORIES = [

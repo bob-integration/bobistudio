@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+{# SPDX-License-Identifier: GPL-3.0-or-later
+   FENÊTRE DÉTACHÉE d'un plugin (2e écran) : sa console montée seule, avec `ctx.window` = la vue
+   demandée. Mécanisme d'ORCHESTRATEUR, comme la page publique : rien ici ne connaît un plugin ; le
+   plugin déclare les vues qu'il sait servir seules (`ui.windows`) et l'orchestrateur refuse les autres
+   plutôt que d'ouvrir une fenêtre qui monterait l'interface entière. #}
+{% block title %}{{ title }}{% endblock %}
+{% block head %}
+<style>
+  #mon-tab, #mon-panel { display: none !important; }   /* le monitoring global reste dans la fenêtre principale */
+  #contenu { padding: var(--space-3, 0.75rem) max(16px, var(--space-4, 1rem)); }
+  .pw-souci { padding: 24px; color: var(--danger, #f4a08a); font-family: var(--font-mono, monospace); }
+</style>
+{% endblock %}
+{% block content %}
+<div id="pw_hote" class="pw-hote"></div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  "use strict";
+  var TYPE = {{ type | tojson }}, VMID = {{ vmid | tojson }}, VIEW = {{ view | tojson }}, VER = {{ version | tojson }};
+  var qs = "?vmid=" + VMID + (VER ? "&v=" + encodeURIComponent(VER) : "");
+  var hote = document.getElementById("pw_hote");
+  function souci(m) { hote.innerHTML = '<p class="pw-souci"></p>'; hote.firstChild.textContent = m; }
+  function toast(m) { if (window.showToast) window.showToast(m); else console.warn(m); }
+  fetch("/api/plugins/" + TYPE + "/ui/html" + qs)
+    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+    .then(function (html) {
+      hote.innerHTML = html;
+      var css = document.createElement("link");
+      css.rel = "stylesheet"; css.href = "/api/plugins/" + TYPE + "/ui/css" + qs;
+      document.head.appendChild(css);
+      var s = document.createElement("script");
+      s.src = "/api/plugins/" + TYPE + "/ui/js" + qs;
+      s.onload = function () {
+        var P = (window.MXLPlugins || {})[TYPE];
+        if (!P || !P.mount) { souci(window.t("section.mount_error")); return; }
+        P.mount(hote.firstElementChild || hote, VMID, { toast: toast, type: TYPE, window: VIEW });
+      };
+      s.onerror = function () { souci(window.t("section.mount_error")); };
+      document.body.appendChild(s);
+    })
+    .catch(function (e) { souci(window.t("section.fragment_missing") + " " + e.message); });
+})();
+</script>
+{% endblock %}

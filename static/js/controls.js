@@ -4,224 +4,41 @@
  * déplacer la duplication au lieu de la supprimer — cinq rotatifs privés, c'est précisément ce
  * qu'on corrige. Le dessin vit donc ici, à côté du style, et les plugins l'appellent.
  *
- * Chargé par layout.html sur toutes les pages, comme controls.css.
+ * Chargé par layout.html sur toutes les pages, comme controls.css, APRÈS le moteur
+ * (`bobi-controls.js`, objet `BobiControls`) auquel les rotatifs délèguent.
  * Inventaire vivant : Réglages → Contrôles.
  */
 window.MXLControls = (function () {
-  /* Tracé d'un rotatif. `kind` = la variante (arc|needle|collar|thick|gate), que chaque classe
-   * `.ctl-knob--*` déclare dans la propriété --ctl-knob-draw. `v01` = valeur ramenée à 0..1.
+  /* ROTATIF — le tracé, la variante, le bouton ↺ et le geste vivent dans le MOTEUR du catalogue
+   * (`static/js/bobi-controls.js`, objet `BobiControls`), chargé juste avant ce fichier. Jusqu'au
+   * 2026-10-13 il en existait deux implémentations — celle-ci et celle de BobiControls — qui
+   * divergeaient à chaque amélioration (le cran magnétique avait été codé deux fois). Il n'en
+   * reste qu'une ; les fonctions ci-dessous gardent leur NOM et leur CONTRAT pour les plugins.
    *
-   * `ouvert` ne concerne que `gate` : l'état de son témoin central. Il était dessiné ALLUMÉ en
-   * dur, donc la variante ne pouvait afficher que la moitié de ce qu'elle promet — « régler et
-   * couper au même endroit », avec un témoin qui ne disait jamais « coupé ». `undefined` garde
-   * le comportement précédent : aucun appelant existant ne change. */
-  function knobSvg(kind, v01, def01, ouvert) {
-    const R = 26, C = 32, a0 = 135, a1 = 405;
-    const v = Math.max(0, Math.min(1, v01 || 0));
-    const ang = a0 + (a1 - a0) * v;
-    const pt = (d, r) => [C + r * Math.cos(d * Math.PI / 180), C + r * Math.sin(d * Math.PI / 180)];
-    const arc = (r, f, t, cls, w) => {
-      const p0 = pt(f, r), p1 = pt(t, r);
-      return '<path class="' + cls + '" stroke-width="' + w + '" stroke-linecap="round" d="M' +
-        p0[0].toFixed(1) + ' ' + p0[1].toFixed(1) + ' A' + r + ' ' + r + ' 0 ' +
-        ((t - f) > 180 ? 1 : 0) + ' 1 ' + p1[0].toFixed(1) + ' ' + p1[1].toFixed(1) + '"/>';
-    };
-    let g = '';
-    if (kind === 'needle') {
-      const p = pt(ang, R - 4);
-      g = '<circle class="ctl-knob-body" cx="' + C + '" cy="' + C + '" r="' + (R - 3) + '" stroke-width="1"/>' +
-          '<line class="ctl-knob-ptr" stroke-width="2" stroke-linecap="round" x1="' + C + '" y1="' + C +
-          '" x2="' + p[0].toFixed(1) + '" y2="' + p[1].toFixed(1) + '"/>';
-    } else if (kind === 'collar') {
-      for (let i = 0; i < 12; i++) {
-        const d = a0 + (a1 - a0) * i / 11, q = pt(d, R - 2), lit = (i / 11) <= v;
-        g += '<circle class="ctl-knob-seg' + (lit ? (i >= 10 ? ' on hot' : ' on') : '') + '" cx="' +
-             q[0].toFixed(1) + '" cy="' + q[1].toFixed(1) + '" r="2.6"/>';
-      }
-      g += '<circle class="ctl-knob-body" cx="' + C + '" cy="' + C + '" r="' + (R - 10) + '" stroke-width="1"/>';
-    } else if (kind === 'thick') {
-      g = arc(R - 2, a0, a1, 'ctl-knob-track', 6) + arc(R - 2, a0, ang, 'ctl-knob-fill', 6);
-    } else {                                   /* arc (défaut) et gate */
-      g = arc(R, a0, a1, 'ctl-knob-track', 3) + arc(R, a0, ang, 'ctl-knob-fill', 3);
-      if (kind === 'gate') {
-        g += '<circle class="ctl-knob-seg' + (ouvert === false ? '' : ' on') +
-             '" cx="' + C + '" cy="' + C + '" r="7"/>';
-      } else {
-        for (let i = 0; i <= 10; i++) {
-          const d = a0 + (a1 - a0) * i / 10, p = pt(d, R - 6), q = pt(d, R - 9);
-          g += '<line class="ctl-knob-tick' + ((i / 10) <= v ? ' on' : '') + '" stroke-width="1.5" x1="' +
-               p[0].toFixed(1) + '" y1="' + p[1].toFixed(1) + '" x2="' + q[0].toFixed(1) + '" y2="' +
-               q[1].toFixed(1) + '"/>';
-        }
-      }
-    }
-    /* Repère de VALEUR PAR DÉFAUT : un trait sur l'arc, plus long que les graduations pour ne pas
-     * s'y confondre. Il répond à deux questions d'un coup d'œil — où est le défaut, et y suis-je :
-     * quand la valeur courante l'atteint, le trait prend l'accent. Sans lui, l'opérateur ne peut
-     * savoir qu'il a modifié un réglage qu'en le remettant à zéro pour comparer. */
-    if (def01 != null && kind !== 'needle') {
-      const d = a0 + (a1 - a0) * Math.max(0, Math.min(1, def01));
-      const p0 = pt(d, R + 4), p1 = pt(d, R - 7);
-      const dessus = Math.abs(def01 - v) < 0.005;
-      g += '<line class="ctl-knob-def' + (dessus ? ' on' : '') + '" stroke-width="2" ' +
-           'stroke-linecap="round" x1="' + p0[0].toFixed(1) + '" y1="' + p0[1].toFixed(1) +
-           '" x2="' + p1[0].toFixed(1) + '" y2="' + p1[1].toFixed(1) + '"/>';
-    }
-    return '<svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">' + g + '</svg>';
-  }
-
-  /* Variante déclarée sur l'élément (lue dans --ctl-knob-draw), 'arc' à défaut. Le plugin n'a donc
-   * pas à répéter le nom du tracé dans son JS : il pose la classe, le style dit le reste. */
-  function knobKind(el) {
-    try {
-      return (getComputedStyle(el).getPropertyValue('--ctl-knob-draw') || '').trim() || 'arc';
-    } catch (e) {
-      return 'arc';
-    }
-  }
-
-  /* Pose le bouton de remise à zéro sur tout rotatif qui n'en a pas encore, sous `racine`.
-   *
-   * Le catalogue partageait le style et le tracé, mais pas la STRUCTURE : chaque plugin devait
-   * réécrire le même balisage, donc pouvait l'oublier — et l'a oublié. Le bouton est désormais
-   * POSÉ par le catalogue, et il ne suppose rien de la façon dont le plugin remet à zéro : il
-   * émet un évènement `ctl-knob-reset` sur le rotatif, que le plugin écoute.
-   *
-   * Idempotent : appelable après chaque rendu, il ne double jamais le bouton. */
-  function attachKnobs(racine, libelle) {
-    (racine || document).querySelectorAll('.ctl-knob').forEach(function (knob) {
-      if (knob.querySelector('.ctl-knob-reset')) return;
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'ctl-knob-reset';
-      b.tabIndex = -1;
-      b.textContent = '↺';
-      b.title = libelle || 'Remettre à la valeur par défaut';
-      b.setAttribute('aria-label', b.title);
-      b.addEventListener('click', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        knob.dispatchEvent(new CustomEvent('ctl-knob-reset', { bubbles: true }));
-      });
-      knob.appendChild(b);
-    });
-  }
-
-
-  /* Le GESTE du rotatif — pointeur, molette et clavier.
-   *
-   * Le catalogue partageait le tracé et le style, pas la manipulation : chaque plugin réécrivait
-   * les mêmes trois gestionnaires, donc chacun pouvait en oublier un. Et c'est ce qui arrivait —
-   * le clavier était systématiquement le sacrifié, sur des cadrans pourtant annoncés
-   * `role="slider"` : accessibles de nom, inertes au doigt levé.
-   *
-   * Le rotatif se décrit ENTIÈREMENT par ses attributs, et ce fichier fait le reste :
+   * Contrat déclaratif (inchangé) :
    *     <span class="ctl-knob ctl-knob--arc"
    *           data-min data-max data-step data-val [data-def] [data-unit]>
-   *       <button class="ctl-knob-hit" role="slider">…</button>
+   *       <… class="ctl-knob-hit" role="slider">…</…>
    *       <span class="ctl-knob-val">…</span>
    *     </span>
-   * À chaque changement, le rotatif émet `ctl-knob-input` (detail.value) — le catalogue ne sait
-   * pas ce que la valeur COMMANDE, et n'a pas à le savoir. Idempotent : appelable après chaque
-   * rendu sans jamais doubler un écouteur.
-   *
-   * Le pas fin (Maj) vaut 5 crans, la page 10, Entrée/Espace ramène au défaut. La sensibilité du
-   * glisser est rapportée à l'ÉTENDUE (course utile ≈ 160 px) et non au pas : un rotatif de 0 à 1
-   * et un rotatif de 10 à 120 se manipulent alors avec le même mouvement de la main. */
+   * → `ctl-knob-input` (detail.value) à chaque valeur, `knob._ctlPose(v, mode)`, `data-val` tenu
+   * à jour, `ctl-knob-reset` pour la remise au défaut. Options AJOUTÉES, toutes facultatives :
+   * `data-scale="log|db"`, `data-fine` (pas du réglage fin ; sans lui, Maj ralentit sans affiner),
+   * `data-zero`, `data-detent="0"`, `data-push` (+ `data-gate`) pour le poussoir intégré
+   * (`ctl-knob-gate`, detail.on). Cran magnétique au défaut (`data-def`) actif d'office.
+   * Clavier : flèches, PgUp/PgDn, Début/Fin, Entrée = défaut, Espace = défaut ou poussoir,
+   * Maj = réglage fin (au clavier, Maj faisait des pas ×5 : inversé pour s'aligner sur le glisser). */
+  const E = () => window.BobiControls;
+  function knobSvg(kind, v01, def01, ouvert, zero01) { return E().knobSvg(kind, v01, def01, ouvert, zero01); }
+  /* Variante déclarée sur l'élément, 'arc' à défaut (contrat historique). */
+  function knobKind(el) { return E().knobKind(el) || 'arc'; }
+  /* Pose le ↺ sur tout rotatif qui n'en a pas, sous `racine`. Idempotent. */
+  function attachKnobs(racine, libelle) {
+    (racine || document).querySelectorAll('.ctl-knob').forEach(function (knob) { E().ensureKnobReset(knob, libelle); });
+  }
+  /* Le geste du rotatif — pointeur, molette, clavier, poussoir, cran. Idempotent. */
   function attachKnobGestures(racine, libelleReset) {
-    attachKnobs(racine, libelleReset);
-    (racine || document).querySelectorAll('.ctl-knob').forEach(function (knob) {
-      if (knob._ctlGestes) return;
-      knob._ctlGestes = true;
-      const hit = knob.querySelector('.ctl-knob-hit');
-      if (!hit) return;
-      const nb = (a, d) => { const n = parseFloat(knob.dataset[a]); return isNaN(n) ? d : n; };
-      const min = () => nb('min', 0), max = () => nb('max', 100), step = () => nb('step', 1) || 1;
-      const val = () => nb('val', min());
-      const dec = () => { const s = String(step()); const i = s.indexOf('.'); return i < 0 ? 0 : s.length - i - 1; };
-
-      function pose(v, emettre) {
-        const mn = min(), mx = max(), st = step();
-        v = Math.max(mn, Math.min(mx, Math.round(v / st) * st));
-        v = parseFloat(v.toFixed(dec()));
-        /* Trois modes, et il en manquait un :
-         *   undefined → pose et ÉMET (le geste de l'opérateur) ;
-         *   false     → pose sans émettre, mais s'arrête si la valeur n'a pas bougé ;
-         *   'force'   → redessine même à valeur égale, ET émet ;
-         *   'muet'    → redessine même à valeur égale, SANS émettre.
-         *
-         * ⚠ « MUET » CORRIGE UN ALLER-RETOUR VICIEUX. Un plugin qui change un attribut LU par
-         * le tracé (`data-gate`, `data-def`, `data-unit`, les bornes) doit redessiner sans
-         * avoir changé la valeur — donc 'force', qui émettait. L'émission était alors reçue
-         * comme un geste de l'opérateur, et le plugin défaisait ce qu'il venait de faire : sur
-         * la sélection de ligne du scope, l'éteindre la rallumait aussitôt. */
-        if (v === val() && emettre !== 'force' && emettre !== 'muet') return v;
-        knob.dataset.val = v;
-        const def = knob.dataset.def == null ? null : (nb('def', mn) - mn) / ((mx - mn) || 1);
-        /* `data-gate="0"` éteint le témoin d'un rotatif `--gate`. Attribut et non classe : le
-         * tracé est réécrit à chaque pose, une classe posée sur le <circle> ne survivrait pas. */
-        hit.innerHTML = knobSvg(knobKind(knob), (v - mn) / ((mx - mn) || 1), def,
-                                knob.dataset.gate !== '0');
-        hit.setAttribute('aria-valuenow', v);
-        hit.setAttribute('aria-valuetext', v + (knob.dataset.unit || ''));
-        const lbl = knob.querySelector('.ctl-knob-val');
-        if (lbl) lbl.textContent = v + (knob.dataset.unit || '');
-        if (emettre !== false && emettre !== 'muet') {
-          knob.dispatchEvent(new CustomEvent('ctl-knob-input', { bubbles: true, detail: { value: v } }));
-        }
-        return v;
-      }
-      /* Le plugin repositionne sans réémettre par `pose(v, false)`, et REDESSINE sans réémettre
-       * par `pose(v, 'muet')` — à employer après avoir changé un attribut que le tracé lit. */
-      knob._ctlPose = pose;
-
-      let drag = null;
-      hit.addEventListener('pointerdown', function (e) {
-        if (e.button !== undefined && e.button !== 0) return;
-        e.preventDefault();
-        drag = { y: e.clientY, v0: val(), vpp: ((max() - min()) || 1) / 160 };
-        /* Les DEUX gestes indispensables : la capture (le doigt sort du cadran en permanence) et
-         * le focus explicite — le preventDefault qui empêche la sélection de texte empêche aussi
-         * le clic de donner le focus, et sans focus il n'y a ni anneau ni bouton de remise à
-         * zéro. Le rotatif paraît alors mort alors qu'il répond. */
-        try { hit.setPointerCapture(e.pointerId); } catch (_) {}
-        hit.focus();
-      });
-      hit.addEventListener('pointermove', function (e) {
-        if (!drag) return;
-        pose(drag.v0 + (drag.y - e.clientY) * drag.vpp * (e.shiftKey ? 0.25 : 1));
-      });
-      const fin = function (e) {
-        if (!drag) return;
-        try { hit.releasePointerCapture(e.pointerId); } catch (_) {}
-        drag = null;
-      };
-      hit.addEventListener('pointerup', fin);
-      hit.addEventListener('pointercancel', fin);
-      hit.addEventListener('wheel', function (e) {
-        e.preventDefault();
-        pose(val() + (e.deltaY < 0 ? 1 : -1) * step() * (e.shiftKey ? 5 : 1));
-      }, { passive: false });
-      hit.addEventListener('keydown', function (e) {
-        const st = step(), gros = e.shiftKey ? st * 5 : st;
-        let v = val(), traite = true;
-        switch (e.key) {
-          case 'ArrowUp': case 'ArrowRight': v += gros; break;
-          case 'ArrowDown': case 'ArrowLeft': v -= gros; break;
-          case 'PageUp': v += st * 10; break;
-          case 'PageDown': v -= st * 10; break;
-          case 'Home': v = min(); break;
-          case 'End': v = max(); break;
-          case 'Enter': case ' ': v = nb('def', v); break;
-          default: traite = false;
-        }
-        if (!traite) return;
-        e.preventDefault();
-        e.stopPropagation();      /* ne pas laisser la page interpréter la flèche à son tour */
-        pose(v);
-      });
-      knob.addEventListener('ctl-knob-reset', function () { pose(nb('def', val())); });
-    });
+    (racine || document).querySelectorAll('.ctl-knob').forEach(function (knob) { E().adoptKnob(knob, libelleReset); });
   }
 
   /* Pictos de disposition (16×16, `currentColor`) — aligner, dimensionner, distribuer, copier.

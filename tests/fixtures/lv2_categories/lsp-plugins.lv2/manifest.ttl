@@ -1,0 +1,10 @@
+@prefix lv2:        <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs:       <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ui:         <http://lv2plug.in/ns/extensions/ui#> .
+@prefix plug:       <http://lsp-plug.in/plugins/lv2/> .
+@prefix plug_ui:    <http://lsp-plug.in/ui/lv2/> .
+
+plug:loud_comp_mono
+	a lv2:Plugin ;
+	lv2:binary <lsp-plugins-lv2.so> ;
+	rdfs:seeAlso <loud_comp_mono.ttl> .

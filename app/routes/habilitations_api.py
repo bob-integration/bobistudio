@@ -81,6 +81,8 @@ def api_habilitation_creer():
     db_habilitation_upsert(rid, label=(d.get("label") or rid).strip(), permissions=perms,
                            global_access=bool(d.get("global_access")), builtin=False)
     auth.recharger_habilitations()
+    from ..security_log import habilitation_creee
+    habilitation_creee(rid, perms)
     return jsonify({"status": "ok", "habilitation": _vue(db_habilitation_get(rid))})
 
 
@@ -97,6 +99,9 @@ def api_habilitation_modifier(rid):
         return jsonify({"error": "le rôle administrateur n'est pas modifiable : il doit rester "
                                  "capable de rouvrir les droits qu'on vient de retirer"}), 400
     d = request.json or {}
+    # Photographie AVANT modification : le journal de sécurité publie l'ÉCART d'autorisations,
+    # qui se relit, et non l'état final, qui ne se relit pas.
+    perms_avant = list(h.get("permissions") or ())
     perms = None
     if "permissions" in d:
         perms = _permissions_propres(d.get("permissions"))
@@ -108,6 +113,9 @@ def api_habilitation_modifier(rid):
         permissions=perms,
         global_access=bool(d["global_access"]) if "global_access" in d else None)
     auth.recharger_habilitations()
+    from ..security_log import habilitation_modifiee
+    habilitation_modifiee(rid, perms_avant,
+                          (db_habilitation_get(rid) or {}).get("permissions") or ())
     return jsonify({"status": "ok", "habilitation": _vue(db_habilitation_get(rid))})
 
 
@@ -127,6 +135,8 @@ def api_habilitation_supprimer(rid):
                                  "changez-les de rôle avant de la supprimer" % n}), 400
     db_habilitation_supprimer(rid)
     auth.recharger_habilitations()
+    from ..security_log import habilitation_supprimee
+    habilitation_supprimee(rid)
     return jsonify({"status": "ok"})
 
 
@@ -141,4 +151,6 @@ def api_habilitation_reinitialiser(rid):
                            permissions=sorted(auth.ROLES_DEFAUT[rid]),
                            global_access=rid in auth.GLOBAL_ACCESS_DEFAUT)
     auth.recharger_habilitations()
+    from ..security_log import habilitation_reinitialisee
+    habilitation_reinitialisee(rid)
     return jsonify({"status": "ok", "habilitation": _vue(db_habilitation_get(rid))})

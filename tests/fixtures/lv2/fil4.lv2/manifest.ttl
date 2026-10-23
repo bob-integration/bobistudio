@@ -1,0 +1,16 @@
+# Test fixture: x42-eq (fil4) as shipped by Debian x42-plugins, its UI entries left out. Turtle only — no binary:
+# lilv lists and describes a plugin without loading its code (tests/verif_console_plugin_ui.py).
+@prefix lv2:    <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+
+@prefix fil4: <http://gareus.org/oss/lv2/fil4#> .
+
+fil4:mono
+	a lv2:Plugin ;
+	lv2:binary <fil4.so>  ;
+	rdfs:seeAlso <fil4.ttl> .
+
+fil4:stereo
+	a lv2:Plugin ;
+	lv2:binary <fil4.so>  ;
+	rdfs:seeAlso <fil4.ttl> .

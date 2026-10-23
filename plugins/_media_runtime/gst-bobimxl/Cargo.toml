@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 BOBI SAS, France
+#
+# Plugin GStreamer « bobimxl » : chemin temps réel du player sur le bus MXL.
+# Cf. docs/chantiers/PLAYER_NATIF.md. S'appuie sur la crate `mxl` du SDK MXL (Apache-2.0),
+# compilée contre les en-têtes amont et chargeant NOTRE libmxl patchée (planar) à l'exécution.
+
+[package]
+name = "gst-bobimxl"
+version = "0.3.2"
+edition = "2024"
+rust-version = "1.87"
+license = "GPL-3.0-or-later"
+description = "Bobi.Studio : sortie playout genlockée sur le bus MXL"
+publish = false
+
+[lib]
+name = "gstbobimxl"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+gstreamer = "0.24.4"
+gstreamer-base = "0.24.4"
+gstreamer-video = { version = "0.24.5", features = ["v1_24"] }
+gstreamer-audio = "0.24.4"
+# Chemin fixé par l'étage de construction (Dockerfile) et par l'environnement de dev : le source
+# MXL v1.1.0 est cloné en /src/mxl. `mxl-not-built` : on NE recompile PAS libmxl, on charge celle
+# de l'image (patchée planar) via libloading.
+mxl = { path = "/src/mxl/rust/mxl", features = ["mxl-not-built"] }
+serde_json = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

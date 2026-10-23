@@ -26,6 +26,12 @@ simplement « périmés » chez leurs consommateurs, et la réplication RDMA n'y
   · nœud 2110 (`REALTIME = TAI`) : son horloge système est disciplinée par le client PTP interne de
     libmtl, qui y écrit du TAI. `tai_offset` y vaut 0, donc `CLOCK_TAI = REALTIME = TAI` — juste,
     mais par un chemin où `REALTIME` ment sur l'UTC (l'affichage civil est compensé ailleurs).
+    ⚠ Le prix (dl360-1, 2026-10-16) : ce phc2sys n'a pas d'option d'offset, et son servo s'est
+    emballé (tick 10122, +1,22 %, REALTIME à +396 s). Le retirer est PRÉVU — l'horloge système
+    passerait alors sous chrony comme les autres (`_horloge_systeme_libre`, `appliquer_ntp_tai` le
+    gèrent déjà) — mais libmtl n'asservit la FRÉQUENCE du PHC que si phc2sys est actif : essayé le
+    2026-10-17, le verrou PTP strict est perdu (0,5–2,7 µs au lieu de ~30 ns). Il faut d'abord un
+    patch libmtl qui découple les deux (cf. `docker_driver`, bloc ENGINE_PHC2SYS).
   · nœud compute (`REALTIME = UTC`) : chrony tient l'UTC et `leapsectz`/`leapseclist` pose
     `tai_offset = 37`, donc `CLOCK_TAI = UTC + 37 = TAI`.
 Les deux donnent le bon `CLOCK_TAI` par des routes opposées. On EXPOSE donc la convention détectée
@@ -35,6 +41,7 @@ plutôt que d'en imposer une : ce qu'on vérifie, c'est le résultat.
 import json
 import logging
 import os
+import shlex
 import socket
 from collections import deque
 from urllib.parse import urlparse
@@ -438,8 +445,8 @@ def _etat_source(node, serveur):
 def appliquer_ntp(serveurs):
     """Pose la source NTP commune sur tous les nœuds qui tiennent leur heure de chrony.
 
-    Ni le nœud 2110 (son heure vient du grandmaster via libmtl — lui donner des serveurs NTP
-    n'aurait aucun effet et brouillerait la lecture), ni le contrôleur (il n'est pas un nœud du
+    Ni le nœud 2110 dont l'horloge système est tenue par un servo PTP (phc2sys noyau, ou celui de
+    libmtl si `ENGINE_PHC2SYS` est réactivé) — deux maîtres pour une horloge —, ni le contrôleur (il n'est pas un nœud du
     cluster ; sa configuration relève de l'hôte). Vérifie APRÈS coup que chaque nœud a bien
     sélectionné une source, au lieu de supposer que l'écriture a suffi."""
     from .database import db_get_nodes
@@ -449,7 +456,7 @@ def appliquer_ntp(serveurs):
                         for x in (serveurs or "").replace(",", " ").split() if x.strip())
     res = []
     for node in db_get_nodes():
-        if _a_un_moteur_2110(node):
+        if _a_un_moteur_2110(node) and not _horloge_systeme_libre(node):
             res.append({"node": node.get("name"), "ok": None, "msg": "nœud 2110 : heure du grandmaster, non concerné"})
             continue
         cmd = ("mkdir -p /etc/chrony/sources.d && printf '%s\n' > /etc/chrony/sources.d/bobi.sources "
@@ -529,14 +536,29 @@ def _discipline(node):
             if interne and phc:
                 d["par"], d["detail"] = "moteur 2110", "libmtl : esclave PTPv2 sur le port DPDK, et discipline CLOCK_REALTIME depuis le PHC"
             elif interne:
-                d["par"], d["detail"] = "moteur 2110 (partiel)", ("libmtl est esclave PTPv2 mais NE discipline PAS l'horloge système "
-                                                                 "(ENGINE_PHC2SYS absent) — elle court libre")
+                # Le média suit le PHC, l'horloge système est laissée à chrony. ⚠ Tant que libmtl
+                # n'est pas patché, ce mode coûte l'asservissement en FRÉQUENCE du PHC (gaté sur
+                # phc2sys dans mt_ptp.c) : verrou strict perdu, cf. docker_driver.
+                d["par"], d["detail"] = "moteur 2110 (média) + chrony", ("libmtl est esclave PTPv2 et lit le PHC ; il ne touche PAS "
+                                                                       "l'horloge système (ENGINE_PHC2SYS absent), qui revient à chrony "
+                                                                       "— servo de fréquence du PHC inactif dans ce mode")
             else:
                 d["par"], d["detail"] = "aucun", "moteur présent mais son client PTP interne est désactivé (ENGINE_PTP)"
     except Exception as e:
         log.debug("clocks discipline nœud %s: %s", nid, e)
     _disc_cache[nid] = (time.time(), d)
     return d
+
+
+def _horloge_systeme_libre(node):
+    """L'horloge SYSTÈME d'un nœud 2110 est-elle à donner à chrony ?
+
+    Oui quand le moteur fait son PTP dans libmtl SANS discipliner CLOCK_REALTIME (`ENGINE_PTP=libmtl`
+    sans `ENGINE_PHC2SYS`) — le défaut d'un nœud full-PF DPDK depuis le 2026-10-16. Non dès qu'un
+    servo la tient déjà (phc2sys de libmtl, ou phc2sys noyau en AF-XDP) : chrony en ferait deux.
+    Inconnu (env illisible) → non : on ne pose pas un second maître sur un doute."""
+    d = _discipline(node)
+    return bool(d.get("par") == "moteur 2110 (média) + chrony" and d.get("phc2sys") is False)
 
 
 def _derive(pts):
@@ -1052,6 +1074,16 @@ def resume():
             "detail": d["problemes"][:3]}
 
 
+# Remise au nominal du `tick` noyau et de la fréquence (adjtimex ADJ_TICK|ADJ_FREQUENCY), en
+# Python sur le nœud (l'outil `adjtimex` n'y est pas installé). tick nominal = 1e6 / USER_HZ
+# (`sysconf(2)` = _SC_CLK_TCK sous Linux ; pas de guillemet : la commande est entre apostrophes).
+_RAZ_TICK_SH = (
+    "python3 -c 'import ctypes,os; L=ctypes.c_long; "
+    "b=(ctypes.c_char*256)(); m=ctypes.c_uint.from_buffer(b,0); m.value=0x4002; "
+    "L.from_buffer(b,16).value=0; L.from_buffer(b,88).value=round(1e6/os.sysconf(2)); "
+    "ctypes.CDLL(None,use_errno=True).adjtimex(b)' || true; ")
+
+
 def appliquer_ntp_tai(node_id):
     """Met un nœud sur la grille : chrony + `leapseclist` (qui pose et MAINTIENT le `tai_offset`,
     secondes intercalaires comprises), en remplacement de timesyncd qui ne le pose jamais.
@@ -1069,7 +1101,10 @@ def appliquer_ntp_tai(node_id):
     e = _sonder(node)
     if not e.get("joignable"):
         return False, "nœud injoignable : %s" % e.get("erreur", ""), None, None
-    if e.get("convention") == "realtime_tai":
+    # Un REALTIME en TAI n'est un refus que s'il est TENU : moteur relancé sans ENGINE_PHC2SYS, le
+    # nœud garde l'heure TAI que libmtl y avait laissée, mais plus personne ne la discipline —
+    # c'est précisément le nœud à donner à chrony (qui la ramènera à l'UTC d'un pas).
+    if e.get("convention") == "realtime_tai" and not _horloge_systeme_libre(node):
         return False, ("ce nœud tient son heure du client PTP interne du moteur 2110 "
                        "(REALTIME = TAI) — installer chrony ferait battre deux disciplines "
                        "sur la même horloge"), None, None
@@ -1087,11 +1122,26 @@ def appliquer_ntp_tai(node_id):
             "# secondes intercalaires le noyau garde tai_offset=0 et CLOCK_TAI vaut l'UTC,\n"
             "# soit %d s d'écart avec la grille du cluster.\n"
             "leapseclist /usr/share/zoneinfo/leap-seconds.list\n" % TAI_UTC_OFFSET_S)
+    # Sources du site (réglage `ntp_servers`, celles qu'`appliquer_ntp` pose ailleurs) : sans elles
+    # chrony part sur le pool Debian, autre référence que le reste du cluster.
+    from . import settings as _s
+    sources = "\n".join("server %s iburst" % x.strip()
+                         for x in (_s.get("ntp_servers") or "").replace(",", " ").split() if x.strip())
     cmd = ("set -e; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq chrony >/dev/null 2>&1; "
-           "mkdir -p /etc/chrony/conf.d; "
-           "cat > /etc/chrony/conf.d/bobi-tai.conf <<'EOF'\n%s\nEOF\n"
-           "systemctl disable --now systemd-timesyncd >/dev/null 2>&1 || true; "
-           "systemctl restart chrony; echo applique" % conf)
+           "mkdir -p /etc/chrony/conf.d /etc/chrony/sources.d; "
+           "cat > /etc/chrony/conf.d/bobi-tai.conf <<'EOF'\n" + conf + "\nEOF\n")
+    if sources:
+        cmd += "printf '%%s\\n' %s > /etc/chrony/sources.d/bobi.sources; " % shlex.quote(sources)
+    cmd += "systemctl disable --now systemd-timesyncd >/dev/null 2>&1 || true; "
+    # `tick` et fréquence remis au NOMINAL avant de démarrer chrony : un servo précédent peut les
+    # avoir laissés n'importe où — dl360-1, 2026-10-16 : tick 10122 (+1,22 %) laissé par le phc2sys
+    # de libmtl. chrony repartirait de là.
+    # ⚠ ARRÊTER chrony et effacer son driftfile D'ABORD : `apt-get install` le DÉMARRE déjà, il lit
+    # le tick faussé comme sa fréquence initiale et l'écrit dans le driftfile en s'arrêtant — un
+    # simple `restart` après la remise au nominal la ré-appliquait (vécu le 2026-10-17 sur dl360-1 :
+    # driftfile -12188 ppm, tick revenu à 10122).
+    cmd += ("systemctl stop chrony >/dev/null 2>&1 || true; rm -f /var/lib/chrony/chrony.drift; "
+            + _RAZ_TICK_SH + "systemctl start chrony; echo applique")
     rc, out, err = node_driver.host_exec(node, cmd, timeout=180)
     if rc != 0 or "applique" not in (out or ""):
         return False, (err or out or "échec")[:200], None, None

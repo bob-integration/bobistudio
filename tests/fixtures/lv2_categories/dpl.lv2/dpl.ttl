@@ -1,0 +1,284 @@
+@prefix atom:  <http://lv2plug.in/ns/ext/atom#> .
+@prefix doap:  <http://usefulinc.com/ns/doap#> .
+@prefix foaf:  <http://xmlns.com/foaf/0.1/> .
+@prefix idpy:  <http://harrisonconsoles.com/lv2/inlinedisplay#> .
+@prefix kx:    <http://kxstudio.sf.net/ns/lv2ext/external-ui#> .
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix mod:   <http://moddevices.com/ns/mod#> .
+@prefix opts:  <http://lv2plug.in/ns/ext/options#> .
+@prefix pprop: <http://lv2plug.in/ns/ext/port-props#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rsz:   <http://lv2plug.in/ns/ext/resize-port#> .
+@prefix state: <http://lv2plug.in/ns/ext/state#> .
+@prefix ui:    <http://lv2plug.in/ns/extensions/ui#> .
+@prefix units: <http://lv2plug.in/ns/extensions/units#> .
+@prefix urid:  <http://lv2plug.in/ns/ext/urid#> .
+
+idpy:queue_draw a lv2:Feature .
+idpy:interface a lv2:ExtensionData .
+
+@prefix dpl: <http://gareus.org/oss/lv2/dpl#> .
+
+<http://gareus.org/rgareus#me>
+	a foaf:Person ;
+	foaf:name "Robin Gareus" ;
+	foaf:mbox <mailto:robin@gareus.org> ;
+	foaf:homepage <http://gareus.org/> .
+
+dpl:ui_gl
+	a ui:X11UI ;
+	lv2:requiredFeature ui:idleInterface; lv2:extensionData ui:idleInterface;
+	lv2:requiredFeature urid:map ;
+  .
+
+
+dpl:mono
+	a lv2:Plugin, doap:Project, lv2:LimiterPlugin;
+	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
+	doap:maintainer <http://gareus.org/rgareus#me> ;
+	lv2:microVersion 0 ;lv2:minorVersion 1792 ;
+	doap:name "x42-dpl - Digital Peak Limiter Mono";
+	lv2:requiredFeature urid:map ;
+	lv2:extensionData idpy:interface, state:interface ;
+	lv2:optionalFeature lv2:hardRTCapable, idpy:queue_draw, opts:options ;
+	opts:supportedOption <http://lv2plug.in/ns/extensions/ui#scaleFactor> ;
+  ui:ui dpl:ui_gl ;
+	lv2:port [
+		a atom:AtomPort ,
+			lv2:InputPort ;
+		atom:bufferType atom:Sequence ;
+		lv2:designation lv2:control ;
+		lv2:index 0 ;
+		lv2:symbol "control" ;
+		lv2:name "control" ;
+		rdfs:comment "UI to plugin communication"
+	] , [
+		a atom:AtomPort ,
+			lv2:OutputPort ;
+		atom:bufferType atom:Sequence ;
+		lv2:designation lv2:control ;
+		lv2:index 1 ;
+		lv2:symbol "notify" ;
+		lv2:name "Notify" ;
+		rsz:minimumSize 1024;
+		rdfs:comment "Plugin to GUI communication"
+	] , [
+		a lv2:InputPort ,
+			lv2:ControlPort ;
+		lv2:index 2 ;
+		lv2:symbol "enable" ;
+		lv2:name "Enable";
+		lv2:default 1 ;
+		lv2:minimum 0 ;
+		lv2:maximum 1 ;
+		lv2:portProperty lv2:integer, lv2:toggled;
+		lv2:designation lv2:enabled;
+	] , [
+		a lv2:InputPort ,
+			lv2:ControlPort ;
+		lv2:index 3 ;
+		lv2:symbol "gain" ;
+		lv2:name "Input Gain" ;
+		lv2:default 0.0 ;
+		lv2:minimum -10.0 ;
+		lv2:maximum 30.0;
+		pprop:rangeSteps 201;
+		units:unit units:db ;
+	] , [
+		a lv2:InputPort ,
+			lv2:ControlPort ;
+		lv2:index 4 ;
+		lv2:symbol "threshold" ;
+		lv2:name "Threshold" ;
+		lv2:default -1.0 ;
+		lv2:minimum -10.0 ;
+		lv2:maximum 0.0;
+		pprop:rangeSteps 101;
+		units:unit units:db ;
+	] , [
+		a lv2:InputPort ,
+			lv2:ControlPort ;
+		lv2:index 5 ;
+		lv2:symbol "release" ;
+		lv2:name "Release Time";
+		lv2:default 0.01 ;
+		lv2:minimum 0.001 ;
+		lv2:maximum 1.0 ;
+		lv2:portProperty pprop:logarithmic;
+		pprop:rangeSteps 151;
+	] , [
+		a lv2:InputPort ,
+			lv2:ControlPort ;
+		lv2:index 6 ;
+		lv2:symbol "truepeak" ;
+		lv2:name "True Peak";
+		lv2:default 0;
+		lv2:minimum 0 ;
+		lv2:maximum 1 ;
+		lv2:portProperty lv2:integer, lv2:toggled;
+	] , [
+		a lv2:OutputPort ,
+			lv2:ControlPort ;
+		lv2:index 7 ;
+		lv2:symbol "level" ;
+		lv2:name "Signal Level" ;
+		lv2:minimum -10.0 ;
+		lv2:maximum 20.0;
+		units:unit units:db ;
+	] , [
+		a lv2:OutputPort ,
+			lv2:ControlPort ;
+		lv2:index 8 ;
+		lv2:symbol "latency" ;
+		lv2:name "Signal Latency" ;
+		lv2:minimum 0 ;
+		lv2:maximum 1024;
+		lv2:portProperty lv2:reportsLatency, lv2:integer;
+		units:unit units:frame;
+	] , [
+		a lv2:AudioPort ,
+			lv2:InputPort ;
+		lv2:index 9 ;
+		lv2:symbol "in" ;
+		lv2:name "In"
+	] , [
+		a lv2:AudioPort ,
+			lv2:OutputPort ;
+		lv2:index 10 ;
+		lv2:symbol "out" ;
+		lv2:name "Out"
+	] ;
+	rdfs:comment "Mono look-ahead digital peak limiter"
+	.
+
+dpl:stereo
+	a lv2:Plugin, doap:Project, lv2:LimiterPlugin;
+	doap:license <http://usefulinc.com/doap/licenses/gpl> ;
+	doap:maintainer <http://gareus.org/rgareus#me> ;
+	lv2:microVersion 0 ;lv2:minorVersion 1792 ;
+	doap:name "x42-dpl - Digital Peak Limiter Stereo";
+	lv2:requiredFeature urid:map ;
+	lv2:extensionData idpy:interface, state:interface ;
+	lv2:optionalFeature lv2:hardRTCapable, idpy:queue_draw, opts:options ;
+	opts:supportedOption <http://lv2plug.in/ns/extensions/ui#scaleFactor> ;
+  ui:ui dpl:ui_gl ;
+	lv2:port [
+		a atom:AtomPort ,
+			lv2:InputPort ;
+		atom:bufferType atom:Sequence ;
+		lv2:designation lv2:control ;
+		lv2:index 0 ;
+		lv2:symbol "control" ;
+		lv2:name "control" ;
+		rdfs:comment "UI to plugin communication"
+	] , [
+		a atom:AtomPort ,
+			lv2:OutputPort ;
+		atom:bufferType atom:Sequence ;
+		lv2:designation lv2:control ;
+		lv2:index 1 ;
+		lv2:symbol "notify" ;
+		lv2:name "Notify" ;
+		rsz:minimumSize 1024;
+		rdfs:comment "Plugin to GUI communication"
+	] , [
+		a lv2:InputPort ,
+			lv2:ControlPort ;
+		lv2:index 2 ;
+		lv2:symbol "enable" ;
+		lv2:name "Enable";
+		lv2:default 1 ;
+		lv2:minimum 0 ;
+		lv2:maximum 1 ;
+		lv2:portProperty lv2:integer, lv2:toggled;
+		lv2:designation lv2:enabled;
+	] , [
+		a lv2:InputPort ,
+			lv2:ControlPort ;
+		lv2:index 3 ;
+		lv2:symbol "gain" ;
+		lv2:name "Input Gain" ;
+		lv2:default 0.0 ;
+		lv2:minimum -10.0 ;
+		lv2:maximum 30.0;
+		pprop:rangeSteps 201;
+		units:unit units:db ;
+	] , [
+		a lv2:InputPort ,
+			lv2:ControlPort ;
+		lv2:index 4 ;
+		lv2:symbol "threshold" ;
+		lv2:name "Threshold" ;
+		lv2:default -1.0 ;
+		lv2:minimum -10.0 ;
+		lv2:maximum 0.0;
+		pprop:rangeSteps 101;
+		units:unit units:db ;
+	] , [
+		a lv2:InputPort ,
+			lv2:ControlPort ;
+		lv2:index 5 ;
+		lv2:symbol "release" ;
+		lv2:name "Release Time";
+		lv2:default 0.01 ;
+		lv2:minimum 0.001 ;
+		lv2:maximum 1.0 ;
+		lv2:portProperty pprop:logarithmic;
+		pprop:rangeSteps 151;
+	] , [
+		a lv2:InputPort ,
+			lv2:ControlPort ;
+		lv2:index 6 ;
+		lv2:symbol "truepeak" ;
+		lv2:name "True Peak";
+		lv2:default 0;
+		lv2:minimum 0 ;
+		lv2:maximum 1 ;
+		lv2:portProperty lv2:integer, lv2:toggled;
+	] , [
+		a lv2:OutputPort ,
+			lv2:ControlPort ;
+		lv2:index 7 ;
+		lv2:symbol "level" ;
+		lv2:name "Signal Level" ;
+		lv2:minimum -10.0 ;
+		lv2:maximum 20.0;
+		units:unit units:db ;
+	] , [
+		a lv2:OutputPort ,
+			lv2:ControlPort ;
+		lv2:index 8 ;
+		lv2:symbol "latency" ;
+		lv2:name "Signal Latency" ;
+		lv2:minimum 0 ;
+		lv2:maximum 1024;
+		lv2:portProperty lv2:reportsLatency, lv2:integer;
+		units:unit units:frame;
+	] , [
+		a lv2:AudioPort ,
+			lv2:InputPort ;
+		lv2:index 9 ;
+		lv2:symbol "inL" ;
+		lv2:name "In Left"
+	] , [
+		a lv2:AudioPort ,
+			lv2:OutputPort ;
+		lv2:index 10 ;
+		lv2:symbol "outL" ;
+		lv2:name "Out Left"
+	] , [
+		a lv2:AudioPort ,
+			lv2:InputPort ;
+		lv2:index 11 ;
+		lv2:symbol "inR" ;
+		lv2:name "In Right"
+	] , [
+		a lv2:AudioPort ,
+			lv2:OutputPort ;
+		lv2:index 12 ;
+		lv2:symbol "outR" ;
+		lv2:name "Out Right"
+	] ;
+	rdfs:comment "Stereo look-ahead digital peak limiter"
+	.

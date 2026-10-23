@@ -89,7 +89,54 @@ def inject_i18n():
     lang = _i18n.current_lang()
     return {"lang": lang,
             "languages": _i18n.LANGUAGES,
-            "js_catalog": _i18n.js_catalog(lang)}
+            "js_catalog": _i18n.js_catalog(lang),
+            "i18n_js_url": "/i18n/%s.%s.js" % (lang, _i18n.js_catalog_script(lang)[1])}
+
+
+@app.route("/i18n/<lang>.<ver>.js")
+def i18n_catalog_js(lang, ver):
+    """Catalogue JS en fichier (cf. `i18n.js_catalog_script`). Adresse = empreinte du contenu :
+    gardé un an par le navigateur. Une version qui n'est plus la courante (page ouverte avant une
+    retouche de traduction) reçoit le catalogue COURANT, sans cache. Public, comme /login : ce
+    ne sont que des libellés d'interface."""
+    from flask import Response
+    if lang not in _i18n.LANG_CODES:
+        return Response("// unknown language\n", status=404, mimetype="application/javascript")
+    body, cur = _i18n.js_catalog_script(lang)
+    resp = Response(body, mimetype="application/javascript")
+    resp.headers["Cache-Control"] = ("public, max-age=31536000, immutable" if ver == cur else "no-cache")
+    return resp
+
+
+# ─── Compression des réponses (2026-10-18) ─────────────────────────────────────────────────────
+# Rien n'était compressé : 400 Ko de liste d'alertes toutes les 5 s, ~1 Mo par page. Mesuré sur les
+# vraies réponses : niveau 1 = 400 → 49 Ko en 2 ms (alertes), 37 → 5 Ko en 0,5 ms (résumé Câbles) ;
+# le niveau 6 gagne peu de taille pour 2 à 3 fois le temps. Sous 2 Ko, l'en-tête coûte plus qu'il ne
+# rapporte. Jamais sur un flux (SSE, téléchargement) ni sur ce qui est déjà encodé (proxy de plugin).
+_GZIP_TYPES = {"text/html", "application/json", "application/javascript", "text/javascript", "text/css",
+               "text/plain"}
+_GZIP_MIN, _GZIP_MAX = 2048, 32 * 1024 * 1024
+
+
+@app.after_request
+def _gzip_response(resp):
+    import gzip
+    from flask import request
+    try:
+        if (resp.direct_passthrough or resp.is_streamed or resp.status_code < 200 or resp.status_code >= 300
+                or resp.status_code == 204 or "Content-Encoding" in resp.headers
+                or resp.mimetype not in _GZIP_TYPES
+                or "gzip" not in (request.headers.get("Accept-Encoding") or "").lower()):
+            return resp
+        data = resp.get_data()
+        if not _GZIP_MIN <= len(data) <= _GZIP_MAX:
+            return resp
+        resp.set_data(gzip.compress(data, 1))
+        resp.headers["Content-Encoding"] = "gzip"
+        resp.vary.add("Accept-Encoding")
+    except Exception:
+        pass
+    return resp
 
 # Secret key persistée en DB (générée au premier démarrage)
 def _ensure_secret_key():
@@ -132,10 +179,18 @@ def _cookie_secure_enabled():
         return env.strip().lower() not in ("0", "false", "no", "")
     val = db_get_setting("cookie_secure", False)
     return val in (True, 1, "1", "true", "True", "yes", "on")
-app.config["SESSION_COOKIE_SECURE"] = _cookie_secure_enabled()
-# Le reverse-proxy doit transmettre X-Forwarded-Proto pour que Flask sache que c'est HTTPS
-from werkzeug.middleware.proxy_fix import ProxyFix
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+# Mode d'exposition du port web (cf. app/web_mode.py), figé ICI, au démarrage : il décide si
+# l'on croit les en-têtes `X-Forwarded-*`, et le cookie ci-dessous en dépend — d'où l'ordre.
+from app import web_mode
+web_mode.appliquer()
+app.config["SESSION_COOKIE_SECURE"] = _cookie_secure_enabled() or web_mode.cookie_secure_impose()
+# `ProxyFix` n'est plus monté inconditionnellement. Il l'a été jusqu'au 2026-10-10, avec
+# `x_for` à 1 par défaut : `remote_addr` était réécrit depuis `X-Forwarded-For`, un en-tête que
+# le CLIENT choisit, sur des installations dont AUCUNE n'avait de proxy. Le plafond d'essais de
+# connexion se contournait en changeant d'en-tête à chaque essai (mesuré : 0 blocage sur 25 au
+# lieu de 15), et le journal de sécurité enregistrait l'adresse choisie par l'attaquant. Le
+# middleware ne monte `ProxyFix` qu'en mode `proxy` — cf. tests/verif_mode_web.py.
+app.wsgi_app = web_mode.EnTetesTransmis(app.wsgi_app)
 
 app.register_blueprint(bp)
 # ⚠ SEUL IMPORT DE SERVICE AU NIVEAU MODULE — donc le seul qui puisse empêcher le
@@ -246,13 +301,17 @@ def inject_plugins():
     return {"plugin_sections": plugins.sections(),
             "plugin_config_schemas": plugins.config_schemas(),
             "plugin_versions": {t: plugins.versions(t) for t in plugins.REGISTRY},
-            "plugin_video_format": {t: m.get("video_format", True)
+            "plugin_video_format": {t: plugins.needs_video_format(m)
                                     for t, m in plugins.REGISTRY.items()},
             # Défaut 'docker' — cf. plugins.runtime() : le backend LXC est retiré, un manifeste
             # sans clé `runtime` décrit un type Docker comme tous les autres.
             "plugin_runtimes": {t: (m.get("runtime") or "docker")
                                 for t, m in plugins.REGISTRY.items()},
             "plugin_image_kinds": {t: plugins.image_kind(t) for t in plugins.REGISTRY},
+            # Type MÉDIA (image bobi-media ou volume média) : créable seulement sur un nœud à
+            # capacité `media` — la palette grise les autres, l'API les refuse (routes.creer).
+            "plugin_needs_media": {t: plugins.image_variant(t) == "media" or plugins.wants_media_volume(t)
+                                   for t in plugins.REGISTRY},
             # Profil de ressources DÉCLARÉ (resources.cores/memory/pin/gpu…) : c'est ce que
             # `docker_compute` appliquera au `docker run`. Exposé à la palette de création pour
             # annoncer le coût AVANT de créer. Un type sans bloc `resources` renvoie {} — l'UI doit
@@ -389,6 +448,9 @@ def _rdma_reconcile_periodique():
             # Passe AVANT reconcilier_cables, qui recrée ce qui manque : les deux prédicats sont
             # le même (le câblage dérivé), donc ils ne peuvent pas se contredire.
             rdma.purger_liens_sans_consommateur()
+            # Conteneurs de réplication dont le lien n'existe plus (vus orphelins deux passes de
+            # suite, à 10 min d'écart) : un orphelin actif tient un port et une connexion RDMA.
+            rdma.ramasser_orphelins_periodique()
             # Câble inter-nœud sans lien de réplication : on le provisionne. `_apply_wire` le fait
             # déjà à la pose, mais tous les câbles ne passent pas par lui (composeur multiview,
             # restauration de snapshot, câblages antérieurs à la fonctionnalité) — ceux-là
@@ -735,6 +797,18 @@ def _start_skaarhoj():
     except Exception as e:
         log.error(f"Erreur démarrage Skaarhoj : {e}")
 
+def _start_control_surface():
+    """Surfaces de contrôle de la console audio (services/control_surface) — contrôleur ACTIF seul :
+    deux contrôleurs pilotant la même surface se disputeraient ses moteurs. `start()` re-vérifie
+    `ha.is_active()` et le réglage `control_surface_enabled`."""
+    try:
+        from services import control_surface
+        control_surface.start()
+    except ImportError:
+        log.info("ControlSurface: service not installed")
+    except Exception as e:
+        log.error(f"ControlSurface: start failed: {e}")
+
 def _start_nmos():
     """Démarre NMOS si activé en settings."""
     try:
@@ -877,10 +951,20 @@ if __name__ == "__main__":
     # boote passif — uniquement l'app Flask (UI lecture seule) — pour éviter le split-brain (deux
     # NMOS qui annoncent les mêmes ressources, deux loops qui redémarrent les conteneurs, etc.).
     from app import ha as _ha
+    # Marqueur de contrôleur (`bobi://controller/`, cf. app/ca.py) posé AVANT tout appel sortant,
+    # dans les deux rôles : les agents-nœuds ≥ 0.23.0 vérifient le RÔLE du certificat client, et
+    # un certificat d'avant le 2026-10-10 n'en porte pas. Même clé : rien ne change pour les autres.
+    # L'IP virtuelle HA y est inscrite au même moment (cf. app/vip.py:synchroniser_certificat).
+    try:
+        from app import vip as _vip_c
+        if _vip_c.synchroniser_certificat():
+            log.warning("mTLS : certificat du contrôleur ré-émis (marqueur de rôle / IP virtuelle)")
+    except Exception as e:
+        log.error("mTLS : mise à jour du certificat du contrôleur impossible : %s", e)
     if _ha.is_active():
         # mTLS : la CA interne est auto-initialisée au 1er boot du contrôleur ACTIF (install neuve).
-        # Idempotent (no-op si déjà présente). Le standby ne génère PAS de CA (il reçoit TLS_DIR par
-        # réplication out-of-band, cf. app/ca.py) — sinon deux CA divergentes casseraient la confiance.
+        # Idempotent (no-op si déjà présente). Le standby ne génère PAS de CA (il reçoit celle de
+        # l'actif à l'appairage, cf. app/ha_appairage.py) — deux CA divergentes casseraient la confiance.
         # Une fois la CA présente, ca_available()=True active le mTLS : conteneurs recréés en HTTPS,
         # nœuds migrés à chaud via /api/nodes/<id>/tls/rotate.
         try:
@@ -891,6 +975,13 @@ if __name__ == "__main__":
         except Exception as e:
             log.error(f"mTLS: auto-init CA échouée : {e}")
         threading.Thread(target=surveillance, daemon=True).start()
+        # Échéance des certificats du plan de contrôle : alertes à J-30, J-10, puis en continu
+        # à partir de J-5 (cf. app/cert_expiry.py). Sans elle, la flotte s'arrêtait sans prévenir.
+        try:
+            from app import cert_expiry as _cert_expiry
+            _cert_expiry.demarrer()
+        except Exception as e:
+            log.error("échéance des certificats : surveillance non démarrée (%s)", e)
         # Backfill au boot (durcissement A) : provisionne les moteurs 2110_io manquants sur les nœuds
         # qui ont déjà un port média 2110 configuré. Best-effort, différé (laisse le 1er tick de
         # surveillance + les agents-nœuds remonter avant de tenter creer/deploy). Sous is_active() → un
@@ -905,6 +996,35 @@ if __name__ == "__main__":
         threading.Thread(target=_boot_backfill_engines, daemon=True).start()
         from app import monitor as _monitor
         _monitor.start_reaper()
+        # Ferme de transcodage : le répartiteur confie les jobs de la file centrale aux
+        # transcoders inscrits. Contrôleur ACTIF seul : deux répartiteurs confieraient deux fois.
+        from app import transcode_farm as _farm
+        _farm.start()
+        # Audio suit la vidéo : suit le PGM des mélangeurs et ouvre / ferme les tranches de console qui
+        # y sont associées (services/audio/afv.py, démarré par le service audio). Contrôleur ACTIF seul :
+        # deux observateurs se disputeraient les consoles. Service absent : aucune console à suivre.
+        try:
+            from services import audio as _audio
+            _audio.start()
+        except ImportError:
+            log.info("Audio: service not installed")
+        except Exception as e:
+            log.error(f"Audio: start failed: {e}")
+        # Groupes de lecture A/B/C… : des players ordinaires réunis sur une playlist (app/playout_groups.py).
+        # Abonné aux vues des mélangeurs de l'AFV. Contrôleur ACTIF seul : deux boucles se disputeraient les players.
+        from app import playout_groups as _playout
+        _playout.start()
+        # Lecture synchrone : des players ordinaires qui lisent ENSEMBLE, à l'image près (app/sync_groups.py).
+        # Contrôleur ACTIF seul : deux boucles enverraient chacune leurs ancres datées aux mêmes players.
+        from app import sync_groups as _syncplay
+        _syncplay.start()
+        # Journal d'exploitation : collecte des événements internes publiés par les plugins (`GET /events`,
+        # app/ops_journal_events.py). À vide tant qu'aucun plugin ne déclare `control.journal.events`.
+        from app import ops_journal_events as _opsj_ev
+        _opsj_ev.start()
+        # Base des médias : analyse périodique des volumes (clips du recorder, copies disparues).
+        from app import media_registry as _mreg
+        _mreg.start_periodic_scan()
         # Fenêtre de maintenance TX (docs/reference/TX_LAYOUTS.md étage 2) : applique les lots planifiés « à HH:MM ».
         from app import tx_maintenance as _txm
         _txm.start_scheduler()
@@ -923,9 +1043,17 @@ if __name__ == "__main__":
         # apparaît. Sans cette repasse, tolérer le pré-câblage serait un échec silencieux.
         from app import wire_format_watch as _wfw
         _wfw.start()
+        # Partages réseau (SMB/NFS) : montés sur l'orchestrateur et sur les nœuds `media`, accès
+        # par dossier. Contrôleur ACTIF seul : deux réconciliateurs se disputeraient les montages.
+        try:
+            from services import storage as _storage
+            _storage.start()
+        except Exception as e:
+            log.error(f"Erreur démarrage stockage : {e}")
         _start_emberplus()
         _start_atem()
         _start_skaarhoj()
+        _start_control_surface()
         _start_nmos()
         _start_tsl()
         _start_sap()
@@ -988,12 +1116,25 @@ if __name__ == "__main__":
     # Werkzeug (app.run). Mono-processus → les threads de fond démarrés ci-dessus (surveillance,
     # samplers, services NMOS/TSL/Ember/ATEM, reaper, réplication HA) restent uniques et intacts.
     # Fallback sur app.run si Waitress absent (env sans dépendance) pour ne pas casser le boot.
+    # Mode tls : l'écoute HTTPS démarre D'ABORD, et c'est son succès qui décide du rôle du :5000.
+    # Si elle échoue (443 occupé…), `demarrer_https` pose le repli et le :5000 redevient COMPLET —
+    # sinon sa liste blanche renverrait tout le monde vers un HTTPS mort. cf. app/web_mode.py.
+    web_mode.demarrer_https(app)
+    # Réplication HA en mTLS, sur sa propre écoute (cf. app/ha_tls.py) — dans LES DEUX rôles :
+    # l'actif y est sondé par le standby, le standby y reçoit les instantanés. Ne démarre que
+    # si ce contrôleur est appairé (certificat marqué) ; sinon la HA le dit dans Réglages.
+    from app import ha_tls
+    ha_tls.demarrer(app)
     try:
         from waitress import serve
         _durcir_waitress_accept()
         # threads : équivalent du threaded=True (iLO tient la connexion CD virtuel — lecture Range
         # de l'ISO — pendant tout l'install ~10 min ; il faut assez de threads pour ne pas bloquer).
-        serve(app, host="0.0.0.0", port=5000, threads=16)
+        # `EcouteMachines` est transparent hors mode tls ; en tls, il réduit ce port aux appelants
+        # machines et renvoie tout le reste — /login compris — vers HTTPS.
+        # recv_bytes : Waitress lit le corps par blocs de 8 Ko par défaut — l'envoi d'un média depuis
+        # le poste plafonnait à 20-38 Mo/s ; à 256 Ko, 62 Mo/s mesuré au banc (2026-10-12).
+        serve(web_mode.EcouteMachines(app), host="0.0.0.0", port=5000, threads=16, recv_bytes=262144)
     except ImportError:
         log.warning("Waitress absent — repli sur le serveur de dev Werkzeug (app.run). "
                     "Installer waitress pour la production (pip install waitress).")

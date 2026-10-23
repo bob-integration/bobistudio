@@ -594,15 +594,18 @@ def sauvegarder_projet():
     return jsonify({"status": "ok", "id": pid})
 
 @bp.route("/api/projects/<int:pid>/export", methods=["GET"])
-@require_login
+@require_project_role("viewer")
 def exporter_projet(pid):
     p = db_get_project(pid)
     if not p:
         return jsonify({"error": "projet introuvable"}), 404
     # v2 (chantier 3) : embarque aussi les VUES composées (les widgets référencent
     # instance_uuid/vmid — remappés au chargement par _remap_project_views).
+    # v3 : et la FICHE de chaque média du projet (base des médias) ; `?media=1` → archive .tar
+    # avec les fichiers eux-mêmes, lus sur les nœuds en flux.
+    from .. import media_registry as mr
     payload = {
-        "schema": "bobi.studio.project.v2",
+        "schema": "bobi.studio.project.v3",
         "name": p["name"],
         "created_at": p.get("created_at"),
         "snapshot": p.get("snapshot") or [],
@@ -610,7 +613,13 @@ def exporter_projet(pid):
                    "edit_shared": bool(v.get("edit_shared")), "layout": v.get("layout") or []}
                   for v in db_project_views(pid)],
     }
+    payload.update(mr.project_export_media(pid))
     safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in p["name"]) or f"projet-{pid}"
+    if request.args.get("media") in ("1", "true"):
+        plan = mr.project_archive_plan(pid)
+        payload["embedded"] = [it["id"] for it in plan]
+        return Response(mr.project_archive_stream(payload, plan), mimetype="application/x-tar",
+                        headers={"Content-Disposition": f'attachment; filename="{safe}.bsproj.tar"'})
     return Response(
         json.dumps(payload, indent=2, ensure_ascii=False),
         mimetype="application/json",
@@ -620,27 +629,58 @@ def exporter_projet(pid):
 @bp.route("/api/projects/import", methods=["POST"])
 @require_perm("projects.manage")
 def importer_projet():
-    # Accepte soit un upload multipart (champ "file"), soit un JSON brut.
-    raw = None
+    # Accepte soit un upload multipart (champ "file"), soit un JSON brut. Le fichier peut aussi
+    # être une ARCHIVE (.bsproj.tar, export « avec les médias ») : le projet en tête, puis les
+    # fichiers, déposés sur le nœud choisi (`node_id`) par une tâche de fond.
+    import os
+    import tarfile
+    import uuid
+    from .. import media_registry as mr
+    raw, tar_path = None, None
     if "file" in request.files:
-        try:
-            raw = json.loads(request.files["file"].read().decode("utf-8"))
-        except Exception as e:
-            return jsonify({"error": f"fichier illisible : {e}"}), 400
+        up = request.files["file"]
+        head = up.stream.read(512)
+        up.stream.seek(0)
+        if head[257:262] == b"ustar":
+            tar_path = os.path.join(os.path.dirname(os.path.abspath(mr.MEDIA_DB_PATH)),
+                                    "project-import-%s.tar" % uuid.uuid4().hex)
+            up.save(tar_path)
+            try:
+                with tarfile.open(tar_path, "r:") as tar:
+                    raw = json.loads(tar.extractfile("projet.bsproj.json").read().decode("utf-8"))
+                    has_files = any(m.name.startswith("media/") for m in tar.getmembers())
+            except Exception as e:
+                os.remove(tar_path)
+                return jsonify({"error": f"archive illisible : {e}"}), 400
+            if not has_files:
+                os.remove(tar_path)
+                tar_path = None
+            elif not (request.form.get("node_id") or "").isdigit():
+                os.remove(tar_path)
+                return jsonify({"error": "nœud de destination des médias requis"}), 400
+        else:
+            try:
+                raw = json.loads(up.read().decode("utf-8"))
+            except Exception as e:
+                return jsonify({"error": f"fichier illisible : {e}"}), 400
     else:
         raw = request.get_json(silent=True)
+    def refuse(msg):
+        if tar_path:
+            os.remove(tar_path)
+        return jsonify({"error": msg}), 400
     if not isinstance(raw, dict):
-        return jsonify({"error": "format invalide"}), 400
+        return refuse("format invalide")
 
     snapshot = raw.get("snapshot")
     if not isinstance(snapshot, list) or not snapshot:
-        return jsonify({"error": "snapshot manquant ou vide"}), 400
+        return refuse("snapshot manquant ou vide")
 
     # Nom : priorité au paramètre POST (renommage à l'import), sinon celui du fichier.
     override = (request.form.get("name") or "").strip() if request.form else ""
     name = override or (raw.get("name") or "").strip()
     if not name:
-        return jsonify({"error": "nom manquant"}), 400
+        return refuse("nom manquant")
 
     pid = db_import_project(name, snapshot)
     # Dossier média garanti dès l'import (sinon les containers du projet retomberaient
@@ -658,7 +698,25 @@ def importer_projet():
                            visibility=v.get("visibility") if v.get("visibility") in
                                       ("private", "project") else "private",
                            edit_shared=bool(v.get("edit_shared")))
-    return jsonify({"status": "ok", "id": pid, "name": name})
+    # Médias (schema v3) : les fiches entrent dans la base ; leurs copies sont retrouvées à
+    # l'analyse des nœuds, sinon ils restent HORS LIGNE avec toute leur fiche.
+    media = mr.project_import_media(pid, raw.get("media") if isinstance(raw.get("media"), list) else [],
+                                    raw.get("media_fields") if isinstance(raw.get("media_fields"), list) else [])
+    out = {"status": "ok", "id": pid, "name": name,
+           "media": {k: media[k] for k in ("new", "known", "skipped")}}
+    if tar_path:
+        threading.Thread(target=mr.project_import_archive, daemon=True, name=f"proj-import-{pid}",
+                         args=(pid, tar_path, int(request.form["node_id"]), media["ids"])).start()
+        out["media_job"] = True
+    return jsonify(out)
+
+
+@bp.route("/api/projects/<int:pid>/media_import", methods=["GET"])
+@require_project_role("viewer")
+def projet_media_import_etat(pid):
+    """Avancement du dépôt des fichiers d'une archive de projet sur son nœud."""
+    from .. import media_registry as mr
+    return jsonify(mr.project_job(pid))
 
 @bp.route("/api/projects/<int:pid>/restore_preview", methods=["GET"])
 @require_perm("projects.manage")

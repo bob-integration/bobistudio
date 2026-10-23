@@ -1,7 +1,32 @@
 # Réplication fabrics d'un flux TRANCHÉ : grains corrompus + ~12 images de retard
 
-**Statut : reproduit, isolé, non corrigé. À remonter au projet MXL (bêta).**
+**Statut au 2026-10-12 : CLOS — le défaut ne se reproduit plus.** (Statut d'origine : « reproduit,
+isolé, non corrigé ».)
 Mesuré le 2026-08-11 sur MXL `v1.1.0-beta-1` (`mxl-info` : `1.1.0-beta-1+0 g81738a15adb5`).
+
+> **2026-10-12 — mesure de clôture** (`tools/bancs/rdma_tranche/`, contenu comparé au MÊME index des
+> deux côtés, dl360-1 ↔ dell-1, `bobi-compute:0.59` = libmxl `1.1.0 g8f3f1096` + nos patches) :
+> mire `avsync` tranchée, **1997 images répliquées exactes, 0 déchirée, +4,9 ms** ; producteur de
+> banc tranché et monolithique : exacts, **+3,7 ms tous les deux** ; lot de synchro 2 : +0,4 ms.
+> Les correctifs du 2026-08-14 (curseur de tranche, `FI_FENCE`) et la bascule 1.1.0 ont fermé ce
+> chantier ; l'alerte que `services/rdma` posait sur tout flux tranché répliqué (« ~12 images »)
+> était devenue une prédiction fausse et a été retirée.
+>
+> ⚠ Ce qui reproduit, en revanche, sur TOUTES les versions (beta-1, rc1, 1.1.0), source comme
+> réplique : un index **SAUTÉ** par un producteur en retard laisse dans sa case l'image d'**un tour
+> d'anneau plus tôt — exactement 10 grains**. Muet avant 1.1.0 ; marqué `MXL_GRAIN_FLAG_INVALID`
+> depuis (filtrage côté lecteur ajouté à bobimxl le 2026-10-10). Un lecteur de TÊTE ne le voit que sur un flux tranché :
+> tête partielle → repli sur `head-1`, qui est la case sautée (27 images sur 861 en rc1, 0 en
+> monolithique). Ce n'est pas un défaut du RDMA. Le chiffre moyen de 11,75 images du 2026-08-11
+> n'a, lui, pas été reproduit avec les images de l'époque (`bobi-compute:0.24`, beta-1) sur ce banc.
+>
+> La piste « `validSlices` hérité d'une case réutilisée » (amont `b8ec4bb6`) est **réfutée** pour ce
+> symptôme : un lecteur n'atteint le grain N qu'une fois `headIndex ≥ N`, et le commit qui pose
+> `headIndex` réécrit `validSlices` (bobimxl le passe toujours explicitement) — 0 violation sur
+> 410 000 lectures non bloquantes en boucle serrée. ⚠ Et ce correctif amont, embarqué tel quel,
+> **casserait toute réplique** : la cible C++ de `mxl-fabrics-demo` ouvre le grain puis committe le
+> `grainInfo` rendu par l'ouverture, dont `validSlices` serait alors remis à 0 (amont n'a réparé
+> que la démo Rust, `8e91e6cf`).
 
 ---
 

@@ -93,7 +93,7 @@ done
 #
 # ⚠ À BUMPER À CHAQUE MODIFICATION DE CE FICHIER, sinon elle ment — et une version qui ment est
 # pire que pas de version, puisqu'on lui fait confiance pour écarter une piste.
-INSTALLEUR_VERSION="2026.09.02c"
+INSTALLEUR_VERSION="2026.10.23"
 
 # ─── Langue de l'installateur ────────────────────────────────
 #
@@ -149,6 +149,8 @@ _t() {
     lecture_vers) fr="lecture des versions disponibles…";               en="reading available versions…" ;;
     aucune_vers)  fr="aucune version étiquetée trouvée — installation de la branche « main » (développement)."
                   en="no tagged version found — installing the « main » branch (development)." ;;
+    api_muette)   fr="liste des versions INDISPONIBLE (API GitHub injoignable) — installation de la branche « main » (développement).\n       Cause la plus fréquente : le quota anonyme de GitHub, 60 requêtes par heure et par adresse IP.\n       Pour l'éviter : exporter GITHUB_TOKEN=<jeton> avant de relancer. Sinon : proxy, DNS ou coupure réseau."
+                  en="version list UNAVAILABLE (GitHub API unreachable) — installing the « main » branch (development).\n       Most common cause: GitHub's anonymous quota, 60 requests per hour per IP address.\n       To avoid it: export GITHUB_TOKEN=<token> and start again. Otherwise: proxy, DNS or network outage." ;;
     vers_dispo)   fr="  Versions disponibles :";                        en="  Available versions:" ;;
     plus_recente) fr="(la plus récente)";                               en="(most recent)" ;;
     branche_dev)  fr="main — branche de développement, non figée"
@@ -243,7 +245,16 @@ fi
 # ─── Quelles versions existent ────────────────────────────────────────────────
 # Les étiquettes du dépôt principal font foi. UNE requête à l'API GitHub (quota anonyme : 60/h,
 # largement suffisant), et un `python3` déjà exigé par ailleurs — donc pas de `jq` à installer.
+# ⚠ « je n'ai pas pu demander » et « il n'y a rien » sont deux faits DIFFÉRENTS, et le second
+# est un mensonge quand c'est le premier. L'appelant lit cette liste par `mapfile < <(…)`, donc
+# dans un SOUS-SHELL : une variable posée ici n'y survivrait pas. D'où une ligne SENTINELLE, qui
+# voyage par le même canal que les étiquettes.
+_SENTINELLE_API="__api_injoignable__"
 _etiquettes() {
+  if ! "${_curl[@]}" -o /dev/null "$API/repos/$REPO/tags?per_page=1" 2>/dev/null; then
+    echo "$_SENTINELLE_API"
+    return 0
+  fi
   "${_curl[@]}" "$API/repos/$REPO/tags?per_page=20" 2>/dev/null \
     | python3 -c 'import json,sys
 try:
@@ -258,9 +269,18 @@ _choisir_version() {
   local -a tags=()
   log "$(_t lecture_vers)"
   mapfile -t tags < <(_etiquettes)
+  if [ "${#tags[@]}" -eq 1 ] && [ "${tags[0]}" = "$_SENTINELLE_API" ]; then
+    # On N'A PAS PU demander. Le dire, et dire quoi faire : le quota anonyme de GitHub est de
+    # 60 requêtes par heure et par ADRESSE IP — c'est la cause la plus fréquente sur un site d'où
+    # plusieurs machines sortent, et un jeton la lève. L'ancien message affirmait « aucune version
+    # étiquetée trouvée » : un fait sur le dépôt, alors qu'il n'y avait qu'un silence du réseau.
+    warn "$(_t api_muette)"
+    REF="main"; return 0
+  fi
   if [ "${#tags[@]}" -eq 0 ]; then
-    # Aucune étiquette (ou API injoignable) : la branche principale reste installable. On le DIT,
-    # plutôt que d'installer « main » en laissant croire qu'une version a été choisie.
+    # Là, on a VRAIMENT demandé, et le dépôt n'a pas d'étiquette. La branche principale reste
+    # installable : on le DIT, plutôt que d'installer « main » en laissant croire qu'une version
+    # a été choisie.
     warn "$(_t aucune_vers)"
     REF="main"; return 0
   fi
@@ -317,6 +337,15 @@ SRC="$TMP/src"; mkdir -p "$SRC"
 # L'API rend le SHA exact que le dépôt principal épingle à cette étiquette : c'est LE commit
 # contre lequel la release a été construite, donc la seule réponse reproductible. Une étiquette
 # du composant serait un à-peu-près ; sa branche, pas une version du tout.
+# ⚠ LE `|| true` FINAL N'EST PAS DÉCORATIF — IL EST LA FONCTION.
+# Sous `set -euo pipefail`, l'appelant écrit `ref_sm="$(_sha_sous_module "$chemin")"` : une
+# affectation depuis une substitution de commande PREND le code de retour. Si le `curl` échoue
+# — quota anonyme épuisé (60 requêtes/heure et par IP), proxy, coupure — le pipeline échoue, la
+# fonction rend non-zéro, et `set -e` TUE LE SCRIPT SANS UN MOT, juste après « dépôt principal ✓ ».
+# Constaté chez un installateur le 2026-10-23, reproduit en rendant l'API injoignable : sortie
+# muette, code 7. Le repli sur « main » écrit à la ligne suivante n'était JAMAIS atteint — le
+# commentaire décrivait une intention que le code n'a jamais réalisée.
+# `_etiquettes` portait ce `|| true` ; celle-ci, non. C'était toute la différence.
 _sha_sous_module() {   # <chemin>
   "${_curl[@]}" "$API/repos/$REPO/contents/$1?ref=$REF" 2>/dev/null \
     | python3 -c 'import json,sys
@@ -324,7 +353,7 @@ try:
     d = json.load(sys.stdin)
     if d.get("type") == "submodule" and d.get("sha"): print(d["sha"])
 except Exception:
-    pass' 2>/dev/null
+    pass' 2>/dev/null || true
 }
 
 _recuperer() {   # <dépôt> <destination> <étiquette> [ref]

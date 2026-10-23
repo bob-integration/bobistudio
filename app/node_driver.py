@@ -16,6 +16,7 @@ Stdlib uniquement (urllib), comme `peers.py`/`updater.py`.
 
 import json
 import logging
+import os
 import threading
 import shlex
 import time
@@ -109,6 +110,16 @@ _SIGNATURES_AUTRE_CA = ("CERTIFICATE_VERIFY_FAILED", "unknown ca", "self signed 
                         "certificate verify failed")
 
 
+def _certificat_controleur_expire():
+    """True si le certificat de CE contrôleur est hors dates (lu sur disque, sans réseau)."""
+    import datetime
+    try:
+        with open(ca.paths()["ctrl_cert"], "rb") as f:
+            return ca.fin_validite(f.read()) <= datetime.datetime.now(datetime.timezone.utc)
+    except Exception:
+        return False
+
+
 def _signature_tls_en_clair(exc):
     """Vrai si l'erreur ressemble à « on a parlé TLS à un serveur en clair »."""
     t = str(exc)
@@ -141,8 +152,15 @@ def _agent_repond_en_clair(url_https, token, timeout):
         return False
 
 
+# OpenSSL X509_V_FLAG_NO_CHECK_TIME (non exposé par le module ssl) : la chaîne et la signature
+# restent vérifiées, seules les DATES de validité sont ignorées. Réservé au renouvellement d'un
+# nœud dont le certificat a DÉJÀ expiré (cf. rotate_tls) : sans lui, le contrôleur refusait de
+# parler au seul nœud qui en avait besoin, et le renouvellement était impossible.
+_X509_NO_CHECK_TIME = 0x200000
+
+
 def _request(base_url, method, path, token=None, body=None, timeout=15, tls=False,
-             bypass_breaker=False):
+             bypass_breaker=False, tolerer_expiration=False):
     """Appel HTTP(S) à l'agent. Retourne (ok, data|err_str). Jamais d'exception remontée.
     tls=True → schéma forcé en https:// + contexte mTLS (vérifie le pair CA, présente le cert
     client du contrôleur)."""
@@ -158,6 +176,8 @@ def _request(base_url, method, path, token=None, body=None, timeout=15, tls=Fals
         if url.startswith("http://"):
             url = "https://" + url[len("http://"):]
         context = ca.controller_client_context()
+        if tolerer_expiration:
+            context.verify_flags |= _X509_NO_CHECK_TIME
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Content-Type": "application/json"}
     if token:
@@ -194,6 +214,22 @@ def _request(base_url, method, path, token=None, body=None, timeout=15, tls=Fals
                         "ré-enrôler le nœud, ou effacer `tls_ready`/`node_cert` pour repasser en "
                         "clair. Aucune rétrogradation automatique n'est faite : un pair capable de "
                         "répondre en clair pourrait sinon forcer l'abandon du canal chiffré.")
+        elif tls and "certificate has expired" in str(e):
+            # AVANT le test « autre autorité » : la vérification échoue aussi, mais pour une
+            # raison de DATE. Les confondre envoyait ré-enrôler un nœud qu'il suffit de renouveler
+            # (constaté par tests/verif_expiration_certificats.py, 2026-10-11).
+            _msg = ("le certificat mTLS du NŒUD a EXPIRÉ : le contrôleur refuse de lui parler. "
+                    "L'agent est vivant. Remède : Réglages → Système → Sécurité → Nœuds → "
+                    "Renouveler, qui fonctionne sur un certificat déjà expiré.")
+        elif tls and ("alert certificate expired" in str(e).lower()
+                      or _certificat_controleur_expire()):
+            # L'inverse : c'est le NŒUD qui refuse le certificat du CONTRÔLEUR, hors dates.
+            # En TLS 1.3, ce refus arrive APRÈS la poignée de main : selon le moment, on lit
+            # l'alerte, ou seulement une connexion coupée. On ne parie donc pas sur le message
+            # du pair — on regarde NOTRE certificat, qu'on a sous la main.
+            _msg = ("le nœud refuse le certificat du CONTRÔLEUR, qui a EXPIRÉ — aucun nœud n'est "
+                    "plus pilotable. Remède : Réglages → Système → Sécurité → Renouveler le "
+                    "certificat du contrôleur.")
         elif tls and _signature_autre_ca(e):
             # Le nœud parle TLS, mais sous une autorité que nous ne reconnaissons pas. NE PAS
             # repasser en clair ici : le canal chiffré existe, c'est la confiance qui manque.
@@ -215,10 +251,12 @@ _derniere_alerte_tls = {}      # node_id -> monotone
 _ALERTE_TLS_PERIODE_S = 600.0  # une alerte toutes les 10 min par nœud : le sampler passe toutes
 
 
-def _call(node, method, path, body=None, timeout=15, bypass_breaker=False):
+def _call(node, method, path, body=None, timeout=15, bypass_breaker=False,
+          tolerer_expiration=False):
     ok, data = _request(_agent_base(node), method, path,
                         token=node.get("agent_token"), body=body, timeout=timeout,
-                        tls=_tls_on(node), bypass_breaker=bypass_breaker)
+                        tls=_tls_on(node), bypass_breaker=bypass_breaker,
+                        tolerer_expiration=tolerer_expiration)
     if not ok and isinstance(data, str) and (_MARQUE_TLS_CLAIR in data or _MARQUE_AUTRE_CA in data):
         cle = "alert.node.tls_en_clair" if _MARQUE_TLS_CLAIR in data else "alert.node.tls_autre_ca"
         data = data.replace(_MARQUE_TLS_CLAIR, "").replace(_MARQUE_AUTRE_CA, "")
@@ -386,6 +424,18 @@ def list_containers(node):
 #                          cert/clé/CA sur disque et REBASCULE son listener en HTTPS sur le
 #                          MÊME port. Retourne {"ok": true}. Repli HTTP garanti si cert
 #                          absent/invalide (le nœud reste joignable).
+def cert_expire(node):
+    """True si le certificat mTLS de ce nœud (tel qu'enregistré à sa signature) est expiré."""
+    import datetime
+    pem = (node or {}).get("node_cert")
+    if not pem or not (node or {}).get("tls_ready"):
+        return False
+    try:
+        return ca.fin_validite(pem) <= datetime.datetime.now(datetime.timezone.utc)
+    except Exception:
+        return False
+
+
 def rotate_tls(node):
     """Migre un nœud DÉJÀ enrôlé (HTTP+token) vers HTTPS mTLS, via le canal HTTP+token actuel.
     2 temps : (a) l'agent génère clé+CSR (/v1/tls/init), (b) le contrôleur signe et pousse
@@ -397,8 +447,15 @@ def rotate_tls(node):
         return False, "CA interne non initialisée (tools/ca-init.py)"
     nid = node["id"]
     name = node.get("name") or f"#{nid}"
+    # RENOUVELLEMENT d'un certificat DÉJÀ expiré : le contrôleur refuserait la poignée de main
+    # (le nœud présente un certificat hors dates). On tolère les dates, et elles seules, pour
+    # ces deux appels — la chaîne reste vérifiée. Le disjoncteur, ouvert par les échecs
+    # précédents, ne doit pas bloquer le geste qui répare.
+    expire = cert_expire(node)
     # (a) l'agent génère sa clé + CSR localement (canal HTTP+token, le nœud est encore en HTTP).
-    ok, data = _call(node, "POST", "/v1/tls/init", body={}, timeout=30)
+    #     Clé déjà présente → elle est RÉUTILISÉE : renouveler ne change que l'échéance.
+    ok, data = _call(node, "POST", "/v1/tls/init", body={}, timeout=30,
+                     bypass_breaker=expire, tolerer_expiration=expire)
     if not ok or not isinstance(data, dict) or not data.get("csr"):
         db_add_alert("alert.node.mtls_init_echec", "warning", node_id=node.get("id"), kind="node",
                      params={"n": name, "data": str(data)})
@@ -415,13 +472,20 @@ def rotate_tls(node):
     cert_str = cert_pem.decode()
     ca_str = ca.ca_cert_pem().decode()
     ok, data = _call(node, "POST", "/v1/tls/install",
-                     body={"cert": cert_str, "ca_cert": ca_str}, timeout=30)
+                     body={"cert": cert_str, "ca_cert": ca_str}, timeout=30,
+                     bypass_breaker=expire, tolerer_expiration=expire)
     if not ok:
         db_add_alert("alert.node.mtls_install_echec", "warning", node_id=node.get("id"), kind="node",
                      params={"n": name, "data": str(data)})
         return False, f"tls/install : {data}"
     # (c) l'agent écoute désormais en HTTPS → node_driver dial en HTTPS à partir d'ici.
     db_update_node(nid, tls_ready=1, node_cert=cert_str)
+    if node.get("tls_ready"):
+        # Déjà en HTTPS : c'était un RENOUVELLEMENT. Le dire comme tel, avec la nouvelle échéance
+        # — « migré en HTTPS » ferait croire que le nœud était en clair.
+        db_add_alert("alert.node.mtls_renouvele", "info", node_id=node.get("id"), kind="node",
+                     params={"n": name, "date": ca.fin_validite(cert_pem).date().isoformat()})
+        return True, "renouvelé"
     db_add_alert("alert.node.mtls_migre", "info", node_id=node.get("id"), kind="node",
                  params={"n": name})
     return True, "ok"
@@ -471,6 +535,344 @@ def host_exec(node, cmd, input_data=None, timeout=300):
     if not ok:
         return (255, "", str(data))
     return (int(data.get("rc", 1)), data.get("stdout", ""), data.get("stderr", ""))
+
+
+# ─── Transfert de fichiers nœud → nœud (agent ≥ 0.24.0, port 9101) ──────────────────────────
+TRANSFER_PORT = 9101
+TRANSFER_MIN_AGENT = (0, 24, 0)
+
+
+def transfer_capable(node):
+    """Le nœud sert et reçoit des transferts directs : agent ≥ 0.24.0 ET TLS actif (le port de
+    transfert n'est ouvert qu'en mTLS)."""
+    try:
+        v = tuple(int(x) for x in str((node or {}).get("agent_version") or "0").split(".")[:3])
+    except ValueError:
+        return False
+    return v >= TRANSFER_MIN_AGENT and _tls_on(node) and has_agent(node)
+
+
+def transfer_grant(src_node, rel, size, ttl_s=12 * 3600):
+    """Autorisation de lire UN fichier chez `src_node`, signée avec SON jeton d'agent (il la vérifie
+    seul) : chemin, taille, échéance. Inutilisable pour un autre fichier ou après échéance."""
+    import base64
+    import hashlib
+    import hmac
+    import json as _json
+    body = base64.urlsafe_b64encode(_json.dumps({"p": rel, "sz": int(size) if size is not None else None,
+                                                 "exp": int(time.time() + ttl_s)}).encode()).decode().rstrip("=")
+    sig = hmac.new(str(src_node.get("agent_token") or "").encode(), body.encode(), hashlib.sha256).hexdigest()
+    return body + "." + sig
+
+
+def transfer_fetch(dest_node, tid, src_node, src_rel, dest_rel, size=None, mtime=None, rate=None):
+    """Demande au nœud CIBLE de télécharger `src_rel` chez le nœud SOURCE (réseau de contrôle)."""
+    from urllib.parse import quote
+    url = "https://%s:%d/v1/transfer/read?g=%s" % (src_node.get("host"), TRANSFER_PORT,
+                                                   quote(transfer_grant(src_node, src_rel, size)))
+    return _call(dest_node, "POST", "/v1/host/transfer/fetch",
+                 body={"id": tid, "url": url, "dest": dest_rel, "size": size, "mtime": mtime, "rate": rate}, timeout=20)
+
+
+UPLOAD_MIN_AGENT = (0, 25, 0)
+
+
+def _agent_at_least(node, v):
+    try:
+        have = tuple(int(x) for x in str((node or {}).get("agent_version") or "0").split(".")[:3])
+    except ValueError:
+        return False
+    return have >= v
+
+
+def upload_capable(node):
+    """Le nœud accepte un fichier déposé par le contrôleur (agent ≥ 0.25.0)."""
+    return _agent_at_least(node, UPLOAD_MIN_AGENT) and has_agent(node)
+
+
+def upload_file(node, dest_rel, fileobj, size, mtime=None, timeout=6 * 3600):
+    """Dépose `size` octets lus dans `fileobj` à `dest_rel` (relatif au volume média) sur le nœud.
+    Jamais par-dessus un fichier existant. Retourne (ok, msg)."""
+    import requests
+    from urllib.parse import quote
+    url = "%s/v1/host/transfer/upload?dest=%s%s" % (_agent_base(node).rstrip("/"), quote(dest_rel),
+                                                   "&mtime=%d" % int(mtime) if mtime else "")
+    try:
+        r = requests.post(url, data=fileobj, timeout=timeout,
+                          headers={TOKEN_HEADER: node.get("agent_token") or "",
+                                   "Content-Type": "application/octet-stream", "Content-Length": str(int(size))},
+                          **_requests_tls(node))
+        j = r.json() if r.headers.get("Content-Type", "").startswith("application/json") else {}
+        return (r.status_code == 200 and bool(j.get("ok"))), (j.get("error") or r.text[:300])
+    except Exception as e:                                                 # noqa: BLE001
+        return False, str(e)
+
+
+# ─── Envoi reprenable par morceaux (agent ≥ 0.26.0) — fichier du poste d'un utilisateur ───────
+# Contrat : NODE_AGENT.md § 4.3 quater. Ces appels rendent (code HTTP, corps JSON) et non (ok, msg) :
+# un refus 409 PORTE l'information utile (`partial_size` réelle, `exists`), il n'est pas une panne.
+# Code 0 = agent injoignable.
+RESUMABLE_UPLOAD_MIN_AGENT = (0, 26, 0)
+
+
+def upload_resumable(node):
+    """Le nœud accepte un envoi par morceaux à un décalage (agent ≥ 0.26.0)."""
+    return _agent_at_least(node, RESUMABLE_UPLOAD_MIN_AGENT) and has_agent(node)
+
+
+def _upload_req(node, method, path, params=None, json_body=None, data=None, headers=None, timeout=30):
+    import requests
+    h = {TOKEN_HEADER: node.get("agent_token") or ""}
+    h.update(headers or {})
+    try:
+        r = requests.request(method, _agent_base(node).rstrip("/") + path, params=params, json=json_body,
+                             data=data, headers=h, timeout=timeout, **_requests_tls(node))
+    except Exception as e:                                                 # noqa: BLE001
+        return 0, {"ok": False, "error": "agent injoignable : %s" % e}
+    try:
+        j = r.json()
+    except ValueError:
+        j = {"ok": False, "error": r.text[:300] or "HTTP %d" % r.status_code}
+    return r.status_code, j if isinstance(j, dict) else {"ok": False, "error": "réponse inattendue"}
+
+
+def upload_state(node, dest_rel):
+    """→ (code, {partial_size, exists, free})."""
+    return _upload_req(node, "GET", "/v1/host/transfer/upload/state", params={"dest": dest_rel}, timeout=20)
+
+
+def upload_chunk(node, dest_rel, offset, total, fileobj, length, timeout=600):
+    """Envoie `length` octets lus dans `fileobj` (lu par blocs, jamais chargé d'un coup) au décalage
+    `offset`. → (code, {partial_size…})."""
+    return _upload_req(node, "POST", "/v1/host/transfer/upload",
+                       params={"dest": dest_rel, "offset": int(offset), "total": int(total)},
+                       data=_SizedReader(fileobj, length),
+                       headers={"Content-Type": "application/octet-stream", "Content-Length": str(int(length))},
+                       timeout=timeout)
+
+
+def upload_finish(node, dest_rel, size, mtime=None):
+    return _upload_req(node, "POST", "/v1/host/transfer/upload/finish",
+                       json_body={"dest": dest_rel, "size": int(size), "mtime": mtime}, timeout=60)
+
+
+def upload_abort(node, dest_rel):
+    return _upload_req(node, "POST", "/v1/host/transfer/upload/abort", json_body={"dest": dest_rel}, timeout=20)
+
+
+class _SizedReader:
+    """Flux de longueur CONNUE pour `requests` : sans `__len__`, il partirait en
+    Transfer-Encoding chunked, que l'agent (HTTP/1.0, lit Content-Length octets) écrirait tel quel."""
+
+    def __init__(self, f, length):
+        self._f, self._left = f, int(length)
+
+    def __len__(self):
+        return self._left
+
+    def read(self, n=-1):
+        if self._left <= 0:
+            return b""
+        n = self._left if n is None or n < 0 else min(n, self._left)
+        b = self._f.read(n)
+        self._left -= len(b)
+        return b
+
+
+def transfer_open(src_node, rel, size, timeout=60):
+    """Lecture d'un fichier du volume média d'un nœud PAR LE CONTRÔLEUR, sur le port de transfert
+    (son certificat y est accepté) : réponse `requests` en flux, ou None."""
+    import requests
+    from urllib.parse import quote
+    from . import ca
+    cert, key, cafile = ca.controller_client_files()
+    url = "https://%s:%d/v1/transfer/read?g=%s" % (src_node.get("host"), TRANSFER_PORT,
+                                                   quote(transfer_grant(src_node, rel, size)))
+    r = requests.get(url, stream=True, timeout=timeout, cert=(cert, key), verify=cafile)
+    if r.status_code != 200:
+        r.close()
+        return None
+    return r
+
+
+# ─── Lecture par PLAGES sur des connexions gardées (agent ≥ 0.27.0) ──────────────────────────
+# Le survol d'une vignette et le lecteur de la fiche Infos lisent le proxy par petites plages, une
+# par recherche. Avant 0.27.0, chaque plage ouvrait une connexion mTLS neuve (l'agent ne
+# connaissait que `bytes=a-`, la fin était tenue en coupant le flux — connexion perdue). Mesuré le
+# 2026-10-12 sur dl360-1, côté contrôleur, par lecture de 256 Kio : poignée de main TLS ≈ 8,4 ms de
+# CPU, `requests` ≈ 3 ms, données ≈ 5,6 ms ; l'autorisation (HMAC) 0,03 ms et le SSLContext 0,8 ms.
+# Ici : UN pool urllib3 par nœud (connexions BORNÉES à TRANSFER_POOL_MAXSIZE gardées ; une requête
+# de plus en ouvre une jetable, jamais une connexion partagée entre deux requêtes — urllib3 la prête
+# à UNE requête et la reprend à `release_conn`), un SSLContext construit une fois (refait si le
+# certificat ou la CA change sur disque), et des pools FERMÉS après TRANSFER_POOL_IDLE_S
+# d'inactivité (l'agent ferme lui-même à 120 s : filet).
+TRANSFER_RANGE_MIN_AGENT = (0, 27, 0)
+TRANSFER_POOL_MAXSIZE = 4
+TRANSFER_POOL_IDLE_S = 30.0
+_tpools = {}                     # (hôte, port) → [pool, dernier usage (monotone), contexte TLS]
+_tpools_lock = threading.Lock()
+_tpool_reaper = None
+_tssl = {"key": None, "ctx": None}
+
+
+def transfer_range_capable(node):
+    """Le port de transfert du nœud sert une plage FERMÉE `bytes=a-b` en gardant la connexion
+    (agent ≥ 0.27.0) : lecture par plages exactes sur le pool du nœud."""
+    return _agent_at_least(node, TRANSFER_RANGE_MIN_AGENT) and transfer_capable(node)
+
+
+def _transfer_ssl_context():
+    """Contexte TLS client du contrôleur (cert + clé + CA), construit UNE fois ; refait si l'un des
+    trois fichiers change (rotation)."""
+    import ssl
+    cert, key, cafile = ca.controller_client_files()
+    k = tuple((p, os.path.getmtime(p)) for p in (cert, key, cafile))
+    with _tpools_lock:
+        if _tssl["key"] == k:
+            return _tssl["ctx"]
+    ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=cafile)
+    ctx.load_cert_chain(cert, key)
+    with _tpools_lock:
+        _tssl["key"], _tssl["ctx"] = k, ctx
+    return ctx
+
+
+def _tpool_sweep():
+    """Ferme les pools inactifs depuis TRANSFER_POOL_IDLE_S. → True s'il en reste."""
+    now = time.monotonic()
+    with _tpools_lock:
+        for k in [k for k, e in _tpools.items() if now - e[1] > TRANSFER_POOL_IDLE_S]:
+            _tpools.pop(k)[0].close()         # une connexion encore prêtée sera fermée à son retour
+        return bool(_tpools)
+
+
+def _tpool_reap():
+    global _tpool_reaper
+    while True:
+        time.sleep(min(10.0, TRANSFER_POOL_IDLE_S / 2))
+        if not _tpool_sweep():
+            with _tpools_lock:
+                if not _tpools:
+                    _tpool_reaper = None
+                    return
+
+
+def transfer_pool(node):
+    """Pool de connexions mTLS vers le port de transfert de `node` (créé au besoin, réutilisé)."""
+    global _tpool_reaper
+    import urllib3
+    ctx = _transfer_ssl_context()
+    k = (node.get("host"), TRANSFER_PORT)
+    with _tpools_lock:
+        e = _tpools.get(k)
+        if e and e[2] is not ctx:
+            _tpools.pop(k)[0].close()
+            e = None
+        if not e:
+            pool = urllib3.HTTPSConnectionPool(
+                k[0], k[1], maxsize=TRANSFER_POOL_MAXSIZE, block=False, ssl_context=ctx,
+                timeout=urllib3.Timeout(connect=10, read=30),
+                # une connexion gardée que l'agent vient de fermer : une seule nouvelle tentative
+                retries=urllib3.Retry(total=1, redirect=False, status=0))
+            e = _tpools[k] = [pool, 0.0, ctx]
+            if _tpool_reaper is None:
+                _tpool_reaper = threading.Thread(target=_tpool_reap, daemon=True, name="transfer-pool-reaper")
+                _tpool_reaper.start()
+        e[1] = time.monotonic()
+        return e[0]
+
+
+def transfer_read_range(node, rel, size, start, end, piece=256 * 1024):
+    """Octets [start, end] (fin INCLUSE) d'un fichier du volume de `node`, en morceaux de `piece`,
+    par UNE requête `bytes=start-end` sur le pool du nœud (agent ≥ 0.27.0). La réponse est lue
+    jusqu'au bout puis la connexion rendue au pool ; lecture interrompue (appelant parti) →
+    connexion fermée, jamais rendue avec des octets non lus."""
+    from urllib.parse import quote
+    pool = transfer_pool(node)
+    r = pool.urlopen("GET", "/v1/transfer/read?g=" + quote(transfer_grant(node, rel, size, ttl_s=600)),
+                     headers={"Range": "bytes=%d-%d" % (start, end)}, preload_content=False,
+                     release_conn=False, assert_same_host=False)
+    want = end - start + 1
+    done = False
+    try:
+        whole = start == 0 and end == size - 1
+        if r.status not in ((200, 206) if whole else (206,)) or \
+                int(r.headers.get("Content-Length") or -1) != want:
+            raise RuntimeError("%s : lecture de %s refusée (%s)" % (node.get("name"), rel, r.status))
+        left = want
+        while left > 0:
+            b = r.read(min(piece, left))
+            if not b:
+                raise RuntimeError("%s : %s tronqué (%d octets manquants)" % (node.get("name"), rel, left))
+            left -= len(b)
+            yield b
+        done = True
+    finally:
+        if not done:
+            r.close()
+        r.release_conn()
+
+
+def transfer_status(dest_node, tid):
+    from urllib.parse import quote
+    return _call(dest_node, "GET", "/v1/host/transfer/status?id=" + quote(tid), timeout=15)
+
+
+def transfer_cancel(dest_node, tid):
+    return _call(dest_node, "POST", "/v1/host/transfer/cancel", body={"id": tid}, timeout=15)
+
+# ─── Disques locaux du nœud (agent >= 0.22.0, cf. NODE_AGENT.md §4.6) ──────────────────────
+# Le contrôleur ne décide de rien : il relaie. Les gardes (disque système, monté, série, taille)
+# sont rejouées par l'AGENT à l'exécution.
+def disks_list(node):
+    """Inventaire des disques du nœud. (ok, data|message)."""
+    return _call(node, "GET", "/v1/host/disks", timeout=30)
+
+
+def disks_plan(node, body):
+    return _call(node, "POST", "/v1/host/disks/plan", body=body, timeout=60)
+
+
+def disks_execute(node, body):
+    """Exécution (mkfs d'un gros disque : jusqu'à ~15 min). (ok, data|message)."""
+    return _call(node, "POST", "/v1/host/disks/execute", body=body, timeout=1000)
+
+
+def host_driver_call(node, method, path, body=None, timeout=100):
+    """Appel d'un endpoint générique de pilote hôte de l'agent (`/v1/host/drivers/*`, agent >= 0.28.0).
+    Retourne (ok, data|err_str) — une erreur HTTP 404 d'un agent ANTÉRIEUR arrive ici en `ok=False`."""
+    return _call(node, method, path, body=body, timeout=timeout)
+
+
+def host_driver_upload(node, kind, name, stream, length, timeout=3600):
+    """Relaie un corps binaire (installeur de pilote) vers `/v1/host/drivers/<kind>/upload?name=`.
+    `stream` est lu par morceaux (jamais en mémoire) ; `length` est le Content-Length annoncé.
+    Retourne (ok, dict|err_str)."""
+    import requests
+    from urllib.parse import quote
+
+    class _Sized:
+        """Itérable de morceaux AVEC `__len__` : requests en déduit le Content-Length (sinon il
+        enverrait `Transfer-Encoding: chunked`, que l'agent HTTP/1.0 ne lit pas)."""
+        def __len__(self):
+            return int(length)
+
+        def __iter__(self):
+            while True:
+                b = stream.read(1 << 20)
+                if not b:
+                    return
+                yield b
+    try:
+        r = requests.post(_agent_base(node).rstrip("/") + "/v1/host/drivers/%s/upload?name=%s"
+                          % (kind, quote(name)), data=_Sized(), timeout=timeout,
+                          headers={TOKEN_HEADER: node.get("agent_token") or "",
+                                   "Content-Type": "application/octet-stream"},
+                          **_requests_tls(node))
+        j = r.json() if r.headers.get("Content-Type", "").startswith("application/json") else {}
+        return (r.status_code == 200 and bool(j.get("ok"))), (j or r.text[:300])
+    except Exception as e:                                       # noqa: BLE001
+        return False, str(e)
 
 
 def load_image_file(node, tag, path, timeout=1800):

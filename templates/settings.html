@@ -26,16 +26,23 @@
     <button class="tab"        id="set-tab-btn-mcast"    onclick="switchSetTab('mcast')">{{ _('settings.tab.mcast') }}</button>
     <button class="tab"        id="set-tab-btn-users"    onclick="switchSetTab('users')">{{ _('settings.tab.users') }}</button>
     <button class="tab"        id="set-tab-btn-roles"    onclick="switchSetTab('roles')">{{ _('settings.tab.roles') }}</button>
+    <button class="tab"        id="set-tab-btn-jetons"   onclick="switchSetTab('jetons')">{{ _('settings.tab.api_tokens') }}</button>
     <button class="tab"        id="set-tab-btn-database" onclick="switchSetTab('database')">{{ _('settings.tab.database') }}</button>
     <button class="tab"        id="set-tab-btn-reseau"    onclick="switchSetTab('reseau')">{{ _('settings.tab.network') }}</button>
     <button class="tab"        id="set-tab-btn-cpu"       onclick="switchSetTab('cpu')">{{ _('settings.tab.cpu') }}</button>
     <button class="tab"        id="set-tab-btn-mxl"       onclick="switchSetTab('mxl')">MXL</button>
     <button class="tab"        id="set-tab-btn-video"     onclick="switchSetTab('video')">{{ _('settings.tab.video') }}</button>
     <button class="tab"        id="set-tab-btn-audio"     onclick="switchSetTab('audio')">{{ _('settings.tab.audio') }}</button>
+    {% if has_perm('audio_plugins.manage') and audio_service %}{% set _lv2t = _('settings.tab.lv2') %}
+    <button class="tab"        id="set-tab-btn-lv2"       onclick="switchSetTab('lv2')">{{ 'Plugins audio' if _lv2t == 'settings.tab.lv2' else _lv2t }}</button>
+    {% endif %}
     <button class="tab"        id="set-tab-btn-pip"       onclick="switchSetTab('pip')">{{ _('settings.tab.pip') }}</button>
     <button class="tab"        id="set-tab-btn-fonts"     onclick="switchSetTab('fonts')">{{ _('settings.tab.fonts') }}</button>
     {% if has_perm('settings.edit') %}
     <button class="tab"        id="set-tab-btn-deploiement" onclick="switchSetTab('deploiement')">{{ _('settings.tab.deployment') }}</button>
+    {% endif %}
+    {% if has_perm('media.manage') %}
+    <button class="tab"        id="set-tab-btn-media_registry" onclick="switchSetTab('media_registry')">{{ _('settings.tab.media_registry') }}</button>
     {% endif %}
     {# ── Core plugins (services infrastructure) ── #}
     {% for tab in core_tabs %}
@@ -75,11 +82,12 @@
          devant la donnée d'exploitation. -->
     <h2 style="margin-top:var(--space-6)">{{ _('settings.public.h_source') }}</h2>
     <div class="form">
-        <label style="display:flex;gap:var(--space-2);align-items:center">
-            <input type="checkbox" class="ios-toggle" id="ap_trust_proxy" onchange="apTrustProxy()">
-            <span>{{ _('settings.public.trust_proxy') }}</span>
-        </label>
-        <div class="meta" style="margin-top:var(--space-2)">{{ _('settings.public.trust_proxy_help') }}</div>
+        {# L'interrupteur « croire X-Forwarded-For » vivait ICI et ne valait que pour les liens
+           publics — pendant que la connexion croyait l'en-tête sans condition. C'est désormais le
+           MODE WEB (onglet Sécurité) qui en décide pour toute l'application. On laisse un renvoi
+           à l'endroit où l'exploitant avait l'habitude de chercher. #}
+        <div class="meta">{{ _('settings.public.source_par_mode') }}
+            <a href="#securite" onclick="switchSetGroup(tabGroupOf('securite')); switchSetTab('securite'); return false">{{ _('settings.securite.web_title') }}</a>.</div>
     </div>
 </div>
 
@@ -148,16 +156,32 @@
             <div class="meta" id="ha_role_msg" style="align-self:center; color:var(--status-warning-fg)">{{ _('settings.doc.le_changement_de_role_prend_effet_au_pro')|safe }}</div>
         </div>
         <div class="meta" style="margin:var(--space-3) 0 var(--space-2)">{{ _('settings.doc.replication_d_etat_actif_standby_l_actif')|safe }}</div>
-        <div class="row" style="align-items:flex-end; gap:var(--space-3)">
-            <div class="field" style="flex:1">
-                <label for="ha_token">{{ _('settings.st.shared_secret_replication_token') }}</label>
-                <input type="text" id="ha_token" class="wide"
-                       style="font-family:var(--font-mono)" placeholder="{{ _('settings.ha.secret_ph') }}"></div>
-            <button type="button" class="btn" onclick="saveHaToken()">{{ _('settings.st.save') }}</button>
-            <button type="button" class="btn" onclick="genHaToken()">{{ _('settings.st.generate') }}</button>
-            <div class="meta" id="ha_token_msg" style="align-self:center"></div>
+        {# APPAIRAGE (2026-10-10). Remplace le « secret partagé » : il voyageait en clair à chaque
+           réplication et se rejouait, et il ne transmettait PAS l'autorité — un standby promu ne
+           pouvait piloter aucun nœud. Les deux gestes sont affichés quel que soit le rôle : on
+           appaire souvent AVANT de passer la seconde machine en veille. #}
+        <h4 style="margin:var(--space-3) 0 var(--space-2)">{{ _('settings.ha.appairage_titre') }}</h4>
+        <div class="meta" style="margin-bottom:var(--space-2)">{{ _('settings.ha.appairage_intro') }}</div>
+        {# L'EMPREINTE est la vraie vérification d'un appairage : l'exploitant la lit sur les deux
+           écrans. Un état « appairé » calculé ici ne prouverait rien sur l'autre machine. #}
+        <div id="ha_appairage_etat" class="meta" style="margin-bottom:var(--space-3)">…</div>
+        <div class="row" style="align-items:center; gap:var(--space-3); flex-wrap:wrap">
+            <strong style="min-width:9em">{{ _('settings.ha.appairage_sur_actif') }}</strong>
+            <button type="button" class="btn" onclick="haAppairageDemarrer()">{{ _('settings.ha.appairage_generer') }}</button>
+            <span id="ha_appairage_code" hidden
+                  style="font-family:var(--font-mono); font-size:1.25em; letter-spacing:.06em; user-select:all"></span>
+            <span class="meta" id="ha_appairage_code_meta"></span>
         </div>
-        <div class="meta" style="margin:0 0 var(--space-3)">{{ _('settings.doc.cette_valeur_doit_etre_rigoureusement_id')|safe }}</div>
+        <div class="row" style="align-items:flex-end; gap:var(--space-3); flex-wrap:wrap; margin-top:var(--space-2)">
+            <strong style="min-width:9em; align-self:center">{{ _('settings.ha.appairage_sur_standby') }}</strong>
+            <div class="field"><label for="ha_app_actif">{{ _('settings.ha.appairage_adresse_actif') }}</label>
+                <input type="text" id="ha_app_actif" placeholder="192.0.2.10"></div>
+            <div class="field" style="flex:1"><label for="ha_app_code">{{ _('settings.ha.appairage_code') }}</label>
+                <input type="text" id="ha_app_code" class="wide" autocomplete="off" spellcheck="false"
+                       style="font-family:var(--font-mono)"></div>
+            <button type="button" class="btn" onclick="haAppairageRejoindre()">{{ _('settings.ha.appairage_rejoindre') }}</button>
+        </div>
+        <div class="meta" id="ha_appairage_msg" role="status" style="margin:var(--space-2) 0 var(--space-3)"></div>
         <div class="row" style="align-items:flex-end; gap:var(--space-3)">
             <div class="field"><label for="s_ha_standby_url">{{ _('settings.doc.url_du_standby')|safe }}</label>
                 <input type="text" id="s_ha_standby_url" class="wide" placeholder="http://x.x.x.x:5000"></div>
@@ -587,9 +611,25 @@ async function fontDelete(f) {
             <input type="number" id="s_alerts_retention" min="100" max="200000" step="500" value="10000" style="width:140px">
         </div>
         <div class="field">
+            <label for="s_alerts_security_retention">{{ _('settings.cpu_alerts.retention_securite_lbl') }}
+                <span class="meta">{{ _('settings.cpu_alerts.retention_securite_hint') }}</span></label>
+            <input type="number" id="s_alerts_security_retention" min="1000" max="2000000" step="1000" value="50000" style="width:140px">
+        </div>
+        <div class="field">
             <label for="s_alerts_antirebond_s">{{ _('settings.cpu_alerts.antirebond_lbl') }}
                 <span class="meta">{{ _('settings.cpu_alerts.antirebond_hint') }}</span></label>
             <input type="number" id="s_alerts_antirebond_s" min="0" max="86400" step="60" value="900" style="width:140px">
+        </div>
+        {# Journal d'exploitation des plugins (app/ops_journal.py) : table et rétention PROPRES. #}
+        <div class="field">
+            <label for="s_ops_journal_retention_days">{{ _('settings.cpu_alerts.opsj_retention_lbl') }}
+                <span class="meta">{{ _('settings.cpu_alerts.opsj_retention_hint') }}</span></label>
+            <input type="number" id="s_ops_journal_retention_days" min="1" max="366" step="1" value="7" style="width:140px">
+        </div>
+        <div class="field">
+            <label for="s_ops_journal_forward">{{ _('settings.cpu_alerts.opsj_forward_lbl') }}
+                <span class="meta">{{ _('settings.cpu_alerts.opsj_forward_hint') }}</span></label>
+            <input type="checkbox" class="ios-toggle" id="s_ops_journal_forward">
         </div>
     </div>
 
@@ -636,6 +676,7 @@ async function fontDelete(f) {
 <div id="set-tab-users" class="set-tab-content" style="display:none">
     {% if has_perm('settings.edit') %}
     <h2>{{ _('settings.users.title') }}</h2>
+    <p class="meta"><a href="/groups">{{ _('settings.users.groups_link') }}</a> &mdash; {{ _('settings.users.groups_help') }}</p>
     <div class="form">
         <div class="row" style="margin-bottom:var(--space-4); flex-wrap:wrap">
             <div class="field"><label for="u_name">Username</label>
@@ -684,6 +725,74 @@ async function fontDelete(f) {
     <div class="meta">{{ _('settings.users.my_account_moved') }}
         <a href="/compte">{{ _('nav.compte') }}</a>.</div>
 </div>
+
+<!-- ═══ Onglet Jetons d'API ══════════════════════════════════ -->
+<div id="set-tab-jetons" class="set-tab-content" style="display:none">
+    {% if has_perm('settings.edit') %}
+    <h2>{{ _('settings.jetons.title') }}</h2>
+    <div class="meta" style="margin-bottom:var(--space-3); max-width:70ch">
+        {{ _('settings.jetons.intro') }}
+    </div>
+    {# Avertissement PERMANENT, pas un message d'erreur : tant que le mTLS du plan de contrôle
+       n'est pas activé, un jeton voyage comme un mot de passe. Le dire ici, à l'endroit où on
+       en crée un, et non dans une documentation que personne n'ouvre au bon moment. #}
+    <div class="alert alert-warning" style="max-width:70ch">{{ _('settings.jetons.avert_clair') }}</div>
+
+    <div class="form">
+        <div class="row" style="margin-bottom:var(--space-4); flex-wrap:wrap; align-items:flex-end">
+            <div class="field"><label for="jet_user">{{ _('settings.jetons.compte') }}</label>
+                {# Peuplé depuis /api/users : MÊME source que l'onglet Comptes. Un jeton ne peut
+                   viser qu'un compte EXISTANT — décider qui a le droit de quoi est une décision
+                   humaine, pas un effet de bord de la création d'un jeton. #}
+                <select id="jet_user"></select></div>
+            <div class="field"><label for="jet_label">{{ _('settings.jetons.libelle') }}</label>
+                <input type="text" id="jet_label" class="wide"
+                       placeholder="{{ _('settings.jetons.libelle_ph') }}"></div>
+            <button class="btn btn-blue" onclick="jetCreer()">{{ _('settings.jetons.creer') }}</button>
+            <span id="jet-msg" class="meta" style="align-self:center"></span>
+        </div>
+
+        {# Le secret ne s'affiche QU'ICI et QU'UNE FOIS. Le bloc reste masqué jusqu'à une
+           création, et se vide dès qu'on quitte l'onglet : laisser un jeton en clair dans le
+           DOM d'une page ouverte toute la journée annulerait l'intérêt de ne pas le stocker. #}
+        <div id="jet-neuf" hidden style="margin-bottom:var(--space-4)">
+            <div class="alert alert-info" style="max-width:70ch">
+                <strong>{{ _('settings.jetons.neuf_titre') }}</strong><br>
+                {{ _('settings.jetons.neuf_corps') }}
+            </div>
+            <div class="row" style="flex-wrap:wrap; align-items:center">
+                <input type="text" id="jet-neuf-val" readonly class="wide"
+                       style="font-family:var(--font-mono, monospace); min-width:min(42ch, 100%)"
+                       onclick="this.select()">
+                <button class="btn" onclick="jetCopier()">{{ _('settings.jetons.copier') }}</button>
+                <button class="btn" onclick="jetMasquer()">{{ _('settings.jetons.masquer') }}</button>
+            </div>
+        </div>
+
+        <div class="table-wrap">
+        <table style="width:100%; border-collapse:collapse; font-size:0.9em; min-width:min(820px, 100%)">
+            <thead>
+                <tr style="color:var(--text-muted); text-align:left">
+                    <th style="padding:var(--space-2); border-bottom:1px solid var(--border)">{{ _('settings.jetons.th_compte') }}</th>
+                    <th style="padding:var(--space-2); border-bottom:1px solid var(--border)">{{ _('settings.jetons.th_libelle') }}</th>
+                    <th style="padding:var(--space-2); border-bottom:1px solid var(--border); width:120px">{{ _('settings.jetons.th_prefixe') }}</th>
+                    <th style="padding:var(--space-2); border-bottom:1px solid var(--border); width:170px">{{ _('settings.jetons.th_usage') }}</th>
+                    <th style="padding:var(--space-2); border-bottom:1px solid var(--border); width:150px">{{ _('settings.jetons.th_etat') }}</th>
+                    <th style="padding:var(--space-2); border-bottom:1px solid var(--border); width:120px">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="jet-tbody"></tbody>
+        </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">{{ _('settings.jetons.sans_droit') }}</div>
+    {% endif %}
+</div>
+
+{% if has_perm('media.manage') %}{% include 'settings_media_registry.html' %}{% endif %}
+{# Plugins audio : gabarit du service audio (services/audio/settings_lv2.html) — absent si le service l'est #}
+{% if has_perm('audio_plugins.manage') and audio_service %}{% include 'audio/settings_lv2.html' %}{% endif %}
 
 <!-- ═══ Onglet Database ══════════════════════════════════════ -->
 <div id="set-tab-database" class="set-tab-content" style="display:none">
@@ -775,6 +884,35 @@ async function fontDelete(f) {
         <div class="meta" id="pwd_profil_desc" style="margin-top:var(--space-3)"></div>
         <div class="meta" style="margin-top:var(--space-3)">{{ _('settings.securite.pwd_toujours') }}</div>
         <div class="meta" style="margin-top:var(--space-2)">{{ _('settings.securite.pwd_retro') }}</div>
+    </div>
+
+    <h2>{{ _('settings.securite.web_title') }}</h2>
+    <div class="form">
+        <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.securite.web_intro') }}</div>
+        <div class="row">
+            <div class="field" style="min-width:min(340px,100%)">
+                <label for="s_web_mode">{{ _('settings.securite.web_mode') }}</label>
+                <select id="s_web_mode" onchange="webModeEnregistrer()">
+                    <option value="http">{{ _('settings.securite.web_http') }}</option>
+                    <option value="tls">{{ _('settings.securite.web_tls') }}</option>
+                    <option value="proxy">{{ _('settings.securite.web_proxy') }}</option>
+                </select>
+            </div>
+            {# Le port n'a de sens qu'en mode tls : masqué ailleurs, pour ne pas laisser croire
+               qu'il règle quoi que ce soit en http ou derrière un proxy. #}
+            <div class="field" id="web_tls_port_champ" hidden>
+                <label for="s_web_tls_port">{{ _('settings.securite.web_port') }}</label>
+                <input type="number" id="s_web_tls_port" min="1" max="65535" style="width:8em"
+                       onchange="webModeEnregistrer()">
+            </div>
+            <span id="web_mode_msg" class="meta" role="status" style="align-self:center"></span>
+        </div>
+        {# Ce que chaque mode veut dire, ÉCRIT, comme pour les profils de mot de passe : un mode
+           dont l'effet ne se lirait qu'en le subissant obligerait à tester en production. #}
+        <div class="meta" id="web_mode_desc" style="margin-top:var(--space-3)"></div>
+        {# L'ÉTAT, distinct du choix : actif ≠ enregistré tant qu'on n'a pas redémarré. Afficher
+           le seul choix ferait croire appliqué un réglage qui ne l'est pas encore. #}
+        <div id="web_mode_etat" style="margin-top:var(--space-3)"></div>
     </div>
 
     <h2>{{ _('settings.securite.ca_title') }}</h2>
@@ -3334,7 +3472,7 @@ function ctlPlan() {
         bloc.length ? bloc.join('\n') : T('settings.controls.plan_empty');
 }
 
-const SET_TABS = ['branding', 'proxmox', 'mcast', 'users', 'database', 'reseau', 'cpu', 'mxl', 'video', 'audio', 'pip', 'fonts'{% if has_perm('settings.edit') %}, 'deploiement'{% endif %}{% for tab in core_tabs %}, '{{tab.nav_tab}}'{% endfor %}, 'labels', 'tally', 'controles', 'services', 'alarmes', 'src_alarmes'{% if has_perm('settings.edit') %}, 'roles'{% endif %}{% if has_perm('settings.edit') %}, 'journalisation', 'plugins', 'catalogue', 'recette', 'securite', 'acces_publics'{% endif %}{% if has_perm('containers.delete') %}, 'raz'{% endif %}];
+const SET_TABS = ['branding', 'proxmox', 'mcast', 'users', 'database', 'reseau', 'cpu', 'mxl', 'video', 'audio'{% if has_perm('audio_plugins.manage') and audio_service %}, 'lv2'{% endif %}, 'pip', 'fonts'{% if has_perm('settings.edit') %}, 'deploiement'{% endif %}{% if has_perm('media.manage') %}, 'media_registry'{% endif %}{% for tab in core_tabs %}, '{{tab.nav_tab}}'{% endfor %}, 'labels', 'tally', 'controles', 'services', 'alarmes', 'src_alarmes'{% if has_perm('settings.edit') %}, 'roles'{% endif %}{% if has_perm('settings.edit') %}, 'jetons'{% endif %}{% if has_perm('settings.edit') %}, 'journalisation', 'plugins', 'catalogue', 'recette', 'securite', 'acces_publics'{% endif %}{% if has_perm('containers.delete') %}, 'raz'{% endif %}];
 
 // ─── Groupes de menus (niveau 0) — refonte menus Réglages ───────────────────
 // Chaque groupe liste ses onglets (niveau 1) ; on les filtre à ceux PRÉSENTS dans SET_TABS
@@ -3344,13 +3482,15 @@ const SET_GROUPS = [
     // groupes n'était pas seulement redondant — `tabGroupOf` rend le PREMIER groupe qui contient
     // l'onglet, donc « Général » l'emportait et le bouton « Labels & Tally » ne se serait jamais
     // allumé en ouvrant les labels.
-    {id: 'general',    tabs: ['branding', 'users', 'roles', 'controles']},
+    // `jetons` voisine `users` et `roles` : un jeton d'API est un ACCÈS à un
+    // compte, pas un réglage système — il se lit à côté de ce qu'il emprunte.
+    {id: 'general',    tabs: ['branding', 'users', 'roles', 'jetons', 'controles']},
     {id: 'cluster',    tabs: ['proxmox', 'mcast']},
     // « rdma » = onglet du service services/rdma/ : il règle le CÂBLAGE PHYSIQUE entre nœuds
     // (interfaces, chemins, débits), pas un protocole de contrôle — sa place est auprès de Réseau,
     // pas noyé entre NMOS, Ember+ et TSL.
     {id: 'nodes',      tabs: ['reseau', 'rdma', 'cpu', 'deploiement']},
-    {id: 'signal',     tabs: ['mxl', 'video', 'audio', 'pip', 'fonts']},
+    {id: 'signal',     tabs: ['mxl', 'video', 'audio', 'lv2', 'pip', 'fonts']},
     // « Labels & Tally » : NOMMER un flux et dire QUI EST À L'ANTENNE sont la même question
     // d'exploitation, posée sur le même objet — le signal. Le tally n'était réglable que depuis
     // l'onglet du protocole TSL, ce qui le cachait derrière un TRANSPORT : il est consommé par
@@ -3361,7 +3501,9 @@ const SET_GROUPS = [
     // « de quoi veut-on être prévenu » n'est pas « comment se nomme ce signal ». La DÉLIVRANCE
     // (serveur SMTP…) reste dans Système : c'est de l'installation, pas du quotidien.
     {id: 'alarmes',    tabs: ['alarmes', 'src_alarmes']},
-    {id: 'medias',     tabs: ['files', 'media_manager', 'storage']},
+    // « Base des médias » en tête : c'est le registre (identité, copies, intégrité) sur lequel
+    // s'appuient le Gestionnaire de Médias et les players.
+    {id: 'medias',     tabs: ['media_registry', 'files', 'media_manager', 'storage']},
         // « nmos » a son PROPRE groupe : ce n'est plus un protocole de contrôle parmi d'autres mais le
     // socle par lequel le produit se décrit, se fait piloter et pilote les autres. Le laisser dans
     // Protocoles obligeait à empiler sept rubriques dans un seul panneau.
@@ -3584,16 +3726,6 @@ async function apRevoquer(token) {
     apCharger();
 }
 
-async function apTrustProxy() {
-    const el = document.getElementById('ap_trust_proxy');
-    try {
-        await fetch('/api/settings', {method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({public_trust_proxy: !!el.checked})});
-        mxlToast("{{ _('settings.public.saved') }}", 'success');
-    } catch (e) { mxlToast(String(e.message || e), 'error'); }
-}
-
 function tabGroupOf(tabId) {
     const g = SET_GROUPS.find(g => g.tabs.includes(tabId));
     return g ? g.id : 'general';
@@ -3667,6 +3799,107 @@ function pwdProfilDecrire() {
     z.textContent = T('settings.securite.pwd_' + sel.value + '_d');
 }
 
+// ─── Mode web (exposition du port de l'orchestrateur) ─────────────────────────
+// Le mode décide si l'on croit `X-Forwarded-*`. Lu AU DÉMARRAGE côté serveur : on montre donc
+// toujours l'écart entre le mode ENREGISTRÉ et le mode ACTIF, sans quoi « enregistré » ferait
+// croire appliqué un réglage de sécurité qui ne l'est pas encore.
+const WEB_MODE_DESC = {
+    http:  {{ _('settings.securite.web_http_desc') | tojson }},
+    tls:   {{ _('settings.securite.web_tls_desc') | tojson }},
+    proxy: {{ _('settings.securite.web_proxy_desc') | tojson }},
+};
+
+function webModeDecrire() {
+    const sel = document.getElementById('s_web_mode');
+    const d = document.getElementById('web_mode_desc');
+    if (sel && d) d.textContent = WEB_MODE_DESC[sel.value] || '';
+    const champ = document.getElementById('web_tls_port_champ');
+    if (sel && champ) champ.hidden = sel.value !== 'tls';
+}
+
+function _webModeLibelle(m) {
+    const o = document.querySelector('#s_web_mode option[value="' + m + '"]');
+    return o ? o.textContent : m;
+}
+
+function webModeEtat(e) {
+    const box = document.getElementById('web_mode_etat');
+    if (!box) return;
+    // textContent partout : aucun HTML construit depuis une donnée du serveur.
+    box.innerHTML = '';
+    const div = document.createElement('div');
+    if (e.repli) {
+        // TLS demandé, servi en clair. Redémarrer ne changera rien tant que la cause demeure :
+        // on la nomme, au lieu du message générique « redémarrez » qui ferait tourner en rond.
+        div.className = 'alert alert-error';
+        div.textContent = T('settings.securite.web_repli')
+            .replace('{d}', e.repli.detail || e.repli.cle);
+    } else if (e.force_par_env) {
+        div.className = 'alert alert-warning';
+        div.textContent = T('settings.securite.web_force_env')
+            .replace('{a}', _webModeLibelle(e.actif));
+    } else if (e.redemarrage_requis) {
+        div.className = 'alert alert-warning';
+        div.textContent = T('settings.securite.web_redemarrer')
+            .replace('{e}', _webModeLibelle(e.enregistre)).replace('{a}', _webModeLibelle(e.actif));
+    } else {
+        div.className = 'meta';
+        div.textContent = T('settings.securite.web_actif').replace('{a}', _webModeLibelle(e.actif));
+        if (e.actif === 'tls') {
+            // L'adresse à donner aux exploitants, écrite — c'est elle qui change pour eux.
+            const u = 'https://' + location.hostname + (e.port_https === 443 ? '' : ':' + e.port_https) + '/';
+            div.textContent += ' ' + T('settings.securite.web_https_url').replace('{u}', u);
+        }
+    }
+    box.appendChild(div);
+}
+
+async function webModeCharger() {
+    const sel = document.getElementById('s_web_mode');
+    if (!sel) return;
+    try {
+        const r = await fetch('/api/web-mode');
+        const e = await r.json();
+        if (!r.ok) throw new Error(e.error || ('HTTP ' + r.status));
+        // Le sélecteur se pose depuis l'ÉTAT du serveur, jamais depuis un défaut écrit ici : un
+        // réglage de sécurité affiché « http » alors qu'il est « proxy » est pire qu'absent.
+        sel.value = e.enregistre;
+        const port = document.getElementById('s_web_tls_port');
+        if (port) port.value = e.port_https;
+        webModeDecrire();
+        webModeEtat(e);
+    } catch (err) {
+        // L'échec se DIT : un état vide se lirait « tout va bien ».
+        const box = document.getElementById('web_mode_etat');
+        if (box) {
+            box.innerHTML = '';
+            const div = document.createElement('div');
+            div.className = 'alert alert-warning';
+            div.textContent = String(err.message || err);
+            box.appendChild(div);
+        }
+    }
+}
+
+async function webModeEnregistrer() {
+    const sel = document.getElementById('s_web_mode');
+    webModeDecrire();
+    try {
+        const r = await fetch('/api/settings', {method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(sel.value === 'tls'
+                ? {web_mode: sel.value,
+                   web_tls_port: parseInt(document.getElementById('s_web_tls_port').value, 10)}
+                : {web_mode: sel.value})});
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        if ((j.ignored || []).indexOf('web_mode') >= 0) throw new Error('web_mode ignoré');
+        habDire('web_mode_msg', T('settings.habilitations.enregistre'), true);
+    } catch (e) { habDire('web_mode_msg', e.message || String(e), false); }
+    // On relit l'état serveur dans TOUS les cas : c'est lui qui dit « redémarrez ».
+    webModeCharger();
+}
+
 async function pwdProfilEnregistrer() {
     const sel = document.getElementById('s_pwd_profil');
     pwdProfilDecrire();
@@ -3694,6 +3927,136 @@ function habDire(el, texte, ok) {
     if (!z) return;
     z.textContent = texte;
     z.style.color = ok ? 'var(--status-running-fg)' : 'var(--status-stopped-fg)';
+}
+
+// ─── Jetons d'API ────────────────────────────────────────────────────────────
+// Un jeton donne un accès programmatique à l'API sous l'identité d'un compte, AVEC
+// L'HABILITATION DE CE COMPTE. Pour un accès restreint, on crée un compte restreint : le jeton
+// ne porte pas de droits propres (cf. le commentaire de la table `api_tokens`).
+//
+// ⚠ `escapeHtml` vient du JS injecté par un plugin de cœur : il n'est pas garanti présent sur
+// cette page. On garde donc un échappeur LOCAL — la leçon de l'onglet RAZ, où s'appuyer sur lui
+// aurait marché en développement et cassé une colonne en production.
+function _jetEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+        {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
+
+async function jetCharger() {
+    const tb = document.getElementById('jet-tbody');
+    if (!tb) return;                      // onglet absent (sans la permission) : rien à faire
+    try {
+        // Deux requêtes en parallèle : la liste des jetons et celle des comptes, qui peuple le
+        // sélecteur depuis la MÊME source que l'onglet Comptes (pas de seconde liste à tenir).
+        const [rj, ru] = await Promise.all([fetch('/api/api-tokens'), fetch('/api/users')]);
+        if (!rj.ok) throw new Error('HTTP ' + rj.status);
+        const jetons = (await rj.json()).tokens || [];
+        if (ru.ok) {
+            const sel = document.getElementById('jet_user');
+            const avant = sel.value;
+            const users = (await ru.json()).users || [];
+            sel.innerHTML = users.map(u => '<option value="' + u.id + '">'
+                + _jetEsc(u.username) + ' — ' + _jetEsc(u.role) + '</option>').join('');
+            if (avant) sel.value = avant;  // ne pas défaire le choix en cours sur un rafraîchi
+        }
+        if (!jetons.length) {
+            tb.innerHTML = '<tr><td colspan="6" class="meta" style="padding:var(--space-3)">'
+                + {{ _('settings.jetons.aucun') | tojson }} + '</td></tr>';
+            return;
+        }
+        tb.innerHTML = jetons.map(t => {
+            const revoque = !!t.revoked_at;
+            const etat = revoque
+                ? '<span class="meta">' + {{ _('settings.jetons.etat_revoque') | tojson }}
+                  + ' ' + _jetEsc(t.revoked_at) + '</span>'
+                : '<span class="badge badge-ok">' + {{ _('settings.jetons.etat_actif') | tojson }}
+                  + '</span>';
+            // Un jeton JAMAIS utilisé se dit, plutôt que de laisser une case vide : « jamais »
+            // sur un jeton vieux de trois mois est une information — probablement à révoquer.
+            const usage = t.last_used_at
+                ? _jetEsc(t.last_used_at) + (t.last_used_ip
+                    ? ' <span class="meta">(' + _jetEsc(t.last_used_ip) + ')</span>' : '')
+                : '<span class="meta">' + {{ _('settings.jetons.jamais') | tojson }} + '</span>';
+            const action = revoque ? ''
+                : '<button class="btn btn-sm btn-red" onclick="jetRevoquer(' + t.id + ', '
+                  + JSON.stringify(t.label || '') + ')">'
+                  + {{ _('settings.jetons.revoquer') | tojson }} + '</button>';
+            return '<tr' + (revoque ? ' style="opacity:.55"' : '') + '>'
+                + '<td style="padding:var(--space-2)">' + _jetEsc(t.username || '?') + '</td>'
+                + '<td style="padding:var(--space-2)">' + _jetEsc(t.label || '—') + '</td>'
+                + '<td style="padding:var(--space-2); font-family:var(--font-mono, monospace)">'
+                  + _jetEsc(t.prefix || '') + '…</td>'
+                + '<td style="padding:var(--space-2)">' + usage + '</td>'
+                + '<td style="padding:var(--space-2)">' + etat + '</td>'
+                + '<td style="padding:var(--space-2)">' + action + '</td></tr>';
+        }).join('');
+    } catch (e) {
+        // On DIT l'échec dans le tableau : une liste vide se lirait « aucun jeton », c'est-à-dire
+        // exactement le contraire de « je n'ai pas pu savoir ».
+        tb.innerHTML = '<tr><td colspan="6" class="alert alert-warning" '
+            + 'style="padding:var(--space-3)">' + _jetEsc(String(e.message || e)) + '</td></tr>';
+    }
+}
+
+async function jetCreer() {
+    const sel = document.getElementById('jet_user');
+    const msg = document.getElementById('jet-msg');
+    const uid = parseInt(sel && sel.value, 10);
+    if (!uid) { mxlToast({{ _('settings.jetons.compte_requis') | tojson }}, 'error'); return; }
+    const label = (document.getElementById('jet_label').value || '').trim();
+    msg.textContent = '…';
+    try {
+        const r = await fetch('/api/api-tokens', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_id: uid, label: label})});
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        // Le clair n'arrive QU'ICI. On l'affiche sans le journaliser nulle part.
+        document.getElementById('jet-neuf-val').value = d.token;
+        document.getElementById('jet-neuf').hidden = false;
+        document.getElementById('jet_label').value = '';
+        msg.textContent = '';
+        await jetCharger();
+    } catch (e) {
+        msg.textContent = '';
+        mxlToast(String(e.message || e), 'error');
+    }
+}
+
+async function jetRevoquer(id, label) {
+    // Danger explicite : un jeton révoqué casse immédiatement ce qui l'utilise, et le secret
+    // n'existe plus nulle part — il n'y a pas de « remettre comme avant ».
+    const q = {{ _('settings.jetons.revoquer_q') | tojson }}.replace('{l}', label || '#' + id);
+    if (!await mxlConfirm({message: q, danger: true})) return;
+    try {
+        const r = await fetch('/api/api-tokens/' + id, {method: 'DELETE'});
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        mxlToast(d.deja ? {{ _('settings.jetons.deja_revoque') | tojson }}
+                        : {{ _('settings.jetons.revoque_ok') | tojson }},
+                 d.deja ? 'info' : 'success');
+        await jetCharger();
+    } catch (e) { mxlToast(String(e.message || e), 'error'); }
+}
+
+function jetCopier() {
+    const el = document.getElementById('jet-neuf-val');
+    el.select();
+    // `navigator.clipboard` n'est pas garanti (contexte non sécurisé en HTTP). On tente, et on
+    // retombe sur la sélection + un message qui DIT quoi faire, plutôt qu'un bouton inerte.
+    const fini = ok => mxlToast(ok ? {{ _('settings.jetons.copie') | tojson }}
+                                   : {{ _('settings.jetons.copie_ko') | tojson }},
+                                ok ? 'success' : 'info');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(el.value).then(() => fini(true), () => fini(false));
+    } else { fini(false); }
+}
+
+function jetMasquer() {
+    // On VIDE le champ, pas seulement on le cache : un jeton en clair laissé dans le DOM d'une
+    // page ouverte toute la journée annulerait l'intérêt de ne pas le stocker en base.
+    document.getElementById('jet-neuf-val').value = '';
+    document.getElementById('jet-neuf').hidden = true;
 }
 
 async function habCharger() {
@@ -4510,6 +4873,8 @@ function switchSetTab(name) {
     if (name === 'emberplus') { rafraichirEmberStatus(); rafraichirRoles(); }
     if (name === 'pupitres')  { rafraichirAtem(); rafraichirSkaarhoj(); }
     if (name === 'nmos')      rafraichirNmosStatus();
+    if (name === 'media_registry' && window.mregLoad) window.mregLoad();
+    if (name === 'lv2' && window.lv2Load) window.lv2Load();
     if (name === 'protocoles') typeof rafraichirTsl === 'function' && rafraichirTsl();
     if (name === 'rdma')       typeof rafraichirRdma === 'function' && rafraichirRdma();
     if (name === 'labels')     labelsLoadNames();
@@ -4517,15 +4882,10 @@ function switchSetTab(name) {
     if (name === 'src_alarmes') chargerSrcAlarmes();
     if (name === 'controles')  ctlDocRender();
     if (name === 'roles')      habCharger();
-    if (name === 'securite')   pwdProfilDecrire();
+    if (name === 'jetons')     jetCharger();
+    if (name === 'securite')   { pwdProfilDecrire(); webModeCharger(); }
     if (name === 'acces_publics') {
         apCharger();
-        // L'interrupteur se pose depuis l'ÉTAT du serveur, jamais depuis un défaut écrit ici :
-        // un réglage de sécurité affiché « off » alors qu'il est « on » est pire qu'absent.
-        const el = document.getElementById('ap_trust_proxy');
-        if (el) fetch('/api/settings').then(r => r.json()).then(j => {
-            el.checked = !!j.public_trust_proxy;
-        }).catch(() => {});
     }
     if (name === 'fonts')      fontsLoad();
     if (name === 'reseau')    {
@@ -4546,10 +4906,9 @@ function switchSetTab(name) {
     if (name === 'journalisation') { HostNode.load().then(() => jrnRefreshLogTab()); rafraichirLogInfo(); }
     if (name === 'mcast')     McastRanges.load();
     if (name === 'files' && window.filesInit) filesInit();
-    if (name === 'media_manager' && window.rafraichirExtShares) rafraichirExtShares();
     if (name === 'services')  rafraichirServices();
     if (name === 'alertes' && typeof alertingRefresh === 'function') alertingRefresh();
-    if (name === 'storage')   rafraichirStorage();
+    if (name === 'storage' && window.storageInit) storageInit();
     if (name === 'plugins')   rafraichirPlugins();
     // ⚠ `false` : on ne FORCE pas la relecture à chaque ouverture d'onglet. Le
     // quota GitHub anonyme est de 60 requêtes/heure et par adresse ; ouvrir
@@ -4596,11 +4955,23 @@ function renderSecuriteCa(d) {
             [T('settings.securite.validity'), (ca.not_before || '') + ' → ' + (ca.not_after || '')],
             [T('settings.securite.controller_sans'), (ca.controller_sans || []).join(', ')],
             [T('settings.securite.dir'), ca.dir],
-        ].map(([k, v]) => `<div class="row" style="gap:var(--space-2)"><strong style="min-width:180px">${_escp(k)}</strong><code style="word-break:break-all">${_escp(v || '')}</code></div>`).join('');
+        ].map(([k, v]) => `<div class="row" style="gap:var(--space-2)"><strong style="min-width:180px">${_escp(k)}</strong><code style="word-break:break-all">${_escp(v || '')}</code></div>`).join('')
+            // Échéances : celle de l'autorité et celle du contrôleur, avec la même échelle de
+            // couleur que les alertes (cf. app/cert_expiry.py) — on voit venir AVANT l'alerte.
+            + [[T('settings.securite.ca_echeance'), d.ca_cert], [T('settings.securite.ctrl_cert'), d.controleur_cert]]
+                .map(([k, c]) => `<div class="row" style="gap:var(--space-2)"><strong style="min-width:180px">${_escp(k)}</strong>${_certEcheance(c)}</div>`).join('')
+            + (d.seuils ? `<div class="meta" style="margin-top:var(--space-2)">${_escp(T('settings.securite.cert_politique')
+                .replace('{a}', d.seuils.paliers[0]).replace('{b}', d.seuils.paliers[1]).replace('{c}', d.seuils.continu))}</div>` : '');
         el.innerHTML = `<div class="row" style="align-items:center; margin-bottom:var(--space-3)">`
             + `<span class="badge running">${T('settings.securite.ca_available')}</span></div>`
             + rows
-            + `<div class="row" style="margin-top:var(--space-3)"><button class="btn btn-orange" onclick="reissueSecuriteCa()">${T('settings.securite.reissue_btn')}</button></div>`;
+            // Le certificat à installer sur les postes (mode web tls). Un lien et pas un fetch :
+            // c'est le navigateur qui doit recevoir le fichier, avec le nom fixé par la route.
+            + `<div class="row" style="margin-top:var(--space-3); align-items:center; gap:var(--space-3)">`
+            + `<a class="btn btn-green" href="/api/security/ca.crt" download>${T('settings.securite.ca_download')}</a>`
+            + `<button class="btn btn-blue" id="securite-renew-ctrl" onclick="renewSecuriteCtrl()">${T('settings.securite.renew_ctrl_btn')}</button>`
+            + `<button class="btn btn-orange" onclick="reissueSecuriteCa()">${T('settings.securite.reissue_btn')}</button></div>`
+            + `<div class="meta" style="margin-top:var(--space-2)">${T('settings.securite.ca_download_help')}</div>`;
     } else {
         const ip = _escp(d.detected_control_ip || '');
         el.innerHTML = `<div class="row" style="align-items:center; margin-bottom:var(--space-3)">`
@@ -4621,6 +4992,7 @@ function renderSecuriteNodes(d) {
         + `<th style="text-align:left">${T('settings.securite.col_status')}</th>`
         + `<th style="text-align:left">${T('settings.securite.col_agent')}</th>`
         + `<th style="text-align:left">${T('settings.securite.col_tls')}</th>`
+        + `<th style="text-align:left">${T('settings.securite.col_cert')}</th>`
         + `<th style="text-align:left">${T('settings.securite.col_action')}</th></tr>`;
     const rows = nodes.map(n => {
         const https = !!n.tls_ready;
@@ -4629,7 +5001,12 @@ function renderSecuriteNodes(d) {
             : `<span class="badge stopped">${T('settings.securite.badge_http')}</span>`;
         const hasAgent = !!(n.agent_url || '').trim();
         let action;
-        if (https) {
+        if (https && caReady && hasAgent) {
+            // Même flux que la migration (l'agent garde sa clé, le contrôleur signe une échéance
+            // neuve) — et il fonctionne aussi sur un certificat DÉJÀ expiré.
+            action = `<button class="btn btn-blue" id="securite-renew-${n.id}" onclick="renewSecuriteNode(${n.id})">${T('settings.securite.renew_btn')}</button>`
+                + ` <span class="meta" id="securite-renewmsg-${n.id}"></span>`;
+        } else if (https) {
             action = `<button class="btn" disabled title="${T('settings.securite.already_https')}">${T('settings.securite.migrate_btn')}</button>`;
         } else if (!hasAgent) {
             action = `<button class="btn" disabled title="${T('settings.securite.no_agent')}">${T('settings.securite.migrate_btn')}</button>`;
@@ -4642,9 +5019,52 @@ function renderSecuriteNodes(d) {
         return `<tr><td><strong>${_escp(n.name || ('#' + n.id))}</strong></td>`
             + `<td>${_escp(n.status || '')}</td>`
             + `<td><code>${_escp(n.agent_url || '—')}</code></td>`
-            + `<td>${badge}</td><td>${action}</td></tr>`;
+            + `<td>${badge}</td><td>${https ? _certEcheance(n.cert) : '—'}</td><td>${action}</td></tr>`;
     }).join('');
     el.innerHTML = `<table style="width:100%; border-collapse:collapse; font-size:0.9em"><thead>${head}</thead><tbody>${rows}</tbody></table>`;
+}
+function _certEcheance(c) {
+    // `palier` vient du serveur (même règle que les alertes) : null → rien à signaler ; 30/10 →
+    // avertissement ; 5 et 0 (expiré) → erreur. Le client ne recalcule pas de seuil.
+    if (!c || !c.fin) return `<span class="meta">${T('settings.securite.cert_inconnu')}</span>`;
+    const d = String(c.fin).slice(0, 10);
+    const coul = c.palier == null ? 'var(--text-muted)'
+        : (c.palier <= 5 ? 'var(--status-error-fg)' : 'var(--status-warning-fg)');
+    const txt = c.jours < 0 ? T('settings.securite.cert_expire').replace('{d}', d)
+        : T('settings.securite.cert_echeance').replace('{d}', d).replace('{j}', c.jours);
+    return `<span style="color:${coul}${c.palier != null ? '; font-weight:600' : ''}">${_escp(txt)}</span>`;
+}
+async function renewSecuriteCtrl() {
+    if (!(await mxlConfirm({message: T('settings.securite.renew_ctrl_confirm')}))) return;
+    const btn = document.getElementById('securite-renew-ctrl');
+    if (btn) btn.disabled = true;
+    try {
+        const r = await fetch('/api/security/mtls/controller/renew', {method: 'POST'});
+        const d = await r.json();
+        if (!r.ok || !d.ok) { mxlToast(d.error || 'erreur', 'error'); if (btn) btn.disabled = false; return; }
+        mxlToast(T('settings.securite.renew_ok'), 'info');
+        loadSecurite();
+    } catch (e) { mxlToast(String(e), 'error'); if (btn) btn.disabled = false; }
+}
+async function renewSecuriteNode(nid) {
+    const n = ((_securiteState && _securiteState.nodes) || []).find(x => x.id === nid) || {};
+    if (!(await mxlConfirm({message: T('settings.securite.renew_node_confirm').replace('{n}', n.name || ('#' + nid))}))) return;
+    const btn = document.getElementById('securite-renew-' + nid);
+    const msg = document.getElementById('securite-renewmsg-' + nid);
+    if (btn) btn.disabled = true;
+    if (msg) msg.textContent = T('settings.securite.renewing');
+    try {
+        const r = await fetch('/api/nodes/' + nid + '/tls/rotate', {method: 'POST'});
+        const d = await r.json();
+        if (!r.ok || !d.ok) {
+            mxlToast(d.msg || d.error || 'erreur', 'error');
+            if (msg) msg.textContent = d.msg || d.error || '';
+            if (btn) btn.disabled = false;
+            return;
+        }
+        mxlToast(T('settings.securite.renew_ok'), 'info');
+        loadSecurite();
+    } catch (e) { mxlToast(String(e), 'error'); if (btn) btn.disabled = false; }
 }
 async function initSecuriteCa() {
     const ips = (document.getElementById('securite-ca-ips')?.value || '')
@@ -5349,7 +5769,9 @@ async function rafraichirNodes() {
                   n.compute_gpu_image ? ` · <code>${v(n.compute_gpu_image)}</code>` : ''}
                 <button type="button" class="btn" onclick="detecterGpu(${n.id})">${T('settings.js.gpu_detect')}</button>${
                   n.gpu_capable ? ` <button type="button" class="btn" onclick="buildImageGpu(${n.id})">${T('settings.js.gpu_build')}</button> <span id="gpubuild_${n.id}" class="meta"></span>` : ''}
+                <button type="button" class="btn" style="min-height:44px" onclick="hostDrvToggle(${n.id},'nvidia')">${T('settings.hostdrv.nvidia.open')}</button>
                 <span id="gpudet_${n.id}" class="meta"></span></div>
+              <div id="hostdrv_nvidia_${n.id}" style="display:none; margin-top:var(--space-2); padding:var(--space-2); background:var(--bg-input); border:1px solid var(--border-soft); border-radius:6px"></div>
               ${_capFixHtml(n)}
               ${(() => { const needsCfg = (!n.docker_network) || (n.mtl_capable && !n.mtl_iface);
                 return `<div style="margin-top:var(--space-2);display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap">
@@ -6609,14 +7031,36 @@ async function mtlNodeCpufreq(id) {
         else if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent=' ✕ '+(j.msg||j.error||T('settings.js.st_fail')); }
     } catch (e) { if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent=' ✕ '+e; } }
 }
+// Redémarrage d'un nœud, garde des processus BLOQUÉS DANS LE NOYAU compris (app/node_power.py) :
+// le serveur refuse un redémarrage normal qui ne finirait jamais (machine perdue, ni éteinte ni
+// joignable) et liste les processus ; on propose alors le redémarrage FORCÉ (sysrq).
+// Rend la réponse finale, ou null si l'opérateur renonce.
+async function _nodeRebootFlow(id) {
+    const post = (force) => fetch('/api/mtl/reboot?node_id='+id, {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({confirm:true, force:!!force})}).then(r => r.json());
+    let j = await post(false);
+    if (j && j.error === 'blocked_processes') {
+        const b = j.blocked || [];
+        const list = b.slice(0, 4).map(p => p.comm + (p.wchan ? ' / ' + p.wchan : '')).join(', ');
+        const txt = T('settings.js.reboot_blocked_confirm').replace('{n}', b.length).replace('{list}', list);
+        if (!await window.mxlConfirm({html: window._escp(txt).replace(/\n/g, '<br>'),
+                                      confirmLabel: T('settings.js.reboot_force_button'), danger: true})) return null;
+        j = await post(true);
+    }
+    return j;
+}
+function _nodeRebootText(j) {
+    if (j.ok) return '✓ ' + (j.mode === 'sysrq' ? T('settings.js.reboot_forced') : (j.msg || T('settings.js.reboot_started')));
+    if (j.error === 'probe_failed') return '✕ ' + T('settings.js.reboot_probe_failed');
+    return '✕ ' + (j.msg || j.error || T('settings.js.st_fail'));
+}
 async function mtlNodeReboot(id) {
     if (!confirm(T('settings.js.reboot_host_confirm'))) return;
     const msg = document.getElementById('io_'+id+'_hpmsg');
     msg.style.color='var(--text-muted)'; msg.textContent=T('settings.js.reboot_asked');
     try {
-        const r = await fetch('/api/mtl/reboot?node_id='+id, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({confirm:true})});
-        const j = await r.json();
-        msg.textContent = j.ok ? ('✓ '+(j.msg||T('settings.js.reboot_started'))) : ('✕ '+(j.msg||j.error||T('settings.js.st_fail')));
+        const j = await _nodeRebootFlow(id);
+        msg.textContent = j ? _nodeRebootText(j) : '';
     } catch (e) { msg.textContent='✕ '+e; }
 }
 // Mise à jour de l'agent-nœud (push agent.py via le canal agent + restart différé, sans SSH).
@@ -6690,7 +7134,7 @@ function _nodeCaps(n) {
     return Array.isArray(caps) ? caps : [];
 }
 
-// Les cinq capacités de nœud, avec ce que chacune coûte à rattraper (affiché dans la confirmation :
+// Les six capacités de nœud, avec ce que chacune coûte à rattraper (affiché dans la confirmation :
 // aucune n'est anodine, et deux imposent un redémarrage). Miroir de _CAP_ADDABLE côté serveur —
 // c'est le serveur qui refuse, ici on ne fait que ne pas proposer n'importe quoi.
 const CAPS_NODE = [
@@ -6699,6 +7143,8 @@ const CAPS_NODE = [
     {id:'webrtc',  reboot:false},
     {id:'gpu',     reboot:true},
     {id:'io2110',  reboot:true},
+    // Interfaces natives LV2 (plugin plugin_gui) : simple déclaration, rien sur l'hôte ; exige compute.
+    {id:'gui',     reboot:false, needs:'compute', hint:'settings.js.caps_gui_hint'},
 ];
 
 // Ligne « capacités » de la carte nœud : SEULEMENT celles qui sont présentes. Ce qui manque
@@ -6720,10 +7166,17 @@ function _capFixHtml(n) {
                       aria-haspopup="menu" aria-expanded="false" aria-controls="capmenu_${n.id}"
                       onclick="toggleCapMenu(event, ${n.id})">＋ ${T('settings.js.caps_add')}</button>
                     <div id="capmenu_${n.id}" class="capmenu" role="menu" hidden>`
-              + manquantes.map(c => `<button type="button" class="capmenu-item" role="menuitem"
+              + manquantes.map(c => {
+                  // Une capacité qui en exige une autre absente est montrée, désactivée, avec la raison.
+                  const bloque = c.needs && !caps.includes(c.needs);
+                  const hint = bloque ? T('settings.js.caps_requires_hint').replace(/\{need\}/g, c.needs)
+                             : c.reboot ? T('settings.js.caps_reboot_hint')
+                             : c.hint ? T(c.hint) : '';
+                  return `<button type="button" class="capmenu-item" role="menuitem"${bloque ? ' disabled aria-disabled="true"' : ''}
                       onclick="ajouterCapNode(${n.id}, '${c.id}')"><code>${escapeHtml(c.id)}</code>${
-                      c.reboot ? `<span class="capmenu-hint">${T('settings.js.caps_reboot_hint')}</span>` : ''
-                  }</button>`).join('')
+                      hint ? `<span class="capmenu-hint">${escapeHtml(hint)}</span>` : ''
+                  }</button>`;
+              }).join('')
               + `</div></span>`;
     }
     return `<div class="meta" style="margin-top:4px">${T('settings.js.caps_label')} ${declarees}${ajout}
@@ -6807,6 +7260,155 @@ function _pollCapAdd(id) {
         } catch (e) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; _capPoll[id]=false; }
     };
     setTimeout(tick, 3000);
+}
+
+// ─── Pilotes hôte d'un nœud : panneau GÉNÉRIQUE (job long + journal + action en attente) ─────────────
+// Aucun nom de « kind » ici : tout libellé vient de settings.hostdrv.<kind>.* (et settings.hostdrv.*
+// pour le commun). Un second kind (p.ex. Blackmagic Desktop Video) n'ajoute que son script côté
+// node_agent/host_drivers/ et ses libellés — ce code ne bouge pas. Contrat : NODE_AGENT.md §4.6.
+const _hd = {};   // "<id>_<kind>" -> {timer, offset}
+function _hdFmt(s, p) { return String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null) ? p[k] : ''); }
+function _hdBox(id, kind) { return document.getElementById('hostdrv_'+kind+'_'+id); }
+function _hdStop(id, kind) { const st = _hd[id+'_'+kind]; if (st && st.timer) { clearTimeout(st.timer); st.timer = null; } }
+function _hdErr(j) { return T('settings.hostdrv.err.'+(j && j.error)) !== 'settings.hostdrv.err.'+(j && j.error)
+    ? T('settings.hostdrv.err.'+j.error) : T('settings.hostdrv.err.default')+(j && j.detail ? ' : '+j.detail : ''); }
+function hostDrvToggle(id, kind) {
+    const box = _hdBox(id, kind);
+    if (!box) return;
+    if (box.style.display === 'block') { box.style.display = 'none'; _hdStop(id, kind); return; }
+    box.style.display = 'block';
+    hostDrvLoad(id, kind);
+}
+async function hostDrvLoad(id, kind) {
+    const box = _hdBox(id, kind);
+    if (!box) return;
+    _hdStop(id, kind);
+    box.innerHTML = '<div class="meta">⏳ '+escapeHtml(T('settings.hostdrv.loading'))+'</div>';
+    let j;
+    try { j = await (await fetch('/api/nodes/'+id+'/host-drivers/'+kind+'/state')).json(); }
+    catch (e) { box.innerHTML = '<div class="meta" style="color:var(--status-stopped-fg)">✕ '+escapeHtml(String(e))+'</div>'; return; }
+    if (!j.ok) { box.innerHTML = '<div class="meta" style="color:var(--status-stopped-fg)">✕ '+escapeHtml(_hdErr(j))+'</div>'
+        +'<button type="button" class="btn" style="min-height:44px" onclick="hostDrvLoad('+id+',\''+kind+'\')">'+escapeHtml(T('settings.hostdrv.refresh'))+'</button>'; return; }
+    hostDrvRender(id, kind, j);
+}
+function hostDrvRender(id, kind, j) {
+    const box = _hdBox(id, kind), P = 'settings.hostdrv.'+kind+'.';
+    const plan = j.plan || {}, job = j.job || {};
+    const running = job.status === 'running';
+    const bad = plan.status === 'refused';
+    const rows = (j.rows || []).map(r => '<tr><td class="meta" style="padding:2px 12px 2px 0">'+escapeHtml(T(P+'row.'+r.key))
+        +'</td><td><code>'+escapeHtml(String(r.value))+'</code></td></tr>').join('');
+    let msg = _hdFmt(T(P+'plan.'+plan.code), plan.params);
+    if (plan.params && plan.params.fallback) msg += ' '+T(P+'plan.fallback.'+plan.params.fallback);
+    const steps = (plan.steps || []).map(s => '<li>'+escapeHtml(T(P+'step.'+s))+'</li>').join('');
+    const pend = job.pending || (plan.status === 'pending_reboot' ? 'reboot' : '');
+    const btnStyle = 'min-height:44px;padding:0 16px';
+    let pendHtml = '';
+    if (pend === 'reboot') pendHtml = '<div style="margin:8px 0;padding:8px 10px;border:1px solid var(--status-warning-fg,#c80);border-radius:6px">'
+        +'<div class="meta" style="color:var(--status-warning-fg,#c80)">⚠ '+escapeHtml(T('settings.hostdrv.pending.reboot'))+'</div>'
+        +'<div style="margin-top:6px"><button type="button" class="btn btn-orange" style="'+btnStyle+'" onclick="hostDrvReboot('+id+',\''+kind+'\')">'+escapeHtml(T('settings.hostdrv.reboot_now'))+'</button></div></div>';
+    if (pend === 'shutdown') pendHtml = '<div style="margin:8px 0;padding:8px 10px;border:1px solid var(--status-warning-fg,#c80);border-radius:6px">'
+        +'<div class="meta" style="color:var(--status-warning-fg,#c80)">⚠ '+escapeHtml(T('settings.hostdrv.pending.shutdown'))+'</div>'
+        +'<div style="margin-top:6px"><button type="button" class="btn btn-orange" style="'+btnStyle+'" onclick="hostDrvPoweroff('+id+',\''+kind+'\')">'+escapeHtml(T('settings.hostdrv.poweroff_now'))+'</button></div></div>';
+    const upload = j.upload_dir ? '<div style="margin-top:10px"><div class="meta">'+escapeHtml(T('settings.hostdrv.upload'))
+        +' <span class="meta">('+escapeHtml(T(P+'upload_hint'))+')</span></div>'
+        +'<input type="file" id="hostdrv_file_'+kind+'_'+id+'" style="max-width:100%"> '
+        +'<button type="button" class="btn" style="'+btnStyle+'" onclick="hostDrvUpload('+id+',\''+kind+'\')">'+escapeHtml(T('settings.hostdrv.upload'))+'</button> '
+        +'<span class="meta" id="hostdrv_up_'+kind+'_'+id+'"></span></div>' : '';
+    box.innerHTML =
+        '<div style="font-weight:700">'+escapeHtml(T(P+'title'))+' <span class="badge '+(bad?'stopped':(plan.status==='ok'?'ready':''))+'">'+escapeHtml(T(P+'status.'+plan.status))+'</span></div>'
+        +'<table style="margin:6px 0;border-collapse:collapse">'+rows+'</table>'
+        +'<div style="margin:6px 0;'+(bad?'color:var(--status-stopped-fg)':'')+'">'+escapeHtml(msg)+'</div>'
+        +(steps && j.can_run ? '<div class="meta">'+escapeHtml(T('settings.hostdrv.steps'))+'</div><ol class="meta" style="margin:2px 0 8px 18px">'+steps+'</ol>' : '')
+        +pendHtml
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+        +(j.can_run ? '<button type="button" class="btn btn-blue" style="'+btnStyle+'" '+(running?'disabled':'')+' onclick="hostDrvRun('+id+',\''+kind+'\')">'+escapeHtml(T(P+'run'))+'</button>' : '')
+        +'<button type="button" class="btn" style="'+btnStyle+'" onclick="hostDrvLoad('+id+',\''+kind+'\')">'+escapeHtml(T('settings.hostdrv.refresh'))+'</button></div>'
+        +(j.can_run ? '<div class="meta" style="margin-top:4px">'+escapeHtml(T(P+'license'))+'</div>' : '')
+        +upload
+        +'<div id="hostdrv_job_'+kind+'_'+id+'" style="margin-top:8px"></div>';
+    if (running || job.status === 'done' || job.status === 'error') { _hd[id+'_'+kind] = {timer: null, offset: 0, log: ''}; hostDrvPoll(id, kind); }
+}
+async function hostDrvRun(id, kind) {
+    const out = document.getElementById('hostdrv_job_'+kind+'_'+id);
+    try {
+        const j = await (await fetch('/api/nodes/'+id+'/host-drivers/'+kind+'/run', {method:'POST'})).json();
+        if (!j.ok) { out.innerHTML = '<div style="color:var(--status-stopped-fg)">✕ '+escapeHtml(_hdErr(j))+'</div>'; return; }
+        _hd[id+'_'+kind] = {timer: null, offset: 0, log: ''};
+        hostDrvPoll(id, kind);
+    } catch (e) { out.innerHTML = '<div style="color:var(--status-stopped-fg)">✕ '+escapeHtml(String(e))+'</div>'; }
+}
+async function hostDrvPoll(id, kind) {
+    const st = _hd[id+'_'+kind] || (_hd[id+'_'+kind] = {timer: null, offset: 0, log: ''});
+    const out = document.getElementById('hostdrv_job_'+kind+'_'+id);
+    if (!out) return;
+    let j;
+    try { j = await (await fetch('/api/nodes/'+id+'/host-drivers/'+kind+'/job?offset='+st.offset)).json(); }
+    catch (e) { st.timer = setTimeout(() => hostDrvPoll(id, kind), 4000); return; }
+    if (!j.ok) { out.innerHTML = '<div style="color:var(--status-stopped-fg)">✕ '+escapeHtml(_hdErr(j))+'</div>'; return; }
+    st.log += j.log || ''; st.offset = j.next_offset || st.offset;
+    const job = j.job || {}, run = job.status === 'running';
+    const cls = run ? 'var(--text-muted)' : (job.status === 'error' ? 'var(--status-stopped-fg)' : 'var(--status-running-fg)');
+    let pre = out.querySelector('pre');
+    if (!pre) {
+        out.innerHTML = '<div class="meta" data-st></div><pre class="meta" style="margin-top:4px;max-height:260px;overflow:auto;white-space:pre-wrap;background:var(--bg-input);border:1px solid var(--border-soft);border-radius:6px;padding:6px"></pre>';
+        pre = out.querySelector('pre');
+    }
+    out.querySelector('[data-st]').style.color = cls;
+    out.querySelector('[data-st]').textContent = (run ? '⏳ ' : (job.status === 'error' ? '✕ ' : '✓ ')) + T('settings.hostdrv.log')
+        + ' — ' + T('settings.hostdrv.job.'+job.status) + ' · ' + (job.elapsed || 0) + ' s';
+    const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 8;
+    pre.textContent = st.log;
+    if (atBottom) pre.scrollTop = pre.scrollHeight;
+    if (run) { st.timer = setTimeout(() => hostDrvPoll(id, kind), 2000); return; }
+    if (!st.refreshed) { st.refreshed = true; hostDrvRefreshState(id, kind); }
+}
+// Fin de job : relire l'état (statut, bandeau « redémarrage requis ») SANS effacer le journal affiché.
+async function hostDrvRefreshState(id, kind) {
+    const keepLog = (_hd[id+'_'+kind] || {}).log || '';
+    try {
+        const j = await (await fetch('/api/nodes/'+id+'/host-drivers/'+kind+'/state')).json();
+        if (!j.ok) return;
+        const out = document.getElementById('hostdrv_job_'+kind+'_'+id);
+        hostDrvRender(id, kind, Object.assign({}, j, {job: Object.assign({}, j.job, {status: 'none'})}));
+        const st = _hd[id+'_'+kind] = {timer: null, offset: 0, log: keepLog, refreshed: true};
+        const o2 = document.getElementById('hostdrv_job_'+kind+'_'+id);
+        if (o2 && keepLog) { o2.innerHTML = '<pre class="meta" style="max-height:260px;overflow:auto;white-space:pre-wrap;background:var(--bg-input);border:1px solid var(--border-soft);border-radius:6px;padding:6px"></pre>'; o2.querySelector('pre').textContent = keepLog; }
+        void out; void st;
+    } catch (e) { /* le journal reste affiché */ }
+}
+async function hostDrvReboot(id, kind) {
+    if (!confirm(T('settings.js.reboot_host_confirm'))) return;
+    const out = document.getElementById('hostdrv_job_'+kind+'_'+id);
+    try {
+        const j = await _nodeRebootFlow(id);
+        if (out && j) { out.style.color = 'var(--text-muted)'; out.textContent = _nodeRebootText(j); }
+    } catch (e) { if (out) out.textContent = '✕ '+e; }
+}
+async function hostDrvPoweroff(id, kind) {
+    if (!confirm(T('settings.hostdrv.poweroff_confirm'))) return;
+    const out = document.getElementById('hostdrv_job_'+kind+'_'+id);
+    try {
+        const j = await (await fetch('/api/nodes/'+id+'/host-poweroff', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({confirm:true})})).json();
+        if (out) { out.style.color = j.ok ? 'var(--text-muted)' : 'var(--status-stopped-fg)'; out.textContent = j.ok ? '…' : _hdErr(j); }
+    } catch (e) { if (out) out.textContent = '✕ '+e; }
+}
+function hostDrvUpload(id, kind) {
+    const inp = document.getElementById('hostdrv_file_'+kind+'_'+id), msg = document.getElementById('hostdrv_up_'+kind+'_'+id);
+    const f = inp && inp.files && inp.files[0];
+    if (!f || !msg) return;
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/nodes/'+id+'/host-drivers/'+kind+'/upload?name='+encodeURIComponent(f.name));
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.upload.onprogress = (ev) => { if (ev.lengthComputable) msg.textContent = '⏳ '+T('settings.hostdrv.uploading')+' '+Math.round(100*ev.loaded/ev.total)+' %'; };
+    xhr.onload = () => {
+        let j = {}; try { j = JSON.parse(xhr.responseText); } catch (e) { /* corps non JSON */ }
+        msg.style.color = j.ok ? 'var(--status-running-fg)' : 'var(--status-stopped-fg)';
+        msg.textContent = j.ok ? '✓ '+T('settings.hostdrv.uploaded')+' ('+j.name+')' : '✕ '+_hdErr(j);
+        if (j.ok) setTimeout(() => hostDrvLoad(id, kind), 1200);
+    };
+    xhr.onerror = () => { msg.style.color = 'var(--status-stopped-fg)'; msg.textContent = '✕ '+T('settings.hostdrv.err.default'); };
+    xhr.send(f);
 }
 
 // GPU NVIDIA : détection (nvidia-smi + runtime nvidia Docker) → met à jour gpu_capable/gpu_count.
@@ -10186,132 +10788,6 @@ async function deployerWebrtc() {
     }
 }
 
-// ─── Stockage ──────────────────────────────────────────────────
-function switchStorageSub(name) {
-    ['status', 'container'].forEach(t => {
-        const panel = document.getElementById('storage-sub-' + t);
-        const btn   = document.getElementById('storage-subtab-btn-' + t);
-        if (panel) panel.style.display = (t === name) ? 'block' : 'none';
-        if (btn)   btn.classList.toggle('active', t === name);
-    });
-    if (name === 'status') rafraichirStorage();
-}
-
-async function rafraichirStorage() {
-    try {
-        const r = await fetch('/api/storage/status');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const s = await r.json();
-
-        // Formulaire (sous-onglet Container)
-        const dirEl  = document.getElementById('s_storage_media_dir');
-        const portEl = document.getElementById('s_storage_http_port');
-        const userEl = document.getElementById('s_storage_username');
-        const verEl  = document.getElementById('s_storage_version');
-        if (dirEl  && !dirEl.matches(':focus'))  dirEl.value  = s.media_dir || '/mnt/media';
-        if (portEl && !portEl.matches(':focus'))  portEl.value = s.http_port || 8090;
-        if (userEl && !userEl.matches(':focus'))  userEl.value = s.username  || 'admin';
-
-        // Badge état
-        const sb = document.getElementById('storage_state_badge');
-        if (sb) {
-            if (!s.vmid) {
-                sb.textContent = T('settings.js.not_deployed_word'); sb.style.background = 'var(--border-soft)'; sb.style.color = 'var(--text-muted)';
-            } else if (s.running) {
-                sb.textContent = T('settings.js.operational'); sb.style.background = 'var(--status-running-bg)'; sb.style.color = 'var(--status-running-fg)';
-            } else {
-                sb.textContent = T('settings.js.filebrowser_stopped'); sb.style.background = 'var(--status-warning-bg)'; sb.style.color = 'var(--status-warning-fg)';
-            }
-        }
-
-        _setTxt('storage_status_vmid', s.vmid || '—');
-        _setTxt('storage_status_host', s.hostname || '—');
-        _setTxt('storage_status_ip',   s.ip || '—');
-        _setTxt('storage_status_dir',  s.media_dir || '—');
-        const urlEl = document.getElementById('storage_status_url');
-        if (urlEl) {
-            if (s.filebrowser_url) {
-                urlEl.innerHTML = `<a href="${_escp(s.filebrowser_url)}" target="_blank" rel="noopener"
-                    style="color:var(--accent)">${_escp(s.filebrowser_url)}</a>`;
-            } else {
-                urlEl.textContent = '—';
-            }
-        }
-        document.getElementById('storage_status_error').textContent = '';
-    } catch(e) {
-        document.getElementById('storage_status_error').textContent = T('settings.js.error_label') + ' ' + e.message;
-    }
-}
-
-function _setTxt(id, val) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = val;
-}
-
-async function supprimerStorage() {
-    if (!await mxlConfirm({message: T('settings.js.del_filebrowser_msg'), confirmLabel: T('settings.js.delete_word'), danger: true})) return;
-    const msg = document.getElementById('storage_msg');
-    msg.style.color = 'var(--text-muted)';
-    msg.textContent = T('settings.js.deleting');
-    try {
-        const r = await fetch('/api/storage/destroy', {method: 'POST'});
-        const j = await r.json();
-        msg.textContent = '⏳ ' + (j.status || T('settings.js.started_word')) + T('settings.js.follow_alerts');
-        setTimeout(rafraichirStorage, 3000);
-    } catch(e) {
-        msg.style.color = 'var(--status-stopped-fg)';
-        msg.textContent = '✕ ' + e.message;
-    }
-}
-
-async function deployerStorage() {
-    const vmidRaw = document.getElementById('s_storage_vmid').value.trim();
-    const vmid = vmidRaw ? parseInt(vmidRaw) : null;
-    if (!await mxlConfirm(vmid ? `${T('settings.js.deploy_storage_pre')}${vmid} ?`
-                                : T('settings.js.deploy_storage_auto'))) return;
-    const status = document.getElementById('storage_deploy_status');
-    const logEl  = document.getElementById('storage_deploy_log');
-    const t0 = Date.now();
-    status.style.color = 'var(--text-muted)';
-    status.textContent = T('settings.js.inprogress') + ' 0s';
-    logEl.style.display = 'block';
-    logEl.textContent = '';
-    const tick = setInterval(() => {
-        const s = Math.round((Date.now() - t0) / 1000);
-        if (status.textContent.startsWith(T('settings.js.inprogress'))) status.textContent = `${T('settings.js.inprogress')} ${s}s`;
-    }, 1000);
-    let lastLine = '';
-    try {
-        const r = await fetch('/api/storage/deploy', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({vmid}),
-        });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const reader = r.body.getReader();
-        const dec = new TextDecoder();
-        let buf = '';
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buf += dec.decode(value, { stream: true });
-            const lines = buf.split('\n'); buf = lines.pop();
-            for (const ln of lines) { logEl.textContent += ln + '\n'; if (ln.trim()) lastLine = ln; }
-            logEl.scrollTop = logEl.scrollHeight;
-        }
-        if (buf) { logEl.textContent += buf; if (buf.trim()) lastLine = buf; }
-        clearInterval(tick);
-        const ok = lastLine.startsWith('✅');
-        status.style.color = ok ? 'var(--status-running-fg)' : 'var(--status-stopped-fg)';
-        const dur = Math.round((Date.now() - t0) / 1000);
-        status.textContent = ok ? `${T('settings.js.deployed_in_m')} ${dur}s` : `${T('settings.js.deploy_failed_pre')} ${dur}s ${T('settings.js.see_log')}`;
-        rafraichirStorage();
-    } catch(e) {
-        clearInterval(tick);
-        status.style.color = 'var(--status-stopped-fg)';
-        status.textContent = '✕ ' + e.message;
-    }
-}
-
 async function chargerFabric() {
     try {
         const s = await (await fetch('/api/settings')).json();
@@ -11082,7 +11558,17 @@ async function rafraichirAtem() {
         _atemDves = data.dves || [];
         const tb = document.getElementById('atem_panels_tbody');
         if (!data.panels || !data.panels.length) {
-            tb.innerHTML = '<tr><td colspan="8" class="meta">' + T('settings.js.no_panel') + '</td></tr>';
+            tb.innerHTML = '<tr><td colspan="9" class="meta">' + T('settings.js.no_panel') + '</td></tr>';
+            return;
+        }
+        // ⚠ Un pli « Sources » ouvert interdit le re-rendu (cf. _atemPliOuvert) : on met à jour
+        // son contenu en place et on laisse le tableau tranquille.
+        if (_atemPliOuvert()) {
+            _atemMajSourcesOuvertes(data.panels);
+            window._atemPanelLabels = window._atemPanelLabels || {};
+            for (const p of data.panels) {
+                window._atemPanelLabels[p.ip] = Object.assign({long: null, short: null}, p.labels || {});
+            }
             return;
         }
         tb.innerHTML = data.panels.map(p => {
@@ -11102,6 +11588,13 @@ async function rafraichirAtem() {
             for (let i = 0; i < ATEM_ME_COUNT; i++) {
                 meSel += `<div style="white-space:nowrap">M/E${i + 1} <select onchange="assignerME('${p.ip}', ${i}, this.value)">${_atemOptions(me[i] ?? null)}</select></div>`;
             }
+            // Niveau de libellé des touches, par pupitre. `labels` peut manquer sur une réponse
+            // d'une version antérieure : on ne suppose pas sa présence.
+            const lv = p.labels || {};
+            const lvSel =
+                `<div style="white-space:nowrap">${T('settings.js.label_level_long')} <select onchange="assignerLibelles('${p.ip}', 'long', this.value)">${_atemNiveauOptions(lv.long ?? null)}</select></div>` +
+                `<div style="white-space:nowrap">${T('settings.js.label_level_short')} <select onchange="assignerLibelles('${p.ip}', 'short', this.value)">${_atemNiveauOptions(lv.short ?? null)}</select></div>` +
+                `<div style="margin-top:var(--space-1)"><button class="btn btn-sm" onclick="basculerSources('${p.ip}')">${T('settings.js.sources_btn')}</button> ${_atemSourcesBadge(p)}</div>`;
             return `<tr style="border-bottom:1px solid var(--border)">
                 <td style="padding:var(--space-1) var(--space-2)"><code>${p.ip}</code></td>
                 <td style="padding:var(--space-1) var(--space-2)"><input type="text" value="${(p.label || '').replace(/"/g,'&quot;')}" style="width:9em"
@@ -11111,20 +11604,176 @@ async function rafraichirAtem() {
                 <td style="padding:var(--space-1) var(--space-2)">${vu}</td>
                 <td style="padding:var(--space-1) var(--space-2); font-size:0.85em" data-me-ip="${p.ip}">${meSel}</td>
                 <td style="padding:var(--space-1) var(--space-2); font-size:0.85em" data-dve-ip="${p.ip}">${ssSel}</td>
+                <td style="padding:var(--space-1) var(--space-2); font-size:0.85em" data-labels-ip="${p.ip}">${lvSel}</td>
                 <td style="padding:var(--space-1) var(--space-2)"><button class="btn btn-sm btn-red" title="${T('settings.js.forget_panel_title')}"
                      onclick="oublierPupitre('${p.ip}')">${T('settings.js.forget_panel')}</button></td>
+            </tr>
+            <tr class="atem-sources-row hidden" data-sources-ip="${p.ip}">
+                <td colspan="9" style="padding:0 var(--space-2) var(--space-2)">${_atemSourcesTable(p)}</td>
             </tr>`;
         }).join('');
         // mémorise M/E et DVE courants par IP pour reconstruire la liste à l'assignation
         window._atemPanelMe = {};
         window._atemPanelDve = {};
+        window._atemPanelLabels = {};
         for (const p of data.panels) {
             window._atemPanelMe[p.ip] = (p.me_vmids || []).slice();
             window._atemPanelDve[p.ip] = (p.dve_vmids || []).slice();
+            window._atemPanelLabels[p.ip] = Object.assign({long: null, short: null}, p.labels || {});
         }
     } catch (e) {
         console.error('atem refresh:', e);
     }
+}
+
+// ─── Sources des M/E d'un pupitre ────────────────────────────────────────────────────────────
+// L'usage de plusieurs M/E, c'est plusieurs mélangeurs sur LES MÊMES sources. Quand ce n'est pas
+// le cas, les touches mentent pour toutes les rangées sauf la première : un InPr est indexé par
+// SOURCE, pas par rangée, donc le pupitre n'a qu'UNE liste de noms — celle du M/E 1. Ce tableau
+// montre toutes les sources et fait ressortir les écarts.
+//
+// ⚠ « Statut > Couleur » (docs/design/DESIGN.md) : un écart porte TOUJOURS un libellé texte, pas
+// seulement une couleur — la page doit rester lisible en N&B et au daltonisme.
+function _atemEchappe(v) {
+    return String(v ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+// Badge visible REPLIÉ : sans lui l'information dormirait derrière un pli fermé.
+function _atemSourcesBadge(p) {
+    const org = p.noms_origine;
+    if (org === 'absent')  return `<span class="badge script_stopped">${T('settings.js.sources_me1_off_badge')}</span>`;
+    if (org === 'declare' || org === 'inconnu')
+        return `<span class="badge script_stopped">${T('settings.js.sources_me1_badge')}</span>`;
+    const src = p.sources || {};
+    if ((src.rangees || []).length > 1 && !src.identiques)
+        return `<span class="badge script_stopped">${T('settings.js.sources_differ_badge')}</span>`;
+    return '';
+}
+
+function _atemSourcesSynthese(p) {
+    const src = p.sources || {}, lignes = [];
+    const org = p.noms_origine;
+    if (org === 'declare')      lignes.push(T('settings.js.sources_me1_unreachable'));
+    else if (org === 'absent')  lignes.push(T('settings.js.sources_me1_unassigned'));
+    else if (org === 'inconnu') lignes.push(T('settings.js.sources_me1_unknown'));
+    for (const r of (src.rangees || [])) {
+        if (r.me === src.reference_me) continue;
+        const host = r.hostname || r.vmid;
+        if (!r.connu) {
+            lignes.push(T('settings.js.sources_me_unknown').replace('{me}', r.me).replace('{host}', host));
+        } else if ((r.diff_slots || []).length) {
+            lignes.push(T('settings.js.sources_me_differs').replace('{me}', r.me)
+                         .replace('{host}', host).replace('{n}', r.diff_slots.length));
+        }
+    }
+    if (!lignes.length && (src.rangees || []).length) lignes.push(T('settings.js.sources_identical'));
+    return lignes.map(l => _atemEchappe(l)).join('<br>');
+}
+
+function _atemSourcesTable(p) {
+    const src = p.sources || {}, rangees = src.rangees || [];
+    if (!rangees.length) {
+        return `<div class="meta" style="padding:var(--space-2) 0">${T('settings.js.sources_no_me')}</div>`;
+    }
+    const n = Math.max(src.n_inputs_max || 0, (p.apercu || []).length);
+    const ap = p.apercu || [];
+    let th = `<th style="padding:var(--space-1) var(--space-2); text-align:left">${T('settings.js.sources_col_key')}</th>`
+           + `<th style="padding:var(--space-1) var(--space-2); text-align:left">${T('settings.js.sources_col_shown')}</th>`;
+    for (const r of rangees) {
+        const ref = r.me === src.reference_me ? ` (${T('settings.js.sources_reference')})` : '';
+        th += `<th style="padding:var(--space-1) var(--space-2); text-align:left">M/E ${r.me} — ${_atemEchappe(r.hostname || r.vmid)}${_atemEchappe(ref)}</th>`;
+    }
+    let corps = '';
+    for (let i = 0; i < n; i++) {
+        const a = ap[i] || {};
+        let affiche;
+        if (a.long == null) {
+            affiche = `<span class="meta">${T('settings.js.sources_empty')}</span>`;
+        } else {
+            const tl = a.long_complet ? ` title="${_atemEchappe(T('settings.js.sources_truncated').replace('{v}', a.long_complet))}"` : '';
+            const tc = a.short_complet ? ` title="${_atemEchappe(T('settings.js.sources_truncated').replace('{v}', a.short_complet))}"` : '';
+            affiche = `<span${tl}>${_atemEchappe(a.long)}</span> <span class="meta">·</span> `
+                    + `<code${tc}>${_atemEchappe(a.short)}</code>`;
+        }
+        let cells = `<td style="padding:var(--space-1) var(--space-2)"><b>${i + 1}</b></td>`
+                  + `<td style="padding:var(--space-1) var(--space-2)">${affiche}</td>`;
+        for (const r of rangees) {
+            const nom = (r.inputs || [])[i] || '';
+            const vide = `<span class="meta">${T('settings.js.sources_empty')}</span>`;
+            if (r.me === src.reference_me) {
+                cells += `<td style="padding:var(--space-1) var(--space-2)">${nom ? _atemEchappe(nom) : vide}</td>`;
+                continue;
+            }
+            const differe = (r.diff_slots || []).includes(i);
+            const txt = nom ? _atemEchappe(nom) : vide;
+            // Écart : couleur d'avertissement du thème ET le mot « diffère ». Identique : atténué.
+            cells += differe
+                ? `<td style="padding:var(--space-1) var(--space-2); background:var(--status-warning-bg); color:var(--status-warning-fg)">`
+                  + `${txt} <span class="badge script_stopped">${T('settings.js.sources_differs')}</span></td>`
+                : `<td class="meta" style="padding:var(--space-1) var(--space-2)">${txt} <span class="meta">(${T('settings.js.sources_same')})</span></td>`;
+        }
+        corps += `<tr style="border-bottom:1px solid var(--border)">${cells}</tr>`;
+    }
+    // Défilement horizontal du TABLEAU SEUL : jamais de la page (iPad = référence tactile).
+    return `<div class="meta" style="margin:var(--space-2) 0" data-sources-synth="${p.ip}">${_atemSourcesSynthese(p)}</div>`
+         + `<div style="overflow-x:auto; -webkit-overflow-scrolling:touch">`
+         + `<table style="width:100%; border-collapse:collapse; font-size:0.84em">`
+         + `<thead><tr style="color:var(--text-muted); border-bottom:1px solid var(--border)">${th}</tr></thead>`
+         + `<tbody data-sources-body="${p.ip}">${corps}</tbody></table></div>`;
+}
+
+function basculerSources(ip) {
+    const tr = document.querySelector(`tr[data-sources-ip="${ip}"]`);
+    if (tr) tr.classList.toggle('hidden');
+}
+
+// Un pli ouvert INTERDIT le re-rendu du tableau des pupitres : sinon le rafraîchissement
+// périodique le referme sous les doigts. C'est le défaut corrigé le 2026-08-30 sur le panneau
+// « Régler » des interfaces de nœud — et la charge de la preuve est ici, pas chez l'appelant :
+// aucun re-rendu tant qu'un pli est ouvert, d'où que vienne l'appel.
+function _atemPliOuvert() {
+    return document.querySelector('#atem_panels_tbody tr.atem-sources-row:not(.hidden)');
+}
+
+// Mise à jour EN PLACE des plis ouverts : on ne réécrit que ce qui change, pas de clignotement.
+function _atemMajSourcesOuvertes(panels) {
+    for (const p of (panels || [])) {
+        const tr = document.querySelector(`tr[data-sources-ip="${p.ip}"]`);
+        if (!tr || tr.classList.contains('hidden')) continue;
+        const td = tr.querySelector('td');
+        if (!td) continue;
+        const neuf = _atemSourcesTable(p);
+        if (td.innerHTML !== neuf) td.innerHTML = neuf;
+    }
+}
+
+// Niveaux de libellé de la page Libellés (label_2..label_9) ; '' = le défaut.
+function _atemNiveauOptions(courant) {
+    let o = `<option value=""${courant == null ? ' selected' : ''}>${T('settings.js.label_level_default')}</option>`;
+    for (let n = 2; n <= 9; n++) {
+        o += `<option value="${n}"${courant === n ? ' selected' : ''}>${n}</option>`;
+    }
+    return o;
+}
+
+// Écrit UN des deux niveaux en conservant l'autre : la route attend l'objet complet
+// {long, short}, et n'envoyer qu'une clé remettrait l'autre au défaut sans le dire.
+async function assignerLibelles(ip, champ, valeur) {
+    const cur = (window._atemPanelLabels && window._atemPanelLabels[ip]) || {};
+    const corps = {long: cur.long ?? null, short: cur.short ?? null};
+    corps[champ] = (valeur === '' ? null : parseInt(valeur, 10));
+    try {
+        const r = await fetch('/api/atem/assign', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip: ip, labels: corps}),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) { alert(d.error || T('settings.js.error_label')); }
+        if (window._atemPanelLabels) window._atemPanelLabels[ip] = corps;
+    } catch (e) {
+        alert(String(e));
+    }
+    rafraichirAtem();
 }
 
 // Table firmware → protocole connue (renseignée par rafraichirAtem).
@@ -11913,7 +12562,9 @@ const FIELDS = [
     'fps_clear_ratio', 'fps_clear_samples',
     'signal_flap_max', 'signal_flap_window_s', 'signal_stable_s',
     'membw_clear_margin', 'node_health_disk_clear_margin', 'alerts_retention',
-    'alerts_antirebond_s'
+    'alerts_security_retention',
+    'alerts_antirebond_s',
+    'ops_journal_retention_days', 'ops_journal_forward'
 ];
 
 // ─── Journaux : réglages de rotation + purge manuelle ───────────────────────────
@@ -12099,7 +12750,7 @@ async function chargerHaRole() {
         const el = document.getElementById('s_control_role');
         if (el && j.role) el.value = j.role;
     } catch (e) { /* non bloquant */ }
-    chargerHaToken();
+    haAppairageCharger();
     rafraichirHaStatus();
     chargerVip();
 }
@@ -12172,13 +12823,84 @@ async function retirerVip() {
     out.textContent = (r.ok && j.ok) ? '✓ ' + j.msg : '✗ ' + (j.msg || T('settings.js.st_fail'));
     chargerVip();
 }
-// Le secret partagé se REMPLIT (il faut pouvoir le lire pour le recopier sur l'autre
-// contrôleur) — jamais pendant que l'utilisateur le saisit.
-async function chargerHaToken() {
-    const el = document.getElementById('ha_token');
-    if (!el || el === document.activeElement) return;
-    const self = await _updSelf();
-    if (self) el.value = self.token || '';
+// ─── Appairage HA (cf. app/ha_appairage.py) ──────────────────────────────────
+// textContent partout : rien de ce que renvoie le serveur ne devient du HTML.
+let _haCodeMinuteur = null;
+
+function _haDire(msg, ok) {
+    const el = document.getElementById('ha_appairage_msg');
+    if (!el) return;
+    el.style.color = ok == null ? '' : (ok ? 'var(--status-running-fg)' : 'var(--status-stopped-fg)');
+    el.textContent = msg || '';
+}
+
+async function haAppairageCharger() {
+    const el = document.getElementById('ha_appairage_etat');
+    if (!el) return;
+    try {
+        const r = await fetch('/api/ha/pairing');
+        const e = await r.json();
+        if (!r.ok) throw new Error(e.error || ('HTTP ' + r.status));
+        el.textContent = e.empreinte_ca
+            ? T('settings.ha.appairage_empreinte').replace('{e}', e.empreinte_ca) + ' '
+              + (e.pret ? T('settings.ha.appairage_ecoute_on').replace('{p}', e.port_ha)
+                        : T('settings.ha.appairage_ecoute_off'))
+            : T('settings.ha.appairage_sans_ca');
+    } catch (err) {
+        el.textContent = String(err.message || err);
+    }
+}
+
+async function haAppairageDemarrer() {
+    _haDire('…');
+    try {
+        const r = await fetch('/api/ha/pairing/start', {method: 'POST'});
+        const e = await r.json();
+        if (!r.ok || !e.ok) throw new Error(e.error || ('HTTP ' + r.status));
+        const code = document.getElementById('ha_appairage_code');
+        code.textContent = e.code_affiche;
+        code.hidden = false;
+        _haDire('');
+        // Le code se lit ici et se tape là-bas : on dit COMBIEN de temps il reste, et l'adresse à
+        // saisir avec — c'est ce qu'il faut emporter vers l'autre console.
+        const meta = document.getElementById('ha_appairage_code_meta');
+        clearInterval(_haCodeMinuteur);
+        const tic = () => {
+            const s = Math.max(0, Math.round(e.expire - Date.now() / 1000));
+            if (!s) {
+                clearInterval(_haCodeMinuteur);
+                code.textContent = ''; code.hidden = true;
+                meta.textContent = T('settings.ha.appairage_expire');
+                return;
+            }
+            meta.textContent = T('settings.ha.appairage_code_meta')
+                .replace('{h}', location.hostname)
+                .replace('{s}', Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0'));
+        };
+        tic();
+        _haCodeMinuteur = setInterval(tic, 1000);
+        haAppairageCharger();
+    } catch (err) { _haDire(String(err.message || err), false); }
+}
+
+async function haAppairageRejoindre() {
+    const actif = (document.getElementById('ha_app_actif').value || '').trim();
+    const code = (document.getElementById('ha_app_code').value || '').trim();
+    if (!actif || !code) { _haDire(T('settings.ha.appairage_champs'), false); return; }
+    // Geste qui CHANGE L'IDENTITÉ de cette machine : on le dit, et on dit que c'est réversible.
+    if (!await mxlConfirm({message: T('settings.ha.appairage_confirm'), danger: true})) return;
+    _haDire('…');
+    try {
+        const r = await fetch('/api/ha/pairing/join', {method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({actif: actif, code: code})});
+        const e = await r.json();
+        if (!r.ok || !e.ok) throw new Error(e.error || ('HTTP ' + r.status));
+        document.getElementById('ha_app_code').value = '';
+        _haDire(T('settings.ha.appairage_ok').replace('{e}', e.empreinte_ca), true);
+        haAppairageCharger();
+        rafraichirHaStatus();
+    } catch (err) { _haDire(String(err.message || err), false); }
 }
 function _ageStr(s) {
     if (s == null) return '';
@@ -12260,7 +12982,8 @@ async function haDemote() {
     out.style.color = (r.ok && j.ok) ? 'var(--status-running-fg)' : 'var(--status-stopped-fg)';
     out.textContent = (r.ok && j.ok) ? '✓ ' + j.msg : '✗ ' + (j.msg || T('settings.js.st_fail'));
 }
-// Secret partagé HA = `update_token` (un seul réglage, deux points d'entrée dans l'UI).
+// `update_token` ne sert PLUS à la HA depuis le 2026-10-10 (réplication en mTLS, cf. appairage) :
+// il reste le secret des mises à jour entre instances, et n'a plus qu'un point d'entrée.
 // `/api/update/server` est whitelistée par le garde standby → le champ marche des DEUX côtés.
 async function _postUpdateToken(body, out) {
     out.textContent = '…';
@@ -12272,7 +12995,7 @@ async function _postUpdateToken(body, out) {
         const j = await r.json().catch(() => ({}));
         if (!r.ok || j.ok === false) throw new Error(j.error || r.statusText);
         const val = j.token || '';
-        for (const id of ['ha_token', 'upd_token']) {
+        for (const id of ['upd_token']) {
             const el = document.getElementById(id);
             if (el) el.value = val;
         }
@@ -12285,13 +13008,6 @@ async function _postUpdateToken(body, out) {
         out.textContent = '✗ ' + e.message;
         return false;
     }
-}
-async function saveHaToken() {
-    const el = document.getElementById('ha_token');
-    await _postUpdateToken({token: el.value.trim()}, document.getElementById('ha_token_msg'));
-}
-async function genHaToken() {
-    await _postUpdateToken({regen_token: true}, document.getElementById('ha_token_msg'));
 }
 async function saveUpdateToken() {
     const el = document.getElementById('upd_token');

@@ -130,6 +130,17 @@ def _enroll_finalize(node_id, ip):
                          params={"node_id": node_id, "e": str(e)})
 
 
+
+def _url_machines(proposee):
+    """L'URL du contrôleur qu'on remet à un NŒUD (preseed, enroll.conf, ISO).
+
+    En mode web `tls`, l'administrateur est connecté en HTTPS, donc `request.host_url` et l'URL
+    que l'interface propose sont en `https://` — mais un nœud neuf ne connaît pas encore notre CA
+    et échouerait à la vérifier. On lui remet donc l'écoute HTTP du :5000, réduite aux chemins
+    machines (cf. app/web_mode.py). Hors tls : inchangé."""
+    from .. import web_mode
+    return web_mode.url_machines(proposee, request.host)
+
 @bp.route("/api/nodes/token", methods=["POST"])
 @require_perm("settings.edit")
 def api_node_token():
@@ -373,7 +384,7 @@ def api_usb_flash():
     device = (d.get("device") or "").strip()
     if not device:
         return jsonify({"ok": False, "error": "clé USB cible requise"}), 400
-    controller_url = (d.get("controller_url") or request.host_url or "").rstrip("/")
+    controller_url = _url_machines(d.get("controller_url") or request.host_url)
     ok, msg = usb_flash.start_flash(node, token, controller_url, device)
     return jsonify({"ok": ok, "msg": msg}), (200 if ok else 409)
 
@@ -403,7 +414,7 @@ def api_node_iso_build(node_id):
     token = node.get("enroll_token") or ""
     if not token:
         return jsonify({"ok": False, "error": "jeton d'enrôlement déjà consommé — recréer un profil"}), 409
-    controller_url = ((request.json or {}).get("controller_url") or request.host_url or "").rstrip("/")
+    controller_url = _url_machines((request.json or {}).get("controller_url") or request.host_url)
     ok, msg = node_iso.start_build(node, token, controller_url)
     resp = {"ok": ok, "msg": msg, "url": node_iso.iso_url(controller_url, token)}
     return jsonify(resp), (200 if ok else 409)
@@ -516,7 +527,7 @@ def api_node_ilo_deploy(node_id):
         return jsonify({"ok": False, "error": "jeton d'enrôlement déjà consommé — recréer un profil"}), 409
     if not (node.get("ilo_host") and node.get("ilo_user")):
         return jsonify({"ok": False, "error": "identifiants iLO manquants (host/user)"}), 400
-    controller_url = ((request.json or {}).get("controller_url") or request.host_url or "").rstrip("/")
+    controller_url = _url_machines((request.json or {}).get("controller_url") or request.host_url)
     ok, msg = node_iso.build_now(node, token, controller_url)
     if not ok:
         return jsonify({"ok": False, "error": "build ISO : " + msg}), 500
@@ -615,7 +626,7 @@ def api_node_pxe_arm(node_id):
         return jsonify({"ok": False, "error": "jeton d'enrôlement déjà consommé — recréer un profil"}), 409
     if not pxe.netboot_ready():
         return jsonify({"ok": False, "error": "arbre netboot absent — télécharger le netboot Debian d'abord"}), 409
-    controller_url = ((request.json or {}).get("controller_url") or request.host_url or "").rstrip("/")
+    controller_url = _url_machines((request.json or {}).get("controller_url") or request.host_url)
     pxe.arm(token, controller_url)
     db_add_alert("alert.enrolement.pxe_arme", "info", node_id=node_id, kind="node",
                  params={"n": node.get("name")})

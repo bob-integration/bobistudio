@@ -309,11 +309,16 @@ function txFormatDiff(src, slot) {
     }
     return out;
 }
+// Slot d'un port : entier (ports indexés) OU clé texte stable (ports d'un document JSON — console).
+function slotKey(v) {
+    if (v == null) return null;
+    return /^-?\d+$/.test(String(v)) ? parseInt(v) : String(v);
+}
 // Le port d'entrée (spec de consommation) visé par un câble — sert à savoir si c'est un slot TX.
 function consumesPort(vmid, kind, slot) {
     const n = nodesByVmid[vmid];
     const cands = (n && n.consumes || []).filter(x => (x.kind || 'video') === kind);
-    const s = (slot != null) ? parseInt(slot) : null;
+    const s = slotKey(slot);
     return (s != null) ? (cands.find(x => x.slot === s) || cands.find(x => x.slot == null))
                        : cands[0];
 }
@@ -1292,6 +1297,19 @@ async function _postWire(payload, src, target, targetVmid, autoA, autoAnc) {
             setTimeout(rafraichirCables, 2000);
         } else {
             console.error('[wire] FAIL', r.status, j);
+            // Refus du MODÈLE d'un plugin à document (console audio : boucle externe…) : codes stables, traduits
+            // par plugin.<type>.verr.<code> avec leurs valeurs {0} {1}… — le message français n'est qu'un repli.
+            if (j.plugin && Array.isArray(j.errors) && j.errors.length) {
+                const cat = window.I18N || {};
+                const txt = j.errors.map((e) => {
+                    const tpl = cat['plugin.' + j.plugin + '.verr.' + e.code];
+                    return tpl ? (e.params || []).reduce((s, v, k) => s.split('{' + k + '}').join(String(v)), tpl)
+                               : (e.message || e.code);
+                }).join(' ; ');
+                showToast(window.t('cables.js.err_refused').replace('{dst}', target.hostname || '#' + targetVmid)
+                              .replace('{detail}', txt), 'error');
+                return;
+            }
             showToast((window.t('cables.js.err_http').replace('{status}', r.status).replace('{detail}', j.error || window.t('cables.js.err_http_nodetail'))), 'error');
         }
     } catch (e) {
@@ -1309,7 +1327,7 @@ function producesFmt(vmid, shm) {
 function consumesFmt(vmid, kind, slot) {
     const n = nodesByVmid[vmid];
     const cands = (n && n.consumes || []).filter(x => (x.kind || 'video') === kind);
-    const s = (slot != null) ? parseInt(slot) : null;
+    const s = slotKey(slot);
     const m = (s != null)
         ? (cands.find(x => x.slot === s) || cands.find(x => x.slot == null))
         : cands[0];
@@ -1605,7 +1623,7 @@ document.addEventListener('mousedown', e => {
                 }
                 const slot = portIn.dataset.slot;
                 console.log('[wire] -> commitWire', targetNode.dataset.vmid, 'slot=', slot);
-                commitWire(targetNode.dataset.vmid, portIn, slot != null ? parseInt(slot) : null);
+                commitWire(targetNode.dataset.vmid, portIn, slotKey(slot));
                 return;
             }
             // port-in trouvé MAIS pas de cible compatible (la classe topo-node-target

@@ -81,6 +81,37 @@
   .tp-msg .tp-txt { white-space:pre-wrap; font-size:13.5px; line-height:1.45; margin-top:2px;
                     color:#dfe3e7; }
   .tp-msg .tp-ts { font-size:11px; color:#71777d; }
+  .tp-md { white-space:normal; overflow-wrap:anywhere; }
+  .tp-md p { margin:0 0 7px; }
+  .tp-md .tp-h { font-weight:700; margin:10px 0 5px; color:#f0f2f4; }
+  .tp-md ul, .tp-md ol { margin:0 0 7px; padding-left:22px; }
+  .tp-md li { margin:2px 0; }
+  .tp-md code { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px;
+                background:#22262c; border-radius:4px; padding:1px 4px; }
+  .tp-md pre.tp-code { white-space:pre; overflow-x:auto; margin:0 0 8px; padding:8px 10px;
+                       background:#101216; border:1px solid #2c3036; border-radius:6px;
+                       font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; }
+  .tp-md blockquote { margin:0 0 7px; padding:2px 10px; border-left:3px solid #3a3d42; color:#b5bcc3; }
+  .tp-md .tp-tbl { overflow-x:auto; margin:0 0 8px; }
+  .tp-md table { border-collapse:collapse; font-size:12.5px; }
+  .tp-md th, .tp-md td { border:1px solid #33373c; padding:3px 8px; text-align:left; vertical-align:top; }
+  .tp-md th { background:#1a1d22; }
+  .tp-md a { color:#7aa2d6; }
+  .tp-md > :last-child { margin-bottom:0; }
+  .tp-imgs { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .tp-imgs a { display:block; line-height:0; }
+  .tp-imgs img { max-width:220px; max-height:160px; border-radius:5px; border:1px solid #3a3d42;
+                 object-fit:contain; background:#0d0f12; }
+  .tp-pend { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .tp-pend:empty { display:none; }
+  .tp-pend .tp-pi { position:relative; line-height:0; }
+  .tp-pend img { width:72px; height:54px; object-fit:cover; border-radius:4px; border:1px solid #3a3d42; }
+  .tp-pend button { position:absolute; top:-6px; right:-6px; width:22px; height:22px; border-radius:50%;
+                    border:none; background:#8a3b1e; color:#fff; font-size:13px; line-height:22px;
+                    padding:0; cursor:pointer; }
+  .tp-reply.tp-drop textarea { border-color:#2c5db1; background:#101a2b; }
+  .tp-reply .tp-attach { background:#33373c; padding:0 12px; font-size:16px; }
+  .tp-err { color:#e2867b; font-size:12px; margin-top:4px; }
   .tp-reply { display:flex; gap:8px; margin-top:8px; }
   .tp-reply textarea { flex:1; min-height:38px; resize:vertical; padding:7px 9px; border-radius:6px;
                        border:1px solid var(--border,#444); background:var(--bg,#161616); color:inherit;
@@ -275,6 +306,13 @@
   const PALIER  = 25;             // messages révélés par clic sur « afficher les précédents »
   const fenetre = new Map();
   const luAvant = new Map();
+
+  // Réponse en préparation, par point : texte et images jointes. Gardés HORS du DOM parce que le
+  // fil est reconstruit au rafraîchissement — choisir une image fait perdre le focus au champ,
+  // et sans ça le texte tapé et les images partiraient au prochain passage du poll.
+  const drafts  = new Map();      // id → texte
+  const pending = new Map();      // id → [File]
+  const IMG_MAX = 6, IMG_BYTES = 10 * 1024 * 1024;
 
   function fmtTime(ts) {
     if (!ts) return "";
@@ -555,7 +593,8 @@
       ap.className = "tp-last" + (last.role === "dev" ? " dev" : "");
       ap.id = "last-" + it.id;
       ap.innerHTML = "<b>" + escapeHtml(last.role === "dev" ? "DEV" : (last.author || "?")) + "</b> · " +
-                     fmtTime(last.ts) + " — " + escapeHtml(last.text.replace(/\s+/g, " ").slice(0, 140));
+                     fmtTime(last.ts) + " — " + escapeHtml(((last.images || []).length ? "📎 " + last.images.length + " image" + (last.images.length > 1 ? "s" : "") + " " : "") +
+                                mdPlain(last.text).slice(0, 140));
       ap.style.display = openThreads.has(it.id) ? "none" : "block";
       div.appendChild(ap);
     }
@@ -707,26 +746,117 @@
       by.innerHTML = '<b>' + escapeHtml(m.author || "?") + '</b>' +
         '<span class="tp-badge">' + (m.role === "dev" ? "DEV" : "TEST") + '</span>' +
         ' <span class="tp-ts">' + fmtTime(m.ts) + '</span>';
-      const txt = document.createElement("div");
-      txt.className = "tp-txt"; txt.textContent = m.text;
-      body.appendChild(by); body.appendChild(txt);
+      body.appendChild(by);
+      if (m.text) {
+        const txt = document.createElement("div");
+        txt.className = "tp-txt tp-md"; txt.innerHTML = mdRender(m.text);
+        body.appendChild(txt);
+      }
+      if ((m.images || []).length) {
+        const imgs = document.createElement("div");
+        imgs.className = "tp-imgs";
+        m.images.forEach(name => {
+          const a = document.createElement("a");
+          a.href = "/api/tests/image/" + encodeURIComponent(name);
+          a.target = "_blank"; a.rel = "noopener";
+          const img = document.createElement("img");
+          img.src = a.href; img.loading = "lazy"; img.alt = "image jointe";
+          a.appendChild(img); imgs.appendChild(a);
+        });
+        body.appendChild(imgs);
+      }
       row.appendChild(av); row.appendChild(body);
       wrap.appendChild(row);
     });
+    // images en attente d'envoi
+    const pend = document.createElement("div");
+    pend.className = "tp-pend";
+    pend.id = "pend-" + it.id;
+    wrap.appendChild(pend);
+    renderPending(it.id, pend);
     // zone de réponse
     const reply = document.createElement("div");
     reply.className = "tp-reply";
     const ta = document.createElement("textarea");
     ta.id = "rep-" + it.id;
-    ta.placeholder = "Répondre / poser une question…";
+    ta.placeholder = "Répondre / poser une question… (Entrée : envoyer · Maj+Entrée : à la ligne · coller une capture : Ctrl+V)";
+    ta.value = drafts.get(it.id) || "";
     ta.addEventListener("focus", () => editing.add("rep-" + it.id));
     ta.addEventListener("blur",  () => editing.delete("rep-" + it.id));
+    ta.addEventListener("input", () => drafts.set(it.id, ta.value));
+    // Coller une capture d'écran : le cas le plus courant, et le seul qui ne demande pas
+    // d'enregistrer d'abord l'image dans un fichier.
+    ta.addEventListener("paste", e => {
+      const files = [...((e.clipboardData || {}).files || [])].filter(f => f.type.startsWith("image/"));
+      if (files.length) { e.preventDefault(); addPending(it.id, files); }
+    });
+    // Glisser-déposer sur le poste fixe ; sur iPad, c'est le bouton 📎 qui fait le travail
+    // (photothèque ou appareil photo), le glisser HTML5 n'y existe pas.
+    reply.addEventListener("dragover", e => { e.preventDefault(); reply.classList.add("tp-drop"); });
+    reply.addEventListener("dragleave", () => reply.classList.remove("tp-drop"));
+    reply.addEventListener("drop", e => {
+      e.preventDefault(); reply.classList.remove("tp-drop");
+      addPending(it.id, [...(e.dataTransfer.files || [])]);
+    });
+    const file = document.createElement("input");
+    file.type = "file"; file.accept = "image/png,image/jpeg,image/gif,image/webp"; file.multiple = true;
+    file.hidden = true;
+    file.onchange = () => { addPending(it.id, [...file.files]); file.value = ""; };
+    const att = document.createElement("button");
+    att.type = "button"; att.className = "tp-attach"; att.textContent = "📎";
+    att.title = "Joindre une image";
+    att.onclick = () => file.click();
     const btn = document.createElement("button");
     btn.type = "button"; btn.textContent = "Envoyer";
     btn.onclick = () => postReply(it, ta);
-    reply.appendChild(ta); reply.appendChild(btn);
+    // Entrée envoie, Maj+Entrée va à la ligne (comme une messagerie). Pas pendant une saisie IME
+    // en cours de composition, ni pendant un envoi : deux Entrée rapides posteraient deux fois.
+    ta.addEventListener("keydown", e => {
+      if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+      e.preventDefault();
+      if (!btn.disabled) postReply(it, ta);
+    });
+    reply.appendChild(ta); reply.appendChild(file); reply.appendChild(att); reply.appendChild(btn);
     wrap.appendChild(reply);
+    const err = document.createElement("div");
+    err.className = "tp-err"; err.id = "err-" + it.id;
+    wrap.appendChild(err);
     return wrap;
+  }
+
+  function setErr(id, msg) {
+    const e = document.getElementById("err-" + id);
+    if (e) e.textContent = msg || "";
+  }
+
+  function addPending(id, files) {
+    const list = pending.get(id) || [];
+    const refus = [];
+    files.forEach(f => {
+      if (!/^image\/(png|jpeg|gif|webp)$/.test(f.type)) refus.push((f.name || "fichier") + " : format non accepté");
+      else if (f.size > IMG_BYTES) refus.push((f.name || "image") + " : plus de 10 Mo");
+      else if (list.length >= IMG_MAX) refus.push(IMG_MAX + " images au plus par message");
+      else list.push(f);
+    });
+    pending.set(id, list);
+    const pend = document.getElementById("pend-" + id);
+    if (pend) renderPending(id, pend);
+    setErr(id, [...new Set(refus)].join(" · "));
+  }
+
+  function renderPending(id, pend) {
+    pend.querySelectorAll("img").forEach(i => URL.revokeObjectURL(i.src));
+    pend.innerHTML = "";
+    (pending.get(id) || []).forEach((f, k) => {
+      const box = document.createElement("div");
+      box.className = "tp-pi";
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(f); img.alt = f.name || "image";
+      const x = document.createElement("button");
+      x.type = "button"; x.textContent = "×"; x.title = "Retirer";
+      x.onclick = () => { pending.get(id).splice(k, 1); renderPending(id, pend); };
+      box.appendChild(img); box.appendChild(x); pend.appendChild(box);
+    });
   }
 
   /* Reconstruit UN fil ouvert (changement de fenêtre) sans toucher au reste de la page ni à
@@ -745,19 +875,112 @@
 
   function postReply(it, ta) {
     const text = ta.value.trim();
-    if (!text) return;
+    const files = pending.get(it.id) || [];
+    if (!text && !files.length) return;
     const name = testerEl.value.trim() || "anonyme";
+    let envoi;
+    if (files.length) {
+      const fd = new FormData();
+      fd.append("id", it.id); fd.append("text", text); fd.append("author", name); fd.append("role", "tester");
+      files.forEach(f => fd.append("image", f, f.name || "image"));
+      envoi = fetch("/api/tests/thread", { method: "POST", body: fd }).then(r => r.json());
+    } else {
+      envoi = postJSON("/api/tests/thread", { id: it.id, text: text, author: name, role: "tester" });
+    }
     btnBusy(ta, true);
-    postJSON("/api/tests/thread", { id: it.id, text: text, author: name, role: "tester" })
-      .then(r => { ta.value = ""; editing.delete("rep-" + it.id); openThreads.add(it.id); load(); })
-      .catch(() => {})
+    setErr(it.id, "");
+    envoi
+      .then(r => {
+        // Un refus garde le brouillon et les images : le testeur corrige au lieu de tout refaire.
+        if (!r || !r.ok) { setErr(it.id, (r && r.error) || "envoi refusé"); return; }
+        ta.value = ""; drafts.delete(it.id); pending.delete(it.id);
+        editing.delete("rep-" + it.id); openThreads.add(it.id); load();
+      })
+      .catch(() => setErr(it.id, "envoi impossible (réseau)"))
       .finally(() => btnBusy(ta, false));
   }
-  function btnBusy(ta, b) { const btn = ta.nextSibling; if (btn) btn.disabled = b; }
+  function btnBusy(ta, b) {
+    ta.parentNode.querySelectorAll("button").forEach(btn => { btn.disabled = b; });
+  }
 
   function escapeHtml(s) {
     return (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
   }
+
+  // ── Rendu Markdown des messages (début) ─────────────────────────────────────────────────────
+  // Le sous-ensemble qu'emploient les réponses : gras, italique, `code`, blocs ```, titres,
+  // listes, citations, tableaux, liens http(s). Le texte est ÉCHAPPÉ D'ABORD : aucune balise
+  // venue d'un message n'atteint le DOM, on n'insère que celles produites ici.
+  function mdInline(s) {
+    const codes = [];
+    s = s.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return "\u0000" + (codes.length - 1) + "\u0000"; });
+    s = s.replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, "<b>$1</b>")
+         .replace(/(^|[^\w*])\*(?=[^\s*])([^*\n]*?[^\s*])\*(?![\w*])/g, "$1<i>$2</i>")
+         .replace(/(^|[\s(])(https?:\/\/[^\s<]*[^\s<.,;:!?)\]])/g,
+                  '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+    return s.replace(/\u0000(\d+)\u0000/g, (_, i) => "<code>" + codes[+i] + "</code>");
+  }
+
+  function mdRender(text) {
+    const L = escapeHtml(text).split("\n");
+    const LIST = /^\s*([-*•]|\d+[.)])\s+/;
+    const isRow = l => /^\s*\|.*\|\s*$/.test(l);
+    const cells = l => l.trim().replace(/^\||\|$/g, "").split("|").map(c => mdInline(c.trim()));
+    const out = [];
+    let i = 0;
+    while (i < L.length) {
+      const l = L[i];
+      const fence = l.match(/^\s*(```|~~~)/);
+      if (fence) {
+        const buf = [];
+        for (i++; i < L.length && !L[i].trim().startsWith(fence[1]); i++) buf.push(L[i]);
+        i++;
+        out.push('<pre class="tp-code">' + buf.join("\n") + "</pre>");
+        continue;
+      }
+      if (!l.trim()) { i++; continue; }
+      let m;
+      if ((m = l.match(/^\s*#{1,4}\s+(.*)$/))) {
+        out.push('<div class="tp-h">' + mdInline(m[1]) + "</div>"); i++; continue;
+      }
+      if (isRow(l) && i + 1 < L.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(L[i + 1])) {
+        let h = "<tr>" + cells(l).map(c => "<th>" + c + "</th>").join("") + "</tr>";
+        for (i += 2; i < L.length && isRow(L[i]); i++)
+          h += "<tr>" + cells(L[i]).map(c => "<td>" + c + "</td>").join("") + "</tr>";
+        out.push('<div class="tp-tbl"><table>' + h + "</table></div>");
+        continue;
+      }
+      if (LIST.test(l)) {
+        const ordered = /^\s*\d/.test(l);
+        const start = ordered ? parseInt(l, 10) : 1;
+        const items = [];
+        for (; i < L.length && LIST.test(L[i]) && /^\s*\d/.test(L[i]) === ordered; i++)
+          items.push("<li>" + mdInline(L[i].replace(LIST, "")) + "</li>");
+        out.push(ordered ? '<ol start="' + start + '">' + items.join("") + "</ol>"
+                         : "<ul>" + items.join("") + "</ul>");
+        continue;
+      }
+      if (/^\s*&gt;/.test(l)) {
+        const buf = [];
+        for (; i < L.length && /^\s*&gt;/.test(L[i]); i++) buf.push(L[i].replace(/^\s*&gt;\s?/, ""));
+        out.push("<blockquote>" + mdInline(buf.join("<br>")) + "</blockquote>");
+        continue;
+      }
+      const buf = [];
+      for (; i < L.length && L[i].trim() && !/^\s*(```|~~~|#{1,4}\s|&gt;)/.test(L[i]) && !LIST.test(L[i])
+             && !(isRow(L[i]) && i + 1 < L.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(L[i + 1])); i++)
+        buf.push(L[i]);
+      out.push("<p>" + mdInline(buf.join("<br>")) + "</p>");
+    }
+    return out.join("");
+  }
+
+  // Aperçu sur une ligne : les marques ne doivent pas apparaître en clair non plus.
+  function mdPlain(text) {
+    return (text || "").replace(/```|~~~/g, " ").replace(/\*\*|`/g, "")
+                       .replace(/^\s*#{1,4}\s+/gm, "").replace(/\s+/g, " ");
+  }
+  // ── Rendu Markdown des messages (fin) ───────────────────────────────────────────────────────
 
   // suivi « non lu » : dernier ts de message vu par item (localStorage)
   function seenKey(id) { return "tp_seen_" + id; }

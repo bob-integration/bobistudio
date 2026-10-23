@@ -670,6 +670,8 @@ def api_home_summary():
                         pp["label"] = prod["label"]
                     if prod.get("format"):
                         pp["format"] = prod["format"]
+                    if prod.get("monitor"):
+                        pp["monitor"] = True     # flux d'ÉCOUTE : le monitoring le préfère
                     produces.append(pp)
             cons_specs = w["consumes"]
             # Les plugins qui ADAPTENT leur entrée (scale/convert : udc, multiview, delay)

@@ -1,0 +1,259 @@
+{% extends "layout.html" %}
+{% set page = 'monitoring' %}
+{% block title %}{{ _('monitoring.opsj_title') }}{% endblock %}
+
+{% block head %}
+<style>
+/* Journal d'exploitation (app/ops_journal.py). iPad = référence : toute cible fait 44 px, rien ne
+   dépend du survol, le détail d'une ligne s'ouvre au doigt (bouton), jamais au passage de la souris. */
+.opsj-intro { color:var(--text-muted); max-width:80ch; margin:0 0 var(--space-3); }
+.opsj-filters { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:var(--space-3); }
+.opsj-filters .field label { font-size:.8em; color:var(--text-muted); margin-bottom:4px; }
+.opsj-filters select, .opsj-filters input { min-height:44px; box-sizing:border-box; font:inherit;
+    background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:0 10px; }
+.opsj-filters select { min-width:180px; }
+.opsj-filters input[type=search] { min-width:200px; }
+.opsj-filters .btn, .opsj-more .btn { min-height:44px; }
+.opsj-custom[hidden] { display:none; }
+.opsj-count { color:var(--text-muted); font-size:.85em; margin-left:auto; align-self:center; }
+.opsj-wrap { overflow-x:auto; }
+.opsj-table { width:100%; border-collapse:collapse; font-size:.9em; }
+.opsj-table th { text-align:left; color:var(--text-muted); font-weight:normal; padding:6px 8px;
+    border-bottom:1px solid var(--border); white-space:nowrap; }
+.opsj-table td { padding:6px 8px; border-bottom:1px solid var(--border-soft, var(--border)); vertical-align:top; }
+.opsj-table td.ts { white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--text-muted); }
+.opsj-table td.inst a { color:inherit; }
+.opsj-cat { display:inline-block; font-size:.78em; padding:2px 8px; border-radius:10px;
+    border:1px solid var(--border); white-space:nowrap; }
+.opsj-cat.structure { border-color:var(--accent); color:var(--accent); }
+.opsj-cat.event { border-color:var(--status-warning-fg, #e0a93b); color:var(--status-warning-fg, #e0a93b); }
+.opsj-actor-auto, .opsj-actor-plugin { color:var(--text-muted); font-style:italic; }
+.opsj-detail-btn { min-width:44px; min-height:44px; background:none; border:1px solid var(--border);
+    border-radius:6px; color:var(--text-muted); cursor:pointer; font:inherit; }
+.opsj-detail-btn[aria-expanded="true"] { border-color:var(--accent); color:var(--accent); }
+.opsj-detail td { background:var(--bg-elev, transparent); }
+.opsj-detail ul { margin:0; padding-left:18px; }
+.opsj-detail code { font-size:.85em; color:var(--text-muted); }
+.opsj-empty { color:var(--text-muted); padding:var(--space-3) 0; }
+.opsj-more { margin-top:var(--space-3); }
+</style>
+{% endblock %}
+
+{% block content %}
+{# Barre d'onglets MIROIR de Monitoring (même patron que /probe) : le journal d'exploitation vit dans
+   la famille Monitoring, à côté des journaux. #}
+<div class="mon-tabs subnav-deck" role="tablist">
+    <a class="tab" href="/monitoring#overview" role="tab">{{ _('monitoring.tab_overview') }}</a>
+    <a class="tab" href="/monitoring#nodes"    role="tab">{{ _('monitoring.tab_nodes') }}</a>
+    <a class="tab" href="/monitoring#fabric"   role="tab">{{ _('monitoring.tab_fabric') }}</a>
+    <a class="tab" href="/monitoring#rdma"     role="tab">{{ _('monitoring.tab_rdma') }}</a>
+    <a class="tab" href="/monitoring#logs"     role="tab">{{ _('monitoring.tab_logs') }}</a>
+    <a class="tab active" href="/ops-journal" role="tab" aria-current="page">{{ _('monitoring.tab_opsj') }}</a>
+    <a class="tab" href="/probe" role="tab">{{ _('nav.probe') }}</a>
+</div>
+
+<h1>{{ _('monitoring.opsj_title') }}</h1>
+<p class="opsj-intro">{{ _('monitoring.opsj_intro') }} <span id="opsj-retention"></span></p>
+
+<form class="opsj-filters" id="opsj-filters" onsubmit="event.preventDefault(); opsjLoad(true);">
+    <div class="field"><label for="opsj-instance">{{ _('monitoring.opsj_f_instance') }}</label>
+        <select id="opsj-instance" onchange="opsjLoad(true)"><option value="">{{ _('monitoring.opsj_all') }}</option></select></div>
+    <div class="field"><label for="opsj-actor">{{ _('monitoring.opsj_f_actor') }}</label>
+        <select id="opsj-actor" onchange="opsjLoad(true)"><option value="">{{ _('monitoring.opsj_all') }}</option></select></div>
+    <div class="field"><label for="opsj-category">{{ _('monitoring.opsj_f_category') }}</label>
+        <select id="opsj-category" onchange="opsjLoad(true)"><option value="">{{ _('monitoring.opsj_all') }}</option></select></div>
+    <div class="field"><label for="opsj-period">{{ _('monitoring.opsj_f_period') }}</label>
+        <select id="opsj-period" onchange="opsjPeriod()">
+            <option value="1">{{ _('monitoring.opsj_p_1h') }}</option>
+            <option value="24" selected>{{ _('monitoring.opsj_p_24h') }}</option>
+            <option value="168">{{ _('monitoring.opsj_p_7d') }}</option>
+            <option value="">{{ _('monitoring.opsj_p_all') }}</option>
+            <option value="custom">{{ _('monitoring.opsj_p_custom') }}</option>
+        </select></div>
+    <div class="field opsj-custom" id="opsj-custom-from" hidden><label for="opsj-since">{{ _('monitoring.opsj_f_since') }}</label>
+        <input type="datetime-local" id="opsj-since" onchange="opsjLoad(true)"></div>
+    <div class="field opsj-custom" id="opsj-custom-to" hidden><label for="opsj-until">{{ _('monitoring.opsj_f_until') }}</label>
+        <input type="datetime-local" id="opsj-until" onchange="opsjLoad(true)"></div>
+    <div class="field"><label for="opsj-q">{{ _('monitoring.opsj_f_search') }}</label>
+        <input type="search" id="opsj-q" placeholder="{{ _('monitoring.search') }}"></div>
+    <button type="submit" class="btn">{{ _('monitoring.opsj_refresh') }}</button>
+    <button type="button" class="btn" onclick="opsjExport()">{{ _('monitoring.opsj_export') }}</button>
+    <span class="opsj-count" id="opsj-count" aria-live="polite"></span>
+</form>
+
+<div class="opsj-wrap">
+<table class="opsj-table">
+    <thead><tr>
+        <th>{{ _('monitoring.opsj_c_time') }}</th>
+        <th>{{ _('monitoring.opsj_c_instance') }}</th>
+        <th>{{ _('monitoring.opsj_c_actor') }}</th>
+        <th>{{ _('monitoring.opsj_c_category') }}</th>
+        <th>{{ _('monitoring.opsj_c_action') }}</th>
+        <th><span class="sr-only">{{ _('monitoring.opsj_c_detail') }}</span></th>
+    </tr></thead>
+    <tbody id="opsj-rows"></tbody>
+</table>
+</div>
+<div class="opsj-empty" id="opsj-empty" hidden>{{ _('monitoring.opsj_empty') }}</div>
+<div class="opsj-more"><button type="button" class="btn" id="opsj-more" hidden onclick="opsjLoad(false)">{{ _('monitoring.opsj_more') }}</button></div>
+
+<script>
+const OPSJ_TXT = {
+    retention: {{ _('monitoring.opsj_retention') | tojson }},
+    count: {{ _('monitoring.opsj_count') | tojson }},
+    detail: {{ _('monitoring.opsj_c_detail') | tojson }},
+    ids: {{ _('monitoring.opsj_ids') | tojson }},
+    error: {{ _('monitoring.opsj_error') | tojson }},
+};
+const OPSJ_PAGE = 300;
+let opsjRows = [];
+let opsjCats = {};
+
+function opsjEsc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Filtres → paramètres d'URL (les mêmes pour la liste et l'export : un export qui recalculerait
+// autre chose que l'écran finirait par diverger de l'écran).
+function opsjParams() {
+    const p = new URLSearchParams();
+    const inst = document.getElementById('opsj-instance').value;
+    if (inst.startsWith('vmid:')) p.set('vmid', inst.slice(5)); else if (inst) p.set('instance_uuid', inst);
+    const a = document.getElementById('opsj-actor').value; if (a) p.set('actor', a);
+    const c = document.getElementById('opsj-category').value; if (c) p.set('category', c);
+    const q = document.getElementById('opsj-q').value.trim(); if (q) p.set('q', q);
+    const per = document.getElementById('opsj-period').value;
+    if (per === 'custom') {
+        const s = document.getElementById('opsj-since').value, u = document.getElementById('opsj-until').value;
+        if (s) p.set('since', s);
+        if (u) p.set('until', u + ':59.999');
+    } else if (per) {
+        // Heure LOCALE, comme les horodatages stockés (cf. `alerts`) : pas de toISOString (UTC).
+        const d = new Date(Date.now() - Number(per) * 3600 * 1000);
+        const z = n => String(n).padStart(2, '0');
+        p.set('since', d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + 'T'
+              + z(d.getHours()) + ':' + z(d.getMinutes()) + ':' + z(d.getSeconds()));
+    }
+    return p;
+}
+
+function opsjPeriod() {
+    const custom = document.getElementById('opsj-period').value === 'custom';
+    document.getElementById('opsj-custom-from').hidden = !custom;
+    document.getElementById('opsj-custom-to').hidden = !custom;
+    opsjLoad(true);
+}
+
+function opsjFill(sel, items, keep) {
+    const first = sel.options[0];
+    sel.innerHTML = '';
+    sel.appendChild(first);
+    items.forEach(([v, l]) => {
+        const o = document.createElement('option'); o.value = v; o.textContent = l; sel.appendChild(o);
+    });
+    if (keep && ![...sel.options].some(o => o.value === keep)) {
+        const o = document.createElement('option'); o.value = keep; o.textContent = keep; sel.appendChild(o);
+    }
+    sel.value = keep || '';
+}
+
+async function opsjFacets() {
+    const url = new URLSearchParams(location.search);
+    const wantInst = url.get('instance_uuid') || (url.get('vmid') ? 'vmid:' + url.get('vmid') : '');
+    try {
+        const f = await (await fetch('/api/ops-journal/facets')).json();
+        opsjCats = f.category_labels || {};
+        const inst = (f.instances || []).filter(i => i.instance_uuid).map(i =>
+            [i.instance_uuid, (i.label || ('#' + i.vmid)) + (i.plugin_type ? ' · ' + i.plugin_type : '')]);
+        // Lien depuis la page d'un plugin par vmid : on retrouve l'instance qui le porte.
+        let keep = wantInst;
+        if (keep.startsWith('vmid:')) {
+            const hit = (f.instances || []).find(i => String(i.vmid) === keep.slice(5) && i.instance_uuid);
+            if (hit) keep = hit.instance_uuid;
+        }
+        opsjFill(document.getElementById('opsj-instance'), inst, keep);
+        opsjFill(document.getElementById('opsj-actor'), (f.actors || []).map(a => [a, a]), url.get('actor') || '');
+        opsjFill(document.getElementById('opsj-category'),
+                 (f.all_categories || []).map(c => [c, opsjCats[c] || c]), url.get('category') || '');
+    } catch (e) { /* les filtres restent sur « tous » : la liste se charge quand même */ }
+}
+
+async function opsjLoad(reset) {
+    const p = opsjParams();
+    p.set('limit', OPSJ_PAGE);
+    if (!reset && opsjRows.length) p.set('before_id', opsjRows[opsjRows.length - 1].id);
+    let j;
+    try {
+        const r = await fetch('/api/ops-journal?' + p.toString());
+        j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.status);
+    } catch (e) {
+        document.getElementById('opsj-count').textContent = OPSJ_TXT.error + ' ' + e;
+        return;
+    }
+    opsjRows = reset ? (j.rows || []) : opsjRows.concat(j.rows || []);
+    if (j.retention_days) document.getElementById('opsj-retention').textContent =
+        OPSJ_TXT.retention.replace('{n}', j.retention_days);
+    document.getElementById('opsj-more').hidden = (j.rows || []).length < OPSJ_PAGE;
+    opsjRender();
+}
+
+function opsjActorCell(r) {
+    const cls = (r.actor_kind === 'auto' || r.actor_kind === 'plugin') ? ' class="opsj-actor-' + r.actor_kind + '"' : '';
+    return '<span' + cls + '>' + opsjEsc(r.actor_text) + '</span>';
+}
+
+function opsjDetailHtml(r) {
+    const d = r.details || {};
+    let items = [];
+    if (d.entries) items = d.entries.map(e => '<li>' + opsjEsc(e.label) + ' <code>' + opsjEsc(e.path) + '</code></li>');
+    else if (d.diff) items = d.diff.map(e => '<li>' + opsjEsc(e.op) + ' · ' + opsjEsc(e.label || ((e.from || '') + ' → ' + (e.to || '')))
+                                         + ' <code>' + opsjEsc(e.path) + '</code></li>');
+    else if (d.event) items = ['<li><code>' + opsjEsc(JSON.stringify(d.event)) + '</code></li>'];
+    return '<div class="meta">' + opsjEsc(OPSJ_TXT.ids) + ' <code>' + opsjEsc(r.instance_uuid || '') + '</code> · '
+        + opsjEsc(r.endpoint || '') + '</div><ul>' + items.join('') + '</ul>';
+}
+
+function opsjRender() {
+    const tb = document.getElementById('opsj-rows');
+    tb.innerHTML = opsjRows.map((r, i) =>
+        '<tr>' +
+        '<td class="ts">' + opsjEsc((r.ts || '').replace('T', ' ').slice(0, 19)) + '</td>' +
+        '<td class="inst">' + (r.vmid != null ? '<a href="/ops-journal?instance_uuid=' + encodeURIComponent(r.instance_uuid || '') + '">' : '')
+            + opsjEsc(r.instance_label || '') + (r.vmid != null ? '</a>' : '') + '</td>' +
+        '<td>' + opsjActorCell(r) + '</td>' +
+        '<td><span class="opsj-cat ' + opsjEsc(r.category) + '">' + opsjEsc(r.category_text || r.category) + '</span></td>' +
+        '<td>' + opsjEsc(r.summary_text) + '</td>' +
+        '<td><button type="button" class="opsj-detail-btn" aria-expanded="false" aria-label="' + opsjEsc(OPSJ_TXT.detail)
+            + '" onclick="opsjToggle(this,' + i + ')">⋯</button></td>' +
+        '</tr>').join('');
+    document.getElementById('opsj-empty').hidden = opsjRows.length > 0;
+    document.getElementById('opsj-count').textContent = OPSJ_TXT.count.replace('{n}', opsjRows.length);
+}
+
+function opsjToggle(btn, i) {
+    const tr = btn.closest('tr');
+    const open = btn.getAttribute('aria-expanded') === 'true';
+    if (open) {
+        if (tr.nextElementSibling && tr.nextElementSibling.classList.contains('opsj-detail')) tr.nextElementSibling.remove();
+        btn.setAttribute('aria-expanded', 'false');
+        return;
+    }
+    const d = document.createElement('tr');
+    d.className = 'opsj-detail';
+    d.innerHTML = '<td colspan="6">' + opsjDetailHtml(opsjRows[i]) + '</td>';
+    tr.after(d);
+    btn.setAttribute('aria-expanded', 'true');
+}
+
+function opsjExport() {
+    // Navigation directe : le fichier vient du serveur (Content-Disposition), mêmes filtres que l'écran.
+    window.location.href = '/api/ops-journal/export?' + opsjParams().toString();
+}
+
+(async function () {
+    await opsjFacets();
+    opsjLoad(true);
+})();
+</script>
+{% endblock %}

@@ -5,9 +5,12 @@
     <title>{% block title %}Bobi.Studio{% endblock %}</title>
     <!-- i18n : langue + sous-catalogue JS (js.*/plugin.*) + helper global t().
          Défini tôt pour être dispo avant scripts.js et les control.js de plugins. -->
+    {# Catalogue en FICHIER (adresse = empreinte du contenu, gardé en cache) : il était recopié
+       dans chaque page, 753 Ko. Chargé de façon BLOQUANTE, avant tout script qui appelle t(). #}
+    {% if i18n_js_url %}<script src="{{ i18n_js_url }}"></script>{% endif %}
     <script>
         window.LANG = {{ (lang|default('fr'))|tojson }};
-        window.I18N = {{ (js_catalog|default({}))|tojson }};
+        {% if not i18n_js_url %}window.I18N = {{ (js_catalog|default({}))|tojson }};{% endif %}
         window.t = function(key){ return (window.I18N && window.I18N[key]) || key; };
 
         // ─── Dialogue de confirmation PARTAGÉ ──────────────────────────────────────────────────
@@ -493,10 +496,46 @@
        chargée partout comme base.css. Un plugin CHOISIT une variante, il n'en redéfinit pas.
        Inventaire vivant : Réglages → Contrôles. #}
     <link rel="stylesheet" href="/static/css/controls.css?v={{ asset_v('css/controls.css') }}">
-    {# Partie JS du catalogue (tracé des rotatifs) : un rotatif est un TRACÉ, pas seulement un
-       style. Sans ça chaque plugin redessinerait le sien, ce qui déplacerait la duplication. #}
+    {# Partie JS du catalogue : le MOTEUR (bobi-controls.js — échelles, gestes, événements,
+       création par programme et depuis une feuille param_tree) puis controls.js (API historique
+       des plugins, qui délègue au moteur pour les rotatifs). Un rotatif est un TRACÉ et un
+       GESTE, pas seulement un style : sans ça chaque plugin redessinerait le sien. #}
+    <script src="/static/js/bobi-controls.js?v={{ asset_v('js/bobi-controls.js') }}"></script>
     <script src="/static/js/controls.js?v={{ asset_v('js/controls.js') }}"></script>
     <script src="/static/js/layout_engine.js?v={{ asset_v('js/layout_engine.js') }}"></script>
+    {# Bibliothèque de médias commune (Player, Images fixes, Recorder, Gestionnaire) : la base des
+       médias de l'orchestrateur, bins, recherche, fiche « Infos ». Un plugin n'y ajoute que ses actions. #}
+    <link rel="stylesheet" href="/static/css/media_library.css?v={{ asset_v('css/media_library.css') }}">
+    <!-- Notification GLOBALE (2026-10-12). `window.mxlToast` était appelée par la bibliothèque des
+         médias et la page Libellés sans être définie nulle part : au Gestionnaire de médias, toute
+         erreur (renommage refusé, copie impossible…) et toute confirmation finissaient dans la console
+         du navigateur, invisibles. Une page qui a son propre système le garde (on ne l'écrase pas). -->
+    <style>
+      .mxl-toasts { position:fixed; bottom:18px; right:18px; display:flex; flex-direction:column; gap:8px; z-index:2000; pointer-events:none; }
+      .mxl-toast { padding:10px 14px; border-radius:6px; font-size:0.9em; box-shadow:0 4px 16px rgba(0,0,0,0.3); max-width:420px;
+        background:var(--accent-soft); color:var(--accent); pointer-events:auto; }
+      .mxl-toast.warning { background:var(--status-warning-bg); color:var(--status-warning-fg); }
+      .mxl-toast.error { background:var(--status-stopped-bg); color:var(--status-stopped-fg); }
+      .mxl-toast.success { background:var(--status-running-bg, var(--accent-soft)); color:var(--status-running-fg, var(--accent)); }
+    </style>
+    <script>
+      if (typeof window.mxlToast !== 'function') window.mxlToast = function (msg, kind) {
+        // Une <dialog> MODALE est dans la « couche du dessus » : tout ce qui est hors d'elle passe
+        // SOUS son voile (recette du 2026-10-12 : refus de renommage invisible dans la fiche Infos).
+        // Le message va donc dans la dernière modale ouverte, sinon dans la page.
+        var modals = Array.prototype.filter.call(document.querySelectorAll('dialog[open]'), function (d) {
+          try { return d.matches(':modal'); } catch (e) { return false; } });
+        var parent = modals.length ? modals[modals.length - 1] : document.body;
+        var host = parent.querySelector(':scope > .mxl-toasts');
+        if (!host) { host = document.createElement('div'); host.className = 'mxl-toasts';
+          host.setAttribute('role', 'status'); host.setAttribute('aria-live', 'polite'); parent.appendChild(host); }
+        var el = document.createElement('div'); el.className = 'mxl-toast ' + (kind || 'info'); el.textContent = String(msg);
+        host.appendChild(el); setTimeout(function () { el.remove(); }, kind === 'error' ? 8000 : 4000);
+      };
+    </script>
+    <script src="/static/js/media_library.js?v={{ asset_v('js/media_library.js') }}" data-upload-v="{{ asset_v('js/media_upload.js') }}"></script>
+    <link rel="stylesheet" href="/static/css/image_editor.css?v={{ asset_v('css/image_editor.css') }}">
+    <script src="/static/js/image_editor.js?v={{ asset_v('js/image_editor.js') }}"></script>
     {# Lecture d'un flux 2110 (cadence, état) : les vues Sources et Destinations affichent les
        mêmes deux informations et les rendaient chacune à sa façon — jusqu'à « 1000 fps » sur une
        piste audio d'un côté et « — » de l'autre. Le calcul est partagé, comme le gabarit de ligne
@@ -574,6 +613,43 @@
                 {% if brand and brand.system_name %}<span class="brand-system">{{ brand.system_name }}</span>{% endif %}
             </span>
         </a>
+        {# Ce qu'on ENTEND dans ce navigateur, sur toutes les pages (2026-10-17) : chaque plugin qui joue du son
+           s'y inscrit (window.BobiListen.set / clear) avec un libellé déjà traduit — avec plusieurs écoutes
+           possibles (consoles, aperçus), l'exploitant sait d'où vient le son. #}
+        <script>
+        window.BobiListen = (function () {
+            const src = new Map();
+            // Une petite icône seulement (la barre est pleine sur iPad) ; un appui déplie la ou les sources.
+            function paint() {
+                const el = document.getElementById('nav-listen'), pop = document.getElementById('nav-listen-pop');
+                if (!el || !pop) return;
+                const all = [...src.values()];
+                el.hidden = !all.length;
+                if (!all.length) { pop.hidden = true; el.setAttribute('aria-expanded', 'false'); }
+                el.classList.toggle('wait', all.some(x => x.hint));   // son bloqué en attente d'un geste
+                el.title = all.map(x => x.label + (x.hint ? ' — ' + x.hint : '')).join('\n');
+                el.setAttribute('aria-label', el.title);
+                pop.innerHTML = '';
+                all.forEach(x => {
+                    const r = document.createElement('div'); r.className = 'nav-listen-row';
+                    r.textContent = x.label;
+                    if (x.hint) { const h = document.createElement('div'); h.className = 'nav-listen-hint'; h.textContent = x.hint; r.appendChild(h); }
+                    pop.appendChild(r);
+                });
+            }
+            document.addEventListener('click', (e) => {
+                const el = document.getElementById('nav-listen'), pop = document.getElementById('nav-listen-pop');
+                if (!el || !pop) return;
+                if (e.target === el) { pop.hidden = !pop.hidden; el.setAttribute('aria-expanded', pop.hidden ? 'false' : 'true'); }
+                else if (!pop.contains(e.target)) { pop.hidden = true; el.setAttribute('aria-expanded', 'false'); }
+            });
+            return {
+                set(id, label, hint) { const o = src.get(id); hint = hint || '';
+                    if (o && o.label === label && o.hint === hint) return; src.set(id, { label: String(label), hint: String(hint) }); paint(); },
+                clear(id) { if (src.delete(id)) paint(); },
+            };
+        })();
+        </script>
         {% if project_ui %}
         <a href="/workspaces" class="{{ 'active' if page in ('workspaces', 'workspace') }}">{{ _('nav.workspaces') }}</a>
         {% else %}
@@ -596,7 +672,13 @@
            (barre d'onglets de monitoring.html) — même famille que Nœuds / Tissu / RDMA. #}
         <a href="/monitoring" class="{{ 'active' if page in ('monitoring', 'probe') }}">{{ _('nav.monitoring') }}</a>
         {% endif %}
-        <span class="spacer"></span>
+        {# Groupe de droite : il passe EN BLOC à la ligne quand la barre est trop étroite (iPad),
+           et reste calé à droite — cf. .nav-right dans nav.css. #}
+        <span class="nav-right">
+        <span class="nav-listen-wrap">
+          <button type="button" id="nav-listen" class="nav-listen" hidden aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="7" rx="1.5"/><rect x="17" y="14" width="4" height="7" rx="1.5"/></svg></button>
+          <span id="nav-listen-pop" class="nav-listen-pop" hidden></span>
+        </span>
         {% if control_role == 'standby' %}
         <a href="/settings#cluster" id="nav-ha-badge" class="nav-ha-standby"
            title="{{ _('layout.ha_standby_title') }}">⏸ {{ _('layout.ha_standby') }}</a>
@@ -736,7 +818,40 @@
             {{ _('nav.settings') }}
         </a>
         {% endif %}
+        </span>
     </nav>
+    <script>
+    /* Écran plus étroit que la barre (iPad : 1180 px pour ~1330 nécessaires) : on fixe la largeur de mise
+       en page à celle de la barre sur UNE ligne, et Safari met la page entière à l'échelle de l'écran. Sans
+       cela, ou bien la barre déborde (le fond de la barre et des panneaux s'arrête à la largeur de l'écran),
+       ou bien elle passe sur deux lignes à pleine taille. Les navigateurs d'ORDINATEUR ignorent la balise
+       viewport : sur eux, le passage à la ligne de nav.css reste le recours. Pas de test « pointer: coarse » :
+       un iPad avec clavier ou trackpad se déclare « fine », et le correctif ne s'appliquait pas (2026-10-17). */
+    (function () {
+        const nav = document.querySelector('.topnav');
+        if (!nav) return;
+        let meta = null;
+        function fit() {
+            // Largeur de la barre sur une ligne, réduite à son CONTENU (width: max-content — sinon la marge
+            // automatique du bloc de droite le colle au bord et la mesure vaut toujours la largeur de l'écran),
+            // + la même marge à droite qu'à gauche.
+            nav.style.flexWrap = 'nowrap';
+            nav.style.width = 'max-content';
+            const r = nav.getBoundingClientRect();
+            nav.style.width = '';
+            nav.style.flexWrap = '';
+            const besoin = Math.ceil(r.width + 2 * r.left) + 16;   // + marge : arrondis, nom plus long
+            if (besoin <= document.documentElement.clientWidth) return;     // tient déjà (ou largeur déjà posée)
+            if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
+            meta.content = 'width=' + besoin;
+        }
+        fit();
+        // Remesure : polices et icônes chargées, rotation de l'écran, fenêtre redimensionnée
+        window.addEventListener('load', fit);
+        let t = 0;
+        window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(fit, 150); });
+    })();
+    </script>
     <script>
     (function () {
         const nav = document.querySelector('.topnav');
@@ -886,6 +1001,30 @@
     .mon-head button { background: none; border: 1px solid var(--border-soft, #30363d);
         color: var(--text-muted, #8b949e); border-radius: 4px; cursor: pointer; padding: 2px 8px; }
     .mon-head button:hover { color: var(--text, #e6edf3); }
+    /* Réglages du monitoring : une fenêtre, pas une case dans l'en-tête. « Fluide » à portée de
+       clic se cochait par réflexe (qui ne veut pas d'un moniteur fluide ?) alors qu'il coûte de
+       l'encodage sur les nœuds de production et du débit : le choix doit venir avec ses effets. */
+    #mon-settings { max-width: min(560px, 92vw); padding: 0; border: 1px solid var(--border-soft, #30363d);
+        border-radius: 8px; background: var(--bg-panel, #161b22); color: var(--text, #e6edf3); }
+    #mon-settings::backdrop { background: rgba(0,0,0,0.45); }
+    #mon-settings form { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; }
+    #mon-settings h2 { margin: 0; font-size: 1.05em; }
+    #mon-settings fieldset { border: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+    #mon-settings legend { font-weight: 600; margin-bottom: 6px; padding: 0; }
+    #mon-settings .mon-opt { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: start;
+        border: 1px solid var(--border-soft, #30363d); border-radius: 6px; padding: 10px 12px; cursor: pointer; }
+    #mon-settings .mon-opt:has(input:checked) { border-color: var(--accent, #7aa2c8); }
+    #mon-settings .mon-opt input { margin: 3px 0 0; grid-row: span 2; }
+    #mon-settings .mon-opt-name { font-weight: 600; }
+    #mon-settings .mon-opt-desc { color: var(--text-muted, #8b949e); font-size: 0.88em; line-height: 1.45; }
+    #mon-settings .mon-opt-desc ul { margin: 6px 0 0; padding-left: 18px; }
+    #mon-settings .mon-opt-desc li { margin: 2px 0; }
+    #mon-settings .mon-note { color: var(--text-muted, #8b949e); font-size: 0.82em; margin: 0; }
+    #mon-settings .mon-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    #mon-settings .mon-actions button { border-radius: 4px; padding: 5px 14px; cursor: pointer;
+        border: 1px solid var(--border-soft, #30363d); background: transparent; color: var(--text, #e6edf3); }
+    #mon-settings .mon-actions button[value="apply"] { background: var(--accent, #7aa2c8); border-color: var(--accent, #7aa2c8);
+        color: #0b1220; font-weight: 600; }
     .mon-body { display: flex; flex-direction: column; padding: 10px; gap: 8px; overflow: auto; }
     #mon-frame { width: 100%; aspect-ratio: 16/9; border: 1px solid var(--border-soft, #30363d);
         border-radius: 6px; background: #000; }
@@ -918,6 +1057,7 @@
             <span class="mon-title">{{ _('layout.monitoring') }}</span>
             <span class="mon-source" id="mon-source"></span>
             <span class="mon-tally" id="mon-tally" title="{{ _('layout.monitor_tally_title') }}"></span>
+            <button onclick="MXLMonitor.openSettings()" aria-label="{{ _('layout.monitor_settings') }}" title="{{ _('layout.monitor_settings') }}">⚙</button>
             <button id="mon-controls-btn" onclick="MXLMonitor.toggleControls()" aria-pressed="false" aria-label="{{ _('layout.monitor_controls_aria') }}" title="{{ _('layout.monitor_controls_title') }}">☰</button>
             <button onclick="MXLMonitor.detach()" aria-label="{{ _('layout.monitor_detach') }}" title="{{ _('layout.monitor_detach_title') }}">⧉</button>
             <button onclick="MXLMonitor.refreshStatus()" title="{{ _('layout.refresh') }}">↻</button>
@@ -930,6 +1070,37 @@
             <iframe id="mon-frame" allow="autoplay" allowfullscreen style="display:none"></iframe>
         </div>
     </aside>
+    <dialog id="mon-settings" aria-labelledby="mon-settings-t">
+        <form method="dialog" onsubmit="return MXLMonitor.applySettings(event)">
+            <h2 id="mon-settings-t">{{ _('layout.monitor_settings') }}</h2>
+            <fieldset>
+                <legend>{{ _('layout.monitor_rate_legend') }}</legend>
+                <label class="mon-opt">
+                    <input type="radio" name="mon-rate" value="std">
+                    <span class="mon-opt-name">{{ _('layout.monitor_rate_std') }}</span>
+                    <span class="mon-opt-desc">{{ _('layout.monitor_rate_std_desc') }}</span>
+                </label>
+                <label class="mon-opt">
+                    <input type="radio" name="mon-rate" value="fluid">
+                    <span class="mon-opt-name">{{ _('layout.monitor_rate_fluid') }}</span>
+                    <span class="mon-opt-desc">{{ _('layout.monitor_rate_fluid_desc') }}
+                        <ul>
+                            <li>{{ _('layout.monitor_rate_fluid_cpu') }}</li>
+                            <li>{{ _('layout.monitor_rate_fluid_net') }}</li>
+                            <li>{{ _('layout.monitor_rate_fluid_noop') }}</li>
+                            <li>{{ _('layout.monitor_rate_fluid_cut') }}</li>
+                            <li>{{ _('layout.monitor_rate_fluid_air') }}</li>
+                        </ul>
+                    </span>
+                </label>
+            </fieldset>
+            <p class="mon-note">{{ _('layout.monitor_settings_personal') }}</p>
+            <div class="mon-actions">
+                <button type="submit" value="cancel" formnovalidate>{{ _('layout.monitor_settings_cancel') }}</button>
+                <button type="submit" value="apply">{{ _('layout.monitor_settings_apply') }}</button>
+            </div>
+        </form>
+    </dialog>
     <script>
     window.MXLMonitor = (function() {
         let hbTimer = null, pending = null, curEmbed = null, waitTimer = null, curLabel = null, curSource = null, waitGen = 0;
@@ -1007,6 +1178,7 @@
                 }
                 // curLabel (source demandée) prime : refreshStatus ne doit pas réécrire
                 // le nom avec la source serveur encore périmée juste après un changement.
+                curFluid = !!s.fluid;
                 if (!curLabel && s.source) curLabel = s.source.label || s.source.shm || '';
                 if (curLabel) $('mon-source').textContent = curLabel;
                 if (s.publishing) { showMsg(''); loadFrame(s.embed_url, false); }
@@ -1083,16 +1255,58 @@
             } catch(e) { showMsg(window.t('js.monitor.error') + ' ' + e.message); }
         }
 
+        // « Monitoring fluide » : préférence PERSONNELLE gardée côté serveur (pas en localStorage —
+        // elle suit l'utilisateur d'un poste à l'autre). Appliquée tout de suite : si la cadence de
+        // sortie change, l'encodeur redémarre comme à un changement de source → on recharge le lecteur.
+        // Réglée dans la fenêtre « Réglages du monitoring » (⚙), qui en dit le coût.
+        let curFluid = false;
+        async function setFluid(on) {
+            try {
+                const j = await (await fetch('/api/monitor/fluid', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({enabled: !!on})
+                })).json();
+                if (j.error) throw new Error(j.error);
+                curFluid = !!j.fluid;
+                if (j.restarted) { showMsg(window.t('js.monitor.loading').replace('{name}', curLabel || '')); waitLive(true); }
+            } catch(e) {
+                showMsg(window.t('js.monitor.error') + ' ' + e.message);
+            }
+        }
+        function openSettings() {
+            const d = $('mon-settings'); if (!d) return;
+            const want = curFluid ? 'fluid' : 'std';
+            d.querySelectorAll('input[name="mon-rate"]').forEach(r => { r.checked = (r.value === want); });
+            d.showModal();
+        }
+        function applySettings(ev) {
+            const d = $('mon-settings');
+            if (ev.submitter && ev.submitter.value === 'apply') {
+                const r = d.querySelector('input[name="mon-rate"]:checked');
+                const on = !!r && r.value === 'fluid';
+                if (on !== curFluid) setFluid(on);
+            }
+            d.close();
+            return false;
+        }
+
         function startHb() { stopHb(); hbTimer = setInterval(() => fetch('/api/monitor/heartbeat', {method:'POST'}), 30000); }
         function stopHb() { if (hbTimer) { clearInterval(hbTimer); hbTimer = null; } }
 
+        // Ouvert / fermé RETENU d'une page à l'autre (rechargement, changement de menu) : le réactiver à
+        // chaque navigation était le geste le plus répété de l'exploitant (2026-10-17). La source, elle,
+        // vit déjà côté serveur (un encodeur par utilisateur) : rouvrir retrouve la même image.
+        const OPEN_KEY = 'mxl.monitor.open';
+        function remember(o) { try { localStorage.setItem(OPEN_KEY, o ? '1' : '0'); } catch (_) {} }
         function open() {
             $('mon-panel').classList.add('open');
             startHb(); refreshStatus(); tallyStart();
+            remember(true);
         }
         function close() {
             $('mon-panel').classList.remove('open');
             stopHb(); tallyStop();
+            remember(false);
         }
         function toggle() { $('mon-panel').classList.contains('open') ? close() : open(); }
 
@@ -1144,6 +1358,8 @@
             if (e.key === DETACHED_KEY && e.newValue === '0') reattach();
         });
         applyDetached(isDetached());   // au chargement d'une page : respecte l'état courant
+        // Rouvert s'il l'était à la page précédente — jamais quand il est détaché (la fenêtre à part le porte).
+        try { if (!isDetached() && localStorage.getItem(OPEN_KEY) === '1') open(); } catch (_) {}
 
         // Sélecteur de sources PERSISTANT (reste affiché tant qu'on est sur la page) :
         // permet de basculer entre les sorties d'un node sans recliquer « Monitoring ».
@@ -1193,7 +1409,9 @@
                 const outs = (node.produces || []).filter(p => p.kind === 'video' && p.shm);
                 if (!outs.length) { clearSources(); showMsg(window.t('js.monitor.no_video_out').replace('{name}', node.hostname || ('#'+vmid))); return; }
                 // Audio : 1ʳᵉ sortie audio du node (ex. receiver_audio_0), incluse en Opus (1 piste).
-                const aud = (node.produces || []).find(p => p.kind === 'audio' && p.shm);
+                // Un flux d'ÉCOUTE déclaré (`monitor`, ex. sortie monitoring du player) passe avant.
+                const aud = (node.produces || []).find(p => p.kind === 'audio' && p.shm && p.monitor)
+                         || (node.produces || []).find(p => p.kind === 'audio' && p.shm);
                 const aShm = aud ? aud.shm : '';
                 const nodeLabel = node.hostname || ('#' + vmid);
                 if (outs.length === 1) {
@@ -1264,12 +1482,12 @@
         // on le rouvre via l'onglet ou un bouton « Monitoring ».
         updateControlsBtn();
         return { open, close, toggle, refreshStatus, create, send, monitorVmid, toggleControls,
-                 detach, reattach };
+                 detach, reattach, setFluid, openSettings, applySettings };
     })();
     </script>
     <script>
         window.MXL_PERMS = new Set([
-            {% for p in ['containers.create','containers.delete','containers.deploy','plugins.operate','multiview.edit','projects.manage','settings.edit','backup.manage'] %}
+            {% for p in ['containers.create','containers.delete','containers.deploy','plugins.operate','multiview.edit','projects.manage','settings.edit','backup.manage','media.manage'] %}
                 {% if has_perm(p) %}'{{ p }}',{% endif %}
             {% endfor %}
         ]);

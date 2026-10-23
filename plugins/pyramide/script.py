@@ -410,6 +410,10 @@ def _produced_proxies():
 class MetricsHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         with metrics_lock: payload = dict(metrics)
+        # Bouches-trous amont ÉCARTÉS (cf. bobimxl.MXL_GRAIN_FLAG_INVALID) : seul témoin du
+        # comblement d'un trou par le producteur — cadence, index et statut de lecture restent
+        # tous parfaits pendant l'épisode. Calculé à la requête : aucun coût par trame.
+        payload["invalid_grains"] = bobimxl.invalid_grains_report()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()

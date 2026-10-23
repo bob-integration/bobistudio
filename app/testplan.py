@@ -9,9 +9,11 @@
 # Volontairement AUTONOME (Blueprint séparé + persistance fichier) : n'écrit dans
 # aucun module existant (évite la course avec un agent concurrent sur routes.py).
 
+import base64
 import fcntl
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -33,6 +35,60 @@ LOCK_PATH = STORE_PATH + ".lock"
 _lock = threading.Lock()
 
 STATUSES = ("untested", "ok", "defect", "progress")
+
+# Images jointes aux messages : un fichier par image, À CÔTÉ du store, jamais dedans. La page
+# relit le store toutes les quelques secondes ; une capture en base64 dans le JSON le ferait
+# passer de quelques Ko à plusieurs Mo par lecture et par testeur.
+IMAGES_DIR = os.path.join(os.path.dirname(STORE_PATH), "testplan_images")
+IMAGE_MAX_BYTES = 10 * 1024 * 1024
+IMAGES_PER_MESSAGE = 6
+_IMAGE_NAME = re.compile(r"^[0-9a-f]{20}\.(png|jpg|gif|webp)$")
+_IMAGE_MIME = {"png": "image/png", "jpg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
+
+
+def _image_kind(data):
+    """Image type from its MAGIC BYTES, None if it is not one we accept.
+
+    ⚠ The browser-supplied Content-Type and file name are not trusted: an SVG (scripts) or an
+    HTML page renamed `.png` and served back inline would run in the page origin. Only these
+    four raster formats are kept, and the extension is re-derived from the content."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "jpg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def save_image(data):
+    """Stores one image, returns its name (`<20 hex>.<ext>`) or raises ValueError."""
+    if not data:
+        raise ValueError("image vide")
+    if len(data) > IMAGE_MAX_BYTES:
+        raise ValueError("image trop lourde (%d Mo max)" % (IMAGE_MAX_BYTES // (1024 * 1024)))
+    kind = _image_kind(data)
+    if not kind:
+        raise ValueError("format non accepté (PNG, JPEG, GIF ou WebP)")
+    os.makedirs(IMAGES_DIR, exist_ok=True)
+    name = "%s.%s" % (uuid.uuid4().hex[:20], kind)
+    tmp = os.path.join(IMAGES_DIR, "." + name + ".tmp")
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, os.path.join(IMAGES_DIR, name))
+    return name
+
+
+def _drop_images(msgs):
+    for m in msgs or []:
+        for name in m.get("images") or []:
+            if _IMAGE_NAME.match(name or ""):
+                try:
+                    os.remove(os.path.join(IMAGES_DIR, name))
+                except OSError:
+                    pass
 
 # ★ LA GRAVITÉ EST UN CHAMP À PART, PAS TROIS STATUTS DE PLUS. Trois statuts
 # `defect_mineur/majeur/bloquant` auraient obligé à migrer les 48 états déjà
@@ -69,12 +125,16 @@ def mutate(fn):
         return ret
 
 
-def append_message(item_id, author, role, text):
+def append_message(item_id, author, role, text, images=None):
     """Ajoute un message au fil de discussion d'un item (utilisable depuis le CLI : l'assistant
-    poste ses questions en role='dev'). Cross-process safe via mutate()."""
+    poste ses questions en role='dev'). Cross-process safe via mutate().
+    `images` = noms rendus par save_image() (depuis le CLI : save_image(open(p,"rb").read()))."""
     role = role if role in ROLES else "tester"
     msg = {"id": uuid.uuid4().hex[:10], "author": (author or "?")[:80],
            "role": role, "text": str(text)[:8000], "ts": time.time()}
+    images = [n for n in (images or []) if _IMAGE_NAME.match(n or "")]
+    if images:
+        msg["images"] = images[:IMAGES_PER_MESSAGE]
 
     def _do(store):
         if not any(it["id"] == item_id for it in store["items"]):
@@ -291,18 +351,52 @@ def api_tests_state():
 @require_login
 def api_tests_thread():
     """Ajoute un message au FIL de discussion d'un item (Q/R horodatées, historique conservé).
-    L'équipe poste en role='tester' ; l'assistant Claude poste en 'dev' depuis le CLI."""
-    data = request.get_json(silent=True) or {}
+    L'équipe poste en role='tester' ; l'assistant Claude poste en 'dev' depuis le CLI.
+
+    JSON pour un message texte ; multipart (champs id/text/author/role + fichiers `image`) quand
+    le testeur joint des images. Un message peut n'être QUE des images."""
+    if request.files:
+        data = request.form
+        files = request.files.getlist("image")
+    else:
+        data = request.get_json(silent=True) or {}
+        files = []
     iid = str(data.get("id") or "").strip()
     text = str(data.get("text") or "").strip()
-    if not iid or not text:
+    if len(files) > IMAGES_PER_MESSAGE:
+        return jsonify({"error": "%d images au plus par message" % IMAGES_PER_MESSAGE}), 400
+    if not iid or not (text or files):
         return jsonify({"error": "id ou texte manquant"}), 400
+    if not any(it["id"] == iid for it in _load()["items"]):
+        return jsonify({"error": "item inconnu"}), 404
+    # Toutes les images sont validées AVANT d'en écrire une : un lot refusé ne laisse aucun
+    # fichier orphelin derrière lui.
+    blobs = [f.read(IMAGE_MAX_BYTES + 1) for f in files]
+    for f, b in zip(files, blobs):
+        if len(b) > IMAGE_MAX_BYTES or not _image_kind(b):
+            why = "trop lourde" if len(b) > IMAGE_MAX_BYTES else "format non accepté (PNG, JPEG, GIF ou WebP)"
+            return jsonify({"error": "%s : %s" % (f.filename or "image", why)}), 400
+    names = [save_image(b) for b in blobs]
     author = str(data.get("author") or "").strip() or "anonyme"
     role = "dev" if str(data.get("role")) == "dev" else "tester"
-    msg = append_message(iid, author, role, text)
+    msg = append_message(iid, author, role, text, images=names)
     if msg is None:
+        _drop_images([{"images": names}])
         return jsonify({"error": "item inconnu"}), 404
     return jsonify({"ok": True, "message": msg})
+
+
+@testplan_bp.route("/api/tests/image/<name>", methods=["GET"])
+@require_login
+def api_tests_image(name):
+    if not _IMAGE_NAME.match(name or ""):
+        abort(404)
+    path = os.path.join(IMAGES_DIR, name)
+    if not os.path.isfile(path):
+        abort(404)
+    resp = send_file(path, mimetype=_IMAGE_MIME[name.rsplit(".", 1)[1]], max_age=86400)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @testplan_bp.route("/api/tests/item", methods=["POST"])
@@ -334,7 +428,7 @@ def api_tests_del_item():
             return ("err", 400, "item intégré non supprimable")
         store["items"] = [x for x in store["items"] if x["id"] != iid]
         store["state"].pop(iid, None)
-        store.get("threads", {}).pop(iid, None)
+        _drop_images(store.get("threads", {}).pop(iid, None))
         return ("ok",)
     res = mutate(_do)
     if res[0] == "err":
@@ -368,6 +462,18 @@ def _recette_export(avec_resultats):
     if avec_resultats:
         out["state"] = store.get("state") or {}
         out["threads"] = store.get("threads") or {}
+        # Les images voyagent AVEC la campagne : un fil exporté qui dirait « voir la capture »
+        # sans la capture serait un aller-retour cassé.
+        imgs = {}
+        for msgs in out["threads"].values():
+            for m in msgs or []:
+                for name in m.get("images") or []:
+                    path = os.path.join(IMAGES_DIR, name)
+                    if _IMAGE_NAME.match(name or "") and os.path.isfile(path):
+                        with open(path, "rb") as f:
+                            imgs[name] = base64.b64encode(f.read()).decode("ascii")
+        if imgs:
+            out["images"] = imgs
     return out
 
 
@@ -395,7 +501,8 @@ def api_tests_import():
     f = request.files.get("file")
     if not f:
         return jsonify({"error": "aucun fichier"}), 400
-    brut = f.read(8 * 1024 * 1024)
+    # Plafond relevé de 8 à 200 Mo : une campagne exportée embarque ses images.
+    brut = f.read(200 * 1024 * 1024)
     try:
         data = json.loads(brut.decode("utf-8"))
     except Exception as e:
@@ -468,5 +575,24 @@ def api_tests_import():
                 compte["messages"] += len(neufs)
         return ("ok",)
 
+    # Images d'abord, sous leur nom d'origine : les messages fusionnés les citent par ce nom.
+    # Une image déjà présente n'est pas réécrite ; une image invalide est ignorée (le message
+    # reste, sa vignette sera absente).
+    for name, b64 in (data.get("images") or {}).items():
+        path = os.path.join(IMAGES_DIR, str(name))
+        if not _IMAGE_NAME.match(str(name)) or os.path.exists(path):
+            continue
+        try:
+            blob = base64.b64decode(b64, validate=True)
+        except Exception:
+            continue
+        if len(blob) > IMAGE_MAX_BYTES or _image_kind(blob) != name.rsplit(".", 1)[1]:
+            continue
+        os.makedirs(IMAGES_DIR, exist_ok=True)
+        tmp = os.path.join(IMAGES_DIR, "." + name + ".tmp")
+        with open(tmp, "wb") as fo:
+            fo.write(blob)
+        os.replace(tmp, path)
+        compte["images"] = compte.get("images", 0) + 1
     mutate(_do)
     return jsonify({"ok": True, **compte, "avec_resultats": bool(data.get("state"))})

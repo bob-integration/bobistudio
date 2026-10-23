@@ -55,8 +55,14 @@ COLONNES = {
     # ⚠ L'ORDRE EST UN CONTRAT ASCENDANT. L'export historique servait `timestamp, niveau,
     # message` : ces trois-là gardent leurs positions, et le contexte est AJOUTÉ derrière.
     # Les intervertir casserait tout import déjà en place chez un client.
+    # `acteur` AJOUTÉ EN FIN (2026-09-15, piste d'audit) : un export d'alertes sert désormais de
+    # livrable d'audit — « qui a fait quoi » — et un tel document sans la colonne « qui » ne
+    # répond à rien. Vide = action AUTOMATIQUE de la plateforme, ce qui est une information et
+    # non une donnée manquante (cf. `database._acteur_courant`). En fin de liste pour ne pas
+    # décaler les colonnes d'un import déjà en place chez un client.
     "alertes": [("timestamp", "horodatage"), ("niveau", "niveau"), ("message", "message"),
-                ("kind", "nature"), ("vmid", "vmid"), ("node_id", "noeud_id")],
+                ("kind", "nature"), ("vmid", "vmid"), ("node_id", "noeud_id"),
+                ("user", "acteur")],
     "ptp":     [("ts", "horodatage"), ("level", "niveau"), ("type", "type"),
                 ("node_name", "noeud"), ("network_name", "reseau"), ("ifname", "interface"),
                 ("detail", "detail")],

@@ -805,7 +805,7 @@ def _verifier_pression_memoire(vmid, hn, s):
         params={"h": hn or vmid, "used_gio": used / 2**30, "lim_gio": lim / 2**30, "pct": pct})
 
 
-def _verifier_gpu_effectif(vmid, hn, m, node_id):
+def _verifier_gpu_effectif(vmid, c, m):
     """Un conteneur à QUI UNE CARTE EST RÉSERVÉE s'en sert-il vraiment ?
 
     POURQUOI (incident Horace, 2026-08-28) : le conteneur de monitoring d'un utilisateur avait un
@@ -823,8 +823,23 @@ def _verifier_gpu_effectif(vmid, hn, m, node_id):
 
     Chaque plugin le dit à sa façon ; on lit ce qu'ils publient, sans rien deviner.
     """
+    c = c or {}
+    hn, node_id = c.get("hostname"), c.get("node_id")
     if not isinstance(m, dict) or node_id is None:
         return
+    # CPU DEMANDÉ EXPLICITEMENT → `gpu: false` est l'INTENTION, pas une panne (2026-10-06).
+    # Depuis que `force_cpu` descend du mur à ses shards (cf. compositor_fabric.style_context), un
+    # shard créé avec une carte réservée peut être basculé en CPU par REBIND, sans recréation : il
+    # garde sa réservation et tourne volontairement sans elle. Sans cette exception, l'alerte qui
+    # devait révéler une carte RÉVOQUÉE accuserait une carte CONGÉDIÉE — et sonnerait sur chaque
+    # shard de chaque mur qu'un exploitant a sciemment remis au CPU.
+    try:
+        _dc = c.get("deploy_config")
+        _dc = json.loads(_dc) if isinstance(_dc, str) else (_dc or {})
+        if ((_dc or {}).get("params") or {}).get("force_cpu"):
+            return
+    except (ValueError, TypeError):
+        pass
     try:
         from .gpu_pool import gpu_par_vmid
         if vmid not in (gpu_par_vmid(node_id) or {}):
@@ -995,7 +1010,28 @@ def frame_index_de(m):
     return None
 
 
-def fps_precis_note(vmid, fi):
+def creneaux_manques_de(m):
+    """Compteur CUMULÉ de créneaux où le producteur n'a RIEN publié, ou None s'il ne le dit pas.
+
+    ★ POURQUOI CE COMPTEUR EST INDISPENSABLE AU CALCUL DE CADENCE (2026-10-23).
+    `frame_index` d'un flux MXL est NORMATIVEMENT DÉRIVÉ DU TEMPS : il avance même quand le
+    producteur saute un créneau. Δindex/Δt mesure donc le temps écoulé, pas les images écrites —
+    et pour tout producteur irrégulier il rend la cadence NOMINALE, quoi qu'il arrive.
+    Mesuré sur stills-Satis (vmid 1252) : sur 10,00 s, Δindex = 508 (50,79/s) alors que
+    Δslots_missed = 168 → 340 images réellement publiées, soit 33,99/s. Un tiers des images
+    manquait et le témoin affichait « cadence 50,0 — tenue ». Le testeur voyait ses images
+    clignoter au noir en face d'une page qui affirmait que tout allait bien.
+    Les deux noms rencontrés dans le parc disent la même chose — un créneau sans publication :
+    `slots_missed` (producteurs : stills, player…) et `frames_missed` (mur multiview).
+    """
+    for cle in ("slots_missed", "frames_missed"):
+        v = m.get(cle)
+        if isinstance(v, int):
+            return v
+    return None
+
+
+def fps_precis_note(vmid, fi, manques=None):
     """Recalcule la cadence par Δframe_index / Δt entre deux polls. Rend la valeur (ou None).
 
     Trois cas rendent None plutôt qu'un chiffre douteux — un capteur qui se tait vaut mieux qu'un
@@ -1008,16 +1044,43 @@ def fps_precis_note(vmid, fi):
         return None
     now = _t.monotonic()
     prev = _fps_precis_prev.get(vmid)
-    _fps_precis_prev[vmid] = (now, fi)
+    # ⚠ L'ESCALIER D'ÉCHANTILLONNAGE N'EST PAS CORRIGÉ ICI (constaté 2026-10-23). Tous les
+    # producteurs ne republient pas `frame_index` à chaque trame — le mélangeur si, `stills` une
+    # fois par seconde — si bien que l'index lu est en retard d'une durée INCONNUE (0 à 1 s) à
+    # CHAQUE BOUT de la fenêtre. D'où ±20 % sur 5 s, ±50 % sur 2 s : mesuré 51,1 / 49,0 / 47,7
+    # pour un producteur à 49,999/s (vérifié DANS le conteneur, régression sur 90 s).
+    # Correction réelle, à faire : diviser par l'écart entre les instants de PUBLICATION de
+    # l'index (horodatage producteur, ou `last_write_time` du flux) plutôt qu'entre nos relevés ;
+    # à défaut, une fenêtre ≥ 20 s ramène l'erreur sous 5 %. Et à la source : publier
+    # `frame_index` à chaque trame. ✔ FAIT pour `stills` (0.19.8, 2026-10-23) — les mesures
+    # ci-dessus datent d'AVANT ce correctif. L'état des autres producteurs n'a pas été
+    # inventorié : ne pas supposer qu'ils publient tous à chaque trame.
+    # ✗ NE PAS « CORRIGER » ÇA PAR UNE GARDE DU PALIER (renvoyer la valeur en cache quand
+    # `fi == prev[1]`). Essayé puis RETIRÉ le 2026-10-23 : la surveillance relève toutes les ~5 s
+    # alors que le producteur grossier republie toutes les ~1 s, donc l'index a presque toujours
+    # avancé et la garde ne tire quasiment jamais sur le cas visé — en revanche elle affiche
+    # 50,0 pendant 37 s sur un producteur GELÉ (mesuré), là où le code ci-dessous rend 0,0 au
+    # bout de 2 s. Masquer un gel pour gagner un cas qui ne se présente pas.
+    _fps_precis_prev[vmid] = (now, fi, manques)
     if prev is None:
         fps_precis_cache.pop(vmid, None)
         return None
-    t0, fi0 = prev
+    t0, fi0 = prev[0], prev[1]
+    m0 = prev[2] if len(prev) > 2 else None
     dt = now - t0
     if fi < fi0 or dt < _FPS_PRECIS_DT_MIN or dt > _FPS_PRECIS_DT_MAX:
         fps_precis_cache.pop(vmid, None)
         return None
-    v = round((fi - fi0) / dt, 1)
+    # ★ RETIRER LES CRÉNEAUX OÙ RIEN N'A ÉTÉ PUBLIÉ (cf. creneaux_manques_de). Sans ça la mesure
+    # vaut le temps écoulé et non les images écrites. Un compteur reparti en arrière = script
+    # redéployé : on se taît plutôt que de rendre un chiffre gonflé.
+    ecrites = fi - fi0
+    if isinstance(manques, int) and isinstance(m0, int):
+        if manques < m0:
+            fps_precis_cache.pop(vmid, None)
+            return None
+        ecrites -= (manques - m0)
+    v = round(max(0.0, ecrites) / dt, 1)
     fps_precis_cache[vmid] = v
     return v
 
@@ -1716,7 +1779,7 @@ def rafraichir_metrics(vmid, status_data=None):
         fi = frame_index_de(m)
         # Même traitement que les plugins : cadence précise par Δindex, et c'est ELLE qui alimente
         # le plancher glissant (le fps brut du moteur porte la même troncature de fenêtre).
-        _precis = fps_precis_note(vmid, fi)
+        _precis = fps_precis_note(vmid, fi, creneaux_manques_de(m))
         fps_note(vmid, _precis if _precis is not None else m.get("fps"))
         if fi is not None:
             prev = _frame_index_prev.get(vmid)
@@ -1903,6 +1966,13 @@ def rafraichir_metrics(vmid, status_data=None):
                 _check_sessions_moteur(vmid, hn, m["receivers"])
             except Exception as e:
                 log.debug(f"check sessions moteur {vmid}: {e}")
+            # Adressage multicast des sorties (groupes partagés, moteur hors plan) : échéance
+            # propre et thread à lui — cet appel ne coûte rien à la boucle.
+            try:
+                from . import mcast_audit
+                mcast_audit.maybe_audit()
+            except Exception as e:
+                log.debug(f"audit multicast : {e}")
         # Famine TX (symétrique du RX) : un sender vidéo « activé + câblé » (inputs_latency_ms non vide)
         # censé émettre (fps_nominal>0) mais à fps≈0 sur ≥ seuil polls ⇒ n'émet rien. Alerte UNE fois.
         if isinstance(m.get("senders"), list):
@@ -2156,7 +2226,7 @@ def rafraichir_metrics(vmid, status_data=None):
     # alimente de préférence : un plancher construit sur le fps brut du plugin porte son ±1 fps
     # de troncature, et frôlerait le seuil de « cadence tenue » (49/50 = 0,98) alors que rien
     # ne décroche. Repli sur la valeur brute quand Δindex n'est pas exploitable.
-    _precis = fps_precis_note(vmid, frame_index_de(m))
+    _precis = fps_precis_note(vmid, frame_index_de(m), creneaux_manques_de(m))
     # Alimente les fenêtres glissantes (avertissements de l'UI : pas de clignotement).
     fps_note(vmid, _precis if _precis is not None else m.get("fps"))
     # TRAMES PERDUES par seconde, telles que le producteur les COMPTE lui-même. C'est le signal
@@ -2304,7 +2374,7 @@ def rafraichir_metrics(vmid, status_data=None):
     # quand il tourne sur cupy. Sert au badge GPU des cartes/topologie. Absent → pas de badge.
     if "gpu" in m:
         gpu_cache[vmid] = {"gpu": bool(m.get("gpu")), "name": m.get("gpu_name")}
-    _verifier_gpu_effectif(vmid, (_c or {}).get("hostname"), m, (_c or {}).get("node_id"))
+    _verifier_gpu_effectif(vmid, _c, m)
     # Tranche RUNTIME : clé posée par le script quand il publie réellement bande par bande
     # (multiview : seulement si SLICE_ON effectif ; mixer : SLICE_ON booléen systématique).
     slice_cache[vmid] = bool(m.get("slice_mode"))

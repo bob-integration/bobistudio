@@ -33,6 +33,9 @@ def main():
     ap.add_argument("--images", action="store_true",
                     help="embarque aussi les images Docker runtime (docker save ; +plusieurs Go, "
                          "nœud opérationnel sans registre)")
+    ap.add_argument("--nvidia-driver", action="store_true",
+                    help="embarque l'installeur .run NVIDIA (vendor/nvidia/, ~400 Mo, téléchargé chez NVIDIA "
+                         "à la construction, jamais commité) : pilote GPU installable hors-ligne")
     args = ap.parse_args()
 
     if args.all:
@@ -43,10 +46,11 @@ def main():
         plugins = args.plugins.split(",") if args.plugins else None
         services = args.services.split(",") if args.services else None
 
-    verbose = args.offline or args.images
+    verbose = args.offline or args.images or args.nvidia_driver
     try:
         res = builder.build(plugins=plugins, services=services,
                             offline=args.offline, images=args.images,
+                            nvidia_driver=args.nvidia_driver,
                             log=(print if verbose else None))
     except RuntimeError as e:
         print(f"❌ {e}", file=sys.stderr)

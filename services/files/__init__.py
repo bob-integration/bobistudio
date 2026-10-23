@@ -45,7 +45,7 @@ def _roots():
             mm = (n.get("media_mount") or "").strip() or "/srv/mxl-media"
             roots.append({
                 "id": "media_%s" % n["id"], "label": "Média — %s" % n["name"],
-                "kind": "node", "host": n["host"], "base": mm,
+                "kind": "node", "host": n["host"], "base": mm, "node_id": n["id"],
                 "perm": "files.access", "writable": True})
     except Exception as e:
         log.warning("files: énumération nœuds échouée : %s", e)
@@ -215,9 +215,26 @@ def _safe_name(name):
     return n
 
 
+def _export_name(root, rel):
+    """Nom de TÉLÉCHARGEMENT : le fichier SORT du stockage du nœud, le code du média (`__<code>` à
+    la fin de la base, règle de app/media_naming.py) est retiré — seulement s'il s'agit bien d'une
+    copie d'un média de la base portant CE code (un fichier quelconque garde son nom)."""
+    name = os.path.basename(rel)
+    if root.get("node_id") is None:
+        return name
+    try:
+        from app import media_naming, media_registry as mr
+        r = mr.db().execute("SELECT asset_id FROM media_files WHERE node_id=? AND share_id=0 AND path=? AND asset_id IS NOT NULL",
+                            (int(root["node_id"]), rel)).fetchone()
+        return media_naming.export_name(name, r["asset_id"]) if r else name
+    except Exception as e:                                                 # noqa: BLE001
+        log.warning("files: nom de téléchargement de %s : %s", rel, e)
+        return name
+
+
 def download_stream(root, rel):
     """Retourne (generator, filename). Local : lecture disque ; node : ssh cat en streaming."""
-    name = os.path.basename(rel)
+    name = _export_name(root, rel)
     if root["kind"] == "node":
         full = _node_abspath(root, rel)
         if _denied(full):

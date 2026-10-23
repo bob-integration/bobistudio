@@ -52,6 +52,7 @@ from . import journal as _journal
 from . import allocations
 
 log = logging.getLogger(__name__)
+_CAPS_ALLOWED = ("SYS_NICE",)   # capacités qu'un manifeste peut demander (cf. ensure_container)
 
 
 # ─── Prédicats de routage ────────────────────────────────────────────
@@ -87,6 +88,15 @@ def _params_of(c):
         return (json.loads(c.get("deploy_config") or "{}") or {}).get("params") or {}
     except Exception:
         return {}
+
+
+def _agent_version_lt(node, ref):
+    """L'agent-nœud est-il antérieur à `ref` ? Version inconnue → on ne présume rien (False)."""
+    v = str((node or {}).get("agent_version") or "")
+    try:
+        return tuple(int(x) for x in v.split(".")[:3]) < tuple(int(x) for x in ref.split("."))
+    except ValueError:
+        return False
 
 
 def _name(vmid):
@@ -370,6 +380,60 @@ def _env_identite_client():
     return env
 
 
+def effective_resources(deploy_type, c):
+    """Profil de ressources APPLIQUÉ au `docker run` d'un conteneur compute/média.
+
+    Base : `plugin.json:resources` du type (cores/memory/pin/priority…). Les colonnes
+    `cores_override`/`memory_override` du conteneur, quand elles sont posées (PATCH
+    /api/containers/<vmid>/resources), priment pour CE conteneur seulement — un player UHD peut
+    avoir 4 Go sans relever tous les players du parc. NULL = le manifeste fait foi.
+
+    Ne lit PAS `cores`/`memory` : ces colonnes portent des défauts d'insertion (2/2048), pas une
+    intention. Renvoie une COPIE (le registre des plugins n'est jamais modifié)."""
+    res = dict(((plugins.get(deploy_type) or {}).get("resources") or {}) if deploy_type else {})
+    c = c or {}
+    if c.get("cores_override") is not None:
+        res["cores"] = int(c["cores_override"])
+    if c.get("memory_override") is not None:
+        res["memory"] = int(c["memory_override"])
+    # Mode CPU (types `reservable` seulement) : 'reserved' = cœurs DÉDIÉS (pin, poids normal),
+    # 'shared' = pool partagé à poids faible. Une valeur posée sur un type qui ne l'offre pas est
+    # ignorée plutôt que de changer en silence la nature d'un conteneur temps réel.
+    mode = c.get("cpu_mode_override")
+    if res.get("reservable") and mode in CPU_MODES:
+        if mode == "reserved":
+            res.pop("priority", None)
+            res["pin"] = True
+        else:
+            res["priority"] = "batch"
+            res.pop("pin", None)
+    return res
+
+
+CPU_MODES = ("shared", "reserved")
+
+
+def cpu_mode_of(res):
+    """Mode CPU d'un profil EFFECTIF : 'reserved' (cœurs dédiés demandés), 'shared' (batch), ou
+    None pour un type qui n'offre pas le choix."""
+    if not res.get("reservable"):
+        return None
+    if str(res.get("priority") or "").lower() == "batch" or not res.get("pin"):
+        return "shared"
+    return "reserved"
+
+
+def project_media_dir(node, project_id):
+    """Dossier, sur l'HÔTE du nœud, que voit un conteneur de `project_id` sous /mnt/media : le
+    volume local du nœud, réduit au sous-dossier du projet s'il en a un. Source unique : le bind
+    du `docker run` et la ferme de transcodage (qui lit et écrit ces fichiers depuis l'hôte)."""
+    media_root = (node or {}).get("media_mount") or "/srv/mxl-media"
+    proj = db_get_project(project_id) if project_id else None
+    if proj and proj.get("media_path"):
+        return media_root.rstrip("/") + "/" + os.path.basename(proj["media_path"].rstrip("/"))
+    return media_root
+
+
 def _signature_spec(spec):
     """Signature stable de la spec `docker run` (dict sérialisable). Deux specs identiques →
     même signature → le conteneur en marche est DÉJÀ celui qu'on veut, inutile de le recréer.
@@ -478,6 +542,20 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     # node.media_image ; sinon 'compute' (bobi-compute) → node.compute_image.
     variant = plugins.image_variant(deploy_type) if deploy_type else "compute"
     image = node.get("media_image") if variant == "media" else node.get("compute_image")
+    # Variante 'gui' (plugin_gui : interfaces natives LV2) : fine couche bobi-gui sur bobi-compute, construite
+    # sur le nœud qui la porte (node_only) ; tag commun dans le réglage `gui_image`. Absent : refus explicite
+    # plus bas (« sans image »), jamais un repli sur bobi-compute qui démarrerait sans pile graphique.
+    if variant == "gui":
+        from . import settings as _st
+        # Le tag est COMMUN (réglage) mais l'image n'existe que sur les nœuds qui ont la capacité « gui » (cible
+        # du build node_only). Ailleurs, un `docker run bobi-gui:x` échouerait sur « image introuvable », sans
+        # nommer la cause. La route de création refuse déjà ; ceci couvre un redéploiement ou une migration.
+        if "gui" not in node_driver.node_capabilities(node):
+            db_add_alert("alert.deploy.compute.sans_capacite_gui", "error", vmid=vmid,
+                         node_id=node.get("id"), kind="deploy",
+                         params={"vmid": vmid, "n": node.get("name"), "t": deploy_type})
+            return False
+        image = node.get("gui_image") or (_st.get("gui_image") or "").strip() or None
     # Cas spécial passerelle WebRTC : image dédiée bobi-webrtc (MediaMTX pré-baké). Ce n'est pas un
     # plugin du registre (donc pas de variante) → image lue du setting `webrtc_image` (défaut
     # bobi-webrtc:0.1), avec repli sur node.webrtc_image si la colonne existe.
@@ -553,7 +631,8 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     network = node.get("docker_network")
     mxl = node.get("mxl_mount") or "/dev/shm"
     if not (image and network):
-        _quoi = "média (media_image)" if variant == "media" else "compute (compute_image)"
+        _quoi = ("média (media_image)" if variant == "media" else "interfaces natives (gui_image)"
+                 if variant == "gui" else "compute (compute_image)")
         db_add_alert("alert.deploy.compute.sans_image_ou_reseau", "error", vmid=vmid,
                      node_id=node.get("id"), kind="deploy",
                      params={"vmid": vmid, "n": node["name"], "quoi": _quoi})
@@ -574,12 +653,15 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     # (≈ cœurs), --memory, et --cpuset-cpus si pin + pool de cœurs déclaré sur le nœud. La priorité
     # 'batch' (transcoder, fichier non temps réel) → --cpu-shares bas + pas de pin → cède aux
     # plugins temps réel (player/recorder, pinnés).
-    res = (plugins.get(deploy_type) or {}).get("resources") or {} if deploy_type else {}
+    # Profil EFFECTIF : manifeste, sauf cœurs/mémoire réglés pour CE conteneur (cf. effective_resources).
+    res = effective_resources(deploy_type, c)
+    _cores_force = c.get("cores_override") is not None
     # Profil de ressources : on construit À LA FOIS la chaîne d'options legacy (ssh_run) ET le
     # dict structuré (agent-nœud), à partir de la même logique → pas de divergence.
     resources = {}
     is_batch = str(res.get("priority") or "").lower() == "batch"
     want = 0
+    want_floor = 0          # sans les cœurs EN PLUS (extra_cores_param) : repli si le pool ne les a pas
     if res.get("pin") and res.get("cores") and not is_batch:
         # Vrai pinning : cœurs DÉDIÉS non chevauchants demandés au pool du nœud (idempotent).
         base = int(res["cores"])
@@ -592,6 +674,22 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
         except (TypeError, ValueError):
             per = 0.0
         want = base
+        # Cœurs EN PLUS demandés par un réglage de l'instance (`extra_cores_param` du manifeste, borné par
+        # `extra_cores_max`) : la console audio y met ses cœurs dédiés aux plugins tiers (2026-10-18). Réservés
+        # au pool comme les autres (exclusifs). Le nombre change → libérer d'abord : `allocate_cores` est
+        # idempotent et rendrait l'ancienne réservation ; le cpuset change, donc la signature, donc le
+        # conteneur est recréé (c'est le coût annoncé par le réglage).
+        _xk = res.get("extra_cores_param")
+        want_floor = want
+        if _xk:
+            try:
+                extra = int(_p.get(_xk) or 0)
+            except (TypeError, ValueError):
+                extra = 0
+            want = base + max(0, min(extra, int(res.get("extra_cores_max") or 0)))
+            _mine = core_pool.allocated_for(node["id"], vmid)
+            if _mine and _mine != want:
+                core_pool.release_cores(vmid)
         if per > 0:
             _, load = pyramide_input_load(_p)
             mine = core_pool.allocated_for(node["id"], vmid)
@@ -599,6 +697,14 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
             want = min(max(base, base + math.ceil(per * load)), max(base, free + mine))
             # Le cpuset Docker n'est PAS modifiable à chaud → un resize impose release+realloc (on
             # n'arrive ici, avec un resize, que lors d'un vrai (re)déploiement qui recréera le conteneur).
+            if mine and mine != want:
+                core_pool.release_cores(vmid)
+        elif _cores_force:
+            # Même raison que ci-dessus : `allocate_cores` est idempotent par vmid et RENDRAIT
+            # l'ancienne allocation — un réglage de cœurs par conteneur resterait sans effet sur
+            # le cpuset dédié. Restreint au réglage explicite : un conteneur qui suit le manifeste
+            # garde son allocation telle quelle (pas de ré-allocation du parc au redéploiement).
+            mine = core_pool.allocated_for(node["id"], vmid)
             if mine and mine != want:
                 core_pool.release_cores(vmid)
     # CAUSE RACINE corrigée (2026-07-13, nœud 30) : `effective_cpuset` ne renvoie JAMAIS "vide" tant
@@ -631,9 +737,23 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     _t_eff = deploy_type or _type_of(c)
     if prefer_numa is None and _t_eff in core_pool.PREFERE_SOCKET_MEDIA:
         prefer_numa = core_pool.numa_of_media_nic(node["id"])
+    if is_batch and core_pool.allocated_for(node["id"], vmid):
+        # Repassé de « réservé » à « partagé » : `allocate_cores` n'est plus appelé (want=0), et
+        # les cœurs dédiés resteraient comptés à ce conteneur — réservés pour rien, refusés aux
+        # autres. On les rend avant de calculer le pool partagé.
+        core_pool.release_cores(vmid)
     try:
         cpuset, dedicated = core_pool.effective_cpuset(node["id"], vmid, want,
                                                        prefer_numa=prefer_numa)
+        if not dedicated and want_floor and want > want_floor:
+            # Les cœurs EN PLUS n'existent pas dans le pool : garder au moins le cœur dédié de base plutôt que de
+            # replier tout le conteneur sur le pool partagé (pire qu'avant le réglage). Dit, pas tu : le conteneur
+            # publie aussi `cpuset_mismatch` (la console garde ses plugins sur son cœur).
+            db_add_alert("alert.deploy.compute.extra_cores_indisponibles", "warning", vmid=vmid,
+                         node_id=node.get("id"), kind="resource",
+                         params={"vmid": vmid, "n": node["name"], "want": want, "base": want_floor})
+            cpuset, dedicated = core_pool.effective_cpuset(node["id"], vmid, want_floor,
+                                                           prefer_numa=prefer_numa)
     except core_pool.PoolSature as e:
         db_add_alert("alert.deploy.compute.pool_sature", "error", vmid=vmid,
                      node_id=node.get("id"), kind="deploy",
@@ -667,12 +787,36 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     mounts = [{"host": mxl, "container": "/dev/shm"}]
     media_host_dir = None
     if deploy_type and plugins.wants_media_volume(deploy_type):
-        media_root = node.get("media_mount") or "/srv/mxl-media"
-        media_host_dir = media_root
-        proj = db_get_project(c.get("project_id")) if c.get("project_id") else None
-        if proj and proj.get("media_path"):
-            media_host_dir = media_root.rstrip("/") + "/" + os.path.basename(proj["media_path"].rstrip("/"))
+        media_host_dir = project_media_dir(node, c.get("project_id"))
         mounts.append({"host": media_host_dir, "container": "/mnt/media"})
+        # Partages réseau (service storage) : les dossiers accordés au projet du conteneur (et
+        # ceux accordés à tous) sous /mnt/ext, en `ro,rslave` — un accès donné après le
+        # démarrage y apparaît sans recréer. Service absent → rien (le plugin n'en dépend pas).
+        try:
+            from services import storage as _storage
+            _ext = _storage.container_mount(node, c.get("project_id"))
+        except ImportError:
+            _ext = None
+        if _ext:
+            if _agent_version_lt(node, "0.22.0"):
+                db_add_alert("alert.deploy.compute.agent_sans_options_montage", "warning", vmid=vmid,
+                             node_id=node.get("id"), kind="deploy",
+                             params={"n": node.get("name"), "v": node.get("agent_version") or "?"})
+            mounts.append(_ext)
+
+    # Plugins LV2 distribués par l'orchestrateur (services/audio/lv2_plugins.py) : LECTURE SEULE — l'hôte de plugins tiers
+    # de la console les charge dans son bac à sable, il n'a rien à y écrire. Synchronisés à part : un plugin
+    # ajouté apparaît sans recréer le conteneur.
+    # Un dossier PAR FORMAT (LV2, CLAP, VST3 — 2026-10-18) : lilv prend chaque entrée de son dossier pour un bundle LV2.
+    if deploy_type and plugins.wants_lv2_volume(deploy_type):
+        try:
+            from services.audio import lv2_plugins as _lv2
+        except ImportError:
+            _lv2 = None
+            log.warning("deploy: %s wants the LV2 volume but the audio service is absent — no plugin library mounted",
+                        deploy_type)
+        if _lv2 is not None:
+            mounts.extend(_lv2.container_mounts(node))
 
     # Volume d'état : dossier persistant par container (hôte → /var/lib/bobi). Le rootfs est
     # recréé à chaque déploiement ET au boot du nœud ; ce qui doit survivre (journaux
@@ -732,6 +876,20 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
             # chantier RDMA). Un agent plus ancien IGNORE la clé → conteneur sans carte ; le
             # plugin le dira (`sdk_absent` / aucune carte énumérée) plutôt que de tourner à vide.
             spec["devices"] = list(decklink_devs)
+        # Capacités DÉCLARÉES par le manifeste (`resources.cap_add`, `resources.ulimits`) — LISTE BLANCHE : seule
+        # SYS_NICE (ordonnancement temps réel du fil audio de la console, décidé 2026-10-17) ; toute autre est
+        # ignorée et journalisée, jamais accordée. Agent-nœud ≥ 0.10.0 (`cap_add` / `ulimits`).
+        _res_m = ((plugins.get(deploy_type) or {}).get("resources") or {}) if deploy_type else {}
+        _caps = [c for c in (_res_m.get("cap_add") or []) if c in _CAPS_ALLOWED]
+        if len(_caps) != len(_res_m.get("cap_add") or []):
+            log.warning("docker_compute: %s requests capabilities outside the allow-list %s, ignored",
+                        deploy_type, sorted(set(_res_m.get("cap_add") or []) - set(_CAPS_ALLOWED)))
+        if _caps:
+            spec["cap_add"] = _caps
+            _ul = {k: v for k, v in (_res_m.get("ulimits") or {}).items()
+                   if k == "rtprio" and isinstance(v, int) and 0 < v <= 99}
+            if _ul:
+                spec["ulimits"] = {k: "%d:%d" % (v, v) for k, v in _ul.items()}
         if gpu_sel:
             # EXTENSION DE CONTRAT AGENT : l'agent-nœud doit traduire spec["gpus"] en `docker run
             # --gpus "<sel>"` (cf. NODE_AGENT.md). Un agent qui l'ignore → conteneur sans GPU →

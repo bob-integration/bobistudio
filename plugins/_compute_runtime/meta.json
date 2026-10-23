@@ -1,11 +1,84 @@
 {
-  "version": "0.46.0",
-  "date": "2026-09-12",
+  "version": "0.74.0",
+  "date": "2026-10-22",
   "changes": {
+    "La garde de generation ne coupe plus le son (0.74.0)": [
+      "⚠⚠ CORRECTIF D'UN DEFAUT INTRODUIT PAR 0.73.0, CONSTATE EN DIRECT. La garde de generation jugeait les flux AUDIO sur `lastWriteTime`, que les producteurs audio ne mettent PAS a jour : elle les croyait morts en permanence, relachait le lecteur une fois par seconde, et chaque reprise re-ancrait la position de lecture. Mesure sur la machine du testeur : 1 300 a 1 700 echantillons/s au lieu de 48 000, sur les quatre sorties porteuses de son.",
+      "★ Le detecteur audio juge desormais sur un `headIndex` qui ne bouge plus, et ce signe est fiable parce qu'un flux reellement MUET a un index qui AVANCE (le producteur comble le silence) : un index fige n'est jamais du silence, c'est un lecteur decroche.",
+      "★ L'avertissement existait dans `_StaleGuard` (bobimxl) et avait ete lu sans etre applique. Une garde hors ligne (`verif_garde_generation.py`, assertion « l'audio est juge sur l'index », mutee x3) interdit desormais la repetition de l'oubli.",
+      "★ Le suivi d'index se remet a zero avec la poignee : conserve, il comparerait l'index du flux mort a celui du neuf et jugerait le lecteur neuf perime d'entree.",
+      "⚠ BUMP NECESSAIRE : un conteneur n'adopte les nouveaux binaires qu'en changeant d'`image_tag` (recreation)."
+    ],
+    "Une sortie SDI se raccroche quand son producteur recree son flux (0.73.0)": [
+      "★★ UN PRODUCTEUR REDEPLOYE FIGEAIT LA SORTIE POUR TOUJOURS, EN SILENCE. Un producteur qui detruit puis recree son flux sous le meme nom (redeploiement, changement de source) laissait nos lecteurs accroches a la generation MORTE. Le piege est qu'elle reste LISIBLE : les grains se servent encore, l'index est simplement fige. Donc aucun SIGBUS, aucune erreur, aucun code de retour, et une reprise « sur erreur » ne se declenche JAMAIS. La sortie rejouait la derniere image en boucle en annoncant 50 i/s et genlock verrouille.",
+      "★ Mesure du 22/10 : le player a ete redeploye a 07 h 38, SIX des neuf sorties sont restees sur l'anneau d'avant. Le systeme le disait (13 zones memoire « (deleted) » sur les inodes 155-161 pendant que le flux vivant tournait sur 18145) mais aucun de NOS compteurs ne le disait, et le producteur a d'abord ete accuse a tort.",
+      "★ Le detecteur est `lastWriteTime`, PAS l'index : sur une generation morte l'index est fige, mais il l'est aussi chez un producteur legitimement a l'arret. Meme seuil (5 s) et meme sequence de reprise que `_StaleGuard` de bobimxl, eprouve en production depuis le 2026-08-22 : on ne reinvente pas une parade contre une panne silencieuse.",
+      "★ Deux compteurs nouveaux, `flow_regens` et `audio_regens` : sans eux la garde serait invérifiable, on ne distinguerait pas « elle n'a jamais eu a mordre » de « elle ne mord pas ».",
+      "⚠ BUMP NECESSAIRE : un conteneur n'adopte les nouveaux binaires qu'en changeant d'`image_tag` (recreation)."
+    ],
+    "Audio SDI par groupes de 8 canaux : deux flux au lieu d un flux de 16 (0.72.0)": [
+      "★★ LES DEUX BINAIRES DECKLINK PARLENT MAINTENANT LA FORME DU BUS. Le bus MXL porte des flux de 8 canaux : sur les 28 flux audio du domaine de dell-1 le 21/10, 25 en portaient 8 et les 3 seuls à en porter 16 étaient nos captures. 16 canaux se publient et se lisent désormais en DEUX flux de 8 (« …_audio » pour 1-8, « …_audio_2 » pour 9-16), le premier gardant son nom pour ne casser aucun câble posé.",
+      "★ La sortie compare le `channel_count` DÉCLARÉ par le flux à ce qu'elle compte y lire et le DIT, au lieu de laisser les canaux non alimentés sortir muets en silence — c'est ce contrôle manquant qui, le 21/10, a fait chercher la panne de Quad SDI 1 dans le câblage.",
+      "★ Un groupe n'emporte plus l'autre : comblement de silence sur les deux flux en capture, canaux 9-16 à zéro et comptés en sortie, rattrapage séparé de chaque groupe quand son flux naît après la prise.",
+      "⚠ BUMP NÉCESSAIRE : un conteneur n'adopte les nouveaux binaires qu'en changeant d'`image_tag` (recréation)."
+    ],
+    "La sortie SDI reprend l'audio quand son flux apparait APRES elle (0.71.0)": [
+      "★★ UNE SORTIE DÉMARRÉE AVANT L'EXISTENCE DE SON FLUX AUDIO RESTAIT MUETTE POUR TOUJOURS. Le lecteur audio n'était ouvert QU'UNE FOIS, au démarrage : un conteneur relancé avant son producteur de son — l'ordre normal après un redémarrage de nœud — émettait l'image sans jamais reprendre l'audio, en annonçant 50 i/s et genlock verrouillé. Et en silence : `audio_samples` à 0 se lit comme une source muette, donc on cherchait la panne à l'autre bout de la chaîne. C'est la MÊME faute que la profondeur devinée de la veille (0.67.0) : un état lu une seule fois, au pire moment, et tenu pour définitif.",
+      "★ Le nom du flux demandé est GARDÉ et réessayé une fois par seconde dans le chemin par trame. L'audio de la CARTE est désormais configuré sur le nombre de canaux DEMANDÉ (déclaré, pas déduit du bus) et non sur la présence d'un lecteur : sans ça le flux pouvait bien apparaître, il n'y avait aucune piste audio sur le fil. Le flux étant horodaté, les échantillons se raccrochent à la trame courante sans re-préchargement ; la position de lecture se ré-ancre.",
+      "★ `audio_pending` publié dans la ligne de statistiques : il SÉPARE « pas de son demandé » de « son demandé, flux pas encore là », que rien ne distinguait de l'extérieur. `audio_opens` compte les reprises en cours de route.",
+      "Garde `plugins/decklink_io/verif_audio_reprise.py` : trois invariants de structure, mutés séparément (chacun échoue seul).",
+      "⚠ BUMP NÉCESSAIRE : un conteneur n'adopte le nouveau binaire qu'en changeant d'`image_tag` (recréation)."
+    ],
+    "La sortie SDI ne devine plus la profondeur du flux : elle refuse de demarrer (0.67.0)": [
+      "★★ COURSE CORRIGÉE. La sortie lisait la profondeur AVANT d'ouvrir le lecteur : si le flux était en train d'être créé ou RE-créé, le fichier de définition manquait l'espace d'un instant, on retombait sur « 10 par défaut », et toute la session émettait en lisant du 8 comme du 10 — image doublée, dominante verte, tous compteurs au vert. Vu dans le journal : trois lancements du même flux, « 8 bits », « 10 bits (non déclaré) », « 8 bits ».",
+      "★ La lecture se fait maintenant APRÈS l'ouverture du lecteur — lequel PROUVE que le flux existe, donc que sa définition doit être lisible. Court réessai, puis REFUS DE DÉMARRER (code 8) si elle reste illisible : émettre une image fausse en silence est pire que ne rien émettre, car personne ne cherche une panne sur une sortie qui annonce 50 i/s et genlock verrouillé.",
+      "★ Le superviseur NOMME ce refus (« profondeur du flux illisible — la sortie refuse d'émettre une image fausse ») : sans ça, l'exploitant ne verrait qu'une boucle de relance sans raison."
+    ],
+    "La capture publie a la profondeur demandee par l orchestrateur (0.66.0)": [
+      "★★ LA CAPTURE ÉCRIVAIT 10 BITS EN DUR, alors que l'orchestrateur lui passe `bit_depth: 8` (réglage `mxl_pipeline_bit_depth`, « force8 » par défaut). Elle ignorait donc l'arbitrage global, doublait la mémoire partagée contre une décision explicite, et publiait une profondeur que les autres consommateurs n'attendent pas — exactement la faute que notre propre SORTIE commettait en sens inverse, et qui a donné une image doublée horizontalement sur moniteur.",
+      "★ La conversion se fait À LA FRONTIÈRE DE LA CARTE : la carte livre toujours du v210, on resserre (>> 2) au moment d'écrire le grain. UN SEUL endroit convertit, traversé par les trois chemins d'écriture (trame entière, bande, champ entrelacé) — dupliquer la conversion garantissait qu'un des trois dérive.",
+      "★ Le tampon de déballage ne couvre que la BANDE demandée : en mode tranche l'écriture est appelée une trentaine de fois par image, et déballer la trame entière à chaque appel ferait du mode tranche — dont tout l'intérêt est la latence — le chemin le plus lent.",
+      "Profondeur absente ou aberrante → 10, le comportement historique, plutôt qu'un flux écrit dans une profondeur inventée."
+    ],
+    "La sortie SDI lit la profondeur du flux et convertit a la frontiere de la carte (0.65.0)": [
+      "★★ LA SORTIE SDI SUPPOSAIT DU PLANAR 10 BITS EN DUR, alors que `mxl_pipeline_bit_depth` vaut « force8 » : TOUT le produit écrit du 8 bits (mire, mur, player). La sortie lisait donc deux fois moins d'octets par ligne et émettait une image DOUBLÉE HORIZONTALEMENT, dominante verte — constatée sur moniteur le 2026-10-19. Et en silence : 50 i/s, genlock verrouillé, 0 retard, 0 rejet, aucun compteur ne bronchait. Le bouclage carte→carte marchait parce que notre propre capture écrit du 10 bits : nous n'avions jamais émis autre chose que nos propres images.",
+      "★ `decklink_tx` LIT MAINTENANT LA PROFONDEUR DÉCLARÉE par le flux (components[].bit_depth du flow_def) et convertit à la frontière de la carte. Elle ne se DÉDUIT pas de la taille du grain : un champ entrelacé 10 bits et une trame progressive 8 bits pèsent exactement le même nombre d'octets (2·w·h), et la détection d'entrelacement par la taille aurait classé toute source 8 bits comme entrelacée. Profondeur non déclarée → 10, le comportement historique.",
+      "★ La conversion 8→10 se fait BANDE PAR BANDE sur le chemin progressif. En mode tranche, l'empaquetage est rappelé à chaque bande qui devient valide (une trentaine par image) : convertir la trame entière à chaque appel aurait fait du mode tranche — dont tout l'intérêt est la latence — le chemin le plus lent.",
+      "⚠ Reste à faire, côté CAPTURE : elle écrit 10 bits en dur alors que l'orchestrateur lui passe `bit_depth: 8`. Elle ignore donc l'arbitrage global et double la mémoire shm contre une décision explicite. À traiter dans un second temps, la sortie étant la priorité."
+    ],
+    "Bibliothèques des plugins CLAP et VST3 de la console audio (0.64.0)": [
+      "La console héberge aussi des plugins CLAP et VST3 (Linux). Un tel plugin est UN binaire, interface comprise : ses dépendances doivent être présentes pour qu'il se CHARGE, même quand l'hôte n'ouvre jamais son interface. Entrent dans l'image libGL SANS pilote (`libglvnd0`, `libglx0`, `libgl1` extraits, pas installés : `apt install libgl1` tire Mesa et LLVM, +204 Mo pour une bibliothèque que rien n'appelle), `libxrandr2`, `libxcursor1`, `libfontconfig1` (Dragonfly / DPF, LSP en CLAP et VST3). Mesuré le 2026-10-18 sur dell-1 : 307,2 Mo contre 305,6 Mo pour la 0.63, soit +1,6 Mo. Aucun serveur d'affichage, aucune interface ouverte.",
+      "Dossiers `/usr/local/lib/clap` et `/usr/local/lib/vst3` créés vides : comme `/usr/local/lib/lv2`, ils reçoivent en lecture seule la bibliothèque distribuée par l'orchestrateur. Aucun plugin dans l'image.",
+      "⚠ BUMP NÉCESSAIRE : un conteneur n'adopte ces bibliothèques qu'en changeant d'image_tag (recréation)."
+    ],
+    "Bibliothèques des plugins LV2 de la console audio (0.63.0)": [
+      "Entrent dans l'image les bibliothèques que lient les binaires DSP des meilleurs plugins LV2 libres : `libcairo2`, `libpango-1.0-0`, `libpangocairo-1.0-0`, `libfftw3-single3`, `libsamplerate0`, `libsndfile1`, `libzita-convolver4`, `libltc11`. Elles rendent chargeables x42 fil4 / dpl / darc / meters / fat1 / phaserotate / zeroconvo / mixtri, la suite LSP, ZamVerb et ZamHeadX2. +19 Mo mesurés (--no-install-recommends, aucune interface, aucun serveur X).",
+      "`libfluidsynth3` (Calf) volontairement absent : +207 Mo (llvm, mesa, SDL2, pipewire, banque de sons) pour une seule suite.",
+      "Bac à sable de l'hôte inchangé : tout vit sous /usr/lib, déjà lisible ; cairo et pango n'ouvrent ni police ni configuration au chargement (le rendu « inline display » n'est jamais demandé par l'hôte).",
+      "⚠ BUMP NÉCESSAIRE : un conteneur n'adopte ces bibliothèques qu'en changeant d'image_tag (recréation)."
+    ],
+    "Chargeur de plugins LV2 pour la console audio (0.62.0)": [
+      "`liblilv-0-0` (et serd / sord / sratom) entre dans l'image : c'est le chargeur qu'ouvre l'hôte de plugins tiers de la console audio, par dlopen, DANS son bac à sable. Quelques centaines de Ko.",
+      "Aucun plugin dans l'image, par choix : ils sont distribués par l'orchestrateur et montés en lecture seule sous `/usr/local/lib/lv2` (dossier créé ici). Mettre un plugin à jour ne reconstruit pas l'image, et le mur, les lecteurs et les autres conteneurs compute ne portent pas des dizaines de Mo d'audio.",
+      "⚠ BUMP NÉCESSAIRE : un conteneur n'adopte la bibliothèque qu'en changeant d'image_tag."
+    ],
     "libmxl passe en v1.1.0 finale (0.46.0)": [
       "★ Le SDK MXL était épinglé sur `v1.1.0-rc1` (5 août) ; la finale est sortie le 8 septembre, 18 commits plus loin. Aucune rupture d'API — le seul changement des en-têtes publics est un commentaire. Nos cinq patches et les 16 fichiers modifiés amont n'ont AUCUN fichier en commun, et aucun de nos fichiers patchés n'inclut un fichier qui a bougé.",
       "Le correctif qui motive la bascule est `6d5ac9c6` : sur les flux DISCRETS (audio, ANC), la queue de l'anneau et `headIndex+1` désignaient la même case physique — un lecteur pouvait lire celle que l'écrivain était en train d'écrire. La borne basse passe de +1 à +2 pour réserver cette case. C'est la forme de plusieurs symptômes audio que nous traînons.",
       "Viennent aussi : les writers qui sautent en avant (`_lastCommittedIndex` explicite sur les writers continus et discrets), `FabricsInstance` rendu réellement thread-safe, et une correction de portée sur le writer discret."
+    ],
+    "Témoins de latence qui DISCRIMINENT (0.48.0)": [
+      "⚠ La première version des compteurs mettait dans le même panier « j'ai émis head » (à l'heure) et « je suis retombé sur head-1 » (une trame de retard) : le chiffre montait dans les deux cas et ne disait donc rien de la latence, qui est tout l'enjeu. Un témoin qui ne distingue pas ce qu'il est censé mesurer ne vaut pas mieux que pas de témoin.",
+      "Publiés désormais : `sliced` (head suivi bande par bande), `head_ontime` (head pris d'un bloc, à l'heure), `late_previous` (head-1 émis : UNE TRAME DE RETARD), `slice_timeouts`."
+    ],
+    "Sortie DeckLink : consommer les TRANCHES (0.47.0)": [
+      "★ LE TX COÛTAIT UNE TRAME, ET AUCUN COMPTEUR NE LE DISAIT. Il refusait tout grain incomplet : face à un producteur qui committe progressivement, `head` est le grain EN COURS d'écriture, donc rejeté — on émettait `head-1`, la trame précédente. Cadence parfaite, genlock verrouillé, `slip_hours` à zéro : la dette ne se voyait nulle part, exactement ce que la règle du dépôt décrit pour un plugin whole-frame.",
+      "Le TX suit désormais `head` et empaquette chaque bande dès qu'elle est valide. Attendre dans le callback est sûr : la carte a déjà `preroll + 2` trames en file (100 ms à 50 i/s). L'attente est bornée à 10 ms et son échec retombe sur l'ancien comportement, jamais sur une demi-trame.",
+      "★ Trois compteurs publiés — `sliced`, `whole`, `slice_timeouts` : sans eux, une sortie qui retombe systématiquement sur le grain complet est INDISCERNABLE d'une sortie qui suit les bandes."
+    ],
+    "La sonde DeckLink entre dans l'image (0.46.0)": [
+      "★ `decklink_probe` est désormais compilé dans l'étage decklink-builder et installé dans l'image. L'inventaire de la carte — prises, identifiants stables, duplex, prises INACTIVES, profil actif — ne peut être lu que depuis le CONTENEUR : c'est lui qui a les périphériques montés, et le contrôleur n'exécute jamais de code plugin. Sans elle, l'exploitant devait trouver les identifiants en ligne de commande pour remplir un champ JSON à la main.",
+      "⚠ BUMP NÉCESSAIRE : un conteneur n'adopte les nouveaux binaires qu'en changeant d'image_tag."
     ],
     "Glissement NET, et non compteur de répétitions (0.45.0)": [
       "★ `slip_hours` était déduit du seul compteur de répétitions, et se trompait d'un facteur 240 : mesuré sur 2101 s, 5 répétitions pour 105 052 trames émises annoncent 47,6 ppm de glissement, quand la cadence mesurée sur la même fenêtre vaut +0,20 ppm. Une répétition est presque toujours de la gigue de phase — la source n'avait rien de neuf à cet instant, elle livrera deux grains au suivant. Répétitions et sauts se compensent ; seul leur SOLDE est du glissement.",
@@ -200,5 +273,5 @@
     ],
     "Bugs connus": []
   },
-  "image_tag": "bobi-compute:0.46"
+  "image_tag": "bobi-compute:0.74"
 }

@@ -9,7 +9,7 @@
     "class": "mode-pyramide",
     "oklch": "0.74 0.10 200"
   },
-  "version": "0.18.0",
+  "version": "0.18.1",
   "video_format": false,
   "adapts_input": true,
   "aggregate_fps": false,

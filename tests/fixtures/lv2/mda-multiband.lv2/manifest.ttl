@@ -1,0 +1,10 @@
+# Test fixture: mda MultiBand (mda-lv2, Debian), the bundle's manifest cut down to this plugin: control ports in a
+# declared port group (pg:group « Envelope ») and an enumeration with non-integer values.
+@prefix lv2: <http://lv2plug.in/ns/lv2core#> .
+@prefix mda: <http://drobilla.net/plugins/mda/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+mda:MultiBand
+	a lv2:Plugin ;
+	rdfs:seeAlso <MultiBand.ttl> ;
+	lv2:binary <MultiBand.so> .

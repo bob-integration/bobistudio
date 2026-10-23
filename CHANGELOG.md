@@ -5,6 +5,94 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## L'installation depuis internet ne meurt plus en silence — 2026-10-23
+
+**L'installation sur une machine vierge pouvait s'arrêter sans un mot.** C'est le défaut qui
+motive cette version, et il a été signalé par un testeur : `get.sh` affichait « aucune version
+étiquetée trouvée », puis « dépôt principal ✓ », puis rendait le prompt — rien d'autre, aucune
+erreur, aucune installation. Deux défauts pour une seule cause, l'API GitHub muette : sans
+identification elle n'accorde que 60 requêtes par heure et par adresse IP, et le script ne
+survivait pas à son silence. La lecture de la version épinglée de chaque sous-module n'était pas
+tolérante à l'échec, si bien que le script se tuait net sur la première — alors que le repli sur
+la branche `main` était écrit juste à côté, et n'était jamais atteint. Et le message sur les
+versions étiquetées affirmait un fait sur le dépôt alors que la question n'avait pas pu être
+posée. L'installateur annonce désormais ce qui se passe réellement, nomme le quota, dit comment
+le lever (`GITHUB_TOKEN`), et **installe**. Un banc hors ligne monte un faux GitHub qui refuse
+l'API et vérifie que l'installation aboutit quand même.
+
+**Une installation « tout-en-un » pouvait se terminer sans aucun nœud.** L'écran annonçait
+« prêt », l'orchestrateur et l'agent du nœud tournaient tous les deux — et la page Nœuds &
+Matériel affichait « Aucun nœud déclaré » : rien n'était déployable. L'installeur enrôlait l'agent
+local depuis un processus séparé, lancé sans se placer dans le répertoire de l'application ; cet
+enrôlement échouait donc à chaque fois lorsque l'installation partait d'un dossier temporaire, ce
+qui est le cas lorsqu'on installe depuis un orchestrateur déjà en service. L'erreur, elle, était
+perdue en route : seule la sortie standard du processus était relue, et la trace partait avec le
+reste. Le défaut symétrique était plus trompeur encore — l'enrôlement pouvait être annoncé
+**réussi** alors que l'agent ne répondait pas, parce que le résultat n'était jamais examiné.
+L'installeur vérifie désormais que le nœud existe réellement en base, affiche l'erreur quand ce
+n'est pas le cas avec la commande exacte pour le réparer, et distingue « prêt » de « tout-en-un
+incomplet » au lieu de féliciter dans les deux cas.
+
+**Cette version embarque aussi le chiffrement de l'accès web et l'appairage de haute
+disponibilité** décrits dans l'entrée suivante : ils avaient été écrits après la publication de
+la 0.9.8 et n'étaient donc jamais parvenus à une version publique. ⚠ **Une paire de contrôleurs
+déjà en service doit être appairée après la mise à jour**, et le port 5444 ouvert entre les deux
+machines.
+
+---
+
+## Chiffrer l'accès web, et une haute disponibilité qui pilote vraiment après bascule — 2026-10-11
+
+**Un standby promu ne pilotait aucun nœud.** C'était le défaut le plus grave de cette version, et
+la bascule de bout en bout ne l'avait jamais révélé faute d'avoir été éprouvée. Les agents-nœuds
+n'acceptent que les contrôleurs signés par l'autorité de certification qui les a enrôlés — celle
+de l'actif — et rien ne la transmettait au standby. Les deux contrôleurs s'**appairent** désormais
+une fois, par un code à usage unique affiché sur l'actif et saisi sur le standby : ils partagent
+alors la même autorité, et chaque écran en affiche l'empreinte, qu'il suffit de comparer. Le code
+ne circule jamais sur le réseau.
+
+**La réplication de la base vers le standby passait en clair**, avec un secret rejouable : la
+base entière, y compris de quoi forger une session. Elle passe maintenant par une écoute chiffrée
+dédiée (port 5444) qui n'accepte que des contrôleurs. ⚠ **Une paire déjà en service doit être
+appairée après la mise à jour**, et le port 5444 ouvert entre les deux machines : d'ici là, la
+réplication échoue, et le dit.
+
+**L'accès web peut être chiffré.** Réglages → Système → Sécurité → Accès web propose trois modes :
+HTTP direct (le défaut, inchangé), chiffré par l'orchestrateur lui-même en HTTPS sur le port 443,
+ou derrière un reverse proxy. Le mode est lu au démarrage. En passant, un défaut a été corrigé :
+en HTTP direct, l'orchestrateur croyait l'adresse qu'un client déclarait dans un en-tête, ce qui
+permettait de contourner le plafond d'essais de connexion. L'IP virtuelle de la paire est
+inscrite d'office dans le certificat, sur l'actif comme sur le standby. Pour que les navigateurs
+cessent d'avertir, chaque poste installe le certificat de l'autorité interne : un bouton le
+télécharge dans le même onglet, avec l'empreinte à vérifier.
+
+**Seul un contrôleur pilote un nœud.** Un nœud vérifiait que son interlocuteur avait un
+certificat de notre autorité, sans regarder lequel — or la même autorité signe aussi chaque
+conteneur, qui exécute du code de plugin tiers. L'agent-nœud 0.23.0 vérifie le rôle, et refuse
+conteneurs et autres nœuds. Il faut le pousser sur chaque nœud (Réglages → Nœuds & Matériel →
+Déploiement → « Mettre à jour les agents (tous) ») ; un contrôleur pas encore redémarré reste
+accepté, rien ne se verrouille.
+
+**Les certificats ne s'éteignent plus sans prévenir.** Rien ne renouvelait les certificats du
+plan de contrôle, ni n'annonçait leur échéance — fin 2028 sur notre banc, et ce jour-là plus aucun
+nœud n'aurait été pilotable. Réglages → Système → Sécurité affiche maintenant l'échéance du
+contrôleur, de l'autorité et de chaque nœud. Une alerte part à J-30, une à J-10, puis toutes les
+heures à partir de J-5 jusqu'au renouvellement. Un bouton renouvelle le certificat d'un nœud —
+même déjà expiré — et un autre celui du contrôleur, sans redémarrage. Au passage, un diagnostic
+trompeur a été corrigé : un certificat simplement expiré était signalé comme « signé par une autre
+autorité », ce qui envoyait ré-enrôler un nœud qu'il suffisait de renouveler.
+
+**Jetons d'API.** Réglages → Général → Jetons d'API : un script ou un outil accède à l'API sous
+l'identité d'un compte, avec ses droits et rien de plus, sans mot de passe. Le jeton n'est montré
+qu'une fois, sa création et sa révocation sont journalisées. C'est aussi ce qu'utilise le nouveau
+**serveur MCP de lecture** (`tools/mcp_bobi.py`), qui permet à un assistant IA de consulter nœuds,
+conteneurs, alertes et PTP sans pouvoir rien modifier.
+
+Tout est décrit dans l'Aide, article **Sécurité et accès** ; la haute disponibilité et le contrat
+de l'agent-nœud y ont maintenant leur article, qui manquait.
+
+---
+
 ## Le SDK MXL passe en 1.1.0, et un moteur muet se répare tout seul — 2026-09-12
 
 **La bibliothèque MXL passe de la version candidate à la 1.1.0 définitive** sur les cinq images du

@@ -339,6 +339,80 @@ def get_tally_level(ref: str, level: str) -> str:
         return _tally_state.get((resolve_ref(ref) or ref, level), "off")
 
 
+# ═══ TALLY D'UN FLUX, VU PAR UN CONSOMMATEUR (2026-10-18) ══════════════════════════════════════
+#
+# ★ CE QUI EST REÇU, CE QUI EST DÉDUIT, ET CE QUI EST HÉRITÉ — TROIS CHOSES, JAMAIS MÉLANGÉES DANS L'ÉTAT.
+#   · reçu   : `_tally_state`, ce que les écrivains (TSL, IS-07, nos mélangeurs) affirment ;
+#   · déduit : la propagation du dernier tour du distributeur (`_tally_deduit`), RANGÉE À PART — la règle de
+#              `propager` : une déduction écrite dans l'état reçu se propagerait d'un cran à chaque tour ;
+#   · hérité : un flux AUDIO prend le tally de la source VIDÉO à laquelle la page Libellés le rattache
+#              (`source_labels.parent_shm`, ou la règle de suffixe que la page applique d'elle-même quand rien
+#              n'est écrit). Calculé À LA LECTURE, un seul cran (vidéo → audio), jamais réinjecté : aucune
+#              boucle possible, et la propagation du graphe — vidéo seule, `_entrees_contributives` — n'en sait
+#              rien. Une caméra à l'antenne met son micro à l'antenne ; un micro n'allume jamais une caméra.
+# Lu par l'audio suit la vidéo (services/audio/afv.py) : une tranche suit le tally d'une SOURCE VIDÉO sur un niveau.
+_tally_deduit: dict = {}
+_flux_connus: set = set()
+
+# Règle de suffixe par défaut de la page Libellés (réglage `source_label_suffix_map`) : « <vidéo>_audio_0 » est
+# l'audio 1 de « <vidéo> ». La page l'applique pour AFFICHER l'héritage tant qu'aucun parent n'est écrit.
+DEFAULT_SUFFIX_MAP = {"_audio_0": "_A1", "_audio_1": "_A2", "_anc_0": "_Anc"}
+
+
+def poser_deduit(deduits, connus=None):
+    """Le distributeur range ici sa propagation du tour (et les flux produits connus). Jamais lu par `propager`."""
+    global _tally_deduit, _flux_connus
+    with _lock:
+        _tally_deduit = dict(deduits or {})
+        if connus is not None:
+            _flux_connus = set(connus)
+
+
+def _suffix_map():
+    try:
+        from app.database import db_get_setting
+        m = db_get_setting("source_label_suffix_map", None)
+    except Exception:
+        m = None
+    return m if isinstance(m, dict) and m else DEFAULT_SUFFIX_MAP
+
+
+def parent_video_de(shm, par_shm=None, connus=None, suffixes=None):
+    """La source VIDÉO à laquelle la page Libellés rattache ce flux, ou None : `parent_shm` écrit, sinon la règle
+    de suffixe (le flux finit par une queue connue et le nom sans elle est un flux connu) — la même que la page.
+    ★ JAMAIS ÉCRIT D'ICI : `parent_shm` gouverne aussi l'héritage des LIBELLÉS (un micro rattaché à une caméra
+    prendrait son nom). `par_shm` / `connus` / `suffixes` : injectables (bancs)."""
+    if not isinstance(shm, str) or not shm:
+        return None
+    par_shm = _labels_snapshot() if par_shm is None else par_shm
+    r = par_shm.get(shm) or {}
+    p = (r.get("parent_shm") or "").strip()
+    if p and p != shm:
+        return p
+    if connus is None:
+        with _lock:
+            connus = set(_flux_connus)
+        connus |= set(par_shm)
+    for tail in (suffixes if suffixes is not None else _suffix_map()):
+        if tail and shm.endswith(tail) and len(shm) > len(tail):
+            base = shm[:-len(tail)]
+            if base in connus:
+                return base
+    return None
+
+
+def flux_tally(ref, level, parent=None):
+    """Couleur du flux `ref` sur le niveau `level`, telle qu'un CONSOMMATEUR doit la lire : reçu ⊕ déduit, et pour
+    un flux qui a une source vidéo parente (`parent`, cf. parent_video_de), ⊕ celle de la vidéo (un cran)."""
+    shm = resolve_ref(ref) or ref
+    with _lock:
+        c = cumuler(_tally_state.get((shm, level), "off"), _tally_deduit.get((shm, level), "off"))
+        if parent and parent != shm:
+            ps = resolve_ref(parent) or parent
+            c = cumuler(c, cumuler(_tally_state.get((ps, level), "off"), _tally_deduit.get((ps, level), "off")))
+    return c
+
+
 # ─── Signal de changement — API PUBLIQUE ────────────────────────────────────────────────
 # ★ POURQUOI UNE API PLUTÔT QUE L'ÉVÉNEMENT NU. `services/nmos/is07.py` faisait
 # `tsl._tally_dirty.wait(...)` : un service atteignait l'attribut PRIVÉ d'un autre service, pour
@@ -690,6 +764,61 @@ def _plg_wiring(type_, hostname, params):
     from app import plugins as _plg
     return _plg.derive_wiring(type_, hostname, params) or {}
 
+
+# ★ CACHES DU DISTRIBUTEUR (2026-10-18). Il tourne 10 fois par seconde et, à chaque tour, décodait
+# le `deploy_config` de TOUS les conteneurs (deux fois) puis redérivait leur câblage. Mesuré ce jour
+# (py-spy, 20 s) : un tiers du temps de GIL de l'orchestrateur, surtout dans `json.loads` — les
+# consoles audio portent ~30 Ko de configuration chacune — et toutes les pages en pâtissaient (page
+# Câbles, /login à 0,4-3 s). Clé = la chaîne brute elle-même : une configuration modifiée est une
+# autre chaîne, donc une autre entrée ; rien ne peut être servi périmé. Les objets rendus sont
+# PARTAGÉS : lecture seule.
+# ★ LE DISTRIBUTEUR TRAVAILLE SUR ÉVÉNEMENT (2026-10-18). Tout changement de tally le réveille
+# immédiatement (`_tally_dirty` : poser_tally, publisher des mélangeurs — y compris un état de
+# mélangeur qui change —, mappings) ; le tour périodique ne sert plus qu'à RATTRAPER ce qui ne
+# réveille personne : libellé renommé, câblage ou configuration modifiés, mur redéployé. Il
+# tournait toutes les 100 ms, soit 10 tours complets par seconde sans que rien ne bouge.
+DISTRIB_RESYNC_S = 1.0
+_DC_CACHE: dict = {}
+_W_CACHE: dict = {}
+_CACHE_MAX = 512
+
+
+def _dc_of(ct):
+    """deploy_config décodé du conteneur (dict, {} si absent ou illisible)."""
+    raw = ct.get("deploy_config")
+    if not isinstance(raw, str):
+        return raw or {}
+    dc = _DC_CACHE.get(raw)
+    if dc is None:
+        try:
+            dc = json.loads(raw) if raw else {}
+        except Exception:
+            dc = {}
+        if len(_DC_CACHE) >= _CACHE_MAX:
+            _DC_CACHE.clear()
+        _DC_CACHE[raw] = dc
+    return dc
+
+
+def _wiring_of(ct, dc):
+    """`derive_wiring` du conteneur, mémoïsé sur (type, hostname, configuration brute) ET sur
+    l'entrée de registre du plugin — un rescan qui change le manifeste en lie une nouvelle."""
+    from app import plugins as _plg
+    raw = ct.get("deploy_config")
+    type_ = dc.get("type")
+    if not isinstance(raw, str):
+        return _plg_wiring(type_, ct.get("hostname"), dc.get("params") or {})
+    man = _plg.get(type_)
+    key = (type_, ct.get("hostname"), raw)
+    hit = _W_CACHE.get(key)
+    if hit is not None and hit[0] is man:
+        return hit[1]
+    w = _plg_wiring(type_, ct.get("hostname"), dc.get("params") or {})
+    if len(_W_CACHE) >= _CACHE_MAX:
+        _W_CACHE.clear()
+    _W_CACHE[key] = (man, w)
+    return w
+
 def _sortie_a_l_antenne(ct, niveaux):
     """La sortie PGM de ce mélangeur porte-t-elle un tally, sur les niveaux de SA production ?
 
@@ -756,12 +885,8 @@ def _mixer_publisher_tick(_req, db_get_containers):
     changed = False
     vus: set = set()
     for ct in db_get_containers():
-        dc_raw = ct.get("deploy_config")
-        if not dc_raw:
-            continue
-        try:
-            dc = json.loads(dc_raw) if isinstance(dc_raw, str) else dc_raw
-        except Exception:
+        dc = _dc_of(ct)
+        if not dc:
             continue
         if (dc.get("type") or "") != "mixer":
             continue
@@ -801,6 +926,10 @@ def _mixer_publisher_tick(_req, db_get_containers):
             # liste des conteneurs et se fait retirer plus bas — c'est ce chemin-là qui répond du
             # cas définitif, pas celui-ci.
             continue
+        # Un état de mélangeur qui change RÉVEILLE le distributeur : la propagation le lit
+        # (`_etat_mixer`), et elle ne doit plus attendre le tour de rattrapage (DISTRIB_RESYNC_S).
+        if _etat_mixer.get(ct["vmid"]) != st:
+            changed = True
         _etat_mixer[ct["vmid"]] = st
         pgm, pvw = st.get("pgm"), st.get("pvw")
         shm_pgm = (st.get(cle_input(pgm)) or "") if pgm is not None else ""
@@ -867,7 +996,7 @@ def _distributor():
     _last_push: dict = {}   # vmid → (dernier payload poussé, ts) — anti-repush identique (cf. plus bas)
 
     while not _stop_evt.is_set():
-        _tally_dirty.wait(timeout=0.1)
+        _tally_dirty.wait(timeout=DISTRIB_RESYNC_S)
         if _stop_evt.is_set():
             break
         _tally_dirty.clear()
@@ -918,11 +1047,10 @@ def _distributor():
             try:
                 par_shm = {}
                 for _ct in containers:
-                    _dc = _ct.get("deploy_config")
-                    _dc = json.loads(_dc) if isinstance(_dc, str) else (_dc or {})
+                    _dc = _dc_of(_ct)
                     if not _dc:
                         continue
-                    _w = _plg_wiring(_dc.get("type"), _ct.get("hostname"), _dc.get("params") or {})
+                    _w = _wiring_of(_ct, _dc)
                     for _p in (_w.get("produces") or []):
                         _shm = (_p.get("shm") or "").strip()
                         if _shm:
@@ -931,6 +1059,7 @@ def _distributor():
                 deduits = propager(state, par_shm, _etat_mixer)
                 for _k, _v in deduits.items():
                     state.setdefault(_k, _v)
+                poser_deduit(deduits, par_shm.keys())     # À PART de l'état reçu (lu par services/audio/afv.py)
             except Exception as e:
                 log.debug("TSL: propagation ignorée ce tour (%s)", e)
         except Exception:
@@ -942,12 +1071,8 @@ def _distributor():
         # UN SEUL instantané pour tout le tour : la table est la même pour tous les murs.
         labels_snap = _labels_snapshot()
         for ct in containers:
-            dc_raw = ct.get("deploy_config")
-            if not dc_raw:
-                continue
-            try:
-                dc = json.loads(dc_raw) if isinstance(dc_raw, str) else dc_raw
-            except Exception:
+            dc = _dc_of(ct)
+            if not dc:
                 continue
             type_ct = (dc.get("type") or "")
             if type_ct != "multiview":

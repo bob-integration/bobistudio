@@ -1,0 +1,201 @@
+{
+  "names": {
+    "param": "console",
+    "ref_fields": [
+      "bus"
+    ],
+    "quiet_keys": [
+      "params",
+      "on"
+    ],
+    "kind_names": {
+      "mute": "Mute",
+      "fader": "Fader",
+      "trim": "Trim",
+      "pan": "Pan",
+      "insert": "Insert",
+      "gain": "Gain",
+      "filter": "Filtre",
+      "comp": "Compresseur",
+      "gate": "Gate",
+      "duck": "Ducker",
+      "eq4": "EQ",
+      "limiter": "Limiteur",
+      "limiter_tp": "Limiteur TP",
+      "plugin": "Plugin",
+      "delay": "Retard"
+    },
+    "key_names": {
+      "sends": "Départ",
+      "direct_outs": "Sortie directe",
+      "afv": "AFV",
+      "open": "ouverture",
+      "bypass": "bypass",
+      "invert": "inversion de phase",
+      "mode": "mode",
+      "slope": "pente",
+      "link": "liaison stéréo",
+      "type": "forme",
+      "input": "entrée A",
+      "input_b": "entrée B",
+      "input_active": "entrée active",
+      "input_mode": "mode d'entrée",
+      "mixminus_out": "N-1",
+      "gen": "générateur",
+      "sig": "signal",
+      "say": "annonce",
+      "text": "texte",
+      "lang": "langue",
+      "listen_mode": "mode d'écoute",
+      "strip_meter": "point de mesure",
+      "mono": "mono",
+      "mute_safe": "mute safe",
+      "mute": "Mute",
+      "vca": "VCA",
+      "vcas": "VCA",
+      "automix": "mixage automatique",
+      "align": "calage",
+      "sources": "Source",
+      "follow_transition": "suivre les transitions",
+      "color": "couleur",
+      "enabled": "activé"
+    }
+  },
+  "exclude": [
+    "^buses\\.[^.]+\\.solo\\.",
+    "(^|\\.)pfl$",
+    "\\.talk$",
+    "^buses\\.[^.]+\\.(dim|cut)$",
+    "\\.params\\.state$",
+    "^(scenes|safe|scene_current|scene_defaults)(\\.|$)"
+  ],
+  "endpoints": {
+    "/set": {
+      "mode": "set",
+      "batch": "sets",
+      "category": "setting"
+    },
+    "/mute": {
+      "mode": "fields",
+      "target": "id",
+      "fields": {
+        "on": "Mute"
+      },
+      "category": "mute"
+    },
+    "/loudness": {
+      "mode": "fields",
+      "target": "bus",
+      "fields": {
+        "action": "Loudness"
+      },
+      "category": "command"
+    },
+    "/structure/apply": {
+      "mode": "structure",
+      "category": "structure"
+    },
+    "/structure/validate": false,
+    "/templates/build": false,
+    "/plugins/save_state": false,
+    "/plugins/atoms": false,
+    "/scenes/recall": {
+      "mode": "action",
+      "label": "Rappel de scène",
+      "category": "command",
+      "fields": {
+        "id": "scène",
+        "number": "scène"
+      },
+      "value_ref": {
+        "id": "scenes",
+        "number": {
+          "collection": "scenes",
+          "match": "number"
+        }
+      }
+    },
+    "/scenes/store": {
+      "mode": "action",
+      "label": "Scène enregistrée",
+      "category": "command",
+      "fields": {
+        "id": "scène",
+        "name": "nom"
+      },
+      "value_ref": {
+        "id": "scenes"
+      }
+    },
+    "/scenes/edit": {
+      "mode": "action",
+      "label": "Scène modifiée",
+      "category": "command",
+      "fields": {
+        "id": "scène",
+        "name": "nom"
+      },
+      "value_ref": {
+        "id": "scenes"
+      }
+    },
+    "/scenes/delete": {
+      "mode": "action",
+      "label": "Scène supprimée",
+      "category": "command",
+      "fields": {
+        "id": "scène"
+      },
+      "value_ref": {
+        "id": "scenes"
+      }
+    },
+    "/scenes/defaults": {
+      "mode": "fields",
+      "fields": {
+        "switch_at": "Scènes · bascule par défaut"
+      },
+      "category": "setting"
+    },
+    "/safe": {
+      "mode": "fields",
+      "target": "id",
+      "fields": {
+        "on": "Protection au rappel"
+      },
+      "category": "setting"
+    },
+    "/scenes/next": {
+      "mode": "action",
+      "label": "Scène suivante",
+      "category": "command"
+    },
+    "/scenes/prev": {
+      "mode": "action",
+      "label": "Scène précédente",
+      "category": "command"
+    },
+    "/tools/apply": {
+      "mode": "action",
+      "label": "Outil collé",
+      "category": "command",
+      "fields": {
+        "tool.type": "outil",
+        "tool.uri": "plugin",
+        "targets": "cibles"
+      },
+      "value_ref": {
+        "targets": {
+          "path": true
+        }
+      },
+      "skip_when": {
+        "dry_run": true
+      }
+    }
+  },
+  "events": {
+    "endpoint": "/events",
+    "rev_field": "event_rev"
+  }
+}

@@ -22,8 +22,6 @@ import sqlite3
 import tempfile
 import threading
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime
 
 from . import settings
@@ -33,7 +31,6 @@ log = logging.getLogger(__name__)
 
 ROLES = ("active", "standby")
 
-TOKEN_HEADER = "X-MXL-Update-Token"   # secret partagé = `update_token` (réutilisé du pull/push code)
 _SQLITE_MAGIC = b"SQLite format 3\x00"
 
 # Réplica reçu par le standby — stagé sur disque (PAS en DB : la DB est justement ce qu'on remplace
@@ -138,15 +135,16 @@ def staged_replica():
 
 
 def push_replica():
-    """Côté ACTIF : snapshot + POST binaire vers `ha_standby_url/api/ha/replicate`. Met à jour
-    `_last_push` (statut UI). Retourne (ok|None, msg) — None = réplication désactivée (URL vide)."""
+    """Côté ACTIF : snapshot + envoi mTLS vers l'autre contrôleur (cf. app/ha_tls.py). Met à
+    jour `_last_push` (statut UI). → (ok|None, msg) — None = réplication désactivée (pas de pair).
+
+    Plus de secret partagé : jusqu'au 2026-10-10, la base partait en HTTP CLAIR avec un secret
+    en en-tête, rejouable. C'est désormais le certificat — et son marqueur de contrôleur — qui
+    authentifie, dans les deux sens."""
+    from . import ha_tls
     url = (settings.get("ha_standby_url") or "").strip().rstrip("/")
     if not url:
-        return None, "désactivé (pas d'URL standby)"
-    token = settings.get("update_token") or ""
-    if not token:
-        _set_push(False, "secret partagé absent — renseigne-le ci-dessous, à l'identique sur les DEUX contrôleurs")
-        return False, "secret partagé absent (à poser à l'identique sur les deux contrôleurs)"
+        return None, "désactivé (pas d'adresse de standby)"
     fd, tmp = tempfile.mkstemp(prefix="ha-snap-", suffix=".db")
     os.close(fd)
     try:
@@ -154,25 +152,24 @@ def push_replica():
         size = os.path.getsize(tmp)
         with open(tmp, "rb") as f:
             data = f.read()
-        req = urllib.request.Request(url + "/api/ha/replicate", data=data, method="POST",
-                                     headers={TOKEN_HEADER: token,
-                                              "Content-Type": "application/octet-stream",
-                                              "Content-Length": str(size)})
-        with urllib.request.urlopen(req, timeout=60) as r:   # noqa: S310 (réseau interne)
-            txt = r.read().decode()
-        j = json.loads(txt) if txt else {}
-        if j.get("ok"):
-            _set_push(True, f"{size} o → {url}", size)
+        statut, txt = ha_tls.requete("POST", "/api/ha/replicate", corps=data,
+                                     en_tetes={"Content-Type": "application/octet-stream",
+                                               "Content-Length": str(size)})
+        j = json.loads(txt.decode() or "{}") if txt else {}
+        if statut == 200 and j.get("ok"):
+            lv2 = push_lv2()
+            _set_push(True, f"{size} o → {url} (mTLS)" + (" · " + lv2 if lv2 else ""), size)
             return True, "ok"
-        _set_push(False, j.get("error") or "réponse inattendue")
-        return False, j.get("error") or "échec"
-    except urllib.error.HTTPError as e:
-        # Un 401 ici ne veut pas dire « pas de token » mais « pas LE MÊME token » : le standby a
-        # comparé et refusé. Le distinguer épargne la chasse au mauvais bout de la chaîne.
-        msg = ("le standby a REFUSÉ le secret partagé (les deux contrôleurs doivent porter la "
-               "MÊME valeur)") if e.code == 401 else f"HTTP {e.code} depuis le standby"
+        # Un 403 ne veut pas dire « éteint » mais « il ne reconnaît pas ce contrôleur » : CA ou
+        # marqueur différents, donc un appairage à refaire — l'un se corrige au clavier, l'autre
+        # au disjoncteur.
+        msg = ("le standby ne reconnaît pas ce contrôleur (appairage à refaire ?)"
+               if statut == 403 else j.get("error") or f"HTTP {statut} depuis le standby")
         _set_push(False, msg)
         return False, msg
+    except PermissionError as e:
+        _set_push(False, str(e))
+        return False, str(e)
     except Exception as e:
         _set_push(False, str(e))
         return False, str(e)
@@ -181,6 +178,38 @@ def push_replica():
             os.remove(tmp)
         except OSError:
             pass
+
+
+_lv2_pushed = {"digest": None}
+
+
+def push_lv2():
+    """Côté ACTIF, après un push de base réussi : la bibliothèque de plugins LV2 (services/audio/lv2_plugins.py) part vers
+    le standby quand elle a CHANGÉ depuis le dernier envoi réussi (empreinte en mémoire : un redémarrage la
+    renvoie une fois). Hors base, elle n'était pas répliquée : un standby promu montrait une bibliothèque vide
+    et sa première copie vers les nœuds y aurait RETIRÉ les plugins en service. → texte de statut ou ""."""
+    from . import ha_tls
+    try:
+        from services.audio import lv2_plugins
+    except ImportError:          # audio service absent: no LV2 library to replicate
+        return ""
+    dg = lv2_plugins.digest()
+    if dg == _lv2_pushed["digest"]:
+        return ""
+    try:
+        body, dg = lv2_plugins.pack()
+        statut, txt = ha_tls.requete("POST", "/api/ha/replicate_lv2", corps=body, timeout=300,
+                                     en_tetes={"Content-Type": "application/octet-stream",
+                                               "Content-Length": str(len(body))})
+        j = json.loads(txt.decode() or "{}") if txt else {}
+    except Exception as e:
+        log.warning("HA replication: LV2 plugins not sent: %s", e)
+        return "plugins LV2 : %s" % str(e)[:120]
+    if statut == 200 and j.get("ok") and j.get("digest") == dg:
+        _lv2_pushed["digest"] = dg
+        return "plugins LV2 : %d" % len(j.get("bundles") or [])
+    log.warning("HA replication: LV2 plugins refused by the standby (HTTP %s, %s)", statut, j.get("code") or j.get("error"))
+    return "plugins LV2 refusés (HTTP %s %s)" % (statut, j.get("code") or j.get("error") or "")
 
 
 # ─── Chien de garde du standby ────────────────────────────────────────────────
@@ -198,24 +227,27 @@ def peer_url():
 
 
 def probe_peer():
-    """Sonde l'autre contrôleur (route `/api/ha/peer`, auth par le secret partagé).
-    Retourne (alive: bool, raison). Un 401 = VIVANT mais secrets divergents — à ne surtout pas
-    confondre avec une panne : l'un se corrige au clavier, l'autre au disjoncteur."""
-    url = peer_url()
-    if not url:
-        return None, "pas d'URL de pair"
-    token = (settings.get("update_token") or "").strip()
-    req = urllib.request.Request(url + "/api/ha/peer", headers={TOKEN_HEADER: token})
+    """Sonde l'autre contrôleur (route `/api/ha/peer`, en mTLS). → (alive, raison).
+
+    Trois réponses à ne pas confondre : `None` = non configuré OU non appairé (on ne prétend
+    rien surveiller, et la raison le dit) ; `True` = il répond — y compris s'il REFUSE ce
+    contrôleur (403 : vivant, mais appairage à refaire) ; `False` = injoignable."""
+    from . import ha_tls
+    if not peer_url():
+        return None, "pas d'adresse de pair"
     try:
-        with urllib.request.urlopen(req, timeout=5) as r:   # noqa: S310 (réseau interne)
-            j = json.loads(r.read().decode() or "{}")
-        return True, f"répond (rôle {j.get('role') or '?'})"
-    except urllib.error.HTTPError as e:
-        if e.code == 401:
-            return True, "répond mais REFUSE le secret partagé (valeurs différentes)"
-        return True, f"répond (HTTP {e.code})"
+        statut, txt = ha_tls.requete("GET", "/api/ha/peer", timeout=5)
+    except PermissionError as e:
+        return None, str(e)
     except Exception as e:
         return False, str(e)
+    if statut == 403:
+        return True, "répond mais NE RECONNAÎT PAS ce contrôleur (appairage à refaire)"
+    try:
+        j = json.loads(txt.decode() or "{}")
+    except ValueError:
+        j = {}
+    return True, f"répond (rôle {j.get('role') or '?'}, mTLS)"
 
 
 def peer_state():

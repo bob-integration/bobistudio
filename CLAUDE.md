@@ -112,9 +112,17 @@ services/    ← intégrations en SOUS-MODULES git (un dossier = un service, blu
                tout le produit (`services/snmp/mib.py:PEN`) ; l'engine ID l'embarque, donc il est
                régénéré à l'attribution. Spec : `docs/chantiers/SNMP.md` (interne),
                webrtc_gateway (passerelle MediaMTX), rdma (réplication MXL inter-nœuds),
-               files, media_manager, storage. Import : `from services import nmos` etc.
+               files, media_manager, storage,
+               tts — synthèse vocale OPTIONNELLE (Kokoro), installée à la demande sur le contrôleur (venv +
+               modèle dans `tts_models/`, paquet hors ligne exportable) : identification vocale de la console audio.
+               audio — côté orchestrateur de la console audio, sorti de `app/` le 2026-10-23 (AFV, mémoires d'outils,
+               vues d'opérateur, dispositions/synoptique, bibliothèques, fader start, GUI natives, bibliothèque LV2 ;
+               routes dans `api/`) : le cœur l'appelle en import PARESSEUX, absence tolérée (ImportError → aucune
+               fonction console). Import : `from services import nmos` etc.
 node_agent/  ← agent-nœud (agent.py, HTTP :9100 par défaut, token par nœud) + install-node.sh + iso/
                (contrat documenté dans NODE_AGENT.md)
+               + host_drivers/ : pilotes HÔTE génériques (un script par « kind », job long + journal + action
+               en attente redémarrage/arrêt complet ; aujourd'hui `nvidia`) — NODE_AGENT.md §4.6
 
 templates/   ← HTML Jinja2 : layout.html (parent), home.html, cards.html, forms.html,
                containers.html, settings.html, cables.html, login.html, monitoring.html,
@@ -170,6 +178,9 @@ Trois règles qui vont avec :
   sont rendus dans la page Aide** via `/api/doc/<name>` (liste blanche `_DOCS_RACINE` dans
   `app/routes/pages.py`), sur le modèle de `/api/changelog`. Source unique : le fichier
   versionné. Ne jamais recopier leur contenu dans `templates/aide.html`.
+  ⚠ La liste blanche dit « PEUT être rendu », pas « est rendu » : il faut AUSSI un article dont
+  le conteneur porte `data-doc="<nom>"`. HA, NODE_AGENT et THIRD-PARTY y sont restés des mois
+  sans aucun article (mis à jour, jamais lus). Garde : `tests/verif_aide_documents.py`.
 - **`app/builder.py` embarque par LISTE BLANCHE** (`CORE_DIRS` / `CORE_FILES`). Un document
   rendu par l'aide et absent de cette liste donne un 404 sur toute instance installée, alors
   que tout marche en dev. `docs/` est dans `CORE_DIRS` ; les .md publics sont dans `CORE_FILES`.
@@ -238,6 +249,26 @@ Depuis 2026-05, **chaque type de container est un plugin** dans `plugins/<type>/
   condition → publier dans `/state` + `control.read_endpoints`. Modèles : `split`
   (param_tree + caps live), `mixer` (bornes déclarées + surcharge `path`), `multiview`
   (params par élément + actions horloge/texte).
+  Une fonction de l'ORCHESTRATEUR (ni conteneur ni service) s'expose de la même façon : son module
+  déclare `MACRO_PROVIDER` (actions + états) + `run_action`/`read_state` et s'inscrit dans
+  `core_plugins.CORE_PROVIDERS` — les macros la voient alors comme un service. Modèle :
+  `app/transcode_farm.py`.
+
+## Interface : TOUJOURS les contrôles partagés
+
+**Tout bouton, fader, rotatif, vu-mètre, afficheur ou bouton de bus de mélangeur vient du
+catalogue partagé — jamais redessiné**, dans un plugin COMME dans une page du cœur (workspace,
+Réglages, console…). Le catalogue : `static/css/controls.css` (familles `ctl-*` : `ctl-push`,
+`ctl-bus` + `ctl-bus-lab`, `ctl-meter`, `ctl-readout`, `ctl-knob`…), `static/js/controls.js`
+(`window.MXLControls`) et son moteur `static/js/bobi-controls.js` (`BobiControls.create('fader'
+| 'knob' | 'buttons' | 'meter' | 'readout' …)`, `BobiControls.fromLeaf(feuille_param_tree)`),
+chargés par `layout.html` sur toutes les pages. Inventaire vivant : **Réglages → Contrôles**.
+
+Un contrôle qui manque au catalogue s'y AJOUTE (nouvelle famille ou variante), puis s'utilise —
+il ne vit pas en privé dans une page. Deux agents s'y sont trompés le même jour (2026-10-20) :
+le workspace avait ses propres touches, faders et vu-mètres, et le mélangeur garde encore ses
+touches privées (`.nkk-btn`, `plugins/mixer/control.css`) — à promouvoir au catalogue.
+Côté plugins, la même règle est écrite dans `plugins/AUTHORING*.md` (« Console de contrôle »).
 
 ## Problèmes connus résolus
 - Bus error streamer (ex-worker UDP) → signal SIGBUS intercepté, reconnexion auto
@@ -326,8 +357,13 @@ Des vmid différents restent parallèles.
 - **Dégradation sur timeout** : verrou non acquis en 120 s → alerte + exécution quand même
   (best-effort). Laisser tomber un destroy/deploy silencieusement serait pire.
 
-SQLite ouvre une connexion fraîche par appel (`get_db()`), donc les writes depuis les threads de
-fond sont OK, mais il n'y a **pas de transaction entre helpers** — c'est la race qui reste.
+SQLite : `get_db()` tient UNE connexion PAR THREAD (`threading.local`), réutilisée — pas une
+connexion fraîche par appel, contrairement à ce qui était écrit ici jusqu'au 2026-09-12. Les writes
+depuis les threads de fond sont OK, mais il n'y a **pas de transaction entre helpers** — c'est la
+race qui reste. ⚠ Deux conséquences de la connexion par thread : surcharger `DB_PATH` APRÈS un
+premier accès n'isole plus rien (le thread garde sa connexion sur la base de PROD — piège pour tout
+test qui croit s'isoler), et le processus tient autant de connexions que de threads (mesuré
+2026-09-12 : 130 descripteurs pour 1312 threads).
 
 ## DB : `init_db` + migrations de type
 
@@ -345,7 +381,9 @@ reste rétrocompatible avec les appels à deux arguments. `kind` = **vocabulaire
 ne retombent sur la déduction textuelle que si elle est nulle — ce repli reste nécessaire pour les
 lignes écrites avant la migration, et il échoue là où la colonne réussit (conteneur DÉTRUIT, plus de
 hostname en base). Filtres : `db_get_alerts(vmid=/node_id=/kind=)` et `/api/alerts?vmid=&node_id=&kind=`.
-Pas de reprise rétroactive (décision) : la rétention à 1000 lignes renouvelle le parc en ~2 jours.
+Pas de reprise rétroactive (décision) : la rétention renouvelle le parc en quelques jours.
+⚠ La rétention est de **10 000** lignes (`database.ALERTS_RETENTION_DEFAUT`) — 1000 est le défaut
+d'AFFICHAGE (`ALERTS_AFFICHAGE_DEFAUT`), pas de conservation. Les deux étaient confondus ici.
 
 `init_db()` contient aussi les **migrations de renommage de type** (idempotentes, au boot) :
 `worker_udp→streamer`, `worker_2110_sender→sender_2110`, `receiver→receiver_2110`,

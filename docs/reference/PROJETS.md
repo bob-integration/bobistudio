@@ -275,6 +275,30 @@ et plus tard les widgets tally du workspace (ch. 6).
     projet actif (même mécanique que le feedback shotbox, ~1 s), **sur front montant**
     (edge-triggered) avec `cooldown_ms` anti-rafale. Éditeur : même constructeur de
     condition que le bloc `si`, plus un interrupteur `.ios-toggle` actif/inactif par règle.
+  - **Fader start** (2026-10-16, `services/audio/fader_triggers.py`) : déclencheur dont la condition est
+    `{kind:"fader", instance_uuid, target, edge:"open"|"close", threshold_db, hysteresis_db,
+    respect_mute, with_vca}` — ouvrir (ou fermer) le fader d'une tranche/d'un bus lance la macro.
+    Ouvert = niveau > seuil (−120 = −∞ : « dès qu'il quitte −∞ ») ET non muet (mute de la tranche,
+    ou mute d'un VCA hors Mute Safe) si `respect_mute` ; fermé = niveau ≤ max(seuil − hystérésis,
+    −120) OU muet. `with_vca` ajoute les niveaux de VCA au fader. Le poller 1 s ne l'évalue PAS :
+    poller dédié à 100 ms, UNE lecture par console et par tick (mesuré sur 1160 : réaction médiane
+    74 ms, max 119 ms). Le plugin le déclare par `control.fader_start: {endpoint}` (vue compacte
+    `/doc?faders=1` de la console, ≈ 3 Ko) ; une console pas encore redéployée répond le document
+    entier à la même URL → vue dérivée par les racines `param_tree.by_id`, lecture ralentie à
+    250 ms (le document à 10 Hz coûte des blocs audio en retard, mesuré). Pas d'alerte par
+    déclenchement (une émission ouvre des faders des centaines de fois) : la trace est le run de
+    la macro + le journal. Dans une macro, `eval_cond` sur cette condition = état ouvert instantané.
+  - **Lien fader start de la console et déclencheur d'INSTALLATION** (2026-10-18,
+    `services/audio/console_fader_links.py`) : le lien « fader start → lecteur N » écrit ses déclencheurs (action
+    directe, sans macro) dans un projet qui porte la console ET le producteur (rôle éditeur). Si NI la
+    console NI le producteur ne sont dans un projet, le lien est un déclencheur d'installation :
+    `project_triggers.project_id` NULL (colonne devenue nullable, migration par reconstruction de la
+    table, `database._migrate_triggers_nullable_project`), droit `console.build`. Scruté, déclenché et
+    retiré comme les autres ; absent des listes de déclencheurs d'un projet ; survit à la suppression
+    d'un projet, qui supprime désormais explicitement SES déclencheurs (`foreign_keys` est éteint : le
+    `ON DELETE CASCADE` n'a jamais tourné). Tout autre cas (l'un dans un projet et pas l'autre, deux
+    projets différents) est refusé avec un code qui le nomme. Les déclencheurs ne font pas partie de
+    l'export/import de projet.
   - **Garde-fous du moteur** : profondeur d'appel macro→macro bornée, cooldown par trigger
     (une macro qui modifie la condition qui la déclenche ne doit pas boucler), timeout
     par étape, journal des exécutions (qui/quoi/quand/résultat) consultable dans le
@@ -452,6 +476,12 @@ Points d'application connus (pour les utilisateurs scopés ; bypass si accès gl
   restreints aux projets du membre ; `/api/home/summary` → interdit aux scopés, remplacé
   par **`GET /api/projects/<pid>/summary`** (containers+statuts+fps+alertes du projet,
   même shape que home/summary pour réutiliser le JS).
+- **Câblage** (`cabling.py`, fermé le 2026-10-23) : `wire`/`unwire` → consommateur dans un
+  projet où l'on est ≥ `editor`, chaque shm (vidéo, audio, anc) produit par un conteneur d'un
+  de CES projets, et le shm principal produit par le `from_vmid` annoncé (`_wire_scope_err`).
+  `insert_udc`, `cables/clear`, snapshots de câblage → accès global seulement. Les appels
+  internes à `_apply_wire` (ports, Ember+, watcher, restaurations) ne passent pas par ces
+  gardes. Test : `tests/verif_cablage_scope.py`.
 - Monitor (`monitor_routes.py`) : `/api/monitor/source|activate` → shm autorisé =
   produit par un container accessible (redériver depuis le vmid, ne jamais faire
   confiance au shm client).

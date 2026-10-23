@@ -284,15 +284,49 @@ def rendre_alertes(lignes, lang=None):
     return [rendre_alerte(l, lang) for l in (lignes or [])]
 
 
-def js_catalog(lang=None, prefixes=("js.", "plugin.", "home.", "catalogue.", "recette.", "cables.", "conn.", "settings.", "containers.", "section.", "projects.", "monitoring.", "wiz.", "probe.", "probemon.", "pacing.", "migration.", "labels.", "service.", "compte.", "perm.")):
+def js_catalog(lang=None, prefixes=("js.", "plugin.", "home.", "catalogue.", "recette.", "cables.", "conn.", "settings.", "containers.", "section.", "projects.", "monitoring.", "wiz.", "probe.", "probemon.", "pacing.", "migration.", "labels.", "service.", "compte.", "perm.", "medialib.", "imgedit.")):
     """Sous-ensemble destiné au JS (clés `js.*`/`plugin.*`/`home.*`/`cables.*`/`settings.*`/`containers.*`/`section.*`/`projects.*`/`monitoring.*`/`wiz.*`),
     résolu dans la langue courante avec repli FR → injecté dans window.I18N par layout.html (et le wizard de setup)."""
     if not _CATALOGS:
         _load()
     lang = lang or current_lang()
-    keys = _all_keys()
-    return {k: t(k, lang) for k in keys
-            if any(k.startswith(p) for p in prefixes)}
+    # MÉMOÏSÉ (2026-10-18) : appelé par le context processor à CHAQUE rendu de gabarit, et le
+    # calcul coûtait ~35 ms de CPU pour 10 856 clés (753 Ko) — sur un orchestrateur chargé, la page
+    # Câbles et même /login dépassaient la seconde. Clé = l'OBJET catalogue lui-même : tout
+    # changement (surcouche, langue ajoutée, reload) passe par `_load()`, qui en lie un nouveau.
+    # Le dict rendu est partagé : ne pas le modifier.
+    ck = (lang, tuple(prefixes))
+    hit = _JS_CACHE.get(ck)
+    if hit is not None and hit[0] is _CATALOGS:
+        return hit[1]
+    cats = _CATALOGS
+    pref = tuple(prefixes)
+    out = {k: t(k, lang) for k in _all_keys() if k.startswith(pref)}
+    _JS_CACHE[ck] = (cats, out)
+    return out
+
+
+_JS_CACHE = {}
+_JS_SCRIPT_CACHE = {}
+
+
+def js_catalog_script(lang=None):
+    """(corps JS « window.I18N = {…}; », version) — le catalogue JS servi en FICHIER par
+    `/i18n/<lang>.<version>.js` au lieu d'être recopié dans chaque page (753 Ko, mesuré le
+    2026-10-18). La version est une empreinte du contenu : toute surcharge ou reload change
+    l'adresse, donc le navigateur peut garder le fichier indéfiniment sans jamais servir une
+    traduction périmée. Mémoïsé sur l'objet catalogue, comme `js_catalog`."""
+    import hashlib
+    import json as _json
+    lang = lang or current_lang()
+    cat = js_catalog(lang)
+    hit = _JS_SCRIPT_CACHE.get(lang)
+    if hit is not None and hit[0] is cat:
+        return hit[1], hit[2]
+    body = ("window.I18N = " + _json.dumps(cat, ensure_ascii=False, separators=(",", ":")) + ";\n").encode("utf-8")
+    ver = hashlib.sha1(body).hexdigest()[:12]
+    _JS_SCRIPT_CACHE[lang] = (cat, body, ver)
+    return body, ver
 
 
 # ─── Support de l'éditeur de traductions ─────────────────────

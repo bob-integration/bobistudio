@@ -36,7 +36,7 @@ from ..tally import noms_colonnes, nb_colonnes_actives
 log = __import__("logging").getLogger(__name__)
 
 
-_DEFAULT_SUFFIX_MAP = {"_audio_0": "_A1", "_audio_1": "_A2", "_anc_0": "_Anc"}
+from ..tally import DEFAULT_SUFFIX_MAP as _DEFAULT_SUFFIX_MAP   # une règle, deux lecteurs (page, services/audio/afv.py)
 
 
 # ── Source labels ─────────────────────────────────────────────────────────
@@ -61,6 +61,8 @@ def source_labels_batch():
         fields = {k: v for k, v in row.items() if k != "shm"}
         db_upsert_source_label(shm, fields)
         from app.tally import invalider_libelles; invalider_libelles()
+        # Libellé LIÉ au nom d'un élément de plugin (console audio…) : renomme l'élément aussi.
+        from app.label_sync import pull; pull(shm, fields)
         saved += 1
     return jsonify({"ok": True, "saved": saved})
 
@@ -249,9 +251,10 @@ _ANCIENNES = [
     ("/api/source_labels/batch",       "/api/labels/batch"),
     ("/api/source_labels/suffix_map",  "/api/labels/suffix_map"),
     ("/api/source_labels/orphelins",   "/api/labels/orphelins"),
-    ("/api/tsl/sources/by_shm",        "/api/labels/by_shm"),
-    ("/api/tsl/label_names",           "/api/labels/names"),
-    ("/api/tsl/label_cols",            "/api/labels/cols"),
+    # Les anciennes adresses /api/tsl/{label_names,label_cols,sources/by_shm} ne sont PAS
+    # redirigées ici : le service TSL (services/tsl) les déclare, avec /api/tsl/state. Les
+    # déclarer aux deux endroits en faisait six doublons dont le second n'était jamais servi
+    # (`tests/check_endpoints_uniques.py`, désormais bloquant).
 ]
 for _i, (_vieux, _neuf) in enumerate(_ANCIENNES):
     def _mk(neuf=_neuf):

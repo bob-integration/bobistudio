@@ -16,7 +16,7 @@ from .shared import _load_dc
 from ..auth import (require_project_role, require_global_access, current_user,
                     check_vmid_access, project_role_for, project_role_at_least,
                     require_login, has_perm)
-from ..database import (db_get_containers, db_project_macros, db_get_macro,
+from ..database import (db_container_by_instance, db_get_containers, db_project_macros, db_get_macro,
                         db_create_macro, db_update_macro, db_delete_macro,
                         db_project_vars, db_set_project_var, db_system_macros,
                         db_macros_published_to, db_get_project,
@@ -25,6 +25,7 @@ from ..database import (db_get_containers, db_project_macros, db_get_macro,
 from ..auth import vmid_project_ids
 from .. import macros as engine
 from .. import plugins
+from .. import workspace_functions
 
 
 # ─── Catalogue actions/états (partagé projet / système) ───────
@@ -34,18 +35,56 @@ def _with_recall_options(vmid, type_, actions):
     résolues côté ORCHESTRATEUR depuis control.recall du manifeste (plugin_store de
     l'instance ou layouts globaux) — le front les reçoit comme des options statiques."""
     from . import recall_presets   # défini dans routes/__init__ (partagé avec Ember+)
-    try:
-        _rc, presets = recall_presets(vmid, type_)
-    except Exception:
-        presets = []
-    opts = [{"value": pr.get("id"), "label": pr.get("name") or f"#{pr.get('id')}"}
-            for pr in presets if pr.get("id") is not None]
+    by_kind = {}
+
+    def opts_for(kind):
+        # An action of a kinded library (`recall_kind`) only offers saves of its kind.
+        if kind not in by_kind:
+            try:
+                _rc, presets = recall_presets(vmid, type_, kind)
+            except Exception:
+                presets = []
+            by_kind[kind] = [{"value": pr.get("id"), "label": pr.get("name") or f"#{pr.get('id')}"}
+                             for pr in presets if pr.get("id") is not None]
+        return by_kind[kind]
     out = []
     for a in actions:
         if any(p.get("options_from") == "recall" for p in (a.get("params") or [])):
             a = json.loads(json.dumps(a))   # copie : ne pas muter le manifeste du registre
             for p in a["params"]:
                 if p.get("options_from") == "recall":
+                    p["options"] = opts_for(a.get("recall_kind"))
+        out.append(a)
+    return out
+
+
+def _fader_start_of(manifest):
+    """Does this plugin declare a fader start (services.audio.fader_triggers.fader_spec)? False without the audio
+    service: no fader start can be offered."""
+    fader_triggers = engine._fader_triggers()
+    return bool(fader_triggers) and fader_triggers.fader_spec(manifest) is not None
+
+
+def _is_fader_condition(cond):
+    """Same test as services.audio.fader_triggers.is_fader_condition, kept here so that a fader condition is still
+    RECOGNISED (and refused) when the audio service is absent."""
+    return isinstance(cond, dict) and cond.get("kind") == "fader"
+
+
+def _with_tool_memory_options(actions):
+    """Options of `options_from: "tool_memories"` params (audio console: recall a tool memory): the COMMON library of
+    the orchestrator (services/audio/console_tools.shared_options), given to the front as static options."""
+    try:
+        from services.audio import console_tools      # audio service: absent → no memory to offer
+        opts = console_tools.shared_options()
+    except Exception:
+        opts = []
+    out = []
+    for a in actions:
+        if any(p.get("options_from") == "tool_memories" for p in (a.get("params") or [])):
+            a = json.loads(json.dumps(a))
+            for p in a["params"]:
+                if p.get("options_from") == "tool_memories":
                     p["options"] = opts
         out.append(a)
     return out
@@ -131,6 +170,9 @@ def _catalog_containers(pids=None):
         if any(p.get("options_from") == "recall"
                for a in actions for p in (a.get("params") or [])):
             actions = _with_recall_options(c["vmid"], t, actions)
+        if any(p.get("options_from") == "tool_memories"
+               for a in actions for p in (a.get("params") or [])):
+            actions = _with_tool_memory_options(actions)
         # `source` sur chaque entrée (curated|config|endpoint|discovered) — copies
         # superficielles pour ne pas muter les manifestes du registre.
         actions = [dict(a, source="curated") for a in actions]
@@ -146,14 +188,29 @@ def _catalog_containers(pids=None):
                 shm = cons.get("shm") or p.get(cons.get("state_field") or "") or ""
                 inputs.append({"value": cons.get("slot", len(inputs)),
                                "label": (cons.get("label") or f"Entrée {len(inputs)+1}")
-                                        + " — " + (shm_label.get(shm) or shm or "non câblée")})
+                                        + " — " + (shm_label.get(shm) or shm or "non câblée"),
+                               # the wired flow and its parts, so a view can name the input by
+                               # its Labels & Tally label, its source, or its number
+                               "shm": shm or None, "input": cons.get("label") or f"Entrée {len(inputs)+1}",
+                               "source": shm_label.get(shm) or None})
         except Exception:
             inputs = []
+        try:
+            produces = plugins.derive_wiring(t, hn, p)["produces"]
+        except Exception:
+            produces = []
+        functions = workspace_functions.derive_functions(m, {"actions": actions, "state": state,
+                                                             "produces": produces})
         out.append({"vmid": c["vmid"], "instance_uuid": c.get("instance_uuid"),
-                    "hostname": c.get("hostname"), "type": t,
+                    "hostname": c.get("hostname"), "type": t, "type_label": m.get("label") or t,
                     "actions": actions, "state": state, "inputs": inputs,
+                    "functions": functions,
+                    # level meters the plugin declares (control.meters): the view reads them
+                    # straight through the plugin proxy, ~10 Hz, one request per container
+                    "meters": (m.get("control") or {}).get("meters"),
                     "config": config, "advanced": advanced,
                     "has_param_tree": has_param_tree,
+                    "fader_start": _fader_start_of(m),
                     "discoverable": bool((m.get("control") or {}).get("read_endpoints"))})
     return out
 
@@ -180,6 +237,20 @@ def container_param_tree(vmid):
     if err:
         return err
     return jsonify(engine.param_tree(vmid))
+
+
+@bp.route("/api/containers/<int:vmid>/faders", methods=["GET"])
+@require_login
+def container_faders(vmid):
+    """Live list of the strips/buses carrying a fader (fader start trigger editor).
+    Read only -> login + viewer."""
+    err = check_vmid_access(vmid, "viewer")
+    if err:
+        return err
+    fader_triggers = engine._fader_triggers()
+    if fader_triggers is None:                   # audio service absent: same shape as « not supported »
+        return jsonify({"options": [], "ok": False, "supported": False})
+    return jsonify(fader_triggers.fader_options(vmid))
 
 
 @bp.route("/api/projects/<int:pid>/action_catalog", methods=["GET"])
@@ -236,18 +307,36 @@ def project_action_run(pid):
 
 # ─── Lecture d'états en lot (feedback shotbox, ~1 requête/s par vue) ──
 
+# Workspace panels poll every value they show; a full view holds a few dozen.
+STATES_BATCH_MAX = 96
+
+
 @bp.route("/api/projects/<int:pid>/states", methods=["POST"])
 @require_project_role("viewer")
 def project_states(pid):
     queries = (request.json or {}).get("queries") or []
     out = []
-    for q in queries[:32]:
-        vmid = engine._resolve_vmid(q)
+    # One GET per (container, read endpoint) for the whole batch: a panel of nine faders reads
+    # the console's document once, not nine times.
+    reads = {}
+    # instance_uuid → vmid résolu UNE fois pour le lot : `_resolve_vmid` relit toute la table
+    # des conteneurs à chaque appel (13 valeurs = 13 lectures complètes : 2,5 à 13 s mesurés le
+    # 2026-10-20, les conteneurs répondant, eux, en quelques ms).
+    by_uuid = {}
+    member = {}
+    for q in queries[:STATES_BATCH_MAX]:
+        u = q.get("instance_uuid")
+        if u and u not in by_uuid:
+            row = db_container_by_instance(u)   # une ligne, pas toute la table
+            by_uuid[u] = row["vmid"] if row else None
+        vmid = by_uuid.get(u) or q.get("vmid")
         val = None
-        if vmid and pid in vmid_project_ids(vmid):
+        if vmid not in member:
+            member[vmid] = bool(vmid) and pid in vmid_project_ids(vmid)
+        if member[vmid]:
             # state_id (curaté) OU endpoint+path (état découvert, borné aux read_endpoints).
             val = engine.fetch_state(vmid, q.get("state_id"),
-                                     endpoint=q.get("endpoint"), path=q.get("path"))
+                                     endpoint=q.get("endpoint"), path=q.get("path"), cache=reads)
         out.append({"instance_uuid": q.get("instance_uuid"), "vmid": q.get("vmid"),
                     "state_id": q.get("state_id"), "endpoint": q.get("endpoint"),
                     "path": q.get("path"), "value": val})
@@ -530,10 +619,41 @@ def system_macros_catalog():
                     "services": core_plugins.service_actions()})
 # ─── Déclencheurs permanents (editor écrit, operator active/désactive) ──────
 
+def _fader_condition_error(pid, cond):
+    """Fader start condition: the console must belong to the project and declare
+    `control.fader_start`; edge/numbers bounded. A target not chosen yet is allowed
+    (the editor creates the rule, then fills it in)."""
+    fader_triggers = engine._fader_triggers()
+    if fader_triggers is None:
+        return "fader start indisponible (service audio absent)"
+    if cond.get("edge") not in (None, "open", "close"):
+        return "edge invalide"
+    for key, lo, hi in (("threshold_db", fader_triggers.MINUS_INF_DB, 24.0), ("hysteresis_db", 0.0, 60.0)):
+        if cond.get(key) is None:
+            continue
+        try:
+            v = float(cond[key])
+        except (TypeError, ValueError):
+            return key + " invalide"
+        if not lo <= v <= hi:
+            return key + " hors bornes"
+    if cond.get("instance_uuid") or cond.get("vmid"):
+        vmid = engine._resolve_vmid(cond)
+        if not vmid or pid not in vmid_project_ids(vmid):
+            return "console hors projet"
+        if fader_triggers._container_spec(vmid) is None:
+            return "instance sans fader start"
+    return None
+
+
 def _trigger_field_error(pid, data):
     """Valide les champs modifiables d'un trigger. Renvoie un message ou None."""
     if "condition" in data and not isinstance(data.get("condition"), dict):
         return "condition invalide"
+    if "condition" in data and _is_fader_condition(data["condition"]):
+        err = _fader_condition_error(pid, data["condition"])
+        if err:
+            return err
     if "macro_id" in data and data.get("macro_id") is not None:
         try:
             mid = int(data["macro_id"])

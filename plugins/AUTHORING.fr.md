@@ -167,6 +167,25 @@ ma_valeur = CONFIG.get("ma_cle") or "defaut"
 Le port 8080 reçoit aussi les **pousses du service TSL** (tally et libellés vivants) : un serveur
 en GET seul rendrait 501 et le tally n'arriverait jamais, sans que rien ne le signale.
 
+### Reconfiguration à chaud — `control.hot_config`
+
+Par défaut, tout réglage ou câble **redémarre le script**, et avec lui tout ce qu'il fait
+tourner. Un plugin qui pilote plusieurs choses indépendantes (un processus par connecteur, par
+sortie…) peut déclarer
+
+```json
+"control": { "hot_config": { "port": 8082, "path": "/config" } }
+```
+
+L'orchestrateur écrit toujours le nouveau fichier du script et persiste les réglages, puis, **au
+lieu de redémarrer**, envoie `{plugin_version, hostname, config}` à cette route — `config` est
+exactement ce que vaut `{config}` dans le script qu'il vient d'écrire. Le script compare avec ce
+qui tourne et ne relance que ce qui a changé. Il doit répondre **409** si `plugin_version` ou
+`hostname` diffèrent des siens (autre code, autres noms de flux par défaut) : l'orchestrateur le
+redémarre alors comme avant. Toute réponse autre que 200 retombe sur un redémarrage, donc un
+script qui ignore la route ne risque rien. Modèle : `decklink_io` (un travailleur par
+connecteur, désigné par son identifiant stable ; banc `verif_reconfig_a_chaud.py`).
+
 ---
 
 ## `hooks.py` — ce qui tourne dans l'orchestrateur
@@ -227,6 +246,28 @@ Notables :
 | `ui.public_page` | autorise un lien public `/p/<jeton>` |
 | `nav` | rubrique et route. **Sans `nav`**, ni chip de palette ni lien de nav |
 | `help.category` / `help.order` | rangement de l'article d'aide |
+| `files` | fichiers supplémentaires poussés à côté du script (voir ci-dessous) |
+
+### `files` — livrer des modules à côté du script
+
+```json
+"files": [
+  {"src": "src/model.py", "dest": "model.py"},
+  {"src": "build/dsp.so", "dest": "dsp.so.b64", "transport": "base64"}
+]
+```
+
+`src` est relatif au dossier du plugin, `dest` relatif à `/opt/script` (là où vit `main.py`).
+Poussés **avant** `bobimxl.py` et le script, lequel part en dernier. **Sans repli** : un push qui
+échoue avorte le déploiement (alerte d'erreur), le script n'est jamais démarré.
+
+- L'agent écrit en mode **texte** : un binaire déclare `"transport": "base64"` ; l'orchestrateur
+  écrit le texte base64, **le décodage est l'affaire du plugin au démarrage** (écriture atomique,
+  p. ex. vers `/tmp`).
+- Refusés au scan (le plugin est alors sauté, motif visible dans la gestion des plugins) : chemin
+  absolu ou `..`, `src` absent ou sortant du dossier du plugin (liens symboliques compris), `dest`
+  en double, `dest` égal à `main.py` / `bobimxl.py` / `agent.py` / `nmos.json` / au script lui-même,
+  plus de 8 Mo par fichier ou 16 Mo au total.
 
 ---
 

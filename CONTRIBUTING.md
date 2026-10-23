@@ -53,6 +53,18 @@ Tout **nouveau texte d'interface** passe par le catalogue i18n : `_("clé")` cô
 chaîne française (ou anglaise) codée en dur dans un template ou dans `static/scripts.js`.
 Ajoutez la clé aux catalogues FR **et** EN. Un texte en dur = régression i18n.
 
+**Ce que le conteneur renvoie à l'écran compte aussi** : une erreur, une option de liste ou un état
+qu'un plugin renvoie en JSON et que l'interface affiche se publie en **code stable + valeurs**, et la
+phrase vit dans l'`i18n/` du plugin (même doctrine que les alertes : `app/i18n.py:rendre_alerte`). Une
+phrase française dans une réponse JSON est un texte en dur.
+
+## Journaux techniques : en anglais
+
+Les journaux (logs : `log.info(...)`, `log(...)` d'un script de plugin, `print` de diagnostic) s'écrivent
+**en anglais** — ils servent au diagnostic, comme le code, et ne sont pas une interface. Décidé le
+2026-10-15. Les journaux français existants passent en anglais quand on retouche leur fichier (stock
+recensé dans `TODO.md`). Les **alertes**, elles, sont une interface : clé i18n + paramètres.
+
 ## Garde-fous locaux (avant de pousser)
 
 Il n'y a pas de build/lint/test lourd. Deux vérifications gratuites existent et tournent

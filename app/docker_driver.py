@@ -1800,11 +1800,23 @@ def _build_run_cmd(vmid, node, params):
     # posé (ex. banc). Validation runtime du lock (join/switch/sip) = hors deploy, cf. socle.
     if _has_dpdk_pf(node) and "ENGINE_PTP" not in env:
         env["ENGINE_PTP"] = "libmtl"
-        # + ENGINE_PHC2SYS : libmtl discipline AUSSI CLOCK_REALTIME depuis le PHC (remplace phc2sys
-        # kernel). INDISPENSABLE : toute la flotte MXL lit CLOCK_REALTIME (bobimxl now_tai) pour
-        # indexer les grains (media_ts) → sans ça le moteur serait synchro mais pas le reste du nœud
-        # (cf. docs/chantiers/DPDK_NARROW.md §PTP : « le PTP interne libmtl ne discipline pas l'horloge nœud → ne
-        # convient pas seul » ; ENGINE_PHC2SYS lève précisément cette limite).
+        # + ENGINE_PHC2SYS : libmtl discipline AUSSI CLOCK_REALTIME depuis le PHC (REALTIME = TAI).
+        #
+        # ⚠ IL RESTE POSÉ, et ce n'est PAS pour l'horloge système. Dans `mt_ptp.c:ptp_adjust_delta`,
+        # l'asservissement en FRÉQUENCE du PHC (celui que patch_ptp_adjust_freq.py active, 726 → 30 ns)
+        # est dans un `if (ptp->phc2sys_active)` : sans phc2sys, libmtl ne fait que SAUTER la phase à
+        # chaque Sync. MESURÉ sur dl360-1 le 2026-10-17 (moteur relancé sans ENGINE_PHC2SYS, horloge
+        # système passée sous chrony) : offset 0,5 à 2,7 µs, verrou strict JAMAIS armé en 25 min,
+        # contre 4 à 75 ns verrouillé avant — rétabli dans la foulée.
+        #
+        # Le prix, connu : le phc2sys de libmtl n'a AUCUNE option d'offset (REALTIME porte le TAI,
+        # journaux et `Z` faux de 37 s) et son servo peut s'emballer — dl360-1, 2026-10-16 : `tick`
+        # noyau laissé à 10122 (+1,22 %), `adj system time freq fail -1` plusieurs fois par seconde,
+        # REALTIME à +396 s de l'UTC (+665 s le lendemain), grille MXL du nœud partie avec.
+        # Le retirer exige d'abord un patch libmtl qui SORTE le servo de fréquence du
+        # `if (phc2sys_active)` (garder seulement `phc2sys_adjust()` dedans), puis un rebuild de
+        # bobi-mtl ; l'horloge système passera alors sous chrony (`clocks.appliquer_ntp_tai`, qui
+        # sait déjà traiter ce nœud). Garde : tests/verif_horloge_systeme_noeud_dpdk.py.
         env.setdefault("ENGINE_PHC2SYS", "1")
         # + NIC_PROMISCUOUS : sur E810/ice en DPDK, le PMD n'admet PAS le mcast rejoint via le seul
         # filtre MAC (rte_eth_dev_mac_addr_add) → sans promiscuous, rx=0 au niveau port (aucun PTP, ni
@@ -2539,8 +2551,8 @@ def derive_config_moteur(vmid, payload=None):
     ce qui tourne à ce qui est déclaré ; le moteur MTL n'en avait aucune, alors que c'est le
     conteneur où l'adressage compte le plus.
 
-    Vécu le 2026-09-10, en armant le double chemin ST-2022-7 : `ens1f1np1` déclarée en
-    192.0.2.201 pour porter la jambe « blue », moteur toujours en 192.0.2.202. Enregistré,
+    Vécu le 2026-09-10, en armant le double chemin ST-2022-7 : `ens1f1np1` déclarée sur le
+    sous-réseau de la jambe « blue », moteur toujours sur celui de la jambe « amber ». Enregistré,
     affiché comme tel, jamais appliqué. La question de l'exploitant — « comment savoir ? » — n'avait
     pas de réponse : rien ne le disait.
 

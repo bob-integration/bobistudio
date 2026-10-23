@@ -233,6 +233,9 @@ input.ctl-knob-val:focus { border-color: var(--accent); background: var(--bg); o
  * besoin, et ça cassait la cohérence de la page. Ne PAS reproduire lors des migrations restantes.
  * Les autres variantes restent au catalogue (elles ont été retenues sur planche d'essai) mais
  * aucune n'est employée : les poser demande une décision explicite, pas une initiative.
+ * ⚠ DÉCISION EXPLOITANT 2026-10-13 : la console audio (`audio_console`) emploie le tracé `index`
+ *   (arc fin + index, poussoir intégré), retenu sur la planche static/knobs_compare.html. C'est
+ *   la seule exception à la règle de parc à ce jour ; l'étendre ailleurs demande une autre décision.
  *
  * Variantes : elles ne changent que le TRACÉ, pas les couleurs ni les états. Elles sont malgré
  * tout DÉCLARÉES ici, et pas seulement décrites en commentaire — sans quoi elles n'existent pour
@@ -247,6 +250,10 @@ input.ctl-knob-val:focus { border-color: var(--accent); background: var(--bg); o
 /* Arc + témoin central : régler et couper au même endroit. Le témoin est un bouton à part
  * entière (role="switch" imbriqué), pas un simple point décoratif. */
 .ctl-knob--gate   { --ctl-knob-draw: gate; }
+/* Arc fin + cadran plein + index, remplissage depuis le centre pour un réglage −/+ (2026-10-13,
+ * venu de BobiControls). Avec `data-push` + `data-gate`, le cadran entier est un poussoir : clic =
+ * on/off (`ctl-knob-gate`), glisser = valeur ; éteint, arc et index pâlissent. */
+.ctl-knob--index  { --ctl-knob-draw: index; }
 
 /* ─── Bargraphe ────────────────────────────────────────────────────────────────────────────
  * Segmenté, jamais continu : un afficheur d'appareil se lit encore en niveaux de gris, et le
@@ -423,6 +430,92 @@ input.ctl-knob-val:focus { border-color: var(--accent); background: var(--bg); o
     width: 30px;
     flex: none;
 }
+
+/* Bouton de bus À LIBELLÉ (2026-10-20, workspace) : la source est NOMMÉE (« CAM 1 », « IMAGES »)
+   plutôt que numérotée. Même famille, même couleurs ; seule la largeur suit le texte. */
+.ctl-bus--label {
+    width: auto;
+    min-width: 58px;
+    padding: 0 10px;
+    font-family: var(--font-base);
+    font-size: 0.8em;
+    white-space: nowrap;
+}
+/* Libellé de bus en PASTILLE : la couleur du bus porte le nom (« BGD A » rouge, comme au
+   mélangeur). Le NOM reste écrit — la couleur seule ne suffit pas. */
+.ctl-bus-lab--tag {
+    width: auto;
+    min-width: 44px;
+    padding: 5px 8px;
+    border-radius: var(--radius-small, 4px);
+    text-align: center;
+    background: var(--bg-hover);
+    color: var(--text-strong);
+}
+.ctl-bus-lab--tag[data-bus="pgm"] { background: var(--bus-pgm); color: var(--bus-pgm-text); }
+.ctl-bus-lab--tag[data-bus="pvw"] { background: var(--bus-pvw); color: var(--bus-pvw-text); }
+.ctl-bus-lab--tag[data-bus="dsk"] { background: var(--bus-keyer); color: var(--bus-keyer-text); }
+.ctl-bus-lab--tag[data-bus="dis"] { background: var(--bus-dissolve); color: var(--bus-dissolve-text); }
+
+/* ─── Poussoir VIGNETTE ────────────────────────────────────────────────────────────────────
+ * Choisir un MÉDIA (image fixe, clip) : l'image au-dessus du nom, comme le gestionnaire de
+ * médias. Allumé = cadre à la teinte du poussoir, pas de halo. */
+.ctl-push--tile {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    width: 152px;
+    padding: 4px;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+}
+.ctl-push--tile img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: var(--bg); border-radius: 2px; }
+.ctl-push--tile > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.ctl-push--tile[aria-pressed="true"] { border-color: var(--ctl-tone, var(--accent));
+    box-shadow: inset 0 0 0 2px var(--ctl-tone, var(--accent)); }
+
+/* ─── Liste en LIGNES (2026-10-20) ─────────────────────────────────────────────────────────
+ * La liste du catalogue (`.ctl-list`), en lignes de playlist : numéro, vignette, nom, détail à
+ * droite. Choisir un clip, une image : on lit la liste, on touche la ligne. */
+.ctl-list--rows { min-width: 0; }
+.ctl-list--rows .ctl-list__item { display: flex; align-items: center; gap: 10px; min-height: 44px;
+    padding: 4px 10px; border-bottom: 1px solid var(--border); }
+.ctl-list--rows .ctl-list__item:last-child { border-bottom: none; }
+.ctl-list__num { width: 1.6em; flex: none; text-align: right; color: var(--text-muted);
+    font-family: var(--font-mono); font-size: 0.85em; }
+.ctl-list__thumb { width: 56px; aspect-ratio: 16 / 9; flex: none; object-fit: cover; background: var(--bg);
+    border-radius: 2px; }
+.ctl-list__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctl-list__meta { flex: none; color: var(--text-muted); font-family: var(--font-mono); font-size: 0.85em; }
+
+/* ─── Second état et étiquettes (2026-10-20) ──────────────────────────────────────────────
+ * Un choix peut porter DEUX états à la fois : l'image PRÊTE (en preview) et celle en SORTIE (à
+ * l'antenne). Le premier est l'état allumé ordinaire (`on` / aria) ; le second, `.on2`, prend la
+ * teinte `--ctl-tone2` (rouge d'antenne par défaut). Chaque état DIT son nom par une étiquette :
+ * la couleur seule ne suffit jamais. */
+.ctl-flag { display: none; flex: none; font-family: var(--font-base); font-size: 0.68em; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; }
+.ctl-flag--1 { color: var(--ctl-tone, var(--accent)); border: 1px solid var(--ctl-tone, var(--accent)); }
+.ctl-flag--2 { color: var(--ctl-tone2, var(--bus-pgm)); border: 1px solid var(--ctl-tone2, var(--bus-pgm)); }
+.on > .ctl-flag--1, [aria-pressed="true"] > .ctl-flag--1, [aria-pressed="true"] .ctl-flag--1,
+.on .ctl-flag--1 { display: inline-block; }
+.on2 > .ctl-flag--2, .on2 .ctl-flag--2 { display: inline-block; }
+.ctl-list__item.on2 { box-shadow: inset 3px 0 0 var(--ctl-tone2, var(--bus-pgm)); }
+.ctl-push--tile.on2 { border-color: var(--ctl-tone2, var(--bus-pgm));
+    box-shadow: inset 0 0 0 2px var(--ctl-tone2, var(--bus-pgm)); }
+.ctl-push--tile > .ctl-push__foot { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ctl-push--tile > .ctl-push__foot > span:first-child { flex: 1; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+
+/* ─── Contexte LARGE (pupitre tactile, 2026-10-20) ─────────────────────────────────────────
+ * Le pendant de `.ctl-dense` : mêmes contrôles, plus grands, pour un poste d'exploitation
+ * au doigt. Ne change que la géométrie. */
+.ctl-large .ctl-bus { height: 56px; min-width: 64px; font-size: 1em; }
+.ctl-large .ctl-push { min-height: 52px; padding: 12px 18px; font-size: 0.9em; }
+.ctl-large .ctl-push--tile { width: 216px; padding: 6px; }
+.ctl-dense .ctl-push--tile { width: 112px; }
+.ctl-dense .ctl-bus { height: 32px; }
 
 /* ─── Afficheur sept segments ──────────────────────────────────────────────────────────────
  * Le chiffre d'appareil, tracé en CSS (7 barres par digit) plutôt qu'avec une police
@@ -972,3 +1065,186 @@ input[type="checkbox"].ctl-switch[disabled] { opacity: 0.5; cursor: not-allowed;
 }
 .ctl-choix-select:disabled { opacity: 0.5; }
 .ctl-choix-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ═══ FAMILLES AJOUTÉES PAR LA FUSION AVEC BobiControls (2026-10-13) ═══════════════════════════
+ * Fader (vertical / horizontal, loi dB), vumètre de niveau (crête + RMS + maintien + saturation,
+ * `.ctl-vu` — distinct du bargraphe `.ctl-meter`), vumètre de réduction de gain (`.ctl-gr`), liste
+ * (`.ctl-list`), rangée de petits boutons (`.ctl-btnrow`). Créés par le moteur
+ * (`static/js/bobi-controls.js`, `BobiControls.create(…)` ou `fromLeaf(feuille)`), jamais à la main.
+ * Le rotatif, le poussoir, l'afficheur et la liste déroulante sont ceux du catalogue plus haut.
+ *
+ * Jetons dérivés des variables de thème (color-mix en OKLCH) : ils suivent les trois lumières
+ * sans fichier par thème. ⚠ Un « * / » collé dans un commentaire (« --bg-* / ») le ferme et fait
+ * jeter la règle suivante — vécu, toutes les couleurs dérivées étaient vides
+ * (garde : tests/verif_bobi_controls.js). */
+:root {
+    --ctl-track:   color-mix(in oklch, var(--text) 16%, var(--bg-input));
+    --ctl-track-2: color-mix(in oklch, var(--text) 8%, var(--bg-input));
+    --ctl-slot:      color-mix(in oklch, black 35%, var(--bg-input));       /* fente du fader */
+    --ctl-slot-edge: color-mix(in oklch, var(--text) 22%, var(--bg-input));
+    --ctl-cap:     color-mix(in oklch, var(--text-strong) 88%, var(--bg-elev));
+    --ctl-cap-ink: color-mix(in oklch, var(--bg-elev) 80%, var(--text-strong));
+    --ctl-fill:    color-mix(in oklch, var(--accent) 70%, var(--ctl-track));
+    --ctl-tick:    var(--text-muted);
+    --ctl-off:     color-mix(in oklch, var(--text) 10%, var(--bg-input));  /* segment éteint */
+    --ctl-ok:      var(--status-running-fg);
+    --ctl-warn:    var(--status-warning-fg);
+    --ctl-err:     var(--status-stopped-fg);
+    --ctl-focus:   var(--accent);
+    --ctl-w:       1.5rem;       /* largeur de piste de fader/vumètre */
+}
+
+.ctl-ui {
+    display: inline-flex; flex-direction: column; align-items: center; gap: 6px;
+    font-family: var(--font-base); font-size: 0.8em; color: var(--text);
+    user-select: none; -webkit-user-select: none;
+}
+.ctl-ui *, .ctl-ui *::before, .ctl-ui *::after { box-sizing: border-box; }
+/* Hôtes d'un contrôle du catalogue (poussoir, liste, afficheur, petits boutons) : la police est
+   déjà dimensionnée par le contrôle lui-même — ne pas la réduire une seconde fois. */
+.ctl-ui--toggle, .ctl-ui--select, .ctl-ui--readout, .ctl-btnrow { font-size: inherit; }
+.ctl-ui--toggle .ctl-ui-label, .ctl-ui--select .ctl-ui-label, .ctl-ui--readout .ctl-ui-label, .ctl-btnrow .ctl-ui-label { font-size: 0.7em; }
+.ctl-ui-label { font-size: 0.78em; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.ctl-ui-value,  { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 0.95em; color: var(--text-strong); }
+.ctl-ui-value { display: inline-block; text-align: center; white-space: nowrap; }   /* largeur fixée par le JS */
+.ctl-fader--horizontal .ctl-ui-value { text-align: right; }
+.ctl-ui-disabled { opacity: 0.45; pointer-events: none; }
+
+/* Focus clavier visible, jamais au clic souris. */
+.ctl-ui :focus { outline: none; }
+.ctl-ui :focus-visible { outline: 2px solid var(--ctl-focus); outline-offset: 2px; border-radius: var(--radius-small); }
+
+/* ─── Fader ──────────────────────────────────────────────────────────────────────────── */
+.ctl-fader__body { position: relative; touch-action: none; cursor: grab; --ctl-thumb: 1.5rem; --ctl-p: 0; }
+.ctl-dragging .ctl-fader__body { cursor: grabbing; }
+.ctl-fader--vertical .ctl-fader__body { width: 3rem; height: var(--ctl-len, 10rem); }
+.ctl-fader--horizontal { flex-direction: row; gap: 10px; }
+.ctl-fader--horizontal .ctl-fader__body { width: var(--ctl-len, 10rem); height: 2rem; }
+/* Piste = une FENTE creusée (fond plus sombre que la carte, bord net) : la course se lit d'un
+   coup d'œil, capuchon posé dessus ou non. */
+.ctl-fader__track {
+    position: absolute; background: var(--ctl-slot); border: 1px solid var(--ctl-slot-edge);
+    border-radius: 4px;
+}
+.ctl-fader--vertical .ctl-fader__track { left: calc(50% - 4px); width: 8px; top: calc(var(--ctl-thumb) / 2); bottom: calc(var(--ctl-thumb) / 2); }
+.ctl-fader--horizontal .ctl-fader__track { top: calc(50% - 4px); height: 8px; left: calc(var(--ctl-thumb) / 2); right: calc(var(--ctl-thumb) / 2); }
+.ctl-fader__fill { position: absolute; background: var(--ctl-fill); border-radius: 3px; }
+.ctl-fader--vertical .ctl-fader__fill { left: 0; right: 0; bottom: 0; height: calc(var(--ctl-p) * 100%); }
+.ctl-fader--horizontal .ctl-fader__fill { top: 0; bottom: 0; left: 0; width: calc(var(--ctl-p) * 100%); }
+.ctl-fader__thumb {
+    position: absolute; background: var(--ctl-cap); border-radius: var(--radius-small);
+    border: 1px solid var(--border-strong, var(--border));
+}
+.ctl-fader__thumb::after { content: ""; position: absolute; background: var(--ctl-cap-ink); }
+.ctl-fader--vertical .ctl-fader__thumb { left: calc(50% - 0.9rem); width: 1.8rem; height: var(--ctl-thumb); bottom: calc(var(--ctl-p) * (100% - var(--ctl-thumb))); }
+.ctl-fader--vertical .ctl-fader__thumb::after { left: 3px; right: 3px; top: calc(50% - 1px); height: 2px; }
+.ctl-fader--horizontal .ctl-fader__thumb { top: calc(50% - 0.9rem); height: 1.8rem; width: var(--ctl-thumb); left: calc(var(--ctl-p) * (100% - var(--ctl-thumb))); }
+.ctl-fader--horizontal .ctl-fader__thumb::after { top: 3px; bottom: 3px; left: calc(50% - 1px); width: 2px; }
+.ctl-unity .ctl-fader__thumb::after { background: var(--accent); }
+/* Repères : colonne à gauche de la piste (vertical). */
+.ctl-fader__ticks { position: absolute; inset: 0; pointer-events: none; }
+.ctl-fader--vertical .ctl-tick {
+    position: absolute; right: calc(50% + 0.95rem); bottom: calc(var(--ctl-tp) * (100% - var(--ctl-thumb)) + var(--ctl-thumb) / 2);
+    transform: translateY(50%); font-family: var(--font-mono); font-size: 0.8em; line-height: 1; color: var(--ctl-tick);
+}
+.ctl-fader--vertical .ctl-tick--unity { color: var(--text-strong); font-weight: 600; }
+.ctl-fader--vertical .ctl-fader__body { margin-left: 1.6rem; }   /* place des repères */
+.ctl-fader--horizontal .ctl-tick { position: absolute; top: 100%; left: calc(var(--ctl-tp) * (100% - var(--ctl-thumb)) + var(--ctl-thumb) / 2); transform: translateX(-50%); font-family: var(--font-mono); font-size: 0.8em; color: var(--ctl-tick); }
+
+/* ─── Liste ─────────────────────────────────────────────────────────────────────────── */
+.ctl-list { display: flex; flex-direction: column; min-width: 8rem; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-small); overflow: hidden; }
+.ctl-list__item { padding: 0.4rem 0.7rem; cursor: pointer; color: var(--text); }
+.ctl-list__item:hover { background: var(--bg-hover); }
+.ctl-list__item.on { background: var(--bg-selected); color: var(--text-strong); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* ─── Échelle commune (vumètres) ─────────────────────────────────────────────────────── */
+.ctl-scale { position: relative; }
+.ctl-scale .ctl-tick { position: absolute; font-family: var(--font-mono); font-size: 0.8em; line-height: 1; color: var(--ctl-tick); white-space: nowrap; }
+
+/* ─── Vumètre ────────────────────────────────────────────────────────────────────────── */
+.ctl-vu { flex-direction: row; align-items: stretch; gap: 4px; }
+.ctl-vu__body { display: flex; flex-direction: column; gap: 3px; }
+.ctl-vu__chs { display: flex; gap: 2px; flex: 1 1 auto; }
+.ctl-vu--vertical .ctl-vu__chs { height: var(--ctl-len, 10rem); }
+.ctl-vu__ch { position: relative; width: var(--ctl-w); background: var(--ctl-off); border-radius: 2px; contain: layout paint; }
+.ctl-vu__peak, .ctl-vu__rms { position: absolute; inset: 0; clip-path: inset(100% 0 0 0); }
+.ctl-vu__peak { opacity: 0.4; }
+.ctl-vu__rms { inset: 0 22%; }                      /* RMS : barre centrale plus étroite */
+.ctl-vu__hold { position: absolute; left: 0; right: 0; height: 2px; bottom: 0; background: var(--text-strong); opacity: 0; }
+.ctl-vu__clips { display: flex; gap: 2px; }
+.ctl-vu__clip { width: var(--ctl-w); height: 6px; padding: 0; border: 0; border-radius: 1px; background: var(--ctl-off); cursor: pointer; }
+.ctl-vu__clip.on { background: var(--ctl-err); }
+.ctl-vu--vertical .ctl-scale { width: 1.8rem; height: var(--ctl-len, 10rem); align-self: flex-end; }
+.ctl-vu--vertical .ctl-scale .ctl-tick { left: 0; bottom: calc(var(--ctl-tp) * 100%); transform: translateY(50%); }
+.ctl-vu--vertical .ctl-ui-value { align-self: flex-end; }
+/* Horizontal : barres empilées, échelle dessous. */
+.ctl-vu--horizontal { flex-direction: column; align-items: stretch; }
+.ctl-vu--horizontal .ctl-vu__body { flex-direction: row; }
+.ctl-vu--horizontal .ctl-vu__chs { flex-direction: column; width: var(--ctl-len, 14rem); }
+.ctl-vu--horizontal .ctl-vu__ch { width: 100%; height: 0.7rem; }
+.ctl-vu--horizontal .ctl-vu__peak { clip-path: inset(0 100% 0 0); }
+.ctl-vu--horizontal .ctl-vu__rms { inset: 22% 0; clip-path: inset(0 100% 0 0); }
+.ctl-vu--horizontal .ctl-vu__hold { top: 0; bottom: 0; left: 0; right: auto; width: 2px; height: auto; }
+.ctl-vu--horizontal .ctl-vu__clips { flex-direction: column; justify-content: space-around; }
+.ctl-vu--horizontal .ctl-vu__clip { width: 6px; height: 0.7rem; }
+.ctl-vu--horizontal .ctl-scale { width: var(--ctl-len, 14rem); height: 1em; margin-left: calc(6px + 3px); }
+.ctl-vu--horizontal .ctl-scale .ctl-tick { top: 0; left: calc(var(--ctl-tp) * 100%); transform: translateX(-50%); }
+
+/* ─── Réduction de gain ──────────────────────────────────────────────────────────────── */
+.ctl-gr { flex-direction: column; }
+.ctl-gr__track { position: relative; background: var(--ctl-off); border-radius: 2px; contain: layout paint; }
+.ctl-gr__fill { position: absolute; inset: 0; background: var(--ctl-warn); clip-path: inset(0 0 100% 0); transition: clip-path 90ms linear; }
+.ctl-gr--vertical .ctl-gr__track { width: var(--ctl-w); height: var(--ctl-len, 8rem); }
+.ctl-gr__row { display: flex; gap: 4px; }
+.ctl-gr--horizontal .ctl-gr__row { flex-direction: column; }
+.ctl-gr--horizontal .ctl-gr__track { width: var(--ctl-len, 12rem); height: 0.7rem; }
+.ctl-gr--horizontal .ctl-scale { width: var(--ctl-len, 12rem); height: 1em; }
+.ctl-gr--horizontal .ctl-scale .ctl-tick { top: 0; right: calc(var(--ctl-tp) * 100%); transform: translateX(50%); }
+.ctl-gr--vertical .ctl-scale { width: 1.6rem; height: var(--ctl-len, 8rem); }
+.ctl-gr--vertical .ctl-scale .ctl-tick { left: 0; top: calc(var(--ctl-tp) * 100%); transform: translateY(-50%); }
+
+@media (prefers-reduced-motion: reduce) {
+    .ctl-gr__fill { transition: none; }
+}
+
+/* ─── Poussoir : teintes et petit gabarit (pour le moteur, utilisables partout) ────────────
+ * `--danger` (MUTE), `--warn` (SOLO, PFL, ORDRE), `--ok` : la teinte remplace l'accent sur la
+ * variante `--led`. `--small` : Pré/Post, Ø, affectation — même grammaire, gabarit réduit, sans
+ * témoin (teinte + filet portent l'état). Groupe exclusif : `role="radio"` + `aria-checked`. */
+.ctl-push--danger { --ctl-tone: var(--status-stopped-fg); }
+.ctl-push--warn   { --ctl-tone: var(--status-warning-fg); }
+.ctl-push--ok     { --ctl-tone: var(--status-running-fg); }
+.ctl-push--led[aria-pressed="true"], .ctl-push--led[aria-checked="true"] {
+    background: color-mix(in oklch, var(--ctl-tone, var(--accent)) 18%, var(--bg-input));
+    border-color: var(--ctl-tone, var(--accent));
+    color: var(--ctl-tone, var(--accent));
+}
+.ctl-push--led[aria-pressed="true"] .ctl-led { background: var(--ctl-tone, var(--accent)); border-color: var(--ctl-tone, var(--accent)); }
+.ctl-push--small { min-height: 26px; padding: 3px 8px; gap: 0; font-size: 0.72em; letter-spacing: 0.4px; }
+.ctl-btnrow { align-items: flex-start; }
+.ctl-btnrow__row { display: flex; flex-wrap: wrap; gap: 3px; }
+
+/* ─── Rotatif à poussoir (`data-push` / opts.push) : éteint, arc et index pâlissent ─────── */
+.ctl-knob--push .ctl-knob-hit { cursor: pointer; }
+.ctl-knob--push.ctl-knob--off .ctl-knob-fill, .ctl-knob--push.ctl-knob--off .ctl-knob-ptr { opacity: 0.35; }
+
+/* ─── Contexte serré `.ctl-tight` : tranches de console côte à côte ─────────────────────────
+ * À poser avec `.ctl-dense` sur un conteneur qui aligne beaucoup de tranches (16, 24, 64) : le
+ * fader et le vumètre VERTICAUX y perdent leurs repères (la valeur est lue dans l'afficheur, le
+ * zéro dB se lit à l'index du capuchon) et leur largeur ; la course, elle, reste celle de
+ * `--ctl-len` — c'est elle qui fait le fader utile. Même balisage, même tracé, mêmes tokens :
+ * un seul fader, une seule implémentation. */
+.ctl-tight .ctl-fader--vertical .ctl-fader__body { width: 1.5rem; margin-left: 0; --ctl-thumb: 1.2rem; }
+.ctl-tight .ctl-fader--vertical .ctl-tick { right: auto; left: calc(50% + 0.8rem); font-size: 0.74em; }
+.ctl-tight .ctl-fader--vertical .ctl-fader__body { margin-right: 1.2rem; }   /* place des repères, à droite */
+.ctl-tight .ctl-fader--vertical .ctl-fader__thumb { left: calc(50% - 0.65rem); width: 1.3rem; }
+.ctl-tight .ctl-fader { gap: 2px; align-items: center; }
+.ctl-tight .ctl-fader .ctl-ui-value { min-width: 0 !important; font-size: 0.72em; }
+.ctl-tight .ctl-vu { --ctl-w: 0.5rem; gap: 2px; }
+.ctl-tight .ctl-vu--vertical .ctl-scale { display: none; }
+.ctl-tight .ctl-vu--vertical .ctl-ui-value { display: none; }
+.ctl-tight .ctl-gr--horizontal .ctl-scale { display: none; }
+.ctl-tight .ctl-gr--horizontal .ctl-gr__track { height: 0.35rem; }
+.ctl-tight .ctl-gr--horizontal { width: 100%; }
+.ctl-tight .ctl-gr--horizontal .ctl-gr__track { width: 100%; }
+.ctl-tight .ctl-gr--horizontal .ctl-gr__row { width: 100%; }

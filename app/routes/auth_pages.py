@@ -116,6 +116,8 @@ def setup_page():
             from .. import settings as _st
             _st.set("pwd_profil", profil)
             uid = db_create_user(u, hash_password(p), "admin", prenom, nom, email)
+            from ..security_log import premier_admin
+            premier_admin(u)
             login_user(db_get_user_by_id(uid))
             # Compte créé → enchaîner l'assistant de premier démarrage.
             return redirect(url_for("routes.setup_wizard"))
@@ -182,7 +184,12 @@ def login_page():
     if request.method == "POST":
         from ..i18n import t as _t
         ip = _client_ip()
+        from ..security_log import login_success, login_failure, login_throttled
         if _login_throttled(ip):
+            # Le BLOCAGE est un événement de sécurité en soi — il dit qu'une source insiste, ce
+            # qu'aucune ligne d'échec isolée ne dit. Journalisé AVANT le rendu : la réponse 429
+            # part de toute façon, que le journal aboutisse ou non.
+            login_throttled(request.form.get("username"))
             # Trop d'échecs récents depuis cette IP → 429 (défense anti-bruteforce).
             # (message littéral : la clé i18n n'est pas dans le catalogue et les fichiers
             # i18n sont hors périmètre de ce correctif.)
@@ -194,6 +201,9 @@ def login_page():
         if user and verify_password(p, user["password_hash"]):
             _login_reset(ip)
             login_user(user)
+            # APRÈS `login_user` : le contexte de requête porte désormais l'acteur, donc la ligne
+            # s'attribue toute seule (cf. `database._acteur_courant`).
+            login_success(user["username"])
             # Premier démarrage non terminé → reprendre l'assistant (sauf si une
             # cible 'next' explicite a été demandée). Réservé aux comptes admin.
             from .. import settings as st
@@ -207,11 +217,21 @@ def login_page():
                 return redirect(url_for("routes.workspaces_page"))
             return redirect(next_url)
         _login_record_fail(ip)
+        # ⚠ L'identifiant TENTÉ et l'adresse source, rien d'autre : jamais le mot de passe saisi,
+        # ni sa longueur, ni un hash (CSG-002 § 2.1.11).
+        login_failure(u)
         error = _t("auth.invalid_credentials")
     return render_template("login.html", error=error, next=next_url)
 
 @bp.route("/logout", methods=["GET", "POST"])
 def logout():
+    # L'acteur est passé EXPLICITEMENT à `_journal_logout` (cf. sa docstring) : l'attribution ne
+    # dépend donc ni de l'ordre par rapport à `logout_user()`, ni du cache `g` de `current_user`.
+    from ..auth import current_user
+    from ..security_log import logout as _journal_logout
+    u = current_user()
+    if u:
+        _journal_logout(u.get("username"))
     logout_user()
     return redirect(url_for("routes.login_page"))
 

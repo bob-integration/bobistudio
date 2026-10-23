@@ -1292,11 +1292,21 @@ def mtl_cpufreq():
 @bp.route("/api/mtl/reboot", methods=["POST"])
 @require_perm("settings.edit")
 def mtl_reboot():
-    """Redémarre l'hôte local — exige confirm:true (le reboot n'est jamais automatique)."""
-    from .. import mtl
+    """Redémarre l'hôte du nœud — exige confirm:true (le reboot n'est jamais automatique).
+
+    Nœud à agent : passe par le garde des processus bloqués (app/node_power.py) — refus si un
+    processus est en état D, sauf `force:true`. Hôte legacy sans agent : chemin SSH historique."""
+    from .. import mtl, node_driver, node_power
+    from ..database import db_get_node
+    from . import _eff_node_id
     data = request.json or {}
     if not data.get("confirm"):
         return jsonify({"ok": False, "error": "confirmation requise"}), 400
+    nid = _eff_node_id()
+    node = db_get_node(nid) if nid is not None else None
+    if node and node_driver.has_agent(node):
+        body, code = node_power.reboot(node, force=bool(data.get("force")))
+        return jsonify(body), code
     ok, msg = mtl.redemarrer(_req_host())
     return jsonify({"ok": ok, "msg": msg})
 

@@ -1,0 +1,109 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+{# Ferme de transcodage (app/transcode_farm.py) : file centrale + transcoders inscrits.
+   Inclus dans la page Médias (troisième mode). N'auto-charge PAS : l'appelant invoque
+   window.farmLoad() ; window.farmStop() coupe le rafraîchissement en quittant le mode. #}
+<style>
+#farm-embed { display:flex; flex-direction:column; gap:14px; margin-top:10px; }
+#farm-embed h2 { font-size:1em; margin:0 0 6px; }
+#farm-embed .farm-lead { color:var(--text-muted); font-size:0.88em; }
+#farm-embed .farm-box { border:1px solid var(--border-soft); border-radius:6px; padding:10px 12px; }
+#farm-embed table { width:100%; border-collapse:collapse; font-size:0.86em; }
+#farm-embed th { text-align:left; color:var(--text-muted); font-weight:500; padding:4px 6px; border-bottom:1px solid var(--border-soft); }
+#farm-embed td { padding:5px 6px; border-bottom:1px solid var(--border-soft); vertical-align:top; }
+#farm-embed .farm-muted { color:var(--text-muted); }
+#farm-embed .farm-warn { color:var(--status-stopped-fg); }
+#farm-embed .farm-ok { color:var(--status-running-fg); }
+#farm-embed .farm-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:8px 12px; align-items:end; }
+#farm-embed .farm-grid label { display:flex; flex-direction:column; gap:3px; font-size:0.82em; color:var(--text-muted); }
+#farm-embed .farm-grid label.farm-check { flex-direction:row; align-items:center; gap:6px; }
+#farm-embed .farm-browser { margin:8px 0; border:1px solid var(--border-soft); border-radius:4px; max-height:240px; overflow:auto; font-size:0.86em; }
+#farm-embed .farm-crumbs { padding:4px 8px; border-bottom:1px solid var(--border-soft); color:var(--text-muted); font-size:0.85em; }
+#farm-embed .farm-crumbs a { cursor:pointer; }
+#farm-embed .farm-item { display:flex; gap:8px; padding:3px 8px; cursor:pointer; }
+#farm-embed .farm-item:hover { background:var(--bg-hover, rgba(127,127,127,0.12)); }
+#farm-embed .farm-item.sel { background:var(--accent-soft, rgba(80,140,255,0.18)); }
+#farm-embed .farm-item .farm-size { margin-left:auto; color:var(--text-muted); white-space:nowrap; }
+#farm-embed .farm-picked { font-size:0.85em; margin-bottom:8px; }
+#farm-embed .farm-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+#farm-embed .farm-toolbar .farm-spacer { flex:1; }
+#farm-embed .farm-chip { border:1px solid var(--border-soft); border-radius:12px; padding:2px 10px; background:none; color:inherit; cursor:pointer; font-size:0.82em; }
+#farm-embed .farm-chip.active { border-color:var(--accent, #5b8cff); }
+#farm-embed .farm-bar { height:6px; background:var(--border-soft); border-radius:3px; overflow:hidden; min-width:80px; }
+#farm-embed .farm-bar > span { display:block; height:100%; background:var(--accent, #5b8cff); }
+#farm-embed tr.farm-row { cursor:pointer; }
+#farm-embed tr.farm-detail td { background:var(--bg-subtle, rgba(127,127,127,0.06)); }
+#farm-embed .farm-kv { display:grid; grid-template-columns:max-content 1fr; gap:3px 12px; font-size:0.9em; }
+#farm-embed .farm-kv > span:nth-child(odd) { color:var(--text-muted); }
+#farm-embed .farm-st { font-size:0.82em; padding:1px 7px; border-radius:10px; border:1px solid var(--border-soft); white-space:nowrap; }
+#farm-embed .farm-st[data-s="running"], #farm-embed .farm-st[data-s="transfer_in"], #farm-embed .farm-st[data-s="transfer_out"] { border-color:var(--accent, #5b8cff); }
+#farm-embed .farm-st[data-s="done"] { border-color:var(--status-running-fg); }
+#farm-embed .farm-st[data-s="failed"] { border-color:var(--status-stopped-fg); }
+#farm-embed .farm-actions { display:flex; gap:4px; }
+#farm-embed .farm-actions .btn { padding:1px 8px; font-size:0.8em; }
+</style>
+
+<div id="farm-embed">
+  <div class="farm-lead">{{ _('section.farm.lead') }}</div>
+
+  <div class="farm-box">
+    <h2>{{ _('section.farm.members') }}</h2>
+    <div class="farm-lead">{{ _('section.farm.members_hint') }}</div>
+    <table>
+      <thead><tr>
+        <th>{{ _('section.farm.col_member') }}</th><th>{{ _('section.farm.col_transcoder') }}</th>
+        <th>{{ _('section.farm.col_node') }}</th><th>{{ _('section.farm.col_project') }}</th>
+        <th>{{ _('section.farm.col_state') }}</th><th>{{ _('section.farm.col_slots') }}</th>
+        <th>{{ _('section.farm.col_cores') }}</th>
+      </tr></thead>
+      <tbody id="farm-members"><tr><td colspan="7" class="farm-muted">{{ _('section.loading') }}</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="farm-box">
+    <h2>{{ _('section.farm.new_job') }}</h2>
+    <div class="farm-grid">
+      <label>{{ _('section.farm.project') }}<select id="farm-project"></select></label>
+      <label>{{ _('section.farm.source') }}<select id="farm-source"></select></label>
+    </div>
+    <div class="farm-browser" id="farm-browser">
+      <div class="farm-crumbs" id="farm-crumbs"></div>
+      <div id="farm-items"></div>
+    </div>
+    <div class="farm-picked" id="farm-picked"></div>
+    <div class="farm-grid">
+      <label>{{ _('section.farm.operation') }}
+        <select id="farm-op">
+          <option value="video">{{ _('section.farm.op_video') }}</option>
+          <option value="audio">{{ _('section.farm.op_audio') }}</option>
+          <option value="extract">{{ _('section.farm.op_extract') }}</option>
+        </select></label>
+      <label>{{ _('section.farm.preset') }}<select id="farm-preset"></select></label>
+      <label class="farm-video-only">{{ _('section.farm.cadence') }}<select id="farm-cadence"></select></label>
+      <label>{{ _('section.farm.audio') }}<select id="farm-layout"></select></label>
+      <label>{{ _('section.farm.priority') }}<select id="farm-priority"></select></label>
+      <label>{{ _('section.farm.output_dir') }}<input id="farm-outdir" type="text" placeholder="{{ _('section.farm.output_dir_ph') }}"></label>
+      <label class="farm-check"><input id="farm-loudness" type="checkbox"> {{ _('section.farm.loudness') }}</label>
+      <button class="btn btn-blue" type="button" id="farm-submit">{{ _('section.farm.submit') }}</button>
+    </div>
+  </div>
+
+  <div class="farm-box">
+    <h2>{{ _('section.farm.queue') }}</h2>
+    <div class="farm-toolbar">
+      <input id="farm-q" type="search" placeholder="{{ _('section.farm.search') }}">
+      <span id="farm-chips"></span>
+      <span class="farm-spacer"></span>
+      <button class="btn" type="button" id="farm-purge" title="{{ _('section.farm.purge_help') }}">{{ _('section.farm.purge') }}</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>#</th><th>{{ _('section.farm.col_source') }}</th><th>{{ _('section.farm.col_job') }}</th>
+        <th>{{ _('section.farm.priority') }}</th><th>{{ _('section.farm.col_progress') }}</th>
+        <th>{{ _('section.farm.col_status') }}</th><th>{{ _('section.farm.col_where') }}</th><th></th>
+      </tr></thead>
+      <tbody id="farm-jobs"></tbody>
+    </table>
+    <div class="farm-muted" id="farm-empty" hidden>{{ _('section.farm.no_job') }}</div>
+  </div>
+</div>
+<script src="/static/js/transcode_farm.js?v={{ asset_v('js/transcode_farm.js') }}"></script>

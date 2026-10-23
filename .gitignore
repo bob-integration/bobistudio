@@ -27,6 +27,10 @@ node_iso_cache/
 iso_src/
 # ── Arbre netboot Debian extrait (boot réseau PXE / UEFI HTTP Boot) ──
 pxe_root/
+# ── Synthèse vocale installée à la demande (services/tts) : venv + modèle + cache, jamais versionnés ──
+tts_models/
+lv2_plugins/
+tts_upload/
 .netboot.tar.gz.part
 
 # ── Python ───────────────────────────────────────────────
@@ -54,7 +58,15 @@ old/
 interne/
 
 # ── Plans / mémoire / skills Claude Code ─────────────────
-.claude/
+# `.claude/*` et non `.claude/` : avec la seconde forme git n'entre PAS dans le répertoire, et
+# toute négation en dessous est inopérante — on ne pourrait rien y versionner.
+# Ce qu'on versionne : les GARDE-FOUS (ils protègent toute l'équipe et se relisent en revue).
+# Ce qu'on ne versionne pas, et qui reste couvert par `.claude/*` : les AUTORISATIONS
+# (settings.local.json, propre à une machine) et les valeurs de SITE (garde-systeme.conf, qui
+# nomme des adresses réelles — même règle que config_local.py).
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
 .agents/
 
 # ── État runtime (rings d'historique flushés, pas du code) ─
@@ -77,6 +89,7 @@ UPDATE_PENDING
 
 # ── Locks runtime ────────────────────────────────────────
 db_testplan.json.lock
+testplan_images/
 *.db-journal
 *.db-wal
 *.db-shm
@@ -92,3 +105,8 @@ py_spy-*.whl
 # Captures d'écran de travail (site vitrine) : elles portent des IP, des noms de nœuds
 # et le plan multicast — jamais dans un dépôt public.
 _captures/
+web/bobitools/dist-apercu/
+
+# Base des médias : vignettes et planches d'images centrales (données d'exécution, comme db_medias.db)
+media_thumbs/
+media_storyboards/

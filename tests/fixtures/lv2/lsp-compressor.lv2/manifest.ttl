@@ -1,0 +1,9 @@
+# Test fixture: LSP Compressor Mono (lsp-plugins-lv2, Debian), the bundle's manifest cut down to this plugin.
+@prefix lv2:        <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs:       <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix plug:       <http://lsp-plug.in/plugins/lv2/> .
+
+plug:compressor_mono
+	a lv2:Plugin ;
+	lv2:binary <lsp-plugins-lv2.so> ;
+	rdfs:seeAlso <compressor_mono.ttl> .

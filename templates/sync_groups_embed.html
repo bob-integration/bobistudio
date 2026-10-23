@@ -1,0 +1,183 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+{# Lecture synchrone (app/sync_groups.py) : des players ordinaires qui lisent ENSEMBLE, à l'image près.
+   Inclus dans la page Médias (mode « Lecture synchrone »), voisin de « Lecture A/B ». N'auto-charge PAS :
+   l'appelant invoque window.syncplayLoad() ; window.syncplayStop() coupe le rafraîchissement.
+   Tactile d'abord (iPad) : tout se fait par boutons — réordonner = ▲ ▼, viser une cellule = un appui,
+   la barre de temps se touche (un appui = aller à cet instant), jamais un glisser seul. #}
+<style>
+#sp-embed { display:flex; flex-direction:column; gap:12px; margin-top:10px; }
+#sp-embed .sp-lead { color:var(--text-muted); font-size:0.88em; }
+#sp-embed .sp-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+#sp-embed .sp-chip { border:1px solid var(--border-soft); border-radius:16px; padding:6px 14px; background:none; color:inherit; cursor:pointer; min-height:36px; }
+#sp-embed .sp-chip.active { border-color:var(--accent, #5b8cff); background:var(--accent-soft, rgba(80,140,255,0.15)); }
+#sp-embed .sp-spacer { flex:1; }
+#sp-embed .sp-box { border:1px solid var(--border-soft); border-radius:6px; padding:10px 12px; }
+#sp-embed .sp-fail { border:1px solid var(--status-stopped-fg); color:var(--status-stopped-fg); border-radius:6px; padding:8px 12px; }
+#sp-embed .sp-warn { border:1px solid var(--status-warning-fg); border-radius:6px; padding:8px 12px; font-size:0.9em; }
+#sp-embed .sp-transport { display:flex; gap:8px; flex-wrap:wrap; align-items:stretch; }
+#sp-embed .sp-transport .btn { min-height:52px; min-width:64px; font-size:1.05em; font-weight:600; border-radius:8px; }
+#sp-embed .sp-transport .sp-play { min-width:120px; }
+#sp-embed .sp-grp { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+#sp-embed .sp-grp > span { color:var(--text-muted); font-size:0.82em; }
+#sp-embed .sp-grp .sp-chip { min-height:40px; }
+#sp-embed .sp-status { display:flex; gap:16px; flex-wrap:wrap; align-items:baseline; font-size:0.95em; }
+#sp-embed .sp-status b { font-size:1.15em; }
+#sp-embed .sp-skew[data-s="ok"] { color:var(--status-running-fg); }
+#sp-embed .sp-skew[data-s="bad"] { color:var(--status-stopped-fg); font-weight:700; }
+#sp-embed .sp-tl { position:relative; height:28px; background:var(--border-soft); border-radius:6px; cursor:pointer; overflow:hidden; touch-action:manipulation; }
+#sp-embed .sp-tl > span { position:absolute; left:0; top:0; bottom:0; background:var(--accent, #5b8cff); opacity:0.55; }
+#sp-embed .sp-tl > em { position:absolute; right:8px; top:4px; font-style:normal; font-size:0.82em; }
+#sp-embed .sp-seek { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+#sp-embed .sp-seek input { width:9em; min-height:36px; font-variant-numeric:tabular-nums; }
+#sp-embed .sp-chans { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; }
+#sp-embed .sp-ch { border:2px solid var(--border-soft); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:4px; }
+#sp-embed .sp-ch[data-s="ok"] { border-color:var(--status-running-fg); }
+#sp-embed .sp-ch[data-s="late"], #sp-embed .sp-ch[data-s="preparing"], #sp-embed .sp-ch[data-s="fetching"] { border-color:var(--status-warning-fg); }
+#sp-embed .sp-ch[data-s="error"], #sp-embed .sp-ch[data-s="offline"], #sp-embed .sp-ch[data-s="left"], #sp-embed .sp-ch[data-s="clock"], #sp-embed .sp-ch[data-s="missing"], #sp-embed .sp-ch[data-s="no_element"] { border-color:var(--status-stopped-fg); }
+#sp-embed .sp-ch-head { display:flex; align-items:baseline; gap:8px; }
+#sp-embed .sp-ch[data-pair] { border-style:double; border-width:4px; }
+#sp-embed .sp-pairtag { font-size:0.8em; font-weight:600; }
+#sp-embed .sp-ch[data-pairbad="1"] .sp-pairtag { color:var(--status-stopped-fg); }
+#sp-embed .sp-letter { font-size:2em; font-weight:700; line-height:1; }
+#sp-embed .sp-host { color:var(--text-muted); font-size:0.82em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#sp-embed .sp-st { font-size:0.78em; padding:2px 8px; border-radius:10px; border:1px solid var(--border-soft); white-space:nowrap; margin-left:auto; }
+#sp-embed .sp-title { font-weight:600; min-height:1.3em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#sp-embed .sp-sub { color:var(--text-muted); font-size:0.8em; min-height:1.2em; font-variant-numeric:tabular-nums; }
+#sp-embed .sp-sub.bad { color:var(--status-stopped-fg); }
+#sp-embed .sp-tbl { overflow-x:auto; }
+#sp-embed table { width:100%; border-collapse:collapse; font-size:0.9em; }
+#sp-embed th { text-align:left; color:var(--text-muted); font-weight:500; padding:4px 6px; border-bottom:1px solid var(--border-soft); }
+#sp-embed td { padding:4px 6px; border-bottom:1px solid var(--border-soft); vertical-align:middle; }
+#sp-embed tr[data-s="current"] td { background:rgba(220,60,60,0.10); }
+#sp-embed tr[data-s="next"] td.sp-n { color:var(--status-running-fg); font-weight:700; }
+#sp-embed tr[data-s="played"] td { color:var(--text-muted); }
+#sp-embed td.sp-cell { cursor:pointer; min-width:8em; max-width:16em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border-left:1px solid var(--border-soft); }
+#sp-embed td.sp-cell.sel { outline:2px solid var(--accent, #5b8cff); outline-offset:-2px; }
+#sp-embed td.sp-cell.empty { color:var(--text-muted); font-style:italic; }
+#sp-embed td.sp-acts { white-space:nowrap; text-align:right; }
+#sp-embed td.sp-acts .btn { min-width:38px; min-height:34px; padding:2px 8px; }
+#sp-embed td input.sp-dur { width:7em; min-height:30px; }
+#sp-embed .sp-empty { color:var(--text-muted); padding:20px 0; }
+#sp-embed .sp-add { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+#sp-embed .sp-lib { min-height:280px; }
+#sp-dlg { max-width:580px; width:calc(100% - 32px); }
+#sp-dlg h2 { margin-top:0; font-size:1.1em; }
+#sp-dlg label.sp-f { display:flex; flex-direction:column; gap:4px; margin-bottom:10px; font-size:0.9em; }
+#sp-dlg .sp-desc { color:var(--text-muted); font-size:0.85em; margin:2px 0 8px; }
+#sp-dlg .sp-mem { display:flex; align-items:center; gap:6px; padding:4px 0; border-bottom:1px solid var(--border-soft); }
+#sp-dlg .sp-mem .sp-letter { font-size:1.1em; width:1.4em; }
+#sp-dlg .sp-mem .btn { min-width:36px; min-height:32px; }
+#sp-dlg .sp-mem span.sp-host { flex:1; }
+#sp-dlg .sp-opt { display:flex; gap:8px; align-items:flex-start; margin:6px 0; }
+#sp-dlg .sp-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-wrap:wrap; }
+#sp-dlg .sp-actions .sp-del { margin-right:auto; }
+</style>
+
+<div id="sp-embed">
+  <div class="sp-lead">{{ _('section.syncplay.lead') }}</div>
+  <div class="sp-bar">
+    <span id="sp-chips"></span>
+    <span class="sp-spacer"></span>
+    <button class="btn" type="button" id="sp-new">{{ _('section.syncplay.new_group') }}</button>
+    <button class="btn" type="button" id="sp-settings" aria-haspopup="dialog" hidden
+            title="{{ _('section.syncplay.settings') }}" aria-label="{{ _('section.syncplay.settings') }}">⚙︎</button>
+  </div>
+  <div class="sp-empty" id="sp-empty" hidden>{{ _('section.syncplay.empty') }}</div>
+
+  <div id="sp-group" hidden>
+    <div class="sp-fail" id="sp-fail" role="alert" hidden></div>
+    <div class="sp-warn" id="sp-issues" role="status" hidden></div>
+    <div class="sp-box">
+      <div class="sp-status" id="sp-status"></div>
+      <div class="sp-tl" id="sp-tl" role="slider" tabindex="0" aria-label="{{ _('section.syncplay.timeline') }}"><span id="sp-tl-fill"></span><em id="sp-tl-txt"></em></div>
+    </div>
+    <div class="sp-transport" id="sp-transport">
+      <button type="button" class="btn" data-op="prev" title="{{ _('section.syncplay.prev') }}">⏮︎ {{ _('section.syncplay.prev_short') }}</button>
+      <button type="button" class="btn" data-op="cue" title="{{ _('section.syncplay.cue_tip') }}">{{ _('section.syncplay.cue') }}</button>
+      <button type="button" class="btn btn-green sp-play" data-op="play">▶︎ {{ _('section.syncplay.play') }}</button>
+      <button type="button" class="btn" data-op="pause">⏸︎ {{ _('section.syncplay.pause') }}</button>
+      <button type="button" class="btn" data-op="next" title="{{ _('section.syncplay.next') }}">{{ _('section.syncplay.next_short') }} ⏭︎</button>
+      <button type="button" class="btn" data-op="step" data-frames="-1" title="{{ _('section.syncplay.step_back') }}">◀︎ 1</button>
+      <button type="button" class="btn" data-op="step" data-frames="1" title="{{ _('section.syncplay.step_fwd') }}">1 ▶︎</button>
+      <button type="button" class="btn" data-op="stop" title="{{ _('section.syncplay.stop_tip') }}">⏹︎ {{ _('section.syncplay.stop') }}</button>
+    </div>
+    <div class="sp-bar">
+      <div class="sp-grp" id="sp-speeds"><span>{{ _('section.syncplay.speed') }}</span></div>
+      <div class="sp-grp" id="sp-loops"><span>{{ _('section.syncplay.loop') }}</span></div>
+      <div class="sp-seek"><label for="sp-tc">{{ _('section.syncplay.seek') }}</label>
+        <input type="text" id="sp-tc" inputmode="numeric" placeholder="00:00:00:00" autocomplete="off">
+        <button type="button" class="btn" id="sp-seek-go">{{ _('section.syncplay.seek_go') }}</button></div>
+    </div>
+    <div class="sp-chans" id="sp-chans"></div>
+    <div class="sp-box">
+      <div class="sp-lead" id="sp-sel-hint"></div>
+      <div class="sp-tbl"><table>
+        <thead id="sp-lines-head"></thead>
+        <tbody id="sp-lines"></tbody>
+      </table></div>
+      <div class="sp-empty" id="sp-noline" hidden>{{ _('section.syncplay.no_line') }}</div>
+      <div class="sp-add" style="margin-top:8px">
+        <button class="btn" type="button" id="sp-add-empty">{{ _('section.syncplay.add_empty') }}</button>
+        <span class="sp-spacer"></span>
+        <label>{{ _('section.syncplay.saved_list') }} <select id="sp-lists"></select></label>
+        <button class="btn" type="button" id="sp-list-replace">{{ _('section.syncplay.list_replace') }}</button>
+        <button class="btn" type="button" id="sp-list-append">{{ _('section.syncplay.list_append') }}</button>
+        <input type="text" id="sp-list-name" maxlength="80" placeholder="{{ _('section.syncplay.list_name') }}" style="min-height:34px">
+        <button class="btn" type="button" id="sp-list-save">{{ _('section.syncplay.list_save') }}</button>
+      </div>
+    </div>
+    <div class="sp-box">
+      <div class="sp-lead">{{ _('section.syncplay.lib_hint') }}</div>
+      <div class="sp-lib" id="sp-lib"></div>
+    </div>
+  </div>
+</div>
+
+<dialog id="sp-dlg" aria-labelledby="sp-dlg-t">
+  <form method="dialog" id="sp-form">
+    <h2 id="sp-dlg-t"></h2>
+    <label class="sp-f">{{ _('section.syncplay.name') }}<input type="text" id="sp-name" maxlength="80" required></label>
+    <div class="sp-f">
+      <strong>{{ _('section.syncplay.channels') }}</strong>
+      <p class="sp-desc">{{ _('section.syncplay.channels_desc') }}</p>
+      <div id="sp-mems"></div>
+      <label class="sp-f" style="margin-top:8px">{{ _('section.syncplay.add_channel') }}<select id="sp-addmem"></select></label>
+    </div>
+    <fieldset>
+      <legend>{{ _('section.syncplay.end_policy') }}</legend>
+      <p class="sp-desc">{{ _('section.syncplay.end_policy_desc') }}</p>
+      <label class="sp-opt"><input type="radio" name="sp-end" value="longest">
+        <span><b>{{ _('section.syncplay.end_longest') }}</b><br><span class="sp-desc">{{ _('section.syncplay.end_longest_desc') }}</span></span></label>
+      <label class="sp-opt"><input type="radio" name="sp-end" value="shortest">
+        <span><b>{{ _('section.syncplay.end_shortest') }}</b><br><span class="sp-desc">{{ _('section.syncplay.end_shortest_desc') }}</span></span></label>
+      <label class="sp-opt"><input type="radio" name="sp-end" value="duration">
+        <span><b>{{ _('section.syncplay.end_duration') }}</b><br><span class="sp-desc">{{ _('section.syncplay.end_duration_desc') }}</span></span></label>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _('section.syncplay.pairs') }}</legend>
+      <p class="sp-desc">{{ _('section.syncplay.pairs_desc') }}</p>
+      <div id="sp-pairs"></div>
+      <div class="sp-opt"><select id="sp-pair-a"></select><span>+</span><select id="sp-pair-b"></select>
+        <button type="button" class="btn" id="sp-pair-add">{{ _('section.syncplay.pair_add') }}</button></div>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _('section.syncplay.open_fail') }}</legend>
+      <p class="sp-desc">{{ _('section.syncplay.open_fail_desc') }}</p>
+      <label class="sp-opt"><input type="radio" name="sp-of" value="proceed">
+        <span><b>{{ _('section.syncplay.of_proceed') }}</b><br><span class="sp-desc">{{ _('section.syncplay.of_proceed_desc') }}</span></span></label>
+      <label class="sp-opt"><input type="radio" name="sp-of" value="refuse">
+        <span><b>{{ _('section.syncplay.of_refuse') }}</b><br><span class="sp-desc">{{ _('section.syncplay.of_refuse_desc') }}</span></span></label>
+    </fieldset>
+    <fieldset>
+      <legend>{{ _('section.syncplay.lead_ms') }}</legend>
+      <p class="sp-desc">{{ _('section.syncplay.lead_desc') }}</p>
+      <label class="sp-f"><span>{{ _('section.syncplay.lead_lbl') }}</span><input type="number" id="sp-lead" min="150" max="5000" step="10"></label>
+    </fieldset>
+    <div class="sp-actions">
+      <button type="button" class="btn sp-del" id="sp-del" hidden>{{ _('section.syncplay.delete') }}</button>
+      <button type="button" class="btn" id="sp-cancel">{{ _('section.syncplay.cancel') }}</button>
+      <button type="submit" class="btn btn-green" id="sp-save">{{ _('section.syncplay.save') }}</button>
+    </div>
+  </form>
+</dialog>
+<script src="/static/js/sync_groups.js?v={{ asset_v('js/sync_groups.js') }}"></script>

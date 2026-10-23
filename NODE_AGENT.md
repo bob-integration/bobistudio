@@ -38,7 +38,9 @@ ré-éditables en relançant l'installeur). L'agent ne provisionne et n'expose q
 | `compute` | réseau **macvlan** | `bobi-compute` | macvlan | plugins numpy (color_corrector, mixer, multiview, udc, avsync, delay, split, pyramide…) |
 | `media`   | macvlan + dossier média (`/mnt/media`) | `bobi-media` | macvlan | player/recorder/transcoder/stills (GStreamer+ffmpeg) |
 | `webrtc`  | macvlan | `bobi-webrtc` | macvlan | passerelle MediaMTX (binaire pré-baké) |
-| `gpu`     | pilote NVIDIA Debian (DKMS) + `nvidia-smi` + `libcuda1` + `nvidia-container-toolkit` + runtime docker `nvidia` | `bobi-compute-gpu` (buildée SUR le nœud) | macvlan | **REBOOT requis** (chargement du module). Rattrapable après coup, cf. ci-dessous. |
+| `gpu`     | pilote NVIDIA **choisi selon la génération du GPU** (§4.6 : dépôt NVIDIA + modules ouverts pour Turing et plus récent, installeur `.run` 580 pour Maxwell/Pascal/Volta) + `libcuda` + `nvidia-container-toolkit` + runtime docker `nvidia` | `bobi-compute-gpu` (buildée SUR le nœud) | macvlan | **REBOOT requis** (chargement du module). Rattrapable après coup, cf. ci-dessous. Le pilote Debian 13 (550) n'est **plus** posé : trop vieux pour le runtime CUDA 12.8 de l'image (>= 570). |
+
+| `gui`     | **rien** (déclaration seule) — exige `compute` | `bobi-gui` (couche fine FROM `bobi-compute`, buildée SUR le nœud : Réglages → Images) | macvlan | interfaces natives des plugins LV2 des consoles (plugin `plugin_gui`). Sans elle, la création d'un `plugin_gui` sur le nœud est refusée. |
 
 - **PTP** est rattaché à `io2110` (le nœud qui fait du 2110 doit être PTP-locké). Un futur drapeau
   pourra distinguer « source PTP » vs « esclave ».
@@ -68,9 +70,11 @@ l'agent**, ce qui fait perdre le nœud au contrôleur.
   redémarrage quand la capacité l'impose). `POST/GET /api/nodes/<id>/capabilities` — le contrôleur pipe le script
   sur `stdin` de `/v1/host/exec` (aucune dépendance à un payload présent sur le nœud), puis rappelle
   `node_driver.register` pour resynchroniser la base depuis `/v1/capabilities`.
-- **Les cinq capacités sont rattrapables.** Chacune est une fonction `provision_<cap>()` du script,
-  appelée aussi bien par l'install complète que par `--add-caps` — un seul chemin de code.
-  Un nom hors des cinq **refuse net**.
+- **Les six capacités sont rattrapables.** Chacune est une fonction `provision_<cap>()` du script,
+  appelée aussi bien par l'install complète que par `--add-caps` — un seul chemin de code. `gui`
+  (2026-10-18) n'a rien à provisionner : elle est seulement fusionnée dans `config.json`, refusée si
+  `compute` manque (script et contrôleur), et l'image `bobi-gui` se construit ensuite sur le nœud.
+  Un nom hors des six **refuse net**.
 - **Les réglages amenés par la capacité voyagent avec elle** : `_add_cap_args()` reconstruit
   `--mtl-iface`/`--lcores`/`--hugepages`/`--ptp-domain`/`--kernel-pkg` (io2110, depuis `nodes` +
   `enroll_profile` + réglages cluster) et `--media-mount` (media). Ce qui n'est pas en base est
@@ -125,7 +129,7 @@ Ajouts (migrations idempotentes dans `init_db`, motif existant) :
 - **Auth** : en-tête `X-MXL-Node-Token: <token>` sur **toutes** les routes (sauf `/v1/ping`).
   Comparaison à temps constant (`hmac.compare_digest`), cf. modèle `_update_token_ok`.
 - **Erreurs** : JSON `{ "ok": false, "error": "<msg>" }` + code HTTP (400 requête, 401 token,
-  404 introuvable, 409 conflit, 500 hôte/docker, 503 capacité non provisionnée).
+  403 certificat client qui n'est pas celui d'un contrôleur (§8), 404 introuvable, 409 conflit, 500 hôte/docker, 503 capacité non provisionnée).
 - **Idempotence** : `POST /containers` avec un `name` existant **réconcilie** (recrée si la spec
   diffère, no-op sinon) — pas d'erreur 409 par défaut.
 
@@ -256,6 +260,138 @@ POST /v1/host/exec                  { cmd, input?, timeout? } → { rc, stdout, 
   structurés (containers/images/networks/ptp/xdp) restent préférés ; `exec` couvre le reste
   des host-ops (MTL/VF/binds) sans énumérer chaque commande.
 
+### 4.3 quater Fichiers du volume média (agent ≥ 0.24.0 / 0.25.0 / 0.26.0 / 0.27.0)
+Tous les chemins `dest` sont RELATIFS au volume média (`media_mount`, défaut `/srv/mxl-media`) ;
+un chemin qui en sort (`..`, lien symbolique) est refusé (`400`). Aucune route n'écrit jamais
+par-dessus un fichier existant (`409`, `exists: true`). Écriture en priorité disque « idle ».
+```
+POST /v1/host/transfer/fetch     { id, url, dest, size?, mtime?, rate? }   (0.24.0) copie nœud → nœud
+GET  /v1/host/transfer/status?id=  /  POST /v1/host/transfer/cancel { id }
+POST /v1/host/transfer/upload?dest=&mtime=                    (0.25.0) corps entier → `.partial` → renommé
+POST /v1/host/transfer/upload?dest=&offset=&total=            (0.26.0) un MORCEAU d'un envoi reprenable
+GET  /v1/host/transfer/upload/state?dest=                     (0.26.0) → { partial_size, exists, free }
+POST /v1/host/transfer/upload/finish  { dest, size, mtime? }  (0.26.0) → { ok, size }
+POST /v1/host/transfer/upload/abort   { dest }                (0.26.0) → { ok, removed }
+```
+- **Envoi reprenable** (fichier du poste d'un utilisateur relayé par le contrôleur, cf.
+  `app/media_upload.py`) : chaque morceau est AJOUTÉ à `<dest>.partial` seulement si
+  `offset` = taille actuelle du `.partial` ; sinon `409` avec `partial_size` = la taille RÉELLE
+  — c'est d'elle que repart toute reprise, jamais du compte de l'appelant. Un morceau coupé en
+  route laisse ce qui est arrivé (préfixe exact, `400` + `partial_size`). Un seul morceau à la
+  fois par destination (`409 busy`). Corps d'un refus vidé avant la réponse.
+- **Espace libre** : avec `total`, refus `507` (`no_space`, `free`, `needed`) si le volume n'a pas
+  `total − offset + 1 Gio`.
+- **Finalisation** : taille du `.partial` = `size` exigée (`409` + `partial_size` sinon), puis
+  lien dur vers `dest` (atomique, échoue si la cible existe), `.partial` retiré, date reposée.
+- **Abandon** : supprime le `.partial` ; le fichier final n'est jamais touché.
+- Contrôleur : `node_driver.upload_capable` (0.25.0, corps entier) / `upload_resumable`
+  (`RESUMABLE_UPLOAD_MIN_AGENT` = 0.26.0, morceaux). Le `.partial` n'a pas d'extension média :
+  le relevé du volume l'ignore.
+
+**Port de transfert** (`transfer_port`, défaut `9101`, ouvert seulement avec le TLS) — LECTURE
+seule d'un fichier du volume, en mTLS : certificat de NŒUD ou de contrôleur, jamais de conteneur.
+```
+GET /v1/transfer/read?g=<autorisation>      Range: bytes=a-b | bytes=a- | bytes=-n
+```
+- `g` = `<b64url(json {p, sz, exp})>.<hex HMAC-SHA256(jeton du nœud)>` (`node_driver.transfer_grant`) :
+  UN fichier, sa taille (`409` si elle a changé), une échéance (`403` au-delà).
+- Sans `Range` : `200`, fichier entier. `bytes=a-` (0.24.0) : `206` à partir de `a` ; `a` égal à la
+  taille rend `206` vide (reprise d'un `.partial` déjà complet par `curl -C -`), au-delà `416`.
+- **0.27.0** : `bytes=a-b` (fin INCLUSE, bornée à la taille) → `206` + `Content-Range: bytes a-b/T`
+  + `Content-Length` exact ; `bytes=-n` = les n derniers octets ; début ≥ taille → `416` +
+  `Content-Range: bytes */T`. La connexion est **gardée ouverte** (HTTP/1.1, chaque réponse a sa
+  longueur) : le contrôleur enchaîne les plages d'un proxy sur la même connexion mTLS. Inactivité
+  bornée à 120 s côté agent ; le contrôleur ferme les siennes plus tôt (30 s).
+- Contrôleur : `transfer_capable` (0.24.0, lecture en flux, export / copies) ;
+  `transfer_range_capable` (`TRANSFER_RANGE_MIN_AGENT` = 0.27.0) → plages exactes sur un pool
+  de connexions par nœud (`media_registry.read_node_range`) ; agent plus ancien : `bytes=a-` coupé
+  par le contrôleur (connexion perdue à chaque lecture).
+
+### 4.6 Pilotes hôte (agent ≥ 0.28.0) — job long, journal, action en attente
+
+Mécanisme **générique** : l'agent ne connaît aucun pilote. Un « *kind* » est un script
+`/opt/bobi-node-agent/host_drivers/<kind>.py` (source : `node_agent/host_drivers/`, posé par
+`install-node.sh`, poussé avec l'agent par « Mettre à jour l'agent », et redéposé par le contrôleur
+quand son empreinte diffère). Aujourd'hui un seul kind : **`nvidia`**.
+
+**Contrat d'un kind** (stdlib seule, exécuté en root par l'agent) :
+
+| Appel | Attendu |
+|---|---|
+| `<kind>.py state` | UN document JSON sur stdout : `kind`, `version`, `status`, `plan:{status,code,params,steps[]}`, `rows:[{key,value}]`, `can_run`, `upload_dir?`. `status`/`code`/`key`/ids d'étape sont des **CODES** que l'interface traduit (`settings.hostdrv.<kind>.*`) — jamais une phrase. |
+| `<kind>.py run` | Fait le travail. Journal **lisible, en anglais**, sur stdout/stderr (l'agent le capture). Code de sortie : `0` fini · `10` **redémarrage** requis · `11` **arrêt complet** (hors tension) requis · autre = échec. |
+
+```
+GET  /v1/host/drivers                          → { kinds:[{kind, script_sha256}] }
+GET  /v1/host/drivers/<kind>/state             → document du script + { ok, script_sha256, job }
+POST /v1/host/drivers/<kind>/run               → 200 { job } · 409 job_running · 404 host_driver_missing
+GET  /v1/host/drivers/<kind>/job?offset=N      → { job, log, next_offset }   (journal par morceaux de 64 Ko)
+POST /v1/host/drivers/<kind>/upload?name=F     corps BINAIRE (Content-Length) → { ok, name, size, sha256 }
+POST /v1/host/poweroff                         { confirm:true } → arrêt complet différé de 3 s
+```
+
+- `job` = `{status: none|running|done|error, started, ended, elapsed, rc, pending}`. `pending` =
+  `""` · `"reboot"` · `"shutdown"` : l'**action en attente**, calculée à chaque lecture.
+  **`reboot`** est levée dès que le `boot_id` du noyau change. **`shutdown` ne l'est PAS par un
+  simple redémarrage** (le micrologiciel d'une carte ne se recharge qu'à la remise sous tension) :
+  seulement si `/v1/host/poweroff` a lui-même été demandé pendant ce boot (marqueur
+  `poweroff_from_boot`) **et** que le `boot_id` a changé depuis.
+- Le job est lancé détaché (`start_new_session`) derrière un shell qui écrit le code retour dans
+  `<state>/<kind>.rc` : **l'état survit à un redémarrage de l'agent** (finalisation paresseuse à la
+  lecture ; un job disparu sans code retour est un **échec**, jamais un succès supposé). Un seul
+  job à la fois par kind. Fichiers : `/var/lib/bobi-node-agent/host-drivers/<kind>.{json,log,rc}`.
+- `upload` : nom `[A-Za-z0-9._+-]` avec extension `.run/.deb/.tar/.gz/.tgz/.zip/.bin/.rpm`, ≤ 2 Go,
+  place disque vérifiée **avant** d'écrire, écriture `.part` puis renommage ; dépose dans
+  `/var/lib/bobi-node-agent/drivers/<kind>/`. C'est là que les scripts cherchent leurs installeurs
+  (téléversement depuis l'interface, ou `vendor/<kind>/` du bundle hors-ligne copié par l'installeur).
+- Contrôleur : `app/routes/host_drivers.py` (relais générique, permission `settings.edit`) —
+  `/api/nodes/<id>/host-drivers/<kind>/{state,run,job,upload}`, `/api/nodes/<id>/host-poweroff`. Le
+  **redémarrage** réutilise la route existante de la préparation MTL (`/api/mtl/reboot?node_id=`,
+  `confirm:true`) : jamais automatique. Un agent antérieur à 0.28.0 répond 404 → code `agent_too_old`.
+- UI : panneau générique de la page Réglages → nœud (`hostDrv*` dans `templates/settings.html`),
+  libellés `settings.hostdrv.*` (commun) et `settings.hostdrv.<kind>.*` (propre au kind).
+
+**Brancher un second kind** (p.ex. *Blackmagic Desktop Video* + firmware DeckLink, qui exige un arrêt
+COMPLET) : (1) écrire `node_agent/host_drivers/<kind>.py` selon le contrat ci-dessus et sortir en
+`11` quand une remise sous tension est nécessaire ; (2) ajouter les libellés
+`settings.hostdrv.<kind>.{title,run,open,license,upload_hint,row.*,status.*,plan.*,step.*}` dans
+`i18n/{fr,en}.json` ; (3) ajouter un bouton `hostDrvToggle(id,'<kind>')` et son conteneur
+`hostdrv_<kind>_<id>` à la carte du nœud. Rien à changer dans l'agent, le relais contrôleur ni le
+panneau. Un test du type `tests/verif_nvidia_driver.py` (décision pure, sondes rejouées) est attendu.
+
+#### Kind `nvidia` (`node_agent/host_drivers/nvidia.py`)
+
+Même script pour `install-node.sh` (`provision_gpu` → `nvidia.py run`) et pour le bouton
+« Installer / mettre à jour le pilote » : les deux chemins ne peuvent pas diverger.
+
+| Génération du GPU (détectée **sans pilote** : sysfs + `lspci -nn` → nom de puce ; `compute_cap` de `nvidia-smi` si dispo ; plage d'ID PCI en dernier recours) | Méthode | Paquet / branche |
+|---|---|---|
+| Turing et plus récent (cc ≥ 7.5 : T4, Quadro RTX 4000, Ampère, Ada, Hopper, Blackwell) | dépôt apt NVIDIA (Debian), **modules noyau OUVERTS**, mises à jour par apt | `nvidia-open` (+ `libcuda1`), branche ≥ 590 du dépôt |
+| Maxwell, Pascal, Volta | installeur `.run` NVIDIA, `--dkms --kernel-module-type=proprietary` | branche **580** (`580.105.08`), la dernière qui les gère |
+| Turing+ sans accès au dépôt NVIDIA (hors-ligne) | le même `.run`, modules ouverts (`--kernel-module-type=open`) | `580.105.08` |
+| Kepler et plus ancien, génération inconnue | **refus** (aucune modification) | — |
+| Plusieurs GPU | la génération la plus ancienne décide | — |
+
+Décision (`decide(facts)`, pure, rejouée par les tests sur des sondes réelles) : `no_gpu` ·
+`ok` (**rien n'est touché**, quelle que soit l'origine du pilote : paquets Debian, dépôt NVIDIA ou
+`.run` — dell-1, Quadro P5000 en 580.105.08, est `ok`) · `pending_reboot` (installé, pas chargé) ·
+`toolkit_only` (pilote conforme, toolkit/runtime manquant : seulement cela, sans redémarrage) ·
+`install` / `upgrade` · `refused` (Kepler, GPU inconnu, **Secure Boot activé** — le module DKMS ne
+serait pas signé —, pas d'apt, pas de source hors-ligne).
+**Minimum** : `MIN_DRIVER_MAJOR = 570` (UNE constante, liée au pin `cupy-cuda12x==13.4.1` = CUDA 12.8 de
+`plugins/_compute_gpu_runtime/Dockerfile`). Plafond des anciennes générations : une branche ≥ 590 ne
+sait plus piloter Maxwell/Pascal/Volta → retour à la 580.
+Étapes (rapportées une à une dans le journal) : composants apt `contrib`/`non-free`/`non-free-firmware`
+(lignes actives seulement : la ligne `#deb cdrom:…` commentée ne compte pas) → index apt →
+prérequis (`dkms`, `build-essential`, `curl`, `gnupg`, en-têtes du noyau EN COURS, existence testée par
+`apt-cache show` + `grep "^Package: <nom>$"`) → purge propre de l'ancien pilote (jamais le container
+toolkit) → blacklist nouveau → dépôt/installeur → vérification du module construit
+(`modinfo nvidia`) → toolkit + `nvidia-ctk runtime configure` (rechargement de dockerd, pas de
+redémarrage : il interromprait les conteneurs) → `update-initramfs`. Sortie `10` : redémarrage requis ;
+ensuite « Détecter GPU » valide (CUDA userspace compris).
+Hors-ligne : `vendor/nvidia/NVIDIA-Linux-x86_64-*.run` (bundle `tools/build_dist.py --nvidia-driver`)
+ou téléversement depuis l'interface. Licence : cf. INSTALL.md §8.3.
+
 ### 4.4 Spécification de conteneur (corps de `POST /v1/containers`)
 Doit exprimer **fidèlement** les deux `docker run` actuels :
 ```json
@@ -269,7 +405,8 @@ Doit exprimer **fidèlement** les deux `docker run` actuels :
   "mounts": [
     { "host": "/dev/shm", "container": "/dev/shm" },
     { "host": "/dev/hugepages", "container": "/dev/hugepages" },   // io2110
-    { "host": "/srv/mxl-media/<proj>", "container": "/mnt/media" } // media
+    { "host": "/srv/mxl-media/<proj>", "container": "/mnt/media" }, // media
+    { "host": "/srv/bobi-ext/views/p12", "container": "/mnt/ext", "options": "ro,rslave" } // partages réseau
   ],
   "env": { "...": "..." },        // MTL e_args
   "resources": { "cpus": 4, "memory_mb": 1024, "cpuset": "2,3", "cpu_shares": 128 },
@@ -288,6 +425,12 @@ Doit exprimer **fidèlement** les deux `docker run` actuels :
   le device verbs, pas le macvlan), `devices:["/dev/infiniband"]`, `cap_add:["IPC_LOCK"]` et
   `ulimits:{memlock:-1}` (enregistrement mémoire RDMA épinglée). Un agent qui ignore ces champs ne
   pourra pas établir de lien RDMA (le conteneur n'aura pas accès au device verbs).
+- **Options de bind (`mounts[].options`, agent ≥ 0.22.0)** : liste blanche `ro`, `rw`, `rslave`,
+  `slave`, `rshared`, `shared`, `rprivate`, `private` → `-v hôte:conteneur:<options>`. Une option
+  hors liste fait REFUSER la spec AVANT le `docker rm` (le conteneur en place n'est pas perdu).
+  Sert aux partages réseau du service `storage` : `ro,rslave` fait apparaître dans un conteneur
+  déjà démarré un dossier accordé après lui. Un agent antérieur ignore le champ → bind rw sans
+  propagation : le conteneur ne voit que ce qui était monté à son démarrage (une alerte le dit).
 - **GPU** : si `gpus` (string non vide) est fourni → `--gpus "<valeur>"`. Absent → inchangé. Nécessite
   `nvidia-container-toolkit` + runtime nvidia sur l'hôte (n'émettre que pour un nœud GPU, ex. dl360-2).
   **Implémenté côté agent en 0.9.0.** Un agent plus ancien qui IGNORE ce champ ne casse rien : le
@@ -316,6 +459,62 @@ Doit exprimer **fidèlement** les deux `docker run` actuels :
 - **Mapping io2110** : `--rm --network host --privileged -v shm:/dev/shm -v /dev/hugepages:/dev/hugepages <env> <image>`.
 - L'agent lit l'**IP macvlan attribuée** (IPAM Docker) et la renvoie dans `status` (remplace
   `docker_compute._read_container_ip`).
+
+### 4.7 Disques locaux (`/v1/host/disks`, agent ≥ 0.29.0)
+
+Gestion des disques du nœud depuis l'interface (Réglages → Médias → Stockage), sans ligne de commande.
+Non gaté par capacité. **L'agent est la seule autorité** : le contrôleur relaie, et tout est
+re-vérifié ICI à l'exécution depuis un `lsblk` frais. Un plan est un aperçu, jamais un jeton :
+`execute` le recalcule. Aucune commande ne passe par un shell ; `device` doit être un disque entier
+de l'inventaire (toute autre chaîne → `disk_not_found`). Code : section `_dsk_*` de `agent.py`.
+
+| Route | Rôle |
+|---|---|
+| `GET /v1/host/disks` | Inventaire : `{ok, disks[], media_mount, archive_mount, tools{}}`. Par disque : `path`, `by_id`, `size`, `model`, `serial`, `transport`, `rotational`, `removable`, `read_only`, `partitions[]` (`path`, `size`, `fstype`, `uuid`, `label`, `mountpoints`, `role`, `fstab_target`, `usage`), `mountpoints`, `system`, `in_use`, `held`, et pour un rotatif `power_state` (`hdparm -C`, ne réveille pas) + `spindown_value` (valeur `-S` persistée). |
+| `POST /v1/host/disks/plan` | Ce qui se passerait : `{ok, action, refusals[], warnings[], steps[], disk, requires_confirmation, target, label, destroys[]…}`. N'exécute rien. |
+| `POST /v1/host/disks/execute` | Exécute. Même corps que `plan` + `confirm_serial` (série SAISIE par l'opérateur) et `confirm_size` (octets). Réponse : `{ok, steps_done[], changed, reboot_required, warnings[], restart_containers[]}` ; refus : `{ok:false, error:"refused", refusals[]}` ; échec : `{ok:false, error:<code>, detail}`. |
+
+Corps : `action` (`format` · `mount` · `unmount` · `spindown`), `device` (`/dev/sdb`), `partition`
+(mount/unmount, requis si plusieurs systèmes de fichiers), `role` (`media` · `archive` · `data`),
+`mountpoint` (`archive`/`data` ; sous `/srv`, `/mnt`, `/media`, `/data`), `label` (≤ 16, `[A-Za-z0-9_-]`),
+`minutes` (spindown), `allow_non_empty`, `ack_media_containers`, et la confirmation (cf. plus bas).
+
+**Gardes (toutes rejouées à l'exécution)** — codes de refus, jamais des phrases :
+`system_disk` (le disque porte `/`, `/boot`, `/boot/efi`, `/usr`, `/var`, `/etc` ou un swap ACTIF,
+y compris sous LVM/md/crypt : on parcourt tous les descendants) ; `in_use` (une partition montée) ;
+`held` (membre LVM/RAID/LUKS/ZFS : pas de formatage d'un clic) ; `serial_missing` (format) ; `serial_mismatch` ;
+`size_mismatch` ; `confirm_required` ; `read_only` ; `bad_mountpoint` ; `mount_busy` (cible déjà tenue par un autre volume,
+ou volume déjà monté ailleurs : jamais de remplacement discret) ; `target_not_empty` (le montage
+masquerait le contenu : accord explicite requis) ; `fstab_conflict` (ligne de l'exploitant déjà sur la
+cible) ; `media_containers_running` (cf. ci-dessous) ; `not_rotational`, `bad_minutes`, `tool_missing`,
+`nothing_to_do`. **Confirmation** : `format` exige `confirm_serial` (série SAISIE, comparaison exacte) + `confirm_size` ;
+`mount` et `unmount` exigent `confirm: true` (booléen strict, sans série) ; `spindown` rien (réversible).
+Le plan l'annonce dans `confirmation` (`serial` · `confirm` · `null`).
+
+**Formatage** : `sfdisk` (GPT, une partition alignée 1 MiB) → `mkfs.ext4 -F -m 0 -L <label>` → ligne
+fstab → montage. **Montage persistant** : `/etc/fstab` par UUID, options
+`defaults,nofail,noatime,x-systemd.device-timeout=10s 0 2` (un disque absent ne bloque jamais le boot),
+précédée d'un commentaire `# bobi-storage role=<rôle>` qui marque NOS lignes (seules celles-là sont
+retirées ou remplacées). Écriture atomique, sauvegarde `/etc/fstab.bobi-bak`, `mkdir` de la cible,
+`mount <cible>` puis vérification par `findmnt`. Idempotent : rejouer ne change pas le fichier.
+Le démontage retire la ligne ; si `umount` échoue (occupé), la ligne est conservée.
+⚠ Pas de `systemctl daemon-reload` (il révoque le GPU des conteneurs en cours).
+
+**Rôles** : `media` → toujours `media_mount` de la config de l'agent (défaut `/srv/mxl-media`) ;
+`archive` → `/srv/archive` ou le chemin choisi. **Conteneurs média** : un bind-mount garde l'ancien
+dossier. Si des conteneurs en cours montent le volume média, le plan l'annonce
+(`media_containers`) et l'exécution est REFUSÉE tant que `ack_media_containers` n'est pas posé ; la
+réponse rend `restart_containers[]` (à recréer pour voir le nouveau volume).
+
+**Mise en veille (disques rotatifs)** : `hdparm -S <valeur>` appliqué tout de suite, persisté dans
+`/etc/hdparm.conf` par chemin `by-id` (bloc `# bobi-storage begin/end`). `minutes` : 0 (jamais) ;
+1–20 (×5 s ⇒ `-S` = minutes×12) ; au-delà, multiples de 30 jusqu'à 330 (`-S` = 240 + minutes/30).
+
+**Redémarrage** : jamais automatique. Si le noyau ne relit pas la table de partitions
+(`reboot_required: true`, erreur `partition_not_visible`), le contrôleur affiche « redémarrage
+nécessaire » et l'opérateur le déclenche par un bouton explicite.
+
+Test : `tests/verif_disques_noeud.py` (faux système, aucun effet de bord).
 
 ## 5. Charge utile `/v1/capabilities` (→ table `nodes`)
 ```json
@@ -433,6 +632,17 @@ Les deux sont accessibles sans ligne de commande : menu de l'installeur → **D�
   D de l'audit fiabilité).
 - L'agent tourne en **root** sur le nœud (docker, hugepages, xdp, ptp) ; surface réduite à l'API.
 - TLS optionnel (réseau interne) ; recommandé si le nœud n'est pas sur un segment de confiance.
+- **Identité du client mTLS sur `:9100` (agent ≥ 0.23.0)** : la même CA signe contrôleurs, nœuds
+  et conteneurs ; la chaîne seule laissait donc un conteneur compromis — code de plugin tiers, clé
+  posée dans le conteneur — passer la poignée de main de TOUS les agents-nœuds, avec le seul jeton
+  par-nœud pour l'arrêter. L'agent vérifie désormais le **rôle** : URI SAN `bobi://controller/…`
+  acceptée ; URI `bobi://node/` ou `bobi://container/` refusée en **403**, quel que soit le CN ;
+  `CN=bobi-controller` sans aucune URI `bobi://` acceptée comme contrôleur d'avant le marqueur
+  (transition — le contrôleur pose son marqueur à son démarrage). Ce repli est sûr parce que le
+  contrôleur **refuse de signer un CSR demandant `CN=bobi-controller`** (`app/ca.py:sign_csr`) : un
+  nœud ne peut plus l'obtenir, ce qui protège aussi le contrôle par CN de `:8081` ci-dessous.
+  `/v1/ping` reste ouvert. Échappatoire : `"verify_controller_identity": false` dans
+  `config.json` (chaîne seule, comportement historique).
 - **Identité du client mTLS sur `:8081` (agent par-conteneur)** : les certs de conteneur sont émis
   avec EKU `serverAuth` **+ `clientAuth`** (`app/ca.py`) — vérifier seulement « signé par la CA »
   laisserait la clé privée d'UN conteneur piloter TOUS les agents de la flotte. `script_templates/

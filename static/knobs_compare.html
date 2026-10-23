@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rotatifs — choix du tracé</title>
+<link rel="stylesheet" href="/static/css/base.css">
+<link rel="stylesheet" id="theme-link" href="">
+<link rel="stylesheet" href="/static/css/controls.css">
+<style>
+    body { padding: 20px 24px 60px; background: var(--bg); color: var(--text); font-family: var(--font-base); }
+    h1 { font-size: 1.35em; font-weight: 600; margin: 0 0 4px; }
+    p.sub { margin: 0 0 16px; color: var(--text-muted); max-width: 70rem; line-height: 1.5; }
+    .bar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+    .bar select { font: inherit; color: var(--text); background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-small); padding: 4px 8px; }
+    .wrap { overflow-x: auto; }
+    table { border-collapse: separate; border-spacing: 0; background: var(--bg-elev); border: 1px solid var(--border-soft); border-radius: var(--radius); }
+    th, td { padding: 14px 18px; border-bottom: 1px solid var(--border-soft); text-align: center; vertical-align: middle; }
+    tr:last-child td { border-bottom: 0; }
+    thead th { vertical-align: bottom; }
+    th.col { font-size: 0.8em; font-weight: 600; color: var(--text-strong); white-space: nowrap; }
+    th.col small { display: block; font-weight: 400; color: var(--text-muted); margin-top: 3px; }
+    th.col code { font-size: 0.9em; color: var(--text-muted); font-weight: 400; }
+    th.row { text-align: left; font-size: 0.8em; font-weight: 600; color: var(--text-strong); white-space: nowrap; }
+    th.row small { display: block; font-weight: 400; color: var(--text-muted); margin-top: 3px; }
+    #log { margin-top: 16px; font-family: var(--font-mono); font-size: 0.8em; height: 7rem; overflow: auto; background: var(--bg-input); border: 1px solid var(--border-soft); border-radius: var(--radius-small); padding: 8px; white-space: pre; max-width: 70rem; }
+    .notes { margin-top: 18px; max-width: 70rem; color: var(--text-muted); font-size: 0.9em; line-height: 1.55; }
+    .notes b { color: var(--text-strong); font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>Rotatifs — choix du tracé</h1>
+<p class="sub">Un seul rotatif dans le produit (catalogue : <code>controls.css</code> + moteur <code>bobi-controls.js</code>). Les six tracés ont exactement le même comportement, seul le dessin change. Glisser (vertical ou horizontal), molette, clavier ; Maj = réglage fin ; ↺ ou Entrée = défaut ; cran magnétique au défaut. Sur les lignes « on/off », un clic sans bouger bascule le poussoir (Espace au clavier).</p>
+
+<div class="bar">
+    <label>Thème <select id="theme"><option value="">default</option><option value="light">light</option><option value="studio">studio</option></select></label>
+    <label><input type="checkbox" id="dense"> Mode dense (<code>.ctl-dense</code>, 26 px)</label>
+</div>
+
+<div class="wrap"><table id="t"><thead><tr id="head"><th></th></tr></thead><tbody id="body"></tbody></table></div>
+<div id="log"></div>
+
+<div class="notes">
+    <p><b>Règle de parc actuelle</b> (décision du 2026-07-26, section Rotatif de <code>controls.css</code>) : tous les rotatifs du produit sont en <b>arc</b>. Les autres tracés sont au catalogue mais n'en sortent que sur décision explicite.</p>
+    <p><b>La dernière colonne</b> est un rotatif <b>déclaré en HTML</b>, comme le font les plugins (scope, 2110_io…), animé par <code>MXLControls.attachKnobGestures</code> : même moteur, contrat historique (<code>ctl-knob-input</code>, <code>_ctlPose</code>, <code>data-val</code>).</p>
+</div>
+
+<script src="/static/js/bobi-controls.js"></script>
+<script src="/static/js/controls.js"></script>
+<script>
+(function () {
+    'use strict';
+    var BC = window.BobiControls, MX = window.MXLControls;
+    var logEl = document.getElementById('log'), n = 0;
+    function log(who, ev, v) {
+        logEl.textContent += new Date().toTimeString().slice(0, 8) + '  ' + who + '  ' + ev + '  ' + (v === -Infinity ? '-inf' : v) + '\n';
+        if (++n > 200) { logEl.textContent = logEl.textContent.split('\n').slice(-120).join('\n'); n = 120; }
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+    var ROWS = [
+        { label: 'Gain', sub: '−20 … +20 dB, défaut 0', o: { min: -20, max: 20, step: 0.5, default: 0, value: 6, unit: 'dB' } },
+        { label: 'HPF', sub: '20 Hz … 20 kHz, échelle log, défaut 80, on/off', o: { scale: 'log', min: 20, max: 20000, default: 80, value: 120, unit: 'Hz', push: { value: true } } },
+        { label: 'Départ aux', sub: '−∞ … +10 dB, loi dB, défaut 0, on/off', o: { scale: 'db', min: -Infinity, max: 10, step: 0.5, default: 0, value: -6, unit: 'dB', push: { value: false } } },
+    ];
+    var DRAWS = [
+        ['arc', 'arc gradué (règle de parc)'], ['needle', 'aiguille'], ['collar', 'collier de segments'],
+        ['thick', 'arc épais'], ['gate', 'arc + témoin central'], ['index', 'arc fin + index'],
+    ];
+    var head = document.getElementById('head');
+    DRAWS.forEach(function (d) {
+        var th = document.createElement('th'); th.className = 'col';
+        th.innerHTML = d[0] + '<small>' + d[1] + '</small><code>ctl-knob--' + d[0] + '</code>';
+        head.appendChild(th);
+    });
+    var thd = document.createElement('th'); thd.className = 'col';
+    thd.innerHTML = 'index déclaré<small>HTML de plugin + attachKnobGestures</small><code>data-*</code>';
+    head.appendChild(thd);
+
+    var body = document.getElementById('body'), later = [];
+    ROWS.forEach(function (r) {
+        var tr = document.createElement('tr');
+        var th = document.createElement('th'); th.className = 'row';
+        th.innerHTML = r.label + '<small>' + r.sub + '</small>';
+        tr.appendChild(th);
+        DRAWS.forEach(function (d) {
+            var td = document.createElement('td'), host = document.createElement('span');
+            td.appendChild(host); tr.appendChild(td);
+            later.push(function () {
+                var c = BC.create('knob', host, Object.assign({ label: r.label, draw: d[0] }, r.o));
+                ['input', 'change', 'push'].forEach(function (ev) { c.on(ev, function (v) { log(d[0] + ' / ' + r.label, ev, v); }); });
+            });
+        });
+        // Colonne déclarative : le balisage qu'écrit un plugin (cf. scope, hello_world).
+        var td = document.createElement('td'), o = r.o;
+        var attrs = 'data-min="' + (isFinite(o.min) ? o.min : -60) + '" data-max="' + o.max + '" data-step="' + (o.step || 1) +
+            '" data-val="' + o.value + '" data-def="' + o.default + '" data-unit=" ' + o.unit + '"' +
+            (o.scale === 'log' ? ' data-scale="log"' : '') + (o.push ? ' data-push data-gate="' + (o.push.value ? 1 : 0) + '"' : '');
+        td.innerHTML = '<span class="ctl-knob ctl-knob--index" ' + attrs + '><span class="ctl-knob-name">' + r.label + '</span>' +
+            '<div class="ctl-knob-hit" role="slider" tabindex="0" aria-label="' + r.label + '"></div><span class="ctl-knob-val"></span></span>';
+        tr.appendChild(td);
+        later.push(function () {
+            MX.attachKnobGestures(td);
+            var k = td.querySelector('.ctl-knob');
+            k.addEventListener('ctl-knob-input', function (e) { log('déclaré / ' + r.label, 'ctl-knob-input', e.detail.value); });
+            k.addEventListener('ctl-knob-gate', function (e) { log('déclaré / ' + r.label, 'ctl-knob-gate', e.detail.on); });
+        });
+        body.appendChild(tr);
+    });
+    later.forEach(function (f) { f(); });   // après insertion : le tracé est lu dans le style calculé
+
+    var link = document.getElementById('theme-link'), sel = document.getElementById('theme');
+    function theme(v) { link.setAttribute('href', v ? '/static/css/theme-' + v + '.css' : ''); try { localStorage.setItem('ctl-demo-theme', v); } catch (e) { /* ignoré */ } }
+    sel.addEventListener('change', function () { theme(sel.value); });
+    var saved = ''; try { saved = localStorage.getItem('ctl-demo-theme') || ''; } catch (e) { /* ignoré */ }
+    sel.value = saved; theme(saved);
+    document.getElementById('dense').addEventListener('change', function (e) { document.getElementById('t').classList.toggle('ctl-dense', e.target.checked); });
+})();
+</script>
+</body>
+</html>

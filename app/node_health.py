@@ -541,11 +541,22 @@ def _check_mxl_history_drift(node_id, name, node):
             # « profondeur inconnue » (fichier introuvable) est une VALEUR DE REPLI française : elle
             # ne peut pas voyager en paramètre (piège n°3), donc clé complète par branche — de même
             # pour les deux suffixes conditionnels (unité tmpfiles.d, domaines secondaires), qui sont
-            # des demi-phrases de diagnostic et non des données. 2×2×2 = 8 clés, une par combinaison.
-            cle = "alert.prep.mxl_profondeur_derive_{}_{}_{}".format(
-                "connue" if cur_ns is not None else "inconnue",
-                "unitok" if unit_ok else "unitko",
-                "autres" if autres else "seul")
+            # des demi-phrases de diagnostic et non des données. 8 clés de dérive (2×2×2) + 2 de
+            # conformité, une par combinaison ATTEIGNABLE.
+            # La profondeur peut être JUSTE et l'alerte quand même levée — par un domaine
+            # secondaire. Le dire avec un gabarit de dérive affichait « 200 ms, voulu 200 ms »,
+            # soit une contradiction apparente qui envoyait chercher une dérive inexistante
+            # pendant que le vrai sujet attendait en seconde moitié de phrase. Branche à part,
+            # donc ; et pas de variante `_seul` : sans dérive NI domaine secondaire, `casse` est
+            # faux et on n'alerte pas.
+            if cur_ns is not None and cur_ns == want_ns:
+                cle = "alert.prep.mxl_profondeur_conforme_{}_autres".format(
+                    "unitok" if unit_ok else "unitko")
+            else:
+                cle = "alert.prep.mxl_profondeur_derive_{}_{}_{}".format(
+                    "connue" if cur_ns is not None else "inconnue",
+                    "unitok" if unit_ok else "unitko",
+                    "autres" if autres else "seul")
             params = {"n": name, "want_ms": want_ms}
             if cur_ns is not None:
                 params["cur_ms"] = cur_ns // 1_000_000
@@ -1044,6 +1055,11 @@ def _sample_one(node):
         # Identité du domaine MXL : même cadence, mais RÉPARE au lieu d'alerter (cf.
         # _check_mxl_domain_def) — le tmpfs perd le fichier à chaque reboot du nœud.
         _check_mxl_domain_def(nid, snap["name"], node)
+        # Interfaces déclarées : MAC, nom épinglé, carte renommée par un ajout matériel (cf.
+        # app/iface_identity.py). Cadence lente, avancée au redémarrage d'un nœud.
+        if node.get("agent_url"):
+            from . import iface_identity
+            iface_identity.check(node)
         _merge_prep(nid, snap, node)
         _record(nid, snap)
         _check_disk_alert(nid, snap["name"], snap.get("disks"))

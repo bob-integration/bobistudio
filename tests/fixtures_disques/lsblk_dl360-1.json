@@ -1,0 +1,170 @@
+{
+   "blockdevices": [
+      {
+         "name": "sda",
+         "path": "/dev/sda",
+         "kname": "sda",
+         "type": "disk",
+         "size": 250059350016,
+         "model": "Samsung SSD 850 EVO 250GB",
+         "serial": "S2R6NB0HB27221P",
+         "tran": "sata",
+         "rota": false,
+         "ro": false,
+         "rm": false,
+         "fstype": null,
+         "uuid": null,
+         "label": null,
+         "mountpoints": [],
+         "pkname": null,
+         "children": [
+            {
+               "name": "sda1",
+               "path": "/dev/sda1",
+               "kname": "sda1",
+               "type": "part",
+               "size": 1023410176,
+               "model": null,
+               "serial": null,
+               "tran": null,
+               "rota": false,
+               "ro": false,
+               "rm": false,
+               "fstype": "vfat",
+               "uuid": "6AAA-205C",
+               "label": null,
+               "mountpoints": [
+                   "/boot/efi"
+               ],
+               "pkname": "sda"
+            },{
+               "name": "sda2",
+               "path": "/dev/sda2",
+               "kname": "sda2",
+               "type": "part",
+               "size": 236136169472,
+               "model": null,
+               "serial": null,
+               "tran": null,
+               "rota": false,
+               "ro": false,
+               "rm": false,
+               "fstype": "ext4",
+               "uuid": "fd9cbd8b-e602-4e3b-a68e-eef67c6b3924",
+               "label": null,
+               "mountpoints": [
+                   "/"
+               ],
+               "pkname": "sda"
+            },{
+               "name": "sda3",
+               "path": "/dev/sda3",
+               "kname": "sda3",
+               "type": "part",
+               "size": 12898533376,
+               "model": null,
+               "serial": null,
+               "tran": null,
+               "rota": false,
+               "ro": false,
+               "rm": false,
+               "fstype": "swap",
+               "uuid": "f05a9004-660d-4712-b9c5-d761dc55fb07",
+               "label": null,
+               "mountpoints": [
+                   "[SWAP]"
+               ],
+               "pkname": "sda"
+            }
+         ]
+      },{
+         "name": "sdb",
+         "path": "/dev/sdb",
+         "kname": "sdb",
+         "type": "disk",
+         "size": 250059350016,
+         "model": "Samsung SSD 850 EVO 250GB",
+         "serial": "S2R6NB0HB31980V",
+         "tran": "sata",
+         "rota": false,
+         "ro": false,
+         "rm": false,
+         "fstype": null,
+         "uuid": null,
+         "label": null,
+         "mountpoints": [],
+         "pkname": null,
+         "children": [
+            {
+               "name": "sdb1",
+               "path": "/dev/sdb1",
+               "kname": "sdb1",
+               "type": "part",
+               "size": 1023410176,
+               "model": null,
+               "serial": null,
+               "tran": null,
+               "rota": false,
+               "ro": false,
+               "rm": false,
+               "fstype": "vfat",
+               "uuid": "DCAC-FFC9",
+               "label": null,
+               "mountpoints": [],
+               "pkname": "sdb"
+            },{
+               "name": "sdb2",
+               "path": "/dev/sdb2",
+               "kname": "sdb2",
+               "type": "part",
+               "size": 236136169472,
+               "model": null,
+               "serial": null,
+               "tran": null,
+               "rota": false,
+               "ro": false,
+               "rm": false,
+               "fstype": "ext4",
+               "uuid": "ee3099cd-bcb8-4eb0-85fc-30520816f413",
+               "label": null,
+               "mountpoints": [],
+               "pkname": "sdb"
+            },{
+               "name": "sdb3",
+               "path": "/dev/sdb3",
+               "kname": "sdb3",
+               "type": "part",
+               "size": 12898533376,
+               "model": null,
+               "serial": null,
+               "tran": null,
+               "rota": false,
+               "ro": false,
+               "rm": false,
+               "fstype": "swap",
+               "uuid": "1b0d35f0-4b63-4a46-8f06-af3b4658e1d1",
+               "label": null,
+               "mountpoints": [],
+               "pkname": "sdb"
+            }
+         ]
+      },{
+         "name": "sdc",
+         "path": "/dev/sdc",
+         "kname": "sdc",
+         "type": "disk",
+         "size": 0,
+         "model": "SD/MMC CRW",
+         "serial": "29203008282014000",
+         "tran": "usb",
+         "rota": false,
+         "ro": false,
+         "rm": true,
+         "fstype": null,
+         "uuid": null,
+         "label": null,
+         "mountpoints": [],
+         "pkname": null
+      }
+   ]
+}

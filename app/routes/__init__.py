@@ -291,6 +291,7 @@ def liste_containers():
     # l'orchestrateur et non par le navigateur, pour que le badge et l'alarme de sous-cadence ne
     # puissent pas se contredire (même cible, même seuil de clôture — cf. metrics.cadence_etat).
     from ..metrics import cadence_etat as _cadence
+    from .. import docker_compute as _dcmp
     for c in rows:
         try:
             _dc = json.loads(c["deploy_config"]) if isinstance(c.get("deploy_config"), str) \
@@ -298,6 +299,15 @@ def liste_containers():
         except (ValueError, TypeError):
             _dc = {}
         c["cadence"] = _cadence(c["vmid"], c, _dc)
+        # Ressources RÉELLEMENT posées au `docker run` (manifeste ou réglage propre) : c'est ce
+        # que la palette doit afficher — les colonnes `cores`/`memory` portent des défauts
+        # d'insertion (2/2048) qui ne disent rien du conteneur.
+        _eff = _dcmp.effective_resources((_dc or {}).get("type"), c)
+        c["resources_effective"] = {
+            "cores": _eff.get("cores"), "memory": _eff.get("memory"),
+            "cpu_mode": _dcmp.cpu_mode_of(_eff),
+            "override": c.get("cores_override") is not None or c.get("memory_override") is not None
+                        or c.get("cpu_mode_override") is not None}
     return jsonify(rows)
 
 def _raz_infra():
@@ -546,6 +556,48 @@ def creer():
         if plugins.is_plugin(d_type) and (plugins.get(d_type) or {}).get("auto_provision"):
             return jsonify({"error": "Le type « %s » est auto-provisionné à la configuration d'un port "
                             "média 2110 (Réglages → Réseau) — création manuelle désactivée." % d_type}), 400
+        # ── UN SEUL PAR NŒUD ──────────────────────────────────────────────────────────────
+        # Manifeste `one_per_node:true`. Certains types pilotent du MATÉRIEL de la machine :
+        # un second conteneur sur le même nœud se disputerait les mêmes périphériques, et le
+        # perdant échouerait à l'ouverture sans que rien n'explique pourquoi. Le refus est ici,
+        # à la création, plutôt qu'au déploiement : plus tard, la ligne existe déjà en base et
+        # l'exploitant doit nettoyer un conteneur qui n'aurait jamais dû naître.
+        if plugins.is_plugin(d_type) and (plugins.get(d_type) or {}).get("one_per_node"):
+            _deja = plugins.conteneur_du_type_sur_noeud(d_type, node_id)
+            if _deja:
+                from ..i18n import t as _t
+                return jsonify({
+                    "error": _t("api.containers.un_seul_par_noeud", t=d_type,
+                                h=_deja.get("hostname") or _deja.get("vmid")),
+                    "error_code": "one_per_node",
+                    "existing_vmid": _deja.get("vmid"),
+                }), 409
+        # Un plugin MÉDIA (image bobi-media et/ou volume média) ne tourne que sur un nœud qui a la
+        # capacité `media` : c'est elle qui fait tenir l'image média à jour et monter les partages
+        # réseau. Refusé ICI, avant toute ligne en base — sinon on n'apprenait l'échec que par une
+        # alerte après coup, et seulement si le champ `media_image` était vide.
+        if plugins.is_plugin(d_type) and (plugins.image_variant(d_type) == "media"
+                                          or plugins.wants_media_volume(d_type)):
+            from ..node_driver import node_capabilities
+            from ..i18n import t as _t
+            _node = db_get_node(int(node_id))
+            if not _node:
+                return jsonify({"error": _t("api.containers.noeud_inconnu")}), 404
+            if "media" not in node_capabilities(_node):
+                return jsonify({"error": _t("api.containers.noeud_sans_capacite_media",
+                                           n=_node.get("name"), t=d_type)}), 400
+        # Même règle pour l'image des interfaces natives (bobi-gui, node_only) : elle n'est construite que sur
+        # les nœuds qui ont la capacité `gui` (2026-10-18).
+        if plugins.is_plugin(d_type) and plugins.image_variant(d_type) == "gui":
+            from ..node_driver import node_capabilities
+            from ..i18n import t as _t
+            _node = db_get_node(int(node_id))
+            if not _node:
+                return jsonify({"error": _t("api.containers.noeud_inconnu")}), 404
+            if "gui" not in node_capabilities(_node):
+                return jsonify({"error": _t("api.containers.noeud_sans_capacite_gui",
+                                           n=_node.get("name"), t=d_type),
+                                "error_code": "node_without_gui_capability"}), 400
         d_params = data.get("deploy_params") or {}
         if plugins.is_plugin(d_type):
             m = plugins.get(d_type)
@@ -606,37 +658,70 @@ def detruire(vmid):
 @bp.route("/api/containers/<int:vmid>/resources", methods=["PATCH"])
 @require_perm("containers.deploy")
 def patch_resources(vmid):
-    """Met à jour cores/memory/pinned_cores du container (stop+reconfigure+start)."""
+    """Règle cœurs/mémoire PROPRES à ce conteneur (priment sur le manifeste) et les APPLIQUE en
+    recréant le conteneur (cf. `containers.update_resources`). `reset: true` = retour au manifeste.
+    `pinned_cores` n'est plus un réglage : le cpuset appartient à `core_pool`."""
     data = request.json or {}
     cores  = data.get("cores")
     memory = data.get("memory")
-    pinned = data.get("pinned_cores")  # str "4,5" / "" / null
+    pinned = data.get("pinned_cores")  # accepté seulement s'il ne CHANGE rien (anciens clients)
+    reset  = bool(data.get("reset"))
     if cores is not None and (not isinstance(cores, int) or cores < 1 or cores > 256):
         return jsonify({"error": "cores hors plage 1..256"}), 400
     if memory is not None and (not isinstance(memory, int) or memory < 64 or memory > 1024*1024):
         return jsonify({"error": "memory hors plage 64..1048576 MB"}), 400
-    # pinned : valider parsing si non vide
-    if pinned:
-        from ..host_ops import parse_cpuset
-        try:
-            _ = parse_cpuset(pinned)
-        except Exception as e:
-            return jsonify({"error": f"pinned_cores invalide: {e}"}), 400
+    c = db_get_container(vmid)
+    if not c:
+        return jsonify({"error": "container introuvable"}), 404
+    # Un cpuset choisi à la main contournerait la comptabilité de `core_pool` (cœurs dédiés à
+    # d'autres, lcores busy-poll du moteur 2110). L'ancien formulaire renvoie le cpuset COURANT
+    # tel quel : on tolère cette valeur inchangée (ou vide), on refuse tout le reste plutôt que de
+    # l'accepter sans effet comme avant.
+    if pinned and str(pinned).strip() != (c.get("pinned_cores") or ""):
+        return jsonify({"error": "pinned_cores n'est pas réglable : le cpuset est attribué par "
+                                 "core_pool (régler `cores`, le profil `pin` du type s'applique)"}), 400
+    try:
+        _dc = json.loads(c["deploy_config"]) if isinstance(c.get("deploy_config"), str) \
+              else (c.get("deploy_config") or {})
+    except (ValueError, TypeError):
+        _dc = {}
+    from .. import docker_compute as _dcmp
+    if _dcmp.is_mtl_type((_dc or {}).get("type")):
+        return jsonify({"error": "le moteur 2110 ne prend pas de réglage de ressources par "
+                                 "conteneur (cpuset dérivé des lcores DPDK)"}), 409
+    cpu_mode = data.get("cpu_mode")
+    if cpu_mode is not None:
+        if cpu_mode not in _dcmp.CPU_MODES:
+            return jsonify({"error": "cpu_mode : shared ou reserved"}), 400
+        _eff0 = _dcmp.effective_resources((_dc or {}).get("type"), c)
+        if not _eff0.get("reservable"):
+            return jsonify({"error": "ce type ne peut pas réserver de cœurs (temps réel : son "
+                                     "profil CPU est fixé par le manifeste)"}), 409
+        # Réserver sans dire combien n'a pas de sens : le manifeste d'un type `reservable` ne
+        # porte pas de nombre de cœurs (il partage le pool par défaut).
+        if cpu_mode == "reserved" and not (cores or (not reset and _eff0.get("cores"))):
+            return jsonify({"error": "mode réservé : préciser le nombre de cœurs"}), 400
     from ..audit import journal as _journal
     # Les changements sont des paires `clé=valeur` TECHNIQUES (cores=4, memory=8192) : une
     # donnée, donc un paramètre légitime. Le « sans changement » du repli, lui, est du FRANÇAIS —
     # il devient une clé à part entière, jamais une valeur par défaut.
-    _chgs = ", ".join(f"{k}={v}" for k, v in (("cores", cores), ("memory", memory),
-                                              ("pinned_cores", pinned)) if v is not None)
+    _chgs = ", ".join(f"{k}={v}" for k, v in (("reset", "manifeste" if reset else None),
+                                              ("cores", cores), ("memory", memory),
+                                              ("cpu_mode", cpu_mode))
+                      if v is not None)
     _journal("alert.audit.modifier_ressources" if _chgs else "alert.audit.modifier_ressources_neant",
-             cible=(db_get_container(vmid) or {}).get("hostname"), vmid=vmid, kind="deploy",
+             cible=c.get("hostname"), vmid=vmid, kind="deploy",
              params=({"chgs": _chgs} if _chgs else None))
+    if not _chgs:
+        return jsonify({"status": "inchange", "vmid": vmid})
     def _resize():
         with verrou_vmid(vmid, op="resize"):
-            update_resources(vmid=vmid, cores=cores, memory=memory,
-                             pinned_cores=pinned if pinned is not None else None)
+            update_resources(vmid=vmid, cores=cores, memory=memory, reset=reset, cpu_mode=cpu_mode)
     threading.Thread(target=_resize).start()
-    return jsonify({"status": "maj_en_cours", "vmid": vmid})
+    # Statut HONNÊTE : le réglage s'applique par recréation (coupure), ou au prochain démarrage
+    # si le conteneur a été arrêté volontairement — jamais un « mis à jour » qui ne dit pas quand.
+    _st = "differe_prochain_demarrage" if c.get("desired_state") == "stopped" else "recreation_en_cours"
+    return jsonify({"status": _st, "vmid": vmid})
 
 # ptp_history/events/log_sources/logs/status extraits dans app/routes/ptp_routes.py.
 
@@ -1175,9 +1260,10 @@ def plugin_store_delete_route(type_, sid):
 # endpoint :8082) ; l'*application* reste bespoke par type (pattern hybride, pas de
 # transform déclaratif). POST direct vers :8082 (pas via _mixer_proxy, qui renvoie
 # des réponses Flask et exige un contexte d'app — inutilisable depuis un thread).
-def recall_presets(vmid, type_):
+def recall_presets(vmid, type_, kind=None):
     """Liste ordonnée des presets rappelables d'un container (selon control.recall).
-    Retourne (rc|None, [preset,...]) — chaque preset a au moins une clé 'name'."""
+    Retourne (rc|None, [preset,...]) — chaque preset a au moins une clé 'name'.
+    `kind` : library with kinds (`control.recall.kinds`, app/plugin_library.py) — only that kind."""
     from .. import plugins
     rc = ((plugins.get(type_) or {}).get("control") or {}).get("recall")
     if not rc:
@@ -1186,23 +1272,33 @@ def recall_presets(vmid, type_):
     if src == "plugin_store":
         from ..database import plugin_store_list
         scope = str(vmid) if rc.get("scope") == "container" else ""
-        return rc, plugin_store_list(type_, scope)
+        presets = plugin_store_list(type_, scope)
+        if kind and rc.get("kinds"):
+            from ..plugin_library import filter_kind
+            presets = filter_kind(presets, kind)
+        return rc, presets
     if src == "layouts":
         from ..database import db_get_layouts
         return rc, db_get_layouts()
     return rc, []
 
-def recall_preset(vmid, type_, index, duration_ms=0):
+def recall_preset(vmid, type_, index, duration_ms=0, kind=None, extra=None):
     """Applique à chaud le index-ième preset. Retourne (ok: bool, detail: str).
-    `duration_ms` : durée de transition quand le type la supporte (split), 0 = cut."""
+    `duration_ms` : durée de transition quand le type la supporte (split), 0 = cut.
+    `kind` / `extra` : kinded library (index into that kind's list; `extra` = action params)."""
     from ..addressing import get_container_ip
+    from .. import plugins
     import requests as _req
-    rc, presets = recall_presets(vmid, type_)
+    rc, presets = recall_presets(vmid, type_, kind)
     if not rc:
         return False, f"{type_} sans control.recall"
     if not (0 <= index < len(presets)):
         return False, f"index {index} hors borne (0..{len(presets) - 1})"
     preset = presets[index]
+    if rc.get("apply") == "post":
+        # GENERIC application (no per-type branch): POST of the stored value to control.recall.endpoint.
+        from ..plugin_library import recall_as_preset
+        return recall_as_preset(vmid, type_, preset, extra)
     ip = get_container_ip(vmid)
     if not ip:
         return False, "IP container introuvable"
@@ -1218,10 +1314,66 @@ def recall_preset(vmid, type_, index, duration_ms=0):
 
     name = preset.get("name")
     if type_ == "split":
-        return _post(endpoint, {"boxes": preset["value"],
-                                "duration_ms": max(0, int(duration_ms or 0))}), name
+        # Mémoire ANCIENNE (liste de box) ou NOUVELLE (dict boxes/global/bg, format 0.12 que crée
+        # l'instantané de l'UI) — même lecture que la route /split/memories/<id>/recall. Le dict
+        # entier posté comme `boxes` faisait répondre « boxes requis » : toute mémoire prise depuis
+        # l'UI du split était inutilisable par macros, workspace et Ember+ (relevé le 2026-10-20).
+        val = preset["value"]
+        body = {"duration_ms": max(0, int(duration_ms or 0))}
+        if isinstance(val, dict):
+            body["boxes"] = val.get("boxes") or []
+            for k in ("global", "bg"):
+                if isinstance(val.get(k), dict) and val[k]:
+                    body[k] = val[k]
+        else:
+            body["boxes"] = val
+        return _post(endpoint, body), name
     if type_ == "color_corrector":
         return _post(endpoint, preset["value"]), name
+    if type_ == "recorder":
+        # Réglages du préréglage appliqués à chaud par /config (jamais pendant un enregistrement
+        # coupé) ; le NOM du préréglage suit, pour l'indicateur d'écart de la page.
+        return _post(endpoint, {**(preset["value"] or {}), "preset": name}), name
+    if type_ == "player":
+        # Préréglage d'OSD : {kind, <value_key>: {chemin: corps}} — on rejoue chaque POST, et on
+        # NOMME ce qui a échoué (un rappel appliqué à moitié en silence est pire qu'un refus).
+        series = (preset.get("value") or {}).get(rc.get("value_key") or "reglages")
+        if not isinstance(series, dict) or not series:
+            return False, f"{name} : préréglage vide"
+        ko = [p for p in sorted(series) if not _post(p, series[p])]
+        return (not ko), (name if not ko else f"{name} : échec {', '.join(ko)}")
+    if type_ == "scope":
+        # UN préréglage de scope N'EST PAS un payload à poster sur un seul endpoint : c'est une
+        # collection {chemin: corps} qui couvre /waveform, /vecteur, /seuils, /alarmes… La
+        # branche rejoue donc la SÉRIE de POST, dans l'ordre des chemins, et NOMME ce qui a
+        # échoué — un rappel appliqué à moitié en silence est pire qu'un rappel refusé.
+        #
+        # ⚠ LIMITE ASSUMÉE, pas un manque à combler : un préréglage de scope réunit la GRILLE
+        # (nombre de tuiles, instrument par tuile, réglages par tuile — confort de POSTE, qui
+        # vit dans le navigateur de chaque exploitant) et les RÉGLAGES du conteneur. Un rappel
+        # par macro/Ember+/pupitre n'a pas de navigateur à piloter : il ne restitue que la
+        # seconde moitié, plus la sortie vidéo (/disposition en fait partie). Les consoles web
+        # ouvertes gardent leur grille — c'est voulu, deux exploitants n'ont pas à s'accorder.
+        settings = (preset.get("value") or {}).get(rc.get("value_key") or "reglages")
+        if not isinstance(settings, dict) or not settings:
+            return False, f"{name}: préréglage sans réglages applicables"
+        declared = set(((plugins.get(type_) or {}).get("control") or {}).get("endpoints") or [])
+        applied, failed = [], []
+        for path in sorted(settings):
+            if path not in declared:
+                # Le manifeste fait foi : un chemin inconnu vient d'un préréglage importé d'une
+                # version plus récente du plugin. On le refuse en le NOMMANT.
+                failed.append(f"{path} (endpoint non déclaré)")
+                continue
+            body = settings[path]
+            if not isinstance(body, dict):
+                failed.append(f"{path} (corps non-objet)")
+                continue
+            (applied if _post(path, body) else failed).append(path)
+        detail = f"{name} — {len(applied)}/{len(applied) + len(failed)} appliqués"
+        if failed:
+            return False, detail + " ; échec sur : " + ", ".join(failed)
+        return True, detail
     if type_ == "multiview":
         # layout global : on pousse la géométrie de chaque fenêtre commune à la cible
         # (le style n'est pas appliqué à chaud) puis on persiste en deploy_config.
@@ -1520,6 +1672,7 @@ from . import ha         # noqa: F401 — haute disponibilité (paire de contrô
 from . import peers      # noqa: F401 — registre de pairs (dépend de updates._my_identity)
 from . import backup     # noqa: F401 — sauvegarde / restauration DB
 from . import users      # noqa: F401 — comptes utilisateurs
+from . import api_tokens_api  # noqa: F401 — jetons d'API (accès programmatique)
 from . import i18n       # noqa: F401 — éditeur de traductions
 
 # Domaine nœuds/cluster (tranche 3, gros morceau). Ordre de dépendance : images (fondation :
@@ -1528,6 +1681,7 @@ from . import i18n       # noqa: F401 — éditeur de traductions
 # images) → mcast_ranges / media_networks (indépendants).
 from . import images          # noqa: F401
 from . import nodes           # noqa: F401
+from . import host_drivers    # noqa: F401 — pilotes hôte des nœuds (job long + journal + action en attente)
 from . import enrollment      # noqa: F401
 from . import node_network    # noqa: F401
 from . import mcast_ranges    # noqa: F401
@@ -1553,6 +1707,8 @@ from . import cabling  # noqa: F401
 # Registre des plugins + shell de rubrique + proxy de contrôle générique, API Streams — tranche 10.
 from . import plugin_registry  # noqa: F401
 from . import catalogue_api   # noqa: F401
+from . import media_registry_api  # noqa: F401 — registre des médias (identité, copies, intégrité)
+from . import transcode_farm_api  # noqa: F401 — ferme de transcodage (file centrale, membres)
 from . import streams_api      # noqa: F401
 
 # Monitoring WebRTC par utilisateur + monitor dédié par player — tranche 11.
@@ -1592,9 +1748,16 @@ from . import etalonnage_api  # noqa: F401
 
 # Emplacements (rôles) : identité fonctionnelle stable adressée par les contrôleurs externes.
 from . import roles_api  # noqa: F401
+from . import plugin_shows_api  # noqa: F401 — shows of document plugins (console: the whole console, off air)
+# Audio console routes (zones, tool memories, libraries, sources / fader start links, native GUIs, AFV, LV2):
+# moved to services/audio/api/ on 2026-10-23, registered by services.audio.register_routes (core_services).
 
 from . import habilitations_api  # noqa: F401
 
 # Inventaire Docker par nœud : confronte ce que voit l'agent à la base (orphelins destructibles).
 from . import inventaire  # noqa: F401
 from . import journaux_export  # noqa: F401
+from . import ops_journal_api  # noqa: F401 — journal d'exploitation des plugins (qui a fait quoi)
+
+# Disques locaux d'un nœud (inventaire, formatage gardé, montage persistant, veille).
+from . import node_disks  # noqa: F401

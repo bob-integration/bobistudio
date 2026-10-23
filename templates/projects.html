@@ -121,7 +121,7 @@
 <h2>{{ _('projects.saved') }}</h2>
 {% if has_perm('projects.manage') %}
 <div class="proj-import">
-    <input type="file" id="proj-import-file" accept=".json,application/json"
+    <input type="file" id="proj-import-file" accept=".json,.tar,application/json,application/x-tar"
            onchange="importerProjet()" hidden>
     <button class="btn btn-blue" onclick="document.getElementById('proj-import-file').click()">
         {{ _('projects.import') }}
@@ -224,6 +224,36 @@
         </div>
     </div>
 </div>
+
+<!-- Export / import d'un projet AVEC ses médias (base des médias, schema v3). -->
+<dialog id="proj-media-dlg" class="proj-media-dlg">
+    <form method="dialog" id="proj-export-form" hidden>
+        <h3>{{ _('projects.export_title') }}</h3>
+        <p class="palette-hint">{{ _('projects.export_media_hint') }}</p>
+        <div class="proj-media-actions">
+            <button class="btn btn-blue" value="refs">{{ _('projects.export_refs') }}</button>
+            <button class="btn" value="media">{{ _('projects.export_embed') }}</button>
+            <button class="btn" value="cancel">{{ _('projects.cancel') }}</button>
+        </div>
+    </form>
+    <form method="dialog" id="proj-import-form" hidden>
+        <h3>{{ _('projects.import') }}</h3>
+        <label>{{ _('projects.import_name') }} <input type="text" id="proj-import-name" required></label>
+        <label id="proj-import-node-row" hidden>{{ _('projects.import_node') }}
+            <select id="proj-import-node"></select></label>
+        <p class="palette-hint" id="proj-import-info"></p>
+        <div class="proj-media-actions">
+            <button class="btn btn-blue" value="ok" id="proj-import-ok">{{ _('projects.import_go') }}</button>
+            <button class="btn" value="cancel" id="proj-import-cancel">{{ _('projects.cancel') }}</button>
+        </div>
+    </form>
+</dialog>
+<style>
+.proj-media-dlg { margin:auto; max-width:34rem; padding:1.2rem 1.4rem; border-radius:10px; }
+.proj-media-dlg h3 { margin-bottom:.6rem; }
+.proj-media-dlg label { display:flex; flex-direction:column; gap:.3rem; margin:.6rem 0; }
+.proj-media-actions { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:1rem; }
+</style>
 {% endblock %}
 
 {% block scripts %}
@@ -261,40 +291,106 @@ function projSelectNone() {
     updateProjSelectedCount();
 }
 function exporterProjet(id) {
-    // Redirection vers la route d'export — le serveur force le download via Content-Disposition.
-    window.location.href = `/api/projects/${id}/export`;
+    // Fiches seules (.bsproj.json) ou archive avec les fichiers (.bsproj.tar, lue en flux sur les
+    // nœuds) — le serveur force le téléchargement via Content-Disposition.
+    const dlg = document.getElementById('proj-media-dlg');
+    document.getElementById('proj-export-form').hidden = false;
+    document.getElementById('proj-import-form').hidden = true;
+    dlg.onclose = () => {
+        if (dlg.returnValue === 'refs') window.location.href = `/api/projects/${id}/export`;
+        else if (dlg.returnValue === 'media') window.location.href = `/api/projects/${id}/export?media=1`;
+    };
+    dlg.returnValue = '';
+    dlg.showModal();
+}
+
+/* Nom du projet lu dans l'archive : premier membre `projet.bsproj.json` (en-tête tar de 512
+   octets, taille en octal à l'offset 124). Illisible → nom du fichier. */
+async function _projNameFromTar(file) {
+    try {
+        const head = new Uint8Array(await file.slice(0, 512).arrayBuffer());
+        const size = parseInt(new TextDecoder().decode(head.slice(124, 136)).replace(/\0.*$/, '').trim(), 8);
+        const j = JSON.parse(await file.slice(512, 512 + size).text());
+        return j.name || '';
+    } catch (e) { return ''; }
 }
 
 async function importerProjet() {
     const input = document.getElementById('proj-import-file');
     const file  = input?.files?.[0];
     if (!file) return;
-    try {
-        // Optionnel : permettre de renommer à l'import
-        let name = '';
+    input.value = '';
+    const isTar = /\.tar$/i.test(file.name);
+    let defaultName = '';
+    if (isTar) {
+        defaultName = await _projNameFromTar(file);
+    } else {
         try {
             const peek = JSON.parse(await file.text());
-            const defaultName = (peek && peek.name) || file.name.replace(/\.bsproj.json$|\.json$/i, '');
-            name = prompt(window.t('projects.import_name'), defaultName) || '';
-            if (!name.trim()) { input.value = ''; return; }
+            defaultName = peek && peek.name;
         } catch (e) {
             alert(window.t('projects.invalid_json') + ' ' + e.message);
-            input.value = '';
             return;
         }
+    }
+    defaultName = defaultName || file.name.replace(/\.bsproj\.(json|tar)$|\.(json|tar)$/i, '');
+    const dlg = document.getElementById('proj-media-dlg');
+    document.getElementById('proj-export-form').hidden = true;
+    document.getElementById('proj-import-form').hidden = false;
+    document.getElementById('proj-import-name').value = defaultName;
+    document.getElementById('proj-import-info').textContent = isTar ? window.t('projects.import_tar_hint') : '';
+    const nodeRow = document.getElementById('proj-import-node-row');
+    nodeRow.hidden = !isTar;
+    const sel = document.getElementById('proj-import-node');
+    sel.innerHTML = '';
+    if (isTar) {
+        const st = await fetch('/api/media/settings').then(r => r.json()).catch(() => ({}));
+        for (const n of (st.nodes || [])) {
+            const o = document.createElement('option');
+            o.value = n.id;
+            o.textContent = n.name;
+            sel.appendChild(o);
+        }
+    }
+    const okBtn = document.getElementById('proj-import-ok');
+    okBtn.disabled = false;
+    document.getElementById('proj-import-cancel').disabled = false;
+    okBtn.onclick = async (ev) => {
+        ev.preventDefault();
+        const name = document.getElementById('proj-import-name').value.trim();
+        if (!name || (isTar && !sel.value)) return;
+        okBtn.disabled = true;
+        const info = document.getElementById('proj-import-info');
+        info.textContent = window.t('projects.import_uploading');
         const fd = new FormData();
         fd.append('file', file);
-        fd.append('name', name.trim());
+        fd.append('name', name);
+        if (isTar) fd.append('node_id', sel.value);
         const r = await fetch('/api/projects/import', { method: 'POST', body: fd });
         const data = await r.json().catch(() => ({}));
         if (!r.ok) {
-            alert(window.t('projects.import_failed') + ' ' + (data.error || r.statusText));
+            info.textContent = window.t('projects.import_failed') + ' ' + (data.error || r.statusText);
+            okBtn.disabled = false;
             return;
         }
+        if (!data.media_job) { location.reload(); return; }
+        // Fichiers en cours de dépôt sur le nœud : suivi jusqu'au bout, puis rechargement.
+        document.getElementById('proj-import-cancel').disabled = true;
+        for (;;) {
+            await new Promise(res => setTimeout(res, 1500));
+            const j = await fetch(`/api/projects/${data.id}/media_import`).then(x => x.json()).catch(() => ({}));
+            if (j.state === 'failed') {
+                info.textContent = window.t('projects.import_media_failed') + ' ' + (j.error || '');
+                document.getElementById('proj-import-cancel').disabled = false;
+                return;
+            }
+            info.textContent = window.t('projects.import_media_progress').replace('{done}', j.done || 0).replace('{total}', j.total || 0).replace('{node}', j.node || '');
+            if (j.state === 'done') break;
+        }
         location.reload();
-    } finally {
-        input.value = '';
-    }
+    };
+    dlg.onclose = null;
+    dlg.showModal();
 }
 
 function updateProjSelectedCount() {

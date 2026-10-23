@@ -1,0 +1,125 @@
+{% extends "layout.html" %}
+{% set page = 'groups' %}
+{% block title %}{{ _('settings.groups.title') }}{% endblock %}
+
+{# GROUPES D'UTILISATEURS (2026-10-12, app/user_groups.py) — des ensembles de PERSONNES, pas de
+   droits (ceux-là sont les habilitations). Ils servent de destinataires aux partages de médias.
+   Page autonome, réservée à qui gère les utilisateurs (settings.edit). #}
+{% block content %}
+<div class="home-head" style="margin-bottom:var(--space-4)">
+    <h1>{{ _('settings.groups.title') }}</h1>
+</div>
+<p class="meta" style="max-width:70ch">{{ _('settings.groups.intro') }}</p>
+
+<div class="ugr">
+    <section class="ugr-col">
+        <form class="form ugr-new" id="ugr_new" autocomplete="off">
+            <div class="field"><label for="ugr_new_name">{{ _('settings.groups.new') }}</label>
+                <input type="text" id="ugr_new_name" maxlength="80" required></div>
+            <button class="btn btn-blue" type="submit">{{ _('settings.groups.create') }}</button>
+        </form>
+        <ul class="ugr-list" id="ugr_list" aria-label="{{ _('settings.groups.title') }}"></ul>
+    </section>
+    <section class="ugr-col ugr-edit" id="ugr_edit" hidden>
+        <div class="form">
+            <div class="field"><label for="ugr_name">{{ _('settings.groups.name') }}</label>
+                <input type="text" id="ugr_name" maxlength="80"></div>
+            <div class="field"><label for="ugr_filter">{{ _('settings.groups.members') }}</label>
+                <input type="search" id="ugr_filter" placeholder="{{ _('settings.groups.filter') }}"></div>
+            <div class="ugr-users" id="ugr_users"></div>
+            <div class="ugr-actions">
+                <button class="btn btn-blue" type="button" id="ugr_save">{{ _('settings.groups.save') }}</button>
+                <button class="btn btn-red" type="button" id="ugr_del">{{ _('settings.groups.delete') }}</button>
+                <span class="ugr-confirm" id="ugr_confirm" hidden>{{ _('settings.groups.delete_confirm') }}
+                    <button class="btn btn-sm btn-red" type="button" id="ugr_del_yes">{{ _('settings.groups.delete') }}</button>
+                    <button class="btn btn-sm" type="button" id="ugr_del_no">{{ _('settings.groups.cancel') }}</button></span>
+            </div>
+            <div class="meta" id="ugr_msg" role="status"></div>
+        </div>
+    </section>
+</div>
+
+<style>
+.ugr { display:flex; flex-wrap:wrap; gap:var(--space-4, 16px); align-items:flex-start; }
+.ugr-col { flex:1 1 320px; min-width:0; }
+.ugr-new { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-bottom:12px; }
+.ugr-new .field { flex:1 1 200px; }
+.ugr-list { list-style:none; margin:0; padding:0; }
+.ugr-list li { padding:8px 10px; border:1px solid var(--border, #ccc); border-radius:6px; margin-bottom:6px; cursor:pointer; }
+.ugr-list li[aria-current="true"] { border-color:var(--accent, #2a6df4); }
+.ugr-list .ugr-n { font-weight:600; }
+.ugr-list .meta { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ugr-users { max-height:50vh; overflow:auto; border:1px solid var(--border, #ccc); border-radius:6px; padding:6px; margin-bottom:10px; }
+.ugr-users label { display:flex; gap:8px; align-items:center; padding:3px 4px; }
+.ugr-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    const T = k => window.t(k);
+    let groups = [], users = [], cur = null;
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const errText = j => T('settings.groups.err.' + ((j && j.error) || 'unknown')) || (j && j.error) || '?';
+
+    async function load(keep) {
+        const j = await (await fetch('/api/user-groups')).json();
+        groups = j.groups || []; users = j.users || [];
+        if (keep != null) cur = groups.find(g => g.id === keep) || null;
+        render();
+    }
+    function render() {
+        $('ugr_list').innerHTML = groups.length ? groups.map(g => `<li data-id="${g.id}" aria-current="${cur && cur.id === g.id}">
+            <span class="ugr-n">${esc(g.name)}</span>
+            <span class="meta">${g.members.length ? esc(g.members.map(m => m.label).join(', ')) : esc(T('settings.groups.no_members'))}</span></li>`).join('')
+            : `<li class="meta" style="cursor:default">${esc(T('settings.groups.none'))}</li>`;
+        $('ugr_edit').hidden = !cur;
+        $('ugr_confirm').hidden = true;
+        if (!cur) return;
+        $('ugr_name').value = cur.name;
+        renderUsers();
+    }
+    function renderUsers() {
+        const q = ($('ugr_filter').value || '').toLowerCase();
+        const on = new Set(cur.members.map(m => m.id));
+        const keep = new Set([...$('ugr_users').querySelectorAll('input:checked')].map(i => +i.value));
+        const sel = $('ugr_users').childElementCount ? keep : on;
+        $('ugr_users').innerHTML = users.map(u => `<label ${q && !u.label.toLowerCase().includes(q) ? 'hidden' : ''}>
+            <input type="checkbox" value="${u.id}" ${sel.has(u.id) ? 'checked' : ''}> ${esc(u.label)}</label>`).join('');
+    }
+    $('ugr_list').addEventListener('click', e => {
+        const li = e.target.closest('li[data-id]'); if (!li) return;
+        cur = groups.find(g => g.id === +li.dataset.id) || null;
+        $('ugr_users').innerHTML = ''; $('ugr_filter').value = ''; $('ugr_msg').textContent = '';
+        render();
+    });
+    $('ugr_filter').addEventListener('input', renderUsers);
+    $('ugr_new').addEventListener('submit', async e => {
+        e.preventDefault();
+        const r = await fetch('/api/user-groups', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify({name: $('ugr_new_name').value})});
+        const j = await r.json();
+        if (!r.ok) { $('ugr_msg').textContent = errText(j); $('ugr_edit').hidden = false; return; }
+        $('ugr_new_name').value = ''; $('ugr_users').innerHTML = '';
+        await load(j.id);
+    });
+    $('ugr_save').addEventListener('click', async () => {
+        const members = [...$('ugr_users').querySelectorAll('input:checked')].map(i => +i.value);
+        const r = await fetch('/api/user-groups/' + cur.id, {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                                                             body: JSON.stringify({name: $('ugr_name').value, members})});
+        const j = await r.json();
+        $('ugr_msg').textContent = r.ok ? T('settings.groups.saved') : errText(j);
+        if (r.ok) { $('ugr_users').innerHTML = ''; await load(cur.id); }
+    });
+    $('ugr_del').addEventListener('click', () => { $('ugr_confirm').hidden = false; });
+    $('ugr_del_no').addEventListener('click', () => { $('ugr_confirm').hidden = true; });
+    $('ugr_del_yes').addEventListener('click', async () => {
+        await fetch('/api/user-groups/' + cur.id, {method: 'DELETE'});
+        cur = null; await load(null);
+    });
+    load(null);
+})();
+</script>
+{% endblock %}

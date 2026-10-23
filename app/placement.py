@@ -453,7 +453,13 @@ def verifier_tous():
     if not _passe_en_cours.acquire(blocking=False):
         return
     try:
+        from . import node_driver
         for n in db_get_nodes() or []:
+            # Un nœud SANS agent (enrôlement jamais abouti) n'a rien à sonder : sans ce filtre, la
+            # sonde partait vers une URL vide — « unknown url type: '/v1/host/exec' » toutes les
+            # 2 min, 2 588 fois au journal (relevé le 2026-10-11), pour une ligne en attente.
+            if not node_driver.has_agent(n):
+                continue
             try:
                 verifier(n["id"])
             except Exception as e:

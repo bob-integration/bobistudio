@@ -38,7 +38,11 @@ def _render_plugin_section(section_id, default_label):
     return render_template("plugin_section.html", page=section_id,
                            section_id=section_id,
                            section_label=section.get("label", default_label),
-                           plugins=[_plugin_public(m) for m in section.get("plugins", [])])
+                           plugins=[_plugin_public(m) for m in section.get("plugins", [])],
+                           # Ferme de transcodage : seulement si le plugin transcoder est installé.
+                           has_farm=section_id == "medias" and bool(plugins.get("transcoder")),
+                           # Groupes de lecture A/B/C… (app/playout_groups.py) : dès que le player est installé.
+                           has_playout=section_id == "medias" and bool(plugins.get("player")))
 
 @bp.route("/medias")
 @require_login
@@ -143,7 +147,7 @@ def plugin_instances():
         pid = c.get("project_id")
         proj = proj_by_id.get(pid) if pid else None
         out.append({
-            "vmid": c["vmid"], "hostname": c.get("hostname"),
+            "vmid": c["vmid"], "hostname": c.get("hostname"), "instance_uuid": c.get("instance_uuid"),
             "status": c.get("status"), "type": t, "ip": c.get("ip"),
             "version": (dc.get("params") or {}).get("plugin_version"),
             "source": c.get("source"), "shm_out": c.get("shm_out"),
@@ -618,6 +622,138 @@ def plugin_preset_delete(type_, nom):
     return jsonify({"ok": db_plugin_store_delete(type_, nom, scope="")})
 
 
+# ─── Échange de préréglages entre instances ─────────────────────────────────────────────────
+# GÉNÉRIQUE : tout type de plugin, pas seulement le Scope. Le snapshot de projet n'emporte que
+# les mémoires PAR CONTENEUR (`plugin_store_list_scope(str(vmid))`) — les préréglages de portée
+# globale ('') d'un TYPE ne voyageaient donc d'aucune façon d'un orchestrateur à un autre.
+#
+# Le document porte sa propre description (format, version, type, date) : un fichier relu dans
+# six mois doit dire ce qu'il est sans qu'on ait à deviner. Le CONTENU de chaque préréglage
+# reste opaque — c'est le plugin qui sait ce qu'il range dedans, comme pour les routes ci-dessus.
+PRESET_EXCHANGE_FORMAT = "bobistudio.plugin-presets"
+PRESET_EXCHANGE_VERSION = 1
+
+
+@bp.route("/api/plugins/<type_>/presets-export", methods=["GET"])
+@require_login
+def plugin_presets_export(type_):
+    """Document d'échange de TOUS les préréglages globaux d'un type (valeurs comprises)."""
+    import datetime as _dt
+    from .. import plugins
+    from ..database import plugin_store_list
+    if not plugins.is_plugin(type_):
+        return jsonify({"error": f"type plugin inconnu : {type_}"}), 404
+    rows = plugin_store_list(type_, "")
+    # Kinded library (app/plugin_library.py): `?kind=` exports one kind, `?id=` one save — same
+    # document, same format: the import below reads it back.
+    from .. import plugin_library
+    if plugin_library.spec(plugins.get(type_)):
+        rows = plugin_library.filter_kind(rows, (request.args.get("kind") or "").strip() or None)
+        ids = {int(x) for x in request.args.getlist("id") if str(x).isdigit()}
+        if ids:
+            rows = [p for p in rows if p["id"] in ids]
+    presets = [{"name": p["name"], "value": p["value"],
+                "created_at": p.get("created_at"), "updated_at": p.get("updated_at")}
+               for p in rows]
+    doc = {
+        "format": PRESET_EXCHANGE_FORMAT,
+        "format_version": PRESET_EXCHANGE_VERSION,
+        "plugin_type": type_,
+        "plugin_version": (plugins.get(type_) or {}).get("version"),
+        "exported_at": _dt.datetime.now().isoformat(timespec="seconds"),
+        "count": len(presets),
+        "presets": presets,
+    }
+    return jsonify(doc)
+
+
+def _preset_document(body):
+    """Accepte le document NU (tel qu'exporté, qu'on peut donc réenvoyer sans le retoucher) ou
+    ENVELOPPÉ (`{document, mode}`). Rend (doc|None, mode|None)."""
+    if not isinstance(body, dict):
+        return None, None
+    if isinstance(body.get("document"), dict):
+        return body["document"], body.get("mode")
+    return body, body.get("mode")
+
+
+@bp.route("/api/plugins/<type_>/presets-import", methods=["POST"])
+@require_perm("plugins.operate")
+def plugin_presets_import(type_):
+    """Recrée les préréglages d'un document d'échange.
+
+    `mode` : `skip` (défaut — un nom déjà pris est LAISSÉ tel quel) ou `overwrite`.
+    La réponse RÉEND LE COMPTE : ce qui a été importé, ignoré, refusé et pourquoi. Un import
+    qui répond « ok » sans dire ce qu'il a fait ne permet à personne de vérifier quoi que ce soit.
+    """
+    from .. import plugins
+    from ..database import db_plugin_store_set, db_plugin_store_get
+    if not plugins.is_plugin(type_):
+        return jsonify({"error": f"type plugin inconnu : {type_}"}), 404
+    body = request.get_json(force=True, silent=True)
+    doc, mode = _preset_document(body)
+    if not isinstance(doc, dict):
+        return jsonify({"error": "document attendu : objet JSON"}), 400
+    mode = (mode or request.args.get("mode") or "skip").strip().lower()
+    if mode not in ("skip", "overwrite"):
+        return jsonify({"error": "mode inconnu : attendu 'skip' ou 'overwrite'"}), 400
+
+    fmt = doc.get("format")
+    if fmt != PRESET_EXCHANGE_FORMAT:
+        return jsonify({"error": "ce fichier n'est pas un document de préréglages "
+                                 f"({PRESET_EXCHANGE_FORMAT} attendu, lu : {fmt!r})"}), 400
+    try:
+        fver = int(doc.get("format_version"))
+    except (TypeError, ValueError):
+        fver = -1
+    if not 1 <= fver <= PRESET_EXCHANGE_VERSION:
+        return jsonify({"error": f"version de format {doc.get('format_version')!r} non gérée "
+                                 f"(cette instance lit 1 à {PRESET_EXCHANGE_VERSION})"}), 400
+    src = doc.get("plugin_type")
+    if src != type_:
+        # REFUS EXPLICITE. Appliquer les préréglages d'un type à un autre produirait des
+        # entrées qui portent un nom crédible et un contenu que le plugin ne sait pas lire.
+        return jsonify({"error": f"préréglages du plugin « {src} », importés vers « {type_} » : "
+                                 "types incompatibles",
+                        "expected": type_, "found": src}), 409
+
+    presets = doc.get("presets")
+    if not isinstance(presets, list):
+        return jsonify({"error": "champ « presets » attendu : liste"}), 400
+
+    from .. import plugin_library
+    lib = plugin_library.spec(plugins.get(type_))
+    if lib:
+        return _library_import(type_, lib, presets, mode)
+
+    imported, skipped, rejected = [], [], []
+    for i, p in enumerate(presets):
+        if not isinstance(p, dict):
+            rejected.append({"name": None, "index": i, "reason": "entrée non-objet"})
+            continue
+        nom = (p.get("name") or "").strip()
+        val = p.get("value")
+        if not nom or len(nom) > 60:
+            rejected.append({"name": p.get("name"), "index": i,
+                             "reason": "nom invalide (1 à 60 caractères)"})
+            continue
+        if not isinstance(val, dict):
+            rejected.append({"name": nom, "index": i, "reason": "contenu attendu : objet JSON"})
+            continue
+        if db_plugin_store_get(type_, nom, scope="") is not None and mode == "skip":
+            skipped.append(nom)
+            continue
+        db_plugin_store_set(type_, nom, val, scope="")
+        imported.append(nom)
+
+    db_add_alert("alert.deploy.plugin_presets_importes", "info", kind="deploy",
+                 params={"t": type_, "n": str(len(imported))})
+    return jsonify({"ok": True, "type": type_, "mode": mode,
+                    "imported": imported, "skipped": skipped, "rejected": rejected,
+                    "counts": {"imported": len(imported), "skipped": len(skipped),
+                               "rejected": len(rejected), "read": len(presets)}})
+
+
 # ─── Témoins horodatés ──────────────────────────────────────────────────────────────────────
 # Un témoin qui n'existe que le temps d'une requête ne prouve rien : il est PERSISTÉ ici, pas
 # laissé au navigateur. `static/uploads` est l'endroit du projet pour les artefacts.
@@ -694,12 +830,24 @@ def plugin_proxy(vmid, p):
     Permission : `plugins.operate` (contrôle live), SAUF les GET listés dans
     `control.read_endpoints` (lecture pure — état, preview) qui ne demandent que le login."""
     from .. import plugins
+    # ⚠ LE REGISTRE NE SE RAFRAÎCHISSAIT QUE SUR LE CHEMIN DE DÉPLOIEMENT (2026-09-21). Or c'est
+    #   LUI qui porte la liste des chemins autorisés : un endpoint de lecture ajouté au manifeste
+    #   restait donc refusé en 403 jusqu'au prochain déploiement ou redémarrage, sans que rien ne
+    #   dise pourquoi — le message parlait du plugin.json, qui était pourtant déjà correct sur le
+    #   disque. `rescan_if_changed` est throttlé à 1 Hz (une poignée de stat()).
+    plugins.rescan_if_changed()
     c = db_get_container(vmid)
     dc = _load_dc(c) if c else None
     m = plugins.get((dc or {}).get("type"))
     if not m:
         return jsonify({"error": f"#{vmid} n'est pas un container plugin"}), 400
     ctrl = m.get("control") or {}
+    # FLUX déclarés (`control.streams`, app/plugin_streams.py) : audio d'écoute vers le navigateur
+    # (GET en continu) ou micro d'ordre (POST d'octets bruts). Droits vérifiés par le module.
+    from .. import plugin_streams
+    _flux = plugin_streams.handle(vmid, m, p)
+    if _flux is not None:
+        return _flux
     read_only = set(ctrl.get("read_endpoints") or [])
     allowed = set(ctrl.get("endpoints") or []) | read_only
     if allowed and ("/" + p) not in allowed:
@@ -733,6 +881,18 @@ def plugin_proxy(vmid, p):
         return Response(r.content, status=r.status_code, content_type=ctype,
                         headers={"Cache-Control": "no-store"})
     body = request.get_json(force=True, silent=True)
+    # ZONES de console (`control.zones`, app/plugin_zones.py) : un utilisateur limité à ses zones
+    # ne règle que leurs éléments (un lot mixte est réduit à sa part autorisée, le refusé est
+    # rendu dans la réponse) ; la structure exige `console.build`. Sans déclaration : rien.
+    _zrefused = []
+    if request.method == "POST":
+        from .. import plugin_zones
+        from ..auth import ROLES, current_user as _cu
+        _u = _cu() or {}
+        body, _zrefused, _zerr = plugin_zones.filter_request(
+            vmid, m, _u, "/" + p, body, perms=ROLES.get(_u.get("role"), set()))
+        if _zerr:
+            return jsonify(_zerr[1]), _zerr[0]
     # Mur multiview SHARDÉ : le conteneur du vmid est l'ASSEMBLEUR du tissu (copie pure des
     # shards pré-rendus). Ne JAMAIS lui forwarder les hot-applies window/style (le chrome se
     # dessinerait autour de chaque BLOC de shard ; l'idx de fenêtre logique ≠ ses tuiles) : on
@@ -755,7 +915,38 @@ def plugin_proxy(vmid, p):
             except Exception as e:
                 return jsonify({"error": str(e)}), 500
             return jsonify({"ok": True, "routed": "fabric"})
+    # Persistance DÉCLARÉE par le plugin (`control.persist`, app/plugin_persist.py) : une
+    # application de structure est validée à blanc, persistée, PUIS appliquée ; un réglage est
+    # relu par lot après coup. Sans déclaration, rien ne change.
+    from .. import plugin_persist
+    if request.method == "POST":
+        r_struct = plugin_persist.structure_apply(vmid, m, "/" + p, body)
+        if r_struct is not None:
+            return r_struct
     result = _mixer_proxy(vmid, "/" + p, method=request.method, body=body)
+    if _zrefused:
+        from .. import plugin_zones
+        result = plugin_zones.annotate(result, _zrefused)
+    if request.method == "POST":
+        try:
+            plugin_persist.after_post(vmid, m, "/" + p, result[1])
+        except Exception:
+            pass
+        # Journal d'exploitation (`control.journal`, app/ops_journal.py) : APRÈS la réponse du
+        # conteneur, sur le corps RÉELLEMENT relayé (zones déjà appliquées). Auteur = l'utilisateur
+        # de la requête. Ne lève jamais : un journal en panne ne fait pas échouer la commande.
+        from .. import ops_journal
+        ops_journal.record_post(vmid, m, "/" + p, body, result[1])
+        try:                              # recall counted (`control.library.usage`: scenes) ; never raises
+            from services.audio import console_library
+            console_library.after_post(vmid, m, "/" + p, result[1], result[0])
+        except ImportError:               # audio service absent: no Libraries page to count for
+            pass
+        try:   # générateur passé en « voix » par un simple réglage : l'orchestrateur pousse le clip (voice_ident)
+            from .. import voice_ident
+            voice_ident.follow_set(vmid, m, "/" + p, body, result[1])
+        except Exception:
+            import logging as _lg; _lg.getLogger(__name__).exception("voice follow after /%s (#%s)", p, vmid)
     # Persistance des hot-applies multiview : window/style ne touchent que le conteneur live (:8082).
     # On reflète la modif dans deploy_config (DB) pour qu'elle SURVIVE à un changement de multiview +
     # rechargement de l'éditeur (sinon la modif reste active sur la SORTIE mais disparaît de l'AFFICHAGE).
@@ -1060,3 +1251,113 @@ def plugin_config(vmid):
     if not running:
         return jsonify({"status": "params_enregistres", "vmid": vmid})
     return jsonify({"status": "deploiement_en_cours", "vmid": vmid})
+
+
+# ─── Bibliothèque À GENRES d'un plugin (app/plugin_library.py) ──────────────────────────────
+# Les préréglages ci-dessus, typés par `value.kind` (cartouchier : grille, playlist, page) : même
+# table, même document d'échange, même rappel par macro / Ember+. Droits = ceux des préréglages :
+# lister / exporter au login, enregistrer / supprimer / importer / RAPPELER sous `plugins.operate`
+# (rappeler modifie un conteneur en exploitation, comme tout POST du proxy de contrôle), plus
+# l'accès « operator » au projet du conteneur visé.
+def _library_import(type_, lib, presets, mode):
+    from .. import plugin_library as L
+    imported, skipped, rejected, missing = [], [], [], []
+    for i, p in enumerate(presets):
+        if not isinstance(p, dict):
+            rejected.append({"name": None, "index": i, "reason": "bad_entry"})
+            continue
+        nom = (p.get("name") or "").strip()
+        val = p.get("value")
+        if not nom or len(nom) > L.NAME_MAX:
+            rejected.append({"name": p.get("name"), "index": i, "reason": "bad_name"})
+            continue
+        if not isinstance(val, dict):
+            rejected.append({"name": nom, "index": i, "reason": "bad_save"})
+            continue
+        why = L.check_import_entry(lib, val)
+        if why:
+            rejected.append({"name": nom, "index": i, "reason": why})
+            continue
+        kind = val["kind"]
+        if L.find(type_, kind, nom) is not None and mode == "skip":
+            skipped.append({"name": nom, "kind": kind})
+            continue
+        lost = L.missing_media(val)
+        val = dict(val, missing_media=len(lost))
+        L.store(type_, kind, nom, val, overwrite=True)
+        imported.append({"name": nom, "kind": kind})
+        if lost:
+            missing.append({"name": nom, "kind": kind, "media": lost[:100], "count": len(lost)})
+    db_add_alert("alert.deploy.plugin_presets_importes", "info", kind="deploy",
+                 params={"t": type_, "n": str(len(imported))})
+    return jsonify({"ok": True, "type": type_, "mode": mode,
+                    "imported": imported, "skipped": skipped, "rejected": rejected,
+                    "missing_media": missing,
+                    "counts": {"imported": len(imported), "skipped": len(skipped),
+                               "rejected": len(rejected), "read": len(presets),
+                               "missing_media": sum(m["count"] for m in missing)}})
+
+
+def _library_error(e):
+    return jsonify(e.body()), e.status
+
+
+@bp.route("/api/plugins/<type_>/library", methods=["GET"])
+@require_login
+def plugin_library_list(type_):
+    from .. import plugin_library as L
+    try:
+        return jsonify({"saves": L.list_saves(type_, (request.args.get("kind") or "").strip() or None)})
+    except L.LibraryError as e:
+        return _library_error(e)
+
+
+@bp.route("/api/plugins/<type_>/library/<int:sid>", methods=["DELETE"])
+@require_perm("plugins.operate")
+def plugin_library_delete(type_, sid):
+    from .. import plugin_library as L
+    try:
+        return jsonify({"ok": L.delete(type_, sid)})
+    except L.LibraryError as e:
+        return _library_error(e)
+
+
+@bp.route("/api/containers/<int:vmid>/library", methods=["POST"])
+@require_perm("plugins.operate")
+def plugin_library_save(vmid):
+    """Enregistre sous un nom la partie `kind` du conteneur (capturée chez lui). Corps :
+    {kind, name, page?, zone?, overwrite?}. Un nom déjà pris pour ce genre → 409 `name_taken`."""
+    from .. import plugin_library as L
+    err = check_vmid_access(vmid, "operator")
+    if err:
+        return err
+    b = request.get_json(force=True, silent=True) or {}
+    u = current_user() or {}
+    try:
+        return jsonify(L.capture_and_save(vmid, (b.get("kind") or "").strip(), b.get("name"),
+                                          page=b.get("page"), author=u.get("username") or "",
+                                          overwrite=bool(b.get("overwrite")), zone=b.get("zone")))
+    except L.LibraryError as e:
+        return _library_error(e)
+
+
+@bp.route("/api/containers/<int:vmid>/library/<int:sid>/recall", methods=["POST"])
+@require_perm("plugins.operate")
+def plugin_library_recall(vmid, sid):
+    """Rappelle une sauvegarde sur ce conteneur. Corps : {page?, add?} (genre page). Rend le
+    compte du conteneur (médias manquants, identifiants renommés, touches déplacées). `zone?` :
+    la zone visée (cartouchier 0.1.8 ; absente = zone par défaut du genre)."""
+    from .. import plugin_library as L
+    err = check_vmid_access(vmid, "operator")
+    if err:
+        return err
+    b = request.get_json(force=True, silent=True) or {}
+    try:
+        type_ = L._type_of(vmid)
+        preset = L.get(type_, sid)
+        extra = {k: b[k] for k in ("page", "add", "zone") if k in b}
+        out = L.recall(vmid, type_, preset, extra)
+    except L.LibraryError as e:
+        return _library_error(e)
+    return jsonify({"ok": True, "id": sid, "name": preset["name"], "kind": preset["value"]["kind"],
+                    "recall": out.get("recall") or {}})

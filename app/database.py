@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import re
+import secrets
 import sqlite3
 import threading
 import uuid
@@ -42,6 +43,97 @@ def get_db():
     conn.execute("PRAGMA synchronous=NORMAL")
     _tls.conn = conn
     return conn
+
+def _migrate_multiview_compute(db):
+    """Migration de données, idempotente : un mur multiview qui porte un `force_cpu` explicite et
+    pas encore de `compute` reçoit le `compute` correspondant (True → « cpu », False → « gpu »).
+
+    POURQUOI. `compute` (Auto / GPU / CPU, panneau ⚙) est arrivé le 2026-10-06, et le panneau
+    poste TOUS ses champs système à chaque enregistrement. Un mur forcé en CPU avant ce champ
+    s'y serait affiché « Auto » — son défaut — et le premier enregistrement venu, pour n'importe
+    quel autre réglage, l'aurait renvoyé sur la carte (le hook retire `force_cpu` en « auto »).
+
+    Les SHARDS du tissu sont exclus : leur `force_cpu` vient de leur mur à chaque planification,
+    un `compute` persisté chez eux finirait par le contredire."""
+    _shards = {r[0] for r in db.execute(
+        "SELECT vmid FROM fabric_node_alloc WHERE vmid IS NOT NULL").fetchall()}
+    n = 0
+    for vmid, dcraw in db.execute(
+            "SELECT vmid, deploy_config FROM containers "
+            "WHERE deploy_config LIKE '%force_cpu%'").fetchall():
+        if vmid in _shards:
+            continue
+        try:
+            dc = json.loads(dcraw) if dcraw else None
+        except Exception:
+            continue
+        if not dc or dc.get("type") != "multiview":
+            continue
+        p = dc.get("params") or {}
+        if "compute" in p or "force_cpu" not in p:
+            continue
+        p["compute"] = "cpu" if p.get("force_cpu") else "gpu"
+        dc["params"] = p
+        db.execute("UPDATE containers SET deploy_config=? WHERE vmid=?", (json.dumps(dc), vmid))
+        n += 1
+    if n:
+        log.info("migration multiview : `compute` posé d'après `force_cpu` sur %d mur(s)", n)
+    db.commit()
+
+
+TRIGGERS_DDL = '''CREATE TABLE %s (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id  INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+            name        TEXT,
+            enabled     INTEGER DEFAULT 0,
+            condition   TEXT,
+            macro_id    INTEGER,
+            cooldown_ms INTEGER DEFAULT 2000,
+            created_at  TEXT,
+            action      TEXT
+        )'''
+
+
+def _migrate_triggers_nullable_project(db):
+    """Schema migration, idempotent: `project_triggers.project_id` loses its NOT NULL (2026-10-18).
+
+    WHY. A console fader start link may now be an INSTALLATION trigger — no project — when neither the console
+    nor the player is in any project (services/audio/console_fader_links.py). SQLite cannot drop a NOT NULL: the table is
+    REBUILT (rows, ids, extra indexes and the AUTOINCREMENT counter kept, so a deleted trigger id is never
+    handed out again). Detection reads the schema (`PRAGMA table_info.notnull`), never a flag: a base already
+    migrated, or created fresh, is left untouched. Returns True when it rebuilt the table."""
+    info = db.execute("PRAGMA table_info(project_triggers)").fetchall()
+    col = next((r for r in info if r[1] == "project_id"), None)
+    if col is None or not col[3]:
+        return False
+    cols = [r[1] for r in info]
+    keep = [c for c in ("id", "project_id", "name", "enabled", "condition", "macro_id", "cooldown_ms",
+                        "created_at", "action") if c in cols]
+    idx = [r[0] for r in db.execute("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='project_triggers' "
+                                    "AND sql IS NOT NULL").fetchall()]
+    db.commit()
+    try:
+        db.execute("BEGIN")
+        seq = db.execute("SELECT seq FROM sqlite_sequence WHERE name='project_triggers'").fetchone()
+        db.execute("DROP TABLE IF EXISTS project_triggers_rebuild")
+        db.execute(TRIGGERS_DDL % "project_triggers_rebuild")
+        db.execute("INSERT INTO project_triggers_rebuild (%s) SELECT %s FROM project_triggers"
+                   % (", ".join(keep), ", ".join(keep)))
+        db.execute("DROP TABLE project_triggers")
+        db.execute("ALTER TABLE project_triggers_rebuild RENAME TO project_triggers")
+        if seq is not None:
+            db.execute("UPDATE sqlite_sequence SET seq=max(seq, ?) WHERE name='project_triggers'", (seq[0],))
+            if not db.execute("SELECT 1 FROM sqlite_sequence WHERE name='project_triggers'").fetchone():
+                db.execute("INSERT INTO sqlite_sequence (name, seq) VALUES ('project_triggers', ?)", (seq[0],))
+        for sql in idx:
+            db.execute(sql)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    log.info("project_triggers: project_id made nullable (installation triggers), %d columns kept", len(keep))
+    return True
+
 
 def init_db():
     with get_db() as db:
@@ -111,6 +203,23 @@ def init_db():
         if "pinned_cores" not in cols:
             # CPUs épinglés (cpuset), format "4,5,6" ou "4-6,8" ; NULL = pas d'épinglage
             db.execute("ALTER TABLE containers ADD COLUMN pinned_cores TEXT")
+        # RÉGLAGE DE RESSOURCES PROPRE AU CONTENEUR (2026-10-11). NULL = suivre le profil du
+        # manifeste (`plugin.json:resources`), comme avant. Colonnes DISTINCTES de `cores`/`memory` :
+        # celles-ci portent des défauts d'INSERT (2/2048, 1/2048) qu'on ne peut pas distinguer d'une
+        # valeur voulue — en inférer une intention aurait plafonné tout le parc à 2 cœurs. Seul
+        # `PATCH /api/containers/<vmid>/resources` les écrit ; `docker_compute` les relit au run.
+        # Pas de `pinned_cores_override` : le cpuset appartient à `core_pool` (un cpuset choisi à la
+        # main contournerait la comptabilité et pourrait tomber sur les lcores du moteur 2110).
+        if "cores_override" not in cols:
+            db.execute("ALTER TABLE containers ADD COLUMN cores_override INTEGER")
+        if "memory_override" not in cols:
+            db.execute("ALTER TABLE containers ADD COLUMN memory_override INTEGER")
+        # MODE CPU propre au conteneur (2026-10-11) : 'shared' (pool partagé du nœud, poids faible —
+        # le profil `priority: batch` du transcoder) ou 'reserved' (cœurs DÉDIÉS via core_pool,
+        # poids normal). NULL = le manifeste fait foi. Offert seulement aux types qui déclarent
+        # `resources.reservable` (cf. `docker_compute.effective_resources`).
+        if "cpu_mode_override" not in cols:
+            db.execute("ALTER TABLE containers ADD COLUMN cpu_mode_override TEXT")
         if "nmos_audio_count" not in cols:
             # Nombre de receivers audio NMOS exposés (en plus de nmos_receivers_count qui est = vidéo)
             db.execute("ALTER TABLE containers ADD COLUMN nmos_audio_count INTEGER DEFAULT 0")
@@ -263,9 +372,11 @@ def init_db():
         )''')
         # Chantier 6 (suite) : déclencheurs permanents « quand <condition> devient vraie
         # → lancer <macro> » (front montant + cooldown_ms, poller dans app/macros.py).
+        # project_id NULL = INSTALLATION trigger (no project: console fader start link when neither the console
+        # nor the player is in a project, decision 2026-10-18). Older bases: _migrate_triggers_nullable_project.
         db.execute('''CREATE TABLE IF NOT EXISTS project_triggers (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            project_id  INTEGER REFERENCES projects(id) ON DELETE CASCADE,
             name        TEXT,
             enabled     INTEGER DEFAULT 0,
             condition   TEXT,
@@ -273,6 +384,12 @@ def init_db():
             cooldown_ms INTEGER DEFAULT 2000,
             created_at  TEXT
         )''')
+        # Direct ACTION of a trigger (JSON {instance_uuid|vmid, action_id, params, link}) — run instead of a
+        # macro. Written by the console's one-step fader start link (services/audio/console_fader_links.py); NULL = macro.
+        tcols = [r[1] for r in db.execute("PRAGMA table_info(project_triggers)")]
+        if "action" not in tcols:
+            db.execute("ALTER TABLE project_triggers ADD COLUMN action TEXT")
+        _migrate_triggers_nullable_project(db)
         # Chantier 3 « projet vivant » : historique de versions du snapshot.
         # label NULL = version automatique (rétention bornée) ; label posé = version
         # nommée (« avant émission »), conservée sans limite.
@@ -392,6 +509,39 @@ def init_db():
         )''')
         db.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_user "
                    "ON user_sessions(user_id, revoked)")
+        # Jetons d'API — accès PROGRAMMATIQUE (serveur MCP, script d'exploitation, supervision).
+        #
+        # Pourquoi une table et pas une colonne sur `users` : un compte doit pouvoir porter
+        # PLUSIEURS jetons, pour en révoquer un sans couper les autres. Un seul jeton par compte
+        # obligerait à créer un compte par consommateur, et c'est le compte qui porte les
+        # habilitations — on se retrouverait à dupliquer des droits pour une raison de plomberie.
+        #
+        # ⚠ On ne stocke QUE l'empreinte. Le jeton en clair n'existe qu'une fois, dans la
+        # réponse à sa création : une base volée ne donne alors aucun accès, et personne — pas
+        # même un administrateur — ne peut relire le jeton de quelqu'un d'autre. C'est la même
+        # règle que `password_hash`, pour la même raison.
+        #
+        # `revoked_at` plutôt qu'un DELETE, comme pour les sessions : un jeton révoqué reste
+        # listable, donc on distingue « révoqué le … » de « n'a jamais existé ».
+        #
+        # PAS de portée propre au jeton (pas de colonne de permissions) : le jeton AGIT COMME
+        # SON COMPTE, avec l'habilitation de celui-ci. Inventer ici une seconde échelle de
+        # droits recréerait l'homonymie qui nous a déjà coûté cher (habilitations vs
+        # emplacements) : pour un accès restreint, on crée un compte restreint.
+        db.execute('''CREATE TABLE IF NOT EXISTS api_tokens (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id      INTEGER NOT NULL,
+            label        TEXT,
+            token_hash   TEXT NOT NULL UNIQUE,
+            prefix       TEXT,
+            created_at   TEXT,
+            created_by   INTEGER,
+            last_used_at TEXT,
+            last_used_ip TEXT,
+            revoked_at   TEXT
+        )''')
+        db.execute("CREATE INDEX IF NOT EXISTS idx_api_tokens_hash "
+                   "ON api_tokens(token_hash, revoked_at)")
         # Dernière connexion réussie, et ÉPOQUE de session.
         #
         # ⚠ L'ÉPOQUE EXISTE POUR UNE RAISON PRÉCISE. Les cookies émis AVANT ce registre ne
@@ -512,6 +662,12 @@ def init_db():
             db.execute("UPDATE share_links SET instance_uuid = ("
                        "  SELECT c.instance_uuid FROM containers c WHERE c.vmid = share_links.vmid"
                        ") WHERE instance_uuid IS NULL")
+        # `scope` (2026-10-18) : PORTÉE d'un lien de page publique, JSON `{"tab": "<id>", "play": bool}`.
+        # NULL = le comportement de tous les liens existants : toute la page, en LECTURE SEULE. Un lien
+        # ne gagne le droit de JOUER que par une décision explicite à sa création (`play: true`, réservée
+        # à qui a déjà le droit d'écrire sur le conteneur) — jamais par la migration.
+        if _sl and "scope" not in _sl:
+            db.execute("ALTER TABLE share_links ADD COLUMN scope TEXT")
         # Pool SR-IOV nic_pool RETIRÉ (vestige LXC) : le moteur 2110_io tourne sur la PF en
         # AF-XDP, sans VF. Les NIC 2110 se déclarent via node_interfaces (role=media2110).
         # Purge idempotente des tables mortes.
@@ -1142,6 +1298,9 @@ def init_db():
                        ("user", "TEXT"), ("msg_key", "TEXT"), ("msg_params", "TEXT")):
             if _c not in _alcols:
                 db.execute(f"ALTER TABLE alerts ADD COLUMN {_c} {_t}")
+        # Index sur `kind` : sert le filtre `/api/alerts?kind=` ET la purge à deux quotas
+        # (`db_add_alert`), qui compte et sélectionne les lignes de sécurité par cette colonne.
+        db.execute("CREATE INDEX IF NOT EXISTS idx_alerts_kind ON alerts(kind)")
         # ÉPISODES D'ALERTE (2026-08-15) — mémoire de l'anti-rebond, cf. `_antirebond` plus bas.
         # Une alerte qui se répète n'apporte plus d'information à partir de la deuxième ligne ; elle
         # en RETIRE, en chassant du journal ce qui, lui, n'est arrivé qu'une fois. Mesuré le
@@ -1294,6 +1453,7 @@ def init_db():
             log.info("migration pyramide : socle d'octaves figé à « full » sur %d container(s) "
                      "d'avant la clé base_octaves (le repli du script devient explicite)", _fige)
         db.commit()
+        _migrate_multiview_compute(db)
         # Migration de données : purge la passerelle WebRTC (infra persistante) des
         # snapshots de projets sauvegardés AVANT son exclusion à la création. Idempotente.
         _EXCLUDED = {"webrtc_gateway", "storage"}
@@ -1627,6 +1787,70 @@ def init_db():
                                VALUES (?,?,?)''',
                             (first_cid, row["tsl_index"], shm))
 
+        # GROUPES DE LECTURE (app/playout_groups.py) : des players ordinaires réunis en N sorties A/B/C…
+        # sur UNE playlist. Membres = `instance_uuid` ORDONNÉS (la lettre = la position) ; `items` = la
+        # playlist (JSON, chaque élément a son id) ; `cursor` = id du dernier élément mis à l'antenne ;
+        # `air_member` = la sortie qui l'a joué (base de la rotation) ; `air_live` = elle est encore à
+        # l'antenne (0 après son Cue) ; `release_pending` = sorties qui ont quitté l'antenne et attendent
+        # d'être libérées — arrêtées et recuées ({uuid: horodatage}). DÉSIGNATION déclarée par l'humain (jamais
+        # déduite) : `mixer_uuid`, `console_uuid` (instances) et `channels` = {uuid du membre: {mixer_input,
+        # strip}} — l'entrée du mélangeur et le n° de tranche de console de chaque sortie ; `auto_release` =
+        # libération automatique (désactivée par défaut). Idempotent.
+        db.execute('''CREATE TABLE IF NOT EXISTS playout_groups (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            name            TEXT NOT NULL,
+            project_id      INTEGER,
+            members         TEXT NOT NULL DEFAULT '[]',
+            items           TEXT NOT NULL DEFAULT '[]',
+            cursor          TEXT,
+            air_member      TEXT,
+            air_live        INTEGER NOT NULL DEFAULT 0,
+            release_pending TEXT NOT NULL DEFAULT '{}',
+            trigger_mode    TEXT NOT NULL DEFAULT 'manual',
+            mixer_uuid      TEXT,
+            console_uuid    TEXT,
+            channels        TEXT NOT NULL DEFAULT '{}',
+            auto_release    INTEGER NOT NULL DEFAULT 0,
+            out_of_order    TEXT NOT NULL DEFAULT 'skip',
+            auto_next       INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT,
+            updated_at      TEXT)''')
+        # `out_of_order` = ce que fait un Play hors ordre (skip | requeue | refuse) ; `auto_next` = la fin
+        # CONSTATÉE du clip à l'antenne vaut Suivant (désactivé par défaut). Ajoutées le 2026-10-17.
+        _pg_cols = {r[1] for r in db.execute("PRAGMA table_info(playout_groups)")}
+        if "out_of_order" not in _pg_cols:
+            db.execute("ALTER TABLE playout_groups ADD COLUMN out_of_order TEXT NOT NULL DEFAULT 'skip'")
+        if "auto_next" not in _pg_cols:
+            db.execute("ALTER TABLE playout_groups ADD COLUMN auto_next INTEGER NOT NULL DEFAULT 0")
+        # LECTURE SYNCHRONE (app/sync_groups.py) : des players ordinaires qui lisent ENSEMBLE, à l'image
+        # près. Objet DISTINCT des groupes A/B (décision 2026-10-17). Membres = `instance_uuid` ordonnés
+        # (canal A, B, C…) ; `lines` = la playlist en LIGNES (JSON : {id, title, clips: {uuid: clip|null},
+        # duration}) ; `cursor` = id de la ligne courante ; `end_policy` = fin de ligne (longest | shortest |
+        # duration) ; `loop_mode` = off | line | playlist ; `lead_ms` = marge de commande ; `transport` =
+        # dernier état de lecture connu (JSON) — il n'est qu'une HYPOTHÈSE au redémarrage, confrontée aux
+        # témoins des players avant d'être repris ; `saved_lists` = playlists enregistrées {nom: lines}.
+        # Ajoutée le 2026-10-17. Idempotent.
+        db.execute('''CREATE TABLE IF NOT EXISTS sync_groups (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            name            TEXT NOT NULL,
+            project_id      INTEGER,
+            members         TEXT NOT NULL DEFAULT '[]',
+            lines           TEXT NOT NULL DEFAULT '[]',
+            cursor          TEXT,
+            end_policy      TEXT NOT NULL DEFAULT 'longest',
+            loop_mode       TEXT NOT NULL DEFAULT 'off',
+            lead_ms         INTEGER NOT NULL DEFAULT 400,
+            transport       TEXT NOT NULL DEFAULT '{}',
+            saved_lists     TEXT NOT NULL DEFAULT '{}',
+            created_at      TEXT,
+            updated_at      TEXT)''')
+        # `pairs` = paires fill / key ([[uuid, uuid]…], même nœud, mêmes In / durées, files pleines au départ) ;
+        # `open_fail` = canal qui ne s'ouvre pas : proceed (défaut) | refuse. Ajoutées le 2026-10-17.
+        _sg_cols = {r[1] for r in db.execute("PRAGMA table_info(sync_groups)")}
+        if "pairs" not in _sg_cols:
+            db.execute("ALTER TABLE sync_groups ADD COLUMN pairs TEXT NOT NULL DEFAULT '[]'")
+        if "open_fail" not in _sg_cols:
+            db.execute("ALTER TABLE sync_groups ADD COLUMN open_fail TEXT NOT NULL DEFAULT 'proceed'")
         db.commit()
 
         # Première installation : AUCUN utilisateur seedé par défaut (plus de couple
@@ -2159,6 +2383,24 @@ def db_update_resources(vmid, cores=None, memory=None, pinned_cores=None):
     args.append(vmid)
     with get_db() as db:
         db.execute(f"UPDATE containers SET {', '.join(sets)} WHERE vmid=?", args)
+        db.commit()
+
+def db_set_resources_override(vmid, cores=None, memory=None, reset=False, cpu_mode=None):
+    """Pose le réglage de ressources PROPRE au conteneur (cf. migration `cores_override`).
+    None = champ inchangé ; `reset=True` efface d'abord les trois (retour au manifeste).
+    Les colonnes d'affichage `cores`/`memory` suivent la valeur posée."""
+    with get_db() as db:
+        if reset:
+            db.execute("UPDATE containers SET cores_override=NULL, memory_override=NULL, "
+                       "cpu_mode_override=NULL WHERE vmid=?", (vmid,))
+        if cpu_mode is not None:
+            db.execute("UPDATE containers SET cpu_mode_override=? WHERE vmid=?", (cpu_mode, vmid))
+        if cores is not None:
+            db.execute("UPDATE containers SET cores_override=?, cores=? WHERE vmid=?",
+                       (int(cores), int(cores), vmid))
+        if memory is not None:
+            db.execute("UPDATE containers SET memory_override=?, memory=? WHERE vmid=?",
+                       (int(memory), int(memory), vmid))
         db.commit()
 
 def db_update_script(vmid, script):
@@ -2928,6 +3170,32 @@ def _alerts_retention():
 # passe par `_alerts_retention()` pour honorer le réglage.
 ALERTS_RETENTION = ALERTS_RETENTION_DEFAUT
 
+# ─── Rétention PROPRE à la piste d'audit ─────────────────────────────────────────────────────
+# Mesuré le 2026-08-15 : 10 068 lignes dans `alerts` renouvelées en ~2 jours, l'essentiel produit
+# par l'exploitation vidéo. Une purge FIFO commune ferait donc disparaître la trace d'une
+# connexion en 48 h — ce qui ne répond à aucune des exigences qui la réclament (CSG-010 § 2.6.1,
+# CSG-024 § 14). Et faire reposer la réponse sur le canal syslog seul serait pire : il est
+# OPTIONNEL et éteint par défaut, donc sur une instance livrée sans collecteur il n'y aurait
+# aucune piste, sans que rien ne le signale.
+#
+# La purge épargne donc les lignes de sécurité au-delà du quota général, jusqu'à leur PROPRE
+# quota. Le journal reste borné (le total ne peut pas dépasser la somme des deux), et au volume
+# réel d'un parc — quelques dizaines d'événements par jour — 50 000 lignes couvrent des années.
+ALERTS_RETENTION_SECURITE_DEFAUT = 50000
+
+
+def _alerts_retention_securite():
+    """Rétention des lignes de sécurité (réglage `alerts_security_retention`).
+
+    Plancher à 1000 : sous ce seuil la piste ne survivrait pas à une campagne de bruteforce, qui
+    écrit précisément beaucoup de lignes — et c'est exactement le moment où on veut la relire."""
+    try:
+        v = int(db_get_setting("alerts_security_retention", ALERTS_RETENTION_SECURITE_DEFAUT)
+                or ALERTS_RETENTION_SECURITE_DEFAUT)
+    except (TypeError, ValueError):
+        return ALERTS_RETENTION_SECURITE_DEFAUT
+    return max(1000, v)
+
 # ─── Vocabulaire FERMÉ des natures d'incident (colonne `alerts.kind`) ────────────────────────
 # UN SEUL endroit. Une chaîne inventée à l'appel serait inexploitable pour filtrer : le but de la
 # colonne est justement de pouvoir dire « montre-moi tous les rx_stall » ou « tout ce qui touche le
@@ -2953,7 +3221,19 @@ ALERT_KINDS = (
                     # est invalide met HORS SERVICE toutes les fonctions de sa page côté navigateur,
                     # sans que le serveur ne s'en aperçoive (il rend la page normalement). Contrôlé
                     # au démarrage par app/template_check.py.
+    # ── Sécurité (2026-09-15) ────────────────────────────────────────────────────────────────
+    # DEUX kinds, pas un seul « security », parce que les exigences les nomment séparément et
+    # qu'un auditeur lit l'un SANS l'autre : « qui s'est connecté » et « qui a changé les droits »
+    # ne se relisent ni au même moment ni pour la même raison. Un kind unique obligerait à
+    # refiltrer sur le texte — exactement le repli que ce produit retire partout ailleurs.
+    "auth",         # authentification : connexion, échec de connexion, déconnexion, blocage d'IP
+    "account",      # comptes et droits : création/modification/suppression, mot de passe,
+                    # habilitations, révocation de sessions
 )
+
+# Les natures qui constituent la PISTE D'AUDIT. Elles ont leur propre rétention (cf.
+# `_alerts_retention_securite`) : une piste d'audit qui tourne au bout de deux jours ne vaut rien.
+ALERT_KINDS_SECURITE = ("auth", "account")
 
 
 def _alert_kind(kind):
@@ -3223,13 +3503,29 @@ def db_add_alert(message, niveau="info", vmid=None, node_id=None, kind=None, use
         # Purge allégée : au lieu d'un DELETE … NOT IN (scan complet) à CHAQUE insert,
         # on ne purge que lorsque la table dépasse RETENTION + marge (≈ tous les 200
         # inserts). Le COUNT(*) est bien moins coûteux que le DELETE corrélé.
+        #
+        # ★ DEUX QUOTAS, PAS UN. Les lignes de sécurité (`ALERT_KINDS_SECURITE`) sont épargnées
+        # par le quota général et bornées par le leur. Sans ça, la piste d'audit serait chassée
+        # du journal par le volume de l'exploitation vidéo en ~48 h (mesure du 2026-08-15).
+        #
+        # ⚠ Le COUNT de déclenchement porte sur les lignes PURGEABLES, pas sur le total : une
+        # piste d'audit bien remplie maintiendrait sinon `n > _ret + marge` en permanence, et on
+        # relancerait le DELETE corrélé à CHAQUE insert sans jamais rien supprimer.
         _ret = _alerts_retention()
+        _ret_sec = _alerts_retention_securite()
+        _sec_ph = ",".join("?" * len(ALERT_KINDS_SECURITE))
         n = db.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
         if n > _ret + ALERTS_PURGE_MARGIN:
-            db.execute(
-                "DELETE FROM alerts WHERE id NOT IN "
-                "(SELECT id FROM alerts ORDER BY id DESC LIMIT ?)",
-                (_ret,))
+            n_sec = db.execute(
+                f"SELECT COUNT(*) FROM alerts WHERE kind IN ({_sec_ph})",
+                ALERT_KINDS_SECURITE).fetchone()[0]
+            if (n - n_sec) > _ret + ALERTS_PURGE_MARGIN or n_sec > _ret_sec + ALERTS_PURGE_MARGIN:
+                db.execute(
+                    "DELETE FROM alerts WHERE id NOT IN "
+                    "(SELECT id FROM alerts ORDER BY id DESC LIMIT ?) "
+                    f"AND id NOT IN (SELECT id FROM alerts WHERE kind IN ({_sec_ph}) "
+                    "ORDER BY id DESC LIMIT ?)",
+                    (_ret,) + tuple(ALERT_KINDS_SECURITE) + (_ret_sec,))
             # Même occasion : les épisodes clos depuis longtemps (une semaine) n'ont plus de rôle,
             # ni pour l'anti-rebond ni pour la lecture. Purgés dans la MÊME branche que les
             # alertes, donc ~1 fois sur 200 inserts : la table reste bornée sans coût par appel.
@@ -3245,9 +3541,10 @@ def db_add_alert(message, niveau="info", vmid=None, node_id=None, kind=None, use
         from services.alerting import notify as _alerting_notify
         try:
             _alerting_notify(message, niveau, vmid=vmid, node_id=node_id, kind=kind,
-                             msg_key=msg_key, msg_params=msg_params)
+                             msg_key=msg_key, msg_params=msg_params, user=user)
         except TypeError:
-            # Sous-module `services/alerting` ANTÉRIEUR au rendu multilingue : parent et
+            # Sous-module `services/alerting` ANTÉRIEUR au rendu multilingue ou au transport de
+            # l'ACTEUR : parent et
             # sous-modules sont versionnés séparément, et une désynchronisation des deux est un
             # mode de panne déjà vécu ici. On retombe sur l'appel historique — la sortie push
             # part alors en français, ce qui est dégradé mais pas cassé.
@@ -3711,8 +4008,17 @@ def db_get_alerts(q=None, niveau=None, limit=ALERTS_AFFICHAGE_DEFAUT, vmid=None,
         where.append("node_id = ?")
         params.append(int(node_id))
     if kind:
-        where.append("kind = ?")
-        params.append(str(kind))
+        # Une LISTE séparée par des virgules est acceptée (« kind=auth,account ») : la piste
+        # d'audit tient en DEUX natures, et obliger l'appelant à deux requêtes puis à refusionner
+        # deux listes tronquées chacune à `limit` donnerait un résultat faux — pas seulement
+        # pénible. Une seule nature reste la forme courante et ne change pas de comportement.
+        kinds = [k.strip() for k in str(kind).split(",") if k.strip()]
+        if len(kinds) == 1:
+            where.append("kind = ?")
+            params.append(kinds[0])
+        elif kinds:
+            where.append("kind IN (%s)" % ",".join("?" * len(kinds)))
+            params.extend(kinds)
     if user:
         # « machine » = les actions SANS acteur (surveillance, réconciliation, watchdog) : c'est un
         # filtre légitime et fréquent — « qu'est-ce qui s'est fait tout seul ? ».
@@ -4540,6 +4846,11 @@ def _parse_trigger(r):
         t["condition"] = json.loads(t.get("condition") or "{}")
     except (TypeError, ValueError):
         t["condition"] = {}
+    try:
+        a = json.loads(t.get("action") or "null")
+    except (TypeError, ValueError):
+        a = None
+    t["action"] = a if isinstance(a, dict) else None
     return t
 
 def db_project_triggers(pid):
@@ -4554,19 +4865,26 @@ def db_all_enabled_triggers():
         return [_parse_trigger(r) for r in db.execute(
             "SELECT * FROM project_triggers WHERE enabled=1 ORDER BY id").fetchall()]
 
+def db_all_triggers():
+    """Every trigger, enabled or not, all projects (console fader start links: services/audio/console_fader_links.py)."""
+    with get_db() as db:
+        return [_parse_trigger(r) for r in db.execute(
+            "SELECT * FROM project_triggers ORDER BY id").fetchall()]
+
 def db_get_trigger(tid):
     with get_db() as db:
         r = db.execute("SELECT * FROM project_triggers WHERE id=?", (tid,)).fetchone()
         return _parse_trigger(r) if r else None
 
 def db_create_trigger(pid, name=None, condition=None, macro_id=None,
-                      cooldown_ms=2000, enabled=0):
+                      cooldown_ms=2000, enabled=0, action=None):
     with get_db() as db:
         cur = db.execute(
             "INSERT INTO project_triggers (project_id, name, enabled, condition, "
-            "macro_id, cooldown_ms, created_at) VALUES (?,?,?,?,?,?,?)",
+            "macro_id, cooldown_ms, created_at, action) VALUES (?,?,?,?,?,?,?,?)",
             (pid, name, 1 if enabled else 0, json.dumps(condition or {}), macro_id,
-             int(cooldown_ms or 0), datetime.now().isoformat(timespec="seconds")))
+             int(cooldown_ms or 0), datetime.now().isoformat(timespec="seconds"),
+             json.dumps(action) if action else None))
         db.commit()
         return cur.lastrowid
 
@@ -4689,6 +5007,10 @@ def db_delete_project(pid):
     with get_db() as db:
         db.execute("DELETE FROM projects WHERE id=?", (pid,))
         db.execute("DELETE FROM project_members WHERE project_id=?", (pid,))
+        # explicit: foreign_keys is OFF on these connections, so ON DELETE CASCADE never ran and a deleted
+        # project left its triggers behind (still polled, unremovable: no project role to check). An
+        # INSTALLATION trigger (project_id NULL) is not matched here and survives.
+        db.execute("DELETE FROM project_triggers WHERE project_id=?", (pid,))
         db.commit()
 
 # ─── Membres de projet (rôles par projet : owner|editor|operator|viewer) ──
@@ -4941,11 +5263,11 @@ def db_cable_layout_delete(lid):
 
 _SL_COLS = ("token, vmid, path, title, note, created_at, "
             "COALESCE(kind,'webrtc') AS kind, COALESCE(cidrs,'') AS cidrs, "
-            "COALESCE(instance_uuid,'') AS instance_uuid")
+            "COALESCE(instance_uuid,'') AS instance_uuid, scope")
 
 
 def db_create_share_link(token, vmid, path, title=None, note=None, kind="webrtc", cidrs="",
-                         instance_uuid=None):
+                         instance_uuid=None, scope=None):
     # Le `vmid` est conservé pour mémoire (affichage, historique) mais ce n'est PLUS lui qui
     # désigne le conteneur : c'est `instance_uuid`. Cf. la migration dans `init_db`.
     if instance_uuid is None:
@@ -4956,10 +5278,11 @@ def db_create_share_link(token, vmid, path, title=None, note=None, kind="webrtc"
     with get_db() as db:
         db.execute(
             "INSERT INTO share_links (token, vmid, path, title, note, created_at, kind, cidrs,"
-            " instance_uuid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " instance_uuid, scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (token, int(vmid), path, title, note,
              datetime.now().isoformat(timespec="seconds"), str(kind or "webrtc"),
-             str(cidrs or ""), str(instance_uuid or "")))
+             str(cidrs or ""), str(instance_uuid or ""),
+             json.dumps(scope, sort_keys=True) if scope else None))
         db.commit()
     return token
 
@@ -5217,6 +5540,110 @@ SESSION_RETENTION_JOURS = 30
 # transformerait un registre de sessions en générateur d'écritures SQLite permanent.
 SESSION_TOUCH_S = 60
 
+
+# ─── Jetons d'API ────────────────────────────────────────────────────────────
+
+# Écriture de `last_used_at`. MÊME PIÈGE que `SESSION_TOUCH_S` et même réponse : un serveur MCP
+# qui interroge l'état du cluster émet des rafales de requêtes, et une écriture par requête
+# ferait du registre de jetons une pompe à écritures SQLite. La granularité à la minute suffit
+# largement à répondre à « ce jeton sert-il encore ? ».
+API_TOKEN_TOUCH_S = 60
+
+# Longueur du secret, en octets avant encodage. 32 octets = 256 bits, soit hors de portée d'une
+# attaque par force brute même si quelqu'un pouvait essayer sans limite de débit.
+API_TOKEN_OCTETS = 32
+
+# Préfixe en clair conservé pour l'AFFICHAGE seul (« bobi_a1b2c3… »). Il ne permet pas de
+# retrouver le jeton ; il sert à ce qu'un humain reconnaisse LEQUEL il révoque dans une liste.
+API_TOKEN_PREFIXE_VISIBLE = 8
+
+
+def _api_token_empreinte(jeton):
+    """SHA-256 hexadécimal. Pas de sel : un sel par ligne empêcherait la recherche par index, et
+    il n'apporte rien ici — contrairement à un mot de passe, un jeton de 256 bits tiré au sort
+    n'est pas devinable, donc il n'y a pas de dictionnaire à contrarier."""
+    return hashlib.sha256(jeton.encode("utf-8")).hexdigest()
+
+
+def db_api_token_creer(user_id, label=None, created_by=None):
+    """Crée un jeton et renvoie `(id, jeton_en_clair)`.
+
+    ⚠ LE CLAIR N'EST RENDU QU'ICI, et n'est écrit nulle part — ni en base, ni au journal. Si
+    l'appelant le perd, il n'y a pas de récupération possible : on en crée un autre et on
+    révoque celui-ci. C'est voulu, et c'est ce qui rend le vol de la base inoffensif."""
+    jeton = "bobi_" + secrets.token_urlsafe(API_TOKEN_OCTETS)
+    now = datetime.now().isoformat(timespec="seconds")
+    db = get_db()
+    cur = db.execute(
+        "INSERT INTO api_tokens (user_id, label, token_hash, prefix, created_at, created_by) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, (label or "")[:120] or None, _api_token_empreinte(jeton),
+         jeton[:API_TOKEN_PREFIXE_VISIBLE], now, created_by))
+    db.commit()
+    return cur.lastrowid, jeton
+
+
+def db_api_token_resoudre(jeton, ip=None):
+    """Jeton en clair → ligne `users` du porteur, ou None.
+
+    Renvoie None pour un jeton inconnu, révoqué, ou dont le compte a disparu — l'appelant n'a
+    pas à distinguer, et lui dire LEQUEL des trois renseignerait un attaquant.
+
+    Rafraîchit `last_used_at` au plus une fois par `API_TOKEN_TOUCH_S`."""
+    if not jeton or not jeton.startswith("bobi_"):
+        return None            # évite un SELECT par requête parasite (en-tête d'un autre outil)
+    db = get_db()
+    r = db.execute("SELECT * FROM api_tokens WHERE token_hash = ? AND revoked_at IS NULL",
+                   (_api_token_empreinte(jeton),)).fetchone()
+    if not r:
+        return None
+    u = db.execute("SELECT * FROM users WHERE id = ?", (r["user_id"],)).fetchone()
+    if not u:
+        return None
+    try:
+        vu = r["last_used_at"]
+        frais = False
+        if vu:
+            frais = (datetime.now() - datetime.fromisoformat(vu)).total_seconds() \
+                    < API_TOKEN_TOUCH_S
+        if not frais:
+            db.execute("UPDATE api_tokens SET last_used_at = ?, last_used_ip = ? WHERE id = ?",
+                       (datetime.now().isoformat(timespec="seconds"), ip, r["id"]))
+            db.commit()
+    except (TypeError, ValueError) as e:
+        # Une date illisible ne doit pas refuser un accès VALIDE : on renonce au marquage, pas
+        # à l'authentification.
+        log.debug("jeton %s : last_used_at illisible (%s)", r["id"], e)
+    return dict(u)
+
+
+def db_api_tokens_liste(user_id=None):
+    """Les jetons, le plus récent d'abord, AVEC le nom du porteur. Jamais le secret : la colonne
+    `token_hash` est volontairement exclue du résultat — une empreinte n'a rien à faire dans une
+    réponse d'API, et l'y exposer invite à bâtir dessus."""
+    q = ("SELECT t.id, t.user_id, u.username, t.label, t.prefix, t.created_at, "
+         "       t.last_used_at, t.last_used_ip, t.revoked_at "
+         "FROM api_tokens t LEFT JOIN users u ON u.id = t.user_id ")
+    p = ()
+    if user_id is not None:
+        q += "WHERE t.user_id = ? "
+        p = (user_id,)
+    q += "ORDER BY t.id DESC"
+    return [dict(r) for r in get_db().execute(q, p).fetchall()]
+
+
+def db_api_token_revoquer(token_id):
+    """Révoque. Idempotent : re-révoquer ne touche pas la date du premier coup (`IS NULL`), pour
+    que « révoqué le … » reste la vérité. Renvoie True si la ligne existait et était active."""
+    db = get_db()
+    cur = db.execute("UPDATE api_tokens SET revoked_at = ? "
+                     "WHERE id = ? AND revoked_at IS NULL",
+                     (datetime.now().isoformat(timespec="seconds"), token_id))
+    db.commit()
+    return cur.rowcount > 0
+
+
+# ─── Sessions ────────────────────────────────────────────────────────────────
 
 def db_session_ouvrir(sid, user_id, ip=None, user_agent=None):
     now = datetime.now().isoformat(timespec="seconds")

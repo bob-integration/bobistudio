@@ -676,6 +676,12 @@ def api_node_interface_set(node_id, ifname):
                 _dd.oublier_iface_persistante(node, ifname)
             except Exception:
                 pass
+        if _old_role not in (None, "unused", "bmc"):
+            try:
+                from .. import iface_identity as _ii
+                _ii.unpin(node, ifname)
+            except Exception:
+                pass
         # Le port retiré peut être le DERNIER média 2110 → reconcile (arrête le moteur s'il ne reste
         # plus aucun port média). Idempotent, en thread. Uniquement si le port supprimé ÉTAIT média.
         _reprovision_if_media(None)
@@ -954,6 +960,24 @@ def api_node_interface_set(node_id, ifname):
         except Exception:
             pass
 
+    # Identité stable (cf. app/iface_identity.py) : MAC enregistrée + nom épinglé par un `.link`,
+    # pour qu'une carte ajoutée ailleurs dans le serveur ne renomme pas celle-ci. Un port DPDK n'a
+    # plus de netdev (ni MAC lisible ni nom) : il reste identifié par son BDF.
+    pin_msg = ""
+    _eff_role = role or _old_role or "unused"
+    if (node.get("agent_url") or "").strip():
+        try:
+            from .. import iface_identity as _ii
+            if _eff_role in ("unused", "bmc"):
+                if _old_role not in (None, "unused", "bmc"):
+                    _ii.unpin(node, ifname)
+            elif not (_eff_role == "media2110" and _pmd_eff == "dpdk"):
+                _pok, _pmsg = _ii.pin(node, ifname)
+                pin_msg = (" — nom épinglé sur la MAC %s" % _pmsg) if _pok else \
+                          (" — ⚠ nom NON épinglé (%s)" % _pmsg)
+        except Exception as e:
+            pin_msg = " — ⚠ nom NON épinglé (%s)" % e
+
     _reprovision_if_media(role)
 
     # ★ ENREGISTRÉ ≠ APPLIQUÉ. Un moteur 2110 ne relit sa configuration réseau qu'au DÉPLOIEMENT :
@@ -982,7 +1006,7 @@ def api_node_interface_set(node_id, ifname):
     except Exception as _e:
         log.debug("api_node_iface: détection du redéploiement requis échouée : %s", _e)
 
-    msg = "interface enregistrée" + media_msg + rdma_msg
+    msg = "interface enregistrée" + media_msg + rdma_msg + pin_msg
     if moteurs_a_redeployer:
         _noms = ", ".join(m["hostname"] for m in moteurs_a_redeployer)
         msg += (" — ⚠ enregistré mais PAS encore appliqué : le moteur 2110 (%s) tourne toujours "

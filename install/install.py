@@ -101,7 +101,7 @@ STR = {
         "cap_webrtc_d": "Passerelle WebRTC (MediaMTX).",
         "need_one": "Sélectionnez au moins une capacité.",
         "ctrl_url": "Adresse du contrôleur — IP ou hôte (ex. x.x.x.x)",
-        "enroll_tok": "Jeton d'enrôlement (web → Réglages → Déploiement → Nœuds → « Jeton d'enrôlement »)",
+        "enroll_tok": "Jeton d'enrôlement (web → Réglages → Nœuds & Matériel → « Jeton d'enrôlement »)",
         "enroll_help": "Le nœud va s'annoncer à ce contrôleur. Génère le jeton en 1 clic dans le web "
                        "(carte « Jeton d'enrôlement ») et colle-le ici.",
         "enroll_err": "Annonce au contrôleur échouée : {e}",
@@ -109,9 +109,9 @@ STR = {
         "h_node_install": "Installation du nœud (bobi-node-agent)",
         "node_ready": "Nœud installé et annoncé au contrôleur.",
         "node_register": "→ Le nœud apparaît tout seul dans le web (Monitoring → Serveurs / "
-                         "Réglages → Déploiement → Nœuds). Rien d'autre à saisir.",
+                         "Réglages → Nœuds & Matériel). Rien d'autre à saisir.",
         "io2110_pending": "io2110 : choisis la carte E810 et active le PTP depuis l'orchestrateur "
-                          "(Réglages → Déploiement → Nœuds) une fois le nœud enrôlé.",
+                          "(Réglages → Nœuds & Matériel) une fois le nœud enrôlé.",
         # contrôleur
         "h_ctrl": "Orchestrateur (contrôleur Flask)",
         "ctrl_exists": "{d} contient déjà du code — mettre à jour (config/DB conservées) ?",
@@ -134,7 +134,9 @@ STR = {
         "cfg_kept": "config_local.py déjà présent — conservé",
         "cfg_written": "config_local.py écrit (sans Proxmox)",
         "agent_local_ok": "Agent local enregistré (127.0.0.1:9100)",
-        "agent_local_bad": "Agent local à enregistrer depuis l'UI (Réglages → Déploiement → Nœuds).",
+        "agent_local_bad": "Agent local NON enregistré : aucun nœud déclaré, rien ne pourra être déployé.",
+        "agent_local_fix": "À réparer — depuis /opt/bobistudio, en root : ./venv/bin/python -c \"from app import node_driver as n; print(n.register('127.0.0.1', 9100, '<jeton de /etc/bobi-node-agent/config.json>', name='local'))\"  ·  ou par Réglages → Nœuds & Matériel.",
+        "aio_partial": "Tout-en-un INCOMPLET : l'orchestrateur tourne, le nœud local n'est pas déclaré.",
         # erreurs
         "e_aptupdate": "apt-get update a échoué.", "e_aptinstall": "apt-get install a échoué.",
         "e_venv": "Création du venv échouée.", "e_pip": "pip install a échoué.",
@@ -201,7 +203,7 @@ STR = {
         "cap_webrtc_d": "WebRTC gateway (MediaMTX).",
         "need_one": "Select at least one capability.",
         "ctrl_url": "Controller address — IP or host (e.g. x.x.x.x)",
-        "enroll_tok": "Enrollment token (web → Settings → Deployment → Nodes → \"Enrollment token\")",
+        "enroll_tok": "Enrollment token (web → Settings → Nodes & Hardware → \"Enrollment token\")",
         "enroll_help": "The node will announce itself to this controller. Generate the token in one "
                        "click in the web UI (\"Enrollment token\" card) and paste it here.",
         "enroll_err": "Announcing to controller failed: {e}",
@@ -209,9 +211,9 @@ STR = {
         "h_node_install": "Node installation (bobi-node-agent)",
         "node_ready": "Node installed and announced to the controller.",
         "node_register": "→ The node shows up on its own in the web UI (Monitoring → Servers / "
-                         "Settings → Deployment → Nodes). Nothing else to enter.",
+                         "Settings → Nodes & Hardware). Nothing else to enter.",
         "io2110_pending": "io2110: pick the E810 card and enable PTP from the orchestrator "
-                          "(Settings → Deployment → Nodes) once the node is enrolled.",
+                          "(Settings → Nodes & Hardware) once the node is enrolled.",
         "h_ctrl": "Orchestrator (Flask controller)",
         "ctrl_exists": "{d} already contains code — update it (config/DB kept)?",
         "code_deployed": "Code deployed to {d}",
@@ -232,7 +234,9 @@ STR = {
         "cfg_kept": "config_local.py already present — kept",
         "cfg_written": "config_local.py written (no Proxmox)",
         "agent_local_ok": "Local agent registered (127.0.0.1:9100)",
-        "agent_local_bad": "Register the local agent from the UI (Settings → Deployment → Nodes).",
+        "agent_local_bad": "Local agent NOT registered: no node declared, nothing can be deployed.",
+        "agent_local_fix": "To fix — from /opt/bobistudio, as root: ./venv/bin/python -c \"from app import node_driver as n; print(n.register('127.0.0.1', 9100, '<token from /etc/bobi-node-agent/config.json>', name='local'))\"  ·  or via Settings → Nodes & Hardware.",
+        "aio_partial": "All-in-one INCOMPLETE: the orchestrator runs, the local node is not declared.",
         "e_aptupdate": "apt-get update failed.", "e_aptinstall": "apt-get install failed.",
         "e_venv": "venv creation failed.", "e_pip": "pip install failed.",
         "e_initdb": "init_db() failed.", "e_zip": "bobistudio.zip not found next to the installer ({d}).",
@@ -844,18 +848,25 @@ def install_service_bare(dest):
 
 
 def write_config_local(dest):
-    """config_local.py SANS Proxmox → image_build_local s'active (build local). N'écrase pas l'existant."""
+    """Amorce `config_local.py` (valeurs de SITE : hôtes, jetons, secrets). N'écrase pas l'existant.
+
+    N'y écrit AUCUN réglage : `app/config.py` porte des défauts neutres, et ce fichier n'est là
+    que pour les surcharger quand le site l'exige. Les trois `PROXMOX_*` vides qu'on y posait
+    jusqu'au 2026-10-10 ont été retirées — le backend Proxmox a disparu et PLUS AUCUN code ne
+    les lisait (seuls les deux installeurs les écrivaient encore, l'un pour l'autre).
+    La docstring promettait en outre que « Proxmox vide → image_build_local s'active » : c'était
+    faux. `image_build_local` est un réglage en BASE (`app/routes/images.py:_build_target`) et
+    n'a jamais rien déduit de ces constantes. Une valeur morte est un piège ; une valeur morte
+    documentée comme agissante en est un pire."""
     path = os.path.join(dest, "config_local.py")
     if os.path.isfile(path):
         ok(t("cfg_kept"))
         return
     with open(path, "w") as f:
         f.write(textwrap.dedent('''\
-            # Généré par install.py — déploiement SANS Proxmox.
-            # Proxmox vide → l'orchestrateur build les images en local (pas de nœud hyperviseur).
-            PROXMOX_HOST  = ""
-            PROXMOX_NODE  = ""
-            PROXMOX_TOKEN = ""
+            # Valeurs de SITE de cette installation — NON versionné (cf. .gitignore).
+            # Surcharge les défauts neutres de app/config.py ; vide est un état normal.
+            # Rien ici ne doit être recopié ailleurs : hôtes, jetons d'agent, secrets.
         '''))
     ok(t("cfg_written"))
 
@@ -1077,11 +1088,54 @@ def install_controller(zip_path):
 
 
 def register_local_agent(token):
-    code = ("from app import database as d; d.init_db(); "
-            "from app import node_driver as n; "
-            f"print(n.register('127.0.0.1', 9100, '{token}', name='local'))")
-    rc, out = run([f"{APP_DIR}/venv/bin/python", "-c", code], check=False, capture=True)
-    ok(t("agent_local_ok")) if rc == 0 else warn(t("agent_local_bad"))
+    """Enrôle l'agent LOCAL, et DIT la vérité sur le résultat. Rend True si la ligne existe.
+
+    ★ CINQ DÉFAUTS CORRIGÉS ICI, tous d'une même panne : 2026-10-23, tout-en-un sur une station
+    Debian 13. L'installation affichait « prêt », `bobistudio.service` et `bobi-node-agent`
+    tournaient tous les deux — et la table `nodes` était VIDE. « Aucun nœud déclaré » à l'écran,
+    donc rien de déployable. Les trois premiers viennent de ce que cette fonction jugeait sur le
+    code de sortie d'un processus, et non sur ce qu'elle voulait obtenir.
+
+    (a) `run()` NE FIXE PAS LE RÉPERTOIRE COURANT (`install_proxmox.py:260`, aucun `cwd`). L'enfant
+        importe `app`, introuvable ailleurs que depuis APP_DIR : lancé depuis `/tmp` — le cas
+        NORMAL quand `get.sh` déroule dans un répertoire temporaire — l'import meurt en
+        `ModuleNotFoundError: No module named 'app'`.
+    (b) `run(..., capture=True)` NE RENVOIE QUE `stdout`. La trace de l'erreur partait donc à la
+        poubelle : c'est ce qui a rendu la panne muette. Il restait un `warn` noyé dans la sortie,
+        puis « prêt » juste après.
+    (c) LE CODE DE SORTIE NE DISAIT RIEN DU RÉSULTAT. `node_driver.register()` rend `(False, err)`
+        SANS lever : `print(...)` sortait donc 0 même agent injoignable, et « Agent local
+        enregistré » s'affichait à tort. ⚠ C'est le cas INVERSE du précédent, et il était plus
+        trompeur encore — une panne annoncée comme un succès. On juge donc sur LA LIGNE EN BASE,
+        qui est le but réel, pas sur « le processus a réussi à afficher un tuple ».
+    (d) LE JETON ÉTAIT INTERPOLÉ DANS DU SOURCE (`'{token}'`) : une apostrophe ou un antislash
+        cassait le script, ou y injectait du code. Il passe par l'ENVIRONNEMENT.
+    (e) L'APPELANT ANNONÇAIT « prêt » SANS CONDITION (cf. `path_all_in_one`). Une installation
+        dont le nœud manque n'est pas prête : elle est incomplète, et doit le dire.
+    """
+    code = (
+        "import os, sys\n"
+        "from app import database as d\n"
+        "d.init_db()\n"
+        "from app import node_driver as n\n"
+        "ok, res = n.register('127.0.0.1', 9100, os.environ['BOBI_AGENT_TOKEN'], name='local')\n"
+        "if not ok:\n"
+        "    print('register() a refusé : %s' % (res,), file=sys.stderr)\n"
+        "ligne = d.db_get_node_by_host('127.0.0.1')\n"
+        "print('node_id=%s' % (ligne or {}).get('id'))\n"
+        "sys.exit(0 if (ok and ligne) else 1)\n"
+    )
+    r = subprocess.run([f"{APP_DIR}/venv/bin/python", "-c", code],
+                       cwd=APP_DIR, capture_output=True, text=True,
+                       env={**os.environ, "BOBI_AGENT_TOKEN": token})
+    if r.returncode == 0:
+        ok(t("agent_local_ok"))
+        return True
+    warn(t("agent_local_bad"))
+    for ligne in ((r.stderr or "") + (r.stdout or "")).strip().splitlines()[-6:]:
+        print(f"     {DIM}{ligne}{R}")
+    info(t("agent_local_fix"))
+    return False
 
 
 def path_controller(zip_path):
@@ -1103,9 +1157,9 @@ def path_all_in_one(zip_path):
     token = secrets.token_hex(24)
     run_install_node(zip_path, ["--with", ",".join(caps) or "compute",
                                 "--port", "9100", "--token", token])
-    register_local_agent(token)
+    noeud_ok = register_local_agent(token)
     print()
-    ok(t("aio_ready"))
+    ok(t("aio_ready")) if noeud_ok else warn(t("aio_partial"))
     info(t("access", url=f"{BOLD}{CYAN}http://{_host_ip() or os.uname().nodename}:5000{R}"))
     return None
 

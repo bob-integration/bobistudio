@@ -125,6 +125,54 @@ def _scan():
                       "double every literal brace. Skipped.", manifest["type"], e)
             SCAN_ERRORS[name] = f"accolade littérale non doublée dans {manifest['script_template']} ({e})"
             continue
+        # Fichiers déclarés (`files`) : un plugin à moitié livré ne doit pas exister.
+        _, ferr = valider_fichiers(pdir, manifest)
+        if ferr:
+            log.error("plugins: %s files invalides (%s) — skipped", manifest["type"], ferr)
+            SCAN_ERRORS[name] = f"fichiers déclarés invalides : {ferr}"
+            continue
+        # Persistance déclarée (`control.persist`) : une déclaration fausse retiendrait l'état au
+        # mauvais endroit — ou pas du tout, en silence. Refusée comme `files`.
+        from .plugin_persist import validate_spec as _persist_errs
+        perr = _persist_errs(manifest)
+        if perr:
+            log.error("plugins: %s control.persist invalide (%s) — skipped", manifest["type"], perr)
+            SCAN_ERRORS[name] = "control.persist invalide : " + " ; ".join(perr)
+            continue
+        from .plugin_streams import validate_spec as _streams_errs
+        serr = _streams_errs(manifest)
+        if serr:
+            log.error("plugins: %s control.streams invalide (%s) — skipped", manifest["type"], serr)
+            SCAN_ERRORS[name] = "control.streams invalide : " + " ; ".join(serr)
+            continue
+        from .plugin_zones import validate_spec as _zones_errs
+        zerr = _zones_errs(manifest)
+        if zerr:
+            log.error("plugins: %s control.zones invalide (%s) — skipped", manifest["type"], zerr)
+            SCAN_ERRORS[name] = "control.zones invalide : " + " ; ".join(zerr)
+            continue
+        # Journal d'exploitation (`control.journal`, docs/reference/PLUGIN_JOURNAL.md) : une règle
+        # fausse noterait n'importe quoi — ou rien, en silence. Absente : rien n'est vérifié.
+        from .ops_journal_rules import validate_spec as _journal_errs
+        jerr = _journal_errs(manifest)
+        if jerr:
+            log.error("plugins: %s control.journal invalide (%s) — skipped", manifest["type"], jerr)
+            SCAN_ERRORS[name] = "control.journal invalide : " + " ; ".join(jerr)
+            continue
+        from .plugin_shows import validate_spec as _shows_errs
+        sherr = _shows_errs(manifest)
+        if sherr:
+            log.error("plugins: %s control.shows invalid (%s) — skipped", manifest["type"], sherr)
+            SCAN_ERRORS[name] = "control.shows invalide : " + " ; ".join(sherr)
+            continue
+        # Per-flow status (`control.flow_status`, app/flow_status.py): a wrong declaration would have the
+        # console call an endpoint outside the read whitelist — or nothing, in silence.
+        from .flow_status import validate_spec as _fstatus_errs
+        fserr = _fstatus_errs(manifest)
+        if fserr:
+            log.error("plugins: %s control.flow_status invalid (%s) — skipped", manifest["type"], fserr)
+            SCAN_ERRORS[name] = "control.flow_status invalide : " + " ; ".join(fserr)
+            continue
         _verifier_types_config(manifest)
         manifest["_hooks"] = _load_hooks(pdir, manifest["type"])
         found[manifest["type"]] = manifest
@@ -132,9 +180,95 @@ def _scan():
     return found
 
 
+# ── Fichiers additionnels poussés avec le script (`files` du manifeste) ──────────────
+# Entrée : {"src": relatif au plugin, "dest": relatif à /opt/script, "transport": "text"|"base64"}.
+# L'agent écrit en mode TEXTE (cf. script_templates/agent.py) : un binaire voyage en base64 et le
+# plugin le décode au démarrage (écriture atomique). Dest réservés : ce que l'agent/deploy posent.
+FILES_MAX_ONE = 8 * 1024 * 1024
+FILES_MAX_TOTAL = 16 * 1024 * 1024
+_FILES_RESERVED = {"main.py", "bobimxl.py", "agent.py", "nmos.json"}
+
+
+def valider_fichiers(pdir, manifest):
+    """Valide `manifest["files"]`. Retourne (entrées normalisées [{src, abs, dest, transport}], None)
+    ou (None, raison). Lecture seule : ne lit aucun contenu, ne crée rien."""
+    decl = manifest.get("files")
+    if decl is None:
+        return [], None
+    if not isinstance(decl, list):
+        return None, "`files` doit être une liste"
+    base = os.path.realpath(pdir)
+    reserves = set(_FILES_RESERVED) | {os.path.basename(str(manifest.get("script_template", "")))}
+    out, vus, total = [], set(), 0
+    for i, e in enumerate(decl):
+        if not isinstance(e, dict):
+            return None, f"files[{i}] doit être un objet"
+        src, dest = e.get("src"), e.get("dest")
+        tr = e.get("transport", "text")
+        if not isinstance(src, str) or not isinstance(dest, str) or not src or not dest:
+            return None, f"files[{i}] : src et dest (chaînes non vides) requis"
+        if tr not in ("text", "base64"):
+            return None, f"files[{i}] : transport inconnu ({tr!r})"
+        for nom, v in (("src", src), ("dest", dest)):
+            parts = v.replace("\\", "/").split("/")
+            if v.startswith(("/", "\\")) or ":" in parts[0] or ".." in parts or "" in parts or "." in parts:
+                return None, f"files[{i}] : {nom} doit être un chemin relatif sans « .. » ({v!r})"
+        if dest in reserves:
+            return None, f"files[{i}] : dest réservé ({dest})"
+        if dest in vus:
+            return None, f"files[{i}] : dest en double ({dest})"
+        vus.add(dest)
+        ab = os.path.realpath(os.path.join(pdir, src))
+        if ab != base and not ab.startswith(base + os.sep):
+            return None, f"files[{i}] : src sort du dossier du plugin ({src})"
+        if not os.path.isfile(ab):
+            return None, f"files[{i}] : src introuvable ({src})"
+        sz = os.path.getsize(ab)
+        if sz > FILES_MAX_ONE:
+            return None, f"files[{i}] : {src} dépasse {FILES_MAX_ONE // (1024 * 1024)} Mo"
+        total += sz
+        out.append({"src": src, "abs": ab, "dest": dest, "transport": tr})
+    if total > FILES_MAX_TOTAL:
+        return None, f"fichiers déclarés > {FILES_MAX_TOTAL // (1024 * 1024)} Mo au total"
+    return out, None
+
+
+def deploy_files(type_, version=None):
+    """Contenus à pousser pour `type_` : [(dest, texte)]. Revalide à chaud (le fichier a pu
+    changer depuis le scan) et LÈVE ValueError au moindre défaut — pas de repli.
+
+    `version` : version du script déployé. Une version ARCHIVÉE (versions/<v>/) ne conserve que
+    son script.py : lui pousser les fichiers COURANTS ferait tourner un vieux script sur des
+    modules neufs, en silence. Refusé tant que l'archivage ne garde pas aussi les fichiers."""
+    m = REGISTRY.get(type_)
+    if not m:
+        raise ValueError(f"type inconnu : {type_}")
+    entries, err = valider_fichiers(m["_dir"], m)
+    if err:
+        raise ValueError(err)
+    if entries and version and version != m.get("version"):
+        raise ValueError(f"{type_} {version} : version archivée d'un plugin à fichiers déclarés "
+                         f"(`files`) — ses fichiers ne sont pas archivés, rappel refusé "
+                         f"(courante : {m.get('version')})")
+    res = []
+    for e in entries:
+        with open(e["abs"], "rb") as f:
+            raw = f.read()
+        if e["transport"] == "base64":
+            import base64
+            txt = base64.b64encode(raw).decode("ascii")
+        else:
+            try:
+                txt = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                raise ValueError(f"{e['src']} n'est pas du texte UTF-8 (transport base64 ?)")
+        res.append((e["dest"], txt))
+    return res
+
+
 # Types que `coerce_config` sait traiter. TOUT LE RESTE tombe dans sa branche « texte » et se
 # fait convertir en CHAÎNE, en silence.
-TYPES_CONFIG = {"number", "checkbox", "bool", "multiselect", "select", "text", "textarea"}
+TYPES_CONFIG = {"number", "checkbox", "bool", "multiselect", "select", "text", "textarea", "json"}
 
 
 def _verifier_types_config(manifest):
@@ -649,6 +783,18 @@ def render_script(type_, params, hostname, version=None):
     path = _script_path(type_, ver) or os.path.join(m["_dir"], m["script_template"])
     with open(path, "r", encoding="utf-8") as f:
         tpl = f.read()
+    return tpl.format(config=repr(render_config(type_, params)),
+                      hostname=hostname,
+                      plugin_version=ver)
+
+
+def render_config(type_, params):
+    """Le dictionnaire qui devient `CONFIG` dans le script rendu — et RIEN d'autre que lui.
+
+    Séparé de `render_script` pour la reconfiguration à chaud (`hot_config_endpoint`) : le
+    conteneur doit recevoir EXACTEMENT ce qu'un redéploiement lui aurait écrit, filets compris.
+    Deux constructions distinctes finiraient par diverger, et la configuration appliquée à chaud
+    ne serait plus celle que le script relirait au prochain démarrage."""
     cfg = dict(params or {})
     # Filet : un multiview sans format de sortie explicite hérite du défaut SYSTÈME (jamais un
     # littéral) — couvre les conteneurs legacy/edge non semés à la création. L'explicite prime.
@@ -676,9 +822,26 @@ def render_script(type_, params, hostname, version=None):
                      ("bit_depth", int(_f.get("bit_depth") or 10))):
             if k in _dd and not cfg.get(k):
                 cfg[k] = v
-    return tpl.format(config=repr(cfg),
-                      hostname=hostname,
-                      plugin_version=ver)
+    return cfg
+
+
+def hot_config_endpoint(type_):
+    """(port, chemin) de la reconfiguration À CHAUD que le plugin déclare, ou None.
+
+    Manifeste : `control.hot_config: {"port": 8082, "path": "/config"}`. Le script y reçoit
+    `{plugin_version, hostname, config}` et applique ce qui a changé SANS redémarrer ; il répond
+    200 s'il l'a fait, autre chose s'il ne le peut pas (autre version, nom d'hôte changé…), et
+    le déploiement retombe alors sur l'arrêt/démarrage habituel. Un plugin qui ne le déclare pas
+    n'est jamais appelé : c'est une capacité qu'on annonce, pas une route qu'on devine."""
+    m = REGISTRY.get(type_) or {}
+    hc = (m.get("control") or {}).get("hot_config")
+    if not isinstance(hc, dict) or not hc.get("path"):
+        return None
+    try:
+        port = int(hc.get("port") or 8082)
+    except (TypeError, ValueError):
+        return None
+    return port, str(hc["path"])
 
 
 def ui_asset_path(type_, key, version=None):
@@ -708,6 +871,12 @@ def wants_media_volume(type_):
     return bool((REGISTRY.get(type_) or {}).get("media_volume"))
 
 
+def wants_lv2_volume(type_):
+    """True si le plugin déclare manifest.lv2_volume → le container reçoit, en LECTURE SEULE, le dossier des
+    plugins LV2 distribués par l'orchestrateur (services/audio/lv2_plugins.py, hôte → /usr/local/lib/lv2)."""
+    return bool((REGISTRY.get(type_) or {}).get("lv2_volume"))
+
+
 def wants_state_volume(type_):
     """True si le plugin déclare manifest.state_volume → le container reçoit un dossier
     d'état PERSISTANT sur le nœud (hôte → /var/lib/bobi). Le rootfs d'un container est
@@ -719,9 +888,10 @@ def wants_state_volume(type_):
 def image_variant(type_):
     """Variante d'image Docker du plugin (chemin compute) : 'compute' (défaut, bobi-compute)
     ou 'media' (bobi-media : GStreamer+ffmpeg pour player/recorder/transcoder). Le nœud porte
-    une image par variante (compute_image / media_image)."""
+    une image par variante (compute_image / media_image). 'gui' (bobi-gui : fine couche sur bobi-compute
+    avec Xvfb/x11vnc/suil, plugin plugin_gui) a son tag commun dans le réglage `gui_image`."""
     v = str((REGISTRY.get(type_) or {}).get("image") or "compute").lower()
-    return v if v in ("compute", "media") else "compute"
+    return v if v in ("compute", "media", "gui") else "compute"
 
 
 def image_kind(type_):
@@ -850,6 +1020,23 @@ def options_dynamiques(source):
                 détail += " %s bits" % parts[6]
         out.append({"value": nom, "label": nom + détail})
     return out
+
+
+def needs_video_format(m):
+    """Le formulaire de création doit-il proposer un FORMAT VIDÉO pour ce plugin ?
+
+    `video_format` explicite dans le manifeste fait foi (false = format-agnostique : delay, console,
+    recorder…). Sans déclaration, on DÉDUIT du câblage : seul un plugin qui produit ou consomme de
+    la vidéo en a l'usage. Le défaut « oui » faisait demander un format à un plugin purement audio
+    ou sans flux (transcoder) dont l'auteur n'avait pas pensé à le désactiver."""
+    if "video_format" in m:
+        return bool(m["video_format"])
+    w = m.get("wiring") or {}
+    for side in ("produces", "consumes"):
+        for x in w.get(side) or []:
+            if isinstance(x, dict) and (x.get("essence") or "video") == "video":
+                return True
+    return False
 
 
 def config_schemas():
@@ -1168,6 +1355,24 @@ def _signaler_ecretage(type_, key, brut, corrige, label):
         pass
 
 
+def _signaler_json_illisible(type_, key, brut, label):
+    """Un réglage de type `json` n'a pas pu être relu → log + ALERTE, et la valeur est LAISSÉE
+    TELLE QUELLE. Message distinct de l'écrêtage : « hors bornes → appliqué à la même valeur »
+    n'a aucun sens ici et ferait chercher un problème de bornes qui n'existe pas."""
+    cle = (type_, key, repr(brut))
+    if cle in _ECRETAGES_SIGNALES:
+        return
+    _ECRETAGES_SIGNALES.add(cle)
+    log.warning("coerce_config: %s : réglage « %s » n'est pas du JSON lisible → laissé INTACT "
+                "(rien n'est effacé) : %.120s", type_, label, brut)
+    try:
+        from .containers import ajouter_alerte
+        ajouter_alerte("alert.deploy.plugin_json_illisible", "warning",
+                       params={"type": type_, "label": label, "brut": str(brut)[:200]})
+    except Exception:
+        pass
+
+
 def coerce_config(type_, params):
     """Coerce/borne `params` selon le `config_schema` du manifeste (optionnel).
     Types : number (min/max, int si entier), checkbox (bool), select (option valide),
@@ -1228,6 +1433,27 @@ def coerce_config(type_, params):
                     vus.add(x)
                     propre.append(x)
             out[k] = propre
+        elif t == "json":
+            # ★ TYPE `json` (2026-09-21) : une liste ou un dict, saisis par une console plutôt
+            #   qu'à la main. Sans cette branche, la valeur tombait dans le `else` ci-dessous et
+            #   `str()` en faisait du *repr Python* — `[{'persistent_id': 4040731139}]`, avec des
+            #   apostrophes simples, donc du JSON INVALIDE. Le plugin qui la relisait par
+            #   `json.loads` échouait et retombait sur une liste VIDE : la configuration
+            #   s'effaçait au premier enregistrement, sans un mot. Le défaut ne se voyait pas
+            #   tant que le champ n'était rempli qu'à la main (une chaîne restait une chaîne).
+            #
+            # Une chaîne illisible n'est PAS remplacée par du vide : on la laisse telle quelle et
+            # on ALERTE. Détruire la configuration de l'exploitant parce qu'on n'a pas su la lire
+            # serait le pire des deux comportements possibles.
+            if isinstance(v, (list, dict)):
+                pass                                   # déjà structuré : rien à faire
+            elif isinstance(v, str) and v.strip():
+                try:
+                    out[k] = json.loads(v)
+                except Exception:
+                    _signaler_json_illisible(type_, k, v, f.get("label") or k)
+            elif v in (None, ""):
+                out[k] = f.get("default") if f.get("default") is not None else []
         elif t == "select":
             opts = [o.get("value") for o in (f.get("options") or [])]
             if opts and v not in opts:
@@ -1358,12 +1584,41 @@ def ports_topologie(type_, hostname, params=None):
                          for x in (w.get("consumes") or []) if _shm(x)]}
 
 
+def conteneur_du_type_sur_noeud(type_, node_id):
+    """Le conteneur de ce TYPE déjà présent sur ce NŒUD, ou None.
+
+    ★ Sert aux types qui pilotent du matériel de la machine (`one_per_node` au manifeste) :
+      deux conteneurs sur le même nœud se disputeraient les mêmes périphériques, et le perdant
+      échouerait à l'ouverture sans que rien n'explique pourquoi.
+    ⚠ LE TYPE SE LIT DANS `deploy_config`, pas dans une colonne : il n'y en a pas. Et on
+      compare au type EXACT — un `in` sur la chaîne ferait correspondre « decklink_io » à un
+      futur « decklink_io_bis » et refuserait une création légitime.
+    """
+    import json as _json
+    from .database import db_get_containers
+    try:
+        nid = int(node_id)
+    except (TypeError, ValueError):
+        return None
+    for c in db_get_containers():
+        if int(c.get("node_id") or 0) != nid:
+            continue
+        try:
+            if (_json.loads(c.get("deploy_config") or "{}") or {}).get("type") == type_:
+                return c
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
 def derive_wiring(type_, hostname, params=None):
     """Resolve manifest.wiring produces/consumes against hostname + deploy params.
     - `{hostname}` ET les clés de `params` sont substitués dans les `shm` (ex. `"{shm_out}"`
       → params["shm_out"]). Clé absente → laissée telle quelle.
     - `"repeat": "<param_key>"` : déplie `params[param_key]` fois, substitution `{i}`/`{i1}`,
       `slot`=index. Entrées identiques indexées (mixer).
+    - `"from_list": "<chemin.pointé>"` + `"key"` : liste d'un DOCUMENT (filtre `where`, slot = clé
+      stable, gabarits `shm`/`label`) — cf. `app/wiring_document.py`.
     - `"from_list": "<param_key>"` : déplie sur la **liste** `params[param_key]` (entrées à
       géométrie, ex. multiview flux_config). Par entrée : `slot`=index, `shm` lu de
       `entry[shm_field]` (préfixe `shm_prefix` retiré ; vide → port libre), `label` de
@@ -1389,6 +1644,17 @@ def derive_wiring(type_, hostname, params=None):
 
     def _fmt(v, **kw):
         return v.format(**kw) if isinstance(v, str) else v
+
+    def _fmt_doux(v, vals):
+        """Substitution `{clé}` qui n'échoue pas sur une clé absente : le marqueur reste en
+        place. `str.format` lèverait un KeyError, et une faute de frappe dans un libellé de
+        manifeste ferait alors disparaître TOUS les ports du plugin."""
+        if not isinstance(v, str):
+            return v
+        out = v
+        for k, val in vals.items():
+            out = out.replace("{" + k + "}", str(val))
+        return out
 
     def _with_format(copy):
         """Attache un descripteur `format` aux ports video/audio (dérivé des params)."""
@@ -1425,6 +1691,17 @@ def derive_wiring(type_, hostname, params=None):
                     copy = {k: _fmt(v, hostname=hostname, i=i, i1=i + 1) for k, v in tpl.items()}
                     copy["slot"] = i
                     out.append(_with_format(copy))
+            elif "from_list" in it and it.get("key"):
+                # Document JSON (cf. app/wiring_document.py) : chemin pointé, filtre, slot = clé stable.
+                from . import wiring_document as _wd
+                for i, (key, entry) in enumerate(_wd.expand(it, params, hostname)):
+                    copy = {k: v for k, v in it.items() if k != "shm"}
+                    copy["key_tpl"] = it["key"]      # gabarit conservé : le câblage ré-expanse le document
+                    copy["slot"] = copy["key"] = key
+                    copy["shm"] = _wd.port_shm(it, key, entry, hostname)
+                    copy["label"] = (_wd.fill(it["label"], entry, hostname=hostname, key=key, i=i, i1=i + 1)
+                                     if it.get("label") else (entry.get("label") or key))
+                    out.append(_with_format(copy))
             elif "from_list" in it:
                 lst = params.get(it["from_list"]) or []
                 shm_field = it.get("shm_field", "shm")
@@ -1443,7 +1720,18 @@ def derive_wiring(type_, hostname, params=None):
                     # à géométrie peut porter PLUSIEURS essences par entrée (multiview : la vidéo
                     # et son flux ANC) — sans ça les deux ports s'appelleraient « Entrée N ».
                     lbl_tpl = it.get("label")
-                    copy["label"] = (_fmt(lbl_tpl, hostname=hostname, i=i, i1=i + 1) if lbl_tpl
+                    # ★ LES CHAMPS SCALAIRES DE L'ENTRÉE SONT SUBSTITUABLES DANS LE GABARIT
+                    #   (2026-10-20). `{i1}` est le RANG DANS LA LISTE, qui n'est pas toujours le
+                    #   numéro que l'exploitant voit : decklink_io dérive une liste de découpes
+                    #   Fill & Key où le rang 1 peut appartenir à la sortie 2. Sans ça il fallait
+                    #   choisir entre un libellé JUSTE (porté par l'entrée, donc jamais traduit)
+                    #   et un libellé TRADUIT mais faux. Une clé absente du gabarit est laissée
+                    #   telle quelle plutôt que de lever — un manifeste ne doit pas pouvoir
+                    #   casser le câblage sur une faute de frappe dans un libellé.
+                    _vals = {"hostname": hostname, "i": i, "i1": i + 1}
+                    _vals.update({k: v for k, v in entry.items()
+                                  if isinstance(v, (str, int, float))})
+                    copy["label"] = (_fmt_doux(lbl_tpl, _vals) if lbl_tpl
                                      else (entry.get(name_field) if name_field else None)
                                      or _traduit("js.wire.default_input", "Entrée {i1}").replace("{i1}", str(i + 1)))
                     out.append(_with_format(copy))
@@ -1615,6 +1903,33 @@ def validate_package(d):
         # `{config[x]}` → TypeError, `{config.attr}` → AttributeError : couvrir tous les
         # cas d'accolade non doublée (même élargissement que le dry-run de _scan()).
         return None, f"accolade littérale non doublée dans {man['script_template']} ({e})"
+    _, ferr = valider_fichiers(d, man)
+    if ferr:
+        return None, f"fichiers déclarés invalides : {ferr}"
+    from .plugin_persist import validate_spec as _persist_errs
+    perr = _persist_errs(man)
+    if perr:
+        return None, "control.persist invalide : " + " ; ".join(perr)
+    from .plugin_streams import validate_spec as _streams_errs
+    serr = _streams_errs(man)
+    if serr:
+        return None, "control.streams invalide : " + " ; ".join(serr)
+    from .plugin_zones import validate_spec as _zones_errs
+    zerr = _zones_errs(man)
+    if zerr:
+        return None, "control.zones invalide : " + " ; ".join(zerr)
+    from .ops_journal_rules import validate_spec as _journal_errs
+    jerr = _journal_errs(man)
+    if jerr:
+        return None, "control.journal invalide : " + " ; ".join(jerr)
+    from .plugin_shows import validate_spec as _shows_errs
+    sherr = _shows_errs(man)
+    if sherr:
+        return None, "control.shows invalide : " + " ; ".join(sherr)
+    from .flow_status import validate_spec as _fstatus_errs
+    fserr = _fstatus_errs(man)
+    if fserr:
+        return None, "control.flow_status invalide : " + " ; ".join(fserr)
     return man, None
 
 

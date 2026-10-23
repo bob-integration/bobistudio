@@ -94,7 +94,10 @@ def peers_push(pid):
         return jsonify({"ok": False, "error": "pair inconnu"}), 404
     if not st.get("update_server_enabled") or not st.get("update_token"):
         return jsonify({"ok": False, "error": "active d'abord le mode serveur (token) sur cette instance"}), 400
-    my_url = request.host_url.rstrip("/")
+    # L'URL qu'on ANNONCE au pair pour qu'il vienne tirer nos paquets : c'est une machine
+    # qui l'appellera, sans notre CA — en mode tls, l'écoute HTTP du :5000 (cf. web_mode).
+    from .. import web_mode
+    my_url = web_mode.url_machines(request.host_url, request.host)
     # Opt-in de NOUVEAUX composants pour la cible (composition par instance) : relayé tel
     # quel au /api/update/apply du pair, qui l'applique lors de son pull vers nous.
     _inew = (request.json or {}).get("install_new") if request.is_json else None

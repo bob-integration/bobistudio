@@ -3,7 +3,9 @@
 {% block title %}{{ _('monitoring.page_title') }}{% endblock %}
 
 {% block content %}
-<h1>{{ _('monitoring.title') }}</h1>
+{# Titre masqué : l'entrée allumée de la barre du haut le dit déjà ; les onglets forment la bande
+   de sous-menu collée sous elle (`.subnav-deck`, base.css). #}
+<h1 class="sr-only">{{ _('monitoring.title') }}</h1>
 
 <style>
 /* `.mon-tabs` vit dans base.css : la page /probe (onglet « Sonde 2110 ») porte la MÊME barre. */
@@ -153,7 +155,7 @@
 @media (max-width:640px){ .rdma-graphs { grid-template-columns:1fr; } }
 </style>
 
-<div id="mon-tabs" class="mon-tabs" role="tablist">
+<div id="mon-tabs" class="mon-tabs subnav-deck" role="tablist">
     <button type="button" class="tab active" data-view="overview" role="tab"
             onclick="activateMonitoringView('overview')">{{ _('monitoring.tab_overview') }}</button>
     <button type="button" class="tab" data-view="nodes" role="tab"
@@ -164,6 +166,7 @@
             onclick="activateMonitoringView('rdma')">{{ _('monitoring.tab_rdma') }}</button>
     <button type="button" class="tab" data-view="logs" role="tab"
             onclick="activateMonitoringView('logs')">{{ _('monitoring.tab_logs') }}</button>
+    <a class="tab" href="/ops-journal" role="tab">{{ _('monitoring.tab_opsj') }}</a>
     <a class="tab" href="/probe" role="tab">{{ _('nav.probe') }}</a>
 </div>
 
@@ -223,6 +226,7 @@
     <div class="alerts-toolbar">
         <select id="logs-source" aria-label="{{ _('monitoring.logs_source') }}" onchange="onLogsSourceChange()">
             <option value="alerts">{{ _('monitoring.src_alerts') }}</option>
+            <option value="securite">{{ _('monitoring.src_securite') }}</option>
             <option value="events">{{ _('monitoring.src_ptp_events') }}</option>
         </select>
         <input type="search" id="logs-q" placeholder="{{ _('monitoring.search') }}"
@@ -305,6 +309,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/subnav_deck.js?v={{ asset_v('subnav_deck.js') }}"></script>
 <script>
 function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -595,6 +600,10 @@ function logsQueryString() {
     const p = new URLSearchParams();
     if (q) p.set('q', q);
     if (n) p.set('niveau', n);
+    // Piste d'AUDIT : les deux natures de securite, filtrees par le serveur. Les melanger au
+    // flot de l'exploitation reviendrait a demander a un auditeur de trier a la main des
+    // milliers de lignes de cadence pour retrouver une connexion.
+    if (_logsSource() === 'securite') p.set('kind', 'auth,account');
     p.set('limit', limit);
     return p.toString();
 }
@@ -674,14 +683,14 @@ function onLogsSourceChange() {
     // Le TXT est une sortie de LECTURE propre aux alertes (`[horodatage] niveau: message`) ;
     // le journal PTP n'en a pas. Masquer le bouton plutôt que de servir un CSV déguisé.
     const txt = document.getElementById('logs-export-txt');
-    if (txt) txt.style.display = (src === 'alerts') ? '' : 'none';
+    if (txt) txt.style.display = (src === 'alerts' || src === 'securite') ? '' : 'none';
     rafraichirLogs();
 }
 
 async function rafraichirLogs() {
     const src = _logsSource();
     try {
-        if (src === 'alerts') {
+        if (src === 'alerts' || src === 'securite') {
             const r = await fetch('/api/alerts?' + logsQueryString());
             if (!r.ok) throw new Error('HTTP ' + r.status);
             logsData = await r.json();

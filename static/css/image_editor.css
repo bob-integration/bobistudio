@@ -1,0 +1,66 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+   Éditeur d'image de la base des médias — static/js/image_editor.js. Tout est scopé sous .ie. */
+body.ie-open { overflow:hidden; }
+.ie { position:fixed; inset:0; z-index:3000; display:flex; flex-direction:column; background:var(--bg); color:var(--text); font-size:0.9em; }
+.ie-loading { margin:auto; text-align:center; color:var(--text-muted); }
+.ie-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid var(--border-soft); background:var(--bg-elev); }
+.ie-title { max-width:28ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-strong); }
+.ie-sp { flex:1; }
+.ie-fmt { display:flex; align-items:center; gap:4px; }
+.ie select, .ie input[type=number], .ie textarea { background:var(--bg-input); color:var(--text); border:1px solid var(--border-soft); border-radius:4px; padding:3px 6px; font:inherit; }
+.ie .ie-num { width:68px; }
+.ie .btn { margin:0; font-size:0.85em; padding:4px 10px; min-height:0; }
+.ie .btn.on { border-color:var(--accent); color:var(--accent); }
+.ie .btn.primary { background:var(--btn-blue); color:var(--btn-text); }
+.ie .btn.danger { background:var(--btn-red); color:var(--btn-text); }
+.ie .btn:disabled { opacity:.45; pointer-events:none; }
+.ie-msg { font-size:0.85em; color:var(--text-muted); max-width:46ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ie-msg.ok { color:var(--status-running-fg); }
+.ie-msg.err { color:var(--status-stopped-fg); white-space:normal; }
+.ie-prog { height:3px; background:var(--border-soft); }
+.ie-bar { height:100%; width:0; background:var(--accent); transition:width .3s; }
+.ie-confirm { display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--status-warning-bg); color:var(--status-warning-fg); border-bottom:1px solid var(--border-soft); }
+.ie-main { flex:1; min-height:0; display:grid; grid-template-columns:minmax(260px, 320px) minmax(0, 1fr) minmax(190px, 240px); }
+@media (max-width:900px){ .ie-main { grid-template-columns:1fr; grid-template-rows:auto minmax(260px, 1fr) auto; overflow:auto; } }
+.ie-left, .ie-right { overflow:auto; background:var(--bg-elev); }
+.ie-left { border-right:1px solid var(--border-soft); }
+.ie-right { border-left:1px solid var(--border-soft); padding:8px; }
+.ie-right h4, .ie-pane h4 { margin:12px 0 4px; font-size:0.8em; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); }
+.ie-tabs { display:flex; flex-wrap:wrap; gap:2px; padding:8px; border-bottom:1px solid var(--border-soft); position:sticky; top:0; background:var(--bg-elev); z-index:1; }
+.ie-tab { font:inherit; font-size:0.8em; padding:4px 9px; border:1px solid transparent; border-radius:4px; background:none; color:var(--text-muted); cursor:pointer; margin:0; min-height:0; }
+.ie-tab.on { background:var(--bg-input); border-color:var(--border-soft); color:var(--text-strong); }
+.ie-pane { padding:8px 12px 16px; display:flex; flex-direction:column; gap:6px; }
+.ie-btns { display:flex; gap:6px; flex-wrap:wrap; }
+.ie-row { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+.ie-row.ie-col { flex-direction:column; align-items:stretch; }
+.ie-lbl { color:var(--text-muted); font-size:0.85em; flex:0 0 38%; }
+.ie-row.ie-col .ie-lbl { flex:none; }
+.ie-ctl { display:flex; align-items:center; gap:6px; flex:1; }
+.ie-ctl input[type=range] { flex:1; min-width:0; }
+.ie-val { font-family:var(--font-mono); font-size:0.78em; min-width:5ch; text-align:right; color:var(--text-muted); }
+.ie-row > select, .ie-row > input[type=color] { flex:1; min-width:0; }
+.ie-row > input[type=color] { height:26px; padding:0; border:1px solid var(--border-soft); border-radius:4px; background:none; }
+.ie-chk { justify-content:flex-start; }
+.ie-hint { color:var(--text-muted); font-size:0.78em; margin:4px 0; }
+.ie-stage { position:relative; display:flex; align-items:center; justify-content:center; min-width:0; min-height:0; overflow:hidden;
+    background:repeating-conic-gradient(var(--bg-input) 0% 25%, var(--bg) 0% 50%) 50% / 20px 20px; }
+.ie-cvbox { position:relative; box-shadow:0 0 0 1px var(--border), 0 6px 30px rgba(0,0,0,.45); line-height:0; }
+.ie-cv { display:block; background:#000; }
+.ie-ov { position:absolute; inset:0; touch-action:none; }
+.ie-layer { display:flex; align-items:center; gap:2px; padding:3px 4px; border:1px solid transparent; border-radius:4px; cursor:pointer; }
+.ie-layer:hover { background:var(--bg-hover); }
+.ie-layer.on { background:var(--accent-soft); border-color:var(--accent); }
+.ie-layer.off .ie-lname { opacity:.45; text-decoration:line-through; }
+.ie-lname { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ie-ico { font:inherit; font-size:0.75em; width:22px; height:22px; padding:0; margin:0; min-height:0; border:0; background:none; color:var(--text-muted); cursor:pointer; border-radius:3px; }
+.ie-ico:hover:not(:disabled) { background:var(--bg-hover); color:var(--text-strong); }
+.ie-ico:disabled { opacity:.25; cursor:default; }
+.ie-pick { position:absolute; inset:0; z-index:5; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:16px; }
+.ie-pick-box { background:var(--bg-elev); border:1px solid var(--border); border-radius:8px; width:min(760px, 100%); max-height:80vh; display:flex; flex-direction:column; }
+.ie-pick-h { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid var(--border-soft); }
+.ie-pick-grid { padding:10px; overflow:auto; display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:8px; }
+.ie-pick-i { display:flex; flex-direction:column; gap:4px; padding:4px; background:var(--bg-input); border:1px solid var(--border-soft); border-radius:6px; color:var(--text); font:inherit; font-size:0.8em; cursor:pointer; margin:0; }
+.ie-pick-i:hover { border-color:var(--accent); }
+.ie-pick-i img { width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:4px; background:#000; }
+.ie-pick-i span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ie :focus-visible { outline:2px solid var(--accent); outline-offset:1px; }

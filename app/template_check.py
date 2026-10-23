@@ -34,7 +34,13 @@ import tempfile
 
 log = logging.getLogger(__name__)
 
-_RE_SCRIPT = re.compile(r"<script(?![^>]*\ssrc=)[^>]*>(.*?)</script>", re.S)
+# Un COMMENTAIRE HTML est consommé AVANT de chercher un script : le navigateur ne lit rien de ce
+# qu'il contient, et ce contrôle non plus. Sans cette alternative, le mot « <script> » écrit dans
+# un commentaire (deploy_palette.html, 2026-10-18 : « un <script> de template ne s'exécute qu'au
+# clonage ») ouvrait un faux bloc — du français confié à node — et l'alerte « page hors service »
+# sonnait à CHAQUE démarrage sur une page saine. Un script qui contient lui-même « <!-- » reste
+# un script : l'alternative la plus à gauche gagne, et le script commence avant.
+_RE_SCRIPT = re.compile(r"<!--.*?-->|<script(?![^>]*\ssrc=)[^>]*>(.*?)</script>", re.S)
 
 
 def _sans_jinja(js):
@@ -117,6 +123,8 @@ def verifier(dossier=None):
     for chemin in _gabarits(dossier):
         src = open(chemin, encoding="utf-8").read()
         for m in _RE_SCRIPT.finditer(src):
+            if m.group(1) is None:      # commentaire HTML : rien à juger
+                continue
             ligne = src[:m.start()].count("\n") + 1
             tmp = None
             try:

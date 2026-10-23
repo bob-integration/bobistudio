@@ -35,6 +35,8 @@ PERMISSIONS = [
     "backup.manage",
     "files.access",            # gestionnaire de fichiers (Réglages → Fichiers) ; gating fin par racine
     "media.manage",            # gestionnaire de médias (Médias → Gestionnaire de Médias)
+    "console.build",           # éditer la STRUCTURE d'une console (tranches, bus, chaînes) — pas l'exploiter
+    "audio_plugins.manage",    # installer / retirer des plugins audio TIERS (code tiers sur les nœuds, en bac à sable)
 ]
 
 # ⚠ CES CONSTANTES SONT DES DÉFAUTS DE PREMIER DÉMARRAGE, PLUS LA VÉRITÉ.
@@ -264,6 +266,34 @@ def check_vmid_access(vmid, min_role="viewer"):
             return None
     return (jsonify({"error": "forbidden", "reason": "not_project_member"}), 403)
 
+def shm_producer_vmids(shms):
+    """{shm: {vmid, …}} — les containers qui PRODUISENT chacun des shm demandés, redérivé côté
+    serveur depuis les manifestes (`derive_wiring`). Sert aux gardes de scoping qui reçoivent un
+    shm du client (monitoring, câblage) : on ne fait jamais confiance au shm annoncé, ni au vmid
+    qui l'accompagne. Un shm que personne ne produit est absent du résultat."""
+    from . import plugins as _plugins
+    from .database import db_get_containers
+    from .routes.shared import _load_dc
+    want = {s for s in shms if s}
+    out = {}
+    if not want:
+        return out
+    for c in db_get_containers():
+        dc = _load_dc(c) or {}
+        kind = dc.get("type")
+        if not _plugins.is_plugin(kind):
+            continue
+        p = dc.get("params") or {}
+        hn = p.get("hostname") or c.get("hostname") or f"mxl{c['vmid']}"
+        try:
+            produced = {pr.get("shm") for pr in
+                        _plugins.derive_wiring(kind, hn, p)["produces"]}
+        except Exception:
+            continue
+        for s in want & produced:
+            out.setdefault(s, set()).add(c["vmid"])
+    return out
+
 def scoped_project_ids():
     """None si l'utilisateur voit tout (accès global) ; sinon le set des ids de
     projets dont il est membre (pour filtrer les listes)."""
@@ -490,7 +520,35 @@ def valider_motdepasse(pwd, username=None, extras=(), exigences=None):
 # ─── User session ────────────────────────────────────────────
 
 def current_user():
-    """Renvoie le user courant (dict) ou None. Caché dans g pour économiser la DB."""
+    """Renvoie le user courant (dict) ou None. Caché dans g pour économiser la DB.
+
+    DEUX porteurs d'identité, et UN SEUL point d'entrée — c'est tout l'intérêt : `require_login`,
+    `require_perm`, `current_permissions`, le filtrage par projet et la journalisation lisent
+    tous cette fonction. Un jeton d'API hérite donc des habilitations de son compte sans qu'une
+    seule route soit modifiée, et sans seconde échelle de droits à tenir en parallèle.
+
+    1. Le COOKIE de session (navigateur), validé par le registre (`_session_valide`).
+    2. Un JETON D'API (accès programmatique : serveur MCP, script, supervision), en en-tête
+       `Authorization: Bearer …` ou `X-API-Token`.
+
+    Le cookie passe d'ABORD : un humain devant son navigateur ne doit pas se retrouver à agir
+    sous l'identité d'un jeton qu'un outil aurait posé dans la requête.
+
+    ⚠ Un jeton ne traverse PAS `_session_valide` : il n'a ni `sid` ni époque, et ce serait la
+    mauvaise porte. Sa révocation est la sienne (`revoked_at`), délibérément SÉPARÉE de
+    « fermer mes autres sessions » — fermer ses onglets ne doit pas couper un serveur MCP, et
+    révoquer un jeton ne doit pas déconnecter l'humain.
+
+    ⚠ Un jeton dispense de cookie, donc des protections qui s'y adossent, et il se renifle comme
+    un mot de passe : le port web de l'orchestrateur (`:5000`, servi par Waitress) est en HTTP
+    CLAIR, et rien ne termine TLS devant lui à ce jour.
+
+    ⚠ NE PAS CONFONDRE DEUX CANAUX — je me suis trompé une fois, autant que ce soit écrit. Le
+    mTLS du plan de contrôle est ACTIF (vérifié le 2026-10-10 : les quatre nœuds à `tls_ready=1`
+    avec `node_cert`) mais il protège contrôleur ↔ agent-nœud `:9100`, pas ce canal-ci. Un jeton
+    ne passe JAMAIS par `:9100` : il va du client au `:5000`, exactement comme un mot de passe à
+    la connexion et comme le cookie de session. L'exposition est donc antérieure aux jetons et
+    plus large qu'eux — ce qui ne la rend pas moins vraie pour eux."""
     if hasattr(g, "_user"):
         return g._user
     uid = session.get("user_id")
@@ -498,8 +556,38 @@ def current_user():
     if u is not None and not _session_valide(u):
         session.clear()
         u = None
+    if u is None:
+        u = _user_par_jeton()
     g._user = u
     return g._user
+
+
+def _jeton_de_la_requete():
+    """Le jeton présenté, ou None. `Authorization: Bearer …` d'abord (la forme standard), puis
+    `X-API-Token` (ce que savent faire les clients les plus simples)."""
+    if not request:
+        return None
+    brut = request.headers.get("Authorization") or ""
+    if brut[:7].lower() == "bearer ":
+        return brut[7:].strip() or None
+    return (request.headers.get("X-API-Token") or "").strip() or None
+
+
+def _user_par_jeton():
+    """Résout le porteur du jeton. Jamais d'exception vers l'appelant : un registre illisible
+    doit refuser l'accès, pas renvoyer un 500 qui renseignerait sur l'état interne.
+
+    ⚠ Le jeton n'est JAMAIS journalisé, même tronqué, même en debug — un préfixe suffit à
+    rapprocher deux traces, et une trace est faite pour être lue par quelqu'un."""
+    jeton = _jeton_de_la_requete()
+    if not jeton:
+        return None
+    try:
+        from .database import db_api_token_resoudre
+        return db_api_token_resoudre(jeton, request.remote_addr if request else None)
+    except Exception as e:
+        log.warning("résolution d'un jeton d'API impossible : %s", e)
+        return None
 
 
 def _session_valide(u):

@@ -263,3 +263,50 @@ def remove():
         except OSError as e:
             return False, f"suppression de {CONF_PATH} : {e}"
     return True, "keepalived arrêté et conf retirée (l'adresse retombe sur l'autre contrôleur)"
+
+
+# ─── L'IP virtuelle dans le CERTIFICAT du contrôleur ────────────────────────────────────────────
+# Les opérateurs visent la VIP ; en mode web tls, leur navigateur compare donc la VIP aux adresses
+# du certificat. Celui du contrôleur ne portait que SA propre IP : cadenas rouge sur la VIP dès que
+# notre CA est installée sur les postes — et pareil sur le standby après bascule, puisque la VIP
+# le suit. On l'inscrit donc dans le certificat des DEUX contrôleurs (ici au démarrage et à chaque
+# changement ; à l'appairage pour le standby, cf. app/ha_appairage.py). Ni les agents-nœuds ni la
+# réplication HA ne vérifient d'adresse : pour eux, rien ne change.
+
+def ip_certificat():
+    """IP de la VIP, sans masque — ou None si aucune adresse valide n'est réglée.
+
+    Lue que la VIP soit ACTIVÉE ou non : HA.md admet une VIP posée à la main, sans keepalived."""
+    import ipaddress
+    brut = (settings.get("vip_address") or "").strip().split("/")[0]
+    try:
+        return str(ipaddress.ip_address(brut)) if brut else None
+    except ValueError:
+        return None
+
+
+def synchroniser_certificat():
+    """Garantit que le certificat du contrôleur porte son marqueur et l'IP virtuelle, puis fait
+    servir le nouveau certificat par les écoutes en service. → True si ré-émis.
+
+    Seul point d'entrée : sans le rechargement, une écoute HTTPS servirait l'ANCIEN certificat
+    jusqu'au prochain redémarrage — une ré-émission « réussie » sans effet visible."""
+    from . import ca
+    if not ca.ca_available():
+        return False
+    vip = ip_certificat()
+    if not ca.assurer_certificat_controleur(ips=[vip] if vip else ()):
+        return False
+    recharger_ecoutes()
+    return True
+
+
+def recharger_ecoutes():
+    """Fait servir le certificat ACTUEL du contrôleur par les écoutes HTTPS et HA en service.
+    À appeler après TOUTE ré-émission (IP virtuelle, appairage, renouvellement)."""
+    from . import ha_tls, web_mode
+    for nom, f in (("HTTPS", web_mode.recharger_certificat), ("HA", ha_tls.recharger_certificat)):
+        try:
+            f()
+        except Exception as e:
+            log.error("certificat ré-émis mais écoute %s non rechargée : %s", nom, e)

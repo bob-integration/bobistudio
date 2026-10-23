@@ -178,11 +178,27 @@ journalctl -u bobistudio -f     # démarrages, arrêts, et ce qui échappe au lo
 tail -f /opt/bobistudio/bobistudio.log   # le journal applicatif lui-même
 ```
 
-Le process écoute en **HTTP simple sur `0.0.0.0:5000`** (Waitress si disponible, sinon repli
-sur le serveur de développement Werkzeug avec un avertissement dans les logs — installer
-`waitress` pour la production, c'est déjà dans `requirements.txt`). Aucun TLS frontal n'est
-géré par l'application elle-même : placer un reverse-proxy devant si l'exposition doit être
-chiffrée/authentifiée en amont.
+Le process écoute sur **`0.0.0.0:5000`** (Waitress si disponible, sinon repli sur le serveur
+de développement Werkzeug avec un avertissement dans les logs — `waitress` est déjà dans
+`requirements.txt`). Ce qu'il y sert dépend du **mode web** (Réglages → Système → Sécurité →
+Accès web, lu au démarrage) :
+
+| Mode | Navigateurs et scripts | Port 5000 |
+|---|---|---|
+| `http` (défaut) | `http://<contrôleur>:5000`, **en clair** | tout |
+| `tls` | `https://<contrôleur>` (port `web_tls_port`, **443** par défaut), certificat de la CA interne | machines seulement (enrôlement, iLO, sonde keepalived, appairage HA) ; le reste est redirigé vers HTTPS |
+| `proxy` | via le reverse proxy, qui chiffre | celui que vise le proxy ; `X-Forwarded-*` cru |
+
+En `tls`, les navigateurs avertissent tant que la CA interne n'est pas installée sur les postes
+comme autorité de confiance : bouton **Télécharger le certificat de l'autorité** dans Réglages →
+Système → Sécurité (c'est `tls/ca.crt` ; `ca.key` ne quitte jamais le contrôleur), puis comparer
+l'empreinte SHA-256 à celle de l'onglet. Si l'écoute HTTPS ne peut pas démarrer, l'orchestrateur
+repasse en HTTP complet et lève une alerte d'erreur. Le mode peut aussi être imposé par la
+variable d'environnement `BOBI_WEB_MODE`.
+
+**Ports à ouvrir vers le contrôleur** : 5000 (toujours) ; 443 en mode `tls` ; **5444 entre les
+deux contrôleurs** d'une paire HA (réplication mTLS, `ha_tls_port`). Du contrôleur vers les
+nœuds : 9100 (agent-nœud).
 
 ### 2.5 Premier compte administrateur
 
@@ -356,6 +372,37 @@ une capacité à un nœud déjà enrôlé : sans reproduire tous les arguments d
 macvlan, par exemple, n'est pas stocké en base), elle blanchirait la configuration réseau
 existante, et **sans `--token` elle régénère le token de l'agent** — le contrôleur perd le
 nœud.
+
+#### La capacité `gpu` : pilote NVIDIA installé et mis à jour depuis l'interface
+
+`install-node.sh --with gpu` (et le rattrapage `--add-caps gpu`) n'installe **plus** le
+`nvidia-driver` de Debian 13 (550.163.01) : il est trop ancien pour le runtime CUDA 12.8 de l'image GPU
+(pilote ≥ 570), et un nœud neuf faisait alors tourner le mur de visualisation sur le CPU sans le dire.
+Le pilote est choisi **d'après la génération du GPU**, détectée sans pilote :
+
+| GPU | Méthode |
+|---|---|
+| Turing et plus récent (T4, Quadro RTX 4000, Ampère…) | dépôt apt officiel NVIDIA pour Debian, **modules noyau ouverts** (`nvidia-open`) — mises à jour par apt |
+| Maxwell, Pascal, Volta | installeur NVIDIA `.run`, branche **580** (la dernière qui les gère), compilé en DKMS |
+| Kepler et plus ancien | refusé, avec le motif |
+
+Le même code (`node_agent/host_drivers/nvidia.py`) sert l'installeur et l'interface : **Réglages → nœud →
+« Pilote NVIDIA »** affiche le GPU et sa génération, le pilote actuel, la cible, l'état, le plan par
+étapes, et le bouton **« Installer / mettre à jour le pilote »** (permission d'administration), avec le
+journal en direct. Il pose lui-même ses prérequis (composants apt `contrib`/`non-free`, `dkms`,
+`build-essential`, en-têtes du noyau en cours), purge proprement un ancien pilote Debian, installe le
+`nvidia-container-toolkit` et le runtime Docker `nvidia`. Un nœud déjà conforme (pilote ≥ 570 chargé,
+quelle que soit la façon dont il a été posé) est affiché « À jour » et **n'est jamais touché**.
+
+- **Redémarrage** : requis après une installation. L'interface l'annonce et propose un bouton
+  explicite — **rien n'est redémarré automatiquement**. Ensuite, « Détecter GPU » valide le résultat
+  (CUDA userspace compris).
+- **Secure Boot activé** : l'installation est refusée (le module DKMS compilé sur place n'est pas signé,
+  le noyau le refuserait) ; désactiver Secure Boot ou enrôler une clé, puis revenir.
+- **Sans accès Internet** : téléverser l'installeur `NVIDIA-Linux-x86_64-<version>.run` depuis le même
+  panneau, ou l'embarquer dans le bundle (§8.3). Le dépôt apt NVIDIA n'étant pas joignable, les Turing+
+  utilisent alors ce même `.run` en modules ouverts.
+- Nécessite un agent ≥ 0.28.0 (« Mettre à jour l'agent » sinon).
 
 ### 4.4 Vérifier que l'enrôlement a réussi
 
@@ -606,3 +653,18 @@ Debian échouera silencieusement à satisfaire certaines dépendances côté cib
 (`io2110`) reste **hors bundle** dans tous les cas (version-spécifique, fourni par
 `--kernel-pkg`/`--kernel-apt` en réglage cluster) : un nœud `io2110` installé hors-ligne
 nécessite malgré tout un accès réseau ponctuel pour ce paquet, sauf à le déposer manuellement.
+
+**Pilote NVIDIA hors-ligne** : `tools/build_dist.py --offline --nvidia-driver` télécharge, **à la
+construction du bundle**, l'installeur `.run` NVIDIA (branche 580, ~400 Mo) dans `vendor/nvidia/` avec
+son texte de licence ; `install-node.sh` le dépose sur les nœuds `gpu`. Il n'est **jamais commité**
+(`vendor/` est ignoré par git) : seul l'opérateur qui construit son bundle le télécharge. Les
+paquets `dkms` et `build-essential` sont dans le bundle ; les **en-têtes du noyau en cours** ne le
+sont pas (version imprévisible à la construction) : ils doivent déjà être sur le nœud.
+*Licence NVIDIA (v. 25 février 2025)* : le §1.1(d) autorise la redistribution du pilote **à
+l'identique** (binaires non modifiés, accord fourni avec le logiciel) pour des noyaux sous licence
+OSI (Linux) ; sa §2.7 interdit toute autre redistribution, et les pilotes GeForce/Titan sont réservés
+au matériel GeForce/Titan (§2.8, hors centre de données). Un bundle assemblé par l'opérateur pour ses
+propres nœuds est le cas le plus sûr (§1.1(c), déploiement sur son infrastructure) ; **le publier**
+n'est pas écarté par la licence, mais ce n'est pas un avis juridique — à faire valider avant de
+distribuer un bundle contenant le binaire. Le texte de licence est extrait de l'installeur lui-même et
+voyage à côté (`NVIDIA-LICENSE.txt`).

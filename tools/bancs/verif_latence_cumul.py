@@ -15,12 +15,13 @@ Les deux défauts verrouillés ici, constatés le 2026-08-18 :
 2. SEGMENT A EXCLU. `rx_latency_ms` (capture réseau → écriture shm, ~19 ms ≈ 1 trame) n'était
    qu'un badge isolé, jamais additionné — le total ne pouvait pas approcher le fil-à-fil.
 
-    ./venv/bin/python tools/verif_latence_cumul.py
+    ./venv/bin/python tools/bancs/verif_latence_cumul.py
 """
 import os
 import sys
 
-_R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# ⚠ TROIS niveaux : ce banc vit dans tools/bancs/, pas dans tests/ (déplacé le 2026-10-23).
+_R = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _R)
 os.chdir(_R)
 
