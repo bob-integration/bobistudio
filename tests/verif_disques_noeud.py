@@ -247,6 +247,8 @@ for titre, kw, code in (
     d.update(kw)
     r = ag._dsk_execute(d)
     ok(not r["ok"] and code in r.get("refusals", []), "format refusé : %s" % titre, str(r))
+    ok((r.get("disk") or {}).get("serial") == "MEDIA-2T",
+       "refus %s : la réponse porte la série RÉELLE du disque (le journal la cite, pas la saisie)" % titre, str(r))
 ok(destructifs(sysm) == [], "refus de confirmation : aucune commande destructive", str(destructifs(sysm)))
 sysm.disks[1]["serial"] = None
 r = ag._dsk_plan(fmt("/dev/nvme1n1", "", 2 * 10 ** 12))
@@ -316,6 +318,10 @@ ok(r["ok"] and media not in sysm.mounts, "démontage : umount effectué", str(r)
 ok(not any(x.startswith("UUID=uuid-new-") for x in fstab_lignes(sysm)), "démontage : ligne fstab retirée")
 ok("bobi-storage role" not in open(sysm.fstab).read(), "démontage : marqueur retiré aussi")
 ok(all(x in open(sysm.fstab).read() for x in ("fd9cbd8b", "6AAA-205C", "/dev/sr0")), "démontage : lignes du système intactes")
+_orig = open(os.path.join(FIX, "fstab_debian.txt")).read()
+ok(open(sysm.fstab + ".bobi-orig").read() == _orig,
+   "deux écritures (format puis démontage) : .bobi-orig garde le fstab d'AVANT Bobi")
+ok(open(sysm.fstab + ".bobi-bak").read() != _orig, ".bobi-bak, lui, suit la dernière écriture")
 r = ag._dsk_execute(ureq)
 ok(not r["ok"] and r["refusals"] == ["nothing_to_do"], "démontage rejoué : rien à faire")
 sysm.umount_busy = True
@@ -448,6 +454,33 @@ ok(code == 200 and o["steps"] and destructifs(sysm) == [], "plan : décrit sans 
 code, o = ag._dsk_http("POST", "/v1/host/disks/execute", [])
 ok(code == 400, "corps non-objet : 400")
 shutil.rmtree(tmp)
+
+# ── Journal du contrôleur : la parenthèse cite la série du DISQUE, jamais la saisie ─────────────
+sys.path.insert(0, RACINE)
+# ── Isolation de la base : un test n'OUVRE JAMAIS la production, même en lecture ──────
+# `connect_guarded` ne donne la base de prod à un test qu'en lecture seule et l'avertit sur
+# stderr. Lire la prod reste une dépendance cachée : le verdict dépendrait des réglages du site,
+# et sur un exécuteur neuf (CI) la base est VIDE — le test passe alors en mesurant du vide.
+# Base jetable, posée AVANT le premier accès : la connexion est mémorisée par thread, donc
+# surcharger DB_PATH après coup n'isole plus rien.
+import tempfile as _tempfile_iso                                            # noqa: E402
+from app import config as _cfg_iso, database as _dbm_iso                    # noqa: E402
+_cfg_iso.DB_PATH = _dbm_iso.DB_PATH = os.path.join(
+    _tempfile_iso.mkdtemp(prefix="verif-iso-"), "principale.db")
+# ⚠ On NE touche PAS `PRODUCTION_DB_PATH` : il doit désigner la VRAIE production (sinon la garde
+# prendrait cette base jetable POUR la production et la remplacerait par une autre à elle).
+_dbm_iso._tls.__dict__.pop("conn", None)
+_dbm_iso.init_db()
+
+from app.routes import node_disks as _nd                                  # noqa: E402
+_alertes = []
+_nd.db_add_alert = lambda msg, niveau="info", **kw: _alertes.append(kw["params"])
+_nd._journal({"id": 1, "name": "z8"}, {"action": "format", "device": "/dev/sda", "confirm_serial": "FAUX123"},
+             {"ok": False, "error": "refused", "refusals": ["serial_mismatch"], "disk": {"serial": "WD-REEL"}})
+_nd._journal({"id": 1, "name": "z8"}, {"action": "format", "device": "/dev/sda", "confirm_serial": "FAUX123"},
+             {"ok": False, "error": "refused", "refusals": ["disk_not_found"]})
+ok([a_["serial"] for a_ in _alertes] == ["WD-REEL", "?"],
+   "journal : série du disque, ou « ? » — jamais la série saisie (%s)" % [a_["serial"] for a_ in _alertes])
 
 print()
 if ko:

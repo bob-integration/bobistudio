@@ -33,7 +33,7 @@ docs/reference/PLUGIN_JOURNAL.md. Règles (pures) : app/ops_journal_rules.py.
   - `user`    : opérateur de l'interface (proxy de plugin, shotbox) — déduit du contexte de requête ;
   - `macro`   : macro lancée par `name` (l'utilisateur), `detail` = nom de la macro ;
   - `trigger` : déclencheur automatique `name`, `detail` = nom de la macro ;
-  - `surface` : surface de contrôle `detail`, au nom de SON opérateur `name` (services/control_surface,
+  - `surface` : surface de contrôle `detail`, au nom de SON opérateur `name` (services/panel_audio,
                 à venir : `surface_actor(surface, operator)`) ;
   - `auto`    : l'orchestrateur lui-même (`detail` = la fonction, ex. « afv ») ;
   - `plugin`  : événement interne publié par le plugin (`detail` = son type) ;
@@ -81,7 +81,7 @@ def macro_actor(run_user, macro_name=None):
 
 
 def surface_actor(surface, operator=None):
-    """Surface de contrôle (services/control_surface) : elle agit au nom de SON opérateur."""
+    """Surface de contrôle (services/panel_audio) : elle agit au nom de SON opérateur."""
     return {"kind": "surface", "name": operator or None, "detail": surface}
 
 
@@ -370,6 +370,29 @@ def record_event(vmid, event, plugin_type=None):
         return None
 
 
+LIBRARY_OPS = ("save", "delete", "recall")
+
+
+def record_library(op, plugin_type, kind, name, vmid=None, actor=None):
+    """COMMON library of a plugin type (app/plugin_library.py): save / delete / recall of a named save.
+    The library belongs to the installation, not to a container: `vmid` is the container the save was
+    captured from or recalled on, None for a deletion. Written after the change is done. Never raises."""
+    try:
+        if not ENABLED or op not in LIBRARY_OPS:
+            return None
+        if actor is None:
+            actor = current_actor()
+        c, dc = _container_ctx(vmid) if vmid is not None else ({}, {})
+        dc = dict(dc or {}, type=plugin_type or (dc or {}).get("type"))
+        details = {"library": {"op": op, "kind": kind, "name": name}}
+        return _insert(vmid, c, dc, actor, "structure" if op != "recall" else "command",
+                       "library/" + op, name, details,
+                       render_details(None, details, lang=_install_lang()))
+    except Exception:
+        log.exception("ops_journal: library %s line for %r not written", op, name)
+        return None
+
+
 NATIVE_ENDPOINT = "native-gui"
 
 
@@ -436,6 +459,9 @@ def _value(v, lang):
 def render_details(category, details, lang=None, plugin_type=None):
     """Phrase lisible d'une ligne, dans `lang`. Jamais une valeur numérique (il n'y en a pas)."""
     details = details or {}
+    if "library" in details:
+        lb = details["library"] or {}
+        return _t("opsj.library." + str(lb.get("op")), lang, name=lb.get("name") or "—", kind=lb.get("kind") or "—")
     if "entries" in details:
         heads, parts = [], []
         for e in details["entries"]:

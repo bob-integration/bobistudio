@@ -20,7 +20,27 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-SOURCE = os.path.join(ROOT, "services/atem/__init__.py")
+# ── Isolation de la base : un test n'OUVRE JAMAIS la production, même en lecture ──────
+# `connect_guarded` ne donne la base de prod à un test qu'en lecture seule et l'avertit sur
+# stderr. Lire la prod reste une dépendance cachée : le verdict dépendrait des réglages du site,
+# et sur un exécuteur neuf (CI) la base est VIDE — le test passe alors en mesurant du vide.
+# Base jetable, posée AVANT le premier accès : la connexion est mémorisée par thread, donc
+# surcharger DB_PATH après coup n'isole plus rien.
+import tempfile as _tempfile_iso                                            # noqa: E402
+from app import config as _cfg_iso, database as _dbm_iso                    # noqa: E402
+_cfg_iso.DB_PATH = _dbm_iso.DB_PATH = os.path.join(
+    _tempfile_iso.mkdtemp(prefix="verif-iso-"), "principale.db")
+# ⚠ On NE touche PAS `PRODUCTION_DB_PATH` : il doit continuer de désigner la VRAIE base de
+# production. Le poser sur la base jetable la ferait prendre POUR la production par la
+# garde, qui — le fichier n'existant pas encore — la remplacerait par une autre base
+# jetable à elle : le test écrirait alors ailleurs que là où il croit. Mesuré le 25/10.
+_dbm_iso._tls.__dict__.pop("conn", None)
+_dbm_iso.init_db()
+# Replay COUPÉ explicitement : les cas ci-dessous comptent les touches de la console (4), pas les 40 de la
+# capture. Depuis atem 0.4.11 le défaut est VRAI (décision du testeur, 28/10) : une base sans la clé rejoue.
+_dbm_iso.db_set_setting("atem_replay", False)
+
+SOURCE = os.path.join(ROOT, "services/panel_atem/__init__.py")
 FAILS = []
 
 
@@ -43,6 +63,9 @@ class _Sess:
         self.addr = (self.ip, 1234)
         self.pending_dump = []
         self.labels_after_replay = False
+        self.labels_sent = {}
+        self.shift_held = False     # Shift (atem 0.4.20)
+        self.n_inputs_me = {}
 
 
 def _noms_de(cmds):
@@ -63,12 +86,12 @@ def _noms_de(cmds):
 def main():
     print(__doc__.splitlines()[0])
     if not os.path.exists(SOURCE):
-        print("  sous-module services/atem absent — garde inapplicable")
+        print("  sous-module services/panel_atem absent — garde inapplicable")
         return 0
     try:
-        from services import atem
+        from services import panel_atem as atem
     except Exception as e:                                   # pragma: no cover
-        print(f"  services.atem non importable ({type(e).__name__}: {e}) — garde inapplicable")
+        print(f"  services.panel_atem non importable ({type(e).__name__}: {e}) — garde inapplicable")
         return 0
 
     pont = atem._Server.__new__(atem._Server)
@@ -82,7 +105,7 @@ def main():
         vraie = None
     if vraie is not None:
         manquants = [a for a in ("ip", "me_vmids", "anim_idx", "pending_dump",
-                                 "labels_after_replay") if not hasattr(vraie, a)]
+                                 "labels_after_replay", "labels_sent") if not hasattr(vraie, a)]
         verifier("le vrai _Session porte les attributs que la doublure imite", manquants, [])
 
     # ── 1. Non affecté : le placeholder complet, et RIEN QUE des InPr.
@@ -96,9 +119,9 @@ def main():
     verifier("la dernière touche porte le témoin animé",
              noms[-1][1] in tuple(atem.SPINNER_CHARS), True)
 
-    # ── 2. Affecté : les noms du mélangeur, et un slot sans nom est SAUTÉ, pas écrasé.
-    # C'est le point de conception : `_cmd_inpr` mettrait « Input k » sur un slot sans libellé,
-    # effaçant le « Camera 3 » que la capture a posé par un nom génériquement faux.
+    # ── 2. Affecté : les noms du mélangeur, et un slot sans nom reçoit le nom de touche LIBRE.
+    # Jusqu'au 2026-10-27 il était sauté ; le pupitre gardait alors les noms de la capture, ou
+    # d'une source débranchée depuis (« il faudrait mettre à jour tous les labels »).
     # ⚠ AUCUN RÉSEAU : `_etat_des_noms` appelle `_me_state`, qui joint le conteneur. Sans la
     # doublure ci-dessous, cette garde interrogeait le VRAI mixer de production — un test de
     # `tests/` ne fait pas d'E/S réseau (cf. CLAUDE.md) et son verdict dépendrait du parc.
@@ -106,15 +129,15 @@ def main():
     pont._primary_state = lambda sess: (0, 1250, etat)
     atem._Server._me_state = staticmethod(lambda vmid: etat)
     cmds = atem._Server._label_commands(pont, _Sess(me_vmids=(1250,)))
-    verifier("affecté : seuls les slots NOMMÉS sont envoyés", len(cmds), 2)
-    verifier("ce sont bien les noms du mélangeur",
-             [n for n, _ in _noms_de(cmds)], ["CAM A", "Mire"])
+    verifier("affecté : TOUTES les touches sont nommées",
+             _noms_de(cmds), [("CAM A", "1"), ("Entrée 2", "2"), ("Mire", "3"), ("Entrée 4", "4")])
     verifier("aucun « Input k » générique n'est émis",
              [n for n, _ in _noms_de(cmds) if n.startswith("Input ")], [])
     etat_vide = {"n_inputs": 4, "inputs": ["", "", "", ""]}
     atem._Server._me_state = staticmethod(lambda vmid: etat_vide)
-    verifier("aucun nom connu : on n'envoie rien du tout",
-             atem._Server._label_commands(pont, _Sess(me_vmids=(1250,))), [])
+    verifier("aucun nom connu : toutes les touches en libre",
+             [n for n, _ in _noms_de(atem._Server._label_commands(pont, _Sess(me_vmids=(1250,))))],
+             ["Entrée 1", "Entrée 2", "Entrée 3", "Entrée 4"])
 
     # ── 2 bis. LES NOMS VIENNENT DU M/E 1, JAMAIS D'UNE AUTRE RANGÉE (décision 2026-10-23).
     # `_primary_state` prend « la 1re rangée JOIGNABLE » : quand le M/E 1 tombait, les noms
@@ -203,7 +226,7 @@ def main():
     if FAILS:
         print("ÉCHEC :", ", ".join(FAILS))
         return 1
-    print("OK — nos libellés passent après le drainage, une fois, et jamais à la place d'un nom connu.")
+    print("OK — nos libellés passent après le drainage, une fois, et toutes les touches sont nommées.")
     return 0
 
 

@@ -37,6 +37,19 @@ _BASE_DEFAULTS = {
     # encore de campagne — et non pour la nôtre, où le réglage est posé en base.
     "testplan_enabled": "0",
 
+    # ── Relais d'état (app/state_relay.py) ────────────────────────────────────
+    # "0" renvoie chaque lecteur au conteneur (proxy brut pour les navigateurs, lecture directe
+    # pour le tally / le pupitre / les macros, replis comptés « disabled »). Interrupteur de
+    # mesure A/B et échappatoire ; pas d'entrée d'interface, délibérément.
+    "state_relay_enabled": "1",
+
+    # ── Distributeur de flux (app/stream_hub.py) ──────────────────────────────
+    # "0" rend chaque flux d'état à un fil du serveur web (chemin d'avant le distributeur).
+    # Interrupteur d'échappatoire, pas d'entrée d'interface. Il MANQUAIT ici jusqu'au 29/10 :
+    # POST /api/settings le jetait comme clé inconnue (200 quand même), l'échappatoire documentée
+    # n'était donc posable qu'en base, à la main.
+    "stream_hub_enabled": "1",
+
     # ── Catalogue des paquets publiés ────────────────────────────────────────
     # ⚠ L'ORGANISATION N'EST PAS ICI, ET C'EST VOULU : elle vit dans
     # `config.CATALOGUE_ORG`, hors de portée de la page Réglages. C'est le seul
@@ -156,6 +169,12 @@ _BASE_DEFAULTS = {
     # réglage (deploy._reconcile_fabric_node_impl : fabric_slice_mode OU slice_mode_global).
     # Les clés tranche par-plugin sont hidden:true dans les UI — ce switch est LE réglage.
     "slice_mode_global": False,
+    # IMAGE MANQUANTE (2026-10-30, décision de Cyril — app/missing_frame.py) : ce qu'un étage
+    # émet quand l'image d'une entrée manque (trou de capture). `repeat` (défaut, exploitation) =
+    # la dernière image valide de cette entrée, comptée ; `black` (mise au point) = du noir, pour
+    # voir exactement quand ça saute. Surcharge par conteneur (`missing_frame_mode`, "" = suit ce
+    # réglage). Résolu AU RENDU ; une bascule est POUSSÉE à chaud aux conteneurs qui le suivent.
+    "missing_frame_mode": "repeat",
 
     # Auto-recovery au reboot d'un nœud (app/node_recovery.py). OFF par défaut (activation
     # consciente par l'opérateur) ; overridable PAR NŒUD via node_settings (setting_for).
@@ -217,6 +236,20 @@ _BASE_DEFAULTS = {
     "ip_end":           "",
     "netmask_bits":     24,                # /24
     "gateway":          "",
+    # « Dédié » veut-il dire CŒUR PHYSIQUE ? Si oui, les frères HyperThreading des cœurs dédiés
+    # sont retirés du pool partagé : une réservation tient alors vraiment sa cadence. OFF par
+    # défaut, parce que l'activer RÉDUIT le pool partagé (sur un nœud dense, à rien) — c'est un
+    # choix d'exploitation, par nœud (node_settings / setting_for), pas un défaut qu'on impose.
+    # Ce qui est inconditionnel, c'est de DIRE qu'un dédié ne l'est pas (alert.resource.dedie_frere_ht).
+    "pin_reserve_physical": 0,
+
+    # Adresse par laquelle le SITE (navigateurs, pupitres, encodeurs) joint l'hôte d'un nœud.
+    # VIDE = automatique : `nodes.host`, et une MESURE de la route par défaut quand `host` est une
+    # boucle locale (tout-en-un enrôlé sous 127.0.0.1 — cf. addressing.resolution_adresse_navigateur).
+    # À poser PAR NŒUD (node_settings / setting_for) quand l'adresse vue du site diffère de celle
+    # par laquelle l'orchestrateur joint le nœud : NAT, nom publié, second pare-feu.
+    "browser_host":     "",
+
     # Plan MANAGEMENT (separated seulement, informatif en B2-1 ; hôtes statiques, pas d'IPAM).
     "mgmt_subnet":      "",
     "mgmt_vlan":        "",
@@ -480,6 +513,7 @@ def set(key, value):
             log.warning("réglage mxl_history_ms : %d hors bornes [%d, %d] — ramené à %d",
                         v, MXL_HISTORY_MS_MIN, MXL_HISTORY_MS_MAX, clamped)
         value = clamped
+        _old_mxl_history = db_get_setting(key)
     # `shm_video_ring` : framebuffers DPDK du moteur 2110 (RX ET TX vidéo). Le plancher n'est PAS
     # un optimum choisi, c'est une valeur au-dessus d'un ÉCHEC MESURÉ : le 2026-08-09, un TX 1080p50
     # avec 4 framebuffers (dont 1 immobilisé par la trame de tenue, donc 3 au worker) bloquait le
@@ -499,6 +533,16 @@ def set(key, value):
             log.warning("réglage shm_video_ring : %d hors bornes [6, 8] — ramené à %d", v, clamped)
         value = clamped
     db_set_setting(key, value)
+    # Profondeur MXL : réglage de NŒUD posé dans un fichier du tmpfs de chaque nœud — l'écrire en
+    # base ne change RIEN sur les nœuds. On propage (fil de fond, mesure d'abord, cf.
+    # app/mxl_history.py), seulement si la valeur a changé : le formulaire MXL renvoie ce champ à
+    # chaque enregistrement. Les flux déjà ouverts gardent leur profondeur (rien n'est redéployé).
+    if key == "mxl_history_ms" and str(_old_mxl_history) != str(value):
+        try:
+            from . import mxl_history
+            mxl_history.propagate_async(reason="setting")
+        except Exception as e:                                               # noqa: BLE001
+            log.warning("mxl_history_ms changed but not propagated: %s", e)
     # Le fuseau doit prendre effet SANS redémarrage : sinon les journaux et l'UI continueraient
     # d'afficher l'ancien fuseau jusqu'au prochain restart, et l'utilisateur conclurait que le
     # réglage ne marche pas.

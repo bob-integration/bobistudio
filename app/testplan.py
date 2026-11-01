@@ -338,8 +338,11 @@ def api_tests_state():
     def _do(store):
         if not any(it["id"] == iid for it in store["items"]):
             return ("err", 404, "item inconnu")
+        # Les cases à cocher (`checks`) vivent dans le même état : le statut de l'élément ne les
+        # efface pas — elles s'enregistrent case par case (/api/tests/check).
         store["state"][iid] = {"status": status, "remark": remark, "severite": severite,
-                               "tester": tester, "updated": time.time()}
+                               "tester": tester, "updated": time.time(),
+                               "checks": (store["state"].get(iid) or {}).get("checks") or {}}
         return ("ok", _summary(store))
     res = mutate(_do)
     if res[0] == "err":
@@ -410,8 +413,87 @@ def api_tests_add_item():
     detail = str(data.get("detail") or "").strip()[:2000]
     item = {"id": "custom-" + uuid.uuid4().hex[:10], "area": area,
             "title": title[:200], "detail": detail, "builtin": False}
+    steps = _clean_steps(data.get("steps"))
+    if steps:
+        item["steps"] = steps
     mutate(lambda s: s["items"].append(item))
     return jsonify({"ok": True, "item": item})
+
+
+# ─── Cases à cocher d'un élément (demandé par Cyril le 2026-10-30) ──────────────
+# Un élément peut porter une liste de GESTES à vérifier (`steps`). Chaque geste a sa case et son
+# commentaire, posés par le testeur dans `state[id].checks[<n>]` — à côté du statut de l'élément,
+# donc exportés avec la campagne. Le statut global reste le verdict du testeur : les cases ne le
+# calculent pas (une case non cochée peut être un geste sans objet sur cette installation).
+STEPS_MAX = 40
+
+
+def _clean_steps(raw):
+    if isinstance(raw, str):
+        raw = raw.splitlines()
+    if not isinstance(raw, list):
+        return []
+    return [str(x).strip()[:300] for x in raw if str(x).strip()][:STEPS_MAX]
+
+
+@testplan_bp.route("/api/tests/item/steps", methods=["POST"])
+@require_login
+def api_tests_item_steps():
+    """Pose (ou remplace) la liste de gestes d'un élément ajouté. Les cases dont le geste n'existe
+    plus sont retirées ; celles qui restent gardent leur état et leur commentaire."""
+    data = request.get_json(silent=True) or {}
+    iid = str(data.get("id") or "").strip()
+    steps = _clean_steps(data.get("steps"))
+
+    def _do(store):
+        it = next((x for x in store["items"] if x["id"] == iid), None)
+        if not it:
+            return ("err", 404, "item inconnu")
+        if it.get("builtin"):
+            return ("err", 400, "item intégré : ses gestes viennent de la campagne")
+        if steps:
+            it["steps"] = steps
+        else:
+            it.pop("steps", None)
+        st = store["state"].get(iid)
+        if st and st.get("checks"):
+            st["checks"] = {k: v for k, v in st["checks"].items() if k.isdigit() and int(k) < len(steps)}
+        return ("ok", it)
+    res = mutate(_do)
+    if res[0] == "err":
+        return jsonify({"error": res[2]}), res[1]
+    return jsonify({"ok": True, "item": res[1]})
+
+
+@testplan_bp.route("/api/tests/check", methods=["POST"])
+@require_login
+def api_tests_check():
+    """Coche / décoche UN geste d'un élément, avec son commentaire."""
+    data = request.get_json(silent=True) or {}
+    iid = str(data.get("id") or "").strip()
+    try:
+        n = int(data.get("step"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "geste manquant"}), 400
+    done = bool(data.get("done"))
+    comment = str(data.get("comment") or "")[:1000]
+    tester = str(data.get("tester") or "").strip()[:80]
+
+    def _do(store):
+        it = next((x for x in store["items"] if x["id"] == iid), None)
+        if not it:
+            return ("err", 404, "item inconnu")
+        if not (0 <= n < len(it.get("steps") or [])):
+            return ("err", 400, "geste inconnu")
+        st = store["state"].setdefault(iid, {"status": "untested", "remark": "", "severite": "",
+                                             "tester": "", "updated": 0})
+        st.setdefault("checks", {})[str(n)] = {"done": done, "comment": comment,
+                                               "tester": tester, "updated": time.time()}
+        return ("ok", st["checks"])
+    res = mutate(_do)
+    if res[0] == "err":
+        return jsonify({"error": res[2]}), res[1]
+    return jsonify({"ok": True, "checks": res[1]})
 
 
 @testplan_bp.route("/api/tests/item/delete", methods=["POST"])

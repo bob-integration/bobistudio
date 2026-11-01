@@ -53,6 +53,21 @@ import types
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
+
+# ── Isolation de la base : un test n'OUVRE JAMAIS la production, même en lecture ──────
+# `connect_guarded` ne donne la base de prod à un test qu'en lecture seule et l'avertit sur
+# stderr. Lire la prod reste une dépendance cachée : le verdict dépendrait des réglages du site,
+# et sur un exécuteur neuf (CI) la base est VIDE — le test passe alors en mesurant du vide.
+# Base jetable, posée AVANT le premier accès : la connexion est mémorisée par thread, donc
+# surcharger DB_PATH après coup n'isole plus rien.
+import tempfile as _tempfile_iso                                            # noqa: E402
+from app import config as _cfg_iso, database as _dbm_iso                    # noqa: E402
+_cfg_iso.DB_PATH = _dbm_iso.DB_PATH = os.path.join(
+    _tempfile_iso.mkdtemp(prefix="verif-iso-"), "principale.db")
+# ⚠ On NE touche PAS `PRODUCTION_DB_PATH` : il doit désigner la VRAIE production (sinon la garde
+# prendrait cette base jetable POUR la production et la remplacerait par une autre à elle).
+_dbm_iso._tls.__dict__.pop("conn", None)
+_dbm_iso.init_db()
 DOSSIER = os.environ.get("CART_PLUGIN_DIR") or os.path.join(RACINE, "plugins", "cartouchier")
 
 echecs, reussites = [], []
@@ -154,6 +169,7 @@ controle("wiring.produces déplie un flux audio par lecteur",
 _tmp = tempfile.mkdtemp(prefix="verif_cart_")
 os.symlink(os.path.join(DOSSIER, "src"), os.path.join(_tmp, "cart"))
 sys.path.insert(0, _tmp)
+
 from cart import engine as E  # noqa: E402
 from cart import loudness as L  # noqa: E402
 

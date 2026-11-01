@@ -26,7 +26,7 @@ import sys
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 
-SOURCE = os.path.join(RACINE, "services/atem/__init__.py")
+SOURCE = os.path.join(RACINE, "services/panel_atem/__init__.py")
 JS = os.path.join(RACINE, "templates/settings.html")
 ECHECS = []
 
@@ -51,9 +51,9 @@ def verifier(nom, obtenu, attendu):
 def main():
     print(__doc__.splitlines()[0])
     if not os.path.exists(SOURCE):
-        print("  sous-module services/atem absent — garde inapplicable")
+        print("  sous-module services/panel_atem absent — garde inapplicable")
         return 0
-    from services import atem
+    from services import panel_atem as atem
 
     # ── 1. LE CRITÈRE. Aucun réseau, aucune base : on injecte les configurations déclarées.
     vrai = atem._inputs_declares
@@ -160,7 +160,7 @@ def main():
     try:
         atem._etat_noms_de = lambda v: ({"n_inputs": 2, "inputs": ["flux-a", ""]}, "live")
         atem._label_levels_for_ip = lambda ip: {"long": 2, "short": 2}
-        atem._label_de_niveau = lambda shm, niv: "Mélangeur PGM" if shm == "flux-a" else ""
+        atem._label_de_niveau = lambda shm, niv, *a: "Mélangeur PGM" if shm == "flux-a" else ""
         ap, org = atem._apercu_touches("10.0.0.1", [1])
         verifier("aperçu : l'origine des noms est rendue", org, "live")
         verifier("aperçu : le nom long est tronqué à 20 octets", ap[0]["long"], "Mélangeur PGM")
@@ -168,7 +168,10 @@ def main():
         verifier("aperçu : le nom court montre la troncature RÉELLE", ap[0]["short"], "Mél")
         verifier("aperçu : la valeur complète est fournie pour l'infobulle",
                  ap[0]["short_complet"], "Mélangeur PGM")
-        verifier("aperçu : un slot non câblé est explicitement vide", ap[1]["long"], None)
+        # Depuis le 2026-10-27 un slot non câblé porte le nom de touche libre du pupitre — c'est
+        # ce qui part réellement — et l'aperçu le SIGNALE comme libre.
+        verifier("aperçu : un slot non câblé montre son nom de touche libre, signalé",
+                 (ap[1]["long"], ap[1]["libre"], ap[0]["libre"]), ("Entrée 2", True, False))
         atem._etat_noms_de = lambda v: (None, "absent")
         verifier("aperçu : M/E 1 non affecté → rien à montrer",
                  atem._apercu_touches("10.0.0.1", [None]), ([], "absent"))

@@ -59,7 +59,8 @@ app/                  ← module Python principal (liste non-exhaustive)
   plugins.py          ← registre des plugins (scan, render, wiring, coerce_config, hooks)
   deploy.py           ← déploiement via agent
   allocations.py      ← VMIDs/IPs libres
-  routes/             ← API REST Flask, PAQUET de 38 modules (il n'y a PLUS de `routes.py` unique).
+  routes/             ← API REST Flask, PAQUET d'une cinquantaine de modules (`ls app/routes/` fait foi ;
+                        il n'y a PLUS de `routes.py` unique).
                         `routes/__init__.py` enregistre le Blueprint ; chaque module porte
                         un domaine (`plugin_registry.py`, `catalogue_api.py`, `roles_api.py`…)
   catalogue.py        ← catalogue des plugins/services publiés (org GitHub de confiance,
@@ -71,6 +72,9 @@ app/                  ← module Python principal (liste non-exhaustive)
   backup.py           ← sauvegarde
   monitor.py          ← moniteur WebRTC par utilisateur (encodeur dédié + reaper)
   projects.py         ← projets snapshot/restore
+  project_ports.py    ← ports virtuels : `port:<id>` ↔ flux physique (snapshot virtuel, conteneur physique,
+                        table `port_links` = quelles entrées suivent quel port) — cf. « Ports virtuels :
+                        deux règles » plus bas
   ptp.py              ← PTP par nœud (ptp4l/phc2sys via host-ops/agent, sampler, événements)
   io2110_flows.py     ← flux composables Sources/Destinations 2110 (modèle RX/TX du moteur)
   core_pool.py        ← allocateur de cœurs CPU par nœud (profil ressources par type)
@@ -99,7 +103,7 @@ services/    ← intégrations en SOUS-MODULES git (un dossier = un service, blu
                `db_nmos_resource_upsert`) et BCP-002-02 identité d'asset via `nmos.asset_info()`
                — source UNIQUE partagée avec le `NcDeviceManager`. Bancs (à lancer à la main) :
                `is12_bench.py`, `is14_bench.py`, `bench_telemetrie.py`, `bench_bcp002.py`.
-               emberplus, tsl, atem, skaarhoj,
+               emberplus, tsl, panel_atem, panel_skaarhoj,
                sap — SAP/SDP (RFC 2974) : annonce de nos senders + découverte des flux tiers,
                le SEUL mécanisme que partagent AES67 / Ravenna / Dante-en-mode-AES67 (aucun ne
                parle NMOS, et aucun ne peut s'abonner à ce qui n'est pas ANNONCÉ). Confronte les
@@ -122,7 +126,7 @@ services/    ← intégrations en SOUS-MODULES git (un dossier = un service, blu
 node_agent/  ← agent-nœud (agent.py, HTTP :9100 par défaut, token par nœud) + install-node.sh + iso/
                (contrat documenté dans NODE_AGENT.md)
                + host_drivers/ : pilotes HÔTE génériques (un script par « kind », job long + journal + action
-               en attente redémarrage/arrêt complet ; aujourd'hui `nvidia`) — NODE_AGENT.md §4.6
+               en attente redémarrage/arrêt complet ; `ls node_agent/host_drivers/` fait foi) — NODE_AGENT.md §4.6
 
 templates/   ← HTML Jinja2 : layout.html (parent), home.html, cards.html, forms.html,
                containers.html, settings.html, cables.html, login.html, monitoring.html,
@@ -214,20 +218,28 @@ Depuis 2026-05, **chaque type de container est un plugin** dans `plugins/<type>/
   NMOS), intégration **NMOS** (`services/nmos/`, test `dc_type == "<type>"`), Ember+, topologie/
   câblage (`routes/`), et les **sections de palette riches** (slots de simu receiver,
   vidéo/audios du sender) + pages dédiées (composer multiview, T-bar mixer, page Streams).
-  **Aucun code de plugin n'est exécuté in-process** (sécurité : les identifiants du contrôleur
-  ne fuitent pas) — le code plugin ne tourne que dans le conteneur via l'agent.
-- **Renommage d'un type** = chaîne de type dans `deploy_config` (migration DB idempotente
-  dans `init_db`, motif répété) + tous les `== "<type>"` (deploy/nmos/routes/projects/
+  Le code d'un plugin tourne dans son conteneur, via l'agent — **sauf `hooks.py`**, la SEULE
+  exception : s'il existe, `plugins._load_hooks` l'importe et l'exécute DANS l'orchestrateur, avec
+  ses droits (base, jetons d'agent, réseau de contrôle). Un hook doit donc rester frugal, sans
+  effet de bord et jamais bloquant ; le registre doit être rechargé pour qu'un hook modifié tire.
+  Contrat et liste des hooks : `plugins/AUTHORING.md` (« hooks.py — the one exception »).
+- **Renommage d'un type** = chaîne de type dans `deploy_config` (migration de données à écrire
+  dans `init_db` — il n'en reste aucune, cf. « DB » plus bas) + tous les `== "<type>"` (deploy/nmos/routes/projects/
   monitor/emberplus + JS/templates). Les **UUID NMOS sont keyés sur le VMID** (pas le type)
   → un renommage ne casse pas les enregistrements IS-04/05. Ne PAS toucher les types de
   **ressource** IS-04 (`_register_one(..., "receiver"/"sender", ...)`).
 - **Versioning** : `plugin.json:version` → `params.plugin_version` (persisté) + `:8080`.
+  Plusieurs versions coexistent : les anciennes sont archivées dans `plugins/<type>/versions/<ver>/`
+  (`install_package(..., activate=)`, `activate_version`), le rendu prend la version demandée et
+  sinon la courante (`render_script`), et un conteneur peut tourner sur une version qui n'est plus
+  la courante (dérive affichée). `requires.core_min` du manifeste est vérifié à l'installation
+  (`version_core_min`). Journal des versions : `meta.json` du plugin.
 - **Mode tranche (OBLIGATOIRE pour tout NOUVEAU plugin)** : lire l'entrée par tranches
   (`head_index` + `get_slice`, repli `get_latest` si la source n'est pas tranchée) et publier la
   sortie en commit progressif (`slice_height` au flowDef + `commit(gi, valid_slices=k)`). Contrat :
   k tranches valides ⇔ lignes `[0, k·slice_height)` écrites **sur les trois plans**. `slice_mode`
   va dans `config_schema` en `hidden: true` — le réglage qui compte est le switch global
-  Réglages → Vidéo. Exceptions à écrire dans le code : **entrelacé** et **sélection de ligne**
+  Réglages → MXL (« Mode tranche »). Exceptions à écrire dans le code : **entrelacé** et **sélection de ligne**
   restent en image entière. Un plugin whole-frame ajoute UNE TRAME de latence à toute chaîne qui
   le traverse, et cette dette n'apparaît sur aucun compteur — le plugin affiche une cadence
   parfaite. Modèle : `color_corrector` (entrée) et `scope` (accumulation par bandes).
@@ -266,19 +278,35 @@ chargés par `layout.html` sur toutes les pages. Inventaire vivant : **Réglages
 
 Un contrôle qui manque au catalogue s'y AJOUTE (nouvelle famille ou variante), puis s'utilise —
 il ne vit pas en privé dans une page. Deux agents s'y sont trompés le même jour (2026-10-20) :
-le workspace avait ses propres touches, faders et vu-mètres, et le mélangeur garde encore ses
-touches privées (`.nkk-btn`, `plugins/mixer/control.css`) — à promouvoir au catalogue.
+le workspace avait ses propres touches, faders et vu-mètres, et le mélangeur ses touches privées
+(`.nkk-btn`, promues au catalogue le 2026-10-25 en `.ctl-bus--panel`).
 Côté plugins, la même règle est écrite dans `plugins/AUTHORING*.md` (« Console de contrôle »).
 
 ## Problèmes connus résolus
 - Bus error streamer (ex-worker UDP) → signal SIGBUS intercepté, reconnexion auto
 - Bus MXL recréé au redémarrage d'un producteur → les consommateurs gèrent la reconnexion (SIGBUS)
 
+## Sessions parallèles : messages au strict minimum
+
+Plusieurs sessions Claude travaillent en même temps sur ce dépôt. **Chaque message réveille une session
+dont le contexte pèse souvent des centaines de milliers de tokens** : un simple « bien reçu » coûte un
+tour complet au destinataire, et sa réponse un tour à l'expéditeur. Décidé par l'utilisateur le
+2026-10-25, après une soirée où la moitié des messages étaient évitables :
+
+- **N'envoyer un message que s'il déclenche ou bloque une action** chez le destinataire. Pas d'accusé
+  de réception, pas de « pour info », pas de remerciement, pas de copie à plusieurs sessions.
+- **Mesurer avant de demander.** « C'est toi qui as redéployé X ? » se lit dans le journal, la base ou
+  `:8080` : ne pas réveiller trois sessions pour le savoir.
+- **Un message par destinataire et par sujet**, complet, qui se termine par « pas besoin de répondre »
+  quand c'est le cas. Ne pas répondre à un message qui n'appelle pas de réponse.
+- **Ne plus prévenir les autres sessions d'un redémarrage de l'orchestrateur** : rien ne tourne en
+  production sur ce cluster.
+
 ## Lancement
 
 Pas de build. Un seul venv à `./venv`.
 
-Il y a en revanche **48 tests hors ligne** et une **CI** (`.github/workflows/ci.yml`)
+Il y a en revanche une **suite de tests hors ligne** (plus de 400 fichiers, `ls tests/` fait foi) et une **CI** (`.github/workflows/ci.yml`)
 qui les exécute tous, en bloc et de façon bloquante — plus le smoke import, le scan des
 plugins, la portée des clés i18n et la conformité du plugin d'exemple. `submodules-doctor`
 et `pyflakes` sont *advisory*.
@@ -312,8 +340,8 @@ La règle « français partout » décrivait l'intention des premiers mois, pas 
 se contredisait d'ailleurs avec la dérogation notée plus haut.
 
 **Les symboles français existants RESTENT.** Les renommer coûterait cher pour rien :
-`surveillance` (143 occurrences), `deployer_script` (72), `verrou_vmid` (58),
-`ajouter_alerte` (26), `detruire_container` (21) — et un renommage à l'aveugle casse
+`surveillance` (152 occurrences), `deployer_script` (132), `verrou_vmid` (79),
+`ajouter_alerte` (34), `detruire_container` (21) — mesuré le 2026-11-01 — et un renommage à l'aveugle casse
 silencieusement les appels dans les gabarits Jinja et le JS, que pyflakes ne voit pas.
 On les renomme seulement quand on réécrit le fichier de toute façon.
 
@@ -330,6 +358,7 @@ L'agent vit dans l'image runtime (hors de ce repo). Chaque conteneur managé est
 - `POST :8081/deploy` `{path, content}` — écrit le script sur disque
 - `POST :8081/start` / `POST :8081/stop` — contrôle le script
 - `GET  :8081/status` → `{running: bool}` — liveness agent + état script
+  (+ `last_exit`/`last_signal`/`last_exit_ts`, posés SEULEMENT à une mort spontanée, jamais par `/stop` : un `last_exit_ts` nouveau déclenche la capture de la fin de sortie en base, `app/crash_tail.py`)
 - `GET  :8080/`      → `{fps, frame_index}` — métriques émises par le script déployé lui-même
 
 Les `plugins/<type>/script.py` embarquent inline le HTTPServer `:8080`. Toute modification du contrat impacte à la fois `deploy.py` / `metrics.py` / `routes/` **et** les scripts de plugin — bouger les deux côtés ensemble.
@@ -346,7 +375,7 @@ Ajouter un nouveau statut implique d'ajouter le badge CSS correspondant dans `st
 
 Les routes Flask retournent immédiatement et dispatchent dans `threading.Thread`. Les opérations
 de cycle de vie sont **sérialisées par VMID** depuis 2026-07-04 : `app/vmlocks.py` (`verrou_vmid`,
-`verrou_vmids`, `est_verrouille`), un RLock par vmid pris DANS le thread de fond — 36 sites d'appel
+`verrou_vmids`, `est_verrouille`), un RLock par vmid pris DANS le thread de fond, à chaque opération de cycle de vie
 (destroy, restart, deploy, resize, recreate, wire/unwire, compose, migrate, tx-push, config…).
 Des vmid différents restent parallèles.
 
@@ -356,6 +385,13 @@ Des vmid différents restent parallèles.
   verrou seul : re-vérifier **l'état observé** (l'agent) sous verrou, jamais ce que la base prétend.
 - **Dégradation sur timeout** : verrou non acquis en 120 s → alerte + exécution quand même
   (best-effort). Laisser tomber un destroy/deploy silencieusement serait pire.
+
+**Flux longs et fils de service** (2026-10-29) : Waitress (:5000) et cheroot (HTTPS) ont 16 fils ;
+une réponse tient son fil tant qu'elle s'écrit. Les flux d'état du relais (`/plugin/events`) n'en
+tiennent plus : `app/stream_hub.py` reprend la socket du client APRÈS la vue (droits vérifiés) et
+l'écrit depuis UN fil `selectors` (dernier état gagne, client lent coupé et compté, départ vu à la
+lecture). Un nouveau flux long à diffusion multiple passe par là (`ENV_PENDING`), pas par un
+générateur qui garde un fil. Interrupteur `stream_hub_enabled`.
 
 SQLite : `get_db()` tient UNE connexion PAR THREAD (`threading.local`), réutilisée — pas une
 connexion fraîche par appel, contrairement à ce qui était écrit ici jusqu'au 2026-09-12. Les writes
@@ -385,11 +421,12 @@ Pas de reprise rétroactive (décision) : la rétention renouvelle le parc en qu
 ⚠ La rétention est de **10 000** lignes (`database.ALERTS_RETENTION_DEFAUT`) — 1000 est le défaut
 d'AFFICHAGE (`ALERTS_AFFICHAGE_DEFAUT`), pas de conservation. Les deux étaient confondus ici.
 
-`init_db()` contient aussi les **migrations de renommage de type** (idempotentes, au boot) :
-`worker_udp→streamer`, `worker_2110_sender→sender_2110`, `receiver→receiver_2110`,
-`ServeurStream→webrtc_gateway` (service consolidé), `receiver_2110_mtl→2110_io`
-(scan `deploy_config LIKE '%…%'` + égalité stricte sur `type`).
-Ajouter une migration ici quand un type est renommé.
+Les **migrations de renommage de type** (`worker_udp→streamer`, `ServeurStream→webrtc_gateway`,
+`receiver_2110_mtl→2110_io`, `dve→split`…) ont été **RETIRÉES de `init_db` en 2026-07** : plus
+aucune ligne concernée en base, et plusieurs types cibles n'existent plus (cf. le commentaire dans
+`app/database.py`). Si un futur renommage l'exige, le motif est dans l'historique git : migration
+idempotente au boot (scan `deploy_config LIKE '%…%'` + égalité stricte sur `type`). Les autres
+`LIKE` qui subsistent dans `init_db` sont des migrations de DONNÉES, pas de type.
 
 ## Encodage source/shm_out (couplage front ↔ back)
 
@@ -437,8 +474,26 @@ consolidé là, migration de type `ServeurStream→webrtc_gateway` dans `init_db
 configuré via **Réglages → WebRTC** (bouton « Déployer la passerelle »), pas via la palette.
 Settings `webrtc_*`. Le script **télécharge le binaire mediamtx au 1er lancement** s'il est
 absent (accès Internet sortant requis ; erreur remontée sur `:8080` sinon). Les `streamer`
-poussent vers la passerelle (`deploy._resolve_webrtc_destinations` injecte `ingest_url`/`whep_url`/
+poussent vers la passerelle (`scripts.normalize_worker_udp_params` injecte `ingest_url`/`whep_url`/
 `embed_url` depuis les settings `webrtc_*`), et la page Streams embarque la preview WHEP en `<iframe>`.
+
+## Ports virtuels : deux règles
+
+Un conteneur de projet peut suivre un **port** (`port:<id>`) plutôt qu'un flux : le snapshot du
+projet garde le port, la table `port_links` dit quelles entrées le suivent, le conteneur reçoit le
+flux physique. Décidé le 2026-10-31 : on corrige à la racine, **pas de réconciliateur**.
+(`app/project_ports.py`, en-tête « Les deux règles des ports »)
+
+- **R2 — tout changement de source tient `port_links` à jour** : `input_changed`, appelée par le
+  SEUL écrivain de la configuration d'un conteneur (`database.db_update_deploy_config`). Un câblage
+  direct (Ember+, NMOS, macro, relais de plugin) déplace, défait ou pose le lien.
+- **R1 — tout envoi vers un conteneur traduit depuis `port_links`** : `resolve_inputs`, appelée via
+  `prepare_send` par `deployer_script` et par chaque envoi qui relit la base (redémarrage, rappel…).
+- **Toujours R2 avant R1**, sinon un câblage direct serait aussitôt réécrit avec le flux de l'ancien port.
+
+Un nouvel envoi ou un nouvel écrivain de source passe par ces deux points, jamais à côté. Gardes :
+`tests/verif_ports_r1_envois.py`, `tests/verif_ports_r2_liens.py`. Modèle complet :
+`docs/reference/PROJETS.md`.
 
 ## Identité d'un conteneur : trois barreaux
 

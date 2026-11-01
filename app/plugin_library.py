@@ -130,8 +130,17 @@ def get(type_, sid):
 
 def delete(type_, sid):
     from .database import plugin_store_delete
-    get(type_, sid)
-    return plugin_store_delete(sid)
+    p = get(type_, sid)
+    done = plugin_store_delete(sid)
+    if done:
+        _journal("delete", type_, p, None)
+    return done
+
+
+def _journal(op, type_, preset, vmid):
+    """Operations journal line (app/ops_journal.py:record_library). Never raises."""
+    from . import ops_journal
+    ops_journal.record_library(op, type_, kind_of((preset or {}).get("value")), (preset or {}).get("name"), vmid=vmid)
 
 
 # ── container I/O ────────────────────────────────────────────────────────────────────────
@@ -166,8 +175,10 @@ def _json(r):
         return {}
 
 
-def capture_and_save(vmid, kind, name, page=None, author="", overwrite=False, zone=None):
-    """Capture the `kind` part of a running container and store it under `name`."""
+def capture_and_save(vmid, kind, name, page=None, author="", overwrite=False, zone=None, item=None):
+    """Capture the `kind` part of a running container and store it under `name`. `item`: the element
+    to capture when the container holds several of that kind (mixer: the name of a local composite
+    wipe, 0.23.54) — passed as is, the container decides what it means."""
     from . import plugins
     type_ = _type_of(vmid)
     rc = _spec_of(type_)
@@ -179,6 +190,8 @@ def capture_and_save(vmid, kind, name, page=None, author="", overwrite=False, zo
         params["page"] = page
     if zone not in (None, ""):
         params["zone"] = zone           # cartouchier 0.1.8 : la zone capturée (absente = celle par défaut)
+    if item not in (None, ""):
+        params["item"] = item
     try:
         r = _http("GET", vmid, rc.get("capture") or "/capture", params=params)
     except LibraryError:
@@ -193,6 +206,7 @@ def capture_and_save(vmid, kind, name, page=None, author="", overwrite=False, zo
              "author": author or "", "plugin_version": (plugins.get(type_) or {}).get("version"),
              "saved_at": datetime.datetime.now().isoformat(timespec="seconds")}
     sid, created = store(type_, kind, name, value, overwrite=overwrite)
+    _journal("save", type_, {"name": name, "value": value}, vmid)
     return {"ok": True, "id": sid, "created": created, "name": name, "kind": kind,
             "summary": value["summary"]}
 
@@ -209,7 +223,10 @@ def recall(vmid, type_, preset, extra=None):
     if kind not in rc["kinds"] or not isinstance(value.get("payload"), dict):
         raise LibraryError("bad_save", 400, id=preset.get("id"))
     body = {k: v for k, v in (extra or {}).items() if k not in ("kind", "payload", "name")}
-    body.update({"kind": kind, "payload": value["payload"], "name": preset.get("name")})
+    # `library_id`: the container may keep it with its copy (mixer 0.23.54: a local copy that knows
+    # where it came from, shown « removed from the library » once the save is deleted here).
+    body.update({"kind": kind, "payload": value["payload"], "name": preset.get("name"),
+                 "library_id": preset.get("id")})
     endpoint = rc.get("endpoint") or "/recall"
     try:
         r = _http("POST", vmid, endpoint, json=body)
@@ -226,6 +243,7 @@ def recall(vmid, type_, preset, extra=None):
         plugin_persist.after_post(vmid, plugins.get(type_) or {}, endpoint, r.status_code)
     except Exception:                                                    # noqa: BLE001
         log.exception("library recall #%s: persistence", vmid)
+    _journal("recall", type_, preset, vmid)
     return out
 
 

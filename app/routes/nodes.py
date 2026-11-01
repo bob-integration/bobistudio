@@ -13,7 +13,7 @@ from flask import jsonify, request
 
 from . import bp
 from .images import (_IMAGES, _img_lock, _node_img_build, _node_img_push, _image_tag, _stage_tar,
-                     _image_present, _image_present_node, _repo_root, _ssh_bin,
+                     _image_present, _image_present_node, _repo_root,
                      _provision_shared_images, _node_image_inventory, _used_tag,
                      node_images_state, record_node_only_tag)
 from ..auth import require_perm, require_login
@@ -289,22 +289,39 @@ def api_node_build_image_status(node_id):
     return jsonify(_node_build_status(node_id, which))
 
 def _probe_gpu(host):
-    """Probe GPU NVIDIA d'un nœud (orchestrateur, via ssh) : (gpu_capable, gpu_count, runtime_ok, names).
+    """Probe GPU NVIDIA d'un nœud : (gpu_capable, gpu_count, runtime_ok, names, cuda_ok, joignable).
+
+    ★ PASSE PAR `host_ops.ssh_run`, PAS par `_ssh_bin`. `ssh_run` est le choke-point : il résout
+    l'hôte en ligne de `nodes` et exécute VIA L'AGENT quand le nœud en a un. `_ssh_bin` est un
+    root-SSH brut, donc muet sur tout nœud enrôlé sans clé root du contrôleur — c'est-à-dire le cas
+    normal depuis que l'agent existe. Les échecs étant avalés ci-dessous, le verdict rendu était
+    « aucun GPU NVIDIA détecté » : la panne se présentait comme une absence de matériel.
+    Vécu (Z8, 2026-10-28, recette custom-216e388666) : la Quadro RTX 4000 était vue et jugée
+    conforme par la page Pilote NVIDIA, et « Détecter GPU » laissait le champ à « — ».
+
+    `joignable` (6e valeur) existe pour que l'appelant puisse DIRE la différence entre « pas de GPU »
+    et « je n'ai pas pu regarder ». C'est une mesure, pas une déduction : `ssh_run`/`host_exec`
+    rendent rc 255 quand l'exécution elle-même n'a pas abouti (contrat documenté de `host_exec`).
+
     GPU-capable ⇔ nvidia-smi liste ≥1 GPU ET le runtime `nvidia` est présent dans Docker (sinon
-    --gpus échouerait au run). Détection sans dépendre d'une nouvelle version d'agent."""
-    # _ssh_bin renvoie des BYTES (text=False) → décoder avant tout traitement str (sinon
-    # names=[b'…'] et "nvidia" in bytes lève → runtime_ok=False, détection ratée à tort).
+    --gpus échouerait au run) ET CUDA est réellement utilisable (cf. plus bas)."""
+    from ..host_ops import ssh_run
     names = []
+    joignable = True
     try:
-        rc, out = _ssh_bin(host, "nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null", timeout=20)
+        rc, out, _ = ssh_run(host, "nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null", timeout=20)
+        if rc == 255:
+            joignable = False
         if rc == 0:
-            names = [l.strip() for l in (out or b"").decode("utf-8", "replace").splitlines() if l.strip()]
+            names = [l.strip() for l in (out or "").splitlines() if l.strip()]
     except Exception:
         pass
     runtime_ok = False
     try:
-        rc, out = _ssh_bin(host, "docker info --format '{{.Runtimes}}' 2>/dev/null", timeout=20)
-        runtime_ok = (rc == 0 and "nvidia" in (out or b"").decode("utf-8", "replace").lower())
+        rc, out, _ = ssh_run(host, "docker info --format '{{.Runtimes}}' 2>/dev/null", timeout=20)
+        if rc == 255:
+            joignable = False
+        runtime_ok = (rc == 0 and "nvidia" in (out or "").lower())
     except Exception:
         pass
     # ★ CUDA RÉELLEMENT UTILISABLE : nvidia-smi peut lister le GPU (via libnvidia-ml) alors que la
@@ -314,12 +331,14 @@ def _probe_gpu(host):
     # Sans cette vérif, gpu_capable=1 pouvait MENTIR (bug vécu sur dell-1). On l'exige pour le vert.
     cuda_ok = False
     try:
-        rc, out = _ssh_bin(host, "nvidia-smi -q 2>/dev/null | grep -i 'cuda version'", timeout=20)
-        cuda_ok = bool(re.search(r"cuda version\s*:\s*\d", (out or b"").decode("utf-8", "replace"), re.I))
+        rc, out, _ = ssh_run(host, "nvidia-smi -q 2>/dev/null | grep -i 'cuda version'", timeout=20)
+        if rc == 255:
+            joignable = False
+        cuda_ok = bool(re.search(r"cuda version\s*:\s*\d", (out or ""), re.I))
     except Exception:
         pass
     cap = bool(names) and runtime_ok and cuda_ok
-    return cap, len(names), runtime_ok, names, cuda_ok
+    return cap, len(names), runtime_ok, names, cuda_ok, joignable
 
 @bp.route("/api/nodes/<int:node_id>/detect-gpu", methods=["POST"])
 @require_perm("settings.edit")
@@ -332,7 +351,18 @@ def api_node_detect_gpu(node_id):
         return jsonify({"ok": False, "error": "nœud introuvable"}), 404
     if not node.get("host"):
         return jsonify({"ok": False, "error": "nœud sans hôte (host)"}), 400
-    cap, n, runtime_ok, names, cuda_ok = _probe_gpu(node["host"])
+    cap, n, runtime_ok, names, cuda_ok, joignable = _probe_gpu(node["host"])
+    if not joignable:
+        # ⚠ On n'écrit RIEN en base : « je n'ai pas pu regarder » n'est pas « il n'y a pas de GPU ».
+        # Écraser gpu_capable à 0 sur une sonde qui n'a pas abouti retirerait un nœud GPU sain du
+        # routage, et le ferait sans trace — exactement la confusion que cette route a produite.
+        msg = ("hôte %s injoignable : la détection n'a pas pu s'exécuter (agent muet, ou nœud sans "
+               "agent et sans clé root SSH du contrôleur). Capacité GPU laissée inchangée."
+               % node.get("host"))
+        db_add_alert("alert.node.detection_gpu", "error", node_id=node_id, kind="node",
+                     params={"n": node.get("name"), "msg": msg})
+        return jsonify({"ok": False, "joignable": False, "gpu_capable": bool(node.get("gpu_capable")),
+                        "msg": msg}), 502
     db_update_node(node_id, gpu_capable=1 if cap else 0, gpu_count=(n or None))
     if cap:
         msg = f"{n} GPU détecté(s) ({', '.join(names)}) + runtime nvidia + CUDA OK"
@@ -347,7 +377,7 @@ def api_node_detect_gpu(node_id):
         msg = "aucun GPU NVIDIA détecté"
     db_add_alert("alert.node.detection_gpu", "info" if cap else "warning", node_id=node_id, kind="node",
                  params={"n": node.get("name"), "msg": msg})
-    return jsonify({"ok": True, "gpu_capable": cap, "gpu_count": n,
+    return jsonify({"ok": True, "joignable": True, "gpu_capable": cap, "gpu_count": n,
                     "runtime_ok": runtime_ok, "cuda_ok": cuda_ok, "gpus": names, "msg": msg})
 
 # ─── Rattrapage de capacité (capacité oubliée à l'enrôlement) ──────────────────────────────────
@@ -357,11 +387,20 @@ def api_node_detect_gpu(node_id):
 # "io2110" déclaré, images._node_needs_image ne le compte pas comme cible de build, node_recovery en
 # dépend. D'où ce rattrapage : provisionner l'hôte + fusionner la capacité côté agent + resynchroniser
 # la base. Les SIX capacités sont rattrapables (cf. install-node.sh --add-caps).
+# `decklink` (2026-10-31) ne provisionne rien non plus : l'archive Desktop Video n'est pas récupérée
+# automatiquement — elle se dépose à la main, et de toute façon un nœud peut n'avoir AUCUN accès
+# sortant (l'installation, elle, se fait hors ligne). Elle déclare « ce nœud porte
+# une carte DeckLink » et c'est CE QUI OUVRE la porte du pilote dans Réglages → Nœuds. Une garde par
+# DÉTECTION était impossible : sans le pilote, le noyau n'expose aucun /dev/blackmagic — elle aurait
+# exigé le pilote pour montrer comment l'installer (impasse mesurée le 2026-10-30). Et la porte sans
+# garde, posée d'abord, affichait une ligne DeckLink sur dix nœuds qui n'en auront jamais (Cyril,
+# 2026-10-31) : une capacité déclarée par un humain est la seule garde qui dise le vrai sans rien exiger.
+#
 # `gui` (2026-10-18, plugin plugin_gui) ne provisionne RIEN sur l'hôte : c'est une déclaration — « ce nœud
 # porte les interfaces natives LV2 » — qui en fait une cible de build de l'image node_only bobi-gui (couche
 # fine FROM bobi-compute, construite SUR le nœud, cf. images._IMAGES["gui"]). Elle exige `compute` (même
 # réseau macvlan, même image de base) : refusée sans lui.
-_CAP_ADDABLE = ("gpu", "io2110", "compute", "media", "webrtc", "gui")
+_CAP_ADDABLE = ("gpu", "io2110", "compute", "media", "webrtc", "gui", "decklink")
 _CAP_REQUIRES = {"gui": "compute"}
 # Capacités dont le provisioning n'est effectif qu'après redémarrage du nœud : `gpu` (module DKMS à
 # charger), `io2110` (noyau MTL, cmdline hugepages 1G, DDP relu au probe du driver ice).
@@ -1274,3 +1313,188 @@ def api_destroy_orphan():
         db_add_alert("alert.node.orphelin_detruit", "info", node_id=node.get("id"), kind="deploy",
                      params={"name": name, "n": node.get("name") or node.get("host")})
     return jsonify({"ok": ok, "error": None if ok else str(err)[:200]}), (200 if ok else 502)
+
+
+# ─── Cœurs d'un nœud : qui tient quoi, et comment le réparer sans shell ─────────────────────────
+# ★ Demande de Cyril le 2026-10-28 : « comment on règle ça seuls via l'interface ? ». La réponse
+# était « on ne peut pas » — il a fallu un `core_pool.release_cores` en script pour rendre 23 cœurs
+# tenus par douze conteneurs détruits, puis recréer deux conteneurs à la main.
+
+@bp.route("/api/nodes/<int:node_id>/cores", methods=["GET"])
+@require_login
+def api_node_cores(node_id):
+    """Vue « qui tient quoi » du pool de calcul : dédiés, partagés, orphelins, cpuset APPLIQUÉ.
+
+    `force=1` rafraîchit le relevé du placement sur l'hôte (sinon cache de `placement`, le temps
+    de son TTL : la page des nœuds se rafraîchit toutes les 5 s, pas question d'un exec par passe)."""
+    from .. import core_pool
+    node = db_get_node(node_id)
+    if not node:
+        return jsonify({"error": "nœud introuvable"}), 404
+    vue = core_pool.vue_coeurs(node_id, force=(request.args.get("force") in ("1", "true", "yes")))
+    # L'état est DIT au journal, pas seulement affiché : un exploitant qui n'ouvre pas cette page
+    # doit quand même apprendre que ses conteneurs temps réel se partagent trop peu de cœurs.
+    try:
+        core_pool.alerter_partage_bas(node_id, vue=vue)
+        # « Dédié » dont le frère HT est partagé : la promesse de cadence n'est pas tenue, et
+        # c'est le genre de défaut dont le symptôme sort chez le spectateur.
+        core_pool.alerter_dedies_non_exclusifs(node_id, vue=vue)
+    except Exception as e:
+        log.warning("api_node_cores(%s): alertes du pool : %s", node_id, e)
+    return jsonify(vue)
+
+
+@bp.route("/api/nodes/<int:node_id>/cores/exclusivity", methods=["GET"])
+@require_login
+def api_node_cores_exclusivity(node_id):
+    """Verdict exécutable : chaque réservation dédiée a-t-elle ses cœurs PHYSIQUES pour elle ?
+    (frère HT ni dans le pool partagé, ni chez un autre dédié). `?vmid=` restreint à un conteneur
+    — c'est la vérification à faire après une recréation. Lecture seule, aucune alerte émise."""
+    from .. import core_pool
+    if not db_get_node(node_id):
+        return jsonify({"error": "nœud introuvable"}), 404
+    vmid = request.args.get("vmid", type=int)
+    return jsonify(core_pool.dedicated_exclusivity(node_id, vmid=vmid))
+
+
+@bp.route("/api/nodes/<int:node_id>/cores/release", methods=["POST"])
+@require_perm("settings.edit")
+def api_node_cores_release(node_id):
+    """Libère une réservation ORPHELINE (vmid absent de la base), ou toutes avec `tous: true`.
+
+    ⚠ REFUS si le vmid existe encore en base : libérer les cœurs d'un conteneur VIVANT le laisserait
+    tourner sur un cpuset que le pool croit libre, et le prochain déploiement s'installerait
+    par-dessus. Pour réduire un conteneur vivant, c'est son réglage de ressources qu'on change."""
+    from .. import core_pool
+    node = db_get_node(node_id)
+    if not node:
+        return jsonify({"error": "nœud introuvable"}), 404
+    d = request.json or {}
+    if d.get("tous"):
+        orph = core_pool.purger_orphelines(node_id)
+        # Libérer sans élargir laisserait les partagés sur leur cpuset étroit : l'exploitant verrait
+        # « 25 cœurs libres » et son mélangeur toujours à 25 fps. Les deux gestes n'en font qu'un.
+        reap = core_pool.reappliquer_partages(node_id, force=True) if orph else None
+        return jsonify({"ok": True, "liberes": {str(v): core_pool.fmt_cpuset(sorted(c))
+                                                for v, c in orph.items()},
+                        "cores": sum(len(c) for c in orph.values()), "reapply": reap})
+    try:
+        vmid = int(d.get("vmid"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "vmid requis (ou `tous: true`)"}), 400
+    from ..database import db_get_container
+    if db_get_container(vmid):
+        return jsonify({"error": "le conteneur %d existe toujours : ses cœurs ne sont pas "
+                                 "orphelins. Pour lui en donner moins, changer ses ressources "
+                                 "(Containers → ressources) ; pour les rendre, le détruire."
+                                 % vmid}), 409
+    cores = (core_pool.allocations_by_vmid(node_id) or {}).get(vmid) or []
+    if not cores:
+        return jsonify({"error": "aucune réservation pour le vmid %d sur ce nœud" % vmid}), 404
+    core_pool.release_cores(vmid)
+    db_add_alert("alert.resource.cores_orphelins_purges", "info", node_id=node_id, kind="resource",
+                 params={"n": node.get("name") or node_id, "count": len(cores),
+                         "vmids": str(vmid), "cores": core_pool.fmt_cpuset(sorted(cores))})
+    reap = core_pool.reappliquer_partages(node_id, force=True)
+    return jsonify({"ok": True, "vmid": vmid, "cores": core_pool.fmt_cpuset(sorted(cores)),
+                    "reapply": reap})
+
+
+# ─── Poids CPU : la PART de CPU sous saturation, réglée depuis la fenêtre des cœurs ────────────
+# Quatre niveaux NOMMÉS (cf. app/cpu_weight.py), appliqués À CHAUD : changer un poids ne doit pas
+# couper une antenne. Le poids POSÉ est mesuré sur l'hôte et confronté au voulu dans la vue.
+
+@bp.route("/api/nodes/<int:node_id>/cores/weight", methods=["POST"])
+@require_perm("settings.edit")
+def api_node_cores_weight(node_id):
+    """Règle le poids CPU d'UN conteneur du nœud : `{vmid, niveau}` ou `{vmid, reset: true}`."""
+    from .. import cpu_weight
+    from ..database import db_get_container
+    if not db_get_node(node_id):
+        return jsonify({"error": "nœud introuvable"}), 404
+    d = request.json or {}
+    try:
+        vmid = int(d.get("vmid"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "vmid requis"}), 400
+    c = db_get_container(vmid)
+    if not c:
+        return jsonify({"error": "conteneur %d inconnu" % vmid}), 404
+    if c.get("node_id") != node_id:
+        # Le vmid est un handle LOCAL : accepter un conteneur d'un autre nœud ferait régler
+        # silencieusement une machine qu'on ne regarde pas.
+        return jsonify({"error": "le conteneur %d n'est pas sur ce nœud" % vmid}), 409
+    reset = bool(d.get("reset"))
+    if not reset and not cpu_weight.niveau_valide(d.get("niveau")):
+        return jsonify({"error": "niveau inconnu : %r (attendu %s)"
+                                 % (d.get("niveau"), ", ".join(cpu_weight.LEVELS))}), 400
+    r = cpu_weight.regler(vmid, d.get("niveau"), reset=reset)
+    # 200 même si l'application à chaud a échoué : le réglage EST enregistré (il vaudra à la
+    # prochaine réapplication ou recréation). `applique: false` + `err` le disent — un 502
+    # laisserait croire que rien n'a été retenu.
+    return jsonify(r), (200 if r.get("ok") else 400)
+
+
+@bp.route("/api/nodes/<int:node_id>/cores/weight/reapply", methods=["POST"])
+@require_perm("settings.edit")
+def api_node_cores_weight_reapply(node_id):
+    """Remet à chaque conteneur du nœud le poids que son profil dit (ceux qui divergent, mesure
+    à l'appui). Pendant de `/cores/reapply` pour les cpusets."""
+    from .. import cpu_weight
+    if not db_get_node(node_id):
+        return jsonify({"error": "nœud introuvable"}), 404
+    res = cpu_weight.reappliquer(node_id, force=True)
+    return jsonify(dict(res, ok=not res["echecs"]))
+
+
+# ─── Mode d'énergie du nœud ────────────────────────────────────────────────────────────────────
+# Un cœur dédié en `powersave` n'est pas un cœur dédié (Z8, 29/10 : mélangeur 11,1 ms → 4,4 ms au
+# seul changement de gouverneur). L'état est MESURÉ, et la bascule est un geste explicite.
+
+@bp.route("/api/nodes/<int:node_id>/energy", methods=["GET"])
+@require_login
+def api_node_energy(node_id):
+    """État cpufreq mesuré du nœud (gouverneur, plancher, conformité des cœurs dédiés).
+
+    Route SÉPARÉE de `/cores` : elle coûte un aller-retour sur l'hôte, alors que la vue des
+    cœurs est rafraîchie en boucle par la page des nœuds."""
+    from .. import core_pool
+    if not db_get_node(node_id):
+        return jsonify({"error": "nœud introuvable"}), 404
+    return jsonify(core_pool.etat_energie(
+        node_id, force=(request.args.get("force") in ("1", "true", "yes"))))
+
+
+@bp.route("/api/nodes/<int:node_id>/energy/performance", methods=["POST"])
+@require_perm("settings.edit")
+def api_node_energy_performance(node_id):
+    """Passe le nœud en gouverneur `performance` (+ plancher max sur les cœurs dédiés).
+
+    ⚠ GATE SERVEUR `confirme`. Le geste écrit une unité systemd sur l'hôte et change la
+    consommation électrique de la machine : une confirmation qui ne vit que dans l'interface n'en
+    est pas une (cf. la bascule de mode réseau du 28/10, partie sans confirmation et qui a effacé
+    douze conteneurs)."""
+    from .. import core_pool
+    node = db_get_node(node_id)
+    if not node:
+        return jsonify({"error": "nœud introuvable"}), 404
+    d = request.json or {}
+    if not d.get("confirme"):
+        etat = core_pool.etat_energie(node_id)
+        return jsonify({"error": "passer le nœud %s en gouverneur « performance » installe une "
+                                 "unité systemd sur l'hôte et change sa consommation : "
+                                 "confirmation requise" % (node.get("name") or node_id),
+                        "confirmation_requise": True, "energie": etat}), 409
+    r = core_pool.passer_en_performance(node_id)
+    return jsonify(r), (200 if r.get("ok") else 502)
+
+
+@bp.route("/api/nodes/<int:node_id>/cores/reapply", methods=["POST"])
+@require_perm("settings.edit")
+def api_node_cores_reapply(node_id):
+    """Redonne aux conteneurs partagés le pool élargi, sans coupure (`docker update`)."""
+    from .. import core_pool
+    if not db_get_node(node_id):
+        return jsonify({"error": "nœud introuvable"}), 404
+    res = core_pool.reappliquer_partages(node_id, force=True)
+    return jsonify(dict(res, ok=not res["echecs"]))

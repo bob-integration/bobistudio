@@ -140,3 +140,21 @@ def groups_of_user(uid):
         return set()
     return {r["group_id"] for r in _db().execute(
         "SELECT m.group_id FROM user_group_members m JOIN user_groups g ON g.id = m.group_id WHERE m.user_id=?", (uid,))}
+
+
+def share_recipients(q="", exclude_uid=None, limit=200):
+    """Possible share recipients — users, groups, projects — filtered by `q` (case-insensitive).
+
+    Single source for every « Partager… » window (media, Câbles views): same people, same labels."""
+    from .database import db_list_users, db_get_projects
+    q = (q or "").strip().lower()
+
+    def hit(*xs):
+        return not q or any(q in (x or "").lower() for x in xs)
+    users = [{"kind": "user", "id": u["id"], "label": display_name(u)} for u in db_list_users()
+             if u["id"] != exclude_uid and hit(u.get("username"), u.get("prenom"), u.get("nom"))]
+    groups = [{"kind": "group", "id": g["id"], "label": g["name"], "members": len(g["members"])}
+              for g in list_groups() if hit(g["name"])]
+    projects = [{"kind": "project", "id": p["id"], "label": p.get("name") or "#%s" % p["id"]}
+                for p in (db_get_projects() or []) if hit(p.get("name"))]
+    return {"users": users[:limit], "groups": groups[:limit], "projects": projects[:limit]}

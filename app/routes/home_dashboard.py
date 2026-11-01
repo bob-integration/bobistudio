@@ -368,6 +368,325 @@ def _contenu_etats(topo_nodes, producers, shards_par_parent, noms):
                 etat["ref"] = round(pire[2], 1)
         n["contenu_etat"] = etat
 
+
+def _project_port_nodes(topo_nodes, consumers, containers, producers=None):
+    """Vue détaillée : les ports d'un projet, de part et d'autre de l'écran (étape 5c, maquette C du 24/10).
+
+    Ses SORTIES sont les ports sources (`data-shm = port:<id>`) : on les glisse sur une entrée
+    de conteneur, qui est alors câblée en `port:<id>` et suit le port. Ses ENTRÉES sont les
+    ports destinations : y lâcher une sortie de conteneur la publie (sortie interne). C'est le
+    seul endroit où un membre branche ses conteneurs sur les ports — la vue globale cache
+    l'intérieur des projets.
+
+    Deux cartes par projet, de même vmid (`split`, comme un moteur 2110_io) : les ports SOURCES en
+    colonne de gauche, les ports DESTINATIONS en colonne de droite. Chaque port dit d'où vient son
+    signal (`origin` : conteneur producteur, ou port d'un autre projet qu'il suit) ou où il part
+    (`targets` : conteneurs hors du projet qui le lisent, ports d'autres projets qui le suivent).
+
+    Les entrées LIÉES à un port (`port_links`) reçoivent `via_port` : leur câble partira de ce
+    nœud plutôt que du producteur physique. Retourne (nœuds, consommateurs)."""
+    from .. import project_ports as _pp
+    from ..auth import vmid_project_ids
+    from ..database import db_port_links, db_project_ports
+
+    ports = db_project_ports(None)
+    if not ports:
+        return topo_nodes, consumers
+    port_by_id = {p["id"]: p for p in ports}
+    projs = {p["id"]: p for p in db_get_projects()}
+    ports_by_pid: dict = {}
+    for pt in ports:
+        ports_by_pid.setdefault(pt["project_id"], []).append(pt)
+    taken = {tn["vmid"] for tn in topo_nodes}
+    host_of = {tn["vmid"]: tn.get("hostname") for tn in topo_nodes}
+    pids_of = {tn["vmid"]: vmid_project_ids(tn["vmid"]) for tn in topo_nodes if tn["vmid"] > 0}
+    readers: dict = {}
+    for cn in consumers:
+        if cn.get("shm"):
+            readers.setdefault(cn["shm"], set()).add(cn["vmid"])
+    # Renvois (2026-10-29) : qui lit chaque port (entrées liées), et le nom de chaque sortie.
+    from collections import Counter
+    _nreaders = Counter(l["port_id"] for l in db_port_links())
+    _out_label = {p["shm"]: p.get("label") or p["shm"] for tn in topo_nodes
+                  for p in (tn.get("produces") or []) if p.get("shm")}
+    pnode = {}
+    for pid, pports in sorted(ports_by_pid.items()):
+        pr = projs.get(pid)
+        if not pr or -int(pid) in taken:
+            continue
+        pnode[pid] = svmid = -int(pid)
+        outs, ins, renvois = [], [], []
+        for pt in sorted(pports, key=lambda x: (x.get("ord") or 0, x["id"])):
+            shm = _pp.port_shm(pt, port_by_id.get)
+            lab = _pp.port_labels(pt["id"])
+            entry = {"kind": _pp.MEDIA_KIND.get(pt.get("media") or "video", "video"),
+                     "label": lab["long"] or pt.get("name"), "short": lab["short"],
+                     "port_id": pt["id"], "port_kind": pt["kind"], "bound": shm,
+                     "parent_port_id": pt.get("parent_id"), "suffix": pt.get("suffix"),
+                     "port_state": "assigned" if shm else (
+                         "unassigned" if pt["kind"] == "source" else "unpublished")}
+            if pt["kind"] == "source":
+                up = port_by_id.get((pt.get("binding") or {}).get("port"))
+                if up is not None:
+                    origin = {"port": up.get("name"),
+                              "project": (projs.get(up["project_id"]) or {}).get("name")}
+                else:
+                    srcs = sorted(pn["vmid"] for pn in (producers or {}).get(shm) or []) if shm else []
+                    origin = {"host": host_of.get(srcs[0]) or shm} if srcs else ({"host": shm} if shm else None)
+                outs.append(dict(entry, shm=_pp.port_ref(pt["id"]), origin=origin))
+            else:
+                # Hors du projet seulement : les lecteurs internes sont déjà câblés sous les yeux. Un
+                # projet qui SUIT ce port est nommé par son port, pas par chacun de ses conteneurs.
+                follow = [f for f in ports if (f.get("binding") or {}).get("port") == pt["id"]]
+                skip = {pid} | {f["project_id"] for f in follow}
+                targets = [{"host": host_of.get(v) or "#%s" % v}
+                           for v in sorted(readers.get(shm) or ()) if v > 0 and not (pids_of.get(v) or set()) & skip] if shm else []
+                targets += [{"port": f.get("name"), "project": (projs.get(f["project_id"]) or {}).get("name")}
+                            for f in follow]
+                ins.append(dict(entry, shm=shm, slot=len(ins), targets=targets))
+                if _pp.is_reusable(pt, port_by_id.get):
+                    # Destination RÉUTILISABLE : proposée aussi comme source dans son projet, sous
+                    # les sources externes. Ses lecteurs internes la suivent (`port:<id>`) et
+                    # changent avec elle.
+                    srcs = sorted(pn["vmid"] for pn in (producers or {}).get(shm) or []) if shm else []
+                    renvois.append(dict(entry, shm=_pp.port_ref(pt["id"]), renvoi=True,
+                                        readers=_nreaders.get(pt["id"], 0),
+                                        origin=({"host": host_of.get(srcs[0]) or "",
+                                                 "out": _out_label.get(shm, shm)} if srcs else None)))
+        outs += renvois
+        base = {
+            "vmid": svmid, "hostname": pr["name"], "status": None, "fps": None,
+            "kind": "project_ports", "project_ports_node": True, "plugin_version": None,
+            "node_id": None, "node_label": "", "project_id": pid,
+            "project_state": pr.get("state") or "saved",
+            "fabric_role": "logical", "fabric_shards": 0, "fabric_parent": None,
+            "split": True, "source": None, "shm_out": None, "restarts": 0,
+            "max_inputs": 0, "slots_free": 0, "cpu_percent": None, "mem_used": None,
+            "cores": None, "memory": None, "cpu_count": None, "av_sync": None,
+            "own_latency_ms": None, "shm_active": None, "gpu": None,
+        }
+        if outs:
+            topo_nodes.append(dict(base, col="sources", produces=outs, consumes=[]))
+        if ins:
+            topo_nodes.append(dict(base, col="sinks", produces=[], consumes=ins))
+        for e in ins:
+            if e["shm"]:
+                consumers.append({"vmid": svmid, "shm": e["shm"], "kind": e["kind"], "slot": e["slot"],
+                                  "port_id": e["port_id"]})
+    if not pnode:
+        return topo_nodes, consumers
+    uuid_vmid = {c.get("instance_uuid"): c["vmid"] for c in containers if c.get("instance_uuid")}
+    links, pending = {}, []
+    for l in db_port_links():
+        v = uuid_vmid.get(l["consumer_uuid"])
+        pt = port_by_id.get(l["port_id"])
+        if v is not None and pt and pt["project_id"] in pnode:
+            if l.get("shm"):
+                links[(v, l.get("kind") or "video", _pp.norm_slot(l.get("to_slot")))] = (pt, l["shm"])
+            else:
+                pending.append((v, l.get("kind") or "video", _pp.norm_slot(l.get("to_slot")), pt))
+    for cn in consumers:
+        hit = links.get((cn["vmid"], cn.get("kind") or "video", _pp.norm_slot(cn.get("slot"))))
+        if hit is None and cn.get("slot") is not None:
+            hit = links.get((cn["vmid"], cn.get("kind") or "video", None))
+        # Le lien ne vaut que s'il décrit ce que l'entrée reçoit VRAIMENT : recâblée en direct
+        # ailleurs (Ember+, macro), elle garde son câble physique.
+        pt = hit[0] if hit and hit[1] == cn.get("shm") else None
+        if pt is not None:
+            cn["via_port"] = {"vmid": pnode[pt["project_id"]], "port_id": pt["id"],
+                              "ref": _pp.port_ref(pt["id"])}
+    # Câblée sur une virtuelle SANS flux encore (source non affectée, destination non publiée) :
+    # l'entrée est vide, mais le câble existe dans le projet (Cyril, 30/10). Il part du port, en
+    # « non alimenté », tant que l'entrée n'a pas été recâblée ailleurs entre-temps.
+    for v, kind, slot, pt in pending:
+        for tn in topo_nodes:
+            if tn["vmid"] != v:
+                continue
+            for i, e in enumerate(tn.get("consumes") or []):
+                es = e.get("slot") if e.get("slot") is not None else i
+                if (e.get("kind") or "video") == kind and not e.get("shm") and (
+                        slot is None or _pp.norm_slot(es) == slot):
+                    consumers.append({"vmid": v, "shm": "", "kind": kind, "slot": es, "pending": True,
+                                      "via_port": {"vmid": pnode[pt["project_id"]], "port_id": pt["id"],
+                                                   "ref": _pp.port_ref(pt["id"])}})
+                    break
+            else:
+                continue
+            break
+    _label_port_inputs(topo_nodes, consumers)
+    return topo_nodes, consumers
+
+
+def _label_port_inputs(topo_nodes, consumers):
+    """L'ENTRÉE qui suit un port porte le nom de ce port (Cyril, 28/10) : dans un projet, le
+    multiview doit afficher « Toto 1 », pas le flux physique qui est derrière. `via_port` sur
+    l'entrée = nom du port + ses libellés par niveau (2..9, hérités pour un rattaché) ; le front
+    choisit selon le niveau de libellé courant."""
+    from ..tally import colonnes_de
+    linked = {(cn["vmid"], cn.get("kind") or "video", cn.get("slot")): dict(cn["via_port"], pending=cn.get("pending"))
+              for cn in consumers if cn.get("via_port")}
+    if not linked:
+        return
+    from ..database import db_get_port
+    cache = {}
+    for tn in topo_nodes:
+        for i, e in enumerate(tn.get("consumes") or []):
+            slot = e.get("slot") if e.get("slot") is not None else i
+            vp = linked.get((tn["vmid"], e.get("kind") or "video", slot))
+            if vp is None or not (e.get("shm") or vp.get("pending")):
+                continue
+            if vp["port_id"] not in cache:
+                port = db_get_port(vp["port_id"]) or {}
+                cache[vp["port_id"]] = {"port_id": vp["port_id"], "name": port.get("name") or "",
+                                        "labels": colonnes_de(vp["ref"])[0]}
+            e["via_port"] = dict(cache[vp["port_id"]], **({"pending": True} if vp.get("pending") else {}))
+
+
+
+def _projects_overview(topo_nodes, producers, consumers):
+    """Vue globale de la page Câbles (`?view=projects`) : chaque projet replié en UN bloc.
+
+    Le bloc (vmid synthétique NÉGATIF, jamais un conteneur réel) n'expose que ses PORTS — entrées
+    à gauche, sorties à droite, avec leur nom de projet et leur état (affecté, non affecté, non
+    publié, suit le port d'un autre projet) — plus un résumé de contenu. Les conteneurs du projet
+    disparaissent. Deux choses de l'intérieur restent visibles, parce qu'elles engagent l'extérieur :
+      - les LIAISONS DIRECTES : un conteneur du projet qui lit un flux produit hors du projet sans
+        passer par un port (le projet n'est pas portable) — une entrée « sans port » du bloc ;
+      - le câble inter-projets, qui se dessine de lui-même : la source de B suit la destination
+        de A, donc consomme le flux que A publie.
+    Les conteneurs hors projet sans aucun câble vers un projet sont marqués `project_linked: False`
+    (repliés sous une ligne par l'interface).
+
+    Retourne (nœuds, producteurs, consommateurs) de la vue."""
+    from collections import Counter
+    from .. import plugins as _plg
+    from .. import project_ports as _pp
+    from ..auth import vmid_project_ids
+    from ..database import db_project_ports, db_project_views
+    from ..tally import libelle_de
+
+    projs = {p["id"]: p for p in db_get_projects()}
+    ports = db_project_ports(None)
+    port_by_id = {p["id"]: p for p in ports}
+    ports_by_pid: dict = {}
+    for pt in ports:
+        ports_by_pid.setdefault(pt["project_id"], []).append(pt)
+    node_pid = {}
+    for tn in topo_nodes:
+        pids = vmid_project_ids(tn["vmid"])
+        if pids:
+            node_pid[tn["vmid"]] = sorted(pids)[0]
+    by_vmid = {tn["vmid"]: tn for tn in topo_nodes}
+    prod_of = {shm: {pn["vmid"] for pn in lst} for shm, lst in producers.items()}
+
+    hidden = set(node_pid)
+    out_nodes = [tn for tn in topo_nodes if tn["vmid"] not in hidden]
+    out_prod = {shm: [pn for pn in lst if pn["vmid"] not in hidden] for shm, lst in producers.items()}
+    out_cons = [cn for cn in consumers if cn["vmid"] not in hidden]
+    fed_by_modules, feeding_modules = set(), set()
+
+    for pid in sorted(set(node_pid.values()) | set(ports_by_pid)):
+        pr = projs.get(pid)
+        if not pr:
+            continue
+        svmid = -int(pid)
+        members = [v for v, p in node_pid.items() if p == pid]
+        prods, cons, src_shms = [], [], set()
+        for pt in sorted(ports_by_pid.get(pid, []),
+                         key=lambda x: (x.get("kind"), x.get("ord") or 0, x["id"])):
+            shm = _pp.port_shm(pt, port_by_id.get)
+            lab = _pp.port_labels(pt["id"])
+            b = pt.get("binding") or {}
+            up = port_by_id.get(b.get("port")) if b.get("port") is not None else None
+            state = "assigned" if shm else ("unassigned" if pt["kind"] == "source" else "unpublished")
+            entry = {"shm": shm, "kind": _pp.MEDIA_KIND.get(pt.get("media") or "video", "video"),
+                     "label": lab["long"] or pt.get("name"), "short": lab["short"],
+                     "port_id": pt["id"], "port_state": state,
+                     # Virtuelle (28/10) : la page groupe les rattachés sous leur vidéo.
+                     "parent_port_id": pt.get("parent_id"), "suffix": pt.get("suffix"),
+                     **({"follows": {"port_id": up["id"], "name": up.get("name"),
+                                     "project": (projs.get(up["project_id"]) or {}).get("name")}}
+                        if up else {})}
+            if pt["kind"] == "source":
+                cons.append(entry)
+                if shm:
+                    src_shms.add(shm)
+            else:
+                prods.append(entry)
+
+        # Liaisons DIRECTES : entrée d'un conteneur du projet sur un flux produit ailleurs, hors
+        # de tout port. Une ligne par flux (plusieurs consommateurs internes possibles).
+        direct = {}
+        for cn in consumers:
+            shm = cn.get("shm")
+            if node_pid.get(cn["vmid"]) != pid or not shm or shm in src_shms:
+                continue
+            srcs = prod_of.get(shm) or set()
+            if not srcs or any(node_pid.get(v) == pid for v in srcs):
+                continue                   # interne au projet, ou producteur inconnu : rien à dire
+            d = direct.setdefault(shm, {"shm": shm, "kind": cn["kind"], "consumers": [],
+                                        "producer_vmid": min(srcs),
+                                        "producer_project": next(
+                                            ((projs.get(node_pid[v]) or {}).get("name")
+                                             for v in sorted(srcs) if v in node_pid), None)})
+            d["consumers"].append({"vmid": cn["vmid"], "slot": cn.get("slot"),
+                                   "hostname": (by_vmid.get(cn["vmid"]) or {}).get("hostname")})
+        for d in direct.values():
+            cons.append({"shm": d["shm"], "kind": d["kind"], "direct": True,
+                         "label": libelle_de(d["shm"], 2) or d["shm"],
+                         "consumers": d["consumers"], "producer_project": d["producer_project"]})
+
+        types = Counter((by_vmid.get(v) or {}).get("kind") for v in members)
+        out_nodes.append({
+            "vmid": svmid, "hostname": pr["name"], "status": None,
+            "fps": None, "kind": "project", "plugin_version": None,
+            "node_id": None, "node_label": "", "project_id": pid,
+            "project_module": True, "project_state": pr.get("state") or "saved",
+            "project_summary": {
+                "containers": len(members),
+                "running": sum(1 for v in members if (by_vmid.get(v) or {}).get("status") == "running"),
+                "types": [{"type": t, "label": ((_plg.get(t) or {}).get("label") if t else None) or t or "?",
+                           "n": n} for t, n in types.most_common()],
+                "nodes": sorted({(by_vmid.get(v) or {}).get("node_label") for v in members}
+                                - {None, ""}),
+                "views": len(db_project_views(pid) or []),
+                "direct": len(direct),
+                "ports": len(prods) + len(cons) - len(direct),
+                "ports_assigned": sum(1 for e in prods + cons
+                                      if not e.get("direct") and e["port_state"] == "assigned"),
+            },
+            "fabric_role": "logical", "fabric_shards": 0, "fabric_parent": None,
+            "col": "composition", "split": False, "source": None, "shm_out": None,
+            "restarts": 0, "produces": prods, "consumes": cons,
+            "max_inputs": 0, "slots_free": 0, "cpu_percent": None, "mem_used": None,
+            "cores": None, "memory": None, "cpu_count": None, "av_sync": None,
+            "own_latency_ms": None, "shm_active": None, "gpu": None,
+        })
+        for port in prods:
+            if port["shm"]:
+                out_prod.setdefault(port["shm"], []).append({"vmid": svmid, "kind": port["kind"]})
+                fed_by_modules.add(port["shm"])
+        for i, port in enumerate(cons):
+            if port.get("shm"):
+                feeding_modules.add(port["shm"])
+                out_cons.append({"vmid": svmid, "shm": port["shm"], "kind": port["kind"], "slot": i,
+                                 **({"direct": True} if port.get("direct") else
+                                    {"port_id": port["port_id"]})})
+
+    # Hors projet : relié à un projet = alimente un bloc, ou en est alimenté. Un conteneur de
+    # TRAITEMENT relié passe dans la colonne de son rôle vis-à-vis des projets (la maquette :
+    # « hors projet · sources | projets | hors projet · destinations »).
+    for tn in out_nodes:
+        if tn.get("project_module"):
+            continue
+        feeds = any(p.get("shm") in feeding_modules for p in (tn.get("produces") or []))
+        fed = any(p.get("shm") in fed_by_modules for p in (tn.get("consumes") or []))
+        tn["project_linked"] = bool(feeds or fed)
+        if tn["project_linked"] and tn.get("col") == "composition" and not tn.get("split"):
+            tn["col"] = "sources" if feeds else "sinks"
+    return out_nodes, out_prod, out_cons
+
+
 @bp.route("/api/home/summary", methods=["GET"])
 @require_global_access
 def api_home_summary():
@@ -876,57 +1195,9 @@ def api_home_summary():
     # le module n'expose que les PORTS (sources consommées / destinations publiées).
     # Les échanges inter-projets et hors-projet restent visibles ; l'intérieur, non.
     if (request.args.get("view") or "") == "projects":
-        from ..auth import vmid_project_ids
-        from ..database import db_project_ports
-        projs_ov = {p["id"]: p for p in db_get_projects()}
-        ports_by_pid: dict = {}
-        for pt in db_project_ports(None):
-            ports_by_pid.setdefault(pt["project_id"], []).append(pt)
-        node_pid = {}
-        for tn in topo_nodes:
-            pids = vmid_project_ids(tn["vmid"])
-            if pids:
-                node_pid[tn["vmid"]] = sorted(pids)[0]
-        hidden = set(node_pid)
-        topo_nodes = [tn for tn in topo_nodes if tn["vmid"] not in hidden]
-        producers = {shm: [pn for pn in lst if pn["vmid"] not in hidden]
-                     for shm, lst in producers.items()}
-        consumers = [cn for cn in consumers if cn["vmid"] not in hidden]
-        for pid_ in sorted(set(node_pid.values()) | set(ports_by_pid)):
-            pr = projs_ov.get(pid_)
-            if not pr:
-                continue
-            pports = sorted(ports_by_pid.get(pid_, []),
-                            key=lambda x: (x.get("kind"), x.get("ord") or 0, x["id"]))
-            prods, cons = [], []
-            for pt in pports:
-                b = pt.get("binding") or {}
-                if pt.get("kind") == "source":
-                    cons.append({"shm": b.get("shm") or "", "kind": pt.get("media") or "video",
-                                 "label": pt.get("name")})
-                elif b.get("internal_shm"):
-                    prods.append({"shm": b["internal_shm"], "kind": pt.get("media") or "video",
-                                  "label": pt.get("name")})
-            svmid = -int(pid_)   # vmid synthétique (négatif : jamais un container réel)
-            topo_nodes.append({
-                "vmid": svmid, "hostname": pr["name"], "status": None,
-                "fps": None, "kind": "project", "plugin_version": None,
-                "node_id": None, "node_label": "", "project_id": pid_,
-                "project_module": True, "project_state": pr.get("state") or "saved",
-                "fabric_role": "logical", "fabric_shards": 0, "fabric_parent": None,
-                "col": "composition", "split": False, "source": None, "shm_out": None,
-                "restarts": 0, "produces": prods, "consumes": cons,
-                "max_inputs": 0, "slots_free": 0, "cpu_percent": None, "mem_used": None,
-                "cores": None, "memory": None, "cpu_count": None, "av_sync": None,
-                "own_latency_ms": None, "shm_active": None, "gpu": None,
-            })
-            for port in prods:
-                producers.setdefault(port["shm"], []).append(
-                    {"vmid": svmid, "kind": port["kind"]})
-            for _i, port in enumerate(cons):
-                if port.get("shm"):
-                    consumers.append({"vmid": svmid, "shm": port["shm"],
-                                      "kind": port["kind"], "slot": _i})
+        topo_nodes, producers, consumers = _projects_overview(topo_nodes, producers, consumers)
+    else:
+        topo_nodes, consumers = _project_port_nodes(topo_nodes, consumers, containers, producers)
 
     # Voyant des ENTRÉES : une entrée est alimentée si le flux auquel elle est câblée est produit.
     # Deuxième passe nécessaire — le producteur d'un flux peut apparaître APRÈS son consommateur
@@ -973,7 +1244,14 @@ def api_home_summary():
     consumed_shms = set()
     for cn in consumers:
         consumed_shms.add(cn["shm"])
-        for pn in producers.get(cn["shm"], []):
+        # Entrée qui SUIT un port (vue détaillée) : son câble part du nœud « Ports du projet »,
+        # pas du producteur physique — c'est le port qui décide de ce qu'elle reçoit.
+        # Hors d'un projet, le front cache les cartes de ports : il lui faut AUSSI le câble physique
+        # (`phys_of_port`), qu'il montre à la place et cache dès qu'un projet est filtré.
+        _srcs = ([{"vmid": cn["via_port"]["vmid"], "kind": cn["kind"]}] if cn.get("via_port")
+                 else []) + producers.get(cn["shm"], [])
+        for pn in _srcs:
+            _phys = bool(cn.get("via_port")) and pn["vmid"] != cn["via_port"]["vmid"]
             _lc = latency_cache.get(cn["vmid"]) or {}
             lat = _lc.get(cn["shm"]) if _lc.get(cn["shm"]) is not None else _lc.get("*")
             _stale = isinstance(lat, (int, float)) and lat > _STALE_INPUT_MS
@@ -1003,6 +1281,13 @@ def api_home_summary():
                 # False par défaut — un câble en pointillé annonce une absence de signal, pas une
                 # absence de mesure.
                 **({"fed": fed_shm[cn["shm"]]} if cn["shm"] in fed_shm else {}),
+                # Vue globale : câble vers un PORT (son id) ou liaison DIRECTE hors port.
+                **{k: cn[k] for k in ("direct", "port_id") if k in cn},
+                **({"from_shm": cn["via_port"]["ref"], "port_id": cn["via_port"]["port_id"]}
+                   if cn.get("via_port") and not _phys else {}),
+                **({"phys_of_port": cn["via_port"]["port_id"]} if _phys else {}),
+                # Virtuelle sans flux : le câble existe, rien n'y passe encore.
+                **({"pending": True, "fed": False} if cn.get("pending") else {}),
             })
     # ─── Suivi des temps de traitement (page Câbles) ─────────────────────────────────────────
     # delay_total = délai de traitement CUMULÉ d'un signal de sortie (somme des latences le long du
@@ -1044,9 +1329,14 @@ def api_home_summary():
         inputs = pr.get("inputs") or []
         ref_shm = None
         if k == "mixer":
-            sr = (align_cache.get(vmid) or {}).get("sync_ref")
-            sr = int(sr) if sr is not None else int(pr.get("sync_ref") or 0)
-            ref_shm = inputs[sr] if 0 <= sr < len(inputs) else None
+            ac = align_cache.get(vmid) or {}
+            sr = ac.get("sync_ref")
+            # Mélangeur en mode tranche (0.23.9+) : cadencé par l'HORLOGE, il publie sync_ref=None —
+            # aucune entrée ne porte sa timeline. Ne pas retomber sur le sync_ref persisté, qui
+            # désignerait une référence qui n'existe plus ; défaut : 1re entrée, comme un mono-entrée.
+            if not ("sync_ref" in ac and sr is None):
+                sr = int(sr) if sr is not None else int(pr.get("sync_ref") or 0)
+                ref_shm = inputs[sr] if 0 <= sr < len(inputs) else None
         else:
             rs = (_plugins.REGISTRY.get(k) or {}).get("reference_slot")
             if rs is not None:
@@ -1098,8 +1388,12 @@ def api_home_summary():
     for n in topo_nodes:
         ac = align_cache.get(n["vmid"]) or {}
         sr_idx = ac.get("sync_ref")
-        sr_idx = int(sr_idx) if sr_idx is not None else (
-            int((vmid_params.get(n["vmid"]) or {}).get("sync_ref") or 0) if n.get("kind") == "mixer" else None)
+        if sr_idx is not None:
+            sr_idx = int(sr_idx)
+        elif not ("sync_ref" in ac) and n.get("kind") == "mixer":
+            # Pas encore de métriques : sync_ref persisté. Publié à None = cadencé par l'horloge,
+            # aucune entrée de référence à marquer.
+            sr_idx = int((vmid_params.get(n["vmid"]) or {}).get("sync_ref") or 0)
         # Sorties : délai cumulé total du signal produit.
         for port in n["produces"]:
             dt = (_rx_lat_by_shm.get(port.get("shm")) or 0.0) if n["vmid"] in _split_vmids \
@@ -1508,8 +1802,26 @@ def api_home_summary():
 
     # Listes pour les filtres de la page Câbles : seuls les projets/nœuds RÉELLEMENT présents
     # parmi les nœuds de topologie (évite de proposer des entrées vides).
-    _proj_names = {p["id"]: p["name"] for p in db_get_projects()}
-    _f_proj_ids = sorted({n.get("project_id") for n in topo_nodes if n.get("project_id")})
+    _all_projects = db_get_projects()
+    _proj_names = {p["id"]: p["name"] for p in _all_projects}
+    # `project_ids` : TOUS les projets dont la carte est membre — rattachement direct OU snapshot
+    # (même définition que la frontière du projet, `member_project_ids`). Le filtre ne lisait que
+    # `project_id` (rattachement direct) : l'intérieur d'AtelierTest montrait 4 conteneurs sur 6,
+    # et les câbles du mélangeur partaient de decklink-io et player… invisibles.
+    from .. import project_ports as _pp_members
+    _members_cache = {}
+    for n in topo_nodes:
+        v = n.get("vmid")
+        if isinstance(v, int) and v > 0:
+            if v not in _members_cache:
+                try:
+                    _members_cache[v] = _pp_members.member_project_ids(v, _all_projects)
+                except Exception:                                          # noqa: BLE001
+                    _members_cache[v] = set()
+            n["project_ids"] = sorted(_members_cache[v] | ({n["project_id"]} if n.get("project_id") else set()))
+        else:
+            n["project_ids"] = [n["project_id"]] if n.get("project_id") else []
+    _f_proj_ids = sorted({pid for n in topo_nodes for pid in n.get("project_ids") or []})
     _f_node_ids = {n.get("node_id") for n in topo_nodes}
     cable_filters = {
         "projects": [{"id": pid, "name": _proj_names.get(pid, f"#{pid}")} for pid in _f_proj_ids],

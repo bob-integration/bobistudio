@@ -214,6 +214,18 @@ window.PLUGIN_CONFIG_SCHEMAS = {{ plugin_config_schemas | tojson }};
                        min="64" max="262144" step="64" value="2048">
             </div>
         </div>
+        <!-- Sortie réseau du conteneur (« Sortie Internet », routage par source sur l'hôte).
+             Ici et pas dans un onglet réseau : c'est une propriété DE CE CONTENEUR, qu'on règle
+             en même temps que ses cœurs et sa mémoire. Masqué quand le nœud ne peut pas l'offrir
+             — mais avec sa raison, jamais en silence (cf. app/container_net.py). -->
+        <div class="palette-field dp-egress-field" style="display:none">
+            <label for="dp-egress">{{ _('containers.egress.label') }}</label>
+            <select class="dp-egress" id="dp-egress" onchange="appliquerSortieConteneur()">
+                <option value="node">{{ _('containers.egress.node') }}</option>
+                <option value="internet">{{ _('containers.egress.internet') }}</option>
+            </select>
+            <div class="palette-hint dp-egress-hint"></div>
+        </div>
         <div class="palette-field">
             <label for="dp-r-pinned">{{ _('containers.palette.pinning') }}</label>
             <input type="text" class="dp-r-pinned" id="dp-r-pinned"

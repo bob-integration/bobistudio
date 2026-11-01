@@ -152,19 +152,8 @@ def media_shares_mine():
 @require_perm("media.manage")
 def media_shares_recipients():
     """Destinataires possibles (fenêtre « Partager… ») : utilisateurs, groupes, projets ; ?q= filtre."""
-    from ..database import db_list_users, db_get_projects
-    q = (request.args.get("q") or "").strip().lower()
     uid, _n = _me()
-
-    def hit(*xs):
-        return not q or any(q in (x or "").lower() for x in xs)
-    users = [{"kind": "user", "id": u["id"], "label": ug.display_name(u)} for u in db_list_users()
-             if u["id"] != uid and hit(u.get("username"), u.get("prenom"), u.get("nom"))]
-    groups = [{"kind": "group", "id": g["id"], "label": g["name"], "members": len(g["members"])}
-              for g in ug.list_groups() if hit(g["name"])]
-    projects = [{"kind": "project", "id": p["id"], "label": p.get("name") or "#%s" % p["id"]}
-                for p in (db_get_projects() or []) if hit(p.get("name"))]
-    return jsonify({"users": users[:200], "groups": groups[:200], "projects": projects[:200]})
+    return jsonify(ug.share_recipients(request.args.get("q"), exclude_uid=uid))
 
 
 @bp.route("/api/media/shares/log")

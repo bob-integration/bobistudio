@@ -9,7 +9,7 @@
     "class": "mode-pyramide",
     "oklch": "0.74 0.10 200"
   },
-  "version": "0.18.1",
+  "version": "0.18.4",
   "video_format": false,
   "adapts_input": true,
   "aggregate_fps": false,
@@ -161,9 +161,10 @@
       "/state"
     ]
   },
+  "_resources_mesure": "Calibré sur mesure (Z8, 2026-10-28, 30 s de cgroup cpu.stat + fils /proc) : un conteneur à 8 entrées (2 en 1080p, 6 en 720p, charge 1080p-équivalente ~4,7) consomme 1,41 cœur — 8 fils de travail à 14-16 % chacun, own 1,6 ms pour un budget de 20 ms. L'ancien profil (plancher 6 + 0,5/équivalent) réservait 9 à 10 cœurs, soit ~7x le besoin, et c'est ce qui a saturé les 26 cœurs physiques du nœud. Plancher 2 + 0,25/équivalent rend 4 cœurs sur cette configuration : ~2,8x la consommation mesurée. La marge est voulue — une réservation ne paie pas la moyenne mais les pointes et la gigue. À REMESURER avant de la réduire encore.",
   "resources": {
-    "cores": 6,
-    "cores_per_1080p_input": 0.5,
+    "cores": 2,
+    "cores_per_1080p_input": 0.25,
     "memory": 3072,
     "pin": true
   },

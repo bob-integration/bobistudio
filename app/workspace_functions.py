@@ -161,6 +161,11 @@ def derive_functions(manifest, entry):
     for a in actions:
         if a["id"] in used or any(_required(p) for p in (a.get("params") or [])):
             continue
+        # A TOGGLE (body {toggle: true}: recorder « REC (bascule) », player « Boucle (bascule) »)
+        # sets no value — its feedback only says when it is lit. It stays its own button (step 4)
+        # instead of joining the start/stop pair as a third button (2026-10-29).
+        if isinstance(a.get("body"), dict) and a["body"].get("toggle"):
+            continue
         fb = a.get("feedback") or {}
         # Parameters of such an action are its options (recorder start: loop, profile…), all
         # optional: the button runs it with the container's own settings.

@@ -50,6 +50,7 @@ from .database import (db_update_container_image,
 from . import plugins
 from . import journal as _journal
 from . import allocations
+from . import cpu_weight
 
 log = logging.getLogger(__name__)
 _CAPS_ALLOWED = ("SYS_NICE",)   # capacités qu'un manifeste peut demander (cf. ensure_container)
@@ -407,6 +408,14 @@ def effective_resources(deploy_type, c):
         else:
             res["priority"] = "batch"
             res.pop("pin", None)
+    # POIDS CPU (2026-10-30) : niveau NOMMÉ, manifeste (`resources.cpu_weight`) ou surcharge de
+    # CE conteneur. Offert à TOUT type, sans condition de `reservable` : le poids n'est pas une
+    # question de place — un conteneur sans profil de ressources du tout se dispute quand même le
+    # CPU du pool partagé, et c'est précisément lui qu'on veut pouvoir faire céder.
+    # ⚠ Posé APRÈS le bloc `cpu_mode` ci-dessus, qui écrit `priority: batch` : sans ça un
+    # conteneur basculé « partagé » retomberait à 128 alors que son niveau dit autre chose.
+    if c.get("cpu_weight_override"):
+        res["cpu_weight"] = str(c["cpu_weight_override"]).strip().lower()
     return res
 
 
@@ -444,6 +453,14 @@ def _signature_spec(spec):
     provoquer la recréation du conteneur (c'est ainsi que la flotte bascule en HTTPS)."""
     net = {k: v for k, v in (spec or {}).items() if k != "tls"}
     net["_tls"] = bool((spec or {}).get("tls"))
+    # Le POIDS CPU (`resources.cpu_shares`) est EXCLU : il s'applique à chaud (`docker update
+    # --cpu-shares`, cf. app/cpu_weight.py) et ne change pas ce qu'EST le conteneur. L'y laisser
+    # ferait recréer le conteneur au déploiement suivant — une coupure d'antenne différée, et
+    # donc imprévisible, pour un geste d'intendance déjà appliqué. En échange, le poids POSÉ est
+    # MESURÉ (sonde de `placement`) et confronté au voulu dans la vue des cœurs : un `docker
+    # update` manqué se VOIT, au lieu d'être rattrapé par une recréation surprise.
+    if isinstance(net.get("resources"), dict):
+        net["resources"] = {k: v for k, v in net["resources"].items() if k != "cpu_shares"}
     return hashlib.sha1(
         json.dumps(net, sort_keys=True, default=str).encode()).hexdigest()
 
@@ -485,6 +502,20 @@ def _diagnose_container(host, name):
 
 
 _REF_PIXELS = 1920 * 1080   # référence « 1080p » pour le dimensionnement pondéré
+
+
+def coeurs_dedies_voulus(base, per, load, libres, miens=0):
+    """Cœurs DÉDIÉS visés : plancher + ratio × charge, borné par ce que le pool peut rendre.
+
+    Extrait du corps de `creer_container_compute` pour être MESURABLE (tests/verif_pyramide_coeurs
+    .py) : c'est la formule qui a fait réserver 10 cœurs à un conteneur qui en consomme 1,4, et une
+    formule qu'aucune garde ne peut exécuter dérive sans que personne ne le voie.
+
+    `miens` = cœurs déjà réservés à ce conteneur : ils s'ajoutent au libre, puisqu'un resize les
+    rend d'abord. Le plancher n'est JAMAIS rogné par le manque de place (mieux vaut un conteneur
+    sur-souscrit, alerté, qu'un conteneur dimensionné en douce sous son besoin)."""
+    return min(max(int(base), int(base) + math.ceil(float(per) * float(load))),
+               max(int(base), int(libres) + int(miens)))
 
 
 def pyramide_input_load(params):
@@ -693,8 +724,11 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
         if per > 0:
             _, load = pyramide_input_load(_p)
             mine = core_pool.allocated_for(node["id"], vmid)
-            free = core_pool.cores_status(node["id"])["free"]
-            want = min(max(base, base + math.ceil(per * load)), max(base, free + mine))
+            # Capacité sous la règle STRICTE (aucun frère HT d'un autre dédié, 30/10), les cœurs
+            # du conteneur compris — d'où `miens=0`. Le compte logique `cores_status.free` faisait
+            # viser des cœurs qu'`allocate_cores` refuse désormais : repli partagé du conteneur.
+            free = core_pool.free_dedicated_capacity(node["id"], vmid)
+            want = coeurs_dedies_voulus(base, per, load, free, 0)
             # Le cpuset Docker n'est PAS modifiable à chaud → un resize impose release+realloc (on
             # n'arrive ici, avec un resize, que lors d'un vrai (re)déploiement qui recréera le conteneur).
             if mine and mine != want:
@@ -760,8 +794,11 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
                      params={"vmid": vmid, "n": node["name"], "e": str(e)})
         db_update_status(vmid, "stopped")
         return False
+    # POIDS CPU : toujours posé, et par NIVEAU (cf. app/cpu_weight.py). Avant, seul le profil
+    # `batch` posait un poids (128 en dur) et tout le reste héritait du défaut Docker — il n'y
+    # avait donc aucun moyen de faire passer un conteneur d'antenne devant un aperçu.
+    resources["cpu_shares"] = cpu_weight.value(cpu_weight.level_of(res))
     if is_batch:
-        resources["cpu_shares"] = 128                        # poids CPU faible (défaut 1024)
         if res.get("cores"):
             resources["cpus"] = int(res["cores"])            # plafond optionnel
     elif res.get("cores") and not dedicated:
@@ -871,6 +908,30 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
         }
         if alloc_ip:
             spec["ip"] = alloc_ip   # B2-2 : IPAM centralisé → l'agent ajoute --ip
+        # ─── Ports publiés (mode « réseau interne » uniquement) ──────────────────
+        # Déclarés par le MANIFESTE et résolus d'après la config de CETTE instance
+        # (cf. app/container_net.py et docs/chantiers/RESEAU_CONTENEURS.md) : la même image
+        # publie un port ou non selon son réglage — `stream_in` en écoute oui, en appel non.
+        # Rien en mode site : le conteneur y a déjà son IP sur le LAN.
+        from . import container_net as _cnet
+        _ports = _cnet.ports_a_publier(deploy_type, params if params is not None else _params_of(c),
+                                       node=node)
+        if _ports:
+            # ★ CONFLIT ANNONCÉ, PAS SUBI. Docker refuserait par « port is already allocated »,
+            # ce qui est vrai et inutilisable : ça ne dit pas QUI détient le port. Deux
+            # `stream_in` en écoute sur 9000 est la configuration la plus naturelle du monde,
+            # et l'exploitant doit s'entendre dire lequel l'occupe.
+            _conf = _cnet.conflits_de_ports(node["id"], vmid, _ports)
+            if _conf:
+                db_add_alert("alert.net.port_deja_publie", "error", vmid=vmid,
+                             node_id=node.get("id"), kind="deploy",
+                             params={"vmid": vmid, "port": _conf[0][0], "proto": _conf[0][1],
+                                     "autre": _conf[0][3] or _conf[0][2], "n": node.get("name")})
+                log.error("deploy %s: port %s/%s déjà publié par %s sur %s — déploiement refusé",
+                          vmid, _conf[0][0], _conf[0][1], _conf[0][3], node.get("name"))
+                db_update_status(vmid, "stopped")
+                return False
+            spec["ports"] = _ports
         if decklink_devs:
             # EXTENSION DE CONTRAT AGENT : `devices` → `docker run --device` (agent ≥ 0.10.0,
             # chantier RDMA). Un agent plus ancien IGNORE la clé → conteneur sans carte ; le
@@ -1023,6 +1084,24 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
 
     db_update_docker_ip(vmid, ip)
 
+    # ─── Sortie réseau du conteneur (« Sortie Internet », routage par source) ───
+    # ★ À REPOSER À CHAQUE DÉPLOIEMENT, et c'est APRÈS que l'IP est connue. Les règles
+    # `ip rule` portent sur l'ADRESSE SOURCE : un conteneur recréé garde son IP (allocation
+    # collante), mais rien ne garantit que la règle est encore là — un nœud redémarré l'a perdue,
+    # et le minuteur ne la repose que depuis la liste que nous écrivons ici. Sans ce rappel, un
+    # conteneur redéployé sortirait par le site en croyant sortir par Internet, et le seul
+    # symptôme serait une adresse publique inattendue à l'autre bout.
+    try:
+        from .database import container_egress, EGRESS_INTERNET
+        if container_egress(db_get_container(vmid)) == EGRESS_INTERNET:
+            _ok_s, _msg_s = _cnet.appliquer_sortie(node)
+            if not _ok_s:
+                db_add_alert("alert.net.sortie_non_appliquee", "warning", vmid=vmid,
+                             node_id=node.get("id"), kind="net",
+                             params={"vmid": vmid, "n": node.get("name"), "why": str(_msg_s)[:160]})
+    except Exception as _e:
+        log.warning("deploy %s: sortie Internet non appliquée : %s", vmid, _e)
+
     # Attendre que l'agent :8081 réponde avant de rendre la main (le chemin deploy va POSTer
     # immédiatement /deploy + /start dessus). HTTPS mTLS si la CA est dispo (agent recréé HTTPS-only),
     # sinon http — via le helper partagé de deploy.py (même session/schéma que le POST /deploy suivant).
@@ -1054,6 +1133,11 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
         db_update_container_image(vmid, image)
         db_add_alert("alert.deploy.compute.up", "info", vmid=vmid, node_id=node.get("id"),
                      kind="deploy", params={"h": name, "vmid": vmid, "n": node["name"], "ip": ip})
+        # ★ Des cœurs DÉDIÉS viennent d'être pris (création, recréation, redimensionnement,
+        # migration : tous passent ici) → les retirer aux partagés déjà en marche, qui les ont
+        # encore dans leur cpuset (Z8, 29/10 : #227 sur 21-23, cinq partagés aussi).
+        if dedicated:
+            core_pool.reapply_shared_after_reservation(node["id"], vmid, cpuset)
     else:
         log.info("compute %s : conteneur déjà conforme (spec inchangée) — pas de recréation", vmid)
     return True
@@ -1080,6 +1164,20 @@ def start_compute(vmid):
         params = (dc.get("params") or {}) if isinstance(dc, dict) else {}
         from .deploy import deployer_script
         return deployer_script(vmid, dc.get("type") or _type_of(c), params)
+    # R1 des ports : `docker start` relance le script rendu au DERNIER déploiement. Si un port a été
+    # réaffecté depuis, ce script lit un flux périmé → on redéploie (le rendu relit le port).
+    import json
+    try:
+        dc = json.loads(c.get("deploy_config") or "{}")
+    except Exception:
+        dc = {}
+    _t = (dc.get("type") or _type_of(c)) if isinstance(dc, dict) else None
+    _p = (dc.get("params") or {}) if isinstance(dc, dict) else {}
+    if _t and _p:
+        from . import project_ports
+        if project_ports.prepare_send(vmid, _t, _p) != _p:
+            from .deploy import deployer_script
+            return deployer_script(vmid, _t, _p)
     rc, out, err = ssh_run(node["host"], f"docker start {shlex.quote(name)} 2>&1", timeout=30)
     db_update_status(vmid, "running" if rc == 0 else "stopped")
     db_add_alert("alert.deploy.compute.demarre", "info" if rc == 0 else "warning", vmid=vmid,
@@ -1186,7 +1284,42 @@ def destroy_compute(vmid, progress=None):
     name = c.get("docker_name") or _name(vmid)
     if node:
         ssh_run(node["host"], f"docker rm -f {shlex.quote(name)} >/dev/null 2>&1", timeout=30)
+    _sortait = False
+    try:
+        from .database import container_egress, EGRESS_INTERNET
+        _sortait = container_egress(c) == EGRESS_INTERNET
+    except Exception:
+        pass
+    # ★ LES RÉSERVATIONS MEURENT AVEC LE CONTENEUR, ET C'EST ICI QUE ÇA SE JOUE (28/10, Z8).
+    # `containers._detruire_container_locked` libérait bien cœurs et GPU — mais seulement sur SON
+    # chemin. Tout autre appelant de `destroy_compute` laissait les réservations derrière lui, et
+    # une réservation dont le vmid n'existe plus en base est INVISIBLE : la carte CPU la range avec
+    # les lcores des moteurs 2110, sans nom de conteneur. Sur la Z8, 12 conteneurs détruits ont
+    # gardé 23 cœurs dédiés ; les conteneurs recréés se sont partagé les 2 cœurs restants, et la
+    # panne a pris la forme d'un mélangeur à 22-32 fps — rien qui désigne un compteur de cœurs.
+    # Les deux libérations sont des DELETE idempotents : les faire deux fois ne coûte rien, ne pas
+    # les faire coûte une image.
+    try:
+        from . import core_pool
+        core_pool.release_cores(vmid)
+    except Exception as _e:
+        log.warning("destroy %s: libération des cœurs échouée : %s", vmid, _e)
+    try:
+        from . import gpu_pool
+        gpu_pool.release_gpu(vmid)
+    except Exception as _e:
+        log.warning("destroy %s: libération du GPU échouée : %s", vmid, _e)
     db_delete_container(vmid)
+    # La règle de routage par source survivrait au conteneur : son IP sera réattribuée à un
+    # AUTRE conteneur (allocation collante, mais l'adresse redevient libre), qui sortirait alors
+    # par Internet sans que personne l'ait demandé. On réapplique donc la liste APRÈS la
+    # suppression en base — c'est elle qui fait foi, et le script retire ce qui n'y est plus.
+    if node and _sortait:
+        try:
+            from . import container_net as _cn
+            _cn.appliquer_sortie(node)
+        except Exception as _e:
+            log.warning("destroy %s: liste de la Sortie Internet non rafraîchie : %s", vmid, _e)
     db_add_alert("alert.deploy.compute.detruit", "info", vmid=vmid, kind="deploy",
                  params={"h": name, "vmid": vmid})
     return True

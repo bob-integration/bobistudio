@@ -1289,6 +1289,22 @@ def mtl_cpufreq():
     ok, msg, _ = mtl.ensure_cpufreq_performance(_req_host())
     return jsonify({"ok": ok, "msg": msg}), (200 if ok else 500)
 
+@bp.route("/api/mtl/mxl_history", methods=["POST"])
+@require_perm("settings.edit")
+def mtl_mxl_history():
+    """(Re)pose la profondeur des ring buffers MXL (`mxl_history_ms`) sur un nœud — 2110 OU NON
+    (la prép MTL n'est pas requise). Mesure d'abord : rien n'est réécrit sur un nœud conforme.
+    Pose le domaine s'il n'existe pas encore (geste explicite). Ne redéploie RIEN : les flux déjà
+    ouverts gardent leur profondeur, ce que la réponse signale (`stale_flows`)."""
+    from .. import mxl_history
+    from . import _eff_node_id
+    nid = _eff_node_id()
+    if nid is None:
+        return jsonify({"ok": False, "error": "node_id required"}), 400
+    acted, ok, msg = mxl_history.sync_node(nid, "manual", create=True)
+    return jsonify({"ok": ok, "acted": acted, "msg": msg,
+                    "state": mxl_history.status(nid)}), (200 if ok else 500)
+
 @bp.route("/api/mtl/reboot", methods=["POST"])
 @require_perm("settings.edit")
 def mtl_reboot():

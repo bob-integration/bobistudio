@@ -84,7 +84,24 @@ _ptp_event_state = {}
 # (_seed_escalade_depuis_journal), sinon chaque redémarrage ré-émet l'alerte d'un incident en cours.
 _unlocked_since  = {}     # (node_id, network_id) → time.time() du passage clock_ok→False
 _unlock_alerted  = set()  # clés ayant déjà émis l'alerte error (edge-trigger)
+_episode_ouvert  = set()  # clés dont l'épisode de perte d'horloge est EN COURS (≠ échantillon bas)
+_relock_depuis    = {}    # clé → instant où clock_ok est redevenu vrai SANS retomber depuis
 PTP_UNLOCK_ERR_S = 30.0   # setting ptp_unlock_err_s
+# Hystérésis au RETOUR : durée pendant laquelle l'horloge doit rester CONTINÛMENT bonne avant
+# qu'on déclare l'épisode refermé (setting ptp_relock_stable_s).
+#
+# ★★ Sans elle, l'alarme ne peut annoncer AUCUNE durée. Mesuré le 2026-10-25 sur dl360-1 :
+# `clock_ok` alterne à la cadence d'échantillonnage pendant un épisode (20:55:01 déverrouillée,
+# :06 verrouillée, :11 déverrouillée, :16 verrouillée), et l'ancien code remettait le
+# chronomètre à zéro à CHAQUE échantillon bon. L'escalade à PTP_UNLOCK_ERR_S — la seule qui
+# calcule et publie une durée — ne pouvait donc jamais se déclencher : 334 événements `lock` en
+# 25 h, ZÉRO escalade, pour 7 h 20 de dégradation cumulée. L'exploitant lisait « déverrouillée
+# puis verrouillée 5 s après » pour des épisodes allant jusqu'à 893 s.
+#
+# 30 s = six échantillons consécutifs bons. La période du battement observé est de 5 à 10 s :
+# il faut donc franchement plus que deux échantillons pour distinguer « c'est revenu » de
+# « ça clignote ».
+PTP_RELOCK_STABLE_S = 30.0  # setting ptp_relock_stable_s
 
 # ── QUALITÉ du servo, distincte de la DISPONIBILITÉ de l'horloge ────────────────────────────────
 # `clock_ok` (donc l'alarme ci-dessus) répond « y a-t-il une référence de temps ». Le verrou servo
@@ -330,6 +347,9 @@ def _seed_escalade_depuis_journal(key, nid, net_id):
     if not row or row.get("type") not in _ESCALADE_TYPES:
         return
     _unlock_alerted.add(key)
+    # L'épisode est EN COURS : le rouvrir, sinon le premier échantillon bon le refermerait en
+    # annonçant une durée nulle alors que l'incident court depuis l'horodatage du journal.
+    _episode_ouvert.add(key)
     try:
         _unlocked_since[key] = datetime.fromisoformat(row["ts"]).timestamp()
     except (TypeError, ValueError):
@@ -453,20 +473,46 @@ def _detect_ptp_events(node, s):
                f"grandmaster : {prev['grandmaster_id'] or '—'} → {cur['grandmaster_id'] or '—'}", "warning",
                alert_key="alert.ptp.grandmaster_change",
                alert_params={"old": prev["grandmaster_id"] or "—", "new": cur["grandmaster_id"] or "—"})
-        if cur["clock_ok"] != prev["clock_ok"]:
-            if cur["clock_ok"]:
-                ev(None, "lock", "horloge verrouillée", "info",
-                   alert_key="alert.ptp.horloge_verrouillee")
-            else:
+        # ── ÉPISODE de perte d'horloge, et non front par échantillon ───────────────────
+        #
+        # On raisonne par ÉPISODE : une perte s'annonce UNE fois, et ne se referme que si
+        # l'horloge tient `ptp_relock_stable_s` d'affilée. Un battement à la cadence
+        # d'échantillonnage produisait sinon une paire « déverrouillée / verrouillée » tous
+        # les 10 s, et remettait à zéro le chronomètre dont dépend l'escalade — l'alarme ne
+        # pouvait annoncer aucune durée (cf. PTP_RELOCK_STABLE_S).
+        _maintenant = time.time()
+        if not cur["clock_ok"]:
+            _relock_depuis.pop(key, None)            # un échantillon bas annule la stabilisation
+            if key not in _episode_ouvert:
+                _episode_ouvert.add(key)
                 ev(None, "lock", "horloge déverrouillée", "warning",
                    alert_key="alert.ptp.horloge_deverrouillee")
+        elif key in _episode_ouvert:
+            _stable0 = _relock_depuis.setdefault(key, _maintenant)
+            try:
+                from .database import db_get_setting
+                _seuil_rl = float(db_get_setting("ptp_relock_stable_s", PTP_RELOCK_STABLE_S)
+                                  or PTP_RELOCK_STABLE_S)
+            except (TypeError, ValueError):
+                _seuil_rl = PTP_RELOCK_STABLE_S
+            if _maintenant - _stable0 >= _seuil_rl:
+                # La durée ANNONCÉE est celle de l'épisode, pas celle qui inclut l'hystérésis :
+                # l'horloge était revenue à `_stable0`, on a seulement attendu pour en être sûr.
+                _duree = int(max(0.0, _stable0 - _unlocked_since.get(key, _stable0)))
+                _episode_ouvert.discard(key)
+                _relock_depuis.pop(key, None)
+                ev(None, "lock", f"horloge verrouillée (épisode de {_duree} s)", "info",
+                   alert_key="alert.ptp.horloge_verrouillee_apres",
+                   alert_params={"dur": _duree})
         _ptp_event_state[key] = cur
 
         # Horloge absente PROLONGÉE : au-delà du seuil, plus rien n'aligne l'antenne 2110 → escalade
         # en ERROR (une fois), retour à la normale en info. La CAUSE est diagnostiquée par
         # _clock_fault : holdover véritable, absence de grandmaster, ou absence pure et simple de
         # client PTP (moteur sans session) — trois pannes distinctes qui appelaient le même message.
-        if not cur["clock_ok"]:
+        # ⚠ `_episode_ouvert` et NON `not cur["clock_ok"]` : c'est toute la correction. Lié à
+        # l'échantillon, le chronomètre repartait de zéro à chaque battement.
+        if key in _episode_ouvert:
             t0 = _unlocked_since.setdefault(key, time.time())
             if key not in _unlock_alerted:
                 from .database import db_get_setting

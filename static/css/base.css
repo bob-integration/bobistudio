@@ -166,6 +166,12 @@
 [hidden] { display: none !important; }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+/* ★ Le reset ci-dessus écrase le `margin: auto` que le navigateur donne à une <dialog> ouverte par
+   showModal() — c'est LUI qui la centre. Sans cette ligne, toute modale se colle en haut à gauche
+   (fenêtre des cœurs, 31/10 ; médiathèque l'avait corrigé pour elle seule). Rétabli ici pour toutes.
+   `:modal` seulement : une <dialog> ouverte par show() garde la position que sa page lui donne.
+   Garde : tests/verif_dialog_centree.py. */
+dialog:modal { margin: auto; }
 html, body { min-height: 100%; }
 /* iPad/Safari dessine ⏮ ⏸ ⏭ ▶ ⚠ ⚙… en emoji couleur (carrés bleus) quand rien ne demande la forme
    texte : on la demande partout. Les emoji sans forme texte (📺, ✅) restent en couleur. Repli pour un
@@ -536,6 +542,7 @@ button.io-fmt-text:focus-visible { outline: 2px solid var(--accent); outline-off
    rouge — ce n'est pas une panne, et le peindre comme telle enverrait quelqu'un le « réparer ».
    Gris neutre, comme `unknown` : un état voulu, dont on constate simplement qu'il est en vigueur. */
 .script_disabled { background: var(--status-unknown-bg); color: var(--status-unknown-fg); }
+.awaiting_driver { background: var(--status-warning-bg); color: var(--status-warning-fg); }
 /* Crash-loop (audit B3) : auto-restart suspendu après N échecs consécutifs — rouge, action requise. */
 .crash_loop     { background: var(--status-stopped-bg);  color: var(--status-stopped-fg); }
 /* Injoignable : le conteneur tourne (docker) mais ni l'agent :8081 ni le contrôleur :8080 ne
@@ -2644,6 +2651,38 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, #4a9eff); outline
 .sig-btn.sig-audio.active { background: rgba(168,85,247,0.20); }
 .sig-btn.sig-data.active  { background: rgba(245,158,11,0.20); }
 .cables-filter-sel { display: inline-flex; align-items: center; gap: 5px; font-size: 0.85em; color: var(--text-muted); }
+/* Barre unique de la page Câbles (24/10) : filtres à gauche ; disposition, « Affichage » et
+   « Câblage » à droite. Les réglages rares vivent dans ces deux panneaux. */
+.cables-bar-sep { width: 1px; height: 20px; background: var(--border); }
+.cables-bar-end { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.cables-pop-wrap { position: relative; }
+.cables-pop-wrap > .btn[aria-expanded="true"] { border-color: var(--accent); }
+.cables-pop {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 120;
+    display: flex; flex-direction: column; gap: var(--space-2);
+    min-width: 320px; max-width: min(440px, calc(100vw - 32px));
+    padding: var(--space-3);
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.cables-pop[hidden] { display: none; }
+.cables-pop-h { font-size: 0.72em; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.cables-pop-sep { border: none; border-top: 1px solid var(--border); margin: var(--space-1) 0; width: 100%; }
+.cables-pop-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.cables-pop-row-split { justify-content: space-between; font-size: 0.88em; }
+.cables-pop .btn { margin: 0; }
+.cables-pop .cables-pop-danger { margin-left: 0; align-self: flex-start; }
+.cables-pop .btn-ghost { align-self: flex-start; }
+.cables-pop-switch { font-size: 0.88em; font-weight: 400; }
+.cables-views-list { display: flex; flex-direction: column; max-height: 40vh; overflow: auto; }
+.cables-view-share { align-self: center; font-size: 0.75em; white-space: nowrap; }
+.cables-share-card { max-width: 480px; }
+.cables-recall-row.cables-view-active { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.cables-recall-row.cables-view-changed { box-shadow: inset 3px 0 0 var(--border); }
+.cables-auto-dot { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%;
+    background: var(--accent); vertical-align: middle; }
+.cables-auto-dot[hidden] { display: none; }
+.cables-share-help { margin: var(--space-2) 0 0; font-size: 0.82em; color: var(--text-muted); }
 .cables-filter-sel select { font-size: 0.9em; }
 
 /* Vue libre : cartes déplaçables en absolu dans #topo. */
@@ -2757,7 +2796,17 @@ a.health-item:focus-visible { outline: 2px solid var(--accent, #4a9eff); outline
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 160px;            /* texte seul (les badges sont des frères, jamais coupés) */
+    /* ⚠ PAS DE PLAFOND EN PIXELS. Il y en avait un (160px), et il coupait les libellés BIEN
+       AVANT le bord de la carte : sur une carte DeckLink, les quatre ports commencent par le
+       même « DeckLink Quad 2 SDI 6 » et ne diffèrent qu'APRÈS — « — audio 1-8 ». La coupe
+       tombait donc exactement sur ce qui les distingue, et deux entrées audio déclarées,
+       servies et affichées se lisaient comme des doublons des entrées vidéo (signalé le
+       2026-10-29). Un libellé tronqué avant sa partie discriminante ne nomme plus rien.
+       La largeur est désormais celle de la CARTE : `.topo-port` est borné à 100 %, la carte
+       est dimensionnée par sa colonne (280px fixes en vue libre), donc rien ne peut s'étirer.
+       `min-width: 0` est ce qui autorise la troncature à opérer quand des badges partagent
+       la ligne — sans lui, un élément flex refuse de descendre sous son contenu. */
+    min-width: 0;
     flex: 0 1 auto;
 }
 /* TALLY (TSL) d'un point de connexion : on COLORE LE TEXTE du label, on n'ajoute pas de pastille.
@@ -5499,3 +5548,81 @@ body:has(.subnav-deck) .topnav:not(.condensed) {
 .subnav-deck-notch { position: absolute; top: 0; width: 0; height: 0; transform: translateX(-50%);
     border: 6px solid transparent; border-top-color: var(--border); pointer-events: none; }
 .subnav-deck-notch[hidden] { display: none; }
+/* Câbles : la bande porte la barre de la page (filtres + panneaux), pas des onglets. */
+.subnav-deck.cables-bar { gap: var(--space-2); flex-wrap: wrap; padding: 6px 12px; min-height: 44px; box-sizing: border-box; }
+.topo-legend .cables-updated { margin-left: auto; font-family: var(--font-mono); }
+
+/* ─── Câbles, vue globale : un projet = un bloc (étape 5 des ports, 2026-10-24) ──────────────── */
+.topo-node-project { border-color: var(--status-warning-fg); min-width: 260px; }
+.topo-node-project-off { border-color: var(--border); }
+.topo-proj-head { display: flex; flex-direction: column; gap: 2px; padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border-soft); }
+.topo-proj-name { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.topo-proj-tag { font-size: 10px; letter-spacing: 1px; color: var(--status-warning-fg);
+    border: 1px solid var(--status-warning-fg); border-radius: var(--radius-small); padding: 0 5px; }
+.topo-proj-sub { font-size: 12px; color: var(--text-muted); }
+.topo-proj-ports { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2);
+    padding: var(--space-2) 0; }
+.topo-proj-ports .topo-port { gap: 6px; }
+.topo-proj-ports .topo-proj-sub, .topo-proj-warn, .topo-proj-direct { font-size: 11px; }
+.topo-proj-warn { color: var(--status-warning-fg); font-weight: 600; }
+.topo-proj-direct { color: var(--status-stopped-fg); font-weight: 600; }
+.topo-port-dot.topo-port-dot-unset { background: var(--bg); border: 2px dashed var(--status-warning-fg);
+    box-sizing: border-box; width: 10px; height: 10px; flex-basis: 10px; }
+.topo-port-dot.topo-port-dot-direct { background: var(--status-stopped-fg); }
+.topo-proj-sum { display: flex; flex-direction: column; gap: 4px; padding: var(--space-2) 0;
+    border-top: 1px solid var(--border-soft); }
+.topo-proj-lab { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-muted);
+    font-weight: 600; }
+.topo-proj-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.topo-proj-chip { font-size: 12px; background: var(--bg-hover); color: var(--text); border-radius: var(--radius-small);
+    padding: 1px 7px; }
+.topo-proj-foot { display: flex; gap: var(--space-2); flex-wrap: wrap; padding-top: var(--space-2); }
+.topo-unlinked { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3);
+    padding: var(--space-3); border: 1px dashed var(--border); border-radius: var(--radius); }
+.topo-edge.topo-edge-direct { stroke: var(--status-stopped-fg); stroke-dasharray: 6 4; }
+
+/* ─── Câbles, intérieur d'un projet : bandeau et ports aux deux bords (maquette C, 2026-10-24) ── */
+.cables-project-banner { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+    margin: var(--space-2) 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius);
+    background: var(--status-info-fg); color: var(--bg); }
+.cables-project-banner[hidden] { display: none; }
+.cables-project-tag { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; }
+.cables-project-name { font-size: 1.4em; font-weight: 800; }
+.cables-project-meta { font-size: 12px; flex: 1; }
+.topo.topo-in-project { box-shadow: inset 6px 0 0 var(--status-info-fg), inset -6px 0 0 var(--status-info-fg);
+    padding: 0 18px; }   /* le liseré ne doit pas mordre sur les en-têtes de colonne */
+.topo-node-project-ports { align-self: flex-start; max-width: 100%; }
+.topo-doors-out.topo-node-project-ports { align-self: flex-end; }
+.topo-node.topo-node-project-ports { border-color: var(--status-info-fg); min-width: 220px; }
+.topo-doors-in { border-left-width: 4px; }
+.topo-doors-out { border-right-width: 4px; }
+.topo-doors-head { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; font-weight: 700;
+    color: var(--status-info-fg); padding-bottom: var(--space-2); }
+.topo-doors-in .topo-doors-head::before { content: "→ "; }
+/* Hors d'un projet (pas de filtre), plusieurs projets ont leurs cartes : nommer à qui elles sont. */
+.topo-doors-proj { font-size: 12px; font-weight: 600; color: var(--text-strong); margin: -4px 0 6px; }
+.topo-doors-out .topo-doors-proj { text-align: right; }
+.topo-doors-out .topo-doors-head::after { content: " →"; }
+.topo-proj-portlab { display: contents; }
+/* Virtuelle (28/10) : une ligne par flux, comme un conteneur. Les rattachés (audios, ANC) suivent
+   leur vidéo, en retrait et en plus discret : on lit d'un coup d'œil qu'ils lui appartiennent. */
+.topo-node-project-ports .topo-port.topo-port-kid { padding-top: 0; }
+.topo-node-ports-in .topo-port-kid .topo-proj-portlab { padding-left: 1.1em; }
+.topo-node-ports-out .topo-port-kid .topo-proj-portlab { padding-right: 1.1em; }
+.topo-node-project-ports .topo-port-kid .topo-port-label { font-weight: 500; color: var(--text-muted); }
+.topo-port-kidmark { opacity: 0.6; margin-right: 0.35em; }
+/* Renvois (29/10, maquette B) : la carte des sources d'un projet se coupe en « Externes » puis
+   « ↻ Renvois du projet » — ses destinations réutilisables, sur un fond ambre qui les distingue. */
+.topo-proj-section { list-style: none; font-size: 11px; font-weight: 700; letter-spacing: .12em;
+                     text-transform: uppercase; color: var(--text-muted); padding: 6px 0 2px; }
+.topo-proj-section-renvoi { color: var(--status-warning-fg); margin-top: 8px; padding-top: 8px;
+                            border-top: 1.5px dashed color-mix(in oklab, var(--status-warning-fg) 70%, transparent); }
+.topo-port.topo-port-renvoi { background: color-mix(in oklab, var(--status-warning-fg) 7%, transparent); }
+.topo-proj-readers { font-size: 11px; font-weight: 600; padding: 0 7px; border-radius: 999px; white-space: nowrap;
+                     color: var(--status-warning-fg); background: color-mix(in oklab, var(--status-warning-fg) 14%, transparent); }
+.topo-node-project-ports .topo-port { padding: 3px 0; }
+.topo-node-project-ports .topo-proj-portlab { display: flex; flex-direction: column; min-width: 0; }
+.topo-doors-out .topo-proj-portlab { align-items: flex-end; text-align: right; }
+.topo-node-project-ports .topo-port-label { font-weight: 600; color: var(--text-strong); }
+.topo-proj-via { font-size: 11px; }

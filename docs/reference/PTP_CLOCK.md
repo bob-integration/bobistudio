@@ -6,7 +6,42 @@ plugin ne fait de PTP**, où **l'horloge système n'est pas dans le chemin médi
 MXL à la lettre** (tout est grain + `media_ts`). Lié : [[docs/chantiers/DPDK_NARROW.md]] (§#20, verdict absolu),
 [[docs/reference/PROBE_2110.md]] (monitoring/conformité), mémoire `av-sync-deterministic-phaselock`.
 
+## Ce qui fait foi aujourd'hui (vérifié dans le code le 2026-11-01)
+
+> Ce document mêle la conception du 2026-07-08 et des conclusions abandonnées depuis. Les sections
+> marquées ⛔ sont gardées pour leur historique et leurs mesures datées ; **le modèle en vigueur est
+> celui-ci** :
+>
+> - **Le servo PTP se déduit du PMD de l'interface média** (`node_interfaces.pmd`, rôle `media2110`) :
+>   - **PF pleine en DPDK/vfio** (`pmd='dpdk'`, socle narrow) : le moteur `2110_io` fait son propre PTP.
+>     `docker_driver` pose `ENGINE_PTP=libmtl` (esclave PTPv2 sur le port DPDK, `MTL_FLAG_PTP_ENABLE |
+>     MTL_FLAG_PTP_PI`, cf. `plugins/2110_io/mtl_rx.c`) **et** `ENGINE_PHC2SYS=1` (libmtl discipline
+>     aussi `CLOCK_REALTIME`). Conséquence : sur un nœud 2110, **REALTIME porte le TAI** et le
+>     `tai_offset` du noyau vaut 0 ; `install-node.sh:provision_io2110` désactive chrony.
+>   - **AF_XDP** : la PF garde son netdev noyau, `ptp4l`/`phc2sys` noyau disciplinent le PHC et REALTIME.
+>   - Nœud **non-2110** : chrony + `leapseclist`, REALTIME en UTC, `tai_offset = 37`.
+>   Les deux conventions donnent le même `CLOCK_TAI` ; l'état détecté par nœud est exposé dans
+>   Réglages → Réseau → Horloges (`app/clocks.py`, `/api/cluster/clocks`).
+> - **`ENGINE_PHC2SYS` reste posé pour une raison de fréquence, pas d'horloge système** : dans
+>   `mt_ptp.c`, l'asservissement en fréquence du PHC (activé par `plugins/2110_io/docker/patch_ptp_adjust_freq.py`,
+>   mesuré 726 ns → ~30 ns le 2026-08-30) n'agit que si phc2sys est actif. Le retirer (et rendre
+>   REALTIME à chrony, objectif de la Phase 3) exige d'abord un patch libmtl qui découple les deux —
+>   cf. le bloc `ENGINE_PHC2SYS` de `app/docker_driver.py` et `tests/verif_horloge_systeme_noeud_dpdk.py`.
+> - **SR-IOV n'est plus la voie de référence** (voir le bandeau ci-dessous). Le mode `pmd='sriov'`
+>   subsiste dans le code (`_sriov_node`) mais n'est pas le plan retenu.
+> - **Genlock / flux de référence maison (§4) et monitoring unifié (§6) : non réalisés.** `bobimxl`
+>   a le mode `index_mode="genlock"` (opt-in), mais aucun publieur de référence n'existe côté moteur,
+>   `ptp_sync_notify` n'est branché nulle part et `node_interfaces` n'a que `ptp_domain` (pas de
+>   `ptp_owner`). Ces sections restent un plan.
+
 ## ★ CONCLUSION (2026-07-08) : SR-IOV = la voie de référence (PF kernel-PTP + VF DPDK-narrow)
+
+> **⛔ Remplacé le 2026-07-09** (`docs/chantiers/SRIOV_IMPL.md`, bandeau SUPERSEDED) : banc direct
+> `mtl_rx` sur la vraie VF iavf, `pacing=rl` → **segfault** (rte_tm de l'iavf cassé). **Le RL narrow est
+> PF-only** ; les affirmations « RL TX HW OK sur la VF » ci-dessous sont **invalides** (mesures
+> probablement faites sur PF-vfio). Nouveau socle : **PF pleine en DPDK/vfio**, PTP par le client
+> interne de libmtl (voir « Ce qui fait foi aujourd'hui »). Le pool SR-IOV (`app/nic_pool.py`) a été
+> retiré. Ce qui suit est conservé pour l'historique et les mesures de banc.
 
 Après avoir déroulé PTP/2022-7/narrow puis 2 agents d'investigation (build + source), **l'architecture
 cible est SR-IOV** — et elle **supersède la décision « port DPDK → PTP libmtl »** des sections plus bas.
@@ -79,7 +114,7 @@ PF-only) → la discipline vient toujours de ptp4l/PF-kernel ; cohérent avec le
   (gated sur ce reboot). Procédure A→B prête. Piège : irdma in-tree ne recharge pas contre l'ice 2.6.6
   out-of-tree (`Unknown symbol ice_*_rdma_qset`) → « laisser l'ice patché » = irdma cassé.
 
-**Ce que ça révise** : « full-DPDK partout » et « port DPDK → PTP libmtl » étaient de mauvaises cibles
+**Ce que ça révise** (⛔ révision elle-même abandonnée le 2026-07-09, cf. bandeau ci-dessus) : « full-DPDK partout » et « port DPDK → PTP libmtl » étaient de mauvaises cibles
 (elles créaient le verrou n°1 et le tax PTP+2022-7). **La bonne cible = SR-IOV par carte** : kernel pour
 l'horloge (linuxptp éprouvé, par-port, redondant), DPDK/VF pour le data-plane narrow. Les phases §7
 ci-dessous restent valides pour la partie MXL/genlock/réf-maison ; seule la ligne « qui possède le PTP »
@@ -113,6 +148,10 @@ devient gratuit, et MXL est respecté (tout roule sur les timestamps de grains).
   > /sys/bus/pci/rescan`, cf. docs/chantiers/DPDK_NARROW.md).
 
 ## 2. Décisions actées (2026-07-08)
+
+> **⛔ Ligne « Horloge système » non réalisée (constat 2026-11-01)** : sur un nœud 2110 full-PF DPDK,
+> l'horloge système n'est PAS découplée — libmtl la discipline (`ENGINE_PHC2SYS=1`) et elle porte le
+> TAI. Raison et condition de retrait : « Ce qui fait foi aujourd'hui » en tête de document.
 
 | Sujet | Décision |
 |---|---|
@@ -276,6 +315,12 @@ pipeline. **Corréler** avec le FPT/conformité de la sonde (PROBE_2110) : c'est
 référence (§4) alimente une tuile genlock/PTP.
 
 ## 7. Séquencement (du pivot vers le reste)
+
+> **État au 2026-11-01** (vérifié dans le code) : Phase 1 faite côté DPDK (`ENGINE_PTP=libmtl`, posé
+> automatiquement sur PF `pmd='dpdk'`) ; le « verrou n°1 » (fréquence du PHC en DPDK) est levé par
+> `patch_ptp_adjust_freq.py` (mesure du 2026-08-30). Phase 2 : seul le prototype `bobimxl` existe,
+> pas de publieur de référence. Phase 3 : bloquée (voir §2). Phase 4 : `ptp_sync_notify` non branché ;
+> le collecteur `app/ptp.py` lit le moteur par son bloc `:8080`. Schéma : `ptp_domain` oui, `ptp_owner` non.
 
 | Phase | Contenu | Note |
 |---|---|---|

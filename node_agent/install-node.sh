@@ -13,12 +13,12 @@
 #       --hugepages 2048 --macvlan-parent ens1f0np0 --macvlan-subnet x.x.x.x/24 ...
 #
 # Options :
-#   --with <caps>          liste CSV parmi io2110,compute,media,webrtc,gpu,gui  (défaut: compute)
+#   --with <caps>          liste CSV parmi io2110,compute,media,webrtc,gpu,gui,decklink  (défaut: compute)
 #                          (gpu = pilote NVIDIA choisi selon la génération du GPU + container-toolkit ; reboot requis)
 #   --add-caps <caps>      RATTRAPAGE : ajoute une/des capacité(s) à un nœud DÉJÀ installé, puis sort.
 #                          Ne provisionne QUE ces capacités et FUSIONNE la liste dans config.json
 #                          (token, TLS, unité systemd, réglages non concernés : intacts).
-#                          Accepte les 6 capacités (gui : déclaration seule, exige compute). Réglages amenés par la capacité : passer
+#                          Accepte les 7 capacités (gui et decklink : déclaration seule ; gui exige compute). Réglages amenés par la capacité : passer
 #                          --mtl-iface/--lcores (io2110), --media-mount (media) comme à l'install.
 #                          Code de sortie ≠ 0 si le provisioning hôte a échoué.
 #   DDP_SRC=<path>         (env) chemin du blob DDP E810 quand le script est PIPÉ sur stdin (le
@@ -490,7 +490,7 @@ if [ -n "$ADD_CAPS" ]; then
   #    invalide (sinon on sort en erreur après avoir déjà modifié la machine).
   for _cap in ${ADD_CAPS//,/ }; do
     case "$_cap" in
-      gpu|io2110|compute|media|webrtc|gui) ;;
+      gpu|io2110|compute|media|webrtc|gui|decklink) ;;
       *) die "--add-caps : capacité inconnue « $_cap »";;
     esac
   done
@@ -532,6 +532,15 @@ if [ -n "$ADD_CAPS" ]; then
         # Rien à installer sur l'hôte : l'image bobi-gui (Xvfb, x11vnc, suil, Mesa) se construit SUR ce nœud depuis
         # l'orchestrateur (Réglages → Images, node_only). La capacité en fait une cible de build et de déploiement.
         log "── capacité « gui » : déclaration seule (image bobi-gui construite ensuite par l'orchestrateur) ──";;
+      decklink)
+        # Déclaration seule : l'archive Desktop Video se DÉPOSE (elle n'est pas récupérée
+        # automatiquement, et un nœud peut n'avoir aucun accès sortant — l'installation est hors
+        # ligne). La capacité dit « ce nœud porte une carte DeckLink » et c'est
+        # ce qui OUVRE la porte du pilote dans Réglages → Nœuds ; l'archive s'y dépose à la main.
+        # Pourquoi une déclaration et non une détection : sans le pilote, le noyau n'expose aucun
+        # /dev/blackmagic et `lspci` seul ne dirait rien du modèle utile — une garde par détection
+        # exigerait donc le pilote pour montrer comment l'installer (impasse mesurée le 2026-10-30).
+        log "── capacité « decklink » : déclaration seule (pilote Desktop Video déposé depuis Réglages → Nœuds) ──";;
     esac
   done
 

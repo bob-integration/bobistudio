@@ -18,6 +18,7 @@ log = logging.getLogger(__name__)
 
 from flask import (Blueprint, jsonify, request, render_template, send_file,
                    redirect, url_for, abort, Response, stream_with_context, session)
+from ..database import container_egress as _container_egress
 from ..database import (db_get_containers, db_get_container, db_get_alerts, db_add_alert, db_upsert_container,
                       db_delete_container, db_get_projects, db_save_project,
                       db_delete_project, db_import_project, db_get_project,
@@ -175,10 +176,16 @@ def _attach_projects(containers):
             by_vmid.setdefault(snap.get("vmid"), []).append(
                 {"id": p["id"], "name": p["name"]})
     for c in containers:
-        c["projects"] = by_vmid.get(c["vmid"], [])
         pid = c.get("project_id")
         proj = proj_by_id.get(pid) if pid else None
         c["project"] = {"id": proj["id"], "name": proj["name"], "media_path": proj.get("media_path")} if proj else None
+        # Rattachement direct compris (28/10) : un projet rechargé recrée ses conteneurs sous de
+        # nouveaux vmid, que le snapshot ne cite pas — le filtre Projet affichait « 0 / 5 ».
+        # Même sémantique que auth.vmid_project_ids : project_id OU vmid du snapshot.
+        projs = list(by_vmid.get(c["vmid"], []))
+        if proj and all(x["id"] != proj["id"] for x in projs):
+            projs.insert(0, {"id": proj["id"], "name": proj["name"]})
+        c["projects"] = projs
     return containers
 
 
@@ -292,6 +299,7 @@ def liste_containers():
     # puissent pas se contredire (même cible, même seuil de clôture — cf. metrics.cadence_etat).
     from ..metrics import cadence_etat as _cadence
     from .. import docker_compute as _dcmp
+    from ..metrics import version_running_cache as _version_running
     for c in rows:
         try:
             _dc = json.loads(c["deploy_config"]) if isinstance(c.get("deploy_config"), str) \
@@ -308,6 +316,13 @@ def liste_containers():
             "cpu_mode": _dcmp.cpu_mode_of(_eff),
             "override": c.get("cores_override") is not None or c.get("memory_override") is not None
                         or c.get("cpu_mode_override") is not None}
+        # Sortie réseau : exposée pour TOUS les conteneurs, pas seulement ceux qui en dévient.
+        # Un champ qui n'apparaît que lorsqu'il est « anormal » oblige l'interface à deviner le
+        # cas normal, et un lecteur de l'API à savoir ce que signifie son absence.
+        c["egress"] = _container_egress(c)
+        # Version que le script EXÉCUTE (publiée sur :8080), à côté de celle que la base annonce
+        # (`deploy_config.params.plugin_version`). Absente = le script ne la publie pas.
+        c["version_running"] = _version_running.get(c["vmid"])
     return jsonify(rows)
 
 def _raz_infra():
@@ -607,6 +622,12 @@ def creer():
                 return jsonify({"error": "Réglages hors bornes : " + " ".join(errs), "errors": errs}), 400
             d_params = {**plugins.effective_deploy_defaults(d_type), **d_params}
             d_params = plugins.coerce_config(d_type, d_params)
+            # Assistant de PREMIÈRE OUVERTURE (manifeste `setup_wizard`, ex. mélangeur) : une création
+            # neuve porte le marqueur ; un conteneur sans ce marqueur (déployé avant, restauré,
+            # importé) compte comme configuré. Le hook de l'assistant le retire à l'application.
+            _sw = m.get("setup_wizard") if isinstance(m.get("setup_wizard"), dict) else None
+            if _sw and _sw.get("pending_param"):
+                d_params[str(_sw["pending_param"])] = True
 
         # MTL = chemin matériel dédié (controller bâti, NMOS). Sinon = compute générique
         # (conteneur agent macvlan) → création puis déploiement par le chemin agent standard.
@@ -655,6 +676,41 @@ def detruire(vmid):
     threading.Thread(target=_detruire).start()
     return jsonify({"status": "destruction_en_cours", "vmid": vmid})
 
+@bp.route("/api/containers/<int:vmid>/egress", methods=["GET", "PATCH"])
+@require_perm("containers.deploy")
+def container_egress_route(vmid):
+    """Sortie réseau de CE conteneur : « réseau du nœud » ou « Sortie Internet ».
+
+    Rien n'est détruit ni recréé — c'est une règle de routage par source sur l'hôte
+    (`app/container_net.py`). Le conteneur ne bronche pas ; le changement ne vaut que pour les
+    NOUVELLES connexions, conntrack gardant les anciennes sur leur chemin. On le DIT dans la
+    réponse : un exploitant qui bascule un streamer en plein flux doit savoir que le flux en
+    cours ne change pas de route, sinon il conclura que le réglage n'a pas pris.
+    """
+    from .. import container_net as _cn
+    from ..database import container_egress, EGRESS_MODES, db_get_node
+    c = db_get_container(vmid)
+    if not c:
+        return jsonify({"error": "container introuvable"}), 404
+    node = db_get_node(c.get("node_id")) if c.get("node_id") else None
+    if request.method == "GET":
+        _ok, _raison = _cn.sortie_possible(node) if node else (False, "conteneur sans nœud")
+        return jsonify({"vmid": vmid, "egress": container_egress(c),
+                        "internet_possible": _ok, "internet_refus": _raison,
+                        "iface": _cn.iface_internet((node or {}).get("id")) if node else ""})
+    voulu = str((request.json or {}).get("egress") or "").strip().lower()
+    if voulu not in EGRESS_MODES:
+        return jsonify({"error": "sortie inconnue : %s (attendu %s)"
+                                 % (voulu, " | ".join(EGRESS_MODES))}), 400
+    ok, msg = _cn.poser_sortie(vmid, voulu)
+    if not ok:
+        return jsonify({"error": msg}), 409
+    return jsonify({"ok": True, "egress": container_egress(db_get_container(vmid)),
+                    "message": msg,
+                    "note": "les connexions DÉJÀ établies gardent leur chemin (conntrack) ; "
+                            "le changement s'applique aux nouvelles."})
+
+
 @bp.route("/api/containers/<int:vmid>/resources", methods=["PATCH"])
 @require_perm("containers.deploy")
 def patch_resources(vmid):
@@ -689,6 +745,19 @@ def patch_resources(vmid):
     if _dcmp.is_mtl_type((_dc or {}).get("type")):
         return jsonify({"error": "le moteur 2110 ne prend pas de réglage de ressources par "
                                  "conteneur (cpuset dérivé des lcores DPDK)"}), 409
+    # ─── POIDS CPU : appliqué À CHAUD, donc hors du chemin de recréation ───────────────────
+    # Le poids (`--cpu-shares`, cf. app/cpu_weight.py) se change sur un conteneur en marche : le
+    # faire passer par le resize reviendrait à couper une antenne pour un geste d'intendance. Il
+    # est traité ici, séparément, et n'entre PAS dans `_chgs` (qui décide de la recréation).
+    cpu_weight_in = data.get("cpu_weight")
+    poids_res = None
+    if cpu_weight_in is not None:
+        from .. import cpu_weight as _cw
+        if not _cw.niveau_valide(cpu_weight_in):
+            return jsonify({"error": "cpu_weight : %s" % ", ".join(_cw.LEVELS)}), 400
+        poids_res = _cw.regler(vmid, cpu_weight_in)
+        if not poids_res.get("ok"):
+            return jsonify({"error": poids_res.get("err")}), 400
     cpu_mode = data.get("cpu_mode")
     if cpu_mode is not None:
         if cpu_mode not in _dcmp.CPU_MODES:
@@ -713,6 +782,11 @@ def patch_resources(vmid):
              cible=c.get("hostname"), vmid=vmid, kind="deploy",
              params=({"chgs": _chgs} if _chgs else None))
     if not _chgs:
+        if poids_res is not None:
+            from ..audit import journal as _j2
+            _j2("alert.audit.modifier_ressources", cible=c.get("hostname"), vmid=vmid,
+                kind="deploy", params={"chgs": "cpu_weight=%s" % poids_res["niveau"]})
+            return jsonify({"status": "ok", "vmid": vmid, "cpu_weight": poids_res})
         return jsonify({"status": "inchange", "vmid": vmid})
     def _resize():
         with verrou_vmid(vmid, op="resize"):
@@ -1130,6 +1204,14 @@ def deploy(vmid):
             return jsonify({"error": "Réglages hors bornes : " + " ".join(errs), "errors": errs}), 400
         params = {**plugins.effective_deploy_defaults(type_), **existing, **params}
         params = plugins.coerce_config(type_, params)   # filet (params PERSISTÉS hérités → alerte)
+    # ENVOI PÉRIMÉ (2026-11-01) : une page qui renvoie toute la config qu'elle a chargée renvoie
+    # aussi l'ancien flux d'une entrée dont le port a été réaffecté depuis. Ce n'est pas un
+    # recâblage : on garde l'entrée sur son port. `seen_rev` = la même révision que `base_rev`,
+    # sans le refus en cas de conflit (la palette l'envoie).
+    _seen = data.get("base_rev") if data.get("base_rev") is not None else data.get("seen_rev")
+    if _seen is not None:
+        from ..project_ports import keep_linked_inputs
+        params, _ = keep_linked_inputs(vmid, type_, params, _seen)
     # Version optionnelle : rappeler une version archivée précise (palette). None = courante.
     version = (data.get("version") or "").strip() or None
     _path = data.get("path", "/opt/script/main.py")
@@ -1486,8 +1568,13 @@ def container_control_action(vmid, action):
         return jsonify({"error": f"action '{action}' non supportée pour le type {t}"}), 404
     body = request.get_json(force=True, silent=True) or {}
     try:
+        # `can_deploy` : un hook peut réserver une action STRUCTURELLE (assistant du mélangeur) au droit
+        # de déployer — la route elle-même n'exige que plugins.operate. Le hook lève PermissionError.
         res = h(action, body, params, {"vmid": vmid, "type": t,
-                                       "hostname": c.get("hostname") or ""})
+                                       "hostname": c.get("hostname") or "",
+                                       "can_deploy": has_perm("containers.deploy")})
+    except PermissionError as _e:
+        return jsonify({"error": "forbidden", "missing_permission": str(_e) or "containers.deploy"}), 403
     except Exception as _e:
         return jsonify({"error": str(_e)}), 400
     if res is None:
@@ -1505,7 +1592,18 @@ def container_control_action(vmid, action):
         except Exception:
             pass
     extra = {k: v for k, v in res.items()
-             if k not in ("params", "hot_endpoint", "hot_body")}
+             if k not in ("params", "hot_endpoint", "hot_body", "refresh_wiring")}
+    if hot_ok and res.get("refresh_wiring"):
+        # Le hook a changé ce que le câblage DÉRIVE des params (libellé d'un port, ex. nom d'une
+        # sortie de mélangeur) sans redéploiement : rien d'autre ne republierait le sender NMOS
+        # (le filet de reconstruction ne repousse que si les ids changent).
+        def _refresh_wiring():
+            try:
+                from services import nmos as _nmos
+                _nmos.notify_state_change()
+            except Exception as _e:
+                log.warning("control/%s: NMOS refresh failed: %s", action, _e)
+        threading.Thread(target=_refresh_wiring, daemon=True).start()
     if not hot_ok:
         def _redeploy():
             with verrou_vmid(vmid, op="plugin-action-redeploy"):
@@ -1682,6 +1780,7 @@ from . import i18n       # noqa: F401 — éditeur de traductions
 from . import images          # noqa: F401
 from . import nodes           # noqa: F401
 from . import host_drivers    # noqa: F401 — pilotes hôte des nœuds (job long + journal + action en attente)
+from . import node_sheet      # noqa: F401 — fiche d'un nœud + vérification avant de le couper
 from . import enrollment      # noqa: F401
 from . import node_network    # noqa: F401
 from . import mcast_ranges    # noqa: F401

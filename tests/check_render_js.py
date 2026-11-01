@@ -43,10 +43,19 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+TMP = tempfile.mkdtemp(prefix="verif_render_js_")
+from app import config, database   # noqa: E402
+config.DB_PATH = database.DB_PATH = os.path.join(TMP, "principale.db")   # jamais la base de prod
+database._tls.__dict__.pop("conn", None)
+database.init_db()
+with database.get_db() as _db:   # utilisateur jetable pour forger la session
+    _db.execute("INSERT INTO users (username, password_hash, role) VALUES ('verif', 'x', 'admin')")
+
 # Fonctions de rendu couvertes, par page. Une fonction absente de la page rendue est signalée
 # (elle a été renommée ou supprimée) plutôt qu'ignorée en silence.
 CIBLES = {
-    "/cables": ["fmtSummary", "renderPort", "renderPlaceholderInput", "renderNode"],
+    "/cables": ["fmtSummary", "renderPort", "renderPlaceholderInput", "renderNode",
+                "renderProjectPortsNode", "_projPortRow", "_projPortVia"],
     # ⚠ PAS /settings ICI. Essayé le 2026-09-01, RETIRÉ le jour même : `extraire_fonction`
     # découpe par comptage d'accolades, sans comprendre les gabarits. Sur une fonction dont un
     # gabarit est cassé par un accent grave, il tronque — et livre à node un fragment amputé qui
@@ -89,9 +98,32 @@ NOEUDS = """[
    contenu_etat:{ref:25, mesure:50, tenue:false, maillon:'shard-a', maillon_mesure:0}},
   {vmid:7, hostname:'h7', produces:[], consumes:[], fps:50,
    contenu_etat:{ref:null, mesure:null, tenue:null, maillon:null, maillon_mesure:null}},
-  {vmid:8, hostname:'h8', produces:[], consumes:[], fps:50, contenu_etat:{}}
+  {vmid:8, hostname:'h8', produces:[], consumes:[], fps:50, contenu_etat:{}},
+  // Ports d'un projet en vue détaillée (maquette C, 24/10) : carte de gauche (sources, avec
+  // origine conteneur / port suivi / rien) et carte de droite (destinations, avec cibles).
+  {vmid:-9, hostname:'P', project_ports_node:true, split:true, col:'sources', project_id:9, consumes:[],
+   produces:[{kind:'video', shm:'port:1', port_id:1, port_state:'assigned', label:'CAM', origin:{host:'mire'}},
+             {kind:'video', shm:'port:2', port_id:2, port_state:'assigned', label:'C2', origin:{port:'PGM', project:'S'}},
+             {kind:'audio', shm:'port:3', port_id:3, port_state:'unassigned', label:'INV', origin:null}]},
+  {vmid:-9, hostname:'P', project_ports_node:true, split:true, col:'sinks', project_id:9, produces:[],
+   consumes:[{kind:'video', shm:'pgm', port_id:4, port_kind:'dest', port_state:'assigned', slot:0, label:'PGM',
+              targets:[{host:'tx'}, {port:'RET', project:'S'}]},
+             {kind:'video', shm:'', port_id:5, port_kind:'dest', port_state:'unpublished', label:'MV', targets:[]}]}
+]"""
+# Lignes de port de projet : origine (conteneur, port suivi, rien), cibles, liaison directe.
+PPORTS = """[
+  {kind:'video', shm:'port:1', port_id:1, port_state:'assigned', label:'CAM', origin:{host:'mire'}},
+  {kind:'video', shm:'port:2', port_id:2, port_state:'assigned', label:'C2', origin:{port:'PGM', project:'S'}},
+  {kind:'audio', shm:'port:3', port_id:3, port_state:'unassigned', label:'INV', origin:null},
+  {kind:'video', shm:'pgm', port_id:4, port_kind:'dest', port_state:'assigned', label:'PGM',
+   targets:[{host:'tx'}, {port:'RET', project:'S'}], follows:{name:'X', project:'Y'}},
+  {kind:'video', shm:'', port_id:5, port_kind:'dest', port_state:'unpublished', label:'MV', targets:[]},
+  {kind:'data', shm:'z', direct:true, label:'z', consumers:[{vmid:1, hostname:'h'}]}
 ]"""
 ARGS = {
+    "renderProjectPortsNode": [NOEUDS],
+    "_projPortRow": ["['in', 'out']", PPORTS, "[0, 2]"],
+    "_projPortVia": [PPORTS],
     "fmtSummary": ["[null, undefined, '', '1080p50', {width:1920,height:1080,fps:50}, {}]"],
     "renderPort": [COTES, PORTS, "[0, 3]", "['plugin', 'project', null]", "[42, null]"],
     "renderPlaceholderInput": ["[0, 5]", "['plugin', 'project', null]"],

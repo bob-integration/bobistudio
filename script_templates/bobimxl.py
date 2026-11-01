@@ -165,6 +165,70 @@ def invalid_grains_report():
     return {"total": total, "flows": flows}
 
 
+# Tous les Writer VIVANTS de ce processus — même rôle que `_live_readers`, pour `index_report()`.
+_live_writers = weakref.WeakSet()
+
+
+def index_report():
+    """Écart des index ÉMIS à la grille TAI, tous les writers de ce processus — à publier sur :8080.
+
+    Rend `{"grid_ms_max": x, "ahead_max": n, "held": n, "dropped": n, "alarm": bool,
+    "flows": {nom: {...}}}` :
+    - `grid_ms` = instant du DERNIER index réellement ouvert moins l'heure TAI, en MILLISECONDES
+      SIGNÉES, positif = dans le futur ; `grid_ms_max` = le pire. Mesuré à la requête (aucun coût
+      par trame) pour TOUS les writers vidéo/données, quelle que soit la façon dont ils calculent
+      leur index — `next_index`, `src_index` ou index imposé (genlock, compteur maison) : c'est le
+      seul champ qui met toute la flotte sur la même règle. Un champ entrelacé est compté à la
+      cadence CHAMP (l'index y est une coordonnée de champ sur un flux déclaré à la cadence trame).
+      Repères : un producteur sur la grille est entre −1 grain et 0 ; qui vise le créneau suivant
+      (`lookahead=1`) jusqu'à +1 grain ; un traitement en propagation est NÉGATIF de sa latence.
+      Au-delà de +1 grain, le flux écrit dans le futur. (Les AudioWriter n'y figurent pas.) ;
+    - `ahead` / `ahead_max` = avance (en grains) du dernier index émis / de la pire, sur la grille
+      (au-delà de l'avance DEMANDÉE par `lookahead`). Un flux conforme reste à 0, 1 au plus quand
+      deux trames tombent dans le même créneau ;
+    - `held` = trames RETENUES par `next_index` parce que l'avance dépassait la bande ;
+    - `dropped` = grains NON publiés par `open_grain`/`commit` (index pas plus récent que le
+      dernier écrit — la trame retenue, et ses sœurs sur les autres writers) ;
+    - `alarm` = une avance a dépassé `Writer.INDEX_ALARM_S` : une retenue de cette durée est un
+      gel, il faut relancer le producteur ;
+    - `prop_held` = trames retenues en PROPAGATION (source qui n'a pas avancé) — souvent normal
+      (25p dans une chaîne 50p), jamais une alarme ; `regenerations` = nouvelles générations du
+      flux après un grand recul de la source (cf. `Writer.regenerate`).
+    `held`/`dropped` sont CUMULÉS depuis le démarrage : c'est leur dérivée qui compte. Un
+    producteur qui en accumule émet plus de trames que la grille n'a de créneaux — sa boucle de
+    sortie n'est pas cadencée par la grille.
+
+    Avant ce rapport (2026-10-25), rien ne publiait l'index émis : rl-mix a écrit 68 s dans le
+    futur pendant des heures, cadence parfaite à 50,0, sans qu'aucun compteur ne bouge."""
+    flows, ahead_max, held, dropped, alarm, grid_max = {}, 0, 0, 0, False, None
+    now = None
+    for w in list(_live_writers):
+        e = {"ahead": int(w.index_ahead), "ahead_max": int(w.index_ahead_max),
+             "held": int(w.index_held), "dropped": int(w.grains_dropped),
+             "prop_held": int(w.prop_held), "regenerations": int(w.regenerations)}
+        if w._last_idx >= 0:
+            if now is None:
+                # Appelé par le serveur :8080 des plugins : ne JAMAIS lever. Sans horloge, le
+                # rapport omet `grid_ms` plutôt que de faire tomber la page de métriques.
+                try:
+                    now = int(now_tai())
+                except Exception:
+                    now = 0
+            g = w.grid_ms(now) if now else None
+            if g is not None:
+                e["grid_ms"] = g
+                grid_max = g if grid_max is None else max(grid_max, g)
+        elif not any(e.values()):
+            continue
+        flows[str(getattr(w, "name", "?"))] = e
+        ahead_max = max(ahead_max, e["ahead_max"])
+        held += e["held"]
+        dropped += e["dropped"]
+        alarm = alarm or bool(w.index_alarm)
+    return {"grid_ms_max": grid_max, "ahead_max": ahead_max, "held": held, "dropped": dropped,
+            "alarm": alarm, "flows": flows}
+
+
 # Décalage TAI↔UTC (secondes) centralisé et fail-fast (cf. risque temporel du plan).
 # mxlGetTime() rend des ns TAI (epoch ST 2059) ; notre media_ts (mtl_rx.c) est déjà TAI →
 # pas de conversion sur le chemin MXL. Le décalage n'est utile QU'aux frontières UTC.
@@ -399,6 +463,36 @@ def _ck(fn, status):
         raise MXLError(fn, status)
 
 
+# mxlCreateFlowWriter → status 1 (MXL_ERR_UNKNOWN) while the PREVIOUS writer of the same flow is
+# still being torn down. Measured 2026-10-29 18:16 on the Z8 (mixer #227): the redeployed script
+# reopened its clean output 73 ms after the old one stopped, while the flow segment was still being
+# released → crash at startup. The status is transient: retry within a BOUNDED window, short
+# sleeps, then raise as before. Never garbage_collect() here (it is global to the MXL domain).
+CREATE_WRITER_TRANSIENT_STATUS = 1
+CREATE_WRITER_RETRY_S = 0.050
+CREATE_WRITER_RETRY_SLEEP_S = 0.005
+
+
+def _create_flow_writer(inst_h, flow_def, h_ref, created_ref, name=""):
+    """mxlCreateFlowWriter with a bounded retry on the transient teardown status. Raises
+    MXLError (same as `_ck`) once the window is spent or on any other status."""
+    deadline = time.monotonic() + CREATE_WRITER_RETRY_S
+    retries = 0
+    while True:
+        st = _lib.mxlCreateFlowWriter(inst_h, flow_def, _flow_options(), h_ref, None, created_ref)
+        if st != CREATE_WRITER_TRANSIENT_STATUS or time.monotonic() >= deadline:
+            break
+        if retries == 0:
+            print(f"bobimxl: mxlCreateFlowWriter({name!r}) -> mxlStatus {st} (previous writer still "
+                  f"being torn down?), retrying for up to {int(CREATE_WRITER_RETRY_S * 1000)} ms",
+                  flush=True)
+        retries += 1
+        time.sleep(CREATE_WRITER_RETRY_SLEEP_S)
+    if retries and st == MXL_STATUS_OK:
+        print(f"bobimxl: mxlCreateFlowWriter({name!r}) succeeded after {retries} retries", flush=True)
+    _ck("mxlCreateFlowWriter", st)
+
+
 def _np_view(payload_ptr, size):
     """Vue numpy ZÉRO-COPIE sur le buffer d'un grain (pointeur ctypes → uint8[size])."""
     addr = ctypes.cast(payload_ptr, ctypes.c_void_p).value
@@ -532,7 +626,16 @@ class Instance:
             raise OSError(f"mxlCreateInstance({domain}) a échoué (tmpfs ? droits ?)")
 
     def garbage_collect(self):
-        """Récupère les flows dont le writer est mort (anti-fuite tmpfs) — critère banc GC."""
+        """Récupère les flows dont le writer est mort (anti-fuite tmpfs) — critère banc GC.
+
+        ⛔ **GLOBAL AU DOMAINE, donc dangereux — ne PAS l'appeler pour se dépêtrer d'un flux.**
+        Il ne vise pas « votre » génération : il balaie tout ce qu'il juge collectable, y compris
+        les flux VIVANTS d'autres processus. Dégâts mesurés : quatre flux du moteur 2110 détruits
+        sous leur producteur le 2026-08-19 (tous leurs lecteurs à 0 i/s, en silence), et une
+        réplique RDMA recréée sous son récepteur le 2026-10-24 (qui a continué d'écrire dans un
+        inode délié — réplique vide pour toujours). Les chemins de réouverture ne l'appellent plus
+        (cf. `_StaleGuard.reopen`) ; `decklink_mxl.cpp` s'en abstient délibérément et explique
+        pourquoi. Réservé à un outil d'entretien qui SAIT qu'il est seul sur le domaine."""
         _ck("mxlGarbageCollectFlows", _lib.mxlGarbageCollectFlows(self._h))
 
     def flow_def(self, name=None, fid=None):
@@ -586,6 +689,30 @@ class Writer:
         automatique dès qu'elle apparaît).
     """
 
+    # Avance TOLÉRÉE sur la grille en mode "tai" (grains), au-delà de l'avance demandée par
+    # `lookahead` : deux trames dans un même créneau prennent le suivant. Au-delà, la trame est
+    # RETENUE (cf. `next_index`).
+    INDEX_BAND = 2
+    # Avance au-delà de laquelle la retenue est un GEL : alarme (journal + `index_report`).
+    INDEX_ALARM_S = 1.0
+    # PROPAGATION (src_index) : recul de la source au-delà duquel ce n'est plus une gigue (source
+    # qui n'avance pas une trame, 25p dans une chaîne 50p) mais un REDÉMARRAGE (source repartie
+    # plus bas, saut d'horloge) → nouvelle génération du flux plutôt qu'une retenue qui durerait
+    # toute l'ampleur du recul. Décidé le 2026-10-25 (session Mélangeur).
+    PROP_JUMP_S = 2.0
+
+    # Compteurs publiés par `index_report()` (niveau classe : un Writer construit sans __init__
+    # par un banc les lit quand même).
+    index_ahead = 0
+    index_ahead_max = 0
+    index_held = 0
+    grains_dropped = 0
+    index_alarm = False
+    prop_held = 0          # trames retenues en propagation (source qui n'a pas avancé) — sans alarme
+    regenerations = 0      # nouvelles générations du flux (grand recul de la source)
+    _last_idx = -1
+    _scratch = None
+
     def __init__(self, instance: Instance, name, width, height, chroma="422",
                  bit_depth=8, fps_num=50, fps_den=1, index_mode="tai", flow_def=None,
                  ref=None, **flow_kw):
@@ -601,6 +728,8 @@ class Writer:
         self.rate = mxlRational(int(fps_num), int(fps_den))
         self.index_mode = index_mode
         self._counter = 0
+        self._last_idx = -1       # dernier index RÉELLEMENT ouvert (cf. open_grain)
+        self._scratch = None      # (grainInfo, vue) de brouillon d'un grain retenu
         self._h = _VOID()
         # ── GARDE FLOW PÉRIMÉ (« flowDef menteur ») ───────────────────────────────────────────
         # flow.h / mxlCreateFlowWriter : `created`=false ⇔ un flow EXISTANT est RÉATTACHÉ et le
@@ -626,10 +755,10 @@ class Writer:
                 print(f"bobimxl: purge du flow périmé {name!r} échouée ({_e!r}) — "
                       f"mxlCreateFlowWriter risque de rattacher l'ancien flowDef")
         created = ctypes.c_bool(False)
-        _ck("mxlCreateFlowWriter", _lib.mxlCreateFlowWriter(
-            instance._h, self.flow_def.encode(), _flow_options(),
-            ctypes.byref(self._h), None, ctypes.byref(created)))
+        _create_flow_writer(instance._h, self.flow_def.encode(), ctypes.byref(self._h),
+                           ctypes.byref(created), self.name)
         self.created = bool(created.value)
+        _live_writers.add(self)          # cf. index_report()
 
     def next_index(self, src_index=None, lookahead=0):
         """Index du prochain grain de sortie — **LE point unique où il se calcule**, pour toute la
@@ -666,10 +795,34 @@ class Writer:
         k+L pendant que la grille est à k et ne dort PAS jusqu'à l'échéance de k+L — cas qui
         n'existe nulle part dans la flotte aujourd'hui.
 
-        Le rattrapage est INCLUS : à chaque appel on repart de la grille COURANTE (le `max` ne
-        garde que la stricte croissance), donc un creux d'ordonnancement se résorbe tout seul — pas
-        besoin du compteur incrémenté à la main et de sa garde « si je suis en retard » que les
-        plugins portaient chacun de leur côté.
+        Le rattrapage d'un RETARD est INCLUS : à chaque appel on repart de la grille COURANTE, donc
+        un creux d'ordonnancement se résorbe tout seul — pas besoin du compteur incrémenté à la main
+        et de sa garde « si je suis en retard » que les plugins portaient chacun de leur côté.
+
+        ⚠ **Une AVANCE, elle, ne se résorbait JAMAIS** (corrigé le 2026-10-25). Le `max` avec le
+        cran précédent est asymétrique : en retard on saute à la grille, mais en avance chaque appel
+        ajoute +1 QUELLE QUE SOIT l'heure — le compteur suit alors le rythme des APPELS, plus celui
+        de l'horloge, et chaque appel en trop est acquis pour toujours. Mesuré sur la régie légère :
+        rl-mix et rl-iso écrivaient 11 s dans le futur le 24/10, 68 s le 25/10, cadence 50,0 et
+        aucun compteur ému ; le seul symptôme était un délai d'étage rejeté plus loin dans la chaîne.
+        En mode "tai", l'avance est donc BORNÉE à `INDEX_BAND` grains. Au-delà, la trame est
+        RETENUE : on rend l'index précédent, et `open_grain` ne publie pas un index qui n'est pas
+        plus récent que le dernier écrit (cf. là-bas). On ne RECULE jamais sur la grille — ce
+        serait réécrire des grains déjà publiés, qu'un lecteur qui suit la tête prendrait pour un
+        redémarrage du flux. La retenue converge seule : le compteur s'arrête, la grille avance.
+        Chez un producteur qui DORT sur l'index rendu (`next_index(lookahead=1)` puis
+        `sleep_until_tai(index_time_ns(idx))` : avsync, stills, sonde_latence), la retenue n'est
+        PAS un tour à vide : l'index rendu est en avance de plus de `INDEX_BAND`, donc dans le
+        FUTUR, et le sommeil dure exactement le temps que la grille rattrape — le producteur se
+        recale seul, au prix d'une trame abandonnée. Chez un producteur cadencé par ses ENTRÉES
+        (mixer), `index_held` compte les appels EXCÉDENTAIRES, soit la dérive. Même compteur, deux
+        sens : à distinguer avant d'y poser un seuil d'alarme.
+        Elle se COMPTE (`index_held`, `grains_dropped`) et se publie par `index_report()`. Une
+        avance de plus de `INDEX_ALARM_S` lève une alarme : une retenue aussi longue est un gel,
+        c'est une relance qu'il faut.
+        Ni la propagation `src_index` (sa référence est l'index SOURCE, pas la grille ; une source
+        repartie en arrière ne doit pas nous faire reculer) ni "genlock" (le candidat suit la tête
+        de la réf, donc il se recale seul) ne sont bornés.
 
         L'index d'un grain est une COORDONNÉE DE TEMPS, pas un numéro de séquence. `docs/Timing.md`
         du SDK est normatif : « Each index of the ring buffer correspond to a timestamp relative to
@@ -683,7 +836,8 @@ class Writer:
         estampille. Cette méthode N'ATTEND JAMAIS (elle lit une horloge) — l'exigence « sortie au
         plus tôt » d'un mélangeur ou d'un mur est intacte.
 
-        **STRICTEMENT CROISSANT par construction** (`max` avec le cran précédent). Sans ça : deux
+        **STRICTEMENT CROISSANT par construction** (`max` avec le cran précédent), sauf la trame
+        RETENUE ci-dessus, qui n'est pas publiée. Sans ça : deux
         trames émises dans le même créneau de grille (cadence plus rapide que la grille), une
         horloge qui recule sur un pas NTP, ou une horloge indisponible rendraient deux fois le même
         index — la tête du flux se figerait et le flux passerait pour MORT chez ses consommateurs.
@@ -694,10 +848,34 @@ class Writer:
         sur plusieurs writers au même index) l'appelle UNE fois par trame et passe la valeur en
         `index=` ; sinon `open_grain()` sans argument l'appelle pour lui."""
         if src_index is not None:
-            # PROPAGATION : la coordonnée vient du grain source. Le max() ci-dessous s'applique
-            # quand même — une source qui repart en arrière (producteur redémarré) ne doit pas
-            # faire reculer notre tête, sous peine de réécrire des grains déjà publiés.
+            # PROPAGATION : la coordonnée vient du grain source.
+            # ⚠ Une source qui N'AVANCE PAS (même index qu'à l'appel précédent, ou plus bas) ne
+            # doit PAS donner « compteur + 1 » : ce cran d'avance ne se résorbait JAMAIS — chaque
+            # appel suivant refaisait max(source, compteur + 1) — et le contenu restait pour
+            # toujours une trame en retard sur son étiquette (constaté le 2026-10-25 : split 0.24.2 ;
+            # même piège pour un correcteur en image entière dont l'entrée manque, ou un player dont
+            # la source repart plus bas). Deux cas :
+            #   - petit recul → RETENUE : on rend le compteur, open_grain ne publie rien. Elle se
+            #     résorbe seule : le compteur est figé, la source avance d'un cran par trame. C'est
+            #     souvent NORMAL (source 25p dans une chaîne 50p) → compté (`prop_held`), sans alarme ;
+            #   - grand recul (> PROP_JUMP_S) → NOUVELLE GÉNÉRATION du flux (regenerate) : une
+            #     retenue durerait toute l'ampleur du recul, et reculer l'index dans le même flux
+            #     réécrirait des grains déjà publiés.
+            # COÛT POUR L'AVAL (à connaître) : un recul sous PROP_JUMP_S fige la sortie jusqu'à
+            # PROP_JUMP_S, le temps que la source repasse le compteur ; au-delà, le lecteur aval ne
+            # retrouve la nouvelle génération qu'à son seuil de flux figé (Reader.STALE_MS_DEFAULT,
+            # ~5 s, mesuré 5,01 s sur dell-1 le 2026-10-25). Pire cas d'un recul de source : ~5 s figées.
             candidat = int(src_index)
+            if self._counter and candidat <= self._counter:
+                fps = self.rate.numerator / self.rate.denominator if self.rate.denominator else 0
+                if fps and self._counter - candidat > self.PROP_JUMP_S * fps:
+                    print(f"bobimxl: {self.name!r} source went back {self._counter - candidat} "
+                          f"grains — new flow generation", flush=True)
+                    self.regenerate()
+                    self._counter = candidat
+                    return self._counter
+                self.prop_held += 1
+                return self._counter
         elif self.index_mode == "genlock" and self.ref is not None:
             # Index = tête du flux de référence (index de grille GM, issu du PHC). Tant que la réf
             # n'existe pas (démarrage), 0 → le max() ci-dessous free-run, et on « snappe » sur la
@@ -711,11 +889,47 @@ class Writer:
             candidat = g if 0 < g < MXL_UNDEFINED_INDEX else 0
         if candidat and lookahead:
             candidat += int(lookahead)
-        self._counter = max(candidat, self._counter + 1)
+        nxt = max(candidat, self._counter + 1)
+        if candidat and src_index is None and self.index_mode == "tai":
+            ahead = nxt - candidat
+            if ahead > self.INDEX_BAND:
+                # RETENUE : on rend le cran précédent, qu'open_grain ne publiera pas.
+                self.index_held += 1
+                ahead = self._counter - candidat
+                nxt = self._counter
+            self.index_ahead = max(0, ahead)
+            if self.index_ahead > self.index_ahead_max:
+                self.index_ahead_max = self.index_ahead
+            fps = self.rate.numerator / self.rate.denominator if self.rate.denominator else 0
+            if fps and self.index_ahead > self.INDEX_ALARM_S * fps and not self.index_alarm:
+                self.index_alarm = True
+                print(f"bobimxl: ALARM {self.name!r} writes {self.index_ahead} grains "
+                      f"({self.index_ahead / fps:.1f} s) ahead of the TAI grid — frames are "
+                      f"held until the grid catches up, i.e. the output is FROZEN; restart the "
+                      f"producer", flush=True)
+            elif self.index_alarm and self.index_ahead <= self.INDEX_BAND:
+                self.index_alarm = False
+                print(f"bobimxl: {self.name!r} back on the TAI grid", flush=True)
+        self._counter = nxt
         return self._counter
 
     # Alias historique : des scripts appellent encore `_next_index()`. Même méthode, mêmes garanties.
     _next_index = next_index
+
+    def grid_ms(self, now_ns=None):
+        """Instant du dernier index réellement ouvert moins `now_ns` (TAI), en ms signées
+        (positif = futur) ; None tant que rien n'a été écrit. Cf. `index_report`."""
+        num, den = int(self.rate.numerator), int(self.rate.denominator)
+        if self._last_idx < 0 or num <= 0 or den <= 0:
+            return None
+        if getattr(self, "_field_rate", None) is None:
+            try:
+                im = str(json.loads(self.flow_def).get("interlace_mode") or "")
+            except Exception:
+                im = ""
+            self._field_rate = 2 if im.startswith("interlaced") else 1
+        t = self._last_idx * den * 1_000_000_000 // (num * self._field_rate)
+        return round((t - (now_tai() if now_ns is None else now_ns)) / 1e6, 1)
 
     def index_time_ns(self, index):
         """Instant TAI (ns depuis l'epoch ST 2059) du grain `index`, à la cadence de CE flux.
@@ -736,17 +950,33 @@ class Writer:
         — réservé aux cas qui la DÉRIVENT d'un appel à `next_index()` (index de champ = base×2 +
         parité, plusieurs writers au même index), jamais pour y remettre un compteur maison."""
         idx = self.next_index(src_index) if index is None else index
+        if self._last_idx >= 0 and int(idx) <= self._last_idx and self._scratch is not None:
+            # Index pas plus récent que le dernier écrit : la trame RETENUE par next_index, ou
+            # sa sœur sur un autre writer (pgm/clean/pvw au même index, champs base×2+parité).
+            # La publier réécrirait un grain déjà lu. On rend un brouillon de même forme : le
+            # producteur y rend comme d'habitude, et commit() ne publie rien.
+            self.grains_dropped += 1
+            gi, view = self._scratch
+            return idx, gi, view
         gi = mxlGrainInfo()
         payload = _PU8()
         _ck("mxlFlowWriterOpenGrain", _lib.mxlFlowWriterOpenGrain(
             self._h, idx, ctypes.byref(gi), ctypes.byref(payload)))
         view = _np_view(payload, gi.grainSize or self.frame_size)
+        self._last_idx = int(idx)
+        if self._scratch is None or self._scratch[1].size != view.size:
+            sgi = mxlGrainInfo()
+            ctypes.pointer(sgi)[0] = gi                       # copie : totalSlices, grainSize…
+            self._scratch = (sgi, np.empty(view.size, dtype=np.uint8))
         return idx, gi, view
 
     def commit(self, grain_info, valid_slices=None):
         """Publie le grain. **CRUCIAL** : marquer le grain COMPLET (`validSlices == totalSlices`)
         — sinon le lecteur le voit partiel et `getGrain` renvoie OUT_OF_RANGE_TOO_EARLY (grain
-        jamais lisible). Plein-frame par défaut ; `valid_slices` pour un write par tranches."""
+        jamais lisible). Plein-frame par défaut ; `valid_slices` pour un write par tranches.
+        Le brouillon d'un grain retenu (cf. `open_grain`) n'est pas publié."""
+        if self._scratch is not None and grain_info is self._scratch[0]:
+            return
         grain_info.validSlices = (grain_info.totalSlices if valid_slices is None
                                   else int(valid_slices))
         _ck("mxlFlowWriterCommitGrain",
@@ -764,6 +994,33 @@ class Writer:
         if getattr(self, "_h", None):
             _lib.mxlReleaseFlowWriter(self.inst._h, self._h)
             self._h = _VOID()
+
+    def regenerate(self):
+        """NOUVELLE GÉNÉRATION du flux : libère le writer, PURGE le répertoire du flux, le recrée.
+
+        Recréer un writer sur un flux existant le RÉATTACHE (`created=false`, cf. __init__) : on
+        continuerait le même anneau avec un index qui recule, en réécrivant des grains déjà
+        publiés sous un autre contenu. Ici le flux repart neuf ; les lecteurs le détectent par leur
+        garde de génération (écriture qui ne bouge plus → réouverture), comme au redémarrage d'un
+        producteur. Pour un recul exceptionnel (source redémarrée plus bas, saut d'horloge),
+        jamais pour une gigue."""
+        self.close()
+        d = os.path.join(self.inst.domain, flow_id(self.name) + ".mxl-flow")
+        try:
+            shutil.rmtree(d)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            print(f"bobimxl: purge of flow {self.name!r} failed ({e!r}) — the writer may reattach "
+                  f"the old ring", flush=True)
+        created = ctypes.c_bool(False)
+        _create_flow_writer(self.inst._h, self.flow_def.encode(), ctypes.byref(self._h),
+                           ctypes.byref(created), self.name)
+        self.created = bool(created.value)
+        self._counter = 0
+        self._last_idx = -1
+        self._scratch = None
+        self.regenerations += 1
 
     def __enter__(self):
         return self
@@ -796,12 +1053,19 @@ class _StaleGuard:
     avance. (Les writers AUDIO ne bumpent pas lastWriteTime : côté audio, le signe est un
     `head_index` qui ne bouge plus — cf. AudioReader.reopen_if_head_stale.)
 
-    Récupération, dans cet ordre — vérifié au banc :
-      1. lâcher NOTRE handle (sans ça le flux reste RÉFÉRENCÉ et le GC ne le réclame pas) ;
-      2. `garbage_collect()` (sinon le nom résout encore vers l'orphelin) ;
-      3. rouvrir. Si une référence subsiste malgré tout dans notre Instance, la réouverture
-         retombe sur l'orphelin → au 2ᵉ essai on rouvre sur une Instance **DÉDIÉE** (cache
-         vierge, résolution sur disque). Un lecteur d'un AUTRE process, lui, ne bloque rien.
+    Récupération, dans cet ordre :
+      1. lâcher NOTRE handle ;
+      2. rouvrir sur une Instance **DÉDIÉE** (cache vierge, résolution sur disque) : c'est ce qui
+         fait résoudre le NOM vers la génération vivante au lieu de l'orphelin encore présent dans
+         le cache de l'Instance partagée.
+
+    ⚠ L'étape `garbage_collect()` qui figurait ici a été RETIRÉE le 2026-10-24 : elle est globale
+    au DOMAINE et détruisait les flux vivants d'autres processus (cf. `reopen`). On ne dispose que
+    de ce qu'on vient de relâcher soi-même.
+
+    ⚠ Et on ne peut PAS se débarrasser d'une génération orpheline qu'on n'a jamais ouverte : si un
+    tiers en tient une sous ce nom, la réouverture peut rester bloquée. Il manque à l'API une
+    collecte CIBLÉE sur un flux ; en attendant, ce cas se signale au lieu de se réparer.
     """
 
     STALE_MS_DEFAULT = 5000.0     # ~250 trames à 50 Hz : au-delà, aucune source vivante n'est plausible
@@ -908,22 +1172,35 @@ class _StaleGuard:
             except Exception: pass
 
     def reopen(self, dedicated=None):
-        """Reconnexion sur la génération VIVANTE. `dedicated=None` (défaut) escalade toute seule
-        sur une Instance dédiée à partir du 2ᵉ essai consécutif. Renvoie le n° de tentative."""
+        """Reconnexion sur la génération VIVANTE. `dedicated=None` (défaut) rouvre sur une
+        Instance DÉDIÉE dès la 1ʳᵉ tentative. Renvoie le n° de tentative.
+
+        ★★ PLUS AUCUN `garbage_collect()` ICI (2026-10-24). Cette méthode en appelait un à chaque
+        réouverture. Il est **global au DOMAINE** : il ne ramasse pas « notre » génération morte,
+        il ramasse tout ce qui est collectable, y compris les flux VIVANTS d'autres processus.
+        Mesuré le 2026-08-19 sur Horace : quatre flux du moteur 2110 détruits sous leur
+        producteur, tous leurs lecteurs à 0 i/s sans le savoir. Et le 2026-10-24 sur r620-2, une
+        réplique RDMA recréée sous son récepteur, qui a continué d'écrire dans un inode délié —
+        réplique vide pour toujours, et ~850 ré-établissements par jour pour tenter de réparer ça.
+        Un consommateur n'a aucun moyen de viser SA génération : l'API n'offre que le balayage
+        global. La seule conduite tenable est donc de ne pas balayer. Règle adoptée par le
+        mélangeur le 2026-10-23 : on ne dispose QUE de ce qu'on vient de relâcher soi-même.
+
+        Ce qu'on perd : le GC servait à faire oublier l'orphelin pour que le NOM résolve vers la
+        génération vivante. L'Instance dédiée obtient le même résultat SANS toucher au domaine —
+        cache vierge, résolution sur disque — et c'était déjà le repli du 2ᵉ essai. On l'emploie
+        donc d'emblée, sinon la 1ʳᵉ tentative retomberait sur l'orphelin du cache partagé et la
+        reprise coûterait un cycle de plus qu'avant."""
         n = getattr(self, "_stale_n", 0) + 1
         self._stale_n = n
         if dedicated is None:
-            dedicated = n >= 2
+            dedicated = True
         try:
             if self._h:
                 _lib.mxlReleaseFlowReader(self.inst._h, self._h)
         except Exception:
             pass
         self._h = _VOID()
-        try:
-            self.inst.garbage_collect()
-        except Exception:
-            pass
         if dedicated:
             old_own = getattr(self, "_own_inst", None)
             self.inst = self._own_inst = Instance(self.inst.domain)
@@ -1201,6 +1478,20 @@ class Reader(_StaleGuard):
         rt = mxlFlowRuntimeInfo()
         st = _lib.mxlFlowReaderGetRuntimeInfo(self._h, ctypes.byref(rt))
         return rt.lastWriteTime if st == MXL_STATUS_OK else 0
+
+    def head_and_write_time(self):
+        """(headIndex, lastWriteTime) lus d'UN SEUL appel — ou None si indisponible.
+
+        Le writer pose les deux au même commit, PARTIEL compris (PosixDiscreteFlowWriter : head
+        puis lastWriteTime à chaque commit de tranche). Vu au moment où la tête passe à k,
+        lastWriteTime est donc l'instant de la 1ʳᵉ tranche de k — à condition de regarder avant
+        la tranche suivante. Deux appels séparés (head_index puis last_write_time) laisseraient
+        un commit s'intercaler et apparieraient la tête d'un grain à l'heure d'un autre."""
+        rt = mxlFlowRuntimeInfo()
+        st = _lib.mxlFlowReaderGetRuntimeInfo(self._h, ctypes.byref(rt))
+        if st != MXL_STATUS_OK:
+            return None
+        return rt.headIndex, rt.lastWriteTime
 
     def format(self):
         """Format du flux LU DANS SON flow_def (source de vérité côté donnée) :
@@ -2167,9 +2458,8 @@ class AudioWriter:
         self.index_mode = index_mode
         self._counter = 0
         self._h = _VOID(); created = ctypes.c_bool(False)
-        _ck("mxlCreateFlowWriter", _lib.mxlCreateFlowWriter(
-            instance._h, self.flow_def.encode(), _flow_options(),
-            ctypes.byref(self._h), None, ctypes.byref(created)))
+        _create_flow_writer(instance._h, self.flow_def.encode(), ctypes.byref(self._h),
+                           ctypes.byref(created), self.name)
         self.created = bool(created.value)
         if not self.created:
             # The flow already existed: libmxl has just left its temporary copy behind.

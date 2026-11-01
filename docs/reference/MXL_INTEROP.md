@@ -4,10 +4,13 @@ Objectif : échanger des grains dans un **même serveur** (même domaine `/dev/s
 containers d'AUTRES éditeurs, via le SDK MXL (EBU DMF / Linux Foundation) → respecter le **SDK
 stock** à la lettre, pas nos extensions. Cf. mémoire `mxl-interop-other-vendors-goal`.
 
-Audit 2026-07-07 contre **dmf-mxl/mxl `v1.1.0-beta-1`** — le tag alors buildé. **Depuis le
-2026-08-13, `MXL_REF = v1.1.0-rc1`** ; les conclusions d'interop ci-dessous sont inchangées (rc1
-ne touche ni au type vidéo, ni au parseur ANC, ni au format audio), seul l'outillage de banc a été
-re-tagué `bobi-mxl-stock:1.1-rc1`.
+Audit 2026-07-07 contre **dmf-mxl/mxl `v1.1.0-beta-1`** — le tag alors buildé. Le 2026-08-13,
+`MXL_REF` est passé à `v1.1.0-rc1` ; les conclusions d'interop ci-dessous étaient inchangées (rc1
+ne touche ni au type vidéo, ni au parseur ANC, ni au format audio), seul l'outillage de banc avait été
+re-tagué `bobi-mxl-stock:1.1-rc1`. **Depuis le 2026-09-12, `MXL_REF = v1.1.0`** (version finale,
+`plugins/_compute_runtime/Dockerfile` et `plugins/_mxl_stock_bench/Dockerfile`, commits b626b480 et
+c7a93f75) ; le tag de l'image de banc suit `MXL_REF`. ⚠ Le banc croisé n'a **pas été rejoué** sur
+v1.1.0 : les conclusions ci-dessous reposent sur beta-1 (banc du 2026-07-12) et la lecture de rc1.
 
 > ## ⚠ CORRECTION MAJEURE — BANC CROISÉ EXÉCUTÉ 2026-07-12 (lire d'abord)
 >
@@ -154,7 +157,7 @@ R3 (tout-v210) = repli futur si on a le GPU.
 Outillage versionné : **`plugins/_mxl_stock_bench/`** (Dockerfile `bobi-mxl-stock:<MXL_REF>` =
 libmxl stock SANS nos patches, couches identiques au runtime compute jusqu'au configure → cache
 vcpkg réutilisé ; + `stock_probe.c`, consommateur vidéo écrit contre les headers stock). Le banc
-de 2026-07-12 a tourné sur `1.1` (= beta-1) ; le Dockerfile build aujourd'hui `1.1-rc1`.
+de 2026-07-12 a tourné sur `1.1` (= beta-1) ; le Dockerfile build aujourd'hui `v1.1.0` (depuis le 2026-09-12).
 Producteur du banc : `script_templates/v210_e2e.py` (E2E interne) et le producteur double-flow du
 banc croisé. Exécution : conteneurs jetables, flux préfixés, GC en sortie — rien de la prod touché.
 
@@ -294,8 +297,8 @@ marché + PCIe réduit) ou des convertisseurs multi-threadés — à re-mesurer 
 
 ## Profondeur des ring buffers MXL — une DURÉE, pas un nombre de trames (2026-08-09)
 
-Vérifié dans le SDK stock `v1.1.0-beta-1` (tag alors buildé ; `MXL_REF = v1.1.0-rc1` depuis le
-2026-08-13, mécanique inchangée) : ce que le SDK **règle**
+Vérifié dans le SDK stock `v1.1.0-beta-1` (tag alors buildé ; `MXL_REF = v1.1.0-rc1` le
+2026-08-13, mécanique inchangée ; `v1.1.0` depuis le 2026-09-12, non revérifié) : ce que le SDK **règle**
 est une **durée**, en nanosecondes, par domaine. Ce que l'exploitant **observe et compte** sur le
 disque (`ls <flux>.mxl-flow/grains | wc -l`) est un **nombre de grains** — la conversion se fait
 par `grains = durée × cadence`, et ce nombre n'est PAS le même pour tous les flux du domaine.

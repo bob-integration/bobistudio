@@ -1,6 +1,9 @@
 // ─── État palette de déploiement ─────────────────────────────
 
 let selectedDeployVmid = null;
+// Révision de la config chargée dans la palette : renvoyée au déploiement (`seen_rev`) pour qu'une
+// entrée dont le port a été réaffecté depuis ne revienne pas sur son ancien flux.
+let selectedDeployRev = null;
 let lastContainers     = [];
 
 // ─── Formats vidéo ───────────────────────────────────────────
@@ -1464,15 +1467,20 @@ async function selectDeployContainer(vmid) {
     selectedDeployVmid = vmid;
     const r = await fetch('/api/containers/' + vmid + '/config');
     const c = await r.json();
+    selectedDeployRev = (c && c.config_rev != null) ? c.config_rev : null;
     renderDeployPalette(c);
     _syncConfigureExpanded(vmid);
+    // APRÈS le rendu : le champ n'existe qu'une fois la palette peinte. Et sans `await` sur le
+    // rendu — l'état de la sortie demande un appel au nœud, et la palette ne doit pas attendre
+    // le réseau pour s'afficher.
+    chargerSortieConteneur(vmid);
 }
 
 function fermerPalette() {
     selectedDeployVmid = null;
     const host = document.getElementById('deploy-palette');
     if (host) {
-        host.style.display = 'none';
+        host.hidden = true;
         host.innerHTML = '';
     }
     _syncConfigureExpanded(null);
@@ -1493,7 +1501,9 @@ function renderDeployPalette(c) {
     const tpl  = document.getElementById('deploy-palette-tpl');
     if (!host || !tpl) return;
 
-    host.style.display = 'block';
+    // L'aside naît `hidden`, et `[hidden]{display:none !important}` (base.css) l'emporte sur
+    // tout style en ligne : c'est l'attribut qu'il faut lever, pas `style.display` (2026-10-28).
+    host.hidden = false;
     host.innerHTML = '';
     host.appendChild(tpl.content.cloneNode(true));
 
@@ -1925,6 +1935,65 @@ async function majRessources() {
     setTimeout(() => { status.textContent = ''; }, 6000);
 }
 
+// ─── Sortie réseau d'un conteneur (« Sortie Internet ») ────────────────────────────────────
+// Deux fonctions, et la séparation compte : CHARGER lit l'état du nœud (la sortie est-elle même
+// possible ici ?), APPLIQUER écrit. Mélanger les deux ferait écrire au premier affichage.
+async function chargerSortieConteneur(vmid) {
+    const host = document.getElementById('deploy-palette');
+    if (!host) return;
+    const champ = host.querySelector('.dp-egress-field');
+    const sel = host.querySelector('.dp-egress');
+    const hint = host.querySelector('.dp-egress-hint');
+    if (!champ || !sel) return;
+    champ.style.display = 'none';
+    try {
+        const r = await fetch('/api/containers/' + vmid + '/egress');
+        if (!r.ok) return;
+        const j = await r.json();
+        sel.value = j.egress || 'node';
+        sel.dataset.initial = sel.value;
+        // On AFFICHE le champ dès que le conteneur a une sortie à montrer, même si « Internet »
+        // n'est pas disponible : l'option est alors désactivée AVEC sa raison. Masquer tout
+        // laisserait croire que la fonction n'existe pas.
+        champ.style.display = '';
+        const opt = sel.querySelector('option[value="internet"]');
+        if (opt) opt.disabled = (j.internet_possible === false);
+        if (j.internet_possible === false) {
+            hint.textContent = window.t('containers.egress.indispo') + ' — ' + (j.internet_refus || '');
+        } else {
+            hint.textContent = window.t('containers.egress.note')
+                + (j.iface ? ' (' + j.iface + ')' : '');
+        }
+    } catch (e) { /* panneau réseau indisponible : on laisse le champ masqué */ }
+}
+
+async function appliquerSortieConteneur() {
+    if (selectedDeployVmid === null) return;
+    const host = document.getElementById('deploy-palette');
+    const sel = host.querySelector('.dp-egress');
+    const hint = host.querySelector('.dp-egress-hint');
+    const voulu = sel.value;
+    if (voulu === sel.dataset.initial) return;
+    hint.textContent = '⏳…';
+    const r = await fetch('/api/containers/' + selectedDeployVmid + '/egress', {
+        method: 'PATCH', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({egress: voulu}),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && j.ok) {
+        sel.dataset.initial = j.egress;
+        hint.textContent = '✓ ' + (j.message || '') + ' — ' + window.t('containers.egress.note');
+        hint.style.color = 'var(--status-running-fg)';
+    } else {
+        // ★ On REMET le menu sur la valeur réelle. Le laisser sur le choix refusé afficherait
+        // une sortie que le conteneur n'a pas : l'exploitant croirait son flux parti ailleurs.
+        sel.value = sel.dataset.initial || 'node';
+        hint.textContent = '✕ ' + (j.error || ('HTTP ' + r.status));
+        hint.style.color = 'var(--status-stopped-fg)';
+    }
+    setTimeout(() => { hint.style.color = ''; }, 8000);
+}
+
 async function deployerPalette() {
     if (selectedDeployVmid === null) return;
     const host = document.getElementById('deploy-palette');
@@ -1998,7 +2067,8 @@ async function deployerPalette() {
     const r = await fetch('/api/containers/' + selectedDeployVmid + '/deploy', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({type, params, version: selectedPluginVersion(host),
-                              path: '/opt/script/main.py'})
+                              path: '/opt/script/main.py',
+                              ...(selectedDeployRev === null ? {} : {seen_rev: selectedDeployRev})})
     });
     if (r.ok) {
         status.textContent = window.t('js.deployed');
@@ -2437,6 +2507,12 @@ function updateAlerts(alerts) {
             <span class="log-msg">${escapeHtml(a.message)}</span>${(() => {
                 const v = _alerteVmid(a);
                 return v == null ? '' : `<a class="log-jump" title="${escapeHtml(window.t('js.logs.from_alert') || 'Voir le journal du conteneur au moment de cette alerte')}" onclick="ouvrirJournalAlerte(${v}, '${escapeHtml(a.timestamp)}')">${escapeHtml(window.t('js.logs.from_alert_link') || '⤷ journal')}</a>`;
+            })()}${(() => {
+                // Output kept by the controller when the script died on its own (app/crash_tail.py).
+                const p = _alerteParams(a);
+                const id = p && parseInt(p.crash_tail_id, 10);
+                if (!id) return '';
+                return ` <a class="log-jump" title="${escapeHtml(window.t('js.crash_tail.from_alert') || 'Dernières lignes du script avant sa mort, conservées par le contrôleur')}" onclick="BobiLogs.openCrashTail(${id})">${escapeHtml(window.t('js.crash_tail.link') || '⤷ fin de sortie')}</a>`;
             })()}
         </div>
     `).join('') || '<div class="meta">' + window.t('js.alerts_none') + '</div>';

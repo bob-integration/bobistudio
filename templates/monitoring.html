@@ -92,12 +92,15 @@
 .core-dot.core-gpu { background:#e8a33d; }
 .core-dot.core-free { background:#3bce82; } .core-dot.core-off { opacity:.4; background:var(--text-muted); }
 .cpu-sub { margin:10px 0 4px; font-size:.85rem; }
-.cpu-who-table { width:100%; border-collapse:collapse; font-size:.82rem; }
-.cpu-who-table th { color:var(--text-muted); font-weight:normal; text-align:left; padding:2px 4px; }
-.cpu-who-table td { padding:2px 4px; border-top:1px solid var(--border, #333a44); }
-.cpu-who-table .badge { font-size:.7rem; padding:1px 5px; border-radius:4px;
-    background:rgba(176,108,217,.18); color:#b06cd9; }
-.core-snap-table tr.core-hot td { color:var(--status-warning-fg, #e0a93b); }
+/* Résumé « plus gros consommateurs » : une ligne par conteneur, le nom coupé plutôt que replié.
+   Le tableau complet vit dans la fenêtre des cœurs (static/js/cores.js). */
+.cpu-sub { display:flex; align-items:baseline; gap:10px; }
+.cpu-sub a { margin-left:auto; font-weight:normal; font-size:.8rem; }
+.cpu-top { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:2px 10px; font-size:.82rem; }
+.cpu-top > span { padding:2px 0; border-top:1px solid var(--border, #333a44); }
+.cpu-top .cpu-top-n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cpu-top .cpu-top-v { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.socket-cpus { overflow-wrap:anywhere; }
 .node-stale { opacity:.55; }
 /* ─── Tissu de composition : graphe à connecteurs ─── */
 .fab-graph-wrap { overflow-x:auto; }
@@ -153,6 +156,21 @@
 .rdma-iface td code { font-size:.95em; }
 .node-spark-empty { height:40px; display:flex; align-items:center; justify-content:center; border:1px dashed var(--border); border-radius:4px; }
 @media (max-width:640px){ .rdma-graphs { grid-template-columns:1fr; } }
+/* Connexions : une jauge par écoute (un segment par fil), lisible au doigt sur iPad. */
+.conn-pools { display:flex; flex-wrap:wrap; gap:var(--space-3); margin:var(--space-2) 0 var(--space-3); }
+.conn-pool { display:flex; gap:var(--space-3); align-items:flex-start; padding:var(--space-2) var(--space-3);
+             border:1px solid var(--border); border-radius:var(--radius-small, 4px); min-width:0; flex:1 1 320px; }
+.conn-meter { height:112px; width:14px; flex:none; }
+.conn-pool-txt { min-width:0; display:flex; flex-direction:column; gap:var(--space-2); }
+.conn-pool-name { font-weight:600; }
+.conn-readouts { display:flex; flex-wrap:wrap; gap:var(--space-2); }
+.conn-alarm { margin:0; }
+.conn-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.conn-table td { vertical-align:top; }
+.conn-table .conn-path { word-break:break-all; }
+.conn-table .mono { font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+@media (max-width:640px){ .conn-table th:nth-child(8), .conn-table td:nth-child(8),
+                           .conn-table th:nth-child(5), .conn-table td:nth-child(5) { display:none; } }
 </style>
 
 <div id="mon-tabs" class="mon-tabs subnav-deck" role="tablist">
@@ -166,6 +184,12 @@
             onclick="activateMonitoringView('rdma')">{{ _('monitoring.tab_rdma') }}</button>
     <button type="button" class="tab" data-view="logs" role="tab"
             onclick="activateMonitoringView('logs')">{{ _('monitoring.tab_logs') }}</button>
+    <button type="button" class="tab" data-view="relay" role="tab"
+            onclick="activateMonitoringView('relay')">{{ _('monitoring.tab_relay') }}</button>
+    {% if has_perm('settings.edit') %}
+    <button type="button" class="tab" data-view="connections" role="tab"
+            onclick="activateMonitoringView('connections')">{{ _('monitoring.tab_connections') }}</button>
+    {% endif %}
     <a class="tab" href="/ops-journal" role="tab">{{ _('monitoring.tab_opsj') }}</a>
     <a class="tab" href="/probe" role="tab">{{ _('nav.probe') }}</a>
 </div>
@@ -278,6 +302,22 @@
 
 <div id="mon-view-rdma" class="mon-view" hidden>
     <div id="rdma-body"><div class="meta">{{ _('monitoring.loading') }}</div></div>
+</div>
+
+{# Relais d'état (app/state_relay.py) : un abonnement par conteneur qui pousse son état, partagé
+   par tous les lecteurs. Un relais périmé est AFFICHÉ comme tel, et chaque repli d'un lecteur
+   vers le conteneur est compté. #}
+<div id="mon-view-relay" class="mon-view" hidden>
+    <p class="meta">{{ _('monitoring.relay_hint') }}</p>
+    <div id="relay-body"><div class="meta">{{ _('monitoring.loading') }}</div></div>
+</div>
+
+{# Connexions (app/http_connections.py) : requêtes en cours et fils de service de l'orchestrateur.
+   Réservé aux administrateurs (adresses et comptes des personnes connectées). Le panneau existe pour
+   tous — `_setActiveTab` exige un panneau par vue — mais seul l'administrateur a l'onglet. #}
+<div id="mon-view-connections" class="mon-view" hidden>
+    <p class="meta">{{ _('monitoring.conn_hint') }}</p>
+    <div id="conn-body"><div class="meta">{{ _('monitoring.loading') }}</div></div>
 </div>
 
 <div id="mon-view-logs" class="mon-view" hidden>
@@ -851,7 +891,7 @@ function _setActiveTab(view) {
     document.getElementById('mon-view-plugin').hidden = _MON_BUILTIN.includes(view);
 }
 
-const _MON_BUILTIN = ['overview', 'nodes', 'fabric', 'rdma', 'logs'];
+const _MON_BUILTIN = ['overview', 'nodes', 'fabric', 'rdma', 'logs', 'relay', 'connections'];
 
 // Active un onglet de page. 'overview' = vue d'ensemble ; sinon view = type de plugin.
 // ─── Onglet Journaux ──────────────────────────────────────────────────────────────────────
@@ -999,6 +1039,8 @@ async function activateMonitoringView(view) {
         if (view === 'fabric') renderFabric();
         if (view === 'rdma') rafraichirRdmaMon();
         if (view === 'logs') logsChargerNoeuds();
+        if (view === 'relay') rafraichirRelais();
+        if (view === 'connections') rafraichirConnexions();
         return;
     }
     const type = view;
@@ -1064,8 +1106,6 @@ document.addEventListener('click', (e) => {
     _coreSel = (_coreSel === cpu) ? null : cpu;   // re-clic = referme
     renderNodeDetail();
 });
-let _coreSnap = null;      // dernier instantané des cœurs {key, ts, data} — survit au re-render 5 s
-let _coreSnapBusy = false;
 
 // Mini-parseur cpuset "a-b,c" → liste d'entiers (miroir JS de core_pool.parse_cpuset).
 function parseCpusetJS(s) {
@@ -1220,7 +1260,20 @@ function nodeCard(key, snap) {
         ${gauge('/dev/shm', shm, fmtPct(shm))}
         ${gpuBlock}
         ${rdmaBlock}
+        ${boutonCoeurs(key, snap, true)}
     </div>`;
+}
+
+// « Gérer les cœurs » : la fenêtre partagée (static/js/cores.js), la MÊME que Réglages → Nœuds.
+// Seulement pour un nœud ENRÔLÉ : la carte « controller » n'a pas d'identifiant numérique, donc
+// pas de pool de calcul à montrer — un bouton qui ouvrirait une fenêtre vide ne rend service à
+// personne. `stopPropagation` sur la carte compacte, dont toute la surface ouvre le détail.
+function boutonCoeurs(key, snap, compact) {
+    if (!/^\d+$/.test(String(key))) return '';
+    return `<div style="margin:${compact ? '8px 0 0' : '6px 0'}">
+        <button type="button" class="btn" data-n="${escapeHtml(snap.name || key)}"
+                onclick="${compact ? 'event.stopPropagation();' : ''}window.BobiCores.ouvrir(${+key}, this.dataset.n)">
+            ${window.t('monitoring.cores_manage')}</button></div>`;
 }
 
 function _orderedNodes(data) {
@@ -1275,6 +1328,28 @@ async function goPrepRefresh(key, btn) {
         // Sonde impossible (nœud injoignable / sans capacité 2110) : le DIRE, ne pas laisser
         // l'ancien verdict sur place en donnant l'illusion d'un rafraîchissement.
         showToast(window.t('monitoring.prep_recheck_failed') + (j.error ? ' — ' + j.error : ''), 'error');
+    } catch (e) {
+        showToast(window.t('monitoring.net_error') + ' ' + e.message, 'error');
+    }
+    btn.disabled = false;
+    btn.textContent = old;
+}
+
+async function goMxlHistoryApply(key, btn) {
+    const old = btn.textContent;
+    btn.disabled = true;
+    try {
+        const r = await fetch(`/api/mtl/mxl_history?node_id=${encodeURIComponent(key)}`, {method: 'POST'});
+        const j = await r.json();
+        if (j.state && _nodesData && _nodesData.nodes && _nodesData.nodes[key]) _nodesData.nodes[key].mxl_history = j.state;
+        if (j.ok) {
+            showToast(window.t('monitoring.mxl_applied'), 'ok');
+            await renderNodeDetail();
+            return;
+        }
+        showToast(window.t('monitoring.mxl_apply_failed') + (j.msg || j.error ? ' — ' + (j.msg || j.error) : ''), 'error');
+        await renderNodeDetail();
+        return;
     } catch (e) {
         showToast(window.t('monitoring.net_error') + ' ' + e.message, 'error');
     }
@@ -1404,7 +1479,7 @@ async function renderNodeDetail() {
             return `<div class="socket">
                 <div class="socket-head">
                     <span class="socket-name">${window.t('monitoring.socket_label').replace('{n}', s.numa)}</span>
-                    <span class="meta">${escapeHtml(s.cpus)}</span>
+                    <span class="meta socket-cpus" title="${escapeHtml(s.cpus)}">${escapeHtml(cpusCompact(s.cpus))}</span>
                     ${dev.map(d => `<span class="socket-dev"${d.tip ? ` title="${escapeHtml(d.tip)}"` : ''}>${escapeHtml(d.txt)}</span>`).join('')}
                     <span class="socket-cap${plein ? ' socket-full' : ''}">${
                         window.t('monitoring.socket_capacity')
@@ -1513,26 +1588,24 @@ async function renderNodeDetail() {
                 `${window.t('monitoring.cpu_pressure')} : ` +
                 window.t('monitoring.cpu_pressure_val').replace('{some}', Math.round(hsome)) + `</div>`;
         }
-        const rows = (cm.containers || []).map(c => {
-            const pin = c.source === 'engine'
-                ? `${escapeHtml(c.pinned_cores)} <span class="badge">${window.t('monitoring.cpu_engine_badge')}</span>`
-                : (c.pinned_cores ? escapeHtml(c.pinned_cores) : `<span class="meta">${window.t('monitoring.cpu_not_pinned')}</span>`);
-            // Famine = PSI « full » du conteneur. Un conteneur affamé consomme PEU de CPU (il attend) :
-            // la colonne CPU % ne peut PAS la montrer, celle-ci si.
+        // Résumé : les 3 plus gros consommateurs, PLUS tout conteneur affamé (PSI full ≥ 1 %) — un
+        // conteneur affamé consomme PEU (il attend), il ne serait jamais dans le haut du classement.
+        // Le tableau complet (place, poids, cœurs, famine, relevé des cœurs) est dans la fenêtre
+        // des cœurs : deux tableaux auraient divergé, et celui-ci débordait de la tuile.
+        const lignesTop = cpuTopConsumers(cm.containers).map(c => {
             const full = (c.psi || {}).full;
-            const psi = full == null ? '—'
-                : (full < 1 ? `<span class="meta">${window.t('monitoring.cpu_psi_ok')}</span>`
-                            : `<span style="color:${full >= 25 ? 'var(--danger, #e5484d)' : 'var(--warning, #f5a524)'};font-weight:600">${full.toFixed(0)} %</span>`);
-            return `<tr><td>${escapeHtml(c.hostname || '?')} <span class="meta">(${c.vmid}${c.type ? ' · ' + escapeHtml(c.type) : ''})</span></td>
-                <td style="text-align:right">${c.cpu_percent != null ? c.cpu_percent.toFixed(1) + ' %' : '—'}</td>
-                <td style="text-align:right" title="${window.t('monitoring.cpu_psi_tip')}">${psi}</td>
-                <td style="text-align:right">${pin}</td></tr>`;
+            const psi = full != null && full >= 1
+                ? `<span style="color:${full >= 25 ? 'var(--danger, #e5484d)' : 'var(--warning, #f5a524)'};font-weight:600" title="${window.t('monitoring.cpu_psi_tip')}">${window.t('monitoring.cpu_col_psi')} ${full.toFixed(0)} %</span>`
+                : '';
+            return `<span class="cpu-top-n" title="${escapeHtml((c.hostname || '?') + ' (' + c.vmid + ')')}">${escapeHtml(c.hostname || '?')}</span>
+                <span class="cpu-top-v">${c.cpu_percent != null ? c.cpu_percent.toFixed(1) + ' %' : '—'}</span>
+                <span class="cpu-top-v">${psi}</span>`;
         }).join('');
-        cpuExtra += `<h4 class="cpu-sub">${window.t('monitoring.cpu_who_title')}</h4>` + (rows
-            ? `<table class="cpu-who-table"><thead><tr><th></th><th style="text-align:right">${window.t('monitoring.cpu_col_cpu')}</th><th style="text-align:right" title="${window.t('monitoring.cpu_psi_tip')}">${window.t('monitoring.cpu_col_psi')}</th><th style="text-align:right">${window.t('monitoring.cpu_col_pinning')}</th></tr></thead><tbody>${rows}</tbody></table>`
-            : `<div class="meta">—</div>`);
-        cpuExtra += `<div style="margin-top:8px"><button type="button" class="btn" onclick="coreSnapshot('${key}')" ${_coreSnapBusy ? 'disabled' : ''}>${_coreSnapBusy ? window.t('monitoring.core_snapshot_busy') : window.t('monitoring.core_snapshot_btn')}</button></div>`;
-        cpuExtra += renderCoreSnapHtml(key);
+        const toutVoir = /^\d+$/.test(String(key))
+            ? `<a href="#" data-n="${escapeHtml(snap.name || key)}" onclick="event.preventDefault();window.BobiCores.ouvrir(${+key}, this.dataset.n)">${window.t('monitoring.cpu_see_all')}</a>`
+            : '';
+        cpuExtra += `<h4 class="cpu-sub"><span>${window.t('monitoring.cpu_top_title')}</span>${toutVoir}</h4>`
+            + (lignesTop ? `<div class="cpu-top">${lignesTop}</div>` : `<div class="meta">—</div>`);
     }
 
     // Disques (hors /dev/shm : tmpfs adossé à la RAM → présenté dans « Mémoire »)
@@ -1576,7 +1649,7 @@ async function renderNodeDetail() {
         [window.t('monitoring.nodes_model'), escapeHtml(r.cpu_model || '—')],
     ].concat([st24row('cpu', '%')].filter(Boolean)))}${
         socketBlocks || `<div class="node-cores" style="margin:8px 0">${cores}</div>`
-    }${coreDetail}${cpuExtra}${sparkline(hist, 'cpu', '#5b8def')}</section>`);
+    }${boutonCoeurs(key, snap)}${coreDetail}${cpuExtra}${sparkline(hist, 'cpu', '#5b8def')}</section>`);
 
     const mb = snap.membw;
     sections.push(`<section><h3>${window.t('monitoring.nodes_memory')}</h3>${kv([
@@ -1759,6 +1832,40 @@ async function renderNodeDetail() {
         </section>`);
     }
 
+    // Profondeur des ring buffers MXL : TOUT nœud (2110 ou non — la Z8 DeckLink ne l'avait jamais
+    // reçue). État mesuré par la sonde de dérive / la dernière pose (app/mxl_history.py), jamais
+    // supposé ; « pas encore mesurée » tant qu'aucune sonde n'a tourné. Le bouton mesure d'abord et
+    // ne redéploie rien : les flux déjà ouverts gardent leur profondeur, ce qui est dit ici.
+    if (key !== 'controller') {
+        const m = snap.mxl_history;
+        const RUN = 'var(--status-running-fg)', ERR = 'var(--status-error-fg)', WARN = 'var(--status-warning-fg,#c80)';
+        let body;
+        if (!m) {
+            body = `<div class="meta">${window.t('monitoring.mxl_never')}</div>`;
+        } else {
+            const okDepth = m.cur_ms != null && m.cur_ms === m.want_ms;
+            const rows = [
+                [window.t('monitoring.mxl_live'), m.cur_ms != null
+                    ? `<span style="color:${okDepth ? RUN : ERR}">${m.cur_ms} ms</span>`
+                    : `<span style="color:${ERR}">${window.t('monitoring.mxl_absent')}</span>`],
+                [window.t('monitoring.mxl_want'), `${m.want_ms} ms`],
+                [window.t('monitoring.mxl_persist'), `<span style="color:${m.persistent ? RUN : WARN}">`
+                    + `${m.persistent ? window.t('monitoring.mxl_persist_ok') : window.t('monitoring.mxl_persist_ko')}</span>`],
+            ];
+            if (m.last_ok === false) rows.push([window.t('monitoring.mxl_last_fail'),
+                `<span style="color:${ERR}">${escapeHtml(m.last_msg || '')}</span>`]);
+            body = kv(rows);
+            if (m.stale_flows) body += `<div class="meta" style="margin-top:6px;color:${WARN}">`
+                + escapeHtml(window.t('monitoring.mxl_stale').replace('{flows}', m.stale_flows.flows)
+                    .replace('{old_ms}', m.stale_flows.old_ms).replace('{want_ms}', m.want_ms)) + `</div>`;
+        }
+        sections.push(`<section><h3>${window.t('monitoring.mxl_section')}</h3>${body}
+            <div style="margin-top:8px"><button type="button" class="btn"
+                onclick="goMxlHistoryApply('${key}', this)">${window.t('monitoring.mxl_apply')}</button>
+            <span class="meta"> ${window.t('monitoring.mxl_apply_hint')}</span></div>
+        </section>`);
+    }
+
     // Réservation des cœurs : le pool DÉCLARÉ, et surtout la VÉRIFICATION qu'il est effectif.
     // Un pool en base ne prouve rien : ce qui compte est ce que Docker a réellement posé et ce que
     // l'ordonnanceur peut réellement exécuter (invariants I1/I2 de app/placement.py). Sans ce
@@ -1847,43 +1954,39 @@ async function renderNodeDetail() {
         <div class="node-detail-grid">${sections.join('')}</div>`;
 }
 
-// Instantané des cœurs : mesure on-demand (~0,5 s côté agent) — % réel par cœur + threads/
-// conteneurs dessus (PSR). Résultat gardé dans _coreSnap : renderNodeDetail réécrit tout
-// l'innerHTML toutes les 5 s, l'instantané doit survivre au refresh (d'où l'horodatage).
-async function coreSnapshot(key) {
-    if (_coreSnapBusy) return;
-    _coreSnapBusy = true;
-    if (_detailKey === key) renderNodeDetail();   // bouton → « Mesure en cours… »
-    try {
-        const j = await (await fetch(`/api/nodes/${encodeURIComponent(key)}/core-snapshot`)).json();
-        _coreSnap = { key, ts: Date.now(), data: j };
-    } catch (_) {
-        _coreSnap = { key, ts: Date.now(), data: { ok: false, error: 'network' } };
-    }
-    _coreSnapBusy = false;
-    if (_detailKey === key) renderNodeDetail();
+// Liste de cœurs d'un socket → forme courte. Sur un bi-socket ENTRELACÉ (dell-1 : socket 0 =
+// 0,2,4…94) les plages ordinaires ne raccourcissent rien et la liste brute sortait de la tuile :
+// une suite de pas 2 s'écrit « 0–94 pairs ». La liste complète reste dans l'infobulle.
+// Résumé de la tuile CPU : les 3 plus gros consommateurs (liste déjà triée par CPU % décroissant
+// côté serveur) + tout conteneur AFFAMÉ (PSI full ≥ 1 %) hors de ce haut de classement.
+function cpuTopConsumers(containers) {
+    const tous = containers || [];
+    const affame = (c) => { const f = (c.psi || {}).full; return f != null && f >= 1; };
+    return tous.slice(0, 3).concat(tous.slice(3).filter(affame));
 }
 
-function renderCoreSnapHtml(key) {
-    if (!_coreSnap || _coreSnap.key !== key) return '';
-    const d = _coreSnap.data || {};
-    const ts = new Date(_coreSnap.ts).toLocaleTimeString();
-    if (!d.ok) {
-        const msg = d.error === 'agent_too_old' ? window.t('monitoring.core_snapshot_agent_old')
-                                                : window.t('monitoring.core_snapshot_err');
-        return `<div class="meta" style="margin-top:6px">${msg}</div>`;
+function cpusCompact(cpuset) {
+    const xs = parseCpusetJS(cpuset);
+    if (xs.length < 3) return xs.join(', ');
+    const out = [];
+    let i = 0;
+    while (i < xs.length) {
+        let j = i + 1;
+        const pas = j < xs.length ? xs[j] - xs[i] : 0;
+        if (pas === 1 || pas === 2) {
+            while (j + 1 < xs.length && xs[j + 1] - xs[j] === pas) j++;
+            if (j - i >= 2) {
+                out.push(pas === 1 ? `${xs[i]}–${xs[j]}`
+                    : window.t(xs[i] % 2 ? 'monitoring.cpus_odd' : 'monitoring.cpus_even')
+                          .replace('{a}', xs[i]).replace('{b}', xs[j]));
+                i = j + 1;
+                continue;
+            }
+        }
+        out.push(String(xs[i]));
+        i++;
     }
-    const rows = (d.cores || []).map(c => {
-        const hot = c.pct >= 80;
-        const top = (c.top || []).map(t => {
-            const who = t.hostname ? `${escapeHtml(t.hostname)} (${t.vmid})` : escapeHtml(t.container || '?');
-            return `${who} · <span class="meta">${escapeHtml(t.comm || '')}</span> · ${t.pct} %`;
-        }).join('<br>') || `<span class="meta">${window.t('monitoring.core_top_none')}</span>`;
-        return `<tr${hot ? ' class="core-hot"' : ''}><td>#${c.cpu}</td>
-            <td style="text-align:right">${c.pct != null ? c.pct.toFixed(1) + ' %' : '—'}</td><td>${top}</td></tr>`;
-    }).join('');
-    return `<div class="meta" style="margin-top:8px">${window.t('monitoring.core_snapshot_ts')} ${ts} · ${d.duration_ms} ms</div>
-        <table class="cpu-who-table core-snap-table"><tbody>${rows}</tbody></table>`;
+    return out.join(', ');
 }
 
 async function rafraichirClusterBar() {
@@ -2369,5 +2472,153 @@ window.MXLPoll(rafraichirShm, 5000);
 window.MXLPoll(rafraichirRdmaMon, 5000);                        // badge agrégé + onglet RDMA
 
 window.MXLPoll(rafraichirClusterBar, 5000);                      // bandeau cluster (vue d'ensemble)
+
+// ─── Relais d'état ────────────────────────────────────────────────────────────────────────
+// /api/state_relay : mémoire de l'orchestrateur, aucun appel réseau. Seulement onglet visible.
+async function rafraichirRelais() {
+    const body = document.getElementById('relay-body');
+    if (!body || document.getElementById('mon-view-relay').hidden) return;
+    let j;
+    try { j = await (await fetch('/api/state_relay')).json(); }
+    catch (e) { body.innerHTML = `<p class="issue-empty">${window.t('monitoring.relay_error')}</p>`; return; }
+    const T = window.t, fmtAge = v => (v == null) ? '—' : (v < 10 ? v.toFixed(2) : Math.round(v)) + ' s';
+    const fbTxt = fb => Object.entries(fb || {}).map(([c, r]) =>
+        escapeHtml(c) + ' : ' + Object.entries(r).map(([k, n]) => escapeHtml(k) + ' ' + n).join(', ')).join(' · ') || '—';
+    const srvTxt = sv => Object.entries(sv || {}).map(([c, n]) => escapeHtml(c) + ' ' + n).join(' · ') || '—';
+    const badge = st => {
+        const cls = st === 'fresh' ? 'running' : (st === 'stale' || st === 'unsupported') ? 'warn' : 'stopped';
+        return `<span class="badge ${cls}">${escapeHtml(T('monitoring.relay_state_' + st))}</span>`;
+    };
+    let html = '';
+    if (!j.active) html += `<p class="issue-empty">${T('monitoring.relay_standby')}</p>`;
+    const subs = j.subscriptions || [];
+    if (!subs.length) {
+        html += `<p class="issue-empty">${T('monitoring.relay_empty')}</p>`;
+    } else {
+        html += `<table class="rdma-iface"><thead><tr>
+            <th>${T('monitoring.relay_container')}</th><th>${T('monitoring.relay_state')}</th>
+            <th>${T('monitoring.relay_clients')}</th><th>${T('monitoring.relay_event_age')}</th>
+            <th>${T('monitoring.relay_rx_age')}</th><th>${T('monitoring.relay_reconnects')}</th>
+            <th>${T('monitoring.relay_served')}</th><th>${T('monitoring.relay_fallbacks')}</th>
+            </tr></thead><tbody>` + subs.map(s => `<tr>
+            <td>${escapeHtml(s.hostname || '')} <span class="card-vmid">#${s.vmid}</span></td>
+            <td>${badge(s.state)}${s.last_error && s.state !== 'fresh' ? ' <span class="meta">' + escapeHtml(s.last_error) + '</span>' : ''}</td>
+            <td>${s.clients}</td><td>${fmtAge(s.event_age_s)}</td><td>${fmtAge(s.rx_age_s)}</td>
+            <td>${s.reconnects}</td><td>${srvTxt(s.served)}</td><td>${fbTxt(s.fallbacks)}</td>
+            </tr>`).join('') + '</tbody></table>';
+    }
+    html += `<p class="meta">${T('monitoring.relay_totals')} — ${T('monitoring.relay_served')} : ${srvTxt(j.served)} · `
+          + `${T('monitoring.relay_fallbacks')} : ${fbTxt(j.fallbacks)}</p>`;
+    body.innerHTML = html;
+}
+window.MXLPoll(rafraichirRelais, 2000);
+
+// ─── Connexions ───────────────────────────────────────────────────────────────────────────
+// /api/server/connections : mémoire de l'orchestrateur (app/http_connections.py). Une jauge par
+// écoute — UN segment par fil de service, segments au-delà du seuil d'alerte en couleur chaude —
+// puis la liste des requêtes en cours. Seulement onglet visible.
+function _connDuree(s) {
+    s = Math.max(0, Math.round(s || 0));
+    if (s < 60) return s + ' s';
+    if (s < 3600) return Math.floor(s / 60) + ' min ' + String(s % 60).padStart(2, '0') + ' s';
+    return Math.floor(s / 3600) + ' h ' + String(Math.floor(s % 3600 / 60)).padStart(2, '0');
+}
+function _connOctets(n) {
+    n = n || 0;
+    if (n < 1024) return n + ' o';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' Kio';
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + ' Mio';
+    return (n / 1073741824).toFixed(2) + ' Gio';
+}
+function _connHeure(ts) {
+    try { return new Date(ts * 1000).toLocaleTimeString(); } catch (_) { return '—'; }
+}
+async function rafraichirConnexions() {
+    const body = document.getElementById('conn-body');
+    if (!body || document.getElementById('mon-view-connections').hidden) return;
+    const T = window.t;
+    let j;
+    try {
+        const r = await fetch('/api/server/connections');
+        if (r.status === 403 || r.status === 401) { body.innerHTML = `<p class="issue-empty">${T('monitoring.conn_forbidden')}</p>`; return; }
+        j = await r.json();
+    } catch (e) { body.innerHTML = `<p class="issue-empty">${T('monitoring.conn_error')}</p>`; return; }
+    const ro = (v, unit) => `<span class="ctl-readout"><b>${escapeHtml(v)}</b><span>${escapeHtml(unit)}</span></span>`;
+    let html = '<div class="conn-pools">';
+    for (const p of (j.pools || [])) {
+        const total = p.threads || 0, busy = p.busy || 0, high = p.alert_threshold || total;
+        let segs = '';
+        for (let i = 0; i < total; i++)
+            segs += `<span class="ctl-seg${i < busy ? ' on' : ''}${i >= high - 1 ? ' ctl-seg--hot' : ''}"></span>`;
+        const alarme = p.alarmed ? `<p class="conn-alarm"><span class="badge warn">${escapeHtml(
+            T('monitoring.conn_alarm').replace('{high}', high).replace('{total}', total)
+                .replace('{hold}', (j.limits || {}).alert_hold_s || 10))}</span></p>` : '';
+        html += `<section class="conn-pool">
+            <span class="ctl-meter conn-meter" role="meter" aria-valuemin="0" aria-valuemax="${total}"
+                  aria-valuenow="${busy}" aria-label="${escapeHtml(p.name + ' ' + T('monitoring.conn_threads'))}">${segs}</span>
+            <div class="conn-pool-txt">
+              <div class="conn-pool-name">${escapeHtml(p.name)} :${escapeHtml(p.port)}</div>
+              <div class="conn-readouts">
+                ${ro(busy + ' / ' + (total || '?'), T('monitoring.conn_threads'))}
+                ${ro(p.streams, T('monitoring.conn_streams'))}
+                ${p.queue == null ? '' : ro(p.queue, T('monitoring.conn_queue'))}
+                ${p.open_connections == null ? '' : ro(p.open_connections, T('monitoring.conn_open'))}
+              </div>
+              <div class="meta">${T('monitoring.conn_since_boot')} — ${T('monitoring.conn_peak')} ${p.max_busy}${total ? ' / ' + total : ''}
+                · ${p.all_busy_events} ${T('monitoring.conn_full')} (${p.all_busy_s} ${T('monitoring.conn_full_s')})
+                ${p.queue == null ? '' : '· ' + T('monitoring.conn_max_queue') + ' ' + p.max_queue}
+                · ${T('monitoring.conn_threshold')} ${high}${total ? ' / ' + total : ''}</div>
+              ${alarme}
+            </div></section>`;
+    }
+    // Distributeur de flux (app/stream_hub.py) : les flux longs qui ne tiennent AUCUN fil.
+    const hub = j.hub;
+    if (hub) {
+        const cl = hub.closes || {};
+        html += `<section class="conn-pool">
+            <div class="conn-pool-txt">
+              <div class="conn-pool-name">${T('monitoring.conn_hub')}</div>
+              <div class="conn-readouts">
+                ${ro(hub.clients, T('monitoring.conn_hub_clients'))}
+                ${ro(_connOctets(hub.bytes_sent), T('monitoring.conn_hub_bytes'))}
+                ${ro(_connOctets(hub.buffered), T('monitoring.conn_hub_buffered'))}
+                ${ro(hub.slow_cut, T('monitoring.conn_hub_slow'))}
+                ${ro(hub.departures, T('monitoring.conn_hub_departures'))}
+                ${ro(hub.loop_recent_ms + ' ms', T('monitoring.conn_hub_detect'))}
+              </div>
+              <div class="meta">${T('monitoring.conn_since_boot')} — ${T('monitoring.conn_peak')} ${hub.peak_clients}
+                · ${hub.total_clients} ${T('monitoring.conn_hub_total')}
+                · ${T('monitoring.conn_hub_ended')} ${cl.ended || 0} · ${T('monitoring.conn_hub_gone')} ${(cl.gone || 0) + (cl.gone_error || 0)}
+                · ${T('monitoring.conn_hub_loop_max')} ${hub.loop_max_ms} ms${hub.enabled === false ? ' · ' + T('monitoring.conn_hub_off') : ''}</div>
+            </div></section>`;
+    }
+    html += '</div>';
+    const rows = j.connections || [];
+    if (!rows.length) {
+        html += `<p class="issue-empty">${T('monitoring.conn_empty')}</p>`;
+    } else {
+        const kindTxt = c => c.relay ? T('monitoring.conn_kind_relay') : T('monitoring.conn_kind_' + (c.kind || 'request'));
+        const kindCls = c => c.kind === 'request' ? 'stopped' : (c.relay ? 'running' : 'warn');
+        const user = c => c.user
+            ? escapeHtml(c.user) + (c.auth === 'token' ? ` <span class="meta">${T('monitoring.conn_via_token')}</span>` : '')
+            : `<span class="meta">${T('monitoring.conn_anonymous')}</span>`;
+        const cible = c => (c.vmid != null
+            ? `${escapeHtml(c.hostname || '')} <span class="card-vmid">#${c.vmid}</span><br>` : '')
+            + `<span class="meta conn-path">${escapeHtml(c.method)} ${escapeHtml(c.path)}</span>`;
+        html += `<div class="conn-table-wrap"><table class="rdma-iface conn-table"><thead><tr>
+            <th>${T('monitoring.conn_user')}</th><th>${T('monitoring.conn_ip')}</th>
+            <th>${T('monitoring.conn_kind')}</th><th>${T('monitoring.conn_target')}</th>
+            <th>${T('monitoring.conn_since')}</th><th>${T('monitoring.conn_duration')}</th>
+            <th>${T('monitoring.conn_bytes')}</th><th>${T('monitoring.conn_thread')}</th>
+            </tr></thead><tbody>` + rows.map(c => `<tr>
+            <td>${user(c)}</td><td class="mono">${escapeHtml(c.ip || '—')}</td>
+            <td><span class="badge ${kindCls(c)}">${escapeHtml(kindTxt(c))}</span></td>
+            <td>${cible(c)}</td><td class="mono">${_connHeure(c.start)}</td>
+            <td class="mono">${_connDuree(c.duration_s)}</td><td class="mono">${_connOctets(c.bytes)}</td>
+            <td class="mono meta">${c.detached ? escapeHtml(T('monitoring.conn_hub_thread')) : escapeHtml(c.thread || '')}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+    body.innerHTML = html;
+}
+window.MXLPoll(rafraichirConnexions, 3000);
 </script>
 {% endblock %}

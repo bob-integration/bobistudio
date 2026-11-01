@@ -119,6 +119,13 @@ def ensure_tables():
         for col in ("proxy_asset", "proxy_rel", "storyboard_asset", "src_asset"):
             if col not in cols:
                 db.execute("ALTER TABLE farm_jobs ADD COLUMN %s TEXT" % col)
+        # BIN de destination (fenêtre « Transcoder… ») : la fiche produite y est rangée une fois le job
+        # terminé ET le fichier indexé par la base des médias (`_place_in_bins`). `bin_done` : quand
+        # (ou `lost` : jamais indexé dans le délai, dit dans le détail du job).
+        if "bin_id" not in cols:
+            db.execute("ALTER TABLE farm_jobs ADD COLUMN bin_id INTEGER")
+        if "bin_done" not in cols:
+            db.execute("ALTER TABLE farm_jobs ADD COLUMN bin_done TEXT")
         db.commit()
 
 
@@ -288,7 +295,7 @@ def parse_priority(v):
     return n
 
 
-def submit(project_id, source, job_type, params=None, priority=None, output_dir="", user=None):
+def submit(project_id, source, job_type, params=None, priority=None, output_dir="", user=None, bin_id=None):
     """Crée un job de la ferme. `source` = {"kind": "share", "grant_id", "path"} (chemin dans le
     dossier accordé) ou {"kind": "local", "node_id", "path"} (chemin dans le dossier du projet sur
     ce nœud). Les paramètres d'encodage sont validés par le transcoder qui le prendra : un preset
@@ -318,9 +325,9 @@ def submit(project_id, source, job_type, params=None, priority=None, output_dir=
     with get_db() as db:
         cur = db.execute(
             "INSERT INTO farm_jobs(project_id, src_kind, src_grant_id, src_node_id, src_path, job_type, "
-            "params, output_dir, priority, created_by, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            "params, output_dir, priority, created_by, created_at, bin_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
             (project_id, kind, grant_id, node_id, path, job_type, json.dumps(params), out_dir, prio,
-             (user or {}).get("username"), _now()))
+             (user or {}).get("username"), _now(), int(bin_id) if bin_id else None))
         db.commit()
         return cur.lastrowid
 
@@ -338,7 +345,7 @@ def asset_source(asset_id, version=None):
     return r["node_id"], r["path"]
 
 
-def submit_asset(asset_id, job_type, params=None, priority=None, output_dir="", user=None, version=None):
+def submit_asset(asset_id, job_type, params=None, priority=None, output_dir="", user=None, version=None, bin_id=None):
     """Job de la ferme demandé SUR UN MÉDIA de la base (y compris un média seulement PARTAGÉ avec
     l'appelant, qui n'est pas du projet qui le porte) : hors projet, source = la copie du média sur son
     nœud, sortie à côté de la source par défaut (le scan la range sous le média : une VERSION). Le droit
@@ -353,11 +360,57 @@ def submit_asset(asset_id, job_type, params=None, priority=None, output_dir="", 
     with get_db() as db:
         cur = db.execute(
             "INSERT INTO farm_jobs(project_id, src_kind, src_node_id, src_path, job_type, params, output_dir, priority, "
-            "created_by, created_at, src_asset) VALUES(NULL,'local',?,?,?,?,?,?,?,?,?)",
+            "created_by, created_at, src_asset, bin_id) VALUES(NULL,'local',?,?,?,?,?,?,?,?,?,?)",
             (int(node_id), _clean_rel(path), job_type, json.dumps(params), out_dir, parse_priority(priority),
-             (user or {}).get("username"), _now(), asset_id))
+             (user or {}).get("username"), _now(), asset_id, int(bin_id) if bin_id else None))
         db.commit()
         return cur.lastrowid
+
+
+CODE_PLACEHOLDER = "······"
+
+
+def preview_output(source, version, ext, output_dir="", mode="version"):
+    """APERÇU du fichier que produira un job, avant de le lancer → {"dir", "name", "node_id", "code_known",
+    "replaces"}. Même règle que le transcoder : `mode` « version » (media_naming.version_file_name : base de
+    la source sans code, code du média, clé de version) ou « asset », NOUVELLE FICHE
+    (media_naming.derived_file_name : clé dans la base, code de la nouvelle identité). Un aperçu, pas une
+    promesse : un AUTRE média qui occuperait déjà ce nom fait passer le code à 8 caractères au moment
+    d'écrire. `code_known` faux : fichier hors de la base, dont l'identité ne sera tirée qu'au lancement
+    (sidecar ou empreinte). `replaces` : cette version, ou cette fiche dérivée, existe déjà (job refait)."""
+    from . import media_naming as mn
+    if not mn.valid_version(version):
+        raise ValueError("version invalide")
+    ext = ext if str(ext or "").startswith(".") else "." + str(ext or "")
+    out_dir = (output_dir or "").strip().strip("/")
+    out_dir = _clean_rel(out_dir) if out_dir else None
+    kind = (source or {}).get("kind")
+    if kind == "asset":
+        aid = str(source.get("asset_id") or "")
+        node_id, path = asset_source(aid, source.get("version"))
+        from . import media_registry as mr
+        if mode == "asset":
+            replaces = mr.db().execute("SELECT 1 FROM media_assets WHERE id=?",
+                                       (mn.derived_id(aid, version),)).fetchone() is not None
+            name = posixpath.basename(mn.derived_file_name(posixpath.basename(path), aid, version, ext))
+        else:
+            replaces = mr.db().execute("SELECT 1 FROM media_versions WHERE asset_id=? AND key=?",
+                                       (aid, version)).fetchone() is not None
+            name = posixpath.basename(mn.version_file_name(posixpath.basename(path), aid, version, ext))
+        return {"dir": out_dir if out_dir is not None else posixpath.dirname(path), "name": name,
+                "node_id": int(node_id), "code_known": True, "replaces": replaces}
+    path = _clean_rel((source or {}).get("path"))
+    base = posixpath.basename(path)
+    p = mn.parse(base)
+    if p:
+        stem, code = p[0], p[1]
+    else:
+        stem, code = posixpath.splitext(base)[0], None
+    if mode == "asset":                    # nouvelle identité, tirée de celle (encore inconnue) de la source
+        return {"dir": out_dir or "", "name": "%s_%s%s%s%s" % (stem, version, mn.SEP, CODE_PLACEHOLDER, ext),
+                "node_id": source.get("node_id"), "code_known": False, "replaces": False}
+    return {"dir": out_dir or "", "name": "%s%s%s_%s%s" % (stem, mn.SEP, code or CODE_PLACEHOLDER, version, ext),
+            "node_id": source.get("node_id"), "code_known": bool(code), "replaces": False}
 
 
 PROXY_PRESETS = {"video": {"preset": "playback_proxy"}, "audio": {"audio_preset": "aac_128"}}
@@ -755,6 +808,8 @@ def _finish(job, out_node_id, out_path, info=None):
                out_node_id=out_node_id, out_path=out_path, completed_at=_now(),
                **({"info": json.dumps(info)} if info is not None else {})):
         log.info("ferme : job #%d terminé → nœud %s : %s", job["id"], out_node_id, out_path)
+        if job.get("bin_id") and out_node_id:
+            _index_soon(out_node_id)
         if job.get("access") in ("stream", "copy"):
             _cleanup(get_job(job["id"]))
         if job.get("proxy_asset"):
@@ -882,8 +937,93 @@ def _call_quiet(t, path, body):
         pass
 
 
+def check_bin(bin_id):
+    """Bin de destination valable : il existe et c'est un bin MANUEL (un bin intelligent se remplit par
+    sa recherche, on n'y range rien). → bin_id ; ValueError sinon. Les droits de l'appelant sur ce bin
+    sont vérifiés par la route."""
+    if not bin_id:
+        return None
+    from . import media_registry as mr
+    r = mr.db().execute("SELECT query_json FROM media_bins WHERE id=?", (int(bin_id),)).fetchone()
+    if not r:
+        raise ValueError("bin inconnu")
+    if r["query_json"]:
+        raise ValueError("bin intelligent : on ne peut pas y ranger un média")
+    return int(bin_id)
+
+
+BIN_PLACE_TIMEOUT_S = 1800     # sortie jamais indexée au-delà : rangement abandonné, dit dans le job
+_index_lock = threading.Lock()
+_index_pending = set()
+
+
+def _index_soon(node_id):
+    """Analyse du nœud TOUT DE SUITE (en fond) plutôt qu'au prochain passage périodique (2 min) : la
+    fiche doit entrer dans la base pour être rangée dans son bin. Une seule à la fois par nœud."""
+    with _index_lock:
+        if node_id in _index_pending:
+            return
+        _index_pending.add(node_id)
+
+    def run():
+        try:
+            from . import media_registry as mr
+            mr.scan_node(node_id, probe_max=20)
+        except Exception as e:                                              # noqa: BLE001
+            log.warning("ferme : analyse du nœud %s après un job : %s", node_id, e)
+        finally:
+            with _index_lock:
+                _index_pending.discard(node_id)
+    threading.Thread(target=run, daemon=True, name="farm-index-%s" % node_id).start()
+
+
+def _output_asset(job):
+    """Fiche de la base que porte la sortie d'un job terminé (None tant qu'elle n'est pas indexée).
+    Le chemin enregistré varie selon le chemin de rapatriement (absolu sur l'hôte, ou vu du conteneur) :
+    on reconnaît le fichier à son NOM, codé donc propre au média, sur le nœud de sortie."""
+    from . import media_registry as mr
+    name = posixpath.basename(job.get("out_path") or "")
+    if not name:
+        return None
+    r = mr.db().execute("SELECT asset_id FROM media_files WHERE node_id=? AND share_id=0 AND kind='main' "
+                        "AND asset_id IS NOT NULL AND (path=? OR substr(path, -?)=?) LIMIT 1",
+                        (job["out_node_id"], name, len(name) + 1, "/" + name)).fetchone()
+    return r["asset_id"] if r else None
+
+
+def _place_in_bins():
+    """Range dans son bin la fiche produite par chaque job terminé qui en demandait un (fenêtre
+    « Transcoder… ») — seulement quand le fichier est INDEXÉ : avant, la fiche n'existe pas (nouvelle
+    fiche) ou n'a pas encore la version (elle s'afficherait « format ≠ sortie »)."""
+    from . import media_registry as mr
+    for job in _rows("SELECT * FROM farm_jobs WHERE status='done' AND bin_id IS NOT NULL AND bin_done IS NULL"):
+        try:
+            aid = _output_asset(job)
+            if aid:
+                mr.bin_add(job["bin_id"], [aid])
+                _update(job["id"], None, bin_done=_now())
+                log.info("ferme : job #%d — fiche %s rangée dans le bin %s", job["id"], aid, job["bin_id"])
+                continue
+        except Exception as e:                                              # noqa: BLE001
+            # Bin supprimé, devenu intelligent… : on ne recommence pas sans fin.
+            log.warning("ferme : job #%d — rangement dans le bin %s impossible : %s", job["id"], job["bin_id"], e)
+            _update(job["id"], None, bin_done="failed")
+            continue
+        try:
+            age = (datetime.datetime.now() - datetime.datetime.fromisoformat(job["completed_at"])).total_seconds()
+        except (TypeError, ValueError):
+            age = 0
+        if age > BIN_PLACE_TIMEOUT_S:
+            log.warning("ferme : job #%d — sortie jamais indexée, rangement dans le bin %s abandonné", job["id"], job["bin_id"])
+            _update(job["id"], None, bin_done="lost")
+
+
 def tick():
     ensure_tables()
+    try:
+        _place_in_bins()
+    except Exception as e:                                                  # noqa: BLE001
+        log.exception("ferme : rangement dans les bins : %s", e)
     ts_list = transcoders()
     _refresh_states(ts_list)
     ts = {t["vmid"]: t for t in ts_list}
@@ -1069,6 +1209,13 @@ def _decorate(jobs, pos=None):
         grants = {g["id"]: storage._grant_label(g, conns) for g in storage._grants() if g["conn_id"] in conns}
     except Exception:
         pass
+    bins = {}
+    if any(j.get("bin_id") for j in jobs):
+        try:
+            from . import media_registry as mr
+            bins = {r["id"]: r["name"] for r in mr.db().execute("SELECT id, name FROM media_bins")}
+        except Exception:                                                   # noqa: BLE001
+            pass
     for j in jobs:
         for k in ("params", "info"):
             try:
@@ -1082,6 +1229,7 @@ def _decorate(jobs, pos=None):
         j["worker_node"] = nodes.get(j["worker_node_id"]) if j.get("worker_node_id") else None
         j["out_node"] = nodes.get(j["out_node_id"]) if j.get("out_node_id") else None
         j["queue_pos"] = (pos or {}).get(j["id"])
+        j["bin_name"] = bins.get(j["bin_id"]) if j.get("bin_id") else None
         j.pop("token", None)    # jeton de capacité : jamais vers le navigateur
 
 
@@ -1115,6 +1263,9 @@ _PRIO_OPTS = [{"value": "urgent", "label": "Urgente"}, {"value": "high", "label"
 _LAYOUT_OPTS = [{"value": "auto", "label": "Selon le preset"}, {"value": "tracks", "label": "Pistes telles quelles"},
                 {"value": "mono", "label": "Une piste mono par canal"}, {"value": "stereo", "label": "Programme stéréo"},
                 {"value": "poly", "label": "Une piste polyphonique"}, {"value": "none", "label": "Sans audio"}]
+# Nouvelle fiche reliée à l'original (défaut, comme la fenêtre « Transcoder… ») ou version de la même fiche.
+_AS_OPTS = [{"value": "asset", "label": "Une nouvelle fiche, reliée à l'original"},
+            {"value": "version", "label": "Une version du même média"}]
 _STATUS_OPTS = ["pending", "transfer_in", "running", "transfer_out", "done", "failed", "cancelled"]
 _JOB = {"key": "job", "label": "N° de job", "type": "text", "default": "{{farm_job}}"}
 
@@ -1131,6 +1282,8 @@ MACRO_PROVIDER = {
             {"key": "audio", "label": "Audio", "type": "select", "options": _LAYOUT_OPTS, "default": "auto"},
             {"key": "loudness", "label": "EBU R128", "type": "bool", "default": "false"},
             {"key": "priority", "label": "Priorité", "type": "select", "options": _PRIO_OPTS, "default": "normal"},
+            {"key": "as", "label": "La sortie devient", "type": "select", "options": _AS_OPTS, "default": "asset"},
+            {"key": "bin", "label": "Ranger dans le bin", "type": "select", "options_hook": True, "default": ""},
             {"key": "output_dir", "label": "Dossier de sortie", "type": "text", "default": ""},
             {"key": "store_in", "label": "N° du job dans la variable", "type": "text", "default": "farm_job"},
             {"key": "project", "label": "Projet (macros système)", "type": "select", "options_hook": True},
@@ -1213,6 +1366,11 @@ def action_options(action_id, key, pid=None):
         from .database import db_get_projects
         return ([{"value": "", "label": "Projet de la macro / hors projet"}]
                 + [{"value": str(p["id"]), "label": p["name"]} for p in db_get_projects() or []])
+    if action_id == "submit" and key == "bin":
+        from . import media_registry as mr
+        return [{"value": "", "label": "Aucun"}] + [
+            {"value": str(r["id"]), "label": r["name"]} for r in
+            mr.db().execute("SELECT id, name FROM media_bins WHERE query_json IS NULL ORDER BY name")]
     if action_id == "set_member" and key == "transcoder":
         return [{"value": str(t["vmid"]), "label": "%s (#%d)" % (t["hostname"], t["vmid"])} for t in transcoders()]
     return []
@@ -1278,11 +1436,16 @@ def run_action(action_id, params, ctx):
             enc["cadence"] = p["cadence"]
         if _truthy(p.get("loudness")):
             enc["loudness"] = True
+        enc["as"] = "version" if p.get("as") == "version" else "asset"
         source = {"kind": kind, "path": p.get("path") or "",
                   ("grant_id" if kind == "share" else "node_id"): int(ref)}
         try:
+            bin_id = int(p["bin"]) if str(p.get("bin") or "").strip() else None
+        except ValueError:
+            raise RuntimeError("bin invalide : %s" % p.get("bin"))
+        try:
             jid = submit(pid, source, op, enc, p.get("priority"), p.get("output_dir") or "",
-                         {"username": (ctx or {}).get("user") or "macro"})
+                         {"username": (ctx or {}).get("user") or "macro"}, bin_id=check_bin(bin_id))
         except ValueError as e:
             raise RuntimeError(str(e))
         var = str(p.get("store_in") or "").strip()

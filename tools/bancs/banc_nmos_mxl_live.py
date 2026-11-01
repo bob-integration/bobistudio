@@ -29,7 +29,12 @@ import os
 import sys
 import time
 
-RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# ⚠ TROIS `dirname`, pas deux : ce fichier vit dans tools/bancs/, donc deux remontées
+# s'arrêtent à tools/ — un dossier sans `app/`. Le banc mourait alors en
+# `ModuleNotFoundError: No module named 'app'` dès l'import, et rien ne l'attrapait :
+# les bancs vivants ne tournent pas en CI. Constaté le 2026-10-23, après le passage de
+# tests/ à tools/bancs/ du 2026-09-01, qui a ajouté un niveau sans l'ajouter ici.
 sys.path.insert(0, RACINE)
 
 HOTE_A = "nmosbanc-a"

@@ -16,6 +16,7 @@ import logging
 import sqlite3
 import threading
 from .database import get_db, db_get_node, db_add_alert
+from . import cpu_weight
 from .episodes import EtatEpisodes as _Episodes
 
 log = logging.getLogger(__name__)
@@ -538,7 +539,12 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
     `--cpuset-cpus` (ex. "8-11"), ou None si pas de pool / cœurs libres insuffisants (+ alerte).
 
     `prefer_numa` : nœud NUMA visé (typiquement celui du GPU alloué, cf. `numa_of_gpu`). Les cœurs
-    rendus sont TOUJOURS d'un seul nœud NUMA quand la topologie le permet — cf. `_choisir_numa`."""
+    rendus sont TOUJOURS d'un seul nœud NUMA quand la topologie le permet — cf. `_choisir_numa`.
+
+    ★ RÈGLE STRICTE (30/10) : jamais un cœur dont le frère HT est tenu par une AUTRE réservation
+    (dédié ou moteur). Pas assez de cœurs conformes → None + `alert.resource.pinning_repli_ht`
+    (l'appelant retombe sur le pool partagé). Une allocation existante qui viole la règle est
+    replacée (`pinning_ht_corrected`) ou rendue (`pinning_ht_released`) au (re)déploiement."""
     n = int(n or 0)
     if n <= 0 or not node_id:
         return None
@@ -546,6 +552,14 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
     pool = parse_cpuset((node or {}).get("compute_cpuset"))
     if not pool:
         return None
+    # ★ Avant de chercher des cœurs libres, rendre ceux que plus aucun conteneur ne détient. C'est
+    # le seul moment où la fuite a une conséquence (un refus, ou un repli en partage), donc le seul
+    # endroit où la réparer est à la fois utile et observable — plutôt qu'un balayage périodique de
+    # plus, dont personne ne lirait le journal.
+    try:
+        purger_orphelines(node_id)
+    except Exception as _e:
+        log.warning("allocate_cores: purge des réservations orphelines (nœud %s) : %s", node_id, _e)
     with _alloc_lock:
         with get_db() as db:
             alloc = _allocated(db, node_id)
@@ -580,6 +594,39 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
                 pris = {core_of[c] for c, v in alloc.items() if c in core_of and v != vmid}
                 return {c for c in libres if core_of.get(c) not in pris}
 
+            def _tenants(cores):
+                """vmid (autres que le nôtre) qui tiennent un frère HT de `cores` — pour NOMMER."""
+                if not core_of:
+                    return []
+                phys = {core_of[c] for c in cores if c in core_of}
+                return sorted({v for c, v in alloc.items()
+                               if v != vmid and core_of.get(c) in phys})
+
+            def _strict_pick(cands):
+                """`n` cœurs parmi `cands` (déjà filtrés par la règle stricte), NUMA respecté →
+                (cœurs, motif). `prio` = tous : le repli sur des frères pris n'existe plus."""
+                if not numa_of:
+                    return cands[:n], None
+                return _choisir_numa(cands, n, numa_of, prefer_numa, prio=set(cands), poids=_poids)
+
+            def _alerter_motif(motif):
+                if motif:
+                    _p = dict(motif["params"])
+                    _p["noms"] = _noms_vmids([vmid])
+                    _p["n"] = (node or {}).get("name", node_id)
+                    db_add_alert(motif["cle"], "warning", node_id=node_id, vmid=vmid,
+                                 kind="resource", params=_p)
+
+            # ★★ RÈGLE STRICTE (décision de Cyril, 30/10) : un dédié ne prend JAMAIS le frère HT
+            # d'un autre dédié. Un cœur n'est candidat que si son frère est libre, ou dans le pool
+            # partagé (ce que `reserve_physique` laisse à l'exploitant) — jamais tenu par une
+            # réservation de `node_core_alloc` (conteneur dédié OU lcore de moteur 2110, dont
+            # `_exclure_du_pool` sort déjà les frères du pool). Z8, 30/10 : decklink-io #231
+            # « dédié » 27-31 = les frères de 1-5 tenus par deux pyramides dédiées ; 265 % demandés,
+            # jamais 5 cœurs, images répétées/noires en SDI, et AUCUN compteur ne le disait.
+            # L'ancienne préférence (`prio` + `poids`) retombait sur ces frères quand le socket
+            # n'avait plus de cœur physique entier : c'est ce repli-là qui est supprimé. À défaut
+            # de cœurs physiques entiers → REPLI PARTAGÉ (None), comme un pool plein, et dit.
             mine = sorted(c for c, v in alloc.items() if v == vmid)
             if mine:
                 # IDEMPOTENCE, mais PAS AVEUGLE. Recopier l'allocation existante sans la regarder
@@ -591,13 +638,42 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
                 # façon) ; on ne déplace donc JAMAIS un conteneur en cours de route, mais on ne
                 # reconduit pas non plus un placement incohérent sans l'examiner.
                 score_actuel = _score_placement(mine, numa_of, prefer_numa)
-                if score_actuel == 0 or len(mine) != n:
+                cand = sorted((pool - set(alloc)) | set(mine))
+                if core_of:
+                    cand = sorted(_phys_libres(cand))
+                # Allocation existante qui VIOLE la règle stricte (posée avant elle) : replacée si
+                # un placement conforme existe, sinon rendue → repli partagé, avec l'alerte.
+                partage_ht = (set(mine) - _phys_libres(mine)) if core_of else set()
+                if partage_ht:
+                    voisins = _tenants(partage_ht)
+                    if len(cand) >= n:
+                        sans, motif = _strict_pick(cand)
+                        db.execute("DELETE FROM node_core_alloc WHERE vmid=?", (vmid,))
+                        db.executemany(
+                            "INSERT INTO node_core_alloc (node_id, core, vmid) VALUES (?,?,?)",
+                            [(node_id, c, vmid) for c in sans])
+                        _alerter_motif(motif)
+                        db_add_alert("alert.resource.pinning_ht_corrected", "info",
+                                     node_id=node_id, vmid=vmid, kind="resource",
+                                     params={"noms": _noms_vmids([vmid]),
+                                             "n": (node or {}).get('name', node_id),
+                                             "avant": fmt_cpuset(mine), "apres": fmt_cpuset(sans),
+                                             "voisins": _noms_vmids(voisins)})
+                        return fmt_cpuset(sans)
+                    db.execute("DELETE FROM node_core_alloc WHERE vmid=?", (vmid,))
+                    db_add_alert("alert.resource.pinning_ht_released", "warning",
+                                 node_id=node_id, vmid=vmid, kind="resource",
+                                 params={"noms": _noms_vmids([vmid]),
+                                         "n": (node or {}).get('name', node_id),
+                                         "avant": fmt_cpuset(mine), "demandes": n,
+                                         "possibles": len(cand), "manquants": n - len(cand),
+                                         "voisins": _noms_vmids(voisins)})
+                    return None
+                if score_actuel == 0 or len(mine) != n or len(cand) < n:
                     return fmt_cpuset(mine)      # déjà optimal, ou resize géré en amont → statu quo
                 # Les cœurs qu'on rendrait redeviennent candidats : le meilleur placement possible
-                # s'évalue sur (libres + les miens).
-                cand = sorted((pool - set(alloc)) | set(mine))
-                mieux, _m = _choisir_numa(cand, n, numa_of, prefer_numa,
-                                          prio=_phys_libres(cand), poids=_poids)
+                # s'évalue sur (libres + les miens), règle stricte comprise.
+                mieux, _m = _strict_pick(cand)
                 score_mieux = _score_placement(mieux, numa_of, prefer_numa)
                 if score_mieux >= score_actuel:
                     return fmt_cpuset(mine)      # rien de strictement mieux → aucun churn
@@ -619,14 +695,23 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
                              params={"n": (node or {}).get('name', node_id), "libres": len(free),
                                      "pool": len(pool), "demandes": n, "vmid": vmid})
                 return None
-            pick, motif = _choisir_numa(free, n, numa_of, prefer_numa, prio=_phys_libres(free),
-                                        poids=_poids)
-            if motif:
-                _p = dict(motif["params"])
-                _p["noms"] = _noms_vmids([vmid])
-                _p["n"] = (node or {}).get("name", node_id)
-                db_add_alert(motif["cle"], "warning", node_id=node_id, vmid=vmid, kind="resource",
-                             params=_p)
+            if core_of:
+                conformes = sorted(_phys_libres(free))
+                if len(conformes) < n:
+                    bloques = sorted(set(free) - set(conformes))
+                    db_add_alert("alert.resource.pinning_repli_ht", "warning",
+                                 node_id=node_id, vmid=vmid, kind="resource",
+                                 params={"noms": _noms_vmids([vmid]),
+                                         "n": (node or {}).get('name', node_id),
+                                         "demandes": n, "libres": len(free),
+                                         "possibles": len(conformes),
+                                         "manquants": n - len(conformes),
+                                         "freres": fmt_cpuset(bloques),
+                                         "voisins": _noms_vmids(_tenants(bloques))})
+                    return None
+                free = conformes
+            pick, motif = _strict_pick(free)
+            _alerter_motif(motif)
             try:
                 db.executemany("INSERT INTO node_core_alloc (node_id, core, vmid) VALUES (?,?,?)",
                                [(node_id, c, vmid) for c in pick])
@@ -638,6 +723,68 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
                              params={"node_id": node_id, "vmid": vmid})
                 return None
     return fmt_cpuset(pick)
+
+
+def free_dedicated_capacity(node_id, vmid=None):
+    """Cœurs qu'une réservation dédiée de `vmid` pourrait obtenir AUJOURD'HUI sous la règle
+    stricte de `allocate_cores` : cœurs ordonnançables du pool, non réservés à un autre, dont le
+    frère HT n'est tenu par AUCUNE autre réservation. Les cœurs de `vmid` comptent (un resize les
+    rend d'abord). Sans carte HT : modèle plat (libres + les siens).
+
+    Sert au dimensionnement dynamique (pyramide) : lui donner le compte LOGIQUE `cores_status.free`
+    lui ferait demander des cœurs que la règle stricte refuse — et un refus, c'est le repli
+    PARTAGÉ du conteneur entier, pire qu'une réservation plus petite mais tenue."""
+    node = db_get_node(node_id) or {}
+    pool = ordonnancables(node_id, node.get("compute_cpuset"))
+    with get_db() as db:
+        alloc = _allocated(db, node_id)
+    dispo = {c for c in pool if alloc.get(c) in (None, vmid)}
+    core_of = core_map_cached(node_id)
+    if not core_of:
+        return len(dispo)
+    pris = {core_of[c] for c, v in alloc.items() if c in core_of and v != vmid}
+    return len({c for c in dispo if core_of.get(c) not in pris})
+
+
+def reserve_physique(node_id=None):
+    """Réglage : une réservation dédiée prend-elle le CŒUR PHYSIQUE (frères HT exclus du partagé) ?
+
+    OFF par défaut, et ce n'est pas de la timidité : l'activer retire du pool partagé tous les
+    frères HT des cœurs dédiés. Sur un nœud déjà dense (la Z8 : 26 cœurs physiques tous touchés par
+    une réservation), le pool partagé tombe à zéro et les conteneurs partagés basculent sur le
+    chemin « pool entièrement dédié » — alerte forte, ou refus si `compute_refuse_oversubscribed`.
+    C'est la VÉRITÉ de la machine, mais ce n'est pas un changement à imposer sous une antenne :
+    l'exploitant le décide, par nœud, en sachant ce qu'il perd. Ce qui est inconditionnel, c'est
+    de le DIRE (cf. `vue_coeurs.dedies[].exclusif` et `alerter_dedies_non_exclusifs`)."""
+    from . import settings as _st
+    try:
+        return bool(int(_st.setting_for("pin_reserve_physical", node_id) or 0))
+    except (TypeError, ValueError):
+        return False
+
+
+def partage_disponible(node_id, exclure_vmid=None, pool=None, core_of=None, strict=None):
+    """Les cœurs du pool réellement OFFERTS AU PARTAGE → (cœurs triés, cœurs physiques dédiés).
+
+    `strict` : None = suivre le réglage du nœud (le cas normal) ; True/False = forcer la règle
+    pour SIMULER sans rien changer — c'est ce qui permet de chiffrer ce qu'une activation coûterait
+    AVANT de la décider, au lieu de le calculer à la main sur un relevé.
+
+    ★ UNE SEULE DÉFINITION POUR TROIS USAGES : le déploiement (`effective_cpuset`), la vue
+    (`vue_coeurs`) et la réapplication (`reappliquer_partages`). Deux définitions auraient
+    divergé au premier réglage — et « réappliquer » aurait rendu aux conteneurs partagés des
+    cœurs que le déploiement, lui, leur refusait."""
+    node = db_get_node(node_id) or {}
+    pool = parse_cpuset(node.get("compute_cpuset")) if pool is None else set(pool)
+    with get_db() as db:
+        alloc = _allocated(db, node_id)
+    pris = {c for c, owner in alloc.items() if owner != exclure_vmid}
+    core_of = core_map_cached(node_id) if core_of is None else core_of
+    phys_dedies = {core_of[c] for c in pris if c in core_of} if core_of else set()
+    libres = [c for c in sorted(pool) if c not in pris]
+    if phys_dedies and (reserve_physique(node_id) if strict is None else strict):
+        libres = [c for c in libres if core_of.get(c) not in phys_dedies]
+    return libres, phys_dedies
 
 
 def effective_cpuset(node_id, vmid, n=0, prefer_numa=None):
@@ -671,10 +818,11 @@ def effective_cpuset(node_id, vmid, n=0, prefer_numa=None):
     # donc replié sur TOUT le pool 19-47,67-95) brûlait 107 % de CPU sur les cœurs 19-21 dédiés au
     # mur 333, qui chutait alors sous 50 fps ~20 % du temps. « Dédié » doit vouloir dire dédié.
     with get_db() as db:
-        pris = {c for c, owner in _allocated(db, node_id).items() if owner != vmid}
         proprios = {owner for c, owner in _allocated(db, node_id).items()
                     if owner != vmid and c in parse_cpuset(pool)}
-    libres = [c for c in parse_cpuset(pool) if c not in pris]
+    # Définition UNIQUE du pool partagé (frères HT exclus si l'exploitant a choisi que « dédié »
+    # veuille dire « cœur physique » — cf. `reserve_physique`).
+    libres, _phys = partage_disponible(node_id, exclure_vmid=vmid, pool=parse_cpuset(pool))
     if not libres:
         # Tous les cœurs du pool sont réservés : mieux vaut partager le pool entier (dégradé, mais
         # borné hors des lcores du moteur) que de créer un conteneur SANS cpuset, libre de flotter
@@ -1097,7 +1245,53 @@ def reserve_engine_cores(node_id, vmid, cores, core_of=None):
                                  "cores": fmt_cpuset([c for l in ht.values() for c in l]),
                                  "noms": _noms_vmids(ht.keys())})
     _exclure_du_pool(node, cores, core_of=core_of)
+    # Le pool vient de rétrécir : les partagés déjà en marche gardent sinon les lcores du moteur.
+    reapply_shared_after_reservation(node_id, vmid, cores)
     return cores
+
+
+def reservations_orphelines(node_id):
+    """Réservations de cœurs dont le vmid n'existe PLUS en base → {vmid: [cœurs]}.
+
+    ★ POURQUOI CE CONSTAT N'EXISTAIT PAS, ET CE QU'IL A COÛTÉ (Z8, 28/10 vers 21:30).
+    Un conteneur détruit sans libérer ses cœurs laisse des lignes dans `node_core_alloc`. Elles ne
+    sont rattachables à rien : la carte CPU les range avec les lcores des moteurs 2110 (source
+    « engine », sans nom de conteneur), et `cores_status` les compte en `used`. Douze conteneurs
+    détruits tenaient ainsi 23 cœurs dédiés ; les suivants se sont partagé les 2 cœurs restants, et
+    la panne s'est présentée comme un mélangeur à 22-32 fps avec deux cœurs à 203 % — rien qui
+    désigne un compteur de cœurs. On ne pouvait pas le voir parce que personne ne le regardait.
+
+    ⚠ L'INVARIANT qui rend ce constat sûr : une réservation n'est jamais créée pour un vmid qui
+    n'a pas déjà sa ligne en base (`creer_container_compute` insère la ligne, puis le déploiement
+    alloue ; `reserve_engine_cores` reçoit le vmid d'un conteneur moteur existant). Un vmid absent
+    de `containers` est donc un vestige, pas une réservation en cours de constitution.
+    """
+    from .database import db_get_containers
+    par_vmid = allocations_by_vmid(node_id)
+    if not par_vmid:
+        return {}
+    vivants = {c["vmid"] for c in (db_get_containers() or [])}
+    return {v: c for v, c in par_vmid.items() if v not in vivants and c}
+
+
+def purger_orphelines(node_id):
+    """Libère les réservations orphelines du nœud et les NOMME dans une alerte. → {vmid: [cœurs]}.
+
+    Purger sans le dire referait de la fuite un non-événement : c'est le silence qui a coûté une
+    image, pas l'oubli lui-même. L'alerte est `warning` — l'état est réparé, mais quelqu'un a
+    détruit un conteneur sans passer par un chemin qui libère."""
+    orph = reservations_orphelines(node_id)
+    if not orph:
+        return {}
+    for v in orph:
+        release_cores(v)
+    db_add_alert("alert.resource.cores_orphelins_purges", "warning", node_id=node_id,
+                 kind="resource",
+                 params={"n": (db_get_node(node_id) or {}).get("name") or node_id,
+                         "count": sum(len(c) for c in orph.values()),
+                         "vmids": ", ".join(str(v) for v in sorted(orph)),
+                         "cores": fmt_cpuset(sorted(c for l in orph.values() for c in l))})
+    return orph
 
 
 def release_cores(vmid):
@@ -1153,6 +1347,13 @@ def cores_status(node_id):
         rows = db.execute("SELECT core FROM node_core_alloc WHERE node_id=?", (node_id,)).fetchall()
     used = sum(1 for r in rows if r["core"] in pool)
     out = {"total": total, "used": used, "free": max(0, total - used)}
+    # Publié même si `used` est confortable : c'est un défaut d'intendance, pas un seuil.
+    try:
+        _orph = reservations_orphelines(node_id)
+        out["orphelins"] = {str(v): fmt_cpuset(c) for v, c in _orph.items()}
+        out["orphelins_cores"] = sum(len(c) for c in _orph.values())
+    except Exception as e:
+        log.debug("cores_status orphelins(%s): %s", node_id, e)
     try:
         out.update(capacite(node_id))
     except Exception as e:
@@ -1423,3 +1624,743 @@ def capacite(node_id):
             "pool_declare": fmt_cpuset(pool_declare),
             "pool_isole": fmt_cpuset(pool_isole),
             "pool_isole_n": len(pool_isole)}
+
+
+# ═══ « Qui tient quoi » : la vue des cœurs d'un nœud, et sa réparation ══════════════════════════
+#
+# ★ POURQUOI CETTE VUE EXISTE (Cyril, 28/10 : « comment on règle ça seuls via l'interface ? »).
+# `cores_status` disait « free 2, oversub true » — vrai, et inutilisable : il ne nomme personne.
+# Sur la Z8, ces deux cœurs étaient le reste d'un pool dont 23 étaient tenus par douze conteneurs
+# DÉTRUITS, et les cinq conteneurs recréés (mélangeur et decklink-io compris) s'y partageaient
+# 50-51. Le symptôme fut un mélangeur à 22-32 fps : à aucun moment un compteur de cœurs n'était
+# en cause pour qui regardait l'image. La seule réparation possible passait par un script.
+#
+# Trois principes, et ils ne sont pas cosmétiques :
+#   1. ON MESURE LE CPUSET APPLIQUÉ, on ne le déduit pas. `containers.pinned_cores` ne porte que le
+#      pinning DÉDIÉ ; le cpuset d'un conteneur partagé a été calculé à son déploiement et n'est
+#      écrit nulle part. Il est donc relevé sur l'hôte (`placement.releve_cache`) — et cette mesure
+#      permet en plus de comparer l'intention à la réalité pour les dédiés.
+#   2. L'ORPHELIN EST NOMMÉ ROUGE. Une réservation dont le vmid n'existe plus était rangée avec les
+#      lcores des moteurs 2110, sans nom : invisible jusqu'à ce que l'image saute.
+#   3. ON RÉPARE SANS COUPER. `docker update --cpuset-cpus` élargit le cpuset d'un conteneur en
+#      marche ; recréer serait une coupure d'antenne pour un geste d'intendance.
+
+def _temps_reel(c):
+    """Ce conteneur tient-il une cadence (≠ profil `batch`) ? Décide de l'alerte « pool trop bas »."""
+    try:
+        from .docker_compute import effective_resources, _type_of
+        res = effective_resources(_type_of(c), c) or {}
+        return str(res.get("priority") or "").lower() != "batch"
+    except Exception:
+        return True          # inconnu → compté comme temps réel : on préfère alerter pour rien
+
+
+def _siblings_dedicated(vmid, reserve, owner, core_of, par_vmid, noms, vivants):
+    """Frères HT des cœurs `reserve` de `vmid` tenus par une AUTRE réservation dédiée VIVANTE →
+    [{vmid, hostname, cpuset (sa réservation entière), siblings (les frères concernés)}], trié par
+    vmid. Carte HT absente → [] (c'est `exclusif` qui porte alors le « je ne sais pas »)."""
+    if not core_of:
+        return []
+    phys = {core_of[y] for y in reserve if y in core_of}
+    par_voisin = {}
+    for x, v in owner.items():
+        if v != vmid and v in vivants and x in core_of and core_of[x] in phys:
+            par_voisin.setdefault(v, []).append(x)
+    return [{"vmid": v, "hostname": noms.get(v, ""),
+             "cpuset": fmt_cpuset(par_vmid.get(v) or []), "siblings": fmt_cpuset(sorted(xs))}
+            for v, xs in sorted(par_voisin.items())]
+
+
+def _charge_coeurs(c):
+    """Charge CPU MESURÉE d'un conteneur, en CŒURS → (charge|None, minorant: bool).
+
+    ★ UNITÉ. `containers.cpu_percent` est un pourcentage des CPU ALLOUÉS au conteneur (l'agent
+    divise par `n_cpus`), PAS d'un cœur : 57 % sur 16 CPU valent 9 cœurs, 57 % sur 2 CPU en
+    valent 1. La charge absolue est donc `cpu_percent × cpu_count / 100`, et sans `cpu_count`
+    elle n'est pas calculable — on rend None plutôt qu'un chiffre sans unité (c'est l'erreur
+    qui a produit un facteur 30 le 2026-08-01, cf. app/cpu_profiles.py).
+
+    ★ MINORANT. L'agent ÉCRÊTE `cpu_pct` à 100 : un conteneur qui saturerait son cpuset et en
+    réclamerait le double rend la même valeur que celui qui le remplit juste. `minorant=True`
+    dit « au moins ça », et l'interface doit l'afficher comme tel (« ≥ »), jamais comme une
+    mesure — sinon « réservé contre consommé » conclurait à tort au sur-dimensionnement."""
+    pct, n = (c or {}).get("cpu_percent"), (c or {}).get("cpu_count")
+    if pct is None or not n:
+        return None, False
+    try:
+        return round(float(pct) * int(n) / 100.0, 2), float(pct) >= 100.0
+    except (TypeError, ValueError):
+        return None, False
+
+
+def _famine(vmid):
+    """PSI « full » avg60 du conteneur (cf. app/cpu_pressure.py), ou None si inconnu."""
+    try:
+        from . import cpu_pressure
+        return (cpu_pressure.for_container(vmid) or {}).get("full")
+    except Exception as e:                                                   # noqa: BLE001
+        log.warning("vue_coeurs: PSI of %s unreadable (%s)", vmid, e)
+        return None
+
+
+def _place(c, reserve, res):
+    """PLACE du conteneur — où il s'exécute, question distincte de son POIDS (cf. app/cpu_weight
+    .py) : 'dedie' (des cœurs à lui), 'partage' (le pool du nœud), 'partage_plafonne' (le pool,
+    borné par un quota `--cpus`). → (place, plafond|None)."""
+    if reserve:
+        return "dedie", None
+    plafond = (res or {}).get("cores")
+    if plafond:
+        try:
+            return "partage_plafonne", int(plafond)
+        except (TypeError, ValueError):
+            pass
+    return "partage", None
+
+
+def _grille_coeurs(pool, core_of, par_vmid, vivants, libres, noms, moteurs):
+    """Carte des cœurs PHYSIQUES du nœud, deux threads HT côte à côte →
+    [{phys, threads: [{cpu, kind, vmids, noms}], kind, frere_partage}].
+
+    `kind` d'un thread : 'dedie' | 'moteur' (lcores d'un moteur 2110) | 'orphelin' (réservé par
+    un conteneur DÉTRUIT) | 'partage' (pool partagé) | 'systeme' (hors du pool de calcul :
+    noyau, agent-nœud, tout ce que l'orchestrateur ne place pas).
+
+    `frere_partage` = ce cœur physique porte un thread DÉDIÉ et un thread qui ne l'est pas. C'est
+    le défaut que la vue existait pour nommer : les deux threads partagent les unités
+    d'exécution, donc « dédié » n'y veut plus dire dédié.
+
+    Carte HT inconnue (nœud injoignable) → un emplacement par cpu logique, `phys=None` : on
+    montre ce qu'on sait et on n'invente aucun appariement."""
+    owner = {c: v for v, cs in par_vmid.items() for c in cs}
+    libres = set(libres)
+    pool = set(pool)
+    tous = sorted(set(core_of) | pool | set(owner))
+    groupes = {}
+    for cpu in tous:
+        groupes.setdefault(core_of.get(cpu, ("x", cpu)), []).append(cpu)
+
+    def _thread(cpu):
+        v = owner.get(cpu)
+        if v is not None and v not in vivants:
+            kind = "orphelin"
+        elif v is not None:
+            kind = "moteur" if v in moteurs else "dedie"
+        elif cpu in libres:
+            kind = "partage"
+        elif cpu in pool:
+            # Dans le pool de calcul, mais ni réservé ni offert au partage : c'est le cas d'un
+            # cœur retiré du pool partagé par la règle d'exclusivité physique (frère d'un dédié).
+            kind = "reserve_ht"
+        else:
+            kind = "systeme"
+        return {"cpu": cpu, "kind": kind,
+                "vmids": [v] if v is not None else [],
+                "noms": [noms.get(v) or ("#%d" % v)] if v is not None else []}
+
+    out = []
+    for k in sorted(groupes, key=lambda x: (isinstance(x, tuple), x)):
+        threads = [_thread(c) for c in sorted(groupes[k])]
+        kinds = {t["kind"] for t in threads}
+        frere = ("dedie" in kinds or "moteur" in kinds) and bool(
+            kinds & {"partage", "systeme"} or
+            len({tuple(t["vmids"]) for t in threads if t["vmids"]}) > 1)
+        out.append({"phys": (None if isinstance(k, tuple) else k), "threads": threads,
+                    "kind": ("dedie" if kinds <= {"dedie", "moteur"} and kinds else
+                             "orphelin" if "orphelin" in kinds else
+                             "mixte" if frere else
+                             ("partage" if "partage" in kinds else "systeme")),
+                    "frere_partage": bool(frere)})
+    return out
+
+
+def vue_coeurs(node_id, force=False):
+    """Qui tient quoi sur le pool de calcul de ce nœud → dict prêt pour l'UI et pour une garde.
+
+    `releve` dit si le cpuset APPLIQUÉ a pu être mesuré (nœud injoignable → False, et les champs
+    `cpuset_applique` restent vides plutôt que remplis d'une supposition)."""
+    from .database import db_get_containers
+    node = db_get_node(node_id) or {}
+    pool = parse_cpuset(node.get("compute_cpuset"))
+    par_vmid = allocations_by_vmid(node_id)
+    conteneurs = [c for c in (db_get_containers() or []) if c.get("node_id") == node_id]
+    vivants = {c["vmid"] for c in conteneurs}
+
+    applique = {}
+    releve = None
+    try:
+        from . import placement
+        releve = placement.releve_cache(node_id, force=force)
+    except Exception as e:
+        log.warning("vue_coeurs(%s): relevé du placement : %s", node_id, e)
+    if releve:
+        applique = {(c.get("name") or ""): (c.get("cpuset") or "")
+                    for c in (releve.get("containers") or [])}
+
+    # Le pool réellement partagé = le pool moins ce qui est dédié (aux vivants comme aux orphelins :
+    # tant qu'une réservation est là, `effective_cpuset` l'évite).
+    pris = {c for cs in par_vmid.values() for c in cs}
+    core_of = core_map_cached(node_id) or {}
+    libres, _phys_d = partage_disponible(node_id, pool=pool, core_of=core_of)
+    voulu = set(libres)
+    # ★ TOPOLOGIE HT : deux threads d'un même cœur physique partagent ses unités d'exécution. Un
+    # cœur « dédié » dont le FRÈRE est dans le pool partagé n'est pas dédié du tout — le calcul,
+    # lui, est partagé. Relevé sur la Z8 le 28/10 : pool partagé 1-23,50-51 entièrement fait des
+    # frères des cœurs dédiés (50 et 51 sont les frères de 24 et 25, le multiview), segment
+    # « output » du multiview à 13-14 ms et ~3 images répétées par seconde. `_exclure_du_pool`
+    # tient déjà cet invariant pour les lcores des MOTEURS 2110 ; il n'était tenu nulle part pour
+    # les réservations de conteneurs. Carte absente (nœud injoignable) → aucune affirmation.
+    phys_dedies = {core_of[c] for c in pris if c in core_of}
+    owner = {c: v for v, cs in par_vmid.items() for c in cs}
+    noms = {c["vmid"]: (c.get("hostname") or "") for c in conteneurs}
+
+    # Poids CPU POSÉ, mesuré sur l'hôte (cf. app/cpu_weight.py : il est hors signature de spec,
+    # donc rien ne le rattrape — il se mesure ou il ne se sait pas).
+    poids_mesures = {(c.get("name") or ""): c.get("cpu_shares")
+                     for c in ((releve or {}).get("containers") or [])}
+
+    dedies, partages = [], []
+    for c in sorted(conteneurs, key=lambda x: x["vmid"]):
+        v = c["vmid"]
+        reserve = sorted(par_vmid.get(v) or [])
+        nom_docker = c.get("docker_name") or ""
+        app = applique.get(nom_docker, "")
+        try:
+            from .docker_compute import effective_resources, _type_of
+            _res = effective_resources(_type_of(c), c) or {}
+        except Exception as e:                                               # noqa: BLE001
+            log.warning("vue_coeurs(%s): profil effectif de %s illisible (%s)", node_id, v, e)
+            _res = {}
+        place, plafond = _place(c, reserve, _res)
+        _pw = cpu_weight.for_container(c)
+        _pose = poids_mesures.get(nom_docker)
+        _pose = None if _pose is None else (cpu_weight.DOCKER_DEFAUT if int(_pose) == 0
+                                            else int(_pose))
+        _charge, _minorant = _charge_coeurs(c)
+        ligne = {"vmid": v, "hostname": c.get("hostname") or "", "statut": c.get("status") or "",
+                 "cpuset_applique": app,
+                 # ★ PLACE et POIDS, jamais confondus (arbitrage de Cyril, 30/10). `temps_reel`
+                 # n'est plus publié pour un DÉDIÉ : « temps réel » y était une tautologie (un
+                 # conteneur dédié n'est jamais `batch`) affichée comme une qualité, à côté d'un
+                 # dédié qui, lui, pouvait très bien ne pas tenir sa cadence.
+                 "place": place, "plafond": plafond,
+                 "poids": _pw, "poids_applique": _pose,
+                 "poids_coherent": (None if _pose is None else _pose == _pw["valeur"]),
+                 "charge": _charge, "charge_minorant": _minorant,
+                 # FAMINE = PSI « full » du conteneur (avg60, %) : part du temps où TOUTES ses
+                 # tâches attendent un cœur. La charge ne peut pas la montrer — un conteneur
+                 # affamé consomme PEU, il attend. None = pas de relevé.
+                 "famine": _famine(v)}
+        if reserve:
+            ligne["cpuset_reserve"] = fmt_cpuset(reserve)
+            ligne["cores"] = len(reserve)
+            # Intention ≠ réalité : un conteneur qui n'a pas été recréé depuis un changement de
+            # réservation tourne encore sur l'ancien cpuset. C'est précisément ce qu'une vue qui
+            # se contente de lire la base ne peut pas dire.
+            ligne["coherent"] = (None if not app else parse_cpuset(app) == set(reserve))
+            # Frères HT de SES cœurs qui se retrouvent dans le pool partagé : son exclusivité est
+            # nominale, et c'est la cause la plus plausible d'un dédié qui ne tient pas sa cadence.
+            freres = sorted(x for x in voulu
+                            if x in core_of and core_of[x] in {core_of[y] for y in reserve
+                                                               if y in core_of})
+            ligne["freres_partages"] = fmt_cpuset(freres)
+            # ★ Frères HT tenus par une AUTRE réservation dédiée (Z8, 30/10 : decklink-io #231
+            # « dédié » 27-31 = les frères de 1-5, tenus par deux pyramides dédiées #232 et #230 ;
+            # 265 % demandés, jamais 5 cœurs, images répétées/noires en SDI). Cherchés seulement
+            # dans le pool partagé, ces frères-là étaient invisibles : `exclusif` valait True et la
+            # vue mentait. Les orphelins sont exclus : une réservation sans conteneur ne calcule pas
+            # (et `orphelins` la nomme déjà).
+            ligne["siblings_dedicated"] = _siblings_dedicated(v, reserve, owner, core_of,
+                                                              par_vmid, noms, vivants)
+            ligne["exclusif"] = (None if not core_of
+                                 else not freres and not ligne["siblings_dedicated"])
+            ligne["physiques"] = len({core_of[y] for y in reserve if y in core_of}) or None
+            # ★ PROTECTION : la question que Cyril pose en regardant l'écran — « ce conteneur
+            # a-t-il ses cœurs pour lui ? ». Trois réponses et une inconnue, jamais un booléen :
+            # « non protégé » (il est dans le pool) et « je ne sais pas » (topologie HT illisible)
+            # ne sont pas la même chose, et les confondre rassurerait à tort.
+            if ligne["exclusif"] is None:
+                ligne["protection"] = None
+                ligne["protection_raison"] = {"cle": "settings.cores.prot.ht_inconnu"}
+            elif ligne["exclusif"]:
+                ligne["protection"] = "protege"
+                ligne["protection_raison"] = {"cle": "settings.cores.prot.cores_entiers"}
+            else:
+                ligne["protection"] = "partie"
+                ligne["protection_raison"] = {
+                    "cle": ("settings.cores.prot.freres_partages" if freres
+                            else "settings.cores.prot.freres_dedies"),
+                    "freres": ligne["freres_partages"],
+                    "voisins": ", ".join(
+                        "%s (#%d)" % (x["hostname"] or x["vmid"], x["vmid"])
+                        for x in ligne["siblings_dedicated"]),
+                }
+            dedies.append(ligne)
+        else:
+            # ★ UN PARTAGÉ PÉRIMÉ (relevé par Z8 le 28/10 : stills #228 sur 27-42,44-51, qui
+            # CHEVAUCHE trois réservations dédiées). Son cpuset a été calculé à son déploiement :
+            # si des cœurs ont été dédiés depuis, il tourne PAR-DESSUS leurs propriétaires — et la
+            # vue le listait sans rien dire. Le débordement est le cas grave, l'écart simple est
+            # une occasion manquée : les deux sont nommés, séparément.
+            ligne["temps_reel"] = _temps_reel(c)
+            applique_set = parse_cpuset(app)
+            if not app:
+                ligne["coherent"] = None
+            else:
+                ligne["coherent"] = applique_set == voulu
+                ligne["deborde"] = fmt_cpuset(sorted(applique_set & pris))
+            ligne["physiques"] = (len({core_of[x] for x in (applique_set or voulu)
+                                       if x in core_of}) or None) if core_of else None
+            ligne["protection"] = "non"
+            ligne["protection_raison"] = {
+                "cle": ("settings.cores.prot.pool_poids_bas"
+                        if ligne["poids"]["valeur"] < cpu_weight.DOCKER_DEFAUT
+                        else "settings.cores.prot.pool"),
+                "cores": fmt_cpuset(sorted(applique_set or voulu)),
+            }
+            partages.append(ligne)
+
+    # ★ « PARTAGE AVEC » — la colonne que Cyril a demandée nommément, parce que « non protégé »
+    # ne dit pas AVEC QUI. Deux voisinages, qui n'ont pas la même gravité et sont donc nommés
+    # séparément : le même cpuset (`via: cpuset`, c'est le partage normal d'un pool) et le FRÈRE
+    # HYPERTHREADING (`via: frere_ht`, le voisinage invisible — rien dans aucun cpuset ne le
+    # montre). `via: deborde` = un partagé périmé qui tourne SUR les cœurs d'un dédié.
+    def _vois(ligne, via):
+        return {"vmid": ligne["vmid"], "hostname": ligne["hostname"], "via": via}
+
+    for l in dedies:
+        vois = [{"vmid": x["vmid"], "hostname": x["hostname"], "via": "frere_ht"}
+                for x in l["siblings_dedicated"]]
+        if l.get("freres_partages"):
+            # Ses frères HT sont dans le pool : TOUS les partagés peuvent s'y exécuter.
+            vois += [_vois(o, "frere_ht") for o in partages]
+        l["partage_avec"] = vois
+    for l in partages:
+        cs = parse_cpuset(l["cpuset_applique"]) or voulu
+        vois = [_vois(o, "cpuset") for o in partages
+                if o is not l and (parse_cpuset(o["cpuset_applique"]) or voulu) & cs]
+        for d in dedies:
+            if parse_cpuset(d.get("freres_partages") or "") & cs:
+                vois.append(_vois(d, "frere_ht"))
+            elif parse_cpuset(d.get("cpuset_reserve") or "") & cs:
+                vois.append(_vois(d, "deborde"))
+        l["partage_avec"] = vois
+
+    orphelins = [{"vmid": v, "cpuset": fmt_cpuset(sorted(c))}
+                 for v, c in sorted(par_vmid.items()) if v not in vivants and c]
+    tr = [l for l in partages if l["temps_reel"]]
+    # Cœurs PHYSIQUES du pool partagé dont aucun thread n'est dédié : la vraie capacité de calcul
+    # partagée. Sur la Z8 : 23 cœurs logiques, 0 cœur physique exclusif.
+    phys_partages = {core_of[c] for c in libres if c in core_of}
+    phys_exclusifs = phys_partages - phys_dedies
+    etat_partage = {
+        "cpuset": fmt_cpuset(libres), "cores": len(libres),
+        "conteneurs": len(partages), "temps_reel": len(tr),
+        "physiques": len(phys_partages), "physiques_exclusifs": len(phys_exclusifs),
+        "freres_de_dedies": fmt_cpuset(sorted(c for c in libres
+                                              if c in core_of and core_of[c] in phys_dedies)),
+    }
+    # ★ Le seuil est un FAIT, pas un réglage : moins de cœurs à partager que de conteneurs temps
+    # réel qui s'y partagent, c'est de la sur-souscription certaine. Sur la Z8 : 2 pour 4.
+    # Et ce qu'on compte, quand la topologie est connue, ce sont les cœurs PHYSIQUES EXCLUSIFS :
+    # 23 cœurs logiques tous frères de cœurs dédiés ne font aucune capacité de calcul propre, et
+    # la version précédente de ce verdict les comptait pour 23 — donc disait « tout va bien ».
+    _capacite = len(phys_exclusifs) if core_of else len(libres)
+    etat_partage["bas"] = bool(tr) and _capacite < len(tr)
+    etat_partage["capacite_comptee"] = _capacite
+    # ★ CE QUE COÛTERAIT « dédié = cœur physique », CHIFFRÉ AVANT LA DÉCISION. Sans ça, la
+    # question « peut-on l'activer ? » se répond à la main sur un relevé — c'est ce que j'ai fait
+    # pour la Z8 le 28/10, et c'est exactement le genre de calcul qu'on ne refait pas six mois
+    # plus tard, sur un autre nœud, avant d'activer un réglage dont le coût a changé.
+    if core_of and not reserve_physique(node_id):
+        _strict, _ = partage_disponible(node_id, pool=pool, core_of=core_of, strict=True)
+        etat_partage["si_strict"] = {
+            "cpuset": fmt_cpuset(_strict), "cores": len(_strict),
+            "physiques": len({core_of[c] for c in _strict if c in core_of}),
+            "perdus": fmt_cpuset(sorted(set(libres) - set(_strict))),
+            # Le verdict qui décide : reste-t-il de quoi faire tourner les partagés temps réel ?
+            "viable": bool(_strict) and (not tr or len({core_of[c] for c in _strict
+                                                        if c in core_of}) >= len(tr)),
+        }
+    # Moteurs 2110 : leurs lcores sont des réservations comme les autres, mais ce ne sont pas des
+    # conteneurs de calcul — la grille les distingue (busy-poll : personne ne partage ça).
+    moteurs = set()
+    try:
+        from .docker_compute import is_mtl_type, _type_of as _t
+        moteurs = {c["vmid"] for c in conteneurs if is_mtl_type(_t(c))}
+    except Exception as e:                                                   # noqa: BLE001
+        log.debug("vue_coeurs(%s): moteurs non identifiés (%s)", node_id, e)
+
+    lignes = dedies + partages
+    synthese = {
+        "protege": sum(1 for l in lignes if l.get("protection") == "protege"),
+        "partie": sum(1 for l in lignes if l.get("protection") == "partie"),
+        "non": sum(1 for l in lignes if l.get("protection") == "non"),
+        "inconnu": sum(1 for l in lignes if l.get("protection") is None),
+        "poids_bas": sum(1 for l in lignes
+                         if l["poids"]["valeur"] < cpu_weight.DOCKER_DEFAUT),
+        "poids_haut": sum(1 for l in lignes
+                          if l["poids"]["valeur"] > cpu_weight.DOCKER_DEFAUT),
+        "poids_divergents": sum(1 for l in lignes if l.get("poids_coherent") is False),
+    }
+    return {"pool": fmt_cpuset(pool), "pool_cores": len(pool),
+            "ht_connu": bool(core_of),
+            "ordonnancables": len(ordonnancables(node_id, node.get("compute_cpuset"))),
+            "dedies": dedies, "partages": partages, "orphelins": orphelins,
+            "coeurs": _grille_coeurs(pool, core_of, par_vmid, vivants, libres, noms, moteurs),
+            "synthese": synthese,
+            # Barème des poids : l'interface ne doit pas réécrire les valeurs (un 2048 recopié
+            # dans le JS et un 2048 posé au `docker run` divergeraient en silence).
+            "poids_niveaux": [{"niveau": l, "valeur": cpu_weight.WEIGHTS[l]}
+                              for l in cpu_weight.LEVELS],
+            "partage": etat_partage, "releve": bool(releve),
+            "status": cores_status(node_id)}
+
+
+def alerter_partage_bas(node_id, vue=None):
+    """Alerte (throttlée) quand le pool partagé ne suffit plus aux conteneurs temps réel qui l'habitent.
+
+    Ce n'est pas un doublon de `pinning_sature_*` : ceux-là parlent d'un conteneur qu'on DÉPLOIE et
+    qui ne trouve pas sa place. Ici, personne ne déploie — la place s'est réduite sous des
+    conteneurs déjà en marche (une réservation ailleurs, un orphelin), et aucun événement ne le
+    signale. C'est l'état, pas la transition, qu'il faut dire."""
+    vue = vue or vue_coeurs(node_id)
+    p = vue["partage"]
+    if not p["bas"]:
+        return False
+    noms = _noms_vmids([l["vmid"] for l in vue["partages"] if l["temps_reel"]])
+    _alerter_throttle(node_id, "partage_bas",
+                      "pool partagé réduit à %s (%d cœurs) pour %d conteneur(s) temps réel : %s"
+                      % (p["cpuset"] or "—", p["cores"], p["temps_reel"], noms),
+                      "warning", cle="alert.resource.partage_trop_bas",
+                      params={"n": (db_get_node(node_id) or {}).get("name") or node_id,
+                              "cpuset": p["cpuset"] or "—", "cores": p["cores"],
+                              "count": p["temps_reel"], "noms": noms})
+    return True
+
+
+def alerter_dedies_non_exclusifs(node_id, vue=None):
+    """Alerte (throttlée) quand un cœur « dédié » partage son cœur PHYSIQUE — avec le pool partagé
+    (`alert.resource.dedie_frere_ht`) OU avec une autre réservation dédiée
+    (`alert.resource.dedicated_sibling_dedicated`, voisin nommé avec son cpuset).
+
+    ★ POURQUOI C'EST UNE ALERTE ET PAS UNE NOTE. « Dédié » est une promesse de cadence : c'est la
+    seule raison de réserver. Un dédié dont le frère HT est dans le pool partagé ne la tient pas,
+    et rien ne le signalait — le symptôme sort chez le spectateur (Z8, 28/10 : multiview #225
+    « dédié » 24-26, segment output à 13-14 ms, ~3 images répétées par seconde, pendant que le
+    mélangeur et le decklink-io travaillaient sur 50-51, frères de 24 et 25). La réservation
+    s'affichait verte, le compte de cœurs était juste, et la machine mentait."""
+    vue = vue or vue_coeurs(node_id)
+    if not vue.get("ht_connu"):
+        return False          # topologie non mesurée → aucune affirmation (pas de verdict deviné)
+    nom_noeud = (db_get_node(node_id) or {}).get("name") or node_id
+    leve = False
+    # Cas 1 — frère HT dans le pool PARTAGÉ (clé historique, paramètres inchangés).
+    coupables = [l for l in vue["dedies"] if l.get("exclusif") is False and l.get("freres_partages")]
+    if coupables:
+        _alerter_throttle(
+            node_id, "dedie_frere_ht",
+            "réservations dédiées dont le frère HT est dans le pool partagé : %s"
+            % _noms_vmids([l["vmid"] for l in coupables]), "warning",
+            cle="alert.resource.dedie_frere_ht",
+            params={"n": nom_noeud,
+                    "count": len(coupables),
+                    "noms": _noms_vmids([l["vmid"] for l in coupables]),
+                    "freres": ", ".join(l["freres_partages"] for l in coupables),
+                    "partage": vue["partage"]["cpuset"] or "—"})
+        leve = True
+    # Cas 2 — frère HT tenu par une AUTRE réservation DÉDIÉE (Z8, 30/10 : decklink-io #231 sur
+    # 27-31, frères de 1-5 tenus par les pyramides #232 et #230). Motif de throttle DISTINCT : un
+    # cas ne doit pas taire l'autre. Le VOISIN est nommé avec son cpuset — c'est lui qu'on va voir.
+    paires = [l for l in vue["dedies"] if l.get("exclusif") is False and l.get("siblings_dedicated")]
+    if paires:
+        detail = "; ".join(
+            "%s (%s) %s ↔ %s" % (l["hostname"] or "?", l["vmid"], l["cpuset_reserve"],
+                                 ", ".join("%s (%s) cpuset %s [%s]"
+                                           % (s["hostname"] or "?", s["vmid"], s["cpuset"],
+                                              s["siblings"])
+                                           for s in l["siblings_dedicated"]))
+            for l in paires)
+        _alerter_throttle(
+            node_id, "dedie_frere_dedie",
+            "réservations dédiées dont le frère HT est tenu par un autre dédié : %s" % detail,
+            "warning", cle="alert.resource.dedicated_sibling_dedicated",
+            params={"n": nom_noeud, "count": len(paires),
+                    "noms": _noms_vmids([l["vmid"] for l in paires]), "pairs": detail})
+        leve = True
+    return leve
+
+
+def dedicated_exclusivity(node_id, vmid=None):
+    """Verdict EXÉCUTABLE « chaque dédié a-t-il ses cœurs physiques pour lui ? » — pour la
+    vérification d'après-recréation, sans relire la vue à l'œil.
+
+    → {"node_id", "ht_known", "ok", "dedicated": [{vmid, hostname, cpuset, exclusive,
+    shared_siblings, dedicated_siblings}]}. `ok` : True si tous exclusifs, False si l'un ne l'est
+    pas, None si la topologie HT est inconnue (aucun verdict deviné). `vmid` restreint à une ligne
+    (liste vide s'il n'a pas de réservation dédiée sur ce nœud)."""
+    vue = vue_coeurs(node_id)
+    lignes = [{"vmid": l["vmid"], "hostname": l["hostname"], "cpuset": l.get("cpuset_reserve", ""),
+               "exclusive": l.get("exclusif"),
+               "shared_siblings": l.get("freres_partages") or "",
+               "dedicated_siblings": l.get("siblings_dedicated") or []}
+              for l in vue["dedies"] if vmid is None or l["vmid"] == vmid]
+    ht = bool(vue.get("ht_connu"))
+    ok = None if not ht else all(l["exclusive"] is True for l in lignes)
+    return {"node_id": node_id, "ht_known": ht, "ok": ok, "dedicated": lignes}
+
+
+def reappliquer_partages(node_id, force=False):
+    """Redonne aux conteneurs PARTAGÉS le pool élargi, SANS coupure (`docker update`).
+
+    → {"faits": [{vmid, avant, apres}], "echecs": [{vmid, err}], "inchanges": [vmid…]}
+
+    ★ POURQUOI C'EST NÉCESSAIRE, ET POURQUOI SANS RECRÉATION. Le cpuset d'un conteneur partagé est
+    calculé à son DÉPLOIEMENT : il exclut les cœurs dédiés d'alors. Quand ces cœurs se libèrent, le
+    conteneur garde son cpuset étroit — sur la Z8, deux cœurs pour cinq conteneurs alors que
+    vingt-cinq étaient redevenus libres. Rien ne le rattrapait, et rien ne le disait. `docker
+    update --cpuset-cpus` le corrige sur un conteneur EN MARCHE : recréer serait une coupure
+    d'antenne pour un geste d'intendance.
+    """
+    from . import node_driver
+    from .database import db_get_containers
+    import shlex as _sh
+    node = db_get_node(node_id) or {}
+    vue = vue_coeurs(node_id, force=force)
+    voulu = vue["partage"]["cpuset"]
+    out = {"faits": [], "echecs": [], "inchanges": [], "voulu": voulu}
+    if not voulu:
+        return out
+    par_vmid = {c["vmid"]: c for c in (db_get_containers() or [])}
+    for ligne in vue["partages"]:
+        c = par_vmid.get(ligne["vmid"]) or {}
+        nom = (c.get("docker_name") or "").strip()
+        avant = ligne.get("cpuset_applique") or ""
+        if not nom:
+            continue
+        # Mesure obligatoire AVANT d'agir : sans relevé on ne sait pas ce qu'on change, et
+        # « inchangé » ne voudrait rien dire. On ne touche alors à rien.
+        if not vue["releve"]:
+            out["echecs"].append({"vmid": ligne["vmid"],
+                                  "err": "placement non mesurable (nœud injoignable) : "
+                                         "aucun cpuset n'est modifié à l'aveugle"})
+            continue
+        if parse_cpuset(avant) == parse_cpuset(voulu):
+            out["inchanges"].append(ligne["vmid"])
+            continue
+        try:
+            rc, o, e = node_driver.host_exec(
+                node, "docker update --cpuset-cpus=%s %s" % (_sh.quote(voulu), _sh.quote(nom)),
+                timeout=30)
+        except Exception as exc:
+            rc, o, e = 1, "", str(exc)
+        if rc == 0:
+            out["faits"].append({"vmid": ligne["vmid"], "avant": avant, "apres": voulu})
+        else:
+            out["echecs"].append({"vmid": ligne["vmid"], "err": ((e or o) or "")[-200:]})
+    if out["faits"]:
+        db_add_alert("alert.resource.partages_reappliques", "info", node_id=node_id,
+                     kind="resource",
+                     params={"n": node.get("name") or node_id, "cpuset": voulu,
+                             "count": len(out["faits"]),
+                             "noms": _noms_vmids([f["vmid"] for f in out["faits"]])})
+    if out["faits"]:
+        try:
+            from . import placement
+            placement._dernier.pop(str(node_id), None)   # le relevé vient de devenir faux
+        except Exception as e:
+            log.debug("reappliquer_partages: cache de relevé non invalidé (%s)", e)
+    return out
+
+
+def reapply_shared_after_reservation(node_id, vmid=None, cores=None):
+    """POINT D'ENTRÉE UNIQUE : après qu'une réservation de cœurs DÉDIÉS a RÉUSSI sur `node_id`,
+    retire ces cœurs du cpuset des conteneurs PARTAGÉS déjà en marche (`reappliquer_partages`).
+
+    → le `threading.Thread` lancé, ou None quand rien n'est réservé (aucun cœur, aucun nœud).
+
+    ★ LA PANNE (Z8, 2026-10-29 21:30). Le mélangeur #227 recréé avec 3 cœurs dédiés (21-23) :
+    #228, #231, #233, #234, #235, partagés et déjà en marche, avaient toujours 21-23 dans leur
+    cpuset — calculé à LEUR déploiement, avant la réservation. « Dédié » ne l'était pas, la vue
+    disait `coherent:false`, et il a fallu `POST /api/nodes/1/cores/reapply` à la main. Le remède
+    n'était appelé qu'à la DESTRUCTION (quand des cœurs se libèrent), jamais quand une création,
+    une recréation, un redimensionnement, une garantie à chaud ou un moteur 2110 en PREND.
+
+    En tâche de fond (ça parle à l'hôte ; le déploiement n'a pas à l'attendre), au mieux — mais
+    jamais en silence : un partagé qui reste sur des cœurs dédiés est exactement la panne qu'on
+    corrige, donc tout échec est journalisé ET alerté, en nommant les conteneurs restés dessus.
+    Le conteneur dédié lui-même n'est jamais touché : `reappliquer_partages` ne parcourt que
+    `vue_coeurs()["partages"]`, c'est-à-dire les conteneurs SANS réservation.
+
+    ★ MÊME FIL : la FRÉQUENCE des cœurs réservés (`sync_dedicated_cpufreq`). Z8, 29/10 22 h :
+    nœud en powersave, cœurs du mélangeur à ~1,0 GHz pour 4,0 — plus lent au repos (11,1 ms) que
+    sous charge (6,7 ms). `ensure_cpufreq_performance` n'était appelé que par la prép d'un nœud
+    2110 ; un nœud DeckLink n'y passait jamais."""
+    if isinstance(cores, str):
+        reserved = parse_cpuset(cores)
+    else:
+        reserved = set(int(c) for c in (cores or []))
+    if not node_id or not reserved:
+        return None
+    t = threading.Thread(target=_reapply_shared_after_reservation,
+                         args=(node_id, vmid, fmt_cpuset(sorted(reserved))),
+                         name="reapply-shared-%s" % node_id, daemon=True)
+    t.start()
+    return t
+
+
+def _reapply_shared_after_reservation(node_id, vmid, cpuset):
+    # Deux gestes indépendants dans le même fil : un échec de l'un n'empêche pas l'autre.
+    try:
+        return _reapply_shared(node_id, vmid, cpuset)
+    finally:
+        sync_dedicated_cpufreq(node_id, vmid)
+
+
+def _reapply_shared(node_id, vmid, cpuset):
+    try:
+        res = reappliquer_partages(node_id, force=True)
+    except Exception as e:                                                   # noqa: BLE001
+        log.exception("shared cpuset reapply after reserving %s for vmid %s on node %s crashed",
+                      cpuset, vmid, node_id)
+        res = {"faits": [], "echecs": [{"vmid": None, "err": str(e)}], "inchanges": []}
+    echecs = res.get("echecs") or []
+    if not echecs:
+        return res
+    first = str((echecs[0] or {}).get("err") or "")[:160]
+    log.warning("shared cpuset reapply after reserving %s for vmid %s on node %s: %d container(s) "
+                "still on the reserved cores (first error: %s)",
+                cpuset, vmid, node_id, len(echecs), first)
+    try:
+        node = db_get_node(node_id) or {}
+        db_add_alert("alert.resource.partages_reapplication_echec", "warning",
+                     node_id=node_id, vmid=vmid, kind="resource",
+                     params={"n": node.get("name") or node_id, "cpuset": cpuset,
+                             "count": len(echecs), "e": first,
+                             "dedie": _noms_vmids([vmid]) if vmid is not None else "—",
+                             "noms": _noms_vmids([x.get("vmid") for x in echecs
+                                                  if x.get("vmid") is not None])})
+    except Exception as e:                                                   # noqa: BLE001
+        log.error("shared cpuset reapply failure on node %s could not be alerted: %s", node_id, e)
+    return res
+
+
+
+def after_cores_released(node_id):
+    """Pendant de `reapply_shared_after_reservation` quand des cœurs se LIBÈRENT (destruction) :
+    élargit les partagés, puis retire le plancher de fréquence des cœurs rendus — sinon ils
+    chaufferaient pour rien, et toute mesure future de leur comportement normal serait faussée.
+    Cible de fil de fond (cf. `containers._detruire_container_locked`)."""
+    try:
+        reappliquer_partages(node_id)
+    except Exception as e:                                                   # noqa: BLE001
+        log.warning("shared cpuset widening after release on node %s failed: %s", node_id, e)
+    sync_dedicated_cpufreq(node_id, None)
+
+
+def dedicated_floor_cores(node_id):
+    """Cœurs DÉDIÉS du nœud à épingler au plancher de fréquence max : les réservations de
+    `node_core_alloc` détenues par un conteneur EXISTANT (épinglés `resources.pin`, garanties
+    d'étalonnage, lcores moteur). Les réservations orphelines n'en font pas partie — elles ne
+    portent aucune échéance, les épingler serait chauffer pour personne."""
+    from .database import db_get_containers
+    vivants = {c["vmid"] for c in (db_get_containers() or []) if c.get("node_id") == node_id}
+    return sorted({c for v, cs in allocations_by_vmid(node_id).items() if v in vivants for c in cs})
+
+
+def sync_dedicated_cpufreq(node_id, vmid=None):
+    """Met le nœud en `performance` + plancher max sur ses cœurs dédiés ACTUELS, plancher retiré
+    ailleurs — après MESURE (rien n'est réinstallé sur un nœud déjà conforme). Tout nœud, 2110 ou
+    non. Best-effort, jamais silencieux : un échec est journalisé ET alerté. → (agi, ok, msg)."""
+    node = db_get_node(node_id) or {}
+    if not node:
+        return False, False, "node not found"
+    cores = dedicated_floor_cores(node_id)
+    try:
+        from . import mtl
+        acted, ok, msg = mtl.sync_dedicated_cpufreq(node, cores)
+    except Exception as e:                                                   # noqa: BLE001
+        acted, ok, msg = True, False, "crash: %s" % e
+    if ok:
+        if acted:
+            log.info("cpufreq on node %s set for dedicated cores [%s]: %s",
+                     node_id, fmt_cpuset(cores), msg)
+        return acted, ok, msg
+    log.warning("cpufreq on node %s for dedicated cores [%s] failed: %s",
+                node_id, fmt_cpuset(cores), msg)
+    try:
+        db_add_alert("alert.resource.cpufreq_dedies_echec", "warning", node_id=node_id,
+                     vmid=vmid, kind="resource",
+                     params={"n": node.get("name") or node_id,
+                             "cores": fmt_cpuset(cores) or "—", "e": str(msg)[:200]})
+    except Exception as e:                                                   # noqa: BLE001
+        log.error("cpufreq failure on node %s could not be alerted: %s", node_id, e)
+    return acted, ok, msg
+
+
+# ─── MODE D'ÉNERGIE DU NŒUD (mesuré) ─────────────────────────────────────────────────────────
+# ★ POURQUOI DANS LA FENÊTRE DES CŒURS. Un cœur dédié à 1,0 GHz n'est pas un cœur dédié : sur la
+# Z8 (nœud non-2110, donc sans préparation hôte), le mélangeur passait de 11,1 ms à 4,4 ms au seul
+# changement de gouverneur. Le réglage était posé, invisible, et les alertes de prép levées huit
+# fois n'avaient jamais été lues. Dire « qui tient quel cœur » sans dire À QUELLE FRÉQUENCE laisse
+# l'exploitant chercher une contention qui n'existe pas.
+_ENERGIE_TTL_S = 120.0
+_energie_cache = {}          # node_id → (monotone, état)
+
+
+def etat_energie(node_id, force=False):
+    """État cpufreq MESURÉ du nœud → dict, caché `_ENERGIE_TTL_S` (la sonde est un aller-retour).
+
+    `mesure=False` → nœud injoignable : aucun champ n'est alors une affirmation (gouverneur None,
+    pas « powersave »). C'est la différence entre « il n'est pas en performance » et « je ne sais
+    pas », et seule la première justifie de proposer un changement."""
+    import time as _t
+    nid = str(node_id)
+    hit = _energie_cache.get(nid)
+    if not force and hit and (_t.monotonic() - hit[0]) < _ENERGIE_TTL_S:
+        return hit[1]
+    node = db_get_node(node_id) or {}
+    out = {"mesure": False, "gouverneur": None, "gouverneurs": {}, "unite": None,
+           "min_mhz": None, "max_mhz": None, "conforme": None, "raison": "",
+           "dedies": "", "dedies_voulus": ""}
+    try:
+        from . import mtl
+        st = mtl.cpufreq_state(mtl._run_agent(node))
+    except Exception as e:                                                   # noqa: BLE001
+        log.warning("etat_energie(%s): %s", node_id, e)
+        st = None
+    if st is not None:
+        voulus = dedicated_floor_cores(node_id)
+        conforme, raison = mtl.cpufreq_conforme(st, voulus)
+        govs = {}
+        for _c, (gov, _mn, _lo, _mx) in (st.get("cpus") or {}).items():
+            govs[gov or "?"] = govs.get(gov or "?", 0) + 1
+        mins = [v[1] for v in (st.get("cpus") or {}).values() if v[1]]
+        maxs = [v[3] for v in (st.get("cpus") or {}).values() if v[3]]
+        out.update({
+            "mesure": True,
+            # Un seul gouverneur sur toute la machine, ou « mixte » : la moyenne n'aurait aucun
+            # sens, et un nœud à moitié en powersave est un nœud en powersave pour le conteneur
+            # qui tombe du mauvais côté.
+            "gouverneur": (sorted(govs)[0] if len(govs) == 1 else ("mixte" if govs else None)),
+            "gouverneurs": govs, "unite": bool(st.get("unit")),
+            "min_mhz": (min(mins) // 1000 if mins else None),
+            "max_mhz": (max(maxs) // 1000 if maxs else None),
+            "conforme": bool(conforme), "raison": raison,
+            "dedies": fmt_cpuset(sorted(st.get("dedicated") or [])),
+            "dedies_voulus": fmt_cpuset(voulus),
+        })
+    _energie_cache[nid] = (_t.monotonic(), out)
+    return out
+
+
+def passer_en_performance(node_id):
+    """Met le nœud en gouverneur `performance` + plancher max sur ses cœurs DÉDIÉS ACTUELS.
+
+    → {"ok", "agi", "msg", "energie"}. Geste EXPLICITE (un bouton, une confirmation) : il écrit
+    une unité systemd sur l'hôte et change la consommation de la machine. `sync_dedicated_cpufreq`
+    mesure d'abord et ne réinstalle rien sur un nœud déjà conforme."""
+    agi, ok, msg = sync_dedicated_cpufreq(node_id)
+    _energie_cache.pop(str(node_id), None)
+    return {"ok": bool(ok), "agi": bool(agi), "msg": msg,
+            "energie": etat_energie(node_id, force=True)}

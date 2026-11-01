@@ -137,6 +137,16 @@ STR = {
         "agent_local_bad": "Agent local NON enregistré : aucun nœud déclaré, rien ne pourra être déployé.",
         "agent_local_fix": "À réparer — depuis /opt/bobistudio, en root : ./venv/bin/python -c \"from app import node_driver as n; print(n.register('127.0.0.1', 9100, '<jeton de /etc/bobi-node-agent/config.json>', name='local'))\"  ·  ou par Réglages → Nœuds & Matériel.",
         "aio_partial": "Tout-en-un INCOMPLET : l'orchestrateur tourne, le nœud local n'est pas déclaré.",
+        "aio_partial_net": "Tout-en-un INCOMPLET : le nœud local est déclaré, mais le réseau des conteneurs n'a PAS pu être créé — rien n'y sera déployable. Réglages → Nœuds → ⚙ Configuration → « Réseau containers » pour le créer, et l'erreur ci-dessus en dit la cause.",
+        # Réseau des conteneurs (tout-en-un) — cf. app/container_net.py
+        "net_title": "Réseau des conteneurs",
+        "net_interne_l": "Réseau interne (recommandé)",
+        "net_interne_d": "Les conteneurs vivent dans un sous-réseau privé à ce serveur, sortie par NAT. Rien à demander à l'administrateur réseau : ça marche tout de suite.",
+        "net_site_l": "Réseau du site",
+        "net_site_d": "Chaque conteneur prend une IP sur votre LAN. À choisir si des équipements extérieurs (pupitres, récepteurs, contrôle tiers) doivent les joindre directement. À finir dans Réglages → Nœuds & Matériel (carte réseau et plage d'IP).",
+        "net_interne_ok": "Réseau interne « {name} » créé ({subnet}).",
+        "net_interne_bad": "Réseau interne NON créé : {err}",
+        "net_site_todo": "Mode « réseau du site » retenu — à terminer dans Réglages → Nœuds & Matériel : carte réseau des conteneurs et plage d'IP.",
         # erreurs
         "e_aptupdate": "apt-get update a échoué.", "e_aptinstall": "apt-get install a échoué.",
         "e_venv": "Création du venv échouée.", "e_pip": "pip install a échoué.",
@@ -237,6 +247,16 @@ STR = {
         "agent_local_bad": "Local agent NOT registered: no node declared, nothing can be deployed.",
         "agent_local_fix": "To fix — from /opt/bobistudio, as root: ./venv/bin/python -c \"from app import node_driver as n; print(n.register('127.0.0.1', 9100, '<token from /etc/bobi-node-agent/config.json>', name='local'))\"  ·  or via Settings → Nodes & Hardware.",
         "aio_partial": "All-in-one INCOMPLETE: the orchestrator runs, the local node is not declared.",
+        "aio_partial_net": "All-in-one INCOMPLETE: the local node is declared, but the container network could NOT be created \u2014 nothing can be deployed on it. Settings \u2192 Nodes \u2192 \u2699 Configuration \u2192 \u00ab Container network \u00bb to create it; the error above states the cause.",
+        # Container network (all-in-one) — see app/container_net.py
+        "net_title": "Container network",
+        "net_interne_l": "Internal network (recommended)",
+        "net_interne_d": "Containers live in a subnet private to this server, with NATed egress. Nothing to ask the network administrator: it works right away.",
+        "net_site_l": "Site network",
+        "net_site_d": "Each container takes an IP on your LAN. Choose this if outside equipment (panels, receivers, third-party control) must reach them directly. To be finished in Settings → Nodes & Hardware (network card and IP range).",
+        "net_interne_ok": "Internal network « {name} » created ({subnet}).",
+        "net_interne_bad": "Internal network NOT created: {err}",
+        "net_site_todo": "« Site network » mode selected — to be finished in Settings → Nodes & Hardware: container network card and IP range.",
         "e_aptupdate": "apt-get update failed.", "e_aptinstall": "apt-get install failed.",
         "e_venv": "venv creation failed.", "e_pip": "pip install failed.",
         "e_initdb": "init_db() failed.", "e_zip": "bobistudio.zip not found next to the installer ({d}).",
@@ -1087,6 +1107,54 @@ def install_controller(zip_path):
     return None
 
 
+def appliquer_reseau_conteneurs(mode):
+    """Pose le MODE du réseau des conteneurs sur le nœud local. Rend (ok, détail).
+
+    ★ POURQUOI C'EST ICI ET PAS « PLUS TARD DANS L'INTERFACE ». En mode interne, le réseau ne
+    demande rien au site : ni carte parent, ni plage d'IP, ni accord de l'administrateur réseau.
+    Il peut donc être créé MAINTENANT, et l'installation se termine sur un serveur réellement
+    déployable. En mode site, au contraire, il faut choisir une carte et une plage — ça reste
+    dans Réglages, et on le DIT au lieu de laisser croire que tout est fini.
+
+    On passe par un processus enfant dans APP_DIR, comme `register_local_agent`, et pour les
+    mêmes raisons qu'elle documente : `app` ne s'importe que depuis là, et on juge sur le
+    RÉSULTAT (la colonne en base) plutôt que sur un code de sortie.
+    """
+    code = (
+        "import os, sys, json\n"
+        "from app import database as d, container_net as cn\n"
+        "d.init_db()\n"
+        "n = d.db_get_node_by_host('127.0.0.1')\n"
+        "if not n:\n"
+        "    print('aucun nœud local en base', file=sys.stderr); sys.exit(1)\n"
+        "mode = os.environ['BOBI_NET_MODE']\n"
+        "if mode != d.NET_MODE_INTERNE:\n"
+        "    d.db_update_node(n['id'], container_net_mode=mode); sys.exit(0)\n"
+        # `confirme` : le gate de `appliquer_mode_interne` refuse désormais tout geste DESTRUCTEUR
+        # sans accord explicite, même sans conteneur attaché (corrigé le 2026-10-30). Ici l'accord
+        # existe — l'exploitant vient de choisir le mode à l'écran précédent — et il faut le
+        # passer, sinon une RÉINSTALLATION échouerait : la base survit à l'installation
+        # (`_EXCLUS_ARBRE`), donc un réseau de l'installation d'avant peut diverger.
+        "code, charge = cn.appliquer_mode_interne(n, n['id'], {'confirme': True})\n"
+        "print(json.dumps(charge))\n"
+        "sys.exit(0 if code == 200 else 1)\n"
+    )
+    r = subprocess.run([f"{APP_DIR}/venv/bin/python", "-c", code],
+                       cwd=APP_DIR, capture_output=True, text=True,
+                       env={**os.environ, "BOBI_NET_MODE": mode})
+    detail = {}
+    for ligne in (r.stdout or "").splitlines():
+        if ligne.startswith("{"):
+            try:
+                detail = json.loads(ligne)
+            except Exception:
+                pass
+    if r.returncode == 0:
+        return True, detail
+    return False, (detail.get("error")
+                   or ((r.stderr or "").strip().splitlines() or ["?"])[-1])
+
+
 def register_local_agent(token):
     """Enrôle l'agent LOCAL, et DIT la vérité sur le résultat. Rend True si la ligne existe.
 
@@ -1158,8 +1226,37 @@ def path_all_in_one(zip_path):
     run_install_node(zip_path, ["--with", ",".join(caps) or "compute",
                                 "--port", "9100", "--token", token])
     noeud_ok = register_local_agent(token)
+    # Le mode réseau se demande APRÈS l'enrôlement : sans ligne de nœud en base, il n'y a rien
+    # sur quoi le poser. Et on ne le demande pas du tout si l'enrôlement a échoué — ce serait
+    # une question dont la réponse ne pourrait aller nulle part.
+    # ★ LE VERDICT TIENT COMPTE DU RÉSEAU (corrigé le 2026-10-30). Il ne regardait que
+    # `noeud_ok` : une installation dont le réseau des conteneurs n'avait PAS pu être créé
+    # annonçait « Tout-en-un prêt », avec pour seule trace un `warn` noyé quelques lignes plus
+    # haut. C'est exactement le défaut (e) que `register_local_agent` documente pour le nœud, et
+    # il était resté en place pour le réseau — vécu sur la nouvelle Z8 le 30/10 : installation
+    # déclarée prête, aucun réseau, rien de déployable.
+    net_ok, net_demande = True, False
+    if noeud_ok:
+        mode = menu_select(t("net_title"), [
+            ("interne", t("net_interne_l"), t("net_interne_d")),
+            ("site", t("net_site_l"), t("net_site_d")),
+        ], default=0, allow_back=False)
+        net_demande = (mode == "interne")
+        net_ok, detail = appliquer_reseau_conteneurs(mode)
+        if mode == "interne" and net_ok:
+            ok(t("net_interne_ok", name=detail.get("name", "bobi-interne"),
+                 subnet=detail.get("subnet", "?")))
+        elif mode == "interne":
+            warn(t("net_interne_bad", err=detail))
+        else:
+            info(t("net_site_todo"))
     print()
-    ok(t("aio_ready")) if noeud_ok else warn(t("aio_partial"))
+    if not noeud_ok:
+        warn(t("aio_partial"))
+    elif net_demande and not net_ok:
+        warn(t("aio_partial_net"))
+    else:
+        ok(t("aio_ready"))
     info(t("access", url=f"{BOLD}{CYAN}http://{_host_ip() or os.uname().nodename}:5000{R}"))
     return None
 

@@ -317,6 +317,28 @@ input.ctl-knob-val:focus { border-color: var(--accent); background: var(--bg); o
 }
 .ctl-readout input:focus { outline: none; }
 .ctl-readout:focus-within { border-color: var(--accent); background: var(--bg); }
+/* Variante PUPITRE (2026-10-26, bloc transition du mélangeur) : chiffres ambre sur fond noir, comme
+ * l'afficheur d'un panneau de commande — même DÉROGATION ASSUMÉE que les touches `ctl-bus--panel` :
+ * couleurs de matériel, identiques dans les trois lumières. Éditable (input) ou non (<b>). Taille par
+ * `--ctl-ro-size` (1.35em par défaut). */
+.ctl-readout--panel { justify-content: center; align-items: center; background: #080808; border-color: #000;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.8); font-size: var(--ctl-ro-size, 1.35em); }
+.ctl-readout--panel b, .ctl-readout--panel input { color: #ffb347; font-weight: 700; letter-spacing: 0.04em; text-align: center; }
+.ctl-readout--panel span, .ctl-readout--panel .ctl-unit { color: #b07a30; font-size: 0.55em; }
+.ctl-readout--panel:focus-within { background: #000; border-color: var(--accent); }
+
+/* ─── Couleur (2026-10-26, couleur de clé du keyer chroma) ─────────────────────────────────
+ * `<input type="color" class="ctl-color">` : le sélecteur natif du navigateur (palette, pipette
+ * selon la plateforme), habillé en pastille ; la valeur reste un hex `#rrggbb`. `.ctl-swatch` :
+ * pastille de couleur seule, à mettre dans une touche (« Vert », « Bleu »). La couleur seule ne
+ * suffit jamais : la touche ou le champ porte aussi son nom. */
+.ctl-color { width: 44px; height: 30px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-small, 4px);
+    background: var(--bg-input); cursor: pointer; }
+.ctl-color:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ctl-color::-webkit-color-swatch-wrapper { padding: 0; }
+.ctl-color::-webkit-color-swatch, .ctl-color::-moz-color-swatch { border: 0; border-radius: 2px; }
+.ctl-swatch { display: inline-block; width: 0.9em; height: 0.9em; border-radius: 2px; margin-right: 5px;
+    vertical-align: -0.1em; box-shadow: 0 0 0 1px rgba(0,0,0,0.5); }
 
 /* ─── Tranche ──────────────────────────────────────────────────────────────────────────────
  * Une colonne par canal, alignées sur une grille stricte. Le filet d'1px EST la séparation :
@@ -457,6 +479,117 @@ input.ctl-knob-val:focus { border-color: var(--accent); background: var(--bg); o
 .ctl-bus-lab--tag[data-bus="dsk"] { background: var(--bus-keyer); color: var(--bus-keyer-text); }
 .ctl-bus-lab--tag[data-bus="dis"] { background: var(--bus-dissolve); color: var(--bus-dissolve-text); }
 
+/* Modèle PUPITRE (2026-10-25, promu depuis le mélangeur — ex-`.nkk-btn` / `.nkk-cap` privés de
+ * plugins/mixer, repris À L'IDENTIQUE, choix de l'utilisateur) : touche noire en relief,
+ * capuchon gravé, capuchon ALLUMÉ dans la couleur de son bus. Même contrat que --solid et
+ * --tally (`data-bus` + `aria-checked`), avec un capuchon et un sous-libellé TOUJOURS visible :
+ *   <button class="ctl-bus ctl-bus--panel" data-bus="pgm" role="radio" aria-checked="true">
+ *       <span class="ctl-bus-cap">#1<small>CAM 1</small></span></button>
+ * Allumé par `aria-checked="true"` (choix de bus) ou `aria-pressed="true"` (bascule : KEYER,
+ * DSK), selon `data-bus` (pgm rouge, pvw vert, dsk ambre, dis bleu).
+ *   · `ctl-bus--action` : touche d'ACTION toujours allumée dans la couleur de son bus (CUT =
+ *     `data-bus="pgm"`, AUTO = `data-bus="dis"`) — ce n'est pas un choix : ni radio ni état ;
+ *   · `ctl-bus--big`    : la grande taille (CUT, AUTO et les bascules à côté d'eux) ;
+ *   · `ctl-bus--unwired`: source non câblée, capuchon atténué, sous-libellé en italique.
+ * DÉROGATION ASSUMÉE (comme `.ctl-seg7--lit`) : corps et dégradés de MATÉRIEL en dur, avec halo,
+ * identiques dans les trois lumières. Les textes allumés viennent des `--bus-*-text` ; le milieu
+ * des dégradés ambre et bleu EST `--bus-keyer` / `--bus-dissolve` ; le rouge et le vert gardent
+ * les valeurs du matériel (#e63422, #1faf4a), plus vives que `--bus-pgm` / `--bus-pvw` — les
+ * remplacer changerait l'aspect que l'utilisateur a demandé de garder. */
+/* `inline-grid`, pas `inline-block` : dans un <button>, un enfant bloc est centré à la largeur de son
+ * texte — un libellé court laissait des bandes noires de part et d'autre du capuchon (corrigé 0.23.17).
+ * ⚠ Et la grille doit ÉTIRER : `.ctl-bus` (la base) centre son contenu (`justify-content`/`align-items:
+ * center`) ; héritée par une grille, cette règle centre la COLONNE elle-même à la largeur du texte —
+ * toutes les touches avaient alors leurs bandes noires (vu à l'écran le 2026-10-26). */
+/* TAILLE FIXE (2026-10-31, décision de Cyril : « un bouton doit avoir une taille fixe ») : la touche ne
+ * s'étire ni ne rétrécit avec la place disponible — jetons `--ctl-bus-panel-w` / `--ctl-bus-big-w`
+ * (:root plus bas). Une rangée trop longue passe à la ligne ou se pagine (SHIFT du mélangeur), elle
+ * ne serre jamais ses touches. Hauteur ≥ 44 px (cible tactile, iPad = référence) même sans sous-libellé. */
+.ctl-bus.ctl-bus--panel { display:inline-grid; grid-template-columns:minmax(0,1fr);
+    place-content:stretch; place-items:stretch; width:var(--ctl-bus-panel-w); height:auto; gap:0;
+    flex:none; min-height:44px; padding:3px; border:none; border-radius:5px;
+    background:linear-gradient(180deg,#2c2c2c 0%,#0a0a0a 100%); cursor:pointer;
+    font-family:var(--font-mono); font-size:1em; font-weight:400; color:#1a1a1a;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),inset 0 -1px 0 rgba(0,0,0,0.6),
+        0 2px 3px rgba(0,0,0,0.55),0 0 0 1px rgba(0,0,0,0.7);
+    transition:filter 80ms ease-out,transform 60ms ease-out,box-shadow 80ms ease-out; }
+@media (hover: hover) { .ctl-bus.ctl-bus--panel:hover { background:linear-gradient(180deg,#2c2c2c 0%,#0a0a0a 100%); filter:brightness(1.12); } }
+.ctl-bus.ctl-bus--panel:active { filter:none; transform:translateY(1px);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.05),inset 0 -1px 0 rgba(0,0,0,0.4),
+        0 1px 1px rgba(0,0,0,0.5),0 0 0 1px rgba(0,0,0,0.7); }
+.ctl-bus.ctl-bus--panel:focus-visible { outline:none; box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 -1px 0 rgba(0,0,0,0.6),0 0 0 2px var(--bg),0 0 0 4px var(--accent); }
+.ctl-bus-cap { display:flex; flex-direction:column; justify-content:center; min-width:0; padding:9px 11px; border-radius:3px; font-size:0.82em; font-weight:700;
+    letter-spacing:0.06em; text-transform:uppercase; text-align:center;
+    background:linear-gradient(180deg,#3a3a3a 0%,#242424 50%,#161616 100%); color:#9a9a9a;
+    text-shadow:0 1px 0 rgba(0,0,0,0.6);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.07),inset 0 -2px 3px rgba(0,0,0,0.45); }
+.ctl-bus--panel .ctl-bus-cap small { display:block; font-family:inherit; font-size:0.78em; font-weight:500;
+    letter-spacing:0; text-transform:none; opacity:0.75; margin-top:3px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ctl-bus--unwired .ctl-bus-cap { opacity:0.62; }
+
+/* T-BARRE (2026-10-26, promue depuis le mélangeur — ex-`.mx-tbar`, à l'identique) : levier de
+ * transition. Construite par `BobiControls.create('tbar', el)` (geste, clavier, fin de course,
+ * animation) ; `--ctl-p` (0 = poignée en haut, 1 = en bas) est posé par le moteur. Mêmes couleurs de
+ * MATÉRIEL que le modèle Pupitre des boutons de bus, identiques dans les trois lumières.
+ *   <div class="ctl-tbar"></div>  → .ctl-tbar-track > .ctl-tbar-handle[role=slider] > .ctl-tbar-grip */
+.ctl-tbar { display:inline-flex; flex-direction:column; align-items:center; gap:6px;
+    padding:10px 12px; background:linear-gradient(180deg,#2c2c2c 0%,#0a0a0a 100%);
+    border:1px solid #000; border-radius:6px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.06),0 2px 4px rgba(0,0,0,0.5);
+    user-select:none; touch-action:none; }
+.ctl-tbar-track { position:relative; width:22px; height:var(--ctl-tbar-h, 220px); background:#080808;
+    border:1px solid #040404; border-radius:3px;
+    box-shadow:inset 0 0 6px rgba(0,0,0,0.9),inset 0 1px 0 rgba(255,255,255,0.03); }
+.ctl-tbar-track::before, .ctl-tbar-track::after { content:""; position:absolute; top:8px; bottom:8px; width:4px;
+    background-image:repeating-linear-gradient(180deg,transparent 0 19px,rgba(255,255,255,0.08) 19px 20px); }
+.ctl-tbar-track::before { left:-8px; } .ctl-tbar-track::after { right:-8px; }
+.ctl-tbar-handle { position:absolute; left:50%; top:calc((100% - 26px) * var(--ctl-p, 0)); transform:translateX(-50%);
+    width:72px; height:26px; cursor:grab; z-index:2; transition:top 60ms cubic-bezier(0.22,1,0.36,1); }
+.ctl-tbar.is-dragging .ctl-tbar-handle, .ctl-tbar.is-animating .ctl-tbar-handle { transition:none; }
+.ctl-tbar-handle:focus-visible { outline:none; }
+.ctl-tbar-handle:focus-visible .ctl-tbar-grip { box-shadow:inset 0 1px 0 rgba(255,255,255,0.18),inset 0 -2px 3px rgba(0,0,0,0.5),0 0 0 2px var(--accent); }
+.ctl-tbar-handle:active { cursor:grabbing; }
+.ctl-tbar-grip { width:100%; height:18px; background:linear-gradient(180deg,#5a5a5a 0%,#3a3a3a 40%,#1f1f1f 100%);
+    border-radius:3px; box-shadow:inset 0 1px 0 rgba(255,255,255,0.18),inset 0 -2px 3px rgba(0,0,0,0.5),0 2px 3px rgba(0,0,0,0.45); position:relative; }
+.ctl-tbar-grip::after { content:""; position:absolute; inset:5px 14px;
+    background-image:repeating-linear-gradient(90deg,transparent 0 2px,rgba(0,0,0,0.4) 2px 3px); border-radius:2px; }
+.ctl-tbar-handle::after { content:""; position:absolute; left:50%; top:18px; transform:translateX(-50%);
+    width:8px; height:10px; background:linear-gradient(180deg,#3a3a3a 0%,#1a1a1a 100%);
+    border-radius:0 0 2px 2px; box-shadow:inset 0 -1px 0 rgba(0,0,0,0.6); }
+.ctl-tbar.ctl-ui-disabled { opacity:0.5; pointer-events:none; }
+.ctl-bus--unwired .ctl-bus-cap small { font-style:italic; }
+.ctl-bus--panel[data-bus="pgm"]:is([aria-checked="true"],[aria-pressed="true"],.ctl-bus--action) .ctl-bus-cap {
+    background:linear-gradient(180deg,#ff7a6a 0%,#e63422 50%,#9a1a10 100%); color:var(--bus-pgm-text);
+    text-shadow:0 0 5px rgba(255,200,180,0.85),0 1px 0 rgba(80,0,0,0.4);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.4),inset 0 -2px 4px rgba(80,0,0,0.5),0 0 14px rgba(255,70,50,0.55); }
+.ctl-bus--panel[data-bus="pvw"]:is([aria-checked="true"],[aria-pressed="true"],.ctl-bus--action) .ctl-bus-cap {
+    background:linear-gradient(180deg,#6de89a 0%,#1faf4a 50%,#0d5d24 100%); color:var(--bus-pvw-text);
+    text-shadow:0 0 5px rgba(190,255,210,0.85),0 1px 0 rgba(0,40,10,0.4);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.4),inset 0 -2px 4px rgba(0,60,20,0.5),0 0 14px rgba(50,200,90,0.55); }
+.ctl-bus--panel[data-bus="dis"]:is([aria-checked="true"],[aria-pressed="true"],.ctl-bus--action) .ctl-bus-cap {
+    background:linear-gradient(180deg,#6cc9ff 0%,var(--bus-dissolve) 50%,#0c3f73 100%); color:var(--bus-dissolve-text);
+    text-shadow:0 0 5px rgba(180,220,255,0.85),0 1px 0 rgba(0,20,50,0.4);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.4),inset 0 -2px 4px rgba(0,30,70,0.5),0 0 14px rgba(70,150,240,0.55); }
+.ctl-bus--panel[data-bus="dsk"]:is([aria-checked="true"],[aria-pressed="true"],.ctl-bus--action) .ctl-bus-cap {
+    background:linear-gradient(180deg,#ffd96b 0%,var(--bus-keyer) 50%,#6b4408 100%); color:var(--bus-keyer-text);
+    text-shadow:0 0 5px rgba(255,220,150,0.85),0 1px 0 rgba(60,30,0,0.4);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.4),inset 0 -2px 4px rgba(80,40,0,0.5),0 0 14px rgba(255,160,50,0.55); }
+.ctl-bus--unwired:is([aria-checked="true"],[aria-pressed="true"]) .ctl-bus-cap { opacity:1; }
+.ctl-bus--panel[aria-pressed] .ctl-bus-cap small { font-size:0.72em; margin-top:2px; }
+.ctl-bus.ctl-bus--big { width:var(--ctl-bus-big-w); }
+/* `ctl-bus--hint` (2026-10-31) : la touche SIGNALE un état de son bus sans le porter — liseré et texte
+ * à la teinte du bus. Usage : SHIFT d'une rangée de sources dont l'entrée à l'antenne (PGM) ou en
+ * préparation (PVW) est sur une page masquée — l'opérateur ne perd jamais la source à l'antenne. */
+.ctl-bus--panel.ctl-bus--hint .ctl-bus-cap { color:var(--ctl-bus-hint, var(--accent));
+    box-shadow:inset 0 0 0 2px var(--ctl-bus-hint, var(--accent)),0 0 10px color-mix(in oklch, var(--ctl-bus-hint, var(--accent)) 55%, transparent); }
+.ctl-bus--hint[data-bus="pgm"] { --ctl-bus-hint: var(--bus-pgm); }
+.ctl-bus--hint[data-bus="pvw"] { --ctl-bus-hint: var(--bus-pvw); }
+.ctl-bus--hint[data-bus="dsk"] { --ctl-bus-hint: var(--bus-keyer); }
+.ctl-bus--hint[data-bus="dis"] { --ctl-bus-hint: var(--bus-dissolve); }
+.ctl-bus--big .ctl-bus-cap { padding:14px 18px; font-size:0.95em; letter-spacing:0.1em; }
+
 /* ─── Poussoir VIGNETTE ────────────────────────────────────────────────────────────────────
  * Choisir un MÉDIA (image fixe, clip) : l'image au-dessus du nom, comme le gestionnaire de
  * médias. Allumé = cadre à la teinte du poussoir, pas de halo. */
@@ -474,6 +607,62 @@ input.ctl-knob-val:focus { border-color: var(--accent); background: var(--bg); o
 .ctl-push--tile > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .ctl-push--tile[aria-pressed="true"] { border-color: var(--ctl-tone, var(--accent));
     box-shadow: inset 0 0 0 2px var(--ctl-tone, var(--accent)); }
+
+/* Vignette ANIMÉE (2026-10-29) : la même, avec un canvas à la place de l'image (bibliothèque des
+   volets composés du mélangeur : l'aperçu tourne dans la vignette). */
+.ctl-push--tile canvas { width: 100%; aspect-ratio: 16 / 9; background: var(--canvas-bg, var(--bg)); border-radius: 2px; display: block; }
+
+/* ─── Aperçu (2026-10-29) ──────────────────────────────────────────────────────────────────
+ * Un canvas 16:9 encadré qui MONTRE (masque d'un volet, image réduite) — pas une commande. */
+.ctl-preview { display: block; width: 100%; aspect-ratio: 16 / 9; background: var(--canvas-bg, var(--bg));
+    border: 1px solid var(--border); border-radius: var(--radius-small, 4px); }
+
+/* ─── Touche à PICTOGRAMME (2026-10-29, promue depuis le mélangeur — ex-`.mx-wipe-icon-btn`) ─
+ * Choix exclusif d'une FORME (motif de volet, de keyer) : le dessin dit le choix, le libellé est
+ * dans aria-label / title. Le pictogramme est tracé en deux teintes du thème (`ctl-shape__a` le
+ * fond, `ctl-shape__b` la forme) — plus aucune couleur en dur, il suit les trois lumières.
+ * Allumé = filet et fond à la teinte de l'accent, comme un poussoir.
+ *   <div class="ctl-shape-row" role="radiogroup">
+ *     <button class="ctl-shape" role="radio" aria-checked="true"><svg>…</svg></button>… */
+.ctl-shape-row { display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px; border: 1px solid var(--border);
+    border-radius: var(--radius-small, 4px); background: var(--bg); }
+.ctl-shape { appearance: none; width: 34px; height: 34px; padding: 3px; border: 1px solid var(--border);
+    border-radius: 3px; background: var(--bg-input); cursor: pointer; position: relative;
+    --ctl-shape-a: var(--bg); --ctl-shape-b: var(--text-strong);
+    transition: border-color 140ms ease-out, background-color 140ms ease-out; }
+.ctl-shape svg { width: 100%; height: 100%; display: block; pointer-events: none; border-radius: 1px; }
+.ctl-shape__a { fill: var(--ctl-shape-a); }
+.ctl-shape__b { fill: var(--ctl-shape-b); }
+@media (hover: hover) { .ctl-shape:hover { background: var(--bg-hover); } }
+.ctl-shape:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ctl-shape:is([aria-checked="true"], [aria-pressed="true"]) { border-color: var(--ctl-tone, var(--accent));
+    background: color-mix(in oklch, var(--ctl-tone, var(--accent)) 22%, var(--bg-input));
+    box-shadow: inset 0 0 0 1px var(--ctl-tone, var(--accent)); --ctl-shape-b: var(--ctl-tone, var(--accent)); }
+@media (pointer: coarse) { .ctl-shape { width: 44px; height: 44px; padding: 5px; } }
+.ctl-dense .ctl-shape { width: 26px; height: 26px; padding: 2px; }
+
+/* ─── Courbes à POIGNÉES (2026-10-29) ──────────────────────────────────────────────────────
+ * Une chronologie : courbes y(x) dans [0,1]², poignées déplaçables (doigt, souris, clavier), tête
+ * de lecture. Construite par `BobiControls.create('curves', el, {handles, curves})`. Premier
+ * usage : la course des deux volets d'un volet composé (décalage, profondeur). */
+.ctl-curves { display: block; }
+.ctl-curves__plot { position: relative; height: var(--ctl-curves-h, 96px); border: 1px solid var(--border);
+    border-radius: var(--radius-small, 4px); background: var(--bg); margin: 10px 12px; touch-action: none; }
+.ctl-curves__plot > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ctl-curves__curve { fill: none; stroke-width: 2; stroke: var(--accent); stroke-linejoin: round; }
+.ctl-curves__curve--2 { stroke: var(--status-warning-fg); }
+.ctl-curves__curve--muted { stroke: var(--border); }
+.ctl-curves__curve.is-dashed { stroke-dasharray: 5 4; }
+.ctl-curves__head { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid var(--bus-pgm, var(--accent));
+    pointer-events: none; }
+.ctl-curves__head[hidden] { display: none; }
+.ctl-curves__handle { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+    background: var(--bg-input); border: 2px solid var(--status-warning-fg); cursor: grab; touch-action: none; }
+.ctl-curves__handle::after { content: ""; position: absolute; inset: -13px; }      /* 44 px au doigt */
+.ctl-curves__handle--accent { border-color: var(--accent); }
+.ctl-curves__handle[hidden] { display: none; }
+.ctl-curves__handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ctl-curves__handle.is-dragging { cursor: grabbing; background: var(--status-warning-fg); }
 
 /* ─── Liste en LIGNES (2026-10-20) ─────────────────────────────────────────────────────────
  * La liste du catalogue (`.ctl-list`), en lignes de playlist : numéro, vignette, nom, détail à
@@ -501,6 +690,9 @@ input.ctl-knob-val:focus { border-color: var(--accent); background: var(--bg); o
 .on > .ctl-flag--1, [aria-pressed="true"] > .ctl-flag--1, [aria-pressed="true"] .ctl-flag--1,
 .on .ctl-flag--1 { display: inline-block; }
 .on2 > .ctl-flag--2, .on2 .ctl-flag--2 { display: inline-block; }
+/* Étiquette PERMANENTE (2026-10-29) : une propriété de l'élément, pas un état allumé — « copie de
+   la bibliothèque commune » sur une vignette du mélangeur. Neutre, toujours visible. */
+.ctl-flag--tag { display: inline-block; color: var(--text-muted); border: 1px solid var(--border); }
 .ctl-list__item.on2 { box-shadow: inset 3px 0 0 var(--ctl-tone2, var(--bus-pgm)); }
 .ctl-push--tile.on2 { border-color: var(--ctl-tone2, var(--bus-pgm));
     box-shadow: inset 0 0 0 2px var(--ctl-tone2, var(--bus-pgm)); }
@@ -806,6 +998,75 @@ input[type="checkbox"].ctl-switch[disabled] { opacity: 0.5; cursor: not-allowed;
 @media (hover: hover) {
     .ctl-tool:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-strong); }
 }
+
+/* ─── Rubriques segmentées à pastille glissante (`.ctl-segtabs`, 2026-10-28) ───────────────────
+ * Choisir UNE rubrique parmi quelques-unes (3 à 6) dans un espace étroit — panneau latéral d'un
+ * plugin. Même piste que `.ctl-toolrow`, mais des LIBELLÉS de largeur égale, et la rubrique courante
+ * marquée par une pastille d'accent qui GLISSE jusqu'à elle (demande de l'utilisateur, panneau
+ * Réglages du mélangeur). Largeurs égales → aucune mesure en JS : le conteneur porte `--n` (nombre
+ * de rubriques) et `--i` (index courant), la pastille se translate de `--i` cases.
+ * Balisage : `<div class="ctl-segtabs" role="tablist" style="--n:5;--i:0">
+ *   <span class="ctl-segtabs-ind" aria-hidden="true"></span>
+ *   <button type="button" class="ctl-segtab on" role="tab" aria-selected="true">…</button>…</div>`
+ * Changer de rubrique = poser `--i` ET déplacer `.on` / aria-selected. */
+.ctl-segtabs {
+    position: relative; display: flex; gap: 0; padding: 2px; min-width: 0;
+    background: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--radius-small);
+}
+.ctl-segtabs-ind {
+    position: absolute; top: 2px; bottom: 2px; left: 2px;
+    width: calc((100% - 4px) / var(--n, 1));
+    transform: translateX(calc(var(--i, 0) * 100%));
+    background: var(--accent); border-radius: 3px;
+    transition: transform 0.22s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.ctl-segtab {
+    position: relative; z-index: 1; flex: 1 1 0; min-width: 0;
+    padding: 6px 2px; border: 0; border-radius: 3px; background: none;
+    font: inherit; font-size: 0.78em; font-weight: 500; color: var(--text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+    transition: color 0.22s;
+}
+/* Pas de gras sur la rubrique courante : la largeur est fixe, un libellé long (« Transitions ») ne
+   tiendrait plus. La pastille et le contraste suffisent. */
+.ctl-segtab.on { color: var(--accent-contrast, #fff); }
+.ctl-segtab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (hover: hover) { .ctl-segtab:not(.on):hover { color: var(--text-strong); } }
+@media (pointer: coarse) { .ctl-segtab { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .ctl-segtabs-ind, .ctl-segtab { transition: none; } }
+
+/* ─── Étapes d'un guide (`.ctl-steps`, 2026-10-31) ─────────────────────────────────────────────
+ * Le fil d'un assistant : quelques étapes (3 à 7) en pastilles CLIQUABLES — on saute à une étape
+ * comme on la suit. Faite : `.done` (le numéro devient ✓) ; courante : `aria-current="step"`, pleine
+ * d'accent. Posé AU-DESSUS de ce qu'il guide, jamais dessus (assistant du mélangeur, option B de
+ * l'utilisateur : la bulle flottante masquait le schéma). Largeur au libellé, retour à la ligne.
+ * Balisage : `<nav class="ctl-steps" aria-label="…">
+ *   <button type="button" class="ctl-step done"><span class="ctl-step-n" aria-hidden="true">✓</span>…</button>
+ *   <button type="button" class="ctl-step" aria-current="step"><span class="ctl-step-n" aria-hidden="true">2</span>…</button>…</nav>` */
+.ctl-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 22px; min-width: 0; }
+.ctl-step {
+    appearance: none; position: relative; display: inline-flex; align-items: center; gap: 7px;
+    min-height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: var(--radius-pill, 999px);
+    background: transparent; color: var(--text-muted); font-family: var(--font-base); font-size: 0.9em;
+    font-weight: 500; white-space: nowrap; cursor: pointer;
+    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
+}
+/* Trait de liaison entre deux étapes : dans l'écart, hors de la cible. */
+.ctl-step + .ctl-step::before {
+    content: ""; position: absolute; left: -19px; top: 50%; width: 16px; height: 1px;
+    background: var(--border); pointer-events: none;
+}
+.ctl-step-n { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ctl-step.done { color: var(--text); }
+.ctl-step.done .ctl-step-n { color: var(--status-running-fg); }
+.ctl-step[aria-current="step"] {
+    background: var(--accent); border-color: var(--accent); color: var(--accent-contrast, var(--bg)); font-weight: 600;
+}
+.ctl-step:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) { .ctl-step:not([aria-current="step"]):hover { background: var(--bg-hover); color: var(--text-strong); } }
+.ctl-step:active { filter: brightness(0.95); }
+.ctl-step:disabled { opacity: 0.5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .ctl-step { transition: none; } }
 /* Au doigt, 32×30 est sous la cible atteignable : on élargit sans toucher au dessin. */
 @media (pointer: coarse) {
     .ctl-tool { width: 44px; height: 44px; }
@@ -1092,6 +1353,8 @@ input[type="checkbox"].ctl-switch[disabled] { opacity: 0.5; cursor: not-allowed;
     --ctl-err:     var(--status-stopped-fg);
     --ctl-focus:   var(--accent);
     --ctl-w:       1.5rem;       /* largeur de piste de fader/vumètre */
+    --ctl-bus-panel-w: 78px;     /* touche pupitre (.ctl-bus--panel) : largeur FIXE */
+    --ctl-bus-big-w:   110px;    /* grande touche pupitre (.ctl-bus--big : CUT, AUTO) */
 }
 
 .ctl-ui {
@@ -1141,6 +1404,21 @@ input[type="checkbox"].ctl-switch[disabled] { opacity: 0.5; cursor: not-allowed;
 .ctl-fader--horizontal .ctl-fader__thumb { top: calc(50% - 0.9rem); height: 1.8rem; width: var(--ctl-thumb); left: calc(var(--ctl-p) * (100% - var(--ctl-thumb))); }
 .ctl-fader--horizontal .ctl-fader__thumb::after { top: 3px; bottom: 3px; left: calc(50% - 1px); width: 2px; }
 .ctl-unity .ctl-fader__thumb::after { background: var(--accent); }
+/* Fantôme (inst.setGhost) : capot creux au niveau réellement appliqué, trait de la consigne jusqu'à lui ; inerte. */
+.ctl-fader__body { --ctl-g: 0; }
+.ctl-fader__ghost {
+    position: absolute; pointer-events: none; border-radius: var(--radius-small);
+    border: 2px dashed var(--accent); background: transparent; opacity: 0.85;
+    transition: bottom 0.1s linear, left 0.1s linear;
+}
+.ctl-fader--vertical .ctl-fader__ghost { left: calc(50% - 0.9rem); width: 1.8rem; height: var(--ctl-thumb); bottom: calc(var(--ctl-g) * (100% - var(--ctl-thumb))); }
+.ctl-fader--horizontal .ctl-fader__ghost { top: calc(50% - 0.9rem); height: 1.8rem; width: var(--ctl-thumb); left: calc(var(--ctl-g) * (100% - var(--ctl-thumb))); }
+.ctl-fader__gap { position: absolute; pointer-events: none; background: var(--accent); opacity: 0.6; border-radius: 3px; transition: bottom 0.1s linear, height 0.1s linear, left 0.1s linear, width 0.1s linear; }
+.ctl-fader--vertical .ctl-fader__gap { left: 1px; right: 1px; bottom: calc(min(var(--ctl-p), var(--ctl-g)) * 100%); height: calc((max(var(--ctl-p), var(--ctl-g)) - min(var(--ctl-p), var(--ctl-g))) * 100%); }
+.ctl-fader--horizontal .ctl-fader__gap { top: 1px; bottom: 1px; left: calc(min(var(--ctl-p), var(--ctl-g)) * 100%); width: calc((max(var(--ctl-p), var(--ctl-g)) - min(var(--ctl-p), var(--ctl-g))) * 100%); }
+.ctl-fader__gap[hidden], .ctl-fader__ghost[hidden] { display: none; }
+.ctl-tight .ctl-fader--vertical .ctl-fader__ghost { left: calc(50% - 0.65rem); width: 1.3rem; }
+@media (prefers-reduced-motion: reduce) { .ctl-fader__ghost, .ctl-fader__gap { transition: none; } }
 /* Repères : colonne à gauche de la piste (vertical). */
 .ctl-fader__ticks { position: absolute; inset: 0; pointer-events: none; }
 .ctl-fader--vertical .ctl-tick {
@@ -1221,6 +1499,17 @@ input[type="checkbox"].ctl-switch[disabled] { opacity: 0.5; cursor: not-allowed;
 }
 .ctl-push--led[aria-pressed="true"] .ctl-led { background: var(--ctl-tone, var(--accent)); border-color: var(--ctl-tone, var(--accent)); }
 .ctl-push--small { min-height: 26px; padding: 3px 8px; gap: 0; font-size: 0.72em; letter-spacing: 0.4px; }
+/* Petit poussoir À VOYANT : le `gap: 0` ci-dessus collait le voyant au texte, qui le chevauchait
+   (panneau Sorties du mélangeur, signalé par l'utilisateur le 28/10). */
+.ctl-push--small.ctl-push--led { gap: 6px; }
+/* Libellé À ALTERNATIVE (2026-10-29) : une touche dont le libellé nomme deux états et dit lequel
+   VA servir — « N/R » du sens de volet du mélangeur : la lettre du PROCHAIN sens est allumée,
+   l'autre atténuée. Pas seulement la couleur : graisse + soulignement épais, lisibles au doigt et
+   en niveaux de gris, dans tous les thèmes (la teinte reste celle de la touche).
+   Balise : <span class="ctl-push__alt on">N</span>/<span class="ctl-push__alt">R</span>. */
+.ctl-push__alt { opacity: 0.4; font-weight: 600; transition: opacity 140ms ease-out; }
+.ctl-push__alt.on { opacity: 1; font-weight: 800; text-decoration: underline;
+    text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .ctl-btnrow { align-items: flex-start; }
 .ctl-btnrow__row { display: flex; flex-wrap: wrap; gap: 3px; }
 
@@ -1248,3 +1537,21 @@ input[type="checkbox"].ctl-switch[disabled] { opacity: 0.5; cursor: not-allowed;
 .ctl-tight .ctl-gr--horizontal { width: 100%; }
 .ctl-tight .ctl-gr--horizontal .ctl-gr__track { width: 100%; }
 .ctl-tight .ctl-gr--horizontal .ctl-gr__row { width: 100%; }
+
+/* ─── Liste de raccourcis clavier (`.ctl-keys`, 2026-10-29) ─────────────────────────────────────
+ * Aide « ? » des éditeurs (BobiEditKit.showHelp) : touches à gauche, effet à droite.
+ * Balisage : `<dl class="ctl-keys"><dt><kbd>Ctrl + Z</kbd></dt><dd>Annuler</dd>…</dl>`. */
+.ctl-keys { display: grid; grid-template-columns: max-content 1fr; gap: 6px var(--space-3);
+    margin: 0; align-items: baseline; }
+.ctl-keys dt { margin: 0; white-space: nowrap; }
+.ctl-keys dd { margin: 0; color: var(--text-muted); }
+.ctl-keys kbd, kbd.ctl-kbd { display: inline-block; min-width: 1.6em; padding: 1px 6px;
+    font-family: var(--font-mono); font-size: 0.82em; text-align: center; color: var(--text-strong);
+    background: var(--bg-input); border: 1px solid var(--border-soft); border-bottom-width: 2px;
+    border-radius: var(--radius-small); }
+
+/* Verrous au doigt des éditeurs (BobiEditor.verrousHtml : « Sélection multiple », « Depuis le
+ * centre ») — boutons à témoin du catalogue, groupés à côté de la barre « Édition ». */
+.bek-verrous { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+/* Rectangle de sélection d'un éditeur dessiné en DOM (scope, Scénario). */
+.bek-rect { position: absolute; border: 1px dashed var(--accent, #6aa0ff); background: color-mix(in srgb, var(--accent, #6aa0ff) 12%, transparent); pointer-events: none; }

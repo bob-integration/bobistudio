@@ -17,7 +17,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
    jamais de conteneur de production.
 2. **Nœuds** — machines enrôlées qui exécutent les conteneurs Docker (moteur 2110, traitements,
    médias, GPU). Un nœud porte une ou plusieurs **capacités** (`io2110`, `compute`, `media`,
-   `webrtc`, `gpu`) posées à l'enrôlement (`node_agent/install-node.sh`), ajoutables après coup
+   `webrtc`, `gpu`, `gui`, `decklink`) posées à l'enrôlement (`node_agent/install-node.sh`), ajoutables après coup
    mais **jamais retirables** ("on ne désinstalle pas un pilote, ne rend pas des hugepages, ne
    détruit pas un macvlan").
 3. **Réseau** — trois plans physiquement ou logiquement distincts (contrôle, ST 2110, conteneurs
@@ -35,7 +35,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
   pilotage de toute la flotte) et n'a de toute façon **aucun besoin matériel spécial** (pas de NIC
   ST 2110, pas de GPU, pas de hugepages).
 - **Dimensionnement** : rien dans le code n'exprime de minimum CPU/RAM pour le contrôleur —
-  charge dominante = SQLite (connexion neuve par appel, `get_db()`) + threads de sondage HTTP vers
+  charge dominante = SQLite (une connexion par thread, réutilisée : `get_db()`) + threads de sondage HTTP vers
   les nœuds (`node_health.py`, `membw.py`, `ptp.py`) + rendu Jinja. Une VM ou un petit serveur
   généraliste suffit ; c'est un ordre de grandeur non vérifié dans le dépôt, pas un chiffre issu du
   code.
@@ -136,7 +136,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ---
 
-## 3. Cartes réseau — trois usages, trois profils différents
+## 3. Cartes réseau — rôles, plans et profils
 
 ### Plan ST 2110 (nœuds `io2110`)
 
@@ -173,7 +173,13 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
   plus haut. Un lien 100G a été observé en production (mémoire d'équipe, incident de link-training
   E810 100G) — présenté ici comme fait observé, pas comme prescription générale.
 
-### Plan conteneurs partagés (macvlan)
+### Plan conteneurs partagés — deux modes, au choix par nœud
+
+Le mode se règle **par nœud** (Réglages → *Nœuds & Matériel → Réseau des conteneurs*). Il décide
+de la nature des adresses que prennent les conteneurs de calcul et de média, donc de ce que le
+réseau d'accueil doit fournir.
+
+#### Mode « réseau du site » (macvlan) — défaut
 
 - Une IP par conteneur sur un subnet du cluster — l'orchestrateur joint les conteneurs
   directement, l'agent-nœud ne gère que le lifecycle Docker.
@@ -183,10 +189,94 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 - **Piège de câblage documenté** (mémoire d'équipe) : la plage IP du macvlan ne doit **pas**
   chevaucher le LAN existant du site — un chevauchement casse silencieusement le routage.
 - IP réservées automatiquement exclues du pool d'allocation : passerelle, IP de contrôleur sur ce
-  subnet, IP hôte de contrôle du nœud.
+  subnet, IP hôte de contrôle du nœud, **IP de shim de tous les nœuds**.
 - Ce plan porte les conteneurs `compute`, `media`, `webrtc`, `gpu` — pas de kernel-bypass, une
   carte réseau standard convient, dimensionnée au débit agrégé des flux non-2110 attendus
   (streaming de sortie, RDMA excepté — voir § RDMA).
+- **Conséquence d'achat/adressage** : prévoir au plan d'adressage du site autant d'adresses que de
+  conteneurs attendus, plus une par nœud tout-en-un (le shim, ci-dessous).
+
+#### Mode « réseau interne » (bridge)
+
+- Pont Docker privé, `172.30.0.0/24` par défaut (`config.NET_INTERNE_SUBNET_DEFAUT`), que l'hôte
+  rejoint nativement ; sortie par NAT derrière l'adresse du nœud. **Aucune adresse consommée sur le
+  LAN** : le site ne voit que le nœud.
+- **Disponible uniquement sur un tout-en-un** (nœud portant l'orchestrateur), et c'est le plan de
+  contrôle qui l'impose : l'orchestrateur joint chaque conteneur en direct sur `:8081` (agent) et
+  `:8080` (métriques) ; un subnet privé en bridge ne sort pas de la machine, donc depuis un
+  contrôleur distant ces deux ports sont injoignables. Le refus est explicite et motivé
+  (`container_net.mode_interne_possible`).
+- ⚠ **En HA, le contrôleur peut migrer.** Un nœud est tout-en-un pour le contrôleur *du moment* ;
+  après un basculement, ses conteneurs en mode interne deviennent injoignables depuis le contrôleur
+  devenu actif, sans qu'aucun réglage n'ait changé. Non interdit, mais signalé.
+- Ce qui doit être joignable de l'extérieur passe par un **port publié**, déclaré par le manifeste
+  du plugin ou du service et résolu d'après la configuration de l'instance (passerelle WebRTC,
+  entrée RTMP…) — pas une propriété du mode ni du type.
+
+#### Le shim macvlan (`bobi-shim`)
+
+Le noyau **isole une carte parente de ses propres enfants macvlan**. Sur un nœud qui porte *aussi*
+l'orchestrateur, celui-ci vit sur l'hôte parent et ne joint donc **aucun** conteneur — alors que
+Docker les annonce `running` et qu'ils répondent depuis toute autre machine du site. Le remède est
+une interface macvlan supplémentaire côté hôte (le *shim*) : les enfants macvlan se parlent entre
+eux. Posé d'un clic depuis la page réseau du nœud.
+
+- Adresse **dans le subnet des conteneurs mais hors de leur plage**, en `/32` — un `/24` créerait
+  une seconde route connectée vers le LAN du site. Suggérée depuis le haut du subnet ; c'est une
+  suggestion, pas une garantie de disponibilité sur un LAN de site.
+- ⚠ **Le shim n'est pas une carte du nœud et ne doit porter aucun rôle.** Les interfaces `bobi-*`
+  sont exclues de l'inventaire matériel de l'agent-nœud, ignorées par la déclaration de parent, et
+  la route de pose de rôle les refuse. Incident d'origine : un shim portant le rôle `containers` a
+  fait **écarter le nœud des déploiements** (plus de carte au rôle attendu), échouer une
+  restauration de projet sur la totalité de ses conteneurs, et boucler l'alerte « aucune carte n'a
+  sa MAC » — un shim étant recréé à chaque pose, sa MAC change à chaque fois. Le rôle `unused`
+  reste accepté, pour pouvoir réparer une installation antérieure à la barrière.
+
+#### Sortie Internet (carte dédiée)
+
+- Carte en **rôle `internet`**, en DHCP, bail pris par l'hôte. Le choix se fait **par conteneur**
+  (défaut : sortie par le nœud), depuis la palette de déploiement et depuis les macros.
+- Mise en œuvre par **routage par source** : une règle `ip rule from <ip>` par conteneur vers une
+  table dédiée (`container_net.SORTIE_TABLE`, fixe) dont la route par défaut passe par cette carte.
+  Le NAT MASQUERADE de Docker couvre la sortie par n'importe quelle interface.
+- **Exige le mode « réseau interne »** : en mode « réseau du site », un conteneur a sa propre
+  passerelle sur le LAN et ne traverse pas l'hôte — aucune règle de routage de l'hôte ne peut
+  changer son chemin.
+- Passerelle **relue à chaque passage** (bail DHCP : la figer la rendrait fausse au premier
+  renouvellement changeant de routeur) ; règles **reposées après redémarrage** depuis une liste
+  tenue par l'orchestrateur ; règles **en trop retirées**, pas seulement les manquantes ajoutées.
+
+#### Reconfigurer un nœud : destruction sous consentement
+
+Changer de mode ou de subnet implique de **détruire et recréer le réseau Docker** ; les conteneurs
+attachés perdent leur adresse et doivent être redéployés. Quand l'opération détruirait un réseau
+portant des conteneurs, la route **refuse et exige une confirmation explicite** plutôt que d'agir.
+Un écart entre la plage des conteneurs et le subnet du réseau est en revanche une **remarque, pas un
+refus** : vouloir ses conteneurs dans un subnet particulier est une configuration légitime — ce qui
+est protégé, c'est la destruction, pas le choix.
+
+#### Rôles d'interface (`routes/node_network.NODE_IFACE_ROLES`)
+
+| Rôle | Plan |
+|---|---|
+| `management` | contrôle (orchestrateur ↔ agent-nœud) |
+| `mgmt_containers` | contrôle **et** parent macvlan des conteneurs — cas d'un serveur à une seule patte, c'est la configuration qui réclame un shim |
+| `containers` | parent macvlan des conteneurs, distinct du contrôle |
+| `media2110` | signal ST 2110 en kernel-bypass, non partageable |
+| `rdma` | réplication du bus MXL entre nœuds (§ RDMA) |
+| `internet` | sortie Internet dédiée, en DHCP |
+| `bmc` | administration matérielle hors bande |
+| `unused` | carte présente, volontairement non employée |
+
+#### Redémarrage de nœud et matériel TLS
+
+Les conteneurs sont relevés par Docker (`unless-stopped`) au boot, mais leur matériel TLS vit en
+**tmpfs** (`/run/bobi-tls/<nom>`) et disparaît : la source du bind-mount n'existant plus, Docker la
+recrée **vide**, l'agent du conteneur repart sans certificat et sert en clair, et le contrôleur — qui
+parle mTLS — ne le joint plus jamais, alors que Docker l'annonce `running`. La re-provision est
+automatique si **`auto_recovery_enabled` est posé pour le nœud** (`app/node_recovery.py`) ; ce
+réglage est **désactivé par défaut**, et sans lui la panne est seulement *constatée* (alerte), la
+réparation restant manuelle (recréation des conteneurs concernés).
 
 ### Plan de contrôle
 
@@ -222,12 +312,16 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
   épinglé, runtime CUDA 12.8 — **exige un driver NVIDIA ≥ 570** sur l'hôte (contrainte explicite du
   Dockerfile). Bancs validés dans le dépôt : Tesla T4 avec driver 550/CUDA 12.4, et une carte
   consumer avec driver 580. **Achat : vérifier la disponibilité d'un driver NVIDIA récent (≥570)
-  pour le modèle de carte envisagé sur Debian** (paquets DKMS `contrib`/`non-free`/
-  `non-free-firmware`) avant de choisir la carte — un GPU trop ancien pour ce plancher de driver
-  est écarté de fait.
-- **Installation nœud** : capacité `gpu` à l'enrôlement = pilote NVIDIA Debian DKMS + en-têtes
-  noyau + `nvidia-container-toolkit` (dépôt NVIDIA, accès Internet sortant requis) + runtime Docker
-  `nvidia` + image buildée localement sur le nœud. **Reboot requis** après installation.
+  pour le modèle de carte envisagé** avant de choisir la carte : l'installeur retient `nvidia-open`
+  (dépôt apt NVIDIA) pour Turing et plus récent, l'installeur `.run` branche 580 pour Maxwell à
+  Volta, et refuse Kepler et plus ancien — un GPU trop ancien pour ce plancher de driver est écarté
+  de fait.
+- **Installation nœud** : capacité `gpu` à l'enrôlement = pilote NVIDIA choisi d'après la
+  génération du GPU (`node_agent/host_drivers/nvidia.py` ; le `nvidia-driver` de Debian n'est plus
+  installé, il est trop ancien pour CUDA 12.8 — cf. INSTALL.md §4) + `nvidia-container-toolkit`
+  (dépôt NVIDIA, accès Internet sortant requis) + runtime Docker `nvidia` + image buildée
+  localement sur le nœud. **Reboot requis** après installation ; le pilote s'installe et se met à
+  jour aussi depuis Réglages → nœud.
 
 ---
 
@@ -314,14 +408,20 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 - **Modèle : paire de contrôleurs en warm-standby, bascule MANUELLE** — pas de quorum, pas de
   failover automatique (choix assumé : "un broadcast n'a pas besoin d'un basculement automatique
   qui pourrait partir en split-brain").
-- **Minimum 2 machines contrôleur**, partageant le même secret (`update_token`).
+- **Minimum 2 machines contrôleur**, **appairées** : l'appairage (code à usage unique, 10 minutes)
+  transmet au standby la CA de l'actif, et la réplication passe par une écoute mTLS dédiée
+  (`ha_tls_port`, 5444). Le secret `update_token` ne sert plus à la HA.
 - Réplication par **snapshot SQLite complet** poussé par l'actif à intervalle réglable
   (`ha_replicate_interval_min`) — pas de réplication continue (WAL streaming). Le standby applique
-  le dernier snapshot reçu seulement à la promotion.
-- **VIP de management posée manuellement** (`ip addr add/del` + `arping -U`) — **pas de VRRP/
-  keepalived automatique** dans l'implémentation actuelle (limite assumée, chantier séparé
-  opt-in). Prévoir l'un ou l'autre process de bascule d'adresse selon la procédure d'exploitation
-  retenue, mais ne pas attendre du logiciel qu'il le fasse seul.
+  le dernier snapshot reçu seulement à la promotion. La bibliothèque LV2 de la console audio est
+  répliquée à part.
+- Le standby sonde l'actif et lève une **alarme** s'il ne répond plus : il ne se promeut jamais
+  tout seul.
+- **VIP de management : keepalived/VRRP en opt-in** (`app/vip.py`, réglages `vip_*`). La conf
+  générée donne la priorité 150 à l'actif et 100 au standby, et un `track_script` sur
+  `/api/update/ping` déplace l'adresse si l'orchestrateur ne répond plus. Sans keepalived, la VIP
+  se pose à la main (`ip addr add/del` + `arping -U`). La VIP suit la disponibilité, pas le
+  pilotage : la promotion reste manuelle.
 - Le document HA.md note lui-même que le chemin de bascule **n'a pas été validé end-to-end sur un
   second boîtier physique** — testé en loopback et fichiers jetables. À traiter comme un mécanisme
   disponible mais pas éprouvé en conditions réelles multi-machines au moment de la rédaction de ce
@@ -329,10 +429,12 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 
 ### Flux média
 
-- **ST 2110** : le plugin `2110_io` expose une option `smpte_2022_7` (double-chemin redondant,
-  ST 2022-7) dans son schéma de configuration, **désactivée par défaut**. Une redondance de flux
-  au sens SMPTE existe donc dans le produit mais n'est pas activée par défaut — l'activer implique
-  de câbler deux chemins réseau physiquement distincts jusqu'à la NIC concernée (deux ports, deux
+- **ST 2110** : la redondance ST 2022-7 (double-chemin) n'est pas un réglage global du moteur : elle
+  est déterminée **par port**. Un slot de sortie est redondant quand son port a une **paire**
+  déclarée (rôles red/blue et groupe de paire, posés par interface dans la fiche du nœud) ; la
+  seconde jambe est alors allouée sur l'interface appariée. Un port sans paire n'émet qu'une jambe
+  — sans quoi deux jambes partageraient le même câble sans protéger de rien. L'activer implique de
+  câbler deux chemins réseau physiquement distincts jusqu'aux deux NIC appariées (deux ports, deux
   chemins de switch), cohérent avec le principe ST 2022-7.
 - Repli sans signal côté sortie (`tx_fallback`) : `none` / `black` / `bars` — un flux TX peut
   continuer d'émettre un contenu statique (noir ou barres) si la source amont disparaît, plutôt que
@@ -353,7 +455,7 @@ Aucune valeur propre à un site (IP, hostnames, tokens) n'apparaît ici : elle v
 | Nœud `gpu` | Driver NVIDIA **≥ 570**, slot PCIe **x16** génération récente, `nvidia-container-toolkit`, reboot après installation | `_compute_gpu_runtime/Dockerfile`, `gpu.py`, NODE_AGENT.md |
 | Nœud `rdma` | Carte RoCEv2-capable en `--network host` ; **plusieurs liens physiques distincts, jamais bondés LACP** entre deux nœuds | `services/rdma/` |
 | Réseau média | Switch avec **IGMP snooping + querier actif** ; plages multicast par port cohérentes avec `mcast_ranges` ; support PTP transparent/boundary clock recommandé pour tenir l'offset < 1 ms | `allocations.py`, `ptp.py` |
-| Réseau conteneurs | Plan macvlan sur un subnet dédié, **sans chevauchement avec le LAN existant** ; passerelle = route par défaut du nœud | `node-bootstrap.sh`, `allocations.py` |
+| Réseau conteneurs | **Mode au choix par nœud.** *Site* (macvlan) : subnet dédié, **sans chevauchement avec le LAN existant**, passerelle = route par défaut du nœud, une adresse par conteneur **plus une par nœud tout-en-un** (shim). *Interne* (bridge) : aucune adresse consommée, mais **tout-en-un seulement** — et ports publiés pour ce qui doit être joignable. Sortie Internet = carte dédiée en DHCP, **exige le mode interne** | `container_net.py`, `node-bootstrap.sh`, `allocations.py` |
 | Réseau contrôle | Simple, IP statique par nœud, port agent 9100, faible débit | NODE_AGENT.md |
 
 ## Points non documentables faute d'information dans le dépôt

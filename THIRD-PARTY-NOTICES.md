@@ -14,7 +14,7 @@ Compilés ou installés dans les images Docker distribuées avec le produit.
 
 | Composant | Version épinglée | Rôle | Licence | Source |
 |---|---|---|---|---|
-| **MXL SDK** (`libmxl`) | `v1.1.0-rc1` | Bus vidéo/audio en mémoire partagée — transport interne | **Apache-2.0** | <https://github.com/dmf-mxl/mxl> |
+| **MXL SDK** (`libmxl`) | `v1.1.0` | Bus vidéo/audio en mémoire partagée — transport interne | **Apache-2.0** | <https://github.com/dmf-mxl/mxl> |
 | **Intel Media Transport Library** (`libmtl`) | `32b1b4e9` | Émission/réception ST 2110 en kernel-bypass | **BSD-3-Clause** | <https://github.com/OpenVisualCloud/Media-Transport-Library> |
 | **DPDK** | via MTL | Pilotes réseau en espace utilisateur | BSD-3-Clause | <https://www.dpdk.org/> |
 | **FFmpeg** | `7:7.1.5` (Debian trixie) | Encodage, décodage, conversion (processus séparé) | **GPL-2.0+** — voir ci-dessous | <https://ffmpeg.org/> |
@@ -47,8 +47,10 @@ application de nos correctifs**, qui sont versionnés et lisibles dans
 | `mxl-planar-type.patch` | type d'essence planar |
 | `mxl-planar-slices.patch` | lecture/écriture par tranches sur le planar |
 | `mxl-fabrics-slice-reset.patch` | remise à zéro de tranche dans `libmxl-fabrics` |
+| `mxl-fabrics-fence-notification.patch` | `FI_FENCE` sur l'écriture RMA qui porte la notification d'un lot multi-plans dans `libmxl-fabrics` : la cible ne publie plus des tranches dont les octets sont encore en vol |
 
-Aucun autre fichier du SDK n'est modifié. Le texte intégral de la licence est fourni dans
+Aucun autre fichier du SDK n'est modifié. (`mxl-fabrics-debug-log.patch`, présent dans le même
+dossier, n'est appliqué par aucune image : c'est un outil de mise au point, il n'est pas distribué.) Le texte intégral de la licence est fourni dans
 `licenses/Apache-2.0.txt`, comme l'exige §4(a).
 
 > Le dépôt amont ne contient pas de fichier `NOTICE` (vérifié le 2026-08-30) : l'obligation
@@ -164,11 +166,16 @@ Licences relevées sur les versions effectivement installées :
 | itsdangerous | 2.2.0 | BSD-3-Clause |
 | jaraco.functools | 4.6.0 | MIT |
 | Jinja2 | 3.1.6 | BSD-3-Clause |
+| jsonschema | 4.26.0 | MIT |
 | Markdown | 3.10.2 | BSD-3-Clause |
 | MarkupSafe | 3.0.3 | BSD-3-Clause |
 | more-itertools | 11.1.0 | MIT |
+| numpy | 2.4.6 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 |
 | Pillow | 12.2.0 | MIT-CMU |
+| pyasn1 | 0.6.4 | BSD-2-Clause |
 | pycparser | 3.0 | BSD-3-Clause |
+| pysnmp | 7.1.29 | BSD-2-Clause |
+| PyYAML | 6.0.3 | MIT |
 | requests | 2.34.2 | Apache-2.0 |
 | urllib3 | 2.7.0 | MIT |
 | waitress | 3.0.2 | ZPL-2.1 |

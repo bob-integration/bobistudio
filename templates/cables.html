@@ -3,57 +3,19 @@
 {% block title %}{{ _('cables.page_title') }}{% endblock %}
 
 {% block content %}
-<div class="home-head">
-    <h1>{{ _('cables.title') }}</h1>
-    <div class="meta" id="home-updated">{{ _('cables.loading') }}</div>
-</div>
-
-<div class="cables-toolbar" role="toolbar" aria-label="{{ _('cables.toolbar.aria') }}">
-    <button type="button" class="btn btn-blue" onclick="saveCableSnapshot()">
-        {{ _('cables.save') }}
-    </button>
-    <div class="cables-recall">
-        <button type="button" class="btn btn-purple"
-                aria-expanded="false" aria-controls="cables-recall-menu"
-                onclick="toggleRecallMenu(event)">{{ _('cables.recall') }} ▾</button>
-        <div id="cables-recall-menu" class="cables-recall-menu" hidden role="menu"></div>
+{# Le titre n'est plus AFFICHÉ : l'entrée allumée de la barre du haut le dit déjà. La barre de la page
+   devient la bande de sous-menu collée sous elle (`.subnav-deck`, base.css + static/subnav_deck.js),
+   comme Containers, Monitoring et les rubriques de plugins — elle doit rester le PREMIER élément. #}
+<div class="cables-toolbar cables-bar subnav-deck" role="toolbar" aria-label="{{ _('cables.toolbar.aria') }}">
+    {% if has_perm('projects.manage') %}
+    <span class="cables-filter-label">{{ _('cables.viewkind.label') }}</span>
+    <div class="lat-mode-toggle" role="group" aria-label="{{ _('cables.viewkind.label') }}"
+         title="{{ _('cables.projects_view_title') }}">
+        <button type="button" id="cables-view-containers" class="lat-mode-btn" onclick="setProjectsView(false)">{{ _('cables.viewkind.containers') }}</button>
+        <button type="button" id="cables-view-projects" class="lat-mode-btn" onclick="setProjectsView(true)">{{ _('cables.viewkind.projects') }}</button>
     </div>
-    <button type="button" class="btn btn-red" onclick="clearAllCables()">
-        {{ _('cables.clear_all') }}
-    </button>
-    <label class="ctl-switch-inline" style="margin-left:auto; font-size:0.9em; color:var(--text-muted)"
-           title="{{ _('cables.autoaudio.tip') }}">
-        <input type="checkbox" class="ctl-switch" id="auto-audio"
-               onchange="localStorage.setItem('mxl.cables.autoaudio', this.checked ? '1' : '0')">
-        {{ _('cables.autoaudio.label') }}
-    </label>
-    <label class="ctl-switch-inline" style="font-size:0.9em; color:var(--topo-flow-data)"
-           title="{{ _('cables.autoanc.tip') }}">
-        <input type="checkbox" class="ctl-switch" id="auto-anc"
-               onchange="localStorage.setItem('mxl.cables.autoanc', this.checked ? '1' : '0')">
-        {{ _('cables.autoanc.label') }}
-    </label>
-    <span class="cables-filter-label" title="{{ _('cables.latmode.title') }}">{{ _('cables.latmode.short') }}</span>
-    <div class="lat-mode-toggle" role="group" aria-label="{{ _('cables.latmode.aria') }}"
-         title="{{ _('cables.latmode.title') }}">
-        <button type="button" id="lat-mode-charge" class="lat-mode-btn" onclick="cablesSetLatMode('charge')"
-                title="{{ _('cables.latmode.charge_title') }}">{{ _('cables.latmode.charge') }}</button>
-        <button type="button" id="lat-mode-delai" class="lat-mode-btn" onclick="cablesSetLatMode('delai')"
-                title="{{ _('cables.latmode.delai_title') }}">{{ _('cables.latmode.delai') }}</button>
-        <button type="button" id="lat-mode-cum" class="lat-mode-btn" onclick="cablesSetLatMode('delai_cum')"
-                title="{{ _('cables.latmode.cum_title') }}">{{ _('cables.latmode.cum') }}</button>
-        <button type="button" id="lat-mode-off" class="lat-mode-btn" onclick="cablesSetLatMode('off')">{{ _('cables.latmode.off') }}</button>
-    </div>
-    <span class="cables-filter-label" title="{{ _('cables.rdmamode.title') }}">RDMA</span>
-    <div class="lat-mode-toggle" role="group" aria-label="{{ _('cables.rdmamode.aria') }}"
-         title="{{ _('cables.rdmamode.title') }}">
-        <button type="button" id="rdma-mode-line"  class="lat-mode-btn" onclick="cablesSetRdmaMode('line')">{{ _('cables.rdmamode.line') }}</button>
-        <button type="button" id="rdma-mode-label" class="lat-mode-btn" onclick="cablesSetRdmaMode('label')">{{ _('cables.rdmamode.label') }}</button>
-        <button type="button" id="rdma-mode-off"   class="lat-mode-btn" onclick="cablesSetRdmaMode('off')">{{ _('cables.rdmamode.off') }}</button>
-    </div>
-</div>
-
-<div class="cables-toolbar cables-toolbar-filters" role="toolbar" aria-label="{{ _('cables.filters.aria') }}">
+    <span class="cables-bar-sep" aria-hidden="true"></span>
+    {% endif %}
     <span class="cables-filter-label">{{ _('cables.filters.signal') }}</span>
     <div class="cables-signal-filter" role="group">
         <button type="button" class="sig-btn sig-video active" data-sig="video" onclick="toggleSignalFilter('video')">{{ _('cables.kind.video') }}</button>
@@ -69,36 +31,114 @@
         <select id="filter-node" onchange="setNodeFilter(this.value)"></select>
     </label>
     <button type="button" class="btn btn-ghost cables-filter-reset" onclick="resetCableFilters()">{{ _('cables.filters.reset') }}</button>
-    <button type="button" class="sig-btn" id="cables-fabric-internals" onclick="toggleFabricInternalsCables()"
-            title="{{ _('cables.js.fabric_internals_title') }}">⚙ {{ _('containers.filter.fabric_internals') }}</button>
-    {% if has_perm('projects.manage') %}
-    <button type="button" class="sig-btn" id="cables-projects-view" onclick="toggleProjectsView()"
-            title="{{ _('cables.projects_view_title') }}">▣ {{ _('cables.projects_view') }}</button>
-    {% endif %}
 
-    <div class="cables-view-toggle" role="group" aria-label="{{ _('cables.view.aria') }}" style="margin-left:auto"
-         title="{{ _('cables.view.title') }}">
-        <button type="button" id="view-mode-cols" class="lat-mode-btn" onclick="cablesSetViewMode('cols')">{{ _('cables.view.cols') }}</button>
-        <button type="button" id="view-mode-free" class="lat-mode-btn" onclick="cablesSetViewMode('free')">{{ _('cables.view.free') }}</button>
-    </div>
-    <div class="cables-recall cables-layouts" id="cables-layouts-wrap" hidden>
-        <button type="button" class="btn btn-ghost" onclick="resetFreeLayout()"
-                title="{{ _('cables.view.reorganize_title') }}">{{ _('cables.view.reorganize') }}</button>
-        <button type="button" class="btn btn-blue" onclick="saveCableLayout()">{{ _('cables.view.save') }}</button>
-        <button type="button" class="btn btn-purple"
-                aria-expanded="false" aria-controls="cables-layouts-menu"
-                onclick="toggleLayoutsMenu(event)">{{ _('cables.view.recall') }} ▾</button>
-        <div id="cables-layouts-menu" class="cables-recall-menu" hidden role="menu"></div>
+    <div class="cables-bar-end">
+        <div class="cables-layouts" id="cables-layouts-wrap" hidden>
+            <button type="button" class="btn btn-ghost" onclick="resetFreeLayout()"
+                    title="{{ _('cables.view.reorganize_title') }}">{{ _('cables.view.reorganize') }}</button>
+        </div>
+        <div class="cables-view-toggle" role="group" aria-label="{{ _('cables.view.aria') }}"
+             title="{{ _('cables.view.title') }}">
+            <button type="button" id="view-mode-cols" class="lat-mode-btn" onclick="cablesSetViewMode('cols')">{{ _('cables.view.cols') }}</button>
+            <button type="button" id="view-mode-free" class="lat-mode-btn" onclick="cablesSetViewMode('free')">{{ _('cables.view.free') }}</button>
+        </div>
+        <span class="cables-bar-sep" aria-hidden="true"></span>
+
+        <div class="cables-pop-wrap">
+            <button type="button" class="btn" id="cables-display-btn" aria-expanded="false" aria-controls="cables-display-pop"
+                    onclick="toggleCablesPop('display')">{{ _('cables.menu.display') }} ▾</button>
+            <div id="cables-display-pop" class="cables-pop" hidden role="dialog" aria-label="{{ _('cables.menu.display') }}">
+                <div class="cables-pop-h">{{ _('cables.views.title') }}</div>
+                <div id="cables-views-list" class="cables-views-list"></div>
+                <button type="button" class="btn btn-ghost" onclick="saveCableView()">{{ _('cables.views.save') }}</button>
+                <hr class="cables-pop-sep">
+                <div class="cables-pop-h">{{ _('cables.display.cards') }}</div>
+                <div class="cables-pop-row">
+                    <button type="button" class="btn btn-ghost" onclick="collapseAllCards(true)">{{ _('cables.display.collapse_all') }}</button>
+                    <button type="button" class="btn btn-ghost" onclick="collapseAllCards(false)">{{ _('cables.display.expand_all') }}</button>
+                </div>
+                <hr class="cables-pop-sep">
+                <div class="cables-pop-h">{{ _('cables.display.multiview') }}</div>
+                <label class="ctl-switch-inline cables-pop-switch" title="{{ _('cables.js.fabric_internals_title') }}">
+                    <input type="checkbox" class="ctl-switch" id="cables-fabric-internals" onchange="toggleFabricInternalsCables()">
+                    {{ _('containers.filter.fabric_internals') }}
+                </label>
+                <hr class="cables-pop-sep">
+                <div class="cables-pop-h">{{ _('cables.display.on_cables') }}</div>
+                <div class="cables-pop-row cables-pop-row-split">
+                    <span title="{{ _('cables.latmode.title') }}">{{ _('cables.latmode.short') }}</span>
+                    <div class="lat-mode-toggle" role="group" aria-label="{{ _('cables.latmode.aria') }}"
+                         title="{{ _('cables.latmode.title') }}">
+                        <button type="button" id="lat-mode-charge" class="lat-mode-btn" onclick="cablesSetLatMode('charge')"
+                                title="{{ _('cables.latmode.charge_title') }}">{{ _('cables.latmode.charge') }}</button>
+                        <button type="button" id="lat-mode-delai" class="lat-mode-btn" onclick="cablesSetLatMode('delai')"
+                                title="{{ _('cables.latmode.delai_title') }}">{{ _('cables.latmode.delai') }}</button>
+                        <button type="button" id="lat-mode-cum" class="lat-mode-btn" onclick="cablesSetLatMode('delai_cum')"
+                                title="{{ _('cables.latmode.cum_title') }}">{{ _('cables.latmode.cum') }}</button>
+                        <button type="button" id="lat-mode-off" class="lat-mode-btn" onclick="cablesSetLatMode('off')">{{ _('cables.latmode.off') }}</button>
+                    </div>
+                </div>
+                <div class="cables-pop-row cables-pop-row-split">
+                    <span title="{{ _('cables.rdmamode.title') }}">RDMA</span>
+                    <div class="lat-mode-toggle" role="group" aria-label="{{ _('cables.rdmamode.aria') }}"
+                         title="{{ _('cables.rdmamode.title') }}">
+                        <button type="button" id="rdma-mode-line"  class="lat-mode-btn" onclick="cablesSetRdmaMode('line')">{{ _('cables.rdmamode.line') }}</button>
+                        <button type="button" id="rdma-mode-label" class="lat-mode-btn" onclick="cablesSetRdmaMode('label')">{{ _('cables.rdmamode.label') }}</button>
+                        <button type="button" id="rdma-mode-off"   class="lat-mode-btn" onclick="cablesSetRdmaMode('off')">{{ _('cables.rdmamode.off') }}</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="cables-pop-wrap">
+            <button type="button" class="btn" id="cables-cabling-btn" aria-expanded="false" aria-controls="cables-cabling-pop"
+                    onclick="toggleCablesPop('cabling')">{{ _('cables.menu.cabling') }}<span class="cables-auto-dot" id="cables-auto-dot" hidden
+                    title="{{ _('cables.cabling.auto_on') }}"></span> ▾</button>
+            <div id="cables-cabling-pop" class="cables-pop" hidden role="dialog" aria-label="{{ _('cables.menu.cabling') }}">
+                <div class="cables-pop-row">
+                    <button type="button" class="btn btn-blue" onclick="saveCableSnapshot()">{{ _('cables.save') }}</button>
+                    <div class="cables-recall">
+                        <button type="button" class="btn btn-purple"
+                                aria-expanded="false" aria-controls="cables-recall-menu"
+                                onclick="toggleRecallMenu(event)">{{ _('cables.recall') }} ▾</button>
+                        <div id="cables-recall-menu" class="cables-recall-menu" hidden role="menu"></div>
+                    </div>
+                </div>
+                <hr class="cables-pop-sep">
+                <div class="cables-pop-h">{{ _('cables.cabling.auto') }}</div>
+                <label class="ctl-switch-inline cables-pop-switch" title="{{ _('cables.autoaudio.tip') }}">
+                    <input type="checkbox" class="ctl-switch" id="auto-audio"
+                           onchange="localStorage.setItem('mxl.cables.autoaudio', this.checked ? '1' : '0'); _syncAutoDot()">
+                    {{ _('cables.autoaudio.label') }}
+                </label>
+                <label class="ctl-switch-inline cables-pop-switch" title="{{ _('cables.autoanc.tip') }}">
+                    <input type="checkbox" class="ctl-switch" id="auto-anc"
+                           onchange="localStorage.setItem('mxl.cables.autoanc', this.checked ? '1' : '0'); _syncAutoDot()">
+                    {{ _('cables.autoanc.label') }}
+                </label>
+                <hr class="cables-pop-sep">
+                <button type="button" class="btn btn-red cables-pop-danger" onclick="clearAllCables()">{{ _('cables.clear_all') }}</button>
+            </div>
+        </div>
     </div>
 </div>
 
 <!-- Légende du voyant de signal. Placée AU-DESSUS du graphe et non dans une infobulle : la
      question « allumé/éteint, ça veut dire quoi ? » se pose au premier regard, et une réponse
      qu'il faut aller chercher au survol d'un port arrive trop tard. -->
+<h1 class="sr-only">{{ _('cables.title') }}</h1>
 <div class="topo-legend" aria-label="{{ _('cables.legend.aria') }}">
     <span><i class="lg-on"></i>{{ _('cables.legend.on') }}</span>
     <span><i class="lg-off"></i>{{ _('cables.legend.off') }}</span>
     <span><i class="lg-unk"></i>{{ _('cables.legend.unknown') }}</span>
+    <span class="meta cables-updated" id="home-updated">{{ _('cables.loading') }}</span>
+</div>
+
+<div class="cables-project-banner" id="cables-project-banner" hidden>
+    <span class="cables-project-tag">{{ _('cables.proj.banner_tag') }}</span>
+    <span class="cables-project-name"></span>
+    <span class="cables-project-meta"></span>
+    <button type="button" class="ctl-push" onclick="leaveProject()">← {{ _('cables.proj.banner_leave') }}</button>
 </div>
 
 <div class="topo" id="topo">
@@ -161,6 +201,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/subnav_deck.js?v={{ asset_v('subnav_deck.js') }}"></script>
 <script>
 console.log('[Bobi.Studio] cables build', 'cables-v1');
 const T = (k) => window.t(k);
@@ -449,7 +490,179 @@ function renderPlaceholderInput(idx, nodeKind) {
         <span class="topo-port-label">${escapeHtml(label)}</span>
     </li>`;
 }
+/* ─── Vue globale : un projet = un bloc (étape 5 des ports, maquette du 23/10) ────────────────
+   Le bloc n'expose que ses PORTS (entrées à gauche, sorties à droite) avec leur état, plus un
+   résumé de contenu. Les lignes de port gardent les classes et data-* des ports ordinaires
+   (topo-port-in/out, data-shm/kind/slot) : les arêtes s'y ancrent, et les gestes de câblage
+   s'y appliqueront comme ailleurs. data-port-id porte l'identité du port. */
+// Virtuelle (28/10) : comme un conteneur, une ligne PAR FLUX, chacune avec son point et ses câbles —
+// la vidéo, puis ses audios et son ANC rattachés juste dessous, en retrait (« ↳ Audio 1 », « ↳ ANC »).
+// Cyril, 28/10 : « comme dans le reste de la page câbles, avec des câbles pour chaque essence ».
+// `slotOf(p, i)` : le slot qu'utilise l'appelant pour l'entrée i.
+function _projPortRows(side, ports, slotOf) {
+    // Renvois (29/10, maquette B) : les destinations réutilisables suivent les sources externes,
+    // dans une section à part de la même carte.
+    if (side === 'out' && ports.some(p => p.renvoi)) {
+        const ext = ports.filter(p => !p.renvoi), rv = ports.filter(p => p.renvoi);
+        const sec = (cls, key) => `<li class="topo-proj-section${cls ? ' ' + cls : ''}" aria-hidden="true">${escapeHtml(T(key))}</li>`;
+        return (ext.length ? sec('', 'cables.proj.section_external') + _projPortRowsFlat(side, ext, slotOf) : '')
+            + sec('topo-proj-section-renvoi', 'cables.proj.section_renvoi') + _projPortRowsFlat(side, rv, slotOf);
+    }
+    return _projPortRowsFlat(side, ports, slotOf);
+}
+function _projPortRowsFlat(side, ports, slotOf) {
+    const ids = new Set(ports.map(p => p.port_id));
+    const isKid = p => p.parent_port_id != null && ids.has(p.parent_port_id);
+    const kids = new Map();
+    ports.forEach((p, i) => {
+        if (!isKid(p)) return;
+        if (!kids.has(p.parent_port_id)) kids.set(p.parent_port_id, []);
+        kids.get(p.parent_port_id).push({p, i});
+    });
+    return ports.map((p, i) => isKid(p) ? ''
+        : _projPortRow(side, p, slotOf(p, i), (kids.get(p.port_id) || []).length > 0)
+          + (kids.get(p.port_id) || []).map(k => _projPortRow(side, k.p, slotOf(k.p, k.i), false, true)).join(''))
+        .join('');
+}
+// Nom court d'un rattaché sous sa vidéo : « Audio 1 » (suffixe A1), « ANC ».
+function _projKidName(p) {
+    if (p.kind === 'data') return window.t('projects.port_media_anc');
+    const n = String(p.suffix || '').replace(/^A/, '');
+    return window.t('projects.port_media_audio') + (n ? ' ' + n : '');
+}
+function _projPortRow(side, p, i, isGroup, isKid) {
+    const kc = p.kind === 'audio' ? 'topo-port-audio' : p.kind === 'data' ? 'topo-port-data' : 'topo-port-video';
+    let state = '', dotCls = '';
+    if (p.direct) {
+        state = `<span class="topo-proj-direct">${escapeHtml(T('cables.proj.direct'))}</span>`;
+        dotCls = ' topo-port-dot-direct';
+    } else if (p.port_state === 'unassigned' || p.port_state === 'unpublished') {
+        state = `<span class="topo-proj-warn">${escapeHtml(T(p.port_state === 'unassigned'
+            ? 'projects.port_unassigned' : 'cables.proj.unpublished'))}</span>`;
+        dotCls = ' topo-port-dot-unset';
+    } else if (p.follows) {
+        state = `<span class="topo-proj-sub">${escapeHtml(T('cables.proj.follows')
+            .replace('{port}', p.follows.name || '').replace('{project}', p.follows.project || ''))}</span>`;
+    }
+    // Un rattaché vient du même producteur que sa vidéo : son « de … » répéterait la ligne du dessus.
+    const via = isKid ? '' : p.renvoi
+        ? (p.origin ? `← ${p.origin.host}${p.origin.out ? ' · ' + p.origin.out : ''}` : '')
+        : _projPortVia(p);
+    if (via) state += `<span class="topo-proj-sub topo-proj-via">${escapeHtml(via)}</span>`;
+    if (p.renvoi && !isKid && p.readers)
+        state += `<span class="topo-proj-readers">${escapeHtml(T(p.readers > 1 ? 'cables.proj.readers_n' : 'cables.proj.readers_1').replace('{n}', p.readers))}</span>`;
+    const dot = `<span class="topo-port-dot ${kc}${dotCls}" aria-hidden="true"></span>`;
+    const tip = p.direct
+        ? T('cables.proj.direct_tip').replace('{shm}', p.shm)
+              .replace('{who}', (p.consumers || []).map(c => c.hostname || ('#' + c.vmid)).join(', '))
+        : (p.shm ? `${p.label} · ${p.shm}` : p.label);
+    const name = isKid ? `<span class="topo-port-kidmark" aria-hidden="true">↳</span>${escapeHtml(_projKidName(p))}` : escapeHtml(p.label || '');
+    const lab = `<span class="topo-proj-portlab"><span class="topo-port-label">${name}</span>${state}</span>`;
+    return `<li class="topo-port topo-port-${side} ${kc}${p.direct ? ' topo-port-direct' : ''}${isGroup ? ' topo-port-group' : ''}${isKid ? ' topo-port-kid' : ''}${p.renvoi ? ' topo-port-renvoi' : ''}"
+                ${p.port_state ? `data-port-state="${escapeHtml(p.port_state)}"` : ''}
+                data-shm="${escapeHtml(p.shm || '')}" data-kind="${escapeHtml(p.kind || 'video')}"
+                ${side === 'in' ? `data-slot="${i}"` : ''}
+                ${p.port_id != null ? `data-port-id="${escapeHtml(p.port_id)}" data-port-kind="${escapeHtml(p.port_kind || (side === 'in' ? 'source' : 'dest'))}"` : ''}
+                ${isKid ? `data-parent-port-id="${escapeHtml(p.parent_port_id)}"` : ''}
+                data-port-label="${escapeHtml(p.label || '')}"
+                title="${escapeHtml(tip)}">${side === 'in' ? dot + lab : lab + dot}</li>`;
+}
+// Vue détaillée : d'où vient le signal d'un port source, où part celui d'un port destination.
+function _projPortVia(p) {
+    const name = o => o.port != null ? `▣ ${o.project || ''} · ${o.port || ''}` : (o.host || '');
+    if (p.origin) return T('cables.proj.from').replace('{who}', name(p.origin));
+    if ((p.targets || []).length) return T('cables.proj.to').replace('{who}', p.targets.map(name).join(', '));
+    return '';
+}
+function renderProjectModule(n) {
+    const sm = n.project_summary || {};
+    const st = n.project_state || 'saved';
+    const on = st === 'active';
+    const sub = on
+        ? [(sm.nodes || []).join(', '), T('cables.proj.views').replace('{n}', sm.views || 0)].filter(Boolean).join(' · ')
+        : T('cables.proj.no_node');
+    const ins = _projPortRows('in', n.consumes || [], (p, i) => i);
+    const outs = _projPortRows('out', n.produces || [], (p, i) => i);
+    const chips = (sm.types || []).map(t => `<span class="topo-proj-chip">${t.n} ${escapeHtml(t.label)}</span>`).join('');
+    const counts = on
+        ? T('cables.proj.counts').split('{n}').join(sm.containers || 0).replace('{r}', sm.running || 0)
+        : T('cables.proj.counts_off').replace('{n}', sm.containers || 0);
+    const portsLine = T('cables.proj.ports_count').replace('{n}', sm.ports || 0).replace('{a}', sm.ports_assigned || 0);
+    return `
+        <div class="topo-node topo-node-project${on ? '' : ' topo-node-project-off'}"
+             data-vmid="${escapeHtml(n.vmid)}" data-nid="${escapeHtml(_nidOf(n))}" data-kind="project"
+             data-split="0" data-project="${escapeHtml(n.project_id)}" data-node="">
+            <div class="topo-proj-head">
+                <div class="topo-proj-name"><span class="topo-proj-tag">${escapeHtml(T('cables.proj.tag'))}</span>
+                    <span class="topo-node-host">${escapeHtml(n.hostname || '')}</span>
+                    <span class="badge ${on ? 'running' : 'unknown'}">${escapeHtml(window.t('projects.state_' + st))}</span></div>
+                <div class="topo-proj-sub">${escapeHtml(sub)}</div>
+            </div>
+            <div class="topo-proj-ports">
+                ${ins ? `<ul class="topo-node-ports topo-node-ports-in">${ins}</ul>` : '<span></span>'}
+                ${outs ? `<ul class="topo-node-ports topo-node-ports-out">${outs}</ul>` : '<span></span>'}
+            </div>
+            <div class="topo-proj-sum">
+                <span class="topo-proj-lab">${escapeHtml(T('cables.proj.content'))}</span>
+                <span class="topo-proj-sub">${escapeHtml(counts)} · ${escapeHtml(portsLine)}</span>
+                ${chips ? `<div class="topo-proj-chips">${chips}</div>` : ''}
+                ${sm.direct ? `<span class="topo-proj-direct">${escapeHtml(T('cables.proj.direct_warn').replace('{n}', sm.direct))}</span>` : ''}
+            </div>
+            <div class="topo-proj-foot">
+                <button type="button" class="ctl-push" onclick="projectOpenInside(event, ${escapeHtml(n.project_id)})">${escapeHtml(T('cables.proj.open'))}</button>
+                ${on ? '' : `<button type="button" class="ctl-push" onclick="projectLoad(event, ${escapeHtml(n.project_id)}, '${escapeHtml(String(n.hostname || '').replace(/'/g, "\\'"))}')">${escapeHtml(T('cables.proj.load'))}</button>`}
+            </div>
+        </div>`;
+}
+function projectOpenInside(ev, pid) {
+    ev.stopPropagation();
+    _projFilter = String(pid);
+    try { localStorage.setItem('mxl.cables.filter.project', _projFilter); } catch (e) {}
+    if (cablesProjectsView) setProjectsView(false); else rafraichirCables();
+}
+function projectLoad(ev, pid, name) {
+    ev.stopPropagation();
+    if (typeof restaurerProjet === 'function') restaurerProjet(pid, name);
+}
+// Hors projet sans câble vers un projet : replié sous une ligne (vue globale seulement).
+let cablesShowUnlinked = false;
+function toggleUnlinked() { cablesShowUnlinked = !cablesShowUnlinked; renderTopology(window._lastTopo); }
+function _unlinkedSummary(nodes) {
+    if (!nodes.length) return '';
+    const cnt = {};
+    nodes.forEach(n => { const k = (PIPELINE_KIND_LABEL[n.kind] || n.kind || '?'); cnt[k] = (cnt[k] || 0) + 1; });
+    const chips = Object.entries(cnt).sort((a, b) => b[1] - a[1])
+        .map(([k, v]) => `<span class="topo-proj-chip">${v} ${escapeHtml(k)}</span>`).join('');
+    return `<div class="topo-unlinked">
+        <span class="topo-proj-sub">${escapeHtml(T('cables.unlinked').replace('{n}', nodes.length))}</span>
+        <div class="topo-proj-chips">${chips}</div>
+        <button type="button" class="ctl-push" onclick="toggleUnlinked()">${escapeHtml(T(cablesShowUnlinked ? 'cables.unlinked_collapse' : 'cables.unlinked_expand'))}</button>
+    </div>`;
+}
+
+// Vue détaillée (étape 5c, maquette C du 24/10) : les ports du projet aux deux bords de l'écran.
+// Carte de GAUCHE = ports sources, ce qui ENTRE dans le projet (data-shm `port:<id>`, à glisser
+// sur une entrée) ; carte de DROITE = ports destinations, ce qui en SORT (y lâcher une sortie la
+// publie). Même vmid pour les deux (`split`) ; data-split reste à 0 : on ne câble pas un port
+// source sur un port destination du même projet.
+function renderProjectPortsNode(n) {
+    const isIn = n.col === 'sources';
+    const rows = isIn
+        ? _projPortRows('out', n.produces || [], (p, i) => i)
+        : _projPortRows('in', n.consumes || [], (p, i) => p.slot != null ? p.slot : i);
+    return `
+        <div class="topo-node topo-node-project-ports ${isIn ? 'topo-doors-in' : 'topo-doors-out'}"
+             data-vmid="${escapeHtml(n.vmid)}" data-nid="${escapeHtml(_nidOf(n))}" data-kind="project_ports"
+             data-split="0" data-project="${escapeHtml(n.project_id)}" data-node="">
+            <div class="topo-doors-head">${escapeHtml(T(isIn ? 'cables.proj.doors_in' : 'cables.proj.doors_out'))}</div>
+            ${_projFilter ? '' : `<div class="topo-doors-proj">▣ ${escapeHtml(n.hostname || '')}</div>`}
+            <ul class="topo-node-ports ${isIn ? 'topo-node-ports-out' : 'topo-node-ports-in'}">${rows}</ul>
+        </div>`;
+}
+
 function renderNode(n) {
+    if (n.project_module) return renderProjectModule(n);
+    if (n.project_ports_node) return renderProjectPortsNode(n);
     let kindLabel = n.kind ? (PIPELINE_KIND_LABEL[n.kind] || n.kind) : null;
     let kindClass = n.kind ? (PIPELINE_KIND_CLASS[n.kind] || 'mode-none') : 'mode-none';
     let statusLabel = STATUS_LABEL[n.status] || (n.status || 'unknown');
@@ -724,24 +937,56 @@ function renderNode(n) {
     `;
 }
 
+// Remplit une colonne en ne touchant QUE les cartes dont le rendu a changé. À chaque rafraîchissement
+// (toutes les ~2 s) la plupart des cartes sont identiques et seuls quelques chiffres bougent (fps,
+// charge) : reconstruire toute la colonne refaisait le DOM de 47 cartes et la mise en page entière.
+// Composition ou ordre différents, carte qui ne se rend pas en UN élément : reconstruction complète,
+// comme avant. On compare le HTML PRODUIT, jamais le DOM — les passes suivantes (filtres, positions
+// en Libre, tally) habillent le DOM et repassent sur toutes les cartes de toute façon.
+function _fillColumn(el, nodes, emptyHtml, tailHtml) {
+    if (!el) return;
+    const items = nodes.map(n => ({ key: `${_nidOf(n)}|${n.project_module ? 'm' : ''}${n.project_ports_node ? 'p' : ''}`,
+                                    html: renderNode(n) }));
+    const prev = el._cardItems;
+    const sameShape = prev && prev.length === items.length && items.length > 0 && el._cardTail === tailHtml
+        && prev.every((p, i) => p.key === items[i].key) && el.children.length >= items.length;
+    if (sameShape) {
+        const tpl = document.createElement('template');
+        const swaps = [];
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].html === prev[i].html) continue;
+            tpl.innerHTML = items[i].html;
+            if (tpl.content.children.length !== 1) { swaps.length = 0; swaps.full = true; break; }
+            swaps.push([el.children[i], tpl.content.firstElementChild]);
+        }
+        if (!swaps.full) {
+            swaps.forEach(([oldEl, newEl]) => oldEl.replaceWith(newEl));
+            el._cardItems = items;
+            return;
+        }
+    }
+    el.innerHTML = (items.length ? items.map(it => it.html).join('') : emptyHtml) + tailHtml;
+    el._cardItems = items.length ? items : null;
+    el._cardTail = tailHtml;
+}
+
 function renderTopology(topo) {
     window._lastTopo = topo;   // mémorisé pour re-rendu sur bascule du mode latence (sans re-fetch)
     const cols = { sources: [], composition: [], sinks: [] };
+    const unlinked = (cablesProjectsView && topo.nodes || []).filter(n => n.project_linked === false);
     (topo.nodes || []).forEach(n => {
+        if (cablesProjectsView && n.project_linked === false && !cablesShowUnlinked) return;
         (cols[n.col] || cols.sources).push(n);
     });
-    document.getElementById('col-sources').innerHTML =
-        cols.sources.length
-            ? cols.sources.map(renderNode).join('')
-            : `<div class="topo-col-empty">${T('cables.empty.sources')}</div>`;
-    document.getElementById('col-composition').innerHTML =
-        cols.composition.length
-            ? cols.composition.map(renderNode).join('')
-            : `<div class="topo-col-empty">${T('cables.empty.processing')}</div>`;
-    document.getElementById('col-sinks').innerHTML =
-        cols.sinks.length
-            ? cols.sinks.map(renderNode).join('')
-            : `<div class="topo-col-empty">${T('cables.empty.sinks')}</div>`;
+    // Ports du projet en TÊTE de leur colonne : ils bordent l'écran, à gauche et à droite.
+    Object.values(cols).forEach(c => c.sort((a, b) => !!b.project_ports_node - !!a.project_ports_node));
+    _renderProjectBanner(topo);
+    _fillColumn(document.getElementById('col-sources'), cols.sources,
+                `<div class="topo-col-empty">${T('cables.empty.sources')}</div>`, '');
+    _fillColumn(document.getElementById('col-composition'), cols.composition,
+                `<div class="topo-col-empty">${T('cables.empty.processing')}</div>`, '');
+    _fillColumn(document.getElementById('col-sinks'), cols.sinks,
+                `<div class="topo-col-empty">${T('cables.empty.sinks')}</div>`, _unlinkedSummary(unlinked));
 
     // Positionnement libre (mode « Libre ») PUIS filtres : ils changent la géométrie/visibilité
     // des cartes et ports → doivent précéder le tracé des arêtes (qui lit les rects écran).
@@ -752,6 +997,30 @@ function renderTopology(topo) {
     // les efface. Sans ce repeint, la couleur ne réapparaissait qu'au prochain CHANGEMENT de tally
     // (seul émetteur de source-tally:change) — donc elle clignotait au rythme du poll de 2 s.
     _updateCablesTallyDom();
+}
+
+// Intérieur d'un projet (filtre projet, vue détaillée) : bandeau « Vous êtes dans le projet »
+// et liseré aux deux bords — on doit voir au premier regard qu'on n'est plus sur tout le parc.
+function _renderProjectBanner(topo) {
+    const el = document.getElementById('cables-project-banner');
+    const inside = !cablesProjectsView && !!_projFilter;
+    document.getElementById('topo')?.classList.toggle('topo-in-project', inside);
+    if (!el) return;
+    el.hidden = !inside;
+    if (!inside) return;
+    const opt = document.querySelector(`#filter-project option[value="${CSS.escape(_projFilter)}"]`);
+    const nodes = (topo && topo.nodes) || [];
+    const pn = nodes.find(n => n.project_ports_node && String(n.project_id) === _projFilter);
+    // Un moteur scindé (RX/TX) a deux cartes pour UN conteneur : on compte les vmid, pas les cartes.
+    const n = new Set(nodes.filter(x => x.vmid > 0 && _inProject(x, _projFilter)).map(x => x.vmid)).size;
+    const st = pn ? pn.project_state : null;
+    el.querySelector('.cables-project-name').textContent = (opt && opt.textContent) || (pn && pn.hostname) || ('#' + _projFilter);
+    el.querySelector('.cables-project-meta').textContent = [st ? window.t('projects.state_' + st) : null,
+        T('cables.proj.banner_count').replace('{n}', n)].filter(Boolean).join(' · ');
+}
+function leaveProject() {
+    const ps = document.getElementById('filter-project'); if (ps) ps.value = '';
+    setProjectFilter('');
 }
 
 // Tracé des arêtes SVG seul (sans reconstruire les cartes) : réutilisable en direct pendant
@@ -788,11 +1057,22 @@ function drawTopoEdges() {
     const _misEnPage = topo_box.width > 0 &&
                        [..._cartes].some(nd => nd.getBoundingClientRect().width > 0);
     if (_cartes.length && !_misEnPage) return;
-    svg.innerHTML = '';
+    // Les câbles sont construits HORS du document et insérés en une fois à la fin. Ajoutés un par un
+    // au SVG, chacun invalidait la mise en page, que la lecture des ports du câble suivant forçait à
+    // recalculer : 89 câbles = 290 ms de page figée à CHAQUE rafraîchissement (mesuré le 24/10).
+    const frag = document.createDocumentFragment();
 
     const status_by_vmid = {};
     (topo.nodes || []).forEach(n => { status_by_vmid[n.vmid] = n.status; });
 
+    // Index des cartes par vmid, construit UNE fois par passe : endpointOf le consultait par une
+    // recherche dans tout le document, deux fois par câble.
+    const _cardsByVmid = new Map();
+    document.querySelectorAll('.topo-node[data-vmid]').forEach(nd => {
+        const k = nd.dataset.vmid;
+        if (!_cardsByVmid.has(k)) _cardsByVmid.set(k, []);
+        _cardsByVmid.get(k).push(nd);
+    });
     function endpointOf(vmid, side, shm, slot) {
         // Côté entrée : quand l'arête connaît son slot, viser le dot de CE slot précis. Sinon
         // (slot absent) un même shm câblé sur plusieurs slots résoudrait toujours le 1er dot et
@@ -805,7 +1085,7 @@ function drawTopoEdges() {
             : inSel;
         // Un moteur split_io produit DEUX nœuds de même vmid (RX/TX) → on choisit celui qui porte
         // réellement le port (out pour RX, in pour TX) ; sinon le 1er nœud du vmid (cas normal).
-        const nodes = document.querySelectorAll(`.topo-node[data-vmid="${vmid}"]`);
+        const nodes = _cardsByVmid.get(String(vmid)) || [];
         let node = null, dot = null;
         for (const nd of nodes) {
             const d = nd.querySelector(selPort);
@@ -828,7 +1108,8 @@ function drawTopoEdges() {
 
     (topo.edges || []).forEach(e => {
         if (!_edgePassesFilter(e)) return;   // filtres signal/projet/nœud
-        const A = endpointOf(e.from, 'out', e.shm);
+        // `from_shm` : câble qui part d'un PORT (`port:<id>`) vers une entrée qui reçoit le flux physique.
+        const A = endpointOf(e.from, 'out', e.from_shm || e.shm);
         const B = endpointOf(e.to,   'in',  e.shm, e.slot);
         if (!A || !B) return;
         const cx = Math.max(40, (B.x - A.x) * 0.45);
@@ -842,6 +1123,8 @@ function drawTopoEdges() {
             // `fed` absent (producteur qui ne publie pas d'inventaire) laisse le trait plein,
             // parce que le pointillé affirme une absence de signal, pas une absence de mesure.
             e.fed === false ? 'topo-edge-unfed' : '',
+            // Vue globale : liaison DIRECTE d'un conteneur de projet sur un flux réel, hors port.
+            e.direct ? 'topo-edge-direct' : '',
         ].filter(Boolean).join(' ');
         const d = `M ${A.x} ${A.y} C ${A.x + cx} ${A.y}, ${B.x - cx} ${B.y}, ${B.x} ${B.y}`;
         const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -852,6 +1135,8 @@ function drawTopoEdges() {
         path.setAttribute('data-to', e.to);
         path.setAttribute('data-kind', e.kind || 'video');
         path.setAttribute('data-latency-ms', e.latency_ms == null ? '' : e.latency_ms);
+        if (e.port_id != null) path.setAttribute('data-port-id', e.port_id);
+        if (e.direct) path.setAttribute('data-direct', '1');
         // Zone de détection élargie : chaque arête est doublée d'un path TRANSPARENT superposé
         // plus large (stroke 14px, pointer-events:stroke) qui porte les mêmes data-* — le
         // hover/clic marche à ~7px du trait sans épaissir visuellement le câble. Inséré AVANT
@@ -865,8 +1150,10 @@ function drawTopoEdges() {
         hit.setAttribute('data-to', e.to);
         hit.setAttribute('data-kind', e.kind || 'video');
         hit.setAttribute('data-latency-ms', e.latency_ms == null ? '' : e.latency_ms);
-        svg.appendChild(hit);
-        svg.appendChild(path);
+        if (e.port_id != null) hit.setAttribute('data-port-id', e.port_id);
+        if (e.direct) hit.setAttribute('data-direct', '1');
+        frag.appendChild(hit);
+        frag.appendChild(path);
         // Étiquette d'arête selon le mode : « Par étape » = transit (arrivée = âge à la lecture du
         // consommateur, e.latency_ms) ; « Cumulé » = retard total du signal à l'arrivée (e.cum_ms).
         // Le transit (arrivée chez le consommateur) est une grandeur d'AXE A, en ms sous-trame.
@@ -887,7 +1174,7 @@ function drawTopoEdges() {
                 ageStr = ` (${s >= 90 ? Math.round(s / 60) + ' min' : s + ' s'})`;
             }
             txt.textContent = `${T('cables.frozen')}${ageStr}`;
-            svg.appendChild(txt);
+            frag.appendChild(txt);
         } else if (edgeVal != null && _latShow) {
             const ms = Math.round(edgeVal);
             const latCls = ms > 500 ? 'lat-err' : ms > 100 ? 'lat-warn' : 'lat-ok';
@@ -897,7 +1184,7 @@ function drawTopoEdges() {
             txt.setAttribute('class', `topo-edge-lat ${latCls}`);
             txt.setAttribute('text-anchor', 'middle');
             txt.textContent = `+${ms} ms`;
-            svg.appendChild(txt);
+            frag.appendChild(txt);
         }
         // Marquage « RDMA » sur les câbles inter-nœud (flux transporté par RDMA entre deux nœuds).
         // `e.rdma` ne dit que « les deux bouts sont sur des nœuds différents ». Sans le statut
@@ -924,7 +1211,7 @@ function drawTopoEdges() {
                 ov.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'title'))
                   .textContent = _ko ? T('cables.rdma_edge_missing_title')
                                      : T('cables.rdma_edge_title');
-                svg.appendChild(ov);
+                frag.appendChild(ov);
             }
             // Étiquette texte : seulement en mode « étiquette », ou quand le lien manque.
             if (_rdmaMode === 'label' || _ko) {
@@ -938,10 +1225,18 @@ function drawTopoEdges() {
                 rt.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'title'))
                   .textContent = _ko ? T('cables.rdma_edge_missing_title')
                                      : T('cables.rdma_edge_title');
-                svg.appendChild(rt);
+                frag.appendChild(rt);
             }
         }
     });
+
+    // Remplacés seulement s'ils diffèrent de ceux affichés : le plus souvent rien n'a bougé (mêmes
+    // positions, mêmes états), et réécrire quelques centaines d'éléments SVG ne servait qu'à repeindre.
+    const _sig = Array.from(frag.childNodes, nd => nd.outerHTML || '').join('');
+    if (_sig !== svg._edgesSig || !svg.firstChild) {
+        svg.replaceChildren(frag);
+        svg._edgesSig = _sig;
+    }
 
     // Dimensions de l'SVG en coords LOCALES (le canvas porte le scale).
     const w = topo_box.width / Z, h = topo_box.height / Z;
@@ -1088,8 +1383,9 @@ function hideEdgeTip() {
 let wireSrc = null;
 const wireBanner = () => document.getElementById('wire-banner');
 
-function startWire(srcVmid, srcShm, srcKind) {
-    wireSrc = { vmid: srcVmid, shm: srcShm, kind: srcKind };
+function startWire(srcVmid, srcShm, srcKind, srcPortId) {
+    // srcPortId : la sortie est un PORT destination d'un bloc projet (vue globale).
+    wireSrc = { vmid: srcVmid, shm: srcShm, kind: srcKind, portId: srcPortId || null };
     stopPolling();
     document.body.classList.add('wiring');
     document.body.dataset.wireKind = srcKind;
@@ -1181,6 +1477,8 @@ function associatedAncShm(node, videoShm) {
 async function commitWire(targetVmid, portEl, toSlot) {
     const target = nodesByVmid[targetVmid];
     if (!target || !wireSrc) return;
+    if (target.project_module || target.project_ports_node || wireSrc.portId)
+        return commitPortWire(target, portEl, toSlot);
     const src = wireSrc;
     if (portEl) portEl.classList.add('topo-port-drop-flash');
     showToast((window.t('cables.js.wiring').replace('{src}', src.shm).replace('{dst}', target.hostname || '#' + targetVmid)));
@@ -1227,6 +1525,175 @@ async function commitWire(targetVmid, portEl, toSlot) {
         return;
     }
     await _postWire(payload, src, target, targetVmid, autoA, autoAnc);
+}
+
+/* ─── Gestes de la vue globale (étape 5b) : même geste, même règle — lâcher REMPLACE ─────────
+   · sortie hors projet → port source d'un bloc : le port est affecté à ce flux (admin) ;
+   · port destination d'un bloc → port source d'un autre bloc : le second SUIT le premier ;
+   · port destination d'un bloc → entrée hors projet : câblée en `port:<id>`, elle suit le port. */
+function _portOf(target, portEl) {
+    if (portEl && portEl.dataset.portId) return portEl;
+    // Lâcher sur la carte : accepté s'il n'y a qu'UN port de cette essence.
+    // Toutes les cartes du vmid : les ports d'un projet en vue détaillée en occupent deux.
+    const cands = document.querySelectorAll(`.topo-node[data-vmid="${target.vmid}"] .topo-port-in[data-port-id][data-kind="${CSS.escape(wireSrc ? wireSrc.kind : '')}"]`);
+    return cands.length === 1 ? cands[0] : null;
+}
+async function _patchPort(pid, portId, body) {
+    const r = await fetch(`/api/projects/${pid}/ports/${portId}`, {
+        method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.reason || j.error || ('HTTP ' + r.status));
+    return j;
+}
+async function commitPortWire(target, portEl, toSlot) {
+    const src = wireSrc;
+    const carrier = target.project_module || target.project_ports_node;
+    let pEl = carrier ? _portOf(target, portEl) : null;
+    _wireCancelAt = Date.now();
+    cancelWire();
+    if (!carrier) {
+        // Port destination → entrée hors projet : l'entrée SUIT le port (option C).
+        const payload = {from_vmid: 0, to_vmid: parseInt(target.vmid), shm: 'port:' + src.portId,
+                         kind: src.kind};
+        if (toSlot != null) payload.to_slot = toSlot;
+        return _postWire(payload, src, target, target.vmid, null, null);
+    }
+    if (!pEl) { showToast(T('cables.proj.drop_on_port'), 'warn'); return; }
+    // Virtuelle : un audio (ou un ANC) lâché sur la ligne de la VIDÉO va à son premier rattaché de
+    // cette essence encore libre (sinon au premier) — jamais sur la vidéo, qu'il écraserait.
+    if (src.kind && pEl.dataset.kind !== src.kind && pEl.classList.contains('topo-port-group')) {
+        const kidsOf = [...pEl.parentElement.querySelectorAll(`.topo-port-kid[data-parent-port-id="${CSS.escape(pEl.dataset.portId)}"][data-kind="${CSS.escape(src.kind)}"]`)];
+        const kid = kidsOf.find(k => k.dataset.portState !== 'assigned') || kidsOf[0];
+        if (kid) pEl = kid;
+    }
+    const portName = pEl.dataset.portLabel || pEl.querySelector('.topo-port-label')?.textContent || '';
+    const srcNode = nodesByVmid[src.vmid] || {};
+    try {
+        if (pEl.dataset.portKind === 'dest') {
+            // Port destination : la sortie lâchée devient sa sortie INTERNE publiée.
+            if (src.portId) { showToast(T('cables.proj.dest_needs_output'), 'warn'); return; }
+            await _patchPort(target.project_id, pEl.dataset.portId, {binding: {internal_shm: src.shm}});
+            showToast(T('cables.proj.published').replace('{port}', portName).replace('{src}', src.shm), 'ok');
+        } else if (src.portId) {
+            await _patchPort(target.project_id, pEl.dataset.portId, {binding: {port: parseInt(src.portId)}});
+            showToast(T('cables.proj.followed').replace('{port}', portName)
+                .replace('{src}', (srcNode.hostname || '') + ' · ' + src.shm), 'ok');
+        } else {
+            await _patchPort(target.project_id, pEl.dataset.portId, {binding: {shm: src.shm}});
+            showToast(T('cables.proj.assigned').replace('{port}', portName).replace('{src}', src.shm), 'ok');
+        }
+    } catch (e) {
+        showToast(e.message === 'port_loop' ? T('cables.proj.loop')
+                  : T('cables.proj.error').replace('{e}', e.message), 'error');
+    }
+    setTimeout(rafraichirCables, 300);
+}
+// Clic sur un câble qui ENTRE dans un bloc : désaffecter son port, ou régulariser une liaison
+// directe (« Créer le port et y rattacher »).
+function showProjectEdgeMenu(path, evt) {
+    const to = parseInt(path.getAttribute('data-to'));
+    const shm = path.getAttribute('data-shm');
+    const kind = path.getAttribute('data-kind') || 'video';
+    const mod = nodesByVmid[to] || {};
+    const row = (mod.consumes || []).find(p => p.shm === shm &&
+        (path.getAttribute('data-direct') ? p.direct : String(p.port_id) === path.getAttribute('data-port-id')));
+    if (!row) return;
+    const m = document.createElement('div');
+    m.id = 'edge-menu';
+    m.className = 'edge-menu';
+    if (row.direct) {
+        const who = (row.consumers || []).map(c => c.hostname || ('#' + c.vmid)).join(', ');
+        m.innerHTML = `
+            <div class="edge-menu-head"><span class="edge-menu-shm">${escapeHtml(T('cables.proj.direct_title'))}</span></div>
+            <div class="edge-menu-body">${escapeHtml(T('cables.proj.direct_body').replace('{who}', who).replace('{shm}', shm))}</div>
+            <label class="edge-menu-body">${escapeHtml(T('cables.proj.direct_name'))}
+                <input type="text" id="direct-port-name" value="${escapeHtml(row.label || shm)}"></label>
+            <div class="edge-menu-actions">
+                <button type="button" class="ctl-push" onclick="regularizeDirect(${to}, '${escapeHtml(shm.replace(/'/g, "\\'"))}', '${escapeHtml(kind)}')">${escapeHtml(T('cables.proj.direct_create').replace('{shm}', shm))}</button>
+                <button type="button" class="btn btn-red" onclick="deleteDirectWire(${to}, '${escapeHtml(shm.replace(/'/g, "\\'"))}', '${escapeHtml(kind)}')">${escapeHtml(T('cables.delete_wire'))}</button>
+                <button type="button" class="ctl-push" onclick="closeEdgeMenu()">${escapeHtml(T('cables.proj.direct_leave'))}</button>
+            </div>`;
+    } else {
+        m.innerHTML = `
+            <div class="edge-menu-head"><span class="edge-menu-shm">${escapeHtml(row.label || '')}</span></div>
+            <div class="edge-menu-body">${escapeHtml(shm)} → ${escapeHtml(mod.hostname || '')}</div>
+            <div class="edge-menu-actions">
+                <button type="button" class="ctl-push" onclick="unassignPort(${mod.project_id}, ${row.port_id}, '${escapeHtml(String(row.label || '').replace(/'/g, "\\'"))}')">${escapeHtml(T('cables.proj.unassign'))}</button>
+                <button type="button" class="ctl-push" onclick="closeEdgeMenu()">${escapeHtml(T('cables.cancel'))}</button>
+            </div>`;
+    }
+    document.body.appendChild(m);
+    const w = m.offsetWidth, h = m.offsetHeight;
+    let x = evt.clientX + 14, y = evt.clientY + 14;
+    if (x + w > window.innerWidth - 8) x = evt.clientX - w - 14;
+    if (y + h > window.innerHeight - 8) y = evt.clientY - h - 14;
+    m.style.left = Math.max(8, x) + 'px';
+    m.style.top = Math.max(8, y) + 'px';
+}
+async function unassignPort(pid, portId, name) {
+    closeEdgeMenu();
+    try {
+        await _patchPort(pid, portId, {binding: {}});
+        showToast(T('cables.proj.unassigned_ok').replace('{port}', name), 'ok');
+    } catch (e) { showToast(T('cables.proj.error').replace('{e}', e.message), 'error'); }
+    setTimeout(rafraichirCables, 300);
+}
+// Supprimer une liaison directe (28/10, recette custom-bbc146bee1) : le câble de la vue Projets
+// part du module projet, mais ce sont les entrées des conteneurs qui lisent le flux — on les
+// débranche une à une, comme « Supprimer ce câble » de la vue Conteneurs.
+async function deleteDirectWire(moduleVmid, shm, kind) {
+    const mod = nodesByVmid[moduleVmid] || {};
+    const row = (mod.consumes || []).find(p => p.direct && p.shm === shm);
+    closeEdgeMenu();
+    if (!row) return;
+    showToast(T('cables.js.unwiring').replace('{shm}', shm));
+    const errors = [];
+    let hot = true;
+    for (const c of row.consumers || []) {
+        try {
+            const r = await fetch('/api/home/unwire', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({to_vmid: c.vmid, shm, kind})});
+            const j = await r.json().catch(() => ({}));
+            if (!(r.ok && j.ok)) errors.push(j.error || r.status);
+            else if (!j.hot_wired) hot = false;
+        } catch (e) { errors.push(e.message); }
+    }
+    if (errors.length) showToast(T('cables.js.err_msg').replace('{msg}', errors.join(' ; ')), 'error');
+    else showToast(T('cables.js.cable_removed').replace('{shm}', shm)
+        .replace('{suite}', hot ? T('cables.js.hot_applied') : T('cables.js.needs_redeploy')), 'ok');
+    setTimeout(rafraichirCables, 300);
+    setTimeout(rafraichirCables, 2000);
+}
+// Régulariser une liaison directe : créer le port source, l'affecter au flux, puis rattacher
+// chaque entrée qui lisait ce flux en direct au port (`port:<id>`) — elles suivront désormais
+// le port, et le projet redevient portable.
+async function regularizeDirect(moduleVmid, shm, kind) {
+    const mod = nodesByVmid[moduleVmid] || {};
+    const row = (mod.consumes || []).find(p => p.direct && p.shm === shm);
+    const name = (document.getElementById('direct-port-name')?.value || '').trim() || shm;
+    closeEdgeMenu();
+    if (!row) return;
+    try {
+        const r = await fetch(`/api/projects/${mod.project_id}/ports`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, kind: 'source', media: kind === 'data' ? 'anc' : kind})});
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        const portId = j.port.id;
+        await _patchPort(mod.project_id, portId, {binding: {shm}});
+        let n = 0;
+        for (const c of (row.consumers || [])) {
+            const w = await fetch('/api/home/wire', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({from_vmid: 0, to_vmid: c.vmid, shm: 'port:' + portId, kind,
+                                      ...(c.slot != null ? {to_slot: c.slot} : {})})});
+            if (w.ok) n++;
+        }
+        showToast(T('cables.proj.direct_done').replace('{port}', name).replace('{n}', n)
+            .replace('{t}', (row.consumers || []).length), n === (row.consumers || []).length ? 'ok' : 'warn');
+    } catch (e) { showToast(T('cables.proj.error').replace('{e}', e.message), 'error'); }
+    setTimeout(rafraichirCables, 300);
 }
 
 // POST réel du câble (chemin direct). Extrait pour pouvoir le réutiliser depuis la modale
@@ -1310,6 +1777,17 @@ async function _postWire(payload, src, target, targetVmid, autoA, autoAnc) {
                               .replace('{detail}', txt), 'error');
                 return;
             }
+            // Frontière du projet (2026-10-24) : l'entrée d'un conteneur de projet ne lit que son
+            // projet ou ses ports — dire POURQUOI et par où passer, pas « HTTP 403 ».
+            if (j.reason === 'port_loop') { showToast(T('cables.proj.loop'), 'error'); return; }
+            if (j.reason === 'shm_not_in_project') {
+                // Au lieu du seul refus : proposer de faire ENTRER la source par un port du projet
+                // (TODO de Cyril, 31/10). Sans projet identifié, le refus reste un message.
+                if (j.project_id != null && payload.shm) { openAdmitModal(j.project_id, payload, target, targetVmid); return; }
+                showToast(T('cables.js.err_outside_project').replace('{dst}', target.hostname || '#' + targetVmid)
+                              .replace('{shm}', (j.shm || []).join(', ')), 'error');
+                return;
+            }
             showToast((window.t('cables.js.err_http').replace('{status}', r.status).replace('{detail}', j.error || window.t('cables.js.err_http_nodetail'))), 'error');
         }
     } catch (e) {
@@ -1389,6 +1867,51 @@ async function _postInsertUdc(ctx, mode, reuseVmid) {
         let tries = (mode === 'reuse') ? 6 : 45;
         const t = setInterval(() => { rafraichirCables(); if (--tries <= 0) clearInterval(t); }, 3000);
     } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
+}
+
+// ─── Source hors projet : la faire entrer par un port du projet (2026-10-31) ───────────────────
+// Le câble refusé (frontière du projet) devient : port source du projet affecté à ce flux (réutilisé
+// s'il existe, créé sinon, nommé d'après le libellé de la source), puis l'entrée câblée sur ce port.
+function closeAdmitModal() { document.getElementById('admit-port-modal')?.remove(); }
+function openAdmitModal(pid, payload, target, targetVmid) {
+    closeAdmitModal();
+    const dst = target.hostname || '#' + targetVmid;
+    const ov = document.createElement('div');
+    ov.id = 'admit-port-modal';
+    ov.className = 'modal-overlay';
+    ov.innerHTML = `
+      <div class="modal-card" style="max-width:520px" role="dialog" aria-modal="true" aria-labelledby="admit-port-t">
+        <h2 id="admit-port-t" style="margin-top:0">${T('cables.proj.admit_title')}</h2>
+        <p class="meta">${escapeHtml(T('cables.proj.admit_intro').replace('{shm}', payload.shm).replace('{dst}', dst))}</p>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:16px">
+          <button type="button" class="btn btn-blue" id="admit-port-go">${T('cables.proj.admit_btn')}</button>
+          <button type="button" class="btn" id="admit-port-cancel">${T('cables.cancel')}</button>
+        </div>
+      </div>`;
+    ov.addEventListener('click', (e) => { if (e.target === ov) closeAdmitModal(); });
+    document.body.appendChild(ov);
+    document.getElementById('admit-port-cancel').onclick = closeAdmitModal;
+    document.getElementById('admit-port-go').onclick = async () => {
+        closeAdmitModal();
+        try {
+            const r = await fetch(`/api/projects/${pid}/ports/admit`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ shm: payload.shm, kind: payload.kind || 'video',
+                                       to_vmid: payload.to_vmid, to_slot: payload.to_slot }),
+            });
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.ok) {
+                showToast(T('cables.proj.admit_done').replace('{dst}', dst).replace('{port}', j.port_name || ''), 'ok');
+                setTimeout(rafraichirCables, 300);
+                setTimeout(rafraichirCables, 2000);
+            } else if (j.reason === 'binding_requires_admin') {
+                showToast(T('cables.proj.admit_admin'), 'error');
+            } else {
+                showToast(T('cables.js.err_http').replace('{status}', r.status)
+                              .replace('{detail}', j.error || T('cables.js.err_http_nodetail')), 'error');
+            }
+        } catch (e) { showToast(T('cables.js.err_network').replace('{msg}', e.message), 'error'); }
+    };
 }
 
 function openMismatchModal(ctx) {
@@ -1600,11 +2123,13 @@ document.addEventListener('keydown', e => {
 document.addEventListener('mousedown', e => {
     if (e.button !== 0) return;
     const outPort = e.target.closest('.topo-port-out');
-    if (outPort && outPort.dataset.shm && !wireSrc) {
+    // Un port destination NON PUBLIÉ se câble aussi (data-port-id sans flux) : le suivre avant
+    // qu'il publie est légitime — l'entrée reste vide (« non affectée ») jusque-là.
+    if (outPort && (outPort.dataset.shm || outPort.dataset.portId) && !wireSrc) {
         e.preventDefault();
         e.stopPropagation();
         const node = outPort.closest('.topo-node');
-        startWire(node.dataset.vmid, outPort.dataset.shm, outPort.dataset.kind);
+        startWire(node.dataset.vmid, outPort.dataset.shm, outPort.dataset.kind, outPort.dataset.portId);
         return;
     }
     if (wireSrc) {
@@ -1690,6 +2215,7 @@ document.addEventListener('click', e => {
 function showEdgeMenu(path, evt) {
     hideEdgeTip();
     closeEdgeMenu();
+    if (parseInt(path.getAttribute('data-to')) < 0) return showProjectEdgeMenu(path, evt);
     const shm  = path.getAttribute('data-shm');
     const from = path.getAttribute('data-from');
     const to   = path.getAttribute('data-to');
@@ -1741,24 +2267,54 @@ let cablesShowFabricInternals = false;
 function toggleFabricInternalsCables() {
     cablesShowFabricInternals = !cablesShowFabricInternals;
     const b = document.getElementById('cables-fabric-internals');
-    if (b) b.classList.toggle('active', cablesShowFabricInternals);
+    if (b) b.checked = cablesShowFabricInternals;
     rafraichirCables();
 }
 // Vue d'ensemble PROJETS : chaque projet est un module boîte noire n'exposant que ses
 // ports (les échanges hors-projet et inter-projets restent visibles, jamais l'intérieur).
 let cablesProjectsView = localStorage.getItem('mxl.cables.projectsView') === '1';
-function toggleProjectsView() {
-    cablesProjectsView = !cablesProjectsView;
+function setProjectsView(on) {
+    cablesProjectsView = !!on;
     localStorage.setItem('mxl.cables.projectsView', cablesProjectsView ? '1' : '0');
-    const b = document.getElementById('cables-projects-view');
-    if (b) b.classList.toggle('active', cablesProjectsView);
+    _syncProjectsViewButtons();
     rafraichirCables();
 }
-document.addEventListener('DOMContentLoaded', () => {
-    const b = document.getElementById('cables-projects-view');
-    if (b) b.classList.toggle('active', cablesProjectsView);
-});
+function _syncProjectsViewButtons() {
+    document.getElementById('cables-view-containers')?.classList.toggle('active', !cablesProjectsView);
+    document.getElementById('cables-view-projects')?.classList.toggle('active', cablesProjectsView);
+}
+document.addEventListener('DOMContentLoaded', _syncProjectsViewButtons);
 
+// ─── Panneaux « Affichage » et « Câblage » de la barre ───────────────────────
+function toggleCablesPop(which) {
+    const pop = document.getElementById(`cables-${which}-pop`);
+    if (!pop) return;
+    const open = pop.hidden;
+    closeCablesPops();
+    if (!open) return;
+    pop.hidden = false;
+    document.getElementById(`cables-${which}-btn`)?.setAttribute('aria-expanded', 'true');
+    if (which === 'display') loadCableViews();
+}
+function closeCablesPops() {
+    ['display', 'cabling'].forEach(w => {
+        const pop = document.getElementById(`cables-${w}-pop`);
+        if (pop) pop.hidden = true;
+        document.getElementById(`cables-${w}-btn`)?.setAttribute('aria-expanded', 'false');
+    });
+}
+document.addEventListener('click', e => {
+    if (!e.target.closest('.cables-pop-wrap')) closeCablesPops();
+}, false);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCablesPops(); });
+
+// Redessin SANS nouvelle requête, pour ce qui ne change que le rendu (libellés, taille de fenêtre) :
+// la topologie déjà reçue suffit. Ces trois déclencheurs relançaient /api/home/summary — au
+// chargement, l'arrivée des libellés doublait ainsi la première requête et le premier dessin.
+// Pas encore de topologie : rien à faire, la requête en cours dessinera avec ce qui est chargé.
+function _rerenderCables() {
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
 async function rafraichirCables() {
     try {
         const r = await fetch('/api/home/summary' + (cablesProjectsView ? '?view=projects' : ''));
@@ -1930,7 +2486,7 @@ async function clearAllCables() {
 let resizeRaf = null;
 window.addEventListener('resize', () => {
     if (resizeRaf) cancelAnimationFrame(resizeRaf);
-    resizeRaf = requestAnimationFrame(() => { if (!wireSrc) rafraichirCables(); resizeRaf = null; });
+    resizeRaf = requestAnimationFrame(() => { if (!wireSrc) _rerenderCables(); resizeRaf = null; });
 });
 
 let pollInterval = null;
@@ -1944,6 +2500,14 @@ function stopPolling()  { if (pollInterval) { pollInterval.stop(); pollInterval 
          if (cb) cb.checked = localStorage.getItem('mxl.cables.autoaudio') === '1'; })();
 (() => { const cb = document.getElementById('auto-anc');
          if (cb) cb.checked = localStorage.getItem('mxl.cables.autoanc') === '1'; })();
+// Témoin sur le bouton « Câblage » : ces interrupteurs vivent dans le menu, et un câblage qui
+// emporte l'audio ou l'ANC sans qu'on l'ait vu venir surprend.
+function _syncAutoDot() {
+    const on = ['auto-audio', 'auto-anc'].some(id => document.getElementById(id)?.checked);
+    const dot = document.getElementById('cables-auto-dot');
+    if (dot) dot.hidden = !on;
+}
+_syncAutoDot();
 
 // ─── Mode d'affichage de la latence (badges page Câbles) ─────────────────────
 // 'step' = délai par étape (arête = arrivée/transit, nœud = traitement propre) ;
@@ -2039,13 +2603,13 @@ async function _loadCablesTslData() {
     _startCablesTally();
     // Bascule du niveau dans la barre de navigation → re-rendu, sauf pendant un câblage en cours
     // (re-rendre sous les doigts ferait perdre le lien que l'opérateur est en train de tirer).
-    document.addEventListener('source-labels:change', () => { if (!wireSrc) rafraichirCables(); });
+    document.addEventListener('source-labels:change', () => { if (!wireSrc) _rerenderCables(); });
     setInterval(async () => {
         // Les libellés sont injectés au RENDU (habillage de renderPort) : les rafraîchir impose un
         // re-rendu du tableau. On ne le fait donc QUE s'ils ont changé, et JAMAIS pendant un
         // câblage en cours — re-rendre sous les doigts de l'opérateur ferait perdre le lien qu'il
         // est en train de tirer (même garde que le redimensionnement de fenêtre).
-        if (await _loadCablesTslLabels() && !wireSrc) rafraichirCables();
+        if (await _loadCablesTslLabels() && !wireSrc) _rerenderCables();
     }, 3000);
 }
 
@@ -2084,6 +2648,18 @@ function _cablesResolvePortLabel(port) {
 // (« Entrée 3 », « Audio 1 ») dit où l'on branche et doit rester lisible.
 const _renderPort_orig = renderPort;
 renderPort = function (side, port, idx, nodeKind, vmid) {
+    // Dans un projet, une entrée qui suit une virtuelle nomme la VIRTUELLE (« Toto 1 »), pas le flux
+    // physique derrière (Cyril, 28/10) — même règle que son câble, qui part du bloc de ports.
+    // Niveaux 0/1 (hostname, MXL) : le nom du port, qui est l'identité technique dans le projet.
+    if (side === 'in' && _projFilter && port.via_port) {
+        const lvl = window.SourceLabels ? window.SourceLabels.level : 0;
+        const vp = port.via_port;
+        const txt = (lvl >= 2 && (vp.labels || {})[String(lvl)]) || vp.name;
+        // Virtuelle sans flux encore : l'entrée est vide, mais câblée — on le dit (Cyril, 30/10).
+        if (txt && vp.pending) return _renderPort_orig(side, { ...port, disconnected: false,
+            shm_label: `${txt} (${T('cables.proj.no_source')})` }, idx, nodeKind, vmid);
+        if (txt) return _renderPort_orig(side, { ...port, shm_label: txt }, idx, nodeKind, vmid);
+    }
     const tslLabel = _cablesResolvePortLabel(port);
     if (tslLabel) port = (side === 'out') ? { ...port, label: tslLabel }
                                           : { ...port, shm_label: tslLabel };
@@ -2110,14 +2686,24 @@ let _nodeFilter = localStorage.getItem('mxl.cables.filter.node') || '';
 let _filterSig  = '';   // signature du dernier remplissage des selects (évite de reconstruire à chaque poll)
 
 function _nodeKey(n) { return (n && n.node_id != null) ? String(n.node_id) : 'local'; }
+// Membre d'un projet : rattachement direct OU snapshot (`project_ids`, calculé côté serveur).
+function _inProject(n, pid) {
+    const ids = Array.isArray(n.project_ids) ? n.project_ids
+        : (n.project_id == null ? [] : [n.project_id]);
+    return ids.some(x => String(x) === String(pid));
+}
 function _nodeObjMatches(n) {
     if (!n) return false;
-    if (_projFilter && String(n.project_id == null ? '' : n.project_id) !== _projFilter) return false;
+    // Les ports n'ont de sens que DANS un projet : hors filtre, ses câbles partent du producteur réel.
+    if (n.project_ports_node && !_projFilter) return false;
+    if (_projFilter && !_inProject(n, _projFilter)) return false;
     if (_nodeFilter && _nodeKey(n) !== _nodeFilter) return false;
     return true;
 }
 function _edgePassesFilter(e) {
     if (!_sigFilter.has(e.kind || 'video')) return false;
+    // Câble physique d'une entrée qui suit un port : doublon du câble du port dans un projet.
+    if (e.phys_of_port != null && _projFilter) return false;
     return _nodeObjMatches(nodesByVmid[e.from]) && _nodeObjMatches(nodesByVmid[e.to]);
 }
 function applyCableFilters() {
@@ -2318,6 +2904,12 @@ function _computeDefaultLayout(topo) {
         changed = false;
         elist.forEach(([a, b]) => { if (level[b] < level[a] + 1) { level[b] = level[a] + 1; changed = true; } });
     }
+    // Ports destinations d'un projet : au bord DROIT, quelle que soit la profondeur de ce qui les nourrit.
+    const lvMax = Math.max(0, ...Object.values(level));
+    Object.keys(byNid).forEach(k => {
+        const n = byNid[k];
+        if (n.project_ports_node && n.col === 'sinks') level[k] = Math.max(lvMax, 1);
+    });
     // Ordonnancement par BARYCENTRE pour limiter les croisements : dans chaque niveau (de gauche à
     // droite), on trie les cartes par la position moyenne (row) de leurs sources déjà placées.
     const levels = {};
@@ -2470,77 +3062,246 @@ document.addEventListener('mouseup', () => {
     }
 });
 
-async function saveCableLayout() {
+// ─── VUES enregistrées ────────────────────────────────────────────────────────
+// Une vue = ce qu'on regarde : filtres, réglages d'affichage et disposition (positions des cartes
+// en Libre, cartes repliées). Chaque utilisateur a les siennes et peut les partager.
+function _currentViewSettings() {
+    return {
+        view_mode: _viewMode, signal: [..._sigFilter], project: _projFilter, node: _nodeFilter,
+        projects_view: cablesProjectsView, fabric_internals: cablesShowFabricInternals,
+        lat_mode: _latMode, lat_show: _latShow, rdma_mode: _rdmaMode,
+        zoom: _zoom, pan_x: _panX, pan_y: _panY,
+    };
+}
+function _applyViewSettings(st, positions, collapsed) {
+    if (Array.isArray(st.signal) && st.signal.length) _sigFilter = new Set(st.signal);
+    if (st.project != null) _projFilter = String(st.project);
+    if (st.node != null) _nodeFilter = String(st.node);
+    if (typeof st.projects_view === 'boolean') cablesProjectsView = st.projects_view;
+    if (typeof st.fabric_internals === 'boolean') cablesShowFabricInternals = st.fabric_internals;
+    if (_LAT_MODES.includes(st.lat_mode)) _latMode = st.lat_mode;
+    if (typeof st.lat_show === 'boolean') _latShow = st.lat_show;
+    if (_RDMA_MODES.includes(st.rdma_mode)) _rdmaMode = st.rdma_mode;
+    if (st.view_mode === 'cols' || st.view_mode === 'free') _viewMode = st.view_mode;
+    if (typeof st.zoom === 'number' && st.zoom > 0) _zoom = st.zoom;
+    if (typeof st.pan_x === 'number') _panX = st.pan_x;
+    if (typeof st.pan_y === 'number') _panY = st.pan_y;
+    _freeLayout = positions || {};
+    _collapsed  = new Set((collapsed || []).map(String));
+    try {
+        localStorage.setItem('mxl.cables.filter.signal', JSON.stringify([..._sigFilter]));
+        localStorage.setItem('mxl.cables.filter.project', _projFilter);
+        localStorage.setItem('mxl.cables.filter.node', _nodeFilter);
+        localStorage.setItem('mxl.cables.projectsView', cablesProjectsView ? '1' : '0');
+        localStorage.setItem('mxl.cables.latmode', _latMode);
+        localStorage.setItem('mxl.cables.latshow', _latShow ? '1' : '0');
+        localStorage.setItem('mxl.cables.rdmamode', _rdmaMode);
+        localStorage.setItem('mxl.cables.viewmode', _viewMode);
+        localStorage.setItem('mxl.cables.freelayout', JSON.stringify(_freeLayout));
+        localStorage.setItem('mxl.cables.collapsed', JSON.stringify([..._collapsed]));
+        localStorage.setItem('mxl.cables.zoom', String(_zoom));
+        _persistPan();
+    } catch (e) {}
+    // Les listes de projets/nœuds sont reconstruites et le filtre rappelé y est CONFRONTÉ : un projet
+    // ou un nœud disparu depuis l'enregistrement est levé et signalé (cf. filtre fantôme).
+    _filterSig = '';
+    _syncSignalButtons(); _syncProjectsViewButtons(); _latSyncButtons(); _rdmaSyncButtons(); _syncViewButtons();
+    const fi = document.getElementById('cables-fabric-internals'); if (fi) fi.checked = cablesShowFabricInternals;
+    rafraichirCables();
+}
+// Vue ACTIVE : la dernière rappelée ou enregistrée, avec l'empreinte de ce qu'elle montrait. Tant que
+// l'état courant a la même empreinte, elle est allumée ; dès qu'on change un réglage, un filtre ou la
+// place d'une carte, elle passe « modifiée » et propose « Mettre à jour ». Le zoom et le défilement
+// n'en font pas partie : ils bougent à chaque geste.
+function _viewSignature() {
+    const st = _currentViewSettings();
+    delete st.zoom; delete st.pan_x; delete st.pan_y;
+    return JSON.stringify([st, _freeLayout, [..._collapsed].sort()]);
+}
+function _currentViewPayload() {
+    return { positions: _freeLayout, collapsed: [..._collapsed], settings: _currentViewSettings() };
+}
+function _setActiveView(id) {
+    try { localStorage.setItem('mxl.cables.activeView', JSON.stringify({ id, sig: _viewSignature() })); } catch (e) {}
+}
+function _activeView() {
+    try { return JSON.parse(localStorage.getItem('mxl.cables.activeView') || 'null'); } catch (e) { return null; }
+}
+async function loadCableViews() {
+    const list = document.getElementById('cables-views-list');
+    if (!list) return;
+    try {
+        const r = await fetch('/api/cables/layouts');
+        const j = await r.json();
+        const views = j.layouts || [];
+        const act = _activeView(), sigNow = _viewSignature();
+        list.innerHTML = views.length ? views.map(v => {
+            const meta = v.common ? T('cables.views.common')
+                : !v.mine ? T('cables.views.shared_by').replace('{user}', escapeHtml(v.owner || '?'))
+                : v.shared ? T('cables.views.shared_all')
+                : v.share_count ? T('cables.views.shared_n').replace('{n}', v.share_count)
+                : T('cables.views.mine_private');
+            const share = v.mine
+                ? `<button type="button" class="ctl-push cables-view-share"
+                           onclick="openViewShare(${v.id})">${T('cables.views.share')}</button>`
+                : '';
+            const editable = v.mine || v.common;
+            const isAct = act && act.id === v.id, changed = isAct && act.sig !== sigNow;
+            const upd = (editable && changed)
+                ? `<button type="button" class="ctl-push cables-view-share"
+                           onclick="updateCableView(${v.id})">${T('cables.views.update')}</button>`
+                : '';
+            const ren = editable
+                ? `<button type="button" class="btn-ghost-icon cables-recall-del"
+                           aria-label="${T('cables.views.rename')} ${escapeHtml(v.name)}" title="${T('cables.views.rename')}"
+                           onclick="renameCableView(${v.id})">✎</button>`
+                : '';
+            const del = editable
+                ? `<button type="button" class="btn-ghost-icon cables-recall-del"
+                           aria-label="${T('cables.snap.del_aria')} ${escapeHtml(v.name)}"
+                           onclick="deleteCableView(${v.id}, event)">×</button>`
+                : '';
+            const state = isAct ? (changed ? ' cables-view-changed' : ' cables-view-active') : '';
+            return `<div class="cables-recall-row${state}" data-view-id="${v.id}" data-view-name="${escapeHtml(v.name)}">
+                <button type="button" class="cables-recall-pick" onclick="recallCableView(${v.id})"
+                        ${isAct && !changed ? 'aria-current="true"' : ''}>
+                    <span class="cables-recall-name">${escapeHtml(v.name)}</span>
+                    <span class="cables-recall-meta">${meta}${changed ? ' · ' + T('cables.views.changed') : ''}</span>
+                </button>${upd}${share}${ren}${del}</div>`;
+        }).join('') : `<div class="cables-recall-empty">${T('cables.views.none')}</div>`;
+    } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
+}
+async function saveCableView() {
     const name = prompt(T('cables.view.save_prompt'));
     if (!name || !name.trim()) return;
     try {
         const r = await fetch('/api/cables/layouts', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name.trim(), payload: { positions: _freeLayout, collapsed: [..._collapsed] } }),
+            body: JSON.stringify({ name: name.trim(), payload: _currentViewPayload() }),
         });
         const j = await r.json();
-        if (r.ok && j.ok) showToast(`${T('cables.view.saved_pre')}"${name}" (${j.node_count}).`, 'ok');
+        if (r.ok && j.ok) { _setActiveView(j.id); showToast(T('cables.views.saved').replace('{name}', name.trim()), 'ok'); loadCableViews(); }
         else showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error');
     } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
 }
-async function toggleLayoutsMenu(evt) {
-    const menu = document.getElementById('cables-layouts-menu');
-    const btn = evt.currentTarget;
-    if (!menu.hidden) { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); return; }
-    try {
-        const r = await fetch('/api/cables/layouts');
-        const j = await r.json();
-        const list = j.layouts || [];
-        menu.innerHTML = list.length ? list.map(l => `
-            <div class="cables-recall-row" role="none">
-                <button type="button" class="cables-recall-pick" role="menuitem"
-                        onclick="restoreCableLayout(${l.id}, '${l.name.replace(/'/g,"\\'")}')">
-                    <span class="cables-recall-name">${escapeHtml(l.name)}</span>
-                    <span class="cables-recall-meta">${l.node_count} ${T('cables.view.cards')} · ${escapeHtml(l.created_at || '')}</span>
-                </button>
-                <button type="button" class="btn-ghost-icon cables-recall-del"
-                        aria-label="${T('cables.snap.del_aria')} ${escapeHtml(l.name)}"
-                        onclick="deleteCableLayout(${l.id}, '${l.name.replace(/'/g,"\\'")}', event)">×</button>
-            </div>`).join('') : `<div class="cables-recall-empty">${T('cables.view.no_layout')}</div>`;
-        menu.hidden = false;
-        btn.setAttribute('aria-expanded', 'true');
-    } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
-}
-async function restoreCableLayout(lid, name) {
-    document.getElementById('cables-layouts-menu').hidden = true;
+async function recallCableView(lid) {
     try {
         const r = await fetch(`/api/cables/layouts/${lid}`);
         const j = await r.json();
         if (!r.ok || !j.ok) { showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error'); return; }
         const pl = j.payload || {};
-        _freeLayout = pl.positions || {};
-        _collapsed  = new Set((pl.collapsed || []).map(String));
-        localStorage.setItem('mxl.cables.freelayout', JSON.stringify(_freeLayout));
-        localStorage.setItem('mxl.cables.collapsed', JSON.stringify([..._collapsed]));
-        if (_viewMode !== 'free') { _viewMode = 'free'; localStorage.setItem('mxl.cables.viewmode', 'free'); _syncViewButtons(); }
-        showToast(`${T('cables.view.recalled')}"${name}".`, 'ok');
-        if (window._lastTopo) renderTopology(window._lastTopo);
+        closeCablesPops();
+        _applyViewSettings(pl.settings || {}, pl.positions, pl.collapsed);
+        _setActiveView(lid);
+        showToast(T('cables.views.recalled').replace('{name}', j.name), 'ok');
     } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
 }
-async function deleteCableLayout(lid, name, evt) {
+async function _patchCableView(lid, body) {
+    try {
+        const r = await fetch(`/api/cables/layouts/${lid}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        });
+        const j = await r.json();
+        if (!r.ok || !j.ok) { showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error'); return false; }
+        return true;
+    } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); return false; }
+}
+async function updateCableView(lid) {
+    const name = document.querySelector(`[data-view-id="${lid}"]`)?.dataset.viewName || '';
+    if (!await _patchCableView(lid, { payload: _currentViewPayload() })) return;
+    _setActiveView(lid);
+    showToast(T('cables.views.updated').replace('{name}', name), 'ok');
+    loadCableViews();
+}
+async function renameCableView(lid) {
+    const old = document.querySelector(`[data-view-id="${lid}"]`)?.dataset.viewName || '';
+    const name = prompt(T('cables.view.save_prompt'), old);
+    if (!name || !name.trim() || name.trim() === old) return;
+    if (await _patchCableView(lid, { name: name.trim() })) loadCableViews();
+}
+// Fenêtre « Partager… » d'une vue : « tout le monde » ET/OU des destinataires (utilisateurs,
+// groupes, membres d'un projet) — mêmes destinataires que le partage des médias.
+async function openViewShare(lid) {
+    const name = document.querySelector(`[data-view-id="${lid}"]`)?.dataset.viewName || '';
+    let cur, all;
+    try {
+        const [r1, r2] = await Promise.all([fetch(`/api/cables/layouts/${lid}/shares`), fetch('/api/cables/layouts/recipients')]);
+        cur = await r1.json(); all = await r2.json();
+        if (!r1.ok || !cur.ok) { showToast((window.t('cables.js.err_msg').replace('{msg}', cur.error || r1.status)), 'error'); return; }
+    } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); return; }
+    const kindLabel = k => T('cables.views.kind_' + k);
+    const options = [].concat(all.users || [], all.groups || [], all.projects || [])
+        .map(r => ({ value: `${r.kind}:${r.id}`, label: `${kindLabel(r.kind)} · ${r.label}` }));
+    // Un destinataire qui n'est plus proposé (projet supprimé…) reste affiché et signalé par le contrôle.
+    (cur.recipients || []).forEach(r => {
+        if (!options.some(o => o.value === `${r.kind}:${r.id}`))
+            options.push({ value: `${r.kind}:${r.id}`, label: `${kindLabel(r.kind)} · ${r.label}` });
+    });
+    const ov = document.createElement('div');
+    ov.className = 'modal-overlay';
+    ov.innerHTML = `
+        <div class="modal-card cables-share-card" role="dialog" aria-modal="true" aria-labelledby="cables-share-t">
+            <div class="modal-head">
+                <h3 id="cables-share-t" style="margin:0">${escapeHtml(T('cables.views.share_title').replace('{name}', name))}</h3>
+            </div>
+            <label class="ctl-switch-inline">
+                <input type="checkbox" class="ctl-switch" id="cables-share-all" ${cur.everyone ? 'checked' : ''}>
+                ${T('cables.views.everyone')}
+            </label>
+            <div class="cables-pop-h" style="margin-top:var(--space-4)">${T('cables.views.recipients')}</div>
+            <div id="cables-share-pick"></div>
+            <p class="cables-share-help">${T('cables.views.share_help')}</p>
+            <div class="cables-pop-row" style="justify-content:flex-end;margin-top:var(--space-4)">
+                <button type="button" class="btn btn-ghost" data-act="cancel">${T('cables.views.cancel')}</button>
+                <button type="button" class="btn btn-blue" data-act="save">${T('cables.views.save_share')}</button>
+            </div>
+        </div>`;
+    document.body.appendChild(ov);
+    const pick = window.MXLControls.chooseList(ov.querySelector('#cables-share-pick'), {
+        options, valeurs: (cur.recipients || []).map(r => `${r.kind}:${r.id}`),
+        vide: T('cables.views.nobody'), ajouter: T('cables.views.add'), retirer: T('cables.views.remove'),
+    });
+    const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    ov.addEventListener('click', e => { if (e.target === ov) close(); });
+    ov.querySelector('[data-act="cancel"]').onclick = close;
+    ov.querySelector('[data-act="save"]').onclick = async () => {
+        const recipients = pick.value().map(v => { const [kind, id] = v.split(':'); return { kind, id: parseInt(id, 10) }; });
+        try {
+            const r = await fetch(`/api/cables/layouts/${lid}/shares`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ everyone: ov.querySelector('#cables-share-all').checked, recipients }),
+            });
+            const j = await r.json();
+            if (!r.ok || !j.ok) { showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error'); return; }
+            close();
+            loadCableViews();
+        } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
+    };
+    ov.querySelector('#cables-share-all').focus();
+}
+async function deleteCableView(lid, evt) {
     evt.stopPropagation();
+    const name = evt.currentTarget.closest('[data-view-name]')?.dataset.viewName || '';
     if (!confirm(`${T('cables.snap.del_confirm')} "${name}" ?`)) return;
     try {
         const r = await fetch(`/api/cables/layouts/${lid}`, { method: 'DELETE' });
-        if (!r.ok) return;
+        const j = await r.json();
+        if (!r.ok || !j.ok) { showToast((window.t('cables.js.err_msg').replace('{msg}', j.error || r.status)), 'error'); return; }
         showToast((window.t('cables.js.deleted').replace('{name}', name)), 'ok');
-        // Re-render la liste si le menu est encore ouvert.
-        const menu = document.getElementById('cables-layouts-menu');
-        const btn = document.querySelector('#cables-layouts-wrap [aria-controls="cables-layouts-menu"]');
-        if (menu && !menu.hidden && btn) { menu.hidden = true; toggleLayoutsMenu({ currentTarget: btn }); }
+        loadCableViews();
     } catch (e) { showToast((window.t('cables.js.err_network').replace('{msg}', e.message)), 'error'); }
 }
-document.addEventListener('click', e => {
-    if (!e.target.closest('.cables-layouts')) {
-        const m = document.getElementById('cables-layouts-menu');
-        if (m) m.hidden = true;
-    }
-}, false);
+// Replie (ou déplie) d'un coup toutes les cartes AFFICHÉES : leurs câbles convergent alors sur le
+// bord de la carte ; le ⊞ de chacune la redéveloppe seule.
+function collapseAllCards(on) {
+    document.querySelectorAll('.topo-node[data-nid]').forEach(nd => {
+        if (on) _collapsed.add(nd.dataset.nid); else _collapsed.delete(nd.dataset.nid);
+    });
+    localStorage.setItem('mxl.cables.collapsed', JSON.stringify([..._collapsed]));
+    if (window._lastTopo) renderTopology(window._lastTopo);
+}
 
 // État initial des contrôles (sans re-rendu : la 1re topo n'est pas encore chargée).
 _syncSignalButtons();

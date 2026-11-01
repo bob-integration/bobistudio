@@ -38,6 +38,13 @@ import os
 CATALOGUE_ORG   = "bob-integration"
 
 CHECK_INTERVAL  = 5
+# ── Réseau des conteneurs en mode « interne » (bridge Docker privé, par nœud) ──
+# Subnet par défaut quand le nœud n'en impose pas un (nodes.container_net_subnet).
+# Choisi dans le /12 privé de la RFC 1918 le MOINS utilisé par les LAN d'entreprise
+# (10.0.0.0/8 et 192.168.0.0/16 le sont partout) et hors du 172.17-172.20 que Docker
+# s'attribue lui-même : un conteneur dont le subnet privé recouvre le LAN du site ne
+# route plus vers le site, et le symptôme ne ressemble pas à sa cause.
+NET_INTERNE_SUBNET_DEFAUT = "172.30.0.0/24"
 DB_PATH         = "/opt/bobistudio/db_bobistudio.db"
 LOG_PATH        = "/opt/bobistudio/bobistudio.log"
 # Rotation du journal (anti-saturation disque). La TAILLE prime : disque borné à
@@ -70,3 +77,10 @@ try:
     from config_local import *          # noqa: F401,F403
 except ImportError:
     pass
+
+# Chemin de la base de PRODUCTION, figé ICI, après la surcharge de site et avant que quiconque
+# réassigne `DB_PATH`. Un test isole sa base en réassignant `config.DB_PATH` / `database.DB_PATH` :
+# la valeur courante ne dit donc plus où est la production. `database.refuse_production_db_in_tests`
+# compare à celle-ci (une copie prise à l'import d'un autre module prenait le chemin de test pour
+# la production dès que le test avait réassigné `config.DB_PATH` avant cet import).
+PRODUCTION_DB_PATH = DB_PATH

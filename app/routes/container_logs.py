@@ -166,3 +166,26 @@ def node_journal_containers(node_id):
         return jsonify({"ok": False, "error": "nœud inconnu"}), 404
     data, status = _journal.conteneurs_connus(node)
     return jsonify(data), status
+
+
+# ─── Last output of a script that died on its own (app/crash_tail.py) ───────────────────────
+# Same permission as the journal above, for the same reason (topology, flow tokens): the text is
+# masked for the obvious secrets, not sanitised of everything a site may consider sensitive.
+@bp.route("/api/containers/<int:vmid>/crash-tails", methods=["GET"])
+@require_perm("containers.deploy")
+def container_crash_tails(vmid):
+    """Captured deaths of this vmid, newest first, without the text: `{ok, vmid, items[]}`."""
+    from .. import crash_tail
+    return jsonify({"ok": True, "vmid": vmid, "items": crash_tail.list_for(vmid)})
+
+
+@bp.route("/api/crash-tails/<int:tail_id>", methods=["GET"])
+@require_perm("containers.deploy")
+def crash_tail_get(tail_id):
+    """One capture WITH its text. Addressed by its own id: the vmid of a recreated container may
+    have been reallocated, the capture must stay readable from the alert that points at it."""
+    from .. import crash_tail
+    row = crash_tail.get(tail_id)
+    if not row:
+        return jsonify({"ok": False, "error": "unknown capture"}), 404
+    return jsonify({"ok": True, **crash_tail.public(row)})

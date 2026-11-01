@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import threading
+import re
 import time
 
 from flask import jsonify, request
@@ -29,8 +30,10 @@ from ..database import (db_get_container, db_get_containers, db_add_alert,
                       db_cable_snapshot_save, db_cable_snapshots_list,
                       db_cable_snapshot_get, db_cable_snapshot_delete,
                       db_cable_layout_save, db_cable_layouts_list,
-                      db_cable_layout_get, db_cable_layout_delete)
+                      db_cable_layout_get, db_cable_layout_delete, db_cable_layout_update,
+                      db_cable_layout_shares, db_cable_layout_set_shares, db_user_projects)
 from ..deploy import deployer_script
+from .. import project_ports
 from ..vmlocks import verrou_vmid
 
 log = logging.getLogger(__name__)
@@ -39,6 +42,47 @@ log = logging.getLogger(__name__)
 def _plugins_is(t):
     from .. import plugins as _pl
     return _pl.is_plugin(t)
+
+# Chemin de l'endpoint d'ENTRÉE à chaud des plugins câblables (POST :8082/input). Défini ICI, une
+# fois : `_plugin_input`, `_hot_input`, et le relais/les macros qui redirigent vers le câblage.
+HOT_INPUT_PATH = "/input"
+_SLOT_KEYS = ("slot", "idx", "index")
+
+
+def wiring_input_call(manifest, path, body):
+    """Reconnaît un appel à l'endpoint d'entrée du câblage (`POST /input {essence|kind, shm, idx?}`)
+    d'un plugin qui déclare des entrées. Retourne {essence, shm, slot} ou None (= pas un appel de
+    câblage : à relayer tel quel). Bon marché : un test de chaîne tant que ce n'est pas `/input`.
+    La clé d'index propre à une liste à slots qualifiés (block_idx, vh_idx, ah_idx du multiview,
+    cf. `plugins.qualified_lists`) donne le slot `"<liste>:<rang>"`."""
+    if path != HOT_INPUT_PATH or not isinstance(body, dict) or not isinstance(body.get("shm"), str):
+        return None
+    essence = str(body.get("essence") or body.get("kind") or "video")
+    cons = [x for x in (((manifest or {}).get("wiring") or {}).get("consumes") or [])
+            if (x.get("essence") or "video") == essence]
+    if not cons:
+        return None
+    from .. import plugins as _pl
+    qualified = _pl.qualified_lists((((manifest or {}).get("wiring") or {}).get("consumes")))
+    slot = next((f"{x['from_list']}:{body[x['input_key']]}" for x in cons
+                 if (essence, x.get("from_list")) in qualified and x.get("input_key")
+                 and body.get(x["input_key"]) is not None), None)
+    if slot is None and any(x.get("slot") is not None or x.get("from_list") or x.get("repeat") for x in cons):
+        slot = next((body[k] for k in _SLOT_KEYS if body.get(k) is not None), None)
+    return {"essence": essence, "shm": body["shm"].strip(), "slot": slot}
+
+
+def run_wiring_input(vmid, call):
+    """Exécute un appel reconnu par `wiring_input_call` PAR LE CÂBLAGE (frontière du projet, liens
+    de port, persistance) au lieu de le poster au conteneur. Retourne (ok, status, payload)."""
+    shm = call["shm"]
+    if shm:
+        return _apply_wire(project_ports.producer_vmid(shm), vmid, shm, call["essence"], call["slot"])
+    cur = project_ports.current_input_shm(vmid, call["essence"], call["slot"])
+    if not cur:
+        return True, 200, {"ok": True, "unchanged": True}
+    return _apply_unwire(vmid, cur, call["essence"], call["slot"])
+
 
 def _plugin_input(ip, essence, shm, slot=None, fmt=None):
     """POST :8082/input {essence, shm, slot?, format?} pour un plugin hot-wire. `slot` n'est
@@ -52,7 +96,7 @@ def _plugin_input(ip, essence, shm, slot=None, fmt=None):
     if fmt:
         body["format"] = fmt
     try:
-        r = _req.post(f"http://{ip}:8082/input", json=body, timeout=2)
+        r = _req.post(f"http://{ip}:8082{HOT_INPUT_PATH}", json=body, timeout=2)
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
     if r.status_code != 200:
@@ -295,7 +339,7 @@ def _hot_input(ip, body):
     Renvoie (ok, detail). Échoue silencieusement si :8082 absent (container non-hot)."""
     import requests as _req
     try:
-        r = _req.post(f"http://{ip}:8082/input", json=body, timeout=2)
+        r = _req.post(f"http://{ip}:8082{HOT_INPUT_PATH}", json=body, timeout=2)
         return (r.status_code == 200), (r.text or "")[:200]
     except Exception as e:
         return False, f"{type(e).__name__}: {e}"
@@ -566,8 +610,43 @@ def _fresh_wire_params(vmid, orig, new):
         return new
     return _merge_wire_change(orig, new, fresh)
 
-def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, force=False):
-    """Applique un câble. Retourne (ok, status, payload).
+def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, force=False, via_port=False):
+    """Applique un câble, dans la FRONTIÈRE DU PROJET du consommateur (décision du 2026-10-24).
+    Retourne (ok, status, payload).
+
+    Tous les chemins de câblage passent ici (page Câbles, Ember+, NMOS, instantanés, UDC, ports) :
+    c'est donc ici, et pas dans un endpoint, que la règle tient — pour tout le monde, admin compris.
+    `via_port` : appel venu de la résolution d'un port (`project_ports`), qui tient elle-même le
+    lien entrée → port. Sinon le câble est DIRECT : il défait le lien de l'entrée, ou en pose un
+    quand le flux est celui affecté à un port du projet (cf. `project_ports.wire_check`)."""
+    refused, follow = project_ports.wire_check(to_vmid, shm, (audio_shm,) if audio_shm else ())
+    if refused:
+        from ..database import db_get_container
+        db_add_alert("alert.cablage.hors_projet_refuse", "warning", vmid=to_vmid, kind="deploy",
+                     params={"shm": ", ".join(refused),
+                             "h": (db_get_container(to_vmid) or {}).get("hostname") or to_vmid})
+        _pids = sorted(project_ports.member_project_ids(to_vmid))
+        return False, 403, {"ok": False, "error": "forbidden", "reason": "shm_not_in_project",
+                            "shm": refused, "project_id": _pids[0] if _pids else None}
+    ok, status, payload = _wire_now(from_vmid, to_vmid, shm, kind, to_slot, audio_shm, force)
+    if ok and not via_port and (shm or "").strip():
+        try:
+            if follow is not None:
+                from ..database import db_port_link_set
+                uuid = project_ports._uuid_for_vmid(to_vmid)
+                if uuid:
+                    db_port_link_set(follow, uuid, kind or "video", project_ports.norm_slot(to_slot),
+                                     project_ports._bare(shm))
+                    payload = dict(payload or {}, port_id=follow)
+            else:
+                project_ports.forget_input(to_vmid, kind or "video", to_slot)
+        except Exception as e:                                             # noqa: BLE001
+            log.warning("port link after wire #%s %s: %s", to_vmid, shm, e)
+    return ok, status, payload
+
+
+def _wire_now(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, force=False):
+    """Pose le câble, sans juger la frontière du projet (cf. `_apply_wire`, seul appelant).
 
     `force` : passe outre le gate de format (`_format_gate`) — c'est le bouton « Câbler quand même »
     de la modale de résolution, où l'humain a VU les deux formats et les trois issues. L'écart reste
@@ -734,9 +813,9 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
             if not spec:
                 return False, 400, {"error": f"{t} n'a pas d'entrée {kind} « {to_slot} »"}
             return _wire_document(to_vmid, target, t, params, spec, shm)
+        want_slot = None
         if to_slot is not None:
-            try: want_slot = int(to_slot)
-            except (TypeError, ValueError): want_slot = None
+            want_slot = project_ports.norm_slot(to_slot)
             # Slot exact ; sinon repli sur une spec SANS slot (entrée unique non slottée,
             # ex. color_corrector : le front numérote le port à 0 alors que la spec n'a pas
             # de slot). Évite un faux « n'a pas d'entrée video #0 ».
@@ -745,7 +824,7 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
         else:
             spec = cands[0] if cands else None
         if not spec:
-            return False, 400, {"error": f"{t} n'a pas d'entrée {kind}" + (f" #{(want_slot if want_slot is not None else 0) + 1}" if to_slot is not None else "")}
+            return False, 400, {"error": f"{t} n'a pas d'entrée {kind}" + (f" « {want_slot} »" if to_slot is not None else "")}
         slot = spec.get("slot")
 
         if spec.get("from_list"):
@@ -754,12 +833,13 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
             # résolution correspond, sinon redéploiement.
             lst_name = spec["from_list"]; sf = spec.get("shm_field", "shm"); pref = spec.get("shm_prefix", "")
             lst = list(params.get(lst_name) or [])
-            if slot is None or not (0 <= slot < len(lst)):
-                return False, 400, {"error": f"entrée #{(slot or 0) + 1} inexistante (ajoute-la via l'éditeur)"}
+            idx = spec.get("index")             # rang dans la liste (le slot peut être qualifié)
+            if idx is None or not (0 <= idx < len(lst)):
+                return False, 400, {"error": f"entrée « {slot} » inexistante (ajoute-la via l'éditeur)"}
             newval = pref + shm
             # Pas de dédoublonnage : une même source peut alimenter plusieurs entrées
             # (ex. afficher le même flux dans plusieurs fenêtres multiview).
-            entry = dict(lst[slot]); entry[sf] = newval
+            entry = dict(lst[idx]); entry[sf] = newval
             nf = spec.get("name_field")
             if nf:
                 ls = entry.get("label_source") or "hostname"
@@ -768,7 +848,7 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                 elif ls == "hostname":
                     producer = db_get_container(from_vmid) if from_vmid else None
                     entry[nf] = (producer or {}).get("hostname") or shm
-            lst[slot] = entry; params[lst_name] = lst
+            lst[idx] = entry; params[lst_name] = lst
             from ..monitor import _shm_dims
             _tf = _flow_def_format(from_vmid, shm)   # source de vérité (flow_def), repli DB
             want = (_tf["width"], _tf["height"]) if _tf else _shm_dims(shm)
@@ -784,7 +864,7 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
             _adapts = bool((_pl.get(t) or {}).get("adapts_input"))
             if _adapts and want and len(dims) == 2:
                 entry[dims[0]], entry[dims[1]] = want
-                lst[slot] = entry; params[lst_name] = lst
+                lst[idx] = entry; params[lst_name] = lst
             # TISSU : si la cible est un ASSEMBLEUR shardé, NE PAS hot-inputer l'assembleur (il lit les
             # sorties de ses shards, pas les sources → un hot-input direct DÉBRANCHE le shard de la
             # tuile). On persiste le câblage LOGIQUE (flux_config) puis on RE-RÉCONCILIE le tissu : la
@@ -842,13 +922,13 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                         _fshm = _prog[0] if _prog else ""
                         _mf = _m.get("shm_field", "shm"); _mp = _m.get("shm_prefix", "")
                         entry[_mf] = (_mp + _fshm) if _fshm else ""
-                        _fl_bodies.append({ikey: slot, "shm": _fshm, "essence": _ess})
-                    lst[slot] = entry; params[lst_name] = lst
+                        _fl_bodies.append({ikey: idx, "shm": _fshm, "essence": _ess})
+                    lst[idx] = entry; params[lst_name] = lst
             # Un plugin qui déclare `redeploy` n'a PAS d'endpoint d'entrée à chaud : le tenter
             # ajoute un aller-retour voué à échouer et une erreur trompeuse dans le journal.
             # On respecte ce que le manifeste annonce plutôt que de l'éprouver.
             res = (_try_hot_input(to_vmid, target, t, params,
-                                  {ikey: slot, "shm": shm, "essence": kind}, want, cur,
+                                  {ikey: idx, "shm": shm, "essence": kind}, want, cur,
                                   adapts=_adapts)
                    if w["mode"] == "hot-wire" else None)
             if res:
@@ -863,7 +943,7 @@ def _apply_wire(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, for
                 return res
             if want and len(dims) == 2:
                 entry[dims[0]], entry[dims[1]] = want
-                lst[slot] = entry; params[lst_name] = lst
+                lst[idx] = entry; params[lst_name] = lst
             # pas de return → redéploiement (tail _async_deploy)
         else:
             from ..addressing import get_container_ip
@@ -955,6 +1035,15 @@ def _wire_scope_err(to_vmid, from_vmid=None, shm=None, extra_shms=()):
     uid = current_user()["id"]
     pids = {p for p in vmid_project_ids(to_vmid)
             if project_role_at_least(db_project_role(p, uid), WIRE_MIN_PROJECT_ROLE)}
+    # `port:<id>` : le port est la frontière du projet — il doit appartenir à un de CES projets.
+    # Son flux physique, lui, n'a pas à être visible du membre (c'est tout l'intérêt du port).
+    _port_id = project_ports.parse_ref(shm)
+    if _port_id is not None:
+        from ..database import db_get_port
+        if (db_get_port(_port_id) or {}).get("project_id") not in pids:
+            return (jsonify({"ok": False, "error": "forbidden", "reason": "port_not_in_project",
+                             "port_id": _port_id}), 403)
+        shm = None
     shms = [s.strip() for s in ((shm,) + tuple(extra_shms)) if s and str(s).strip()]
     producers = shm_producer_vmids(shms)
     refused = []
@@ -986,6 +1075,22 @@ def api_home_wire():
                           (data.get("audio_shm"), data.get("anc_shm")))
     if err:
         return err
+    shm = (data.get("shm") or "").strip()
+    kind = data.get("kind") or "video"
+    # PORT VIRTUEL (option C, 2026-10-23) : `port:<id>` est résolu ICI en flux physique, pour que
+    # les gates ci-dessous jugent ce qui partira vraiment au conteneur ; le câblage lui-même passe
+    # par `project_ports.wire_port`, qui pose aussi le lien entrée → port.
+    port_id = project_ports.parse_ref(shm)
+    if port_id is not None:
+        from ..database import db_get_port
+        _port = db_get_port(port_id)
+        if not _port:
+            return jsonify({"ok": False, "error": "port introuvable"}), 404
+        if project_ports.MEDIA_KIND.get(_port.get("media")) != kind:
+            return jsonify({"ok": False, "error": "port_kind_mismatch",
+                            "port_media": _port.get("media"), "kind": kind}), 400
+        shm = project_ports.port_shm(_port)
+        from_vmid = project_ports.producer_vmid(shm) or 0
     # Étage 2 (docs/reference/TX_LAYOUTS.md) : câbler une sortie 2110 est SÛR (swap de source, zéro commit) tant que
     # le format de la source CONCORDE avec le format provisionné du slot ; sinon la session est
     # recréée → `rte_tm_hierarchy_commit` → stop/start du port (MESURÉ au banc : +2 commits). On
@@ -997,8 +1102,7 @@ def api_home_wire():
     # session (commit TM = gel de toutes les sorties de la carte). Le gate est ici (geste humain),
     # pas dans `_apply_wire` (qui sert aussi aux restaurations, à l'insertion d'UDC et au watcher).
     try:
-        _mm = _tx_slot_mismatch(from_vmid, (data.get("shm") or "").strip(),
-                                to_vmid, data.get("to_slot"), data.get("kind") or "video")
+        _mm = _tx_slot_mismatch(from_vmid, shm, to_vmid, data.get("to_slot"), kind) if shm else None
     except Exception as _e:
         log.error("gate format TX %s→%s : %s", from_vmid, to_vmid, _e)
         _mm = None
@@ -1009,30 +1113,34 @@ def api_home_wire():
                               "axes": _axes})
         return jsonify({"ok": False, "format_mismatch": _mm,
                         "error": "écart de format : %s" % _axes}), 409
-    if data.get("to_slot") is not None and not data.get("confirm"):
+    if shm and data.get("to_slot") is not None and not data.get("confirm"):
         try:
             from ..database import db_get_container
             _c = db_get_container(to_vmid) or {}
             if '"2110_io"' in (_c.get("deploy_config") or ""):
                 from .. import tx_maintenance as _txm
-                _args = {"slot": int(data.get("to_slot")), "shm": data.get("shm"),
-                         "kind": data.get("kind") or "video"}
+                _args = {"slot": int(data.get("to_slot")), "shm": shm, "kind": kind}
                 _v = _txm.classify(to_vmid, _txm.preview(to_vmid, "tx_wire", _args), op="tx_wire")
                 if _v.get("level") == "disruptive":
                     return jsonify({"ok": False, "needs_confirm": True, "verdict": _v,
                                     "reason": _v.get("reason")}), 409
         except Exception as _e:
             log.warning("gate TX câblage %s→%s : %s", from_vmid, to_vmid, _e)
-    ok, status, payload = _apply_wire(from_vmid, to_vmid,
-                                       data.get("shm"), data.get("kind"),
-                                       data.get("to_slot"), data.get("audio_shm"),
-                                       force=bool(data.get("force")))
+    if port_id is not None:
+        ok, status, payload = project_ports.wire_port(port_id, to_vmid, kind, data.get("to_slot"),
+                                                      force=bool(data.get("force")))
+    else:
+        ok, status, payload = _apply_wire(from_vmid, to_vmid, shm, kind,
+                                           data.get("to_slot"), data.get("audio_shm"),
+                                           force=bool(data.get("force")))
+        # Câble DIRECT : `_apply_wire` a défait le lien de l'entrée (ou l'a posé sur le port dont
+        # c'est le flux) — pour ce chemin comme pour Ember+ et NMOS.
     if ok and data.get("anc_shm"):
         _apply_wire(from_vmid, to_vmid, data["anc_shm"], "data")
     # PRÉ-CÂBLAGE : le câble est posé mais l'écart de format prédit n'est pas tranché (le flux
     # n'existe pas encore). L'UI doit le dire — un succès muet ferait croire à un patch validé.
     if ok:
-        _att = _wire_format_en_attente(to_vmid, (data.get("shm") or "").strip())
+        _att = _wire_format_en_attente(to_vmid, shm) if shm else None
         if _att:
             payload = dict(payload, format_unverified=(_att.get("why") if isinstance(_att, dict) else True))
     return jsonify({"ok": ok, **payload}), status
@@ -1063,8 +1171,7 @@ def _target_input_format(to_vmid, kind="video", to_slot=None):
     if to_slot is not None and any(x.get("key") is not None for x in cands):
         spec = _wd_pick([x for x in cands if x.get("key") is not None], to_slot)
     elif to_slot is not None:
-        try: ws = int(to_slot)
-        except (TypeError, ValueError): ws = None
+        ws = project_ports.norm_slot(to_slot)
         spec = (next((x for x in cands if x.get("slot") == ws), None)
                 or next((x for x in cands if x.get("slot") is None), None))
     spec = spec or (cands[0] if cands else None)
@@ -1113,6 +1220,16 @@ def _udc_is_free(vmid):
     if not out:
         return False
     return out not in _all_consumed_shms()
+
+def _udc_slot_tag(to_slot):
+    """Suffixe de hostname d'UDC pour le slot visé : numéro 1-based (`-s3`), ou slot qualifié
+    rendu sûr pour un hostname (`meter_blocks:0` → `meter-blocks-1`)."""
+    s = project_ports.norm_slot(to_slot)
+    if isinstance(s, int):
+        return str(s + 1)
+    head, _, n = str(s).rpartition(":")
+    n = str(int(n) + 1) if n.isdigit() else n
+    return re.sub(r"[^a-z0-9]+", "-", f"{head}-{n}".lower()).strip("-")
 
 def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, node_id=None):
     """Insère un UDC convertisseur entre producteur et consommateur (formats différents).
@@ -1198,7 +1315,7 @@ def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, n
         # Sans le slot, deux sorties TX du MÊME moteur alimentées par la MÊME source (formats de slot
         # différents) créaient deux UDC de même hostname, donc DEUX ÉCRIVAINS SUR LE MÊME FLUX MXL.
         # Constaté au banc (moteur 140, slots TX#1 1080i25 et TX#3 720p50 tirés d'avsync).
-        hostname = f"udc-{from_vmid}-{to_vmid}" + (f"-s{int(to_slot) + 1}" if to_slot is not None else "")
+        hostname = f"udc-{from_vmid}-{to_vmid}" + (f"-s{_udc_slot_tag(to_slot)}" if to_slot is not None else "")
         db_add_alert("alert.cablage.udc_insertion_auto", "info", kind="deploy", params={"h": hostname})
         udc_vmid = docker_compute.creer_container_compute(node_id, "udc", hostname=hostname)
         if not udc_vmid:
@@ -1227,6 +1344,19 @@ def _insert_udc(from_vmid, shm, to_vmid, kind, to_slot, mode, reuse_vmid=None, n
         if not ready:
             db_add_alert("alert.cablage.udc_controle_non_pret", "warning", vmid=udc_vmid,
                          kind="deploy", params={"vmid": udc_vmid})
+
+    # Un UDC posé devant un conteneur de projet APPARTIENT à ce projet : sans cela, la frontière
+    # du projet (`_apply_wire`) refuserait UDC → destination, l'UDC n'étant d'aucun projet.
+    try:
+        from ..database import db_get_container, db_set_project
+        from .. import auth as _auth
+        _tpids = project_ports.member_project_ids(to_vmid)
+        _tpid = (db_get_container(to_vmid) or {}).get("project_id") or (min(_tpids) if _tpids else None)
+        if _tpid and (db_get_container(udc_vmid) or {}).get("project_id") != _tpid:
+            db_set_project(udc_vmid, _tpid)
+            _auth._vmid_project_cache.pop(udc_vmid, None)     # sinon la frontière le voit hors projet ~TTL
+    except Exception as e:                                                 # noqa: BLE001
+        log.warning("UDC #%s: project attach: %s", udc_vmid, e)
 
     # Câblage producteur → UDC (injecte input_format) puis UDC → destination.
     ok1, st1, p1 = _apply_wire(from_vmid, udc_vmid, shm, kind)
@@ -1324,11 +1454,11 @@ def decable_flow_on_node(shm, node_id):
             continue
         for cons in (w.get("consumes") or []):
             if cons.get("shm") == shm:
-                victims.append((c.get("vmid"), cons.get("essence") or "video"))
+                victims.append((c.get("vmid"), cons.get("essence") or "video", cons.get("slot")))
     n = 0
-    for vmid, essence in victims:
+    for vmid, essence, slot in victims:
         try:
-            ok, _st, _p = _apply_unwire(vmid, shm, essence)
+            ok, _st, _p = _apply_unwire(vmid, shm, essence, slot)
             if ok:
                 n += 1
         except Exception as _e:
@@ -1351,8 +1481,10 @@ def _maybe_release_rdma(to_vmid, shm, kind):
         log.warning("release RDMA après décâble %s @ #%s : %s", shm, to_vmid, _e)
 
 
-def _apply_unwire(to_vmid, shm, kind):
-    """Supprime un câble. Retourne (ok, status, payload). Factorisé."""
+def _apply_unwire(to_vmid, shm, kind, to_slot=None):
+    """Supprime un câble. Retourne (ok, status, payload). Factorisé. `to_slot` départage deux
+    entrées qui lisent le même flux (la tuile et le vu-mètre d'un multiview) ; sans lui, la
+    première entrée qui porte `shm`."""
     from ..database import db_get_container
     shm = (shm or "").strip()
     kind = kind or "video"
@@ -1404,7 +1536,14 @@ def _apply_unwire(to_vmid, shm, kind):
         if _dk:                                        # port d'un document : vider le champ par sa clé
             return _wire_document(to_vmid, target, t, params, _dk, "")
         # On décâble le slot portant ce shm (from_list : shm résolu ; state_field : params).
-        spec = next((x for x in cands if x.get("from_list") and x.get("shm") == shm), None) \
+        _ws = project_ports.norm_slot(to_slot)
+        # Le slot départage AUSSI les entrées `state_field` (input_N du mélangeur) : sans lui, deux
+        # entrées sur le même flux → la première était vidée à la place de celle visée (01/11).
+        spec = (next((x for x in cands if x.get("slot") == _ws and (
+                          (x.get("from_list") and x.get("shm") == shm)
+                          or (x.get("state_field") and params.get(x["state_field"]) == shm))),
+                     None) if to_slot is not None else None) \
+               or next((x for x in cands if x.get("from_list") and x.get("shm") == shm), None) \
                or next((x for x in cands if x.get("state_field") and params.get(x["state_field"]) == shm), None) \
                or (cands[0] if cands else None)
         if not spec:
@@ -1415,8 +1554,9 @@ def _apply_unwire(to_vmid, shm, kind):
         if spec.get("from_list"):
             lst_name = spec["from_list"]; sf = spec.get("shm_field", "shm")
             lst = list(params.get(lst_name) or [])
-            if slot is not None and 0 <= slot < len(lst):
-                entry = dict(lst[slot]); entry[sf] = ""; lst[slot] = entry; params[lst_name] = lst
+            idx = spec.get("index")
+            if idx is not None and 0 <= idx < len(lst):
+                entry = dict(lst[idx]); entry[sf] = ""; lst[idx] = entry; params[lst_name] = lst
             # TISSU (symétrique du câblage) : assembleur shardé → modifier la définition LOGIQUE puis
             # re-réconcilier, jamais hot-unwirer l'assembleur (qui lit les sorties de shards).
             if _is_sharded_assembler(to_vmid):
@@ -1436,7 +1576,7 @@ def _apply_unwire(to_vmid, shm, kind):
                             log.warning("reconcile tissu (décâble %s slot %s): %s", to_vmid, slot, _e)
                 threading.Thread(target=_async_fabric_unwire, daemon=True).start()
                 return True, 200, {"to_vmid": to_vmid, "type": t, "fabric_reconciled": True}
-            res = _try_unwire_hot(to_vmid, target, t, params, {ikey: slot, "shm": ""})
+            res = _try_unwire_hot(to_vmid, target, t, params, {ikey: idx, "shm": ""})
             if res:
                 return res
             # pas de return → redéploiement (tail _async_deploy)
@@ -1490,9 +1630,17 @@ def api_home_unwire():
     err = check_vmid_access(to_vmid, WIRE_MIN_PROJECT_ROLE)
     if err:
         return err
-    ok, status, payload = _apply_unwire(to_vmid, data.get("shm"), data.get("kind"))
-    if ok:                                      # teardown auto du lien RDMA inter-nœud si plus consommé
-        _maybe_release_rdma(to_vmid, (data.get("shm") or "").strip(), data.get("kind"))
+    shm = (data.get("shm") or "").strip()
+    kind = data.get("kind") or "video"
+    port_id = project_ports.parse_ref(shm)
+    if port_id is not None:
+        ok, status, payload = project_ports.unwire_port_ref(port_id, to_vmid, kind)
+        return jsonify({"ok": ok, **payload}), status
+    ok, status, payload = _apply_unwire(to_vmid, shm, kind, data.get("to_slot"))
+    if ok:
+        project_ports.forget_input(to_vmid, kind, shm=shm)
+        # teardown auto du lien RDMA inter-nœud si plus consommé
+        _maybe_release_rdma(to_vmid, shm, kind)
     return jsonify({"ok": ok, **payload}), status
 
 def _collect_current_edges():
@@ -1589,7 +1737,7 @@ def api_cables_clear():
     edges = _collect_current_edges()
     results = []
     for e in edges:
-        ok, status, payload = _apply_unwire(e["to_vmid"], e["shm"], e["kind"])
+        ok, status, payload = _apply_unwire(e["to_vmid"], e["shm"], e["kind"], e.get("to_slot"))
         results.append({"edge": e, "ok": ok, "status": status, "error": payload.get("error")})
     fails = [r for r in results if not r["ok"]]
     return jsonify({"ok": not fails, "cleared": len(edges) - len(fails),
@@ -1607,7 +1755,7 @@ def api_cable_snapshot_restore(sid):
     current = _collect_current_edges()
     errors_clear = []
     for e in current:
-        ok, _, payload = _apply_unwire(e["to_vmid"], e["shm"], e["kind"])
+        ok, _, payload = _apply_unwire(e["to_vmid"], e["shm"], e["kind"], e.get("to_slot"))
         if not ok and payload.get("error"):
             errors_clear.append(payload["error"])
     # 2) Recâble selon le snapshot
@@ -1625,18 +1773,94 @@ def api_cable_snapshot_restore(sid):
                     "total": len(saved_edges), "errors": errors_wire,
                     "clear_errors": errors_clear})
 
-# ─── Vues de DISPOSITION de la page Câbles (mode « Libre ») ───────────────────
-# Ne touchent JAMAIS au câblage (≠ snapshots) : on stocke uniquement les positions des
-# cartes et l'état replié, partagés entre utilisateurs.
+# ─── VUES enregistrées de la page Câbles ─────────────────────────────────────
+# Ne touchent JAMAIS au câblage (≠ snapshots) : une vue = filtres + réglages d'affichage +
+# disposition (positions des cartes, cartes repliées). Chaque vue appartient à son auteur, qui
+# peut la partager ; celles d'avant la propriété (owner_id NULL) restent communes à tous.
+
+_VIEW_SIGNALS = ("video", "audio", "data")
+_VIEW_LAT_MODES = ("charge", "delai", "delai_cum")
+_VIEW_RDMA_MODES = ("line", "label", "off")
+
+
+def _clean_view_settings(raw):
+    """Keep only the known settings, each with its expected type: a view is replayed by the page."""
+    raw = raw if isinstance(raw, dict) else {}
+    out = {}
+    if raw.get("view_mode") in ("cols", "free"):
+        out["view_mode"] = raw["view_mode"]
+    if isinstance(raw.get("signal"), list):
+        sig = [x for x in raw["signal"] if x in _VIEW_SIGNALS]
+        if sig:
+            out["signal"] = sig
+    for k in ("project", "node"):
+        if isinstance(raw.get(k), (str, int)):
+            out[k] = str(raw[k])[:64]
+    for k in ("projects_view", "fabric_internals", "lat_show"):
+        if isinstance(raw.get(k), bool):
+            out[k] = raw[k]
+    if raw.get("lat_mode") in _VIEW_LAT_MODES:
+        out["lat_mode"] = raw["lat_mode"]
+    if raw.get("rdma_mode") in _VIEW_RDMA_MODES:
+        out["rdma_mode"] = raw["rdma_mode"]
+    for k in ("zoom", "pan_x", "pan_y"):
+        if isinstance(raw.get(k), (int, float)) and not isinstance(raw.get(k), bool):
+            out[k] = float(raw[k])
+    return out
+
+
+def _clean_view_payload(raw):
+    """What a view stores — positions, collapsed cards, settings — or None if not an object."""
+    if not isinstance(raw, dict):
+        return None
+    positions = raw.get("positions") if isinstance(raw.get("positions"), dict) else {}
+    collapsed = raw.get("collapsed") if isinstance(raw.get("collapsed"), list) else []
+    return {"positions": positions, "collapsed": [str(x) for x in collapsed],
+            "settings": _clean_view_settings(raw.get("settings"))}
+
+
+def _view_summary(l, uid):
+    return {"id": l["id"], "name": l["name"], "created_at": l["created_at"],
+            "node_count": len((l["payload"] or {}).get("positions") or {}),
+            "mine": l["owner_id"] is not None and l["owner_id"] == uid,
+            "common": l["owner_id"] is None,
+            "shared": l["shared"], "share_count": l.get("share_count", 0),
+            "owner": l.get("owner_name")}
+
+
+def _visible_views(uid):
+    """The views `uid` may see — the ONE visibility rule, shared by the list and by direct reads."""
+    from ..user_groups import groups_of_user
+    groups = groups_of_user(uid) if uid is not None else set()
+    projects = [p["id"] for p in db_user_projects(uid)] if uid is not None else []
+    return db_cable_layouts_list(uid, sorted(groups), projects)
+
+
+def _view_visible(l, uid):
+    return l is not None and any(v["id"] == l["id"] for v in _visible_views(uid))
+
+
+def _view_editable(l, uid):
+    return l is not None and (l["owner_id"] is None or l["owner_id"] == uid)
+
+
+def _uid():
+    u = current_user()
+    return u["id"] if u else None
+
 
 @bp.route("/api/cables/layouts", methods=["GET"])
 @require_login
 def api_cable_layouts_list():
-    return jsonify({"layouts": [
-        {"id": l["id"], "name": l["name"], "created_at": l["created_at"],
-         "node_count": len((l["payload"] or {}).get("positions") or {})}
-        for l in db_cable_layouts_list()
-    ]})
+    uid = _uid()
+    return jsonify({"layouts": [_view_summary(l, uid) for l in _visible_views(uid)]})
+
+@bp.route("/api/cables/layouts/recipients", methods=["GET"])
+@require_login
+def api_cable_layout_recipients():
+    """Destinataires possibles d'une vue : utilisateurs, groupes, projets (?q= filtre)."""
+    from ..user_groups import share_recipients
+    return jsonify(share_recipients(request.args.get("q"), exclude_uid=_uid()))
 
 @bp.route("/api/cables/layouts", methods=["POST"])
 @require_login
@@ -1645,25 +1869,121 @@ def api_cable_layout_create():
     name = (data.get("name") or "").strip()
     if not name:
         return jsonify({"ok": False, "error": "nom requis"}), 400
-    payload = data.get("payload") or {}
-    if not isinstance(payload, dict):
+    payload = _clean_view_payload(data.get("payload") or {})
+    if payload is None:
         return jsonify({"ok": False, "error": "payload invalide"}), 400
-    payload = {"positions": payload.get("positions") or {},
-               "collapsed": payload.get("collapsed") or []}
-    lid = db_cable_layout_save(name, payload)
-    return jsonify({"ok": True, "id": lid,
-                    "node_count": len(payload["positions"])})
+    lid = db_cable_layout_save(name, payload, owner_id=_uid(), shared=bool(data.get("shared")))
+    return jsonify({"ok": True, "id": lid, "node_count": len(payload["positions"])})
 
 @bp.route("/api/cables/layouts/<int:lid>", methods=["GET"])
 @require_login
 def api_cable_layout_get(lid):
     layout = db_cable_layout_get(lid)
-    if not layout:
+    if not _view_visible(layout, _uid()):
         return jsonify({"ok": False, "error": "vue introuvable"}), 404
     return jsonify({"ok": True, "id": layout["id"], "name": layout["name"],
                     "payload": layout["payload"]})
 
+@bp.route("/api/cables/layouts/<int:lid>", methods=["PATCH"])
+@require_login
+def api_cable_layout_update(lid):
+    uid = _uid()
+    layout = db_cable_layout_get(lid)
+    if not _view_visible(layout, uid):
+        return jsonify({"ok": False, "error": "vue introuvable"}), 404
+    if not _view_editable(layout, uid):
+        return jsonify({"ok": False, "error": "vue d'un autre utilisateur"}), 403
+    data = request.json or {}
+    name = data.get("name")
+    if name is not None and not str(name).strip():
+        return jsonify({"ok": False, "error": "nom requis"}), 400
+    payload = None
+    if "payload" in data:
+        payload = _clean_view_payload(data["payload"])
+        if payload is None:
+            return jsonify({"ok": False, "error": "payload invalide"}), 400
+    ok = db_cable_layout_update(lid, name=None if name is None else str(name), payload=payload)
+    return jsonify({"ok": ok})
+
+@bp.route("/api/cables/layouts/<int:lid>/shares", methods=["GET", "PUT"])
+@require_login
+def api_cable_layout_shares(lid):
+    """Partage d'une vue : « tout le monde » et/ou des destinataires (utilisateur, groupe, projet).
+    Réservé à l'auteur ; une vue commune (d'avant la propriété) est toujours vue de tous."""
+    uid = _uid()
+    layout = db_cable_layout_get(lid)
+    if not _view_visible(layout, uid):
+        return jsonify({"ok": False, "error": "vue introuvable"}), 404
+    if layout["owner_id"] is None:
+        return jsonify({"ok": False, "error": "vue commune : toujours partagée"}), 400
+    if layout["owner_id"] != uid:
+        return jsonify({"ok": False, "error": "vue d'un autre utilisateur"}), 403
+    if request.method == "PUT":
+        data = request.json or {}
+        rcpt = data.get("recipients") if isinstance(data.get("recipients"), list) else []
+        rcpt = [r for r in rcpt if isinstance(r, dict) and isinstance(r.get("id"), int)
+                and not isinstance(r.get("id"), bool)]
+        n = db_cable_layout_set_shares(lid, bool(data.get("everyone")), rcpt)
+        return jsonify({"ok": True, "count": n})
+    from ..user_groups import share_recipients
+    every = share_recipients(limit=100000)
+    labels = {(r["kind"], r["id"]): r["label"] for lst in every.values() for r in lst}
+    return jsonify({"ok": True, "everyone": layout["shared"], "recipients": [
+        {**r, "label": labels.get((r["kind"], r["id"]), "#%s" % r["id"])} for r in db_cable_layout_shares(lid)]})
+
 @bp.route("/api/cables/layouts/<int:lid>", methods=["DELETE"])
 @require_login
 def api_cable_layout_delete(lid):
+    uid = _uid()
+    layout = db_cable_layout_get(lid)
+    if not _view_visible(layout, uid):
+        return jsonify({"ok": False, "error": "vue introuvable"}), 404
+    if not _view_editable(layout, uid):
+        return jsonify({"ok": False, "error": "vue d'un autre utilisateur"}), 403
     return jsonify({"ok": db_cable_layout_delete(lid)})
+
+
+def flow_consumers(shms):
+    """{shm: [{vmid, hostname, kind}]} — qui, sur tout le parc, lit chacun de ces flux.
+
+    Passe par `plugins.ports_topologie` (source unique de « qui consomme quoi », cf. sa docstring) :
+    la page Câbles, le RDMA et cette réponse ne peuvent pas diverger. Tous nœuds confondus : une
+    réplication RDMA garde le même nom de flux de l'autre côté."""
+    from .. import plugins as _pl
+    want = {s for s in (shms or []) if s}
+    out = {s: [] for s in want}
+    if not want:
+        return out
+    for c in db_get_containers():
+        dc = _load_dc(c)
+        if not dc or not dc.get("type"):
+            continue
+        ports = _pl.ports_topologie(dc["type"], c.get("hostname") or "", dc.get("params") or {})
+        for cons in ports.get("consumes") or []:
+            s = cons.get("shm")
+            if s in want and not any(x["vmid"] == c.get("vmid") for x in out[s]):
+                out[s].append({"vmid": c.get("vmid"), "hostname": c.get("hostname") or "",
+                               "kind": cons.get("kind") or "video"})
+    return out
+
+
+@bp.route("/api/containers/<int:vmid>/flow_consumers", methods=["GET"])
+@require_login
+def api_flow_consumers(vmid):
+    """Abonnés EN AVAL de chaque sortie de ce conteneur. Sert à confirmer une opération qui change
+    le nom d'un flux (sortie de mélangeur renommée ou retirée) : ceux qui lisaient l'ancien nom
+    seront débranchés, et l'exploitant doit le savoir AVANT."""
+    from .. import plugins as _pl
+    err = check_vmid_access(vmid, "viewer")
+    if err:
+        return err
+    c = db_get_container(vmid)
+    if not c:
+        return jsonify({"error": "not found"}), 404
+    dc = _load_dc(c) or {}
+    w = _pl.derive_wiring(dc.get("type"), c.get("hostname") or "", dc.get("params") or {}) or {}
+    prod = [p for p in (w.get("produces") or []) if p.get("shm")]
+    cons = flow_consumers([p["shm"] for p in prod])
+    return jsonify({"vmid": vmid, "outputs": [
+        {"shm": p["shm"], "label": p.get("label") or "", "slot": p.get("slot"),
+         "consumers": cons.get(p["shm"]) or []} for p in prod]})

@@ -53,9 +53,11 @@ const TYPE_LABELS = () => ({
 const NEW_COMP = {
     // Vidéo : TOUJOURS 16:9 dans l'éditeur — en coordonnées normalisées sur une cellule 16:9,
     // 16:9 ⇔ w == h. La contrainte est maintenue par _enforceVideoRatio (drag, champs, outils).
-    video:  { x: 0, y: 0, w: 1, h: 1, fit: 'fill', border: 'none', border_w: 3,
+    // Ajustement « contenir » par DÉFAUT (2026-10-29) : il ne déforme jamais l'image ; « remplir »
+    // l'étirait dès que la tuile n'avait plus le format du modèle (Z8 #225, modèle rogné).
+    video:  { x: 0, y: 0, w: 1, h: 1, fit: 'contain', border: 'none', border_w: 3,
               border_color: '#ffffff' },
-    umd:    { x: 0.15, y: 0.86, w: 0.7, h: 0.12, text_source: 'name', text: '',
+    umd:    { x: 0.15, y: 0.86, w: 0.7, h: 0.12, text_source: 'tile', text: '',
               tally_bg: true, tally_text: false, font_size: 0, align: 'center',
               color: '#ffffff', bg_color: '#000000', bg_opacity: 75 },
     tally:  { x: 0.02, y: 0.87, w: 0.06, h: 0.1, shape: 'lamp', slot: 'dominant', thickness: 4 },
@@ -140,8 +142,8 @@ const F_FONT = () => F('font', 'select', _t('settings.pip.f_font', 'Police'),
 const FIELD_SPECS = () => ({
     video: [
         F('fit', 'select', _t('settings.pip.f_fit', 'Ajustement'), { options: [
-            ['fill', _t('settings.pip.fit_fill', 'Remplir (étirer)')],
-            ['contain', _t('settings.pip.fit_contain', 'Contenir (ratio source)')]] }),
+            ['contain', _t('settings.pip.fit_contain', 'Contenir (ratio source)')],
+            ['fill', _t('settings.pip.fit_fill', 'Remplir (étirer)')]] }),
         // Styles de CADRE (ex-frame_style global de mur, migré dans le modèle 0.33.0) : le
         // cadre épouse le rectangle IMAGE réel (letterbox compris), dessiné vers l'intérieur.
         F('border', 'select', _t('settings.pip.f_border', 'Cadre'), { options: [
@@ -157,6 +159,7 @@ const FIELD_SPECS = () => ({
     ],
     umd: [
         F('text_source', 'select', _t('settings.pip.f_text_source', 'Texte'), { options: [
+            ['tile', _t('settings.pip.ts_tile', 'Nom affiché de la tuile')],
             ['name', _t('settings.pip.ts_name', 'Nom de la source')],
             ['tsl', _t('settings.pip.ts_tsl', 'Protocole (TSL)')],
             ['fixed', _t('settings.pip.ts_fixed', 'Texte fixe')]] }),
@@ -524,98 +527,115 @@ function _alignRefRect() {
     return { x: 0, y: 0, w: 1, h: 1 };
 }
 
-function alignComps(mode) {
-    if (!cur || !selIdxs.length) return;
-    // Référence : le primaire si ≥2 sélectionnés, sinon la cellule OU l'image (cf. alignRef).
-    const p = comps()[selIdx];
-    const ref = (selIdxs.length >= 2 && p) ? { x: p.x || 0, y: p.y || 0, w: p.w || 0, h: p.h || 0 }
-                                           : _alignRefRect();
-    const r3 = v => Math.round(v * 1000) / 1000;
-    selIdxs.forEach(i => {
-        if (selIdxs.length >= 2 && i === selIdx) return;
-        const c = comps()[i];
-        if (!c) return;
-        switch (mode) {
-            case 'left':    c.x = ref.x; break;
-            case 'right':   c.x = ref.x + ref.w - c.w; break;
-            case 'hcenter': c.x = ref.x + (ref.w - c.w) / 2; break;
-            case 'top':     c.y = ref.y; break;
-            case 'bottom':  c.y = ref.y + ref.h - c.h; break;
-            case 'vcenter': c.y = ref.y + (ref.h - c.h) / 2; break;
-        }
-        c.x = r3(Math.max(0, Math.min(1 - c.w, c.x)));
-        c.y = r3(Math.max(0, Math.min(1 - c.h, c.y)));
+// ── Édition : la SURFACE commune des éditeurs (BobiEditor.surface, static/js/editor.js) ──
+// Sélection, glisser seul ou en groupe, poignée seule ou de groupe, aimant, flèches, outils,
+// annuler/rétablir, copier/coller : écrits UNE fois pour tous les éditeurs de disposition
+// (chantier « un seul moteur d'édition », étape 3, arbitrages de Cyril du 2026-10-30). Ce fichier
+// ne garde que ce qui est propre au PiP : ses unités (fractions de la cellule, travaillées en px
+// du canevas), la vidéo VERROUILLÉE en 16:9, la référence cellule/image d'un composant seul, les
+// rectangles DESSINÉS (ancrages) que l'aimant vise, et ce qu'un composant copié emporte.
+let _surf = null;
+function surf() {
+    if (_surf || !window.BobiEditor) return _surf;
+    _surf = window.BobiEditor.surface({
+        objets: () => {
+            const cv = cvs(), W = cv.width, H = cv.height;
+            return comps().map(c => ({ x: (c.x || 0) * W, y: (c.y || 0) * H, w: (c.w || 0) * W, h: (c.h || 0) * H,
+                                       format: c.type === 'video' ? 16 / 9 : 0, min: 0.02 * W }));
+        },
+        cibles: () => comps().map(pxRect),
+        cadre: () => ({ x: 0, y: 0, w: cvs().width, h: cvs().height }),
+        ecrire: (i, r) => {
+            const c = comps()[i], cv = cvs();
+            if (!c) return;
+            const r3 = v => Math.round(v * 1000) / 1000;
+            c.x = r3(r.x / cv.width); c.y = r3(r.y / cv.height);
+            c.w = r3(Math.max(0.02, r.w / cv.width)); c.h = r3(Math.max(0.02, r.h / cv.height));
+            _enforceVideoRatio(c);
+        },
+        rendu: () => { snapGuides = (_surf ? _surf.guides : []).map(g => ({ type: g.axe, pos: g.pos })); syncGeomFields(); draw(); },
+        valider: () => { refreshProps(); draw(); if (_surf) _surf.memoriser(); },
+    }, {
+        tol: () => SNAP_PX(), aimant: () => snapEnabled, min: 0, rectangle: true,
+        pas: { get fleche() { return Math.max(1, cvs().width * 0.001); }, get maj() { return 10 * Math.max(1, cvs().width * 0.001); } },
+        refSeul: () => {
+            if (alignRef !== 'video') return null;
+            const v = comps().find(c => c && c.type === 'video');
+            return v ? pxRect(v) : null;
+        },
     });
+    return _surf;
+}
+// La sélection du PiP (selIdxs, référence = DERNIER) reste celle que lisent le panneau, la
+// suppression, le copier de réglages : on la passe à la surface avant un geste, on la relit après.
+function _surfIn() { const S = surf(); S.sel = selIdxs.slice(); S.primaire = selIdx >= 0 ? selIdx : null; return S; }
+function _surfOut() {
+    const S = surf();
+    const p = S.primaire;
+    _setSel(p == null || !S.sel.includes(p) ? S.sel.slice() : S.sel.filter(i => i !== p).concat([p]));
+}
+function _outil(nom, arg, msgMin) {
+    if (!cur || !selIdxs.length) return;
+    const r = _surfIn().outil(nom, arg);
+    _surfOut();
+    if (r === null && msgMin) flash(msgMin, 'warn');
     refreshProps(); draw();
 }
 
+function alignComps(mode) { _outil('aligner', mode); }
+
 function matchSizeComps(mode) {
-    if (!cur || selIdxs.length < 2) {
-        flash(_t('settings.pip.flash_select2', 'Sélectionnez au moins 2 composants (Maj+clic).'), 'warn');
-        return;
-    }
-    const ref = comps()[selIdx];
-    if (!ref) return;
-    const r3 = v => Math.round(v * 1000) / 1000;
-    selIdxs.forEach(i => {
-        if (i === selIdx) return;
-        const c = comps()[i];
-        if (!c) return;
-        if (mode === 'w' || mode === 'both') {
-            c.w = r3(Math.min(ref.w, 1));
-            if (c.x + c.w > 1) c.x = r3(1 - c.w);
-        }
-        if (mode === 'h' || mode === 'both') {
-            c.h = r3(Math.min(ref.h, 1));
-            if (c.y + c.h > 1) c.y = r3(1 - c.h);
-        }
-        _enforceVideoRatio(c);
-    });
-    refreshProps(); draw();
+    _outil('egaliser', mode, _t('settings.pip.flash_select2', 'Sélectionnez au moins 2 composants (Maj+clic).'));
 }
 
 function distributeComps(axis) {
-    if (!cur || selIdxs.length < 3) {
-        flash(_t('settings.pip.flash_select3', 'Sélectionnez au moins 3 composants (Maj+clic).'), 'warn');
-        return;
-    }
-    const items = selIdxs.map(i => comps()[i]).filter(Boolean);
-    const k = axis === 'h' ? 'x' : 'y';
-    items.sort((a, b) => (a[k] || 0) - (b[k] || 0));
-    const v0 = items[0][k] || 0;
-    const vN = items[items.length - 1][k] || 0;
-    const step = (vN - v0) / (items.length - 1);
-    items.forEach((c, n) => { c[k] = Math.round((v0 + step * n) * 1000) / 1000; });
-    refreshProps(); draw();
+    _outil('distribuer', axis, _t('settings.pip.flash_select3', 'Sélectionnez au moins 3 composants (Maj+clic).'));
 }
+function spaceComps(axis) { _outil('espaces', axis, _t('editor.select3', 'Sélectionnez au moins 3 éléments (Maj ou Ctrl+clic).')); }
+function fillComps(axis) { _outil('remplir', axis); }
 
 // ── Format libre : rogner l'espace inutilisé sur les 4 côtés ──
-// Bbox de TOUS les composants → renormalisation 0..1 + nouvel aspect (A × bw/bh). La vidéo
-// reste 16:9 en pixels par construction (h/w se renormalisent comme l'aspect) ; le
-// _enforceVideoRatio final n'absorbe que les arrondis.
+// Boîte englobante des rectangles RÉELLEMENT occupés (pxRect : ancrages compris), puis nouveau
+// format = aspect de cette boîte. ★ Un composant ancré sur l'IMAGE (défaut horizontal d'un UMD,
+// d'un tally…) a ses fractions rapportées à l'image, pas à la cellule : son « 100 % » n'occupe que
+// la largeur de l'image. Le calcul en fractions de cellule le croyait pleine largeur et ne rognait
+// jamais à droite d'une vidéo 16:9 dans une cellule plus large (signalé le 2026-10-29).
+// Seuls les axes ancrés sur la CELLULE se renormalisent : l'image garde sa taille relative quand
+// on rogne (la toile reste à cellW de large, tout se met à l'échelle d'un même facteur), donc une
+// fraction rapportée à l'image reste juste telle quelle. La vidéo reste 16:9 par construction ;
+// le _enforceVideoRatio final n'absorbe que les arrondis.
 function trimTemplate() {
     if (!cur || !comps().length) return;
-    let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+    const cv = cvs();
+    if (!cv) return;
+    const W = cv.width, H = cv.height;
+    let X0 = W, Y0 = H, X1 = 0, Y1 = 0;
     comps().forEach(c => {
-        x0 = Math.min(x0, c.x || 0); y0 = Math.min(y0, c.y || 0);
-        x1 = Math.max(x1, (c.x || 0) + (c.w || 0)); y1 = Math.max(y1, (c.y || 0) + (c.h || 0));
+        const r = pxRect(c);
+        X0 = Math.min(X0, r.x); Y0 = Math.min(Y0, r.y);
+        X1 = Math.max(X1, r.x + r.w); Y1 = Math.max(Y1, r.y + r.h);
     });
-    const bw = x1 - x0, bh = y1 - y0;
-    if (bw < 0.05 || bh < 0.05) return;
-    if (bw > 0.998 && bh > 0.998) {
+    X0 = Math.max(0, X0); Y0 = Math.max(0, Y0); X1 = Math.min(W, X1); Y1 = Math.min(H, Y1);
+    const nW = X1 - X0, nH = Y1 - Y0;
+    if (nW < 0.05 * W || nH < 0.05 * H) return;
+    if (nW > 0.998 * W && nH > 0.998 * H) {
         flash(_t('settings.pip.flash_trim_nothing', 'Rien à rogner : les composants occupent déjà toute la cellule.'), 'warn');
         return;
     }
     const r3 = v => Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000;
     comps().forEach(c => {
-        c.x = r3(((c.x || 0) - x0) / bw);
-        c.y = r3(((c.y || 0) - y0) / bh);
-        c.w = Math.max(0.02, Math.round(((c.w || 0) / bw) * 1000) / 1000);
-        c.h = Math.max(0.02, Math.round(((c.h || 0) / bh) * 1000) / 1000);
-        if (c.x + c.w > 1) c.x = r3(1 - c.w);
-        if (c.y + c.h > 1) c.y = r3(1 - c.h);
+        if (compAnchor(c, 'x') === 'cell') {
+            c.x = r3(((c.x || 0) * W - X0) / nW);
+            c.w = Math.max(0.02, Math.round(((c.w || 0) * W / nW) * 1000) / 1000);
+            if (c.x + c.w > 1) c.x = r3(1 - c.w);
+        }
+        if (compAnchor(c, 'y') === 'cell') {
+            c.y = r3(((c.y || 0) * H - Y0) / nH);
+            c.h = Math.max(0.02, Math.round(((c.h || 0) * H / nH) * 1000) / 1000);
+            if (c.y + c.h > 1) c.y = r3(1 - c.h);
+        }
     });
-    cur.config.aspect = Math.round(tplAspect() * (bw / bh) * 10000) / 10000;
+    cur.config.aspect = Math.round(tplAspect() * (nW / W) / (nH / H) * 10000) / 10000;
     comps().forEach(_enforceVideoRatio);
     syncAspectField();
     applySimCell();
@@ -691,7 +711,7 @@ function imgPxRect() {
         const my = Math.min(m, Math.max(0, Math.floor(h / 4)));
         x += mx; y += my; w = Math.max(2, w - 2 * mx); h = Math.max(2, h - 2 * my);
     }
-    if ((v.fit || 'fill') === 'contain') {
+    if ((v.fit || 'contain') === 'contain') {   // défaut = moteur (_video_rect)
         const SA = 16 / 9;                 // ratio SOURCE simulé par le composer
         let nw = Math.min(w, Math.round(h * SA));
         let nh = Math.max(2, Math.round(nw / SA));
@@ -1000,67 +1020,13 @@ function draw() {
         });
         ctx.setLineDash([]);
     }
-}
-
-// ── Snap magnétique (miroir de computeSnap/computeSnapResize du composer, en px canvas) ──
-function _snapTargets(excludeIdxs) {
-    const cv = cvs();
-    const xT = [0, cv.width, cv.width / 2];
-    const yT = [0, cv.height, cv.height / 2];
-    comps().forEach((o, i) => {
-        if (excludeIdxs.includes(i)) return;
-        const r = pxRect(o);
-        xT.push(r.x, r.x + r.w, r.x + r.w / 2);
-        yT.push(r.y, r.y + r.h, r.y + r.h / 2);
-    });
-    return { xT, yT };
-}
-
-function computeSnap(excludeIdxs, x, y, w, h) {
-    const { xT, yT } = _snapTargets(excludeIdxs);
-    const guides = [];
-    const SP = SNAP_PX();
-    let bestDx = SP + 1, snapX = x;
-    [{ e: 'l', v: x }, { e: 'r', v: x + w }, { e: 'c', v: x + w / 2 }].forEach(({ e, v }) => {
-        xT.forEach(t => {
-            const d = Math.abs(v - t);
-            if (d <= SP && d < bestDx) {
-                bestDx = d;
-                snapX = e === 'l' ? t : e === 'r' ? t - w : t - w / 2;
-                guides[0] = { type: 'v', pos: t };
-            }
-        });
-    });
-    let bestDy = SP + 1, snapY = y;
-    [{ e: 't', v: y }, { e: 'b', v: y + h }, { e: 'c', v: y + h / 2 }].forEach(({ e, v }) => {
-        yT.forEach(t => {
-            const d = Math.abs(v - t);
-            if (d <= SP && d < bestDy) {
-                bestDy = d;
-                snapY = e === 't' ? t : e === 'b' ? t - h : t - h / 2;
-                guides[1] = { type: 'h', pos: t };
-            }
-        });
-    });
-    return { x: snapX, y: snapY, guides: guides.filter(Boolean) };
-}
-
-function computeSnapResize(excludeIdxs, x, y, w, h) {
-    // Snap du coin bas-droit uniquement (resize ancré haut-gauche).
-    const { xT, yT } = _snapTargets(excludeIdxs);
-    const guides = [];
-    const SP = SNAP_PX();
-    let bestDx = SP + 1, sw = w;
-    xT.forEach(t => {
-        const d = Math.abs((x + w) - t);
-        if (d <= SP && d < bestDx && t > x) { bestDx = d; sw = t - x; guides[0] = { type: 'v', pos: t }; }
-    });
-    let bestDy = SP + 1, sh = h;
-    yT.forEach(t => {
-        const d = Math.abs((y + h) - t);
-        if (d <= SP && d < bestDy && t > y) { bestDy = d; sh = t - y; guides[1] = { type: 'h', pos: t }; }
-    });
-    return { w: sw, h: sh, guides: guides.filter(Boolean) };
+    // Rectangle de sélection (Maj + glisser dans le vide, ou « Sélection multiple » au doigt).
+    const rs = _surf && _surf.rectSel;
+    if (rs) {
+        ctx.strokeStyle = '#6aa0ff'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+        ctx.strokeRect(rs.x + 0.5, rs.y + 0.5, rs.w, rs.h);
+        ctx.setLineDash([]);
+    }
 }
 
 function canvasPos(e) {
@@ -1085,150 +1051,72 @@ function hit(pos) {
 }
 
 function onDown(e) {
-    const pos = canvasPos(e);
-    const cv = cvs();
+    if (!cur) return;
+    const pos = canvasPos(e), cv = cvs();
+    const S = _surfIn();
+    // Poignée : coin bas-droit du rectangle DESSINÉ de la référence (seule ou d'une sélection).
+    let t = null;
     if (selIdx >= 0 && comps()[selIdx]) {
-        const c = comps()[selIdx];
-        const r = pxRect(c);
-        if (pos.x >= r.x + r.w - 10 && pos.x <= r.x + r.w + 4 &&
-            pos.y >= r.y + r.h - 10 && pos.y <= r.y + r.h + 4) {
-            drag = { mode: 'resize', idx: selIdx, start: pos, ow: c.w || 0, oh: c.h || 0 };
-            cv.setPointerCapture(e.pointerId);
-            return;
-        }
+        const r = pxRect(comps()[selIdx]);
+        if (pos.x >= r.x + r.w - 10 && pos.x <= r.x + r.w + 4 && pos.y >= r.y + r.h - 10 && pos.y <= r.y + r.h + 4)
+            t = { i: selIdx, poignee: true };
     }
-    const i = hit(pos);
-    if (e.shiftKey && i >= 0) {
-        // Maj+clic : toggle dans la multi-sélection ; le dernier cliqué devient la référence.
-        const rest = selIdxs.filter(x => x !== i);
-        if (rest.length === selIdxs.length) rest.push(i);
-        _setSel(rest);
-    } else if (i >= 0) {
-        if (!selIdxs.includes(i)) _setSel([i]);
-        else _setSel(selIdxs.filter(x => x !== i).concat([i]));   // devient la référence
-    } else {
-        _setSel([]);
-    }
-    if (i >= 0) {
-        const grp = selIdxs.includes(i) ? selIdxs : [i];
-        drag = { mode: 'move', idx: i, start: pos,
-                 orig: grp.map(gi => ({ gi, x: comps()[gi].x || 0, y: comps()[gi].y || 0 })) };
-        cv.setPointerCapture(e.pointerId);
-    }
+    if (!t) { const i = hit(pos); if (i >= 0) t = { i }; }
+    const geste = S.appui(pos, t, e);
+    _surfOut();
+    drag = geste ? true : null;
+    if (geste) cv.setPointerCapture(e.pointerId);
     refreshProps(); draw();
 }
 
 function onMove(e) {
     if (!drag) return;
-    const cv = cvs();
-    const pos = canvasPos(e);
-    const r3 = v => Math.round(v * 1000) / 1000;
-    if (drag.mode === 'move') {
-        // Delta CUMULÉ depuis l'origine (avec snap sur le composant saisi), appliqué au GROUPE.
-        const o = drag.orig.find(g => g.gi === drag.idx);
-        const c = comps()[drag.idx];
-        if (!o || !c) return;
-        let nx = (o.x * cv.width) + (pos.x - drag.start.x);
-        let ny = (o.y * cv.height) + (pos.y - drag.start.y);
-        if (snapEnabled) {
-            const s = computeSnap(drag.orig.map(g => g.gi), nx, ny,
-                                  (c.w || 0) * cv.width, (c.h || 0) * cv.height);
-            nx = s.x; ny = s.y; snapGuides = s.guides;
-        } else snapGuides = [];
-        let ddx = nx / cv.width - o.x, ddy = ny / cv.height - o.y;
-        // Clamp du delta : AUCUN composant du groupe ne sort de la cellule.
-        let loX = -Infinity, hiX = Infinity, loY = -Infinity, hiY = Infinity;
-        drag.orig.forEach(g => {
-            const gc = comps()[g.gi];
-            if (!gc) return;
-            loX = Math.max(loX, -g.x); hiX = Math.min(hiX, 1 - (gc.w || 0) - g.x);
-            loY = Math.max(loY, -g.y); hiY = Math.min(hiY, 1 - (gc.h || 0) - g.y);
-        });
-        ddx = Math.max(loX, Math.min(hiX, ddx));
-        ddy = Math.max(loY, Math.min(hiY, ddy));
-        drag.orig.forEach(g => {
-            const gc = comps()[g.gi];
-            if (!gc) return;
-            gc.x = r3(g.x + ddx);
-            gc.y = r3(g.y + ddy);
-        });
-    } else {
-        const c = comps()[drag.idx];
-        if (!c) return;
-        const dx = (pos.x - drag.start.x) / cv.width, dy = (pos.y - drag.start.y) / cv.height;
-        if (c.type === 'video') {
-            // Vidéo verrouillée 16:9 en pixels (h = w × k en normalisé) : la poignée suit le
-            // plus grand delta, exprimé en unités de largeur.
-            const k = _videoK();
-            const wMax = () => Math.min(1 - (c.x || 0), (1 - (c.y || 0)) / k);
-            let s = Math.max(0.02, Math.min(wMax(), drag.ow + Math.max(dx, dy / k)));
-            if (snapEnabled) {
-                const sn = computeSnapResize([drag.idx], (c.x || 0) * cv.width, (c.y || 0) * cv.height,
-                                             s * cv.width, s * k * cv.height);
-                snapGuides = sn.guides.slice(0, 1);
-                if (sn.guides[0]) s = Math.max(0.02, Math.min(sn.w / cv.width, wMax()));
-            } else snapGuides = [];
-            c.w = r3(s); c.h = r3(s * k);
-        } else {
-            let nw = Math.max(0.02, Math.min(1 - (c.x || 0), drag.ow + dx));
-            let nh = Math.max(0.02, Math.min(1 - (c.y || 0), drag.oh + dy));
-            if (snapEnabled) {
-                const sn = computeSnapResize([drag.idx], (c.x || 0) * cv.width, (c.y || 0) * cv.height,
-                                             nw * cv.width, nh * cv.height);
-                nw = Math.max(0.02, Math.min(sn.w / cv.width, 1 - (c.x || 0)));
-                nh = Math.max(0.02, Math.min(sn.h / cv.height, 1 - (c.y || 0)));
-                snapGuides = sn.guides;
-            } else snapGuides = [];
-            c.w = r3(nw);
-            c.h = r3(nh);
-        }
-    }
-    syncGeomFields(); draw();
+    surf().glisse(canvasPos(e), e);
+    if (_surf.rectSel) { _surfOut(); draw(); }   // rectangle : la sélection se voit en direct
 }
 
 function onUp() {
+    if (!drag) return;
     drag = null;
+    surf().relache();
+    _surfOut();                                  // le rectangle a pu changer la sélection
     snapGuides = [];
-    draw();
+    refreshProps(); draw();
 }
 
-// ── Déplacement au clavier (flèches) ──
-// Le drag à la souris passe par le snap magnétique : impossible de poser un composant à quelques
-// pixels d'une arête sans qu'il s'y colle. Les flèches déplacent la sélection PIXEL PAR PIXEL (de
-// la tuile SIMULÉE, cf. applySimCell : cv.width = largeur de tuile), en contournant le snap.
-// Maj = pas de 10 px. Les coordonnées étant stockées en fractions à 3 décimales, le pas ne peut
-// pas descendre sous 0,001 — plancher appliqué (sinon l'arrondi mangerait le déplacement).
-// Toute la MULTI-sélection bouge d'un bloc, et le déplacement est borné pour qu'AUCUN composant
-// ne sorte de la cellule (même règle que le drag).
-const NUDGE_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-
-function nudgeSelection(e) {
-    const dir = NUDGE_KEYS[e.key];
-    if (!dir) return;
-    const cv = cvs();
-    if (!cv) return;
-    e.preventDefault();                       // sinon la page défile
-
-    const r3 = v => Math.round(v * 1000) / 1000;
-    const mult = e.shiftKey ? 10 : 1;
-    let dx = Math.max(1 / cv.width, 0.001) * dir[0] * mult;
-    let dy = Math.max(1 / cv.height, 0.001) * dir[1] * mult;
-
-    const items = selIdxs.map(i => comps()[i]).filter(Boolean);
-    if (!items.length) return;
-    items.forEach(c => {                      // borne collective : la sélection reste dans la cellule
-        dx = Math.max(-(c.x || 0), Math.min(1 - (c.w || 0) - (c.x || 0), dx));
-        dy = Math.max(-(c.y || 0), Math.min(1 - (c.h || 0) - (c.y || 0), dy));
+// ── Clavier : flèches, annuler/rétablir, copier/couper/coller, dupliquer, supprimer, tout
+// sélectionner, Échap — les raccourcis de la base commune (surface.clavier). Les flèches déplacent
+// la sélection pixel par pixel de la tuile SIMULÉE (Maj = 10 px), sans aimant, bornée en groupe ;
+// le pas ne descend pas sous 0,001 (précision des fractions stockées).
+function _pipClavier() {
+    const S = surf();
+    if (!S || S._pipLie) return;
+    S._pipLie = true;
+    S.clavier({
+        // Actif ⇒ la surface reprend la sélection COURANTE (elle a pu changer par le panneau).
+        actif: () => { const ok = !!cur && !!cvs() && cvs().offsetParent !== null; if (ok) _surfIn(); return ok; },
+        kind: 'pip-components', profondeur: 100,
+        etat: () => JSON.parse(JSON.stringify((cur && cur.config && cur.config.components) || [])),
+        restaurer: st => { if (cur) { cur.config.components = st; _setSel([]); refreshAll(); } },
+        // La vidéo ne se copie pas : un modèle n'en a qu'une.
+        fragment: () => { _surfIn(); const f = selIdxs.map(i => comps()[i]).filter(c => c && c.type !== 'video');
+                          return f.length ? JSON.parse(JSON.stringify(f)) : null; },
+        poser: (frag, d) => {
+            const n0 = comps().length;
+            frag.forEach(c => comps().push(Object.assign({}, c, {
+                id: (c.type || 'c') + Date.now().toString(36) + Math.floor(Math.random() * 1000),
+                x: Math.round(Math.min(1 - (c.w || 0), (c.x || 0) + d) * 1000) / 1000,
+                y: Math.round(Math.min(1 - (c.h || 0), (c.y || 0) + d) * 1000) / 1000 })));
+            const nouv = []; for (let i = n0; i < comps().length; i++) nouv.push(i);
+            _setSel(nouv); _surfIn(); refreshAll();
+            return nouv.length > 0;
+        },
+        decalage: 0.03,
+        supprimer: () => { if (!selIdxs.length) return false; removeComp(); return true; },
+        tout: () => { _setSel(comps().map((c, i) => i)); _surfIn(); refreshProps(); },
+        apres: () => { _surfOut(); refreshProps(); draw(); },
+        dire: m => { if (m === 'copie') flash(_t('editor.copied', 'Copié.'), 'ok'); },
     });
-    if (!dx && !dy) return;                   // déjà contre le bord
-
-    items.forEach(c => {
-        c.x = r3((c.x || 0) + dx);
-        c.y = r3((c.y || 0) + dy);
-    });
-    snapGuides = [];
-    syncGeomFields();
-    draw();
 }
 
 // ── Steppers numériques −/+ (repris du composer : mwEnhanceSteppers) ──
@@ -1392,6 +1280,9 @@ function refreshProps() {
             // l'orchestrateur (un conteneur ne voit que son propre cgroup).
             grp(_t('settings.pip.vars_grp_node', 'Nœud'), cat.noeud);
             grp(_t('settings.pip.vars_grp_rdma', 'RDMA'), cat.rdma);
+            // Un groupe PAR CONTENEUR, rangés par type (static/js/var_menu.js).
+            if (window.BobiVarMenu) BobiVarMenu.appendGroups(sel, _t('settings.pip.vars_grp_states', 'États des conteneurs'), cat.states);
+            else grp(_t('settings.pip.vars_grp_states', 'États des conteneurs'), cat.states);
             grp(_t('settings.pip.vars_grp_orch', 'Orchestrateur'), cat.orchestrateur);
         });
         sel.onchange = () => {
@@ -1855,6 +1746,9 @@ function flash(msg, kind) {
 }
 
 function refreshAll() {
+    // Autre modèle à l'écran : l'historique repart de lui (Ctrl+Z ne ramène jamais les
+    // composants d'un AUTRE modèle). Annuler ne change pas `cur` : il ne remet rien à zéro.
+    if (_surf && _surf._pour !== cur) { _surf._pour = cur; _surf.historiqueZero(); }
     const ed = $('pip_edit_zone');
     const empty = $('pip_editor_empty');
     if (ed) ed.hidden = !cur;
@@ -1885,23 +1779,8 @@ function refreshAll() {
     renderLib();
 }
 
-// SVG des outils — mêmes pictos que le composer multiview (control.html).
-const _SVG = {
-    align_left: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="1.6" height="14" rx="0.8"/><rect x="4" y="3" width="9.5" height="3.6" rx="1"/><rect x="4" y="9.4" width="6" height="3.6" rx="1"/></svg>',
-    align_hcenter: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="2" y="3" width="12" height="3.6" rx="1"/><rect x="4" y="9.4" width="8" height="3.6" rx="1"/><rect x="7.2" y="1" width="1.6" height="14" rx="0.8"/></svg>',
-    align_right: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="13.4" y="1" width="1.6" height="14" rx="0.8"/><rect x="2.5" y="3" width="9.5" height="3.6" rx="1"/><rect x="6" y="9.4" width="6" height="3.6" rx="1"/></svg>',
-    align_top: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="14" height="1.6" rx="0.8"/><rect x="3" y="4" width="3.6" height="9.5" rx="1"/><rect x="9.4" y="4" width="3.6" height="6" rx="1"/></svg>',
-    align_vcenter: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="2" width="3.6" height="12" rx="1"/><rect x="9.4" y="4" width="3.6" height="8" rx="1"/><rect x="1" y="7.2" width="14" height="1.6" rx="0.8"/></svg>',
-    align_bottom: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="13.4" width="14" height="1.6" rx="0.8"/><rect x="3" y="2.5" width="3.6" height="9.5" rx="1"/><rect x="9.4" y="6" width="3.6" height="6" rx="1"/></svg>',
-    size_w: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3" y="2" width="10" height="4.5" rx="1"/><rect x="3" y="9.5" width="10" height="4.5" rx="1" fill-opacity="0.55"/></svg>',
-    size_h: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="2" y="3" width="4.5" height="10" rx="1"/><rect x="9.5" y="3" width="4.5" height="10" rx="1" fill-opacity="0.55"/></svg>',
-    size_both: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1.5" y="1.5" width="8" height="8" rx="1" fill-opacity="0.55"/><rect x="6.5" y="6.5" width="8" height="8" rx="1"/></svg>',
-    distribute_h: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="1.6" height="14" rx="0.8"/><rect x="13.4" y="1" width="1.6" height="14" rx="0.8"/><rect x="6" y="4" width="4" height="8" rx="1"/></svg>',
-    distribute_v: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="14" height="1.6" rx="0.8"/><rect x="1" y="13.4" width="14" height="1.6" rx="0.8"/><rect x="4" y="6" width="8" height="4" rx="1"/></svg>',
-    // Copier/coller réglages — icônes IDENTIQUES au composer multiview (control.html ~100-106).
-    copy_settings: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="5.5" y="1.5" width="9" height="9" rx="1.5" fill-opacity="0.45"/><rect x="1.5" y="5.5" width="9" height="9" rx="1.5"/></svg>',
-    paste_settings: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="12" rx="1.5" fill-opacity="0.45"/><rect x="5.5" y="1" width="5" height="3" rx="1"/><rect x="5" y="6.5" width="6" height="6" rx="1"/></svg>',
-};
+// Pictos des outils : le CATALOGUE partagé (MXLControls.ICONS) — plus de copie locale.
+const _SVG = (window.MXLControls && window.MXLControls.ICONS) || {};
 
 function _toolGroup(label, defs) {
     const grp = document.createElement('div');
@@ -2142,6 +2021,14 @@ function initUI() {
         [_SVG.distribute_h, _t('plugin.multiview.distribute_h', 'Distribuer horizontalement'), () => distributeComps('h')],
         [_SVG.distribute_v, _t('plugin.multiview.distribute_v', 'Distribuer verticalement'), () => distributeComps('v')],
     ]));
+    tb.appendChild(_toolGroup(_t('editor.group_space', 'Espacer'), [
+        [_SVG.space_h, _t('editor.space_h', 'Répartir les espaces horizontalement (3 minimum)'), () => spaceComps('h')],
+        [_SVG.space_v, _t('editor.space_v', 'Répartir les espaces verticalement (3 minimum)'), () => spaceComps('v')],
+    ]));
+    tb.appendChild(_toolGroup(_t('editor.group_fill', 'Remplir'), [
+        [_SVG.fill_h, _t('editor.fill_h', 'Remplir la largeur (tuiler la sélection)'), () => fillComps('h')],
+        [_SVG.fill_v, _t('editor.fill_v', 'Remplir la hauteur (tuiler la sélection)'), () => fillComps('v')],
+    ]));
     // Copier / coller les réglages — mêmes icônes que le composer multiview (control.html ~100-106).
     const clipGrp = _toolGroup(_t('settings.pip.group_settings', 'Réglages'), [
         [_SVG.copy_settings, _t('settings.pip.copy_settings_title', 'Copier les réglages du composant (hors position)'), copyCompSettings],
@@ -2154,6 +2041,18 @@ function initUI() {
     pasteBtn.id = 'pip_paste_settings';
     pasteBtn.disabled = true;   // rien dans le presse-papier au départ
     tb.appendChild(clipGrp);
+    // Édition : les actions COMMUNES (annuler, couper, copier, coller…) — les mêmes que le clavier,
+    // et le seul chemin au doigt (iPad).
+    tb.appendChild(_toolGroup(_t('editor.group_edit', 'Édition'), window.BobiEditor.actionsEdition().map(a =>
+        [_SVG[a.ico], a.label, () => { _pipClavier(); _surfIn(); surf().agir(a.action); refreshProps(); draw(); }])));
+    // Verrous AU DOIGT (communs) : « Sélection multiple » = Maj, « Depuis le centre » = Alt.
+    {
+        const v = document.createElement('div');
+        v.innerHTML = window.BobiEditor.verrousHtml(surf());
+        const el = v.firstChild;
+        tb.appendChild(el);
+        window.BobiEditor.lierVerrous(el, surf());
+    }
     const snapLbl = document.createElement('label');
     snapLbl.className = 'mw-snap';
     snapLbl.innerHTML = '<input type="checkbox" class="ios-toggle" id="pip_snap" checked> <span>' +
@@ -2200,13 +2099,13 @@ function initUI() {
     cv.addEventListener('pointermove', onMove);
     cv.addEventListener('pointerup', onUp);
     cv.addEventListener('pointercancel', onUp);
-    document.addEventListener('keydown', e => {
-        if (!cur || !selIdxs.length) return;
-        if (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
-        if (e.key === 'Delete') { removeComp(); return; }
-        nudgeSelection(e);
+    _pipClavier();
+    // Lien profond « /settings#pip/<id> » : le bouton « Éditer » du multiview ouvre ICI le modèle
+    // choisi sur le mur (2026-10-29), sans avoir à le rechercher dans la bibliothèque.
+    loadLib().then(() => {
+        const m = /^#pip\/(.+)$/.exec(location.hash || '');
+        if (m) libAction(decodeURIComponent(m[1]), 'open');
     });
-    loadLib();
     // Catalogue de polices + @font-face de la bibliothèque : dès que c'est chargé, on redessine
     // (l'aperçu doit rendre la police du modèle, pas system-ui) et on re-remplit le panneau.
     if (window.BobiFonts) window.BobiFonts.load().then(() => { refreshProps(); draw(); });

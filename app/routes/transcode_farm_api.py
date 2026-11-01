@@ -98,43 +98,135 @@ def farm_job(job_id):
 @bp.route("/api/transcode-farm/jobs", methods=["POST"])
 @require_perm("media.manage")
 def farm_submit():
+    """Un job (`source`), ou un job PAR source (`sources` : sélection multiple, contenu d'un bin), mêmes
+    réglages pour tous. En lot, une source refusée n'empêche pas les autres : `ids` + `errors`
+    (index dans `sources`, message) — la fenêtre dit lesquelles n'ont pas été lancées."""
     farm.ensure_tables()
     d = request.json or {}
-    src = d.get("source") or {}
+    refused = _bin_refusal(d.get("bin_id"))
+    if refused:
+        return jsonify({"error": refused[0]}), refused[1]
+    if isinstance(d.get("sources"), list):
+        if not d["sources"]:
+            return jsonify({"error": "aucune source"}), 400
+        if len(d["sources"]) > MAX_BATCH:
+            return jsonify({"error": "%d sources au plus par envoi" % MAX_BATCH}), 400
+        ids, errors = [], []
+        for i, src in enumerate(d["sources"]):
+            jid, err = _submit_one(d, src or {})
+            if err:
+                errors.append({"index": i, "error": err[0], "reason": err[1]})
+            else:
+                ids.append(jid)
+        return jsonify({"ok": bool(ids), "ids": ids, "errors": errors}), (200 if ids else 400)
+    jid, err = _submit_one(d, d.get("source") or {})
+    if err:
+        body = {"error": err[0]}
+        if err[1]:
+            body.update(ok=False, reason=err[1])
+        return jsonify(body), err[2]
+    return jsonify({"ok": True, "id": jid})
+
+
+MAX_BATCH = 500
+
+
+def _bin_refusal(bin_id):
+    """Bin de destination (fenêtre « Transcoder… ») : visible de l'appelant, modifiable par lui (un bin
+    partagé en « Modifier »), et MANUEL. → None, ou (message, code HTTP)."""
+    if bin_id in (None, "", 0):
+        return None
+    from .. import media_registry as mr, media_sharing as ms
+    try:
+        bid = int(bin_id)
+    except (TypeError, ValueError):
+        return "bin invalide", 400
+    scope = ms.user_scope()
+    if scope is not None and (not mr.bin_visible(bid, scope) or not ms.bin_allows(scope, bid, "edit")):
+        return "bin inconnu ou en lecture seule", 403
+    try:
+        farm.check_bin(bid)
+    except ValueError as e:
+        return str(e), 400
+    return None
+
+
+def _submit_one(d, src):
+    """→ (id, None) ou (None, (message, raison, code HTTP))."""
     if src.get("kind") == "asset":
         return _submit_asset(d, src)
     try:
         pid = _int_or_none(d.get("project_id"))
     except (TypeError, ValueError):
-        return jsonify({"error": "projet invalide"}), 400
-    err = _check_project(pid)
-    if err:
-        return err
+        return None, ("projet invalide", None, 400)
+    if _check_project(pid):
+        return None, ("projet hors de vos accès", None, 403)
     try:
-        jid = farm.submit(pid, d.get("source") or {}, (d.get("type") or "").strip(), d.get("params") or {},
-                          d.get("priority"), d.get("output_dir") or "", current_user())
+        return farm.submit(pid, src, (d.get("type") or "").strip(), d.get("params") or {},
+                           d.get("priority"), d.get("output_dir") or "", current_user(), bin_id=d.get("bin_id") or None), None
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    return jsonify({"ok": True, "id": jid})
+        return None, (str(e), None, 400)
+
+
+def _asset_refusal(aid, need="edit"):
+    """Droit d'agir sur un média de la base → None, ou (message, raison, code HTTP)."""
+    from .. import media_sharing as ms
+    scope = ms.user_scope()
+    if scope is not None and not ms.asset_allows(scope, aid, "use"):
+        return "média inconnu", None, 404
+    if need == "edit" and scope is not None and not ms.asset_allows(scope, aid, "edit"):
+        return "forbidden", "shared_read_only", 403
+    return None
 
 
 def _submit_asset(d, src):
     """Job SUR UN MÉDIA de la base. Portée : media_sharing.user_scope() (projets ET partages). Le résultat est
     rangé par le scan comme une VERSION du média (cf. docs/reference/MEDIAS_VERSIONS.md) : toucher la fiche,
     donc « Modifier » pour un média seulement partagé ; « Consulter et utiliser » suffit pour lire."""
-    from .. import media_sharing as ms
     aid = str(src.get("asset_id") or "")
-    scope = ms.user_scope()
-    if scope is not None and not ms.asset_allows(scope, aid, "use"):
-        return jsonify({"error": "média inconnu"}), 404
-    if scope is not None and not ms.asset_allows(scope, aid, "edit"):
-        return jsonify({"ok": False, "error": "forbidden", "reason": "shared_read_only"}), 403
+    refused = _asset_refusal(aid)
+    if refused:
+        return None, refused
     try:
-        jid = farm.submit_asset(aid, (d.get("type") or "").strip(), d.get("params") or {}, d.get("priority"),
-                                d.get("output_dir") or "", current_user(), version=src.get("version"))
+        return farm.submit_asset(aid, (d.get("type") or "").strip(), d.get("params") or {}, d.get("priority"),
+                                 d.get("output_dir") or "", current_user(), version=src.get("version"),
+                                 bin_id=d.get("bin_id") or None), None
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    return jsonify({"ok": True, "id": jid})
+        return None, (str(e), None, 400)
+
+
+@bp.route("/api/transcode-farm/preview", methods=["POST"])
+@require_perm("media.manage")
+def farm_preview():
+    """Nom qu'aura chaque sortie, AVANT de lancer (fenêtre « Transcoder… ») : `sources` comme pour le lot,
+    `version` et `ext` du préréglage choisi (publiés par /presets), `output_dir`. Une entrée par source, dans
+    l'ordre ; une source illisible porte `error` au lieu du nom."""
+    d = request.json or {}
+    srcs = d.get("sources") or []
+    if not isinstance(srcs, list) or len(srcs) > MAX_BATCH:
+        return jsonify({"error": "sources invalides"}), 400
+    try:
+        pid = _int_or_none(d.get("project_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "projet invalide"}), 400
+    nodes = {n["id"]: n.get("name") for n in db_get_nodes() or []}
+    out = []
+    for src in srcs:
+        src = src or {}
+        try:
+            if src.get("kind") == "asset":
+                refused = _asset_refusal(str(src.get("asset_id") or ""), need="use")
+                if refused:
+                    raise ValueError(refused[0])
+            elif _check_project(pid):
+                raise ValueError("projet hors de vos accès")
+            r = farm.preview_output(src, str(d.get("version") or ""), d.get("ext") or "", d.get("output_dir") or "",
+                                    mode="asset" if d.get("as") == "asset" else "version")
+            r["node"] = nodes.get(r.get("node_id"))
+            out.append(r)
+        except ValueError as e:
+            out.append({"error": str(e)})
+    return jsonify({"items": out, "code_placeholder": farm.CODE_PLACEHOLDER})
 
 
 def _action(job_id, fn, *args):
@@ -269,18 +361,33 @@ def _list_local_dir(full):
 @bp.route("/api/transcode-farm/browse", methods=["GET"])
 @require_perm("media.manage")
 def farm_browse():
+    """Contenu d'un dossier (source à choisir, ou destination : `dirs=1` ne rend que les dossiers).
+    `asset_id` : le volume du nœud qui porte ce média de la base (destination d'un job sur un média,
+    hors projet) — ouvert à qui peut le modifier, comme la soumission elle-même."""
     a = request.args
     try:
         pid = _int_or_none(a.get("project_id"))
     except ValueError:
         return jsonify({"error": "projet invalide"}), 400
-    err = _check_project(pid)
-    if err:
-        return err
+    node_override = None
+    if a.get("asset_id"):
+        aid = str(a.get("asset_id"))
+        refused = _asset_refusal(aid)
+        if refused:
+            return jsonify({"error": refused[0]}), refused[2]
+        try:
+            node_override = farm.asset_source(aid)[0]
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        pid = None
+    else:
+        err = _check_project(pid)
+        if err:
+            return err
     rel = (a.get("path") or "").strip().strip("/")
     if any(p.startswith(".") for p in rel.split("/") if p):
         return jsonify({"error": "chemin invalide"}), 400
-    if a.get("kind") == "share":
+    if a.get("kind") == "share" and node_override is None:
         from services import storage
         try:
             _, full = storage.folder_path(current_user(), int(a.get("grant_id") or 0), rel, pid)
@@ -295,7 +402,7 @@ def farm_browse():
         from .. import node_driver
         from ..docker_compute import project_media_dir
         try:
-            node = db_get_node(int(a.get("node_id") or 0))
+            node = db_get_node(int(node_override if node_override is not None else a.get("node_id") or 0))
         except ValueError:
             node = None
         if not node:
@@ -311,5 +418,7 @@ def farm_browse():
         if r.get("error"):
             return jsonify({"error": r["error"]}), 400
         items = r["items"]
+    if a.get("dirs") in ("1", "true"):
+        items = [x for x in items if x["type"] == "dir"]
     items.sort(key=lambda x: (0 if x["type"] == "dir" else 1, x["name"].lower()))
     return jsonify({"path": rel, "items": items})

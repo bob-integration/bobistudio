@@ -86,15 +86,34 @@ def _create_monitor_container(hostname, deploy_type="streamer", prefer_node=None
     node_id = pick_compute_node(prefer_id=prefer_node, deploy_type=deploy_type)
     if not node_id:
         raise RuntimeError("Aucun nœud compute disponible (Réglages → Nœuds).")
-    return creer_container_compute(node_id, deploy_type, hostname=hostname)
+    vmid = creer_container_compute(node_id, deploy_type, hostname=hostname)
+    # POIDS CPU « Arrière-plan » (cf. app/cpu_weight.py) : un encodeur de MONITORING ne doit pas
+    # disputer le CPU à un flux d'antenne quand le nœud sature. Posé ici et pas par un défaut de
+    # type : le moniteur est un `streamer`, comme un flux de diffusion — son type ne dit pas son
+    # rôle. L'exploitant peut le relever depuis la fenêtre des cœurs, et son choix est gardé.
+    if vmid:
+        from . import cpu_weight
+        cpu_weight.poser_defaut(vmid, "background")
+    return vmid
 
 
 def gateway_ready():
     return bool(st.get("webrtc_enabled") and st.get("webrtc_gateway_ip"))
 
 
+def _ip_navigateur():
+    """IP de la passerelle WebRTC TELLE QUE LA VOIT UN NAVIGATEUR.
+
+    En « réseau interne », l'IP du conteneur est privée au nœud : une URL bâtie avec elle
+    donne un panneau NOIR, sans erreur (cf. `addressing.adresse_navigateur`).
+    """
+    from .addressing import adresse_navigateur
+    return adresse_navigateur(st.get("webrtc_gateway_ip"),
+                              vmid=st.get("webrtc_gateway_vmid") or None)
+
+
 def _embed_url(uid):
-    ip = st.get("webrtc_gateway_ip")
+    ip = _ip_navigateur()
     if not ip:
         return None
     return f"http://{ip}:{int(st.get('webrtc_http_port') or 8889)}/{_path(uid)}"
@@ -417,6 +436,21 @@ def touch(uid):
     _last_used[uid] = time.time()
 
 
+def _set_wanted(vmid, on):
+    """Pose l'INTENTION d'exploitation (`containers.script_enabled`) avant tout /stop ou /start.
+
+    Sans elle, la surveillance (metrics : auto-relance d'un script arrêté) relançait dans les
+    secondes suivantes le script que le reaper venait de couper : l'encodeur tournait pour
+    toujours, sans spectateur. Mesuré le 2026-10-24 sur 1207 : coupé à 11:09:35, « Script repris »
+    à 11:09:48 — et il entretenait seul un lien RDMA vers r620-2. Même contrat que le
+    `NcWorker.enabled` NMOS : l'intention d'abord, l'appel à l'agent ensuite."""
+    try:
+        from .database import db_set_script_enabled
+        db_set_script_enabled(vmid, on)
+    except Exception as e:
+        log.warning("monitor %s: could not record script intent (%s)", vmid, e)
+
+
 def _script_running(ip, vmid=None):
     if not ip:
         return False
@@ -502,6 +536,7 @@ def create_iter(uid):
                else f"Réutilisation du container monitor existant #{target}.")
 
     yield "Déploiement de l'encodeur monitor…"
+    _set_wanted(target, True)      # un conteneur réutilisé a pu être coupé par le reaper
     ok = deployer_script(target, "streamer", _params(uid))
     if not ok:
         yield "❌ Déploiement de l'encodeur échoué."
@@ -609,6 +644,7 @@ def set_source(uid, shm, label=None, audio_shm=None, *, _touch=True):
                     "hot": fmt_video is not None, "out_fps": out_fps}
     if _touch:
         touch(uid)    # le chemin auto-follow ne doit PAS rafraîchir _last_used (sinon reaper inopérant)
+    _set_wanted(c["vmid"], True)   # avant le redéploiement : deployer_script respecte l'intention
 
     if hot_ok:
         try:
@@ -641,6 +677,7 @@ def activate(uid):
         from .addressing import get_container_ip
         ip = get_container_ip(c["vmid"])
     touch(uid)
+    _set_wanted(c["vmid"], True)
     if ip and not _script_running(ip, c.get("vmid")):
         try:
             deploy.agent_session().post(deploy.agent_url(ip, "/start"), timeout=5,
@@ -673,6 +710,7 @@ def _reap_once():
             from .addressing import get_container_ip
             ip = get_container_ip(c["vmid"])
         if c and ip and _script_running(ip, c.get("vmid")):
+            _set_wanted(c["vmid"], False)   # sinon la surveillance le relance aussitôt
             try:
                 deploy.agent_session().post(deploy.agent_url(ip, "/stop"), timeout=5,
                                             headers=deploy.agent_headers(c.get("vmid")))
@@ -731,7 +769,27 @@ def _follow_loop():
                 log.warning(f"monitor follow {uid}: {e}")
 
 
+def _seed_idle_clock(now=None):
+    """`_last_used` vit en mémoire : après un redémarrage de l'orchestrateur il est VIDE, et le
+    reaper — qui ne parcourt que lui — ne coupait plus jamais les encodeurs déjà lancés. On arme
+    donc l'horloge de chaque moniteur utilisateur existant à « maintenant » : un spectateur réel
+    la rafraîchit par son heartbeat, les autres sont coupés après IDLE_TIMEOUT. Les monitors
+    dédiés (sans `monitor_user_id`) ne sont pas concernés : ils ne sont jamais reapés."""
+    now = time.time() if now is None else now
+    for c in db_get_containers():
+        uid = c.get("monitor_user_id")
+        if uid is None:
+            m = _re.match(r"monitor-u(\d+)$", c.get("hostname") or "")
+            uid = int(m.group(1)) if m else None
+        if uid is not None:
+            _last_used.setdefault(int(uid), now)
+
+
 def start_reaper():
+    try:
+        _seed_idle_clock()
+    except Exception as e:
+        log.warning("monitor: idle clock not seeded at startup (%s)", e)
     threading.Thread(target=_reaper_loop, daemon=True).start()
     threading.Thread(target=_follow_loop, daemon=True).start()
 
@@ -774,7 +832,7 @@ def dedicated_webrtc_path(player_hostname, suffix=None):
 
 
 def dedicated_embed_url(player_hostname, suffix=None):
-    ip = st.get("webrtc_gateway_ip")
+    ip = _ip_navigateur()
     if not ip:
         return None
     port = int(st.get("webrtc_http_port") or 8889)

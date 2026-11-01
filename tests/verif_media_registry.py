@@ -286,6 +286,20 @@ def fake_stream(sh, sa, dh, da, timeout):
 
 FP_OK = True
 mr._ssh_stream = fake_stream
+LOCAL = []
+
+
+def fake_local(node, s_rel, d_rel):
+    """Copie SUR PLACE simulée (lien dur / cp) : même volume, mêmes défauts que le transport."""
+    LOCAL.append((node["id"], s_rel, d_rel))
+    vol = VOLUMES[node["id"]]
+    f = dict(vol[s_rel])
+    if not FP_OK:
+        f["fp"] = "fpAbime"
+    vol[d_rel] = f
+
+
+mr._local_copy = fake_local
 mr._node = lambda nid: {"id": int(nid), "name": "n%s" % nid, "media_image": "img", "host": "h%s" % nid, "media_mount": "/vol"}
 import app.node_driver as _nd                                           # noqa: E402
 _nd.host_exec = lambda node, cmd, input_data=None, timeout=0: (1 if cmd.startswith("test -e") else 0, "", "")
@@ -306,10 +320,10 @@ check(mr.copy_asset("S0", 2) == S0C and len([x for x in _copies if not x[0].ends
 FP_OK = False
 VOLUMES[1]["s0/autre.mxf"] = {"size": 5, "mtime": 5, "fp": "fpS0", "id": "S0"}
 try:
-    mr.copy_asset("S0", 2, "s0/abime.mxf")
+    mr.copy_asset("S0", 2, "s1/abime.mxf")
     check(False, "copie abîmée détectée")
 except RuntimeError as e:
-    check("empreinte" in str(e), "copie abîmée détectée (empreinte)")
+    check("empreinte" in str(e), "copie abîmée détectée (empreinte) [%s]" % e)
 FP_OK = True
 # Copie arrivée mais SANS empreinte (prise pour un fichier en cours d'écriture) : ce n'est pas un
 # succès — la vérification n'a pas eu lieu (cas réel du premier essai, date « maintenant »).
@@ -320,16 +334,44 @@ def stream_sans_fp(sh, sa, dh, da, timeout):
         VOLUMES[2][da.split("/vol/", 1)[1].replace(".partial", "")].update(fp=None, growing=True)
     return ok
 mr._ssh_stream = stream_sans_fp
+_orig_local = mr._local_copy
+def local_sans_fp(node, s_rel, d_rel):
+    _orig_local(node, s_rel, d_rel)
+    VOLUMES[node["id"]][d_rel].update(fp=None, growing=True)
+mr._local_copy = local_sans_fp
 try:
-    mr.copy_asset("S0", 2, "s0/sans_fp.mxf")
+    mr.copy_asset("S0", 2, "s2/sans_fp.mxf")
     check(False, "copie non vérifiable refusée")
 except RuntimeError as e:
-    check("vérification impossible" in str(e), "copie non vérifiable refusée (pas d'empreinte)")
+    check("vérification impossible" in str(e), "copie non vérifiable refusée (pas d'empreinte) [%s]" % e)
 mr._ssh_stream = _orig_stream
+mr._local_copy = _orig_local
 mr.container_view = lambda vmid: (2, "proj/")
 got = mr.fetch_for_container("S0", 99)
 check(got == S0C and any(x["node_id"] == 2 and x["path"] == "proj/" + S0C for x in mr.get_asset("S0")["copies"]),
       "rapatriement : copié DANS le dossier du projet, chemin rendu tel que le conteneur le voit")
+# Z8, 2026-10-28 : le média est sur le nœud du player mais HORS du dossier de son projet, et aucun
+# autre nœud n'en a de copie (cluster à un nœud). « Charger » échouait (« aucune copie complète sur un
+# autre nœud ») : la copie du nœud sert de source, sur place, sans transport.
+VOLUMES[3] = {"j1/intro.mov": {"size": 9, "mtime": 3, "fp": "fpS0", "id": "S0"}}
+_dbn = _database.db_get_nodes
+_database.db_get_nodes = lambda: [{"id": i, "name": "n%s" % i, "media_image": "img"} for i in (1, 2, 3)]
+mr.scan_node(3)
+c.execute("UPDATE media_files SET state='missing' WHERE asset_id='S0' AND node_id!=3")
+c.commit()
+n_stream, LOCAL[:] = len(_copies), []
+mr.container_view = lambda vmid: (3, "atelier/")
+try:
+    got = mr.fetch_for_container("S0", 98)
+except RuntimeError as e:
+    got = "ERREUR %s" % e
+check(got == _mn.coded_name("j1/intro.mov", "S0") and LOCAL and LOCAL[0][:2] == (3, "j1/intro.mov")
+      and LOCAL[0][2].startswith("atelier/") and len(_copies) == n_stream,
+      "même nœud, hors du dossier du projet : copié SUR PLACE dans le dossier, sans autre nœud (%s)" % got)
+check(mr.fetch_for_container("S0", 98) == got and len(LOCAL) == 1, "… puis réutilisé, rien de recopié")
+c.execute("UPDATE media_files SET state='present' WHERE asset_id='S0' AND node_id!=3 AND state='missing'")
+c.commit()
+_database.db_get_nodes = _dbn
 g = _database.get_db()
 g.execute("CREATE TABLE media_bins (id INTEGER PRIMARY KEY, name TEXT, parent_id INTEGER, created_at TEXT)")
 g.execute("CREATE TABLE media_bin_items (bin_id INTEGER, node_id INTEGER, path TEXT, kind TEXT, added_at TEXT)")

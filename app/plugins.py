@@ -738,12 +738,155 @@ def read_version_meta(type_, version=None):
     return out
 
 
+# ── Date d'arrivée d'une version (N7.6, 2026-10-31) ─────────────────────────────────────────
+# « Importée : — » partout : la date n'était posée que par le Catalogue et par l'import manuel
+# (`stamp_imported_at`). Ici les plugins arrivent par git, donc aucune version n'était datée.
+#
+# ⚠ ELLE N'EST PAS RANGÉE DANS LE meta.json DU PLUGIN, contrairement au premier jet. Ce fichier
+# est SUIVI PAR GIT dans chaque sous-module : le dater laisserait les 25 plugins « modifiés » en
+# permanence, et la date d'installation d'une machine finirait poussée pour tout le monde. C'est
+# un fait sur CETTE installation, pas sur le plugin — donc il vit côté orchestrateur (arbitrage
+# de Cyril, 31/10).
+_IMPORTED_SCOPE = "_versions"
+
+
+def _imported_at_from_git(type_, version):
+    """Commit date of the commit that set this version in the plugin's history — the honest
+    arrival date for everything that comes in by `git pull`, which is the usual path here.
+
+    Preferred over the reflog, which the first draft named: a reflog expires after 90 days and
+    does not exist at all in a `get.sh` install, so it would answer « — » exactly where the
+    question is asked."""
+    m = REGISTRY.get(type_)
+    if not m:
+        return ""
+    sha = _commit_for_version(m["_dir"], version)
+    if not sha:
+        return ""
+    out = _git(m["_dir"], "show", "-s", "--format=%cI", sha)
+    return (out or "").strip()[:19]        # 2026-10-30T14:03:11 — sans le décalage horaire
+
+
+def imported_at(type_, version, remember=True):
+    """When this version ARRIVED in this installation. Resolved once, then remembered, so the
+    answer never moves again. First hit wins:
+
+      1. the `imported_at` already in that version's meta.json — a package installed by the
+         Catalogue or imported by hand is dated AT ARRIVAL, and that date is the truth;
+      2. what this orchestrator has already recorded;
+      3. the commit date of the version in the plugin's git history (see above);
+      4. failing all that, now — a version is never left undated twice.
+
+    `remember=False` reads without writing: a listing must be able to answer on a read-only
+    database (the test suite opens the production one that way) without failing."""
+    if not version:
+        return ""
+    meta = _meta_path(type_, version)
+    if meta and os.path.isfile(meta):
+        try:
+            with open(meta, encoding="utf-8") as f:
+                d = json.load(f) or {}
+            if isinstance(d, dict) and (d.get("imported_at") or "").strip():
+                return d["imported_at"].strip()
+        except (ValueError, OSError):
+            pass
+    try:
+        from .database import db_plugin_store_get, db_plugin_store_set
+        su = db_plugin_store_get(type_, version, scope=_IMPORTED_SCOPE) or {}
+        if isinstance(su, dict) and (su.get("imported_at") or "").strip():
+            return su["imported_at"].strip()
+    except Exception as e:                                                   # noqa: BLE001
+        log.debug("plugins: imported_at store unreadable for %s %s: %s", type_, version, e)
+        return ""
+    quand = _imported_at_from_git(type_, version)
+    if not quand:
+        from datetime import datetime as _dt
+        quand = _dt.now().isoformat(timespec="seconds")
+    if remember:
+        try:
+            db_plugin_store_set(type_, version, {"imported_at": quand}, scope=_IMPORTED_SCOPE)
+        except Exception as e:                                               # noqa: BLE001
+            log.warning("plugins: could not record imported_at for %s %s: %s",
+                        type_, version, e)
+    return quand
+
+
+def stamp_missing_imported_at(type_=None):
+    """Date every version that has no date yet — whatever path it arrived by: Catalogue, manual
+    import, `git pull`, installer, or a copy of the tree onto another machine. Idempotent: a
+    version already dated is never re-dated. Returns how many dates were posed.
+
+    Deliberately NOT called from `_scan()`, although the decision says « at scan »: the registry
+    is scanned at IMPORT time, before `init_db()`, and touching the database there would create
+    the production file from a bare `import main` (measured in CI, 2026-10). It is called by the
+    readers instead — which is the same thing seen from the page, since they rescan first."""
+    n = 0
+    for t in ([type_] if type_ else list(REGISTRY)):
+        for v in versions(t):
+            try:
+                from .database import db_plugin_store_get
+                if (db_plugin_store_get(t, v, scope=_IMPORTED_SCOPE) or {}).get("imported_at"):
+                    continue
+            except Exception:                                                # noqa: BLE001
+                return n
+            if imported_at(t, v):
+                n += 1
+    return n
+
+
+def version_core_min(type_, version):
+    """Core version this plugin version requires (`requires.core_min`), or "" when it requires
+    nothing — and None when we cannot KNOW, which is not the same thing.
+
+    An archive is often script-only (`versions/<v>/script.py` with no manifest beside it): we
+    then have nothing to read, and claiming « compatible » would be inventing an answer. The
+    three cases stay three (cf. `version_compatible`)."""
+    m = REGISTRY.get(type_)
+    if not m:
+        return None
+    if version == m.get("version") or not version:
+        return _v.core_min_de(m)
+    mp = os.path.join(m["_dir"], "versions", version, "plugin.json")
+    if not os.path.isfile(mp):
+        return None
+    try:
+        with open(mp, encoding="utf-8") as f:
+            return _v.core_min_de(json.load(f) or {})
+    except (ValueError, OSError):
+        return None
+
+
+def version_compatible(type_, version):
+    """(core_min, verdict) where verdict is True (runs here), False (needs a newer core) or
+    None (unknown — no manifest for that archive).
+
+    ⚠ TROIS ÉTATS, PAS DEUX. `version.au_moins` renvoie True quand la comparaison est
+    impossible, et c'est volontaire : ne pas savoir comparer n'autorise pas à bloquer un
+    déploiement. Mais AFFICHER « compatible » dans ce cas ferait passer « on ne sait pas » pour
+    « vérifié » — exactement le défaut qu'on vient de corriger sur l'existence d'un réseau."""
+    cmin = version_core_min(type_, version)
+    if cmin is None:
+        return None, None
+    if not cmin:
+        return "", True            # n'exige rien : tourne ici par construction
+    if not _v.comparable(_v.VERSION, cmin):
+        return cmin, None          # « 0.24-fix », « main » : on ne compare pas, on le dit
+    return cmin, bool(_v.au_moins(_v.VERSION, cmin))
+
+
 def versions_meta(type_):
     """[{version, current, published_at, imported_at, changes, fixes, known_bugs}, …]
     dans l'ordre de versions() (courante en tête)."""
     cur = (REGISTRY.get(type_) or {}).get("version")
-    return [{"version": v, "current": v == cur, **read_version_meta(type_, v)}
-            for v in versions(type_)]
+    out = []
+    for v in versions(type_):
+        d = {"version": v, "current": v == cur, **read_version_meta(type_, v)}
+        # La date d'arrivée est posée ICI si elle manque : c'est le lecteur qui la demande, donc
+        # c'est le dernier moment où on peut encore la deviner honnêtement (cf. imported_at).
+        d["imported_at"] = d.get("imported_at") or imported_at(type_, v)
+        d["core_min"], d["core_ok"] = version_compatible(type_, v)
+        out.append(d)
+    return out
 
 
 def _script_path(type_, version=None):
@@ -758,6 +901,123 @@ def _script_path(type_, version=None):
     return cand if os.path.isfile(cand) else None
 
 
+# ── Reconstitution d'une version depuis l'historique git (N7.7, 2026-10-31) ─────────────────
+# Depuis juin, le développement bumpe `plugin.json` SANS archiver : le player est en 0.41.25 et
+# sa dernière archive est la 0.5.5. Conséquence mesurée le 31/10 : un conteneur estampillé sur la
+# version qui vient d'être remplacée n'a plus rien à rendre, donc il migre — exactement ce que
+# l'épinglage doit empêcher. `versions/` n'est donc plus un dépôt, c'est un CACHE : ce qui fait
+# foi est l'historique git du plugin, et on reconstitue à la demande.
+#
+# Décision de Cyril (31/10) : un `.c` n'est pas archivé à la main, il est reconstituable ; le
+# passage d'un `.b` vaut release et archive, lui, pour de bon.
+_REBUILD_MAX_COMMITS = 400          # au-delà, la version cherchée n'est plus du ressort d'un cache
+
+
+def _git(tdir, *args, texte=True):
+    """`git` dans le dossier du plugin, sans shell. Rend None si git manque, si le dossier
+    n'est pas un dépôt (installation par get.sh : l'arbre est copié, pas cloné), ou si la
+    commande échoue — aucun de ces cas n'est une erreur, ils rendent seulement la
+    reconstitution impossible."""
+    import subprocess
+    try:
+        r = subprocess.run(("git", "-C", tdir) + args, capture_output=True, timeout=20,
+                           check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    return r.stdout.decode("utf-8", "replace") if texte else r.stdout
+
+
+def _commit_for_version(tdir, version):
+    """Le DERNIER commit où `plugin.json` déclarait cette version — donc l'état FINAL de cette
+    version, correctifs de la série compris. En remontant du plus récent au plus ancien, c'est
+    le premier qui correspond."""
+    out = _git(tdir, "log", "--format=%H", "-n", str(_REBUILD_MAX_COMMITS), "--", "plugin.json")
+    if not out:
+        return None
+    for sha in out.split():
+        brut = _git(tdir, "show", "%s:plugin.json" % sha)
+        if not brut:
+            continue
+        try:
+            if (json.loads(brut) or {}).get("version") == version:
+                return sha
+        except ValueError:
+            continue
+    return None
+
+
+def ensure_version(type_, version):
+    """La version est-elle RENDABLE ? Si elle n'est ni la courante ni archivée, on tente de la
+    reconstituer dans `versions/<version>/` depuis l'historique git du plugin.
+
+    C'est le point de décision UNIQUE : `resolved_version` s'en sert, donc l'estampille écrite
+    en base et le script réellement rendu ne peuvent pas se contredire (c'est ce qu'un
+    `_script_path` qui reconstituerait tout seul, derrière le dos de `resolved_version`, aurait
+    produit : une base qui annonce 0.23.51 et un conteneur qui exécute la courante).
+
+    Rend True si la version est rendable à la sortie, False sinon. N'écrase JAMAIS une archive
+    existante, et n'accepte le script reconstitué qu'après le même contrôle que le scan : accolades
+    doublées et script rendu qui compile — un cache invalide serait pire que pas de cache.
+    """
+    if not version:
+        return False
+    m = REGISTRY.get(type_)
+    if not m:
+        return False
+    if version == m.get("version"):
+        return True
+    tdir = m["_dir"]
+    dest = os.path.join(tdir, "versions", version)
+    if os.path.isdir(dest):
+        # Déjà archivée : c'est exactement ce que `versions()` appelle une version disponible,
+        # donc pas de second test par-dessus — une condition qu'aucune mutation ne distingue est
+        # du poids mort, et deux formulations de la même question finissent par se contredire.
+        return os.path.isfile(os.path.join(dest, "script.py"))
+    sha = _commit_for_version(tdir, version)
+    if not sha:
+        log.info("plugins: %s %s is not in the local git history — cannot be reconstituted",
+                 type_, version)
+        return False
+    nom_script = m.get("script_template") or "script.py"
+    tpl = _git(tdir, "show", "%s:%s" % (sha, nom_script))
+    if not tpl:
+        log.warning("plugins: %s %s found at %s but %s is missing there",
+                    type_, version, sha[:8], nom_script)
+        return False
+    try:
+        compile(tpl.format(config="{}", hostname="x", plugin_version=version), nom_script, "exec")
+    except (SyntaxError, KeyError, IndexError, ValueError, TypeError, AttributeError) as e:
+        log.warning("plugins: reconstituted %s %s does not pass the scan checks (%s) — refused",
+                    type_, version, e)
+        return False
+    manifeste = _git(tdir, "show", "%s:plugin.json" % sha)
+    tmp = dest + ".part"
+    try:
+        shutil.rmtree(tmp, ignore_errors=True)
+        os.makedirs(tmp)
+        with open(os.path.join(tmp, "script.py"), "w", encoding="utf-8") as f:
+            f.write(tpl)
+        if manifeste:
+            with open(os.path.join(tmp, "plugin.json"), "w", encoding="utf-8") as f:
+                f.write(manifeste)
+        # Le meta.json dit d'OÙ vient cette archive : sans ça, un cache reconstitué serait
+        # indiscernable d'une release archivée à la main, et on ne saurait pas qu'il est jetable.
+        from datetime import datetime as _dt
+        with open(os.path.join(tmp, "meta.json"), "w", encoding="utf-8") as f:
+            json.dump({"rebuilt_from_git": sha,
+                       "imported_at": _dt.now().isoformat(timespec="seconds")},
+                      f, ensure_ascii=False, indent=2)
+        os.replace(tmp, dest)            # publication atomique : jamais d'archive à moitié écrite
+    except OSError as e:
+        shutil.rmtree(tmp, ignore_errors=True)
+        log.warning("plugins: could not cache %s %s: %s", type_, version, e)
+        return False
+    log.info("plugins: %s %s reconstituted from git %s into versions/", type_, version, sha[:8])
+    return True
+
+
 def resolved_version(type_, version=None):
     """Version réellement déployable : la demandée si disponible, sinon la courante.
     Rafraîchit le registre si un manifeste a bougé : sinon on estampille une version PÉRIMÉE
@@ -766,6 +1026,10 @@ def resolved_version(type_, version=None):
     m = REGISTRY.get(type_)
     if not m:
         return None
+    if version and version not in versions(type_):
+        # Ni courante ni archivée : on tente l'historique git AVANT de retomber sur la courante.
+        # Une version simplement non archivée n'est pas une version perdue (cf. ensure_version).
+        ensure_version(type_, version)
     return version if (version and version in versions(type_)) else m.get("version")
 
 
@@ -822,6 +1086,15 @@ def render_config(type_, params):
                      ("bit_depth", int(_f.get("bit_depth") or 10))):
             if k in _dd and not cfg.get(k):
                 cfg[k] = v
+    # IMAGE MANQUANTE (2026-10-30, app/missing_frame.py) : tout type dont le config_schema porte
+    # `missing_frame_mode` reçoit la valeur EFFECTIVE, résolue ICI — au rendu, pas au déploiement.
+    # La surcharge du conteneur reste persistée telle quelle ("" = suit le global) : la résoudre
+    # dans `effective_deploy_defaults` figerait le global du jour du déploiement, et le basculer
+    # ensuite ne changerait plus rien. Le script ne lit QUE la clé effective.
+    if any((f or {}).get("key") == "missing_frame_mode"
+           for f in ((REGISTRY.get(type_) or {}).get("config_schema") or [])):
+        from . import missing_frame
+        cfg[missing_frame.EFFECTIVE_KEY] = missing_frame.effective(cfg.get(missing_frame.KEY))
     return cfg
 
 
@@ -1132,7 +1405,28 @@ def cles_sans_redeploiement(type_):
     démarrage ne prendrait effet qu'au prochain déploiement, sans que rien ne le dise."""
     m = REGISTRY.get(type_) or {}
     return {f.get("key") for f in (m.get("config_schema") or [])
-            if f.get("key") and f.get("redeploiement") is False}
+            if f.get("key") and f.get("redeploiement") is False} | set(live_fields(type_))
+
+
+def live_fields(type_):
+    """Champs du config_schema que le CONTENEUR applique à chaud : {clé: (endpoint, clé_du_corps)}.
+
+    Pendant de `"redeploiement": false`, qui couvre les réglages lus par l'ORCHESTRATEUR : ceux-ci
+    sont lus par le conteneur, mais il sait les changer sans redémarrer. Un champ le déclare par
+    `"live": {"endpoint": "/latency", "key": "mode"}` ; l'écriture persiste PUIS pousse
+    `POST :8082<endpoint> {key: valeur}` — repli sur le redéploiement si le conteneur refuse
+    (moteur trop ancien, injoignable). Le panneau ⚙ les marque « à chaud ».
+
+    L'endpoint doit figurer dans `control.endpoints` : un champ qui pointerait ailleurs est
+    ignoré ici (il retombe sur le redéploiement, le cas sûr) plutôt que de pousser en aveugle."""
+    m = REGISTRY.get(type_) or {}
+    allowed = {e["path"] for e in control_post_endpoints(m)}
+    out = {}
+    for f in (m.get("config_schema") or []):
+        live = f.get("live")
+        if f.get("key") and isinstance(live, dict) and live.get("endpoint") in allowed:
+            out[f["key"]] = (live["endpoint"], live.get("key") or f["key"])
+    return out
 
 
 def control_post_endpoints(m):
@@ -1611,6 +1905,25 @@ def conteneur_du_type_sur_noeud(type_, node_id):
     return None
 
 
+def qualified_lists(consumes):
+    """Listes à géométrie dont les slots sont QUALIFIÉS (`"<liste>:<rang>"`) : celles qui
+    reprennent une essence déjà prise par une liste précédente du manifeste. Le câblage, les
+    liens de port et le NMOS adressent une entrée par (essence, slot) : sans ça, le vu-mètre 1
+    du multiview (`meter_blocks`) et le son de sa tuile 1 (`flux_config`) étaient tous deux
+    « audio 0 », et un câble tiré sur le vu-mètre atterrissait sur la tuile. La première liste
+    d'une essence garde ses slots entiers : les câbles et projets existants ne bougent pas.
+    Renvoie un ensemble de (essence, from_list)."""
+    first, out = {}, set()
+    for it in consumes or []:
+        if not isinstance(it, dict) or not it.get("from_list") or it.get("key") or "repeat" in it:
+            continue
+        ess = it.get("essence") or "video"
+        lst = it["from_list"]
+        if first.setdefault(ess, lst) != lst:
+            out.add((ess, lst))
+    return out
+
+
 def derive_wiring(type_, hostname, params=None):
     """Resolve manifest.wiring produces/consumes against hostname + deploy params.
     - `{hostname}` ET les clés de `params` sont substitués dans les `shm` (ex. `"{shm_out}"`
@@ -1714,7 +2027,12 @@ def derive_wiring(type_, hostname, params=None):
                         raw = raw[len(prefix):]
                     copy = {k: v for k, v in it.items() if k != "from_list"}
                     copy["from_list"] = it["from_list"]
-                    copy["slot"] = i
+                    # `index` = rang dans la liste (où écrire, et ce que reçoit le conteneur) ;
+                    # `slot` = adresse de câblage, qualifiée si l'essence est déjà prise.
+                    copy["index"] = i
+                    copy["slot"] = (f"{it['from_list']}:{i}"
+                                    if sens == "consumes" and (it.get("essence") or "video", it["from_list"]) in _qualified
+                                    else i)
                     copy["shm"] = raw
                     # Libellé EXPLICITE du manifeste (gabarit `{i1}`) prioritaire : une même liste
                     # à géométrie peut porter PLUSIEURS essences par entrée (multiview : la vidéo
@@ -1739,9 +2057,12 @@ def derive_wiring(type_, hostname, params=None):
                 copy = dict(it)
                 if copy.get("shm"):
                     copy["shm"] = _safe_fmt(copy["shm"])
+                if copy.get("tally_follows"):
+                    copy["tally_follows"] = _safe_fmt(copy["tally_follows"])
                 out.append(_with_format(copy))
         return out
 
+    _qualified = qualified_lists(w.get("consumes"))
     produces = _resolve(w.get("produces"), "produces")
     consumes = _resolve(w.get("consumes"), "consumes")
 
@@ -1839,6 +2160,22 @@ def derive_wiring(type_, hostname, params=None):
                 prod.append({"essence": "video", "shm": f"{src}__s{pw}x{ph}",
                              "label": f"{src} {pw}×{ph}", "slot": i, "format": _pfmt(pw, ph)})
         produces = prod
+
+    # ── Sorties déclarées par le PLUGIN lui-même (hook `wiring_produces`) ──────────────────
+    # Pour un plugin dont la liste de sorties est un réglage (mélangeur : 1 à 4 sorties programme
+    # nommées, PVW optionnel), ni `repeat` ni `from_list` ne suffisent : le slot doit rester celui
+    # de la SORTIE (l'UUID NMOS du Sender en dépend) et non son rang, et un mélangeur d'avant le
+    # réglage doit garder ses ports statiques. Le hook reçoit les ports déjà résolus et renvoie la
+    # liste qui les remplace, ou None pour les garder. Une exception ne casse pas le câblage : on
+    # garde la dérivation statique, et on le dit.
+    _hk = get_hook(type_, "wiring_produces")
+    if _hk:
+        try:
+            _alt = _hk(hostname, params, produces)
+            if _alt is not None:
+                produces = [_with_format(dict(p)) for p in _alt if isinstance(p, dict)]
+        except Exception as e:                                         # noqa: BLE001
+            log.warning("plugins: %s wiring_produces failed (%s), static ports kept", type_, e)
 
     return {
         "produces": produces,
@@ -1970,9 +2307,21 @@ def stamp_imported_at(src_dir):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+# Ce qui n'est PAS un fichier du plugin : ni archivé, ni effacé, ni recopié par une activation.
+#
+# ⚠ `.git` n'y était pas — mesuré le 2026-10-31, en écrivant la garde d'épinglage. Tous les
+# plugins sont des dépôts git (sous-modules). Donc `_archive_current` recopiait l'historique
+# ENTIER dans chaque `versions/<v>/`, et surtout `_clear_flat` l'EFFAÇAIT du dossier du plugin :
+# activer une version depuis la page Plugins détruisait le dépôt du plugin. Et avec lui
+# l'historique dont la reconstitution d'une version dépend (cf. `ensure_version`) — la
+# fonctionnalité se supprimait elle-même en s'exerçant.
+_NOT_PLUGIN_FILES = ("versions", ".git", "__pycache__")
+
+
 def _flat_names(d):
-    """Entrées « plates » d'un dossier de plugin (tout sauf le sous-dossier versions/)."""
-    return [n for n in os.listdir(d) if n != "versions"]
+    """Entrées « plates » d'un dossier de plugin : les fichiers DU PLUGIN, sans `versions/`
+    ni ce qui appartient à git ou à Python (cf. `_NOT_PLUGIN_FILES`)."""
+    return [n for n in os.listdir(d) if n not in _NOT_PLUGIN_FILES]
 
 
 def _copy_into(src_dir, dst_dir, names):

@@ -20,44 +20,60 @@ audio transport goes over the **MXL bus** (MXL SDK, shared memory `/dev/shm/mxl`
 ## Main features
 
 - **Dual-role ST 2110 engine** (`2110_io`): receive + transmit via MTL/DPDK (AF-XDP,
-  kernel-bypass), composable flows, 2022-7 redundancy driven by the node's declared interface
-  pairing
+  kernel-bypass), composable video/audio/ANC flows, narrow/wide transmit classes, native-field
+  interlaced chain, 2022-7 redundancy driven by the node's declared interface pairing
 - **Streams**: multi-destination encoding (UDP / SRT / WebRTC), multi-track audio, WHEP preview
 - **Plugin system**: every container type is a versioned plugin (`plugins/<type>/`) —
   deployable, updatable and pinnable on its own
+- **Catalogue**: a Settings → Catalogue page that lists the plugins and services published by a
+  trusted (configurable) GitHub organisation, compares them with what is installed and installs
+  the package — no repository to clone
+- **Audio console**: a mixing console (`audio_console` plugin plus `audio` service) with AFV,
+  tool memories, operator views, an LV2 library and MCU/HUI control surfaces (`control_surface`
+  service); optional voice identification through speech synthesis (`tts` service, installed on
+  demand)
 - **Live cabling**: a Cables page with graphical topology, hot source switching, automatic UDC
   insertion
 - **NMOS**: **IS-04** (registration/discovery), **IS-05** (connection), **IS-07** (events —
-  client, incoming and outgoing), **IS-12** and **IS-14** (MS-05-02 control), BCP-002, BCP-008
+  client, incoming and outgoing), **IS-09** (system configuration), **IS-12** (MS-05-02 control
+  over WebSocket) and **IS-14** (the same model over REST, with `bulkProperties`
+  save/restore). Plus the BCPs: **002-01/02** (grouping and asset identity), **004-01**
+  (receiver capabilities), **008-01/02** (Rx/Tx health monitors). **BCP-003-02**
+  authorisation is not implemented: the control plane is assumed to be protected
 - **Other protocols**: SAP/SDP (AES67/Ravenna announce and discovery), Ember+, TSL 5.0
-  (tally/UMD), read-only SNMPv3
+  (tally/UMD), read-only SNMPv3 with traps, per-node PTP (ptp4l/phc2sys)
 - **Control surfaces**: ATEM switcher emulator (UDP 9910) and Skaarhoj Quick Bar integration
-  (Raw Panel Protocol over TCP)
+  (Raw Panel Protocol over TCP, named presets, XY routing)
 - **Production slots**: a **functional** identity, stable across container replacement — this
   is what an external control system addresses, never the disposable internal handle
 - **Macros and triggers**: chains of actions and continuous parameters across a project's
-  containers
+  containers, any plugin capability being drivable without going through the interface
 - **WebRTC monitoring**: a global per-user side panel (embedded MediaMTX stream), with
   Monitoring buttons on the producing pages
 - **Multi-node**: Docker node enrolment (node agent), inter-node **RDMA** replication of the
-  MXL bus, multicast allocation
+  MXL bus, centralised multicast allocation, warm-standby high availability (see `HA.md`)
 - **Measured resources**: CPU profiles per container type, NUMA-aware isolated core allocation,
-  calibration
+  calibration under real load and a check of the placement actually obtained — no estimated
+  allocation
 - **Fleet health**: per-node supervision (CPU, RAM, disk, sensors, PTP, GPU, RDMA, memory
-  bandwidth)
+  bandwidth), failed-node detection, contextual alerts and e-mail notifications
 - **Node installation**: dedicated installer, PXE/UEFI HTTP network boot or USB media, iLO
   takeover
 - **Logging**: container logs, an operations journal, and an audit trail of user actions
 - **Projects**: snapshots of cabling and configuration, recall with progress, per-user
-  restricted access
+  restricted access; **virtual ports** (an input cabled to a port follows the physical flow
+  assigned to it, without touching the project)
+- **Host drivers**: hardware driver installation and update by the node agent (`nvidia`,
+  `blackmagic`), with a journal and a managed reboot
 - **i18n**: bilingual FR/EN interface
 
 ## Architecture
 
 - **Controller**: a Flask application (port 5000) plus a supervision thread. No production
-  container runs on it.
-- **Nodes**: enrolled Debian machines (`nodes` table), driven by `app/node_driver.py` through a
-  **node agent**.
+  container runs on it (except in "all-in-one" mode).
+- **Nodes**: enrolled Debian machines (`nodes` table), driven by `app/node_driver.py` through an
+  HTTP **node agent** (`node_agent/agent.py`, per-node token) that handles the Docker lifecycle
+  and host operations.
 - **Containers**: created by `app/docker_driver.py` (ST 2110 MTL engine, dedicated AF-XDP NIC)
   and `app/docker_compute.py` (compute/media, macvlan).
 
@@ -65,7 +81,7 @@ audio transport goes over the **MXL bus** (MXL SDK, shared memory `/dev/shm/mxl`
 
 | Document | For whom |
 |---|---|
-| [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) | **Before buying**: CPU, RAM and memory-bandwidth choices, network cards |
+| [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) | **Before buying**: CPU, RAM and memory-bandwidth choices, network cards, GPU, RDMA, PTP, the three network planes, redundancy |
 | [`INSTALL.md`](INSTALL.md) | **Commissioning**: from bare machine to first flow, with the points that matter |
 | [`NODE_AGENT.md`](NODE_AGENT.md) | The node agent's HTTP contract |
 | [`HA.md`](HA.md) | Controller high availability (warm standby) |
@@ -97,9 +113,10 @@ which matters for unattended installs. Full details in
 
 ### Unified installer
 
-`install.py` runs **as root, next to a `bobistudio.zip`**: it is a package installer, not a
-script to run from a git clone. `get.sh` above puts it in place for you; otherwise there are two
-ways to get it:
+`install/install.py` runs **as root** and finds its source in one of two ways: a
+`bobistudio.zip` placed **next to it**, or the **source tree** it lives in (git clone, unpacked
+archive — this is `get.sh`'s path). For the package mode, there are two ways to get the installer
+and the zip:
 
 ```bash
 # From a controller already in service (it serves both the installer and the zip):
@@ -114,7 +131,8 @@ cd dist && sudo python3 install.py
 
 An interactive menu (standard library only) that provisions the machine as a **process node**
 (node agent alone), an **orchestrator** (Flask controller), or **all-in-one** (orchestrator plus
-a local node).
+a local node), or offers the legacy **Proxmox** flow (creating the orchestrator VM) and
+**uninstallation**.
 
 To install **from a git clone**, run `bash install.sh`: the bootstrap checks python3 (and
 offers to install it), then hands over to the installer.
@@ -125,7 +143,7 @@ offers to install it), then hands over to the installer.
 cd /opt/bobistudio
 cp config_local.example.py config_local.py
 nano config_local.py     # site values (hosts, tokens, secrets)
-bash install.sh          # venv + dependencies + systemd service
+bash install.sh          # bootstrap: hands over to install/install.py (venv, dependencies, clock, systemd service)
 systemctl start bobistudio
 ```
 
@@ -172,8 +190,9 @@ app/                  ← Python modules (deploy, plugins, node_driver, docker_d
                         core_pool/placement, node_health, ptp, ha…) + app/routes/ (REST API)
 plugins/              ← one git submodule per container type (plugin.json + script.py + UI)
                         plus `_*_runtime` directories (shared Docker images, not plugins)
-services/             ← orchestrator services (nmos, emberplus, tsl, atem, skaarhoj, rdma,
-                        alerting, files, media_manager, storage, webrtc_gateway…)
+services/             ← orchestrator services (nmos, emberplus, tsl, atem, skaarhoj, sap, snmp,
+                        rdma, alerting, audio, control_surface, tts, files, media_manager,
+                        storage, webrtc_gateway… — `ls services` is authoritative)
 node_agent/           ← node agent (agent.py) + node installer (install-node.sh) + iso/
 templates/            ← Jinja2 HTML views
 static/               ← scripts.js, CSS (base.css, nav.css, themes), uploads/
@@ -184,6 +203,9 @@ docs/design/          ← UI guidelines, product doctrine, business context
 docs/reference/       ← authoritative reference documents (TX layouts, clock model,
                         MXL interop, 2110 probe, projects)
 docs/chantiers/       ← dated engineering journals (measurements, ports, decisions)
+docs/design/DESIGN.md             ← UI guidelines / theme system
+docs/design/CONTEXT.md            ← business context and scope
+docs/design/PRODUCT.md            ← product and UX doctrine
 HA.md                 ← high availability (warm standby)
 NODE_AGENT.md         ← node agent HTTP contract
 CHANGELOG.md          ← version history (rendered on the Help page)
@@ -198,8 +220,8 @@ CHANGELOG.md          ← version history (rendered on the Help page)
 ## Infrastructure prerequisites
 
 - Controller: Debian 13 (trixie) with Python 3.13 (VM or dedicated machine)
-- Nodes: Debian 13 (trixie) with Docker; for the `io2110` role, an Intel E810 NIC (MTL/DPDK
-  AF-XDP) plus hugepages
+- Nodes: Debian 13 (trixie) with Docker; for the `io2110` role, an Intel E810 or Mellanox ConnectX-4 to 7 NIC
+  (MTL/DPDK, AF-XDP) plus hugepages and PTP — see `INFRASTRUCTURE.md`
 - Network: a ST 2110 media plane, a macvlan segment for compute/media containers, and a control
   plane
 - For WebRTC: the MediaMTX gateway is deployed from Settings → WebRTC

@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 
 # Mémoires d'état pour ne loguer que sur transition (évite le spam toutes les 5s)
 _prev_script_running = {}   # vmid → bool | None
+_crash_tail_seen = {}       # vmid → last agent `last_exit_ts` already captured (cf. app/crash_tail.py)
 _prev_agent_ok       = {}   # vmid → bool | None
 
 # Compteurs de redémarrage automatique de script ; reset sur reprise confirmée
@@ -1017,7 +1018,7 @@ def creneaux_manques_de(m):
     `frame_index` d'un flux MXL est NORMATIVEMENT DÉRIVÉ DU TEMPS : il avance même quand le
     producteur saute un créneau. Δindex/Δt mesure donc le temps écoulé, pas les images écrites —
     et pour tout producteur irrégulier il rend la cadence NOMINALE, quoi qu'il arrive.
-    Mesuré sur stills-Satis (vmid 1252) : sur 10,00 s, Δindex = 508 (50,79/s) alors que
+    Mesuré sur stills-Atelier (vmid 1252) : sur 10,00 s, Δindex = 508 (50,79/s) alors que
     Δslots_missed = 168 → 340 images réellement publiées, soit 33,99/s. Un tiers des images
     manquait et le témoin affichait « cadence 50,0 — tenue ». Le testeur voyait ses images
     clignoter au noir en face d'une page qui affirmait que tout allait bien.
@@ -1627,6 +1628,57 @@ def get_metrics(ip, port=8080, avec_statut=False):
         pass
     return ({"fps": None}, False) if avec_statut else {"fps": None}
 
+# RUNNING version vs RECORDED version (2026-10-29). `deploy_config.params.plugin_version` is only
+# what the last deploy WROTE; a redeploy whose stop got lost left the old process running for
+# good while the base announced the new version (Z8 #227), and nothing said so. The script
+# publishes its own version on :8080: that is what runs. Judged ONLY when it is published — a
+# script that does not publish it (mixer ≤ 0.23.44, streamer, 2110_io…) is never flagged.
+version_running_cache = {}    # vmid → plugin_version published on :8080 (absent = not published)
+_version_gap_alerted = {}     # vmid → (running, recorded) already reported (edge-triggered)
+
+
+def note_running_version(vmid, cont, m):
+    """Record the version the script publishes and alert on a gap with the base (on transition).
+    Silent :8080 → no verdict (state kept). Lifecycle in flight (vmid lock held) → no verdict:
+    a deploy writes the base before it restarts the script."""
+    v = m.get("plugin_version") if isinstance(m, dict) else None
+    if not v:
+        if isinstance(m, dict) and m.get("fps") is None and len(m) == 1:
+            return                                   # :8080 silent: keep what we knew
+        version_running_cache.pop(vmid, None)
+        _version_gap_alerted.pop(vmid, None)
+        return
+    v = str(v)
+    version_running_cache[vmid] = v
+    try:
+        dc = (cont or {}).get("deploy_config")
+        dc = json.loads(dc) if isinstance(dc, str) else (dc or {})
+        recorded = ((dc or {}).get("params") or {}).get("plugin_version")
+    except (ValueError, TypeError):
+        recorded = None
+    if not recorded:
+        return
+    recorded = str(recorded)
+    h = (cont or {}).get("hostname") or ""
+    if recorded == v:
+        if vmid in _version_gap_alerted:
+            del _version_gap_alerted[vmid]
+            db_add_alert("alert.deploy.version_rattrapee", "info", vmid=vmid,
+                         node_id=(cont or {}).get("node_id"), kind="deploy",
+                         params={"vmid": vmid, "h": h, "ver_vue": v})
+        return
+    from .vmlocks import est_verrouille
+    if est_verrouille(vmid):
+        return
+    if _version_gap_alerted.get(vmid) == (v, recorded):
+        return
+    _version_gap_alerted[vmid] = (v, recorded)
+    log.warning("container %s: script runs %s, base records %s", vmid, v, recorded)
+    db_add_alert("alert.deploy.version_ecart", "warning", vmid=vmid,
+                 node_id=(cont or {}).get("node_id"), kind="deploy",
+                 params={"vmid": vmid, "h": h, "ver_vue": v, "ver_base": recorded})
+
+
 _advisory_seen = {}   # (vmid, texte) → ts du dernier relais (throttle avis plugin 1 h)
 
 # Signaux POSIX les plus parlants pour un script mort. La liste est courte à dessein : nommer
@@ -1636,7 +1688,7 @@ _SIGNAUX = {4: "SIGILL (instruction illégale — binaire compilé pour un CPU p
             9: "SIGKILL (tué — OOM ?)", 11: "SIGSEGV (segmentation)", 15: "SIGTERM (arrêt demandé)"}
 
 
-def _cause_arret(vmid, cont, etat_agent):
+def _cause_arret(vmid, cont, etat_agent, tail_row=None):
     """Pourquoi le script s'est-il arrêté ? Code de sortie, signal, dernières lignes du journal.
 
     Deux sources, dans cet ordre : ce que l'agent par-conteneur publie (`last_exit`/`last_signal`,
@@ -1657,6 +1709,13 @@ def _cause_arret(vmid, cont, etat_agent):
             bouts.append("code de sortie %s" % code)
     except (TypeError, ValueError):
         pass
+    if tail_row is not None and tail_row.get("status") == "ok":
+        # Output already read by the crash-tail capture: do not ask the node a second time.
+        from .crash_tail import last_line
+        dl = last_line(tail_row)
+        if dl:
+            bouts.append(dl)
+        return " · ".join(bouts) or None
     try:
         from .database import db_get_node
         from . import node_driver
@@ -1729,6 +1788,362 @@ def _detecter_decrochage(vmid, m, lat):
         params={"h": c.get("hostname") or ("container " + str(vmid)), "vmid": vmid, "fps": sortie})
     log.warning("décrochage silencieux : vmid %s émet %.1f fps sans entrée vivante", vmid, sortie)
     return True
+
+
+# ── Entrées inexploitables publiées par un plugin (`entrees_ko` sur :8080) ──────────────────
+# Un plugin qui n'arrive pas à ouvrir une entrée le PUBLIE déjà : slot, flux, motif, nombre de
+# tentatives, durée. Le plugin `pyramide` le fait, et son code dit pourquoi — « une absence ne se
+# voit pas ; une entrée qui dit "je n'y arrive pas depuis 43 h" se voit ».
+#
+# ⚠ Mais PERSONNE NE LE LISAIT. Le 2026-10-24, la pyramide 1153 publiait quatre entrées en échec,
+# dont une depuis 8,9 h et 914 tentatives, sans qu'aucune alerte n'existe nulle part : le témoin
+# était publié et non consommé, ce qui ne protège de rien. D'où ce pont, volontairement GÉNÉRIQUE
+# (tout plugin qui publie `entrees_ko` est couvert ; seul `pyramide` l'alimente aujourd'hui).
+#
+# Anti-rafale : on tient l'état PAR (vmid, slot) et on n'alerte qu'au FRONT MONTANT — une entrée
+# qui échoue depuis 9 h vaut UNE alerte, pas 914. Le flux est dans la clé d'état : si le slot est
+# recâblé sur une autre source, c'est un échec NOUVEAU et il se réarme.
+_entrees_ko_etat = {}   # vmid → {slot: shm} des entrées déjà signalées
+
+
+def _noter_entrees_ko(vmid, m):
+    """Alerte sur les entrées qu'un plugin déclare inexploitables, et sur leur rétablissement."""
+    ko = m.get("entrees_ko")
+    if not isinstance(ko, dict):
+        return                      # le plugin ne publie pas ce témoin : rien à conclure
+    vus = _entrees_ko_etat.setdefault(vmid, {})
+    courant = {}
+    for slot, info in ko.items():
+        if not isinstance(info, dict):
+            continue
+        courant[str(slot)] = (info.get("shm") or "")
+    h = None
+    for slot, shm in sorted(courant.items()):
+        if vus.get(slot) == shm:
+            continue                # déjà signalé pour CETTE source → on se tait
+        info = ko.get(slot) or {}
+        if h is None:
+            h = (db_get_container(vmid) or {}).get("hostname") or ("container " + str(vmid))
+        db_add_alert("alert.signal.entree_ko", "warning", vmid=vmid, node_id=_node_de(vmid),
+                     kind="signal",
+                     params={"h": h, "slot": slot, "shm": shm or "?",
+                             "motif": info.get("motif") or "?",
+                             "n": int(info.get("tentatives") or 0),
+                             "depuis_s": int(info.get("depuis_s") or 0)})
+        log.warning("input unusable: vmid %s slot %s (%s) — %s (%s attempt(s), %s s)",
+                    vmid, slot, shm or "?", info.get("motif"),
+                    info.get("tentatives"), info.get("depuis_s"))
+        vus[slot] = shm
+    for slot in [k for k in vus if k not in courant]:
+        shm = vus.pop(slot)
+        if h is None:
+            h = (db_get_container(vmid) or {}).get("hostname") or ("container " + str(vmid))
+        db_add_alert("alert.signal.entree_ok", "info", vmid=vmid, node_id=_node_de(vmid),
+                     kind="signal", params={"h": h, "slot": slot, "shm": shm or "?"})
+        log.info("input recovered: vmid %s slot %s (%s)", vmid, slot, shm or "?")
+    if not vus:
+        _entrees_ko_etat.pop(vmid, None)
+
+
+# ── ENTRÉE QUI N'ÉCRIT PLUS / FIL RELANCÉ ───────────────────────────────────────────────────
+# Incident Z8 du 2026-10-28 (pyramide #220, recette custom-d680fb9b49) : le fil d'une entrée est
+# mort sur une erreur d'écriture, le processus a continué, et son proxy est resté figé 1 841 s
+# sans AUCUNE alerte. Le plugin publie désormais, par entrée, l'âge de sa dernière écriture
+# (`sources[slot].age_ecriture_s`) et l'état de ses fils (`fils[slot].relances`). Ce témoin est
+# DIRECT : il ne dépend ni du producteur ni du nœud, contrairement à _noter_sources_figees.
+# Une entrée déclarée inexploitable (`entrees_ko`) a déjà son alerte : on ne la double pas.
+_ECRITURE_SEUIL_S = 5.0
+_ecriture_etat = {}           # (vmid, slot) → {"alertee": bool, "relances": int}
+
+
+def _noter_ecritures_figees(vmid, m):
+    srcs = m.get("sources")
+    if not isinstance(srcs, dict):
+        return
+    ko_entree = m.get("entrees_ko") if isinstance(m.get("entrees_ko"), dict) else {}
+    sorties_ko = m.get("sorties_ko") if isinstance(m.get("sorties_ko"), dict) else {}
+    fils = m.get("fils") if isinstance(m.get("fils"), dict) else {}
+    h = None
+    vus = set()
+    for slot, s in srcs.items():
+        if not isinstance(s, dict) or "age_ecriture_s" not in s:
+            continue                    # plugin qui ne publie pas ce témoin : rien à conclure
+        slot = str(slot)
+        vus.add(slot)
+        k = (vmid, slot)
+        st = _ecriture_etat.setdefault(k, {"alertee": False, "relances": 0})
+        age = s.get("age_ecriture_s")
+        fige = (age is not None and age > _ECRITURE_SEUIL_S and slot not in ko_entree)
+        if fige and not st["alertee"]:
+            h = h or (db_get_container(vmid) or {}).get("hostname") or ("container " + str(vmid))
+            motif = (sorties_ko.get(slot) or {}).get("motif") or "?"
+            db_add_alert("alert.signal.ecriture_figee", "error", vmid=vmid, node_id=_node_de(vmid),
+                         kind="signal", params={"h": h, "slot": slot, "shm": s.get("shm") or "?",
+                                                "depuis_s": int(age), "motif": motif})
+            log.error("output stalled: vmid %s slot %s (%s) wrote nothing for %.0f s — %s",
+                      vmid, slot, s.get("shm"), age, motif)
+            st["alertee"] = True
+        elif not fige and st["alertee"] and age is not None and age <= _ECRITURE_SEUIL_S:
+            h = h or (db_get_container(vmid) or {}).get("hostname") or ("container " + str(vmid))
+            db_add_alert("alert.signal.ecriture_repartie", "info", vmid=vmid, node_id=_node_de(vmid),
+                         kind="signal", params={"h": h, "slot": slot, "shm": s.get("shm") or "?"})
+            log.info("output resumed: vmid %s slot %s (%s)", vmid, slot, s.get("shm"))
+            st["alertee"] = False
+    for slot, f in fils.items():
+        if not isinstance(f, dict):
+            continue
+        n = int(f.get("relances") or 0)
+        st = _ecriture_etat.setdefault((vmid, str(slot)), {"alertee": False, "relances": 0})
+        if n > st["relances"]:
+            h = h or (db_get_container(vmid) or {}).get("hostname") or ("container " + str(vmid))
+            db_add_alert("alert.signal.fil_relance", "warning", vmid=vmid, node_id=_node_de(vmid),
+                         kind="crash_loop", params={"h": h, "slot": str(slot), "n": n,
+                                                    "motif": f.get("dernier_motif") or "?"})
+            log.warning("worker thread restarted: vmid %s slot %s (#%s) — %s",
+                        vmid, slot, n, f.get("dernier_motif"))
+        st["relances"] = n
+    for k in [k for k in _ecriture_etat if k[0] == vmid and k[1] not in vus and k[1] not in fils]:
+        _ecriture_etat.pop(k, None)
+
+
+# ── TUILE DE MUR SANS IMAGE ─────────────────────────────────────────────────────────────────
+# Recette custom-f534d8c471 (Z8 #213, 28/10) : deux tuiles en lecture du flux plein sont restées
+# NOIRES sans tentative de reconnexion ni alerte — et rien dans l'état publié ne le disait. Le
+# multiview publie désormais `tuiles[i] = {etat, age_image_s, src}` (âge de la dernière image
+# NEUVE). On alerte quand une tuile câblée n'en reçoit plus depuis _FIGE_SEUIL_S, SAUF si son
+# producteur est lui-même immobile (image fixe, pause : c'est voulu, cf. _noter_sources_figees).
+_tuile_etat = {}              # (vmid, i) → {"alertee": bool}
+
+
+def _noter_tuiles_sans_image(vmid, m):
+    tuiles = m.get("tuiles")
+    if not isinstance(tuiles, dict):
+        return                      # mur d'avant ce témoin : rien à conclure
+    h = None
+    vus = set()
+    for i, t in tuiles.items():
+        if not isinstance(t, dict) or not t.get("src"):
+            continue                # tuile sans source câblée : noire par construction
+        vus.add(str(i))
+        k = (vmid, str(i))
+        st = _tuile_etat.setdefault(k, {"alertee": False})
+        age = t.get("age_image_s")
+        sans_image = age is not None and age > _FIGE_SEUIL_S
+        if sans_image and not st["alertee"]:
+            import time as _t
+            nid = (db_get_container(vmid) or {}).get("node_id")
+            if not _source_avance(t["src"], _producteur_de(t["src"]), nid, _t.monotonic() - age):
+                continue            # source immobile elle aussi (ou pas encore relevée) → pas une panne du mur
+            h = h or (db_get_container(vmid) or {}).get("hostname") or ("container " + str(vmid))
+            db_add_alert("alert.signal.tuile_sans_image", "error", vmid=vmid, node_id=_node_de(vmid),
+                         kind="signal", params={"h": h, "tuile": str(i), "shm": t["src"],
+                                                "etat": t.get("etat") or "?", "depuis_s": int(age)})
+            log.error("wall tile without image: vmid %s tile %s (%s) — %s for %.0f s",
+                      vmid, i, t["src"], t.get("etat"), age)
+            st["alertee"] = True
+        elif not sans_image and st["alertee"] and age is not None:
+            h = h or (db_get_container(vmid) or {}).get("hostname") or ("container " + str(vmid))
+            db_add_alert("alert.signal.tuile_repartie", "info", vmid=vmid, node_id=_node_de(vmid),
+                         kind="signal", params={"h": h, "tuile": str(i), "shm": t["src"]})
+            log.info("wall tile image back: vmid %s tile %s (%s)", vmid, i, t["src"])
+            st["alertee"] = False
+    for k in [k for k in _tuile_etat if k[0] == vmid and k[1] not in vus]:
+        _tuile_etat.pop(k, None)
+
+
+# ── SOURCE FIGÉE ALORS QUE LE PRODUCTEUR AVANCE ─────────────────────────────────────────────
+# Le trou que la pyramide 1153 a révélé le 2026-10-24 : elle a lu pendant HUIT JOURS un flux
+# immobile (index bloqué à 89 607 876 620) pendant que son producteur écrivait à 50,1 grains/s.
+# Rien ne l'a dit — conteneur `running`, agent 200, script vivant, aucune alerte, journal vide.
+# `entrees_ko` ne pouvait pas le voir : il couvre l'échec d'OUVERTURE, et cette entrée s'était
+# ouverte avec succès avant de se figer. Le seul symptôme était un `fps` à 0 sur une page que
+# personne ne regardait, et la panne a été trouvée par hasard.
+#
+# ★ ON COMPARE DES DELTAS, JAMAIS DES VALEURS ABSOLUES. C'est ce qui rend le critère utilisable :
+#   • un still, une mire, une pause → le producteur n'avance pas NON PLUS → rien ne déclenche.
+#     C'est le faux positif le plus probable, et il s'annule de lui-même ;
+#   • entrelacé (index = trame×2 + parité) → les deux côtés avancent par 2 → un rapport, pas une
+#     anomalie ;
+#   • mode tranche → le consommateur peut lire une tête en cours d'écriture, à ±1-2 grains.
+#
+# ⚠ MÊME NŒUD SEULEMENT. Un consommateur distant lit une RÉPLIQUE RDMA, qui est un autre objet
+# que l'original : nos propres alertes disent « la réplique appartient à une AUTRE génération du
+# flux ». Comparer l'index lu à celui de l'original distant produirait du bruit garanti. Quand le
+# producteur n'est pas sur le nœud du consommateur, on s'ABSTIENT — un trou de couverture assumé
+# vaut mieux qu'une alerte qu'on apprend à ignorer.
+_FIGE_SEUIL_S = 10.0          # persistance exigée (cf. note validée le 2026-10-24)
+_fige_etat = {}               # (vmid, cle) → {shm, fi, t0, alertee}
+_fige_prod = {"t": 0.0, "map": {}}    # shm → vmid producteur (reconstruit à l'occasion)
+
+
+def _producteur_de(shm):
+    """vmid qui PRODUIT ce shm, ou None — avec cache d'une minute.
+
+    `shm_producer_vmids` reparcourt TOUT le parc et redérive chaque manifeste : à l'appeler par
+    entrée et par cycle de 5 s, on paierait ce balayage ~60 fois par minute pour une réponse qui
+    ne change qu'au (re)déploiement. Le cache est vidé en bloc à l'expiration, ce qui suffit :
+    un câblage neuf est pris en compte au plus tard une minute après."""
+    import time as _t
+    now = _t.monotonic()
+    if now - _fige_prod["t"] > 60.0:
+        _fige_prod["map"].clear()
+        _fige_prod["t"] = now
+    if shm in _fige_prod["map"]:
+        return _fige_prod["map"][shm]
+    try:
+        from .auth import shm_producer_vmids
+        vm = shm_producer_vmids([shm]).get(shm) or set()
+        v = sorted(vm)[0] if vm else None
+    except Exception:
+        v = None
+    _fige_prod["map"][shm] = v
+    return v
+
+
+def _source_avance(shm, pv, node_id, depuis):
+    """La SOURCE `shm` a-t-elle été écrite depuis `depuis` (instant monotonic) ? Arbitre commun de
+    « figée alors que son producteur avance » et « tuile sans image alors que sa source avance ».
+
+    ★ LE FLUX, PAS LE CONTENEUR (Z8, 29/10) : un decklink_io à cinq entrées dont une a perdu son
+    signal SDI avance — son `frame_index` est celui du conteneur — mais le flux de l'entrée muette
+    n'est plus écrit. Juger sur le conteneur faisait accuser le LECTEUR (« relancer le script
+    rouvre le flux ») d'une panne de signal. Le témoin par flux est le relevé de `lastWriteTime`
+    du service rdma (toutes les 30 s, flux vidéo lus) ; un flux qu'il n'écrit plus est déjà
+    signalé par lui (« LU mais plus alimenté ») avec la bonne cause → on se tait ici.
+
+    Un relevé ANTÉRIEUR au gel ne prouve rien : on attend le suivant (alerte retardée d'au plus
+    30 s). Flux jamais relevé (audio, service absent, nœud muet) : l'ancien critère, le conteneur."""
+    try:
+        from services import rdma as _rdma
+        if _rdma.age_ecriture_flux(node_id, shm) is not None:
+            age = _rdma.age_ecriture_flux(node_id, shm, depuis)
+            if age is None:
+                return False              # relevé d'avant le gel : on attend le suivant
+            return age < _rdma._SOURCE_STALE_MS
+    except Exception:                                                   # noqa: BLE001
+        pass
+    return pv is None or bool(shm_active_cache.get(pv))
+
+
+def _entrees_lues(m):
+    """[(cle, shm, index_lu)] — les entrées dont le consommateur publie l'index qu'il LIT.
+
+    Deux formats, et un seul est auto-suffisant :
+      pyramide  → `sources`      {slot: {shm, frame_index}}           → direct
+      multiview → `fi_par_tuile` {idx: index} + `proxy_usage` {idx: {src}} → à croiser, les
+                  clés coïncident (index de tuile). Sans ce croisement, `fi_par_tuile` ne porte
+                  aucun nom de flux et ne peut pas être rattaché à un producteur.
+    """
+    out = []
+    src = m.get("sources")
+    if isinstance(src, dict):
+        for slot, info in src.items():
+            if isinstance(info, dict) and info.get("shm") and info.get("frame_index") is not None:
+                out.append(("slot:%s" % slot, info["shm"], info["frame_index"]))
+    fpt = m.get("fi_par_tuile")
+    usage = m.get("proxy_usage")
+    if isinstance(fpt, dict) and isinstance(usage, dict):
+        for idx, fi in fpt.items():
+            u = usage.get(str(idx)) or usage.get(idx)
+            shm = (u or {}).get("src") if isinstance(u, dict) else None
+            if shm and fi is not None:
+                out.append(("tuile:%s" % idx, shm, fi))
+    return out
+
+
+def _noter_sources_figees(vmid, m):
+    """Alerte quand une entrée reste immobile alors que son producteur, sur le même nœud, avance."""
+    import time as _t
+    entrees = _entrees_lues(m)
+    if not entrees:
+        return
+    c = db_get_container(vmid) or {}
+    # Script volontairement arrêté : ce n'est pas une panne, c'est une décision d'exploitation.
+    try:
+        from .database import db_script_enabled
+        if not db_script_enabled(vmid):
+            for k in [k for k in _fige_etat if k[0] == vmid]:
+                _fige_etat.pop(k, None)
+            return
+    except Exception:
+        pass
+    now = _t.monotonic()
+    h = c.get("hostname") or ("container " + str(vmid))
+    for cle, shm, fi in entrees:
+        pv = _producteur_de(shm)
+        if pv is None or pv == vmid:
+            continue                      # producteur inconnu, ou le conteneur lui-même
+        pc = db_get_container(pv) or {}
+        if pc.get("node_id") != c.get("node_id"):
+            continue                      # réplique RDMA : autre objet, autre génération
+        k = (vmid, cle)
+        st = _fige_etat.get(k)
+        if st is None or st["shm"] != shm or st["fi"] != fi:
+            # L'index a bougé (ou la source a changé) → c'est vivant. Front descendant ?
+            if st is not None and st.get("alertee"):
+                db_add_alert("alert.signal.source_repartie", "info", vmid=vmid,
+                             node_id=_node_de(vmid), kind="signal",
+                             params={"h": h, "entree": cle, "shm": shm})
+                log.info("source resumed: vmid %s %s (%s)", vmid, cle, shm)
+            _fige_etat[k] = {"shm": shm, "fi": fi, "t0": now, "alertee": False}
+            continue
+        # Index IDENTIQUE depuis t0. La source, elle, a-t-elle avancé ?
+        if st["alertee"] or (now - st["t0"]) <= _FIGE_SEUIL_S:
+            continue
+        if not _source_avance(shm, pv, c.get("node_id"), st["t0"]):
+            continue                      # source figée aussi (still, mire, pause, SDI sans signal) → normal
+        st["alertee"] = True
+        db_add_alert("alert.signal.source_figee", "error", vmid=vmid, node_id=_node_de(vmid),
+                     kind="signal",
+                     params={"h": h, "entree": cle, "shm": shm,
+                             "prod": pc.get("hostname") or str(pv),
+                             "depuis_s": int(now - st["t0"])})
+        log.error("frozen source: vmid %s %s reads %s stuck at index %s while producer %s advances",
+                  vmid, cle, shm, fi, pv)
+
+
+def _relay_advisory(vmid, _c, _adv):
+    """Relaie UN avis de conteneur (dict structuré ou chaîne historique) — cf. l'appelant."""
+    if isinstance(_adv, dict):
+        _adv_key = _adv.get("key")
+        # L'avis vient d'un processus DISTANT : on n'accepte une clé que dans les espaces de noms
+        # réservés (cf. `database._ALERT_CLE`). Hors de là, la chaîne serait écrite telle quelle
+        # comme message — un conteneur pourrait poser n'importe quel texte au journal.
+        if (isinstance(_adv_key, str)
+                and _adv_key.strip().startswith(("alert.", "plugin."))):
+            _adv_params = _adv.get("params") or {}
+            if not isinstance(_adv_params, dict):
+                _adv_params = {}
+            import time as _t
+            _throttle_key = (vmid, _adv_key, json.dumps(_adv_params, sort_keys=True, default=str))
+            _last = _advisory_seen.get(_throttle_key, 0)
+            if _t.time() - _last > 3600:
+                _advisory_seen[_throttle_key] = _t.time()
+                # NIVEAU déclarable par le plugin, `warning` par défaut (comportement
+                # historique). Sans ça, un avis qui annonce une BONNE nouvelle — « programme
+                # conforme » — partait en avertissement : l'exploitant apprend alors que les
+                # avertissements ne veulent rien dire, ce que la règle des alarmes proscrit.
+                # Liste blanche : la valeur vient d'un processus distant, elle n'est pas de
+                # confiance, et `db_add_alert` refuserait un niveau hors vocabulaire.
+                _niv = _adv.get("niveau")
+                if _niv not in ("info", "warning", "error"):
+                    _niv = "warning"
+                db_add_alert(_adv_key, _niv, vmid=vmid, node_id=(_c or {}).get("node_id"),
+                             kind="advisory", params=_adv_params)
+        else:
+            log.warning("advisory du conteneur %s ignoré : dict sans clé i18n exploitable (%r)",
+                        vmid, _adv)
+    elif isinstance(_adv, str):
+        if _adv.strip():
+            import time as _t
+            _key = (vmid, _adv.strip())
+            _last = _advisory_seen.get(_key, 0)
+            if _t.time() - _last > 3600:
+                _advisory_seen[_key] = _t.time()
+                db_add_alert(f"Avis du conteneur {vmid} : {_adv.strip()}", "warning",
+                             vmid=vmid, node_id=(_c or {}).get("node_id"), kind="advisory")
+    elif _adv is not None:
+        log.warning("advisory du conteneur %s ignoré : forme inattendue (%s)", vmid, type(_adv).__name__)
 
 
 def rafraichir_metrics(vmid, status_data=None):
@@ -2089,13 +2504,36 @@ def rafraichir_metrics(vmid, status_data=None):
                     _prev_script_running[vmid] = False
                     db_update_status(vmid, "script_disabled", cause=None)
                     return                       # ni alerte, ni relance : c'est un état voulu
+                # Last output of a script that died ON ITS OWN (new agent `last_exit_ts`; a /stop
+                # never sets it), persisted BEFORE any restart: the container — and with it
+                # `docker logs` — may be recreated long before anyone reads it (#227, Z8, 29/10).
+                # Also catches deaths of a crash loop, where `running` never comes back between
+                # two polls. Old agent without the field: captured on an OBSERVED running→stopped
+                # transition only (it cannot tell a /stop from a crash; best effort).
+                tail_row = None
+                try:
+                    from . import crash_tail as _ct
+                    _new_death = _ct.is_new_death(_st, _crash_tail_seen.get(vmid))
+                    if _new_death or ("last_exit_ts" not in _st and prev_run is True):
+                        tail_row = _ct.capture(vmid, _c, _st, source="surveillance")
+                        if _st.get("last_exit_ts") is not None:
+                            _crash_tail_seen[vmid] = _st.get("last_exit_ts")
+                        if tail_row is None or (not tail_row.get("existing")
+                                                and tail_row.get("status") != "ok"):
+                            _ct.alert_unavailable(tail_row or {"error": "capture failed (see orchestrator log)"},
+                                                  vmid, (_c or {}).get("node_id"))
+                except Exception as _e:
+                    log.warning("crash tail %s: %s", vmid, _e)
                 if prev_run is None or prev_run is True:
                     # TRANSITION seulement : la cause se collecte une fois, pas à chaque tour de
                     # boucle (elle coûte un `docker logs` sur le nœud).
-                    cause = _cause_arret(vmid, _c, _st)
+                    cause = _cause_arret(vmid, _c, _st, tail_row=tail_row)
+                    _p = {"vmid": vmid, "cause": cause}
+                    if tail_row and tail_row.get("id") and tail_row.get("status") == "ok":
+                        _p["crash_tail_id"] = tail_row["id"]
                     db_add_alert("alert.agent.script_arrete_cause" if cause else "alert.agent.script_arrete",
                                  "warning", vmid=vmid, node_id=(_c or {}).get("node_id"), kind="agent",
-                                 params={"vmid": vmid, "cause": cause})
+                                 params=_p)
                 # Auto-restart durci (audit B3) : backoff exponentiel entre tentatives,
                 # alerte seuil UNE fois (edge-trigger), quarantaine + logs au plafond.
                 if vmid in _crash_quarantine:
@@ -2220,6 +2658,7 @@ def rafraichir_metrics(vmid, status_data=None):
     # ratant la moitié de leurs créneaux, TX à 38 — et la page Câbles affichait 50.
     # Publié par le script (multiview 0.69.0) ; absent ailleurs → None, l'UI n'affiche rien.
     m = get_metrics(ip)
+    note_running_version(vmid, _c, m)
     _fc = m.get("fps_content")
     fps_content_cache[vmid] = float(_fc) if isinstance(_fc, (int, float)) else None
     # Cadence PRÉCISE (Δframe_index / Δpoll) — calculée AVANT les fenêtres glissantes, qu'elle
@@ -2267,47 +2706,13 @@ def rafraichir_metrics(vmid, status_data=None):
     # plus de texte avant rendu.
     # Toute AUTRE forme (liste, nombre, dict sans `key`) est ignorée avec un log.warning — jamais
     # d'exception : cette valeur vient d'un processus distant, elle n'est pas de confiance.
-    _adv = m.get("advisory")
-    if isinstance(_adv, dict):
-        _adv_key = _adv.get("key")
-        # L'avis vient d'un processus DISTANT : on n'accepte une clé que dans les espaces de noms
-        # réservés (cf. `database._ALERT_CLE`). Hors de là, la chaîne serait écrite telle quelle
-        # comme message — un conteneur pourrait poser n'importe quel texte au journal.
-        if (isinstance(_adv_key, str)
-                and _adv_key.strip().startswith(("alert.", "plugin."))):
-            _adv_params = _adv.get("params") or {}
-            if not isinstance(_adv_params, dict):
-                _adv_params = {}
-            import time as _t
-            _throttle_key = (vmid, _adv_key, json.dumps(_adv_params, sort_keys=True, default=str))
-            _last = _advisory_seen.get(_throttle_key, 0)
-            if _t.time() - _last > 3600:
-                _advisory_seen[_throttle_key] = _t.time()
-                # NIVEAU déclarable par le plugin, `warning` par défaut (comportement
-                # historique). Sans ça, un avis qui annonce une BONNE nouvelle — « programme
-                # conforme » — partait en avertissement : l'exploitant apprend alors que les
-                # avertissements ne veulent rien dire, ce que la règle des alarmes proscrit.
-                # Liste blanche : la valeur vient d'un processus distant, elle n'est pas de
-                # confiance, et `db_add_alert` refuserait un niveau hors vocabulaire.
-                _niv = _adv.get("niveau")
-                if _niv not in ("info", "warning", "error"):
-                    _niv = "warning"
-                db_add_alert(_adv_key, _niv, vmid=vmid, node_id=(_c or {}).get("node_id"),
-                             kind="advisory", params=_adv_params)
-        else:
-            log.warning("advisory du conteneur %s ignoré : dict sans clé i18n exploitable (%r)",
-                        vmid, _adv)
-    elif isinstance(_adv, str):
-        if _adv.strip():
-            import time as _t
-            _key = (vmid, _adv.strip())
-            _last = _advisory_seen.get(_key, 0)
-            if _t.time() - _last > 3600:
-                _advisory_seen[_key] = _t.time()
-                db_add_alert(f"Avis du conteneur {vmid} : {_adv.strip()}", "warning",
-                             vmid=vmid, node_id=(_c or {}).get("node_id"), kind="advisory")
-    elif _adv is not None:
-        log.warning("advisory du conteneur %s ignoré : forme inattendue (%s)", vmid, type(_adv).__name__)
+    # PLUSIEURS AVIS À LA FOIS (2026-10-30) : une LISTE de dicts est acceptée, chacun relayé comme
+    # la forme dict ci-dessous (même liste blanche, même throttle). Le mélangeur en a deux qui
+    # peuvent coexister — entrées en retard chronique (tranche) et images manquantes recopiées —
+    # et un seul champ aurait obligé à en taire un.
+    _advs = m.get("advisory")
+    for _adv in (_advs if isinstance(_advs, list) else [_advs]):
+        _relay_advisory(vmid, _c, _adv)
 
     # frame_index : write pointer cumulatif (video, premier pipeline trouvé)
     fi = frame_index_de(m)
@@ -2408,6 +2813,15 @@ def rafraichir_metrics(vmid, status_data=None):
         proxy_needs_cache[vmid] = m["proxy_needs"]
     if isinstance(m.get("sources"), dict):
         pyr_sources_cache[vmid] = m["sources"]
+
+    # Entrées INEXPLOITABLES publiées par le plugin (`entrees_ko`) → ALERTE. Cf. _noter_entrees_ko.
+    _noter_entrees_ko(vmid, m)
+    # Entrée FIGÉE alors que son producteur avance → ALERTE. Cf. _noter_sources_figees.
+    _noter_sources_figees(vmid, m)
+    # Entrée qui n'ÉCRIT plus (âge de la dernière écriture) / fil relancé → ALERTE.
+    _noter_ecritures_figees(vmid, m)
+    # Tuile de mur SANS IMAGE neuve alors que sa source avance → ALERTE.
+    _noter_tuiles_sans_image(vmid, m)
 
     # Notifier Ember+ (best-effort, n'échoue pas si désactivé)
     try:

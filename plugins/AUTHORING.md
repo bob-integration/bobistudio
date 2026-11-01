@@ -58,7 +58,7 @@ neighbouring lines is not: stay whole-frame, and **write it down in the code**. 
 line selection are the documented exceptions.
 
 `slice_mode` goes into `config_schema` as `hidden: true`: the setting that matters is the global
-switch under Settings → Video. A plugin exposing its own would leave a fleet configured at
+switch under Settings → MXL (“Slice mode”). A plugin exposing its own would leave a fleet configured at
 random.
 
 ### 2. Expose everything to macros
@@ -204,7 +204,9 @@ A hook that raises is ignored with a warning in the log; it does not block the d
 | `before_deploy(params, context)` | before the script is rendered — normalise, resolve, inject |
 | `wire_followers(kind, shm, slot, params, ctx)` | wiring one essence makes others follow |
 | `wire_input` / `unwire_input` | an input is wired or unwired |
-| `consumes` / `consumed_shms` / `produced_shms` / `produced_flow_count` / `source_shm` | topology and cabling |
+| `consumed_shms` / `produced_shms` / `produced_flow_count` / `source_shm` | topology and cabling |
+| `wiring_produces(hostname, params, produces)` | replaces the statically derived output ports (return `None` to keep them) |
+| `check_wired_params(params, ctx)` | errors the wired document would cause (e.g. an external loop); `[]` if none |
 | `topology_ports` | ports shown on the Cabling page |
 | `tally_targets(params, context)` | what the TSL distributor must resolve |
 | `ember_sources` / `ember_targets` / `ember_clear_slot` | Ember+ tree |
@@ -272,6 +274,49 @@ fails the deploy is aborted (error alert) and the script is never started.
 
 ---
 
+## Published ports (`ports`)
+
+A container reached **from another machine** needs its port published. Declare it; never assume
+it. The orchestrator resolves the declaration at deploy time against *this instance's* config,
+and publishes **only on a node in « internal network » mode** — in « site network » mode the
+container already owns an IP on the LAN and there is nothing to republish.
+
+```json
+"ports": [
+  { "param": "listen_port", "proto": "udp", "when": { "mode": ["srt_listener"] },
+    "desc": "SRT listening: the source pushes to this port." },
+  { "port": 1935, "proto": "tcp", "when": { "mode": ["rtmp_server"] },
+    "desc": "RTMP server: the encoder pushes to this port." }
+]
+```
+
+- **Where the number comes from**, one of three: `param` (a key of the instance config — the
+  usual case), `setting` (a global setting, for a component whose port is an install-wide
+  choice), or `port` (a fixed value).
+- `when` is `{config key: [accepted values]}`, **all** conditions required. Compared as text,
+  so `true`, `"true"` and `1` match. Omit it and the port is always published.
+- `proto`: `tcp` (default) or `udp`.
+- **The host port is the same as the container port.** It is the only one an operator can guess:
+  a field encoder configured to push « to the server, SRT 9000 » must land on 9000.
+- A port resolving to `0`, missing, or not an integer is **silently skipped**. That is how a
+  plugin says « off » (`multiview` with `tsl_port: 0`).
+
+### What does NOT need a port
+
+Most of it, and declaring it anyway would expose the control plane on the LAN:
+
+- `:8081` (per-container agent) and `:8080` (metrics) — called by the orchestrator, which in
+  internal mode sits on the same host;
+- `:8082` (live control) — goes through the orchestrator's proxy
+  (`/api/containers/<vmid>/plugin/<path>`), never from a browser;
+- your `control.html` / `control.js` and any public page — served by the orchestrator;
+- **outgoing** streams (UDP, SRT caller, WHIP): NAT covers them.
+
+Declare a port only for something that **calls you**: a source pushing in, a browser connecting
+directly, a site panel opening a session. If you are unsure, it probably does not need one.
+
+---
+
 ## Control console
 
 `control.js` exposes `window.MXLPlugins.<type> = { mount, unmount }`.
@@ -281,7 +326,7 @@ Four rules, each for a fault already seen in the wild:
 1. **Controls come from the catalogue** (`window.MXLControls`), never rewritten. Knobs, switches,
    gauges and toolbars are already drawn, keyboard-accessible and consistent across pages. The
    living inventory is under Settings → Controls. **Before creating a new one: ask.**
-2. **Geometry comes from the shared engine** `window.MXLLayout` — align, equalise, distribute,
+2. **Geometry comes from the shared engine** `window.BobiEditor.layout` — align, equalise, distribute,
    snap, multiple selection. Four copies of it had already diverged.
 3. **One function builds every URL.** A console can be mounted behind a public token with a
    different API base (`ctx.base`): one forgotten `if (public)` hits the private API and fails
@@ -331,7 +376,8 @@ existed, got it right.
 3. reload the registry.
 
 Archiving under `versions/<ver>/` is done by the orchestrator when a package is installed
-(`install_package`) — not by hand. Containers already deployed keep running on their version
+(`install_package`) and when an archived version is activated (`activate_version`, which first
+archives the current one) — not by hand. Containers already deployed keep running on their version
 until they are redeployed: the Plugins page shows the drift.
 
 ---

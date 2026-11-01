@@ -130,6 +130,9 @@
     animation:tp-pop-in 140ms cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes tp-pop-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
 .tp-settings-body { display:flex; flex-direction:column; gap:var(--space-2); }
+/* Actions propres au plugin monté (settingsActions), en tête du ⚙ */
+.tp-settings-actions { display:flex; flex-direction:column; gap:var(--space-1); padding-bottom:var(--space-2);
+    border-bottom:1px solid var(--border-soft); }
 .tp-settings-body .palette-field, .tp-settings-body .palette-field-check { margin:var(--space-1) 0; }
 .tp-settings-hint { font-size:0.8em; color:var(--text-muted); }
 .tp-settings-status { font-size:0.82em; min-height:1.2em; }
@@ -563,10 +566,10 @@ async function tpLoadUi(type, vmid, version){
 window.MXLPluginUI = { load: tpLoadUi };
 
 // L'UI MONTÉE, pas celle qui est enregistrée. `window.MXLPlugins[type]` désigne le DERNIER script chargé :
-// deux instances d'un même type à des versions différentes (rl-mix 0.23.2, mixer-Satis 0.23.3), ou la
+// deux instances d'un même type à des versions différentes (rl-mix 0.23.2, mixer-Atelier 0.23.3), ou la
 // relecture de la liste qui charge la version courante, y remplacent l'objet sans arrêter celui qui est
 // monté. Démonter « l'enregistré » laissait l'ancien vivant : son sondage de 2 s réécrivait les boutons de
-// la nouvelle instance avec les sources de l'autre — noms qui clignotent (Recette, Paul, 2026-10-23).
+// la nouvelle instance avec les sources de l'autre — noms qui clignotent (Recette, le testeur, 2026-10-23).
 let tpMountedApi = null, tpMountSeq = 0;
 function tpUnmountCurrent(){
     const seen = new Set();
@@ -861,7 +864,10 @@ window.tpRefreshPreview = function(vmid){
 // Mini-renderer autonome (scripts.js n'est pas chargé ici) ; mêmes conventions
 // data-cf/data-cft que la palette de la page Containers.
 function psFieldHtml(f){
-    const k=psEsc(f.key), lbl=psEsc(f.label||f.key);
+    const k=psEsc(f.key);
+    // Réglage appliqué À CHAUD par le conteneur (`live` du config_schema) : marqué, pour que
+    // « Appliquer redéploie » ne fasse pas croire à une coupure qui n'aura pas lieu.
+    const lbl=psEsc(f.label||f.key)+(f.live?' <span class="badge">'+psEsc(window.t('section.settings_live_badge'))+'</span>':'');
     const ph=f.placeholder!=null?' placeholder="'+psEsc(f.placeholder)+'"':'';
     const val=(f.default!=null)?' value="'+psEsc(f.default)+'"':'';
     // Texte d'aide du champ (config_schema `help`) : rendu sous le champ (aligné palette).
@@ -1003,7 +1009,8 @@ async function tpToggleSettings(inst, type_, engineList){
     const sysHtml = sysF.length
         ? '<fieldset class="palette-group"><legend class="palette-group-title">'
             +psEsc(window.t('section.settings_system'))+'</legend>'+sysF.map(psFieldHtml).join('')+'</fieldset>'
-          +'<div class="tp-settings-hint">'+psEsc(window.t('section.settings_redeploy_hint'))+'</div>'
+          +'<div class="tp-settings-hint">'+psEsc(window.t(sysF.every(f=>f.live)?'section.settings_live_hint'
+              :(sysF.some(f=>f.live)?'section.settings_mixed_hint':'section.settings_redeploy_hint')))+'</div>'
           +'<button type="button" class="btn btn-blue" id="tp-settings-apply">'+psEsc(window.t('section.settings_apply'))+'</button>'
         : '';
     // Sélecteur de MOTEUR (onglets custom 2110, plusieurs nœuds) : bascule le popover.
@@ -1022,6 +1029,27 @@ async function tpToggleSettings(inst, type_, engineList){
             +'<input type="text" id="tp-cfgsnap-name" placeholder="'+psEsc(window.t('section.cfgsnap_name_ph'))+'" style="flex:1;min-width:0">'
             +'<button type="button" class="btn" onclick="psSnapSave('+inst.vmid+')">'+psEsc(window.t('section.cfgsnap_save'))+'</button>'
             +'</div></fieldset>';
+    // Actions propres au plugin MONTÉ (manifeste ⇒ UI : `settingsActions(inst)` → [{label, run}]), en tête
+    // du panneau — ex. « Assistant de configuration » du mélangeur. Le ⚙ n'est visible qu'avec le droit
+    // de déployer ; le plugin filtre en plus ce qu'il propose.
+    const _psApi = (!type_ && tpMountedApi && typeof tpMountedApi.settingsActions === 'function') ? tpMountedApi : null;
+    let _psActs = [];
+    if (_psApi) { try { _psActs = _psApi.settingsActions(inst) || []; } catch (_) { _psActs = []; } }
+    if (_psActs.length) {
+        const g = document.createElement('div');
+        g.className = 'tp-settings-actions';
+        _psActs.forEach(function (a) {
+            const b = document.createElement('button');
+            b.type = 'button'; b.className = 'ctl-push ctl-push--wide';
+            b.textContent = a.label;
+            b.onclick = function () {
+                pop.hidden = true; btn.setAttribute('aria-expanded', 'false');
+                try { a.run(); } catch (e) { console.error(e); }
+            };
+            g.appendChild(b);
+        });
+        body.prepend(g);
+    }
     psMonter(body);   // les contrôles de catalogue se montent APRÈS l'insertion du HTML
     psSnapsLoad(inst.vmid);
     // Pré-remplir depuis les params persistés (deploy_config), puis visibilité conditionnelle.

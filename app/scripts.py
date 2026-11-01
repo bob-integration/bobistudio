@@ -230,6 +230,11 @@ def _normalize_audio(a):
             "bitrate": a.get("bitrate") or "128k", "tracks": tracks}
 
 
+_STREAMER_OWNED = ("shm_name", "audio_shm", "chroma", "video", "audio", "destinations")
+_STREAMER_LEGACY_FLAT = ("dest_ip", "dest_port", "bitrate", "width", "height", "fps", "bit_depth")
+AV_OFFSET_MAX_MS = 2000   # = bornes `av_offset_ms` du config_schema du plugin streamer
+
+
 def normalize_worker_udp_params(params):
     """Normalize worker_udp params to the multi-destination shape, migrating the
     legacy flat shape ({shm_name,width,height,fps,bitrate,dest_ip,dest_port}).
@@ -255,6 +260,19 @@ def normalize_worker_udp_params(params):
                                      if isinstance(_sm, str) else bool(_sm))
     if "slice_lines" in p:
         slice_extra["slice_lines"] = _as_int(p.get("slice_lines") or 36, 36)
+    # ★ LES CLÉS QUE CETTE FONCTION NE POSSÈDE PAS LA TRAVERSENT. Elle ne reconstruit que
+    # `_STREAMER_OWNED` ; elle était une liste blanche, et jetait donc tout réglage déclaré au
+    # manifeste qu'elle ignorait : `log_level` et `av_offset_ms` n'atteignaient jamais le conteneur
+    # (constaté le 2026-11-01), `hot_input` ne survivait que recollé à la main par ses appelants.
+    # Seules les clés PLATES de l'ancien schéma sont écartées, et seulement quand on le migre.
+    # Garde : tests/verif_streamer_params_traverses.py.
+    for k, v in p.items():
+        if k not in _STREAMER_OWNED and not (legacy and k in _STREAMER_LEGACY_FLAT):
+            slice_extra.setdefault(k, v)
+    # Calage A/V manuel (ms, signé : >0 retarde l'audio, <0 la vidéo), borné comme au manifeste.
+    if "av_offset_ms" in p:
+        slice_extra["av_offset_ms"] = max(-AV_OFFSET_MAX_MS,
+                                          min(AV_OFFSET_MAX_MS, _as_int(p.get("av_offset_ms"), 0)))
 
     if legacy:
         try:

@@ -556,9 +556,16 @@ def current_user():
     if u is not None and not _session_valide(u):
         session.clear()
         u = None
+    via = "session" if u is not None else None
     if u is None:
         u = _user_par_jeton()
+        via = "token" if u is not None else None
     g._user = u
+    # Registre des requêtes en cours (Monitoring → Connexions) : le NOM du compte, dès qu'il est
+    # résolu — un flux long n'atteint jamais `after_request` avant sa fin. Jamais le jeton.
+    _e = request.environ.get("bobistudio.connection") if u is not None else None
+    if _e is not None:
+        _e["uid"], _e["user"], _e["auth"] = u.get("id"), u.get("username"), via
     return g._user
 
 

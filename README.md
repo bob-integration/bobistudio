@@ -23,8 +23,10 @@ Le transport vidéo/audio interne passe par le **bus MXL** (SDK MXL, mémoire pa
 - **Moteur ST 2110 bi-rôle** (`2110_io`) : réception + émission via MTL/DPDK (AF-XDP, kernel-bypass), flux composables vidéo/audio/ANC, classes d'émission narrow/wide, chaîne entrelacée champ-natif
 - **Streams** : encodage multi-destinations (UDP / SRT / WebRTC), audio multi-pistes, preview WHEP
 - **Système de plugins** : chaque type de container est un plugin versionné (`plugins/<type>/`) — déployable, mis à jour et distribué indépendamment
+- **Catalogue** : page Réglages → Catalogue qui liste les plugins et services publiés par une organisation GitHub de confiance (réglable), compare à l'installé et installe le paquet — sans cloner de dépôt
+- **Console audio** : console de mixage (plugin `audio_console` + service `audio`) avec AFV, mémoires d'outils, vues d'opérateur, bibliothèque LV2 et surfaces de contrôle MCU/HUI (service `control_surface`) ; identification vocale optionnelle par synthèse vocale (service `tts`, installé à la demande)
 - **Câblage live** : page Câbles avec topologie graphique, bascule de source à chaud, insertion automatique d'UDC en cas de formats incompatibles
-- **NMOS** : **IS-04** (enregistrement/découverte), **IS-05** (connexion), **IS-07** (événements — client, entrant et sortant), **IS-09** (configuration système), **IS-12** (contrôle MS-05-02 sur WebSocket) et **IS-14** (le même modèle en REST, avec sauvegarde/restauration `bulkProperties`). Plus les BCP : **002-01/02** (grouping et identité d'asset), **003-02** (autorisation), **004-01** (capacités de récepteur), **008-01/02** (moniteurs de santé des Rx/Tx)
+- **NMOS** : **IS-04** (enregistrement/découverte), **IS-05** (connexion), **IS-07** (événements — client, entrant et sortant), **IS-09** (configuration système), **IS-12** (contrôle MS-05-02 sur WebSocket) et **IS-14** (le même modèle en REST, avec sauvegarde/restauration `bulkProperties`). Plus les BCP : **002-01/02** (grouping et identité d'asset), **004-01** (capacités de récepteur), **008-01/02** (moniteurs de santé des Rx/Tx). L'autorisation **BCP-003-02** n'est pas implémentée : le plan de contrôle est supposé protégé
 - **Autres protocoles** : SAP/SDP (annonce et découverte AES67/Ravenna), Ember+, TSL 5.0 (tally/UMD), SNMPv3 en lecture seule avec traps, PTP par nœud (ptp4l/phc2sys)
 - **Pupitres** : émulateur switcher ATEM (UDP 9910) + intégration Skaarhoj Quick Bar (Raw Panel Protocol TCP, presets nommés, routing XY)
 - **Emplacements** : identité **fonctionnelle** de production, stable au remplacement du conteneur — c'est elle qu'adressent les systèmes de contrôle externes (arbre Ember+)
@@ -35,7 +37,8 @@ Le transport vidéo/audio interne passe par le **bus MXL** (SDK MXL, mémoire pa
 - **Santé de la flotte** : supervision par nœud (CPU, RAM, disque, capteurs, PTP, GPU, RDMA, bande passante mémoire), détection de nœud tombé, alertes contextualisées et notifications e-mail
 - **Installation des nœuds** : installeur dédié, démarrage réseau PXE/UEFI HTTP ou média USB, prise en main iLO — enrôlement sans clé USB
 - **Journalisation** : logs des conteneurs, journal d'exploitation et piste d'audit des actions utilisateurs
-- **Projets** : snapshots du câblage et de la configuration, rappel avec progression, accès restreint par utilisateur
+- **Projets** : snapshots du câblage et de la configuration, rappel avec progression, accès restreint par utilisateur ; **ports virtuels** (une entrée câblée sur un port suit le flux physique qu'on lui affecte, sans toucher au projet)
+- **Pilotes hôte** : installation et mise à jour de pilotes matériel par l'agent-nœud (`nvidia`, `blackmagic`), avec journal et redémarrage piloté
 - **i18n** : interface bilingue FR/EN
 
 ## Architecture
@@ -66,20 +69,23 @@ bash <(curl -fsSL https://raw.githubusercontent.com/bob-integration/bobistudio/m
 ```
 
 C'est le chemin le plus court, et il ne demande **ni `git`, ni paquet préconstruit** : GitHub
-sert une archive par dépôt, donc `curl` et `tar` suffisent. Le script liste les versions
+sert une archive par dépôt, donc `curl` et `tar` suffisent. Le script choisit sa langue d'après
+celle de la machine, liste les versions
 publiées et vous laisse choisir (défaut : la plus récente ; `d` pour la branche de
 développement), récupère la source, puis ouvre le menu de l'installeur unifié décrit ci-dessous.
 
 Options utiles : `--liste` affiche les versions disponibles et s'arrête, `--ref <tag|branche>`
 en vise une précise sans passer par le menu, et `--dry-run` récupère et vérifie la source **sans
-rien installer** — de quoi regarder avant de se lancer. Détail complet dans
+rien installer** — de quoi regarder avant de se lancer. `BOBI_LANG=fr|en` force la langue, ce qui compte pour une
+installation sans surveillance. Détail complet dans
 [INSTALL.md](INSTALL.md#20-depuis-github-sur-une-machine-vierge-le-plus-court).
 
 ### Installeur unifié
 
-`install.py` s'exécute **en root, à côté d'un `bobistudio.zip`** : c'est un installeur de
-paquet, pas un script à lancer depuis un clone git. `get.sh` ci-dessus le met en place pour
-vous ; sinon, deux façons de l'obtenir :
+`install/install.py` s'exécute **en root** et trouve sa source de deux façons : un
+`bobistudio.zip` posé **à côté de lui**, ou l'**arbre source** dans lequel il vit (clone git,
+archive dépliée — c'est le chemin de `get.sh`). Pour le mode « paquet », deux façons d'obtenir
+l'installeur et le zip :
 
 ```bash
 # Depuis un contrôleur déjà en service (l'installeur et le zip y sont servis) :
@@ -94,7 +100,8 @@ cd dist && sudo python3 install.py
 
 Menu interactif (stdlib uniquement) qui provisionne la machine en :
 **nœud de process** (agent-nœud seul), **orchestrateur** (contrôleur Flask),
-ou **tout-en-un** (orchestrateur + nœud local).
+**tout-en-un** (orchestrateur + nœud local), ou propose le flux **Proxmox hérité** (création de
+la VM orchestrateur) et la **désinstallation**.
 
 Pour installer **depuis un clone git**, lancer `bash install.sh` : l'amorce vérifie python3 (et propose de l'installer), puis passe la main à l'installeur unifié `install/install.py`.
 
@@ -104,7 +111,7 @@ Pour installer **depuis un clone git**, lancer `bash install.sh` : l'amorce vér
 cd /opt/bobistudio
 cp config_local.example.py config_local.py
 nano config_local.py     # valeurs de site (hôtes, tokens, secrets)
-bash install.sh          # venv + dépendances + service systemd
+bash install.sh          # amorce : passe la main à install/install.py (venv, dépendances, horloge, service systemd)
 systemctl start bobistudio
 ```
 
@@ -150,8 +157,9 @@ app/                  ← modules Python (deploy, plugins, node_driver, docker_d
                         core_pool/placement, node_health, ptp, ha…) + app/routes/ (API REST)
 plugins/              ← un sous-module git par type de container (plugin.json + script.py + UI)
                         + dossiers `_*_runtime` (images Docker partagées, pas des plugins)
-services/             ← services orchestrateur (nmos, emberplus, tsl, atem, skaarhoj, rdma,
-                        alerting, files, media_manager, storage, webrtc_gateway…)
+services/             ← services orchestrateur (nmos, emberplus, tsl, atem, skaarhoj, sap, snmp,
+                        rdma, alerting, audio, control_surface, tts, files, media_manager,
+                        storage, webrtc_gateway… — `ls services` fait foi)
 node_agent/           ← agent-nœud (agent.py) + installeur de nœud (install-node.sh) + iso/
 templates/            ← vues HTML Jinja2
 static/               ← scripts.js, CSS (base.css, nav.css, themes), uploads/
@@ -179,7 +187,7 @@ CHANGELOG.md          ← historique des versions (rendu sur la page Aide)
 ## Prérequis infrastructure
 
 - Contrôleur : Debian 13 (trixie) avec Python 3.13 (VM ou machine dédiée)
-- Nœuds : Debian 13 (trixie) avec Docker ; pour le rôle `io2110`, NIC Intel E810 (MTL/DPDK AF-XDP) + hugepages + PTP
+- Nœuds : Debian 13 (trixie) avec Docker ; pour le rôle `io2110`, NIC Intel E810 ou Mellanox ConnectX-4 à 7 (MTL/DPDK, AF-XDP) + hugepages + PTP — cf. `INFRASTRUCTURE.md`
 - Réseau : un plan média ST 2110, un segment macvlan pour les conteneurs compute/média, un plan de contrôle
 - Pour WebRTC : la passerelle MediaMTX se déploie depuis Réglages → WebRTC
 

@@ -45,9 +45,9 @@ BUILTIN_PIP_TEMPLATES = [
         "builtin": True,
         "config": {"components": [
             {"id": "video", "type": "video", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0,
-             "fit": "fill", "border": "none"},
+             "fit": "contain", "border": "none"},
             {"id": "umd", "type": "umd", "x": 0.0, "y": 0.92, "w": 1.0, "h": 0.08,
-             "text_source": "name", "tally_bg": False, "bg_color": "#000000", "bg_opacity": 70},
+             "text_source": "tile", "tally_bg": False, "bg_color": "#000000", "bg_opacity": 70},
             {"id": "talL", "type": "tally", "x": 0.01, "y": 0.93, "w": 0.032, "h": 0.056,
              "shape": "bar", "slot": "L", "min_w": 140},
             {"id": "talR", "type": "tally", "x": 0.958, "y": 0.93, "w": 0.032, "h": 0.056,
@@ -62,11 +62,11 @@ BUILTIN_PIP_TEMPLATES = [
         "builtin": True,
         "config": {"components": [
             {"id": "video", "type": "video", "x": 0.0, "y": 0.0, "w": 1.0, "h": 0.87,
-             "fit": "fill", "border": "classic", "border_w": 2},
+             "fit": "contain", "border": "classic", "border_w": 2},
             {"id": "lampL", "type": "tally", "x": 0.03, "y": 0.895, "w": 0.05, "h": 0.085,
              "shape": "lamp", "slot": "L", "min_w": 160},
             {"id": "umd", "type": "umd", "x": 0.14, "y": 0.885, "w": 0.72, "h": 0.105,
-             "text_source": "name", "tally_bg": False, "bg_color": "#08080a", "bg_opacity": 100},
+             "text_source": "tile", "tally_bg": False, "bg_color": "#08080a", "bg_opacity": 100},
             {"id": "lampR", "type": "tally", "x": 0.92, "y": 0.895, "w": 0.05, "h": 0.085,
              "shape": "lamp", "slot": "R", "min_w": 160},
         ]},
@@ -78,7 +78,7 @@ BUILTIN_PIP_TEMPLATES = [
         "builtin": True,
         "config": {"components": [
             {"id": "video", "type": "video", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0,
-             "fit": "fill", "border": "none"},
+             "fit": "contain", "border": "none"},
         ]},
     },
     {
@@ -88,11 +88,11 @@ BUILTIN_PIP_TEMPLATES = [
         "builtin": True,
         "config": {"components": [
             {"id": "video", "type": "video", "x": 0.02, "y": 0.03, "w": 0.96, "h": 0.85,
-             "fit": "fill", "border": "stylized", "border_w": 4},
+             "fit": "contain", "border": "stylized", "border_w": 4},
             {"id": "lampL", "type": "tally", "x": 0.04, "y": 0.905, "w": 0.045, "h": 0.075,
              "shape": "lamp", "slot": "L", "min_w": 180},
             {"id": "umd", "type": "umd", "x": 0.15, "y": 0.895, "w": 0.70, "h": 0.10,
-             "text_source": "name", "bg_color": "", "bg_opacity": 0},
+             "text_source": "tile", "bg_color": "", "bg_opacity": 0},
             {"id": "lampR", "type": "tally", "x": 0.915, "y": 0.905, "w": 0.045, "h": 0.075,
              "shape": "lamp", "slot": "R", "min_w": 180},
         ]},
@@ -103,11 +103,11 @@ BUILTIN_PIP_TEMPLATES = [
         "builtin": True,
         "config": {"components": [
             {"id": "video", "type": "video", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0,
-             "fit": "fill"},
+             "fit": "contain"},
             {"id": "lampL", "type": "tally", "x": 0.02, "y": 0.875, "w": 0.055, "h": 0.10,
              "shape": "lamp", "slot": "L", "min_w": 180},
             {"id": "umd", "type": "umd", "x": 0.14, "y": 0.865, "w": 0.72, "h": 0.125,
-             "text_source": "name", "tally_bg": True, "bg_color": "#000000", "bg_opacity": 75},
+             "text_source": "tile", "tally_bg": True, "bg_color": "#000000", "bg_opacity": 75},
             {"id": "lampR", "type": "tally", "x": 0.925, "y": 0.875, "w": 0.055, "h": 0.10,
              "shape": "lamp", "slot": "R", "min_w": 180},
             {"id": "onair", "type": "text", "x": 0.35, "y": 0.02, "w": 0.30, "h": 0.09,
@@ -121,7 +121,7 @@ BUILTIN_PIP_TEMPLATES = [
         "builtin": True,
         "config": {"components": [
             {"id": "video", "type": "video", "x": 0.0, "y": 0.0, "w": 0.9, "h": 0.9,
-             "fit": "fill"},
+             "fit": "contain"},
             {"id": "vu", "type": "meters", "x": 0.9, "y": 0.0, "w": 0.1, "h": 0.86,
              "channels": 2, "scale": "dbfs", "opacity": 100, "align": "right"},
             {"id": "fmt", "type": "format", "x": 0.5, "y": 0.015, "w": 0.385, "h": 0.075,
@@ -130,7 +130,7 @@ BUILTIN_PIP_TEMPLATES = [
              "anc_types": True, "anc_tc": True, "anc_crc": True, "anc_opacity": 60,
              "min_w": 320},
             {"id": "umd", "type": "umd", "x": 0.1, "y": 0.87, "w": 0.7, "h": 0.115,
-             "text_source": "name", "tally_bg": True, "bg_color": "#000000", "bg_opacity": 75},
+             "text_source": "tile", "tally_bg": True, "bg_color": "#000000", "bg_opacity": 75},
         ]},
     },
     {
@@ -139,9 +139,9 @@ BUILTIN_PIP_TEMPLATES = [
         "builtin": True,
         "config": {"components": [
             {"id": "video", "type": "video", "x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0,
-             "fit": "fill"},
+             "fit": "contain"},
             {"id": "umd", "type": "umd", "x": 0.25, "y": 0.88, "w": 0.5, "h": 0.10,
-             "text_source": "name", "bg_color": "#000000", "bg_opacity": 55, "min_w": 120},
+             "text_source": "tile", "bg_color": "#000000", "bg_opacity": 55, "min_w": 120},
         ]},
     },
 ]

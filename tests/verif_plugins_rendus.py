@@ -22,6 +22,13 @@ _R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _R)
 os.chdir(_R)
 
+import tempfile
+TMP = tempfile.mkdtemp(prefix="verif_plugins_rendus_")
+from app import config, database   # noqa: E402
+config.DB_PATH = database.DB_PATH = os.path.join(TMP, "principale.db")   # jamais la base de prod
+database._tls.__dict__.pop("conn", None)
+database.init_db()
+
 import main                       # noqa: E402,F401  (charge la config + le registre)
 from app import plugins           # noqa: E402
 

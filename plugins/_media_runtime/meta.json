@@ -1,8 +1,15 @@
 {
-  "version": "0.28.0",
-  "date": "2026-10-17",
-  "image_tag": "bobi-media:0.28",
+  "version": "0.28.2",
+  "date": "2026-10-28",
+  "image_tag": "bobi-media:0.28.2",
   "changes": {
+    "bobiplayout 0.3.4 : sortie KEY, la couche alpha au créneau du fill (0.28.2)": [
+      "★ Nouvelle sortie de l'élément bobiplayout (`key-flow-def`, même géométrie que le flux vidéo, vérifiée) : une trame avec alpha (A420/A422/A444, 8 ou 10/12 bits) donne son image au flux vidéo et sa couche alpha au flux key, Y = alpha pleine échelle, chroma neutre, écrit juste après le fill AU MÊME CRÉNEAU. Trame sans alpha → key opaque ; noir → key transparent. Propriété `key-alpha` (lecture seule). La réduction 10/12 → 8 bits couvre aussi les formats avec alpha.",
+      "Mesuré le 2026-10-28 sur dl360-1 (bobi-rust-dev, tools/bancs/banc_player_key.py) : key = alpha de la source au pixel près en 8 bits, ±1 en 10 bits ; même index que le fill en 1080p50 et 1080i25 ; sans `key-flow-def`, comportement inchangé. Requis par player 0.41.15."
+    ],
+    "bobiplayout 0.3.3 : image publiée au début de son créneau (0.28.1)": [
+      "L'élément bobiplayout dormait jusqu'à l'instant de grille de la trame, qui est le MILIEU de son créneau (la grille MXL passe à l'index suivant une demi-période avant) : l'image du player était publiée à 12,2 ms sur 20 à 50 i/s (mesuré sur dell-1 le 25/10 par le mélangeur), et un mélangeur en mode « au plus rapide » abandonnait l'attente à la demi-période. Il se réveille désormais au DÉBUT du créneau. L'instant du créneau reste le même pour le bloc audio, les commandes datées et l'ancre de la lecture synchrone."
+    ],
     "bobiplayout 0.3.2 : commandes datées pour la lecture synchrone (0.28.0)": [
       "★ L'élément bobiplayout accepte des commandes DATÉES (`schedule` : « id|instant TAI ns|tête|temps média|vitesse|noir ») : au créneau de grille de l'instant demandé, il met la tête à l'antenne et ANCRE l'horloge de présentation sur ce créneau-là (temps média, vitesse ; 0 = image figée). Une commande appliquée en retard rattrape sur la grille au lieu de glisser — c'est ce qui permet à plusieurs players de montrer la même image au même créneau (lecture synchrone, player ≥ 0.41.3, app/sync_groups.py).",
       "Témoin `sync-state` (JSON) : index de grille et instant TAI du dernier créneau écrit, temps de présentation, image RÉELLEMENT écrite (tête, PTS), retard en images sur l'horloge de présentation, commandes appliquées avec leur retard en créneaux, têtes en file. `sync-release` rend l'ancre ordinaire. Hors mode synchrone, comportement inchangé.",

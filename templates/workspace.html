@@ -53,20 +53,6 @@
     </div>
     <h4>{{ _('projects.ws_palette') }}</h4>
     <div id="wsp-palette-list"></div>
-    <h4>{{ _('projects.ports') }}</h4>
-    <div class="meta" style="margin-bottom:var(--space-2)">{{ _('projects.ports_hint') }}</div>
-    <div id="wsp-ports-list"></div>
-    <div style="display:flex; gap:var(--space-1); flex-wrap:wrap; margin-top:var(--space-2)">
-        <input type="text" id="wsp-port-name" placeholder="{{ _('projects.port_name_ph') }}" style="width:8em">
-        <select id="wsp-port-kind">
-            <option value="source">{{ _('projects.port_source') }}</option>
-            <option value="dest">{{ _('projects.port_dest') }}</option>
-        </select>
-        <select id="wsp-port-media">
-            <option value="video">video</option><option value="audio">audio</option><option value="anc">anc</option>
-        </select>
-        <button type="button" class="btn btn-blue" onclick="wspAddPort()">＋</button>
-    </div>
 </aside>
 
 <div id="toast-host" class="toast-host"></div>
@@ -118,6 +104,7 @@
         <span class="wsp-scn-badge" id="scn-sys" hidden>🛡 {{ _('projects.m_system') }}</span>
         <span class="wsp-scn-note" id="scn-note"></span>
         <span class="wsp-scn-spacer"></span>
+        <div class="wsp-scn-edtools" id="scn-edtools"></div>
         <div class="wsp-seg" role="group" aria-label="{{ _('projects.scn_view') }}">
             <button type="button" id="scn-seg-blocks" onclick="wspScnToBlocks()">{{ _('projects.scn_view_blocks') }}</button>
             <button type="button" class="on">{{ _('projects.scn_view_scenario') }}</button>
@@ -421,6 +408,21 @@
 .wsp-mtools button { background: none; border: none; color: var(--text-muted);
     cursor: pointer; padding: var(--space-1); font-size: 0.95em; min-height: 32px; }
 .wsp-mtools button:hover { color: var(--text); }
+.wsp-mstep.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.wsp-mstep.off > .wsp-mic, .wsp-mstep.off > b, .wsp-mstep.off > .wsp-mnum { opacity: 0.45; }
+.wsp-mstep.off > b { text-decoration: line-through; }
+.wsp-mstep.hit { background: var(--bg-selected); }
+.wsp-moff { font-size: 0.72em; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
+    color: var(--status-stopped-fg); }
+.wsp-mtools button.on { color: var(--accent); }
+.wsp-mcomment { flex-basis: 100%; display: flex; gap: var(--space-2); align-items: center;
+    margin-left: var(--space-5); color: var(--text-muted); }
+.wsp-mcomment input { flex: 1; font-style: italic; background: transparent;
+    border: 1px dashed var(--border-soft, var(--bg-hover)); border-radius: var(--radius-small, 4px);
+    padding: 2px var(--space-2); color: var(--text); }
+.wsp-medtools { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;
+    margin-bottom: var(--space-3); }
+.wsp-mfind { width: 12em; font: inherit; }
 .wsp-msub { flex-basis: 100%; margin: var(--space-1) 0 0 var(--space-5);
     padding: var(--space-2); border-radius: var(--radius-small, 6px);
     background: var(--bg); }
@@ -676,6 +678,20 @@
 .wsp-scn-insp .scn-cond-row { display: flex; gap: var(--space-1); flex-wrap: wrap;
     align-items: center; }
 .wsp-scn-insp .scn-insp-del { margin-top: var(--space-3); }
+.wsp-scn-insp textarea { font: inherit; min-height: 4.5em; resize: vertical; }
+.wsp-scn-insp .scn-insp-off { flex-direction: row; align-items: center; gap: var(--space-2); }
+.scn-node.off { opacity: 0.55; border-style: dashed; }
+.scn-node.off .hd .kind { text-decoration: line-through; }
+.scn-node .scn-off { margin-left: auto; font-size: 0.66em; font-weight: 600; letter-spacing: 0.4px;
+    text-transform: uppercase; color: var(--status-stopped-fg); }
+.scn-node .bd .scn-cmt { display: block; margin-top: var(--space-1); padding-top: var(--space-1);
+    border-top: 1px dashed var(--border-soft, var(--bg-hover)); font-style: italic; font-size: 0.82em;
+    color: var(--text-muted); white-space: pre-wrap; }
+.scn-node.hit { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent); }
+.scn-rect { position: absolute; border: 1px dashed var(--accent); pointer-events: none;
+    background: color-mix(in srgb, var(--accent) 10%, transparent); z-index: 5; }
+.wsp-scn-edtools { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.wsp-scn-edtools input[type=search] { width: 10em; font: inherit; }
 .scn-branch { border: 1px solid var(--border-soft, var(--bg-hover));
     border-radius: var(--radius-small, 4px); padding: var(--space-2);
     display: flex; flex-direction: column; gap: var(--space-1); }
@@ -1297,7 +1313,6 @@
         document.getElementById('wsp-share-row').hidden = !canShare;
         document.getElementById('wsp-editshared-row').hidden = !canShare;
         setEditUi(); renderLayout(); renderPalette();
-        loadPorts();
         openDrawer();
         document.getElementById('wsp-fab').classList.remove('open');
     }
@@ -1459,22 +1474,21 @@
         if (!items) {
             try {
                 const r = await fetch('/api/containers/' + vmid + '/plugin' + p.options_endpoint);
-                const j = r.ok ? await r.json() : {};
-                items = j[p.options_path || 'items'] || [];
+                items = MXLOptionChoices.normalize(r.ok ? await r.json() : {}, p);
                 _dynCache[key] = {ts: now, items};
             } catch (e) { items = []; }
         }
         const el = document.getElementById(domId);
         if (!el) return;
-        el.innerHTML = '<option value="">—</option>' + items.map(it => {
-            const v = (typeof it === 'string') ? it : (it[p.option_value || 'value'] ?? '');
-            let l = (typeof it === 'string') ? it : (it[p.option_label || p.option_value || 'label'] ?? v);
-            // option nommée par une CLÉ i18n (texte du plugin, pas une donnée) : rendue dans la langue du lecteur
-            if (it && typeof it === 'object' && it.label_key && window.I18N && window.I18N[it.label_key]) l = window.I18N[it.label_key];
-            return '<option value="' + esc(v) + '"' + (String(v) === String(cur) ? ' selected' : '') + '>' +
-                esc(l) + '</option>';
-        }).join('');
-        if (cur) el.value = cur;
+        // Normalisation et POSITIONS (`option_semantics: "position"` : « Élément 3 (actuellement :
+        // Météo) », utilisable playlist vide) partagées avec l'éditeur des touches ATEM (2026-10-29).
+        const choix = MXLOptionChoices.build(p, items, cur);
+        const vu = cur === '' || cur == null || choix.some(o => String(o.v) === String(cur));
+        // Valeur enregistrée absente de la liste : gardée, jamais remplacée en silence par « — ».
+        el.innerHTML = '<option value="">—</option>' + (vu ? '' : '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>')
+            + choix.map(o => '<option value="' + esc(o.v) + '"' + (String(o.v) === String(cur) ? ' selected' : '') + '>' +
+                esc(o.l) + '</option>').join('');
+        if (cur !== '' && cur != null) el.value = String(cur);
     }
     /* ─── Picker recherchable (8e passe ch.6) : palette de commandes unifiée ──
        Remplace les <select> container/action/état. Filtre en direct (accents/casse
@@ -1576,6 +1590,18 @@
             const st = sv && (sv.states || []).find(x => x.id === left.state_id);
             return st ? {type: st.type, options: st.options} : null;
         }
+        // État DÉCLARÉ par le conteneur (manifeste `state`) : son type, et la liste vivante de ses
+        // valeurs s'il en déclare une (`options_endpoint` : « Fichier courant » du player = la liste
+        // de « Charger un fichier », recette du 2026-10-29).
+        if (left && left.kind === 'state' && left.state_id) {
+            const cc = catInst(left);
+            const st = cc && (cc.state || []).find(x => x.id === left.state_id);
+            if (!st) return null;
+            if (st.options_endpoint) return {...st, type: 'text', vmid: cc.vmid};
+            if (st.type === 'bool') return {type: 'bool'};
+            if (st.type === 'enum' && (st.options || []).length) return {type: 'enum', options: st.options};
+            return null;
+        }
         if (!left || left.kind !== 'state' || !left.path) return null;
         const cc = catInst(left);
         if (!cc || !cc.has_param_tree) return null;
@@ -1602,11 +1628,21 @@
     // unité (numérique typé) · champ libre (repli). `onchange` pose {kind:'const', value}.
     function condRightHtml(pp, cur, onchange, dis) {
         dis = dis || '';
-        if (pp && pp.type === 'bool')
-            return '<select' + dis + ' onchange="' + onchange + '">' +
+        if (pp && pp.options_endpoint && pp.vmid) {
+            const did = 'cdyn-' + uid6();
+            populateDynOptions(did, pp.vmid, pp, cur ?? '');
+            return '<select id="' + did + '"' + dis + ' onchange="' + onchange + '">' +
+                '<option value="' + esc(cur ?? '') + '">' + esc(cur || '…') + '</option></select>';
+        }
+        if (pp && pp.type === 'bool') {
+            // Saisie d'avant (« 1 », « on », vide) : montrée telle quelle, jamais comme un Oui.
+            const odd = !['true', 'false'].includes(String(cur ?? ''))
+                ? '<option value="' + esc(cur ?? '') + '" selected>' + esc(cur || '—') + '</option>' : '';
+            return '<select' + dis + ' onchange="' + onchange + '">' + odd +
                 [['true', T('projects.yes')], ['false', T('projects.no')]].map(([v, l]) =>
                     '<option value="' + v + '"' + (String(cur) === v ? ' selected' : '') + '>' +
                     esc(l) + '</option>').join('') + '</select>';
+        }
         if (pp && pp.type === 'enum')
             return '<select' + dis + ' onchange="' + onchange + '">' + (pp.options || []).map(o =>
                 '<option value="' + esc(o) + '"' + (String(cur) === String(o) ? ' selected' : '') + '>' +
@@ -3501,18 +3537,44 @@
     // ({state, value|value_from, op?}), sinon heuristique état homonyme de l'action
     // (mixer pgm(2) → « pgm est égal à 2 »). Toujours personnalisable ensuite.
     function sbDefaultFb(cc, a, getParam) {
+        const h = actionStateHint(cc, a, getParam);
+        return h && {ref: cc.instance_uuid || String(cc.vmid), ...h};
+    }
+    // État qu'une action pose, et sa valeur : partagé par le feedback de shotbox et la condition
+    // d'un SI câblé derrière cette action (Scénario, recette du 2026-10-29). Repli « homonyme
+    // indexé » : un paramètre numérique entre dans l'id (keyer_on_air, keyer = 2 →
+    // keyer2_on_air), la valeur vient alors du premier paramètre oui/non (active).
+    function actionStateHint(cc, a, getParam) {
         if (!cc || !a) return null;
+        const states = cc.state || [];
+        // Paramètre non posé (laissé à sa valeur par défaut) : sa valeur par défaut.
+        const gp = k => {
+            const v = getParam(k);
+            if (v !== undefined && v !== null && v !== '') return v;
+            const p = (a.params || []).find(x => x.key === k);
+            return p ? p.default : v;
+        };
         let hint = a.feedback;
         if (!hint) {
-            const st = (cc.state || []).find(s => s.id === a.id);
-            if (st && (a.params || []).length) hint = {state: st.id, value_from: a.params[0].key};
+            const ps = a.params || [];
+            let st = states.find(s => s.id === a.id);
+            if (st && ps.length) hint = {state: st.id, value_from: ps[0].key};
             else if (st && st.type === 'bool') hint = {state: st.id, value: true};
-            else return null;
+            else {
+                for (const p of ps) {
+                    const v = gp(p.key);
+                    if (p.type !== 'number' || v === undefined || v === null || v === '' || !a.id.includes(p.key)) continue;
+                    st = states.find(s => s.id === a.id.replace(p.key, p.key + v));
+                    if (st) break;
+                }
+                if (!st || st.type !== 'bool') return null;
+                const b = ps.find(p => p.type === 'bool');
+                hint = b ? {state: st.id, value_from: b.key} : {state: st.id, value: true};
+            }
         }
-        if (!(cc.state || []).some(s => s.id === hint.state)) return null;
-        const v = ('value_from' in hint) ? getParam(hint.value_from) : hint.value;
-        return {ref: cc.instance_uuid || String(cc.vmid), state_id: hint.state,
-                op: hint.op || '==', value: v === undefined || v === null ? '' : String(v)};
+        if (!states.some(s => s.id === hint.state)) return null;
+        const v = ('value_from' in hint) ? gp(hint.value_from) : hint.value;
+        return {state_id: hint.state, op: hint.op || '==', value: v === undefined || v === null ? '' : String(v)};
     }
     // Libellé de la cible choisie (picker) — machine · action/réglage/endpoint.
     function sbTargetLabel() {
@@ -3743,73 +3805,15 @@
         setTimeout(pollFeedback, 200);
     };
 
-    /* ─── Ports du projet (chantier 4 : les editors déclarent) ── */
-    let PORTS = [];
-    async function loadPorts() {
-        try {
-            const r = await fetch('/api/projects/' + PID + '/ports');
-            if (r.ok) PORTS = (await r.json()).ports || [];
-        } catch (e) { PORTS = []; }
-        renderPorts();
-    }
-    function renderPorts() {
-        const host = document.getElementById('wsp-ports-list');
-        if (!host) return;
-        const internes = SUMMARY.containers.flatMap(c =>
-            (c.produces || []).map(p => {
-                const base = (c.hostname || '') + ' · ' + (p.label || p.shm);
-                return {shm: p.shm, kind: p.kind,
-                        label: window.SourceLabels ? window.SourceLabels.display(p.shm, base) : base};
-            }));
-        host.innerHTML = PORTS.map(p => {
-            const b = p.binding || {};
-            let detail;
-            if (p.kind === 'source') {
-                detail = b.shm ? '<code>' + esc(b.shm) + '</code>'
-                    : '<span class="meta">' + esc(T('projects.port_unbound')) + '</span>';
-            } else {
-                const opts = ['<option value="">—</option>'].concat(internes
-                    .filter(x => x.kind === (p.media === 'audio' ? 'audio' : 'video'))
-                    .map(x => '<option value="' + esc(x.shm) + '"' +
-                        (b.internal_shm === x.shm ? ' selected' : '') + '>' + esc(x.label) + '</option>'));
-                detail = '<select onchange="wspPortInternal(' + p.id + ', this.value)" ' +
-                    'style="max-width:12em">' + opts.join('') + '</select>';
-            }
-            return '<div class="wsp-pal-item">' +
-                '<span class="wsp-pal-name">' + (p.kind === 'source' ? '⇥' : '⤇') + ' ' +
-                esc(p.name) + ' <small>#' + (p.ord || 0) + ' · ' + esc(p.media) + '</small></span>' +
-                detail +
-                '<button type="button" class="btn btn-red" style="float:right;padding:2px 8px" ' +
-                'onclick="wspDelPort(' + p.id + ')">✕</button></div>';
-        }).join('') || '<p class="meta">—</p>';
-    }
-    window.wspAddPort = async function () {
-        const name = document.getElementById('wsp-port-name').value.trim();
-        if (!name) return;
-        const maxOrd = PORTS.reduce((m, p) => Math.max(m, p.ord || 0), -1);
-        const r = await fetch('/api/projects/' + PID + '/ports', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, kind: document.getElementById('wsp-port-kind').value,
-                media: document.getElementById('wsp-port-media').value, ord: maxOrd + 1})});
-        if (!r.ok) { toast((await r.json().catch(() => ({}))).error || r.statusText, 'error'); return; }
-        document.getElementById('wsp-port-name').value = '';
-        loadPorts();
-    };
-    window.wspPortInternal = async function (portId, shm) {
-        await fetch('/api/projects/' + PID + '/ports/' + portId, {
-            method: 'PATCH', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({binding: {internal_shm: shm || null}})});
-        loadPorts();
-    };
-    window.wspDelPort = async function (portId) {
-        if (!confirm(T('projects.port_del_confirm'))) return;
-        await fetch('/api/projects/' + PID + '/ports/' + portId, {method: 'DELETE'});
-        loadPorts();
-    };
-
     /* ─── Macros : gestionnaire + éditeur à blocs (chantier 6) ── */
     let MACROS = [];
     let _mEdit = null;   // {id, name, steps} en cours d'édition (copie de travail)
+    let _mSel = null;    // sélection de l'éditeur à blocs : {path, a, b} = plage [a..b] d'UNE liste
+    let _mHist = null;   // historique annuler/rétablir (BobiEditor.history)
+    let _mFind = '';     // recherche en cours (Ctrl+F)
+    // Étapes qui se DÉSACTIVENT (miroir de macros.DISABLEABLE_TYPES) : une structure (si,
+    // parallèle) non — le moteur ignorerait le drapeau.
+    const M_DISABLEABLE = ['action', 'config', 'post', 'sleep', 'wait', 'set_var', 'macro'];
 
     async function loadMacros() {
         try {
@@ -3916,6 +3920,9 @@
         if (m.format === 'nodes/v2') { wspScnOpen(mid, false); return; }
         _mEdit = {id: m.id, name: m.name, srcFormat: 'blocks/v1', dirty: false,
                   steps: JSON.parse(JSON.stringify((m.graph || {}).steps || []))};
+        _mSel = null; _mFind = '';
+        _mHist = window.BobiEditor ? BobiEditor.history(100) : null;
+        if (_mHist) _mHist.reset(_mEdit.steps);
         renderMacros();
     };
 
@@ -4093,7 +4100,9 @@
     };
 
     // Modifs non enregistrées de l'éditeur à blocs (pilote la bascule Blocs ⇄ Scénario).
-    const mDirty = () => { if (_mEdit) _mEdit.dirty = true; };
+    // Chaque modification empile un instantané (annuler/rétablir, static/js/editor.js) : mDirty
+    // est appelé APRÈS la modification, partout.
+    const mDirty = () => { if (_mEdit) { _mEdit.dirty = true; if (_mHist) _mHist.commit(_mEdit.steps); } };
     // Adressage des étapes par chemin ("2", "2.then.0", "3.branches.1"…) —
     // gère l'imbrication des si et les colonnes du bloc parallèle.
     function mSteps(path) {
@@ -4139,7 +4148,7 @@
         renderMacros();
     };
     window.wspMDel = function (path, i) {
-        mSteps(path).splice(i, 1); mDirty(); renderMacros();
+        mSteps(path).splice(i, 1); _mSel = null; mDirty(); renderMacros();
     };
     window.wspMMove = function (path, i, d) {
         const arr = mSteps(path), j = i + d;
@@ -4156,6 +4165,232 @@
         o[ks.at(-1)] = value;
         mDirty();
     };
+
+    /* ── Édition au clavier (2026-10-29) : sélection, presse-papiers, annuler, désactiver,
+       commenter, chercher. Comportement commun avec Scénario et le layout du multiview :
+       static/js/editor.js. ── */
+    const mClone = o => JSON.parse(JSON.stringify(o));
+    function mIsSel(path, i) {
+        if (!_mSel || _mSel.path !== path) return false;
+        return i >= Math.min(_mSel.a, _mSel.b) && i <= Math.max(_mSel.a, _mSel.b);
+    }
+    // Plage sélectionnée, bornée à la liste telle qu'elle est maintenant (null si rien).
+    function mSelRange() {
+        if (!_mEdit || !_mSel) return null;
+        const arr = mSteps(_mSel.path);
+        const lo = Math.max(0, Math.min(_mSel.a, _mSel.b)), hi = Math.min(arr.length - 1, Math.max(_mSel.a, _mSel.b));
+        return hi >= lo ? {path: _mSel.path, arr, lo, hi} : null;
+    }
+    window.wspMClick = function (e, path, i) {
+        e.stopPropagation();   // une étape dans un si / un parallèle ne sélectionne pas son parent
+        const t = e.target;
+        if (t.closest('input,select,textarea,button,a,.wsp-pick')) return;
+        if (e.shiftKey && _mSel && _mSel.path === path) _mSel.b = i;
+        else _mSel = {path, a: i, b: i};
+        mPaintSel();
+    };
+    // Repeint la sélection sans re-rendre (les champs gardent leur focus et leur saisie).
+    function mPaintSel() {
+        document.querySelectorAll('#wsp-macros .wsp-mstep[data-mi]').forEach(el =>
+            el.classList.toggle('sel', mIsSel(el.dataset.mpath, +el.dataset.mi)));
+        mEdToolsState();
+    }
+    // Insère des étapes dans la liste `path` à l'index `at`, puis les sélectionne.
+    function mInsert(path, at, steps) {
+        if (!steps.length) return;
+        if (path && steps.some(s => s.type === 'if' || s.type === 'parallel')) {
+            toast(T('projects.ed_paste_nested'), 'error');   // un seul niveau de si/parallèle à l'UI
+            return;
+        }
+        mSteps(path).splice(at, 0, ...steps);
+        _mSel = {path, a: at, b: at + steps.length - 1};
+        mDirty();
+        renderMacros();
+    }
+    window.wspMDup = function (path, i) {
+        const r = mSelRange();
+        if (r && r.path === path && i >= r.lo && i <= r.hi)
+            return mInsert(path, r.hi + 1, mClone(r.arr.slice(r.lo, r.hi + 1)));
+        mInsert(path, i + 1, [mClone(mSteps(path)[i])]);
+    };
+    function mSetOff(steps, on) {
+        steps.filter(s => M_DISABLEABLE.includes(s.type)).forEach(s => {
+            if (on) s.disabled = true; else delete s.disabled;
+        });
+    }
+    window.wspMToggleOff = function (path, i) {
+        const r = mSelRange();
+        const list = (r && r.path === path && i >= r.lo && i <= r.hi) ? r.arr.slice(r.lo, r.hi + 1) : [mSteps(path)[i]];
+        mSetOff(list, !list.filter(s => M_DISABLEABLE.includes(s.type)).every(s => s.disabled));
+        mDirty();
+        renderMacros();
+    };
+    window.wspMComment = function (path, i) {
+        const s = mSteps(path)[i];
+        if (typeof s.comment !== 'string') s.comment = '';
+        renderMacros();
+        const el = document.querySelector('#wsp-macros .wsp-mstep[data-mpath="' + CSS.escape(path) +
+                                          '"][data-mi="' + i + '"] > .wsp-mcomment input');
+        if (el) el.focus();
+    };
+    window.wspMSetComment = function (path, i, v) {
+        const s = mSteps(path)[i];
+        if (v.trim()) s.comment = v; else delete s.comment;   // vidé = retiré
+        mDirty();
+        if (!v.trim()) renderMacros();
+    };
+    // Nœuds de Scénario collés en Blocs : seules les étapes FEUILLES ont un équivalent direct
+    // (une structure de graphe ne se reconstruit pas depuis un morceau), dans l'ordre gauche→droite.
+    function mStepsFromNodes(data) {
+        const leaf = ['action', 'config', 'post', 'sleep', 'wait', 'set_var', 'macro'];
+        const ns = (data.nodes || []).slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
+        const steps = ns.filter(n => leaf.includes(n.type)).map(n => Object.assign({type: n.type}, mClone(n.params || {})));
+        if (steps.length < ns.length) toast(T('projects.ed_paste_partial'), 'warning');
+        return steps;
+    }
+    function mFindApply(jump) {
+        const q = _mFind.trim().toLowerCase();
+        const els = Array.from(document.querySelectorAll('#wsp-macros .wsp-mstep[data-mi]'));
+        const hits = [];
+        els.forEach(el => {
+            const txt = (el.textContent + ' ' + Array.from(el.querySelectorAll('input,select')).map(x =>
+                x.tagName === 'SELECT' ? (x.selectedOptions[0] || {}).text || '' : x.value).join(' ')).toLowerCase();
+            const hit = !!q && txt.includes(q);
+            el.classList.toggle('hit', hit);
+            if (hit) hits.push(el);
+        });
+        if (jump && hits.length) {
+            // Prochaine occurrence APRÈS la sélection courante, en boucle.
+            const cur = hits.findIndex(el => el.classList.contains('sel'));
+            const el = hits[(cur + 1) % hits.length];
+            _mSel = {path: el.dataset.mpath, a: +el.dataset.mi, b: +el.dataset.mi};
+            mPaintSel();
+            el.scrollIntoView({block: 'nearest'});
+        }
+    }
+    window.wspMFind = function (v, jump) { _mFind = v; mFindApply(jump); };
+    const M_KEYS = () => [
+        ['mod+z', T('projects.ed_undo')], ['mod+shift+z / mod+y', T('projects.ed_redo')],
+        ['mod+c', T('projects.ed_copy')], ['mod+x', T('projects.ed_cut')], ['mod+v', T('projects.ed_paste')],
+        ['mod+d', T('projects.ed_duplicate')], ['mod+a', T('projects.ed_select_all')],
+        ['shift+' + T('projects.ed_key_click'), T('projects.ed_select_range')],
+        [T('projects.ed_key_del'), T('projects.ed_delete')], ['↑ / ↓', T('projects.ed_move_blocks')],
+        ['mod+/', T('projects.ed_toggle_disable')], ['mod+f', T('projects.ed_find')],
+        ['mod+s', T('projects.ed_save')], [T('projects.ed_key_esc'), T('projects.ed_deselect')],
+        ['?', T('projects.ed_help')]];
+    // Une seule entrée pour le clavier ET la barre d'outils (iPad sans clavier).
+    window.wspMCmd = async function (action, sc) {
+        if (!_mEdit) return;
+        const r = mSelRange();
+        const K = window.BobiEditor;
+        switch (action) {
+        case 'undo': case 'redo': {
+            const st = _mHist && (action === 'undo' ? _mHist.undo() : _mHist.redo());
+            if (st === undefined) return;
+            _mEdit.steps = st; _mEdit.dirty = true; _mSel = null;
+            renderMacros();
+            return;
+        }
+        case 'copy': case 'cut':
+            if (!r || !K) return;
+            K.clipboard.put('macro-steps', mClone(r.arr.slice(r.lo, r.hi + 1)));
+            if (action === 'cut') { r.arr.splice(r.lo, r.hi - r.lo + 1); _mSel = null; mDirty(); renderMacros(); }
+            else toast(T('projects.ed_copied'));
+            return;
+        case 'paste': {
+            const c = K && K.clipboard.get();
+            if (!c) return;
+            const steps = c.kind === 'macro-steps' ? mClone(c.data || [])
+                : c.kind === 'macro-nodes' ? mStepsFromNodes(c.data || {}) : null;
+            if (!steps) { toast(T('projects.ed_paste_foreign'), 'error'); return; }
+            if (r) mInsert(r.path, r.hi + 1, steps); else mInsert('', _mEdit.steps.length, steps);
+            return;
+        }
+        case 'duplicate':
+            if (r) mInsert(r.path, r.hi + 1, mClone(r.arr.slice(r.lo, r.hi + 1)));
+            return;
+        case 'delete':
+            if (!r) return;
+            r.arr.splice(r.lo, r.hi - r.lo + 1); _mSel = null; mDirty(); renderMacros();
+            return;
+        case 'selectAll': {
+            const path = _mSel ? _mSel.path : '';
+            const n = mSteps(path).length;
+            if (n) { _mSel = {path, a: 0, b: n - 1}; mPaintSel(); }
+            return;
+        }
+        case 'nudge': {   // ↑ / ↓ : déplace la plage d'une position (comme les boutons ↑ ↓)
+            if (!r || !sc || !sc.dy) return;
+            const d = sc.dy < 0 ? -1 : 1;
+            if (r.lo + d < 0 || r.hi + d >= r.arr.length) return;
+            const block = r.arr.splice(r.lo, r.hi - r.lo + 1);
+            r.arr.splice(r.lo + d, 0, ...block);
+            _mSel = {path: r.path, a: r.lo + d, b: r.hi + d};
+            mDirty(); renderMacros();
+            return;
+        }
+        case 'toggleDisable':
+            if (!r) return;
+            wspMToggleOff(r.path, r.lo);
+            return;
+        case 'comment':
+            if (r) wspMComment(r.path, r.lo);
+            return;
+        case 'find': {
+            const f = document.getElementById('wsp-mfind');
+            if (f) { f.focus(); f.select(); }
+            return;
+        }
+        case 'save':
+            if (await mSaveBlocks()) toast(T('projects.ws_view_saved'));
+            return;
+        case 'escape': {
+            _mSel = null; _mFind = '';
+            const f = document.getElementById('wsp-mfind'); if (f) f.value = '';
+            mPaintSel(); mFindApply(false);
+            return;
+        }
+        case 'help':
+            if (K) K.showHelp(T('projects.ed_keys_title'), M_KEYS(), T('projects.ws_view_close'));
+            return;
+        }
+    };
+    function mEdToolsHtml() {
+        const K = window.BobiEditor;
+        if (!K) return '';
+        const c = a => "wspMCmd('" + a + "')";
+        return '<div class="wsp-medtools">' + K.toolbarHtml(T('projects.ed_tools'), [
+            ['undo', T('projects.ed_undo'), c('undo'), 'wsp-med-undo'],
+            ['redo', T('projects.ed_redo'), c('redo'), 'wsp-med-redo'], null,
+            ['cut', T('projects.ed_cut'), c('cut'), 'wsp-med-cut'],
+            ['copy_settings', T('projects.ed_copy'), c('copy'), 'wsp-med-copy'],
+            ['paste_settings', T('projects.ed_paste'), c('paste')],
+            ['duplicate', T('projects.ed_duplicate'), c('duplicate'), 'wsp-med-dup'], null,
+            ['disable', T('projects.ed_toggle_disable'), c('toggleDisable'), 'wsp-med-off'],
+            ['comment', T('projects.ed_comment'), c('comment'), 'wsp-med-cmt'], null,
+            ['keyboard', T('projects.ed_help'), c('help')]]) +
+            '<input type="search" id="wsp-mfind" class="wsp-mfind" placeholder="' + esc(T('projects.ed_find')) +
+            '" value="' + esc(_mFind) + '" oninput="wspMFind(this.value,false)" ' +
+            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();wspMFind(this.value,true)}">' +
+            '</div>';
+    }
+    // Outils grisés quand ils n'ont rien à faire — avec leur titre, jamais un bouton muet.
+    function mEdToolsState() {
+        const has = !!mSelRange();
+        const set = (id, on) => { const b = document.getElementById(id); if (b) b.disabled = !on; };
+        set('wsp-med-undo', _mHist && _mHist.canUndo());
+        set('wsp-med-redo', _mHist && _mHist.canRedo());
+        ['wsp-med-cut', 'wsp-med-copy', 'wsp-med-dup', 'wsp-med-off', 'wsp-med-cmt'].forEach(id => set(id, has));
+    }
+    if (window.BobiEditor) {
+        const on = {};
+        ['undo', 'redo', 'copy', 'cut', 'paste', 'duplicate', 'delete', 'selectAll', 'nudge',
+         'toggleDisable', 'find', 'save', 'escape', 'help'].forEach(a => { on[a] = sc => wspMCmd(a, sc); });
+        BobiEditor.bind({
+            active: () => !!_mEdit && !SCN && !document.getElementById('wsp-macros').hidden &&
+                          !document.getElementById('bek-help'),
+            on});
+    }
 
     const catSvcAction = s => {
         const sv = (CATALOG?.services || []).find(x => x.service === s.service);
@@ -4396,15 +4631,30 @@
                         '<option value="' + m.id + '"' + (m.id === s.macro_id ? ' selected' : '') + '>' +
                         (m.system ? '🛡 ' : '') + esc(m.name) + '</option>').join('') + '</select>';
             }
-            return '<div class="wsp-mstep">' +
+            // Sélection au clic sur le fond de l'étape (jamais sur un champ) ; Maj+clic = plage.
+            const off = M_DISABLEABLE.includes(s.type) && s.disabled;
+            const a = '\'' + path + '\',' + i;
+            return '<div class="wsp-mstep' + (mIsSel(path, i) ? ' sel' : '') + (off ? ' off' : '') + '"' +
+                ' data-mpath="' + esc(path) + '" data-mi="' + i + '" onclick="wspMClick(event,' + a + ')">' +
                 '<span class="wsp-mnum">' + (i + 1) + '</span>' +
                 '<span class="wsp-mic">' + meta.ic + '</span>' +
-                '<b>' + esc(meta.label) + '</b>' + body +
+                '<b>' + esc(meta.label) + '</b>' +
+                (off ? '<span class="wsp-moff">' + esc(T('projects.ed_disabled')) + '</span>' : '') + body +
                 '<span class="wsp-mtools">' +
-                '<button type="button" title="↑" onclick="wspMMove(\'' + path + '\',' + i + ',-1)">↑</button>' +
-                '<button type="button" title="↓" onclick="wspMMove(\'' + path + '\',' + i + ',1)">↓</button>' +
-                '<button type="button" title="✕" onclick="wspMDel(\'' + path + '\',' + i + ')">✕</button>' +
-                '</span></div>';
+                '<button type="button" title="↑" onclick="wspMMove(' + a + ',-1)">↑</button>' +
+                '<button type="button" title="↓" onclick="wspMMove(' + a + ',1)">↓</button>' +
+                '<button type="button" title="' + esc(T('projects.ed_duplicate')) + '" onclick="wspMDup(' + a + ')">⧉</button>' +
+                (M_DISABLEABLE.includes(s.type)
+                    ? '<button type="button" class="' + (off ? 'on' : '') + '" title="' +
+                      esc(T(off ? 'projects.ed_enable' : 'projects.ed_disable')) + '" aria-pressed="' + !!off +
+                      '" onclick="wspMToggleOff(' + a + ')">⊘</button>' : '') +
+                '<button type="button" title="' + esc(T('projects.ed_comment')) + '" onclick="wspMComment(' + a + ')">💬</button>' +
+                '<button type="button" title="✕" onclick="wspMDel(' + a + ')">✕</button>' +
+                '</span>' +
+                (typeof s.comment === 'string'
+                    ? '<div class="wsp-mcomment">💬<input type="text" value="' + esc(s.comment) + '" placeholder="' +
+                      esc(T('projects.ed_comment_ph')) + '" onchange="wspMSetComment(' + a + ',this.value)"></div>' : '') +
+                '</div>';
         }).join('');
         if (!steps.length && !path)
             html += '<div class="wsp-mempty">' + esc(T('projects.m_empty')) + '</div>';
@@ -4429,8 +4679,11 @@
             '<button type="button" class="btn btn-green" onclick="wspMacroSave()">' + esc(T('projects.ws_view_save')) + '</button>' +
             '<button type="button" class="btn" onclick="wspMacroSave(true)">▶ ' + esc(T('projects.m_test')) + '</button></div>' +
             '<datalist id="wsp-vars-dl">' + varNames.map(n => '<option value="' + esc(n) + '">').join('') + '</datalist>' +
+            mEdToolsHtml() +
             mStepsHtml('', 0) +
             '<div class="wsp-mrun-log" id="wsp-macro-log"></div>';
+        mEdToolsState();
+        if (_mFind) mFindApply(false);
     }
     window._wspMacroBack = function () { _mEdit = null; renderMacros(); };
     // Sauvegarde des blocs (blocks/v1 — la vue Blocs écrit TOUJOURS ce format,
@@ -4484,7 +4737,14 @@
     const scnWrap = scnEl('scn-wrap');
     const scnWorld = scnEl('scn-world');
     const scnSvg = scnEl('scn-edges');
-    const scnDirty = () => { if (SCN) SCN.dirty = true; };
+    // Chaque modification empile un instantané {nodes, edges} (annuler/rétablir, editor.js) :
+    // scnDirty est appelé APRÈS la modification, partout (un glisser = un seul appel, au lâcher).
+    const scnDirty = () => {
+        if (!SCN) return;
+        SCN.dirty = true;
+        if (SCN.hist) SCN.hist.commit({nodes: SCN.nodes, edges: SCN.edges});
+        scnEdToolsState();
+    };
     const scnNodeById = id => SCN && SCN.nodes.find(n => n.id === id);
 
     // Types de nœuds : icône + variable de teinte locale (--scn-*) + libellé i18n.
@@ -4541,6 +4801,40 @@
         }
         return (n.params.cond = n.params.cond || scnDefCond());
     }
+    // Bloc(s) ACTION câblé(s) en entrée d'un nœud (recette du 2026-10-29) : `cur` = conteneur du
+    // premier (le choix d'état s'ouvre sur ses états) ; `cond` = l'état que posent ces actions et sa
+    // valeur, seulement s'ils sont TOUS d'accord (deux entrées divergentes : rien n'est deviné).
+    function scnUpstream(id) {
+        let cur = null, cond = null, agree = true;
+        for (const e of (SCN?.edges || [])) {
+            if (e.to !== id) continue;
+            const u = scnNodeById(e.from);
+            const p = u && u.type === 'action' ? u.params : null;
+            const cc = p && catInst(p);          // action de service : aucun conteneur
+            if (!cc) continue;
+            cur = cur || {kind: 'container', vmid: cc.vmid, instance_uuid: cc.instance_uuid};
+            const a = (cc.actions || []).find(x => x.id === p.action_id);
+            const h = actionStateHint(cc, a, k => (p.params || {})[k]);
+            const c = h && {left: {kind: 'state', ...ccRef(cc), state_id: h.state_id},
+                            op: h.op, right: {kind: 'const', value: h.value}};
+            if (!c || (cond && JSON.stringify(cond) !== JSON.stringify(c))) agree = false;
+            else cond = c;
+        }
+        return {cur, cond: agree ? cond : null};
+    }
+    // Condition encore vide d'un SI / ATTENDRE → remplie par l'action en entrée. Jamais une
+    // condition déjà posée. Vrai si le nœud a changé.
+    function scnPrefillCond(id) {
+        const n = scnNodeById(id);
+        if (!n || (n.type !== 'cond' && n.type !== 'wait')) return false;
+        const c = n.params?.cond;
+        if (c && c.left && !(c.left.kind === 'var' && !c.left.name)) return false;
+        const up = scnUpstream(id).cond;
+        if (!up) return false;
+        n.params = n.params || {};
+        n.params.cond = up;
+        return true;
+    }
 
     /* ── Ouverture / fermeture ─────────────────────────── */
     window.wspScnOpen = async function (mid, sys) {
@@ -4566,7 +4860,12 @@
                nodes: JSON.parse(JSON.stringify(g.nodes || [])),
                edges: JSON.parse(JSON.stringify(g.edges || [])),
                dirty: false, sel: null, els: {}, hot: new Set(),
-               view: {x: 40, y: 40, s: 1}};
+               view: {x: 40, y: 40, s: 1},
+               msel: new Set(), find: '', lastPt: null,
+               hist: window.BobiEditor ? BobiEditor.history(100) : null};
+        if (SCN.hist) SCN.hist.reset({nodes: SCN.nodes, edges: SCN.edges});
+        scnEl('scn-edtools').innerHTML = scnEdToolsHtml();
+        if (window.BobiEditor && scnS()) BobiEditor.lierVerrous(scnEl('scn-edtools'), scnS());
         document.getElementById('wsp-macros').hidden = true;
         scnEl('wsp-scn').hidden = false;
         scnEl('scn-name').value = m.name;
@@ -4722,11 +5021,17 @@
                 : esc(T('projects.scn_entry_manual_body'));
         return '<span class="meta">' + esc(n.type) + '</span>';
     }
+    // Désactivable = miroir de macros.DISABLEABLE_TYPES (même liste que les Blocs).
+    const scnIsOff = n => M_DISABLEABLE.includes(n.type) && !!(n.params || {}).disabled;
+    function scnBdHtml(n) {
+        const c = (n.params || {}).comment;
+        return scnBodyHtml(n) + (c ? '<span class="scn-cmt">' + esc(c) + '</span>' : '');
+    }
     function scnMakeNode(n) {
         const K = SCN_KINDS()[scnKind(n)] || SCN_KINDS().action;
         const outs = scnOutPorts(n);
         const el = document.createElement('div');
-        el.className = 'scn-node' + (outs.some(l => l) ? ' has-out-labels' : '');
+        el.className = 'scn-node' + (outs.some(l => l) ? ' has-out-labels' : '') + (scnIsOff(n) ? ' off' : '');
         el.dataset.id = n.id;
         el.style.left = (n.x || 0) + 'px';
         el.style.top = (n.y || 0) + 'px';
@@ -4734,8 +5039,9 @@
         if (outs.length > 1) el.style.minHeight = (outs.length * 46) + 'px';
         el.innerHTML =
             '<div class="hd"><span class="ic">' + K.ic + '</span>' +
-            '<span class="kind">' + esc(K.label) + '</span></div>' +
-            '<div class="bd">' + scnBodyHtml(n) + '</div>' +
+            '<span class="kind">' + esc(K.label) + '</span>' +
+            (scnIsOff(n) ? '<span class="scn-off">' + esc(T('projects.ed_disabled')) + '</span>' : '') + '</div>' +
+            '<div class="bd">' + scnBdHtml(n) + '</div>' +
             (n.type !== 'entry'
                 ? '<span class="scn-port in" data-node="' + esc(n.id) + '"></span>' : '') +
             outs.map((lbl, i) =>
@@ -4801,10 +5107,10 @@
         SCN.els = {};
         SCN.nodes.forEach(scnMakeNode);
         SCN.nodes.forEach(scnLayoutPorts);
-        if (SCN.sel && SCN.sel.t === 'node' && SCN.els[SCN.sel.id])
-            SCN.els[SCN.sel.id].classList.add('sel');
+        SCN.msel.forEach(id => SCN.els[id] && SCN.els[id].classList.add('sel'));
         scnDrawEdges();
         scnApplyView();
+        if (SCN.find) scnFindApply(false);
     }
 
     /* ── Vue : pan / zoom / recentrer ──────────────────── */
@@ -4857,9 +5163,63 @@
     }, {passive: false});
 
     /* ── Interactions pointeur (souris + tactile) ──────── */
-    let scnDrag = null;   // {mode:'pan'|'node'|'link', …}
+    // Sélection, glisser de nœuds et rectangle de sélection : la SURFACE commune des éditeurs
+    // (BobiEditor.surface, static/js/editor.js — chantier « un seul moteur d'édition », 30/10) :
+    // Maj ou Ctrl/⌘ ajoutent, la référence est le dernier cliqué, un groupe se déplace ensemble,
+    // un glisser ne part qu'au-delà de 6 px d'écran. Restent ICI ce qui est propre au Scénario :
+    // monde sans bord (panoramique, zoom), liens entre ports, arêtes, appui long au doigt.
+    // SCN.msel (ids) + SCN.sel (la référence) restent LA sélection que lisent l'inspecteur,
+    // l'édition au clavier et scnPeers : on la passe à la surface avant un geste, on la relit après.
+    let scnSurf = null;
+    function scnS() {
+        if (scnSurf || !window.BobiEditor) return scnSurf;
+        scnSurf = BobiEditor.surface({
+            objets: () => SCN.nodes.map(n => {
+                const el = SCN.els[n.id];
+                return {x: n.x, y: n.y, w: el ? el.offsetWidth : 210, h: el ? el.offsetHeight : 60};
+            }),
+            cadre: () => ({x: -1e7, y: -1e7, w: 2e7, h: 2e7}),
+            ecrire: (i, r) => {
+                const n = SCN.nodes[i];
+                if (!n) return;
+                n.x = r.x; n.y = r.y;
+                const el = SCN.els[n.id];
+                if (el) { el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; }
+            },
+            rendu: () => {
+                const r = scnSurf && scnSurf.rectSel;
+                if (r) {
+                    if (!scnRectEl) { scnRectEl = document.createElement('div'); scnRectEl.className = 'scn-rect'; scnWorld.appendChild(scnRectEl); }
+                    Object.assign(scnRectEl.style, {left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px'});
+                    scnSOut(false);
+                } else if (scnRectEl) { scnRectEl.remove(); scnRectEl = null; }
+                scnDrawEdges();
+            },
+            valider: () => scnDirty(),
+        }, {horsCadre: true, aimant: () => false, arrondi: Math.round, rectangle: true,
+            seuil: () => 6 / ((SCN && SCN.view && SCN.view.s) || 1)});
+        return scnSurf;
+    }
+    let scnRectEl = null;
+    function scnSIn() {
+        const S = scnS(), idx = id => SCN.nodes.findIndex(n => n.id === id);
+        S.sel = Array.from(SCN.msel).map(idx).filter(i => i >= 0);
+        const p = SCN.sel && SCN.sel.t === 'node' ? idx(SCN.sel.id) : -1;
+        S.primaire = p >= 0 && S.sel.includes(p) ? p : (S.sel.length ? S.sel[S.sel.length - 1] : null);
+        return S;
+    }
+    function scnSOut(insp) {
+        const S = scnS();
+        SCN.msel = new Set(S.sel.map(i => SCN.nodes[i] && SCN.nodes[i].id).filter(Boolean));
+        const p = S.primaire != null && SCN.nodes[S.primaire] ? SCN.nodes[S.primaire].id : null;
+        SCN.sel = p ? {t: 'node', id: p} : null;
+        scnPaintSel();
+        if (insp !== false) scnRenderInsp();
+    }
+    let scnDrag = null;   // {mode:'pan'|'surface'|'link', …}
     scnWrap.addEventListener('pointerdown', e => {
         if (!SCN) return;
+        SCN.lastPt = scnEvtWorld(e);   // point de collage (Ctrl+V colle sous le dernier geste)
         if (e.target.classList && e.target.classList.contains('hit')) {   // arête
             scnSelect({t: 'edge', ei: +e.target.dataset.ei});
             return;
@@ -4873,16 +5233,36 @@
             scnSvg.appendChild(tmp);
             scnDrag = {mode: 'link', from: port.dataset.node, port: +port.dataset.port, tmp};
         } else if (hd) {
-            const n = scnNodeById(nd.dataset.id);
-            const p = scnEvtWorld(e);
-            scnSelect({t: 'node', id: n.id});
-            scnDrag = {mode: 'node', n, ox: p.x - n.x, oy: p.y - n.y, moved: false};
+            // En-tête d'un nœud : sélection + glisser (seul ou toute la sélection) par la surface.
+            const S = scnSIn(), i = SCN.nodes.findIndex(n => n.id === nd.dataset.id);
+            const avant = {sel: S.sel.slice(), primaire: S.primaire};   // pour l'appui long
+            const parti = S.appui(scnEvtWorld(e), {i}, e);
+            scnSOut();
+            if (!parti) return;                              // Maj+clic qui RETIRE : pas de glisser
+            scnDrag = {mode: 'surface'};
+            // Tactile : appui long = ajouter/retirer de la sélection (pas de touche Maj sur iPad).
+            if (e.pointerType === 'touch')
+                scnDrag.lp = setTimeout(() => {
+                    if (scnDrag && scnDrag.mode === 'surface' && !(S.geste && S.geste.parti)) {
+                        // Ajouter/retirer par rapport à la sélection D'AVANT l'appui (l'appui, lui,
+                        // avait déjà sélectionné le nœud seul — basculer ensuite l'aurait retiré).
+                        S.geste = null; scnDrag = null;
+                        S.sel = avant.sel; S.primaire = avant.primaire;
+                        S.selectionner(i, {shiftKey: true}); scnSOut();
+                    }
+                }, 500);
         } else if (nd) {
-            scnSelect({t: 'node', id: nd.dataset.id});
+            // Corps d'un nœud (champs) : sélectionner, sans glisser (verrou « Sélection multiple » = Maj).
+            const S0 = scnSIn();
+            S0.selectionner(SCN.nodes.findIndex(n => n.id === nd.dataset.id), S0.multi ? {shiftKey: true} : e);
+            scnSOut();
             return;
+        } else if (scnSIn().appui(scnEvtWorld(e), null, e)) {
+            scnDrag = {mode: 'surface'};                     // Maj + glisser sur le fond = rectangle
         } else {
-            scnSelect(null);
-            scnDrag = {mode: 'pan', sx: e.clientX - SCN.view.x, sy: e.clientY - SCN.view.y};
+            scnSOut();                                       // clic dans le vide : désélection…
+            SCN.sel = null; scnRenderInsp();
+            scnDrag = {mode: 'pan', sx: e.clientX - SCN.view.x, sy: e.clientY - SCN.view.y};   // …et panoramique
             scnWrap.classList.add('panning');
         }
         scnWrap.setPointerCapture(e.pointerId);
@@ -4894,15 +5274,10 @@
             SCN.view.x = e.clientX - scnDrag.sx;
             SCN.view.y = e.clientY - scnDrag.sy;
             scnApplyView();
-        } else if (scnDrag.mode === 'node') {
-            const p = scnEvtWorld(e);
-            scnDrag.moved = true;
-            scnDrag.n.x = Math.round(p.x - scnDrag.ox);
-            scnDrag.n.y = Math.round(p.y - scnDrag.oy);
-            const el = SCN.els[scnDrag.n.id];
-            el.style.left = scnDrag.n.x + 'px';
-            el.style.top = scnDrag.n.y + 'px';
-            scnDrawEdges();
+        } else if (scnDrag.mode === 'surface') {
+            const S = scnS();
+            S.glisse(scnEvtWorld(e), e);
+            if (S.geste && S.geste.parti && scnDrag.lp) { clearTimeout(scnDrag.lp); scnDrag.lp = null; }
         } else if (scnDrag.mode === 'link') {
             const a = scnPortPos(scnDrag.from, scnDrag.port, false);
             const p = scnEvtWorld(e);
@@ -4923,35 +5298,43 @@
                 const to = pin.dataset.node, from = scnDrag.from, port = scnDrag.port;
                 if (!SCN.edges.some(x => x.from === from && (+x.port || 0) === port && x.to === to)) {
                     SCN.edges.push({from, port, to});
+                    const filled = scnPrefillCond(to);
                     scnDirty();
+                    if (filled) { scnRefreshNode(scnNodeById(to)); scnRenderInsp(); }
                 }
             }
             scnDrag.tmp.remove();
             scnWorld.querySelectorAll('.scn-port.in.mag').forEach(x => x.classList.remove('mag'));
             scnDrawEdges();
-        } else if (scnDrag.mode === 'node' && scnDrag.moved) {
-            scnDirty();
+        } else if (scnDrag.mode === 'surface') {
+            if (scnDrag.lp) clearTimeout(scnDrag.lp);
+            scnS().relache();                                // valide (scnDirty) seulement si ça a bougé
+            scnSOut();
         }
         scnWrap.classList.remove('panning');
         scnDrag = null;
     });
-    // Suppr / Retour arrière = supprimer la sélection (hors champs de saisie).
-    document.addEventListener('keydown', e => {
-        if (!SCN || scnEl('wsp-scn').hidden || !SCN.sel) return;
-        if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-        const tag = (e.target.tagName || '').toLowerCase();
-        if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
-        e.preventDefault();
-        wspScnDelSel();
-    });
+    // Clavier : cf. « Édition au clavier » plus bas (Suppr y est, avec le reste).
 
     /* ── Sélection + panneau d'édition ─────────────────── */
     function scnSelect(sel) {
         if (!SCN) return;
         SCN.sel = sel;
-        scnWorld.querySelectorAll('.scn-node.sel').forEach(el => el.classList.remove('sel'));
-        if (sel && sel.t === 'node' && SCN.els[sel.id]) SCN.els[sel.id].classList.add('sel');
+        SCN.msel = new Set(sel && sel.t === 'node' ? [sel.id] : []);
+        scnPaintSel();
+        scnRenderInsp();
+    }
+    // Classes .sel de la sélection multiple (sans re-rendre les cartes).
+    function scnPaintSel() {
+        scnWorld.querySelectorAll('.scn-node').forEach(el => el.classList.toggle('sel', SCN.msel.has(el.dataset.id)));
         scnDrawEdges();
+        scnEdToolsState();
+    }
+    function scnToggleMulti(id) {
+        if (SCN.msel.has(id)) SCN.msel.delete(id); else SCN.msel.add(id);
+        const keep = SCN.msel.has(id) ? id : SCN.msel.values().next().value;
+        SCN.sel = keep ? {t: 'node', id: keep} : null;
+        scnPaintSel();
         scnRenderInsp();
     }
     window.wspScnDelSel = function () {
@@ -4962,26 +5345,47 @@
             scnSelect(null);
             return;
         }
-        const id = SCN.sel.id;
-        const touching = SCN.edges.some(e => e.from === id || e.to === id);
+        const ids = SCN.msel.size ? new Set(SCN.msel) : new Set([SCN.sel.id]);
+        const touching = SCN.edges.some(e => ids.has(e.from) || ids.has(e.to));
         if (touching && !confirm(T('projects.scn_node_del_confirm'))) return;
-        SCN.nodes = SCN.nodes.filter(n => n.id !== id);
-        SCN.edges = SCN.edges.filter(e => e.from !== id && e.to !== id);
+        SCN.nodes = SCN.nodes.filter(n => !ids.has(n.id));
+        SCN.edges = SCN.edges.filter(e => !ids.has(e.from) && !ids.has(e.to));
+        SCN.msel = new Set();
         scnDirty();
         SCN.sel = null;
         scnRenderAll();
         scnRenderInsp();
     };
     // Écriture d'une clé pointée dans node.params (mêmes onchange que l'éditeur à blocs).
-    window.wspScnSet = function (id, key, value) {
+    // Fonction appelée par un nœud action / réglage / appel avancé : même type de conteneur (ou même
+    // service) + même action, même clé de réglage, même endpoint et mêmes champs. null = autre nœud.
+    function scnFnKey(n) {
+        if (!n || !['action', 'config', 'post'].includes(n.type)) return null;
+        const p = n.params || {};
+        const cc = !p.service && catInst(p);
+        const who = p.service ? 'svc:' + p.service : cc ? 'type:' + cc.type : null;
+        if (!who) return null;
+        const what = n.type === 'action' ? p.action_id
+            : n.type === 'config' ? Object.keys(p.params || {})[0]
+            : (p.endpoint || '') + '|' + Object.keys(p.params || {}).sort().join(',');
+        return what ? n.type + '|' + who + '|' + what : null;
+    }
+    // Nœuds qu'une valeur saisie au panneau modifie : tous les sélectionnés s'ils appellent la même
+    // fonction que le nœud affiché (recette du 2026-10-29), sinon ce nœud seul.
+    function scnPeers(id) {
         const n = scnNodeById(id);
-        if (!n) return;
+        if (!n) return [];
+        return BobiEditor.peers(n, Array.from(SCN.msel || []).map(scnNodeById).filter(Boolean), scnFnKey);
+    }
+    window.wspScnSet = function (id, key, value) {
         const ks = key.split('.');
-        let o = (n.params = n.params || {});
-        for (const k of ks.slice(0, -1)) o = (o[k] = o[k] || {});
-        o[ks.at(-1)] = value;
+        for (const n of scnPeers(id)) {
+            let o = (n.params = n.params || {});
+            for (const k of ks.slice(0, -1)) o = (o[k] = o[k] || {});
+            o[ks.at(-1)] = value;
+            scnRefreshNode(n);
+        }
         scnDirty();
-        scnRefreshNode(n);
     };
     window.wspScnCondSet = function (id, bi, key, value) {
         const c = scnCondAt(id, bi);
@@ -4994,7 +5398,7 @@
     function scnRefreshNode(n) {
         const el = n && SCN.els[n.id];
         if (!el) return;
-        el.querySelector('.bd').innerHTML = scnBodyHtml(n);
+        el.querySelector('.bd').innerHTML = scnBdHtml(n);
         scnLayoutPorts(n);
         scnDrawEdges();
     }
@@ -5038,24 +5442,24 @@
         scnRenderInsp();
     };
     window.wspScnPostVal = function (id, k, v) {
-        const n = scnNodeById(id);
-        if (!n) return;
-        (n.params.params = n.params.params || {})[k] = v;
+        for (const n of scnPeers(id)) {
+            (n.params.params = n.params.params || {})[k] = v;
+            scnRefreshNode(n);
+        }
         scnDirty();
-        scnRefreshNode(n);
     };
     // Valeur d'un paramètre typé (arbre) d'un nœud POST : écrit au bon endroit (plat/wrap).
     window.wspScnPostPtVal = function (id, v) {
-        const n = scnNodeById(id);
-        if (!n) return;
-        const params = (n.params.params = n.params.params || {});
-        const {wrap, key} = ptLocator(params);
         let val = v;
         if (typeof v !== 'boolean') { const num = parseFloat(v); if (!isNaN(num) && String(num) === String(v).trim()) val = num; }
-        if (wrap) { params[wrap] = params[wrap] || {}; params[wrap][key] = val; }
-        else params[key] = val;
+        for (const n of scnPeers(id)) {
+            const params = (n.params.params = n.params.params || {});
+            const {wrap, key} = ptLocator(params);
+            if (wrap) { params[wrap] = params[wrap] || {}; params[wrap][key] = val; }
+            else params[key] = val;
+            scnRefreshNode(n);
+        }
         scnDirty();
-        scnRefreshNode(n);
     };
     window.wspScnPostAdd = function (id) {
         const n = scnNodeById(id);
@@ -5067,9 +5471,14 @@
     function scnCondRowHtml(id, bi, c) {
         const biArg = (bi === null || bi === undefined) ? 'null' : bi;
         const pp = condParamForLeft(c.left, scnRenderInsp);
+        // Le choix d'état s'ouvre sur le conteneur déjà choisi, sinon sur celui du bloc en entrée.
+        const ctx = {t: 'scncond', id, bi: (bi ?? undefined)};
+        const own = c.left && c.left.kind === 'state' && !c.left.service && catInst(c.left);
+        const cur = own ? {kind: 'container', vmid: own.vmid, instance_uuid: own.instance_uuid}
+            : scnUpstream(id).cur;
+        if (cur) ctx.cur = cur;
         return '<div class="scn-cond-row">' +
-            pickBtnHtml(condLeftLabel(c.left), 'state', {t: 'scncond', id, bi: (bi ?? undefined)},
-                        T('projects.m_pick_state')) +
+            pickBtnHtml(condLeftLabel(c.left), 'state', ctx, T('projects.m_pick_state')) +
             condOpSelect(pp, c.op, 'wspScnCondSet(\'' + esc(id) + '\',' + biArg + ',\'op\',this.value)', '') +
             condRightHtml(pp, (c.right || {}).value,
                 'wspScnCondSet(\'' + esc(id) + '\',' + biArg + ',\'right\',this.value)', '') +
@@ -5183,6 +5592,16 @@
             esc(K.label) + '<span class="meta" style="margin-left:auto;font-family:var(--font-mono);' +
             'text-transform:none;letter-spacing:0">' + esc(n.id) + '</span></h4>' +
             body +
+            (M_DISABLEABLE.includes(n.type)
+                ? '<label class="scn-insp-off"><input type="checkbox" class="ios-toggle"' + (p.disabled ? ' checked' : '') +
+                  ' onchange="wspScnSetOff(\'' + esc(n.id) + '\',this.checked)">' + esc(T('projects.ed_disabled_lbl')) + '</label>'
+                : '') +
+            '<label>' + esc(T('projects.ed_comment')) + '<textarea id="scn-insp-cmt" placeholder="' +
+            esc(T('projects.ed_comment_ph')) + '" onchange="wspScnSetComment(\'' + esc(n.id) + '\',this.value)">' +
+            esc(p.comment || '') + '</textarea></label>' +
+            (SCN.msel.size > 1 ? '<p class="scn-pal-hint">' + esc(T('projects.ed_multi_sel').replace('%n', SCN.msel.size)) +
+                (scnFnKey(n) ? ' ' + esc(T(scnPeers(n.id).length > 1 ? 'projects.ed_multi_values' : 'projects.ed_multi_values_one')) : '') +
+                '</p>' : '') +
             '<button type="button" class="btn btn-red scn-insp-del" onclick="wspScnDelSel()">✕ ' +
             esc(T('projects.scn_del')) + '</button>';
     }
@@ -5202,8 +5621,223 @@
         }
         const n = scnNodeById(SCN.sel.id);
         if (!n) { insp.hidden = true; return; }
+        // SI déjà câblé mais resté vide (macro d'avant) : rempli à son ouverture.
+        if (scnPrefillCond(n.id)) { scnDirty(); scnRefreshNode(n); }
         insp.innerHTML = scnInspHtml(n);
         insp.hidden = false;
+    }
+
+    /* ── Édition au clavier (2026-10-29) : même comportement que l'éditeur à blocs et le layout
+       du multiview (static/js/editor.js). Le presse-papiers porte des NŒUDS et les arêtes
+       ENTRE eux ; collés avec de nouveaux identifiants, sous le dernier geste. ── */
+    window.wspScnSetOff = function (id, on) {
+        const n = scnNodeById(id);
+        if (!n || !M_DISABLEABLE.includes(n.type)) return;
+        n.params = n.params || {};
+        if (on) n.params.disabled = true; else delete n.params.disabled;
+        scnDirty();
+        scnRenderAll();
+    };
+    window.wspScnSetComment = function (id, v) {
+        const n = scnNodeById(id);
+        if (!n) return;
+        n.params = n.params || {};
+        if (v.trim()) n.params.comment = v; else delete n.params.comment;
+        scnDirty();
+        scnRefreshNode(n);
+    };
+    function scnSelNodes() {
+        return SCN.nodes.filter(n => SCN.msel.has(n.id));
+    }
+    // Morceau de graphe : les nœuds choisis + les arêtes dont les DEUX bouts en font partie.
+    function scnFragment(nodes) {
+        const ids = new Set(nodes.map(n => n.id));
+        return JSON.parse(JSON.stringify({nodes, edges: SCN.edges.filter(e => ids.has(e.from) && ids.has(e.to))}));
+    }
+    // Étapes de Blocs collées en Scénario : les FEUILLES deviennent des nœuds chaînés de gauche à
+    // droite ; un si / un parallèle n'a pas d'équivalent nœud à nœud (il faudrait le compiler).
+    function scnFragmentFromSteps(steps) {
+        const leaf = steps.filter(s => M_DISABLEABLE.includes(s.type));
+        if (leaf.length < steps.length) toast(T('projects.ed_paste_partial'), 'warning');
+        const nodes = leaf.map((s, i) => {
+            const params = JSON.parse(JSON.stringify(s));
+            delete params.type;
+            return {id: 'p' + i, type: s.type, params, x: i * 240, y: 0};
+        });
+        const edges = nodes.slice(1).map((n, i) => ({from: nodes[i].id, port: 0, to: n.id}));
+        return {nodes, edges};
+    }
+    function scnPasteFragment(frag, at) {
+        if (!frag.nodes || !frag.nodes.length) return;
+        const map = {};
+        frag.nodes.forEach(n => { let id; do { id = 'n' + uid6(); } while (scnNodeById(id) || Object.values(map).includes(id)); map[n.id] = id; });
+        const mx = Math.min(...frag.nodes.map(n => n.x || 0)), my = Math.min(...frag.nodes.map(n => n.y || 0));
+        const nodes = frag.nodes.map(n => Object.assign({}, n, {id: map[n.id],
+            x: Math.round(at.x + (n.x || 0) - mx), y: Math.round(at.y + (n.y || 0) - my)}));
+        SCN.nodes.push(...nodes);
+        SCN.edges.push(...(frag.edges || []).map(e => ({from: map[e.from], port: +e.port || 0, to: map[e.to]})));
+        SCN.msel = new Set(nodes.map(n => n.id));
+        SCN.sel = {t: 'node', id: nodes[0].id};
+        scnDirty();
+        scnRenderAll();
+        scnRenderInsp();
+    }
+    function scnFindApply(jump) {
+        const q = (SCN.find || '').trim().toLowerCase();
+        const hits = [];
+        SCN.nodes.forEach(n => {
+            const el = SCN.els[n.id];
+            if (!el) return;
+            const hit = !!q && (el.textContent + ' ' + n.id).toLowerCase().includes(q);
+            el.classList.toggle('hit', hit);
+            if (hit) hits.push(n);
+        });
+        if (jump && hits.length) {
+            const cur = hits.findIndex(n => SCN.sel && SCN.sel.id === n.id);
+            const n = hits[(cur + 1) % hits.length], el = SCN.els[n.id];
+            scnSelect({t: 'node', id: n.id});
+            // Centre le nœud trouvé dans la vue.
+            SCN.view.x = scnWrap.clientWidth / 2 - (n.x + el.offsetWidth / 2) * SCN.view.s;
+            SCN.view.y = scnWrap.clientHeight / 2 - (n.y + el.offsetHeight / 2) * SCN.view.s;
+            scnApplyView();
+        }
+    }
+    window.wspScnFind = function (v, jump) { if (!SCN) return; SCN.find = v; scnFindApply(jump); };
+    const SCN_KEYS = () => [
+        ['mod+z', T('projects.ed_undo')], ['mod+shift+z / mod+y', T('projects.ed_redo')],
+        ['mod+c', T('projects.ed_copy')], ['mod+x', T('projects.ed_cut')], ['mod+v', T('projects.ed_paste')],
+        ['mod+d', T('projects.ed_duplicate')], ['mod+a', T('projects.ed_select_all')],
+        ['shift+' + T('projects.ed_key_click'), T('projects.ed_select_add')],
+        ['shift+' + T('projects.ed_key_drag'), T('projects.ed_select_rect')],
+        [T('projects.ed_key_longpress'), T('projects.ed_select_add')],
+        [T('projects.ed_key_del'), T('projects.ed_delete')], ['← → ↑ ↓', T('projects.ed_move_nodes')],
+        ['mod+/', T('projects.ed_toggle_disable')], ['mod+f', T('projects.ed_find')],
+        ['mod+s', T('projects.ed_save')], [T('projects.ed_key_esc'), T('projects.ed_deselect')],
+        ['?', T('projects.ed_help')]];
+    window.wspScnCmd = async function (action, sc) {
+        if (!SCN) return;
+        const K = window.BobiEditor;
+        const sel = scnSelNodes();
+        switch (action) {
+        case 'undo': case 'redo': {
+            const st = SCN.hist && (action === 'undo' ? SCN.hist.undo() : SCN.hist.redo());
+            if (st === undefined) return;
+            SCN.nodes = st.nodes; SCN.edges = st.edges; SCN.dirty = true;
+            SCN.msel = new Set(); SCN.sel = null;
+            scnRenderAll(); scnRenderInsp(); scnEdToolsState();
+            return;
+        }
+        case 'copy': case 'cut':
+            if (!sel.length || !K) return;
+            K.clipboard.put('macro-nodes', scnFragment(sel));
+            if (action === 'cut') {
+                const ids = new Set(sel.map(n => n.id));
+                SCN.nodes = SCN.nodes.filter(n => !ids.has(n.id));
+                SCN.edges = SCN.edges.filter(e => !ids.has(e.from) && !ids.has(e.to));
+                SCN.msel = new Set(); SCN.sel = null;
+                scnDirty(); scnRenderAll(); scnRenderInsp();
+            } else toast(T('projects.ed_copied'));
+            return;
+        case 'paste': {
+            const c = K && K.clipboard.get();
+            if (!c) return;
+            const frag = c.kind === 'macro-nodes' ? c.data
+                : c.kind === 'macro-steps' ? scnFragmentFromSteps(c.data || []) : null;
+            if (!frag) { toast(T('projects.ed_paste_foreign'), 'error'); return; }
+            const at = SCN.lastPt || scnCenter();
+            scnPasteFragment(JSON.parse(JSON.stringify(frag)), at);
+            SCN.lastPt = {x: at.x + 30, y: at.y + 30};   // un 2e collage ne recouvre pas le 1er
+            return;
+        }
+        case 'duplicate': {
+            if (!sel.length) return;
+            const mx = Math.min(...sel.map(n => n.x)), my = Math.min(...sel.map(n => n.y));
+            scnPasteFragment(scnFragment(sel), {x: mx + 30, y: my + 30});
+            return;
+        }
+        case 'delete':
+            if (SCN.sel) wspScnDelSel();
+            return;
+        case 'selectAll':
+            SCN.msel = new Set(SCN.nodes.map(n => n.id));
+            SCN.sel = SCN.nodes.length ? {t: 'node', id: SCN.nodes[0].id} : null;
+            scnPaintSel(); scnRenderInsp();
+            return;
+        case 'nudge':
+            if (!sel.length || !sc) return;
+            sel.forEach(n => { n.x += sc.dx * 5; n.y += sc.dy * 5; });   // 5 px, Maj = 50 px
+            scnDirty(); scnRenderAll();
+            return;
+        case 'toggleDisable': {
+            const off = sel.filter(n => M_DISABLEABLE.includes(n.type));
+            if (!off.length) return;
+            const on = !off.every(n => (n.params || {}).disabled);
+            off.forEach(n => { n.params = n.params || {}; if (on) n.params.disabled = true; else delete n.params.disabled; });
+            scnDirty(); scnRenderAll(); scnRenderInsp();
+            return;
+        }
+        case 'comment': {
+            const t = scnEl('scn-insp-cmt');
+            if (t) t.focus();
+            return;
+        }
+        case 'find': {
+            const f = scnEl('scn-find');
+            if (f) { f.focus(); f.select(); }
+            return;
+        }
+        case 'save':
+            wspScnSave();
+            return;
+        case 'escape': {
+            SCN.find = '';
+            const f = scnEl('scn-find'); if (f) f.value = '';
+            scnFindApply(false);
+            scnSelect(null);
+            return;
+        }
+        case 'help':
+            if (K) K.showHelp(T('projects.ed_keys_title'), SCN_KEYS(), T('projects.ws_view_close'));
+            return;
+        }
+    };
+    function scnEdToolsHtml() {
+        const K = window.BobiEditor;
+        if (!K) return '';
+        const c = a => "wspScnCmd('" + a + "')";
+        return K.toolbarHtml(T('projects.ed_tools'), [
+            ['undo', T('projects.ed_undo'), c('undo'), 'scn-ed-undo'],
+            ['redo', T('projects.ed_redo'), c('redo'), 'scn-ed-redo'], null,
+            ['cut', T('projects.ed_cut'), c('cut'), 'scn-ed-cut'],
+            ['copy_settings', T('projects.ed_copy'), c('copy'), 'scn-ed-copy'],
+            ['paste_settings', T('projects.ed_paste'), c('paste')],
+            ['duplicate', T('projects.ed_duplicate'), c('duplicate'), 'scn-ed-dup'], null,
+            ['disable', T('projects.ed_toggle_disable'), c('toggleDisable'), 'scn-ed-off'],
+            ['comment', T('projects.ed_comment'), c('comment'), 'scn-ed-cmt'], null,
+            ['keyboard', T('projects.ed_help'), c('help')]]) +
+            '<input type="search" id="scn-find" placeholder="' + esc(T('projects.ed_find')) + '" ' +
+            'oninput="wspScnFind(this.value,false)" ' +
+            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();wspScnFind(this.value,true)}">' +
+            // Verrous AU DOIGT (communs) : « Sélection multiple » = Maj (un glisser dans le vide trace
+            // alors le rectangle), « Depuis le centre » = Alt (sans objet ici : pas de poignée).
+            (scnS() ? K.verrousHtml(scnS()) : '');
+    }
+    function scnEdToolsState() {
+        if (!SCN) return;
+        const has = SCN.msel.size > 0;
+        const set = (id, on) => { const b = scnEl(id); if (b) b.disabled = !on; };
+        set('scn-ed-undo', SCN.hist && SCN.hist.canUndo());
+        set('scn-ed-redo', SCN.hist && SCN.hist.canRedo());
+        ['scn-ed-cut', 'scn-ed-copy', 'scn-ed-dup', 'scn-ed-off'].forEach(id => set(id, has));
+        set('scn-ed-cmt', SCN.msel.size === 1);
+    }
+    if (window.BobiEditor) {
+        const on = {};
+        ['undo', 'redo', 'copy', 'cut', 'paste', 'duplicate', 'delete', 'selectAll', 'nudge',
+         'toggleDisable', 'find', 'save', 'escape', 'help'].forEach(a => { on[a] = sc => wspScnCmd(a, sc); });
+        BobiEditor.bind({
+            active: () => !!SCN && !scnEl('wsp-scn').hidden && !document.getElementById('bek-help'),
+            on});
     }
 
     /* ── Sauvegarde (écrit nodes/v2, positions incluses) ── */

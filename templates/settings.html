@@ -402,6 +402,20 @@
 // manque, on retombe alors sur la clé plutôt que sur du vide. Déclaré ici, dans le PREMIER
 // bloc <script> de la page, donc visible de tous les suivants.
 function setT(k) { const v = window.t ? window.t(k) : k; return v || k; }
+// Lit une réponse d'API SANS transformer une erreur serveur en « SyntaxError: Unexpected token
+// '<' ». Une 500 rend une PAGE HTML : `r.json()` casse alors sur le premier '<', et l'opérateur
+// voit une erreur de syntaxe JavaScript au lieu de ce qui n'a pas marché — c'est ce qu'a vu le testeur
+// le 2026-10-27 en reconfigurant un réseau. Rend TOUJOURS un objet {ok, error?, …} : les balises
+// sont retirées pour que le message du serveur reste lisible.
+async function repJson(r) {
+    const brut = await r.text();
+    let j = null;
+    try { j = brut ? JSON.parse(brut) : null; } catch (e) { j = null; }
+    if (j && typeof j === 'object')
+        return r.ok ? Object.assign({ ok: true }, j) : Object.assign({ ok: false }, j);
+    const texte = (brut || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+    return { ok: false, error: 'HTTP ' + r.status + (texte ? ' — ' + texte : '') };
+}
 // ─── Bibliothèque de polices (Réglages → Polices) ──────────────────────────
 // Le fichier est servi depuis /static/uploads/fonts/<sha>.<ext> → l'aperçu se fait par
 // @font-face côté navigateur (aucun rendu serveur). Les polices sont poussées aux
@@ -1195,7 +1209,14 @@ async function fontDelete(f) {
     <div id="reseau-tab-vue">
         <h2>{{ _('settings.net.overview_title') }}</h2>
         <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.net.cluster_desc')|safe }}</div>
-        <div id="cluster_topo" class="meta">{{ _('settings.loading') }}</div>
+        <div class="meta" style="margin-bottom:var(--space-2)">{{ _('settings.node_sheet.hint') }}</div>
+        <!-- Fiche d'un nœud au clic sur sa carte (static/node_sheet.js) -->
+        <div class="ns-layout">
+            <div id="cluster_topo" class="meta">{{ _('settings.loading') }}</div>
+            <aside id="node_sheet" class="ns-sheet" hidden></aside>
+        </div>
+        <link rel="stylesheet" href="/static/css/node_sheet.css?v={{ asset_v('css/node_sheet.css') }}">
+        <script src="/static/node_sheet.js?v={{ asset_v('node_sheet.js') }}"></script>
     </div>
 
     <!-- Sous-onglet Interfaces nœuds : carte par-NIC d'UN nœud (rôles + BMC + débit + SFP) -->
@@ -1633,6 +1654,18 @@ async function fontDelete(f) {
                 {{ _('settings.mxl.slice_lbl') }}
             </label>
             <div class="meta" style="margin-top:var(--space-1)">{{ _('settings.mxl.slice_hint') }}</div>
+        </div>
+
+        <h3 style="margin:var(--space-4) 0 var(--space-2)">{{ _('settings.mxl.missing_title') }}</h3>
+        <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.mxl.missing_help') }}</div>
+        <div class="field">
+            <label for="s_missing_frame_mode">{{ _('settings.mxl.missing_lbl') }}</label>
+            <select id="s_missing_frame_mode" style="width:320px"
+                    onchange="fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({missing_frame_mode:this.value})})">
+                <option value="repeat">{{ _('settings.mxl.missing_repeat') }}</option>
+                <option value="black">{{ _('settings.mxl.missing_black') }}</option>
+            </select>
+            <div class="meta" style="margin-top:var(--space-1)">{{ _('settings.mxl.missing_hint') }}</div>
         </div>
 
         <h3 style="margin:var(--space-4) 0 var(--space-2)">{{ _('settings.mxl.engine_cpu_title') }}</h3>
@@ -3053,6 +3086,14 @@ function ctlDocRender() {
     document.getElementById('ctl-doc-meter').innerHTML =
         ctlSpec(['ctl-readout'], setT('settings.ctl.readout_t'), setT('settings.ctl.readout_d'),
             '<span class="ctl-readout"><b>1000</b><span>Hz</span></span>') +
+        ctlSpec(['ctl-color', 'ctl-swatch'], setT('settings.ctl.color_t'), setT('settings.ctl.color_d'),
+            '<span style="display:inline-flex;gap:8px;align-items:center"><input type="color" class="ctl-color" value="#00b140" aria-label="' +
+            setT('settings.ctl.color_t') + '"><button type="button" class="ctl-push ctl-push--small" aria-pressed="true">' +
+            '<span class="ctl-swatch" style="background:#00b140"></span>#00b140</button></span>') +
+        ctlSpec(['ctl-readout', 'ctl-readout--panel'], setT('settings.ctl.readout_panel_t'), setT('settings.ctl.readout_panel_d'),
+            '<span style="display:inline-flex;gap:8px"><label class="ctl-readout ctl-readout--panel" style="width:6em">' +
+            '<input type="text" value="1:00" aria-label="' + setT('settings.ctl.readout_panel_t') + '"></label>' +
+            '<span class="ctl-readout ctl-readout--panel" style="--ctl-ro-size:1.05em"><b>0:12</b><span>mix</span></span></span>') +
         ctlSpec(['ctl-seg7'], setT('settings.ctl.seg7_t'), setT('settings.ctl.seg7_d'),
             '<span class="ctl-seg7">' + ctlSeg7('1000') + '<u>Hz</u></span>') +
         ctlSpec(['ctl-seg7', 'ctl-seg7--lit'], setT('settings.ctl.seg7lit_t'), setT('settings.ctl.seg7lit_d'),
@@ -3104,8 +3145,26 @@ function ctlDocRender() {
                 return '<span class="ctl-toolbar" style="margin:0;padding:0;border:0">' +
                     g(setT('settings.ctl.grp_align'), ['align_left', 'align_hcenter', 'align_right']) +
                     g(setT('settings.ctl.grp_size'), ['size_w', 'size_h', 'size_both'], 1) +
-                    g(setT('settings.ctl.grp_distribute'), ['distribute_h', 'distribute_v']) + '</span>';
-            })());
+                    g(setT('settings.ctl.grp_distribute'), ['distribute_h', 'distribute_v']) +
+                    g(setT('settings.ctl.grp_edit'), ['undo', 'redo', 'cut', 'copy_settings', 'paste_settings',
+                                                      'duplicate', 'disable', 'comment', 'find', 'keyboard']) + '</span>';
+            })()) +
+        // Rubriques segmentées : cliquer fait glisser la pastille (--i) — même geste que le panneau du mélangeur.
+        ctlSpec(['ctl-segtabs', 'ctl-segtab'], setT('settings.ctl.segtabs_t'),
+            setT('settings.ctl.segtabs_d'),
+            '<div class="ctl-segtabs" role="tablist" style="--n:4;--i:0;width:300px"><span class="ctl-segtabs-ind" aria-hidden="true"></span>' +
+            ['Keyers', 'DSK', 'Sorties', 'Tally'].map((l, k) =>
+                '<button type="button" class="ctl-segtab' + (k ? '' : ' on') + '" role="tab" aria-selected="' + !k + '" ' +
+                'onclick="const b=this.parentNode;b.style.setProperty(\'--i\',' + k + ');' +
+                'b.querySelectorAll(\'.ctl-segtab\').forEach((x,j)=>{x.classList.toggle(\'on\',j===' + k + ');x.setAttribute(\'aria-selected\',j===' + k + ')})">' +
+                l + '</button>').join('') + '</div>') +
+        // Étapes d'un guide : faite (✓), courante (aria-current), à venir — toutes cliquables.
+        ctlSpec(['ctl-steps', 'ctl-step'], setT('settings.ctl.steps_t'),
+            setT('settings.ctl.steps_d'),
+            '<nav class="ctl-steps" aria-label=' + JSON.stringify(T('settings.ctl.steps_t')) + '>' +
+            ['settings.ctl.steps_demo1', 'settings.ctl.steps_demo2', 'settings.ctl.steps_demo3'].map((k, i) =>
+                '<button type="button" class="ctl-step' + (i ? '' : ' done') + '"' + (i === 1 ? ' aria-current="step"' : '') + '>' +
+                '<span class="ctl-step-n" aria-hidden="true">' + (i ? i + 1 : '✓') + '</span>' + setT(k) + '</button>').join('') + '</nav>');
 
     document.getElementById('ctl-doc-set').innerHTML =
         ctlSpec(['ctl-switch', 'ctl-switch-inline'], setT('settings.ctl.switch_t'),
@@ -3127,7 +3186,42 @@ function ctlDocRender() {
     };
     document.getElementById('ctl-doc-bus').innerHTML =
         ctlSpec(['ctl-bus', 'ctl-bus--solid'], setT('settings.ctl.bus_solid_t'), setT('settings.ctl.bus_solid_d'), busRow('solid')) +
-        ctlSpec(['ctl-bus', 'ctl-bus--tally'], setT('settings.ctl.bus_tally_t'), setT('settings.ctl.bus_tally_d'), busRow('tally'));
+        ctlSpec(['ctl-bus', 'ctl-bus--tally'], setT('settings.ctl.bus_tally_t'), setT('settings.ctl.bus_tally_d'), busRow('tally')) +
+        // Modèle PUPITRE : capuchon (`ctl-bus-cap`) et sous-libellé toujours visible ; la 3e source
+        // de chaque rangée est « non câblée ». La rangée « dsk » est celle d'un keyer (ambre).
+        ctlSpec(['ctl-bus', 'ctl-bus-cap', 'ctl-bus--unwired', 'ctl-bus--panel'], setT('settings.ctl.bus_panel_t'), setT('settings.ctl.bus_panel_d'),
+            ['pgm', 'pvw', 'dsk'].map((bus, r) => '<div class="ctl-bus-row" style="margin-bottom:6px">' +
+                '<span class="ctl-bus-lab">' + bus.toUpperCase() + '</span>' +
+                [1, 2, 3].map(n => '<button type="button" class="ctl-bus ctl-bus--panel' + (n === 3 ? ' ctl-bus--unwired' : '') +
+                    '" data-bus="' + bus + '" role="radio" aria-checked="' + (n === 1 + r % 2) + '" aria-label="' +
+                    T('settings.js.demo_source_aria').replace('{n}', n) + '"><span class="ctl-bus-cap">#' + n + '<small>' +
+                    (n === 3 ? '—' : 'CAM ' + n) + '</small></span></button>').join('') + '</div>').join('')) +
+        // Même modèle pour les touches d'ACTION (toujours allumées) et les bascules (aria-pressed).
+        ctlSpec(['ctl-bus', 'ctl-bus--action', 'ctl-bus--big', 'ctl-bus--panel'], setT('settings.ctl.bus_panel_action_t'), setT('settings.ctl.bus_panel_action_d'),
+            '<span style="display:inline-flex;flex-wrap:wrap;gap:10px;align-items:center">' +
+            '<button type="button" class="ctl-bus ctl-bus--panel ctl-bus--action ctl-bus--big" data-bus="pgm"><span class="ctl-bus-cap">CUT</span></button>' +
+            '<button type="button" class="ctl-bus ctl-bus--panel ctl-bus--action ctl-bus--big" data-bus="dis"><span class="ctl-bus-cap">AUTO</span></button>' +
+            '<button type="button" class="ctl-bus ctl-bus--panel ctl-bus--big" data-bus="dsk" aria-pressed="true"><span class="ctl-bus-cap">KEYER<small>TOGGLE</small></span></button>' +
+            '<button type="button" class="ctl-bus ctl-bus--panel ctl-bus--big" data-bus="dsk" aria-pressed="false"><span class="ctl-bus-cap">DSK<small>TOGGLE</small></span></button>' +
+            '</span>') +
+        // Touche qui SIGNALE (2026-10-31) : SHIFT du mélangeur dont l'entrée PGM / PVW est sur une page masquée.
+        ctlSpec(['ctl-bus', 'ctl-bus--hint', 'ctl-bus--panel'], setT('settings.ctl.bus_hint_t'), setT('settings.ctl.bus_hint_d'),
+            '<span style="display:inline-flex;flex-wrap:wrap;gap:10px;align-items:center">' +
+            ['pgm', 'pvw'].map(bus => '<button type="button" class="ctl-bus ctl-bus--panel ctl-bus--hint" data-bus="' + bus + '">' +
+                '<span class="ctl-bus-cap">SHIFT<small>9-16</small></span></button>').join('') +
+            '<button type="button" class="ctl-bus ctl-bus--panel" data-bus="pgm"><span class="ctl-bus-cap">SHIFT<small>1-8</small></span></button>' +
+            '</span>') +
+        // T-barre : composant VIVANT (BobiControls.create('tbar')) — on peut la manœuvrer ici.
+        ctlSpec(['ctl-tbar'], setT('settings.ctl.tbar_t'), setT('settings.ctl.tbar_d'),
+            '<div class="ctl-tbar" id="ctl-demo-tbar" style="--ctl-tbar-h:140px"></div>');
+    {
+        const el = document.getElementById('ctl-demo-tbar');
+        if (el && window.BobiControls) {
+            // Démonstration : la fin de course change de butée, comme au mélangeur à la fin d'une transition.
+            const tb = window.BobiControls.create('tbar', el);
+            tb.on('change', (a) => { if (a >= 1) { tb.setRest(tb.getRest() ? 0 : 1); tb.set(0); } });
+        }
+    }
 
     // Contexte dense : on montre la MÊME ligne aux deux métriques, sinon « compact » ne veut rien
     // dire. Le rotatif y est tracé par le catalogue, à sa taille dense.
@@ -3158,7 +3252,36 @@ function ctlDocRender() {
             '<button type="button" class="btn btn-sm" aria-haspopup="dialog" style="display:inline-flex;' +
             'align-items:center;gap:5px"><span class="ctl-led"></span>SDP…</button>' +
             '<span class="ctl-led on"></span><span class="ctl-led on" style="--ctl-led-col:var(--status-warning-fg)">' +
-            '</span><span class="ctl-led"></span>');
+            '</span><span class="ctl-led"></span>') +
+        // Libellé à alternative (2026-10-29) : la lettre du prochain état allumée, l'autre atténuée.
+        ctlSpec(['ctl-push__alt'], setT('settings.ctl.alt_t'), setT('settings.ctl.alt_d'),
+            '<button type="button" class="ctl-push ctl-push--small ctl-push--led" role="radio" aria-checked="true">' +
+            '<span class="ctl-led"></span><span class="ctl-push__alt on">N</span>/<span class="ctl-push__alt">R</span></button> ' +
+            '<button type="button" class="ctl-push ctl-push--small ctl-push--led" role="radio" aria-checked="true">' +
+            '<span class="ctl-led"></span><span class="ctl-push__alt">N</span>/<span class="ctl-push__alt on">R</span></button>') +
+        // Touche à pictogramme (2026-10-29, promue du mélangeur) : choix exclusif d'une forme.
+        ctlSpec(['ctl-shape-row', 'ctl-shape'], setT('settings.ctl.shape_t'), setT('settings.ctl.shape_d'),
+            '<span class="ctl-shape-row" role="radiogroup">' + [['<circle cx="12" cy="12" r="7" class="ctl-shape__b"/>', true],
+                ['<rect x="5" y="7" width="14" height="10" class="ctl-shape__b"/>', false],
+                ['<polygon points="12,4 20,12 12,20 4,12" class="ctl-shape__b"/>', false]].map(([g, on]) =>
+                '<button type="button" class="ctl-shape" role="radio" aria-checked="' + on + '"><svg viewBox="0 0 24 24" aria-hidden="true">' +
+                '<rect width="24" height="24" class="ctl-shape__a"/>' + g + '</svg></button>').join('') + '</span>') +
+        // Courbes à poignées (2026-10-29) : composant VIVANT — les poignées se déplacent ici.
+        ctlSpec(['ctl-curves'], setT('settings.ctl.curves_t'), setT('settings.ctl.curves_d'),
+            '<div class="ctl-curves" id="ctl-demo-curves" style="width:100%;max-width:360px"></div>');
+    {
+        const el = document.getElementById('ctl-demo-curves');
+        if (el && window.BobiControls) {
+            const cv = window.BobiControls.create('curves', el, { label: setT('settings.ctl.curves_t'),
+                handles: [{ key: 'off', axis: 'x', x: 0.3, y: 0, xmax: 0.9, tone: '2' }, { key: 'dep', axis: 'y', x: 0.65, y: 0.6, ymin: 0.05, tone: '2' }] });
+            const draw = () => {
+                const o = cv.get('off').x, d = cv.get('dep').y, a = [], b = [];
+                for (let i = 0; i <= 50; i++) { const x = i / 50, u = x <= o ? 0 : Math.min(1, (x - o) / (1 - o)); a.push([x, x]); b.push([x, d * (1 - Math.abs(2 * u - 1))]); }
+                cv.setCurves([{ points: a }, { points: b, tone: '2' }]); cv.setHandle('dep', (1 + o) / 2, null); cv.setPlayhead(0.5);
+            };
+            cv.on('input', draw); draw();
+        }
+    }
 
 
     // Rotatifs du catalogue : manipulables au pointeur ET au clavier, comme en exploitation.
@@ -3403,7 +3526,9 @@ function ctlSpecimen(cls) {
     if (base === 'ctl-bus')
         return '<div class="ctl-bus-row"><span class="ctl-bus-lab">PGM</span>' +
                [1, 2, 3].map(n => '<button type="button" class="' + cls + '" data-bus="pgm" role="radio" ' +
-                   'aria-checked="' + (n === 2) + '">' + n + '<small>PGM</small></button>').join('') + '</div>';
+                   'aria-checked="' + (n === 2) + '">' + (/ctl-bus--panel/.test(cls)
+                       ? '<span class="ctl-bus-cap">#' + n + '<small>CAM ' + n + '</small></span>'
+                       : n + '<small>PGM</small>') + '</button>').join('') + '</div>';
     if (base === 'ctl-meter')
         return '<span class="ctl-meter">' + segs(6, 4, 5) + '</span><span class="ctl-meter">' + segs(6, 6, 5) + '</span>';
     if (base === 'ctl-readout') return '<span class="ctl-readout"><b>1000</b><span>Hz</span></span>';
@@ -3978,8 +4103,11 @@ async function jetCharger() {
                     ? ' <span class="meta">(' + _jetEsc(t.last_used_ip) + ')</span>' : '')
                 : '<span class="meta">' + {{ _('settings.jetons.jamais') | tojson }} + '</span>';
             const action = revoque ? ''
+                // JSON.stringify produit des guillemets DOUBLES : bruts, ils fermaient l'attribut
+                // onclick et le bouton ne faisait rien (constaté le 2026-10-25 sur la Z8). Échappés
+                // en &quot;, le navigateur les rend au JS intacts.
                 : '<button class="btn btn-sm btn-red" onclick="jetRevoquer(' + t.id + ', '
-                  + JSON.stringify(t.label || '') + ')">'
+                  + _jetEsc(JSON.stringify(t.label || '')) + ')">'
                   + {{ _('settings.jetons.revoquer') | tojson }} + '</button>';
             return '<tr' + (revoque ? ' style="opacity:.55"' : '') + '>'
                 + '<td style="padding:var(--space-2)">' + _jetEsc(t.username || '?') + '</td>'
@@ -4042,14 +4170,26 @@ async function jetRevoquer(id, label) {
 function jetCopier() {
     const el = document.getElementById('jet-neuf-val');
     el.select();
-    // `navigator.clipboard` n'est pas garanti (contexte non sécurisé en HTTP). On tente, et on
-    // retombe sur la sélection + un message qui DIT quoi faire, plutôt qu'un bouton inerte.
-    const fini = ok => mxlToast(ok ? {{ _('settings.jetons.copie') | tojson }}
-                                   : {{ _('settings.jetons.copie_ko') | tojson }},
-                                ok ? 'success' : 'info');
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(el.value).then(() => fini(true), () => fini(false));
-    } else { fini(false); }
+    // LE HELPER GLOBAL, pas `navigator.clipboard` en direct : celui-ci n'existe qu'en contexte
+    // sécurisé, et l'appel direct échouait TOUJOURS en HTTP clair sur le LAN (Z8, 2026-10-25).
+    // `window.copierTexte` retombe sur un textarea temporaire. Si même lui échoue, le jeton reste
+    // sélectionné et le message DIT quoi faire, plutôt qu'un bouton inerte.
+    const fini = ok => {
+        if (!ok) el.select();
+        mxlToast(ok ? {{ _('settings.jetons.copie') | tojson }}
+                    : {{ _('settings.jetons.copie_ko') | tojson }},
+                 ok ? 'success' : 'info');
+    };
+    window.copierTexte(el.value).then(fini);
+}
+
+function copyFromButton(btn) {
+    // Boutons « copier » de la page : le texte voyage dans data-copy (échappé comme tout attribut),
+    // JAMAIS dans une chaîne JS de onclick — un mot de passe avec une apostrophe y cassait le bouton.
+    // Et le helper global plutôt que `navigator.clipboard`, absent en HTTP clair (Z8, 2026-10-25).
+    window.copierTexte(btn.dataset.copy || '').then(ok =>
+        mxlToast(ok ? {{ _('settings.copy.ok') | tojson }} : {{ _('settings.copy.ko') | tojson }},
+                 ok ? 'success' : 'error'));
 }
 
 function jetMasquer() {
@@ -5751,6 +5891,8 @@ async function rafraichirNodes() {
                   ${(n.cores_pool && n.cores_pool.physical != null) ? `<span class="meta" title="${T('monitoring.cpu_psi_tip')}"${n.cores_pool.oversub?' style="color:var(--danger, #e5484d);font-weight:600"':''}>· ${T('monitoring.cpu_capacity_val').replace('{phys}', n.cores_pool.physical).replace('{ded}', n.cores_pool.physical_dedicated).replace('{free}', n.cores_pool.physical_free).replace('{shared}', n.cores_pool.shared_containers)}${n.cores_pool.oversub?' — '+T('monitoring.cpu_oversub'):''}</span>` : ''}</div>
                 <div style="display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap">
                   <button class="btn" onclick="basculerEditNode(${n.id})">${T('settings.js.edit')}</button>
+                  <button class="btn btn-orange" onclick="NodeSheet.confirmPower(${n.id}, 'reboot')">${T('settings.node_sheet.reboot_btn')}</button>
+                  <button class="btn btn-red" onclick="NodeSheet.confirmPower(${n.id}, 'poweroff')">${T('settings.node_sheet.poweroff_btn')}</button>
                   <button class="btn btn-red" onclick="supprimerNode(${n.id})">${T('settings.js.delete_word')}</button>
                   <span class="meta" id="nddel_${n.id}"></span>
                 </div>
@@ -5763,15 +5905,8 @@ async function rafraichirNodes() {
                 ${T('settings.js.node_media_storage')} <code>${v(n.media_mount) || '—'}</code>
               </div>
               <div class="meta" id="ndagent_${n.id}" style="margin-top:4px">${_nodeAgentHtml(n, bundled)}</div>
-              <div class="meta" style="margin-top:4px">GPU
-                <code>${n.gpu_capable ? ('NVIDIA ×'+(n.gpu_count||1)) : '—'}</code>${
-                  n.gpu_capable && !n.compute_gpu_image ? ` <span class="badge stopped">${T('settings.js.gpu_image_todo')}</span>` : ''}${
-                  n.compute_gpu_image ? ` · <code>${v(n.compute_gpu_image)}</code>` : ''}
-                <button type="button" class="btn" onclick="detecterGpu(${n.id})">${T('settings.js.gpu_detect')}</button>${
-                  n.gpu_capable ? ` <button type="button" class="btn" onclick="buildImageGpu(${n.id})">${T('settings.js.gpu_build')}</button> <span id="gpubuild_${n.id}" class="meta"></span>` : ''}
-                <button type="button" class="btn" style="min-height:44px" onclick="hostDrvToggle(${n.id},'nvidia')">${T('settings.hostdrv.nvidia.open')}</button>
-                <span id="gpudet_${n.id}" class="meta"></span></div>
-              <div id="hostdrv_nvidia_${n.id}" style="display:none; margin-top:var(--space-2); padding:var(--space-2); background:var(--bg-input); border:1px solid var(--border-soft); border-radius:6px"></div>
+              ${_hdLigneGpu(n)}
+              ${_hdLigneDecklink(n)}
               ${_capFixHtml(n)}
               ${(() => { const needsCfg = (!n.docker_network) || (n.mtl_capable && !n.mtl_iface);
                 return `<div style="margin-top:var(--space-2);display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap">
@@ -5797,6 +5932,7 @@ async function rafraichirNodes() {
             </div>`;
         }).join('');
         _restoreEnrollFromHash();
+        _restoreGpuDet();
     } catch (e) { box.textContent = T('settings.js.load_error_nodes'); }
 }
 
@@ -6326,7 +6462,7 @@ async function isoPollStatus() {
         if (s.state === 'done' || s.ready) {
             st.style.color='var(--status-running-fg)'; st.textContent=T('settings.js.iso_ready');
             if (s.url && urlEl) urlEl.innerHTML = 'URL Virtual Media : <code>'+escapeHtml(s.url)+'</code> '
-                + '<button class="btn" style="padding:1px 8px" onclick="navigator.clipboard.writeText(\''+escapeHtml(s.url)+'\')">copier</button>';
+                + '<button class="btn" style="padding:1px 8px" data-copy="'+escapeHtml(s.url)+'" onclick="copyFromButton(this)">copier</button>';
         } else if (s.state === 'error') { st.style.color='var(--status-stopped-fg)'; st.textContent='✕ '+(s.msg||T('settings.js.st_fail')); }
     } catch (e) { setTimeout(isoPollStatus, 3000); }
 }
@@ -6410,10 +6546,10 @@ async function pxeRefresh() {
         if (bu) {
             let h = '';
             if (ici && s.boot_url) h += 'RBSU → UEFI HTTP Boot URL : <code>'+escapeHtml(s.boot_url)+'</code> '
-                + '<button class="btn" style="padding:1px 8px" onclick="navigator.clipboard.writeText(\''+escapeHtml(s.boot_url)+'\')">copier</button>';
+                + '<button class="btn" style="padding:1px 8px" data-copy="'+escapeHtml(s.boot_url)+'" onclick="copyFromButton(this)">copier</button>';
             if (ici && s.root_password) h += (h ? '<br>' : '')
                 + T('settings.js.pxe_root_pwd') + ' <code>'+escapeHtml(s.root_password)+'</code> '
-                + '<button class="btn" style="padding:1px 8px" onclick="navigator.clipboard.writeText(\''+escapeHtml(s.root_password)+'\')">copier</button>'
+                + '<button class="btn" style="padding:1px 8px" data-copy="'+escapeHtml(s.root_password)+'" onclick="copyFromButton(this)">copier</button>'
                 + '<br><span class="meta">' + T('settings.js.pxe_root_pwd_hint') + '</span>';
             bu.innerHTML = h;
         }
@@ -6544,6 +6680,8 @@ async function chargerReadiness(id, mode) {
         // Auto-vérif des queues NIC (E810) si la carte est posée → l'état + le bouton « Optimiser »
         // s'affichent sans clic manuel.
         if (j.io2110 && j.io2110.iface_set) nicQueuesCheck(id);
+        // Cœurs : chargé à part parce qu'il MESURE le cpuset appliqué sur l'hôte (un exec).
+        chargerCoeurs(id);
         // Build bobi-mtl en cours (même après reload) → ré-attache le suivi.
         if (j.io2110 && j.io2110.mtl_build && j.io2110.mtl_build.status === 'building') _pollMtlBuild(id);
     } catch (e) { box.innerHTML = '<span class="meta" style="color:var(--status-stopped-fg)">✕ '+escapeHtml(''+e)+'</span>'; }
@@ -6755,17 +6893,66 @@ function _secNetwork(id, j) {
     else if (_rs.level === 'route')
         cnWarn = `<div class="meta" style="color:var(--status-warning-fg,#c80);margin-bottom:4px">ℹ Orchestrateur : ${escapeHtml(_rs.text)} vers <code>${escapeHtml(cl.subnet||'—')}</code>.
             <button class="btn" style="margin-left:6px" onclick="lancerReachTest('cn_${id}_reach','ck_reach_${id}')">${setT('settings.st.test_reachability')}</button> <span id="cn_${id}_reach"></span></div>`;
-    else if (cn.allinone)
-        cnWarn = `<div class="meta" style="color:var(--status-warning-fg,#c80);margin-bottom:4px">⚠ ${setT('settings.js2.allinone_macvlan_warning')}</div>`;
+    else if (cn.allinone && cn.shim_requis) {
+        // Tout-en-un : ce n'est plus un avertissement abstrait mais un CONSTAT mesuré sur
+        // l'hôte. L'ancien texte décrivait le remède (« shim macvlan requis ») sans dire s'il
+        // était posé — un exploitant ne pouvait pas savoir s'il avait un problème ou pas.
+        const sh = cn.shim_etat || {};
+        cnWarn = sh.present
+            ? `<div class="meta" style="color:var(--status-running-fg);margin-bottom:4px">✓ ${setT('settings.net.shim_pose').replace('{iface}','bobi-shim').replace('{ip}', escapeHtml(cn.shim_ip||sh.ip||'—'))}</div>`
+            : `<div class="meta" style="color:var(--status-warning-fg,#c80);margin-bottom:4px">⚠ ${setT('settings.net.shim_absent')}
+                 — ${setT('settings.net.shim_raison_poser')}
+                 <button class="btn btn-blue" style="margin-left:6px" onclick="poserShim(${id})">${setT('settings.net.shim_poser')}</button>
+                 <span id="ncn_${id}_shimmsg" class="meta"></span></div>`;
+    }
+    const mode = cn.mode || 'site';
+    // Adresse vue du SITE. En mode interne, c'est par elle que passent TOUTES les URL données aux
+    // navigateurs : sur un tout-en-un enrôlé en 127.0.0.1, `node.host` enverrait le visiteur sur
+    // son propre poste — panneau noir, aucune erreur. Le panneau l'affiche donc, avec sa provenance.
+    const adrNav = cn.adresse_navigateur || {};
+    const interneOk = cn.interne_possible !== false;
+    // Choix du MODE. Exigence du testeur (27/10) : modifiable après installation, sans shell.
+    // Le mode indisponible reste VISIBLE et désactivé, avec sa raison : le masquer laisserait
+    // l'exploitant chercher une option qu'on lui a retirée sans le dire.
+    const modeBloc = `<div class="row" style="gap:var(--space-3);align-items:flex-start;flex-wrap:wrap;margin-bottom:6px">
+        <div class="field"><label>${setT('settings.net.mode_label')}</label>
+          <select id="ncn_${id}_mode" data-initial="${mode}" onchange="majModeReseau(${id})">
+            <option value="site" ${mode==='site'?'selected':''}>${setT('settings.net.mode_site')}</option>
+            <option value="interne" ${mode==='interne'?'selected':''} ${interneOk?'':'disabled'}>${setT('settings.net.mode_interne')}</option>
+          </select></div>
+        <div class="field" id="ncn_${id}_subnet_f" style="max-width:190px;${mode==='interne'?'':'display:none'}">
+          <label>${setT('settings.net.subnet_interne')}</label>
+          <input id="ncn_${id}_subnet" value="${escapeHtml(cn.subnet_interne||'172.30.0.0/24')}"></div>
+        <div class="field" id="ncn_${id}_nav_f" style="max-width:190px;${mode==='interne'?'':'display:none'}">
+          <label>${setT('settings.net.adresse_navigateur')}</label>
+          <input id="ncn_${id}_nav" value="${escapeHtml(adrNav.override||'')}" placeholder="${escapeHtml(adrNav.adresse||'')}"
+                 onchange="enregistrerAdresseNavigateur(${id})"></div>
+        <div class="meta" style="flex:1 1 320px;opacity:.85" id="ncn_${id}_modehelp">${mode==='interne'?setT('settings.net.mode_interne_help'):setT('settings.net.mode_site_help')}</div>
+      </div>
+      <div class="meta" style="margin-bottom:4px;${mode==='interne'?'':'display:none;'}${adrNav.source?'opacity:.85':'color:var(--status-stopped-fg)'}" id="ncn_${id}_navhelp">${_adrNavTexte(adrNav)} <span id="ncn_${id}_navmsg"></span></div>
+      ${cn.pool_hors_subnet ? `<div class="meta" style="margin-bottom:4px;opacity:.85">${setT('settings.net.pool_hors_subnet').replace('{pool}', escapeHtml(cl.subnet||'—')).replace('{carte}', escapeHtml(cn.pool_hors_subnet.carte||'—')).replace('{ifname}', escapeHtml(cn.pool_hors_subnet.ifname||'—'))}</div>` : ''}
+      ${interneOk ? '' : `<div class="meta" style="color:var(--text-muted);margin-bottom:4px">ℹ ${setT('settings.net.interne_indispo')} — ${escapeHtml(cn.interne_refus||'')}</div>`}
+      ${cn.interne_avertissement ? `<div class="meta" style="color:var(--status-warning-fg,#c80);margin-bottom:4px">⚠ ${escapeHtml(cn.interne_avertissement)}</div>` : ''}`;
+    // ★ LA BASE N'EST PAS UNE MESURE (30/10). `cn.configured` dit seulement qu'une colonne est
+    // remplie ; `cn.reel_present` est le CONSTAT sur l'hôte (tri-état : null = non mesuré). Sur la
+    // nouvelle Z8, la base affirmait « bobi-interne » quand Docker n'avait que bridge/host/none —
+    // et toutes les pages, celle-ci comprise, affichaient une configuration complète.
+    const absentBloc = (cn.configured && cn.reel_present === false)
+        ? `<div class="meta" style="color:var(--status-stopped-fg);margin-bottom:4px">${escapeHtml(setT('settings.net.reseau_absent'))}</div>`
+        : (cn.configured && cn.reel_present == null)
+        ? `<div class="meta" style="opacity:.8;margin-bottom:4px">${escapeHtml(setT('settings.net.reseau_non_mesure'))}</div>`
+        : '';
     return `<div style="font-weight:600;margin-bottom:4px">${setT('settings.st.container_network_macvlan')}</div>
+      ${absentBloc}
+      ${modeBloc}
       <div class="meta" style="margin-bottom:4px">Subnet <code>${escapeHtml(cl.subnet||'—')}</code> · passerelle <code>${escapeHtml(cl.gateway||'—')}</code> · plage <code>${escapeHtml(cl.ip_range||'—')}</code>
         <span style="opacity:.7">${setT('settings.st.cluster_settings_network_static_ips')}</span></div>
       ${cnWarn}
       <div class="meta" style="margin-bottom:4px;opacity:.8">${setT('settings.js2.parent_nic_no_ip')}</div>
       ${nics.length ? `<div class="row" style="gap:var(--space-2);align-items:flex-end;flex-wrap:wrap">
-        <div class="field"><label>{{ _('settings.st.parent_nic_node') }}</label><select id="ncn_${id}_parent">${parentOpts}</select></div>
-        <div class="field" style="max-width:110px"><label title="${setT('settings.chk.vlan_trunk_tip')}">${setT('settings.chk.vlan_if_trunk')}</label><input id="ncn_${id}_vlan" type="number" min="0" placeholder="—"></div>
-        <div class="field" style="max-width:160px"><label>{{ _('settings.st.network_name') }}</label><input id="ncn_${id}_name" value="${escapeHtml(cn.name||'bobimacvlan')}"></div>
+        <div class="field" id="ncn_${id}_site_f" style="${mode==='interne'?'display:none':''}"><label>{{ _('settings.st.parent_nic_node') }}</label><select id="ncn_${id}_parent">${parentOpts}</select></div>
+        <div class="field" id="ncn_${id}_vlan_f" style="max-width:110px;${mode==='interne'?'display:none':''}"><label title="${setT('settings.chk.vlan_trunk_tip')}">${setT('settings.chk.vlan_if_trunk')}</label><input id="ncn_${id}_vlan" type="number" min="0" placeholder="—"></div>
+        <div class="field" style="max-width:160px"><label>{{ _('settings.st.network_name') }}</label><input id="ncn_${id}_name" value="${escapeHtml(cn.name||(mode==='interne'?'bobi-interne':'bobimacvlan'))}"></div>
         <button type="button" class="btn btn-blue" onclick="creerReseauContainers(${id})">${cn.configured?'Reconfigurer':'Créer'} le réseau</button>
         <span id="ncn_${id}_msg" class="meta"></span></div>`
       : (j.has_agent
@@ -6819,6 +7006,11 @@ function _renderReadiness(id, j) {
     }
     html += `<div style="border-top:1px solid var(--border-soft);padding-top:var(--space-2);margin-top:var(--space-2)">
       ${_secNetwork(id, j)}
+    </div>`;
+    html += `<div style="border-top:1px solid var(--border-soft);padding-top:var(--space-2);margin-top:var(--space-2)">
+      <div style="font-weight:600;margin-bottom:4px">${setT('settings.cores.titre')}
+        <button type="button" class="btn" style="margin-left:6px;font-size:.85em" onclick="chargerCoeurs(${id}, true)">${setT('settings.cores.rafraichir')}</button></div>
+      <div id="ndcores_${id}" data-nom="${escapeHtml(j.node_name || ('#'+id))}"><span class="meta">${setT('settings.js.reading_node')}</span></div>
     </div>`;
     html += `<div style="border-top:1px solid var(--border-soft);padding-top:var(--space-2);margin-top:var(--space-2)">
       <div style="font-weight:600;margin-bottom:4px">${setT('settings.st.host_docker_system')}</div>
@@ -7134,7 +7326,7 @@ function _nodeCaps(n) {
     return Array.isArray(caps) ? caps : [];
 }
 
-// Les six capacités de nœud, avec ce que chacune coûte à rattraper (affiché dans la confirmation :
+// Les sept capacités de nœud, avec ce que chacune coûte à rattraper (affiché dans la confirmation :
 // aucune n'est anodine, et deux imposent un redémarrage). Miroir de _CAP_ADDABLE côté serveur —
 // c'est le serveur qui refuse, ici on ne fait que ne pas proposer n'importe quoi.
 const CAPS_NODE = [
@@ -7145,7 +7337,64 @@ const CAPS_NODE = [
     {id:'io2110',  reboot:true},
     // Interfaces natives LV2 (plugin plugin_gui) : simple déclaration, rien sur l'hôte ; exige compute.
     {id:'gui',     reboot:false, needs:'compute', hint:'settings.js.caps_gui_hint'},
+    // Carte DeckLink (SDI ou IP) : déclaration seule — le pilote Desktop Video n'est pas
+    // distribuable, il se dépose à la main dans la boîte que CETTE capacité fait apparaître.
+    // Pas de `reboot:true` : la capacité elle-même ne touche pas l'hôte ; c'est l'installation du
+    // pilote qui demandera un redémarrage, et la boîte l'annonce elle-même au bon moment.
+    {id:'decklink', reboot:false, hint:'settings.js.caps_decklink_hint'},
 ];
+
+// Lignes de PILOTE HÔTE (NVIDIA, DeckLink, et d'autres cartes plus tard) : une ligne ne s'affiche
+// que sur le nœud qui DÉCLARE la capacité correspondante. Deux défauts corrigés d'un coup :
+//  · le BRUIT — une installation de dix nœuds dont aucun ne porte de carte affichait dix lignes
+//    « GPU — · Détecter GPU · Pilote NVIDIA », et ma première version en ajoutait dix pour DeckLink
+//    (relevé par Cyril le 2026-10-31 : « potentiellement 10 nœuds, et aucun besoin de Blackmagic ») ;
+//  · le CERCLE — la garde est une DÉCLARATION humaine (« j'ai mis une carte dans ce nœud »), jamais
+//    une détection. Conditionner à `/dev/blackmagic` ou à `nvidia-smi` exigerait le pilote pour
+//    montrer comment l'installer : c'est l'impasse mesurée le 2026-10-30, où la seule porte vers le
+//    pilote Blackmagic était la page d'un conteneur qui ne peut pas naître sans ce pilote.
+// Une carte de plus = une entrée dans HOSTDRV_CAP et une ligne ici, pas un `if` de plus : c'est ce
+// qui manquait les deux fois (16/10 et 30/10) — rien ne reliait une capacité à la porte par
+// laquelle on y accède.
+//
+// `|| n.gpu_capable` pour le GPU, et pour lui seul : `nodes.capabilities` peut être PÉRIMÉE (elle
+// n'est réécrite qu'à l'enrôlement — c'est la raison d'être du rattrapage `＋ Ajouter`), et masquer
+// la ligne d'un GPU déjà CONSTATÉ serait une régression muette sur un nœud qui marche. Déclaré OU
+// constaté ; jamais constaté seul, sinon le cercle revient. DeckLink n'a aucun constat équivalent à
+// offrir : il n'existe pas de drapeau matériel sans le pilote, ce qui est tout le problème.
+const HOSTDRV_CAP = { nvidia: 'gpu', blackmagic: 'decklink' };
+
+function _hdVisible(n, kind) {
+    if (_nodeCaps(n).includes(HOSTDRV_CAP[kind])) return true;
+    return kind === 'nvidia' && !!n.gpu_capable;
+}
+
+// Boîte dépliable du pilote hôte (générique par `kind`, remplie par hostDrvLoad).
+function _hdBoxHtml(n, kind) {
+    return `<div id="hostdrv_${kind}_${n.id}" style="display:none; margin-top:var(--space-2);`
+         + ` padding:var(--space-2); background:var(--bg-input); border:1px solid var(--border-soft);`
+         + ` border-radius:6px"></div>`;
+}
+
+function _hdLigneGpu(n) {
+    if (!_hdVisible(n, 'nvidia')) return '';
+    return `<div class="meta" style="margin-top:4px">GPU
+                <code>${n.gpu_capable ? ('NVIDIA ×' + (n.gpu_count || 1)) : '—'}</code>${
+                  n.gpu_capable && !n.compute_gpu_image ? ` <span class="badge stopped">${T('settings.js.gpu_image_todo')}</span>` : ''}${
+                  n.compute_gpu_image ? ` · <code>${v(n.compute_gpu_image)}</code>` : ''}
+                <button type="button" class="btn" onclick="detecterGpu(${n.id})">${T('settings.js.gpu_detect')}</button>${
+                  n.gpu_capable ? ` <button type="button" class="btn" onclick="buildImageGpu(${n.id})">${T('settings.js.gpu_build')}</button> <span id="gpubuild_${n.id}" class="meta"></span>` : ''}
+                <button type="button" class="btn" style="min-height:44px" onclick="hostDrvToggle(${n.id},'nvidia')">${T('settings.hostdrv.nvidia.open')}</button>
+                <span id="gpudet_${n.id}" class="meta"></span></div>
+              ${_hdBoxHtml(n, 'nvidia')}`;
+}
+
+function _hdLigneDecklink(n) {
+    if (!_hdVisible(n, 'blackmagic')) return '';
+    return `<div class="meta" style="margin-top:4px">${T('settings.js.node_decklink')}
+                <button type="button" class="btn" style="min-height:44px" onclick="hostDrvToggle(${n.id},'blackmagic')">${T('settings.hostdrv.blackmagic.open')}</button></div>
+              ${_hdBoxHtml(n, 'blackmagic')}`;
+}
 
 // Ligne « capacités » de la carte nœud : SEULEMENT celles qui sont présentes. Ce qui manque
 // n'encombre pas la ligne — il se découvre en ouvrant le menu du bouton « ＋ Ajouter ». Un nœud sans
@@ -7412,17 +7661,40 @@ function hostDrvUpload(id, kind) {
 }
 
 // GPU NVIDIA : détection (nvidia-smi + runtime nvidia Docker) → met à jour gpu_capable/gpu_count.
+// ⚠ Le verdict doit SURVIVRE au redessin. `rafraichirNodes` reconstruit `#nodes-list.innerHTML`,
+// donc le span `#gpudet_<id>` est RECRÉÉ VIDE : le message s'affichait puis disparaissait aussitôt,
+// et un « aucun GPU NVIDIA détecté » était illisible — c'est précisément le message dont
+// l'exploitant a besoin pour comprendre que la détection a échoué plutôt que trouvé zéro carte.
+// On retient donc le dernier verdict par nœud, et on le repose après chaque redessin (même point
+// que `_restoreEnrollFromHash`). Même esprit que `majVoyantsNodes`, qui n'écrase pas le bloc agent
+// pendant une opération en cours.
+let _gpuDetMsg = {};
+function _restoreGpuDet() {
+    Object.keys(_gpuDetMsg).forEach(id => {
+        const el = document.getElementById('gpudet_'+id);
+        if (el) { el.style.color = _gpuDetMsg[id].color; el.textContent = _gpuDetMsg[id].text; }
+    });
+}
 async function detecterGpu(id) {
-    const msg = document.getElementById('gpudet_'+id);
-    if (msg) { msg.style.color='var(--text-muted)'; msg.textContent='⏳ '+T('settings.js.gpu_detecting'); }
+    const poser = (color, text) => {
+        _gpuDetMsg[id] = {color, text};
+        const el = document.getElementById('gpudet_'+id);
+        if (el) { el.style.color = color; el.textContent = text; }
+    };
+    poser('var(--text-muted)', '⏳ '+T('settings.js.gpu_detecting'));
     try {
         const j = await (await fetch('/api/nodes/'+id+'/detect-gpu', {method:'POST'})).json();
-        if (msg) {
-            msg.style.color = j.gpu_capable ? 'var(--status-running-fg)' : 'var(--status-warning-fg,#c80)';
-            msg.textContent = (j.gpu_capable ? '✓ ' : '⚠ ') + (j.msg || '');
-        }
-        rafraichirNodes();
-    } catch (e) { if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; } }
+        // Trois issues, pas deux : GPU, pas de GPU, et « pas pu regarder » (502, joignable=false).
+        // Peindre la troisième comme la deuxième ferait lire une panne d'accès comme une absence
+        // de matériel — c'est précisément ce que ce correctif défait.
+        if (j.joignable === false) poser('var(--status-stopped-fg)', '✕ ' + (j.msg || ''));
+        else poser(j.gpu_capable ? 'var(--status-running-fg)' : 'var(--status-warning-fg,#c80)',
+                   (j.gpu_capable ? '✓ ' : '⚠ ') + (j.msg || ''));
+        // Attendu pour que la séquence soit déterministe, mais ce n'est PAS lui qui sauve le
+        // message : c'est `_gpuDetMsg` + `_restoreGpuDet`, que le redessin appelle quand il
+        // arrive, awaité ou non. (Vérifié : retirer l'`await` ne fait pas disparaître le verdict.)
+        await rafraichirNodes();
+    } catch (e) { poser('var(--status-stopped-fg)', '✕ '+e); }
 }
 // Build de bobi-compute-gpu SUR le nœud GPU (node-only, FROM bobi-compute + cupy). Async → polling.
 async function buildImageGpu(id) {
@@ -7457,18 +7729,150 @@ function _pollGpuBuild(id) {
     };
     setTimeout(tick, 1500);
 }
+// Bascule d'affichage entre les deux modes. Le mode SITE a une carte parent et un VLAN ; le
+// mode INTERNE a un sous-réseau privé. Laisser les deux visibles ferait saisir des valeurs qui
+// ne seront pas lues — et personne ne saurait lesquelles comptent.
+// ─── Cœurs d'un nœud : qui tient quoi (et la réparation sans shell) ─────────────────────────
+// ★ Demande de Cyril (28/10) : « comment on règle ça seuls via l'interface ? ». Avant, `free 2,
+// oversub true` — vrai et inutilisable, puisqu'il ne nomme personne. Sur la Z8 ces deux cœurs
+// étaient le reste d'un pool dont 23 étaient tenus par douze conteneurs DÉTRUITS.
+// ─── Cœurs d'un nœud : UNE source de données, UN rendu ──────────────────────────────────────
+// ★ Demande de Cyril (28/10) : « comment on règle ça seuls via l'interface ? ». Avant, `free 2,
+// oversub true` — vrai et inutilisable, puisqu'il ne nomme personne. Sur la Z8 ces deux cœurs
+// étaient le reste d'un pool dont 23 étaient tenus par douze conteneurs DÉTRUITS.
+//
+// Le RENDU vit dans `static/js/cores.js` (BobiCores), partagé avec la fenêtre « Gérer les
+// cœurs » ouverte depuis Monitoring. Il était ici, en propre, et la fenêtre l'aurait recopié :
+// deux rendus de la même vue divergent toujours (c'est arrivé aux cartes de cœurs de
+// Monitoring, dessinées deux fois). Cette page garde SA question — configurer un nœud —, et
+// délègue l'affichage de « qui tient quoi ».
+async function chargerCoeurs(id, force) {
+    const box = document.getElementById('ndcores_' + id);
+    if (!box) return;
+    box.innerHTML = '<span class="meta">⏳…</span>';
+    const nom = box.dataset.nom || ('#' + id);
+    try {
+        const r = await window.BobiCores.charger(id, force);
+        if (!r.ok) {
+            box.innerHTML = '<span class="meta" style="color:var(--status-stopped-fg)">✕ '
+                          + escapeHtml((r.j || {}).error || '') + '</span>';
+            return;
+        }
+        window.BobiCores.rendreCompact(box, r.j, id, nom);
+    } catch (e) {
+        box.innerHTML = '<span class="meta" style="color:var(--status-stopped-fg)">✕ ' + escapeHtml('' + e) + '</span>';
+    }
+}
+function _adrNavTexte(adrNav) {
+    const src = setT('settings.net.adr_src_' + (adrNav.source || 'aucune'));
+    if (!adrNav.source) return '⚠ ' + src;
+    return setT('settings.net.adr_nav_help').replace('{adresse}', escapeHtml(adrNav.adresse || '—'))
+                                            .replace('{source}', src);
+}
+// Override de l'adresse vue du site, PAR NŒUD (réglage `browser_host`). Vide = on retire
+// l'override et la détection automatique reprend — d'où le `clear` plutôt qu'une chaîne vide
+// posée en base, qui vaudrait « adresse vide » et non « automatique ».
+async function enregistrerAdresseNavigateur(id) {
+    const inp = document.getElementById('ncn_'+id+'_nav');
+    const msg = document.getElementById('ncn_'+id+'_navmsg');
+    if (!inp) return;
+    const v = (inp.value || '').trim();
+    const corps = v ? {set: {browser_host: v}} : {clear: ['browser_host']};
+    if (msg) { msg.style.color='var(--text-muted)'; msg.textContent=' ⏳…'; }
+    try {
+        const r = await fetch('/api/settings/node/'+id, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corps)});
+        const j = await repJson(r);
+        if (j.status === 'ok') {
+            if (msg) { msg.style.color='var(--status-running-fg)'; msg.textContent=' ✓ '+setT('settings.net.adr_nav_ok'); }
+            chargerReadiness(id);      // réafficher la provenance résolue par le serveur
+        } else if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent=' ✕ '+(j.error||''); }
+    } catch (e) { if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent=' ✕ '+e; } }
+}
+function majModeReseau(id) {
+    const mode = (document.getElementById('ncn_'+id+'_mode')||{}).value || 'site';
+    const interne = (mode === 'interne');
+    const bascule = (suffixe, visible) => {
+        const el = document.getElementById('ncn_'+id+'_'+suffixe);
+        if (el) el.style.display = visible ? '' : 'none';
+    };
+    bascule('site_f', !interne);
+    bascule('vlan_f', !interne);
+    bascule('subnet_f', interne);
+    bascule('nav_f', interne);
+    bascule('navhelp', interne);
+    const aide = document.getElementById('ncn_'+id+'_modehelp');
+    if (aide) aide.textContent = setT(interne ? 'settings.net.mode_interne_help' : 'settings.net.mode_site_help');
+    const nom = document.getElementById('ncn_'+id+'_name');
+    // Le nom suit le mode tant que l'exploitant ne l'a pas personnalisé : deux modes sur le même
+    // nom de réseau Docker obligeraient à détruire pour recréer à l'identique.
+    if (nom && (nom.value === 'bobimacvlan' || nom.value === 'bobi-interne' || !nom.value.trim()))
+        nom.value = interne ? 'bobi-interne' : 'bobimacvlan';
+}
+// Pose le shim macvlan de l'hôte. Action SÉPARÉE de « Reconfigurer le réseau » : celle-ci
+// détruit les conteneurs du nœud dès qu'un paramètre diffère, alors que poser un shim ne détruit
+// rien. Faire passer un correctif inoffensif par un geste destructeur, c'est garantir qu'on ne le
+// fera pas sur une machine qui porte de la production (constaté sur la Z8 le 27/10).
+async function poserShim(id) {
+    const msg = document.getElementById('ncn_'+id+'_shimmsg');
+    if (msg) { msg.style.color='var(--text-muted)'; msg.textContent=' ⏳…'; }
+    try {
+        const r = await fetch('/api/nodes/'+id+'/container-network/shim', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+        const j = await repJson(r);
+        if (j.ok) {
+            if (msg) { msg.style.color='var(--status-running-fg)'; msg.textContent=' ✓ '+(j.shim_ip||''); }
+            chargerReadiness(id);
+        } else if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent=' ✕ '+(j.error||T('settings.js.st_fail')); }
+    } catch (e) { if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent=' ✕ '+e; } }
+}
 async function creerReseauContainers(id) {
     const msg = document.getElementById('ncn_'+id+'_msg');
     const parent = (document.getElementById('ncn_'+id+'_parent')||{}).value || '';
     const name = ((document.getElementById('ncn_'+id+'_name')||{}).value || '').trim();
     const vlan = ((document.getElementById('ncn_'+id+'_vlan')||{}).value || '').trim();
-    if (!parent) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ carte parent requise'; return; }
+    const mode = (document.getElementById('ncn_'+id+'_mode')||{}).value || 'site';
+    const subnet = ((document.getElementById('ncn_'+id+'_subnet')||{}).value || '').trim();
+    const modeInitial = (document.getElementById('ncn_'+id+'_mode')||{}).dataset?.initial;
+    if (mode !== 'interne' && !parent) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ carte parent requise'; return; }
+    // ★ UN CHANGEMENT DE MODE DÉTRUIT LES CONTENEURS DU NŒUD (un réseau Docker ne se modifie
+    // pas sous ses attachés). On le DIT avant, et on le dit en toutes lettres : c'est la seule
+    // chose, dans ce panneau, qui fasse tomber de la production.
+    if (modeInitial && mode !== modeInitial && !confirm(setT('settings.net.bascule_confirm'))) return;
     msg.style.color='var(--text-muted)'; msg.textContent=T('settings.js.creating_net');
     try {
-        const r = await fetch('/api/nodes/'+id+'/container-network', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({parent, name, vlan})});
-        const j = await r.json();
-        if (r.ok && j.ok) {
-            msg.style.color='var(--status-running-fg)'; msg.textContent=T('settings.js.net_ok')+j.name+' » ' + setT('settings.js3.net_ready').replace('{p}', j.parent);
+        // ★ LE SUBNET N'EST ENVOYÉ QU'EN MODE INTERNE (corrigé le 30/10). Le champ
+        // `ncn_<id>_subnet` est le SOUS-RÉSEAU PRIVÉ du mode interne ; il reste dans le DOM,
+        // simplement caché, quand le mode est « site ». Il était pourtant posté dans les deux
+        // cas, et le serveur le prend en priorité (`d.get("subnet") or sug.subnet`) : une
+        // reconfiguration en réseau du site partait donc avec le subnet interne (172.30.0.0/24)
+        // et la passerelle des réglages CLUSTER — deux valeurs incompatibles, que Docker refuse
+        // APRÈS que nous avons détruit l'existant. En mode site, le subnet vient du pool d'IP du
+        // cluster, et c'est au serveur de le choisir.
+        const corpsNet = (mode === 'interne') ? {parent, name, vlan, mode, subnet}
+                                              : {parent, name, vlan, mode};
+        const r = await fetch('/api/nodes/'+id+'/container-network', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(corpsNet)});
+        let j = await repJson(r);
+        // Le serveur REFUSE quand des conteneurs tombent, et dit lesquels : on demande ici, puis
+        // on renvoie avec l'accord. La confirmation porte le COMPTE et la LISTE — « êtes-vous
+        // sûr ? » sans dire ce qu'on perd ne fait prendre aucune décision à personne.
+        if (!j.ok && j.confirmation_requise) {
+            const liste = (j.conteneurs || []).join(', ');
+            // Le serveur refuse aussi quand le geste DÉTRUIT le réseau SANS conteneur attaché
+            // (30/10) : la phrase « 0 conteneur(s) » ne voudrait rien dire, et c'est le message
+            // du serveur qui porte alors le bon constat — il nomme le réseau détruit.
+            const question = liste ? setT('settings.net.detruit_conteneurs')
+                    .replace('{count}', (j.conteneurs || []).length).replace('{liste}', liste)
+                : (j.error || setT('settings.net.detruit_conteneurs'));
+            if (!confirm(question)) {
+                msg.style.color='var(--text-muted)'; msg.textContent='—'; return;
+            }
+            const r2 = await fetch('/api/nodes/'+id+'/container-network', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...corpsNet, confirme:true})});
+            j = await repJson(r2);
+        }
+        if (j.ok) {
+            msg.style.color='var(--status-running-fg)';
+            msg.textContent = T('settings.js.net_ok')+j.name+' » ' + (j.mode === 'interne'
+                ? ('· ' + (j.subnet||'')) : setT('settings.js3.net_ready').replace('{p}', j.parent));
+            if (j.warning) { msg.style.color='var(--status-warning-fg,#c80)'; msg.textContent += ' — ⚠ ' + j.warning; }
             chargerReadiness(id);   // rafraîchit le panneau en place (pas rafraichirNodes → ne referme pas)
         } else { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+(j.error||T('settings.js.st_fail')); }
     } catch (e) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; }
@@ -7964,7 +8368,8 @@ function _nmosSdpModal(rid, label, isRx, vmid, rx, cur) {
         actions.appendChild(unsub); actions.appendChild(apply);
     } else if (cur) {
         const copy = document.createElement('button'); copy.className = 'btn btn-sm'; copy.textContent = 'Copier';
-        copy.onclick = () => { navigator.clipboard?.writeText(cur); };
+        copy.dataset.copy = cur;
+        copy.onclick = () => copyFromButton(copy);
         actions.appendChild(copy);
     }
     box.appendChild(head); box.appendChild(hint); box.appendChild(ta); box.appendChild(actions);
@@ -8909,10 +9314,33 @@ const NET_ROLE_META = {
 // passe par ces helpers (miroir de database.role_is_management/role_is_containers).
 const roleIsMgmt = (r) => r === 'management' || r === 'mgmt_containers';
 const roleIsCt   = (r) => r === 'containers' || r === 'mgmt_containers';
-function _netRoleBadge(role) {
+// ★ UNE INTERFACE QUE NOUS AVONS POSÉE N'EST PAS UNE CARTE « NON UTILISÉE » (30/10).
+// `bobi-shim` et `bobi-interne` n'ont pas de ligne en base, donc le serveur leur appliquait
+// `role = "unused"` → badge « Non utilisée », la seule étiquette qui INVITE à s'en servir. Sur la
+// nouvelle Z8, l'exploitant a vu « bobi-interne · Non utilisée » à côté de « eno1 · Management +
+// Containers » et en a déduit, logiquement, que le réseau des conteneurs était sur la mauvaise
+// carte : il a voulu le déplacer, et le réseau a été détruit. On les NOMME donc, avec leur raison
+// d'être — sans les masquer, sinon leur adresse serait inexplicable dans `ip addr`.
+function _netRoleBadge(role, n) {
+    n = n || {};
+    if (n.a_nous) {
+        const quoi = T(n.a_nous_quoi === 'shim' ? 'settings.js.net.a_nous_shim'
+                     : n.a_nous_quoi === 'reseau' ? 'settings.js.net.a_nous_reseau'
+                     : 'settings.js.net.a_nous_autre');
+        return `<span title="${escapeHtml(quoi)}" style="display:inline-block; padding:1px 8px;
+            border-radius:10px; font-size:0.74em; font-weight:600; color:var(--text-muted);
+            border:1px dashed var(--border)">${escapeHtml(T('settings.js.net.role_a_nous'))}</span>`;
+    }
     const m = NET_ROLE_META[role] || NET_ROLE_META.unused;
+    // Rôle « Containers » INERTE : le nœud est en réseau interne, les conteneurs sont sur le pont
+    // privé. Afficher le rôle actif ferait chercher un défaut là où il n'y en a pas.
+    const inerte = n.role_ct_inerte
+        ? `<span title="${escapeHtml(T('settings.js.net.role_ct_inerte_aide'))}"
+             style="font-size:0.66em; font-weight:600; padding:1px 6px; border-radius:4px;
+             margin-left:4px; background:var(--border-soft); color:var(--text-muted)"
+           >${escapeHtml(T('settings.js.net.role_ct_inerte'))}</span>` : '';
     return `<span style="display:inline-block; padding:1px 8px; border-radius:10px; font-size:0.74em;
-        font-weight:600; color:#fff; background:${m.color}">${m.label}</span>`;
+        font-weight:600; color:#fff; background:${m.color}">${m.label}</span>${inerte}`;
 }
 let _netViewData = null, _netViewPrev = null;
 async function rafraichirNodeNetView(sig) {
@@ -9130,14 +9558,19 @@ function renderNodeNetView(j, prev) {
                 ${n.is_pf?'<span style="font-size:0.68em;color:var(--text-muted)"> PF</span>':''}${n.is_vf?'<span style="font-size:0.68em;color:var(--text-muted)"> VF</span>':''}${spd}${dpdkBadge}
             </td>
             <td style="padding:var(--space-1) var(--space-2)">${_netModuleControl(n)}</td>
-            <td style="padding:var(--space-1) var(--space-2)">${_netRoleBadge(n.role)}${pairBadge}${capBadge}${_netPtpChip(n)}${_netRdmaChip(n)}</td>
+            <td style="padding:var(--space-1) var(--space-2)">${_netRoleBadge(n.role, n)}${pairBadge}${capBadge}${_netPtpChip(n)}${_netRdmaChip(n)}</td>
             <td style="padding:var(--space-1) var(--space-2); font-family:var(--font-mono); font-size:0.85em">${escapeHtml(n.ip_cidr || '—')}</td>
             <td style="padding:var(--space-1) var(--space-2); font-family:var(--font-mono); font-size:0.8em; color:var(--text-muted)">${escapeHtml(n.mac || '—')}</td>
             <td style="padding:var(--space-1) var(--space-2); text-align:right; white-space:nowrap">↓ ${fmtBps(rxBps)}<br>↑ ${fmtBps(txBps)}</td>
             <td style="padding:var(--space-1) var(--space-2); text-align:right; color:var(--text-muted); white-space:nowrap">↓ ${fmtBytes(n.rx_bytes)}<br>↑ ${fmtBytes(n.tx_bytes)}</td>
-            <td style="padding:var(--space-1) var(--space-2); text-align:right; white-space:nowrap">
-                <button class="btn btn-blue" style="padding:2px 10px; font-size:0.78em"
-                    onclick='toggleNetRowDetail(this, ${JSON.stringify(n.ifname)}, "edit")'>${T('settings.js.net.btn_set')}</button></td>
+            <td style="padding:var(--space-1) var(--space-2); text-align:right; white-space:nowrap">${
+                // Rien à régler sur une interface que nous avons posée : le serveur refuse tout
+                // rôle dessus (409). Proposer le bouton, c'était proposer un geste voué à
+                // l'échec — et laisser croire qu'il y avait là une décision à prendre.
+                n.a_nous
+                ? `<span class="meta" style="font-size:0.74em; white-space:normal; display:inline-block; max-width:260px; text-align:left">${escapeHtml(T('settings.js.net.a_nous_pas_de_role'))}</span>`
+                : `<button class="btn btn-blue" style="padding:2px 10px; font-size:0.78em"
+                    onclick='toggleNetRowDetail(this, ${JSON.stringify(n.ifname)}, "edit")'>${T('settings.js.net.btn_set')}</button>`}</td>
         </tr>`;
     };
     // Groupement par CARTE physique (card_id = BDF PCI sans la fonction). En-tête par carte :
@@ -9453,6 +9886,7 @@ async function dessinerTopologieCluster() {
         const r = await fetch('/api/cluster/topology');
         if (!r.ok) throw new Error('HTTP ' + r.status);
         el.innerHTML = _renderClusterSvg(await r.json());
+        if (window.NodeSheet) NodeSheet.afterTopology();
     } catch (e) {
         el.innerHTML = `<span style="color:var(--status-stopped-fg)">${T('settings.js.error_label')} ${escapeHtml(e.message)}</span>`;
     }
@@ -9548,6 +9982,7 @@ function _renderClusterSvg(j) {
     // 7) Cartes nœud.
     layout.forEach(o => {
         const nd = o.nd;
+        svg += `<g class="ns-node-card" data-node-id="${nd.id}" role="button" tabindex="0" aria-pressed="false" aria-label="${esc(T('settings.node_sheet.aria_card').replace('{name}', nd.name))}">`;
         svg += `<rect x="${o.x}" y="${o.y}" width="${o.w}" height="${o.h}" rx="8" fill="var(--bg-card)" stroke="var(--border)"/>
             <text x="${o.x+12}" y="${o.y+22}" fill="var(--text)" font-weight="700" font-size="13">${esc(nd.name)}</text>
             <text x="${o.x+o.w-12}" y="${o.y+22}" text-anchor="end" fill="var(--text-muted)" font-size="10.5" font-family="var(--font-mono)">${esc(nd.host)}</text>
@@ -9601,6 +10036,7 @@ function _renderClusterSvg(j) {
             if (tag) svg += `<text x="${o.x+o.w-14}" y="${rowTop+27}" text-anchor="end" fill="${RDMA_COL}" font-size="9">${tag}</text>`;
             if (port) svg += `<circle cx="${o.x+o.w}" cy="${ry}" r="3.5" fill="${portCol || (roleIsMgmt(i.role)?roleColor('management'):hubColor({pair:i.pair_role==='red'?'red':i.pair_role==='blue'?'blue':'gen'}))}"/>`;
         });
+        svg += `</g>`;
     });
     // 8) Hubs fabric (2110) et switchs RDMA détectés (LLDP) — même colonne, même grammaire ;
     //    le switch RDMA se distingue par la couleur RDMA + le contour pointillé (comme ses liens).
@@ -11534,6 +11970,7 @@ function _atemDveOptions(selectedVmid) {
 
 async function rafraichirAtem() {
     try {
+        await _atemChargerNomsColonnes();
         const rs = await fetch('/api/atem/status');
         const s = await rs.json();
         if (!_editing('s_atem')) {
@@ -11556,22 +11993,27 @@ async function rafraichirAtem() {
         const data = await rp.json();
         _atemMixers = data.mixers || [];
         _atemDves = data.dves || [];
+        _atemKeyMacros = data.key_macros || [];
+        window._atemPanelsData = {};
+        for (const p of (data.panels || [])) window._atemPanelsData[p.ip] = p;
         const tb = document.getElementById('atem_panels_tbody');
         if (!data.panels || !data.panels.length) {
             tb.innerHTML = '<tr><td colspan="9" class="meta">' + T('settings.js.no_panel') + '</td></tr>';
+            tb.dataset.structure = '';
             return;
         }
         // ⚠ Un pli « Sources » ouvert interdit le re-rendu (cf. _atemPliOuvert) : on met à jour
         // son contenu en place et on laisse le tableau tranquille.
         if (_atemPliOuvert()) {
             _atemMajSourcesOuvertes(data.panels);
+            _atemMajTouchesOuvertes(data.panels);
             window._atemPanelLabels = window._atemPanelLabels || {};
             for (const p of data.panels) {
                 window._atemPanelLabels[p.ip] = Object.assign({long: null, short: null}, p.labels || {});
             }
             return;
         }
-        tb.innerHTML = data.panels.map(p => {
+        const rows = data.panels.map(p => {
             const me = p.me_vmids || [];
             const nAssigned = me.filter(v => v != null).length;
             let etat;
@@ -11579,7 +12021,9 @@ async function rafraichirAtem() {
             else if (nAssigned)   etat = `<span style="color:var(--status-running-fg)">${T('settings.js.assigned_pre')}${nAssigned} M/E)</span>`;
             else                  etat = '<span style="color:var(--status-warning-fg)">' + T('settings.js.inert') + '</span>';
             const pgmpvw = (p.pgm != null || p.pvw != null) ? `${p.pgm ?? '—'}·${p.pvw ?? '—'}` : '—';
-            const vu = (p.last_seen != null) ? `${p.last_seen}s` : '—';
+            // Largeur FIXE et chiffres tabulaires : « 9s » → « 10s » élargissait la colonne et
+            // décalait toute la page à chaque rafraîchissement.
+            const vu = `<span style="display:inline-block; min-width:5ch; text-align:right; font-variant-numeric:tabular-nums">${(p.last_seen != null) ? `${p.last_seen}s` : '—'}</span>`;
             const dv = p.dve_vmids || [];
             const ssSel = `SS0 <select onchange="assignerDve('${p.ip}', 0, this.value)">${_atemDveOptions(dv[0] ?? null)}</select>
                            SS1 <select onchange="assignerDve('${p.ip}', 1, this.value)">${_atemDveOptions(dv[1] ?? null)}</select>`;
@@ -11588,20 +12032,27 @@ async function rafraichirAtem() {
             for (let i = 0; i < ATEM_ME_COUNT; i++) {
                 meSel += `<div style="white-space:nowrap">M/E${i + 1} <select onchange="assignerME('${p.ip}', ${i}, this.value)">${_atemOptions(me[i] ?? null)}</select></div>`;
             }
+            // Touches DSK du pupitre → un keyer du mélangeur de la M/E 1 (pas de DSK au mélangeur).
+            const dk = p.dsk_keyers || [];
+            for (let d = 0; d < 2; d++) {
+                meSel += `<div style="white-space:nowrap" title="${_atemEchappe(T('settings.js.dsk_keyer_tip'))}">DSK${d + 1} <select onchange="assignerDsk('${p.ip}', ${d}, this.value)">${_atemDskOptions(dk[d] ?? null)}</select></div>`;
+            }
             // Niveau de libellé des touches, par pupitre. `labels` peut manquer sur une réponse
             // d'une version antérieure : on ne suppose pas sa présence.
             const lv = p.labels || {};
             const lvSel =
                 `<div style="white-space:nowrap">${T('settings.js.label_level_long')} <select onchange="assignerLibelles('${p.ip}', 'long', this.value)">${_atemNiveauOptions(lv.long ?? null)}</select></div>` +
                 `<div style="white-space:nowrap">${T('settings.js.label_level_short')} <select onchange="assignerLibelles('${p.ip}', 'short', this.value)">${_atemNiveauOptions(lv.short ?? null)}</select></div>` +
-                `<div style="margin-top:var(--space-1)"><button class="btn btn-sm" onclick="basculerSources('${p.ip}')">${T('settings.js.sources_btn')}</button> ${_atemSourcesBadge(p)}</div>`;
+                `<div style="white-space:nowrap" title="${_atemEchappe(T('settings.js.unused_names_tip'))}">${T('settings.js.unused_names')} <select onchange="assignerTouchesLibres('${p.ip}', this.value)">${_atemTouchesLibresOptions(p.unused_names || 'input')}</select></div>` +
+                `<div style="margin-top:var(--space-1)"><button class="btn btn-sm" onclick="basculerSources('${p.ip}')">${T('settings.js.sources_btn')}</button> ${_atemSourcesBadge(p)}</div>` +
+                `<div style="margin-top:var(--space-1)"><button class="btn btn-sm" onclick="basculerTouches('${p.ip}')">${T('settings.js.keys_btn')}</button> <span class="meta">${Object.keys(p.keys || {}).length || ''}</span></div>`;
             return `<tr style="border-bottom:1px solid var(--border)">
                 <td style="padding:var(--space-1) var(--space-2)"><code>${p.ip}</code></td>
                 <td style="padding:var(--space-1) var(--space-2)"><input type="text" value="${(p.label || '').replace(/"/g,'&quot;')}" style="width:9em"
                      onchange="assignerPupitre('${p.ip}', this.value)"></td>
-                <td style="padding:var(--space-1) var(--space-2)">${etat}</td>
-                <td style="padding:var(--space-1) var(--space-2)">${pgmpvw}</td>
-                <td style="padding:var(--space-1) var(--space-2)">${vu}</td>
+                <td style="padding:var(--space-1) var(--space-2)" data-live="etat" data-live-ip="${p.ip}">${etat}</td>
+                <td style="padding:var(--space-1) var(--space-2); white-space:nowrap; font-variant-numeric:tabular-nums" data-live="pgmpvw" data-live-ip="${p.ip}">${pgmpvw}</td>
+                <td style="padding:var(--space-1) var(--space-2)" data-live="vu" data-live-ip="${p.ip}">${vu}</td>
                 <td style="padding:var(--space-1) var(--space-2); font-size:0.85em" data-me-ip="${p.ip}">${meSel}</td>
                 <td style="padding:var(--space-1) var(--space-2); font-size:0.85em" data-dve-ip="${p.ip}">${ssSel}</td>
                 <td style="padding:var(--space-1) var(--space-2); font-size:0.85em" data-labels-ip="${p.ip}">${lvSel}</td>
@@ -11610,8 +12061,27 @@ async function rafraichirAtem() {
             </tr>
             <tr class="atem-sources-row hidden" data-sources-ip="${p.ip}">
                 <td colspan="9" style="padding:0 var(--space-2) var(--space-2)">${_atemSourcesTable(p)}</td>
-            </tr>`;
-        }).join('');
+            </tr>
+            <tr class="atem-keys-row hidden" data-keys-ip="${p.ip}"><td colspan="9" style="padding:0 var(--space-2) var(--space-2)"></td></tr>`;
+        });
+        const html = rows.join('');
+        // ★ PAS DE RE-RENDU À CHAQUE TIC (3 s) : il refermait le menu qu'on était en train
+        // d'ouvrir. Les cellules VIVANTES (état, PGM·PVW, vu) sont mises à jour en place ; le
+        // tableau n'est reconstruit que si sa STRUCTURE change (pupitre, affectations, réglages),
+        // et jamais pendant qu'un de ses champs a le focus — il le sera au tic suivant.
+        const structure = html.replace(/<td[^>]*data-live="[^"]*"[^>]*>[\s\S]*?<\/td>/g, '');
+        const focusDedans = tb.contains(document.activeElement);
+        if (structure !== tb.dataset.structure && !focusDedans) {
+            tb.innerHTML = html;
+            tb.dataset.structure = structure;
+        } else {
+            const tmp = document.createElement('tbody');
+            tmp.innerHTML = html;
+            for (const neuf of tmp.querySelectorAll('td[data-live]')) {
+                const vieux = tb.querySelector(`td[data-live="${neuf.dataset.live}"][data-live-ip="${neuf.dataset.liveIp}"]`);
+                if (vieux && vieux.innerHTML !== neuf.innerHTML) vieux.innerHTML = neuf.innerHTML;
+            }
+        }
         // mémorise M/E et DVE courants par IP pour reconstruire la liste à l'assignation
         window._atemPanelMe = {};
         window._atemPanelDve = {};
@@ -11692,7 +12162,7 @@ function _atemSourcesTable(p) {
         } else {
             const tl = a.long_complet ? ` title="${_atemEchappe(T('settings.js.sources_truncated').replace('{v}', a.long_complet))}"` : '';
             const tc = a.short_complet ? ` title="${_atemEchappe(T('settings.js.sources_truncated').replace('{v}', a.short_complet))}"` : '';
-            affiche = `<span${tl}>${_atemEchappe(a.long)}</span> <span class="meta">·</span> `
+            affiche = `<span${tl}${a.libre ? ' class="meta"' : ''}>${_atemEchappe(a.long)}</span> <span class="meta">·</span> `
                     + `<code${tc}>${_atemEchappe(a.short)}</code>`;
         }
         let cells = `<td style="padding:var(--space-1) var(--space-2)"><b>${i + 1}</b></td>`
@@ -11732,7 +12202,7 @@ function basculerSources(ip) {
 // « Régler » des interfaces de nœud — et la charge de la preuve est ici, pas chez l'appelant :
 // aucun re-rendu tant qu'un pli est ouvert, d'où que vienne l'appel.
 function _atemPliOuvert() {
-    return document.querySelector('#atem_panels_tbody tr.atem-sources-row:not(.hidden)');
+    return document.querySelector('#atem_panels_tbody tr.atem-sources-row:not(.hidden), #atem_panels_tbody tr.atem-keys-row:not(.hidden)');
 }
 
 // Mise à jour EN PLACE des plis ouverts : on ne réécrit que ce qui change, pas de clignotement.
@@ -11747,13 +12217,322 @@ function _atemMajSourcesOuvertes(panels) {
     }
 }
 
-// Niveaux de libellé de la page Libellés (label_2..label_9) ; '' = le défaut.
+// Niveaux de libellé de la page Libellés (label_2..label_9) ; '' = le défaut. Chaque niveau porte
+// le NOM de sa colonne (« 2 · Label 2 », ou le nom donné sur la page Libellés) : un numéro seul
+// obligeait à aller voir lequel est quoi.
+let _atemColNames = null;   // /api/labels/names : [Hostname, MXL, colonnes actives…]
+async function _atemChargerNomsColonnes() {
+    if (_atemColNames) return;
+    try { const r = await fetch('/api/labels/names'); _atemColNames = r.ok ? await r.json() : []; }
+    catch (e) { _atemColNames = []; }
+}
 function _atemNiveauOptions(courant) {
     let o = `<option value=""${courant == null ? ' selected' : ''}>${T('settings.js.label_level_default')}</option>`;
     for (let n = 2; n <= 9; n++) {
-        o += `<option value="${n}"${courant === n ? ' selected' : ''}>${n}</option>`;
+        const nom = (_atemColNames || [])[n];
+        o += `<option value="${n}"${courant === n ? ' selected' : ''}>${nom ? escapeHtml(n + ' · ' + nom) : n}</option>`;
     }
     return o;
+}
+
+// ─── Touches MACRO d'un pupitre ──────────────────────────────────────────────────────────────
+// Chaque touche MACRO du pupitre lance ce qu'on lui affecte : une macro Bobi, ou une action de
+// conteneur (le catalogue des macros). Le nom affiché sur le pupitre vient de la cible — pour une
+// action à choix vivant (« aller au clip n » d'un player), c'est l'intitulé de la n-ième option.
+// Le pli se dessine à l'OUVERTURE (pas à chaque rafraîchissement) : ouvert, il bloque le re-rendu
+// du tableau (cf. _atemPliOuvert) et seuls ses noms « sur le pupitre » sont mis à jour en place.
+const ATEM_KEYS_SHOWN = 20;      // deux pages de 10 touches sur le pupitre
+let _atemKeyMacros = [];
+let _atemCatalog = null;
+async function _atemChargerCatalogue() {
+    if (_atemCatalog) return _atemCatalog;
+    try { const r = await fetch('/api/macros/catalog'); _atemCatalog = r.ok ? ((await r.json()).containers || []) : []; }
+    catch (e) { _atemCatalog = []; }
+    return _atemCatalog;
+}
+function _atemCible(uuid) { return (_atemCatalog || []).find(c => c.instance_uuid === uuid) || null; }
+function _atemChoixVivant(a) { return ((a && a.params) || []).find(p => p.options_endpoint) || null; }
+// Actions affectables : tout paramètre autre que le choix vivant doit pouvoir être omis.
+function _atemActionsAffectables(c) {
+    return ((c && c.actions) || []).filter(a => (a.params || []).every(p =>
+        p.options_endpoint || 'default' in p || p.type === 'bool' || p.optional));
+}
+
+async function basculerTouches(ip) {
+    const tr = document.querySelector(`tr[data-keys-ip="${ip}"]`);
+    if (!tr) return;
+    tr.classList.toggle('hidden');
+    if (!tr.classList.contains('hidden')) await _atemRenderTouches(ip);
+}
+
+function _atemCibleOptions(b) {
+    const cur = !b ? '' : (b.kind === 'macro' ? 'm:' + b.macro_id : 'c:' + b.instance_uuid);
+    let h = `<option value="">${T('settings.js.dsk_none')}</option><optgroup label="${_atemEchappe(T('settings.js.keys_macros'))}">`;
+    let vu = cur === '';
+    for (const m of _atemKeyMacros) {
+        const v = 'm:' + m.id; vu = vu || v === cur;
+        h += `<option value="${v}"${v === cur ? ' selected' : ''}>${_atemEchappe(m.name)}${m.project ? ' · ' + _atemEchappe(m.project) : ''}</option>`;
+    }
+    h += `</optgroup><optgroup label="${_atemEchappe(T('settings.js.keys_containers'))}">`;
+    for (const c of (_atemCatalog || [])) {
+        if (!c.instance_uuid || !_atemActionsAffectables(c).length) continue;
+        const v = 'c:' + c.instance_uuid; vu = vu || v === cur;
+        h += `<option value="${v}"${v === cur ? ' selected' : ''}>${_atemEchappe(c.hostname)} · ${_atemEchappe(c.type_label)}</option>`;
+    }
+    h += '</optgroup>';
+    // Cible disparue : on la montre telle quelle plutôt que d'afficher « — » à tort.
+    if (!vu) h += `<option value="${_atemEchappe(cur)}" selected>${T('settings.js.keys_missing')}</option>`;
+    return h;
+}
+
+function _atemActionOptions(c, cur) {
+    let h = `<option value="">…</option>`;
+    for (const a of _atemActionsAffectables(c)) {
+        h += `<option value="${_atemEchappe(a.id)}"${a.id === cur ? ' selected' : ''}>${_atemEchappe(a.label || a.id)}</option>`;
+    }
+    return h;
+}
+
+function _atemToucheLigne(ip, i, b) {
+    const c = b && b.kind === 'action' ? _atemCible(b.instance_uuid) : null;
+    const actSel = c ? `<select data-k="action" onchange="_atemToucheModifiee('${ip}', ${i}, 'action')">${_atemActionOptions(c, b.action_id)}</select>` : '';
+    const lab = b && b.label ? _atemEchappe(b.label) : '';
+    const nom = b ? (b.name ? _atemEchappe(b.name) : `<span class="meta">${T('settings.js.keys_dark')}</span>`) : '';
+    return `<td style="padding:var(--space-1) var(--space-2)"><b>${i + 1}</b></td>
+        <td style="padding:var(--space-1) var(--space-2)"><select data-k="cible" style="max-width:16em" onchange="_atemToucheModifiee('${ip}', ${i}, 'cible')">${_atemCibleOptions(b)}</select></td>
+        <td style="padding:var(--space-1) var(--space-2)" data-k="action-cell">${actSel}</td>
+        <td style="padding:var(--space-1) var(--space-2)" data-k="choix-cell"></td>
+        <td style="padding:var(--space-1) var(--space-2)"><input type="text" data-k="label" maxlength="40" style="width:8em" value="${lab}" placeholder="${_atemEchappe(T('settings.js.keys_label_ph'))}" onchange="_atemToucheModifiee('${ip}', ${i}, 'label')"></td>
+        <td style="padding:var(--space-1) var(--space-2)" data-key-name="${i}">${nom}</td>`;
+}
+
+async function _atemRenderTouches(ip) {
+    await _atemChargerCatalogue();
+    const td = document.querySelector(`tr[data-keys-ip="${ip}"] td`);
+    if (!td) return;
+    const keys = ((window._atemPanelsData || {})[ip] || {}).keys || {};
+    let corps = '';
+    for (let i = 0; i < ATEM_KEYS_SHOWN; i++) {
+        corps += `<tr data-key-row="${i}" style="border-bottom:1px solid var(--border)">${_atemToucheLigne(ip, i, keys[String(i)] || null)}</tr>`;
+    }
+    let remplir = `<option value="">…</option>`;
+    for (const c of (_atemCatalog || [])) {
+        for (const a of _atemActionsAffectables(c)) {
+            if (c.instance_uuid && _atemChoixVivant(a)) remplir += `<option value="${_atemEchappe(c.instance_uuid + '|' + a.id)}">${_atemEchappe(c.hostname)} · ${_atemEchappe(a.label || a.id)}</option>`;
+        }
+    }
+    td.innerHTML = `<div class="meta" style="margin:var(--space-2) 0">${_atemEchappe(T('settings.js.keys_help'))}</div>`
+        + `<div style="display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; margin-bottom:var(--space-2)" data-keys-fill="${ip}">`
+        + `${T('settings.js.keys_fill_from')} <input type="number" data-k="debut" min="1" max="${ATEM_KEYS_SHOWN}" value="1" style="width:4em">`
+        + `<select data-k="source" style="max-width:20em" onchange="_atemRemplirOptions('${ip}')">${remplir}</select>`
+        + `${T('settings.js.keys_fill_count')} <input type="number" data-k="n" min="1" max="${ATEM_KEYS_SHOWN}" value="10" style="width:4em">`
+        + `<span data-k="fill-opts" style="display:contents"></span>`
+        + `<button class="btn btn-sm" onclick="remplirTouches('${ip}')">${T('settings.js.keys_fill_btn')}</button></div>`
+        + `<div style="overflow-x:auto; -webkit-overflow-scrolling:touch"><table style="width:100%; border-collapse:collapse; font-size:0.84em">`
+        + `<thead><tr style="color:var(--text-muted); border-bottom:1px solid var(--border)">`
+        + ['keys_col_key', 'keys_col_target', 'keys_col_action', 'keys_col_choice', 'keys_col_label', 'keys_col_shown']
+            .map(k => `<th style="padding:var(--space-1) var(--space-2); text-align:left">${T('settings.js.' + k)}</th>`).join('')
+        + `</tr></thead><tbody>${corps}</tbody></table></div>`;
+    for (let i = 0; i < ATEM_KEYS_SHOWN; i++) {
+        const b = keys[String(i)];
+        if (b && b.kind === 'action') _atemChargerChoix(ip, i, b.params || {});
+    }
+}
+
+// Options VIVANTES d'une action à choix (playlist d'un player…), par le proxy de plugin.
+async function _atemOptionsVivantes(c, p) {
+    try {
+        const r = await fetch('/api/containers/' + c.vmid + '/plugin' + p.options_endpoint);
+        return MXLOptionChoices.normalize(r.ok ? await r.json() : {}, p);
+    } catch (e) { return []; }
+}
+
+async function _atemChargerChoix(ip, i, params) {
+    const row = document.querySelector(`tr[data-keys-ip="${ip}"] tr[data-key-row="${i}"]`);
+    if (!row) return;
+    const cell = row.querySelector('[data-k="choix-cell"]');
+    const cv = (row.querySelector('[data-k="cible"]') || {}).value || '';
+    const c = cv.startsWith('c:') ? _atemCible(cv.slice(2)) : null;
+    const aid = (row.querySelector('[data-k="action"]') || {}).value || '';
+    const a = c ? (c.actions || []).find(x => x.id === aid) : null;
+    const p = _atemChoixVivant(a);
+    if (!p) { cell.innerHTML = ''; return; }
+    const cur = params ? params[p.key] : undefined;
+    // Paramètre de POSITION (`option_semantics`, 2026-10-29) : « Élément 3 (actuellement : Météo) »,
+    // positions 1 à 20 au moins même playlist vide — elle n'offrait que « … » (rapporté le 29/10).
+    const opts = MXLOptionChoices.build(p, await _atemOptionsVivantes(c, p), cur);
+    let h = `<option value="">…</option>`, vu = cur == null || cur === '';
+    for (const o of opts) {
+        const sel = cur != null && String(o.v) === String(cur); vu = vu || sel;
+        h += `<option value="${_atemEchappe(o.v)}"${sel ? ' selected' : ''}>${_atemEchappe(o.l)}</option>`;
+    }
+    // Valeur gardée mais absente de la liste vivante (playlist plus courte) : elle reste choisie.
+    if (!vu) h += `<option value="${_atemEchappe(cur)}" selected>${_atemEchappe(cur)} (${T('settings.js.keys_dark')})</option>`;
+    cell.innerHTML = `<select data-k="choix" style="max-width:16em" onchange="_atemToucheModifiee('${ip}', ${i}, 'choix')">${h}</select>`;
+}
+
+async function _atemToucheModifiee(ip, i, champ) {
+    const row = document.querySelector(`tr[data-keys-ip="${ip}"] tr[data-key-row="${i}"]`);
+    if (!row) return;
+    const cv = row.querySelector('[data-k="cible"]').value;
+    const label = row.querySelector('[data-k="label"]').value.trim();
+    if (champ === 'cible') {
+        const c = cv.startsWith('c:') ? _atemCible(cv.slice(2)) : null;
+        row.querySelector('[data-k="action-cell"]').innerHTML = c
+            ? `<select data-k="action" onchange="_atemToucheModifiee('${ip}', ${i}, 'action')">${_atemActionOptions(c, null)}</select>` : '';
+        row.querySelector('[data-k="choix-cell"]').innerHTML = '';
+    }
+    if (champ === 'action') await _atemChargerChoix(ip, i, null);
+    let binding = null;
+    if (cv.startsWith('m:')) {
+        binding = {kind: 'macro', macro_id: parseInt(cv.slice(2), 10)};
+    } else if (cv.startsWith('c:')) {
+        const aid = (row.querySelector('[data-k="action"]') || {}).value || '';
+        if (!aid) return;                                 // affectation incomplète : rien n'est écrit
+        const c = _atemCible(cv.slice(2));
+        const p = _atemChoixVivant(((c && c.actions) || []).find(x => x.id === aid));
+        const params = {};
+        if (p) {
+            const v = (row.querySelector('[data-k="choix"]') || {}).value || '';
+            if (v === '') return;
+            params[p.key] = v;
+        }
+        binding = {kind: 'action', instance_uuid: cv.slice(2), action_id: aid, params: params};
+    }
+    if (binding && label) binding.label = label;
+    await _atemEcrireTouches(ip, [{index: i, binding: binding}]);
+}
+
+// Options du remplissage : les paramètres OUI/NON de l'action choisie (« Lecture immédiate » de
+// « aller au clip »…), lus dans son manifeste — rien de propre au player (2026-10-29).
+function _atemRemplirAction(ip) {
+    const box = document.querySelector(`[data-keys-fill="${ip}"]`);
+    const src = box ? box.querySelector('[data-k="source"]').value : '';
+    if (!src) return {box: box, c: null, a: null};
+    const [uuid, aid] = src.split('|');
+    const c = _atemCible(uuid);
+    return {box: box, uuid: uuid, c: c, a: ((c && c.actions) || []).find(x => x.id === aid) || null};
+}
+function _atemRemplirOptions(ip) {
+    const {box, a} = _atemRemplirAction(ip);
+    if (!box) return;
+    const bools = ((a && a.params) || []).filter(p => p.type === 'bool' && !p.options_endpoint);
+    box.querySelector('[data-k="fill-opts"]').innerHTML = bools.map(p =>
+        `<label style="display:inline-flex; align-items:center; gap:var(--space-1)"><input type="checkbox" data-fill-bool="${_atemEchappe(p.key)}"${p.default === true ? ' checked' : ''}> ${_atemEchappe(p.label || p.key)}</label>`).join('');
+}
+
+async function remplirTouches(ip) {
+    const {box, uuid, c, a} = _atemRemplirAction(ip);
+    if (!box) return;
+    const debut = parseInt(box.querySelector('[data-k="debut"]').value, 10) - 1;
+    const n = parseInt(box.querySelector('[data-k="n"]').value, 10);
+    if (!c || !a || !(debut >= 0) || !(n >= 1)) return;
+    const p = _atemChoixVivant(a);
+    if (!p) return;
+    const opts = await _atemOptionsVivantes(c, p);
+    // Choix POSITIONNEL (0, 1, 2… : clips d'une playlist) : la touche suit la position, même au-delà
+    // de la liste du moment — déclaré par le manifeste (`option_semantics`), sinon déduit des
+    // valeurs (repli d'avant 2026-10-29). Sinon (fichiers…) on prend les n premières valeurs présentes.
+    const positionnel = MXLOptionChoices.isPosition(p) || (opts.length > 0 && opts.every((o, k) => Number(o.v) === k));
+    const valeurs = positionnel ? Array.from({length: n}, (_, k) => k) : opts.slice(0, n).map(o => o.v);
+    const fixes = {};
+    box.querySelectorAll('[data-fill-bool]').forEach(cb => { fixes[cb.dataset.fillBool] = cb.checked; });
+    const keys = valeurs.map((v, k) => ({index: debut + k,
+        binding: {kind: 'action', instance_uuid: uuid, action_id: a.id, params: Object.assign({}, fixes, {[p.key]: v})}}));
+    // Jamais d'écrasement silencieux : les touches déjà affectées à AUTRE CHOSE sont nommées, et on confirme.
+    const avant = ((window._atemPanelsData || {})[ip] || {}).keys || {};
+    const prises = _atemTouchesEcrasees(avant, keys);
+    if (prises.length && !(await mxlConfirm({
+            title: T('settings.js.keys_fill_btn'),
+            message: T('settings.js.keys_fill_overwrite').replace('{keys}', prises.map(i => i + 1).join(', ')),
+            confirmLabel: T('settings.js.keys_fill_overwrite_ok'), cancelLabel: T('settings.js.keys_fill_cancel'),
+            danger: true}))) return;
+    if (await _atemEcrireTouches(ip, keys)) {
+        await rafraichirAtem();
+        await _atemRenderTouches(ip);
+    }
+}
+
+// Index des touches que le remplissage remplacerait : affectées, et pas déjà à l'identique.
+function _atemTouchesEcrasees(avant, keys) {
+    const pareil = (x, y) => !!x && !!y && x.kind === y.kind && x.instance_uuid === y.instance_uuid
+        && x.action_id === y.action_id && !x.label
+        && JSON.stringify(Object.entries(x.params || {}).map(([k, v]) => [k, String(v)]).sort())
+           === JSON.stringify(Object.entries(y.params || {}).map(([k, v]) => [k, String(v)]).sort());
+    return keys.filter(k => avant[String(k.index)] && !pareil(avant[String(k.index)], k.binding)).map(k => k.index);
+}
+
+async function _atemEcrireTouches(ip, keys) {
+    try {
+        const r = await fetch('/api/atem/assign', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip: ip, keys: keys}),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) { alert(d.error || T('settings.js.error_label')); return false; }
+        return true;
+    } catch (e) {
+        alert(String(e));
+        return false;
+    }
+}
+
+// Pli ouvert : seuls les noms « sur le pupitre » sont réécrits (les menus restent tels quels).
+function _atemMajTouchesOuvertes(panels) {
+    for (const p of (panels || [])) {
+        const tr = document.querySelector(`tr[data-keys-ip="${p.ip}"]`);
+        if (!tr || tr.classList.contains('hidden')) continue;
+        for (let i = 0; i < ATEM_KEYS_SHOWN; i++) {
+            const cell = tr.querySelector(`[data-key-name="${i}"]`);
+            const b = (p.keys || {})[String(i)];
+            const h = b ? (b.name ? _atemEchappe(b.name) : `<span class="meta">${T('settings.js.keys_dark')}</span>`) : '';
+            if (cell && cell.innerHTML !== h) cell.innerHTML = h;
+        }
+    }
+}
+
+// Keyer piloté par une touche DSK (cf. services/panel_atem DSK_KEYER_MAX), par pupitre.
+function _atemDskOptions(courant) {
+    let h = `<option value=""${courant == null ? ' selected' : ''}>${T('settings.js.dsk_mixer')}</option>`;
+    for (let k = 1; k <= 4; k++) {
+        h += `<option value="${k}"${courant === k ? ' selected' : ''}>${T('settings.js.dsk_keyer')} ${k}</option>`;
+    }
+    return h;
+}
+
+async function assignerDsk(ip, index, valeur) {
+    try {
+        const r = await fetch('/api/atem/assign', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip: ip, dsk_keyer: {index: index, keyer: valeur === '' ? null : parseInt(valeur, 10)}}),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) { alert(d.error || T('settings.js.error_label')); }
+    } catch (e) {
+        alert(String(e));
+    }
+    rafraichirAtem();
+}
+
+// Nom des touches sans source (cf. services/panel_atem UNUSED_NAME_MODES), par pupitre.
+function _atemTouchesLibresOptions(courant) {
+    return [['input', 'settings.js.unused_names_input'], ['free', 'settings.js.unused_names_free'],
+            ['factory', 'settings.js.unused_names_factory']]
+        .map(([v, k]) => `<option value="${v}"${courant === v ? ' selected' : ''}>${T(k)}</option>`).join('');
+}
+
+async function assignerTouchesLibres(ip, mode) {
+    try {
+        const r = await fetch('/api/atem/assign', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ip: ip, unused_names: mode}),
+        });
+        const d = await r.json();
+        if (!r.ok || d.error) { alert(d.error || T('settings.js.error_label')); }
+    } catch (e) {
+        alert(String(e));
+    }
+    rafraichirAtem();
 }
 
 // Écrit UN des deux niveaux en conservant l'autre : la route attend l'objet complet
@@ -11888,7 +12667,7 @@ async function oublierPupitre(ip) {
     if (r.ok) rafraichirAtem();
     else {
         const j = await r.json().catch(() => ({}));
-        mxlToast(T('settings.js.forget_panel_error') + ' ' + (j.error || ('HTTP ' + r.status)), 'error');
+        mxlToast(T('settings.js.forget_panel_error') + ' : ' + (j.error || ('HTTP ' + r.status)), 'error');
     }
 }
 
@@ -12553,7 +13332,7 @@ const FIELDS = [
     'mtl_sch_quota_mbs', 'mtl_pin_cores', 'mtl_log_level',
     'wire_format_gating',
     'tx_format_gating', 'tx_format_autoudc',
-    'slice_mode_global',
+    'slice_mode_global', 'missing_frame_mode',
     'io2110_kernel_pkg', 'io2110_kernel_apt',
     'log_rotation_active',
     'log_max_mb', 'log_backups', 'log_rotate_days', 'log_disk_free_min_gb', 'container_log_driver',
@@ -14255,6 +15034,7 @@ function _pluginDetailHtml(p) {
                 ${cur ? ('<span class="badge" title="' + T('settings.js.current_version_tip') + '">' + T('settings.js.current_badge') + '</span>') : ''}
                 <span class="meta">publiée : ${_dt(vm.published_at)}</span>
                 <span class="meta">· importée : ${_dt(vm.imported_at)}</span>
+                ${_coreBadge(vm)}
             </summary>
             <div style="padding:var(--space-2) var(--space-1);font-size:0.88em">
                 ${_chg(vm, _bul)}
@@ -14455,9 +15235,21 @@ function catBouton(e) {
     return grise(CAT_T('install', 'Installer'),
                  CAT_T('no_manifest', 'manifeste illisible — installation refusée'));
   if (e.etat === 'absent' || e.etat === 'maj') {
-    const lib = e.etat === 'absent' ? CAT_T('install', 'Installer') : CAT_T('fetch', 'Récupérer');
-    return '<button class="btn btn-green" onclick="catInstaller(this, ' + depot + ')">'
-         + escapeHtml(lib) + '</button>';
+    // ★ LE SORT DU PAQUET SE LIT AVANT LE CLIC (décision de Cyril, 31/10). Il y avait UN bouton,
+    // dont l'effet dépendait d'une case à cocher située plus haut dans le panneau : le même
+    // geste rangeait ou mettait en service selon un état qu'il fallait penser à aller vérifier.
+    // Activer reste le défaut — c'est le bouton vert ; « télécharger seulement » est offert à
+    // côté, pour l'exploitant qui veut essayer une version sans toucher à son parc.
+    const lib = e.etat === 'absent'
+      ? CAT_T('install_activate', 'Installer et activer')
+      : CAT_T('fetch_activate', 'Récupérer et activer');
+    return '<span style="display:inline-flex;gap:var(--space-1);flex-wrap:wrap">'
+         + '<button class="btn btn-green" onclick="catInstaller(this, ' + depot + ', true)">'
+         + escapeHtml(lib) + '</button>'
+         + '<button class="btn" title="' + escapeHtml(CAT_T('download_only_tip',
+             "Récupère la version et la range sans la mettre en service : rien ne change pour les conteneurs en marche. À activer ensuite depuis Réglages → Plugins.")) + '"'
+         + ' onclick="catInstaller(this, ' + depot + ', false)">'
+         + escapeHtml(CAT_T('download_only', 'Télécharger seulement')) + '</button></span>';
   }
   if (e.etat === 'a_jour')
     return grise(CAT_T('btn_uptodate', 'À jour'),
@@ -14668,17 +15460,18 @@ function catActiverCoche() {
   return ch ? ch.checked : true;
 }
 
-async function catInstaller(btn, depot) {
+async function catInstaller(btn, depot, activer) {
   btn.disabled = true;
   const out = document.getElementById('cat-result');
   out.textContent = CAT_T('working', 'Téléchargement…');
   try {
     const r = await fetch('/api/catalogue/install', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      // On envoie l'état LU SUR L'ÉCRAN, pas le réglage en base : ce que l'exploitant voit
-      // coché au moment du clic est ce qui doit s'appliquer, même si l'enregistrement du
-      // réglage vient d'échouer.
-      body: JSON.stringify({ depot: depot, activer: catActiverCoche() }),
+      // Le choix vient du BOUTON CLIQUÉ, pas d'un réglage lu ailleurs : c'est tout l'objet du
+      // changement du 31/10. Sans argument (appel d'un autre endroit), on retombe sur l'état lu
+      // sur l'écran — jamais sur le réglage en base, dont l'enregistrement peut avoir échoué.
+      body: JSON.stringify({ depot: depot,
+                             activer: (activer === undefined) ? catActiverCoche() : !!activer }),
     });
     const j = await r.json();
     if (!r.ok) {
@@ -14715,6 +15508,23 @@ async function catInstaller(btn, depot) {
 // (Pas d'appel au chargement de la page : c'est `switchSetTab('catalogue')` qui
 // déclenche la lecture. Charger ici coûterait une requête GitHub à chaque visite
 // des Réglages, onglet jamais ouvert compris.)
+
+// ★ COMPATIBILITÉ D'UNE VERSION AVEC CE CŒUR (décision de Cyril, 31/10). Rendue à côté de la
+// date, pour les plugins ET les services, par UNE fonction : deux rendus de la même information
+// finiraient par se contredire. Trois états, jamais deux — « on ne sait pas » (archive sans
+// manifeste, exigence non comparable) ne doit pas s'afficher « compatible », sinon on fait
+// passer l'absence de contrôle pour un contrôle réussi.
+function _coreBadge(vm) {
+  if (vm.core_ok === true)
+    return '<span class="badge ready" title="' + _escp(T('settings.js.core_compatible_tip'))
+         + '">' + _escp(T('settings.js.core_compatible')) + '</span>';
+  if (vm.core_ok === false)
+    return '<span class="badge err" title="' + _escp(T('settings.js.core_requires_tip'))
+         + '">' + _escp(T('settings.js.core_requires').replace('{v}', vm.core_min || '?'))
+         + '</span>';
+  return '<span class="meta" title="' + _escp(T('settings.js.core_unknown_tip')) + '">'
+       + _escp(T('settings.js.core_unknown')) + '</span>';
+}
 
 async function supprimerPlugin(type_) {
     const res = document.getElementById('plugins-result');
@@ -15037,6 +15847,7 @@ function _svcDetailHtml(s) {
                 ${cur ? ('<span class="badge" title="' + T('settings.js.current_version_tip') + '">' + T('settings.js.current_badge') + '</span>') : ''}
                 <span class="meta">publiée : ${_dt(vm.published_at)}</span>
                 <span class="meta">· importée : ${_dt(vm.imported_at)}</span>
+                ${_coreBadge(vm)}
             </summary>
             <div style="padding:8px 4px;font-size:0.88em">
                 ${_chg(vm, _bul)}

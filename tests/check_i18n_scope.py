@@ -54,6 +54,21 @@ def main():
     plugins = {p.name for p in (RACINE / "plugins").iterdir()
                if (p / "plugin.json").exists()}
     services = {p.name for p in (RACINE / "services").iterdir() if p.is_dir()}
+    # ⚠ ET LES ID DE MANIFESTE, pas seulement les noms de DOSSIER. Les clés d'un service sont
+    # préfixées par son identité PRODUIT — c'est elle que `core_plugins._libelle` compose
+    # (`f"service.{sid}.label"`, où sid est l'id du manifeste). Les deux coïncidaient pour tous
+    # les services jusqu'au 2026-11-01, où `services/atem` est devenu `services/panel_atem` en
+    # gardant l'id `atem` (26 routes /api/atem et des blocs control.atem dans les manifestes de
+    # split et mixer en dépendent). Sans cette union, la garde cessait de voir `service.atem.*`
+    # — elle serait restée VERTE en ne protégeant plus rien.
+    for d in (RACINE / "services").iterdir():
+        for nom_manifeste in ("manifest.json", "meta.json"):
+            try:
+                mid = json.loads((d / nom_manifeste).read_text(encoding="utf-8")).get("id")
+            except Exception:
+                continue
+            if isinstance(mid, str) and mid:
+                services.add(mid)
 
     fautes = {}
     for lang in ("fr", "en"):

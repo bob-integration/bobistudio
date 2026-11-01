@@ -110,8 +110,18 @@ peut le faire).
 
 ## Design du plugin
 
+> **État au 2026-11-01** (vérifié dans le code) : ce design est **réalisé** — il était écrit au futur.
+> Le plugin `probe_2110` existe (`plugins/probe_2110/plugin.json`, rubrique **Mesure**, route `/mesure`) ;
+> page `/probe` ; API `/api/probe/{engines,senders,deploy,events,monitor,watch}` et
+> `/api/probe/<vmid>/{subscribe,unsubscribe,report}` (`app/routes/probe.py`) ; moteur d'événements et
+> sampler `app/probe_monitor.py` (table `probe_events`, appelé par la boucle de `main.py`).
+> **Pas de fork** : le même `plugins/2110_io/mtl_rx.c` sert le moteur et la sonde, la capacité de
+> mesure étant gardée par `TIMING_PARSER=1`. Le `script.py` du plugin n'est qu'un placeholder : le
+> runtime réel est le contrôleur de l'image `bobi-mtl`, lancé par `app/docker_driver.deploy_docker`.
+
 - **Type** `probe_2110`, runtime docker, **réutilise l'image `bobi-mtl`** (même libmtl → aucune image
-  à builder). Fork RX-only de `plugins/2110_io/mtl_rx.c` + flag timing parser.
+  à builder). ~~Fork RX-only de `plugins/2110_io/mtl_rx.c`~~ (pas de fork : même `mtl_rx.c`, mode
+  RX-only) + flag timing parser `TIMING_PARSER=1`.
 - **Réserve** : 1 PF vfio dédiée (`node_interfaces` pmd=dpdk/pci), hugepages, lcores légers via
   `core_pool.py`. Jamais la PF du moteur. Multi-sessions RX possible (budget de files) pour surveiller
   N signaux.
@@ -127,6 +137,12 @@ peut le faire).
 
 ## Plan par phases (priorité : ponctuel généraliste, puis monitoring)
 
+> **État au 2026-11-01** : **Phase A livrée** (sélection d'un flux, abonnement, rapport live) ;
+> **Phase B livrée** (`probe_monitor` : événements à transition avec hystérésis vers `probe_events` et
+> les alertes, tableau de bord `/api/probe/monitor`) ; **track parallèle livré** : un receiver `2110_io`
+> de production peut être marqué « surveillé » (`/api/probe/watch`, `probe_monitor.watch`). Phase C :
+> aucune trace dans le code (ni capture pcap/SPAN, ni oracle EBU).
+
 - **Phase A — Analyseur ponctuel généraliste NMOS** : sélection d'un flux IS-04 → abonnement →
   rapport live (transport + conformité si DPDK + contenu). Un flux à la fois par port. Prérequis
   physique : 1 PF vfio dédiée + idéalement câble direct depuis le TX pour un verdict sender.
@@ -138,7 +154,7 @@ peut le faire).
   conformité si RX en DPDK) aux **receivers de prod** → journalisation des signaux déjà reçus.
 
 ## Fichiers de référence
-Moteur à forker : `plugins/2110_io/mtl_rx.c` (`st20p_rx_create`, `st20p_rx_get_frame`, stats writer),
+Moteur (partagé, pas de fork) : `plugins/2110_io/mtl_rx.c` (`st20p_rx_create`, `st20p_rx_get_frame`, stats writer),
 `plugins/2110_io/plugin.json`, `plugins/2110_io/docker/controller.py` (relais :8080, /nmos/subscribe).
 libmtl (32b1b4e) : `lib/src/st2110/st_rx_timing_parser.c`, `include/st20_api.h:451`,
 `include/st_pipeline_api.h` (flags + `st_frame_tp_meta`), `include/st30_api.h` (audio),

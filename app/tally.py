@@ -90,11 +90,17 @@ def _ports_snapshot():
         _ports_cache["ts"] = now
     return _ports_cache
 
+def invalider_ports():
+    """À appeler après l'écriture d'un port (affectation, réglage de libellé) : sans ça, le
+    distributeur garde jusqu'à 3 s l'ancien réglage."""
+    _ports_cache["ts"] = 0.0
+
+
 def _port_shm(port):
-    """shm réel d'un port : binding.shm (source) ou binding.internal_shm (destination)."""
-    b = (port or {}).get("binding") or {}
-    return (b.get("shm") if (port or {}).get("kind") == "source"
-            else b.get("internal_shm")) or None
+    """shm réel d'un port (cf. `project_ports.port_shm`, qui suit aussi un port destination
+    d'un autre projet), lu dans l'instantané des ports ; None si non affecté."""
+    from app.project_ports import port_shm
+    return port_shm(port, _ports_snapshot()["by_id"].get) or None
 
 def resolve_ref(ref):
     """"port:<id>" → shm réel du binding ; sinon renvoie ref tel quel.
@@ -112,6 +118,79 @@ def resolve_ref(ref):
             port = None
         return _port_shm(port)
     return ref
+
+
+def _port_of(ref):
+    """Port désigné par `port:<id>`, ou None (pas une référence de port, ou port disparu)."""
+    if not isinstance(ref, str) or not ref.startswith("port:"):
+        return None
+    try:
+        return _ports_snapshot()["by_id"].get(int(ref[5:]))
+    except (TypeError, ValueError):
+        return None
+
+
+def row_ref(ref):
+    """La LIGNE de libellé à lire pour `ref` (étape 3 des ports, 2026-10-24).
+
+    Un port réglé sur `origin` lit la ligne du flux affecté EN CE MOMENT — elle suit donc la
+    réaffectation. Réglé sur `port` (défaut), il lit sa propre ligne `port:<id>`, et elle
+    seule : jamais de repli sur la ligne réelle, sinon le nom d'une caméra réapparaîtrait sous
+    un port qui devait le masquer. Un port `origin` non affecté n'a pas de ligne réelle : il
+    garde la sienne. Toute autre référence ressort inchangée."""
+    port = _port_of(ref)
+    if port and (port.get("label_source") or "port") == "origin":
+        return _port_shm(port) or ref
+    return ref
+
+
+def _port_row(ref, par_shm):
+    """Ligne de libellé d'un port, complétée : nom long vide → nom du port, nom court vide →
+    déduit du long (même règle que les libellés liés). Un port a TOUJOURS un nom à afficher."""
+    from app.label_sync import derive_short
+    from app.project_ports import label_cols
+    r = dict(par_shm.get(ref) or {})
+    port = _port_of(ref) or {}
+    cols = label_cols()
+    k_long, k_short = "label_%d" % cols["long"], "label_%d" % cols["short"]
+    if port.get("parent_id") and _port_of("port:%d" % port["parent_id"]):
+        # Rattaché d'une virtuelle (audio, ANC — 2026-10-28) : sans libellé propre, celui de la
+        # vidéo parente suivi de son suffixe (« Caméra plateau A1 »), pour TOUS les lecteurs.
+        parent = _port_row("port:%d" % port["parent_id"], par_shm)
+        sfx = port.get("suffix") or ""
+        mention = " · " + _unassigned_word()   # celle du parent : l'enfant pose la sienne plus bas
+        for k in (k_long, k_short):
+            if not (r.get(k) or "").strip():
+                base = (parent.get(k) or "").strip()
+                if base.endswith(mention):
+                    base = base[:-len(mention)].strip()
+                r[k] = (base + (" " if k == k_long else "") + sfx).strip() if base else ""
+    if not (r.get(k_long) or "").strip():
+        r[k_long] = port.get("name") or ""
+    if not (r.get(k_short) or "").strip():
+        r[k_short] = derive_short(r[k_long])
+    if port and not _port_shm(port):
+        # Port NON AFFECTÉ (étape 4, 2026-10-24) : l'entrée est vide (noir), la mention le dit
+        # partout où le nom s'affiche — dans la langue du SITE, pas celle de qui regarde : le texte
+        # part vers des écrans partagés (UMD, mur, pupitre).
+        suffix = " · " + _unassigned_word()
+        for n in range(2, 10):
+            t = (r.get("label_%d" % n) or "").strip()
+            if t and not t.endswith(suffix):
+                r["label_%d" % n] = t + suffix
+    return r
+
+
+def _unassigned_word(short=False):
+    """« non affectée » (ou sa forme abrégée, pour un champ étroit) dans la langue du SITE."""
+    from app import i18n
+    try:
+        from app import settings as st
+        lang = st.get("ui_lang_default")
+    except Exception:
+        lang = None
+    return i18n.t("projects.port_unassigned_short" if short else "projects.port_unassigned",
+                  lang=lang if lang in i18n.LANG_CODES else i18n.DEFAULT_LANG)
 
 
 
@@ -168,16 +247,68 @@ _CONTRIBUTION = {
     "avsync":           "toutes",
     "transcoder":       "toutes",
     "v210_bridge":      "toutes",
-    "mixer":            "pgm",
+    # « image » : seules les entrées À L'IMAGE de la sortie qui est à l'antenne contribuent — le
+    # moteur les publie dans /state `tally` (mélangeur ≥ 0.23.35 ; split ≥ 0.24.10, ses boxes
+    # visibles et son fond-source). Cf. entrees_a_l_image et _bus_de_sortie.
+    "mixer":            "image",
+    "split":            "image",
 }
+
+
+# Couleurs qu'un BUS de mélangeur peut émettre (réglage par bus). « amber » n'en fait pas partie :
+# c'est le CUMUL d'un rouge et d'un vert sur la même source (cf. cumuler), pas une couleur de bus.
+COULEURS_BUS = ("red", "green", "off")
+
+
+def entrees_a_l_image(st, bus):
+    """Index des entrées d'un mélangeur À L'IMAGE sur `bus` ("pgm" | "pvw"), lus dans son `/state`.
+
+    Mélangeur ≥ 0.23.35 : sa liste `tally` — fond, les deux entrées pendant une transition, et la
+    source de chaque keyer visible (opacité > 0, image dans le cadre). C'est le moteur qui compose
+    l'image : lui seul le SAIT (décision de l'utilisateur, 28/10 : « une source au PGM via un key doit
+    être active aussi »). Moteur plus ancien : le seul bus de fond, comme avant."""
+    t = (st or {}).get("tally")
+    if isinstance(bus, str) and bus.startswith("out:"):
+        # Sortie programme nommée (mélangeur à sorties multiples, ≥ 0.23.53) : sa liste à elle, publiée
+        # dans `tally.outputs` sous son id. Moteur qui ne la publie pas : le contenu du PGM — c'est
+        # ce que l'on savait avant (la sortie 0 d'un mélangeur à sorties nommées EST son PGM).
+        outs = t.get("outputs") if isinstance(t, dict) else None
+        lst = outs.get(bus[4:]) if isinstance(outs, dict) else None
+        if isinstance(lst, list):
+            return [int(i) for i in lst if isinstance(i, int)]
+        return entrees_a_l_image(st, "pgm")
+    if isinstance(t, dict) and isinstance(t.get(bus), list):
+        return [int(i) for i in t[bus] if isinstance(i, int)]
+    if bus == "clean":
+        # Moteur sans liste CLEAN : ce qu'on savait avant, le contenu du PGM.
+        return entrees_a_l_image(st, "pgm")
+    i = (st or {}).get(bus)
+    return [] if i is None else [i]
+
+
+def _bus_de_sortie(wiring, shm):
+    """Bus (« pgm » | « clean » | « pvw » …) dont `shm` est la sortie, d'après l'ÉTIQUETTE du port
+    produit par le plugin. Sortie sans étiquette (le split n'en a qu'une) ou inconnue : « pgm ».
+    ★ La propagation suivait toujours le PGM d'un mélangeur, même quand c'était sa sortie CLEAN
+    ou PVW qui était à l'antenne en aval (signalé le 28/10) : les keyers absents du CLEAN
+    s'allumaient, et un PVW mis à l'antenne remontait les sources du programme."""
+    for p in (wiring or {}).get("produces") or []:
+        if shm and p.get("shm") == shm:
+            # Un port qui DIT son bus (`tally_bus`, sorties nommées du mélangeur : « out:<id> »)
+            # l'emporte sur l'étiquette — une sortie renommée « ANTENNE » n'est ni « pgm » ni
+            # « clean », et son libellé est celui de l'exploitant, pas un vocabulaire.
+            if p.get("tally_bus"):
+                return str(p["tally_bus"])
+            return ((p.get("label") or "").strip().lower()) or "pgm"
+    return "pgm"
 
 
 def _producteur_de(shm, par_shm):
     return par_shm.get(shm)
 
 
-def _entrees_contributives(ct, dc, etat_ctrl):
-    """Les shm d'entrée qui contribuent à la sortie de ce conteneur. [] si on ne sait pas.
+def _entrees_contributives(ct, dc, etat_ctrl, shm=None):
+    """Les shm d'entrée qui contribuent à la sortie `shm` de ce conteneur. [] si on ne sait pas.
 
     `etat_ctrl` = le `/state` du conteneur, ou None. Un mélangeur ne contribue que par sa source
     PGM : sans son état, on ne SAIT pas laquelle — et on ne propage rien plutôt que de deviner."""
@@ -191,22 +322,29 @@ def _entrees_contributives(ct, dc, etat_ctrl):
     for p in (w.get("consumes") or []):
         if (p.get("essence") or "video") != "video":
             continue
-        shm = (params.get(p.get("state_field") or "") or "").strip()
-        if shm:
-            entrees.append(shm)
+        e = (params.get(p.get("state_field") or "") or "").strip()   # pas `shm` : c'est le paramètre
+        if e:
+            entrees.append(e)
     if regle == "toutes":
         return entrees
-    if regle == "pgm":
+    if regle == "image":
         if not etat_ctrl:
             return []
-        pgm = etat_ctrl.get("pgm")
-        if pgm is None:
-            return []
         # Le câblage vient de l'ÉTAT VIVANT, comme dans `_mixer_publisher_tick` : c'est lui qui
-        # sait sur quoi le mélangeur est réellement branché à cet instant. Les params ne servent
-        # que de repli — ils peuvent être en retard d'un câblage à chaud.
-        shm = (etat_ctrl.get(cle_input(pgm)) or params.get(cle_input(pgm)) or "").strip()
-        return [shm] if shm else []
+        # sait sur quoi le conteneur est réellement branché à cet instant. Les params ne servent
+        # que de repli — ils peuvent être en retard d'un câblage à chaud. Contribuent : les
+        # entrées À L'IMAGE sur le bus de la sortie à l'antenne (keyers / boxes visibles compris).
+        # Le nom du champ d'une entrée vient du câblage déclaré (`bg_input` pour le fond d'un
+        # split), `input_N` sinon.
+        champ = dict((c.get("slot"), c.get("state_field")) for c in (w.get("consumes") or [])
+                     if c.get("state_field"))
+        out = []
+        for i in entrees_a_l_image(etat_ctrl, _bus_de_sortie(w, shm)):
+            cle = champ.get(i) or cle_input(i)
+            amont = (etat_ctrl.get(cle) or params.get(cle) or "").strip()
+            if amont and amont not in out:
+                out.append(amont)
+        return out
     return []
 
 
@@ -245,7 +383,7 @@ def propager(etat, par_shm, etat_ctrl_de):
         if not cible:
             continue
         ct, dc = cible
-        for amont in _entrees_contributives(ct, dc, etat_ctrl_de.get(ct.get("vmid"))):
+        for amont in _entrees_contributives(ct, dc, etat_ctrl_de.get(ct.get("vmid")), shm):
             cle = (amont, niveau)
             if (etat or {}).get(cle, "off") == "off" and ajouts.get(cle, "off") == "off":
                 ajouts[cle] = couleur
@@ -356,7 +494,7 @@ _flux_connus: set = set()
 
 # Règle de suffixe par défaut de la page Libellés (réglage `source_label_suffix_map`) : « <vidéo>_audio_0 » est
 # l'audio 1 de « <vidéo> ». La page l'applique pour AFFICHER l'héritage tant qu'aucun parent n'est écrit.
-DEFAULT_SUFFIX_MAP = {"_audio_0": "_A1", "_audio_1": "_A2", "_anc_0": "_Anc"}
+DEFAULT_SUFFIX_MAP = {"_audio_0": "_A1", "_audio_1": "_A2", "_anc_0": "_Anc", "_osd": "_OSD", "_key": "_Key"}
 
 
 def poser_deduit(deduits, connus=None):
@@ -399,6 +537,65 @@ def parent_video_de(shm, par_shm=None, connus=None, suffixes=None):
             if base in connus:
                 return base
     return None
+
+
+def suiveurs_de(par_shm, labels_snap=None, suffixes=None):
+    """{flux suiveur: flux suivi} — les sorties dont le tally est celui d'une AUTRE.
+
+    Deux sources, la déclaration d'abord :
+      · A — le plugin le DÉCLARE (`wiring.produces[].tally_follows`) : la sortie OSD ou key d'un
+            player montre le même contenu que son programme. Rien à régler ;
+      · B — la page Libellés rattache le flux à une source parente (`parent_shm`, ou la règle de
+            suffixe `_osd` / `_key` / `_audio_0`…), y compris une VIDÉO à une autre vidéo
+            (2026-10-28) : une source reprise d'ailleurs, que son plugin ne sait pas décrire.
+    `par_shm` : {flux produit: (conteneur, deploy_config)}, celui de la propagation."""
+    out = {}
+    for shm, (ct, dc) in (par_shm or {}).items():
+        try:
+            for p in (_wiring_of(ct, dc).get("produces") or []):
+                if (p.get("shm") or "").strip() == shm and (p.get("tally_follows") or "").strip():
+                    out[shm] = p["tally_follows"].strip()
+        except Exception:
+            continue
+    connus = set(par_shm or ()) | set(labels_snap or ())
+    suffixes = suffixes if suffixes is not None else _suffix_map()   # UNE lecture par tour, pas par flux
+    for shm in connus:
+        if shm not in out:
+            p = parent_video_de(shm, labels_snap if labels_snap is not None else {}, connus, suffixes)
+            if p and p != shm:
+                out[shm] = p
+    return out
+
+
+def heriter_soeurs(state, suiveurs):
+    """Ajoute à `state` (l'état DU TOUR, jamais `_tally_state`) le tally de chaque flux suivi sur
+    son suiveur. ★ UN SEUL CRAN, lu sur l'état d'AVANT : un suiveur de suiveur n'hérite pas, et un
+    tally hérité ne remonte jamais — le rouge d'un OSD ne rallume pas le player, qui ne rallume pas
+    le mélangeur. Même règle que l'héritage audio → vidéo (`flux_tally`)."""
+    avant = dict(state)
+    for (shm, niveau), couleur in avant.items():
+        if couleur == "off":
+            continue
+        for suiveur, suivi in suiveurs.items():
+            if suivi == shm:
+                state[(suiveur, niveau)] = cumuler(state.get((suiveur, niveau), "off"), couleur)
+    return state
+
+
+def libelle_herite(shm, col, par_shm=None, suffixes=None):
+    """Libellé HÉRITÉ de la source parente, suffixé (« Player » → « Player_OSD ») — la règle que la
+    page Libellés AFFICHE (`inheritedLabel`, templates/labels.html), appliquée ici à ce qui part à
+    l'antenne. "" si le flux n'a pas de parent ou si le parent n'a rien dans cette colonne."""
+    par_shm = _labels_snapshot() if par_shm is None else par_shm
+    p = parent_video_de(shm, par_shm, suffixes=suffixes)
+    if not p or not (2 <= int(col or 0) <= 9):
+        return ""
+    t = ((par_shm.get(p) or {}).get("label_%d" % int(col)) or "").strip()
+    if not t:
+        return ""
+    tail = shm[len(p):] if shm.startswith(p) else ""
+    sm = suffixes if suffixes is not None else _suffix_map()
+    return t + (sm[tail] if tail in sm else tail)
 
 
 def flux_tally(ref, level, parent=None):
@@ -673,10 +870,17 @@ def veut_texte_pousse(fc, params):
     if comps is None:
         comps = (params.get("default_template") or {}).get("components")
     for c in (comps or ()):
-        if (isinstance(c, dict) and c.get("type") == "umd"
-                and (c.get("text_source") or "name") == "tsl"):
+        if isinstance(c, dict) and c.get("type") == "umd" and umd_shows_pushed_text(c, fc):
             return True
     return False
+
+
+def umd_shows_pushed_text(comp, fc):
+    """Un composant umd affiche-t-il le texte POUSSÉ ? `tsl` toujours ; `tile` (le défaut des
+    modèles d'usine depuis multiview 0.116.5) seulement quand la tuile a choisi « Protocole » dans
+    son « Nom affiché ». Même règle que `_umd_wants_tsl` dans plugins/multiview/script.py."""
+    src = comp.get("text_source") or "name"
+    return src == "tsl" or (src == "tile" and fc.get("label_source") == "protocol")
 
 
 def colonnes_de(shm, par_shm=None):
@@ -690,11 +894,15 @@ def colonnes_de(shm, par_shm=None):
     `%src_label5%` désigne LA colonne 5, et lui servir le texte de la 2 serait afficher autre
     chose que ce qu'il demande. Le repli du conteneur — le nom de la fenêtre — reste le bon."""
     par_shm = _labels_snapshot() if par_shm is None else par_shm
+    shm = row_ref(shm)
     r = None
-    for ref in (shm, resolve_ref(shm)):
-        if ref and ref in par_shm:
-            r = par_shm[ref]
-            break
+    if _port_of(shm):
+        r = _port_row(shm, par_shm)
+    else:
+        for ref in (shm, resolve_ref(shm)):
+            if ref and ref in par_shm:
+                r = par_shm[ref]
+                break
     r = r or {}
     return ({str(n): (r.get("label_%d" % n) or "") for n in range(2, 10)},
             r.get("projet") or "")
@@ -711,6 +919,10 @@ def libelle_de(shm, col, replier=True):
     On essaie les deux formes de référence (brute et résolue) parce que la ligne de libellé peut
     avoir été créée sous l'une ou l'autre selon l'époque et l'éditeur employé."""
     from app.database import db_get_source_label_for_shm
+    shm = row_ref(shm)
+    # Ligne d'un port : colonnes saisies lues sur SA ligne seule (complétée du nom du port) ;
+    # Hostname et MXL (0, 1) restent ceux du flux physique — ce sont des identités techniques.
+    port_row = _port_row(shm, _labels_snapshot()) if _port_of(shm) else None
     refs = [r for r in (shm, resolve_ref(shm)) if r]
     vus = set()
     cols = [int(col or 0)] + ([c for c in ORDRE_REPLI_COLONNES] if replier else [])
@@ -718,14 +930,43 @@ def libelle_de(shm, col, replier=True):
         if c in vus:
             continue
         vus.add(c)
-        for r in refs:
+        if port_row is not None and c >= 2:
+            t = (port_row.get("label_%d" % c) or "").strip()
+            if t:
+                return t
+            continue
+        for r in (refs if port_row is None else [resolve_ref(shm)]):
+            if not r:
+                continue
             try:
                 t = (db_get_source_label_for_shm(r, c) or "").strip()
             except Exception:
                 t = ""
             if t:
                 return t
+        # Rien d'écrit sur CE flux dans cette colonne : celui de sa source parente, suffixé (une
+        # sortie OSD affiche « Player_OSD », pas le nom technique de son conteneur).
+        if port_row is None and c >= 2:
+            for r in refs:
+                try:
+                    t = libelle_herite(r, c)
+                except Exception:
+                    t = ""
+                if t:
+                    return t
     return ""
+
+
+def _label_ref_for(ct, shm, slot=None, kind="video"):
+    """Référence de libellé que ce conteneur lit pour `shm` : le port de son projet qui le porte,
+    sinon le flux (cf. `project_ports.label_ref_for`). Ne lève jamais : une résolution qui casse
+    rend le flux, pas un distributeur arrêté pour tout le parc."""
+    try:
+        from app.project_ports import label_ref_for
+        return label_ref_for(ct, shm, kind=kind, slot=slot)
+    except Exception as e:
+        log.debug("tally: port label ref not resolved for %s (%s)", shm, e)
+        return shm
 
 
 def ref_chez(porteur, shm):
@@ -758,6 +999,66 @@ _stop_evt = threading.Event()
 # les 0,3 s. La propagation le relit : refaire la requête depuis le distributeur doublerait le
 # trafic vers les conteneurs pour la même information, à la même fraîcheur.
 _etat_mixer: dict = {}
+_etat_ts: dict = {}          # vmid → instant où l'état ci-dessus a été lu (ou a échoué)
+ETAT_FRAIS_S = 1.0
+
+
+class _EtatsCtrl:
+    """vmid → `/state`, pour la PROPAGATION. L'état déposé par l'émetteur s'il a moins de
+    ETAT_FRAIS_S ; sinon il est lu À LA DEMANDE — et seulement pour les conteneurs que la remontée
+    TRAVERSE (une de leurs sorties est à l'antenne).
+
+    ★ Sans ça, la propagation ne connaissait QUE les mélangeurs qui émettent eux-mêmes leur tally :
+    un split (DVE) à l'antenne, ou un mélangeur dont l'émission est coupée, ne remontait rien
+    (constaté le 28/10). Les interroger tous en permanence serait l'excès inverse : un mélangeur
+    sans personne à adresser ne doit pas être interrogé (cf. verif_mixer_tally_retrait). Un échec
+    est mémorisé aussi longtemps : un conteneur muet coûte un délai par seconde, pas par tour."""
+
+    def __init__(self, req=None, ip_de=None):
+        self._req, self._ip_de = req, ip_de
+
+    def get(self, vmid):
+        if vmid is None:
+            return None
+        if time.time() - _etat_ts.get(vmid, 0.0) < ETAT_FRAIS_S:
+            return _etat_mixer.get(vmid)
+        st = _relay_state(vmid) if self._req is None else None
+        if st is not None:
+            _etat_ts[vmid] = time.time()
+            _etat_mixer[vmid] = st
+            return st
+        try:
+            req = self._req
+            if req is None:
+                import requests as req
+            if self._ip_de is None:
+                from app.metrics import get_container_ip as ip_de
+            else:
+                ip_de = self._ip_de
+            ip = ip_de(vmid)
+            if ip:
+                st = req.get(f"http://{ip}:8082/state", timeout=0.5).json()
+        except Exception as e:
+            log.debug("tally: état de #%s illisible pour la propagation (%s)", vmid, e)
+        _etat_ts[vmid] = time.time()
+        if st is not None:
+            _etat_mixer[vmid] = st
+        return _etat_mixer.get(vmid) if st is None else st
+
+
+# Champs du `/state` que le tally lit (cf. entrees_a_l_image, cle_input) : aucun n'est mesuré.
+_RELAY_FIELDS = ("tally", "pgm", "pvw", "clean", "inputs")
+
+
+def _relay_state(vmid, dc=None):
+    """`/state` du conteneur servi par le relais d'état, ou None (le chemin historique décide)."""
+    try:
+        from app import state_relay, plugins as _plg
+        m = _plg.get((dc or {}).get("type")) if dc else None
+        return state_relay.read(vmid, "tally", fields=_RELAY_FIELDS, manifest=m)
+    except Exception as e:                                            # noqa: BLE001
+        log.debug("tally: state relay unavailable for #%s (%s)", vmid, e)
+        return None
 
 
 def _plg_wiring(type_, hostname, params):
@@ -828,7 +1129,9 @@ def _sortie_a_l_antenne(ct, niveaux):
     qu'un mélangeur de la production 2 s'allume parce qu'un signal homonyme est à l'antenne
     sur la production 5.
 
-    C'est la sortie **PGM** qui décide — `CLEAN` et `PVW` ne disent rien de la diffusion.
+    C'est la sortie **PGM** qui décide — `CLEAN` et `PVW` ne disent rien de la diffusion. Mélangeur
+    à sorties nommées (≥ 0.23.53) : les sorties marquées `tally_counts` (case « compte pour le
+    tally » de chaque sortie), l'une d'elles à l'antenne suffit.
     Renvoie False si on ne sait pas : ne pas savoir n'est pas une raison d'allumer un rouge."""
     import json as _json
     try:
@@ -841,14 +1144,24 @@ def _sortie_a_l_antenne(ct, niveaux):
         # ses trois sorties sont statiques — c'est une coïncidence, pas une propriété.
         w = _plg.derive_wiring(dc.get("type"), ct.get("hostname"), dc.get("params") or {}) or {}
         prod = w.get("produces") or []
-        pgm = next((p for p in prod if (p.get("label") or "").upper() == "PGM"), None) or \
-            (prod[0] if prod else None)
-        shm = (pgm or {}).get("shm")
-        if not shm:
-            return False
-        shm = resolve_ref(shm) or shm
-        etat = etat_brut()               # le modèle prend SON verrou
-        return any(etat.get((shm, n)) == "red" for n in (niveaux or ()))
+        # Sorties qui COMPTENT pour le tally (mélangeur à sorties nommées : case par sortie) :
+        # l'une d'elles à l'antenne suffit. Sans ce marquage (moteur d'avant), la sortie PGM.
+        comptent = [p for p in prod if p.get("tally_counts")]
+        if not comptent:
+            pgm = next((p for p in prod if (p.get("label") or "").upper() == "PGM"), None) or \
+                (prod[0] if prod else None)
+            comptent = [pgm] if pgm else []
+        etat = None
+        for p in comptent:
+            shm = (p or {}).get("shm")
+            if not shm:
+                continue
+            shm = resolve_ref(shm) or shm
+            if etat is None:
+                etat = etat_brut()       # le modèle prend SON verrou
+            if any(etat.get((shm, n)) == "red" for n in (niveaux or ())):
+                return True
+        return False
     except Exception as e:
         log.debug("TSL: propagation — sortie de %s indéterminable (%s)", ct.get("vmid"), e)
         return False
@@ -915,10 +1228,16 @@ def _mixer_publisher_tick(_req, db_get_containers):
                 changed = True
             continue
         try:
-            ip = get_container_ip(ct["vmid"])
-            if not ip:
-                continue
-            st = _req.get(f"http://{ip}:8082/state", timeout=0.8).json()
+            # RELAIS D'ÉTAT d'abord (app/state_relay.py) : le document que le mélangeur pousse sur
+            # /events, lu UNE fois pour tous les lecteurs. None = relais non frais, opération en
+            # cours (la liste `tally` bouge à chaque image sans être poussée), moteur sans flux :
+            # chemin historique ci-dessous — repli compté par le relais.
+            st = _relay_state(ct["vmid"], dc)
+            if st is None:
+                ip = get_container_ip(ct["vmid"])
+                if not ip:
+                    continue
+                st = _req.get(f"http://{ip}:8082/state", timeout=0.8).json()
         except Exception:
             # ⚠ ICI ON GARDE, ET C'EST DÉLIBÉRÉ. Un mélangeur injoignable est le plus souvent un
             # hoquet réseau d'un tour ; éteindre le tally d'une source à l'antenne pour 800 ms de
@@ -931,9 +1250,13 @@ def _mixer_publisher_tick(_req, db_get_containers):
         if _etat_mixer.get(ct["vmid"]) != st:
             changed = True
         _etat_mixer[ct["vmid"]] = st
-        pgm, pvw = st.get("pgm"), st.get("pvw")
-        shm_pgm = (st.get(cle_input(pgm)) or "") if pgm is not None else ""
-        shm_pvw = (st.get(cle_input(pvw)) or "") if pvw is not None else ""
+        _etat_ts[ct["vmid"]] = time.time()
+        # Entrées À L'IMAGE (fond, transition, keyers visibles) — cf. entrees_a_l_image. La COULEUR
+        # de chaque bus est un réglage du mélangeur (`tally_pgm_color` / `tally_pvw_color`, défaut
+        # rouge / vert) : un mélangeur qui alimente un écran veut son PGM en vert et rien sur son
+        # PVW (l'utilisateur, 28/10). « off » = ce bus n'émet rien.
+        shms_pgm = [st.get(cle_input(i)) or "" for i in entrees_a_l_image(st, "pgm")]
+        shms_pvw = [st.get(cle_input(i)) or "" for i in entrees_a_l_image(st, "pvw")]
         want = {}
         def _poser(shm, couleur):
             """Pose une contribution sur TOUS les niveaux du mélangeur, en cumulant."""
@@ -954,15 +1277,20 @@ def _mixer_publisher_tick(_req, db_get_containers):
         if not params.get("tally_force", True) and not _sortie_a_l_antenne(ct, niveaux):
             want = {}
         else:
-            i_pgm = resolve_ref(shm_pgm) or shm_pgm
-            i_pvw = resolve_ref(shm_pvw) or shm_pvw
             # ★ MÊME NIVEAU pour les deux. Avant le dénouement, le rouge et le vert partaient sur
             # DEUX niveaux distincts (le 1er et le 2nd du mélangeur) : une source au programme ET
             # en préparation occupait deux entrées qui ne se rencontraient jamais, et c'est
             # l'afficheur qui recomposait l'orange en lisant les deux champs de la trame. Le cumul
             # a désormais lieu ICI, sur le niveau — donc IS-07 et le multiview le voient aussi.
-            _poser(i_pgm, "red")
-            _poser(i_pvw, "green")
+            for shms, cle, defaut in ((shms_pgm, "tally_pgm_color", "red"),
+                                      (shms_pvw, "tally_pvw_color", "green")):
+                couleur = params.get(cle, defaut)
+                if couleur not in COULEURS_BUS:
+                    couleur = defaut          # valeur illisible : le défaut, jamais une couleur inventée
+                if couleur == "off":
+                    continue
+                for shm in shms:
+                    _poser(resolve_ref(shm) or shm, couleur)
         # ★ REMPLACEMENT INTÉGRAL, PAR MÉLANGEUR. `poser_tally` retire tout ce que CE mélangeur
         # avait posé et qu'il ne pose plus — un changement de PGM éteint donc l'ancienne source —
         # sans jamais toucher à ce qu'un autre écrivain affirme sur les mêmes clés.
@@ -1056,10 +1384,11 @@ def _distributor():
                         if _shm:
                             par_shm.setdefault(_shm, (_ct, _dc))
 
-                deduits = propager(state, par_shm, _etat_mixer)
+                deduits = propager(state, par_shm, _EtatsCtrl())
                 for _k, _v in deduits.items():
                     state.setdefault(_k, _v)
                 poser_deduit(deduits, par_shm.keys())     # À PART de l'état reçu (lu par services/audio/afv.py)
+                heriter_soeurs(state, suiveurs_de(par_shm, _labels_snapshot()))
             except Exception as e:
                 log.debug("TSL: propagation ignorée ce tour (%s)", e)
         except Exception:
@@ -1117,7 +1446,7 @@ def _distributor():
                     # LE TEXTE EST RÉSOLU MÊME SANS NIVEAU DE TALLY. Un scope peut vouloir le
                     # libellé vivant d'une source sans jamais l'allumer en rouge — et c'est
                     # même le cas courant : un instrument n'est pas à l'antenne.
-                    txt_c = libelle_de(shm_c, cible.get("label_col"))
+                    txt_c = libelle_de(_label_ref_for(ct, shm_c), cible.get("label_col"))
                     coul_r = coul_v = "off"
                     if lvl_c:
                         _e = state.get((resolve_ref(shm_c) or shm_c, lvl_c), "off")
@@ -1164,8 +1493,11 @@ def _distributor():
                 # Ce canal ne dépend ni d'un niveau de tally, ni d'un porteur, ni du mode de
                 # libellé de la tuile : un libellé est un libellé. Toutes les autres conditions
                 # de cette boucle ne gouvernent QUE le tally, plus bas.
-                if shm:
-                    _cols, _proj = colonnes_de(shm, labels_snap)
+                # L'entrée VIDE d'un port non affecté se nomme aussi (« CAM1 · non affectée ») :
+                # sa référence vient du lien de la tuile (slot = index de fenêtre), pas du flux.
+                ref_i = _label_ref_for(ct, shm, slot=i)
+                if ref_i:
+                    _cols, _proj = colonnes_de(ref_i, labels_snap)
                     labels_by_vmid.setdefault(vmid, []).append(
                         {"flux_idx": i, "labels": _cols, "projet": _proj})
 
@@ -1216,7 +1548,7 @@ def _distributor():
                 # tuile en `hostname` doit afficher le nom de son conteneur, que TSL existe ou non.
                 upd = updates_by_vmid.setdefault(vmid, [])
                 if want_text:
-                    text = libelle_de(shm, label_col)
+                    text = libelle_de(ref_i, label_col) if ref_i else ""
                     upd.append({"flux_idx": i, "slot": "L", "color": color_l, "text": text})
                     upd.append({"flux_idx": i, "slot": "R", "color": color_r, "text": text})
                 else:

@@ -2,7 +2,7 @@
 """Workspace — interfaces complètes de plugin : démontage et un type par vue (2026-10-23).
 
 Même défaut que la rubrique plugin (cf. verif_section_demontage.py, noms des boutons du mélangeur qui
-clignotaient chez Paul) : unmountAll démontait `window.MXLPlugins[type]`, le DERNIER script chargé,
+clignotaient chez le testeur) : unmountAll démontait `window.MXLPlugins[type]`, le DERNIER script chargé,
 pas l'objet monté. Et deux panneaux du même plugin dans une vue partageaient l'état de module de
 l'interface (conteneur, élément, sondage, objet global des boutons) : un clic dans le premier
 commandait le second. On exécute le vrai mountPlugin / unmountAll de templates/workspace.html :

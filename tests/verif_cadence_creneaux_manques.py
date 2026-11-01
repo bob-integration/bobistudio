@@ -4,7 +4,7 @@
 normativement dérivé du TEMPS : il avance même quand le producteur saute un créneau. La cadence
 « précise » calculée en Δindex/Δt rendait donc 50,0 pour un producteur qui n'écrivait que 34
 images par seconde, et le verdict « tenue » qui en dérive affirmait que tout allait bien.
-Mesuré sur stills-Satis : Δindex 508 en 10,00 s (50,79/s) contre 168 créneaux manqués, donc
+Mesuré sur stills-Atelier : Δindex 508 en 10,00 s (50,79/s) contre 168 créneaux manqués, donc
 33,99/s réellement publiées. Un testeur voyait ses images clignoter au noir devant une page
 qui affichait « cadence 50,0 — tenue ».
 

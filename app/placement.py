@@ -97,13 +97,19 @@ conts, ids = {}, []
 for ln in sh("docker ps --no-trunc --format '{{.ID}}\t{{.Names}}'").splitlines():
     p = ln.split("\t")
     if len(p) >= 2 and p[0]:
-        conts[p[0]] = {"name": p[1], "cpuset": "", "threads": {}}
+        conts[p[0]] = {"name": p[1], "cpuset": "", "cpu_shares": None, "threads": {}}
         ids.append(p[0])
 if ids:
-    for ln in sh("docker inspect -f '{{.Id}} {{.HostConfig.CpusetCpus}}' " + " ".join(ids)).splitlines():
-        p = ln.split(" ", 1)
+    # Separator is "|": CpusetCpus may be empty, and a split on spaces would then shift fields.
+    for ln in sh("docker inspect -f '{{.Id}}|{{.HostConfig.CpuShares}}|{{.HostConfig.CpusetCpus}}' "
+                 + " ".join(ids)).splitlines():
+        p = ln.split("|")
         if p[0] in conts:
-            conts[p[0]]["cpuset"] = p[1].strip() if len(p) > 1 else ""
+            conts[p[0]]["cpuset"] = p[2].strip() if len(p) > 2 else ""
+            try:
+                conts[p[0]]["cpu_shares"] = int(p[1].strip())
+            except (IndexError, ValueError):
+                pass
 
 rx = re.compile(r"[0-9a-f]{64}")
 for pid in os.listdir("/proc"):
@@ -136,8 +142,13 @@ print(json.dumps({"isolated": iso, "nproc": os.cpu_count(),
 
 def relever(node, timeout=45):
     """Relevé BRUT du placement réel sur le nœud : {isolated, nproc, containers:[{name, cpuset,
-    threads:{cpu: n}}]}. None si le nœud est injoignable ou la sonde illisible (jamais de relevé
-    partiel silencieux : c'est tout ou rien, et l'appelant le DIT)."""
+    cpu_shares, threads:{cpu: n}}]}. None si le nœud est injoignable ou la sonde illisible (jamais
+    de relevé partiel silencieux : c'est tout ou rien, et l'appelant le DIT).
+
+    `cpu_shares` = POIDS CPU RÉELLEMENT posé sur le conteneur (0 = « non précisé », donc le défaut
+    de Docker). Mesuré ici, et nulle part ailleurs : le poids s'applique à chaud (`docker update`,
+    cf. app/cpu_weight.py) et il est volontairement EXCLU de la signature de spec — rien ne le
+    rattraperait, et sans mesure un `docker update` manqué serait invisible."""
     from . import node_driver
     try:
         rc, out, err = node_driver.host_exec(node, "python3 -", input_data=_SONDE, timeout=timeout)

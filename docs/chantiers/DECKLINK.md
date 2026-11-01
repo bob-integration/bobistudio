@@ -1538,6 +1538,387 @@ Et le socle de 40 ms n'a jamais été décomposé entre capture et sortie.
 
 ---
 
+## 9 tricies. Une panne d'antenne, trois hypothèses fausses, et la cause dans le manifeste (2026-10-30)
+
+Journée entière sur un seul défaut, signalé par le testeur en ces termes : « 1 : Pas normal qu'une
+entrée fasse clignoter toutes les autres. 2 : Pas normal que l'entrée 5 ne soit pas à 50 img/sec ».
+Sortie PGM SDI d'antenne, carte à 5 entrées et 2 sorties. **La cause était dans ce plugin, dans un
+champ que j'avais ajouté le matin même.**
+
+### La cause
+
+`resources.memory: 1024`, posé dans 0.29.35. **Jamais mesuré** — et il vivait dans le même bloc
+`resources` que le calcul de cœurs, lui daté et détaillé sur vingt lignes. C'est le vrai défaut de
+conception : *dans un même bloc, un nombre mesuré et un nombre deviné sont indiscernables*, et
+celui qui lit conclut que les deux ont été pesés.
+
+Le mode de défaillance explique les heures perdues : **récupération directe, pas OOM**. À
+1011 Mio sur 1024, le noyau récupérait des pages *dans les fils de capture* — `pgscan_direct`
+33 186 386. Rien n'est tué, rien ne redémarre, aucun compteur applicatif ne bouge : les fils
+ralentissent. Une entrée à 21 i/s au lieu de 50, `video_resync_fwd` par centaines, images répétées
+au PGM, et une rafale de 750 trames jetées 4 s après une alerte mémoire à 99 % — alerte qui
+s'était répétée **1882 fois** depuis le matin sans que personne agisse. `docker update --memory 2g`
+à chaud : tout revient à 50 i/s en moins de 60 s.
+
+### Les trois hypothèses fausses, dans l'ordre
+
+1. **« Une entrée instable contamine les autres dans le même processus. »** Réfutée par la
+   structure : il y a un binaire par connecteur, sans mémoire ni verrou partagés. Mais la question
+   « quelle est la ressource partagée ? » était la bonne — c'était la limite mémoire du cgroup,
+   une seule pour tous les connecteurs.
+2. **« Les 5 cœurs dédiés sont des frères HT de cœurs chargés à 78 %. »** Vraie, mesurée, et
+   partielle : déplacer le conteneur a divisé les répétitions par 3 à 5 sans les supprimer. Une
+   cause réelle qui en masquait une plus grande — le piège classique de la cause suffisante.
+3. **« L'attente de la tête, puis l'ancrage de la programmation, font jeter des trames. »**
+   Réfutées par des compteurs que je n'avais pas sollicités : `repeated` à 0 pendant une rafale
+   (donc aucune attente n'avait eu lieu), puis `late` à 89 655 sur 116 919 images.
+
+### Ce que la journée a produit malgré tout
+
+Les deux dernières hypothèses, fausses comme explications de CETTE panne, ont fait apparaître deux
+invariants qui n'étaient tenus par rien, et qui restent justes :
+
+- **la borne d'attente** (0.29.38) : l'attente de la tête se déroule dans le callback qui doit
+  *re-programmer* la trame, donc la dépasser fait JETER la trame par la carte. Le budget est
+  désormais le temps réellement restant avant l'instant de diffusion, lu sur l'horloge de la
+  CARTE, moins une réserve **mesurée** (le coût du travail d'après l'attente, relevé sur les tours
+  où l'on n'a pas attendu — mesurée sur les tours d'attente, elle se serait nourrie de l'attente
+  qu'elle borne) ;
+- **le ré-ancrage de la programmation** (0.29.40) : l'instant visé était un pur accumulateur,
+  jamais confronté à l'horloge de la carte. Or l'avance sur cette horloge est une quantité
+  **conservée qui ne peut que diminuer** — un seul décalage du processus la mange, et rien ne la
+  reconstitue. Relevé : 77 % des images d'une sortie d'antenne jouées *en retard* pendant
+  33 minutes, invisible à l'œil parce que le décalage est constant, tous les autres compteurs
+  verts.
+
+Plus : le témoin de phase vidéo refait sur une origine **mesurée** et non supposée (0.29.36 —
+l'ancien `video_offset_ms` ne pouvait valoir qu'un multiple entier de 20 ms, donc ne mesurait
+rien), l'état de signal par entrée avec son anti-rebond, le mode **recopie/noir** sur image
+manquante avec son avis (0.29.37/0.29.39 — décision de l'exploitant : recopie invisible en
+exploitation, noir en mise au point, jamais de recopie muette), et le dimensionnement mémoire
+(0.29.41).
+
+### Dimensionnement mémoire, et comment il a été obtenu
+
+Deux mesures, dont **une non contrainte** — la seule qui dise le besoin plutôt que la limite
+imposée : dell-1 #1288 sans aucune limite (`memory.max=max`, `pgscan_direct` à 0), 347 Mio pour
+1 entrée + 1 sortie ; et 1113 Mio pour 5 entrées + 2 sorties. Droite sur ces deux points :
+**153 Mio par connecteur, 41 Mio de part fixe** — la part fixe est *déduite*, pas devinée, ce qui
+est tout l'intérêt d'avoir deux points. Carte la plus fournie (Quad 2, 8 prises) :
+8 × 153 + 41 = 1266 Mio, visés à **~70 % de la limite** parce que la récupération directe commence
+bien avant l'OOM → 1809, arrondi à 2048.
+
+Trois choses à ne pas reperdre :
+- le **bus MXL mappé compte dans le cgroup** (`shmem`/`file_mapped` : 41 Mio sur 347 à deux
+  connecteurs, 179 sur 914 à sept) — un dimensionnement qui ne compte que l'anonyme sous-estime
+  d'un cinquième ;
+- une mesure prise **sous pression** ne dit pas le besoin, elle dit la limite ;
+- reste à **remesurer en 10 bits** : les deux relevés sont en 8 bits et la conversion v210 →
+  planar n'y est pas isolée.
+
+### Deux constats de portée plus large
+
+- **Un profil `resources` IMPOSE une limite là où il n'y en avait peut-être aucune.** #1288, créé
+  avant le profil, tournait sans limite et sans épinglage. Ajouter un profil n'est donc pas
+  « documenter l'existant », c'est *contraindre* — et seule une recréation l'applique, donc la
+  panne arrive des heures ou des jours après le commit.
+- Relevé le même jour sur la flotte : **13 plugins sur 15** déclarent une `memory` sans aucune note
+  de mesure, dont quatre à 1024. Rien n'était en danger (aucun conteneur au-delà de 33 % de sa
+  limite, `pgscan_direct` à 0 partout), parce que ce sont des configurations légères. C'est la
+  forme du piège : une mémoire **fixe par conteneur** pour un plugin dont la consommation **croît
+  avec sa configuration** ne mord que sur la configuration la plus remplie, des mois plus tard.
+
+### La leçon de méthode
+
+Trois mécanismes faux avant le bon, et chaque fois ce qui a tranché est un compteur que je n'avais
+pas demandé : `late`, `repeated`, `pgscan_direct`. **Avant d'expliquer un retard de callback par la
+logique applicative, lire le cgroup.**
+
+---
+
+## 9 untricies. Le profil se règle par GROUPE, et une garde peut confirmer une erreur (2026-10-30)
+
+Cyril, devant sa Quad 2 : « certains ports sont marqués inactifs ». Trois défauts en cascade,
+dont deux étaient à moi, et un enseignement de méthode qui dépasse ce chantier.
+
+**1. Une impasse faite de deux décisions justes.** `_normaliser_carte` abandonnait la bascule de
+profil dès qu'UNE prise portait un signal, en journalisant « switch left to the operator » —
+condition de sûreté légitime, une bascule coupe les sources. Mais la bascule **manuelle** avait
+été retirée de la console le 16/10, sur décision de Cyril — décision légitime aussi. Ensemble :
+le geste était délégué à quelqu'un qui n'avait plus aucun moyen de le faire. Sur la Quad 2, **un
+câble branché bloquait les sept autres prises**, éteintes par le profil, sans recours autre que
+débrancher. Le code affirmait « laissé à l'opérateur » et c'était faux depuis quinze jours.
+Aucune garde ne couvrait cette branche : la suite est restée verte quand on l'a retirée.
+Arbitrage de Cyril le 30/10 : normaliser au démarrage **sans condition**, le prix (une coupure
+brève au démarrage d'un conteneur) étant inférieur à celui de connecteurs inutilisables en
+permanence. Avec une réserve ferme : **jamais muet** — prises coupées nommées dans le journal,
+listées dans `/state.normalisation`, annoncées en avis sur `:8080`.
+
+**2. Une bascule ne normalise qu'UN GROUPE de sous-périphériques.** Mesuré par la session Z8 sur
+#228 le 30/10 à 15:38 : avant, huit prises en `1dfd` dont quatre `inactive` ; après ma
+normalisation, **deux** réveillées et **trois** encore `inactive`. `decklink_profile` avait
+réussi — sur un seul groupe. Mon `return` après la première bascule déclarait le travail fini,
+et publiait `ok: true` par-dessus trois connecteurs inutilisables. Corrigé en 0.29.45 : on
+bascule, on relit l'inventaire que la bascule rend déjà, on recommence tant qu'un
+sous-périphérique est hors cible, et le progrès est exigé à chaque tour (sans quoi une carte qui
+accepte la commande sans rien changer serait rebasculée en rond — et chaque tour relâche la
+carte, donc coupe l'antenne). `ok` ne dit plus « la dernière commande a réussi » mais « la carte
+EST normalisée », lu sur l'état mesuré. **Le groupement n'est pas inféré** : il se lit sur les
+`topological_id` consécutifs, mais s'y fier serait une branche par modèle déguisée. La boucle
+mesure, donc elle survivra à une carte qu'on n'a jamais vue.
+
+**3. `coupees`, faux deux fois, et chaque erreur était instructive.** D'abord « tout ce qui
+était vivant sur la carte » (0.29.44) : faux, puisqu'une bascule ne touche qu'un groupe — il a
+nommé `4037714289`, dont le groupe n'avait pas bougé, une prise qui n'avait rien subi donnée
+pour victime. Puis « vivante avant, plus vivante après » (0.29.45) : faux aussi, et plus
+subtilement — **la mesure était prise trop tôt**. La session Z8 a relevé, après la
+normalisation, **un verrou sur huit à 15:50** (40 s après le démarrage) et **quatre à 15:51:06** :
+la carte met des dizaines de secondes à reprendre ses verrous après avoir été relâchée. Lire
+juste après la bascule, c'est déclarer coupé tout ce qui n'a pas encore eu le temps de revenir.
+Ce qui est vrai et mesurable (0.29.46) : une prise est coupée si elle portait un signal **avant**
+et si son **profil a changé** entre les deux inventaires — le changement de profil est
+l'événement qui relâche la carte. Ça désigne exactement le groupe réellement basculé, sans
+inférer le groupement, et c'est **insensible au délai de reprise**. La garde l'exige : même
+décor joué avec des verrous instantanés et avec des verrous lents doit rendre le même `coupees`.
+
+**⚠ L'enseignement, qui vaut plus que les trois correctifs.** `verif_normalisation_profil.py`
+existait : 39 vérifications, 11 mutations toutes mordantes, verte — et elle **ne pouvait pas**
+voir le défaut 2. Dans son décor, tous les sous-périphériques partageaient *un* `profil_actif`,
+et la doublure de bascule rendait `ok: True`. Le harnais encodait exactement ma supposition. La
+garde ne testait donc pas le code : elle testait **l'accord du code avec mon erreur**, et le
+compte de mutations la rendait convaincante. Les mutations prouvent qu'une garde est sensible au
+CODE ; elles ne disent rien de la justesse de son modèle du monde. Règle qui en sort : dans un
+décor qui représente du matériel, écrire d'où vient chaque forme — relevée tel jour sur telle
+machine, ou fabriquée. Et dès qu'une mesure réelle arrive, en faire un cas nommé du décor.
+La garde porte maintenant un modèle par groupe, la mesure de #228 comme cas nommé (`Z1`-`Z18`),
+et la mutation `une_seule_bascule` qui remet exactement le code de 0.29.44.
+
+**Ce que la normalisation a RÉVÉLÉ, et c'est l'argument de l'arbitrage.** Sous `1dfd`, quatre
+sous-périphériques étaient actifs et **deux** portaient un signal. Sous `2dhd`, les huit sont
+actifs et **quatre** portent un signal (`...288`, `...289`, `...292`, `...293`, tous Hp50,
+drapeaux 273 — relevé Z8, 15:51:06). L'explication la plus économique : il y a **quatre câbles**,
+et deux d'entre eux occupaient des BNC qui, en full-duplex, étaient les SORTIES de leur
+sous-périphérique — donc invisibles. La bascule ne les a pas cassés, elle les a rendus
+atteignables. L'hypothèse concurrente (deux câbles vus chacun par les deux moitiés de leur paire)
+demanderait qu'un même BNC alimente deux sous-périphériques à la fois, ce qui contredit
+l'indépendance du half-duplex. Elle n'est pas écartée par la mesure : seul le comptage physique
+des câbles tranche.
+
+**Resté ouvert, et ça compte.** **Aucun champ de l'inventaire n'identifie la prise PHYSIQUE**
+(vérifié sur la Duo 2 de dell-1 : `connecteurs` donne le type, `io` la capacité,
+`topological_id` est stable par sous-périphérique et ne bouge pas à la bascule). **Conséquence
+pour tout le chantier, jamais mesurée** : notre `inputs` est keyé sur le `persistent_id` au nom
+de « stable au changement de profil ». Cette règle dit que l'IDENTIFIANT ne se réattribue pas ;
+elle ne dit **rien** de la prise physique derrière. Si le BNC ne suit pas le persistent_id à
+travers une bascule, une liste `inputs` écrite sous un profil désigne d'autres câbles après une
+bascule, en silence — et rien ne le signalerait. À mesurer délibérément, avec un câble connu
+qu'on déplace, pas à déduire.
+
+**Et une leçon de lecture, pour les deux sessions.** Mon premier diagnostic de l'écart « index 1
+plus verrouillé » cherchait une cause structurelle. C'était un **transitoire** : relevé 40 s
+après le démarrage, avant que la carte ait repris ses verrous. Une mesure prise pendant un
+régime transitoire se lit comme un état. C'est la troisième fois sur ce chantier (après les 337
+trames jetées du 30/10 au matin, prises pour un défaut permanent) — devant un relevé surprenant,
+**le reprendre une minute plus tard avant de théoriser**.
+
+## 9 duotricies. Le cœur porte l'attente du pilote ; le plugin n'a qu'à se déclarer (2026-10-30)
+
+Signalé le matin comme hors de mon périmètre, livré le soir par la session « Todo à traiter »
+(`app/host_driver_gate.py`, commit `897625cf`, sur décision de Cyril). Le plugin déclare
+`"host_driver": {"kind": "blackmagic", "missing_status": [...]}` au niveau racine du manifeste,
+et le cœur fait le reste : un conteneur créé sur un nœud sans pilote est **enregistré sans
+`docker run`** (`status`/`desired_state` = `awaiting_driver`, cause = `plan.code`), il **démarre
+de lui-même au redémarrage du nœud** même avec l'auto-récupération à zéro, et l'alerte de
+disparition nomme le pilote. Vérifié plutôt que supposé : `required_driver('decklink_io')` rend
+bien le couple. Ça ne passe pas par le hook de déploiement — ni l'exception avalée par
+`deploy.py` ni l'absence du nœud dans le hook ne gênent, les deux raisons pour lesquelles je
+l'avais dit infaisable de mon côté.
+
+**Deux conséquences que le plugin devait absorber, et la seconde est la plus instructive.**
+
+L'**étape 4** du bandeau disait « relancer ce conteneur ». C'est devenu faux, et faux d'une façon
+coûteuse : elle enverrait faire un geste inutile et laisserait croire que personne ne s'en occupe
+si on l'oublie. Et `status == 'awaiting_driver'` est un état **voulu** : le dire « ARRÊTÉ, et rien
+ne le relèvera tout seul » serait deux fois faux.
+
+**Une seule liste de statuts, deux lecteurs.** Le cœur lit `missing_status` pour décider de
+retenir le conteneur ; `control.js` a sa propre liste pour décider du bandeau rouge. Deux listes
+que rien ne relie finissent par différer, et le jour où elles diffèrent **la page affirme le
+contraire de ce que le cœur a décidé** — bandeau vert sur un conteneur retenu, ou bandeau rouge
+sur un conteneur qui tourne. L'égalité est exigée par la garde. Le manifeste écrit aussi ce qui
+est **volontairement exclu** (`unreadable`, `pending_shutdown`, `no_card`), pour que personne ne
+l'y rajoute par réflexe.
+
+**Et un piège de garde, encore un.** L'assertion sur l'étape 4 regardait le texte RENDU. Or le
+rendu vient du **catalogue i18n**, pas du repli écrit dans le JS — la mutation qui remettait
+l'ancien repli ne mordait donc sur rien, alors que c'est précisément ce repli qui s'affiche le
+jour où la clé i18n manque. Les deux faces sont maintenant vérifiées, et la garde sait muter
+quatre cibles : le JS, le gabarit, le manifeste et le catalogue.
+
+## 9 tertricies. La porte était dans la pièce qu'elle ouvrait (2026-10-31)
+
+Cyril, hier : « on a installé une machine neuve, on a mis une carte DeckLink et on a lancé le
+plugin : il n'a pas démarré car pas les drivers Blackmagic. » Puis, quand j'ai proposé de faire
+démarrer le conteneur quand même : « qu'il démarre ou pas, ça ne me change rien. Je veux juste
+avoir une info claire sur la page du plugin, pour avancer. Hier, forcément, quand on voyait que
+ça se mettait en erreur, on comprenait pas. »
+
+**J'étais parti corriger le mauvais problème.** La veille, nous avions livré l'attente du pilote
+(`host_driver_gate`) : un conteneur créé sans pilote est enregistré au lieu de mourir. Sa
+question suivante a déplacé le sujet : **qui installe le pilote ?** Et c'est en cherchant la
+réponse que le vrai défaut est apparu.
+
+### Le cercle
+
+Le pilote Desktop Video vit sur l'**hôte** — un conteneur ne charge pas de module noyau, et
+`libDeckLinkAPI.so` est montée depuis la machine. Il est posé par l'agent du nœud
+(`node_agent/host_drivers/blackmagic.py`), par un mécanisme **générique par `kind`** que
+l'orchestrateur relaie (`/api/nodes/<id>/host-drivers/<kind>/*`). Tout cela existait : le
+script d'état, le dépôt d'archive, l'installation hors ligne, le journal, la boîte d'interface
+(`hostDrvToggle`/`hostDrvLoad`) — et ses **trente** libellés `settings.hostdrv.blackmagic.*`.
+
+Il manquait **un bouton**. Réglages → Nœuds n'ouvrait la boîte que pour `nvidia`. La fiche du
+nœud montrait l'état en lecture, sans action. Donc la seule porte pour installer le pilote
+Blackmagic était la **page du plugin decklink_io** — la page d'un conteneur qui, pour exister,
+a besoin de ce pilote.
+
+**Et c'est exactement la forme de l'impasse du 16/10** (§ 9 duotricies et la mémoire
+`condition-de-surete-plus-retrait-echappatoire`) : un geste délégué à quelqu'un qui n'a aucun
+moyen de le faire. Deux fois en quinze jours, sur le même chantier, pour la même raison
+structurelle — **rien ne relie une capacité à la porte par laquelle on y accède.** Le code de la
+porte ne sait pas qui en dépend ; le code qui en dépend ne vérifie pas qu'elle existe. La
+différence, cette fois, est que personne n'avait *retiré* la porte : elle n'avait jamais été
+posée, et les trente libellés prêts à l'emploi donnaient toutes les apparences du contraire.
+
+### La garde de la porte : déclarer, pas détecter
+
+J'ai d'abord posé le bouton **sans aucune condition**, et écrit une garde qui l'exigeait. Cyril,
+le lendemain : « je trouve ça un peu bizarre de mettre sur chaque nœud qu'il n'y a pas le
+micrologiciel. Potentiellement, on peut avoir une installation avec 10 nœuds, et n'avoir aucun
+besoin de carte Blackmagic. »
+
+Il avait raison, et pour justifier mon choix j'avais écrit **un commentaire faux** : « la ligne
+GPU au-dessus est conditionnée à `gpu_capable` ». Elle ne l'était pas — seul son bouton de
+construction d'image l'est ; le bouton « Pilote NVIDIA », lui, était déjà offert sur tous les
+nœuds. Je n'avais donc pas cassé un cercle en m'écartant d'un précédent : **j'avais doublé un
+bruit qui existait déjà, en invoquant une différence qui n'existait pas.** Un commentaire qui
+affirme une asymétrie est une assertion comme une autre ; celui-là n'avait jamais été vérifié.
+
+Le piège est que les deux termes évidents sont tous les deux mauvais :
+
+| garde | ce qu'elle coûte |
+|---|---|
+| aucune | dix lignes DeckLink sur dix nœuds qui n'en auront jamais |
+| une **détection** (`/dev/blackmagic`, `nvidia-smi`) | le cercle revient : il faut le pilote pour voir comment l'installer |
+
+Le troisième terme, c'est **la déclaration** — et Cyril l'a nommé lui-même : « ça ne pourrait pas
+faire partie des capacités qu'on ajoute ? Ou une option "ajouter une carte" et là on choisit si
+c'est Intel, GPU, ou DeckLink ? » Le mécanisme existait déjà, à l'endroit exact : la fiche du
+nœud porte une ligne *Capacités* avec un bouton **＋ Ajouter**, six capacités annonçant chacune
+son coût, une liste blanche serveur (`_CAP_ADDABLE`) et un rattrapage par
+`install-node.sh --add-caps`. Trois des six étaient déjà des cartes (`gpu`, `io2110` = la carte
+Intel). « Ajouter une carte » et « ajouter une capacité » étaient le même geste depuis le début.
+
+Donc : **`decklink`** devient la septième capacité. Comme `gui`, elle ne provisionne rien sur
+l'hôte : l'archive Desktop Video se **dépose**, elle n'est pas récupérée automatiquement, et un
+nœud peut n'avoir aucun accès sortant — l'installation, elle, est hors ligne. Elle dit un fait, « il y a une carte ici », et c'est ce
+fait qui ouvre la ligne du pilote. Son nom est celui que Cyril a corrigé : pas `sdi`, parce que
+Blackmagic fait aussi des cartes **IP** — la capacité nomme la famille de cartes, pas le
+transport.
+
+Trois propriétés, tenues par `tests/verif_pilote_hote_reglages.py` (37 vérifications,
+17 mutations) :
+
+1. **la garde lit la liste déclarée**, jamais une détection — une mutation qui ajoute
+   `&& n.dev_nodes.length` à la condition est attrapée, de même qu'une qui la remplace par une
+   détection pure ;
+2. **le repli « constaté » est borné au seul `nvidia`** : `nodes.capabilities` peut être périmée
+   (c'est la raison d'être du rattrapage), et masquer la ligne d'un GPU qui marche serait une
+   régression muette. *Déclaré ou constaté ; jamais constaté seul* — sinon le cercle rentre par
+   la porte de derrière, et la mutation qui étend le repli à toutes les cartes le montre. DeckLink
+   n'a aucun constat à offrir sans le pilote : c'est tout le problème ;
+3. **la capacité est connue des trois places** — liste blanche serveur, menu `＋ Ajouter`, liste
+   blanche du script. Il en manque une et le geste échoue en 400, n'est pas proposé, ou meurt sur
+   un `die` : trois pannes d'allure différente pour un seul oubli, chacune avec sa mutation.
+
+Et le lien `kind` → capacité vit en **un** endroit (`HOSTDRV_CAP`), pas en `if` par carte : une
+carte de plus est une entrée. C'est précisément la dette nommée deux paragraphes plus haut — rien
+ne reliait une capacité à la porte par laquelle on y accède. Cette fois le lien est écrit.
+
+Au passage, le libellé de cette porte disait « Micrologiciel DeckLink ». Il envoyait chercher une
+mise à jour de firmware quelqu'un dont le *pilote* manquait : il passait devant la seule porte
+utile sans la reconnaître. **Une porte se nomme par ce qu'il y a derrière, pas par ce qu'on y
+fait le plus souvent.**
+
+### Une raison plus forte que la vraie
+
+J'avais écrit que le paquet « se télécharge derrière un compte Blackmagic ». Cyril : « le package
+ne se télécharge pas derrière un compte hein » — capture à l'appui. Et en allant corriger, j'ai
+trouvé pire : une formulation plus ancienne, du **2026-10-20**, disait « leur site exige
+d'accepter un contrat », et celle-là était **visible par l'utilisateur** — bandeau du plugin,
+aide, plan de la boîte du pilote, en français comme en anglais. Il n'y a ni compte ni contrat :
+un formulaire d'enregistrement du produit s'ouvre, et le lien « Télécharger uniquement » en bas
+à gauche suffit.
+
+Ce qui rend l'erreur intéressante, c'est qu'elle était **inutile**. La raison qui tient était
+déjà écrite dans la même phrase : *un nœud peut n'avoir aucun accès sortant, et l'installation
+est hors ligne*. Elle suffit, elle vaut même sur un réseau fermé où un téléchargement direct ne
+servirait à rien, et Cyril l'a confirmée dans la foulée — « sur un réseau sans internet, c'est
+mieux de proposer de la télécharger et de l'installer à la main ». Je m'étais donné en plus une
+raison plus forte que la vraie, et **une justification inventée survit d'autant mieux qu'elle
+est catégorique** : « exige un contrat » ne donne envie à personne d'aller vérifier. Elle a
+traversé onze jours et six fichiers.
+
+Corollaire, et c'est le seul enseignement transportable : **un commentaire qui affirme un fait
+du monde extérieur est une assertion comme une autre, mais aucune garde ne la tient.** Les deux
+fautes de ce chantier sont de cette famille — « la ligne GPU est conditionnée à `gpu_capable` »
+(vérifiable en trois secondes, jamais vérifiée) et « leur site exige un contrat ». La première
+portait sur notre propre code et une garde peut la tenir ; la seconde non, et c'est pour cela
+qu'elle doit être écrite au plus près de ce qu'on a réellement observé.
+
+En retour, **le GPU se fait déjà pareil** : `node_agent/host_drivers/nvidia.py` déclare son
+`upload_dir` avec l'indice `NVIDIA-Linux-x86_64-<version>.run`, et c'est le seul chemin sur un
+nœud coupé d'Internet — le dépôt apt de NVIDIA n'est utilisé que lorsqu'il est joignable. La
+capacité existait ; l'aide ne la nommait nulle part. Elle le dit maintenant, et une assertion
+(F7) l'y maintient.
+
+### Le troisième terme : affirmer, se taire, ou dire l'inconnu
+
+Restait son mot : « on comprenait pas ». La page, dans son cas, ne disait rien d'utile — et pour
+une raison que j'avais écrite moi-même, en toutes lettres, dix jours plus tôt :
+
+> « On ne SAIT plus si le pilote est là : un bandeau rouge laissé affiché affirmerait une absence
+> qu'on ne mesure plus. »
+
+Le raisonnement est juste. La conclusion était fausse, parce qu'elle ne laissait que **deux**
+termes — affirmer, ou se taire — alors qu'il y en a **trois**. Le bandeau reste, en orange, et
+dit qu'on ne peut pas vérifier. Les gestes qui exigent l'agent sont retirés, puisqu'ils
+échoueraient. « Où trouver l'archive » est retiré aussi, puisqu'il supposerait qu'elle manque. Ce
+qui reste est la seule chose utile qu'on sache dire : le chemin vers Réglages.
+
+**Et ce cas n'est pas une curiosité, c'est le cas normal d'une machine neuve.** L'agent y est
+presque sûrement antérieur à 0.28.0, donc le relais répond 502 ; le cœur ne retient pas le
+conteneur — il ne retient que sur une **preuve** d'absence, et c'est la bonne règle, une panne
+d'agent ne doit pas empêcher toute création ; le déploiement échoue alors dans
+`docker_compute`, sur le meilleur message de toute la chaîne (« aucun périphérique Blackmagic
+sur <machine> : /dev/blackmagic est vide ou absent. Carte présente ? Pilote installé et module
+chargé ? »). Ce message part dans le journal et une alerte : **il n'est jamais écrit dans
+`status_cause`, donc la page du plugin ne le voit pas.** Trois décisions défendables, et une
+page muette au bout.
+
+### Ce que ça laisse
+
+- Le fait technique est dans l'**aide** maintenant, à la demande de Cyril : pourquoi le pilote
+  est sur l'hôte, où est la porte, et qu'un conteneur sans pilote ne peut pas démarrer du tout —
+  la carte pouvant être parfaitement présente sur le bus PCI.
+- `tests/verif_pilote_hote_reglages.py` est née pour surveiller un **gabarit** que rien ne
+  surveillait. Elle n'a pas de doublure et ne rend aucun verdict sur du comportement : elle lit
+  `settings.html`, l'aide et les deux catalogues, et exige que la porte existe et reste
+  inconditionnelle.
+- ⚠ **Reste ouvert, et c'est le dernier maillon muet** : faire remonter la cause du déploiement
+  jusqu'à la page. Le texte est déjà parfait, il lui manque d'être écrit dans `status_cause`.
+  Ça touche le cœur (`docker_compute`), pas le plugin.
+
 ## 10. Ce qui reste ouvert
 
 Les quatre points laissés en suspens à l'ouverture ont été tranchés le 2026-09-07 : surface NMOS

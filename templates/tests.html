@@ -52,6 +52,16 @@
   .tp-sevbtn.act.bloquant { background:#7a1f1f; color:#ffd6d6; border-color:#a33; }
   /* Un défaut BLOQUANT se voit sans lire : la barre de gauche s'épaissit. */
   .tp-item.sev-bloquant { border-left-width:8px; border-left-color:#e05555; }
+  /* Gestes à vérifier d'un élément : une case (catalogue, .ctl-switch) + un commentaire par geste. */
+  .tp-steps { margin-top:8px; display:flex; flex-direction:column; gap:5px; }
+  .tp-steps-head { font-size:12px; color:#8a8d94; }
+  .tp-step { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .tp-step-lbl { flex:1 1 320px; font-size:13px; color:#c9cdd2; line-height:1.4; cursor:pointer;
+                 display:flex; align-items:center; gap:8px; }
+  .tp-step.done .tp-step-lbl { color:#7be29a; }
+  .tp-step input[type="text"] { flex:1 1 220px; min-width:180px; padding:4px 8px; border-radius:6px;
+                                border:1px solid var(--border,#444); background:var(--bg,#161616);
+                                color:inherit; font-family:inherit; font-size:12px; }
   .tp-remark { flex:1; min-width:260px; }
   .tp-remark textarea { width:100%; box-sizing:border-box; min-height:42px; resize:vertical;
                         padding:7px 9px; border-radius:6px; border:1px solid var(--border,#444);
@@ -275,6 +285,7 @@
     <input id="tp-add-area"  type="text" placeholder="Catégorie (ex. Audio, UI, 2110…)">
     <input id="tp-add-title" type="text" placeholder="Intitulé du test">
     <textarea id="tp-add-detail" rows="2" placeholder="Comment le tester / ce qu'on attend (optionnel)"></textarea>
+    <textarea id="tp-add-steps" rows="3" placeholder="Gestes à cocher, un par ligne (optionnel) — chacun aura sa case et son commentaire"></textarea>
     <button id="tp-add-btn" type="button">Ajouter</button>
   </div>
 </div>
@@ -486,6 +497,57 @@
     sauterVers(cible.id, true);
   }
 
+  /* Gestes à vérifier : une case par geste, et un commentaire À CÔTÉ (Cyril, 30/10). Chaque case
+     s'enregistre seule (/api/tests/check) ; le statut de l'élément reste le verdict du testeur. */
+  function saveCheck(it, n, done, comment) {
+    const cur = DATA.state[it.id] = DATA.state[it.id] || {};
+    cur.checks = cur.checks || {};
+    cur.checks[n] = Object.assign({}, cur.checks[n], { done: done, comment: comment });
+    return postJSON("/api/tests/check", { id: it.id, step: n, done: done, comment: comment,
+                                          tester: testerEl.value.trim() }).catch(() => {});
+  }
+  function renderSteps(it, st) {
+    const checks = st.checks || {};
+    const box = document.createElement("div");
+    box.className = "tp-steps";
+    const head = document.createElement("div");
+    head.className = "tp-steps-head";
+    const majTete = () => {
+      const n = it.steps.filter((_, k) => (checks[k] || {}).done).length;
+      head.textContent = n + " / " + it.steps.length + " gestes vérifiés";
+    };
+    majTete();
+    box.appendChild(head);
+    it.steps.forEach((txt, k) => {
+      const c = checks[k] || {};
+      const row = document.createElement("div");
+      row.className = "tp-step" + (c.done ? " done" : "");
+      const coche = document.createElement("label");   // case + libellé : cliquer le texte coche
+      coche.className = "tp-step-lbl";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.className = "ctl-switch"; cb.checked = !!c.done;
+      const lbl = document.createElement("span");
+      lbl.textContent = " " + (k + 1) + ". " + txt;
+      const cm = document.createElement("input");
+      cm.type = "text"; cm.id = "chk-" + it.id + "-" + k;
+      cm.placeholder = "Commentaire…"; cm.value = c.comment || "";
+      cm.addEventListener("focus", () => editing.add(cm.id));
+      cm.addEventListener("blur", () => {
+        editing.delete(cm.id);
+        if (cm.value !== (c.comment || "")) { c.comment = cm.value; saveCheck(it, k, cb.checked, cm.value); }
+      });
+      cb.addEventListener("change", () => {
+        c.done = cb.checked; checks[k] = c;
+        row.classList.toggle("done", cb.checked); majTete();
+        saveCheck(it, k, cb.checked, cm.value);
+      });
+      coche.appendChild(cb); coche.appendChild(lbl);
+      row.appendChild(coche); row.appendChild(cm);
+      box.appendChild(row);
+    });
+    return box;
+  }
+
   function renderItem(it) {
     const st = DATA.state[it.id] || {};
     const status = st.status || "untested";
@@ -512,6 +574,7 @@
       d.className = "tp-detail"; d.textContent = it.detail;
       div.appendChild(d);
     }
+    if ((it.steps || []).length) div.appendChild(renderSteps(it, st));
 
     const row = document.createElement("div");
     row.className = "tp-row2";
@@ -1036,8 +1099,10 @@
     postJSON("/api/tests/item", {
       area:  document.getElementById("tp-add-area").value.trim(),
       title: title,
-      detail:document.getElementById("tp-add-detail").value.trim()
+      detail:document.getElementById("tp-add-detail").value.trim(),
+      steps: document.getElementById("tp-add-steps").value
     }).then(() => {
+      document.getElementById("tp-add-steps").value = "";
       document.getElementById("tp-add-area").value = "";
       document.getElementById("tp-add-title").value = "";
       document.getElementById("tp-add-detail").value = "";

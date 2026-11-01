@@ -161,6 +161,10 @@
 
         <div class="card-actions">
             <div class="card-actions-primary">
+                {% if can_open_workspace(p.id) %}
+                <a class="btn btn-blue" href="/workspace/{{ p.id }}"
+                   aria-label="{{ _('projects.open_workspace_aria', name=p.name) }}">{{ _('projects.open_workspace') }}</a>
+                {% endif %}
                 {% if has_perm('projects.manage') %}
                 <button class="btn btn-green" onclick="restaurerProjet({{ p.id }}, '{{ p.name }}')"
                         aria-label="{{ _('projects.restore_aria', name=p.name) }}">{{ _('projects.restore') }}</button>
@@ -173,6 +177,7 @@
                 <button class="btn" onclick="toggleMembres({{ p.id }})">{{ _('projects.members') }}</button>
                 <button class="btn" onclick="toggleVersions({{ p.id }})">{{ _('projects.versions') }}</button>
                 <button class="btn" onclick="toggleComposition({{ p.id }})">{{ _('projects.compo') }}</button>
+                <button class="btn" onclick="togglePorts({{ p.id }})">{{ _('projects.ports') }}</button>
                 {% endif %}
             </div>
             {% if has_perm('projects.manage') %}
@@ -253,6 +258,33 @@
 .proj-media-dlg h3 { margin-bottom:.6rem; }
 .proj-media-dlg label { display:flex; flex-direction:column; gap:.3rem; margin:.6rem 0; }
 .proj-media-actions { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:1rem; }
+/* Ports du projet : fenêtre large qui recouvre la page (28/10). */
+.modal-card.proj-ports-card { max-width: 1280px; width: 94vw; }
+.proj-ports-cols { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap:var(--space-4); }
+.proj-ports-h { margin:0 0 var(--space-1); font-size:.72em; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted); }
+.proj-port-list { list-style:none; margin:0; padding:0; border:1px solid var(--border-soft); border-radius:8px; overflow:hidden; }
+.proj-port { border-bottom:1px solid var(--border-soft); }
+.proj-port:last-child { border-bottom:none; }
+.proj-port-empty { padding:var(--space-2) var(--space-3); }
+.proj-port-row { display:grid; grid-template-columns:13em minmax(0, 1fr) minmax(0, 1.2fr) auto; gap:var(--space-3); align-items:center; padding:var(--space-2) var(--space-3); }
+.proj-port-chips { display:inline-flex; flex-wrap:wrap; gap:4px; align-items:center; }
+.proj-port-name { display:flex; flex-direction:column; min-width:0; }
+.proj-port-name .meta, .proj-port-bind code { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.proj-port-acts { display:inline-flex; gap:var(--space-1); }
+.proj-port-bind { min-width:0; }
+.proj-port-bind select { width:100%; min-width:0; }
+.proj-port-edit { display:flex; flex-direction:column; gap:var(--space-2); padding:var(--space-2) var(--space-3) var(--space-3); background:var(--bg-soft, rgba(255,255,255,.03)); border-top:1px solid var(--border-soft); }
+.proj-port-kid { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; }
+.proj-port-kid > .proj-port-chips { width:9em; flex:0 0 auto; }
+.proj-port-kid input[placeholder]:placeholder-shown { font-style:italic; }
+.proj-port-add { margin-top:var(--space-3); border:1px dashed var(--border-soft); border-radius:8px; padding:var(--space-2) var(--space-3); display:flex; flex-direction:column; gap:var(--space-2); }
+.proj-port-addrow { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; }
+.proj-port-addlab { min-width:5em; }
+.proj-port-pv { font-size:.85em; padding:1px 8px; border-radius:4px; border:1px solid var(--border-soft); white-space:nowrap; }
+.proj-port-pv.dup { border-color:var(--status-stopped-fg); color:var(--status-stopped-fg); }
+.proj-port-why { margin:0; color:var(--status-stopped-fg); font-size:.9em; }
+.proj-port-help { margin:0; }
+@media (max-width: 640px) { .proj-port-row { grid-template-columns:1fr auto; } .proj-port-bind { grid-column:1 / -1; } }
 </style>
 {% endblock %}
 
@@ -559,7 +591,7 @@ function _compoAllContainers() {
 // Un container appartient au projet pid si son rattachement direct (project_id)
 // vaut pid, OU si son vmid figure dans une version figée (snapshot) du projet.
 function _compoMembersOf(pid) {
-    return _compoAllContainers().filter(c => c.project_id === pid || (c.projects || []).includes(pid));
+    return _compoAllContainers().filter(c => c.project_id === pid || (c.projects || []).some(p => p.id === pid));
 }
 
 async function toggleComposition(pid) {
@@ -628,6 +660,384 @@ async function _compoPatchProject(vmid, project_id) {
     // PATCH asynchrone (recrée le container) — la vue se recharge après un court délai
     // pour refléter le nouveau rattachement une fois l'opération lancée.
     setTimeout(() => location.reload(), 1500);
+}
+
+/* ─── Ports du projet : la frontière du projet (entrées / sorties nommées) ──────────────
+   Seul endroit où on les configure (décisions de Cyril, 28/10, maquette A). Une VIRTUELLE se
+   compose — vidéo, 0..8 audios (un flux MXL de 8 canaux chacun), ANC ; avec une vidéo, c'est
+   elle le parent, ses audios / son ANC lui sont rattachés, se raccordent avec elle (Câbles) et
+   reprennent ses libellés (A1, A2, Anc) tant qu'on ne les remplace pas. Les rattachés restent
+   REPLIÉS : on ne les voit qu'en éditant la virtuelle. Noms : motifs `{1-6}`, `{01-12}`,
+   `{Rouge,Bleue}`, combinables ; sans accolades, le nombre numérote à la suite. Un nom déjà pris
+   fait refuser l'ajout, avec la raison (le serveur tranche ; la page le montre avant). ─────── */
+
+const _PORTS = {};        // pid → {ports, outputs, edit, dir, add:{source:{…}, dest:{…}}}
+const PORT_MAX_AUDIOS = 8;
+
+// Fenêtre qui recouvre la page (28/10, demande de Cyril : ouvert DANS la carte, le panneau se
+// perdait au milieu des autres projets). Fermée par ✕, Échap ou un clic à côté ; le focus revient
+// au bouton qui l'a ouverte.
+function togglePorts(pid) {
+    closePorts();
+    const opener = document.activeElement;
+    const name = ((typeof SYS_PROJECTS !== 'undefined' ? SYS_PROJECTS : []).find(p => p.id === pid) || {}).name || ('#' + pid);
+    const ov = document.createElement('div');
+    ov.id = 'proj-ports-modal';
+    ov.className = 'modal-overlay';
+    ov.innerHTML = `
+      <div class="modal-card proj-ports-card" role="dialog" aria-modal="true" aria-labelledby="proj-ports-title">
+        <div class="modal-head">
+          <h3 id="proj-ports-title" style="margin:0">${_mEsc(window.t('projects.ports'))} — ${_mEsc(name)}</h3>
+          <button type="button" class="btn" id="proj-ports-close" aria-label="${_mEsc(window.t('projects.close'))}">✕</button>
+        </div>
+        <div id="proj-ports-${pid}"></div>
+      </div>`;
+    ov._opener = opener;
+    ov.addEventListener('mousedown', e => { if (e.target === ov) closePorts(); });
+    ov.querySelector('#proj-ports-close').onclick = closePorts;
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', _portsEsc);
+    ov.querySelector('#proj-ports-close').focus();
+    chargerPorts(pid);
+}
+function _portsEsc(e) { if (e.key === 'Escape') closePorts(); }
+function closePorts() {
+    const ov = document.getElementById('proj-ports-modal');
+    document.removeEventListener('keydown', _portsEsc);
+    if (!ov) return;
+    const opener = ov._opener;
+    ov.remove();
+    if (opener && opener.focus) opener.focus();
+}
+function _portState(pid) {
+    return _PORTS[pid] = _PORTS[pid] || {
+        ports: [], outputs: [], edit: null, dir: 'source',
+        add: {source: {v: true, na: 1, d: false, n: 1, name: ''},
+              dest:   {v: true, na: 1, d: false, n: 1, name: ''}}};
+}
+async function chargerPorts(pid) {
+    const st = _portState(pid);
+    try {
+        const [rp, rs] = await Promise.all([fetch(`/api/projects/${pid}/ports`),
+                                            fetch(`/api/projects/${pid}/summary`)]);
+        st.ports = rp.ok ? ((await rp.json()).ports || []) : [];
+        const sm = rs.ok ? await rs.json() : {containers: []};
+        st.outputs = (sm.containers || []).flatMap(c => (c.produces || []).map(o => ({
+            shm: o.shm, kind: o.kind, label: (c.hostname || '') + ' · ' + (o.label || o.shm)})));
+    } catch (e) { st.ports = []; st.outputs = []; }
+    renderPorts(pid);
+}
+
+// Motifs de noms → liste développée (produit de toutes les accolades), bornée.
+function portExpandNames(pat) {
+    const m = /\{([^{}]*)\}/.exec(pat);
+    if (!m) return [pat];
+    let opts;
+    const r = /^\s*(\d+)\s*-\s*(\d+)\s*$/.exec(m[1]);
+    if (r) {
+        const a = parseInt(r[1], 10), b = parseInt(r[2], 10), step = a <= b ? 1 : -1;
+        const w = r[1].startsWith('0') ? r[1].length : 0;
+        opts = [];
+        for (let i = a; step > 0 ? i <= b : i >= b; i += step) {
+            opts.push(String(i).padStart(w, '0'));
+            if (opts.length >= 256) break;
+        }
+    } else opts = m[1].split(',').map(x => x.trim());
+    const out = [];
+    for (const o of opts) for (const rest of portExpandNames(pat.slice(m.index + m[0].length))) {
+        out.push(pat.slice(0, m.index) + o + rest);
+        if (out.length >= 256) return out;
+    }
+    return out;
+}
+// Noms de TOUS les ports qu'un ajout créerait — miroir de project_ports.virtual_port_names.
+function _portAllNames(names, a) {
+    const out = [];
+    for (const n of names) {
+        if (a.v) {
+            out.push(n);
+            for (let i = 1; i <= a.na; i++) out.push(`${n} A${i}`);
+            if (a.d) out.push(`${n} Anc`);
+        } else {
+            for (let i = 1; i <= a.na; i++) out.push(a.na > 1 ? `${n} A${i}` : n);
+            if (a.d) out.push(a.na ? `${n} Anc` : n);
+        }
+    }
+    return out;
+}
+function _portAddPlan(pid) {
+    const st = _PORTS[pid], a = st.add[st.dir];
+    const pat = (a.name || '').trim();
+    const braces = /\{[^{}]*\}/.test(pat);
+    const names = !pat ? [] : braces ? portExpandNames(pat)
+        : (a.n > 1 ? Array.from({length: a.n}, (_, i) => `${pat} ${i + 1}`) : [pat]);
+    const taken = new Set(st.ports.map(p => (p.name || '').trim().toLowerCase()));
+    const seen = new Set(), dups = [];
+    for (const n of _portAllNames(names, a)) {
+        const k = n.trim().toLowerCase();
+        if (taken.has(k) || seen.has(k)) dups.push(n);
+        seen.add(k);
+    }
+    const per = (a.v ? 1 : 0) + a.na + (a.d ? 1 : 0);
+    return {a, names, braces, dups, per, dupSet: new Set(dups.map(d => d.toLowerCase()))};
+}
+
+function _portChips(head, kids) {
+    const t = k => _mEsc(window.t(k));
+    const chip = (cls, txt) => `<span class="topo-tip-kind topo-tip-kind-${cls}">${txt}</span>`;
+    const media = [head.media].concat(kids.map(k => k.media));
+    const na = media.filter(m => m === 'audio').length;
+    return (media.includes('video') ? chip('video', t('projects.port_media_video')) : '') +
+        (na ? chip('audio', na > 1 ? t('projects.port_media_audio_n').replace('{n}', na) : t('projects.port_media_audio')) : '') +
+        (media.includes('anc') ? chip('data', t('projects.port_media_anc')) : '');
+}
+function _portBind(pid, p) {
+    const st = _PORTS[pid], b = p.binding || {};
+    const t = k => _mEsc(window.t(k));
+    if (p.kind === 'source') {
+        if (b.shm) return `<code>${_mEsc(b.shm)}</code>`;
+        if (b.port != null) {
+            const up = st.ports.find(x => x.id === b.port);
+            return `<span class="meta">→ ${_mEsc(up ? up.name : '#' + b.port)}</span>`;
+        }
+        return `<span class="meta">${t('projects.port_unbound')}</span>`;
+    }
+    const want = p.media === 'audio' ? 'audio' : p.media === 'anc' ? 'data' : 'video';
+    return `<select class="ctl-select" onchange="portInternal(${pid}, ${p.id}, this.value)"
+        aria-label="${t('projects.port_published')}"><option value="">—</option>` +
+        st.outputs.filter(o => (o.kind || 'video') === want).map(o =>
+            `<option value="${_mEsc(o.shm)}"${b.internal_shm === o.shm ? ' selected' : ''}>${_mEsc(o.label)}</option>`).join('') +
+        `</select>`;
+}
+function _portRow(pid, head, kids) {
+    const st = _PORTS[pid];
+    const t = k => _mEsc(window.t(k));
+    const lb = head.labels || {};
+    const names = [lb.long, lb.short].filter(Boolean).join(' · ');   // les libellés saisis seulement
+    const open = st.edit === head.id;
+    return `<li class="proj-port${kids.length ? ' proj-port-group' : ''}">
+        <div class="proj-port-row">
+            <span class="proj-port-chips">${_portChips(head, kids)}</span>
+            <span class="proj-port-name"><b>${_mEsc(head.name)}</b><span class="meta">${_mEsc(names)}</span>${
+                head.kind === 'dest' && head.reusable ? `<span class="meta" title="${t('projects.port_reusable_tip')}">↻ ${t('projects.port_reusable_short')}</span>` : ''}</span>
+            <span class="proj-port-bind">${_portBind(pid, head)}</span>
+            <span class="proj-port-acts">
+                <button type="button" class="btn" aria-expanded="${open}" aria-label="${t('projects.port_edit')}"
+                        title="${t('projects.port_edit')}" onclick="portEditToggle(${pid}, ${head.id})">✎</button>
+                <button type="button" class="btn btn-red" aria-label="${t('projects.port_delete')}"
+                        title="${t(kids.length ? 'projects.port_delete_virtual' : 'projects.port_delete')}"
+                        onclick="portDelete(${pid}, ${head.id}, ${kids.length})">✕</button>
+            </span>
+        </div>
+        ${open ? _portEditForm(pid, head, kids) : ''}
+    </li>`;
+}
+function _portEditForm(pid, head, kids) {
+    const t = k => _mEsc(window.t(k));
+    const lb = head.labels || {};
+    const opt = (v, cur, key) => `<option value="${v}"${cur === v ? ' selected' : ''}>${t(key)}</option>`;
+    const ls = head.label_source || 'port', ti = head.tsl_in || 'port';
+    const headLong = lb.long || head.name, headShort = lb.short || '';
+    const kidRows = kids.map(k => {
+        const kl = k.labels || {};
+        const cls = k.media === 'anc' ? 'data' : 'audio';
+        const tag = k.media === 'anc' ? t('projects.port_media_anc') : t('projects.port_media_audio') + ' ' + _mEsc((k.suffix || '').slice(1));
+        return `<div class="proj-port-kid">
+            <span class="proj-port-chips"><span class="meta" aria-hidden="true">↳</span>
+                <span class="topo-tip-kind topo-tip-kind-${cls}">${tag}</span></span>
+            <input type="text" class="ctl-input" id="pl-long-${k.id}" value="${_mEsc(kl.long || '')}" placeholder="${_mEsc(headLong + ' ' + (k.suffix || ''))}"
+                   aria-label="${t('projects.port_long')} — ${_mEsc(k.name)}" title="${t('projects.port_inherited_tip')}">
+            <input type="text" class="ctl-input" id="pl-short-${k.id}" value="${_mEsc(kl.short || '')}" placeholder="${_mEsc(headShort ? headShort + (k.suffix || '') : '')}"
+                   maxlength="12" style="width:7em" aria-label="${t('projects.port_short')} — ${_mEsc(k.name)}" title="${t('projects.port_inherited_tip')}">
+            <button type="button" class="btn" aria-label="${t('projects.port_remove_kid')} — ${_mEsc(k.name)}"
+                    title="${t('projects.port_remove_kid')}" onclick="portDelete(${pid}, ${k.id}, 0)">✕</button>
+        </div>`;
+    }).join('');
+    const hasAnc = kids.some(k => k.media === 'anc');
+    const nAud = kids.filter(k => k.media === 'audio').length;
+    const addKid = head.media === 'video' ? `
+        <button type="button" class="btn" ${nAud >= PORT_MAX_AUDIOS ? 'disabled' : ''} onclick="portAddKid(${pid}, ${head.id}, 'audio')">${t('projects.port_add_audio')}</button>
+        ${hasAnc ? '' : `<button type="button" class="btn" onclick="portAddKid(${pid}, ${head.id}, 'anc')">${t('projects.port_add_anc')}</button>`}` : '';
+    return `<div class="proj-port-edit">
+        <div class="proj-port-kid">
+            <span class="proj-port-chips">${_portChips(head, [])}</span>
+            <label>${t('projects.port_long')} <input type="text" class="ctl-input" id="pl-long-${head.id}" value="${_mEsc(lb.long || '')}" placeholder="${_mEsc(head.name)}"></label>
+            <label>${t('projects.port_short')} <input type="text" class="ctl-input" id="pl-short-${head.id}" value="${_mEsc(lb.short || '')}" maxlength="12" style="width:7em"></label>
+            <label>${t('projects.port_label_source')} <select class="ctl-select" id="pl-src-${head.id}">
+                ${opt('port', ls, 'projects.port_label_source_port')}${opt('origin', ls, 'projects.port_label_source_origin')}</select></label>
+            <label>${t('projects.port_tsl_in')} <select class="ctl-select" id="pl-tsl-${head.id}">
+                ${opt('port', ti, 'projects.port_tsl_in_port')}${opt('external', ti, 'projects.port_tsl_in_external')}</select></label>
+            ${head.kind === 'dest' ? `<label class="ctl-switch-inline" title="${t('projects.port_reusable_tip')}">
+                <input type="checkbox" class="ctl-switch" id="pl-reuse-${head.id}"${head.reusable ? ' checked' : ''}>
+                ${t('projects.port_reusable')}</label>` : ''}
+        </div>
+        ${kidRows}
+        <div class="proj-port-kid">${addKid}
+            <button type="button" class="btn btn-green" style="margin-left:auto"
+                    onclick="portSave(${pid}, ${head.id})">${t('projects.ws_view_save')}</button></div>
+    </div>`;
+}
+function _portAddBar(pid) {
+    const st = _PORTS[pid];
+    const t = k => _mEsc(window.t(k));
+    const plan = _portAddPlan(pid), a = plan.a;
+    const n = plan.names.length;
+    const prev = plan.names.slice(0, 8).map(x => {
+        const dup = _portAllNames([x], a).some(y => plan.dupSet.has(y.toLowerCase()));
+        return `<span class="proj-port-pv${dup ? ' dup' : ''}"${dup ? ` title="${t('projects.port_name_taken')}"` : ''}>${_mEsc(x)}</span>`;
+    }).join('');
+    const blocked = plan.dups.length > 0;
+    const can = n && plan.per && !blocked;
+    const label = blocked ? t('projects.port_add_blocked')
+        : (n && plan.per ? t(n > 1 ? 'projects.port_add_n' : 'projects.port_add_1').replace('{n}', n) : t('projects.port_add_none'));
+    const what = [a.v ? window.t('projects.port_media_video') : '',
+                  a.na ? (a.na > 1 ? window.t('projects.port_media_audio_n').replace('{n}', a.na) : window.t('projects.port_media_audio')) : '',
+                  a.d ? window.t('projects.port_media_anc') : ''].filter(Boolean).join(' + ');
+    const why = blocked ? window.t('projects.port_dups_refused').replace('{names}', plan.dups.slice(0, 6).join(', ') + (plan.dups.length > 6 ? '…' : '')) : '';
+    return `<div class="proj-port-add">
+        <div class="proj-port-addrow">
+            <span class="meta proj-port-addlab">${t('projects.port_add_title')}</span>
+            <div class="lat-mode-toggle" role="group" aria-label="${t('projects.port_dir')}">
+                <button type="button" class="lat-mode-btn${st.dir === 'source' ? ' active' : ''}" onclick="portAddSet(${pid}, 'dir', 'source')">${t('projects.port_source')}</button>
+                <button type="button" class="lat-mode-btn${st.dir === 'dest' ? ' active' : ''}" onclick="portAddSet(${pid}, 'dir', 'dest')">${t('projects.port_dest')}</button>
+            </div>
+            <span class="meta">${t('projects.port_content')}</span>
+            <label class="ctl-switch-inline"><input type="checkbox" class="ctl-switch" ${a.v ? 'checked' : ''}
+                onchange="portAddSet(${pid}, 'v', this.checked)">${t('projects.port_media_video')}</label>
+            <label class="ctl-switch-inline">${t('projects.port_audios')}
+                <input type="number" class="ctl-input" min="0" max="${PORT_MAX_AUDIOS}" value="${a.na}" style="width:4em"
+                       onchange="portAddSet(${pid}, 'na', this.value)"></label>
+            <label class="ctl-switch-inline"><input type="checkbox" class="ctl-switch" ${a.d ? 'checked' : ''}
+                onchange="portAddSet(${pid}, 'd', this.checked)">${t('projects.port_media_anc')}</label>
+        </div>
+        <div class="proj-port-addrow">
+            <span class="meta proj-port-addlab">${t('projects.port_name')}</span>
+            <input type="text" class="ctl-input" id="port-name-${pid}" value="${_mEsc(a.name)}" placeholder="${t(st.dir === 'source' ? 'projects.port_name_ph_in' : 'projects.port_name_ph_out')}"
+                   style="width:16em" aria-label="${t('projects.port_name_or_pattern')}" oninput="portAddName(${pid}, this.value)">
+            <label class="ctl-switch-inline" id="port-count-${pid}" title="${plan.braces ? t('projects.port_count_from_pattern') : ''}">${t('projects.port_count')}
+                <input type="number" class="ctl-input" min="1" max="64" value="${plan.braces ? n : a.n}" style="width:4em" ${plan.braces ? 'disabled' : ''}
+                       onchange="portAddSet(${pid}, 'n', this.value)"></label>
+            <button type="button" class="btn btn-blue" id="port-addbtn-${pid}" style="margin-left:auto" ${can ? '' : 'disabled'}
+                    onclick="portAdd(${pid})">${label}</button>
+        </div>
+        <div class="proj-port-addrow" id="port-preview-${pid}">
+            <span class="meta proj-port-addlab">${t('projects.port_preview')}</span>${prev || `<span class="meta">${t('projects.port_type_name')}</span>`}
+            ${n > 8 ? `<span class="meta">${t('projects.port_more').replace('{n}', n - 8)}</span>` : ''}
+        </div>
+        <p class="proj-port-why" id="port-why-${pid}" role="alert"${blocked ? '' : ' hidden'}>${_mEsc(why)}</p>
+        <p class="meta proj-port-help" id="port-help-${pid}">${t('projects.port_patterns_help')}
+            ${plan.per ? _mEsc(window.t('projects.port_each').replace('{what}', what)) + (a.v && plan.per > 1 ? ' ' + t('projects.port_parent_help') : '') : t('projects.port_pick_one')}</p>
+    </div>`;
+}
+function renderPorts(pid) {
+    const el = document.getElementById('proj-ports-' + pid);
+    const st = _PORTS[pid];
+    if (!el || !st) return;
+    const t = k => _mEsc(window.t(k));
+    const col = kind => {
+        const heads = st.ports.filter(p => p.kind === kind && !p.parent_id);
+        return heads.map(h => _portRow(pid, h, st.ports.filter(k => k.parent_id === h.id)
+            .sort((x, y) => (x.media === 'anc') - (y.media === 'anc') || (x.suffix || '').localeCompare(y.suffix || '', undefined, {numeric: true})))).join('')
+            || `<li class="meta proj-port-empty">—</li>`;
+    };
+    el.innerHTML = `
+        <p class="meta" style="margin:0 0 var(--space-3)">${t('projects.ports_hint')}</p>
+        <div class="proj-ports-cols">
+            <section><h5 class="proj-ports-h">${t('projects.port_sources')}</h5><ul class="proj-port-list">${col('source')}</ul></section>
+            <section><h5 class="proj-ports-h">${t('projects.port_dests')}</h5><ul class="proj-port-list">${col('dest')}</ul></section>
+        </div>
+        <div id="port-addbar-${pid}">${_portAddBar(pid)}</div>`;
+}
+function _renderAddBar(pid) {
+    const host = document.getElementById('port-addbar-' + pid);
+    if (host) host.innerHTML = _portAddBar(pid);
+}
+function portAddSet(pid, key, value) {
+    const st = _PORTS[pid];
+    if (key === 'dir') st.dir = value;
+    else {
+        const a = st.add[st.dir];
+        if (key === 'na') a.na = Math.max(0, Math.min(PORT_MAX_AUDIOS, parseInt(value, 10) || 0));
+        else if (key === 'n') a.n = Math.max(1, Math.min(64, parseInt(value, 10) || 1));
+        else a[key] = !!value;
+    }
+    _renderAddBar(pid);
+}
+// Saisie du nom : seuls l'aperçu, le nombre, le bouton, la raison d'un refus et l'aide suivent —
+// redessiner toute la barre ferait perdre le curseur au milieu de la frappe.
+function portAddName(pid, value) {
+    const st = _PORTS[pid];
+    st.add[st.dir].name = value;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = _portAddBar(pid);
+    for (const id of ['port-count-', 'port-addbtn-', 'port-preview-', 'port-why-', 'port-help-']) {
+        const cur = document.getElementById(id + pid), nu = tmp.querySelector('#' + id + pid);
+        if (cur && nu) cur.replaceWith(nu);
+    }
+}
+async function _portFetch(url, method, body) {
+    const r = await fetch(url, {method, headers: {'Content-Type': 'application/json'},
+                                body: body ? JSON.stringify(body) : undefined});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+        const e = new Error(j.reason === 'duplicate_names'
+            ? window.t('projects.port_dups_refused').replace('{names}', (j.names || []).join(', '))
+            : (j.error || r.statusText));
+        throw e;
+    }
+    return j;
+}
+async function portAdd(pid) {
+    const st = _PORTS[pid], plan = _portAddPlan(pid), a = plan.a;
+    if (!plan.names.length || !plan.per || plan.dups.length) return;
+    try {
+        await _portFetch(`/api/projects/${pid}/ports/batch`, 'POST',
+            {kind: st.dir, names: plan.names, video: a.v, audios: a.na, anc: a.d});
+        a.name = '';
+        showWireToast(window.t('projects.port_added').replace('{n}', plan.names.length), 'ok');
+    } catch (e) { showWireToast(e.message, 'error'); }
+    chargerPorts(pid);
+}
+function portEditToggle(pid, portId) {
+    const st = _PORTS[pid];
+    st.edit = st.edit === portId ? null : portId;
+    renderPorts(pid);
+}
+async function portSave(pid, headId) {
+    const st = _PORTS[pid];
+    const v = id => document.getElementById(id)?.value;
+    const kids = st.ports.filter(k => k.parent_id === headId);
+    try {
+        await _portFetch(`/api/projects/${pid}/ports/${headId}`, 'PATCH',
+            {labels: {long: v('pl-long-' + headId), short: v('pl-short-' + headId)},
+             label_source: v('pl-src-' + headId), tsl_in: v('pl-tsl-' + headId),
+             ...(document.getElementById('pl-reuse-' + headId)
+                 ? {reusable: document.getElementById('pl-reuse-' + headId).checked} : {})});
+        for (const k of kids) {
+            await _portFetch(`/api/projects/${pid}/ports/${k.id}`, 'PATCH',
+                {labels: {long: v('pl-long-' + k.id), short: v('pl-short-' + k.id)}});
+        }
+        showWireToast(window.t('projects.port_labels_saved'), 'ok');
+        st.edit = null;
+    } catch (e) { showWireToast(e.message, 'error'); }
+    chargerPorts(pid);
+}
+async function portAddKid(pid, headId, media) {
+    try { await _portFetch(`/api/projects/${pid}/ports/${headId}/children`, 'POST', {media}); }
+    catch (e) { showWireToast(e.message, 'error'); }
+    chargerPorts(pid);
+}
+async function portInternal(pid, portId, shm) {
+    try {
+        await _portFetch(`/api/projects/${pid}/ports/${portId}`, 'PATCH', {binding: {internal_shm: shm || null}});
+    } catch (e) { showWireToast(e.message, 'error'); }
+    chargerPorts(pid);
+}
+async function portDelete(pid, portId, nKids) {
+    if (!confirm(window.t(nKids ? 'projects.port_del_virtual_confirm' : 'projects.port_del_confirm'))) return;
+    try { await _portFetch(`/api/projects/${pid}/ports/${portId}`, 'DELETE'); }
+    catch (e) { showWireToast(e.message, 'error'); }
+    chargerPorts(pid);
 }
 
 /* ─── Macros système (admin, inter-projets — docs/reference/PROJETS.md §7) ── */

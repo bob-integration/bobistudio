@@ -19,7 +19,9 @@ est requis ; `redemarrer()` n'est appelé que sur action confirmée.
 import hashlib
 import json
 import logging
+import os
 import re
+import shlex
 
 from .host_ops import ssh_run
 
@@ -733,7 +735,6 @@ def ensure_rdma_netns_exclusive(host, run=None):
     if not host:
         return False, "host non configuré", False
     run = run or _run_ssh(host)
-    import shlex
     cmd = (
         "set -e; "
         f"cat > {RDMA_NETNS_UNIT_PATH} << 'MXLEOF'\n{RDMA_NETNS_UNIT}MXLEOF\n"
@@ -780,15 +781,22 @@ def ensure_rdma_netns_exclusive(host, run=None):
 # AUCUNE BANDE EN DUR non plus : la liste des isolés vient de /sys/devices/system/cpu/isolated,
 # donc elle suit automatiquement le cmdline ; celle des cœurs tout court vient de /sys.
 CPUFREQ_SCRIPT_PATH = "/usr/local/sbin/bobi-cpufreq-perf.sh"
+# Cœurs DÉDIÉS (core_pool, `node_core_alloc`) à épingler au plancher max, écrits par
+# l'orchestrateur à chaque réservation/libération. PERSISTANT (hors tmpfs) : l'unité le relit au
+# boot, sinon un redémarrage remettrait les cœurs dédiés au plancher bas en silence.
+CPUFREQ_DEDICATED_PATH = "/etc/bobi/cpufreq-dedicated"
 CPUFREQ_SCRIPT = """#!/bin/sh
-# BOBI — gouverneur `performance` sur TOUS les coeurs + plancher au max sur les coeurs ISOLES.
+# BOBI — gouverneur `performance` sur TOUS les coeurs + plancher au max sur les coeurs ISOLES
+# et sur les coeurs DEDIES (liste ecrite par l'orchestrateur dans @@DEDFILE@@) ; plancher RETIRE
+# (rendu a cpuinfo_min_freq) partout ailleurs.
 # Genere par app/mtl.py (ensure_cpufreq_performance) — ne pas editer a la main.
 set -u
 ISO=$(cat /sys/devices/system/cpu/isolated 2>/dev/null || true)
+DED=$(cat @@DEDFILE@@ 2>/dev/null | tr -d ' \\n' || true)
 
-# Bande isolee -> liste plate, pour tester l'appartenance cœur par cœur.
+# Bande isolee + coeurs dedies -> liste plate, pour tester l'appartenance cœur par cœur.
 iso_list=""
-for p in $(echo "$ISO" | tr ',' ' '); do
+for p in $(echo "$ISO,$DED" | tr ',' ' '); do
   lo=$(echo "$p" | cut -d- -f1); hi=$(echo "$p" | cut -d- -f2)
   [ -n "$lo" ] || continue
   i=$lo
@@ -804,32 +812,40 @@ for d in /sys/devices/system/cpu/cpu*/cpufreq; do
   cpu=$(echo "$d" | sed 's|.*/cpu\\([0-9]*\\)/cpufreq|\\1|')
   n=$((n+1))
   echo performance > "$d/scaling_governor" 2>/dev/null || rc=1
-  # Plancher force UNIQUEMENT sur les coeurs isoles : la ou le retour d'utilisation est casse.
+  # Plancher force UNIQUEMENT sur les coeurs isoles (retour d'utilisation casse) et dedies
+  # (echeance temps reel) ; ailleurs il est RETIRE, sinon un coeur libere chaufferait pour rien.
+  floor=0
   for k in $iso_list; do
-    if [ "$k" = "$cpu" ]; then
-      max=$(cat "$d/cpuinfo_max_freq" 2>/dev/null || true)
-      if [ -n "$max" ]; then
-        echo "$max" > "$d/scaling_min_freq" 2>/dev/null || rc=1
-        np=$((np+1))
-      else
-        rc=1
-      fi
-      break
-    fi
+    if [ "$k" = "$cpu" ]; then floor=1; break; fi
   done
+  if [ "$floor" = 1 ]; then
+    max=$(cat "$d/cpuinfo_max_freq" 2>/dev/null || true)
+    if [ -n "$max" ]; then
+      echo "$max" > "$d/scaling_min_freq" 2>/dev/null || rc=1
+      np=$((np+1))
+    else
+      rc=1
+    fi
+  else
+    lo=$(cat "$d/cpuinfo_min_freq" 2>/dev/null || true)
+    cur=$(cat "$d/scaling_min_freq" 2>/dev/null || true)
+    if [ -n "$lo" ] && [ "$cur" != "$lo" ]; then
+      echo "$lo" > "$d/scaling_min_freq" 2>/dev/null || rc=1
+    fi
+  fi
 done
 if [ "$n" = 0 ]; then
   echo "bobi-cpufreq: aucune interface cpufreq (pilote absent ?) -> rien a faire" >&2
   nofreq=1
 fi
-echo "bobi-cpufreq: $n coeur(s) en gouverneur performance ; $np coeur(s) isole(s) plancher au max (bande [$ISO])"
+echo "bobi-cpufreq: $n coeur(s) en gouverneur performance ; $np coeur(s) isole(s)/dedie(s) plancher au max (isoles [$ISO], dedies [$DED])"
 [ "$nofreq" = 1 ] && exit 1
 exit $rc
-"""
+""".replace("@@DEDFILE@@", CPUFREQ_DEDICATED_PATH)
 
 CPUFREQ_UNIT_PATH = "/etc/systemd/system/bobi-cpufreq-perf.service"
 CPUFREQ_UNIT = """[Unit]
-Description=BOBI epingle la frequence CPU (performance partout, plancher au max sur les coeurs isoles)
+Description=BOBI epingle la frequence CPU (performance partout, plancher au max sur les coeurs isoles et dedies)
 DefaultDependencies=no
 After=sysinit.target
 Before=docker.service
@@ -844,19 +860,29 @@ WantedBy=multi-user.target
 """
 
 
-def ensure_cpufreq_performance(host, run=None):
+def ensure_cpufreq_performance(host, run=None, dedicated=None):
     """Installe (idempotent) le script + l'unité systemd qui épinglent la fréquence des cœurs
-    ISOLÉS au maximum du CPU présent, PUIS les applique à chaud (`systemctl start`).
+    ISOLÉS (et DÉDIÉS) au maximum du CPU présent, PUIS les applique à chaud (`systemctl start`).
 
     Contrairement au cmdline, le gouverneur se pose à chaud : pas de reboot requis, et l'unité
     garantit la persistance au prochain boot (sans elle, un simple reboot réintroduit le bug).
     Un échec PARTIEL (un cœur sans interface cpufreq) fait échouer l'unité VOLONTAIREMENT : on
-    veut que la perte du pin soit visible, pas silencieuse. Renvoie (ok, msg)."""
+    veut que la perte du pin soit visible, pas silencieuse. Renvoie (ok, msg).
+
+    `dedicated` : cœurs DÉDIÉS (cpuset core_pool, ex. « 21-23 ») à épingler AUSSI au plancher
+    max — écrits dans CPUFREQ_DEDICATED_PATH, que le script relit (et l'unité au boot). « » vide
+    la liste (plancher retiré). None (préparation MTL, réparation) : la liste en place est gardée
+    telle quelle — ces chemins ne savent pas ce que `core_pool` a réservé."""
     if not host:
         return False, "host non configuré", False
     run = run or _run_ssh(host)
+    ded = ""
+    if dedicated is not None:
+        ded = ("mkdir -p %s; printf '%%s\\n' %s > %s; "
+               % (shlex.quote(os.path.dirname(CPUFREQ_DEDICATED_PATH)),
+                  shlex.quote(str(dedicated).strip()), shlex.quote(CPUFREQ_DEDICATED_PATH)))
     cmd = (
-        "set -e; "
+        "set -e; " + ded +
         f"cat > {CPUFREQ_SCRIPT_PATH} << 'MXLEOF'\n{CPUFREQ_SCRIPT}MXLEOF\n"
         f"chmod 0755 {CPUFREQ_SCRIPT_PATH}; "
         f"cat > {CPUFREQ_UNIT_PATH} << 'MXLEOF'\n{CPUFREQ_UNIT}MXLEOF\n"
@@ -875,6 +901,113 @@ def ensure_cpufreq_performance(host, run=None):
     detail = txt.splitlines()[-1].strip() if txt else "posée"
     return True, f"unité posée + enabled ; {detail[:160]}", False
 
+
+
+# Sonde de l'état cpufreq de TOUT le nœud (un seul aller-retour) : unité, script à jour, liste des
+# dédiés en place, et par cœur gouverneur / plancher / bornes. C'est la MESURE qui décide s'il faut
+# agir : `sync_dedicated_cpufreq` ne réinstalle rien sur un nœud déjà conforme.
+CPUFREQ_STATE_PROBE = (
+    "echo \"@@UNIT $(systemctl is-enabled bobi-cpufreq-perf.service 2>/dev/null)\"; "
+    "grep -q cpufreq-dedicated %s 2>/dev/null && echo '@@SCRIPT ok' || echo '@@SCRIPT old'; "
+    "echo \"@@DED $(cat %s 2>/dev/null | tr -d ' \\n')\"; "
+    "echo \"@@ISO $(cat /sys/devices/system/cpu/isolated 2>/dev/null)\"; "
+    "for d in /sys/devices/system/cpu/cpu*/cpufreq; do [ -d \"$d\" ] || continue; "
+    "c=${d%%/cpufreq}; c=${c##*/cpu}; "
+    "echo \"@@CPU $c|$(cat $d/scaling_governor 2>/dev/null)|$(cat $d/scaling_min_freq 2>/dev/null)"
+    "|$(cat $d/cpuinfo_min_freq 2>/dev/null)|$(cat $d/cpuinfo_max_freq 2>/dev/null)\"; done"
+) % (CPUFREQ_SCRIPT_PATH, CPUFREQ_DEDICATED_PATH)
+
+
+def _cpuset_set(txt):
+    out = set()
+    for part in str(txt or "").replace(" ", "").split(","):
+        if not part:
+            continue
+        lo, _, hi = part.partition("-")
+        try:
+            out.update(range(int(lo), int(hi or lo) + 1))
+        except ValueError:
+            continue
+    return out
+
+
+def cpufreq_state(run):
+    """→ dict mesuré : unit, script_ok, dedicated (set), isolated (set), cpus {n: (gov, min, lo, max)}.
+    None si la sonde est illisible (nœud injoignable) — jamais un état deviné."""
+    rc, out, _err = run(CPUFREQ_STATE_PROBE, timeout=30)
+    if rc != 0 or "@@UNIT" not in (out or ""):
+        return None
+    st = {"unit": False, "script_ok": False, "dedicated": set(), "isolated": set(), "cpus": {}}
+    for ln in (out or "").splitlines():
+        tag, _, val = ln.strip().partition(" ")
+        val = val.strip()
+        if tag == "@@UNIT":
+            st["unit"] = val == "enabled"
+        elif tag == "@@SCRIPT":
+            st["script_ok"] = val == "ok"
+        elif tag == "@@DED":
+            st["dedicated"] = _cpuset_set(val)
+        elif tag == "@@ISO":
+            st["isolated"] = _cpuset_set(val)
+        elif tag == "@@CPU":
+            parts = val.split("|")
+            if len(parts) != 5 or not parts[0].isdigit():
+                continue
+            try:
+                nums = [int(x) if x.strip() else None for x in parts[2:]]
+            except ValueError:
+                continue
+            st["cpus"][int(parts[0])] = (parts[1].strip(), nums[0], nums[1], nums[2])
+    return st
+
+
+def cpufreq_conforme(st, dedicated):
+    """Le nœud est-il DÉJÀ dans l'état voulu pour ces cœurs dédiés ? → (bool, raison).
+
+    Voulu : unité en place, script à jour, liste persistée == `dedicated`, TOUS les cœurs en
+    `performance`, plancher ≥95 % du max sur isolés ∪ dédiés, et AUCUN plancher ailleurs (un cœur
+    libéré qui garde son plancher chauffe pour rien et fausse toute mesure future)."""
+    if not st:
+        return False, "probe unreadable"
+    if not st["cpus"]:
+        return True, "no cpufreq interface"          # rien à épingler (VM, pilote absent)
+    if not st["unit"]:
+        return False, "unit not enabled"
+    if not st["script_ok"]:
+        return False, "outdated script"
+    if st["dedicated"] != set(dedicated):
+        return False, "dedicated list differs"
+    floor = st["isolated"] | set(dedicated)
+    for c, (gov, mn, lo, mx) in sorted(st["cpus"].items()):
+        if gov != "performance":
+            return False, "cpu %d governor %s" % (c, gov or "?")
+        if mx is None or mn is None:
+            continue
+        if c in floor and mn < 0.95 * mx:
+            return False, "cpu %d floor missing" % c
+        if c not in floor and lo is not None and mn > lo and mn >= 0.95 * mx:
+            return False, "cpu %d floor not released" % c
+    return True, "conforming"
+
+
+def sync_dedicated_cpufreq(node, dedicated, run=None):
+    """Met le nœud en `performance` avec plancher max sur ses cœurs DÉDIÉS — seulement s'il ne
+    l'est pas déjà (MESURE d'abord). Vaut pour TOUT nœud, 2110 ou non : la Z8 (DeckLink) n'était
+    jamais passée en performance, et les cœurs du mélangeur y tournaient à 1,0 GHz pour 4,0.
+
+    → (agi: bool, ok: bool, msg). Ne touche pas aux C-states."""
+    run = run or _run_agent(node)
+    ded = sorted(set(int(c) for c in (dedicated or [])))
+    st = cpufreq_state(run)
+    if st is None:
+        return False, False, "cpufreq probe unreadable (node unreachable?)"
+    conf, why = cpufreq_conforme(st, ded)
+    if conf:
+        return False, True, why
+    fmt = ",".join(str(c) for c in ded)
+    ok, msg, _ = ensure_cpufreq_performance((node or {}).get("host") or "node", run=run,
+                                            dedicated=fmt)
+    return True, ok, "%s -> %s" % (why, msg)
 
 # ─── IRQ housekeeping : déporte les IRQ hors des cœurs isolés du moteur 2110 ──────────────────
 # `isolcpus=managed_irq` ne couvre QUE les IRQ MANAGÉES (multiqueue NIC ice/E810). Toutes les
@@ -1059,7 +1192,9 @@ MXL_TMPFILES_PATH = "/etc/tmpfiles.d/bobi-mxl.conf"
 MXL_OPTIONS_UNIT_PATH = "/etc/systemd/system/bobi-mxl-options.service"
 def ensure_mxl_history(host, run=None, duree_ms=None):
     """Installe (idempotent) `/dev/shm/mxl/options.json` (profondeur des ring buffers MXL) +
-    l'unité systemd qui le repose au boot (tmpfs perdu au reboot, AVANT docker).
+    la config tmpfiles.d qui le repose au boot (tmpfs perdu au reboot, AVANT docker) — PAS une
+    unité systemd (cf. MXL_TMPFILES_PATH). Appelants : la prép MTL, et `sync_mxl_history` (tout
+    nœud qui porte le bus MXL, cf. app/mxl_history.py).
 
     RÉGLAGE DE NŒUD, PAS PAR-CONTENEUR : le SDK MXL ignore délibérément la durée passée à
     `mxlCreateInstance` et ne lit QUE ce fichier, à la racine du domaine (cf. commentaire ci-
@@ -1124,6 +1259,95 @@ def ensure_mxl_history(host, run=None, duree_ms=None):
     if unite_off:
         detail += " ; ancienne unité systemd retirée"
     return True, detail, False
+
+
+# Sonde de l'état de la profondeur MXL d'un nœud (un seul aller-retour, LECTURE seule) : domaine
+# présent, valeur VIVANTE (options.json du tmpfs), valeur PERSISTÉE (config tmpfiles.d — sa
+# VALEUR, pas sa seule présence : après un changement de réglage, un fichier présent mais ancien
+# reposerait l'ancienne profondeur au prochain boot), ancienne unité systemd, et nombre de flux
+# ouverts dans le domaine. C'est la MESURE qui décide s'il faut agir (`sync_mxl_history`).
+_MXL_NS_GREP = "grep -o 'history_duration/v1.0\"[[:space:]]*:[[:space:]]*[0-9]*' %s 2>/dev/null | grep -o '[0-9]*$'"
+MXL_HISTORY_STATE_PROBE = (
+    f"d={MXL_DOMAIN_DIR}; "
+    "echo \"@@DOM $([ -d \"$d\" ] && echo 1 || echo 0)\"; "
+    "echo \"@@CUR $(" + (_MXL_NS_GREP % "\"$d/options.json\"") + ")\"; "
+    "echo \"@@TMPF $(" + (_MXL_NS_GREP % MXL_TMPFILES_PATH) + ")\"; "
+    f"echo \"@@UNIT $([ -f {MXL_OPTIONS_UNIT_PATH} ] && echo 1 || echo 0)\"; "
+    "echo \"@@FLOWS $(ls -d \"$d\"/*.mxl-flow 2>/dev/null | wc -l)\"; "
+    "echo @@END"
+)
+
+
+def mxl_history_state(run):
+    """→ dict mesuré {domain, cur_ns, tmpf_ns, legacy_unit, flows}, ou None si la sonde est
+    illisible (nœud injoignable) — jamais un état deviné."""
+    rc, out, _err = run(MXL_HISTORY_STATE_PROBE, timeout=20)
+    if rc != 0 or "@@END" not in (out or ""):
+        return None
+    st = {"domain": False, "cur_ns": None, "tmpf_ns": None, "legacy_unit": False, "flows": 0}
+    for ln in (out or "").splitlines():
+        tag, _, val = ln.strip().partition(" ")
+        val = val.strip()
+        if tag == "@@DOM":
+            st["domain"] = val == "1"
+        elif tag == "@@CUR":
+            st["cur_ns"] = int(val) if val.isdigit() else None
+        elif tag == "@@TMPF":
+            st["tmpf_ns"] = int(val) if val.isdigit() else None
+        elif tag == "@@UNIT":
+            st["legacy_unit"] = val == "1"
+        elif tag == "@@FLOWS":
+            st["flows"] = int(val) if val.isdigit() else 0
+    return st
+
+
+def mxl_history_conforme(st, want_ms):
+    """Le nœud porte-t-il DÉJÀ la profondeur voulue ? → (bool, raison). Voulu : domaine présent,
+    valeur vivante == voulue, valeur persistée (tmpfiles.d) == voulue, plus d'ancienne unité."""
+    if not st:
+        return False, "probe unreadable"
+    want_ns = int(want_ms) * 1_000_000
+    if not st["domain"]:
+        return False, "no MXL domain"
+    if st["cur_ns"] != want_ns:
+        return False, ("options.json missing" if st["cur_ns"] is None
+                       else "live depth %d ms" % (st["cur_ns"] // 1_000_000))
+    if st["tmpf_ns"] != want_ns:
+        return False, ("tmpfiles.d missing" if st["tmpf_ns"] is None
+                       else "persisted depth %d ms" % (st["tmpf_ns"] // 1_000_000))
+    if st["legacy_unit"]:
+        return False, "legacy systemd unit present"
+    return True, "conforming"
+
+
+def sync_mxl_history(node, want_ms, run=None, create=False):
+    """Pose la profondeur MXL `want_ms` sur un nœud — seulement s'il ne la porte pas déjà (MESURE
+    d'abord). Vaut pour TOUT nœud qui porte le bus MXL, 2110 ou non : seule la prép MTL d'un nœud
+    2110 appelait `ensure_mxl_history`, et la Z8 (DeckLink) n'avait jamais reçu le fichier.
+
+    Un nœud SANS domaine MXL et sans config tmpfiles.d ne porte pas le bus : on ne lui en fabrique
+    pas un, sauf `create=True` (un conteneur va y être lancé, ou l'exploitant le demande).
+    Après écriture, l'état est RE-MESURÉ : « écrit » ne vaut pas « en place ».
+
+    → (agi: bool, ok: bool, msg, état_avant | None). Jamais de daemon-reload (cf.
+    MXL_TMPFILES_PATH)."""
+    run = run or _run_agent(node)
+    st = mxl_history_state(run)
+    if st is None:
+        return False, False, "MXL depth probe unreadable (node unreachable?)", None
+    if not create and not st["domain"] and st["tmpf_ns"] is None:
+        return False, True, "no MXL domain on node", st
+    conf, why = mxl_history_conforme(st, want_ms)
+    if conf:
+        return False, True, why, st
+    ok, msg, _ = ensure_mxl_history((node or {}).get("host") or "node", run=run, duree_ms=want_ms)
+    if not ok:
+        return True, False, "%s -> %s" % (why, msg), st
+    after = mxl_history_state(run)
+    conf2, why2 = mxl_history_conforme(after, want_ms)
+    if not conf2:
+        return True, False, "%s -> written but not in place (%s)" % (why, why2), st
+    return True, True, "%s -> %s" % (why, msg), st
 
 
 # ─── Identité du domaine MXL : `domain_def.json` (BCP-007-03) ────────────────────────────────

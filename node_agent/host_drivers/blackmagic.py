@@ -57,9 +57,10 @@ TOOL = "DesktopVideoUpdateTool"
 # survécu à la coupure et caché une carte réellement périmée.
 STATE_DIR = os.environ.get("BOBI_HOST_DRIVERS_STATE", "/var/lib/bobi-node-agent/host-drivers")
 MARKER = os.path.join(STATE_DIR, "blackmagic.flashed")
-# Où l'agent dépose ce que l'exploitant téléverse. C'est CE dossier qui rend l'installation
-# possible sur un nœud sans Internet : l'archive Blackmagic ne se télécharge pas toute seule,
-# elle exige d'accepter un contrat sur leur site. Aucun automate ne peut le faire à notre place.
+# Where the agent stores what the operator uploads. THIS directory is what makes the install
+# possible on a node with no Internet access, which is the normal case here. The archive itself
+# is fetched by hand from their site: a product registration form opens, and its "Download only"
+# link is enough — no account, no agreement (this comment claimed both until 2026-10-31).
 FILES_DIR = os.path.join(os.environ.get("BOBI_HOST_DRIVERS_FILES",
                                         "/var/lib/bobi-node-agent/drivers"), KIND)
 # Ce qu'on sait reconnaître dans ce dossier. L'archive officielle est un .tar.gz ; un .deb seul
@@ -295,6 +296,33 @@ def say(msg):
     sys.stdout.flush()
 
 
+def _architecture_noeud():
+    """L'architecture dpkg de CE nœud, pas celle qu'on suppose. `dpkg --print-architecture`
+    est la seule source : `uname -m` dit `x86_64` là où dpkg dit `amd64`, et comparer les deux
+    vocabulaires est exactement la faute qu'on corrige."""
+    rc, out = _sh("dpkg --print-architecture", timeout=30)
+    return (out or "").strip() if rc == 0 else ""
+
+
+def _filtrer_architecture(debs):
+    """Partage les .deb trouvés en (à poser, écartés) selon l'architecture du nœud.
+
+    Nommage Debian : `nom_version_arch.deb`. `all` est accepté — un paquet indépendant de
+    l'architecture est posable partout. Si l'architecture du nœud est INCONNUE (dpkg muet), on
+    ne jette rien : mieux vaut laisser dpkg trancher que d'écarter le bon paquet sur une
+    comparaison faite à vide.
+    """
+    arch = _architecture_noeud()
+    if not arch:
+        return list(debs), []
+    gardes, ecartes = [], []
+    for d in debs:
+        base = os.path.basename(d)
+        suffixe = base[:-4].rsplit("_", 1)[-1] if base.lower().endswith(".deb") else ""
+        (gardes if suffixe in (arch, "all") else ecartes).append(d)
+    return gardes, ecartes
+
+
 def installer_pilote(fichier):
     """Pose le paquet Desktop Video depuis le fichier DÉPOSÉ, sans aucun accès réseau.
 
@@ -327,11 +355,32 @@ def installer_pilote(fichier):
     if not debs:
         say("FAILED: no desktopvideo_*.deb found in %s" % fichier)
         return False
+
+    # ★★ L'ARCHIVE PORTE PLUSIEURS ARCHITECTURES, ET ON LES PASSAIT TOUTES À `dpkg` (25/10).
+    #    Vécu par le testeur sur la Z8 avec l'archive officielle 16.4 : « ce n'est pas la bonne
+    #    version, ce n'est pas de l'amd64 ». Un seul paquet étranger dans la ligne de commande
+    #    fait refuser dpkg, donc le paquet amd64 présent juste à côté n'était pas posé non plus.
+    #    On garde l'architecture du NŒUD, jamais celle qu'on espère — et `all` est légitime.
+    debs, ecartes = _filtrer_architecture(debs)
+    if not debs:
+        say("FAILED: none of the packages found match this node's architecture (%s)"
+            % _architecture_noeud())
+        for d in ecartes:
+            say("  found: %s" % os.path.basename(d))
+        return False
+    for d in ecartes:
+        say("Skipping %s (other architecture)" % os.path.basename(d))
+
     say("Installing %s" % ", ".join(os.path.basename(d) for d in debs))
-    rc, out = _sh("dpkg -i %s 2>&1 | tail -40" % " ".join(debs), timeout=1800)
-    for ligne in (out or "").splitlines():
-        if ligne.strip():
-            say("  " + ligne.strip())
+    # ⚠ PAS DE TUBE ICI. `dpkg -i … | tail -40` rend le code de `tail`, soit 0 QUOI QU'IL
+    #   ARRIVE : l'échec de dpkg était donc annoncé comme une réussite, et l'archive était
+    #   renommée `.installed` juste en dessous — une reprise ne trouvait plus rien à poser.
+    #   C'est ce qui rendait la panne de la Z8 muette alors que le message d'erreur de dpkg
+    #   s'affichait dans le journal du job. On tronque en Python, après avoir lu le code.
+    rc, out = _sh("dpkg -i %s 2>&1" % " ".join(debs), timeout=1800)
+    lignes = [l.strip() for l in (out or "").splitlines() if l.strip()]
+    for ligne in lignes[-40:]:
+        say("  " + ligne)
     if rc != 0:
         say("FAILED: dpkg returned %d" % rc)
         return False

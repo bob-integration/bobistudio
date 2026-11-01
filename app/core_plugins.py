@@ -28,42 +28,74 @@ _SAFE_ID     = re.compile(r'^[A-Za-z0-9_-]+$')
 _REQUIRED    = {"id", "label", "version", "nav_tab", "tab_template", "settings_keys"}
 
 _registry = None  # cache : dict id → {"manifest": ..., "module": ..., "dir": ...}
+# Registre EN COURS de construction, visible seulement pendant un scan (cf. `scan`).
+_scan_en_cours = None
 
 
 # ─── Scan & reload ───────────────────────────────────────────────────────────
 
 def scan() -> dict:
-    global _registry
+    """Registre des services du cœur, mis en cache.
+
+    ⚠ `scan()` est RÉENTRANT : il importe chaque service, et un service peut appeler `scan()`
+    depuis son propre import. Le registre n'est donc publié dans `_registry` qu'une fois
+    COMPLET, et une réentrance reçoit le registre partiel (`_scan_en_cours`).
+
+    Publier le dict vide avant de le remplir, comme on le faisait jusqu'au 2026-10-25, donnait
+    à l'appelant un dict qui GROSSISSAIT sous ses pieds :
+    `RuntimeError: dictionary changed size during iteration` dans `register_all_routes`, au
+    simple `import main` — donc tout le produit mort au boot. Mesuré sur un processus neuf au
+    premier run vert de la CI (run 40187687253) ; invisible ici, où le cache est déjà peuplé
+    par un import antérieur quand ce chemin est atteint.
+
+    Rendre `_registry` seulement à la fin SANS `_scan_en_cours` ne suffirait pas : la
+    réentrance verrait `None` et relancerait un scan complet — récursion sans fond.
+    """
+    global _registry, _scan_en_cours
     if _registry is not None:
         return _registry
-    _registry = {}
-    if not os.path.isdir(SERVICES_DIR):
-        log.warning(f"core_plugins: dossier services/ introuvable ({SERVICES_DIR})")
+    if _scan_en_cours is not None:
+        # Réentrance : le scan extérieur est suspendu sur un `import_module`, donc ce dict ne
+        # bouge pas le temps que l'appelant s'en serve.
+        return _scan_en_cours
+    _scan_en_cours = {}
+    try:
+        if not os.path.isdir(SERVICES_DIR):
+            log.warning(f"core_plugins: dossier services/ introuvable ({SERVICES_DIR})")
+            _registry, _scan_en_cours = _scan_en_cours, None
+            return _registry
+        for name in sorted(os.listdir(SERVICES_DIR)):
+            svc_dir = os.path.join(SERVICES_DIR, name)
+            if not os.path.isdir(svc_dir):
+                continue
+            manifest_path = os.path.join(svc_dir, "manifest.json")
+            if not os.path.isfile(manifest_path):
+                continue
+            try:
+                with open(manifest_path, encoding="utf-8") as f:
+                    manifest = json.load(f)
+            except Exception as e:
+                log.warning(f"core_plugins: {name}/manifest.json illisible : {e}")
+                continue
+            missing = _REQUIRED - set(manifest.keys())
+            if missing:
+                log.warning(f"core_plugins: {name}/manifest.json incomplet ({missing}), skipped")
+                continue
+            try:
+                mod = importlib.import_module(f"services.{name}")
+            except Exception as e:
+                log.warning(f"core_plugins: import services.{name} échoué : {e}, skipped")
+                continue
+            _scan_en_cours[manifest["id"]] = {"manifest": manifest, "module": mod, "dir": svc_dir}
+        # Publication ATOMIQUE : à partir d'ici seulement, les appelants reçoivent un dict figé.
+        _registry, _scan_en_cours = _scan_en_cours, None
         return _registry
-    for name in sorted(os.listdir(SERVICES_DIR)):
-        svc_dir = os.path.join(SERVICES_DIR, name)
-        if not os.path.isdir(svc_dir):
-            continue
-        manifest_path = os.path.join(svc_dir, "manifest.json")
-        if not os.path.isfile(manifest_path):
-            continue
-        try:
-            with open(manifest_path, encoding="utf-8") as f:
-                manifest = json.load(f)
-        except Exception as e:
-            log.warning(f"core_plugins: {name}/manifest.json illisible : {e}")
-            continue
-        missing = _REQUIRED - set(manifest.keys())
-        if missing:
-            log.warning(f"core_plugins: {name}/manifest.json incomplet ({missing}), skipped")
-            continue
-        try:
-            mod = importlib.import_module(f"services.{name}")
-        except Exception as e:
-            log.warning(f"core_plugins: import services.{name} échoué : {e}, skipped")
-            continue
-        _registry[manifest["id"]] = {"manifest": manifest, "module": mod, "dir": svc_dir}
-    return _registry
+    finally:
+        # Un scan qui part en exception (listdir illisible, service qui lève hors des
+        # `except` ci-dessus) laisserait sinon `_scan_en_cours` posé À VIE : tous les
+        # appels suivants rendraient un registre partiel, sans rien dire.
+        _scan_en_cours = None
+
 
 
 def reload():
@@ -80,15 +112,16 @@ def reload():
     Les versions rapportées à un pair (raison d'être de ce reload, cf. updater.py) viennent des
     manifest.json relus par scan(), PAS du module Python — un re-scan suffit. Un vrai changement
     de CODE service exige un redémarrage (convention projet)."""
-    global _registry
+    global _registry, _scan_en_cours
     _registry = None
+    _scan_en_cours = None
     scan()
 
 
 # ─── Helpers registre ────────────────────────────────────────────────────────
 
 def _entry(service_id):
-    return next((e for e in scan().values() if e["manifest"]["id"] == service_id), None)
+    return next((e for e in list(scan().values()) if e["manifest"]["id"] == service_id), None)
 
 
 def is_service(service_id) -> bool:
@@ -110,7 +143,8 @@ def is_service(service_id) -> bool:
 # its id `afv` is what the stored macros name, and the service id is `audio`. The service may be absent on an
 # instance: then the provider is simply not offered (no warning).
 CORE_PROVIDERS = ("app.transcode_farm", "app.media_registry", "app.monitor", "app.media_sharing", "services.audio.afv",
-                  "app.ops_journal", "app.playout_groups", "app.sync_groups")
+                  "app.ops_journal", "app.playout_groups", "app.sync_groups", "app.container_net",
+                  "app.project_routing", "app.cpu_weight")
 OPTIONAL_PROVIDERS = ("services.audio.afv",)
 
 
@@ -221,7 +255,7 @@ def read_service_state(service_id, state_id, ctx=None):
 
 
 def register_all_routes(bp):
-    for entry in scan().values():
+    for entry in list(scan().values()):
         fn = getattr(entry["module"], "register_routes", None)
         if callable(fn):
             try:
@@ -232,7 +266,7 @@ def register_all_routes(bp):
 
 def all_settings_defaults() -> dict:
     defaults = {}
-    for entry in scan().values():
+    for entry in list(scan().values()):
         for key, spec in entry["manifest"].get("settings_keys", {}).items():
             defaults[key] = spec.get("default")
     return defaults
@@ -246,7 +280,7 @@ def settings_schema() -> dict:
     plugin » → on étend simplement `settings_keys` du manifeste (rétrocompatible : un spec minimal
     {type, default} marche ; les champs optionnels enrichissent le rendu)."""
     out = {}
-    for entry in scan().values():
+    for entry in list(scan().values()):
         m = entry["manifest"]
         svc = m.get("id")
         for key, spec in (m.get("settings_keys") or {}).items():
@@ -382,11 +416,35 @@ def versions_meta(service_id) -> list:
         # et ne lire que les trois clés nues rendait un changelog vide ou périmé.
         from .plugins import parse_meta_changes
         secs, ch_, fx_, kb_ = parse_meta_changes(meta.get("changes"), v)
+        # Exigence de cœur de CETTE version : le manifeste vivant pour la courante, celui de
+        # l'archive sinon — et None quand l'archive n'en a pas, parce que « on ne sait pas » ne
+        # doit pas s'afficher « compatible » (même règle que les plugins).
+        if v == cur:
+            _cmin = _v.core_min_de(entry["manifest"])
+        else:
+            _mp = os.path.join(entry["dir"], "versions", v, "manifest.json")
+            _cmin = None
+            if os.path.isfile(_mp):
+                try:
+                    with open(_mp, encoding="utf-8") as _f:
+                        _cmin = _v.core_min_de(json.load(_f) or {})
+                except (ValueError, OSError):
+                    _cmin = None
+        if _cmin is None:
+            _cok = None
+        elif not _cmin:
+            _cok = True
+        elif not _v.comparable(_v.VERSION, _cmin):
+            _cok = None
+        else:
+            _cok = bool(_v.au_moins(_v.VERSION, _cmin))
         result.append({
             "version":      v,
             "current":      v == cur,
             "published_at": meta.get("published_at") or meta.get("date"),
             "imported_at":  meta.get("imported_at"),
+            "core_min":     _cmin,
+            "core_ok":      _cok,
             "sections":     secs,
             "changes":      ch_,
             "fixes":        fx_,
@@ -436,7 +494,10 @@ def stamp_imported_at(src_dir):
 
 
 def _flat_names(d):
-    return [n for n in os.listdir(d) if n != "versions" and not n.startswith("__pycache__")]
+    """Comme `plugins._flat_names` : `.git` en est exclu, et pour la même raison — les services
+    sont des sous-modules, et `_clear_flat` effaçait leur dépôt à chaque activation (31/10)."""
+    return [n for n in os.listdir(d)
+            if n not in ("versions", ".git") and not n.startswith("__pycache__")]
 
 
 def _copy_into(src_dir, dst_dir, names):

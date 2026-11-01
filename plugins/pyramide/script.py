@@ -61,7 +61,8 @@ def _mxl_lib_state():
 # proxy committé, temps mort avant le grain source suivant) ; gen2 cadencé (~5 s) dans la boucle
 # d'agrégation (avec N workers non synchronisés il n'y a pas de point sûr global, mais grâce à
 # gc.freeze() le gen2 dure ~0,1 ms — inoffensif même à cheval sur une bande), durée mesurée →
-# métrique gc_full_ms sur :8080. RIEN À VOIR avec inst.garbage_collect() (GC du ring MXL), intact.
+# métrique gc_full_ms sur :8080. RIEN À VOIR avec inst.garbage_collect() (GC du ring MXL), que la
+# pyramide n'appelle PLUS (2026-10-29 : global au domaine, cf. _sync_proxies).
 gc.collect(2)
 gc.freeze()
 gc.disable()
@@ -414,6 +415,9 @@ class MetricsHandler(BaseHTTPRequestHandler):
         # comblement d'un trou par le producteur — cadence, index et statut de lecture restent
         # tous parfaits pendant l'épisode. Calculé à la requête : aucun coût par trame.
         payload["invalid_grains"] = bobimxl.invalid_grains_report()
+        # Avance des index émis sur la grille TAI (bobimxl.index_report, grid_ms en ms signées, positif =
+        # futur) : seul témoin d'une sortie écrite dans le futur, la cadence restant parfaite.
+        payload["index_ahead"] = bobimxl.index_report()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -575,9 +579,12 @@ def _sync_proxies(src, lyt, current):
             keep.append(_make_proxy(name, lyt, pw, ph))
         except Exception as _e:
             log(f"proxy {{name}} : création impossible : {{_e}}", "warning")
-    if want:
-        try: inst.garbage_collect()   # récupère les flux des proxies retirés
-        except Exception: pass
+    # ★ PLUS DE `inst.garbage_collect()` ICI (2026-10-29). Il est GLOBAL au domaine : il supprime
+    # tout flux sans lecteur ni écrivain À L'INSTANT où il passe. Pendant une réorganisation des
+    # entrées, un proxy reste un instant SANS écrivain (l'ancien worker l'a fermé, le nouveau ne
+    # l'a pas encore rouvert) : le GC d'un autre worker le supprimait sous le nouvel écrivain →
+    # `open_grain` en MXL_ERR_INVALID_ARG (8), worker mort (Z8 #220, 28/10). Un proxy retiré reste
+    # donc dans le domaine (quelques Mo) ; il est réutilisé tel quel si sa source revient.
     return keep
 
 def _close_proxies(proxies):
@@ -642,6 +649,66 @@ def _ouverture_ok(slot):
         _ko = metrics.get("entrees_ko")
         if _ko:
             _ko.pop(str(slot), None)
+
+
+# ── ÉCHEC D'ÉCRITURE D'UN PROXY : attrapé, PUBLIÉ, réparé ─────────────────────────────────────
+#
+# Incident Z8 du 2026-10-28 (#220) : pendant une réorganisation des entrées, `open_grain` d'un
+# proxy a levé `MXLError … mxlStatus 8` HORS de tout try. Le worker est mort, le processus a
+# continué (les autres slots tournaient), donc ni `script_stopped` ni alerte : proxy figé 1 841 s,
+# 0 fps, et seul ce compteur à zéro le disait. Même famille que `entrees_ko` ci-dessus, côté
+# SORTIE : on trace (sans rafale), on PUBLIE (`sorties_ko`), et on répare — les proxies de l'entrée
+# sont fermés puis recréés au tour suivant, avec un palier pour ne pas boucler à 50 Hz.
+_sortie_ko_etat = {{}}    # slot → {{"n", "motif", "t0"}}
+_derniere_ecriture = {{}}  # slot → time.time() du dernier grain proxy COMMITTÉ (lu par l'agrégation)
+_fils_etat = {{}}          # slot → {{"relances", "dernier_motif"}} (garde de fil, cf. _worker_garde)
+
+
+def _sortie_ko(slot, motif):
+    st = _sortie_ko_etat.get(slot)
+    if st is None:
+        st = {{"n": 0, "motif": motif, "t0": time.time()}}
+        _sortie_ko_etat[slot] = st
+    st["n"] += 1
+    st["motif"] = motif
+    n = st["n"]
+    if n <= 3 or n % 100 == 0:
+        log(f"pyramide: entrée {{slot}} — écriture des proxies IMPOSSIBLE : {{motif}} "
+            f"(tentative {{n}}, depuis {{int(time.time() - st['t0'])}} s) — proxies recréés", "warning")
+    with metrics_lock:
+        metrics.setdefault("sorties_ko", {{}})[str(slot)] = {{
+            "motif": motif, "tentatives": n, "depuis_s": int(time.time() - st["t0"])}}
+    return min(2.0, 0.05 * (2 ** min(n, 6)))
+
+
+def _sortie_ok(slot):
+    st = _sortie_ko_etat.pop(slot, None)
+    if st is not None:
+        log(f"pyramide: entrée {{slot}} — écriture des proxies rétablie après {{st['n']}} "
+            f"tentative(s) et {{int(time.time() - st['t0'])}} s", "warning")
+        with metrics_lock:
+            _ko = metrics.get("sorties_ko")
+            if _ko:
+                _ko.pop(str(slot), None)
+
+
+def _worker_garde(slot):
+    """Cible du fil d'un slot. `worker` boucle pour toujours : s'il en SORT, c'est qu'il est mort
+    (exception non prévue). On le dit — journal, `fils` sur :8080 — et on le RELANCE après un
+    palier. Un fil mort en silence est exactement la panne du 28/10 ; aucun slot ne doit pouvoir
+    s'arrêter sans que personne ne le sache."""
+    n = 0
+    while True:
+        try:
+            worker(slot)
+            motif = "worker sorti de sa boucle"
+        except BaseException as e:                                         # noqa: BLE001
+            motif = "%s: %s" % (type(e).__name__, e)
+        n += 1
+        st = _fils_etat.setdefault(slot, {{"relances": 0, "dernier_motif": None}})
+        st["relances"] = n; st["dernier_motif"] = motif; st["t"] = time.time()
+        log(f"pyramide: fil de l'entrée {{slot}} MORT ({{motif}}) — relance n°{{n}}", "error")
+        time.sleep(min(5.0, 0.2 * (2 ** min(n, 5))))
 
 
 def worker(slot):
@@ -735,17 +802,16 @@ def worker(slot):
                 # Watchdog : source figée trop longtemps → rouvrir le Reader (shm recréé sous
                 # le même nom) — même logique que le chemin historique, bornée à 1×/_STALE_REOPEN_NS.
                 if (time.time_ns() - last_fresh_ns) > _STALE_REOPEN_NS:
-                    try: reader.close()
-                    except Exception: pass
-                    # GC ENTRE close et reopen (parade générique du piège des générations, cf.
-                    # moteur tx_reopen_if_stale) : sans GC le flux périmé reste résolvable par
-                    # nom et le reopen retombe sur L'ORPHELIN → gel permanent (mesuré : pyramide
-                    # figée 40 min après recréation de sa source, tout l'aval sans données).
-                    try: inst.garbage_collect()
-                    except Exception: pass
+                    # Réouverture sur une Instance DÉDIÉE (bobimxl `reopen`) : cache vierge, le
+                    # NOM résout vers la génération VIVANTE et non vers l'orphelin (gel de 40 min
+                    # mesuré quand on rouvrait sur l'Instance partagée). Le `garbage_collect()`
+                    # qui faisait ce travail ici est retiré : global au domaine, il supprimait les
+                    # flux des autres (cf. _sync_proxies).
                     try:
-                        reader = bobimxl.Reader(inst, in_name)
+                        reader.reopen()
                     except Exception:
+                        try: reader.close()
+                        except Exception: pass
                         reader = None; in_name = None
                     last_fresh_ns = time.time_ns()
                     if reader is None:
@@ -791,93 +857,101 @@ def worker(slot):
             # depuis cette nuit et c'est ce qui a permis de le corriger ; la pyramide n'avait que
             # son total. Trois postes, sur la MÊME trame : ouverture des grains de sortie, écriture
             # des bandes (`_emit_band`, tous proxies), et commits progressifs.
-            _t_open0 = time.time_ns()
-            _t_emit = 0; _t_commit = 0
-            outs = []   # [pd, gi_p, vue_y, vue_u, vue_v, lignes_écrites, k_commité]
-            for pd in proxies:
-                _gx, gi_p, vw_p = pd["writer"].open_grain(src_index=idx)
-                # ÉCART D'INDEX écrit − source (diagnostic 2026-08-11). `open_grain(src_index=)`
-                # est censé PROPAGER la coordonnée du grain source ; mais `next_index` applique
-                # `max(candidat, _counter + 1)`, donc un writer qui a pris de l'avance UNE fois ne
-                # peut plus jamais redescendre sur sa source — la propagation devient à sens
-                # unique et l'écart accumulé est PERMANENT. Un consommateur lisant la tête reçoit
-                # alors du contenu vieux de cet écart, sans qu'aucun compteur de latence ne le
-                # voie (le grain est écrit à l'heure, c'est son CONTENU qui est vieux).
-                _ecart_idx[pd["name"]] = int(_gx) - int(idx)
-                pys = pd["pw"] * pd["ph"] * bps
-                puv = pd["uw"] * pd["uh"] * bps
-                outs.append([pd, gi_p,
-                             vw_p[:pys].view(np_dt).reshape(pd["ph"], pd["pw"]),
-                             vw_p[pys:pys + puv].view(np_dt).reshape(pd["uh"], pd["uw"]),
-                             vw_p[pys + puv:pys + 2 * puv].view(np_dt).reshape(pd["uh"], pd["uw"]),
-                             0, 0])
-            if proxies:
-                _pire = max(proxies, key=lambda q: _ecart_idx.get(q["name"], 0))
-                _sd.observe(_pire["writer"],
-                            int(idx) + int(_ecart_idx.get(_pire["name"], 0)),
-                            [(reader, idx)], propage=True)
-            # Budget d'attente TOTAL ≈ 1,5 période de trame : une source en retard ne bloque
-            # jamais les proxies au-delà d'une demi-trame après le nominal.
-            deadl_ns = time.monotonic_ns() + int(1.5e9 * src_lyt["fps_den"]
-                                                 / max(1, src_lyt["fps_num"]))
-            valid = max(1, int(gi_s.validSlices or 1))
-            wait_ns = 0   # cumul des ATTENTES get_slice — exclues de own/latency_ms (le cap
-                          # réactif de l'orchestrateur y lit la SATURATION du worker, pas le
-                          # suivi du fil ; sinon lat≈période → délestage de proxies à tort)
-            for j in range(1, total + 1):
-                if j > valid:
-                    left = deadl_ns - time.monotonic_ns()
-                    _w0 = time.monotonic_ns()
-                    g = (reader.get_slice(idx, j, timeout_ns=max(1, left))
-                         if left > 0 else None)
-                    wait_ns += time.monotonic_ns() - _w0
-                    if g is not None:
-                        valid = max(j, int(g[1].validSlices or j))
-                    else:
-                        # Budget épuisé / producteur en retard → REPLI : compléter TOUS les
-                        # proxies avec le reste du DERNIER grain COMPLET (idx-1) si disponible
-                        # (léger tearing d'UNE image), sinon les lignes déjà écrites restent ;
-                        # commit FINAL dans tous les cas (un grain laissé partiel ne serait
-                        # jamais lisible par un consommateur whole-frame) puis on sort.
-                        gp = reader.get(idx - 1, timeout_ns=2_000_000) if idx > 0 else None
-                        if gp is not None:
-                            try:
-                                arrp = gp[2][:src_lyt["fr_sz"]].view(np_dt)
-                                y0 = arrp[:ny].reshape(src_h, src_lyt["width"])
-                                u0 = arrp[ny:ny + nu].reshape(s_uvh, src_lyt["uv_w"])
-                                v0 = arrp[ny + nu:ny + 2 * nu].reshape(s_uvh, src_lyt["uv_w"])
-                            except Exception:
-                                gp = None
-                        for out in outs:
+            try:
+                _t_open0 = time.time_ns()
+                _t_emit = 0; _t_commit = 0
+                outs = []   # [pd, gi_p, vue_y, vue_u, vue_v, lignes_écrites, k_commité]
+                for pd in proxies:
+                    _gx, gi_p, vw_p = pd["writer"].open_grain(src_index=idx)
+                    # ÉCART D'INDEX écrit − source (diagnostic 2026-08-11). `open_grain(src_index=)`
+                    # est censé PROPAGER la coordonnée du grain source ; mais `next_index` applique
+                    # `max(candidat, _counter + 1)`, donc un writer qui a pris de l'avance UNE fois ne
+                    # peut plus jamais redescendre sur sa source — la propagation devient à sens
+                    # unique et l'écart accumulé est PERMANENT. Un consommateur lisant la tête reçoit
+                    # alors du contenu vieux de cet écart, sans qu'aucun compteur de latence ne le
+                    # voie (le grain est écrit à l'heure, c'est son CONTENU qui est vieux).
+                    _ecart_idx[pd["name"]] = int(_gx) - int(idx)
+                    pys = pd["pw"] * pd["ph"] * bps
+                    puv = pd["uw"] * pd["uh"] * bps
+                    outs.append([pd, gi_p,
+                                 vw_p[:pys].view(np_dt).reshape(pd["ph"], pd["pw"]),
+                                 vw_p[pys:pys + puv].view(np_dt).reshape(pd["uh"], pd["uw"]),
+                                 vw_p[pys + puv:pys + 2 * puv].view(np_dt).reshape(pd["uh"], pd["uw"]),
+                                 0, 0])
+                if proxies:
+                    _pire = max(proxies, key=lambda q: _ecart_idx.get(q["name"], 0))
+                    _sd.observe(_pire["writer"],
+                                int(idx) + int(_ecart_idx.get(_pire["name"], 0)),
+                                [(reader, idx)], propage=True)
+                # Budget d'attente TOTAL ≈ 1,5 période de trame : une source en retard ne bloque
+                # jamais les proxies au-delà d'une demi-trame après le nominal.
+                deadl_ns = time.monotonic_ns() + int(1.5e9 * src_lyt["fps_den"]
+                                                     / max(1, src_lyt["fps_num"]))
+                valid = max(1, int(gi_s.validSlices or 1))
+                wait_ns = 0   # cumul des ATTENTES get_slice — exclues de own/latency_ms (le cap
+                              # réactif de l'orchestrateur y lit la SATURATION du worker, pas le
+                              # suivi du fil ; sinon lat≈période → délestage de proxies à tort)
+                for j in range(1, total + 1):
+                    if j > valid:
+                        left = deadl_ns - time.monotonic_ns()
+                        _w0 = time.monotonic_ns()
+                        g = (reader.get_slice(idx, j, timeout_ns=max(1, left))
+                             if left > 0 else None)
+                        wait_ns += time.monotonic_ns() - _w0
+                        if g is not None:
+                            valid = max(j, int(g[1].validSlices or j))
+                        else:
+                            # Budget épuisé / producteur en retard → REPLI : compléter TOUS les
+                            # proxies avec le reste du DERNIER grain COMPLET (idx-1) si disponible
+                            # (léger tearing d'UNE image), sinon les lignes déjà écrites restent ;
+                            # commit FINAL dans tous les cas (un grain laissé partiel ne serait
+                            # jamais lisible par un consommateur whole-frame) puis on sort.
+                            gp = reader.get(idx - 1, timeout_ns=2_000_000) if idx > 0 else None
                             if gp is not None:
-                                _emit_band(out, y0, u0, v0, src_lyt, out[0]["ph"])
-                            out[0]["writer"].commit(out[1], valid_slices=None)
-                        break
-                # Tranche source j dispo : lignes [0, sr) valides sur les 3 plans → pour chaque
-                # proxy, n'écrire QUE le delta de lignes désormais calculables (dernière ligne
-                # source requise < sr, même mapping nearest que resize_plane), borné par les
-                # lignes CHROMA source garanties (sc = sr // s_ch, plancher conservateur).
-                sr = min(src_h, j * islh)
-                sc = sr // s_ch
-                for out in outs:
-                    pd = out[0]
-                    n_y = min(pd["ph"], (sr * pd["ph"] + src_h - 1) // src_h)
-                    n_c = min(pd["uh"], (sc * pd["uh"] + s_uvh - 1) // s_uvh)
-                    _e0 = time.time_ns()
-                    _emit_band(out, y0, u0, v0, src_lyt, min(n_y, n_c * pd["chp"]))
-                    _t_emit += time.time_ns() - _e0
-                    _c0 = time.time_ns()
-                    if j == total:
-                        # Commit FINAL : validSlices=totalSlices → grain complet publié.
-                        pd["writer"].commit(out[1], valid_slices=None)
-                    elif pd["sh"]:
-                        k = out[5] // pd["sh"]
-                        if k > out[6]:   # commit progressif (réveille l'aval), jamais en arrière
-                            out[6] = k
-                            pd["writer"].commit(out[1], valid_slices=k)
-                    _t_commit += time.time_ns() - _c0
-            out_ns = time.time_ns()
-            _vent[0] = (_t_open0, _t_emit, _t_commit)
+                                try:
+                                    arrp = gp[2][:src_lyt["fr_sz"]].view(np_dt)
+                                    y0 = arrp[:ny].reshape(src_h, src_lyt["width"])
+                                    u0 = arrp[ny:ny + nu].reshape(s_uvh, src_lyt["uv_w"])
+                                    v0 = arrp[ny + nu:ny + 2 * nu].reshape(s_uvh, src_lyt["uv_w"])
+                                except Exception:
+                                    gp = None
+                            for out in outs:
+                                if gp is not None:
+                                    _emit_band(out, y0, u0, v0, src_lyt, out[0]["ph"])
+                                out[0]["writer"].commit(out[1], valid_slices=None)
+                            break
+                    # Tranche source j dispo : lignes [0, sr) valides sur les 3 plans → pour chaque
+                    # proxy, n'écrire QUE le delta de lignes désormais calculables (dernière ligne
+                    # source requise < sr, même mapping nearest que resize_plane), borné par les
+                    # lignes CHROMA source garanties (sc = sr // s_ch, plancher conservateur).
+                    sr = min(src_h, j * islh)
+                    sc = sr // s_ch
+                    for out in outs:
+                        pd = out[0]
+                        n_y = min(pd["ph"], (sr * pd["ph"] + src_h - 1) // src_h)
+                        n_c = min(pd["uh"], (sc * pd["uh"] + s_uvh - 1) // s_uvh)
+                        _e0 = time.time_ns()
+                        _emit_band(out, y0, u0, v0, src_lyt, min(n_y, n_c * pd["chp"]))
+                        _t_emit += time.time_ns() - _e0
+                        _c0 = time.time_ns()
+                        if j == total:
+                            # Commit FINAL : validSlices=totalSlices → grain complet publié.
+                            pd["writer"].commit(out[1], valid_slices=None)
+                        elif pd["sh"]:
+                            k = out[5] // pd["sh"]
+                            if k > out[6]:   # commit progressif (réveille l'aval), jamais en arrière
+                                out[6] = k
+                                pd["writer"].commit(out[1], valid_slices=k)
+                        _t_commit += time.time_ns() - _c0
+                out_ns = time.time_ns()
+                _vent[0] = (_t_open0, _t_emit, _t_commit)
+            except Exception as _e_out:
+                # Écriture d'un proxy impossible (ex. flux supprimé sous l'écrivain) : on ne meurt
+                # PAS. Proxies de l'entrée fermés, recréés au tour suivant (my_gen = -1).
+                _pause = _sortie_ko(slot, "%s: %s" % (type(_e_out).__name__, _e_out))
+                _close_proxies(proxies); proxies = []; my_gen = -1
+                last_idx = idx
+                time.sleep(_pause); continue
         else:
             # ─── Verrou 1:1 : attendre un NOUVEAU grain source (chemin historique) ───
             got = reader.get_latest()
@@ -890,17 +964,16 @@ def worker(slot):
                 # _STALE_REOPEN_NS (pas de thrash si la source est réellement morte ; reopen
                 # inoffensif sinon).
                 if (time.time_ns() - last_fresh_ns) > _STALE_REOPEN_NS:
-                    try: reader.close()
-                    except Exception: pass
-                    # GC ENTRE close et reopen (parade générique du piège des générations, cf.
-                    # moteur tx_reopen_if_stale) : sans GC le flux périmé reste résolvable par
-                    # nom et le reopen retombe sur L'ORPHELIN → gel permanent (mesuré : pyramide
-                    # figée 40 min après recréation de sa source, tout l'aval sans données).
-                    try: inst.garbage_collect()
-                    except Exception: pass
+                    # Réouverture sur une Instance DÉDIÉE (bobimxl `reopen`) : cache vierge, le
+                    # NOM résout vers la génération VIVANTE et non vers l'orphelin (gel de 40 min
+                    # mesuré quand on rouvrait sur l'Instance partagée). Le `garbage_collect()`
+                    # qui faisait ce travail ici est retiré : global au domaine, il supprimait les
+                    # flux des autres (cf. _sync_proxies).
                     try:
-                        reader = bobimxl.Reader(inst, in_name)
+                        reader.reopen()
                     except Exception:
+                        try: reader.close()
+                        except Exception: pass
                         reader = None; in_name = None
                     last_fresh_ns = time.time_ns()
                     if reader is None:
@@ -935,25 +1008,34 @@ def worker(slot):
             # (un échec partiel — ex. Y posé, chroma refusé — fait ré-écrire toute la trame par le
             # repli : sûr, mêmes octets qu'avant recalculés dans les mêmes vues).
             bps = src_lyt["bps"]; np_dt = src_lyt["np_dt"]
-            for pd in proxies:
-                _gi_idx, gi_p, vw_p = pd["writer"].open_grain(src_index=idx)
-                pys = pd["pw"] * pd["ph"] * bps
-                puv = pd["uw"] * pd["uh"] * bps
-                py_v = vw_p[:pys].view(np_dt).reshape(pd["ph"], pd["pw"])
-                pu_v = vw_p[pys:pys + puv].view(np_dt).reshape(pd["uh"], pd["uw"])
-                pv_v = vw_p[pys + puv:pys + 2 * puv].view(np_dt).reshape(pd["uh"], pd["uw"])
-                if not (_MVK
-                        and _mvk_place_plane(py_v, y0, pd["ph"], pd["pw"])
-                        and _mvk_place_plane(pu_v, u0, pd["uh"], pd["uw"])
-                        and _mvk_place_plane(pv_v, v0, pd["uh"], pd["uw"])):
-                    py_v[...] = resize_plane(y0, pd["ph"], pd["pw"])
-                    pu_v[...] = resize_plane(u0, pd["uh"], pd["uw"])
-                    pv_v[...] = resize_plane(v0, pd["uh"], pd["uw"])
-                pd["writer"].commit(gi_p)
+            try:
+                for pd in proxies:
+                    _gi_idx, gi_p, vw_p = pd["writer"].open_grain(src_index=idx)
+                    pys = pd["pw"] * pd["ph"] * bps
+                    puv = pd["uw"] * pd["uh"] * bps
+                    py_v = vw_p[:pys].view(np_dt).reshape(pd["ph"], pd["pw"])
+                    pu_v = vw_p[pys:pys + puv].view(np_dt).reshape(pd["uh"], pd["uw"])
+                    pv_v = vw_p[pys + puv:pys + 2 * puv].view(np_dt).reshape(pd["uh"], pd["uw"])
+                    if not (_MVK
+                            and _mvk_place_plane(py_v, y0, pd["ph"], pd["pw"])
+                            and _mvk_place_plane(pu_v, u0, pd["uh"], pd["uw"])
+                            and _mvk_place_plane(pv_v, v0, pd["uh"], pd["uw"])):
+                        py_v[...] = resize_plane(y0, pd["ph"], pd["pw"])
+                        pu_v[...] = resize_plane(u0, pd["uh"], pd["uw"])
+                        pv_v[...] = resize_plane(v0, pd["uh"], pd["uw"])
+                    pd["writer"].commit(gi_p)
+            except Exception as _e_out:
+                _pause = _sortie_ko(slot, "%s: %s" % (type(_e_out).__name__, _e_out))
+                _close_proxies(proxies); proxies = []; my_gen = -1
+                last_idx = idx
+                time.sleep(_pause); continue
             out_ns = time.time_ns()
 
         last_idx = idx
         produced += 1
+        _derniere_ecriture[slot] = time.time()
+        if slot in _sortie_ko_etat:
+            _sortie_ok(slot)
         # Point sûr GC par worker (cf. bloc gc.disable() en tête) : le dernier proxy du grain est
         # committé, temps mort avant le grain source suivant. gen0+gen1 seulement (sub-ms) — le
         # gen2 cadencé vit dans la boucle d'agrégation.
@@ -981,7 +1063,7 @@ def worker(slot):
 
 
 # ─── Boucle d'agrégation des métriques globales ─────────────
-threads = [threading.Thread(target=worker, args=(i,), daemon=True) for i in range(N_INPUTS)]
+threads = [threading.Thread(target=_worker_garde, args=(i,), daemon=True) for i in range(N_INPUTS)]
 for t in threads:
     t.start()
 
@@ -1007,6 +1089,11 @@ while True:
         srcs = metrics["sources"]
         total_fps = 0.0
         for slot, s in srcs.items():
+            # ÂGE DE LA DERNIÈRE ÉCRITURE de proxy : le seul chiffre qui distingue « entrée qui
+            # produit » d'« entrée figée » sans dépendre du delta de frame_index (publié tous les
+            # 25 grains). L'orchestrateur alerte dessus (pyramide_entree_figee).
+            _tw = _derniere_ecriture.get(int(slot)) if str(slot).isdigit() else None
+            s["age_ecriture_s"] = round(now - _tw, 1) if _tw else None
             fi = s.get("frame_index") or 0
             pf, pt = _fps_prev.get(slot, (fi, now - 1.0))
             dt = now - pt
@@ -1019,6 +1106,10 @@ while True:
         metrics["frame_index"] = max((s.get("frame_index") or 0) for s in srcs.values()) if srcs else 0
         metrics["own_latency_ms"] = round(sum(owns) / len(owns), 1) if owns else None
         metrics["ecart_index"] = dict(_ecart_idx)
+        # Fils : vivant ? relancé combien de fois, pourquoi ? (cf. _worker_garde)
+        metrics["fils"] = {{str(i): {{"vivant": threads[i].is_alive(),
+                                     **(_fils_etat.get(i) or {{"relances": 0}})}}
+                           for i in range(len(threads))}}
         # Le PIRE des sources : un proxy qui a dérivé ne doit pas être noyé par les sains.
         _pubs = [q for q in (sd.publish() for sd in list(_delai_etage.values())) if q]
         metrics["delai_etage_trames"] = (max(_pubs, key=lambda q: q.get("vieux_moy") or 0)

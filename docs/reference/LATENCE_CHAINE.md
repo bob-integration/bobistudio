@@ -4,6 +4,10 @@
 > latence. Écrit après le constat suivant, page Câbles, mode « Cumulé » : le mur affiche **4,3 ms**
 > alors qu'il ajoute **4,0 trames (80 ms)** à la chaîne — un facteur ~19. Ce n'est pas un bug de
 > calcul : c'est qu'on additionne une grandeur qui n'est pas celle qu'on croit lire.
+>
+> **Mise à jour du 2026-11-01** (vérifiée dans le code) : le plan du §8 est exécuté sauf la mesure du
+> TX et `avsync`. Les §2 à §4 décrivent l'état du 2026-08-18 et portent chacun un bandeau ; le §1
+> (sémantique), le §5 (mesure datée) et le §6 (TX) font toujours foi.
 
 ---
 
@@ -38,9 +42,16 @@ pas être mal lu.
 
 ---
 
-## 2. Ce que la page Câbles additionne aujourd'hui
+## 2. Ce que la page Câbles additionnait (état du 2026-08-18)
 
-`app/routes/home_dashboard.py:967`, `_delay_out(vmid)`, le long de l'entrée de RÉFÉRENCE :
+> **⛔ Remplacé** : la page Câbles a maintenant deux axes (`templates/cables.html`, modes `charge`,
+> `delai`, `delai_cum`). L'axe **Charge** garde ce cumul (`_delay_out` / `_delay_out_shm`,
+> `app/routes/home_dashboard.py`) et affiche le temps de calcul rapporté au budget de trame. L'axe
+> **Délai** relaie `delai_etage_trames` (cache `metrics.delai_etage_cache`), prend le **maximum sur
+> toutes les entrées** (`_delai_signal_shm`), et nomme les étages non mesurés (`complet`,
+> `manquants`) au lieu d'afficher zéro. Le constat ci-dessous reste vrai pour l'axe Charge.
+
+`app/routes/home_dashboard.py:967` (ligne de l'époque), `_delay_out(vmid)`, le long de l'entrée de RÉFÉRENCE :
 
 ```
 delay_total = base(récursif amont) + transit(arête de réf) + own_latency_ms(ce nœud)
@@ -55,8 +66,8 @@ aucune trame. Relevé sur le parc, serveur en cours :
 | pyramide | 0,6 ms | non publié |
 | avsync | 4,3 ms | non publié |
 
-`grep -rn delai_etage_trames app/ templates/ static/` → **aucune occurrence**. La seule mesure
-directe de la chaîne est publiée sur `:8080` et **jetée**.
+`grep -rn delai_etage_trames app/ templates/ static/` → **aucune occurrence** (le 2026-08-18 ; remonté
+depuis, cf. bandeau). La seule mesure directe de la chaîne était publiée sur `:8080` et **jetée**.
 
 ### Les shards SONT comptés
 
@@ -68,6 +79,12 @@ n'est donc pas « la composition seule » — il est faux pour une autre raison,
 ---
 
 ## 3. Les deux bouts manquants
+
+> **⛔ Corrigé pour la réception** : la capture 2110 est désormais le **segment A** du cumul
+> (`_delay_out_shm` rend `_rx_lat_by_shm` pour un flux du moteur, sur les deux axes ; la moitié RX
+> porte aussi `delai_etage` avec `reception: true`). **L'émission reste non mesurée** : elle est
+> affichée comme constante étiquetée (`delai_emission`, 1,00 trame, `estime: true`, et `delai_fil` =
+> pire entrée + émission), conformément au §6.
 
 | segment | réalité mesurée | dans le cumul |
 |---|---|---|
@@ -84,6 +101,10 @@ le délai à son ENTRÉE (`delay_in_ms`), jamais le coût de sa mise sur le fil.
 ---
 
 ## 4. Un bug : la collision de vmid RX/TX corrompt le cumul
+
+> **⛔ Corrigé** : le cumul interroge le FLUX (`_delay_out_shm(shm, …)`), pas le conteneur, et
+> `_delay_out` rend 0 pour un vmid scindé (`_split_vmids`) au lieu de suivre les entrées du TX.
+> La clé retenue est donc le shm, non le couple (vmid, rôle) proposé ci-dessous.
 
 Les deux moitiés du moteur 2110 sont **deux nœuds de topologie portant le MÊME vmid** (619 —
 « (RX) » et « (TX) »). `_delay_out` est keyé sur le vmid seul (`_memo[vmid]`, `in_v_edges[vmid]`).
@@ -104,7 +125,8 @@ Correctif : clé de cumul = **(vmid, rôle)** et non vmid seul, partout où le m
 
 ## 5. Référence mesurée — la chaîne réelle
 
-Mesure aux bandeaux-sonde du **2026-08-12** (âge absolu du contenu contre horloge TAI ; la seule
+Mesure aux bandeaux-sonde du **2026-08-12** (moteur `2110_io` de l'époque, non rejouée sur les
+versions suivantes) (âge absolu du contenu contre horloge TAI ; la seule
 méthode qui ait un contrôle interne, cf. `latence-age-absolu-contre-horloge-tai`) :
 
 | étage | trames | ms |
@@ -130,9 +152,9 @@ La question ouverte était « on ne peut pas vraiment mesurer le TX ». C'est in
 impossible, c'est **jamais fait**. État du moteur (`plugins/2110_io/mtl_rx.c`) :
 
 **Chemin TRANCHE (`SLICE_MODE=1`) — l'essentiel est déjà là :**
-- `notify_frame_done` est câblé (`tx_sl_frame_done`, l.2117) ;
-- `meta->epoch` donne l'instant fil exact, et le code s'en sert déjà (`_lead`, l.2004) ;
-- un accumulateur `sl_emit_ns` mesure déjà « 1ʳᵉ sollicitation → frame_done » (l.768).
+- `notify_frame_done` est câblé (`tx_sl_frame_done`, l.2164 au 2026-11-01) ;
+- `meta->epoch` donne l'instant fil exact, et le code s'en sert déjà (`_lead`, l.2051) ;
+- un accumulateur `sl_emit_ns` mesure déjà « 1ʳᵉ sollicitation → frame_done » (l.788).
 
 Il manque à confronter cet epoch au **TAI du grain** — l'index de grain MXL étant normativement
 dérivé du temps, l'âge du contenu au moment du départ fil est directement calculable.
@@ -143,9 +165,10 @@ dérivé du temps, l'âge du contenu au moment du départ fil est directement ca
   de `get_frame` raterait l'attente qui suit `put_frame`, où la trame patiente jusqu'à son epoch.
   Il faut ajouter le callback pour lire l'epoch réellement utilisé.
 
-Le modèle à répliquer est `accum_rx_latency` (l.997) : différence d'horodatages avec retrait de
-l'écart TAI↔UTC par arrondi seconde. Le helper de conversion (`media_ts_to_tai`, l.291) existe, et
-l'horodatage matériel est déjà activé sous `tp_wanted()` (`MTL_FLAG_ENABLE_HW_TIMESTAMP`, l.3929).
+Le modèle à répliquer est `accum_rx_latency` (l.1017) : différence d'horodatages avec retrait de
+l'écart TAI↔UTC par arrondi seconde. Le helper de conversion (`media_ts_to_tai`, l.293) existe, et
+l'horodatage matériel est déjà activé sous `tp_wanted()` (`MTL_FLAG_ENABLE_HW_TIMESTAMP`, l.4020).
+Constat du 2026-11-01 : toujours aucun compteur d'âge à l'émission dans `mtl_rx.c`.
 
 **Verdict : du C borné dans un seul fichier, pas un problème de recherche.** À valider contre la
 sonde à bandeaux — aucun compteur interne ne fait foi seul, c'est la leçon des quatre conclusions
@@ -158,6 +181,8 @@ telle est honnête ; une constante silencieuse est un mensonge.
 ---
 
 ## 7. Ce qu'il faut afficher — deux axes, pas un
+
+> **Réalisé** (constat 2026-11-01) : les deux axes existent sur la page Câbles (voir bandeau du §2).
 
 Le tort de l'interface actuelle est d'avoir **un seul sélecteur** (« Par étape ⇄ Cumulé ») pour
 deux questions différentes. Il en faut deux, explicitement nommés :
@@ -180,6 +205,11 @@ total.
 ---
 
 ## 8. Plan
+
+> **État au 2026-11-01** : étapes 1 à 4 faites (voir bandeaux §2-§4). Étape 5 faite pour 7 des 8
+> plugins listés — `delai_etage_trames` est publié par `color_corrector`, `delay`, `mixer`,
+> `pyramide`, `split`, `udc`, `v210_bridge` (et `multiview`) ; **`avsync` ne le publie pas**.
+> Étape 6 (mesure du TX) : non faite, l'émission reste une constante étiquetée.
 
 1. **Corriger la collision vmid RX/TX** (clé `(vmid, rôle)`) — bug franc, indépendant du reste.
 2. **Intégrer le segment A** : `rx_latency_ms` entre dans le cumul au lieu d'être un badge isolé.

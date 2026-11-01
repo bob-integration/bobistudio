@@ -32,7 +32,7 @@ def api_settings_manifest():
 def api_services():
     from .. import core_plugins, settings as _st
     result = []
-    for entry in core_plugins.scan().values():
+    for entry in list(core_plugins.scan().values()):
         m   = entry["manifest"]
         mod = entry["module"]
         status = {}

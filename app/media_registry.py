@@ -77,7 +77,9 @@ def db():
         conns = _tls.conns = {}
     c = conns.get(path)
     if c is None:
-        c = sqlite3.connect(path)
+        # Même garde que database.get_db : un test n'ouvre le registre de production qu'en lecture.
+        from .database import connect_guarded, production_db_path
+        c = connect_guarded(path, prod_path=production_db_path("db_medias.db"))
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA busy_timeout=5000")
         c.execute("PRAGMA journal_mode=WAL")
@@ -175,8 +177,10 @@ def _init(c):
     cols = {r[1] for r in c.execute("PRAGMA table_info(media_assets)")}
     if "producer" not in cols:
         c.execute("ALTER TABLE media_assets ADD COLUMN producer TEXT")      # conteneur qui l'a produit
+    # `file_created` : date de CRÉATION du média (≠ created_at, son entrée dans la base) — celle
+    # inscrite dans le fichier (`file_created_src`='meta'), sinon la date du fichier original ('file').
     for col, typ in (("derived_from", "TEXT"), ("relation", "TEXT"), ("process_json", "TEXT"),
-                     ("default_version", "TEXT")):
+                     ("default_version", "TEXT"), ("file_created", "TEXT"), ("file_created_src", "TEXT")):
         if col not in cols:
             c.execute("ALTER TABLE media_assets ADD COLUMN %s %s" % (col, typ))   # filiation, traitement, version
     cols = {r[1] for r in c.execute("PRAGMA table_info(media_files)")}
@@ -247,7 +251,9 @@ def scan_node(node_id, probe_max=200):
     if not node:
         raise RuntimeError("nœud %s introuvable" % node_id)
     c = db()
-    known = {r["path"]: [r["size"], r["mtime"], r["fingerprint"], bool(r["tech_json"])]
+    # Fiche technique « connue » = relevée depuis qu'elle porte `created` : les fichiers analysés avant
+    # le 2026-10-29 sont réanalysés une fois, au rythme normal de l'analyse (probe_max par passage).
+    known = {r["path"]: [r["size"], r["mtime"], r["fingerprint"], bool(r["tech_json"]) and '"created"' in r["tech_json"]]
              for r in c.execute("SELECT * FROM media_files WHERE node_id=? AND share_id=0 AND kind='main'", (node_id,))}
     # PROXYS : rangés dans des dossiers cachés que le relevé ne parcourt pas — ils sont vérifiés par
     # LEUR chemin (existence, taille), jamais par la réconciliation des fichiers principaux (qui les
@@ -293,6 +299,8 @@ def scan_node(node_id, probe_max=200):
                    1 if f.get("growing") else 0, now, f.get("producer"), f.get("derived_from"),
                    json.dumps(f["process"], ensure_ascii=False) if f.get("process") else None, f.get("origin"),
                    version if aid else ORIGINAL))
+        if aid and version == ORIGINAL and not f.get("growing"):
+            _note_file_created(c, aid, tech, f.get("mtime"))
         if aid is None:
             summary["unreferenced"] += 1
         elif version != ORIGINAL:
@@ -328,6 +336,7 @@ def scan_node(node_id, probe_max=200):
             ps = [f["path"] for f in auto if f.get("origin") == org]
             if ps:
                 import_files(node_id, ps, origin=org)
+        summary["auto_binned"] = _producer_bins(auto)
         summary["auto_imported"] = len(auto)
     for r in c.execute("SELECT path, asset_id FROM media_files WHERE node_id=? AND share_id=0 AND kind='main'", (node_id,)).fetchall():
         if r["path"] in seen:
@@ -509,6 +518,8 @@ def import_files(node_id, paths, origin="import", project_id=None, want_ids=None
         if ppid and not project_id:
             c.execute("INSERT OR IGNORE INTO project_media(project_id, asset_id, added_at) VALUES (?,?,?)", (ppid, aid, now))
         c.execute("UPDATE media_files SET asset_id=?, version=? WHERE node_id=? AND path=?", (aid, version, node_id, p))
+        if version == ORIGINAL and not r["growing"]:
+            _note_file_created(c, aid, r["tech_json"], r["mtime"])
         if project_id:
             c.execute("INSERT OR IGNORE INTO project_media(project_id, asset_id, added_at) VALUES (?,?,?)",
                       (int(project_id), aid, now))
@@ -530,6 +541,62 @@ def import_files(node_id, paths, origin="import", project_id=None, want_ids=None
     for aid in closed:
         proxy_auto(aid, node_id)
     return ids
+
+
+def _iso_local(v):
+    """Date ISO (souvent UTC « …Z », parfois avec fuseau) → heure LOCALE « AAAA-MM-JJTHH:MM:SS »,
+    comme created_at. Illisible → None."""
+    import datetime
+    s = str(v or "").strip()
+    if not s:
+        return None
+    try:
+        d = datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if d.tzinfo is not None:
+        d = d.astimezone().replace(tzinfo=None)
+    return d.strftime("%Y-%m-%dT%H:%M:%S") if d.year > 1971 else None
+
+
+def _note_file_created(c, aid, tech, mtime):
+    """Date de création du média, d'après une copie de son ORIGINAL : celle inscrite dans le fichier
+    l'emporte toujours ; à défaut, la plus ANCIENNE date de fichier vue (une copie faite sans garder
+    la date en porterait une plus récente). `tech` : dict ou JSON."""
+    t = _j(tech, None) if isinstance(tech, str) else tech
+    meta = _iso_local((t or {}).get("created"))
+    if meta:
+        c.execute("UPDATE media_assets SET file_created=?, file_created_src='meta' WHERE id=? "
+                  "AND (file_created_src IS NOT 'meta' OR file_created IS NOT ?)", (meta, aid, meta))
+    elif mtime:
+        ft = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(int(mtime)))
+        c.execute("UPDATE media_assets SET file_created=?, file_created_src='file' WHERE id=? "
+                  "AND (file_created_src IS NULL OR (file_created_src='file' AND file_created > ?))", (ft, aid, ft))
+
+
+def _producer_bins(files):
+    """Range dans leur BIN les fichiers d'un producteur qui l'ont demandé (`bin` du sidecar, choisi
+    sur le recorder) — à l'IMPORT seulement : un clip sorti du bin ensuite n'y est pas remis. Le bin
+    doit exister, ne pas être intelligent, et être global ou du projet du producteur : un recorder
+    ne range rien dans le bin d'un autre projet. Renvoie le nombre de médias rangés."""
+    c, n = db(), 0
+    for f in files:
+        if not f.get("bin") or not f.get("id"):
+            continue
+        b = c.execute("SELECT project_id, query_json FROM media_bins WHERE id=?", (int(f["bin"]),)).fetchone()
+        if not b or b["query_json"]:
+            continue
+        if b["project_id"] is not None and b["project_id"] != _producer_project(f.get("producer")):
+            continue
+        if not c.execute("SELECT 1 FROM media_assets WHERE id=?", (f["id"],)).fetchone():
+            continue
+        try:
+            bin_add(int(f["bin"]), [f["id"]])
+        except ValueError as e:              # devenu intelligent ou supprimé entre-temps : l'analyse continue
+            log.warning("media registry: %s not filed in bin %s: %s", f["id"], f["bin"], e)
+            continue
+        n += 1
+    return n
 
 
 def _producer_project(hostname):
@@ -799,11 +866,31 @@ def _agent_copy(sn, dn, src_rel, dest_rel, size, mtime, progress=None):
             raise RuntimeError("copie en échec : %s" % (st.get("error") or st.get("state")))
 
 
+def _local_copy(node, src_rel, dest_rel):
+    """Copie SUR PLACE, d'un chemin du volume média à un autre : lien dur (instantané, aucune place
+    prise — un média ne se réécrit pas, seul son sidecar change), sinon copie qui garde la date. Le
+    sidecar est RECOPIÉ, jamais lié : renommer ou retamponner une copie ne doit pas toucher l'autre."""
+    from . import node_driver
+    m = _mount(node).rstrip("/") + "/"
+    s, d = m + src_rel, m + dest_rel
+    q = shlex.quote
+    cmd = ("mkdir -p %s && { ln -T %s %s 2>/dev/null || { cp -p --reflink=auto -T %s %s && mv -n -T %s %s; }; }"
+           " && { test ! -e %s || cp -p -T %s %s; }") % (
+        q(os.path.dirname(d)), q(s), q(d), q(s), q(d + ".partial"), q(d + ".partial"), q(d),
+        q(s + ".xml"), q(s + ".xml"), q(d + ".xml"))
+    rc, _o, e = node_driver.host_exec(node, cmd, timeout=6 * 3600)
+    if rc != 0:
+        node_driver.host_exec(node, "rm -f %s" % q(d + ".partial"), timeout=20)
+        raise RuntimeError("copie sur place en échec : %s" % ((e or "").strip()[-300:] or "code %s" % rc))
+
+
 def copy_asset(aid, dest_node_id, dest_rel=None, progress=None, version=None):
     """Copie VÉRIFIÉE d'un média vers un nœud : fichier + sidecar (qui porte l'identité et la
     version), puis analyse du nœud cible et comparaison d'empreinte — celle de la VERSION copiée
     (`version`, défaut : la version par défaut du média). Une copie de cette version déjà présente
-    sur ce nœud est réutilisée. Renvoie le chemin (relatif au volume) de la copie.
+    sur ce nœud est réutilisée ; à un AUTRE chemin de ce nœud, elle sert de source sur place
+    (`_local_copy`, lien dur) — aucun autre nœud n'est requis. Renvoie le chemin (relatif au volume)
+    de la copie.
 
     Transport : DIRECT entre agents quand les deux le permettent (agent ≥ 0.24.0, TLS) ; sinon
     repli root-SSH relayé par l'orchestrateur (agents plus anciens)."""
@@ -812,11 +899,16 @@ def copy_asset(aid, dest_node_id, dest_rel=None, progress=None, version=None):
     if not c.execute("SELECT 1 FROM media_assets WHERE id=?", (aid,)).fetchone():
         raise ValueError("média inconnu")
     version = resolve_version(aid, version)
-    have = c.execute("""SELECT path FROM media_files WHERE asset_id=? AND node_id=? AND state='present' AND share_id=0
-                        AND growing=0 AND kind='main' AND version=?""", (aid, int(dest_node_id), version)).fetchone()
+    have = c.execute("""SELECT node_id, path, mtime, size FROM media_files WHERE asset_id=? AND node_id=? AND state='present'
+                        AND share_id=0 AND growing=0 AND kind='main' AND version=?""", (aid, int(dest_node_id), version)).fetchone()
     if have and (dest_rel is None or have["path"] == dest_rel):
         return have["path"]
-    src = c.execute("""SELECT node_id, path, mtime, size FROM media_files WHERE asset_id=? AND state='present' AND share_id=0
+    # Une copie déjà sur CE nœud mais ailleurs que le chemin voulu (hors du dossier du projet d'un player)
+    # sert de source SUR PLACE : seul un autre nœud était cherché, et un cluster à un nœud ne pouvait pas
+    # « Charger » un média rangé hors du dossier du projet (Z8, 2026-10-28 : « aucune copie complète sur un
+    # autre nœud », alors que le fichier était là).
+    local = bool(have)
+    src = have or c.execute("""SELECT node_id, path, mtime, size FROM media_files WHERE asset_id=? AND state='present' AND share_id=0
                        AND growing=0 AND kind='main' AND version=? AND node_id!=? ORDER BY node_id LIMIT 1""",
                     (aid, version, int(dest_node_id))).fetchone()
     if not src:
@@ -856,6 +948,12 @@ def copy_asset(aid, dest_node_id, dest_rel=None, progress=None, version=None):
     d_abs = _mount(dn).rstrip("/") + "/" + rel
     if already:
         pass
+    elif local:
+        if rel == src["path"]:
+            return rel
+        _local_copy(dn, src["path"], rel)
+        if progress:
+            progress(1.0)
     elif node_driver.transfer_capable(sn) and node_driver.transfer_capable(dn):
         # Direct : le fichier, puis son sidecar (qui porte l'identité). La date d'origine est
         # reposée par l'agent cible.
@@ -1301,6 +1399,7 @@ _PROC = ("COALESCE(json_extract(a.process_json, '{0}'), (SELECT json_extract(v.p
 SEARCH_FIELDS = {
     "name":         ("text",   "a.name"),
     "created_at":   ("date",   "a.created_at"),
+    "file_created": ("date",   "a.file_created"),
     "updated_at":   ("date",   "a.updated_at"),
     "origin":       ("enum",   "a.origin"),
     "producer":     ("enum",   "a.producer"),
@@ -1884,6 +1983,7 @@ def send_to(vmid, action, paths, params=None, origins=None, user=""):
 # ─── Lecture ────────────────────────────────────────────────────────────────────────────────
 def _asset_dict(r, files=None, has_proxy=None, has_storyboard=None):
     d = {"id": r["id"], "name": r["name"], "created_at": r["created_at"], "updated_at": r["updated_at"],
+         "file_created": r["file_created"], "file_created_src": r["file_created_src"],
          "origin": r["origin"], "producer": r["producer"], "fingerprint": r["fingerprint"], "size": r["size"],
          "derived_from": r["derived_from"], "relation": r["relation"],
          "tech": _j(r["tech_json"], None), "meta": _j(r["meta_json"], {}),

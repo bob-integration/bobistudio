@@ -17,12 +17,14 @@ et fournit les deux directions de la réconciliation (B2) :
 Alerte à transition (pattern membw/node_health) : dicts d'état en mémoire, seed muet au
 1er passage, info au retour à la normale.
 """
+import json
 import logging
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from .database import (db_get_nodes, db_get_container, db_update_status, db_update_fps,
+from .database import (db_get_nodes, db_get_node, db_get_container, db_update_status, db_update_fps,
                        db_add_alert)
 from .episodes import EtatEpisodes as _Episodes
 
@@ -358,6 +360,34 @@ def oublier_absent(vmid):
             log.error(f"fleet_status: oubli absent {vmid}: {e}")
 
 
+def _alerter_disparu(c, vmid, nid, name):
+    """Alerte DISPARU — et si le plugin exige un pilote hôte que l'agent-nœud dit ABSENT, c'est
+    CETTE cause que l'alerte nomme (Z8, 30/10 : « disparu » pour un decklink_io sans pilote).
+    La question à l'agent-nœud peut prendre des secondes : jamais dans la boucle de surveillance."""
+    params = {"h": c.get("hostname") or vmid, "dn": name, "n": _nom_noeud(nid)}
+
+    def generique():
+        db_add_alert("alert.deploy.container_disparu", "error", vmid=vmid, node_id=nid,
+                     kind="deploy", params=params)
+    from . import host_driver_gate
+    try:
+        type_ = (json.loads(c.get("deploy_config") or "{}") or {}).get("type")
+    except (TypeError, ValueError):
+        type_ = None
+    if not (type_ and host_driver_gate.required_driver(type_)):
+        generique()
+        return
+
+    def avec_cause():
+        cause = host_driver_gate.missing_cause(type_, db_get_node(nid))
+        if not cause:
+            generique()
+            return
+        db_add_alert("alert.deploy.container_disparu_pilote", "error", vmid=vmid, node_id=nid,
+                     kind="deploy", params=dict(params, k=cause[0], code=cause[1]))
+    threading.Thread(target=avec_cause, daemon=True, name=f"gone-cause-{vmid}").start()
+
+
 def reconcile(states, unreachable):
     """Réconciliation DB↔réalité (B2) sur les nœuds JOIGNABLES uniquement."""
     from .node_recovery import _desired_running
@@ -380,10 +410,7 @@ def reconcile(states, unreachable):
                     db_update_status(vmid, "stopped")
                 except Exception:
                     pass
-                db_add_alert("alert.deploy.container_disparu", "error", vmid=vmid, node_id=nid,
-                             kind="deploy",
-                             params={"h": c.get("hostname") or vmid, "dn": name,
-                                     "n": _nom_noeud(nid)})
+                _alerter_disparu(c, vmid, nid, name)
             elif not gone and _gone_prev.get(vmid):
                 db_add_alert("alert.deploy.container_revenu", "info", vmid=vmid, node_id=nid,
                              kind="deploy",

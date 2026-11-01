@@ -14,7 +14,7 @@ from flask import jsonify, request
 
 from . import bp, _node_host
 from .shared import _fetch_host_nics, _mtl_total_queues, _ptp_apply_core
-from .images import _build_host, _ssh_bin, _present_tags, _image_tag, _image_present
+from .images import _build_host, _present_tags, _image_tag, _image_present
 from .nodes import _node_build_status
 from ..auth import require_perm, require_login
 from ..addressing import (controller_ipv4s as _controller_ipv4s,
@@ -74,11 +74,72 @@ def api_net_reach_test():
     return jsonify(out)
 
 
+def _cn_mode_payload(node, node_id, sug):
+    """Champs du MODE du réseau des conteneurs (mode, shim, interne) — UNE source, DEUX routes.
+
+    ★ POURQUOI CETTE FONCTION EXISTE (trouvé le 2026-10-30 sur la nouvelle Z8 tout-en-un).
+    Ces champs n'étaient rendus que par `GET /api/nodes/<id>/container-network` — une route
+    qu'AUCUN appelant de l'interface n'utilise. Le panneau qui les lit (`_secNetwork` dans
+    settings.html) est nourri par `/readiness`, qui ne les portait pas. Donc `cn.mode` valait
+    toujours `undefined`, et le sélecteur affichait « Réseau du site » sur un nœud en mode
+    INTERNE. Trois conséquences, toutes vécues :
+
+    - un clic sur « Reconfigurer le réseau » sans rien toucher POSTait `mode='site'` ; et comme
+      `data-initial` valait « site » lui aussi, la confirmation de bascule ne se déclenchait
+      pas. Le réseau interne était donc détruit pour tenter un macvlan, SANS UN MOT ;
+    - le bloc du shim, gaté sur `cn.shim_requis`, ne s'affichait JAMAIS, sur aucun nœud — donc
+      le bouton « Poser le shim » était inatteignable, et l'isolation parent/enfant macvlan
+      d'un tout-en-un restait sans remède accessible ;
+    - `interne_possible` étant `undefined`, le mode interne était proposé partout, y compris
+      là où le serveur le refuse.
+
+    La leçon est celle de [[garde-sur-le-producteur-ne-prouve-pas-le-lecteur]] : une route qui
+    PUBLIE correctement ne prouve pas qu'un lecteur la lise. Une seule source, et les deux
+    routes la servent.
+    """
+    from .. import container_net as _cn, addressing as _adr, settings as _st
+    from ..config import NET_INTERNE_SUBNET_DEFAUT
+    from ..database import node_net_mode
+    _ok, _raison, _avert = _cn.mode_interne_possible(node)
+    _requis = _cn.shim_requis(node)
+    return {
+        "mode": node_net_mode(node),
+        "subnet_interne": (node.get("container_net_subnet") or "").strip()
+                          or NET_INTERNE_SUBNET_DEFAUT,
+        "shim_ip": (node.get("container_net_shim_ip") or "").strip(),
+        "shim_requis": _requis,
+        # `etat_shim` COÛTE un appel à l'hôte : seulement là où un shim a un sens (mode site sur
+        # un tout-en-un), pas sur chaque nœud du parc à chaque ouverture du panneau.
+        "shim_etat": (_cn.etat_shim(node) if _requis else None),
+        # Pool d'IP proposé HORS du subnet de la carte conteneurs : « Reconfigurer » détruirait
+        # un réseau qui marche pour le recréer là où le nœud n'est pas (relevé sur la Z8, 27/10).
+        "pool_hors_subnet": (lambda t: {"carte": t[0], "ifname": t[1], "pool": t[2]}
+                             if t[0] else None)(
+            _cn.pool_hors_subnet(node_id, (sug or {}).get("subnet"))),
+        # Adresse par laquelle le SITE joint l'hôte — et sa PROVENANCE. En mode interne, toutes
+        # les URL données aux navigateurs passent par là : si elle est fausse, le symptôme est un
+        # panneau noir sans message. Le panneau doit donc la MONTRER, pas la supposer.
+        "adresse_navigateur": dict(_adr.resolution_adresse_navigateur(node),
+                                   override=(_st.setting_for("browser_host", node_id) or "").strip()),
+        "interne_possible": _ok,
+        "interne_refus": _raison,
+        "interne_avertissement": _avert,
+        # ★ `est_tout_en_un`, PAS `host in controller_ipv4s()`. Un tout-en-un installé par
+        # `install/install.py` est enrôlé sous 127.0.0.1, et la boucle locale ne figure jamais
+        # dans `controller_ipv4s()` : l'ancienne comparaison était donc FAUSSE sur exactement le
+        # cas qu'elle devait reconnaître. C'est le défaut que `container_net.est_tout_en_un`
+        # existe pour ne plus refaire — il était resté ici, dans la charge utile de readiness.
+        "allinone": _cn.est_tout_en_un(node),
+    }
+
+
 @bp.route("/api/nodes/<int:node_id>/container-network", methods=["GET"])
 @require_perm("settings.edit")
 def api_node_container_network_get(node_id):
-    import shlex as _sh
-    from .. import node_driver, settings as _st
+    # `shlex` et `settings` ne servaient plus ici : leur dernier usage (`setting_for` pour
+    # l'adresse navigateur) est passé dans `_cn_mode_payload`. Retirés en passant — pyflakes les
+    # signalait, et un import mort fait croire que la fonction en a besoin.
+    from .. import node_driver
     node = db_get_node(node_id)
     if not node:
         return jsonify({"error": "nœud introuvable"}), 404
@@ -90,7 +151,10 @@ def api_node_container_network_get(node_id):
     # nœud dont le macvlan pend dans le vide s'affiche parfaitement sain : il répond au ping, son
     # agent va bien, ses capacités sont déclarées — et aucun de ses conteneurs n'est joignable.
     etat_res = node_driver.etat_reseau_conteneurs(node)
+    # Mode / shim / mode interne : UNE seule source, partagée avec `/readiness` (cf. la
+    # docstring de `_cn_mode_payload` — c'est le lecteur qui manquait, pas le producteur).
     return jsonify({
+        **_cn_mode_payload(node, node_id, sug),
         "nics": caps.get("nics") or [],
         "networks": caps.get("networks") or [],
         "current": node.get("docker_network") or "",
@@ -107,10 +171,91 @@ def api_node_container_network_get(node_id):
         "controller_ips": _controller_ipv4s(),
     })
 
+# Le mode du réseau des conteneurs vit dans `app/container_net.py` : l'INSTALLEUR doit pouvoir
+# l'appliquer sans Flask (tout-en-un, avant qu'aucune session n'existe), et une logique qui rend
+# des `jsonify` n'est appelable que depuis une requête. Ici ne restent que des enveloppes.
+from ..container_net import (appliquer_mode_interne as _appliquer_mode_interne_core,
+                             recreer_si_divergent as _recreer_si_divergent)   # noqa: E402
+
+
+def _appliquer_mode_interne(node, node_id, d):
+    code, charge = _appliquer_mode_interne_core(node, node_id, d)
+    return (jsonify(charge), code) if code != 200 else jsonify(charge)
+
+
+@bp.route("/api/nodes/<int:node_id>/container-network/shim", methods=["POST"])
+@require_perm("settings.edit")
+def api_node_shim_set(node_id):
+    """Pose (ou retire) le shim macvlan de l'hôte, SANS toucher au réseau des conteneurs.
+
+    ★ POURQUOI UNE ACTION À PART (relevé par la session Z8 le 2026-10-27, après déploiement).
+    Le shim n'était posé qu'en passant par « Reconfigurer le réseau ». Or reconfigurer DÉTRUIT
+    les conteneurs du nœud dès qu'un paramètre diffère — alors que poser un shim ne détruit RIEN :
+    c'est une interface de plus sur l'hôte et des routes vers la plage des conteneurs. Obliger à
+    traverser un geste destructeur pour obtenir un correctif inoffensif est un mauvais marché, et
+    sur un nœud qui porte de la production c'est le genre de marché qu'on refuse — donc qu'on ne
+    fait pas, donc le shim reste absent et les conteneurs injoignables.
+
+    Et l'orchestrateur ne le pose pas de lui-même : la lecture de l'état est un GET, et un GET qui
+    modifie le réseau de l'hôte serait une surprise (un rafraîchissement de page qui recâble une
+    machine). C'est donc un geste, mais un geste à un clic, et son refus dit quoi corriger.
+    """
+    from .. import node_driver, container_net as _cn, allocations as _alloc
+    node = db_get_node(node_id)
+    if not node:
+        return jsonify({"error": "nœud introuvable"}), 404
+    if not (node.get("agent_url") or "").strip():
+        return jsonify({"error": "nœud sans agent (enrôlement non finalisé ?)"}), 409
+    d = request.json or {}
+
+    if d.get("retirer"):
+        ok, msg = _cn.retirer_shim(node)
+        if ok:
+            db_update_node(node_id, container_net_shim_ip="")
+        return jsonify({"ok": bool(ok), "message": msg}), (200 if ok else 500)
+
+    if not _cn.shim_requis(node):
+        return jsonify({"error": "ce nœud n'a pas besoin de shim (mode « réseau interne », ou "
+                                 "orchestrateur sur une autre machine)"}), 409
+    parent = _parent_declare(node_id) or (node_driver.etat_reseau_conteneurs(node) or {}).get("reel")
+    if not parent:
+        return jsonify({"error": "aucune carte de conteneurs déclarée sur ce nœud — Réseau → "
+                                 "Interfaces, rôle « Management + Containers »"}), 409
+    sug = _macvlan_suggest(node_id)
+    subnet = (sug.get("subnet") or "").strip()
+    start, end, _scope = _alloc.node_ip_bounds(node_id)
+    # ★ IL N'Y A PAS DE REFUS SUR L'ÉCART DE SUBNET ICI, et le motif que j'avais écrit était
+    # FAUX (relevé par la session Tests globaux le 2026-10-27, après le revirement de 5b404d6,
+    # qui n'avait levé le refus que sur « Reconfigurer » — un revirement à moitié fait).
+    #
+    # Je disais « le shim routerait vers des adresses que ce nœud ne porte pas ». Le nœud n'a
+    # justement pas besoin de les porter : LE SHIM EST CELUI QUI LES PORTE. C'est un enfant
+    # macvlan de la même carte que les conteneurs, avec une adresse PRISE DANS LEUR SUBNET
+    # (`shim_ip_suggeree` la choisit là, hors de la plage qui leur est attribuée) — donc même L2
+    # qu'eux, et il les joint en direct. Que le subnet des conteneurs diffère de l'IP de gestion
+    # du nœud n'y change rien : c'est le cas d'usage normal d'un pool privé aux conteneurs, et
+    # c'est précisément la configuration que le shim sert.
+    #
+    # Le seul empêchement RÉEL est plus bas : aucune adresse libre à donner au shim.
+    shim_ip = ((d.get("shim_ip") or "").strip()
+               or (node.get("container_net_shim_ip") or "").strip()
+               or _cn.shim_ip_suggeree(node_id, subnet, start, end))
+    if not shim_ip:
+        return jsonify({"error": "aucune adresse libre pour le shim dans %s hors de la plage "
+                                 "%s→%s" % (subnet or "?", start, end)}), 409
+    ok, msg = _cn.appliquer_shim(node, parent, shim_ip, subnet, start, end)
+    if not ok:
+        return jsonify({"error": msg}), 500
+    db_update_node(node_id, container_net_shim_ip=shim_ip)
+    db_add_alert("alert.net.shim_pose", "info", node_id=node_id, kind="net",
+                 params={"n": node.get("name"), "parent": parent, "shim": shim_ip})
+    return jsonify({"ok": True, "message": msg, "shim_ip": shim_ip, "parent": parent,
+                    "etat": _cn.etat_shim(db_get_node(node_id))})
+
+
 @bp.route("/api/nodes/<int:node_id>/container-network", methods=["POST"])
 @require_perm("settings.edit")
 def api_node_container_network_set(node_id):
-    import shlex as _sh
     from .. import node_driver, settings as _st
     node = db_get_node(node_id)
     if not node:
@@ -118,6 +263,18 @@ def api_node_container_network_set(node_id):
     if not (node.get("agent_url") or "").strip():
         return jsonify({"error": "nœud sans agent (enrôlement non finalisé ?)"}), 409
     d = request.json or {}
+
+    # ─── MODE du réseau des conteneurs (cf. app/container_net.py) ────────────────────────────
+    # Absent de la requête = on ne touche pas au mode du nœud. Une interface qui ne connaît pas
+    # encore ce réglage ne doit pas le remettre à zéro en enregistrant autre chose.
+    from .. import container_net as _cn
+    from ..database import NET_MODES, NET_MODE_INTERNE, node_net_mode
+    mode = (d.get("mode") or node_net_mode(node)).strip().lower()
+    if mode not in NET_MODES:
+        return jsonify({"error": "mode inconnu : %s" % mode}), 400
+    if mode == NET_MODE_INTERNE:
+        return _appliquer_mode_interne(node, node_id, d)
+
     parent = (d.get("parent") or "").strip()
     declare = _parent_declare(node_id)
     if not parent:
@@ -139,6 +296,57 @@ def api_node_container_network_set(node_id):
     iprange = (d.get("ip_range") or sug.get("ip_range") or "").strip()
     if not subnet:
         return jsonify({"error": "subnet introuvable — configurer le pool d'IP (Réseau → IP statiques)"}), 400
+
+    # ★ CE QU'ON BLOQUE, C'EST LA DESTRUCTION — PAS L'ÉCART DE SUBNET.
+    #
+    # Première version (27/10) : refus dès que le pool d'IP n'était pas sur le subnet de la carte
+    # des conteneurs. La session Z8 l'a renversé le jour même, et elle avait raison : le testeur VEUT
+    # ses conteneurs en 192.168.1.x sur une machine en 192.0.2.x. C'est une configuration
+    # LÉGITIME et même propre — les conteneurs ne sont pas sur le plan d'adressage du site (rien
+    # à demander à l'administrateur réseau), ils partagent seulement son L2, et l'orchestrateur
+    # les joint par le shim. Mon refus interdisait ça, sans échappatoire dans l'interface.
+    #
+    # J'avais surtout remplacé une MESURE par une INFÉRENCE : la joignabilité du plan conteneurs
+    # est déjà constatée par `_controller_reach` (IP directe ou route, vérifiée). En déduire une
+    # panne d'un écart de subnet, c'était ajouter un verdict deviné à côté d'un verdict mesuré.
+    #
+    # Le vrai défaut était ailleurs, et il reste : reconfigurer DÉTRUIT les conteneurs attachés
+    # dès qu'un paramètre du réseau change, et personne ne le disait. On constate donc AVANT,
+    # et on exige un accord explicite quand des conteneurs tombent.
+    _div = _cn.divergence_reseau(node, node_id, name, "macvlan", parent=parent,
+                                 subnet=subnet, gateway=gateway)
+    # ⚠ LE RÉSEAU DE L'AUTRE MODE COMPTE AUSSI. Revenir au réseau du site depuis le mode interne
+    # change le NOM du réseau (« bobi-interne » → « bobimacvlan ») : la divergence calculée sur le
+    # nouveau nom ne voit alors rien — il n'existe pas encore — et les conteneurs attachés à
+    # l'ancien tombaient sans avoir été annoncés. Le trou était symétrique de celui du chemin
+    # interne (payé le 28/10 sur la Z8) : même constat, même refus, dans les deux sens.
+    _ancien = (node.get("docker_network") or "").strip()
+    _ancien_existe = (bool(_cn.inspect_reseau(node, _ancien))
+                      if (_ancien and _ancien != name) else False)
+    _a_tomber = sorted(set(_div["conteneurs"])
+                       | set(_cn.conteneurs_attaches(node, node_id, _ancien)
+                             if _ancien_existe else []))
+    # ★ MÊME CORRECTION QUE SUR LE CHEMIN INTERNE (30/10) : le gate porte sur la DESTRUCTION, pas
+    # sur les conteneurs. Sans conteneur attaché, ce geste détruisait sans un mot — et quand la
+    # recréation échoue, le nœud reste sans réseau de conteneurs.
+    _detruira = bool(_div["diverge"]) or _ancien_existe
+    if (_a_tomber or _detruira) and not d.get("confirme"):
+        return jsonify({
+            "error": ("cette reconfiguration coupe %d conteneur(s) de ce nœud : un réseau Docker "
+                      "ne se modifie pas sous ses attachés. Leur configuration est CONSERVÉE "
+                      "(projet, réglages, identité) et ils sont redéployés sur le nouveau réseau "
+                      "— mais ils seront interrompus." % len(_a_tomber))
+                     if _a_tomber else
+                     ("cette reconfiguration DÉTRUIT le réseau « %s » de ce nœud avant de le "
+                      "recréer. Aucun conteneur n'y est attaché — mais si la recréation échoue, "
+                      "le nœud se retrouve SANS réseau de conteneurs."
+                      % (name if _div["diverge"] else _ancien)),
+            "confirmation_requise": True,
+            "detruit_reseau": (name if _div["diverge"] else _ancien) if _detruira else "",
+            "conteneurs": _a_tomber,
+            "changements": _div["champs"],
+        }), 409
+
     # Passerelle macvlan : un conteneur macvlan ne peut JAMAIS joindre son hôte parent. Si la passerelle
     # est vide ou pointe sur une IP de l'hôte du nœud, on la DÉRIVE de la route par défaut du nœud (le vrai
     # routeur du segment). Garde-fou : refuser explicitement une passerelle == IP de l'hôte (sinon les
@@ -152,6 +360,23 @@ def api_node_container_network_set(node_id):
                         "conteneur ne peut pas joindre son hôte parent, donc aucune route hors subnet). "
                         "Utilise le routeur du segment%s — Réglages → Réseau → passerelle."
                         % (gateway, (" (ex. %s)" % _ngw) if _ngw else "")}), 400
+    # ★ PASSERELLE HORS DU SUBNET : REFUSÉE AVANT DE DÉTRUIRE (ajouté le 2026-10-30).
+    # Docker refuse un `--gateway` qui n'est pas dans le `--subnet`, mais il le refuse APRÈS que
+    # nous avons détruit l'existant — le nœud reste alors sans réseau, et le message d'erreur
+    # (rendu par l'agent) ne dit pas que les deux valeurs sont simplement incompatibles. Le cas
+    # n'est pas théorique : le panneau envoie le subnet d'un champ et la passerelle vient des
+    # réglages CLUSTER, donc les deux peuvent venir de deux configurations différentes.
+    if gateway and subnet:
+        try:
+            import ipaddress as _ipx
+            if _ipx.ip_address(gateway) not in _ipx.ip_network(subnet, strict=False):
+                return jsonify({"error": "passerelle %s hors du subnet %s : Docker refusera le "
+                                "réseau. Corriger l'un des deux (Réglages → Réseau → IP "
+                                "statiques) — les deux valeurs ne viennent pas du même réglage."
+                                % (gateway, subnet)}), 400
+        except ValueError as _e:
+            return jsonify({"error": "subnet ou passerelle illisible (%s/%s) : %s"
+                            % (subnet, gateway, _e)}), 400
     # VLAN taggé (réglage PAR-NŒUD : seulement si la carte parent est un port trunk) : parent =
     # <nic>.<vid>. La sous-interface est créée sur le nœud via l'agent ET persistée (unité systemd
     # oneshot, comme install-node.sh) → survit au reboot. Sinon (port access/untagged), parent nu.
@@ -176,9 +401,13 @@ def api_node_container_network_set(node_id):
             % (script, vif, parent, vif, vlan, parent, vif, script, script,
                vif, vif, script, vif)
         )
-        ok, res = node_driver.host_exec(node, cmd, timeout=25)
-        if not ok or (isinstance(res, dict) and res.get("rc")):
-            return jsonify({"error": "création/persistance VLAN %s échouée : %s" % (vif, res)}), 500
+        # ⚠ TROIS valeurs — (rc, stdout, stderr). Ce site-ci est ANTÉRIEUR au chantier réseau
+        # (il date de la création du VLAN par-nœud) et portait le même défaut : tout nœud
+        # configuré avec un VLAN taggé plantait ici en 500. Corrigé en passant.
+        rc, out, err = node_driver.host_exec(node, cmd, timeout=25)
+        if rc != 0:
+            return jsonify({"error": "création/persistance VLAN %s échouée (rc=%s) : %s"
+                                     % (vif, rc, (err or out or "").strip()[:200])}), 500
         parent = vif
     else:
         # Pas de VLAN : la carte parent macvlan n'a pas besoin d'IP, mais doit être MONTÉE (porteur).
@@ -209,40 +438,55 @@ def api_node_container_network_set(node_id):
     # déjà présent avec une AUTRE passerelle/subnet/parent ne serait donc JAMAIS mis à jour (cas vécu :
     # passerelle restée à l'IP de l'hôte). On inspecte l'existant ; s'il diffère, on le DÉTRUIT (avec ses
     # conteneurs attachés, forcément à redéployer) puis on le recrée avec les bons paramètres.
-    import json as _json
-    rc_i, out_i, _e = node_driver.host_exec(node, "docker network inspect %s 2>/dev/null" % _sh.quote(name), timeout=15)
-    try:
-        _arr = _json.loads(out_i) if (out_i or "").strip() else []
-        existing_net = _arr[0] if _arr else None
-    except Exception:
-        existing_net = None
-    if existing_net:
-        _cfg = (existing_net.get("IPAM", {}).get("Config") or [{}])[0]
-        cur_gw = _cfg.get("Gateway") or ""
-        cur_sub = _cfg.get("Subnet") or ""
-        cur_parent = (existing_net.get("Options") or {}).get("parent") or ""
-        if (gateway and cur_gw != gateway) or (subnet and cur_sub != subnet) or (parent and cur_parent != parent):
-            att_names = {a.get("Name") for a in (existing_net.get("Containers") or {}).values() if a.get("Name")}
-            from ..docker_compute import destroy_compute
-            removed = [cc["vmid"] for cc in db_get_containers()
-                       if cc.get("node_id") == node_id
-                       and cc.get("docker_name") in att_names]
-            for v in removed:
-                try: destroy_compute(v)
-                except Exception: pass
-            # rm résiduel (conteneurs non suivis en DB) + suppression du réseau
-            node_driver.host_exec(node,
-                "for c in $(docker network inspect -f '{{range .Containers}}{{.Name}} {{end}}' %s 2>/dev/null); do "
-                "docker rm -f \"$c\" >/dev/null 2>&1; done; docker network rm %s >/dev/null 2>&1"
-                % (_sh.quote(name), _sh.quote(name)), timeout=60)
-            db_add_alert("alert.net.macvlan_recree", "warning", node_id=node.get("id"), kind="net",
-                         params={"name": name, "n": node.get("name"), "gw_avant": cur_gw or "?",
-                                 "gw": gateway, "count": len(removed)})
+    _tombes = list(_recreer_si_divergent(node, node_id, name, driver="macvlan", parent=parent,
+                                         subnet=subnet, gateway=gateway))
+    # Démonter le réseau de l'ancien mode : laissé là, il garderait ses conteneurs attachés à un
+    # réseau que plus rien ne gouverne (le pendant exact de l'étape 2 du chemin interne).
+    if _ancien and _ancien != name:
+        _tombes += _cn.detruire_reseau(node, node_id, _ancien, "alert.net.mode_bascule",
+                                       mode="site")
     ok, res = node_driver.ensure_network(node, name, parent=parent, subnet=subnet,
                                          gateway=gateway, ip_range=iprange_eff)
     if not ok:
+        # Même filet que sur le chemin interne : la destruction a déjà eu lieu, donc la base ne
+        # doit plus affirmer un réseau, et la panne doit laisser une trace ailleurs que dans le
+        # navigateur de celui qui a cliqué (cf. app/container_net.py, étape 3).
+        db_update_node(node_id, docker_network="")
+        db_add_alert("alert.net.reseau_absent_apres_echec", "error", node_id=node_id, kind="net",
+                     params={"name": name, "n": node.get("name"), "err": str(res)[:200]})
         return jsonify({"error": "création réseau via agent échouée : %s" % res}), 500
     db_update_node(node_id, docker_network=name)
+
+    # ─── Shim macvlan : l'hôte doit pouvoir joindre SES PROPRES conteneurs ───────────────────
+    # Sur un nœud qui porte aussi l'orchestrateur, l'isolation parent/enfant du noyau rend les
+    # conteneurs injoignables depuis l'hôte — tout en les laissant « running » et joignables
+    # depuis n'importe quel autre poste du LAN. On pose donc le shim (cf. app/container_net.py),
+    # et c'est son RÉSULTAT qui alimente l'avertissement, plus une phrase qui décrit le remède
+    # sans l'appliquer : la version précédente disait « shim macvlan requis » et s'arrêtait là.
+    from .. import allocations as _alloc
+    shim_msg = None
+    if _cn.shim_requis(node):
+        _s, _e, _scope = _alloc.node_ip_bounds(node_id)
+        shim_ip = ((d.get("shim_ip") or "").strip()
+                   or (node.get("container_net_shim_ip") or "").strip()
+                   or _cn.shim_ip_suggeree(node_id, subnet, _s, _e))
+        if not shim_ip:
+            shim_msg = ("aucune adresse libre pour le shim dans %s hors de la plage %s→%s : "
+                        "l'orchestrateur ne joindra pas ses conteneurs. Libérer une adresse du "
+                        "subnet, ou réduire la plage." % (subnet, _s, _e))
+        else:
+            ok_s, msg_s = _cn.appliquer_shim(node, parent, shim_ip, subnet, _s, _e)
+            if ok_s:
+                db_update_node(node_id, container_net_shim_ip=shim_ip)
+            else:
+                shim_msg = msg_s
+    elif (node.get("container_net_shim_ip") or "").strip():
+        # Le nœud n'en a plus besoin (il n'est plus tout-en-un) : laissé en place, le shim
+        # garderait des routes vers la plage des conteneurs sur une interface qui ne mène plus
+        # à eux — un trou noir pour ces adresses, sans message.
+        _cn.retirer_shim(node)
+        db_update_node(node_id, container_net_shim_ip="")
+
     # Joignabilité orchestrateur ↔ subnet conteneurs (le point clé du mode fusionné).
     reach = _controller_reach(subnet, gateway)
     on_subnet = reach["on_subnet"]
@@ -254,24 +498,44 @@ def api_node_container_network_set(node_id):
         warning = ("l'orchestrateur n'a ni IP ni route vers %s → il ne pourra pas joindre les conteneurs "
                    "(fusionné : mets l'orchestrateur sur ce LAN ; séparé : provisionne sa patte "
                    "conteneurs ou un routage — Réglages → Réseau)" % subnet)
-    elif allinone:
-        warning = ("orchestrateur et nœud sur la même machine : l'isolation macvlan empêche l'hôte de "
-                   "joindre ses propres conteneurs (shim macvlan requis)")
+    elif shim_msg:
+        warning = ("orchestrateur et nœud sur la même machine : le shim macvlan n'a pas pu être "
+                   "posé, l'hôte ne joindra pas ses conteneurs — %s" % shim_msg)
     # `warning` alimente AUSSI `resp["warning"]` (retour UI) : on ne le touche pas — l'alerte est
     # composée à part, en clé complète par variante (ce n'est PAS une liste de données, mais deux
     # diagnostics distincts, cf. piège n°3).
     if on_subnet is False and not has_route:
         _cle_net = "alert.net.macvlan_pret_sans_route"
         _params_net = {"name": name, "n": node.get("name"), "parent": parent, "subnet": subnet}
-    elif allinone:
-        _cle_net = "alert.net.macvlan_pret_allinone"
+    elif shim_msg:
+        _cle_net = "alert.net.macvlan_shim_echec"
         _params_net = {"name": name, "n": node.get("name"), "parent": parent}
+    elif allinone:
+        # Tout-en-un ET shim posé : ce n'est plus un avertissement, c'est l'état normal de ce
+        # type d'installation. On le dit quand même (clé distincte) : c'est l'interface qui a
+        # posé une interface réseau de plus sur l'hôte, et un exploitant doit pouvoir le lire
+        # dans le journal le jour où il inventorie ses interfaces.
+        _cle_net = "alert.net.macvlan_pret_shim"
+        _params_net = {"name": name, "n": node.get("name"), "parent": parent,
+                       "shim": (db_get_node(node_id) or {}).get("container_net_shim_ip") or "?"}
     else:
         _cle_net = "alert.net.macvlan_pret"
         _params_net = {"name": name, "n": node.get("name"), "parent": parent}
     db_add_alert(_cle_net, "warning" if warning else "info", node_id=node.get("id"), kind="net",
                  params=_params_net)
-    resp = {"ok": True, "name": name, "parent": parent, "agent": res}
+    resp = {"ok": True, "mode": "site", "name": name, "parent": parent, "agent": res,
+            "shim_ip": (db_get_node(node_id) or {}).get("container_net_shim_ip") or ""}
+    # Les conteneurs coupés sont restés EN BASE avec leur configuration (cf.
+    # `container_net.detacher_conteneurs`) : on les remet debout sur le nouveau réseau, en tâche
+    # de fond — une douzaine de redéploiements ne tient pas dans une requête HTTP.
+    _detaches = sorted(set(_tombes))
+    if _detaches:
+        resp["containers_detached"] = _detaches
+        if d.get("redeployer") is not False:
+            import threading as _th
+            _th.Thread(target=_cn.redeployer_conteneurs,
+                       args=(_detaches, "reconfiguration réseau du site"), daemon=True).start()
+            resp["redeploy_lance"] = _detaches
     if warning:
         resp["warning"] = warning
     return jsonify(resp)
@@ -403,7 +667,14 @@ def api_node_io2110(node_id):
 # mgmt_containers = rôle COMBINÉ « Management + Containers » : la carte porte à la fois l'IP de
 # contrôle du nœud et le parent macvlan des conteneurs (nœud sur un autre LAN que le cluster).
 # Tests de rôle : database.role_is_management / role_is_containers (jamais de littéral).
-NODE_IFACE_ROLES = ("management", "mgmt_containers", "containers", "media2110", "rdma", "bmc", "unused")
+# « internet » (chantier Sortie Internet, 2026-10-27) : carte DÉDIÉE vers Internet, dont
+# l'hôte prend le bail DHCP et par laquelle sortent les conteneurs désignés (routage par
+# source, cf. app/container_net.py). ⚠ Sans ce rôle dans la liste, la route de sauvegarde
+# REFUSE la valeur (400) : la fonction entière serait inatteignable depuis l'interface,
+# tout en marchant parfaitement par l'API — le genre de trou qu'un banc de module ne voit
+# pas, puisque `db_upsert_node_interface` ne valide pas, lui.
+NODE_IFACE_ROLES = ("management", "mgmt_containers", "containers", "media2110", "rdma",
+                    "internet", "bmc", "unused")
 
 def _engine_state(node_id):
     """État du moteur 2110_io du nœud, pour la vue réseau.
@@ -501,11 +772,22 @@ def api_node_interfaces(node_id):
     # Plafond de files AF-XDP par port (E810). Budget live du moteur si dispo, sinon réglage
     # `mtl_xdp_total_queues` (défaut 48). Sert à borner les champs « files à réserver » des media2110.
     _xdp_hw = _mtl_total_queues()
+    # Interfaces que l'ORCHESTRATEUR a posées, et mode du réseau : les deux servent à ne plus
+    # afficher de rôle faux (cf. les deux champs `a_nous` / `role_ct_inerte` plus bas).
+    from .. import container_net as _cnet
+    from ..database import (node_net_mode as _nnm, role_is_containers as _role_is_ct,
+                            NET_MODE_INTERNE as _NMI)
+    _mode_interne = (_nnm(node) == _NMI)
+    _res_nom = (node.get("docker_network") or "").strip()
     out = []
     for name in names:
         c = cfg.get(name) or {}
         lv = live.get(name) or {}
         role = c.get("role") or "unused"
+        _a_nous = _cnet.interface_a_nous(name)
+        _a_nous_quoi = (("shim" if name == _cnet.SHIM_IFACE
+                         else ("reseau" if name and name == _res_nom else "autre"))
+                        if _a_nous else "")
         # Carte media2110 « disparue » de /sys/class/net car bindée vfio-pci : on la retrouve par son
         # BDF persisté (`pci`, figé tant qu'elle était sur ice). Le moteur DPDK la pilote → PRÉSENTE.
         _vf = vfio_by_bdf.get(c.get("pci")) if (role == "media2110" and c.get("pci")) else None
@@ -518,6 +800,23 @@ def api_node_interfaces(node_id):
             "mac":         c.get("mac") or lv.get("mac"),
             "pci":         lv.get("pci") or c.get("pci"),
             "role":        role,
+            # ★ INTERFACE POSÉE PAR NOUS (`bobi-shim`, `bobi-interne`) — ce n'est PAS une carte
+            # du nœud, et elle ne peut porter aucun rôle : l'écriture est refusée par un 409
+            # depuis 2f9bbfc6 (27/10). Mais rien ne le disait à l'AFFICHAGE : faute de ligne en
+            # base, le rendu appliquait `role = "unused"`, donc le badge « Non utilisée » —
+            # c'est-à-dire la seule étiquette qui INVITE à s'en servir. C'est ce qui a déclenché
+            # l'incident du 30/10 sur la nouvelle Z8 : l'exploitant a vu « bobi-interne · Non
+            # utilisée » à côté de « eno1 · Management + Containers » et en a conclu, très
+            # logiquement, que le réseau des conteneurs était sur la mauvaise carte.
+            # On ne les MASQUE pas (leur adresse serait alors inexplicable dans `ip addr`) : on
+            # les nomme pour ce qu'elles sont, sans rôle à régler.
+            "a_nous":      _a_nous,
+            "a_nous_quoi": _a_nous_quoi,
+            # Fausseté SYMÉTRIQUE : en mode interne, le rôle « Containers » d'une carte est
+            # INERTE — les conteneurs sont sur le bridge privé, et `appliquer_mode_interne`
+            # n'utilise jamais `parent`. L'afficher actif fait chercher un défaut là où il n'y
+            # en a pas, et masque où vivent réellement les conteneurs.
+            "role_ct_inerte": bool(_mode_interne and _role_is_ct(role)),
             "pair_role":   c.get("pair_role"),
             "pair_group":  c.get("pair_group"),
             "ip_cidr":     ip_cidr,
@@ -690,6 +989,23 @@ def api_node_interface_set(node_id, ifname):
     role = (d.get("role") or "").strip() or None
     if role and role not in NODE_IFACE_ROLES:
         return jsonify({"error": "rôle invalide : %s" % role}), 400
+    # ★ AUCUN RÔLE SUR UNE INTERFACE QUE NOUS AVONS POSÉE (`bobi-shim`). Garde-fou de dernier
+    # recours, et il a été payé cher : sur la Z8, le 2026-10-27, la ligne `bobi-shim` a fini par
+    # porter le rôle « conteneurs ». Le nœud a été ÉCARTÉ des déploiements (« son réseau
+    # conteneurs est accroché à eno1 alors que le rôle déclare bobi-shim »), la restauration d'un
+    # projet a échoué 0 sur 6, et l'identification par MAC s'est mise à échouer en boucle
+    # puisque la MAC du shim change à chaque pose.
+    #
+    # Qui l'a écrit n'a jamais été établi — formulaire de l'exploitant, ou un décalage de lignes
+    # dû à l'apparition de « bobi-shim » EN TÊTE de la liste triée (il précède « eno1 »). On
+    # refuse donc à l'ENTRÉE, ce qui ferme les deux hypothèses d'un coup : une interface que
+    # l'orchestrateur a créée n'est pas du matériel du nœud, et ne porte aucun rôle.
+    from .. import container_net as _cnet_roles
+    if role and role != "unused" and _cnet_roles.interface_a_nous(ifname):
+        return jsonify({"error": "« %s » est une interface posée par l'orchestrateur (shim "
+                                 "macvlan), pas une carte de ce nœud : elle ne peut porter aucun "
+                                 "rôle. La carte des conteneurs est la carte PHYSIQUE dont le "
+                                 "shim est l'enfant." % ifname}), 409
     # ★ Activer le rôle rdma = PRÉPARER la carte, puis vérifier. On charge le module IB qui va avec
     # son driver (mlx5_ib, bnxt_re, irdma…) et on le grave pour le prochain boot ; s'il n'en sort
     # AUCUN device verbs, la carte ne fera jamais de RoCE et on refuse (409) avec la raison plutôt
@@ -1169,8 +1485,13 @@ def api_docker_network_suggest():
     interfaces = []; suggested = ""
     if host:
         import shlex as _sh
+        from ..host_ops import ssh_run
         if sug.get("name"):
-            rc, _ = _ssh_bin(host, "docker network inspect %s >/dev/null 2>&1" % _sh.quote(sug["name"]), timeout=20)
+            # ssh_run, PAS _ssh_bin : il résout l'hôte en nœud et passe par l'agent quand il y en a
+            # un (`host_ops.ssh_run` = choke-point). _ssh_bin est un root-SSH brut, muet sur un nœud
+            # enrôlé sans clé root — « le réseau n'existe pas » et « l'hôte est injoignable » y
+            # rendaient le même verdict.
+            rc, _o, _e = ssh_run(host, "docker network inspect %s >/dev/null 2>&1" % _sh.quote(sug["name"]), timeout=20)
             exists = rc == 0
         try:
             interfaces, suggested = _host_interfaces(host, sug.get("gateway"))
@@ -1236,9 +1557,16 @@ def api_docker_network_create():
     # Idempotent : ne (re)crée pas s'il existe déjà.
     remote = ("docker network inspect %s >/dev/null 2>&1 || "
               "docker network create -d macvlan %s%s") % (_sh.quote(name), opts, _sh.quote(name))
-    rc, out = _ssh_bin(host, remote, timeout=60)
+    from ..host_ops import ssh_run
+    rc, out, err = ssh_run(host, remote, timeout=60)
     if rc != 0:
-        return jsonify({"error": out.decode("utf-8", "replace")[-500:]}), 500
+        # rc 255 = l'exécution elle-même n'a pas abouti (hôte injoignable, agent muet) — ce n'est
+        # PAS un refus de Docker. Les confondre renvoyait un message vide et laissait croire à un
+        # échec de création alors que rien n'avait été tenté.
+        if rc == 255:
+            return jsonify({"error": "hôte %s injoignable : %s"
+                                     % (host, (err or out or "").strip()[-300:])}), 502
+        return jsonify({"error": ((err or "") + (out or "")).strip()[-500:]}), 500
     # Report dans les nœuds dont le réseau Docker est vide.
     filled = 0
     for n in db_get_nodes():
@@ -1472,11 +1800,25 @@ def api_node_readiness(node_id):
     nics = live.get("nics") or []
     host = _node_host(node_id) or node.get("host")
     sug = _macvlan_suggest(node_id)
+    # Le réseau des conteneurs EXISTE-T-IL ? Mesuré sur l'hôte (résultat mis en cache par
+    # `node_driver`, TTL — ce n'est pas un exec par ouverture de panneau). Sans agent, on
+    # n'affirme rien : le tri-état `present=None` dit « non mesuré ».
+    _etat_res = (node_driver.etat_reseau_conteneurs(node) or {}) if has_agent else {}
     out = {
         "node_id": node_id, "host": host, "has_agent": has_agent,
+        # Nom du nœud : l'interface le titre dans la fenêtre « Gérer les cœurs » (un « #3 » ne
+        # dit pas sur quelle machine on agit).
+        "node_name": node.get("name") or "",
         "capabilities": caps_list,
         "container_network": {
+            # ⚠ `configured` dit « une colonne est remplie », PAS « le réseau existe ». La
+            # mesure est `reel_present`, juste dessous : elle vient du constat sur l'hôte. Sur
+            # la nouvelle Z8 (30/10), la base affirmait `bobi-interne` alors que Docker n'avait
+            # que bridge/host/none — et cette page affichait un badge « OK ».
             "configured": bool((node.get("docker_network") or "").strip()),
+            # Tri-état CONSERVÉ : True/False mesuré, null = non mesuré (hôte injoignable). Le
+            # réduire à un booléen ferait passer « on ne sait pas » pour « absent ».
+            "reel_present": _etat_res.get("present"),
             "name": node.get("docker_network") or "",
             "nics": nics,
             # subnet/passerelle/plage = CLUSTER (lecture seule) ; VLAN = saisi PAR-NŒUD dans le form.
@@ -1484,7 +1826,9 @@ def api_node_readiness(node_id):
             # Joignabilité orchestrateur ↔ subnet conteneurs : IP directe (L2) OU route (L3).
             "controller_on_subnet": _controller_on_subnet(sug.get("subnet")),
             "controller_reach": _controller_reach(sug.get("subnet"), sug.get("gateway")),
-            "allinone": (node.get("host") or "") in _controller_ipv4s(),
+            # Mode / shim / mode interne : la MÊME source que la route container-network. Sans
+            # ces champs, le panneau croyait tout nœud en « réseau du site ».
+            **_cn_mode_payload(node, node_id, sug),
         },
     }
     # La CAPACITÉ DÉCLARÉE fait foi, pas la présence d'une carte : `mtl_capable` est vrai dès qu'une

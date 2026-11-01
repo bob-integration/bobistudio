@@ -28,6 +28,9 @@ document désigne par « Réglages → Haute disponibilité »).
 - **Réplication d'état** (B3-2b) : l'actif pousse un **snapshot SQLite cohérent** vers le standby
   (`ha_standby_url`) toutes les `ha_replicate_interval_min` minutes. Le standby **stage** le snapshot
   (`ha_staging/db_replica.db`) — il ne l'applique PAS tant qu'on ne le promeut pas.
+- **Bibliothèque LV2** : la réplication ne porte pas que la base. La bibliothèque de plugins LV2 de la
+  console audio est poussée aussi (`/api/ha/replicate_lv2`, mTLS) quand elle change, et appliquée
+  tout de suite sur le standby — ce sont des fichiers qu'il ne distribue pas tant qu'il n'est pas promu.
 - **Une seule autorité pour la paire.** Depuis la migration mTLS du plan de contrôle (2026-08-30), un
   agent-nœud n'accepte que les contrôleurs signés par la CA qui l'a enrôlé. Les deux contrôleurs
   doivent donc partager **la même CA**, faute de quoi un standby promu ne pilote **aucun** nœud — ce

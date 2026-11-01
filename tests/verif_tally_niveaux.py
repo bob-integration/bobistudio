@@ -39,19 +39,50 @@ def controle(intitule, condition, explication=""):
 
 
 import app.database as db                                           # noqa: E402
+from app import config as _cfg_tally                               # noqa: E402
 
 print("Tally — dénouement des niveaux\n")
 
 _tmp = tempfile.mkdtemp(prefix="tally-niveaux-")
 _copie = os.path.join(_tmp, "essai.sqlite")
-# ⚠ PAS `shutil.copy` : LA BASE EST EN WAL. Copier le seul fichier `.db` laisse dans le journal
-# tout ce qui n'a pas encore été replié — relevé le 2026-09-01 : 68 lignes dans la copie contre
-# 49 en base. Ce banc tournait donc sur un instantané PÉRIMÉ, et il pouvait très bien passer sur
-# des données qui n'existent plus. L'API `backup` de SQLite, elle, est consciente du WAL.
-_src = sqlite3.connect(db.DB_PATH)
+
+# ── Le banc FABRIQUE son état hérité ; il ne copie plus la production ────────────────
+# Jusqu'au 2026-10-25 ce fichier faisait `sqlite3.connect(db.DB_PATH)` puis `.backup()` pour
+# travailler sur une copie de la vraie base. Trois défauts, tous mesurés :
+#   · `sqlite3.connect` en direct ne passe NI par `get_db` NI par `connect_guarded` : la garde
+#     ne le voyait pas. Et sur une machine où la base n'existe pas (exécuteur de CI, poste
+#     neuf), `connect` ne lève pas — il CRÉE un fichier vide à l'emplacement de la production,
+#     puis `.backup()` recopiait fidèlement ce vide et le banc mourait sur
+#     « no such table: settings ». Le message « la base de production n'a pas été touchée »
+#     s'affichait quand même : il parlait de la copie.
+#   · le verdict dépendait des réglages du site — un porteur tally ajouté ou retiré en
+#     production changeait ce que le banc prouvait, sans que personne l'ait voulu ;
+#   · sur une base sans porteur, le contrôle « ★ des bases héritées existent » échouait, ce qui
+#     dénonçait l'environnement et non le code.
+# On part donc d'une base jetable au schéma courant, et on y SÈME l'état hérité. Déterministe,
+# et la production n'est plus ouverte du tout — même pas en lecture.
+_cfg_tally.DB_PATH = db.DB_PATH = os.path.join(_tmp, "principale.db")
+# ⚠ On NE touche PAS `PRODUCTION_DB_PATH` : il doit continuer de désigner la VRAIE base de
+# production. Le poser sur la base jetable la ferait prendre POUR la production par la
+# garde, qui — le fichier n'existant pas encore — la remplacerait par une autre base
+# jetable à elle : le test écrirait alors ailleurs que là où il croit. Mesuré le 25/10.
+db._tls.__dict__.pop("conn", None)
+db.init_db()
+
 con = sqlite3.connect(_copie)
-_src.backup(con)
+_src = sqlite3.connect(db.DB_PATH)
+_src.backup(con)                       # le SCHÉMA courant, pris sur la base jetable
 _src.close()
+# Trois porteurs : deux connexions TSL et un projet. Le pas de 3 de TSL (LH/RH/TT) doit se
+# dénouer en UN niveau par porteur, donc 3 — pas 9.
+con.execute("INSERT INTO tsl_connections (id, name, port, enabled, label_col, tally_base, "
+            "rouge_field, vert_field, direction) VALUES "
+            "(1, 'pupitre A', 9001, 1, 0, 1, 'LH', 'RH', 'out')")
+con.execute("INSERT INTO tsl_connections (id, name, port, enabled, label_col, tally_base, "
+            "rouge_field, vert_field, direction) VALUES "
+            "(2, 'pupitre B', 9002, 1, 0, 2, 'LH', 'RH', 'out')")
+con.execute("INSERT INTO projects (id, name, tally_base) VALUES (1, 'régie 1', 3)")
+con.commit()
 
 try:
     # État hérité, AVANT migration (la vraie base peut déjà l'avoir subie : on repart d'une copie

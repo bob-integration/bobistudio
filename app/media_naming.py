@@ -39,6 +39,7 @@ import logging
 import os
 import re
 import time
+import uuid
 
 log = logging.getLogger(__name__)
 
@@ -208,6 +209,23 @@ def name_on_node(name, aid, src_name=None, version=None):
         return os.path.join(os.path.dirname(name), os.path.basename(src_name)) if os.path.dirname(name) \
             else os.path.basename(src_name)
     return coded_name(name, aid, version=version)
+
+
+def derived_id(src_aid, key):
+    """Identité d'une NOUVELLE FICHE tirée d'un média (transcodage `as: asset`) : stable pour un même
+    original et une même clé de préréglage — un job refait remplace sa sortie. Le transcoder en tient
+    une copie (`_derived_id`, plugins/transcoder/script.py) ; tests/verif_code_media_nom.py les compare."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, "bobi-media-derived:%s:%s" % (src_aid, key)))
+
+
+def derived_file_name(src_name, src_aid, key, ext):
+    """Nom de la sortie d'un transcodage en NOUVELLE FICHE : base de la source sans code, clé du
+    préréglage, code de la NOUVELLE identité (`rec/clip__a1b2c3.mov` + prores4444 →
+    `rec/clip_prores4444__d4e5f6.mov`)."""
+    d, b = os.path.split(str(src_name or ""))
+    stem = os.path.splitext(strip_code(b))[0]          # comme le transcoder : tout code retiré
+    name = "%s_%s%s" % (stem, key, ext)
+    return coded_name(os.path.join(d, name) if d else name, derived_id(src_aid, key))
 
 
 def version_file_name(src_name, aid, version, ext, n=None):

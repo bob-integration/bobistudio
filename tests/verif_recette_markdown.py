@@ -83,7 +83,7 @@ def main():
     verifier("textContent = m.text" not in src, "plus de textContent brut")
     verifier("mdPlain(last.text)" in src, "l'aperçu passe par mdPlain")
 
-    print("\n5. Entrée envoie le message (demandé le 2026-10-20 : « ça perturbe Paul »)")
+    print("\n5. Entrée envoie le message (demandé le 2026-10-20 : « ça perturbe le testeur »)")
     h = re.search(r'ta\.addEventListener\("keydown", e => \{(.*?)\n    \}\);', src, re.S)
     verifier(h is not None, "★ la zone de réponse écoute le clavier")
     corps = h.group(1) if h else ""

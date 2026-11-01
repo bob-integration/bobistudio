@@ -303,7 +303,7 @@ async function tslInit() {
         const projPorts = rports.ok ? ((await rports.json()).ports || []) : [];
         const slabels  = rsl.ok   ? await rsl.json()   : [];
         _names         = rnames.ok? await rnames.json(): ['Hostname','MXL','Label 2','Label 3'];
-        _suffixMap     = rsuf.ok  ? await rsuf.json()  : {"_audio_0":"_A1","_audio_1":"_A2","_anc_0":"_Anc"};
+        _suffixMap     = rsuf.ok  ? await rsuf.json()  : {"_audio_0":"_A1","_audio_1":"_A2","_anc_0":"_Anc","_osd":"_OSD","_key":"_Key"};
         _tslConns      = rconns.ok? await rconns.json(): [];
         try {
             const ro = await fetch('/api/labels/orphelins');

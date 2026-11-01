@@ -209,6 +209,14 @@ def handle(vmid, m, p):
     denied = _deny(vmid, entry)
     if denied:
         return denied
+    # STATE stream (text/event-stream, full document per event): served by the state relay — ONE
+    # upstream subscription per container, fanned out to every tab (app/state_relay.py). None =
+    # standby controller or not a relayable stream: plain byte relay below, as before.
+    if entry["method"] == "GET":
+        from . import state_relay
+        relayed = state_relay.serve(vmid, m, entry)
+        if relayed is not None:
+            return relayed
     url = _url(vmid, p)
     if not url:
         return jsonify({"error": "IP container introuvable"}), 404

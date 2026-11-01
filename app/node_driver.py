@@ -25,6 +25,7 @@ import urllib.error
 from datetime import datetime
 
 from . import ca
+from .version import au_moins
 from .database import (db_get_node, db_get_node_by_host, db_add_node, db_update_node,
                        db_add_alert)
 
@@ -312,13 +313,30 @@ def register(host, port, token, name=None, node=None):
     def _img(prefix):
         return next((t for t in imgs if t.startswith(prefix)), None)
 
+    # ★ LE RÉSEAU D'UN NŒUD DÉJÀ CONFIGURÉ NE SE RÉATTRIBUE PAS À CHAQUE RESYNC.
+    # L'inventaire de l'agent ne filtre plus par pilote depuis 0.30.0 (le mode « réseau interne »
+    # est un bridge) : il peut donc contenir plusieurs réseaux, et `nets[0]` — ce qui était écrit
+    # ici — suivait l'ordre de `docker network ls`. Un simple rattrapage de capacité aurait pu
+    # faire basculer un nœud en service sur un autre réseau, sans rien afficher : ses conteneurs
+    # seraient repartis ailleurs au déploiement suivant. On garde donc le réseau DÉJÀ en base
+    # tant que le nœud le porte encore ; sinon on préfère un des nôtres (`bobi*`) ; et seulement
+    # à défaut, le premier venu.
+    existing = db_get_node_by_host(host)
+
+    def _reseau_conteneurs():
+        noms = [n.get("name") for n in nets if n.get("name")]
+        actuel = ((existing or {}).get("docker_network") or "").strip()
+        if actuel and actuel in noms:
+            return actuel
+        return next((n for n in noms if n.startswith("bobi")), noms[0] if noms else None)
+
     fields = {
         "agent_url": agent_url,
         "agent_token": token,
         "agent_version": caps.get("agent_version"),
         "capabilities": json.dumps(cap_list),
         "mxl_mount": caps.get("mxl_mount") or "/dev/shm",
-        "docker_network": (nets[0]["name"] if nets else None),
+        "docker_network": _reseau_conteneurs(),
         "compute_image": _img("bobi-compute"),
         "media_image": _img("bobi-media"),
         "mtl_capable": 1 if "io2110" in cap_list else 0,
@@ -327,7 +345,6 @@ def register(host, port, token, name=None, node=None):
         "status": "up",
         "last_seen": datetime.now().isoformat(timespec="seconds"),
     }
-    existing = db_get_node_by_host(host)
     if existing:
         db_update_node(existing["id"], **fields)
         nid = existing["id"]
@@ -500,12 +517,35 @@ def ensure_image(node, image):
     return _call(node, "POST", "/v1/host/images/ensure", body={"image": image}, timeout=600)
 
 
-def ensure_network(node, name, parent="", subnet=None, gateway=None, ip_range=None):
-    body = {"name": name, "parent": parent}
+def ensure_network(node, name, parent="", subnet=None, gateway=None, ip_range=None,
+                   driver="macvlan"):
+    """Crée (si absent) le réseau des conteneurs du nœud dans le MODE demandé.
+
+    `driver` : « macvlan » (réseau du site) ou « bridge » (réseau interne). Le défaut reste
+    macvlan — un appelant qui ne se prononce pas obtient le comportement historique.
+
+    ★ UN AGENT ANTÉRIEUR À 0.30.0 IGNORE `driver` ET CRÉE UN MACVLAN. C'est le seul échec qui
+    compte ici : l'appel réussit, le réseau existe, les conteneurs partent — sur le mauvais
+    mode. On le ferme des deux côtés : un refus LISIBLE avant l'appel quand la version déclarée
+    le permet, et surtout un contrôle de ce que l'agent a RÉELLEMENT fait (il renvoie `driver`
+    depuis 0.30.0). Le second seul fait foi : `agent_version` peut manquer ou mentir, la réponse
+    de l'agent, non. La version sert à donner la bonne phrase à l'exploitant, pas à décider.
+    """
+    if driver != "macvlan" and not au_moins(node.get("agent_version"), "0.30.0"):
+        return False, ("l'agent de ce nœud (%s) ne sait créer que du macvlan — le mode « réseau "
+                       "interne » demande 0.30.0 ; mettre l'agent à jour"
+                       % (node.get("agent_version") or "version inconnue"))
+    body = {"name": name, "parent": parent, "driver": driver}
     for k, v in (("subnet", subnet), ("gateway", gateway), ("ip_range", ip_range)):
         if v:
             body[k] = v
-    return _call(node, "POST", "/v1/host/networks/ensure", body=body, timeout=20)
+    ok, res = _call(node, "POST", "/v1/host/networks/ensure", body=body, timeout=20)
+    if ok and isinstance(res, dict) and (res.get("driver") or "macvlan") != driver:
+        return False, ("l'agent a posé un réseau « %s » alors que « %s » était demandé — agent "
+                       "trop ancien (%s) : mettre à jour, puis recréer le réseau"
+                       % (res.get("driver") or "macvlan", driver,
+                          node.get("agent_version") or "version inconnue"))
+    return ok, res
 
 
 def core_snapshot(node):
@@ -1007,8 +1047,14 @@ def parent_declare(node_id):
     `mgmt_containers`). "" si aucune. Source de vérité : en base, par nœud, éditable."""
     try:
         from .database import db_get_node_interfaces, role_is_containers
+        from .container_net import interface_a_nous
         for r in db_get_node_interfaces(node_id) or []:
-            if role_is_containers(r.get("role")) and (r.get("ifname") or "").strip():
+            # ⚠ Jamais une interface que NOUS avons créée (`bobi-shim`) : le shim porte une
+            # adresse du subnet des conteneurs, donc il ressemble à leur carte — et le macvlan
+            # aurait eu pour parent le shim, c'est-à-dire un enfant de la vraie carte. Vu sur la
+            # Z8 le 2026-10-27, où `bobi-shim` figurait dans les interfaces du nœud.
+            if (role_is_containers(r.get("role")) and (r.get("ifname") or "").strip()
+                    and not interface_a_nous(r.get("ifname"))):
                 return r["ifname"].strip()
     except Exception as e:
         log.debug("parent_declare(%s): %s", node_id, e)
@@ -1024,25 +1070,45 @@ def etat_reseau_conteneurs(node, force=False):
     """
     nid = (node or {}).get("id")
     if not nid:
-        return {"declare": "", "reel": "", "porteuse": None, "derive": False, "sans_lien": False}
+        return {"declare": "", "reel": "", "porteuse": None, "present": None,
+                "derive": False, "sans_lien": False}
     now = time.time()
     hit = _reseau_cache.get(nid)
     if hit and not force and (now - hit[0]) < _RESEAU_TTL_S:
         return hit[1]
     declare = parent_declare(nid)
     nom = (node.get("docker_network") or "bobimacvlan").strip()
-    reel, porteuse = "", None
+    reel, porteuse, present = "", None, None
     try:
-        cmd = ("p=$(docker network inspect -f '{{index .Options \"parent\"}}' %s 2>/dev/null); "
-               "echo \"$p\"; [ -n \"$p\" ] && cat /sys/class/net/${p%%.*}/carrier 2>/dev/null"
+        # ★ TROIS CHAMPS SUR UNE LIGNE, SÉPARÉS PAR « | ». La version précédente écrivait une
+        # ligne par champ et filtrait les lignes vides — donc un `parent` vide (le cas NORMAL
+        # d'un réseau en mode interne, qui est un bridge) décalait la porteuse à sa place. Un
+        # séparateur explicite rend la position indépendante du contenu (même leçon que la sonde
+        # de placement, app/placement.py).
+        #
+        # ★ ET SURTOUT `present`, AJOUTÉ LE 2026-10-30. L'option `parent` n'existe pas sur un
+        # bridge : `reel` valait donc "" aussi bien pour un réseau interne EN PLACE que pour un
+        # réseau ABSENT. Rien, dans tout le produit, ne mesurait l'existence du réseau des
+        # conteneurs — la base faisait foi. Sur la nouvelle Z8, elle affirmait « bobi-interne »
+        # quand Docker n'avait que bridge/host/none, et toutes les pages affichaient « OK ».
+        cmd = ("n=%s; if docker network inspect \"$n\" >/dev/null 2>&1; then pr=1; else pr=0; fi; "
+               "p=$(docker network inspect -f '{{index .Options \"parent\"}}' \"$n\" 2>/dev/null); "
+               "c=$(cat /sys/class/net/${p%%.*}/carrier 2>/dev/null); "
+               "echo \"$pr|$p|$c\""
                % shlex.quote(nom))
         rc, out, _err = host_exec(node, cmd, timeout=20)
-        lignes = [l.strip() for l in (out or "").splitlines() if l.strip()]
-        reel = lignes[0] if lignes else ""
-        porteuse = (lignes[1] == "1") if len(lignes) > 1 else None
+        ligne = next((l.strip() for l in (out or "").splitlines() if "|" in l), "")
+        if ligne:
+            champs = ligne.split("|")
+            present = (champs[0] == "1")
+            reel = champs[1] if len(champs) > 1 else ""
+            porteuse = (champs[2] == "1") if (len(champs) > 2 and champs[2]) else None
     except Exception as e:
         log.debug("etat_reseau_conteneurs(%s): %s", nid, e)
     etat = {"declare": declare, "reel": reel, "porteuse": porteuse,
+            # `present` : True/False mesuré, None = PAS MESURÉ (hôte injoignable). Un appelant
+            # ne doit pas pouvoir confondre « absent » et « on ne sait pas ».
+            "present": present,
             "derive": bool(declare and reel and reel.split(".")[0] != declare),
             "sans_lien": (porteuse is False)}
     _reseau_cache[nid] = (now, etat)

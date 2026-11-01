@@ -7,6 +7,7 @@ import requests
 from .numerotation import cle_input, cle_input_v, cle_input_a, numero, indice
 import logging
 import os
+import re
 import glob
 import base64
 import hashlib
@@ -315,14 +316,26 @@ def _resolve_brand_settings(params):
     params["brand_system_name"] = _st.get("brand_system_name") or ""
     params["brand_org_name"]    = _st.get("brand_org_name") or ""
     params["brand_location"]    = _st.get("brand_location") or ""
+    # Le logo lui-même (≈300 Ko de base64) n'est embarqué qu'à l'ENVOI, par `_gras` : persisté, il
+    # pesait sur chaque `db_get_containers` (2,3 Mo pour 7 mires le 24/10, la moitié du CPU de
+    # l'orchestrateur). Vidé ici, il écrase aussi celui d'un snapshot de projet ancien.
     params["brand_logo_b64"]    = ""
     params["brand_logo_ext"]    = ""
+    for fp in glob.glob(os.path.join(_STATIC_UPLOADS, "brand-logo.*")):
+        params["brand_logo_ext"] = os.path.splitext(fp)[1].lstrip(".")
+        break
+    return params
+
+
+def _with_brand_logo(params):
+    """Params à envoyer : le logo de marque en base64 si le plugin en a reçu l'extension."""
+    if not params.get("brand_logo_ext") or params.get("brand_logo_b64"):
+        return params
     try:
         for fp in glob.glob(os.path.join(_STATIC_UPLOADS, "brand-logo.*")):
             with open(fp, "rb") as f:
-                params["brand_logo_b64"] = base64.b64encode(f.read()).decode("ascii")
-            params["brand_logo_ext"] = os.path.splitext(fp)[1].lstrip(".")
-            break
+                return dict(params, brand_logo_b64=base64.b64encode(f.read()).decode("ascii"),
+                            brand_logo_ext=os.path.splitext(fp)[1].lstrip("."))
     except Exception as e:
         log.warning("logo marque illisible: %s", e)
     return params
@@ -392,6 +405,127 @@ def _agent_script_running(ip, vmid):
         return False
 
 
+# ── Verified script restart (2026-10-29) ─────────────────────────────────────────────────────
+# A redeploy rewrote the script but the OLD process kept running while the base announced the
+# new version (Z8 #227, mixer 0.23.41 still running after a redeploy to 0.23.42; the agent then
+# answered `already_running` to a /start). Reproduced offline with the REAL agent under TLS
+# (tests/verif_deploy_restart_verified.py): the agent serves ONE request at a time and does the
+# TLS handshake inside accept(); a /stop sent while it is busy times out on our side BEFORE the
+# handshake completes, so the request bytes are never sent and the agent never sees the stop.
+# The old code swallowed that exception, then /start answered `already_running` (200) and the
+# deploy reported « deployed and restarted ». In clear HTTP the same stop is merely late, which
+# is why it never showed on the benches before mTLS.
+# Rule now: never TRUST a stop, CONFIRM it on /status (running == false), retry, and only then
+# start. Works with every agent ever shipped (/stop, /start, /status running exist since 05/2026);
+# a newer agent also reports the sha256 of the script it launched, compared to what we pushed.
+RESTART_STOP_ATTEMPTS = 3
+RESTART_STOP_HTTP_TIMEOUT_S = 10.0   # agent side: SIGTERM, 3 s grace, SIGKILL (+2 s reap, new agent)
+RESTART_STOP_CONFIRM_S = 8.0         # how long /status may keep saying running after a /stop
+RESTART_START_HTTP_TIMEOUT_S = 10.0
+RESTART_POLL_S = 0.25
+VERSION_CONFIRM_S = 20.0             # how long the new script may take to serve :8080
+
+
+def _agent_status(ip, vmid, timeout=3.0):
+    """GET :8081/status → dict, or None (unreachable, non-200, unreadable)."""
+    try:
+        r = agent_session().get(agent_url(ip, "/status"), timeout=timeout, headers=agent_headers(vmid))
+        if r.status_code != 200:
+            return None
+        j = r.json()
+        return j if isinstance(j, dict) else None
+    except Exception:
+        return None
+
+
+def stop_script_verified(ip, vmid, attempts=None, confirm_s=None, poll_s=None):
+    """POST /stop, then CONFIRM on /status that nothing runs any more; retry if not.
+    Returns (stopped, detail). Never raises."""
+    import time
+    attempts = RESTART_STOP_ATTEMPTS if attempts is None else attempts
+    confirm_s = RESTART_STOP_CONFIRM_S if confirm_s is None else confirm_s
+    poll_s = RESTART_POLL_S if poll_s is None else poll_s
+    detail = ""
+    for n in range(1, max(1, attempts) + 1):
+        try:
+            r = agent_session().post(agent_url(ip, "/stop"), timeout=RESTART_STOP_HTTP_TIMEOUT_S,
+                                     headers=agent_headers(vmid))
+            detail = "HTTP %s %s" % (r.status_code, (getattr(r, "text", "") or "")[:120])
+        except Exception as e:
+            detail = "%s: %s" % (type(e).__name__, e)
+        deadline = time.monotonic() + confirm_s
+        while True:
+            st = _agent_status(ip, vmid)
+            if st is not None and st.get("running") is False:
+                return True, detail
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(poll_s)
+        log.warning("deploy %s: script still running after /stop attempt %d/%d (%s)",
+                    vmid, n, attempts, detail)
+    return False, detail
+
+
+def restart_script_verified(ip, vmid, content=None, start=True):
+    """Stop (confirmed), then start, then check what runs. Returns a dict:
+    {ok, stage, detail, status, pid} — `stage` is where it failed: "stop" | "start" | "sha",
+    or "stopped" / "started" on success. Never raises.
+
+    `already_running` AFTER a confirmed stop is accepted: someone else (surveillance auto-restart,
+    node watchdog) started the script in between — from the file already written, so new code.
+    `content` (the script just pushed): when the agent reports `script_sha256` (agent ≥ 2026-10-29)
+    the launched file must be that one; older agents do not report it and are not judged on it."""
+    import hashlib
+    stopped, detail = stop_script_verified(ip, vmid)
+    if not stopped:
+        return {"ok": False, "stage": "stop", "detail": detail}
+    if not start:
+        return {"ok": True, "stage": "stopped", "detail": detail}
+    try:
+        r = agent_session().post(agent_url(ip, "/start"), timeout=RESTART_START_HTTP_TIMEOUT_S,
+                                 headers=agent_headers(vmid))
+    except Exception as e:
+        return {"ok": False, "stage": "start", "detail": "%s: %s" % (type(e).__name__, e)}
+    if r.status_code != 200:
+        return {"ok": False, "stage": "start", "detail": "HTTP %s" % r.status_code,
+                "code": r.status_code}
+    try:
+        j = r.json() or {}
+    except Exception:
+        j = {}
+    st = _agent_status(ip, vmid) or {}
+    pid = j.get("pid") or st.get("pid")
+    running_sha = st.get("script_sha256")
+    if content is not None and running_sha:
+        want = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        if running_sha != want:
+            return {"ok": False, "stage": "sha", "pid": pid, "status": j.get("status"),
+                    "detail": "running %s… expected %s…" % (running_sha[:12], want[:12])}
+    return {"ok": True, "stage": "started", "status": j.get("status"), "pid": pid, "detail": detail}
+
+
+def confirm_running_version(ip, expected, timeout_s=None, poll_s=0.5):
+    """After a restart: which plugin version does the NEW process publish on :8080?
+    Returns (verdict, seen): "ok" | "mismatch" | "unexposed" (the script does not publish
+    `plugin_version`: no verdict, never a false alarm) | "silent" (:8080 not served in time)."""
+    import time
+    timeout_s = VERSION_CONFIRM_S if timeout_s is None else timeout_s
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            j = requests.get("http://%s:8080/" % ip, timeout=2).json()
+        except Exception:
+            j = None
+        if isinstance(j, dict):
+            v = j.get("plugin_version")
+            if not v:
+                return "unexposed", None
+            return ("ok" if str(v) == str(expected) else "mismatch"), str(v)
+        if time.monotonic() >= deadline:
+            return "silent", None
+        time.sleep(poll_s)
+
+
 _MULTIVIEW_STRUCTURAL = frozenset({
     "out_width", "out_height", "chroma", "bit_depth",
     "shm_video_ring", "shm_out", "fps", "scan", "genlock",
@@ -412,10 +546,61 @@ _MULTIVIEW_STRUCTURAL = frozenset({
     "cadence",
 })
 
+# Ce que l'envoi à chaud (`_multiview_hot_apply`) TRANSMET réellement au conteneur. Tout autre
+# paramètre que le script lit dans CONFIG n'est lu qu'à son démarrage.
+_MULTIVIEW_HOT_KEYS = frozenset({
+    "show_no_signal", "freeze_detect_s", "show_proxy", "default_template",   # → /style
+    "flux_config", "meter_blocks", "video_history_blocks", "audio_history_blocks",
+    "font_library",                                                          # → /reconfigure
+    "overlays",                                                              # → /overlays
+    "plugin_version",   # estampille : la garde de version la traite à part, l'éditeur ne l'envoie pas
+})
+
+_CONFIG_KEY_RE = re.compile(r"""CONFIG(?:\.get\(\s*|\[\s*)["'](\w+)["']""")
+_mv_script_keys_cache = {}
+
+
+def _multiview_startup_keys():
+    """Paramètres que le script multiview lit dans CONFIG SANS que l'envoi à chaud les lui
+    transmette : les changer exige de réécrire et redémarrer le script.
+
+    ★ DÉRIVÉ DU SCRIPT, PLUS TENU À LA MAIN. `_MULTIVIEW_STRUCTURAL` est une liste d'exclusion, et
+    une telle liste ne voit pas ce qui est NOUVEAU : `cadence` (2026-08-12), puis `gpu_slice`, en
+    ont manqué — puis `scale_filter` (multiview Atelier #225, Z8, 2026-10-28) : le POST était
+    persisté, l'alerte annonçait « appliqués à chaud », et le conteneur tournait toujours en `box`.
+    Seize autres clés du script étaient dans le même cas. Lue au mtime du script (relu à chaque
+    rendu, cf. plugins.render_script)."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "plugins", "multiview", "script.py")
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        return frozenset()
+    hit = _mv_script_keys_cache.get(path)
+    if hit and hit[0] == mt:
+        return hit[1]
+    try:
+        with open(path, encoding="utf-8") as f:
+            keys = frozenset(_CONFIG_KEY_RE.findall(f.read())) - _MULTIVIEW_HOT_KEYS
+    except OSError:
+        keys = frozenset()
+    _mv_script_keys_cache[path] = (mt, keys)
+    return keys
+
+
 def _multiview_only_hot_changed(old_params, new_params):
-    """True si aucun param structurel n'a changé → hot-apply possible."""
+    """True si aucun param structurel n'a changé → hot-apply possible.
+    Structurel = la liste historique, PLUS tout ce que le script lit au démarrage et que l'envoi à
+    chaud ne transmet pas (`_multiview_startup_keys`)."""
     for k in _MULTIVIEW_STRUCTURAL:
         if str(old_params.get(k) or "") != str(new_params.get(k) or ""):
+            return False
+    # Clés DÉRIVÉES : seulement celles que l'appelant fournit. Le POST /deploy fusionne avec les
+    # params enregistrés (toutes présentes) ; les params d'un shard du tissu ne portent pas les
+    # champs que before_deploy injecte (tz, node_name…) — une absence n'y est pas un changement,
+    # sinon chaque re-planification recréerait ses shards au lieu de les rebinder à chaud.
+    for k in _multiview_startup_keys() - _MULTIVIEW_STRUCTURAL:
+        if k in new_params and str(old_params.get(k) or "") != str(new_params.get(k) or ""):
             return False
     return True
 
@@ -429,13 +614,14 @@ def _gras(params):
     persistée (`db_update_deploy_config`) ni comparée (`_multiview_only_hot_changed`) — la
     bibliothèque (disque + table `fonts`) est la source de vérité, les références `lib:` suffisent
     en base. On ne rebind donc jamais `params` avec ce retour : on l'utilise à l'ENVOI seulement.
-    No-op quand aucune police de la bibliothèque n'est référencée."""
+    No-op quand aucune police de la bibliothèque n'est référencée. Embarque aussi le logo de
+    marque (`_with_brand_logo`), pour la même raison."""
     try:
         from . import fonts as _fonts
-        return _fonts.resolve_params(params)
+        params = _fonts.resolve_params(params)
     except Exception as _e:
         log.warning("injection polices : %s", _e)
-        return params
+    return _with_brand_logo(params)
 
 
 def _multiview_hot_apply(ip, params):
@@ -1246,6 +1432,18 @@ def _schedule_pyramide_reconcile(vmid, delay=6.0):
     t = _th.Timer(delay, _run); t.daemon = True; t.start()
 
 
+def _fresh_stored_params(vmid, t, params):
+    """Params d'un conteneur relus de la BASE, passés par la règle R1 des ports (cf.
+    project_ports.prepare_send) : chaque entrée liée à un port y lit le flux ACTUEL du port. Si
+    cela diffère de ce qui est enregistré, on l'enregistre avant d'envoyer — la base redit alors
+    ce que le conteneur reçoit. Tout envoi qui relit la base passe par ici."""
+    from . import project_ports
+    fresh = project_ports.prepare_send(vmid, t, params)
+    if fresh != params:
+        db_update_deploy_config(vmid, t, fresh)
+    return fresh
+
+
 def refresh_consumers_of_source(producer_vmid):
     """Après un (re)déploiement de la SOURCE (son flux MXL est alors RECRÉÉ — même si le format est
     identique : un nouveau flux, les abonnés restant collés à l'ancien lisent du garbage), rafraîchit
@@ -1289,6 +1487,8 @@ def refresh_consumers_of_source(producer_vmid):
             continue
         ctype = cdc.get("type")
         cp = cdc.get("params") or {}
+        if ctype in ("multiview", "2110_io", "streamer"):
+            cp = _fresh_stored_params(c.get("vmid"), ctype, cp)      # R1 : le port d'abord
         if ctype == "multiview":
             fc = list(cp.get("flux_config") or [])
             changed = False
@@ -1386,19 +1586,24 @@ def version_en_cours(ip, vmid=None, timeout=2.0):
     return str(v) if v else None
 
 
-def _hot_config(ip, vmid, type_script, params, version):
+def _hot_config(ip, vmid, type_script, params, version, detail=False):
     """Pousse la configuration rendue au script VIVANT (`control.hot_config`). True si appliquée.
 
     Envoie exactement ce que `{config}` vaut dans le script qu'on vient d'écrire, avec la version
     et le nom d'hôte rendus : le script refuse si l'un des deux diffère du sien — son code n'est
-    alors plus celui du fichier, et seul un redémarrage le remet d'accord."""
+    alors plus celui du fichier, et seul un redémarrage le remet d'accord.
+
+    `detail=True` → (appliquée, réponse JSON ou {}, configuration envoyée) : le chemin « à chaud
+    seulement » (`hot_only_keys`) juge sur ce que le conteneur DIT avoir pris, pas sur le seul
+    code HTTP — un script peut prendre la clé demandée et refuser le reste (409), cf. mixer."""
     import json
     from . import plugins
+    _rien = (False, {}, {}) if detail else False
     if not plugins.is_plugin(type_script):
-        return False
+        return _rien
     hc = plugins.hot_config_endpoint(type_script)
     if not hc or not ip:
-        return False
+        return _rien
     port, chemin = hc
     corps = {"plugin_version": plugins.resolved_version(type_script, version),
              "hostname": params.get("hostname", "mxl"),
@@ -1409,25 +1614,104 @@ def _hot_config(ip, vmid, type_script, params, version):
                                  headers={"Content-Type": "application/json"}, timeout=15)
     except Exception as e:
         log.info("deploy %s: hot config unreachable (%s) — falling back to restart", vmid, e)
-        return False
+        return (False, {"unreachable": str(e)}, corps["config"]) if detail else False
+    try:
+        rep = r.json()
+        rep = rep if isinstance(rep, dict) else {}
+    except Exception:                                                      # noqa: BLE001
+        rep = {}
     if r.status_code != 200:
         log.info("deploy %s: hot config refused (HTTP %s: %s) — falling back to restart",
                  vmid, r.status_code, (r.text or "")[:200])
-        return False
+        return (False, rep, corps["config"]) if detail else False
     log.info("deploy %s: hot config applied (%s)", vmid, (r.text or "")[:300])
-    return True
+    return (True, rep, corps["config"]) if detail else True
+
+
+def _hot_only_apply(ip, vmid, type_script, params, version, keys):
+    """Fin du chemin « à chaud seulement » (cf. `hot_only_keys`) : pousse, juge, alerte. Jamais
+    d'arrêt/démarrage. Appliquée si HTTP 200, ou si la réponse porte la valeur RENDUE de chacune
+    des clés demandées (un script peut prendre la clé et refuser le reste : 409 restart_required)."""
+    ok, rep, cfg = _hot_config(ip, vmid, type_script, params, version, detail=True)
+    pris = ok or all(k in rep and rep.get(k) == cfg.get(k) for k in keys)
+    if pris:
+        log.info("deploy %s: live-only reconfiguration applied (%s)", vmid,
+                 ", ".join("%s=%s" % (k, cfg.get(k)) for k in keys))
+        db_add_alert("alert.deploy.script_reconfigure_a_chaud", "info", vmid=vmid,
+                     kind="deploy", params={"t": type_script, "vmid": vmid})
+        return True
+    log.warning("deploy %s: live-only reconfiguration NOT applied (%s) — the running script keeps "
+                "its previous value until its next start", vmid, rep or "no answer")
+    db_add_alert("alert.deploy.hot_only_refuse", "warning", vmid=vmid, kind="deploy",
+                 params={"vmid": vmid, "t": type_script,
+                         "e": (rep.get("code") or rep.get("unreachable") or "")[:120]
+                         if isinstance(rep, dict) else ""})
+    return False
+
+
+def pinned_version(vmid, type_script, params=None):
+    """Version à (re)déployer quand l'appelant n'en nomme AUCUNE : celle que ce conteneur
+    exécute déjà, et non la courante du manifeste. Rend None pour un conteneur neuf, un type
+    qui n'est pas un plugin, ou une estampille déjà égale à la courante.
+
+    ⚠ C'EST LE DÉFAUT QUI MANQUAIT. Mesuré le 2026-10-31 : 2 appels de `deployer_script` sur 32
+    transmettent une version. Pour les 30 autres — reprise après redémarrage du nœud,
+    restauration de projet, câblage, redémarrage d'un conteneur mort, attente d'un pilote hôte,
+    sonde de métriques — `version` valait None, et `render_script` prend alors la COURANTE
+    (plugins.py:769). Un exploitant qui épinglait un conteneur de test sur une ancienne version
+    le voyait donc migrer au premier recâblage, sans que personne l'ait décidé. On ne migre plus
+    que par un GESTE EXPLICITE : `POST /redeploy-version`, ou « migrer le parc ».
+
+    L'estampille vient de `deploy_config.params.plugin_version` : les params REÇUS d'abord
+    (l'appelant qui recharge la configuration les porte), la base ensuite (l'éditeur, lui,
+    n'envoie jamais `plugin_version` — cf. `_CLES_SYSTEME`).
+    """
+    if not plugins.is_plugin(type_script):
+        return None
+    pv = ((params or {}).get("plugin_version") or "").strip()
+    if not pv:
+        import json as _json_v
+        _c = db_get_container(vmid) or {}
+        try:
+            _dc = _json_v.loads(_c.get("deploy_config") or "{}") or {}
+        except (ValueError, TypeError):
+            _dc = {}
+        pv = ((_dc.get("params") or {}).get("plugin_version") or "").strip()
+    if not pv or pv == (plugins.get(type_script) or {}).get("version"):
+        return None            # neuf, ou déjà à la courante : rien à épingler
+    if plugins.ensure_version(type_script, pv):
+        return pv          # archivée, ou reconstituée à l'instant depuis l'historique git
+    # Épinglé sur une version que le registre ne sait PAS rendre : ni courante, ni archivée, ni
+    # dans l'historique git local (arbre copié par get.sh, reflog expiré, release jamais faite).
+    # Le rendu retombera sur la courante — donc on le DIT, au lieu de migrer en silence.
+    log.warning("deploy %s: container pinned to %s %s, which the registry cannot render — "
+                "falling back to the current version", vmid, type_script, pv)
+    db_add_alert("alert.deploy.version_unavailable", "warning", vmid=vmid, kind="deploy",
+                 params={"vmid": vmid, "t": type_script, "ver": pv,
+                         "cur": (plugins.get(type_script) or {}).get("version") or "?"})
+    return None
 
 
 def deployer_script(vmid, type_script, params, script_path="/opt/script/main.py", version=None,
-                    script_content=None):
+                    script_content=None, hot_only_keys=None):
     """Point d'entrée déploiement — SÉRIALISÉ PAR VMID (vmlocks) : deux opérations de
     cycle de vie concurrentes sur le même vmid (deploy/destroy/restart) raceraient sinon sur
     l'agent-nœud / l'API Docker. RLock → réentrant dans le même thread (compute → chemin agent,
     ou route qui tient déjà verrou_vmid)."""
     from .vmlocks import verrou_vmid
     from .database import db_set_desired_state
+    from . import project_ports
     with verrou_vmid(vmid, op="deploy"):
-        db_set_desired_state(vmid, "running")   # un déploiement = intention « ça doit tourner »
+        # R1 des ports (décision du 31/10) : AVANT tout usage de `params` — chaque entrée liée à un
+        # port lit le flux ACTUEL du port, quel que soit l'appelant et même hot_only_keys.
+        params = project_ports.prepare_send(vmid, type_script, params)
+        if not hot_only_keys:
+            db_set_desired_state(vmid, "running")   # un déploiement = intention « ça doit tourner »
+            # Pilote hôte requis PROUVÉ absent (decklink_io sans Desktop Video) : enregistrer sans
+            # lancer, plutôt qu'un conteneur qui meurt en 4 s — cf. app/host_driver_gate.py.
+            from . import host_driver_gate
+            if host_driver_gate.hold_if_missing(vmid, type_script, params):
+                return True
         # Un déploiement ne crée PLUS d'emplacement. Un emplacement est une position de
         # production (« MULTIVIEW RÉGIE 1 »), donc une décision humaine ; le dériver
         # automatiquement d'un conteneur confondait le 3e barreau d'identité avec le 2e, et
@@ -1435,24 +1719,44 @@ def deployer_script(vmid, type_script, params, script_path="/opt/script/main.py"
         # pas être. Mesuré le 2026-08-30 : 282 emplacements semés, 8 servis, et 2 des survivants
         # jamais renommés. Ils se créent maintenant depuis Réglages → Ember+ → Emplacements.
         return _deployer_script_locked(vmid, type_script, params, script_path=script_path,
-                                       version=version, script_content=script_content)
+                                       version=version, script_content=script_content,
+                                       hot_only_keys=hot_only_keys)
 
 
 def _deployer_script_locked(vmid, type_script, params, script_path="/opt/script/main.py",
-                            version=None, script_content=None):
+                            version=None, script_content=None, hot_only_keys=None):
+    # ★ `hot_only_keys` (2026-10-30, image manquante — app/missing_frame.py) : RECONFIGURER À
+    #   CHAUD SEULEMENT. Même rendu, même fichier réécrit (un redémarrage ultérieur repart sur la
+    #   nouvelle configuration), mais JAMAIS d'arrêt/démarrage ni de (re)création de conteneur :
+    #   un réglage GLOBAL basculé ne doit pas couper toutes les sorties d'un parc. Succès si le
+    #   conteneur confirme les clés nommées (HTTP 200, ou sa réponse porte leurs valeurs rendues) ;
+    #   sinon False + alerte, et la nouvelle valeur ne prendra qu'au prochain démarrage du script.
     # `h` = hostname : sans lui, le suivi de création par lot ne peut pas rattacher cette alerte
     # à sa ligne (il apparie par `msg_params.h`, cf. `_lastAlertFor` dans static/scripts.js) et
     # l'étape « Configuration » resterait inatteignable. La lecture est déjà faite quelques lignes
     # plus bas ; on l'avance, plutôt que d'ajouter un aller-retour en base.
     _c0 = db_get_container(vmid)
-    db_add_alert("alert.deploy.script.en_cours", "info", vmid=vmid, kind="deploy",
-                 params={"t": type_script, "vmid": vmid, "h": (_c0 or {}).get("hostname")})
+    if not hot_only_keys:
+        db_add_alert("alert.deploy.script.en_cours", "info", vmid=vmid, kind="deploy",
+                     params={"t": type_script, "vmid": vmid, "h": (_c0 or {}).get("hostname")})
+
+    # Aucune version nommée = « garde la tienne », PAS « prends la courante » (cf.
+    # pinned_version). Posé ICI, en amont de tout : `version` nourrit ensuite le rendu
+    # (generer_script), les fichiers annexes (deploy_files), la garde du hot-only, la
+    # reconfiguration à chaud et l'estampille réécrite en base — les cinq doivent parler de la
+    # MÊME version, sans quoi on écrirait une estampille que le script rendu ne porte pas.
+    if version is None:
+        version = pinned_version(vmid, type_script, params)
 
     # Backend Docker : deux chemins. MTL = controller bâti dans l'image, config par NMOS, pas
     # d'agent :8081 ni de rendu script.py → chemin dédié. Compute générique = conteneur agent
     # macvlan : on le garantit up ici puis on POURSUIT sur le chemin agent standard (comme un LXC).
     _cd = _c0
-    if _cd:
+    if _cd and hot_only_keys:
+        from . import docker_compute
+        if docker_compute.is_mtl_type(type_script):
+            return False       # moteur MTL : pas de script rendu, rien à reconfigurer ainsi
+    if _cd and not hot_only_keys:
         from . import docker_compute
         if docker_compute.is_mtl_type(type_script):
             from . import docker_driver
@@ -1616,6 +1920,19 @@ def _deployer_script_locked(vmid, type_script, params, script_path="/opt/script/
                                  params={"vmid": vmid})
                     return True
 
+    if hot_only_keys:
+        # Le fichier n'est réécrit que pour la version QUI TOURNE : un autre code sur le disque
+        # serait repris au prochain redémarrage du script — une mise à jour que personne n'a
+        # demandée. La version vient de :8080 (état observé), jamais de la base.
+        _vv = version_en_cours(ip, vmid)
+        _vr = plugins.resolved_version(type_script, version)
+        if not _vv or _vv != _vr:
+            log.warning("deploy %s: live-only reconfiguration skipped — container runs %s, "
+                        "render would be %s", vmid, _vv, _vr)
+            db_add_alert("alert.deploy.hot_only_version", "warning", vmid=vmid, kind="deploy",
+                         params={"vmid": vmid, "running": _vv or "?", "render": _vr or "?"})
+            return False
+
     if script_content is None:
         # Rendu du script = params GRAS (polices en base64) ; `params` reste MAIGRE pour la
         # persistance et les comparaisons (cf. _gras).
@@ -1764,16 +2081,17 @@ def _deployer_script_locked(vmid, type_script, params, script_path="/opt/script/
             #    Le fichier sur disque porte la même configuration : un redémarrage ultérieur du
             #    conteneur repart bien sur ce qui a été appliqué à chaud.
             from .database import db_script_enabled as _db_se
+            if hot_only_keys:
+                return _hot_only_apply(ip, vmid, type_script, params, version, hot_only_keys)
             if _db_se(vmid) and _hot_config(ip, vmid, type_script, params, version):
                 db_add_alert("alert.deploy.script_reconfigure_a_chaud", "info", vmid=vmid,
                              kind="deploy", params={"t": type_script, "vmid": vmid})
                 return True
 
-            # Relancer le script pour qu'il prenne le nouveau code
-            try:
-                agent_session().post(agent_url(ip, "/stop"), timeout=5, headers=agent_headers(vmid))
-            except Exception:
-                pass
+            # Relancer le script pour qu'il prenne le nouveau code — arrêt CONSTATÉ (cf.
+            # restart_script_verified) : un /stop perdu laissait tourner l'ancien processus pendant
+            # que la base annonçait la nouvelle version, et le /start suivant répondait
+            # `already_running`, compté comme un succès.
             # ★ SAUF SI L'EXPLOITATION L'A DÉSACTIVÉ. Le script est déployé (le code est à jour et
             # prêt), mais il n'est PAS démarré : `containers.script_enabled` porte l'intention,
             # posée par le `NcWorker.enabled` du modèle MS-05-02. Sans ce garde, un contrôleur NMOS
@@ -1781,34 +2099,78 @@ def _deployer_script_locked(vmid, type_script, params, script_path="/opt/script/
             # aurait l'air de marcher et ne marcherait pas.
             from .database import db_script_enabled
             _voulu = db_script_enabled(vmid)
+            _rs = restart_script_verified(ip, vmid, content=script_content, start=bool(_voulu))
+            if _rs["stage"] in ("stop", "sha"):
+                # L'ANCIEN processus tourne toujours (ou un autre fichier que celui poussé) : le
+                # fichier est neuf, le code qui s'exécute ne l'est pas. Jamais un succès.
+                log.error("deploy %s: script NOT restarted (%s: %s)", vmid, _rs["stage"], _rs.get("detail"))
+                db_add_alert("alert.deploy.script_non_relance", "error", vmid=vmid, kind="deploy",
+                             params={"t": type_script, "vmid": vmid, "stage": _rs["stage"],
+                                     "e": _rs.get("detail") or ""})
+                return False
             if not _voulu:
                 # Déployé et prêt, volontairement PAS démarré. On le DIT : un script à l'arrêt sans
                 # trace se lit comme une panne, et quelqu'un ira le relancer à la main.
                 db_add_alert("alert.deploy.script_deploie_non_demarre", "info", vmid=vmid,
                              kind="deploy", params={"t": type_script, "vmid": vmid})
-            try:
-                r2 = agent_session().post(agent_url(ip, "/start"), timeout=5,
-                                          headers=agent_headers(vmid)) if _voulu else None
-                if r2 is None:
-                    pass
-                elif r2.status_code == 200:
-                    db_add_alert(
-                        "alert.deploy.script_deploie_redemarre",
-                        "info", vmid=vmid, kind="deploy", params={"t": type_script, "vmid": vmid})
-                    # état déclaré par le plugin (control.persist) : la base reprend la forme
-                    # canonique que le conteneur en a faite (migrations d'une nouvelle version)
+            elif not _rs["ok"]:
+                # Arrêt constaté mais démarrage refusé / en échec : l'ancien code ne tourne plus, et
+                # la surveillance relancera le fichier NEUF. Avertissement, comme avant.
+                if _rs.get("code") is not None:
+                    db_add_alert("alert.deploy.script_start_code", "warning", vmid=vmid, kind="deploy",
+                                 params={"t": type_script, "vmid": vmid, "code": _rs["code"]})
+                else:
+                    db_add_alert("alert.deploy.script_start_echoue", "warning", vmid=vmid, kind="deploy",
+                                 params={"t": type_script, "vmid": vmid, "e": _rs.get("detail") or ""})
+            else:
+                # Ce que le NOUVEAU processus publie sur :8080. Un script qui ne publie pas sa
+                # version n'est pas jugé (pas de fausse alarme) ; un :8080 muet non plus.
+                _want = params.get("plugin_version")
+                _verdict, _seen = (confirm_running_version(ip, _want) if _want
+                                   else ("unexposed", None))
+                if _verdict == "mismatch":
+                    db_add_alert("alert.deploy.version_non_appliquee", "error", vmid=vmid,
+                                 kind="deploy", params={"t": type_script, "vmid": vmid,
+                                                        "ver_vue": _seen, "ver_attendue": _want})
+                    return False
+                if _verdict == "silent":
+                    # :8080 muet tout le délai : le succès n'est PAS établi. Mesuré sur la Z8 le
+                    # 29/10 (#227, 0.23.47 → 0.23.48, 18:16:57) : le script relancé s'était arrêté
+                    # seul (code 1) et l'alerte « déployé et redémarré » partait à la même
+                    # milliseconde que ce constat. On demande à l'agent ce qui tourne VRAIMENT.
+                    _st = _agent_status(ip, vmid) or {}
+                    if _st.get("running") is False:
+                        log.error("deploy %s: new script died right after start (exit %s, signal %s)",
+                                  vmid, _st.get("last_exit"), _st.get("last_signal"))
+                        # Keep its last output NOW (traceback): the container may be recreated
+                        # before anyone reads `docker logs` — the #227 cause was lost that way.
+                        from . import crash_tail as _ct
+                        _row = _ct.capture(vmid, None, _st, source="deploy")
+                        _p = {"t": type_script, "vmid": vmid,
+                              "code": _st.get("last_exit") if _st.get("last_exit") is not None else "?",
+                              "sig": _st.get("last_signal") if _st.get("last_signal") is not None else "-"}
+                        if _row and _row.get("id") and _row.get("status") == "ok":
+                            _p["crash_tail_id"] = _row["id"]
+                        db_add_alert("alert.deploy.script_died_after_start", "error", vmid=vmid,
+                                     kind="deploy", params=_p)
+                        if _row is None or (not _row.get("existing") and _row.get("status") != "ok"):
+                            _ct.alert_unavailable(_row or {"error": "capture failed (see orchestrator log)"},
+                                                  vmid)
+                        return False
+                    log.warning("deploy %s: :8080 silent after restart — running version unconfirmed",
+                                vmid)
+                    db_add_alert("alert.deploy.version_unconfirmed", "warning", vmid=vmid,
+                                 kind="deploy", params={"t": type_script, "vmid": vmid})
                     from . import plugin_persist
                     plugin_persist.after_deploy(vmid, type_script)
-                else:
-                    db_add_alert(
-                        "alert.deploy.script_start_code",
-                        "warning", vmid=vmid, kind="deploy",
-                        params={"t": type_script, "vmid": vmid, "code": r2.status_code})
-            except Exception as e:
+                    return True
                 db_add_alert(
-                    "alert.deploy.script_start_echoue",
-                    "warning", vmid=vmid, kind="deploy",
-                    params={"t": type_script, "vmid": vmid, "e": str(e)})
+                    "alert.deploy.script_deploie_redemarre",
+                    "info", vmid=vmid, kind="deploy", params={"t": type_script, "vmid": vmid})
+                # état déclaré par le plugin (control.persist) : la base reprend la forme
+                # canonique que le conteneur en a faite (migrations d'une nouvelle version)
+                from . import plugin_persist
+                plugin_persist.after_deploy(vmid, type_script)
             return True
     except Exception as e:
         db_add_alert("alert.deploy.erreur", "error", vmid=vmid, kind="deploy",
@@ -1831,6 +2193,7 @@ def rewire_on_restart(vmid):
         params = cfg.get("params") or {}
         if not t or not plugins.is_plugin(t):
             return
+        params = _fresh_stored_params(vmid, t, params)      # R1 des ports : flux ACTUEL du port
         # Moteur MTL (2110_io) : son état vit sur :8081 (slots TX + abonnements RX IS-05), PAS sur
         # le hot-wire :8082 générique. On rejoue le MÊME resync que deploy_docker, sinon un restart
         # du conteneur laisse senders=0 → SDP TX en 404 (sorties NMOS non abonnables) et les RX ne
@@ -2144,6 +2507,7 @@ def _reconcile_fabric_node_impl(node_id, perime=None):
         if c.get("vmid") in _internal:
             continue   # shard/partagé du tissu → jamais re-shardé
         vmid = c.get("vmid"); p = dc.get("params") or {}
+        p = _fresh_stored_params(vmid, "multiview", p)   # R1 des ports : le mur logique, avant découpe
         mvs[vmid] = p
         # Intention de cadence PAR multiview (fps_target) → budget de trame propre ; sinon global.
         try:

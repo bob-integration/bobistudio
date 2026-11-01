@@ -20,6 +20,7 @@ La sortie (stdout + stderr) du script déployé est HÉRITÉE de l'agent → ell
 standard du CONTENEUR (`docker logs` / journald, rotation Docker 50 Mo × 5), plus dans un fichier
 interne au rootfs éphémère.
 """
+import hashlib
 import hmac
 import json
 import os
@@ -38,6 +39,13 @@ PROC = None
 # découvrir un SIGILL (code -4) ou une exception. C'est ce qui a coûté le plus de temps dans le
 # diagnostic des nœuds Sandy Bridge : l'interface disait « arrêté », jamais « instruction illégale ».
 DERNIERE_MORT = {"code": None, "signal": None, "ts": None}
+# What the CURRENT process was launched from (2026-10-29): sha256 of the script file at spawn,
+# spawn time, pid. Lets the controller check that a redeploy really runs the file it pushed —
+# a rewritten file says nothing about the process that read the previous one.
+RUNNING = {"pid": None, "started_at": None, "script_sha256": None}
+STOP_REAP_S = 2.0          # after SIGKILL, how long /stop waits for the processes to be gone
+SOCKET_TIMEOUT_S = 10.0    # TLS handshake / idle peer: a stalled client must not freeze the agent
+REQUEST_TIMEOUT_S = 30.0   # per-read timeout once the request is being served
 NMOS_SDP_DIR = "/tmp"
 
 # Durcissement (hardening/audit-2026-07) :
@@ -379,7 +387,7 @@ def _stop_proc():
         pids.add(PROC.pid)
     if not pids:
         PROC = None
-        return
+        return []
     # SIGTERM sur le groupe de session de chaque PID (le script + ses enfants ffmpeg).
     for pid in pids:
         try:
@@ -398,8 +406,25 @@ def _stop_proc():
             os.killpg(os.getpgid(pid), signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             pass
-    print("[agent] script arrêté (pids %s)" % sorted(pids), flush=True)
+    # Wait until they are really gone (and reap our child) — answering « stopped » while the old
+    # process still exists let a following /start answer `already_running`.
+    deadline = _t.monotonic() + STOP_REAP_S
+    while True:
+        if PROC is not None:
+            try:
+                PROC.poll()
+            except Exception:
+                pass
+        remaining = sorted(_script_pids())
+        if not remaining or _t.monotonic() >= deadline:
+            break
+        _t.sleep(0.05)
+    print("[agent] script arrêté (pids %s%s)" % (sorted(pids), ", STILL ALIVE %s" % remaining
+                                                 if remaining else ""), flush=True)
     PROC = None
+    if not remaining:
+        RUNNING.update(pid=None, started_at=None, script_sha256=None)
+    return remaining
 
 
 def _start_proc():
@@ -430,14 +455,20 @@ def _start_proc():
         raise FileNotFoundError(f"script absent: {path}")
     env = dict(os.environ)
     env["PYTHONUNBUFFERED"] = "1"
+    try:
+        with open(path, "rb") as f:
+            sha = hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        sha = None
     PROC = subprocess.Popen(
         [sys.executable, "-u", path],
         stdout=1,               # fd 1 de l'agent = sortie standard du conteneur
         stderr=1,               # stderr fusionné dans la même sortie (ordre préservé)
         env=env,
         preexec_fn=os.setsid)
-    print("[agent] script démarré : %s (pid %d) — sortie sur stdout du conteneur"
-          % (path, PROC.pid), flush=True)
+    RUNNING.update(pid=PROC.pid, started_at=time.time(), script_sha256=sha)
+    print("[agent] script démarré : %s (pid %d, sha256 %s) — sortie sur stdout du conteneur"
+          % (path, PROC.pid, (sha or "?")[:12]), flush=True)
 
 
 LEGACY_LOG = "/var/log/mxl-script.log"
@@ -459,6 +490,8 @@ def _purge_legacy_log():
 
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = REQUEST_TIMEOUT_S   # StreamRequestHandler: settimeout on the connection
+
     def log_message(self, *a): pass
 
     def _authed(self):
@@ -509,7 +542,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/status":
             # `_is_running()` d'abord : c'est lui qui constate la mort et renseigne DERNIERE_MORT.
             run = _is_running()
+            # pid / started_at / script_sha256 : only for a process THIS agent launched and still
+            # running (an orphan of a previous agent generation has no known origin → None).
+            mine = run and RUNNING["pid"] is not None and RUNNING["pid"] in _script_pids()
             _json(self, 200, {"running": run, "path": LAST_PATH,
+                              "pid": RUNNING["pid"] if mine else None,
+                              "started_at": RUNNING["started_at"] if mine else None,
+                              "script_sha256": RUNNING["script_sha256"] if mine else None,
                               "last_exit": DERNIERE_MORT["code"],
                               "last_signal": DERNIERE_MORT["signal"],
                               "last_exit_ts": DERNIERE_MORT["ts"]})
@@ -601,8 +640,12 @@ class Handler(BaseHTTPRequestHandler):
                 _json(self, 200, {"status": "not_running"})
                 return
             try:
-                _stop_proc()
-                _json(self, 200, {"status": "stopped"})
+                remaining = _stop_proc()
+                if remaining:
+                    _json(self, 500, {"error": "script still alive after SIGKILL",
+                                      "remaining": remaining})
+                else:
+                    _json(self, 200, {"status": "stopped"})
             except Exception as e:
                 _json(self, 500, {"error": str(e)})
             return
@@ -679,6 +722,20 @@ def _maybe_wrap_tls(httpd):
     return httpd
 
 
+BIND = "0.0.0.0"
+
+
+def serve():
+    """Serve :8081 until killed. The server is single-threaded and, under TLS, does the handshake
+    inside accept(): without a timeout ONE stalled peer froze the whole agent, and every request
+    queued behind it — a /stop among them — timed out on the controller side before its
+    handshake completed, so the agent never saw it (2026-10-29). Accepted sockets inherit the
+    default timeout, which bounds the handshake; `Handler.timeout` then bounds each read."""
+    import socket as _socket
+    _socket.setdefaulttimeout(SOCKET_TIMEOUT_S)
+    _maybe_wrap_tls(HTTPServer((BIND, PORT), Handler)).serve_forever()
+
+
 if __name__ == "__main__":
     _purge_legacy_log()
-    _maybe_wrap_tls(HTTPServer(("0.0.0.0", PORT), Handler)).serve_forever()
+    serve()

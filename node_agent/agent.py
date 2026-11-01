@@ -26,7 +26,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "0.29.1"  # 0.29.1 : formatage — UUID relu après mkfs (settle, relectures, blkid -p) au lieu d'abandonner ; 0.29.0 : disques locaux (/v1/host/disks, plan/execute) ; 0.28.0 : pilotes hôte — job long + journal + action en attente (redémarrage / arrêt complet) génériques (/v1/host/drivers/*, /v1/host/poweroff), 1er kind : nvidia ; 0.27.0 : port de transfert — plage FERMÉE `bytes=a-b` (206 exact, 416), connexions gardées ouvertes (keep-alive, inactivité bornée) ; 0.26.0 : envoi PAR MORCEAUX reprenable (décalage, état, finalisation, abandon, espace libre vérifié) ; 0.25.0 : dépôt d'un fichier par le contrôleur (import d'un projet avec ses médias) ; 0.24.0 : transfert de fichiers nœud → nœud (port 9101, lecture seule, autorisation signée) ; 0.23.0 : seul un CONTRÔLEUR pilote (rôle du cert client vérifié, plus seulement la chaîne) ; 0.22.0 : mounts[].options (ro, rslave…) — partages réseau vus par les conteneurs média
+VERSION = "0.30.2"  # 0.30.2 : `machine` dans /v1/health et /v1/capabilities — modèle du serveur (DMI), cœurs physiques, sockets, noms des GPU (fiche de nœud) ; 0.30.1 : l'inventaire des cartes ignore les interfaces posées par l'orchestrateur (`bobi-*`) — ce n'est pas du matériel du nœud ; 0.30.0 : réseau des conteneurs au CHOIX — publication de ports (`ports` dans la spec de conteneur → -p, refus d'une entrée mal formée), /v1/host/networks/ensure prend `driver` (macvlan « réseau du site » | bridge « réseau interne », nom de pont hôte stable, 409 si le réseau existe sous un autre pilote) et l'inventaire ne filtre plus par pilote (exclusion des réseaux intégrés) ; 0.29.2 : disques — refus porteurs du disque (série RÉELLE au journal, plus la série saisie), fstab d'avant Bobi gardé une fois pour toutes (.bobi-orig) ; 0.29.1 : formatage — UUID relu après mkfs (settle, relectures, blkid -p) au lieu d'abandonner ; 0.29.0 : disques locaux (/v1/host/disks, plan/execute) ; 0.28.0 : pilotes hôte — job long + journal + action en attente (redémarrage / arrêt complet) génériques (/v1/host/drivers/*, /v1/host/poweroff), 1er kind : nvidia ; 0.27.0 : port de transfert — plage FERMÉE `bytes=a-b` (206 exact, 416), connexions gardées ouvertes (keep-alive, inactivité bornée) ; 0.26.0 : envoi PAR MORCEAUX reprenable (décalage, état, finalisation, abandon, espace libre vérifié) ; 0.25.0 : dépôt d'un fichier par le contrôleur (import d'un projet avec ses médias) ; 0.24.0 : transfert de fichiers nœud → nœud (port 9101, lecture seule, autorisation signée) ; 0.23.0 : seul un CONTRÔLEUR pilote (rôle du cert client vérifié, plus seulement la chaîne) ; 0.22.0 : mounts[].options (ro, rslave…) — partages réseau vus par les conteneurs média
 # 0.21.0 : chien de garde — sonde par docker exec (macvlan isole l hote)
 #                     ciblé sur le bon domaine/uds, et remontée de gm.ClockClass / utcOffsetValid
 # 0.18.0 : /v1/host/clock — les horloges du nœud en 2 appels système, estampillé
@@ -369,7 +369,14 @@ def _all_nics():
     if rc != 0:
         return nics
     for name in sorted(o.split()):
-        if name == "lo" or name.startswith(("docker", "veth", "br-", "virbr")):
+        # ★ `bobi-` : les interfaces que l'ORCHESTRATEUR a posées lui-même sur cet hôte (le shim
+        # macvlan). Ce n'est PAS du matériel du nœud, et les lister a suffi à les faire traiter
+        # comme tel : sur la Z8, le 2026-10-27, la ligne `bobi-shim` a fini par porter le rôle
+        # « conteneurs » — et comme « bobi-shim » se trie AVANT « eno1 », elle est apparue en tête
+        # de liste. Conséquences en chaîne : nœud écarté des déploiements (son réseau est accroché
+        # à eno1 alors que le rôle déclare bobi-shim), restauration de projet à 0 sur 6, et
+        # « aucune carte n'a sa MAC » puisque celle du shim change à chaque pose.
+        if name == "lo" or name.startswith(("docker", "veth", "br-", "virbr", "bobi-")):
             continue
         rc2, _, _ = run(["test", "-e", f"/sys/class/net/{name}/device"], timeout=3)
         info = {"name": name, "physical": rc2 == 0, "mac": None, "up": None,
@@ -501,19 +508,39 @@ def _horloges_ns():
     return time.clock_gettime_ns(time.CLOCK_REALTIME), time.clock_gettime_ns(CLOCK_TAI)
 
 
+# Réseaux que Docker crée LUI-MÊME. Noms réservés : aucun autre réseau ne peut les porter.
+_NETS_INTEGRES = ("bridge", "host", "none")
+
+# Pilotes acceptés par /v1/host/networks/ensure = les deux MODES du réseau des conteneurs.
+# Fermé volontairement : un pilote non prévu ici n'a pas de place dans le modèle d'IP de
+# l'orchestrateur (cf. allocations.centralized_ipam) et échouerait plus loin, plus tard.
+NET_DRIVERS = ("macvlan", "bridge")
+
+
 def _docker_networks():
+    """Inventaire des réseaux Docker du nœud, TOUS pilotes confondus.
+
+    ⚠ Le filtre d'origine était une LISTE BLANCHE de pilotes (`macvlan`, `ipvlan`). Un réseau
+    des conteneurs en mode « interne » est un `bridge` : il n'y figurait pas, donc l'inventaire
+    le CACHAIT, et l'enrôlement remontait un `docker_network` vide — un nœud parfaitement
+    configuré se serait déclaré sans réseau. On exclut donc par NOM les trois réseaux intégrés
+    plutôt que de nommer les pilotes acceptés : la liste des pilotes est ouverte, celle des
+    réseaux intégrés ne l'est pas, et c'est la seule des deux qu'on peut écrire sans se périmer.
+    """
     rc, o, _ = docker("network", "ls", "--format", "{{.Name}} {{.Driver}}", timeout=8)
     nets = []
     if rc == 0:
         for line in o.splitlines():
             parts = line.split()
-            if len(parts) >= 2 and parts[1] in ("macvlan", "ipvlan"):
-                sub = None
+            if len(parts) >= 2 and parts[0] not in _NETS_INTEGRES:
+                sub = parent = None
                 rc2, o2, _ = docker("network", "inspect", "-f",
-                                    "{{range .IPAM.Config}}{{.Subnet}}{{end}}", parts[0], timeout=8)
+                                    "{{range .IPAM.Config}}{{.Subnet}}{{end}}"
+                                    "|{{index .Options \"parent\"}}", parts[0], timeout=8)
                 if rc2 == 0:
-                    sub = o2.strip() or None
-                nets.append({"name": parts[0], "driver": parts[1], "subnet": sub})
+                    sub, _sep, parent = (o2 or "").strip().partition("|")
+                nets.append({"name": parts[0], "driver": parts[1],
+                             "subnet": sub or None, "parent": parent or None})
     return nets
 
 
@@ -556,6 +583,55 @@ def _cpu_model():
     except Exception:
         pass
     return None
+
+
+# Inventaire de la MACHINE (fiche de nœud, 2026-10-30) : ce qui ne change qu'au démontage d'une
+# carte. Relu toutes les 5 min, pas à chaque relevé : `nvidia-smi` coûte, et un pilote installé
+# après le démarrage de l'agent doit tout de même finir par apparaître.
+_MACHINE = {"ts": 0.0, "doc": None}
+MACHINE_TTL_S = 300
+
+
+def _dmi(name):
+    try:
+        with open("/sys/class/dmi/id/" + name) as f:
+            v = f.read().strip()
+    except OSError:
+        return None
+    # Valeurs bouche-trou des micrologiciels : les afficher ferait croire à un modèle.
+    return None if not v or v.lower() in ("to be filled by o.e.m.", "default string", "system product name",
+                                          "system manufacturer", "not specified", "none") else v
+
+
+def _cpu_topology():
+    """(cœurs physiques, sockets) d'après /proc/cpuinfo, ou (None, None) si la topologie n'y est pas
+    (machine virtuelle sans `physical id`) — jamais une estimation à partir du nombre de fils."""
+    paires, sockets, phys = set(), set(), None
+    try:
+        with open("/proc/cpuinfo") as f:
+            for line in f:
+                k, _, v = line.partition(":")
+                k, v = k.strip(), v.strip()
+                if k == "physical id":
+                    phys = v
+                    sockets.add(v)
+                elif k == "core id" and phys is not None:
+                    paires.add((phys, v))
+    except OSError:
+        return None, None
+    return (len(paires) or None), (len(sockets) or None)
+
+
+def _machine():
+    now = time.time()
+    if _MACHINE["doc"] is not None and now - _MACHINE["ts"] < MACHINE_TTL_S:
+        return _MACHINE["doc"]
+    cores, sockets = _cpu_topology()
+    doc = {"vendor": _dmi("sys_vendor"), "product": _dmi("product_name"),
+           "cpu_model": _cpu_model(), "cores": cores, "threads": os.cpu_count(), "sockets": sockets,
+           "gpus": [g["name"] for g in _gpus()]}
+    _MACHINE.update(ts=now, doc=doc)
+    return doc
 
 
 def _resources():
@@ -743,7 +819,7 @@ def _net_throughput():
     if rc != 0:
         return out
     for name in sorted(o.split()):
-        if name == "lo" or name.startswith(("docker", "veth", "br-", "virbr")):
+        if name == "lo" or name.startswith(("docker", "veth", "br-", "virbr", "bobi-")):
             continue
         try:
             with open(f"/sys/class/net/{name}/statistics/rx_bytes") as f:
@@ -940,6 +1016,7 @@ def capabilities_payload():
         "nic": _nic(CONFIG.get("mtl_iface")) if has_cap("io2110") else None,
         "lcores": CONFIG.get("lcores") or None,
         "gpus": _gpus(),
+        "machine": _machine(),
         "agent_version": VERSION,
     }
 
@@ -950,6 +1027,7 @@ def health_payload():
         "host_uptime_s": _host_uptime_s(),
         "docker": _docker_info(),
         "resources": _resources(),
+        "machine": _machine(),
         "disks": _disks(),
         "net": _net_throughput(),
         "versions": _versions(),
@@ -1031,6 +1109,27 @@ def _build_run_argv(spec):
         argv += ["--ip", str(spec["ip"])]
     if spec.get("privileged"):
         argv.append("--privileged")
+
+    # PUBLICATION DE PORTS (`ports`, agent ≥ 0.30.0) : [{"hote": int, "conteneur": int,
+    # "proto": "tcp"|"udp"}] → `-p <hote>:<conteneur>/<proto>`. Sert au mode « réseau interne »,
+    # où le conteneur est sur un bridge privé : sans publication, une source qui pousse (SRT,
+    # RTMP) ou un navigateur (WebRTC) n'a aucun chemin vers lui.
+    #
+    # ⚠ REFUS PLUTÔT QUE SILENCE sur une entrée mal formée. `docker run` accepterait
+    # « -p 0:9000 » (port hôte ALÉATOIRE) : le conteneur démarrerait, écouterait, et personne
+    # ne saurait sur quel port le joindre — l'orchestrateur, lui, continuerait d'annoncer
+    # celui qu'il croit avoir publié.
+    for prt in (spec.get("ports") or []):
+        try:
+            h, c = int(prt["hote"]), int(prt["conteneur"])
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("port mal formé : %r" % (prt,))
+        proto = str(prt.get("proto") or "tcp").lower()
+        if proto not in ("tcp", "udp"):
+            raise ValueError("protocole de port inconnu : %r" % (proto,))
+        if not (0 < h < 65536 and 0 < c < 65536):
+            raise ValueError("port hors plage : %s:%s" % (h, c))
+        argv += ["-p", "%d:%d/%s" % (h, c, proto)]
 
     res = spec.get("resources") or {}
     if res.get("cpuset"):
@@ -2034,11 +2133,40 @@ class Handler(BaseHTTPRequestHandler):
             name = body.get("name")
             if not name:
                 return self._send(400, {"ok": False, "error": "name requis"})
-            rc, _, _ = docker("network", "inspect", name, timeout=8)
+            # MODE du réseau des conteneurs, vocabulaire FERMÉ :
+            #   macvlan — « réseau du site » : chaque conteneur est une machine du LAN ;
+            #   bridge  — « réseau interne » : subnet privé, joignable par l'hôte, sortie NATée.
+            # Défaut `macvlan` : un contrôleur antérieur à 0.30.0 n'envoie pas `driver` et doit
+            # obtenir exactement ce qu'il demandait jusqu'ici.
+            driver = (body.get("driver") or "macvlan").strip()
+            if driver not in NET_DRIVERS:
+                return self._send(400, {"ok": False,
+                                        "error": "driver inconnu : %s" % driver})
+            rc, o_i, _ = docker("network", "inspect", "-f", "{{.Driver}}", name, timeout=8)
             if rc == 0:
-                return self._send(200, {"ok": True, "created": False})
-            argv = ["docker", "network", "create", "-d", "macvlan",
-                    "-o", f"parent={body.get('parent','')}"]
+                present = (o_i or "").strip()
+                # Le réseau existe déjà sous un AUTRE pilote. Répondre « created:false » ferait
+                # croire au contrôleur que le mode est appliqué, alors que les conteneurs
+                # repartiraient sur l'ancien — un changement de mode silencieusement sans effet.
+                # On refuse en NOMMANT les deux pilotes. La destruction reste au contrôleur :
+                # lui seul sait quels conteneurs tombent avec le réseau, et sait l'annoncer.
+                if present and present != driver:
+                    return self._send(409, {"ok": False, "created": False, "driver": present,
+                                            "error": "réseau %s déjà présent en « %s », demandé "
+                                                     "en « %s »" % (name, present, driver)})
+                return self._send(200, {"ok": True, "created": False,
+                                        "driver": present or driver})
+            argv = ["docker", "network", "create", "-d", driver]
+            if driver == "macvlan":
+                argv += ["-o", f"parent={body.get('parent','')}"]
+            else:
+                # Nom d'interface hôte STABLE : sans cette option Docker invente « br-<12 hex> »,
+                # qui change à chaque recréation du réseau. Le pare-feu, le NAT de la « Sortie
+                # Internet » et tout diagnostic au shell doivent pouvoir nommer la même interface
+                # d'un redémarrage à l'autre. Borné à IFNAMSIZ-1 = 15 caractères (le noyau
+                # refuse au-delà) ; une collision avec un pont existant fait échouer la création,
+                # ce qui est le bon comportement — mieux vaut un refus qu'un pont partagé.
+                argv += ["-o", "com.docker.network.bridge.name=%s" % name[:15]]
             if body.get("subnet"):
                 argv += ["--subnet", body["subnet"]]
             if body.get("gateway"):
@@ -2048,7 +2176,8 @@ class Handler(BaseHTTPRequestHandler):
             argv.append(name)
             rc, o, e = run(argv, timeout=20)
             return self._send(200 if rc == 0 else 500,
-                              {"ok": rc == 0, "created": rc == 0, "error": (e or o).strip()[:300] if rc else None})
+                              {"ok": rc == 0, "created": rc == 0, "driver": driver,
+                               "error": (e or o).strip()[:300] if rc else None})
 
         m = re.match(r"^/v1/host/ptp/(start|stop|restart)$", path)
         if m:
@@ -2568,6 +2697,11 @@ def _dsk_fstab_rewrite(drop, add_block=None, path=None):
         new += add_block.splitlines()
     text = "\n".join(new) + "\n"
     try:
+        # .bobi-orig = le fstab d'AVANT notre première écriture, jamais réécrit ; .bobi-bak = celui
+        # d'avant la dernière. Avec .bobi-bak seul, deux opérations suffisaient à perdre l'original
+        # (constaté sur le Z8 le 2026-10-25).
+        if not os.path.exists(path + ".bobi-orig"):
+            shutil.copy2(path, path + ".bobi-orig")
         shutil.copy2(path, path + ".bobi-bak")
     except OSError:
         pass
@@ -2652,10 +2786,12 @@ def _dsk_execute(req):
             res["ok"] = False
             res["error"] = "refused"
             res["refusals"] = plan["refusals"]
+            res["disk"] = plan.get("disk")
             res["detail"] = plan.get("detail")
             res["media_containers"] = plan.get("media_containers")
             return res
         disk = plan["disk"]
+        res["disk"] = disk             # le journal cite la série RÉELLE, pas celle saisie
         if plan["confirmation"] == "confirm" and req.get("confirm") is not True:
             return _dsk_refuse(res, "confirm_required")
         if plan["confirmation"] == "serial":

@@ -266,49 +266,61 @@ def main():
     import socket
     import ssl
     import urllib.request
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port_libre = s.getsockname()[1]
-    s.close()
-    st.set("web_tls_port", port_libre)
-    srv = web_mode.demarrer_https(app, hote="127.0.0.1")
-    verifier(srv is not None and web_mode.actif() == "tls",
-             "l'écoute HTTPS démarre (port éphémère %d — le 443 de la machine n'est pas touché)"
-             % port_libre)
-    if srv is not None:
-        from app import ca
-        ctx = ssl.create_default_context(cafile=ca.paths()["ca_cert"])
-        ctx.check_hostname = False   # le SAN du certificat est l'IP du contrôleur, pas 127.0.0.1
-        try:
-            with urllib.request.urlopen("https://127.0.0.1:%d/api/update/ping" % port_libre,
-                                        context=ctx, timeout=10) as r:
-                verifier(r.status == 200,
-                         "HTTPS répond, et la chaîne se VÉRIFIE contre la CA du contrôleur")
-        except Exception as e:
-            verifier(False, "HTTPS répond et se vérifie (%s)" % e)
-        vieux = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        vieux.check_hostname = False
-        vieux.verify_mode = ssl.CERT_NONE
-        try:
-            vieux.maximum_version = ssl.TLSVersion.TLSv1_1
-            vieux.minimum_version = ssl.TLSVersion.TLSv1
-            with socket.create_connection(("127.0.0.1", port_libre), timeout=5) as raw:
-                try:
-                    with vieux.wrap_socket(raw):
-                        refuse = False
-                except ssl.SSLError:
-                    refuse = True
-            verifier(refuse, "un client limité à TLS 1.1 est REFUSÉ (cheroot accepterait tout "
-                             "par défaut)")
-        except (ValueError, ssl.SSLError) as e:
-            print("  · TLS 1.1 non testable ici : l'OpenSSL local ne sait plus le parler (%s)" % e)
-        # La poignée de main ci-dessus ne suffit pas : l'OpenSSL de Debian 13 refuse TLS 1.1 DE
-        # LUI-MÊME, donc retirer notre minimum ne changeait rien ici (mutation M1, survivante).
-        # On vérifie donc le contexte que le serveur porte réellement : c'est lui qui rend la
-        # propriété indépendante de la politique de l'OpenSSL de la machine.
-        verifier(srv.ssl_adapter.context.minimum_version == ssl.TLSVersion.TLSv1_2,
-                 "le contexte MONTÉ impose TLS 1.2 lui-même, sans dépendre de l'OpenSSL système")
-        srv.stop()
+    from app import ca as _ca_dispo
+    # ⚠ Cette section exige le certificat du CONTRÔLEUR, qui vit dans `tls/` — non versionné
+    # (.gitignore) et donc ABSENT d'un exécuteur de CI ou d'un poste neuf. On le dit et on
+    # s'abstient, au lieu d'échouer sur l'environnement : en CI le 2026-10-25, « l'écoute HTTPS
+    # démarre » tombait sur `[Errno 2] No such file or directory` et dénonçait la machine, pas
+    # le code. Le reste du banc, lui, est mesuré partout.
+    # L'abstention est ANNONCÉE avec le marqueur NON MESURÉ : une garde qui se taît quand sa
+    # dépendance manque devient une garde inerte que personne ne remarque.
+    if not _ca_dispo.ca_available():
+        print("  · NON MESURÉ : aller-retour HTTPS et plancher TLS 1.2 — aucune CA de "
+              "contrôleur sur cette machine (tls/ absent, non versionné).")
+    else:
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port_libre = s.getsockname()[1]
+        s.close()
+        st.set("web_tls_port", port_libre)
+        srv = web_mode.demarrer_https(app, hote="127.0.0.1")
+        verifier(srv is not None and web_mode.actif() == "tls",
+                 "l'écoute HTTPS démarre (port éphémère %d — le 443 de la machine n'est pas touché)"
+                 % port_libre)
+        if srv is not None:
+            from app import ca
+            ctx = ssl.create_default_context(cafile=ca.paths()["ca_cert"])
+            ctx.check_hostname = False   # le SAN du certificat est l'IP du contrôleur, pas 127.0.0.1
+            try:
+                with urllib.request.urlopen("https://127.0.0.1:%d/api/update/ping" % port_libre,
+                                            context=ctx, timeout=10) as r:
+                    verifier(r.status == 200,
+                             "HTTPS répond, et la chaîne se VÉRIFIE contre la CA du contrôleur")
+            except Exception as e:
+                verifier(False, "HTTPS répond et se vérifie (%s)" % e)
+            vieux = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            vieux.check_hostname = False
+            vieux.verify_mode = ssl.CERT_NONE
+            try:
+                vieux.maximum_version = ssl.TLSVersion.TLSv1_1
+                vieux.minimum_version = ssl.TLSVersion.TLSv1
+                with socket.create_connection(("127.0.0.1", port_libre), timeout=5) as raw:
+                    try:
+                        with vieux.wrap_socket(raw):
+                            refuse = False
+                    except ssl.SSLError:
+                        refuse = True
+                verifier(refuse, "un client limité à TLS 1.1 est REFUSÉ (cheroot accepterait tout "
+                                 "par défaut)")
+            except (ValueError, ssl.SSLError) as e:
+                print("  · TLS 1.1 non testable ici : l'OpenSSL local ne sait plus le parler (%s)" % e)
+            # La poignée de main ci-dessus ne suffit pas : l'OpenSSL de Debian 13 refuse TLS 1.1 DE
+            # LUI-MÊME, donc retirer notre minimum ne changeait rien ici (mutation M1, survivante).
+            # On vérifie donc le contexte que le serveur porte réellement : c'est lui qui rend la
+            # propriété indépendante de la politique de l'OpenSSL de la machine.
+            verifier(srv.ssl_adapter.context.minimum_version == ssl.TLSVersion.TLSv1_2,
+                     "le contexte MONTÉ impose TLS 1.2 lui-même, sans dépendre de l'OpenSSL système")
+            srv.stop()
 
     print("\n   Repli : jamais d'interface injoignable")
     occupe = socket.socket()

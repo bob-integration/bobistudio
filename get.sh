@@ -93,7 +93,7 @@ done
 #
 # ⚠ À BUMPER À CHAQUE MODIFICATION DE CE FICHIER, sinon elle ment — et une version qui ment est
 # pire que pas de version, puisqu'on lui fait confiance pour écarter une piste.
-INSTALLEUR_VERSION="2026.10.23"
+INSTALLEUR_VERSION="2026.10.24"
 
 # ─── Langue de l'installateur ────────────────────────────────
 #
@@ -297,9 +297,18 @@ _choisir_version() {
   local rep_
   printf "%b" "$(_t quelle_vers)"
   read -r rep_ || rep_=""
-  case "${rep_:-1}" in
+  # ★ LE DÉFAUT À NE PAS REFAIRE : le `case` testait "${rep_:-1}" — la valeur PAR DÉFAUT — et son
+  # corps lisait "$rep_" BRUT. Sur une simple frappe d'Entrée, le cas le plus courant, `rep_` est
+  # VIDE : le `case` voyait « 1 » et branchait sur le test numérique, qui recevait du vide et
+  # crachait « [: : nombre entier attendu comme expression » à la figure du premier venu.
+  # Il tombait juste par CHANCE — le repli valant `tags[0]`, c'est-à-dire le défaut voulu — et
+  # cette chance aurait disparu au premier remaniement du repli. Constaté le 2026-10-23 en
+  # pilotant le script publié par pseudo-terminal ; présent depuis le 2026-08-31.
+  # On normalise donc UNE FOIS, et tout le reste ne voit plus qu'une seule valeur.
+  rep_="${rep_:-1}"
+  case "$rep_" in
     d|D|main) REF="main";;
-    *[!0-9]*|"") REF="${tags[0]}";;
+    *[!0-9]*) REF="${tags[0]}";;
     *) if [ "$rep_" -ge 1 ] && [ "$rep_" -le "${#tags[@]}" ]; then REF="${tags[$((rep_ - 1))]}"
        else REF="${tags[0]}"; fi;;
   esac

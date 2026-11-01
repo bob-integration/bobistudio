@@ -12,7 +12,7 @@
 //
 //   MediaUpload.enqueue(files, {vmid} | {node_id, folder, project_id?}, {bin_id?, label?})
 //     (nom déjà pris dans le dossier : fenêtre « Envoyer sous ce nom / Ignorer » AVANT l'envoi)
-//   MediaUpload.chooseTarget({folder, project_id}) → Promise<{node_id, folder} | null>   (Gestionnaire)
+//   MediaUpload.chooseTarget({count, bins, bin_id}) → Promise<{node_id, folder:'', bin_id} | null>   (Gestionnaire)
 //   MediaUpload.config() → Promise<{chunk_size, max_bytes, exts, kinds, nodes}>
 // Chaque fichier importé émet `ml:uploaded` (detail {asset_id, session}) : les bibliothèques relisent.
 (function(){
@@ -480,7 +480,8 @@
 
   window.addEventListener('beforeunload', e => { if(active()){ e.preventDefault(); e.returnValue = ''; } });
 
-  // ── Destination au Gestionnaire (vue globale) : nœud + dossier ──
+  // ── Destination au Gestionnaire (vue globale) : nœud + bin. Pas de dossier : en local, l'utilisateur
+  // classe ses médias dans la base (bins), pas sur le disque (décision du 2026-10-29, comme le recorder). ──
   async function chooseTarget(defaults){
     defaults = defaults || {};
     let cfg;
@@ -498,8 +499,8 @@
           : T('up_dest_lead', 'Le fichier est envoyé sur le volume média du nœud choisi, puis importé dans la base.'))}</p>
         <label>${esc(T('up_node', 'Nœud'))} <select class="mlu-node">${nodes.map(n => `<option value="${n.id}"${n.id === pick.id ? ' selected' : ''}${n.capable ? '' : ' disabled'}>${esc(n.name)}${n.capable ? ''
           : ' — ' + esc(T('up_node_old', 'agent à mettre à jour ({v})').replace('{v}', n.agent_version || '?'))}</option>`).join('')}</select></label>
-        <label>${esc(T('up_folder', 'Dossier (sous le volume)'))} <input class="mlu-folder" type="text" placeholder="${esc(T('up_folder_ph', 'racine du volume'))}"
-          value="${esc(defaults.folder != null ? defaults.folder : (last.folder || ''))}"></label>
+        <label>${esc(T('up_bin', 'Bin'))} <select class="mlu-bin"><option value="">${esc(T('up_bin_none', 'Aucun'))}</option>${(defaults.bins || []).map(b =>
+          `<option value="${b.id}"${b.id === defaults.bin_id ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select></label>
         <div class="mlu-dlg-acts"><button type="button" class="btn mlu-no">${esc(T('up_cancel', 'Annuler'))}</button>
           <button type="submit" class="btn btn-green mlu-yes">${esc(T('up_send', 'Envoyer'))}</button></div></form>`;
       document.body.appendChild(dlg);
@@ -508,11 +509,11 @@
       dlg.addEventListener('cancel', e => { e.preventDefault(); end(null); });
       dlg.querySelector('form').onsubmit = e => {
         e.preventDefault();
-        const t = {node_id:+dlg.querySelector('.mlu-node').value, folder:dlg.querySelector('.mlu-folder').value.trim().replace(/^\/+|\/+$/g, '')};
-        pref.set('target', t); end(t);
+        const t = {node_id:+dlg.querySelector('.mlu-node').value, folder:''};
+        pref.set('target', t); end(Object.assign({bin_id:+dlg.querySelector('.mlu-bin').value || null}, t));
       };
       dlg.showModal();
-      dlg.querySelector('.mlu-folder').focus();
+      dlg.querySelector('.mlu-node').focus();
     });
   }
 

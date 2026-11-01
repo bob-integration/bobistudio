@@ -466,6 +466,13 @@
 <h2>Réglages par-nœud</h2>
 <p>La préparation matérielle (Ethernet, SR-IOV, PTP, MTL, CPU) est <strong>par-nœud</strong> : un sélecteur de nœud coiffe les onglets <em>Réseau hôte</em>, <em>CPU</em> et <em>Déploiement → Local</em>. Le moniteur PTP échantillonne chaque nœud.</p>
 
+<h2>Pilotes matériels de l'hôte (DeckLink, NVIDIA)</h2>
+<p>Certaines cartes exigent un pilote <strong>installé sur la machine</strong>, pas dans le conteneur : un conteneur ne charge pas de module noyau. C'est le cas du <strong>Desktop Video</strong> de Blackmagic (cartes DeckLink) et du pilote <strong>NVIDIA</strong>. Ces pilotes sont posés par l'<strong>agent du nœud</strong>, depuis <strong>Réglages → Nœuds &amp; Matériel → Déploiement → Nœuds</strong>.</p>
+<p><strong>Commencez par déclarer la carte sur le nœud</strong> : sur sa fiche, ligne <em>Capacités</em>, bouton <strong>＋ Ajouter</strong> → <code>decklink</code> (ou <code>gpu</code>). La ligne du pilote n'apparaît qu'ensuite — un cluster de dix nœuds dont un seul porte une carte n'affiche pas dix boutons inutiles. Cette déclaration ne touche à rien sur la machine : elle dit simplement « il y a une carte ici », et c'est ce qui ouvre la boîte du pilote, qui montre l'état, accepte l'archive et lance l'installation hors ligne. On déclare donc la carte <strong>à la main</strong>, sans rien détecter : tant que le pilote manque, il n'y a rien à détecter — c'est précisément le problème qu'on cherche à résoudre.</p>
+<p><strong>L'installation se fait hors ligne, par dépôt du fichier</strong>, parce qu'un nœud n'a pas forcément d'accès sortant. On télécharge donc l'archive depuis un poste de travail, puis on la dépose dans la boîte du pilote. Côté Blackmagic (<em>blackmagicdesign.com → Support → Capture and Playback</em>), un formulaire d'enregistrement du produit s'ouvre : le lien <strong>« Télécharger uniquement »</strong>, en bas à gauche, suffit — ni compte ni contrat à accepter. Côté NVIDIA, c'est <strong>le même geste</strong> : la boîte du pilote NVIDIA accepte l'installeur <code>NVIDIA-Linux-x86_64-&lt;version&gt;.run</code>, et c'est ce qui permet d'installer le pilote sur un nœud coupé d'Internet — le dépôt apt de NVIDIA n'étant utilisé que lorsqu'il est joignable.</p>
+<p>L'installation demande ensuite un <strong>redémarrage</strong> du nœud pour charger les modules du noyau. Un micrologiciel de carte périmé demande, lui, un <strong>arrêt complet</strong> : une carte ne charge son nouveau micrologiciel qu'après avoir perdu l'alimentation.</p>
+<div class="wiki-note"><strong>Sans ce pilote, un conteneur <code>decklink_io</code> ne peut pas démarrer du tout</strong>, et ce n'est pas une panne de la carte : le noyau n'expose aucun périphérique dans <code>/dev/blackmagic</code>, donc l'orchestrateur n'a rien à lui donner — la carte peut être parfaitement présente sur le bus PCI. Installez le pilote <strong>d'abord</strong>, depuis les Réglages : c'est indépendant de tout conteneur, et ça marche sur une machine neuve où aucun conteneur n'existe encore. Un conteneur créé sur un nœud sans pilote est enregistré <em>en attente du pilote</em> plutôt que lancé, et il démarre de lui-même au redémarrage du nœud, une fois le pilote en place.</div>
+
 <h2>Haute disponibilité (paire de contrôleurs)</h2>
 <p>L'orchestrateur peut tourner en <strong>paire warm-standby</strong> : un <strong>actif</strong> pilote, un <strong>standby</strong> démarre passif (interface en lecture seule). Les deux contrôleurs sont d'abord <strong>appairés</strong> une fois, par un code à usage unique : ils partagent alors la même autorité de certification, sans laquelle un standby promu ne pourrait piloter aucun nœud. L'actif <strong>réplique</strong> ensuite sa base vers le standby en mTLS (port 5444, contrôleurs seulement). La <strong>bascule du pilotage est manuelle</strong> (promouvoir/rétrograder) ; la VIP de management, elle, peut suivre seule avec keepalived. Détails : article <em>Haute disponibilité</em>, et Réglages → Cluster & Réseau → Cluster.</p>
 
@@ -521,8 +528,9 @@
 <tr><td>NMOS IS-04/IS-05</td><td><code>services/nmos/</code></td><td>Protocoles → NMOS</td></tr>
 <tr><td>Ember+</td><td><code>services/emberplus/</code></td><td>Protocoles → Ember+</td></tr>
 <tr><td>TSL 5.0 (tally centralisé)</td><td><code>services/tsl/</code></td><td>Protocoles → TSL</td></tr>
-<tr><td>Émulateur ATEM</td><td><code>services/atem/</code></td><td>Pupitres → ATEM</td></tr>
-<tr><td>Skaarhoj Quick Bar</td><td><code>services/skaarhoj/</code></td><td>Pupitres → Skaarhoj</td></tr>
+<tr><td>Émulateur ATEM</td><td><code>services/panel_atem/</code></td><td>Pupitres → ATEM</td></tr>
+<tr><td>Skaarhoj Quick Bar</td><td><code>services/panel_skaarhoj/</code></td><td>Pupitres → Skaarhoj</td></tr>
+<tr><td>Pupitre EVS Dyvi (Bobi.Studio tient lieu de processing module)</td><td><code>services/panel_dyvi/</code></td><td>Pupitres → Panel Dyvi</td></tr>
 <tr><td>Passerelle WebRTC</td><td><code>services/webrtc_gateway/</code></td><td>WebRTC</td></tr>
 <tr><td>Stockage (volumes des nœuds, partages SMB/NFS, accès par dossier)</td><td><code>services/storage/</code></td><td>Médias → Stockage</td></tr>
 </table>
@@ -893,6 +901,119 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 </table>
 </template>
 
+<template id="wiki-art-workflow-panel-dyvi">
+<p>Un pupitre <strong>EVS Dyvi</strong> pilote Bobi.Studio, et seulement Bobi.Studio : aucun moteur ni aucune production Dyvi n'est nécessaire. Bobi.Studio prend la place du <em>processing module</em> (PM) auquel le pupitre se connecte d'ordinaire, et fabrique tout ce que le pupitre affiche : les zones de touches, leurs libellés, leurs voyants.</p>
+
+<div class="wiki-warn"><strong>C'est le pupitre qui vient chercher Bobi.Studio</strong>, comme un pupitre ATEM et à l'inverse d'un Skaarhoj : on donne au pupitre l'adresse de l'orchestrateur. Bobi.Studio écoute sur le port TCP 3456, celui d'un vrai PM.</div>
+<p>En haute disponibilité, seul le contrôleur actif écoute. Donnez au pupitre l'adresse de management partagée (VIP) : après une bascule, il se reconnecte de lui-même au nouveau contrôleur actif.</p>
+
+<h2>Mise en route</h2>
+<ol>
+<li>Réglages → Pupitres → Panel Dyvi : cocher <strong>Service activé</strong>. L'état passe à « À l'écoute sur 0.0.0.0:3456 ».</li>
+<li><strong>Ajouter un panel</strong> avec son numéro, celui qu'affiche le pupitre dans <em>Main Menu → Config → DeviceID</em> (21 pour un pupitre réglé en automatique).</li>
+<li>Sur le pupitre : <em>Main Menu → Connect</em>, saisir l'adresse de l'orchestrateur, puis <em>Connect</em>.</li>
+</ol>
+
+<h2>Les zones</h2>
+<p>Le bouton <strong>Configurer</strong> d'un panel le montre tel qu'il s'affichera, extension de droite comprise (colonnes 25 à 32). On y ajoute des zones, puis on peint leurs rangées sur les touches (mode <em>Peindre</em>) ; le mode <em>Inspecter</em> montre et règle ce que fait une touche.</p>
+<ul>
+<li><strong>Mélangeur</strong> : un bus PGM / PVW relié à un mélangeur Bobi.Studio. Les touches portent les noms de ses entrées et s'allument comme ses bus ; un changement fait ailleurs (page web, macro) revient aussitôt sur le pupitre. Deux rangées facultatives choisissent un keyer et sa source (fill). Le menu « Libellés » choisit ce qu'affichent les touches : le nom du flux (par défaut) ou une colonne de la page Libellés ; une entrée qui suit un port de projet affiche le nom du port. On peut lui donner le bloc cut / auto du haut ou du bas : son écran liste la transition du fond et une transition par keyer, chacune avec son CUT et son AUTO ; le levier et le CUT / AUTO sous le levier agissent sur la ou les transitions touchées sur l'écran (« Next Transition »).</li>
+<li><strong>Players</strong> : une rangée de choix du player (le player choisi est affiché en inverse sur l'écran de sa touche) et des touches de fonctions — lecture, pause, playlist… — prises dans les actions du plugin, qui agissent sur le player choisi. L'écran d'une fonction passe en inverse tant que son état est vrai (lecture en cours, boucle active…) pour un plugin qui publie son état à l'orchestrateur. Deux rangées facultatives suivent le player choisi : <em>Clips de la playlist</em> (une touche par clip, son titre sur l'écran, le clip en cours en inverse ; un appui le charge, ou le charge et le lit si la zone le demande) et <em>Playlists enregistrées</em> (un appui charge la playlist). Les libellés suivent la playlist sans recharger le pupitre.</li>
+<li><strong>Actions</strong> : des touches libres, chacune lance une action d'un plugin ou une macro Bobi.Studio.</li>
+<li><strong>Grille routeur</strong> : toutes les destinations vidéo d'un projet (ses sorties, puis les entrées de chacun de ses conteneurs : mélangeur, multiview, recorders…) et toutes ses sources (ses entrées, puis les flux de chacun de ses conteneurs), rangées par conteneur, sur quatre rangées : les conteneurs de destination, leurs destinations, les conteneurs source, leurs sources. Un appui sur une destination la choisit (en inverse) et affiche la source qu'elle reçoit (en inverse) ; un appui sur une source la câble sur la destination choisie. Un conteneur qui a plus de destinations ou de sources que de touches se pagine : un nouvel appui sur ce conteneur passe à la page suivante (le bandeau affiche « 1/2 »). C'est le même câblage que la page Câbles et la fenêtre Ports, frontière du projet comprise ; ne sont pas proposés le tissu interne du mur (pyramides) ni les sorties 2110, dont le changement de source peut figer la carte et demande une confirmation. Le même geste existe en macro (« Sorties de projet » → « Grille du projet »).</li>
+</ul>
+<p>Des macros peuvent choisir le player d'une zone, changer le libellé d'une touche (aussitôt affiché) ou recharger les panels.</p>
+<div class="wiki-note">Les écrans du pupitre n'ont pas de lettres accentuées : « Précédent » s'affiche « Precedent ». Un libellé trop long passe sur deux lignes.</div>
+
+<h2>Limites actuelles</h2>
+<ul>
+<li>Le voyant « à l'antenne » d'un keyer sur l'écran du bloc ne suit pas encore l'état du keyer.</li>
+<li>Le retour d'état des touches de fonctions d'un player demande la version 0.41.24 du plugin player ou plus : une version plus ancienne ne publie pas son état à l'orchestrateur.</li>
+<li>Le tally des sources (une source à l'antenne, donné par le tally de l'orchestrateur) n'est pas encore affiché sur le pupitre. Une touche allumée sur une rangée de bus ou de source de keyer indique la source sélectionnée (crosspoint), pas une source à l'antenne.</li>
+<li>Une cible de transition changée ailleurs que sur le pupitre ne s'affiche pas sur son écran : le pupitre reste maître de sa sélection.</li>
+<li>Un pupitre qui perd la connexion peut rester figé et demander un redémarrage du pupitre.</li>
+</ul>
+</template>
+
+<template id="wiki-art-surfaces-controle">
+<p>Une <strong>surface de contrôle</strong> (faders motorisés, encodeurs, touches) pilote une <strong>console audio</strong> Bobi.Studio. Elle est liée à <strong>une console</strong> et à <strong>un opérateur</strong> : elle agit avec les droits de cet opérateur (zones de la console), et son PFL part dans le monitoring de cet opérateur. Réglage : <strong>Réglages → Pupitres → Surfaces de contrôle</strong>.</p>
+
+<div class="wiki-warn"><strong>Le service doit être activé</strong> (case « Service activé » en haut de l'onglet), et la surface doit avoir une console ET un opérateur. Sans opérateur, l'état affiche « Aucun opérateur rattaché » et rien ne bouge : c'est voulu, une surface n'agit jamais sans droits.</div>
+
+<h2>Les trois profils</h2>
+<table>
+<tr><th>Profil</th><th>Liaison</th><th>Ce qu'elle a</th></tr>
+<tr><td>Surface 8 faders motorisés (MCU)</td><td>Réseau, UDP 10111</td><td>8 tranches + master, écrans par tranche, afficheurs, touches globales et F1-F8</td></tr>
+<tr><td>Extension 8 faders (MCU)</td><td>Réseau</td><td>8 tranches, ni master ni touches globales ; suit la principale</td></tr>
+<tr><td>Surface compacte 8 faders + master, USB (MCU)</td><td>USB sur le contrôleur</td><td>8 tranches + master, encodeurs à couronne, ni écran ni afficheur</td></tr>
+</table>
+
+<h2>Brancher</h2>
+<ul>
+<li><strong>Réseau</strong> : la surface, en mode réseau natif, est réglée sur l'adresse <em>de ce contrôleur</em> ; dans Bobi.Studio, on donne l'adresse <em>de la surface</em>.</li>
+<li><strong>USB</strong> : la surface est branchée sur la machine qui porte le contrôleur (installation tout-en-un) et réglée en <strong>mode MCU</strong>. Le champ « Port MIDI USB » peut rester vide s'il n'y a qu'un port MIDI ; s'il y en a plusieurs, donner une partie de son nom (le refus cite les ports trouvés). Débrancher fait passer la surface en « injoignable » ; elle revient seule au rebranchement.</li>
+</ul>
+
+<h2>Ce que montrent les faders</h2>
+<p>La surface suit une <strong>répartition</strong> de la console (pages mêlant tranches, bus et VCA) — la disposition générale par défaut. Ce que l'opérateur n'a pas le droit d'opérer garde sa place mais reste inerte. Le <strong>fader master</strong> est un <em>fader fixe</em>, indépendant de la page : PGM par défaut, ou le monitoring, un bus, un VCA, ou rien.</p>
+<p>Plusieurs surfaces du même opérateur sur la même console se rangent par <strong>ordre</strong> : la première montre les tranches 1-8 de la page, la suivante 9-16. « Liée à ses voisines » leur fait partager page, mode d'encodeur et répartition ; décochée, la surface vit seule.</p>
+<div class="wiki-note">Un fader motorisé qu'on relâche revient à la valeur de la console : la surface affiche toujours l'état réel du mix, jamais celui de la main.</div>
+<p><strong>Niveau réel ou réglage</strong> : dans les réglages de la surface, « Le fader motorisé montre le niveau réel » ajoute au réglage du fader ce que d'autres fonctions de la console lui font. Le choix vaut pour toute la surface :</p>
+<table>
+<tr><th>Coché</th><th>Le moteur montre</th><th>Quand on bouge le fader</th></tr>
+<tr><td>Rien</td><td>Le réglage du fader, comme à l'écran</td><td>Il règle le fader</td></tr>
+<tr><td>AFV (par défaut)</td><td>Le réglage, moins ce que l'audio suit la vidéo retire : le fader descend pendant la fermeture, au rythme de la transition, et remonte à l'ouverture</td><td>Sur une tranche que l'AFV atténue, l'AFV est tenue <strong>ouverte</strong> tant que le fader est tenu, et le fader règle le niveau depuis là où est le doigt (le son suit le doigt, sans saut). Au lâcher, l'AFV suit de nouveau le tally</td></tr>
+<tr><td>VCA</td><td>Le niveau avec les VCA de la voie</td><td>Le fader règle la voie pour obtenir le niveau montré. Rien ne se passe tant qu'un de ses VCA est à −∞</td></tr>
+</table>
+<p>Si la surface perd la liaison pendant qu'un fader tient l'AFV ouverte, la console la relâche d'elle-même en une à deux secondes. À l'écran, la console montre l'effet de l'AFV par un capot fantôme en pointillés, indépendamment de ce réglage.</p>
+
+<h2>Touches de tranche et encodeurs</h2>
+<table>
+<tr><th>Touche</th><th>Effet</th></tr>
+<tr><td>Solo</td><td>PFL de la voie, dans le monitoring de la surface</td></tr>
+<tr><td>Mute</td><td>Coupure de la voie (ou du VCA)</td></tr>
+<tr><td>Select</td><td>Sélectionne la voie — la même sélection que dans le navigateur de l'opérateur</td></tr>
+<tr><td>Rec</td><td>Sans effet</td></tr>
+</table>
+<p>Les encodeurs ont un <strong>mode</strong> :</p>
+<table>
+<tr><th>Mode</th><th>Rotation</th><th>Appui</th></tr>
+<tr><td>Pan</td><td>Panoramique</td><td>Retour au centre</td></tr>
+<tr><td>Trim</td><td>Gain d'entrée (−24 à +24 dB)</td><td>Appui : inversion de polarité. Double appui : trim à 0 dB</td></tr>
+<tr><td>Départs aux</td><td>Niveau du départ vers l'aux affiché</td><td>Départ actif / coupé. Rappuyer sur la touche de mode passe à l'aux suivant</td></tr>
+<tr><td>EQ</td><td>Les 8 encodeurs règlent l'EQ de la voie <em>sélectionnée</em></td><td>Rappuyer sur la touche de mode : 2<sup>e</sup> page (LED clignotante)</td></tr>
+<tr><td>Plug-in</td><td>Les 8 encodeurs règlent un module de la voie sélectionnée</td><td>Rappuyer sur la touche de mode : module suivant</td></tr>
+</table>
+
+<h2>Surface compacte USB : la façade</h2>
+<p>Touches mesurées sur l'appareil en mode MCU (28/10/2026) :</p>
+<table>
+<tr><th>Commande</th><th>Fonction</th></tr>
+<tr><td>Faders 1-8, master</td><td>Les 8 voies de la banque, fader fixe</td></tr>
+<tr><td>Encodeurs 1-8</td><td>Selon le mode (tableau ci-dessus)</td></tr>
+<tr><td>Appui des encodeurs 9 à 13</td><td>Mode des encodeurs : Trim, Départs aux, Pan, Plug-in, EQ</td></tr>
+<tr><td>Encodeur 15 (rotation)</td><td>Banque précédente / suivante</td></tr>
+<tr><td>Encodeur 16 (rotation)</td><td>Décale d'une voie</td></tr>
+<tr><td>LAYER A / LAYER B</td><td>Banque précédente / suivante</td></tr>
+<tr><td>MAIN</td><td>Bascule entre les tranches et les bus ; allumée quand des bus sont affichés</td></tr>
+<tr><td>◀◀ ▶▶ LOOP ● ■ ▶</td><td>Touches assignables (ci-dessous)</td></tr>
+</table>
+<p>La rotation des encodeurs 9 à 14 et l'appui des encodeurs 15 et 16 n'envoient rien : la surface elle-même ne les transmet pas.</p>
+
+<h2>Touches assignables</h2>
+<p>F1-F8 sur la surface motorisée, les 6 touches de transport sur la compacte : chacune reçoit, dans les réglages de la surface, une fonction toute faite (scène suivante / précédente, éteindre tous les PFL, atténuation / coupure / mono du monitoring) ou <strong>n'importe quelle macro</strong>. La LED suit l'état de la fonction, ou reste allumée tant que la macro tourne. La macro est lancée avec les droits de l'opérateur de la surface.</p>
+<p>À l'inverse, les macros peuvent piloter la surface : aller à une page, page suivante / précédente, changer le mode des encodeurs, rattacher la surface à un autre opérateur.</p>
+
+<h2>Diagnostic</h2>
+<table>
+<tr><th>État affiché</th><th>Ce que ça veut dire</th></tr>
+<tr><td>Connectée</td><td>Tout va bien.</td></tr>
+<tr><td>Surface injoignable</td><td>Réseau : mauvaise adresse ou surface éteinte. USB : surface débranchée, ou le nom de port ne correspond à rien.</td></tr>
+<tr><td>Console hors ligne / Aucune console choisie</td><td>La surface affiche son écran d'attente, faders en bas : elle ne garde jamais les positions d'une console perdue.</td></tr>
+<tr><td>Aucun opérateur rattaché</td><td>Choisir un opérateur dans les réglages de la surface.</td></tr>
+</table>
+</template>
+
 <template id="wiki-art-nmos-explique">
 <p>NMOS (AMWA) est l'ensemble de specs pour la découverte et le contrôle de flux IP broadcast.</p>
 <table>
@@ -969,19 +1090,43 @@ l'epoch.</div>
 chargement, changement de clip — <strong>sans rupture ni saut de phase</strong>. Le calage
 audio/vidéo est <strong>déterministe</strong> (verrou par media-timestamp), jamais réglé « à l'oreille ».</p>
 
-<h2>Mélangeur &amp; DVE : entrée de référence + alignement</h2>
-<p>Un mélangeur compose des trames du <strong>même instant</strong>. Il se verrouille sur une
-<strong>entrée de référence</strong> — un <strong>choix opérateur</strong> (réglage <code>sync_ref</code>,
-changeable à chaud), <strong>fixe</strong> : elle ne change PAS à la commutation PGM/PVW. Les autres
-entrées sont alignées par media-timestamp dans une fenêtre réglable (<code>align_budget</code>, défaut
-1 trame) :</p>
+<h2>Mélangeur &amp; DVE : délais calés sur l'horloge</h2>
+<p>En mode tranche, le mélangeur et le split sont cadencés par l'<strong>horloge PTP</strong>, pas par une
+entrée : à chaque créneau d'image, chaque entrée est lue à l'image « créneau − son délai ». Aucune
+caméra ne sert de référence, donc <strong>une source en panne ne retient ni ne décale les autres</strong> :
+elle seule répète sa dernière image, et c'est signalé.</p>
 <ul>
-<li>budget = 0 : on n'attend jamais (latence mini ; une source décalée peut être 1 trame « en retard ») ;</li>
-<li>budget = N : on attend jusqu'à N trames que les sources en retard rattrapent l'instant de référence.</li>
+<li><strong>Délai par défaut</strong> (⚙, appliqué à chaud) : « Fixe, 1 image » (défaut) — délai constant,
+toutes les sources arrivent à temps, même traitées ; ou « Au plus rapide » — l'image du créneau en
+cours dès ses premières lignes, une source en retard passe avec sa dernière image.</li>
+<li><strong>Groupes de délai</strong> (mélangeur, onglet Entrées &amp; délais) : des entrées calées
+ensemble à un délai propre, de 0 à 6 images. Une entrée sans groupe suit le délai par défaut.</li>
+<li><strong>Décalage amont</strong> (même onglet, colonne « Amont », 0 à 5 images, pilotable par macro) :
+une source dont le contenu arrive déjà en retard (caméra HF, liaison codée, traitement extérieur)
+reste estampillée à son arrivée, image comme son — son enregistrement reste synchrone avec lui-même.
+C'est le mélangeur qui la recale, visiblement : elle est lue d'autant d'images plus récente que son
+groupe, qui doit donc offrir au moins « délai mesuré + décalage amont » — d'où 6 images au plus,
+dans les 200 ms d'historique des flux MXL (Réglages → MXL). La colonne « Demande » en tient compte ;
+un groupe trop court est signalé « amont non compensé ». Côté son, le même décalage se compense sur
+la tranche de la console.</li>
+<li>Le PGM, le CLEAN et le PVW portent le numéro d'image du <strong>groupe de référence</strong> : il ne
+change pas à la commutation, et une ré-entrée d'un M/E dans un autre arrive calée. Une source d'un
+autre groupe (un duplex, par exemple) y figure avec sa propre latence.</li>
 </ul>
-<p>Une source hors budget est présentée avec sa trame précédente (sans bloquer le programme) et
-<strong>signalée</strong> (skew par entrée + alerte « en retard » dans les métriques). Le DVE suit le
-même modèle, avec le <strong>fond</strong> comme référence (il ne commute pas).</p>
+<p>Hors mode tranche (repli image entière), le mélangeur garde l'ancien fonctionnement : entrée de
+référence <code>sync_ref</code> et alignement par media-timestamp dans la fenêtre <code>align_budget</code>.</p>
+
+<h2>Mélangeur : keyers amont</h2>
+<p>Le mélangeur porte de 1 à 4 <strong>keyers amont</strong> (nombre choisi au déploiement), dans le M/E comme
+les USK d'un ATEM : sur le fond, sous l'habillage HTML, absents du CLEAN. Types : <strong>DVE</strong>
+(image placée, bordure, sans découpe), <strong>Linear</strong> (fill + key : la luminance du key donne
+l'alpha — la paire <code>stills</code> / <code>stills_key</code>) et <strong>Luma</strong> (alpha tiré de la
+luminance du fill), avec masque, position et taille pour tous. Le key d'un linear est lu à la même
+image que son fill, même si les deux entrées sont dans des groupes de délai différents.</p>
+<p>Mise à l'antenne : <strong>ON AIR</strong> (coupe sèche), <strong>AUTO</strong> du keyer (fondu sur sa
+propre durée), ou avec la transition du M/E en ciblant « KEY n » à côté de « BGD ». Un appel sans
+numéro de keyer vise le keyer 1 (compatibilité). Les réglages survivent au redéploiement, l'état
+d'antenne non.</p>
 
 <h2>Cadences fractionnaires</h2>
 <p>Les cadences <strong>fractionnaires</strong> (29.97, 59.94, 23.976) sont gérées nativement via une
@@ -1151,6 +1296,60 @@ au rythme des changements poussés par le <em>TSL centralisé</em> (cf. article 
 mesures <strong>live</strong>, pas un instantané figé du déploiement.</div>
 </template>
 
+<template id="wiki-art-virtuelles">
+<p>Une <strong>virtuelle</strong> est une source ou une destination <strong>nommée, qui appartient
+au projet</strong>, et à laquelle on affecte un flux réel. On câble les entrées sur la virtuelle, pas
+sur le flux : réaffecter la virtuelle <strong>recâble à chaud</strong> tout ce qui la suivait. C'est
+ce qui permet de remplacer une caméra, un lecteur ou une sortie <strong>sans défaire le câblage</strong>.</p>
+
+<p>⚠ À ne pas confondre avec les <em>ports</em> d'une carte de la page Câbles, qui sont ses connecteurs
+d'entrée et de sortie. Une virtuelle est un objet du <strong>projet</strong>. Son identifiant interne
+s'écrit <code>port:&lt;id&gt;</code> — c'est la forme que vous lirez dans un journal ou un message d'erreur.</p>
+
+<h2>Créer et nommer</h2>
+<ul>
+<li>Fenêtre <strong>Ports du projet</strong> : « Ajouter 1 virtuelle », puis sa nature —
+<strong>source</strong> (elle fournit un signal au projet) ou <strong>destination</strong> (elle publie
+la sortie d'un conteneur).</li>
+<li>Chaque virtuelle porte un <strong>nom long</strong> et un <strong>nom court</strong>. Ce sont eux
+que le multiview, l'AFV et les pupitres affichent, à la place du nom du flux — qui ne dit rien à un
+exploitant.</li>
+<li>Une virtuelle <strong>non affectée</strong> est légitime : l'entrée qui la suit reste vide, et
+retrouve son signal dès qu'un flux lui est affecté.</li>
+</ul>
+
+<h2>Câbler</h2>
+<ul>
+<li>Une virtuelle montre <strong>une ligne par flux</strong> — la vidéo, puis ses audios et son ANC —
+exactement comme un conteneur. Un câble parti d'elle les <strong>emporte tous</strong>.</li>
+<li>Une entrée qui suit une virtuelle affiche le <strong>nom de la virtuelle</strong>, pas celui du
+flux affecté.</li>
+<li>Les virtuelles <strong>voyagent avec l'export du projet</strong> : celui-ci reste portable,
+puisqu'il ne retient aucun flux physique.</li>
+</ul>
+
+<h2>Entre projets, et depuis l'extérieur</h2>
+<ul>
+<li>Une virtuelle <strong>source</strong> peut suivre la virtuelle <strong>destination</strong> d'un
+autre projet : c'est ainsi qu'un projet consomme la sortie d'un autre sans liaison directe.</li>
+<li>Un flux <strong>hors projet</strong> n'est plus seulement refusé — « Faire entrer cette source par
+un port du projet » crée ou réutilise une virtuelle source, l'affecte, et l'entrée la suit. Réservé
+aux administrateurs.</li>
+</ul>
+
+<h2>La vue globale</h2>
+<p>La page <strong>Câbles</strong> montre tous les projets d'un coup : un projet y est un bloc avec ses
+virtuelles nommées et leur état. Les liaisons <strong>directes</strong>, qui ne passent pas par une
+virtuelle, apparaissent en rose — ce sont elles qui rendent un projet non portable. Le hors-projet non
+relié est replié.</p>
+
+<h2>⚠ Ce qui ne marche pas encore</h2>
+<p>Rappeler un <strong>instantané de configuration de conteneur</strong> réapplique les paramètres
+<strong>bruts</strong> : une entrée qui suivait une virtuelle est remise sur l'ancien flux physique et
+<strong>perd son lien à la virtuelle, sans un mot</strong>. Les instantanés sont antérieurs aux
+virtuelles et ne les connaissent pas. Si vous utilisez les deux, <strong>revérifiez le câblage après un
+rappel</strong>.</p>
+</template>
 <template id="wiki-art-ptp-explique">
 <p>PTP (IEEE 1588 / SMPTE 2059-2) synchronise les horloges pour aligner les RTP timestamps ST 2110.</p>
 <div class="wiki-note">Pour l'horloge <strong>système</strong> des nœuds, la grille TAI du bus MXL et ce qui se passe à l'arrivée d'un nœud neuf, voir l'article <strong>Horloges du cluster (TAI)</strong>.</div>
@@ -1421,7 +1620,7 @@ anneau vidéo (8 trames) ........... 25 Mo par flux
 </ul>
 
 <h2>Gestionnaire de médias</h2>
-<p>Le Gestionnaire (Médias → Gestionnaire de médias) occupe toute la hauteur de la page et peut afficher <strong>plusieurs panneaux</strong> (jusqu'à 6) disposés en <strong>mosaïque</strong> : « Disposition » propose 1 panneau, 2 côte à côte, 2 l'un sous l'autre, 2 + 2 ou un grand et deux empilés. On <strong>glisse la barre de titre</strong> d'un panneau sur un autre pour l'y accoler (lâché sur un bord) ou les échanger (lâché au centre) — ou on passe par son bouton « Déplacer… » ; ↔ et ↕ découpent un panneau, les séparateurs redimensionnent, et chaque panneau garde son onglet, son bin et sa recherche. Sur un écran étroit, tout passe en une colonne. La disposition courante est retenue par poste ; <strong>Enregistrer…</strong> la garde sous un nom, dans « Mes dispositions » (sous les dispositions intégrées de la liste) — elles sont propres à chaque utilisateur et le suivent d'un poste à l'autre (30 au plus). En choisir une la rappelle en réutilisant les panneaux ouverts ; un nom déjà pris est remplacé après confirmation, et « Supprimer » retire celle qui est choisie. On <strong>glisse</strong> des médias d'un panneau à l'autre (déposer sur un bin manuel l'y range). Depuis le menu : copier vers un nœud (copie vérifiée), transcoder, importer depuis un serveur réseau, et <strong>Envoyer vers</strong> un Player ou des Images fixes démarrés (en sélection multiple, l'envoi vers un Player alimente sa playlist).</p>
+<p>Le Gestionnaire (Médias → Gestionnaire de médias) occupe toute la hauteur de la page et peut afficher <strong>plusieurs panneaux</strong> (jusqu'à 6) disposés en <strong>mosaïque</strong> : « Disposition » propose 1 panneau, 2 côte à côte, 2 l'un sous l'autre, 2 + 2 ou un grand et deux empilés. On <strong>glisse la barre de titre</strong> d'un panneau sur un autre pour l'y accoler (lâché sur un bord) ou les échanger (lâché au centre) — ou on passe par son bouton « Déplacer… » ; ↔ et ↕ découpent un panneau, les séparateurs redimensionnent, et chaque panneau garde son onglet, son bin et sa recherche. Sur un écran étroit, tout passe en une colonne. La disposition courante est retenue par poste ; <strong>Enregistrer…</strong> la garde sous un nom, dans « Mes dispositions » (sous les dispositions intégrées de la liste) — elles sont propres à chaque utilisateur et le suivent d'un poste à l'autre (30 au plus). En choisir une la rappelle en réutilisant les panneaux ouverts ; un nom déjà pris est remplacé après confirmation, et « Supprimer » retire celle qui est choisie. On <strong>glisse</strong> des médias d'un panneau à l'autre (déposer sur un bin manuel l'y range). Depuis le menu : copier vers un nœud (copie vérifiée), <strong>Transcoder…</strong> (un média, une sélection, ou tout le contenu d'un bin au clic droit — une fenêtre règle le travail, fait choisir si la sortie devient une nouvelle fiche ou une version, le <strong>bin</strong> où la ranger quand elle est prête (celui d'où l'on lance, par défaut), et montre le nom de chaque fichier produit avant de lancer ; le dossier sur le disque est un réglage avancé ; les travaux partent à la ferme de transcodage), importer depuis un serveur réseau, et <strong>Envoyer vers</strong> un Player ou des Images fixes démarrés (en sélection multiple, l'envoi vers un Player alimente sa playlist).</p>
 
 <h2>La fiche Infos</h2>
 <p>Menu d'un média → <strong>Infos…</strong>. Une fenêtre à onglets :</p>
@@ -1444,7 +1643,7 @@ anneau vidéo (8 trames) ........... 25 Mo par flux
 </ul>
 
 <h2>Versions d'un média</h2>
-<p>Toutes les essences d'un média sont sous <strong>la même fiche</strong> : l'<strong>original</strong> (la référence : sa fiche technique, son empreinte) et ses <strong>versions</strong> — une sortie du Transcoder n'ouvre jamais une fiche à part, elle devient une version du média de sa source, nommée par le nom court de son préréglage (<code>h264</code>, <code>xdcam</code>, <code>proreshq</code>…). La bibliothèque n'affiche qu'<strong>une ligne par média</strong> ; titre, champs, bins, partages et projets sont ceux de la fiche, pour toutes ses versions.</p>
+<p>Toutes les essences d'un média sont sous <strong>la même fiche</strong> : l'<strong>original</strong> (la référence : sa fiche technique, son empreinte) et ses <strong>versions</strong>, nommées par le nom court de leur préréglage (<code>h264</code>, <code>xdcam</code>, <code>proreshq</code>…). Une sortie du Transcoder devient au choix une <strong>version</strong> du média de sa source, ou une <strong>nouvelle fiche</strong> reliée à son original (sa fiche dit « Source : … ») — la fenêtre « Transcoder… » propose la nouvelle fiche par défaut, et un <strong>bin</strong> où la ranger dès qu'elle est prête. La bibliothèque n'affiche qu'<strong>une ligne par média</strong> ; titre, champs, bins, partages et projets sont ceux de la fiche, pour toutes ses versions.</p>
 <ul>
 <li><strong>Nom de fichier</strong> : même code que l'original, la clé de version en suffixe — <code>clip__a1b2c3.mov</code>, <code>clip__a1b2c3_h264.mp4</code>, <code>clip__a1b2c3_xdcam.mxf</code> ; le proxy reste <code>…_proxy.mp4</code>. Code et clé de version sont retirés à la sortie du nœud (export, téléchargement).</li>
 <li><strong>Charger un média</strong> (Player, Images fixes, rapatriement, « Envoyer vers ») charge sa <strong>version par défaut</strong> — l'original, sauf choix dans l'onglet Versions. Une version précise : « Charger une version » au menu du Gestionnaire, la macro <em>Charger un média dans un conteneur</em> (base des médias), ou le paramètre <code>version</code> de l'API (<code>/api/media/send</code>, <code>/api/media/fetch</code>, <code>/api/media/copy</code>).</li>
@@ -1828,6 +2027,97 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 <div id="wiki-changelog-content">Chargement…</div>
 </template>
 
+<template id="wiki-art-reseau-conteneurs">
+<p>Les conteneurs de calcul et de média ont besoin d'une adresse IP joignable par l'orchestrateur. Deux manières de la leur donner, <strong>au choix pour chaque nœud</strong> : le <strong>réseau du site</strong>, où chaque conteneur prend une adresse sur le LAN comme une machine de plus, et le <strong>réseau interne</strong>, où ils vivent sur un sous-réseau privé qui ne sort pas de la machine. Cet article explique lequel choisir, ce qu'est le <code>bobi-shim</code> que vous verrez apparaître, et pourquoi reconfigurer demande une confirmation.</p>
+
+<div class="wiki-note">Réglages → <em>Nœuds &amp; Matériel → Réseau des conteneurs</em> pour le mode et le shim. Réglages → <em>Nœuds &amp; Matériel → Réseau hôte</em> pour les rôles d'interface. Le choix de sortie se fait par conteneur, dans la palette de déploiement.</div>
+
+<h2>Les deux modes</h2>
+
+<h3>Réseau du site (macvlan)</h3>
+<p>Chaque conteneur reçoit une adresse du subnet du cluster et apparaît sur le réseau du site comme un équipement autonome, avec sa propre adresse MAC. Sa passerelle est celle du site, <strong>auto-dérivée de la route par défaut du nœud</strong> — jamais codée en dur. C'est le mode historique, et celui qui convient dès que l'orchestrateur et les nœuds sont sur des machines différentes.</p>
+<ul>
+<li>Un conteneur est joignable depuis n'importe où sur le LAN, sans rien publier.</li>
+<li>Il consomme une adresse du plan d'adressage du site, et il faut que ce plan en prévoie assez.</li>
+<li>La plage attribuée aux conteneurs ne doit <strong>pas</strong> chevaucher ce qui est déjà distribué sur le site — un conflit d'IP est la panne la plus difficile à lire qu'un réseau sache produire.</li>
+</ul>
+
+<h3>Réseau interne (bridge)</h3>
+<p>Les conteneurs vivent sur un pont Docker privé, <code>172.30.0.0/24</code> par défaut, que l'hôte rejoint nativement. Leur trafic sortant est traduit (NAT) derrière l'adresse du nœud. Le site ne voit qu'une machine : le nœud.</p>
+<ul>
+<li>Aucune adresse consommée sur le LAN, aucun plan d'adressage à négocier — utile quand on ne maîtrise pas le réseau d'accueil.</li>
+<li>Les conteneurs ne sont <strong>pas</strong> joignables depuis l'extérieur de la machine. Ce qui doit l'être passe par un <strong>port publié</strong>, déclaré par le plugin ou le service concerné (la passerelle WebRTC, une entrée RTMP…) et résolu d'après la configuration de l'instance.</li>
+</ul>
+
+<div class="wiki-warn"><strong>Le mode interne n'est disponible que sur un tout-en-un</strong>, c'est-à-dire un nœud qui porte lui-même l'orchestrateur. Ce n'est pas une précaution : l'orchestrateur parle à chaque conteneur <em>en direct</em>, sur son agent (<code>:8081</code>) et ses métriques (<code>:8080</code>). Un subnet privé en bridge ne sort pas de la machine — depuis un contrôleur situé ailleurs, ces deux ports sont injoignables, et les conteneurs apparaîtraient « running » sans jamais recevoir leur script. L'interface refuse donc le mode interne sur un nœud distant, en nommant la raison.</div>
+
+<div class="wiki-warn"><strong>En haute disponibilité, le contrôleur peut migrer.</strong> Un nœud est tout-en-un pour le contrôleur d'aujourd'hui ; après un basculement, ses conteneurs en mode interne deviennent injoignables depuis le contrôleur devenu actif, sans qu'aucun réglage n'ait changé. Ce n'est pas interdit — un site peut l'assumer — mais l'interface le signale, parce que personne ne ferait spontanément le lien entre un failover et un plugin qui ne se déploie plus.</div>
+
+<h2>Le shim <code>bobi-shim</code></h2>
+
+<p>En mode « réseau du site », un nœud qui porte <em>aussi</em> l'orchestrateur rencontre une limite du noyau Linux : <strong>une carte parente est isolée de ses propres enfants macvlan</strong>. L'orchestrateur, qui vit sur l'hôte, ne peut joindre aucun conteneur — alors que tout est vert : Docker dit « running », le conteneur répond au ping depuis n'importe quelle autre machine du site, et seul l'orchestrateur reste aveugle.</p>
+
+<p>Le remède est une interface macvlan de plus, côté hôte : le <strong>shim</strong>. Les enfants macvlan se parlent entre eux, donc l'hôte, devenu lui aussi un enfant, joint les conteneurs. L'interface propose de le poser d'un clic, avec une adresse suggérée prise dans le subnet des conteneurs mais <strong>hors</strong> de la plage qui leur est attribuée — en descendant depuis le haut du subnet, le dernier hôte d'un <code>/24</code> étant l'adresse la moins disputée du segment.</p>
+
+<div class="wiki-note">L'adresse proposée n'est qu'une <strong>suggestion</strong>. Personne ne peut garantir depuis l'orchestrateur qu'une adresse est libre sur un LAN de site : l'interface propose, l'exploitant tranche.</div>
+
+<h3>Le shim ne porte aucun rôle — et c'est important</h3>
+
+<div class="wiki-warn"><strong>Ne déclarez jamais de rôle sur <code>bobi-shim</code>.</strong> Ce n'est pas une carte du nœud : c'est une interface que l'orchestrateur a créée lui-même. L'interface le refuse désormais, et les interfaces en <code>bobi-*</code> ne figurent plus dans l'inventaire matériel du nœud.</div>
+
+<p>Cette barrière vient d'un incident réel. Sur un serveur tout-en-un, le shim avait reçu le rôle « conteneurs », et la carte physique était retombée à « gestion ». Trois conséquences, aucune évidente :</p>
+<ul>
+<li>le nœud a été <strong>écarté des déploiements</strong>, faute de carte portant le rôle attendu ;</li>
+<li>une restauration de projet a échoué <strong>sur la totalité</strong> de ses conteneurs ;</li>
+<li>l'alerte « aucune carte n'a sa MAC enregistrée » revenait en boucle — un shim est recréé à chaque pose, donc sa MAC change à chaque fois.</li>
+</ul>
+<p>Rien dans ces trois symptômes ne nomme le shim. D'où le refus à la source plutôt qu'un message de diagnostic.</p>
+
+<h2>Les rôles d'interface</h2>
+
+<p>Chaque carte d'un nœud se déclare dans un rôle, qui dit à quel plan elle appartient. C'est cette déclaration — pas l'ordre des cartes ni leur nom — qui décide de ce que le nœud sait faire.</p>
+
+<ul>
+<li><strong>Gestion</strong> — plan de contrôle : l'orchestrateur parle à l'agent du nœud par cette carte.</li>
+<li><strong>Gestion + conteneurs</strong> — la même carte porte les deux. C'est le cas courant d'un serveur à une seule patte Ethernet, et c'est précisément la configuration qui réclame un shim.</li>
+<li><strong>Conteneurs</strong> — carte parente du réseau macvlan des conteneurs, distincte de celle du contrôle.</li>
+<li><strong>Média 2110</strong> — carte dédiée au signal ST 2110, en kernel-bypass. Elle n'est pas utilisable pour autre chose.</li>
+<li><strong>RDMA</strong> — réplication du bus MXL entre nœuds (voir l'article dédié).</li>
+<li><strong>Internet</strong> — carte de sortie dédiée, en DHCP. Voir ci-dessous.</li>
+<li><strong>BMC</strong> — carte d'administration matérielle hors bande.</li>
+<li><strong>Inutilisée</strong> — carte présente, volontairement non employée.</li>
+</ul>
+
+<div class="wiki-note">Le rôle « inutilisée » reste acceptable sur une interface <code>bobi-*</code> : c'est ce qui permet de <em>réparer</em> une installation où un rôle aurait été posé par erreur avant que la barrière n'existe.</div>
+
+<h2>Sortie Internet</h2>
+
+<p>Un nœud peut porter une carte dédiée à la sortie Internet, en DHCP, dont le bail est pris par l'hôte. On choisit alors, <strong>conteneur par conteneur</strong>, s'il sort par le réseau du nœud (défaut) ou par cette carte. Le choix est accessible dans la palette de déploiement et pilotable depuis les macros.</p>
+
+<p>Techniquement, c'est du <strong>routage par source</strong> : une règle par adresse de conteneur, vers une table de routage dédiée dont la route par défaut passe par la carte Internet. Trois propriétés méritent d'être connues, parce que chacune répond à une panne précise :</p>
+<ul>
+<li><strong>La passerelle est relue à chaque passage.</strong> Elle vient d'un bail DHCP : la figer la rendrait fausse au premier renouvellement qui change de routeur, et le trafic partirait dans le vide sans que rien ne bouge côté orchestrateur. Pas de passerelle lue (lien débranché, bail pas encore obtenu) = on ne pose rien, sans rien casser.</li>
+<li><strong>Les règles sont reposées après un redémarrage</strong>, depuis une liste tenue par l'orchestrateur. Sans ça, un nœud redémarré renverrait tout le trafic par le site — silencieusement, et seulement jusqu'au prochain redéploiement, donc de façon intermittente.</li>
+<li><strong>Les règles en trop sont retirées</strong>, pas seulement les manquantes ajoutées. Un conteneur repassé en sortie « nœud » pendant que l'orchestrateur était arrêté continuerait sinon de sortir par Internet.</li>
+</ul>
+
+<div class="wiki-warn"><strong>La Sortie Internet exige le mode « réseau interne ».</strong> En mode « réseau du site », un conteneur a sa propre passerelle sur le LAN et <em>ne traverse pas l'hôte</em> : aucune règle de routage posée sur l'hôte ne peut changer son chemin. L'interface refuse donc, et nomme les deux conditions — mode interne, et une carte déclarée « Internet ».</div>
+
+<h2>Reconfigurer : le consentement avant destruction</h2>
+
+<p>Changer le mode ou le subnet d'un nœud implique de <strong>détruire et recréer le réseau Docker</strong>. Les conteneurs qui y sont attachés perdent leur adresse et doivent être redéployés. Quand l'orchestrateur constate que l'opération détruirait un réseau portant des conteneurs, <strong>il refuse et demande confirmation explicite</strong> plutôt que d'agir.</p>
+
+<p>Cette confirmation n'est pas une formalité. Elle a été ajoutée après un cas réel où un bouton « Reconfigurer » cliqué quinze secondes après un redémarrage a recréé le réseau dans un subnet différent de la plage attribuée aux conteneurs — opération parfaitement légitime en soi, destructrice là où elle a eu lieu.</p>
+
+<div class="wiki-note">Un écart entre la plage des conteneurs et le subnet du réseau est <strong>signalé comme une remarque, pas refusé</strong> : vouloir ses conteneurs dans un subnet particulier est une configuration légitime, et ce n'est pas à l'orchestrateur d'en décider. Ce qui est protégé, c'est la <em>destruction</em>, pas le choix.</div>
+
+<h2>Après un redémarrage de nœud</h2>
+
+<p>Les conteneurs sont relancés par Docker au démarrage, mais leur matériel TLS vit en mémoire volatile et disparaît avec le redémarrage : leur agent repart alors sans certificat, et l'orchestrateur — qui parle en TLS mutuel — ne les joint plus, alors que Docker les annonce « running ». La réparation est automatique si <strong>l'auto-recovery est activé pour le nœud</strong> (Réglages → <em>Nœuds &amp; Matériel</em>) ; sinon la panne est seulement <em>signalée</em>, et il faut recréer les conteneurs concernés à la main.</p>
+
+<div class="wiki-note">C'est un réglage à activer consciemment, et il est <strong>désactivé par défaut</strong>. Sur une installation qui redémarre, c'est la différence entre « les conteneurs reviennent » et « les conteneurs reviennent injoignables ».</div>
+</template>
+
 <template id="wiki-art-rdma-replication">
 <p>La <strong>réplication RDMA</strong> transporte un flux MXL produit sur un nœud jusqu'au domaine MXL d'un autre nœud, sans repasser par ST 2110. On ne la pilote presque jamais directement : câbler un producteur d'un nœud vers un consommateur d'un autre nœud, sur la page <strong>Câbles</strong>, provisionne le lien sous le capot. Cet article explique ce qui se passe dessous, et surtout <strong>comment obtenir plus de 10 Gb/s</strong> quand un seul port ne suffit plus.</p>
 
@@ -2041,10 +2331,13 @@ const CORE_ARTICLES = [
   { id: 'monitoring',           title: 'Monitoring',                  cat: 'pipeline' },
   { id: 'genlock',              title: 'Synchronisation (Genlock)',   cat: 'pipeline' },
   { id: 'cables-page',          title: 'Page Câbles',                 cat: 'pipeline' },
+  { id: 'virtuelles',           title: 'Sources et destinations virtuelles', cat: 'pipeline' },
   { id: 'mode-tranche',         title: 'Mode tranche (latence sous-image)', cat: 'pipeline' },
   { id: 'tsl-explique',         title: 'TSL 5.0 (tally centralisé)',  cat: 'controle' },
   { id: 'workflow-atem',        title: 'Pupitre ATEM',                cat: 'controle' },
   { id: 'workflow-skaarhoj',    title: 'Pupitre Skaarhoj (Raw Panel)', cat: 'controle' },
+  { id: 'workflow-panel-dyvi',  title: 'Pupitre EVS Dyvi',            cat: 'controle' },
+  { id: 'surfaces-controle',    title: 'Surfaces de contrôle (console audio)', cat: 'controle' },
   { id: 'nmos-explique',        title: 'NMOS IS-04/IS-05',            cat: 'infra' },
   { id: 'sriov-explique',       title: 'NIC ST 2110 (PF / AF-XDP)',   cat: 'infra' },
   { id: 'ptp-explique',         title: 'PTP',                         cat: 'infra' },
@@ -2055,6 +2348,7 @@ const CORE_ARTICLES = [
   { id: 'mxl-format',           title: 'MXL (bus shm) & format vidéo', cat: 'infra' },
   { id: 'jeux-instructions',    title: 'Jeux d\'instructions CPU (deux variantes)', cat: 'infra' },
   { id: 'rdma-replication',     title: 'Réplication RDMA & agrégation de ports', cat: 'infra' },
+  { id: 'reseau-conteneurs',    title: 'Réseau des conteneurs (site / interne)', cat: 'infra' },
   { id: 'agent-noeud',          title: 'Agent-nœud (contrat et sécurité)', cat: 'infra' },
   { id: 'base-medias',          title: 'Base des médias et bibliothèque', cat: 'medias' },
   { id: 'medias-proxys-edition', title: 'Proxys de lecture et éditeur d\'image', cat: 'medias' },

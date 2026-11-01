@@ -22,11 +22,14 @@ par nœud via node_settings) : après une grace period (laisser Docker relever l
 (producteur racine, seul détruit par --rm) → compute/media, en ne touchant QUE les conteneurs
 `desired_state='running'`. Max N tentatives + backoff par conteneur, verrou par nœud,
 `recovered_boot_ts` écrit AVANT d'agir (ferme la fenêtre de double déclenchement).
+EXCEPTION (2026-10-30) : la re-provision des certificats mTLS perdus au boot tourne réglage OFF
+aussi — cf. « Certificats mTLS des conteneurs » plus bas.
 """
 import json
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from .database import (db_get_containers, db_get_node, db_add_alert, db_set_node_boot)
 from . import settings as st
@@ -100,13 +103,25 @@ def on_health_snapshot(node, snap):
         # doit jamais retenir le sampler santé, ni la reprise des conteneurs ci-dessous).
         threading.Thread(target=_verifier_prep_post_boot, args=(nid, name),
                          daemon=True, name=f"node-prep-check-{nid}").start()
+        # Conteneurs en attente de leur pilote hôte : démarrés au retour du nœud si le pilote est
+        # là, MÊME auto-recovery désactivé (décision de Cyril, 2026-10-30) — prouvé par l'agent-nœud,
+        # ciblé sur desired_state='awaiting_driver', une passe par boot. Cf. app/host_driver_gate.py.
+        from . import host_driver_gate
+        threading.Thread(target=host_driver_gate.resume_after_boot,
+                         args=(nid, name, _cfg_node("auto_recovery_grace_s", nid, 45)),
+                         daemon=True, name=f"node-driver-resume-{nid}").start()
         if not _cfg_node("auto_recovery_enabled", nid, 0):
             db_add_alert("alert.node.reboot_recovery_off", "warning", node_id=nid, kind="node",
                          params={"n": name, "uptime": int(uptime)})
-            # Certs mTLS : la CONSTATATION est hors du gate (lecture seule), comme la prép hôte —
-            # sinon un parc en auto-recovery OFF (le défaut !) subit la panne de certs sans le
-            # moindre message. La RÉPARATION, elle, reste dans _recover_node (gated).
-            threading.Thread(target=_certs_conteneurs_node, args=(nid, name, False),
+            # Certs mTLS : constat ET réparation HORS du gate (décision de Cyril, 2026-10-30).
+            # Mesuré sur la Z8 le 30/10 : réglage d'usine, redémarrage demandé par l'interface,
+            # 9 conteneurs sur 9 en HTTP clair, une alerte, puis rien — injoignables jusqu'à une
+            # recréation à la main. Ce n'est pas la reprise « surprise » que le réglage empêche :
+            # on ne recrée que des conteneurs QUI TOURNENT et dont la sonde PROUVE le schéma
+            # clair, une tentative, puis re-sonde. Une seule passe par boot (last_boot_ts est
+            # écrit plus haut, avant tout). La clé reste en tmpfs, jamais sur disque.
+            threading.Thread(target=_certs_conteneurs_node, args=(nid, name, True),
+                             kwargs={"attendre": True},
                              daemon=True, name=f"node-tls-check-{nid}").start()
             # recovered_boot_ts suit quand même : si l'opérateur ACTIVE le réglage plus tard,
             # on ne « rattrape » pas un vieux boot déjà géré à la main.
@@ -473,14 +488,55 @@ def _verifier_prep_post_boot(node_id, name):
 #
 # GARDE-FOUS (ce projet a déjà connu une boucle de recréation, cf. en-tête docker_compute) :
 #   · appelé UNIQUEMENT depuis la passe one-shot par boot (verrou par nœud, recovered_boot_ts
-#     écrit AVANT d'agir) ou depuis la passe de CONSTAT (reparer=False, aucune écriture) ;
+#     écrit AVANT d'agir) ou, auto-recovery désactivé, depuis la passe lancée UNE fois à la
+#     détection du boot (last_boot_ts écrit avant) — réparation hors du gate depuis le 2026-10-30 ;
 #   · on ne touche QU'aux conteneurs dont le verdict est « clair » — c'est-à-dire ceux dont on a
 #     la PREUVE que l'agent est vivant mais dans le mauvais schéma ; un conteneur sain ou
 #     réellement mort n'est jamais recréé ici ;
 #   · UNE tentative de réparation par conteneur et par boot, puis re-diagnostic et alerte si ça
 #     n'a pas suffi (jamais de nouvelle boucle).
 
-def _certs_conteneurs_node(node_id, name, reparer):
+# ─── Attendre le nœud, pas l'horloge ─────────────────────────────────────────────────────
+# MESURÉ (Z8, reboot de 16:31, 2026-10-30, 12 conteneurs) : nœud joignable à +6 s, reboot détecté à
+# +12 s, puis 45 s d'attente FIXE (`auto_recovery_grace_s`), puis les réparations EN SÉRIE (~2,6 s
+# chacune + 1 s de pause), une tentative ratée tenant les autres 21 s : ~1 min 50 au total. On
+# attend maintenant ce dont on a besoin — agent-nœud joignable ET démon Docker qui répond — et
+# `auto_recovery_grace_s` n'est plus qu'un PLAFOND. Les réparations tournent à _REPARATIONS_EN_VOL
+# à la fois (verrou_vmid par conteneur dans deployer_script), chaque conteneur attendant SA propre
+# réponse d'agent au lieu d'un délai commun.
+_REPARATIONS_EN_VOL = 4
+_SONDE_PAS_S = 1.0
+
+
+def _attendre_noeud_pret(node_id, plafond_s):
+    """Attend que l'agent-nœud réponde ET que Docker liste ses conteneurs, au plus `plafond_s`.
+    Renvoie True si prêt (False = plafond atteint ; l'appelant poursuit quand même, comme avant)."""
+    from . import node_driver
+    fin = time.monotonic() + max(0, plafond_s)
+    while True:
+        node = db_get_node(node_id) or {}
+        try:
+            if node_driver.health(node) and node_driver.list_containers(node) is not None:
+                return True
+        except Exception as e:
+            log.debug("recovery nœud %s : sonde de disponibilité : %s", node_id, e)
+        if time.monotonic() >= fin:
+            return False
+        time.sleep(_SONDE_PAS_S)
+
+
+def _verdict_schema_attendu(ip, vmid, echeance):
+    """Verdict de schéma d'UN conteneur dès que son agent répond (Docker vient peut-être seulement
+    de le relever) ; « injoignable » si rien avant l'échéance (monotonic)."""
+    from . import deploy
+    while True:
+        v = deploy.diagnostiquer_schema_agent(ip, vmid=vmid, alerter=False)
+        if v != "injoignable" or time.monotonic() >= echeance:
+            return v
+        time.sleep(_SONDE_PAS_S)
+
+
+def _certs_conteneurs_node(node_id, name, reparer, attendre=None):
     """Diagnostique (et répare si `reparer`) le désaccord de schéma mTLS des conteneurs compute
     d'un nœud qui vient de rebooter. Renvoie (casses, repares, echecs) — listes de vmid.
     Best-effort : ne lève jamais, ne bascule jamais le contrôleur en HTTP clair."""
@@ -494,22 +550,34 @@ def _certs_conteneurs_node(node_id, name, reparer):
         if not node_driver.has_agent(node):
             # Chemin legacy (ssh_run) : il n'injecte AUCUN cert conteneur → hors sujet.
             return casses, repares, echecs
-        if not reparer:
-            # Passe de constat : laisser Docker relever les `unless-stopped` avant de conclure.
-            time.sleep(max(0, _cfg_node("auto_recovery_grace_s", node_id, 45)))
+        plafond = _cfg_node("auto_recovery_grace_s", node_id, 45)
+        if (not reparer) if attendre is None else attendre:
+            # Appelé hors de _recover_node (qui a déjà attendu) : le nœud d'abord.
+            _attendre_noeud_pret(node_id, plafond)
+        # Chaque conteneur attend la réponse de SON agent (Docker relève les `unless-stopped` à son
+        # rythme), au plus `plafond` à partir d'ici — sans quoi un conteneur pas encore relevé
+        # passerait pour « muet » et ne serait jamais réparé.
+        echeance = time.monotonic() + max(0, plafond)
         _, compute = _desired_running(node_id)
-        for c in compute:
+
+        def traiter(c):
             vmid = c["vmid"]
             ip = c.get("docker_ip") or get_container_ip(vmid)
             if not ip:
-                continue
-            if deploy.diagnostiquer_schema_agent(ip, vmid=vmid) != "clair":
-                continue                        # sain, ou muet des deux côtés (→ voie de relance)
-            casses.append(vmid)
+                return None
+            if _verdict_schema_attendu(ip, vmid, echeance) != "clair":
+                return None                     # sain, ou muet des deux côtés (→ voie de relance)
             if not reparer:
-                continue
-            (repares if _reprovisionner_certs(c) else echecs).append(vmid)
-            time.sleep(1)                       # ne pas saturer l'agent-nœud / le démon Docker
+                return vmid, None
+            return vmid, bool(_reprovisionner_certs(c))
+
+        with ThreadPoolExecutor(max_workers=_REPARATIONS_EN_VOL,
+                                thread_name_prefix=f"tls-repair-{node_id}") as pool:
+            resultats = [r for r in pool.map(traiter, compute) if r]
+        for vmid, ok in resultats:
+            casses.append(vmid)
+            if ok is not None:
+                (repares if ok else echecs).append(vmid)
         if casses and reparer:
             # vmid = identifiant technique (pas une phrase) → paramètre unique, comme les hostnames
             # ou vmid ailleurs dans ce fichier.
@@ -576,10 +644,17 @@ def _recover_node(node_id, boot_ts):
         grace = _cfg_node("auto_recovery_grace_s", node_id, 45)
         attempts = _cfg_node("auto_recovery_max_attempts", node_id, 2)
         backoff = _cfg_node("auto_recovery_backoff_s", node_id, 20)
-        time.sleep(max(0, grace))           # laisser Docker (unless-stopped) et systemd (PTP) agir
+        _attendre_noeud_pret(node_id, grace)    # agent + Docker prêts (grace = plafond)
 
-        node = db_get_node(node_id) or node   # re-lire (le nœud a pu être édité pendant la grace)
-        _check_ptp(node)
+        node = db_get_node(node_id) or node   # re-lire (le nœud a pu être édité pendant l'attente)
+
+        # PTP garde la grace ENTIÈRE, dans son fil : `_check_ptp` LANCE ptp4l s'il ne tourne pas,
+        # et le faire avant que systemd ait fini doublerait l'instance. Ne retient pas la suite.
+        def _ptp_apres_grace(n=node, attente=grace):
+            time.sleep(max(0, attente))
+            _check_ptp(db_get_node(node_id) or n)
+        threading.Thread(target=_ptp_apres_grace, daemon=True,
+                         name=f"node-recovery-ptp-{node_id}").start()
 
         from . import docker_driver, docker_compute
         mtl, compute = _desired_running(node_id)

@@ -160,7 +160,7 @@ def load(path):
 def replay(records, skip=0, direction="all"):
     """Rejoue des enregistrements dans le décodeur du service : [(t, dir, événement | message brut)].
     Un parseur MIDI PAR SENS (le « running status » d'un sens ne vaut rien pour l'autre)."""
-    from services.control_surface import mcu
+    from services.panel_audio import mcu
     parsers, out = {}, []
     for r in records:
         if direction != "all" and r.get("dir") != direction:

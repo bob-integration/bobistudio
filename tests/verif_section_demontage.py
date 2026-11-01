@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Rubrique plugin — on démonte l'UI MONTÉE, pas celle qui est enregistrée (2026-10-23).
 
-Paul (Recette) : sur le mélangeur, les noms des boutons de bus ne correspondaient pas aux sources et
-clignotaient, « comme un conflit avec les sources du mixer RL-mix ». rl-mix (0.23.2) et mixer-Satis
+Le testeur (Recette) : sur le mélangeur, les noms des boutons de bus ne correspondaient pas aux sources et
+clignotaient, « comme un conflit avec les sources du mixer RL-mix ». rl-mix (0.23.2) et mixer-Atelier
 (0.23.3) n'ont pas la même version : chacune charge sa propre copie du script, et
 `window.MXLPlugins.mixer` ne désigne que la DERNIÈRE chargée. tpMount démontait celle-là ; l'UI
 réellement montée continuait son sondage de 2 s et réécrivait les boutons de l'autre instance.
@@ -77,7 +77,7 @@ if node:
     ok(res.returncode == 0, "exécution sous node", res.stderr[-600:])
     R = json.loads(res.stdout.strip().splitlines()[-1]) if res.returncode == 0 else {}
     if R:
-        ok(R["a"] == {"0.23.3": 1250}, "a. objet enregistré remplacé : l'UI de rl-mix est démontée, seule mixer-Satis vit", R["a"])
+        ok(R["a"] == {"0.23.3": 1250}, "a. objet enregistré remplacé : l'UI de rl-mix est démontée, seule mixer-Atelier vit", R["a"])
         ok(R["b"] == {"0.23.3": 1250}, "b. montages qui se chevauchent : seul le dernier est monté", R["b"])
 print("\nÉCHECS : %d" % len(ko) if ko else "\nOK")
 sys.exit(1 if ko else 0)

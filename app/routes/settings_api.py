@@ -72,7 +72,23 @@ def api_set_settings():
             return jsonify({"error": "ha_tls_port invalide ou déjà pris par l'orchestrateur "
                                      "(%d)" % port, "key": "ha_tls_port"}), 400
         data["ha_tls_port"] = port
+    # Image manquante : vocabulaire FERMÉ (repeat | black), refusé à la saisie plutôt que rabattu
+    # en silence sur le défaut au prochain rendu. Une bascule est POUSSÉE à chaud aux conteneurs
+    # qui suivent le global (app/missing_frame.py) — sinon le réglage ne ferait rien jusqu'au
+    # prochain déploiement de chacun.
+    _mf_old = None
+    if "missing_frame_mode" in data:
+        from .. import missing_frame
+        _mf = str(data.get("missing_frame_mode") or "").strip().lower()
+        if _mf not in missing_frame.MODES:
+            return jsonify({"error": "missing_frame_mode : " + " | ".join(missing_frame.MODES),
+                            "key": "missing_frame_mode"}), 400
+        data["missing_frame_mode"] = _mf
+        _mf_old = missing_frame.global_mode()
     n, ignored = st.update_bulk(data)
+    if _mf_old is not None and _mf_old != data["missing_frame_mode"]:
+        from .. import missing_frame
+        missing_frame.push_global_change(_mf_old, data["missing_frame_mode"])
     # Rotation du journal : APPLIQUÉE À CHAUD. Elle ne l'était qu'au (re)démarrage — donc un
     # opérateur qui voit son journal grossir pouvait poser le bon réglage, lire « enregistré »,
     # et regarder le fichier continuer de grimper sans comprendre.
@@ -140,6 +156,10 @@ def api_set_node_settings(node_id):
     for k, v in (data.get("set") or {}).items():
         if k in known:
             db_set_node_setting(node_id, k, v); n += 1
+    # Profondeur MXL : l'override de nœud ne vaut que posé SUR le nœud (cf. app/mxl_history.py).
+    if "mxl_history_ms" in clear or "mxl_history_ms" in (data.get("set") or {}):
+        from .. import mxl_history
+        mxl_history.propagate_async([node_id], reason="setting")
     return jsonify({"status": "ok", "updated": n})
 
 @bp.route("/api/settings/logo", methods=["POST"])

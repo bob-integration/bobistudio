@@ -49,7 +49,7 @@ Durée inconnue (flux, sonde en échec) : fin **constatée** (tous les canaux fi
 | Point | Constat (2026-10-17) |
 |---|---|
 | Horloge de la grille du player | `CLOCK_TAI` (libmxl, `Clock::TAI`), lue par l'élément. Jamais `CLOCK_REALTIME` : elle vaut TAI sur dl360-1 et UTC ailleurs. Le player date ses réponses `/sync` avec `CLOCK_TAI` relevé à l'ENTRÉE de la requête. |
-| dl360-1 | `CLOCK_TAI` à **−201 s** (18:10) puis **−236,3 s** (18:46) des autres nœuds : elle **dérive** (~1 s/min), ce n'est pas un décalage stable de 37 s. Un départ commun avec un autre nœud y est **impossible** : le player refuse l'instant (409 `clock`, « −216 s »), l'orchestrateur le signale. |
+| dl360-1 | `CLOCK_TAI` à **−201 s** (18:10) puis **−236,3 s** (18:46) des autres nœuds : elle **dérive** (~1 s/min), ce n'est pas un décalage stable de 37 s. Un départ commun avec un autre nœud y est **impossible** : le player refuse l'instant (409 `clock`, « −216 s »), l'orchestrateur le signale. **Mesure ultérieure (2026-10-25)**, `CLOCK_TAI` absolu contre le contrôleur (meilleur aller-retour sur 3 relevés) : dl360-1 **+0,178 s**, dell-1 +0,013 s, r620-2 +0,026 s — la dérive du 17/10 n'est plus là. Elle coïncide avec l'emballement du servo phc2sys de libmtl constaté sur ce nœud le 2026-10-16 (cf. `app/clocks.py`, et le bloc `ENGINE_PHC2SYS` de `app/docker_driver.py`). 178 ms restent au-dessus d'une image : départ commun inter-nœuds avec dl360-1 non revalidé depuis. |
 | dell-1 / r620-2 | chrony + `tai_offset = 37` : `CLOCK_TAI` juste, à 0,6 ms l'un de l'autre (± 2 ms, relevé de l'orchestrateur) ; 2,1 ms ± 2,7 selon `app/clocks.py`. |
 
 ### Tolérance ZÉRO (décision de l'utilisateur, 2026-10-17)

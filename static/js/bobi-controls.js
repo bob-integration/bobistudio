@@ -298,7 +298,8 @@
     // Instance de base : écouteurs traçables (destroy propre), émetteur, état désactivé.
     // Classe de FAMILLE posée sur l'élément hôte (cf. controls.css).
     const KIND_CLASS = { fader: 'ctl-fader', knob: 'ctl-knob', toggle: 'ctl-ui--toggle', select: 'ctl-ui--select',
-        readout: 'ctl-ui--readout', meter: 'ctl-vu', grmeter: 'ctl-gr', buttons: 'ctl-btnrow' };
+        readout: 'ctl-ui--readout', meter: 'ctl-vu', grmeter: 'ctl-gr', buttons: 'ctl-btnrow', tbar: 'ctl-tbar',
+        curves: 'ctl-curves' };
     // `adopt` : l'élément porte DÉJÀ son balisage (rotatif déclaratif d'un plugin) — on ne le vide
     // pas et on n'y pose aucune classe : le plugin garde exactement sa mise en page.
     function makeBase(kind, el, opts, adopt) {
@@ -329,7 +330,7 @@
         if (adopt) return b;
         el.textContent = '';
         // Le rotatif est celui du catalogue tel quel : pas d'habillage `ctl-ui` (police réduite).
-        if (kind !== 'knob') el.classList.add('ctl-ui');
+        if (kind !== 'knob' && kind !== 'tbar' && kind !== 'curves') el.classList.add('ctl-ui');
         el.classList.add(KIND_CLASS[kind]);
         if (b.disabled) el.classList.add('ctl-ui-disabled');
         return b;
@@ -526,6 +527,14 @@
             }
             body.appendChild(tk);
         }
+        // FANTÔME (2026-10-29) : un second capot, inerte, au niveau RÉELLEMENT appliqué quand un automatisme le
+        // modifie sans toucher la consigne (audio suit la vidéo de la console audio). Le trait relie les deux capots.
+        // inst.setGhost(v) le montre, inst.setGhost(null) le cache ; il ne reçoit aucun geste.
+        const gap = h('div', 'ctl-fader__gap', { 'aria-hidden': 'true' });
+        const ghost = h('div', 'ctl-fader__ghost', { 'aria-hidden': 'true' });
+        gap.hidden = ghost.hidden = true;
+        track.appendChild(gap);
+        body.appendChild(ghost);
         body.appendChild(thumb);
         if (vert) body.setAttribute('aria-orientation', 'vertical');
         else body.setAttribute('aria-orientation', 'horizontal');
@@ -552,6 +561,11 @@
             },
             end(e, cancelled) { c.finish(cancelled); },
         });
+        b.inst.setGhost = (v) => {
+            const off = typeof v !== 'number' || isNaN(v);
+            if (!off) body.style.setProperty('--ctl-g', S.toPos(S.clamp(v)).toFixed(5));
+            if (gap.hidden !== off) gap.hidden = ghost.hidden = off;
+        };
         c.render();
         return b.inst;
     }
@@ -689,10 +703,16 @@
             });
         }
         b.listen(knob, 'ctl-knob-reset', toDefault);
+        // Molette : un cran = un pas (Maj = pas fin), écouteur sur le rotatif seul — la page ne défile
+        // pas tant que le pointeur est dessus, et défile normalement ailleurs. Maj+molette arrive en
+        // deltaX sur Chrome/Windows/Linux (deltaY nul) : on lit l'axe qui a bougé, et un événement
+        // sans mouvement ne touche à rien (avant : deltaY nul valait un cran vers le bas).
         b.listen(hit, 'wheel', (e) => {
             if (b.disabled) return;
+            const d = e.deltaY || e.deltaX;
+            if (!d) return;
             e.preventDefault();
-            const v = c.S.nudge(c.state.value, e.deltaY < 0 ? 1 : -1, e.shiftKey ? c.S.fineStep : c.S.step);
+            const v = c.S.nudge(c.state.value, d < 0 ? 1 : -1, e.shiftKey ? c.S.fineStep : c.S.step);
             if (c.apply(v)) b.em.discrete(v);
         }, { passive: false });
         gesture(b, hit, {
@@ -1081,13 +1101,227 @@
         return b.inst;
     }
 
+    // ─── T-barre (promue du mélangeur le 2026-10-26) ───────────────────────────────────
+    // Levier de transition. La poignée repose sur une BUTÉE (`rest` : 0 = en haut, 1 = en bas) et
+    // part vers l'autre ; la valeur émise est l'AVANCEMENT de la transition, 0..1, quel que soit le
+    // sens. Poussée au-delà de `snap` (0,92) de la course, elle TERMINE : saute à la butée opposée et
+    // émet 1. Qui change de butée (fin de transition constatée) : l'appelant, par setRest().
+    // Logique pure (testée hors DOM) ; le DOM est dans buildTbar.
+    function tbarModel(opts) {
+        const snap = typeof (opts && opts.snap) === 'number' ? opts.snap : 0.92;
+        const m = {
+            pos: 0, rest: 0,
+            progress() { return m.rest === 0 ? m.pos : 1 - m.pos; },
+            posOf(a) { a = clamp(a, 0, 1); return m.rest === 0 ? a : 1 - a; },
+            setProgress(a) { m.pos = m.posOf(a); return m.pos; },
+            setPos(p) { m.pos = clamp(p, 0, 1); return m.pos; },
+            reached() { return m.progress() >= snap; },
+            finish() { m.pos = m.rest === 0 ? 1 : 0; return 1; },     // butée opposée
+            // Clavier, dans le sens de la poignée : ↓ descend, ↑ monte, Début/Fin = butées haute/basse.
+            key(k, shift) {
+                const st = shift ? 0.20 : 0.05;
+                if (k === 'ArrowDown') return m.setPos(m.pos + st);
+                if (k === 'ArrowUp') return m.setPos(m.pos - st);
+                if (k === 'Home') return m.setPos(0);
+                if (k === 'End') return m.setPos(1);
+                return null;
+            },
+        };
+        return m;
+    }
+
+    function buildTbar(el, opts) {
+        const b = makeBase('tbar', el, opts);
+        const M = tbarModel(opts);
+        const track = h('div', 'ctl-tbar-track');
+        const handle = h('div', 'ctl-tbar-handle', {
+            role: 'slider', tabindex: '0', 'aria-orientation': 'vertical',
+            'aria-valuemin': '0', 'aria-valuemax': '100',
+            'aria-label': opts.label || tr('controls.tbar', 'T-barre de transition'),
+        });
+        handle.appendChild(h('div', 'ctl-tbar-grip'));
+        track.appendChild(handle);
+        el.appendChild(track);
+        b.focusNode = handle;
+        let raf = 0, drag = null;
+        const render = () => {
+            el.style.setProperty('--ctl-p', M.pos.toFixed(5));
+            handle.setAttribute('aria-valuenow', String(Math.round(M.progress() * 100)));
+        };
+        const stop = () => {
+            if (raf && win.cancelAnimationFrame) win.cancelAnimationFrame(raf);
+            raf = 0; el.classList.remove('is-animating');
+        };
+        gesture(b, handle, {
+            start() {
+                stop();
+                const th = handle.getBoundingClientRect().height;
+                drag = { travel: Math.max(1, track.getBoundingClientRect().height - th) };
+                el.classList.add('is-dragging');
+            },
+            move(e, dx, dy) { M.setPos(M.pos + dy / drag.travel); render(); b.em.queueInput(M.progress()); },
+            end() {
+                drag = null; el.classList.remove('is-dragging');
+                if (M.reached()) { M.finish(); render(); b.em.commit(1); }
+                else b.em.commit(M.progress());
+            },
+        });
+        b.listen(handle, 'keydown', (e) => {
+            if (b.disabled) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (M.reached()) { M.finish(); render(); b.em.discrete(1); }
+                return;
+            }
+            if (M.key(e.key, e.shiftKey) === null) return;
+            e.preventDefault(); stop(); render(); b.em.discrete(M.progress());
+        });
+        // Programmatique : n'émet RIEN (pas d'écho réseau), comme set() des autres contrôles.
+        b.inst.set = (a) => { stop(); M.setProgress(a); render(); };
+        b.inst.get = () => M.progress();
+        b.inst.setRest = (r) => { M.rest = r ? 1 : 0; render(); };
+        b.inst.getRest = () => M.rest;
+        b.inst.isDragging = () => drag !== null;
+        b.inst.isAnimating = () => raf !== 0;
+        b.inst.stop = stop;
+        b.cleanup.push(stop);
+        // Anime l'AVANCEMENT jusqu'à `a` en `ms` (linéaire par défaut, `ease` : t → t').
+        b.inst.animateTo = (a, ms, ease) => {
+            stop();
+            const from = M.progress(), to = clamp(a, 0, 1), t0 = Date.now();
+            if (!(ms > 0)) { M.setProgress(to); render(); return; }
+            const f = ease || ((t) => t);
+            el.classList.add('is-animating');
+            const frame = () => {
+                const t = Math.min(1, (Date.now() - t0) / ms);
+                M.setProgress(from + (to - from) * f(t)); render();
+                if (t < 1) raf = defaultRaf(frame); else { raf = 0; el.classList.remove('is-animating'); }
+            };
+            raf = defaultRaf(frame);
+        };
+        render();
+        return b.inst;
+    }
+
+    // ─── Courbes à poignées (2026-10-29, chronologie du volet composé du mélangeur) ──────────
+    // Un repère [0,1] × [0,1] (x : temps, y : valeur), des COURBES dessinées par l'appelant (listes
+    // de points), des POIGNÉES déplaçables au doigt, à la souris et au clavier, une tête de lecture.
+    // Poignée : {key, x, y, axis: 'x' | 'y' | 'xy', xmin, xmax, ymin, ymax, label}. Événements
+    // 'input' / 'change' : {key, x, y}. set*() n'émet RIEN (pas d'écho réseau).
+    // Logique pure (testée hors DOM) : curvesModel ; le DOM est dans buildCurves.
+    function curvesModel(handles) {
+        const H = {};
+        (handles || []).forEach((hd) => { H[hd.key] = Object.assign({ axis: 'xy', xmin: 0, xmax: 1, ymin: 0, ymax: 1, x: 0, y: 0 }, hd); });
+        const fix = (hd) => {
+            hd.x = clamp(+hd.x || 0, hd.xmin, hd.xmax); hd.y = clamp(+hd.y || 0, hd.ymin, hd.ymax);
+            return { key: hd.key, x: hd.x, y: hd.y };
+        };
+        Object.values(H).forEach(fix);
+        return {
+            handles: H,
+            get(k) { const hd = H[k]; return hd ? { key: k, x: hd.x, y: hd.y } : null; },
+            // Déplacement relatif (fractions du repère), contraint à l'axe et aux bornes de la poignée.
+            move(k, dx, dy) {
+                const hd = H[k]; if (!hd) return null;
+                if (hd.axis !== 'y') hd.x += dx;
+                if (hd.axis !== 'x') hd.y += dy;
+                return fix(hd);
+            },
+            place(k, x, y) {
+                const hd = H[k]; if (!hd) return null;
+                if (x != null) hd.x = x;
+                if (y != null) hd.y = y;
+                return fix(hd);
+            },
+            limits(k, lim) { const hd = H[k]; if (hd) { Object.assign(hd, lim); fix(hd); } },
+            // Clavier : flèches = 1 % (Maj : 10 %) le long des axes permis ; Début / Fin = bornes.
+            key(k, key, shift) {
+                const hd = H[k]; if (!hd) return null;
+                const st = shift ? 0.1 : 0.01;
+                const ax = hd.axis;
+                if (key === 'ArrowRight' && ax !== 'y') return this.move(k, st, 0);
+                if (key === 'ArrowLeft' && ax !== 'y') return this.move(k, -st, 0);
+                if (key === 'ArrowUp' && ax !== 'x') return this.move(k, 0, st);
+                if (key === 'ArrowDown' && ax !== 'x') return this.move(k, 0, -st);
+                if (key === 'ArrowUp' && ax === 'x') return this.move(k, st, 0);
+                if (key === 'ArrowDown' && ax === 'x') return this.move(k, -st, 0);
+                if (key === 'ArrowRight' && ax === 'y') return this.move(k, 0, st);
+                if (key === 'ArrowLeft' && ax === 'y') return this.move(k, 0, -st);
+                if (key === 'Home') return this.place(k, ax === 'y' ? null : hd.xmin, ax === 'x' ? null : hd.ymin);
+                if (key === 'End') return this.place(k, ax === 'y' ? null : hd.xmax, ax === 'x' ? null : hd.ymax);
+                return null;
+            },
+        };
+    }
+
+    function buildCurves(el, opts) {
+        const b = makeBase('curves', el, opts);
+        const M = curvesModel(opts.handles);
+        const NS = 'http://www.w3.org/2000/svg';
+        const plot = h('div', 'ctl-curves__plot');
+        if (opts.label) plot.setAttribute('aria-label', opts.label);
+        plot.setAttribute('role', 'group');
+        const sv = svg('svg', { viewBox: '0 0 100 100', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+        const head = h('div', 'ctl-curves__head');
+        plot.appendChild(sv); plot.appendChild(head);
+        el.appendChild(plot);
+        const nodes = {};
+        const pos = (k) => {
+            const hd = M.handles[k], n = nodes[k];
+            n.style.left = (hd.x * 100) + '%'; n.style.top = ((1 - hd.y) * 100) + '%';
+            n.setAttribute('aria-valuenow', String(Math.round((hd.axis === 'y' ? hd.y : hd.x) * 100)));
+            n.setAttribute('aria-valuetext', (opts.format ? opts.format(k, hd.x, hd.y) : Math.round((hd.axis === 'y' ? hd.y : hd.x) * 100) + ' %'));
+        };
+        Object.values(M.handles).forEach((hd) => {
+            const n = h('div', 'ctl-curves__handle' + (hd.tone ? ' ctl-curves__handle--' + hd.tone : ''), {
+                role: 'slider', tabindex: '0', 'aria-label': hd.label || hd.key,
+                'aria-orientation': hd.axis === 'y' ? 'vertical' : 'horizontal', 'aria-valuemin': '0', 'aria-valuemax': '100' });
+            n.dataset.key = hd.key;
+            plot.appendChild(n); nodes[hd.key] = n; pos(hd.key);
+            let rect = null;
+            gesture(b, n, {
+                start() { rect = plot.getBoundingClientRect(); n.classList.add('is-dragging'); },
+                move(e, dx, dy) {
+                    const r = M.move(hd.key, dx / Math.max(1, rect.width), -dy / Math.max(1, rect.height));
+                    pos(hd.key); b.em.queueInput(r);
+                },
+                end() { n.classList.remove('is-dragging'); b.em.commit(M.get(hd.key)); },
+            });
+            b.listen(n, 'keydown', (e) => {
+                if (b.disabled) return;
+                const r = M.key(hd.key, e.key, e.shiftKey);
+                if (r === null) return;
+                e.preventDefault(); pos(hd.key); b.em.discrete(r);
+            });
+        });
+        // Courbes : [{points: [[x, y], …], tone: 'accent' | '2' | 'muted', dashed}].
+        b.inst.setCurves = (curves) => {
+            while (sv.firstChild) sv.removeChild(sv.firstChild);
+            (curves || []).forEach((c) => {
+                const pl = win.document.createElementNS(NS, 'polyline');
+                pl.setAttribute('points', (c.points || []).map((p) => (p[0] * 100).toFixed(2) + ',' + ((1 - p[1]) * 100).toFixed(2)).join(' '));
+                pl.setAttribute('class', 'ctl-curves__curve ctl-curves__curve--' + (c.tone || 'accent') + (c.dashed ? ' is-dashed' : ''));
+                pl.setAttribute('vector-effect', 'non-scaling-stroke');
+                sv.appendChild(pl);
+            });
+        };
+        b.inst.setHandle = (k, x, y, lim) => { if (!nodes[k]) return; if (lim) M.limits(k, lim); M.place(k, x, y); pos(k); };
+        b.inst.showHandle = (k, on) => { if (nodes[k]) nodes[k].hidden = !on; };
+        b.inst.setPlayhead = (t) => { head.hidden = t == null; if (t != null) head.style.left = (clamp(t, 0, 1) * 100) + '%'; };
+        b.inst.get = (k) => M.get(k);
+        b.inst.setCurves(opts.curves);
+        b.inst.setPlayhead(opts.playhead == null ? null : opts.playhead);
+        return b.inst;
+    }
+
     // ─── API publique ─────────────────────────────────────────────────────────────────
     const BUILDERS = {
+        tbar: buildTbar,
         fader: buildFader,
         hfader: (el, o) => buildFader(el, Object.assign({}, o, { orientation: 'horizontal' })),
         knob: buildKnob, toggle: buildToggle, select: buildSelect, buttons: buildButtons,
         list: (el, o) => buildSelect(el, Object.assign({}, o, { variant: 'list' })),
-        readout: buildReadout, meter: buildMeter, grmeter: buildGrMeter,
+        readout: buildReadout, meter: buildMeter, grmeter: buildGrMeter, curves: buildCurves,
     };
     function create(kind, el, opts) {
         const f = BUILDERS[kind];
@@ -1109,7 +1343,7 @@
         // Catalogue (controls.js délègue ici) : tracé, variante, ↺, rotatif déclaratif
         knobSvg, knobKind, ensureKnobReset, adoptKnob,
         // Exports de logique pure (tests)
-        makeScale, meterStep, meterState, meterPos, createEmitter, fmtNumber,
+        makeScale, meterStep, meterState, meterPos, createEmitter, fmtNumber, tbarModel, curvesModel,
         DB_KNOTS, version: '1.0.0',
     };
 });

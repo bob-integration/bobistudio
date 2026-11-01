@@ -138,10 +138,22 @@ handle interne, réattribuable — une règle accrochée dessus finit par désig
 
 ## 5. Notifications
 
-Neuf notifications typées + `bsGenericAlarm`, toutes portant **le même jeu de varbinds** :
+Neuf notifications typées + `bsGenericAlarm` portent **le même jeu de varbinds** :
 `bsAlarmKind`, `bsAlarmSeverity`, `bsAlarmNodeIndex`, `bsAlarmContainerVmid`, `bsAlarmRoleNum`,
 `bsAlarmSince`, `bsAlarmText`, `bsAlarmMsgKey`. Une règle écrite pour l'une se transpose aux
-autres.
+autres. **`bsSecurityEvent`** (`.0.13`, ajoutée le 2026-10-16) porte ces huit varbinds **plus
+`bsAlarmActor`** (`.10.9`, login de l'acteur ; vide = action automatique) : c'est la piste d'audit
+(natures `auth` et `account`), routée sur un OID à part pour qu'une supervision de sécurité n'ait
+pas à la trier au milieu des alarmes d'exploitation.
+
+**`ops(19)`** (révision `202611010000Z`, 2026-11-01) : un geste d'opérateur sur un plugin (console,
+player, mélangeur…) recopié depuis le journal d'exploitation, **seulement si l'exploitant a activé
+cette recopie**. Il part en `bsGenericAlarm`, sans `bsAlarmActor` (la clause OBJECTS d'une
+notification déjà livrée ne change pas : l'acteur figure dans `bsAlarmText`), et n'apparaît jamais
+dans `bsAlarmTable`, puisque le journal d'exploitation a sa propre table. Avant cette révision, ces
+gestes partaient avec `bsAlarmKind = 0`. La même révision consigne `bsSecurityEvent`,
+`bsAlarmActor`, `auth(17)` et `account(18)`, livrés le 2026-10-16 sans révision déclarée : un NMS
+qui a chargé la MIB entre ces deux dates doit la recharger.
 
 | OID relatif | Notification | Déclenchée par |
 |---|---|---|
@@ -154,9 +166,10 @@ autres.
 | `.0.7` | `bsDiskFault` | remplissage d'un système de fichiers |
 | `.0.8` | `bsPtpFault` | synchronisation (voir pièges 1 et 2) |
 | `.0.9` | `bsResourceFault` | CPU, mémoire, bande passante mémoire, GPU |
-| `.0.10` | `bsGenericAlarm` | tout le reste — la nature est dans `bsAlarmKind` |
+| `.0.10` | `bsGenericAlarm` | tout le reste — la nature est dans `bsAlarmKind`, dont `ops(19)` (voir ci-dessous) |
 | `.0.11` | `bsAlarmClear` | **définie, PAS ENCORE ÉMISE** — voir ci-dessous |
 | `.0.12` | `bsAgentStart` | **définie, PAS ENCORE ÉMISE** |
+| `.0.13` | `bsSecurityEvent` | sécurité : authentification, certificats, appairage HA, jetons d'API et comptes (`kind` `auth`, `account`) |
 
 ### Inform ou trap
 
@@ -185,8 +198,10 @@ ni une colonne. Les reconnaître demanderait d'interpréter leur libellé — ce
 silence tout libellé ajouté ensuite.
 
 **Conséquence pour l'exploitation : une alarme résolue reste ouverte côté NMS.** La parade est
-`bsAlarmTable` (walk de resynchronisation) — qui n'est pas encore peuplée non plus. En attendant,
-la fermeture d'alarme est à faire côté NMS sur expiration, ou manuellement.
+`bsAlarmTable` (walk de resynchronisation) : elle **répond** (§3) et ne liste que les alarmes
+ACTIVES, tirées des épisodes d'alerte (`services/snmp/tables.py:_lignes_alarmes`). Un NMS qui la
+walke périodiquement ferme donc les alarmes qui n'y figurent plus. Sans ce walk, la fermeture est à
+faire côté NMS sur expiration, ou manuellement.
 
 C'est une limite connue, écrite ici plutôt que découverte en recette.
 

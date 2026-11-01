@@ -31,18 +31,32 @@ from app import logsetup
 # fichier (mesuré le 2026-08-15 : la moitié d'un journal de 304 Mo était des doublons exacts).
 # `isatty()` ne dépend d'aucune configuration extérieure et couvre le même cas plus largement :
 # aucune redirection, quelle qu'elle soit, ne peut recréer le doublon.
-_handlers = [logsetup.make_handler(LOG_PATH)]   # rotation taille (prioritaire) + temps
-try:
-    _console = sys.stderr is not None and sys.stderr.isatty()
-except (AttributeError, ValueError):
-    _console = False
-if _console:
-    _handlers.append(logging.StreamHandler())
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=_handlers,
-)
+# ⚠ SEULEMENT QUAND `main.py` EST LE POINT D'ENTRÉE. Ce bloc posait le handler fichier À
+# L'IMPORT — or 52 fichiers de `tests/` font `import main`, et chacun écrivait donc ses lignes
+# dans le JOURNAL DE PRODUCTION. Trouvé le 2026-10-24 par la session Médias : des « planches
+# rapatriées » revenaient en boucle dans `bobistudio.log` sans qu'aucun job ne tourne — c'étaient
+# les fixtures de `tests/verif_media_storyboard.py`, et relancer ce test faisait monter le
+# compteur du journal de prod de 18 à 20. Le journal cessait d'être une source : il a fallu
+# dater une panne de huit jours (pyramide 1153) par l'arithmétique sur l'index MXL, faute de
+# toute trace fiable. Les bancs de `tools/bancs/` et les outils de plugin importent aussi `main`.
+#
+# `python main.py` (c'est l'`ExecStart` de bobistudio.service, le SEUL point d'entrée du produit)
+# a `__name__ == "__main__"` dès la première ligne : le service est donc journalisé exactement
+# comme avant, handler fichier ET console `isatty()`. Un `import main` ne configure plus rien et
+# laisse le logger racine au `lastResort` (WARNING sur stderr) — ce que veut un test.
+if __name__ == "__main__":
+    _handlers = [logsetup.make_handler(LOG_PATH)]   # rotation taille (prioritaire) + temps
+    try:
+        _console = sys.stderr is not None and sys.stderr.isatty()
+    except (AttributeError, ValueError):
+        _console = False
+    if _console:
+        _handlers.append(logging.StreamHandler())
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=_handlers,
+    )
 log = logging.getLogger(__name__)
 
 from jinja2 import ChoiceLoader, FileSystemLoader
@@ -190,7 +204,18 @@ app.config["SESSION_COOKIE_SECURE"] = _cookie_secure_enabled() or web_mode.cooki
 # connexion se contournait en changeant d'en-tête à chaque essai (mesuré : 0 blocage sur 25 au
 # lieu de 15), et le journal de sécurité enregistrait l'adresse choisie par l'attaquant. Le
 # middleware ne monte `ProxyFix` qu'en mode `proxy` — cf. tests/verif_mode_web.py.
+# Registre des requêtes en cours (app/http_connections.py) : monté AVANT `EnTetesTransmis`, donc
+# DANS lui — l'adresse cliente qu'il lit est celle que le mode web a décidé de croire (ProxyFix en
+# mode proxy seulement), jamais un `X-Forwarded-For` choisi par le client.
+from app import http_connections
+http_connections.install(app)
 app.wsgi_app = web_mode.EnTetesTransmis(app.wsgi_app)
+# Distributeur de flux (app/stream_hub.py) : le PLUS EXTÉRIEUR. Un flux d'état long (relais) n'y
+# garde plus de fil de service : une fois la réponse construite par Flask (droits vérifiés), la
+# socket du client est remise au distributeur, qui écrit les mêmes octets sur N sockets non
+# bloquantes. Sans adaptateur de serveur (écoute HA, client de test), rien ne change.
+from app import stream_hub
+app.wsgi_app = stream_hub.Detacher(app.wsgi_app)
 
 app.register_blueprint(bp)
 # ⚠ SEUL IMPORT DE SERVICE AU NIVEAU MODULE — donc le seul qui puisse empêcher le
@@ -553,6 +578,8 @@ def surveillance():
                 if st == "fallback":  # nœud legacy sans agent → chemin historique par-vmid
                     from app import docker_driver
                     st = docker_driver.status_docker(vmid)
+                if st != "running" and c.get("desired_state") == "awaiting_driver":
+                    continue    # jamais lancé, il attend son pilote hôte : « stopped » serait faux
                 db_update_status(vmid, "running" if st == "running" else "stopped")
                 prev = _prev_pve_status.get(vmid)
                 if st == "running":
@@ -740,7 +767,7 @@ def _start_emberplus():
 def _start_atem():
     """Démarre l'émulateur switcher ATEM si activé en settings."""
     try:
-        from services import atem
+        from services import panel_atem as atem
         enabled = db_get_setting("atem_enabled", False)
         port = int(db_get_setting("atem_port", 9910) or 9910)
         if enabled:
@@ -754,7 +781,7 @@ def _start_atem():
 def _start_skaarhoj():
     """Connecte les panels Skaarhoj activés au boot. Migration depuis l'ancien schéma."""
     try:
-        from services import skaarhoj
+        from services import panel_skaarhoj as skaarhoj
         from app.database import db_get_setting, db_set_setting
         import uuid as _uuid
 
@@ -798,16 +825,28 @@ def _start_skaarhoj():
         log.error(f"Erreur démarrage Skaarhoj : {e}")
 
 def _start_control_surface():
-    """Surfaces de contrôle de la console audio (services/control_surface) — contrôleur ACTIF seul :
+    """Surfaces de contrôle de la console audio (services/panel_audio) — contrôleur ACTIF seul :
     deux contrôleurs pilotant la même surface se disputeraient ses moteurs. `start()` re-vérifie
     `ha.is_active()` et le réglage `control_surface_enabled`."""
     try:
-        from services import control_surface
+        from services import panel_audio as control_surface
         control_surface.start()
     except ImportError:
         log.info("ControlSurface: service not installed")
     except Exception as e:
         log.error(f"ControlSurface: start failed: {e}")
+
+def _start_panel_dyvi():
+    """EVS Dyvi panel (services/panel_dyvi): PM emulator on TCP 3456 — active controller only, two
+    controllers would fight over the same panel. `start()` re-checks `ha.is_active()` and
+    `panel_dyvi_enabled`."""
+    try:
+        from services import panel_dyvi
+        panel_dyvi.start()
+    except ImportError:
+        log.info("PanelDyvi: service not installed")
+    except Exception as e:
+        log.error(f"PanelDyvi: start failed: {e}")
 
 def _start_nmos():
     """Démarre NMOS si activé en settings."""
@@ -899,6 +938,15 @@ def _start_triggers():
         log.info("Déclencheurs : poller démarré (project_triggers)")
     except Exception as e:
         log.error(f"Erreur démarrage déclencheurs : {e}")
+
+# Plafond de corps de requête de Waitress (défaut 1 Gio). Doit rester AU-DESSUS de toute limite de route :
+# la plus haute aujourd'hui est le dépôt d'archive de pilote hôte (2 Gio, app/routes/host_drivers.py) ; les
+# envois de médias passent par morceaux (media_upload_api) et ne sont pas concernés.
+_WAITRESS_BODY_MAX = 4 << 30
+# Fils de service de Waitress. Chaque flux long (SSE du relais d'état, journal de déploiement,
+# lecture de média) en occupe UN pendant toute sa durée — cf. Monitoring → Connexions.
+_WAITRESS_THREADS = 16
+
 
 def _durcir_waitress_accept():
     """Durcit Waitress contre Errno 24 (EMFILE) / Errno 23 (ENFILE) sur accept() (incident
@@ -1000,6 +1048,10 @@ if __name__ == "__main__":
         # transcoders inscrits. Contrôleur ACTIF seul : deux répartiteurs confieraient deux fois.
         from app import transcode_farm as _farm
         _farm.start()
+        # États d'autres conteneurs affichés sur les murs (%state:<emplacement>.<état>%) : lus ici,
+        # poussés au multiview. Contrôleur ACTIF seul, comme les autres boucles de ce bloc.
+        from app import wall_states as _wall_states
+        _wall_states.start()
         # Audio suit la vidéo : suit le PGM des mélangeurs et ouvre / ferme les tranches de console qui
         # y sont associées (services/audio/afv.py, démarré par le service audio). Contrôleur ACTIF seul :
         # deux observateurs se disputeraient les consoles. Service absent : aucune console à suivre.
@@ -1054,6 +1106,7 @@ if __name__ == "__main__":
         _start_atem()
         _start_skaarhoj()
         _start_control_surface()
+        _start_panel_dyvi()
         _start_nmos()
         _start_tsl()
         _start_sap()
@@ -1126,7 +1179,7 @@ if __name__ == "__main__":
     from app import ha_tls
     ha_tls.demarrer(app)
     try:
-        from waitress import serve
+        from waitress import create_server
         _durcir_waitress_accept()
         # threads : équivalent du threaded=True (iLO tient la connexion CD virtuel — lecture Range
         # de l'ISO — pendant tout l'install ~10 min ; il faut assez de threads pour ne pas bloquer).
@@ -1134,7 +1187,22 @@ if __name__ == "__main__":
         # machines et renvoie tout le reste — /login compris — vers HTTPS.
         # recv_bytes : Waitress lit le corps par blocs de 8 Ko par défaut — l'envoi d'un média depuis
         # le poste plafonnait à 20-38 Mo/s ; à 256 Ko, 62 Mo/s mesuré au banc (2026-10-12).
-        serve(web_mode.EcouteMachines(app), host="0.0.0.0", port=5000, threads=16, recv_bytes=262144)
+        # max_request_body_size : Waitress plafonne PAR DÉFAUT tout corps à 1 Gio et répond 413 (ou coupe
+        # la connexion → « Failed to fetch ») AVANT que la route ne voie la requête. L'archive Desktop
+        # Video 16.4 pour Linux fait 2 079 621 523 o : refusée sur la Z8 le 2026-10-27, alors que la route
+        # et l'agent annoncent 2 Gio (host_drivers._UPLOAD_MAX, agent HD_UPLOAD_MAX). Les routes gardent
+        # LEUR limite ; celle-ci ne doit jamais être la plus basse.
+        # `create_server` + `run` plutôt que `serve` (qui fait exactement ces deux appels) : on garde
+        # le serveur pour lire SON compteur de fils occupés et SA file d'attente — Monitoring →
+        # Connexions, et l'alerte de saturation (app/http_connections.py).
+        srv = create_server(web_mode.EcouteMachines(app), host="0.0.0.0", port=5000,
+                            threads=_WAITRESS_THREADS, recv_bytes=262144,
+                            max_request_body_size=_WAITRESS_BODY_MAX)
+        stream_hub.install_waitress(srv)          # flux longs remis au distributeur (aucun fil gardé)
+        http_connections.attach_waitress(srv, "http")
+        http_connections.start_sampler()
+        srv.print_listen("Serving on http://{}:{}")
+        srv.run()
     except ImportError:
         log.warning("Waitress absent — repli sur le serveur de dev Werkzeug (app.run). "
                     "Installer waitress pour la production (pip install waitress).")

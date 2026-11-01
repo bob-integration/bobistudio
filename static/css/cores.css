@@ -1,0 +1,141 @@
+/* ═══ « Gérer les cœurs » d'un nœud (static/js/cores.js) ═════════════════════════════════════
+ *
+ * Mise en page SEULE. Tout contrôle vient du catalogue partagé (`controls.css`, `ctl-*`) :
+ * le sélecteur de poids est une rangée `ctl-push` construite par BobiControls, jamais un bouton
+ * redessiné ici. Couleurs : variables de thème (clair ET sombre), jamais une teinte en dur —
+ * sauf les cinq TEINTES D'OCCUPATION ci-dessous, qui sont du vocabulaire, pas de la décoration.
+ *
+ * ★ Les teintes se distinguent aussi par la LUMINOSITÉ, pas seulement par la teinte : « dédié »
+ * et « partagé » doivent rester lisibles pour un œil qui confond l'orange et le bleu.
+ */
+.bc-dlg { width: min(1280px, 96vw); max-width: 96vw; padding: 0; border: 1px solid var(--border);
+          border-radius: 12px; background: var(--surface, #1b1e24); color: var(--text); }
+.bc-dlg::backdrop { background: rgba(0, 0, 0, .55); }
+.bc-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+          border-bottom: 1px solid var(--border); }
+.bc-root { padding: 12px 14px 16px; max-height: min(78vh, 900px); overflow: auto; }
+.bc-close { min-width: 36px; }
+
+.bc-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; }
+.bc-head-t { flex: 1 1 260px; }
+.bc-energie { flex: 0 1 420px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.bc-energie .btn { margin-top: 6px; }
+.bc-ok   { border-color: var(--status-running-fg, #3bce82); }
+.bc-warn { border-color: var(--status-warning-fg, #e8a33d); }
+.bc-bad  { color: var(--status-stopped-fg, #e0533b); }
+.bc-info { border-color: var(--border); }
+
+.bc-synth { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 6px; }
+.bc-seg { border: 1px solid var(--border); border-radius: 14px; background: transparent;
+          color: var(--text); font: inherit; font-size: .82rem; padding: 2px 10px; cursor: pointer; }
+.bc-seg.bc-ok   { border-color: var(--status-running-fg, #3bce82); }
+.bc-seg.bc-warn { border-color: var(--status-warning-fg, #e8a33d); }
+.bc-seg.bc-bad  { border-color: var(--status-stopped-fg, #e0533b); cursor: default; }
+
+.bc-onglets { display: flex; gap: 6px; margin: 8px 0; border-bottom: 1px solid var(--border); }
+.bc-onglet { background: transparent; border: 0; border-bottom: 2px solid transparent;
+             color: var(--text-muted); font: inherit; padding: 6px 12px; cursor: pointer; }
+.bc-onglet.is-cur { color: var(--text); border-bottom-color: var(--accent, #5b8def); font-weight: 600; }
+
+.bc-haut { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.bc-gauche { flex: 1 1 420px; min-width: 0; }
+.bc-droite { flex: 1 1 280px; min-width: 0; }
+
+/* Grille des cœurs PHYSIQUES : une case = un cœur, ses deux threads HT côte à côte. */
+.bc-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; }
+.bc-phys { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 4px;
+           border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2, #262a31);
+           cursor: pointer; min-height: 44px; }
+.bc-phys:focus-visible { outline: 2px solid var(--accent, #5b8def); outline-offset: 2px; }
+.bc-phys.is-sel { border-color: var(--accent, #5b8def); box-shadow: 0 0 0 1px var(--accent, #5b8def); }
+.bc-phys.is-frere { border-color: var(--status-warning-fg, #e8a33d); }
+.bc-phys-n { font-size: .62rem; color: var(--text-muted); text-align: left; }
+.bc-phys-th { display: flex; gap: 3px; }
+.bc-th { flex: 1; height: 22px; border-radius: 3px; background: var(--surface-2, #262a31);
+         display: inline-block; min-width: 12px; }
+.bc-th-dedie      { background: #c87520; }                    /* dédié : orange, foncé */
+.bc-th-partage     { background: #5b8def; }                   /* partagé : bleu, clair */
+.bc-th-moteur      { background: #8b5cd6; }                   /* moteur 2110 (busy-poll) */
+.bc-th-orphelin    { background: #c2413b; }                   /* réservé par un conteneur DÉTRUIT */
+.bc-th-reserve_ht  { background: repeating-linear-gradient(45deg, #c87520 0 4px, #4a4f58 4px 8px); }
+.bc-th-systeme     { background: #5b6472; }                   /* hors pool : noyau, agent */
+.bc-pastille { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%;
+               background: var(--status-warning-fg, #e8a33d); }
+.bc-pastille-lg { width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+                  background: var(--status-warning-fg, #e8a33d); }
+.bc-legende { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px;
+              font-size: .78rem; color: var(--text-muted); }
+.bc-lg { display: inline-flex; align-items: center; gap: 5px; }
+.bc-lg .bc-th { width: 14px; height: 14px; flex: 0 0 auto; }
+
+.bc-tipbox { min-height: 0; }
+.bc-tip { margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+          background: var(--bg, #14171d); }
+.bc-tip-t { font-weight: 600; margin-bottom: 4px; }
+.bc-tip-th { margin-top: 6px; }
+.bc-tip-l { display: flex; justify-content: space-between; gap: 10px; }
+
+.bc-caps { display: flex; flex-direction: column; gap: 8px; }
+.bc-cap { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.bc-cap b { font-size: 1.3rem; }
+.bc-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+
+.bc-barre { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 6px;
+            padding-top: 8px; border-top: 1px solid var(--border); }
+.bc-search { display: inline-flex; align-items: center; gap: 6px; }
+.bc-search input { min-width: 200px; }
+.bc-chip { border: 1px solid var(--border); border-radius: 14px; background: transparent;
+           color: var(--text-muted); font: inherit; font-size: .82rem; padding: 2px 10px; cursor: pointer; }
+.bc-chip.is-cur { color: var(--text); border-color: var(--accent, #5b8def); font-weight: 600; }
+
+.bc-tabbox { overflow: auto; }
+.bc-tab { width: 100%; border-collapse: collapse; font-size: .86rem; }
+.bc-tab th, .bc-tab td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border);
+                         vertical-align: top; }
+.bc-tab thead th { position: sticky; top: 0; background: var(--surface, #1b1e24); z-index: 1; }
+.bc-tab .bc-num { text-align: right; white-space: nowrap; }
+.bc-tab tr.bc-grp td { background: var(--surface-2, #262a31); }
+.bc-sort { background: none; border: 0; color: var(--text-muted); font: inherit; cursor: pointer; padding: 0; }
+.bc-pill { display: inline-block; border-radius: 10px; padding: 1px 8px; font-size: .78rem;
+           border: 1px solid var(--border); white-space: nowrap; }
+.bc-pill.bc-ok   { border-color: var(--status-running-fg, #3bce82); }
+.bc-pill.bc-warn { border-color: var(--status-warning-fg, #e8a33d); }
+.bc-poids .ctl-btnrow__row { flex-wrap: wrap; }
+
+/* Onglet C : une ligne par conteneur, une colonne par cœur physique (thread A en haut, frère
+ * en bas). Deux couleurs dans une même colonne = partage — c'est toute la lecture. */
+.bc-bandes { overflow: auto; }
+.bc-bd-l { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--border); }
+.bc-bd-head { border-bottom: 0; }
+.bc-bd-nom { width: 220px; flex: 0 0 auto; padding: 3px 6px 3px 0; font-size: .82rem;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bc-bd-c { width: 22px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px;
+           align-items: center; font-size: .62rem; }
+.bc-bd-th { width: 18px; height: 7px; border-radius: 2px; background: var(--surface-2, #262a31); }
+.bc-bd-th.is-ded { background: #c87520; }
+.bc-bd-th.is-sh  { background: #5b8def; }
+.bc-bd-th.is-bas { opacity: .45; }
+.bc-bd-th.is-frere { outline: 1px solid var(--status-warning-fg, #e8a33d); }
+.bc-bd-grp { margin: 10px 0 4px; font-size: .85rem; font-weight: 600; }
+
+/* iPad / tactile : la grille et les bandes se lisent au doigt, et la fenêtre tient en largeur. */
+@media (max-width: 820px) {
+    .bc-haut { flex-direction: column; }
+    .bc-bd-nom { width: 140px; }
+    .bc-search input { min-width: 140px; }
+    .bc-phys { min-height: 48px; }
+}
+
+/* Réservations ORPHELINES : nommées une par une (le compte seul ne désigne personne). */
+.bc-orph { border: 1px solid var(--status-stopped-fg, #e0533b); border-radius: 8px;
+           padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.bc-orph-l { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Famine (PSI « full ») : mêmes seuils et teintes que la tuile CPU de Monitoring. */
+.bc-famine-warn { color: var(--warning, #f5a524); font-weight: 600; }
+.bc-famine-bad  { color: var(--danger, #e5484d); font-weight: 600; }
+
+/* Relevé des cœurs (mesure ponctuelle, horodatée). */
+.bc-snap { margin-top: 10px; }
+.bc-snap .bc-tab { margin-top: 4px; }
+.bc-snap-hot td { color: var(--danger, #e5484d); }

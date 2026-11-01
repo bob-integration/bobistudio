@@ -57,7 +57,9 @@ def _journal(node, req, res):
     if action not in _ACTIONS:
         return
     params = {"n": node.get("name") or node["id"], "dev": req.get("device") or "?",
-              "serial": (res.get("disk") or {}).get("serial") or req.get("confirm_serial") or "?",
+              # série du DISQUE (rendue par l'agent), jamais celle SAISIE : sur un refus pour série
+              # erronée, la parenthèse affichait la saisie et passait pour la série du disque
+              "serial": (res.get("disk") or {}).get("serial") or "?",
               "target": res.get("target") or req.get("mountpoint") or ""}
     kw = dict(node_id=node["id"], kind="disk", params=params)
     if res.get("ok"):

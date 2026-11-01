@@ -14,9 +14,11 @@ jsonschema==4.26.0
 Markdown==3.10.2
 MarkupSafe==3.0.3
 more-itertools==11.1.0
+numpy==2.4.6
 Pillow==12.2.0
 pyasn1==0.6.4
 pysnmp==7.1.29
+PyYAML==6.0.3
 requests==2.34.2
 urllib3==2.7.0
 waitress==3.0.2

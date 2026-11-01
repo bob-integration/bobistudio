@@ -314,12 +314,20 @@ def _rewire_shm_consumers(old_shm, new_shm, restrict_pids=None, exclude_pids=Non
         try:
             ok, _st, payload = _apply_wire(prod, to_vmid, new_shm,
                                            e.get("kind") or "video",
-                                           to_slot=e.get("to_slot"))
+                                           to_slot=e.get("to_slot"), via_port=True)
             out.append({"vmid": to_vmid, "ok": bool(ok),
                         **({} if ok else {"error": (payload or {}).get("error")})})
         except Exception as ex:
             out.append({"vmid": to_vmid, "ok": False, "error": str(ex)})
     return out
+
+@bp.route("/api/containers/<int:vmid>/input_ports", methods=["GET"])
+@require_perm("containers.deploy")
+def container_input_ports(vmid):
+    """Ports qu'une entrée de ce conteneur peut suivre + le port suivi par chaque entrée (sélecteur
+    « Source » d'une tuile de multiview). Câbler un port : POST /api/home/wire avec shm=port:<id>."""
+    from .. import project_ports
+    return jsonify(project_ports.input_ports(vmid, request.args.get("kind") or "video"))
 
 @bp.route("/api/ports", methods=["GET"])
 @require_global_access
@@ -336,7 +344,11 @@ def all_ports():
 @require_project_role("viewer")
 def project_ports_list(pid):
     from ..database import db_project_ports
-    return jsonify({"ports": db_project_ports(pid)})
+    from .. import project_ports
+    ports = db_project_ports(pid)
+    for pt in ports:
+        pt["labels"] = project_ports.port_labels(pt["id"])
+    return jsonify({"ports": ports})
 
 @bp.route("/api/projects/<int:pid>/ports", methods=["POST"])
 @require_project_role("editor")
@@ -358,41 +370,160 @@ def project_ports_create(pid):
 def project_ports_update(pid, port_id):
     from ..database import db_get_port, db_update_port
     from ..auth import has_global_access
+    from .. import project_ports
     port = db_get_port(port_id)
     if not port or port.get("project_id") != pid:
         return jsonify({"error": "port introuvable"}), 404
     data = request.json or {}
+    if "label_source" in data and data["label_source"] not in project_ports.LABEL_SOURCES:
+        return jsonify({"error": "label_source invalide"}), 400
+    if "tsl_in" in data and data["tsl_in"] not in project_ports.TSL_IN_MODES:
+        return jsonify({"error": "tsl_in invalide"}), 400
+    labels = data.get("labels")
+    if labels is not None and not isinstance(labels, dict):
+        return jsonify({"error": "labels invalide"}), 400
+    if "reusable" in data and (port["kind"] != "dest" or port.get("parent_id")):
+        return jsonify({"error": "reusable : destination de tête seulement", "reason": "reusable_invalid"}), 400
     rewired = []
     if "binding" in data:
         binding = data.get("binding") or {}
         if not isinstance(binding, dict):
             return jsonify({"error": "binding invalide"}), 400
-        old = port.get("binding") or {}
-        if port["kind"] == "source":
+        if port["kind"] == "source" and not has_global_access():
             # Binding physique d'une source = réservé aux accès globaux (admin binde).
-            if not has_global_access():
-                return jsonify({"error": "forbidden",
-                                "reason": "binding_requires_admin"}), 403
-            if old.get("shm") and binding.get("shm"):
-                rewired = _rewire_shm_consumers(old.get("shm"), binding.get("shm"),
-                                                restrict_pids={pid})
-            if old.get("audio_shm") and binding.get("audio_shm"):
-                rewired += _rewire_shm_consumers(old.get("audio_shm"),
-                                                 binding.get("audio_shm"),
-                                                 restrict_pids={pid})
-        else:
-            # Destination : la sortie interne publiée est du CONTENU (editor OK) ;
-            # les consommateurs EXTERNES suivent à chaud.
-            if old.get("internal_shm") and binding.get("internal_shm"):
-                rewired = _rewire_shm_consumers(old.get("internal_shm"),
-                                                binding.get("internal_shm"),
-                                                exclude_pids={pid})
-        db_update_port(port_id, binding=binding)
+            return jsonify({"error": "forbidden", "reason": "binding_requires_admin"}), 403
+        if binding.get("port") is not None:
+            # Câble inter-projets : une SOURCE suit une DESTINATION (cf. project_ports.port_shm).
+            try:
+                up = db_get_port(int(binding["port"]))
+            except (TypeError, ValueError):
+                up = None
+            if port["kind"] != "source" or not up or up.get("kind") != "dest":
+                return jsonify({"error": "binding.port : une source ne suit qu'un port destination",
+                                "reason": "port_follow_invalid"}), 400
+            binding = {"port": up["id"]}
+        _new = binding.get("internal_shm")
+        if port["kind"] == "dest" and _new:
+            # Renvoi : la destination ne publie pas la sortie d'un conteneur qui la suit (boucle).
+            _prod = project_ports.producer_vmid(_new)
+            if _prod is not None and _prod in project_ports.follower_vmids(port_id):
+                return jsonify({"error": "port_loop", "reason": "port_loop"}), 409
+        # Option C (2026-10-23) : les entrées LIÉES au port (`port_links`) suivent sa nouvelle
+        # affectation, y compris depuis « non affecté » et vers « non affecté » (entrée vidée) ;
+        # une destination entraîne aussi ses consommateurs externes (project_ports.apply_binding,
+        # partagé avec le pupitre Dyvi et les macros).
+        rewired = project_ports.apply_binding(port, binding)
+    new_name = (data.get("name") or "").strip()
+    if new_name and new_name != port.get("name"):
+        for kid in project_ports.children(port_id):
+            db_update_port(kid["id"], name="%s %s" % (new_name, kid.get("suffix") or ""))
     db_update_port(port_id,
-                   name=(data.get("name") or "").strip() or None,
+                   name=new_name or None,
                    ord_=(int(data["ord"]) if "ord" in data else None),
-                   channel_labels=data.get("channel_labels"))
-    return jsonify({"status": "ok", "port": db_get_port(port_id), "rewired": rewired})
+                   channel_labels=data.get("channel_labels"),
+                   label_source=data.get("label_source"),
+                   tsl_in=data.get("tsl_in"),
+                   reusable=(bool(data["reusable"]) if "reusable" in data else None))
+    if labels:
+        # Nommer un port = éditeur du projet ou admin (garde de la route), pas `settings.edit`
+        # qui reste exigé pour les libellés des flux eux-mêmes.
+        project_ports.set_port_labels(port_id, long=labels.get("long"), short=labels.get("short"))
+    from ..tally import invalider_ports
+    invalider_ports()
+    project_ports.invalidate_label_index()
+    out = db_get_port(port_id)
+    out["labels"] = project_ports.port_labels(port_id)
+    return jsonify({"status": "ok", "port": out, "rewired": rewired})
+
+@bp.route("/api/projects/<int:pid>/ports/batch", methods=["POST"])
+@require_project_role("editor")
+def project_ports_batch(pid):
+    """Crée des virtuelles (décision du 28/10) : {kind, video, audios, anc, names:[…]}.
+
+    Les noms arrivent DÉJÀ développés (motifs `{1-6}` / `{a,b}` traités par la page, qui en montre
+    l'aperçu). Un nom — ou un nom de rattaché — déjà pris dans le projet, ou répété, fait REFUSER
+    tout l'ajout, avec les noms en cause : rien n'est créé à moitié."""
+    from .. import project_ports
+    data = request.json or {}
+    kind = data.get("kind") if data.get("kind") in ("source", "dest") else None
+    names = [str(n).strip() for n in (data.get("names") or []) if str(n).strip()]
+    video = bool(data.get("video"))
+    try:
+        audios = int(data.get("audios") or 0)
+    except (TypeError, ValueError):
+        audios = -1
+    anc = bool(data.get("anc"))
+    if not kind or not names or not 0 <= audios <= project_ports.MAX_AUDIOS:
+        return jsonify({"error": "kind, names et audios (0..%d) requis" % project_ports.MAX_AUDIOS}), 400
+    if not (video or audios or anc):
+        return jsonify({"error": "aucun flux choisi", "reason": "empty"}), 400
+    if len(names) > 256:
+        return jsonify({"error": "trop de noms (256 au plus)"}), 400
+    dups = project_ports.duplicate_names(pid, project_ports.virtual_port_names(names, video, audios, anc))
+    if dups:
+        return jsonify({"error": "noms déjà pris : " + ", ".join(dups[:8]), "reason": "duplicate_names",
+                        "names": dups}), 409
+    heads = project_ports.create_virtuals(pid, kind, names, video=video, audios=audios, anc=anc)
+    from ..tally import invalider_ports
+    invalider_ports(); project_ports.invalidate_label_index()
+    return jsonify({"status": "ok", "created": heads})
+
+@bp.route("/api/projects/<int:pid>/ports/admit", methods=["POST"])
+@require_project_role("editor")
+def project_ports_admit(pid):
+    """« Faire entrer cette source par un port du projet » (page Câbles, au lieu du refus « source
+    hors projet ») : {shm, kind, to_vmid, to_slot}. Port source affecté à ce flux (réutilisé ou
+    créé), puis l'entrée câblée dessus. Affecter une source est réservé aux accès globaux."""
+    from .. import project_ports
+    from ..auth import has_global_access
+    if not has_global_access():
+        return jsonify({"error": "forbidden", "reason": "binding_requires_admin"}), 403
+    data = request.json or {}
+    shm = project_ports._bare(str(data.get("shm") or ""))
+    kind = data.get("kind") if data.get("kind") in ("video", "audio", "data") else "video"
+    try:
+        to_vmid = int(data.get("to_vmid"))
+    except (TypeError, ValueError):
+        to_vmid = None
+    if not shm or to_vmid is None:
+        return jsonify({"error": "shm et to_vmid requis"}), 400
+    if pid not in project_ports.member_project_ids(to_vmid):
+        return jsonify({"error": "le conteneur n'est pas dans ce projet", "reason": "not_in_project"}), 400
+    port_id, created = project_ports.admit_flow(pid, shm, kind)
+    from ..tally import invalider_ports
+    invalider_ports(); project_ports.invalidate_label_index()
+    ok, status, payload = project_ports.wire_port(port_id, to_vmid, kind, data.get("to_slot"))
+    from ..database import db_get_port
+    port = db_get_port(port_id) or {}
+    return jsonify(dict(payload or {}, ok=bool(ok), port_id=port_id, port_name=port.get("name"),
+                        created=created)), status
+
+@bp.route("/api/projects/<int:pid>/ports/<int:port_id>/children", methods=["POST"])
+@require_project_role("editor")
+def project_ports_add_child(pid, port_id):
+    """Rattache un audio ou un ANC à une virtuelle existante ({media: audio|anc}) ; raccordé
+    aussitôt avec elle si elle l'est."""
+    from ..database import db_get_port
+    from .. import project_ports
+    port = db_get_port(port_id)
+    if not port or port.get("project_id") != pid:
+        return jsonify({"error": "port introuvable"}), 404
+    media = (request.json or {}).get("media")
+    sfx = project_ports.next_suffix(port_id, media) if media in ("audio", "anc") else None
+    if sfx:
+        dups = project_ports.duplicate_names(pid, ["%s %s" % (port.get("name"), sfx)])
+        if dups:
+            return jsonify({"error": "nom déjà pris : " + dups[0], "reason": "duplicate_names",
+                            "names": dups}), 409
+    kid = project_ports.add_child(port, media)
+    if not kid:
+        return jsonify({"error": "impossible : seule une vidéo de tête reçoit des rattachés "
+                                 "(%d audios, un ANC au plus)" % project_ports.MAX_AUDIOS,
+                        "reason": "child_refused"}), 400
+    rewired = project_ports.rebind_children(port_id)
+    from ..tally import invalider_ports
+    invalider_ports(); project_ports.invalidate_label_index()
+    return jsonify({"status": "ok", "port": db_get_port(kid), "rewired": rewired})
 
 @bp.route("/api/projects/<int:pid>/ports/<int:port_id>", methods=["DELETE"])
 @require_project_role("editor")
@@ -401,8 +532,16 @@ def project_ports_delete(pid, port_id):
     port = db_get_port(port_id)
     if not port or port.get("project_id") != pid:
         return jsonify({"error": "port introuvable"}), 404
-    db_delete_port(port_id)
-    return jsonify({"status": "ok"})
+    # Les entrées qui suivaient le port sont VIDÉES : laissées sur le flux physique, elles
+    # garderaient une source que le membre n'a jamais choisie et ne voit pas.
+    from .. import project_ports
+    released = project_ports.replay_port(port_id, release=True)
+    for kid in project_ports.children(port_id):   # une virtuelle part avec ses audios / son ANC
+        released += project_ports.replay_port(kid["id"], release=True)
+    db_delete_port(port_id)                    # emporte aussi les rattachés et leurs libellés
+    from ..tally import invalider_libelles, invalider_ports
+    invalider_ports(); invalider_libelles(); project_ports.invalidate_label_index()
+    return jsonify({"status": "ok", "released": released})
 
 # ─── Versions de projet (« projet vivant », chantier 3) ───────
 
@@ -614,6 +753,11 @@ def exporter_projet(pid):
                   for v in db_project_views(pid)],
     }
     payload.update(mr.project_export_media(pid))
+    # v4 : les PORTS VIRTUELS du projet et les entrées qui les suivent (absents jusqu'au 30/10 :
+    # Atelier réimporté sur la Z8 réinstallée n'avait plus aucune virtuelle).
+    from ..projects import export_ports
+    payload["schema"] = "bobi.studio.project.v4"
+    payload.update(export_ports(pid))
     safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in p["name"]) or f"projet-{pid}"
     if request.args.get("media") in ("1", "true"):
         plan = mr.project_archive_plan(pid)
@@ -704,6 +848,11 @@ def importer_projet():
                                     raw.get("media_fields") if isinstance(raw.get("media_fields"), list) else [])
     out = {"status": "ok", "id": pid, "name": name,
            "media": {k: media[k] for k in ("new", "known", "skipped")}}
+    # Ports virtuels (schema v4).
+    if isinstance(raw.get("ports"), list) and raw["ports"]:
+        from ..projects import import_ports
+        out["ports"] = import_ports(pid, raw["ports"], raw.get("port_links")
+                                    if isinstance(raw.get("port_links"), list) else [], name, snapshot)
     if tar_path:
         threading.Thread(target=mr.project_import_archive, daemon=True, name=f"proj-import-{pid}",
                          args=(pid, tar_path, int(request.form["node_id"]), media["ids"])).start()

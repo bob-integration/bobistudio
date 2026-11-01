@@ -96,9 +96,10 @@ sans différence discrète est quand même notée : qui l'a appliquée est un fa
 | `user` | l'opérateur de l'interface | `plugin_proxy`, shotbox, pages Câbles / Libellés — déduit de la requête |
 | `macro` | `name` = qui a lancé, `detail` = la macro | `macros.exec_action` / `exec_post` (`_run_actor(run)`) |
 | `trigger` | `name` = le déclencheur, `detail` = la macro | idem, quand `_Run.user` vaut `trigger:<nom>` |
-| `surface` | `name` = l'opérateur de la surface, `detail` = la surface | `ops_journal.surface_actor(surface, operator)` — à passer en `actor=` par `services/control_surface` (à venir) |
+| `surface` | `name` = l'opérateur de la surface, `detail` = la surface | `ops_journal.surface_actor(surface, operator)` — à passer en `actor=` par `services/panel_audio` (à venir) |
 | `auto` | l'orchestrateur (`detail` = la fonction, ex. `afv`) | AFV ; tout appel hors requête sans auteur explicite |
 | `plugin` | événement interne du plugin | collecteur `/events` |
+| `public` | porteur d'un LIEN PUBLIC jouable : `name` = titre du lien, `detail` = 6 premiers caractères du jeton (personne n'est identifié, c'est le lien qui l'est) | `ops_journal.record_public` / `public_actor`, appelé par le relais de la page publique (`app/routes/pages.py`) |
 
 Un chemin hors requête qui connaît son auteur le passe explicitement : `record_post(…, actor=…)`,
 `plugin_persist.structure_apply(…, actor=…)`, `macros.exec_action(…, actor=…)`. On ne devine jamais un humain.
@@ -162,6 +163,10 @@ colonnes et des index. Rétention : réglage **`ops_journal_retention_days`** (d
 purge au plus une fois par minute, par tranches de 5 000 lignes, plafond dur 500 000 lignes.
 Sorties : réglage **`ops_journal_forward`** (défaut éteint) → `services.alerting.notify(…, "info",
 kind="ops")`, donc syslog / SNMP (et tout canal dont le seuil est « info »).
+⚠ `ops` n'est pas dans `database.ALERT_KINDS` : l'appel va directement à `notify` (sans passer par
+`db_add_alert`, donc rien n'est écrit dans `alerts`), et côté SNMP il part en `bsGenericAlarm` avec
+`bsAlarmKind = 0` (`services/snmp/mib.py:notification_pour`, `KIND_ENUM`) : une règle NMS ne peut pas
+le distinguer par sa nature (texte transmis : « [hôte] auteur — action »).
 
 ## 8. Macros
 

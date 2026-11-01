@@ -1,7 +1,35 @@
 {
-  "version": "0.74.0",
-  "date": "2026-10-22",
+  "version": "0.80.0",
+  "date": "2026-10-30",
   "changes": {
+    "Le temoin de phase video mesurait des creneaux entiers, pas une phase (0.80.0)": [
+      "★★ CORRECTIF DE MON PROPRE CORRECTIF. `video_offset_ms`, publie en 0.79.0 comme le temoin qui manquait au defaut du 28/10, multipliait un nombre ENTIER de creneaux par la duree d'une trame : il ne pouvait valoir que des multiples de 20 ms. Mesure de la session Z8 le 30/10 sur les 5 entrees de #231 : exactement ±20,00 ms, min = mediane = max. Un temoin immobile se lit comme un temoin sain. Remplace par la vraie phase (`video_phase_ms`), la distance au bord le plus proche (`video_edge_ms`, petit = en danger), sa pire valeur courue (`video_edge_min_ms`) et l'ecart entier assume (`video_grid_frames`). Detail : plugins/decklink_io/meta.json (0.29.36).",
+      "★ La MARGE de l'attente de sortie (`head_wait_max_ms`) et l'etat de SIGNAL par entree sur :8080 (`inputs[]` : flux, connecteur, signal, format detecte, secondes sans signal) arrivent dans le meme lot. Une entree muette depuis des heures ne rendait le conteneur ni muet ni suspect : la cadence publiee etait AGREGEE.",
+      "⚠ BUMP NECESSAIRE : les deux binaires vivent dans cette image. `version` ET `image_tag` bumpes tous les deux -- les laisser diverger refuse toute construction et casse la page Images entiere (garde tests/verif_images_tags.py)."
+    ],
+    "Capture : l'index video ne se relit plus sur l'horloge a chaque trame ; sortie : plus de repetition sans attendre (0.79.0)": [
+      "★★ CAPTURE : une camera dont la phase tombe sur la frontiere d'un creneau perdait un TIERS de ses images (Z8, 28/10, #231 : 34,2 fps au lieu de 50, arrivee mediane a 19,99 ms d'un creneau de 20 ; les quatre autres entrees de la meme carte, arrivant entre 1,3 et 5,6 ms, ne perdaient rien). Deux callbacks de part et d'autre de la frontiere calculaient le MEME creneau, le second `OpenGrain` etait refuse. L'index est desormais CONTIGU et ne se re-ancre que sur un ecart franc. Sans genlock chaque source derive (~1,5 ms/h) : toutes y passaient, chacune son tour. Detail : plugins/decklink_io/meta.json (0.29.33).",
+      "★ SORTIE : ~1,9 image repetee par seconde devant un producteur parfait (multiview 50/s, 0 ratee, `slice_timeouts` et `late_previous` a 0). Quand le callback arrivait avant l'ouverture du grain suivant, on repetait AUSSITOT sans toucher au budget d'attente deja accorde — et un grain source n'etait jamais emis. On attend maintenant dans le budget, avec UNE seule echeance par callback. Detail : plugins/decklink_io/meta.json (0.29.34).",
+      "⚠ BUMP NECESSAIRE : les deux binaires vivent dans cette image, un conteneur ne les adopte qu'en changeant d'`image_tag` (recreation). `version` ET `image_tag` bumpes tous les deux -- les laisser diverger refuse toute construction et casse la page Images entiere (vecu le 28/10 ; garde tests/verif_images_tags.py)."
+    ],
+    "Le retard de la tete audio est publie (0.78.0)": [
+      "★ `audio_head_lag_ms` : la tete du flux audio par rapport a maintenant, echantillonnee au releve de statistiques. `audio_offset_ms` (0.77.0) mesurait la DERIVE du curseur d'ecriture et valait ~0 a juste titre, sans rien dire du retard subi par un consommateur. Echantillon de DENT DE SCIE : son maximum vaut la periode du paquet. Detail : plugins/decklink_io/meta.json (0.29.32).",
+      "⚠ BUMP NECESSAIRE : `decklink_mxl` vit dans cette image. `version` ET `image_tag` bumpes tous les deux."
+    ],
+    "L'audio capture ne prend plus de retard sans fin (0.77.0)": [
+      "★★ L'index audio avancait a l'horloge de la CARTE pendant que la grille MXL avance a celle du NOEUD, et le code ne se recalait qu'au-dela d'un QUART DE SECONDE : la console audio #214 ne recevait rien des entrees SDI, l'audio etant estampille ~200 ms en retard, ecart croissant. Tolerance desormais ASYMETRIQUE (recalage avant des un quart de paquet avec silence, jamais de recul), et la grandeur qui decide est publiee (`audio_offset_ms`, signe). Detail : plugins/decklink_io/meta.json (0.29.31).",
+      "⚠ BUMP NECESSAIRE : `decklink_mxl` vit dans cette image, un conteneur ne l'adopte qu'en changeant d'`image_tag` (recreation). `version` ET `image_tag` bumpes tous les deux."
+    ],
+    "Le mode tranche du TX DeckLink suit enfin le producteur : bon accesseur libmxl (0.76.0)": [
+      "★★ Le binaire lisait le grain de tete par l'accesseur de grain ENTIER, qui ne rend jamais un grain en cours d'ecriture : le mode tranche de la sortie SDI n'a jamais suivi personne depuis son ecriture le 2026-10-02, a cadence parfaite. Corrige par `mxlFlowReaderGetGrainSliceNonBlocking`, plus quatre compteurs qui rendent le chemin de repli lisible. Detail : plugins/decklink_io/meta.json (0.29.30).",
+      "⚠ BUMP NECESSAIRE : le binaire vit dans cette image, un conteneur ne l'adopte qu'en changeant d'`image_tag` (recreation). Et LES DEUX champs sont bumpes -- `version` ET `image_tag` -- parce que les laisser diverger refuse toute construction et casse la page Images entiere (vecu le 28/10 ; garde tests/verif_images_tags.py)."
+    ],
+    "L'attente des tranches du TX DeckLink se regle par sortie, defaut 20 ms (0.75.0)": [
+      "★★ L'IMAGE PORTE LE BINAIRE : sans reconstruction, le reglage n'existe pas sur la carte. `decklink_tx` est compile ici (etage decklink-builder) ; un simple redeploiement de plugin ne pousse que `script.py`, et l'ancien binaire ignorerait `--slice-wait` — il le prendrait pour la duree en secondes, puisque tout argument non reconnu est lu comme telle.",
+      "⚠ 10 MS CODES EN DUR FAISAIENT SACCADER LE PGM (Z8, 28/10) : le melangeur finit son image vers 9-10 ms dans la trame, l'echeance expirait une trame sur deux, et le repli `head-1` re-emet le grain DEJA emis — une image repetee puis une sautee, a cadence parfaite. Defaut porte a 20 ms, reglable par sortie, plafonne par le binaire a la duree d'une trame, valeur EFFECTIVE publiee dans ses statistiques (`slice_wait_ms`).",
+      "⚠ L'OPTION EST PASSEE EN UN SEUL JETON POUR CETTE RAISON MEME : mesure du 28/10, un ancien binaire recevant « --slice-wait 25 » comprend « arrete-toi dans 25 s » et la sortie SDI cycle toutes les 25 secondes. Avec « --slice-wait=25 » il lit 0 (sans limite) et ignore l'option. Un deploiement de script en avance sur l'image est donc SANS EFFET au lieu d'etre destructeur — mais il reste sans effet : c'est bien l'image qu'il faut reconstruire.",
+      "Detail du reglage et de sa chaine : plugins/decklink_io/meta.json (0.29.29)."
+    ],
     "La garde de generation ne coupe plus le son (0.74.0)": [
       "⚠⚠ CORRECTIF D'UN DEFAUT INTRODUIT PAR 0.73.0, CONSTATE EN DIRECT. La garde de generation jugeait les flux AUDIO sur `lastWriteTime`, que les producteurs audio ne mettent PAS a jour : elle les croyait morts en permanence, relachait le lecteur une fois par seconde, et chaque reprise re-ancrait la position de lecture. Mesure sur la machine du testeur : 1 300 a 1 700 echantillons/s au lieu de 48 000, sur les quatre sorties porteuses de son.",
       "★ Le detecteur audio juge desormais sur un `headIndex` qui ne bouge plus, et ce signe est fiable parce qu'un flux reellement MUET a un index qui AVANCE (le producteur comble le silence) : un index fige n'est jamais du silence, c'est un lecteur decroche.",
@@ -273,5 +301,5 @@
     ],
     "Bugs connus": []
   },
-  "image_tag": "bobi-compute:0.74"
+  "image_tag": "bobi-compute:0.80"
 }

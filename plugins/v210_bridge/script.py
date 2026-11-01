@@ -202,6 +202,9 @@ class MetricsHandler(BaseHTTPRequestHandler):
         # comblement d'un trou par le producteur — cadence, index et statut de lecture restent
         # tous parfaits pendant l'épisode. Calculé à la requête : aucun coût par trame.
         payload["invalid_grains"] = bobimxl.invalid_grains_report()
+        # Avance des index émis sur la grille TAI (bobimxl.index_report, grid_ms en ms signées, positif =
+        # futur) : seul témoin d'une sortie écrite dans le futur, la cadence restant parfaite.
+        payload["index_ahead"] = bobimxl.index_report()
         body = json.dumps(payload).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

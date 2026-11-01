@@ -521,6 +521,7 @@ def garantir(vmid, coeurs=None, marge=MARGE):
     if rc != 0:
         core_pool.release_cores(c["vmid"])      # ne jamais laisser une réserve comptée mais non posée
         return False, "docker update a échoué : %s" % ((err or out or "").strip()[:200])
+    core_pool.reapply_shared_after_reservation(c["node_id"], c["vmid"], cpuset)
     db_add_alert("alert.prep.garantie_posee", "info",
                  vmid=c["vmid"], node_id=c["node_id"], kind="prep",
                  params={"h": c["hostname"], "coeurs": coeurs, "cpuset": cpuset})

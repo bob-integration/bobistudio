@@ -23,12 +23,10 @@
   const OPS = { video: T('section.farm.op_video', 'Vidéo → Vidéo'), audio: T('section.farm.op_audio', 'Audio → Audio'),
     extract: T('section.farm.op_extract', 'Extraire audio'), slate: 'Audio → Vidéo',
     storyboard: T('section.farm.op_storyboard', 'Planche d\'images') };
-  const LAYOUTS = { auto: T('section.farm.layout_auto', 'Selon le preset'), tracks: T('section.farm.layout_tracks', 'Pistes telles quelles'),
-    mono: T('section.farm.layout_mono', 'Une piste mono par canal'), stereo: T('section.farm.layout_stereo', 'Programme stéréo'),
-    poly: T('section.farm.layout_poly', 'Une piste polyphonique'), none: T('section.farm.layout_none', 'Sans audio') };
   const ACTIVE = ['pending', 'transfer_in', 'running', 'transfer_out'];
 
-  const S = { state: null, presets: null, sources: null, src: null, path: '', picked: null,
+  // `sel` : fichiers cochés (chemin → source), gardés d'un dossier à l'autre du même volume.
+  const S = { state: null, sources: null, src: null, path: '', sel: new Map(), items: [],
     filter: 'all', q: '', open: null, timer: null, alive: false, wired: false };
 
   async function api(method, url, body) {
@@ -85,35 +83,6 @@
     if (S.state.global) pj.appendChild(new Option(T('section.farm.no_project', 'Hors projet'), ''));
     (S.state.projects || []).forEach(p => pj.appendChild(new Option(p.name, p.id)));
     if (keep !== '' && [...pj.options].some(o => o.value === keep)) pj.value = keep;
-    const pr = $('farm-priority');
-    if (!pr.options.length) {
-      PRIOS.forEach(([k, n]) => pr.appendChild(new Option(PRIO_LABEL(n), k)));
-      pr.value = 'normal';
-    }
-  }
-  function fillPresets() {
-    const op = $('farm-op').value, sel = $('farm-preset'), P = S.presets;
-    sel.innerHTML = '';
-    if (!P) { sel.appendChild(new Option(T('section.farm.no_presets', 'presets indisponibles'), '')); return; }
-    if (op === 'video') {
-      const fams = {};
-      (P.video || []).forEach(p => { (fams[p.family] = fams[p.family] || []).push(p); });
-      Object.entries(fams).forEach(([f, list]) => {
-        const g = document.createElement('optgroup'); g.label = f;
-        list.forEach(p => g.appendChild(new Option(p.label, p.id)));
-        sel.appendChild(g);
-      });
-    } else {
-      (P.audio || []).forEach(p => sel.appendChild(new Option(p.label, p.id)));
-    }
-    document.querySelectorAll('#farm-embed .farm-video-only').forEach(n => { n.hidden = op !== 'video'; });
-    const cad = $('farm-cadence');
-    if (!cad.options.length) {
-      cad.appendChild(new Option(T('section.farm.as_source', 'Comme la source'), ''));
-      (P.cadences || []).forEach(c => cad.appendChild(new Option(c, c)));
-    }
-    const lay = $('farm-layout');
-    if (!lay.options.length) (P.audio_layouts || []).forEach(l => lay.appendChild(new Option(LAYOUTS[l] || l, l)));
   }
   async function loadSources() {
     const pid = $('farm-project').value;
@@ -128,7 +97,7 @@
     (S.sources.nodes || []).forEach(n => g2.appendChild(new Option(n.name, 'local:' + n.id)));
     if (g1.children.length) src.appendChild(g1);
     if (g2.children.length) src.appendChild(g2);
-    S.path = ''; S.picked = null;
+    S.path = ''; S.sel.clear();
     await browse();
   }
   async function browse() {
@@ -143,33 +112,36 @@
     catch (e) { $('farm-items').innerHTML = `<div class="farm-item farm-warn">${esc(e.message)}</div>`; return; }
     const parts = S.path ? S.path.split('/') : [];
     $('farm-crumbs').innerHTML = `<a data-path="">/</a>` + parts.map((p, i) => ` / <a data-path="${esc(parts.slice(0, i + 1).join('/'))}">${esc(p)}</a>`).join('');
-    $('farm-items').innerHTML = (d.items || []).map(it => {
+    S.items = d.items || [];
+    $('farm-items').innerHTML = S.items.map(it => {
       const p = (S.path ? S.path + '/' : '') + it.name;
-      const sel = S.picked && S.picked.path === p ? ' sel' : '';
-      return `<div class="farm-item${sel}" data-${it.type}="${esc(p)}">${it.type === 'dir' ? '📁' : '🎞'} <span>${esc(it.name)}</span>`
-        + (it.type === 'file' ? `<span class="farm-size">${fmtSize(it.size)}</span>` : '') + `</div>`;
+      if (it.type === 'dir') return `<div class="farm-item" data-dir="${esc(p)}">📁 <span>${esc(it.name)}</span></div>`;
+      const on = S.sel.has(p);
+      return `<div class="farm-item${on ? ' sel' : ''}" data-file="${esc(p)}"><input type="checkbox"${on ? ' checked' : ''} tabindex="-1" aria-hidden="true">🎞 <span>${esc(it.name)}</span>`
+        + `<span class="farm-size">${fmtSize(it.size)}</span></div>`;
     }).join('') || `<div class="farm-item farm-muted">${esc(T('section.farm.empty_dir', 'Dossier vide'))}</div>`;
   }
-  function renderPicked() {
-    $('farm-picked').innerHTML = S.picked
-      ? esc(T('section.farm.picked', 'Source : {p}').replace('{p}', S.picked.path))
-      : `<span class="farm-muted">${esc(T('section.farm.pick_hint', 'Choisissez un fichier dans la liste.'))}</span>`;
+  function srcOf(path) {
+    const [kind, id] = $('farm-source').value.split(':');
+    return kind === 'share' ? { kind, grant_id: Number(id), path } : { kind, node_id: Number(id), path };
   }
-  async function submit() {
-    if (!S.picked) { toast(T('section.farm.pick_hint', 'Choisissez un fichier dans la liste.'), 'warning'); return; }
-    const op = $('farm-op').value, preset = $('farm-preset').value;
-    const params = { audio: $('farm-layout').value };
-    if (op === 'video') { params.preset = preset; if ($('farm-cadence').value) params.cadence = $('farm-cadence').value; }
-    else params.audio_preset = preset;
-    if ($('farm-loudness').checked) params.loudness = true;
-    const pid = $('farm-project').value;
-    try {
-      const r = await api('POST', '/api/transcode-farm/jobs', {
-        project_id: pid === '' ? null : Number(pid), source: S.picked.source, type: op, params,
-        priority: $('farm-priority').value, output_dir: $('farm-outdir').value.trim() });
-      toast(T('section.farm.submitted', 'Job n° {n} ajouté à la ferme').replace('{n}', r.id), 'info');
-      loadJobs();
-    } catch (e) { toast(e.message, 'error'); }
+  function renderPicked() {
+    const n = S.sel.size;
+    $('farm-picked').innerHTML = n
+      ? esc(n === 1 ? T('section.farm.picked', 'Source : {p}').replace('{p}', [...S.sel.keys()][0])
+        : T('section.farm.picked_n', '{n} fichiers sélectionnés').replace('{n}', n))
+      : `<span class="farm-muted">${esc(T('section.farm.pick_hint_multi', 'Cochez un ou plusieurs fichiers.'))}</span>`;
+    $('farm-submit').disabled = !n;
+  }
+  function submit() {
+    if (!S.sel.size) { toast(T('section.farm.pick_hint_multi', 'Cochez un ou plusieurs fichiers.'), 'warning'); return; }
+    if (!window.TranscodeDialog) { toast('transcode_dialog.js', 'error'); return; }
+    const pid = $('farm-project').value, [kind, id] = $('farm-source').value.split(':');
+    window.TranscodeDialog.open({
+      sources: [...S.sel.values()].map(x => ({ ...x, label: x.path.split('/').pop() })),
+      projectId: pid === '' ? null : Number(pid),
+      browse: kind === 'share' ? { kind, grant_id: Number(id) } : { kind, node_id: Number(id) },
+      onDone: () => { S.sel.clear(); browse(); loadJobs(); } });
   }
 
   // ─── File ──────────────────────────────────────────────────────────────────
@@ -242,6 +214,12 @@
       [T('section.farm.d_worker', 'Transcoder'), j.worker ? `${j.worker} (${j.worker_node || ''})` : ''],
       [T('section.farm.d_access', 'Lecture de la source'), ACCESS(j.access)],
       [T('section.farm.d_output', 'Sortie'), j.out_path ? `${j.out_node || ''} : ${j.out_path}` : ''],
+      [T('section.farm.d_as', 'La sortie devient'), (j.params || {}).as === 'asset' ? T('section.farm.dlg.as_asset', 'Une nouvelle fiche, reliée à l\'original')
+        : (j.params || {}).as === 'version' ? T('section.farm.dlg.as_version', 'Une version du même média') : ''],
+      [T('section.farm.d_bin', 'Bin'), j.bin_id ? `${j.bin_name || '#' + j.bin_id} — ${
+        j.bin_done === 'lost' ? T('section.farm.bin_lost', 'jamais indexée : pas rangée')
+        : j.bin_done === 'failed' ? T('section.farm.bin_failed', 'rangement impossible (bin supprimé ?)')
+        : j.bin_done ? T('section.farm.bin_done', 'rangée') : T('section.farm.bin_wait', 'rangée dès que la sortie est indexée')}` : ''],
       [T('section.farm.d_plan', 'Ce que fait le job'), [info.video, info.audio].filter(Boolean).join(' · ')],
       [T('section.farm.d_loudness', 'EBU R128'), info.loudness ? `${info.loudness.measured_lufs} LUFS → ${info.loudness.gain_db > 0 ? '+' : ''}${info.loudness.gain_db} dB` : ''],
       [T('section.farm.d_notes', 'Écarts'), (info.notes || []).join(' · ')],
@@ -277,18 +255,21 @@
     if (S.wired) return;
     S.wired = true;
     $('farm-project').addEventListener('change', loadSources);
-    $('farm-source').addEventListener('change', () => { S.path = ''; S.picked = null; browse(); });
-    $('farm-op').addEventListener('change', fillPresets);
+    $('farm-source').addEventListener('change', () => { S.path = ''; S.sel.clear(); browse(); });
     $('farm-submit').addEventListener('click', submit);
+    $('farm-sel-all').addEventListener('click', () => {
+      S.items.filter(it => it.type === 'file').forEach(it => { const p = (S.path ? S.path + '/' : '') + it.name; S.sel.set(p, srcOf(p)); });
+      browse(); });
+    $('farm-sel-none').addEventListener('click', () => { S.sel.clear(); browse(); });
     $('farm-crumbs').addEventListener('click', e => { const a = e.target.closest('a[data-path]'); if (a) { S.path = a.dataset.path; browse(); } });
     $('farm-items').addEventListener('click', e => {
       const it = e.target.closest('.farm-item'); if (!it) return;
       if (it.dataset.dir != null) { S.path = it.dataset.dir; browse(); return; }
       if (it.dataset.file != null) {
-        const [kind, id] = $('farm-source').value.split(':');
-        S.picked = { path: it.dataset.file, source: kind === 'share'
-          ? { kind, grant_id: Number(id), path: it.dataset.file } : { kind, node_id: Number(id), path: it.dataset.file } };
-        $('farm-items').querySelectorAll('.farm-item').forEach(n => n.classList.toggle('sel', n === it));
+        const p = it.dataset.file;
+        S.sel.has(p) ? S.sel.delete(p) : S.sel.set(p, srcOf(p));
+        const on = S.sel.has(p);
+        it.classList.toggle('sel', on); it.querySelector('input').checked = on;
         renderPicked();
       }
     });
@@ -332,8 +313,6 @@
     catch (e) { $('farm-members').innerHTML = `<tr><td colspan="7" class="farm-warn">${esc(e.message)}</td></tr>`; return; }
     renderMembers();
     fillStatic();
-    try { S.presets = await api('GET', '/api/transcode-farm/presets'); } catch (e) { S.presets = null; }
-    fillPresets();
     await loadSources();
     refresh();
   };

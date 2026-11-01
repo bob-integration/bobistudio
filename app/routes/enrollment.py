@@ -105,6 +105,19 @@ def _enroll_finalize(node_id, ip):
         except Exception as e:
             db_add_alert("alert.enrolement.pool_coeurs_erreur", "warning", node_id=node_id, kind="prep",
                          params={"node_id": node_id, "e": str(e)})
+        # ★ RÉGLAGES HÔTE POSÉS À L'INSTALLATION, sur TOUT nœud (décision du 2026-10-30). Seule la
+        # prép MTL d'un nœud 2110 les posait : la Z8 (DeckLink) tournait en powersave — cœurs du
+        # mélangeur vers 1,0 GHz, 11,1 ms de calcul contre 4,4 — et sans `options.json`. Ici et non
+        # dans install-node.sh : tous les chemins d'installation (script, ISO, PXE) finissent par
+        # cet enrôlement, et les générateurs restent ceux de `mtl.py` (un seul exemplaire).
+        # Les deux appels mesurent d'abord, et un échec est journalisé ET alerté.
+        #  · profondeur MXL : `create=True`, le nœud n'a encore aucun domaine ;
+        #  · performance : gouverneur sur tous les cœurs + unité au boot. Aucun cœur n'est encore
+        #    dédié ; le plancher par cœur suit ensuite les réservations (`core_pool`).
+        from .. import mxl_history
+        mxl_history.sync_node(node_id, "install", create=True)
+        from .. import core_pool as _cp
+        _cp.sync_dedicated_cpufreq(node_id)
 
     # Bascule mTLS automatique une fois le nœud enregistré (si la CA interne est initialisée).
     # rotate_tls : init CSR → signe → install → l'agent redémarre en HTTPS. Filet interne (reste en

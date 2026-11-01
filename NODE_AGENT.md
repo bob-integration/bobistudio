@@ -1,22 +1,22 @@
 # Agent-nœud Bobi.Studio — contrat d'API & modèle de capacités
 
 > **Statut : IMPLÉMENTÉ (en production)** — ce document est le **contrat d'API** d'une
-> implémentation vivante. Version courante : **0.14.x**. Code : `node_agent/agent.py`
-> (côté nœud) ; client côté contrôleur : `app/node_driver.py`. Origine : spec Phase A de la
-> séparation control-plane / node-plane (cf. mémoires `control-node-separation-next`,
-> `standalone-node-agent-design`) — le contrat ci-dessous fait foi et suit le code.
+> implémentation vivante. Version courante : la constante `VERSION` de `node_agent/agent.py`
+> (qui porte aussi l'historique des versions). Code : `node_agent/agent.py` (côté nœud) ; client
+> côté contrôleur : `app/node_driver.py`. Origine : la séparation control-plane / node-plane — le
+> contrat ci-dessous fait foi et suit le code.
 
 ## 1. Rôle & positionnement
 
 L'**agent-nœud** (`bobi-node-agent`) est un **daemon unique par machine**, seul composant à
 installer sur un hôte Linux nu pour en faire un nœud Bobi.Studio **sans Proxmox**. Il offre au
-contrôleur une **API HTTP scopée par token** qui remplace l'accès **root-SSH + API Proxmox**
-utilisé aujourd'hui.
+contrôleur une **API HTTP scopée par token** qui a remplacé l'accès **root-SSH + API Proxmox**
+d'origine (le backend Proxmox a été retiré).
 
-Il **absorbe** tout ce que le contrôleur fait actuellement en `ssh_run` sur l'hôte :
+Il **absorbe** tout ce que le contrôleur faisait en `ssh_run` sur l'hôte :
 - `docker run/stop/rm/inspect` (cf. `docker_compute.deploy_compute`, `docker_driver.deploy_docker`) ;
 - services hôte : `ip link … xdp off` (teardown MTL), `mkdir` de binds, montage `/dev/hugepages` ;
-- **PTP** (`ptp4l`/`phc2sys`) aujourd'hui piloté en SSH par `app/ptp.py`.
+- **PTP** (`ptp4l`/`phc2sys`), piloté par `app/ptp.py` via l'agent.
 
 ### Ce qu'il N'EST PAS (garde-fou de périmètre)
 - **≠ agent par-conteneur** (`script_templates/agent.py`, `:8081 deploy/start/stop/status`,
@@ -40,6 +40,7 @@ ré-éditables en relançant l'installeur). L'agent ne provisionne et n'expose q
 | `webrtc`  | macvlan | `bobi-webrtc` | macvlan | passerelle MediaMTX (binaire pré-baké) |
 | `gpu`     | pilote NVIDIA **choisi selon la génération du GPU** (§4.6 : dépôt NVIDIA + modules ouverts pour Turing et plus récent, installeur `.run` 580 pour Maxwell/Pascal/Volta) + `libcuda` + `nvidia-container-toolkit` + runtime docker `nvidia` | `bobi-compute-gpu` (buildée SUR le nœud) | macvlan | **REBOOT requis** (chargement du module). Rattrapable après coup, cf. ci-dessous. Le pilote Debian 13 (550) n'est **plus** posé : trop vieux pour le runtime CUDA 12.8 de l'image (>= 570). |
 
+| `decklink` | **rien** (déclaration seule) | — | — | « ce nœud porte une carte DeckLink » : ouvre le panneau du pilote Desktop Video (kind `blackmagic`, §4.6) dans Réglages → Nœuds ; l'archive du pilote se DÉPOSE, elle n'est pas récupérée automatiquement. |
 | `gui`     | **rien** (déclaration seule) — exige `compute` | `bobi-gui` (couche fine FROM `bobi-compute`, buildée SUR le nœud : Réglages → Images) | macvlan | interfaces natives des plugins LV2 des consoles (plugin `plugin_gui`). Sans elle, la création d'un `plugin_gui` sur le nœud est refusée. |
 
 - **PTP** est rattaché à `io2110` (le nœud qui fait du 2110 doit être PTP-locké). Un futur drapeau
@@ -50,6 +51,25 @@ ré-éditables en relançant l'installeur). L'agent ne provisionne et n'expose q
   saute sa création si parent/subnet absents ; l'orchestrateur l'assigne APRÈS l'enrôlement en
   choisissant la carte parent dans l'inventaire `nics` de `/v1/capabilities`, puis crée le réseau via
   `/v1/host/networks/ensure`. subnet/passerelle = pool d'IP cluster ; VLAN = `net_vlan_tag`.
+- **Deux MODES de réseau des conteneurs (agent ≥ 0.30.0)**, choisis par nœud via `driver` :
+  - `macvlan` — « **réseau du site** » : chaque conteneur est une machine du LAN, avec son IP
+    dessus. C'est l'historique, et le défaut quand `driver` est absent. ⚠ Le noyau isole une
+    interface parente de ses enfants macvlan : sur un nœud qui porte AUSSI l'orchestrateur
+    (tout-en-un), l'hôte ne joint pas ses propres conteneurs sans interface macvlan côté hôte.
+  - `bridge` — « **réseau interne** » : subnet privé (172.30.0.0/24 par défaut), joint
+    nativement par l'hôte, sortie par NAT. L'agent fixe le nom du pont hôte
+    (`com.docker.network.bridge.name`, borné à 15 caractères) : sans ça Docker invente
+    `br-<12 hex>`, qui change à chaque recréation — ni le pare-feu ni un diagnostic ne peuvent
+    alors nommer deux fois la même interface.
+
+  Un réseau du nom demandé déjà présent **sous un autre pilote** donne un **409** qui nomme le
+  pilote en place : l'agent ne détruit rien de lui-même (lui seul ignore quels conteneurs
+  tombent avec le réseau), et il ne répond jamais « created: false » sur un mode qui n'est pas
+  celui qu'on lui a demandé. La réponse porte toujours `driver` — c'est là-dessus que le
+  contrôleur vérifie ce qui a RÉELLEMENT été posé, un agent antérieur à 0.30.0 ignorant le
+  champ et créant un macvlan en répondant « ok ». Garde : `tests/verif_node_agent_reseau_mode.py`.
+- L'inventaire `networks` de `/v1/capabilities` liste **tous** les réseaux non intégrés (plus de
+  liste blanche de pilotes, qui cachait un réseau interne), avec `driver`, `subnet` et `parent`.
 
 ### Rattraper une capacité oubliée à l'enrôlement (`--add-caps`)
 
@@ -70,11 +90,11 @@ l'agent**, ce qui fait perdre le nœud au contrôleur.
   redémarrage quand la capacité l'impose). `POST/GET /api/nodes/<id>/capabilities` — le contrôleur pipe le script
   sur `stdin` de `/v1/host/exec` (aucune dépendance à un payload présent sur le nœud), puis rappelle
   `node_driver.register` pour resynchroniser la base depuis `/v1/capabilities`.
-- **Les six capacités sont rattrapables.** Chacune est une fonction `provision_<cap>()` du script,
+- **Les sept capacités sont rattrapables.** Chacune est une fonction `provision_<cap>()` du script,
   appelée aussi bien par l'install complète que par `--add-caps` — un seul chemin de code. `gui`
   (2026-10-18) n'a rien à provisionner : elle est seulement fusionnée dans `config.json`, refusée si
   `compute` manque (script et contrôleur), et l'image `bobi-gui` se construit ensuite sur le nœud.
-  Un nom hors des six **refuse net**.
+  `decklink` est, comme `gui`, une déclaration seule. Un nom hors des sept **refuse net**.
 - **Les réglages amenés par la capacité voyagent avec elle** : `_add_cap_args()` reconstruit
   `--mtl-iface`/`--lcores`/`--hugepages`/`--ptp-domain`/`--kernel-pkg` (io2110, depuis `nodes` +
   `enroll_profile` + réglages cluster) et `--media-mount` (media). Ce qui n'est pas en base est
@@ -120,8 +140,9 @@ Ajouts (migrations idempotentes dans `init_db`, motif existant) :
   `mtl_capable`, `lcores`, `mxl_mount`) **restent** (rétro-compat) mais sont **dérivés/peuplés par
   l'agent** via `/capabilities`. L'éligibilité (`docker_compute.pick_compute_node`,
   `_eligible_docker_nodes`…) migre vers un test sur `capabilities`.
-- `kind` conserve sa valeur (`docker`/`docker-mtl`/`proxmox-lxc`) ; un nœud à agent ⇒ `kind`
-  reste mais le dispatch passe par le client agent (cf. §7).
+- `kind` conserve sa valeur (`docker`) ; un nœud à agent ⇒ `kind`
+  reste mais le dispatch passe par le client agent (cf. §7). Le kind `proxmox-lxc` n'existe plus
+  (backend Proxmox retiré).
 
 ## 4. API HTTP — contrat `/v1`
 
@@ -206,7 +227,10 @@ POST /v1/host/xdp-off          { iface }                 (io2110)
 POST /v1/host/images/ensure    { image, source? }        → pull/load si absente
 GET  /v1/host/ptp              → { running, locked, gm_id, offset_ns, iface }   (io2110)
 POST /v1/host/ptp/{start|stop|restart}                   (io2110)
-POST /v1/host/networks/ensure  { name, parent, subnet, gateway, vlan?, ip_range? }  → macvlan idempotent
+POST /v1/host/networks/ensure  { name, driver?, parent, subnet, gateway, vlan?, ip_range? }
+                               → réseau des conteneurs idempotent, dans le MODE demandé
+GET  /v1/host/core-snapshot    → charge instantanée par cœur (mesure sans effet de bord, ~0,5 s) ;
+                               alimente le constat de placement (`app/placement.py`)
 ```
 
 ### 4.3 ter Horloge (`/v1/host/clock`, agent ≥ 0.18.0) — le seul endpoint où le TEMPS DE RÉPONSE FAIT PARTIE DU CONTRAT
@@ -312,7 +336,9 @@ GET /v1/transfer/read?g=<autorisation>      Range: bytes=a-b | bytes=a- | bytes=
 Mécanisme **générique** : l'agent ne connaît aucun pilote. Un « *kind* » est un script
 `/opt/bobi-node-agent/host_drivers/<kind>.py` (source : `node_agent/host_drivers/`, posé par
 `install-node.sh`, poussé avec l'agent par « Mettre à jour l'agent », et redéposé par le contrôleur
-quand son empreinte diffère). Aujourd'hui un seul kind : **`nvidia`**.
+quand son empreinte diffère). Aujourd'hui deux kinds : **`nvidia`** (pilote GPU) et **`blackmagic`**
+(pilote Desktop Video DeckLink + micrologiciel des cartes ; fin de job `11` — arrêt complet — quand
+du micrologiciel a été flashé).
 
 **Contrat d'un kind** (stdlib seule, exécuté en root par l'agent) :
 
@@ -351,7 +377,7 @@ POST /v1/host/poweroff                         { confirm:true } → arrêt compl
 - UI : panneau générique de la page Réglages → nœud (`hostDrv*` dans `templates/settings.html`),
   libellés `settings.hostdrv.*` (commun) et `settings.hostdrv.<kind>.*` (propre au kind).
 
-**Brancher un second kind** (p.ex. *Blackmagic Desktop Video* + firmware DeckLink, qui exige un arrêt
+**Brancher un nouveau kind** (le kind `blackmagic` en est l'exemple, avec sa sortie `11` pour l'arrêt
 COMPLET) : (1) écrire `node_agent/host_drivers/<kind>.py` selon le contrat ci-dessus et sortir en
 `11` quand une remise sous tension est nécessaire ; (2) ajouter les libellés
 `settings.hostdrv.<kind>.{title,run,open,license,upload_hint,row.*,status.*,plan.*,step.*}` dans
@@ -472,7 +498,7 @@ de l'inventaire (toute autre chaîne → `disk_not_found`). Code : section `_dsk
 |---|---|
 | `GET /v1/host/disks` | Inventaire : `{ok, disks[], media_mount, archive_mount, tools{}}`. Par disque : `path`, `by_id`, `size`, `model`, `serial`, `transport`, `rotational`, `removable`, `read_only`, `partitions[]` (`path`, `size`, `fstype`, `uuid`, `label`, `mountpoints`, `role`, `fstab_target`, `usage`), `mountpoints`, `system`, `in_use`, `held`, et pour un rotatif `power_state` (`hdparm -C`, ne réveille pas) + `spindown_value` (valeur `-S` persistée). |
 | `POST /v1/host/disks/plan` | Ce qui se passerait : `{ok, action, refusals[], warnings[], steps[], disk, requires_confirmation, target, label, destroys[]…}`. N'exécute rien. |
-| `POST /v1/host/disks/execute` | Exécute. Même corps que `plan` + `confirm_serial` (série SAISIE par l'opérateur) et `confirm_size` (octets). Réponse : `{ok, steps_done[], changed, reboot_required, warnings[], restart_containers[]}` ; refus : `{ok:false, error:"refused", refusals[]}` ; échec : `{ok:false, error:<code>, detail}`. |
+| `POST /v1/host/disks/execute` | Exécute. Même corps que `plan` + `confirm_serial` (série SAISIE par l'opérateur) et `confirm_size` (octets). Réponse : `{ok, steps_done[], changed, reboot_required, warnings[], restart_containers[], disk}` ; refus : `{ok:false, error:"refused", refusals[], disk}` (`disk` porte la série RÉELLE, que le journal cite — jamais la série saisie) ; échec : `{ok:false, error:<code>, detail}`. |
 
 Corps : `action` (`format` · `mount` · `unmount` · `spindown`), `device` (`/dev/sdb`), `partition`
 (mount/unmount, requis si plusieurs systèmes de fichiers), `role` (`media` · `archive` · `data`),
@@ -482,7 +508,7 @@ Corps : `action` (`format` · `mount` · `unmount` · `spindown`), `device` (`/d
 **Gardes (toutes rejouées à l'exécution)** — codes de refus, jamais des phrases :
 `system_disk` (le disque porte `/`, `/boot`, `/boot/efi`, `/usr`, `/var`, `/etc` ou un swap ACTIF,
 y compris sous LVM/md/crypt : on parcourt tous les descendants) ; `in_use` (une partition montée) ;
-`held` (membre LVM/RAID/LUKS/ZFS : pas de formatage d'un clic) ; `serial_missing` (format) ; `serial_mismatch` ;
+`held` (membre LVM/RAID/LUKS/ZFS : pas de formatage d'un clic) ; `serial_missing` (format : le DISQUE n'expose aucune série, il n'y a donc rien à faire saisir — une série non saisie donne `serial_mismatch`) ; `serial_mismatch` ;
 `size_mismatch` ; `confirm_required` ; `read_only` ; `bad_mountpoint` ; `mount_busy` (cible déjà tenue par un autre volume,
 ou volume déjà monté ailleurs : jamais de remplacement discret) ; `target_not_empty` (le montage
 masquerait le contenu : accord explicite requis) ; `fstab_conflict` (ligne de l'exploitant déjà sur la
@@ -495,8 +521,8 @@ Le plan l'annonce dans `confirmation` (`serial` · `confirm` · `null`).
 fstab → montage. **Montage persistant** : `/etc/fstab` par UUID, options
 `defaults,nofail,noatime,x-systemd.device-timeout=10s 0 2` (un disque absent ne bloque jamais le boot),
 précédée d'un commentaire `# bobi-storage role=<rôle>` qui marque NOS lignes (seules celles-là sont
-retirées ou remplacées). Écriture atomique, sauvegarde `/etc/fstab.bobi-bak`, `mkdir` de la cible,
-`mount <cible>` puis vérification par `findmnt`. Idempotent : rejouer ne change pas le fichier.
+retirées ou remplacées). Écriture atomique, sauvegardes `/etc/fstab.bobi-orig` (le fstab d'avant notre PREMIÈRE écriture, jamais réécrit, agent ≥ 0.29.2) et `/etc/fstab.bobi-bak` (celui d'avant la dernière), `mkdir` de la cible,
+`mount <cible>` puis vérification par `findmnt`. Idempotent : rejouer ne change pas le fichier (le plan rend `already_mounted: true`, l'exécution `changed: false` et l'étape `already_mounted`).
 Le démontage retire la ligne ; si `umount` échoue (occupé), la ligne est conservée.
 ⚠ Pas de `systemctl daemon-reload` (il révoque le GPU des conteneurs en cours).
 
@@ -506,7 +532,7 @@ dossier. Si des conteneurs en cours montent le volume média, le plan l'annonce
 (`media_containers`) et l'exécution est REFUSÉE tant que `ack_media_containers` n'est pas posé ; la
 réponse rend `restart_containers[]` (à recréer pour voir le nouveau volume).
 
-**Mise en veille (disques rotatifs)** : `hdparm -S <valeur>` appliqué tout de suite, persisté dans
+**Mise en veille (disques rotatifs)** — exige `hdparm`, qu'`install-node.sh` n'installe qu'avec la capacité `media` (sinon refus `tool_missing`, rien d'écrit) : `hdparm -S <valeur>` appliqué tout de suite, persisté dans
 `/etc/hdparm.conf` par chemin `by-id` (bloc `# bobi-storage begin/end`). `minutes` : 0 (jamais) ;
 1–20 (×5 s ⇒ `-S` = minutes×12) ; au-delà, multiples de 30 jusqu'à 330 (`-S` = 240 + minutes/30).
 
@@ -528,7 +554,7 @@ Test : `tests/verif_disques_noeud.py` (faux système, aucun effet de bord).
   "nic": { "iface": "ens1f0np0", "model": "E810", "lcores": "2-9" },   // si io2110
   "lcores": "2-9",
   "gpus": [ { "index": 0, "name": "Tesla T4", "mem_mb": 15360 } ],     // [] si pas de GPU (nvidia-smi)
-  "agent_version": "0.12.0"
+  "agent_version": "x.y.z"
 }
 ```
 
@@ -538,6 +564,10 @@ Test : `tests/verif_disques_noeud.py` (faux système, aucun effet de bord).
   "ok": true, "agent_version": "0.12.0", "uptime_s": 1234,
   "docker": { "ok": true, "version": "27.x" },
   "resources": { "cpu_pct": 14.0, "mem_used_mb": 8192, "mem_total_mb": 65536 },
+  "machine": {                                                  // inventaire (ajout 0.30.2)
+    "vendor": "HP", "product": "HP Z8 G4 Workstation", "cpu_model": "Intel(R) Xeon(R) Gold 6230R CPU @ 2.10GHz",
+    "cores": 26, "threads": 52, "sockets": 1, "gpus": ["Quadro RTX 4000"]
+  },
   "sensors": {                                                  // hwmon (ajout 0.12.0)
     "temps": [ { "chip": "coretemp", "label": "Package id 0", "c": 52.0 } ],
     "fans":  [ { "label": "fan1", "rpm": 4200 } ],
@@ -556,6 +586,13 @@ Test : `tests/verif_disques_noeud.py` (faux système, aucun effet de bord).
   }
 }
 ```
+- **`machine`** (ajout **0.30.2**) : ce que la fiche de nœud affiche sous « Machine ». `vendor` /
+  `product` viennent du DMI (`/sys/class/dmi/id`), `null` quand le micrologiciel n'y met qu'un
+  bouche-trou (« To be filled by O.E.M. »). `cores` / `sockets` viennent de `/proc/cpuinfo` et
+  valent `null` sans topologie (machine virtuelle) — jamais déduits des fils. `gpus` : noms
+  `nvidia-smi`, `[]` sans pilote. Relu toutes les 5 min (pas à chaque relevé). Aussi dans
+  `/v1/capabilities`. ⚠ `nodes.cpu_model` n'est PAS rempli d'ici : c'est la clé de
+  qualification CPU (`app/cpu_qualify.py`), posée par la qualification seule.
 - **`watchdog`** (ajout **0.20.0**) : ce que le chien de garde (§4.5) a vu et fait. `events` est
   borné à 50 lignes. C'est le canal par lequel le contrôleur découvre **à son retour** ce qui a été
   décidé en son absence — une action muette serait pire que pas d'action.
@@ -572,15 +609,17 @@ Test : `tests/verif_disques_noeud.py` (faux système, aucun effet de bord).
   en hwmon → seules les températures coretemp/k10temp sont remontées.
 
 ## 7. Intégration contrôleur & migration
-- Nouveau `app/node_driver.py` : dispatch sur `node.kind`. Pour un nœud à agent → **client HTTP**
-  (`agent_url`+token) ; pour `proxmox-lxc` → chemin Proxmox legacy ; pour `docker` sans agent →
-  chemin `ssh_run` legacy. **Coexistence, pas de big-bang.**
+- `app/node_driver.py` : pour un nœud à agent → **client HTTP** (`agent_url`+token) ; pour un nœud
+  `docker` sans agent → chemin `ssh_run` legacy. **Coexistence, pas de big-bang.** Il n'y a plus de
+  chemin Proxmox (backend retiré).
 - `docker_compute`/`docker_driver`/`ptp` : leurs appels `ssh_run` deviennent des appels au client
   agent quand le nœud a un `agent_url`.
 - **Enregistrement** : l'opérateur saisit `host`+`port`+`token` (Réglages → Déploiement → Nœuds)
   → le contrôleur appelle `/v1/capabilities` → upsert de la ligne `nodes` (capacités, images,
-  réseaux, NIC). Heartbeat `/v1/health` périodique → `last_seen`/`status` (remplace le sondage
-  Proxmox/SSH dans `surveillance()`).
+  réseaux, NIC). Heartbeat `/v1/health` périodique → `last_seen`/`status` (a remplacé le sondage
+  Proxmox/SSH dans `surveillance()`). Le nœud peut aussi **s'annoncer** lui-même
+  (`POST /api/nodes/enroll`, authentifié par un jeton d'enrôlement à usage unique) : c'est le
+  chemin des nœuds installés par PXE, USB ou l'installeur unifié.
 
 ### 7b. Retrait — `node_agent/uninstall-node.sh` et `uninstall-controller.sh`
 Pendant de l'installeur : ce que l'install (et l'orchestrateur via l'agent) a posé sur l'hôte, ce
@@ -631,7 +670,12 @@ Les deux sont accessibles sans ligne de commande : menu de l'installeur → **D�
   (ou settings chiffrés). **Supprime le besoin de root-SSH du contrôleur vers chaque nœud** (item
   D de l'audit fiabilité).
 - L'agent tourne en **root** sur le nœud (docker, hugepages, xdp, ptp) ; surface réduite à l'API.
-- TLS optionnel (réseau interne) ; recommandé si le nœud n'est pas sur un segment de confiance.
+- TLS : l'agent sert en **mTLS dès que son matériel (clé, certificat, CA) est présent**, et **se
+  replie en HTTP clair** (le token reste requis) s'il est absent ou si l'activation échoue — un
+  push de certificat raté ne doit pas rendre le nœud injoignable. La migration à chaud est pilotée
+  par le contrôleur sur le canal HTTP+token : `POST /v1/tls/init` (l'agent génère clé et CSR et
+  renvoie le CSR) puis `POST /v1/tls/install` `{cert, ca_cert}` (écrit le matériel, redémarre
+  l'agent en HTTPS/mTLS). Recommandé partout, indispensable hors segment de confiance.
 - **Identité du client mTLS sur `:9100` (agent ≥ 0.23.0)** : la même CA signe contrôleurs, nœuds
   et conteneurs ; la chaîne seule laissait donc un conteneur compromis — code de plugin tiers, clé
   posée dans le conteneur — passer la poignée de main de TOUS les agents-nœuds, avec le seul jeton
@@ -716,6 +760,6 @@ machine qui est aussi un nœud, ni à y être seul.
 - Multi-conteneurs io2110 : **1 MTL/nœud** (`--network host`) pour v1.
 - Versionnement d'API : **`/v1` figé** ; compat via champ `agent_version`.
 
-**À trancher avant/pendant Phase B :**
-- Enregistrement : **pull** (contrôleur sonde `/capabilities`) seul — défaut retenu — ou aussi
-  **push** (agent s'annonce au boot) ? *(défaut : pull ; push optionnel plus tard)*.
+**Tranché (anciennement ouvert) :**
+- Enregistrement : **pull** (le contrôleur sonde `/capabilities`) **et push** (le nœud s'annonce par
+  `POST /api/nodes/enroll`, cf. §7).

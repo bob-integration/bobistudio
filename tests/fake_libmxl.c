@@ -153,6 +153,17 @@ static void slices(flow_t *f, uint64_t first, size_t count, multi_t *out)
     out->count = (size_t)f->ch;
 }
 
+/* mxlFlowRuntimeInfo : headIndex (ONE-PAST-THE-END) en tête, 64 octets (2026-10-28 : avance des lectures). */
+int mxlFlowReaderGetRuntimeInfo(void *reader, uint64_t *info)
+{
+    flow_t *f = reader;
+    touch(f);
+    if (f->fail_get) return f->fail_get;
+    memset(info, 0, 64);
+    info[0] = f->has_head ? f->head : UINT64_MAX;
+    return OK;
+}
+
 int mxlFlowReaderGetSamplesNonBlocking(void *reader, uint64_t index, size_t count, multi_t *out)
 {
     flow_t *f = reader;

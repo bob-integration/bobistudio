@@ -11,9 +11,9 @@ Le code mélange français et anglais **par époque**, pas par caprice :
   lit très bien, du français qui continue de se répandre, non. Le dépôt est public et
   s'adresse à un public international — un contributeur ne devrait pas avoir à deviner ce
   que `detruire` veut dire.
-  Ce n'est pas un virage : **96 % du code est déjà en anglais** (2519 fonctions contre 86).
-- **Le français existant reste.** `surveillance` (143 occurrences), `deployer_script` (72),
-  `verrou_vmid` (58), `ajouter_alerte` (26), `detruire_container` (21) : voir la règle d'or
+  Ce n'est pas un virage : **l'essentiel du code est déjà en anglais**.
+- **Le français existant reste.** `surveillance`, `deployer_script`, `verrou_vmid`,
+  `ajouter_alerte`, `detruire_container`, très employés partout : voir la règle d'or
   ci-dessous. Le glossaire plus bas donne l'équivalent anglais quand vous en croisez un.
 - **Deux choses ne sont pas des noms de code** et ne bougent donc pas : les **valeurs** d'un
   vocabulaire fermé déjà persistées en base (niveaux d'alerte `info | warning | error`,
@@ -27,8 +27,8 @@ Le code mélange français et anglais **par époque**, pas par caprice :
 
 On ne renomme **jamais** un symbole juste parce qu'il est en français « à l'ancienne ».
 Un rename ne se fait **que** lors d'une réécriture complète du module concerné (et alors
-il faut suivre toute la chaîne : appels, JS, templates, migrations de type dans `init_db`).
-Renommer à la volée casse les diffs, les grep et les migrations DB pour zéro bénéfice.
+il faut suivre toute la chaîne : appels, JS, templates, et les données déjà persistées en base).
+Renommer à la volée casse les diffs, les grep et les données persistées pour zéro bénéfice.
 
 ### Mini-glossaire FR → EN (symboles cœur)
 
@@ -67,18 +67,40 @@ recensé dans `TODO.md`). Les **alertes**, elles, sont une interface : clé i18n
 
 ## Garde-fous locaux (avant de pousser)
 
-Il n'y a pas de build/lint/test lourd. Deux vérifications gratuites existent et tournent
-aussi en CI (`.github/workflows/ci.yml`) :
+Il n'y a pas de build, mais il y a une **suite de tests hors ligne** et une CI
+(`.github/workflows/ci.yml`) qui l'exécute **en bloc et de façon bloquante** : tous les
+`tests/*.py` et `tests/*.js`, plus le smoke import, le scan des plugins, la portée des clés i18n,
+le contrôle des adresses de site et la conformité du plugin d'exemple. `submodules-doctor` et
+`pyflakes` y sont *advisory*.
+
+**Trois dossiers, une question chacun :**
+
+| | |
+|---|---|
+| `tests/` | « est-ce correct ? » — aucun effet de bord, base jetable, aucun réseau. Tourne en CI |
+| `tools/` | FAIT un travail : `build_dist`, `create_admin`, `ca-init`, `publier*` |
+| `tools/bancs/` | exige un système VIVANT (nœud, orchestrateur, flux MXL) — ne peut pas tourner en CI |
+
+Un fichier qui rend un verdict va dans `tests/`, sans exception : un test hors de ce dossier
+ne tourne nulle part et finit par échouer sans que personne le sache.
+
+Avant de pousser, lancez le test qui couvre votre changement, et `pyflakes` après tout retrait
+de code (il attrape les symboles devenus orphelins) :
 
 ```bash
-# 1) Smoke import — attrape les circularités d'import de app/
-./venv/bin/python -c "import app.routes, app.plugins, app.database, app.deploy"
-./venv/bin/python -c "import main"
+./venv/bin/python tests/<le vôtre>.py
+./venv/bin/python -m pyflakes <fichiers modifiés>
 
-# 2) Scan des plugins — un plugin dont une accolade { } littérale n'est pas doublée
-#    dans script.py est silencieusement écarté du registre ; ce script le fait échouer.
+# Smoke import — attrape les circularités d'import de app/
+./venv/bin/python -c "import app.routes, app.plugins, app.database, app.deploy"
+
+# Scan des plugins — un plugin dont une accolade { } littérale n'est pas doublée
+# dans script.py est silencieusement écarté du registre ; ce script le fait échouer.
 ./venv/bin/python tests/check_plugins.py
 ```
+
+`ls tests/` fait foi sur ce qui existe. Ne lancez pas deux suites complètes en même temps sur
+la même machine : certains tests partagent des ressources locales.
 
 Rappel du piège plugins : `plugins/<type>/script.py` est passé dans `str.format()`
 (placeholders `{config}` / `{hostname}` / `{plugin_version}`) → **toute** accolade

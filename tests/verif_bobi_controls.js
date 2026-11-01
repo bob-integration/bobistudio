@@ -178,5 +178,106 @@ ok(gapMin * 136 >= 13, 'repères par défaut du fader dB espacés d\'au moins 13
     ok(g2 * 160 >= 20, 'repères du contexte serré (+10, 0, −10, −30, −∞) espacés d\'au moins 20 px sur 160 px (' + (g2 * 160).toFixed(1) + ')');
 }
 
+// ─── T-barre : butée, avancement, fin de course, clavier (promue du mélangeur le 2026-10-26) ───
+{
+    const M = BC.tbarModel();
+    ok(M.rest === 0 && M.progress() === 0, 'T-barre : au repos en haut, avancement 0');
+    M.setProgress(0.3);
+    ok(near(M.pos, 0.3) && near(M.progress(), 0.3), 'T-barre butée haute : poignée à 30 % = avancement 0,3');
+    M.rest = 1; M.setProgress(0.3);
+    ok(near(M.pos, 0.7) && near(M.progress(), 0.3), 'T-barre butée basse : avancement 0,3 = poignée à 70 % (vers le haut)');
+    M.setProgress(0.91); ok(!M.reached(), 'T-barre : 91 % ne termine pas');
+    M.setProgress(0.92); ok(M.reached(), 'T-barre : 92 % termine');
+    ok(M.finish() === 1 && M.pos === 0, 'T-barre butée basse : fin de course = poignée en haut');
+    M.rest = 0; M.setProgress(0.95); M.finish();
+    ok(M.pos === 1 && M.progress() === 1, 'T-barre butée haute : fin de course = poignée en bas');
+    M.setPos(0);
+    ok(near(M.key('ArrowDown', false), 0.05) && near(M.key('ArrowDown', true), 0.25), 'T-barre clavier : ↓ 5 %, Maj+↓ 20 %');
+    ok(near(M.key('ArrowUp', false), 0.20) && M.key('End') === 1 && M.key('Home') === 0, 'T-barre clavier : ↑, Fin, Début');
+    ok(M.key('a') === null && M.pos === 0, 'T-barre clavier : touche inconnue ignorée');
+    M.rest = 1; M.setPos(0.5); M.key('ArrowDown');
+    ok(near(M.progress(), 0.45), 'T-barre butée basse : ↓ ramène vers la butée (avancement 0,45)');
+    ok(near(M.setProgress(1.7), 0) && near(M.setPos(-1), 0), 'T-barre : bornée à la course');
+    const m5 = BC.tbarModel({ snap: 0.5 }); m5.setProgress(0.5);
+    ok(m5.reached(), 'T-barre : seuil de fin réglable');
+}
+
+// ─── Courbes à poignées (2026-10-29) ───────────────────────────────────────────────────
+{
+    const C = BC.curvesModel([{ key: 'off', axis: 'x', x: 0.3, y: 0, xmax: 0.9 }, { key: 'dep', axis: 'y', x: 0.65, y: 0.5, ymin: 0.05 }]);
+    const r = C.move('off', 0.2, 0.5);
+    ok(near(r.x, 0.5) && r.y === 0, 'courbes : poignée sur l\'axe x — y ne bouge pas');
+    ok(near(C.move('off', 1, 0).x, 0.9), 'courbes : borne xmax respectée');
+    ok(near(C.move('dep', 0.3, -2).y, 0.05) && near(C.get('dep').x, 0.65), 'courbes : axe y, borne ymin, x inchangé');
+    ok(near(C.key('dep', 'ArrowUp', false).y, 0.06) && near(C.key('dep', 'ArrowUp', true).y, 0.16), 'courbes clavier : ↑ 1 %, Maj 10 %');
+    ok(near(C.key('off', 'ArrowLeft', false).x, 0.89) && near(C.key('off', 'ArrowDown', false).x, 0.88), 'courbes clavier : axe x par ← et ↓');
+    ok(C.key('off', 'Home').x === 0 && near(C.key('off', 'End').x, 0.9), 'courbes clavier : Début / Fin = bornes');
+    ok(C.key('off', 'a') === null && C.move('nope', 1, 1) === null, 'courbes : touche ou poignée inconnue ignorée');
+    C.limits('dep', { xmin: 0.7 });
+    ok(near(C.get('dep').x, 0.7), 'courbes : nouvelles bornes appliquées à la position');
+    ok(near(C.place('dep', 0.95, 2).y, 1) && near(C.get('dep').x, 0.95), 'courbes : placement borné');
+}
+
+// ─── Rotatif : molette (2026-10-31) — faux DOM minimal, VRAI moteur ────────────────────
+// Un cran = un pas, Maj = pas fin, la page ne défile pas sur le rotatif (preventDefault), un
+// événement sans mouvement ne touche à rien, Maj+molette en deltaX (Chrome/Linux/Windows) compte.
+// Le mélangeur a retiré sa molette privée (0.23.65) : celle-ci est la seule.
+// Mutations du 31/10 (toutes rouges) : écouteur retiré, deltaY seul, delta nul = un cran vers le bas
+// (le défaut d'avant), Maj ignorée, sans preventDefault, désactivé ignoré, sans émission « change ».
+{
+    const vm = require('vm'), fs = require('fs');
+    function node(tag) {
+        const L = {}, attrs = {}, cls = new Set(), kids = [];
+        const n = {
+            tagName: String(tag || 'div').toUpperCase(), style: { setProperty() {} }, dataset: {}, innerHTML: '', textContent: '',
+            className: '', children: kids,
+            classList: { add: (...c) => c.forEach((x) => cls.add(x)), remove: (...c) => c.forEach((x) => cls.delete(x)),
+                         toggle: (c, on) => { if (on === undefined ? !cls.has(c) : on) cls.add(c); else cls.delete(c); }, contains: (c) => cls.has(c) },
+            setAttribute: (k, v) => { attrs[k] = String(v); }, getAttribute: (k) => (k in attrs ? attrs[k] : null),
+            hasAttribute: (k) => k in attrs, removeAttribute: (k) => { delete attrs[k]; },
+            addEventListener: (t, f) => { (L[t] = L[t] || []).push(f); }, removeEventListener: (t, f) => { L[t] = (L[t] || []).filter((x) => x !== f); },
+            dispatchEvent: (e) => { (L[e.type] || []).forEach((f) => f(e)); return true; },
+            appendChild: (c) => { kids.push(c); return c; },
+            querySelector: (s) => { const c = s.replace(/^\./, ''); return kids.find((k) => k.className.split(' ').includes(c)) || null; },
+            setPointerCapture() {}, focus() {},
+            fire(type, props) { const e = Object.assign({ type, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } }, props);
+                                (L[type] || []).forEach((f) => f(e)); return e; },
+        };
+        return n;
+    }
+    const win = { document: { createElement: node, createElementNS: (_, t) => node(t) },
+                  getComputedStyle: () => ({ getPropertyValue: () => 'arc' }),
+                  requestAnimationFrame: () => 0, cancelAnimationFrame() {},
+                  CustomEvent: function (type) { this.type = type; } };
+    const sb = { window: win, console };
+    vm.createContext(sb);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'static', 'js', 'bobi-controls.js'), 'utf8'), sb);
+    const D = win.BobiControls;
+    const host = node('div');
+    const k = D.create('knob', host, { min: 0, max: 1, step: 0.01, default: 0.5, value: 0.5 });
+    const hit = host.querySelector('.ctl-knob-hit');
+    const changes = [];
+    k.on('change', (v) => changes.push(v));
+    let e = hit.fire('wheel', { deltaY: -100, deltaX: 0, shiftKey: false });
+    ok(near(k.get(), 0.51) && e.defaultPrevented, 'molette vers le haut : +1 pas, la page ne défile pas');
+    hit.fire('wheel', { deltaY: 100, deltaX: 0, shiftKey: false });
+    hit.fire('wheel', { deltaY: 100, deltaX: 0, shiftKey: false });
+    ok(near(k.get(), 0.49), 'molette vers le bas : −1 pas par cran');
+    hit.fire('wheel', { deltaY: -100, deltaX: 0, shiftKey: true });
+    ok(near(k.get(), 0.491), 'Maj + molette : pas fin (pas / 10)');
+    hit.fire('wheel', { deltaY: 0, deltaX: -100, shiftKey: true });
+    ok(near(k.get(), 0.492), 'Maj + molette livrée en deltaX (Chrome) : compte, et dans le bon sens');
+    const before = k.get();
+    e = hit.fire('wheel', { deltaY: 0, deltaX: 0, shiftKey: false });
+    ok(k.get() === before && !e.defaultPrevented, 'événement sans mouvement : valeur intacte, défilement laissé à la page');
+    ok(changes.length === 5 && near(changes[4], 0.492), 'chaque cran émet « change » (valeur envoyée) : ' + changes.length);
+    k.setDisabled(true);
+    e = hit.fire('wheel', { deltaY: -100, deltaX: 0 });
+    ok(k.get() === before && !e.defaultPrevented, 'désactivé : la molette ne change rien et ne bloque pas la page');
+    k.setDisabled(false);
+    for (let i = 0; i < 80; i++) hit.fire('wheel', { deltaY: -100, deltaX: 0 });
+    ok(k.get() === 1, 'molette bornée au max');
+}
+
 console.log(echecs ? '\n✗ ' + echecs + ' échec(s)' : '\n✓ tout passe');
 process.exit(echecs ? 1 : 0);

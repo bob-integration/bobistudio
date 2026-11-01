@@ -379,6 +379,8 @@ def demarrer_https(app, hote="0.0.0.0"):
         adaptateur = BuiltinSSLAdapter(crt, key)
         adaptateur.context = contexte_tls(crt, key)
         srv.ssl_adapter = adaptateur
+        from . import stream_hub                  # flux longs remis au distributeur (aucun fil gardé)
+        stream_hub.install_cheroot(srv)
         srv.prepare()                             # LIE le port : c'est ici qu'un 443 occupé échoue
     except Exception as e:
         https_echoue("alert.securite.web_tls_repli_port", "%s" % e)
@@ -386,6 +388,11 @@ def demarrer_https(app, hote="0.0.0.0"):
     global _ctx_https
     _ctx_https = adaptateur.context
     threading.Thread(target=srv.serve, daemon=True, name="https-%d" % port).start()
+    try:                                          # fils occupés : Monitoring → Connexions
+        from . import http_connections
+        http_connections.attach_cheroot(srv, port, "https")
+    except Exception as e:                        # noqa: BLE001 — un compteur ne bloque pas l'écoute
+        log.warning("mode web : compteur de fils HTTPS non posé (%s)", e)
     log.info("mode web : HTTPS actif sur le port %d ; le :%d ne sert plus que les machines",
              port, PORT_HTTP)
     return srv

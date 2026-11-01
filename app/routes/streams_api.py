@@ -45,7 +45,9 @@ def _stream_obj(c):
     # Injecter embed_url/whep_url pour les destinations WebRTC sans ces champs
     # (streamer déployé avant que la passerelle soit configurée).
     from .. import settings as _st
-    gw_ip      = _st.get("webrtc_gateway_ip")
+    from ..addressing import adresse_navigateur as _adr_nav
+    gw_ip      = _adr_nav(_st.get("webrtc_gateway_ip"),       # privée en « réseau interne »
+                          vmid=_st.get("webrtc_gateway_vmid") or None)
     gw_enabled = bool(_st.get("webrtc_enabled"))
     http_p     = int(_st.get("webrtc_http_port") or 8889)
     if gw_enabled and gw_ip:

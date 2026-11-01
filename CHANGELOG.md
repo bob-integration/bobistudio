@@ -5,6 +5,55 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Les virtuelles : remplacer une source sans défaire le câblage — 2026-11-01
+
+**Une source ou une destination peut désormais être *virtuelle*.** Au lieu de câbler une entrée sur
+un flux précis, on la câble sur une virtuelle : une source ou une destination **nommée**, qui
+appartient au projet, et à laquelle on affecte le flux réel. L'entrée suit la virtuelle —
+réaffecter celle-ci **recâble à chaud** tout ce qui la suivait, sans toucher au câblage. C'est ce
+qui permet de remplacer une caméra, un lecteur ou une sortie sans rien défaire. Techniquement, le
+projet ne retient que la référence de la virtuelle (`port:<id>`) et jamais le flux : l'orchestrateur
+résout le réel au moment d'envoyer au conteneur, qui ne reçoit donc que du physique.
+
+**Les virtuelles se créent et se nomment dans « Ports du projet ».** Chacune porte un nom long et un
+nom court, que le multiview, l'AFV et les pupitres lisent à la place du nom du flux. Une virtuelle
+montre une ligne par flux — la vidéo, puis ses audios et son ANC — et un câble parti d'elle les
+emporte tous. Elles voyagent avec l'export du projet. Et une source extérieure au projet peut
+maintenant **y entrer par une virtuelle source** au lieu d'être simplement refusée. La page Aide
+porte un article « Sources et destinations virtuelles » qui reprend tout cela.
+
+**La page Câbles montre tous les projets d'un coup.** Un projet y est un bloc avec ses virtuelles
+nommées et leur état ; les liaisons directes, qui ne passent pas par une virtuelle, apparaissent en
+rose, et le hors-projet non relié est replié. Une virtuelle source peut suivre la virtuelle
+destination d'un autre projet.
+
+**Chaque nœud choisit son réseau de conteneurs** — réseau du site (macvlan) ou réseau interne
+(bridge privé). Au passage, deux défauts : changer de mode effaçait les conteneurs de la base, ce
+qui demande maintenant un accord explicite ; et un nœud enrôlé sous `127.0.0.1` donnait son adresse
+de boucle locale aux navigateurs.
+
+**Une fiche par nœud, et des cœurs qui disent la vérité.** Cliquer un nœud du schéma ouvre sa fiche
+— alertes, images, arrêt et redémarrage confirmés. Côté CPU : un cœur « dédié » dont le frère
+hyperthread est partagé ne l'était pas vraiment, et les cœurs d'un conteneur détruit lui
+survivaient, invisibles.
+
+**Deux défauts de la 0.9.9 sont corrigés.** `get.sh` crachait une ligne d'erreur bash sur une simple
+frappe d'Entrée — la bonne version s'installait quand même, mais par chance. Et sur les jetons
+d'API, le bouton **Révoquer ne faisait rien** : son `onclick` était bâti avec des guillemets non
+échappés, et le clic levait une erreur. « Copier » échouait aussi en HTTP.
+
+**Une annonce de conformité fausse a été retirée.** Le README rangeait **BCP-003-02 (autorisation)**
+parmi les BCP NMOS implémentées. Elle ne l'est pas : aucun jeton n'est vérifié, sur aucune API. Le
+service suppose un réseau de contrôle protégé et ne doit pas être exposé au-delà.
+
+**⚠ Un point connu, non corrigé dans cette version.** Rappeler un **instantané de configuration de
+conteneur** réapplique les paramètres bruts : une entrée qui suivait une virtuelle est remise sur
+l'ancien flux physique et **perd son lien à la virtuelle, sans un mot**. Les instantanés sont
+antérieurs aux virtuelles et ne les connaissent pas. Si vous utilisez les deux, revérifiez le
+câblage après un rappel.
+
+---
+
 ## L'installation depuis internet ne meurt plus en silence — 2026-10-23
 
 **L'installation sur une machine vierge pouvait s'arrêter sans un mot.** C'est le défaut qui

@@ -114,7 +114,7 @@ logs = `set_rl_rate` → `rte_tm_hierarchy_commit` → stop/start du port) :
 
 Le gate (`_tx_gate`, `app/routes/mtl_engine.py`) répond en 409 `needs_confirm` + `verdict` qui **NOMME
 les sorties** qui vont figer (dédupliquées par sortie, pas par session) ; la modale
-(`window.txMaintConfirm`, `static/scripts.js`) est partagée par Destinations 2110 et Câbles.
+(`window.txMaintConfirm`, `static/tx_maint.js`) est partagée par Destinations 2110 et Câbles.
 Permission `containers.deploy`. Sur un port **AF-XDP** (cas d'Horace, prod) tout est sûr et l'UI le dit.
 
 **Fenêtre de maintenance** : table `tx_pending_changes` (bac persistant), routes
@@ -394,14 +394,21 @@ doivent rester le seul point de fuite connu).
 
 ## Briques existantes réutilisées
 
+> État de la colonne au **démarrage** du chantier (avant les étages 1 et 3). Constat du 2026-11-01 :
+> les sessions provisionnées sont **actives** (étage 1, réglage `tx_layout_provisioning_enabled`, ON
+> par défaut, poussé par `app/docker_driver.py`), et les sorties TX ont leur **propre** gate de format
+> (étage 3 : `cabling._tx_slot_mismatch`, réglage `tx_format_gating`, refus sec), distinct du gate
+> compute `_format_gate` / `wire_format_gating`. L'insertion d'UDC sert aussi devant un slot TX
+> (`_insert_udc`, et `tx_format_watch` avec `tx_format_autoudc`).
+
 | Brique | Où | État |
 |---|---|---|
 | Bibliothèque de cartes (`rl_tx_cap`, `narrow_ok`, qualif auto) | `nic_profiles` + Réglages | ✅ live |
 | Réserves par port | `node_interfaces.rx/tx_reserve`, `queue_margin` | ✅ |
 | Format par slot TX | `deploy_config.tx_slots[]` (w/h/fps/scan) | ✅ |
-| Sessions provisionnées silencieuses + swap de source | controller.py `provisioned` / `tx_set_source` | ✅ codé, jamais activé |
-| Gating format au câblage | `cabling._format_gate` (+ réglage `wire_format_gating`) | ✅ compute only |
-| Modal + insertion auto UDC | `cabling._insert_udc` + cables.html | ✅ compute only |
+| Sessions provisionnées silencieuses + swap de source | controller.py `provisioned` / `tx_set_source` | ✅ codé, jamais activé → **actif depuis l'étage 1** |
+| Gating format au câblage | `cabling._format_gate` (+ réglage `wire_format_gating`) | ✅ compute only → TX : `_tx_slot_mismatch` (+ `tx_format_gating`), étage 3 |
+| Modal + insertion auto UDC | `cabling._insert_udc` + cables.html | ✅ compute only → **aussi devant un slot TX** (étage 3) |
 
 ## Ordre / état
 

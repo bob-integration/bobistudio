@@ -96,14 +96,15 @@ class Abi(ctypes.Structure):
                 ("sizeof_mutable_multi", ctypes.c_uint32), ("offset_stride", ctypes.c_uint32),
                 ("offset_count", ctypes.c_uint32), ("pad2", ctypes.c_uint32),
                 ("get_samples_nb", VOID), ("open_samples", VOID), ("commit_samples", VOID),
-                ("cancel_samples", VOID), ("get_time", VOID)]
+                ("cancel_samples", VOID), ("get_time", VOID), ("get_runtime_info", VOID)]
 
 
 class InStats(ctypes.Structure):
     _fields_ = [("state", ctypes.c_uint32), ("gen", ctypes.c_uint32), ("channels", ctypes.c_uint32),
                 ("last_err", ctypes.c_int32), ("last_status", ctypes.c_int32), ("pad", ctypes.c_uint32),
                 ("reads", ctypes.c_uint64), ("misses", ctypes.c_uint64), ("errors", ctypes.c_uint64),
-                ("faults", ctypes.c_uint64), ("miss_streak", ctypes.c_uint64), ("last_ok_ns", ctypes.c_uint64)]
+                ("faults", ctypes.c_uint64), ("miss_streak", ctypes.c_uint64), ("last_ok_ns", ctypes.c_uint64),
+                ("slack_last", ctypes.c_int64), ("slack_min", ctypes.c_int64), ("slack_n", ctypes.c_uint64)]
 
 
 class OutStats(ctypes.Structure):
@@ -132,7 +133,7 @@ def real_abi():
     st = LIB.mxlGetVersion(ctypes.byref(v))
     assert st == 0, "mxlGetVersion -> %d" % st
     addr = lambda n: ctypes.cast(getattr(LIB, n), VOID).value        # noqa: E731
-    return Abi(abi_tag=1, lib_major=v.major, lib_minor=v.minor, lib_bugfix=v.bugfix,
+    return Abi(abi_tag=2, lib_major=v.major, lib_minor=v.minor, lib_bugfix=v.bugfix,
                sizeof_buffer_slice=ctypes.sizeof(bobimxl.mxlBufferSlice),
                sizeof_wrapped_multi=ctypes.sizeof(bobimxl.mxlWrappedMultiBufferSlice),
                sizeof_mutable_multi=ctypes.sizeof(bobimxl.mxlMutableWrappedMultiBufferSlice),
@@ -140,7 +141,7 @@ def real_abi():
                offset_count=bobimxl.mxlWrappedMultiBufferSlice.count.offset,
                get_samples_nb=addr("mxlFlowReaderGetSamplesNonBlocking"), open_samples=addr("mxlFlowWriterOpenSamples"),
                commit_samples=addr("mxlFlowWriterCommitSamples"), cancel_samples=addr("mxlFlowWriterCancelSamples"),
-               get_time=addr("mxlGetTime")), (v.major, v.minor, v.bugfix, v.full)
+               get_time=addr("mxlGetTime"), get_runtime_info=addr("mxlFlowReaderGetRuntimeInfo")), (v.major, v.minor, v.bugfix, v.full)
 
 
 def bits(a):

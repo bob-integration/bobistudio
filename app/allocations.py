@@ -33,10 +33,49 @@ def _node_ct_iface(node_id):
     return None
 
 
+def interne_bounds(node_id):
+    """(start, end) allouables dans le subnet privé d'un nœud en mode « réseau interne ».
+
+    La passerelle du bridge est le PREMIER hôte du subnet (c'est l'interface que Docker pose sur
+    l'hôte) : on commence donc au deuxième, et on s'arrête à l'avant-dernier — la dernière
+    adresse d'un /24 est l'adresse de diffusion. Sur un subnet mal formé on rend ("", ""), ce qui
+    épuise la plage et déclenche l'alerte d'épuisement, plutôt que d'inventer des bornes.
+    """
+    from .database import db_get_node
+    from .config import NET_INTERNE_SUBNET_DEFAUT
+    sub = (((db_get_node(node_id) or {}).get("container_net_subnet") or "").strip()
+           or NET_INTERNE_SUBNET_DEFAUT)
+    try:
+        hosts = list(ipaddress.ip_network(sub, strict=False).hosts())
+    except Exception as e:
+        log.warning("interne_bounds(%s): subnet « %s » invalide : %s", node_id, sub, e)
+        return ("", "")
+    if len(hosts) < 3:
+        log.warning("interne_bounds(%s): subnet « %s » trop petit", node_id, sub)
+        return ("", "")
+    return (str(hosts[1]), str(hosts[-1]))
+
+
 def node_ip_bounds(node_id=None):
-    """(start, end, scope) de la plage d'allocation EFFECTIVE d'un nœud : sa plage personnalisée
-    (scope='node') si sa carte containers/mgmt_containers en porte une, sinon la plage cluster
-    ip_start/ip_end (scope='cluster'). node_id=None → cluster."""
+    """(start, end, scope) de la plage d'allocation EFFECTIVE d'un nœud.
+
+    Trois cas, dans cet ordre, et l'ordre EST la règle :
+    1. nœud en « réseau interne » → le subnet PRIVÉ du nœud (scope='interne') ;
+    2. sinon, plage personnalisée de sa carte containers/mgmt_containers (scope='node') ;
+    3. sinon, plage cluster ip_start/ip_end (scope='cluster'). node_id=None → cluster.
+
+    ★ POURQUOI LE MODE PASSE AVANT LA PLAGE DE LA CARTE. En mode interne, les conteneurs ne sont
+    plus sur le LAN : la plage de la carte du site désigne des adresses qui n'existent pas dans le
+    bridge. Or `centralized_ipam()` est VRAI dès qu'une plage personnalisée est posée, donc
+    l'orchestrateur imposerait `docker run --ip <IP du site>` dans un subnet privé — refusé par
+    Docker, déploiement mort, et le message ne parle ni de mode ni de plage. La plage de la carte
+    n'est pas effacée pour autant : elle redevient effective à la seconde où le nœud repasse en
+    mode site.
+    """
+    from .database import node_net_interne
+    if node_id and node_net_interne(node_id):
+        s, e = interne_bounds(node_id)
+        return (s, e, "interne")
     it = _node_ct_iface(node_id)
     if it:
         return (it["ct_ip_start"].strip(), it["ct_ip_end"].strip(), "node")
@@ -72,12 +111,21 @@ def _used_vmids():
     return {c.get("vmid") for c in db_get_containers() if c.get("vmid") is not None}
 
 
-def _used_ips(exclude_vmid=None):
+def _used_ips(exclude_vmid=None, node_id=None):
     """IPs du plan conteneurs déjà prises (DB) : `ip` (legacy) ET `docker_ip` (plan conteneurs
-    macvlan, B2-2). `exclude_vmid` : ignore les IP de ce conteneur (idempotence au redeploy)."""
+    macvlan, B2-2). `exclude_vmid` : ignore les IP de ce conteneur (idempotence au redeploy).
+
+    `node_id` : ne compter que les conteneurs DE CE NŒUD. Réservé aux plages à portée de nœud
+    (mode « réseau interne ») : un subnet privé ne sort pas de la machine, donc 172.30.0.10 sur
+    deux nœuds sont deux adresses différentes et les compter ensemble réduirait sans raison le
+    nombre de conteneurs déployables. Pour une plage de SITE, l'occupation reste globale — là,
+    deux conteneurs à la même adresse, ce sont deux machines en conflit sur le LAN.
+    """
     used = set()
     for c in db_get_containers():
         if exclude_vmid is not None and c.get("vmid") == exclude_vmid:
+            continue
+        if node_id is not None and c.get("node_id") != node_id:
             continue
         for k in ("ip", "docker_ip"):
             if c.get(k):
@@ -111,6 +159,14 @@ def _reserved_ips(node_id=None):
         h = (n.get("host") or "").strip()
         if h:
             res.add(h)
+        # IP du shim macvlan d'un nœud (cf. container_net) : elle vit sur le MÊME subnet que les
+        # conteneurs et n'est pas dans la plage par construction — mais la plage peut être
+        # élargie plus tard, et l'attribuer à un conteneur mettrait deux machines à la même
+        # adresse sur le LAN, au moment précis où l'exploitant croit agrandir son pool. On la
+        # réserve pour TOUS les nœuds, pas seulement celui qu'on alloue : le subnet est partagé.
+        sh = (n.get("container_net_shim_ip") or "").strip()
+        if sh:
+            res.add(sh)
     return res
 
 
@@ -126,8 +182,13 @@ def centralized_ipam(node_id=None):
     Sans ça, l'IPAM Docker pioche les IP basses du subnet (.1/.2/.3…) et collisionne avec le
     matériel LAN existant sur un VLAN partagé (paquets routés vers le mauvais équipement → timeout).
     Honorer la plage évite la collision."""
-    from .database import db_get_nodes
+    from .database import db_get_nodes, node_net_interne
     if settings.get("net_topology") == "separated":
+        return True
+    # Mode « réseau interne » : l'orchestrateur attribue dans le subnet PRIVÉ du nœud. On ne laisse
+    # pas l'IPAM de Docker choisir, pour la même raison qu'ailleurs — une IP collante survit au
+    # redéploiement, donc le contrôleur ne perd pas sa cible :8081 à chaque recréation.
+    if node_id and node_net_interne(node_id):
         return True
     if _node_ct_iface(node_id):
         return True
@@ -156,11 +217,17 @@ def allocate_container_ip(vmid, node_id=None):
     if node_id is None:
         node_id = c.get("node_id")
     rng = _ip_range(node_id)
+    # Portée de l'occupation = portée de la plage. Un subnet privé (mode « réseau interne ») ne
+    # sort pas du nœud : on ne compte que SES conteneurs. Une plage de site est partagée : on
+    # compte tout le monde. `_reserved_ips` reste global dans les deux cas — en interne il ne
+    # peut que protéger, au cas où le subnet privé recouvrirait le LAN.
+    _prive = node_ip_bounds(node_id)[2] == "interne"
     # Redeploy du même vmid : on relâche d'abord SES propres réservations, sinon on se bloquerait
     # nous-même (idempotence — le container ré-obtient son IP collante ou une nouvelle).
     db_release_ip_reservations_for_vmid(vmid)
-    blocked = (_used_ips(exclude_vmid=vmid) | _reserved_ips(node_id)   # conteneurs pris + passerelle/orchestrateur/nœuds
-               | db_used_ip_reservations())                     # + IP réservées par une alloc concurrente
+    blocked = (_used_ips(exclude_vmid=vmid, node_id=node_id if _prive else None)
+               | _reserved_ips(node_id)        # passerelle / orchestrateur / hôtes des nœuds
+               | db_used_ip_reservations())    # + IP réservées par une alloc concurrente
     cur = c.get("docker_ip")
     if cur and cur in rng and cur not in blocked:
         # STICKY : docker_ip existant fait déjà autorité (présent dans _used_ips) → inutile de réserver.
@@ -195,17 +262,31 @@ def ip_stats():
     from .database import db_get_nodes
     used_all = _used_ips()
 
-    def _entry(start, end, scope, label, **extra):
+    def _entry(start, end, scope, label, used=None, **extra):
+        # `used` : jeu d'IP occupées à considérer pour CETTE plage. Par défaut, toutes celles du
+        # parc — mais une plage privée (mode interne) ne doit compter que les conteneurs de son
+        # nœud, sinon un conteneur d'un autre nœud ferait paraître l'adresse prise ici.
+        occ = used_all if used is None else used
         rng = _range_list(start, end)
-        free = [ip for ip in rng if ip not in used_all]
+        free = [ip for ip in rng if ip not in occ]
         e = {"scope": scope, "label": label, "start": start, "end": end,
-             "total": len(rng), "free": len(free), "used": sorted(used_all & set(rng))}
+             "total": len(rng), "free": len(free), "used": sorted(occ & set(rng))}
         e.update(extra)
         return e
 
     cluster = _entry(settings.get("ip_start"), settings.get("ip_end"), "cluster", "cluster")
     ranges = [cluster]
+    from .database import node_net_interne
     for n in (db_get_nodes() or []):
+        # Un nœud en « réseau interne » a sa propre plage, qu'il faut montrer pour la même raison
+        # que les autres : sans ligne à lui, la page Réglages affiche un pool qui ne le concerne
+        # plus et donne à croire qu'il y puise.
+        if node_net_interne(n):
+            s_i, e_i = interne_bounds(n.get("id"))
+            if s_i:
+                ranges.append(_entry(s_i, e_i, "interne", n.get("name") or f"nœud {n['id']}",
+                                     used=_used_ips(node_id=n["id"]), node_id=n["id"]))
+            continue
         it = _node_ct_iface(n.get("id"))
         if it:
             ranges.append(_entry(it["ct_ip_start"].strip(), it["ct_ip_end"].strip(), "node",

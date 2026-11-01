@@ -7,8 +7,10 @@ import hashlib
 import json
 import logging
 import re
+import os
 import secrets
 import sqlite3
+import sys
 import threading
 import uuid
 from datetime import datetime, timedelta
@@ -28,11 +30,123 @@ log = logging.getLogger(__name__)
 # commit du même thread, comportement au pire « moins pire »).
 _tls = threading.local()
 
+# ── Un test n'ÉCRIT JAMAIS dans la base de production (2026-10-24) ───────────────────────────
+# `tests/` a pour règle « aucun effet de bord, base jetable » (CLAUDE.md), mais rien ne la
+# faisait respecter : trois tests IS-07 ouvraient puis refermaient des réglages de la VRAIE base.
+# Lancés en parallèle par deux sessions, l'un a « restauré » la valeur posée par l'autre et la
+# surface IS-07 de production est restée ouverte. La discipline ne suffit pas quand une dizaine
+# de sessions lancent des tests sur la même machine : la garde est donc ICI, au seul endroit par
+# où passe toute connexion. Un test qui oublie de surcharger DB_PATH reçoit la production en
+# LECTURE SEULE (cf. connect_guarded) : il échoue sur sa première écriture au lieu d'écrire en
+# production sans que personne le voie. Le service (`python main.py`) et les bancs de
+# `tools/bancs/` ne sont pas concernés : seul un script lancé DEPUIS `tests/` l'est.
+
+def production_db_path(name=None):
+    """Chemin de la base de PRODUCTION (`name` : un fichier voisin, ex. « db_medias.db »)."""
+    from .config import PRODUCTION_DB_PATH
+    return os.path.join(os.path.dirname(PRODUCTION_DB_PATH), name) if name else PRODUCTION_DB_PATH
+
+
+def running_under_tests():
+    """Vrai si le processus a été lancé depuis un fichier de `tests/` (ou par pytest)."""
+    cands = [getattr(sys.modules.get("__main__"), "__file__", None)]
+    if sys.argv and sys.argv[0]:
+        cands.append(sys.argv[0])
+    for f in cands:
+        if not f:
+            continue
+        p = os.path.realpath(f)
+        if os.path.basename(os.path.dirname(p)) == "tests" or "pytest" in os.path.basename(p):
+            return True
+    return False
+
+
+def connect_guarded(path, prod_path=None, **kw):
+    """`sqlite3.connect(path)`, sauf qu'un TEST n'obtient la base de production qu'en LECTURE SEULE.
+
+    Lecture seule plutôt que refus : une vingtaine de tests LISENT la base réelle (réglages lus au
+    chargement d'un plugin, catalogue…). Les refuser les cassait tous d'un coup pour toutes les
+    sessions, alors que le tort vient des ÉCRITURES. En lecture seule, ils passent ; celui qui
+    écrit échoue sur SON écriture (« attempt to write a readonly database ») et la production
+    n'est pas touchée. Avertissement unique sur stderr pour qu'on sache lequel isoler.
+
+    Production ABSENTE (exécuteur de CI, machine de développement neuve) : il n'y a rien à
+    protéger, et l'ouvrir en lecture seule échouait en « unable to open database file » — un test
+    qui ne fait que LIRE la base cassait là où il passe ici, uniquement parce qu'ici la production
+    existe (relevé par Debug Recette, 24/10). Le test reçoit alors une base JETABLE, propre au
+    processus, à la place ; on ne crée jamais le fichier de production lui-même."""
+    if running_under_tests() and \
+            os.path.realpath(path) == os.path.realpath(prod_path or production_db_path()):
+        if not os.path.exists(path):
+            return sqlite3.connect(_stand_in_for_missing_production(path), **kw)
+        if path not in _warned_prod:
+            _warned_prod.add(path)
+            sys.stderr.write("WARNING: test opened the production database %s READ-ONLY; set "
+                             "database.DB_PATH to a temporary file before the first access\n" % path)
+        conn = sqlite3.connect("file:%s?mode=ro" % os.path.realpath(path), uri=True, **kw)
+        conn.set_authorizer(_note_production_write)
+        return conn
+    return sqlite3.connect(path, **kw)
+
+
+_warned_prod = set()
+_stand_ins = {}                     # chemin de production absent → base jetable qui le remplace
+_stand_ins_lock = threading.Lock()
+
+
+def _stand_in_for_missing_production(path):
+    """Base jetable qui remplace, pour ce processus de test, une production qui n'existe pas.
+    Une par chemin (base principale, registre des médias) : tous les fils voient la même."""
+    key = os.path.realpath(path)
+    with _stand_ins_lock:
+        if key not in _stand_ins:
+            import tempfile
+            d = tempfile.mkdtemp(prefix="bobistudio_test_")
+            _stand_ins[key] = os.path.join(d, os.path.basename(key))
+            sys.stderr.write("WARNING: production database %s does not exist; test given a "
+                             "disposable database instead (%s)\n" % (path, _stand_ins[key]))
+        return _stand_ins[key]
+
+# ── Une écriture REFUSÉE fait échouer le test, même si le code testé avale l'exception ────────
+# La lecture seule protège la production, mais son seul signal était l'exception — et le chemin
+# d'alerting l'attrape et la journalise : verif_hello_tally_rafale et verif_wiring_document
+# écrivaient des ALERTES en production à chaque lancement et restaient VERTS. On note donc toute
+# tentative d'écriture (autorisateur SQLite, appelé à la préparation de la requête) et, à la
+# sortie du processus, un test qui en a fait une sort en code 1 — un lanceur qui ne regarde que le
+# code de retour le voit.
+_WRITE_ACTIONS = {getattr(sqlite3, n) for n in (
+    "SQLITE_INSERT", "SQLITE_UPDATE", "SQLITE_DELETE", "SQLITE_CREATE_TABLE", "SQLITE_CREATE_INDEX",
+    "SQLITE_DROP_TABLE", "SQLITE_DROP_INDEX", "SQLITE_ALTER_TABLE", "SQLITE_CREATE_VIEW",
+    "SQLITE_CREATE_TRIGGER") if hasattr(sqlite3, n)}
+production_write_attempts = []      # [(action, table)] ; un test de la garde le vide après coup
+
+
+def _note_production_write(action, arg1, arg2, dbname, source):
+    if action in _WRITE_ACTIONS and dbname in (None, "main"):
+        if not production_write_attempts:
+            import atexit
+            atexit.register(_fail_on_production_writes)
+        production_write_attempts.append((action, arg1))
+    return sqlite3.SQLITE_OK        # l'écriture échouera d'elle-même : base ouverte en lecture seule
+
+
+def _fail_on_production_writes():
+    if not production_write_attempts:
+        return
+    tables = sorted({t for _a, t in production_write_attempts if t})
+    sys.stdout.flush()
+    sys.stderr.write("FAILURE: this test tried to WRITE %d time(s) to the production database "
+                     "(tables: %s) — isolate it on a temporary database\n"
+                     % (len(production_write_attempts), ", ".join(tables) or "?"))
+    sys.stderr.flush()
+    os._exit(1)
+
+
 def get_db():
     conn = getattr(_tls, "conn", None)
     if conn is not None:
         return conn
-    conn = sqlite3.connect(DB_PATH)
+    conn = connect_guarded(DB_PATH)
     conn.row_factory = sqlite3.Row
     # Anti « database is locked » : attendre le verrou jusqu'à 5 s (nombreux threads
     # de fond partagent le même fichier).
@@ -42,7 +156,19 @@ def get_db():
     # Le mode WAL lui-même est persistant (en-tête du fichier DB) : activé une fois dans init_db().
     conn.execute("PRAGMA synchronous=NORMAL")
     _tls.conn = conn
+    stand_in = _stand_ins.get(os.path.realpath(DB_PATH))
+    if stand_in:
+        # Production absente sous test : la base jetable reçoit le schéma, une fois, pour qu'un
+        # test qui LIT un réglage obtienne son défaut au lieu de « no such table ».
+        with _stand_in_init_lock:
+            if stand_in not in _stand_ins_initialized:
+                _stand_ins_initialized.add(stand_in)
+                init_db()
     return conn
+
+
+_stand_in_init_lock = threading.Lock()
+_stand_ins_initialized = set()
 
 def _migrate_multiview_compute(db):
     """Migration de données, idempotente : un mur multiview qui porte un `force_cpu` explicite et
@@ -159,6 +285,26 @@ def init_db():
             source      TEXT,
             shm_out     TEXT
         )''')
+        # Compteur d'écritures PROPRE à `containers` (cache de `db_get_containers`, 2026-10-24).
+        # Tenu par déclencheurs : toute écriture le fait avancer, quelle que soit la connexion ou le
+        # processus. `PRAGMA data_version`, qui vaut pour toute la base, invalidait le cache ~7 fois
+        # par seconde au rythme d'autres tables (rdma_links, alert_episodes…).
+        db.execute("CREATE TABLE IF NOT EXISTS containers_gen (n INTEGER NOT NULL)")
+        if db.execute("SELECT COUNT(*) FROM containers_gen").fetchone()[0] == 0:
+            db.execute("INSERT INTO containers_gen (n) VALUES (0)")
+        for _op in ("INSERT", "UPDATE", "DELETE"):
+            db.execute("CREATE TRIGGER IF NOT EXISTS containers_gen_%s AFTER %s ON containers "
+                       "BEGIN UPDATE containers_gen SET n = n + 1; END" % (_op.lower(), _op))
+        # MESURES VIVANTES hors de `containers` (24/10) : fps, CPU et mémoire changent à chaque relevé.
+        # Dans `containers`, chaque changement faisait avancer containers_gen et vidait le cache de
+        # db_get_containers ~4,5 fois/s (mesuré après 3f889c2). Ici, sans déclencheur : les lectures
+        # les reposent sur les lignes (`_with_metrics`). Les colonnes d'origine restent, plus écrites.
+        db.execute("""CREATE TABLE IF NOT EXISTS container_metrics (
+            vmid        INTEGER PRIMARY KEY,
+            fps         REAL,
+            cpu_percent REAL,
+            mem_used    INTEGER,
+            cpu_count   INTEGER)""")
         cols = [r[1] for r in db.execute("PRAGMA table_info(containers)")]
         if "deploy_config" not in cols:
             db.execute("ALTER TABLE containers ADD COLUMN deploy_config TEXT")
@@ -197,6 +343,13 @@ def init_db():
             # `cpu_percent` n'a pas d'unité exploitable (cf. db_update_usage) : c'est ce qui permet
             # de repasser au coût ABSOLU en cœurs, seule grandeur comparable entre types.
             db.execute("ALTER TABLE containers ADD COLUMN cpu_count INTEGER")
+        # Reprise, une fois par conteneur, des dernières mesures écrites dans `containers` (jamais
+        # d'écrasement : une ligne de container_metrics déjà présente est plus récente).
+        db.execute("INSERT OR IGNORE INTO container_metrics (vmid, fps, cpu_percent, mem_used, cpu_count) "
+                   "SELECT vmid, fps, cpu_percent, mem_used, cpu_count FROM containers")
+        # Ménage des mesures sans conteneur (25/10) : 18 lignes de Régie Légère restées après sa
+        # destruction — recopiées puis supprimées côté `containers` par un code qui ignorait la table.
+        db.execute("DELETE FROM container_metrics WHERE vmid NOT IN (SELECT vmid FROM containers)")
         if "assigned_vf" not in cols:
             # Nom du VF SR-IOV assigné au container (ex: "enp1s0f0v3"), NULL si aucun
             db.execute("ALTER TABLE containers ADD COLUMN assigned_vf TEXT")
@@ -220,6 +373,13 @@ def init_db():
         # `resources.reservable` (cf. `docker_compute.effective_resources`).
         if "cpu_mode_override" not in cols:
             db.execute("ALTER TABLE containers ADD COLUMN cpu_mode_override TEXT")
+        # POIDS CPU propre au conteneur (2026-10-30) : un des niveaux NOMMÉS de
+        # `app/cpu_weight.py:LEVELS` ('onair'|'normal'|'background'|'batch'). NULL = le manifeste
+        # fait foi. Colonne DISTINCTE de `cpu_mode_override` : la PLACE (dédié / pool partagé) et
+        # le POIDS (la part de CPU sous saturation) sont deux décisions — `priority: batch` les
+        # confondait, et « partagé mais prioritaire » n'existait pas.
+        if "cpu_weight_override" not in cols:
+            db.execute("ALTER TABLE containers ADD COLUMN cpu_weight_override TEXT")
         if "nmos_audio_count" not in cols:
             # Nombre de receivers audio NMOS exposés (en plus de nmos_receivers_count qui est = vidéo)
             db.execute("ALTER TABLE containers ADD COLUMN nmos_audio_count INTEGER DEFAULT 0")
@@ -352,6 +512,48 @@ def init_db():
             binding        TEXT,
             created_at     TEXT
         )''')
+        # Port links (2026-10-23, option C): "input <kind>/<slot> of container <uuid> is fed by
+        # port <id>". This is the AUTHORITY on what a project input means; the physical shm in the
+        # container's params is only the current resolution (what was sent to the container).
+        # Keyed by instance_uuid, not vmid: it must survive recreate. `to_slot` is JSON text
+        # ("null", "0", "\"cam\"") so that UNIQUE works (SQLite treats NULLs as distinct).
+        # `shm` = the physical flow last applied ("" while the port is unassigned).
+        db.execute('''CREATE TABLE IF NOT EXISTS port_links (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            port_id        INTEGER NOT NULL,
+            consumer_uuid  TEXT NOT NULL,
+            kind           TEXT NOT NULL DEFAULT 'video',
+            to_slot        TEXT NOT NULL DEFAULT 'null',
+            shm            TEXT NOT NULL DEFAULT '',
+            created_at     TEXT,
+            UNIQUE(consumer_uuid, kind, to_slot)
+        )''')
+        # Port labels (2026-10-24): which label ROW a consumer reads for this port — the port's own
+        # `port:<id>` row or the row of the flow currently bound (`origin`) — and whether names
+        # received from an external TSL controller may write into the port's row (`external`).
+        cols_pp = {r[1] for r in db.execute("PRAGMA table_info(project_ports)").fetchall()}
+        if "label_source" not in cols_pp:
+            db.execute("ALTER TABLE project_ports ADD COLUMN label_source TEXT NOT NULL DEFAULT 'port'")
+        if "tsl_in" not in cols_pp:
+            db.execute("ALTER TABLE project_ports ADD COLUMN tsl_in TEXT NOT NULL DEFAULT 'port'")
+        # Virtual made of several flows (2026-10-28): the VIDEO port is the parent, its audios and
+        # its ANC are ports attached to it (`parent_id`), `suffix` = their place in it (A1, A2, Anc).
+        # They are bound together and inherit the parent's labels (cf. tally._port_row).
+        if "parent_id" not in cols_pp:
+            db.execute("ALTER TABLE project_ports ADD COLUMN parent_id INTEGER")
+        if "suffix" not in cols_pp:
+            db.execute("ALTER TABLE project_ports ADD COLUMN suffix TEXT")
+        # Destination REUSABLE inside its own project (2026-10-29): offered as a source in the
+        # project's Câbles view, so several internal inputs follow it and switch together. Set on
+        # the head port; its attached audios / ANC follow it.
+        if "reusable" not in cols_pp:
+            db.execute("ALTER TABLE project_ports ADD COLUMN reusable INTEGER NOT NULL DEFAULT 0")
+        # Révision du consommateur quand le flux du lien a changé (2026-11-01) : un envoi bâti sur
+        # une révision antérieure n'a pas vu ce flux, son ancienne valeur n'est pas un recâblage
+        # (cf. project_ports.keep_linked_inputs). 0 = lien d'avant la migration, jamais trié.
+        cols_pl = {r[1] for r in db.execute("PRAGMA table_info(port_links)").fetchall()}
+        if "rev" not in cols_pl:
+            db.execute("ALTER TABLE port_links ADD COLUMN rev INTEGER NOT NULL DEFAULT 0")
         # Chantier 6 : macros/scénarios (graph = blocs structurés, format blocks/v1)
         # + variables de projet (lues/écrites par les macros, gabarits {{var}}).
         db.execute('''CREATE TABLE IF NOT EXISTS project_macros (
@@ -607,6 +809,22 @@ def init_db():
             created_at  TEXT,
             payload     TEXT
         )''')
+        # Vues PAR UTILISATEUR (24/10) : propriétaire + partage. Les lignes d'avant n'ont pas de
+        # propriétaire et étaient vues de tous : elles restent communes (shared=1, owner_id NULL).
+        _cl_cols = [r[1] for r in db.execute("PRAGMA table_info(cable_layouts)")]
+        if "owner_id" not in _cl_cols:
+            db.execute("ALTER TABLE cable_layouts ADD COLUMN owner_id INTEGER")
+        if "shared" not in _cl_cols:
+            db.execute("ALTER TABLE cable_layouts ADD COLUMN shared INTEGER NOT NULL DEFAULT 0")
+            db.execute("UPDATE cable_layouts SET shared = 1 WHERE owner_id IS NULL")
+        # Destinataires d'une vue (même modèle que le partage des médias : un utilisateur, un groupe
+        # ou les membres d'un projet). `cable_layouts.shared` = « tout le monde ».
+        db.execute('''CREATE TABLE IF NOT EXISTS cable_layout_shares (
+            layout_id  INTEGER NOT NULL,
+            kind       TEXT NOT NULL,
+            target_id  INTEGER NOT NULL,
+            PRIMARY KEY (layout_id, kind, target_id)
+        )''')
         # Stockage générique par plugin (presets, mémoires…) : remplace les anciennes
         # tables cc_presets / dve_memories (retirées en 2026-07 avec leur migration ;
         # les fichiers DB existants peuvent encore porter ces tables, ignorées).
@@ -714,6 +932,15 @@ def init_db():
         # du nœud comme le chemin MTL --network host). NULL pour LXC / MTL.
         if "docker_ip" not in cols_c:
             db.execute("ALTER TABLE containers ADD COLUMN docker_ip TEXT")
+        # SORTIE réseau de ce conteneur (cf. app/container_net.py, « Sortie Internet ») :
+        #   'node'     — la sortie du nœud, comme tous les autres (défaut) ;
+        #   'internet' — la carte dédiée en DHCP, par routage par source sur l'hôte.
+        # ★ DÉFAUT 'node' ET AUCUNE MIGRATION : un conteneur existant ne change pas de chemin
+        # réseau parce qu'on a déployé une version. Changer de sortie ne détruit rien (c'est une
+        # règle de routage, pas une interface), mais ça déplace du trafic de production : c'est
+        # un geste d'exploitant.
+        if "egress" not in cols_c:
+            db.execute("ALTER TABLE containers ADD COLUMN egress TEXT NOT NULL DEFAULT 'node'")
         # Colonne `backend` RETIRÉE (full-Docker) : elle ne pouvait plus valoir que 'docker', et un
         # schéma qui affiche encore « DEFAULT 'lxc' » raconte une architecture qui n'existe plus.
         # Migration en deux temps, dans cet ordre et une seule fois : purge des lignes LXC
@@ -726,6 +953,26 @@ def init_db():
         cols_n = [r[1] for r in db.execute("PRAGMA table_info(nodes)")]
         if "docker_network" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN docker_network TEXT")
+        # MODE du réseau des conteneurs, PAR NŒUD (vocabulaire fermé NET_MODES) :
+        #   'site'    — macvlan : chaque conteneur est une machine du LAN (historique) ;
+        #   'interne' — bridge Docker privé, joint par l'hôte, sortie NATée.
+        # ★ DÉFAUT 'site' ET AUCUNE MIGRATION DE VALEUR. Changer de mode détruit et recrée les
+        # conteneurs du nœud : ce n'est pas un effet de bord acceptable pour une mise à jour, c'est
+        # un geste d'exploitant. Un nœud installé avant ce chantier reste donc exactement comme il
+        # était, et c'est l'interface qui propose le changement, en l'annonçant.
+        if "container_net_mode" not in cols_n:
+            db.execute("ALTER TABLE nodes ADD COLUMN container_net_mode TEXT "
+                       "NOT NULL DEFAULT 'site'")
+        # Subnet privé du mode interne (vide = NET_INTERNE_SUBNET_DEFAUT). Par NŒUD : en mode
+        # interne le subnet ne sort pas de la machine, deux nœuds peuvent porter le même sans se
+        # gêner — mais pouvoir les distinguer sert le jour où on les route.
+        if "container_net_subnet" not in cols_n:
+            db.execute("ALTER TABLE nodes ADD COLUMN container_net_subnet TEXT")
+        # IP du shim macvlan de l'hôte (mode site sur un nœud portant l'orchestrateur, cf.
+        # app/container_net.py). Vide = pas de shim posé. Elle est RÉSERVÉE côté allocation :
+        # l'attribuer à un conteneur mettrait deux machines à la même adresse sur le LAN.
+        if "container_net_shim_ip" not in cols_n:
+            db.execute("ALTER TABLE nodes ADD COLUMN container_net_shim_ip TEXT")
         if "compute_image" not in cols_n:
             db.execute("ALTER TABLE nodes ADD COLUMN compute_image TEXT")
         # Pool de cœurs CPU dispo pour le pinning compute (ex. "8-47"). Vide = pas de pinning.
@@ -1514,6 +1761,46 @@ def init_db():
             log.info("migration polices : %d o de base64 purgés des deploy_config/snapshots",
                      _fl_freed)
         db.commit()
+        # Même purge pour le LOGO DE MARQUE (2026-10-24) : persisté, il pesait ≈300 Ko par générateur
+        # (2,3 Mo pour 7 mires), relus à chaque `db_get_containers` — la moitié du CPU du contrôleur.
+        # `deploy._gras` le ré-injecte à l'envoi depuis static/uploads. Idempotente : seules les
+        # configs dont le logo n'est pas vide sont touchées.
+        _logo_freed = 0
+
+        def _strip_logo(p):
+            if isinstance(p, dict) and p.get("brand_logo_b64"):
+                p["brand_logo_b64"] = ""
+                return True
+            return False
+        for vmid, dcraw in db.execute(
+                "SELECT vmid, deploy_config FROM containers "
+                "WHERE deploy_config LIKE '%brand_logo_b64%'").fetchall():
+            try:
+                dc = json.loads(dcraw) if dcraw else None
+            except Exception:
+                continue
+            if _strip_logo((dc or {}).get("params")):
+                new = json.dumps(dc)
+                _logo_freed += max(0, len(dcraw) - len(new))
+                db.execute("UPDATE containers SET deploy_config=? WHERE vmid=?", (new, vmid))
+        for pid, snapraw in db.execute(
+                "SELECT id, snapshot FROM projects WHERE snapshot LIKE '%brand_logo_b64%'").fetchall():
+            try:
+                snap = json.loads(snapraw) if snapraw else None
+            except Exception:
+                continue
+            if not isinstance(snap, list):
+                continue
+            hit = [_strip_logo(((c.get("deploy_config") or {}) if isinstance(c, dict) else {}).get("params"))
+                   for c in snap]
+            if any(hit):
+                new = json.dumps(snap)
+                _logo_freed += max(0, len(snapraw) - len(new))
+                db.execute("UPDATE projects SET snapshot=? WHERE id=?", (new, pid))
+        if _logo_freed:
+            log.info("brand logo migration: %d bytes of base64 purged from deploy_config/snapshots",
+                     _logo_freed)
+        db.commit()
         # Migration de données : NUMÉROTATION 1-BASED (« le 0 n'existe pas », 2026-08-13).
         # Décale d'un cran, EN UNE PASSE, tout ce qui porte un numéro de slot ou de flux : clés
         # `tx{n}_shm`/`input_{n}`/`audio_shm_{n}`, noms de flux MXL référencés partout,
@@ -2015,16 +2302,83 @@ def cache_requete(fn):
     return _enveloppe
 
 
+# ── Cache de `db_get_containers`, exact par construction (2026-10-24) ─────────────────────────
+# Une dizaine de boucles de fond (console audio, tally, groupes de lecture, fader start, scope,
+# transcodage…) relisent TOUTE la table à chaque tour : py-spy y comptait la moitié du CPU du
+# contrôleur, et la page Câbles attendait sa topologie 6 à 10 s. La table, elle, ne change que
+# quelques fois par minute.
+#
+# La clé est `containers_gen.n`, compteur avancé par DÉCLENCHEURS SQLite à toute écriture sur la
+# table (cf. init_db), quel que soit le fil ou le processus (secours HA, scripts) : ni durée de vie
+# ni liste d'écrivains à tenir. Lu par une connexion sonde à elle, hors de toute transaction, donc
+# toujours sur le dernier état validé. Table absente (base non initialisée) → pas de cache.
+#   • version lue AVANT la requête : une écriture intercalée laisse une clé périmée → relu au
+#     prochain appel, jamais servi en retard ;
+#   • fil en transaction ouverte : il doit voir ses propres écritures non validées → pas de cache ;
+#   • copies superficielles : un appelant qui annote ses dicts ne pollue pas les autres ;
+#   • clé et lignes posées en UNE affectation (un tuple) : deux affectations laissaient un fil
+#     préempté entre elles exposer la clé neuve avec les lignes d'avant (relevé par Todo, 24/10).
+_ct_lock = threading.Lock()
+_ct_probe: dict = {}
+_ct_cache: dict = {"entry": None}
+
+
+def _containers_version():
+    with _ct_lock:
+        conn = _ct_probe.get(DB_PATH)
+        if conn is None:
+            conn = connect_guarded(DB_PATH, check_same_thread=False)
+            _ct_probe.clear()
+            _ct_probe[DB_PATH] = conn
+        try:
+            # Lecture épuisée : aucune instruction ne reste ouverte sur la sonde (une transaction
+            # de lecture ouverte figerait l'état qu'elle voit).
+            rows = conn.execute("SELECT n FROM containers_gen").fetchall()
+        except sqlite3.Error:
+            return None
+        return (DB_PATH, rows[0][0]) if rows else None
+
+
+_METRIC_COLS = ("fps", "cpu_percent", "mem_used", "cpu_count")
+
+
+def _with_metrics(rows, db=None):
+    """Pose les mesures vivantes (`container_metrics`) sur des dicts de conteneur, en place."""
+    if not rows:
+        return rows
+    db = db or get_db()
+    if len(rows) == 1:
+        m = db.execute("SELECT fps, cpu_percent, mem_used, cpu_count FROM container_metrics WHERE vmid=?",
+                       (rows[0].get("vmid"),)).fetchone()
+        found = {rows[0].get("vmid"): m} if m else {}
+    else:
+        found = {r[0]: r[1:] for r in db.execute(
+            "SELECT vmid, fps, cpu_percent, mem_used, cpu_count FROM container_metrics").fetchall()}
+    for d in rows:
+        m = found.get(d.get("vmid"))
+        for i, k in enumerate(_METRIC_COLS):
+            d[k] = m[i] if m else None
+    return rows
+
+
 @cache_requete
 def db_get_containers():
-    with get_db() as db:
-        return [_container_sans_secret(r) for r in
+    db = get_db()
+    key = None if db.in_transaction else _containers_version()
+    entry = _ct_cache["entry"]
+    if key is not None and entry is not None and entry[0] == key:
+        return _with_metrics([dict(d) for d in entry[1]], db)
+    with db:
+        rows = [_container_sans_secret(r) for r in
                 db.execute("SELECT * FROM containers ORDER BY vmid").fetchall()]
+    if key is not None:
+        _ct_cache["entry"] = (key, rows)
+    return _with_metrics([dict(d) for d in rows], db)
 
 def db_get_container(vmid):
     with get_db() as db:
         row = db.execute("SELECT * FROM containers WHERE vmid=?", (vmid,)).fetchone()
-        return _container_sans_secret(row) if row else None
+        return _with_metrics([_container_sans_secret(row)], db)[0] if row else None
 
 
 def db_get_agent_token(vmid):
@@ -2149,12 +2503,17 @@ def db_update_status(vmid, status, cause=None):
     cause déjà établie) ; `cause=""` l'efface explicitement — c'est ce que fait un retour à la
     normale, où garder l'ancienne cause afficherait une panne résolue comme si elle durait.
     """
+    # `IS NOT` : n'écrire que ce qui CHANGE. Rafraîchis à chaque tour pour tout le parc, ces trois
+    # helpers réécrivaient surtout des valeurs identiques — ~8 écritures/s qui vidaient le cache de
+    # `db_get_containers` (cf. containers_gen) et gonflaient le WAL pour rien (2026-10-24).
     with get_db() as db:
         if cause is None:
-            db.execute("UPDATE containers SET status=? WHERE vmid=?", (status, vmid))
+            db.execute("UPDATE containers SET status=? WHERE vmid=? AND status IS NOT ?",
+                       (status, vmid, status))
         else:
-            db.execute("UPDATE containers SET status=?, status_cause=? WHERE vmid=?",
-                       (status, (cause or None), vmid))
+            db.execute("UPDATE containers SET status=?, status_cause=? WHERE vmid=? "
+                       "AND (status IS NOT ? OR status_cause IS NOT ?)",
+                       (status, (cause or None), vmid, status, (cause or None)))
         db.commit()
 
 def db_set_desired_state(vmid, state):
@@ -2192,7 +2551,7 @@ def db_update_spec_sig(vmid, sig):
 def db_update_docker_ip(vmid, ip):
     """IP propre du conteneur Docker « compute » (macvlan), lue après `docker run`."""
     with get_db() as db:
-        db.execute("UPDATE containers SET docker_ip=? WHERE vmid=?", (ip, vmid))
+        db.execute("UPDATE containers SET docker_ip=? WHERE vmid=? AND docker_ip IS NOT ?", (ip, vmid, ip))
         db.commit()
     # containers.docker_ip fait désormais autorité pour cette IP → la réservation transitoire
     # (ip_reservations) est redondante : on la libère (sans elle, une IP de container mort resterait
@@ -2202,7 +2561,7 @@ def db_update_docker_ip(vmid, ip):
 
 def db_update_ip(vmid, ip):
     with get_db() as db:
-        db.execute("UPDATE containers SET ip=? WHERE vmid=?", (ip, vmid))
+        db.execute("UPDATE containers SET ip=? WHERE vmid=? AND ip IS NOT ?", (ip, vmid, ip))
         db.commit()
 
 def db_set_instance_uuid(vmid, instance_uuid):
@@ -2328,7 +2687,7 @@ def db_container_by_instance(instance_uuid):
     with get_db() as db:
         row = db.execute("SELECT * FROM containers WHERE instance_uuid=?",
                          (instance_uuid,)).fetchone()
-    return dict(row) if row else None
+    return _with_metrics([dict(row)])[0] if row else None
 
 def db_roles_with_containers():
     """[(role, container|None)] pour tous les emplacements — une seule passe DB
@@ -2340,11 +2699,18 @@ def db_roles_with_containers():
         by_uuid = {r["instance_uuid"]: dict(r)
                    for r in db.execute("SELECT * FROM containers "
                                        "WHERE instance_uuid IS NOT NULL").fetchall()}
+    _with_metrics(list(by_uuid.values()))
     return [(r, by_uuid.get(r.get("instance_uuid"))) for r in roles]
+
+# Condition des écritures de mesures : le conteneur existe encore.
+_IF_CONTAINER = "WHERE EXISTS (SELECT 1 FROM containers WHERE vmid=?) "
+
 
 def db_update_fps(vmid, fps):
     with get_db() as db:
-        db.execute("UPDATE containers SET fps=? WHERE vmid=?", (fps, vmid))
+        db.execute("INSERT INTO container_metrics (vmid, fps) SELECT ?, ? " + _IF_CONTAINER +
+                   "ON CONFLICT(vmid) DO UPDATE SET fps=excluded.fps WHERE fps IS NOT excluded.fps",
+                   (vmid, fps, vmid))
         db.commit()
 
 def db_update_usage(vmid, cpu_percent, mem_used, cpu_count=None):
@@ -2362,11 +2728,18 @@ def db_update_usage(vmid, cpu_percent, mem_used, cpu_count=None):
     d'unité exploitable."""
     with get_db() as db:
         if cpu_count is None:
-            db.execute("UPDATE containers SET cpu_percent=?, mem_used=? WHERE vmid=?",
-                       (cpu_percent, mem_used, vmid))
+            db.execute("INSERT INTO container_metrics (vmid, cpu_percent, mem_used) SELECT ?, ?, ? " +
+                       _IF_CONTAINER + "ON CONFLICT(vmid) DO UPDATE SET cpu_percent=excluded.cpu_percent, "
+                       "mem_used=excluded.mem_used WHERE cpu_percent IS NOT excluded.cpu_percent "
+                       "OR mem_used IS NOT excluded.mem_used",
+                       (vmid, cpu_percent, mem_used, vmid))
         else:
-            db.execute("UPDATE containers SET cpu_percent=?, mem_used=?, cpu_count=? WHERE vmid=?",
-                       (cpu_percent, mem_used, int(cpu_count), vmid))
+            db.execute("INSERT INTO container_metrics (vmid, cpu_percent, mem_used, cpu_count) "
+                       "SELECT ?, ?, ?, ? " + _IF_CONTAINER + "ON CONFLICT(vmid) DO UPDATE SET "
+                       "cpu_percent=excluded.cpu_percent, mem_used=excluded.mem_used, "
+                       "cpu_count=excluded.cpu_count WHERE cpu_percent IS NOT excluded.cpu_percent "
+                       "OR mem_used IS NOT excluded.mem_used OR cpu_count IS NOT excluded.cpu_count",
+                       (vmid, cpu_percent, mem_used, int(cpu_count), vmid))
         db.commit()
 
 def db_update_resources(vmid, cores=None, memory=None, pinned_cores=None):
@@ -2385,16 +2758,21 @@ def db_update_resources(vmid, cores=None, memory=None, pinned_cores=None):
         db.execute(f"UPDATE containers SET {', '.join(sets)} WHERE vmid=?", args)
         db.commit()
 
-def db_set_resources_override(vmid, cores=None, memory=None, reset=False, cpu_mode=None):
+def db_set_resources_override(vmid, cores=None, memory=None, reset=False, cpu_mode=None,
+                              cpu_weight=None):
     """Pose le réglage de ressources PROPRE au conteneur (cf. migration `cores_override`).
-    None = champ inchangé ; `reset=True` efface d'abord les trois (retour au manifeste).
-    Les colonnes d'affichage `cores`/`memory` suivent la valeur posée."""
+    None = champ inchangé ; `reset=True` efface d'abord TOUS les champs (retour au manifeste).
+    Les colonnes d'affichage `cores`/`memory` suivent la valeur posée.
+    `cpu_weight=""` rend le POIDS au manifeste sans toucher aux autres réglages."""
     with get_db() as db:
         if reset:
             db.execute("UPDATE containers SET cores_override=NULL, memory_override=NULL, "
-                       "cpu_mode_override=NULL WHERE vmid=?", (vmid,))
+                       "cpu_mode_override=NULL, cpu_weight_override=NULL WHERE vmid=?", (vmid,))
         if cpu_mode is not None:
             db.execute("UPDATE containers SET cpu_mode_override=? WHERE vmid=?", (cpu_mode, vmid))
+        if cpu_weight is not None:
+            db.execute("UPDATE containers SET cpu_weight_override=? WHERE vmid=?",
+                       (str(cpu_weight).strip().lower() or None, vmid))
         if cores is not None:
             db.execute("UPDATE containers SET cores_override=?, cores=? WHERE vmid=?",
                        (int(cores), int(cores), vmid))
@@ -2416,6 +2794,7 @@ def db_increment_restarts(vmid):
 def db_delete_container(vmid):
     with get_db() as db:
         db.execute("DELETE FROM containers WHERE vmid=?", (vmid,))
+        db.execute("DELETE FROM container_metrics WHERE vmid=?", (vmid,))
         db.commit()
     # Libère toute réservation d'IP encore détenue par ce vmid (cas : container détruit avant que
     # son docker_ip n'ait été persisté → sinon l'IP resterait bloquée pour toujours). Le vmid, lui,
@@ -2524,7 +2903,12 @@ def db_update_node(node_id, **fields):
                "bmc_vendor", "tls_ready", "node_cert",
                # Profil CPU du nœud : modèle relevé (clé vers `cpu_profiles`) + surcharge du quota
                # de scheduler. Absents de cette liste, ils étaient AVALÉS EN SILENCE par l'upsert.
-               "cpu_model", "sch_quota_mbs")
+               "cpu_model", "sch_quota_mbs",
+               # Mode du réseau des conteneurs + subnet privé du mode interne (cf. NET_MODES).
+               # Même raison que la ligne au-dessus : hors de cette liste, l'écriture ne lève
+               # rien et ne fait rien — l'interface afficherait le mode choisi, la base garderait
+               # l'ancien, et c'est la base qui déploie.
+               "container_net_mode", "container_net_subnet", "container_net_shim_ip")
     sets, args = [], []
     for k, v in fields.items():
         if k in allowed and v is not None:
@@ -2581,6 +2965,53 @@ NODE_IFACE_FIELDS = ("ifname", "mac", "pci", "role", "pair_role", "pair_group",
                      "rx_reserve", "tx_reserve", "queue_margin", "pmd",
                      "output_profile", "alias", "vf_bdf", "vf_ip",
                      "ct_ip_start", "ct_ip_end")
+
+# ── MODE du réseau des conteneurs (colonne nodes.container_net_mode) ────────────────────────
+# Vocabulaire FERMÉ, et le seul endroit où ces deux chaînes sont écrites. Une valeur inconnue en
+# base (migration tierce, édition à la main) vaut 'site' : le mode historique est le seul repli
+# qui ne déplace pas des conteneurs en service.
+NET_MODE_SITE = "site"
+NET_MODE_INTERNE = "interne"
+NET_MODES = (NET_MODE_SITE, NET_MODE_INTERNE)
+
+
+EGRESS_NODE = "node"
+EGRESS_INTERNET = "internet"
+EGRESS_MODES = (EGRESS_NODE, EGRESS_INTERNET)
+
+
+def container_egress(c):
+    """Sortie réseau d'un conteneur — `c` = ligne, vmid, ou None. Toujours une valeur de
+    EGRESS_MODES : une valeur inconnue vaut 'node', le seul repli qui ne déplace aucun trafic."""
+    if isinstance(c, int):
+        c = db_get_container(c)
+    v = ((c or {}).get("egress") or "").strip().lower()
+    return v if v in EGRESS_MODES else EGRESS_NODE
+
+
+def db_set_container_egress(vmid, egress):
+    """Pose la sortie d'un conteneur. Rend la valeur retenue (jamais None)."""
+    val = egress if egress in EGRESS_MODES else EGRESS_NODE
+    with get_db() as db:
+        db.execute("UPDATE containers SET egress=? WHERE vmid=?", (val, vmid))
+        db.commit()
+    return val
+
+
+def node_net_mode(node):
+    """Mode du réseau des conteneurs d'un nœud — `node` = ligne, id, ou None. Toujours une des
+    valeurs de NET_MODES, jamais None : un appelant ne doit pas avoir à gérer l'absence, sinon
+    chacun réinvente son propre défaut (et un seul d'entre eux se tromperait suffit)."""
+    if isinstance(node, int):
+        node = db_get_node(node)
+    v = ((node or {}).get("container_net_mode") or "").strip().lower()
+    return v if v in NET_MODES else NET_MODE_SITE
+
+
+def node_net_interne(node):
+    """Raccourci lisible : ce nœud est-il en « réseau interne » ?"""
+    return node_net_mode(node) == NET_MODE_INTERNE
+
 
 # Rôle COMBINÉ « Management + Containers » : la carte porte À LA FOIS l'IP de contrôle du nœud
 # et le réseau macvlan des conteneurs (cas nœud sur un autre LAN que le cluster, ex. dl360Horace).
@@ -3235,6 +3666,14 @@ ALERT_KINDS = (
 # `_alerts_retention_securite`) : une piste d'audit qui tourne au bout de deux jours ne vaut rien.
 ALERT_KINDS_SECURITE = ("auth", "account")
 
+# Natures qui partent vers les CANAUX d'alerte (syslog, SNMP…) mais ne sont JAMAIS écrites dans
+# `alerts` : `_alert_kind` les refuse. `ops` = geste d'un opérateur recopié depuis le journal
+# d'exploitation quand l'exploitant l'a demandé (`ops_journal._forward`) ; ce journal a sa propre
+# table, et non un kind de plus dans `alerts` (décidé le 2026-10-17, cf. app/ops_journal.py). Les
+# canaux, eux, doivent pouvoir le nommer : sans valeur dédiée, il partait en SNMP avec
+# `bsAlarmKind = 0` (constaté le 2026-11-01).
+CHANNEL_KINDS = ("ops",)
+
 
 def _alert_kind(kind):
     """Normalise/valide un `kind`. Inconnu → None + log bruyant (pas d'échec silencieux)."""
@@ -3636,6 +4075,15 @@ def db_update_deploy_config(vmid, type_script, params):
     # conteneurs (/api/containers toutes les 5 s, surveillance…) relirait ces mégaoctets.
     if isinstance(params, dict) and "font_library" in params:
         params = {k: v for k, v in params.items() if k != "font_library"}
+    # R2 des ports (31/10) : on retient l'ancienne configuration pour que les liens de port suivent
+    # ce que CETTE écriture change aux entrées (cf. project_ports.input_changed). Seul écrivain de
+    # la configuration d'un conteneur en service : tout changement de source passe donc par ici.
+    try:
+        with get_db() as db:
+            _row = db.execute("SELECT deploy_config FROM containers WHERE vmid=?", (vmid,)).fetchone()
+        _old = (json.loads(_row["deploy_config"] or "{}") or {}).get("params") if _row else None
+    except Exception:
+        _old = None
     with get_db() as db:
         # `config_rev` : +1 à CHAQUE écriture, quelle qu'en soit la source (déploiement, hot-apply
         # persisté, câblage, macro, restauration de projet). C'est ce compteur que la garde
@@ -3646,6 +4094,12 @@ def db_update_deploy_config(vmid, type_script, params):
                    (json.dumps({"type": type_script, "params": params}),
                     datetime.now().isoformat(timespec="seconds"), auteur_courant(), vmid))
         db.commit()
+    if _old is not None:
+        try:
+            from .project_ports import input_changed
+            input_changed(vmid, type_script, _old, params)
+        except Exception as e:
+            log.warning("port links after config write #%s: %s", vmid, e)
     # « Projet vivant » (chantier 3) : toute modif de config d'un container de projet
     # déclenche un re-snapshot débouncé du projet. Import tardif (pas de cycle au boot),
     # best-effort : ne doit jamais faire échouer l'écriture.
@@ -4682,7 +5136,10 @@ def db_snapshot_for_vmids(vmids):
         # Mémoires par-container (plugin_store scopé sur le vmid) : DVE, multiview,
         # presets… embarquées dans le projet pour être restaurées avec le container.
         c["memories"] = plugin_store_list_scope(str(c.get("vmid")))
-        snapshot.append(c)
+        # Ports virtuels (option C) : le projet ne retient que `port:<id>`, jamais le flux
+        # physique qu'un port lui fournissait — cf. app/project_ports.py.
+        from .project_ports import virtualize_snapshot_entry
+        snapshot.append(virtualize_snapshot_entry(c))
     return snapshot
 
 def db_save_project(name, vmids, media_path=None):
@@ -4938,19 +5395,26 @@ def db_get_port(port_id):
         r = db.execute("SELECT * FROM project_ports WHERE id=?", (port_id,)).fetchone()
         return _parse_port(r) if r else None
 
-def db_create_port(pid, kind, media, name, ord_=0, channel_labels=None):
+def db_create_port(pid, kind, media, name, ord_=0, channel_labels=None, parent_id=None, suffix=None):
     with get_db() as db:
         cur = db.execute(
             "INSERT INTO project_ports (project_id, kind, media, name, ord, "
-            "channel_labels, created_at) VALUES (?,?,?,?,?,?,?)",
+            "channel_labels, created_at, parent_id, suffix) VALUES (?,?,?,?,?,?,?,?,?)",
             (pid, kind, media, name, ord_,
              json.dumps(channel_labels) if channel_labels is not None else None,
-             datetime.now().isoformat(timespec="seconds")))
+             datetime.now().isoformat(timespec="seconds"), parent_id, suffix))
         db.commit()
         return cur.lastrowid
 
-def db_update_port(port_id, name=None, ord_=None, channel_labels=None, binding=None):
+def db_update_port(port_id, name=None, ord_=None, channel_labels=None, binding=None,
+                   label_source=None, tsl_in=None, reusable=None):
     with get_db() as db:
+        if reusable is not None:
+            db.execute("UPDATE project_ports SET reusable=? WHERE id=?", (1 if reusable else 0, port_id))
+        if label_source is not None:
+            db.execute("UPDATE project_ports SET label_source=? WHERE id=?", (label_source, port_id))
+        if tsl_in is not None:
+            db.execute("UPDATE project_ports SET tsl_in=? WHERE id=?", (tsl_in, port_id))
         if name is not None:
             db.execute("UPDATE project_ports SET name=? WHERE id=?", (name, port_id))
         if ord_ is not None:
@@ -4964,8 +5428,61 @@ def db_update_port(port_id, name=None, ord_=None, channel_labels=None, binding=N
         db.commit()
 
 def db_delete_port(port_id):
+    """Supprime le port ET les ports qui lui sont rattachés (audios, ANC d'une virtuelle)."""
     with get_db() as db:
-        db.execute("DELETE FROM project_ports WHERE id=?", (port_id,))
+        ids = [int(port_id)] + [r[0] for r in db.execute(
+            "SELECT id FROM project_ports WHERE parent_id=?", (port_id,)).fetchall()]
+        for i in ids:
+            db.execute("DELETE FROM project_ports WHERE id=?", (i,))
+            db.execute("DELETE FROM port_links WHERE port_id=?", (i,))   # foreign_keys is OFF
+            db.execute("DELETE FROM source_labels WHERE shm=?", ("port:%d" % i,))
+        db.commit()
+
+def _parse_port_link(r):
+    link = dict(r)
+    try:
+        link["to_slot"] = json.loads(link.get("to_slot") or "null")
+    except (TypeError, ValueError):
+        link["to_slot"] = None
+    return link
+
+def db_port_links(port_id=None, consumer_uuid=None):
+    """Port links, filtered by port and/or consumer (no filter = all)."""
+    q, args = "SELECT * FROM port_links WHERE 1=1", []
+    if port_id is not None:
+        q += " AND port_id=?"; args.append(port_id)
+    if consumer_uuid is not None:
+        q += " AND consumer_uuid=?"; args.append(consumer_uuid)
+    with get_db() as db:
+        return [_parse_port_link(r) for r in db.execute(q + " ORDER BY id", args).fetchall()]
+
+def db_port_link_set(port_id, consumer_uuid, kind, to_slot, shm):
+    """Create or replace the link of ONE consumer input (an input is fed by one port at most)."""
+    with get_db() as db:
+        # `rev` ne bouge que si le flux change : c'est la révision à partir de laquelle un client
+        # a pu voir ce flux dans la config du consommateur.
+        db.execute("INSERT INTO port_links (port_id, consumer_uuid, kind, to_slot, shm, created_at, rev) "
+                   "VALUES (?,?,?,?,?,?,COALESCE((SELECT config_rev FROM containers "
+                   "WHERE instance_uuid=? LIMIT 1), 0)) "
+                   "ON CONFLICT(consumer_uuid, kind, to_slot) DO UPDATE SET "
+                   "port_id=excluded.port_id, shm=excluded.shm, "
+                   "rev=CASE WHEN port_links.shm=excluded.shm THEN port_links.rev ELSE excluded.rev END",
+                   (port_id, consumer_uuid, kind or "video", json.dumps(to_slot), shm or "",
+                    datetime.now().isoformat(timespec="seconds"), consumer_uuid))
+        db.commit()
+
+def db_port_link_delete(consumer_uuid, kind=None, to_slot=None, any_slot=False):
+    """Drop the link of one consumer input (kind + slot), every link of a kind (`any_slot`),
+    or every link of the consumer (kind=None)."""
+    with get_db() as db:
+        if kind is None:
+            db.execute("DELETE FROM port_links WHERE consumer_uuid=?", (consumer_uuid,))
+        elif any_slot:
+            db.execute("DELETE FROM port_links WHERE consumer_uuid=? AND kind=?",
+                       (consumer_uuid, kind))
+        else:
+            db.execute("DELETE FROM port_links WHERE consumer_uuid=? AND kind=? AND to_slot=?",
+                       (consumer_uuid, kind, json.dumps(to_slot)))
         db.commit()
 
 def db_import_project(name, snapshot, media_path=None):
@@ -5216,17 +5733,22 @@ def db_plugin_store_delete(type_, name, scope=""):
     return n > 0
 
 
-def db_cable_layout_save(name, payload):
+def db_cable_layout_save(name, payload, owner_id=None, shared=False):
     name = (name or "").strip()
     if not name:
         raise ValueError("nom requis")
     blob = json.dumps(payload or {"positions": {}, "collapsed": []})
     with get_db() as db:
         cur = db.execute(
-            "INSERT INTO cable_layouts (name, created_at, payload) VALUES (?, ?, ?)",
-            (name, datetime.now().isoformat(timespec="seconds"), blob))
+            "INSERT INTO cable_layouts (name, created_at, payload, owner_id, shared) VALUES (?, ?, ?, ?, ?)",
+            (name, datetime.now().isoformat(timespec="seconds"), blob, owner_id, 1 if shared else 0))
         db.commit()
         return cur.lastrowid
+
+# A layout saved before views existed carries only positions: recalled as a free-mode view
+# with neutral filters (show everything), so nothing saved is lost.
+_LEGACY_VIEW_SETTINGS = {"view_mode": "free", "signal": ["video", "audio", "data"],
+                         "project": "", "node": "", "projects_view": False}
 
 def _parse_cable_layout(row):
     if not row:
@@ -5236,25 +5758,76 @@ def _parse_cable_layout(row):
         d["payload"] = json.loads(d.get("payload") or '{"positions":{},"collapsed":[]}')
     except Exception:
         d["payload"] = {"positions": {}, "collapsed": []}
+    if not isinstance(d["payload"].get("settings"), dict):
+        d["payload"]["settings"] = dict(_LEGACY_VIEW_SETTINGS)
+    d["shared"] = bool(d.get("shared"))
     return d
 
-def db_cable_layouts_list():
+_CABLE_LAYOUT_COLS = ("SELECT l.id, l.name, l.created_at, l.payload, l.owner_id, l.shared, "
+                      "u.username AS owner_name FROM cable_layouts l "
+                      "LEFT JOIN users u ON u.id = l.owner_id ")
+
+CABLE_LAYOUT_SHARE_KINDS = ("user", "group", "project")
+
+def db_cable_layouts_list(user_id=None, group_ids=(), project_ids=()):
+    """Views visible to `user_id`: their own, ownerless (pre-ownership) ones, those shared with
+    everyone, and those shared with them, one of their groups or one of their projects."""
+    who = [("user", user_id)] + [("group", g) for g in group_ids] + [("project", p) for p in project_ids]
+    match = " OR ".join("(s.kind = ? AND s.target_id = ?)" for _ in who)
+    args = [user_id] + [x for pair in who for x in pair]
     with get_db() as db:
         rows = db.execute(
-            "SELECT id, name, created_at, payload FROM cable_layouts ORDER BY id DESC"
-        ).fetchall()
-    return [_parse_cable_layout(r) for r in rows]
+            _CABLE_LAYOUT_COLS + "WHERE l.owner_id IS ? OR l.shared = 1 OR l.owner_id IS NULL "
+            "OR EXISTS (SELECT 1 FROM cable_layout_shares s WHERE s.layout_id = l.id AND (" + match + ")) "
+            "ORDER BY l.name COLLATE NOCASE, l.id", args).fetchall()
+        counts = dict(db.execute("SELECT layout_id, COUNT(*) FROM cable_layout_shares GROUP BY layout_id").fetchall())
+    out = [_parse_cable_layout(r) for r in rows]
+    for d in out:
+        d["share_count"] = counts.get(d["id"], 0)
+    return out
+
+def db_cable_layout_shares(lid):
+    """[{kind, id}] — the view's explicit recipients (« everyone » is `shared` on the view)."""
+    with get_db() as db:
+        return [{"kind": r[0], "id": r[1]} for r in db.execute(
+            "SELECT kind, target_id FROM cable_layout_shares WHERE layout_id=? ORDER BY kind, target_id",
+            (lid,)).fetchall()]
+
+def db_cable_layout_set_shares(lid, everyone, recipients):
+    """Replace the view's sharing in one transaction: `everyone` flag + explicit recipients."""
+    rows = sorted({(r["kind"], int(r["id"])) for r in recipients if r.get("kind") in CABLE_LAYOUT_SHARE_KINDS})
+    with get_db() as db:
+        db.execute("UPDATE cable_layouts SET shared = ? WHERE id = ?", (1 if everyone else 0, lid))
+        db.execute("DELETE FROM cable_layout_shares WHERE layout_id = ?", (lid,))
+        db.executemany("INSERT INTO cable_layout_shares (layout_id, kind, target_id) VALUES (?, ?, ?)",
+                       [(lid, k, t) for k, t in rows])
+        db.commit()
+    return len(rows)
 
 def db_cable_layout_get(lid):
     with get_db() as db:
-        row = db.execute(
-            "SELECT id, name, created_at, payload FROM cable_layouts WHERE id=?",
-            (lid,)).fetchone()
+        row = db.execute(_CABLE_LAYOUT_COLS + "WHERE l.id=?", (lid,)).fetchone()
     return _parse_cable_layout(row)
+
+def db_cable_layout_update(lid, name=None, shared=None, payload=None):
+    sets, args = [], []
+    if name is not None:
+        sets.append("name = ?"); args.append(name.strip())
+    if payload is not None:
+        sets.append("payload = ?"); args.append(json.dumps(payload))
+    if shared is not None:
+        sets.append("shared = ?"); args.append(1 if shared else 0)
+    if not sets:
+        return False
+    with get_db() as db:
+        cur = db.execute("UPDATE cable_layouts SET %s WHERE id=?" % ", ".join(sets), (*args, lid))
+        db.commit()
+        return cur.rowcount > 0
 
 def db_cable_layout_delete(lid):
     with get_db() as db:
         cur = db.execute("DELETE FROM cable_layouts WHERE id=?", (lid,))
+        db.execute("DELETE FROM cable_layout_shares WHERE layout_id=?", (lid,))
         db.commit()
         return cur.rowcount > 0
 

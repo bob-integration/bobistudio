@@ -530,12 +530,20 @@ def _check_mxl_history_drift(node_id, name, node):
             return
         unit_ok = len(parts) > 1 and parts[1].strip() == "persistant"
         want_ms = _cfg("mxl_history_ms", mtl.MXL_HISTORY_MS_DEFAULT)
+        # L'intention d'un nœud qui porte un override (node_settings) est l'OVERRIDE : comparer au
+        # global ferait alerter — et réparer vers la mauvaise valeur — un nœud fidèle à son réglage.
+        from . import mxl_history
+        _ov = mxl_history.node_override_ms(node_id)
+        if _ov is not None:
+            want_ms = _ov
         want_ns = int(want_ms) * 1_000_000
         cur_ns = int(cur_raw) if cur_raw.isdigit() else None
         # Second domaine détecté → notre hypothèse « un nœud = un domaine » est tombée, et le
         # réglage ne couvre PAS ce domaine-là. On le dit plutôt que de continuer à supposer.
         autres = int(parts[2]) if len(parts) > 2 and parts[2].strip().isdigit() else 0
         casse = (cur_ns != want_ns) or autres > 0
+        mxl_history.note_observed(node_id, cur_ns // 1_000_000 if cur_ns is not None else None,
+                                  want_ms, unit_ok)
         etat = _mxl_history_alert_state.get(node_id)
         if casse and etat is None:
             # « profondeur inconnue » (fichier introuvable) est une VALEUR DE REPLI française : elle
@@ -568,6 +576,10 @@ def _check_mxl_history_drift(node_id, name, node):
             db_add_alert("alert.prep.mxl_profondeur_retablie", "info", node_id=node_id,
                          kind="prep", params={"n": name, "want_ms": want_ms})
             _mxl_history_alert_state[node_id] = None
+        # ★ PAS DE RÉPARATION ICI (décision du 2026-10-30) : la profondeur est posée à
+        # l'INSTALLATION du nœud (`_enroll_finalize`), et une dérive doit se LIRE — une réparation
+        # silencieuse cachait que le nœud avait été installé sans elle (Z8 : 8 alertes non lues).
+        # Rattrapage : le bouton du Monitoring → Nœuds (`POST /api/mtl/mxl_history`).
     except Exception as e:
         log.debug("node_health dérive profondeur MXL nœud %s: %s", node_id, e)
 
@@ -1061,6 +1073,11 @@ def _sample_one(node):
             from . import iface_identity
             iface_identity.check(node)
         _merge_prep(nid, snap, node)
+        try:
+            from . import mxl_history
+            snap["mxl_history"] = mxl_history.status(nid)   # None = pas encore mesuré
+        except Exception as e:
+            log.debug("node_health profondeur MXL nœud %s: %s", nid, e)
         _record(nid, snap)
         _check_disk_alert(nid, snap["name"], snap.get("disks"))
         # Détection de reboot du nœud (+ auto-recovery si activé) — best-effort, ne lève jamais.

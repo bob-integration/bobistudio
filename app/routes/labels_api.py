@@ -220,6 +220,33 @@ def tsl_label_names_set():
     return jsonify({"ok": True})
 
 
+@bp.route("/api/labels/port_cols", methods=["GET"])
+@require_login
+def port_label_cols_get():
+    """Colonnes où s'écrivent le nom LONG et le nom COURT des ports de projet."""
+    from ..project_ports import label_cols
+    return jsonify(label_cols())
+
+
+@bp.route("/api/labels/port_cols", methods=["POST"])
+@require_perm("settings.edit")
+def port_label_cols_set():
+    """`{"long": N, "short": M}` — deux colonnes distinctes de 2 à 9.
+
+    ⚠ Changer de colonne ne déplace pas les noms déjà saisis : ils restent lisibles dans leur
+    ancienne colonne, et les ports retombent sur leur nom tant qu'on ne les a pas renommés."""
+    from ..project_ports import _valid_cols, invalidate_label_index
+    d = request.json or {}
+    cols = _valid_cols({"long": d.get("long"), "short": d.get("short")})
+    if cols != {"long": d.get("long"), "short": d.get("short")}:
+        return jsonify({"error": "deux colonnes distinctes de 2 à 9 attendues"}), 400
+    db_set_setting("port_label_cols", cols)
+    invalidate_label_index()
+    from ..tally import invalider_libelles
+    invalider_libelles()
+    return jsonify({"ok": True, **cols})
+
+
 @bp.route("/api/labels/cols", methods=["GET"])
 @require_login
 def tsl_label_cols_get():

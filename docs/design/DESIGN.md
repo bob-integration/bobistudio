@@ -1,6 +1,6 @@
 ---
 name: Bobi.Studio
-description: Console d'orchestration de containers LXC pour pipeline vidéo ST 2110 simulé, trois lumières (dark, light, studio).
+description: Console d'orchestration de containers Docker pour pipeline vidéo ST 2110, trois lumières (dark, light, studio).
 colors:
   slate-signal: "#7aa2c8"
   slate-signal-hover: "#95b7d6"
@@ -127,7 +127,7 @@ components:
 
 # Design System: Bobi.Studio
 
-> Statut : vérifié contre le code (base.css, layout.html, plugins) le **2026-07-04**.
+> Statut : vérifié contre le code (base.css, layout.html, plugins) le **2026-07-04** ; la nav des Réglages et la section « Contrôles partagés » ont été reprises le **2026-11-01**.
 
 ## 1. Overview
 
@@ -243,6 +243,13 @@ Le système est **majoritairement flat**. La hiérarchie de profondeur passe par
 
 ## 5. Components
 
+### Contrôles partagés (`ctl-*`) — règle absolue
+Tout bouton, fader, rotatif, vu-mètre, afficheur ou bouton de bus de mélangeur vient du **catalogue partagé**, jamais redessiné — dans un plugin comme dans une page du cœur.
+- **Où :** `static/css/controls.css` (familles `ctl-*` : `ctl-push`, `ctl-bus`, `ctl-meter`, `ctl-readout`, `ctl-knob`, `ctl-fader`, `ctl-switch`…), `static/js/controls.js` (`window.MXLControls`) et son moteur `static/js/bobi-controls.js` (`BobiControls.create(...)`, `BobiControls.fromLeaf(...)`), chargés par `layout.html` sur toutes les pages.
+- **Inventaire vivant :** Réglages → Contrôles.
+- **Un contrôle qui manque** s'AJOUTE au catalogue (nouvelle famille ou variante) puis s'utilise ; il ne vit pas en privé dans une page.
+- **Taille :** un bouton a une taille fixe, jamais étiré à l'espace disponible.
+
 ### Buttons
 - **Shape:** rayon `var(--radius-small)` = 4–6px. Pas pill, pas square.
 - **Primary (`.btn` + couleur):** `.btn-blue`, `.btn-green`, `.btn-red`, `.btn-orange`, `.btn-purple` portent une couleur d'intention pleine désaturée (`#3b5673`, `#355c43`, `#6e3138`…). Texte `#f0f1f3`, padding `6px 12px`, font-size `0.85em`, weight 500.
@@ -283,7 +290,7 @@ Le système est **majoritairement flat**. La hiérarchie de profondeur passe par
 - **Groupes horizontaux:** envelopper dans `label.toggle-inline` (inline-flex, gap `7px`, weight 500, texte `var(--text)`).
 
 ### Nav Réglages à 2 niveaux (templates/settings.html)
-- **Niveau 0 — groupes:** rangée `.tabs.set-groups` de 7 groupes de haut niveau (Général, Cluster & réseau, Nœuds & matériel, Signal & format, Médias, Protocoles & pupitres, Système).
+- **Niveau 0 — groupes:** rangée `.tabs.set-groups` des groupes de haut niveau (Général, Cluster & Réseau, Nœuds & Matériel, Signal & Format, Labels & Tally, Alarmes, Médias, NMOS, Protocoles & Pupitres, Système — `SET_GROUPS` dans `templates/settings.html` fait foi ; les libellés sont les clés `settings.group.*`).
 - **Niveau 1 — onglets:** rangée `.tabs.set-subnav` des onglets existants, **filtrée** au groupe actif par `switchSetGroup()` (mapping `SET_GROUPS` → `SET_TABS`, permissions respectées). Les sous-onglets internes des pages restent inchangés.
 - **Style:** les deux niveaux réutilisent le composant Tabs standard ; aucun style bespoke.
 

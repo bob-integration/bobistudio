@@ -152,5 +152,17 @@ def main():
     return 0
 
 
+# ── Précondition : ce banc EXIGE root ───────────────────────────────────────────────
+# Il lance l'installeur (`get.sh`), qui refuse de tourner sans root parce qu'il pose des
+# services systemd. Sans root, chacun de ses contrôles échoue sur « à lancer en root. » : le
+# banc dénonce alors la machine et non le code — c'est ce qui s'est produit en CI le
+# 2026-10-25, sur un exécuteur qui tourne sous l'utilisateur `runner`.
+# L'abstention est ANNONCÉE avec le marqueur NON MESURÉ, et non silencieuse : une garde qui se
+# taît quand sa dépendance manque devient une garde inerte que personne ne remarque.
+if os.geteuid() != 0:
+    print("NON MESURÉ : ce banc exige root (get.sh pose des services systemd). "
+          "Aucun contrôle exécuté.")
+    sys.exit(0)
+
 if __name__ == "__main__":
     sys.exit(main())

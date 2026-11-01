@@ -2,12 +2,17 @@
 # Gates BLOQUANTS : smoke import (circularités app/), scan des plugins (accolades
 # non doublées). Étape ADVISORY (non bloquante) : doctor des sous-modules + pyflakes.
 #
-# NB sous-modules : ce sont des dépôts PRIVÉS (git@github.com:bob-integration/…).
-# Pour que `submodules: recursive` fonctionne en CI il faut fournir un accès :
-#   - soit un PAT org dans le secret SUBMODULES_TOKEN (passé à actions/checkout `token`),
-#   - soit une clé SSH de déploiement injectée avant le checkout.
+# NB sous-modules : ce sont 37 dépôts PRIVÉS, déclarés dans .gitmodules en **https**
+# (https://github.com/bob-integration/…) — et c'est ce qui décide du mode d'accès :
+#   un PAT org dans le secret SUBMODULES_TOKEN, passé à `actions/checkout` en `token`,
+#   SUFFIT. L'action le réinjecte en en-tête HTTP, dont héritent les sous-modules.
+#   AUCUNE clé SSH de déploiement n'est nécessaire. (Elle le serait pour des URL `git@`,
+#   qu'un `token` ne couvre pas — ce fichier annonçait des URL SSH à tort jusqu'au
+#   2026-10-25.) Le repli `github.token` ne porte que sur le dépôt courant.
 # Sans credentials, le checkout des sous-modules échoue → les jobs dépendants
 # (scan plugins) échoueront, ce qui est le comportement voulu (on veut le savoir).
+# Mesuré : c'est exactement ce qui a tué les 8 runs du 2026-07-04, tous morts à l'étape
+# de checkout, et ce que le secret a débloqué au premier run vert du 2026-10-25.
 name: ci
 
 on:
@@ -47,6 +52,24 @@ jobs:
         run: |
           sudo mkdir -p /opt
           sudo ln -sfn "$GITHUB_WORKSPACE" /opt/bobistudio
+
+      - name: Base jetable pour la CI (jamais celle de la production)
+        # `import main` n'est PAS inoffensif : main.py exécute au niveau module
+        # `app.secret_key = _ensure_secret_key()`, qui appelle `init_db()` — donc le seul fait
+        # d'importer FABRIQUE la base à l'emplacement de la production, et y écrit la clé
+        # secrète. Mesuré au premier run vert de cette CI (2026-10-25, run 40187687253) : la
+        # base était créée vide à l'étape de smoke import, et 24 tests rendaient ensuite un
+        # verdict VERT en lisant une base vide — silencieux, donc pire qu'un échec.
+        # `running_under_tests()` ne peut pas l'attraper : `sys.argv[0]` vaut "-c" ici.
+        # On déplace donc la production elle-même, par le mécanisme de surcharge du produit
+        # (`config_local.py`, non versionné, importé par app/config.py AVANT que
+        # PRODUCTION_DB_PATH soit figé). L'import reste nu : aucune circularité n'est masquée.
+        run: |
+          # `>>` et non `>` : sur un checkout frais le fichier est absent (il est dans
+          # .gitignore), et s'il existait on ne l'écraserait pas — `from config_local import *`
+          # retient la DERNIÈRE affectation, donc la nôtre gagne de toute façon.
+          printf 'DB_PATH = "%s/ci-bobistudio.db"\n' "$RUNNER_TEMP" >> config_local.py
+          echo "DB_PATH de la CI : $(python -c 'from app import config; print(config.PRODUCTION_DB_PATH)')"
 
       - name: Smoke import (circularités app/)
         run: |
@@ -103,16 +126,59 @@ jobs:
       - name: Suite hors ligne (tests/)
         run: |
           ec=0
+          journal="$RUNNER_TEMP/suite.log"
+          : > "$journal"
+          lancer() {   # $1 = interpréteur, $2 = fichier
+            echo "── $2"
+            # La sortie passe par un FICHIER, jamais par un tube : `cmd | tee` rendrait le code
+            # de `tee` et la suite paraîtrait verte quoi qu'il arrive.
+            if "$1" "$2" > "$RUNNER_TEMP/un.log" 2>&1; then :; else
+              echo "   ✗ ÉCHEC : $2"; ec=1
+            fi
+            cat "$RUNNER_TEMP/un.log"
+            cat "$RUNNER_TEMP/un.log" >> "$journal"
+          }
           for f in tests/*.py; do
-            case "$(basename "$f")" in __init__.py|submodules-doctor*) continue ;; esac
-            echo "── $f"
-            python "$f" || { echo "   ✗ ÉCHEC : $f"; ec=1; }
+            # `submodules-doctor` n'a plus à être exclu ici : c'est un .sh, hors du glob.
+            case "$(basename "$f")" in __init__.py) continue ;; esac
+            lancer python "$f"
           done
           for f in tests/*.js; do
             [ -e "$f" ] || continue
-            echo "── $f"
-            node "$f" || { echo "   ✗ ÉCHEC : $f"; ec=1; }
+            lancer node "$f"
           done
+
+          # ── Ce qui n'a PAS été mesuré ────────────────────────────────────────────────
+          # Un banc qui s'abstient faute de root, de certificat ou d'un outil reste VERT : sans
+          # ce récapitulatif, l'abstention devient une garde inerte que personne ne remarque.
+          # On ne la transforme pas en échec (l'exécuteur n'y peut rien), on la rend LISIBLE.
+          echo
+          echo "── Contrôles NON MESURÉS sur cet exécuteur :"
+          if grep -h "NON MESURÉ" "$journal" | sort -u | sed 's/^/   /' | grep .; then
+            echo "   (total : $(grep -c "NON MESURÉ" "$journal") ligne(s))"
+          else
+            echo "   aucun — tout a été mesuré."
+          fi
+
+          # ── La base de production ne doit pas avoir été ouverte, même en lecture ─────
+          # ⚠ On ne cherche pas « READ-ONLY » tout court : `verif_garde_base_prod` ouvre
+          # EXPRÈS une fausse production sous /tmp (c'est son objet), et un banc peut imprimer
+          # ces mots dans un libellé de contrôle — verif_lv2_plugins le fait. Les deux faisaient
+          # échouer la suite à tort au run 40236890587. On ne retient que les ouvertures de LA
+          # base désignée comme production ici, par son chemin exact.
+          if grep -h "test opened the production database" "$journal" \
+               | grep -F "$RUNNER_TEMP/ci-bobistudio.db" > "$RUNNER_TEMP/fuites.txt"; then
+            echo
+            echo "   ✗ des bancs ont ouvert la base de production de la CI :"
+            sort -u "$RUNNER_TEMP/fuites.txt" | sed 's/^/     /'
+            ec=1
+          fi
+          # Et rien ne doit avoir été créé à l'emplacement de la production du dépôt.
+          if [ -e "$GITHUB_WORKSPACE/db_bobistudio.db" ]; then
+            echo
+            echo "   ✗ un fichier de base a été créé dans le dépôt : $GITHUB_WORKSPACE/db_bobistudio.db"
+            ec=1
+          fi
           exit $ec
 
       - name: Doctor des sous-modules (advisory)

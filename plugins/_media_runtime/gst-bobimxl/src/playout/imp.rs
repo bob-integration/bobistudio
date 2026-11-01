@@ -63,6 +63,10 @@ struct Settings {
     /// flowDefs JSON des deux flux ANC (bobimxl.build_data_flow_def) : TC clip, TC antenne.
     anc1_flow_def: String,
     anc2_flow_def: String,
+    /// flowDef JSON du flux KEY (même géométrie que la vidéo) ; vide = pas de sortie key. Le key
+    /// est la couche ALPHA de la trame écrite au MÊME créneau que le fill (Y = alpha pleine échelle,
+    /// chroma neutre — contrat du flux `_key` du plugin stills).
+    key_flow_def: String,
     writer_options: String,
     /// Trames d'avance par tête (0 = une demi-seconde de la cadence du flux).
     queue_frames: u32,
@@ -77,6 +81,7 @@ impl Default for Settings {
             monitor_flow_def: String::new(),
             anc1_flow_def: String::new(),
             anc2_flow_def: String::new(),
+            key_flow_def: String::new(),
             writer_options: String::new(),
             queue_frames: 0,
         }
@@ -191,6 +196,8 @@ struct Stats {
     repeated: u64,
     switches: u64,
     format_errors: u64,
+    /// La dernière trame écrite portait une couche alpha (sortie key active seulement).
+    alpha: bool,
 }
 
 struct Ctl {
@@ -621,6 +628,33 @@ impl BobiPlayout {
                 gst::StateChangeError
             })?);
         }
+        let key = if s.key_flow_def.is_empty() {
+            None
+        } else {
+            let kgeo = Geometry::from_json(&s.key_flow_def).map_err(|e| {
+                gst::element_imp_error!(self, gst::ResourceError::Settings, ["key-flow-def : {}", e]);
+                gst::StateChangeError
+            })?;
+            if kgeo.planes != geo.planes || kgeo.bps != geo.bps || kgeo.interlaced != geo.interlaced
+                || kgeo.rate_num != geo.rate_num || kgeo.rate_den != geo.rate_den {
+                gst::element_imp_error!(self, gst::ResourceError::Settings,
+                    ["key-flow-def : format différent du flux vidéo (le key doit avoir la géométrie du fill)"]);
+                return Err(gst::StateChangeError);
+            }
+            if let Some(msg) = purge_if_stale(&inst, &s.domain, &kgeo.flow_id, &s.key_flow_def) {
+                gst::warning!(CAT, imp = self, "{}", msg);
+            }
+            let (kfw, _i, _c) = inst.create_flow_writer(&s.key_flow_def, opts).map_err(|e| {
+                gst::element_imp_error!(self, gst::ResourceError::OpenWrite, ["flux key {} : {}", kgeo.flow_id, e]);
+                gst::StateChangeError
+            })?;
+            let kw = kfw.to_grain_writer().map_err(|e| {
+                gst::element_imp_error!(self, gst::ResourceError::OpenWrite, ["écrivain key : {}", e]);
+                gst::StateChangeError
+            })?;
+            gst::info!(CAT, imp = self, "flux key {} : couche alpha au créneau du fill", kgeo.flow_id);
+            Some(KeyOut::new(kw, kgeo))
+        };
         gst::info!(CAT, imp = self, "flux vidéo {} {} ({} i/s, {})", geo.flow_id,
             if created { "créé" } else { "rattaché" },
             geo.rate_num as f64 / geo.rate_den as f64,
@@ -636,7 +670,7 @@ impl BobiPlayout {
         let obj = self.obj().clone();
         let h = std::thread::Builder::new()
             .name("bobiplayout-grille".into())
-            .spawn(move || grid_loop(obj, shared, inst, writer, geo, audio, monitor, anc_w))
+            .spawn(move || grid_loop(obj, shared, inst, writer, geo, audio, monitor, anc_w, key))
             .map_err(|_| gst::StateChangeError)?;
         *self.thread.lock().unwrap() = Some(h);
         Ok(())
@@ -668,6 +702,7 @@ impl BobiPlayout {
 }
 
 // ─── Boucle-grille ───────────────────────────────────────────────────────────────────────────
+#[derive(Clone, Copy)]
 enum Src<'a> {
     Frame(&'a Frame),
     Black,
@@ -714,6 +749,10 @@ fn narrow_frame(buf: &gst::Buffer, info: &gst_video::VideoInfo) -> Option<(gst::
         F::I42210le | F::I42212le => F::Y42b,
         F::I42010le | F::I42012le => F::I420,
         F::Y44410le | F::Y44412le => F::Y444,
+        // Avec ALPHA (sortie key) : la couche alpha, 4e plan, est réduite comme les trois autres.
+        F::A42010le | F::A42012le => F::A420,
+        F::A42210le | F::A42212le => F::A422,
+        F::A44410le | F::A44412le => F::A444,
         _ => return None,
     };
     let shift = info.format_info().depth()[0].checked_sub(8).filter(|s| *s > 0)?;
@@ -775,7 +814,9 @@ fn write_frame(w: &mxl::GrainWriter, geo: &Geometry, k: u64, src: Src, black: &[
             }
             mapped = gst_video::VideoFrameRef::from_buffer_ref_readable(f.buf.as_ref(), &f.info).ok();
             match &mapped {
-                Some(vf) if ok && vf.n_planes() as usize == geo.planes.len() => {
+                // Une trame AVEC alpha (sortie key) a un 4e plan : le fill prend les trois premiers.
+                Some(vf) if ok && (vf.n_planes() as usize == geo.planes.len()
+                                   || vf.n_planes() as usize == geo.planes.len() + 1) => {
                     for (p, &(row, rows)) in geo.planes.iter().enumerate() {
                         let stride = vf.plane_stride()[p] as usize;
                         match vf.plane_data(p as u32) {
@@ -797,6 +838,13 @@ fn write_frame(w: &mxl::GrainWriter, geo: &Geometry, k: u64, src: Src, black: &[
             off += row * rows;
         }
     }
+    write_planes(w, geo, k, &planes);
+    ok
+}
+
+/// Écrit des plans (données, pas de ligne) dans les grains de l'index de TRAME `k` : un grain en
+/// progressif, deux grains-champs en entrelacé. Commun au fill et au key.
+fn write_planes(w: &mxl::GrainWriter, geo: &Geometry, k: u64, planes: &[(&[u8], usize)]) {
     let fields: &[(u64, usize)] = if geo.interlaced {
         let first = if geo.bff { 1 } else { 0 };
         &[(2 * k, first), (2 * k + 1, 1 - first)]
@@ -822,7 +870,76 @@ fn write_frame(w: &mxl::GrainWriter, geo: &Geometry, k: u64, src: Src, black: &[
         }
         let _ = g.commit(total);
     }
-    ok
+}
+
+/// Sortie KEY : écrivain, géométrie (celle du fill) et deux trames constantes — OPAQUE (Y au
+/// maximum : trame sans alpha, comme une image sans transparence dans stills) et TRANSPARENTE
+/// (Y = 0 : noir à l'antenne, rien n'est découpé). Chroma neutre dans les deux.
+struct KeyOut {
+    w: mxl::GrainWriter,
+    geo: Geometry,
+    opaque: Vec<u8>,
+    clear: Vec<u8>,
+}
+
+impl KeyOut {
+    fn new(w: mxl::GrainWriter, geo: Geometry) -> Self {
+        let full: u32 = (1u32 << geo.bit_depth) - 1;
+        let mid: u32 = 1 << (geo.bit_depth - 1);
+        let fill = |y: u32| {
+            let mut out = Vec::with_capacity(geo.frame_bytes());
+            for (i, &(w, h)) in geo.planes.iter().enumerate() {
+                let val = if i == 0 { y } else { mid };
+                let n = (w / geo.bps) * h;
+                if geo.bps == 1 {
+                    out.extend(std::iter::repeat_n(val as u8, n));
+                } else {
+                    let le = (val as u16).to_le_bytes();
+                    for _ in 0..n {
+                        out.extend_from_slice(&le);
+                    }
+                }
+            }
+            out
+        };
+        let (opaque, clear) = (fill(full), fill(0));
+        Self { w, geo, opaque, clear }
+    }
+
+    /// Key du créneau `k`, écrit APRÈS le fill du même créneau : la couche alpha de la trame si elle
+    /// en a une (4e plan, à la profondeur du flux), sinon opaque ; transparent sur du noir.
+    /// Renvoie true si l'alpha de la trame a été écrit.
+    fn write(&self, k: u64, src: Src) -> bool {
+        let geo = &self.geo;
+        let base: &[u8] = if matches!(src, Src::Black) { &self.clear } else { &self.opaque };
+        let mut planes: Vec<(&[u8], usize)> = Vec::with_capacity(3);
+        let mut off = 0;
+        for &(row, rows) in &geo.planes {
+            planes.push((&base[off..off + row * rows], row));
+            off += row * rows;
+        }
+        let mapped;
+        let mut alpha = false;
+        if let Src::Frame(f) = src {
+            let depth_ok = (if f.info.format_info().depth()[0] > 8 { 2 } else { 1 }) == geo.bps;
+            mapped = gst_video::VideoFrameRef::from_buffer_ref_readable(f.buf.as_ref(), &f.info).ok();
+            if let Some(vf) = &mapped {
+                let ap = geo.planes.len();
+                if depth_ok && vf.n_planes() as usize == ap + 1 {
+                    let (row, rows) = geo.planes[0];
+                    let stride = vf.plane_stride()[ap] as usize;
+                    if let Ok(d) = vf.plane_data(ap as u32) {
+                        if stride >= row && d.len() >= stride * (rows - 1) + row {
+                            planes[0] = (d, stride);
+                            alpha = true;
+                        }
+                    }
+                }
+            }
+        }
+        write_planes(&self.w, geo, k, &planes);
+        alpha
+    }
 }
 
 /// Bloc [start, start+n) d'un flux audio : `buf` est planaire (canal c = buf[c*n..(c+1)*n]).
@@ -855,7 +972,9 @@ fn grid_loop(
     audio: Option<(mxl::SamplesWriter, usize)>,
     monitor: Option<(mxl::SamplesWriter, usize)>,
     anc_w: Vec<mxl::GrainWriter>,
+    key: Option<KeyOut>,
 ) {
+    let mut last_alpha = false;
     let tc_fps = (geo.rate_num as f64 / geo.rate_den.max(1) as f64).round() as u32;
     let rate = geo.rate();
     let a_rate = mxl::Rational { numerator: AUDIO_RATE as i64, denominator: 1 };
@@ -901,9 +1020,16 @@ fn grid_loop(
         }
         last_k = Some(k);
         let g = inst.index_to_timestamp(k, &rate).unwrap_or(0);
+        // Réveil au DÉBUT du créneau k, pas à son centre : l'instant d'un index est le MILIEU de
+        // son créneau (la grille passe à k une demi-période avant `g`, mesuré sur dell-1 le
+        // 2026-10-25). Dormir jusqu'à `g` publiait l'image à 12,2 ms sur 20, et un mélangeur « au
+        // plus rapide » abandonnait l'attente à la demi-période. `g` reste l'instant du créneau
+        // pour tout le reste (bloc audio, commandes datées, ancre).
+        let half = inst.index_to_timestamp(k + 1, &rate).unwrap_or(g).saturating_sub(g) / 2;
+        let wake = g.saturating_sub(half);
         let now = inst.get_time();
-        if g > now {
-            std::thread::sleep(Duration::from_nanos(g - now));
+        if wake > now {
+            std::thread::sleep(Duration::from_nanos(wake - now));
         }
 
         // Bloc audio de CE créneau : échantillons TAI [g, g_suivant), contigu au précédent.
@@ -1329,7 +1455,17 @@ fn grid_loop(
             (Some(f), false) => Src::Frame(f),
             _ => Src::Black,
         };
-        if !write_frame(&writer, &geo, k, src, &black) {
+        let fill_ok = write_frame(&writer, &geo, k, src, &black);
+        // Key au MÊME créneau, juste après son fill : la paire est appariée par construction. Une
+        // trame refusée pour le fill (géométrie) donne un key transparent, pas un key sans image.
+        if let Some(ko) = &key {
+            let a = ko.write(k, if fill_ok { src } else { Src::Black });
+            if a != last_alpha {
+                last_alpha = a;
+                shared.ctl.lock().unwrap().stats.alpha = a;
+            }
+        }
+        if !fill_ok {
             let mut ctl = shared.ctl.lock().unwrap();
             ctl.stats.format_errors += 1;
             if ctl.stats.format_errors == 1 {
@@ -1337,6 +1473,7 @@ fn grid_loop(
             }
         }
     }
+    drop(key);
     drop(writer);
     drop(audio);
     drop(monitor);
@@ -1400,6 +1537,11 @@ impl ObjectImpl for BobiPlayout {
                     .blurb("Solo par sortie (0/1) : ÉCOUTE sur le flux monitoring (1 = cette sortie, 2 = G/D, plus = somme), sans effet sur l'antenne")
                     .mutable_playing()
                     .build(),
+                glib::ParamSpecString::builder("key-flow-def")
+                    .blurb("flowDef JSON du flux key (géométrie du fill) : couche alpha de la trame, vide = pas de key")
+                    .mutable_ready()
+                    .build(),
+                glib::ParamSpecBoolean::builder("key-alpha").blurb("La dernière trame écrite portait une couche alpha").read_only().build(),
                 glib::ParamSpecString::builder("anc1-flow-def").blurb("flowDef JSON du flux ANC « TC clip »").mutable_ready().build(),
                 glib::ParamSpecString::builder("anc2-flow-def").blurb("flowDef JSON du flux ANC « TC antenne »").mutable_ready().build(),
                 glib::ParamSpecString::builder("deck-meta")
@@ -1492,6 +1634,7 @@ impl ObjectImpl for BobiPlayout {
             "monitor-flow-def" => self.settings.lock().unwrap().monitor_flow_def = opt_s(),
             "anc1-flow-def" => self.settings.lock().unwrap().anc1_flow_def = opt_s(),
             "anc2-flow-def" => self.settings.lock().unwrap().anc2_flow_def = opt_s(),
+            "key-flow-def" => self.settings.lock().unwrap().key_flow_def = opt_s(),
             "queue-frames" => self.settings.lock().unwrap().queue_frames = value.get().unwrap(),
             name => {
                 let mut ctl = self.shared.ctl.lock().unwrap();
@@ -1590,6 +1733,7 @@ impl ObjectImpl for BobiPlayout {
             "monitor-flow-def" => self.settings.lock().unwrap().monitor_flow_def.to_value(),
             "anc1-flow-def" => self.settings.lock().unwrap().anc1_flow_def.to_value(),
             "anc2-flow-def" => self.settings.lock().unwrap().anc2_flow_def.to_value(),
+            "key-flow-def" => self.settings.lock().unwrap().key_flow_def.to_value(),
             "queue-frames" => self.settings.lock().unwrap().queue_frames.to_value(),
             name => {
                 let ctl = self.shared.ctl.lock().unwrap();
@@ -1625,6 +1769,7 @@ impl ObjectImpl for BobiPlayout {
                     "repeated-frames" => st.repeated.to_value(),
                     "deck-switches" => st.switches.to_value(),
                     "format-errors" => st.format_errors.to_value(),
+                    "key-alpha" => st.alpha.to_value(),
                     "sync-release" => false.to_value(),
                     "schedule" => ctl.sched.iter().map(|s| format!("{}@{}", s.id, s.at)).collect::<Vec<_>>().join(",").to_value(),
                     "sync-state" => {

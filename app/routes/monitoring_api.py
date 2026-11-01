@@ -22,6 +22,28 @@ from ..database import db_get_containers
 log = logging.getLogger(__name__)
 
 
+@bp.route("/api/state_relay", methods=["GET"])
+@require_login
+def api_state_relay():
+    """Relais d'état (app/state_relay.py) : abonnements amont par conteneur (frais / périmé /
+    déconnecté, âge du dernier événement), clients navigateur, lectures servies et REPLIS par
+    lecteur et par raison. Mémoire seule, aucun appel réseau."""
+    from .. import state_relay
+    return jsonify(state_relay.stats())
+
+
+@bp.route("/api/server/connections", methods=["GET"])
+@require_perm("settings.edit")
+def api_server_connections():
+    """Requêtes en cours sur les écoutes web de l'orchestrateur et fils de service occupés
+    (app/http_connections.py) : qui (nom du compte, adresse), quoi (flux SSE / flux / requête,
+    conteneur visé, octets envoyés), depuis quand. RÉSERVÉ aux administrateurs : c'est la liste des
+    personnes connectées et de leurs adresses. Ne contient jamais de jeton, de cookie ni de chaîne
+    de requête — liste blanche de champs dans `snapshot()`. Mémoire seule, aucun appel réseau."""
+    from .. import http_connections
+    return jsonify(http_connections.snapshot())
+
+
 @bp.route("/api/fabric/overview", methods=["GET"])
 @require_login
 def api_fabric_overview():

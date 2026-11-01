@@ -168,9 +168,10 @@ verifier("une archive déposée sur un système sain propose une MISE À NIVEAU"
 verifier("rien à faire → 0", sortie_de("16.4a1", TOUT_A_JOUR, liste=TOUT_A_JOUR) == bm.EXIT_OK)
 
 # ── 8. INSTALLATION HORS LIGNE du pilote Desktop Video ───────────────────────────────────────
-#     L'archive Blackmagic ne se télécharge pas toute seule : leur site exige d'accepter un
-#     contrat, et un nœud peut n'avoir aucun accès sortant. Demander le fichier est donc le cas
-#     NORMAL, pas une erreur — et c'est tout l'objet de la zone de dépôt.
+#     Un nœud peut n'avoir AUCUN accès sortant, et l'archive se prend de toute façon à la main
+#     sur une page de leur site (formulaire d'enregistrement, lien « Télécharger uniquement » —
+#     ni compte ni contrat, contrairement à ce qui était écrit ici jusqu'au 2026-10-31).
+#     Demander le fichier est donc le cas NORMAL, pas une erreur : c'est l'objet de la zone de dépôt.
 ARCHIVE = "Blackmagic_Desktop_Video_Linux_16.4a1.tar.gz"
 
 e = bm.state(sonde(paquet="", liste="", tool=False, noeuds=0))

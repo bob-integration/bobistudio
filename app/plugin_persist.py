@@ -135,6 +135,8 @@ def _refresh_script(vmid, type_, params):
         ip = get_container_ip(vmid)
         if not ip:
             raise RuntimeError("IP du conteneur introuvable")
+        from . import project_ports
+        params = project_ports.prepare_send(vmid, type_, params)   # R1 des ports : flux ACTUEL
         content = generer_script(type_, _d._gras(params), params.get("plugin_version") or None)
         if not content:
             raise RuntimeError("rendu du script vide")

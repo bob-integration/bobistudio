@@ -7,7 +7,7 @@
 
 [package]
 name = "gst-bobimxl"
-version = "0.3.2"
+version = "0.3.4"
 edition = "2024"
 rust-version = "1.87"
 license = "GPL-3.0-or-later"

@@ -40,12 +40,12 @@ Résumé logiciel minimal :
 
 ## 2. Installation du contrôleur
 
-Deux chemins : l'**installeur unifié** (`install.py`, recommandé — menu interactif, gère
-aussi les nœuds) et l'**amorce locale** (`install.sh`, depuis une source déjà présente : clone
-git, archive dépliée, clé USB). Les deux aboutissent au même résultat, et pour cause : `install.sh`
-vérifie python3 — en proposant de l'installer s'il manque — puis passe la main au même
-`install/install.py` : venv Python, `config_local.py`, service
-systemd `bobistudio`, base SQLite initialisée.
+Deux points d'entrée, **un seul installeur** : `install/install.py` (menu interactif, gère aussi
+les nœuds). Le script `install.sh` n'en est que l'**amorce** locale, pour une source déjà
+présente (clone git, archive dépliée, clé USB) : il vérifie root et python3 — en proposant de
+l'installer s'il manque — puis fait `exec python3 install/install.py`. C'est `install.py` qui
+pose tout le reste : venv Python et `requirements.txt`, `config_local.py`, horloge TAI (chrony),
+service systemd `bobistudio`, base SQLite initialisée.
 
 ### 2.0 Depuis GitHub, sur une machine vierge (le plus court)
 
@@ -81,12 +81,18 @@ cd /opt/bobistudio
 python3 install/install.py
 ```
 
-`install/install.py` doit être lancé **en root** (il refuse net sinon) et **à côté d'un
-`bobistudio.zip`** — l'archive de distribution produite par `tools/build_dist.py`
-(`python3 tools/build_dist.py --all`) sur une machine de build. Un clone git brut ne suffit
-donc pas pour ce chemin : c'est le mode de déploiement pensé pour un paquet livré (avec ou
-sans bundle hors-ligne, cf. §8). Si vous partez d'un clone git sans zip, utilisez
-l'installation manuelle (§2.2).
+`install/install.py` doit être lancé **en root** (il refuse net sinon). Il trouve sa source de
+deux façons, et les deux sont voulues :
+
+- un **`bobistudio.zip` à côté de lui** — l'archive produite par `tools/build_dist.py`
+  (`python3 tools/build_dist.py --all`) ou servie par un contrôleur déjà en service ; c'est le
+  mode de déploiement d'un paquet livré (avec ou sans bundle hors-ligne, cf. §8) ;
+- à défaut, l'**arbre source dans lequel il vit** (`install/install.py` d'un clone git ou d'une
+  archive dépliée, la racine du produit étant le dossier parent) — c'est le chemin de `get.sh`
+  et de la commande ci-dessus. Pour un contrôleur, il refuse un arbre sans `services/nmos` (sous-module non
+  récupéré, cf. §2.0).
+
+L'installeur copie alors la source vers `/opt/bobistudio`.
 
 Le menu (navigation clavier ↑/↓/Entrée, repli en saisie numérotée hors TTY) propose :
 
@@ -105,10 +111,10 @@ Le menu (navigation clavier ↑/↓/Entrée, repli en saisie numérotée hors TT
   ⚠ Retirer l'orchestrateur ne touche PAS aux nœuds enrôlés : leurs conteneurs continuent de
   tourner, et la liste de ces nœuds disparaît avec la base. Les retirer d'abord.
 
-Piège : la fonction `write_config_local()` écrit un `config_local.py` **sans clés Proxmox**
-seulement s'il n'existe pas déjà — si un `config_local.py` traîne d'une tentative précédente,
-il est conservé tel quel (« config_local.py déjà présent — conservé »), y compris s'il est
-incomplet.
+Piège : la fonction `write_config_local()` n'écrit un `config_local.py` (un simple commentaire,
+sans aucun réglage) que s'il n'existe pas déjà — si un `config_local.py` traîne d'une tentative
+précédente, il est conservé tel quel (« config_local.py déjà présent — conservé »), y compris
+s'il est incomplet.
 
 ### 2.2 Installation manuelle
 
@@ -121,19 +127,20 @@ systemctl start bobistudio
 systemctl status bobistudio
 ```
 
-`install.sh` doit être lancé **depuis la racine de la source** (il fait `cd "$(dirname "$0")"`) et
-avec les droits root pour les étapes système (paquets, systemd, chrony). Il :
+`install.sh` doit être lancé **depuis la racine de la source** (il fait `cd "$(dirname "$0")"`)
+et **en root** (il refuse sinon). Il ne fait lui-même rien d'autre que s'assurer de python3 puis
+passer la main à `install/install.py` — le même installeur que §2.1, donc le même menu. C'est
+`install.py` qui :
 
-1. crée le venv et installe `requirements.txt` ;
-2. copie `config_local.example.py` → `config_local.py` s'il est absent (sinon le garde) ;
-3. installe et active le service systemd `bobistudio` ;
-4. installe **chrony** et pose l'offset TAI du noyau (voir piège ci-dessous) ;
-5. initialise la base SQLite si `db_bobistudio.db` n'existe pas encore.
+1. déploie la source dans `/opt/bobistudio`, crée le venv et installe `requirements.txt` ;
+2. écrit `config_local.py` s'il est absent (sinon le garde) ;
+3. installe **chrony** et pose l'offset TAI du noyau (voir piège ci-dessous) ;
+4. installe et active le service systemd `bobistudio`, et initialise la base SQLite.
 
 **Piège horloge du contrôleur.** Le bus MXL indexe ses grains sur `CLOCK_TAI`
 (`CLOCK_TAI = CLOCK_REALTIME + tai_offset`), et **ni `systemd-timesyncd` ni `chrony` ne posent
 cet offset tout seuls** — une Debian fraîche a `tai_offset=0`, donc `CLOCK_TAI` vaut l'UTC,
-soit **37 secondes** d'écart avec la grille média. `install.sh` installe chrony avec la
+soit **37 secondes** d'écart avec la grille média. L'installeur installe chrony avec la
 directive `leapseclist /usr/share/zoneinfo/leap-seconds.list` (fournie par `tzdata`) et
 **vérifie** le résultat via `adjtimex` — s'il affiche `⚠ tai_offset=? au lieu de 37`, le
 paquet `tzdata` n'est probablement pas à jour ou le fichier `leap-seconds.list` est absent :
@@ -197,8 +204,10 @@ repasse en HTTP complet et lève une alerte d'erreur. Le mode peut aussi être i
 variable d'environnement `BOBI_WEB_MODE`.
 
 **Ports à ouvrir vers le contrôleur** : 5000 (toujours) ; 443 en mode `tls` ; **5444 entre les
-deux contrôleurs** d'une paire HA (réplication mTLS, `ha_tls_port`). Du contrôleur vers les
-nœuds : 9100 (agent-nœud).
+deux contrôleurs** d'une paire HA (réplication mTLS, `ha_tls_port`) ; **5010** (IS-12,
+WebSocket NMOS, port par défaut) et **UDP 9910** (émulateur ATEM) si ces services sont utilisés.
+Du contrôleur vers les nœuds : 9100 (agent-nœud) ; **9101** entre nœuds (transfert de fichiers,
+mTLS, lecture seule).
 
 ### 2.5 Premier compte administrateur
 
@@ -301,7 +310,9 @@ la cause documentée d'une panne restée huit jours sans réaction sur une insta
 Un nœud = une machine Debian 13 + l'agent `bobi-node-agent` + un jeu de **capacités**
 choisies à l'installation : `io2110` (E810, moteur ST 2110), `compute` (traitements numpy),
 `media` (lecture/enregistrement/transcodage), `webrtc` (passerelle MediaMTX), `gpu` (pilote
-NVIDIA). Les capacités sont **rattrapables après coup** (§4.3) mais jamais retirées par ce
+NVIDIA), `gui` (interfaces natives LV2 de la console audio ; exige `compute`) et `decklink` (le nœud
+porte une carte DeckLink : déclaration seule, le pilote Desktop Video se dépose ensuite depuis
+Réglages → Nœuds). Les capacités sont **rattrapables après coup** (§4.3) mais jamais retirées par ce
 mécanisme (pas de désinstallation automatique).
 
 ### 4.1 Installation directe (`install-node.sh`)
@@ -611,6 +622,11 @@ projets) — une sauvegarde = une copie cohérente de ce fichier unique
   machine si la rétention locale ne suffit pas comme politique de sauvegarde.
 
 ### 8.2 Mise à jour entre instances (push/pull)
+
+Ce paragraphe couvre la mise à jour d'une instance depuis une AUTRE instance. Pour installer ou
+mettre à jour un plugin ou un service **publié** sans en passer par là, la page **Catalogue**
+(Réglages → Catalogue) lit l'organisation GitHub de confiance, compare à l'installé et installe
+le paquet ; un service installé ainsi ne devient effectif qu'au redémarrage du contrôleur.
 
 `app/updater.py` tire une nouvelle version depuis une autre instance Bobi.Studio servant son
 propre code (`update_server_enabled` + `update_token`, cf. Réglages → Système → Mise à jour) :

@@ -404,7 +404,10 @@ def public_watch(token):
     _langue_du_visiteur()      # même raison que pour `/p/` : le visiteur n'a pas de compte
     from .. import settings as _st
     enabled = _st.get("webrtc_enabled")
-    gw_ip = _st.get("webrtc_gateway_ip")
+    # Adresse vue par le NAVIGATEUR : en « réseau interne » l'IP du conteneur est privée
+    # au nœud, et la page resterait noire sans message (cf. addressing.adresse_navigateur).
+    from ..addressing import adresse_navigateur as _adr_nav
+    gw_ip = _adr_nav(_st.get("webrtc_gateway_ip"), vmid=_st.get("webrtc_gateway_vmid") or None)
     http_p = int(_st.get("webrtc_http_port") or 8889)
     path = link["path"]
     whep_url = embed_url = None
@@ -867,7 +870,9 @@ def projects_page():
     from . import _attach_projects
     return render_template("projects.html",
         containers=_attach_projects(db_get_containers()),
-        projects=db_get_projects())
+        projects=db_get_projects(),
+        # bouton « Vue d'exploitation » : seulement si /workspace/<id> ne répondra pas 403
+        can_open_workspace=lambda pid: bool(project_role_for(pid)))
 
 @bp.route("/backup")
 @require_login
@@ -881,7 +886,7 @@ def settings_page():
     from .. import core_plugins, settings as _st
     # Services explicitement désactivés (ont une clé _enabled = False)
     disabled = set()
-    for entry in core_plugins.scan().values():
+    for entry in list(core_plugins.scan().values()):
         m = entry["manifest"]
         key = next((k for k in m.get("settings_keys", {}) if k.endswith("_enabled")), None)
         if key and not _st.get(key):
@@ -979,8 +984,35 @@ def api_text_variables():
         if v == cle:
             return defaut
         return v.replace("{n}", nom[len("src_label"):]) if nom.startswith("src_label") else v
-    return jsonify({k: [{"name": n, "label": _lbl(n, l)} for n, l in v]
-                    for k, v in _TEXT_VARIABLES.items()})
+    out = {k: [{"name": n, "label": _lbl(n, l)} for n, l in v] for k, v in _TEXT_VARIABLES.items()}
+    # États d'AUTRES conteneurs, par emplacement (app/wall_states.py) : catalogue VIVANT, il dépend
+    # des emplacements créés et des conteneurs qui les servent.
+    try:
+        from .. import plugins, wall_states
+        from ..database import db_roles_with_containers
+        from .. import macros
+        _docs = {}
+
+        def _doc_of(ct):   # /state vivant, une lecture par conteneur et par requête
+            vm = ct.get("vmid")
+            if vm not in _docs:
+                _docs[vm] = macros.fetch_state(vm, endpoint="/state", path="")
+            return _docs[vm]
+        out["states"] = wall_states.catalogue(db_roles_with_containers(), plugins.get, _doc_of)
+        # `?vmid=<mur>` : les conteneurs de SON projet, par hostname (aucun emplacement à créer).
+        _wall = request.args.get("vmid", type=int)
+        out["project_states"] = []
+        if _wall is not None:
+            from ..database import db_get_containers
+            _cts = db_get_containers()
+            _pid = next((c.get("project_id") for c in _cts if c.get("vmid") == _wall), None)
+            out["project_states"] = wall_states.project_catalogue(_cts, _pid, plugins.get, _wall, _doc_of)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug("text variables: states catalogue unavailable (%s)", e)
+        out["states"] = []
+    out.setdefault("project_states", [])
+    return jsonify(out)
 
 
 def _timezones_par_region():

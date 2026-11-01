@@ -220,6 +220,17 @@
 .ml-table th { position:sticky; }
 .ml-col-rs { position:absolute; top:0; right:0; bottom:0; width:7px; cursor:col-resize; }
 .ml-col-rs:hover, .ml-col-rs:active { background:var(--accent-soft); box-shadow:inset -2px 0 0 var(--accent); }
+/* Ordre : glisser un en-tête (souris ou doigt) ; le trait marque où il sera posé. pan-y : sur l'en-tête,
+   un glisser horizontal du doigt déplace la colonne au lieu de faire défiler. */
+.ml-table th[data-col] { touch-action:pan-y; }
+.ml-table th.ml-col-drag { opacity:0.55; cursor:grabbing; }
+.ml-table th.ml-col-drop { box-shadow:inset 3px 0 0 var(--accent); }
+/* Fenêtre « Colonnes » : une ligne par colonne, cible tactile de 44 px */
+.ml-cols-list { list-style:none; padding:0; margin:0 0 12px; display:flex; flex-direction:column; gap:2px; }
+.ml-cols-it { display:flex; align-items:center; gap:6px; padding:0 4px; border-radius:4px; }
+.ml-cols-it.on { background:var(--bg-input); }
+.ml-cols-it label { flex:1; min-height:44px; display:flex; align-items:center; gap:8px; cursor:pointer; }
+.ml-cols-mv { min-width:44px; min-height:44px; padding:0; }
 .ml-menu-chk { display:flex; align-items:center; gap:6px; }
 .ml-chk { display:inline-grid; place-items:center; flex:none; width:14px; height:14px; border:1px solid var(--border); border-radius:3px;
     font-size:11px; line-height:1; color:var(--accent); }

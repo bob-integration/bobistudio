@@ -80,5 +80,44 @@ cas('topologie vide (redémarrage) → filtre nœud CONSERVÉ, silencieux',
 cas('topologie vide (redémarrage) → filtre projet CONSERVÉ, silencieux',
     '7', '',   { projects: [], nodes: [] },                                  '7',  '',   0);
 
+// Filtre projet : un membre PAR SNAPSHOT (project_id nul, project_ids rempli) est DANS le projet.
+// Constaté le 2026-10-24 : l'intérieur d'AtelierTest montrait 4 conteneurs sur 6, sans decklink-io
+// ni player, dont partaient pourtant les câbles du mélangeur.
+eval(extraire('_inProject'));
+eval(extraire('_nodeObjMatches'));
+function membre(nom, n, pid, att) {
+    _projFilter = pid; _nodeFilter = '';
+    const ok = _nodeObjMatches(n) === att;
+    if (!ok) ko++;
+    console.log(`${ok ? '  ok  ' : ' ÉCHEC'} ${nom}`);
+}
+console.log('Appartenance au projet filtré :');
+membre('membre par snapshot (project_ids) → affiché',      {project_id: null, project_ids: [16]}, '16', true);
+membre('rattachement direct seul (ancienne topologie) → affiché', {project_id: 16},                  '16', true);
+membre('membre d\'un autre projet → masqué',               {project_id: null, project_ids: [13]}, '16', false);
+membre('hors projet → masqué',                             {project_id: null, project_ids: []},   '16', false);
+
+// Ports virtuels (24/10) : hors projet, ni carte de ports aux bords ni câble qui en part — le câble
+// PHYSIQUE (`phys_of_port`) les remplace ; dans le projet, c'est l'inverse.
+membre('carte de ports, aucun projet filtré → masquée',    {project_ports_node: true, project_id: 15}, '', false);
+membre('carte de ports, son projet filtré → affichée',     {project_ports_node: true, project_id: 15}, '15', true);
+eval(extraire('_edgePassesFilter'));
+_sigFilter = new Set(['video']);
+nodesByVmid = {'-15': {project_ports_node: true, project_id: 15}, 1200: {project_ids: []},
+               1257: {project_ids: [15]}};
+function cable(nom, e, pid, att) {
+    _projFilter = pid; _nodeFilter = '';
+    const ok = _edgePassesFilter(e) === att;
+    if (!ok) ko++;
+    console.log(`${ok ? '  ok  ' : ' ÉCHEC'} ${nom}`);
+}
+console.log('Câbles des entrées qui suivent un port :');
+cable('hors projet : câble physique producteur → entrée affiché', {from: 1200, to: 1257, phys_of_port: 23}, '', true);
+cable('hors projet : câble qui part du port masqué',            {from: -15, to: 1257, port_id: 23}, '', false);
+cable('dans le projet : câble qui part du port affiché',        {from: -15, to: 1257, port_id: 23}, '15', true);
+nodesByVmid[1200] = {project_ids: [15]};
+cable('dans le projet : câble physique masqué (même si le producteur est membre)',
+      {from: 1200, to: 1257, phys_of_port: 23}, '15', false);
+
 console.log(ko === 0 ? '\nTous les cas passent.' : `\n${ko} cas en échec.`);
 process.exit(ko ? 1 : 0);

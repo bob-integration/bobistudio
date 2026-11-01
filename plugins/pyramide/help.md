@@ -77,9 +77,10 @@ La pyramide peut suivre chaque source **au fil de l'arrivée de ses bandes** et 
 n'ajoute alors plus ~1 image de latence — un multiview en mode tranche démarre sa composition dès
 la première bande d'un proxy.
 
-- **Opt-in** : paramètre `slice_mode` au déploiement (désactivé par défaut — comportement
-  historique strictement inchangé). C'est aussi le mode utilisé par le tissu de composition quand
-  son option tranche est activée.
+- **Activation** : interrupteur global **Réglages → MXL**, « Trancher toute la chaîne » (éteint par
+  défaut), ou paramètre `slice_mode` du conteneur — la valeur posée sur le conteneur prime. Prise
+  d'effet au (re)déploiement. C'est aussi le mode utilisé par le tissu de composition quand son
+  option tranche est activée.
 - Sources progressives uniquement ; en entrelacé, le chemin classique s'applique.
 - Les proxies produits sont identiques au mode classique (mêmes images) ; une source en retard est
   simplement republiée depuis sa dernière image complète, sans jamais bloquer les autres.
@@ -111,7 +112,7 @@ avant — rien ne casse, chaque tuile décide seule.
 
 ## Console de monitoring
 
-La page du plugin (Traitements → Pyramide, sélectionner une instance) affiche, **par source** :
+La page du plugin (rubrique **Composition** → Pyramide, sélectionner une instance) affiche, **par source** :
 
 - la liste des proxies produits (taille, octave/sur-mesure), leur **nombre de consommateurs** et les
   **orphelins** (produits mais lus par personne) ;

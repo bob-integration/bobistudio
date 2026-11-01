@@ -66,12 +66,25 @@ def main():
     verifier(cli.get("/api/catalogue").get_json().get("activer_apres") is True,
              "recocher est bien répercuté")
 
-    # 4 — la page porte la case, et l'appel d'installation transporte le choix de l'écran.
+    # 4 — la page porte la case, et l'appel d'installation transporte un choix EXPLICITE.
+    #
+    # ⚠ CE CONTRÔLE A CHANGÉ D'ÉNONCÉ LE 2026-10-31, et c'est une décision, pas une régression.
+    # Il exigeait littéralement `activer: catActiverCoche()` : le geste lisait une case située
+    # plus haut dans le panneau, donc le même bouton rangeait ou mettait en service selon un
+    # état qu'il fallait penser à aller vérifier. Cyril a tranché : activer reste le défaut, mais
+    # « télécharger seulement » est OFFERT AU MOMENT DU GESTE (point N7.1). Le choix vient donc
+    # du bouton cliqué. Ce qui reste vrai, et qui est ce que la garde doit tenir : l'appel ne
+    # consulte JAMAIS le réglage en base — dont l'enregistrement peut avoir échoué — mais
+    # l'intention exprimée à l'écran, explicite d'abord, la case en repli.
     page = cli.get("/settings").get_data(as_text=True)
     verifier('id="s_catalogue_activer"' in page, "la page Réglages porte l'interrupteur")
     verifier("catSauverActiver" in page, "l'interrupteur est câblé à l'enregistrement")
-    verifier(re.search(r"activer:\s*catActiverCoche\(\)", page) is not None,
-             "l'appel d'installation transporte le choix LU SUR L'ÉCRAN")
+    verifier(re.search(r"activer:\s*\(activer === undefined\)\s*\?\s*catActiverCoche\(\)",
+                       page) is not None,
+             "l'appel d'installation transporte le choix EXPLICITE, la case en repli")
+    verifier(page.count("catInstaller(this, ' + depot + ', true)") == 1
+             and page.count("catInstaller(this, ' + depot + ', false)") == 1,
+             "et les deux issues sont deux boutons, lisibles avant le clic")
     verifier("done_active_drift" in page,
              "le message de dérive existe (activer ne redéploie rien)")
 

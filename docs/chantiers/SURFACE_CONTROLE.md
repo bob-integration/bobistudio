@@ -21,7 +21,7 @@ changer DANS la console (nouvel endpoint, flux de mesures) : la prévenir plutô
 
 ## Architecture proposée
 
-- Un service `services/control_surface/` sur le modèle de `services/skaarhoj/` (une connexion par surface, un
+- Un service `services/panel_audio/` sur le modèle de `services/panel_skaarhoj/` (une connexion par surface, un
   fil par surface, état dans la base, onglet Réglages). Servi par le contrôleur ACTIF seul (HA).
 - Configuration par surface : adresse, profil, **console (vmid → plutôt l'emplacement / instance_uuid, cf.
   « Identité d'un conteneur » du CLAUDE.md)**, **opérateur**, page de départ, ordre si plusieurs surfaces du

@@ -121,6 +121,155 @@ def get_container_ip(vmid):
     return None
 
 
+# ─── Adresse de l'hôte d'un nœud VUE DU SITE (navigateurs, pupitres, encodeurs) ───────────────
+# ★ UN NŒUD PEUT ÊTRE ENRÔLÉ SOUS UNE BOUCLE LOCALE (2026-10-28). Sur un tout-en-un, `nodes.host`
+# vaut couramment `127.0.0.1` : c'est l'adresse par laquelle l'ORCHESTRATEUR le joint, et elle est
+# juste pour lui. Envoyée à un navigateur, elle désigne le poste du visiteur — donc un panneau noir
+# sans erreur ni alerte, exactement le symptôme que `adresse_navigateur` existe pour éviter.
+# Le mode « réseau interne » rend ce cas obligatoire : l'IP du conteneur étant privée au nœud,
+# TOUTE URL passe par l'hôte. Relevé sur la Z8 (moniteur WebRTC invisible depuis le LAN).
+
+_NOMS_BOUCLE = ("localhost", "localhost.localdomain", "ip6-localhost")
+_ADRESSES_NULLES = ("0.0.0.0", "::", "::0")
+
+
+def adresse_locale_seulement(host):
+    """`host` ne désigne-t-il RIEN pour un navigateur distant ? (boucle locale ou adresse nulle)
+
+    Les trois formes se rencontrent pour de vrai : `127.0.0.1` (enrôlement tout-en-un),
+    `localhost` (saisie à la main), `::1` (résolution IPv6). `0.0.0.0` n'est pas une boucle
+    mais une adresse d'ÉCOUTE : la joindre n'a pas plus de sens, on la traite pareil."""
+    import ipaddress as _ip
+    h = (host or "").strip().strip("[]").lower()
+    if not h:
+        return False                      # pas d'adresse du tout : ce n'est pas notre affaire
+    if h in _NOMS_BOUCLE or h in _ADRESSES_NULLES:
+        return True
+    try:
+        return _ip.ip_address(h).is_loopback
+    except ValueError:
+        return False                      # un nom d'hôte quelconque : on ne devine pas
+
+
+_CACHE_LAN = {"t": 0.0, "ip": None}
+_TTL_CACHE_LAN = 30.0
+
+
+def ip_lan_controleur(cible="1.1.1.1"):
+    """IP SOURCE que l'hôte de l'orchestrateur emploie pour sortir vers le site (`ip route get`).
+
+    C'est une MESURE, pas une déduction : on demande au noyau par quelle adresse il parlerait au
+    monde. Aucun paquet n'est émis, la machine peut être hors ligne — seule la table de routage
+    est lue. Deux refus explicites :
+    - une source sur une interface QUE NOUS AVONS CRÉÉE (`bobi-*`, p.ex. le shim macvlan en /32)
+      n'est pas une adresse du nœud et ne doit pas sortir d'ici ;
+    - une source de boucle locale (pas de route par défaut) ne vaut pas mieux que ce qu'on
+      cherche à remplacer.
+    Rend None quand la mesure n'aboutit pas : on ne fabrique pas une adresse."""
+    import subprocess as _sp
+    import time as _t
+    now = _t.monotonic()
+    if _CACHE_LAN["ip"] is not None and (now - _CACHE_LAN["t"]) < _TTL_CACHE_LAN:
+        return _CACHE_LAN["ip"]
+    ip = None
+    try:
+        r = _sp.run(["ip", "route", "get", cible], capture_output=True, text=True, timeout=4)
+        toks = (r.stdout or "").split()
+        if "src" in toks:
+            cand = toks[toks.index("src") + 1]
+            dev = toks[toks.index("dev") + 1] if "dev" in toks else ""
+            from .container_net import interface_a_nous
+            if not interface_a_nous(dev) and not adresse_locale_seulement(cand):
+                ip = cand
+    except Exception:
+        ip = None
+    if ip:
+        _CACHE_LAN.update({"t": now, "ip": ip})
+    return ip
+
+
+def _ip_role_management(node_id):
+    """IP déclarée de la carte de MANAGEMENT du nœud (repli de dernier recours, données déclarées).
+
+    ⚠ On écarte les interfaces `bobi-*` : le shim macvlan porte une adresse, parfois même un rôle
+    posé par erreur, et elle n'est joignable de personne (du /32 dans le subnet des conteneurs)."""
+    from .database import db_get_node_interfaces, role_is_management
+    from .container_net import interface_a_nous
+    for it in (db_get_node_interfaces(node_id) or []):
+        if not role_is_management(it.get("role")) or interface_a_nous(it.get("ifname")):
+            continue
+        cidr = (it.get("ip_cidr") or "").strip().split("/")[0]
+        if cidr and not adresse_locale_seulement(cidr):
+            return cidr
+    return None
+
+
+def resolution_adresse_navigateur(node):
+    """{adresse, source, host} : par quelle adresse le SITE joint l'hôte de ce nœud, et d'où on la tient.
+
+    `source` ∈ `override` (réglage `browser_host`, par nœud) | `host` (`nodes.host`, le cas normal)
+    | `mesure` (route par défaut de l'hôte de l'orchestrateur) | `role` (carte management déclarée)
+    | None (on n'a pas su : l'appelant garde ce qu'il avait, il ne reçoit pas une invention).
+
+    L'override passe AVANT `host` : il sert aussi quand `host` est routable pour l'orchestrateur
+    mais pas pour le site (NAT, nom publié, second pare-feu).
+
+    La mesure n'est consultée que pour une boucle locale, et c'est ce qui la rend légitime : un
+    nœud que l'orchestrateur joint en `127.0.0.1` EST la machine de l'orchestrateur, donc lire la
+    route par défaut locale, c'est mesurer la bonne machine. Sur un nœud distant, ce serait
+    l'adresse du contrôleur — un faux aplomb. D'où le gate, et non un repli général.
+    """
+    node = node or {}
+    host = (node.get("host") or "").strip()
+    nid = node.get("id")
+    if nid is not None:
+        from . import settings as _st
+        ov = (_st.setting_for("browser_host", nid) or "").strip()
+        if ov:
+            return {"adresse": ov, "source": "override", "host": host}
+    if host and not adresse_locale_seulement(host):
+        return {"adresse": host, "source": "host", "host": host}
+    mesure = ip_lan_controleur()
+    if mesure:
+        return {"adresse": mesure, "source": "mesure", "host": host}
+    role = _ip_role_management(nid) if nid is not None else None
+    if role:
+        return {"adresse": role, "source": "role", "host": host}
+    log.warning("adresse navigateur du nœud %s : host=%r est une boucle locale et aucune IP de site "
+                "n'a pu être mesurée — poser le réglage browser_host sur ce nœud", nid, host)
+    return {"adresse": None, "source": None, "host": host}
+
+
+def adresse_navigateur(ip_conteneur, vmid=None):
+    """Adresse par laquelle un NAVIGATEUR — ou un équipement du site — joint un conteneur.
+
+    ★ LE COROLLAIRE SILENCIEUX DU « RÉSEAU INTERNE » (2026-10-27). En mode interne, l'IP d'un
+    conteneur est privée au nœud. `get_container_ip` reste juste pour l'ORCHESTRATEUR, qui est
+    sur la même machine — mais une URL construite avec cette IP et envoyée à un navigateur
+    pointe une adresse qui n'existe pas pour lui. Le symptôme : le panneau de monitoring ou la
+    page de lecture reste NOIRE, sans erreur, sans alerte, avec une passerelle WebRTC qui va
+    parfaitement bien et un flux qui arrive. Publier le port sans corriger l'URL n'aurait servi
+    à rien du tout.
+
+    En mode interne, l'adresse est donc celle de l'HÔTE du nœud, où le port publié aboutit
+    (cf. `container_net.ports_a_publier` : le port hôte est le même que celui du conteneur,
+    précisément pour que l'URL ne change que d'adresse, jamais de port).
+
+    Sans `vmid`, on rend l'adresse telle quelle : on ne DEVINE pas de quel nœud il s'agit —
+    une mauvaise substitution serait pire que l'absence de substitution.
+    """
+    if not ip_conteneur or not vmid:
+        return ip_conteneur
+    from .database import db_get_container, db_get_node, node_net_interne
+    c = db_get_container(vmid) or {}
+    n = db_get_node(c.get("node_id")) if c.get("node_id") else None
+    if n and node_net_interne(n):
+        # Pas `n["host"]` tel quel : il vaut souvent `127.0.0.1` sur un tout-en-un, et une URL
+        # bâtie dessus envoie le navigateur sur LUI-MÊME (cf. resolution_adresse_navigateur).
+        return resolution_adresse_navigateur(n)["adresse"] or ip_conteneur
+    return ip_conteneur
+
+
 # ─── Résolution de l'HÔTE SSH d'un nœud (host-ops : VF SR-IOV, PTP, prép MTL, binds) ──────────
 # B1a : remplace le réglage GLOBAL `proxmox_host` par l'hôte DU NŒUD concerné. À 1 nœud, identique
 # (proxmox_host == l'unique node.host) ; habilite le multi-nœud. `primary_host()` = repli de

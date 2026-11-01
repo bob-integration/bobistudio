@@ -1,7 +1,9 @@
 # docs/reference/PROJETS.md — Le projet comme espace de travail
 
-> Document de design (2026-07-05). Étudié avec l'état du code au commit 40de898.
-> Statut : **conception validée dans les grandes lignes, chantiers non démarrés.**
+> Document de design (2026-07-05), remis à jour le 2026-11-01 après le chantier des ports.
+> Statut : **chantiers 1 à 6 livrés** (cf. les « État d'avancement » en fin de document) ; le §6
+> (`project_control_map`) a été SUPPLANTÉ par les emplacements, pas réalisé. Les références de code
+> citent des NOMS de fonction : les numéros de ligne se périment.
 
 ## 1. Vision
 
@@ -36,27 +38,28 @@ Décisions actées :
 
 | Brique | État | Référence |
 |---|---|---|
-| Snapshot/restore avec pré-vol (remap VMID, conflits hostname/SHM) | ✅ | `app/projects.py:132-170` (`planifier_restore`), `restaurer_projet` |
-| Préfixage hostnames + réécriture des SHM internes au clonage | ✅ | `_prefix_snapshot` (`app/projects.py:52-114`) |
+| Snapshot/restore avec pré-vol (remap VMID, conflits hostname/SHM) | ✅ | `app/projects.py` (`planifier_restore`), `restaurer_projet` |
+| Préfixage hostnames + réécriture des SHM internes au clonage | ✅ | `_prefix_snapshot` (`app/projects.py`) |
 | Identité portable des containers | ✅ | `containers.instance_uuid` |
 | Rattachement container→projet + média par projet | ✅ | `containers.project_id`, `/srv/mxl-media/<slug>/` |
-| Système de widgets de fait : fragment HTML versionné + mount JS | ✅ | `GET /api/plugins/<type>/ui/html?vmid=X`, `tpEnsureAsset`, `window.MXLPlugins[type].mount(el, vmid, ctx)` / `unmount()` / `listPreview()` (`templates/plugin_section.html:215-254`) |
-| Proxy de contrôle sécurisé (whitelist endpoints, read au login, actions sous `plugins.operate`) | ✅ | `plugin_proxy` (`app/routes/plugin_registry.py:529-582`) |
-| Tuile vidéo live | ✅ | iframe WHEP (`MXLMonitor`, `templates/layout.html:168-389`) ; monitor déjà par-utilisateur (`monitor-u<uid>`) |
-| Primitives CSS dashboard (grille avec spans, tuiles KPI+sparkline) | ✅ | `.home-panels`, `.stat-card` (`static/css/base.css:2638-2891`) |
+| Système de widgets de fait : fragment HTML versionné + mount JS | ✅ | `GET /api/plugins/<type>/ui/html?vmid=X`, `tpEnsureAsset`, `window.MXLPlugins[type].mount(el, vmid, ctx)` / `unmount()` / `listPreview()` (`templates/plugin_section.html`) |
+| Proxy de contrôle sécurisé (whitelist endpoints, read au login, actions sous `plugins.operate`) | ✅ | `plugin_proxy` (`app/routes/plugin_registry.py`) |
+| Tuile vidéo live | ✅ | iframe WHEP (`MXLMonitor`, `templates/layout.html`) ; monitor déjà par-utilisateur (`monitor-u<uid>`) |
+| Primitives CSS dashboard (grille avec spans, tuiles KPI+sparkline) | ✅ | `.home-panels`, `.stat-card` (`static/css/base.css`) |
 | Rôle « pilotage sans déploiement » + scope de champ user/system | ✅ | rôle `exploitant`, `plugin_config` (commit 40de898) |
 | Allocateurs centraux (cœurs, GPU, multicast, IP) | ✅ | `core_pool.py`, `gpu_pool.py`, `allocations.py` |
-| Membres / ACL / propriétaire de projet | ❌ | seule permission globale `projects.manage` |
-| Scoping des API par ressource (un membre ne pilote que SON projet) | ❌ | tout est global aujourd'hui |
-| Projet « actif » / cycle de vie / verrou de chargement | ❌ | restore = clonage one-shot, sans état |
-| Pré-vol de **capacité** (cœurs, queues, GPU) | ❌ | le pré-vol actuel ne vérifie que noms/VMID |
+| Membres / ACL / propriétaire de projet | ✅ (ch. 1) | `project_members`, `auth.require_project_role` |
+| Scoping des API par ressource (un membre ne pilote que SON projet) | ✅ (ch. 1) | `auth.vmid_project_ids`, `check_vmid_access` |
+| Projet « actif » / cycle de vie / verrou de chargement | ✅ (ch. 2) | `projects.state` + verrou (`app/projects.py`) |
+| Pré-vol de **capacité** (cœurs, queues, GPU) | ✅ (ch. 2) | `verifier_capacite`, `capacity_issues` de `planifier_restore` |
 | Réallocation multicast au chargement | ⚠️ à vérifier/garantir | `mcast_allocations` |
 
 ## 3. Modèle de données cible
 
 ```
-projects            += owner_id, slug, state (saved|loading|active|error|unloading),
-                       tally_base (niveau de tally du projet, auto-alloué — cf. §6)
+projects            += owner_id, slug, state (saved|loading|active|error|unloading)
+                       -- niveau de tally : une ligne `tally_levels` (owner_kind='project'),
+                       -- cf. §6 ; la colonne tally_base subsiste, plus personne ne la lit
 project_members     (project_id, user_id, role)         -- owner|editor|operator|viewer
 project_views       (id, project_id, name, owner_id,
                      visibility private|project, edit_shared BOOL, layout JSON)
@@ -68,8 +71,13 @@ project_vars        (project_id, name, type, value)                  -- variable
 project_triggers    (id, project_id, name, enabled, condition JSON,
                      macro_id, cooldown_ms)                          -- règles, cf. §7
 project_ports       (id, project_id, kind source|dest, media video|audio|anc,
-                     name, ord, channel_labels JSON, binding JSON)   -- cf. §5
-project_control_map (project_id, protocol tsl|emberplus, address, role_ref)  -- cf. §6
+                     name, ord, channel_labels JSON, binding JSON,
+                     label_source port|origin, tsl_in port|external,
+                     parent_id NULL, suffix NULL,        -- virtuelle composée (A1, A2…, Anc)
+                     reusable BOOL)                      -- renvoi interne d'une destination
+port_links          (port_id, consumer_uuid, kind, to_slot, shm, rev,
+                     UNIQUE(consumer_uuid, kind, to_slot))   -- qui suit quel port, cf. §5
+-- project_control_map (prévue au §6) n'a jamais existé : supplantée par `production_roles`
 ```
 
 - **Rôle projet** ≠ rôle global. Le rôle global gouverne l'accès à l'UI technique ;
@@ -79,8 +87,10 @@ project_control_map (project_id, protocol tsl|emberplus, address, role_ref)  -- 
   `{widget: plugin_ui|plugin_widget|preview|stat|alerts, type, instance: <instance_uuid>,
   x, y, w, h, params}`. Les widgets référencent les containers par **`instance_uuid`**
   (jamais par vmid) → une vue survit au décharge/recharge du projet.
-- Les **vues et les ports font partie de l'export** `.bsproj.json` (bump du schéma
-  `bobi.studio.project.v2`), re-mappés à l'import.
+- Les **vues, les fiches médias et les ports font partie de l'export** `.bsproj.json` :
+  schéma `bobi.studio.project.v4` (v2 vues, v3 médias, v4 ports + `port_links`, depuis le
+  2026-10-30 — `projects.export_ports`). Ports recréés avec des ids NEUFS à l'import, liens
+  re-mappés.
 
 ## 4. Cycle de vie : charger / décharger sans conflit
 
@@ -129,12 +139,152 @@ Conséquences :
   toucher au contenu du projet. Recharger un projet re-résout automatiquement ses bindings.
 - **Inter-projets** : un câble entre projets est un objet d'admin (binding), visible dans
   la page Câbles (le filtre par projet y existe déjà), jamais un couplage interne.
+  **Livré le 2026-10-24** : un port SOURCE peut suivre le port DESTINATION d'un autre projet
+  (`binding: {"port": <id>}`) — il prend ce que l'autre publie EN CE MOMENT, suit sa
+  republication à chaud (`replay_port` rejoue les ports qui le suivent), devient non affecté si
+  l'autre ne publie plus ou disparaît. Seule une destination se suit, et une destination ne
+  suit rien : pas de boucle (`project_ports.port_shm`).
+- **Page Câbles, vue globale (« ▣ Vue projets », livrée le 2026-10-24)** : un projet = un bloc
+  (ports nommés et leur état, résumé de contenu, « Voir l'intérieur », « Charger ») ; hors projet
+  non relié replié sous une ligne ; liaison DIRECTE d'un conteneur de projet sur un flux réel
+  hors port en rose pointillé — clic : « Créer le port et y rattacher ». Gestes (même règle que
+  partout : lâcher REMPLACE, sans confirmation) : sortie hors projet → port source = affecter
+  (admin) ; port destination → port source d'un autre bloc = suivre ; port destination → entrée
+  hors projet = câblage `port:<id>`. Clic sur le câble d'un port : « Désaffecter ».
+  Vue DÉTAILLÉE (filtre projet ; maquette C du 2026-10-24) : bandeau « Vous êtes dans le projet »
+  + liseré aux deux bords ; les ports en DEUX cartes de même vmid (`split`) — sources en tête de la
+  colonne de gauche (« Entre dans le projet »), destinations en tête de celle de droite (« Sort du
+  projet »). Une virtuelle composée se lit sur UNE ligne : ses audios et son ANC rattachés sont
+  superposés sur la ligne de la vidéo (`parent_port_id`, `suffix`, fournis par le serveur dans les
+  deux vues) ; lâcher un audio sur la ligne l'affecte au premier rattaché libre. Chaque port dit d'où vient son signal (`origin` : producteur, ou port suivi) ou où il
+  part (`targets` : lecteurs HORS du projet, et projets qui le suivent — nommés par leur port, pas
+  par leurs conteneurs). Glisser un port source sur une entrée
+  la câble en `port:<id>` ; lâcher une sortie sur un port destination la publie. Une entrée liée
+  à un port y est raccordée par son câble (le lien n'est montré que s'il décrit ce que l'entrée
+  reçoit vraiment). Code : `home_dashboard._projects_overview` / `_project_port_nodes`,
+  `templates/cables.html` (`renderProjectModule`, `commitPortWire`). Test :
+  `tests/verif_cables_vue_globale.py` (les gestes eux-mêmes, côté navigateur, ne sont pas
+  couverts hors ligne).
 - Implémentation : le binding se matérialise au chargement — côté source par la config du
   consommateur (SHM/flux résolu), côté destination par le fan-out existant (`streamer` tee,
   flux TX composables du 2110_io). Un port non bindé = source « pas de flux » (comportement
   RX déjà connu et géré).
+- **Résolution « option C » (2026-10-23, `app/project_ports.py`)** : le SNAPSHOT ne retient que
+  `port:<id>` pour les ENTRÉES liées (`virtualize_snapshot_entry`, plus la liste `port_links` de
+  chaque conteneur) ; le CONTENEUR ne reçoit que du physique. La table `port_links`
+  (instance_uuid du consommateur, essence, slot → port) dit quelles entrées suivent quel port —
+  c'est elle qui fait autorité, le shm écrit dans les params vivants n'est que la résolution
+  courante.
+- **Les ports ne sont jamais contournés : R1 et R2 (décision de Cyril, 2026-10-31)**. Corrigé à la
+  racine, **pas de réconciliateur** (Cyril y voit un contournement) :
+  - **R2 — tout changement de source tient `port_links` à jour** : `input_changed`, appelée par le
+    SEUL écrivain de la config d'un conteneur, `database.db_update_deploy_config`. Elle compare
+    l'ancienne et la nouvelle config entrée par entrée : entrée liée qui lit le flux de son port →
+    le lien reste ; entrée liée qui lit autre chose → le lien SUIT le port source du projet qui
+    apporte ce flux (`moved`), sinon il est défait (`dropped`) ; entrée non liée qui se met à lire
+    le flux d'un port source du projet → le lien est posé (`linked`). Câblage, Ember+, NMOS, macro,
+    relais de plugin : tous passent par là.
+  - **R1 — tout envoi vers un conteneur traduit depuis `port_links`** : `resolve_inputs` (chaque
+    entrée liée relit le flux ACTUEL de son port, "" s'il n'est pas affecté), appelée via
+    `prepare_send` par `deployer_script` et par chaque envoi qui relit la base
+    (`deploy._fresh_stored_params`, `docker_driver`, redémarrage d'un compute).
+  - **Toujours R2 AVANT R1** (`prepare_send`) : sinon un câblage direct serait aussitôt réécrit avec
+    le flux de l'ancien port.
+  - Le `POST /input` d'un plugin, via le relais ou une macro, devient un câblage
+    (`cabling.wiring_input_call`) ; une garde de manifeste échoue si un plugin déclare un autre
+    endpoint qui porte un flux.
+  - **Envoi PÉRIMÉ (2026-11-01, option A choisie par Cyril)** : une page qui renvoie toute la config
+    qu'elle a chargée renvoyait aussi l'ancien flux d'une entrée dont le port avait été réaffecté
+    depuis — R2 le lisait comme un recâblage. Chaque lien retient la révision du consommateur où
+    son flux a changé (`port_links.rev`) ; un `/deploy` bâti sur une révision antérieure (`base_rev`
+    du composer multiview, `seen_rev` de la palette, ce dernier sans le refus 409) garde l'entrée
+    sur son port (`keep_linked_inputs`). Une entrée vue puis changée reste un recâblage. Sans
+    révision (appel d'API) : comportement historique.
+  - **Slots qualifiés (2026-11-01)** : une liste qui reprend une essence déjà prise par une liste
+    précédente reçoit des slots `"<liste>:<rang>"` (`plugins.qualified_lists`) — vu-mètres et frises
+    du multiview, découpe de `decklink_io` ; la première liste garde ses slots entiers (câbles et
+    UUID NMOS inchangés). Le slot départage aussi deux entrées sur le même flux au décâblage.
+  Gestes qui posent ou rejouent un lien : câbler `port:<id>` (`POST /api/home/wire`) ; réaffecter
+  un port (PATCH `binding` → `apply_binding` → `replay_port`, y compris depuis/vers « non
+  affecté ») ; recharger le projet (`materialize_params` avant le déploiement — une entrée sur un
+  port non affecté ou supprimé est vidée, un `port:<id>` hors entrée non résoluble reste tel quel
+  — puis `restore_links`, qui recâble aussi les suiveurs et deux ports sur un même flux). Port
+  supprimé = entrées liées vidées. Limite restante : les flux SUIVEURS (audio/ANC qui suivent la
+  vidéo d'une tuile) ne sont pas virtualisés dans le snapshot, corrigés au rechargement.
+  Tests : `verif_ports_virtuels`, `verif_ports_r1_envois`, `verif_ports_r2_liens`,
+  `verif_ports_envoi_perime`, `verif_ports_snapshot_entrees`, `verif_ports_set_input`,
+  `verif_ports_slots_qualifies`, `verif_projet_export_ports`.
+- **Virtuelles composables (2026-10-28, maquette A)** : une virtuelle = une vidéo, 0 à 8 audios
+  (un flux MXL de 8 canaux chacun) et un ANC. Avec une vidéo, c'est elle le PARENT : les autres
+  ports lui sont rattachés (`parent_id`, `suffix` A1, A2…, Anc), se raccordent AVEC elle
+  (`rebind_children`) et héritent de ses libellés (`tally._port_row`). Sans vidéo, chaque flux est
+  un port indépendant. Création en lot `POST /api/projects/<pid>/ports/batch`
+  (`create_virtuals`), ajout d'un rattaché `POST …/ports/<id>/children`. Test :
+  `verif_ports_virtuelles`.
+- **Renvois (2026-10-29)** : une destination marquée `reusable` est proposée comme SOURCE dans la
+  vue Câbles de son propre projet (« ↻ Renvois du projet ») : plusieurs entrées internes la suivent
+  et commutent ensemble. Un conteneur ne lit pas une destination qu'il alimente : 409 `port_loop`,
+  dans les deux sens. Test : `verif_ports_renvois`.
+- **« Faire entrer cette source par un port du projet » (2026-10-31)** : au lieu du seul refus
+  « source hors projet », la page Câbles propose de faire entrer le flux par un port source du
+  projet, réutilisé s'il en existe un affecté à ce flux, créé sinon, puis câblé
+  (`POST /api/projects/<pid>/ports/admit`, `admit_flow` ; réservé aux accès globaux, comme toute
+  affectation de source). Le refus 403 nomme le projet (`project_id`). Test :
+  `verif_ports_admettre_source`.
+- **Sélecteur de source du multiview** : `GET /api/containers/<vmid>/input_ports` propose les ports
+  du projet à côté des flux.
+- **Libellés des ports (livrés le 2026-10-24)** : les noms d'un port vivent dans la table des
+  libellés sous la clé `port:<id>`, avec les mêmes colonnes qu'une source — chaque consommateur
+  garde la colonne qu'il a choisie. Nom LONG et nom COURT = deux de ces colonnes, désignées par
+  le réglage `port_label_cols` (défaut Label 2 / Label 3 ; `GET|POST /api/labels/port_cols`).
+  Un port non nommé affiche son nom (long) et un court déduit. Nommés par les éditeurs du projet
+  et l'admin (PATCH du port, champ `labels: {long, short}`), pas par `settings.edit`.
+  Par port : `label_source` = `port` (sa ligne, défaut) ou `origin` (la ligne du flux affecté
+  EN CE MOMENT — elle suit la réaffectation) ; le choix vaut pour la ligne ENTIÈRE, jamais de
+  repli d'une ligne sur l'autre (`tally.row_ref`). `tsl_in` = `port` (défaut : un nom reçu d'un
+  mélangeur externe en TSL n'écrit pas dans la ligne du port) ou `external` (il y écrit).
+  Comme le conteneur ne connaît que le physique, on remonte du flux au port DU POINT DE VUE DU
+  CONSOMMATEUR (`project_ports.label_ref_for`) : son lien d'abord, puis les ports de son projet
+  (source avant destination) ; hors projet, le flux. Branché sur le distributeur (fenêtres de
+  multiview, cibles de plugin), l'AFV (entrées du mélangeur) et le pupitre ATEM ; la sortie TSL
+  vise déjà `port:<id>` par sa correspondance.
+  **Port non affecté (2026-10-24)** : l'entrée qui le suit reste VIDE — noir au mélangeur,
+  « NO SIGNAL » au multiview ; pas de mire pour l'instant (décision : le noir suffit ; la piste
+  la plus économe, si on la reprend, est une image tenue en mémoire par le consommateur, pas un
+  flux partagé répliqué en RDMA). Chaque colonne saisie du port porte alors « · non affectée »
+  (`projects.port_unassigned`, dans la langue du SITE : le texte part vers des écrans partagés).
+  Une entrée vide n'ayant plus de flux, son port se retrouve par le LIEN de l'entrée (slot) :
+  tuile de multiview, entrée du mélangeur pour l'AFV, touche du pupitre ATEM.
+  Pas encore : les noms des touches du mélangeur (fonction nouvelle du plugin), et les libellés de
+  canaux audio — `channel_labels` est stocké mais AUCUN consommateur ne le lit, ni aucun
+  équivalent côté signal réel. Test : `tests/verif_libelles_ports.py`.
+- **Frontière appliquée (décision du 2026-10-24)** : une entrée d'un conteneur de projet ne lit
+  QUE ce que son projet produit, ou ce qu'un port source du projet apporte — pour tout le monde,
+  admin compris, et pour tous les projets. Garde unique dans `cabling._apply_wire`, par où passent
+  la page Câbles, Ember+, NMOS IS-05, les instantanés de câblage, l'UDC et la résolution des ports
+  (`project_ports.wire_check`) ; refus = 403 `shm_not_in_project` + alerte
+  `alert.cablage.hors_projet_refuse`. Un flux extérieur qui EST l'affectation d'un port est accepté
+  et enregistré comme suivant ce port ; tout autre câble direct défait le lien de l'entrée (Ember+
+  et NMOS compris — la limite « un câblage venu d'ailleurs ne défait pas le lien » est levée).
+  Au RECHARGEMENT, une entrée qui lisait un flux extérieur hors port est VIDÉE, pas rejouée
+  (`strip_external_inputs`, alerte `alert.projet.entree_hors_projet_videe`) : un projet ancien peut
+  revenir avec des entrées vides, c'est voulu. Appartenance jugée par `member_project_ids` : un
+  snapshot ne rattache un conteneur que si l'entrée désigne la MÊME instance (uuid, sinon hostname)
+  — le vmid seul est réattribué. Un UDC inséré devant un conteneur de projet rejoint ce projet.
+  Commandes de contrôle aussi (2026-10-31) : le relais de plugin et les actions de macro refusent
+  un corps qui pointe une entrée sur un flux hors projet (`project_ports.body_flow_refusal`, 403
+  `shm_not_in_project`), et un `/input` devient de toute façon un câblage (cf. R2). Test :
+  `tests/verif_frontiere_projet.py`, `tests/verif_ports_entree_par_cablage.py`.
 
 ## 6. Persistance TSL / Ember+ : le projet se loge dans le contrôleur
+
+> **Supplanté (constat du 2026-11-01).** `project_control_map` / `role_ref` n'ont jamais été
+> construits. L'adresse stable a été faite autrement : les **emplacements** (`production_roles`,
+> `app/routes/roles_api.py`, cf. CLAUDE.md « Identité d'un conteneur »), qu'Ember+ adresse déjà
+> (`emplacements.<num>`) ; TSL, le pont ATEM et les macros publiées visent encore vmid/uuid. Le
+> niveau de tally par projet existe, mais sous forme de NIVEAU nommé (`tally_levels`,
+> `owner_kind='project'`, uuid + rang d'affichage) et non plus de `tally_base` à pas de 3. La
+> conception ci-dessous est gardée pour l'intention.
 
 **Problème** : le contrôleur broadcast (pupitres, UMD, systèmes tiers via `services/tsl` et
 `services/emberplus`) est configuré une fois — index tally TSL, arbres de paramètres Ember+.
@@ -324,7 +474,7 @@ et plus tard les widgets tally du workspace (ch. 6).
     vues et la shotbox.
   - **Portée au-delà de l'écran** : le même catalogue d'actions (adressé par
     `instance_uuid`/rôle, donc stable au rechargement du projet) est la cible naturelle des
-    **surfaces physiques** — Stream Deck (spike prévu), Skaarhoj (`services/skaarhoj`),
+    **surfaces physiques** — Stream Deck (spike prévu), Skaarhoj (`services/panel_skaarhoj`),
     et cohérent avec l'indirection TSL/Ember+ du §6 : une action = une adresse stable dans
     laquelle le projet vient se loger.
 - **Éditeur de vue** : grille CSS (réutiliser `.home-panels`/tokens), drag/drop/resize en
@@ -710,7 +860,7 @@ réservé admin, sortie interne d'une DEST par l'editor) ; **rebind à chaud**
 (`_rewire_shm_consumers` via `_apply_wire`/`_collect_current_edges` — internes au
 projet pour une source, externes pour une dest) ; panneau « Ports » dans le tiroir du
 workspace. Ch.5 : `projects.tally_base` auto-alloué (pas de 3, évite les bases des
-connexions TSL) ; `tsl_connections` + `direction in|out`, `dest_host`, `project_id`
+connexions TSL — REMPLACÉ depuis par les niveaux nommés `tally_levels`, cf. §6) ; `tsl_connections` + `direction in|out`, `dest_host`, `project_id`
 (niveau = celui du projet) ; service tsl : `resolve_ref("port:<id>")` (mapping/labels
 sur adresses stables), **pseudo-connexions par projet** (rouge=LH/vert=RH, index d'une
 source = port.ord), **défaut : une fenêtre multiview/overlay sans niveau explicite

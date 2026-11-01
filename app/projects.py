@@ -120,6 +120,138 @@ def resnapshot_projet(pid, label=None, force=False):
     return snapshot
 
 
+def detach_vmid_from_projects(vmid, keep_pid=None):
+    """Remove a container from the snapshot of every project other than `keep_pid`.
+
+    resnapshot_projet keeps every live vmid of the previous snapshot, so a live container whose
+    project_id changed never left its old project (DeckLink #231, Atelier, 2026-10-30). Each touched
+    project gets an automatic version of its previous snapshot, as with any re-snapshot.
+    References left behind are reported, not removed: widgets of the project's views, inputs that
+    follow one of its ports, and ports that publish this container's output.
+    Returns [{pid, name, views, links, bindings}] or, for a project being loaded/unloaded,
+    {pid, name, skipped: True}."""
+    from .database import (db_get_container, db_get_projects, db_add_project_version,
+                           db_update_project_snapshot, db_project_views, db_project_ports,
+                           db_port_links)
+    from .auth import shm_producer_vmids, _snap_map_cache
+    vmid = int(vmid)
+    uuid = (db_get_container(vmid) or {}).get("instance_uuid")
+    out = []
+    for p in db_get_projects():
+        pid = p["id"]
+        old = p.get("snapshot") or []
+        if pid == keep_pid or not any(c.get("vmid") == vmid for c in old):
+            continue
+        if (p.get("state") or "saved") in ("loading", "unloading"):
+            log.warning("project #%s is %s: vmid %s not detached", pid, p.get("state"), vmid)
+            out.append({"pid": pid, "name": p.get("name"), "skipped": True})
+            continue
+        db_add_project_version(pid, old)
+        db_update_project_snapshot(pid, [c for c in old if c.get("vmid") != vmid])
+        views = [v.get("name") for v in db_project_views(pid)
+                 if any((w.get("instance_uuid") and w.get("instance_uuid") == uuid)
+                        or w.get("vmid") == vmid for w in (v.get("layout") or []))]
+        ports = db_project_ports(pid)
+        port_ids = {pt["id"] for pt in ports}
+        links = [l for l in (db_port_links(consumer_uuid=uuid) if uuid else [])
+                 if l.get("port_id") in port_ids]
+        # source ports bind {shm, audio_shm}, destination ports {internal_shm}
+        shms = {pt["id"]: [v for k, v in (pt.get("binding") or {}).items()
+                           if k in ("shm", "audio_shm", "internal_shm") and v] for pt in ports}
+        producers = shm_producer_vmids([s for ss in shms.values() for s in ss])
+        bindings = [pt.get("name") for pt in ports
+                    if any(vmid in (producers.get(s) or ()) for s in shms[pt["id"]])]
+        log.info("vmid %s detached from project #%s (views=%d, port links=%d, bindings=%d)",
+                 vmid, pid, len(views), len(links), len(bindings))
+        out.append({"pid": pid, "name": p.get("name"), "views": views,
+                    "links": len(links), "bindings": bindings})
+    if out:
+        _snap_map_cache["ts"] = 0.0   # access rights read the snapshots through this cache
+    return out
+
+
+def export_ports(pid):
+    """Virtual ports of a project for the export file: ports (with their parent, binding, flags
+    and stored labels) and the links of the inputs that follow them. Ids are only references
+    inside the file; import_ports gives new ones."""
+    from .database import db_project_ports, db_port_links, db_get_source_labels
+    ports = db_project_ports(pid)
+    ids = {pt["id"] for pt in ports}
+    labels = {s["shm"]: s for s in db_get_source_labels() if s.get("shm", "").startswith("port:")}
+    out = []
+    for pt in ports:
+        row = labels.get("port:%d" % pt["id"]) or {}
+        out.append({"ref": pt["id"], "parent": pt.get("parent_id"), "kind": pt["kind"],
+                    "media": pt.get("media"), "name": pt["name"], "ord": pt.get("ord") or 0,
+                    "suffix": pt.get("suffix"), "channel_labels": pt.get("channel_labels"),
+                    "binding": pt.get("binding"), "label_source": pt.get("label_source"),
+                    "tsl_in": pt.get("tsl_in"), "reusable": bool(pt.get("reusable")),
+                    "labels": {str(i): row["label_%d" % i] for i in range(2, 10)
+                               if row.get("label_%d" % i)}})
+    links = [{"port": l["port_id"], "consumer_uuid": l["consumer_uuid"], "kind": l["kind"],
+              "to_slot": l["to_slot"], "shm": l.get("shm") or ""}
+             for l in db_port_links() if l["port_id"] in ids]
+    return {"ports": out, "port_links": links}
+
+
+def import_ports(pid, ports, links, name, snapshot):
+    """Recreate the exported virtual ports of an imported project (see export_ports).
+    Flow names produced by the project are renamed as the recall will rename them
+    (_prefix_snapshot), so bindings and links keep pointing at the project's own outputs.
+    Links of consumers that are not in the snapshot (other projects) are dropped.
+    Returns {"ports": n, "links": n, "links_dropped": n}."""
+    from .database import db_create_port, db_update_port, db_port_link_set, db_upsert_source_label
+    from . import project_ports as pp
+    prefix = _sanitize_host_frag(name)
+    produced = set()
+    for c in snapshot:
+        produced |= _shm_produced(c.get("deploy_config") or {})
+
+    def rename(v):
+        if not isinstance(v, str) or not prefix:
+            return v
+        full = v.startswith("/dev/shm/")
+        bare = v[len("/dev/shm/"):] if full else v
+        if bare not in produced or bare.startswith(prefix + "-"):
+            return v
+        return ("/dev/shm/" if full else "") + prefix + "-" + bare
+
+    ids = {}
+    ports = [p for p in (ports or []) if isinstance(p, dict) and p.get("name") and
+             p.get("kind") in ("source", "dest")]
+    # heads first: a child needs its parent's new id
+    for p in sorted(ports, key=lambda p: p.get("parent") is not None):
+        parent = p.get("parent")
+        if parent is not None and parent not in ids:
+            continue
+        new = db_create_port(pid, p["kind"], p.get("media") or "video", str(p["name"]),
+                             ord_=int(p.get("ord") or 0), channel_labels=p.get("channel_labels"),
+                             parent_id=ids.get(parent), suffix=p.get("suffix"))
+        ids[p.get("ref")] = new
+        b = p.get("binding")
+        db_update_port(new, binding={k: rename(v) for k, v in b.items()} if isinstance(b, dict) else None,
+                       label_source=p.get("label_source") if p.get("label_source") in pp.LABEL_SOURCES else None,
+                       tsl_in=p.get("tsl_in") if p.get("tsl_in") in pp.TSL_IN_MODES else None,
+                       reusable=bool(p.get("reusable")) if parent is None and p["kind"] == "dest" else None)
+        lab = {"label_%d" % int(k): str(v) for k, v in (p.get("labels") or {}).items()
+               if str(k).isdigit() and 2 <= int(k) <= 9 and v}
+        if lab:
+            db_upsert_source_label(pp.port_ref(new), lab)
+    uuids = {c.get("instance_uuid") for c in snapshot if c.get("instance_uuid")}
+    n_links = dropped = 0
+    for l in (links or []):
+        if not isinstance(l, dict) or l.get("port") not in ids or l.get("consumer_uuid") not in uuids:
+            dropped += 1
+            continue
+        db_port_link_set(ids[l["port"]], l["consumer_uuid"], l.get("kind") or "video",
+                         l.get("to_slot"), rename(l.get("shm") or ""))
+        n_links += 1
+    if ids:
+        from .tally import invalider_ports, invalider_libelles
+        invalider_ports(); invalider_libelles(); pp.invalidate_label_index()
+    return {"ports": len(ids), "links": n_links, "links_dropped": dropped}
+
+
 def _slugify(name):
     s = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")
     return s or "projet"
@@ -205,8 +337,11 @@ def _prefix_snapshot(snapshot, prefix):
     for c in snapshot:
         produced |= _shm_produced(c.get("deploy_config") or {})
 
-    def pref(name):                       # nom de shm « nu »
-        return f"{prefix}-{name}" if name and name in produced else name
+    # IDEMPOTENT : un projet chargé se ré-enregistre de lui-même (`resnapshot`) avec ses noms
+    # DÉJÀ préfixés ; les préfixer encore donnait « P-P-rl-mix » au rechargement suivant, puis
+    # « P-P-P-… » (constaté le 2026-10-24 sur Régie Légère, une modification après son chargement).
+    def _with(name):
+        return name if name.startswith(prefix + "-") else f"{prefix}-{name}"
 
     def pref_path(path):                  # « /dev/shm/X » ou « X »
         if not path:
@@ -214,45 +349,26 @@ def _prefix_snapshot(snapshot, prefix):
         full = path.startswith("/dev/shm/")
         bare = path[len("/dev/shm/"):] if full else path
         if bare in produced:
-            return f"/dev/shm/{prefix}-{bare}" if full else f"{prefix}-{bare}"
+            return f"/dev/shm/{_with(bare)}" if full else _with(bare)
         return path
 
+    # TOUTE chaîne des params qui nomme un flux produit par le projet est préfixée, où qu'elle
+    # soit. Une liste de champs connus (`input_shm`, `flux_config`…) en oubliait la plupart —
+    # entrées du mélangeur `input_<n>`, de la console audio, sorties SDI de decklink_io : au
+    # rechargement, ces entrées pointaient vers des flux qui n'existaient plus (mesuré le
+    # 2026-10-24 sur Régie Légère : 8 conteneurs sur 18, dont rl-mix entier). Même principe que
+    # `project_ports.materialize_params` : une valeur égale à un nom de flux du projet en EST une
+    # référence.
+    from .project_ports import _map_strings
     out = []
     for c in snapshot:
         c = dict(c)
-        c["hostname"] = f"{prefix}-{c.get('hostname') or ''}"[:63]
+        c["hostname"] = _with(c.get("hostname") or "")[:63]
         dc = c.get("deploy_config")
         if dc:
-            dc = dict(dc); params = dict(dc.get("params") or {})
+            dc = dict(dc)
+            params = _map_strings(dict(dc.get("params") or {}), pref_path)
             params["hostname"] = c["hostname"]
-            t = dc.get("type")
-            # Sorties explicites (les sorties dérivées du hostname suivent le nouveau nom)
-            for k in ("shm_out", "shm_out_pgm", "shm_out_clean", "shm_out_pvw"):
-                if params.get(k):
-                    params[k] = pref(params[k])
-            # Entrées (références internes → préfixées ; externes → inchangées)
-            if params.get("input_shm"):
-                params["input_shm"] = pref_path(params["input_shm"])
-            if params.get("bg_input"):
-                params["bg_input"] = pref_path(params["bg_input"])
-            if params.get("shm_name"):
-                params["shm_name"] = pref_path(params["shm_name"])
-            if params.get("audio_shm"):
-                params["audio_shm"] = pref_path(params["audio_shm"])
-            if isinstance(params.get("flux_config"), list):
-                fc = []
-                for f in params["flux_config"]:
-                    f = dict(f)
-                    if f.get("path"):     f["path"]     = pref_path(f["path"])
-                    if f.get("shm_name"): f["shm_name"] = pref_path(f["shm_name"])
-                    fc.append(f)
-                params["flux_config"] = fc
-            if isinstance(params.get("video"), dict) and params["video"].get("shm_name"):
-                v = dict(params["video"]); v["shm_name"] = pref_path(v["shm_name"]); params["video"] = v
-            if isinstance(params.get("audios"), list):
-                params["audios"] = [
-                    {**a, "shm_name": pref_path(a.get("shm_name"))} if isinstance(a, dict) else a
-                    for a in params["audios"]]
             dc["params"] = params
             c["deploy_config"] = dc
         out.append(c)
@@ -489,6 +605,11 @@ def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve
 
     # Préfixe le hostname par le nom du projet + réécrit les références shm internes.
     snapshot = _prefix_snapshot(snapshot, p["name"])
+    # Frontière du projet (décision du 2026-10-24) : ce que le projet produit, calculé sur le
+    # snapshot ENTIER — une reprise ciblée ne doit pas prendre un flux interne pour un extérieur.
+    produced_all = set()
+    for _c in snapshot:
+        produced_all |= _shm_produced(_c.get("deploy_config") or {})
 
     # Reprise ciblée des échecs : on ne garde que les VMID d'origine demandés.
     if only_vmids is not None:
@@ -649,7 +770,17 @@ def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve
 
         # Multicast TX : JAMAIS rejoué du snapshot — purge → le hook before_deploy
         # réalloue via mcast_allocations (owner_ref = nouveau vmid).
-        params = dc.get("params", {}) or {}
+        # Ports virtuels (option C) : `port:<id>` → flux affecté MAINTENANT, juste avant l'envoi
+        # au conteneur. Le snapshot garde le virtuel ; les liens sont recréés après déploiement.
+        from . import project_ports as _pp
+        # Frontière du projet : une entrée qui lisait un flux extérieur HORS port est vidée, pas
+        # rejouée (décision du 2026-10-24) — et on le dit, entrée par entrée.
+        _raw, _cut = _pp.strip_external_inputs(dc, produced_all)
+        if _cut:
+            _p(f"      · entrée(s) vidée(s), flux hors projet sans port : {', '.join(_cut)}")
+            db_add_alert("alert.projet.entree_hors_projet_videe", "warning", kind="deploy",
+                         params={"p": p["name"], "h": c.get("hostname") or "", "shm": ", ".join(_cut)})
+        params = _pp.materialize_params(_raw, dc.get("type"), c.get("hostname"))
         n_mc = _purge_tx_multicast(params)
         if n_mc:
             _p(f"      · {n_mc} adresse(s) multicast TX à réallouer au déploiement")
@@ -670,6 +801,10 @@ def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve
                 _echec(f"déploiement compute échoué : {e}", clef="alert.projet.echec_deploiement_compute_exception", e=str(e))
                 continue
             vmid_map[c["vmid"]] = vmid
+            if c.get("port_links"):
+                for _r in _pp.restore_links(vmid, c["port_links"]):
+                    if not _r["ok"]:
+                        _p(f"      · port #{_r['port_id']} non recâblé : {_r.get('error')}")
             _p("  ✓ créé + déployé (compute)")
             ok_count += 1
             continue
@@ -711,6 +846,10 @@ def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve
             _remap_project_views(project_id, vmid_map, _p)
         except Exception as e:
             log.warning("remap vues projet #%s: %s", project_id, e)
+        try:
+            _remap_project_snapshot(project_id, vmid_map)
+        except Exception as e:
+            log.warning("project #%s snapshot remap: %s", project_id, e)
 
     if failed:
         db_add_alert(
@@ -733,6 +872,30 @@ def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve
         except Exception as e:
             log.warning("projet %s : niveau de tally non semé (%s)", project_id, e)
     return {"ok": ok_count, "total": total, "failed": failed}
+
+
+def _remap_project_snapshot(project_id, vmid_map):
+    """Re-pointe les entrées du snapshot sur les conteneurs que le chargement vient de créer (28/10).
+
+    Le snapshot citait encore les vmid d'ORIGINE : la carte du projet listait des conteneurs
+    disparus, et un vmid réattribué plus tard à un autre conteneur l'aurait fait entrer dans le
+    projet — jusqu'à être détruit par « Détruire les conteneurs ». Seuls `vmid` et `instance_uuid`
+    changent ; une entrée en échec garde son vmid d'origine (c'est lui que « Réessayer » cite)."""
+    from .database import db_update_project_snapshot, db_get_container
+    p = db_get_project(project_id)
+    snap = (p or {}).get("snapshot") or []
+    changed = False
+    for sc in snap:
+        new = vmid_map.get(sc.get("vmid"))
+        if new is None or new == sc.get("vmid"):
+            continue
+        sc["vmid"] = new
+        live = db_get_container(new) or {}
+        if live.get("instance_uuid"):
+            sc["instance_uuid"] = live["instance_uuid"]
+        changed = True
+    if changed:
+        db_update_project_snapshot(project_id, snap)
 
 
 def _remap_project_views(project_id, vmid_map, _p):

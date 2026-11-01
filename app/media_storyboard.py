@@ -108,7 +108,16 @@ def store(aid, jpg, desc, made=None):
     with open(js + ".tmp", "w", encoding="utf-8") as f:
         json.dump(d, f, ensure_ascii=False)
     os.replace(js + ".tmp", js)
+    _forget_ids()
     return get(aid)
+
+
+def _forget_ids():
+    """Le mtime du dossier ne suffit pas à dater `ids()` : il est grossier (quelques ms), et un
+    rangement puis une suppression dans le même tic le laissent inchangé — le cache annonçait encore
+    une planche supprimée (banc rouge 1 fois sur 25, 2026-10-24). Nos propres écritures l'oublient."""
+    with _ids_lock:
+        _ids_cache["mtime"] = None
 
 
 def delete(aid):
@@ -119,6 +128,7 @@ def delete(aid):
             n += 1
         except OSError:
             pass
+    _forget_ids()
     return n
 
 

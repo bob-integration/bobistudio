@@ -25,8 +25,8 @@ import sys
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
 
-GABARIT = os.path.join(RACINE, "services/atem/settings_tab.html")
-SOURCE = os.path.join(RACINE, "services/atem/__init__.py")
+GABARIT = os.path.join(RACINE, "services/panel_atem/settings_tab.html")
+SOURCE = os.path.join(RACINE, "services/panel_atem/__init__.py")
 JS = os.path.join(RACINE, "templates/settings.html")
 ECHECS = []
 
@@ -48,9 +48,9 @@ def verifier(nom, obtenu, attendu):
 def main():
     print(__doc__.splitlines()[0])
     if not os.path.exists(SOURCE):
-        print("  sous-module services/atem absent — garde inapplicable")
+        print("  sous-module services/panel_atem absent — garde inapplicable")
         return 0
-    from services import atem
+    from services import panel_atem as atem
 
     # ── 1. LE GABARIT : la colonne existe, par sa clé i18n, et le tableau reste cohérent.
     html = open(GABARIT, encoding="utf-8").read()
@@ -92,6 +92,8 @@ def main():
     if len(opts) == 2:
         c = opts[1].split("\n}", 1)[0]
         verifier("js : niveaux offerts 2..9", ("n = 2" in c and "n <= 9" in c), True)
+        verifier("js : chaque niveau porte le nom de sa colonne", "_atemColNames" in c, True)
+
 
     # ── 3. LA ROUTE : accepte `labels`, refuse hors bornes, expose l'état.
     arbre = ast.parse(open(SOURCE, encoding="utf-8").read())
@@ -105,7 +107,7 @@ def main():
     # ── 4. L'i18n, dans les deux langues ET du bon côté.
     for lang in ("fr", "en"):
         coeur = json.load(open(os.path.join(RACINE, f"i18n/{lang}.json"), encoding="utf-8"))
-        serv = json.load(open(os.path.join(RACINE, f"services/atem/i18n/{lang}.json"),
+        serv = json.load(open(os.path.join(RACINE, f"services/panel_atem/i18n/{lang}.json"),
                               encoding="utf-8"))
         verifier(f"i18n {lang} : les clés du service sont dans le SERVICE",
                  [k for k in CLES_SERVICE if not serv.get(k)], [])
@@ -113,7 +115,7 @@ def main():
                  [k for k in CLES_SERVICE if k in coeur], [])
         verifier(f"i18n {lang} : les clés du JS sont dans le cœur",
                  [k for k in CLES_COEUR if not coeur.get(k)], [])
-    fr = json.load(open(os.path.join(RACINE, "services/atem/i18n/fr.json"), encoding="utf-8"))
+    fr = json.load(open(os.path.join(RACINE, "services/panel_atem/i18n/fr.json"), encoding="utf-8"))
     verifier("i18n : l'aide ANNONCE la limite de 4 octets du nom court",
              "4" in fr["service.atem.niveau_de_libelle_aide"], True)
 
@@ -159,6 +161,39 @@ def main():
                  atem._noms_source(etat, 0, None)[1], "1")
     finally:
         atem._label_de_niveau = vrai_label
+
+    # ── 6. ENTRÉE QUI SUIT UN PORT : par défaut le nom du PORT, long et court (décision du 23/10 ;
+    # Z8 28/10 : les touches montraient le nom du flux sous des entrées câblées sur Cam1…).
+    vrai_ref, vrai_port, vrai_label = atem._label_ref, atem._label_du_port, atem._label_de_niveau
+    try:
+        atem._label_ref = lambda vmid, shm, slot=None: "port:7" if slot == 0 else shm
+        atem._label_du_port = lambda ref, champ: {"long": "Cam1", "short": "C1"}[champ] if ref == "port:7" else ""
+        atem._label_de_niveau = lambda shm, niv: "Caméra plateau" if (shm == "port:7" and niv == 4) else ""
+        e = {"n_inputs": 2, "inputs": ["Atelier-decklink-io-Atelier-1", "flux-b"], "_labels_vmid": 215}
+        verifier("port : défaut = nom long et court du PORT, pas le flux",
+                 atem._noms_source(e, 0, None), ("Cam1", "C1"))
+        verifier("port : hors port, le défaut reste le flux et le numéro",
+                 atem._noms_source(e, 1, None), ("flux-b", "2"))
+        verifier("port : un niveau choisi et renseigné reste prioritaire",
+                 atem._noms_source(e, 0, {"long": 4}), ("Caméra plateau", "C1"))
+        verifier("port : un niveau choisi mais vide retombe sur le PORT, pas sur le flux",
+                 atem._noms_source(e, 0, {"long": 5, "short": 5}), ("Cam1", "C1"))
+    finally:
+        atem._label_ref, atem._label_du_port, atem._label_de_niveau = vrai_ref, vrai_port, vrai_label
+
+    # ── 7. _label_du_port lit la colonne longue / courte des ports, sans repli de colonne.
+    from app import tally as _t, project_ports as _pp
+    vrai_lib, vrai_cols = _t.libelle_de, _pp.label_cols
+    lus = []
+    try:
+        _pp.label_cols = lambda: {"long": 2, "short": 3}
+        _t.libelle_de = lambda ref, col, replier=True: (lus.append((ref, col, replier)) or
+                                                        {2: "Cam1", 3: "C1"}.get(col, ""))
+        verifier("port : nom long = colonne longue, sans repli",
+                 (atem._label_du_port("port:7", "long"), lus[-1:]), ("Cam1", [("port:7", 2, False)]))
+        verifier("port : nom court = colonne courte", atem._label_du_port("port:7", "short"), "C1")
+    finally:
+        _t.libelle_de, _pp.label_cols = vrai_lib, vrai_cols
 
     print()
     if ECHECS:

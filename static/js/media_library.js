@@ -26,6 +26,7 @@
 //     selectable: true,                     // barre d'actions groupées dès UNE ligne sélectionnée
 //     bulk: [{label, items: rows => [{label, run}] | run: rows => …}],   // actions sur la sélection
 //     rowMenu: row => [{label, run} | {header}],                          // ajouts au menu d'une ligne
+//     binMenu: bin => [{label, run} | {header}],                          // ajouts au menu d'un bin (clic droit)
 //     dateColumn: true,                     // colonne « Entré le » (Gestionnaire)
 //     fill: true,                           // occupe toute la hauteur de son conteneur
 //     imageFormat: {w, h} | () => {w, h},   // format proposé à l'éditeur d'image (« Éditer… »)
@@ -86,7 +87,7 @@
   };
   // Groupes de l'éditeur de recherche ; un champ inconnu tombe dans « Général ».
   const SF_GROUPS = [
-    ['general', ['name','title','description','keywords','kind','origin','producer','project','created_at','updated_at']],
+    ['general', ['name','title','description','keywords','kind','origin','producer','project','created_at','file_created','updated_at']],
     ['tech', ['duration','width','height','fps','scan','vcodec','audio_codec','audio_tracks','container','timecode','size','has_video']],
     ['where', ['on_node','on_share','copies','has_proxy']],
     ['proc', ['versions','version','derived','relation','preset','loudness_lufs','true_peak','realtime_factor','submitted_by','watchfolder']],
@@ -191,6 +192,19 @@
   function toggleField(cur, key, defaults){
     const l = (cur || defaults).slice(), i = l.indexOf(key);
     if(i >= 0) l.splice(i, 1); else l.push(key);
+    return l;
+  }
+  // ORDRE des colonnes (2026-10-29) : `key` déplacée d'un cran (`to` = -1 / +1, bornée aux extrémités),
+  // ou posée juste AVANT la colonne `to` (glisser un en-tête ; `to` null = en dernier). Une clé absente
+  // de la liste ne bouge rien ; la liste par défaut sert de point de départ, comme pour toggleField.
+  function moveField(cur, key, to, defaults){
+    const l = (cur || defaults).slice(), i = l.indexOf(key);
+    if(i < 0) return l;
+    if(to === -1 || to === 1){ const j = Math.max(0, Math.min(l.length - 1, i + to)); l.splice(i, 1); l.splice(j, 0, key); return l; }
+    if(to === key) return l;
+    l.splice(i, 1);
+    const j = to == null ? -1 : l.indexOf(to);
+    if(j < 0) l.push(key); else l.splice(j, 0, key);
     return l;
   }
   // Clés de groupe d'un média. Un média peut tomber dans PLUSIEURS groupes (deux projets, copies sur
@@ -308,6 +322,7 @@
         <button type="button" class="btn ml-compat" aria-pressed="false" hidden></button>
         <button type="button" class="btn ml-onetap" aria-pressed="false" hidden>${esc(L('one_click','1 clic'))}</button>
         <button type="button" class="btn ml-cardf-btn" aria-haspopup="menu" hidden>${esc(L('card_fields','Champs'))} ▾</button>
+        <button type="button" class="btn ml-cols-btn" aria-haspopup="dialog" hidden>${esc(L('cols_btn','Colonnes…'))}</button>
         <div class="ml-modes" role="group" aria-label="${esc(L('view_label','Affichage'))}">${viewsHere.map(v =>
           `<button type="button" class="ml-mode" data-view="${v}" aria-pressed="false" title="${esc(L('view.' + v, v))}" aria-label="${esc(L('view.' + v, v))}">${VIEW_ICONS[v]}</button>`).join('')}</div>
         <span class="ml-count"></span>
@@ -567,6 +582,13 @@
       audio:{label:() => L('col_audio','Audio'), mono:1, text:fmtAudioShort},
       copies:{label:() => L('col_copies','Copies'), mono:1, cls:'ml-c-n', sv:a => a.copies_n || 0, html:r => copiesCell(r)},
       created_at:{label:() => L('col_date','Entré le'), mono:1, sv:a => a.created_at || '', text:a => (a.created_at || '').replace('T', ' ').slice(0, 16)},
+      // Date de CRÉATION du média : inscrite dans le fichier (caméra, encodeur), sinon date du fichier
+      // original — l'infobulle dit laquelle (« Entré le » reste la date d'entrée dans la base).
+      file_created:{label:() => L('col_created','Créé le'), mono:1, sv:a => a.file_created || '', text:a => (a.file_created || '').replace('T', ' ').slice(0, 16),
+        html:r => { const a = r.asset || r; if(!a.file_created) return '';
+          const tip = a.file_created_src === 'meta' ? L('created_meta','Date de création inscrite dans le fichier')
+                                                    : L('created_file','Date du fichier (aucune date de création inscrite)');
+          return `<span title="${esc(tip)}">${esc(a.file_created.replace('T', ' ').slice(0, 16))}${a.file_created_src === 'meta' ? '' : ' <span class="ml-muted">≈</span>'}</span>`; }},
       project:{label:() => L('if_projects','Projets'), text:a => projNames(a).join(', ')},
       origin:{label:() => L('if_origin','Origine'), text:a => originLabel(a.origin)},
       producer:{label:() => L('if_producer','Producteur'), text:a => a.producer || ''},
@@ -588,9 +610,9 @@
         if(f && f.ok) return `<span class="ml-compat-ok" title="${esc(f.title || '')}">${esc(f.label || '✓')}</span>`;
         if(f) return `<span class="ml-badge warn" title="${esc(f.title || '')}">⚠ ${esc(f.title || f.label || '')}</span>`;
         return r.asset.tech && r.asset.tech.video ? `<span class="ml-compat-ok" title="${esc(L('compat_ok','Au format de la sortie'))}">✓</span>` : ''; }};
-    const COL_CHOICES = ['duration', 'format', ...(o.flag ? ['compat'] : []), 'audio', 'copies', 'created_at', 'title', 'description', 'keywords', 'project', 'origin',
+    const COL_CHOICES = ['duration', 'format', ...(o.flag ? ['compat'] : []), 'audio', 'copies', 'created_at', 'file_created', 'title', 'description', 'keywords', 'project', 'origin',
                          'producer', 'size', 'resolution', 'fps', 'vcodec', 'timecode', 'container', 'proxy'];
-    const CARD_CHOICES = ['description', 'file', 'format', 'audio', 'duration', 'project', 'keywords', 'origin', 'created_at', 'size', 'copies', 'timecode'];
+    const CARD_CHOICES = ['description', 'file', 'format', 'audio', 'duration', 'project', 'keywords', 'origin', 'created_at', 'file_created', 'size', 'copies', 'timecode'];
     function fieldDef(k){
       if(FIELDS[k]) return FIELDS[k];
       if(!/^meta\./.test(String(k))) return null;
@@ -705,6 +727,7 @@
       $('.ml-size-l').hidden = mode !== 'grid';
       $('.ml-size').value = vs.cell;
       $('.ml-cardf-btn').hidden = mode !== 'cards';
+      $('.ml-cols-btn').hidden = !(mode === 'table' && st.tab !== 'net');
       root.style.setProperty('--ml-cell', vs.cell + 'px');
       root.dataset.view = mode;
     }
@@ -1148,11 +1171,13 @@
           if(isCols) vs.cols = toggleField(colsOf(), k, defs); else vs.cardF = toggleField(cardFieldsOf(), k, defs);
           saveView(); render(); }});
       });
+      if(isCols) items.push({header:''}, {label:L('cols_organize','Organiser les colonnes…'), run:() => openColsDlg()});
       items.push({header:''}, {label:L('fields_reset','Revenir aux champs par défaut'), run:() => {
         if(isCols){ vs.cols = null; vs.colW = {}; } else vs.cardF = null; saveView(); render(); }});
       openMenu(anchor, items, at, () => openFieldsMenu(kind, anchor, at));
     }
     $('.ml-cardf-btn').onclick = e => openFieldsMenu('cards', e.currentTarget);
+    $('.ml-cols-btn').onclick = () => openColsDlg();
 
     // Proxys : mis en file sur l'orchestrateur (un à la fois par nœud) ; les refus sont nommés.
     async function createProxies(ids, binId){
@@ -1211,10 +1236,12 @@
       const b = binId != null ? st.bins.find(x => x.id === binId) : curManual();
       const opts = {bin_id: b && !b.smart ? b.id : null, label: b && !b.smart ? '▤ ' + b.name : ''};
       if(!global) return up.enqueue(files, {vmid}, opts);
-      // Gestionnaire : nœud + dossier choisis ; projet repris du filtre « projet = … » s'il y en a un.
+      // Gestionnaire : nœud + bin choisis (le bin visé par défaut) ; projet repris du filtre « projet = … » s'il y en a un.
       const pf = st.tree.items.find(f => f && f.field === 'project' && f.op === 'eq' && f.value);
-      const t = await up.chooseTarget({count: files.length}); if(!t) return;
-      up.enqueue(files, {node_id:t.node_id, folder:t.folder, project_id: pf ? +pf.value || null : null}, opts);
+      const t = await up.chooseTarget({count: files.length, bins: st.bins.filter(x => !x.smart), bin_id: opts.bin_id}); if(!t) return;
+      const ob = t.bin_id ? st.bins.find(x => x.id === t.bin_id) : null;
+      up.enqueue(files, {node_id:t.node_id, folder:'', project_id: pf ? +pf.value || null : null},
+                 {bin_id: ob ? ob.id : null, label: ob ? '▤ ' + ob.name : ''});
     }
     const upIn = $('.ml-upload-in');
     $('.ml-upload').onclick = async () => { upIn.value = ''; upIn.click(); try{ (await uploader()).open(); }catch(_){} };
@@ -1399,6 +1426,32 @@
         _rsAt = Date.now();
         if(Math.abs(w - w0) >= 2){ vs.colW = {...vs.colW, [key]:clampInt(w - 16, COLW_MIN, COLW_MAX)}; saveView(); render(); } };
       document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up);
+    });
+    // ORDRE : glisser un en-tête de colonne (souris ou doigt) le pose avant la colonne survolée ; la
+    // fenêtre « Colonnes… » fait la même chose sans glisser (↑ / ↓). Un glisser n'est pas un tri.
+    main.addEventListener('pointerdown', e => {
+      const th = e.target.closest('th[data-col]');
+      if(!th || e.target.closest('.ml-col-rs') || e.button !== 0 || st.tab === 'net') return;
+      const key = th.dataset.col, x0 = e.clientX, y0 = e.clientY;
+      let on = false, target;
+      const heads = () => [...main.querySelectorAll('thead th[data-col]')];
+      const mark = t => heads().forEach(h => h.classList.toggle('ml-col-drop', h.dataset.col === t));
+      const mv = ev => {
+        if(!on){ if(Math.abs(ev.clientX - x0) < 8 || Math.abs(ev.clientX - x0) < Math.abs(ev.clientY - y0)) return;
+          on = true; th.classList.add('ml-col-drag'); }
+        ev.preventDefault();
+        // Colonne dont la MOITIÉ gauche est sous le pointeur → avant elle ; au-delà de la dernière → en dernier.
+        target = null;
+        for(const h of heads()){ const b = h.getBoundingClientRect(); if(ev.clientX < b.left + b.width / 2){ target = h.dataset.col; break; } }
+        mark(target === key ? null : target);
+      };
+      const up = () => { document.removeEventListener('pointermove', mv); document.removeEventListener('pointerup', up);
+        document.removeEventListener('pointercancel', up);
+        if(!on) return;
+        _rsAt = Date.now(); th.classList.remove('ml-col-drag'); mark(null);
+        const nl = moveField(colsOf(), key, target, DEF_COLS);
+        if(nl.join() !== colsOf().join()){ vs.cols = nl; saveView(); render(); if(colsDlg.open) renderColsDlg(); } };
+      document.addEventListener('pointermove', mv); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
     });
     main.addEventListener('dblclick', e => { const h = e.target.closest('.ml-col-rs'); if(!h) return;
       const w = {...vs.colW}; delete w[h.dataset.rs]; vs.colW = w; saveView(); render(); });
@@ -1640,10 +1693,12 @@
       // supprimer, sa recherche, ses partages) ; proxys en « Modifier » seulement.
       if(b.shared){
         items[0] = {header:b.name + ' — ' + L('sh_by_tip','Partagé avec vous par {u}').replace('{u}', b.shared.by || '?')};
-        if(b.shared.level === 'edit') items.push({label:L('px_bin','Créer les proxys du contenu'), run:() => createProxies(null, b.id)});
+        if(b.shared.level === 'edit') items.push({label:L('px_bin','Créer les proxys du contenu'), run:() => createProxies(null, b.id)},
+          ...(o.binMenu ? o.binMenu({...b, children:st.kids}) || [] : []));
         openMenu(null, items, {x:e.clientX, y:e.clientY}); return;
       }
       items.push({label:L('px_bin','Créer les proxys du contenu'), run:() => createProxies(null, b.id)});
+      if(o.binMenu) items.push(...(o.binMenu({...b, children:st.kids}) || []));
       if(canShare()) items.push({label:L('sh_share','Partager…'), run:() => openShare([{kind:'bin', id:b.id, name:b.name}])});
       if(b.smart) items.push({header:''}, {label:L('bin_edit_query','Modifier la recherche…'), run:() => editSmartBin(b)});
       items.push({header:''}, {label:L('bin_rename','Renommer…'), run: async () => {
@@ -2040,6 +2095,13 @@
     // ── Fiche « Infos » + choix de vignette ──
     const dlgHost = document.createElement('div'); root.appendChild(dlgHost);
     dlgHost.innerHTML = `
+      <dialog class="ml-dlg ml-colsdlg">
+        <div class="ml-if-top"><div class="ml-if-title"><div class="ml-if-name">${esc(L('cols_title','Colonnes de la liste'))}</div>
+          <div class="ml-muted">${esc(L('cols_help','Cochez les colonnes affichées ; ↑ ↓ changent leur ordre (de gauche à droite). On peut aussi glisser un en-tête de la liste.'))}</div></div>
+          <button type="button" class="btn ml-cols-close">${esc(L('close','Fermer'))}</button></div>
+        <ul class="ml-cols-list"></ul>
+        <div class="ml-if-acts"><button type="button" class="btn ml-cols-reset">${esc(L('fields_reset','Revenir aux champs par défaut'))}</button></div>
+      </dialog>
       <dialog class="ml-dlg ml-info">
         <div class="ml-if-top"><img class="ml-if-thumb" alt="" hidden>
           <div class="ml-if-title"><div class="ml-if-name"></div><div class="ml-if-tabs" role="tablist">
@@ -2097,6 +2159,27 @@
       </dialog>`;
     const infoDlg = dlgHost.querySelector('.ml-info'), thDlg = dlgHost.querySelector('.ml-thumbdlg'), scDlg = dlgHost.querySelector('.ml-scdlg');
     const shDlg = dlgHost.querySelector('.ml-shdlg');
+
+    // ── Fenêtre « Colonnes » : affichées d'abord, dans leur ordre (cocher, ↑ ↓), puis les autres ──
+    const colsDlg = dlgHost.querySelector('.ml-colsdlg');
+    function renderColsDlg(){
+      const cur = colsOf(), custom = customKeys(), rest = [...COL_CHOICES, ...custom].filter(k => !cur.includes(k) && fieldDef(k));
+      colsDlg.querySelector('.ml-cols-list').innerHTML = [...cur, ...rest].map(k => { const on = cur.includes(k), i = cur.indexOf(k);
+        return `<li class="ml-cols-it${on ? ' on' : ''}" data-k="${esc(k)}"><label><input type="checkbox"${on ? ' checked' : ''}> ${esc(fieldDef(k).label())}</label>
+          <button type="button" class="btn ml-cols-mv" data-mv="-1" aria-label="${esc(L('cols_left','Plus à gauche'))}" title="${esc(L('cols_left','Plus à gauche'))}"${on && i > 0 ? '' : ' disabled'}>↑</button>
+          <button type="button" class="btn ml-cols-mv" data-mv="1" aria-label="${esc(L('cols_right','Plus à droite'))}" title="${esc(L('cols_right','Plus à droite'))}"${on && i < cur.length - 1 ? '' : ' disabled'}>↓</button></li>`; }).join('');
+    }
+    async function openColsDlg(){ if(!st.sf) await loadSF(); renderColsDlg(); if(!colsDlg.open) colsDlg.showModal(); }
+    colsDlg.addEventListener('change', e => { const li = e.target.closest('[data-k]'); if(!li) return;
+      vs.cols = toggleField(colsOf(), li.dataset.k, DEF_COLS); saveView(); render(); renderColsDlg(); });
+    colsDlg.addEventListener('click', e => {
+      const b = e.target.closest('.ml-cols-mv'), li = b && b.closest('[data-k]');
+      if(li){ const k = li.dataset.k; vs.cols = moveField(colsOf(), k, +b.dataset.mv, DEF_COLS); saveView(); render(); renderColsDlg();
+        const nb = colsDlg.querySelector(`[data-k="${CSS.escape(k)}"] [data-mv="${b.dataset.mv}"]`);
+        (nb && !nb.disabled ? nb : colsDlg.querySelector(`[data-k="${CSS.escape(k)}"] input`)).focus(); return; }
+      if(e.target.closest('.ml-cols-reset')){ vs.cols = null; vs.colW = {}; saveView(); render(); renderColsDlg(); return; }
+      if(e.target.closest('.ml-cols-close')) colsDlg.close();
+    });
 
     // ── Partager un média, une sélection ou un bin (app/media_sharing.py) ──
     // Destinataires : utilisateurs, groupes, membres d'un projet. Deux niveaux ; date de fin
@@ -2203,6 +2286,8 @@
       rows2.push([L('if_container','Conteneur'), t.container || '—'], [L('col_size','Taille'), a.size ? fmtSize(a.size) : '—'],
                  [L('if_origin','Origine'), a.origin || '—']);
       if(a.producer) rows2.push([L('if_producer','Producteur'), a.producer]);
+      if(a.file_created) rows2.push([L('col_created','Créé le'), a.file_created.replace('T', ' ') + ' · '
+        + (a.file_created_src === 'meta' ? L('created_meta','Date de création inscrite dans le fichier') : L('created_file','Date du fichier (aucune date de création inscrite)'))]);
       rows2.push([L('if_added','Entré dans la base'), (a.created_at || '').replace('T', ' ')], [L('if_id','Identifiant'), a.id]);
       infoDlg.querySelector('.ml-facts').innerHTML = rows2.map(([kk, vv]) =>
         `<dt>${esc(kk)}</dt><dd>${Array.isArray(vv) ? vv.map(x => `<div>${esc(x)}</div>`).join('') : esc(vv)}</dd>`).join('');
@@ -2610,7 +2695,7 @@
   }
 
   if(typeof module !== 'undefined') module.exports = {scrubFrac, scrubPopSize, scrubTime, fmtClock, createSeeker, teardownVideo,
-    VIEWS, GROUPS, sanitizeViewState, toggleField, groupKeys, buildGroups, pickFrames, sbValid, sbCell, sbTime, sbIndexAt};
+    VIEWS, GROUPS, sanitizeViewState, toggleField, moveField, groupKeys, buildGroups, pickFrames, sbValid, sbCell, sbTime, sbIndexAt};
   if(typeof window === 'undefined') return;
   window.MediaLibrary = {mount};
 })();

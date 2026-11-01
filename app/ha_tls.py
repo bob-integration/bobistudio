@@ -145,6 +145,11 @@ def demarrer(app, hote="0.0.0.0", port=None):
             return None
         threading.Thread(target=srv.serve, daemon=True, name="ha-mtls-%d" % port).start()
         _srv, _ctx = srv, ad.context
+        try:                                      # fils occupés : Monitoring → Connexions
+            from . import http_connections
+            http_connections.attach_cheroot(srv, port, "ha")
+        except Exception as e:                    # noqa: BLE001
+            log.warning("HA : compteur de fils non posé (%s)", e)
         log.info("HA : écoute mTLS active sur le port %d (contrôleurs seulement)", port)
         return srv
 

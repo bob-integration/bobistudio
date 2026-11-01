@@ -29,6 +29,7 @@ iso_src/
 pxe_root/
 # ── Synthèse vocale installée à la demande (services/tts) : venv + modèle + cache, jamais versionnés ──
 tts_models/
+panel_dyvi_data/
 lv2_plugins/
 tts_upload/
 .netboot.tar.gz.part

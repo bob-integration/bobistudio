@@ -25,6 +25,16 @@ pour la concordance des noms).
 - Champs, partages, bins, projets : **au niveau de la fiche** (toutes versions). Pas de champ par version.
 - Les variantes de l'**éditeur d'image** ne sont pas des versions : un autre contenu, une autre fiche
   (`derived_from`, relation `edit`).
+- **Sortie du transcodeur : version OU nouvelle fiche** (décision du 2026-10-29, qui amende la règle du
+  16/10). Paramètre `as` du job : `version` (défaut du conteneur — macros du transcoder, dossiers de
+  dépôt, « Transcoder au format du player ») range la sortie sous la fiche de sa source ; `asset`
+  (défaut de la fenêtre « Transcoder… » et de la macro de la ferme) en fait une **fiche à part**,
+  reliée à son original (`derived_from` dans le sidecar), d'identité STABLE
+  `media_naming.derived_id(source, clé)` — un job refait remplace sa fiche au lieu d'en créer une
+  autre. Nom : `<base>_<clé>__<code de la nouvelle fiche>.<ext>` (`media_naming.derived_file_name`).
+- **Bin de destination** (fenêtre « Transcoder… ») : la fiche produite (la nouvelle, ou celle de la
+  source pour une version) est rangée dans le bin choisi quand le job est terminé ET le fichier indexé
+  (`transcode_farm._place_in_bins`) ; le dossier sur le disque n'est qu'un réglage avancé.
 
 ## Nom de fichier
 

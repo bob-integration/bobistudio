@@ -58,7 +58,7 @@ qui regarde les lignes voisines ne l'est pas : restez en image entière, et **é
 code**. L'entrelacé et la sélection de ligne sont les exceptions documentées.
 
 `slice_mode` va dans `config_schema` en `hidden: true` : le réglage qui compte est le commutateur
-global Réglages → Vidéo. Un plugin qui exposerait le sien laisserait un parc réglé au hasard.
+global Réglages → MXL (« Mode tranche »). Un plugin qui exposerait le sien laisserait un parc réglé au hasard.
 
 ### 2. Tout exposer aux macros
 
@@ -204,7 +204,9 @@ Un hook qui lève est ignoré avec un avertissement au journal ; il ne bloque pa
 | `before_deploy(params, context)` | avant le rendu du script — normaliser, résoudre, injecter |
 | `wire_followers(kind, shm, slot, params, ctx)` | câbler une essence en fait suivre d'autres |
 | `wire_input` / `unwire_input` | câblage et décâblage d'une entrée |
-| `consumes` / `consumed_shms` / `produced_shms` / `produced_flow_count` / `source_shm` | topologie et câblage |
+| `consumed_shms` / `produced_shms` / `produced_flow_count` / `source_shm` | topologie et câblage |
+| `wiring_produces(hostname, params, produces)` | remplace les ports de sortie dérivés statiquement (renvoyer `None` pour les garder) |
+| `check_wired_params(params, ctx)` | erreurs que le document câblé ferait naître (ex. boucle externe) ; `[]` sinon |
 | `topology_ports` | ports affichés sur la page Câbles |
 | `tally_targets(params, context)` | ce que le distributeur TSL doit résoudre |
 | `ember_sources` / `ember_targets` / `ember_clear_slot` | arbre Ember+ |
@@ -243,7 +245,9 @@ Notables :
 | `control.endpoints` | liste blanche des chemins du proxy — sinon 403 |
 | `control.read_endpoints` | sous-ensemble lisible avec le login seul (état, aperçu) |
 | `param_tree` / `actions` | surface exposée aux macros |
-| `ui.public_page` | autorise un lien public `/p/<jeton>` |
+| `ui.public_page` | autorise un lien public `/p/<jeton>` (lecture seule par défaut) |
+| `ui.public_tabs` | endpoint de lecture listant les onglets du plugin (`{items: [{value, label}]}`) : la fenêtre de partage propose alors de ne partager qu'UN onglet — `mount()` reçoit `ctx.tab` |
+| `control.public_actions` | les SEULS chemins qu'un lien public créé avec « autoriser à jouer » peut POSTer par le relais (`/p/<jeton>/plugin/<chemin>`) ; `mount()` reçoit `ctx.play`. Le relais pose lui-même `X-Bobi-Public-Scope: {"tab", "play"}` — le conteneur doit refuser (403) toute requête qui le porte et vise autre chose que cet onglet, ou un chemin hors de cette liste. Modèle : `cartouchier` |
 | `nav` | rubrique et route. **Sans `nav`**, ni chip de palette ni lien de nav |
 | `help.category` / `help.order` | rangement de l'article d'aide |
 | `files` | fichiers supplémentaires poussés à côté du script (voir ci-dessous) |
@@ -271,6 +275,50 @@ Poussés **avant** `bobimxl.py` et le script, lequel part en dernier. **Sans rep
 
 ---
 
+## Ports publiés (`ports`)
+
+Un conteneur joint **depuis une autre machine** a besoin que son port soit publié. Déclarez-le ;
+ne le supposez jamais. L'orchestrateur résout la déclaration au déploiement d'après la config de
+*cette instance*, et ne publie **que sur un nœud en mode « réseau interne »** — en mode « réseau
+du site », le conteneur a déjà une IP sur le LAN et il n'y a rien à republier.
+
+```json
+"ports": [
+  { "param": "listen_port", "proto": "udp", "when": { "mode": ["srt_listener"] },
+    "desc": "SRT en écoute : la source pousse vers ce port." },
+  { "port": 1935, "proto": "tcp", "when": { "mode": ["rtmp_server"] },
+    "desc": "RTMP serveur : l'encodeur pousse vers ce port." }
+]
+```
+
+- **D'où vient le numéro**, au choix : `param` (une clé de la config de l'instance — le cas
+  courant), `setting` (un réglage global, pour un composant dont le port est un choix
+  d'installation), ou `port` (une valeur fixe).
+- `when` vaut `{clé de config: [valeurs acceptées]}`, **toutes** les conditions requises.
+  Comparaison TEXTUELLE : `true`, `"true"` et `1` se valent. Absent, le port est toujours publié.
+- `proto` : `tcp` (défaut) ou `udp`.
+- **Le port de l'hôte est le même que celui du conteneur.** C'est le seul qu'un exploitant puisse
+  deviner : un encodeur de reportage réglé pour pousser « vers le serveur, en SRT sur 9000 » doit
+  tomber sur 9000.
+- Un port qui vaut `0`, qui manque ou qui n'est pas un entier est **ignoré sans bruit**. C'est
+  ainsi qu'un plugin dit « désactivé » (`multiview` avec `tsl_port: 0`).
+
+### Ce qui n'a PAS besoin de port
+
+L'essentiel, et le déclarer quand même exposerait le plan de contrôle sur le LAN :
+
+- `:8081` (agent par-conteneur) et `:8080` (métriques) — appelés par l'orchestrateur, qui en mode
+  interne est sur la même machine ;
+- `:8082` (contrôle live) — passe par le proxy de l'orchestrateur
+  (`/api/containers/<vmid>/plugin/<path>`), jamais depuis un navigateur ;
+- vos `control.html` / `control.js` et toute page publique — servis par l'orchestrateur ;
+- les flux **sortants** (UDP, SRT appelant, WHIP) : le NAT les couvre.
+
+Ne déclarez un port que pour ce qui **vous appelle** : une source qui pousse, un navigateur qui
+se connecte en direct, un pupitre du site qui ouvre une session. Dans le doute, il n'en faut pas.
+
+---
+
 ## Console de contrôle
 
 `control.js` expose `window.MXLPlugins.<type> = { mount, unmount }`.
@@ -281,7 +329,7 @@ Quatre règles, chacune pour un défaut déjà constaté :
    interrupteurs, jauges et barres d'outils sont déjà dessinés, accessibles au clavier et
    cohérents entre les pages. L'inventaire vivant est dans Réglages → Contrôles.
    **Avant d'en créer un nouveau : demander.**
-2. **La géométrie vient du moteur partagé** `window.MXLLayout` — alignements, égalisation,
+2. **La géométrie vient du moteur partagé** `window.BobiEditor.layout` — alignements, égalisation,
    répartition, aimantage, sélection multiple. Quatre copies en avaient divergé.
 3. **Une seule fonction construit les URL.** Une console peut être montée derrière un jeton
    public avec une base d'API différente (`ctx.base`) : un `if (public)` oublié vise l'API privée
@@ -292,6 +340,14 @@ Quatre règles, chacune pour un défaut déjà constaté :
 **i18n obligatoire, et il vit DANS le plugin** : les libellés vont dans son propre
 `i18n/{fr,en}.json` — préfixe `plugin.<type>.` pour la console, `type.<type>.*` pour la palette
 et les ports de câblage. Le français reste la référence des valeurs par défaut.
+
+La frontière entre les deux préfixes : `type.<type>.*` est le vocabulaire de l'ORCHESTRATEUR
+*à propos* du plugin (ce qu'il affiche de lui-même — palette, formulaires de déploiement,
+ports) ; `plugin.<type>.*` est le vocabulaire PROPRE du plugin — tout ce que le conteneur produit
+ou nomme, y compris les codes des événements qu'il publie au journal d'exploitation
+(`plugin.<type>.event.<code>`, cf. `docs/reference/PLUGIN_JOURNAL.md`). Conséquence pratique :
+seul `plugin.*` est servi au catalogue du navigateur (`window.I18N`) ; une clé `type.*` est
+inatteignable depuis JavaScript.
 
 ⚠ **Jamais dans le catalogue du cœur** (`i18n/<lang>.json` à la racine). Deux choses cassent,
 les deux en silence :
@@ -318,7 +374,8 @@ faisait correctement.
 3. recharger le registre.
 
 L'archivage sous `versions/<ver>/` est fait par l'orchestrateur à l'installation d'un paquet
-(`install_package`) — pas à la main. Les conteneurs déjà déployés continuent de tourner sur leur
+(`install_package`) et à l'activation d'une version archivée (`activate_version`, qui archive
+d'abord la version courante) — pas à la main. Les conteneurs déjà déployés continuent de tourner sur leur
 version jusqu'au prochain redéploiement : la page Plugins montre le drift.
 
 ---

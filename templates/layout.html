@@ -496,13 +496,27 @@
        chargée partout comme base.css. Un plugin CHOISIT une variante, il n'en redéfinit pas.
        Inventaire vivant : Réglages → Contrôles. #}
     <link rel="stylesheet" href="/static/css/controls.css?v={{ asset_v('css/controls.css') }}">
+    <!-- « Gérer les cœurs » d'un nœud : chargé ICI (parent) parce que DEUX pages l'ouvrent —
+         la carte d'un nœud dans Monitoring et la section « Cœurs » de Réglages → Nœuds. Un
+         second rendu dans chaque page aurait divergé (c'est déjà arrivé aux cartes de cœurs). -->
+    <link rel="stylesheet" href="/static/css/cores.css?v={{ asset_v('css/cores.css') }}">
     {# Partie JS du catalogue : le MOTEUR (bobi-controls.js — échelles, gestes, événements,
        création par programme et depuis une feuille param_tree) puis controls.js (API historique
        des plugins, qui délègue au moteur pour les rotatifs). Un rotatif est un TRACÉ et un
        GESTE, pas seulement un style : sans ça chaque plugin redessinerait le sien. #}
     <script src="/static/js/bobi-controls.js?v={{ asset_v('js/bobi-controls.js') }}"></script>
     <script src="/static/js/controls.js?v={{ asset_v('js/controls.js') }}"></script>
-    <script src="/static/js/layout_engine.js?v={{ asset_v('js/layout_engine.js') }}"></script>
+    <script src="/static/js/cores.js?v={{ asset_v('js/cores.js') }}"></script>
+    {# Base commune des éditeurs (window.BobiEditor) : annuler/rétablir, presse-papiers, raccourcis,
+       sélection multiple (BobiEditor.*) et géométrie de disposition (BobiEditor.layout) — fusion des
+       ex-edit_kit.js / layout_engine.js (2026-10-30). Toute fonction d'édition y entre, jamais dans
+       un seul éditeur. #}
+    <script src="/static/js/editor.js?v={{ asset_v('js/editor.js') }}"></script>
+    {# Choix vivants d'un paramètre (window.MXLOptionChoices) : partagés par l'éditeur des touches
+       ATEM (Réglages) et l'éditeur de macros (workspace) — `option_semantics: "position"` (2026-10-29). #}
+    <script src="/static/js/option_choices.js?v={{ asset_v('js/option_choices.js') }}"></script>
+    {# Menu « Insérer une variable » groupé par conteneur (window.BobiVarMenu) : multiview + modèles de PiP (2026-10-29). #}
+    <script src="/static/js/var_menu.js?v={{ asset_v('js/var_menu.js') }}"></script>
     {# Bibliothèque de médias commune (Player, Images fixes, Recorder, Gestionnaire) : la base des
        médias de l'orchestrateur, bins, recherche, fiche « Infos ». Un plugin n'y ajoute que ses actions. #}
     <link rel="stylesheet" href="/static/css/media_library.css?v={{ asset_v('css/media_library.css') }}">
@@ -534,6 +548,7 @@
       };
     </script>
     <script src="/static/js/media_library.js?v={{ asset_v('js/media_library.js') }}" data-upload-v="{{ asset_v('js/media_upload.js') }}"></script>
+    <script src="/static/js/transcode_dialog.js?v={{ asset_v('js/transcode_dialog.js') }}"></script>
     <link rel="stylesheet" href="/static/css/image_editor.css?v={{ asset_v('css/image_editor.css') }}">
     <script src="/static/js/image_editor.js?v={{ asset_v('js/image_editor.js') }}"></script>
     {# Lecture d'un flux 2110 (cadence, état) : les vues Sources et Destinations affichent les

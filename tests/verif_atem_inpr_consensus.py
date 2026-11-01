@@ -23,7 +23,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-CAPTURE = os.path.join(ROOT, "services/atem/replay_constellation8k.json")
+CAPTURE = os.path.join(ROOT, "services/panel_atem/replay_constellation8k.json")
 FAILS = []
 
 # Les sources PHYSIQUES de la capture : ce que le pupitre montre sur ses touches de bus. Les ids
@@ -44,14 +44,14 @@ def verifier(nom, obtenu, attendu):
 def main():
     print(__doc__.splitlines()[0])
     if not os.path.exists(CAPTURE):
-        # Sous-module `services/atem` non déployé (checkout partiel, CI sans submodules) : on le
+        # Sous-module `services/panel_atem` non déployé (checkout partiel, CI sans submodules) : on le
         # DIT plutôt que de rendre un vert qui ne vérifierait rien.
-        print("  capture de replay absente (sous-module services/atem) — garde inapplicable")
+        print("  capture de replay absente (sous-module services/panel_atem) — garde inapplicable")
         return 0
     try:
-        from services import atem
+        from services import panel_atem as atem
     except Exception as e:                                   # pragma: no cover
-        print(f"  services.atem non importable ({type(e).__name__}: {e}) — garde inapplicable")
+        print(f"  services.panel_atem non importable ({type(e).__name__}: {e}) — garde inapplicable")
         return 0
 
     cmds = json.load(open(CAPTURE, encoding="utf-8"))

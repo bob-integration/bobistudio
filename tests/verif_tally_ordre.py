@@ -14,9 +14,11 @@
 #   · perdre un niveau absent de la liste envoyée (une page filtrée le ferait disparaître) ;
 #   · laisser deux niveaux au même numéro, ce qui rend l'ordre dépendant du rowid.
 #
-# ⚠ CE BANC ÉCRIT DANS LA BASE DE PRODUCTION, sur la seule colonne `num`, et REMET l'ordre initial
-# dans un `finally`. C'est le seul moyen de prouver quoi que ce soit : `get_db()` épingle le
-# chemin de la base au premier accès, donc une copie ne serait pas celle que la fonction ouvre.
+# Base JETABLE (depuis le 2026-10-24) : le banc écrivait dans la base de production, au motif que
+# `get_db()` épingle le chemin au premier accès. C'est vrai, et c'est pourquoi la base jetable est
+# posée AVANT tout accès — l'argument interdisait une copie faite après, pas une base de test
+# choisie avant. Les niveaux sont semés ici. Un test n'écrit plus jamais en production
+# (`database.connect_guarded`, garde tests/verif_garde_base_prod.py).
 #
 #   $ ./venv/bin/python tools/verif_tally_ordre.py
 import os
@@ -24,6 +26,15 @@ import sys
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
+
+import tempfile as _tempfile                                          # noqa: E402
+TMP = _tempfile.mkdtemp(prefix="verif_tally_ordre_")
+from app import config, database                                    # noqa: E402
+config.DB_PATH = database.DB_PATH = os.path.join(TMP, "principale.db")   # jamais la base de prod
+database._tls.__dict__.pop("conn", None)
+database.init_db()
+for _nom in ("PGM", "PVW", "CAM1", "CAM2"):                          # niveaux semés dans la base jetable
+    database.db_add_tally_level(_nom)
 
 echecs, reussites = [], []
 

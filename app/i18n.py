@@ -284,7 +284,7 @@ def rendre_alertes(lignes, lang=None):
     return [rendre_alerte(l, lang) for l in (lignes or [])]
 
 
-def js_catalog(lang=None, prefixes=("js.", "plugin.", "home.", "catalogue.", "recette.", "cables.", "conn.", "settings.", "containers.", "section.", "projects.", "monitoring.", "wiz.", "probe.", "probemon.", "pacing.", "migration.", "labels.", "service.", "compte.", "perm.", "medialib.", "imgedit.")):
+def js_catalog(lang=None, prefixes=("js.", "plugin.", "home.", "catalogue.", "recette.", "cables.", "conn.", "settings.", "containers.", "section.", "projects.", "monitoring.", "wiz.", "probe.", "probemon.", "pacing.", "migration.", "labels.", "service.", "compte.", "perm.", "medialib.", "imgedit.", "editor.")):
     """Sous-ensemble destiné au JS (clés `js.*`/`plugin.*`/`home.*`/`cables.*`/`settings.*`/`containers.*`/`section.*`/`projects.*`/`monitoring.*`/`wiz.*`),
     résolu dans la langue courante avec repli FR → injecté dans window.I18N par layout.html (et le wizard de setup)."""
     if not _CATALOGS:

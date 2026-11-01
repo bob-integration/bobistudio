@@ -181,6 +181,21 @@ def _detruire_container_locked(vmid, progress=None):
         else:
             from . import docker_driver
             _res = docker_driver.destroy_docker(vmid, progress=_p)
+        # ★ RENDRE AUX PARTAGÉS LA PLACE QUI VIENT DE SE LIBÉRER (28/10, Z8). Le cpuset d'un
+        # conteneur partagé est calculé à son déploiement : il exclut les cœurs dédiés d'ALORS.
+        # Quand ceux-ci se libèrent, personne ne le rattrape — sur la Z8, cinq conteneurs sont
+        # restés sur deux cœurs alors que vingt-cinq étaient redevenus libres, et le symptôme fut
+        # un mélangeur à 22-32 fps. `docker update` élargit sans couper (et le plancher de fréquence
+        # des cœurs rendus est retiré, cf. `after_cores_released`) ; en tâche de fond, parce
+        # que ça parle à l'hôte et qu'une destruction n'a pas à attendre ça.
+        try:
+            _nid = (_cd or {}).get("node_id")
+            if _nid:
+                from . import core_pool as _cp
+                threading.Thread(target=_cp.after_cores_released, args=(_nid,),
+                                 daemon=True).start()
+        except Exception as _e:
+            log.warning("élargissement des partagés après suppression %s : %s", vmid, _e)
         # Nettoyage du tissu de composition : retire les lignes registre de CE conteneur (assembleur /
         # shard) et torne les shards devenus orphelins (plus aucun mur parent). Sinon, supprimer un mur
         # laissait ses shards + sa ligne asm fantômes (le reconcile ne nettoie pas si fabric_auto off).
@@ -313,10 +328,34 @@ def changer_media_projet(vmid, project_id, media_host_dir):
             ajouter_alerte("alert.deploy.media_redeploiement_echoue", "error", params={"label": label})
             return False
         ajouter_alerte("alert.deploy.media_maj", "info", params={"label": label})
+        _detach_from_other_projects(vmid, project_id, label)
         return True
 
     ajouter_alerte("alert.deploy.media_introuvable", "error", params={"label": label})
     return False
+
+
+def _detach_from_other_projects(vmid, project_id, label):
+    """The container left its other projects: take it out of their snapshots and report what
+    still points at it there (views, port links, port bindings). Never fails the move."""
+    try:
+        from .projects import detach_vmid_from_projects
+        detached = detach_vmid_from_projects(vmid, keep_pid=project_id)
+    except Exception as e:
+        log.warning("detach vmid %s from its old projects: %s", vmid, e)
+        return
+    for d in detached:
+        if d.get("skipped"):
+            ajouter_alerte("alert.deploy.projet_retrait_differe", "warning", vmid=vmid, kind="deploy",
+                           params={"label": label, "project": d["name"]})
+        elif d["views"] or d["links"] or d["bindings"]:
+            ajouter_alerte("alert.deploy.projet_retire_refs", "warning", vmid=vmid, kind="deploy",
+                           params={"label": label, "project": d["name"],
+                                   "views": ", ".join(d["views"]) or "—", "links": d["links"],
+                                   "bindings": ", ".join(d["bindings"]) or "—"})
+        else:
+            ajouter_alerte("alert.deploy.projet_retire", "info", vmid=vmid, kind="deploy",
+                           params={"label": label, "project": d["name"]})
 
 
 def redemarrer_container(vmid):

@@ -52,6 +52,7 @@ import time
 import requests
 
 from . import plugins
+from . import state_relay
 from .database import (db_get_container, db_get_containers, db_get_macro,
                        db_project_vars, db_set_project_var, db_add_alert,
                        db_all_enabled_triggers)
@@ -128,6 +129,24 @@ def _tmpl(value, variables):
                   lambda m: str(variables.get(m.group(1), "")), value)
 
 
+def _wired_input(vmid, manifest, endpoint, body, port=None):
+    """Une action/un POST de macro qui pointe une ENTRÉE sur un flux (`POST /input {shm…}`) passe par
+    le CÂBLAGE (frontière du projet, liens de port, persistance), jamais en POST direct au
+    conteneur (2026-10-31). Retourne True si l'appel a été traité ainsi (lève si le câblage
+    refuse), False pour tout autre endpoint — ceux-là restent un POST direct, sans coût."""
+    if port is not None and port != int(((manifest or {}).get("control") or {}).get("port") or 8082):
+        return False
+    from .routes import cabling
+    call = cabling.wiring_input_call(manifest, endpoint, body)
+    if not call:
+        return False
+    ok, status, payload = cabling.run_wiring_input(vmid, call)
+    if not ok:
+        err = (payload or {}).get("error")
+        raise RuntimeError("%s → HTTP %s%s" % (endpoint, status, (": %s" % err) if err else ""))
+    return True
+
+
 def exec_action(vmid, action_id, params, variables=None, actor=None):
     """Exécute UNE action de plugin (aussi utilisée par la shotbox). Lève sur erreur.
     `actor` : auteur pour le journal d'exploitation (`_run_actor(run)` depuis une macro) ;
@@ -182,8 +201,19 @@ def exec_action(vmid, action_id, params, variables=None, actor=None):
             body[k] = v
         elif "default" in pdef and not pdef.get("optional"):
             body[k] = pdef["default"]
+    # Frontière du projet (2026-10-24) : une action qui pointe une entrée sur un flux extérieur au
+    # projet du conteneur (action `input` du streamer, de la sonde…) est refusée comme un câble.
+    from . import project_ports
+    _out = project_ports.body_flow_refusal(vmid, body)
+    if _out:
+        from .database import db_add_alert
+        db_add_alert("alert.cablage.hors_projet_refuse", "warning", vmid=vmid, kind="deploy",
+                     params={"shm": ", ".join(_out), "h": vmid})
+        raise RuntimeError("shm_not_in_project: " + ", ".join(_out))
     # Port par action (défaut :8082 = contrôle plugin ; ex. multiview tally sur :8080).
     port = int(act.get("port") or 8082)
+    if _wired_input(vmid, plugins.get(t), act["endpoint"], body, port):
+        return True
     r = requests.post(f"http://{ip}:{port}{act['endpoint']}", json=body,
                       timeout=STEP_TIMEOUT_S)
     if r.status_code >= 400:
@@ -307,6 +337,16 @@ def exec_post(vmid, endpoint, params, variables=None, actor=None):
         raise RuntimeError(f"IP de #{vmid} introuvable")
     body = {k: _coerce_free(_tmpl(v, variables or {}))
             for k, v in (params or {}).items() if str(k).strip()}
+    # Frontière du projet, comme `exec_action` : un POST libre peut nommer un flux (`shm`, `path`…).
+    from . import project_ports
+    _out = project_ports.body_flow_refusal(vmid, body)
+    if _out:
+        from .database import db_add_alert
+        db_add_alert("alert.cablage.hors_projet_refuse", "warning", vmid=vmid, kind="deploy",
+                     params={"shm": ", ".join(_out), "h": vmid})
+        raise RuntimeError("shm_not_in_project: " + ", ".join(_out))
+    if _wired_input(vmid, m, endpoint, body, ep["port"]):
+        return True
     r = requests.post(f"http://{ip}:{ep['port']}{endpoint}",
                       json=body, timeout=STEP_TIMEOUT_S)
     if r.status_code >= 400:
@@ -387,7 +427,7 @@ def _walk_path(val, path):
     return val
 
 
-def fetch_state(vmid, state_id=None, endpoint=None, path=None, cache=None):
+def fetch_state(vmid, state_id=None, endpoint=None, path=None, cache=None, consumer="macros"):
     """Lit UNE valeur d'état (feedback/conditions) :
     - `state_id` → catalogue `state` curaté du plugin (comme avant) ;
     - sinon `endpoint`+`path` → état DÉCOUVERT, borné aux `control.read_endpoints`
@@ -395,7 +435,8 @@ def fetch_state(vmid, state_id=None, endpoint=None, path=None, cache=None):
     `cache` (dict, optional): responses already fetched in the same batch, keyed by
     (vmid, endpoint) — a failed read is cached too, so a dead container costs one timeout.
     The container row, its manifest and its IP are cached there too: a panel reads a dozen
-    values of the same container, and each lookup used to hit the database again."""
+    values of the same container, and each lookup used to hit the database again.
+    `consumer`: who reads (the state relay counts its fallbacks per consumer)."""
     vm = cache.get(("vm", vmid)) if cache is not None else None
     if vm is None:
         c = db_get_container(vmid)
@@ -422,6 +463,23 @@ def fetch_state(vmid, state_id=None, endpoint=None, path=None, cache=None):
         sdef = {"endpoint": endpoint, "path": path, "port": ctrl.get("port")}
     else:
         return None
+    # RELAIS D'ÉTAT (app/state_relay.py) : si le conteneur pousse ce document sur un flux d'état et
+    # que le relais est frais, la valeur est lue en mémoire — aucune requête au conteneur. Le relais
+    # décline (repli compté) un champ mesuré, un champ qui bouge pendant une opération, le document
+    # entier (chemin vide), une source périmée : on poursuit alors par le chemin réseau ci-dessous.
+    # Le lot (`cache`) note que le conteneur a RÉPONDU (wall_states lit `cache[(vmid, endpoint)]`
+    # pour distinguer « répond, valeur nulle » de « muet ») ; un document venu du relais y est
+    # marqué tel, pour qu'une lecture suivante d'un champ mesuré ne le prenne pas pour une réponse
+    # fraîche du conteneur.
+    key = (vmid, sdef.get("endpoint") or "/state")
+    _p = (sdef.get("path") or "").split(".", 1)[0]
+    _doc = state_relay.read(vmid, consumer, endpoint=key[1],
+                            fields=(_p,) if _p else (state_relay.ALL_FIELDS,), manifest=m)
+    if _doc is not None:
+        if cache is not None and key not in cache:
+            cache[key] = _doc
+            cache[("relayed",) + key] = True
+        return _walk_path(_doc, sdef.get("path"))
     ip = cache.get(("ip", vmid)) if cache is not None else None
     if ip is None:
         ip = get_container_ip(vmid)
@@ -429,8 +487,7 @@ def fetch_state(vmid, state_id=None, endpoint=None, path=None, cache=None):
             cache[("ip", vmid)] = ip or ""
     if not ip:
         return None
-    key = (vmid, sdef.get("endpoint") or "/state")
-    if cache is not None and key in cache:
+    if cache is not None and key in cache and not cache.get(("relayed",) + key):
         doc = cache[key]
     else:
         try:
@@ -441,6 +498,7 @@ def fetch_state(vmid, state_id=None, endpoint=None, path=None, cache=None):
             doc = None
         if cache is not None:
             cache[key] = doc
+            cache.pop(("relayed",) + key, None)
     return None if doc is None else _walk_path(doc, sdef.get("path"))
 
 
@@ -666,11 +724,35 @@ def param_tree(vmid):
         n = int(n or 0)
         prefix = boxes.get("path_prefix") or "boxes"
         label_prefix = boxes.get("label") or "Box"   # « Box 1 » (split) / « PiP 1 » (multiview)…
+        # The wired-input label names box i ONLY when the manifest says box i IS input slot i
+        # (`label_from: "consumes"`, split). Elsewhere a box is not an input: the mixer's boxes
+        # are its keyers, and borrowing slot i's label turned « Keyer 1 » into « Entrée 1 ».
+        from_consumes = boxes.get("label_from") == "consumes"
         for i in range(n):
             groups = [_pt_group(g, caps, f"{prefix}.{i}", i) for g in (spec.get("box_groups") or [])]
             groups = [g for g in groups if g["params"]]
+            label = (slot_label.get(i) if from_consumes else None) or f"{label_prefix} {i + 1}"
             elements.append({"id": f"box:{i}", "kind": "box", "idx": i,
-                             "label": slot_label.get(i) or f"{label_prefix} {i + 1}", "groups": groups})
+                             "label": label, "groups": groups})
+    # Familles de boîtes SUPPLÉMENTAIRES (`extra_boxes`, 2026-10-29 — DSK du mélangeur à côté de ses
+    # keyers) : chacune a son compte, son préfixe de chemin, son libellé, ses groupes et son préfixe
+    # d'ID. La feuille porte `idx` (numéro dans SA famille) ; c'est l'endpoint qui distingue deux
+    # familles, jamais l'index.
+    for fam in (spec.get("extra_boxes") or []):
+        n = fam.get("count")
+        if n is None:
+            n = doc.get(fam.get("count_from") or "")
+        try:
+            n = int(n or 0)
+        except (TypeError, ValueError):
+            n = 0
+        prefix = fam.get("path_prefix") or "boxes"
+        id_prefix = fam.get("id_prefix") or prefix
+        for i in range(n):
+            groups = [_pt_group(g, caps, f"{prefix}.{i}", i) for g in (fam.get("box_groups") or [])]
+            groups = [g for g in groups if g["params"]]
+            elements.append({"id": f"{id_prefix}:{i}", "kind": "box", "idx": i,
+                             "label": f"{fam.get('label') or 'Box'} {i + 1}", "groups": groups})
     by_id = spec.get("by_id")
     if by_id:
         # Éléments dérivés du DOCUMENT persisté, adressés par ID (stables à l'insertion d'une
@@ -806,11 +888,27 @@ def _exec_leaf_step(step, pid, run):
     return True
 
 
+# Étape / nœud DÉSACTIVÉ (`disabled: true`, éditeurs Blocs et Scénario, 2026-10-29) : sauté, le
+# flux continue comme s'il avait réussi. Seules les étapes qui FONT quelque chose se désactivent ;
+# une STRUCTURE (si, parallèle, entrée, jointure, choix) non — « sauter un si » n'a pas de sens
+# univoque, et un parallèle désactivé ne survivrait pas à la conversion en graphe, où il n'existe
+# que sous forme d'arêtes. Le drapeau posé sur une structure est donc ignoré, dans les deux moteurs.
+# `comment` : texte libre de l'éditeur, jamais lu par le moteur.
+DISABLEABLE_TYPES = ("action", "config", "post", "sleep", "wait", "set_var", "macro")
+
+
+def _is_disabled(t, body):
+    return t in DISABLEABLE_TYPES and bool((body or {}).get("disabled"))
+
+
 def _run_steps(steps, pid, run, depth):
     for step in (steps or []):
         if run._cancel.is_set():
             raise RuntimeError("annulé")
         t = step.get("type")
+        if _is_disabled(t, step):
+            run.logline(f"{t} : désactivé, ignoré")
+            continue
         if t == "if":
             variables = db_project_vars(pid) if pid else {}
             branch = eval_cond(step.get("cond") or {}, pid, variables)
@@ -1034,6 +1132,9 @@ class _GraphCtx:
         """Exécute UN nœud, renvoie le port de sortie à suivre."""
         t = node.get("type")
         params = node.get("params") or {}
+        if _is_disabled(t, params):
+            self.run.logline(f"[{nid}] {t} : désactivé, ignoré")
+            return 0
         if t in ("entry", "join"):
             return 0
         if t == "cond":
@@ -1114,6 +1215,14 @@ class UnstructuredGraph(Exception):
     """Graphe non représentable en blocs (badge « avancé » côté UI/API)."""
 
 
+def _with_comment(params, src):
+    """Le commentaire d'un si / parallèle passe au nœud cond / join qui le représente (et
+    retour) : sans lui, un aller-retour Blocs ⇄ Scénario l'effacerait."""
+    if (src or {}).get("comment"):
+        params["comment"] = src["comment"]
+    return params
+
+
 def blocks_to_graph(steps):
     """Compile une liste d'étapes blocks/v1 en graphe nodes/v2 équivalent."""
     nodes, edges, seq = [], [], [0]
@@ -1134,7 +1243,7 @@ def blocks_to_graph(steps):
         for step in steps or []:
             t = step.get("type")
             if t == "if":
-                c = _new("cond", {"cond": step.get("cond") or {}})
+                c = _new("cond", _with_comment({"cond": step.get("cond") or {}}, step))
                 _attach(tails, c)
                 tails = (_build(step.get("then") or [], [(c, 0)])
                          + _build(step.get("else") or [], [(c, 1)]))
@@ -1143,7 +1252,7 @@ def blocks_to_graph(steps):
                     m = _new("join", {"mode": "any"})
                     _attach(tails, m)
                     tails = [(m, 0)]
-                j = _new("join", {"mode": "all"})
+                j = _new("join", _with_comment({"mode": "all"}, step))
                 for b in (step.get("branches") or []):
                     _attach(_build(b or [], list(tails)), j)
                 tails = [(j, 0)]
@@ -1256,7 +1365,8 @@ def graph_to_blocks(graph):
             used.add(eidx)
             branches.append(_parse_from(to, j))
         _consume(j)
-        return [{"type": "parallel", "branches": branches}] + _parse_outs(j, 0, stop)
+        par = _with_comment({"type": "parallel", "branches": branches}, nodes[j].get("params"))
+        return [par] + _parse_outs(j, 0, stop)
 
     def _parse_from(nid, stop):
         """Étapes de la séquence commençant à `nid`, jusqu'à `stop` exclu."""
@@ -1269,8 +1379,9 @@ def graph_to_blocks(graph):
             heads0 = [to for to, _ in outs.get((nid, 0)) or []]
             heads1 = [to for to, _ in outs.get((nid, 1)) or []]
             m = _merge_of([heads0, heads1]) if heads0 and heads1 else None
-            step = {"type": "if", "cond": (node.get("params") or {}).get("cond") or {},
-                    "then": _parse_outs(nid, 0, m), "else": _parse_outs(nid, 1, m)}
+            step = _with_comment({"type": "if", "cond": (node.get("params") or {}).get("cond") or {},
+                                  "then": _parse_outs(nid, 0, m), "else": _parse_outs(nid, 1, m)},
+                                 node.get("params"))
             return [step] + (_parse_from(m, stop) if m is not None else [])
         if t == "join":
             if ((node.get("params") or {}).get("mode") or "all") != "any":

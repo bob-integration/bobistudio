@@ -893,6 +893,26 @@ def plugin_proxy(vmid, p):
             vmid, m, _u, "/" + p, body, perms=ROLES.get(_u.get("role"), set()))
         if _zerr:
             return jsonify(_zerr[1]), _zerr[0]
+    # FRONTIÈRE DU PROJET (2026-10-24) : une commande qui pointe une entrée sur un flux (`/input`,
+    # tuile de multiview…) ne passe pas par `_apply_wire` — même règle ici, pour tout le monde.
+    if request.method == "POST":
+        from .. import project_ports
+        _out = project_ports.body_flow_refusal(vmid, body)
+        if _out:
+            from ..database import db_add_alert
+            db_add_alert("alert.cablage.hors_projet_refuse", "warning", vmid=vmid, kind="deploy",
+                         params={"shm": ", ".join(_out), "h": (c or {}).get("hostname") or vmid})
+            return jsonify({"ok": False, "error": "forbidden", "reason": "shm_not_in_project",
+                            "shm": _out}), 403
+    # ENTRÉE par le CÂBLAGE (2026-10-31, « ports jamais contournés ») : `POST /input {shm…}` n'est pas
+    # relayé tel quel — il passerait sous les liens de port et sans persistance. Il devient le câblage
+    # normal (`_apply_wire`/`_apply_unwire` : frontière du projet, liens, params persistés).
+    if request.method == "POST":
+        from . import cabling
+        _wc = cabling.wiring_input_call(m, "/" + p, body)
+        if _wc:
+            _ok, _st, _pl = cabling.run_wiring_input(vmid, _wc)
+            return jsonify(_pl), _st
     # Mur multiview SHARDÉ : le conteneur du vmid est l'ASSEMBLEUR du tissu (copie pure des
     # shards pré-rendus). Ne JAMAIS lui forwarder les hot-applies window/style (le chrome se
     # dessinerait autour de chaque BLOC de shard ; l'idx de fenêtre logique ≠ ses tuiles) : on
@@ -1109,6 +1129,26 @@ def _cles_changees(type_, incoming, persisted):
     return {k for k in (incoming or {}) if a.get(k) != b.get(k)}
 
 
+def _plugin_config_push_live(vmid, live, keys, params):
+    """POST :8082<endpoint> {clé: valeur} pour chaque réglage `live` changé. True si TOUS ont
+    été acceptés (HTTP 200) — même contrat que le hot_endpoint de `control_action`."""
+    import requests as _req
+    from ..addressing import get_container_ip
+    c = db_get_container(vmid) or {}
+    ip = c.get("ip") or get_container_ip(vmid)
+    if not ip:
+        return False
+    for k in keys:
+        endpoint, body_key = live[k]
+        try:
+            r = _req.post(f"http://{ip}:8082{endpoint}", json={body_key: params.get(k)}, timeout=2)
+        except Exception:
+            return False
+        if r.status_code != 200:
+            return False
+    return True
+
+
 def _plugin_config_apply(vmid, type_, m, incoming, running):
     """Chemin d'écriture UNIQUE des réglages config_schema (déjà validés) : merge frais
     sous verrou, persiste, et redéploie si le container tourne. Renvoie True si redéployé."""
@@ -1132,6 +1172,23 @@ def _plugin_config_apply(vmid, type_, m, incoming, running):
     _changees = _cles_changees(type_, incoming, _persisted)
     # Rien n'a bougé : on ne redéploie pas, et on n'écrit même pas.
     a_chaud = not _changees or _changees <= plugins.cles_sans_redeploiement(type_)
+    # IMAGE MANQUANTE (2026-10-30) : changer la surcharge d'un conteneur s'applique À CHAUD — même
+    # chemin que la bascule du global (app/missing_frame.apply_live : rendu, fichier réécrit,
+    # `control.hot_config`, jamais d'arrêt/démarrage). Refus du conteneur → redéploiement, le cas
+    # sûr : un réglage affiché comme pris doit l'être.
+    from .. import missing_frame as _mfm
+    _mf_live = (bool(_changees) and _mfm.KEY in _changees and _mfm.declares(type_)
+                and _changees <= (plugins.cles_sans_redeploiement(type_) | {_mfm.KEY}))
+    if running and _mf_live:
+        with verrou_vmid(vmid, op="config"):
+            params = _merge_fresh(_load_dc(db_get_container(vmid)))
+            db_update_deploy_config(vmid, type_, params)
+        if not _mfm.apply_live(vmid, type_, params):
+            with verrou_vmid(vmid, op="deploy"):
+                fresh = _load_dc(db_get_container(vmid))
+                deployer_script(vmid=vmid, type_script=type_, params=_merge_fresh(fresh))
+            return True
+        return False
     if not running or a_chaud:
         # Exploitant : ne PAS (re)démarrer un container arrêté (deployer_script force
         # desired_state=running). On persiste seulement les params.
@@ -1139,16 +1196,26 @@ def _plugin_config_apply(vmid, type_, m, incoming, running):
             fresh = _load_dc(db_get_container(vmid))
             params = _merge_fresh(fresh)
             db_update_deploy_config(vmid, type_, params)
+        # Réglages appliqués À CHAUD par le conteneur (`live` du config_schema) : on les pousse.
+        # Un refus (moteur antérieur au réglage, conteneur injoignable) retombe sur le
+        # redéploiement — un réglage affiché comme pris doit l'être.
+        _live = plugins.live_fields(type_)
+        _push = sorted(k for k in _changees if k in _live)
+        if running and _push and not _plugin_config_push_live(vmid, _live, _push, params):
+            with verrou_vmid(vmid, op="deploy"):
+                fresh = _load_dc(db_get_container(vmid))
+                deployer_script(vmid=vmid, type_script=type_, params=_merge_fresh(fresh))
+            return True
         return False
     with verrou_vmid(vmid, op="deploy"):
         fresh = _load_dc(db_get_container(vmid))
         params = _merge_fresh(fresh)
-        # Pin de version : ne jamais upgrader silencieusement un container épinglé sur une
-        # version archivée — un simple réglage ne doit changer QUE les params, pas la version.
-        pv = params.get("plugin_version")
-        cur_ver = m.get("version")
-        version = pv if (pv and pv != cur_ver and pv in plugins.versions(type_)) else None
-        deployer_script(vmid=vmid, type_script=type_, params=params, version=version)
+        # Pin de version : ne jamais upgrader silencieusement un container épinglé — un simple
+        # réglage ne doit changer QUE les params, pas la version. La formule vivait ICI, et
+        # nulle part ailleurs : c'est devenu le défaut de TOUT déploiement (31/10), donc on
+        # laisse `deployer_script` l'appliquer plutôt que d'en garder une seconde copie — deux
+        # copies de la même règle finissent par diverger.
+        deployer_script(vmid=vmid, type_script=type_, params=params)
     return True
 
 
@@ -1326,7 +1393,9 @@ def plugin_library_delete(type_, sid):
 @require_perm("plugins.operate")
 def plugin_library_save(vmid):
     """Enregistre sous un nom la partie `kind` du conteneur (capturée chez lui). Corps :
-    {kind, name, page?, zone?, overwrite?}. Un nom déjà pris pour ce genre → 409 `name_taken`."""
+    {kind, name, page?, zone?, item?, overwrite?}. Un nom déjà pris pour ce genre → 409 `name_taken`.
+    `item` : l'élément capturé quand le conteneur en tient plusieurs du genre (mélangeur : le nom d'un
+    volet composé local)."""
     from .. import plugin_library as L
     err = check_vmid_access(vmid, "operator")
     if err:
@@ -1336,7 +1405,8 @@ def plugin_library_save(vmid):
     try:
         return jsonify(L.capture_and_save(vmid, (b.get("kind") or "").strip(), b.get("name"),
                                           page=b.get("page"), author=u.get("username") or "",
-                                          overwrite=bool(b.get("overwrite")), zone=b.get("zone")))
+                                          overwrite=bool(b.get("overwrite")), zone=b.get("zone"),
+                                          item=b.get("item")))
     except L.LibraryError as e:
         return _library_error(e)
 
@@ -1355,7 +1425,7 @@ def plugin_library_recall(vmid, sid):
     try:
         type_ = L._type_of(vmid)
         preset = L.get(type_, sid)
-        extra = {k: b[k] for k in ("page", "add", "zone") if k in b}
+        extra = {k: b[k] for k in ("page", "add", "zone", "next") if k in b}
         out = L.recall(vmid, type_, preset, extra)
     except L.LibraryError as e:
         return _library_error(e)

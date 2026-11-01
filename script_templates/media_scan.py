@@ -42,6 +42,8 @@ PRODUCER_RE = re.compile(r"<container>\s*([^<]+?)\s*</container>")
 DERIVED_RE = re.compile(r'<media\b[^>]*?\bderived_from="([^"]*)"')
 # VERSION du média que porte le fichier (transcodage, livraison…) ; absente = l'original.
 VERSION_RE = re.compile(r'<media\b[^>]*?\bversion="([a-z][a-z0-9]{0,15})"')
+# BIN de la base où le producteur range le fichier (recorder, 2026-10-29) : appliqué à l'import.
+BIN_RE = re.compile(r'<media\b[^>]*?\bbin="(\d+)"')
 PROCESS_RE = re.compile(r"<transcode><!\[CDATA\[(.*?)\]\]></transcode>", re.S)
 AVID_AUDIO = re.compile(r"(.*)_a\d+\.mxf$")
 
@@ -63,7 +65,7 @@ def probe(full, err=None):
             ["ffprobe", "-v", "error", "-show_entries",
              "stream=index,codec_type,codec_name,width,height,r_frame_rate,field_order,pix_fmt,"
              "color_primaries,color_transfer,color_space,channels,sample_rate,bits_per_raw_sample"
-             ":stream_tags=timecode:format=duration,format_name:format_tags=timecode",
+             ":stream_tags=timecode,creation_time:format=duration,format_name:format_tags=timecode,creation_time",
              "-of", "json", full], capture_output=True, timeout=30)
         j = json.loads(out.stdout or b"{}")
         if err is not None and out.returncode != 0:
@@ -80,8 +82,12 @@ def probe(full, err=None):
             err.append([str(e)])
         return None
     fmt = j.get("format") or {}
+    # `created` : date de création INSCRITE dans le fichier (caméra, encodeur), telle quelle (ISO, souvent
+    # en UTC « …Z ») ; la clé est TOUJOURS posée (None = aucune) — elle dit que le fichier a été analysé
+    # depuis qu'on la relève (2026-10-29), cf. media_registry.scan_node (`known`).
     tech = {"container": fmt.get("format_name") or "", "duration": None, "video": None, "audio": [],
-            "timecode": (fmt.get("tags") or {}).get("timecode")}
+            "timecode": (fmt.get("tags") or {}).get("timecode"),
+            "created": (fmt.get("tags") or {}).get("creation_time")}
     try:
         tech["duration"] = float(fmt.get("duration") or 0) or None
     except (TypeError, ValueError):
@@ -100,6 +106,7 @@ def probe(full, err=None):
                              "pix_fmt": s.get("pix_fmt"), "primaries": s.get("color_primaries"),
                              "transfer": s.get("color_transfer"), "matrix": s.get("color_space")}
             tech["timecode"] = tech["timecode"] or (s.get("tags") or {}).get("timecode")
+            tech["created"] = tech["created"] or (s.get("tags") or {}).get("creation_time")
         elif s.get("codec_type") == "audio":
             tech["audio"].append({"codec": s.get("codec_name"), "channels": s.get("channels"),
                                   "rate": int(s.get("sample_rate") or 0) or None,
@@ -161,6 +168,9 @@ def scan(req):
                 mv = VERSION_RE.search(side)
                 if mv and mv.group(1) != "original":
                     e["version"] = mv.group(1)
+                mb = BIN_RE.search(side)
+                if mb and e.get("origin"):
+                    e["bin"] = int(mb.group(1))
                 md = DERIVED_RE.search(side)
                 if md and md.group(1):
                     e["derived_from"] = md.group(1)

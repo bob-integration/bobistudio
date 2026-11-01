@@ -2246,6 +2246,22 @@ def moteur_initialise(host, timeout_s=0):
         _t.sleep(2)
 
 
+def _ports_r1(vmid, params, type_script=None):
+    """R1 des ports (décision du 31/10) : `params` où chaque entrée liée à un port lit le flux
+    ACTUEL du port. Point commun des envois du moteur MTL (slots TX, resync, (re)création) — quel
+    que soit l'appelant et la provenance des params (base ou appelant). Type : celui de la base,
+    sinon l'argument, sinon 2110_io."""
+    from . import project_ports
+    if not isinstance(params, dict):
+        return params
+    t = type_script
+    try:
+        t = (json.loads((db_get_container(vmid) or {}).get("deploy_config") or "{}") or {}).get("type") or t
+    except Exception:
+        pass
+    return project_ports.prepare_send(vmid, t or "2110_io", params)
+
+
 def push_tx_slots(vmid, params=None):
     """Pousse les slots TX du moteur (destination mcast/port + shm d'entrée câblé + format) au
     contrôleur :8081/tx (sur l'hôte du nœud, --network host). Appelé au déploiement (resync après
@@ -2265,6 +2281,7 @@ def push_tx_slots(vmid, params=None):
             params = dc.get("params") or {}
         except Exception:
             params = {}
+    params = _ports_r1(vmid, params)
     node = db_get_node(c.get("node_id"))
     host = node.get("host") if node else None
     if not host or not (params.get("tx_slots") or []):
@@ -2399,6 +2416,7 @@ def resync_moteur(vmid, params):
     import time
     from .database import db_add_alert
     from . import deploy as _dep
+    params = _ports_r1(vmid, params)
     c = db_get_container(vmid) or {}
     node = db_get_node(c.get("node_id")) or {}
     host = node.get("host")
@@ -2608,6 +2626,7 @@ def deploy_docker(vmid, params, type_script=None):
     non-MTL qui arriverait ici = routage incorrect → on échoue au lieu de le coercer en
     2110_io (cf. bug « le correcteur de couleur devient un receiver MTL »)."""
     from . import docker_compute
+    params = _ports_r1(vmid, params, type_script)
     c = db_get_container(vmid) or {}
     node = db_get_node(c.get("node_id"))
     if not node:

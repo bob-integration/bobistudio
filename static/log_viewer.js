@@ -128,9 +128,49 @@
       opts.titre || `${T('js.logs.title', 'Journal')} — ${etat.nom || '#' + vmid}`;
     box.querySelector('#bl-since').value = etat.since || '';
     box.querySelector('#bl-grep').value = '';
+    box.querySelector('.bobi-logs-bar').hidden = false;
     box.hidden = false;
     charger();
   }
 
-  window.BobiLogs = { open, close: fermer };
+  // openCrashTail(id) — last output of a script that died on its own, KEPT BY THE
+  // CONTROLLER (GET /api/crash-tails/<id>, app/crash_tail.py): readable after the container, its
+  // `docker logs` and even the node journal are gone. Fixed text, so no filter bar.
+  async function openCrashTail(id) {
+    construire();
+    const body = box.querySelector('#bl-body');
+    const foot = box.querySelector('#bl-foot');
+    const src  = box.querySelector('#bl-src');
+    box.querySelector('.bobi-logs-bar').hidden = true;
+    box.querySelector('#bl-title').textContent =
+      T('js.crash_tail.title', 'Fin de sortie du script');
+    src.textContent = T('js.crash_tail.src', 'conservée par le contrôleur — survit à la recréation du conteneur');
+    src.className = 'bobi-logs-src meta';
+    body.textContent = T('js.logs.loading', 'Lecture…');
+    foot.textContent = '';
+    box.hidden = false;
+    try {
+      const r = await fetch(`/api/crash-tails/${encodeURIComponent(id)}`);
+      const j = await r.json();
+      if (!r.ok || j.ok === false) { body.textContent = '✕ ' + (j.error || r.status); return; }
+      box.querySelector('#bl-title').textContent =
+        `${T('js.crash_tail.title', 'Fin de sortie du script')} — ${j.hostname || ('#' + j.vmid)}`;
+      if (j.status !== 'ok') {
+        body.textContent = '✕ ' + T('js.crash_tail.unavailable', 'Sortie non récupérée') + ' : ' + (j.error || '?');
+      } else {
+        body.textContent = j.tail || T('js.crash_tail.empty', '(aucune ligne)');
+        body.scrollTop = body.scrollHeight;
+      }
+      foot.textContent = [
+        j.captured_at ? `${T('js.crash_tail.captured', 'capturée le')} ${j.captured_at}` : '',
+        j.exit_signal != null ? `· signal ${j.exit_signal}` : (j.exit_code != null ? `· ${T('js.crash_tail.exit', 'code de sortie')} ${j.exit_code}` : ''),
+        j.truncated ? `· ${T('js.logs.truncated', '— tronqué au plafond')}` : '',
+        `· ${T('js.crash_tail.masked', 'secrets évidents masqués')}`,
+      ].filter(Boolean).join(' ');
+    } catch (e) {
+      body.textContent = '✕ ' + e;
+    }
+  }
+
+  window.BobiLogs = { open, openCrashTail, close: fermer };
 })();

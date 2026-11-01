@@ -59,16 +59,19 @@ def fail(step, detail=""):
             print(f"        {line}")
 
 
-def _import_app_modules():
+def _import_app_modules(tmp_db_path):
     """Étape 1 : importe chaque .py de app/ (top-level) + le sous-paquet app.routes.
     Retourne le module app.database déjà importé (nécessaire pour l'étape 2)."""
     names = sorted(
         f[:-3] for f in os.listdir(APP_DIR)
         if f.endswith(".py") and not f.startswith("__")
     )
-    # app.database en premier et isolément : on doit pouvoir surcharger son DB_PATH avant
-    # que quoi que ce soit d'autre ne soit importé, par prudence (aucun module n'ouvre la
-    # DB au niveau module d'après revue de code, mais on ne prend pas de risque).
+    # app.database en premier et isolément, pour surcharger son DB_PATH AVANT que quoi que ce
+    # soit d'autre ne soit importé. Ce n'est pas « par prudence » : jusqu'au 2026-10-25 ce
+    # commentaire affirmait qu'« aucun module n'ouvre la DB au niveau module d'après revue de
+    # code », et c'était FAUX — la boucle d'imports ci-dessous ouvrait bel et bien la base de
+    # PRODUCTION (avertissement `READ-ONLY` de connect_guarded, relevé dans le journal de la
+    # CI, run 40187687253). Une revue de code ne remplace pas la mesure.
     database_mod = None
     try:
         database_mod = importlib.import_module("app.database")
@@ -76,6 +79,15 @@ def _import_app_modules():
     except Exception:
         fail("import app.database", traceback.format_exc())
         return None
+
+    # La production est déplacée AVANT la boucle : `config.PRODUCTION_DB_PATH` aussi, sinon la
+    # garde continuerait de désigner le vrai fichier de site comme « la production ».
+    database_mod.DB_PATH = tmp_db_path
+    try:
+        importlib.import_module("app.config").DB_PATH = tmp_db_path
+    except Exception:
+        fail("surcharge de app.config.DB_PATH", traceback.format_exc())
+    database_mod._tls.__dict__.pop("conn", None)
 
     for name in names:
         if name == "database":
@@ -100,6 +112,11 @@ def _import_app_modules():
 
 def _init_db_twice(database_mod, tmp_db_path):
     database_mod.DB_PATH = tmp_db_path
+    # ⚠ La connexion est PAR THREAD et épinglée au premier accès : si un import de l'étape 1 a
+    # déjà ouvert la base (c'est le cas — l'hypothèse « aucun module n'ouvre la DB à l'import »
+    # était fausse), surcharger DB_PATH ne suffit pas et init_db tournait sur la PRODUCTION.
+    # Révélé le 2026-10-24 par la garde de lecture seule (database.connect_guarded).
+    database_mod._tls.__dict__.pop("conn", None)
     try:
         database_mod.init_db()
         ok("app.database.init_db() sur DB vierge")
@@ -220,7 +237,7 @@ def main():
     print()
     try:
         print("== Étape 1 : import de tous les modules app/ ==")
-        database_mod = _import_app_modules()
+        database_mod = _import_app_modules(tmp_db_path)
 
         print()
         print("== Étape 2 : app.database.init_db() sur DB temporaire (jamais la prod) ==")
