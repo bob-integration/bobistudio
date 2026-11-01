@@ -542,6 +542,12 @@ un plugin cassé n'apparaît simplement pas dans le registre plutôt que de plan
 - Les **valeurs propres au site** (hôtes/SSH, tokens d'agent-nœud, secrets) vivent dans
   **`config_local.py`** à la racine (non versionné, `.gitignore`). `app/config.py` ne porte que des
   défauts neutres, surchargés au boot. Ne rien logger ni copier ailleurs.
+- **Ni nom de client, ni nom de personne dans le code.** Le dépôt est dérivé vers un dépôt
+  PUBLIC : un commentaire de mesure qui nomme un client ou notre testeur les publie. Écrivez
+  « le testeur », « demande du testeur », et un nom de projet neutre (« Atelier ») dans les
+  jeux d'essai. Les NOMS DE MACHINES restent autorisés — c'est une provenance de mesure.
+  Garde : `tests/check_adresses_site.py` (elle couvre aussi les adresses du site et les
+  sous-modules ; elle refuse les deux noms sous toutes leurs casses depuis le 2026-11-01).
 - Les appels host-ops/agent-nœud passent par `node_driver` (token HTTP par nœud), plus de client
   API Proxmox. TLS interne désactivé là où c'est intentionnel (réseau interne).
 - **Token de l'agent par-conteneur (`:8081`)** : `containers.agent_token` (aléatoire par conteneur)
