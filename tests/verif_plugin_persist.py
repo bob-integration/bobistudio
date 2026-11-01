@@ -8,7 +8,9 @@ MAX_WAIT_S ; un refus du conteneur ou un endpoint non déclaré n'écrit rien ; 
 d'être appliquée, et l'ancien document est remis si l'application est refusée ; (4) les macros
 passent par la même persistance que le proxy.
 
-Aucun réseau, aucune base : requêtes et base remplacées par des doublures.
+Aucun réseau : les requêtes sont remplacées par des doublures. La base, elle, est RÉELLE mais
+JETABLE (schéma neuf dans un dossier temporaire) — la phrase « aucune base » qui figurait ici
+était fausse, et c'est ce qui a laissé le fichier ouvrir celle de production.
 
     ./venv/bin/python tests/verif_plugin_persist.py
 """
@@ -20,7 +22,15 @@ import time
 
 _R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _R)
-from app import plugin_persist as pp, plugins, database, addressing, macros   # noqa: E402
+# ⚠ `database` SEUL D'ABORD, ET `DB_PATH` DÉTOURNÉ AVANT TOUT AUTRE IMPORT. Importer `plugins`
+# dans le même bloc ouvre la base de PRODUCTION au passage : l'en-tête ci-dessus annonçait
+# « aucune base », et c'était faux. La CI du dépôt public l'a dit le 2026-11-01 — « test opened
+# the production database READ-ONLY » — alors que tous les contrôles du fichier passaient : une
+# suite verte ne prouve pas qu'elle n'a rien touché.
+from app import database                                                     # noqa: E402
+database.DB_PATH = os.path.join(tempfile.mkdtemp(prefix="plugin_persist_"), "t.db")
+database.init_db()
+from app import plugin_persist as pp, plugins, addressing, macros            # noqa: E402
 
 ko = []
 
