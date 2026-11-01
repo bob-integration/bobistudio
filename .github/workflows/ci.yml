@@ -163,9 +163,17 @@ jobs:
           # passaient bien au rouge.
           echo
           echo "── Contrôles NON MESURÉS sur cet exécuteur :"
-          if grep -hiE "NON MESURÉ|SAUTÉ|skipped|not checked" "$journal" \
-               | sort -u | sed 's/^/   /' | grep .; then
-            echo "   (total : $(grep -ciE "NON MESURÉ|SAUTÉ|skipped|not checked" "$journal") ligne(s))"
+          # ⚠ ET ON ÉCARTE CE QUI N'EST PAS UNE ABSTENTION. Élargir le filet sans ce tamis a
+          # fait passer le total de 3 à 47 lignes au run 41351476992, dont 12 venaient du
+          # JOURNAL DU SCAN DE PLUGINS (« plugins: fabs files invalides — skipped » : des
+          # manifestes volontairement invalides qu'un test fournit pour vérifier qu'ils sont
+          # REJETÉS — rien n'est sauté, au contraire), et d'autres de LIBELLÉS DE CONTRÔLES
+          # VERTS qui contiennent le mot (« ✓ 5e. et les conteneurs non mesurés sont NOMMÉS »).
+          # C'est le piège déjà documenté au contrôle de fuite de base, juste dessous.
+          _abst() { grep -hiE "NON MESURÉ|SAUTÉ|skipped|not checked" "$journal" \
+                    | grep -vE "^[[:space:]]*(plugins:|[✓✗]|ok[[:space:]]|OK[[:space:]])"; }
+          if _abst | sort -u | sed 's/^/   /' | grep .; then
+            echo "   (total : $(_abst | wc -l) ligne(s))"
           else
             echo "   aucun — tout a été mesuré."
           fi

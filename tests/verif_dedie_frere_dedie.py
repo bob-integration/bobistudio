@@ -136,6 +136,39 @@ def _cles(depuis=0):
                 db.execute("SELECT id, message FROM alerts WHERE id>? ORDER BY id", (depuis,))]
 
 
+def _diagnostic(depuis):
+    """Ce qu'on a RÉELLEMENT en base quand 2b tombe — sinon l'échec ne dit rien.
+
+    ⚠ `_msgs` est une LISTE VIDE quand rien n'a été écrit, et une liste vide ne s'imprime pas :
+    le 2026-11-01, l'échec de l'exécuteur GitHub n'a affiché aucun détail trois runs de suite.
+    On sait seulement que la fonction rend True (2a) et qu'aucune ligne n'arrive (2b) — il faut
+    donc regarder les DEUX muselières connues (throttle de processus, anti-rebond en base) ET
+    l'état brut de la table, pour pouvoir trancher sans un quatrième aller-retour.
+    """
+    print("\n   ┌─ DIAGNOSTIC (2b n'a rien trouvé) " + "─" * 40)
+    try:
+        with database.get_db() as db:
+            tot = db.execute("SELECT COUNT(*) AS n FROM alerts").fetchone()["n"]
+            lignes = db.execute(
+                "SELECT id, niveau, kind, message, msg_key FROM alerts "
+                "WHERE id>? ORDER BY id", (depuis,)).fetchall()
+            eps = db.execute("SELECT signature, kind, niveau FROM alert_episodes").fetchall()
+        print("   │ alerts : %d au total, %d depuis le repère (id>%s)" % (tot, len(lignes), depuis))
+        for r in lignes[-8:]:
+            print("   │   #%s [%s/%s] key=%r msg=%r"
+                  % (r["id"], r["niveau"], r["kind"], r["msg_key"], (r["message"] or "")[:120]))
+        print("   │ alert_episodes : %d" % len(eps))
+        for r in eps[:8]:
+            print("   │   %r [%s/%s]" % ((r["signature"] or "")[:90], r["kind"], r["niveau"]))
+    except Exception as e:
+        print("   │ lecture impossible : %r" % (e,))
+    try:
+        print("   │ core_pool._alerte_last : %r" % (dict(core_pool._alerte_last),))
+    except Exception as e:
+        print("   │ _alerte_last illisible : %r" % (e,))
+    print("   └" + "─" * 72)
+
+
 def _dernier_id():
     with database.get_db() as db:
         r = db.execute("SELECT MAX(id) AS m FROM alerts").fetchone()
@@ -218,6 +251,8 @@ verifie(core_pool.alerter_dedies_non_exclusifs(NID) is True, "2a. une alerte est
 _msgs = [m for _, m in _cles(_avant)]
 _cas2 = [m for m in _msgs if "AUTRE réservation dédiée" in m]
 verifie(len(_cas2) == 1, "2b. ★ l'alerte « frère tenu par un AUTRE dédié » est émise", _msgs)
+if len(_cas2) != 1:
+    _diagnostic(_avant)
 _m = _cas2[0] if _cas2 else ""
 verifie("decklink-io (231)" in _m and "pyramide-a (232) cpuset 1-4" in _m
         and "pyramide-b (230) cpuset 5-8" in _m,
