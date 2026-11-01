@@ -172,15 +172,15 @@ RUN cmake -S . -B build-v3 $MXL_CMAKE_ARGS \
 # §Mise à jour 2026-07-12 — le ~33 ms/hop numpy tombe à ~4-5 ms en SIMD). Deux variantes car
 # l'image est build-once+push vers des nœuds hétérogènes : baseline x86-64-v2 (toujours sûre)
 # + x86-64-v3 (AVX2, Haswell+) — bobimxl charge la v3 si /proc/cpuinfo annonce avx2.
-# ★ L'ÉTAGE DECKLINK A QUITTÉ CE FICHIER le 2026-11-01 → `plugins/decklink_io/image/Dockerfile`
-#   (image `bobi-decklink`, fine couche FROM bobi-compute, `node_only`, capacité « decklink »).
-#   Il compilait ici quatre binaires d'un plugin OPTIONNEL, dans le socle partagé de tous les
-#   plugins non-2110. Donc : un nœud sans carte les portait quand même, et surtout CE SOCLE NE SE
-#   CONSTRUISAIT PAS sans les sources de ce plugin. Un utilisateur extérieur l'a signalé le
-#   2026-09-23 — le dépôt public publie cette recette mais pas le plugin (sous-module privé),
-#   donc `_stage_tar` refusait le contexte, AUCUNE image ne se construisait, et le produit ne
-#   faisait rien du tout. Ne pas réintroduire ici le chemin de données d'un plugin : la place
-#   d'une capacité optionnelle est une couche fine, comme bobi-gui et bobi-compute-gpu.
+# ★ THE DECKLINK BUILD STAGE LEFT THIS FILE on 2026-11-01 → `plugins/decklink_io/image/Dockerfile`
+#   (image `bobi-decklink`, a thin layer FROM bobi-compute, `node_only`, capability "decklink").
+#   It compiled four binaries of an OPTIONAL plugin here, inside the base image shared by every
+#   non-2110 plugin. So: a node with no card carried them anyway, and above all THIS BASE IMAGE
+#   COULD NOT BE BUILT without that plugin's sources. An outside user reported it on 2026-09-23 —
+#   the public repository ships this recipe but not the plugin (private submodule), so the build
+#   context was refused, NO image could be built at all, and the product did nothing useful. Do
+#   not bring a plugin's data path back in here: an optional capability belongs in a thin layer,
+#   the way bobi-gui and bobi-compute-gpu do.
 FROM debian:trixie-slim AS v210-builder
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
  && rm -rf /var/lib/apt/lists/*
@@ -276,11 +276,11 @@ COPY --from=mxl-builder /opt/mxl-install-v3/lib/ /usr/local/lib/glibc-hwcaps/x86
 # Convertisseur v210↔planar (interop MXL) + kernel compose multiview fusionné (libbobi_mvk)
 # — chargés par bobimxl (ctypes), repli numpy sinon. /out/ porte les 4 .so (v2 + v3).
 COPY --from=v210-builder /out/ /usr/local/lib/
-# ★ LES EN-TÊTES MXL RESTENT DANS L'IMAGE LIVRÉE (2026-11-01). Des fichiers `.h`, aucun code
-# exécutable — mais c'est CE QUI REND POSSIBLE une couche fine qui compile contre le bus
-# (bobi-decklink compile ses quatre binaires dans un étage builder `FROM bobi-compute`). Sans
-# eux, une telle couche devrait reconstruire le SDK MXL sur le nœud — un clone et une
-# compilation complets pour quelques centaines de kilo-octets d'en-têtes.
+# ★ THE MXL HEADERS STAY IN THE SHIPPED IMAGE (2026-11-01). Just `.h` files, no executable code —
+# but they are WHAT MAKES A THIN LAYER COMPILING AGAINST THE BUS POSSIBLE (bobi-decklink compiles
+# its four binaries in a build stage `FROM bobi-compute`). Without them such a layer would have to
+# rebuild the MXL SDK on the node — a full clone and a full compilation for a few hundred kilobytes
+# of headers.
 COPY --from=mxl-builder /opt/mxl-install/include/ /usr/local/include/
 RUN ldconfig
 

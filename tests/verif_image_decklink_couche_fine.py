@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 BOBI SAS, France
-"""Le socle partagé `bobi-compute` ne dépend plus d'un plugin OPTIONNEL (2026-11-01).
+"""The shared `bobi-compute` base image no longer depends on an OPTIONAL plugin (2026-11-01).
 
-★ CE QUE CETTE GARDE PROUVE, ET POURQUOI ELLE EXISTE.
-Les quatre binaires Blackmagic (decklink_mxl, decklink_tx, decklink_probe, decklink_profile)
-étaient compilés DANS `bobi-compute`, l'image de base de TOUS les plugins non-2110. Deux effets,
-tous deux contraires à ce que le produit annonce — on installe ce dont on a besoin :
+★ WHAT THIS GUARD PROVES, AND WHY IT EXISTS.
+The four Blackmagic binaries (decklink_mxl, decklink_tx, decklink_probe, decklink_profile) were
+compiled INSIDE `bobi-compute`, the base image of EVERY non-2110 plugin. Two effects, both at odds
+with what the product claims — you install what you need:
 
-  · un nœud sans carte DeckLink portait quand même les binaires ;
-  · surtout, le socle ne se mettait même pas EN CONTEXTE sans les sources de ce plugin :
-    `_stage_tar` lève dès qu'un seul chemin de la liste manque. Le dépôt public publie la recette
-    mais pas le plugin (sous-module privé) → AUCUNE image ne se construisait, et le produit ne
-    faisait rien. Signalé de l'EXTÉRIEUR le 2026-09-23, resté six semaines sans réponse : rien
-    chez nous ne pouvait le voir, puisque notre arbre de travail a toujours tous les sous-modules.
+  · a node with no DeckLink card carried the binaries anyway;
+  · above all, the base image could not even be STAGED without that plugin's sources:
+    `_stage_tar` raises as soon as one path of the list is missing. The public repository ships the
+    recipe but not the plugin (private submodule) → NO image could be built, and the product did
+    nothing. Reported from the OUTSIDE on 2026-09-23 and left six weeks without an answer: nothing
+    here could see it, since our working tree always has every submodule.
 
-Le contrôle central (section 2) rejoue donc cette situation au lieu de la décrire : un arbre
-temporaire qui porte tout ce que l'image compute réclame SAUF `plugins/decklink_io/`, et le
-staging doit réussir. Remettre `_DECKLINK` dans la liste de l'image compute le fait échouer.
+The central check (section 2) therefore replays that situation instead of describing it: a
+temporary tree carrying everything the compute image requires EXCEPT `plugins/decklink_io/`, and
+the staging must succeed. Putting `_DECKLINK` back into the compute image's list makes it fail.
 
-Hors ligne : base jetable, aucun réseau, aucun nœud, aucun docker. Sections :
-  0. le décor est bien le vrai (les listes lues sont celles du produit) ;
-  1. l'image `decklink` existe, en couche fine node_only conditionnée à la capacité ;
-  2. ★ le socle se stage SANS le plugin — la situation du rapporteur ;
-  3. la recette de la couche fine est complète (tout COPY a son entrée de staging) ;
-  4. le socle ne porte plus ni l'étage ni les binaires ;
-  5. le plugin part sur cette image, et la capacité exige « compute » ;
-  6. les deux listes qui FILTRENT nomment la nouvelle image (page Nœuds, variantes) ;
-  7. le refus de déploiement sans la capacité est traduit, FR et EN.
+Offline: throwaway database, no network, no node, no docker. Sections:
+  0. the stage is the real one (the lists read are the product's own);
+  1. the `decklink` image exists, as a node_only thin layer gated on the capability;
+  2. ★ the base image stages WITHOUT the plugin — the reporter's situation;
+  3. the thin layer's recipe is complete (every COPY has its staging entry);
+  4. the base image carries neither the stage nor the binaries any more;
+  5. the plugin targets this image, and the capability requires "compute";
+  6. the two lists that FILTER name the new image (Nodes page, variants);
+  7. the deployment refusal without the capability is translated, FR and EN.
 
     ./venv/bin/python tests/verif_image_decklink_couche_fine.py
 """
@@ -42,221 +42,222 @@ _R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _R)
 _TMP = tempfile.mkdtemp(prefix="verif_decklink_couche_")
 from app import config, database                                          # noqa: E402
-config.DB_PATH = database.DB_PATH = os.path.join(_TMP, "db.sqlite")  # AVANT tout accès (get_db épingle)
+config.DB_PATH = database.DB_PATH = os.path.join(_TMP, "db.sqlite")  # BEFORE any access (get_db pins)
 
 from app.routes import images as IM                                       # noqa: E402
 from app.routes import nodes as ND                                        # noqa: E402
 
 ko = []
-abstenus = []
+not_checked = []
 
-# ★ CE QUE CETTE GARDE DOIT FAIRE DANS LE DÉPÔT PUBLIC (2026-11-01). `plugins/decklink_io` est un
-# sous-module PRIVÉ : l'arbre public ne le porte pas, et c'est la situation NORMALE là-bas, pas une
-# anomalie. Trois sections lisent ses fichiers — elles s'abstiennent explicitement plutôt que de
-# rendre rouge une CI qui n'y peut rien. Le contrôle CENTRAL (section 2), lui, tourne dans les deux
-# arbres, et c'est précisément celui dont le dépôt public a besoin : il prouve que le socle partagé
-# se met en contexte sans ce plugin — le défaut signalé de l'extérieur le 2026-09-23.
+# ★ WHAT THIS GUARD MUST DO IN THE PUBLIC REPOSITORY (2026-11-01). `plugins/decklink_io` is a
+# PRIVATE submodule: the public tree does not carry it, and that is the NORMAL situation there, not
+# an anomaly. Three sections read its files — they abstain explicitly rather than turn a CI red for
+# something it can do nothing about. The CENTRAL check (section 2) runs in both trees, and it is
+# precisely the one the public repository needs: it proves the shared base image stages without
+# this plugin — the defect reported from the outside on 2026-09-23.
 #
-# ⚠ Une abstention MUETTE serait pire que l'échec : elle laisserait croire que tout a été mesuré.
-# Le mot « NON MESURÉ » est celui que le récapitulatif de la CI cherche (cf. .github/workflows/ci.yml,
-# « PLUSIEURS VOCABULAIRES, PAS UN SEUL ») — ne pas le reformuler.
+# ⚠ A SILENT abstention would be worse than a failure: it would suggest everything was measured.
+# "NOT CHECKED" is matched by the CI recap, which greps case-insensitively for
+# "NON MESURÉ|SAUTÉ|skipped|not checked" (see .github/workflows/ci.yml, "PLUSIEURS VOCABULAIRES,
+# PAS UN SEUL") — do not reword it into something that list does not catch.
 _PLUGIN = os.path.isdir(os.path.join(_R, "plugins/decklink_io"))
 
 
-def abstention(titre, pourquoi):
-    print("  NON MESURÉ  %s" % titre)
-    print("              → %s" % pourquoi)
-    abstenus.append(titre)
+def abstain(title, why):
+    print("  NOT CHECKED  %s" % title)
+    print("               → %s" % why)
+    not_checked.append(title)
 
 
-def ok(cond, titre, detail=""):
-    print("%s %s" % ("  ok  " if cond else " ÉCHEC", titre))
+def ok(cond, title, detail=""):
+    print("%s %s" % ("  ok  " if cond else " FAILED", title))
     if not cond:
         if detail:
             print("         %s" % (detail,))
-        ko.append(titre)
+        ko.append(title)
 
 
-def lire(rel):
+def read(rel):
     with open(os.path.join(_R, rel), encoding="utf-8", errors="replace") as f:
         return f.read()
 
 
-# ─── 0. Le décor est le vrai ─────────────────────────────────────────────────────────
-print("\n0. Le décor est bien celui du produit")
+# ─── 0. The stage is the real one ────────────────────────────────────────────────────
+print("\n0. The stage is the product's own")
 ok("compute" in IM._IMAGES and "gui" in IM._IMAGES,
-   "les images du produit sont lues depuis _IMAGES", sorted(IM._IMAGES))
+   "the product's images are read from _IMAGES", sorted(IM._IMAGES))
 ok(isinstance(IM._DECKLINK, list) and len(IM._DECKLINK) >= 6,
-   "_DECKLINK énumère toujours les sources du plugin", repr(IM._DECKLINK)[:120])
+   "_DECKLINK still enumerates the plugin's sources", repr(IM._DECKLINK)[:120])
 if _PLUGIN:
-    print("  ok   le sous-module decklink_io est présent : les 3 sections qui le lisent tournent")
+    print("  ok   the decklink_io submodule is present: the 3 sections reading it will run")
 else:
-    abstention("les sections 3 et 5 lisent le sous-module decklink_io",
-               "arbre SANS ce sous-module (dépôt public) — la section 2 reste mesurée, "
-               "et c'est elle qui porte le verdict qui compte ici")
+    abstain("sections 3 and 5 read the decklink_io submodule",
+            "tree WITHOUT that submodule (public repository) — section 2 is still measured, "
+            "and it carries the verdict that matters here")
 
-# ─── 1. L'image existe, en couche fine ──────────────────────────────────────────────
-print("\n1. L'image « decklink » est une couche fine node_only")
+# ─── 1. The image exists, as a thin layer ───────────────────────────────────────────
+print("\n1. The “decklink” image is a node_only thin layer")
 spec = IM._IMAGES.get("decklink") or {}
-ok(bool(spec), "l'image « decklink » est déclarée dans _IMAGES")
-ok(spec.get("node_only") is True, "node_only : construite sur le nœud, jamais poussée à la flotte")
-ok(spec.get("base_from") == "compute", "base_from = compute (le FROM est réécrit au staging)")
-ok(spec.get("cap") == "decklink", "conditionnée à la capacité « decklink »")
+ok(bool(spec), "the “decklink” image is declared in _IMAGES")
+ok(spec.get("node_only") is True, "node_only: built on the node, never pushed to the fleet")
+ok(spec.get("base_from") == "compute", "base_from = compute (the FROM is rewritten at staging)")
+ok(spec.get("cap") == "decklink", "gated on the “decklink” capability")
 ok(spec.get("setting") == "decklink_image" and spec.get("field") == "decklink_image",
-   "tag commun dans le réglage decklink_image (pas de colonne nœud)")
-ok((spec.get("prefix") or "") == "bobi-decklink", "préfixe de tag bobi-decklink")
+   "shared tag in the decklink_image setting (no per-node column)")
+ok((spec.get("prefix") or "") == "bobi-decklink", "tag prefix bobi-decklink")
 
-# ─── 2. ★ LE CONTRÔLE CENTRAL : le socle se stage SANS le plugin ─────────────────────
-print("\n2. ★ Le socle partagé se construit SANS les sources du plugin (cas du rapporteur)")
-faux = os.path.join(_TMP, "arbre-sans-decklink")
-manquants = []
+# ─── 2. ★ THE CENTRAL CHECK: the base image stages WITHOUT the plugin ────────────────
+print("\n2. ★ The shared base image builds WITHOUT the plugin's sources (the reporter's case)")
+fake_tree = os.path.join(_TMP, "tree-without-decklink")
+missing = []
 for src, _dst in IM._IMAGES["compute"]["stage"]:
     s = os.path.join(_R, src)
-    d = os.path.join(faux, src)
+    d = os.path.join(fake_tree, src)
     if not os.path.exists(s):
-        manquants.append(src)
+        missing.append(src)
         continue
     os.makedirs(os.path.dirname(d), exist_ok=True)
     if os.path.isdir(s):
         shutil.copytree(s, d, dirs_exist_ok=True)
     else:
         shutil.copy2(s, d)
-ok(not manquants, "toutes les sources de l'image compute existent dans le dépôt", manquants)
-ok(not os.path.exists(os.path.join(faux, "plugins/decklink_io")),
-   "l'arbre d'essai ne porte AUCUN fichier de plugins/decklink_io")
+ok(not missing, "every source of the compute image exists in the repository", missing)
+ok(not os.path.exists(os.path.join(fake_tree, "plugins/decklink_io")),
+   "the test tree carries NO file of plugins/decklink_io")
 
-_vrai_root = IM._repo_root
-IM._repo_root = lambda: faux
+_real_root = IM._repo_root
+IM._repo_root = lambda: fake_tree
 try:
     tar = IM._stage_tar("compute")
     ok(isinstance(tar, bytes) and len(tar) > 0,
-       "le contexte de build de bobi-compute se construit sans le plugin", "tar vide")
-except Exception as e:                                             # noqa: BLE001 — c'est le verdict
-    ok(False, "le contexte de build de bobi-compute se construit sans le plugin",
+       "bobi-compute's build context is assembled without the plugin", "empty tar")
+except Exception as e:                                             # noqa: BLE001 — this is the verdict
+    ok(False, "bobi-compute's build context is assembled without the plugin",
        "%s: %s" % (type(e).__name__, e))
 finally:
-    IM._repo_root = _vrai_root
+    IM._repo_root = _real_root
 
-# ─── 3. La recette de la couche fine est complète ────────────────────────────────────
-print("\n3. La recette de bobi-decklink est complète")
+# ─── 3. The thin layer's recipe is complete ──────────────────────────────────────────
+print("\n3. bobi-decklink's recipe is complete")
 
 
 def section_3():
-    """Tout ce qui LIT le sous-module privé : absent du dépôt public (cf. _PLUGIN)."""
+    """Everything that READS the private submodule: absent from the public repository (_PLUGIN)."""
     try:
         tar = IM._stage_tar("decklink")
         ok(isinstance(tar, bytes) and len(tar) > 0,
-           "le contexte de build de bobi-decklink se construit (tout COPY est stagé)")
-    except Exception as e:                                         # noqa: BLE001 — c'est le verdict
-        ok(False, "le contexte de build de bobi-decklink se construit (tout COPY est stagé)",
+           "bobi-decklink's build context is assembled (every COPY is staged)")
+    except Exception as e:                                         # noqa: BLE001 — this is the verdict
+        ok(False, "bobi-decklink's build context is assembled (every COPY is staged)",
            "%s: %s" % (type(e).__name__, e))
 
-    dk = lire("plugins/decklink_io/image/Dockerfile")
+    dk = read("plugins/decklink_io/image/Dockerfile")
     ok(re.search(r"(?m)^ARG\s+BASE_IMAGE=", dk) is not None,
-       "le Dockerfile porte un `ARG BASE_IMAGE=` (sans quoi base_from ne réécrit rien)")
+       "the Dockerfile carries an `ARG BASE_IMAGE=` (without it base_from rewrites nothing)")
     ok(dk.count("FROM ${BASE_IMAGE}") >= 2,
-       "les deux étages partent de l'image de base (builder + runtime)")
-    # ⚠ CHERCHER LES NOMS « ldd » ET « libDeckLinkAPI » DANS LE FICHIER NE PROUVE RIEN : ils
-    # figurent dans le COMMENTAIRE qui explique le garde-fou, donc la garde restait verte alors
-    # que la condition avait été remplacée par `if false` (mutation M13, 2026-11-01). On lit donc
-    # le CODE, commentaires retirés, et on exige la condition elle-même.
+       "both stages start from the base image (builder + runtime)")
+    # ⚠ LOOKING FOR THE NAMES "ldd" AND "libDeckLinkAPI" IN THE FILE PROVES NOTHING: they appear in
+    # the COMMENT explaining the safeguard, so the guard stayed green while the condition had been
+    # replaced by `if false` (mutation M13, 2026-11-01). We therefore read the CODE with comments
+    # stripped, and require the condition itself.
     _code = "\n".join(l for l in dk.splitlines() if not l.lstrip().startswith("#"))
     ok(re.search(r'if\s+ldd\s+/usr/local/bin/\$b.*grep\s+-qv\s+"libDeckLinkAPI"', _code) is not None,
-       "le garde-fou ldd est une CONDITION du code (libDeckLinkAPI écartée : filet, cf. dlopen)")
-    ok("exit 1" in _code, "et il fait échouer le build (exit 1), pas seulement un message")
+       "the ldd safeguard is a CONDITION in the code (libDeckLinkAPI excluded: a net, see dlopen)")
+    ok("exit 1" in _code, "and it fails the build (exit 1), not just prints a message")
 
-    meta_dk = json.loads(lire("plugins/decklink_io/image/meta.json"))
+    meta_dk = json.loads(read("plugins/decklink_io/image/meta.json"))
     ok(bool(meta_dk.get("version")) and bool(meta_dk.get("image_tag")),
-       "le meta.json de l'image porte version ET image_tag")
-    # ★ On n'invente pas la règle d'accord entre les deux : c'est `_image_tag` qui la porte, et il
-    # LÈVE sur une divergence (bumper `version` en oubliant `image_tag` a failli écraser l'image
-    # de référence du parc le 2026-09-12, cf. tests/verif_images_tags.py). On l'appelle donc.
+       "the image's meta.json carries both version AND image_tag")
+    # ★ We do not invent the agreement rule between the two: `_image_tag` carries it, and it RAISES
+    # on a divergence (bumping `version` while forgetting `image_tag` nearly overwrote the fleet's
+    # reference image on 2026-09-12, see tests/verif_images_tags.py). So we call it.
     try:
         tag = IM._image_tag("decklink")
         ok(tag == meta_dk["image_tag"],
-           "le tag se résout, et `version` ne diverge pas d'`image_tag`", repr(tag))
-    except Exception as e:                                         # noqa: BLE001 — c'est le verdict
-        ok(False, "le tag se résout, et `version` ne diverge pas d'`image_tag`",
+           "the tag resolves, and `version` does not diverge from `image_tag`", repr(tag))
+    except Exception as e:                                         # noqa: BLE001 — this is the verdict
+        ok(False, "the tag resolves, and `version` does not diverge from `image_tag`",
            "%s: %s" % (type(e).__name__, e))
 
 
 if _PLUGIN:
     section_3()
 else:
-    abstention("la recette de bobi-decklink (section 3)",
-               "son Dockerfile et son meta.json vivent dans le sous-module privé")
+    abstain("bobi-decklink's recipe (section 3)",
+            "its Dockerfile and meta.json live in the private submodule")
 
-# ─── 4. Le socle ne porte plus rien de DeckLink ──────────────────────────────────────
-print("\n4. Le socle bobi-compute ne porte plus le chemin DeckLink")
-cr = lire("plugins/_compute_runtime/Dockerfile")
-ok("decklink-builder" not in cr, "plus d'étage decklink-builder dans le Dockerfile du socle")
+# ─── 4. The base image carries nothing of DeckLink any more ──────────────────────────
+print("\n4. The bobi-compute base image no longer carries the DeckLink path")
+cr = read("plugins/_compute_runtime/Dockerfile")
+ok("decklink-builder" not in cr, "no DeckLink build stage left in the base Dockerfile")
 ok(not re.search(r"(?m)^COPY\s+plugins/decklink_io", cr),
-   "plus aucun COPY des sources du plugin dans le socle")
+   "no COPY of the plugin's sources left in the base image")
 ok(not re.search(r"(?m)^COPY\s+--from=decklink-builder", cr),
-   "plus aucun COPY depuis l'étage decklink dans l'étage livré")
+   "no COPY from the DeckLink stage left in the shipped stage")
 ok(not any("decklink_io" in s for s, _d in IM._IMAGES["compute"]["stage"]),
-   "la liste de staging de l'image compute ne nomme plus le plugin",
+   "the compute image's staging list no longer names the plugin",
    [s for s, _d in IM._IMAGES["compute"]["stage"] if "decklink_io" in s])
 ok(re.search(r"(?m)^COPY\s+--from=mxl-builder\s+/opt/mxl-install/include/", cr) is not None,
-   "les en-têtes MXL restent dans l'image livrée (ce qui rend la couche fine compilable)")
+   "the MXL headers stay in the shipped image (what makes the thin layer compilable)")
 
-# ─── 5. Le plugin part sur cette image ───────────────────────────────────────────────
-print("\n5. Le plugin decklink_io déclare cette variante, et la capacité exige « compute »")
+# ─── 5. The plugin targets this image ────────────────────────────────────────────────
+print("\n5. The decklink_io plugin declares this variant, and the capability requires “compute”")
 if _PLUGIN:
-    man = json.loads(lire("plugins/decklink_io/plugin.json"))
+    man = json.loads(read("plugins/decklink_io/plugin.json"))
     ok(man.get("image") == "decklink",
-       "le manifeste déclare \"image\": \"decklink\"", repr(man.get("image")))
+       "the manifest declares \"image\": \"decklink\"", repr(man.get("image")))
     ok(man.get("needs_decklink") is True,
-       "le chemin d'EXÉCUTION est inchangé : needs_decklink toujours déclaré")
+       "the RUNTIME path is unchanged: needs_decklink still declared")
 else:
-    abstention("le manifeste du plugin (section 5)", "sous-module privé")
+    abstain("the plugin's manifest (section 5)", "private submodule")
 from app import plugins as PL                                             # noqa: E402
-_sauve = PL.REGISTRY.get("decklink_io")
+_saved = PL.REGISTRY.get("decklink_io")
 PL.REGISTRY["decklink_io"] = {"image": "decklink"}
 try:
     ok(PL.image_variant("decklink_io") == "decklink",
-       "image_variant accepte « decklink » (liste blanche étendue)")
-    PL.REGISTRY["decklink_io"] = {"image": "nimportequoi"}
+       "image_variant accepts “decklink” (allow-list extended)")
+    PL.REGISTRY["decklink_io"] = {"image": "anythingatall"}
     ok(PL.image_variant("decklink_io") == "compute",
-       "une variante inconnue retombe toujours sur compute")
+       "an unknown variant still falls back to compute")
 finally:
-    if _sauve is None:
+    if _saved is None:
         PL.REGISTRY.pop("decklink_io", None)
     else:
-        PL.REGISTRY["decklink_io"] = _sauve
-ok("decklink" in ND._CAP_ADDABLE, "la capacité « decklink » est déclarable sur un nœud")
+        PL.REGISTRY["decklink_io"] = _saved
+ok("decklink" in ND._CAP_ADDABLE, "the “decklink” capability can be declared on a node")
 ok(ND._CAP_REQUIRES.get("decklink") == "compute",
-   "elle exige « compute » (la couche fine est un FROM bobi-compute)")
+   "it requires “compute” (the thin layer is a FROM bobi-compute)")
 
-# ─── 6. Les listes qui FILTRENT nomment la nouvelle image ────────────────────────────
-print("\n6. Les listes qui filtrent nomment la nouvelle image")
+# ─── 6. The lists that FILTER name the new image ─────────────────────────────────────
+print("\n6. The lists that filter name the new image")
 ok("decklink" in ND._IMG_ORDER,
-   "_IMG_ORDER la nomme (absente, l'image ne s'affiche NULLE PART et personne ne la construit)")
+   "_IMG_ORDER names it (missing from it, the image shows NOWHERE and nobody builds it)")
 ok("decklink" not in ND._SHARED_IMAGES,
-   "elle n'est pas dans les images PARTAGÉES (node_only : jamais poussée à la flotte)")
+   "it is not among the SHARED images (node_only: never pushed to the fleet)")
 ok(ND._node_wants("decklink", {}, ["compute", "decklink"]) is True
    and ND._node_wants("decklink", {}, ["compute"]) is False,
-   "un nœud ne la veut QUE s'il déclare la capacité")
+   "a node wants it ONLY if it declares the capability")
 
-# ─── 7. Le refus de déploiement est traduit ──────────────────────────────────────────
-print("\n7. Le refus sans capacité est traduit, FR et EN")
-dc = lire("app/docker_compute.py")
+# ─── 7. The deployment refusal is translated ─────────────────────────────────────────
+print("\n7. The refusal without the capability is translated, FR and EN")
+dc = read("app/docker_compute.py")
 ok('variant in ("gui", "decklink")' in dc,
-   "docker_compute traite la variante en couche fine (tag du réglage + contrôle de capacité)")
+   "docker_compute handles the thin-layer variant (setting's tag + capability check)")
 ok("alert.deploy.compute.sans_capacite_decklink" in dc,
-   "la clé d'alerte est écrite EN ENTIER dans le code (une clé assemblée échappe au contrôle i18n)")
+   "the alert key is written IN FULL in the code (an assembled key escapes the i18n check)")
 for cat in ("fr", "en"):
-    d = json.loads(lire("i18n/%s.json" % cat))
-    cle = "alert.deploy.compute.sans_capacite_decklink"
-    t = d.get(cle) or ""
+    d = json.loads(read("i18n/%s.json" % cat))
+    key = "alert.deploy.compute.sans_capacite_decklink"
+    t = d.get(key) or ""
     ok(bool(t) and "{n}" in t and "{vmid}" in t,
-       "i18n/%s.json porte la clé, avec le nœud et le vmid" % cat, repr(t)[:90])
+       "i18n/%s.json carries the key, with the node and the vmid" % cat, repr(t)[:90])
 
 print()
-if abstenus:
-    print("── NON MESURÉ sur cet arbre (%d) : %s" % (len(abstenus), " · ".join(abstenus)))
+if not_checked:
+    print("── NOT CHECKED on this tree (%d): %s" % (len(not_checked), " · ".join(not_checked)))
 if ko:
-    print("✗ %d échec(s) : %s" % (len(ko), " · ".join(ko[:4])))
+    print("✗ %d failure(s): %s" % (len(ko), " · ".join(ko[:4])))
     sys.exit(1)
-print("✓ tout est vert%s" % (" (avec %d abstention(s) ci-dessus)" % len(abstenus) if abstenus else ""))
+print("✓ all green%s" % (" (with %d abstention(s) above)" % len(not_checked) if not_checked else ""))
 sys.exit(0)

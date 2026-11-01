@@ -401,9 +401,9 @@ def api_node_detect_gpu(node_id):
 # fine FROM bobi-compute, construite SUR le nœud, cf. images._IMAGES["gui"]). Elle exige `compute` (même
 # réseau macvlan, même image de base) : refusée sans lui.
 _CAP_ADDABLE = ("gpu", "io2110", "compute", "media", "webrtc", "gui", "decklink")
-# `decklink` exige `compute` pour la même raison que `gui` (2026-11-01) : depuis que les binaires
-# Blackmagic ont quitté bobi-compute pour la couche fine bobi-decklink, cette capacité est aussi la
-# CIBLE DE BUILD de cette couche — laquelle est un `FROM bobi-compute`.
+# `decklink` requires `compute` for the same reason as `gui` (2026-11-01): now that the Blackmagic
+# binaries have left bobi-compute for the thin bobi-decklink layer, this capability is also that
+# layer's BUILD TARGET — and the layer is a `FROM bobi-compute`.
 _CAP_REQUIRES = {"gui": "compute", "decklink": "compute"}
 # Capacités dont le provisioning n'est effectif qu'après redémarrage du nœud : `gpu` (module DKMS à
 # charger), `io2110` (noyau MTL, cmdline hugepages 1G, DDP relu au probe du driver ice).
@@ -596,9 +596,9 @@ def _add_cap_run(node_id, caps):
     if set(caps) & {"compute", "media", "webrtc"} and not fresh.get("docker_network"):
         suites.append("réseau containers non configuré sur ce nœud → Configuration → Réseau "
                       "(la carte parente n'est pas déductible, elle doit être choisie)")
-    # Rien à installer sur l'hôte pour ces deux-là : l'image se construit SUR ce nœud depuis la page
-    # Images (node_only). Sans ce rappel, la capacité est déclarée, aucune image n'existe, et le
-    # déploiement échoue plus tard sans que rien n'ait indiqué l'étape manquante.
+    # Nothing to install on the host for these two: the image is built ON this node from the Images
+    # page (node_only). Without this reminder the capability is declared, no image exists, and the
+    # deployment fails later with nothing having pointed at the missing step.
     for _cap, _img in (("gui", "bobi-gui"), ("decklink", "bobi-decklink")):
         if rc == 0 and _cap in caps:
             suites.append("image %s à construire sur ce nœud : Réglages → Images → %s" % (_img, _img))
@@ -694,9 +694,9 @@ def api_node_capability_state(node_id):
 # ─── Mise à jour des images vers les NŒUDS (≠ Flotte = entre orchestrateurs) ────────────────────
 _SHARED_IMAGES = ("compute", "media", "webrtc")   # images PARTAGÉES (build-once + push) ; mtl = par-nœud
 
-# ⚠ TOUTE IMAGE DE `_IMAGES` DOIT FIGURER ICI. Cette liste ORDONNE mais elle FILTRE aussi : une
-# image absente d'ici ne se montre nulle part dans la page Nœuds, donc personne ne la construit —
-# et c'est silencieux. `decklink` ajoutée le 2026-11-01 avec l'image elle-même.
+# ⚠ EVERY IMAGE IN `_IMAGES` MUST APPEAR HERE. This list ORDERS, but it also FILTERS: an image
+# missing from it shows up nowhere on the Nodes page, so nobody builds it — and that is silent.
+# `decklink` added on 2026-11-01 along with the image itself.
 _IMG_ORDER = ("compute", "compute-gpu", "media", "webrtc", "mtl", "gui", "decklink")
 
 def _node_wants(which, node, caps):

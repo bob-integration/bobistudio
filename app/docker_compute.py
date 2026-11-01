@@ -576,18 +576,18 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     # Variante 'gui' (plugin_gui : interfaces natives LV2) : fine couche bobi-gui sur bobi-compute, construite
     # sur le nœud qui la porte (node_only) ; tag commun dans le réglage `gui_image`. Absent : refus explicite
     # plus bas (« sans image »), jamais un repli sur bobi-compute qui démarrerait sans pile graphique.
-    # Variante 'decklink' (2026-11-01) : même forme exactement — fine couche bobi-decklink portant les
-    # binaires du chemin Blackmagic, qui vivaient dans bobi-compute jusque-là. Les deux variantes se
-    # traitent donc ensemble ; les séparer ferait deux copies d'une règle qui finiraient par diverger.
+    # Variant 'decklink' (2026-11-01): exactly the same shape — a thin bobi-decklink layer carrying
+    # the Blackmagic data-path binaries, which lived in bobi-compute until then. Both variants are
+    # therefore handled together; splitting them would make two copies of one rule, bound to diverge.
     if variant in ("gui", "decklink"):
         from . import settings as _st
         # Le tag est COMMUN (réglage) mais l'image n'existe que sur les nœuds qui ont la capacité (cible
         # du build node_only). Ailleurs, un `docker run bobi-gui:x` échouerait sur « image introuvable », sans
         # nommer la cause. La route de création refuse déjà ; ceci couvre un redéploiement ou une migration.
         #
-        # ⚠ Les deux clés d'alerte sont écrites EN ENTIER ici, jamais assemblées : une clé i18n
-        # construite par concaténation échappe au contrôle de portée des clés (CI) — elle manquerait
-        # au catalogue sans que rien ne le dise, et l'alerte s'afficherait sous son code brut.
+        # ⚠ Both alert keys are written IN FULL here, never assembled: an i18n key built by
+        # concatenation escapes the key-scope check (CI) — it would be missing from the catalogue
+        # with nothing to say so, and the alert would show up as its raw code.
         _cle, _reglage = (("alert.deploy.compute.sans_capacite_gui", "gui_image") if variant == "gui"
                           else ("alert.deploy.compute.sans_capacite_decklink", "decklink_image"))
         if variant not in node_driver.node_capabilities(node):
