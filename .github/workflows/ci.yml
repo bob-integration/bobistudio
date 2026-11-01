@@ -152,10 +152,20 @@ jobs:
           # Un banc qui s'abstient faute de root, de certificat ou d'un outil reste VERT : sans
           # ce récapitulatif, l'abstention devient une garde inerte que personne ne remarque.
           # On ne la transforme pas en échec (l'exécuteur n'y peut rien), on la rend LISIBLE.
+          #
+          # ⚠ PLUSIEURS VOCABULAIRES, PAS UN SEUL. Ce récapitulatif n'a longtemps cherché que
+          # « NON MESURÉ ». Mesuré le 2026-11-01 : 68 fichiers de tests/ portent un chemin
+          # d'abstention et 5 SEULEMENT emploient ce terme — les autres disent « SAUTÉ »,
+          # « skipped » ou « not checked », et rendent 0. Le total affiché était donc un
+          # plancher, pas un compte : une abstention se déguisait en vérification.
+          # Constaté sur `verif_console_fiche` et `verif_console_modeles_ajust`, verts sur un
+          # arbre d'où le plugin audio_console avait été retiré — 63 de leurs 65 voisins, eux,
+          # passaient bien au rouge.
           echo
           echo "── Contrôles NON MESURÉS sur cet exécuteur :"
-          if grep -h "NON MESURÉ" "$journal" | sort -u | sed 's/^/   /' | grep .; then
-            echo "   (total : $(grep -c "NON MESURÉ" "$journal") ligne(s))"
+          if grep -hiE "NON MESURÉ|SAUTÉ|skipped|not checked" "$journal" \
+               | sort -u | sed 's/^/   /' | grep .; then
+            echo "   (total : $(grep -ciE "NON MESURÉ|SAUTÉ|skipped|not checked" "$journal") ligne(s))"
           else
             echo "   aucun — tout a été mesuré."
           fi

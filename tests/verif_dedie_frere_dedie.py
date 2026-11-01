@@ -204,7 +204,15 @@ verifie(_v["ht_known"] is False and _v["ok"] is None,
 _carte["ht"] = dict(Z8_HT)
 
 print("\n2. ★ L'alerte nomme le voisin et son cpuset")
+# ⚠ DEUX ÉTAGES DE MUSELIÈRE, PAS UN. `_alerte_last` est le throttle de PROCESSUS ; la table
+# `alert_episodes` est l'anti-rebond EN BASE, indexé par signature, et `db_add_alert` n'écrit
+# RIEN quand il retrouve l'épisode. Ne vider que le premier laisse le second armé : la fonction
+# rend True (2a passe) et aucune ligne n'atteint la table (2b à 2e tombent), sans un mot.
+# Constaté le 2026-11-01 sur l'exécuteur GitHub, où quelque chose émet avant ce point — vert ici
+# et sur l'arbre dérivé, rouge là-bas seulement. Reproduit en émettant une fois avant le repère.
 core_pool._alerte_last.clear()
+database.get_db().execute("DELETE FROM alert_episodes")
+database.get_db().commit()
 _avant = _dernier_id()
 verifie(core_pool.alerter_dedies_non_exclusifs(NID) is True, "2a. une alerte est levée")
 _msgs = [m for _, m in _cles(_avant)]
