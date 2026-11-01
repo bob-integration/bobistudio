@@ -46,11 +46,48 @@ d'API, le bouton **Révoquer ne faisait rien** : son `onclick` était bâti avec
 parmi les BCP NMOS implémentées. Elle ne l'est pas : aucun jeton n'est vérifié, sur aucune API. Le
 service suppose un réseau de contrôle protégé et ne doit pas être exposé au-delà.
 
+**Le CPU se règle maintenant à deux niveaux, et ce ne sont pas les mêmes.** La **place** dit *où*
+tourne un conteneur — cœurs dédiés, partagés, plafonnés. Le **poids** dit quelle *part* il obtient
+quand la machine sature. Les deux étaient confondus ; ils ont désormais chacun leur réglage, et la
+fenêtre des cœurs montre lequel s'applique.
+
+**Un conteneur qui meurt tout seul garde ses derniers mots.** Quand un script s'arrête de lui-même
+— pas sur un stop demandé — la fin de sa sortie est capturée et conservée dans la base du
+contrôleur. Jusqu'ici elle partait avec le conteneur, et il fallait reproduire la panne pour savoir
+ce qui s'était dit. Un redéploiement ne l'efface plus.
+
+**Un conteneur qui exige un pilote hôte attend, au lieu de mourir.** Les types qui ont besoin d'un
+pilote posé sur la machine (Blackmagic Desktop Video, par exemple) ne démarrent plus pour échouer
+aussitôt : ils patientent et le disent. Les pilotes hôte eux-mêmes s'installent depuis la fiche du
+nœud, avec journal, action en attente et redémarrage confirmé.
+
+**Les flux d'état ne monopolisent plus les fils du serveur.** Une page ouverte tenait un fil de
+serveur web tant qu'elle écoutait, et seize fils suffisaient à bloquer l'orchestrateur. Les flux
+longs passent désormais par un relais unique : un abonnement par conteneur, redistribué à tous les
+lecteurs, servi hors des fils de service. Réglages → Avancé montre les requêtes en cours et combien
+de fils elles retiennent — un interrupteur permet de revenir à l'ancien comportement.
+
+**Le mur multiview sait afficher l'état d'AUTRES conteneurs** (`%state:<emplacement>.<état>%`) : le
+nom d'un clip en cours de lecture, un compte à rebours, l'entrée au PGM du mélangeur. La profondeur
+des anneaux MXL se lit sur n'importe quel nœud portant le bus, et chaque étage de traitement déclare
+ce qu'il émet quand une image d'entrée manque, au lieu de le décider dans son coin.
+
+**L'éditeur de disposition est devenu commun.** Multiview, incrustations, PiP du split, dispositions
+de console : alignements, égalisation, répartition, aimantage et sélection multiple viennent d'un
+seul moteur. Un geste appris quelque part se retrouve partout, et un défaut corrigé l'est pour tous.
+
 **⚠ Un point connu, non corrigé dans cette version.** Rappeler un **instantané de configuration de
 conteneur** réapplique les paramètres bruts : une entrée qui suivait une virtuelle est remise sur
 l'ancien flux physique et **perd son lien à la virtuelle, sans un mot**. Les instantanés sont
 antérieurs aux virtuelles et ne les connaissent pas. Si vous utilisez les deux, revérifiez le
 câblage après un rappel.
+
+**⚠ Et un second, corrigé juste après la publication.** Sur un contrôleur **fraîchement
+redémarré**, la première alerte de chaque motif de placement CPU était jetée pendant cinq minutes :
+l'anti-rebond comparait une absence à « l'instant 0 » d'une horloge qui compte depuis le démarrage
+de la machine. C'est exactement la fenêtre où les nœuds remontent et où les conteneurs se replacent.
+Corrigé. Quatre mécanismes voisins portent encore ce motif, dont l'alerte « TLS en clair » d'un nœud
+(muette 10 minutes après un redémarrage) ; ils sont identifiés et suivis.
 
 ---
 
