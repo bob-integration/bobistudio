@@ -172,38 +172,15 @@ RUN cmake -S . -B build-v3 $MXL_CMAKE_ARGS \
 # §Mise à jour 2026-07-12 — le ~33 ms/hop numpy tombe à ~4-5 ms en SIMD). Deux variantes car
 # l'image est build-once+push vers des nœuds hétérogènes : baseline x86-64-v2 (toujours sûre)
 # + x86-64-v3 (AVX2, Haswell+) — bobimxl charge la v3 si /proc/cpuinfo annonce avx2.
-# ────────────────────────────────────────────── étage builder : binaires DeckLink (plugin decklink_io)
-# ★ RIEN DE BLACKMAGIC N'EST EMBARQUÉ ICI. Seuls les EN-TÊTES du SDK entrent (leur licence
-#   autorise la redistribution par un tiers, cf. THIRD-PARTY-NOTICES.md) ; `libDeckLinkAPI.so`
-#   est chargée à l'EXÉCUTION et montée depuis l'hôte, le pilote Desktop Video s'installant à la
-#   main sur le nœud. Un nœud sans carte porte donc ces binaires sans pouvoir les utiliser — ils
-#   pèsent quelques centaines de kilo-octets et ne démarrent que si un decklink_io est déployé.
-FROM debian:trixie-slim AS decklink-builder
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      g++ libssl-dev && rm -rf /var/lib/apt/lists/*
-COPY --from=mxl-builder /opt/mxl-install/lib/ /usr/local/lib/
-COPY --from=mxl-builder /opt/mxl-install/include/ /usr/local/include/
-RUN ldconfig
-COPY plugins/decklink_io/decklink_sdk /src/decklink_sdk
-COPY plugins/decklink_io/anc_rfc8331.h /src/anc_rfc8331.h
-COPY plugins/decklink_io/decklink_mxl.cpp /src/decklink_mxl.cpp
-COPY plugins/decklink_io/decklink_tx.cpp /src/decklink_tx.cpp
-# ★ La SONDE entre aussi dans l'image (2026-09-21). L'inventaire de la carte — prises, rôles,
-#   duplex, prises INACTIVES — ne peut être lu que depuis le conteneur : c'est lui qui a les
-#   périphériques montés, et le contrôleur n'exécute jamais de code plugin. Sans elle, l'exploitant
-#   devait trouver les `persistent_id` en ligne de commande pour remplir un champ JSON à la main.
-COPY plugins/decklink_io/tools/probe/decklink_probe.cpp /src/decklink_probe.cpp
-# L'outil de PROFIL entre aussi : changer le profil d'une carte est une opération d'exploitant,
-# elle ne peut pas exiger une ligne de commande sur le nœud (décision du 16/10). Il porte ses
-# propres garde-fous — refus si une entrée est verrouillée, ciblage par identité stable.
-COPY plugins/decklink_io/tools/profile/decklink_profile.cpp /src/decklink_profile.cpp
-WORKDIR /src
-RUN for b in decklink_mxl decklink_tx decklink_probe decklink_profile; do \
-      g++ -O2 -Wall -Wextra -Wno-deprecated-declarations -std=c++11 -fno-rtti \
-        -I/src -I/usr/local/include -o /$b $b.cpp decklink_sdk/DeckLinkAPIDispatch.cpp \
-        -L/usr/local/lib -lmxl -lcrypto -ldl -lpthread || exit 1; \
-    done
-
+# ★ L'ÉTAGE DECKLINK A QUITTÉ CE FICHIER le 2026-11-01 → `plugins/decklink_io/image/Dockerfile`
+#   (image `bobi-decklink`, fine couche FROM bobi-compute, `node_only`, capacité « decklink »).
+#   Il compilait ici quatre binaires d'un plugin OPTIONNEL, dans le socle partagé de tous les
+#   plugins non-2110. Donc : un nœud sans carte les portait quand même, et surtout CE SOCLE NE SE
+#   CONSTRUISAIT PAS sans les sources de ce plugin. Un utilisateur extérieur l'a signalé le
+#   2026-09-23 — le dépôt public publie cette recette mais pas le plugin (sous-module privé),
+#   donc `_stage_tar` refusait le contexte, AUCUNE image ne se construisait, et le produit ne
+#   faisait rien du tout. Ne pas réintroduire ici le chemin de données d'un plugin : la place
+#   d'une capacité optionnelle est une couche fine, comme bobi-gui et bobi-compute-gpu.
 FROM debian:trixie-slim AS v210-builder
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
  && rm -rf /var/lib/apt/lists/*
@@ -299,10 +276,12 @@ COPY --from=mxl-builder /opt/mxl-install-v3/lib/ /usr/local/lib/glibc-hwcaps/x86
 # Convertisseur v210↔planar (interop MXL) + kernel compose multiview fusionné (libbobi_mvk)
 # — chargés par bobimxl (ctypes), repli numpy sinon. /out/ porte les 4 .so (v2 + v3).
 COPY --from=v210-builder /out/ /usr/local/lib/
-COPY --from=decklink-builder /decklink_mxl /usr/local/bin/decklink_mxl
-COPY --from=decklink-builder /decklink_tx /usr/local/bin/decklink_tx
-COPY --from=decklink-builder /decklink_probe /usr/local/bin/decklink_probe
-COPY --from=decklink-builder /decklink_profile /usr/local/bin/decklink_profile
+# ★ LES EN-TÊTES MXL RESTENT DANS L'IMAGE LIVRÉE (2026-11-01). Des fichiers `.h`, aucun code
+# exécutable — mais c'est CE QUI REND POSSIBLE une couche fine qui compile contre le bus
+# (bobi-decklink compile ses quatre binaires dans un étage builder `FROM bobi-compute`). Sans
+# eux, une telle couche devrait reconstruire le SDK MXL sur le nœud — un clone et une
+# compilation complets pour quelques centaines de kilo-octets d'en-têtes.
+COPY --from=mxl-builder /opt/mxl-install/include/ /usr/local/include/
 RUN ldconfig
 
 # ⚠ GARDE-FOU DE L'ÉTAGE RUNTIME — l'étage builder ne prouve RIEN sur l'image livrée.

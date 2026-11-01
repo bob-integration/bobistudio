@@ -401,7 +401,10 @@ def api_node_detect_gpu(node_id):
 # fine FROM bobi-compute, construite SUR le nœud, cf. images._IMAGES["gui"]). Elle exige `compute` (même
 # réseau macvlan, même image de base) : refusée sans lui.
 _CAP_ADDABLE = ("gpu", "io2110", "compute", "media", "webrtc", "gui", "decklink")
-_CAP_REQUIRES = {"gui": "compute"}
+# `decklink` exige `compute` pour la même raison que `gui` (2026-11-01) : depuis que les binaires
+# Blackmagic ont quitté bobi-compute pour la couche fine bobi-decklink, cette capacité est aussi la
+# CIBLE DE BUILD de cette couche — laquelle est un `FROM bobi-compute`.
+_CAP_REQUIRES = {"gui": "compute", "decklink": "compute"}
 # Capacités dont le provisioning n'est effectif qu'après redémarrage du nœud : `gpu` (module DKMS à
 # charger), `io2110` (noyau MTL, cmdline hugepages 1G, DDP relu au probe du driver ice).
 _CAP_NEEDS_REBOOT = ("gpu", "io2110")
@@ -593,9 +596,12 @@ def _add_cap_run(node_id, caps):
     if set(caps) & {"compute", "media", "webrtc"} and not fresh.get("docker_network"):
         suites.append("réseau containers non configuré sur ce nœud → Configuration → Réseau "
                       "(la carte parente n'est pas déductible, elle doit être choisie)")
-    if rc == 0 and "gui" in caps:
-        # Rien à installer sur l'hôte : l'image se construit SUR ce nœud depuis la page Images (node_only).
-        suites.append("image bobi-gui à construire sur ce nœud : Réglages → Images → bobi-gui")
+    # Rien à installer sur l'hôte pour ces deux-là : l'image se construit SUR ce nœud depuis la page
+    # Images (node_only). Sans ce rappel, la capacité est déclarée, aucune image n'existe, et le
+    # déploiement échoue plus tard sans que rien n'ait indiqué l'étape manquante.
+    for _cap, _img in (("gui", "bobi-gui"), ("decklink", "bobi-decklink")):
+        if rc == 0 and _cap in caps:
+            suites.append("image %s à construire sur ce nœud : Réglages → Images → %s" % (_img, _img))
     reboot = bool(set(caps) & set(_CAP_NEEDS_REBOOT))
     if reboot:
         suites.append("REBOOT du nœud requis pour que la/les capacité(s) soient effectives"
@@ -688,7 +694,10 @@ def api_node_capability_state(node_id):
 # ─── Mise à jour des images vers les NŒUDS (≠ Flotte = entre orchestrateurs) ────────────────────
 _SHARED_IMAGES = ("compute", "media", "webrtc")   # images PARTAGÉES (build-once + push) ; mtl = par-nœud
 
-_IMG_ORDER = ("compute", "compute-gpu", "media", "webrtc", "mtl", "gui")
+# ⚠ TOUTE IMAGE DE `_IMAGES` DOIT FIGURER ICI. Cette liste ORDONNE mais elle FILTRE aussi : une
+# image absente d'ici ne se montre nulle part dans la page Nœuds, donc personne ne la construit —
+# et c'est silencieux. `decklink` ajoutée le 2026-11-01 avec l'image elle-même.
+_IMG_ORDER = ("compute", "compute-gpu", "media", "webrtc", "mtl", "gui", "decklink")
 
 def _node_wants(which, node, caps):
     """Ce nœud exécute-t-il cette image ? (capacités déclarées + flag GPU pour la variante GPU)."""

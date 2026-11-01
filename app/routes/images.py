@@ -84,7 +84,11 @@ _NTCOPY = ("script_templates/ntcopy.c", "script_templates/ntcopy.c")
 # étage v210-builder → libbobi_scope.so (+ variante AVX2), chargés par bobimxl.charger_noyau().
 _SCOPEK = ("script_templates/scopekernel.c", "script_templates/scopekernel.c")
 _SPLIT_GPU = ("script_templates/split_gpu.cu", "script_templates/split_gpu.cu")
-# Chemin de données du plugin decklink_io, compilé dans l'image compute (étage decklink-builder).
+# Chemin de données du plugin decklink_io. ⚠ CES CHEMINS NE SONT PLUS DANS LA LISTE DE L'IMAGE
+# COMPUTE (2026-11-01) : ils alimentent l'image `decklink` seule. Les y remettre rendrait de
+# nouveau le SOCLE PARTAGÉ inconstruisible chez qui n'a pas ce plugin — `_stage_tar` lève dès
+# qu'un seul chemin manque, et le dépôt public publie la recette sans le sous-module privé
+# (défaut signalé de l'extérieur le 2026-09-23 : aucune image, donc aucun produit).
 # Les en-têtes du SDK sont un DOSSIER : le garde-fou de COPY ci-dessous les vérifie comme tel.
 _DECKLINK = [("plugins/decklink_io/decklink_sdk", "plugins/decklink_io/decklink_sdk"),
              ("plugins/decklink_io/anc_rfc8331.h", "plugins/decklink_io/anc_rfc8331.h"),
@@ -106,7 +110,7 @@ _IMAGES = {
                 "prefix": "bobi-compute", "field": "compute_image",
                 "stage": [("plugins/_compute_runtime/Dockerfile", "Dockerfile"), _AGENT, _BOBIMXL,
                           _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH, _V210_CONV, _MVK, _NTCOPY, _SCOPEK]
-                         + _DECKLINK + _LICENCES},
+                         + _LICENCES},
     # Variante GPU/NVIDIA de l'image compute : fine couche FROM bobi-compute:<ver> + cupy[ctk]
     # (cf. plugins/_compute_gpu_runtime/Dockerfile). node_only = buildée SUR le nœud GPU (image
     # CUDA lourde, locale, pas de push flotte — comme bobi-mtl). Le FROM résout l'image compute
@@ -153,6 +157,19 @@ _IMAGES = {
     "webrtc":  {"label": "bobi-webrtc (passerelle)", "meta": "plugins/_webrtc_runtime/meta.json",
                 "prefix": "bobi-webrtc", "field": "webrtc_image", "setting": "webrtc_image",
                 "stage": [("plugins/_webrtc_runtime/Dockerfile", "Dockerfile"), _AGENT]},
+    # Chemin de données Blackmagic (plugin decklink_io, 2026-11-01) : fine couche FROM bobi-compute,
+    # comme bobi-gui. Il était compilé DANS bobi-compute — donc porté par des nœuds sans carte, et
+    # surtout le socle partagé ne se mettait plus en contexte sans les sources de ce plugin optionnel
+    # (cf. _DECKLINK). node_only : construite sur les seuls nœuds qui déclarent la capacité
+    # « decklink », jamais poussée à la flotte. Tag commun dans le réglage `decklink_image`.
+    "decklink": {"label": "bobi-decklink (E/S Blackmagic)",
+                 "meta": "plugins/decklink_io/image/meta.json",
+                 "prefix": "bobi-decklink", "field": "decklink_image", "setting": "decklink_image",
+                 "node_only": True, "cap": "decklink", "base_from": "compute",
+                 # Toute ligne COPY du Dockerfile a son entrée ICI, sinon l'image ne se construit
+                 # plus du tout (piège récurrent : cf. _NTCOPY, _SPLIT_GPU et atom_wire.h).
+                 "stage": [("plugins/decklink_io/image/Dockerfile", "Dockerfile")]
+                          + _DECKLINK + _LICENCES},
     # MTL : Dockerfile dans docker/ + mtl_rx.c (racine plugin) + controller/entrypoint.
     # NB : normalement buildé sur le nœud cible (clone MTL Internet + E810).
     "mtl":     {"label": "bobi-mtl (ST 2110 / E810)", "meta": "plugins/2110_io/meta.json",

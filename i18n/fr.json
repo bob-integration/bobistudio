@@ -85,6 +85,7 @@
   "alert.deploy.compute.sans_image": "Nœud {n} sans image compute (Réglages → Nœuds)",
   "alert.deploy.compute.sans_image_ou_reseau": "Déploiement compute {vmid} : nœud {n} sans image {quoi} ou réseau Docker",
   "alert.deploy.compute.sans_capacite_gui": "Déploiement {vmid} ({t}) refusé : le nœud {n} n’a pas la capacité « gui » (image des interfaces natives absente). Réglages → Nœuds pour l’ajouter.",
+  "alert.deploy.compute.sans_capacite_decklink": "Déploiement {vmid} ({t}) refusé : le nœud {n} n’a pas la capacité « decklink » (image des entrées/sorties Blackmagic absente). Réglages → Nœuds pour l’ajouter.",
   "alert.deploy.compute.agent_sans_options_montage": "Nœud {n} : agent-nœud {v} trop ancien pour les options de montage — un dossier réseau accordé après le démarrage d'un conteneur média n'y apparaîtra qu'à son redéploiement. Mettre à jour l'agent (Réglages → Nœuds).",
   "alert.securite.api_token_cree": "Jeton d'API créé : « {label} » pour le compte {identifiant} (par {par}). Ce jeton donne un accès programmatique complet aux droits de ce compte ; il est révocable dans Réglages.",
   "alert.securite.api_token_revoque": "Jeton d'API révoqué : « {label} » du compte {identifiant} (par {par}). Tout accès présentant ce jeton est refusé dès maintenant.",

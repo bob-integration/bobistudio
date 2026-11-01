@@ -576,17 +576,26 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     # Variante 'gui' (plugin_gui : interfaces natives LV2) : fine couche bobi-gui sur bobi-compute, construite
     # sur le nœud qui la porte (node_only) ; tag commun dans le réglage `gui_image`. Absent : refus explicite
     # plus bas (« sans image »), jamais un repli sur bobi-compute qui démarrerait sans pile graphique.
-    if variant == "gui":
+    # Variante 'decklink' (2026-11-01) : même forme exactement — fine couche bobi-decklink portant les
+    # binaires du chemin Blackmagic, qui vivaient dans bobi-compute jusque-là. Les deux variantes se
+    # traitent donc ensemble ; les séparer ferait deux copies d'une règle qui finiraient par diverger.
+    if variant in ("gui", "decklink"):
         from . import settings as _st
-        # Le tag est COMMUN (réglage) mais l'image n'existe que sur les nœuds qui ont la capacité « gui » (cible
+        # Le tag est COMMUN (réglage) mais l'image n'existe que sur les nœuds qui ont la capacité (cible
         # du build node_only). Ailleurs, un `docker run bobi-gui:x` échouerait sur « image introuvable », sans
         # nommer la cause. La route de création refuse déjà ; ceci couvre un redéploiement ou une migration.
-        if "gui" not in node_driver.node_capabilities(node):
-            db_add_alert("alert.deploy.compute.sans_capacite_gui", "error", vmid=vmid,
+        #
+        # ⚠ Les deux clés d'alerte sont écrites EN ENTIER ici, jamais assemblées : une clé i18n
+        # construite par concaténation échappe au contrôle de portée des clés (CI) — elle manquerait
+        # au catalogue sans que rien ne le dise, et l'alerte s'afficherait sous son code brut.
+        _cle, _reglage = (("alert.deploy.compute.sans_capacite_gui", "gui_image") if variant == "gui"
+                          else ("alert.deploy.compute.sans_capacite_decklink", "decklink_image"))
+        if variant not in node_driver.node_capabilities(node):
+            db_add_alert(_cle, "error", vmid=vmid,
                          node_id=node.get("id"), kind="deploy",
                          params={"vmid": vmid, "n": node.get("name"), "t": deploy_type})
             return False
-        image = node.get("gui_image") or (_st.get("gui_image") or "").strip() or None
+        image = node.get(_reglage) or (_st.get(_reglage) or "").strip() or None
     # Cas spécial passerelle WebRTC : image dédiée bobi-webrtc (MediaMTX pré-baké). Ce n'est pas un
     # plugin du registre (donc pas de variante) → image lue du setting `webrtc_image` (défaut
     # bobi-webrtc:0.1), avec repli sur node.webrtc_image si la colonne existe.
@@ -663,7 +672,8 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     mxl = node.get("mxl_mount") or "/dev/shm"
     if not (image and network):
         _quoi = ("média (media_image)" if variant == "media" else "interfaces natives (gui_image)"
-                 if variant == "gui" else "compute (compute_image)")
+                 if variant == "gui" else "E/S Blackmagic (decklink_image)" if variant == "decklink"
+                 else "compute (compute_image)")
         db_add_alert("alert.deploy.compute.sans_image_ou_reseau", "error", vmid=vmid,
                      node_id=node.get("id"), kind="deploy",
                      params={"vmid": vmid, "n": node["name"], "quoi": _quoi})
