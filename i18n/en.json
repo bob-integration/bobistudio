@@ -85,6 +85,7 @@
   "alert.deploy.compute.sans_image": "Node {n} has no compute image (Settings → Nodes)",
   "alert.deploy.compute.sans_image_ou_reseau": "Compute deployment {vmid}: node {n} has no {quoi} image or Docker network",
   "alert.deploy.compute.sans_capacite_gui": "Deployment {vmid} ({t}) refused: node {n} lacks the “gui” capability (no native interface image). Settings → Nodes to add it.",
+  "alert.deploy.compute.sans_capacite_decklink": "Deployment {vmid} ({t}) refused: node {n} lacks the “decklink” capability (no Blackmagic I/O image). Settings → Nodes to add it.",
   "alert.deploy.compute.agent_sans_options_montage": "Node {n}: node agent {v} is too old for mount options — a network folder granted after a media container started will only appear once it is redeployed. Update the agent (Settings → Nodes).",
   "alert.securite.api_token_cree": "API token created: “{label}” for account {identifiant} (by {par}). This token grants programmatic access with that account's full rights; it can be revoked in Settings.",
   "alert.securite.api_token_revoque": "API token revoked: “{label}” from account {identifiant} (by {par}). Any access presenting this token is refused from now on.",

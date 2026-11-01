@@ -1,7 +1,13 @@
 {
-  "version": "0.80.0",
-  "date": "2026-10-30",
+  "version": "0.81.0",
+  "date": "2026-11-01",
   "changes": {
+    "Le chemin DeckLink sort du socle partage ; les en-tetes MXL y restent (0.81.0)": [
+      "★★ LE SOCLE NE SE CONSTRUISAIT PAS SANS UN PLUGIN OPTIONNEL. Les quatre binaires DeckLink (decklink_mxl, decklink_tx, decklink_probe, decklink_profile) etaient compiles ICI, dans l'image de base de TOUS les plugins non-2110. Deux consequences : un noeud sans carte les portait quand meme, et surtout cette image exigeait les sources de plugins/decklink_io pour etre mise en contexte (`_stage_tar` leve des que un seul chemin manque). Signale par un utilisateur exterieur le 2026-09-23 : le depot public publie cette recette mais pas le plugin (sous-module prive), donc AUCUNE image ne se construisait et le produit ne faisait rien. L'etage part dans plugins/decklink_io/image/Dockerfile — image bobi-decklink, fine couche FROM bobi-compute, node_only, capacite « decklink », comme bobi-gui et bobi-compute-gpu.",
+      "★ LES EN-TETES MXL RESTENT dans l'image livree (COPY de /opt/mxl-install/include/). Des .h, aucun code executable : c'est ce qui permet a une couche fine de compiler contre le bus depuis un etage builder `FROM bobi-compute`. Sans eux, bobi-decklink devrait recloner et recompiler le SDK MXL sur le noeud pour quelques centaines de kilo-octets d'en-tetes.",
+      "Le chemin d'EXECUTION est inchange : needs_decklink, montage de /dev/blackmagic/*, montage en lecture seule de libDeckLinkAPI.so depuis l'hote, host_driver blackmagic. Seul l'endroit ou les binaires sont COMPILES change.",
+      "⚠ BUMP NECESSAIRE : `version` ET `image_tag` bumpes tous les deux — les laisser diverger refuse toute construction et casse la page Images entiere (garde tests/verif_images_tags.py)."
+    ],
     "Le temoin de phase video mesurait des creneaux entiers, pas une phase (0.80.0)": [
       "★★ CORRECTIF DE MON PROPRE CORRECTIF. `video_offset_ms`, publie en 0.79.0 comme le temoin qui manquait au defaut du 28/10, multipliait un nombre ENTIER de creneaux par la duree d'une trame : il ne pouvait valoir que des multiples de 20 ms. Mesure de la session Z8 le 30/10 sur les 5 entrees de #231 : exactement ±20,00 ms, min = mediane = max. Un temoin immobile se lit comme un temoin sain. Remplace par la vraie phase (`video_phase_ms`), la distance au bord le plus proche (`video_edge_ms`, petit = en danger), sa pire valeur courue (`video_edge_min_ms`) et l'ecart entier assume (`video_grid_frames`). Detail : plugins/decklink_io/meta.json (0.29.36).",
       "★ La MARGE de l'attente de sortie (`head_wait_max_ms`) et l'etat de SIGNAL par entree sur :8080 (`inputs[]` : flux, connecteur, signal, format detecte, secondes sans signal) arrivent dans le meme lot. Une entree muette depuis des heures ne rendait le conteneur ni muet ni suspect : la cadence publiee etait AGREGEE.",
@@ -301,5 +307,5 @@
     ],
     "Bugs connus": []
   },
-  "image_tag": "bobi-compute:0.80"
+  "image_tag": "bobi-compute:0.81"
 }

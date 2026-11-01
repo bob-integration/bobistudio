@@ -1162,9 +1162,13 @@ def image_variant(type_):
     """Variante d'image Docker du plugin (chemin compute) : 'compute' (défaut, bobi-compute)
     ou 'media' (bobi-media : GStreamer+ffmpeg pour player/recorder/transcoder). Le nœud porte
     une image par variante (compute_image / media_image). 'gui' (bobi-gui : fine couche sur bobi-compute
-    avec Xvfb/x11vnc/suil, plugin plugin_gui) a son tag commun dans le réglage `gui_image`."""
+    avec Xvfb/x11vnc/suil, plugin plugin_gui) a son tag commun dans le réglage `gui_image`.
+    'decklink' (bobi-decklink, 2026-11-01) follows the same shape: a thin layer carrying the
+    Blackmagic data-path binaries, built only on nodes that declare the "decklink" capability, with
+    its shared tag in `decklink_image`. Those binaries used to live in bobi-compute — the shared
+    base image then could not be built without an optional plugin's sources."""
     v = str((REGISTRY.get(type_) or {}).get("image") or "compute").lower()
-    return v if v in ("compute", "media", "gui") else "compute"
+    return v if v in ("compute", "media", "gui", "decklink") else "compute"
 
 
 def image_kind(type_):

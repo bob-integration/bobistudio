@@ -84,7 +84,11 @@ _NTCOPY = ("script_templates/ntcopy.c", "script_templates/ntcopy.c")
 # étage v210-builder → libbobi_scope.so (+ variante AVX2), chargés par bobimxl.charger_noyau().
 _SCOPEK = ("script_templates/scopekernel.c", "script_templates/scopekernel.c")
 _SPLIT_GPU = ("script_templates/split_gpu.cu", "script_templates/split_gpu.cu")
-# Chemin de données du plugin decklink_io, compilé dans l'image compute (étage decklink-builder).
+# Chemin de données du plugin decklink_io. ⚠ CES CHEMINS NE SONT PLUS DANS LA LISTE DE L'IMAGE
+# COMPUTE (2026-11-01) : ils alimentent l'image `decklink` seule. Les y remettre rendrait de
+# nouveau le SOCLE PARTAGÉ inconstruisible chez qui n'a pas ce plugin — `_stage_tar` lève dès
+# qu'un seul chemin manque, et le dépôt public publie la recette sans le sous-module privé
+# (défaut signalé de l'extérieur le 2026-09-23 : aucune image, donc aucun produit).
 # Les en-têtes du SDK sont un DOSSIER : le garde-fou de COPY ci-dessous les vérifie comme tel.
 _DECKLINK = [("plugins/decklink_io/decklink_sdk", "plugins/decklink_io/decklink_sdk"),
              ("plugins/decklink_io/anc_rfc8331.h", "plugins/decklink_io/anc_rfc8331.h"),
@@ -106,7 +110,7 @@ _IMAGES = {
                 "prefix": "bobi-compute", "field": "compute_image",
                 "stage": [("plugins/_compute_runtime/Dockerfile", "Dockerfile"), _AGENT, _BOBIMXL,
                           _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH, _V210_CONV, _MVK, _NTCOPY, _SCOPEK]
-                         + _DECKLINK + _LICENCES},
+                         + _LICENCES},
     # Variante GPU/NVIDIA de l'image compute : fine couche FROM bobi-compute:<ver> + cupy[ctk]
     # (cf. plugins/_compute_gpu_runtime/Dockerfile). node_only = buildée SUR le nœud GPU (image
     # CUDA lourde, locale, pas de push flotte — comme bobi-mtl). Le FROM résout l'image compute
@@ -153,6 +157,19 @@ _IMAGES = {
     "webrtc":  {"label": "bobi-webrtc (passerelle)", "meta": "plugins/_webrtc_runtime/meta.json",
                 "prefix": "bobi-webrtc", "field": "webrtc_image", "setting": "webrtc_image",
                 "stage": [("plugins/_webrtc_runtime/Dockerfile", "Dockerfile"), _AGENT]},
+    # Chemin de données Blackmagic (plugin decklink_io, 2026-11-01) : fine couche FROM bobi-compute,
+    # comme bobi-gui. Il était compilé DANS bobi-compute — donc porté par des nœuds sans carte, et
+    # surtout le socle partagé ne se mettait plus en contexte sans les sources de ce plugin optionnel
+    # (cf. _DECKLINK). node_only : construite sur les seuls nœuds qui déclarent la capacité
+    # « decklink », jamais poussée à la flotte. Tag commun dans le réglage `decklink_image`.
+    "decklink": {"label": "bobi-decklink (E/S Blackmagic)",
+                 "meta": "plugins/decklink_io/image/meta.json",
+                 "prefix": "bobi-decklink", "field": "decklink_image", "setting": "decklink_image",
+                 "node_only": True, "cap": "decklink", "base_from": "compute",
+                 # Toute ligne COPY du Dockerfile a son entrée ICI, sinon l'image ne se construit
+                 # plus du tout (piège récurrent : cf. _NTCOPY, _SPLIT_GPU et atom_wire.h).
+                 "stage": [("plugins/decklink_io/image/Dockerfile", "Dockerfile")]
+                          + _DECKLINK + _LICENCES},
     # MTL : Dockerfile dans docker/ + mtl_rx.c (racine plugin) + controller/entrypoint.
     # NB : normalement buildé sur le nœud cible (clone MTL Internet + E810).
     "mtl":     {"label": "bobi-mtl (ST 2110 / E810)", "meta": "plugins/2110_io/meta.json",
@@ -623,6 +640,37 @@ def _stage_tar(which):
     missing = [src for src, _ in _IMAGES[which]["stage"]
                if not os.path.exists(os.path.join(root, src))]
     if missing:
+        # ★ TWO CAUSES, TWO MESSAGES (2026-11-01). This refusal announced only ONE: a deployed
+        # instance whose image contexts were never embedded. The other cause is far more common
+        # for a newcomer — the image is the runtime of a PLUGIN that is not installed. A plugin's
+        # sources are not in the main repository (they are submodules, and a GitHub source archive
+        # carries none of their content: see INSTALL.md, "Ce qui est récupéré"); the intended route
+        # is the Catalogue page. Yet NOTHING here checks that a plugin is installed, and the gate
+        # for an image is the NODE CAPABILITY, which the operator declares: this refusal is
+        # therefore reached in good faith, having done nothing wrong.
+        #
+        # An outside user lost six weeks to it (issue #1, 2026-09-23): he concluded the product
+        # could not be built, where in fact he was missing a plugin to install. The cost was in the
+        # message naming the wrong cause, not in the defect itself.
+        _par_plugin = {}
+        for _src in missing:
+            _bouts = _src.split("/")
+            if len(_bouts) > 2 and _bouts[0] == "plugins" and not _bouts[1].startswith("_"):
+                _par_plugin.setdefault(_bouts[1], []).append(_src)
+        _plugins_absents = [t for t, _ in _par_plugin.items()
+                            if not os.path.isdir(os.path.join(root, "plugins", t))]
+        if _plugins_absents:
+            # ⚠ WRITTEN IN ENGLISH, unlike its neighbours below (decision 2026-11-01). The reader
+            # of this one is whoever just failed to build an image — including the outside
+            # contributor of issue #1. A clear diagnosis he cannot read is barely better than a
+            # diagnosis that names the wrong cause. Giving these refusals real i18n keys is the
+            # right answer and is queued in TODO.md; it is not done here.
+            raise FileNotFoundError(
+                "image “%s” is the runtime of plugin %s, which is not installed on this instance "
+                "(%d missing file(s), including %s). A plugin's sources are not part of the main "
+                "repository: install it from Settings → Catalogue, then start the build again."
+                % (which, " and ".join(sorted(_plugins_absents)),
+                   len(missing), ", ".join(sorted(missing)[:3])))
         # Cas typique : instance DÉPLOYÉE (build) où les contextes d'image n'ont pas été embarqués
         # (corrigé dans builder.py:RUNTIME_IMAGE_DIRS) → il faut re-builder/mettre à jour l'instance.
         raise FileNotFoundError(
