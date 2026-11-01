@@ -1120,7 +1120,16 @@ def _alerter_throttle(node_id, motif, msg, niveau, cle=None, params=None):
     import time
     k = (str(node_id), motif)
     now = time.monotonic()
-    if now - _alerte_last.get(k, 0.0) < _ALERTE_THROTTLE_S:
+    # ⚠⚠ « JAMAIS ÉMIS » N'EST PAS « ÉMIS À L'INSTANT 0 ». Ce test s'écrivait
+    # `now - _alerte_last.get(k, 0.0) < _ALERTE_THROTTLE_S` : clé absente → défaut 0.0 → la
+    # condition devenait `time.monotonic() < 300`. Or `monotonic()` compte DEPUIS LE DÉMARRAGE
+    # DE LA MACHINE. Sur un contrôleur fraîchement redémarré, la PREMIÈRE alerte de chaque motif
+    # était donc journalisée « throttlée » et jetée pendant cinq minutes — exactement la fenêtre
+    # où les nœuds remontent et où les conteneurs se replacent, donc où ces alertes servent.
+    # Invisible ici (machine debout depuis des jours, monotonic ≈ 1,2 million) ; constaté le
+    # 2026-11-01 sur un exécuteur GitHub neuf, où `verif_dedie_frere_dedie` échouait seul.
+    # On teste donc la PRÉSENCE de la clé, jamais une date par défaut.
+    if k in _alerte_last and now - _alerte_last[k] < _ALERTE_THROTTLE_S:
         log.warning("core_pool[%s]: %s (alerte throttlée)", motif, msg)
         return
     _alerte_last[k] = now
