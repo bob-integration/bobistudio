@@ -5,6 +5,51 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Les images se construisent depuis le dépôt public — 2026-11-02
+
+**Aucune image ne se construisait depuis le dépôt public, et le produit ne faisait donc rien du
+tout.** La recette de **bobi-compute** — le socle partagé de tous les plugins non-2110 — compilait
+les binaires du plugin **decklink_io**, dont les sources ne sont pas publiées. Le contexte de build
+étant incomplet, la mise en place échouait, et avec elle toute la chaîne. Le défaut a été signalé de
+l'extérieur le **2026-09-23** ; il est corrigé. Le socle n'a plus aucune dépendance à ce plugin.
+
+**Les binaires DeckLink vivent maintenant dans leur propre image.** `bobi-decklink` est une couche
+fine posée sur `bobi-compute`, portée par le plugin, sur le modèle de `bobi-gui` et
+`bobi-compute-gpu` : elle ne se construit que sur un nœud qui déclare la capacité **`decklink`**, et
+un nœud sans carte n'en paie rien. Les en-têtes MXL restent en revanche dans l'image livrée — des
+`.h`, aucun exécutable, mais c'est ce qui rend possible une couche fine compilant contre le bus.
+⚠ **À faire à l'exploitation** : un nœud qui porte une carte DeckLink doit désormais déclarer la
+capacité et faire construire l'image, sans quoi le déploiement d'un conteneur DeckLink est refusé —
+avec une alerte qui le dit. Ce n'est pas automatisé à dessein : déduire « ce nœud a une carte » de
+l'existence d'un conteneur serait une inférence.
+
+**Un contexte de build refusé nomme maintenant sa cause.** Il n'y avait qu'un seul message, celui
+d'une instance déployée dont les contextes d'image n'ont pas été embarqués. Or la cause la plus
+fréquente, pour qui découvre le produit, est tout autre : **l'image est le runtime d'un plugin qui
+n'est pas installé**. On enrôle un nœud, on déclare une capacité parce que la machine a la carte, on
+lance la construction — et on reçoit un diagnostic qui parle d'un problème qu'on n'a pas. Le refus
+distingue désormais les deux cas et nomme le plugin manquant, ainsi que **Réglages → Catalogue**,
+seulement quand c'est vrai. C'est le parcours exact du rapporteur de septembre : le coût de ses six
+semaines était dans le message, pas dans le défaut.
+
+**L'archive de la 0.9.10 avait été figée trop tôt.** Le tag de cette version pointait la première
+coupe publiée, alors que six publications ont suivi le même jour — dont le correctif de l'alerte
+jetée après un redémarrage, treize exclusions de tests retirées à tort et la remise au vert de
+l'intégration continue. Qui a installé depuis l'archive 0.9.10 n'a rien de tout cela ; cette version
+le porte.
+
+**⚠ Un point connu, non corrigé.** Rappeler un **instantané de configuration de conteneur**
+réapplique les paramètres bruts : une entrée qui suivait une virtuelle est remise sur l'ancien flux
+physique et **perd son lien à la virtuelle, sans un mot**. Les instantanés sont antérieurs aux
+virtuelles et ne les connaissent pas. Si vous utilisez les deux, revérifiez le câblage après un
+rappel.
+
+**⚠ Un second, identifié et suivi.** Trois mécanismes d'anti-rebond portent encore le motif corrigé
+dans la 0.9.10, dont l'alerte « TLS en clair » d'un nœud : elle reste **muette dix minutes après un
+redémarrage du contrôleur**. Les deux autres retardent sans perdre.
+
+---
+
 ## Les virtuelles : remplacer une source sans défaire le câblage — 2026-11-01
 
 **Une source ou une destination peut désormais être *virtuelle*.** Au lieu de câbler une entrée sur
