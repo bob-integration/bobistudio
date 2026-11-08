@@ -110,7 +110,7 @@ multicast. Those three only come into play the day a node carries the ST 2110 en
 >   Nothing tells you, either way. Build your setup, exercise it at the worst it will ever do,
 >   run a calibration campaign: that measurement, and nothing else, is what earns the word
 >   "guaranteed".
->   Procedure: [INSTALL.md §9](INSTALL.md#9-avant-la-première-antenne-étalonner-sur-votre-matériel).
+>   Procedure: [INSTALL.md §9](INSTALL.md#9-avant-la-première-antenne--étalonner-sur-votre-matériel).
 > - **Try it off air first.** This is a broadcast product: what breaks in it breaks live.
 > - **The standards are implemented, and their updates tracked.** IS-05 is served in v1.2 and
 >   v1.1, BCP-007-03 in v1.0.0; the detail, specification by specification — what is served, in
@@ -209,7 +209,7 @@ that make an installation fail:
 | [§4](INSTALL.md#4-enrôlement-dun-nœud) | Enrolling a node: direct, zero-touch, or without touching it (PXE / UEFI HTTP, USB, iLO) |
 | [§5](INSTALL.md#5-préparation-dun-nœud-média-st-2110) | Preparing an ST 2110 media node: hugepages, DDP, queues, PTP |
 | [§8.3](INSTALL.md#83-installation-sans-accès-internet-bundle-hors-ligne) | Installing without Internet access, from an offline package |
-| [§9](INSTALL.md#9-avant-la-première-antenne-étalonner-sur-votre-matériel) | Calibrating on **your** hardware before the first broadcast |
+| [§9](INSTALL.md#9-avant-la-première-antenne--étalonner-sur-votre-matériel) | Calibrating on **your** hardware before the first broadcast |
 
 INSTALL.md is in French for now.
 

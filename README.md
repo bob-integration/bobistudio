@@ -110,7 +110,7 @@ ST 2110 ([INSTALL.md §5](INSTALL.md#5-préparation-dun-nœud-média-st-2110)).
 >   ne le signale, dans un cas comme dans l'autre. Montez votre dispositif, exercez-le au pire
 >   de ce qu'il fera, lancez une campagne d'étalonnage : c'est cette mesure, et elle seule, qui
 >   autorise le mot « garanti ».
->   Mode opératoire : [INSTALL.md §9](INSTALL.md#9-avant-la-première-antenne-étalonner-sur-votre-matériel).
+>   Mode opératoire : [INSTALL.md §9](INSTALL.md#9-avant-la-première-antenne--étalonner-sur-votre-matériel).
 > - **Éprouvez-le hors antenne d'abord.** C'est un produit de diffusion : ce qui s'y casse se
 >   voit en direct.
 > - **Les normes sont implémentées, et leurs mises à jour suivies.** IS-05 est servi en v1.2 et
@@ -209,7 +209,7 @@ points d'attention qui font échouer une installation :
 | [§4](INSTALL.md#4-enrôlement-dun-nœud) | Enrôler un nœud : directe, zéro-touche, ou sans y toucher (PXE / UEFI HTTP, USB, iLO) |
 | [§5](INSTALL.md#5-préparation-dun-nœud-média-st-2110) | Préparer un nœud média ST 2110 : hugepages, DDP, files, PTP |
 | [§8.3](INSTALL.md#83-installation-sans-accès-internet-bundle-hors-ligne) | Installer sans accès Internet, depuis un paquet hors-ligne |
-| [§9](INSTALL.md#9-avant-la-première-antenne-étalonner-sur-votre-matériel) | Étalonner sur **votre** matériel avant la première antenne |
+| [§9](INSTALL.md#9-avant-la-première-antenne--étalonner-sur-votre-matériel) | Étalonner sur **votre** matériel avant la première antenne |
 
 ### Au quotidien
 

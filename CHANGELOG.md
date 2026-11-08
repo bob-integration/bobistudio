@@ -5,6 +5,24 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Deux liens morts en page d'accueil, et la CI publique au vert — 2026-11-08
+
+**Les deux renvois du `README.md` vers la section d'étalonnage d'`INSTALL.md` ne menaient nulle
+part.** Là où le titre porte un tiret cadratin, GitHub pose **deux** tirets dans l'identifiant de
+section ; les liens n'en écrivaient qu'un. Le lecteur arrivait en haut du document et pouvait
+conclure que la section n'existe pas — celle, précisément, qui dit d'étalonner avant de passer à
+l'antenne. Corrigé dans les deux langues.
+
+**Une garde tient désormais ces liens.** Son calcul d'identifiant n'a pas été écrit de mémoire :
+`INSTALL.md` a été rendu par GitHub lui-même, ses 38 identifiants extraits, et la fonction
+vérifiée contre eux — accents, `œ` et doubles tirets compris.
+
+**L'intégration continue du dépôt public repasse au vert.** Un test arrivé après le calcul de la
+liste d'exclusions exerçait un composant qui n'est pas publié : il échouait sur le dépôt public
+sans désigner aucun défaut. Un outil répond maintenant à la question **avant** de publier, en
+exécutant les tests non classés là où le problème se produirait, plutôt qu'en le découvrant
+après coup.
+
 ## La page d'accueil du dépôt dit enfin ce que le produit fait — 2026-11-08
 
 **Le `README.md` est réécrit, en français et en anglais.** C'était un inventaire d'une vingtaine
