@@ -194,14 +194,6 @@ window.PLUGIN_CONFIG_SCHEMAS = {{ plugin_config_schemas | tojson }};
         <div class="palette-hint">
             {{ _('containers.palette.resources_hint') }}
         </div>
-        <div class="palette-field dp-r-cpumode-field" style="display:none">
-            <label for="dp-r-cpumode">{{ _('containers.palette.cpu_mode') }}</label>
-            <select class="dp-r-cpumode" id="dp-r-cpumode">
-                <option value="shared">{{ _('containers.palette.cpu_mode_shared') }}</option>
-                <option value="reserved">{{ _('containers.palette.cpu_mode_reserved') }}</option>
-            </select>
-            <div class="palette-hint">{{ _('containers.palette.cpu_mode_hint') }}</div>
-        </div>
         <div class="palette-row">
             <div class="palette-field">
                 <label for="dp-r-cores">{{ _('containers.card.cores') }}</label>

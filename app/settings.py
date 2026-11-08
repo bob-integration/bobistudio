@@ -63,6 +63,16 @@ _BASE_DEFAULTS = {
     # passé. Décocher sert à préparer une version sans la mettre en service.
     "catalogue_activer": "1",
     "catalogue_ttl_s":  1800,
+    # Veille des mises à jour (app/update_watch.py, 2026-11-08). ACTIVÉE par défaut, décision de
+    # Cyril — et l'installation le DIT (résumé de l'installeur, étape de l'assistant). Une fois
+    # par jour, le cœur seul ; on prévient par une alerte et un bandeau, jamais on n'installe.
+    # `catalogue_actif` = 0 l'emporte : aucune requête ne sort vers Internet.
+    "update_check_enabled":    "1",
+    "update_check_interval_h": 24,          # 6 | 12 | 24 | 168 (fermé, refusé à la saisie sinon)
+    "update_check_scope":      "core",      # core | all (cœur + plugins et services installés)
+    "update_notify_alert":     "1",         # journal + canaux du service Alertes
+    "update_notify_banner":    "1",         # bandeau en haut de page, administrateurs seuls
+    "update_notify_popup":     "0",         # fenêtre à l'ouverture, une fois par version
 
     "vmid_start":       200,
     "vmid_end":         299,
@@ -242,6 +252,18 @@ _BASE_DEFAULTS = {
     # choix d'exploitation, par nœud (node_settings / setting_for), pas un défaut qu'on impose.
     # Ce qui est inconditionnel, c'est de DIRE qu'un dédié ne l'est pas (alert.resource.dedie_frere_ht).
     "pin_reserve_physical": 0,
+    # BUDGET DE LATENCE DE RÉVEIL, en µs, sur les cœurs ISOLÉS et DÉDIÉS : tout état de veille
+    # dont le noyau annonce une sortie plus coûteuse que ce budget est COUPÉ (cf.
+    # mtl.cpuidle_budget_us et le script bobi-cpufreq-perf.sh). Par NŒUD, comme
+    # `pin_reserve_physical`, et c'est la bonne granularité : un nœud n'a qu'un modèle de CPU, donc
+    # un réglage par nœud donne déjà le réglage par modèle — sans table modèle→seuil tenue à la
+    # main, qui se périmerait au premier CPU absent de la liste.
+    # ⚠ CE N'EST PAS UNE PROPRIÉTÉ DU PROCESSEUR, c'est la durée qu'une échéance peut encaisser :
+    # les blocs de la console audio font 0,67 à 1 ms, donc 133 µs (C6) sont rédhibitoires et 2 µs
+    # (C1) du bruit. 5 est la valeur mesurée sur dl360-1 le 2026-11-07 — elle tombe entre C1 (2) et
+    # C1E (10) SUR CE CPU, et c'est la seule machine mesurée à ce jour.
+    # Échappatoire : une valeur très grande ne coupe plus rien (mécanisme éteint pour ce nœud).
+    "cpuidle_latency_budget_us": 5,
 
     # Adresse par laquelle le SITE (navigateurs, pupitres, encodeurs) joint l'hôte d'un nœud.
     # VIDE = automatique : `nodes.host`, et une MESURE de la route par défaut quand `host` est une

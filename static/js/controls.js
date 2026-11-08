@@ -440,8 +440,164 @@ window.MXLControls = (function () {
     return api;
   }
 
+  // ─── LISTE FILTRÉE : chercher, filtrer, trier une liste déjà dans la page (2026-11-07) ────────
+  //
+  // Seize pages avaient un champ de recherche, chacune avec son JS ; le STYLE était partagé
+  // (`.filter-bar`, `.filter-chip`… de base.css, ceux de la page Conteneurs), la logique jamais.
+  // Ce contrôle construit la barre avec ces mêmes classes — un seul dessin — et fait le travail
+  // sur les éléments qu'on lui donne (cartes, lignes de tableau, <li>…).
+  //
+  // ★ LA RECHERCHE IGNORE CASSE ET ACCENTS, et plusieurs mots sont TOUS requis : « regie mixer »
+  //   trouve la Régie qui contient un mélangeur.
+  // ★ Masquer = `hidden` ; trier = réordonner les éléments DANS LEUR PARENT. Rien n'est recréé :
+  //   les écouteurs et l'état des éléments survivent.
+  //
+  // `hote` : l'élément d'accueil (vide). `opts` :
+  //   items     fn() → [Element]          — relu à chaque application (liste qui change : OK)
+  //   text      fn(el) → texte cherché    — défaut : `el.dataset.search`
+  //   search    placeholder du champ (absent → pas de champ)
+  //   groups    [{key, label?, aria?, options:[{value, label}], match: fn(el, value) → bool}]
+  //             la PREMIÈRE option est « tout » (sa valeur n'est jamais passée à match)
+  //   sorts     [{value, label, by: fn(el) → nombre|texte, desc?}]
+  //   sortLabel libellé devant le menu de tri
+  //   countLabel libellé du compteur (« projets »)
+  //   empty     texte quand rien ne correspond
+  //   storeKey  retient groupes et tri dans ce navigateur (jamais la recherche)
+  //   aria      libellé de la barre
+  //   onApply   fn({shown, total})
+  // Renvoie {apply, state}.
+  function listFilter(hote, opts) {
+    opts = opts || {};
+    var groups = opts.groups || [], sorts = opts.sorts || [];
+    var st = {q: '', sort: sorts.length ? sorts[0].value : null, groups: {}};
+    groups.forEach(function (g) { st.groups[g.key] = String(g.options[0].value); });
+    if (opts.storeKey) {
+      try {
+        var mem = JSON.parse(localStorage.getItem(opts.storeKey) || 'null') || {};
+        if (sorts.some(function (s) { return s.value === mem.sort; })) st.sort = mem.sort;
+        groups.forEach(function (g) {
+          var v = (mem.groups || {})[g.key];
+          if (g.options.some(function (o) { return String(o.value) === v; })) st.groups[g.key] = v;
+        });
+      } catch (e) { /* stockage indisponible : valeurs par défaut */ }
+    }
+    function norm(s) {
+      return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    }
+    function el(tag, cls, txt) {
+      var e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (txt != null) e.textContent = txt;
+      return e;
+    }
+    function sep() { var s = el('span', 'filter-sep'); s.setAttribute('aria-hidden', 'true'); return s; }
+
+    hote.textContent = '';
+    var bar = el('div', 'ctl-filter filter-bar');
+    bar.setAttribute('role', 'toolbar');
+    if (opts.aria) bar.setAttribute('aria-label', opts.aria);
+    var count = el('span', 'filter-count');
+    var num = el('span', 'filter-count-num', '0');
+    count.appendChild(num);
+    if (opts.countLabel) count.appendChild(el('span', 'filter-count-label', opts.countLabel));
+    bar.appendChild(count);
+    if (opts.search != null) {
+      var gS = el('span', 'filter-group');
+      var inp = el('input', 'filter-search');
+      inp.type = 'search';
+      inp.autocomplete = 'off';
+      inp.placeholder = opts.search;
+      inp.setAttribute('aria-label', opts.search);
+      inp.oninput = function () { st.q = inp.value; apply(); };
+      gS.appendChild(inp);
+      bar.appendChild(sep()); bar.appendChild(gS);
+    }
+    groups.forEach(function (g) {
+      var gG = el('span', 'filter-group');
+      gG.setAttribute('role', 'group');
+      if (g.aria || g.label) gG.setAttribute('aria-label', g.aria || g.label);
+      if (g.label) { var l = el('span', 'filter-label', g.label); l.setAttribute('aria-hidden', 'true'); gG.appendChild(l); }
+      g.options.forEach(function (o) {
+        var b = el('button', 'filter-chip', o.label);
+        b.type = 'button';
+        b.dataset.value = String(o.value);
+        b.setAttribute('aria-pressed', String(st.groups[g.key] === String(o.value)));
+        if (st.groups[g.key] === String(o.value)) b.classList.add('active');
+        b.onclick = function () {
+          st.groups[g.key] = String(o.value);
+          gG.querySelectorAll('.filter-chip').forEach(function (c) {
+            var on = c === b;
+            c.classList.toggle('active', on);
+            c.setAttribute('aria-pressed', String(on));
+          });
+          apply();
+        };
+        gG.appendChild(b);
+      });
+      bar.appendChild(sep()); bar.appendChild(gG);
+    });
+    if (sorts.length) {
+      var gT = el('span', 'filter-group');
+      var sel = el('select', 'filter-select');
+      if (opts.sortLabel) {
+        var lab = el('label', 'filter-label', opts.sortLabel);
+        var id = 'ctl-filter-' + Math.random().toString(36).slice(2, 8);
+        sel.id = id; lab.htmlFor = id;
+        gT.appendChild(lab);
+      }
+      sorts.forEach(function (s) {
+        var o = el('option', null, s.label); o.value = s.value; sel.appendChild(o);
+      });
+      sel.value = st.sort;
+      sel.onchange = function () { st.sort = sel.value; apply(); };
+      gT.appendChild(sel);
+      bar.appendChild(sep()); bar.appendChild(gT);
+    }
+    hote.appendChild(bar);
+    var vide = el('p', 'meta ctl-filter-empty', opts.empty || '');
+    vide.hidden = true;
+    hote.appendChild(vide);
+
+    function apply() {
+      if (opts.storeKey) {
+        try { localStorage.setItem(opts.storeKey, JSON.stringify({sort: st.sort, groups: st.groups})); }
+        catch (e) { /* stockage indisponible : rien à retenir */ }
+      }
+      var items = (opts.items ? opts.items() : []) || [];
+      items = Array.prototype.slice.call(items);
+      var s = sorts.filter(function (x) { return x.value === st.sort; })[0];
+      if (s) {
+        var cle = items.map(function (it, i) { return {it: it, k: s.by(it), i: i}; });
+        cle.sort(function (a, b) {
+          var r = (typeof a.k === 'number' && typeof b.k === 'number') ? a.k - b.k
+            : String(a.k).localeCompare(String(b.k), undefined, {numeric: true, sensitivity: 'base'});
+          return (s.desc ? -r : r) || a.i - b.i;
+        });
+        cle.forEach(function (c) { if (c.it.parentNode) c.it.parentNode.appendChild(c.it); });
+      }
+      var mots = norm(st.q).split(/\s+/).filter(Boolean);
+      var shown = 0;
+      items.forEach(function (it) {
+        var txt = norm(opts.text ? opts.text(it) : it.dataset.search);
+        var ok = mots.every(function (m) { return txt.indexOf(m) >= 0; }) && groups.every(function (g) {
+          return st.groups[g.key] === String(g.options[0].value) || g.match(it, st.groups[g.key]);
+        });
+        it.hidden = !ok;
+        if (ok) shown++;
+      });
+      num.textContent = shown === items.length ? String(shown) : shown + ' / ' + items.length;
+      vide.hidden = !(items.length && !shown && opts.empty);
+      if (opts.onApply) opts.onApply({shown: shown, total: items.length});
+    }
+    apply();
+    return {
+      apply: apply,
+      state: function () { return JSON.parse(JSON.stringify(st)); }
+    };
+  }
+
   return { knobSvg: knobSvg, knobKind: knobKind, attachKnobs: attachKnobs,
            attachKnobGestures: attachKnobGestures,
            ICONS: ICONS, toolGroup: toolGroup, cidrList: cidrList,
-           chooseList: chooseList };
+           chooseList: chooseList, listFilter: listFilter };
 })();

@@ -27,6 +27,7 @@ reste le nom du média ; deux médias ne se disputent donc jamais un nom de fich
 « nom déjà pris » ne se pose plus (seul reste « ce contenu est déjà là », cf. `check_names`).
 Contrat agent : NODE_AGENT.md § 4.3 quater."""
 
+import json
 import logging
 import os
 import re
@@ -77,8 +78,12 @@ def db():
         c.execute("CREATE INDEX IF NOT EXISTS media_uploads_user ON media_uploads(user_id, state)")
         # Nom du fichier SUR LE POSTE quand l'utilisateur l'a renommé pour l'envoi (nom déjà pris) :
         # c'est lui que la reprise reconnaît au re-choix du même fichier.
-        if "source_name" not in {r[1] for r in c.execute("PRAGMA table_info(media_uploads)")}:
+        cols = {r[1] for r in c.execute("PRAGMA table_info(media_uploads)")}
+        if "source_name" not in cols:
             c.execute("ALTER TABLE media_uploads ADD COLUMN source_name TEXT")
+        # Projets DE PLUS où ranger le média à son arrivée (2026-11-07) : JSON [id, …].
+        if "project_ids" not in cols:
+            c.execute("ALTER TABLE media_uploads ADD COLUMN project_ids TEXT")
         c.commit()
         _inited.add(key)
     return c
@@ -237,7 +242,21 @@ def same_content(fp, node_id=None, folder=None, limit=8, scope=None):
     return out[:limit], hidden
 
 
-def attach_existing(asset_id, vmid=None, project_id=None, bin_id=None, scope=None):
+def project_list(project_id=None, project_ids=None):
+    """Projets où ranger un média importé (2026-11-07) : le projet principal puis les autres, sans
+    doublon ni valeur illisible."""
+    out = []
+    for p in [project_id] + list(project_ids or []):
+        try:
+            p = int(p)
+        except (TypeError, ValueError):
+            continue
+        if p not in out:
+            out.append(p)
+    return out
+
+
+def attach_existing(asset_id, vmid=None, project_id=None, bin_id=None, scope=None, project_ids=None):
     """« Ne pas l'envoyer » (même contenu déjà dans la base) : le média EXISTANT est rangé comme
     l'aurait été l'envoi — projet du contexte (celui du conteneur, ou celui demandé) et bin.
     Portée `scope` : un média hors des projets de l'utilisateur est « inconnu » (404, son existence
@@ -247,7 +266,8 @@ def attach_existing(asset_id, vmid=None, project_id=None, bin_id=None, scope=Non
         raise UploadError("média inconnu", 404)
     if vmid is not None:
         project_id = project_id or mr.container_context(vmid).get("project_id")
-    if project_id and scope is not None and int(project_id) not in {int(p) for p in scope}:
+    pids = project_list(project_id, project_ids)
+    if scope is not None and any(p not in {int(x) for x in scope} for p in pids):
         raise UploadError("projet hors de vos accès", 403)
     if bin_id:
         b = mr.db().execute("SELECT project_id FROM media_bins WHERE id=?", (int(bin_id),)).fetchone()
@@ -260,9 +280,10 @@ def attach_existing(asset_id, vmid=None, project_id=None, bin_id=None, scope=Non
     if scope is not None and not mr.asset_visible(str(asset_id), frozenset(int(p) for p in scope)):
         done["shared_only"] = True
         return done
-    if project_id:
-        mr.link_project(asset_id, int(project_id))
-        done["project_id"] = int(project_id)
+    for p in pids:
+        mr.link_project(asset_id, p)
+    if pids:
+        done["project_id"], done["project_ids"] = pids[0], pids
     if bin_id:
         try:
             mr.bin_add(int(bin_id), [asset_id])
@@ -376,6 +397,7 @@ def session_for(sid, user_id, is_admin=False):
 def public(s, **extra):
     out = {k: s.get(k) for k in ("id", "node_id", "folder", "name", "dest", "size", "mtime", "project_id",
                                  "bin_id", "vmid", "state", "received", "asset_id", "error", "source_name")}
+    out["project_ids"] = project_list(s.get("project_id"), mr._j(s.get("project_ids"), []))
     out["known"] = bool(s.get("known"))
     out["chunk_size"] = CHUNK
     out.update(extra)
@@ -384,7 +406,7 @@ def public(s, **extra):
 
 # ─── Ouverture (ou reprise) d'une session ───────────────────────────────────────────────────
 def start(user_id, name, size, mtime=None, node_id=None, folder="", vmid=None, project_id=None, bin_id=None,
-          source_name=None, fp=None):
+          source_name=None, fp=None, project_ids=None):
     """Ouvre un envoi, ou RETROUVE celui du même fichier (nom + taille + date, même nœud et dossier,
     même utilisateur) resté en cours. Renvoie la session avec `received` = ce que le nœud a vraiment.
     `name` = nom VOULU sur le volume ; `source_name` = nom sur le poste quand l'utilisateur l'a changé
@@ -430,7 +452,8 @@ def start(user_id, name, size, mtime=None, node_id=None, folder="", vmid=None, p
             _touch(s["id"], received=size)
             return public(_row(s["id"]), resumed=True, complete=True)
         _touch(s["id"], received=int(st.get("partial_size") or 0), state="uploading",
-               project_id=project_id or s["project_id"], bin_id=bin_id or s["bin_id"])
+               project_id=project_id or s["project_id"], bin_id=bin_id or s["bin_id"],
+               project_ids=json.dumps(project_ids) if project_ids else s.get("project_ids"))
         return public(_row(s["id"]), resumed=True)
     # Nouvelle session : identité RÉSERVÉE avant le nom de fichier, qui porte son code — celle d'un
     # contenu identique déjà connu (`fp`, calculée par la page : c'est le média auquel l'analyse
@@ -453,8 +476,10 @@ def start(user_id, name, size, mtime=None, node_id=None, folder="", vmid=None, p
                           % (node.get("name"), free / (1 << 30), (size + FREE_MARGIN) / (1 << 30)), 507, no_space=True)
     sid, now = secrets.token_urlsafe(12), time.time()
     c.execute("""INSERT INTO media_uploads(id, user_id, node_id, folder, name, dest, size, mtime, project_id, bin_id, vmid,
-                    state, received, created_at, updated_at, source_name, asset_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,'uploading',0,?,?,?,?)""",
-              (sid, user_id, node_id, folder, name, rel, size, mtime, project_id, bin_id, vmid, now, now, source or None, want))
+                    state, received, created_at, updated_at, source_name, asset_id, project_ids)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,'uploading',0,?,?,?,?,?)""",
+              (sid, user_id, node_id, folder, name, rel, size, mtime, project_id, bin_id, vmid, now, now, source or None, want,
+               json.dumps(project_ids) if project_ids else None))
     c.commit()
     return public(_row(sid), resumed=False, renamed=rel != media_naming.coded_name(base, want, version=wver))
 
@@ -531,8 +556,8 @@ def _import(sid):
                                     or [None])[0]
             if not aid:
                 raise RuntimeError("import en échec : %s" % s["dest"])
-            if s["project_id"]:
-                mr.link_project(aid, s["project_id"])
+            for p in project_list(s["project_id"], mr._j(s.get("project_ids"), [])):
+                mr.link_project(aid, p)
             if s["bin_id"]:
                 try:
                     mr.bin_add(s["bin_id"], [aid])

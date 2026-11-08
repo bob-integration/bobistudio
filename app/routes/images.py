@@ -92,7 +92,7 @@ _SPLIT_GPU = ("script_templates/split_gpu.cu", "script_templates/split_gpu.cu")
 # Les en-têtes du SDK sont un DOSSIER : le garde-fou de COPY ci-dessous les vérifie comme tel.
 _DECKLINK = [("plugins/decklink_io/decklink_sdk", "plugins/decklink_io/decklink_sdk"),
              ("plugins/decklink_io/anc_rfc8331.h", "plugins/decklink_io/anc_rfc8331.h"),
-             ("plugins/decklink_io/decklink_mxl.cpp", "plugins/decklink_io/decklink_mxl.cpp"),
+             ("plugins/decklink_io/decklink_rx.cpp", "plugins/decklink_io/decklink_rx.cpp"),
              ("plugins/decklink_io/decklink_tx.cpp", "plugins/decklink_io/decklink_tx.cpp"),
              # La sonde : l'inventaire de la carte se lit depuis le CONTENEUR (seul à avoir
              # les périphériques montés), jamais depuis le contrôleur.
@@ -613,7 +613,8 @@ def verifier_derive_images(node):
     nid = (node or {}).get("id")
     if not nid or not (node.get("agent_url") or "").strip():
         return None
-    if (_t.monotonic() - _derive_vue.get(nid, 0.0)) < _DERIVE_PERIODE_S:
+    # Présence de la clé, pas de date par défaut : monotonic() part du boot (cf. node_driver).
+    if nid in _derive_vue and (_t.monotonic() - _derive_vue[nid]) < _DERIVE_PERIODE_S:
         return None
     _derive_vue[nid] = _t.monotonic()
     manquantes = []

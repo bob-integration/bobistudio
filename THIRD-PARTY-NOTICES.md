@@ -255,6 +255,45 @@ bloc de licence entier sont conservés en tête de chaque fichier. **Ne pas édi
 ⚠️ Le **pilote** Desktop Video, lui, n'est pas redistribuable et n'est embarqué nulle part : il
 s'installe à la main sur le nœud (cf. `docs/chantiers/DECKLINK.md`, §5). Seuls les en-têtes sont ici.
 
+### Marques Blackmagic
+
+**« DeckLink » est une marque de Blackmagic Design Pty. Ltd.** L'EULA du SDK définit les *Marks*
+largement (clause 6.3) : toute marque de Blackmagic ou de ses affiliés, « including but not limited
+to » DeckLink, Multibridge, Intensity, HDLink, Videohub, UltraScope. « Blackmagic » lui-même en fait
+donc partie. ⚠ Contrairement aux clauses 1, 4.3, 4.4, 5, 7 et 8, **la clause 6 n'est pas dans la liste
+d'exclusions de la clause 0.1** : elle s'applique pleinement, y compris pour qui ne redistribue que
+les en-têtes.
+
+**Ce que la clause 6 autorise.** 6.1 interdit d'adopter ou d'utiliser une marque, une marque de service
+ou un nom commercial qui *inclut* une Marque, ou qui prête à confusion avec elle — et cette interdiction
+**survit à la fin du contrat**. 6.2 autorise deux désignations, et seulement elles, **pendant la durée du
+contrat** : « XXX compatible with Blackmagic Design YYY » et « XXX for Blackmagic Design YYY », où XXX
+est notre nom de produit et YYY le leur. Cette autorisation est **révocable** : Blackmagic peut, à sa
+seule discrétion, juger un produit non compatible et exiger qu'on cesse d'employer la Marque dessus.
+
+**Ce que le produit fait.** Le libellé présenté à l'exploitant emploie la forme 6.2. Partout ailleurs,
+la Marque n'apparaît qu'en **texte descriptif** — pour dire quel matériel un composant pilote, quelle
+carte un nœud porte, quel pilote hôte s'installe — jamais comme nom de notre produit, et **sans aucun
+logo**.
+
+**Les identifiants techniques l'emploient nominativement, et c'est un choix consigné.** Le type de
+plugin `decklink_io`, son dépôt `bobistudio-plugin-decklink_io`, la capacité de nœud `decklink`, le
+pilote hôte `blackmagic.py` et l'image `bobi-decklink` nomment la Marque. Ce n'est pas un nom commercial
+adopté pour notre produit — qui s'appelle Bobi.Studio — mais un identifiant qui dit, de façon vraie et
+vérifiable, quel matériel le composant pilote.
+
+⚠ **Cette distinction entre identifiant technique et nom commercial n'a pas été validée par un conseil
+juridique.** Elle doit l'être **avant** que le dépôt du plugin passe en public : 6.2 est révocable et 6.1
+survit à la résiliation, donc la Marque ne doit pas être porteuse là où elle coûte cher à retirer — un
+libellé se change en une ligne, un identifiant de type publié et un nom de dépôt public, non. Le point à
+trancher en priorité est **`bobi-decklink`** : c'est la seule de ces chaînes qui soude notre marque à la
+leur, et donc celle qui ressemble le plus à un nom composite adopté.
+
+**Pourquoi la règle diffère de celle de VST, plus haut.** Là, l'interdiction de mettre la marque dans un
+nom de produit **ou de module** vient des *Steinberg VST Usage Guidelines*, qui visent explicitement les
+noms de module. Ici, la clause 6.1 vise l'adoption d'une marque ou d'un nom commercial. Les deux
+paragraphes ne se contredisent pas : ils appliquent deux textes différents.
+
 ## Micrologiciel redistribué dans le dépôt
 
 Contrairement à tout ce qui précède, ce fichier est **versionné dans le dépôt lui-même**

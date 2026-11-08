@@ -79,14 +79,29 @@ STUB = """
 global.window = global;
 global.window.addEventListener = function(){};
 global.setInterval = function(){}; global.setTimeout = function(){};
-global.location = { href: '', hash: '', reload: function(){} };
+global.location = { href: '/settings', pathname: '/settings', search: '', hash: '',
+                    reload: function(){} };
 global.localStorage = { getItem: function(){ return null; }, setItem: function(){},
                         removeItem: function(){} };
 global.navigator = { onLine: true, language: 'fr' };
 var _sortie = '';
 var _el = { set innerHTML(v){ _sortie = v; }, get innerHTML(){ return _sortie; },
             set textContent(v){ _sortie = v; }, get textContent(){ return _sortie; } };
-global.document = { getElementById: function(id){ return id === 'cat-core' ? _el : null; },
+// ★ Un ÉLÉMENT INERTE pour tout autre id, PAS `null`. Le test exécute TOUS les scripts en
+// ligne de la page : un bloc étranger qui cherche son propre élément (bandeau de veille des
+// versions, 2026-11-08) plantait sur `null` et `catCoreCharger` n'était jamais atteint — la
+// garde échouait sur du code qu'elle ne mesure pas.
+// ⚠ Inerte, et surtout DISTINCT de `_el` : si tout id rendait `_el`, un `catCoreCharger` qui
+// écrirait dans le MAUVAIS élément passerait quand même. La sortie ne vient que de `cat-core`.
+var _inerte = { hidden: false, textContent: '', innerHTML: '', value: '',
+                style: {}, classList: { add: function(){}, remove: function(){},
+                toggle: function(){}, contains: function(){ return false; } },
+                addEventListener: function(){}, appendChild: function(){},
+                removeChild: function(){}, setAttribute: function(){},
+                focus: function(){}, select: function(){}, close: function(){},
+                showModal: function(){}, querySelector: function(){ return null; },
+                querySelectorAll: function(){ return []; } };
+global.document = { getElementById: function(id){ return id === 'cat-core' ? _el : _inerte; },
                     querySelectorAll: function(){ return []; },
                     querySelector: function(){ return null; },
                     addEventListener: function(){}, readyState: 'complete',

@@ -12,7 +12,7 @@
 //
 //   MediaUpload.enqueue(files, {vmid} | {node_id, folder, project_id?}, {bin_id?, label?})
 //     (nom déjà pris dans le dossier : fenêtre « Envoyer sous ce nom / Ignorer » AVANT l'envoi)
-//   MediaUpload.chooseTarget({count, bins, bin_id}) → Promise<{node_id, folder:'', bin_id} | null>   (Gestionnaire)
+//   MediaUpload.chooseTarget({count, bins, bin_id, projects, project_ids}) → Promise<{node_id, folder:'', bin_id, project_ids} | null>   (Gestionnaire)
 //   MediaUpload.config() → Promise<{chunk_size, max_bytes, exts, kinds, nodes}>
 // Chaque fichier importé émet `ml:uploaded` (detail {asset_id, session}) : les bibliothèques relisent.
 (function(){
@@ -132,14 +132,14 @@
       const dupOf = x => !x.resume && ((x.duplicates && x.duplicates.length) || x.duplicate_hidden);
       if(dupOf(row)){
         const left = rows.slice(i + 1).filter(dupOf).length;
-        const ctxFiling = !!(target.project_id || opts.bin_id);   // un projet ou un bin où le ranger ?
+        const ctxFiling = !!(target.project_id || (target.project_ids || []).length || opts.bin_id);   // un projet ou un bin où le ranger ?
         const ans = dupRest ? {act:dupRest} : await askDuplicate(f, row, left, ctxFiling);
         if(ans.all) dupRest = ans.act;
         if(ans.act === 'skip' && !(row.duplicates || []).length){ kept.push(f.name); continue; }   // hors de ses projets : rien à ranger
         if(ans.act === 'skip'){
           // Rangé comme l'aurait été l'envoi : projet du contexte, bin.
           const a = await api('POST', '/api/media/upload/attach', {asset_id:row.duplicates[0].asset_id, vmid:target.vmid,
-            project_id:target.project_id || null, bin_id:opts.bin_id || null}).catch(() => ({ok:false, d:{}}));
+            project_id:target.project_id || null, project_ids:target.project_ids || null, bin_id:opts.bin_id || null}).catch(() => ({ok:false, d:{}}));
           if(a.ok && (a.d.project_id || a.d.bin_id)) document.dispatchEvent(new CustomEvent('ml:uploaded', {detail:{asset_id:row.duplicates[0].asset_id, session:null}}));
           kept.push(f.name);
           continue;
@@ -330,7 +330,8 @@
     it.state = 'starting'; it.err = ''; paintItem(it);
     const st = await api('POST', '/api/media/upload/start', {name:it.name || f.name, source_name:f.name, size:f.size, mtime:f.lastModified / 1000,
       fp:_fpOf.get(f) || null,
-      vmid:tg.vmid, node_id:tg.node_id, folder:tg.folder || '', project_id:tg.project_id || null, bin_id:it.bin_id});
+      vmid:tg.vmid, node_id:tg.node_id, folder:tg.folder || '', project_id:tg.project_id || null,
+      project_ids:tg.project_ids || null, bin_id:it.bin_id});
     if(!st.ok){ it.state = 'failed'; it.err = st.d.error || 'HTTP ' + st.status; paintItem(it); return; }
     const s = st.d;
     it.sid = s.id; it.dest = s.dest; it.sent = s.received || 0; it.samples = [[performance.now(), it.sent]];
@@ -501,6 +502,9 @@
           : ' — ' + esc(T('up_node_old', 'agent à mettre à jour ({v})').replace('{v}', n.agent_version || '?'))}</option>`).join('')}</select></label>
         <label>${esc(T('up_bin', 'Bin'))} <select class="mlu-bin"><option value="">${esc(T('up_bin_none', 'Aucun'))}</option>${(defaults.bins || []).map(b =>
           `<option value="${b.id}"${b.id === defaults.bin_id ? ' selected' : ''}>${esc(b.name)}</option>`).join('')}</select></label>
+        ${(defaults.projects || []).length ? `<fieldset class="mlu-projs"><legend>${esc(T('up_projects', 'Projets (un ou plusieurs)'))}</legend>
+          <div class="mlu-projs-list">${defaults.projects.map(p => `<label class="mlu-proj"><input type="checkbox" value="${p.id}"${(defaults.project_ids || []).map(String).includes(String(p.id)) ? ' checked' : ''}> ${esc(p.name)}</label>`).join('')}</div>
+        </fieldset>` : ''}
         <div class="mlu-dlg-acts"><button type="button" class="btn mlu-no">${esc(T('up_cancel', 'Annuler'))}</button>
           <button type="submit" class="btn btn-green mlu-yes">${esc(T('up_send', 'Envoyer'))}</button></div></form>`;
       document.body.appendChild(dlg);
@@ -510,7 +514,9 @@
       dlg.querySelector('form').onsubmit = e => {
         e.preventDefault();
         const t = {node_id:+dlg.querySelector('.mlu-node').value, folder:''};
-        pref.set('target', t); end(Object.assign({bin_id:+dlg.querySelector('.mlu-bin').value || null}, t));
+        // Projets cochés : le média y entre dès son arrivée (2026-11-07), autant qu'on en coche.
+        const pids = [...dlg.querySelectorAll('.mlu-proj input:checked')].map(x => +x.value);
+        pref.set('target', t); end(Object.assign({bin_id:+dlg.querySelector('.mlu-bin').value || null, project_ids:pids}, t));
       };
       dlg.showModal();
       dlg.querySelector('.mlu-node').focus();

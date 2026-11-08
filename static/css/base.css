@@ -971,6 +971,28 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
     max-height: 90vh;
     overflow: auto;
 }
+/* Veille des mises à jour : bandeau discret en tête de page (layout.html, administrateurs). */
+.updw-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 8px 14px;
+    margin: 0 0 var(--space-3);
+    background: var(--status-unknown-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.9em;
+}
+.updw-banner[hidden] { display: none; }
+/* Enregistrement de l'installation (Réglages → Mises à jour) : grille qui se replie en une colonne,
+   chaque champ remplit sa case (les champs de formulaire sont compacts par défaut). */
+.reg-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+              gap: var(--space-2) var(--space-3); max-width: 1100px; }
+.reg-grille .ctl-input { width: 100%; box-sizing: border-box; }
+.reg-grille textarea.ctl-input { resize: vertical; font-family: var(--font-base); }
+.reg-grille .reg-large { grid-column: 1 / -1; }
+.updw-banner > span { flex: 1 1 240px; }
 .modal-head {
     display: flex;
     justify-content: space-between;
@@ -1017,25 +1039,21 @@ input[type="number"].has-stepper { -moz-appearance: textfield; appearance: textf
 }
 
 /* ─── Refonte menus Réglages : niveau 0 (groupes) + niveau 1 (sous-nav) ─── */
-/* Barre de groupes = navigation primaire (marquée). */
-.tabs.set-groups {
-    margin-bottom: var(--space-2);
-    border-bottom: 2px solid var(--border);
-}
-.tabs.set-groups .tab {
-    font-weight: 600;
-    font-size: 0.92em;
-}
-/* Sous-nav (onglets existants, filtrés par groupe) = niveau secondaire, plus léger. */
-.tabs.set-subnav {
-    margin-bottom: var(--space-4);
-    border-bottom: 1px solid var(--border);
-}
-.tabs.set-subnav .tab {
-    font-size: 0.84em;
-    padding: 6px 14px;
-}
-.tabs.set-subnav[hidden] { display: none; }
+/* Ensemble à deux rangs (07/11) : `.navpair-top` a les entrées de la barre principale (nav.css),
+   `.navpair-deck` la bande de sous-menu collée dessous (cf. .subnav-deck plus bas), et le chevron
+   sous le groupe allumé (subnav_deck.js). Réglages en est le premier usage. */
+.navpair { margin-bottom: var(--space-4); }
+.navpair-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; row-gap: 4px;
+    background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0;
+    padding: 10px 16px; }
+.navpair-top:has(+ .navpair-deck[hidden]) { border-radius: var(--radius); }
+.navpair-items { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; row-gap: 4px; min-width: 0; }
+.navpair-items > .tab { border: 0; background: transparent; cursor: pointer; font-family: var(--font-base); }
+/* Le titre de la page tient la place du nom du produit dans la barre du haut. */
+.navpair-title { margin: 0 var(--space-3) 0 0; padding-right: var(--space-4); border-right: 1px solid var(--border);
+    font-size: 1.05em; font-weight: 700; letter-spacing: 1px; color: var(--text-strong); white-space: nowrap; }
+.navpair-deck { flex-wrap: wrap; margin: 0 !important; }
+.navpair-deck[hidden] { display: none; }
 
 /* ─── Utilitaires partagés (extraits des styles inline) ─── */
 /* Conteneur scrollable pour tables larges : évite le débordement de page sur
@@ -4970,6 +4988,7 @@ th.mxl-sortable.sort-desc .mxl-sort-icon { opacity: 1; color: var(--accent); }
 .res-brick-node.res-node-tight { color: var(--status-warning-fg); }
 .res-brick-actions { display: flex; align-items: center; gap: 8px; margin-top: 2px; flex-wrap: wrap; }
 .res-brick-actions .num-stepper { max-width: 130px; }
+.res-cores-label { font-size: .85em; color: var(--text-muted); }
 .res-brick-actions .res-cores-input { width: 56px; }
 .res-brick-hint { font-size: .78em; color: var(--text-muted); }
 .res-brick-status { font-size: .8em; min-height: 1.2em; }
@@ -5032,6 +5051,9 @@ th.mxl-sortable.sort-desc .mxl-sort-icon { opacity: 1; color: var(--accent); }
     letter-spacing: 1px; color: var(--text-muted); }
 .res-compact-list { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
 .res-compact-empty { font-size: .82em; color: var(--text-muted); }
+.res-compact-project { font-size: .82em; align-self: flex-start; }
+.res-compact-others > summary { cursor: pointer; font-size: .82em; color: var(--text-muted); padding: 4px 0; }
+.res-compact-others[open] { display: flex; flex-direction: column; gap: 6px; }
 .res-compact .res-brick { padding: 6px 8px; gap: 4px; border-color: var(--border-soft); }
 .res-compact .res-bar-wrap { height: 13px; }
 .res-compact .res-brick-meta { font-size: .72em; gap: 8px; }
@@ -5531,20 +5553,30 @@ th.mxl-sortable.sort-desc .mxl-sort-icon { opacity: 1; color: var(--accent); }
 body:has(.subnav-deck) .topnav { margin-bottom: 0; }
 body:has(.subnav-deck) .topnav:not(.condensed) {
     border-bottom-left-radius: 0; border-bottom-right-radius: 0; box-shadow: none; }
-.subnav-deck { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0;
+.subnav-deck, .navpair-deck { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0;
     margin: 0 0 var(--space-4); padding: 4px 10px;
     background: var(--bg); border: 1px solid var(--border); border-top: 0;
     border-radius: 0 0 var(--radius) var(--radius); }
-.subnav-deck > .tab { min-height: 44px; display: inline-flex; align-items: center; position: relative;
+/* Le DESSIN des onglets (trait d'accent sous l'actif) vaut aussi hors de la bande : `.tabs-line`
+   (fenêtre d'un projet, 07/11). `.subnav-deck` seul porte la bande collée sous la barre — et le
+   `body:has(.subnav-deck)` ci-dessus, qui ne doit donc pas s'en servir ailleurs. */
+.tabs-line { display: flex; gap: 2px; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
+.subnav-deck > .tab, .tabs-line > .tab, .navpair-deck > .tab { min-height: 44px; display: inline-flex; align-items: center; position: relative;
     padding: 0 14px; border: 0; background: transparent; border-radius: var(--radius-small);
     color: var(--text-muted); text-decoration: none; }
-.subnav-deck > .tab:hover { background: var(--bg-hover); color: var(--text); text-decoration: none; }
+.subnav-deck > .tab:hover, .tabs-line > .tab:hover, .navpair-deck > .tab:hover { background: var(--bg-hover); color: var(--text); text-decoration: none; }
 /* Onglet-LIEN (« Sonde 2110 », barre de /probe) : `.mon-tabs a.tab` lui impose inline-block, plus
    spécifique que `.subnav-deck > .tab` — son texte remontait en haut de la cible de 44 px. */
 .subnav-deck > a.tab { display: inline-flex; }
-.subnav-deck > .tab.active { background: transparent; color: var(--text-strong, var(--text)); font-weight: 600; }
-.subnav-deck > .tab.active::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 5px;
+.subnav-deck > .tab.active, .tabs-line > .tab.active, .navpair-deck > .tab.active { background: transparent; color: var(--text-strong, var(--text)); font-weight: 600; }
+.subnav-deck > .tab.active::after, .tabs-line > .tab.active::after, .navpair-deck > .tab.active::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: 5px;
     height: 2px; border-radius: 2px; background: var(--accent); }
+/* `.tabs-line` : l'actif passe en gras, ce qui l'élargissait et décalait ses voisins. La largeur du
+   gras est réservée par un double invisible du libellé (`data-label`, même case de grille). */
+.tabs-line > .tab[data-label], .navpair-deck > .tab[data-label] { display: inline-grid; }
+.tabs-line > .tab[data-label] > span, .tabs-line > .tab[data-label]::before,
+.navpair-deck > .tab[data-label] > span, .navpair-deck > .tab[data-label]::before { grid-area: 1 / 1; align-self: center; }
+.tabs-line > .tab[data-label]::before, .navpair-deck > .tab[data-label]::before { content: attr(data-label); font-weight: 600; visibility: hidden; }
 .subnav-deck-notch { position: absolute; top: 0; width: 0; height: 0; transform: translateX(-50%);
     border: 6px solid transparent; border-top-color: var(--border); pointer-events: none; }
 .subnav-deck-notch[hidden] { display: none; }
@@ -5626,3 +5658,38 @@ body:has(.subnav-deck) .topnav:not(.condensed) {
 .topo-doors-out .topo-proj-portlab { align-items: flex-end; text-align: right; }
 .topo-node-project-ports .topo-port-label { font-weight: 600; color: var(--text-strong); }
 .topo-proj-via { font-size: 11px; }
+
+/* Règles de conservation des versions de projet (Réglages → Système → Projets, 07/11). */
+.vpol { display: flex; flex-direction: column; gap: var(--space-3); max-width: 980px; }
+.vpol-top { display: flex; gap: var(--space-5); flex-wrap: wrap; }
+.vpol-field { display: inline-flex; align-items: center; gap: var(--space-2); }
+/* Les boutons −/+ globaux (num_stepper.js) prennent 100 % de la largeur : ici, des champs courts. */
+.vpol .num-stepper { width: auto; display: inline-flex; }
+.vpol .num-stepper input, .vpol input.vpol-num { width: 4.5em; flex: 0 0 4.5em; }
+.vpol-h { margin: var(--space-3) 0 0; font-size: 1em; }
+.vpol-line { display: flex; height: 44px; border-radius: var(--radius-small); overflow: hidden; border: 1px solid var(--border); }
+.vpol-seg { position: relative; display: flex; align-items: center; padding: 0 8px; min-width: 0; font-size: .8em;
+    border-right: 1px solid var(--bg); color: var(--text-strong, var(--text)); }
+.vpol-seg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vpol-seg em { position: absolute; right: 4px; bottom: 2px; font-style: normal; font-size: .85em; color: var(--text-muted); }
+.vpol-seg-count, .vpol-seg-all { background: color-mix(in srgb, var(--accent) 34%, transparent); }
+.vpol-seg-hourly { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+.vpol-seg-daily { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+.vpol-seg-weekly { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.vpol-seg-monthly { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.vpol-seg-none, .vpol-seg-drop { background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--text-muted) 18%, transparent) 6px 12px);
+    color: var(--text-muted); }
+.vpol-line-ends { display: flex; justify-content: space-between; font-size: .78em; margin-top: -6px; }
+.vpol-summary { margin: 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--accent); background: var(--bg-elev); }
+.vpol-table { border-collapse: collapse; width: 100%; font-size: .9em; }
+.vpol-table th { text-align: left; color: var(--text-muted); font-weight: 500; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.vpol-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+.vpol-age, .vpol-keep { white-space: nowrap; }
+.vpol-upto, .vpol-keep { display: inline-flex; align-items: center; gap: var(--space-2); margin-left: var(--space-2); }
+.vpol-keep { margin-left: 0; }
+.vpol-most { font-variant-numeric: tabular-nums; }
+.vpol-prev td:not(:first-child), .vpol-prev th:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.vpol-actions { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.vpol-presets { display: inline-flex; gap: var(--space-2); align-items: center; margin-left: auto; flex-wrap: wrap; }
+.vpol-warn { color: var(--status-warning-fg); margin: 0; }
+.vpol-preview p { margin: 0 0 var(--space-2); }

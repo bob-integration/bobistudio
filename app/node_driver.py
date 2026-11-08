@@ -262,7 +262,11 @@ def _call(node, method, path, body=None, timeout=15, bypass_breaker=False,
         cle = "alert.node.tls_en_clair" if _MARQUE_TLS_CLAIR in data else "alert.node.tls_autre_ca"
         data = data.replace(_MARQUE_TLS_CLAIR, "").replace(_MARQUE_AUTRE_CA, "")
         nid = (node or {}).get("id")
-        if nid and (time.monotonic() - _derniere_alerte_tls.get(nid, 0.0)) > _ALERTE_TLS_PERIODE_S:
+        # ⚠ PRÉSENCE de la clé, pas une date par défaut : `.get(nid, 0.0)` comparait à l'instant 0 de
+        # `monotonic()`, qui compte depuis le DÉMARRAGE DE LA MACHINE — l'alerte était jetée pendant
+        # les 10 premières minutes, précisément quand les nœuds se reconnectent (2026-11-08).
+        if nid and (nid not in _derniere_alerte_tls
+                    or time.monotonic() - _derniere_alerte_tls[nid] > _ALERTE_TLS_PERIODE_S):
             _derniere_alerte_tls[nid] = time.monotonic()
             try:
                 from .database import db_add_alert

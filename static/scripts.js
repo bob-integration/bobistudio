@@ -1080,7 +1080,7 @@ function _createSetWarn(msg) {
 
 // « Ajouter à la liste » : lit toutes les lignes de l'étape 2 → autant d'entrées
 // dans le panier (une par container).
-function addToCart() {
+async function addToCart() {
     if (!_curType) { _createSetWarn(window.t('js.create.pick_type_first')); return; }
     const rows = [...document.querySelectorAll('#create-step2-rows .create-row')];
     if (!rows.length) return;
@@ -1110,6 +1110,14 @@ function addToCart() {
             type: _curType.type, label: _curType.label,
             prefix, nodeId, projectId, params,
         });
+    }
+
+    // Reminder (07/11): a transcoder, pyramide… in a project does not behave as outside one.
+    const inProj = lines.find(l => l.projectId && l.type);
+    if (inProj && window.ProjectEnv) {
+        const psel = document.querySelector('.cc-project-sel');
+        const pname = psel ? psel.options[psel.selectedIndex]?.text : '';
+        if (!(await ProjectEnv.confirmType(inProj.type, pname))) return;
     }
 
     _createCart.push(...lines);
@@ -1155,15 +1163,75 @@ function renderCart() {
 
 // POST d'un container : un seul chemin, celui du nœud Docker (node_id).
 // Les cœurs/RAM ne sont plus transmis — le profil `resources` du manifeste pilote le docker run.
-function _postCreateOne(line, hostname) {
+function _postCreateOne(line, hostname, confirmePartage) {
     const body = {
         hostname, deploy_type: line.type || null, deploy_params: line.params || null,
         node_id: line.nodeId,
         project_id: line.projectId ? parseInt(line.projectId) : null,
+        // Réponse à la porte SERVEUR « aucun cœur dédiable » (409, error_code
+        // no_dedicated_core) : sans ce drapeau le serveur redemande, et c'est voulu — la
+        // confirmation ne doit pas pouvoir ne vivre que dans l'interface.
+        confirme_partage: !!confirmePartage,
     };
     return fetch('/api/containers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+    });
+}
+
+// Envoie une fournée et TRIE les réponses en trois : créées, refusées pour de bon, et celles
+// que le serveur demande de confirmer parce qu'aucun cœur ne peut leur être dédié.
+async function _postCreateLot(plan, confirmePartage) {
+    const refus = [], aConfirmer = [];
+    await Promise.all(plan.map(p => _postCreateOne(p.line, p.hostname, confirmePartage).then(async r => {
+        if (r && r.ok) return;
+        let msg = r ? ('HTTP ' + r.status) : window.t('js.request_failed');
+        let j = null;
+        try { j = await r.json(); if (j && j.error) msg = j.error; } catch (_) {}
+        if (r && r.status === 409 && j && j.error_code === 'no_dedicated_core') {
+            aConfirmer.push({ line: p.line, hostname: p.hostname, info: j });
+            return;
+        }
+        refus.push(p.hostname + ' : ' + msg);
+    }).catch(e => refus.push(p.hostname + ' : ' + (e && e.message ? e.message : window.t('js.request_failed'))))));
+    return { refus, aConfirmer };
+}
+
+// Le CHOIX, posé à l'humain : créer quand même sur les cœurs partagés, ou libérer des cœurs
+// d'abord. Pas de troisième issue muette — fermer la fenêtre vaut « libérer », donc ne rien créer.
+// → Promise('creer' | 'liberer')
+function _createDedieDialog(aConfirmer) {
+    const info = aConfirmer[0].info || {};
+    const ded = info.dedication || {};
+    const tenus = (ded.proprietaires || []).map(o =>
+        '<li>' + escapeHtml(o.hostname) + ' <span style="color:var(--text-muted)">('
+        + escapeHtml(o.coeurs) + ')</span></li>').join('');
+    let dlg = document.getElementById('create-dedie-dlg');
+    if (!dlg) {
+        dlg = document.createElement('dialog');
+        dlg.id = 'create-dedie-dlg';
+        dlg.className = 'modal-card';
+        document.body.appendChild(dlg);
+    }
+    dlg.innerHTML = '<h3>' + escapeHtml(window.t('js.create.dedie_titre')) + '</h3>'
+        + '<p>' + escapeHtml(info.error || '') + '</p>'
+        + '<p style="color:var(--text-muted)">' + escapeHtml(window.t('js.create.dedie_aide')) + '</p>'
+        + '<p><b>' + escapeHtml(aConfirmer.map(p => p.hostname).join(', ')) + '</b></p>'
+        + (tenus ? '<p>' + escapeHtml(window.t('js.create.dedie_tenus').replace('{n}', ded.noeud || '?'))
+                 + '</p><ul>' + tenus + '</ul>' : '')
+        + '<div style="display:flex;gap:.5rem;justify-content:flex-end;flex-wrap:wrap">'
+        + '<button type="button" class="btn" id="cdd-liberer">'
+        + escapeHtml(window.t('js.create.dedie_liberer')) + '</button>'
+        + '<button type="button" class="btn btn-blue" id="cdd-creer">'
+        + escapeHtml(window.t('js.create.dedie_quand_meme')) + '</button></div>';
+    return new Promise(resolve => {
+        let fini = false;
+        const rendre = (choix) => { if (fini) return; fini = true; dlg.close(); resolve(choix); };
+        dlg.querySelector('#cdd-creer').onclick = () => rendre('creer');
+        dlg.querySelector('#cdd-liberer').onclick = () => rendre('liberer');
+        // Échap / clic hors de la fenêtre : jamais « créer » par défaut.
+        dlg.addEventListener('close', () => rendre('liberer'), { once: true });
+        if (typeof dlg.showModal === 'function' && !dlg.open) dlg.showModal();
     });
 }
 
@@ -1215,13 +1283,31 @@ async function lancerCreation() {
     // Lance toutes les créations en parallèle. Le REFUS du serveur (400 hostname invalide,
     // 409 doublon) était jusqu'ici avalé par un `.catch(() => {})` : le conteneur n'apparaissait
     // simplement jamais dans le suivi, sans un mot d'explication. On remonte l'erreur.
-    const refus = [];
-    await Promise.all(plan.map(p => _postCreateOne(p.line, p.hostname).then(async r => {
-        if (r && r.ok) return;
-        let msg = r ? ('HTTP ' + r.status) : window.t('js.request_failed');
-        try { const j = await r.json(); if (j && j.error) msg = j.error; } catch (_) {}
-        refus.push(p.hostname + ' : ' + msg);
-    }).catch(e => refus.push(p.hostname + ' : ' + (e && e.message ? e.message : window.t('js.request_failed'))))));
+    let { refus, aConfirmer } = await _postCreateLot(plan, false);
+    // Lignes gardées dans le panier : celles dont l'humain a préféré libérer des cœurs d'abord.
+    // Vider le panier les lui ferait ressaisir alors qu'il vient justement de choisir d'y revenir.
+    let garde = [];
+    if (aConfirmer.length) {
+        if (await _createDedieDialog(aConfirmer) === 'creer') {
+            const r2 = await _postCreateLot(aConfirmer, true);
+            refus = refus.concat(r2.refus);
+            // Un second 409 de confirmation ne peut pas arriver (le drapeau est posé) ; s'il
+            // arrivait, on le compte comme un refus plutôt que de reboucler sur la fenêtre.
+            r2.aConfirmer.forEach(p => refus.push(p.hostname + ' : ' + ((p.info || {}).error || '')));
+        } else {
+            garde = aConfirmer.map(p => p.line);
+            const kos = new Set(aConfirmer.map(p => p.hostname));
+            _batchHostnames = _batchHostnames.filter(h => !kos.has(h));
+            _batchSave();
+            _createSetWarn(window.t('js.create.dedie_annule'));
+            showWireToast(window.t('js.create.dedie_annule'), 'error');
+            // Droit sur l'écran où l'on libère des cœurs : la fenêtre du nœud concerné.
+            const nid = (aConfirmer[0].info || {}).node_id;
+            if (nid && window.BobiCores) {
+                window.BobiCores.ouvrir(nid, ((aConfirmer[0].info || {}).dedication || {}).noeud);
+            }
+        }
+    }
     if (refus.length) {
         _createSetWarn(window.t('js.create_refused').replace('{detail}', refus.join(' | ')));
         // Les refusés ne seront jamais vus par le polling : les retirer du suivi, sinon le batch
@@ -1235,8 +1321,8 @@ async function lancerCreation() {
     batchBox?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     _batchStartPolling();
 
-    // Panier vidé, bouton restauré
-    _createCart = [];
+    // Panier vidé de ce qui est PARTI ; ce qui attend des cœurs libres y reste
+    _createCart = garde;
     renderCart();
     if (btn) { btn.disabled = false; btn.textContent = oldLabel; }
 }
@@ -1440,6 +1526,16 @@ async function restart(vmid) {
     await fetch('/api/containers/' + vmid + '/restart', { method: 'POST' });
 }
 
+async function recreer(vmid, nom) {
+    if (!confirm(window.t('containers.card.recreate_confirm').replace('{name}', nom || vmid))) return;
+    const r = await fetch('/api/containers/' + vmid + '/recreate', {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({confirm: true})});
+    if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        alert(window.t('containers.card.recreate_failed') + ' ' + (j.error || ('HTTP ' + r.status)));
+    }
+}
+
 async function stopScript(vmid)  { await fetch('/api/containers/' + vmid + '/stop_script',  { method: 'POST' }); }
 async function startScript(vmid) { await fetch('/api/containers/' + vmid + '/start_script', { method: 'POST' }); }
 
@@ -1449,6 +1545,7 @@ async function saveContainerProject() {
     const status = document.querySelector('#deploy-palette .dp-project-status');
     if (!sel) return;
     const projName = sel.options[sel.selectedIndex]?.text || '—';
+    if (sel.value && window.ProjectEnv && !(await ProjectEnv.confirmVmid(selectedDeployVmid, projName))) return;
     if (!confirm(window.t('js.project.media_restart') + '\n\n' + window.t('js.label.project') + ' : ' + projName + '\n\n' + window.t('js.confirm.continue'))) return;
     if (status) status.textContent = window.t('js.status.restarting');
     const project_id = sel.value ? parseInt(sel.value) : null;
@@ -1521,10 +1618,8 @@ function renderDeployPalette(c) {
     const _rc = host.querySelector('.dp-r-cores'), _rm = host.querySelector('.dp-r-memory');
     _rc.value = _rc.defaultValue = _eff.cores  || '';
     _rm.value = _rm.defaultValue = _eff.memory || '';
-    // Mode CPU : seulement pour les types qui l'offrent (`resources.reservable`, ex. transcoder).
-    const _rmode = host.querySelector('.dp-r-cpumode');
-    host.querySelector('.dp-r-cpumode-field').style.display = _eff.cpu_mode ? '' : 'none';
-    _rmode.value = _rmode.dataset.initial = _eff.cpu_mode || '';
+    // No « CPU mode » here any more (2026-11-07): the level decides the place (Dedicated = reserved
+    // cores), set in the container settings panel (static/js/container_panel.js).
 
     // Section projet : visible pour les plugins media_volume
     const dcType = (() => { try { return (typeof c.deploy_config==='string' ? JSON.parse(c.deploy_config) : c.deploy_config)?.type || ''; } catch(e){ return ''; } })();
@@ -1900,15 +1995,6 @@ async function majRessources() {
         const v = parseInt(el.value);
         if (v && String(v) !== String(el.defaultValue)) payload[k] = v;
     }
-    const _rmode = host.querySelector('.dp-r-cpumode');
-    if (_rmode.dataset.initial && _rmode.value !== _rmode.dataset.initial) {
-        payload.cpu_mode = _rmode.value;
-        if (_rmode.value === 'reserved' && !parseInt(host.querySelector('.dp-r-cores').value)) {
-            status.textContent = '✕ ' + window.t('js.resources.reserved_needs_cores');
-            status.style.color = 'var(--status-stopped-fg)';
-            return;
-        }
-    }
     if (!Object.keys(payload).length) {
         status.textContent = window.t('js.resources.unchanged');
         status.style.color = 'var(--text-muted)';
@@ -2191,7 +2277,7 @@ function modeLabel(t) {
 // Signature compacte des champs qui affectent le rendu d'une card.
 // Si elle est identique au tick précédent, on saute la card.
 function _cardSig(c) {
-    return [c.hostname, c.fps || 0, c.status, c.cores, c.memory, c.ip || '',
+    return [c.hostname, c.fps || 0, c.status, _cardCores(c), c.memory, c.ip || '',
             c.source || '', c.shm_out || '', c.restarts || 0, c.script || '',
             c.pinned_cores || '',
             c.cpu_percent != null ? Math.round(c.cpu_percent * 10) : 'x',
@@ -2200,6 +2286,17 @@ function _cardSig(c) {
             (Array.isArray(c.projects) ? c.projects.map(p => p.id).join(',') : '')].join('|');
 }
 const _cardSigs = new Map();   // vmid → signature
+
+// « Cœurs » on a card: what the container actually gets (`resources_effective`, 2026-11-07) — its
+// dedicated cores, its CPU cap on the shared pool, the shared pool with no cap, or the engine's
+// DPDK lcores. The `cores` column is not that: it kept insertion defaults and a removed cap.
+function _cardCores(c) {
+    const r = c.resources_effective || {};
+    if (r.engine) return window.t('containers.card.cores_engine');
+    if (r.dedicated) return window.t('containers.card.cores_dedicated').replace('{n}', r.cores || 1);
+    if (r.cores) return window.t('containers.card.cores_cap').replace('{n}', r.cores);
+    return window.t('containers.card.cores_pool');
+}
 
 function _renderCardInner(c, canDeploy, canDestroy, canMv) {
     let dc = null;
@@ -2213,10 +2310,22 @@ function _renderCardInner(c, canDeploy, canDestroy, canMv) {
     const item = (attrs, libelle, classe) =>
         `<button role="menuitem" class="card-menu-item${classe ? ' ' + classe : ''}" ${attrs}>${libelle}</button>`;
     const items = [];
-    if (canDeploy) items.push(item(
+    // A deployed container opens the shared « Container settings » panel (static/js/container_panel.js,
+    // the same one as a plugin page's ⚙) — read-only without the deploy right. The deploy palette
+    // stays for the FIRST deployment.
+    if (dc) items.push(item(
+        `onclick="_cardMenuFermer(); BobiContainerPanel.open(${c.vmid}, {hostname: '${escapeHtml(c.hostname)}'})" data-action="settings" aria-controls="bobi-cpanel"`,
+        escapeHtml(window.t('containers.panel.open'))));
+    else if (canDeploy) items.push(item(
         `onclick="_cardMenuFermer(); modifier(${c.vmid})" data-action="configure" aria-controls="deploy-palette"`,
         window.t('containers.card.configure')));
     if (canDeploy) items.push(item(`onclick="_cardMenuFermer(); restart(${c.vmid})"`, 'Restart'));
+    // Recreate: rebuilds the Docker container from its saved configuration, on the node's current
+    // image and with the resources today's rules give it (dedicated cores…). An engine does not
+    // need it (it runs --rm, Restart already re-runs it), and the route refuses it.
+    if (canDeploy && !_isRx2110(dc && dc.type)) items.push(item(
+        `onclick="_cardMenuFermer(); recreer(${c.vmid}, '${escapeHtml(c.hostname)}')" title="${escapeHtml(window.t('containers.card.recreate_title'))}"`,
+        escapeHtml(window.t('containers.card.recreate'))));
     if (canDeploy) items.push(c.status === 'running'
         ? item(`onclick="_cardMenuFermer(); stopScript(${c.vmid})"`, 'Stop')
         : item(`onclick="_cardMenuFermer(); startScript(${c.vmid})"`, 'Start'));
@@ -2245,7 +2354,7 @@ function _renderCardInner(c, canDeploy, canDestroy, canMv) {
     const metaRows = [
         `<dt>${window.t('containers.card.node')}</dt><dd class="${c.node_id ? '' : 'dimmed'}">${c.node_id ? escapeHtml(c.node_name || ('Nœud ' + c.node_id)) : window.t('containers.card.none')}</dd>`,
         _ver ? `<dt>${window.t('containers.card.version')}</dt><dd title="${escapeHtml(window.t('containers.card.plugin_version_title'))}">v${escapeHtml(String(_ver))}</dd>` : '',
-        `<dt>${window.t('containers.card.cores')}</dt><dd>${c.cores}</dd>`,
+        `<dt>${window.t('containers.card.cores')}</dt><dd>${escapeHtml(_cardCores(c))}</dd>`,
         `<dt>RAM</dt><dd>${c.mem_used != null ? Math.round(c.mem_used / 1048576) + ' / ' + c.memory + ' MB' : c.memory + ' MB'}</dd>`,
         `<dt>IP</dt><dd class="${c.ip ? '' : 'dimmed'}">${c.ip || window.t('containers.card.ip_none')}</dd>`,
         c.source  ? `<dt>${window.t('containers.card.source')}</dt><dd>${escapeHtml(c.source)}</dd>`  : '',
@@ -2634,7 +2743,8 @@ async function sauvegarderProjet() {
     if (vmids.length === 0) { alert(window.t('js.project.need_container')); return; }
     const r = await fetch('/api/projects', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ name, vmids })
+        body: JSON.stringify({ name, vmids,
+                               description: document.getElementById('proj_desc')?.value || '' })
     });
     if (r.ok) location.reload();
     else alert(window.t('js.project.save_error'));
@@ -2687,18 +2797,31 @@ async function restaurerProjet(pid, name) {
 let _restoreCtx = { pid: null, name: '', preserve: false };
 
 // Lance le rappel (ou la reprise des échecs si onlyVmids est fourni) en streaming.
-async function _restoreRun(pid, name, onlyVmids, preserveUuid) {
-    _restoreCtx = { pid, name, preserve: !!preserveUuid };
-    const overlay  = document.getElementById('restore-overlay');
-    const logEl    = document.getElementById('restore-log');
-    const titleEl  = document.getElementById('restore-title');
-    const abortBtn = document.getElementById('restore-abort-btn');
-    const closeBtn = document.getElementById('restore-close-btn');
-    const retryBar = document.getElementById('restore-retry-bar');
+// `placement` : {vmid du snapshot: node_id} choisi dans la fenêtre « Démarrer » (mode « Choisir »).
+// Où suivre le rappel : le bandeau de la fenêtre du projet quand la page Projets l'offre
+// (`projRunBlock`, 07/11), sinon la fenêtre de progression. Mêmes éléments (`data-r`) des deux côtés.
+function _restoreUI(pid) {
+    const root = (typeof projRunBlock === 'function' && projRunBlock(pid)) || document.getElementById('restore-overlay');
+    const q = r => root && root.querySelector('[data-r="' + r + '"]');
+    return { root, overlay: root && root.id === 'restore-overlay' ? root : null,
+             title: q('title'), log: q('log'), abort: q('abort'), close: q('close'),
+             retryBar: q('retry-bar'), retryMsg: q('retry-msg'), retryBtn: q('retry-btn') };
+}
+
+// `onair` : « Reprendre l'état d'antenne » coché dans la fenêtre Démarrer (décoché par défaut).
+async function _restoreRun(pid, name, onlyVmids, preserveUuid, placement, onair) {
+    const ui = _restoreUI(pid);
+    _restoreCtx = { pid, name, preserve: !!preserveUuid, placement: placement || null, onair: !!onair, ui, running: true };
+    const overlay  = ui.overlay;
+    const logEl    = ui.log;
+    const titleEl  = ui.title;
+    const abortBtn = ui.abort;
+    const closeBtn = ui.close;
+    const retryBar = ui.retryBar;
 
     titleEl.textContent   = (onlyVmids ? window.t('projects.retry_title') : window.t('projects.run_title')) + ' ' + name;
     logEl.textContent     = '';
-    overlay.style.display = 'flex';
+    if (overlay) overlay.style.display = 'flex'; else ui.root.hidden = false;
     abortBtn.style.display = '';  abortBtn.disabled = false; abortBtn.textContent = window.t('projects.abort');
     closeBtn.style.display = 'none';
     retryBar.style.display = 'none';
@@ -2709,7 +2832,8 @@ async function _restoreRun(pid, name, onlyVmids, preserveUuid) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(Object.assign(onlyVmids ? { only_vmids: onlyVmids } : {},
-                                               { preserve_uuid: !!preserveUuid })),
+                                               placement ? { placement } : {},
+                                               { preserve_uuid: !!preserveUuid, onair: !!onair })),
         });
         if (!r.ok || !r.body) { logEl.textContent = '✕ ' + window.t('projects.http_error') + ' ' + r.status; return; }
         const reader = r.body.getReader();
@@ -2737,31 +2861,36 @@ async function _restoreRun(pid, name, onlyVmids, preserveUuid) {
         // Propose de réessayer si des containers ont échoué.
         const failed = (summary && summary.failed) || [];
         if (failed.length) {
-            const retryMsg = document.getElementById('restore-retry-msg');
-            retryMsg.textContent = window.t('projects.failed_count').replace('{n}', failed.length) + ' '
+            ui.retryMsg.textContent = window.t('projects.failed_count').replace('{n}', failed.length) + ' '
                 + failed.map(f => `${f.hostname || ('#' + f.vmid)} (${f.reason})`).join(', ');
-            document.getElementById('restore-retry-btn').dataset.vmids =
-                JSON.stringify(failed.map(f => f.vmid));
+            ui.retryBtn.dataset.vmids = JSON.stringify(failed.map(f => f.vmid));
             retryBar.style.display = 'flex';
         }
+        _restoreCtx.running = false;
+        if (typeof projRunDone === 'function') projRunDone(pid, summary);
+        // Shared services this cluster lacks (transcoder…): offered once the recall is done.
+        if (!onlyVmids && summary && window.ProjectEnv) ProjectEnv.propose(pid);
     }
 }
 
 async function restoreInterrompre() {
-    const btn = document.getElementById('restore-abort-btn');
+    const btn = _restoreCtx.ui ? _restoreCtx.ui.abort : document.getElementById('restore-abort-btn');
     btn.disabled = true; btn.textContent = window.t('projects.aborting');
     try { await fetch('/api/projects/' + _restoreCtx.pid + '/restore/abort', { method: 'POST' }); }
     catch (e) { /* le bilan final indiquera l'état */ }
 }
 
 function restoreFermer() {
+    const ui = _restoreCtx.ui;
+    if (ui && !ui.overlay && ui.root) { ui.root.hidden = true; return; }
     document.getElementById('restore-overlay').style.display = 'none';
 }
 
 function restoreReessayer() {
-    const vmids = JSON.parse(document.getElementById('restore-retry-btn').dataset.vmids || '[]');
+    const btn = _restoreCtx.ui ? _restoreCtx.ui.retryBtn : document.getElementById('restore-retry-btn');
+    const vmids = JSON.parse(btn.dataset.vmids || '[]');
     if (!vmids.length) return;
-    _restoreRun(_restoreCtx.pid, _restoreCtx.name, vmids, _restoreCtx.preserve);
+    _restoreRun(_restoreCtx.pid, _restoreCtx.name, vmids, _restoreCtx.preserve, _restoreCtx.placement, _restoreCtx.onair);
 }
 
 async function detruireContainersProjet(pid, name) {
@@ -3040,205 +3169,7 @@ async function resLoadList() {
 
 
 
-/* ─── Migration d'un conteneur vers un autre nœud ─────────────────────────────
-   La modale montre la SIMULATION avant tout : verdict par nœud, vérifications, et
-   conséquences pour les voisins (flux qui deviennent distants ou locaux). La bascule
-   n'est proposée qu'ensuite, par nœud, et demande une confirmation nommée — c'est une
-   opération destructive avec coupure, elle ne doit pas partir au premier clic. */
-let _migVmid = null, _migHote = '';
-
-function ouvrirMigration(vmid, hostname) {
-    _migVmid = vmid; _migHote = hostname || String(vmid);
-    document.getElementById('migration-hote').textContent = _migHote;
-    document.getElementById('migration-corps').innerHTML =
-        `<p style="color:var(--text-muted)">${window.t('migration.loading')}</p>`;
-    document.getElementById('migration-modal').style.display = 'flex';
-    fetch(`/api/containers/${vmid}/migration/simuler`)
-        .then(r => r.json())
-        .then(d => _migRendre(d.candidats || []))
-        .catch(e => {
-            document.getElementById('migration-corps').innerHTML =
-                `<p class="migration-echec">${escapeHtml(String(e))}</p>`;
-        });
-}
-
-function fermerMigration() {
-    document.getElementById('migration-modal').style.display = 'none';
-    _migVmid = null;
-}
-
-function _migRendre(candidats) {
-    if (!candidats.length) {
-        document.getElementById('migration-corps').innerHTML =
-            `<p style="color:var(--text-muted)">—</p>`;
-        return;
-    }
-    const html = candidats.map(p => {
-        const nom = escapeHtml(p.node_cible_nom || String(p.node_cible));
-        // Le nœud OÙ IL EST DÉJÀ : pas une destination, mais la référence de la comparaison —
-        // il montre ce que le départ du conteneur lui rendrait. Ni bouton ni mention d'échec :
-        // ce n'est pas un refus, c'est le point de départ.
-        if (p.est_source) {
-            return `<div class="migration-noeud migration-noeud-source">
-                <div class="migration-noeud-tete"><strong>${nom}</strong>
-                    <span class="migration-ici">${window.t('migration.current_node')}</span></div>
-                ${_migJauges(p.ressources, 'libere')}
-            </div>`;
-        }
-        // Un refus de TYPE est définitif : pas de bouton du tout, et le motif en clair —
-        // un refus sans motif se lit comme une limitation arbitraire.
-        if ((p.refus || []).length) {
-            return `<div class="migration-noeud migration-noeud-refus">
-                <div class="migration-noeud-tete"><strong>${nom}</strong>
-                    <span class="migration-verdict-ko">${window.t('migration.refused')}</span></div>
-                ${p.refus.map(r => `<div class="migration-motif">${escapeHtml(r)}</div>`).join('')}
-            </div>`;
-        }
-        const verifs = (p.verifications || []).map(v =>
-            `<div class="migration-verif ${v.ok ? 'ok' : 'ko'}">
-                <span>${v.ok ? '✓' : '✗'}</span>
-                <span>${escapeHtml(v.nom)}</span>
-                <span class="migration-detail">${escapeHtml(v.detail || '')}</span>
-             </div>`).join('');
-        const jauges = _migJauges(p.ressources, 'prend');
-        const conseq = (p.consequences || []).length
-            ? `<div class="migration-conseq"><strong>${window.t('migration.consequences')}</strong>` +
-              p.consequences.map(c =>
-                  `<div>${escapeHtml(c.hostname || '')} (${c.vmid}) — ${escapeHtml((c.flux || []).join(', '))}
-                    → ${escapeHtml(c.effet || '')}</div>`).join('') + `</div>`
-            : '';
-        // Vérifications en échec → on n'offre que « passer outre », explicitement nommé.
-        const bouton = p.ok
-            ? `<button class="btn btn-blue" onclick="_migLancer(${p.node_cible}, '${nom}', false)">${window.t('migration.go')}</button>`
-            : `<button class="btn btn-orange" title="${window.t('migration.force_title')}"
-                       onclick="_migLancer(${p.node_cible}, '${nom}', true)">${window.t('migration.force')}</button>`;
-        return `<div class="migration-noeud">
-            <div class="migration-noeud-tete"><strong>${nom}</strong>${bouton}</div>
-            ${verifs}${jauges}${conseq}
-        </div>`;
-    }).join('');
-    document.getElementById('migration-corps').innerHTML =
-        html + `<p class="migration-conserve">${window.t('migration.keeps')}</p>`;
-}
-
-function _migJauge(r, libelle, mode) {
-    // Deux barres pour la MÊME ressource du MÊME nœud : son état actuel, puis ce qu'il deviendrait.
-    //   mode 'prend'  → la seconde barre ajoute, hachurée, la part que le conteneur occuperait ;
-    //   mode 'libere' → elle retranche ce qu'il rendrait en partant (nœud d'origine).
-    // La part se dessine à la frontière du plein, donc à sa place réelle sur l'échelle du nœud.
-    if (!r || !r.total) return '';
-    const total = r.total, libre = (r.libre == null) ? null : r.libre;
-    const pris  = (libre == null) ? null : Math.max(0, total - libre);
-    const libere = (mode === 'libere') ? Math.max(0, r.libere || 0) : 0;
-    const part   = (mode === 'prend')  ? Math.max(0, r.requis || 0) : 0;
-    const trop = part > 0 && libre != null && part > libre;
-    const fmt = (v) => (r.unite === 'Mo' ? (v / 1024).toFixed(1) + ' Go' : v + ' ' + (r.unite || ''));
-    const pct = (v) => Math.max(0, Math.min(100, v / total * 100)).toFixed(1);
-    // Après : le plein retranche ce qui part, la hachure porte le delta (pris ou rendu).
-    const pleinApres = (pris == null) ? 0 : Math.max(0, pris - libere);
-    const libreApres = (libre == null) ? null : Math.max(0, libre - part + libere);
-    const delta = libere ? `<span class="mig-gain">−${fmt(libere)}</span>`
-                : part   ? `<span class="${trop ? 'mig-trop' : ''}">+${fmt(part)}</span>` : '';
-    const barre = (pleinPct, hachPct, cls) => `<div class="mig-barre">
-            <div class="mig-barre-pris" style="width:${pleinPct}%"></div>
-            ${hachPct > 0 ? `<div class="mig-barre-part ${cls}" style="width:${hachPct}%"></div>` : ''}
-        </div>`;
-    return `<div class="mig-jauge">
-        <div class="mig-jauge-tete"><span>${escapeHtml(libelle)}</span>
-            <span class="mig-jauge-chiffres">${libre == null ? '—' : fmt(libre)} ${window.t('migration.free')}${delta ? ' · ' + delta : ''}</span></div>
-        <div class="mig-duo">
-            <div class="mig-duo-col"><span class="mig-duo-lbl">${window.t('migration.now')}</span>
-                ${barre(pct(pris == null ? 0 : pris), 0, '')}</div>
-            <div class="mig-duo-col"><span class="mig-duo-lbl">${window.t('migration.after')}</span>
-                ${barre(pct(pleinApres), Math.min(100 - pct(pleinApres), Number(pct(part + libere))),
-                        trop ? 'mig-barre-trop' : (libere ? 'mig-barre-gain' : ''))}</div>
-        </div>
-        <div class="mig-apres">${libreApres == null ? '' :
-            window.t('migration.after_free').replace('{v}', fmt(libreApres))}</div>
-    </div>`;
-}
-
-function _migProc(cpu) {
-    // Le modèle de processeur, sa fréquence et son nombre de cœurs. « Plus de cœurs libres » ne
-    // veut pas dire « plus puissant » : deux nœuds peuvent offrir le même nombre de cœurs sans
-    // jouer dans la même catégorie. Les cœurs PHYSIQUES sont donnés à côté des threads — un
-    // E5-2699 v4 annonce 88 threads pour 44 cœurs, et confondre les deux fait croire à un nœud
-    // deux fois plus capable qu'il n'est.
-    const p = cpu && cpu.proc;
-    if (!p || !p.modele) return '';
-    const bouts = [];
-    if (p.physiques) bouts.push(window.t('migration.cpu_cores').replace('{n}', p.physiques));
-    else if (p.threads) bouts.push(window.t('migration.cpu_threads').replace('{n}', p.threads));
-    if (p.physiques && p.threads && p.threads > p.physiques)
-        bouts.push(window.t('migration.cpu_threads').replace('{n}', p.threads));
-    if (p.ghz) bouts.push(p.ghz.toFixed(2).replace(/0$/, '') + ' GHz');
-    return `<div class="mig-proc" title="${escapeHtml(p.modele)}">
-        <span class="mig-proc-nom">${escapeHtml(p.modele)}</span>
-        <span class="mig-proc-det">${bouts.join(' · ')}</span>
-    </div>`;
-}
-
-function _migJauges(res, mode) {
-    if (!res) return '';
-    return `<div class="mig-jauges-uni">
-        ${_migProc(res.cpu)}
-        ${_migJauge(res.cpu, window.t('migration.res_cpu'), mode)}
-        ${_migJauge(res.ram, window.t('migration.res_ram'), mode)}
-        ${_migGpu(res.gpu, mode)}
-    </div>`;
-}
-
-function _migGpu(g, mode) {
-    // Le GPU ne se RÉSERVE pas : aucune part n'y est dessinée. Ce qui change en migrant, c'est le
-    // nombre de CLIENTS CUDA — mesuré sur ce parc : un mur seul consomme 16 % du GPU, trois murs
-    // 40 %. C'est le compte AVANT → APRÈS qui informe, la VRAM libre n'ayant jamais annoncé une
-    // cadence.
-    if (!g) return '';
-    const nom = g.nom ? escapeHtml(g.nom) : window.t('migration.res_gpu_none');
-    if (!g.total) {
-        return `<div class="mig-jauge"><div class="mig-jauge-tete"><span>${window.t('migration.res_gpu')}</span>
-            <span class="mig-jauge-chiffres mig-gpu-absent">${nom}</span></div></div>`;
-    }
-    const n0 = g.clients;
-    const n1 = (n0 == null) ? null : (mode === 'libere' ? Math.max(0, n0 - 1) : n0 + 1);
-    const pctVram = Math.min(100, (g.total - (g.libre ?? g.total)) / g.total * 100).toFixed(1);
-    return `<div class="mig-jauge">
-        <div class="mig-jauge-tete"><span>${window.t('migration.res_gpu')}</span>
-            <span class="mig-jauge-chiffres">${nom}</span></div>
-        <div class="mig-barre" title="${escapeHtml(g.note || '')}">
-            <div class="mig-barre-pris" style="width:${pctVram}%"></div>
-        </div>
-        <div class="mig-gpu-detail" title="${escapeHtml(g.note || '')}">
-            ${n0 == null ? '—' : `${window.t('migration.res_gpu_clients').replace('{n}', n0)} → <span class="${
-                mode === 'libere' ? 'mig-gain' : ''}">${n1}</span>`}${
-            g.util_pct != null ? ` · ${Math.round(g.util_pct)} %` : ''}
-        </div>
-    </div>`;
-}
-
-function _migLancer(nodeId, nom, forcer) {
-    if (!confirm(window.t('migration.confirm').replace('{h}', _migHote).replace('{n}', nom))) return;
-    const corps = document.getElementById('migration-corps');
-    corps.innerHTML = `<p>${window.t('migration.running')}</p>`;
-    fetch(`/api/containers/${_migVmid}/migration`, {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({node_id: nodeId, forcer: !!forcer})
-    }).then(r => r.json().then(d => ({ok: r.ok, d})))
-      .then(({ok, d}) => {
-        const etapes = (d.etapes || []).map(e =>
-            `<div class="migration-verif ${e.ok ? 'ok' : 'ko'}"><span>${e.ok ? '✓' : '✗'}</span>
-             <span>${escapeHtml(e.etape)}</span>
-             <span class="migration-detail">${escapeHtml(e.detail || '')}</span></div>`).join('');
-        corps.innerHTML =
-            `<p class="${d.ok ? 'migration-ok' : 'migration-echec'}">
-                ${d.ok ? window.t('migration.done') : window.t('migration.failed')}</p>` +
-            (d.erreur ? `<div class="migration-motif">${escapeHtml(d.erreur)}</div>` : '') + etapes;
-        // La liste des cartes se rafraîchit d'elle-même toutes les 5 s (rafraichirDonnees) ;
-        // on la relance tout de suite pour que le conteneur apparaisse sur son nouveau nœud.
-        if (d.ok && typeof rafraichirDonnees === 'function') rafraichirDonnees();
-      })
-      .catch(e => { corps.innerHTML = `<p class="migration-echec">${escapeHtml(String(e))}</p>`; });
-}
+/* Migration d'un conteneur : static/js/migration.js (chargé par layout.html, sur toutes les pages). */
 
 // ─── Onglet Inventaire : ce que les agents voient, confronté à la base ──────────
 //

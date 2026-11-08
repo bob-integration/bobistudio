@@ -139,6 +139,14 @@ def _scan():
             log.error("plugins: %s control.persist invalide (%s) — skipped", manifest["type"], perr)
             SCAN_ERRORS[name] = "control.persist invalide : " + " ; ".join(perr)
             continue
+        # On-air state (`control.onair`): a wrong declaration would be read or restored on an
+        # endpoint the proxy refuses — silently nothing. Refused like `control.persist`.
+        from .project_onair import validate_spec as _onair_errs
+        oerr = _onair_errs(manifest)
+        if oerr:
+            log.error("plugins: %s control.onair invalid (%s) — skipped", manifest["type"], oerr)
+            SCAN_ERRORS[name] = "control.onair invalide : " + " ; ".join(oerr)
+            continue
         from .plugin_streams import validate_spec as _streams_errs
         serr = _streams_errs(manifest)
         if serr:

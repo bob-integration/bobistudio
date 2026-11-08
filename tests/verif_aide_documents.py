@@ -53,6 +53,33 @@ for i in sorted(declares - gabarits):
 for i in sorted(gabarits - declares):
     echecs.append("gabarit wiki-art-%s jamais listé dans CORE_ARTICLES (inatteignable)" % i)
 
+# The index on the right (buildToc) is built when the article is shown, BEFORE a loaded document
+# arrives: each loader must rebuild it once the content is in the page (08/11 — the index of
+# « Écrire un plugin » stayed empty once the article showed AUTHORING.md).
+for fn in ("async function loadDoc(", "async function loadChangelog("):
+    if fn not in aide:
+        echecs.append("chargeur %s introuvable" % fn)
+        continue
+    corps = aide[aide.index(fn):]
+    corps = corps[:corps.index("\n}\n")]
+    pose = corps[corps.index("const poser"):corps.index("};", corps.index("const poser"))]
+    if "buildToc()" not in pose:
+        echecs.append("%s pose le contenu sans reconstruire l'index de droite (buildToc)" % fn.split()[2][:-1])
+
+# Clicking the index scrolled only partway: scrollIntoView() on the active line also scrolled the
+# content pane (the index is sticky INSIDE it) and stopped the smooth scroll halfway (08/11).
+toc = aide[aide.index("function buildToc(){"):]
+toc = toc[:toc.index("\n}\n")]
+code = "\n".join(l.split("//")[0] for l in toc.split("\n"))
+if "scrollIntoView" in code:
+    echecs.append("buildToc appelle scrollIntoView : il fait défiler le contenu et coupe le saut vers un titre")
+# … and the heading landed under the sticky top bar (the page itself scrolls a little): the jump
+# must stop below the bar's bottom, not at the top of the pane (08/11).
+if "querySelector('.topnav')" not in code or ".bottom" not in code:
+    echecs.append("buildToc : le saut ignore la barre du haut, le titre finit caché dessous")
+if "contentEl.scrollTo(" not in code:
+    echecs.append("buildToc : le clic ne fait plus défiler la zone de contenu vers le titre")
+
 print("%d documents servis, %d affichés ; %d articles déclarés, %d gabarits"
       % (len(_DOCS_RACINE), len(conteneurs), len(declares), len(gabarits)))
 if echecs:

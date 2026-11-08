@@ -40,7 +40,24 @@ bande isolée :
     un autre conteneur, c'est disputer le CPU à des boucles busy-poll qui ne cèdent jamais la main.
     Un conteneur SANS cpuset viole I2 par construction — il couvre toute la machine.
 
-Les deux sont formulés SANS seuil arbitraire : « ce cœur est-il utilisable » et « qui d'autre est
+**I4 — LE CPUSET EST TENU PAR TOUS LES FILS.** Aucun fil d'un conteneur n'est AUTORISÉ hors du
+cpuset effectif de son cgroup :
+
+        Cpus_allowed_list(fil) ⊆ cpuset.cpus.effective(cgroup du conteneur)
+
+    Le cpuset du conteneur peut être juste et ses fils le déborder quand même : un processus lancé
+    par `docker exec` hérite des cœurs autorisés de SON LANCEUR, pas de ceux du conteneur. Mesuré
+    le 2026-11-08 sur dell-1 : trois conteneurs d'outillage à `Cpus_allowed_list 0-47` alors que
+    leur cgroup valait `42-45`, et leurs fils VUS sur les cœurs 15 et 18 — ceux du moteur. Le
+    constat ne vaut que sur la bonne source : `HostConfig.CpusetCpus` dit ce qui a été DEMANDÉ à la
+    création, `cpuset.cpus.effective` ce que le noyau applique. C'est le second qu'on compare.
+
+    ⚠ L'inclusion est à sens unique : un fil fixé PLUS ÉTROIT que son cgroup est normal et
+    recherché (les lcores DPDK du moteur, le fil audio de la console). Ne jamais « réparer » en
+    élargissant un tel fil — le 2026-11-08, l'épinglage de `mtl_sch`/`dpdk-worker` du moteur 619
+    a été cassé ainsi, et il a fallu redémarrer le moteur.
+
+Les trois premiers sont formulés SANS seuil arbitraire : « ce cœur est-il utilisable » et « qui d'autre est
 sur la bande » sont des questions binaires. La gravité, elle, dépend de la conséquence (un
 conteneur qui garde 12 cœurs sur 16 n'est pas dans l'état de celui qui n'en garde qu'un).
 
@@ -56,6 +73,7 @@ invisibles à `core_pool`, et pourtant bien réels pour l'ordonnanceur du noyau.
 """
 import json
 import logging
+import re
 import threading
 
 from . import core_pool
@@ -97,7 +115,8 @@ conts, ids = {}, []
 for ln in sh("docker ps --no-trunc --format '{{.ID}}\t{{.Names}}'").splitlines():
     p = ln.split("\t")
     if len(p) >= 2 and p[0]:
-        conts[p[0]] = {"name": p[1], "cpuset": "", "cpu_shares": None, "threads": {}}
+        conts[p[0]] = {"name": p[1], "cpuset": "", "cpu_shares": None, "threads": {},
+                       "cg_cpuset": None, "allowed": {}}
         ids.append(p[0])
 if ids:
     # Separator is "|": CpusetCpus may be empty, and a split on spaces would then shift fields.
@@ -116,12 +135,26 @@ for pid in os.listdir("/proc"):
     if not pid.isdigit():
         continue
     try:
-        m = rx.search(open("/proc/%s/cgroup" % pid).read())
+        cg = open("/proc/%s/cgroup" % pid).read()
+        m = rx.search(cg)
     except Exception:
         continue
     if not m or m.group(0) not in conts:
         continue
-    th = conts[m.group(0)]["threads"]
+    cont = conts[m.group(0)]
+    th = cont["threads"]
+    if cont["cg_cpuset"] is None:
+        # `cpuset.cpus.effective` of the container's OWN cgroup = what the KERNEL allows, whereas
+        # HostConfig.CpusetCpus is only what was asked at creation. None stays None when the
+        # cgroup cannot be read (v1 hierarchy, path gone): not measured is not "nothing to say".
+        for ln in cg.splitlines():
+            if ln.startswith("0::"):
+                try:
+                    with open("/sys/fs/cgroup%s/cpuset.cpus.effective" % ln[3:].strip()) as f:
+                        cont["cg_cpuset"] = f.read().strip()
+                except Exception:
+                    pass
+                break
     try:
         tids = os.listdir("/proc/%s/task" % pid)
     except Exception:
@@ -134,6 +167,17 @@ for pid in os.listdir("/proc"):
         except Exception:
             continue
         th[str(psr)] = th.get(str(psr), 0) + 1
+        # Affinity MASK of this thread, grouped by distinct value (two or three at most on a
+        # container: cheaper to send than one entry per thread, and it is the mask that is judged).
+        try:
+            with open("/proc/%s/task/%s/status" % (pid, tid)) as f:
+                for l2 in f:
+                    if l2.startswith("Cpus_allowed_list:"):
+                        a = l2.split(":", 1)[1].strip()
+                        cont["allowed"][a] = cont["allowed"].get(a, 0) + 1
+                        break
+        except Exception:
+            pass
 
 print(json.dumps({"isolated": iso, "nproc": os.cpu_count(),
                   "containers": sorted(conts.values(), key=lambda c: c["name"])}))
@@ -142,8 +186,15 @@ print(json.dumps({"isolated": iso, "nproc": os.cpu_count(),
 
 def relever(node, timeout=45):
     """Relevé BRUT du placement réel sur le nœud : {isolated, nproc, containers:[{name, cpuset,
-    cpu_shares, threads:{cpu: n}}]}. None si le nœud est injoignable ou la sonde illisible (jamais
-    de relevé partiel silencieux : c'est tout ou rien, et l'appelant le DIT).
+    cpu_shares, threads:{cpu: n}, cg_cpuset, allowed:{masque: n_fils}}]}. None si le nœud est
+    injoignable ou la sonde illisible (jamais de relevé partiel silencieux : c'est tout ou rien,
+    et l'appelant le DIT).
+
+    `cg_cpuset` = `cpuset.cpus.effective` du cgroup du conteneur (ce que le NOYAU applique), et
+    `allowed` = les masques d'affinité de ses fils, regroupés par valeur. Les deux sont là pour
+    I4, et il faut les deux : comparer un masque de fil à `HostConfig.CpusetCpus` comparerait à
+    ce qui a été DEMANDÉ à la création, pas à ce qui est appliqué. None / {} = NON MESURÉ (cgroup
+    v1, chemin disparu) — I4 s'abstient alors, il ne conclut pas à l'absence de défaut.
 
     `cpu_shares` = POIDS CPU RÉELLEMENT posé sur le conteneur (0 = « non précisé », donc le défaut
     de Docker). Mesuré ici, et nulle part ailleurs : le poids s'applique à chaud (`docker update`,
@@ -268,13 +319,86 @@ def constater(node_id, releve=None, force=False):
     iso = core_pool.parse_cpuset(r.get("isolated"))
     nproc = int(r.get("nproc") or 0)
     moteurs = _noms_moteurs(node_id)
-    defauts, sans_cpuset = [], []
+    # I3 : qui tient quels cœurs en DÉDIÉ ici. {cœur: vmid} + le nom du propriétaire, pour pouvoir
+    # NOMMER l'autre partie — « ce conteneur peut courir sur un cœur dédié » n'est actionnable que
+    # si on dit à QUI, sinon l'exploitant ne sait ni quoi déplacer ni quoi protéger.
+    _par_vmid = core_pool.allocations_by_vmid(node_id)
+    ded_de = {int(c): int(v) for v, cores in _par_vmid.items() for c in cores}
+    _noms = {int(c.get("vmid")): (c.get("hostname") or ("#%s" % c.get("vmid")))
+             for c in (db_get_containers() or []) if c.get("vmid") is not None}
+    # I4 n'est pas mesurable partout : sans contrôleur `cpuset` sur le cgroup (hiérarchie v1,
+    # contrôleur non délégué à ce sous-arbre), il n'y a RIEN à comparer. On le PUBLIE au lieu de
+    # s'abstenir en silence : un invariant qui ne s'applique nulle part et ne le dit pas se
+    # confond avec un invariant toujours satisfait.
+    defauts, sans_cpuset, i4_muets = [], [], []
     for c in r.get("containers") or []:
         nom = c.get("name") or "?"
+        # Le vmid lu dans le NOM (bobi-cmp-<vmid> / bobi-mtl-<vmid>) : un conteneur ne se reproche
+        # pas de pouvoir courir sur SES propres cœurs dédiés.
+        _m = re.match(r"^bobi-(?:cmp|mtl)-(\d+)$", nom)
+        _soi = int(_m.group(1)) if _m else None
+        ded_autres = {c0 for c0, v0 in ded_de.items() if v0 != _soi}
         cpuset = core_pool.parse_cpuset(c.get("cpuset"))
         threads = {int(k): int(v) for k, v in (c.get("threads") or {}).items()}
         total_th = sum(threads.values())
         est_moteur = nom in moteurs or nom.startswith("bobi-mtl-")
+
+        # ── I4 : le cpuset du conteneur est-il tenu par TOUS ses fils ? ───────
+        #
+        # Indépendant de I1, I2 et I3, et placé AVANT eux pour cette raison : c'est le cas du
+        # conteneur dont le cpuset est JUSTE. Placé après, il aurait été sauté par le `continue`
+        # qui clôt I1 pour un moteur 2110 sain — or le moteur est précisément le conteneur dans
+        # lequel on lance des `docker exec` à la main.
+        # Un `docker exec` hérite des cœurs autorisés de son lanceur (l'agent-nœud, donc toute la
+        # machine) ; le cgroup est bon, les fils le débordent. Rien dans `core_pool` ne peut le
+        # voir — il n'a pas calculé ces fils-là.
+        _cg = core_pool.parse_cpuset(c.get("cg_cpuset")) if c.get("cg_cpuset") else set()
+        _allowed = {k: int(v) for k, v in (c.get("allowed") or {}).items()}
+        if not _cg or not _allowed:
+            i4_muets.append(nom)
+        else:
+            hors = {}                       # cœur hors cgroup → nombre de fils AUTORISÉS dessus
+            for _masque, _n in _allowed.items():
+                for x in core_pool.parse_cpuset(_masque) - _cg:
+                    hors[x] = hors.get(x, 0) + _n
+            if hors:
+                # Le masque est le DÉFAUT ; les fils VUS dessus en sont la preuve. Gravité par
+                # conséquence : déborder sur la bande isolée ou sur le cœur dédié d'un autre est
+                # d'une autre nature que déborder sur du pool partagé.
+                _vus = sorted(x for x in hors if threads.get(x))
+                _grave = sorted(x for x in hors if x in iso or x in ded_autres)
+                _nf = max(hors.values())
+                _p4 = {"nom": nom, "n_threads": _nf,
+                       "fmt_hors": core_pool.fmt_cpuset(sorted(hors)),
+                       "fmt_cgroup": core_pool.fmt_cpuset(sorted(_cg)),
+                       "n_hors": len(hors)}
+                _m4 = (f"{_nf} fil(s) de {nom} sont AUTORISÉS sur "
+                       f"{core_pool.fmt_cpuset(sorted(hors))}, hors du cpuset que le noyau applique "
+                       f"à son cgroup ({core_pool.fmt_cpuset(sorted(_cg))}) : un processus lancé "
+                       f"par `docker exec` hérite des cœurs autorisés de son LANCEUR, pas de ceux "
+                       f"du conteneur. Son cpuset est juste ; ce sont ses fils qui le débordent.")
+                if _vus:
+                    _p4.update({"fmt_vus": core_pool.fmt_cpuset(_vus),
+                                "n_vus": sum(threads[x] for x in _vus)})
+                    _m4 += (f" Constaté : {sum(threads[x] for x in _vus)} fil(s) VUS sur "
+                            f"{core_pool.fmt_cpuset(_vus)}.")
+                if _grave:
+                    _p4["fmt_grave"] = core_pool.fmt_cpuset(_grave)
+                    _m4 += (f" Dont {core_pool.fmt_cpuset(_grave)}, qui appartiennent au moteur "
+                            f"2110 ou à une réservation dédiée.")
+                _m4 += (" Relancer ces processus en les bornant (`taskset -c`), ou redémarrer le "
+                        "conteneur. ⚠ Ne JAMAIS élargir un fil fixé plus étroit que son cgroup : "
+                        "c'est l'épinglage voulu (lcores DPDK, fil audio temps réel).")
+                # DEUX CODES, pas un niveau qui change : déborder sur du pool partagé et déborder
+                # sur la bande isolée ou le cœur dédié d'un autre n'ont ni la même conséquence ni
+                # le même remède, et la clé d'épisode est (nœud, conteneur, code) — un code par
+                # nature de défaut, c'est aussi ce qui fait que l'aggravation s'ANNONCE.
+                _code = "fils_hors_cpuset_reserve" if _grave else "fils_hors_cpuset"
+                defauts.append({
+                    "code": _code, "conteneur": nom,
+                    "niveau": "error" if _grave else "warning", "message": _m4,
+                    "msg_key": "alert.resource.placement_%s%s" % (_code, "_vus" if _vus else ""),
+                    "msg_params": _p4})
 
         # ── I1 : tout cœur donné doit être ordonnançable ──────────────────────
         #
@@ -349,8 +473,35 @@ def constater(node_id, releve=None, force=False):
                                                 else "alert.resource.placement_coeurs_isoles"),
                                     "msg_params": _mp})
         # ── I2 : la bande isolée appartient au moteur ─────────────────────────
-        elif iso:
+        # ── I3 : un cœur DÉDIÉ appartient à son propriétaire ──────────────────
+        #
+        # ⚠ Cette branche était conditionnée à `iso` seul. Un nœud SANS moteur 2110 n'a pas de
+        # bande isolée (la Z8, dl360-1 côté console) : un conteneur sans cpuset n'y était donc
+        # JAMAIS signalé, alors qu'il peut parfaitement s'installer sur le cœur dédié d'un
+        # conteneur temps réel. C'est le trou mesuré le 2026-11-07 (console audio #1323, 19 blocs
+        # de 1 ms manqués en dix minutes sur son cœur 23 « dédié », neuf conteneurs sans cpuset
+        # sur le nœud). Les deux risques sont de même nature — un cœur promis à quelqu'un — et se
+        # jugent ensemble.
+        elif iso or ded_autres:
             occupes_iso = sorted(cpu for cpu in threads if cpu in iso)
+            occupes_ded = sorted(cpu for cpu in threads if cpu in ded_autres)
+            if occupes_ded:
+                # CONSTAT, pas risque : ses threads ont été VUS sur un cœur dédié à un autre.
+                _prop = sorted({_noms.get(ded_de[c0], "#%s" % ded_de[c0]) for c0 in occupes_ded})
+                defauts.append({
+                    "code": "sur_coeur_dedie", "conteneur": nom, "niveau": "error",
+                    "message": (
+                        f"{nom} n'a AUCUN cpuset et {sum(threads[c0] for c0 in occupes_ded)} de ses "
+                        f"thread(s) tournent sur les cœurs "
+                        f"{core_pool.fmt_cpuset(occupes_ded)}, DÉDIÉS à "
+                        f"{', '.join(_prop)}. « Dédié » ne veut alors plus rien dire : le "
+                        f"propriétaire perd sa cadence sans qu'aucun compteur ne bronche. Lui "
+                        f"donner un cpuset dans le pool partagé du nœud."),
+                    "msg_key": "alert.resource.placement_sur_coeur_dedie",
+                    "msg_params": {"nom": nom,
+                                   "n_threads": sum(threads[c0] for c0 in occupes_ded),
+                                   "fmt_ded": core_pool.fmt_cpuset(occupes_ded),
+                                   "proprios": ", ".join(_prop)}})
             if occupes_iso:
                 defauts.append({
                     "code": "sur_bande_isolee", "conteneur": nom, "niveau": "error",
@@ -364,26 +515,46 @@ def constater(node_id, releve=None, force=False):
                     "msg_params": {"nom": nom,
                                    "n_threads": sum(threads[c] for c in occupes_iso),
                                    "fmt_iso": core_pool.fmt_cpuset(occupes_iso)}})
-            else:
+            elif not occupes_ded:
                 sans_cpuset.append(nom)
+
 
     # RISQUE (par opposition aux constats ci-dessus) : agrégé en UN défaut de nœud. Quatorze
     # conteneurs RDMA sans cpuset, c'est UNE chose à réparer, pas quatorze alertes — un fil d'alertes
     # qu'on apprend à ignorer coûte plus cher que l'incident (cf. app/episodes.py).
     if sans_cpuset:
-        defauts.append({
-            "code": "sans_cpuset", "conteneur": "*", "niveau": "warning",
-            "detail": sorted(sans_cpuset),
-            "message": (
-                f"{len(sans_cpuset)} conteneur(s) n'ont AUCUN cpuset et peuvent donc s'exécuter sur "
-                f"les {len(iso)} cœur(s) ISOLÉS {core_pool.fmt_cpuset(iso)} du moteur 2110 : "
-                f"{', '.join(sorted(sans_cpuset))}. Rien ne les y a encore menés, rien ne les en "
-                f"empêche. Ces conteneurs sont créés HORS du modèle de l'orchestrateur — ils sont "
-                f"donc invisibles à l'allocateur de cœurs, qui ne peut pas les borner."),
-            "msg_key": "alert.resource.placement_sans_cpuset",
-            "msg_params": {"n_conteneurs": len(sans_cpuset), "n_iso": len(iso),
-                           "fmt_iso": core_pool.fmt_cpuset(iso),
-                           "liste": ", ".join(sorted(sans_cpuset))}})
+        # DEUX risques de même nature, et le message doit dire CELUI QUI EXISTE : un nœud sans
+        # moteur 2110 n'a pas de bande isolée, un nœud sans réservation n'a pas de cœur dédié.
+        # Parler des « cœurs isolés » sur un nœud qui n'en a aucun, c'est envoyer l'exploitant
+        # chercher un moteur qui n'est pas là.
+        _ded = core_pool.fmt_cpuset(sorted(ded_de))
+        _prop = sorted({_noms.get(v, "#%s" % v) for v in set(ded_de.values())})
+        _liste = ", ".join(sorted(sans_cpuset))
+        _p = {"n_conteneurs": len(sans_cpuset), "n_iso": len(iso),
+              "fmt_iso": core_pool.fmt_cpuset(iso), "liste": _liste,
+              "n_ded": len(ded_de), "fmt_ded": _ded, "proprios": ", ".join(_prop)}
+        _queue = (" Rien ne les y a encore menés, rien ne les en empêche. Ces conteneurs sont "
+                  "créés HORS du modèle de l'orchestrateur — ils sont donc invisibles à "
+                  "l'allocateur de cœurs, qui ne peut pas les borner.")
+        if iso and ded_de:
+            _cle = "alert.resource.placement_sans_cpuset_iso_dedies"
+            _msg = (f"{len(sans_cpuset)} conteneur(s) n'ont AUCUN cpuset et peuvent donc "
+                    f"s'exécuter sur les {len(iso)} cœur(s) ISOLÉS {core_pool.fmt_cpuset(iso)} du "
+                    f"moteur 2110 COMME sur les {len(ded_de)} cœur(s) DÉDIÉS {_ded} de "
+                    f"{', '.join(_prop)} : {_liste}.{_queue}")
+        elif ded_de:
+            _cle = "alert.resource.placement_sans_cpuset_dedies"
+            _msg = (f"{len(sans_cpuset)} conteneur(s) n'ont AUCUN cpuset et peuvent donc "
+                    f"s'exécuter sur les {len(ded_de)} cœur(s) DÉDIÉS {_ded} de "
+                    f"{', '.join(_prop)} : {_liste}.{_queue}")
+        else:
+            _cle = "alert.resource.placement_sans_cpuset"
+            _msg = (f"{len(sans_cpuset)} conteneur(s) n'ont AUCUN cpuset et peuvent donc "
+                    f"s'exécuter sur les {len(iso)} cœur(s) ISOLÉS "
+                    f"{core_pool.fmt_cpuset(iso)} du moteur 2110 : {_liste}.{_queue}")
+        defauts.append({"code": "sans_cpuset", "conteneur": "*", "niveau": "warning",
+                        "detail": sorted(sans_cpuset), "message": _msg,
+                        "msg_key": _cle, "msg_params": _p})
     # ── Variante libmxl : un CPU capable qui charge la baseline perd ~20 % EN SILENCE ──────
     v = variante_mxl(node_id, force=force)
     if v and v["avx2"] and v["variante"] == "baseline":
@@ -398,7 +569,7 @@ def constater(node_id, releve=None, force=False):
             "msg_key": "alert.resource.placement_libmxl_baseline",
             "msg_params": {"path": v["path"]}})
     return {"ok": True, "note": "", "isolated": core_pool.fmt_cpuset(iso), "nproc": nproc,
-            "defauts": defauts, "mxl": v}
+            "defauts": defauts, "mxl": v, "i4_non_mesure": sorted(i4_muets)}
 
 
 def verifier(node_id):
@@ -429,7 +600,7 @@ def verifier(node_id):
             _params["n"] = nom_noeud
             db_add_alert(d["msg_key"], d["niveau"], node_id=node_id, kind="resource", params=_params)
         else:
-            # Repli défensif (ne devrait plus arriver : les 5 codes de `constater()` posent tous
+            # Repli défensif (ne devrait plus arriver : les 7 codes de `constater()` posent tous
             # msg_key/msg_params) — jamais un code d'alerte inconnu ne doit rester muet.
             db_add_alert(f"Nœud {nom_noeud} — placement CPU : {d['message']}", d["niveau"],
                          node_id=node_id, kind="resource")
@@ -475,6 +646,13 @@ def verifier_tous():
                 verifier(n["id"])
             except Exception as e:
                 log.warning("placement.verifier(%s): %s", n.get("id"), e)
+            # Guarantees (reservation really applied, consumption still covered by the calibration):
+            # same pass, same cached measurement, its own one-minute throttle.
+            try:
+                from . import guarantee_watch
+                guarantee_watch.check_node(n["id"])
+            except Exception as e:
+                log.warning("guarantee_watch.check_node(%s): %s", n.get("id"), e)
         # ⚠ INDISPENSABLE. `EtatEpisodes.flush` est débouncé (30 s) et n'est appelé QUE depuis
         # `poser`/`retirer` : un défaut annoncé puis stable n'est donc JAMAIS écrit sur disque, et
         # un redémarrage de l'orchestrateur le ré-annonce comme s'il naissait — exactement ce que le
@@ -482,5 +660,10 @@ def verifier_tous():
         # deux alertes émises, `episodes_placement.json` absent. La passe de surveillance donne le
         # battement qui manquait ; l'appel est un no-op tant que rien n'est sale.
         _episodes.flush()
+        try:
+            from . import guarantee_watch
+            guarantee_watch.flush()
+        except Exception as e:
+            log.warning("guarantee_watch.flush: %s", e)
     finally:
         _passe_en_cours.release()

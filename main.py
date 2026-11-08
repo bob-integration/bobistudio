@@ -1030,6 +1030,13 @@ if __name__ == "__main__":
             _cert_expiry.demarrer()
         except Exception as e:
             log.error("échéance des certificats : surveillance non démarrée (%s)", e)
+        # Veille des mises à jour publiées (GitHub) : prévient les administrateurs, n'installe
+        # jamais (cf. app/update_watch.py). Réglable et désactivable dans Réglages → Mises à jour.
+        try:
+            from app import update_watch as _update_watch
+            _update_watch.start()
+        except Exception as e:
+            log.error("update watch not started (%s)", e)
         # Backfill au boot (durcissement A) : provisionne les moteurs 2110_io manquants sur les nœuds
         # qui ont déjà un port média 2110 configuré. Best-effort, différé (laisse le 1er tick de
         # surveillance + les agents-nœuds remonter avant de tenter creer/deploy). Sous is_active() → un
@@ -1044,6 +1051,9 @@ if __name__ == "__main__":
         threading.Thread(target=_boot_backfill_engines, daemon=True).start()
         from app import monitor as _monitor
         _monitor.start_reaper()
+        # On-air state of the running projects that asked for a periodic capture (off by default).
+        from app import project_onair as _onair
+        _onair.start_sampler()
         # Ferme de transcodage : le répartiteur confie les jobs de la file centrale aux
         # transcoders inscrits. Contrôleur ACTIF seul : deux répartiteurs confieraient deux fois.
         from app import transcode_farm as _farm

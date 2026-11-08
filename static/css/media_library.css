@@ -8,7 +8,7 @@
    (clic délégué) : toutes les vignettes « clignotaient » quand on en choisissait une (iPad, 2026-10-18). Le
    retour visuel du choix est le liseré de l'élément courant. */
 .ml { -webkit-tap-highlight-color:transparent; }
-.ml .ml-onetap.on, .ml .ml-compat.on { border-color:var(--accent); color:var(--accent); background:var(--bg-selected); }
+.ml .ml-onetap.on, .ml .ml-compat.on, .ml .ml-lock.on { border-color:var(--accent); color:var(--accent); background:var(--bg-selected); }
 .ml-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 10px; border-bottom:1px solid var(--border-soft); }
 .ml-tabs { display:flex; gap:2px; flex-wrap:wrap; }
 .ml-tab { font:inherit; font-size:0.82em; padding:4px 10px; border:1px solid transparent; border-radius:4px; background:none;
@@ -473,3 +473,20 @@
 /* Survol : case de la PLANCHE d'images (instantané) ; la vidéo du proxy ne vient par-dessus qu'à l'arrêt du pointeur. */
 .ml-scrub-pop > .ml-scrub-sb { position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); width:100%; background-repeat:no-repeat; background-color:#000; }
 .ml-scrub-pop > .ml-scrub-sb[hidden] { display:none; }
+
+/* Playlists (2026-11-07) : pictogramme dans la liste, contenu dans la fiche. */
+.ml-thumb-pl { display:inline-flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:1.1em; }
+.ml-pl-head { display:flex; align-items:center; gap:8px; margin:4px 0 8px; }
+.ml-pl-table td { vertical-align:middle; }
+.ml-pl-table tr.sel td { background:var(--bg-selected); }
+.ml-pl-table tr.moving td { opacity:0.45; }
+.ml-pl-table tr.drop-before td { box-shadow:inset 0 2px 0 var(--accent); }
+.ml-pl-table tbody.drop-end tr:last-child td { box-shadow:inset 0 -2px 0 var(--accent); }
+.ml-pl-grip { cursor:grab; color:var(--text-muted); touch-action:none; user-select:none; padding:4px 2px; }
+.ml-pl-tc { width:7.5em; font-family:var(--font-mono, monospace); }
+.ml-row-drop-pl { box-shadow:inset 0 0 0 2px var(--accent); }
+
+/* Envoi : projets où ranger le média (2026-11-07) — cases à cocher, la liste défile si elle est longue. */
+.mlu-projs { border:1px solid var(--border-soft); border-radius:6px; padding:6px 10px; margin:0; font-size:0.86em; color:var(--text-muted); }
+.mlu-projs-list { max-height:9.5em; overflow:auto; display:flex; flex-direction:column; gap:2px; }
+.mlu-dlg-f label.mlu-proj { flex-direction:row; align-items:center; gap:6px; color:var(--text); }

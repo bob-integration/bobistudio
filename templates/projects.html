@@ -5,20 +5,60 @@
 {% block content %}
 <h1>{{ _('projects.title') }}</h1>
 
+{# Projets en service, en tête de page : le badge « Chargé » des cartes, tout en bas, se ratait (07/11). #}
+{# Mesuré sur les conteneurs vivants (project_live), pas sur projects.state : cette colonne n'est
+   posée que par une restauration. L'état transitoire (chargement, erreur) reste affiché. #}
+{% set live_projects = projects | selectattr('id', 'in', project_live) | list
+     + projects | rejectattr('id', 'in', project_live) | selectattr('state', 'in', ['loading', 'unloading', 'error']) | list %}
+<section class="proj-live" aria-labelledby="proj-live-h">
+    <h2 id="proj-live-h">{{ _('projects.live') }}</h2>
+    {% if live_projects %}
+    <div class="proj-live-list">
+        {% for p in live_projects %}
+        <a class="proj-live-item" href="#proj-{{ p.id }}">
+            <span class="proj-live-name">{{ p.name }}</span>
+            {% set lv = project_live.get(p.id) %}
+            <span class="proj-live-state">
+            {% if p.state in ('loading', 'unloading', 'error') %}
+            <span class="badge {{ 'stopped' if p.state == 'error' else 'warn' }}">{{ _('projects.state_' ~ p.state) }}</span>
+            {% elif lv and lv.up < lv.n %}<span class="badge warn">{{ _('projects.live_partial') }}</span>
+            {% else %}<span class="badge running">{{ _('projects.live_running') }}</span>{% endif %}
+            {% if lv %}<span class="meta">{{ _('projects.live_count', up=lv.up, n=lv.n) }}</span>{% endif %}
+            {% if lv and lv.since %}<span class="meta proj-uptime" data-since="{{ lv.since }}" title="{{ _('projects.uptime_tip') }}"></span>{% endif %}
+            </span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="palette-hint">{{ _('projects.live_none') }}</p>
+    {% endif %}
+</section>
+
 {% if has_perm('projects.manage') %}
-{% set MODE_LABELS = {
-    '2110_io':            ('mode-receiver',  '2110_io'),
-    'multiview':     ('mode-multiview', 'Multiviewer'),
-    'streamer':         ('mode-stream',    'Streamer'),
-    'mixer':              ('mode-mixer',     'Mélangeur'),
-    'color_corrector':    ('mode-corrector', 'Correcteur')
-} %}
-<h2>{{ _('projects.new') }}</h2>
-<div class="form proj-create">
+{# Assistant de création en fenêtre, ouverte par « Nouveau projet… » (07/11 : il occupait le haut de
+   la page en permanence). Les conteneurs déjà dans un projet sont masqués par défaut ; les puces de
+   type viennent des conteneurs présents, pas d'une liste écrite ici. #}
+{% set picker_types = [] %}
+{% for c in containers %}
+    {% set dc = c.deploy_config | from_json %}
+    {% set ct = dc.type if dc and dc.type else 'none' %}
+    {% if ct not in picker_types %}{% set _ = picker_types.append(ct) %}{% endif %}
+{% endfor %}
+<div id="proj-create-modal" class="modal-overlay" hidden>
+<div class="modal-card proj-create-card" role="dialog" aria-modal="true" aria-labelledby="proj-create-title">
+<div class="modal-head">
+    <h3 id="proj-create-title" style="margin:0">{{ _('projects.new') }}</h3>
+    <button type="button" class="btn" onclick="closeProjCreate()" aria-label="{{ _('projects.close') }}">✕</button>
+</div>
+<div class="proj-create">
     <div class="proj-create-head">
         <div class="field">
             <label for="proj_name">{{ _('projects.name') }}</label>
             <input type="text" id="proj_name" class="wide" placeholder="{{ _('projects.name_ph') }}">
+        </div>
+        <div class="field proj-create-desc">
+            <label for="proj_desc">{{ _('projects.description') }}</label>
+            <textarea id="proj_desc" rows="2" placeholder="{{ _('projects.description_ph') }}"></textarea>
         </div>
         <button class="btn btn-green" onclick="sauvegarderProjet()">{{ _('projects.save') }}</button>
     </div>
@@ -41,34 +81,33 @@
         <div class="proj-picker-types" role="group" aria-label="{{ _('projects.filter_type_aria') }}">
             <button type="button" class="filter-chip active" data-proj-type="all"
                     onclick="filterProjType(this, 'all')">{{ _('projects.all') }}</button>
-            <button type="button" class="filter-chip" data-proj-type="2110_io"
-                    onclick="filterProjType(this, '2110_io')">2110_io</button>
-            <button type="button" class="filter-chip" data-proj-type="multiview"
-                    onclick="filterProjType(this, 'multiview')">Multiviewer</button>
-            <button type="button" class="filter-chip" data-proj-type="streamer"
-                    onclick="filterProjType(this, 'streamer')">Streamer</button>
-            <button type="button" class="filter-chip" data-proj-type="mixer"
-                    onclick="filterProjType(this, 'mixer')">Mélangeur</button>
-            <button type="button" class="filter-chip" data-proj-type="color_corrector"
-                    onclick="filterProjType(this, 'color_corrector')">Correcteur</button>
+            {% for ct in picker_types | sort if ct != 'none' %}
+            <button type="button" class="filter-chip" data-proj-type="{{ ct }}"
+                    onclick="filterProjType(this, '{{ ct }}')">{{ type_label(ct) }}</button>
+            {% endfor %}
+            {% if 'none' in picker_types %}
             <button type="button" class="filter-chip" data-proj-type="none"
                     onclick="filterProjType(this, 'none')">{{ _('projects.none') }}</button>
+            {% endif %}
         </div>
+        <label class="proj-picker-taken">
+            <input type="checkbox" id="proj-show-taken" onchange="filterProjList()">
+            {{ _('projects.show_taken') }}
+        </label>
 
         <ul class="proj-picker-list">
             {% for c in containers %}
             {% set dc = c.deploy_config | from_json %}
-            {% set ctype = dc.type if dc else 'none' %}
-            {% set mode = MODE_LABELS.get(ctype) %}
+            {% set ctype = dc.type if dc and dc.type else 'none' %}
             <li class="proj-picker-row" data-type="{{ ctype }}"
-                data-hostname="{{ c.hostname|lower }}">
+                data-hostname="{{ c.hostname|lower }}"{% if c.projects %} data-taken="1" hidden{% endif %}>
                 <label class="proj-picker-item">
                     <input type="checkbox" class="proj-vmid-cb" value="{{ c.vmid }}"
                            onchange="updateProjSelectedCount()">
                     <span class="proj-picker-host">{{ c.hostname }}</span>
                     <span class="card-vmid">#{{ c.vmid }}</span>
-                    {% if mode %}
-                    <span class="mode-badge {{ mode[0] }}">{{ mode[1] }}</span>
+                    {% if ctype != 'none' %}
+                    <span class="mode-badge">{{ type_label(ctype) }}</span>
                     {% else %}
                     <span class="mode-badge mode-none">{{ _('projects.badge_none') }}</span>
                     {% endif %}
@@ -86,6 +125,8 @@
         <p class="palette-hint">{{ _('projects.no_container') }}</p>
         {% endif %}
     </fieldset>
+</div>
+</div>
 </div>
 {% else %}
 <p class="palette-hint">{{ _('projects.readonly') }}</p>
@@ -123,34 +164,56 @@
 <div class="proj-import">
     <input type="file" id="proj-import-file" accept=".json,.tar,application/json,application/x-tar"
            onchange="importerProjet()" hidden>
+    <button class="btn btn-green" onclick="openProjCreate()">{{ _('projects.new_open') }}</button>
     <button class="btn btn-blue" onclick="document.getElementById('proj-import-file').click()">
         {{ _('projects.import') }}
     </button>
     <span class="palette-hint">{{ _('projects.import_hint') }}</span>
 </div>
 {% endif %}
-<div class="grid">
+{# Chercher / filtrer / trier la liste : contrôle du catalogue MXLControls.listFilter (07/11).
+   La recherche porte aussi sur les conteneurs et leurs types (data-search de chaque tuile). #}
+{% if projects|length > 1 %}<div id="proj-list-bar"></div>{% endif %}
+<script type="application/json" id="proj-sheets">{{ project_sheets | tojson }}</script>
+<script type="application/json" id="proj-names">{{ projects | map(attribute='name') | list | tojson }}</script>
+<script type="application/json" id="proj-ids">{{ projects | map(attribute='id') | list | tojson }}</script>
+<div class="grid" id="proj-grid">
     {% for p in projects %}
     {% set count = p.snapshot|length %}
-    <article class="card">
+    {% set lv0 = project_live.get(p.id) %}
+    {% set sh = project_sheets.get(p.id, {}) %}
+    <article class="card" id="proj-{{ p.id }}" data-name="{{ p.name|lower }}" data-created="{{ p.created_at }}"
+             data-size="{{ count }}" data-live="{{ 1 if lv0 or p.state in ('loading', 'unloading') else 0 }}"
+             data-tags="|{% for t in p.tags %}{{ t|lower }}|{% endfor %}"
+             data-search="{{ p.name }} #{{ p.id }} {{ p.description or '' }} {{ p.tags|join(' ') }} {{ sh.author or '' }}{% for c in p.snapshot %} {{ c.hostname or '' }} {{ (c.deploy_config or {}).type or '' }}{% endfor %}">
         <header class="card-head">
             <div class="card-title">
                 <h3 class="card-host">{{ p.name }}</h3>
                 <span class="card-vmid">#{{ p.id }}</span>
-                {% if p.state == 'active' %}<span class="badge running">{{ _('projects.state_active') }}</span>
-                {% elif p.state in ('loading', 'unloading') %}<span class="badge warn">{{ _('projects.state_' ~ p.state) }}</span>
-                {% elif p.state == 'error' %}<span class="badge stopped">{{ _('projects.state_error') }}</span>
+                {% set lv = project_live.get(p.id) %}
+                {% if p.state in ('loading', 'unloading', 'error') %}
+                <span class="badge {{ 'stopped' if p.state == 'error' else 'warn' }}">{{ _('projects.state_' ~ p.state) }}</span>
+                {% elif lv %}
+                <span class="badge {{ 'running' if lv.up == lv.n else 'warn' }}">{{ _('projects.live_running' if lv.up == lv.n else 'projects.live_partial') }} · {{ lv.up }}/{{ lv.n }}</span>
+                {% if lv.since %}<span class="meta proj-uptime" data-since="{{ lv.since }}" title="{{ _('projects.uptime_tip') }}"></span>{% endif %}
+                {% else %}
+                <span class="badge">{{ _('projects.live_stopped') }}</span>
                 {% endif %}
             </div>
         </header>
 
+        {% if p.description %}<p class="proj-desc" title="{{ p.description }}">{{ p.description.split('\n')[0] }}</p>{% endif %}
+        {% if p.tags %}<div class="proj-tags">{% for t in p.tags %}<span class="proj-tag">{{ t }}</span>{% endfor %}</div>{% endif %}
         <dl class="card-meta">
             <dt>{{ _('projects.containers') }}</dt><dd>{{ count }}</dd>
-            <dt>{{ _('projects.created') }}</dt><dd>{{ p.created_at }}</dd>
+            <dt>{{ _('projects.created') }}</dt><dd><time data-dt="{{ p.created_at }}">{{ p.created_at|replace('T', ' ') }}</time></dd>
+            <dt>{{ _('projects.author') }}</dt><dd>{{ sh.author or '—' }}</dd>
         </dl>
 
+        {# Les 5 premiers seulement : au-delà, la tuile s'allongeait sans fin (18 conteneurs pour la
+           Régie Légère) ; le reste, avec l'état et le nœud, est dans la fenêtre « Détails » (07/11). #}
         <ul class="proj-snapshot-list">
-            {% for c in p.snapshot %}
+            {% for c in p.snapshot[:5] %}
             <li>
                 {{ c.hostname }}
                 <span class="card-vmid">#{{ c.vmid }}</span>
@@ -158,38 +221,35 @@
             </li>
             {% endfor %}
         </ul>
+        {% if count > 5 %}
+        <button type="button" class="btn-text-action proj-more" onclick="openProject({{ p.id }}, 'containers')">{{ _('projects.more', n=count - 5) }}</button>
+        {% endif %}
 
-        <div class="card-actions">
-            <div class="card-actions-primary">
-                {% if can_open_workspace(p.id) %}
-                <a class="btn btn-blue" href="/workspace/{{ p.id }}"
+        {# Actions rangées en trois étages (07/11, maquette B) : l'action principale, seule colorée
+           (Démarrer OU Arrêter selon les conteneurs vivants) ; les réglages du projet, neutres ;
+           Exporter et Supprimer à part. #}
+        {% set busy = p.state in ('loading', 'unloading') %}
+        <div class="proj-acts">
+            <div class="proj-acts-main">
+                {% if has_perm('projects.manage') %}
+                {% if lv %}
+                <button class="btn btn-orange" onclick="arreterProjet({{ p.id }}, '{{ p.name }}', {{ lv.n }})"{% if busy %} disabled{% endif %}
+                        aria-label="{{ _('projects.stop_aria', name=p.name) }}">■ {{ _('projects.stop') }}</button>
+                {% else %}
+                <button class="btn btn-green" onclick="demarrerProjet({{ p.id }}, '{{ p.name }}')"{% if busy %} disabled{% endif %}
+                        aria-label="{{ _('projects.start_aria', name=p.name) }}">▶ {{ _('projects.start') }}</button>
+                {% endif %}
+                {% endif %}
+                {% if lv and can_open_workspace(p.id) %}
+                <a class="btn proj-acts-ws" href="/workspace/{{ p.id }}"
                    aria-label="{{ _('projects.open_workspace_aria', name=p.name) }}">{{ _('projects.open_workspace') }}</a>
                 {% endif %}
-                {% if has_perm('projects.manage') %}
-                <button class="btn btn-green" onclick="restaurerProjet({{ p.id }}, '{{ p.name }}')"
-                        aria-label="{{ _('projects.restore_aria', name=p.name) }}">{{ _('projects.restore') }}</button>
-                <button class="btn btn-orange" onclick="detruireContainersProjet({{ p.id }}, '{{ p.name }}')"
-                        aria-label="{{ _('projects.destroy_aria', name=p.name) }}">{{ _('projects.destroy') }}</button>
-                {% endif %}
-                <button class="btn btn-blue" onclick="exporterProjet({{ p.id }})"
-                        aria-label="{{ _('projects.export_aria', name=p.name) }}">{{ _('projects.export') }}</button>
-                {% if has_perm('projects.manage') %}
-                <button class="btn" onclick="toggleMembres({{ p.id }})">{{ _('projects.members') }}</button>
-                <button class="btn" onclick="toggleVersions({{ p.id }})">{{ _('projects.versions') }}</button>
-                <button class="btn" onclick="toggleComposition({{ p.id }})">{{ _('projects.compo') }}</button>
-                <button class="btn" onclick="togglePorts({{ p.id }})">{{ _('projects.ports') }}</button>
-                {% endif %}
+                {# Tout le reste (fiche, composition, ports, ressources, membres, versions, exporter,
+                   supprimer) est dans la fenêtre du projet : un seul bouton pour l'ouvrir (07/11). #}
+                <button class="btn proj-acts-open" onclick="openProject({{ p.id }}, 'info')"
+                        aria-label="{{ _('projects.open_win_aria', name=p.name) }}">{{ _('projects.open_win') }}</button>
             </div>
-            {% if has_perm('projects.manage') %}
-            <button class="btn btn-red" onclick="supprimerProjet({{ p.id }}, '{{ p.name }}')"
-                    aria-label="{{ _('projects.delete_aria', name=p.name) }}">{{ _('projects.delete') }}</button>
-            {% endif %}
         </div>
-        {% if has_perm('projects.manage') %}
-        <div class="proj-members" id="proj-members-{{ p.id }}" hidden></div>
-        <div class="proj-versions" id="proj-versions-{{ p.id }}" hidden></div>
-        <div class="proj-compo" id="proj-compo-{{ p.id }}" hidden></div>
-        {% endif %}
     </article>
     {% endfor %}
     {% if not projects %}
@@ -214,18 +274,18 @@
                 box-shadow:0 12px 40px rgba(0,0,0,0.4)">
         <div style="display:flex; align-items:center; gap:var(--space-3); padding:var(--space-3) var(--space-4);
                     border-bottom:1px solid var(--border)">
-            <h3 id="restore-title" style="margin:0; flex:1">{{ _('projects.restoring') }}</h3>
-            <button class="btn btn-red"   id="restore-abort-btn" onclick="restoreInterrompre()">{{ _('projects.abort') }}</button>
-            <button class="btn btn-ghost" id="restore-close-btn" onclick="restoreFermer()" style="display:none">{{ _('projects.close') }}</button>
+            <h3 id="restore-title" data-r="title" style="margin:0; flex:1">{{ _('projects.restoring') }}</h3>
+            <button class="btn btn-red"   id="restore-abort-btn" data-r="abort" onclick="restoreInterrompre()">{{ _('projects.abort') }}</button>
+            <button class="btn btn-ghost" id="restore-close-btn" data-r="close" onclick="restoreFermer()" style="display:none">{{ _('projects.close') }}</button>
         </div>
-        <div id="restore-log"
+        <div id="restore-log" data-r="log"
              style="flex:1; overflow-y:auto; margin:0; padding:var(--space-3) var(--space-4);
                     font-size:0.82em; font-family:var(--font-mono, monospace); white-space:pre-wrap;
                     color:var(--text)"></div>
-        <div id="restore-retry-bar" style="display:none; padding:var(--space-3) var(--space-4);
+        <div id="restore-retry-bar" data-r="retry-bar" style="display:none; padding:var(--space-3) var(--space-4);
                     border-top:1px solid var(--border); align-items:center; gap:var(--space-3)">
-            <span id="restore-retry-msg" class="meta" style="flex:1"></span>
-            <button class="btn btn-orange" id="restore-retry-btn" onclick="restoreReessayer()">{{ _('projects.retry') }}</button>
+            <span id="restore-retry-msg" data-r="retry-msg" class="meta" style="flex:1"></span>
+            <button class="btn btn-orange" id="restore-retry-btn" data-r="retry-btn" onclick="restoreReessayer()">{{ _('projects.retry') }}</button>
         </div>
     </div>
 </div>
@@ -254,6 +314,90 @@
     </form>
 </dialog>
 <style>
+#proj-grid > article[hidden] { display:none; }
+/* Assistant de création en fenêtre (07/11). */
+#proj-create-modal[hidden] { display:none; }
+.modal-card.proj-create-card { max-width: 980px; width: 94vw; }
+.proj-picker-taken { display:inline-flex; align-items:center; gap:var(--space-2); margin:var(--space-2) 0; }
+/* Actions d'une tuile projet, maquette B (07/11). */
+.proj-acts { display:flex; flex-direction:column; gap:var(--space-3); border-top:1px solid var(--border-soft); margin-top:var(--space-1); padding-top:var(--space-3); }
+.proj-acts-main { display:flex; flex-wrap:wrap; gap:6px; }
+.proj-acts-open { margin-left:auto !important; }
+.proj-acts .btn { margin:0; }
+.proj-acts-ws { border-color:var(--accent); color:var(--accent); background:transparent; }
+.proj-acts-end { display:flex; align-items:center; gap:var(--space-2); border-top:1px solid var(--border-soft); padding-top:var(--space-3); margin-top:var(--space-5); }
+.proj-acts-del { margin-left:auto !important; padding:5px 10px; min-height:28px; font-size:.8em; background:transparent;
+                 border-color:var(--status-stopped-fg); color:var(--status-stopped-fg); }
+/* Fenêtre « Démarrer » (07/11). */
+.modal-card.proj-start-card { max-width: 640px; display:flex; flex-direction:column; gap:var(--space-3); }
+.proj-start-box { padding:var(--space-2) var(--space-3); border-radius:8px; border:1px solid var(--border-soft); }
+.proj-start-box.ok { border-color:var(--status-running-fg); }
+.proj-start-box.ko { border-color:var(--status-warning-fg); }
+.proj-start-box.ko > b { color:var(--status-warning-fg); }
+.proj-start-grid { display:grid; grid-template-columns:12em 1fr 1fr; gap:4px var(--space-3); margin:var(--space-2) 0; }
+.proj-start-grid .mono { font-family:var(--font-mono); }
+.proj-start-grid .ko, .proj-start-list.ko { color:var(--status-stopped-fg); }
+.proj-start-list { margin:0; padding-left:1.2em; }
+.proj-start-id { border:1px solid var(--border-soft); border-radius:8px; padding:var(--space-2) var(--space-3); display:flex; flex-direction:column; gap:4px; margin:0; }
+.proj-start-mode { display:flex; gap:var(--space-4); }
+.proj-start-nodes > div { margin:2px 0; }
+.proj-start-nodes .ko { color:var(--status-warning-fg); }
+.proj-start-pick { width:100%; border-collapse:collapse; font-size:.9em; }
+.proj-start-pick td { padding:3px 6px; border-bottom:1px solid var(--border-soft); }
+.proj-start-pick .mono { font-family:var(--font-mono); text-align:right; }
+.modal-card.proj-start-card { max-height:90vh; overflow:auto; }
+.proj-start-foot { display:flex; align-items:center; gap:var(--space-2); }
+/* Tuile : actions collées en bas, pour que les rangées s'alignent ; détails en fenêtre (07/11). */
+.card[id^="proj-"] { display:flex; flex-direction:column; }
+.card[id^="proj-"] .proj-acts { margin-top:auto; }
+.proj-more { align-self:flex-start; margin:0 0 var(--space-3); }
+/* Fenêtre du projet à onglets (07/11) : Détails, Conteneurs, puis les réglages du projet. */
+/* Taille FIXE et accrochée en haut : les onglets ne bougent pas d'un onglet à l'autre, seul le
+   contenu défile (demande de Cyril, 07/11 : la fenêtre centrée sautait à chaque onglet). */
+#proj-modal { align-items: flex-start; padding-top: 5vh; }
+.modal-card.proj-win-card { max-width: 1280px; width: 94vw; height: 88vh; max-height: 88vh;
+    display: flex; flex-direction: column; overflow: hidden; }
+.proj-win-card .modal-head, .proj-win-card .tabs { flex-shrink: 0; }
+.proj-win-card .tabs { margin-bottom: var(--space-4); flex-wrap: wrap; }
+#proj-win-panel { flex: 1; min-height: 0; overflow: auto; }
+.proj-win-head { display:flex; align-items:center; gap:var(--space-2); margin-left:auto; }
+.proj-win-card .modal-head h3 { margin-right:var(--space-3) !important; }
+.proj-run { flex-shrink:0; border:1px solid var(--border); border-radius:var(--radius-small); padding:var(--space-2) var(--space-3);
+    margin:0 0 var(--space-3); display:flex; flex-direction:column; gap:var(--space-2); }
+.proj-run-head { display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap; }
+.proj-run-head [data-prog] { margin-right:auto; }
+.proj-run-log { max-height:12em; overflow:auto; margin:var(--space-2) 0 0; font-size:.8em; white-space:pre-wrap; }
+.proj-run-retry { align-items:center; gap:var(--space-3); }
+.proj-ver-name { display:flex; gap:var(--space-2); align-items:center; margin:0 0 var(--space-4); }
+.proj-ver-name input { width:18em; max-width:100%; }
+.proj-ver-acts { display:flex; gap:6px; justify-content:flex-end; }
+.proj-sheet { display:grid; grid-template-columns: minmax(11em, max-content) 1fr; gap:6px 16px; margin:var(--space-4) 0 0; }
+.proj-sheet dt { color:var(--text-muted); }
+.proj-sheet dd { margin:0; }
+.proj-info-form { display:flex; flex-direction:column; gap:var(--space-2); max-width:760px; }
+.proj-info-form textarea { width:100%; min-height:5em; resize:vertical; }
+.proj-info-text { white-space:pre-wrap; margin:0; }
+.proj-onair-row { display:flex; align-items:center; gap:var(--space-2); flex-wrap:wrap; margin-top:var(--space-2); }
+.proj-start-onair { display:flex; gap:var(--space-2); align-items:flex-start; margin:var(--space-3) 0; }
+.proj-desc { margin:0; color:var(--text-muted); font-size:.9em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.proj-tags { display:flex; flex-wrap:wrap; gap:4px; }
+.proj-tag { font-size:.78em; padding:1px 8px; border-radius:999px; border:1px solid var(--border); color:var(--text-muted); }
+.proj-create-desc textarea { width:100%; resize:vertical; }
+.proj-details-table { width:100%; border-collapse:collapse; font-size:.9em; }
+.proj-details-table th { text-align:left; color:var(--text-muted); font-weight:500; padding:4px 8px; border-bottom:1px solid var(--border); }
+.proj-details-table td { padding:5px 8px; border-bottom:1px solid var(--border-soft); }
+.proj-details-table .mono { font-family:var(--font-mono); }
+/* Projets en service (en tête de page, 07/11). */
+/* Même fond, contour et ombre qu'une carte : la pastille doit se lire comme un projet (07/11). */
+.proj-live-list { display:flex; flex-wrap:wrap; gap:var(--space-3); }
+.proj-live-item { display:flex; flex-direction:column; align-items:flex-start; gap:6px; min-width:14em;
+                  padding:var(--space-3) var(--space-4); background:var(--bg-elev); border:1px solid var(--border);
+                  border-radius:var(--radius); box-shadow:var(--shadow); color:inherit; text-decoration:none; }
+.proj-live-item:hover, .proj-live-item:focus-visible { border-color:var(--accent); }
+.proj-live-state { display:flex; align-items:center; gap:var(--space-2); }
+.proj-live-name { font-weight:600; font-size:1.1em; color:var(--text-strong); }
+.card[id^="proj-"] { scroll-margin-top:var(--space-4); }
+.card[id^="proj-"]:target { outline:2px solid var(--accent); outline-offset:2px; }
 .proj-media-dlg { margin:auto; max-width:34rem; padding:1.2rem 1.4rem; border-radius:10px; }
 .proj-media-dlg h3 { margin-bottom:.6rem; }
 .proj-media-dlg label { display:flex; flex-direction:column; gap:.3rem; margin:.6rem 0; }
@@ -284,6 +428,75 @@
 .proj-port-pv.dup { border-color:var(--status-stopped-fg); color:var(--status-stopped-fg); }
 .proj-port-why { margin:0; color:var(--status-stopped-fg); font-size:.9em; }
 .proj-port-help { margin:0; }
+/* Project resources: same overlay window as the ports (2026-11-07). */
+.modal-card.proj-res-card { max-width: 1100px; width: 94vw; }
+.proj-res-verdict { margin:0 0 var(--space-2); padding:var(--space-2) var(--space-3); border-radius:8px; border:1px solid var(--border-soft); }
+.proj-res-verdict.ok { border-color:var(--status-running-fg); }
+.proj-res-verdict.ko { border-color:var(--status-warn-fg); }
+.proj-res-verdict p { margin:var(--space-1) 0 0; }
+.proj-res-calibrate { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; margin:0 0 var(--space-3); }
+.proj-res-schema { border:1px solid var(--border-soft); border-radius:10px; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-2); margin-bottom:var(--space-3); }
+.proj-node { display:grid; grid-template-columns:9em minmax(0,1fr) 12em; gap:var(--space-3); align-items:center; }
+.proj-node-name { display:flex; flex-direction:column; }
+.proj-node-cells { display:flex; flex-wrap:wrap; gap:3px; }
+.proj-node-free { text-align:right; font-size:.85em; color:var(--text-muted); font-family:var(--font-mono, monospace); }
+.proj-node-free.chg { color:var(--status-warn-fg); }
+.proj-node-free.ko { color:var(--status-stopped-fg); }
+.proj-core { display:inline-block; width:16px; height:16px; border-radius:3px; box-sizing:border-box; flex:none; vertical-align:middle; }
+.proj-core-full { background:var(--c); }
+.proj-core-taken { border:2px solid var(--c); background:repeating-linear-gradient(45deg, var(--c) 0 3px, transparent 3px 7px); }
+.proj-core-leaving { border:2px dotted var(--c); opacity:.6; }
+/* Tints derived from the TEXT colour, not the border: on a dark theme --border-soft gave black
+   on black (2026-11-07). Same readability on the light theme, no hard-coded value. */
+.proj-core-other { background:color-mix(in srgb, var(--text-muted) 55%, transparent); }
+.proj-core-engine { background:color-mix(in srgb, var(--status-warn-fg) 60%, transparent); }
+.proj-core-io { background:color-mix(in srgb, var(--status-info-fg) 55%, transparent); }
+.proj-core-ht_blocked { border:2px solid color-mix(in srgb, var(--text-muted) 70%, transparent);
+  background:repeating-linear-gradient(90deg, color-mix(in srgb, var(--text-muted) 60%, transparent) 0 1px, transparent 1px 4px); }
+.proj-core-free { border:2px solid color-mix(in srgb, var(--text-muted) 75%, transparent); }
+/* Highlight brings forward, never dims the rest (07/11: dimming hid too much). */
+#proj-res-body .proj-node-cells .proj-core.hl { outline:2px solid var(--text-strong); outline-offset:1px; transform:scale(1.25); position:relative; z-index:1; box-shadow:0 0 0 4px color-mix(in srgb, var(--c, var(--text-strong)) 35%, transparent); }
+#proj-res-body .proj-node-cells .proj-core { transition:transform .08s; }
+#proj-res-body tr[data-vmid].hl { background:color-mix(in srgb, var(--text-muted) 22%, transparent); box-shadow:inset 3px 0 0 var(--text-strong); }
+#proj-res-body tr[data-vmid], #proj-res-body .proj-core[data-vmid] { cursor:pointer; }
+.proj-core-empty { border:1px dashed var(--border-soft); }
+/* Drag a container onto another node (2026-11-07): pointer events, so mouse, pen and touch alike.
+   `touch-action:none` only on what can be dragged — the rest of the window still scrolls on iPad. */
+#proj-res-body [data-drag] { touch-action:none; cursor:grab; }
+.proj-res-grip { white-space:nowrap; }
+.proj-res-grip .proj-res-grip-dots { color:var(--text-muted); margin-right:4px; }
+.proj-res-drag-hint { margin:0; font-size:.85em; }
+#proj-res-body.res-dragging, #proj-res-body.res-dragging * { cursor:grabbing; user-select:none; }
+#proj-res-body.res-dragging .proj-node { border-radius:8px; outline:1px dashed var(--border-soft); outline-offset:2px; }
+#proj-res-body.res-dragging .proj-node.drop-ok { outline:2px solid var(--btn-purple, #7c3aed); background:color-mix(in srgb, var(--btn-purple, #7c3aed) 10%, transparent); }
+#proj-res-body.res-dragging .proj-node.drop-same { outline-style:dotted; }
+.proj-res-ghost { position:fixed; z-index:10000; pointer-events:none; padding:2px 8px; border-radius:6px; font-size:.85em;
+  background:var(--bg-elevated, var(--bg, #fff)); color:var(--text-strong); border:2px solid var(--c, var(--text-muted)); box-shadow:0 2px 8px rgba(0,0,0,.25); }
+.proj-res-legend { display:flex; flex-wrap:wrap; gap:var(--space-3); font-size:.85em; padding-top:var(--space-2); border-top:1px solid var(--border-soft); }
+.proj-res-legend > span { display:inline-flex; gap:6px; align-items:center; }
+.proj-res-plan { border:1px solid var(--btn-purple, #7c3aed); border-radius:10px; padding:var(--space-3); margin-bottom:var(--space-3); display:flex; flex-direction:column; gap:var(--space-2); }
+.proj-res-plan-head { display:flex; gap:var(--space-2); align-items:center; }
+.proj-res-plan-head h4 { margin:0; flex:1; }
+.proj-res-plan-row { display:flex; gap:var(--space-2); align-items:center; }
+.proj-res-plan-row > span:nth-child(2) { flex:1; }
+.proj-res-cost { font-size:.85em; }
+.proj-res-cost.hot { color:var(--status-running-fg); }
+.proj-res-cost.cut { color:var(--status-stopped-fg); }
+.proj-res-sugg { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; justify-content:space-between; padding:var(--space-2) var(--space-3); border:1px dashed var(--border-soft); border-radius:8px; margin-bottom:var(--space-2); }
+.proj-res-filters { display:flex; flex-wrap:wrap; gap:var(--space-2); align-items:center; margin:var(--space-3) 0 var(--space-2); }
+.proj-res-table { overflow-x:auto; border:1px solid var(--border-soft); border-radius:8px; }
+.proj-res-table table { width:100%; border-collapse:collapse; }
+.proj-res-table th { text-align:left; font-size:.72em; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted); padding:var(--space-2); }
+.proj-res-table td { padding:var(--space-1) var(--space-2); border-top:1px solid var(--border-soft); white-space:nowrap; }
+.proj-res-table input[type=number] { width:4.5em; }
+.proj-res-pending { background:color-mix(in srgb, var(--btn-purple, #7c3aed) 10%, transparent); }
+.proj-res-moved { border-color:var(--status-warn-fg); }
+.proj-res-usage { display:flex; gap:var(--space-2); align-items:center; min-width:16em; }
+.proj-res-bar { position:relative; flex:1; height:8px; border-radius:4px; background:var(--border-soft); min-width:6em; }
+.proj-res-bar i { position:absolute; top:0; bottom:0; left:0; border-radius:4px; }
+.proj-res-bar i.r { background:color-mix(in srgb, var(--status-running-fg) 45%, transparent); }
+.proj-res-bar i.c { top:2px; bottom:2px; background:var(--status-warn-fg); }
+.proj-res-bar i.p { width:2px; top:-3px; bottom:-3px; background:var(--text-strong, #fff); }
 @media (max-width: 640px) { .proj-port-row { grid-template-columns:1fr auto; } .proj-port-bind { grid-column:1 / -1; } }
 </style>
 {% endblock %}
@@ -291,15 +504,571 @@
 {% block scripts %}
 <script src="/static/scripts.js?v={{ asset_v('scripts.js') }}"></script>
 <script>
+const RES_CAN_DEPLOY = {{ has_perm('containers.deploy') | tojson }};
+// Projets dont des conteneurs tournent (nom), pour la fenêtre « Démarrer ».
+const PROJ_LIVE_NAMES = {{ projects | selectattr('id', 'in', project_live) | map(attribute='name') | list | tojson }};
 // ─── Sélecteur de containers (filtre type + recherche) ──────────
+function openProjCreate() {
+    const ov = document.getElementById('proj-create-modal');
+    ov._opener = document.activeElement;
+    ov.hidden = false;
+    document.addEventListener('keydown', _projCreateEsc);
+    filterProjList();
+    document.getElementById('proj_name').focus();
+}
+function closeProjCreate() {
+    const ov = document.getElementById('proj-create-modal');
+    if (!ov || ov.hidden) return;
+    ov.hidden = true;
+    document.removeEventListener('keydown', _projCreateEsc);
+    if (ov._opener && ov._opener.focus) ov._opener.focus();
+}
+function _projCreateEsc(e) { if (e.key === 'Escape') closeProjCreate(); }
+document.getElementById('proj-create-modal')?.addEventListener('mousedown', e => {
+    if (e.target === e.currentTarget) closeProjCreate();
+});
+// « Démarrer » : UNE fenêtre au lieu de la chaîne alert/confirm de restaurerProjet (07/11) — ressources,
+// conflits de noms et de flux, renumérotations, copie ou déplacement. Un pré-vol qui refuse (capacité,
+// conflit) grise « Démarrer » : le refus reste celui du serveur, la fenêtre l'explique.
+async function demarrerProjet(pid, name) {
+    let plan = null;
+    try {
+        const r = await fetch('/api/projects/' + pid + '/restore_preview');
+        if (r.ok) plan = await r.json();
+    } catch (e) { /* plan inconnu : on le dit, le serveur revérifie au lancement */ }
+    closeStart();
+    const t = window.t, E = _mEsc;
+    const issues = (plan && plan.capacity_issues) || [];
+    const res = issues.length
+        ? `<div class="proj-start-box ko"><b>${E(t('projects.start_res_short'))}</b>
+             <div class="proj-start-grid"><span></span><span class="meta">${E(t('projects.start_need'))}</span><span class="meta">${E(t('projects.start_free'))}</span>
+             ${issues.map(i => `<span>${E(t('projects.start_kind.' + i.kind) || i.kind)}</span>
+                 <span class="mono">${E(String(i.need))}</span><span class="mono ko">${E(String(i.free))}</span>`).join('')}</div>
+             ${PROJ_LIVE_NAMES.length ? `<p class="meta">${E(t('projects.start_running').replace('{list}', PROJ_LIVE_NAMES.join(', ')))}</p>` : ''}</div>`
+        : plan ? `<div class="proj-start-box ok">✓ ${E(t('projects.start_res_ok'))}</div>`
+        : `<div class="proj-start-box">${E(t('projects.start_unknown'))}</div>`;
+    const conflicts = plan ? [...(plan.hostname_conflicts || []).map(h => t('js.restore.hostname_used') + ' : ' + h),
+                              ...(plan.shm_conflicts || []).map(h => t('js.restore.shm_used') + ' : ' + h)] : [];
+    const names = !plan ? '' : conflicts.length
+        ? `<ul class="proj-start-list ko">${conflicts.map(c => `<li>${E(c)}</li>`).join('')}</ul>`
+        : `<p>✓ ${E(t('projects.start_no_conflict'))}</p>`;
+    const remaps = (plan && plan.remaps && plan.remaps.length)
+        ? `<p class="meta">${E(t('projects.start_remaps').replace('{n}', plan.remaps.length)
+              .replace('{list}', plan.remaps.map(r => r.hostname).join(', ')))}</p>` : '';
+    const ok = !plan || plan.can_restore;
+    const pl = plan && plan.placement;
+    const oa = plan && plan.onair;   // on-air state saved for this project: offered, unticked (08/11)
+    const ov = document.createElement('div');
+    ov.id = 'proj-start-modal';
+    ov.className = 'modal-overlay';
+    ov.innerHTML = `
+      <div class="modal-card proj-start-card" role="dialog" aria-modal="true" aria-labelledby="proj-start-title">
+        <div class="modal-head">
+          <h3 id="proj-start-title" style="margin:0">${E(t('projects.start_title').replace('{name}', name))}</h3>
+          <button type="button" class="btn" data-close aria-label="${E(t('projects.close'))}">✕</button>
+        </div>
+        ${res}
+        <h4 class="proj-ports-h">${E(t('projects.start_names'))}</h4>
+        ${names}${remaps}
+        ${pl && pl.containers.length ? `
+        <h4 class="proj-ports-h">${E(t('projects.start_placement'))}</h4>
+        <div class="proj-start-mode" role="radiogroup">
+          <label><input type="radio" name="proj-start-pl" value="auto" checked> ${E(t('projects.start_pl_auto'))}</label>
+          <label><input type="radio" name="proj-start-pl" value="pick"> ${E(t('projects.start_pl_pick'))}</label>
+        </div>
+        <div class="proj-start-nodes" data-nodes></div>
+        <table class="proj-start-pick" data-pick hidden><tbody>
+          ${pl.containers.map(c => `<tr><td>${E(c.hostname || c.key)}</td><td class="meta">${E(c.type)}</td>
+            <td class="mono">${E(String(c.cores))}</td>
+            <td><select data-key="${E(c.key)}" aria-label="${E(t('projects.start_pl_node').replace('{h}', c.hostname || c.key))}">
+              ${pl.nodes.map(n => `<option value="${n.id}"${n.id === c.node_id ? ' selected' : ''}>${E(n.name)}</option>`).join('')}
+            </select></td></tr>`).join('')}
+        </tbody></table>` : ''}
+        ${oa && oa.saved ? `
+        <label class="proj-start-onair"><input type="checkbox" data-onair> <span><b>${E(t('projects.start_onair'))}</b>
+          <span class="meta">${E(t('projects.start_onair_at').replace('{at}', _dt(oa.latest)).replace('{n}', oa.saved))}</span><br>
+          <span class="meta">${E(t('projects.start_onair_help'))}</span></span></label>` : ''}
+        <fieldset class="proj-start-id"><legend>${E(t('projects.start_identity'))}</legend>
+          <label><input type="radio" name="proj-start-id" value="copy" checked> ${E(t('projects.start_copy'))}</label>
+          <label><input type="radio" name="proj-start-id" value="move"> ${E(t('projects.start_move'))}</label>
+        </fieldset>
+        <div class="proj-start-foot">
+          <button type="button" class="btn-text-action" data-res>${E(t('projects.res'))}…</button>
+          <span style="flex:1"></span>
+          <button type="button" class="btn" data-close>${E(t('projects.cancel'))}</button>
+          <button type="button" class="btn btn-green" data-go ${ok ? '' : 'disabled'}>▶ ${E(t('projects.start'))}</button>
+        </div>
+      </div>`;
+    ov._opener = document.activeElement;
+    // Placement : résumé par nœud (besoin / libre), recalculé sur les choix du mode « Choisir ».
+    const picking = () => ov.querySelector('input[name="proj-start-pl"]:checked')?.value === 'pick';
+    const drawNodes = () => {
+        const box = ov.querySelector('[data-nodes]');
+        if (!box) return;
+        const need = {};
+        pl.containers.forEach(c => {
+            const sel = ov.querySelector(`select[data-key="${CSS.escape(c.key)}"]`);
+            const nid = picking() && sel ? Number(sel.value) : c.node_id;
+            if (nid != null) need[nid] = (need[nid] || 0) + c.cores;
+        });
+        box.innerHTML = pl.nodes.filter(n => need[n.id]).map(n => {
+            const ok = need[n.id] <= n.free;
+            return `<div class="${ok ? '' : 'ko'}">${ok ? '✓' : '⚠'} ${E(t('projects.start_pl_line')
+                .replace('{node}', n.name).replace('{n}', pl.containers.filter(c => {
+                    const sel = ov.querySelector(`select[data-key="${CSS.escape(c.key)}"]`);
+                    return (picking() && sel ? Number(sel.value) : c.node_id) === n.id; }).length)
+                .replace('{need}', need[n.id].toFixed(1)).replace('{free}', n.free))}</div>`;
+        }).join('') || `<div class="ko">⚠ ${E(t('projects.start_pl_none'))}</div>`;
+    };
+    if (pl && pl.containers.length) {
+        ov.querySelectorAll('input[name="proj-start-pl"]').forEach(r => r.onchange = () => {
+            ov.querySelector('[data-pick]').hidden = !picking(); drawNodes(); });
+        ov.querySelectorAll('select[data-key]').forEach(sel => sel.onchange = drawNodes);
+        drawNodes();
+    }
+    ov.addEventListener('mousedown', e => { if (e.target === ov) closeStart(); });
+    ov.querySelectorAll('[data-close]').forEach(b => b.onclick = closeStart);
+    ov.querySelector('[data-res]').onclick = () => { closeStart(); openResources(pid); };
+    ov.querySelector('[data-go]').onclick = () => {
+        const move = ov.querySelector('input[name="proj-start-id"]:checked').value === 'move';
+        let placement = null;
+        if (pl && picking()) {
+            placement = {};
+            ov.querySelectorAll('select[data-key]').forEach(sel => placement[sel.dataset.key] = Number(sel.value));
+        }
+        const onair = !!ov.querySelector('[data-onair]')?.checked;
+        closeStart();
+        _projShow(pid, 'containers');   // on regarde les conteneurs démarrer
+        _restoreRun(pid, name, null, move, placement, onair);
+    };
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', _startEsc);
+    ov.querySelector(ok ? '[data-go]' : '[data-close]').focus();
+}
+function _startEsc(e) { if (e.key === 'Escape') closeStart(); }
+function closeStart() {
+    const ov = document.getElementById('proj-start-modal');
+    document.removeEventListener('keydown', _startEsc);
+    if (!ov) return;
+    const opener = ov._opener;
+    ov.remove();
+    if (opener && opener.focus) opener.focus();
+}
+// Uptime d'un projet en marche : « depuis 3 j 4 h », recalculé chaque minute (07/11).
+function _projUptime() {
+    const now = Date.now() / 1000;
+    document.querySelectorAll('.proj-uptime[data-since]').forEach(el => {
+        const s = Math.max(0, now - Number(el.dataset.since));
+        const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+        const txt = d ? `${d} ${window.t('projects.uptime_d')} ${h} ${window.t('projects.uptime_h')}`
+                  : h ? `${h} ${window.t('projects.uptime_h')} ${m} ${window.t('projects.uptime_min')}`
+                  : `${m} ${window.t('projects.uptime_min')}`;
+        el.textContent = window.t('projects.uptime').replace('{d}', txt);
+    });
+}
+_projUptime();
+setInterval(_projUptime, 60000);
+// ─── Fenêtre du projet, à onglets (07/11) ─────────────────────────────────────────────────────
+// Une seule fenêtre pour tout ce qui concerne un projet. Chaque onglet se dessine dans la zone que
+// son code attendait déjà (proj-compo-<pid>, proj-ports-<pid>, proj-res-body…) : Ports et
+// Ressources sont les mêmes qu'avant, seule leur fenêtre a changé. L'onglet ouvert est dans
+// l'adresse (#projet-<pid>-<onglet>) : un rechargement (après un rattachement, un enregistrement)
+// rouvre la fenêtre au même endroit.
+const PROJ_SHEETS = JSON.parse(document.getElementById('proj-sheets')?.textContent || '{}');
+const PROJ_CAN_MANAGE = {{ 'true' if has_perm('projects.manage') else 'false' }};
+const PROJ_TABS = [
+    {id: 'info', label: 'projects.tab_info'},
+    {id: 'containers', label: 'projects.tab_containers'},
+    {id: 'ports', label: 'projects.ports', manage: true},
+    {id: 'res', label: 'projects.res'},
+    {id: 'members', label: 'projects.members', manage: true},
+    {id: 'versions', label: 'projects.versions', manage: true},
+].filter(tb => !tb.manage || PROJ_CAN_MANAGE);
+function _projName(pid) {
+    const ids = JSON.parse(document.getElementById('proj-ids')?.textContent || '[]');
+    const names = JSON.parse(document.getElementById('proj-names')?.textContent || '[]');
+    const i = ids.indexOf(pid);
+    return i >= 0 ? names[i] : '#' + pid;
+}
+function _dt(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return d.toLocaleString(document.documentElement.lang || undefined, {dateStyle: 'medium', timeStyle: 'short'});
+}
+document.querySelectorAll('time[data-dt]').forEach(el => { el.textContent = _dt(el.dataset.dt); });
+
+function openProject(pid, tab) {
+    closeProject(true);
+    const ov = document.createElement('div');
+    ov.id = 'proj-modal';
+    ov.className = 'modal-overlay';
+    ov.dataset.pid = pid;
+    ov.innerHTML = `<div class="modal-card proj-win-card" role="dialog" aria-modal="true" aria-labelledby="proj-win-title">
+        <div class="modal-head"><h3 id="proj-win-title" style="margin:0">${_mEsc(_projName(pid))}</h3>
+          <span class="proj-win-head"><span data-state></span><span data-act></span>
+          <button type="button" class="btn" data-close aria-label="${_mEsc(t('projects.close'))}">✕</button></span></div>
+        <div class="tabs tabs-line" role="tablist">${PROJ_TABS.map(tb =>
+            `<button type="button" class="tab" role="tab" id="proj-tab-${tb.id}" data-tab="${tb.id}" aria-controls="proj-win-panel" aria-selected="false" data-label="${_mEsc(t(tb.label))}"><span>${_mEsc(t(tb.label))}</span></button>`).join('')}</div>
+        <div id="proj-win-panel" role="tabpanel"></div></div>`;
+    ov._opener = document.activeElement;
+    ov.querySelector('[data-close]').onclick = closeProject;
+    ov.addEventListener('mousedown', e => { if (e.target === ov) closeProject(); });
+    ov.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => projTab(b.dataset.tab));
+    // Flèches gauche/droite entre onglets (motif ARIA des onglets).
+    ov.querySelector('[role=tablist]').addEventListener('keydown', e => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const bs = [...ov.querySelectorAll('[data-tab]')];
+        const i = bs.indexOf(document.activeElement);
+        if (i < 0) return;
+        const n = bs[(i + (e.key === 'ArrowRight' ? 1 : bs.length - 1)) % bs.length];
+        n.focus(); projTab(n.dataset.tab);
+    });
+    document.body.appendChild(ov);
+    document.addEventListener('keydown', _projEsc);
+    // Un démarrage en cours de CE projet : son bandeau revient sous les onglets.
+    if (_projRun && _projRun.pid === pid) ov.querySelector('[role=tablist]').after(_projRun.el);
+    _projHead(pid);
+    _projPollStart(pid);
+    if (tab === 'compo') tab = 'containers';   // ancien onglet Composition, fondu dans Conteneurs (07/11)
+    projTab(PROJ_TABS.some(tb => tb.id === tab) ? tab : 'info');
+}
+// Échap ferme la fenêtre du DESSUS seulement (la fenêtre Démarrer s'ouvre par-dessus celle du projet).
+function _projEsc(e) {
+    if (e.key !== 'Escape') return;
+    const tops = document.querySelectorAll('.modal-overlay');
+    if (tops.length && tops[tops.length - 1].id !== 'proj-modal') return;
+    closeProject();
+}
+// Montrer un onglet du projet : la fenêtre ouverte sur ce projet change d'onglet, sinon elle s'ouvre.
+function _projShow(pid, tab) {
+    const ov = document.getElementById('proj-modal');
+    if (ov && Number(ov.dataset.pid) === pid) projTab(tab); else openProject(pid, tab);
+}
+function closeProject(reopening) {
+    clearInterval(_PROJ_RES.timer);
+    clearTimeout(_projPoll.timer);
+    _projPoll.pid = null;
+    document.removeEventListener('keydown', _projEsc);
+    const ov = document.getElementById('proj-modal');
+    if (!ov) return;
+    const opener = ov._opener;
+    ov.remove();
+    if (/^#projet-\d+-/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+    // Un démarrage ou un arrêt a eu lieu : les tuiles (badge, uptime, bouton) se relisent. Pas pendant
+    // un démarrage encore en cours : recharger couperait son journal (le démarrage, lui, continue).
+    if (!reopening && _projDirty && !(_restoreCtx && _restoreCtx.running)) { location.reload(); return; }
+    if (opener && opener.focus) opener.focus();
+}
+
+// ─── Démarrer / arrêter depuis la fenêtre, et les voir faire (07/11) ──────────────────────────
+// L'onglet Conteneurs suit les états en direct (/api/containers) ; le journal du démarrage est dans
+// un bandeau sous les onglets (le même code qu'avant : _restoreRun, via projRunBlock).
+let _projRun = null;            // {pid, el} : bandeau du démarrage en cours ou du dernier
+let _projDirty = false;         // un démarrage ou un arrêt a eu lieu : recharger à la fermeture
+const _projStopping = new Set();
+const _projPoll = {pid: null, timer: null, filter: null};
+const PROJ_NODE_NAMES = {{ node_names | tojson }};
+
+function projRunBlock(pid) {
+    const ov = document.getElementById('proj-modal');
+    if (!ov || Number(ov.dataset.pid) !== pid) return null;
+    if (!_projRun || _projRun.pid !== pid) {
+        const el = document.createElement('div');
+        el.className = 'proj-run';
+        el.hidden = true;
+        el.innerHTML = `<div class="proj-run-head"><b data-r="title"></b><span class="meta" data-prog></span>
+              <button type="button" class="btn btn-red btn-sm" data-r="abort" onclick="restoreInterrompre()">${_mEsc(t('projects.abort'))}</button>
+              <button type="button" class="btn btn-sm" data-r="close" style="display:none" onclick="restoreFermer()">${_mEsc(t('projects.close'))}</button></div>
+            <details><summary>${_mEsc(t('projects.run_log'))}</summary><pre class="proj-run-log" data-r="log"></pre></details>
+            <div class="proj-run-retry" data-r="retry-bar" style="display:none"><span class="meta" data-r="retry-msg"></span>
+              <button type="button" class="btn btn-orange btn-sm" data-r="retry-btn" onclick="restoreReessayer()">${_mEsc(t('projects.retry'))}</button></div>`;
+        if (_projRun) _projRun.el.remove();
+        _projRun = {pid, el};
+    }
+    if (!_projRun.el.isConnected) ov.querySelector('[role=tablist]').after(_projRun.el);
+    _projDirty = true;
+    _projHead(pid);
+    _projPollStart(pid);
+    return _projRun.el;
+}
+function projRunDone(pid) {
+    _projDirty = true;
+    _projHead(pid);
+    _projPollStart(pid);
+}
+
+// En-tête : état du projet et l'action qui s'y applique (Démarrer OU Arrêter).
+function _projHead(pid) {
+    const ov = document.getElementById('proj-modal');
+    if (!ov || Number(ov.dataset.pid) !== pid) return;
+    const rows = (PROJ_SHEETS[pid] || {}).rows || [];
+    const live = rows.filter(r => r.live).length, up = rows.filter(r => r.status === 'running').length;
+    const starting = _restoreCtx && _restoreCtx.running && _restoreCtx.pid === pid;
+    const stopping = _projStopping.has(pid);
+    const st = ov.querySelector('[data-state]'), act = ov.querySelector('[data-act]');
+    const prog = _projRun && _projRun.pid === pid ? _projRun.el.querySelector('[data-prog]') : null;
+    if (prog) prog.textContent = t('projects.run_progress').replace('{up}', up).replace('{n}', rows.length);
+    st.innerHTML = starting ? `<span class="badge warn">${_mEsc(t('projects.state_loading'))} · ${up}/${rows.length}</span>`
+        : stopping ? `<span class="badge warn">${_mEsc(t('projects.state_unloading'))} · ${live}</span>`
+        : live ? `<span class="badge ${up === live ? 'running' : 'warn'}">${_mEsc(t(up === live ? 'projects.live_running' : 'projects.live_partial'))} · ${up}/${live}</span>`
+        : `<span class="badge">${_mEsc(t('projects.live_stopped'))}</span>`;
+    act.innerHTML = !PROJ_CAN_MANAGE || starting || stopping ? ''
+        : live ? `<button type="button" class="btn btn-orange btn-sm" data-stop>■ ${_mEsc(t('projects.stop'))}</button>`
+        : `<button type="button" class="btn btn-green btn-sm" data-start>▶ ${_mEsc(t('projects.start'))}</button>`;
+    const b = act.querySelector('button');
+    if (b) b.onclick = () => live ? arreterProjet(pid, _projName(pid), live) : demarrerProjet(pid, _projName(pid));
+}
+
+// États en direct : toutes les 2 s pendant un démarrage ou un arrêt, toutes les 5 s sinon.
+function _projPollStart(pid) {
+    clearTimeout(_projPoll.timer);
+    _projPoll.pid = pid;
+    const tick = async () => {
+        if (_projPoll.pid !== pid || !document.getElementById('proj-modal')) return;
+        try {
+            const r = await fetch('/api/containers');
+            if (r.ok) _projApplyLive(pid, await r.json());
+        } catch (e) { /* prochain tour */ }
+        if (_projPoll.pid !== pid) return;
+        const busy = (_restoreCtx && _restoreCtx.running && _restoreCtx.pid === pid) || _projStopping.has(pid);
+        _projPoll.timer = setTimeout(tick, busy ? 2000 : 5000);
+    };
+    _projPoll.timer = setTimeout(tick, 300);
+}
+function _projApplyLive(pid, containers) {
+    const sheet = PROJ_SHEETS[pid] || (PROJ_SHEETS[pid] = {});
+    const rows = sheet.rows || (sheet.rows = []);
+    // Un rappel recrée les conteneurs sous de NOUVEAUX vmid : on les reconnaît par leur nom.
+    const mine = containers.filter(c => c.project_id === pid);
+    const byHost = new Map(mine.map(c => [c.hostname, c]));
+    let added = false;
+    // Démarrer préfixe les noms par celui du projet (« avsync » → « Test3-avsync ») : le serveur
+    // donne pour chaque ligne le nom sous lequel elle tournera (`run_host`).
+    rows.forEach(r => {
+        const key = byHost.has(r.hostname) ? r.hostname : r.run_host;
+        const c = byHost.get(key);
+        r.live = !!c;
+        r.status = c ? c.status : null;
+        if (c) { r.vmid = c.vmid; r.node = c.node_name || PROJ_NODE_NAMES[c.node_id] || r.node; }
+        byHost.delete(key);
+    });
+    byHost.forEach(c => {
+        let type = null;
+        try { type = (typeof c.deploy_config === 'string' ? JSON.parse(c.deploy_config) : c.deploy_config || {}).type; } catch (e) {}
+        rows.push({vmid: c.vmid, hostname: c.hostname, run_host: c.hostname, type, node: c.node_name || PROJ_NODE_NAMES[c.node_id] || null,
+                   status: c.status, live: true, saved: false});
+        added = true;
+    });
+    if (_projStopping.has(pid) && !rows.some(r => r.live)) { _projStopping.delete(pid); _projDirty = true; }
+    _projHead(pid);
+    const tbody = document.getElementById('proj-cont-rows-' + pid);
+    if (!tbody) return;
+    if (added) return chargerComposition(pid);
+    rows.forEach(r => {
+        const tr = tbody.querySelector(`tr[data-host="${CSS.escape(r.hostname || '')}"]`);
+        if (!tr) return;
+        tr.dataset.live = r.live ? '1' : '0';
+        tr.querySelector('[data-c=state]').innerHTML = _contState(r);
+        tr.querySelector('[data-c=node]').textContent = r.node || '—';
+        tr.querySelector('[data-c=name]').innerHTML = _contName(r);
+    });
+    if (_projPoll.filter) _projPoll.filter.apply();
+}
+function projTab(tab) {
+    const ov = document.getElementById('proj-modal');
+    if (!ov) return;
+    const pid = parseInt(ov.dataset.pid, 10);
+    clearInterval(_PROJ_RES.timer);
+    ov.querySelectorAll('[data-tab]').forEach(b => {
+        const on = b.dataset.tab === tab;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', String(on));
+        b.tabIndex = on ? 0 : -1;
+    });
+    const panel = ov.querySelector('#proj-win-panel');
+    panel.setAttribute('aria-labelledby', 'proj-tab-' + tab);
+    history.replaceState(null, '', '#projet-' + pid + '-' + tab);
+    panel.innerHTML = '';
+    if (tab === 'info') return _projInfo(pid, panel);
+    if (tab === 'containers') { panel.innerHTML = `<div id="proj-compo-${pid}"></div>`; return chargerComposition(pid); }
+    if (tab === 'ports') { panel.innerHTML = `<div id="proj-ports-${pid}"></div>`; return chargerPorts(pid); }
+    if (tab === 'res') { panel.innerHTML = '<div id="proj-res-body"><p class="meta">…</p></div>'; return loadResources(pid); }
+    if (tab === 'members') { panel.innerHTML = `<div id="proj-members-${pid}"></div>`; return chargerMembres(pid); }
+    if (tab === 'versions') { panel.innerHTML = `<div id="proj-versions-${pid}"></div>`; return chargerVersions(pid); }
+}
+function _projInfo(pid, panel) {
+    const s = PROJ_SHEETS[pid] || {};
+    const E = _mEsc;
+    const when = (at, by) => at
+        ? E(_dt(at)) + (by ? ' · ' + E(t('projects.by').replace('{who}', by)) : '')
+        : `<span class="meta">${E(t('projects.not_recorded'))}</span>`;
+    const roles = {owner: 'projects.role_owner', editor: 'projects.role_editor',
+                   operator: 'projects.role_operator', viewer: 'projects.role_viewer'};
+    const content = t('projects.content_line').replace('{c}', s.containers || 0).replace('{p}', s.ports || 0)
+        .replace('{m}', s.macros || 0).replace('{t}', s.triggers || 0).replace('{v}', s.views || 0);
+    const text = PROJ_CAN_MANAGE
+        ? `<div class="proj-info-form">
+             <label for="proj-info-desc">${E(t('projects.description'))}</label>
+             <textarea id="proj-info-desc" rows="4" placeholder="${E(t('projects.description_ph'))}">${E(s.description || '')}</textarea>
+             <label for="proj-info-tags">${E(t('projects.tags'))}</label>
+             <input type="text" id="proj-info-tags" value="${E((s.tags || []).join(', '))}" placeholder="${E(t('projects.tags_ph'))}">
+             <div><button type="button" class="btn btn-blue" id="proj-info-save">${E(t('projects.info_save'))}</button></div>
+           </div>`
+        : `<p class="proj-info-text">${s.description ? E(s.description) : `<span class="meta">${E(t('projects.no_description'))}</span>`}</p>
+           ${(s.tags || []).length ? `<div class="proj-tags">${s.tags.map(x => `<span class="proj-tag">${E(x)}</span>`).join('')}</div>` : ''}`;
+    panel.innerHTML = text + `<dl class="proj-sheet">
+        <dt>${E(t('projects.author'))}</dt><dd>${s.author ? E(s.author) : `<span class="meta">${E(t('projects.author_unknown'))}</span>`}</dd>
+        <dt>${E(t('projects.created'))}</dt><dd>${E(_dt(s.created_at))}</dd>
+        <dt>${E(t('projects.last_saved'))}</dt><dd>${s.last_saved ? E(_dt(s.last_saved)) + ' · ' + E(t('projects.versions_n').replace('{n}', s.versions || 0)) : '—'}</dd>
+        <dt>${E(t('projects.last_started'))}</dt><dd>${when(s.started_at, s.started_by)}</dd>
+        <dt>${E(t('projects.last_stopped'))}</dt><dd>${when(s.stopped_at, s.stopped_by)}</dd>
+        <dt>${E(t('projects.last_modified'))}</dt><dd>${when(s.modified_at, s.modified_by)}</dd>
+        <dt>${E(t('projects.members'))}</dt><dd>${(s.members || []).length
+            ? s.members.map(m => E(m.name) + ' <span class="meta">(' + E(t(roles[m.role] || m.role)) + ')</span>').join(', ') : '—'}</dd>
+        <dt>${E(t('projects.content'))}</dt><dd>${E(content)}</dd>
+        <dt>${E(t('projects.cores_asked'))}</dt><dd>${E(String(s.cores || 0))}${s.cores_unknown
+            ? ' <span class="meta">' + E(t('projects.cores_unknown').replace('{n}', s.cores_unknown)) + '</span>' : ''}</dd>
+        <dt>${E(t('projects.nodes_now'))}</dt><dd>${(s.nodes || []).length ? E(s.nodes.join(', ')) : `<span class="meta">${E(t('projects.live_stopped'))}</span>`}</dd>
+        <dt>${E(t('projects.media_dir'))}</dt><dd class="mono">${E(s.media_path || '—')}</dd>
+      </dl>
+      <div data-onair></div>
+      <div class="proj-acts-end">
+        <button type="button" class="btn-text-action" data-export>${E(t('projects.export'))}…</button>
+        ${PROJ_CAN_MANAGE ? `<button type="button" class="btn proj-acts-del" data-delete>${E(t('projects.delete'))}…</button>` : ''}
+      </div>`;
+    panel.querySelector('[data-export]').onclick = () => exporterProjet(pid);
+    _projOnair(pid, panel.querySelector('[data-onair]'));
+    const del = panel.querySelector('[data-delete]');
+    if (del) del.onclick = () => supprimerProjet(pid, _projName(pid));
+    const save = panel.querySelector('#proj-info-save');
+    if (save) save.onclick = async () => {
+        save.disabled = true;
+        const tags = panel.querySelector('#proj-info-tags').value.split(',').map(x => x.trim()).filter(Boolean);
+        const r = await fetch('/api/projects/' + pid, {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({description: panel.querySelector('#proj-info-desc').value, tags})});
+        if (!r.ok) { save.disabled = false; showWireToast((await r.json().catch(() => ({}))).error || r.statusText, 'error'); return; }
+        // La tuile, la recherche et le filtre par étiquette viennent du rendu serveur : on recharge,
+        // et l'adresse rouvre cet onglet.
+        location.reload();
+    };
+}
+// État d'antenne (08/11) : ce que les plugins qui le déclarent ont enregistré, et à quelle
+// fréquence. Toujours lu à « Arrêter » ; l'enregistrement régulier est un choix du projet.
+async function _projOnair(pid, box, data) {
+    if (!box) return;
+    const E = _mEsc;
+    if (!data) {
+        const r = await fetch('/api/projects/' + pid + '/onair').catch(() => null);
+        if (!r || !r.ok) return;
+        data = await r.json();
+    }
+    const every = s => !s ? t('projects.onair_every_0') : s < 60
+        ? t('projects.onair_every_s').replace('{n}', s) : t('projects.onair_every_min').replace('{n}', s / 60);
+    const status = !data.supported ? t('projects.onair_none')
+        : data.saved ? t('projects.onair_saved').replace('{n}', data.saved).replace('{total}', data.supported).replace('{at}', _dt(data.latest))
+        : t('projects.onair_never').replace('{total}', data.supported);
+    box.innerHTML = `<h4 class="proj-ports-h">${E(t('projects.onair_title'))}</h4>
+      <p class="meta">${E(status)}</p>
+      ${data.supported ? `
+      <table class="proj-details-table"><thead><tr><th>${E(t('projects.onair_col_container'))}</th>
+        <th>${E(t('projects.onair_col_type'))}</th><th>${E(t('projects.onair_col_at'))}</th></tr></thead><tbody>
+        ${data.containers.map(c => `<tr><td>${E(c.entry)}</td><td class="meta">${E(c.type || '')}</td>
+          <td>${c.captured_at ? E(_dt(c.captured_at)) : '<span class="meta">—</span>'}</td></tr>`).join('')}
+      </tbody></table>
+      ${PROJ_CAN_MANAGE ? `<div class="proj-onair-row">
+        <label for="proj-onair-every">${E(t('projects.onair_every'))}</label>
+        <select id="proj-onair-every">${data.choices.map(s => `<option value="${s}"${s === data.interval_s ? ' selected' : ''}>${E(every(s))}</option>`).join('')}</select>
+        <button type="button" class="btn" data-onair-now>${E(t('projects.onair_capture_now'))}</button>
+      </div>` : ''}
+      <p class="meta">${E(t('projects.onair_help'))}</p>` : ''}`;
+    const sel = box.querySelector('#proj-onair-every');
+    if (sel) sel.onchange = async () => {
+        const r = await fetch('/api/projects/' + pid + '/onair', {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({capture_s: Number(sel.value)})});
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { showWireToast(j.error || r.statusText, 'error'); return _projOnair(pid, box); }
+        _projOnair(pid, box, j);
+    };
+    const now = box.querySelector('[data-onair-now]');
+    if (now) now.onclick = async () => {
+        now.disabled = true;
+        const r = await fetch('/api/projects/' + pid + '/onair/capture', {method: 'POST'});
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { now.disabled = false; showWireToast(j.error || r.statusText, 'error'); return; }
+        if ((j.failed || []).length)
+            showWireToast(t('projects.onair_capture_failed').replace('{list}', j.failed.map(f => f.entry).join(', ')), 'error');
+        else showWireToast(t('projects.onair_captured').replace('{n}', j.read), 'ok');
+        _projOnair(pid, box, j.summary);
+    };
+}
+// Rouvrir la fenêtre après un rechargement (#projet-<pid>-<onglet>).
+(function () {
+    const m = location.hash.match(/^#projet-(\d+)-(\w+)$/);
+    if (!m) return;
+    // Projet supprimé depuis sa fenêtre : l'adresse le nomme encore, on ne rouvre rien.
+    if (!JSON.parse(document.getElementById('proj-ids')?.textContent || '[]').includes(parseInt(m[1], 10))) {
+        history.replaceState(null, '', location.pathname + location.search);
+        return;
+    }
+    const go = () => openProject(parseInt(m[1], 10), m[2]);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else setTimeout(go, 0);
+})();
+// Arrêter = supprimer les conteneurs du projet (lancés en --rm, il n'y a pas d'arrêt qui les garde) ;
+// la configuration reste dans le projet (réenregistrée juste avant) et « Démarrer » la recrée.
+async function arreterProjet(pid, name, n) {
+    if (!confirm(window.t('js.project.stop_confirm').replace('{name}', name).replace('{n}', n))) return;
+    const r = await fetch('/api/projects/' + pid + '/destroy_containers', {method: 'POST'});
+    if (!r.ok) { alert(r.statusText); return; }
+    // On regarde les conteneurs s'arrêter dans la fenêtre du projet (onglet Conteneurs).
+    _projStopping.add(pid);
+    _projDirty = true;
+    _projShow(pid, 'containers');
+    _projHead(pid);
+    _projPollStart(pid);
+}
+// Liste des projets : recherche, état, tri — contrôle du catalogue (07/11).
+(function projListInit() {
+    const host = document.getElementById('proj-list-bar');
+    if (!host) return;
+    const grid = document.getElementById('proj-grid');
+    const groups = [{key: 'state', aria: t('projects.list_state_aria'),
+                     options: [{value: 'all', label: t('projects.list_all')},
+                               {value: 'live', label: t('projects.list_live')},
+                               {value: 'stopped', label: t('projects.list_stopped')}],
+                     match: (el, v) => (v === 'live') === (el.dataset.live === '1')}];
+    // Étiquettes : un groupe de puces seulement si au moins un projet en porte (lues sur les tuiles).
+    const tags = new Map();
+    grid.querySelectorAll(':scope > article.card .proj-tag').forEach(e => tags.set(e.textContent.toLowerCase(), e.textContent));
+    if (tags.size) groups.push({key: 'tag', aria: t('projects.list_tags_aria'),
+        options: [{value: '', label: t('projects.tags_all')},
+                  ...[...tags].sort((a, b) => a[1].localeCompare(b[1])).map(([v, l]) => ({value: v, label: l}))],
+        match: (el, v) => (el.dataset.tags || '').includes('|' + v + '|')});
+    MXLControls.listFilter(host, {
+        items: () => grid.querySelectorAll(':scope > article.card'),
+        search: t('projects.list_search_ph'),
+        aria: t('projects.list_bar_aria'),
+        countLabel: t('projects.list_count_label'),
+        empty: t('projects.list_none'),
+        groups,
+        sortLabel: t('projects.list_sort'),
+        sorts: [{value: 'recent', label: t('projects.sort_recent'), by: el => el.dataset.created, desc: true},
+                {value: 'oldest', label: t('projects.sort_oldest'), by: el => el.dataset.created},
+                {value: 'name', label: t('projects.sort_name'), by: el => el.dataset.name},
+                {value: 'size', label: t('projects.sort_size'), by: el => +el.dataset.size, desc: true}],
+        storeKey: 'proj-list',
+    });
+})();
 function filterProjList() {
     const q = (document.getElementById('proj-search')?.value || '').toLowerCase().trim();
     const t = document.querySelector('.proj-picker-types .filter-chip.active')?.dataset.projType || 'all';
+    // Already in a project: hidden unless asked for (a checked one stays checked).
+    const taken = !!document.getElementById('proj-show-taken')?.checked;
     let visible = 0;
     document.querySelectorAll('.proj-picker-row').forEach(row => {
         const matchType = (t === 'all') || (row.dataset.type === t);
         const matchSearch = !q || row.dataset.hostname.includes(q);
-        const show = matchType && matchSearch;
+        const show = matchType && matchSearch && (taken || !row.dataset.taken);
         row.hidden = !show;
         if (show) visible++;
     });
@@ -442,13 +1211,7 @@ const _mEsc = s => String(s ?? '').replace(/[&<>"']/g,
     c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const _mRole = r => window.t('projects.role_' + r) || r;
 
-async function toggleMembres(pid) {
-    const el = document.getElementById('proj-members-' + pid);
-    if (!el) return;
-    if (!el.hidden) { el.hidden = true; return; }
-    el.hidden = false;
-    await chargerMembres(pid);
-}
+function toggleMembres(pid) { openProject(pid, 'members'); }
 
 async function chargerMembres(pid) {
     const el = document.getElementById('proj-members-' + pid);
@@ -513,38 +1276,61 @@ async function retirerMembre(pid, uid) {
 
 /* ─── Versions du projet (« projet vivant », chantier 3) ───── */
 
-async function toggleVersions(pid) {
-    const el = document.getElementById('proj-versions-' + pid);
-    if (!el) return;
-    if (!el.hidden) { el.hidden = true; return; }
-    el.hidden = false;
-    await chargerVersions(pid);
-}
+function toggleVersions(pid) { openProject(pid, 'versions'); }
 
+// Versions : barre du catalogue (MXLControls.listFilter) — recherche, nommées / automatiques, tri (07/11).
 async function chargerVersions(pid) {
     const el = document.getElementById('proj-versions-' + pid);
+    if (!el) return;
     const r = await fetch(`/api/projects/${pid}/versions`);
     if (!r.ok) { el.innerHTML = '<p class="meta">…</p>'; return; }
     const data = await r.json();
-    const rows = (data.versions || []).map(v => `
-        <li style="display:flex; gap:var(--space-2); align-items:center; margin:var(--space-1) 0">
-            <span class="meta">${_mEsc(v.created_at || '')}</span>
-            <b>${v.label ? _mEsc(v.label) : '<span class="meta">' + _mEsc(window.t('projects.version_auto')) + '</span>'}</b>
-            <span class="meta">${v.containers} ${_mEsc(window.t('projects.ws_containers'))}</span>
-            <button class="btn btn-orange" style="padding:var(--space-1) var(--space-2); font-size:0.8em"
-                    onclick="rollbackVersion(${pid}, ${v.id})">${_mEsc(window.t('projects.version_rollback'))}</button>
-            <button class="btn btn-red" style="padding:var(--space-1) var(--space-2); font-size:0.8em"
-                    onclick="supprimerVersion(${pid}, ${v.id})">✕</button>
-        </li>`).join('');
+    const E = _mEsc;
+    const rows = (data.versions || []).map(v => {
+        const label = v.label || t('projects.version_auto');
+        return `<tr data-search="${E(label + ' ' + _dt(v.created_at) + ' ' + (v.created_at || ''))}" data-kind="${v.label ? 'named' : 'auto'}"
+                    data-created="${E(v.created_at || '')}" data-name="${E(v.label || '')}" data-n="${v.containers}">
+            <td class="mono">${E(_dt(v.created_at))}</td>
+            <td>${v.label ? `<b>${E(v.label)}</b>` : `<span class="meta">${E(label)}</span>`}</td>
+            <td>${v.containers}</td>
+            <td class="proj-ver-acts">
+              <button class="btn btn-orange btn-sm" onclick="rollbackVersion(${pid}, ${v.id})">${E(t('projects.version_rollback'))}</button>
+              <button class="btn btn-red btn-sm" onclick="supprimerVersion(${pid}, ${v.id})"
+                      aria-label="${E(t('projects.ver_delete_aria').replace('{v}', label + ' · ' + _dt(v.created_at)))}">✕</button>
+            </td></tr>`;
+    }).join('');
     el.innerHTML = `
-        <h4 style="margin:var(--space-3) 0 var(--space-1)">${_mEsc(window.t('projects.versions'))}</h4>
-        <ul style="list-style:none; margin:0; padding:0; max-height:16em; overflow-y:auto">
-            ${rows || '<li class="meta">—</li>'}</ul>
-        <div style="display:flex; gap:var(--space-2); align-items:center; margin-top:var(--space-2)">
-            <input id="pv-label-${pid}" type="text" placeholder="${_mEsc(window.t('projects.version_label_ph'))}" style="width:14em">
-            <button class="btn btn-blue" style="padding:var(--space-1) var(--space-2)"
-                    onclick="nommerVersion(${pid})">${_mEsc(window.t('projects.version_name_btn'))}</button>
-        </div>`;
+        <div class="proj-ver-name">
+            <input id="pv-label-${pid}" type="text" placeholder="${E(t('projects.version_label_ph'))}"
+                   aria-label="${E(t('projects.version_label_ph'))}">
+            <button class="btn btn-blue" onclick="nommerVersion(${pid})">${E(t('projects.version_name_btn'))}</button>
+        </div>
+        <div id="proj-ver-bar-${pid}"></div>
+        <table class="proj-details-table">
+          <thead><tr><th>${E(t('projects.ver_col_date'))}</th><th>${E(t('projects.ver_col_name'))}</th>
+            <th>${E(t('projects.ver_col_n'))}</th><th></th></tr></thead>
+          <tbody id="proj-ver-rows-${pid}">${rows}</tbody>
+        </table>
+        ${rows ? '' : '<p class="meta">—</p>'}`;
+    if (!rows) return;
+    const tbody = document.getElementById('proj-ver-rows-' + pid);
+    MXLControls.listFilter(document.getElementById('proj-ver-bar-' + pid), {
+        items: () => tbody.children,
+        search: t('projects.ver_search_ph'),
+        countLabel: t('projects.ver_count'),
+        empty: t('projects.ver_none'),
+        groups: [{key: 'kind', aria: t('projects.ver_kind_aria'),
+                  options: [{value: 'all', label: t('projects.ver_all')},
+                            {value: 'named', label: t('projects.ver_named')},
+                            {value: 'auto', label: t('projects.ver_auto')}],
+                  match: (row, v) => row.dataset.kind === v}],
+        sortLabel: t('projects.list_sort'),
+        sorts: [{value: 'recent', label: t('projects.sort_recent'), by: row => row.dataset.created, desc: true},
+                {value: 'oldest', label: t('projects.sort_oldest'), by: row => row.dataset.created},
+                {value: 'name', label: t('projects.sort_name'), by: row => row.dataset.name || '￿'},
+                {value: 'size', label: t('projects.sort_size'), by: row => +row.dataset.n, desc: true}],
+        storeKey: 'proj-versions',
+    });
 }
 
 async function nommerVersion(pid) {
@@ -594,47 +1380,94 @@ function _compoMembersOf(pid) {
     return _compoAllContainers().filter(c => c.project_id === pid || (c.projects || []).some(p => p.id === pid));
 }
 
-async function toggleComposition(pid) {
-    const el = document.getElementById('proj-compo-' + pid);
-    if (!el) return;
-    if (!el.hidden) { el.hidden = true; return; }
-    el.hidden = false;
-    chargerComposition(pid);
-}
+function toggleComposition(pid) { openProject(pid, 'containers'); }
 
+// Onglet « Conteneurs » (07/11) : ce que le projet contient (enregistré ET vivant), avec la barre du
+// catalogue, et la composition au même endroit — ajouter en haut, retirer sur chaque ligne.
+// Retirer un conteneur EN MARCHE le détache (il est recréé hors du projet) ; retirer un conteneur
+// ARRÊTÉ ôte son entrée enregistrée (une version automatique garde l'ancien contenu).
+// En marche, le conteneur porte le nom préfixé par le projet : c'est lui qu'on montre.
+function _contName(r) {
+    const n = r.live && r.run_host ? r.run_host : (r.hostname || '');
+    return `${_mEsc(n)} <span class="card-vmid">#${r.vmid}</span>`;
+}
+function _contState(r) {
+    const E = _mEsc;
+    return r.status === 'running' ? `<span class="badge running">${E(t('projects.live_running'))}</span>`
+        : r.live ? `<span class="badge warn">${E(r.status || '?')}</span>`
+        : `<span class="badge">${E(t('projects.live_stopped'))}</span>`;
+}
 function chargerComposition(pid) {
     const el = document.getElementById('proj-compo-' + pid);
     if (!el) return;
-    const members = _compoMembersOf(pid);
-    const memberVmids = new Set(members.map(c => c.vmid));
+    const E = _mEsc;
+    const sheet = PROJ_SHEETS[pid] || {};
+    const rows = sheet.rows || [];
+    const members = new Set(rows.map(r => r.vmid));
+    _compoMembersOf(pid).forEach(c => members.add(c.vmid));
+    const body = rows.map(r => `
+        <tr data-host="${E(r.hostname || '')}" data-search="${E([r.hostname, r.vmid, r.type, r.node].join(' '))}" data-live="${r.live ? 1 : 0}"
+            data-name="${E(r.hostname || '')}" data-type="${E(r.type || '')}" data-node="${E(r.node || '')}">
+          <td data-c="name">${_contName(r)}</td>
+          <td class="mono">${E(r.type || '—')}</td>
+          <td data-c="node">${E(r.node || '—')}</td>
+          <td data-c="state">${_contState(r)}</td>
+          ${PROJ_CAN_MANAGE ? `<td class="proj-ver-acts"><button type="button" class="btn btn-sm" data-remove="${E(r.hostname || '')}"
+              aria-label="${E(t('projects.cont_remove_aria').replace('{h}', r.hostname || r.vmid))}">${E(t('projects.cont_remove'))}</button></td>` : ''}
+        </tr>`).join('');
+    let add = '';
+    if (PROJ_CAN_MANAGE) {
+        const candidates = _compoAllContainers().filter(c => !members.has(c.vmid) && !PROJ_COMPO_EXCLUDED_TYPES.has(c.type))
+            .sort((a, b) => (a.hostname || '').localeCompare(b.hostname || ''));
+        add = `<div class="proj-ver-name">
+            ${candidates.length
+                ? `<select id="compo-add-${pid}" aria-label="${E(t('projects.cont_add_aria'))}">` + candidates.map(c =>
+                    `<option value="${c.vmid}">${E(c.hostname)} (#${c.vmid}${c.type ? ' · ' + E(c.type) : ''})</option>`).join('') + '</select>'
+                : `<span class="meta">${E(t('projects.compo_none_avail'))}</span>`}
+            <button class="btn btn-blue" ${candidates.length ? '' : 'disabled'} onclick="rattacherContainerProjet(${pid})">${E(t('projects.cont_add'))}</button>
+            <span class="meta">${E(t('projects.compo_warn'))}</span>
+          </div>`;
+    }
+    el.innerHTML = add + `<div id="proj-cont-bar-${pid}"></div>
+        <table class="proj-details-table">
+          <thead><tr><th>${E(t('projects.det_container'))}</th><th>${E(t('projects.det_type'))}</th>
+            <th>${E(t('projects.det_node'))}</th><th>${E(t('projects.det_state'))}</th>${PROJ_CAN_MANAGE ? '<th></th>' : ''}</tr></thead>
+          <tbody id="proj-cont-rows-${pid}">${body}</tbody>
+        </table>${rows.length ? '' : '<p class="meta">—</p>'}`;
+    el.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => {
+        const r = rows.find(x => (x.hostname || '') === b.dataset.remove);
+        if (r.live) detacherContainerProjet(pid, r.vmid);
+        else retirerConteneurEnregistre(pid, r.vmid, r.hostname);
+    });
+    if (!rows.length) return;
+    const tbody = document.getElementById('proj-cont-rows-' + pid);
+    _projPoll.filter = MXLControls.listFilter(document.getElementById('proj-cont-bar-' + pid), {
+        items: () => tbody.children,
+        search: t('projects.cont_search_ph'),
+        countLabel: t('projects.cont_count'),
+        empty: t('projects.cont_none'),
+        groups: [{key: 'state', aria: t('projects.list_state_aria'),
+                  options: [{value: 'all', label: t('projects.list_all')},
+                            {value: 'live', label: t('projects.list_live')},
+                            {value: 'stopped', label: t('projects.list_stopped')}],
+                  match: (row, v) => (v === 'live') === (row.dataset.live === '1')}],
+        sortLabel: t('projects.list_sort'),
+        sorts: [{value: 'name', label: t('projects.sort_name'), by: row => row.dataset.name},
+                {value: 'type', label: t('projects.det_type'), by: row => row.dataset.type},
+                {value: 'node', label: t('projects.det_node'), by: row => row.dataset.node || '￿'}],
+        storeKey: 'proj-containers',
+    });
+}
 
-    const rows = members.map(c => `
-        <li style="display:flex; gap:var(--space-2); align-items:center; margin:var(--space-1) 0">
-            <b>${_mEsc(c.hostname)}</b>
-            <span class="card-vmid">#${c.vmid}</span>
-            <span class="meta">${_mEsc(c.type || '—')}</span>
-            <button class="btn btn-red" style="padding:var(--space-1) var(--space-2); font-size:0.8em"
-                    onclick="detacherContainerProjet(${pid}, ${c.vmid})">${_mEsc(window.t('projects.compo_detach'))}</button>
-        </li>`).join('');
-
-    const candidates = _compoAllContainers().filter(c =>
-        !memberVmids.has(c.vmid) && !PROJ_COMPO_EXCLUDED_TYPES.has(c.type));
-    const picker = candidates.length
-        ? `<select id="compo-add-${pid}">` +
-          candidates.map(c => `<option value="${c.vmid}">${_mEsc(c.hostname)} (#${c.vmid}${c.type ? ' · ' + _mEsc(c.type) : ''})</option>`).join('') +
-          '</select>'
-        : `<span class="meta">${_mEsc(window.t('projects.compo_none_avail'))}</span>`;
-
-    el.innerHTML = `
-        <h4 style="margin:var(--space-3) 0 var(--space-1)">${_mEsc(window.t('projects.compo'))}</h4>
-        <ul style="list-style:none; margin:0; padding:0">${rows || '<li class="meta">—</li>'}</ul>
-        <div style="display:flex; gap:var(--space-2); align-items:center; margin-top:var(--space-2); flex-wrap:wrap">
-            ${picker}
-            <button class="btn btn-blue" style="padding:var(--space-1) var(--space-2)"
-                    ${candidates.length ? '' : 'disabled'}
-                    onclick="rattacherContainerProjet(${pid})">${_mEsc(window.t('projects.compo_attach'))}</button>
-            <span class="meta" style="color:var(--warn, #c77)">⚠ ${_mEsc(window.t('projects.compo_warn'))}</span>
-        </div>`;
+async function retirerConteneurEnregistre(pid, vmid, hostname) {
+    if (!confirm(t('projects.cont_remove_saved_confirm').replace('{h}', hostname || ('#' + vmid)))) return;
+    const r = await fetch(`/api/projects/${pid}/containers/${vmid}`, {method: 'DELETE'});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { showWireToast(j.error || r.statusText, 'error'); return; }
+    // Ce qui pointe encore sur lui dans le projet est signalé, pas effacé.
+    const left = [...(j.views || []), ...(j.bindings || [])];
+    if (left.length || j.links) showWireToast(t('projects.cont_left_refs').replace('{l}', left.join(', ') || '—').replace('{n}', j.links || 0), 'warn');
+    setTimeout(() => location.reload(), left.length || j.links ? 2500 : 300);
 }
 
 async function rattacherContainerProjet(pid) {
@@ -642,6 +1475,7 @@ async function rattacherContainerProjet(pid) {
     const vmid = sel ? parseInt(sel.value, 10) : null;
     if (!vmid) return;
     if (!confirm(window.t('projects.compo_warn'))) return;
+    if (window.ProjectEnv && !(await ProjectEnv.confirmVmid(vmid, ''))) return;
     await _compoPatchProject(vmid, pid);
 }
 
@@ -674,41 +1508,595 @@ async function _compoPatchProject(vmid, project_id) {
 const _PORTS = {};        // pid → {ports, outputs, edit, dir, add:{source:{…}, dest:{…}}}
 const PORT_MAX_AUDIOS = 8;
 
-// Fenêtre qui recouvre la page (28/10, demande de Cyril : ouvert DANS la carte, le panneau se
-// perdait au milieu des autres projets). Fermée par ✕, Échap ou un clic à côté ; le focus revient
-// au bouton qui l'a ouverte.
-function togglePorts(pid) {
-    closePorts();
-    const opener = document.activeElement;
-    const name = ((typeof SYS_PROJECTS !== 'undefined' ? SYS_PROJECTS : []).find(p => p.id === pid) || {}).name || ('#' + pid);
-    const ov = document.createElement('div');
-    ov.id = 'proj-ports-modal';
-    ov.className = 'modal-overlay';
-    ov.innerHTML = `
-      <div class="modal-card proj-ports-card" role="dialog" aria-modal="true" aria-labelledby="proj-ports-title">
-        <div class="modal-head">
-          <h3 id="proj-ports-title" style="margin:0">${_mEsc(window.t('projects.ports'))} — ${_mEsc(name)}</h3>
-          <button type="button" class="btn" id="proj-ports-close" aria-label="${_mEsc(window.t('projects.close'))}">✕</button>
-        </div>
-        <div id="proj-ports-${pid}"></div>
+// Les ports s'affichent dans l'onglet « Ports » de la fenêtre du projet (07/11 ; avant : leur
+// propre fenêtre, et avant le 28/10 dans la carte, où le panneau se perdait).
+function togglePorts(pid) { openProject(pid, 'ports'); }
+/* ─── Project resources: is the project guaranteed? ──────────────────────────────────────────
+   View chosen with Cyril on 2026-11-07 (mock-up D): every node's cores on top, at their real size,
+   with the proposals (guarantee, move) drawn differently on the same schema — hatched in the
+   container's colour for cores taken, dotted for cores a move releases; then the plan, the move
+   suggestions (same project only) and the table with its filters. A move recreates the container:
+   the confirmation names them. Shown in the « Ressources » tab of the project window. ─────── */
+const PROJ_RES_BADGE = {guaranteed: 'running', undersized: 'stopped', reserved_unmeasured: 'warn',
+                        shared: 'warn', stopped: 'stopped'};
+const PROJ_RES_LEVELS = ['dedicated', 'normal', 'background', 'batch'];
+const PROJ_RES_COLORS = ['#2f6fd6', '#1f9c8a', '#7c3aed', '#d0569b', '#c7772b', '#5aa02c', '#b84a3a',
+                         '#3a8fb7', '#8a5cc2', '#a8913a'];
+const _PROJ_RES = {pid: null, members: [], timer: null, data: null, plan: {}, filter: null, type: '',
+                   prefix: '', hl: null, dragged: 0};
+
+function openResources(pid) { openProject(pid, 'res'); }
+// « Project resources → » link of the widget on a plugin page: /projects#resources-<pid>.
+(function () {
+    const m = location.hash.match(/^#resources-(\d+)$/);
+    if (!m) return;
+    const go = () => openResources(parseInt(m[1], 10));
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else setTimeout(go, 0);
+})();
+function closeResources() { closeProject(); }
+
+async function loadResources(pid) {
+    const body = document.getElementById('proj-res-body');
+    if (!body) return;
+    let j;
+    try {
+        const r = await fetch('/api/projects/' + pid + '/resources');
+        j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.statusText);
+    } catch (e) {
+        body.innerHTML = `<p class="proj-port-why">${_mEsc(String(e.message || e))}</p>`;
+        return;
+    }
+    _PROJ_RES.pid = pid;
+    _PROJ_RES.data = j;
+    _PROJ_RES.members = j.containers.filter(c => c.guarantee !== 'stopped');
+    _PROJ_RES.prefix = _resPrefix(j.containers.map(c => c.hostname || '').filter(Boolean));
+    // Starting proposals: each calibrated on-air container gets the cores covering its peak.
+    _PROJ_RES.plan = {};
+    j.containers.forEach(c => {
+        if (c.proposed && c.proposed !== c.alloc) _PROJ_RES.plan[c.vmid] = {cores: c.proposed, node: c.node_id};
+    });
+    if (_PROJ_RES.filter === null) _PROJ_RES.filter = _resToHandle(j).length ? 'todo' : 'all';
+    _resRender();
+}
+
+function _resChange(c) {
+    const p = _PROJ_RES.plan[c.vmid];
+    if (!p) return null;
+    const node = p.node || c.node_id;
+    const cores = p.cores || c.alloc || c.proposed || 1;
+    if (node === c.node_id && cores === c.alloc) return null;
+    return {vmid: c.vmid, cores, node, move: node !== c.node_id};
+}
+
+function _resToHandle(j) {
+    return j.containers.filter(c => (c.required && c.guarantee !== 'guaranteed') || _resChange(c));
+}
+
+function _resColors(j) {
+    const out = {};
+    let i = 0;
+    j.containers.forEach(c => {
+        if (c.alloc || c.proposed || _PROJ_RES.plan[c.vmid]) out[c.vmid] = PROJ_RES_COLORS[i++ % PROJ_RES_COLORS.length];
+    });
+    return out;
+}
+
+// One cell per pool core, then the plan drawn on it: dotted = released, hatched = taken.
+function _resNodes(j) {
+    const changes = j.containers.map(_resChange).filter(Boolean);
+    return j.nodes.map(n => {
+        const cells = n.cells.map(c => ({kind: c.kind, vmid: c.vmid, owner: c.owner, cpu: c.cpu, state: 'full'}));
+        const sharedBefore = cells.filter(c => c.kind === 'free' || c.kind === 'ht_blocked').length;
+        // What leaves or shrinks: its last cells turn dotted.
+        changes.forEach(ch => {
+            const c = j.containers.find(x => x.vmid === ch.vmid);
+            if (c.node_id !== n.id) return;
+            const release = ch.move ? c.alloc : Math.max(0, c.alloc - ch.cores);
+            if (release) cells.filter(x => x.kind === 'project' && x.vmid === ch.vmid).slice(-release)
+                .forEach(x => { x.state = 'leaving'; });
+        });
+        // What arrives or grows: taken from the dedicable shared cores, then from what a departure frees.
+        let missing = 0;
+        changes.forEach(ch => {
+            const c = j.containers.find(x => x.vmid === ch.vmid);
+            if (ch.node !== n.id) return;
+            let take = ch.move ? ch.cores : Math.max(0, ch.cores - c.alloc);
+            for (const pool of [cells.filter(x => x.kind === 'free'), cells.filter(x => x.state === 'leaving')]) {
+                for (const x of pool) {
+                    if (!take) break;
+                    x.kind = 'project'; x.vmid = ch.vmid; x.state = 'taken'; take--;
+                }
+            }
+            missing += take;
+        });
+        const sharedAfter = cells.filter(c => c.kind === 'free' || c.kind === 'ht_blocked' || c.state === 'leaving').length;
+        return Object.assign({}, n, {view: cells, missing, sharedBefore, sharedAfter});
+    });
+}
+
+// Tooltip: the core (CPU number) and WHO holds it — a container of another project is named too.
+function _resCell(x, colors) {
+    const who = x.kind === 'project'
+        ? _resShort(((_PROJ_RES.data.containers.find(c => c.vmid === x.vmid) || {}).hostname) || ('#' + x.vmid))
+        : (x.owner || window.t('projects.res_legend.' + x.kind));
+    const tip = _mEsc('CPU ' + (x.cpu ?? '?') + ' · ' + who);
+    if (x.kind === 'project') {
+        const c = _PROJ_RES.data.containers.find(k => k.vmid === x.vmid);
+        const block = c ? _resMoveBlock(c) : 'stopped';
+        const drag = RES_CAN_DEPLOY && !block;
+        const why = !RES_CAN_DEPLOY ? '' : ' — ' + window.t(drag ? 'projects.res_drag_tip' : 'projects.res_move_block.' + block);
+        return `<span class="proj-core proj-core-${x.state}" style="--c:${colors[x.vmid] || '#888'}" data-vmid="${x.vmid}"${drag ? ` data-drag="${x.vmid}"` : ''} title="${tip}${_mEsc(why)}"></span>`;
+    }
+    // Node I/O of the project (a DeckLink card): its own tint, still linked to its row. Never
+    // draggable: the card is physically in this node — the tooltip says so.
+    if (x.kind === 'io' && x.vmid != null) return `<span class="proj-core proj-core-io" data-vmid="${x.vmid}" title="${tip}${RES_CAN_DEPLOY ? _mEsc(' — ' + window.t('projects.res_move_block.node_io')) : ''}"></span>`;
+    return `<span class="proj-core proj-core-${x.kind}" title="${tip}"></span>`;
+}
+
+/* Cross highlight (asked on 2026-11-07): hovering a row brings its cores forward, hovering a core
+   brings its row forward — the rest stays as it is (dimming it hid too much). A click/tap PINS the
+   selection (iPad: no hover), a second one removes it. Clicking a core whose row is filtered out
+   shows everything and scrolls to it. */
+function _resHl(vmid) {
+    const body = document.getElementById('proj-res-body');
+    if (!body) return;
+    const v = vmid == null ? null : String(vmid);
+    body.classList.toggle('hl-on', v !== null);
+    body.querySelectorAll('[data-vmid]').forEach(el => el.classList.toggle('hl', el.dataset.vmid === v));
+}
+function _resHlWire(body) {
+    if (body._hlWired) return;
+    body._hlWired = true;
+    const target = (e) => e.target.closest && e.target.closest('.proj-node-cells [data-vmid], tr[data-vmid]');
+    body.addEventListener('mouseover', (e) => { const el = target(e); if (el) _resHl(el.dataset.vmid); });
+    body.addEventListener('mouseout', (e) => {
+        const el = target(e);
+        if (el && !(e.relatedTarget && el.contains(e.relatedTarget))) _resHl(_PROJ_RES.hl);
+    });
+    body.addEventListener('click', (e) => {
+        if (e.target.closest('select, input, button, a')) return;
+        if (_PROJ_RES.dragged && Date.now() - _PROJ_RES.dragged < 400) return;   // end of a drag
+        const el = target(e);
+        if (!el) return;
+        const v = parseInt(el.dataset.vmid, 10);
+        _PROJ_RES.hl = _PROJ_RES.hl === v ? null : v;
+        if (el.classList.contains('proj-core') && _PROJ_RES.hl !== null
+                && !body.querySelector('tr[data-vmid="' + v + '"]')) {
+            _PROJ_RES.filter = 'all';
+            _PROJ_RES.type = '';
+            _resRender();
+        }
+        _resHl(_PROJ_RES.hl);
+        const row = body.querySelector('tr[data-vmid="' + v + '"]');
+        if (row && el.classList.contains('proj-core') && _PROJ_RES.hl !== null) row.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+    });
+}
+
+function _resRender() {
+    const j = _PROJ_RES.data, pid = _PROJ_RES.pid;
+    const body = document.getElementById('proj-res-body');
+    if (!j || !body) return;
+    const t = (k) => window.t(k);
+    const colors = _resColors(j);
+    const ok = j.verdict === 'guaranteed';
+    const detail = ['stopped', 'undersized', 'reserved_unmeasured', 'shared']
+        .filter(s => j.counts[s])
+        .map(s => t('projects.res_count.' + s).replace('{n}', j.counts[s])).join(' · ');
+    const pools = (j.nodes_without_pool || []).map(n =>
+        `<p class="proj-port-why">${_mEsc(t('projects.res_no_pool').replace('{name}', n.name || ('#' + n.id)))}</p>`).join('');
+    const verdict = j.verdict === 'empty'
+        ? `<div class="proj-res-verdict"><b>${_mEsc(t('projects.res_verdict_empty'))}</b></div>`
+        : j.verdict === 'no_dedicated'
+        ? `<div class="proj-res-verdict ko"><b>${_mEsc(t('projects.res_verdict_no_dedicated'))}</b>
+             <p class="meta">${_mEsc(t('projects.res_how'))}</p></div>`
+        : `<div class="proj-res-verdict ${ok ? 'ok' : 'ko'}">
+             <b>${_mEsc(t(ok ? 'projects.res_verdict_guaranteed' : 'projects.res_verdict_not_guaranteed'))}</b>
+             ${ok ? '' : `<p>${_mEsc(detail)}</p>`}
+             ${pools}
+           </div>`;
+    const calibrate = RES_CAN_DEPLOY ? `<div class="proj-res-calibrate">
+            <button type="button" class="btn btn-green" id="proj-res-cal" onclick="resCalibrateProject(${pid})">${_mEsc(t('projects.res_calibrate'))}</button>
+            <span class="meta">${_mEsc(t('projects.res_step_calibrate'))}</span>
+            <span class="meta" id="proj-res-chrono"></span></div>` : '';
+
+    // ── Schema: every node, one cell per core ──
+    const schema = _resNodes(j).map(n => {
+        const right = !n.pool ? t('projects.res_node_nopool')
+            : n.missing ? t('projects.res_node_missing').replace('{n}', n.missing)
+            : n.sharedBefore !== n.sharedAfter
+                ? t('projects.res_node_shared_change').replace('{a}', n.sharedBefore).replace('{b}', n.sharedAfter)
+                : t('projects.res_node_shared').replace('{a}', n.sharedBefore);
+        const cls = n.missing ? 'ko' : (n.sharedBefore !== n.sharedAfter ? 'chg' : '');
+        return `<div class="proj-node" data-node="${n.id}">
+            <div class="proj-node-name"><b>${_mEsc(n.name)}</b><span class="meta">${_mEsc(t('projects.res_node_cores').replace('{n}', n.cells.length))}</span></div>
+            <div class="proj-node-cells">${n.view.map(x => _resCell(x, colors)).join('')}</div>
+            <span class="proj-node-free ${cls}">${_mEsc(right)}</span>
+          </div>`;
+    }).join('');
+    const legend = j.containers.filter(c => colors[c.vmid]).map(c =>
+        `<span><span class="proj-core proj-core-full" style="--c:${colors[c.vmid]}"></span>${_mEsc(_resShort(c.hostname))}</span>`).join('')
+        + ['other', 'engine', 'io', 'ht_blocked', 'free'].map(k =>
+        `<span><span class="proj-core proj-core-${k}"></span>${_mEsc(t('projects.res_legend.' + k))}</span>`).join('');
+
+    // ── Plan ──
+    const changes = j.containers.map(c => [c, _resChange(c)]).filter(x => x[1]);
+    const nodeName = (id) => (j.nodes.find(n => n.id === id) || {}).name || ('#' + id);
+    const plan = changes.length ? `<section class="proj-res-plan">
+        <div class="proj-res-plan-head"><h4>${_mEsc(t('projects.res_plan').replace('{n}', changes.length))}</h4>
+          ${RES_CAN_DEPLOY ? `<button type="button" class="btn" onclick="resResetPlan()">${_mEsc(t('projects.res_plan_reset'))}</button>
+          <button type="button" class="btn btn-purple" id="proj-res-apply" onclick="resApply()">${_mEsc(t('projects.res_plan_apply'))}</button>` : ''}</div>
+        ${changes.map(([c, ch]) => `<div class="proj-res-plan-row">
+            <span class="proj-core proj-core-full" style="--c:${colors[c.vmid] || '#888'}"></span>
+            <span>${_mEsc(ch.move
+                ? t('projects.res_plan_move').replace('{h}', _resShort(c.hostname)).replace('{from}', nodeName(c.node_id))
+                    .replace('{to}', nodeName(ch.node)).replace('{n}', ch.cores)
+                : t('projects.res_plan_resize').replace('{h}', _resShort(c.hostname)).replace('{a}', c.alloc).replace('{b}', ch.cores))}</span>
+            <span class="proj-res-cost ${ch.move ? 'cut' : 'hot'}">${_mEsc(t(ch.move ? 'projects.res_cost_cut' : 'projects.res_cost_hot'))}</span>
+          </div>`).join('')}
+        <p class="proj-port-why" id="proj-res-why" hidden></p>
+        <div id="proj-res-job"></div>
+      </section>` : '';
+
+    // ── Suggestions (same project only) ──
+    const sugg = (j.suggestions || []).filter(s => !(_PROJ_RES.plan[s.vmid] && _PROJ_RES.plan[s.vmid].node === s.to));
+    const suggestions = sugg.map(s => `<div class="proj-res-sugg">
+        <span>${_mEsc(t('projects.res_sugg').replace('{h}', _resShort(s.hostname))
+            .replace('{with}', s.with.map(_resShort).join(', ')).replace('{to}', s.to_name))}</span>
+        ${s.fits
+            ? (RES_CAN_DEPLOY ? `<button type="button" class="btn" onclick="resMove(${s.vmid}, ${s.to})">${_mEsc(t('projects.res_sugg_go').replace('{to}', s.to_name))}</button>` : '')
+            : `<span class="meta">${_mEsc(t('projects.res_sugg_noroom').replace('{to}', s.to_name))}</span>`}
+      </div>`).join('');
+
+    // ── Filters and table ──
+    const todo = _resToHandle(j);
+    const count = {todo: todo.length, dedicated: j.containers.filter(c => c.required).length,
+                   best_effort: j.containers.filter(c => !c.required).length, all: j.containers.length};
+    const types = [...new Set(j.containers.map(c => c.type).filter(Boolean))].sort();
+    const f = _PROJ_RES.filter;
+    const rows = j.containers.filter(c =>
+        (f === 'all' || (f === 'todo' && todo.includes(c)) || (f === 'dedicated' && c.required) || (f === 'best_effort' && !c.required))
+        && (!_PROJ_RES.type || c.type === _PROJ_RES.type));
+    const filters = `<div class="proj-res-filters">
+        ${['todo', 'dedicated', 'best_effort', 'all'].map(k => `<button type="button" class="filter-chip${f === k ? ' active' : ''}"
+            onclick="resFilter('${k}')">${_mEsc(t('projects.res_filter.' + k).replace('{n}', count[k]))}</button>`).join('')}
+        <span style="flex:1"></span>
+        <label class="meta">${_mEsc(t('projects.res_type'))}
+          <select onchange="resType(this.value)"><option value="">${_mEsc(t('projects.all'))}</option>
+            ${types.map(ty => `<option value="${_mEsc(ty)}"${ty === _PROJ_RES.type ? ' selected' : ''}>${_mEsc(ty)}</option>`).join('')}</select></label>
       </div>`;
-    ov._opener = opener;
-    ov.addEventListener('mousedown', e => { if (e.target === ov) closePorts(); });
-    ov.querySelector('#proj-ports-close').onclick = closePorts;
-    document.body.appendChild(ov);
-    document.addEventListener('keydown', _portsEsc);
-    ov.querySelector('#proj-ports-close').focus();
-    chargerPorts(pid);
+    const poolNodes = j.nodes.filter(n => n.pool);
+    const table = `<div class="proj-res-table"><table>
+        <thead><tr><th></th><th>${_mEsc(t('projects.res_col.name'))}</th><th>${_mEsc(t('projects.res_col.type'))}</th>
+          <th>${_mEsc(t('projects.res_col.node'))}</th><th>${_mEsc(t('projects.res_level'))}</th><th>${_mEsc(t('projects.res_col.state'))}</th>
+          <th>${_mEsc(t('projects.res_col.usage'))}</th><th>${_mEsc(t('containers.ressources.guarantee_cores_label'))}</th></tr></thead>
+        <tbody>${rows.map(c => _resRow(c, colors, poolNodes)).join('') || `<tr><td colspan="8" class="meta">—</td></tr>`}</tbody>
+      </table></div>`;
+
+    const hint = RES_CAN_DEPLOY ? `<p class="meta proj-res-drag-hint">${_mEsc(t('projects.res_drag_hint'))}</p>` : '';
+    body.innerHTML = verdict + calibrate
+        + `<section class="proj-res-schema">${schema}<div class="proj-res-legend">${legend}</div>${hint}</section>`
+        + plan + suggestions + filters + table;
+    _resHlWire(body);
+    _resDragWire(body);
+    _resHl(_PROJ_RES.hl);
+    _resUpdateCampaign();
 }
-function _portsEsc(e) { if (e.key === 'Escape') closePorts(); }
-function closePorts() {
-    const ov = document.getElementById('proj-ports-modal');
-    document.removeEventListener('keydown', _portsEsc);
-    if (!ov) return;
-    const opener = ov._opener;
-    ov.remove();
-    if (opener && opener.focus) opener.focus();
+
+// A project's hostnames share a long prefix (« Projet-Regie-Legere-rl-… »): dropped for display,
+// otherwise the useful part is cut by the ellipsis. Computed over the project's members, cut on a dash.
+function _resShort(h) {
+    const pre = _PROJ_RES.prefix || '';
+    h = String(h || '');
+    return pre && h.startsWith(pre) && h.length > pre.length ? h.slice(pre.length) : h;
 }
+function _resPrefix(names) {
+    if (names.length < 2) return '';
+    let pre = names[0];
+    for (const n of names) while (!n.startsWith(pre)) pre = pre.slice(0, -1);
+    const i = pre.lastIndexOf('-');
+    return i > 0 ? pre.slice(0, i + 1) : '';
+}
+
+function _resRow(c, colors, nodes) {
+    const t = (k) => window.t(k);
+    const ch = _resChange(c);
+    const p = _PROJ_RES.plan[c.vmid] || {};
+    const badge = c.node_io
+        ? `<span class="badge" title="${_mEsc(t('projects.res_node_io_tip'))}">${_mEsc(t('projects.res_state.node_io'))}</span>`
+        : c.required
+        ? `<span class="badge ${PROJ_RES_BADGE[c.guarantee] || ''}">${_mEsc(t('projects.res_state.' + c.guarantee))}</span>`
+        : `<span class="badge">${_mEsc(t('projects.res_state.best_effort'))}</span>`;
+    // Node I/O is sized by its connectors on its card's node: read-only here.
+    const ro = !RES_CAN_DEPLOY || c.guarantee === 'stopped' || c.node_io;
+    const node = p.node || c.node_id;
+    const block = _resMoveBlock(c);
+    const nodeSel = ro ? `<span${RES_CAN_DEPLOY && block ? ` title="${_mEsc(t('projects.res_move_block.' + block))}"` : ''}>${_mEsc((nodes.find(n => n.id === c.node_id) || {}).name || '—')}</span>`
+        : `<select class="${ch && ch.move ? 'proj-res-moved' : ''}" aria-label="${_mEsc(t('projects.res_move_to'))}" title="${_mEsc(t('projects.res_move_to'))}"
+             onchange="resDrop(${c.vmid}, parseInt(this.value, 10))">${nodes.map(n =>
+            `<option value="${n.id}"${n.id === node ? ' selected' : ''}>${_mEsc(n.name)}</option>`).join('')}</select>`;
+    const levelSel = RES_CAN_DEPLOY && !c.node_io
+        ? `<select aria-label="${_mEsc(t('projects.res_level'))}" title="${_mEsc(t('projects.res_level_tip'))}" onchange="resLevel(${_PROJ_RES.pid}, ${c.vmid}, this)">${PROJ_RES_LEVELS.map(n =>
+            `<option value="${n}"${n === c.level ? ' selected' : ''}>${_mEsc(t('settings.cores.weight.' + n))}</option>`).join('')}</select>`
+        : _mEsc(t('settings.cores.weight.' + c.level));
+    // Reserved · used · peak, in one unit (cores): the brick's bar, on one line.
+    const res = (c.reserve_pct || 0) / 100, used = (c.consomme_pct || 0) / 100, peak = ((c.mesure && c.mesure.max) || 0) / 100;
+    const axis = Math.max(res, used, peak, 1) * 1.1;
+    const fmt = (v) => v ? v.toLocaleString(undefined, {maximumFractionDigits: 1}) : '—';
+    const bar = `<div class="proj-res-bar"><i class="r" style="width:${res / axis * 100}%"></i><i class="c" style="width:${used / axis * 100}%"></i>
+        ${peak ? `<i class="p" style="left:${peak / axis * 100}%"></i>` : ''}</div>
+        <span class="num">${fmt(res)} · ${fmt(used)} · ${fmt(peak)}</span>`;
+    const val = p.cores || (c.alloc || '');
+    const cores = ro ? _mEsc(String(c.alloc || '—'))
+        : `<input type="number" min="1" step="1" value="${val}" placeholder="—" aria-label="${_mEsc(t('containers.ressources.guarantee_cores_label'))}"
+             onchange="resCores(${c.vmid}, this.value)">`;
+    return `<tr data-vmid="${c.vmid}" class="${ch ? 'proj-res-pending' : ''}">
+        <td class="proj-res-grip"${RES_CAN_DEPLOY && !block ? ` data-drag="${c.vmid}" title="${_mEsc(t('projects.res_drag_tip'))}"` : ''}>${RES_CAN_DEPLOY && !block ? '<span class="proj-res-grip-dots" aria-hidden="true">⠿</span>' : ''}<span class="proj-core proj-core-${colors[c.vmid] ? 'full' : 'empty'}" style="--c:${colors[c.vmid] || 'transparent'}"></span></td>
+        <td><b>${_mEsc(_resShort(c.hostname) || ('#' + c.vmid))}</b> <span class="meta">#${c.vmid}</span></td>
+        <td class="meta">${_mEsc(c.type || '—')}</td><td>${nodeSel}</td><td>${levelSel}</td><td>${badge}</td>
+        <td class="proj-res-usage">${bar}</td><td>${cores}</td></tr>`;
+}
+
+function resFilter(k) { _PROJ_RES.filter = k; _resRender(); }
+function resType(v) { _PROJ_RES.type = v; _resRender(); }
+function resResetPlan() { _PROJ_RES.plan = {}; _resRender(); }
+
+function resCores(vmid, v) {
+    const n = parseInt(v, 10);
+    const c = _PROJ_RES.data.containers.find(x => x.vmid === vmid);
+    const p = _PROJ_RES.plan[vmid] || {node: c.node_id};
+    if (!n || n < 1) delete p.cores; else p.cores = n;
+    _PROJ_RES.plan[vmid] = p;
+    _resRender();
+}
+
+function resMove(vmid, node) {
+    const c = _PROJ_RES.data.containers.find(x => x.vmid === vmid);
+    const p = _PROJ_RES.plan[vmid] || {};
+    p.node = node;
+    if (!p.cores) p.cores = c.alloc || c.proposed || 1;
+    _PROJ_RES.plan[vmid] = p;
+    _resRender();
+}
+
+// Why a container cannot be moved (null = it can): node I/O (the card is in the node), a type the
+// migration refuses, stopped. Given by the server (`project_resources.move_block`).
+function _resMoveBlock(c) {
+    if (c.move_block !== undefined) return c.move_block;
+    return c.node_io ? 'node_io' : c.guarantee === 'stopped' ? 'stopped' : null;
+}
+
+// The refusals of `check_plan`, in words — the same for « Apply » and for a drop.
+function _resErrText(res) {
+    const t = (k) => window.t(k);
+    const nodeName = (id) => ((_PROJ_RES.data.nodes || []).find(n => n.id === id) || {}).name || ('#' + id);
+    return (res.errors || []).map(e => e.error === 'capacity'
+        ? t('projects.res_refused_capacity').replace('{name}', e.name).replace('{available}', e.available).replace('{need}', e.need)
+        : e.error === 'running' ? t('projects.res_apply_running')
+        : e.error === 'node_io' ? t('projects.res_refused_node_io').replace('{vmid}', e.vmid)
+        : e.error === 'not_movable' ? t('projects.res_move_block.' + e.reason)
+        : e.error === 'no_pool' ? t('projects.res_no_pool').replace('{name}', nodeName(e.node_id))
+        : (e.error + (e.vmid ? ' #' + e.vmid : ''))).join(' ');
+}
+
+/* Move a container to another node by dropping it there (2026-11-07) — or by the « Move to… »
+   choice of its row, the equivalent without a gesture. Nothing new: the move goes into the plan
+   exactly like a suggestion (resMove), the server checks the whole plan right away with the
+   refusals of « Apply » (`check_plan`, nothing applied) and a refused drop is taken back, with its
+   reason. Applying stays « Apply », with its confirmation naming the containers recreated.
+   Not here: choosing the cores inside a node — the allocator picks them. */
+async function resDrop(vmid, node) {
+    const t = (k) => window.t(k);
+    const j = _PROJ_RES.data, pid = _PROJ_RES.pid;
+    const c = j && j.containers.find(x => x.vmid === vmid);
+    if (!c || !node || !RES_CAN_DEPLOY) return false;
+    const block = _resMoveBlock(c);
+    if (block) { showWireToast(t('projects.res_move_block.' + block), 'warning'); _resRender(); return false; }
+    const p = _PROJ_RES.plan[vmid];
+    if (node === ((p && p.node) || c.node_id)) return false;            // dropped where it already is
+    if (node === c.node_id) {                                           // back home: the move is cancelled
+        p.node = c.node_id;
+        if (!c.alloc && !c.proposed) delete _PROJ_RES.plan[vmid];
+        _resRender();
+        return true;
+    }
+    const before = p ? Object.assign({}, p) : null;
+    resMove(vmid, node);
+    const changes = j.containers.map(_resChange).filter(Boolean);
+    let r, res;
+    try {
+        r = await fetch('/api/projects/' + pid + '/apply', {method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({check: true, changes: changes.map(ch => ({vmid: ch.vmid, cores: ch.cores, node_id: ch.node}))})});
+        res = await r.json().catch(() => ({}));
+    } catch (e) {
+        return true;                                    // unchecked: « Apply » checks it again anyway
+    }
+    if (r.ok) return true;
+    // Only what concerns THIS drop takes it back: a refusal already in the plan is shown at « Apply ».
+    const mine = (res.errors || []).filter(e => e.vmid === vmid || e.node_id === node);
+    if (!mine.length) return true;
+    if (before) _PROJ_RES.plan[vmid] = before; else delete _PROJ_RES.plan[vmid];
+    _resRender();
+    showWireToast(_resErrText({errors: mine}), 'error');
+    return false;
+}
+
+// Pointer events (mouse, pen, touch — iPad): a press on a container's cell or on the grip of its
+// row, then a move of a few pixels, starts the drag; release over a node = resDrop. Without that
+// movement it stays a click (the cross highlight).
+function _resDragWire(body) {
+    if (body._dragWired) return;
+    body._dragWired = true;
+    body.addEventListener('pointerdown', (e) => {
+        if (!RES_CAN_DEPLOY || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        const src = e.target.closest && e.target.closest('[data-drag]');
+        if (!src) return;
+        const vmid = parseInt(src.dataset.drag, 10);
+        const c = (_PROJ_RES.data.containers || []).find(x => x.vmid === vmid);
+        if (!c) return;
+        const p = _PROJ_RES.plan[vmid];
+        const at = (p && p.node) || c.node_id;
+        const d = {id: e.pointerId, x: e.clientX, y: e.clientY, on: false, ghost: null, over: null};
+        const nodeAt = (x, y) => {
+            const el = document.elementFromPoint(x, y);
+            return (el && el.closest && body.contains(el)) ? el.closest('.proj-node[data-node]') : null;
+        };
+        const move = (ev) => {
+            if (ev.pointerId !== d.id) return;
+            if (!d.on) {
+                if (Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 6) return;
+                d.on = true;
+                body.classList.add('res-dragging');
+                d.ghost = document.createElement('div');
+                d.ghost.className = 'proj-res-ghost';
+                d.ghost.style.setProperty('--c', _resColors(_PROJ_RES.data)[vmid] || '');
+                d.ghost.textContent = _resShort(c.hostname) || ('#' + vmid);
+                document.body.appendChild(d.ghost);
+            }
+            ev.preventDefault();
+            d.ghost.style.left = (ev.clientX + 12) + 'px';
+            d.ghost.style.top = (ev.clientY + 12) + 'px';
+            const n = nodeAt(ev.clientX, ev.clientY);
+            if (n === d.over) return;
+            if (d.over) d.over.classList.remove('drop-ok', 'drop-same');
+            d.over = n;
+            if (n) n.classList.add(parseInt(n.dataset.node, 10) === at ? 'drop-same' : 'drop-ok');
+        };
+        const end = (ev) => {
+            if (ev.pointerId !== d.id) return;
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', end);
+            window.removeEventListener('pointercancel', end);
+            if (!d.on) return;
+            body.classList.remove('res-dragging');
+            if (d.ghost) d.ghost.remove();
+            if (d.over) d.over.classList.remove('drop-ok', 'drop-same');
+            _PROJ_RES.dragged = Date.now();
+            if (ev.type === 'pointerup' && d.over) resDrop(vmid, parseInt(d.over.dataset.node, 10));
+        };
+        window.addEventListener('pointermove', move, {passive: false});
+        window.addEventListener('pointerup', end);
+        window.addEventListener('pointercancel', end);
+    });
+}
+
+async function resApply() {
+    const t = (k) => window.t(k);
+    const j = _PROJ_RES.data, pid = _PROJ_RES.pid;
+    const changes = j.containers.map(_resChange).filter(Boolean);
+    const moves = changes.filter(ch => ch.move);
+    if (moves.length) {
+        // Choice 1 of 2026-11-07: a move RECREATES the container — name the ones that will be cut.
+        const names = moves.map(ch => _resShort((j.containers.find(c => c.vmid === ch.vmid) || {}).hostname)).join(', ');
+        if (!confirm(t('projects.res_confirm_move').replace('{list}', names))) return;
+    }
+    const btn = document.getElementById('proj-res-apply');
+    if (btn) btn.disabled = true;
+    const r = await fetch('/api/projects/' + pid + '/apply', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({changes: changes.map(ch => ({vmid: ch.vmid, cores: ch.cores, node_id: ch.node}))})});
+    const res = await r.json().catch(() => ({}));
+    if (!r.ok) {
+        const why = document.getElementById('proj-res-why');
+        why.textContent = _resErrText(res) || (res.error || r.statusText);
+        why.hidden = false;
+        if (btn) btn.disabled = false;
+        return;
+    }
+    _resFollow(pid);
+}
+
+async function _resFollow(pid) {
+    const t = (k) => window.t(k);
+    const box = document.getElementById('proj-res-job');
+    const st = await fetch('/api/projects/' + pid + '/apply').then(r => r.json()).catch(() => ({}));
+    if (box) box.innerHTML = (st.steps || []).map(s => `<div class="meta">${s.ok ? '✓' : (st.state === 'done' ? '✕' : '…')}
+        ${_mEsc(_resShort(s.hostname))} ${s.detail ? '— ' + _mEsc(s.detail) : ''}</div>`).join('');
+    if (st.state === 'running') { setTimeout(() => _resFollow(pid), 2000); return; }
+    const failed = (st.steps || []).filter(s => !s.ok).length;
+    showWireToast(t(failed ? 'projects.res_apply_partial' : 'projects.res_apply_ok')
+        .replace('{ok}', (st.steps || []).length - failed).replace('{n}', (st.steps || []).length), failed ? 'warning' : 'ok');
+    setTimeout(() => loadResources(pid), failed ? 4000 : 800);
+}
+
+// The level is set HOT (docker update --cpu-shares): no recreation, no cut. It also says what must
+// be guaranteed: on air = to guarantee, the rest best effort (2026-11-07).
+async function resLevel(pid, vmid, sel) {
+    sel.disabled = true;
+    const r = await fetch('/api/containers/' + vmid + '/resources', {
+        method: 'PATCH', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({cpu_weight: sel.value})});
+    const j = await r.json().catch(() => ({}));
+    // « Dédié » = dedicated cores: refused when the node has none to give (the level is kept).
+    if (!r.ok) showWireToast(j.error === 'no_room'
+        ? window.t('projects.res_level_no_room').replace('{name}', j.name).replace('{need}', j.need).replace('{available}', j.available)
+        : (j.error || r.statusText), 'error');
+    loadResources(pid);
+}
+
+// The calibration campaign is UNIQUE on the cluster: one started elsewhere disables the button and
+// says so, rather than being stopped by surprise from this project.
+async function _resUpdateCampaign() {
+    clearInterval(_PROJ_RES.timer);
+    const btn = document.getElementById('proj-res-cal');
+    if (!btn) return;
+    const st = await MXLRessources.fetchState();
+    const t = (k) => window.t(k);
+    const chrono = document.getElementById('proj-res-chrono');
+    const running = st.etat === 'en_cours';
+    const ours = running && String(st.projet) === String(_PROJ_RES.pid);
+    btn.disabled = running && !ours;
+    btn.textContent = t(ours ? 'projects.res_calibrate_stop' : 'projects.res_calibrate');
+    btn.classList.toggle('btn-orange', ours);
+    btn.classList.toggle('btn-green', !ours);
+    chrono.textContent = (running && !ours)
+        ? t('projects.res_calibrate_elsewhere').replace('{label}', st.libelle || '—') : '';
+    if (ours) {
+        const tick = () => { chrono.textContent = MXLRessources.fmtChrono(Date.now() / 1000 - st.debut); };
+        tick();
+        _PROJ_RES.timer = setInterval(tick, 1000);
+    }
+}
+
+async function resCalibrateProject(pid) {
+    const t = (k) => window.t(k);
+    const st = await MXLRessources.fetchState();
+    if (st.etat === 'en_cours' && String(st.projet) === String(pid)) {
+        // Stop: save ONLY the project's containers, and only those with enough samples.
+        const r = await fetch('/api/etalonnage/stop', {method: 'POST'});
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) { showWireToast(j.error || r.statusText, 'error'); return _resUpdateCampaign(); }
+        const ours = new Set(_PROJ_RES.members.map(c => c.vmid));
+        const seen = (j.resultat.conteneurs || []).filter(l => ours.has(l.vmid));
+        const good = seen.filter(l => l.suffisant);
+        if (!good.length) {
+            const pts = seen.reduce((a, l) => Math.max(a, (l.mesure && l.mesure.n) || 0), 0);
+            showWireToast(t('containers.ressources.not_enough_points').replace('{n}', pts)
+                .replace('{min}', j.resultat.min_points || 20).replace('{s}', j.resultat.duree_min_s || 30)
+                .replace('{d}', Math.round(j.resultat.duree_s || 0)), 'warning');
+            return loadResources(pid);
+        }
+        const rs = await fetch('/api/etalonnage/save', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                         body: JSON.stringify({vmids: good.map(l => l.vmid)})});
+        const js = await rs.json().catch(() => ({}));
+        if (rs.ok && js.ok) {
+            const missing = ours.size - good.length;
+            showWireToast(t('containers.ressources.saved').replace('{n}', js.enregistres)
+                + (missing ? ' ' + t('projects.res_calibrate_partial').replace('{n}', missing) : ''),
+                missing ? 'warning' : 'ok');
+        } else showWireToast(js.error || rs.statusText, 'error');
+        return loadResources(pid);
+    }
+    const nodeIds = [...new Set(_PROJ_RES.members.map(c => c.node_id).filter(Boolean))];
+    if (!nodeIds.length) { showWireToast(t('projects.res_verdict_empty'), 'error'); return; }
+    const name = ((typeof SYS_PROJECTS !== 'undefined' ? SYS_PROJECTS : []).find(p => p.id === pid) || {}).name || ('#' + pid);
+    const r = await fetch('/api/etalonnage/start', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                     body: JSON.stringify({node_ids: nodeIds, projet: pid, libelle: name})});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) showWireToast(j.error || r.statusText, 'error');
+    _resUpdateCampaign();
+}
+
+function closePorts() { closeProject(); }
 function _portState(pid) {
     return _PORTS[pid] = _PORTS[pid] || {
         ports: [], outputs: [], edit: null, dir: 'source',

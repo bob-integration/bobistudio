@@ -130,14 +130,7 @@
     animation:tp-pop-in 140ms cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes tp-pop-in { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
 .tp-settings-body { display:flex; flex-direction:column; gap:var(--space-2); }
-/* Actions propres au plugin monté (settingsActions), en tête du ⚙ */
-.tp-settings-actions { display:flex; flex-direction:column; gap:var(--space-1); padding-bottom:var(--space-2);
-    border-bottom:1px solid var(--border-soft); }
 .tp-settings-body .palette-field, .tp-settings-body .palette-field-check { margin:var(--space-1) 0; }
-.tp-settings-hint { font-size:0.8em; color:var(--text-muted); }
-.tp-settings-status { font-size:0.82em; min-height:1.2em; }
-.tp-settings-status.ok  { color:var(--status-running-fg); }
-.tp-settings-status.err { color:var(--status-stopped-fg); }
 .tp-mount { border:1px solid var(--border-soft); border-radius:6px; padding:14px; min-height:300px; }
 .tp-mount.empty { display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
 .toast-host { position:fixed; bottom:18px; right:18px; display:flex; flex-direction:column; gap:8px; z-index:300; }
@@ -191,7 +184,7 @@
             title="{{ _('section.settings_btn_title') }}"
             aria-label="{{ _('section.settings_btn_title') }}"
             aria-haspopup="true" aria-expanded="false"
-            aria-controls="tp-settings"><span aria-hidden="true">⚙</span></button>
+            aria-controls="bobi-cpanel"><span aria-hidden="true">⚙</span></button>
   </div>
   <div class="res-compact" id="res-compact" hidden>
     <button type="button" class="res-compact-toggle" id="res-compact-toggle"
@@ -241,9 +234,6 @@
     <section class="tp-main">
         <div class="tp-settings-pop" id="tp-public" hidden>
             <div class="tp-settings-body" id="tp-public-body"></div>
-        </div>
-        <div class="tp-settings-pop" id="tp-settings" hidden>
-            <div class="tp-settings-body"></div>
         </div>
         <div class="tp-mount empty" id="tp-mount" aria-live="polite">
             <div>{{ _('section.pick_hint') }}</div>
@@ -473,8 +463,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// Réglages structurels (config_schema scope "system") : popover ⚙ admin. Les champs
-// scope "user" ne sont rendus nulle part ici — l'UI de contrôle du plugin les couvre.
+// Réglages structurels (config_schema scope "system") : panneau « Réglages du conteneur » (⚙). Les
+// champs scope "user" n'y sont pas rendus — l'UI de contrôle du plugin les couvre.
 const PS_SCHEMAS    = {{ plugin_config_schemas | tojson }};
 const PS_CAN_DEPLOY = {{ has_perm('containers.deploy') | tojson }};
 const EXTRA_TABS = {{ extra_tabs | default([]) | tojson }};   // onglets custom (non-plugin), ex. 2110
@@ -860,327 +850,67 @@ window.tpRefreshPreview = function(vmid){
     if(cv) try{ fn(cv, {vmid:Number(vmid)}); }catch(_){}
 };
 
-// ── Panneau Réglages (config_schema scopé user/system) ──────────────────────
-// Mini-renderer autonome (scripts.js n'est pas chargé ici) ; mêmes conventions
-// data-cf/data-cft que la palette de la page Containers.
-function psFieldHtml(f){
-    const k=psEsc(f.key);
-    // Réglage appliqué À CHAUD par le conteneur (`live` du config_schema) : marqué, pour que
-    // « Appliquer redéploie » ne fasse pas croire à une coupure qui n'aura pas lieu.
-    const lbl=psEsc(f.label||f.key)+(f.live?' <span class="badge">'+psEsc(window.t('section.settings_live_badge'))+'</span>':'');
-    const ph=f.placeholder!=null?' placeholder="'+psEsc(f.placeholder)+'"':'';
-    const val=(f.default!=null)?' value="'+psEsc(f.default)+'"':'';
-    // Texte d'aide du champ (config_schema `help`) : rendu sous le champ (aligné palette).
-    const help=f.help?'<small class="meta">'+psEsc(f.help)+'</small>':'';
-    if(f.type==='checkbox'||f.type==='bool')   // bool = alias (schémas récents)
-        return '<div class="palette-field-check" data-cf-wrap="'+k+'"><label>'
-            +'<input type="checkbox" class="ios-toggle" data-cf="'+k+'" data-cft="checkbox"'+(f.default?' checked':'')+'> '+lbl+'</label>'+help+'</div>';
-    let input;
-    if(f.type==='number'){
-        const a=[f.min!=null?'min="'+psEsc(f.min)+'"':'', f.max!=null?'max="'+psEsc(f.max)+'"':'',
-                 f.step!=null?'step="'+psEsc(f.step)+'"':''].join(' ');
-        input='<input type="number" data-cf="'+k+'" data-cft="number" '+a+ph+val+'>';
-    } else if(f.type==='multiselect'){
-        // Même contrat que la palette (scripts.js), et le MÊME contrôle de catalogue : un champ
-        // rendu différemment ici et là donnerait deux comportements pour un seul réglage, selon
-        // la page d'où on l'ouvre. Le montage suit l'insertion du HTML (cf. psMonter).
-        input='<div data-cf="'+k+'" data-cft="multiselect" data-cf-opts="'
-            +psEsc(JSON.stringify({o:f.options||[], v:f.default||[]}))+'"></div>';
-    } else if(f.type==='select'){
-        const opts=(f.options||[]).map(o=>'<option value="'+psEsc(o.value)+'"'
-            +((f.default!=null&&String(o.value)===String(f.default))?' selected':'')+'>'
-            +psEsc(o.label||o.value)+'</option>').join('');
-        input='<select data-cf="'+k+'" data-cft="select">'+opts+'</select>';
-    } else {
-        input='<input type="text" data-cf="'+k+'" data-cft="text"'+ph+val+'>';
-    }
-    return '<div class="palette-field" data-cf-wrap="'+k+'"><label>'+lbl+'</label>'+input+help+'</div>';
-}
-// Monte les contrôles de catalogue — à appeler APRÈS avoir posé le HTML. Même fonction que la
-// palette (`_montePluginFields` dans scripts.js), dupliquée parce que scripts.js n'est PAS chargé
-// sur les pages de plugin (cf. la note de `psFieldHtml`).
-function psMonter(box){
-    if(!box || !window.MXLControls) return;
-    box.querySelectorAll('[data-cft="multiselect"]').forEach(el=>{
-        if(el._ctl) return;
-        let d={o:[],v:[]};
-        try { d=JSON.parse(el.dataset.cfOpts||'{}'); } catch(e){ /* champ sans options */ }
-        el._ctl=window.MXLControls.chooseList(el,{
-            options:(d.o||[]).map(o=>({value:o.value,label:o.label||o.value})),
-            valeurs:Array.isArray(d.v)?d.v:(d.v?[d.v]:[]),
-            vide:'— aucun —', ajouter:'+ Ajouter…', tout:'tout est choisi'});
-    });
-}
-
-function psReadFields(box){
-    const out={};
-    box.querySelectorAll('[data-cf]').forEach(el=>{
-        const k=el.dataset.cf, t=el.dataset.cft;
-        if(t==='checkbox') out[k]=el.checked;
-        else if(t==='number'){ const v=parseFloat(el.value); if(!isNaN(v)) out[k]=v; }
-        else if(t==='multiselect') out[k]=el._ctl?el._ctl.value():[];
-        else out[k]=el.value;
-    });
-    return out;
-}
-function psApplyVisibility(box, schema){
-    const vals=psReadFields(box);
-    (schema||[]).forEach(f=>{
-        if(!f.visible_if) return;
-        const wrap=box.querySelector('[data-cf-wrap="'+CSS.escape(f.key)+'"]');
-        if(wrap) wrap.hidden=!Object.entries(f.visible_if).every(([k,v])=>
-            Array.isArray(v) ? v.some(x=>String(vals[k])===String(x)) : String(vals[k])===String(v));
-    });
-}
-
-// Champs système du type actif — les champs scope "user" ne sont PAS rendus ici :
-// ils sont déjà couverts par l'UI de contrôle du plugin (live). Un plugin dont l'UI
-// gère aussi sa structure (ex. composer multiview) opte out via manifest
-// `settings_panel: false`.
-// `hidden: true` = champ jamais rendu (aligné palette : scripts.js _paletteSchema) mais qui
-// reste dans le schema → coerce_config/déploiement/API inchangés (clés tranche, réglage
-// global Réglages → Vidéo).
+// ── ⚙ = « Réglages du conteneur » (2026-11-07) ─────────────────────────────────────────────
+// Le ⚙ ouvre le panneau latéral PARTAGÉ avec la page Conteneurs (static/js/container_panel.js) :
+// champs système du config_schema, sauvegardes de config, ressources, réseau, actions. Seule la
+// page de plugin a un plugin MONTÉ : elle seule passe ses `settingsActions`.
 function psSystemFields(type_){
     const t = type_ || TP_TYPE;
     const pm=SECTION_PLUGINS.find(p=>p.type===t)||{};
-    if(pm.settings_panel===false) return [];
-    return (PS_SCHEMAS[t]||[]).filter(f=>!f.hidden && (f.scope||'system')!=='user');
+    return window.BobiContainerPanel
+        ? window.BobiContainerPanel.fields.system(PS_SCHEMAS[t]||[], pm.settings_panel) : [];
+}
+
+function tpOpenSettings(inst, type_, engineList){
+    const btn=document.getElementById('tp-settings-btn');
+    if(!window.BobiContainerPanel || !inst) return;
+    const t = type_ || TP_TYPE;
+    const pm=SECTION_PLUGINS.find(p=>p.type===t)||{};
+    const api = (!type_ && tpMountedApi && typeof tpMountedApi.settingsActions === 'function') ? tpMountedApi : null;
+    btn.setAttribute('aria-expanded','true');
+    window.BobiContainerPanel.open(inst.vmid, {
+        hostname: inst.hostname, inst, type: t, schema: PS_SCHEMAS[t]||[], settingsPanel: pm.settings_panel,
+        settingsActions: api ? (i)=>api.settingsActions(i) : null,
+        engineList: engineList || null, toast: tpToast, canDeploy: PS_CAN_DEPLOY,
+        onClose: ()=>btn.setAttribute('aria-expanded','false'),
+    });
+}
+function tpToggleSettings(inst, type_, engineList){
+    const P=window.BobiContainerPanel;
+    if(P && P.isOpen(inst && inst.vmid)){ P.close(); return; }
+    tpOpenSettings(inst, type_, engineList);
 }
 
 // Onglets CUSTOM 2110 (Sources/Destinations 2110) : pas de sidebar d'instances, mais
 // le ⚙ du MOTEUR doit rester accessible (smpte_2022_7, tx_fallback… — un moteur par
-// nœud). On liste les moteurs et on ouvre le popover générique sur celui choisi.
+// nœud). On liste les moteurs et on ouvre le panneau sur le premier (sélecteur dedans).
 async function tpRenderSettingsEngine(){
     const btn=document.getElementById('tp-settings-btn');
-    const pop=document.getElementById('tp-settings');
-    if(!btn||!pop) return;
-    pop.hidden=true; btn.setAttribute('aria-expanded','false');
+    if(!btn) return;
+    btn.setAttribute('aria-expanded','false');
     const sysF=psSystemFields('2110_io');
     btn.hidden=!(PS_CAN_DEPLOY && sysF.length && PS_SCHEMAS['2110_io']);
     btn.onclick=btn.hidden?null:async ()=>{
-        if(!pop.hidden){ pop.hidden=true; btn.setAttribute('aria-expanded','false'); return; }
+        if(window.BobiContainerPanel && window.BobiContainerPanel.isOpen()){ window.BobiContainerPanel.close(); return; }
         let insts=[];
         try{ insts=await (await fetch('/api/plugins/instances?type=2110_io')).json(); }catch(_){}
         if(!insts.length){ tpToast(window.t('section.none_deployed').replace('{label}','2110_io'),'error'); return; }
-        const open=(inst)=>tpToggleSettings(
-            {vmid:inst.vmid, version:inst.version, hostname:inst.hostname}, '2110_io',
-            insts.length>1?insts:null);
-        open(insts[0]);
+        tpOpenSettings({vmid:insts[0].vmid, version:insts[0].version, hostname:insts[0].hostname}, '2110_io',
+                       insts.length>1?insts:null);
     };
 }
 
-// Affiche/masque le bouton ⚙ selon l'instance sélectionnée ; le popover est
-// construit à l'ouverture (fetch des params persistés à ce moment-là).
+// Affiche/masque le ⚙ selon l'instance sélectionnée ; le panneau se construit à l'ouverture (lecture
+// des params persistés à ce moment-là). Changer d'instance referme un panneau resté sur l'autre.
 function tpRenderSettings(inst){
     const btn=document.getElementById('tp-settings-btn');
-    const pop=document.getElementById('tp-settings');
-    if(!btn||!pop) return;
-    pop.hidden=true; btn.setAttribute('aria-expanded','false');
-    pop.querySelector('.tp-settings-body').innerHTML='';
-    // ⚙ visible dès qu'on peut déployer : champs système ET/OU sauvegardes de config
-    // (ces dernières existent pour TOUS les types — décision 2026-07-05, cf. 2110_io).
-    btn.hidden=!(inst && PS_CAN_DEPLOY);
+    if(!btn) return;
+    const P=window.BobiContainerPanel;
+    if(P && P.isOpen() && !(inst && P.isOpen(inst.vmid))) P.close();
+    btn.setAttribute('aria-expanded','false');
+    // Visible dès qu'une instance est choisie : sans le droit de déployer, le panneau est en lecture seule.
+    btn.hidden=!inst;
     btn.onclick=btn.hidden?null:()=>tpToggleSettings(inst);
-}
-
-async function tpToggleSettings(inst, type_, engineList){
-    const btn=document.getElementById('tp-settings-btn');
-    const pop=document.getElementById('tp-settings');
-    if(!pop.hidden && !engineList){ pop.hidden=true; btn.setAttribute('aria-expanded','false'); return; }
-    const sysF=psSystemFields(type_);
-    const body=pop.querySelector('.tp-settings-body');
-    let params={};
-    try{
-        const rc=await fetch('/api/containers/'+inst.vmid+'/config');
-        if(!rc.ok) throw new Error('http '+rc.status);
-        const c=await rc.json();
-        const dc=(typeof c.deploy_config==='string')?JSON.parse(c.deploy_config||'{}'):(c.deploy_config||{});
-        params=(dc&&dc.params)||{};
-    }catch(_){
-        // Échec de lecture : ne pas rendre le formulaire avec des défauts qui écraseraient les params persistés.
-        if(!type_ && inst.vmid!==tpSelectedVmid) return;
-        body.innerHTML='<div class="tp-settings-status err">'+psEsc(window.t('section.settings_load_error'))+'</div>';
-        pop.hidden=false; btn.setAttribute('aria-expanded','true');
-        return;
-    }
-    // Sélection changée entre-temps (onglets génériques seulement : sur les onglets
-    // custom 2110, type_ est posé et il n'y a pas de sidebar → tpSelectedVmid=null).
-    if(!type_ && inst.vmid!==tpSelectedVmid) return;
-    const sysHtml = sysF.length
-        ? '<fieldset class="palette-group"><legend class="palette-group-title">'
-            +psEsc(window.t('section.settings_system'))+'</legend>'+sysF.map(psFieldHtml).join('')+'</fieldset>'
-          +'<div class="tp-settings-hint">'+psEsc(window.t(sysF.every(f=>f.live)?'section.settings_live_hint'
-              :(sysF.some(f=>f.live)?'section.settings_mixed_hint':'section.settings_redeploy_hint')))+'</div>'
-          +'<button type="button" class="btn btn-blue" id="tp-settings-apply">'+psEsc(window.t('section.settings_apply'))+'</button>'
-        : '';
-    // Sélecteur de MOTEUR (onglets custom 2110, plusieurs nœuds) : bascule le popover.
-    const engineSel = (engineList && engineList.length > 1)
-        ? '<div class="palette-field"><label>'+psEsc(window.t('section.engine_pick'))+'</label>'
-          +'<select id="tp-settings-engine">'+engineList.map(e=>
-              '<option value="'+e.vmid+'"'+(e.vmid===inst.vmid?' selected':'')+'>'
-              +psEsc(e.hostname||('#'+e.vmid))+'</option>').join('')+'</select></div>'
-        : '';
-    body.innerHTML= engineSel + sysHtml
-        +'<div class="tp-settings-status" id="tp-settings-status" role="status"></div>'
-        +'<fieldset class="palette-group"><legend class="palette-group-title">'
-            +psEsc(window.t('section.cfgsnap_title'))+'</legend>'
-            +'<div id="tp-cfgsnap-list" class="meta">…</div>'
-            +'<div style="display:flex;gap:var(--space-1);margin-top:var(--space-2)">'
-            +'<input type="text" id="tp-cfgsnap-name" placeholder="'+psEsc(window.t('section.cfgsnap_name_ph'))+'" style="flex:1;min-width:0">'
-            +'<button type="button" class="btn" onclick="psSnapSave('+inst.vmid+')">'+psEsc(window.t('section.cfgsnap_save'))+'</button>'
-            +'</div></fieldset>';
-    // Actions propres au plugin MONTÉ (manifeste ⇒ UI : `settingsActions(inst)` → [{label, run}]), en tête
-    // du panneau — ex. « Assistant de configuration » du mélangeur. Le ⚙ n'est visible qu'avec le droit
-    // de déployer ; le plugin filtre en plus ce qu'il propose.
-    const _psApi = (!type_ && tpMountedApi && typeof tpMountedApi.settingsActions === 'function') ? tpMountedApi : null;
-    let _psActs = [];
-    if (_psApi) { try { _psActs = _psApi.settingsActions(inst) || []; } catch (_) { _psActs = []; } }
-    if (_psActs.length) {
-        const g = document.createElement('div');
-        g.className = 'tp-settings-actions';
-        _psActs.forEach(function (a) {
-            const b = document.createElement('button');
-            b.type = 'button'; b.className = 'ctl-push ctl-push--wide';
-            b.textContent = a.label;
-            b.onclick = function () {
-                pop.hidden = true; btn.setAttribute('aria-expanded', 'false');
-                try { a.run(); } catch (e) { console.error(e); }
-            };
-            g.appendChild(b);
-        });
-        body.prepend(g);
-    }
-    psMonter(body);   // les contrôles de catalogue se montent APRÈS l'insertion du HTML
-    psSnapsLoad(inst.vmid);
-    // Pré-remplir depuis les params persistés (deploy_config), puis visibilité conditionnelle.
-    body.querySelectorAll('[data-cf]').forEach(el=>{
-        const k=el.dataset.cf;
-        if(!(k in params)) return;
-        if(el.dataset.cft==='checkbox') el.checked=!!params[k]; else el.value=params[k];
-    });
-    body.querySelectorAll('[data-cf]').forEach(el=>
-        el.addEventListener('change',()=>psApplyVisibility(body, sysF)));
-    psApplyVisibility(body, sysF);
-    const applyBtn=document.getElementById('tp-settings-apply');
-    if(applyBtn) applyBtn.onclick=()=>tpApplySettings(inst.vmid, body);
-    const engSel=document.getElementById('tp-settings-engine');
-    if(engSel) engSel.onchange=()=>{
-        const e=(engineList||[]).find(x=>String(x.vmid)===engSel.value);
-        if(e) tpToggleSettings({vmid:e.vmid, version:e.version, hostname:e.hostname},
-                               type_, engineList);
-    };
-    pop.hidden=false; btn.setAttribute('aria-expanded','true');
-}
-
-// ── Sauvegardes de config par container (génériques ; clé pour le 2110_io) ──
-async function psSnapsLoad(vmid){
-    const host=document.getElementById('tp-cfgsnap-list');
-    if(!host) return;
-    try{
-        const r=await fetch('/api/containers/'+vmid+'/config_snapshots');
-        const snaps=r.ok?((await r.json()).snapshots||[]):[];
-        host.innerHTML=snaps.map(s=>
-            '<div style="display:flex;gap:var(--space-1);align-items:center;margin:2px 0">'
-            +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">'
-            +psEsc(s.name)+' <small class="meta">'+psEsc(s.created_at||'')+'</small></span>'
-            +'<button type="button" class="btn btn-orange" style="padding:2px 8px;font-size:0.8em" '
-            +'onclick="psSnapRestore('+vmid+','+s.id+')">'+psEsc(window.t('section.cfgsnap_restore'))+'</button>'
-            +'<button type="button" class="btn btn-red" style="padding:2px 8px;font-size:0.8em" '
-            +'onclick="psSnapDel('+vmid+','+s.id+')">✕</button></div>'
-        ).join('')||'<span class="meta">—</span>';
-    }catch(_){ host.textContent='—'; }
-}
-async function psSnapSave(vmid){
-    const name=(document.getElementById('tp-cfgsnap-name').value||'').trim();
-    if(!name) return;
-    const r=await fetch('/api/containers/'+vmid+'/config_snapshots',{
-        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
-    if(!r.ok){ const j=await r.json().catch(()=>({})); tpToast(j.error||r.statusText,'error'); return; }
-    document.getElementById('tp-cfgsnap-name').value='';
-    tpToast(window.t('section.cfgsnap_saved'));
-    psSnapsLoad(vmid);
-}
-async function psSnapRestore(vmid, sid, confirmed){
-    const r=await fetch('/api/containers/'+vmid+'/config_snapshots/'+sid+'/restore',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(confirmed?{confirm:true}:{})});
-    const j=await r.json().catch(()=>({}));
-    if(r.status===409&&j.needs_confirm){
-        if(confirm((j.reason||'')+'\n\n'+window.t('section.cfgsnap_confirm')))
-            return psSnapRestore(vmid, sid, true);
-        return;
-    }
-    if(!r.ok){ tpToast(j.error||r.statusText,'error'); return; }
-    tpToast(window.t('section.cfgsnap_restoring'));
-}
-async function psSnapDel(vmid, sid){
-    await fetch('/api/containers/'+vmid+'/config_snapshots/'+sid,{method:'DELETE'});
-    psSnapsLoad(vmid);
-}
-
-// Fermer le popover au clic extérieur ou sur Échap.
-document.addEventListener('click',(e)=>{
-    const pop=document.getElementById('tp-settings');
-    const btn=document.getElementById('tp-settings-btn');
-    if(!pop||pop.hidden) return;
-    if(pop.contains(e.target)||btn.contains(e.target)) return;
-    pop.hidden=true; btn.setAttribute('aria-expanded','false');
-});
-document.addEventListener('keydown',(e)=>{
-    if(e.key!=='Escape') return;
-    const pop=document.getElementById('tp-settings');
-    if(pop&&!pop.hidden){ pop.hidden=true;
-        document.getElementById('tp-settings-btn').setAttribute('aria-expanded','false'); }
-});
-
-// Bornes du config_schema (min/max/step déjà posés en attributs HTML) : on refuse AVANT
-// d'envoyer, avec le message du navigateur. Le serveur revalide (plugins.validate_config) —
-// aucune valeur hors bornes n'est plus écrêtée en silence.
-function psValidateFields(box){
-    for(const el of box.querySelectorAll('[data-cf]')){
-        if(el.checkValidity()) continue;
-        const lbl=(el.closest('[data-cf-wrap]')||{}).querySelector
-            ? (el.closest('[data-cf-wrap]').querySelector('label')||{}).textContent : '';
-        el.reportValidity();
-        return ((lbl||el.dataset.cf).trim())+' : '+el.validationMessage;
-    }
-    return null;
-}
-
-async function tpApplySettings(vmid, body, confirmed){
-    const status=document.getElementById('tp-settings-status');
-    const applyBtn=document.getElementById('tp-settings-apply');
-    const bad=psValidateFields(body);
-    if(bad){ status.className='tp-settings-status err'; status.textContent='✕ '+bad; tpToast(bad,'error'); return; }
-    if(applyBtn) applyBtn.disabled=true;   // évite le double-clic / double redeploy
-    status.className='tp-settings-status'; status.textContent=window.t('section.settings_applying');
-    try{
-        const r=await fetch('/api/containers/'+vmid+'/plugin_config',{
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({params: psReadFields(body), confirm: !!confirmed}),
-        });
-        const j=await r.json().catch(()=>({}));
-        if(r.status===409 && j.needs_confirm){
-            status.textContent='';
-            if(applyBtn) applyBtn.disabled=false;   // réactivé avant le retry récursif
-            if(confirm(j.reason||'?')) return tpApplySettings(vmid, body, true);
-            return;
-        }
-        if(r.ok){
-            status.classList.add('ok'); status.textContent=window.t('section.settings_applied');
-            tpToast(window.t('section.settings_applied'),'info');
-        } else {
-            // 409 {error, pending:true} = redeploy déjà en cours : traité comme une erreur normale.
-            status.classList.add('err'); status.textContent='✕ '+(j.error||window.t('section.settings_error'));
-            tpToast(j.error||window.t('section.settings_error'),'error');
-        }
-    }catch(_){
-        status.classList.add('err'); status.textContent=window.t('section.settings_error');
-        tpToast(window.t('section.settings_error'),'error');
-    }finally{
-        if(applyBtn) applyBtn.disabled=false;
-        setTimeout(()=>{ status.textContent=''; status.className='tp-settings-status'; }, 5000);
-    }
 }
 
 // Bascule d'onglet (= type) sans reload, reflétée dans #hash (« #<type> » ou « #<type>/<vmid> »).
@@ -1277,8 +1007,20 @@ window.addEventListener('hashchange', () => {
 // Même brique que l'onglet Ressources de containers.html, filtrée sur le type d'onglet actif.
 // scripts.js n'est PAS chargé ici : tout le câblage est local.
 (function(){
-    let lastType = null, campaignTimer = null, chronoTimer = null, campaignDebut = null;
-    let items_of_type_cache = new Set();
+    let lastType = null, lastVmid = null, campaignTimer = null, chronoTimer = null, campaignDebut = null;
+    let current = null, typeItems = [];
+
+    // The widget is about the container OPEN on this page (07/11: it listed every container of the
+    // type, and « Calibrate » measured them all — nothing said so). The open one comes first with
+    // its « Guarantee » and a link to its project; the others of the type stay folded below.
+    function calibrateLabel(){
+        const btn = document.getElementById('res-compact-calibrate');
+        if(!btn || btn.classList.contains('btn-orange')) return;
+        btn.textContent = window.t(current ? 'containers.ressources.calibrate_this' : 'containers.ressources.calibrate_btn');
+        if(PS_CAN_DEPLOY) btn.title = current
+            ? window.t('containers.ressources.calibrate_this_tip').replace('{name}', current.hostname || ('#' + current.vmid))
+            : window.t('containers.ressources.calibrate_type_tip').replace('{label}', TP_LABEL || TP_TYPE);
+    }
 
     async function refresh(){
         const box = document.getElementById('res-compact');
@@ -1291,11 +1033,26 @@ window.addEventListener('hashchange', () => {
         document.getElementById('res-compact-title').textContent =
             window.t('containers.ressources.compact_title').replace('{label}', TP_LABEL || TP_TYPE);
         const items = await MXLRessources.fetchRessources({type: TP_TYPE});
+        typeItems = items;
+        current = items.find(c => c.vmid === tpSelectedVmid) || null;
+        const others = current ? items.filter(c => c !== current) : items;
         const list = document.getElementById('res-compact-list');
-        list.innerHTML = items.length
-            ? items.map(c => MXLRessources.brickHtml(c, {showActions:false})).join('')
-            : '<div class="res-compact-empty">'+window.t('containers.ressources.compact_none_running')+'</div>';
-        majSynthese(items);
+        let html = '';
+        if(current){
+            html += MXLRessources.brickHtml(current, {showActions: !!PS_CAN_DEPLOY});
+            if(current.project_id) html += '<a class="res-compact-project" href="/projects#resources-' + current.project_id + '">'
+                + MXLRessources.esc(window.t('containers.ressources.project_link')) + '</a>';
+            if(others.length) html += '<details class="res-compact-others"><summary>'
+                + MXLRessources.esc(window.t('containers.ressources.others_of_type')
+                    .replace('{label}', TP_LABEL || TP_TYPE).replace('{n}', others.length)) + '</summary>'
+                + others.map(c => MXLRessources.brickHtml(c, {showActions:false})).join('') + '</details>';
+        } else {
+            html = others.map(c => MXLRessources.brickHtml(c, {showActions:false})).join('');
+        }
+        list.innerHTML = html || '<div class="res-compact-empty">'+window.t('containers.ressources.compact_none_running')+'</div>';
+        MXLRessources.wireGuarantees(list, () => setTimeout(refresh, 800));
+        majSynthese(current ? [current] : items);
+        calibrateLabel();
     }
 
     // Synthèse d'une ligne : le CUMUL du type. C'est ce qu'on veut savoir d'un coup d'œil en
@@ -1351,7 +1108,7 @@ window.addEventListener('hashchange', () => {
             return;
         }
         btn.disabled = false;
-        btn.title = '';
+        calibrateLabel();
     }
 
     function startChrono(debut){
@@ -1369,25 +1126,32 @@ window.addEventListener('hashchange', () => {
         if(campaignTimer){ clearInterval(campaignTimer); campaignTimer=null; }
         const el = document.getElementById('res-compact-chrono'); el.hidden = true;
         const btn = document.getElementById('res-compact-calibrate');
-        btn.textContent = window.t('containers.ressources.calibrate_btn');
         btn.classList.remove('btn-orange'); btn.classList.add('btn-green');
+        calibrateLabel();
     }
 
     async function onCalibrateClick(){
         const btn = document.getElementById('res-compact-calibrate');
         if(btn.disabled) return;
         const st = await MXLRessources.fetchState();
+        if(st.etat === 'en_cours' && st.projet != null){
+            // A PROJECT calibration (Projects → Resources) — not this widget's to stop.
+            tpToast(window.t('containers.ressources.project_campaign_running').replace('{libelle}', st.libelle || '—'), 'warning');
+            return;
+        }
         if(st.etat === 'en_cours'){
             const r = await fetch('/api/etalonnage/stop', {method:'POST'});
             const j = await r.json().catch(()=>({}));
             stopChrono();
             if(!r.ok || !j.ok){ tpToast(j.error||r.statusText, 'error'); return; }
+            // Saved: the open container only, or the whole type when none is open.
+            const targets = new Set(current ? [current.vmid] : typeItems.map(c => c.vmid));
             const mine = (j.resultat.conteneurs||[]).filter(l => l.suffisant && l.vmid != null
-                && items_of_type_cache.has(l.vmid));
+                && targets.has(l.vmid));
             if(!mine.length){
                 // Dire CE QUI MANQUE. « Aucune mesure suffisante » n'apprend rien : l'utilisateur
                 // ne sait pas s'il doit exercer plus longtemps, changer de nœud, ou si c'est cassé.
-                const vus = (j.resultat.conteneurs||[]).filter(l => l.vmid != null && items_of_type_cache.has(l.vmid));
+                const vus = (j.resultat.conteneurs||[]).filter(l => l.vmid != null && targets.has(l.vmid));
                 const pts = vus.reduce((a,l) => Math.max(a, (l.mesure&&l.mesure.n)||0), 0);
                 tpToast(window.t('containers.ressources.not_enough_points')
                     .replace('{n}', pts).replace('{min}', j.resultat.min_points || 20)
@@ -1404,13 +1168,14 @@ window.addEventListener('hashchange', () => {
             refresh();
             return;
         }
-        const items = await MXLRessources.fetchRessources({type: TP_TYPE});
-        items_of_type_cache = new Set(items.map(c=>c.vmid));
-        const nodeIds = [...new Set(items.map(c=>c.node_id).filter(Boolean))];
+        await refresh();
+        const scope = current ? [current] : typeItems;
+        const nodeIds = [...new Set(scope.map(c=>c.node_id).filter(Boolean))];
         if(!nodeIds.length){ tpToast(window.t('containers.ressources.compact_none_running'), 'error'); return; }
         const r = await fetch('/api/etalonnage/start', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({node_ids: nodeIds, libelle: TP_LABEL || TP_TYPE})});
+            body: JSON.stringify({node_ids: nodeIds,
+                                  libelle: current ? (current.hostname || ('#' + current.vmid)) : (TP_LABEL || TP_TYPE)})});
         const j = await r.json().catch(()=>({}));
         if(!r.ok || !j.ok){ tpToast(j.error||r.statusText, 'error'); return; }
         startChrono(j.etat.debut);
@@ -1431,7 +1196,9 @@ window.addEventListener('hashchange', () => {
         if(btn) btn.onclick = onCalibrateClick;
         MXLRessources.fetchState().then(st => { if(st.etat==='en_cours') { startChrono(st.debut); pollCampaign(); } });
         setInterval(()=>{
-            if(TP_TYPE && TP_TYPE !== lastType){ lastType = TP_TYPE; refresh(); }
+            if(TP_TYPE && (TP_TYPE !== lastType || tpSelectedVmid !== lastVmid)){
+                lastType = TP_TYPE; lastVmid = tpSelectedVmid; refresh();
+            }
         }, 300);
         window.MXLPoll(refresh, MXLRessources.REFRESH_MS);   // sans recouvrement (cf. layout.html)
     });

@@ -17,7 +17,7 @@ from .database import (db_get_project, db_add_alert, db_get_containers,
                        plugin_store_create, db_set_instance_uuid,
                        db_set_project_state, db_set_project_media_path)
 from .allocations import _used_vmids, next_free_vmid
-from . import settings
+from . import settings, cpu_weight
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +48,15 @@ def _project_lock(pid):
 # projet après REsnap_DEBOUNCE_S sans nouvelle modif : décharger ne perd jamais rien.
 # L'ancien snapshot est poussé dans project_versions (version auto, rétention bornée).
 
-RESNAP_DEBOUNCE_S = 10
+RESNAP_DEBOUNCE_S = 10      # default; the setting (project_versions.delay_s) decides
+
+
+def _resnap_delay():
+    try:
+        from .project_versions import delay_s
+        return delay_s()
+    except Exception:
+        return RESNAP_DEBOUNCE_S
 _resnap_timers = {}          # pid → threading.Timer
 _resnap_guard = threading.Lock()
 
@@ -68,7 +76,7 @@ def notify_container_changed(vmid):
             t = _resnap_timers.get(pid)
             if t:
                 t.cancel()
-            t = threading.Timer(RESNAP_DEBOUNCE_S, _resnapshot_safe, args=(pid,))
+            t = threading.Timer(_resnap_delay(), _resnapshot_safe, args=(pid,))
             t.daemon = True
             _resnap_timers[pid] = t
             t.start()
@@ -108,6 +116,16 @@ def resnapshot_projet(pid, label=None, force=False):
     if not vmids:
         return None   # projet déchargé : on garde le dernier snapshot tel quel
     snapshot = db_snapshot_for_vmids(sorted(vmids))
+    # Stopped project that received a container (attached from its window): none of the saved
+    # entries is live, so the line above sees only the newcomer and REPLACED the whole project with
+    # it (3 containers → 1, reproduced 2026-11-07). The saved entries stay; the newcomers are added.
+    old_entries = p.get("snapshot") or []
+    if old_entries and not any(c.get("vmid") in live_vmids for c in old_entries):
+        known = {c.get("vmid") for c in old_entries}
+        snapshot = old_entries + [c for c in snapshot if c.get("vmid") not in known]
+    # The shared services it uses from outside (transcoder…), proposed again at recall.
+    from . import project_environment
+    project_environment.capture(pid, snapshot)
     old = p.get("snapshot") or []
     if not force and json.dumps(snapshot, sort_keys=True) == json.dumps(old, sort_keys=True):
         if label:   # rien n'a changé mais on veut un point nommé
@@ -130,43 +148,65 @@ def detach_vmid_from_projects(vmid, keep_pid=None):
     follow one of its ports, and ports that publish this container's output.
     Returns [{pid, name, views, links, bindings}] or, for a project being loaded/unloaded,
     {pid, name, skipped: True}."""
-    from .database import (db_get_container, db_get_projects, db_add_project_version,
-                           db_update_project_snapshot, db_project_views, db_project_ports,
-                           db_port_links)
-    from .auth import shm_producer_vmids, _snap_map_cache
+    from .database import db_get_container, db_get_projects
+    from .auth import _snap_map_cache
     vmid = int(vmid)
     uuid = (db_get_container(vmid) or {}).get("instance_uuid")
     out = []
     for p in db_get_projects():
         pid = p["id"]
-        old = p.get("snapshot") or []
-        if pid == keep_pid or not any(c.get("vmid") == vmid for c in old):
+        if pid == keep_pid or not any(c.get("vmid") == vmid for c in (p.get("snapshot") or [])):
             continue
-        if (p.get("state") or "saved") in ("loading", "unloading"):
-            log.warning("project #%s is %s: vmid %s not detached", pid, p.get("state"), vmid)
-            out.append({"pid": pid, "name": p.get("name"), "skipped": True})
-            continue
-        db_add_project_version(pid, old)
-        db_update_project_snapshot(pid, [c for c in old if c.get("vmid") != vmid])
-        views = [v.get("name") for v in db_project_views(pid)
-                 if any((w.get("instance_uuid") and w.get("instance_uuid") == uuid)
-                        or w.get("vmid") == vmid for w in (v.get("layout") or []))]
-        ports = db_project_ports(pid)
-        port_ids = {pt["id"] for pt in ports}
-        links = [l for l in (db_port_links(consumer_uuid=uuid) if uuid else [])
-                 if l.get("port_id") in port_ids]
-        # source ports bind {shm, audio_shm}, destination ports {internal_shm}
-        shms = {pt["id"]: [v for k, v in (pt.get("binding") or {}).items()
-                           if k in ("shm", "audio_shm", "internal_shm") and v] for pt in ports}
-        producers = shm_producer_vmids([s for ss in shms.values() for s in ss])
-        bindings = [pt.get("name") for pt in ports
-                    if any(vmid in (producers.get(s) or ()) for s in shms[pt["id"]])]
-        log.info("vmid %s detached from project #%s (views=%d, port links=%d, bindings=%d)",
-                 vmid, pid, len(views), len(links), len(bindings))
-        out.append({"pid": pid, "name": p.get("name"), "views": views,
-                    "links": len(links), "bindings": bindings})
+        out.append(_detach_from_project(p, vmid, uuid))
     if out:
         _snap_map_cache["ts"] = 0.0   # access rights read the snapshots through this cache
+    return out
+
+
+def _detach_from_project(p, vmid, uuid):
+    """Take `vmid` out of one project's snapshot (an automatic version keeps the previous one) and
+    report what still points at it there. See detach_vmid_from_projects."""
+    from .database import (db_add_project_version, db_update_project_snapshot, db_project_views,
+                           db_project_ports, db_port_links)
+    from .auth import shm_producer_vmids
+    pid = p["id"]
+    old = p.get("snapshot") or []
+    if (p.get("state") or "saved") in ("loading", "unloading"):
+        log.warning("project #%s is %s: vmid %s not detached", pid, p.get("state"), vmid)
+        return {"pid": pid, "name": p.get("name"), "skipped": True}
+    db_add_project_version(pid, old)
+    db_update_project_snapshot(pid, [c for c in old if c.get("vmid") != vmid])
+    views = [v.get("name") for v in db_project_views(pid)
+             if any((w.get("instance_uuid") and w.get("instance_uuid") == uuid)
+                    or w.get("vmid") == vmid for w in (v.get("layout") or []))]
+    ports = db_project_ports(pid)
+    port_ids = {pt["id"] for pt in ports}
+    links = [l for l in (db_port_links(consumer_uuid=uuid) if uuid else [])
+             if l.get("port_id") in port_ids]
+    # source ports bind {shm, audio_shm}, destination ports {internal_shm}
+    shms = {pt["id"]: [v for k, v in (pt.get("binding") or {}).items()
+                       if k in ("shm", "audio_shm", "internal_shm") and v] for pt in ports}
+    producers = shm_producer_vmids([s for ss in shms.values() for s in ss])
+    bindings = [pt.get("name") for pt in ports
+                if any(vmid in (producers.get(s) or ()) for s in shms[pt["id"]])]
+    log.info("vmid %s detached from project #%s (views=%d, port links=%d, bindings=%d)",
+             vmid, pid, len(views), len(links), len(bindings))
+    return {"pid": pid, "name": p.get("name"), "views": views,
+            "links": len(links), "bindings": bindings}
+
+
+def remove_saved_container(pid, vmid):
+    """Remove a container that is NOT running from a project (its saved entry). A running one leaves
+    by being detached (PATCH /api/containers/<vmid>/project), which recreates it outside the project.
+    Returns the report of _detach_from_project, or None when the project or the entry is unknown."""
+    from .auth import _snap_map_cache
+    p = db_get_project(pid)
+    vmid = int(vmid)
+    entry = next((c for c in (p or {}).get("snapshot") or [] if c.get("vmid") == vmid), None)
+    if not entry:
+        return None
+    out = _detach_from_project(p, vmid, entry.get("instance_uuid"))
+    _snap_map_cache["ts"] = 0.0
     return out
 
 
@@ -326,6 +366,17 @@ def _sanitize_host_frag(s):
     return normaliser(s)
 
 
+def _prefixed(name, prefix):
+    return name if name.startswith(prefix + "-") else f"{prefix}-{name}"
+
+
+def restored_hostname(hostname, project_name):
+    """The hostname a saved container gets once the project is started (_prefix_snapshot), so the
+    project window can follow « avsync » becoming « Test3-avsync » (07/11)."""
+    prefix = _sanitize_host_frag(project_name)
+    return _prefixed(hostname, prefix) if prefix and hostname else hostname
+
+
 def _prefix_snapshot(snapshot, prefix):
     """Préfixe le hostname de chaque container par `prefix` et réécrit les références
     shm INTERNES au projet (les sources externes restent inchangées), pour que le
@@ -341,7 +392,7 @@ def _prefix_snapshot(snapshot, prefix):
     # DÉJÀ préfixés ; les préfixer encore donnait « P-P-rl-mix » au rechargement suivant, puis
     # « P-P-P-… » (constaté le 2026-10-24 sur Régie Légère, une modification après son chargement).
     def _with(name):
-        return name if name.startswith(prefix + "-") else f"{prefix}-{name}"
+        return _prefixed(name, prefix)
 
     def pref_path(path):                  # « /dev/shm/X » ou « X »
         if not path:
@@ -390,6 +441,30 @@ def _existing_hostnames_and_shms():
     return hosts, shms
 
 
+def container_cost(c):
+    """(cores, source) a snapshot entry will cost once restored, None when unknown (or 2110_io).
+
+    Ordre de préséance, et il compte : la MESURE d'abord (seul chiffre vérifié) ; à défaut le
+    `cores` du snapshot, qui est l'intention de CETTE instance (un override explicite doit être
+    respecté) ; le manifeste seulement en dernier. Des cœurs dédiés posés sur le conteneur passent
+    avant tout : la restauration réservera exactement ce nombre."""
+    from . import cpu_profiles
+    t = (c.get("deploy_config") or {}).get("type")
+    if t in ("2110_io",):
+        return None
+    _res = c.get("resources") or {}
+    if (_res.get("cpu_mode") == "reserved"
+            or cpu_weight.normalize(_res.get("cpu_weight")) == "dedicated") and _res.get("cores"):
+        return float(_res["cores"]), "reserve"
+    pct, source = cpu_profiles.cout_estime(t)
+    if source != "mesure":
+        if c.get("cores"):
+            pct, source = float(c["cores"]) * 100.0, "projet"
+        elif pct is None:
+            return None
+    return pct / 100.0, source
+
+
 def verifier_capacite(snapshot):
     """Pré-vol de CAPACITÉ (chantier 3, refus bloquant) : vérifie AVANT toute création
     que le cluster peut accueillir le snapshot à côté des projets actifs. Renvoie une
@@ -415,26 +490,15 @@ def verifier_capacite(snapshot):
             # déclaré à du déclaré ne valide rien : les deux côtés de l'inégalité étaient des
             # chiffres que personne n'avait jamais vérifiés. `mesures` dit, par type, d'où vient
             # le nombre retenu — un refus de déploiement doit pouvoir s'expliquer.
-            from . import cpu_profiles
             need = 0.0
             mesures = {}
             for c in snapshot:
                 t = (c.get("deploy_config") or {}).get("type")
-                if t in ("2110_io",):
+                cost = container_cost(c)
+                if cost is None:
                     continue
-                # Ordre de préséance, et il compte : la MESURE d'abord (seul chiffre vérifié) ;
-                # à défaut le `cores` du snapshot, qui est l'intention de CETTE instance (un
-                # override explicite doit être respecté) ; le manifeste seulement en dernier.
-                # Ainsi, tant qu'aucune mesure n'existe, le pré-vol se comporte EXACTEMENT comme
-                # avant — on ne déplace pas un seuil de refus par effet de bord.
-                pct, source = cpu_profiles.cout_estime(t)
-                if source != "mesure":
-                    if c.get("cores"):
-                        pct, source = float(c["cores"]) * 100.0, "projet"
-                    elif pct is None:
-                        continue
-                need += pct / 100.0
-                mesures.setdefault(t, {"source": source, "cores": round(pct / 100.0, 2)})
+                need += cost[0]
+                mesures.setdefault(t, {"source": cost[1], "cores": round(cost[0], 2)})
             need = int(need + 0.999) if need else 0        # arrondi SUPÉRIEUR : un pré-vol se trompe
             free = sum(s.get("free", 0) for s in stats)    # du côté prudent, jamais de l'autre
             if need > free:
@@ -482,6 +546,71 @@ def verifier_capacite(snapshot):
         log.warning("pré-vol multicast: %s", e)
 
     return issues
+
+
+def plan_placement(snapshot, choice=None):
+    """Where each container of `snapshot` goes on start, node by node (2026-11-07).
+
+    `choice` = {original vmid (str): node_id} picked by hand in the start window; the rest is
+    automatic: back on its previous node only if that node still has ROOM for it, else the node
+    that fits (GPU affinity both ways, then most free cores), else the roomiest. Each placement
+    takes its cost off the node, so two containers do not both count on the same free cores.
+    `verifier_capacite` only adds the cluster up, which says « fits » while no single node can
+    take a container, and the previous node used to be taken without looking at its room.
+
+    Returns {nodes: [{id, name, free, need, ok}], containers: [{key, hostname, type, cores,
+    source, node_id, how: manual|previous|auto}], fits}."""
+    from . import core_pool, gpu_pool, plugins as _pl
+    from .docker_compute import eligible_compute_nodes
+    choice = {str(k): v for k, v in (choice or {}).items() if v}
+    nodes = eligible_compute_nodes()
+    free, gpu, names = {}, {}, {}
+    for n in nodes:
+        names[n["id"]] = n.get("name") or "#%s" % n["id"]
+        try:
+            free[n["id"]] = float(core_pool.capacite_placement(n["id"])["libres"])
+        except Exception:
+            free[n["id"]] = 0.0
+        try:
+            st = gpu_pool.gpu_status(n["id"]) or {}
+            gpu[n["id"]] = max(0, int(st.get("count") or 0) - int(st.get("used") or 0))
+        except Exception:
+            gpu[n["id"]] = 0
+    start = dict(free)
+    rows = []
+    for c in snapshot:
+        t = (c.get("deploy_config") or {}).get("type")
+        if t in PROJECT_EXCLUDED_TYPES or not t or _pl.runtime(t) != "docker":
+            continue
+        cost = container_cost(c)
+        cores, source = cost if cost else (0.0, None)
+        wants_gpu = _pl.gpu_capable(t)
+        key = str(c.get("vmid"))
+        nid, how = None, "auto"
+        try:
+            manual = int(choice.get(key)) if key in choice else None
+        except (TypeError, ValueError):
+            manual = None
+        if manual in free:
+            nid, how = manual, "manual"
+        elif c.get("node_id") in free and free[c["node_id"]] >= cores:
+            nid, how = c["node_id"], "previous"
+        elif free:
+            nid = max(free, key=lambda i: (free[i] >= cores,
+                                           (gpu[i] > 0) == wants_gpu, free[i], -i))
+        if nid is not None:
+            free[nid] -= cores
+            if wants_gpu and gpu[nid] > 0:
+                gpu[nid] -= 1
+        rows.append({"key": key, "hostname": c.get("hostname"), "type": t,
+                     "cores": round(cores, 2), "source": source, "node_id": nid, "how": how})
+    out_nodes = [{"id": i, "name": names[i], "free": round(start[i], 1),
+                  "need": round(start[i] - free[i], 1),
+                  # a node already over that receives nothing is not this project's problem
+                  "ok": free[i] >= 0 or start[i] == free[i]} for i in names]
+    return {"nodes": out_nodes, "containers": rows,
+            "fits": bool(nodes) and all(n["ok"] for n in out_nodes)
+                    and all(r["node_id"] is not None for r in rows)}
 
 
 def planifier_restore(snapshot):
@@ -553,7 +682,8 @@ def _attendre_agent(ip, timeout=30, vmid=None):
         time.sleep(2)
     return False
 
-def restaurer_projet(project_id, progress=None, should_abort=None, only_vmids=None, preserve_uuid=False):
+def restaurer_projet(project_id, progress=None, should_abort=None, only_vmids=None, preserve_uuid=False,
+                     placement=None, onair=False):
     """Recrée et redéploie tous les containers d'un projet.
 
     `progress(msg)`   : callback optionnel pour streamer chaque (sous-)étape.
@@ -561,6 +691,10 @@ def restaurer_projet(project_id, progress=None, should_abort=None, only_vmids=No
                         on stoppe et le reste est compté en échec « interrompu ».
     `only_vmids`      : si fourni (iterable de VMID *du snapshot*), ne traite que
                         ces containers — utilisé pour réessayer les échecs.
+    `placement`       : {VMID du snapshot (str): node_id} choisi à la main dans la fenêtre
+                        « Démarrer » ; le reste est placé par `plan_placement`.
+    `onair`           : True = « Reprendre l'état d'antenne » coché : once deployed, each container
+                        gets back its last captured on-air state (app/project_onair.py).
 
     Retourne un bilan {ok, total, failed:[{vmid, hostname, reason}], error?}.
     `failed[].vmid` est le VMID **d'origine** (snapshot), réutilisable pour un retry.
@@ -581,7 +715,7 @@ def restaurer_projet(project_id, progress=None, should_abort=None, only_vmids=No
     db_set_project_state(project_id, "loading")
     try:
         return _restaurer_projet_verrouille(project_id, p, _p, _abort,
-                                            only_vmids, preserve_uuid)
+                                            only_vmids, preserve_uuid, placement, onair)
     except Exception:
         db_set_project_state(project_id, "error")
         raise
@@ -589,7 +723,8 @@ def restaurer_projet(project_id, progress=None, should_abort=None, only_vmids=No
         lock.release()
 
 
-def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve_uuid):
+def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve_uuid, placement=None,
+                                 onair=False):
     db_add_alert("alert.projet.restauration_en_cours", "info", kind="deploy",
                  params={"p": p["name"]})
     _p(f"Restauration du projet « {p['name']} »…")
@@ -667,6 +802,11 @@ def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve
             params={"p": p["name"], "from": r["from"], "to": r["to"], "h": r["hostname"]})
         _p(f"VMID {r['from']} déjà pris → remappé sur {r['to']} ({r['hostname']}).")
 
+    try:
+        placed = {r["key"]: r["node_id"] for r in plan_placement(snapshot, placement)["containers"]}
+    except Exception as e:
+        log.warning("project #%s: placement plan failed, automatic pick per container: %s", project_id, e)
+        placed = {}
     total     = len(snapshot)
     ok_count  = 0
     failed    = []   # [{vmid (origine), hostname, reason}]
@@ -716,7 +856,9 @@ def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve
             # compute sur son nœud (épinglé dans le snapshot, sinon auto-pick) ; deployer_script
             # fera le docker run + attente agent + push du script (cf. _insert_udc).
             from . import docker_compute as _dctr
-            _node_id = _dctr.pick_compute_node(c.get("node_id"))
+            # Node from the plan (hand-picked, or previous node only if it has room); the type
+            # is passed so the GPU affinity also holds when the planned node is no longer eligible.
+            _node_id = _dctr.pick_compute_node(placed.get(str(c["vmid"])) or c.get("node_id"), _dc_type)
             if not _node_id:
                 _p("  ✕ aucun nœud compute configuré")
                 _echec("aucun nœud compute pour un type docker-only", clef="alert.projet.echec_aucun_noeud_compute")
@@ -760,6 +902,21 @@ def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve
                     _p(f"      · mémoire « {m.get('name')} » non restaurée : {e}")
             if ok_mem:
                 _p(f"      · {ok_mem} mémoire(s) restaurée(s).")
+
+        # Resources set for THIS container in the snapshot (dedicated cores, memory, CPU weight):
+        # written on the new container BEFORE its first deploy, which builds the `docker run` from
+        # them. The measurement behind a guarantee is NOT carried — it belongs to the node it was
+        # made on; the project Resources view says « reserved, not measured here » until it is redone.
+        _res = c.get("resources") or {}
+        if _res:
+            from .database import db_set_resources_override
+            # A snapshot taken before 2026-11-07 may say « reserved » with a weight other than on
+            # air: the place follows the level now, and the dedicated cores are what it meant.
+            _lvl = "dedicated" if _res.get("cpu_mode") == "reserved" else _res.get("cpu_weight")
+            db_set_resources_override(vmid, cores=_res.get("cores"), memory=_res.get("memory"),
+                                      cpu_weight=_lvl)
+            _p("      · ressources du conteneur reprises : "
+               + ", ".join("%s=%s" % kv for kv in sorted(_res.items())))
 
         dc = c.get("deploy_config")
         if not dc:
@@ -851,6 +1008,14 @@ def _restaurer_projet_verrouille(project_id, p, _p, _abort, only_vmids, preserve
         except Exception as e:
             log.warning("project #%s snapshot remap: %s", project_id, e)
 
+    if onair and vmid_map:
+        try:
+            from . import project_onair
+            project_onair.restore_after_start(project_id, p["snapshot"], vmid_map, progress=_p)
+        except Exception as e:
+            log.warning("project #%s: on-air restore failed: %s", project_id, e)
+            _p(f"  ✕ état d'antenne non repris\u00a0: {e}")
+
     if failed:
         db_add_alert(
             "alert.projet.restaure_avec_erreurs", "warning", kind="deploy",
@@ -928,6 +1093,22 @@ def detruire_containers_projet(project_id):
         db_add_alert("alert.projet.operation_en_cours", "warning", kind="deploy",
                      params={"p": p["name"]})
         return
+    # Stop = the containers go away: record their config NOW. The automatic re-snapshot is debounced,
+    # and once the state is « unloading » it no longer runs, so a setting made just before was lost.
+    with _resnap_guard:
+        t = _resnap_timers.pop(project_id, None)
+    if t:
+        t.cancel()
+    try:
+        resnapshot_projet(project_id)
+    except Exception as e:
+        log.warning("project #%s: snapshot before stop failed: %s", project_id, e)
+    # What is on air goes with the containers: read it now, « Démarrer » can put it back.
+    try:
+        from . import project_onair
+        project_onair.capture(project_id)
+    except Exception as e:
+        log.warning("project #%s: on-air capture before stop failed: %s", project_id, e)
     db_set_project_state(project_id, "unloading")
     try:
         db_add_alert("alert.projet.destruction_en_cours", "warning", kind="deploy",

@@ -30,8 +30,12 @@ def _scoped_target(b, vmid):
     from .. import media_registry as mr
     scope = scoped_project_ids()
     pid, bid = _int(b.get("project_id")), _int(b.get("bin_id"))
+    extra = mu.project_list(None, b.get("project_ids"))
+    pid = pid if pid is not None else (extra[0] if extra else None)
     if scope is None:
         return pid, None
+    if any(not mr.project_in_scope(p, scope) for p in extra):
+        return pid, (jsonify({"ok": False, "error": "forbidden", "reason": "not_project_member"}), 403)
     if bid is not None:
         if not mr.bin_visible(bid, scope):
             return pid, (jsonify({"ok": False, "error": "bin inconnu"}), 404)
@@ -122,7 +126,8 @@ def media_upload_attach():
             return err
     try:
         return jsonify(dict(mu.attach_existing(str(b.get("asset_id") or ""), vmid=vmid, project_id=_int(b.get("project_id")),
-                                               bin_id=_int(b.get("bin_id")), scope=ms.user_scope()), ok=True))
+                                               bin_id=_int(b.get("bin_id")), scope=ms.user_scope(),
+                                               project_ids=b.get("project_ids")), ok=True))
     except mu.UploadError as e:
         return _err(e)
 
@@ -147,7 +152,8 @@ def media_upload_start():
         return jsonify(mu.start((current_user() or {}).get("id"), b.get("name"), b.get("size"), b.get("mtime"),
                                 node_id=_int(b.get("node_id")), folder=b.get("folder") or "", vmid=vmid,
                                 project_id=pid, bin_id=_int(b.get("bin_id")),
-                                source_name=b.get("source_name"), fp=b.get("fp")))
+                                source_name=b.get("source_name"), fp=b.get("fp"),
+                                project_ids=mu.project_list(None, b.get("project_ids")) or None))
     except mu.UploadError as e:
         return _err(e)
 

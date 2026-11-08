@@ -634,7 +634,7 @@ class Instance:
         sous leur producteur le 2026-08-19 (tous leurs lecteurs à 0 i/s, en silence), et une
         réplique RDMA recréée sous son récepteur le 2026-10-24 (qui a continué d'écrire dans un
         inode délié — réplique vide pour toujours). Les chemins de réouverture ne l'appellent plus
-        (cf. `_StaleGuard.reopen`) ; `decklink_mxl.cpp` s'en abstient délibérément et explique
+        (cf. `_StaleGuard.reopen`) ; `decklink_rx.cpp` s'en abstient délibérément et explique
         pourquoi. Réservé à un outil d'entretien qui SAIT qu'il est seul sur le domaine."""
         _ck("mxlGarbageCollectFlows", _lib.mxlGarbageCollectFlows(self._h))
 

@@ -2,13 +2,27 @@
 
 *[English version](README.en.md)*
 
-> ## Version bêta
+> ## Où en est ce produit
 >
-> - **Les API ne sont pas figées.** Le proxy de plugins, les endpoints de contrôle et le format
->   `.mxlplugin` peuvent changer. Les versions sont en `0.x.y` : le majeur à zéro dit exactement
->   cela. Une `1.0` engagera une compatibilité qu'on préfère promettre une fois, et la tenir.
+> Bobi.Studio tourne **quotidiennement en production** chez son éditeur. Il est mesuré plutôt
+> qu'estimé, une suite de vérifications hors ligne tourne en intégration continue à chaque
+> poussée de façon bloquante, et ce qui n'est pas corrigé est **écrit** dans `CHANGELOG.md`
+> plutôt que passé sous silence.
+>
+> - **Étalonnez avant de passer à l'antenne.** Les profils de ressources livrés par défaut ont
+>   été mesurés sur *notre* matériel : sur le vôtre, le coût d'un conteneur et le plafond de
+>   densité d'une carte diffèrent. Montez votre dispositif, exercez-le au pire de ce qu'il fera,
+>   lancez une campagne d'étalonnage — c'est ce constat, et lui seul, qui autorise le mot
+>   « garanti ». Mode opératoire : [INSTALL.md §9](INSTALL.md).
 > - **Éprouvez-le hors antenne d'abord.** C'est un produit de diffusion : ce qui s'y casse se
 >   voit en direct.
+> - **Ce dont dépend un intégrateur est normalisé, pas inventé par nous.** NMOS IS-04/05/07/09,
+>   IS-12/14, Ember+, TSL 5.0, SNMPv3, SAP/SDP suivent leurs spécifications : ce n'est pas à
+>   nous de les changer.
+> - **Ce qui bouge encore, c'est le contrat d'écriture d'un plugin** — le proxy de plugins, les
+>   endpoints de contrôle et le format `.mxlplugin`. Un plugin déclare le cœur dont il a besoin
+>   (`requires.core_min`) et l'installation le **refuse** s'il est trop ancien, plutôt que de le
+>   laisser casser en silence. Les versions en `0.x.y` disent cela, et rien de plus.
 >
 > Deux retours nous sont particulièrement utiles : ce qui bloque à l'installation, et ce que la
 > documentation ne dit pas. Ouvrez une issue.
@@ -24,7 +38,7 @@ Le transport vidéo/audio interne passe par le **bus MXL** (SDK MXL, mémoire pa
 - **Streams** : encodage multi-destinations (UDP / SRT / WebRTC), audio multi-pistes, preview WHEP
 - **Système de plugins** : chaque type de container est un plugin versionné (`plugins/<type>/`) — déployable, mis à jour et distribué indépendamment
 - **Catalogue** : page Réglages → Catalogue qui liste les plugins et services publiés par une organisation GitHub de confiance (réglable), compare à l'installé et installe le paquet — sans cloner de dépôt
-- **Console audio** : console de mixage (plugin `audio_console` + service `audio`) avec AFV, mémoires d'outils, vues d'opérateur, bibliothèque LV2 et surfaces de contrôle MCU/HUI (service `control_surface`) ; identification vocale optionnelle par synthèse vocale (service `tts`, installé à la demande)
+- **Console audio** : console de mixage (plugin `audio_console` + service `audio`) avec AFV, mémoires d'outils, vues d'opérateur, bibliothèque LV2 et surfaces de contrôle MCU/HUI (service `panel_audio`) ; identification vocale optionnelle par synthèse vocale (service `tts`, installé à la demande)
 - **Câblage live** : page Câbles avec topologie graphique, bascule de source à chaud, insertion automatique d'UDC en cas de formats incompatibles
 - **NMOS** : **IS-04** (enregistrement/découverte), **IS-05** (connexion), **IS-07** (événements — client, entrant et sortant), **IS-09** (configuration système), **IS-12** (contrôle MS-05-02 sur WebSocket) et **IS-14** (le même modèle en REST, avec sauvegarde/restauration `bulkProperties`). Plus les BCP : **002-01/02** (grouping et identité d'asset), **004-01** (capacités de récepteur), **008-01/02** (moniteurs de santé des Rx/Tx). L'autorisation **BCP-003-02** n'est pas implémentée : le plan de contrôle est supposé protégé
 - **Autres protocoles** : SAP/SDP (annonce et découverte AES67/Ravenna), Ember+, TSL 5.0 (tally/UMD), SNMPv3 en lecture seule avec traps, PTP par nœud (ptp4l/phc2sys)
@@ -33,11 +47,13 @@ Le transport vidéo/audio interne passe par le **bus MXL** (SDK MXL, mémoire pa
 - **Macros et déclencheurs** : enchaînements d'actions et de paramètres continus sur les conteneurs d'un projet, toute capacité de plugin étant pilotable sans passer par l'interface
 - **Monitoring WebRTC** : panneau latéral global par utilisateur (flux MediaMTX embarqué), boutons Monitoring sur chaque page productrice
 - **Multi-nœuds** : enrôlement de nœuds Docker (agent-nœud), réplication **RDMA** inter-nœuds du bus MXL, allocation multicast centralisée, haute disponibilité warm-standby (cf. `HA.md`)
-- **Ressources mesurées** : profils CPU par type de conteneur, allocation de cœurs isolés consciente du NUMA, étalonnage en charge réelle et constat du placement effectif — pas d'allocation à l'estime
+- **Ressources mesurées** : profils CPU par type de conteneur, **niveaux de place** (dont « Dédié » = cœurs physiques entiers, veille profonde coupée), allocation de cœurs isolés consciente du NUMA, étalonnage en charge réelle et constat du placement effectif — pas d'allocation à l'estime
 - **Santé de la flotte** : supervision par nœud (CPU, RAM, disque, capteurs, PTP, GPU, RDMA, bande passante mémoire), détection de nœud tombé, alertes contextualisées et notifications e-mail
 - **Installation des nœuds** : installeur dédié, démarrage réseau PXE/UEFI HTTP ou média USB, prise en main iLO — enrôlement sans clé USB
 - **Journalisation** : logs des conteneurs, journal d'exploitation et piste d'audit des actions utilisateurs
-- **Projets** : snapshots du câblage et de la configuration, rappel avec progression, accès restreint par utilisateur ; **ports virtuels** (une entrée câblée sur un port suit le flux physique qu'on lui affecte, sans toucher au projet)
+- **Projets** : un projet se **démarre et s'arrête**, se **versionne** (versions automatiques réglables, règles de conservation) et se **place** par nœud ; fiche, recherche et filtres ; instantanés du câblage et de la configuration, rappel avec progression, accès restreint par utilisateur ; **ports virtuels** (une entrée câblée sur un port suit le flux physique qu'on lui affecte, sans toucher au projet) ; **état d'antenne** d'un conteneur enregistré à l'arrêt et repris au démarrage
+- **Médias** : bibliothèque par conteneur et registre central, playlists, import depuis l'ordinateur vers un ou plusieurs projets, rangement d'une sélection dans un projet, verrou « Garder ici », archivage
+- **Veille des versions** : l'orchestrateur surveille les versions publiées sur GitHub et **prévient** les administrateurs — il n'installe jamais de lui-même
 - **Pilotes hôte** : installation et mise à jour de pilotes matériel par l'agent-nœud (`nvidia`, `blackmagic`), avec journal et redémarrage piloté
 - **i18n** : interface bilingue FR/EN
 
@@ -157,9 +173,8 @@ app/                  ← modules Python (deploy, plugins, node_driver, docker_d
                         core_pool/placement, node_health, ptp, ha…) + app/routes/ (API REST)
 plugins/              ← un sous-module git par type de container (plugin.json + script.py + UI)
                         + dossiers `_*_runtime` (images Docker partagées, pas des plugins)
-services/             ← services orchestrateur (nmos, emberplus, tsl, atem, skaarhoj, sap, snmp,
-                        rdma, alerting, audio, control_surface, tts, files, media_manager,
-                        storage, webrtc_gateway… — `ls services` fait foi)
+services/             ← services orchestrateur, un sous-module git par service
+                        — `ls services/` fait foi
 node_agent/           ← agent-nœud (agent.py) + installeur de nœud (install-node.sh) + iso/
 templates/            ← vues HTML Jinja2
 static/               ← scripts.js, CSS (base.css, nav.css, themes), uploads/
@@ -167,8 +182,8 @@ i18n/                 ← catalogues de traduction (fr.json, en.json)
 script_templates/     ← agent.py (agent par-conteneur), bobimxl.py (SDK MXL), mxl_bench.py
 tools/                ← utilitaires (create_admin.py, build_dist.py…)
 docs/design/          ← charte UI, doctrine produit, contexte métier
-docs/reference/       ← documents de référence qui font foi (layouts TX, modèle d'horloge,
-                        interop MXL, sonde 2110, projets)
+docs/reference/       ← documents de référence qui font foi sur leur sujet
+                        — `ls docs/reference/` fait foi
 docs/chantiers/       ← journaux de chantier datés (mesures, portages, décisions)
 docs/design/DESIGN.md             ← charte UI / système de thèmes
 docs/design/CONTEXT.md            ← contexte métier et périmètre

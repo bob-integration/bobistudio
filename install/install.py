@@ -118,6 +118,7 @@ STR = {
         "code_deployed": "Code déployé dans {d}",
         "ctrl_ready": "Orchestrateur prêt.",
         "access": "Accès : {url}  (créer le compte admin à la 1ʳᵉ visite)",
+        "update_default": "Vérification des mises à jour : ACTIVÉE par défaut (une fois par jour, lecture des versions publiées sur GitHub, rien n'est envoyé ni installé). Désactivable à la 1ʳᵉ visite, ou dans Réglages → Mises à jour.",
         "aio_ready": "Tout-en-un prêt (orchestrateur + nœud local).",
         # deps / service
         "h_deps": "Dépendances (Python, venv, paquets système)",
@@ -229,6 +230,7 @@ STR = {
         "code_deployed": "Code deployed to {d}",
         "ctrl_ready": "Orchestrator ready.",
         "access": "Access: {url}  (create the admin account on first visit)",
+        "update_default": "Update check: ON by default (once a day, reads the versions published on GitHub, nothing is sent or installed). Can be turned off on first visit, or in Settings → Updates.",
         "aio_ready": "All-in-one ready (orchestrator + local node).",
         "h_deps": "Dependencies (Python, venv, system packages)",
         "apt_update": "apt-get update…", "apt_install": "Installing system packages…",
@@ -1212,6 +1214,7 @@ def path_controller(zip_path):
     print()
     ok(t("ctrl_ready"))
     info(t("access", url=f"{BOLD}{CYAN}http://{_host_ip() or os.uname().nodename}:5000{R}"))
+    info(t("update_default"))
     return None
 
 
@@ -1258,6 +1261,7 @@ def path_all_in_one(zip_path):
     else:
         ok(t("aio_ready"))
     info(t("access", url=f"{BOLD}{CYAN}http://{_host_ip() or os.uname().nodename}:5000{R}"))
+    info(t("update_default"))
     return None
 
 

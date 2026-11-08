@@ -84,7 +84,10 @@
                  && c.mesure && c.mesure.max != null
                  && c.consomme_pct >= 0.9 * c.reserve_pct && c.consomme_pct <= c.mesure.max)
             hint = tr('containers.ressources.guarantee_hint_tight');
+        // The number is the count of DEDICATED cores « Guarantee » will reserve — said in words,
+        // a bare stepper next to the button read as anything (asked 2026-11-07).
         return '<div class="res-brick-actions">'
+            + '<span class="res-cores-label">' + esc(tr('containers.ressources.guarantee_cores_label')) + '</span>'
             + '<input type="number" class="res-cores-input" min="1" step="1" value="' + defCores + '" '
             + 'aria-label="' + esc(tr('containers.ressources.guarantee_cores')) + '" '
             + 'title="' + esc(tr('containers.ressources.guarantee_cores')) + '">'
@@ -140,8 +143,13 @@
         const ghost = (c.etat === 'perime' || c.etat === 'autre_noeud');
         const fc = fillClass(c);
         const noeud = c.noeud || {};
-        const tight = (noeud.libres != null && noeud.physiques
-            && noeud.libres <= Math.max(1, Math.round(noeud.physiques * 0.15)));
+        // Cores NOT dedicated to anyone, i.e. what a new reservation can still take. Never the
+        // server's `libres`: that one subtracts one core per SHARED container whatever it really
+        // uses — a placement heuristic, which went negative on screen (« -11/6 cœurs libres »).
+        const nonDedies = (noeud.physiques != null)
+            ? Math.max(0, noeud.physiques - (noeud.dedies || 0)) : null;
+        const tight = (nonDedies != null && noeud.physiques
+            && nonDedies <= Math.max(1, Math.round(noeud.physiques * 0.15)));
         const pLabel = peakLabel(c);
         const reserveTxt = c.reserve_pct != null ? fmtCores(c.reserve_pct) : tr('containers.ressources.unreserved');
         const titleParts = [
@@ -172,14 +180,15 @@
             + (noeud.physiques != null
                 ? '<div class="res-brick-node' + (tight ? ' res-node-tight' : '') + '">'
                 + esc(tr('containers.ressources.node_capacity')
-                    .replace('{libres}', noeud.libres).replace('{physiques}', noeud.physiques))
+                    .replace('{physiques}', noeud.physiques).replace('{non_dedies}', nonDedies)
+                    .replace('{partages}', noeud.partages || 0))
                 + '</div>' : '')
             + (opts.showActions ? guaranteeHtml(c) : '')
             + '</div>';
     }
 
     // Câble les boutons « Garantir » d'un conteneur de bricks fraîchement injecté.
-    function wireGuarantees(root) {
+    function wireGuarantees(root, onDone) {
         root.querySelectorAll('[data-res-guarantee]').forEach(btn => {
             btn.onclick = async () => {
                 const vmid = btn.dataset.resGuarantee;
@@ -201,6 +210,7 @@
                         status.className = 'res-brick-status ok';
                         status.textContent = tr('containers.ressources.guarantee_ok').replace('{coeurs}', j.coeurs);
                     }
+                    if (r.ok && j.ok && typeof onDone === 'function') onDone(j);
                 } catch (e) {
                     if (status) { status.className = 'res-brick-status err'; status.textContent = tr('containers.ressources.guarantee_error'); }
                 } finally {

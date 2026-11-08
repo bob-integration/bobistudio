@@ -314,6 +314,10 @@ def liste_containers():
         c["resources_effective"] = {
             "cores": _eff.get("cores"), "memory": _eff.get("memory"),
             "cpu_mode": _dcmp.cpu_mode_of(_eff),
+            # What the card's « Cœurs » says (2026-11-07): dedicated cores, a CPU cap on the shared
+            # pool, the shared pool with no cap, or the engine's lcores — not the `cores` column.
+            "dedicated": bool(_eff.get("pin")),
+            "engine": _dcmp.is_mtl_type((_dc or {}).get("type")),
             "override": c.get("cores_override") is not None or c.get("memory_override") is not None
                         or c.get("cpu_mode_override") is not None}
         # Sortie réseau : exposée pour TOUS les conteneurs, pas seulement ceux qui en dévient.
@@ -613,6 +617,30 @@ def creer():
                 return jsonify({"error": _t("api.containers.noeud_sans_capacite_gui",
                                            n=_node.get("name"), t=d_type),
                                 "error_code": "node_without_gui_capability"}), 400
+        # ── AUCUN CŒUR NE POURRAIT ÊTRE DÉDIÉ : on AVERTIT, l'humain choisit ────────────────
+        # Décision de Cyril, 2026-11-07. Ce n'est PAS un refus : le repli sur le pool partagé
+        # reste le bon défaut (un conteneur sans cpuset flotterait sur les lcores du moteur 2110).
+        # Ce qui ne va pas, c'est qu'il était MUET — banc du 07/11 sur dl360-1 : une console audio
+        # créée sans un seul cœur dédiable a été placée en partagé sans aucun signal, et rien
+        # n'aurait permis de le savoir après coup (aucun compteur de charge ne bouge).
+        # ⚠ LA PORTE EST ICI, SUR LE SERVEUR, et avant toute ligne en base. Une confirmation qui
+        # ne vit que dans l'interface n'en est pas une (la bascule de mode réseau du 28/10 est
+        # partie sans la sienne et a effacé douze conteneurs) ; et refuser plus tard obligerait à
+        # nettoyer un conteneur qui n'aurait jamais dû naître (même raison que `one_per_node`).
+        if not data.get("confirme_partage"):
+            _pf = docker_compute.preflight_dedication(int(node_id), d_type)
+            if _pf["demande"] > 0 and not _pf["suffisant"]:
+                from ..i18n import t as _t
+                _cle = ("api.containers.aucun_coeur_dediable" if not _pf["capacite"]
+                        else "api.containers.coeurs_dediables_insuffisants")
+                return jsonify({
+                    "error": _t(_cle, t=d_type, n=_pf["noeud"], want=_pf["demande"],
+                                libres=_pf["capacite"], pool=_pf["pool"] or "—"),
+                    "error_code": "no_dedicated_core",
+                    "confirmation_requise": True,
+                    "node_id": int(node_id),
+                    "dedication": _pf,
+                }), 409
         d_params = data.get("deploy_params") or {}
         if plugins.is_plugin(d_type):
             m = plugins.get(d_type)
@@ -711,6 +739,43 @@ def container_egress_route(vmid):
                             "le changement s'applique aux nouvelles."})
 
 
+@bp.route("/api/containers/<int:vmid>/resources_view", methods=["GET"])
+@require_login
+def container_resources_view(vmid):
+    """What the container settings panel shows of its CPU resources (cf. app/container_settings.py),
+    plus its projects. Read-only."""
+    from .. import container_settings
+    out = container_settings.resources_view(vmid)
+    if out is None:
+        return jsonify({"error": "not_found"}), 404
+    c = db_get_container(vmid)
+    out["projects"] = (_attach_projects([dict(c)])[0].get("projects") or []) if c else []
+    # A media-volume container is assigned to ONE project (its media folder): the panel offers the
+    # project picker for these types only, like the deploy palette.
+    from .. import plugins as _plugins
+    out["media_volume"] = _plugins.wants_media_volume(out.get("type"))
+    return jsonify(out)
+
+
+@bp.route("/api/containers/<int:vmid>/cores_estimate", methods=["POST"])
+@require_login
+def cores_estimate(vmid):
+    """Cost of a draft of active items (DeckLink connectors) for a container sized by them:
+    {items, current, wanted, available, fits, forced, holders}. Read-only — nothing is reserved.
+    Body: {"params": {...}} with the lists the type counts (`inputs`, `outputs`)."""
+    from ..docker_compute import item_cores_estimate
+    c = db_get_container(vmid)
+    if not c:
+        return jsonify({"error": "not_found"}), 404
+    params = (request.json or {}).get("params")
+    if not isinstance(params, dict):
+        return jsonify({"error": "params"}), 400
+    out = item_cores_estimate(c, params)
+    if out is None:
+        return jsonify({"error": "not_sized_by_items"}), 400
+    return jsonify(out)
+
+
 @bp.route("/api/containers/<int:vmid>/resources", methods=["PATCH"])
 @require_perm("containers.deploy")
 def patch_resources(vmid):
@@ -722,8 +787,11 @@ def patch_resources(vmid):
     memory = data.get("memory")
     pinned = data.get("pinned_cores")  # accepté seulement s'il ne CHANGE rien (anciens clients)
     reset  = bool(data.get("reset"))
-    if cores is not None and (not isinstance(cores, int) or cores < 1 or cores > 256):
-        return jsonify({"error": "cores hors plage 1..256"}), 400
+    # `cores: 0` = remove the CPU cap of a SHARED container (no `--cpus`, even when its manifest
+    # sets one — cf. docker_compute.effective_resources). Refused below for a dedicated one.
+    if cores is not None and (not isinstance(cores, int) or isinstance(cores, bool)
+                              or cores < 0 or cores > 256):
+        return jsonify({"error": "cores hors plage 0..256 (0 = aucun plafond)"}), 400
     if memory is not None and (not isinstance(memory, int) or memory < 64 or memory > 1024*1024):
         return jsonify({"error": "memory hors plage 64..1048576 MB"}), 400
     c = db_get_container(vmid)
@@ -757,7 +825,27 @@ def patch_resources(vmid):
             return jsonify({"error": "cpu_weight : %s" % ", ".join(_cw.LEVELS)}), 400
         poids_res = _cw.regler(vmid, cpu_weight_in)
         if not poids_res.get("ok"):
+            # On air needs dedicated cores (the place follows the level): refused when the node
+            # has none to give, with what is missing — the level stays as it was.
+            if isinstance(poids_res.get("err"), dict):
+                return jsonify(poids_res["err"]), 409
             return jsonify({"error": poids_res.get("err")}), 400
+    # ─── DEDICATED CORES: resized HOT (2026-11-07) ──────────────────────────────────────────
+    # For a dedicated container `cores` is its reservation, resized with `docker update` like a
+    # guarantee — no cut. For a shared one it stays a CPU cap (`--cpus`), part of the spec: that
+    # one recreates. Read AFTER the level above: « Dédié + 3 cores » in one request is one gesture.
+    cores_res = None
+    if cores is not None and not reset:
+        from .. import container_settings as _cs
+        _eff1 = _dcmp.effective_resources((_dc or {}).get("type"), db_get_container(vmid) or c)
+        if cores == 0 and (_eff1.get("pin") or _eff1.get("node_io")):
+            # 0 is « no cap », a word of the shared pool only: never 0 dedicated cores.
+            return jsonify({"error": "no_cap_dedicated"}), 409
+        if _eff1.get("pin") and not _eff1.get("node_io"):
+            ok_c, cores_res = _cs.set_dedicated_cores(vmid, cores)
+            if not ok_c:
+                return jsonify(cores_res), 409
+            cores = None
     cpu_mode = data.get("cpu_mode")
     if cpu_mode is not None:
         if cpu_mode not in _dcmp.CPU_MODES:
@@ -782,11 +870,13 @@ def patch_resources(vmid):
              cible=c.get("hostname"), vmid=vmid, kind="deploy",
              params=({"chgs": _chgs} if _chgs else None))
     if not _chgs:
-        if poids_res is not None:
+        if poids_res is not None or cores_res is not None:
             from ..audit import journal as _j2
+            _hot = ", ".join(x for x in (("cpu_weight=%s" % poids_res["niveau"]) if poids_res else "",
+                                         ("cores=%s" % cores_res["cores"]) if cores_res else "") if x)
             _j2("alert.audit.modifier_ressources", cible=c.get("hostname"), vmid=vmid,
-                kind="deploy", params={"chgs": "cpu_weight=%s" % poids_res["niveau"]})
-            return jsonify({"status": "ok", "vmid": vmid, "cpu_weight": poids_res})
+                kind="deploy", params={"chgs": _hot})
+            return jsonify({"status": "ok", "vmid": vmid, "cpu_weight": poids_res, "cores": cores_res})
         return jsonify({"status": "inchange", "vmid": vmid})
     def _resize():
         with verrou_vmid(vmid, op="resize"):
@@ -1059,6 +1149,11 @@ def patch_container_project(vmid):
         with verrou_vmid(vmid, op="project"):
             changer_media_projet(vmid, int(project_id) if project_id else None, media_host_dir)
     threading.Thread(target=_changer_projet).start()
+    # Composition changed: both the project left and the project joined are « modified ».
+    from ..database import db_project_event
+    from ..audit import acteur
+    for _pid in {c.get("project_id"), int(project_id) if project_id else None} - {None}:
+        db_project_event(_pid, "modified", acteur())
     return jsonify({"status": "en_cours"})
 
 # ─── Sauvegardes de config par container (2110_io & co, décision 2026-07-05) ──
@@ -1860,3 +1955,6 @@ from . import ops_journal_api  # noqa: F401 — journal d'exploitation des plugi
 
 # Disques locaux d'un nœud (inventaire, formatage gardé, montage persistant, veille).
 from . import node_disks  # noqa: F401
+
+# Environnement d'un projet : services partagés qu'il utilise sans les posséder (07/11).
+from . import project_environment_api  # noqa: F401

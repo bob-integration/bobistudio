@@ -164,6 +164,19 @@ my_value = CONFIG.get("my_key") or "default"
 | `8080` | metrics — `GET /` returns the JSON the orchestrator reads |
 | `8082` | control — the endpoints declared in `control.endpoints` |
 
+The container's agent (`:8081`, in the image, outside the plugin) answers the orchestrator:
+
+| Call | Effect |
+|---|---|
+| `POST :8081/deploy` | writes the script to disk |
+| `POST :8081/start` · `/stop` | controls the script |
+| `GET :8081/status` | `{running: bool}` |
+| `GET :8080/` | the metrics published by the script itself |
+
+These calls require the container's agent token: every call carries the headers supplied by the
+orchestrator (`deploy.agent_headers(vmid)`). One path without them, and the container can no
+longer be driven after a redeployment.
+
 Port 8080 also receives **pushes from the TSL service** (tally and live labels): a GET-only
 server would answer 501 and the tally would never arrive, with nothing to signal it.
 
@@ -185,6 +198,36 @@ its own (other code, other default flow names): the orchestrator then restarts i
 non-200 answer falls back to a restart, so a script that does not know the route is safe.
 Model: `decklink_io` (one worker per connector, keyed by its persistent id; bench
 `verif_reconfig_a_chaud.py`).
+
+### On-air state — `control.onair`
+
+A project saves the **configuration** of its containers. What is **on air** — the source on
+PGM, the clip loaded and its position, the page displayed — lives in the script alone, and a
+container started again comes back without it. A plugin that has such a state declares two
+routes:
+
+```json
+"control": { …, "onair": { "read": "/onair", "restore": "/onair" } }
+```
+
+- `read` (one of `read_endpoints`) answers **GET** with a JSON object. Its content is yours: the
+  orchestrator stores it without reading it. Put a `version` in it.
+- `restore` (one of `endpoints`) receives that object in a **POST** and applies it. Answer **2xx**
+  when applied, **4xx** when refused (unknown `version`, a clip that is gone): no retry. No answer
+  or a 5xx means « not ready yet » and the orchestrator tries again for about forty seconds, while
+  the scripts of the project come up.
+
+The orchestrator reads it when a project is **stopped**, and also every N seconds if the project
+asks for it (Projects → project window → Details, off by default). It sends it back after
+**Start** when the operator ticks « Resume the on-air state » (unticked by default), and
+automatically after the supervision **restarted a crashed script** — from a capture taken since
+the project started, never the state of an earlier show.
+
+Restore what the state SAYS, including movement: a player that was playing a loop plays it again.
+Never restore something half done — a transition in progress comes back as its result. The
+document is kept apart from the settings (`control.persist`): the two must not overlap, or a
+resumed state would undo a setting changed since. A wrong declaration (a route missing from the
+lists) is refused at scan time. Model: `hello_world` (`/onair`: text, background, overlay and PiP).
 
 ---
 
@@ -244,6 +287,7 @@ Notable ones:
 | `config_schema` | fields of the deployment palette (Tier 1) |
 | `control.endpoints` | allow-list of proxy paths — anything else gets a 403 |
 | `control.read_endpoints` | subset readable with the login alone (state, preview) |
+| `control.onair` | on-air state saved at stop and resumed at start (see « On-air state » above) |
 | `param_tree` / `actions` | the surface exposed to macros |
 | `ui.public_page` | allows a public `/p/<token>` link (read-only by default) |
 | `ui.public_tabs` | read endpoint listing the plugin's tabs (`{items: [{value, label}]}`): the share dialog then offers to share ONE tab — `mount()` receives `ctx.tab` |
@@ -251,6 +295,7 @@ Notable ones:
 | `nav` | section and route. **Without `nav`**, no palette chip and no nav entry |
 | `help.category` / `help.order` | placement of the help article |
 | `files` | extra files pushed next to the script (see below) |
+| `environment` | how the container relates to projects, for a service other containers rely on: `{"scope": "partitioned" \| "shared", "wanted_by": {"sections": [...], "types": [...]}}`. `partitioned`: inside a project it only serves that project (transcoder); `shared`: it serves every project, so a project holding it destroys it for everyone when unloaded (pyramide). The orchestrator reminds this when one is attached to a project, records the ones a project uses at save, and offers to create the missing ones when the project is recalled (`app/project_environment.py`). `wanted_by` says which project contents need it; absent = always |
 
 ### `files` — shipping modules next to the script
 

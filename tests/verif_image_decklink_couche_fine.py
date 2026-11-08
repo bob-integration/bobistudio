@@ -4,7 +4,7 @@
 """The shared `bobi-compute` base image no longer depends on an OPTIONAL plugin (2026-11-01).
 
 ★ WHAT THIS GUARD PROVES, AND WHY IT EXISTS.
-The four Blackmagic binaries (decklink_mxl, decklink_tx, decklink_probe, decklink_profile) were
+The four Blackmagic binaries (decklink_rx, decklink_tx, decklink_probe, decklink_profile) were
 compiled INSIDE `bobi-compute`, the base image of EVERY non-2110 plugin. Two effects, both at odds
 with what the product claims — you install what you need:
 

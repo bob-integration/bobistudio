@@ -23,6 +23,23 @@
             notch.style.left = Math.round(r.left + r.width / 2 - d.left) + 'px';
             notch.hidden = false;
         });
+        // Ensemble à deux rangs dans une page (Réglages, 07/11) : chevron sous son groupe allumé.
+        document.querySelectorAll('.navpair').forEach(pair => {
+            const deck = pair.querySelector(':scope > .navpair-deck');
+            const lit = pair.querySelector(':scope > .navpair-top .navpair-items > .tab.active');
+            if (!deck) return;
+            let notch = deck.querySelector(':scope > .subnav-deck-notch');
+            if (!notch) {
+                notch = document.createElement('span');
+                notch.className = 'subnav-deck-notch';
+                notch.setAttribute('aria-hidden', 'true');
+                deck.appendChild(notch);
+            }
+            if (!lit || deck.hidden) { notch.hidden = true; return; }
+            const r = lit.getBoundingClientRect(), d = deck.getBoundingClientRect();
+            notch.style.left = Math.round(r.left + r.width / 2 - d.left) + 'px';
+            notch.hidden = false;
+        });
     }
     function start() {
         place();
@@ -30,7 +47,7 @@
         if (window.ResizeObserver) {
             const ro = new ResizeObserver(place);
             if (nav) ro.observe(nav);
-            document.querySelectorAll('.subnav-deck').forEach(d => ro.observe(d));
+            document.querySelectorAll('.subnav-deck, .navpair-deck, .navpair-top').forEach(d => ro.observe(d));
         } else {
             window.addEventListener('resize', place);
         }

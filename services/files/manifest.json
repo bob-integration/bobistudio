@@ -1,6 +1,7 @@
 {
   "id": "files",
   "label": "Fichiers",
+  "help": {"category": "media"},
   "nav_tab": "files",
   "tab_template": "files/settings_tab.html",
   "version": "0.2.0",

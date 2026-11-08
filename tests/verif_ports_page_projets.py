@@ -57,14 +57,20 @@ with cli.session_transaction() as s:
 r = cli.get("/projects")
 html = r.get_data(as_text=True)
 ok(r.status_code == 200, "1. /projects se rend", r.status_code)
-ok('onclick="togglePorts(%d)"' % pid in html, "1b. la carte porte le bouton des ports")
-_tp = re.search(r"\nfunction togglePorts\(.*?\n\}", open(os.path.join(RACINE, "templates", "projects.html"),
-                                                          encoding="utf-8").read(), re.S)
-_tp = _tp.group(0) if _tp else ""
-# Viser le code de togglePorts, pas la page : « modal-overlay » figure ailleurs dans la page rendue
-# (la première version de cette garde restait verte quand togglePorts n'ouvrait plus de fenêtre).
-ok('id="proj-ports-%d"' % pid not in html and "ov.className = 'modal-overlay'" in _tp
-   and 'aria-modal="true"' in _tp and "document.body.appendChild(ov)" in _tp,
+# Depuis le 07/11, la carte n'a plus qu'un bouton vers la fenêtre du projet ; les ports en sont un onglet.
+ok("onclick=\"openProject(%d, 'info')\"" % pid in html and "{id: 'ports', label: 'projects.ports', manage: true}" in html,
+   "1b. la carte ouvre la fenêtre du projet, qui a un onglet Ports")
+_src = open(os.path.join(RACINE, "templates", "projects.html"), encoding="utf-8").read()
+# Depuis le 07/11 les ports sont un ONGLET de la fenêtre du projet. Viser le code de la fenêtre
+# (openProject) et de l'onglet (projTab), pas la page : « modal-overlay » figure ailleurs dans la
+# page rendue (la première version de cette garde restait verte quand rien n'ouvrait de fenêtre).
+_op = re.search(r"\nfunction openProject\(.*?\n\}", _src, re.S)
+_op = _op.group(0) if _op else ""
+_pt = re.search(r"\nfunction projTab\(.*?\n\}", _src, re.S)
+_pt = _pt.group(0) if _pt else ""
+ok('id="proj-ports-%d"' % pid not in html and "ov.className = 'modal-overlay'" in _op
+   and 'aria-modal="true"' in _op and "document.body.appendChild(ov)" in _op
+   and "proj-ports-${pid}" in _pt and "chargerPorts(pid)" in _pt,
    "1c. les ports s'ouvrent dans une fenêtre qui recouvre la page, pas dans la carte")
 
 src = open(os.path.join(RACINE, "templates", "projects.html"), encoding="utf-8").read()

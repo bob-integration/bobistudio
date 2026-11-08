@@ -146,6 +146,98 @@ def update_core_apply():
     return jsonify({"ok": bool(ok), "message": msg}), (200 if ok else 400)
 
 
+# ─── Veille des mises à jour (app/update_watch.py) ───────────────────────────────
+
+@bp.route("/api/update/notice", methods=["GET"])
+@require_login
+def update_notice():
+    """Ce que le bandeau et la fenêtre montrent à l'utilisateur CONNECTÉ.
+
+    Rien pour qui ne peut pas installer : annoncer une mise à jour à un opérateur qui n'a aucun
+    geste à faire, c'est un bruit de plus sur une page d'exploitation."""
+    from ..auth import has_perm, current_user
+    from .. import update_watch
+    if not has_perm("settings.edit"):
+        return jsonify({"enabled": False, "items": []})
+    return jsonify(update_watch.notice_for((current_user() or {}).get("id")))
+
+
+@bp.route("/api/update/notice/dismiss", methods=["POST"])
+@require_perm("settings.edit")
+def update_notice_dismiss():
+    """« Ignorer cette version » : pour CET administrateur, jusqu'à la version suivante."""
+    from ..auth import current_user
+    from .. import update_watch
+    update_watch.dismiss((current_user() or {}).get("id"))
+    return jsonify({"ok": True})
+
+
+@bp.route("/api/update/watch", methods=["GET"])
+@require_perm("settings.edit")
+def update_watch_state():
+    """État de la veille pour la page Réglages : dernière vérification, erreur, trouvées."""
+    from .. import update_watch
+    st = update_watch.state()
+    return jsonify({"checked_at": st.get("checked_at"), "error": st.get("error"),
+                    "available": st.get("available") or []})
+
+
+@bp.route("/api/update/watch/check", methods=["POST"])
+@require_perm("settings.edit")
+def update_watch_check():
+    """« Vérifier maintenant » — même passage que la veille, interrupteur ou pas."""
+    from .. import update_watch
+    st = update_watch.check()
+    return jsonify({"checked_at": st.get("checked_at"), "error": st.get("error"),
+                    "available": st.get("available") or []})
+
+
+# ─── Enregistrement de l'installation (app/registration.py) ─────────────────────
+
+@bp.route("/api/registration", methods=["GET"])
+@require_login
+def registration_get():
+    """État de l'enregistrement, et s'il faut proposer la fenêtre MAINTENANT.
+
+    Comme l'avis de mise à jour : rien pour qui ne peut pas modifier les réglages — ce n'est pas
+    à un opérateur de déclarer l'installation de son site."""
+    from ..auth import has_perm
+    from .. import registration as reg
+    if not has_perm("settings.edit"):
+        return jsonify({"offer": False})
+    offer = reg.offer_due()
+    if request.args.get("full") not in ("1", "true"):
+        # Appelé par la mise en page À CHAQUE page : on ne rend que la décision, pas l'inventaire.
+        return jsonify({"offer": offer})
+    s = reg.state()
+    return jsonify({"offer": offer, "status": s.get("status") or "",
+                    "at": s.get("at"), "info": s.get("info") or {}, "email": reg.email(),
+                    "usages": list(reg.USAGES), "facts": reg.facts()})
+
+
+@bp.route("/api/registration", methods=["POST"])
+@require_perm("settings.edit")
+def registration_post():
+    """{action: prepare|later|decline|reset, info} → l'état, et pour `prepare` le mail EXACT
+    (destinataire, objet, corps, lien mailto). Rien n'est envoyé d'ici : le navigateur ouvre le
+    client de messagerie de l'administrateur, qui envoie lui-même."""
+    from .. import registration as reg
+    data = request.get_json(silent=True) or {}
+    try:
+        s, mail = reg.act(str(data.get("action") or ""), data.get("info"))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "status": s.get("status") or "", "mail": mail})
+
+
+@bp.route("/api/registration/preview", methods=["POST"])
+@require_perm("settings.edit")
+def registration_preview():
+    """Le mail tel qu'il partira, SANS rien enregistrer : l'aperçu suit la saisie."""
+    from .. import registration as reg
+    return jsonify(reg.compose((request.get_json(silent=True) or {}).get("info")))
+
+
 @bp.route("/api/update/ping", methods=["GET"])
 def update_ping():
     """Identité légère pour la découverte réseau (pas de code exposé → pas de token)."""

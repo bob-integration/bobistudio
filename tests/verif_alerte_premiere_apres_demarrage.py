@@ -102,6 +102,51 @@ _avant = _n_alertes()
 core_pool._alerter_throttle(2, "motif_essai", "message d'essai", "warning")
 verifie(_n_alertes() == _avant + 1, "5a. témoin : le cas qui marchait marche toujours", _n_alertes())
 
+# ── 6-9. Les quatre autres sites du même motif (relevés le 2026-11-01, corrigés le 2026-11-08) ──
+# Même machine fraîche (12 s), même question : le premier passage a-t-il lieu ?
+from app import node_driver, docker_driver                                    # noqa: E402
+from app.routes import images as _images                                      # noqa: E402
+
+print("\n6. ★★ node_driver : l'alerte « TLS en clair » d'un nœud sort au premier refus")
+_horloge(12.0)
+node_driver._derniere_alerte_tls.clear()
+_vrai_request, _vrai_base, _vrai_tls = node_driver._request, node_driver._agent_base, node_driver._tls_on
+node_driver._request = lambda *a, **k: (False, node_driver._MARQUE_TLS_CLAIR + "refus")
+node_driver._agent_base = lambda node: "https://192.0.2.1:9100"
+node_driver._tls_on = lambda node: True
+try:
+    _avant = _n_alertes()
+    node_driver._call({"id": 7, "name": "noeud-essai"}, "GET", "/v1/health")
+    verifie(_n_alertes() == _avant + 1, "6a. ★★ monotonic=12 s → l'alerte TLS est ÉCRITE", _n_alertes())
+    _horloge(12.0 + 30.0)
+    _avant = _n_alertes()
+    node_driver._call({"id": 7, "name": "noeud-essai"}, "GET", "/v1/health")
+    verifie(_n_alertes() == _avant, "6b. 30 s plus tard → l'anti-rebond tient", _n_alertes())
+finally:
+    node_driver._request, node_driver._agent_base, node_driver._tls_on = _vrai_request, _vrai_base, _vrai_tls
+
+print("\n7-8. docker_driver : réconciliation du pinning et du dimensionnement au premier passage")
+for nom, fn, memo in (("pinning", docker_driver.reconcile_engine_pinning, docker_driver._reconcile_last),
+                      ("dimensionnement", docker_driver.reconcile_engine_sizing, docker_driver._sizing_last)):
+    _horloge(12.0)
+    memo.clear()
+    fn(424242)               # nœud inconnu : la fonction sort juste APRÈS l'anti-rebond
+    verifie(424242 in memo, "%s : monotonic=12 s → le premier passage a LIEU" % nom, dict(memo))
+
+print("\n9. images : le contrôle de dérive a lieu au premier passage")
+_horloge(12.0)
+_images._derive_vue.clear()
+_vrai_attend = _images._node_expects_image
+_images._node_expects_image = lambda which, node: False
+try:
+    r = _images.verifier_derive_images({"id": 9, "name": "n", "agent_url": "https://192.0.2.1:9100"})
+    verifie(r == [], "9a. monotonic=12 s → contrôle FAIT (None = sauté par l'anti-rebond)", r)
+    _horloge(12.0 + 60.0)
+    r = _images.verifier_derive_images({"id": 9, "name": "n", "agent_url": "https://192.0.2.1:9100"})
+    verifie(r is None, "9b. une minute plus tard → l'anti-rebond tient", r)
+finally:
+    _images._node_expects_image = _vrai_attend
+
 time.monotonic = _vrai_monotonic
 print()
 if ko:

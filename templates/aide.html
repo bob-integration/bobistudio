@@ -129,6 +129,18 @@
 }
 .wiki-cat.collapsed .wiki-cat-items { display: none; }
 
+/* Sous-rubrique (Plugins, Services) : rangée automatiquement par la catégorie que déclare le
+   manifeste. Un intertitre, pas un deuxième niveau de pliage. */
+.wiki-sub-hd {
+  padding: 7px 14px 3px 24px;
+  font-size: 0.68em;
+  font-weight: 600;
+  color: var(--text-muted);
+  opacity: 0.8;
+  user-select: none;
+}
+.wiki-cat-items.has-subs .wiki-nav-item { padding-left: 32px; }
+
 .wiki-nav-item {
   display: block;
   padding: 5px 14px 5px 28px;
@@ -434,15 +446,16 @@
      ══════════════════════════════════════════════════════════════════════ -->
 
 <template id="wiki-art-vue-densemble">
-<p>Bobi.Studio orchestre un pool de <strong>conteneurs Docker</strong> répartis sur un ou plusieurs <strong>nœuds</strong>. Chaque conteneur héberge un script Python qui implémente un rôle broadcast : réception ST 2110, mixage multiview, émission ST 2110, encodage, enregistrement. L'orchestrateur expose une façade NMOS IS-04/IS-05 (de niveau cluster) pour les contrôleurs broadcast.</p>
+<div class="wiki-warn"><strong>{{ _('help.ai_notice_title') }}</strong> {{ _('help.ai_notice') }}</div>
+<p>Bobi.Studio orchestre un pool de <strong>conteneurs Docker</strong> répartis sur un ou plusieurs <strong>nœuds</strong>. Chaque conteneur tient un rôle broadcast : réception et émission ST 2110, mélange, multiview, lecture, encodage, enregistrement. Son point d'entrée est un script Python, qui confie le travail lourd à du code natif : noyaux C et CUDA compilés à la volée, moteur ST 2110 en C (MTL/DPDK), cartes DeckLink en C++, FFmpeg et GStreamer pour l'encodage, la lecture et l'enregistrement.</p>
 <table>
 <tr><th>Couche</th><th>Composant</th></tr>
-<tr><td>Contrôleur</td><td>VSM ou autre — pilote via NMOS IS-04/05</td></tr>
-<tr><td>Orchestrateur</td><td>Flask + SQLite. Gère conteneurs, nœuds, NMOS provider, Ember+. Peut tourner en paire HA (actif/standby)</td></tr>
+<tr><td>Orchestrateur</td><td>Flask + SQLite. Gère conteneurs, nœuds et projets ; expose NMOS (IS-04/05, IS-12, IS-14), Ember+, TSL, SNMP et SAP. Peut tourner en paire HA (actif/standby)</td></tr>
 <tr><td>Pipeline vidéo</td><td>Conteneurs Docker partageant la mémoire (<code>/dev/shm</code> / MXL) de leur nœud</td></tr>
 <tr><td>Nœud</td><td>Hôte Docker piloté par un <em>agent de nœud</em> (jeton HTTP) — aucun accès SSH root requis</td></tr>
 <tr><td>Infrastructure</td><td>NIC dédiée (PF E810, AF-XDP/DPDK) pour le 2110, PTP pour la synchro</td></tr>
 </table>
+<p>Hors de la solution : les systèmes de contrôle broadcast du site (VSM ou autre). Ils la pilotent par les protocoles que l'orchestrateur expose, sans en faire partie.</p>
 <p>Les trois questions auxquelles l'interface répond en permanence :</p>
 <ol>
 <li><strong>Qu'est-ce qui tourne et est-ce nominal ?</strong> (surveillance)</li>
@@ -476,7 +489,6 @@
 <h2>Haute disponibilité (paire de contrôleurs)</h2>
 <p>L'orchestrateur peut tourner en <strong>paire warm-standby</strong> : un <strong>actif</strong> pilote, un <strong>standby</strong> démarre passif (interface en lecture seule). Les deux contrôleurs sont d'abord <strong>appairés</strong> une fois, par un code à usage unique : ils partagent alors la même autorité de certification, sans laquelle un standby promu ne pourrait piloter aucun nœud. L'actif <strong>réplique</strong> ensuite sa base vers le standby en mTLS (port 5444, contrôleurs seulement). La <strong>bascule du pilotage est manuelle</strong> (promouvoir/rétrograder) ; la VIP de management, elle, peut suivre seule avec keepalived. Détails : article <em>Haute disponibilité</em>, et Réglages → Cluster & Réseau → Cluster.</p>
 
-<div class="wiki-note">Les anciens articles « Pré-requis orchestrateur » et « Pré-requis containers LXC » décrivent le modèle Proxmox/LXC <strong>historique</strong> et ne s'appliquent plus.</div>
 </template>
 
 <template id="wiki-art-systeme-plugins">
@@ -589,54 +601,9 @@
 </template>
 
 <template id="wiki-art-dev-plugin">
-<p>Un plugin, c'est un <strong>type de conteneur</strong>. Trois fichiers suffisent : un manifeste, un script, et éventuellement une interface. Cet article décrit le contrat, et surtout les quatre règles qui font échouer un plugin <strong>en silence</strong> quand on les ignore.</p>
-
-<h2>Anatomie</h2>
-<table>
-<tr><th>Fichier</th><th>Rôle</th></tr>
-<tr><td><code>plugin.json</code></td><td>Le manifeste : <code>type</code>, <code>label</code>, <code>version</code>, <code>deploy_defaults</code>, <code>wiring</code> (ce que le plugin produit et consomme), <code>control.endpoints</code>, <code>config_schema</code>, et <code>nav</code> pour apparaître dans la palette.</td></tr>
-<tr><td><code>script.py</code></td><td>Le code qui tourne <strong>dans le conteneur</strong>. Il embarque son propre serveur HTTP de métriques sur le port 8080.</td></tr>
-<tr><td><code>control.js</code> / <code>control.css</code></td><td>La console de contrôle, optionnelle, montée par l'orchestrateur.</td></tr>
-</table>
-<p>Sans <code>nav</code>, le plugin est rendu et versionné mais n'émet ni chip de palette ni lien de navigation — c'est le cas des types à déploiement bespoke.</p>
-
-<h2>⚠ Le piège des accolades</h2>
-<p><code>script.py</code> n'est pas un module Python ordinaire : c'est un gabarit passé dans <code>str.format()</code>, avec seulement trois substitutions — <code>{config}</code>, <code>{hostname}</code> et <code>{plugin_version}</code>. <strong>Toute accolade littérale doit être doublée</strong> : dictionnaires, ensembles, f-strings, <em>et les commentaires</em>.</p>
-<p>Le garde-fou fait un rendu à blanc au démarrage et <strong>écarte</strong> un plugin dont une accolade traîne. Conséquence à connaître : le plugin <em>disparaît du registre</em> au lieu de planter au déploiement. C'est nettement plus long à diagnostiquer si on ne s'y attend pas — et un banc a un temps annoncé « tout compile » alors qu'un plugin était écarté.</p>
-
-<h2>⚠ Le mode tranche est obligatoire</h2>
-<p>Tout <strong>nouveau</strong> plugin doit lire son entrée par tranches (<code>head_index</code> + <code>get_slice</code>, avec repli sur <code>get_latest</code> si la source n'est pas tranchée) et publier sa sortie en commit progressif. Le contrat : <em>k</em> tranches valides signifie que les lignes <code>[0, k × hauteur_de_tranche)</code> sont écrites <strong>sur les trois plans</strong>.</p>
-<p>Pourquoi une règle et pas un réflexe : un plugin qui travaille en image entière ajoute <strong>une trame de latence</strong> à toute chaîne qui le traverse, et cette dette n'apparaît sur aucun compteur — le plugin affiche une cadence parfaite. L'instrument de mesure a été écrit en image entière, et il a fallu y revenir après coup ; le calcul restant après l'arrivée de la dernière ligne est passé de 5,09 à 1,48 ms.</p>
-<p>Deux exceptions légitimes, à écrire dans le code : l'<strong>entrelacé</strong> et la <strong>sélection de ligne</strong> restent en image entière.</p>
-
-<h2>⚠ Exposer les capacités aux macros</h2>
-<p>Toute nouvelle fonction ou tout nouveau paramètre d'un plugin <strong>doit</strong> être pilotable par le système de macros et de déclencheurs. Sinon la capacité est morte : elle existe, elle marche à la main, et aucun automatisme ne peut l'atteindre. C'est un échec silencieux fonctionnel.</p>
-<table>
-<tr><th>Nature</th><th>Mécanisme</th></tr>
-<tr><td>Paramètre continu réglable à chaud</td><td><code>param_tree</code> — arbre élément → groupe → paramètre typé et borné</td></tr>
-<tr><td>Action discrète, chargement de fichier, rappel</td><td><code>actions[]</code>, avec <code>options_endpoint</code> pour les listes vivantes</td></tr>
-<tr><td>État lisible en condition</td><td>publié dans <code>/state</code> et déclaré dans <code>control.read_endpoints</code></td></tr>
-</table>
-
-<h2>⚠ Publier ce qui rend le plugin observable</h2>
-<p>Le port 8080 du conteneur doit rendre au minimum <code>{fps, frame_index}</code>. Au-delà, un plugin publie ce qui permet de savoir s'il fait <strong>ce qu'on lui a demandé</strong>, pas seulement s'il tourne. Une alarme qui dit « ça tourne » sans dire « ça fait ce qui était voulu » n'a pas de valeur — et un compteur parfait pendant que le résultat est faux est la panne la plus coûteuse du produit.</p>
-
-<h2>Le contrat de l'agent, côté conteneur</h2>
-<table>
-<tr><th>Appel</th><th>Effet</th></tr>
-<tr><td><code>POST :8081/deploy</code></td><td>écrit le script sur disque</td></tr>
-<tr><td><code>POST :8081/start</code> · <code>/stop</code></td><td>contrôle le script</td></tr>
-<tr><td><code>GET :8081/status</code></td><td><code>{running: bool}</code></td></tr>
-<tr><td><code>GET :8080/</code></td><td>les métriques émises par le script lui-même</td></tr>
-</table>
-<p>Ces appels exigent un jeton d'agent : tout appel doit joindre les en-têtes fournis par l'orchestrateur. Un seul chemin sans en-tête, et le conteneur devient impilotable après redéploiement.</p>
-
-<h2>Page publique</h2>
-<p>Un plugin peut être exposé par un lien sans authentification. L'orchestrateur fait tout le travail ; le plugin n'a qu'à respecter le contrat : la fonction de montage honore la base d'API fournie — <strong>toutes</strong> les URL passent par une fonction unique, jamais un test par appel — et le manifeste déclare <code>ui.public_page</code>. L'orchestrateur <strong>refuse</strong> de créer un lien pour un plugin qui ne le déclare pas, plutôt que d'en livrer un qui échouerait en 401.</p>
-
-<h2>Versionner et publier</h2>
-<p>La version du manifeste est persistée avec le conteneur et exposée sur le port de métriques : elle dit quelle version tourne réellement. Incrémentez-la à chaque changement de comportement, sinon le parc devient indéchiffrable.</p>
-<div class="wiki-note">Modèles à lire avant d'écrire : <code>color_corrector</code> pour l'entrée en tranches, <code>scope</code> pour l'accumulation par bandes et la page publique, <code>split</code> pour <code>param_tree</code> avec bornes vivantes, <code>multiview</code> pour les actions par élément.</div>
+<p>Un plugin, c'est un <strong>type de conteneur</strong>. Trois fichiers suffisent : un manifeste, un script, et éventuellement une interface. Le guide ci-dessous est celui du dépôt, livré avec le code : il décrit le contrat, et surtout les règles qui font échouer un plugin <strong>en silence</strong> quand on les ignore.</p>
+<p class="meta">Contenu chargé depuis <code>plugins/AUTHORING.md</code> (en français : <code>AUTHORING.fr.md</code>) — <span class="wiki-doc-mtime" data-doc="authoring">…</span></p>
+<div class="wiki-doc-content" data-doc="authoring">Chargement…</div>
 </template>
 
 <template id="wiki-art-dev-service">
@@ -647,8 +614,9 @@
 <table>
 <tr><th>Fichier</th><th>Rôle</th></tr>
 <tr><td><code>__init__.py</code></td><td>Les routes et la logique. Importé par <code>from services import &lt;nom&gt;</code>.</td></tr>
-<tr><td><code>manifest.json</code></td><td>Identifiant, libellé, version, capacités déclarées.</td></tr>
+<tr><td><code>manifest.json</code></td><td>Identifiant, libellé, version, capacités déclarées. <code>help.category</code> range le service dans la rubrique Services de l'aide : <code>control</code>, <code>interop</code>, <code>transport</code>, <code>supervision</code>, <code>media</code> ou <code>audio</code>. Sans elle, il tombe dans « Autres services ».</td></tr>
 <tr><td><code>settings_tab.html</code></td><td>Le fragment Jinja agrégé par la page Réglages.</td></tr>
+<tr><td><code>help.md</code> (optionnel)</td><td>L'article d'aide du service, comme pour un plugin (<code>help.&lt;langue&gt;.md</code> pour une autre langue). Il n'apparaît que si le service est installé.</td></tr>
 </table>
 
 <h2>Ce qui tourne, et où</h2>
@@ -687,49 +655,11 @@
 <div class="wiki-doc-content" data-doc="contributing">Chargement…</div>
 </template>
 
-<template id="wiki-art-prereq-orchestrateur">
-<div class="wiki-warn"><strong>Article historique (Proxmox/LXC)</strong> — l'orchestrateur est désormais full-Docker. Voir <em>Architecture cluster</em>. Token Proxmox et clé SSH host ne sont plus requis.</div>
-<h2>Système</h2>
-<ul>
-<li>VM Linux (Debian 13), ports 5000 (Flask) et 9000 (Ember+)</li>
-<li>Python 3.13 + venv dans <code>./venv</code></li>
-<li>SQLite (DB créée au premier démarrage)</li>
-</ul>
-<h2>Token Proxmox</h2>
-<p>Un token API avec <code>privsep=0</code> et permissions root@pam. Renseigner dans <code>config_local.py</code> (non versionné).</p>
-<h2>Clé SSH vers l'host Proxmox</h2>
-<p>Plusieurs opérations passent par SSH (bind mounts, SR-IOV, PTP, CPU pinning, recréation template). Sans clé, ces features ne fonctionnent pas.</p>
-<pre>ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ""
-ssh-copy-id root@&lt;proxmox-host&gt;</pre>
-<p>Test : <code>ssh -o BatchMode=yes root@&lt;proxmox-host&gt; "echo OK"</code> doit retourner <code>OK</code>.</p>
-<h2>Settings au premier démarrage</h2>
-<p>Onglet <strong>Réglages → Proxmox</strong> : adresse host, node, storage, template VMID (299 par défaut), plage VMID, plage IP, bridge réseau, VLAN tag.</p>
-</template>
-
-<template id="wiki-art-prereq-containers">
-<div class="wiki-warn"><strong>Article historique (LXC)</strong> — les conteneurs tournent désormais en Docker sur des nœuds. Le template 299 et le contrat agent par-LXC ci-dessous ne s'appliquent plus. Voir <em>Architecture cluster</em>.</div>
-<h2>Template LXC (VMID 299)</h2>
-<p>Tous les containers sont clonés depuis le template 299. Pour le créer : <strong>Réglages → Proxmox → Recréer le template</strong>.</p>
-<p>Le template installe : python3, python3-numpy, python3-pil, ffmpeg, ca-certificates. L'agent par-LXC est déployé et lancé via systemd.</p>
-<div class="wiki-warn"><strong>Bind mount /dev/shm obligatoire</strong> : sans <code>lxc.mount.entry: /dev/shm dev/shm none bind,create=dir 0 0</code> dans le .conf Proxmox, chaque container a son propre /dev/shm isolé → le pipeline est cassé. L'orchestrateur l'ajoute automatiquement à la création.</div>
-<h2>Contrat agent par-LXC (:8081)</h2>
-<table>
-<tr><th>Endpoint</th><th>Rôle</th></tr>
-<tr><td><code>POST /deploy</code></td><td>écrit un script Python sur disque</td></tr>
-<tr><td><code>POST /start</code></td><td>démarre le script</td></tr>
-<tr><td><code>POST /stop</code></td><td>arrête le script</td></tr>
-<tr><td><code>GET /status</code></td><td><code>{running: bool}</code></td></tr>
-</table>
-<p>Chaque script exposse ses métriques sur <code>:8080</code> (fps, frame_index, etc.).</p>
-</template>
-
 <template id="wiki-art-prereq-2110">
 <h2>Matériel</h2>
 <ul>
-<li><strong>Carte SR-IOV sans 2022-7</strong> : Mellanox ConnectX-4/5/6/7 (mlx5, PTP hw)</li>
-<li><strong>Carte SR-IOV avec 2022-7</strong> : paire de ports déclarée ensemble dans le registre NIC — ConnectX ou Intel E810</li>
 <li><strong>Carte E810 (MTL)</strong> : Intel E810 pour DPDK/MTL — PTP et 2022-7 gérés nativement dans la NIC</li>
-<li><strong>Source PTP</strong> : grandmaster sur le LAN ou le node Proxmox en BMCA</li>
+<li><strong>Source PTP</strong> : grandmaster sur le LAN</li>
 <li><strong>Switch 10/25 GbE</strong> avec multicast snooping</li>
 </ul>
 <h2>Système host</h2>
@@ -1498,15 +1428,30 @@ anneau vidéo (8 trames) ........... 25 Mo par flux
 </template>
 
 <template id="wiki-art-cpu-pinning">
-<p>Épingler un conteneur à des cores spécifiques réduit le cache thrashing et la gigue pour les workloads vidéo lourds (4K, multiview).</p>
-<h2>Workflow</h2>
-<ol>
-<li>Configurer un conteneur → bloc "Ressources"</li>
-<li>Champ "Épinglage CPU" : <code>4,5,6</code> ou <code>4-6</code> ou <code>4,7-9</code> (<code>--cpuset-cpus</code> Docker)</li>
-<li>"Mettre à jour les ressources" → le conteneur redémarre avec la contrainte</li>
-</ol>
-<p>Vue globale <strong>par-nœud</strong> : Réglages → <em>Nœuds &amp; Matériel → CPU</em> — carte des cores du nœud sélectionné, avec assignation et conflits (deux conteneurs visant le même core sur le même nœud).</p>
-<div class="wiki-note">Épinglage souple : le conteneur ne peut tourner que sur ces cores, mais l'hôte peut les utiliser aussi. Pour une réservation stricte, <code>isolcpus</code> dans la cmdline kernel — non implémenté.</div>
+<p>Chaque conteneur a un <strong>niveau</strong>, et ce niveau dit à la fois <em>où</em> il tourne et <em>qui passe devant</em> quand le nœud sature.</p>
+<table>
+<tr><th>Niveau</th><th>Où il tourne</th><th>Sous saturation</th></tr>
+<tr><td><strong>Dédié</strong></td><td>Sur des cœurs <strong>réservés pour lui</strong>, que personne d'autre n'utilise.</td><td>Rien ne lui prend ses cœurs.</td></tr>
+<tr><td><strong>Normal</strong></td><td rowspan="3">Sur le <strong>pool partagé</strong> du nœud : les cœurs que personne n'a réservés.</td><td>Le défaut.</td></tr>
+<tr><td><strong>Arrière-plan</strong></td><td>Cède aux conteneurs Normal (moniteurs, aperçus, passerelles).</td></tr>
+<tr><td><strong>Batch</strong></td><td>Prend ce qui reste (transcodage de fichiers).</td></tr>
+</table>
+<h2>Le niveau par défaut</h2>
+<p>Il vient du type. Les types qui travaillent en continu sur le signal (mélangeur, console son, enregistreur…) sont Dédié ; les autres sont Normal. Le nombre de cœurs d'un conteneur Dédié vient aussi de son type (1 s'il n'en dit rien), puis de l'étalonnage.</p>
+<h2>Changer le niveau</h2>
+<ul>
+<li><strong>Projets → Ressources</strong> : conteneur par conteneur, pour les membres du projet.</li>
+<li><strong>« Gérer les cœurs… »</strong> (Monitoring, ou Réglages → Nœuds) : tous les conteneurs d'un nœud.</li>
+</ul>
+<p>Le changement s'applique <strong>à chaud</strong>, sans couper le conteneur. Passer en Dédié est <strong>refusé</strong> si le nœud n'a plus assez de cœurs libres : le niveau reste alors ce qu'il était, et le message dit ce qui manque.</p>
+<h2>Garantir un projet</h2>
+<p>Ce qui part à l'antenne se met en Dédié. On étalonne pendant que le projet tourne pour de vrai, puis « Garantir le projet » réserve à chaque conteneur Dédié de quoi couvrir son pic mesuré. Les conteneurs des autres niveaux tournent au mieux.</p>
+<h2>Deux cas à part</h2>
+<ul>
+<li><strong>Carte DeckLink</strong> : elle garde ses propres cœurs, entiers (hyperthread compris), sur le processeur où la carte est branchée, quel que soit son niveau. Leur nombre suit les prises activées : activer une prise recrée le conteneur. Pour ne le recréer qu'une fois, préparez plusieurs prises avec « Ajouter aux changements », puis « Appliquer ».</li>
+<li><strong>Moteur ST 2110</strong> : il a ses cœurs à lui, hors de ce mécanisme.</li>
+</ul>
+<div class="wiki-note">Si la fenêtre des cœurs ou une alerte dit qu'une réservation <strong>n'est pas appliquée</strong>, le conteneur tourne encore sur ses anciens cœurs : <strong>Recréer</strong> (menu Actions de sa carte) le refait avec les bons. Un Restart ne suffit pas, voir « Actions sur un conteneur ».</div>
 </template>
 
 <template id="wiki-art-jeux-instructions">
@@ -1869,13 +1814,26 @@ jamais publié. Il n'entre dans aucune sauvegarde de projet : une recette est un
 installation, pas un état de la flotte.</p>
 </template>
 
+<template id="wiki-art-actions-conteneur">
+<p>Le menu <strong>Actions</strong> d'une carte de conteneur propose plusieurs gestes qui se ressemblent. Ils ne touchent pas la même chose.</p>
+<table>
+<tr><th>Geste</th><th>Ce qu'il fait</th><th>Coupure</th></tr>
+<tr><td><strong>Stop / Start</strong></td><td>Arrête ou relance le <em>script</em>. Le conteneur reste en place, avec son image et ses cœurs.</td><td>le script seulement</td></tr>
+<tr><td><strong>Restart</strong></td><td>Relance le <em>même</em> conteneur Docker. Il repart avec ce qu'il avait à sa création : même image, mêmes cœurs. Un nouveau réglage de ressources n'y entre pas.</td><td>quelques secondes</td></tr>
+<tr><td><strong>Configurer → Déployer</strong></td><td>Envoie la configuration. Le conteneur est gardé si sa forme (image, cœurs, mémoire, réseau) n'a pas changé ; sinon il est refait tout seul.</td><td>aucune si rien ne change de forme</td></tr>
+<tr><td><strong>Recréer</strong></td><td>Retire le conteneur Docker et le refait depuis sa configuration, <strong>sur l'image actuelle du nœud et avec les ressources que les règles d'aujourd'hui lui donnent</strong>. Son identité, son emplacement, ses réglages et ses flux NMOS sont conservés.</td><td>quelques secondes</td></tr>
+<tr><td><strong>Migrer</strong></td><td>Refait le conteneur sur un autre nœud.</td><td>quelques secondes</td></tr>
+<tr><td><strong>Détruire</strong></td><td>Supprime le conteneur et sa ligne : identité, réglages et réservations disparaissent.</td><td>définitive</td></tr>
+</table>
+<h2>Quand recréer</h2>
+<ul>
+<li><strong>Après une mise à jour des images</strong> d'un nœud : un conteneur ne change jamais d'image tout seul, et Restart repart sur l'ancienne.</li>
+<li><strong>Quand ses cœurs ne sont pas ceux prévus</strong> : la vue des cœurs ou une alerte dit « réservation pas appliquée », ou une règle de ressources a changé depuis sa création (par exemple une carte DeckLink créée avant ses cœurs dédiés).</li>
+</ul>
+<div class="wiki-note">Le moteur ST 2110 n'a pas d'entrée Recréer : il est refait à chaque Restart, donc il adopte déjà la nouvelle image.</div>
+</template>
+
 <template id="wiki-art-depannage">
-<h2>Multiview ne voit pas le shm du receiver</h2>
-<pre>ssh root@&lt;proxmox-host&gt; "grep dev/shm /etc/pve/lxc/&lt;vmid&gt;.conf"</pre>
-<p>Doit retourner <code>lxc.mount.entry: /dev/shm dev/shm none bind,create=dir 0 0</code>. Sinon recréer le container.</p>
-<h2>PermissionError sur /dev/shm/mxl_*</h2>
-<p>Fichiers fantômes UID 100000 d'anciens containers unprivileged :</p>
-<pre>ssh root@&lt;proxmox-host&gt; "rm -f /dev/shm/mxl_*"</pre>
 <h2>Receivers NMOS invisibles côté VSM</h2>
 <ul>
 <li>Vérifier <code>nmos_receivers_count &gt; 0</code> sur le container</li>
@@ -1886,10 +1844,6 @@ installation, pas un état de la flotte.</p>
 <li>Vérifier que <code>ptp_ifname</code> voit le grandmaster</li>
 <li>Sans hardware timestamping : offset en millisecondes, inutilisable pour 2110 réel</li>
 </ul>
-<h2>Alerte "SSH vers l'host Proxmox a échoué"</h2>
-<p>Test : <code>ssh -o BatchMode=yes -o ConnectTimeout=5 root@&lt;proxmox-host&gt; "echo OK"</code>. Causes courantes : clé absente, non autorisée, host injoignable.</p>
-<pre>ssh-keygen -t ed25519 -f /root/.ssh/id_ed25519 -N ""
-ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 </template>
 
 <template id="wiki-art-lexique">
@@ -2017,6 +1971,22 @@ ssh-copy-id root@&lt;proxmox-host&gt;</pre>
 <li>Il n'est jamais réaffiché après enregistrement, et le bouton « Retirer le jeton » revient à la limite anonyme.</li>
 </ul>
 <div class="wiki-note">Le jeton est stocké en clair dans la base, donc présent dans les sauvegardes. C'est pourquoi l'on demande un jeton <strong>sans aucune portée</strong> : il n'ouvre alors rien de plus que ce que n'importe qui lit déjà sans être authentifié.</div>
+<h2>Être prévenu des mises à jour</h2>
+<p>La section <strong>Vérification automatique</strong> fait regarder à l'orchestrateur, de lui-même, si une nouvelle version est publiée. Elle est <strong>activée par défaut</strong> : une fois par jour, pour Bobi.Studio seul, avec une alerte et un bandeau. L'installeur et l'assistant de premier démarrage le disent, et l'assistant permet de l'éteindre d'emblée.</p>
+<ul>
+<li><strong>Fréquence</strong> : toutes les 6 ou 12 heures, une fois par jour ou par semaine. <strong>Surveiller</strong> : Bobi.Studio seul, ou aussi les plugins et services installés.</li>
+<li><strong>Prévenir par</strong>, à combiner : une <strong>alerte</strong> (journal, et canaux du service Alertes : mail, syslog, SNMP…), un <strong>bandeau</strong> en haut de page, une <strong>fenêtre</strong> à l'ouverture. Chaque version n'est annoncée qu'une fois par alerte.</li>
+<li>Le bandeau et la fenêtre ne s'affichent qu'aux <strong>administrateurs</strong>, ceux qui peuvent installer. « Ignorer cette version » les fait taire pour vous jusqu'à la version suivante.</li>
+<li><strong>Vérifier maintenant</strong> lance un passage tout de suite, et la ligne d'état dit quand a eu lieu le dernier et ce qu'il a trouvé.</li>
+</ul>
+<p>La vérification ne fait que <strong>lire</strong> la liste des versions publiées sur GitHub : elle n'envoie rien sur votre installation, et <strong>n'installe jamais rien</strong> — sur une installation d'antenne, le moment d'une mise à jour se choisit. Si l'interrupteur <strong>Consulter les publications en ligne</strong> est coupé, aucune vérification n'a lieu, quel que soit ce réglage.</p>
+<h2>Enregistrer l'installation</h2>
+<p>Bobi.Studio est libre et gratuit : sans enregistrement, nous ne savons pas qui l'utilise. La section <strong>Enregistrer cette installation</strong> prépare un mail vers <code>register@bobi.studio</code> — organisation (seul champ obligatoire), contact, adresse, pays, usage, commentaire, et si vous le laissez coché la version et la taille de l'installation (nombre de nœuds, plugins et services installés).</p>
+<ul>
+<li>Le texte <strong>exact</strong> du mail s'affiche pendant la saisie. <strong>Ouvrir dans ma messagerie</strong> le passe à votre client de messagerie, où vous pouvez encore le modifier : c'est lui qui envoie, <strong>rien ne part de l'orchestrateur</strong>. Sur un poste sans messagerie, <strong>Copier le texte</strong>, puis collez-le dans un mail.</li>
+<li>Une fenêtre le propose <strong>une seule fois</strong> aux administrateurs, un jour après la première visite : <strong>Plus tard</strong> la ramène dans 30 jours, <strong>Ne plus me proposer</strong> la fait taire pour de bon. La section reste disponible ici.</li>
+<li>L'adresse de destination est fixée dans le code, pas dans les réglages : un compte qui peut modifier les réglages ne peut pas détourner les enregistrements.</li>
+</ul>
 </template>
 
 <template id="wiki-art-mises-a-jour">
@@ -2317,81 +2287,95 @@ chemin, ou quand la réconciliation crée des liens d'elle-même.</p>
 (function() {
 
 // ── Définition des articles core ──────────────────────────────────────────
+// Rubriques rangées par QUESTION (« installer », « exploiter », « dépanner »…), décidé le
+// 2026-11-08. Deux rubriques se remplissent seules :
+//  • `plugins`  — sous-rubrique = la rubrique que le manifeste du plugin déclare (`nav.section`),
+//    libellée par le même catalogue que le menu principal. Un article du cœur s'y range par `sub`.
+//  • `services` — sous-rubrique = `help.category` du manifeste du service. Un article du cœur s'y
+//    rattache par `service` : il n'apparaît que si ce service est INSTALLÉ.
 const CORE_ARTICLES = [
   { id: 'vue-densemble',        title: "Vue d'ensemble",              cat: 'start' },
-  { id: 'installation',         title: 'Installer et mettre en service', cat: 'start' },
-  { id: 'infrastructure',       title: 'Choix matériel & réseau',     cat: 'prereq' },
   { id: 'cluster-architecture', title: 'Architecture cluster',        cat: 'start' },
+  { id: 'installation',         title: 'Installer et mettre en service', cat: 'start' },
   { id: 'systeme-plugins',      title: 'Système de plugins',          cat: 'start' },
-  { id: 'prereq-orchestrateur', title: 'Pré-requis orchestrateur (historique LXC)', cat: 'prereq' },
-  { id: 'prereq-containers',    title: 'Pré-requis containers LXC (historique)',    cat: 'prereq' },
-  { id: 'prereq-2110',          title: 'Pré-requis ST 2110 & SR-IOV', cat: 'prereq' },
-  { id: 'workflow-streams',     title: 'Streaming multi-destinations', cat: 'pipeline' },
-  { id: 'webrtc-explique',      title: 'WebRTC',                      cat: 'pipeline' },
-  { id: 'monitoring',           title: 'Monitoring',                  cat: 'pipeline' },
-  { id: 'genlock',              title: 'Synchronisation (Genlock)',   cat: 'pipeline' },
-  { id: 'cables-page',          title: 'Page Câbles',                 cat: 'pipeline' },
-  { id: 'virtuelles',           title: 'Sources et destinations virtuelles', cat: 'pipeline' },
-  { id: 'mode-tranche',         title: 'Mode tranche (latence sous-image)', cat: 'pipeline' },
-  { id: 'tsl-explique',         title: 'TSL 5.0 (tally centralisé)',  cat: 'controle' },
-  { id: 'workflow-atem',        title: 'Pupitre ATEM',                cat: 'controle' },
-  { id: 'workflow-skaarhoj',    title: 'Pupitre Skaarhoj (Raw Panel)', cat: 'controle' },
-  { id: 'workflow-panel-dyvi',  title: 'Pupitre EVS Dyvi',            cat: 'controle' },
-  { id: 'surfaces-controle',    title: 'Surfaces de contrôle (console audio)', cat: 'controle' },
-  { id: 'nmos-explique',        title: 'NMOS IS-04/IS-05',            cat: 'infra' },
-  { id: 'sriov-explique',       title: 'NIC ST 2110 (PF / AF-XDP)',   cat: 'infra' },
-  { id: 'ptp-explique',         title: 'PTP',                         cat: 'infra' },
-  { id: 'snmp-supervision',     title: 'Supervision SNMP (brancher un NMS)', cat: 'infra' },
-  { id: 'horloges-cluster',     title: 'Horloges du cluster (TAI)',   cat: 'infra' },
-  { id: 'cpu-pinning',          title: 'CPU pinning',                 cat: 'infra' },
-  { id: 'choix-serveur',        title: 'Choisir un serveur (dimensionnement)', cat: 'infra' },
-  { id: 'mxl-format',           title: 'MXL (bus shm) & format vidéo', cat: 'infra' },
-  { id: 'jeux-instructions',    title: 'Jeux d\'instructions CPU (deux variantes)', cat: 'infra' },
-  { id: 'rdma-replication',     title: 'Réplication RDMA & agrégation de ports', cat: 'infra' },
-  { id: 'reseau-conteneurs',    title: 'Réseau des conteneurs (site / interne)', cat: 'infra' },
-  { id: 'agent-noeud',          title: 'Agent-nœud (contrat et sécurité)', cat: 'infra' },
-  { id: 'base-medias',          title: 'Base des médias et bibliothèque', cat: 'medias' },
-  { id: 'medias-proxys-edition', title: 'Proxys de lecture et éditeur d\'image', cat: 'medias' },
+  { id: 'lexique',              title: 'Lexique',                     cat: 'start' },
+  { id: 'infrastructure',       title: 'Choix matériel & réseau',     cat: 'hardware' },
+  { id: 'choix-serveur',        title: 'Choisir un serveur (dimensionnement)', cat: 'hardware' },
+  { id: 'prereq-2110',          title: 'Pré-requis ST 2110',          cat: 'hardware' },
+  { id: 'sriov-explique',       title: 'NIC ST 2110 (PF / AF-XDP)',   cat: 'hardware' },
+  { id: 'cpu-pinning',          title: 'Cœurs CPU : Dédié, Normal, Arrière-plan, Batch', cat: 'hardware' },
+  { id: 'jeux-instructions',    title: 'Jeux d\'instructions CPU (deux variantes)', cat: 'hardware' },
+  { id: 'monitoring',           title: 'Monitoring',                  cat: 'operations' },
+  { id: 'cables-page',          title: 'Page Câbles',                 cat: 'operations' },
   { id: 'projets-raz',          title: 'Projets & RAZ',               cat: 'operations' },
+  { id: 'virtuelles',           title: 'Sources et destinations virtuelles', cat: 'operations' },
+  { id: 'actions-conteneur',    title: 'Actions sur un conteneur (Restart, Recréer…)', cat: 'operations' },
   { id: 'hot-input',            title: 'Changement de source à chaud', cat: 'operations' },
+  { id: 'mises-a-jour-page',    title: 'Page Mises à jour',           cat: 'operations' },
   { id: 'recette',              title: 'Recette : suivi de campagne',  cat: 'operations' },
+  { id: 'base-medias',          title: 'Base des médias et bibliothèque', cat: 'plugins', sub: 'medias' },
+  { id: 'medias-proxys-edition', title: 'Proxys de lecture et éditeur d\'image', cat: 'plugins', sub: 'medias' },
+  { id: 'workflow-streams',     title: 'Streaming multi-destinations', cat: 'plugins', sub: 'streams' },
+  { id: 'tsl-explique',         title: 'TSL 5.0 (tally centralisé)',  cat: 'services', service: 'tsl' },
+  { id: 'workflow-atem',        title: 'Pupitre ATEM',                cat: 'services', service: 'atem' },
+  { id: 'workflow-skaarhoj',    title: 'Pupitre Skaarhoj (Raw Panel)', cat: 'services', service: 'skaarhoj' },
+  { id: 'workflow-panel-dyvi',  title: 'Pupitre EVS Dyvi',            cat: 'services', service: 'panel_dyvi' },
+  { id: 'surfaces-controle',    title: 'Surfaces de contrôle (console audio)', cat: 'services', service: 'control_surface' },
+  { id: 'nmos-explique',        title: 'NMOS IS-04/IS-05',            cat: 'services', service: 'nmos' },
+  { id: 'snmp-supervision',     title: 'Supervision SNMP (brancher un NMS)', cat: 'services', service: 'snmp' },
+  { id: 'rdma-replication',     title: 'Réplication RDMA & agrégation de ports', cat: 'services', service: 'rdma' },
+  { id: 'webrtc-explique',      title: 'WebRTC',                      cat: 'services', service: 'webrtc_gateway' },
+  { id: 'ptp-explique',         title: 'PTP',                         cat: 'sync' },
+  { id: 'horloges-cluster',     title: 'Horloges du cluster (TAI)',   cat: 'sync' },
+  { id: 'genlock',              title: 'Synchronisation (Genlock)',   cat: 'sync' },
+  { id: 'mode-tranche',         title: 'Mode tranche (latence sous-image)', cat: 'sync' },
+  { id: 'mxl-format',           title: 'MXL (bus shm) & format vidéo', cat: 'sync' },
+  { id: 'reseau-conteneurs',    title: 'Réseau des conteneurs (site / interne)', cat: 'network' },
+  { id: 'securite-acces',       title: 'Sécurité et accès (mode web, jetons, MCP)', cat: 'admin' },
+  { id: 'haute-dispo',          title: 'Haute disponibilité (paire de contrôleurs)', cat: 'admin' },
+  { id: 'agent-noeud',          title: 'Agent-nœud (contrat et sécurité)', cat: 'admin' },
   { id: 'depannage',            title: 'Dépannage courant',           cat: 'debug' },
-  { id: 'lexique',              title: 'Lexique',                     cat: 'debug' },
   { id: 'dev-orientation',      title: "S'orienter dans le code",     cat: 'dev' },
   { id: 'dev-plugin',           title: 'Écrire un plugin',            cat: 'dev' },
   { id: 'dev-service',          title: 'Écrire un service',           cat: 'dev' },
   { id: 'dev-contribuer',       title: 'Contribuer',                  cat: 'dev' },
-  { id: 'securite-acces',       title: 'Sécurité et accès (mode web, jetons, MCP)', cat: 'operations' },
-  { id: 'haute-dispo',          title: 'Haute disponibilité (paire de contrôleurs)', cat: 'operations' },
-  { id: 'mises-a-jour-page',    title: 'Page Mises à jour',           cat: 'operations' },
   { id: 'mises-a-jour',         title: 'Liste des évolutions',        cat: 'about' },
   { id: 'obtenir-aide',         title: 'Obtenir de l\'aide',          cat: 'about' },
   { id: 'licences-tierces',     title: 'Licences des composants tiers', cat: 'about' },
 ];
 
 const CATEGORIES = [
-  { id: 'start',      label: 'Démarrage' },
-  { id: 'prereq',     label: 'Pré-requis' },
-  { id: 'pipeline',   label: 'Pipeline vidéo' },
-  { id: 'sources',    label: 'Sources & Destinations' },
-  { id: 'traitements',label: 'Traitements' },
-  { id: 'medias',     label: 'Médias' },
-  { id: 'controle',   label: 'Contrôle' },
-  { id: 'infra',      label: 'Infrastructure' },
-  { id: 'streams',    label: 'Streams' },
-  { id: 'destinations',label: 'Destinations' },
-  { id: 'operations', label: 'Opérations' },
+  { id: 'start',      label: 'Démarrer' },
+  { id: 'hardware',   label: 'Préparer le matériel' },
+  { id: 'operations', label: 'Exploiter au quotidien' },
+  { id: 'plugins',    label: 'Plugins' },
+  { id: 'services',   label: 'Services' },
+  { id: 'sync',       label: 'Synchronisation' },
+  { id: 'network',    label: 'Réseau' },
+  { id: 'admin',      label: 'Administration' },
   { id: 'debug',      label: 'Dépannage' },
   { id: 'dev',        label: 'Développer' },
   { id: 'about',      label: 'À propos' },
 ];
 
+// Libellés des sous-rubriques. Ceux des plugins et des services arrivent avec leurs API ; ces
+// deux-là servent au premier rendu, avant qu'elles répondent (articles du cœur rangés sous Plugins).
+const subLabels = {
+  medias:  "{{ _('section.nav.medias') }}",
+  streams: "{{ _('section.nav.streams') }}",
+};
+const subOrder = {};                    // sous-rubrique → rang (services : ordre du serveur)
+let servicesKnown = null;               // null = pas encore su ; sinon {id → {category, label}}
+
 // ── State ─────────────────────────────────────────────────────────────────
-let allArticles = [...CORE_ARTICLES];   // core + plugin articles merged
+let allArticles = [...CORE_ARTICLES];   // core + plugin + service articles merged
 let searchIndex = [];                   // [{id, title, cat, catLabel, text}]
 let currentId   = null;
 let history_    = [];
-let collapsedCats = new Set();          // ids des catégories repliées
+// Rubriques DÉPLIÉES par l'utilisateur. Tout est replié par défaut (décidé le 2026-11-08) :
+// on lit d'abord une dizaine de titres, pas 80 lignes. La rubrique de l'article ouvert reste
+// toujours dépliée — à la première ouverture, c'est Démarrer.
+let expandedCats = new Set();
 let tocObserver = null;                 // IntersectionObserver du scroll-spy TOC
 
 // ── DOM refs ──────────────────────────────────────────────────────────────
@@ -2413,26 +2397,64 @@ function catLabel(catId){
   return (CATEGORIES.find(c => c.id === catId)||{}).label || catId;
 }
 
-// ── Charger les articles plugins ──────────────────────────────────────────
+// Sous-rubrique d'un article : déclarée (`sub`), ou celle du service auquel il est rattaché.
+function subOf(a){
+  if (a.sub) return a.sub;
+  if (a.service && servicesKnown && servicesKnown[a.service]) return servicesKnown[a.service].category;
+  return '';
+}
+
+function subLabel(sub){
+  return subLabels[sub] || (sub ? sub.charAt(0).toUpperCase() + sub.slice(1) : '');
+}
+
+// « Plugins › Médias » : le chemin complet, pour l'en-tête d'article et les résultats de recherche.
+function placeLabel(a){
+  const s = subOf(a);
+  return s ? `${catLabel(a.cat)} › ${subLabel(s)}` : catLabel(a.cat);
+}
+
+// ── Charger les articles des plugins et des services ──────────────────────
 async function loadPluginArticles(){
   try {
     const r = await fetch('/api/plugins/help');
-    if (!r.ok) return;
-    const plugins = await r.json();
-    const pluginCatMap = { sources:'sources', traitements:'traitements',
-                           medias:'medias', streams:'streams', destinations:'destinations' };
-    for (const p of plugins) {
-      const cat = pluginCatMap[p.category] || p.category;
-      allArticles.push({
-        id: 'plugin-' + p.type,
-        title: p.label,
-        cat: cat,
-        version: p.version,
-        html: p.html,
-        isPlugin: true,
-        // Langue RÉELLEMENT servie par le plugin ("" = fichier générique).
-        docLang: p.lang || '',
-      });
+    if (r.ok) {
+      for (const p of await r.json()) {
+        // Un plugin qui NOMME une rubrique du cœur (`help.category`, ex. la sonde 2110 sous
+        // Dépannage) y reste : c'est un choix de son auteur. Sinon : Plugins › sa rubrique.
+        const core = CATEGORIES.some(c => c.id === p.category);
+        if (!core && p.category_label) subLabels[p.category] = p.category_label;
+        allArticles.push({
+          id: 'plugin-' + p.type,
+          title: p.label,
+          cat: core ? p.category : 'plugins',
+          sub: core ? '' : p.category,
+          version: p.version,
+          html: p.html,
+          isPlugin: true,
+          // Langue RÉELLEMENT servie par le plugin ("" = fichier générique).
+          docLang: p.lang || '',
+        });
+      }
+    }
+  } catch(e) {}
+  try {
+    const r = await fetch('/api/services/help');
+    if (r.ok) {
+      const known = {};
+      for (const s of await r.json()) {
+        known[s.id] = { category: s.category, label: s.label };
+        subLabels[s.category] = s.category_label;
+        subOrder[s.category] = s.category_order;
+        if (s.html) allArticles.push({
+          id: 'service-' + s.id, title: s.label, cat: 'services', service: s.id,
+          version: s.version, html: s.html, isPlugin: true, docLang: s.lang || '',
+        });
+      }
+      servicesKnown = known;
+      // Un article du cœur rattaché à un service ABSENT n'a rien à documenter ici. Si l'API
+      // n'a pas répondu, on ne retire rien : mieux vaut un article de trop qu'une aide amputée.
+      allArticles = allArticles.filter(a => a.cat !== 'services' || known[a.service]);
     }
   } catch(e) {}
   buildIndex();
@@ -2442,15 +2464,45 @@ async function loadPluginArticles(){
   if (hash && allArticles.find(a => a.id === hash)) {
     navigate(hash, false);
   }
+  indexImportedDocs();
 }
 
 // ── Construire l'index de recherche ──────────────────────────────────────
-function buildIndex(){
-  searchIndex = allArticles.map(a => {
-    const raw = a.html ? stripHtml(a.html)
-                       : stripHtml((document.getElementById('wiki-art-' + a.id)||{}).innerHTML || '');
-    return { id: a.id, title: a.title, cat: a.cat, catLabel: catLabel(a.cat), text: raw };
+// Le texte d'un article adossé à un fichier (INSTALL.md, HA.md, CHANGELOG.md…) n'est PAS dans
+// son <template>, qui ne contient que « Chargement… » : il arrive par `/api/doc`. Jusqu'au
+// 2026-11-08, la recherche ne trouvait donc rien dans ces documents. `importedText` les apporte.
+function articleText(a){
+  if (a.html) return stripHtml(a.html);
+  const tpl = document.getElementById('wiki-art-' + a.id);
+  if (!tpl) return '';
+  let text = stripHtml(tpl.innerHTML);
+  const frag = tpl.content;
+  frag.querySelectorAll('.wiki-doc-content[data-doc]').forEach(el => {
+    const c = docCache[el.dataset.doc];
+    if (c) text += ' ' + stripHtml(c.html);
   });
+  if (changelogCache && frag.querySelector('#wiki-changelog-content')) text += ' ' + stripHtml(changelogCache.html);
+  return text;
+}
+
+function buildIndex(){
+  searchIndex = allArticles.map(a => (
+    { id: a.id, title: a.title, cat: a.cat, catLabel: placeLabel(a), text: articleText(a) }));
+}
+
+// Charge en arrière-plan TOUS les documents importés, puis reconstruit l'index. Une requête par
+// document, une seule fois (même cache que l'affichage) ; une recherche en cours est relancée.
+async function indexImportedDocs(){
+  const names = new Set();
+  let changelog = false;
+  document.querySelectorAll('template[id^="wiki-art-"]').forEach(tpl => {
+    tpl.content.querySelectorAll('.wiki-doc-content[data-doc]').forEach(el => names.add(el.dataset.doc));
+    if (tpl.content.querySelector('#wiki-changelog-content')) changelog = true;
+  });
+  await Promise.all([...names].map(n => fetchDoc(n).catch(() => null)).concat(
+    changelog ? [fetchChangelog().catch(() => null)] : []));
+  buildIndex();
+  if (searchEl.value.trim()) search(searchEl.value);
 }
 
 // ── Rendu du nav ─────────────────────────────────────────────────────────
@@ -2465,21 +2517,33 @@ function renderNav(){
   const keys = [...new Set([...catOrder, ...Object.keys(bycat)])].filter(k => bycat[k]);
   // Catégorie de l'article courant (toujours dépliée)
   const activeCat = (allArticles.find(a => a.id === currentId) || {}).cat;
+  const item = a => `<a class="wiki-nav-item${a.id === currentId ? ' active' : ''}"
+                  data-id="${esc(a.id)}" role="button" tabindex="0"
+                  title="${esc(a.title)}">${esc(a.title)}</a>`;
   let html = '';
   for (const k of keys) {
-    const collapsed = collapsedCats.has(k) && k !== activeCat;
+    const collapsed = !expandedCats.has(k) && k !== activeCat;
     const items = bycat[k];
+    // Sous-rubriques : ordre du serveur (services), sinon alphabétique ; articles par titre.
+    const subs = {};
+    for (const a of items) (subs[subOf(a)] = subs[subOf(a)] || []).push(a);
+    const subKeys = Object.keys(subs).sort((x, y) =>
+      ((subOrder[x] ?? 99) - (subOrder[y] ?? 99)) || subLabel(x).localeCompare(subLabel(y)));
+    const grouped = subKeys.some(s => s);
     html += `<div class="wiki-cat${collapsed ? ' collapsed' : ''}" data-cat="${esc(k)}">
       <button class="wiki-cat-hd" data-cat-toggle="${esc(k)}" aria-expanded="${collapsed ? 'false' : 'true'}">
         <span class="wiki-cat-chevron" aria-hidden="true">▾</span>
         <span>${esc(catLabel(k))}</span>
         <span class="wiki-cat-count">${items.length}</span>
       </button>
-      <div class="wiki-cat-items">`;
-    for (const a of items) {
-      html += `<a class="wiki-nav-item${a.id === currentId ? ' active' : ''}"
-                  data-id="${esc(a.id)}" role="button" tabindex="0"
-                  title="${esc(a.title)}">${esc(a.title)}</a>`;
+      <div class="wiki-cat-items${grouped ? ' has-subs' : ''}">`;
+    if (!grouped) {
+      for (const a of items) html += item(a);
+    } else {
+      for (const s of subKeys) {
+        if (s) html += `<div class="wiki-sub-hd">${esc(subLabel(s))}</div>`;
+        for (const a of subs[s].sort((x, y) => x.title.localeCompare(y.title))) html += item(a);
+      }
     }
     html += `</div></div>`;
   }
@@ -2495,15 +2559,13 @@ function renderNav(){
 
 // ── Replier / déplier une catégorie ───────────────────────────────────────
 function toggleCat(catId){
-  if (collapsedCats.has(catId)) collapsedCats.delete(catId);
-  else collapsedCats.add(catId);
   const catEl = navEl.querySelector(`.wiki-cat[data-cat="${catId}"]`);
-  if (catEl) {
-    const collapsed = collapsedCats.has(catId);
-    catEl.classList.toggle('collapsed', collapsed);
-    const btn = catEl.querySelector('.wiki-cat-hd');
-    if (btn) btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-  }
+  if (!catEl) return;
+  const collapse = !catEl.classList.contains('collapsed');
+  if (collapse) expandedCats.delete(catId); else expandedCats.add(catId);
+  catEl.classList.toggle('collapsed', collapse);
+  const btn = catEl.querySelector('.wiki-cat-hd');
+  if (btn) btn.setAttribute('aria-expanded', collapse ? 'false' : 'true');
 }
 
 // ── Navigation vers un article ────────────────────────────────────────────
@@ -2514,8 +2576,8 @@ function navigate(id, pushState = true){
   currentId = id;
   location.hash = id;
   renderArticle(art);
-  // Déplier la catégorie de l'article et rafraîchir le nav (active + état replié)
-  collapsedCats.delete(art.cat);
+  // Rafraîchir le nav : la rubrique de l'article ouvert est dépliée par `renderNav`, et celle
+  // qu'on quitte se replie — sauf si l'utilisateur l'a dépliée lui-même.
   renderNav();
   // Scroll nav item into view
   const active = navEl.querySelector('.wiki-nav-item.active');
@@ -2550,7 +2612,7 @@ function renderArticle(art){
   contentEl.innerHTML = `<div class="wiki-doc" id="wiki-doc">
     <article class="wiki-article">
       <div class="wiki-article-meta">
-        <span class="wiki-article-cat">${esc(catLabel(art.cat))}</span>
+        <span class="wiki-article-cat">${esc(placeLabel(art))}</span>
         ${verBadge}
       </div>
       <h1>${esc(art.title)}</h1>
@@ -2561,6 +2623,7 @@ function renderArticle(art){
   // Appliquer les classes wiki sur les divs aide-note / aide-warning injectées par plugins
   contentEl.querySelectorAll('.aide-note').forEach(el => { el.className = 'wiki-note'; });
   contentEl.querySelectorAll('.aide-warning').forEach(el => { el.className = 'wiki-warn'; });
+  typoFr(contentEl.querySelector('.wiki-article'));
   buildToc();
   // RÉ-HYDRATATION des articles adossés à un markdown (INSTALL.md, CHANGELOG.md…). Le corps vient
   // d'être RECRÉÉ depuis son <template> : il est donc revenu à « Chargement… ». Le remplissage doit
@@ -2570,6 +2633,28 @@ function renderArticle(art){
   // (`data-doc`) : aucune table id d'article → nom de document à tenir à jour.
   contentEl.querySelectorAll('.wiki-doc-content[data-doc]').forEach(el => loadDoc(el.dataset.doc));
   if (contentEl.querySelector('#wiki-changelog-content')) loadChangelog();
+}
+
+// ── French typography, at display time ─────────────────────────────────────
+// A no-break space before « : ; ! ? » and inside « », so the sign never starts a line (08/11).
+// Done here rather than in the sources: about 2,500 ordinary spaces across this page, the
+// changelog and the loaded documents, and a no-break space is invisible in an editor — the
+// next hand-written line would bring the fault back. Code is left alone (code, pre, kbd).
+// English never puts a space there, so English text is untouched.
+const TYPO_SKIP = new Set(['CODE', 'PRE', 'KBD', 'SAMP', 'SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT']);
+function typoFr(root){
+  if (!root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode(n){
+    for (let e = n.parentElement; e && e !== root.parentElement; e = e.parentElement)
+      if (TYPO_SKIP.has(e.tagName)) return NodeFilter.FILTER_REJECT;
+    return NodeFilter.FILTER_ACCEPT;
+  }});
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const n of nodes){
+    const v = n.nodeValue.replace(/ ([:;!?»])/g, '\u00a0$1').replace(/« /g, '«\u00a0');
+    if (v !== n.nodeValue) n.nodeValue = v;
+  }
 }
 
 // ── Table des matières « Sur cette page » ─────────────────────────────────
@@ -2599,7 +2684,15 @@ function buildToc(){
     a.addEventListener('click', e => {
       e.preventDefault();
       const t = article.querySelector('#' + CSS.escape(a.dataset.tid));
-      if (t) t.scrollIntoView({ behavior: smooth?'smooth':'auto', block:'start' });
+      // Scroll THE CONTENT PANE only, to the heading (16 px of air). scrollIntoView moved every
+      // scrollable ancestor and was cut short by the one below (08/11). The heading lands below
+      // whichever is lower: the top of the pane, or the bottom of the sticky top bar — the page
+      // itself scrolls a little and the bar then covers the top of the pane.
+      if (!t) return;
+      const bar = document.querySelector('.topnav');
+      const floor = Math.max(contentEl.getBoundingClientRect().top, bar ? bar.getBoundingClientRect().bottom : 0);
+      contentEl.scrollTo({ top: contentEl.scrollTop + t.getBoundingClientRect().top - floor - 16,
+                           behavior: smooth?'smooth':'auto' });
     });
   });
   tocObserver = new IntersectionObserver(ents => {
@@ -2607,7 +2700,16 @@ function buildToc(){
       if (!en.isIntersecting) continue;
       tocEl.querySelectorAll('.wiki-toc-item.active').forEach(x => x.classList.remove('active'));
       const a = byId[en.target.id];
-      if (a){ a.classList.add('active'); a.scrollIntoView({block:'nearest'}); }
+      if (a){
+        a.classList.add('active');
+        // Keep the active line visible by scrolling the INDEX alone: a.scrollIntoView() also
+        // scrolled the content pane (the index is sticky inside it), which stopped the smooth
+        // scroll started by a click halfway — « it goes down a bit, not to the heading » (08/11).
+        const top = a.getBoundingClientRect().top - tocEl.getBoundingClientRect().top + tocEl.scrollTop,
+              bottom = top + a.offsetHeight;
+        if (top < tocEl.scrollTop) tocEl.scrollTop = top;
+        else if (bottom > tocEl.scrollTop + tocEl.clientHeight) tocEl.scrollTop = bottom - tocEl.clientHeight;
+      }
     }
   }, { root: contentEl, rootMargin: '0px 0px -70% 0px', threshold: 0 });
   heads.forEach(h => tocObserver.observe(h));
@@ -2689,18 +2791,30 @@ async function loadChangelog(){
   const poser = (c) => {
     target.innerHTML = c.html;
     if (mtime) mtime.textContent = new Date(c.mtime * 1000).toLocaleString('fr-FR');
+    // The index on the right was built when the article was shown, before this content arrived:
+    // its headings were never in it (08/11). Rebuilt once they are in the page.
+    typoFr(target);
+    if (target.isConnected && target.closest('.wiki-article')) buildToc();
   };
-  if (changelogCache) { poser(changelogCache); return; }
   try {
+    poser(await fetchChangelog());
+  } catch(e) {
+    if (target) target.innerHTML = `<p style="color:var(--status-stopped-fg)">Erreur : ${e.message}</p>`;
+  }
+}
+
+// Une seule requête en vol, partagée par l'affichage et l'index de recherche.
+let changelogPending = null;
+function fetchChangelog(){
+  if (changelogCache) return Promise.resolve(changelogCache);
+  if (!changelogPending) changelogPending = (async () => {
     const r = await fetch('/api/changelog');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
     if (!j.ok) throw new Error(j.error||'erreur');
-    changelogCache = { html: j.html, mtime: j.mtime };
-    poser(changelogCache);
-  } catch(e) {
-    if (target) target.innerHTML = `<p style="color:var(--status-stopped-fg)">Erreur : ${e.message}</p>`;
-  }
+    return (changelogCache = { html: j.html, mtime: j.mtime });
+  })().finally(() => { changelogPending = null; });
+  return changelogPending;
 }
 
 // ── Documents markdown de la racine (INSTALL.md, INFRASTRUCTURE.md…) ──────
@@ -2722,18 +2836,30 @@ async function loadDoc(name){
   const poser = (c) => {
     target.innerHTML = c.html;
     if (mtime) mtime.textContent = new Date(c.mtime * 1000).toLocaleString('fr-FR');
+    // The index on the right was built when the article was shown, before this content arrived:
+    // its headings were never in it (08/11). Rebuilt once they are in the page.
+    typoFr(target);
+    if (target.isConnected && target.closest('.wiki-article')) buildToc();
   };
-  if (docCache[name]) { poser(docCache[name]); return; }
   try {
+    poser(await fetchDoc(name));
+  } catch(e) {
+    target.innerHTML = `<p style="color:var(--status-stopped-fg)">Erreur : ${e.message}</p>`;
+  }
+}
+
+// Une seule requête en vol par document, partagée par l'affichage et l'index de recherche.
+const docPending = {};
+function fetchDoc(name){
+  if (docCache[name]) return Promise.resolve(docCache[name]);
+  if (!docPending[name]) docPending[name] = (async () => {
     const r = await fetch(`/api/doc/${name}`);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const j = await r.json();
     if (!j.ok) throw new Error(j.error||'erreur');
-    docCache[name] = { html: j.html, mtime: j.mtime };
-    poser(docCache[name]);
-  } catch(e) {
-    target.innerHTML = `<p style="color:var(--status-stopped-fg)">Erreur : ${e.message}</p>`;
-  }
+    return (docCache[name] = { html: j.html, mtime: j.mtime });
+  })().finally(() => { delete docPending[name]; });
+  return docPending[name];
 }
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────

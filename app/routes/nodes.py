@@ -1438,6 +1438,9 @@ def api_node_cores_weight(node_id):
         return jsonify({"error": "niveau inconnu : %r (attendu %s)"
                                  % (d.get("niveau"), ", ".join(cpu_weight.LEVELS))}), 400
     r = cpu_weight.regler(vmid, d.get("niveau"), reset=reset)
+    if not r.get("ok") and isinstance(r.get("err"), dict):
+        # Dedicated refused for lack of cores: say what is missing, as the project view does.
+        return jsonify(dict(r["err"], ok=False)), 409
     # 200 même si l'application à chaud a échoué : le réglage EST enregistré (il vaudra à la
     # prochaine réapplication ou recréation). `applique: false` + `err` le disent — un 502
     # laisserait croire que rien n'a été retenu.

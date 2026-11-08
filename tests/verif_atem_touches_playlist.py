@@ -252,8 +252,8 @@ console.log(JSON.stringify({
             verifier("playlist vide : 20 positions choisissables", len(r["vide"]), 20)
             verifier("… nommées « Élément N (vide pour l'instant) »", r["vide"][0],
                      {"v": 0, "l": "Élément 1 (vide pour l'instant)"})
-            verifier("3 clips : « Élément 2 (actuellement : Titre) », valeur = position",
-                     r["trois"][1], {"v": 1, "l": "Élément 2 (actuellement : Titre)"})
+            verifier("3 clips\u00a0: « Élément 2 (actuellement\u00a0: Titre) », valeur = position",
+                     r["trois"][1], {"v": 1, "l": "Élément 2 (actuellement\u00a0: Titre)"})
             verifier("position mémorisée au-delà de 20 : toujours dans la liste", r["loin"], 25)
             verifier("choix non positionnel (fichiers) : liste vivante telle quelle",
                      [o["l"] for o in r["fichiers"]], ["Intro", "Titre", "Météo"])

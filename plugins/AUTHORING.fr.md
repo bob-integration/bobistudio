@@ -164,6 +164,19 @@ ma_valeur = CONFIG.get("ma_cle") or "defaut"
 | `8080` | métriques — `GET /` rend le JSON lu par l'orchestrateur |
 | `8082` | contrôle — les endpoints déclarés dans `control.endpoints` |
 
+L'agent du conteneur (`:8081`, dans l'image, hors du plugin) répond à l'orchestrateur :
+
+| Appel | Effet |
+|---|---|
+| `POST :8081/deploy` | écrit le script sur disque |
+| `POST :8081/start` · `/stop` | contrôle le script |
+| `GET :8081/status` | `{running: bool}` |
+| `GET :8080/` | les métriques émises par le script lui-même |
+
+Ces appels exigent le jeton d'agent du conteneur : tout appel joint les en-têtes fournis par
+l'orchestrateur (`deploy.agent_headers(vmid)`). Un seul chemin sans en-tête, et le conteneur
+devient impilotable après redéploiement.
+
 Le port 8080 reçoit aussi les **pousses du service TSL** (tally et libellés vivants) : un serveur
 en GET seul rendrait 501 et le tally n'arriverait jamais, sans que rien ne le signale.
 
@@ -185,6 +198,35 @@ qui tourne et ne relance que ce qui a changé. Il doit répondre **409** si `plu
 redémarre alors comme avant. Toute réponse autre que 200 retombe sur un redémarrage, donc un
 script qui ignore la route ne risque rien. Modèle : `decklink_io` (un travailleur par
 connecteur, désigné par son identifiant stable ; banc `verif_reconfig_a_chaud.py`).
+
+### État d'antenne — `control.onair`
+
+Un projet enregistre la **configuration** de ses conteneurs. Ce qui est **à l'antenne** — la
+source au PGM, le clip chargé et sa position, la page affichée — ne vit que dans le script, et un
+conteneur redémarré revient sans. Un plugin qui a un tel état déclare deux routes :
+
+```json
+"control": { …, "onair": { "read": "/onair", "restore": "/onair" } }
+```
+
+- `read` (parmi `read_endpoints`) répond au **GET** par un objet JSON. Son contenu est le vôtre :
+  l'orchestrateur le range sans le lire. Mettez-y une `version`.
+- `restore` (parmi `endpoints`) reçoit cet objet en **POST** et l'applique. Répondez **2xx** s'il
+  est appliqué, **4xx** s'il est refusé (`version` inconnue, clip disparu) : pas de nouvel essai.
+  Pas de réponse ou un 5xx veut dire « pas encore prêt », et l'orchestrateur réessaie une
+  quarantaine de secondes, le temps que les scripts du projet démarrent.
+
+L'orchestrateur le lit à l'**arrêt** d'un projet, et aussi toutes les N secondes si le projet le
+demande (Projets → fenêtre du projet → Détails, coupé par défaut). Il le renvoie après
+**Démarrer** quand l'opérateur coche « Reprendre l'état d'antenne » (décochée par défaut), et
+automatiquement quand la surveillance a **relancé un script planté** — depuis un enregistrement
+pris depuis le démarrage du projet, jamais l'état d'une émission précédente.
+
+Reprenez ce que l'état DIT, mouvement compris : un player qui jouait une boucle la rejoue. Ne
+reprenez jamais une opération à moitié faite : une transition en cours revient à son résultat. Le
+document est à part des réglages (`control.persist`) : les deux ne doivent pas se recouvrir, sinon
+un état repris déferait un réglage changé depuis. Une déclaration fausse (une route absente des
+listes) est refusée au scan. Modèle : `hello_world` (`/onair` : texte, fond, incrustation et PiP).
 
 ---
 
@@ -244,6 +286,7 @@ Notables :
 | `config_schema` | champs de la palette de déploiement (Tier 1) |
 | `control.endpoints` | liste blanche des chemins du proxy — sinon 403 |
 | `control.read_endpoints` | sous-ensemble lisible avec le login seul (état, aperçu) |
+| `control.onair` | état d'antenne enregistré à l'arrêt et repris au démarrage (cf. « État d'antenne » plus haut) |
 | `param_tree` / `actions` | surface exposée aux macros |
 | `ui.public_page` | autorise un lien public `/p/<jeton>` (lecture seule par défaut) |
 | `ui.public_tabs` | endpoint de lecture listant les onglets du plugin (`{items: [{value, label}]}`) : la fenêtre de partage propose alors de ne partager qu'UN onglet — `mount()` reçoit `ctx.tab` |
@@ -251,6 +294,7 @@ Notables :
 | `nav` | rubrique et route. **Sans `nav`**, ni chip de palette ni lien de nav |
 | `help.category` / `help.order` | rangement de l'article d'aide |
 | `files` | fichiers supplémentaires poussés à côté du script (voir ci-dessous) |
+| `environment` | rapport du conteneur aux projets, pour un service dont d'autres conteneurs dépendent : `{"scope": "partitioned" \| "shared", "wanted_by": {"sections": [...], "types": [...]}}`. `partitioned` : dans un projet, il ne sert que ce projet (transcodeur) ; `shared` : il sert tous les projets, donc le projet qui le porte le détruit pour tout le monde à son déchargement (pyramide). L'orchestrateur le rappelle au rattachement à un projet, relève ceux qu'un projet utilise à l'enregistrement, et propose de créer ceux qui manquent au rappel du projet (`app/project_environment.py`). `wanted_by` dit quel contenu de projet en a besoin ; absent = toujours |
 
 ### `files` — livrer des modules à côté du script
 

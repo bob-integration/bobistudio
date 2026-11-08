@@ -166,6 +166,16 @@ def _init(c):
         PRIMARY KEY (asset_id, key)
     );
     CREATE INDEX IF NOT EXISTS media_versions_fp ON media_versions(fingerprint);
+    CREATE TABLE IF NOT EXISTS media_user_prefs (
+        user_id INTEGER NOT NULL,
+        key     TEXT NOT NULL,
+        value   TEXT,
+        PRIMARY KEY (user_id, key)
+    );
+    CREATE TABLE IF NOT EXISTS media_playlists (
+        asset_id   TEXT PRIMARY KEY REFERENCES media_assets(id) ON DELETE CASCADE,
+        items_json TEXT NOT NULL DEFAULT '[]'
+    );
     CREATE TABLE IF NOT EXISTS project_media (
         project_id INTEGER NOT NULL,
         asset_id   TEXT NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
@@ -1660,9 +1670,10 @@ def _query_where(query):
     """Clauses (ET) d'une requête : types de média, texte libre, arbre des critères."""
     query = query or {}
     where, args = [], []
-    kinds = [k for k in (query.get("kinds") or []) if k in ("video", "audio", "image")]
+    kinds = [k for k in (query.get("kinds") or []) if k in ("video", "audio", "image", PLAYLIST)]
     if kinds:
-        # Ce qu'un conteneur sait lire : les images pour Images fixes, vidéo + audio pour le player.
+        # Ce qu'un conteneur sait lire : les images pour Images fixes, vidéo + audio (+ playlists)
+        # pour le player.
         where.append("%s IN (%s)" % (_KIND, ",".join("?" * len(kinds))))
         args += kinds
     q = (query.get("q") or "").strip().lower()
@@ -1744,6 +1755,207 @@ def _proxied(ids=None):
     rows = db().execute("SELECT DISTINCT asset_id FROM media_files WHERE kind='proxy' AND state='present'").fetchall()
     out = {r["asset_id"] for r in rows}
     return out if ids is None else out & set(ids)
+
+
+# ─── Préférences de la bibliothèque PAR UTILISATEUR (2026-11-07) ──────────────────────────────
+# Ce qui suit l'utilisateur d'un poste à l'autre (le navigateur ne garde que ce qui est propre au
+# poste : colonnes, vue…). Liste FERMÉE de clés, chacune avec son type et son défaut.
+#   project_filter : la bibliothèque d'un conteneur de projet s'ouvre filtrée sur ce projet. Un
+#   utilisateur qui voit toute la base et retire ce filtre le retrouvait à CHAQUE retour sur le
+#   player (remonté le 2026-11-07) : son choix est désormais retenu.
+USER_PREFS = {"project_filter": (bool, True)}
+
+
+def user_pref(uid, key):
+    typ, dflt = USER_PREFS[key]
+    if uid is None:
+        return dflt
+    r = db().execute("SELECT value FROM media_user_prefs WHERE user_id=? AND key=?", (int(uid), key)).fetchone()
+    v = _j(r["value"], None) if r else None
+    return v if isinstance(v, typ) else dflt
+
+
+def set_user_pref(uid, key, value):
+    if key not in USER_PREFS:
+        raise ValueError("préférence inconnue : %s" % key)
+    typ, _d = USER_PREFS[key]
+    if not isinstance(value, typ):
+        raise ValueError("%s : %s attendu" % (key, typ.__name__))
+    c = db()
+    c.execute("INSERT OR REPLACE INTO media_user_prefs(user_id, key, value) VALUES (?,?,?)", (int(uid), key, json.dumps(value)))
+    c.commit()
+    return value
+
+
+# ─── Playlists (décisions du 2026-11-07) ────────────────────────────────────────────────────
+# Une playlist est une FICHE de la base, de type « playlist » (`tech.kind`, comme video / audio /
+# image) : elle se range dans les bins, se cherche, se partage, entre dans les projets — sans
+# copie sur aucun disque. Son contenu (table `media_playlists`) référence les médias par leur
+# IDENTITÉ ; un chemin n'y est qu'un indice, pour un fichier hors base. `tech.duration` = la
+# durée jouée (points d'entrée / sortie compris) : la colonne Durée et la recherche s'en servent.
+# Le player l'enregistre et la charge par l'INTERFACE : le conteneur n'écrit pas dans la base.
+PLAYLIST = "playlist"
+PLAYLIST_FORMAT = "bobi-playlist"
+
+
+def is_playlist(aid):
+    r = db().execute("SELECT json_extract(tech_json, '$.kind') k FROM media_assets WHERE id=?", (aid,)).fetchone()
+    return bool(r) and r["k"] == PLAYLIST
+
+
+def _num_or_none(v):
+    try:
+        return None if v in (None, "") else float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def playlist_entry(x):
+    """Entrée normalisée {asset, file, in, out, loop, pause} — None si elle ne désigne rien."""
+    if not isinstance(x, dict):
+        return None
+    aid = str(x.get("asset") or "").strip() or None
+    f = str(x.get("file") or "").strip()
+    if not (aid or f):
+        return None
+    return {"asset": aid, "file": f, "in": _num_or_none(x.get("in")), "out": _num_or_none(x.get("out")),
+            "loop": bool(x.get("loop")), "pause": bool(x.get("pause"))}
+
+
+def playlist_items(aid):
+    r = db().execute("SELECT items_json FROM media_playlists WHERE asset_id=?", (aid,)).fetchone()
+    return [e for e in (_j(r["items_json"], []) if r else []) if e]
+
+
+def _played(e, dur):
+    """Durée JOUÉE d'une entrée : de son entrée à sa sortie, bornées à la durée du média."""
+    a = e.get("in") or 0.0
+    b = e.get("out") if e.get("out") is not None else dur
+    return max(0.0, min(b, dur) - a) if dur else max(0.0, (b or 0.0) - a)
+
+
+def _playlist_tech(items):
+    durs = {}
+    ids = sorted({e["asset"] for e in items if e.get("asset")})
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        for r in db().execute("SELECT id, json_extract(tech_json, '$.duration') d FROM media_assets WHERE id IN (%s)"
+                              % ",".join("?" * len(part)), part):
+            durs[r["id"]] = float(r["d"] or 0)
+    return {"kind": PLAYLIST, "items": len(items),
+            "duration": round(sum(_played(e, durs.get(e.get("asset"), 0.0)) for e in items), 3)}
+
+
+def playlist_save(aid, items, name=None):
+    """Remplace le contenu de la playlist `aid` (et son nom si donné). ValueError si ce n'en est pas une."""
+    if not is_playlist(aid):
+        raise ValueError("pas une playlist")
+    items = [e for e in (playlist_entry(x) for x in items or []) if e]
+    c = db()
+    c.execute("INSERT OR REPLACE INTO media_playlists(asset_id, items_json) VALUES (?,?)",
+              (aid, json.dumps(items, ensure_ascii=False)))
+    sets, args = ["tech_json=?", "updated_at=?"], [json.dumps(_playlist_tech(items)), _now()]
+    if name is not None and str(name).strip():
+        sets.append("name=?"); args.append(str(name).strip())
+    c.execute("UPDATE media_assets SET %s WHERE id=?" % ", ".join(sets), args + [aid])
+    c.commit()
+    return aid
+
+
+def playlist_create(name, items=(), project_id=None, bin_id=None, producer=None):
+    """Nouvelle fiche playlist ; rangée dans le projet / le bin donnés. Renvoie son identité."""
+    name = str(name or "").strip()
+    if not name:
+        raise ValueError("nom requis")
+    aid, now = str(uuid.uuid4()), _now()
+    c = db()
+    c.execute("""INSERT INTO media_assets(id, name, created_at, updated_at, origin, producer, tech_json, meta_json)
+                 VALUES (?,?,?,?,?,?,?,?)""", (aid, name, now, now, PLAYLIST, producer,
+                                                json.dumps({"kind": PLAYLIST, "items": 0, "duration": 0}), "{}"))
+    c.commit()
+    playlist_save(aid, items)
+    if project_id is not None:
+        link_project(aid, project_id)
+    if bin_id is not None:
+        bin_add(bin_id, [aid])
+    return aid
+
+
+def playlist_get(aid, scope=None):
+    """{id, name, items} — chaque entrée avec le nom de son média (`name`), sa durée, et `missing`
+    quand le média n'est plus dans la base ; un média HORS PORTÉE n'est jamais nommé (`hidden`)."""
+    if not is_playlist(aid) or (scope is not None and not asset_visible(aid, scope)):
+        return None
+    r = db().execute("SELECT id, name, updated_at FROM media_assets WHERE id=?", (aid,)).fetchone()
+    items = playlist_items(aid)
+    ids = sorted({e["asset"] for e in items if e.get("asset")})
+    known = {}
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        for a in db().execute("SELECT id, name, json_extract(tech_json, '$.duration') d FROM media_assets WHERE id IN (%s)"
+                              % ",".join("?" * len(part)), part):
+            known[a["id"]] = a
+    vis = set(visible_ids(list(known), scope)) if scope is not None else set(known)
+    out = []
+    for e in items:
+        a = known.get(e.get("asset"))
+        d = dict(e)
+        if e.get("asset") and not a:
+            d["missing"] = True
+        elif a and a["id"] not in vis:
+            d["hidden"] = True
+        elif a:
+            d["name"] = a["name"]
+            d["duration"] = float(a["d"] or 0)
+        out.append(d)
+    return {"id": r["id"], "name": r["name"], "updated_at": r["updated_at"], "items": out}
+
+
+def playlist_export(aid, scope=None):
+    """Document d'EXPORT : chaque entrée garde l'identité, le nom et l'EMPREINTE de son média — un
+    autre serveur retrouve ainsi un média importé chez lui sous une autre identité."""
+    p = playlist_get(aid, scope)
+    if not p:
+        return None
+    fps = {}
+    for e in p["items"]:
+        if e.get("asset") and not e.get("hidden") and not e.get("missing"):
+            fps[e["asset"]] = _asset_fp(e["asset"])
+    return {"format": PLAYLIST_FORMAT, "version": 1, "name": p["name"], "exported_at": _now(),
+            "items": [dict(playlist_entry(e), name=e.get("name"), fingerprint=fps.get(e.get("asset")))
+                      for e in p["items"] if not e.get("hidden")]}
+
+
+def playlist_import(data, name=None, project_id=None, bin_id=None):
+    """Crée une playlist depuis un export (`bobi-playlist`) ou un fichier de playlist du player
+    (version 2 : mêmes entrées). Chaque média est retrouvé par son identité, sinon par son
+    empreinte ; introuvable, l'entrée est GARDÉE (identité, chemin) et dite manquante.
+    Renvoie (identité, {items, by_id, by_fingerprint, unresolved})."""
+    if isinstance(data, list):
+        data = {"items": data}
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        raise ValueError("playlist illisible : liste « items » attendue")
+    c = db()
+    rep = {"items": 0, "by_id": 0, "by_fingerprint": 0, "unresolved": 0}
+    items = []
+    for x in data["items"]:
+        e = playlist_entry(x if isinstance(x, dict) else {"file": x})
+        if not e:
+            continue
+        rep["items"] += 1
+        if e["asset"] and c.execute("SELECT 1 FROM media_assets WHERE id=?", (e["asset"],)).fetchone():
+            rep["by_id"] += 1
+        else:
+            fp = isinstance(x, dict) and x.get("fingerprint")
+            hit = find_by_fingerprint(fp)[0] if fp else None
+            if hit:
+                e["asset"] = hit
+                rep["by_fingerprint"] += 1
+            else:
+                rep["unresolved"] += 1
+        items.append(e)
+    nm = str(name or data.get("name") or "").strip() or "Playlist importée"
+    return playlist_create(nm, items, project_id=project_id, bin_id=bin_id), rep
 
 
 # ─── Bins ───────────────────────────────────────────────────────────────────────────────────
@@ -2395,6 +2607,23 @@ def link_project(aid, project_id, on=True):
     c.commit()
 
 
+def link_projects(aids, project_id, on=True):
+    """`link_project` for several media at once, in one transaction. Returns how many changed."""
+    c = db()
+    n = 0
+    for aid in aids:
+        if not c.execute("SELECT 1 FROM media_assets WHERE id=?", (aid,)).fetchone():
+            continue
+        if on:
+            n += c.execute("INSERT OR IGNORE INTO project_media(project_id, asset_id, added_at) VALUES (?,?,?)",
+                           (int(project_id), aid, _now())).rowcount
+        else:
+            n += c.execute("DELETE FROM project_media WHERE project_id=? AND asset_id=?",
+                           (int(project_id), aid)).rowcount
+    c.commit()
+    return n
+
+
 def link_container_project(aid, vmid):
     """Un média chargé, rapatrié ou envoyé par un conteneur d'un projet ENTRE dans ce projet : c'est
     l'usage qui fait l'appartenance, sans geste de plus."""
@@ -2439,6 +2668,8 @@ def project_export_media(pid):
                             "created_at": v["created_at"]}
                            for v in db().execute("SELECT * FROM media_versions WHERE asset_id=? ORDER BY created_at, key",
                                                  (r["id"],))]
+        if (rec["tech"] or {}).get("kind") == PLAYLIST:      # le CONTENU d'une playlist voyage avec elle
+            rec["playlist_items"] = playlist_items(r["id"])
         keys |= set(rec["meta"])
         if os.path.exists(thumb_path(r["id"])):
             with open(thumb_path(r["id"]), "rb") as f:
@@ -2459,6 +2690,7 @@ def project_import_media(pid, records, fields=()):
                       (str(f["key"]), str(f["label"]), str(f["type"]), json.dumps(f.get("options") or []),
                        int(f.get("position") or 0)))
     now = _now()
+    playlists = []
     for rec in records or ():
         aid = str((rec or {}).get("id") or "")
         if not _ID_OK.match(aid):
@@ -2509,6 +2741,16 @@ def project_import_media(pid, records, fields=()):
                 pass
         c.execute("INSERT OR IGNORE INTO project_media(project_id, asset_id, added_at) VALUES (?,?,?)", (int(pid), aid, now))
         n["ids"][str(rec.get("id"))] = aid
+        if isinstance(rec.get("playlist_items"), list):
+            playlists.append((aid, rec["playlist_items"]))
+    # Playlists APRÈS les médias : une entrée suit son média s'il a été retrouvé sous une autre
+    # identité (empreinte). Une playlist déjà connue garde son contenu local.
+    for aid, raw in playlists:
+        items = [e for e in (playlist_entry(x) for x in raw) if e]
+        for e in items:
+            e["asset"] = n["ids"].get(e["asset"], e["asset"]) if e["asset"] else None
+        c.execute("INSERT OR IGNORE INTO media_playlists(asset_id, items_json) VALUES (?,?)",
+                  (aid, json.dumps(items, ensure_ascii=False)))
     c.commit()
     return n
 
@@ -3137,6 +3379,13 @@ MACRO_PROVIDER = {
             {"key": "action", "label": "Geste", "type": "select", "default": "load", "options": [
                 {"value": "load", "label": "Charger (player)"}, {"value": "playlist", "label": "Ajouter à la playlist (player)"},
                 {"value": "show", "label": "Afficher (images fixes)"}]}]},
+        # PLAYLIST de la base (2026-11-07) : la charger dans un player — elle remplace sa playlist ;
+        # « lancer » met son premier élément à l'antenne. Un média sans copie sur le nœud du player
+        # reste dans la liste, signalé ; la console du player le rapatrie.
+        {"id": "load_playlist", "label": "Charger une playlist dans un player", "availability": "project", "params": [
+            {"key": "container", "label": "Player", "type": "select", "options_hook": True},
+            {"key": "playlist", "label": "Playlist", "type": "select", "options_hook": True},
+            {"key": "play", "label": "Lancer le premier élément", "type": "bool", "default": False}]},
         {"id": "set_default_version", "label": "Choisir la version par défaut d'un média", "availability": "project",
          "params": [
             {"key": "asset", "label": "Média", "type": "select", "options_hook": True},
@@ -3155,6 +3404,9 @@ MACRO_PROVIDER = {
 MACRO_ASSET_OPTIONS_MAX = 500
 
 
+_NOT_PLAYLIST = "COALESCE(json_extract(a.tech_json, '$.kind'), '') != 'playlist'"
+
+
 def macro_asset_options(pid=None, limit=MACRO_ASSET_OPTIONS_MAX):
     """Sélecteur de média d'une macro : la VALEUR stockée est l'identité (un homonyme ajouté plus
     tard ne change pas la cible), le libellé « nom — projet(s) ». Macro de projet : les médias de ce
@@ -3164,9 +3416,11 @@ def macro_asset_options(pid=None, limit=MACRO_ASSET_OPTIONS_MAX):
     c = db()
     if pid is not None:
         rows = c.execute("""SELECT a.id, a.name FROM media_assets a JOIN project_media p ON p.asset_id=a.id
-                            WHERE p.project_id=? ORDER BY LOWER(a.name), a.created_at DESC LIMIT ?""", (int(pid), int(limit))).fetchall()
+                            WHERE p.project_id=? AND %s ORDER BY LOWER(a.name), a.created_at DESC LIMIT ?""" % _NOT_PLAYLIST,
+                         (int(pid), int(limit))).fetchall()
     else:
-        rows = c.execute("SELECT id, name FROM media_assets ORDER BY created_at DESC LIMIT ?", (int(limit),)).fetchall()
+        rows = c.execute("SELECT id, name FROM media_assets a WHERE %s ORDER BY created_at DESC LIMIT ?" % _NOT_PLAYLIST,
+                         (int(limit),)).fetchall()
         rows = sorted(rows, key=lambda r: ((r["name"] or "").lower(), r["id"]))
     projs = {}
     for r in c.execute("SELECT asset_id, project_id FROM project_media ORDER BY project_id"):
@@ -3226,6 +3480,10 @@ def action_options(action_id, key, pid=None):
         return macro_version_options(pid, with_default=action_id == "send_media")
     if key == "container" and action_id == "send_media":
         return _macro_containers(pid)
+    if key == "container" and action_id == "load_playlist":
+        return [o for o in _macro_containers(pid) if o["label"].endswith("(player)")]
+    if key == "playlist" and action_id == "load_playlist":
+        return macro_playlist_options(pid)
     if action_id == "create_proxy" and key == "node":
         from .database import db_get_nodes
         return [{"value": "", "label": "Nœud de sa copie"}] + [
@@ -3280,7 +3538,52 @@ def run_action(action_id, params, ctx):
             raise RuntimeError(str(e))
     if action_id == "send_media":
         return _macro_send_media(params or {}, pid, (ctx or {}).get("user") or "macro")
+    if action_id == "load_playlist":
+        return _macro_load_playlist(params or {}, pid)
     raise RuntimeError("action inconnue : %s" % action_id)
+
+
+def macro_playlist_options(pid=None):
+    """Playlists qu'une macro peut charger : celles de son projet (macro de projet), sinon toutes."""
+    c = db()
+    sql = "SELECT a.id, a.name FROM media_assets a WHERE json_extract(a.tech_json, '$.kind')='playlist'"
+    args = []
+    if pid is not None:
+        sql += " AND EXISTS (SELECT 1 FROM project_media p WHERE p.asset_id=a.id AND p.project_id=?)"
+        args.append(int(pid))
+    return [{"value": r["id"], "label": r["name"]} for r in c.execute(sql + " ORDER BY LOWER(a.name)", args)]
+
+
+def _post_player(vmid, path, body):
+    import requests
+    from .addressing import get_container_ip
+    ip = get_container_ip(int(vmid))
+    if not ip:
+        raise RuntimeError("conteneur injoignable")
+    r = requests.post("http://%s:8082%s" % (ip, path), json=body, timeout=10)
+    if r.status_code >= 400:
+        raise RuntimeError("le player a refusé %s : %s" % (path, r.text[:200]))
+
+
+def _macro_load_playlist(params, pid):
+    raw = str(params.get("container") or "").strip()
+    if not raw.isdigit():
+        raise RuntimeError("player à préciser")
+    if not any(o["value"] == raw for o in action_options("load_playlist", "container", pid)):
+        raise RuntimeError("player hors du projet de la macro (ou pas un player) : %s" % raw)
+    plid = str(params.get("playlist") or "").strip()
+    if not any(o["value"] == plid for o in macro_playlist_options(pid)):
+        raise RuntimeError("playlist introuvable%s : %s" % (" dans le projet de la macro" if pid is not None else "", plid))
+    p = playlist_get(plid)
+    files = [{"asset": e.get("asset"), "file": e.get("file") or "", "title": e.get("name"), "in": e.get("in"),
+              "out": e.get("out"), "loop": e.get("loop"), "pause": e.get("pause")} for e in p["items"]]
+    _post_player(int(raw), "/playlist", {"files": files})
+    _post_player(int(raw), "/pl_mark", {"id": p["id"], "name": p["name"]})
+    play = params.get("play") in (True, "true", "1", 1)
+    if play and files:
+        _post_player(int(raw), "/plgoto", {"index": 0, "play": True})
+    link_container_project(plid, int(raw))
+    return {"ok": True, "items": len(files), "playing": bool(play and files)}
 
 
 FETCH_WAIT_S = 6 * 3600          # un rapatriement suivi par une macro : abandonné au-delà
@@ -3433,6 +3736,8 @@ def integrity():
     rep = {"counts": {"assets": len(assets)}, "offline": [], "missing_copies": [], "dangling_project_refs": [],
            "unknown_projects": [], "unreferenced": [], "fingerprint_mismatch": [], "no_thumb": 0}
     for aid, a in assets.items():
+        if (_j(a["tech_json"], None) or {}).get("kind") == PLAYLIST:
+            continue                                      # aucune copie, aucune vignette : par nature
         if not present.get(aid):
             on_share = c.execute("SELECT COUNT(*) FROM media_files WHERE asset_id=? AND share_id!=0", (aid,)).fetchone()[0]
             rep["offline"].append({"id": aid, "name": a["name"], "on_share": bool(on_share),

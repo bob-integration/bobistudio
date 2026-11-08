@@ -63,6 +63,11 @@
         ? fmt(PLACES.partage_plafonne, { n: l.plafond })
         : T(PLACES[l.place] || PLACES.partage));
     const libellePoids = (n) => T('settings.cores.weight.' + n, n);
+    // ★ ONE notion since 2026-11-07: the level says the place (Dédié = reserved cores). Showing
+    // « Réservé · Normal » named two settings where there is one. A shared container's CPU cap
+    // is the only thing the level does not say: it is added.
+    const libelleNiveau = (l) => libellePoids(l.poids.niveau)
+        + (l.place === 'partage_plafonne' ? ' · ' + fmt('settings.cores.cap_n', { n: l.plafond }) : '');
     const raison = (l) => {
         const r = l.protection_raison || {};
         return r.cle ? fmt(r.cle, r) : '';
@@ -121,11 +126,11 @@
                 ? t.vmids.map((v) => {
                     const l = par[v];
                     return '<div class="bc-tip-l"><span>' + esc(l ? (l.hostname || ('#' + v)) : ('#' + v))
-                        + '</span><span class="meta">' + (l ? esc(libellePlace(l) + ' · ' + libellePoids(l.poids.niveau)) : '') + '</span></div>';
+                        + '</span><span class="meta">' + (l ? esc(libelleNiveau(l)) : '') + '</span></div>';
                 }).join('')
                 : (t.kind === 'partage'
                     ? (j.partages || []).map((l) => '<div class="bc-tip-l"><span>' + esc(l.hostname || ('#' + l.vmid))
-                        + '</span><span class="meta">' + esc(libellePlace(l) + ' · ' + libellePoids(l.poids.niveau)) + '</span></div>').join('')
+                        + '</span><span class="meta">' + esc(libelleNiveau(l)) + '</span></div>').join('')
                       || '<div class="meta">' + esc(T('settings.cores.personne')) + '</div>'
                     : '<div class="meta">' + esc(T('settings.cores.kind.' + t.kind, t.kind)) + '</div>');
             return '<div class="bc-tip-th"><div class="meta">'
@@ -206,6 +211,28 @@
         });
     }
 
+    // Can this viewer change a container? (`window.hasPerm`, set by layout.html.) Without it, the
+    // cells stay read-only — the server refuses anyway.
+    const peutDeployer = () => !!(window.hasPerm && window.hasPerm('containers.deploy'));
+
+    // A refusal the server explains (409): « Dédié needs N cores on X, which has only M free » —
+    // the same sentence as the project view, never a bare code.
+    const refus = (j) => (j && j.error === 'no_room'
+        ? fmt('projects.res_level_no_room', { need: j.need, name: j.name, available: j.available })
+        : (j && j.error) || '');
+
+    // Reserved cores: a number to change for a dedicated container (hot on the server); a DeckLink
+    // card's count follows its active connectors (set on its page); a shared one has none — its
+    // CPU cap, when set, is said in its level.
+    function coeursCellule(l) {
+        if (l.place !== 'dedie') return '—';
+        if (l.node_io) return esc(l.cores) + '<div class="meta">' + esc(T('settings.cores.node_io_note')) + '</div>';
+        if (!peutDeployer()) return esc(l.cores);
+        return '<input type="number" class="bc-cores-in" min="1" max="256" step="1" value="' + esc(l.cores)
+            + '" data-vmid="' + l.vmid + '" data-avant="' + esc(l.cores) + '" aria-label="'
+            + esc(fmt('settings.cores.cores_aria', { nom: l.hostname || l.vmid })) + '">';
+    }
+
     function tableau(st) {
         const j = st.j || {};
         let list = trier(st, filtrer(st));
@@ -227,7 +254,10 @@
             const divergent = l.poids_coherent === false;
             return '<tr data-vmid="' + l.vmid + '">'
                 + '<td><b>' + esc(l.hostname || ('#' + l.vmid)) + '</b> <span class="meta">#' + l.vmid + '</span>'
-                + '<div class="meta">' + esc(libellePlace(l)) + '</div></td>'
+                + (window.BobiContainerPanel ? ' <button type="button" class="bc-reglages ctl-push ctl-push--icon" data-vmid="'
+                    + l.vmid + '" aria-label="' + esc(fmt('settings.cores.reglages_aria', { nom: l.hostname || l.vmid }))
+                    + '">⚙</button>' : '')
+                + (l.place === 'dedie' ? '' : '<div class="meta">' + esc(libellePlace(l)) + '</div>') + '</td>'
                 + '<td><span class="bc-pill bc-' + (p === null ? 'info' : TONS[p]) + '">' + esc(pr) + '</span>'
                 + '<div class="meta">' + esc(raison(l)) + '</div></td>'
                 + '<td><div class="bc-poids" data-vmid="' + l.vmid + '"></div>'
@@ -242,11 +272,14 @@
                     // cpuset a un cpuset PÉRIMÉ, calculé à son déploiement, que « Réappliquer »
                     // règle. Les confondre reviendrait à dire « quelque chose ne va pas ».
                     ? '<div class="meta bc-bad">' + esc(T(l.place === 'dedie'
-                        ? 'settings.cores.incoherent' : 'settings.cores.perime')) + '</div>' : '')
+                        ? 'settings.cores.incoherent' : 'settings.cores.perime')) + '</div>'
+                      + (l.place === 'dedie' && peutDeployer() ? '<button type="button" class="bc-recreer ctl-push" data-vmid="'
+                          + l.vmid + '" data-nom="' + esc(l.hostname || l.vmid) + '">'
+                          + esc(T('containers.card.recreate')) + '</button>' : '') : '')
                 + (l.deborde ? '<div class="meta bc-bad">' + esc(fmt('settings.cores.deborde', { cores: l.deborde })) + '</div>' : '')
                 + '</td>'
                 + '<td title="' + esc(avec.map((v) => v.hostname || ('#' + v.vmid)).join(', ')) + '">' + esc(avecTxt) + '</td>'
-                + '<td class="bc-num">' + (l.place === 'dedie' ? l.cores : '—') + '</td>'
+                + '<td class="bc-num">' + coeursCellule(l) + '</td>'
                 + '<td class="bc-num">' + charge + '</td>'
                 + '<td class="bc-num" title="' + esc(T('monitoring.cpu_psi_tip')) + '">' + famineHtml(l.famine) + '</td></tr>';
         };
@@ -331,7 +364,19 @@
                 + esc(fmt(ok ? 'settings.cores.energie_ok' : 'settings.cores.energie_ko', { gov: e.gouverneur || '?' }))
                 + '</b><div class="meta">' + esc(fmt('settings.cores.energie_detail', {
                     gov: e.gouverneur || '?', min: e.min_mhz || '?', max: e.max_mhz || '?',
-                    dedies: e.dedies || '—' })) + '</div>'
+                    dedies: e.dedies || '—' }))
+                // Veille profonde : seulement quand elle a été MESURÉE. Pas d'interface cpuidle
+                // (VM) → on n'écrit rien, plutôt que « coupée sur — » qui se lit comme un manque.
+                + (e.veille_mesuree ? ' · ' + esc(fmt('settings.cores.energie_veille',
+                    { cores: e.veille_coupee || '—' })) : '')
+                // Le budget EN REGARD de l'échelle annoncée par ce CPU. Un « 5 » nu ne dit pas ce
+                // qu'il coupe ; « 5 µs — états annoncés : 0, 2, 10, 133 » le dit, et c'est ce qui
+                // permet de régler une autre machine sans deviner.
+                + (e.veille_mesuree && e.veille_budget_us != null
+                    ? '<br>' + esc(fmt('settings.cores.energie_veille_budget', {
+                        us: e.veille_budget_us,
+                        etats: (e.veille_etats_us || []).join(', ') || '—' })) : '')
+                + '</div>'
                 + (ok ? '' : '<button type="button" class="btn bc-perf">'
                     + esc(T('settings.cores.passer_performance')) + '</button>') + '</div>';
         }
@@ -542,11 +587,40 @@
                     body: JSON.stringify({ vmid: vmid, niveau: v }),
                 });
                 st.occupe = false;
-                if (!r.ok) { toast(r.j.error || T('settings.cores.poids_echec'), 'error'); c.set(l.poids.niveau); return; }
+                if (!r.ok) { toast(refus(r.j) || T('settings.cores.poids_echec'), 'error'); c.set(l.poids.niveau); return; }
                 if (!r.j.applique) toast(fmt('settings.cores.poids_differe', { e: r.j.err || '' }), 'warning');
                 else toast(fmt('settings.cores.poids_pose', { nom: l.hostname || vmid, niveau: libellePoids(v) }));
                 maj(true);
             });
+        });
+
+        // Dedicated cores count: changed hot by the server (docker update); refused with its reason.
+        root.querySelectorAll('.bc-cores-in').forEach((el) => {
+            el.onchange = async () => {
+                const n = parseInt(el.value, 10);
+                if (!(n >= 1) || String(n) === el.dataset.avant || st.occupe) return;
+                st.occupe = true;
+                const r = await _json('/api/containers/' + el.dataset.vmid + '/resources', {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ cores: n }),
+                });
+                st.occupe = false;
+                if (!r.ok) { toast(refus(r.j) || T('settings.cores.cores_echec'), 'error'); el.value = el.dataset.avant; return; }
+                toast(fmt('settings.cores.cores_pose', { n: n }));
+                maj(true);
+            };
+        });
+        root.querySelectorAll('.bc-recreer').forEach((b) => b.onclick = async () => {
+            if (!window.confirm(T('containers.card.recreate_confirm').replace('{name}', b.dataset.nom))) return;
+            const r = await _json('/api/containers/' + b.dataset.vmid + '/recreate', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirm: true }),
+            });
+            toast(r.ok ? T('settings.cores.recreer_lance') : (r.j.error || T('containers.card.recreate_failed')),
+                  r.ok ? '' : 'error');
+        });
+        root.querySelectorAll('.bc-reglages').forEach((b) => b.onclick = () => {
+            if (window.BobiContainerPanel) window.BobiContainerPanel.open(parseInt(b.dataset.vmid, 10));
         });
 
         const clic = (sel, fn) => { const b = root.querySelector(sel); if (b) b.onclick = fn; };
@@ -636,5 +710,6 @@
     window.BobiCores = { ouvrir, charger, chargerEnergie, rendreCompact,
                          // exportés pour la garde hors ligne (aucun accès DOM)
                          _interne: { parseCpuset, filtrer, trier, nouvelEtat, libellePlace,
-                                     seuilNormal, poidsBas, lignes, famineHtml, releve } };
+                                     seuilNormal, poidsBas, lignes, famineHtml, releve,
+                                     libelleNiveau, coeursCellule, refus, tableau } };
 })();

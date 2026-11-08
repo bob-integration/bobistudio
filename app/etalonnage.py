@@ -49,7 +49,8 @@ import time
 
 from .cpu_profiles import (pointe_vue as _pointe_vue,   # définition UNIQUE du « pic observé »
                            en_rafale as _en_rafale)
-from .database import get_db, db_get_node, db_get_nodes, db_get_containers, db_add_alert
+from .database import (get_db, db_get_node, db_get_nodes, db_get_containers, db_add_alert,
+                       db_set_resources_override)
 from . import node_driver
 
 log = logging.getLogger(__name__)
@@ -510,7 +511,18 @@ def garantir(vmid, coeurs=None, marge=MARGE):
         return False, ("%s n'a AUCUN pool de cœurs déclaré (`compute_cpuset` vide) : ses conteneurs "
                        "sont tous partagés, et rien ne peut y être réservé. Déclarer le pool du "
                        "nœud d'abord — la mesure, elle, reste valable." % node.get("name"))
-    cpuset = core_pool.allocate_cores(c["node_id"], c["vmid"], coeurs)
+    # ★ La garantie ne doit pas DÉGRADER le profil du type en passant : `allocate_cores` écrit la
+    # marque « cœurs physiques entiers » sur ce qu'on lui dit, donc ne rien lui dire la RETIRAIT
+    # (frères HT rendus au pool partagé sous une carte DeckLink ou une console audio, en silence).
+    # C'est aussi ce qui autorise le jumeau dans le cpuset, cf. `core_pool.cpuset_pose`.
+    try:
+        from .docker_compute import effective_resources, _type_of
+        _res = effective_resources(_type_of(c), c) or {}
+    except Exception as _e:                     # noqa: BLE001
+        log.warning("garantir(%s): profil effectif illisible (%s) — cœurs non physiques", vmid, _e)
+        _res = {}
+    cpuset = core_pool.allocate_cores(c["node_id"], c["vmid"], coeurs,
+                                      physical=bool(_res.get("physical_cores")))
     if not cpuset:
         return False, ("pas assez de cœurs ordonnançables sur %s : %s demandés, %s libres sur %s "
                        "physiques (pool %s) — la garantie est REFUSÉE plutôt qu'accordée à moitié"
@@ -521,6 +533,10 @@ def garantir(vmid, coeurs=None, marge=MARGE):
     if rc != 0:
         core_pool.release_cores(c["vmid"])      # ne jamais laisser une réserve comptée mais non posée
         return False, "docker update a échoué : %s" % ((err or out or "").strip()[:200])
+    # Written on the container ITSELF, not only in `node_core_alloc`: the next (re)deploy rebuilds
+    # the cpuset from the manifest plus these overrides, and would otherwise put the container back
+    # on the shared pool while its cores stayed counted (2026-11-07).
+    db_set_resources_override(c["vmid"], cores=coeurs, cpu_weight="dedicated")
     core_pool.reapply_shared_after_reservation(c["node_id"], c["vmid"], cpuset)
     db_add_alert("alert.prep.garantie_posee", "info",
                  vmid=c["vmid"], node_id=c["node_id"], kind="prep",
@@ -556,7 +572,19 @@ def pressions_noeud(nid):
     return out
 
 
-def ressources(type_=None, node_id=None, vmid=None):
+def _weight_level(type_, c):
+    """Effective CPU weight level of a container (dedicated / normal / background / batch): what
+    says whether it must be guaranteed (see `project_resources`)."""
+    from . import cpu_weight
+    from .docker_compute import effective_resources
+    try:
+        return cpu_weight.level_of(effective_resources(type_, c))
+    except Exception as e:
+        log.debug("etalonnage._weight_level(%s): %s", c.get("vmid"), e)
+        return cpu_weight.DEFAULT
+
+
+def ressources(type_=None, node_id=None, vmid=None, vmids=None):
     """Vue « réservé / consommé / mesuré » par conteneur — la brique du moniteur de ressources.
 
     Trois quantités dans la MÊME unité (% d'un CPU), plus l'état de la mesure. C'est cet état qui
@@ -577,7 +605,8 @@ def ressources(type_=None, node_id=None, vmid=None):
             continue
         t = _type_of(c)
         if (type_ and t != type_) or (node_id and c.get("node_id") != int(node_id)) \
-                or (vmid and c.get("vmid") != int(vmid)):
+                or (vmid and c.get("vmid") != int(vmid)) \
+                or (vmids is not None and c.get("vmid") not in vmids):
             continue
         nid, v = c.get("node_id"), c.get("vmid")
         sig = signature(c)
@@ -610,7 +639,8 @@ def ressources(type_=None, node_id=None, vmid=None):
                 press[nid] = None
         out.append({
             "vmid": v, "hostname": c.get("hostname"), "type": t, "node_id": nid,
-            "docker_name": c.get("docker_name"),
+            "docker_name": c.get("docker_name"), "project_id": c.get("project_id"),
+            "level": _weight_level(t, c),
             "signature": sig,
             # Réservé : des CŒURS EXCLUSIFS, pas un quota. 0 = « partagé, non réservé », l'état
             # majoritaire aujourd'hui — et il doit s'afficher comme tel, pas comme une garantie.

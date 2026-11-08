@@ -27,10 +27,11 @@ if (!m) { console.log('chooseTarget introuvable'); process.exit(1); }
 
 let dlg = null, choix = {};
 function fakeDialog() {
-    const els = {};
+    const els = {}, coches = choix.__projets || [];
     const el = k => els[k] || (els[k] = {value: choix[k] || '', focus() {}, onclick: null, onsubmit: null});
     return dlg = {html: '', set innerHTML(v) { this.html = v; }, get innerHTML() { return this.html; },
                   className: '', querySelector: s => el(s), addEventListener() {}, close() {}, remove() {},
+                  querySelectorAll: s => s === '.mlu-proj input:checked' ? coches.map(v => ({value: String(v)})) : [],
                   showModal() { setImmediate(() => el('form').onsubmit({preventDefault() {}})); }};
 }
 const prefs = {};
@@ -57,10 +58,21 @@ const BINS = [{id: 4, name: 'Rushes'}, {id: 7, name: 'Habillage'}];
     choix = {'.mlu-node': '1', '.mlu-bin': ''};
     const t2 = await ctx.chooseTarget({count: 1, bins: BINS, bin_id: null});
     controle('« Aucun » : pas de bin', t2 && t2.bin_id === null && !/selected>Rushes|selected>Habillage/.test(dlg.html), JSON.stringify(t2));
+    console.log('── 2b. Projets (un ou plusieurs, 2026-11-07)');
+    const PROJ = [{id: 3, name: 'Régie A'}, {id: 5, name: 'Régie B'}];
+    choix = {'.mlu-node': '1', '.mlu-bin': '', __projets: [3, 5]};
+    const t3 = await ctx.chooseTarget({count: 1, bins: [], projects: PROJ, project_ids: [3]});
+    controle('une case par projet, celui du filtre coché d\'office', /value="3" checked> Régie A/.test(dlg.html) && /value="5"> Régie B/.test(dlg.html), dlg.html);
+    controle('les projets cochés sont rendus (3 et 5)', t3 && JSON.stringify(t3.project_ids) === '[3,5]', JSON.stringify(t3));
+    controle('aucun projet visible : pas de choix affiché', await ctx.chooseTarget({count: 1, bins: []}).then(() => !/mlu-projs/.test(dlg.html)));
     console.log('── 3. L\'appelant (Gestionnaire)');
-    controle('passe les bins MANUELS et le bin visé', /chooseTarget\(\{count: files\.length, bins: st\.bins\.filter\(x => !x\.smart\), bin_id: opts\.bin_id\}\)/.test(lib));
-    controle('envoie sans dossier, rangé dans le bin choisi',
-        /up\.enqueue\(files, \{node_id:t\.node_id, folder:'', [^}]*\},\s*\{bin_id: ob \? ob\.id : null/.test(lib));
+    controle('passe les bins MANUELS, le bin visé, les projets visibles et celui du filtre',
+        /chooseTarget\(\{count: files\.length, bins: st\.bins\.filter\(x => !x\.smart\), bin_id: opts\.bin_id,\s*projects: \(st\.sf && st\.sf\.projects\) \|\| \[\], project_ids: pf \? \[\+pf\.value\] : \[\]\}\)/.test(lib));
+    controle('envoie sans dossier, dans les projets choisis, rangé dans le bin choisi',
+        /up\.enqueue\(files, \{node_id:t\.node_id, folder:'', project_id: pids\[0\] \|\| null, project_ids: pids\},\s*\{bin_id: ob \? ob\.id : null/.test(lib));
+    const upl = fs.readFileSync(path.join(RACINE, 'static', 'js', 'media_upload.js'), 'utf8');
+    controle('les projets partent avec l\'envoi et avec « Ne pas l\'envoyer »',
+        /project_ids:tg\.project_ids \|\| null, bin_id:it\.bin_id/.test(upl) && /project_ids:target\.project_ids \|\| null, bin_id:opts\.bin_id/.test(upl));
     console.log(echecs ? '\n' + echecs + ' échec(s)' : '\nEnvoi depuis l\'ordinateur : un bin, plus de dossier.');
     process.exit(echecs ? 1 : 0);
 })();

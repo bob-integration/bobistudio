@@ -134,6 +134,9 @@ _DOCS_RACINE = {
     "node-agent": "NODE_AGENT.md",
     "third-party": "THIRD-PARTY-NOTICES.md",
     "contributing": "CONTRIBUTING.md",
+    # « Écrire un plugin » (2026-11-08): the article used to be a hand-written copy of this guide,
+    # which drifted. Served in the interface language when a `.<lang>.md` sibling exists.
+    "authoring": "plugins/AUTHORING.md",
     # Hors racine : référence d'intégration de la MIB SNMP. C'est le document que lit
     # l'intégrateur du client pour brancher son système de supervision.
     "snmp-mib": "docs/reference/SNMP_MIB.md",
@@ -155,6 +158,10 @@ def api_doc(name):
         return jsonify({"ok": False, "error": "lib markdown non installée"}), 500
     racine = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     path = os.path.join(racine, fichier)
+    from ..i18n import current_lang
+    localized = path[:-3] + ".%s.md" % current_lang()
+    if os.path.exists(localized):
+        path, fichier = localized, fichier[:-3] + ".%s.md" % current_lang()
     if not os.path.exists(path):
         return jsonify({"ok": False, "error": f"{fichier} introuvable"}), 404
     try:
@@ -864,13 +871,120 @@ def compte_page():
     return render_template("compte.html", monitor=mon, pwd_exigences=pwd_exigences())
 
 
+def _project_live(projects, containers):
+    """{pid: {"n": live containers, "up": running}} for the projects that have live containers.
+
+    `since`: epoch the project has been up since (oldest live container).
+    Measured on the containers, not on `projects.state`: that column is only set by a restore, so a
+    project saved from containers already running stays « saved » while it runs (a test bench,
+    2026-11-07)."""
+    live = {c["vmid"]: c for c in containers}
+    out = {}
+    for p in projects:
+        vmids = {v for v, c in live.items() if c.get("project_id") == p["id"]}
+        vmids |= {c.get("vmid") for c in (p.get("snapshot") or []) if c.get("vmid") in live}
+        if vmids:
+            out[p["id"]] = {"n": len(vmids),
+                            "up": sum(1 for v in vmids if live[v].get("status") == "running"),
+                            "since": _oldest_created(live[v] for v in vmids)}
+    return out
+
+
+def _project_sheets(projects, containers, node_names):
+    """{pid: sheet} for the « Détails » tab: text entered on the project, who did what last,
+    counts of what the project holds, cores asked for and the nodes it runs on (07/11)."""
+    from ..database import db_projects_facts
+    from ..projects import container_cost, restored_hostname
+    try:
+        facts = db_projects_facts()
+    except Exception:
+        facts = {}
+    live = {c["vmid"]: c for c in containers}
+    out = {}
+    for p in projects:
+        f = dict(facts.get(p["id"]) or {})
+        cores, unknown = 0.0, 0
+        for c in p.get("snapshot") or []:
+            try:
+                cost = container_cost(c)
+            except Exception:
+                cost = None
+            if cost:
+                cores += cost[0]
+            else:
+                unknown += 1
+        vmids = {v for v, c in live.items() if c.get("project_id") == p["id"]}
+        vmids |= {c.get("vmid") for c in (p.get("snapshot") or []) if c.get("vmid") in live}
+        nodes = sorted({node_names.get(live[v].get("node_id"), "#%s" % live[v].get("node_id"))
+                        for v in vmids if live[v].get("node_id")})
+        f.update({k: p.get(k) for k in ("description", "tags", "created_at", "media_path",
+                                        "started_at", "started_by", "stopped_at", "stopped_by",
+                                        "modified_at", "modified_by")})
+        f.update(cores=round(cores, 1), cores_unknown=unknown, nodes=nodes,
+                 containers=len(p.get("snapshot") or []))
+        # « Conteneurs » tab: the saved entries, plus live containers attached since the last save.
+        rows, seen = [], set()
+        for c in (p.get("snapshot") or []) + [live[v] for v in sorted(vmids)]:
+            v = c.get("vmid")
+            if v in seen:
+                continue
+            seen.add(v)
+            lc = live.get(v) if v in vmids else None
+            dc = (lc or c).get("deploy_config") or {}
+            if isinstance(dc, str):
+                try:
+                    dc = json.loads(dc)
+                except ValueError:
+                    dc = {}
+            node = (lc or c).get("node_id")
+            rows.append({"vmid": v, "hostname": (lc or c).get("hostname"), "type": dc.get("type"),
+                         # the name it will run under once started (prefixed by the project name)
+                         "run_host": restored_hostname((lc or c).get("hostname"), p.get("name")),
+                         "node": node_names.get(node, "#%s" % node) if node else None,
+                         "status": (lc or {}).get("status"), "live": bool(lc),
+                         "saved": any(e.get("vmid") == v for e in p.get("snapshot") or [])})
+        f["rows"] = rows
+        out[p["id"]] = f
+    return out
+
+
+def _node_names():
+    try:
+        from ..database import db_get_nodes
+        return {n["id"]: n.get("name") or "#%s" % n["id"] for n in db_get_nodes()}
+    except Exception:
+        return {}
+
+
+def _oldest_created(containers):
+    """Epoch of the oldest `created_at` (naive local ISO, as written), None when unreadable.
+    No project start is recorded: the oldest live container is when the project has been up since."""
+    from datetime import datetime
+    ts = []
+    for c in containers:
+        try:
+            ts.append(datetime.fromisoformat(str(c.get("created_at"))).timestamp())
+        except (TypeError, ValueError):
+            pass
+    return int(min(ts)) if ts else None
+
+
 @bp.route("/projects")
 @require_login
 def projects_page():
     from . import _attach_projects
+    from .. import plugins
+    containers = db_get_containers()
+    projects = db_get_projects()
     return render_template("projects.html",
-        containers=_attach_projects(db_get_containers()),
-        projects=db_get_projects(),
+        containers=_attach_projects(containers),
+        projects=projects,
+        project_live=_project_live(projects, containers),
+        # fenêtre « Détails » d'un projet : état et nœud de chaque conteneur vivant
+        live_status={c["vmid"]: c.get("status") for c in containers},
+        node_names=_node_names(),
+        project_sheets=_project_sheets(projects, containers, _node_names()),
+        type_label=plugins.libelle_type,
         # bouton « Vue d'exploitation » : seulement si /workspace/<id> ne répondra pas 403
         can_open_workspace=lambda pid: bool(project_role_for(pid)))
 

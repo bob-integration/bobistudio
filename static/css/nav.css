@@ -67,7 +67,9 @@
 .topnav.condensed .nav-icon-btn { width: 24px; height: 24px; }
 .topnav.condensed .nav-service { padding: 2px 6px 2px 8px; }
 
-.topnav a {
+/* `.navpair-items > .tab` : rangée du haut d'un ensemble à deux rangs DANS une page (Réglages,
+   07/11) — mêmes entrées que la barre principale, par les mêmes règles. */
+.topnav a, .navpair-items > .tab {
     color: var(--text);
     text-decoration: none;
     padding: 7px 14px;
@@ -77,12 +79,12 @@
     transition: background 0.12s, color 0.12s;
 }
 
-.topnav a:hover {
+.topnav a:hover, .navpair-items > .tab:hover {
     background: var(--bg-hover);
     text-decoration: none;
 }
 
-.topnav a.active {
+.topnav a.active, .navpair-items > .tab.active {
     background: var(--bg-selected);
     color: var(--accent);
 }

@@ -29,7 +29,7 @@ l'épinglage ET le poids. Un conteneur pouvait donc être « partagé » sans po
 ★ QUATRE NIVEAUX NOMMÉS, JAMAIS UN NOMBRE LIBRE. 1024 est le défaut de Docker et 128 était
 écrit en dur pour le transcodeur : deux valeurs, aucune échelle. Un champ numérique libre
 aurait produit des 1000, des 1500 et des 900 dont personne ne saurait dire l'intention six mois
-plus tard — alors que « Antenne » et « Arrière-plan » se relisent.
+plus tard — alors que « Dédié » et « Arrière-plan » se relisent.
 """
 import logging
 import shlex
@@ -39,13 +39,16 @@ log = logging.getLogger(__name__)
 # Les quatre niveaux, du plus prioritaire au moins prioritaire. Les VALEURS sont des poids
 # `--cpu-shares` relatifs : seul leur RAPPORT compte (2048 vaut deux parts pour une de 1024).
 WEIGHTS = {
-    "onair":      2048,   # Antenne — passe devant tout le reste sous saturation
+    "dedicated":  2048,   # Dédié — cœurs dédiés (la place suit le niveau, 2026-11-07)
     "normal":     1024,   # Normal — le défaut de Docker, et le nôtre
     "background":  256,   # Arrière-plan — moniteur, passerelle, aperçus : cède aux flux d'antenne
     "batch":       128,   # Batch — transcodage de fichiers : prend ce qui reste
 }
-LEVELS = ("onair", "normal", "background", "batch")
+LEVELS = ("dedicated", "normal", "background", "batch")
 DEFAULT = "normal"
+# Former names still accepted on input (saved projects, macros, manifests of other instances):
+# « onair » was renamed « dedicated » on 2026-11-07, with the label « Antenne » → « Dédié ».
+ALIASES = {"onair": "dedicated"}
 # Poids que Docker applique quand on ne lui demande rien : la valeur à laquelle se compare un
 # conteneur dont `HostConfig.CpuShares` vaut 0 (« non précisé »), pas une absence de poids.
 DOCKER_DEFAUT = 1024
@@ -54,7 +57,7 @@ DOCKER_DEFAUT = 1024
 def value(level):
     """Poids `--cpu-shares` d'un niveau nommé. Niveau inconnu → le défaut (jamais une exception :
     un manifeste fautif ne doit pas empêcher un déploiement, il doit être journalisé)."""
-    lvl = str(level or "").strip().lower()
+    lvl = normalize(level)
     if lvl in WEIGHTS:
         return WEIGHTS[lvl]
     if lvl:
@@ -62,8 +65,14 @@ def value(level):
     return WEIGHTS[DEFAULT]
 
 
+def normalize(level):
+    """Level name as stored: lower case, a former name mapped to its current one."""
+    lvl = str(level or "").strip().lower()
+    return ALIASES.get(lvl, lvl)
+
+
 def niveau_valide(level):
-    return str(level or "").strip().lower() in WEIGHTS
+    return normalize(level) in WEIGHTS
 
 
 def level_of(res):
@@ -77,7 +86,7 @@ def level_of(res):
     (transcodeur) et dans des `deploy_config` persistés. Le retirer d'ici relèverait en silence
     le transcodeur au poids normal — il mangerait le CPU des conteneurs d'antenne."""
     res = res or {}
-    lvl = str(res.get("cpu_weight") or "").strip().lower()
+    lvl = normalize(res.get("cpu_weight"))
     if lvl in WEIGHTS:
         return lvl
     if str(res.get("priority") or "").strip().lower() == "batch":
@@ -88,14 +97,20 @@ def level_of(res):
 def source_of(res, c):
     """D'OÙ vient le niveau appliqué : 'override' (ce conteneur), 'manifest' (son type),
     'priority' (l'ancien champ du manifeste), 'default'. L'interface le dit : un exploitant qui
-    voit « Arrière-plan » doit savoir s'il l'a choisi ou s'il l'a hérité."""
+    voit « Arrière-plan » doit savoir s'il l'a choisi ou s'il l'a hérité.
+
+    `res` is the type's MANIFEST profile, not the effective one: since 2026-11-07 the effective
+    profile always carries the resolved level, so it can no longer tell where it came from. A
+    manifest asking for `pin` makes its type dedicated by default: that is the manifest speaking."""
     if (c or {}).get("cpu_weight_override"):
         return "override"
     res = res or {}
-    if str(res.get("cpu_weight") or "").strip().lower() in WEIGHTS:
+    if normalize(res.get("cpu_weight")) in WEIGHTS:
         return "manifest"
     if str(res.get("priority") or "").strip().lower() == "batch":
         return "priority"
+    if res.get("pin"):
+        return "manifest"
     return "default"
 
 
@@ -110,7 +125,9 @@ def for_container(c, deploy_type=None):
         log.warning("cpu weight for %s: effective profile unreadable (%s)", c.get("vmid"), e)
         res = {}
     lvl = level_of(res)
-    return {"niveau": lvl, "valeur": value(lvl), "source": source_of(res, c)}
+    from . import plugins
+    manifest = ((plugins.get(t) or {}).get("resources") or {}) if t else {}
+    return {"niveau": lvl, "valeur": value(lvl), "source": source_of(manifest, c)}
 
 
 # ─── Application À CHAUD ──────────────────────────────────────────────────────────────────────
@@ -167,12 +184,24 @@ def regler(vmid, niveau, reset=False):
     c = db_get_container(vmid)
     if not c:
         return {"ok": False, "err": "conteneur %s inconnu" % vmid}
-    db_set_resources_override(vmid, cpu_weight=("" if reset else str(niveau).strip().lower()))
+    from .docker_compute import effective_resources, _type_of, apply_place_hot
+    before = c.get("cpu_weight_override")
+    was_dedicated = bool(effective_resources(_type_of(c), c).get("pin"))
+    db_set_resources_override(vmid, cpu_weight=("" if reset else normalize(niveau)))
     c = db_get_container(vmid) or c
+    # ★ The place follows the level (2026-11-07): entering or leaving « Dédié » moves the
+    # container to or from dedicated cores, hot. Refused (no room) → the level is put back as it
+    # was: a level that says « dedicated » on a shared container would be the lie this rule removes.
+    place = None
+    if bool(effective_resources(_type_of(c), c).get("pin")) != was_dedicated:
+        ok_place, place = apply_place_hot(vmid)
+        if not ok_place:
+            db_set_resources_override(vmid, cpu_weight=(before or ""))
+            return {"ok": False, "err": place, "place_refused": True}
     eff = for_container(c)
     ok, msg = appliquer(c.get("node_id"), vmid)
     return {"ok": True, "niveau": eff["niveau"], "valeur": eff["valeur"],
-            "source": eff["source"], "applique": ok, "err": None if ok else msg}
+            "source": eff["source"], "applique": ok, "err": None if ok else msg, "place": place}
 
 
 def poser_defaut(vmid, niveau):
@@ -294,7 +323,7 @@ MACRO_PROVIDER = {
 
 # Libellés des niveaux pour les menus de macros. L'INTERFACE, elle, passe par i18n
 # (`cores.weight.*`) : ces libellés-ci sont ceux du catalogue d'actions, qui n'est pas traduit.
-LABELS = {"onair": "Antenne (2048)", "normal": "Normal (1024)",
+LABELS = {"dedicated": "Dédié (2048)", "normal": "Normal (1024)",
           "background": "Arrière-plan (256)", "batch": "Batch (128)"}
 
 

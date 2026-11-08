@@ -189,6 +189,34 @@ def _reseau_retabli(node):
                  params={"n": node.get("name")})
 
 
+def compute_eligible(n):
+    """Can node `n` host a compute container (image, network, up, container network alive)?
+    Shared by `pick_compute_node` and the project start planner (`projects.plan_placement`)."""
+    if not (n and n.get("compute_image") and n.get("docker_network")
+            and (n.get("status") or "") != "down"):
+        return False
+    # ⚠ Un nœud dont le RÉSEAU CONTENEURS est mort reste « éligible » à tous les autres titres :
+    # image présente, réseau déclaré, statut up, agent joignable. Ses conteneurs y démarrent,
+    # prennent leur IP, lancent leur agent — et personne ne peut jamais leur parler, avec un
+    # statut Docker « running » parfaitement vert. Constaté sur r620-3 le 2026-08-02 : un
+    # monitor y a été placé (par ce même classement, qui répartit enfin la charge) sur un
+    # macvlan accroché à une carte sans porteuse. On l'écarte, et on DIT pourquoi.
+    try:
+        from . import node_driver
+        e = node_driver.etat_reseau_conteneurs(n)
+        if e.get("derive") or e.get("sans_lien"):
+            _alerter_reseau(n, e)
+            return False
+        _reseau_retabli(n)
+    except Exception as exc:
+        log.debug("état réseau conteneurs %s: %s", n.get("name"), exc)
+    return True
+
+
+def eligible_compute_nodes():
+    return [n for n in db_get_nodes() if compute_eligible(n)]
+
+
 def pick_compute_node(prefer_id=None, deploy_type=None):
     """Choisit un nœud pour un conteneur compute. `prefer_id` honoré s'il est éligible.
 
@@ -216,26 +244,7 @@ def pick_compute_node(prefer_id=None, deploy_type=None):
     from . import core_pool, gpu_pool
     gpu_utile = bool(deploy_type) and plugins.gpu_capable(deploy_type)
 
-    def _eligible(n):
-        if not (n and n.get("compute_image") and n.get("docker_network")
-                and (n.get("status") or "") != "down"):
-            return False
-        # ⚠ Un nœud dont le RÉSEAU CONTENEURS est mort reste « éligible » à tous les autres titres :
-        # image présente, réseau déclaré, statut up, agent joignable. Ses conteneurs y démarrent,
-        # prennent leur IP, lancent leur agent — et personne ne peut jamais leur parler, avec un
-        # statut Docker « running » parfaitement vert. Constaté sur r620-3 le 2026-08-02 : un
-        # monitor y a été placé (par ce même classement, qui répartit enfin la charge) sur un
-        # macvlan accroché à une carte sans porteuse. On l'écarte, et on DIT pourquoi.
-        try:
-            from . import node_driver
-            e = node_driver.etat_reseau_conteneurs(n)
-            if e.get("derive") or e.get("sans_lien"):
-                _alerter_reseau(n, e)
-                return False
-            _reseau_retabli(n)
-        except Exception as exc:
-            log.debug("état réseau conteneurs %s: %s", n.get("name"), exc)
-        return True
+    _eligible = compute_eligible
 
     if prefer_id:
         n = db_get_node(prefer_id)
@@ -393,43 +402,146 @@ def effective_resources(deploy_type, c):
     intention. Renvoie une COPIE (le registre des plugins n'est jamais modifié)."""
     res = dict(((plugins.get(deploy_type) or {}).get("resources") or {}) if deploy_type else {})
     c = c or {}
+    # `cores_override = 0` is an explicit « no CPU cap » (2026-11-07): read only for a SHARED
+    # container, where `cores` is a `--cpus` quota — the manifest may set one (streamer: 4), so
+    # NULL (« follow the manifest ») could not say it. For a dedicated container (or node I/O) a 0
+    # never means 0 cores: it is ignored, the manifest's cores apply (1 when it has none).
+    no_cap = False
     if c.get("cores_override") is not None:
-        res["cores"] = int(c["cores_override"])
+        if int(c["cores_override"]) > 0:
+            res["cores"] = int(c["cores_override"])
+        else:
+            no_cap = True
     if c.get("memory_override") is not None:
         res["memory"] = int(c["memory_override"])
-    # Mode CPU (types `reservable` seulement) : 'reserved' = cœurs DÉDIÉS (pin, poids normal),
-    # 'shared' = pool partagé à poids faible. Une valeur posée sur un type qui ne l'offre pas est
-    # ignorée plutôt que de changer en silence la nature d'un conteneur temps réel.
-    mode = c.get("cpu_mode_override")
-    if res.get("reservable") and mode in CPU_MODES:
-        if mode == "reserved":
-            res.pop("priority", None)
-            res["pin"] = True
-        else:
+    # ★ THE PLACE FOLLOWS THE LEVEL (decided with Cyril on 2026-11-07): « Dédié » (`dedicated`, « Antenne » / `onair` until the
+    # same day) means
+    # DEDICATED cores, every other level the shared pool. Until then the place (`pin`, the
+    # `cpu_mode` override) and the weight were two settings, and a type got dedicated cores because
+    # its plugin author had asked for them — a multiview or a recorder had some, a colour corrector
+    # on the on-air path had none. Now one setting, per container:
+    #   level = the container's own > the manifest's `cpu_weight` > `batch` for the old
+    #           `priority: batch` > `dedicated` for a type whose manifest asks for `pin` (so that
+    #           nothing already dedicated loses its cores) > `normal`;
+    #   dedicated → pin, with the manifest `cores` (1 when it has none); otherwise no pin.
+    # Node I/O (`node_io`, a DeckLink card) keeps its own whole cores whatever its level: it is
+    # the node's input/output, not a processing of the project.
+    # The weight still matters among the shared ones (normal / background / batch).
+    # `cpu_mode_override` is no longer written (migrated to the level at boot); a row that still
+    # carries « reserved » is read as dedicated.
+    from . import cpu_weight as _cw
+    lvl = _cw.normalize(c.get("cpu_weight_override"))
+    if lvl not in _cw.WEIGHTS and c.get("cpu_mode_override") == "reserved":
+        lvl = "dedicated"
+    if lvl not in _cw.WEIGHTS:
+        lvl = _cw.normalize(res.get("cpu_weight"))
+    if lvl not in _cw.WEIGHTS:
+        lvl = ("batch" if str(res.get("priority") or "").strip().lower() == "batch"
+               else "dedicated" if res.get("pin") else _cw.DEFAULT)
+    res["cpu_weight"] = lvl
+    if res.get("node_io"):
+        pass
+    elif lvl == "dedicated":
+        res.pop("priority", None)
+        res["pin"] = True
+        if not res.get("cores"):
+            res["cores"] = 1
+    else:
+        res.pop("pin", None)
+        if lvl == "batch":
             res["priority"] = "batch"
-            res.pop("pin", None)
-    # POIDS CPU (2026-10-30) : niveau NOMMÉ, manifeste (`resources.cpu_weight`) ou surcharge de
-    # CE conteneur. Offert à TOUT type, sans condition de `reservable` : le poids n'est pas une
-    # question de place — un conteneur sans profil de ressources du tout se dispute quand même le
-    # CPU du pool partagé, et c'est précisément lui qu'on veut pouvoir faire céder.
-    # ⚠ Posé APRÈS le bloc `cpu_mode` ci-dessus, qui écrit `priority: batch` : sans ça un
-    # conteneur basculé « partagé » retomberait à 128 alors que son niveau dit autre chose.
-    if c.get("cpu_weight_override"):
-        res["cpu_weight"] = str(c["cpu_weight_override"]).strip().lower()
+        if no_cap:
+            res.pop("cores", None)
     return res
+
+
+def preflight_dedication(node_id, deploy_type, params=None):
+    """Un conteneur NEUF de ce type obtiendrait-il, sur ce nœud et MAINTENANT, les cœurs dédiés
+    que son profil demande ? Mesuré, et ne change RIEN (aucune réservation, aucune ligne).
+
+    ★ POURQUOI AVANT LA CRÉATION, pas après (arbitrage du 2026-11-07). Banc du 07/11 sur dl360-1 :
+    une console audio créée alors qu'aucun cœur n'était plus dédiable a été placée en PARTAGÉ
+    (43-45,47) sans aucun signal. Le repli partagé est délibéré et il reste le bon défaut — un
+    conteneur sans cpuset flotterait sur les lcores du moteur 2110 — mais il est SILENCIEUX :
+    `effective_cpuset` n'alerte que si le pool partagé est lui-même entièrement dédié, ce qui
+    n'était pas le cas. On avait donc un conteneur temps réel qui croit tenir des cœurs dédiés,
+    n'en a aucun, et dont aucun compteur de charge ne dit rien. L'exploitant doit pouvoir choisir
+    AVANT : créer quand même, ou libérer des cœurs d'abord — après, la ligne existe et il faut
+    nettoyer un conteneur qui n'aurait pas dû naître (même raison que `one_per_node`).
+
+    → dict : demande, capacite, suffisant, raison, physique, proprietaires
+    [{vmid, hostname, coeurs}], noeud, pool. `demande == 0` (type partagé, `batch`, ou sans
+    profil) ⇒ rien à promettre, donc `suffisant` vaut True : on n'avertit JAMAIS un conteneur qui
+    n'a jamais demandé de dédié.
+
+    ⚠ ON S'ABSTIENT SUR UN NŒUD SANS POOL DE CALCUL (`compute_cpuset` vide). « Le pool est plein »
+    et « il n'y a pas de pool » donnent la même capacité — zéro — et ce sont deux situations
+    opposées : la seconde est un nœud jamais préparé (`ensure_compute_cpuset` le remplit à
+    l'enrôlement), elle a déjà son propre avertissement dans `core_pool.effective_cpuset`, et
+    avertir dessus ferait crier la porte sur toute installation neuve. Mesuré le 2026-11-07 : sans
+    cette distinction la porte se déclenchait sur le nœud de banc de `verif_mixer_assistant`, qui
+    n'a pas de pool du tout.
+
+    ⚠ LA DEMANDE MESURÉE EST CELLE DU MANIFESTE (`effective_resources` sur un conteneur qui
+    n'existe pas encore : ni `cores_override`, ni niveau par conteneur, ni réglage d'instance).
+    Un type dimensionné à chaud — `cores_per_1080p_input`, `extra_cores_param`, ou par connecteurs
+    actifs (`items_cores`) — peut en demander un autre nombre à son premier déploiement. C'est
+    assumé et c'est dit : ce qui compte ici est « ce nœud peut-il encore dédier quoi que ce soit »,
+    et à zéro de capacité la réponse ne dépend d'aucun de ces réglages.
+    """
+    from . import core_pool                     # import paresseux, comme partout dans ce module
+    res = effective_resources(deploy_type, {})
+    want = 0
+    if res.get("pin") and res.get("cores") and str(res.get("priority") or "").lower() != "batch":
+        want = int(res["cores"])
+    physique = bool(res.get("physical_cores"))
+    out = {"demande": want, "capacite": None, "suffisant": True, "raison": "", "physique": physique,
+           "proprietaires": [], "noeud": "", "pool": ""}
+    if want <= 0:
+        out["raison"] = "shared type"
+        return out
+    node = db_get_node(node_id) or {}
+    out["noeud"] = node.get("name") or str(node_id)
+    out["pool"] = (node.get("compute_cpuset") or "").strip()
+    if not out["pool"]:
+        out["raison"] = "no compute pool on this node"
+        return out
+    # La MÊME règle stricte que `allocate_cores` (aucun frère HT tenu par un autre dédié) : lui
+    # donner le compte logique libre ferait promettre des cœurs que l'allocateur refuse ensuite.
+    # `vmid=None` : le conteneur n'existe pas, il ne possède donc rien à récupérer.
+    out["capacite"] = core_pool.free_dedicated_capacity(node_id, None, physical=physique)
+    out["suffisant"] = out["capacite"] >= want
+    out["raison"] = "measured"
+    if not out["suffisant"]:
+        # Qui les tient, nommément : « libérer des cœurs » n'est actionnable que si l'exploitant
+        # sait LESQUELS détruire ou redimensionner.
+        for v, cores in sorted(core_pool.allocations_by_vmid(node_id).items()):
+            cc = db_get_container(v) or {}
+            out["proprietaires"].append({"vmid": v,
+                                         "hostname": cc.get("hostname") or ("#%s" % v),
+                                         "coeurs": core_pool.fmt_cpuset(sorted(cores))})
+    return out
+
+
+def cores_forced(c):
+    """True when the container sets its own NUMBER of cores (`cores_override` > 0). The explicit
+    « no cap » (0) is not a number of cores: a dedicated container then follows its manifest."""
+    try:
+        return int((c or {}).get("cores_override") or 0) > 0
+    except (TypeError, ValueError):
+        return False
 
 
 CPU_MODES = ("shared", "reserved")
 
 
 def cpu_mode_of(res):
-    """Mode CPU d'un profil EFFECTIF : 'reserved' (cœurs dédiés demandés), 'shared' (batch), ou
-    None pour un type qui n'offre pas le choix."""
+    """Place of an EFFECTIVE profile as the deploy palette shows it for a `reservable` type:
+    'reserved' (dedicated cores — level on air) or 'shared'; None for the other types, whose
+    place is set by their level in the Resources window. Derived, never stored (2026-11-07)."""
     if not res.get("reservable"):
         return None
-    if str(res.get("priority") or "").lower() == "batch" or not res.get("pin"):
-        return "shared"
-    return "reserved"
+    return "reserved" if res.get("pin") else "shared"
 
 
 def project_media_dir(node, project_id):
@@ -518,6 +630,131 @@ def coeurs_dedies_voulus(base, per, load, libres, miens=0):
                max(int(base), int(libres) + int(miens)))
 
 
+def active_items(spec, params):
+    """Active items counted by a `resources.cores_per_item` spec: the entries of each list named in
+    `lists`, plus one per entry carrying `pair_key` (a DeckLink fill & key output drives TWO
+    connectors). Malformed lists count as empty — a sizing rule never breaks a deployment."""
+    params = params or {}
+    n = 0
+    for name in (spec.get("lists") or []):
+        items = params.get(name)
+        if not isinstance(items, list):
+            continue
+        n += len(items)
+        pk = spec.get("pair_key")
+        if pk:
+            n += sum(1 for it in items if isinstance(it, dict) and it.get(pk))
+    return n
+
+
+def items_cores(res, params):
+    """Dedicated cores sized by ACTIVE ITEMS (`resources.cores_per_item` of the manifest), or None
+    when the type has no such rule.
+
+    cores = ceil((base + per × items) × peak), at least `min` (1). The DeckLink card: 0.49 core per
+    active connector plus 0.1, peak/mean 1.22 (measured, plugins/decklink_io/README.md) → 1
+    connector = 1 core, 4 = 3, 8 = 5. Activating a connector changes the count, hence the cpuset,
+    hence a recreation — accepted (decision of 07/11): a card uses only what its connectors cost."""
+    spec = (res or {}).get("cores_per_item")
+    if not isinstance(spec, dict):
+        return None
+    try:
+        base, per = float(spec.get("base") or 0), float(spec.get("per") or 0)
+        peak, floor = float(spec.get("peak") or 1), int(spec.get("min") or 1)
+    except (TypeError, ValueError):
+        return None
+    n = active_items(spec, params)
+    # 1e-9: (0.1 + 0.49 × 8) × 1.22 is 4.9044, but a product landing on an integer must not round up.
+    return max(floor, math.ceil((base + per * n) * peak - 1e-9))
+
+
+def item_cores_estimate(c, params):
+    """What a change of active items would cost a container sized by `resources.cores_per_item`
+    (DeckLink connectors), BEFORE applying it — the page shows « 3 → 4 cores » and refuses rather
+    than starting the card on the shared pool. None for a type without such a rule.
+
+    `available` is what a reservation of this container could hold today under the strict HT rule
+    (its own cores included: a resize releases them first), counted in whole physical cores when
+    the type takes them whole. `holders` names the other reservations of the node, for the refusal."""
+    from . import core_pool
+    res = effective_resources(_type_of(c), c)
+    spec = res.get("cores_per_item")
+    if not isinstance(spec, dict):
+        return None
+    forced = cores_forced(c)
+    wanted = int(res.get("cores") or 0) if forced else items_cores(res, params)
+    vmid, nid = c.get("vmid"), c.get("node_id")
+    current = core_pool.allocated_for(nid, vmid) if nid else 0
+    available = (core_pool.free_dedicated_capacity(nid, vmid, physical=bool(res.get("physical_cores")))
+                 if nid else 0)
+    holders = []
+    for v, cores in sorted((core_pool.allocations_by_vmid(nid) if nid else {}).items()):
+        if v != vmid:
+            holders.append({"vmid": v, "hostname": (db_get_container(v) or {}).get("hostname"),
+                            "cores": len(cores)})
+    return {"items": active_items(spec, params), "current": current, "wanted": wanted,
+            "available": available, "fits": wanted <= available, "forced": forced,
+            "holders": holders}
+
+
+def apply_place_hot(vmid):
+    """Give a RUNNING container the place its level now says, without recreating it (2026-11-07:
+    the place follows the level). → (ok, detail).
+
+    On air → its dedicated cores are reserved and set with `docker update --cpuset-cpus`; any
+    other level → its cores are released and it is put back on the shared pool. Same hot gesture
+    as a calibration guarantee (`etalonnage.garantir`): changing a level must not cut a live
+    signal. Refused, and nothing changed, when the node cannot give the cores — the message says
+    how many are free, the container keeps its place. A stopped container is left alone: its next
+    deployment builds its place from the level. The cpuset is part of the spec signature, so the
+    next deployment recreates the container — as after a guarantee."""
+    from . import core_pool, node_driver
+    c = db_get_container(vmid) or {}
+    node = db_get_node(c.get("node_id")) if c.get("node_id") else None
+    if not c or not node:
+        return False, "container or node unknown"
+    name = (c.get("docker_name") or "").strip()
+    if c.get("status") != "running" or not name:
+        return True, "deferred"
+    t = _type_of(c)
+    if is_mtl_type(t):
+        return True, "engine"
+    res = effective_resources(t, c)
+    nid = node["id"]
+    have = core_pool.allocated_for(nid, vmid)
+    if res.get("pin") and res.get("cores") and str(res.get("priority") or "") != "batch":
+        n = items_cores(res, _params_of(c)) or int(res["cores"])
+        if have == n:
+            return True, "unchanged"
+        if have:
+            core_pool.release_cores(vmid)
+        cpuset = core_pool.allocate_cores(nid, vmid, n, physical=bool(res.get("physical_cores")))
+        if not cpuset:
+            return False, {"error": "no_room", "name": node.get("name"), "need": n,
+                           "available": core_pool.free_dedicated_capacity(nid, vmid)}
+        rc, out, err = node_driver.host_exec(
+            node, "docker update --cpuset-cpus=%s %s" % (shlex.quote(cpuset), shlex.quote(name)), timeout=60)
+        if rc != 0:
+            core_pool.release_cores(vmid)       # never a reservation counted but not set
+            return False, ((err or out) or "docker update rc=%s" % rc).strip()[-200:]
+        db_update_resources(vmid, pinned_cores=cpuset)
+        core_pool.reapply_shared_after_reservation(nid, vmid, cpuset)
+        return True, cpuset
+    if not have:
+        return True, "unchanged"
+    core_pool.release_cores(vmid)
+    free, _ = core_pool.partage_disponible(nid, exclure_vmid=vmid)
+    cpuset = core_pool.fmt_cpuset(free) or (node.get("compute_cpuset") or "")
+    if cpuset:
+        rc, out, err = node_driver.host_exec(
+            node, "docker update --cpuset-cpus=%s %s" % (shlex.quote(cpuset), shlex.quote(name)), timeout=60)
+        if rc != 0:
+            log.warning("apply_place_hot %s: shared cpuset not set (%s)", vmid, (err or out or "")[-200:])
+    db_update_resources(vmid, pinned_cores="")
+    core_pool.after_cores_released(nid)
+    return True, cpuset
+
+
 def pyramide_input_load(params):
     """(count, load_1080p) des sources CÂBLÉES d'un conteneur (input_0..input_{n_inputs-1} non vides).
     `load` = Σ(w*h)/(1920*1080) — pondération PAR RÉSOLUTION : un worker sur 4K pèse ~4× un 1080p.
@@ -572,6 +809,7 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     # Image selon la variante déclarée par le plugin : 'media' (bobi-media, GStreamer+ffmpeg) →
     # node.media_image ; sinon 'compute' (bobi-compute) → node.compute_image.
     variant = plugins.image_variant(deploy_type) if deploy_type else "compute"
+    _refus_capacite = None     # clé d'alerte à rendre SI l'on va créer — cf. le pavé plus bas
     image = node.get("media_image") if variant == "media" else node.get("compute_image")
     # Variante 'gui' (plugin_gui : interfaces natives LV2) : fine couche bobi-gui sur bobi-compute, construite
     # sur le nœud qui la porte (node_only) ; tag commun dans le réglage `gui_image`. Absent : refus explicite
@@ -590,11 +828,14 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
         # with nothing to say so, and the alert would show up as its raw code.
         _cle, _reglage = (("alert.deploy.compute.sans_capacite_gui", "gui_image") if variant == "gui"
                           else ("alert.deploy.compute.sans_capacite_decklink", "decklink_image"))
-        if variant not in node_driver.node_capabilities(node):
-            db_add_alert(_cle, "error", vmid=vmid,
-                         node_id=node.get("id"), kind="deploy",
-                         params={"vmid": vmid, "n": node.get("name"), "t": deploy_type})
-            return False
+        # ⚠⚠ LE REFUS EST *DIFFÉRÉ* JUSQU'À SAVOIR SI L'ON CRÉE VRAIMENT (2026-11-02). Rendu ici,
+        #    il tombait 440 lignes AVANT `_conteneur_deja_conforme` — donc aussi sur un simple
+        #    repush de script vers un conteneur qui tourne déjà avec la bonne spec, où aucune
+        #    image n'est utilisée et où il n'y a par construction rien à refuser. Conséquence
+        #    mesurée sur la Z8 (le testeur, 2026-11-02) : tout changement de source d'une sortie SDI
+        #    était rejeté sur un nœud sans la capacité, alors que le conteneur tournait.
+        #    La capacité conditionne l'IMAGE ; elle ne conditionne donc que le `docker run`.
+        _refus_capacite = _cle if variant not in node_driver.node_capabilities(node) else None
         image = node.get(_reglage) or (_st.get(_reglage) or "").strip() or None
     # Cas spécial passerelle WebRTC : image dédiée bobi-webrtc (MediaMTX pré-baké). Ce n'est pas un
     # plugin du registre (donc pas de variante) → image lue du setting `webrtc_image` (défaut
@@ -696,7 +937,7 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     # plugins temps réel (player/recorder, pinnés).
     # Profil EFFECTIF : manifeste, sauf cœurs/mémoire réglés pour CE conteneur (cf. effective_resources).
     res = effective_resources(deploy_type, c)
-    _cores_force = c.get("cores_override") is not None
+    _cores_force = cores_forced(c)
     # Profil de ressources : on construit À LA FOIS la chaîne d'options legacy (ssh_run) ET le
     # dict structuré (agent-nœud), à partir de la même logique → pas de divergence.
     resources = {}
@@ -731,7 +972,15 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
             _mine = core_pool.allocated_for(node["id"], vmid)
             if _mine and _mine != want:
                 core_pool.release_cores(vmid)
-        if per > 0:
+        _by_items = None if _cores_force else items_cores(res, _p)
+        if _by_items is not None:
+            # Sized by active items (DeckLink connectors). Same release rule as above: the count
+            # changed, the old reservation must go before `allocate_cores` (idempotent) is asked.
+            want = want_floor = _by_items
+            _mine = core_pool.allocated_for(node["id"], vmid)
+            if _mine and _mine != want:
+                core_pool.release_cores(vmid)
+        elif per > 0:
             _, load = pyramide_input_load(_p)
             mine = core_pool.allocated_for(node["id"], vmid)
             # Capacité sous la règle STRICTE (aucun frère HT d'un autre dédié, 30/10), les cœurs
@@ -781,14 +1030,21 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     _t_eff = deploy_type or _type_of(c)
     if prefer_numa is None and _t_eff in core_pool.PREFERE_SOCKET_MEDIA:
         prefer_numa = core_pool.numa_of_media_nic(node["id"])
-    if is_batch and core_pool.allocated_for(node["id"], vmid):
-        # Repassé de « réservé » à « partagé » : `allocate_cores` n'est plus appelé (want=0), et
-        # les cœurs dédiés resteraient comptés à ce conteneur — réservés pour rien, refusés aux
-        # autres. On les rend avant de calculer le pool partagé.
+    if prefer_numa is None and res.get("io_pci_vendor"):
+        # Node I/O (DeckLink): on the socket of ITS card, which DMAs the frames there.
+        prefer_numa = core_pool.numa_of_pci_vendor(node["id"], res["io_pci_vendor"])
+    _physical = bool(res.get("physical_cores"))
+    if want <= 0 and core_pool.allocated_for(node["id"], vmid):
+        # No dedicated cores wanted any more (switched to shared, guarantee reset to the manifest):
+        # `allocate_cores` is not called, so the old reservation would stay counted to this
+        # container — reserved for nobody, refused to everyone else. Release it before computing
+        # the shared pool. Was limited to `batch` until 2026-11-07, which left a reset guarantee
+        # orphaned.
         core_pool.release_cores(vmid)
     try:
         cpuset, dedicated = core_pool.effective_cpuset(node["id"], vmid, want,
-                                                       prefer_numa=prefer_numa)
+                                                       prefer_numa=prefer_numa,
+                                                       physical=_physical)
         if not dedicated and want_floor and want > want_floor:
             # Les cœurs EN PLUS n'existent pas dans le pool : garder au moins le cœur dédié de base plutôt que de
             # replier tout le conteneur sur le pool partagé (pire qu'avant le réglage). Dit, pas tu : le conteneur
@@ -797,7 +1053,8 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
                          node_id=node.get("id"), kind="resource",
                          params={"vmid": vmid, "n": node["name"], "want": want, "base": want_floor})
             cpuset, dedicated = core_pool.effective_cpuset(node["id"], vmid, want_floor,
-                                                           prefer_numa=prefer_numa)
+                                                           prefer_numa=prefer_numa,
+                                                           physical=_physical)
     except core_pool.PoolSature as e:
         db_add_alert("alert.deploy.compute.pool_sature", "error", vmid=vmid,
                      node_id=node.get("id"), kind="deploy",
@@ -1056,6 +1313,16 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
             ip = c.get("docker_ip") or alloc_ip or ""
         else:
             recree = True
+            if _refus_capacite:
+                # ICI, et pas au calcul de l'image : c'est le seul point où l'absence de la
+                # capacité a une conséquence — l'image n'existe que sur les nœuds qui la portent
+                # (cible `node_only` du build), et `docker run` échouerait sur « image
+                # introuvable » sans nommer la cause.
+                db_add_alert(_refus_capacite, "error", vmid=vmid,
+                             node_id=node.get("id"), kind="deploy",
+                             params={"vmid": vmid, "n": node.get("name"), "t": deploy_type})
+                db_update_spec_sig(vmid, None)
+                return False
             ok, r = node_driver.run_container(node, spec)   # docker auto-crée le dossier de bind média
             if not ok:
                 db_add_alert("alert.deploy.compute.agent_echoue", "error", vmid=vmid,

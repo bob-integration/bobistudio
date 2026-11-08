@@ -203,7 +203,24 @@ def registry_context():
     err = check_vmid_access(vmid, "viewer")
     if err:
         return err
-    return jsonify(mr.container_context(vmid))
+    from ..auth import current_user
+    u = current_user() or {}
+    # `project_filter` : le choix de CET utilisateur (filtre « projet » posé à l'ouverture ou non).
+    return jsonify(dict(mr.container_context(vmid), project_filter=mr.user_pref(u.get("id"), "project_filter")))
+
+
+@bp.route("/api/media/prefs", methods=["PUT"])
+@require_login
+def registry_user_prefs():
+    """{clé: valeur} — préférences de la bibliothèque de l'utilisateur connecté (mr.USER_PREFS)."""
+    from ..auth import current_user
+    u = current_user() or {}
+    b = request.get_json(silent=True) or {}
+    try:
+        out = {k: mr.set_user_pref(u["id"], k, v) for k, v in b.items()}
+    except (ValueError, KeyError) as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify(dict(out, ok=True))
 
 
 @bp.route("/api/media/search", methods=["POST"])
@@ -480,6 +497,109 @@ def registry_asset_delete(aid):
     return jsonify({"ok": True})
 
 
+# ─── Playlists (2026-11-07) : fiches de type « playlist » (cf. mr.playlist_*) ────────────────────
+# Enregistrer la playlist d'un player est un geste d'EXPLOITATION : permis à qui gère les médias OU
+# pilote les plugins (l'exploitant enregistrait déjà sa playlist dans le conteneur). Importer un
+# fichier reste un geste de gestion des médias.
+def _may_write_playlist():
+    from ..auth import has_perm
+    if has_perm("media.manage") or has_perm("plugins.operate"):
+        return None
+    return jsonify({"ok": False, "error": "forbidden", "missing_permission": "media.manage"}), 403
+
+
+def _playlist_target(b):
+    """(projet, bin, erreur) d'une playlist créée ou importée. `vmid` (depuis un player) : le projet
+    du conteneur. Un utilisateur à portée restreinte ne crée rien HORS projet : il ne le verrait plus."""
+    pid, bid, vmid = _int(b.get("project_id")), _int(b.get("bin_id")), _int(b.get("vmid"))
+    if vmid is not None:
+        from ..auth import check_vmid_access
+        err = check_vmid_access(vmid, "viewer")
+        if err:
+            return None, None, err
+        pid = pid if pid is not None else mr.container_context(vmid).get("project_id")
+    if pid is None and _scope() is not None:
+        return None, None, (jsonify({"ok": False, "error": "projet requis : hors projet, la playlist ne vous serait plus visible"}), 400)
+    err = (_project_denied(pid) if pid is not None else None) or (_bin_hidden(bid, need="edit") if bid is not None else None)
+    return pid, bid, err
+
+
+@bp.route("/api/media/playlists/<aid>")
+@require_login
+def registry_playlist(aid):
+    p = mr.playlist_get(aid, scope=_scope())
+    return (jsonify(p), 200) if p else (jsonify({"error": "playlist inconnue"}), 404)
+
+
+@bp.route("/api/media/playlists", methods=["POST"])
+@require_login
+def registry_playlist_create():
+    """{name, items, project_id?, bin_id?, vmid?} → {ok, id}. `vmid` (enregistrer depuis un player) :
+    la playlist entre dans le PROJET du conteneur — sans quoi un utilisateur à portée restreinte
+    ne la verrait plus, ni ne pourrait la réenregistrer."""
+    err = _may_write_playlist()
+    if err:
+        return err
+    b = request.get_json(silent=True) or {}
+    pid, bid, err = _playlist_target(b)
+    if err:
+        return err
+    try:
+        aid = mr.playlist_create(b.get("name"), b.get("items") or [], project_id=pid, bin_id=bid)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "id": aid})
+
+
+@bp.route("/api/media/playlists/<aid>", methods=["PUT"])
+@require_login
+def registry_playlist_save(aid):
+    """{items, name?} : remplace le contenu (enregistrer depuis un player, éditer la fiche)."""
+    err = _may_write_playlist() or _hidden(aid, need="edit")
+    if err:
+        return err
+    b = request.get_json(silent=True) or {}
+    try:
+        mr.playlist_save(aid, b.get("items") or [], name=b.get("name"))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "id": aid})
+
+
+@bp.route("/api/media/playlists/<aid>/export")
+@require_login
+def registry_playlist_export(aid):
+    d = mr.playlist_export(aid, scope=_scope())
+    if not d:
+        return jsonify({"error": "playlist inconnue"}), 404
+    import json as _json
+    import re as _re
+    fn = (_re.sub(r'[\\/:*?"<>|]+', "_", d["name"]).strip() or "playlist") + ".playlist.json"
+    return Response(_json.dumps(d, ensure_ascii=False, indent=1), mimetype="application/json",
+                    headers={"Content-Disposition": "attachment; filename*=UTF-8''%s" % _quote(fn)})
+
+
+@bp.route("/api/media/playlists/import", methods=["POST"])
+@require_perm("media.manage")
+def registry_playlist_import():
+    """{data, name?, project_id?, bin_id?, vmid?} — `data` : un export (bobi-playlist) ou un fichier de
+    playlist du player. `vmid` : rangée dans le projet du conteneur (cf. création). → {ok, id, report}."""
+    b = request.get_json(silent=True) or {}
+    pid, bid, err = _playlist_target(b)
+    if err:
+        return err
+    try:
+        aid, rep = mr.playlist_import(b.get("data"), name=b.get("name"), project_id=pid, bin_id=bid)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    return jsonify({"ok": True, "id": aid, "report": rep})
+
+
+def _quote(s):
+    from urllib.parse import quote
+    return quote(s, safe="")
+
+
 @bp.route("/api/media/assets/<aid>/default_version", methods=["POST"])
 @require_perm("media.manage")
 def registry_asset_default_version(aid):
@@ -538,6 +658,27 @@ def registry_asset_projects(aid):
         return err
     mr.link_project(aid, pid, on=body.get("on", True) is not False)
     return jsonify({"ok": True})
+
+
+@bp.route("/api/media/projects/<int:pid>/assets", methods=["POST"])
+@require_perm("media.manage")
+def registry_project_assets(pid):
+    """Links (or, with `on: false`, unlinks) a SELECTION of media to a project. Same rights as one
+    medium: the project must be the user's, each medium owned (others are skipped and counted)."""
+    body = request.get_json(silent=True) or {}
+    aids = body.get("asset_ids")
+    if not isinstance(aids, list) or not aids or not all(isinstance(a, str) for a in aids):
+        return jsonify({"ok": False, "error": "asset_ids requis"}), 400
+    from ..database import db_get_project
+    if not db_get_project(pid):
+        return jsonify({"ok": False, "error": "projet introuvable"}), 404
+    err = _project_denied(pid)
+    if err:
+        return err
+    scope = _scope()
+    allowed = [a for a in dict.fromkeys(aids) if _hidden(a, scope, need="owner") is None]
+    changed = mr.link_projects(allowed, pid, on=body.get("on", True) is not False)
+    return jsonify({"ok": True, "changed": changed, "skipped": len(set(aids)) - len(allowed)})
 
 
 @bp.route("/api/media/scan", methods=["GET", "POST"])

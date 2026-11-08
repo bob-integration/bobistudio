@@ -1555,3 +1555,9 @@ input[type="checkbox"].ctl-switch[disabled] { opacity: 0.5; cursor: not-allowed;
 .bek-verrous { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 /* Rectangle de sélection d'un éditeur dessiné en DOM (scope, Scénario). */
 .bek-rect { position: absolute; border: 1px dashed var(--accent, #6aa0ff); background: color-mix(in srgb, var(--accent, #6aa0ff) 12%, transparent); pointer-events: none; }
+/* Liste filtrée (MXLControls.listFilter, 07/11) : la barre reprend .filter-bar & co. de base.css
+ * (dessin unique, celui de la page Conteneurs) ; seuls l'élément racine et le message « rien ne
+ * correspond » sont propres au contrôle. */
+.ctl-filter .filter-search { flex: 1 1 240px; min-width: 0; max-width: 420px; }
+.ctl-filter-empty { margin: 0 0 var(--space-3); }
+[hidden].ctl-filter-empty { display: none; }

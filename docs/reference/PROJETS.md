@@ -119,6 +119,16 @@ les autres projets actifs. **Décharger** = `detruire_containers_projet` (existe
    débouncé. Décharger ne perd jamais rien. `project_versions` conserve un **historique**
    (rétention N versions auto + versions **nommées** illimitées, ex. « avant émission »)
    avec retour arrière = charger une version comme un snapshot.
+7. **Environnement** (2026-11-07, `app/project_environment.py`) : les services partagés qu'un
+   projet utilise sans les posséder. Le manifeste les déclare (`environment.scope`) :
+   `partitioned` — dans un projet, il ne sert QUE ce projet (transcodeur : la ferme ne lui
+   confie que les travaux de son projet) ; `shared` — il sert tous les projets, mais le projet
+   qui le porte le détruit au déchargement (pyramide, interface de plugins). Un rappel s'affiche
+   quand on en met un dans un projet. À l'enregistrement, ceux que le projet utilise hors de
+   lui sont relevés (table `project_environment`, réglages utilisateur seulement) et voyagent
+   dans l'export (`environment`). Au rappel, ceux qui manquent sur le cluster sont proposés à la
+   création, HORS projet ; un projet d'avant le relevé retombe sur `environment.wanted_by` (un
+   projet avec des médias réclame un transcodeur).
 
 ## 5. Frontière du projet : sources/destinations virtuelles (ports)
 

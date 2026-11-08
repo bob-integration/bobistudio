@@ -1,0 +1,157 @@
+# Runtime images — the ONLY step in this project that actually runs Docker.
+#
+# WHY. An outside contributor could not build the product from a source archive and spent six
+# weeks on it (issue #1, 2026-09-23). The defect: the shared base image `bobi-compute` staged
+# sources belonging to an OPTIONAL plugin, so nobody without that plugin could build anything.
+# Nothing could have caught it — the offline suite never assembles a build context, and `ci.yml`
+# never runs Docker. Having the CI build the images was the reporter's own suggestion.
+#
+# NOT IN `ci.yml`, ON PURPOSE. `ci.yml` is deliberately cheap and runs on every push; a real
+# image build is tens of minutes. This workflow therefore runs only when an image context could
+# have changed (the paths below), on a merge to main, nightly, or on demand. A `paths:` filter
+# cannot live on a job, only on a workflow — hence a separate file rather than a job with an `if`.
+#
+# WHAT IS MEASURED, AND WHAT IS NOT. The job builds every image whose build context this tree
+# can assemble. An image that is the runtime of a plugin absent from the tree is reported
+# `NOT CHECKED` and stays green: that is the normal state of a public checkout, not a
+# regression. `mtl` is left out by default — it clones MTL and builds DPDK, which does not fit
+# a runner's budget; it is announced in the same vocabulary rather than passed over in silence,
+# and `workflow_dispatch` can ask for it.
+name: images
+
+on:
+  workflow_dispatch:
+    inputs:
+      images:
+        description: "Images to build (comma-separated, empty = all)"
+        default: ""
+      skip:
+        description: "Images to leave out"
+        default: "mtl"
+      timeout:
+        description: "Per-image build timeout, seconds"
+        default: "3600"
+  schedule:
+    # Nightly, so a break in an image context is found within a day even when nothing touched
+    # the paths below (a submodule bump, a Debian base image change, a vcpkg or libfabric ref).
+    - cron: "17 3 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "plugins/*/Dockerfile"
+      - "plugins/*/image/**"
+      - "plugins/*/docker/**"
+      - "plugins/*/patches/**"
+      - "plugins/*/meta.json"
+      - "script_templates/**"
+      - "licenses/**"
+      - "app/routes/images.py"
+      - "tools/build_images_ci.py"
+      - ".github/workflows/images.yml"
+  pull_request:
+    # ⚠ DUPLICATED, not a YAML anchor: GitHub Actions rejects anchors and aliases in a workflow
+    # file. The two lists must be kept identical by hand.
+    paths:
+      - "plugins/*/Dockerfile"
+      - "plugins/*/image/**"
+      - "plugins/*/docker/**"
+      - "plugins/*/patches/**"
+      - "plugins/*/meta.json"
+      - "script_templates/**"
+      - "licenses/**"
+      - "app/routes/images.py"
+      - "tools/build_images_ci.py"
+      - ".github/workflows/images.yml"
+
+concurrency:
+  # One image build per ref. They are long and expensive; a newer push supersedes the older run.
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # THE NIGHTLY RUN ONLY HAPPENS IN THE PUBLISHED REPOSITORY (decision 2026-11-02). Minutes are
+    # free on a public repository and billed on ours, and an hour of build every night, every
+    # night, is not what this guard is worth to us: a pull request and an on-demand run cover the
+    # work repository, where the contexts actually change. The published repository is also the
+    # one where a break must not survive unnoticed — it is the tree an outside contributor builds.
+    #
+    # ⚠ THE TWO NAMES DIFFER BY A SINGLE DOT: the work repository is `bob-integration/bobi.studio`
+    # and the published one `bob-integration/bobistudio`. Written as it is, this condition skips
+    # the nightly run anywhere other than the published repository — including a fork.
+    if: github.event_name != 'schedule' || github.repository == 'bob-integration/bobistudio'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # Same contract as ci.yml: the submodules are private repositories declared in https,
+          # so an org PAT in SUBMODULES_TOKEN is enough — the action re-injects it as an HTTP
+          # header that the submodules inherit. In the published repository the secret does not
+          # exist and nearly all submodules are deregistered: the fallback is then correct, and
+          # the images that need a plugin report NOT CHECKED.
+          token: ${{ secrets.SUBMODULES_TOKEN || github.token }}
+
+      # No disk juggling here, and that is a MEASUREMENT, not an oversight. The received wisdom is
+      # that a runner has ~14 GB free and that the pre-installed toolchains must be deleted first;
+      # this workflow started that way. Measured on its first real run (2026-11-02, public
+      # repository, run 41401381117): 145 GB of disk, 88 GB free BEFORE the build and 91 GB after.
+      # The deletion freed 18 GB nobody needed and cost 77 s on every run, so it is gone. Peak
+      # usage is printed at the end of the job — if a build ever dies on "no space left on
+      # device", that is where to look before adding the step back.
+
+      - name: Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Dependencies
+        # The build script calls the PRODUCT's own staging (app.routes.images._stage_tar) rather
+        # than a copy of it, so it imports app/ and needs its requirements. A context assembled
+        # differently from the way the orchestrator assembles it would prove nothing.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install path (/opt/bobistudio)
+        # app/ reads absolute /opt/bobistudio paths at import (LOG_PATH, DB_PATH); same symlink
+        # as in ci.yml.
+        run: |
+          sudo mkdir -p /opt
+          sudo ln -sfn "$GITHUB_WORKSPACE" /opt/bobistudio
+
+      - name: Throwaway database (never the production one)
+        # Measured: importing app.routes alone creates no database — only `import main` does,
+        # which this job never performs. The override costs two lines and removes the question,
+        # by the product's own mechanism (config_local.py, read by app/config.py before
+        # PRODUCTION_DB_PATH is frozen). `>>`, not `>`: the file may already exist.
+        run: printf 'DB_PATH = "%s/ci-bobistudio.db"\n' "$RUNNER_TEMP" >> config_local.py
+
+      - name: Build contexts (no Docker)
+        # Staging alone, first and separately: it is the cheap half, it is where issue #1 lived,
+        # and a failure here names a file and a list to fix instead of a buildkit mount path.
+        run: python tools/build_images_ci.py --stage-only
+
+      - name: Build the images
+        run: |
+          python tools/build_images_ci.py \
+            ${{ github.event.inputs.images && format('--only {0}', github.event.inputs.images) || '' }} \
+            --skip "${{ github.event.inputs.skip || 'mtl' }}" \
+            --timeout "${{ github.event.inputs.timeout || '3600' }}"
+
+      - name: What was built
+        if: always()
+        run: |
+          # ⚠ PRINTED RAW, WITHOUT A FILTER, AND THE REASON IS MEASURED. The first version piped
+          # this through `docker images --format '   {{.Repository}}:{{.Tag}}  {{.Size}}'` and a
+          # `grep '^   bobi-'`, with an `|| echo "no bobi-* image"` fallback — which is exactly
+          # what run 41401381117 printed, right after building and tagging four images. The runner
+          # serves the containerd image store, whose listing has different columns (IMAGE / ID /
+          # DISK USAGE / CONTENT SIZE, and a "use --format for machine-readable output" warning):
+          # the old field names rendered empty, so nothing matched and the fallback fired. Run
+          # 41403397424 lists the four images plainly. A step whose only job is to report what
+          # exists must not be able to announce the opposite of the build above it.
+          docker image ls
+          df -h /

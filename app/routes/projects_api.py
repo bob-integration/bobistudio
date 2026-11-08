@@ -18,7 +18,8 @@ from ..auth import (require_login, require_perm, require_project_role,
                     require_global_access, PROJECT_ROLES, PROJECT_ROLE_LABELS)
 from ..database import (db_get_layouts, db_save_layout, db_update_layout, db_delete_layout,
                       db_get_projects, db_save_project, db_delete_project,
-                      db_import_project, db_get_project,
+                      db_import_project, db_get_project, db_project_event,
+                      db_set_project_info,
                       db_project_members, db_set_project_member,
                       db_remove_project_member, db_get_user_by_id,
                       db_project_views, db_get_view, db_create_view,
@@ -213,6 +214,43 @@ def project_members_set(pid):
 def project_members_remove(pid, uid):
     db_remove_project_member(pid, uid)
     return jsonify({"status": "ok", "members": db_project_members(pid)})
+
+@bp.route("/api/projects/<int:pid>/resources", methods=["GET"])
+@require_project_role("viewer")
+def project_resources_view(pid):
+    """Is this project guaranteed, where are its cores, what could change: the Resources window
+    (cf. `project_resources.view`). Read only."""
+    if not db_get_project(pid):
+        return jsonify({"error": "projet introuvable"}), 404
+    from .. import project_resources
+    return jsonify(project_resources.view(pid))
+
+
+@bp.route("/api/projects/<int:pid>/apply", methods=["POST"])
+@require_perm("containers.deploy")
+def project_apply_plan(pid):
+    """Apply a resource plan: [{vmid, cores, node_id}] — resize in place (hot) or move (recreation,
+    confirmed by the interface). Refused as a whole (409) when a node lacks room; otherwise runs in
+    the background, followed with GET on the same path. With `check: true`, only checks the plan
+    (`check_plan`) and applies nothing. See `project_resources`."""
+    if not db_get_project(pid):
+        return jsonify({"error": "projet introuvable"}), 404
+    from .. import project_resources
+    body = request.json or {}
+    if body.get("check"):
+        # Check only (a drop on the node map): the same refusals, nothing applied.
+        ok, res = project_resources.check_plan(pid, body.get("changes") or [])
+        return jsonify({"ok": ok, **res}), (200 if ok else 409)
+    ok, res = project_resources.apply_plan(pid, body.get("changes") or [])
+    return jsonify({"ok": ok, **res}), (202 if ok else 409)
+
+
+@bp.route("/api/projects/<int:pid>/apply", methods=["GET"])
+@require_project_role("viewer")
+def project_apply_status(pid):
+    from .. import project_resources
+    return jsonify(project_resources.plan_status(pid))
+
 
 @bp.route("/api/projects/<int:pid>/summary", methods=["GET"])
 @require_project_role("viewer")
@@ -729,7 +767,14 @@ def sauvegarder_projet():
         os.makedirs(media_path, exist_ok=True)
     except Exception as e:
         return jsonify({"error": f"impossible de créer le dossier média : {e}"}), 500
-    pid = db_save_project(name, vmids, media_path=media_path)
+    pid = db_save_project(name, vmids, media_path=media_path,
+                          owner_id=(current_user() or {}).get("id"))
+    if pid and (data.get("description") or data.get("tags")):
+        db_set_project_info(pid, description=data.get("description"),
+                            tags=data.get("tags") if isinstance(data.get("tags"), list) else None)
+    if pid:
+        from .. import project_environment
+        project_environment.capture(pid, (db_get_project(pid) or {}).get("snapshot") or [])
     return jsonify({"status": "ok", "id": pid})
 
 @bp.route("/api/projects/<int:pid>/export", methods=["GET"])
@@ -747,6 +792,8 @@ def exporter_projet(pid):
         "schema": "bobi.studio.project.v3",
         "name": p["name"],
         "created_at": p.get("created_at"),
+        "description": p.get("description") or "",
+        "tags": p.get("tags") or [],
         "snapshot": p.get("snapshot") or [],
         "views": [{"name": v["name"], "visibility": v.get("visibility") or "private",
                    "edit_shared": bool(v.get("edit_shared")), "layout": v.get("layout") or []}
@@ -758,6 +805,9 @@ def exporter_projet(pid):
     from ..projects import export_ports
     payload["schema"] = "bobi.studio.project.v4"
     payload.update(export_ports(pid))
+    # The shared services the project used on its cluster (proposed at recall on another one).
+    from .. import project_environment
+    payload["environment"] = project_environment.recorded(pid) or []
     safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in p["name"]) or f"projet-{pid}"
     if request.args.get("media") in ("1", "true"):
         plan = mr.project_archive_plan(pid)
@@ -826,7 +876,9 @@ def importer_projet():
     if not name:
         return refuse("nom manquant")
 
-    pid = db_import_project(name, snapshot)
+    pid = db_import_project(name, snapshot, owner_id=(current_user() or {}).get("id"))
+    db_set_project_info(pid, description=raw.get("description") if isinstance(raw.get("description"), str) else None,
+                        tags=raw.get("tags") if isinstance(raw.get("tags"), list) else None)
     # Dossier média garanti dès l'import (sinon les containers du projet retomberaient
     # sur la racine partagée) + vues embarquées (schema v2, importeur = propriétaire).
     from ..projects import _ensure_media_dir
@@ -853,6 +905,9 @@ def importer_projet():
         from ..projects import import_ports
         out["ports"] = import_ports(pid, raw["ports"], raw.get("port_links")
                                     if isinstance(raw.get("port_links"), list) else [], name, snapshot)
+    if isinstance(raw.get("environment"), list):
+        from .. import project_environment
+        project_environment.save(pid, raw["environment"])
     if tar_path:
         threading.Thread(target=mr.project_import_archive, daemon=True, name=f"proj-import-{pid}",
                          args=(pid, tar_path, int(request.form["node_id"]), media["ids"])).start()
@@ -879,7 +934,16 @@ def preview_restore(pid):
     # Mêmes hostnames/SHM que le rappel réel (préfixés par le nom du projet),
     # sinon le pré-vol détecte de faux conflits avec les originaux.
     snapshot = _prefix_snapshot(snapshot, p["name"])
-    return jsonify(planifier_restore(snapshot))
+    out = planifier_restore(snapshot)
+    try:
+        from ..projects import plan_placement
+        out["placement"] = plan_placement(snapshot)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("restore_preview #%s: placement plan failed: %s", pid, e)
+    from .. import project_onair
+    out["onair"] = project_onair.summary(pid)
+    return jsonify(out)
 
 # Flag d'interruption du restore (op globale : un seul restore verbeux à la fois).
 _restore_abort = threading.Event()
@@ -899,6 +963,11 @@ def restaurer(pid):
     data       = request.json or {}
     only_vmids = data.get("only_vmids")   # None = tout ; liste = reprise des échecs
     preserve_uuid = bool(data.get("preserve_uuid"))   # True = déplacement (conserver l'identité)
+    placement  = data.get("placement") if isinstance(data.get("placement"), dict) else None   # {vmid: node_id}
+    onair      = bool(data.get("onair"))      # « Reprendre l'état d'antenne » (unticked by default)
+
+    from ..audit import acteur
+    actor = acteur()
 
     def restore_iter():
         _restore_abort.clear()
@@ -911,7 +980,11 @@ def restaurer(pid):
                     progress=lambda m: q.put(m),
                     should_abort=lambda: _restore_abort.is_set(),
                     only_vmids=only_vmids,
-                    preserve_uuid=preserve_uuid)
+                    preserve_uuid=preserve_uuid,
+                    placement=placement,
+                    onair=onair)
+                if (box["summary"] or {}).get("ok"):
+                    db_project_event(pid, "started", actor)
             except Exception as e:
                 box["err"] = str(e)
             finally:
@@ -951,8 +1024,141 @@ def detruire_projet_containers(pid):
     # ressortirait tel quel au milieu d'une phrase traduite (la phrase, elle, dit déjà « projet »).
     _journal("alert.audit.detruire_conteneurs_projet",
              cible=(db_get_project(pid) or {}).get("name") or f"#{pid}", kind="deploy")
-    threading.Thread(target=detruire_containers_projet, args=(pid,)).start()
+    from ..audit import acteur
+    actor = acteur()
+
+    def _stop():
+        detruire_containers_projet(pid)
+        db_project_event(pid, "stopped", actor)
+    threading.Thread(target=_stop).start()
     return jsonify({"status": "destruction_en_cours"})
+
+
+@bp.route("/api/project_versions/policy", methods=["GET"])
+@require_login
+def project_versions_policy_get():
+    from .. import project_versions as pv
+    return jsonify({"policy": pv.current(), "default": pv.DEFAULT_POLICY, "modes": list(pv.MODES)})
+
+
+@bp.route("/api/project_versions/preview", methods=["POST"])
+@require_perm("settings.edit")
+def project_versions_policy_preview():
+    from .. import project_versions as pv
+    try:
+        return jsonify(pv.preview((request.json or {}).get("policy")))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@bp.route("/api/project_versions/policy", methods=["POST"])
+@require_perm("settings.edit")
+def project_versions_policy_set():
+    """Save the retention policy and apply it to every project at once (the editor has shown how
+    many versions go, and asked)."""
+    from .. import project_versions as pv
+    try:
+        policy = pv.save((request.json or {}).get("policy"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True, "policy": policy, "deleted": pv.apply_all(policy)})
+
+
+@bp.route("/api/projects/<int:pid>/containers/<int:vmid>", methods=["DELETE"])
+@require_perm("projects.manage")
+def project_remove_saved_container(pid, vmid):
+    """Remove a saved (not running) container from a project. A running one is detached instead."""
+    from ..database import db_get_container
+    from ..projects import remove_saved_container
+    if db_get_container(vmid):
+        return jsonify({"error": "container running: detach it instead", "error_code": "running"}), 409
+    out = remove_saved_container(pid, vmid)
+    if out is None:
+        return jsonify({"error": "container not in this project"}), 404
+    if out.get("skipped"):
+        return jsonify({"error": "project is starting or stopping", "error_code": "busy"}), 409
+    return jsonify({"ok": True, **out})
+
+
+@bp.route("/api/projects/<int:pid>", methods=["PATCH"])
+@require_perm("projects.manage")
+def project_info_update(pid):
+    """Project sheet: description and tags (the « modified » stamp is set by the hook below)."""
+    if not db_get_project(pid):
+        return jsonify({"error": "projet introuvable"}), 404
+    data = request.json or {}
+    tags = data.get("tags")
+    if tags is not None and not isinstance(tags, list):
+        return jsonify({"error": "tags: list expected"}), 400
+    db_set_project_info(pid, description=data.get("description"), tags=tags)
+    return jsonify({"ok": True, "project": {k: db_get_project(pid).get(k) for k in ("description", "tags")}})
+
+
+# On-air state (app/project_onair.py): what is saved, how often, and « save now ».
+@bp.route("/api/projects/<int:pid>/onair", methods=["GET"])
+@require_project_role("viewer")
+def project_onair_get(pid):
+    from .. import project_onair
+    out = project_onair.summary(pid)
+    return (jsonify(out), 200) if out is not None else (jsonify({"error": "projet introuvable"}), 404)
+
+
+@bp.route("/api/projects/<int:pid>/onair", methods=["PATCH"])
+@require_perm("projects.manage")
+def project_onair_set(pid):
+    from .. import project_onair
+    if not db_get_project(pid):
+        return jsonify({"error": "projet introuvable"}), 404
+    try:
+        project_onair.set_interval(pid, (request.json or {}).get("capture_s"))
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(project_onair.summary(pid))
+
+
+@bp.route("/api/projects/<int:pid>/onair/capture", methods=["POST"])
+@require_project_role("operator")
+def project_onair_capture(pid):
+    from .. import project_onair
+    if not db_get_project(pid):
+        return jsonify({"error": "projet introuvable"}), 404
+    res = project_onair.capture(pid, alert=False)
+    return jsonify(dict(res, summary=project_onair.summary(pid)))
+
+
+# « Last modified » of a project: every successful human write under /api/projects/<pid>/…,
+# except what is not a change of the project itself — start and stop (they have their own stamp),
+# exporting, naming or deleting a version (a rollback IS a change), deleting the project, reading
+# what is on air.
+_NOT_A_CHANGE = ("/restore", "/destroy_containers", "/export", "/versions", "/onair/capture")
+
+
+def is_project_change(method, path, pid):
+    if method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return False
+    base = "/api/projects/%d" % pid
+    if path == base:
+        return method == "PATCH"
+    if not path.startswith(base + "/"):
+        return False
+    rest = path[len(base):]
+    if rest.startswith("/versions") and rest.endswith("/rollback"):
+        return True
+    return not rest.startswith(_NOT_A_CHANGE)
+
+
+@bp.after_request
+def _stamp_project_modified(resp):
+    pid = (request.view_args or {}).get("pid")
+    if pid and resp.status_code < 400 and is_project_change(request.method, request.path, pid):
+        try:
+            from ..audit import acteur
+            db_project_event(pid, "modified", acteur())
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("project #%s: modified stamp failed: %s", pid, e)
+    return resp
+    return resp
 
 @bp.route("/api/projects/<int:pid>", methods=["DELETE"])
 @require_perm("projects.manage")

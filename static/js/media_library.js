@@ -15,6 +15,8 @@
 //     view: 'table' | 'grid',
 //     actions: [{id:'load', label:'Charger', primary:true, needsLocal:true, multi:false}, …],
 //                                           // multi:true = proposée aussi sur une sélection multiple
+//                                           // kinds:['playlist'] = types de fiche visés ; SANS `kinds`,
+//                                           // une action vaut pour les médias, jamais pour une playlist
 //     onAction(id, {asset, path, name}),    // path = chemin vu par le conteneur (copie locale)
 //     current: () => cheminChargé,          // ligne surlignée
 //     extraTabs: [{id, label, rows: async () => [{path, name, size, gone}]}],
@@ -286,17 +288,31 @@
     const vmid = o.vmid;
     const global = vmid == null;
     const actions = o.actions || [];
+    // Actions qui valent pour une ligne : une playlist (2026-11-07) n'a ni fichier ni copie — seules
+    // les actions qui la déclarent (`kinds`) s'y appliquent ; les autres restent aux médias.
+    const kindOfRow = r => kindOf(r && r.asset);
+    const actsFor = r => { const k = kindOfRow(r);
+      return actions.filter(x => x.kinds ? x.kinds.includes(k) : k !== 'playlist'); };
     const L = (k, d) => { const v = T('medialib.' + k, d); return (v && v !== 'medialib.' + k) ? v : d; };
     const uid = 'ml' + (++_uid) + '-' + Date.now().toString(36);
     // Mode d'affichage et ses réglages : défaut de l'hôte (liste, ou vignettes aux Images fixes), puis
     // la préférence du POSTE pour ce conteneur (ou pour le Gestionnaire), puis setState (disposition).
     const imagesOnly = Array.isArray(o.kinds) && o.kinds.length === 1 && o.kinds[0] === 'image';
+    // Playlists (2026-11-07) : montrées partout où l'hôte ne restreint pas les types, ou les demande.
+    const plOn = !Array.isArray(o.kinds) || !o.kinds.length || o.kinds.includes('playlist');
     const viewsHere = imagesOnly ? VIEWS.filter(v => v !== 'strip') : VIEWS;   // pas de pellicule pour des images fixes
     let view = viewsHere.includes(o.view) ? o.view : 'table';
     const DEF_COLS = ['duration', 'format', ...(o.flag ? ['compat'] : []), 'audio', 'copies', ...(o.dateColumn ? ['created_at'] : [])];
     const DEF_CARDF = ['description', 'file', 'format', 'project', 'keywords'];
     const vs = {group:'none', cols:null, colW:{}, cell:168, cardF:null};
     const viewKey = 'view.' + (o.viewKey || (global ? 'global' : 'c' + vmid));
+    // LOCK (asked on 2026-11-07): a container's library keeps ITS search (filters, search, bin, tab)
+    // on this computer, for this container — and leaves the user's shared preference alone (two
+    // windows no longer recall each other's choice). Unlocked: that preference, as before. The
+    // Gestionnaire (global) has none: its panels already keep their own state.
+    const lockKey = global ? null : 'lock.' + (o.viewKey ? o.viewKey + '.' : '') + 'c' + vmid;
+    let locked = !!(lockKey && pref.get(lockKey, null));
+    let lockReady = !locked;          // nothing is saved before the kept search is back
     function applyViewState(p){
       if(p.view && viewsHere.includes(p.view)) view = p.view;
       ['group', 'cols', 'colW', 'cell', 'cardF'].forEach(k => { if(k in p) vs[k] = p[k]; });
@@ -315,6 +331,7 @@
         </div>
         <input class="ml-search" type="search" placeholder="${esc(L('search_ph','Rechercher : nom, titre, mots-clés…'))}">
         <button type="button" class="btn ml-filters-btn" aria-expanded="false">${esc(L('filters','Filtres'))}<span class="ml-filters-n"></span></button>
+        <button type="button" class="btn ml-lock" aria-pressed="false" hidden></button>
         <label class="ml-vopt ml-grp-l" hidden><span>${esc(L('group_by','Grouper par'))}</span>
           <select class="ml-group">${GROUPS.map(g => `<option value="${g}">${esc(L('group.' + g, g))}</option>`).join('')}</select></label>
         <label class="ml-vopt ml-size-l" hidden><span>${esc(L('thumb_size','Taille'))}</span>
@@ -326,6 +343,8 @@
         <div class="ml-modes" role="group" aria-label="${esc(L('view_label','Affichage'))}">${viewsHere.map(v =>
           `<button type="button" class="ml-mode" data-view="${v}" aria-pressed="false" title="${esc(L('view.' + v, v))}" aria-label="${esc(L('view.' + v, v))}">${VIEW_ICONS[v]}</button>`).join('')}</div>
         <span class="ml-count"></span>
+        ${plOn ? `<button type="button" class="btn ml-plbtn" aria-haspopup="menu">${esc(L('pl_btn','Playlist'))} ▾</button>
+          <input type="file" class="ml-plimp-in" accept=".json,application/json" hidden>` : ''}
         <button type="button" class="btn ml-upload"${o.upload === false ? ' hidden' : ''}>${esc(L('up_btn','Importer depuis l\'ordinateur…'))}</button>
         <input type="file" class="ml-upload-in" multiple hidden>
         <button type="button" class="btn ml-refresh" title="${esc(L('refresh','Rafraîchir'))}" aria-label="${esc(L('refresh','Rafraîchir'))}">↻</button>
@@ -377,11 +396,12 @@
     function fmtVideo(v){ const rate = v.fps ? (v.scan === 'i' ? Math.round(v.fps * 2) + 'i' : (Math.round(v.fps * 100) / 100) + 'p') : '';
       return [`${v.width}×${v.height}`, rate, codecName(v.codec)].filter(Boolean).join(' · '); }
     function fmtShort(a){ const t = a.tech || {}, v = t.video || {};
+      if(kindOf(a) === 'playlist') return L('pl_items','{n} élément(s)').replace('{n}', t.items || 0);
       if(kindOf(a) === 'image') return v.width ? `${v.width}×${v.height} ${codecName(v.codec)}` : '';
       if(!v.width) return (t.audio || []).length ? L('audio_only','audio seul') : '';
       const r = v.fps ? (v.scan === 'i' ? Math.round(v.fps * 2) + 'i' : (Math.round(v.fps * 100) / 100) + 'p') : '';
       return `${v.height}${r ? ' ' + r : ''} ${codecName(v.codec)}`.trim(); }
-    function fmtAudioShort(a){ const au = (a.tech || {}).audio || []; if(!au.length) return kindOf(a) === 'image' ? '' : '—';
+    function fmtAudioShort(a){ const au = (a.tech || {}).audio || []; if(!au.length) return ['image', 'playlist'].includes(kindOf(a)) ? '' : '—';
       const mono = au.every(x => x.channels === 1), same = au.every(x => x.channels === au[0].channels);
       if(mono) return au.length === 1 ? 'mono' : `${au.length} × mono`;
       if(same && au[0].channels === 2) return au.length === 1 ? L('stereo','stéréo') : `${au.length} × ${L('stereo','stéréo')}`;
@@ -434,6 +454,7 @@
       return {q: st.q || '', kinds: o.kinds || [], match: t.match, items: t.items};
     }
     async function loadAssets(){
+      saveLocked();
       try{
         const q = query();
         const r = st.bin && st.bin !== 'shared' ? await post(`/api/media/bins/${st.bin}/assets`, {vmid, query:q, children:st.kids})
@@ -514,6 +535,7 @@
     function copiesCell(r){
       const a = r.asset;
       if(!a) return r.size ? fmtSize(r.size) : '';
+      if(kindOf(a) === 'playlist') return '';                // aucune copie : par nature
       const n = a.copies_n != null ? a.copies_n : (a.available_nodes || []).length;
       const tip = n ? [...(a.available_nodes || []), ...(a.on_share ? [L('loc_share','sur un partage')] : [])].join(', ')
                     : L('loc_offline','hors ligne');
@@ -534,7 +556,7 @@
       if(a) h += `<button type="button" class="btn" data-act="__info">${esc(L('info','Infos…'))}</button>`;
       // Sans copie locale mais présent sur un autre nœud : l'action RAPATRIE d'abord (copie vérifiée).
       const canFetch = !global && a && !r.path && (a.available_nodes || []).length > 0;
-      actions.forEach(x => { const needs = x.needsLocal !== false && !r.path; const dis = needs && !canFetch;
+      actsFor(r).forEach(x => { const needs = x.needsLocal !== false && !r.path; const dis = needs && !canFetch;
         const tip = dis ? L('no_local','Pas de copie accessible à ce conteneur') : needs ? L('fetch_tip','Copie d\'abord le média sur ce nœud') : '';
         h += `<button type="button" class="btn${x.primary ? ' ml-prim' : ''}" data-act="${esc(x.id)}"${dis ? ' disabled' : ''}${tip ? ' title="' + esc(tip) + '"' : ''}>${esc(x.label)}${needs && !dis ? ' ⇣' : ''}</button>`; });
       return h + menu;
@@ -565,7 +587,9 @@
     const kwOf = a => String(((a && a.meta) || {}).keywords || '').split(/[,;]/).map(x => x.trim()).filter(Boolean);
     const rateOf = v => !v || !v.fps ? '' : v.scan === 'i' ? 'i' + Math.round(v.fps * 2) : 'p' + Math.round(v.fps * 100) / 100;
     // « 1080p25 » (la définition ET la cadence, comme on les dit en régie) ; une image : sa taille.
-    const defRate = a => { const v = (a.tech || {}).video || {}; if(!v.width) return kindOf(a) === 'audio' ? L('audio_only','audio seul') : '';
+    const plItems = a => L('pl_items','{n} élément(s)').replace('{n}', (a.tech || {}).items || 0);
+    const defRate = a => { const v = (a.tech || {}).video || {}; if(kindOf(a) === 'playlist') return plItems(a);
+      if(!v.width) return kindOf(a) === 'audio' ? L('audio_only','audio seul') : '';
       return kindOf(a) === 'image' ? `${v.width}×${v.height}` : `${v.height}${rateOf(v)}`; };
     const codecOf = a => { const t = a.tech || {}; return codecName((t.video && t.video.codec) || ((t.audio || [])[0] || {}).codec || ''); };
     const originLabel = x => x ? L('origin.' + x, x) : '';
@@ -667,7 +691,8 @@
       (drag === false ? '' : ` draggable="${!!(r.path || r.asset)}"`);
     const selCls = r => keyOf(r) && st.sel.has(keyOf(r)) ? ' is-sel' : '';
     const thumbImg = (r, cls) => `<img class="ml-thumb${cls || ''}" loading="lazy" decoding="async" alt="" src="${assetThumb(r.asset)}"${canScrub(r.asset) ? ` data-scrub="1" title="${esc(L('scrub_tip','Survoler pour parcourir'))}"` : ''}>`;
-    const thumbOf = r => r.asset && (kindOf(r.asset) === 'video' || kindOf(r.asset) === 'image') ? thumbImg(r) : `<span class="ml-thumb"></span>`;
+    const thumbOf = r => r.asset && (kindOf(r.asset) === 'video' || kindOf(r.asset) === 'image') ? thumbImg(r)
+      : kindOf(r.asset) === 'playlist' ? `<span class="ml-thumb ml-thumb-pl" aria-hidden="true">☰</span>` : `<span class="ml-thumb"></span>`;
     // Vignette d'une cellule ou d'une carte : l'image, la durée et un badge P (proxy) / REC dessus.
     function thumbBox(r){
       const a = r.asset;
@@ -1045,7 +1070,9 @@
       const multi = actions.filter(x => x.multi);
       $('.ml-bulk-acts').innerHTML = multi.map(x => `<button type="button" class="btn" data-bulk="act:${esc(x.id)}">${esc(x.label)}</button>`).join('')
         + (o.bulk || []).map((b, i) => `<button type="button" class="btn" data-bulk="${i}"${b.items ? ' aria-haspopup="menu"' : ''}>${esc(b.label)}${b.items ? ' ▾' : ''}</button>`).join('')
-        + `<button type="button" class="btn" data-bulk="bin" aria-haspopup="menu">${esc(L('sel_to_bin','Ranger dans un bin'))} ▾</button>`;
+        + `<button type="button" class="btn" data-bulk="bin" aria-haspopup="menu">${esc(L('sel_to_bin','Ranger dans un bin'))} ▾</button>`
+        + (canShare() ? `<button type="button" class="btn" data-bulk="proj" aria-haspopup="menu">${esc(L('sel_to_project','Projet'))} ▾</button>` : '');
+      if(!st.sf && canShare()) loadSF();     // project list, ready for the selection menu
     }
     $('.ml-bulk-clear').onclick = () => { st.sel.clear(); paintSel(); };
     $('.ml-bulk-all').onclick = () => selectAll();
@@ -1061,12 +1088,34 @@
         if(st.bin === b.id){ await loadAssets(); render(); }
       }
     }
+    // Projects of a selection (asked on 2026-11-07): add to one, or remove from one some of them are in.
+    // Only owned media (the server skips the others and says how many).
+    function toProjItems(rs){
+      const ids = rs.filter(r => r.asset && !r.asset.shared).map(r => r.asset.id);
+      const projs = (st.sf && st.sf.projects) || [];
+      if(!ids.length) return [{header: L('sel_proj_none','Aucun de ces médias ne vous appartient.')}];
+      if(!projs.length) return [{header: L('sel_proj_noproj','Aucun projet.')}];
+      const inSel = new Set(rs.filter(r => r.asset && !r.asset.shared).flatMap(r => r.asset.projects || []));
+      const out = [{header: L('sel_proj_add','Ajouter au projet')}, ...projs.map(p => ({label:p.name, run:() => linkProj(p, ids, true)}))];
+      const rm = projs.filter(p => inSel.has(p.id));
+      if(rm.length) out.push({header: L('sel_proj_remove','Retirer du projet')}, ...rm.map(p => ({label:p.name, run:() => linkProj(p, ids, false)})));
+      return out;
+    }
+    async function linkProj(p, ids, on){
+      const d = await regCall('POST', `/api/media/projects/${p.id}/assets`, {asset_ids:ids, on});
+      if(!d) return;
+      toast((on ? L('sel_proj_added','{n} média(s) ajouté(s) à « {p} »') : L('sel_proj_removed','{n} média(s) retiré(s) de « {p} »'))
+        .replace('{n}', d.changed).replace('{p}', p.name)
+        + (d.skipped ? ' · ' + L('sel_proj_skipped','{n} ignoré(s)').replace('{n}', d.skipped) : ''), 'info');
+      await loadAssets(); render();
+    }
     // Sélection multiple et action d'un conteneur : la même action, pour chaque média, dans l'ordre.
     async function actOnRows(id, rs){ for(const r of rs){ if(r.asset || r.ext) await actRow(id, r); } }
-    $('.ml-bulk-acts').onclick = e => {
+    $('.ml-bulk-acts').onclick = async e => {
       const b = e.target.closest('[data-bulk]'); if(!b) return;
       const rs = selectedRows();
       if(b.dataset.bulk === 'bin') return openMenu(b, toBinItems(rs.filter(r => r.asset).map(r => r.asset.id)));
+      if(b.dataset.bulk === 'proj'){ await loadSF(); return openMenu(b, toProjItems(rs)); }
       if(b.dataset.bulk.startsWith('act:')) return actOnRows(b.dataset.bulk.slice(4), rs);
       const def = (o.bulk || [])[+b.dataset.bulk]; if(!def) return;
       if(def.items) return openMenu(b, def.items(rs));
@@ -1123,9 +1172,13 @@
           out.push({label:L('import','Importer'), run:() => importExt(r.ext)}); }
       } else if(a){
         const canFetch = !global && !r.path && (a.available_nodes || []).length > 0;
-        actions.forEach(x => { const needs = x.needsLocal !== false && !r.path;
+        actsFor(r).forEach(x => { const needs = x.needsLocal !== false && !r.path;
           out.push({label:x.label + (needs && canFetch ? ' ⇣' : ''), disabled: needs && !canFetch, run:() => actRow(x.id, r)}); });
         if(out.length) out.push({header:''});
+        if(kindOf(a) === 'playlist'){
+          out.push({label:L('pl_open','Contenu de la playlist…'), run:() => openInfo(a.id, 'pl')},
+                   {label:L('pl_export','Exporter…'), run:() => { location.href = '/api/media/playlists/' + encodeURIComponent(a.id) + '/export'; }});
+        } else if(plOn) out.push({label:L('pl_add_item','Ajouter à une playlist…'), run:() => openPlPick([a.id])});
         out.push({label:L('info','Infos…'), run:() => openInfo(a.id)});
         if(kindOf(a) === 'video' || kindOf(a) === 'audio')
           out.push({label:a.has_proxy ? L('px_recreate','Recréer le proxy') : L('px_create','Créer le proxy'), run:() => createProxies([a.id])});
@@ -1145,15 +1198,18 @@
     // Menu d'une SÉLECTION multiple : ce qui a un sens pour plusieurs médias à la fois.
     function selMenuItems(){
       const rs = selectedRows(), ids = rs.filter(r => r.asset).map(r => r.asset.id), out = [{header:L('sel_n','{n} sélectionné(s)').replace('{n}', rs.length)}];
-      actions.filter(x => x.multi).forEach(x => out.push({label:x.label, run:() => actOnRows(x.id, rs)}));
+      actions.filter(x => x.multi && rs.every(r => actsFor(r).includes(x))).forEach(x => out.push({label:x.label, run:() => actOnRows(x.id, rs)}));
       (o.bulk || []).forEach(b => { if(b.items){ const its = b.items(rs) || []; if(its.length){ out.push({header:b.label}, ...its); } }
                                     else if(b.run) out.push({label:b.label, run:() => b.run(rs)}); });
       const cur = st.bins.find(b => b.id === st.bin);
       if(st.tab === 'base' && cur && !cur.smart && (!cur.shared || cur.shared.level === 'edit')) out.push({label:L('bin_remove','Retirer du bin'), run:() => unbin(ids)});
       const own = rs.filter(r => r.asset && !r.asset.shared).map(r => ({kind:'asset', id:r.asset.id, name:r.asset.name}));
       if(own.length && canShare()) out.push({label:L('sh_share_n','Partager ({n})…').replace('{n}', own.length), run:() => openShare(own)});
+      if(own.length && canShare() && st.sf) out.push(...toProjItems(rs));
       const pxIds = rs.filter(r => r.asset && (kindOf(r.asset) === 'video' || kindOf(r.asset) === 'audio')).map(r => r.asset.id);
       if(pxIds.length) out.push({label:L('px_create_n','Créer les proxys ({n})').replace('{n}', pxIds.length), run:() => createProxies(pxIds)});
+      const mids = rs.filter(r => r.asset && kindOf(r.asset) !== 'playlist').map(r => r.asset.id);
+      if(plOn && mids.length) out.push({label:L('pl_add_item','Ajouter à une playlist…'), run:() => openPlPick(mids)});
       out.push({header:L('sel_to_bin','Ranger dans un bin')}, ...toBinItems(ids));
       return out;
     }
@@ -1196,7 +1252,7 @@
     }
 
     function setTab(t){
-      st.tab = t; st.sel.clear(); st.anchor = null; pvStop(true);
+      st.tab = t; st.sel.clear(); st.anchor = null; pvStop(true); saveLocked();
       $$('.ml-tab').forEach(b => { const on = b.dataset.tab === t; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
       $('.ml-crumbs').hidden = t !== 'net';
       $('.ml-body').classList.toggle('no-bins', t !== 'base');
@@ -1236,11 +1292,15 @@
       const b = binId != null ? st.bins.find(x => x.id === binId) : curManual();
       const opts = {bin_id: b && !b.smart ? b.id : null, label: b && !b.smart ? '▤ ' + b.name : ''};
       if(!global) return up.enqueue(files, {vmid}, opts);
-      // Gestionnaire : nœud + bin choisis (le bin visé par défaut) ; projet repris du filtre « projet = … » s'il y en a un.
+      // Gestionnaire : nœud, bin (celui visé par défaut) et projets — un ou plusieurs, celui du filtre
+      // « projet = … » coché d'office (2026-11-07).
       const pf = st.tree.items.find(f => f && f.field === 'project' && f.op === 'eq' && f.value);
-      const t = await up.chooseTarget({count: files.length, bins: st.bins.filter(x => !x.smart), bin_id: opts.bin_id}); if(!t) return;
+      if(!st.sf) await loadSF();
+      const t = await up.chooseTarget({count: files.length, bins: st.bins.filter(x => !x.smart), bin_id: opts.bin_id,
+                                       projects: (st.sf && st.sf.projects) || [], project_ids: pf ? [+pf.value] : []}); if(!t) return;
       const ob = t.bin_id ? st.bins.find(x => x.id === t.bin_id) : null;
-      up.enqueue(files, {node_id:t.node_id, folder:'', project_id: pf ? +pf.value || null : null},
+      const pids = t.project_ids || [];
+      up.enqueue(files, {node_id:t.node_id, folder:'', project_id: pids[0] || null, project_ids: pids},
                  {bin_id: ob ? ob.id : null, label: ob ? '▤ ' + ob.name : ''});
     }
     const upIn = $('.ml-upload-in');
@@ -1353,7 +1413,9 @@
     // Action principale d'un média (double-clic, ou simple clic en mode « 1 clic »).
     function runPrimary(it, e){
       if(e.target.closest('input,button,video,audio,.ml-pv-side,[data-grp],.ml-col-rs')) return;
-      const prim = actions.find(x => x.primary) || actions[0];
+      const ra = actsFor(rowOf(it)), prim = ra.find(x => x.primary) || ra[0];
+      // Une playlist sans action de l'hôte (Gestionnaire, Images fixes…) : sa fiche, sur son contenu.
+      if(!prim && kindOfRow(rowOf(it)) === 'playlist') return openInfo(rowOf(it).asset.id, 'pl');
       if(!prim){
         // Hôte sans action propre (Gestionnaire, 2026-10-20) : il choisit (o.primary → {label, run}),
         // sinon — ou si son envoi n'a pas pu partir (run rend false) — la fiche Infos. Avant : rien.
@@ -1494,6 +1556,23 @@
     // Liste d'un panneau qui affiche un bin MANUEL : y déposer des médias les y range (glisser
     // d'un panneau du Gestionnaire à l'autre). Dépôt sur soi-même ignoré.
     const curManual = () => { const b = st.bins.find(x => x.id === st.bin); return st.tab === 'base' && b && !b.smart ? b : null; };
+    // Médias glissés sur la LIGNE d'une playlist : ajoutés à sa fin (2026-11-07).
+    const plRowAt = e => { const it = e.target.closest && e.target.closest('[data-k]'); const r = it && rowOf(it);
+      return r && r.asset && kindOf(r.asset) === 'playlist' && !r.asset.shared ? {it, r} : null; };
+    let _plOver = null;
+    const plOverOff = () => { if(_plOver){ _plOver.classList.remove('ml-row-drop-pl'); _plOver = null; } };
+    main.addEventListener('dragover', e => {
+      const pr = e.dataTransfer.types.includes('application/x-bobi-asset') && plRowAt(e);
+      if(pr){ e.preventDefault(); e.stopImmediatePropagation(); e.dataTransfer.dropEffect = 'copy';
+        if(_plOver !== pr.it){ plOverOff(); _plOver = pr.it; pr.it.classList.add('ml-row-drop-pl'); } return; }
+      plOverOff();
+    });
+    main.addEventListener('drop', e => {
+      const pr = plRowAt(e); plOverOff();
+      if(!pr || !e.dataTransfer.types.includes('application/x-bobi-asset')) return;
+      const ids = dropIds(e.dataTransfer).filter(id => id !== pr.r.asset.id); if(!ids.length) return;
+      e.preventDefault(); e.stopImmediatePropagation(); plAppend(pr.r.asset.id, ids);
+    });
     main.addEventListener('dragover', e => {
       if(isFiles(e.dataTransfer) && o.upload !== false && st.tab === 'base'){ e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; main.classList.add('is-drop-files'); return; }
       if(!curManual() || !e.dataTransfer.types.includes('application/x-bobi-asset')) return;
@@ -1964,7 +2043,36 @@
     $('.ml-chips').onclick = e => { const b = e.target.closest('[data-chip]'); if(!b) return;
       removeAt(st.tree, +b.dataset.chip); if(!$('.ml-filters').hidden) renderFilters(); filtersChanged(); };
     let _fT = null;
-    function filtersChanged(){ clearTimeout(_fT); renderChips(); _fT = setTimeout(async () => { await loadAssets(); render(); }, 350); }
+    function filtersChanged(){ clearTimeout(_fT); renderChips(); syncProjPref(); _fT = setTimeout(async () => { await loadAssets(); render(); }, 350); }
+    // Filtre « projet = celui du conteneur » retiré ou remis PAR L'UTILISATEUR : retenu pour lui
+    // (2026-11-07). Une disposition rappelée (setState) ne passe pas par ici : elle ne change rien.
+    function saveLocked(){
+      if(!locked || !lockReady) return;
+      const t = toQuery(st.tree);
+      pref.set(lockKey, {tab:st.tab, bin:st.bin, q:st.q || '', tree: t.items.length ? t : null});
+    }
+    function paintLock(){
+      const b = $('.ml-lock'); if(!b) return;
+      b.hidden = !lockKey;
+      b.classList.toggle('on', locked); b.setAttribute('aria-pressed', locked);
+      b.textContent = (locked ? '🔒 ' : '🔓 ') + L('lock','Garder ici');
+      b.title = L(locked ? 'lock_on_tip' : 'lock_off_tip', locked
+        ? 'Filtres gardés pour ce conteneur sur ce poste. Cliquer pour revenir au réglage de votre compte.'
+        : 'Garder les filtres de cette bibliothèque pour ce conteneur, sur ce poste, sans toucher aux autres fenêtres.');
+    }
+    $('.ml-lock').onclick = () => {
+      locked = !locked; lockReady = true;
+      if(locked) saveLocked(); else pref.set(lockKey, null);
+      paintLock();
+    };
+    paintLock();
+    function syncProjPref(){
+      if(global || locked || !st.ctx || !st.ctx.project_id || o.projectFilter === false) return;
+      const on = st.tree.items.some(f => f && f.field === 'project' && f.op === 'eq' && String(f.value) === String(st.ctx.project_id));
+      if(on === (st.ctx.project_filter !== false)) return;
+      st.ctx.project_filter = on;
+      fetch('/api/media/prefs', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({project_filter:on})}).catch(() => {});
+    }
     function showFilters(on){ const box = $('.ml-filters'); box.hidden = !on; $('.ml-filters-btn').setAttribute('aria-expanded', on); }
     $('.ml-filters-btn').onclick = async () => {
       showFilters($('.ml-filters').hidden);
@@ -2105,9 +2213,10 @@
       <dialog class="ml-dlg ml-info">
         <div class="ml-if-top"><img class="ml-if-thumb" alt="" hidden>
           <div class="ml-if-title"><div class="ml-if-name"></div><div class="ml-if-tabs" role="tablist">
-            ${['info','meta','versions','where','proc','thumb','share'].map(t => `<button type="button" role="tab" class="ml-if-tab" data-t="${t}">${esc(L('if_tab_' + t, t))}</button>`).join('')}
+            ${['pl','info','meta','versions','where','proc','thumb','share'].map(t => `<button type="button" role="tab" class="ml-if-tab" data-t="${t}">${esc(L('if_tab_' + t, t))}</button>`).join('')}
           </div></div>
           <button type="button" class="btn ml-if-close">${esc(L('close','Fermer'))}</button></div>
+        <div class="ml-if-pane" data-t="pl" hidden><div class="ml-pl-ed"></div></div>
         <div class="ml-if-pane" data-t="info"><div class="ml-if-media"></div><dl class="ml-facts"></dl></div>
         <div class="ml-if-pane" data-t="meta" hidden><div class="ml-if-form"></div>
           <div class="ml-if-acts"><span class="ml-sp"></span><button type="button" class="btn btn-green ml-if-save">${esc(L('save','Enregistrer'))}</button></div></div>
@@ -2124,6 +2233,13 @@
           <div class="ml-if-acts"><button type="button" class="btn ml-if-thumbreset">${esc(L('thumb_reset','Par défaut'))}</button><span class="ml-sp"></span>
             <button type="button" class="btn btn-green ml-if-thumbbtn">${esc(L('thumb_pick','Choisir l\'image…'))}</button></div></div>
         <div class="ml-if-pane" data-t="share" hidden><div class="ml-if-shares"></div></div>
+      </dialog>
+      <dialog class="ml-dlg ml-pldlg">
+        <div class="ml-if-top"><div class="ml-if-title"><div class="ml-if-name ml-pld-title"></div><div class="ml-muted ml-pld-sub"></div></div>
+          <button type="button" class="btn ml-pld-close">${esc(L('close','Fermer'))}</button></div>
+        <form class="ml-pld-new"><label>${esc(L('pl_new_lbl','Nouvelle playlist'))} <input class="ml-pld-name" maxlength="120" required autocomplete="off"></label>
+          <button type="submit" class="btn btn-green">${esc(L('pl_create','Créer'))}</button></form>
+        <div class="ml-pld-list"></div>
       </dialog>
       <dialog class="ml-dlg ml-shdlg">
         <div class="ml-if-top"><div class="ml-if-title"><div class="ml-if-name ml-sh-name"></div><div class="ml-muted ml-sh-sub"></div></div>
@@ -2159,6 +2275,71 @@
       </dialog>`;
     const infoDlg = dlgHost.querySelector('.ml-info'), thDlg = dlgHost.querySelector('.ml-thumbdlg'), scDlg = dlgHost.querySelector('.ml-scdlg');
     const shDlg = dlgHost.querySelector('.ml-shdlg');
+
+    // ── Playlists : créer, ajouter des médias, importer un fichier (2026-11-07) ──
+    // Rangement d'une playlist créée ici : le bin manuel affiché ; le projet du conteneur (player),
+    // ou au Gestionnaire celui du filtre « projet = … » — sans quoi un utilisateur à portée
+    // restreinte ne la verrait plus.
+    const plDlg = dlgHost.querySelector('.ml-pldlg');
+    const plWhere = () => { const b = curManual(), pf = st.tree.items.find(f => f && f.field === 'project' && f.op === 'eq' && f.value);
+      return Object.assign({}, b ? {bin_id:b.id} : {}, global ? (pf ? {project_id:+pf.value || null} : {}) : {vmid}); };
+    async function plList(){
+      const r = await post('/api/media/search', {vmid, query:{kinds:['playlist']}}).catch(() => null);
+      return r && r.ok ? (((await r.json()) || {}).assets || []).sort((x, y) => x.name.localeCompare(y.name)) : [];
+    }
+    async function plAppend(pid, ids){
+      const p = await (await fetch('/api/media/playlists/' + encodeURIComponent(pid))).json().catch(() => null);
+      if(!p || !p.items) return toast(L('pl_unknown','Playlist introuvable'), 'error');
+      const ok = await regCall('PUT', '/api/media/playlists/' + encodeURIComponent(pid),
+                               {items:[...p.items.map(plPlain), ...ids.map(id => ({asset:id}))]});
+      if(ok){ toast(L('pl_added','{n} média(s) ajouté(s) à « {p} »').replace('{n}', ids.length).replace('{p}', p.name), 'info'); loadAssets().then(render); }
+    }
+    async function plCreate(name, ids){
+      const r = await regCall('POST', '/api/media/playlists', Object.assign({name, items:ids.map(id => ({asset:id}))}, plWhere()));
+      if(!r) return null;
+      toast(L('pl_created','Playlist « {p} » créée').replace('{p}', name), 'info');
+      await loadAssets(); render(); loadBins();
+      return r.id;
+    }
+    // `ids` vide : « Nouvelle playlist » (création seule, puis sa fiche) ; sinon les médias à ajouter.
+    async function openPlPick(ids){
+      ids = (ids || []).filter(id => { const a = assetById(id); return !a || kindOf(a) !== 'playlist'; });
+      plDlg.querySelector('.ml-pld-title').textContent = ids.length ? L('pl_add_title','Ajouter à une playlist') : L('pl_new_lbl','Nouvelle playlist');
+      plDlg.querySelector('.ml-pld-sub').textContent = ids.length ? L('sel_n','{n} sélectionné(s)').replace('{n}', ids.length) : '';
+      const nm = plDlg.querySelector('.ml-pld-name'), lst = plDlg.querySelector('.ml-pld-list');
+      nm.value = '';
+      lst.innerHTML = '';
+      plDlg.querySelector('.ml-pld-new').onsubmit = async e => { e.preventDefault(); const n = nm.value.trim(); if(!n) return;
+        const id = await plCreate(n, ids); if(!id) return; plDlg.close(); if(!ids.length) openInfo(id, 'pl'); };
+      if(!plDlg.open) plDlg.showModal();
+      nm.focus();
+      if(!ids.length) return;
+      const pls = await plList();
+      lst.innerHTML = pls.length ? `<div class="ml-if-pxh">${esc(L('pl_existing','Ou à la fin d\'une playlist existante'))}</div>`
+        + pls.map(x => `<button type="button" class="ml-menu-it" data-pl="${esc(x.id)}">☰ ${esc(x.name)} <span class="ml-muted">· ${esc(plItems(x))}</span></button>`).join('')
+        : `<p class="ml-muted">${esc(L('pl_none','Aucune playlist pour l\'instant : créez-la ci-dessus.'))}</p>`;
+      lst.querySelectorAll('[data-pl]').forEach(b => b.onclick = async () => { plDlg.close(); await plAppend(b.dataset.pl, ids); });
+    }
+    plDlg.querySelector('.ml-pld-close').onclick = () => plDlg.close();
+    // Importer un fichier de playlist (export d'un autre serveur, ou ancien fichier de player).
+    async function plImportFile(f){
+      let data;
+      try{ data = JSON.parse(await f.text()); }catch(e){ return toast(L('pl_imp_bad','Fichier illisible : {e}').replace('{e}', e.message), 'error'); }
+      const r = await regCall('POST', '/api/media/playlists/import', Object.assign({data}, plWhere()));
+      if(!r) return;
+      const rp = r.report || {};
+      toast(L('pl_imp_done','Playlist importée : {n} élément(s), {u} introuvable(s)').replace('{n}', rp.items || 0).replace('{u}', rp.unresolved || 0),
+            rp.unresolved ? 'warning' : 'info');
+      await loadAssets(); render(); loadBins(); openInfo(r.id, 'pl');
+    }
+    {
+      const pb = $('.ml-plbtn'), pin = $('.ml-plimp-in');
+      if(pb){
+        pb.onclick = () => openMenu(pb, [{label:L('pl_new_item','Nouvelle playlist…'), run:() => openPlPick([])},
+                                         {label:L('pl_imp_item','Importer un fichier de playlist…'), run:() => { pin.value = ''; pin.click(); }}]);
+        pin.onchange = () => { if(pin.files[0]) plImportFile(pin.files[0]); };
+      }
+    }
 
     // ── Fenêtre « Colonnes » : affichées d'abord, dans leur ordre (cocher, ↑ ↓), puis les autres ──
     const colsDlg = dlgHost.querySelector('.ml-colsdlg');
@@ -2277,13 +2458,15 @@
       const t = a.tech || {}, v = t.video || {}, m = a.meta || {}, k = kindOf(a);
       infoDlg.querySelector('.ml-if-name').textContent = m.title || a.name;
       const im = infoDlg.querySelector('.ml-if-thumb'); if(v.width){ im.src = assetThumb(a); im.hidden = false; } else im.hidden = true;
-      const rows2 = [[L('if_file','Fichier'), a.name], [L('if_kind','Type'), L('kind.' + k, k || '—')]];
+      const isPl = k === 'playlist';
+      const rows2 = [[isPl ? L('if_name','Nom') : L('if_file','Fichier'), a.name], [L('if_kind','Type'), L('kind.' + k, k || '—')]];
       if(k !== 'image') rows2.push([L('col_dur','Durée'), fmtDur(t.duration)]);
+      if(isPl) rows2.push([L('pl_n_lbl','Éléments'), String(t.items || 0)]);
       if(v.width) rows2.push([k === 'image' ? L('if_image','Image') : L('if_video','Vidéo'), k === 'image' ? `${v.width}×${v.height} · ${codecName(v.codec)}` : fmtVideo(v)],
                              [L('if_color','Couleur'), fmtColor(v)]);
       if(k !== 'image') rows2.push([L('col_audio','Audio'), audioGroups(t.audio || [])]);
       if(t.timecode) rows2.push([L('if_tc','TC de départ'), t.timecode]);
-      rows2.push([L('if_container','Conteneur'), t.container || '—'], [L('col_size','Taille'), a.size ? fmtSize(a.size) : '—'],
+      if(!isPl) rows2.push([L('if_container','Conteneur'), t.container || '—'], [L('col_size','Taille'), a.size ? fmtSize(a.size) : '—'],
                  [L('if_origin','Origine'), a.origin || '—']);
       if(a.producer) rows2.push([L('if_producer','Producteur'), a.producer]);
       if(a.file_created) rows2.push([L('col_created','Créé le'), a.file_created.replace('T', ' ') + ' · '
@@ -2325,6 +2508,10 @@
       // ── Traitement : filiation dans les deux sens + tout ce que le transcodeur a fait ──
       const pr = a.process || null, hasProc = !!(pr || a.source || (a.derived || []).length);
       infoDlg.querySelector('.ml-if-tab[data-t="proc"]').hidden = !hasProc;
+      // Playlist : son CONTENU ; ni versions, ni vignette, ni proxy (aucun fichier).
+      infoDlg.querySelector('.ml-if-tab[data-t="pl"]').hidden = !isPl;
+      ['versions', 'thumb'].forEach(x => { infoDlg.querySelector('.ml-if-tab[data-t="' + x + '"]').hidden = isPl; });
+      infoDlg.querySelectorAll('.ml-if-pxh, .ml-if-proxies').forEach(x => { (x.closest('.ml-scroll') || x).hidden = isPl; });
       const relL = r => L('rel.' + (r || 'transcode'), r || 'version');
       let lin = '';
       if(a.source) lin += `<p>${esc(L('proc_from','Dérivé de'))} : ${a.source.name ? `<a href="#" data-goto="${esc(a.source.id)}">${esc(a.source.name)}</a>` : esc(L('proc_from_gone','un média qui n\'est plus dans la base'))}${a.relation ? ' (' + esc(relL(a.relation)) + ')' : ''}</p>`;
@@ -2367,8 +2554,92 @@
         const shBtn = shBox.querySelector('.ml-if-sharebtn'); if(shBtn) shBtn.onclick = () => openShare([{kind:'asset', id:a.id, name:a.name}]);
         renderShareList(shBox.querySelector('.ml-if-shlist'), 'asset', a.id);
       }
-      infoTab(tab || 'info');
+      if(isPl) renderPl(a);
+      infoTab(tab || (isPl ? 'pl' : 'info'));
       if(!infoDlg.open) infoDlg.showModal();
+    }
+    // ── Contenu d'une playlist (2026-11-07) : la voir et la modifier dans sa fiche. Chaque geste
+    // enregistre (comme un bin). Réordonner : poignée ⠿ au doigt ou à la souris (sélection Maj ou
+    // Ctrl/⌘), Alt+↑/↓ ; retirer ; entrée / sortie, boucle, pause. Ajouter : « Ajouter à une
+    // playlist… » sur des médias sélectionnés, ou les glisser sur la ligne de la playlist.
+    const plPlain = e => ({asset:e.asset || null, file:e.file || '', in:e.in ?? null, out:e.out ?? null, loop:!!e.loop, pause:!!e.pause});
+    const plPlayed = e => { const d = e.duration || 0, a = e.in || 0, b = e.out != null ? e.out : d; return Math.max(0, (d ? Math.min(b, d) : b) - a); };
+    const parseTc = v => { v = String(v || '').trim(); if(!v) return null;
+      const n = v.split(':').reduce((acc, x) => acc * 60 + parseFloat(x.replace(',', '.')), 0); return isFinite(n) && n >= 0 ? n : undefined; };
+    async function renderPl(a){
+      const box = infoDlg.querySelector('.ml-pl-ed'), ro = (a.access || 'owner') === 'use';
+      let p;
+      try{ const r = await fetch('/api/media/playlists/' + encodeURIComponent(a.id)); p = await r.json(); if(!r.ok) throw new Error(p.error || 'HTTP ' + r.status); }
+      catch(e){ box.innerHTML = `<p class="ml-muted">${esc(e.message)}</p>`; return; }
+      if(!_info || _info.id !== a.id) return;
+      let items = p.items || [], sel = new Set(), ref = -1;
+      const save = async () => {
+        const ok = await regCall('PUT', '/api/media/playlists/' + encodeURIComponent(a.id), {items:items.map(plPlain)});
+        if(ok) loadAssets().then(render);
+        else renderPl(a);                                        // refusé : on remontre ce qui est enregistré
+        return ok;
+      };
+      const order = (n, s, to) => { const rest = [...Array(n).keys()].filter(k => !s.includes(k)), at = to - s.filter(k => k < to).length;
+        return [...rest.slice(0, at), ...s, ...rest.slice(at)]; };
+      const move = (s, to) => { const o2 = order(items.length, s, to); if(o2.every((x, k) => x === k)) return;
+        items = o2.map(k => items[k]); sel = new Set(s.map(k => o2.indexOf(k))); if(ref >= 0) ref = o2.indexOf(ref); paint(); save(); };
+      const label = e => e.missing ? `<span class="ml-muted">${esc(L('pl_missing','média retiré de la base'))}</span>`
+        : e.hidden ? `<span class="ml-muted">${esc(L('pl_hidden','média hors de vos projets'))}</span>`
+        : esc(e.name || e.file || e.asset || '?');
+      function paint(){
+        const total = items.reduce((t, e) => t + plPlayed(e), 0);
+        box.innerHTML = `<div class="ml-pl-head"><span>${esc(L('pl_items','{n} élément(s)').replace('{n}', items.length))} · ${esc(fmtDur(total))}</span>
+            <span class="ml-sp"></span><a class="btn" href="/api/media/playlists/${encodeURIComponent(a.id)}/export" download>${esc(L('pl_export','Exporter…'))}</a></div>`
+          + (items.length ? `<div class="ml-scroll"><table class="ml-if-table ml-pl-table"><thead><tr><th></th><th>#</th><th>${esc(L('col_name','Nom'))}</th>
+              <th>${esc(L('pl_in','Entrée'))}</th><th>${esc(L('pl_out','Sortie'))}</th><th>${esc(L('col_dur','Durée'))}</th>
+              <th title="${esc(L('pl_loop_tip','Boucler ce clip'))}">${esc(L('pl_loop','Boucle'))}</th><th title="${esc(L('pl_pause_tip','Pause sur la dernière image'))}">${esc(L('pl_pause','Pause'))}</th><th></th></tr></thead><tbody>`
+            + items.map((e, i) => `<tr data-i="${i}" class="${sel.has(i) ? 'sel' : ''}${e.missing ? ' is-off' : ''}">
+              <td>${ro ? '' : `<span class="ml-pl-grip" title="${esc(L('pl_grip_tip','Glisser pour déplacer (Alt+↑/↓ au clavier)'))}">⠿</span>`}</td><td>${i + 1}</td><td>${label(e)}</td>
+              <td><input class="ml-pl-tc" data-f="in" value="${e.in != null ? tc(e.in) : ''}" placeholder="—"${ro ? ' disabled' : ''}></td>
+              <td><input class="ml-pl-tc" data-f="out" value="${e.out != null ? tc(e.out) : ''}" placeholder="—"${ro ? ' disabled' : ''}></td>
+              <td class="mono">${esc(fmtDur(plPlayed(e)))}</td>
+              <td><input type="checkbox" data-f="loop"${e.loop ? ' checked' : ''}${ro ? ' disabled' : ''}></td>
+              <td><input type="checkbox" data-f="pause"${e.pause ? ' checked' : ''}${ro ? ' disabled' : ''}></td>
+              <td>${ro ? '' : `<button type="button" class="btn ml-pl-del" title="${esc(L('bin_remove_pl','Retirer de la playlist'))}" aria-label="${esc(L('bin_remove_pl','Retirer de la playlist'))}">✕</button>`}</td></tr>`).join('')
+            + `</tbody></table></div>` : `<p class="ml-muted">${esc(L('pl_empty','Playlist vide : sélectionnez des médias dans la bibliothèque, puis « Ajouter à une playlist… » — ou glissez-les sur la ligne de la playlist.'))}</p>`);
+        const tb = box.querySelector('tbody'); if(!tb) return;
+        tb.querySelectorAll('tr').forEach(tr => {
+          const i = +tr.dataset.i;
+          tr.onclick = ev => { if(ev.target.closest('input,button,.ml-pl-grip')) return;
+            if(ev.shiftKey || ev.ctrlKey || ev.metaKey){ if(!sel.size && ref >= 0) sel.add(ref);
+              if(sel.has(i)){ sel.delete(i); ref = sel.size ? [...sel].pop() : -1; } else { sel.add(i); ref = i; } }
+            else { sel = new Set([i]); ref = i; }
+            paint(); };
+          if(ro) return;
+          tr.querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = () => { items[i][cb.dataset.f] = cb.checked; save(); });
+          tr.querySelectorAll('.ml-pl-tc').forEach(inp => inp.onchange = () => { const v = parseTc(inp.value);
+            if(v === undefined){ toast(L('pl_tc_bad','Temps illisible : hh:mm:ss.cc'), 'error'); inp.value = items[i][inp.dataset.f] != null ? tc(items[i][inp.dataset.f]) : ''; return; }
+            items[i][inp.dataset.f] = v; paint(); save(); });
+          tr.querySelector('.ml-pl-del').onclick = () => { items.splice(i, 1); sel = new Set(); ref = -1; paint(); save(); };
+          tr.querySelector('.ml-pl-grip').onpointerdown = ev => { ev.preventDefault(); drag(ev, i); };
+        });
+      }
+      function drag(ev, i){
+        if(!sel.has(i)){ sel = new Set([i]); ref = i; paint(); }
+        const s = [...sel].sort((x, y) => x - y), tb = box.querySelector('tbody'), rows3 = [...tb.children];
+        const grip = rows3[i].querySelector('.ml-pl-grip'); let to = null;
+        s.forEach(k => rows3[k].classList.add('moving'));
+        try{ grip.setPointerCapture(ev.pointerId); }catch(_){}
+        const mv = e => { let t = rows3.length;
+          for(let k = 0; k < rows3.length; k++){ const b = rows3[k].getBoundingClientRect(); if(e.clientY < b.top + b.height / 2){ t = k; break; } }
+          to = t; rows3.forEach((r, k) => r.classList.toggle('drop-before', k === t)); tb.classList.toggle('drop-end', t === rows3.length); };
+        const end = e => { grip.removeEventListener('pointermove', mv); grip.removeEventListener('pointerup', end); grip.removeEventListener('pointercancel', end);
+          if(e.type === 'pointerup' && to != null) move(s, to); else paint(); };
+        grip.addEventListener('pointermove', mv); grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+      }
+      box.onkeydown = e => {
+        if(ro || !e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || !sel.size || e.target.closest('input')) return;
+        e.preventDefault(); const s = [...sel].sort((x, y) => x - y);
+        if(e.key === 'ArrowUp' && s[0] > 0) move(s, s[0] - 1);
+        else if(e.key === 'ArrowDown' && s[s.length - 1] < items.length - 1) move(s, s[s.length - 1] + 2);
+      };
+      box.tabIndex = -1;
+      paint();
     }
     // ── Proxy : lecteur (fiche Infos), état et actions (Emplacements), avancement d'une génération ──
     let _pxT = null;
@@ -2671,7 +2942,14 @@
       // d'office, visible dans les puces, retirable comme les autres.
       if(!global){
         try{ const r = await fetch('/api/media/context?vmid=' + encodeURIComponent(vmid)); if(r.ok) st.ctx = await r.json(); }catch(e){}
-        if(st.ctx && st.ctx.project_id && o.projectFilter !== false && !st.tree.items.some(f => f.field === 'project'))
+        if(_dead) return;
+        // Locked: this container's own search, as left on this computer (setState loads and draws).
+        const kept = locked ? pref.get(lockKey, null) : null;
+        if(kept && typeof kept === 'object'){ lockReady = true; await setState(kept); if(!_dead) loadBins(); return; }
+        lockReady = true;
+        // … sauf si l'UTILISATEUR l'a retiré (préférence retenue côté serveur, cf. syncProjPref).
+        if(st.ctx && st.ctx.project_id && o.projectFilter !== false && st.ctx.project_filter !== false
+           && !st.tree.items.some(f => f.field === 'project'))
           { if(st.tree.items.length) st.tree.links.unshift('and'); st.tree.items.unshift({field:'project', op:'eq', value:st.ctx.project_id}); }
       }
       if(_dead) return;

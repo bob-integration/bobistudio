@@ -76,8 +76,8 @@ MUTATIONS = {
                              "                if False:\n                    voisins"),
     "rendue_au_lieu_de_replacer": ("                    if len(cand) >= n:\n                        sans, motif",
                                    "                    if False:\n                        sans, motif"),
-    "capacite_logique": ("    return len({c for c in dispo if core_of.get(c) not in pris})",
-                         "    return len(dispo)"),
+    "capacite_logique": ("    ok = {c for c in dispo if core_of.get(c) not in pris}",
+                         "    ok = set(dispo)"),
 }
 if MUT:
     if MUT not in MUTATIONS:

@@ -931,7 +931,8 @@ def reconcile_engine_pinning(node_id, throttle_s=60.0):
     Throttlé par nœud ; no-op si le cpuset n'a pas changé depuis le dernier passage."""
     import time as _t
     now = _t.monotonic()
-    if now - _reconcile_last.get(node_id, 0.0) < throttle_s:
+    # Présence de la clé, pas de date par défaut : monotonic() part du boot (cf. node_driver).
+    if node_id in _reconcile_last and now - _reconcile_last[node_id] < throttle_s:
         return
     _reconcile_last[node_id] = now
     node = db_get_node(node_id)
@@ -1042,7 +1043,8 @@ def reconcile_engine_sizing(node_id, throttle_s=300.0):
     Throttlé par nœud ; ré-alerte uniquement quand l'ENSEMBLE des écarts change."""
     import time as _t
     now = _t.monotonic()
-    if now - _sizing_last.get(node_id, 0.0) < throttle_s:
+    # Présence de la clé, pas de date par défaut : monotonic() part du boot (cf. node_driver).
+    if node_id in _sizing_last and now - _sizing_last[node_id] < throttle_s:
         return
     _sizing_last[node_id] = now
     node = db_get_node(node_id)

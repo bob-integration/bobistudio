@@ -467,12 +467,26 @@
                 },
             };
         })();
-        // Copie presse-papier robuste : navigator.clipboard n'existe qu'en contexte
-        // sécurisé (HTTPS/localhost). En HTTP clair sur le LAN, on retombe sur
-        // execCommand via un textarea temporaire. Renvoie une Promise<bool>.
-        window.copierTexte = function(texte){
+        // Robust clipboard copy: navigator.clipboard only exists in a secure context
+        // (HTTPS/localhost). Over plain HTTP on the LAN we fall back to execCommand on a
+        // throwaway textarea. Returns a Promise<bool>.
+        //
+        // ★ `champ` (optional) = an <input>/<textarea> ALREADY IN THE PAGE to use for the
+        // fallback. Required from inside a MODAL <dialog>: everything outside the dialog is
+        // inert there, so a textarea appended to `body` cannot be selected and the copy fails
+        // silently while announcing success (reported 2026-11-08, registration window). One
+        // copy path for the whole product — never navigator.clipboard at the call site.
+        window.copierTexte = function(texte, champ){
             const fallback = function(){
                 try {
+                    if (champ) {
+                        const avant = champ.value;
+                        champ.value = texte; champ.focus(); champ.select();
+                        const ok = document.execCommand('copy');
+                        champ.value = avant;
+                        if (!ok) { champ.focus(); champ.select(); }
+                        return ok;
+                    }
                     const ta = document.createElement('textarea');
                     ta.value = texte;
                     ta.style.position = 'fixed'; ta.style.top = '-9999px';
@@ -500,6 +514,9 @@
          la carte d'un nœud dans Monitoring et la section « Cœurs » de Réglages → Nœuds. Un
          second rendu dans chaque page aurait divergé (c'est déjà arrivé aux cartes de cœurs). -->
     <link rel="stylesheet" href="/static/css/cores.css?v={{ asset_v('css/cores.css') }}">
+    <!-- « Réglages du conteneur » : panneau latéral PARTAGÉ, ouvert depuis le ⚙ d'une page de plugin
+         et depuis le menu Actions d'une carte de la page Conteneurs — un seul code (2026-11-07). -->
+    <link rel="stylesheet" href="/static/css/container_panel.css?v={{ asset_v('css/container_panel.css') }}">
     {# Partie JS du catalogue : le MOTEUR (bobi-controls.js — échelles, gestes, événements,
        création par programme et depuis une feuille param_tree) puis controls.js (API historique
        des plugins, qui délègue au moteur pour les rotatifs). Un rotatif est un TRACÉ et un
@@ -507,6 +524,7 @@
     <script src="/static/js/bobi-controls.js?v={{ asset_v('js/bobi-controls.js') }}"></script>
     <script src="/static/js/controls.js?v={{ asset_v('js/controls.js') }}"></script>
     <script src="/static/js/cores.js?v={{ asset_v('js/cores.js') }}"></script>
+    <script src="/static/js/container_panel.js?v={{ asset_v('js/container_panel.js') }}"></script>
     {# Base commune des éditeurs (window.BobiEditor) : annuler/rétablir, presse-papiers, raccourcis,
        sélection multiple (BobiEditor.*) et géométrie de disposition (BobiEditor.layout) — fusion des
        ex-edit_kit.js / layout_engine.js (2026-10-30). Toute fonction d'édition y entre, jamais dans
@@ -549,6 +567,7 @@
     </script>
     <script src="/static/js/media_library.js?v={{ asset_v('js/media_library.js') }}" data-upload-v="{{ asset_v('js/media_upload.js') }}"></script>
     <script src="/static/js/transcode_dialog.js?v={{ asset_v('js/transcode_dialog.js') }}"></script>
+    <script src="/static/js/project_env.js?v={{ asset_v('js/project_env.js') }}"></script>
     <link rel="stylesheet" href="/static/css/image_editor.css?v={{ asset_v('css/image_editor.css') }}">
     <script src="/static/js/image_editor.js?v={{ asset_v('js/image_editor.js') }}"></script>
     {# Lecture d'un flux 2110 (cadence, état) : les vues Sources et Destinations affichent les
@@ -579,6 +598,9 @@
          que par containers.html/projects.html, donc les pages de contrôle de plugin n'avaient AUCUN
          bouton, en silence (le CSS et les champs étaient bons ; personne ne posait les boutons). -->
     <script src="/static/num_stepper.js?v={{ asset_v('num_stepper.js') }}"></script>
+    {# « Migrer vers un autre nœud » : here (not in scripts.js) so that the container settings panel
+       offers it on the plugin pages too, which do not load scripts.js. #}
+    <script src="/static/js/migration.js?v={{ asset_v('js/migration.js') }}"></script>
     {# Brique du moniteur de ressources CPU (window.MXLRessources) : chargée ICI, pas dans
        scripts.js — l'onglet Ressources (containers.html) ET le widget compact des pages plugin
        (plugin_section.html, qui ne charge pas scripts.js) en dépendent tous les deux. #}
@@ -984,7 +1006,111 @@
     {% endif %}
 
     <main id="contenu">
+    {% if current_user %}
+    {# Veille des mises à jour (app/update_watch.py) : bandeau et fenêtre, pour les administrateurs
+       seulement — `/api/update/notice` ne rend rien aux autres. Rien n'est installé d'ici. #}
+    <div id="updw-banner" class="updw-banner" role="status" hidden>
+        <span id="updw-banner-txt"></span>
+        <a class="btn" href="/settings#catalogue">{{ _('settings.updwatch.see') }}</a>
+        <button type="button" class="btn" data-updw-dismiss>{{ _('settings.updwatch.ignore') }}</button>
+    </div>
+    <dialog id="updw-dlg" class="modal-card" aria-labelledby="updw-dlg-t">
+        <h2 id="updw-dlg-t">{{ _('settings.updwatch.popup_title') }}</h2>
+        <ul id="updw-dlg-list"></ul>
+        <p>{{ _('settings.updwatch.popup_lead') }}</p>
+        <p class="meta">{{ _('settings.updwatch.popup_hint') }}</p>
+        <div class="row" style="justify-content:flex-end; gap:var(--space-2)">
+            <button type="button" class="btn" data-updw-dismiss>{{ _('settings.updwatch.ignore') }}</button>
+            <button type="button" class="btn" data-updw-later>{{ _('settings.updwatch.later') }}</button>
+            <a class="btn btn-blue" href="/settings#catalogue">{{ _('settings.updwatch.see') }}</a>
+        </div>
+    </dialog>
+    <script>
+    (function() {
+        const ligne = i => window.t('settings.updwatch.banner_one').replace('{label}', i.label)
+            .replace('{v}', i.version).replace('{inst}', i.installed || '?');
+        async function afficher() {
+            let j;
+            try { j = await (await fetch('/api/update/notice', { cache: 'no-store' })).json(); }
+            catch (e) { return; }
+            const items = (j && j.items) || [];
+            const ban = document.getElementById('updw-banner');
+            const dlg = document.getElementById('updw-dlg');
+            if (!j.enabled || !items.length) { ban.hidden = true; return; }
+            if (j.banner) {
+                document.getElementById('updw-banner-txt').textContent = items.length === 1
+                    ? ligne(items[0])
+                    : window.t('settings.updwatch.banner_many').replace('{n}', items.length);
+                ban.hidden = false;
+            }
+            // La fenêtre : une fois par SESSION de navigateur et par ensemble de versions — sinon
+            // elle reviendrait à chaque page. « Ignorer » la fait taire jusqu'à la version suivante.
+            const sig = items.map(i => i.key + '@' + i.version).join(',');
+            let vue = null;
+            try { vue = sessionStorage.getItem('updw-vue'); } catch (e) {}
+            if (j.popup && vue !== sig && dlg.showModal) {
+                const ul = document.getElementById('updw-dlg-list');
+                ul.innerHTML = '';
+                for (const i of items) { const li = document.createElement('li'); li.textContent = ligne(i); ul.appendChild(li); }
+                dlg.showModal();
+                try { sessionStorage.setItem('updw-vue', sig); } catch (e) {}
+            }
+        }
+        document.addEventListener('click', async (e) => {
+            if (e.target.closest('[data-updw-later]')) document.getElementById('updw-dlg').close();
+            if (!e.target.closest('[data-updw-dismiss]')) return;
+            try { await fetch('/api/update/notice/dismiss', { method: 'POST' }); } catch (err) {}
+            document.getElementById('updw-banner').hidden = true;
+            const dlg = document.getElementById('updw-dlg');
+            if (dlg.open) dlg.close();
+        });
+        afficher().then(proposerEnregistrement);
+
+        // Enregistrement de l'installation (app/registration.py) : proposé UNE fois aux
+        // administrateurs, un jour après la première visite ; jamais par-dessus la fenêtre de mise
+        // à jour — deux fenêtres empilées, c'est la seconde qu'on ferme sans la lire.
+        async function proposerEnregistrement() {
+            const dlg = document.getElementById('reg-dlg');
+            if (!dlg || !dlg.showModal || document.getElementById('updw-dlg').open) return;
+            if (location.pathname.startsWith('/settings')) return;   // la section y est déjà
+            // Fermée par Échap, sans choisir : on n'y revient pas avant la prochaine session.
+            try { if (sessionStorage.getItem('reg-vu')) return; } catch (e) {}
+            dlg.addEventListener('close', () => { try { sessionStorage.setItem('reg-vu', '1'); } catch (e) {} },
+                                 { once: true });
+            try {
+                const j = await (await fetch('/api/registration', { cache: 'no-store' })).json();
+                if (j.offer) dlg.showModal();
+            } catch (e) {}
+        }
+        document.addEventListener('click', async (e) => {
+            const b = e.target.closest('[data-reg-act]');
+            if (!b) return;
+            const act = b.dataset.regAct;
+            if (act !== 'register') {
+                try {
+                    await fetch('/api/registration', { method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: act }) });
+                } catch (err) {}
+            }
+            document.getElementById('reg-dlg').close();
+            if (act === 'register') location.href = '/settings?enregistrer=1#catalogue';
+        });
+    })();
+    </script>
+    <dialog id="reg-dlg" class="modal-card" aria-labelledby="reg-dlg-t">
+        <h2 id="reg-dlg-t">{{ _('settings.reg.popup_title') }}</h2>
+        <p>{{ _('settings.reg.popup_lead') }}</p>
+        <div class="row" style="justify-content:flex-end; gap:var(--space-2); flex-wrap:wrap">
+            <button type="button" class="btn" data-reg-act="decline">{{ _('settings.reg.popup_never') }}</button>
+            <button type="button" class="btn" data-reg-act="later">{{ _('settings.reg.popup_later') }}</button>
+            <button type="button" class="btn btn-blue" data-reg-act="register">{{ _('settings.reg.popup_register') }}</button>
+        </div>
+    </dialog>
+    {% endif %}
     {% block content %}{% endblock %}
+    {# Dialog « Migrer » — shared: the Containers page and the container settings panel (plugin pages). #}
+    {% include 'migration.html' %}
     </main>
 
     {% if current_user %}

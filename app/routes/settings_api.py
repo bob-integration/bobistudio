@@ -61,6 +61,22 @@ def api_set_settings():
             return jsonify({"error": "web_tls_port invalide ou déjà pris par l'orchestrateur "
                                      "(%d)" % port, "key": "web_tls_port"}), 400
         data["web_tls_port"] = port
+    # Veille des mises à jour : deux vocabulaires FERMÉS, refusés à la saisie (une valeur hors
+    # liste retomberait en silence sur le défaut, cf. update_watch._settings).
+    if "update_check_interval_h" in data:
+        from ..update_watch import INTERVALS_H
+        try:
+            data["update_check_interval_h"] = int(data["update_check_interval_h"])
+        except (TypeError, ValueError):
+            data["update_check_interval_h"] = None
+        if data["update_check_interval_h"] not in INTERVALS_H:
+            return jsonify({"error": "update_check_interval_h : %s" % ", ".join(map(str, INTERVALS_H)),
+                            "key": "update_check_interval_h"}), 400
+    if "update_check_scope" in data:
+        from ..update_watch import SCOPES
+        if data["update_check_scope"] not in SCOPES:
+            return jsonify({"error": "update_check_scope : %s" % ", ".join(SCOPES),
+                            "key": "update_check_scope"}), 400
     if "ha_tls_port" in data:
         from .. import pxe, web_mode
         try:

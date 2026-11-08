@@ -12,6 +12,7 @@
         window.t = function(key){ return (window.I18N && window.I18N[key]) || key; };
     </script>
     <link rel="stylesheet" href="/static/css/base.css?v={{ asset_v('css/base.css') }}">
+    <link rel="stylesheet" href="/static/css/controls.css?v={{ asset_v('css/controls.css') }}">
     {% if theme and theme != 'classic' %}
     <link rel="stylesheet" href="/static/css/theme-{{ theme }}.css?v={{ asset_v('css/theme-' ~ theme ~ '.css') }}">
     {% endif %}
@@ -125,7 +126,7 @@ const wiz = {
     start() {
         this.steps = [
             this.language, this.welcome, this.identity, this.network,
-            this.videofmt, this.done
+            this.videofmt, this.updates, this.done
         ];
         this.renderProgress();
         this.render();
@@ -295,6 +296,23 @@ const wiz = {
         };
     },
 
+    // ── Étape : Mises à jour ──────────────────────────────
+    // La vérification est ACTIVÉE par défaut (décision de Cyril, 2026-11-08) — à condition de le
+    // DIRE à l'installation et de laisser l'éteindre. C'est ici, et dans le résumé de l'installeur.
+    async updates() {
+        const s = (await api('GET', '/api/settings')).data || {};
+        const on = !['0', 'false', 'off', ''].includes(String(s.update_check_enabled ?? '1').toLowerCase());
+        return {
+            html: `
+            <div class="wiz-step-num">${esc(T('wiz.updates.step'))}</div>
+            <h1>${esc(T('wiz.updates.title'))}</h1>
+            <p class="lead">${esc(T('wiz.updates.lead'))}</p>
+            <label class="ctl-switch-inline"><input type="checkbox" class="ctl-switch" id="f-updchk" ${on ? 'checked' : ''}>
+              <span>${esc(T('wiz.updates.enable'))}</span></label>
+            <p class="lead" style="margin-top:12px">${esc(T('wiz.updates.hint'))}</p>`,
+        };
+    },
+
     // ── Étape 5 : Et maintenant ? ─────────────────────────
     // ⚠ L'écran disait « Bobi.Studio est prêt » alors qu'AUCUN nœud n'est enrôlé — donc rien ne
     // peut tourner. Il dit maintenant ce qui reste à faire, et où trouver l'aide : c'est le seul
@@ -361,6 +379,11 @@ wiz.network.save = async function() {
                            netmask_bits: +val('f-mask'), gateway: val('f-gw') });
     }
     await saveSettings(o); return true;
+};
+wiz.updates.save = async function() {
+    const e = document.getElementById('f-updchk');
+    await saveSettings({ update_check_enabled: e && e.checked ? '1' : '0' });
+    return true;
 };
 wiz.videofmt.save = async function() {
     await saveSettings({ video_format_default: val('f-vfmt') });

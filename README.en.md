@@ -2,12 +2,25 @@
 
 *[Version française](README.md)*
 
-> ## Beta release
+> ## Where this product stands
 >
-> - **The APIs are not frozen.** The plugin proxy, the control endpoints and the `.mxlplugin`
->   format may change. Versions are `0.x.y`: the zero major says exactly that. A `1.0` will
->   commit to a compatibility we would rather promise once and keep.
+> Bobi.Studio runs **in production every day** at the publisher's. It is measured rather than
+> estimated, an offline verification suite runs in CI on every push and blocks on failure, and
+> what is not fixed is **written down** in `CHANGELOG.md` rather than left unsaid.
+>
+> - **Calibrate before you go on air.** The resource profiles shipped by default were measured
+>   on *our* hardware: on yours, what a container costs and how dense a card can go are
+>   different. Build your setup, exercise it at the worst it will ever do, run a calibration
+>   campaign — that measurement, and nothing else, is what earns the word « guaranteed ».
+>   Procedure: [INSTALL.md §9](INSTALL.md) (in French).
 > - **Try it off air first.** This is a broadcast product: what breaks in it breaks live.
+> - **What an integrator depends on is standardised, not invented by us.** NMOS IS-04/05/07/09,
+>   IS-12/14, Ember+, TSL 5.0, SNMPv3 and SAP/SDP follow their specifications: those are not
+>   ours to change.
+> - **What still moves is the plugin authoring contract** — the plugin proxy, the control
+>   endpoints and the `.mxlplugin` format. A plugin declares the core it needs
+>   (`requires.core_min`) and installation **refuses** it when the core is too old, rather than
+>   letting it break silently. `0.x.y` versions say that, and nothing more.
 >
 > Two kinds of feedback help us most: what blocks you during installation, and what the
 > documentation fails to say. Please open an issue.
@@ -29,7 +42,7 @@ audio transport goes over the **MXL bus** (MXL SDK, shared memory `/dev/shm/mxl`
   trusted (configurable) GitHub organisation, compares them with what is installed and installs
   the package — no repository to clone
 - **Audio console**: a mixing console (`audio_console` plugin plus `audio` service) with AFV,
-  tool memories, operator views, an LV2 library and MCU/HUI control surfaces (`control_surface`
+  tool memories, operator views, an LV2 library and MCU/HUI control surfaces (`panel_audio`
   service); optional voice identification through speech synthesis (`tts` service, installed on
   demand)
 - **Live cabling**: a Cables page with graphical topology, hot source switching, automatic UDC
@@ -52,18 +65,27 @@ audio transport goes over the **MXL bus** (MXL SDK, shared memory `/dev/shm/mxl`
   Monitoring buttons on the producing pages
 - **Multi-node**: Docker node enrolment (node agent), inter-node **RDMA** replication of the
   MXL bus, centralised multicast allocation, warm-standby high availability (see `HA.md`)
-- **Measured resources**: CPU profiles per container type, NUMA-aware isolated core allocation,
-  calibration under real load and a check of the placement actually obtained — no estimated
-  allocation
+- **Measured resources**: CPU profiles per container type, **placement levels** (including
+  « Dedicated » = whole physical cores, with deep sleep turned off), NUMA-aware isolated core
+  allocation, calibration under real load and a check of the placement actually obtained — no
+  estimated allocation
 - **Fleet health**: per-node supervision (CPU, RAM, disk, sensors, PTP, GPU, RDMA, memory
   bandwidth), failed-node detection, contextual alerts and e-mail notifications
 - **Node installation**: dedicated installer, PXE/UEFI HTTP network boot or USB media, iLO
   takeover
 - **Logging**: container logs, an operations journal, and an audit trail of user actions
-- **Projects**: snapshots of cabling and configuration, recall with progress, per-user
-  restricted access; **virtual ports** (an input cabled to a port follows the physical flow
-  assigned to it, without touching the project)
-- **Host drivers**: hardware driver installation and update by the node agent (`nvidia`,
+- **Projects**: a project **starts and stops**, is **versioned** (tunable automatic versions
+  with retention rules) and is **placed** per node; description card, search and filters;
+  snapshots of cabling and configuration, recall with progress, per-user restricted access;
+  **virtual ports** (an input cabled to a port follows the physical flow assigned to it,
+  without touching the project); a container's **on-air state** is saved on stop and restored
+  on start
+- **Media**: a per-container library and a central registry, playlists, import from the
+  computer into one or several projects, filing a selection into a project, a « Keep here »
+  lock, archival
+- **Release watch**: the orchestrator watches the releases published on GitHub and **tells**
+  the administrators — it never installs anything by itself
+- **Host drivers**: hardware driver installation and update by `node_agent/agent.py` (`nvidia`,
   `blackmagic`), with a journal and a managed reboot
 - **i18n**: bilingual FR/EN interface
 
@@ -72,7 +94,7 @@ audio transport goes over the **MXL bus** (MXL SDK, shared memory `/dev/shm/mxl`
 - **Controller**: a Flask application (port 5000) plus a supervision thread. No production
   container runs on it (except in "all-in-one" mode).
 - **Nodes**: enrolled Debian machines (`nodes` table), driven by `app/node_driver.py` through an
-  HTTP **node agent** (`node_agent/agent.py`, per-node token) that handles the Docker lifecycle
+  HTTP **node agent** (the node agent, per-node token) that handles the Docker lifecycle
   and host operations.
 - **Containers**: created by `app/docker_driver.py` (ST 2110 MTL engine, dedicated AF-XDP NIC)
   and `app/docker_compute.py` (compute/media, macvlan).
@@ -190,9 +212,8 @@ app/                  ← Python modules (deploy, plugins, node_driver, docker_d
                         core_pool/placement, node_health, ptp, ha…) + app/routes/ (REST API)
 plugins/              ← one git submodule per container type (plugin.json + script.py + UI)
                         plus `_*_runtime` directories (shared Docker images, not plugins)
-services/             ← orchestrator services (nmos, emberplus, tsl, atem, skaarhoj, sap, snmp,
-                        rdma, alerting, audio, control_surface, tts, files, media_manager,
-                        storage, webrtc_gateway… — `ls services` is authoritative)
+services/             ← orchestrator services, one git submodule per service
+                        — `ls services/` is authoritative
 node_agent/           ← node agent (agent.py) + node installer (install-node.sh) + iso/
 templates/            ← Jinja2 HTML views
 static/               ← scripts.js, CSS (base.css, nav.css, themes), uploads/
@@ -200,8 +221,8 @@ i18n/                 ← translation catalogues (fr.json, en.json)
 script_templates/     ← agent.py (per-container agent), bobimxl.py (MXL SDK), mxl_bench.py
 tools/                ← utilities (create_admin.py, build_dist.py…)
 docs/design/          ← UI guidelines, product doctrine, business context
-docs/reference/       ← authoritative reference documents (TX layouts, clock model,
-                        MXL interop, 2110 probe, projects)
+docs/reference/       ← the documents that are authoritative on their subject
+                        — `ls docs/reference/` is authoritative
 docs/chantiers/       ← dated engineering journals (measurements, ports, decisions)
 docs/design/DESIGN.md             ← UI guidelines / theme system
 docs/design/CONTEXT.md            ← business context and scope

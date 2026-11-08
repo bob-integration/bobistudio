@@ -533,7 +533,134 @@ def _libelle_placement(cores, numa_of, prefer_numa):
     return f"{ou} — SANS le socket visé ({prefer_numa})"
 
 
-def allocate_cores(node_id, vmid, n, prefer_numa=None):
+def _resources_of(vmid):
+    """Effective `resources` profile of this container (manifest + its own settings), or {}.
+
+    Lazy import: `docker_compute` imports this module, and `vue_coeurs` already reads the profile
+    the same way. {} on any failure — a type whose profile cannot be read must behave like a type
+    that asks for nothing, never like one that asks for everything."""
+    try:
+        from .database import db_get_container
+        from .docker_compute import effective_resources, _type_of
+        c = db_get_container(vmid) or {}
+        return effective_resources(_type_of(c), c) or {}
+    except Exception as e:                      # noqa: BLE001
+        log.debug("_resources_of(%s): %s", vmid, e)
+        return {}
+
+
+def cpuset_pose(node_id, vmid, cores, res=None):
+    """The cpuset to SET on this container for its reservation `cores`: those cores, plus their HT
+    SIBLING when the type asks for it (`resources.sibling_in_cpuset`). → the `--cpuset-cpus` string.
+
+    ★ ONE POLICY POINT, used by BOTH SIDES: `allocate_cores` (what is set) and `vue_coeurs` (what
+    the node is measured against). Two definitions would diverge at the first manifest, and the
+    cores window would then announce `reservation_not_applied` forever on a container that is in
+    fact exactly where it was put — `guarantee_watch` reads that very field.
+
+    ★ WHY A TYPE WOULD ASK FOR THE SIBLING (audio console, measured on dell-1 the 2026-11-08, on a
+    node whose clock is steady). The console's engine holds a real-time block of 0.67 to 1 ms on
+    its dedicated core; its ten Python threads (plugin hosts, control) are ordinary. Same console
+    of 34 slices at 48/72, dedicated core 13, verified THREAD BY THREAD: every thread on core 13 →
+    13 late blocks / 10 min; the FIFO audio thread ALONE on 13 and the Python threads on sibling 57
+    → 1. The protection of the core was never in question — the neighbour was the console ITSELF.
+    The plugin splits on its own as soon as its cpuset holds 2 + n CPUs
+    (`plugin_host.setup_plugin_cores`: first = audio thread alone, second = console, rest = hosts);
+    the orchestrator only has to hand it the sibling, which `physical_cores` has ALREADY taken out
+    of the shared pool — so this costs the node nothing it had not already paid.
+
+    ⚠ The sibling is given only to a type that ALSO carries `physical_cores`. Without it the
+    sibling is still offered to the shared pool, and handing it over would seat the thirteen shared
+    containers right beside the real-time thread — the very contention measured above, with the
+    reservation LOOKING bigger. Refused and NAMED, never silently granted.
+
+    ⚠ NOT for a DeckLink card (cf. `allocate_cores`): node I/O takes ONE logical CPU per physical
+    core, so that its own capture threads never contend with each other."""
+    cores = sorted(parse_cpuset(cores) if isinstance(cores, str) else {int(c) for c in (cores or [])})
+    if not cores:
+        return ""
+    res = _resources_of(vmid) if res is None else (res or {})
+    if not res.get("sibling_in_cpuset"):
+        return fmt_cpuset(cores)
+    if not res.get("physical_cores"):
+        log.warning("cpuset_pose: vmid %s asks for its HT sibling (`sibling_in_cpuset`) WITHOUT "
+                    "`physical_cores` — refused: the sibling is still in the shared pool, giving "
+                    "it would put the neighbours back beside the real-time thread", vmid)
+        return fmt_cpuset(cores)
+    core_of = core_map_cached(node_id)
+    if not core_of:
+        return fmt_cpuset(cores)         # HT map unreadable: no sibling is invented
+    phys = {core_of[c] for c in cores if c in core_of}
+    return fmt_cpuset(sorted(set(cores) | {c for c, ph in core_of.items() if ph in phys}))
+
+
+def allocate_cores(node_id, vmid, n, prefer_numa=None, physical=False):
+    """`_allocate_cores`, plus the WHOLE-PHYSICAL-CORE mark of the reservation.
+
+    `physical=True` (node I/O, `resources.physical_cores` of the manifest — a DeckLink card): the
+    HT siblings of the cores are kept out of the shared pool as well (`partage_disponible`), so
+    nothing at all runs beside the card's threads. Dedicated containers never got them anyway (the
+    strict HT rule of 30/10); this closes the shared pool, whatever `pin_reserve_physical` says.
+    The mark is written on whatever the allocation returns, existing or new, so switching a
+    container to or from node I/O takes effect at its next deployment. A physical reservation also
+    takes ONE logical CPU per physical core: two siblings of the same core would make the card
+    contend with itself.
+
+    ⚠ The RESERVATION (`node_core_alloc`) holds one logical CPU per physical core; the cpuset
+    RETURNED can be wider, because a type may ask for its HT sibling (`cpuset_pose`). The two must
+    not be confused: the reservation is what capacity is counted on, the cpuset is what is set."""
+    out = _allocate_cores(node_id, vmid, n, prefer_numa=prefer_numa, physical=physical)
+    if out:
+        try:
+            with get_db() as db:
+                db.execute("UPDATE node_core_alloc SET physical=? WHERE node_id=? AND vmid=?",
+                           (1 if physical else 0, node_id, vmid))
+        except Exception as e:
+            log.warning("allocate_cores: physical mark for vmid %s on node %s: %s", vmid, node_id, e)
+        out = cpuset_pose(node_id, vmid, out)
+    return out
+
+
+def physical_siblings(node_id, exclude_vmid=None, core_of=None):
+    """Physical cores held WHOLE by a `physical` reservation (other than `exclude_vmid`): no shared
+    container may run on any of their logical CPUs. Empty without an HT map (flat model)."""
+    core_of = core_map_cached(node_id) if core_of is None else core_of
+    if not core_of:
+        return set()
+    try:
+        with get_db() as db:
+            rows = db.execute("SELECT core, vmid FROM node_core_alloc WHERE node_id=? AND physical=1",
+                              (node_id,)).fetchall()
+    except Exception as e:
+        log.warning("physical_siblings node=%s: %s", node_id, e)
+        return set()
+    return {core_of[r["core"]] for r in rows if r["vmid"] != exclude_vmid and r["core"] in core_of}
+
+
+def physical_allocations(node_id):
+    """{vmid: [cores]} of the WHOLE-physical-core reservations of this node (node I/O)."""
+    out = {}
+    try:
+        with get_db() as db:
+            for r in db.execute("SELECT core, vmid FROM node_core_alloc WHERE node_id=? AND physical=1",
+                                (node_id,)).fetchall():
+                out.setdefault(r["vmid"], []).append(r["core"])
+    except Exception as e:
+        log.warning("physical_allocations node=%s: %s", node_id, e)
+    return {v: sorted(c) for v, c in out.items()}
+
+
+def _one_per_phys(cands, core_of, keep=()):
+    """One logical CPU per physical core among `cands` (sorted), preferring those in `keep` (the
+    container's current cores, so a redeployment does not shuffle them)."""
+    keep = set(keep)
+    chosen = {}
+    for c in sorted(cands, key=lambda c: (c not in keep, c)):
+        chosen.setdefault(core_of.get(c, ("flat", c)), c)
+    return sorted(chosen.values())
+
+
+def _allocate_cores(node_id, vmid, n, prefer_numa=None, physical=False):
     """Attribue `n` cœurs LIBRES du pool du nœud au `vmid`. IDEMPOTENT : si le vmid a déjà des cœurs
     sur ce nœud → les renvoie tels quels (pas de ré-allocation au redéploiement). Renvoie la chaîne
     `--cpuset-cpus` (ex. "8-11"), ou None si pas de pool / cœurs libres insuffisants (+ alerte).
@@ -628,6 +755,12 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
             # n'avait plus de cœur physique entier : c'est ce repli-là qui est supprimé. À défaut
             # de cœurs physiques entiers → REPLI PARTAGÉ (None), comme un pool plein, et dit.
             mine = sorted(c for c, v in alloc.items() if v == vmid)
+            if mine and physical and core_of and len({core_of.get(c) for c in mine}) < len(mine):
+                # A whole-core reservation holding two siblings of one core (made before it was
+                # whole): start again from scratch rather than keep the card contending with itself.
+                db.execute("DELETE FROM node_core_alloc WHERE node_id=? AND vmid=?", (node_id, vmid))
+                alloc = _allocated(db, node_id)
+                mine = []
             if mine:
                 # IDEMPOTENCE, mais PAS AVEUGLE. Recopier l'allocation existante sans la regarder
                 # FIGE une erreur pour toujours : un conteneur épinglé du mauvais côté du bus par une
@@ -641,6 +774,8 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
                 cand = sorted((pool - set(alloc)) | set(mine))
                 if core_of:
                     cand = sorted(_phys_libres(cand))
+                    if physical:
+                        cand = _one_per_phys(cand, core_of, keep=mine)
                 # Allocation existante qui VIOLE la règle stricte (posée avant elle) : replacée si
                 # un placement conforme existe, sinon rendue → repli partagé, avec l'alerte.
                 partage_ht = (set(mine) - _phys_libres(mine)) if core_of else set()
@@ -697,6 +832,8 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
                 return None
             if core_of:
                 conformes = sorted(_phys_libres(free))
+                if physical:
+                    conformes = _one_per_phys(conformes, core_of)
                 if len(conformes) < n:
                     bloques = sorted(set(free) - set(conformes))
                     db_add_alert("alert.resource.pinning_repli_ht", "warning",
@@ -725,7 +862,7 @@ def allocate_cores(node_id, vmid, n, prefer_numa=None):
     return fmt_cpuset(pick)
 
 
-def free_dedicated_capacity(node_id, vmid=None):
+def free_dedicated_capacity(node_id, vmid=None, physical=False):
     """Cœurs qu'une réservation dédiée de `vmid` pourrait obtenir AUJOURD'HUI sous la règle
     stricte de `allocate_cores` : cœurs ordonnançables du pool, non réservés à un autre, dont le
     frère HT n'est tenu par AUCUNE autre réservation. Les cœurs de `vmid` comptent (un resize les
@@ -743,7 +880,10 @@ def free_dedicated_capacity(node_id, vmid=None):
     if not core_of:
         return len(dispo)
     pris = {core_of[c] for c, v in alloc.items() if c in core_of and v != vmid}
-    return len({c for c in dispo if core_of.get(c) not in pris})
+    ok = {c for c in dispo if core_of.get(c) not in pris}
+    if physical:
+        return len({core_of.get(c, ("flat", c)) for c in ok})    # one logical CPU per physical core
+    return len(ok)
 
 
 def reserve_physique(node_id=None):
@@ -784,10 +924,44 @@ def partage_disponible(node_id, exclure_vmid=None, pool=None, core_of=None, stri
     libres = [c for c in sorted(pool) if c not in pris]
     if phys_dedies and (reserve_physique(node_id) if strict is None else strict):
         libres = [c for c in libres if core_of.get(c) not in phys_dedies]
+    # Node I/O (DeckLink): its physical cores are closed to the shared pool unconditionally — the
+    # Z8 black flashes of 30/10 were a card sharing its execution units with busy neighbours.
+    entiers = physical_siblings(node_id, exclude_vmid=exclure_vmid, core_of=core_of)
+    if entiers:
+        libres = [c for c in libres if core_of.get(c) not in entiers]
     return libres, phys_dedies
 
 
-def effective_cpuset(node_id, vmid, n=0, prefer_numa=None):
+def cpuset_auxiliaire(node_id):
+    """Le cpuset à poser sur un conteneur AUXILIAIRE : ni compute, ni porteur d'une réservation.
+
+    Un conteneur de réplication RDMA, un banc, un outil : rien de tout cela n'a de ligne dans
+    `containers`, donc rien de tout cela ne passe par `effective_cpuset`. Lancé tel quel, il naît
+    SANS cpuset — c'est-à-dire libre de s'exécuter partout, y compris sur un cœur dédié à un
+    conteneur temps réel et sur les lcores busy-poll du moteur 2110. Mesuré sur dl360-1 le
+    2026-11-07 : neuf conteneurs dans ce cas (réplication RDMA, un banc), pendant que la console
+    audio #1323 manquait 19 blocs de 1 ms en dix minutes sur son cœur « dédié » 23.
+
+    On leur donne donc la MÊME frontière qu'au repli partagé d'un conteneur compute
+    (`partage_disponible`) : hors des cœurs dédiés, hors de l'empreinte du moteur. Pas de
+    réservation — un auxiliaire ne RÉSERVE rien, il est simplement BORNÉ.
+
+    Pool entièrement dédié → le pool entier, comme `effective_cpuset` : partager le pool est
+    dégradé, mais flotter sur toute la machine est pire. Aucun pool déclaré → "" (rien à poser,
+    l'appelant garde son comportement d'avant)."""
+    node = db_get_node(node_id) or {}
+    pool = (node.get("compute_cpuset") or "").strip()
+    if not pool:
+        return ""
+    try:
+        libres, _phys = partage_disponible(node_id, pool=parse_cpuset(pool))
+    except Exception as e:                      # relevé HT illisible, nœud injoignable
+        log.warning("cpuset_auxiliaire: nœud %s non mesurable (%s) — pool entier", node_id, e)
+        return pool
+    return fmt_cpuset(libres) or pool
+
+
+def effective_cpuset(node_id, vmid, n=0, prefer_numa=None, physical=False):
     """Résout le cpuset Docker à poser pour UN conteneur compute, en garantissant qu'il n'en manque
     JAMAIS un si le nœud en expose un (cause racine du 2026-07-13, nœud 30 : 4 conteneurs sans
     aucun cpuset flottaient sur les lcores busy-poll du moteur 2110 → contention TX, cf. mémoire
@@ -803,7 +977,8 @@ def effective_cpuset(node_id, vmid, n=0, prefer_numa=None):
     ensure_compute_cpuset, ex. aucun moteur 2110 encore déployé dessus)."""
     node = db_get_node(node_id)
     if n and int(n) > 0:
-        dedicated = allocate_cores(node_id, vmid, int(n), prefer_numa=prefer_numa)
+        dedicated = allocate_cores(node_id, vmid, int(n), prefer_numa=prefer_numa,
+                                   physical=physical)
         if dedicated:
             return dedicated, True
     pool = ((node or {}).get("compute_cpuset") or "").strip()
@@ -1520,6 +1695,45 @@ def numa_of_media_nic(node_id):
     return nds.pop() if len(nds) == 1 else None
 
 
+_pci_numa_cache = {}
+
+
+def numa_of_pci_vendor(node_id, vendor):
+    """NUMA node of the PCI cards of `vendor` (sysfs id, e.g. "0xbdbd" for Blackmagic) on this
+    node (int), or None when undecidable: no such card, unreadable topology, or cards spread over
+    DIFFERENT sockets (inventing a preference there would be worse than none).
+
+    A node I/O container (a DeckLink card, `resources.io_pci_vendor`) is pinned on the socket of
+    its card: the card DMAs the frames there. Read once per node and kept, like the other
+    topologies (a card does not change socket while the node runs)."""
+    vendor = str(vendor or "").strip().lower()
+    if not node_id or not vendor.startswith("0x") or not all(ch in "0123456789abcdefx" for ch in vendor):
+        return None
+    key = (str(node_id), vendor)
+    if key in _pci_numa_cache:
+        return _pci_numa_cache[key]
+    from . import node_driver
+    cmd = ("for d in /sys/bus/pci/devices/*; do [ \"$(cat $d/vendor 2>/dev/null)\" = %s ] && "
+           "cat $d/numa_node 2>/dev/null; done; true" % vendor)
+    try:
+        rc, out, _ = node_driver.host_exec(db_get_node(node_id), cmd, timeout=15)
+    except Exception as e:
+        log.debug("numa_of_pci_vendor(%s, %s): %s", node_id, vendor, e)
+        return None
+    if rc != 0:
+        return None
+    nds = set()
+    for ln in (out or "").split():
+        try:
+            nds.add(int(ln))
+        except ValueError:
+            continue
+    nds.discard(-1)                       # -1 = single-socket machine or unknown: no preference
+    found = nds.pop() if len(nds) == 1 else None
+    _pci_numa_cache[key] = found
+    return found
+
+
 # Types SANS GPU dont les entrées sont les flux RX 2110 lus en PLEINE résolution : leur cpuset doit
 # viser le socket de la carte média. La pyramide est le cas d'école — c'est même toute sa raison
 # d'être : lire une fois, près de la carte, et ne publier que des proxies réduits (mesuré sur ce
@@ -1859,14 +2073,20 @@ def vue_coeurs(node_id, force=False):
                  # FAMINE = PSI « full » du conteneur (avg60, %) : part du temps où TOUTES ses
                  # tâches attendent un cœur. La charge ne peut pas la montrer — un conteneur
                  # affamé consomme PEU, il attend. None = pas de relevé.
-                 "famine": _famine(v)}
+                 "famine": _famine(v),
+                 # A DeckLink card's cores follow its active connectors: not set by hand here.
+                 "node_io": bool(_res.get("node_io"))}
         if reserve:
             ligne["cpuset_reserve"] = fmt_cpuset(reserve)
             ligne["cores"] = len(reserve)
             # Intention ≠ réalité : un conteneur qui n'a pas été recréé depuis un changement de
             # réservation tourne encore sur l'ancien cpuset. C'est précisément ce qu'une vue qui
             # se contente de lire la base ne peut pas dire.
-            ligne["coherent"] = (None if not app else parse_cpuset(app) == set(reserve))
+            # Compared to what `allocate_cores` SETS, not to the bare reservation: a type that
+            # asks for its HT sibling is right to carry it (cf. `cpuset_pose`).
+            ligne["cpuset_pose"] = cpuset_pose(node_id, v, reserve, res=_res)
+            ligne["coherent"] = (None if not app
+                                 else parse_cpuset(app) == parse_cpuset(ligne["cpuset_pose"]))
             # Frères HT de SES cœurs qui se retrouvent dans le pool partagé : son exclusivité est
             # nominale, et c'est la cause la plus plausible d'un dédié qui ne tient pas sa cadence.
             freres = sorted(x for x in voulu
@@ -2278,9 +2498,10 @@ def dedicated_floor_cores(node_id):
 
 
 def sync_dedicated_cpufreq(node_id, vmid=None):
-    """Met le nœud en `performance` + plancher max sur ses cœurs dédiés ACTUELS, plancher retiré
-    ailleurs — après MESURE (rien n'est réinstallé sur un nœud déjà conforme). Tout nœud, 2110 ou
-    non. Best-effort, jamais silencieux : un échec est journalisé ET alerté. → (agi, ok, msg)."""
+    """Met le nœud en `performance` + plancher max sur ses cœurs dédiés ACTUELS et veille profonde
+    coupée sur eux, plancher retiré et veille rendue ailleurs — après MESURE (rien n'est
+    réinstallé sur un nœud déjà conforme). Tout nœud, 2110 ou non. Best-effort, jamais
+    silencieux : un échec est journalisé ET alerté. → (agi, ok, msg)."""
     node = db_get_node(node_id) or {}
     if not node:
         return False, False, "node not found"
@@ -2313,6 +2534,10 @@ def sync_dedicated_cpufreq(node_id, vmid=None):
 # changement de gouverneur. Le réglage était posé, invisible, et les alertes de prép levées huit
 # fois n'avaient jamais été lues. Dire « qui tient quel cœur » sans dire À QUELLE FRÉQUENCE laisse
 # l'exploitant chercher une contention qui n'existe pas.
+# ★ ET LA VEILLE PROFONDE, pour la même raison (mesure du 2026-11-07, dl360-1) : un cœur dédié
+# dont le C6 reste actif paie jusqu'à 133 µs de sortie d'état et manque des blocs de 0,67 ms,
+# sans qu'aucun compteur de charge ne bouge. C'est donc un cœur dédié qui rate ses échéances tout
+# en ayant l'air parfaitement libre — exactement le genre d'écart qu'on cherche ensuite ailleurs.
 _ENERGIE_TTL_S = 120.0
 _energie_cache = {}          # node_id → (monotone, état)
 
@@ -2331,7 +2556,8 @@ def etat_energie(node_id, force=False):
     node = db_get_node(node_id) or {}
     out = {"mesure": False, "gouverneur": None, "gouverneurs": {}, "unite": None,
            "min_mhz": None, "max_mhz": None, "conforme": None, "raison": "",
-           "dedies": "", "dedies_voulus": ""}
+           "dedies": "", "dedies_voulus": "", "veille_mesuree": False, "veille_coupee": "",
+           "veille_budget_us": None, "veille_etats_us": []}
     try:
         from . import mtl
         st = mtl.cpufreq_state(mtl._run_agent(node))
@@ -2340,7 +2566,11 @@ def etat_energie(node_id, force=False):
         st = None
     if st is not None:
         voulus = dedicated_floor_cores(node_id)
-        conforme, raison = mtl.cpufreq_conforme(st, voulus)
+        # Le MÊME budget que celui qui a servi à poser le script sur ce nœud : avec le budget
+        # global, un nœud dont l'exploitant a changé le réglage s'afficherait « non conforme » en
+        # permanence sans que rien ne puisse le satisfaire.
+        _budget = mtl.cpuidle_budget_us(node_id)
+        conforme, raison = mtl.cpufreq_conforme(st, voulus, budget_us=_budget)
         govs = {}
         for _c, (gov, _mn, _lo, _mx) in (st.get("cpus") or {}).items():
             govs[gov or "?"] = govs.get(gov or "?", 0) + 1
@@ -2358,13 +2588,28 @@ def etat_energie(node_id, force=False):
             "conforme": bool(conforme), "raison": raison,
             "dedies": fmt_cpuset(sorted(st.get("dedicated") or [])),
             "dedies_voulus": fmt_cpuset(voulus),
+            # Veille profonde : les cœurs où elle est EFFECTIVEMENT coupée, relus sur la machine.
+            # `veille_mesuree=False` = pas d'interface cpuidle (VM) : il n'y a rien à couper, et
+            # la fenêtre ne doit pas afficher « rendue partout » comme si c'était un manque.
+            "veille_mesuree": bool(st.get("idle")),
+            "veille_coupee": fmt_cpuset(sorted(
+                c for c, etats in (st.get("idle") or {}).items()
+                if any(d for _lat, d in etats))),
+            # L'ÉCHELLE MESURÉE de la machine, et le budget en vigueur : c'est ce qui rend le
+            # réglage lisible. Un budget nu (« 5 ») ne dit pas ce qu'il coupe ; en regard des
+            # latences annoncées par CE CPU, il le dit — et c'est la seule façon de régler un
+            # autre modèle sans deviner (dl360-1 : 0, 2, 10, 133).
+            "veille_budget_us": _budget,
+            "veille_etats_us": sorted({lat for etats in (st.get("idle") or {}).values()
+                                       for lat, _d in etats}),
         })
     _energie_cache[nid] = (_t.monotonic(), out)
     return out
 
 
 def passer_en_performance(node_id):
-    """Met le nœud en gouverneur `performance` + plancher max sur ses cœurs DÉDIÉS ACTUELS.
+    """Met le nœud en gouverneur `performance`, plancher max sur ses cœurs DÉDIÉS ACTUELS et
+    veille profonde coupée sur eux.
 
     → {"ok", "agi", "msg", "energie"}. Geste EXPLICITE (un bouton, une confirmation) : il écrit
     une unité systemd sur l'hôte et change la consommation de la machine. `sync_dedicated_cpufreq`

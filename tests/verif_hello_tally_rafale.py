@@ -199,8 +199,9 @@ controle("★★★ le format, lui, RESTE au panneau", "format" in _sys,
 controle("★★ ...avec le niveau de journal et le mode tranche",
          {"log_level", "slice_mode"} <= _sys,
          "obtenu %s" % sorted(_sys))
-_src_panneau = open(os.path.join(RACINE, "templates", "plugin_section.html"),
-                    encoding="utf-8").read()
+# The ⚙ panel became the shared container settings panel on 2026-11-07 (static/js/container_panel.js).
+_src_panneau = (open(os.path.join(RACINE, "templates", "plugin_section.html"), encoding="utf-8").read()
+                + open(os.path.join(RACINE, "static", "js", "container_panel.js"), encoding="utf-8").read())
 controle("★★ le panneau ne rend QUE les champs de scope système",
          "(f.scope||'system')!=='user'" in _src_panneau.replace(" ", ""),
          "c'est ce filtre qui fait tenir la séparation ; le retirer ramènerait le tally dans "

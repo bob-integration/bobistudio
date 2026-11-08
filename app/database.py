@@ -374,12 +374,18 @@ def init_db():
         if "cpu_mode_override" not in cols:
             db.execute("ALTER TABLE containers ADD COLUMN cpu_mode_override TEXT")
         # POIDS CPU propre au conteneur (2026-10-30) : un des niveaux NOMMÉS de
-        # `app/cpu_weight.py:LEVELS` ('onair'|'normal'|'background'|'batch'). NULL = le manifeste
+        # `app/cpu_weight.py:LEVELS` ('dedicated'|'normal'|'background'|'batch'). NULL = le manifeste
         # fait foi. Colonne DISTINCTE de `cpu_mode_override` : la PLACE (dédié / pool partagé) et
         # le POIDS (la part de CPU sous saturation) sont deux décisions — `priority: batch` les
         # confondait, et « partagé mais prioritaire » n'existait pas.
         if "cpu_weight_override" not in cols:
             db.execute("ALTER TABLE containers ADD COLUMN cpu_weight_override TEXT")
+        # 2026-11-07: the place follows the level (« Antenne », renamed « Dédié » below, = dedicated cores). A container set
+        # « reserved » becomes on air; the place override is then cleared (idempotent).
+        db.execute("UPDATE containers SET cpu_weight_override='dedicated' WHERE cpu_mode_override='reserved'")
+        # 2026-11-07, same day: the level « onair » (« Antenne ») is renamed « dedicated » (« Dédié »).
+        db.execute("UPDATE containers SET cpu_weight_override='dedicated' WHERE cpu_weight_override='onair'")
+        db.execute("UPDATE containers SET cpu_mode_override=NULL WHERE cpu_mode_override IS NOT NULL")
         if "nmos_audio_count" not in cols:
             # Nombre de receivers audio NMOS exposés (en plus de nmos_receivers_count qui est = vidéo)
             db.execute("ALTER TABLE containers ADD COLUMN nmos_audio_count INTEGER DEFAULT 0")
@@ -601,6 +607,16 @@ def init_db():
             created_at TEXT,
             label      TEXT,
             snapshot   TEXT
+        )''')
+        # On-air state of a project's containers (2026-11-08, app/project_onair.py): opaque document
+        # declared by the plugin (control.onair), apart from the configuration so it can be skipped.
+        db.execute('''CREATE TABLE IF NOT EXISTS project_onair (
+            project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            entry       TEXT NOT NULL,
+            type        TEXT,
+            doc         TEXT,
+            captured_at TEXT,
+            PRIMARY KEY (project_id, entry)
         )''')
         db.execute('''CREATE TABLE IF NOT EXISTS project_members (
             project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -1265,6 +1281,10 @@ def init_db():
             vmid    INTEGER NOT NULL,
             PRIMARY KEY (node_id, core)
         )''')
+        # `physical` = the reservation owns the WHOLE physical core: its HT siblings are kept out of
+        # the shared pool too (node I/O such as a DeckLink card, cf. core_pool.allocate_cores).
+        if "physical" not in {r[1] for r in db.execute("PRAGMA table_info(node_core_alloc)")}:
+            db.execute("ALTER TABLE node_core_alloc ADD COLUMN physical INTEGER NOT NULL DEFAULT 0")
         # Allocations GPU par conteneur (sélecteur --gpus device=<idx>) : 1 ligne par vmid. Le GPU se
         # PARTAGE (time-slicing) → plusieurs vmid peuvent viser le même index (round-robin). Cf. gpu_pool.
         db.execute('''CREATE TABLE IF NOT EXISTS node_gpu_alloc (
@@ -1946,6 +1966,15 @@ def init_db():
         # sous-niveaux qui se chevauchent : bases espacées de 3 — LH/RH/TT).
         if "tally_base" not in pcols:
             db.execute("ALTER TABLE projects ADD COLUMN tally_base INTEGER")
+        # Fiche du projet (2026-11-07) : description et étiquettes saisies, puis qui a démarré,
+        # arrêté ou modifié le projet en dernier (nom de compte figé : survit au compte supprimé).
+        for _col in ("description", "tags", "started_at", "started_by", "stopped_at", "stopped_by",
+                     "modified_at", "modified_by"):
+            if _col not in pcols:
+                db.execute("ALTER TABLE projects ADD COLUMN %s TEXT" % _col)
+        # Periodic capture of the on-air state, seconds (0 = only at « Arrêter »), 2026-11-08.
+        if "onair_capture_s" not in pcols:
+            db.execute("ALTER TABLE projects ADD COLUMN onair_capture_s INTEGER DEFAULT 0")
         _rows = db.execute("SELECT id FROM projects WHERE tally_base IS NULL ORDER BY id").fetchall()
         for _r in _rows:
             db.execute("UPDATE projects SET tally_base=? WHERE id=?",
@@ -2763,19 +2792,32 @@ def db_set_resources_override(vmid, cores=None, memory=None, reset=False, cpu_mo
     """Pose le réglage de ressources PROPRE au conteneur (cf. migration `cores_override`).
     None = champ inchangé ; `reset=True` efface d'abord TOUS les champs (retour au manifeste).
     Les colonnes d'affichage `cores`/`memory` suivent la valeur posée.
+    `cores=0` = « no CPU cap » for a shared container (the display column is left as it is).
     `cpu_weight=""` rend le POIDS au manifeste sans toucher aux autres réglages."""
     with get_db() as db:
         if reset:
             db.execute("UPDATE containers SET cores_override=NULL, memory_override=NULL, "
                        "cpu_mode_override=NULL, cpu_weight_override=NULL WHERE vmid=?", (vmid,))
         if cpu_mode is not None:
-            db.execute("UPDATE containers SET cpu_mode_override=? WHERE vmid=?", (cpu_mode, vmid))
+            # The place follows the level since 2026-11-07: « reserved » IS the level on air;
+            # « shared » gives the container back to its manifest's level (the transcoder, the only
+            # type offering it, is batch there). `cpu_mode_override` is no longer written.
+            if cpu_mode == "reserved":
+                db.execute("UPDATE containers SET cpu_weight_override='dedicated' WHERE vmid=?", (vmid,))
+            elif cpu_mode == "shared":
+                db.execute("UPDATE containers SET cpu_weight_override=NULL WHERE vmid=? "
+                           "AND cpu_weight_override IN ('dedicated', 'onair')", (vmid,))
         if cpu_weight is not None:
+            from .cpu_weight import normalize
             db.execute("UPDATE containers SET cpu_weight_override=? WHERE vmid=?",
-                       (str(cpu_weight).strip().lower() or None, vmid))
-        if cores is not None:
+                       (normalize(cpu_weight) or None, vmid))
+        if cores is not None and int(cores) > 0:
             db.execute("UPDATE containers SET cores_override=?, cores=? WHERE vmid=?",
                        (int(cores), int(cores), vmid))
+        elif cores is not None:
+            # 0 = explicit « no CPU cap » for a shared container (cf. effective_resources). The
+            # display column keeps its value: a card showing « 0 cores » would say something false.
+            db.execute("UPDATE containers SET cores_override=0 WHERE vmid=?", (vmid,))
         if memory is not None:
             db.execute("UPDATE containers SET memory_override=?, memory=? WHERE vmid=?",
                        (int(memory), int(memory), vmid))
@@ -4548,6 +4590,10 @@ def _parse_snapshot(row):
         d["snapshot"] = json.loads(d.get("snapshot") or "[]")
     except Exception:
         d["snapshot"] = []
+    try:
+        d["tags"] = json.loads(d.get("tags") or "[]")
+    except Exception:
+        d["tags"] = []
     return d
 
 # Champs TSL 5.0, dans l'ordre où ils occupaient une base. Cette constante ne sert plus qu'à
@@ -5116,7 +5162,8 @@ def db_snapshot_for_vmids(vmids):
     with get_db() as db:
         rows = db.execute(
             f"SELECT vmid, hostname, cores, memory, script, deploy_config, monitor_user_id, "
-            f"node_id, instance_uuid "
+            f"node_id, instance_uuid, cores_override, memory_override, cpu_mode_override, "
+            f"cpu_weight_override "
             f"FROM containers WHERE vmid IN ({placeholders})",
             list(vmids)
         ).fetchall()
@@ -5128,6 +5175,17 @@ def db_snapshot_for_vmids(vmids):
         if c.get("monitor_user_id"):
             continue
         c.pop("monitor_user_id", None)
+        # Resources set for THIS container (cores, memory, dedicated/shared, CPU weight) — a
+        # calibration guarantee among them. Without this, a restore rebuilt every container from
+        # its manifest and the project silently lost its reservations (2026-11-07). The key is
+        # written only when something is set, so projects without overrides keep the exact same
+        # snapshot (the « living project » re-snapshot compares JSON and would version them all).
+        _res = {k: c.pop(col) for k, col in (("cores", "cores_override"), ("memory", "memory_override"),
+                                            ("cpu_mode", "cpu_mode_override"),
+                                            ("cpu_weight", "cpu_weight_override"))}
+        _res = {k: v for k, v in _res.items() if v is not None}
+        if _res:
+            c["resources"] = _res
         if c.get("deploy_config"):
             try:
                 c["deploy_config"] = json.loads(c["deploy_config"])
@@ -5142,23 +5200,24 @@ def db_snapshot_for_vmids(vmids):
         snapshot.append(virtualize_snapshot_entry(c))
     return snapshot
 
-def db_save_project(name, vmids, media_path=None):
+def db_save_project(name, vmids, media_path=None, owner_id=None):
     if not vmids:
         return None
     snapshot = db_snapshot_for_vmids(vmids)
     with get_db() as db:
         cur = db.execute(
-            "INSERT INTO projects (name, created_at, snapshot, media_path, tally_base) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO projects (name, created_at, snapshot, media_path, tally_base, owner_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (name, datetime.now().isoformat(timespec="seconds"), json.dumps(snapshot),
-             media_path, _next_tally_base(db))
+             media_path, _next_tally_base(db), owner_id)
         )
         db.commit()
         return cur.lastrowid
 
 # ─── Versions de projet (« projet vivant », chantier 3) ───────
 
-AUTO_VERSIONS_KEEP = 30   # rétention des versions automatiques (label NULL) par projet
+# Rétention des versions automatiques : règles réglables (Réglages → Base de données), cf.
+# app/project_versions.py. Le défaut garde les 30 dernières, comme avant le 07/11.
 
 def db_update_project_snapshot(pid, snapshot):
     with get_db() as db:
@@ -5173,13 +5232,10 @@ def db_add_project_version(pid, snapshot, label=None):
             "VALUES (?,?,?,?)",
             (pid, datetime.now().isoformat(timespec="seconds"), label,
              json.dumps(snapshot)))
-        # Rétention : les versions AUTO au-delà de AUTO_VERSIONS_KEEP sont purgées ;
+        # Rétention : les versions AUTO que les règles ne gardent pas sont purgées ;
         # les versions nommées sont conservées sans limite.
-        db.execute(
-            "DELETE FROM project_versions WHERE project_id=? AND label IS NULL AND id NOT IN "
-            "(SELECT id FROM project_versions WHERE project_id=? AND label IS NULL "
-            " ORDER BY id DESC LIMIT ?)",
-            (pid, pid, AUTO_VERSIONS_KEEP))
+        from .project_versions import prune
+        prune(db, pid)
         db.commit()
         return cur.lastrowid
 
@@ -5485,19 +5541,72 @@ def db_port_link_delete(consumer_uuid, kind=None, to_slot=None, any_slot=False):
                        (consumer_uuid, kind, json.dumps(to_slot)))
         db.commit()
 
-def db_import_project(name, snapshot, media_path=None):
+def db_import_project(name, snapshot, media_path=None, owner_id=None):
     """Crée un projet à partir d'un snapshot déjà constitué (import fichier)."""
     if not name or not isinstance(snapshot, list):
         return None
     with get_db() as db:
         cur = db.execute(
-            "INSERT INTO projects (name, created_at, snapshot, media_path, tally_base) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO projects (name, created_at, snapshot, media_path, tally_base, owner_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (name, datetime.now().isoformat(timespec="seconds"), json.dumps(snapshot),
-             media_path, _next_tally_base(db))
+             media_path, _next_tally_base(db), owner_id)
         )
         db.commit()
         return cur.lastrowid
+
+PROJECT_EVENTS = ("started", "stopped", "modified")
+
+def db_project_event(pid, event, actor=None):
+    """Last start / stop / modification of a project: when, and by which account (None = system)."""
+    if event not in PROJECT_EVENTS or not pid:
+        return
+    with get_db() as db:
+        db.execute("UPDATE projects SET %s_at=?, %s_by=? WHERE id=?" % (event, event),
+                   (datetime.now().isoformat(timespec="seconds"), actor, pid))
+        db.commit()
+
+def db_set_project_info(pid, description=None, tags=None):
+    """Description (free text) and tags (list of short strings, deduplicated, order kept)."""
+    sets, args = [], []
+    if description is not None:
+        sets.append("description=?"); args.append(str(description).strip()[:4000] or None)
+    if tags is not None:
+        seen, clean = set(), []
+        for t in tags:
+            t = " ".join(str(t).split())[:40]
+            if t and t.lower() not in seen:
+                seen.add(t.lower()); clean.append(t)
+        sets.append("tags=?"); args.append(json.dumps(clean[:20], ensure_ascii=False) if clean else None)
+    if not sets:
+        return
+    with get_db() as db:
+        db.execute("UPDATE projects SET %s WHERE id=?" % ", ".join(sets), (*args, pid))
+        db.commit()
+
+def db_projects_facts():
+    """{pid: counts and dates} for the project sheet, in a handful of grouped queries."""
+    out = {}
+    def put(pid, **kw):
+        out.setdefault(pid, {}).update(kw)
+    with get_db() as db:
+        for r in db.execute("SELECT project_id, COUNT(*) n, MAX(created_at) last FROM project_versions "
+                            "GROUP BY project_id"):
+            put(r["project_id"], versions=r["n"], last_saved=r["last"])
+        for table, key in (("project_ports", "ports"), ("project_macros", "macros"),
+                           ("project_triggers", "triggers"), ("project_views", "views")):
+            for r in db.execute("SELECT project_id, COUNT(*) n FROM %s GROUP BY project_id" % table):
+                put(r["project_id"], **{key: r["n"]})
+        for r in db.execute("SELECT m.project_id, u.username, u.prenom, u.nom, m.role "
+                            "FROM project_members m JOIN users u ON u.id = m.user_id "
+                            "ORDER BY u.username"):
+            out.setdefault(r["project_id"], {}).setdefault("members", []).append(
+                {"name": " ".join(x for x in (r["prenom"], r["nom"]) if x) or r["username"],
+                 "role": r["role"]})
+        for r in db.execute("SELECT p.id, u.username, u.prenom, u.nom FROM projects p "
+                            "JOIN users u ON u.id = p.owner_id"):
+            put(r["id"], author=" ".join(x for x in (r["prenom"], r["nom"]) if x) or r["username"])
+    return out
 
 def db_set_project_state(pid, state):
     with get_db() as db:
@@ -5528,6 +5637,7 @@ def db_delete_project(pid):
         # project left its triggers behind (still polled, unremovable: no project role to check). An
         # INSTALLATION trigger (project_id NULL) is not matched here and survives.
         db.execute("DELETE FROM project_triggers WHERE project_id=?", (pid,))
+        db.execute("DELETE FROM project_onair WHERE project_id=?", (pid,))
         db.commit()
 
 # ─── Membres de projet (rôles par projet : owner|editor|operator|viewer) ──

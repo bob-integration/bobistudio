@@ -5,6 +5,68 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Un projet se démarre, se versionne et se place — 2026-11-08
+
+**Un projet n'est plus seulement une sauvegarde : c'est quelque chose qui tourne.** Sa fenêtre
+a des onglets — contenu et composition, versions, fiche (description, étiquettes, auteur,
+historique) — et on le démarre ou l'arrête depuis là comme depuis la page Projets, en voyant
+ses conteneurs le faire. La liste se cherche, se filtre et se trie. Le placement se décide par
+nœud, et glisser un conteneur sur un autre nœud de la carte des cœurs le déplace. Un service
+déclare dans son manifeste comment il entre dans l'environnement d'un projet.
+
+**Les versions automatiques d'un projet sont réglables** — délai, maximum, règles de
+conservation — avec un éditeur qui montre ce que la règle retiendrait, plutôt que de laisser
+deviner.
+
+**L'état d'antenne d'un conteneur survit à son arrêt** (`control.onair`) : il est enregistré à
+l'arrêt et repris au démarrage, au lieu de repartir à zéro. ⚠ Le mélangeur et le player n'y
+sont pas encore : leur état est plus large qu'un drapeau, il relève du chantier d'instantané.
+
+**Les cœurs : le niveau « Antenne » s'appelle maintenant « Dédié ».** La fenêtre « Gérer les
+cœurs » a été refaite, les cœurs d'un Dédié se changent à chaud, le plafond CPU d'un conteneur
+partagé peut être retiré, et la veille profonde est coupée sur les cœurs dédiés avec un budget
+de réveil par nœud. Un correctif important va avec : **un conteneur sans cpuset ne peut plus
+s'installer sur le cœur dédié d'un autre** — il le partageait en silence, et seule la mesure le
+montrait.
+
+**Les médias se rangent par projet.** Une sélection entre dans un projet ou en sort, un import
+depuis l'ordinateur peut viser plusieurs projets à la fois, un verrou « Garder ici » empêche
+qu'un média parte d'un conteneur, et le filtre « projet » d'une bibliothèque est retenu par
+utilisateur.
+
+**Trois choses se retrouvent au même endroit.** Le panneau « Réglages du conteneur » est
+désormais partagé : le ⚙ d'une page de plugin et le menu d'une carte ouvrent le même, au lieu de
+deux chemins qui divergeaient. « Migrer » est disponible sur toutes les pages, donc depuis le
+panneau d'un plugin. Et les Réglages ont une navigation à deux rangs, comme la barre du haut,
+avec un onglet Système → Projets.
+
+**L'aide se range et se cherche.** Le menu est organisé par rubriques, Plugins et Services s'y
+remplissent seuls, l'index de droite reprend les titres du document chargé, et l'article
+« Écrire un plugin » affiche `plugins/AUTHORING.md` depuis la source au lieu d'une copie à la
+main. ⚠ Un avertissement est posé en tête : cette aide est rédigée par IA et n'a pas encore
+été entièrement relue.
+
+**Nouveau : la veille des versions.** L'orchestrateur regarde les versions publiées sur GitHub
+et **prévient** les administrateurs — il n'installe jamais rien de lui-même. À côté, une
+proposition d'enregistrer l'installation, par un courrier préparé que votre messagerie envoie,
+jamais nous.
+
+**La typographie française de l'interface est corrigée** : une espace insécable avant « : ; ! ? »
+et dans les guillemets, 1 783 valeurs reprises, et une garde pour que ça ne revienne pas — avec
+une espace ordinaire, le signe pouvait commencer une ligne, tout seul.
+
+**Un point connu de la 0.9.11 est corrigé.** L'alerte « TLS en clair » d'un nœud n'était plus
+émise pendant dix minutes après un démarrage, donc perdue au moment où elle importait le plus.
+Trois autres anti-rebonds portaient le même motif : tous les quatre sont repris.
+
+**Côté sous-modules** : console audio 0.4.168 → 0.4.171 (profils d'anticipation du limiteur true
+peak, Bloc et Marge séparés, « Retard » traité comme un effet), recorder 0.27.5 (rattrapage d'un
+retard dans l'anneau MXL), `decklink_io` 0.29.54.
+
+⚠ **Le point connu qui reste.** Rappeler un **instantané de configuration de conteneur** perd le
+lien de port virtuel que l'entrée suivait : après le rappel, l'entrée pointe le flux physique et
+non plus le port. Le correctif appartient au chantier d'instantané plus large, en cours.
+
 ## Les images se construisent depuis le dépôt public — 2026-11-02
 
 **Aucune image ne se construisait depuis le dépôt public, et le produit ne faisait donc rien du

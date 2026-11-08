@@ -2609,6 +2609,12 @@ def rafraichir_metrics(vmid, status_data=None):
                     db_add_alert("alert.agent.script_repris", "info",
                                  vmid=vmid, node_id=(_c or {}).get("node_id"), kind="agent",
                                  params={"vmid": vmid})
+                    # Restarted BY US after a crash: put back what was on air (project containers
+                    # whose plugin declares control.onair; a capture of the current run only).
+                    if vmid in _script_restart_count:
+                        import threading as _th
+                        from . import project_onair as _onair
+                        _th.Thread(target=_onair.after_auto_restart, args=(vmid,), daemon=True).start()
                 if (vmid in _script_restart_count
                         and time.monotonic() - _script_running_since.get(vmid, 0.0) >= SCRIPT_STABLE_S):
                     reset_crash_loop(vmid)

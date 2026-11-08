@@ -19,6 +19,7 @@
 6. [Premier flux de bout en bout](#6-premier-flux-de-bout-en-bout)
 7. [Vérification et diagnostic](#7-vérification-et-diagnostic)
 8. [Mise à jour et sauvegarde](#8-mise-à-jour-et-sauvegarde)
+9. [Avant la première antenne — étalonner sur VOTRE matériel](#9-avant-la-première-antenne--étalonner-sur-votre-matériel)
 
 ---
 
@@ -577,6 +578,10 @@ passe pas se diagnostique presque toujours en isolant l'étage en cause (moteur 
 source non câblée, format incompatible, réseau multicast non routé) plutôt qu'en revérifiant
 l'ensemble.
 
+⚠ **Un flux qui passe n'est pas un dispositif garanti.** Ce que vous avez obtenu ici est une
+image à l'écran. Avant de confier une antenne à cette installation, il reste à l'étalonner sur
+votre matériel : **cf. §9**.
+
 ---
 
 ## 7. Vérification et diagnostic
@@ -684,3 +689,58 @@ propres nœuds est le cas le plus sûr (§1.1(c), déploiement sur son infrastru
 n'est pas écarté par la licence, mais ce n'est pas un avis juridique — à faire valider avant de
 distribuer un bundle contenant le binaire. Le texte de licence est extrait de l'installeur lui-même et
 voyage à côté (`NVIDIA-LICENSE.txt`).
+
+---
+
+## 9. Avant la première antenne — étalonner sur VOTRE matériel
+
+⚠ **Ne passez pas à l'antenne sans avoir étalonné.** C'est la seule étape de cette
+documentation qu'aucun message d'erreur ne vous rappellera : tout paraît marcher jusqu'au jour
+où le dispositif est vraiment sollicité.
+
+### Pourquoi
+
+Les profils de ressources livrés par défaut ont été mesurés sur le matériel de l'éditeur. Sur
+le vôtre — autre génération de CPU, autre fréquence mémoire, autre carte réseau, autre GPU — le
+coût d'un même conteneur et le plafond de densité d'une même carte **diffèrent**.
+
+Un profil non étalonné impose donc une limite qui n'a pas été mesurée chez vous. Dans un sens le
+conteneur est bridé ; dans l'autre il réserve des cœurs dont il n'a pas besoin, et les refuse aux
+autres. **Dans les deux cas, rien ne le dit** — c'est pour ça que cette page existe.
+
+### Le principe, et il inverse la logique habituelle
+
+Ce n'est ni un manifeste de plugin ni une heuristique qui décide du coût d'un conteneur : c'est
+**vous qui le jouez**. Vous montez votre dispositif, vous l'exercez au pire de ce qu'il fera, et
+c'est cette mesure — et elle seule — qui autorise le mot « garanti ».
+
+La raison est simple : une pointe qui dure une seconde est invisible à un échantillonnage de 60 s,
+et personne — surtout pas un plugin écrit ailleurs — ne sait dire à l'avance ce que « charge
+normale » veut dire pour *votre* dispositif.
+
+### Comment
+
+1. Montez le dispositif complet dans un **projet** (page **Projets**).
+2. Mettez au niveau **Dédié** les conteneurs qui tiennent l'antenne. À ce niveau seulement, des
+   cœurs physiques entiers leur sont réservés. Sans cela, l'interface vous le dira sans
+   détour : « Aucun conteneur au niveau Dédié : rien n'est exigé, donc rien n'est garanti. »
+3. Onglet **Ressources** du projet → **« Étalonner le projet »**. La campagne démarre sur tous
+   les nœuds qui portent ses conteneurs.
+4. **Exercez le dispositif pendant la campagne**, au pire de ce qu'il fera : animations,
+   transitions, bascules de source, plein écran, toutes les prises occupées. Un étalonnage
+   passé sur un dispositif au repos mesure le repos.
+5. **« Arrêter et enregistrer »** : les profils mesurés remplacent les profils par défaut.
+6. Relisez le verdict. **« Projet garanti »** signifie que chaque conteneur au niveau Dédié a
+   des cœurs qui couvrent **son pic mesuré sur son nœud**. Tant que vous lisez « Projet non
+   garanti », ou « n conteneur(s) du projet sans assez de mesures », l'étalonnage n'est pas
+   fini — continuez d'exercer, ou rallongez la campagne.
+
+⚠ Un seul étalonnage tourne à la fois sur une installation : si vous lisez « Un étalonnage est
+déjà en cours ailleurs », attendez la fin de l'autre campagne.
+
+### À refaire
+
+- quand le **matériel** change : nœud ajouté ou remplacé, carte réseau, GPU, barrettes mémoire ;
+- quand le **dispositif** change de composition, pas seulement de réglage ;
+- après une **mise à jour** qui touche les plugins que vous exercez — un plugin optimisé coûte
+  moins, et un profil trop large réserve alors pour rien.

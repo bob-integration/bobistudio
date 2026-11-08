@@ -228,6 +228,11 @@ def main():
     database_proj = 9
     mu.db().execute("UPDATE media_uploads SET bin_id=? WHERE id=?", (bin_id, s1["id"]))
     mu.db().commit()
+    # Plusieurs projets (2026-11-07) : demandés à la reprise, retenus par la session, sans doublon.
+    s_r = mu.start(42, "Ma vidéo.mov", len(vid), 1650000000.5, node_id=1, folder="Envois", project_id=9,
+                   project_ids=[11, 9, "x", 12])
+    verifier(s_r["id"] == s1["id"] and s_r["project_ids"] == [9, 11, 12], "projets demandés : 9 puis 11 et 12, sans doublon (%s)"
+             % s_r.get("project_ids"))
     fin = mu.finish(mu.session_for(s1["id"], 42), run_async=False)
     s = mu.public(mu.session_for(s1["id"], 42))
     verifier(fin["state"] in ("importing", "done") and s["state"] == "done" and s["asset_id"], "finalisé puis importé (%s)" % s.get("error"))
@@ -237,7 +242,18 @@ def main():
     verifier(a.get("origin") == "upload" and database_proj in (a.get("projects") or []), "origine « upload », projet 9")
     verifier(s["asset_id"] == s1["asset_id"] and a.get("name") == "Ma vidéo.mov",
              "identité RÉSERVÉE à l'ouverture = celle du média ; nom de fiche sans code")
+    verifier({9, 11, 12} <= set(a.get("projects") or []), "rattaché à CHACUN des projets choisis (%s)" % a.get("projects"))
     verifier(s["asset_id"] in [x["id"] for x in mr.bin_assets(bin_id)], "rangé dans le bin")
+    # « Ne pas l'envoyer » (même contenu déjà dans la base) : rangé dans tous les projets demandés.
+    done = mu.attach_existing(s["asset_id"], project_id=13, project_ids=[14, 13])
+    verifier(done["project_ids"] == [13, 14] and {13, 14} <= set(mr.get_asset(s["asset_id"])["projects"]),
+             "média déjà présent : rangé dans chacun des projets demandés")
+    try:
+        mu.attach_existing(s["asset_id"], project_id=9, project_ids=[15], scope=frozenset({9, 11, 12}))
+        verifier(False, "utilisateur restreint : un projet qui n'est pas le sien est refusé")
+    except mu.UploadError as e:
+        verifier(e.code == 403 and 15 not in mr.get_asset(s["asset_id"])["projects"],
+                 "utilisateur restreint : un projet qui n'est pas le sien est refusé (rien rattaché)")
     verifier(os.path.exists(mr.thumb_path(s["asset_id"])), "vignette")
     verifier(int(os.path.getmtime(P(D1))) == 1650000000, "date du poste reposée")
 
@@ -293,6 +309,21 @@ def main():
     verifier(r.status_code == 200 and (r.get_json() or {}).get("received") == 4, "morceau par Flask jusqu'au nœud")
     r = cli_l.put("/api/media/upload/%s?offset=4" % j.get("id"), data=b"x")
     verifier(r.status_code == 403, "morceau sans media.manage → 403")
+    # Plusieurs projets demandés par un utilisateur RESTREINT : tous doivent être les siens.
+    from app import auth as _auth
+    _auth.ROLES["exploitant"] |= {"media.manage"}
+    database.db_create_user("restreint", hash_password("Banc-Motdepasse-2026!"), "exploitant")
+    PA, PB = database.db_import_project("Régie A", []), database.db_import_project("Régie B", [])
+    uid_r = database.get_db().execute("SELECT id FROM users WHERE username='restreint'").fetchone()["id"]
+    database.db_set_project_member(PA, uid_r, "operator")
+    cli_r = app.test_client()
+    with cli_r.session_transaction() as ss:
+        ss["user_id"], ss["username"] = uid_r, "restreint"
+    r = cli_r.post("/api/media/upload/start", json={"name": "r.png", "size": 4, "mtime": 2, "node_id": 1, "project_ids": [PA, PB]})
+    verifier(r.status_code == 403, "restreint : un des projets demandés n'est pas le sien → 403 (%s)" % r.status_code)
+    r = cli_r.post("/api/media/upload/start", json={"name": "r.png", "size": 4, "mtime": 2, "node_id": 1, "project_ids": [PA]})
+    verifier(r.status_code == 200 and (r.get_json() or {}).get("project_ids") == [PA],
+             "restreint : ses projets seulement → accepté, le premier devient le projet principal")
     r = cli_a.get("/api/media/upload/config")
     verifier(r.status_code == 200 and (r.get_json() or {}).get("nodes", [{}])[0].get("capable") is True, "config : nœud capable")
     node_old = dict(node, agent_version="0.25.0")

@@ -9,11 +9,12 @@
     "class": "mode-pyramide",
     "oklch": "0.74 0.10 200"
   },
-  "version": "0.18.4",
+  "version": "0.18.5",
   "video_format": false,
   "adapts_input": true,
   "aggregate_fps": false,
   "description": "Pyramide de proxies : descale chaque source en versions pré-réduites (½ ¼ ⅛ 1/16) partagées par tous les consommateurs (multiviews, monitoring…). Un thread par source, verrouillé à l'entrée 1:1 (jamais de re-cadencement). Sortie : <source>__p2/p4/p8/p16.",
+  "environment": { "scope": "shared", "wanted_by": { "types": ["multiview"] } },
   "nav": { "section": "composition", "label": "Composition", "route": "/composition", "order": 40 },
   "script_template": "script.py",
   "ui": {

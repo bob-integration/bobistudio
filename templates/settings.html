@@ -3,10 +3,13 @@
 {% block title %}{{ _('settings.page_title') }}{% endblock %}
 
 {% block content %}
-<h1>{{ _('settings.title') }}</h1>
-
+{# Navigation à deux rangs, comme la barre du haut (07/11) : le titre et les groupes dans une barre,
+   les onglets du groupe dans une bande collée dessous (`.navpair`, base.css / nav.css). #}
+<div class="navpair">
 <!-- Niveau 0 : groupes de haut niveau (refonte menus Réglages). -->
-<div class="tabs set-groups" role="tablist" aria-label="{{ _('settings.groups.aria') }}">
+<div class="navpair-top set-groups">
+    <h1 class="navpair-title">{{ _('settings.title') }}</h1>
+    <div class="navpair-items" role="tablist" aria-label="{{ _('settings.groups.aria') }}">
     <button class="tab active" id="set-group-btn-general"   onclick="switchSetGroup('general')">{{ _('settings.group.general') }}</button>
     <button class="tab"        id="set-group-btn-cluster"   onclick="switchSetGroup('cluster')">{{ _('settings.group.cluster_network') }}</button>
     <button class="tab"        id="set-group-btn-nodes"     onclick="switchSetGroup('nodes')">{{ _('settings.group.nodes_hardware') }}</button>
@@ -17,10 +20,11 @@
     <button class="tab"        id="set-group-btn-protocoles" onclick="switchSetGroup('protocoles')">{{ _('settings.group.protocols_panels') }}</button>
     <button class="tab"        id="set-group-btn-nmos"      onclick="switchSetGroup('nmos')">{{ _('settings.group.nmos') }}</button>
     <button class="tab"        id="set-group-btn-systeme"   onclick="switchSetGroup('systeme')">{{ _('settings.group.system') }}</button>
+    </div>
 </div>
 
 <!-- Niveau 1 : onglets existants (filtrés selon le groupe actif par switchSetGroup). -->
-<div class="tabs set-subnav" role="tablist" aria-label="{{ _('settings.tabs.aria') }}">
+<div class="navpair-deck set-subnav" role="tablist" aria-label="{{ _('settings.tabs.aria') }}">
     <button class="tab active" id="set-tab-btn-branding" onclick="switchSetTab('branding')">{{ _('settings.tab.branding') }}</button>
     <button class="tab"        id="set-tab-btn-proxmox"  onclick="switchSetTab('proxmox')">{{ _('settings.tab.cluster') }}</button>
     <button class="tab"        id="set-tab-btn-mcast"    onclick="switchSetTab('mcast')">{{ _('settings.tab.mcast') }}</button>
@@ -28,6 +32,7 @@
     <button class="tab"        id="set-tab-btn-roles"    onclick="switchSetTab('roles')">{{ _('settings.tab.roles') }}</button>
     <button class="tab"        id="set-tab-btn-jetons"   onclick="switchSetTab('jetons')">{{ _('settings.tab.api_tokens') }}</button>
     <button class="tab"        id="set-tab-btn-database" onclick="switchSetTab('database')">{{ _('settings.tab.database') }}</button>
+    <button class="tab"        id="set-tab-btn-projets"  onclick="switchSetTab('projets')">{{ _('settings.tab.projects') }}</button>
     <button class="tab"        id="set-tab-btn-reseau"    onclick="switchSetTab('reseau')">{{ _('settings.tab.network') }}</button>
     <button class="tab"        id="set-tab-btn-cpu"       onclick="switchSetTab('cpu')">{{ _('settings.tab.cpu') }}</button>
     <button class="tab"        id="set-tab-btn-mxl"       onclick="switchSetTab('mxl')">MXL</button>
@@ -66,6 +71,21 @@
     <button class="tab"        id="set-tab-btn-raz"       onclick="switchSetTab('raz')" style="margin-left:auto; color:var(--status-error-fg)">RAZ</button>
     {% endif %}
 </div>
+</div>
+<script>
+// Onglets de la bande : largeur du gras réservée (data-label, cf. base.css), pour que l'onglet
+// allumé ne décale pas ses voisins.
+document.querySelectorAll('.navpair-deck > .tab, .navpair-items > .tab').forEach(b => {
+    if (b.dataset.label || b.children.length) return;
+    const txt = b.textContent.trim();
+    b.dataset.label = txt;
+    b.innerHTML = '';
+    const sp = document.createElement('span');
+    sp.textContent = txt;
+    b.appendChild(sp);
+});
+</script>
+<script src="/static/subnav_deck.js?v={{ asset_v('subnav_deck.js') }}"></script>
 
 <!-- ═══ Onglet Accès publics (groupe « Système ») ═════════════
      ⚠ CE SONT LES SEULES PORTES DU PRODUIT QUI S'OUVRENT SANS IDENTIFICATION. Elles n'étaient
@@ -809,6 +829,22 @@ async function fontDelete(f) {
 {% if has_perm('audio_plugins.manage') and audio_service %}{% include 'audio/settings_lv2.html' %}{% endif %}
 
 <!-- ═══ Onglet Database ══════════════════════════════════════ -->
+{# Réglages des projets (Système → Projets, 07/11). #}
+<div id="set-tab-projets" class="set-tab-content" style="display:none">
+    {# Versions automatiques des projets : délai, maximum et règles de conservation (07/11).
+       Éditeur : static/js/version_policy.js ; moteur : app/project_versions.py. #}
+    <h2>{{ _('settings.vpol.title') }}</h2>
+    <div class="form">
+        <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.vpol.intro') }}</div>
+        {% if has_perm('settings.edit') %}
+        <div id="vpol-editor"></div>
+        <script src="/static/js/version_policy.js?v={{ asset_v('js/version_policy.js') }}"></script>
+        {% else %}
+        <p class="meta">{{ _('settings.vpol.readonly') }}</p>
+        {% endif %}
+    </div>
+</div>
+
 <div id="set-tab-database" class="set-tab-content" style="display:none">
     {% if not has_perm('backup.manage') %}
     <div class="alert alert-warning">{{ _('settings.doc.tu_n_as_pas_la_permission_backup_manage_')|safe }}</div>
@@ -2703,6 +2739,11 @@ async function fontDelete(f) {
 .cat-core .cat-core-note { flex:1 1 100%; font-size:0.85em; color:var(--text-muted); }
 .cat-source-reglage { display:flex; gap:var(--space-3); align-items:center; flex-wrap:wrap; }
 .cat-source-reglage label[for] { font-size:0.9em; }
+.cat-resume { display:flex; flex-wrap:wrap; gap:var(--space-2) var(--space-3); align-items:center;
+              justify-content:space-between; border:1px solid var(--border);
+              border-radius:var(--radius-small, 4px); background:var(--bg-input); padding:10px var(--space-3); }
+.cat-resume > div:first-child { flex:1 1 320px; }
+.cat-dlg { max-width:880px; }
 </style>
 <div class="form" style="display:flex; flex-direction:column; gap:var(--space-4)">
 
@@ -2714,39 +2755,173 @@ async function fontDelete(f) {
     </div>
   </div>
 
-  {# ⚠ `default` OBLIGATOIRE, ET CE N'EST PAS DE LA PRUDENCE DÉCORATIVE. Les gabarits
-     se rechargent À CHAUD (TEMPLATES_AUTO_RELOAD), le code Python NON. Entre
-     l'enregistrement de ce fichier et le redémarrage du contrôleur, la route tourne
-     encore dans sa version d'avant et ne passe pas `catalogue_org` : sans `default`,
-     `.replace()` reçoit un Undefined et TOUTE la page Réglages rend un 500.
-     Constaté en production. Toute nouvelle variable de gabarit doit donc supporter
-     son absence — la fenêtre dure jusqu'au prochain redémarrage. #}
-  <div class="cat-confiance">{{ _('catalogue.trust').replace('{org}', catalogue_org|default('', true))|safe }}</div>
+  {# ★ VERSIONS D'ABORD (maquette A, choisie par Cyril le 2026-11-08). La veille et
+     l'enregistrement avaient repoussé les listes de plugins et services tout en bas : les
+     réglages, rarement touchés, vivent dans deux fenêtres ; une ligne en résume l'état. #}
+  <div class="cat-resume">
+    <div id="cat-resume-txt" class="meta"></div>
+    <div style="display:flex; gap:var(--space-2); flex-wrap:wrap">
+      <button type="button" class="btn" onclick="document.getElementById('cat-regler-dlg').showModal()">{{ _('settings.catres.settings') }}</button>
+      <button type="button" class="btn" onclick="document.getElementById('cat-reg-dlg').showModal()">{{ _('settings.catres.register') }}</button>
+    </div>
+  </div>
 
-  {# L'organisation n'est PAS un champ : c'est le seul point de confiance du
-     mécanisme, il vit dans le code (`config.CATALOGUE_ORG`, surchargeable par
-     config_local.py). Ne reste ici que l'interrupteur — un site peut vouloir
-     qu'aucune requête ne sorte vers Internet. #}
-  <div class="cat-source-reglage">
-    <label class="ctl-switch-inline">
-      <input type="checkbox" class="ctl-switch" id="s_catalogue_actif"
-             onchange="catSauverActif(this.checked)">
-      <span>{{ _('catalogue.actif_lbl') }}</span>
-    </label>
-    <span id="cat-reglage-msg" class="meta"></span>
-  </div>
-  {# ★ Le sort d'un paquet récupéré était une RÈGLE CACHÉE : neuf → activé, mise à jour →
-     rangée. Sensé, mais deux clics identiques donnaient deux résultats différents et rien
-     ne l'annonçait. C'est un interrupteur maintenant, coché par défaut. #}
-  <div class="cat-source-reglage">
-    <label class="ctl-switch-inline">
-      <input type="checkbox" class="ctl-switch" id="s_catalogue_activer"
-             onchange="catSauverActiver(this.checked)">
-      <span>{{ _('catalogue.activer_lbl') }}</span>
-    </label>
-  </div>
-  <div class="meta">{{ _('catalogue.activer_hint') }}</div>
-  <div class="meta">{{ _('catalogue.org_hint') }}</div>
+  <dialog id="cat-regler-dlg" class="modal-card cat-dlg" aria-labelledby="cat-regler-t">
+    <div class="modal-head">
+      <h2 id="cat-regler-t" style="margin:0">{{ _('settings.catres.settings_title') }}</h2>
+      <button type="button" class="btn" onclick="this.closest('dialog').close()">{{ _('settings.reg.close') }}</button>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:var(--space-3)">
+    {# ⚠ `default` OBLIGATOIRE, ET CE N'EST PAS DE LA PRUDENCE DÉCORATIVE. Les gabarits
+       se rechargent À CHAUD (TEMPLATES_AUTO_RELOAD), le code Python NON. Entre
+       l'enregistrement de ce fichier et le redémarrage du contrôleur, la route tourne
+       encore dans sa version d'avant et ne passe pas `catalogue_org` : sans `default`,
+       `.replace()` reçoit un Undefined et TOUTE la page Réglages rend un 500.
+       Constaté en production. Toute nouvelle variable de gabarit doit donc supporter
+       son absence — la fenêtre dure jusqu'au prochain redémarrage. #}
+    <div class="cat-confiance">{{ _('catalogue.trust').replace('{org}', catalogue_org|default('', true))|safe }}</div>
+
+    {# L'organisation n'est PAS un champ : c'est le seul point de confiance du
+       mécanisme, il vit dans le code (`config.CATALOGUE_ORG`, surchargeable par
+       config_local.py). Ne reste ici que l'interrupteur — un site peut vouloir
+       qu'aucune requête ne sorte vers Internet. #}
+    <div class="cat-source-reglage">
+      <label class="ctl-switch-inline">
+        <input type="checkbox" class="ctl-switch" id="s_catalogue_actif"
+               onchange="catSauverActif(this.checked)">
+        <span>{{ _('catalogue.actif_lbl') }}</span>
+      </label>
+      <span id="cat-reglage-msg" class="meta"></span>
+    </div>
+    {# ★ Le sort d'un paquet récupéré était une RÈGLE CACHÉE : neuf → activé, mise à jour →
+       rangée. Sensé, mais deux clics identiques donnaient deux résultats différents et rien
+       ne l'annonçait. C'est un interrupteur maintenant, coché par défaut. #}
+    <div class="cat-source-reglage">
+      <label class="ctl-switch-inline">
+        <input type="checkbox" class="ctl-switch" id="s_catalogue_activer"
+               onchange="catSauverActiver(this.checked)">
+        <span>{{ _('catalogue.activer_lbl') }}</span>
+      </label>
+    </div>
+    <div class="meta">{{ _('catalogue.activer_hint') }}</div>
+    <div class="meta">{{ _('catalogue.org_hint') }}</div>
+
+    {# ★ VEILLE DES MISES À JOUR (app/update_watch.py, 2026-11-08). Tout ce qui précède ne se
+       déclenchait qu'à l'ouverture de cet onglet : personne n'était PRÉVENU. Activée par défaut
+       (décision de Cyril), et l'installation le dit. On prévient, on n'installe jamais. #}
+    <div class="cat-sec" id="updw">
+      <h3 class="cat-sec-t">{{ _('settings.updwatch.title') }}</h3>
+      <p class="meta" style="margin:0 0 var(--space-2)">{{ _('settings.updwatch.lead') }}</p>
+      <div class="cat-source-reglage">
+        <label class="ctl-switch-inline">
+          <input type="checkbox" class="ctl-switch" id="s_update_check_enabled"
+                 onchange="updwSauver({update_check_enabled: this.checked ? '1' : '0'})">
+          <span>{{ _('settings.updwatch.enabled') }}</span>
+        </label>
+      </div>
+      <div class="row" style="gap:var(--space-3); flex-wrap:wrap; margin-top:var(--space-2)">
+        <div class="field" style="min-width:200px">
+          <label for="s_update_check_interval_h">{{ _('settings.updwatch.interval') }}</label>
+          <select id="s_update_check_interval_h"
+                  onchange="updwSauver({update_check_interval_h: +this.value})">
+            <option value="6">{{ _('settings.updwatch.int_6') }}</option>
+            <option value="12">{{ _('settings.updwatch.int_12') }}</option>
+            <option value="24">{{ _('settings.updwatch.int_24') }}</option>
+            <option value="168">{{ _('settings.updwatch.int_168') }}</option>
+          </select>
+        </div>
+        <div class="field" style="min-width:260px">
+          <label for="s_update_check_scope">{{ _('settings.updwatch.scope') }}</label>
+          <select id="s_update_check_scope" onchange="updwSauver({update_check_scope: this.value})">
+            <option value="core">{{ _('settings.updwatch.scope_core') }}</option>
+            <option value="all">{{ _('settings.updwatch.scope_all') }}</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:var(--space-2)"><strong>{{ _('settings.updwatch.notify') }}</strong></div>
+      {% for k in ('alert', 'banner', 'popup') %}
+      <div class="cat-source-reglage">
+        <label class="ctl-switch-inline">
+          <input type="checkbox" class="ctl-switch" id="s_update_notify_{{ k }}"
+                 onchange="updwSauver({update_notify_{{ k }}: this.checked ? '1' : '0'})">
+          <span>{{ _('settings.updwatch.notify_' ~ k) }}</span>
+        </label>
+      </div>
+      {% endfor %}
+      <div class="meta">{{ _('settings.updwatch.notify_hint') }}</div>
+      <div class="row" style="margin-top:var(--space-3); align-items:center; gap:var(--space-2)">
+        <button class="btn" onclick="updwVerifier()">{{ _('settings.updwatch.check_now') }}</button>
+        <span id="updw-etat" class="meta" role="status"></span>
+      </div>
+    </div>
+
+    </div>
+  </dialog>
+
+  <dialog id="cat-reg-dlg" class="modal-card cat-dlg" aria-labelledby="cat-reg-t">
+    <div class="modal-head">
+      <h2 id="cat-reg-t" style="margin:0">{{ _('settings.reg.title') }}</h2>
+      <button type="button" class="btn" onclick="this.closest('dialog').close()">{{ _('settings.reg.close') }}</button>
+    </div>
+    {# ★ ENREGISTREMENT (app/registration.py, 2026-11-08) : un mail PRÉPARÉ vers l'adresse fixée
+       dans le code, que l'administrateur envoie lui-même. Rien ne part du contrôleur ; le texte
+       exact est affiché avant, avec « Copier » pour un poste de régie sans messagerie. #}
+    <div class="cat-sec" id="reg">
+      <p class="meta" style="margin:0 0 var(--space-2)">{{ _('settings.reg.lead') }}</p>
+      <p id="reg-etat" class="meta" role="status"></p>
+      <div style="margin-bottom:var(--space-2)">
+        <button type="button" class="btn" onclick="regMesInfos()">{{ _('settings.reg.mine') }}</button>
+      </div>
+      <div class="reg-grille">
+        {% for k in ('org', 'name', 'email', 'country') %}
+        <div class="field">
+          <label for="reg_{{ k }}">{{ _('settings.reg.f_' ~ k) }}{% if k == 'org' %} *{% endif %}</label>
+          <input id="reg_{{ k }}" class="ctl-input" maxlength="200"
+                 {% if k == 'email' %}type="email" autocomplete="email"{% else %}type="text"{% endif %}>
+        </div>
+        {% endfor %}
+        <div class="field">
+          <label for="reg_usage">{{ _('settings.reg.f_usage') }}</label>
+          <select id="reg_usage" class="ctl-input">
+            <option value="">{{ _('settings.reg.usage_none') }}</option>
+            {% for u in ('control_room', 'ob_van', 'training', 'evaluation', 'development', 'other') %}
+            <option value="{{ u }}">{{ _('settings.reg.usage_' ~ u) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field reg-large">
+          <label for="reg_comment">{{ _('settings.reg.f_comment') }}</label>
+          <textarea id="reg_comment" class="ctl-input" rows="3" maxlength="2000"></textarea>
+        </div>
+      </div>
+      <div class="cat-source-reglage">
+        <label class="ctl-switch-inline">
+          <input type="checkbox" class="ctl-switch" id="reg_facts" checked>
+          <span>{{ _('settings.reg.facts_lbl') }}</span>
+        </label>
+      </div>
+      <div class="row" style="align-items:center; gap:var(--space-2); margin-top:var(--space-2)">
+        <button type="button" class="btn btn-blue" onclick="regAfficher()">{{ _('settings.reg.show') }}</button>
+        <span id="reg-msg" class="meta" role="status"></span>
+      </div>
+    </div>
+
+  </dialog>
+    {# Le mail n'est composé qu'à la demande : un aperçu qui suivait chaque frappe prenait la
+       moitié de l'onglet et arrivait en retard sur la saisie. #}
+    <dialog id="reg-mail-dlg" class="modal-card" aria-labelledby="reg-mail-t">
+      <h2 id="reg-mail-t">{{ _('settings.reg.preview') }}</h2>
+      <p id="reg-dest" class="meta"></p>
+      <textarea id="reg-apercu" class="ctl-input" readonly rows="16"
+                style="width:100%; box-sizing:border-box; font-family:var(--font-mono)"></textarea>
+      <p id="reg-copie-msg" class="meta" role="status"></p>
+      <div class="row" style="justify-content:flex-end; gap:var(--space-2)">
+        <button type="button" class="btn" onclick="document.getElementById('reg-mail-dlg').close()">{{ _('settings.reg.close') }}</button>
+        <button type="button" class="btn" onclick="regCopier()">{{ _('settings.reg.copy') }}</button>
+        <button type="button" class="btn btn-blue" onclick="regEnvoyer()">{{ _('settings.reg.send') }}</button>
+      </div>
+    </dialog>
+
   <div id="cat-erreur" class="cat-err"></div>
 
   {# ★ LE JETON N'EST PROPOSÉ QU'AU MOMENT OÙ IL SERT : quand le quota tombe, ou quand un jeton
@@ -3268,7 +3443,32 @@ function ctlDocRender() {
                 '<rect width="24" height="24" class="ctl-shape__a"/>' + g + '</svg></button>').join('') + '</span>') +
         // Courbes à poignées (2026-10-29) : composant VIVANT — les poignées se déplacent ici.
         ctlSpec(['ctl-curves'], setT('settings.ctl.curves_t'), setT('settings.ctl.curves_d'),
-            '<div class="ctl-curves" id="ctl-demo-curves" style="width:100%;max-width:360px"></div>');
+            '<div class="ctl-curves" id="ctl-demo-curves" style="width:100%;max-width:360px"></div>') +
+        // Liste filtrée (2026-11-07) : composant VIVANT — chercher, filtrer, trier la liste ci-dessous.
+        ctlSpec(['ctl-filter'], setT('settings.ctl.filter_t'), setT('settings.ctl.filter_d'),
+            '<div style="width:100%"><div id="ctl-demo-filter"></div><ul id="ctl-demo-filter-list" class="meta">' +
+            [['multiview', 1], ['mixer', 1], ['stills', 0], ['recorder', 0], ['player', 1]].map(([n, on]) =>
+                '<li data-search="' + n + '" data-on="' + on + '">' + n + (on ? ' ●' : ' ○') + '</li>').join('') +
+            '</ul></div>');
+    {
+        const host = document.getElementById('ctl-demo-filter');
+        const list = document.getElementById('ctl-demo-filter-list');
+        if (host && window.MXLControls && MXLControls.listFilter) {
+            MXLControls.listFilter(host, {
+                items: () => list.children,
+                search: setT('settings.ctl.filter_ph'),
+                countLabel: setT('settings.ctl.filter_count'),
+                empty: setT('settings.ctl.filter_none'),
+                groups: [{key: 'on', options: [{value: 'all', label: setT('settings.ctl.filter_all')},
+                                               {value: '1', label: setT('settings.ctl.filter_on')},
+                                               {value: '0', label: setT('settings.ctl.filter_off')}],
+                          match: (el, v) => el.dataset.on === v}],
+                sortLabel: setT('settings.ctl.filter_sort'),
+                sorts: [{value: 'name', label: setT('settings.ctl.filter_name'), by: el => el.dataset.search},
+                        {value: 'name_desc', label: setT('settings.ctl.filter_name_desc'), by: el => el.dataset.search, desc: true}],
+            });
+        }
+    }
     {
         const el = document.getElementById('ctl-demo-curves');
         if (el && window.BobiControls) {
@@ -3597,7 +3797,7 @@ function ctlPlan() {
         bloc.length ? bloc.join('\n') : T('settings.controls.plan_empty');
 }
 
-const SET_TABS = ['branding', 'proxmox', 'mcast', 'users', 'database', 'reseau', 'cpu', 'mxl', 'video', 'audio'{% if has_perm('audio_plugins.manage') and audio_service %}, 'lv2'{% endif %}, 'pip', 'fonts'{% if has_perm('settings.edit') %}, 'deploiement'{% endif %}{% if has_perm('media.manage') %}, 'media_registry'{% endif %}{% for tab in core_tabs %}, '{{tab.nav_tab}}'{% endfor %}, 'labels', 'tally', 'controles', 'services', 'alarmes', 'src_alarmes'{% if has_perm('settings.edit') %}, 'roles'{% endif %}{% if has_perm('settings.edit') %}, 'jetons'{% endif %}{% if has_perm('settings.edit') %}, 'journalisation', 'plugins', 'catalogue', 'recette', 'securite', 'acces_publics'{% endif %}{% if has_perm('containers.delete') %}, 'raz'{% endif %}];
+const SET_TABS = ['branding', 'proxmox', 'mcast', 'users', 'database', 'projets', 'reseau', 'cpu', 'mxl', 'video', 'audio'{% if has_perm('audio_plugins.manage') and audio_service %}, 'lv2'{% endif %}, 'pip', 'fonts'{% if has_perm('settings.edit') %}, 'deploiement'{% endif %}{% if has_perm('media.manage') %}, 'media_registry'{% endif %}{% for tab in core_tabs %}, '{{tab.nav_tab}}'{% endfor %}, 'labels', 'tally', 'controles', 'services', 'alarmes', 'src_alarmes'{% if has_perm('settings.edit') %}, 'roles'{% endif %}{% if has_perm('settings.edit') %}, 'jetons'{% endif %}{% if has_perm('settings.edit') %}, 'journalisation', 'plugins', 'catalogue', 'recette', 'securite', 'acces_publics'{% endif %}{% if has_perm('containers.delete') %}, 'raz'{% endif %}];
 
 // ─── Groupes de menus (niveau 0) — refonte menus Réglages ───────────────────
 // Chaque groupe liste ses onglets (niveau 1) ; on les filtre à ceux PRÉSENTS dans SET_TABS
@@ -3639,7 +3839,7 @@ const SET_GROUPS = [
     // « acces_publics » va avec Sécurité, et pas ailleurs : ce sont les seules portes du
     // produit qui s'ouvrent SANS identification. Les ranger auprès des utilisateurs ou des
     // services les aurait noyées dans du réglage courant.
-    {id: 'systeme',    tabs: ['services', 'alertes', 'journalisation', 'plugins', 'catalogue', 'recette', 'database', 'securite', 'acces_publics', 'raz']},
+    {id: 'systeme',    tabs: ['services', 'alertes', 'journalisation', 'plugins', 'catalogue', 'recette', 'database', 'projets', 'securite', 'acces_publics', 'raz']},
 ].map(g => ({...g, tabs: g.tabs.filter(t => SET_TABS.includes(t))}));
 
 // ── Accès publics ──────────────────────────────────────────────────────────────────────────
@@ -3887,6 +4087,7 @@ function switchSetGroup(gid) {
     const cur = _setLireHash().onglet;
     const target = grp.tabs.includes(cur) ? cur : grp.tabs[0];
     if (target) switchSetTab(target);
+    if (window.subnavDeckPlace) window.subnavDeckPlace();   // chevron sous le groupe allumé
 }
 
 // ─── Notifications & confirmations (remplacent alert()/confirm() natifs) ──────
@@ -15298,6 +15499,7 @@ async function catSauverReglage(corps, relire) {
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     z.textContent = CAT_T('saved', 'Enregistré.');
+    catResume();
     // ★ ON RELIT DANS LA FOULÉE, ET EN FORÇANT — mais seulement quand le réglage change
     // vraiment la liste. Changer d'organisation sans relire laisserait celle de l'ANCIENNE à
     // l'écran : on croirait le nouveau réglage sans effet, ou pire, on installerait depuis
@@ -15308,8 +15510,189 @@ async function catSauverReglage(corps, relire) {
   }
 }
 
+// ── Veille des mises à jour ────────────────────────────────────────────────
+async function updwSauver(corps) {
+  const z = document.getElementById('updw-etat');
+  try {
+    const r = await fetch('/api/settings', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corps) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    z.textContent = window.t('settings.updwatch.saved');
+    catResume();
+  } catch (e) {
+    z.textContent = CAT_T('save_failed', 'Échec de l\'enregistrement : {e}').replace('{e}', e.message);
+  }
+}
+function updwEtat(j) {
+  const z = document.getElementById('updw-etat');
+  if (!z) return;
+  if (j.error === 'offline') { z.textContent = window.t('settings.updwatch.offline'); return; }
+  const parts = [];
+  parts.push(j.checked_at
+    ? window.t('settings.updwatch.last').replace('{d}', new Date(j.checked_at * 1000).toLocaleString())
+    : window.t('settings.updwatch.never'));
+  if (j.error) parts.push(window.t('settings.updwatch.error'));
+  else if (j.checked_at) parts.push((j.available || []).length
+    ? window.t('settings.updwatch.found').replace('{n}', j.available.length)
+    : window.t('settings.updwatch.none'));
+  z.textContent = parts.join(' ');
+}
+async function updwCharger() {
+  try {
+    const s = await (await fetch('/api/settings', { cache: 'no-store' })).json();
+    const on = v => !['0', 'false', 'off', ''].includes(String(v ?? '').toLowerCase());
+    document.getElementById('s_update_check_enabled').checked = on(s.update_check_enabled ?? '1');
+    document.getElementById('s_update_check_interval_h').value = String(s.update_check_interval_h || 24);
+    document.getElementById('s_update_check_scope').value = s.update_check_scope || 'core';
+    for (const [k, d] of [['alert', '1'], ['banner', '1'], ['popup', '0']])
+      document.getElementById('s_update_notify_' + k).checked = on(s['update_notify_' + k] ?? d);
+    updwEtat(await (await fetch('/api/update/watch', { cache: 'no-store' })).json());
+  } catch (e) {}
+}
+async function updwVerifier() {
+  const z = document.getElementById('updw-etat');
+  z.textContent = window.t('settings.loading');
+  try {
+    const r = await fetch('/api/update/watch/check', { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    updwEtat(await r.json());
+  } catch (e) { z.textContent = e.message; }
+}
+
+// ── Enregistrement de l'installation ──────────────────────────────────────
+let regEmail = '';
+let regMail = null;           // le mail composé par le serveur au dernier « Afficher le mail »
+function regInfo() {
+  const v = id => (document.getElementById('reg_' + id)?.value || '').trim();
+  return { org: v('org'), name: v('name'), email: v('email'), country: v('country'),
+           usage: v('usage'), comment: v('comment'),
+           facts: !!document.getElementById('reg_facts')?.checked };
+}
+function regAfficherEtat(j) {
+  const z = document.getElementById('reg-etat');
+  if (j.status === 'registered' && j.at)
+    z.textContent = window.t('settings.reg.registered').replace('{d}', new Date(j.at * 1000).toLocaleDateString());
+  else if (j.status === 'declined') z.textContent = window.t('settings.reg.declined');
+  else z.textContent = '';
+}
+async function regCharger() {
+  try {
+    const j = await (await fetch('/api/registration?full=1', { cache: 'no-store' })).json();
+    regEmail = j.email || '';
+    const info = j.info || {};
+    for (const k of ['org', 'name', 'email', 'country', 'usage', 'comment']) {
+      const el = document.getElementById('reg_' + k);
+      if (info[k] && el && !el.value) el.value = info[k];
+    }
+    if (info.facts === false) document.getElementById('reg_facts').checked = false;
+    regAfficherEtat(j);
+  } catch (e) {}
+}
+// « Reprendre mes informations » : le compte connecté (prénom, nom, adresse) et le nom de
+// l'organisation des réglages d'identité. ⚠ Le clic REMPLACE ces trois champs : la première
+// version ne remplissait que les champs vides, sans rien dire — sur un formulaire déjà rempli par
+// un enregistrement précédent, le bouton semblait mort (signalé par Cyril le 2026-11-08). Une
+// valeur absente du compte ne vide pas le champ, et le résultat est dit.
+async function regMesInfos() {
+  const z = document.getElementById('reg-msg');
+  const repris = [];
+  const poser = (k, v) => {
+    const el = document.getElementById('reg_' + k);
+    if (!el || !v) return;
+    el.value = v;
+    repris.push(window.t('settings.reg.f_' + k));
+  };
+  try {
+    const u = await (await fetch('/api/users/me', { cache: 'no-store' })).json();
+    poser('name', [u.prenom, u.nom].filter(Boolean).join(' '));
+    poser('email', u.email);
+    const s = await (await fetch('/api/settings', { cache: 'no-store' })).json();
+    poser('org', s.brand_org_name);
+    z.textContent = repris.length ? window.t('settings.reg.mine_done').replace('{f}', repris.join(', '))
+                                  : window.t('settings.reg.mine_none');
+  } catch (e) { z.textContent = e.message; }
+}
+async function regAfficher() {
+  const z = document.getElementById('reg-msg');
+  const info = regInfo();
+  if (!info.org) { z.textContent = window.t('settings.reg.org_required'); document.getElementById('reg_org').focus(); return; }
+  z.textContent = '';
+  try {
+    const r = await fetch('/api/registration/preview', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ info }) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    regMail = await r.json();
+    document.getElementById('reg-dest').textContent = window.t('settings.reg.to_hint').replace('{e}', regMail.to);
+    document.getElementById('reg-apercu').value = regMail.subject + '\n\n' + regMail.body;
+    document.getElementById('reg-copie-msg').textContent = '';
+    document.getElementById('reg-mail-dlg').showModal();
+  } catch (e) { z.textContent = e.message; }
+}
+async function regEnvoyer() {
+  const z = document.getElementById('reg-copie-msg');
+  try {
+    const r = await fetch('/api/registration', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'prepare', info: regInfo() }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    regAfficherEtat({ status: j.status, at: Date.now() / 1000 });
+    catResume();
+    window.location.href = j.mail.mailto;   // la messagerie de l'administrateur envoie, pas nous
+  } catch (e) { z.textContent = e.message; }
+}
+// Outside HTTPS `navigator.clipboard` DOES NOT EXIST (insecure context): the old fallback only
+// SELECTED the text and announced « copied » — nothing was copied (reported 2026-11-08). The
+// shared helper carries the real fallback, and it is given THIS window's own field: inside a
+// modal <dialog> everything outside the dialog is inert, so the helper's throwaway textarea
+// could not be selected. One copy path, never navigator.clipboard here.
+async function regCopier() {
+  const z = document.getElementById('reg-copie-msg');
+  const champ = document.getElementById('reg-apercu');
+  const txt = window.t('settings.reg.to_line').replace('{e}', regEmail || (regMail && regMail.to) || '')
+            + '\n' + champ.value;
+  const ok = await window.copierTexte(txt, champ);
+  z.textContent = ok ? window.t('settings.reg.copied').replace('{e}', regEmail)
+                     : window.t('settings.reg.copy_manual');
+}
+
+// ── Ligne de résumé (les réglages vivent dans deux fenêtres) ──────────────
+async function catResume() {
+  const z = document.getElementById('cat-resume-txt');
+  if (!z) return;
+  const T = k => window.t('settings.catres.' + k);
+  const on = v => !['0', 'false', 'off', ''].includes(String(v ?? '').toLowerCase());
+  const min1 = t => t ? t.charAt(0).toLowerCase() + t.slice(1) : t;
+  try {
+    const s = await (await fetch('/api/settings', { cache: 'no-store' })).json();
+    const r = await (await fetch('/api/registration?full=1', { cache: 'no-store' })).json();
+    const parts = [];
+    const enLigne = on(s.catalogue_actif ?? '1');
+    parts.push(enLigne ? T('online_on') : T('online_off'));
+    if (!enLigne || !on(s.update_check_enabled ?? '1')) parts.push(T('check_off'));
+    else {
+      const prev = [['alert', '1'], ['banner', '1'], ['popup', '0']]
+        .filter(([k, d]) => on(s['update_notify_' + k] ?? d)).map(([k]) => T('n_' + k));
+      parts.push(T('check_on')
+        .replace('{f}', min1(window.t('settings.updwatch.int_' + (s.update_check_interval_h || 24))))
+        .replace('{p}', prev.length ? prev.join(' + ') : T('n_none')));
+    }
+    if (r.status === 'registered' && r.at)
+      parts.push(T('reg_on').replace('{d}', new Date(r.at * 1000).toLocaleDateString()));
+    else parts.push(r.status === 'declined' ? T('reg_declined') : T('reg_off'));
+    z.textContent = parts.join(' · ');
+  } catch (e) { z.textContent = ''; }
+}
+
 async function catCharger(force) {
   catCoreCharger(force);
+  updwCharger();
+  regCharger();
+  catResume();
+  // Arrivée depuis la fenêtre « Enregistrer votre installation ? » : on ouvre le formulaire.
+  if (new URLSearchParams(location.search).get('enregistrer') === '1') {
+    history.replaceState(null, '', location.pathname + location.hash);
+    document.getElementById('cat-reg-dlg')?.showModal();
+  }
   const src = document.getElementById('cat-source');
   const err = document.getElementById('cat-erreur');
   try {

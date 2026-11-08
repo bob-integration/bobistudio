@@ -11,7 +11,9 @@
 //  5. un cœur cliqué filtre le tableau sur les conteneurs qui le touchent, frère HT compris ;
 //  6. ★ « temps réel » n'est JAMAIS rendu pour un dédié (le serveur ne le publie plus ; le JS
 //     ne doit pas le réinventer) ;
-//  7. l'infobulle nomme QUI utilise chaque thread, avec sa place ET son poids.
+//  7. l'infobulle nomme QUI utilise chaque thread, avec son niveau (la place en découle) ;
+//  8. ★ (07/11) le niveau seul, les cœurs d'un Dédié réglables ici, la carte DeckLink à part,
+//     « Recréer » quand la réservation n'est pas appliquée, les refus avec leur raison.
 //
 // Le module est chargé tel quel (aucun accès DOM au chargement). Aucune base, aucun réseau.
 //
@@ -19,7 +21,26 @@
 
 const fs = require('fs'), path = require('path');
 const src = path.join(__dirname, '..', 'static', 'js', 'cores.js');
-const code = fs.readFileSync(src, 'utf8');
+let code = fs.readFileSync(src, 'utf8');
+// MUTATIONS (2026-11-07), COEURS_UI_MUTATION=<nom> — chacune doit donner rc=1 :
+//   place_et_niveau   l'infobulle redit la place à côté du niveau (deux notions pour une)
+//   coeurs_figes      le nombre de cœurs d'un Dédié n'est plus modifiable
+//   carte_reglable    la carte DeckLink devient réglable à la main
+//   refus_brut        un refus « pas la place » s'affiche comme un code
+const MUT = process.env.COEURS_UI_MUTATION || '';
+const MUTATIONS = {
+    place_et_niveau: ["    const libelleNiveau = (l) => libellePoids(l.poids.niveau)", "    const libelleNiveau = (l) => libellePlace(l) + ' · ' + libellePoids(l.poids.niveau)"],
+    coeurs_figes: ["        if (!peutDeployer()) return esc(l.cores);", "        return esc(l.cores);"],
+    carte_reglable: ["        if (l.node_io) return esc(l.cores)", "        if (false) return esc(l.cores)"],
+    refus_brut: ["    const refus = (j) => (j && j.error === 'no_room'", "    const refus = (j) => (false"],
+};
+if (MUT) {
+    if (!MUTATIONS[MUT]) { console.log('mutation inconnue : ' + MUT); process.exit(2); }
+    const [x, y] = MUTATIONS[MUT];
+    if (code.split(x).length !== 2) { console.log('mutation ' + MUT + ' : motif introuvable ou ambigu — la garde est périmée'); process.exit(1); }
+    code = code.replace(x, y);
+    console.log('MUTATION active : ' + MUT);
+}
 
 // Faux global minimal : le module s'installe sur `window`.
 const win = { t: (k) => k };
@@ -51,7 +72,7 @@ const J = {
         L({ vmid: 101, hostname: 'mur', place: 'dedie', cpuset_reserve: '0-2', cores: 3,
             cpuset_applique: '0-2', coherent: true, exclusif: false, freres_partages: '4-6',
             siblings_dedicated: [], protection: 'partie', physiques: 3,
-            poids: { niveau: 'onair', valeur: 2048, source: 'override' },
+            poids: { niveau: 'dedicated', valeur: 2048, source: 'override' },
             partage_avec: [{ vmid: 104, hostname: 'stills', via: 'frere_ht' }], charge: 2.4 }),
     ],
     partages: [
@@ -72,7 +93,7 @@ const J = {
         kind: p < 3 ? 'mixte' : 'partage', frere_partage: p < 3,
     })),
     synthese: { protege: 0, partie: 1, non: 2, inconnu: 0, poids_bas: 1, poids_haut: 1, poids_divergents: 1 },
-    poids_niveaux: [{ niveau: 'onair', valeur: 2048 }, { niveau: 'normal', valeur: 1024 },
+    poids_niveaux: [{ niveau: 'dedicated', valeur: 2048 }, { niveau: 'normal', valeur: 1024 },
                     { niveau: 'background', valeur: 256 }, { niveau: 'batch', valeur: 128 }],
     partage: { cpuset: '3-7', cores: 5, conteneurs: 2, temps_reel: 1, physiques: 4,
                physiques_exclusifs: 1, freres_de_dedies: '4-6', bas: false, capacite_comptee: 1 },
@@ -170,6 +191,39 @@ verifie(/data-phys/.test(code) && /<button type="button" class="bc-phys/.test(co
 verifie(/onmouseenter = b\.onfocus/.test(code),
         '6e. ★ et l\'infobulle sort au SURVOL comme au FOCUS clavier — une information, pas une '
         + 'récompense de souris');
+
+console.log('\n8. ★ Le niveau seul ; les cœurs d\'un Dédié se règlent ici (07/11)');
+win.hasPerm = (p) => p === 'containers.deploy';
+win.BobiContainerPanel = { open() {} };
+win.t = (k) => ({ 'settings.cores.weight.dedicated': 'Dédié', 'settings.cores.weight.normal': 'Normal',
+                  'settings.cores.cap_n': 'plafond {n}',
+                  'projects.res_level_no_room': 'Dédié demande {need} cœur(s) sur {name}, qui n\'en a que {available} de libre(s)' }[k] || k);
+const DED = L({ vmid: 201, hostname: 'mix', place: 'dedie', cpuset_reserve: '0-1', cores: 2,
+                poids: { niveau: 'dedicated', valeur: 2048, source: 'manifest' }, protection: 'protege' });
+const CARTE = L({ vmid: 202, hostname: 'sdi', place: 'dedie', cpuset_reserve: '2-3', cores: 2, node_io: true,
+                  poids: { niveau: 'normal', valeur: 1024, source: 'override' }, protection: 'protege' });
+const CAP = L({ vmid: 203, hostname: 'tr', place: 'partage_plafonne', plafond: 4 });
+verifie(I.libelleNiveau(DED) === 'Dédié', '8a. ★ un Dédié se dit « Dédié », pas « Réservé · Dédié »', I.libelleNiveau(DED));
+verifie(I.libelleNiveau(CAP) === 'Normal · plafond 4', '8b. un partagé plafonné dit son plafond', I.libelleNiveau(CAP));
+verifie(/<input type="number" class="bc-cores-in"[^>]*value="2"[^>]*data-vmid="201"/.test(I.coeursCellule(DED)),
+        '8c. ★ le nombre de cœurs d\'un Dédié est un champ réglable', I.coeursCellule(DED));
+verifie(!/input/.test(I.coeursCellule(CARTE)) && /settings\.cores\.node_io_note/.test(I.coeursCellule(CARTE)),
+        '8d. ★ la carte DeckLink : pas réglable ici, « selon ses prises actives »', I.coeursCellule(CARTE));
+verifie(I.coeursCellule(CAP) === '—', '8e. un partagé n\'a pas de cœurs réservés');
+win.hasPerm = () => false;
+verifie(!/input/.test(I.coeursCellule(DED)), '8f. sans le droit de déployer : lecture seule');
+win.hasPerm = (p) => p === 'containers.deploy';
+verifie(I.refus({ error: 'no_room', need: 3, name: 'dell-1', available: 1 })
+        === 'Dédié demande 3 cœur(s) sur dell-1, qui n\'en a que 1 de libre(s)',
+        '8g. ★ un refus dit ce qui manque, comme la vue projet',
+        I.refus({ error: 'no_room', need: 3, name: 'dell-1', available: 1 }));
+const INC = L({ vmid: 204, hostname: 'rec', place: 'dedie', cpuset_reserve: '4', cores: 1, coherent: false,
+                poids: { niveau: 'dedicated', valeur: 2048, source: 'manifest' }, protection: 'protege' });
+const tab = I.tableau(Object.assign(I.nouvelEtat(1, 'n'), { j: Object.assign({}, J, { dedies: [DED, INC], partages: [CAP] }) }));
+verifie(/class="bc-recreer[^"]*" data-vmid="204"/.test(tab) && !/class="bc-recreer[^"]*" data-vmid="201"/.test(tab),
+        '8h. ★ réservation pas appliquée → « Recréer » sur CE conteneur seulement');
+verifie(/class="bc-reglages[^"]*" data-vmid="201"/.test(tab), '8i. chaque ligne ouvre les réglages du conteneur (⚙)');
+win.t = (k) => k;
 
 console.log('\n7. Aucun texte en dur');
 // Deux formes de texte en dur, deux contrôles — la première version n'attrapait que la

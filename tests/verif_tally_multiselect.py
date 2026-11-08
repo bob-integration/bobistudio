@@ -132,7 +132,9 @@ controle("★★★ un niveau INEXISTANT est refusé, pas écrêté en silence",
 # Un champ rendu par la palette et pas par le panneau ⚙ (ou l'inverse) donne un réglage qui
 # disparaît selon la page d'où on l'ouvre — et rien ne le signale.
 for chemin, quoi in (("static/scripts.js", "palette"),
-                     ("templates/plugin_section.html", "panneau ⚙ des pages de plugin")):
+                     # Le ⚙ des pages de plugin ouvre depuis le 2026-11-07 le panneau partagé
+                     # « Réglages du conteneur » : c'est lui qui rend les champs.
+                     ("static/js/container_panel.js", "panneau « Réglages du conteneur » (⚙)")):
     txt = open(os.path.join(RACINE, chemin), encoding="utf-8").read()
     controle("★★★ %s : le type `multiselect` est rendu" % quoi,
              "'multiselect'" in txt or '"multiselect"' in txt,

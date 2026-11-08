@@ -1,7 +1,10 @@
 {
-  "version": "0.18.1",
-  "date": "2026-10-16",
+  "version": "0.18.5",
+  "date": "2026-11-07",
   "changes": {
+    "Projets (0.18.5)": [
+      "Le manifeste déclare `environment` : une pyramide sert TOUS les projets (`shared`) et un multiview en a besoin. L'orchestrateur rappelle qu'en mettre une dans un projet la détruit au déchargement de ce projet, et propose d'en créer une hors projet au rappel d'un projet qui n'en trouve aucune. Rien ne change dans le conteneur : rien à redéployer."
+    ],
     "Les bouches-trous amont ne sont plus composités comme des images (0.18.1)": [
       "★ TÉMOIN `invalid_grains` SUR :8080. Un grain BOUCHE-TROU posé par un producteur qui saute des index revenait MXL_STATUS_OK avec `validSlices = 0`, et notre idiome `int(gi.validSlices or k)` retournait ce zéro en « k tranches valides » : le bouche-trou était composité comme une image, à pleine confiance. Écarté désormais dans `bobimxl` (le seul point que toute la flotte traverse), et le compte publié par flux sur :8080 — cadence, index et statut de lecture restant tous PARFAITS pendant l'épisode, ce compteur en est le seul témoin."
     ],

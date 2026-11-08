@@ -235,45 +235,28 @@ def plugins_help():
     langue réellement servie. Une aide affichée dans une autre langue que celle
     de l'interface doit pouvoir se DIRE, sinon on croit à un défaut de
     traduction du produit plutôt qu'à une doc que personne n'a encore traduite."""
-    import markdown as _md
     from .. import plugins as _pl
-    from ..i18n import current_lang
-    lang = current_lang()
     articles = []
     for manifest in (_pl.all() or []):
         type_ = manifest.get("type") or ""
         if not type_:
             continue
         plugin_dir = manifest.get("_dir") or os.path.join(_pl.PLUGINS_DIR, type_)
-        # ⚠ `lang` VIENT D'UNE REQUÊTE. Un code de langue est un fragment de
-        # chemin : sans ce filtre, un `lang` fabriqué remonterait l'arborescence.
-        # Les codes valides sont dans `i18n.LANG_CODES`, mais on ne s'appuie pas
-        # dessus ici — la garde doit tenir même si une langue est ajoutée.
-        code = re.sub(r"[^a-z0-9_-]", "", str(lang or "").lower())[:8]
-        help_path = os.path.join(plugin_dir, "help.md")
-        lang_servie = ""
-        if code:
-            p_lang = os.path.join(plugin_dir, "help.%s.md" % code)
-            if os.path.isfile(p_lang):
-                help_path, lang_servie = p_lang, code
-        if not os.path.isfile(help_path):
+        html, lang_servie = _help_html(plugin_dir)
+        if html is None:
             continue
-        try:
-            with open(help_path, encoding="utf-8") as f:
-                md_text = f.read()
-            # Le wrapper d'article rend déjà le titre (label plugin) → retirer le « # Titre »
-            # de tête du markdown pour éviter un double <h1>.
-            md_text = re.sub(r"^\s*#\s+[^\n]*\n", "", md_text, count=1)
-            html = _md.markdown(md_text, extensions=["tables", "fenced_code"])
-        except Exception as e:
-            html = f"<p><em>Erreur de rendu : {e}</em></p>"
         help_meta = manifest.get("help") or {}
         nav = manifest.get("nav") or {}
+        category = help_meta.get("category") or nav.get("section") or "autres"
         articles.append({
             "type":     type_,
             "label":    manifest.get("label") or type_,
             "version":  manifest.get("version") or "",
-            "category": help_meta.get("category") or nav.get("section") or "autres",
+            "category": category,
+            # Libellé de la sous-rubrique : le MÊME catalogue que le menu principal. La page
+            # d'aide n'a donc aucune liste de rubriques à tenir — la sienne avait oublié
+            # Composition et Mesure, affichées en identifiants bruts jusqu'au 2026-11-08.
+            "category_label": _traduit(f"section.nav.{category}", category.capitalize()),
             "order":    int(help_meta.get("order") or nav.get("order") or 99),
             "html":     html,
             # "" = le `help.md` générique a servi, la langue est donc inconnue.
@@ -281,6 +264,84 @@ def plugins_help():
         })
     articles.sort(key=lambda a: (a["category"], a["order"], a["label"]))
     return jsonify(articles)
+
+
+# Ordre des sous-rubriques de la rubrique Services de l'aide. Une catégorie hors liste se range
+# APRÈS, par ordre alphabétique : un service tiers peut en déclarer une nouvelle sans toucher ici.
+_SERVICE_HELP_ORDER = ("control", "interop", "transport", "supervision", "media", "audio")
+
+
+@bp.route("/api/services/help", methods=["GET"])
+@require_login
+def services_help():
+    """Les services INSTALLÉS, rangés pour la rubrique Services de l'aide.
+    [{id, label, version, category, category_label, category_order, html, lang}]
+
+    La catégorie vient du manifeste (`help.category`, décidé le 2026-11-08), sur le modèle de
+    celle d'un plugin. `html` vaut "" pour un service sans `help.md` : la page lui rattache
+    alors ses articles du cœur (TSL, ATEM, NMOS…), qui n'apparaissent que si le service est là.
+    Sans catégorie, le service tombe dans « other » plutôt que de disparaître de l'aide."""
+    from .. import core_plugins
+    out = []
+    for entry in core_plugins.scan().values():
+        m = entry["manifest"]
+        sid = m.get("id") or ""
+        if not sid:
+            continue
+        # ⚠ Le DOSSIER n'est pas l'id : services/panel_atem porte l'id « atem ».
+        dossier = entry["module"].__name__.split(".", 1)[-1]
+        html, lang_servie = _help_html(os.path.join(core_plugins.SERVICES_DIR, dossier))
+        category = str((m.get("help") or {}).get("category") or "other")
+        out.append({
+            "id":       sid,
+            "label":    core_plugins._libelle(sid, m.get("label") or sid),
+            "version":  m.get("version") or "",
+            "category": category,
+            "category_label": _traduit(f"help.service_category.{category}", category.capitalize()),
+            "category_order": (_SERVICE_HELP_ORDER.index(category)
+                               if category in _SERVICE_HELP_ORDER else len(_SERVICE_HELP_ORDER)),
+            "html":     html or "",
+            "lang":     lang_servie,
+        })
+    out.sort(key=lambda s: (s["category_order"], s["category"], s["label"].lower()))
+    return jsonify(out)
+
+
+def _traduit(cle, defaut):
+    from ..i18n import t
+    v = t(cle)
+    return defaut if v == cle else v
+
+
+def _help_html(base_dir):
+    """(html, langue servie) du `help.md` d'un plugin ou d'un service ; (None, "") sans fichier.
+
+    ★ UN FICHIER PAR LANGUE, AVEC REPLI : `help.<code>.md` pour la langue courante s'il existe,
+    sinon `help.md` (la langue servie vaut alors "", inconnue)."""
+    import markdown as _md
+    from ..i18n import current_lang
+    # ⚠ `lang` VIENT D'UNE REQUÊTE. Un code de langue est un fragment de
+    # chemin : sans ce filtre, un `lang` fabriqué remonterait l'arborescence.
+    # Les codes valides sont dans `i18n.LANG_CODES`, mais on ne s'appuie pas
+    # dessus ici — la garde doit tenir même si une langue est ajoutée.
+    code = re.sub(r"[^a-z0-9_-]", "", str(current_lang() or "").lower())[:8]
+    help_path = os.path.join(base_dir, "help.md")
+    lang_servie = ""
+    if code:
+        p_lang = os.path.join(base_dir, "help.%s.md" % code)
+        if os.path.isfile(p_lang):
+            help_path, lang_servie = p_lang, code
+    if not os.path.isfile(help_path):
+        return None, ""
+    try:
+        with open(help_path, encoding="utf-8") as f:
+            md_text = f.read()
+        # Le wrapper d'article rend déjà le titre (label) → retirer le « # Titre »
+        # de tête du markdown pour éviter un double <h1>.
+        md_text = re.sub(r"^\s*#\s+[^\n]*\n", "", md_text, count=1)
+        return _md.markdown(md_text, extensions=["tables", "fenced_code"]), lang_servie
+    except Exception as e:
+        return f"<p><em>Erreur de rendu : {e}</em></p>", lang_servie
 
 @bp.route("/api/plugins/reload", methods=["POST"])
 @require_perm("settings.edit")

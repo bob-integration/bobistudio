@@ -6,12 +6,12 @@ Decision of 2026-10-30 (Cyril): REPEAT the last valid frame by default in operat
 available for commissioning (to see exactly when a source skips a frame).
 
 Why it exists. A DeckLink capture that receives a frame more than one slot late jumps its index
-and leaves a HOLE (`decklink_mxl.cpp`, deliberately: the hole is the information — filling it at the
+and leaves a HOLE (`decklink_rx.cpp`, deliberately: the hole is the information — filling it at the
 capture would deprive every consumer of the choice). A consumer that reads the hole gets nothing.
 Before this setting the mixer then composed BLACK: the flashes seen in operation.
 
 The contract (shared with the DeckLink output, which implements its own side):
-  · global setting `missing_frame_mode` (Settings → Video): `repeat` (default) | `black`;
+  · global setting `missing_frame_mode` (Settings → MXL → “Image manquante”): `repeat` (default) | `black`;
   · per-container override: config_schema key `missing_frame_mode` = "" | `repeat` | `black`.
     "" means "follows the global" and STAYS PERSISTED as "": it is NOT resolved through
     `plugins.effective_deploy_defaults` (that would freeze the global at deployment time);

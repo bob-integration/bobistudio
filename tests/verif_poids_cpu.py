@@ -99,7 +99,7 @@ NODE = database.db_get_node(NID)
 
 # Profils de types, posés dans le registre des plugins (aucun fichier touché).
 _PROFILS = {
-    "multiview": {"cores": 3, "pin": True},            # dédié, poids normal (rien de déclaré)
+    "multiview": {"cores": 3, "pin": True},            # dédié : Dédié par défaut (07/11)
     "transcoder": {"cores": 2, "priority": "batch"},   # ancien champ : doit valoir « batch »
     "streamer": {"cores": 2, "cpu_weight": "background"},   # défaut au MANIFESTE
     "mixer": {},                                       # aucun profil du tout
@@ -120,7 +120,7 @@ def _ajoute(vmid, nom, typ):
 
 
 print("\n1. ★ Quatre niveaux NOMMÉS, un barème unique, aucun nombre libre")
-verifie(cpu_weight.LEVELS == ("onair", "normal", "background", "batch"),
+verifie(cpu_weight.LEVELS == ("dedicated", "normal", "background", "batch"),
         "1a. les quatre niveaux, du plus au moins prioritaire", str(cpu_weight.LEVELS))
 verifie([cpu_weight.WEIGHTS[l] for l in cpu_weight.LEVELS] == [2048, 1024, 256, 128],
         "1b. barème 2048 / 1024 / 256 / 128",
@@ -138,9 +138,15 @@ c_mv = _ajoute(4101, "mur", "multiview")
 c_tr = _ajoute(4102, "transcodeur", "transcoder")
 c_st = _ajoute(4103, "monitor-u1", "streamer")
 c_mx = _ajoute(4104, "melangeur", "mixer")
-verifie(cpu_weight.for_container(c_mv) == {"niveau": "normal", "valeur": 1024,
+verifie(cpu_weight.for_container(c_mx) == {"niveau": "normal", "valeur": 1024,
                                            "source": "default"},
         "2a. type sans rien de déclaré → Normal, source `default`",
+        str(cpu_weight.for_container(c_mx)))
+# 2026-11-07 : la place suit le niveau. Un type dont le manifeste demande `pin` est Antenne par
+# défaut — c'est ce qui garde ses cœurs dédiés — et c'est son manifeste qui le dit.
+verifie(cpu_weight.for_container(c_mv) == {"niveau": "dedicated", "valeur": 2048,
+                                           "source": "manifest"},
+        "2a'. type épinglé par son manifeste → Dédié, source `manifest`",
         str(cpu_weight.for_container(c_mv)))
 verifie(cpu_weight.for_container(c_tr)["niveau"] == "batch"
         and cpu_weight.for_container(c_tr)["source"] == "priority",
@@ -154,9 +160,9 @@ verifie(cpu_weight.for_container(c_st) == {"niveau": "background", "valeur": 256
 verifie(cpu_weight.for_container(c_mx)["niveau"] == "normal",
         "2d. un type sans aucun profil de ressources a quand même un poids (c'est lui qu'on "
         "veut pouvoir faire céder)")
-database.db_set_resources_override(4103, cpu_weight="onair")
+database.db_set_resources_override(4103, cpu_weight="dedicated")
 verifie(cpu_weight.for_container(database.db_get_container(4103))
-        == {"niveau": "onair", "valeur": 2048, "source": "override"},
+        == {"niveau": "dedicated", "valeur": 2048, "source": "override"},
         "2e. ★ la surcharge du CONTENEUR prime sur son manifeste (un moniteur relevé en "
         "antenne reste en antenne)",
         str(cpu_weight.for_container(database.db_get_container(4103))))
@@ -191,7 +197,7 @@ verifie(_res.get("cpu_shares") == 128,
         "3a. le transcodeur (batch) part avec --cpu-shares 128", str(_res))
 docker_compute.deploy_compute(4101, params={}, deploy_type="multiview", force=True)
 _res_mv = ((_spec["captee"] or {}).get("resources") or {})
-verifie(_res_mv.get("cpu_shares") == 1024,
+verifie(_res_mv.get("cpu_shares") == 2048,
         "3b. ★ et TOUT conteneur en pose un : avant, seul le batch était servi et le reste "
         "héritait du défaut de Docker — il n'y avait rien à régler", str(_res_mv))
 _a = {"name": "x", "resources": {"cpuset": "0-3", "cpu_shares": 1024}}
@@ -206,12 +212,12 @@ verifie(docker_compute._signature_spec(_a) != docker_compute._signature_spec(_c)
 
 print("\n4. ★ Appliqué À CHAUD, et le poids POSÉ est MESURÉ")
 _hote["cmds"] = []
-r = cpu_weight.regler(4101, "onair")
-verifie(r["ok"] and r["applique"] and r["niveau"] == "onair", "4a. réglage accepté", str(r))
+r = cpu_weight.regler(4101, "dedicated")
+verifie(r["ok"] and r["applique"] and r["niveau"] == "dedicated", "4a. réglage accepté", str(r))
 verifie(any("docker update --cpu-shares=2048" in c and "bobi-4101" in c for c in _hote["cmds"]),
         "4b. ★ `docker update --cpu-shares` sur le conteneur EN MARCHE — recréer serait couper "
         "l'antenne pour un geste d'intendance", str(_hote["cmds"]))
-verifie(database.db_get_container(4101).get("cpu_weight_override") == "onair",
+verifie(database.db_get_container(4101).get("cpu_weight_override") == "dedicated",
         "4c. et le niveau est persisté (il survit à une recréation)")
 
 _releve["cpusets"] = {"bobi-4101": "0-2", "bobi-4102": "3-7",
@@ -351,7 +357,7 @@ _j, _code = _appel(rn.api_node_cores_weight, node_id=NID, json={"vmid": 4101, "n
 verifie(_code == 400, "9b. un niveau inventé est refusé (400)", "%s %s" % (_code, _j))
 _autre = database.db_add_node("autre", "127.0.0.2")
 database.db_upsert_container_docker(4201, "ailleurs", _autre, "bobi-4201")
-_j, _code = _appel(rn.api_node_cores_weight, node_id=NID, json={"vmid": 4201, "niveau": "onair"})
+_j, _code = _appel(rn.api_node_cores_weight, node_id=NID, json={"vmid": 4201, "niveau": "dedicated"})
 verifie(_code == 409,
         "9c. ★ un conteneur d'un AUTRE nœud est refusé : le vmid est un handle local, et "
         "l'accepter réglerait en silence une machine qu'on ne regarde pas", "%s %s" % (_code, _j))
@@ -400,12 +406,12 @@ verifie([o["value"] for o in _opts] == list(cpu_weight.LEVELS),
         "11c. le menu de la macro offre les quatre niveaux — et rien d'autre", str(_opts))
 _ok, _msg = True, ""
 try:
-    out = cpu_weight.run_action("set", {"vmid": 4104, "niveau": "onair"}, {})
+    out = cpu_weight.run_action("set", {"vmid": 4104, "niveau": "dedicated"}, {})
 except Exception as e:                                                        # noqa: BLE001
     _ok, _msg = False, str(e)
-verifie(_ok and database.db_get_container(4104)["cpu_weight_override"] == "onair",
+verifie(_ok and database.db_get_container(4104)["cpu_weight_override"] == "dedicated",
         "11d. et l'action FAIT le réglage", _msg)
-verifie(cpu_weight.read_state("niveau", {"vmid": 4104}) == "onair",
+verifie(cpu_weight.read_state("niveau", {"vmid": 4104}) == "dedicated",
         "11e. l'état est lisible en condition de macro")
 try:
     cpu_weight.read_state("niveau", {})
