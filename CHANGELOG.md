@@ -5,6 +5,23 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## La page d'accueil du dépôt dit enfin ce que le produit fait — 2026-11-08
+
+**Le `README.md` est réécrit, en français et en anglais.** C'était un inventaire d'une vingtaine
+de puces, dans un ordre arbitraire, qui ne disait ni à qui le produit s'adresse ni ce qu'on y
+gagne — et sans une seule image. Il présente maintenant le produit, le bus MXL de bout en bout,
+le modèle en quatre pièces, et l'essai en une commande. Deux captures l'accompagnent. Les
+fonctionnalités sont regroupées en cinq familles.
+
+**Deux affirmations fausses y sont corrigées.** La section Configuration annonçait « hôtes,
+tokens, secrets » dans `config_local.py`, qui ne porte aucune ligne active — la clé secrète
+Flask vit en base. Et l'arbre de la structure omettait `tests/`, `install/` et `licenses/`.
+
+**Une garde d'intégration continue échouait sur le dépôt public**, et elle seule : son bouchon
+posait `navigator` par affectation, ce qui n'a plus aucun effet depuis Node 21, où ce global est
+en lecture seule. Elle passait donc en local et échouait en CI. Le défaut ne touchait que la
+vérification, jamais le produit.
+
 ## Un projet se démarre, se versionne et se place — 2026-11-08
 
 **Un projet n'est plus seulement une sauvegarde : c'est quelque chose qui tourne.** Sa fenêtre

@@ -8107,5 +8107,9 @@
   "medialib.sel_proj_skipped": "{n} skipped",
   "medialib.lock": "Keep here",
   "medialib.lock_on_tip": "Filters kept for this container on this computer. Click to go back to your account's setting.",
-  "medialib.lock_off_tip": "Keep this library's filters for this container, on this computer, without affecting other windows."
+  "medialib.lock_off_tip": "Keep this library's filters for this container, on this computer, without affecting other windows.",
+  "alert.fps.rec_pertes": "{h} ({vmid}): the recording is LOSING FRAMES — {drop} dropped (encoder too slow), {rep} repeated (source missing). The current file is incomplete.",
+  "alert.fps.rec_pertes_suite": "{h} ({vmid}): the recording is still losing frames — {plus} more in the last minute, {n} in total ({drop} dropped, {rep} repeated) for {depuis_s} s.",
+  "alert.fps.rec_fin_pertes": "{h} ({vmid}): recording ended with {n} lost frame(s) — {drop} dropped, {rep} repeated. The file is not complete.",
+  "alert.fps.rec_erreur": "{h} ({vmid}): recording error — {err}"
 }

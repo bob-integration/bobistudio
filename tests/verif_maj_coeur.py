@@ -83,7 +83,8 @@ global.location = { href: '/settings', pathname: '/settings', search: '', hash: 
                     reload: function(){} };
 global.localStorage = { getItem: function(){ return null; }, setItem: function(){},
                         removeItem: function(){} };
-global.navigator = { onLine: true, language: 'fr' };
+Object.defineProperty(globalThis, 'navigator',
+    { value: { onLine: true, language: 'fr' }, configurable: true, writable: true });
 var _sortie = '';
 var _el = { set innerHTML(v){ _sortie = v; }, get innerHTML(){ return _sortie; },
             set textContent(v){ _sortie = v; }, get textContent(){ return _sortie; } };

@@ -82,7 +82,12 @@ def _run(corps, secure, clipboard=True, champ=False, exec_ok=True):
         js.append(CHAMP)
     js.append("global.EXEC_OK = %s;\n" % ("true" if exec_ok else "false"))
     js.append("global.isSecureContext = %s;\n" % ("true" if secure else "false"))
-    js.append("global.navigator = %s;\n" % (
+    # ★ defineProperty, PAS une affectation : depuis Node 21 `navigator` est un global
+    # NATIF en lecture seule, et `global.navigator = ...` y est ignoré en silence. Le bouchon
+    # ne s'appliquait donc pas, le helper ne voyait pas de presse-papier et retombait sur le
+    # textarea — vert sur le Node 20 de la machine de dev, ROUGE en CI publique (08/11).
+    js.append("Object.defineProperty(globalThis, 'navigator', "
+              "{ value: %s, configurable: true, writable: true });\n" % (
         "{ clipboard: { writeText: function(t){ _journal.push('clipboard:' + t); "
         "return Promise.resolve(); } } }" if clipboard else "{}"))
     js.append(corps)

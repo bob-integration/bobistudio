@@ -1509,6 +1509,13 @@ def _check_cadence(vmid, c, dc, fps, m=None):
     from .database import db_get_setting
     if fps is None or c.get("status") != "running":
         return
+    if m and m.get("recording") is False and "dropped_frames" in m:
+        # A STOPPED recorder publishes 0 fps by design: it is idle, not late (Z8 bench 2026-11-08:
+        # « cadence NON TENUE » 60 s after each stop). Its losses are watched by
+        # _noter_pertes_enregistrement, while it records.
+        _fps_low_cnt[vmid] = 0
+        _fps_seen_at.pop(vmid, None)
+        return
     cible = _cadence_cible(dc)
     if cible <= 0:
         return
@@ -1949,6 +1956,79 @@ def _noter_tuiles_sans_image(vmid, m):
             st["alertee"] = False
     for k in [k for k in _tuile_etat if k[0] == vmid and k[1] not in vus]:
         _tuile_etat.pop(k, None)
+
+
+# ── RECORDER LOSING FRAMES (asked on 2026-11-08) ──────────────────────────────────────────────
+# Z8 bench, 2026-11-08: a recorder on one core dropped 89 % of its frames for ten minutes while
+# showing `fps` 50, `recording` true and no error — and three files came out unreadable with an
+# empty `record_error`. The counters were published on :8080 all along; nobody read them. « Rien de
+# pire que de penser qu'un enregistreur fonctionne correctement » : the FIRST lost frame alerts.
+#
+# Lost = `dropped_frames` (encoder too slow, frame never written) + `video_repeated` (frame missing
+# from the source, previous one written instead). Both are cumulative per recording, reset at each
+# start. No threshold, no debounce: zero or not zero. Afterwards one reminder per minute at most,
+# only while the count still grows, then one summary when the recording ends — an operator gets a
+# readable thread, not one line per poll. A `record_error` that appears is always an alert.
+# Kind `fps`: the recording does not hold its frame rate (a new kind would change the SNMP MIB).
+REC_LOSS_REMIND_S = 60.0
+_rec_etat = {}   # vmid → {session, lost, alerted, alert_at, alert_lost, since, err}
+
+
+def _noter_pertes_enregistrement(vmid, m):
+    if "recording" not in m or not any(k in m for k in ("dropped_frames", "video_repeated")):
+        return                                       # not a recorder (or one without counters)
+    def _n(k):
+        try:
+            return max(0, int(m.get(k) or 0))
+        except (TypeError, ValueError):
+            return 0
+    drop, rep = _n("dropped_frames"), _n("video_repeated")
+    lost = drop + rep
+    rec = bool(m.get("recording"))
+    err = m.get("record_error") or ""
+    err = err if isinstance(err, str) else str(err)
+    sess = m.get("rec_started")
+    st = _rec_etat.get(vmid)
+    # New recording: it (re)started, its announced start time changed, or its counters went
+    # backwards (reset at start). A recording already under way when first seen (orchestrator
+    # restart) still owes its losses; a finished one only ever reaches the end-of-recording check
+    # through a start, so its old counts stay silent.
+    if st is None or (rec and (not st["rec"] or sess != st["session"] or lost < st["lost"])):
+        st = _rec_etat[vmid] = {"session": sess, "lost": 0, "alerted": False,
+                                "alert_at": 0.0, "alert_lost": 0, "since": None,
+                                "err": err if st is None else "", "rec": rec}
+    h = None
+    def _h():
+        return (db_get_container(vmid) or {}).get("hostname") or ("container " + str(vmid))
+    p = {"vmid": vmid, "drop": drop, "rep": rep, "n": lost}
+    now = time.time()
+    if rec and lost > st["lost"]:
+        if st["since"] is None:
+            st["since"] = now
+        if not st["alerted"]:
+            h = h or _h()
+            db_add_alert("alert.fps.rec_pertes", "error", vmid=vmid, node_id=_node_de(vmid),
+                         kind="fps", params=dict(p, h=h))
+            log.error("recorder %s (%s) is losing frames: %d dropped, %d repeated", vmid, h, drop, rep)
+            st.update(alerted=True, alert_at=now, alert_lost=lost)
+        elif now - st["alert_at"] >= REC_LOSS_REMIND_S:
+            h = h or _h()
+            db_add_alert("alert.fps.rec_pertes_suite", "error", vmid=vmid, node_id=_node_de(vmid),
+                         kind="fps", params=dict(p, h=h, depuis_s=int(now - st["since"]),
+                                                 plus=lost - st["alert_lost"]))
+            st.update(alert_at=now, alert_lost=lost)
+    if err and err != st["err"]:
+        h = h or _h()
+        db_add_alert("alert.fps.rec_erreur", "error", vmid=vmid, node_id=_node_de(vmid),
+                     kind="fps", params={"h": h, "vmid": vmid, "err": err[:400]})
+        log.error("recorder %s (%s) error: %s", vmid, h, err[:400])
+    st["err"] = err
+    if st.get("rec") and not rec and lost:
+        h = h or _h()
+        db_add_alert("alert.fps.rec_fin_pertes", "error", vmid=vmid, node_id=_node_de(vmid),
+                     kind="fps", params=dict(p, h=h))
+    st["rec"] = rec
+    st["lost"] = lost
 
 
 # ── SOURCE FIGÉE ALORS QUE LE PRODUCTEUR AVANCE ─────────────────────────────────────────────
@@ -2828,6 +2908,8 @@ def rafraichir_metrics(vmid, status_data=None):
     _noter_ecritures_figees(vmid, m)
     # Tuile de mur SANS IMAGE neuve alors que sa source avance → ALERTE.
     _noter_tuiles_sans_image(vmid, m)
+    # Enregistreur qui PERD des images (jetées ou répétées), ou fichier mal clos → ALERTE.
+    _noter_pertes_enregistrement(vmid, m)
 
     # Notifier Ember+ (best-effort, n'échoue pas si désactivé)
     try:

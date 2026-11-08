@@ -8107,5 +8107,9 @@
   "medialib.sel_proj_skipped": "{n} ignoré(s)",
   "medialib.lock": "Garder ici",
   "medialib.lock_on_tip": "Filtres gardés pour ce conteneur sur ce poste. Cliquer pour revenir au réglage de votre compte.",
-  "medialib.lock_off_tip": "Garder les filtres de cette bibliothèque pour ce conteneur, sur ce poste, sans toucher aux autres fenêtres."
+  "medialib.lock_off_tip": "Garder les filtres de cette bibliothèque pour ce conteneur, sur ce poste, sans toucher aux autres fenêtres.",
+  "alert.fps.rec_pertes": "{h} ({vmid}) : l'enregistrement PERD DES IMAGES — {drop} jetée(s) (encodeur trop lent), {rep} répétée(s) (source absente). Le fichier en cours est incomplet.",
+  "alert.fps.rec_pertes_suite": "{h} ({vmid}) : l'enregistrement perd toujours des images — {plus} de plus en une minute, {n} au total ({drop} jetées, {rep} répétées) depuis {depuis_s} s.",
+  "alert.fps.rec_fin_pertes": "{h} ({vmid}) : enregistrement terminé avec {n} image(s) perdue(s) — {drop} jetée(s), {rep} répétée(s). Le fichier n'est pas complet.",
+  "alert.fps.rec_erreur": "{h} ({vmid}) : erreur d'enregistrement — {err}"
 }
