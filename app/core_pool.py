@@ -2196,6 +2196,11 @@ def vue_coeurs(node_id, force=False):
     # la version précédente de ce verdict les comptait pour 23 — donc disait « tout va bien ».
     _capacite = len(phys_exclusifs) if core_of else len(libres)
     etat_partage["bas"] = bool(tr) and _capacite < len(tr)
+    # ★ AND AN ABSOLUTE FLOOR (2026-11-08, Z8): with `pin_reserve_physical=1` every dedicated core
+    # also takes its HT sibling, and the shared pool was down to ONE thread (26). Every new shared
+    # container got cpuset `26` and nothing said so — `bas` only counts REAL-TIME containers, and
+    # those were not. Counted in logical CPUs: this is the cpuset a shared container receives.
+    etat_partage["reduit"] = bool(partages) and len(libres) < PARTAGE_MIN_CPUS
     etat_partage["capacite_comptee"] = _capacite
     # ★ CE QUE COÛTERAIT « dédié = cœur physique », CHIFFRÉ AVANT LA DÉCISION. Sans ça, la
     # question « peut-on l'activer ? » se répond à la main sur un relevé — c'est ce que j'ai fait
@@ -2246,6 +2251,9 @@ def vue_coeurs(node_id, force=False):
             "status": cores_status(node_id)}
 
 
+PARTAGE_MIN_CPUS = 2      # below this, the shared pool is « reduced to a thread » (Z8, 2026-11-08)
+
+
 def alerter_partage_bas(node_id, vue=None):
     """Alerte (throttlée) quand le pool partagé ne suffit plus aux conteneurs temps réel qui l'habitent.
 
@@ -2256,7 +2264,20 @@ def alerter_partage_bas(node_id, vue=None):
     vue = vue or vue_coeurs(node_id)
     p = vue["partage"]
     if not p["bas"]:
-        return False
+        if not p.get("reduit"):
+            return False
+        # No real-time container is short of cores, but EVERY shared container sits on a pool of
+        # one thread or none (Z8, 2026-11-08). The real-time verdict above, when it holds, is the
+        # more precise of the two and replaces this one.
+        noms = _noms_vmids([l["vmid"] for l in vue["partages"]])
+        _alerter_throttle(node_id, "partage_reduit",
+                          "pool partagé réduit à %s (%d cœur(s)) pour %d conteneur(s) : %s"
+                          % (p["cpuset"] or "—", p["cores"], p["conteneurs"], noms),
+                          "warning", cle="alert.resource.partage_reduit",
+                          params={"n": (db_get_node(node_id) or {}).get("name") or node_id,
+                                  "cpuset": p["cpuset"] or "—", "cores": p["cores"],
+                                  "count": p["conteneurs"], "noms": noms})
+        return True
     noms = _noms_vmids([l["vmid"] for l in vue["partages"] if l["temps_reel"]])
     _alerter_throttle(node_id, "partage_bas",
                       "pool partagé réduit à %s (%d cœurs) pour %d conteneur(s) temps réel : %s"
@@ -2444,6 +2465,14 @@ def _reapply_shared_after_reservation(node_id, vmid, cpuset):
         return _reapply_shared(node_id, vmid, cpuset)
     finally:
         sync_dedicated_cpufreq(node_id, vmid)
+        # ★ SAY IT WHEN A RESERVATION EMPTIES THE SHARED POOL (2026-11-09), not only when someone
+        # opens the cores window. Warned, NOT refused: Cyril keeps `pin_reserve_physical=1` on
+        # the Z8 knowingly, where the pool is already one thread — a refusal would block every
+        # new dedicated container there.
+        try:
+            alerter_partage_bas(node_id)
+        except Exception as e:                                               # noqa: BLE001
+            log.warning("core_pool: shared pool check after reservation on node %s: %s", node_id, e)
 
 
 def _reapply_shared(node_id, vmid, cpuset):

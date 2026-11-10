@@ -81,6 +81,7 @@ def scan() -> dict:
             if missing:
                 log.warning(f"core_plugins: {name}/manifest.json incomplet ({missing}), skipped")
                 continue
+            _signal_if_core_too_old(name, manifest)
             try:
                 mod = importlib.import_module(f"services.{name}")
             except Exception as e:
@@ -96,6 +97,50 @@ def scan() -> dict:
         # appels suivants rendraient un registre partiel, sans rien dire.
         _scan_en_cours = None
 
+
+
+def _manifest_of(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f) or {}
+    except (ValueError, OSError):
+        return {}
+
+
+def _core_too_old(manifest):
+    """The `core_min` this manifest needs when THIS core is below it, else "". « Unknown »
+    (nothing declared, or a value the comparator cannot read) never counts as too old."""
+    cmin = _v.core_min_de(manifest or {})
+    if cmin and _v.comparable(_v.VERSION, cmin) and not _v.au_moins(_v.VERSION, cmin):
+        return cmin
+    return ""
+
+
+_core_too_old_signalled = set()
+
+
+def _signal_if_core_too_old(name, manifest):
+    """A service needing a newer core is LOADED anyway, and said loudly (2026-11-09).
+
+    Not loading it was the first idea, and it does not hold: the core imports several services
+    by name (`from services import nmos` in main.py, deploy.py, metrics.py…), so leaving one out
+    of this registry would only remove its routes and menu while its code still runs — half a
+    service, worse than a whole one. It only happens after a core rollback (the update itself
+    refuses such a package), and the remedy is the operator's: reinstall a compatible version,
+    or update the core. Once per process and per service: `reload()` rescans often."""
+    cmin = _core_too_old(manifest)
+    if not cmin or name in _core_too_old_signalled:
+        return
+    _core_too_old_signalled.add(name)
+    log.warning("core_plugins: service %s %s needs core >= %s, running %s — loaded anyway",
+                name, manifest.get("version"), cmin, _v.VERSION)
+    try:
+        from .database import db_add_alert
+        db_add_alert("alert.service.core_too_old", "error", kind="deploy",
+                     params={"id": manifest.get("id") or name, "ver": manifest.get("version") or "?",
+                             "cmin": cmin, "core": _v.VERSION})
+    except Exception as e:                          # scan can run before the database exists
+        log.warning("core_plugins: alert for %s not written: %s", name, e)
 
 
 def reload():
@@ -348,6 +393,46 @@ def tab_groups() -> list:
 # Par CONVENTION DE CLÉ, comme pour les plugins : le manifeste d'un sous-module reste en
 # français et n'a rien à savoir de l'i18n. Sans clé au catalogue, on rend le manifeste.
 
+def install_offers() -> list:
+    """Services que l'INSTALLATION propose d'allumer : [{id, label, key, on, why}], ordre stable.
+
+    ★ POURQUOI (2026-11-08). Les dix services qui portent une clé `*_enabled` sont TOUS éteints
+    par défaut, et un service éteint est retiré des onglets de Réglages : rien, dans le parcours
+    d'installation, ne dit qu'ils existent. La passerelle WebRTC en est l'exemple coûteux — sans
+    elle le panneau de monitoring reste noir sur toutes les pages, et une destination WebRTC de
+    flux part dans le vide.
+
+    ★ CE N'EST PAS « LES ALLUMER PAR DÉFAUT ». Plusieurs de ces services PARLENT sur le réseau
+    dès l'allumage (annonces mDNS pour NMOS, annonces SDP pour SAP, agent SNMP en écoute) : les
+    activer sans que personne ne l'ait demandé change le comportement réseau d'un site, et c'est
+    une décision d'exploitation. On PROPOSE, à la fin de l'installation, au seul moment où on
+    est sûr que quelqu'un regarde.
+
+    ★ C'EST LE SERVICE QUI SE DÉCLARE, PAS L'INSTALLEUR QUI LISTE. Champ `install_offer` du
+    manifeste : "on" (proposé et pré-coché), "off" (proposé, à cocher), absent (non proposé —
+    cas des intégrations qui exigent du matériel : Ember+, ATEM, Skaarhoj, Dyvi, RDMA, ou des
+    identifiants : SNMP). Une liste tenue dans l'installeur aurait péri au premier service
+    ajouté, comme toutes celles que ce dépôt a déjà vues périmer.
+    """
+    out = []
+    for sid, entry in sorted(scan().items()):
+        m = entry["manifest"]
+        offre = (m.get("install_offer") or "").strip().lower()
+        if offre not in ("on", "off"):
+            continue
+        cle = next((k for k in (m.get("settings_keys") or {}) if k.endswith("_enabled")), None)
+        if not cle:
+            # Proposer d'allumer ce qui n'a pas d'interrupteur n'aurait aucun effet : on le DIT
+            # plutôt que de présenter une case qui ne fait rien.
+            log.warning("install_offers: le service %s déclare `install_offer` sans clé "
+                        "`*_enabled` — ignoré", sid)
+            continue
+        out.append({"id": sid, "label": _libelle(sid, m.get("label") or sid),
+                    "key": cle, "on": offre == "on",
+                    "why": f"service.{sid}.install_why"})
+    return out
+
+
 def _libelle(sid, defaut):
     from . import i18n
     cle = f"service.{sid}.label"
@@ -587,6 +672,10 @@ def activate_version(service_id, version) -> dict:
     vdir = os.path.join(tdir, "versions", version)
     if not os.path.isdir(vdir):
         raise ValueError(f"version {version} introuvable")
+    # Same rule as installation: refused when that version needs a newer core (2026-11-09).
+    _cmin = _core_too_old(_manifest_of(os.path.join(vdir, "manifest.json")))
+    if _cmin:
+        raise ValueError("exige Bobi.Studio >= %s (cette instance est en %s)" % (_cmin, _v.VERSION))
     _archive_current(tdir, cur)
     _clear_flat(tdir)
     _copy_into(vdir, tdir, os.listdir(vdir))

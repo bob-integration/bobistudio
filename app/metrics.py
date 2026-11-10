@@ -2031,6 +2031,108 @@ def _noter_pertes_enregistrement(vmid, m):
     st["lost"] = lost
 
 
+# ── SDI OUTPUT LATE OR LOSING FRAMES (validated by Cyril on 2026-10-30) ───────────────────────
+# Z8, 2026-10-30: 77 % of the frames of an on-air DeckLink output were played LATE for 33 minutes,
+# with no alarm. Invisible on screen (a constant offset), every other counter green. The counters
+# were published per output in `voies` on :8080; nobody compared them to an intention.
+#
+# Per output, on a SLIDING 60 s window — never on a cumulative counter, which can neither raise
+# nor clear an alarm:
+#   - late    = `late` (the card played it late: an offset, not a hole), above 1 % of the frames
+#               emitted → warning. The threshold is low on purpose: the 77 % did not show;
+#   - lost    = `dropped` (the card threw it away: a hole on air) and `repeated` (served again,
+#               the source had nothing new) → error;
+#   - an output that plays a MULTIVIEW stays at warning for everything, until its overruns are
+#     understood (10 repeated frames and 110 slice overruns in 5 min, Z8 2026-10-30): an error on
+#     a phenomenon nobody explains teaches operators to ignore the alarm;
+#   - one alert when it starts, one when the output has been clean for a whole window. Nothing
+#     is corrected here.
+# `missed` is not read: since the TX binary split « dropped » from « played late » it equals
+# `dropped`, and before that it added the two together (3.39 M « missed » on a healthy output).
+# Kind `tx_stall`: an output fault (a new kind would change the SNMP MIB).
+SDI_WINDOW_S = 60.0
+SDI_LATE_RATIO = 0.01
+_sdi_etat = {}   # (vmid, persistent_id) → {"samples": [(t, idx, late, drop, rep)], "level": None|"late"|"lost"}
+
+
+def _sdi_sortie_multiview(flow):
+    pv = _producteur_de(flow) if flow else None
+    if pv is None:
+        return False
+    try:
+        dc = json.loads((db_get_container(pv) or {}).get("deploy_config") or "{}") or {}
+    except (TypeError, ValueError):
+        return False
+    return dc.get("type") == "multiview"
+
+
+def _noter_sorties_sdi(vmid, m, now=None):
+    voies = m.get("voies")
+    if not isinstance(voies, list):
+        return                                       # not a DeckLink I/O container
+    now = time.time() if now is None else now
+    vues = set()
+    for v in voies:
+        if not isinstance(v, dict) or v.get("persistent_id") is None or "late" not in v:
+            continue                                 # older plugin: no card-side counters
+        def _n(key):
+            try:
+                return max(0, int(v.get(key) or 0))
+            except (TypeError, ValueError):
+                return 0
+        k = (vmid, v["persistent_id"])
+        vues.add(k)
+        ech = (now, _n("frame_index"), _n("late"), _n("dropped"), _n("repeated"))
+        st = _sdi_etat.setdefault(k, {"samples": [], "level": None})
+        s = st["samples"]
+        # A counter going backwards = the output's binary restarted: the window starts again.
+        if s and any(ech[i] < s[-1][i] for i in (2, 3, 4)):
+            del s[:]
+        s.append(ech)
+        while len(s) > 1 and s[1][0] <= now - SDI_WINDOW_S:
+            del s[0]
+        t0, i0, l0, d0, r0 = s[0]
+        dt = now - t0
+        emises = ech[1] - i0
+        if emises <= 0:
+            emises = int(float(v.get("fps") or 0.0) * dt)
+        late, drop, rep = ech[2] - l0, ech[3] - d0, ech[4] - r0
+        # A lost frame alerts at once; a late RATIO, and the « clean » verdict, need a full window.
+        if drop or rep:
+            niveau = "lost"
+        elif dt < SDI_WINDOW_S - 5.0:
+            continue
+        elif emises > 0 and late > SDI_LATE_RATIO * emises:
+            niveau = "late"
+        elif st["level"] is not None and late:
+            niveau = st["level"]                     # below the threshold is not CLEAN: it ends
+                                                     # after a whole window without a late frame
+        else:
+            niveau = None
+        if niveau == st["level"]:
+            continue
+        mv = _sdi_sortie_multiview(v.get("flow"))
+        h = (db_get_container(vmid) or {}).get("hostname") or ("container " + str(vmid))
+        p = {"h": h, "vmid": vmid, "sortie": v.get("sortie") or "?", "flow": v.get("flow") or "?",
+             "s": int(round(dt))}
+        if niveau == "lost":
+            db_add_alert("alert.tx.sdi_pertes", "warning" if mv else "error", vmid=vmid,
+                         node_id=_node_de(vmid), kind="tx_stall", params=dict(p, drop=drop, rep=rep))
+            log.error("SDI output %s/%s (%s) losing frames: %d dropped, %d repeated in %ds",
+                      vmid, v.get("sortie"), h, drop, rep, dt)
+        elif niveau == "late":
+            db_add_alert("alert.tx.sdi_retard", "warning", vmid=vmid, node_id=_node_de(vmid),
+                         kind="tx_stall", params=dict(p, pct=round(100.0 * late / emises, 1)))
+            log.warning("SDI output %s/%s (%s): %d of %d frames played late in %ds",
+                        vmid, v.get("sortie"), h, late, emises, dt)
+        elif st["level"] is not None:
+            db_add_alert("alert.tx.sdi_retablie", "info", vmid=vmid, node_id=_node_de(vmid),
+                         kind="tx_stall", params=p)
+        st["level"] = niveau
+    for k in [k for k in _sdi_etat if k[0] == vmid and k not in vues]:
+        _sdi_etat.pop(k, None)                       # output removed from the container
+
+
 # ── SOURCE FIGÉE ALORS QUE LE PRODUCTEUR AVANCE ─────────────────────────────────────────────
 # Le trou que la pyramide 1153 a révélé le 2026-10-24 : elle a lu pendant HUIT JOURS un flux
 # immobile (index bloqué à 89 607 876 620) pendant que son producteur écrivait à 50,1 grains/s.
@@ -2910,6 +3012,8 @@ def rafraichir_metrics(vmid, status_data=None):
     _noter_tuiles_sans_image(vmid, m)
     # Enregistreur qui PERD des images (jetées ou répétées), ou fichier mal clos → ALERTE.
     _noter_pertes_enregistrement(vmid, m)
+    # Sortie SDI qui joue EN RETARD, jette ou répète des images → ALERTE.
+    _noter_sorties_sdi(vmid, m)
 
     # Notifier Ember+ (best-effort, n'échoue pas si désactivé)
     try:

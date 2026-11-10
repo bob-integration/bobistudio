@@ -275,6 +275,20 @@ def plan_migration(vmid, node_cible_id):
             "tissu décide seul de leur placement et les recrée à sa prochaine réconciliation : une "
             "migration manuelle serait défaite sans prévenir. Pour déplacer la charge, agir sur le "
             "MUR logique, pas sur ses rouages.")
+    # A refusal, not a capacity check: `forcer` skips checks, and the redeploy on the target
+    # would then refuse AFTER the container left its source node.
+    try:
+        from .docker_compute import image_too_old
+        _vieille = image_too_old(cible, kind)
+    except Exception as _e:                                                # noqa: BLE001
+        log.debug("migration %s: image check unavailable (%s)", vmid, _e)
+        _vieille = None
+    if _vieille:
+        out["refus"].append(
+            "image trop ancienne sur %s : %s, le plugin %s exige %s. Construire l'image sur ce "
+            "nœud (Réglages → Nœuds & Matériel → Déploiement → Build)."
+            % (cible.get("name"), _vieille[0], kind, _vieille[1]))
+        out["build_link"] = True
 
     # ── Vérifications de capacité ────────────────────────────────────────────
     _verif("nœud cible joignable", (cible.get("status") or "").lower() in ("up", "online", "ok"),

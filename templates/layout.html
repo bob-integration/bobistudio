@@ -12,6 +12,18 @@
         window.LANG = {{ (lang|default('fr'))|tojson }};
         {% if not i18n_js_url %}window.I18N = {{ (js_catalog|default({}))|tojson }};{% endif %}
         window.t = function(key){ return (window.I18N && window.I18N[key]) || key; };
+        // `t` does NOT interpolate, and every caller that needed it was writing its own `fmt`
+        // (setup wizard, images banner…). A server that sends a key + its values — the same
+        // doctrine as alerts (`i18n.rendre_alerte`), because N readers do not share a language —
+        // needs exactly one shared composer. A value left unfilled keeps its `{name}` visible:
+        // a half-rendered sentence must look broken, not plausible.
+        window.tp = function(key, params){
+            let s = window.t(key);
+            for (const k in (params || {})) {
+                s = s.split('{' + k + '}').join(String(params[k]));
+            }
+            return s;
+        };
 
         // ─── Dialogue de confirmation PARTAGÉ ──────────────────────────────────────────────────
         // Il vivait dans settings.html, donc n'existait QUE sur Réglages : toute autre page

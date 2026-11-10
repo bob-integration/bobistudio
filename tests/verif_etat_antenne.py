@@ -278,7 +278,10 @@ txt = render_script("hello_world", {"texte": "x"}, None) or ""
 compile(txt, "hello_world", "exec")
 ok('if chemin == "/onair":' in txt and txt.count('if chemin == "/onair":') == 2, "script : GET et POST /onair")
 ok('data.get("version") != ONAIR_VERSION' in txt, "script : refuse une version inconnue")
-ok(hw.get("version") == "0.10.5", "Hello-World monte d'un cran", hw.get("version"))
+# At least the version that brought /onair: an exact match broke on every later bump.
+from app import version as _ver                   # noqa: E402
+ok(_ver.au_moins(hw.get("version") or "", "0.10.5") and _ver.comparable(hw.get("version") or "", "0.10.5"),
+   "Hello-World porte /onair (>= 0.10.5)", hw.get("version"))
 html = open("templates/projects.html").read()
 m = re.search(r'<input type="checkbox" data-onair[^>]*>', html)
 ok(m and "checked" not in m.group(0), "case « Reprendre » décochée par défaut", m and m.group(0))

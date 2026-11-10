@@ -26,7 +26,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-VERSION = "0.30.2"  # 0.30.2 : `machine` dans /v1/health et /v1/capabilities — modèle du serveur (DMI), cœurs physiques, sockets, noms des GPU (fiche de nœud) ; 0.30.1 : l'inventaire des cartes ignore les interfaces posées par l'orchestrateur (`bobi-*`) — ce n'est pas du matériel du nœud ; 0.30.0 : réseau des conteneurs au CHOIX — publication de ports (`ports` dans la spec de conteneur → -p, refus d'une entrée mal formée), /v1/host/networks/ensure prend `driver` (macvlan « réseau du site » | bridge « réseau interne », nom de pont hôte stable, 409 si le réseau existe sous un autre pilote) et l'inventaire ne filtre plus par pilote (exclusion des réseaux intégrés) ; 0.29.2 : disques — refus porteurs du disque (série RÉELLE au journal, plus la série saisie), fstab d'avant Bobi gardé une fois pour toutes (.bobi-orig) ; 0.29.1 : formatage — UUID relu après mkfs (settle, relectures, blkid -p) au lieu d'abandonner ; 0.29.0 : disques locaux (/v1/host/disks, plan/execute) ; 0.28.0 : pilotes hôte — job long + journal + action en attente (redémarrage / arrêt complet) génériques (/v1/host/drivers/*, /v1/host/poweroff), 1er kind : nvidia ; 0.27.0 : port de transfert — plage FERMÉE `bytes=a-b` (206 exact, 416), connexions gardées ouvertes (keep-alive, inactivité bornée) ; 0.26.0 : envoi PAR MORCEAUX reprenable (décalage, état, finalisation, abandon, espace libre vérifié) ; 0.25.0 : dépôt d'un fichier par le contrôleur (import d'un projet avec ses médias) ; 0.24.0 : transfert de fichiers nœud → nœud (port 9101, lecture seule, autorisation signée) ; 0.23.0 : seul un CONTRÔLEUR pilote (rôle du cert client vérifié, plus seulement la chaîne) ; 0.22.0 : mounts[].options (ro, rslave…) — partages réseau vus par les conteneurs média
+VERSION = "0.32.4"  # 0.32.4 : `machine.memory_qos` — ce que le processeur offre pour protéger la mémoire d'un cœur dédié (réservation de cache CAT, plafonnement MBA, mesure), en lecture seule ; 0.32.3 : sondage MCE du noyau (340 µs par cœur toutes les 5 min, seule cause des retards d'une console en 16/16) coupé quand le contrôleur le demande (`mce_off`) ET qu'un cœur est isolé, valeur d'origine gardée sur disque et rendue ; état dans `isolation.mce` ; 0.32.2 : interruptions de périphériques écartées des cœurs isolés (l'affectation est seulement RÉTRÉCIE, rendue à la libération ; les IRQ gérées par le noyau sont signalées dans `isolation.irq_unmovable`) ; 0.32.1 : les cœurs réservés qu'aucun conteneur n'utilise (jumeau HT d'une console) sont gardés dans une partition vide `system.slice/bobi-reserved` — un jumeau chargé ralentissait la console de 63 à 100 % ; 0.32.0 : cœurs dédiés ISOLÉS par le noyau — partition cpuset (cgroup v2) par conteneur dédié, poussée par le contrôleur (/v1/host/isolation, `isolation` dans /v1/health) ; plus rien d'autre ne peut s'y poser, conteneur jetable et udev compris ; 0.31.1 : cœurs de service étendus à docker.service et containerd.service (runc lancé par dockerd et les shims tombait sur les cœurs dédiés) ; version de Docker relue toutes les 10 min au lieu de chaque relevé (chaque `docker version` faisait lancer `runc --version` à dockerd) ; 0.31.0 : chien de garde — sonde par `nsenter -n` (espace réseau seul) au lieu de `docker exec`, qui faisait tourner runc sur les cœurs du conteneur ; cœurs de service (/v1/host/housekeeping, `housekeeping` dans /v1/health) — l'agent et tout ce qu'il lance restent hors des cœurs dédiés ; 0.30.2 : `machine` dans /v1/health et /v1/capabilities — modèle du serveur (DMI), cœurs physiques, sockets, noms des GPU (fiche de nœud) ; 0.30.1 : l'inventaire des cartes ignore les interfaces posées par l'orchestrateur (`bobi-*`) — ce n'est pas du matériel du nœud ; 0.30.0 : réseau des conteneurs au CHOIX — publication de ports (`ports` dans la spec de conteneur → -p, refus d'une entrée mal formée), /v1/host/networks/ensure prend `driver` (macvlan « réseau du site » | bridge « réseau interne », nom de pont hôte stable, 409 si le réseau existe sous un autre pilote) et l'inventaire ne filtre plus par pilote (exclusion des réseaux intégrés) ; 0.29.2 : disques — refus porteurs du disque (série RÉELLE au journal, plus la série saisie), fstab d'avant Bobi gardé une fois pour toutes (.bobi-orig) ; 0.29.1 : formatage — UUID relu après mkfs (settle, relectures, blkid -p) au lieu d'abandonner ; 0.29.0 : disques locaux (/v1/host/disks, plan/execute) ; 0.28.0 : pilotes hôte — job long + journal + action en attente (redémarrage / arrêt complet) génériques (/v1/host/drivers/*, /v1/host/poweroff), 1er kind : nvidia ; 0.27.0 : port de transfert — plage FERMÉE `bytes=a-b` (206 exact, 416), connexions gardées ouvertes (keep-alive, inactivité bornée) ; 0.26.0 : envoi PAR MORCEAUX reprenable (décalage, état, finalisation, abandon, espace libre vérifié) ; 0.25.0 : dépôt d'un fichier par le contrôleur (import d'un projet avec ses médias) ; 0.24.0 : transfert de fichiers nœud → nœud (port 9101, lecture seule, autorisation signée) ; 0.23.0 : seul un CONTRÔLEUR pilote (rôle du cert client vérifié, plus seulement la chaîne) ; 0.22.0 : mounts[].options (ro, rslave…) — partages réseau vus par les conteneurs média
 # 0.21.0 : chien de garde — sonde par docker exec (macvlan isole l hote)
 #                     ciblé sur le bon domaine/uds, et remontée de gm.ClockClass / utcOffsetValid
 # 0.18.0 : /v1/host/clock — les horloges du nœud en 2 appels système, estampillé
@@ -296,10 +296,10 @@ def _schedule_restart(delay=1.0):
 
 
 # ─── Exécution de commandes hôte (argv, jamais de shell) ────────────────────────
-def run(argv, timeout=60, input_bytes=None):
+def run(argv, timeout=60, input_bytes=None, env=None):
     """Exécute argv (liste). Retourne (rc, stdout, stderr). Jamais shell=True (anti-injection)."""
     try:
-        p = subprocess.run(argv, capture_output=True, timeout=timeout, input=input_bytes)
+        p = subprocess.run(argv, capture_output=True, timeout=timeout, input=input_bytes, env=env)
         return p.returncode, p.stdout.decode(errors="replace"), p.stderr.decode(errors="replace")
     except FileNotFoundError:
         return 127, "", f"introuvable : {argv[0]}"
@@ -313,10 +313,526 @@ def docker(*args, timeout=60):
     return run(["docker", *args], timeout=timeout)
 
 
+# ─── Housekeeping CPUs: where the agent and EVERYTHING it launches may run (0.31.0) ─────────────
+# The agent runs host commands for the controller (`/v1/host/exec`: nvidia-smi for the GPU sampler,
+# host-ops…), docker CLI calls and the watchdog probe. Unconfined, they land on ANY CPU — a core
+# dedicated to a real-time container included. Measured on the Z8 (2026-11-08, ftrace on CPU 9):
+# 16 of the 52 stalls > 1.6 ms of the audio console's real-time thread were the GPU sampler's
+# nvidia-smi on its dedicated CPU (median 2.2 ms, max 8.8 ms).
+# The controller knows the boundary (`core_pool.cpuset_auxiliaire`: off dedicated cores, off the
+# 2110 engine footprint) and pushes it here; we set it on every thread of the agent, so every child
+# inherits it. Persisted, so a node that reboots while the controller is down stays confined.
+# "" = unconfined (all online CPUs), the behaviour before 0.31.0.
+HK_PATH = os.environ.get("BOBI_HOUSEKEEPING_PATH", "/var/lib/bobi-node-agent/housekeeping.json")
+_HK = {"cpus": "", "applied": "", "error": None, "services": {}}
+# The Docker daemons are confined too (0.31.1): dockerd and the containerd-shims spawn runc (exec, run,
+# `--version` probes) from their own affinity — every CPU otherwise. Their cgroups are NOT the
+# containers' (docker-<id>.scope, siblings under system.slice), so this never touches a container's
+# cpuset. Runtime property only (lost at reboot, re-applied by `_hk_load`).
+HK_SERVICES = ("docker.service", "containerd.service")
+
+
+def _parse_cpulist(s):
+    """'0-3,8,10-11' -> {0,1,2,3,8,10,11}. Raises ValueError on a malformed list."""
+    out = set()
+    for part in (s or "").replace(" ", "").split(","):
+        if not part:
+            continue
+        a, _, b = part.partition("-")
+        lo, hi = int(a), int(b or a)
+        if lo < 0 or hi < lo:
+            raise ValueError("bad cpu range %r" % part)
+        out.update(range(lo, hi + 1))
+    return out
+
+
+def _fmt_cpulist(cpus):
+    cpus, out, i = sorted(cpus), [], 0
+    while i < len(cpus):
+        j = i
+        while j + 1 < len(cpus) and cpus[j + 1] == cpus[j] + 1:
+            j += 1
+        out.append(str(cpus[i]) if i == j else "%d-%d" % (cpus[i], cpus[j]))
+        i = j + 1
+    return ",".join(out)
+
+
+def _online_cpus():
+    try:
+        with open("/sys/devices/system/cpu/online") as f:
+            return _parse_cpulist(f.read().strip())
+    except (OSError, ValueError):
+        return set(range(os.cpu_count() or 1))
+
+
+def _hk_apply(spec, _tasks=None, _set=None, _online=None):
+    """Confines every thread of the agent to `spec` ∩ online CPUs ("" = all online CPUs).
+    Returns the applied list; on refusal (malformed, empty intersection) nothing is changed and
+    `_HK["error"]` says why. Threads created later inherit from their (confined) creator."""
+    _set = _set or os.sched_setaffinity
+    online = _online() if _online else _online_cpus()
+    try:
+        wanted = _parse_cpulist(spec) if spec else set(online)
+    except ValueError as e:
+        _HK["error"] = "malformed: %s" % e
+        return None
+    cpus = wanted & online
+    if not cpus:
+        _HK["error"] = "no online CPU in %r" % spec
+        return None
+    tids = _tasks() if _tasks else [int(t) for t in os.listdir("/proc/self/task") if t.isdigit()]
+    for tid in tids:
+        try:
+            _set(tid, cpus)
+        except (ProcessLookupError, PermissionError):
+            continue                       # thread gone meanwhile
+    _HK.update(cpus=spec or "", applied=_fmt_cpulist(cpus), error=None)
+    return _HK["applied"]
+
+
+def _hk_services(_run=None):
+    """Confines HK_SERVICES to the applied boundary (systemctl set-property --runtime AllowedCPUs).
+    An empty AllowedCPUs does NOT restore anything once set, so "no boundary" writes the full online
+    list. A unit that is not loaded is skipped. Result per unit in `_HK["services"]`."""
+    _run = _run or run
+    cpus = _HK.get("applied") or ""
+    res = {}
+    for unit in HK_SERVICES:
+        rc, out, _ = _run(["systemctl", "show", "-p", "LoadState", "--value", unit], timeout=10)
+        if rc != 0 or out.strip() != "loaded":
+            res[unit] = "absent"
+            continue
+        rc, out, err = _run(["systemctl", "set-property", "--runtime", unit, "AllowedCPUs=" + cpus], timeout=20)
+        res[unit] = "ok" if rc == 0 else ("error: " + (err or out).strip()[:120])
+    _HK["services"] = res
+    return res
+
+
+def _hk_set(spec):
+    """Applies then persists (temp file + os.replace). Persisted only once applied."""
+    if _hk_apply(spec) is None:
+        return False
+    _hk_services()
+    try:
+        os.makedirs(os.path.dirname(HK_PATH), exist_ok=True)
+        tmp = HK_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"cpus": _HK["cpus"]}, f)
+        os.replace(tmp, HK_PATH)
+    except OSError as e:
+        _HK["error"] = "applied but not persisted: %s" % e
+    return True
+
+
+def _hk_load():
+    """At startup: re-applies the persisted boundary, if any."""
+    try:
+        with open(HK_PATH) as f:
+            spec = (json.load(f) or {}).get("cpus") or ""
+    except (OSError, ValueError):
+        return
+    if spec:
+        if _hk_apply(spec) is not None:
+            _hk_services()
+        print("[bobi-node-agent] housekeeping CPUs %s (applied %s%s)"
+              % (spec, _HK["applied"], ", " + _HK["error"] if _HK["error"] else ""), flush=True)
+
+
+# ─── Dedicated-core isolation: cgroup v2 cpuset partitions (0.32.0) ──────────────────────────────
+# Confining what WE launch (housekeeping, above) does not protect a dedicated core from what others
+# launch: a throw-away `docker run --rm` without --cpuset-cpus (media scan, placement probe) gets every
+# CPU, and its runc init — or the udev worker its veth wakes — lands on the dedicated core. Measured on
+# dell-1 (2026-11-08, audio console at 32/72, ftrace on CPU 13, 45 min): 9 wakeups > 300 µs, worst
+# 1.09 ms, all such intruders.
+# The kernel's own answer: make the container's cgroup a cpuset PARTITION. Its CPUs leave the effective
+# set of every other cgroup — present or future, with or without a list. Same console, CPU 13 isolated,
+# ~170 unconfined containers started on purpose (2026-11-09, 45 min): 0 late, worst wakeup 227 µs.
+# Remote partition (kernel ≥ 6.7): the parent (system.slice) only lends the CPUs through
+# cpuset.cpus.exclusive. One CPU → `isolated` (no load balancing to lose); several → `root` (the
+# scheduler still balances INSIDE the partition, which a 3-core mixer needs).
+# The kernel refuses (`… invalid (Cpu list in cpuset.cpus not exclusive)`) while a sibling lists one of
+# the CPUs explicitly — systemd units carrying an old `AllowedCPUs=0-87` did on dell-1. A valid partition
+# takes those CPUs from the sibling anyway, so we strip them from its list: where it RUNS is unchanged.
+# A sibling that would be left with no CPU is not touched; it is reported as a blocker.
+# The controller pushes {container name: reserved CPUs}; the isolated CPUs are the container's own
+# cpuset, which must lie inside the reservation (a console reserves its HT sibling but uses one CPU).
+ISO_PATH = os.environ.get("BOBI_ISOLATION_PATH", "/var/lib/bobi-node-agent/isolation.json")
+CG_ROOT = os.environ.get("BOBI_CGROUP_ROOT", "/sys/fs/cgroup")
+ISO_PERIOD_S = 10                          # a recreated container gets a new scope: re-isolated within this
+_ISO = {"wanted": {}, "state": {}, "error": None, "mce_off": False}
+_ISO_LOCK = threading.Lock()
+ISO_GUARD = "bobi-reserved"              # empty partition holding reserved CPUs no container uses
+_ISO_NAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+def _cg_read(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return None
+
+
+def _cg_write(path, value):
+    """None on success, the error text otherwise (the kernel explains refusals in errno).
+    Always a newline: kernfs never sees a zero-byte write, so writing "" to clear a list is a silent
+    no-op (dell-1, 2026-11-09: system.slice kept lending CPU 13 after every partition was released)."""
+    try:
+        with open(path, "w") as f:
+            f.write(value + "\n")
+        return None
+    except OSError as e:
+        return str(e)
+
+
+def _cg_rmdir(path):
+    os.rmdir(path)                         # a cgroup dir only LOOKS full: its files are virtual
+
+
+def _cg_of_pid(pid):
+    """'/system.slice/docker-<id>.scope' for a cgroup v2 process, None otherwise."""
+    for line in (_cg_read("/proc/%d/cgroup" % pid) or "").splitlines():
+        if line.startswith("0::"):
+            return line[3:] or None
+    return None
+
+
+def _iso_free_siblings(parent, keep, cpus, freed, blockers):
+    """Strips `cpus` from the explicit cpuset.cpus of every MEMBER child of `parent` but `keep`."""
+    try:
+        children = sorted(os.listdir(parent))
+    except OSError:
+        return
+    for child in children:
+        d = os.path.join(parent, child)
+        if d in keep or not os.path.isdir(d):
+            continue
+        if not (_cg_read(d + "/cpuset.cpus.partition") or "member").startswith("member"):
+            continue                       # another partition: the kernel arbitrates exclusives
+        raw = _cg_read(d + "/cpuset.cpus")
+        try:
+            listed = _parse_cpulist(raw) if raw else set()
+        except ValueError:
+            continue
+        if not listed & cpus:
+            continue
+        rest = listed - cpus
+        rel = d[len(CG_ROOT):]
+        err = _cg_write(d + "/cpuset.cpus", _fmt_cpulist(rest)) if rest else "would have no CPU left"
+        if err:
+            blockers.append("%s (%s): %s" % (rel, raw, err))
+        else:
+            freed.append("%s: %s -> %s" % (rel, raw, _fmt_cpulist(rest)))
+
+
+# A partition stops TASKS, not device interrupts. Measured on dell-1 (2026-11-09, 60 s, no irqbalance):
+# CPU 13 (console) got none, but the guard got eno3 (16/s) and mlx4 (0.5/s), a mixer's CPU 42 ahci (1/s).
+PROC_IRQ = os.environ.get("BOBI_PROC_IRQ", "/proc/irq")
+_IRQ_TAKEN = {}                            # irq ("default" = IRQs set up later) -> [CPUs taken out, fallback CPUs added]
+
+
+def _irq_get(key):
+    if key == "default":
+        raw = _cg_read(PROC_IRQ + "/default_smp_affinity")
+        if not raw:
+            return None, None
+        v = int(raw.replace(",", ""), 16)
+        return {i for i in range(v.bit_length()) if v >> i & 1}, raw
+    raw = _cg_read("%s/%s/smp_affinity_list" % (PROC_IRQ, key))
+    try:
+        return (_parse_cpulist(raw), raw) if raw else (None, None)
+    except ValueError:
+        return None, None
+
+
+def _irq_put(key, cpus, raw):
+    if key == "default":                   # hex mask only, same 32-bit word layout as read
+        v = sum(1 << c for c in cpus)
+        words = len(raw.split(","))
+        mask = ",".join("%08x" % (v >> 32 * i & 0xffffffff) for i in reversed(range(words)))
+        return _cg_write(PROC_IRQ + "/default_smp_affinity", mask)
+    return _cg_write("%s/%s/smp_affinity_list" % (PROC_IRQ, key), _fmt_cpulist(cpus))
+
+
+def _iso_irqs(lent, _online=None, _isolated=None):
+    """Steers device IRQs off the lent CPUs. Only ever NARROWS an affinity, so the boot-time steering of
+    a 2110 node (bobi-irq-housekeeping: every IRQ off the isolated band) is kept; what was taken out is
+    given back once the CPU is no longer lent. Kernel-managed IRQs (one queue per CPU, e.g. megasas)
+    refuse the write: listed, not an error — they fire for I/O issued from that very CPU.
+    Returns (moved lines, unmovable lines)."""
+    moved, unmovable = [], []
+    for key, (taken, added) in list(_IRQ_TAKEN.items()):
+        back = taken - lent
+        if not back:
+            continue
+        cur, raw = _irq_get(key)
+        if cur is None:
+            del _IRQ_TAKEN[key]            # IRQ freed meanwhile
+            continue
+        new = cur | back
+        if taken <= back:
+            new -= added                   # fully given back: the fallback goes too
+        if _irq_put(key, new, raw) is None:
+            moved.append("%s: %s -> %s (given back)" % (key, _fmt_cpulist(cur), _fmt_cpulist(new)))
+            taken -= back
+            if not taken:
+                del _IRQ_TAKEN[key]
+    if not lent:
+        return moved, unmovable
+    online = _online if _online is not None else _online_cpus()
+    if _isolated is None:
+        try:
+            _isolated = _parse_cpulist(_cg_read("/sys/devices/system/cpu/isolated") or "")
+        except ValueError:
+            _isolated = set()
+    fallback = online - lent - _isolated   # for an IRQ pinned to lent CPUs only
+    try:
+        keys = sorted((e for e in os.listdir(PROC_IRQ) if e.isdigit()), key=int) + ["default"]
+    except OSError:
+        return moved, unmovable
+    for key in keys:
+        cur, raw = _irq_get(key)
+        if not cur or not cur & lent:
+            continue
+        new = (cur - lent) or fallback
+        if not new:
+            continue
+        if _irq_put(key, new, raw) is None:
+            entry = _IRQ_TAKEN.setdefault(key, [set(), set()])
+            entry[0].update(cur - new)
+            entry[1].update(new - cur)
+            moved.append("%s: %s -> %s" % (key, _fmt_cpulist(cur), _fmt_cpulist(new)))
+        else:
+            try:
+                names = [d for d in os.listdir("%s/%s" % (PROC_IRQ, key)) if os.path.isdir("%s/%s/%s" % (PROC_IRQ, key, d))]
+            except OSError:
+                names = []
+            unmovable.append("%s %s on %s" % (key, ",".join(names) or "?", _fmt_cpulist(cur & lent)))
+    return moved, unmovable
+
+
+# The kernel polls the machine-check banks of EVERY CPU every check_interval (300 s) from a timer: on a
+# partitioned CPU too. Measured on dell-1 (2026-11-09, audio console 16/16 = 333 µs per block): mce_timer_fn
+# took 340 µs on CPU 13 every ~5 min — the only cause of its 4 late blocks in 45 min; every other timer
+# ≤ 55 µs. The setting is global (one value for all CPUs). Turned off only when the controller asks for it
+# (setting `mce_polling`) AND something is partitioned; the previous value is kept on disk and given back.
+# Uncorrected errors still raise a machine-check exception; corrected ones are signalled by CMCI.
+MCE_DIR = os.environ.get("BOBI_MCE_DIR", "/sys/devices/system/machinecheck")
+MCE_SAVED = os.path.join(os.path.dirname(ISO_PATH), "mce_check_interval.saved")
+
+
+def _iso_mce(lent):
+    path = MCE_DIR + "/machinecheck0/check_interval"
+    cur = _cg_read(path)
+    if cur is None:
+        return {"status": "absent"}
+    saved = _cg_read(MCE_SAVED)
+    if _ISO.get("mce_off") and lent:
+        if cur != "0":
+            try:
+                os.makedirs(os.path.dirname(MCE_SAVED), exist_ok=True)
+                with open(MCE_SAVED + ".tmp", "w") as f:
+                    f.write(cur)
+                os.replace(MCE_SAVED + ".tmp", MCE_SAVED)
+            except OSError as e:
+                return {"status": "error", "error": "not saved: %s" % e, "check_interval": cur}
+            err = _cg_write(path, "0")
+            if err:
+                return {"status": "error", "error": err, "check_interval": cur}
+            print("[bobi-node-agent] isolation: MCE polling off (was every %s s)" % cur, flush=True)
+            saved = cur
+        return {"status": "off", "check_interval": "0", "saved": saved}
+    if saved is not None:                  # we turned it off: give it back (unless changed since)
+        if cur == "0":
+            err = _cg_write(path, saved)
+            if err:
+                return {"status": "error", "error": err, "check_interval": cur}
+            print("[bobi-node-agent] isolation: MCE polling back to every %s s" % saved, flush=True)
+            cur = saved
+        try:
+            os.remove(MCE_SAVED)
+        except OSError:
+            pass
+    return {"status": "on" if cur != "0" else "off_by_host", "check_interval": cur}
+
+
+def _iso_reconcile(_pids=None):
+    """Brings the partitions in line with `_ISO["wanted"]`. Writes only what differs, so a steady node
+    costs a few file reads per period. Releases partitions of system.slice no longer wanted."""
+    with _ISO_LOCK:
+        wanted = dict(_ISO["wanted"])
+        slice_dir = CG_ROOT + "/system.slice"
+        if not os.path.exists(slice_dir + "/cpuset.cpus.exclusive"):
+            _ISO.update(state={}, error="cgroup v2 cpuset partitions unsupported (kernel < 6.7?)" if wanted else None)
+            return _ISO
+        pids = (_pids or _wd_pids)(sorted(wanted)) if wanted else {}
+        state, targets, guard = {}, {}, set()
+        guard_dir = slice_dir + "/" + ISO_GUARD
+        for name, spec in sorted(wanted.items()):
+            pid = pids.get(name)
+            rel = _cg_of_pid(pid) if pid else None
+            if not rel:
+                state[name] = {"status": "not_running"}
+                continue
+            d = CG_ROOT + rel
+            raw = _cg_read(d + "/cpuset.cpus") or ""
+            try:
+                cpus, reserved = _parse_cpulist(raw), _parse_cpulist(spec)
+            except ValueError:
+                cpus, reserved = set(), set()
+            if os.path.dirname(d) != slice_dir or not cpus or not cpus <= reserved:
+                state[name] = {"status": "cpuset_mismatch", "cpuset": raw, "reserved": spec, "cgroup": rel}
+                continue
+            targets[d] = (name, cpus)
+            guard |= reserved - cpus
+        union = set().union(*[c for _n, c in targets.values()]) if targets else set()
+        guard -= union
+        freed, blockers, errors = [], [], []
+        # 1. release what is no longer wanted (container destroyed, reservation dropped)
+        try:
+            children = sorted(os.listdir(slice_dir))
+        except OSError:
+            children = []
+        for child in children:
+            d = os.path.join(slice_dir, child)
+            if d in targets or not child.startswith("docker-"):
+                continue
+            if not (_cg_read(d + "/cpuset.cpus.partition") or "member").startswith("member"):
+                _cg_write(d + "/cpuset.cpus.partition", "member")
+            if _cg_read(d + "/cpuset.cpus.exclusive"):
+                _cg_write(d + "/cpuset.cpus.exclusive", "")
+        # The guard: reserved CPUs no container uses (the HT sibling of a one-CPU console) sit in an
+        # EMPTY partition, so nothing else can run there either. Measured on dell-1 (2026-11-09):
+        # sibling 57 busy → the console's block took 174 µs (ALU) / 216 µs (memory) instead of 107 µs
+        # on CPU 13. Rebuilt from scratch whenever its CPU list changes.
+        if _cg_read(guard_dir + "/cpuset.cpus.exclusive") not in (None, _fmt_cpulist(guard)):
+            _cg_write(guard_dir + "/cpuset.cpus.partition", "member")
+            _cg_write(guard_dir + "/cpuset.cpus.exclusive", "")
+        if not guard and os.path.isdir(guard_dir):
+            try:
+                _cg_rmdir(guard_dir)
+            except OSError as e:
+                errors.append("guard release: %s" % e)
+        if guard:
+            try:
+                os.makedirs(guard_dir, exist_ok=True)
+            except OSError as e:
+                errors.append("guard: %s" % e)
+            if _cg_read(guard_dir + "/cpuset.cpus") != _fmt_cpulist(guard):
+                _cg_write(guard_dir + "/cpuset.cpus", _fmt_cpulist(guard))
+            targets[guard_dir] = (ISO_GUARD, guard)
+        lent = union | guard
+        # 2. no sibling may list those CPUs explicitly (root level and system.slice level)
+        if lent:
+            _iso_free_siblings(CG_ROOT, {slice_dir}, lent, freed, blockers)
+            _iso_free_siblings(slice_dir, set(targets), lent, freed, blockers)
+        # 3. system.slice lends exactly the union (grows before the children, shrinks after releases)
+        if _cg_read(slice_dir + "/cpuset.cpus.exclusive") != _fmt_cpulist(lent):
+            err = _cg_write(slice_dir + "/cpuset.cpus.exclusive", _fmt_cpulist(lent))
+            if err:
+                errors.append("system.slice exclusive %s: %s" % (_fmt_cpulist(lent), err))
+        # 4. each container: exclusive = its cpuset, then the partition
+        for d, (name, cpus) in sorted(targets.items()):
+            mode = "isolated" if len(cpus) == 1 or name == ISO_GUARD else "root"
+            want = _fmt_cpulist(cpus)
+            if _cg_read(d + "/cpuset.cpus.exclusive") != want:
+                err = _cg_write(d + "/cpuset.cpus.exclusive", want)
+                if err:
+                    errors.append("%s exclusive %s: %s" % (name, want, err))
+            if _cg_read(d + "/cpuset.cpus.partition") != mode:
+                _cg_write(d + "/cpuset.cpus.partition", mode)
+            part = _cg_read(d + "/cpuset.cpus.partition") or ""
+            state[name] = {"status": mode if part == mode else "invalid", "cpus": want,
+                           "partition": part, "cgroup": d[len(CG_ROOT):]}
+            if part != mode:
+                state[name]["blockers"] = blockers
+        # 5. device interrupts off the lent CPUs (given back when released)
+        irq_moved, irq_unmovable = _iso_irqs(lent)
+        # 6. machine-check polling (setting, only while something is partitioned)
+        _ISO["mce"] = _iso_mce(lent)
+        for line in freed:
+            print("[bobi-node-agent] isolation: freed %s" % line, flush=True)
+        for line in irq_moved:
+            print("[bobi-node-agent] isolation: irq %s" % line, flush=True)
+        _ISO.update(state=state, error="; ".join(errors) or None, irq_unmovable=irq_unmovable)
+        if irq_moved:
+            _ISO["irq_moved"] = ((_ISO.get("irq_moved") or []) + irq_moved)[-20:]
+        if freed:
+            _ISO["freed"] = ((_ISO.get("freed") or []) + freed)[-20:]
+        return _ISO
+
+
+def _iso_set(containers, mce_off=None):
+    """Replaces the wanted map (and the MCE choice when given), reconciles, persists (temp file +
+    os.replace). Returns an error or None."""
+    if not isinstance(containers, dict):
+        return "containers (object name -> cpus) required"
+    if mce_off is not None and not isinstance(mce_off, bool):
+        return "mce_off must be a boolean"
+    clean = {}
+    for name, spec in containers.items():
+        if not isinstance(name, str) or not _ISO_NAME_OK.match(name) or not isinstance(spec, str):
+            return "bad entry %r" % (name,)
+        try:
+            if not _parse_cpulist(spec):
+                return "empty cpus for %s" % name
+        except ValueError as e:
+            return "bad cpus for %s: %s" % (name, e)
+        clean[name] = spec.strip()
+    with _ISO_LOCK:
+        _ISO["wanted"] = clean
+        if mce_off is not None:
+            _ISO["mce_off"] = mce_off
+    _iso_reconcile()
+    try:
+        os.makedirs(os.path.dirname(ISO_PATH), exist_ok=True)
+        tmp = ISO_PATH + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"containers": clean, "mce_off": bool(_ISO.get("mce_off"))}, f)
+        os.replace(tmp, ISO_PATH)
+    except OSError as e:
+        _ISO["error"] = "applied but not persisted: %s" % e
+    return None
+
+
+def _iso_load():
+    try:
+        with open(ISO_PATH) as f:
+            saved = json.load(f) or {}
+        _ISO["wanted"] = dict(saved.get("containers") or {})
+        _ISO["mce_off"] = bool(saved.get("mce_off"))
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+
+
+def _iso_loop():
+    while True:
+        try:
+            _iso_reconcile()
+        except Exception as e:                       # noqa: BLE001 — never let the thread die
+            _ISO["error"] = "reconcile crashed: %s" % e
+        time.sleep(ISO_PERIOD_S)
+
+
 # ─── Détection hôte (santé / capacités) ─────────────────────────────────────────
+_DOCKER_INFO = {"ts": 0.0, "val": None}
+DOCKER_INFO_TTL_S = 600
+
+
 def _docker_info():
-    rc, out, _ = docker("version", "--format", "{{.Server.Version}}", timeout=8)
-    return {"ok": rc == 0, "version": out.strip() if rc == 0 else None}
+    """Docker server version, re-read at most every 10 min. Every `docker version` makes dockerd run
+    `runc --version` and `docker-init --version`, and dockerd's children land on ANY CPU: measured on
+    dell-1 (2026-11-08, ftrace on CPU 13), this call — once per health sample, ~every 13 s — was the
+    last intruder of the audio console's real-time thread (runc on its dedicated CPU, up to 0.47 ms).
+    A failure is not cached: the next sample retries."""
+    now = time.time()
+    if _DOCKER_INFO["val"] is None or now - _DOCKER_INFO["ts"] >= DOCKER_INFO_TTL_S:
+        rc, out, _ = docker("version", "--format", "{{.Server.Version}}", timeout=8)
+        val = {"ok": rc == 0, "version": out.strip() if rc == 0 else None}
+        if rc != 0:
+            return val
+        _DOCKER_INFO.update(ts=now, val=val)
+    return dict(_DOCKER_INFO["val"])
 
 
 def _hugepages():
@@ -622,6 +1138,56 @@ def _cpu_topology():
     return (len(paires) or None), (len(sockets) or None)
 
 
+# What the CPU offers to protect a dedicated core's MEMORY (Intel RDT; AMD names the same features
+# alike in /proc/cpuinfo), read-only (0.32.4): nothing is mounted, nothing is reserved here. Measured on
+# dell-1 (2026-11-09): an audio console on an isolated CPU needs ≈ 2 MB of L3, and under memory
+# saturation its traffic to RAM went 32 → 83 MB/s — its cache was being evicted by the others.
+#   cache_alloc  CAT: L3 ways can be reserved (Xeon E5 v4 and later)
+#   bw_limit     MBA: the memory bandwidth of a group of CPUs can be capped (Xeon Scalable and later)
+#   monitor      CMT/MBM: L3 occupancy and memory bandwidth can be measured per group
+RESCTRL = os.environ.get("BOBI_RESCTRL", "/sys/fs/resctrl")
+SYS_CPU = os.environ.get("BOBI_SYS_CPU", "/sys/devices/system/cpu")
+
+
+def _memory_qos(cpuinfo="/proc/cpuinfo", filesystems="/proc/filesystems"):
+    flags = set()
+    try:
+        with open(cpuinfo) as f:
+            for line in f:
+                if line.startswith("flags"):
+                    flags = set(line.partition(":")[2].split())
+                    break
+    except OSError:
+        pass
+    doc = {"cache_alloc": "cat_l3" in flags, "bw_limit": "mba" in flags,
+           "monitor": bool(flags & {"cqm_llc", "cqm_mbm_total", "cqm_mbm_local"}),
+           "kernel": "resctrl" in (_cg_read(filesystems) or ""), "mounted": os.path.isdir(RESCTRL + "/info")}
+    domains = set()
+    try:
+        cpus = [d for d in os.listdir(SYS_CPU) if re.match(r"^cpu\d+$", d)]
+    except OSError:
+        cpus = []
+    for c in cpus:
+        base = "%s/%s/cache/index3" % (SYS_CPU, c)
+        cid = _cg_read(base + "/id")
+        if cid is not None:
+            domains.add(cid)
+        if "l3_kb" not in doc and _cg_read(base + "/level") == "3":
+            size = (_cg_read(base + "/size") or "").rstrip("K")
+            ways = _cg_read(base + "/ways_of_associativity")
+            doc["l3_kb"] = int(size) if size.isdigit() else None
+            doc["l3_ways"] = int(ways) if (ways or "").isdigit() else None
+    doc["l3_domains"] = len(domains) or None
+    if doc["mounted"]:                      # what the kernel really grants (groups, minimum reservation)
+        for key, path in (("groups", "/info/L3/num_closids"), ("min_ways", "/info/L3/min_cbm_bits"),
+                          ("io_shared_mask", "/info/L3/shareable_bits"), ("bw_step_pct", "/info/MB/bandwidth_gran"),
+                          ("bw_min_pct", "/info/MB/min_bandwidth")):
+            v = _cg_read(RESCTRL + path)
+            if v is not None:
+                doc[key] = int(v) if v.isdigit() else v
+    return doc
+
+
 def _machine():
     now = time.time()
     if _MACHINE["doc"] is not None and now - _MACHINE["ts"] < MACHINE_TTL_S:
@@ -629,7 +1195,7 @@ def _machine():
     cores, sockets = _cpu_topology()
     doc = {"vendor": _dmi("sys_vendor"), "product": _dmi("product_name"),
            "cpu_model": _cpu_model(), "cores": cores, "threads": os.cpu_count(), "sockets": sockets,
-           "gpus": [g["name"] for g in _gpus()]}
+           "gpus": [g["name"] for g in _gpus()], "memory_qos": _memory_qos()}
     _MACHINE.update(ts=now, doc=doc)
     return doc
 
@@ -1034,6 +1600,8 @@ def health_payload():
         "containers": _list_containers(),
         "sensors": _sensors(),
         "watchdog": _wd_report(),
+        "housekeeping": dict(_HK),
+        "isolation": dict(_ISO),
     }
     if _MEMBW:
         h["membw"] = dict(_MEMBW)
@@ -1330,19 +1898,29 @@ def _wd_controleur_silencieux():
     return (time.time() - ts) >= WATCHDOG_GRACE_S if ts else True
 
 
-# SONDE EXÉCUTÉE DANS LE CONTENEUR. Pourquoi pas un simple appel HTTP depuis ici : nos conteneurs
-# sont en macvlan, et une interface macvlan enfant ne parle JAMAIS à la pile de son interface
-# parente. Un nœud joint les conteneurs de ses voisins, jamais les siens (mesuré sur dl360-1 :
-# 100 % de perte vers son propre conteneur, 0 % vers celui d'en face — EHOSTUNREACH). On passe donc
-# par `docker exec` et on appelle 127.0.0.1 depuis l'espace de noms réseau du conteneur lui-même.
-# Le matériel TLS et le jeton sont DÉJÀ là-dedans (/etc/bobi-tls, $MXL_AGENT_TOKEN) : rien à
-# distribuer, rien à router, et ça marchera à l'identique en ipvlan, en bridge ou en topologie
-# séparée. Stdin plutôt qu'un `-c "…"` : aucun échappement à faire.
+# PROBE RUN IN THE CONTAINER'S NETWORK NAMESPACE. Why not a plain HTTP call from here: our containers
+# are on macvlan, and a macvlan child interface NEVER talks to its parent's stack. A node reaches its
+# neighbours' containers, never its own (measured on dl360-1: 100 % loss to its own container, 0 % to
+# the one opposite — EHOSTUNREACH). So we call 127.0.0.1:8081 from inside the container's network
+# namespace, with the TLS material and token that are ALREADY there (/etc/bobi-tls, $MXL_AGENT_TOKEN).
+# Nothing to distribute, nothing to route, and it works the same in ipvlan, bridge or a split topology.
+# Stdin rather than `-c "…"`: nothing to escape.
+#
+# HOW WE ENTER IT (0.31.0): `nsenter -t <pid> -n`, the NETWORK namespace only, not `docker exec`.
+# `docker exec` runs runc, which joins the container's cgroup and therefore its CPUSET: every 15 s,
+# on every container, a process start + mm teardown landed on the container's CPUs, dedicated cores
+# included. Measured on the Z8 (2026-11-08, ftrace on CPU 9, audio console at 48/72): 36 of the 52
+# stalls > 1.6 ms of the console's real-time thread were this probe (median 1.7 ms, max 2.5 ms) — a
+# voluntary-preemption kernel does not let a FIFO thread preempt a task inside the kernel. With
+# nsenter the probe stays in the agent's cgroup and on the agent's CPUs (housekeeping, cf.
+# `_hk_apply`). The TLS material is read through /proc/<pid>/root (the container's own view, mounted
+# or baked) and the token from the container's init environment. `docker exec` remains the fallback
+# when nsenter is missing, and says so (`_wd_note`), since it brings the stalls back.
 _WD_SONDE = r'''
 import json, os, ssl, sys, urllib.error, urllib.request
 chemin = os.environ.get("WD_PATH", "/status")
 methode = os.environ.get("WD_METHOD", "GET")
-tls, ctx, schema = "/etc/bobi-tls", None, "http"
+tls, ctx, schema = os.environ.get("WD_ROOT", "") + "/etc/bobi-tls", None, "http"
 try:
     if os.path.exists(tls + "/cert.pem") and os.path.exists(tls + "/key.pem"):
         ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=tls + "/ca.pem")
@@ -1353,7 +1931,7 @@ except Exception as e:
     print(json.dumps({"erreur": "tls: %s" % e})); sys.exit(0)
 req = urllib.request.Request("%s://127.0.0.1:8081%s" % (schema, chemin), method=methode,
                              data=b"" if methode == "POST" else None)
-jeton = os.environ.get("MXL_AGENT_TOKEN")
+jeton = os.environ.get("WD_TOKEN") or os.environ.get("MXL_AGENT_TOKEN")
 if jeton:
     req.add_header("X-MXL-Agent-Token", jeton)
 try:
@@ -1366,14 +1944,63 @@ except Exception as e:
 '''
 
 
-def _wd_sonder(name, path, method="GET", timeout=15):
-    """Interroge le `:8081` d'un conteneur DEPUIS L'INTÉRIEUR (docker exec).
-    Retourne (code, dict) ou (None, err_str)."""
-    argv = ["docker", "exec", "-i", "-e", "WD_PATH=" + path, "-e", "WD_METHOD=" + method,
-            name, "python3", "-"]
-    rc, out, err = run(argv, timeout=timeout, input_bytes=_WD_SONDE.encode())
+_WD_EXEC_FALLBACK_NOTED = set()   # names whose fallback to `docker exec` was already logged
+
+
+def _wd_pids(names):
+    """name -> host PID of each container's init, in ONE `docker inspect` per tick (the PID changes at
+    every container restart, so it cannot be memoized like the network mode). A missing container
+    makes docker exit non-zero but still prints the others: the output is parsed regardless."""
+    if not names:
+        return {}
+    _rc, o, _ = docker("inspect", "-f", "{{.Name}}\t{{.State.Pid}}", *names, timeout=10)
+    pids = {}
+    for line in (o or "").splitlines():
+        n, _, pid = line.strip().lstrip("/").partition("\t")
+        if pid.isdigit() and int(pid) > 0:
+            pids[n] = int(pid)
+    return pids
+
+
+def _container_env(pid, key):
+    """One variable of the container's init environment (/proc/<pid>/environ, root only)."""
+    try:
+        with open("/proc/%d/environ" % pid, "rb") as f:
+            for item in f.read().split(b"\0"):
+                k, _, v = item.partition(b"=")
+                if k.decode(errors="replace") == key:
+                    return v.decode(errors="replace")
+    except OSError:
+        pass
+    return None
+
+
+def _wd_argv(name, path, method, pid):
+    """argv + extra environment of the probe: nsenter into the network namespace when possible
+    (cf. the header of `_WD_SONDE`), `docker exec` otherwise."""
+    if pid and shutil.which("nsenter"):
+        env = dict(os.environ, WD_PATH=path, WD_METHOD=method, WD_ROOT="/proc/%d/root" % pid)
+        tok = _container_env(pid, "MXL_AGENT_TOKEN")
+        if tok:
+            env["WD_TOKEN"] = tok
+        else:
+            env.pop("WD_TOKEN", None)
+        return ["nsenter", "-t", str(pid), "-n", sys.executable or "python3", "-"], env
+    if name not in _WD_EXEC_FALLBACK_NOTED:
+        _WD_EXEC_FALLBACK_NOTED.add(name)
+        _wd_note("%s : probe through docker exec (%s) — it runs on the container's CPUs"
+                 % (name, "nsenter missing" if pid else "PID unknown"))
+    return ["docker", "exec", "-i", "-e", "WD_PATH=" + path, "-e", "WD_METHOD=" + method,
+            name, "python3", "-"], None
+
+
+def _wd_sonder(name, path, method="GET", timeout=15, pid=None):
+    """Queries a container's `:8081` from INSIDE its network namespace.
+    Returns (code, dict) or (None, err_str)."""
+    argv, env = _wd_argv(name, path, method, pid)
+    rc, out, err = run(argv, timeout=timeout, input_bytes=_WD_SONDE.encode(), env=env)
     if rc != 0:
-        return None, ("docker exec rc=%s %s" % (rc, (err or out).strip()[:120]))
+        return None, ("%s rc=%s %s" % (argv[0], rc, (err or out).strip()[:120]))
     try:
         res = json.loads((out or "").strip().splitlines()[-1])
     except Exception:
@@ -1409,12 +2036,16 @@ def _wd_tick():
     silencieux = _wd_controleur_silencieux()
     maintenant = time.time()
     vivants = set()
+    suivis = []
     for c in _list_containers():
         name = c.get("name") or ""
         if not name.startswith("bobi-") or not (c.get("status") or "").startswith("Up"):
             continue
         if _wd_reseau_cached(name) == "host":
             continue                       # moteur 2110 / --network host : hors périmètre, cf. entête
+        suivis.append(name)
+    pids = _wd_pids([n for n in suivis if maintenant >= _WD_STATE.get(n, {}).get("next_poll", 0.0)])
+    for name in suivis:
         vivants.add(name)
         st = _WD_STATE.setdefault(name, {"prev_running": None, "tries": 0, "next_try": 0.0,
                                          "note": "", "muet": 0, "next_poll": 0.0})
@@ -1424,7 +2055,7 @@ def _wd_tick():
         # Vaut aussi pour un conteneur simplement en train de démarrer.
         if maintenant < st.get("next_poll", 0.0):
             continue
-        code, data = _wd_sonder(name, "/status")
+        code, data = _wd_sonder(name, "/status", pid=pids.get(name))
         if code != 200:
             st["muet"] = st.get("muet", 0) + 1
             st["next_poll"] = maintenant + min(WATCHDOG_PERIOD_S * (2 ** st["muet"]), 600)
@@ -1461,7 +2092,7 @@ def _wd_tick():
             continue
         if maintenant < st["next_try"]:
             continue
-        code, data = _wd_sonder(name, "/start", method="POST")
+        code, data = _wd_sonder(name, "/start", method="POST", pid=pids.get(name))
         st["tries"] += 1
         st["next_try"] = maintenant + min(WATCHDOG_BACKOFF_S * (2 ** (st["tries"] - 1)), 300)
         if code == 200:
@@ -2196,6 +2827,19 @@ class Handler(BaseHTTPRequestHandler):
             r = _dsk_http("POST", path, body)
             if r:
                 return self._send(*r)
+
+        if path == "/v1/host/housekeeping":
+            spec = body.get("cpus")
+            if not isinstance(spec, str):
+                return self._send(400, {"ok": False, "error": "cpus (string) requis"})
+            ok = _hk_set(spec.strip())
+            return self._send(200 if ok else 400, {"ok": ok, **_HK})
+
+        if path == "/v1/host/isolation":
+            err = _iso_set(body.get("containers"), body.get("mce_off"))
+            if err:
+                return self._send(400, {"ok": False, "error": err})
+            return self._send(200, {"ok": True, **_ISO})
 
         if path == "/v1/host/exec":
             cmd = body.get("cmd")
@@ -3589,7 +4233,10 @@ def main():
             print(f"[bobi-node-agent] page d'état publique sur :{info_port}")
         except OSError as ex:
             print(f"[bobi-node-agent] page d'état non démarrée sur :{info_port} ({ex})")
+    _hk_load()                             # before any thread: they inherit the boundary
     threading.Thread(target=_membw_loop, daemon=True, name="membw").start()
+    _iso_load()
+    threading.Thread(target=_iso_loop, daemon=True, name="isolation").start()
     _transfer_server()
     if _wd_enabled():
         threading.Thread(target=_wd_loop, daemon=True, name="watchdog").start()

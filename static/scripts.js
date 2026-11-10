@@ -2622,6 +2622,10 @@ function updateAlerts(alerts) {
                 const id = p && parseInt(p.crash_tail_id, 10);
                 if (!id) return '';
                 return ` <a class="log-jump" title="${escapeHtml(window.t('js.crash_tail.from_alert') || 'Dernières lignes du script avant sa mort, conservées par le contrôleur')}" onclick="BobiLogs.openCrashTail(${id})">${escapeHtml(window.t('js.crash_tail.link') || '⤷ fin de sortie')}</a>`;
+            })()}${(() => {
+                // A deploy refused for a too-old image: one click to the page that builds it.
+                const p = _alerteParams(a);
+                return p && p.build_link ? ` <a class="log-jump" href="/settings#deploiement/build">${escapeHtml(window.t('images.build_link'))}</a>` : '';
             })()}
         </div>
     `).join('') || '<div class="meta">' + window.t('js.alerts_none') + '</div>';

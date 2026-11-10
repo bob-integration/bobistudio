@@ -893,6 +893,17 @@ def versions_meta(type_):
         # c'est le dernier moment où on peut encore la deviner honnêtement (cf. imported_at).
         d["imported_at"] = d.get("imported_at") or imported_at(type_, v)
         d["core_min"], d["core_ok"] = version_compatible(type_, v)
+        d["image_min"], d["image_old_nodes"] = image_min(type_, v), []
+        if d["image_min"]:
+            try:
+                from .database import db_get_nodes
+                from .docker_compute import node_image
+                for n in db_get_nodes():
+                    img = node_image(n, type_)
+                    if img and image_meets(img, d["image_min"]) is False:
+                        d["image_old_nodes"].append({"name": n.get("name"), "image": img})
+            except Exception as e:                                         # noqa: BLE001
+                log.debug("versions_meta %s: image check unavailable (%s)", type_, e)
         out.append(d)
     return out
 
@@ -1060,6 +1071,24 @@ def render_script(type_, params, hostname, version=None):
                       plugin_version=ver)
 
 
+# Audio grain on the MXL bus (core setting `mxl_audio_grain_us`, Réglages → MXL). Values a script may
+# receive; finer ones (2110-30 packet times: 125, 250, 333 µs) join once measured end to end.
+AUDIO_GRAINS_US = (1000,)
+
+
+def audio_grain_us(override=None):
+    """Effective grain in µs: the container's own `audio_grain_us` if valid, else the core setting,
+    else 1000. Anything outside AUDIO_GRAINS_US falls back — a script never gets a grain nobody tested."""
+    from . import settings as _st
+    for v in (override, _st.get("mxl_audio_grain_us")):
+        try:
+            if int(v) in AUDIO_GRAINS_US:
+                return int(v)
+        except (TypeError, ValueError):
+            continue
+    return 1000
+
+
 def render_config(type_, params):
     """Le dictionnaire qui devient `CONFIG` dans le script rendu — et RIEN d'autre que lui.
 
@@ -1103,6 +1132,9 @@ def render_config(type_, params):
            for f in ((REGISTRY.get(type_) or {}).get("config_schema") or [])):
         from . import missing_frame
         cfg[missing_frame.EFFECTIVE_KEY] = missing_frame.effective(cfg.get(missing_frame.KEY))
+    # AUDIO GRAIN: every type, resolved here (like the missing frame) so a change of the core setting
+    # reaches each container at its next deploy. Scripts read it through bobimxl.audio_grain(CONFIG).
+    cfg["mxl_audio_grain_us"] = audio_grain_us(cfg.get("audio_grain_us"))
     return cfg
 
 
@@ -1177,6 +1209,51 @@ def image_variant(type_):
     base image then could not be built without an optional plugin's sources."""
     v = str((REGISTRY.get(type_) or {}).get("image") or "compute").lower()
     return v if v in ("compute", "media", "gui", "decklink") else "compute"
+
+
+def image_min(type_, version=None):
+    """Minimum image tag this plugin version requires (`requires.image_min`), "" when none.
+
+    Read from the archived manifest when `version` is not the current one; an archive without a
+    manifest gives "" (nothing declared there, so nothing to enforce)."""
+    m = REGISTRY.get(type_) or {}
+    man = m
+    if version and version != m.get("version") and m.get("_dir"):
+        mp = os.path.join(m["_dir"], "versions", version, "plugin.json")
+        try:
+            with open(mp, encoding="utf-8") as f:
+                man = json.load(f) or {}
+        except (ValueError, OSError):
+            man = {}
+    return str(((man.get("requires") or {}).get("image_min")) or "").strip()
+
+
+def _image_key(tag):
+    """'bobi-compute:0.30' → ('bobi-compute', (0, 30)); a bare '0.30' has no repository.
+    None as soon as a version segment is not numeric ('0.24-fix'): no order is invented on a
+    truncated tuple — a refusal built on a shaky comparison would be worse than no check."""
+    repo, _, ver = str(tag or "").strip().rpartition(":")
+    parts = ver.split(".")
+    # `all` is shadowed in this module (registry listing): spell the test out.
+    if not ver or any(not p.isdigit() for p in parts):
+        return None
+    return repo, tuple(int(p) for p in parts)
+
+
+def image_meets(image, minimum):
+    """True (recent enough), False (too old) or None (cannot compare — never a refusal).
+
+    Two different repositories are not compared: 'bobi-compute-gpu:0.12' says nothing about a
+    'bobi-compute:0.30' requirement, and comparing the numbers alone would refuse a GPU node
+    for no reason."""
+    if not minimum:
+        return True
+    a, b = _image_key(image), _image_key(minimum)
+    if a is None or b is None:
+        return None
+    if a[0] and b[0] and a[0] != b[0]:
+        return None
+    return a[1] >= b[1]
 
 
 def image_kind(type_):
@@ -2415,6 +2492,11 @@ def activate_version(type_, version):
     vdir = os.path.join(tdir, "versions", version)
     if not os.path.isdir(vdir):
         raise ValueError(f"version {version} introuvable")
+    # Same rule as installation (`validate_package`): after a core rollback an archived version
+    # can need a newer core than the one running. « Unknown » does not refuse.
+    _cmin, _ok = version_compatible(type_, version)
+    if _ok is False:
+        raise ValueError("exige Bobi.Studio >= %s (cette instance est en %s)" % (_cmin, _v.VERSION))
     _archive_current(tdir, cur)
     _clear_flat(tdir)
     _copy_into(vdir, tdir, os.listdir(vdir))

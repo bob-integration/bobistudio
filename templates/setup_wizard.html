@@ -319,6 +319,26 @@ const wiz = {
     // moment où on est sûr que l'utilisateur regarde.
     async done() {
         await api('POST', '/api/setup/complete');
+        // ★ LES GESTES SONT MESURÉS, PLUS ÉCRITS ICI (2026-11-08). La liste était figée à deux
+        //   entrées — « enrôler un nœud », « désigner la carte réseau » — et le même écran sert
+        //   un contrôleur seul, un nœud seul et un tout-en-un. Sur un tout-en-un l'installeur
+        //   vient d'enrôler le nœud : on réclamait donc un geste déjà fait, et on taisait les
+        //   IMAGES D'EXÉCUTION, sans lesquelles aucun conteneur ne démarre et dont la
+        //   construction n'est annoncée nulle part dans le parcours d'installation.
+        //   Source unique : `app/install_gestures.py`, via /api/setup/gestures.
+        let mes = { gestures: [], unmeasured: [] };
+        try {
+            const r = await api('GET', '/api/setup/gestures');
+            if (r.ok) mes = r.data || mes;
+            // Un appel qui échoue n'autorise pas à dire « rien à faire » : on le dit non mesuré.
+            else mes = { gestures: [], unmeasured: [{ code: 'all' }] };
+        } catch (e) { mes = { gestures: [], unmeasured: [{ code: 'all' }] }; }
+        const fmt = (s, p) => String(s).replace(/\{(\w+)\}/g, (m, k) => esc((p || {})[k] ?? m));
+        const bloquants = (mes.gestures || []).filter(g => g.blocking);
+        const utiles    = (mes.gestures || []).filter(g => !g.blocking);
+        const flous     = mes.unmeasured || [];
+        const item = g => `<li>${fmt(T('wiz.done.geste_' + g.code), g.params)}
+                    <a href="${esc(g.link)}">${esc(T('wiz.done.geste_' + g.code + '_link'))}</a></li>`;
         return {
             html: `
             <div class="wiz-step-num">${esc(T('wiz.done.step'))}</div>
@@ -326,12 +346,16 @@ const wiz = {
             <p class="lead">${T('wiz.done.lead')}</p>
             <div class="wiz-note">
               <strong>${esc(T('wiz.done.next_title'))}</strong>
-              <ol class="wiz-next">
-                <li>${esc(T('wiz.done.next_node'))}
-                    <a href="/settings#deploiement/nodes">${esc(T('wiz.done.next_node_link'))}</a></li>
-                <li>${esc(T('wiz.done.next_iface'))}
-                    <a href="/settings#reseau/interfaces">${esc(T('wiz.done.next_iface_link'))}</a></li>
-              </ol>
+              ${bloquants.length
+                ? `<ol class="wiz-next">${bloquants.map(item).join('')}</ol>`
+                : `<p style="margin:8px 0 0">${esc(T('wiz.done.next_none'))}</p>`}
+              ${utiles.length
+                ? `<ul class="wiz-next" style="margin-top:10px">${utiles.map(item).join('')}</ul>`
+                : ''}
+              ${flous.length
+                ? `<p style="margin:8px 0 0">${fmt(T('wiz.done.next_unmeasured'),
+                     { codes: [...new Set(flous.map(f => f.code))].join(', ') })}</p>`
+                : ''}
               {# Hors de la liste NUMÉROTÉE, à dessein : ce n'est pas un 3ᵉ geste obligatoire mais
                  la réponse à « et comment j'obtiens d'autres types de conteneurs ? ». Rien dans
                  l'interface ne le disait — on pouvait chercher longtemps une liste figée qui

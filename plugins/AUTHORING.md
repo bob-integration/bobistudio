@@ -295,6 +295,7 @@ Notable ones:
 | `nav` | section and route. **Without `nav`**, no palette chip and no nav entry |
 | `help.category` / `help.order` | placement of the help article |
 | `files` | extra files pushed next to the script (see below) |
+| `image` | the runtime image the container is created from (see below) |
 | `environment` | how the container relates to projects, for a service other containers rely on: `{"scope": "partitioned" \| "shared", "wanted_by": {"sections": [...], "types": [...]}}`. `partitioned`: inside a project it only serves that project (transcoder); `shared`: it serves every project, so a project holding it destroys it for everyone when unloaded (pyramide). The orchestrator reminds this when one is attached to a project, records the ones a project uses at save, and offers to create the missing ones when the project is recalled (`app/project_environment.py`). `wanted_by` says which project contents need it; absent = always |
 
 ### `files` — shipping modules next to the script
@@ -316,6 +317,31 @@ fails the deploy is aborted (error alert) and the script is never started.
   path or `..`, `src` missing or leaving the plugin folder (symlinks included), duplicate `dest`,
   `dest` equal to `main.py` / `bobimxl.py` / `agent.py` / `nmos.json` / the script itself, more than
   8 MB per file or 16 MB in all.
+
+### `image` — what the container already has
+
+The container is created from a runtime image; the plugin's code is **not** in it. At each deploy the
+orchestrator pushes `script.py`, the `files` and `bobimxl.py` to the agent, which starts the script. A
+new plugin version therefore needs a redeploy, never an image rebuild.
+
+| `image` | Contents | Built from |
+|---|---|---|
+| `compute` (default) | Python, numpy, MXL SDK, our C kernels (v210 conversion, wall compose, scope); the GPU variant adds CUDA | `plugins/_compute_runtime/`, `plugins/_compute_gpu_runtime/` |
+| `media` | Python, numpy, MXL SDK, FFmpeg, GStreamer and its MXL element, MXF tools | `plugins/_media_runtime/` |
+| `decklink`, `gui` | images carried by a plugin (`decklink_io`, `plugin_gui`), built only on nodes that have the hardware | the plugin's `image/Dockerfile` |
+
+**Nothing is installed when a container is created**: no `pip`, no `apt`. A container needs no
+Internet access, starts in seconds, and is identical to every other container of its type. When a
+library is missing:
+
+- a Python module or a small compiled library → ship it with `files`;
+- a heavy or system dependency → add it to the runtime's Dockerfile; the image must then be rebuilt
+  and the containers recreated (Restart keeps the old image);
+- a hardware driver or SDK → the plugin carries its own image, like `2110_io` and `decklink_io`.
+
+Declare the image your plugin needs at least in `requires.image_min` (e.g. `"bobi-media:0.28.2"`).
+A node holding an older image is then left out of placement and migration, and a deploy there is
+refused with an alert naming both versions. A tag that cannot be compared never blocks anything.
 
 ---
 

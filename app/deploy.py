@@ -307,6 +307,42 @@ def _alerter_schema(ip, vmid, port):
 
 _STATIC_UPLOADS = config.UPLOADS_DIR
 
+def _avertir_webrtc_sans_passerelle(vmid, params):
+    """Une destination WebRTC active que la passerelle ne peut pas recevoir : le DIRE.
+
+    ★ L'ÉCHEC ÉTAIT PARFAITEMENT SILENCIEUX (constaté 2026-11-08). `plugins/streamer/hooks.py`
+    résout `ingest_url` depuis les réglages `webrtc_*` ; sans passerelle déployée, il se contente
+    de RETIRER la clé (`d.pop("ingest_url", None)`) et le déploiement continue. Le conteneur
+    part, ffmpeg encode, les branches UDP/SRT marchent — et la branche WebRTC n'existe pas. Rien
+    dans l'interface ne le dit : ni alerte, ni compteur, et la carte du flux affiche un chemin
+    WebRTC qui ne mène nulle part. L'exploitant l'apprend en ouvrant la lecture, s'il l'ouvre.
+
+    ★ POURQUOI ICI, APRÈS LE HOOK, ET PAS DANS LE PLUGIN. C'est le point par lequel passe TOUT
+    déploiement — palette, éditeur de flux, API, macro, rappel de projet, redéploiement après
+    recréation. Mis dans le plugin, l'avertissement vaudrait pour ce plugin seul ; mis ici, il
+    vaut pour toute destination WebRTC, et il juge sur le RÉSULTAT du hook (`ingest_url` absente)
+    au lieu de redériver les réglages — donc il reste vrai même si la résolution change.
+
+    ⚠ On n'EMPÊCHE rien : un flux dont seule la branche WebRTC manque continue de servir ses
+    autres destinations, et refuser le déploiement ferait perdre l'UDP avec. On rend visible,
+    l'exploitant arbitre (même règle que `routes/images.py` pour une image absente).
+    """
+    chemins = []
+    for d in ((params or {}).get("destinations") or []):
+        if not isinstance(d, dict) or d.get("type") != "webrtc" or not d.get("enabled"):
+            continue
+        if (d.get("ingest_url") or "").strip():
+            continue                       # résolue : la passerelle est là
+        chemins.append((d.get("path") or "").strip() or "?")
+    if not chemins:
+        return
+    try:
+        db_add_alert("alert.webrtc.destination_sans_passerelle", "warning", vmid=vmid,
+                     kind="deploy", params={"n": len(chemins), "paths": ", ".join(chemins)})
+    except Exception as e:                  # noqa: BLE001
+        log.warning("avertissement WebRTC sans passerelle (vmid %s) non journalisé : %s", vmid, e)
+
+
 def _resolve_brand_settings(params):
     """Injecte l'identité client (réglages Personnalisation) dans les params d'un plugin :
     textes (nom système, entreprise, localisation) + LOGO en base64 (autonome, pas de
@@ -1692,6 +1728,47 @@ def pinned_version(vmid, type_script, params=None):
     return None
 
 
+def version_for_this_core(vmid, type_script, version, explicit, hostname=None):
+    """Version to render on THIS core: `version` unchanged (None = current), another one, or
+    False = refused. An alert says which, every time the answer is not `version`.
+
+    `requires.core_min` was only checked at INSTALLATION (2026-11-09). A core rollback restores
+    `plugins/` from its backup but deletes nothing added since: a plugin installed after the
+    update, or an archived version a container is pinned to, can then need a newer core than the
+    one running — and the multiview case fails SILENTLY (stale labels on the wall).
+
+    Decided with Cyril, 2026-11-09:
+      - a version NAMED by the caller (`/redeploy-version`, « migrate the fleet ») is a human
+        choice: refused, never swapped for another one;
+      - no version named (keep yours: auto-restart, rewiring, project recall…): the newest
+        version this core can run, with an alert naming both — a stopped container costs more
+        on air than a different version that is announced. None compatible: refused.
+    « Unknown » (script-only archive, non-numeric tag) never refuses, and is never chosen as a
+    fallback either: it would be presenting a guess as checked."""
+    if not plugins.is_plugin(type_script):
+        return version
+    cur = (plugins.get(type_script) or {}).get("version")
+    target = version or cur
+    cmin, ok = plugins.version_compatible(type_script, target)
+    if ok is not False:
+        return version
+    from .version import VERSION as core
+    params = {"vmid": vmid, "h": hostname or vmid, "t": type_script, "ver": target,
+              "cmin": cmin, "core": core}
+    if not explicit:
+        for v in plugins.versions(type_script):
+            if v != target and plugins.version_compatible(type_script, v)[1] is True:
+                log.warning("deploy %s: %s %s needs core >= %s (running %s) — falling back to %s",
+                            vmid, type_script, target, cmin, core, v)
+                db_add_alert("alert.deploy.core_fallback", "warning", vmid=vmid, kind="deploy",
+                             params=dict(params, to=v))
+                return None if v == cur else v
+    log.warning("deploy %s: %s %s needs core >= %s (running %s) — refused", vmid, type_script,
+                target, cmin, core)
+    db_add_alert("alert.deploy.core_too_old", "error", vmid=vmid, kind="deploy", params=params)
+    return False
+
+
 def deployer_script(vmid, type_script, params, script_path="/opt/script/main.py", version=None,
                     script_content=None, hot_only_keys=None):
     """Point d'entrée déploiement — SÉRIALISÉ PAR VMID (vmlocks) : deux opérations de
@@ -1745,8 +1822,13 @@ def _deployer_script_locked(vmid, type_script, params, script_path="/opt/script/
     # (generer_script), les fichiers annexes (deploy_files), la garde du hot-only, la
     # reconfiguration à chaud et l'estampille réécrite en base — les cinq doivent parler de la
     # MÊME version, sans quoi on écrirait une estampille que le script rendu ne porte pas.
+    _explicit = version is not None
     if version is None:
         version = pinned_version(vmid, type_script, params)
+    version = version_for_this_core(vmid, type_script, version, _explicit,
+                                    (_c0 or {}).get("hostname"))
+    if version is False:
+        return False
 
     # Backend Docker : deux chemins. MTL = controller bâti dans l'image, config par NMOS, pas
     # d'agent :8081 ni de rendu script.py → chemin dédié. Compute générique = conteneur agent
@@ -1807,6 +1889,9 @@ def _deployer_script_locked(vmid, type_script, params, script_path="/opt/script/
                 params = _result
         except Exception as _e:
             log.warning("hook before_deploy %s: %s", type_script, _e)
+
+    # Une destination WebRTC sans passerelle part DANS LE VIDE, et ne le disait à personne.
+    _avertir_webrtc_sans_passerelle(vmid, params)
 
     # Plugins qui déclarent `brand` : on injecte l'identité (perso) dans leurs params.
     if plugins.is_plugin(type_script) and plugins.wants_brand(type_script):

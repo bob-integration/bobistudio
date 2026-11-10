@@ -213,6 +213,36 @@ def compute_eligible(n):
     return True
 
 
+def node_image(node, deploy_type):
+    """Image tag a container of `deploy_type` would get on `node`, before any GPU swap — None when
+    the node cannot carry that image at all (no 'gui'/'decklink' capability, nothing built).
+
+    Mirrors the choice made in `deploy_compute`; used where no container is being created yet
+    (migration plan, placement, the plugin manager) to compare against `requires.image_min`."""
+    if not node:
+        return None
+    variant = plugins.image_variant(deploy_type) if deploy_type else "compute"
+    if variant == "media":
+        return node.get("media_image") or None
+    if variant in ("gui", "decklink"):
+        from . import node_driver, settings as _st
+        if variant not in node_driver.node_capabilities(node):
+            return None
+        _reglage = "gui_image" if variant == "gui" else "decklink_image"
+        return node.get(_reglage) or (_st.get(_reglage) or "").strip() or None
+    return node.get("compute_image") or None
+
+
+def image_too_old(node, deploy_type):
+    """(image, minimum) when `node` holds an image older than `deploy_type` requires, else None.
+    An image that cannot be compared is NOT too old: the check never refuses on a guess."""
+    minimum = plugins.image_min(deploy_type) if deploy_type else ""
+    img = node_image(node, deploy_type) if minimum else None
+    if img and plugins.image_meets(img, minimum) is False:
+        return img, minimum
+    return None
+
+
 def eligible_compute_nodes():
     return [n for n in db_get_nodes() if compute_eligible(n)]
 
@@ -244,7 +274,10 @@ def pick_compute_node(prefer_id=None, deploy_type=None):
     from . import core_pool, gpu_pool
     gpu_utile = bool(deploy_type) and plugins.gpu_capable(deploy_type)
 
-    _eligible = compute_eligible
+    def _eligible(n):
+        # A node whose image is older than the plugin requires would refuse the deploy anyway:
+        # placing there would only turn a choice into an error.
+        return compute_eligible(n) and not image_too_old(n, deploy_type)
 
     if prefer_id:
         n = db_get_node(prefer_id)
@@ -874,37 +907,20 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     # que de laisser partir un conteneur qui ne peut pas fonctionner. Refuser est brutal, mais
     # l'alerte NOMME la version attendue et celle du nœud : c'est réparable en une lecture.
     #
-    # ⚠ PORTÉE EXACTE, et elle est plus étroite que ce qu'on aimerait : ce contrôle est à la
-    # CRÉATION du conteneur, seul moment où l'image du nœud EST celle du conteneur. Un
-    # conteneur créé sur une image ancienne, puis redéployé après que le nœud a été promu,
-    # passerait ce test tout en tournant sur l'ancienne image — `containers` ne mémorise pas
-    # l'image posée au `docker run`. Ce cas-là n'est PAS couvert ici : il l'est côté script,
-    # par un chargement défensif (`getattr(bobimxl, ...)`) et par un repli dont l'état publie
-    # qu'il est dégradé. Le vrai correctif serait de stocker l'image à la création — noté, pas
-    # fait.
-    _req = (plugins.get(deploy_type) or {}).get("requires") if deploy_type else None
-    _min = str((_req or {}).get("image_min") or "").strip()
-    def _cle(tag):
-        """« bobi-compute:0.30 » → (0, 30). None dès qu'un segment n'est PAS numérique :
-        sur un tag comme « 0.24-fix », on ne compare pas du tout plutôt que d'inventer un
-        ordre sur un tuple tronqué — un refus fondé sur une comparaison bancale serait pire
-        que l'absence de contrôle."""
-        v = tag.rsplit(":", 1)[-1]
-        parts = v.split(".")
-        if not all(p.isdigit() for p in parts):
-            return None
-        return tuple(int(p) for p in parts)
-
+    # Ce contrôle juge l'image du NŒUD, celle que prendrait un `docker run`. Un conteneur qui
+    # n'est pas recréé garde la sienne : second contrôle plus bas, sur `containers.image`.
+    # Le placement (`pick_compute_node`) et la migration écartent déjà un nœud trop ancien.
+    _min = plugins.image_min(deploy_type) if deploy_type else ""
     if _min and image:
-        _a, _b = _cle(image), _cle(_min)
-        if _a is None or _b is None:
+        _ok = plugins.image_meets(image, _min)
+        if _ok is None:
             log.warning("deploy %s: version non comparable (nœud %s, exigence %s) — "
                         "contrôle d'image IGNORÉ", vmid, image, _min)
-        elif _a < _b:
+        elif not _ok:
             db_add_alert("alert.deploy.compute.image_trop_ancienne", "error", vmid=vmid,
                          node_id=node.get("id"), kind="deploy",
                          params={"vmid": vmid, "t": deploy_type, "n": node.get("name"),
-                                 "img": image, "min": _min})
+                                 "img": image, "min": _min, "build_link": 1})
             log.error("deploy %s: %s exige %s, le nœud %s est en %s — déploiement refusé",
                       vmid, deploy_type, _min, node.get("name"), image)
             return False
@@ -1299,8 +1315,7 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
             # tournant en 0.29, et la panne n'apparaissait qu'à l'exécution.
             _img_reelle = (c or {}).get("image")
             if _min and _img_reelle:
-                _a2, _b2 = _cle(_img_reelle), _cle(_min)
-                if _a2 is not None and _b2 is not None and _a2 < _b2:
+                if plugins.image_meets(_img_reelle, _min) is False:
                     db_add_alert("alert.deploy.compute.image_conteneur_ancienne", "error",
                                  vmid=vmid, node_id=node.get("id"), kind="deploy",
                                  params={"vmid": vmid, "t": deploy_type,

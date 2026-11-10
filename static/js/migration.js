@@ -62,6 +62,7 @@ function _migRendre(candidats) {
                 <div class="migration-noeud-tete"><strong>${nom}</strong>
                     <span class="migration-verdict-ko">${window.t('migration.refused')}</span></div>
                 ${p.refus.map(r => `<div class="migration-motif">${_migEsc(r)}</div>`).join('')}
+                ${p.build_link ? `<a class="migration-motif" href="/settings#deploiement/build">${_migEsc(window.t('images.build_link'))}</a>` : ''}
             </div>`;
         }
         const verifs = (p.verifications || []).map(v =>

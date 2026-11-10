@@ -112,6 +112,24 @@ Le menu (navigation clavier ↑/↓/Entrée, repli en saisie numérotée hors TT
   ⚠ Retirer l'orchestrateur ne touche PAS aux nœuds enrôlés : leurs conteneurs continuent de
   tourner, et la liste de ces nœuds disparaît avec la base. Les retirer d'abord.
 
+**À la fin de l'installation** (orchestrateur et tout-en-un), deux étapes de plus :
+
+- **Services utiles** : les services qui portent un interrupteur (`*_enabled`) sont tous éteints
+  par défaut, et un service éteint est retiré des onglets de Réglages — donc invisible. Ceux qui
+  se déclarent proposables (`install_offer` dans leur manifeste) sont présentés en cases à
+  cocher, WebRTC pré-coché. On **propose**, on n'allume pas d'office : NMOS annonce en mDNS et
+  SAP en SDP sur le réseau du site, ce qui est une décision d'exploitation.
+- **Ce qu'il reste à faire** : la liste est **mesurée** sur la machine installée, pas écrite
+  d'avance (`app/install_gestures.py`) — images d'exécution à construire, réseau des conteneurs,
+  nœud à enrôler, redémarrage en attente d'un nœud io2110, mTLS du plan de contrôle. La même
+  liste termine l'assistant de premier démarrage. « Prêt » ne voulait pas dire « déployable » :
+  un tout-en-un n'a aucune image, et rien ne le disait.
+
+⚠ Une installation **scriptée** (réponses tuyautées sur l'entrée standard) doit donc fournir une
+réponse de plus, pour les services : `3`, ligne vide (capacités), `1` (réseau interne), ligne
+vide (services pré-cochés). Sans elle, l'installeur s'arrête sur « Installation annulée » —
+c'est le comportement normal du repli sur EOF.
+
 Piège : la fonction `write_config_local()` n'écrit un `config_local.py` (un simple commentaire,
 sans aucun réglage) que s'il n'existe pas déjà — si un `config_local.py` traîne d'une tentative
 précédente, il est conservé tel quel (« config_local.py déjà présent — conservé »), y compris

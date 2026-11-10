@@ -495,15 +495,7 @@
 <p>Bobi.Studio repose sur deux systèmes de plugins complémentaires.</p>
 
 <h2>Container plugins — <code>plugins/&lt;type&gt;/</code></h2>
-<p>Chaque type de conteneur Docker (2110_io, mixer, streamer…) est un plugin découvert au démarrage.</p>
-<table>
-<tr><th>Rubrique</th><th>Types</th></tr>
-<tr><td>Sources</td><td><code>2110_io</code> (RX/TX ST 2110), <code>avsync</code>, <code>stream_in</code> (ingest SRT/UDP)</td></tr>
-<tr><td>Traitements</td><td><code>mixer</code>, <code>multiview</code>, <code>color_corrector</code>, <code>split</code>, <code>udc</code>, <code>delay</code>, <code>pyramide</code> (proxies)</td></tr>
-<tr><td>Streams</td><td><code>streamer</code></td></tr>
-<tr><td>Médias</td><td><code>player</code>, <code>recorder</code>, <code>stills</code>, <code>transcoder</code></td></tr>
-<tr><td>Dépannage</td><td><code>probe_2110</code> (sonde de conformité 2110)</td></tr>
-</table>
+<p>Chaque type de conteneur Docker est un plugin, découvert au démarrage. Il n'y a pas de liste figée : ce qui est installé varie d'une installation à l'autre, et <strong>Réglages → Plugins</strong> donne la liste réelle. Le manifeste range chaque plugin dans une rubrique du menu : Sources, Traitements, Composition, Médias, Streams ou Mesure. Un plugin sans rubrique n'apparaît ni dans la palette ni dans le menu.</p>
 <h3>Anatomie d'un container plugin</h3>
 <ul>
 <li><code>plugin.json</code> — manifeste : type, label, version, deploy_defaults, wiring, config_schema, nav, <code>control</code> (endpoints de contrôle + <code>read_endpoints</code>), <code>actions</code> (actions curatées), <code>param_tree</code> (paramètres réglables exposés aux macros)</li>
@@ -512,6 +504,42 @@
 <li>UI optionnelle : <code>control.html</code> / <code>control.js</code> / <code>control.css</code></li>
 </ul>
 <p>La version du manifeste est enregistrée par container déployé. Un drift de version est détecté et signalé dans la page Plugins.</p>
+
+<h3>Image et code : qui apporte quoi</h3>
+<p>Un conteneur réunit deux choses qui ne viennent pas du même endroit.</p>
+<table>
+<tr><th></th><th>D'où ça vient</th><th>Quand ça arrive</th></tr>
+<tr><td><strong>L'image</strong> : système, bibliothèques, agent <code>:8081</code></td><td>Construite depuis le dépôt (Réglages → Nœuds &amp; Matériel → Déploiement → Build), puis distribuée aux nœuds</td><td>À la création du conteneur</td></tr>
+<tr><td><strong>Le code du plugin</strong> : <code>script.py</code>, ses fichiers, <code>bobimxl.py</code></td><td>Le dossier du plugin sur l'orchestrateur</td><td>À chaque déploiement : l'orchestrateur l'envoie à l'agent, qui le lance</td></tr>
+</table>
+<p>Le champ <code>image</code> du manifeste choisit le socle. Sans ce champ, c'est <code>compute</code>.</p>
+<table>
+<tr><th>Socle</th><th>Contenu</th><th>Construit depuis</th></tr>
+<tr><td><code>compute</code></td><td>Python, numpy, SDK MXL, nos noyaux C (conversion v210, composition du mur, scope)</td><td><code>plugins/_compute_runtime/</code></td></tr>
+<tr><td><code>compute</code> avec GPU</td><td>la même chose, avec CUDA</td><td><code>plugins/_compute_gpu_runtime/</code></td></tr>
+<tr><td><code>media</code></td><td>Python, numpy, SDK MXL, FFmpeg, GStreamer et son élément MXL, outils MXF</td><td><code>plugins/_media_runtime/</code></td></tr>
+</table>
+<p>Trois plugins apportent leur propre image, parce qu'ils ont besoin d'un pilote ou d'un SDK matériel : <code>2110_io</code> (MTL/DPDK), <code>decklink_io</code> (SDK Blackmagic) et <code>plugin_gui</code> (pile graphique). Leur image n'est construite que sur les nœuds qui ont le matériel.</p>
+<h3>Rien ne s'installe à la création</h3>
+<p>Un conteneur démarre avec ce que contient son image, et rien d'autre : aucun plugin ne peut demander une bibliothèque en plus, ni par <code>pip</code> ni par <code>apt</code>. C'est voulu. La création ne dépend pas d'Internet (un site isolé crée ses conteneurs comme les autres), elle prend quelques secondes, et deux conteneurs du même type sont identiques : un Recréer redonne exactement le même conteneur.</p>
+<p>Quand une bibliothèque manque :</p>
+<ul>
+<li><strong>Un module Python ou une petite bibliothèque compilée</strong> : le plugin l'embarque dans son dossier et la déclare dans <code>files</code>. Elle part avec le script, à chaque déploiement.</li>
+<li><strong>Une dépendance lourde ou système</strong> : elle s'ajoute au Dockerfile du socle. Il faut alors reconstruire l'image, puis recréer les conteneurs.</li>
+<li><strong>Un pilote ou un SDK matériel</strong> : le plugin apporte sa propre image, sur le modèle des trois ci-dessus.</li>
+</ul>
+<h3>Ce qu'une mise à jour demande</h3>
+<ul>
+<li><strong>Nouvelle version d'un plugin</strong> : un redéploiement suffit. Le conteneur reste en place et reçoit le nouveau script.</li>
+<li><strong>Nouvelle image</strong> : il faut <a href="#actions-conteneur">recréer</a> le conteneur. Restart repart sur l'ancienne image.</li>
+</ul>
+<h3>Image minimale d'un plugin</h3>
+<p>Un plugin peut déclarer l'image dont il a besoin au minimum (<code>requires.image_min</code> dans son manifeste, par exemple <code>bobi-media:0.28.2</code> pour le Player). Un nœud plus ancien est alors :</p>
+<ul>
+<li><strong>écarté</strong> du placement automatique et de Migrer, avec le motif ;</li>
+<li><strong>refusé</strong> au déploiement : l'alerte nomme l'image du nœud et celle demandée, avec un lien vers la page de construction des images.</li>
+</ul>
+<p>Réglages → Plugins montre, pour chaque version, l'image demandée et les nœuds en retard. Une version d'image qu'on ne sait pas comparer ne bloque jamais rien.</p>
 <h3>Exposer les capacités aux macros — obligatoire</h3>
 <p><strong>Toute nouvelle fonction ou tout nouveau paramètre d'un plugin doit être exposé au système de macros/déclencheurs.</strong> Une capacité qui existe dans le conteneur mais qu'aucune surface de pilotage n'atteint est une fonction « morte » en production : l'opérateur ne peut ni la régler, ni l'automatiser, ni la conditionner. C'est une étape de la définition de « terminé », pas une option.</p>
 <table>
@@ -1451,6 +1479,21 @@ anneau vidéo (8 trames) ........... 25 Mo par flux
 <li><strong>Carte DeckLink</strong> : elle garde ses propres cœurs, entiers (hyperthread compris), sur le processeur où la carte est branchée, quel que soit son niveau. Leur nombre suit les prises activées : activer une prise recrée le conteneur. Pour ne le recréer qu'une fois, préparez plusieurs prises avec « Ajouter aux changements », puis « Appliquer ».</li>
 <li><strong>Moteur ST 2110</strong> : il a ses cœurs à lui, hors de ce mécanisme.</li>
 </ul>
+<h2>Ce qui protège un cœur dédié</h2>
+<p>Réserver un cœur ne suffit pas : un programme lancé sans consigne (un conteneur jetable, un outil du système) peut s'y poser. Le noyau ferme donc les cœurs dédiés à tout le reste :</p>
+<ul>
+<li><strong>Les programmes</strong> : chaque conteneur Dédié devient une partition du noyau. Plus rien d'autre ne peut tourner sur ses cœurs, même ce qui sera lancé plus tard. Le cœur jumeau (hyperthread) d'un conteneur qui n'en utilise qu'un est gardé vide.</li>
+<li><strong>Les interruptions des cartes</strong> (réseau, disque) sont envoyées sur les autres cœurs. Seules restent celles que le noyau attache à chaque cœur (une file disque par cœur, par exemple) : elles ne servent que ce que le conteneur lance lui-même.</li>
+</ul>
+<p>Tout se fait sans redémarrer le nœud, et se défait quand le conteneur disparaît. L'agent-nœud s'en charge (0.32.0 et suivants).</p>
+<h3>La relecture des erreurs matérielles</h3>
+<p>Toutes les 5 minutes, le noyau relit les registres d'erreurs matérielles de chaque cœur, cœurs dédiés compris. Sur dell-1, ça prend <strong>340 µs</strong>. C'est sans effet pour presque tout, mais c'est plus que le temps d'un bloc de console son réglée très bas (16 échantillons : 333 µs) : elle prend alors un bloc en retard toutes les 5 minutes environ.</p>
+<p><strong>Réglages → CPU → Cœurs dédiés : surveillance matérielle</strong> permet de couper cette relecture sur les nœuds qui ont des cœurs isolés. Elle vaut pour tout le nœud : on ne peut pas la couper pour un seul cœur.</p>
+<table>
+<tr><th>Choix</th><th>Quand</th><th>Ce que ça implique</th></tr>
+<tr><td><strong>La garder</strong> (recommandé)</td><td>Le cas général : blocs de 32 échantillons et plus, vidéo.</td><td>Rien : c'est le comportement normal du noyau.</td></tr>
+<tr><td><strong>La couper sur les nœuds aux cœurs isolés</strong></td><td>Un traitement réglé sous la milliseconde qui prend un retard toutes les 5 minutes environ.</td><td>Les erreurs graves restent signalées immédiatement, les erreurs corrigées aussi (par interruption). Seul le filet de la relecture disparaît. La valeur d'origine revient dès qu'il n'y a plus de cœur isolé, ou au retour au choix recommandé.</td></tr>
+</table>
 <div class="wiki-note">Si la fenêtre des cœurs ou une alerte dit qu'une réservation <strong>n'est pas appliquée</strong>, le conteneur tourne encore sur ses anciens cœurs : <strong>Recréer</strong> (menu Actions de sa carte) le refait avec les bons. Un Restart ne suffit pas, voir « Actions sur un conteneur ».</div>
 </template>
 
@@ -1696,6 +1739,22 @@ anneau vidéo (8 trames) ........... 25 Mo par flux
 </template>
 
 
+<template id="wiki-art-paquets-audio">
+<p>Un flux audio du bus MXL est une suite continue d'échantillons : le bus n'impose aucune taille de paquet. C'est le système qui la fixe, dans <strong>Réglages → MXL → Paquets audio sur le bus</strong>. Chaque conteneur écrit et lit l'audio par paquets de cette taille.</p>
+<table>
+<tr><th>Réglage</th><th>Paquet à 48 kHz</th></tr>
+<tr><td>1 ms</td><td>48 échantillons</td></tr>
+</table>
+<h2>Pourquoi ça compte</h2>
+<p>Un conteneur ne peut pas traiter un échantillon avant que le paquet qui le contient soit écrit. La taille des paquets s'ajoute donc à la latence de chaque étape audio de la chaîne : pour une chaîne de quelques millisecondes, c'est un poste qui compte.</p>
+<h2>Ce qu'il ne faut pas confondre</h2>
+<ul>
+<li><strong>Le ptime ST 2110-30</strong> (Réglages → Audio) : la taille des paquets sur le <em>réseau</em>. C'est un autre réglage : le moteur 2110 fait le lien entre les deux.</li>
+<li><strong>Le bloc d'une console son</strong> (taille de bloc et marge, dans la console) : son propre rythme de calcul. La console découpe ce qu'elle publie selon la taille réglée ici.</li>
+</ul>
+<p>Un changement s'applique à chaque conteneur à son prochain déploiement.</p>
+</template>
+
 <template id="wiki-art-mode-tranche">
 <p>Le <strong>mode tranche</strong> réduit la latence de traversée : au lieu d'attendre une image complète à chaque étage, chaque étage publie et consomme l'image <strong>par bandes</strong> au fil de l'eau. Un étage interne coûte alors ~1 à 3 ms au lieu d'une image entière (20 ms en 50p).</p>
 <h2>Activation</h2>
@@ -1827,7 +1886,7 @@ installation, pas un état de la flotte.</p>
 </table>
 <h2>Quand recréer</h2>
 <ul>
-<li><strong>Après une mise à jour des images</strong> d'un nœud : un conteneur ne change jamais d'image tout seul, et Restart repart sur l'ancienne.</li>
+<li><strong>Après une mise à jour des images</strong> d'un nœud : un conteneur ne change jamais d'image tout seul, et Restart repart sur l'ancienne. Ce que contient une image, et ce qui arrive plutôt avec le plugin : article <a href="#systeme-plugins">Système de plugins</a>.</li>
 <li><strong>Quand ses cœurs ne sont pas ceux prévus</strong> : la vue des cœurs ou une alerte dit « réservation pas appliquée », ou une règle de ressources a changé depuis sa création (par exemple une carte DeckLink créée avant ses cœurs dédiés).</li>
 </ul>
 <div class="wiki-note">Le moteur ST 2110 n'a pas d'entrée Recréer : il est refait à chaque Restart, donc il adopte déjà la nouvelle image.</div>
@@ -2329,6 +2388,7 @@ const CORE_ARTICLES = [
   { id: 'horloges-cluster',     title: 'Horloges du cluster (TAI)',   cat: 'sync' },
   { id: 'genlock',              title: 'Synchronisation (Genlock)',   cat: 'sync' },
   { id: 'mode-tranche',         title: 'Mode tranche (latence sous-image)', cat: 'sync' },
+  { id: 'paquets-audio',        title: 'Paquets audio sur le bus',    cat: 'sync' },
   { id: 'mxl-format',           title: 'MXL (bus shm) & format vidéo', cat: 'sync' },
   { id: 'reseau-conteneurs',    title: 'Réseau des conteneurs (site / interne)', cat: 'network' },
   { id: 'securite-acces',       title: 'Sécurité et accès (mode web, jetons, MCP)', cat: 'admin' },

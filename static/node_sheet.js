@@ -184,7 +184,20 @@
         const bmc = esc(bmcLabel(m.vendor)) + ' · ' + ((s.bmc || {}).configured ? esc(T('bmc_configured'))
             : '<a href="#deploiement/nodes" data-ns="config">' + esc(T('bmc_missing')) + '</a>');
         return '<dl class="ns-grid">' + row(T('model'), model) + row(T('cpu'), cpu) + row(T('memory'), ram)
-            + row(T('gpu'), gpu) + row(T('bmc'), bmc) + '</dl>';
+            + row(T('memqos'), memQosHtml(m)) + row(T('gpu'), gpu) + row(T('bmc'), bmc) + '</dl>';
+    }
+
+    // What the CPU offers to protect a dedicated core's memory (agent ≥ 0.32.4): reserve L3 cache,
+    // cap other cores' memory bandwidth. Absent = older agent; neither = not available on this CPU.
+    function memQosHtml(m) {
+        const q = m.memory_qos;
+        if (!q) return m.reported ? '<span class="meta">' + esc(Tf('agent_old', {v: '0.32.4'})) + '</span>' : '—';
+        if (!q.cache_alloc && !q.bw_limit) return esc(T('memqos_none'));
+        const parts = [];
+        if (q.cache_alloc) parts.push(q.l3_ways && q.l3_kb
+            ? Tf('memqos_cat', {ways: q.l3_ways, mb: (q.l3_kb / q.l3_ways / 1024).toFixed(1)}) : T('memqos_cat_short'));
+        parts.push(T(q.bw_limit ? 'memqos_mba' : 'memqos_no_mba'));
+        return esc(parts.join(' · '));
     }
 
     function uptimeHtml(s) {

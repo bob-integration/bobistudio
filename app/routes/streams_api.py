@@ -55,8 +55,14 @@ def _stream_obj(c):
             if d.get("type") == "webrtc" and not d.get("embed_url") and d.get("path"):
                 d["embed_url"] = f"http://{gw_ip}:{http_p}/{d['path']}"
                 d["whep_url"]  = f"http://{gw_ip}:{http_p}/{d['path']}/whep"
+    # ★ L'ÉTAT DE LA PASSERELLE EST DANS LA RÉPONSE, comme `/api/monitor/status` le fait pour le
+    # panneau de monitoring : sans lui, l'éditeur de flux laisse cocher une destination WebRTC
+    # sans rien dire, et le déploiement part avec une branche qui ne mène nulle part (l'avertis-
+    # sement n'arrive QU'APRÈS, en alerte — cf. `deploy._avertir_webrtc_sans_passerelle`). La
+    # carte doit pouvoir le dire AVANT, à l'endroit où l'on coche.
     return {"vmid": vmid, "hostname": c.get("hostname"), "ip": ip,
-            "status": c.get("status"), "params": params, "live": live}
+            "status": c.get("status"), "params": params, "live": live,
+            "gateway_ready": bool(gw_enabled and gw_ip)}
 
 @bp.route("/api/streams", methods=["GET"])
 @require_login

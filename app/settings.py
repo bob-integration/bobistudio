@@ -132,6 +132,11 @@ _BASE_DEFAULTS = {
     # par défaut, parce que ces canaux sont communs (un e-mail au seuil info recevrait chaque mute).
     "ops_journal_retention_days": 7,
     "ops_journal_forward":        False,
+    # Kernel machine-check polling on nodes with isolated cores (agent ≥ 0.32.3, app/node_health.py
+    # `_push_isolation`). "keep" (default) = the kernel polls every CPU every 5 min, isolated ones
+    # included (340 µs measured on dell-1, 2026-11-09) ; "off_when_isolated" = turned off while a core
+    # is isolated, given back otherwise. Global per node: it cannot be turned off for one CPU only.
+    "mce_polling":                "keep",
 
     # B3-2 — paire de contrôleurs HA. Rôle de CE contrôleur : "active" pilote (surveillance,
     # services NMOS/Ember+/ATEM/TSL, sampler PTP, backup) ; "standby" boote passif (UI lecture
@@ -185,6 +190,13 @@ _BASE_DEFAULTS = {
     # voir exactement quand ça saute. Surcharge par conteneur (`missing_frame_mode`, "" = suit ce
     # réglage). Résolu AU RENDU ; une bascule est POUSSÉE à chaud aux conteneurs qui le suivent.
     "missing_frame_mode": "repeat",
+    # AUDIO GRAIN ON THE MXL BUS (2026-11-09): how many samples a script writes —
+    # and reads — at a time on an audio flow. Until now `SR // 1000` was copied into each script, each
+    # comment claiming a bus constraint that does not exist (the bus is a continuous sample ring).
+    # A CORE setting, distinct from the 2110 wire ptime (`mtl_audio_ptime`). Resolved AT RENDER for
+    # every type (`plugins.render_config` → CONFIG["mxl_audio_grain_us"]), never frozen in a
+    # container's params; a container may carry its own `audio_grain_us`. Only 1000 µs offered for now.
+    "mxl_audio_grain_us": 1000,
 
     # Auto-recovery au reboot d'un nœud (app/node_recovery.py). OFF par défaut (activation
     # consciente par l'opérateur) ; overridable PAR NŒUD via node_settings (setting_for).

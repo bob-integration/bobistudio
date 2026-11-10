@@ -32,7 +32,8 @@ from flask import jsonify, request
 from . import bp
 from ..auth import require_perm
 from ..addressing import primary_host as _primary_host
-from ..database import db_get_node, db_get_nodes, db_update_node, db_add_alert
+from ..database import (db_get_node, db_get_nodes, db_get_node_by_host, db_update_node,
+                        db_add_alert)
 
 # Conformité de redistribution : Apache-2.0 §4(a) et BSD-3-Clause exigent qu'une COPIE du texte
 # de licence accompagne le BINAIRE redistribué. Les images embarquent libmxl et libmtl, donc
@@ -266,7 +267,6 @@ def _build_target():
     Réglage `image_build_node` : 'local' | '<node_id>' | '' (auto). Auto/repli : setting
     `image_build_local`, sinon le nœud unique (`_primary_host`), sinon local."""
     from .. import settings as _st
-    from ..database import db_get_node_by_host
     sel = str(_st.get("image_build_node") or "").strip()
     if sel == "local":
         return ("local", None)
@@ -554,8 +554,11 @@ def record_node_only_tag(which, node_id, tag):
         db_update_node(node_id, **{spec["field"]: tag})
 
 
-def _autofill_nodes_image(which, tag):
-    """Met à jour le tag dans tous les nœuds concernés après un build réussi."""
+def _autofill_nodes_image(which, tag, alert=True):
+    """Met à jour le tag dans tous les nœuds concernés après un build réussi.
+
+    `alert=False` for a pass made BEFORE the distribution: a node without the bits is then the
+    expected state, not a failure. Only the pass after the distribution may report one."""
     # Image sans colonne nœud (ex. webrtc) : stockée dans un setting commun à tous les nœuds.
     setting_key = _IMAGES[which].get("setting")
     if setting_key:
@@ -584,7 +587,7 @@ def _autofill_nodes_image(which, tag):
         if (n.get(field) or "").strip() != tag:
             db_update_node(n["id"], **{field: tag})
             filled += 1
-    for n in non_verifies:
+    for n in (non_verifies if alert else ()):
         # Visible, et NOMMÉ : « 1 échec(s) » se lit comme un détail, « échec vers r620-1 » se lit
         # comme une panne. Le tag précédent du nœud est LAISSÉ EN PLACE : il décrit ce qu'il a.
         db_add_alert("alert.image.tag_non_confirme", "warning", node_id=n.get("id"), kind="prep",
@@ -617,21 +620,46 @@ def verifier_derive_images(node):
     if nid in _derive_vue and (_t.monotonic() - _derive_vue[nid]) < _DERIVE_PERIODE_S:
         return None
     _derive_vue[nid] = _t.monotonic()
-    manquantes = []
+    # ★ DEUX SITUATIONS, DEUX MESSAGES (2026-11-08). Ce contrôle n'en annonçait qu'une : « une
+    # distribution a échoué et ne se rejoue pas seule ». Sur une installation NEUVE, aucune
+    # distribution n'a échoué — aucune n'a jamais été tentée, et le message envoie chercher une
+    # panne qui n'existe pas (constaté sur une installation d'essai, un tout-en-un n'ayant par
+    # construction aucune image : le chemin tout-en-un n'appelle jamais `--registry`).
+    # Le départage est la COLONNE DU NŒUD (`_used_tag`) : vide = ce nœud n'a jamais porté cette
+    # image ; remplie alors que l'image est absente = elle y était et n'y est plus.
+    #
+    # ★ TWO FALSE ALARMS, 2026-11-09 (1 131 alerts in 8 days, none of them a real failure):
+    #  - an UNREADABLE inventory was read as « every image absent » (dl360-1, 2026-11-09 08:48,
+    #    during agent restarts). Not measured is not absent: say nothing, the node's
+    #    reachability has its own alert;
+    #  - the node was compared to the REPOSITORY tag, i.e. the NEXT version. Bumping
+    #    `bobi-compute` to 0.81 on 2026-11-01 made dl360-1 and dell-1 « missing » it for six
+    #    days, until it was built on 2026-11-07 — « a distribution failed » when none had been
+    #    tried. The question is whether the node has the image the base says it RUNS: its column.
+    #    The repository tag is only used when the column is empty (never carried this image).
+    imgs, err = _node_image_inventory(node, force=True)
+    if err:
+        return None
+    presents = {i.get("tag") or "" for i in imgs}
+    manquantes, jamais = [], []
     for which in _IMAGES:
         if _IMAGES[which].get("node_only"):
             continue                     # buildée SUR le nœud : pas distribuée, hors sujet ici
         if not _node_expects_image(which, node):
             continue
-        tag = _image_tag(which)
+        used = _used_tag(which, node)
+        tag = used or _image_tag(which)
         if not tag:
             continue
-        if not _image_present_node(node, tag, force=True):
-            manquantes.append(tag)
+        if tag not in presents:
+            (manquantes if used else jamais).append(tag)
     if manquantes:
         db_add_alert("alert.image.derive_noeud", "warning", node_id=nid, kind="prep",
                      params={"n": node.get("name") or nid, "tags": ", ".join(manquantes)})
-    return manquantes
+    if jamais:
+        db_add_alert("alert.image.jamais_construite", "warning", node_id=nid, kind="prep",
+                     params={"n": node.get("name") or nid, "tags": ", ".join(jamais)})
+    return manquantes + jamais
 
 
 def _stage_tar(which):
@@ -757,6 +785,113 @@ def _present_on_build_target(tag, force=False):
     if node and node.get("agent_url"):
         return _image_present_node(node, tag, force=force)
     return _image_present((node or {}).get("host"), tag)
+
+# ── Derived builds: the FROM must be on the build target ─────────────────────────────
+# A thin layer (`base_from`) is built FROM one of our own images, which lives on no registry.
+# When it is missing locally, Docker looks for it on Docker Hub and answers « pull access
+# denied, repository does not exist or may require authorization ». The message says
+# AUTHORIZATION; the cause is AVAILABILITY. The tester went to check registry credentials —
+# the exact opposite of the cause (acceptance run, r620-3/r620-1, 2026-08-21).
+_REGISTRY_DENIAL_RE = re.compile(r"pull access denied|repository does not exist|"
+                                 r"may require authoriz|manifest unknown|manifest for .{0,80}"
+                                 r"not found", re.I)
+_OUR_IMAGE_REF_RE = re.compile(r"\bbobi-[a-z0-9.+-]*:[A-Za-z0-9][\w.+-]*")
+
+
+def _base_image_state(which, node=None, local=False):
+    """Is the `FROM` base image of this thin layer present WHERE THE BUILD WILL RUN?
+
+    Returns `(state, base_tag, where)`. `state` is True / False / **None = NOT MEASURED**, and
+    the three are distinct on purpose: claiming « base image missing » because an agent did not
+    answer would replace one misleading message with another one, and send the operator to
+    distribute an image that is already there. Callers let the build run on None — it will then
+    fail on its own, with a message `_explain_registry_denial` can still read.
+
+    `base_tag` is None when the image derives from nothing, and `state` is then True: there is no
+    `FROM` of ours to satisfy. The tag checked here is the one `_stage_tar` writes into the staged
+    Dockerfile (`ARG BASE_IMAGE=`), so it is the reference Docker will really resolve.
+    """
+    spec = _IMAGES.get(which) or {}
+    bf = spec.get("base_from")
+    if not bf:
+        return True, None, ""
+    base_tag = _image_tag(bf)
+    if local:
+        try:
+            rc = subprocess.run(["docker", "image", "inspect", base_tag],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                timeout=20).returncode
+        except Exception:
+            return None, base_tag, "localement"     # docker unreachable: not measured
+        return (rc == 0), base_tag, "localement"
+    where = str((node or {}).get("name") or (node or {}).get("host") or "?")
+    if not (node or {}).get("agent_url"):
+        # Legacy node without an agent: the only read left is ssh `docker image inspect`, which is
+        # precisely what answered « absent » on a node whose root-SSH was gone (2026-08-19). We
+        # abstain rather than block a legitimate build on a read known to be unreliable here.
+        return None, base_tag, where
+    imgs, err = _node_image_inventory(node, force=True)
+    if err:
+        return None, base_tag, where
+    return any((i.get("tag") or "") == base_tag for i in imgs), base_tag, where
+
+
+def _base_missing_message(base_tag, node_name=None):
+    """CANONICAL FRENCH form of the refusal — fallback only: the journal, and a client that does
+    not know the key. What the screen shows is composed from `BaseImageMissing.key`.
+
+    ⚠ `node_name` is a DATUM, not a sentence fragment. « localement » is a French adverb, so it
+    cannot travel as a parameter: the locality picks the KEY, exactly as the build-success alerts
+    already do (`alert.image.buildee_locale` / `_noeud`).
+    """
+    ou = ("sur le nœud %s" % node_name) if node_name else "localement"
+    return ("image de base « %s » ABSENTE %s : ce build en dérive (FROM). Docker irait la "
+            "chercher sur Docker Hub et échouerait sur « pull access denied » — un message "
+            "d'autorisation pour une cause de disponibilité. Distribuer d'abord « %s » "
+            "(Réglages → Images), puis relancer ce build." % (base_tag, ou, base_tag))
+
+
+class BaseImageMissing(RuntimeError):
+    """A derived build refused because its `FROM` is not on the target.
+
+    Carries the i18n keys and their params so the sentence is composed AT READ TIME: a build
+    status is polled by N users who do not share a language, and the alert is read days later.
+    `str(e)` keeps the canonical French form (journal, older client).
+    """
+
+    def __init__(self, base_tag, node_name=None):
+        self.base_tag = base_tag
+        self.node_name = node_name
+        self.key = ("settings.img.base_absente_noeud" if node_name
+                    else "settings.img.base_absente_locale")
+        self.alert_key = ("alert.image.base_absente_noeud" if node_name
+                          else "alert.image.base_absente_locale")
+        self.params = {"base": base_tag}
+        if node_name:
+            self.params["n"] = node_name
+        super().__init__(_base_missing_message(base_tag, node_name))
+
+
+def _explain_registry_denial(tail):
+    """Append the real cause when Docker blames a registry for one of OUR OWN images.
+
+    Belt and braces behind `_base_image_state`: it covers the cases the pre-flight cannot judge
+    (abstention, or a `FROM` written in a Dockerfile without a `base_from` in `_IMAGES`). A denial
+    that names NO `bobi-*` reference is left untouched — `debian:13` or an NVIDIA base really can
+    fail on the registry, and reinterpreting that would be the same mistake in reverse.
+    """
+    if not tail or not _REGISTRY_DENIAL_RE.search(tail):
+        return tail
+    refs = sorted(set(_OUR_IMAGE_REF_RE.findall(tail)))
+    if not refs:
+        return tail
+    return (tail + "\n\n★ CAUSE PROBABLE, ET CE N'EST PAS UN PROBLÈME D'AUTORISATION : "
+            "%s est une image À NOUS, elle n'existe sur aucun registre. Docker ne l'a pas "
+            "trouvée en local, l'a cherchée sur Docker Hub, et Hub répond « accès refusé » pour "
+            "un dépôt qui n'existe pas. Ce build en dérive (FROM) : distribuer d'abord cette "
+            "image sur la cible du build (Réglages → Images), puis relancer. Il n'y a pas "
+            "d'identifiant de registre à vérifier." % ", ".join("« %s »" % r for r in refs))
+
 
 def _build_local_stream(ctx_bytes, tag, on_line, timeout=2400):
     """Build LOCAL : extrait le contexte (tar.gz de _stage_tar) dans un tmpdir et lance
@@ -956,6 +1091,10 @@ def _build_node_only_worker(which):
                              "nodes": []}
     try:
         ctx = _stage_tar(which)
+    except BaseImageMissing as e:
+        with _img_lock:
+            _img_build[which] = {"status": "error", "msg": str(e),
+                                 "msg_key": e.key, "msg_params": e.params}
     except Exception as e:
         with _img_lock:
             _img_build[which] = {"status": "error", "msg": str(e)}
@@ -972,8 +1111,20 @@ def _build_node_only_worker(which):
             if _img_build.get(which, {}).get("status") == "building":
                 _img_build[which]["msg"] = "build sur %s (%d/%d)…" % (
                     nname, len(results) + 1, len(targets))
-        ok, tail = False, ""
+        ok, tail, refus = False, "", None
         try:
+            # ★ PRE-FLIGHT, PER NODE. All three thin layers (compute-gpu, gui, decklink) are
+            # `node_only`, so this is the only path that ever sees a `base_from`. Failing one node
+            # here leaves the others to build: invariant 2 already turns the aggregate to `error`.
+            _bstate, _btag, _bwhere = _base_image_state(which, node=node)
+            if _bstate is False:
+                raise BaseImageMissing(_btag, _bwhere)
+            if _bstate is None and _btag:
+                # Not measured: we build anyway rather than block on a read we do not have. The
+                # failure, if it comes, is still readable — `_explain_registry_denial` names it.
+                logging.getLogger(__name__).warning(
+                    "images: build %s on %s — base image %s not verified (unreadable inventory)",
+                    tag, nname, _btag)
             rc, tail = _nd.build_image(node, tag, ctx, timeout=2400)
             # ANTI-FAUX-ÉCHEC (2026-08-19, incident Horace) : le timeout ne coupe que l'attente
             # HTTP, jamais le `docker build` du nœud. Déclarer « échec » à cet instant est un
@@ -1004,6 +1155,8 @@ def _build_node_only_worker(which):
             if ok and not _image_present_node(node, tag, force=True):
                 ok, tail = False, ("build rc=0 mais %s introuvable sur %s (faux-ok). %s"
                                    % (tag, nname, str(tail)[-400:]))
+        except BaseImageMissing as e:
+            tail, refus = str(e), e
         except Exception as e:
             tail = str(e)
         dur = int(_t.time() - n_start)
@@ -1015,11 +1168,23 @@ def _build_node_only_worker(which):
             db_add_alert("alert.image.build_noeud_ok", "info", node_id=nid, kind="prep",
                          params={"tag": tag, "n": nname, "min": _min, "sec": _sec})
         else:
-            nmsg = "échec build %s sur %s : %s" % (tag, nname, str(tail)[-600:])
-            db_add_alert("alert.image.build_noeud_echec", "warning", node_id=nid, kind="prep",
-                         params={"tag": tag, "n": nname, "e": str(tail)[-600:]})
+            # The alert carries the EXPLAINED text too: the banner and the alert list are two
+            # surfaces of the same failure, and the raw Docker wording is the misleading one.
+            _expl = _explain_registry_denial(str(tail))
+            nmsg = "échec build %s sur %s : %s" % (tag, nname, _expl[-1400:])
+            if refus is not None:
+                # Our own refusal: a key and its values, never a French sentence stuffed into a
+                # parameter — this one is readable in the reader's language, days later included.
+                db_add_alert(refus.alert_key, "warning", node_id=nid, kind="prep",
+                             params=dict(refus.params, tag=tag))
+            else:
+                db_add_alert("alert.image.build_noeud_echec", "warning", node_id=nid, kind="prep",
+                             params={"tag": tag, "n": nname, "e": _expl[-1200:]})
         with _img_lock:
             _node_img_build[key] = {"status": "ok" if ok else "error", "msg": nmsg}
+            if refus is not None:
+                _node_img_build[key]["msg_key"] = refus.key
+                _node_img_build[key]["msg_params"] = refus.params
         results.append({"id": nid, "name": nname, "ok": ok, "msg": nmsg})
     # Nettoyage du MENSONGE inverse : l'ancien autofill flotte a laissé le tag d'une image node_only
     # sur des nœuds qui ne l'exécutent pas et ne l'ont jamais eue (ex. `nodes.image = bobi-mtl:x` sur
@@ -1105,30 +1270,13 @@ def _build_image_worker(which):
             b["pct"] = round(st["sd"] / st["stt"] * 100) if st["stt"] else None
             b["elapsed"] = el
     try:
-        # ★ CONTRÔLE AVANT VOL : l'image de BASE d'une couche fine doit être PRÉSENTE sur la
-        # cible. Sans ce contrôle, Docker ne trouve pas le `FROM` en local, part le chercher sur
-        # Docker Hub, et rend « pull access denied, repository does not exist or may require
-        # authorization ». Le message parle d'AUTORISATION quand la cause est une image
-        # MANQUANTE : le testeur est allé vérifier ses identifiants de registre, à l'opposé de la
-        # cause (recette Valentin, r620-3/r620-1, 2026-08-21). On échoue ici, en nommant l'image,
-        # le nœud, et le geste qui répare.
-        _bf = _IMAGES[which].get("base_from")
-        if _bf:
-            _bt = _image_tag(_bf)
-            _cible = None
-            if not local:
-                from ..database import db_get_node_by_host as _dgnbh
-                _cible = _dgnbh(host)
-            _presente = (_docker_local_present(_bt) if local
-                         else (_image_present_node(_cible, _bt, force=True) if _cible else True))
-            if not _presente:
-                raise RuntimeError(
-                    "image de base « %s » ABSENTE %s : ce build en dérive (FROM). Docker irait la "
-                    "chercher sur Docker Hub et échouerait sur « pull access denied » — un message "
-                    "d'autorisation pour une cause de disponibilité. Distribuer d'abord « %s » "
-                    "(Réglages → Images → construire/distribuer %s), puis relancer ce build."
-                    % (_bt, ("localement" if local else "sur le nœud %s"
-                             % ((_cible or {}).get("name") or host)), _bt, _bf))
+        # ★ PRE-FLIGHT: the `FROM` of a thin layer must be present on the target (cf.
+        # `_base_image_state`). Kept here too, although no SHARED image has a `base_from` today:
+        # the day one gains it, this path must not be the one that forgot.
+        _bstate, _btag, _bwhere = _base_image_state(
+            which, node=(None if local else db_get_node_by_host(host)), local=local)
+        if _bstate is False:
+            raise BaseImageMissing(_btag, None if local else _bwhere)
         ctx = _stage_tar(which)
         if local:
             # Build LOCAL (subprocess docker) — contrôleur sur box Docker autonome / bare Debian.
@@ -1139,7 +1287,6 @@ def _build_image_worker(which):
             # B3-1 : si l'hôte est un NŒUD-AGENT → build via l'agent (POST contexte tar, plus de
             # root-SSH ; pas de stream live → message « build en cours… » jusqu'au résultat). Sinon
             # SSH brut (legacy) : extrait le contexte dans un tmpdir, build progress=plain streamé.
-            from ..database import db_get_node_by_host
             from .. import node_driver as _nd
             _node = db_get_node_by_host(host)
             if _node and _node.get("agent_url"):
@@ -1157,7 +1304,10 @@ def _build_image_worker(which):
             present = _present_on_build_target(tag, force=True)
             where = host
         if rc == 0 and present:
-            filled = _autofill_nodes_image(which, tag)
+            # No alert on this first pass: the other nodes cannot have the bits yet, so every one
+            # of them would be reported « not confirmed » seconds before receiving the image
+            # (dell-1, 2026-11-07 20:43, 18 s before its distribution succeeded).
+            filled = _autofill_nodes_image(which, tag, alert=False)
             # Auto-distribution des BITS aux nœuds concernés (sauf le nœud de build).
             with _img_lock:
                 if _img_build.get(which, {}).get("status") == "building":
@@ -1202,7 +1352,8 @@ def _build_image_worker(which):
             db_add_alert(_cle, "warning" if d_fail else "info", kind="prep", params=_params)
         else:
             with _img_lock:
-                _img_build[which] = {"status": "error", "msg": "échec build : " + tail[-700:]}
+                _img_build[which] = {"status": "error",
+                                     "msg": "échec build : " + _explain_registry_denial(tail)[-1400:]}
     except Exception as e:
         with _img_lock:
             _img_build[which] = {"status": "error", "msg": str(e)}
@@ -1237,6 +1388,8 @@ def api_images_status():
                       "targets": (len(nodes_state) if nodes_state is not None else None),
                       "node_only": node_only,
                       "status": bs["status"], "msg": bs["msg"],
+                      # Key + values: the banner composes the sentence in the reader's language.
+                      "msg_key": bs.get("msg_key"), "msg_params": bs.get("msg_params"),
                       "built_at": bs.get("built_at"),
                       # Avancement live (build streamé) — null hors build.
                       "step": bs.get("step"), "step_total": bs.get("step_total"),

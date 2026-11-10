@@ -181,12 +181,22 @@ conteneur et son jeton d'agent ; la portée d'une fuite reste ce conteneur-là, 
 
 ### 4.5 Chien de garde de script (agent ≥ 0.20.0)
 
-**Transport : `docker exec`, pas le réseau (0.21.0).** Nos conteneurs sont en macvlan, et une
+**Transport : l'espace RÉSEAU du conteneur, pas le réseau du nœud.** Nos conteneurs sont en macvlan, et une
 interface macvlan enfant ne parle **jamais** à la pile de son interface parente : un nœud joint les
 conteneurs de ses voisins, jamais les siens (mesuré sur dl360-1 : 100 % de perte vers son propre
-conteneur, 0 % vers celui d'en face). L'agent-nœud exécute donc une sonde Python **dans** le
-conteneur, qui appelle `127.0.0.1:8081` avec le matériel déjà présent là (`/etc/bobi-tls`,
-`$MXL_AGENT_TOKEN`). Côté conteneur, ce chemin est ouvert par l'exemption **loopback** (§8), bornée
+conteneur, 0 % vers celui d'en face). L'agent-nœud lance donc une sonde Python qui appelle
+`127.0.0.1:8081` **depuis l'espace de noms réseau du conteneur**, avec le matériel du conteneur
+(`/etc/bobi-tls`, `$MXL_AGENT_TOKEN`).
+
+**Depuis 0.31.0, par `nsenter -t <pid> -n`, plus par `docker exec`** (0.21.0 à 0.30.x). `docker exec`
+fait tourner runc, qui rejoint le cgroup du conteneur et donc **son cpuset** : toutes les 15 s, sur chaque
+conteneur, un démarrage de processus atterrissait sur ses cœurs, dédiés compris. Mesuré sur la Z8 le
+2026-11-08 (ftrace sur le CPU 9 de la console audio à 48/72) : 36 des 52 blocages > 1,6 ms de son fil
+temps réel. Avec `nsenter`, la sonde reste dans le cgroup de l'agent et sur ses cœurs de service
+(§4.3 bis) ; le TLS est lu par `/proc/<pid>/root/etc/bobi-tls` (la vue du conteneur), le jeton dans
+l'environnement d'init du conteneur, et les PID sont relus en UN `docker inspect` par tour. Sans
+`nsenter` sur le nœud, repli sur `docker exec`, signalé une fois par conteneur dans le journal du
+chien de garde. Côté conteneur, ce chemin est ouvert par l'exemption **loopback** (§8), bornée
 aux deux mêmes endpoints. Rien à router, rien à distribuer, et le mécanisme reste valable en
 bridge, en ipvlan et en topologie séparée. L'ouverture par cert de nœud (`bobi://node/<id>`) reste
 en place pour les topologies où l'hôte peut joindre ses conteneurs.
@@ -263,7 +273,70 @@ GET  /v1/host/images/export?tag=…   → stream binaire `docker save <tag>` (ap
 POST /v1/host/images/load           corps = archive binaire (docker save) → `docker load`
 POST /v1/host/images/build?tag=…    corps = contexte tar.gz (Dockerfile à la racine) → `docker build` local
 POST /v1/host/exec                  { cmd, input?, timeout? } → { rc, stdout, stderr }
+POST /v1/host/housekeeping          { cpus } → { ok, cpus, applied, error }        (≥ 0.31.0)
+POST /v1/host/isolation             { containers: {nom: cpus} } → { ok, wanted, state, error }  (≥ 0.32.0)
 ```
+- **`housekeeping`** (≥ 0.31.0) : les **cœurs de service** — où l'agent, et TOUT ce qu'il lance
+  (`host/exec`, docker, sonde du chien de garde), a le droit de tourner. Posés sur tous les fils de
+  l'agent (les enfants en héritent), gardés dans `/var/lib/bobi-node-agent/housekeeping.json` et
+  reposés au démarrage avant le premier fil ; `""` = aucune frontière (comportement d'avant). Le
+  contrôleur y pousse `node_health.housekeeping_cpus` — tous les processeurs du nœud moins les
+  réservés (dédiés, lcores du moteur 2110), moins ce que le pool ferme (jumeaux HT, cartes d'E/S),
+  moins la bande isolée — depuis le relevé de santé, seulement quand elle diffère de `housekeeping.cpus` dans
+  `/v1/health`. Pourquoi : sur la Z8 le 2026-11-08, le `nvidia-smi` du relevé GPU, lancé par l'agent
+  sur n'importe quel processeur, a bloqué jusqu'à 8,8 ms le fil temps réel de la console audio sur
+  son cœur dédié. `400` sur une liste mal formée ou sans aucun processeur en ligne (rien n'est changé).
+  **Depuis 0.31.1**, la même frontière borne aussi `docker.service` et `containerd.service`
+  (`systemctl set-property --runtime … AllowedCPUs=`, reposé au démarrage ; `housekeeping.services`
+  dans `/v1/health` dit le résultat par service) : `dockerd` et les `containerd-shim` lancent `runc`
+  depuis LEUR affinité. Leurs cgroups ne sont pas ceux des conteneurs (`docker-<id>.scope`, à côté sous
+  `system.slice`) : aucun cpuset de conteneur n'est touché. Mesuré sur dell-1 le 2026-11-08 (ftrace sur
+  le CPU 13 d'une console à 32 échantillons) : les 20 blocs en retard en 20 min suivaient tous un `runc`
+  lancé par `dockerd` — le `runc --version` que provoque chaque `docker version`, que l'agent appelait à
+  chaque relevé de santé. La version de Docker n'est plus relue que toutes les 10 min.
+- **`isolation`** (≥ 0.32.0) : les cœurs dédiés deviennent des **partitions cpuset** du noyau
+  (cgroup v2, partition « distante », noyau ≥ 6.7). Le contrôleur pousse
+  `node_health.isolation_wanted` — `{nom docker: cœurs réservés}` de chaque conteneur vivant du nœud
+  qui tient une réservation, **moteur 2110 exclu** (ses autres fils partagent le cpuset des lcores) —
+  depuis le relevé de santé, seulement quand elle diffère de `isolation.wanted`. Pour chaque conteneur,
+  l'agent isole SON cpuset, qui doit tenir dans la réservation (une console réserve son jumeau HT mais
+  n'en utilise qu'un) : `system.slice/cpuset.cpus.exclusive` = l'union, puis sur le `docker-<id>.scope`
+  `cpuset.cpus.exclusive` et `cpuset.cpus.partition` — `isolated` pour un seul CPU, `root` pour
+  plusieurs (l'ordonnanceur répartit encore DANS la partition). Ces CPU sortent alors de TOUS les autres
+  cgroups, présents ou futurs, avec ou sans liste : un `docker run --rm` sans `--cpuset-cpus`, le worker
+  udev réveillé par sa veth n'y vont plus. Le noyau refuse (`… invalid (Cpu list in cpuset.cpus not
+  exclusive)`) tant qu'un voisin MEMBRE liste un de ces CPU explicitement : l'agent les retire de sa
+  liste — une partition valide les lui prendrait de toute façon, il tourne donc au même endroit — sauf
+  s'il n'en resterait aucun ; ce voisin est alors nommé dans `isolation.state.<nom>.blockers`, et le
+  contrôleur lève `alert.resource.isolation_refused` (une fois par cause). Fil de rattrapage toutes les
+  10 s (un conteneur recréé change de cgroup) ; une partition plus voulue est rendue ; carte gardée dans
+  `/var/lib/bobi-node-agent/isolation.json`. Réglage `dedicated_cpu_isolation` = `0` → carte vide, tout
+  est rendu. Mesuré sur dell-1 (console audio à 32/72, ftrace sur son CPU, 45 min) : cœur seulement
+  réservé, 9 réveils > 300 µs, pire 1,09 ms (conteneurs jetables, udev) ; cœur isolé, ~170 conteneurs
+  jetables provoqués exprès, 0 retard, pire réveil 227 µs (2026-11-09).
+  **Depuis 0.32.1**, la carte porte aussi les jumeaux HT que le pool partagé FERME à cause d'une
+  réservation (une console réserve 13 et ferme 57) ; les CPU réservés qu'aucun conteneur n'utilise
+  vont dans une partition VIDE, `system.slice/bobi-reserved` (`isolated`, retirée quand il n'en reste
+  plus). Mesuré sur dell-1 : jumeau 57 chargé, le bloc de la console sur 13 passait de 107 µs à 174 µs
+  (calcul) et 216 µs (mémoire). Un jumeau OUVERT au partage n'est pas gardé : c'est la règle des cœurs
+  qui en décide, pas l'agent.
+  **Depuis 0.32.2**, les interruptions de périphériques sont écartées des CPU partitionnés : une
+  partition arrête les tâches, pas les IRQ. L'agent ne fait que RÉTRÉCIR l'affectation de chaque IRQ
+  (et `/proc/irq/default_smp_affinity`, pour les IRQ créées plus tard), ce qui garde l'aiguillage posé
+  au démarrage sur un nœud 2110 ; une IRQ posée seulement sur des CPU isolés part sur les CPU ni isolés
+  ni partitionnés. À la libération, chaque IRQ retrouve son affectation d'origine (mémoire du processus :
+  un redémarrage de l'agent entre les deux laisse l'affectation rétrécie). Les IRQ gérées par le noyau
+  (une file par CPU, ex. `megasas`) refusent l'écriture : elles servent les E/S lancées depuis ce CPU,
+  elles sont listées dans `irq_unmovable`. Mesuré sur dell-1 (2026-11-09, 60 s) : la garde recevait
+  `eno3` (16/s) et `mlx4` (0,5/s), le CPU 42 d'un mélangeur `ahci` (1/s) ; le CPU de la console, rien.
+  **Depuis 0.32.3**, le corps accepte `mce_off` (booléen, gardé avec la carte). Vrai ET au moins un CPU
+  partitionné → le sondage MCE du noyau est coupé (`/sys/devices/system/machinecheck/…/check_interval`
+  à 0, réglage GLOBAL du nœud) ; la valeur d'origine est gardée dans
+  `/var/lib/bobi-node-agent/mce_check_interval.saved` et rendue dès que la condition tombe, même après un
+  redémarrage de l'agent. Un sondage déjà à 0 avant nous n'est pas touché (`off_by_host`). Le contrôleur
+  l'envoie selon le réglage `mce_polling` (`keep` par défaut | `off_when_isolated`, Réglages → CPU), et
+  seulement à un agent qui remonte `mce_off`. Mesuré sur dell-1 (2026-11-09) : `mce_timer_fn` 340 µs sur
+  le CPU d'une console toutes les ~5 min, seule cause de ses 4 retards en 45 min à 16/16 (333 µs par bloc).
 - **`images/export`** (GET, `?tag=` requis) : streame `docker save <tag>` en
   `application/octet-stream`. L'agent est en HTTP/1.0 → **corps délimité par la fermeture de
   connexion** (ni Content-Length ni chunked ; le client lit jusqu'à EOF). `400` sans tag, `404`
@@ -593,6 +666,22 @@ Test : `tests/verif_disques_noeud.py` (faux système, aucun effet de bord).
   `nvidia-smi`, `[]` sans pilote. Relu toutes les 5 min (pas à chaque relevé). Aussi dans
   `/v1/capabilities`. ⚠ `nodes.cpu_model` n'est PAS rempli d'ici : c'est la clé de
   qualification CPU (`app/cpu_qualify.py`), posée par la qualification seule.
+  **`memory_qos`** (ajout **0.32.4**, en lecture seule — rien n'est monté ni réservé) : ce que le
+  processeur offre pour protéger la mémoire d'un cœur dédié. `cache_alloc` (CAT : réserver des parts du
+  L3, Xeon E5 v4 et +), `bw_limit` (MBA : plafonner la bande passante d'un groupe de cœurs, Xeon
+  Scalable et +), `monitor` (CMT/MBM), `kernel` (resctrl compilé), `mounted`, `l3_kb` / `l3_ways` /
+  `l3_domains` ; si resctrl est monté, ce que le noyau accorde : `groups`, `min_ways`,
+  `io_shared_mask` (parts partagées avec les E/S des cartes), `bw_step_pct`, `bw_min_pct`. Mesuré le
+  2026-11-09 : dell-1 CAT 20 parts sans MBA ; dl360-1 et Z8 CAT 11 parts + MBA ; r620 rien.
+- **`housekeeping`** (ajout **0.31.0**) : `{cpus, applied, error}` — la frontière demandée, celle
+  effectivement posée (∩ processeurs en ligne) et la raison d'un refus (§4.3 bis). Absent = agent
+  antérieur : le contrôleur ne lui pousse rien.
+- **`isolation`** (ajout **0.32.0**) : `{wanted, state, error, freed?, irq_moved?, irq_unmovable, mce_off, mce}` — la carte demandée ; par
+  conteneur `status` (`isolated` | `root` | `invalid` | `cpuset_mismatch` | `not_running`), `cpus`,
+  `partition` (le texte du noyau), `blockers` ; `freed` = les dernières listes de voisins allégées
+  (§4.3 bis) ; `irq_moved` = les dernières IRQ déplacées ou rendues, `irq_unmovable` = les IRQ gérées
+  par le noyau qui restent sur un CPU partitionné (0.32.2) ; `mce_off` = le choix reçu, `mce` =
+  `{status: on | off | off_by_host | error | absent, check_interval, saved?}` (0.32.3). Absent = agent antérieur : le contrôleur ne lui pousse rien.
 - **`watchdog`** (ajout **0.20.0**) : ce que le chien de garde (§4.5) a vu et fait. `events` est
   borné à 50 lignes. C'est le canal par lequel le contrôleur découvre **à son retour** ce qui a été
   décidé en son absence — une action muette serait pire que pas d'action.
@@ -703,7 +792,8 @@ Les deux sont accessibles sans ligne de commande : menu de l'installeur → **D�
   **EXEMPTION LOOPBACK (images compute ≥ 0.27.0 / média ≥ 0.16.0 / webrtc ≥ 0.4.0)** : une connexion
   venant de `127.0.0.1`/`::1` est acceptée sur ces deux mêmes endpoints **sans vérification
   d'identité client**. C'est le chemin réel du chien de garde (§4.5) : en macvlan, l'agent-nœud ne
-  peut pas nous joindre par le réseau, il passe par `docker exec` et n'a sur place que NOTRE cert de
+  peut pas nous joindre par le réseau, il entre dans notre espace réseau (`nsenter -n`, `docker exec`
+  avant 0.31.0) et n'a sur place que NOTRE cert de
   conteneur — celui que `_peer_role` refuse, à raison, quand il vient du réseau. Sûr parce que
   atteindre notre loopback exige d'exécuter du code DANS ce conteneur, donc d'être root sur l'hôte,
   qui peut déjà tout nous faire : l'exemption n'accorde aucun pouvoir nouveau. Un paquet venu du

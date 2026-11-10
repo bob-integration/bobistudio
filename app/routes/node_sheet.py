@@ -169,6 +169,8 @@ def api_node_sheet(node_id):
             "sockets": machine.get("sockets"),
             "ram_mb": res.get("mem_total_mb"),
             "gpus": machine.get("gpus") if "gpus" in machine else None,
+            # agent ≥ 0.32.4: what the CPU offers to protect a dedicated core's memory (absent = older agent)
+            "memory_qos": machine.get("memory_qos"),
             "gpu_count": node.get("gpu_count") if node.get("gpu_capable") else 0,
             "reported": bool(machine),
         },

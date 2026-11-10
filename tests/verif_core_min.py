@@ -134,5 +134,30 @@ for chemin, fichier in (("plugins/multiview", "plugin.json"),
              "les deux cassent sur un cœur antérieur — l'un bruyamment, l'autre en silence. "
              "Obtenu %r" % (man.get("requires")))
 
+# ═══ 5. TOUT PLUGIN LE DÉCLARE (2026-11-09) ═════════════════════
+# Before this pass multiview was the only one (1 out of 25): a plugin made for a newer core
+# installed on an older one without a word. A NEW plugin without `core_min` fails here, and so
+# does a value the comparator cannot read (it would then refuse nothing, silently) or one above
+# this core (the plugin could not be installed on the core it ships with).
+import glob                                                          # noqa: E402
+sans, illisibles, futurs = [], [], []
+# Services too (2026-11-09): they run INSIDE the orchestrator and import `app.*`, so they depend
+# on the core even more tightly than a plugin does.
+for p in sorted(glob.glob(os.path.join(RACINE, "plugins", "*", "plugin.json"))
+                + glob.glob(os.path.join(RACINE, "services", "*", "manifest.json"))):
+    nom = os.path.relpath(os.path.dirname(p), RACINE)
+    if os.path.basename(nom).startswith("_"):
+        continue                     # shared runtimes, not plugins
+    cmin = V.core_min_de(json.load(io.open(p, encoding="utf-8")))
+    if not cmin:
+        sans.append(nom)
+    elif not V.comparable(V.VERSION, cmin):
+        illisibles.append("%s=%s" % (nom, cmin))
+    elif not V.au_moins(V.VERSION, cmin):
+        futurs.append("%s=%s" % (nom, cmin))
+controle("★★★ chaque plugin et chaque service déclare requires.core_min", not sans, "absent : %s" % ", ".join(sans))
+controle("★★ chaque core_min est comparable", not illisibles, ", ".join(illisibles))
+controle("★★ aucun core_min n'exige un cœur plus récent que %s" % V.VERSION, not futurs, ", ".join(futurs))
+
 print("\n%d contrôle(s) OK, %d en échec." % (len(reussites), len(echecs)))
 sys.exit(1 if echecs else 0)

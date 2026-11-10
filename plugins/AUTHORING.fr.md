@@ -294,6 +294,7 @@ Notables :
 | `nav` | rubrique et route. **Sans `nav`**, ni chip de palette ni lien de nav |
 | `help.category` / `help.order` | rangement de l'article d'aide |
 | `files` | fichiers supplémentaires poussés à côté du script (voir ci-dessous) |
+| `image` | l'image d'exécution dont le conteneur est créé (voir ci-dessous) |
 | `environment` | rapport du conteneur aux projets, pour un service dont d'autres conteneurs dépendent : `{"scope": "partitioned" \| "shared", "wanted_by": {"sections": [...], "types": [...]}}`. `partitioned` : dans un projet, il ne sert que ce projet (transcodeur) ; `shared` : il sert tous les projets, donc le projet qui le porte le détruit pour tout le monde à son déchargement (pyramide). L'orchestrateur le rappelle au rattachement à un projet, relève ceux qu'un projet utilise à l'enregistrement, et propose de créer ceux qui manquent au rappel du projet (`app/project_environment.py`). `wanted_by` dit quel contenu de projet en a besoin ; absent = toujours |
 
 ### `files` — livrer des modules à côté du script
@@ -316,6 +317,32 @@ Poussés **avant** `bobimxl.py` et le script, lequel part en dernier. **Sans rep
   absolu ou `..`, `src` absent ou sortant du dossier du plugin (liens symboliques compris), `dest`
   en double, `dest` égal à `main.py` / `bobimxl.py` / `agent.py` / `nmos.json` / au script lui-même,
   plus de 8 Mo par fichier ou 16 Mo au total.
+
+### `image` — ce que le conteneur a déjà
+
+Le conteneur est créé depuis une image d'exécution ; le code du plugin n'y est **pas**. À chaque
+déploiement, l'orchestrateur envoie `script.py`, les `files` et `bobimxl.py` à l'agent, qui lance le
+script. Une nouvelle version de plugin demande donc un redéploiement, jamais une reconstruction d'image.
+
+| `image` | Contenu | Construite depuis |
+|---|---|---|
+| `compute` (défaut) | Python, numpy, SDK MXL, nos noyaux C (conversion v210, composition du mur, scope) ; la variante GPU ajoute CUDA | `plugins/_compute_runtime/`, `plugins/_compute_gpu_runtime/` |
+| `media` | Python, numpy, SDK MXL, FFmpeg, GStreamer et son élément MXL, outils MXF | `plugins/_media_runtime/` |
+| `decklink`, `gui` | images apportées par un plugin (`decklink_io`, `plugin_gui`), construites seulement sur les nœuds qui ont le matériel | le `image/Dockerfile` du plugin |
+
+**Rien ne s'installe à la création d'un conteneur** : ni `pip`, ni `apt`. Un conteneur n'a pas
+besoin d'Internet, démarre en quelques secondes, et est identique à tous ceux de son type. Quand une
+bibliothèque manque :
+
+- un module Python ou une petite bibliothèque compilée → la livrer par `files` ;
+- une dépendance lourde ou système → l'ajouter au Dockerfile du socle ; il faut alors reconstruire
+  l'image et recréer les conteneurs (Restart garde l'ancienne image) ;
+- un pilote ou un SDK matériel → le plugin apporte sa propre image, comme `2110_io` et `decklink_io`.
+
+Déclarer l'image dont le plugin a besoin au minimum dans `requires.image_min` (par exemple
+`"bobi-media:0.28.2"`). Un nœud plus ancien est alors écarté du placement et de la migration, et un
+déploiement y est refusé, avec une alerte qui nomme les deux versions. Un tag qu'on ne sait pas
+comparer ne bloque jamais rien.
 
 ---
 

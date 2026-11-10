@@ -89,7 +89,11 @@ def main():
             return bobimxl.MXL_STATUS_OK
 
     bobimxl._lib = Lib()
-    inst = type("Inst", (), {"domain": dom, "_h": None})()
+    # `flow_def` rend None comme le vrai quand il n'y a rien à lire : AudioWriter l'appelle
+    # depuis 2026-11-09 pour comparer le grain annoncé, et une doublure qui ne suit pas son
+    # auteur devient un rouge qui ne désigne rien.
+    inst = type("Inst", (), {"domain": dom, "_h": None,
+                             "flow_def": lambda self, name=None, fid=None: None})()
     for _ in range(50):                                   # 50 recréations, comme la boucle d'erreur
         w = bobimxl.AudioWriter(inst, "hello-world_hello_audio")
     restants = [e for e in os.listdir(dom) if e.startswith(".mxl-tmp-")]

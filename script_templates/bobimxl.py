@@ -2360,11 +2360,48 @@ def build_data_flow_def(name, fps_num=25, fps_den=1, label=None, anc_format=ANC_
     })
 
 
-def build_audio_flow_def(name, channels=8, sample_rate=48000, label=None):
-    """flowDef d'un flux AUDIO continu (float32 par canal). sample_rate en Hz."""
+# The grain a producer ANNOUNCES on its audio flow (like `slice_height` on a video flow): a reader
+# then knows what it subscribes to instead of assuming 1 ms. An NMOS tag, so the flowDef stays valid.
+AUDIO_GRAIN_TAG = "urn:x-bobi:tag:audio-grain/v1.0"
+_DECLARED_GRAIN = [None]                   # set by audio_grain(): what this script's writers announce
+
+
+def audio_grain(config=None, sample_rate=48000):
+    """Samples per write (and per read) on an audio flow: the core setting `mxl_audio_grain_us`
+    (Réglages → MXL), handed to every script in CONFIG by the orchestrator. 48 at 48 kHz for 1 ms.
+
+    The bus itself has NO grain — an audio flow is a continuous sample ring and `AudioWriter.write`
+    takes any count. The grain is a SYSTEM choice: use this, never `SAMPLE_RATE // 1000`. A config
+    without the key (script rendered by an older orchestrator) gets 1 ms, the former convention."""
+    try:
+        us = int((config or {}).get("mxl_audio_grain_us") or 1000)
+    except (TypeError, ValueError, AttributeError):
+        us = 1000
+    if us <= 0:
+        us = 1000
+    g = max(1, int(round(int(sample_rate) * us / 1_000_000)))
+    _DECLARED_GRAIN[0] = g                 # this script's AudioWriters announce it from now on
+    return g
+
+
+def flow_audio_grain(flow_def):
+    """Samples per packet a flow ANNOUNCES (dict flowDef), or None when it announces nothing — a
+    flow written before the setting existed: it was 1 ms, the former convention."""
+    try:
+        return int(((flow_def or {}).get("tags") or {}).get(AUDIO_GRAIN_TAG)[0])
+    except (TypeError, ValueError, IndexError, AttributeError):
+        return None
+
+
+def build_audio_flow_def(name, channels=8, sample_rate=48000, label=None, grain=None):
+    """flowDef d'un flux AUDIO continu (float32 par canal). sample_rate en Hz. `grain` = la taille de
+    paquet annoncée (échantillons), portée en tag ; None = rien d'annoncé."""
+    tags = {"urn:x-nmos:tag:grouphint/v1.0": ["%s:Audio" % (label or name)]}
+    if grain:
+        tags[AUDIO_GRAIN_TAG] = [str(int(grain))]
     return json.dumps({
         "id": flow_id(name),
-        "tags": {"urn:x-nmos:tag:grouphint/v1.0": ["%s:Audio" % (label or name)]},
+        "tags": tags,
         "format": "urn:x-nmos:format:audio",
         "label": label or name,
         "media_type": "audio/float32",
@@ -2449,11 +2486,24 @@ def sweep_leaked_flow_tmp(domain, flow_id_str=None, now=None):
 class AudioWriter:
     """Producteur audio MXL (samples float32 par canal). `write(arr)` où arr = (n_samples, channels)."""
 
-    def __init__(self, instance, name, channels=8, sample_rate=48000, index_mode="tai"):
+    def __init__(self, instance, name, channels=8, sample_rate=48000, index_mode="tai", grain=None):
         _load()
         self.inst = instance; self.name = name
         self.channels = int(channels); self.sample_rate = int(sample_rate)
-        self.flow_def = build_audio_flow_def(name, channels, sample_rate)
+        # Announced packet size: explicit, else what the script took from audio_grain(CONFIG).
+        self.grain = int(grain) if grain else _DECLARED_GRAIN[0]
+        self.flow_def = build_audio_flow_def(name, channels, sample_rate, grain=self.grain)
+        # An existing flow keeps its OLD flowDef (libmxl reattaches it, cf. the video Writer). Recreate
+        # it only when it announced a DIFFERENT grain; one that announced nothing (written before the
+        # setting) is left alone — it was 1 ms, no reader is cut for a tag.
+        _old = flow_audio_grain(instance.flow_def(name))
+        if self.grain and _old is not None and _old != self.grain:
+            try:
+                shutil.rmtree(os.path.join(instance.domain, flow_id(name) + ".mxl-flow"))
+            except FileNotFoundError:
+                pass
+            except Exception as _e:
+                print(f"bobimxl: purge of audio flow {name!r} (grain {_old} -> {self.grain}) failed ({_e!r})")
         self.rate = mxlRational(int(sample_rate), 1)
         self.index_mode = index_mode
         self._counter = 0
@@ -2530,6 +2580,11 @@ class AudioReader(_StaleGuard):
         self._h = _VOID()
         _ck("mxlCreateFlowReader", _lib.mxlCreateFlowReader(
             instance._h, self.fid.encode(), None, ctypes.byref(self._h)))
+
+    def grain(self):
+        """Packet size (samples) the producer of this flow announces, or None if it announces
+        nothing (a flow written before the setting: 1 ms)."""
+        return flow_audio_grain(self.inst.flow_def(fid=self.fid))
 
     def index_time_ns(self, index):
         """Instant TAI (ns) de l'index d'ÉCHANTILLON `index` — pendant du AudioWriter, côté lecture.

@@ -138,6 +138,10 @@ _horloge(12.0)
 _images._derive_vue.clear()
 _vrai_attend = _images._node_expects_image
 _images._node_expects_image = lambda which, node: False
+# Since 2026-11-09 the inventory is read FIRST (an unreadable one ends the check silently):
+# give it an answer, or this section would wait on a network timeout and measure nothing.
+_vrai_inv = _images._node_image_inventory
+_images._node_image_inventory = lambda node, force=False: ([], "")
 try:
     r = _images.verifier_derive_images({"id": 9, "name": "n", "agent_url": "https://192.0.2.1:9100"})
     verifie(r == [], "9a. monotonic=12 s → contrôle FAIT (None = sauté par l'anti-rebond)", r)
@@ -146,6 +150,7 @@ try:
     verifie(r is None, "9b. une minute plus tard → l'anti-rebond tient", r)
 finally:
     _images._node_expects_image = _vrai_attend
+    _images._node_image_inventory = _vrai_inv
 
 time.monotonic = _vrai_monotonic
 print()

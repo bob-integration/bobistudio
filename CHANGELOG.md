@@ -5,6 +5,51 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Un cœur dédié est maintenant isolé par le noyau — 2026-11-09
+
+**Réserver des cœurs ne suffisait pas : il fallait aussi que rien d'autre n'y passe.** Les cœurs
+dédiés d'un nœud sont désormais isolés par le noyau lui-même, dans une partition `cpuset` cgroup
+v2. Les interruptions de périphériques en sont écartées, `docker.service` et `containerd.service`
+sont bornés aux cœurs de service, et rien de ce que lance l'agent ne tombe plus sur un cœur dédié.
+Le sondage MCE, qui interrompt tous les cœurs à intervalle fixe, se coupe sur les nœuds concernés
+(réglage, désactivé par défaut). Un cœur réservé mais inutilisé — le jumeau HT fermé par une
+console — est gardé dans une partition vide plutôt que rendu au partage.
+
+**Ce que ça change, mesuré.** Le moteur de la console audio accumulait des retards dont la cause
+est restée invisible une semaine : des intrus sur son cœur temps réel, le `docker exec` d'un chien
+de garde et un `nvidia-smi`. Après correction, zéro retard en 45 minutes à 48 entrées sur 72. Un
+cartouchier en service depuis dix jours montre la même chose : ses décrochages de 200 ms ont
+cessé.
+
+**Un plugin déclare ce dont il a besoin, et c'est tenu.** Le manifeste porte l'image minimale
+(`requires.image_min`) et la version minimale du cœur (`requires.core_min`) — déclarées dans les
+24 plugins et les 17 services. Elles ne sont plus vérifiées à la seule installation : le placement
+automatique écarte un nœud trop ancien, Migrer refuse le déplacement, le déploiement et
+l'activation refusent aussi, et le chargement d'un service en tient compte. Chaque refus mène à
+l'endroit qui le résout, Réglages → Déploiement → Build.
+
+**La taille des paquets audio est un réglage, et le flux l'annonce.** Le bus n'en impose aucune :
+un flux audio est un anneau d'échantillons continu. Les 48 échantillons d'une milliseconde étaient
+recopiés dans chaque script. C'est maintenant un réglage du cœur (Réglages → MXL), résolu au rendu
+pour tout type de conteneur, annoncé par le producteur dans la définition de son flux et lu par le
+consommateur — un flux sans annonce vaut 1 ms, comme avant. Dix plugins audio s'y conforment.
+Seule la milliseconde est proposée aujourd'hui ; le réglage existe pour les paquets plus courts
+du ST 2110.
+
+**Les alertes désignent mieux.** Une sortie SDI en retard ou qui perd des images est signalée, et
+un pool partagé réduit à un seul fil aussi. Trois fausses alertes d'image absente — 1 131 en huit
+jours — ont disparu. Un build dérivé qui manque de son image de base le dit, au lieu d'accuser
+Docker Hub.
+
+**L'installation ne laisse plus de trou.** Le parcours dit ce qui reste à faire et propose les
+services utiles, au lieu de les laisser éteints et invisibles. La passerelle WebRTC, dont dépend
+toute vidéo vue dans un navigateur, est désormais publiée : une installation faite depuis le dépôt
+public l'installe depuis le Catalogue, ou importe son paquet hors ligne. Quand elle manque, le
+monitoring le dit et nomme la porte de sortie — qui n'est pas la même selon que le service est
+absent ou simplement éteint.
+
+---
+
 ## Deux liens morts en page d'accueil, et la CI publique au vert — 2026-11-08
 
 **Les deux renvois du `README.md` vers la section d'étalonnage d'`INSTALL.md` ne menaient nulle

@@ -120,6 +120,15 @@ STR = {
         "access": "Accès : {url}  (créer le compte admin à la 1ʳᵉ visite)",
         "update_default": "Vérification des mises à jour : ACTIVÉE par défaut (une fois par jour, lecture des versions publiées sur GitHub, rien n'est envoyé ni installé). Désactivable à la 1ʳᵉ visite, ou dans Réglages → Mises à jour.",
         "aio_ready": "Tout-en-un prêt (orchestrateur + nœud local).",
+        "gestes_title": "Il reste ceci à faire pour qu'un conteneur puisse tourner :",
+        "services_title": "Services utiles, éteints par défaut. Cochez ceux à activer :",
+        "services_none": "Aucun service activé — ils restent disponibles dans Réglages → Services.",
+        "services_ok": "{n} service(s) activé(s).",
+        "services_partiel": "Service(s) NON activé(s) : {cles} — à faire depuis Réglages → Services.",
+        "services_bad": "Liste des services proposables illisible — à voir dans Réglages → Services.",
+        "gestes_none": "Rien ne manque : un premier conteneur peut être déployé.",
+        "gestes_flous": "Non mesuré : {codes} — l'agent du nœud n'a pas répondu. « non mesuré » ne veut pas dire « rien à faire » : à revérifier dans l'interface.",
+        "gestes_bad": "Les gestes restants n'ont pas pu être calculés — à vérifier dans l'interface (Réglages → Déploiement). Ce n'est PAS « rien à faire ».",
         # deps / service
         "h_deps": "Dépendances (Python, venv, paquets système)",
         "apt_update": "apt-get update…", "apt_install": "Installation des paquets système…",
@@ -232,6 +241,15 @@ STR = {
         "access": "Access: {url}  (create the admin account on first visit)",
         "update_default": "Update check: ON by default (once a day, reads the versions published on GitHub, nothing is sent or installed). Can be turned off on first visit, or in Settings → Updates.",
         "aio_ready": "All-in-one ready (orchestrator + local node).",
+        "gestes_title": "What is left to do before a container can run:",
+        "services_title": "Useful services, off by default. Tick the ones to enable:",
+        "services_none": "No service enabled — they stay available in Settings → Services.",
+        "services_ok": "{n} service(s) enabled.",
+        "services_partiel": "Service(s) NOT enabled: {cles} — to be done from Settings → Services.",
+        "services_bad": "The list of offerable services could not be read — see Settings → Services.",
+        "gestes_none": "Nothing is missing: a first container can be deployed.",
+        "gestes_flous": "Not measured: {codes} — the node agent did not answer. “not measured” does not mean “nothing to do”: check again in the interface.",
+        "gestes_bad": "The remaining steps could not be computed — check in the interface (Settings → Deployment). This is NOT “nothing to do”.",
         "h_deps": "Dependencies (Python, venv, system packages)",
         "apt_update": "apt-get update…", "apt_install": "Installing system packages…",
         "apt_offline": "Installing system packages (offline bundle)…",
@@ -1208,11 +1226,171 @@ def register_local_agent(token):
     return False
 
 
+def proposer_services():
+    """Propose d'ALLUMER les services utiles, à la fin de l'installation.
+
+    ★ POURQUOI (demande de Cyril, 2026-11-08). Les dix services qui portent une clé `*_enabled`
+    sont TOUS éteints par défaut, et un service éteint est retiré des onglets de Réglages : rien
+    dans le parcours d'installation ne dit qu'ils existent. La passerelle WebRTC en est le cas
+    coûteux — sans elle le panneau de monitoring reste noir sur toutes les pages.
+
+    ★ ON PROPOSE, ON N'ALLUME PAS D'OFFICE. Plusieurs de ces services PARLENT sur le réseau dès
+    l'allumage (mDNS pour NMOS, SDP pour SAP) : les activer sans que personne ne l'ait demandé
+    change le comportement réseau d'un site. C'est une décision d'exploitation, et c'est ici
+    qu'on est sûr que quelqu'un regarde.
+
+    ★ LA LISTE VIENT DES MANIFESTES (`install_offer`), pas d'ici : cf.
+    `app/core_plugins.install_offers`. Un service ajouté demain se propose tout seul ; une liste
+    tenue dans l'installeur aurait péri au premier.
+
+    Non interactif (sortie tuyautée) : le repli de `menu_multi` prend les PRÉ-COCHÉS par défaut.
+    """
+    code = (
+        "import json, os\n"
+        "from app import database as d\n"
+        "d.init_db()\n"
+        "from app import core_plugins as cp\n"
+        "from app.i18n import t\n"
+        "lang = (os.environ.get('BOBI_WIZ_LANG') or 'fr')\n"
+        "from app import settings as st\n"
+        "out = []\n"
+        "for o in cp.install_offers():\n"
+        "    if st.get(o['key']):\n"
+        "        continue\n"                 # déjà allumé : ne pas le proposer
+        "    pourquoi = t(o['why'], lang)\n"
+        "    out.append({**o, 'why_text': ('' if pourquoi == o['why'] else pourquoi)})\n"
+        "print(json.dumps(out))\n"
+    )
+    r = subprocess.run([f"{APP_DIR}/venv/bin/python", "-c", code], cwd=APP_DIR,
+                       capture_output=True, text=True,
+                       env={**os.environ, "BOBI_WIZ_LANG": LANG})
+    offres = None
+    for ligne in (r.stdout or "").splitlines():
+        if ligne.startswith("["):
+            try:
+                offres = json.loads(ligne)
+            except Exception:
+                pass
+    if offres is None:
+        warn(t("services_bad"))
+        for ligne in (r.stderr or "").strip().splitlines()[-4:]:
+            print(f"     {DIM}{ligne}{R}")
+        return
+    if not offres:
+        return                               # rien à proposer : on ne pose pas une question vide
+    items = [(o["id"], o["label"], o.get("why_text") or "") for o in offres]
+    choix = menu_multi(t("services_title"), items,
+                       preselected=[o["id"] for o in offres if o.get("on")], allow_back=False)
+    cles = [o["key"] for o in offres if o["id"] in (choix or [])]
+    if not cles:
+        info(t("services_none"))
+        return
+    code2 = (
+        "import json, os\n"
+        "from app import database as d\n"
+        "d.init_db()\n"
+        "from app import settings as st\n"
+        "cles = json.loads(os.environ['BOBI_SERVICES'])\n"
+        "for c in cles:\n"
+        "    st.set(c, True)\n"
+        # On JUGE SUR LE RÉSULTAT, pas sur le code de sortie : même leçon que
+        # `register_local_agent` (un enfant qui réussit à afficher ne prouve rien).
+        "print(json.dumps({c: bool(st.get(c)) for c in cles}))\n"
+    )
+    r2 = subprocess.run([f"{APP_DIR}/venv/bin/python", "-c", code2], cwd=APP_DIR,
+                        capture_output=True, text=True,
+                        env={**os.environ, "BOBI_SERVICES": json.dumps(cles)})
+    etat = {}
+    for ligne in (r2.stdout or "").splitlines():
+        if ligne.startswith("{"):
+            try:
+                etat = json.loads(ligne)
+            except Exception:
+                pass
+    poses = [c for c in cles if etat.get(c)]
+    rates = [c for c in cles if not etat.get(c)]
+    if poses:
+        ok(t("services_ok", n=len(poses)))
+    if rates:
+        warn(t("services_partiel", cles=", ".join(rates)))
+        for ligne in (r2.stderr or "").strip().splitlines()[-3:]:
+            print(f"     {DIM}{ligne}{R}")
+
+
+def dire_gestes_restants():
+    """Annonce CE QUI RESTE À FAIRE, mesuré par le produit qu'on vient d'installer.
+
+    ★ POURQUOI (2026-11-08). L'installation se terminait sur « Tout-en-un prêt » alors
+    qu'AUCUNE image d'exécution n'est présente : le chemin tout-en-un n'appelle jamais
+    `install-node.sh --registry`, l'absence d'image ne produit qu'un `warn` à une quarantaine
+    de lignes du verdict, et ce `warn` ne nomme aucun endroit du produit. Rien n'était donc
+    déployable, et le seul geste qui le débloque n'était annoncé nulle part — ni ici, ni dans
+    l'assistant de premier démarrage, qui réclamait l'enrôlement d'un nœud que l'installeur
+    venait justement de faire. Mesuré sur une installation d'essai en VM le même jour.
+
+    ★ UNE SEULE SOURCE, ET C'EST LE PRODUIT. La liste et les libellés viennent de
+    `app/install_gestures.py` et du catalogue i18n, via un processus enfant dans APP_DIR —
+    même procédé que `register_local_agent`, et pour la même raison (`app` ne s'importe que de
+    là). Recopier la liste ici la ferait mentir au premier changement : c'est exactement ce
+    qu'on vient de corriger dans l'assistant.
+
+    On ne BLOQUE rien là-dessus : un verdict d'installation ne doit pas dépendre de la
+    capacité à lire une liste. Illisible → on le DIT, on n'invente pas « rien à faire ».
+    """
+    code = (
+        "import json, os\n"
+        "from app import database as d\n"
+        "d.init_db()\n"
+        "from app import install_gestures as g\n"
+        "from app.i18n import t\n"
+        "lang = (os.environ.get('BOBI_WIZ_LANG') or 'fr')\n"
+        "m = g.remaining_gestures()\n"
+        "out = []\n"
+        "for x in (m.get('gestures') or []):\n"
+        "    cle = 'wiz.done.geste_' + x['code']\n"
+        "    out.append({'bloquant': bool(x.get('blocking')),\n"
+        "                'texte': t(cle, lang, **(x.get('params') or {})),\n"
+        "                'ou': t(cle + '_link', lang)})\n"
+        "print(json.dumps({'gestes': out, 'flous': sorted({f.get('code','?') "
+        "for f in (m.get('unmeasured') or [])})}))\n"
+    )
+    r = subprocess.run([f"{APP_DIR}/venv/bin/python", "-c", code], cwd=APP_DIR,
+                       capture_output=True, text=True,
+                       env={**os.environ, "BOBI_WIZ_LANG": LANG})
+    charge = None
+    for ligne in (r.stdout or "").splitlines():
+        if ligne.startswith("{"):
+            try:
+                charge = json.loads(ligne)
+            except Exception:
+                pass
+    if charge is None:
+        warn(t("gestes_bad"))
+        for ligne in (r.stderr or "").strip().splitlines()[-4:]:
+            print(f"     {DIM}{ligne}{R}")
+        return
+    print()
+    gestes = charge.get("gestes") or []
+    bloquants = [g for g in gestes if g.get("bloquant")]
+    if bloquants:
+        print(f"  {BOLD}{t('gestes_title')}{R}")
+        for i, g in enumerate(bloquants, 1):
+            print(f"   {CYAN}{i}{R}  {g.get('texte','')}  {BOLD}{g.get('ou','')}{R}")
+    else:
+        ok(t("gestes_none"))
+    for g in (g for g in gestes if not g.get("bloquant")):
+        info(f"{g.get('texte','')}  {BOLD}{g.get('ou','')}{R}")
+    if charge.get("flous"):
+        warn(t("gestes_flous", codes=", ".join(charge["flous"])))
+
+
 def path_controller(zip_path):
     if install_controller(zip_path) is BACK:
         return BACK
     print()
     ok(t("ctrl_ready"))
+    proposer_services()
+    dire_gestes_restants()
     info(t("access", url=f"{BOLD}{CYAN}http://{_host_ip() or os.uname().nodename}:5000{R}"))
     info(t("update_default"))
     return None
@@ -1260,6 +1438,12 @@ def path_all_in_one(zip_path):
         warn(t("aio_partial_net"))
     else:
         ok(t("aio_ready"))
+    # Les services utiles sont TOUS éteints par défaut : on propose, à l'endroit où quelqu'un
+    # regarde. Avant l'annonce des gestes, pour que celle-ci tienne compte du choix fait ici.
+    proposer_services()
+    # « Prêt » ne veut pas dire « déployable » : les images d'exécution ne sont pas là, et c'est
+    # ici que l'exploitant regarde. Mesuré, pas supposé — cf. `dire_gestes_restants`.
+    dire_gestes_restants()
     info(t("access", url=f"{BOLD}{CYAN}http://{_host_ip() or os.uname().nodename}:5000{R}"))
     info(t("update_default"))
     return None

@@ -103,11 +103,33 @@ def docker_build(ctx, tag, timeout):
         shutil.rmtree(d, ignore_errors=True)
 
 
+def prune_cache():
+    """Drop the buildkit cache between two images, and say what is left.
+
+    ⚠ ONLY WHERE DISK IS SCARCE — hence a flag, and not the default: run by hand this would throw
+    away a developer's cache for nothing. The IMAGES are kept, and must be: a thin layer starts
+    with `FROM bobi-compute:<ver>` and resolves it in the local image store.
+
+    Measured on the PRIVATE repository's runner (2026-11-09, run 42685121688): 72 GB of disk and
+    14 GB free before the build — not the 145/88 GB measured a week earlier on a public runner,
+    which is why the workflow had dropped its cleanup step. The four images that did build weigh
+    4.5 GB together, so what filled the disk is the cache; `compute-gpu` (CUDA, 1.9 GB unpacked)
+    then died extracting a layer.
+    """
+    subprocess.run(["docker", "builder", "prune", "-af"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=False)
+    df = subprocess.run(["df", "-h", "--output=avail", "/"],
+                        capture_output=True, text=True, check=False).stdout.strip().splitlines()
+    print("  cache purged, %s free" % (df[-1].strip() if df else "?"), flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", default="", help="comma-separated image names (default: all)")
     ap.add_argument("--skip", default="", help="comma-separated image names to leave out")
+    ap.add_argument("--prune-cache", action="store_true",
+                    help="drop the buildkit cache after each image (scarce disk, e.g. CI)")
     ap.add_argument("--stage-only", action="store_true",
                     help="assemble the build contexts and stop — no Docker daemon needed")
     ap.add_argument("--timeout", type=int, default=3600, help="per-image build timeout, seconds")
@@ -163,6 +185,8 @@ def main():
         else:
             print("  ✓ built %s (%.0fs)" % (tag, time.time() - t0))
             built.append(which)
+        if args.prune_cache:
+            prune_cache()
 
     print("\n── summary")
     print("   %-13s: %s" % ("staged" if args.stage_only else "built",

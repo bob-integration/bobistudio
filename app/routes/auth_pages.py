@@ -167,6 +167,16 @@ def setup_wizard():
                            video_formats=st.get("video_formats") or "",
                            timezones=_timezones_par_region())
 
+@bp.route("/api/setup/gestures", methods=["GET"])
+@require_login
+def api_setup_gestures():
+    """Ce qu'il RESTE à faire, mesuré (cf. `install_gestures`). Lu par la dernière étape de
+    l'assistant : la liste y était écrite EN DUR et annonçait l'enrôlement d'un nœud même quand
+    l'installeur venait de l'enrôler lui-même (tout-en-un), sans jamais nommer les images sans
+    lesquelles rien ne démarre."""
+    from .. import install_gestures
+    return jsonify(install_gestures.remaining_gestures())
+
 @bp.route("/api/setup/complete", methods=["POST"])
 @require_perm("settings.edit")
 def api_setup_complete():

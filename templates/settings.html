@@ -422,6 +422,14 @@ document.querySelectorAll('.navpair-deck > .tab, .navpair-items > .tab').forEach
 // manque, on retombe alors sur la clé plutôt que sur du vide. Déclaré ici, dans le PREMIER
 // bloc <script> de la page, donc visible de tous les suivants.
 function setT(k) { const v = window.t ? window.t(k) : k; return v || k; }
+// Un état de build peut porter une CLÉ et ses valeurs (`msg_key`/`msg_params`) au lieu d'une
+// phrase déjà rendue par le serveur : c'est la seule forme honnête quand N lecteurs n'ont pas la
+// même langue (même doctrine que les alertes). `msg` reste le repli, et le repli n'est pas une
+// régression : une installation plus ancienne n'envoie pas la clé.
+function buildMsg(j, repli) {
+    if (j && j.msg_key && window.tp) return window.tp(j.msg_key, j.msg_params);
+    return (j && j.msg) || repli || '';
+}
 // Lit une réponse d'API SANS transformer une erreur serveur en « SyntaxError: Unexpected token
 // '<' ». Une 500 rend une PAGE HTML : `r.json()` casse alors sur le premier '<', et l'opérateur
 // voit une erreur de syntaxe JavaScript au lieu de ce qui n'a pas marché — c'est ce qu'a vu le testeur
@@ -666,6 +674,19 @@ async function fontDelete(f) {
             <input type="checkbox" class="ios-toggle" id="s_ops_journal_forward">
         </div>
     </div>
+
+    <h2 style="margin-top:var(--space-6)">{{ _('settings.cpu_iso.title') }}</h2>
+    <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.cpu_iso.intro') }}</div>
+    <div class="row" style="margin-bottom:var(--space-2)">
+        <div class="field">
+            <label for="s_mce_polling">{{ _('settings.cpu_iso.mce_lbl') }}</label>
+            <select id="s_mce_polling" style="min-width:360px">
+                <option value="keep">{{ _('settings.cpu_iso.mce_keep') }}</option>
+                <option value="off_when_isolated">{{ _('settings.cpu_iso.mce_off') }}</option>
+            </select>
+        </div>
+    </div>
+    <div class="meta" style="margin-bottom:var(--space-6)">{{ _('settings.cpu_iso.mce_hint')|safe }}</div>
 
     <h2>{{ _('settings.st.nic_qualification') }}</h2>
     <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.doc.bibliotheque_des_cartes_media_2110_mesur')|safe }}</div>
@@ -1692,6 +1713,17 @@ async function fontDelete(f) {
             <div class="meta" style="margin-top:var(--space-1)">{{ _('settings.mxl.slice_hint') }}</div>
         </div>
 
+        <h3 style="margin:var(--space-4) 0 var(--space-2)">{{ _('settings.mxl.grain_title') }}</h3>
+        <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.mxl.grain_help') }}</div>
+        <div class="field">
+            <label for="s_mxl_audio_grain_us">{{ _('settings.mxl.grain_lbl') }}</label>
+            <select id="s_mxl_audio_grain_us" style="width:320px"
+                    onchange="fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mxl_audio_grain_us:Number(this.value)})})">
+                <option value="1000">{{ _('settings.mxl.grain_1ms') }}</option>
+            </select>
+            <div class="meta" style="margin-top:var(--space-1)">{{ _('settings.mxl.grain_hint') }}</div>
+        </div>
+
         <h3 style="margin:var(--space-4) 0 var(--space-2)">{{ _('settings.mxl.missing_title') }}</h3>
         <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.mxl.missing_help') }}</div>
         <div class="field">
@@ -2618,6 +2650,10 @@ async function fontDelete(f) {
             <button class="btn" onclick="switchSetTab('catalogue')">{{ _('catalogue.link') }}</button>
             <span id="services-result" class="meta"></span>
         </div>
+        {# Le zip de code d'une release GitHub s'importe TEL QUEL : `_extract_service_package`
+           retire le dossier d'enrobage quand l'archive n'en contient qu'un. Le dire ICI, parce
+           que c'est le seul chemin d'un site sans Internet — le Catalogue, lui, ne voit rien. #}
+        <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.services.import_hint')|safe }}</div>
         <div class="table-wrap">
         <table style="width:100%; border-collapse:collapse; font-size:0.9em;">
             <thead><tr>
@@ -2654,6 +2690,8 @@ async function fontDelete(f) {
             <button class="btn" onclick="switchSetTab('catalogue')">{{ _('catalogue.link') }}</button>
             <span id="plugins-result" class="meta"></span>
         </div>
+        {# Meme remarque que pour les services : cf. settings.services.import_hint. #}
+        <div class="meta" style="margin-bottom:var(--space-3)">{{ _('settings.plugins.import_hint')|safe }}</div>
         <div id="plugins-errors"></div>
         <div id="plugins-filters" style="display:flex; gap:var(--space-4); flex-wrap:wrap; align-items:center; margin-bottom:var(--space-2)">
             <div><span class="meta">{{ _('settings.plugins.category') }}</span> <span id="plugins-cat-chips"></span></div>
@@ -7178,7 +7216,7 @@ function _secImages(id, j) {
             const mb = (io && io.mtl_build) || {};
             if (mb.status === 'building')
                 return `<span class="meta" id="imgbuild_${id}" style="color:var(--text-muted)">⏳ build bobi-mtl en cours…</span>`;
-            return `<button type="button" class="btn btn-green" onclick="buildMtlNode(${id})">${mb.status === 'error' ? setT('settings.js2.relancer') : setT('settings.js2.builder')} ${setT('settings.js2.bobi_mtl_on_this_node')}</button> <span id="imgbuild_${id}" class="meta" ${mb.status === 'error' ? 'style="color:var(--status-stopped-fg)"' : ''}>${mb.status === 'error' ? '✕ ' + escapeHtml(mb.msg || 'dernier build échoué') : ''}</span>`;
+            return `<button type="button" class="btn btn-green" onclick="buildMtlNode(${id})">${mb.status === 'error' ? setT('settings.js2.relancer') : setT('settings.js2.builder')} ${setT('settings.js2.bobi_mtl_on_this_node')}</button> <span id="imgbuild_${id}" class="meta" ${mb.status === 'error' ? 'style="color:var(--status-stopped-fg)"' : ''}>${mb.status === 'error' ? '✕ ' + escapeHtml(buildMsg(mb, setT('settings.js.st_fail'))) : ''}</span>`;
           })() : ''}
           ${imgMap.some(x => x.k !== 'mtl' && !x.ok) ? `<button class="btn" onclick="switchDeployTab('build')">Images cluster (onglet Build) →</button>` : ''}
         </div>` : ''}`;
@@ -7512,7 +7550,7 @@ function _pollMtlBuild(id) {
                 msg.style.color='var(--status-running-fg)'; msg.textContent='✓ '+(j.msg||T('settings.js.built')); _mtlPoll[id]=false; chargerReadiness(id);
             } else if (j.status === 'error') {
                 // EN PLACE : on garde l'erreur visible (pas de re-render qui l'effacerait).
-                msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+(j.msg||T('settings.js.st_fail')); _mtlPoll[id]=false;
+                msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+buildMsg(j, T('settings.js.st_fail')); _mtlPoll[id]=false;
             } else { _mtlPoll[id]=false; }
         } catch (e) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; _mtlPoll[id]=false; }
     };
@@ -7924,7 +7962,7 @@ function _pollGpuBuild(id) {
             } else if (j.status === 'ok') {
                 msg.style.color='var(--status-running-fg)'; msg.textContent='✓ '+(j.msg||T('settings.js.built')); _gpuPoll[id]=false; rafraichirNodes();
             } else if (j.status === 'error') {
-                msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+(j.msg||T('settings.js.st_fail')); _gpuPoll[id]=false;
+                msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+buildMsg(j, T('settings.js.st_fail')); _gpuPoll[id]=false;
             } else { _gpuPoll[id]=false; }
         } catch (e) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; _gpuPoll[id]=false; }
     };
@@ -8172,7 +8210,7 @@ async function rafraichirImages() {
             if (s.status === 'building') badge = '<span class="badge" style="background:var(--accent)">' + T('settings.js.build_running') + '</span>';
             else if (s.present)          badge = '<span class="badge ready">' + T('settings.js.image_ok') + '</span>';
             else                         badge = '<span class="badge stopped">' + T('settings.js.absent_word') + '</span>';
-            const err = (s.status === 'error') ? `<div class="meta" style="color:var(--status-stopped-fg)">${escapeHtml(s.msg||'')}</div>` : '';
+            const err = (s.status === 'error') ? `<div class="meta" style="color:var(--status-stopped-fg)">${escapeHtml(buildMsg(s, ''))}</div>` : '';
             const okm = (s.status === 'ok')    ? `<div class="meta" style="color:var(--status-running-fg)">${escapeHtml(s.msg||'')}${s.built_at ? ` <span style="color:var(--text-muted)">(${escapeHtml(s.built_at)})</span>` : ''}</div>` : '';
             // node_only : buildée sur CHAQUE nœud portant la capacité requise (pas sur le nœud de
             // build global) → on affiche la présence PAR NŒUD, sinon un « à jour » global mentirait
@@ -13533,7 +13571,7 @@ const FIELDS = [
     'mtl_sch_quota_mbs', 'mtl_pin_cores', 'mtl_log_level',
     'wire_format_gating',
     'tx_format_gating', 'tx_format_autoudc',
-    'slice_mode_global', 'missing_frame_mode',
+    'slice_mode_global', 'missing_frame_mode', 'mxl_audio_grain_us',
     'io2110_kernel_pkg', 'io2110_kernel_apt',
     'log_rotation_active',
     'log_max_mb', 'log_backups', 'log_rotate_days', 'log_disk_free_min_gb', 'container_log_driver',
@@ -13544,7 +13582,8 @@ const FIELDS = [
     'membw_clear_margin', 'node_health_disk_clear_margin', 'alerts_retention',
     'alerts_security_retention',
     'alerts_antirebond_s',
-    'ops_journal_retention_days', 'ops_journal_forward'
+    'ops_journal_retention_days', 'ops_journal_forward',
+    'mce_polling'
 ];
 
 // ─── Journaux : réglages de rotation + purge manuelle ───────────────────────────
@@ -15236,6 +15275,7 @@ function _pluginDetailHtml(p) {
                 <span class="meta">publiée : ${_dt(vm.published_at)}</span>
                 <span class="meta">· importée : ${_dt(vm.imported_at)}</span>
                 ${_coreBadge(vm)}
+                ${_imageBadge(vm)}
             </summary>
             <div style="padding:var(--space-2) var(--space-1);font-size:0.88em">
                 ${_chg(vm, _bul)}
@@ -15907,6 +15947,20 @@ function _coreBadge(vm) {
          + '</span>';
   return '<span class="meta" title="' + _escp(T('settings.js.core_unknown_tip')) + '">'
        + _escp(T('settings.js.core_unknown')) + '</span>';
+}
+
+// Minimum image a plugin version requires (`requires.image_min`), and the nodes still below it:
+// a deploy there is refused, so the badge links to the page that builds the image.
+function _imageBadge(vm) {
+  if (!vm.image_min) return '';
+  const vieux = vm.image_old_nodes || [];
+  if (!vieux.length)
+    return '<span class="meta" title="' + _escp(T('settings.js.image_min_tip')) + '">'
+         + _escp(T('settings.js.image_min').replace('{v}', vm.image_min)) + '</span>';
+  const qui = vieux.map(n => n.name + ' (' + n.image + ')').join(', ');
+  return '<span class="badge err" title="' + _escp(T('settings.js.image_old_tip').replace('{n}', qui)) + '">'
+       + _escp(T('settings.js.image_old').replace('{v}', vm.image_min).replace('{c}', vieux.length)) + '</span>'
+       + ' <a href="/settings#deploiement/build" onclick="event.stopPropagation()">' + _escp(T('images.build_link')) + '</a>';
 }
 
 async function supprimerPlugin(type_) {

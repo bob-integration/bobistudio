@@ -410,6 +410,8 @@
             + esc(T('settings.cores.sursouscrit')) + '</div>';
         if (p.bas) h += '<div class="bc-cap bc-warn">' + esc(fmt('settings.cores.partage_bas',
             { cores: p.cores, count: p.temps_reel })) + '</div>';
+        else if (p.reduit) h += '<div class="bc-cap bc-warn">' + esc(fmt('settings.cores.partage_reduit',
+            { cpuset: p.cpuset || '—', cores: p.cores, count: p.conteneurs })) + '</div>';
         if (sst) h += '<div class="bc-cap' + (sst.viable ? '' : ' bc-warn') + '"><div class="meta">'
             + esc(T('settings.cores.si_strict_titre')) + '</div>'
             + esc(sst.viable ? fmt('settings.cores.si_strict', { cpuset: sst.cpuset || '—', cores: sst.cores,

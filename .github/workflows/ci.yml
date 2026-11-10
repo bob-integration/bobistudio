@@ -16,7 +16,13 @@
 name: ci
 
 on:
+  # `branches: ['**']` et non `push:` nu : un `push:` sans filtre se declenche AUSSI sur les
+  # etiquettes, donc chaque publication lançait DEUX runs identiques sur le meme commit — un
+  # pour `main`, un pour `vX.Y.Z` (releve le 2026-11-08 : 62 runs, dont la moitie en double).
+  # Ce motif couvre toutes les branches, y compris les branches jetables d'essai, et aucune
+  # etiquette. `images.yml` filtrait deja de cette façon.
   push:
+    branches: ['**']
   pull_request:
 
 jobs:

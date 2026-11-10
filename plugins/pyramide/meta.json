@@ -1,7 +1,10 @@
 {
-  "version": "0.18.5",
-  "date": "2026-11-07",
+  "version": "0.18.6",
+  "date": "2026-11-09",
   "changes": {
+    "Version minimale du cœur déclarée (0.18.6)": [
+      "Le manifeste déclare `requires.core_min` = 0.9.11 : l'orchestrateur refuse de l'installer sur un cœur plus ancien et le dit. Valeur = le cœur avec lequel la version précédente a été faite. Rien ne change dans le conteneur : rien à redéployer."
+    ],
     "Projets (0.18.5)": [
       "Le manifeste déclare `environment` : une pyramide sert TOUS les projets (`shared`) et un multiview en a besoin. L'orchestrateur rappelle qu'en mettre une dans un projet la détruit au déchargement de ce projet, et propose d'en créer une hors projet au rappel d'un projet qui n'en trouve aucune. Rien ne change dans le conteneur : rien à redéployer."
     ],

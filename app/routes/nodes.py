@@ -15,7 +15,8 @@ from . import bp
 from .images import (_IMAGES, _img_lock, _node_img_build, _node_img_push, _image_tag, _stage_tar,
                      _image_present, _image_present_node, _repo_root,
                      _provision_shared_images, _node_image_inventory, _used_tag,
-                     node_images_state, record_node_only_tag)
+                     node_images_state, record_node_only_tag,
+                     _base_image_state, BaseImageMissing, _explain_registry_denial)
 from ..auth import require_perm, require_login
 from ..database import (db_get_nodes, db_get_node, db_get_containers, db_add_node,
                         db_update_node, db_add_alert, db_delete_node)
@@ -233,8 +234,15 @@ def api_node_build_image(node_id):
         _node_img_build[key] = {"status": "building", "msg": "préparation du contexte…", "start": _start}
     tag = _image_tag(which)
     def _run():
-        ok, tail = False, ""
+        ok, tail, refus = False, "", None
         try:
+            # ★ PRE-FLIGHT: a thin layer (`base_from`: compute-gpu, gui, decklink) builds FROM one
+            # of our images, which lives on no registry. Missing on this node, Docker goes to
+            # Docker Hub and returns « pull access denied » — an AUTHORIZATION message for an
+            # AVAILABILITY cause. Same test as the Images page, same single source of truth.
+            _bstate, _btag, _bwhere = _base_image_state(which, node=node)
+            if _bstate is False:
+                raise BaseImageMissing(_btag, _bwhere)
             ctx = _stage_tar(which)
             with _img_lock:
                 _node_img_build[key] = {"status": "building", "msg": "build sur le nœud (agent)…", "start": _start}
@@ -250,6 +258,8 @@ def api_node_build_image(node_id):
             if ok and not _vu:
                 ok = False
                 tail = "build rc=0 mais image %s introuvable sur le nœud (faux-ok). %s" % (tag, str(tail)[-400:])
+        except BaseImageMissing as e:
+            tail, refus = str(e), e
         except Exception as e:
             tail = str(e)
         dur = int(_t.time() - _start)
@@ -261,14 +271,21 @@ def api_node_build_image(node_id):
             record_node_only_tag(which, node_id, tag)
             msg = "%s buildée sur %s en %dm%02ds" % (tag, node.get("name"), dur // 60, dur % 60)
         else:
-            msg = "échec build %s : %s" % (tag, str(tail)[-600:])
+            msg = "échec build %s : %s" % (tag, _explain_registry_denial(str(tail))[-1400:])
             log.warning("build %s sur %s (id=%s) : %s", tag, node.get("name"), node_id, msg)
         with _img_lock:
             _node_img_build[key] = {"status": "ok" if ok else "error", "msg": msg}
-        db_add_alert("alert.prep.build_ok" if ok else "alert.prep.build_echec",
-                     "info" if ok else "warning", node_id=node.get("id"), kind="prep",
-                     params=({"tag": tag, "n": node.get("name")} if ok
-                             else {"tag": tag, "n": node.get("name"), "msg": msg}))
+            if refus is not None:
+                _node_img_build[key]["msg_key"] = refus.key
+                _node_img_build[key]["msg_params"] = refus.params
+        if refus is not None:
+            db_add_alert(refus.alert_key, "warning", node_id=node.get("id"), kind="prep",
+                         params=dict(refus.params, tag=tag))
+        else:
+            db_add_alert("alert.prep.build_ok" if ok else "alert.prep.build_echec",
+                         "info" if ok else "warning", node_id=node.get("id"), kind="prep",
+                         params=({"tag": tag, "n": node.get("name")} if ok
+                                 else {"tag": tag, "n": node.get("name"), "msg": msg}))
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"ok": True, "status": "build en cours", "tag": tag})
 

@@ -280,6 +280,29 @@ def _record(key, snap):
         _stats_dq(key).append(point)
 
 
+_coeurs_vus = {}           # node_id -> monotonic of the last cores check
+_COEURS_PERIODE_S = 300.0
+
+
+def _verifier_coeurs(nid):
+    """The two cores alerts (shared pool too small, « dedicated » sharing its physical core) were
+    only evaluated when someone opened the cores window (`/api/nodes/<id>/cores`): an operator who
+    never opens it never learnt (2026-11-09). Here every 5 min, throttled again per alert by
+    `core_pool`. Never blocking: a failure is logged, the sampler goes on."""
+    import time as _t
+    # Key presence, not a default date: monotonic() counts from machine boot (cf. node_driver).
+    if nid in _coeurs_vus and _t.monotonic() - _coeurs_vus[nid] < _COEURS_PERIODE_S:
+        return
+    _coeurs_vus[nid] = _t.monotonic()
+    try:
+        from . import core_pool
+        vue = core_pool.vue_coeurs(nid)
+        core_pool.alerter_partage_bas(nid, vue=vue)
+        core_pool.alerter_dedies_non_exclusifs(nid, vue=vue)
+    except Exception as e:
+        log.debug("node_health cores check node %s: %s", nid, e)
+
+
 def _merge_cpu_partage(nid, snap):
     """Partage de la machine entre cœurs ISOLÉS (busy-poll DPDK) et cœurs ORDONNANÇABLES (tout le
     reste), avec la charge réelle de chaque groupe.
@@ -994,6 +1017,136 @@ def _merge_dpdk_net(node_id, snap):
         net[ifname] = entry
 
 
+def housekeeping_cpus(node_id):
+    """Where the node agent and everything it launches may run: EVERY CPU of the node, minus the
+    reserved ones (dedicated containers, 2110 engine lcores), minus what the shared pool closes
+    (HT siblings of physical reservations, node I/O cores), minus the isolated band.
+
+    Not `core_pool.cpuset_auxiliaire`: that is the boundary of an auxiliary CONTAINER, the shared pool.
+    Measured on dl360-1 on 2026-11-08, it confined the agent to 42-45, the 4 CPUs of 13 shared
+    containers, while the host's own CPUs (0, 13-17, 37-41: outside the pool, not isolated) were left
+    idle — host work moved INTO the shared containers instead of staying beside them.
+    Unknown topology or isolated band → `cpuset_auxiliaire` (never "no boundary" by default)."""
+    from . import core_pool
+    from .database import db_get_node
+    core_of = core_pool.core_map_cached(node_id)
+    isolated = core_pool.isolated_cached(node_id)
+    pool = core_pool.parse_cpuset((db_get_node(node_id) or {}).get("compute_cpuset"))
+    if not core_of or isolated is None or not pool:
+        return core_pool.cpuset_auxiliaire(node_id)
+    libres, _phys = core_pool.partage_disponible(node_id, pool=pool, core_of=core_of)
+    reserved = {c for cores in core_pool.allocations_by_vmid(node_id).values() for c in cores}
+    cpus = set(core_of) - reserved - (pool - set(libres)) - set(isolated)
+    return core_pool.fmt_cpuset(sorted(cpus)) or core_pool.cpuset_auxiliaire(node_id)
+
+
+def _push_housekeeping(node, snap):
+    """Keeps the agent's housekeeping CPUs (agent ≥ 0.31.0) equal to `housekeeping_cpus`: off
+    dedicated cores, off the 2110 engine, off the isolated band. Without it, the agent's host commands
+    (nvidia-smi of the GPU sampler, host-ops…) and its watchdog probe run on ANY CPU — measured on the
+    Z8 on 2026-11-08: up to 8.8 ms stalls of the audio console's real-time thread on its dedicated CPU.
+    Pushed only when it differs from what the agent reports, so a steady node costs nothing. An older
+    agent (no `housekeeping` in its health) is left alone; nothing computable → nothing to push."""
+    hk = snap.get("housekeeping")
+    if not isinstance(hk, dict) or not node.get("agent_url"):
+        return
+    want = housekeeping_cpus(node.get("id"))
+    if not want or want == hk.get("cpus"):
+        return
+    from . import node_driver
+    ok, data = node_driver.set_housekeeping(node, want)
+    if ok and isinstance(data, dict) and data.get("ok"):
+        snap["housekeeping"] = {k: data.get(k) for k in ("cpus", "applied", "error")}
+        log.info("node_health: node %s housekeeping CPUs %s -> %s",
+                 node.get("id"), hk.get("cpus") or "(all)", want)
+    else:
+        log.warning("node_health: node %s housekeeping CPUs %s refused: %s", node.get("id"), want,
+                    (data.get("error") if isinstance(data, dict) else data))
+
+
+def isolation_wanted(node_id):
+    """{docker name: reserved CPUs} of the containers whose cores the kernel must isolate: every LIVE
+    container of the node holding a reservation (node_core_alloc), except the 2110 engine — its DPDK
+    lcores are placed thread by thread and its other threads share the same cpuset, which a partition
+    without load balancing would pin where they stand. Setting `dedicated_cpu_isolation` = 0 → {}
+    (the agent then releases every partition)."""
+    if str(S.get("dedicated_cpu_isolation", "1")) in ("0", "false", "False", ""):
+        return {}
+    from . import core_pool
+    from .database import db_get_containers, db_get_node
+    alloc = core_pool.allocations_by_vmid(node_id)
+    # HT siblings the shared pool CLOSES because of a reservation (a one-CPU console reserves 13 and
+    # closes 57) go with it: the agent keeps reserved-but-unused CPUs in an empty partition. Unknown
+    # topology → the reservation alone.
+    core_of = core_pool.core_map_cached(node_id) or {}
+    pool = core_pool.parse_cpuset((db_get_node(node_id) or {}).get("compute_cpuset"))
+    closed = set()
+    if core_of and pool:
+        libres, _phys = core_pool.partage_disponible(node_id, pool=pool, core_of=core_of)
+        closed = pool - set(libres)
+    reserved_all = {c for cs in alloc.values() for c in cs}
+    out = {}
+    for c in db_get_containers() or []:
+        cores = alloc.get(c.get("vmid"))
+        if c.get("node_id") != node_id or not cores:
+            continue
+        try:
+            typ = (json.loads(c.get("deploy_config") or "{}") or {}).get("type")
+        except (TypeError, ValueError):
+            typ = None
+        if typ == "2110_io":
+            continue
+        phys = {core_of[x] for x in cores if x in core_of}
+        siblings = {x for x, k in core_of.items() if k in phys} - reserved_all
+        out[c.get("docker_name") or ("bobi-cmp-%s" % c["vmid"])] = core_pool.fmt_cpuset(
+            sorted(set(cores) | (siblings & closed)))
+    return out
+
+
+_ISO_ALERTED = {}                          # (node_id, name) -> partition text already alerted
+
+
+def _push_isolation(node, snap):
+    """Keeps the agent's partitions (agent ≥ 0.32.0) equal to `isolation_wanted`, pushed only on a
+    difference; an older agent (no `isolation` in its health) is left alone. A partition the kernel
+    refuses is alerted once per cause — the core is then only reserved, not protected (dell-1,
+    2026-11-08: 9 wakeups > 300 µs of a console's real-time thread from unconfined throw-away
+    containers, 0 once isolated)."""
+    iso = snap.get("isolation")
+    if not isinstance(iso, dict) or not node.get("agent_url"):
+        return
+    nid = node.get("id")
+    want = isolation_wanted(nid)
+    mce_off = str(S.get("mce_polling", "keep")) == "off_when_isolated"
+    # an agent < 0.32.3 has no `mce_off`: it is not asked (it would ignore it, and be re-pushed forever)
+    mce_differs = "mce_off" in iso and bool(iso.get("mce_off")) != mce_off
+    if want != (iso.get("wanted") or {}) or mce_differs:
+        from . import node_driver
+        ok, data = node_driver.set_isolation(node, want, mce_off if "mce_off" in iso else None)
+        if ok and isinstance(data, dict) and data.get("ok"):
+            iso = {k: data.get(k) for k in ("wanted", "state", "error", "freed", "mce_off", "mce")}
+            snap["isolation"] = iso
+            log.info("node_health: node %s isolation -> %s", nid, want or "(none)")
+        else:
+            log.warning("node_health: node %s isolation %s refused: %s", nid, want,
+                        (data.get("error") if isinstance(data, dict) else data))
+            return
+    for name, st in (iso.get("state") or {}).items():
+        key = (nid, name)
+        if (st or {}).get("status") != "invalid":
+            _ISO_ALERTED.pop(key, None)
+            continue
+        if _ISO_ALERTED.get(key) == st.get("partition"):
+            continue
+        _ISO_ALERTED[key] = st.get("partition")
+        blk = "; ".join(st.get("blockers") or []) or "—"
+        log.warning("node_health: node %s cannot isolate %s on CPUs %s: %s (blockers: %s)",
+                    nid, name, st.get("cpus"), st.get("partition"), blk)
+        db_add_alert("alert.resource.isolation_refused", "warning", node_id=nid, kind="resource",
+                     params={"n": snap.get("name") or nid, "name": name, "cpus": st.get("cpus"),
+                             "reason": st.get("partition"), "blockers": blk})
+
+
 def _sample_one(node):
     """Échantillonne UN nœud (exécuté EN PARALLÈLE par sample_all). Best-effort, ne lève jamais.
     Isolé pour qu'un nœud injoignable (timeout ~8 s) ne retarde pas l'échantillonnage des autres."""
@@ -1042,6 +1195,7 @@ def _sample_one(node):
             verifier_derive_images(node)
         except Exception as e:
             log.debug("node_health dérive images nœud %s: %s", nid, e)
+        _verifier_coeurs(nid)
         _merge_membw(nid, snap)
         _merge_gpu(nid, snap)
         _merge_rdma(nid, snap)
@@ -1054,6 +1208,14 @@ def _sample_one(node):
             _merge_cpu_partage(nid, snap)        # isolés vs ordonnançables (best-effort)
         except Exception as e:
             log.debug("node_health partage CPU nœud %s: %s", nid, e)
+        try:
+            _push_housekeeping(node, snap)       # agent + its host commands off dedicated cores
+        except Exception as e:
+            log.warning("node_health housekeeping node %s: %s", nid, e)
+        try:
+            _push_isolation(node, snap)          # dedicated cores: kernel partitions, nobody else on them
+        except Exception as e:
+            log.warning("node_health isolation node %s: %s", nid, e)
         # Prép hôte AVANT `_record` : la dérive (sonde lente, ≤1×/30 min) peut rafraîchir le
         # verdict que `_merge_prep` publie dans CE snapshot — sinon le verdict tout juste calculé
         # n'apparaîtrait qu'au tour suivant.

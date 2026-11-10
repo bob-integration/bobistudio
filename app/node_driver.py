@@ -581,6 +581,22 @@ def host_exec(node, cmd, input_data=None, timeout=300):
     return (int(data.get("rc", 1)), data.get("stdout", ""), data.get("stderr", ""))
 
 
+def set_housekeeping(node, cpus):
+    """Agent ≥ 0.31.0: confines the agent and everything it launches to `cpus` ("" = unconfined).
+    Returns (ok, data)."""
+    return _call(node, "POST", "/v1/host/housekeeping", body={"cpus": cpus}, timeout=10)
+
+
+def set_isolation(node, containers, mce_off=None):
+    """Agent ≥ 0.32.0: makes each container's cgroup a cpuset partition inside its reserved CPUs
+    ({docker name: reserved cpus}; {} releases them all). `mce_off` (agent ≥ 0.32.3): turn the
+    kernel's machine-check polling off while something is partitioned. Returns (ok, data)."""
+    body = {"containers": containers}
+    if mce_off is not None:
+        body["mce_off"] = bool(mce_off)
+    return _call(node, "POST", "/v1/host/isolation", body=body, timeout=15)
+
+
 # ─── Transfert de fichiers nœud → nœud (agent ≥ 0.24.0, port 9101) ──────────────────────────
 TRANSFER_PORT = 9101
 TRANSFER_MIN_AGENT = (0, 24, 0)

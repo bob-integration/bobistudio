@@ -94,13 +94,26 @@ jobs:
           # the images that need a plugin report NOT CHECKED.
           token: ${{ secrets.SUBMODULES_TOKEN || github.token }}
 
-      # No disk juggling here, and that is a MEASUREMENT, not an oversight. The received wisdom is
-      # that a runner has ~14 GB free and that the pre-installed toolchains must be deleted first;
-      # this workflow started that way. Measured on its first real run (2026-11-02, public
-      # repository, run 41401381117): 145 GB of disk, 88 GB free BEFORE the build and 91 GB after.
-      # The deletion freed 18 GB nobody needed and cost 77 s on every run, so it is gone. Peak
-      # usage is printed at the end of the job — if a build ever dies on "no space left on
-      # device", that is where to look before adding the step back.
+      # DISK IS MEASURED PER RUNNER, and the two repositories do not get the same one. This
+      # workflow deleted the pre-installed toolchains at first; the step was then removed on a
+      # measurement taken on the PUBLIC repository (2026-11-02, run 41401381117): 145 GB of disk,
+      # 88 GB free before the build, and the deletion freed 18 GB nobody needed for 77 s a run.
+      # That reading held only there. On the PRIVATE repository: 72 GB of disk and 14 GB free
+      # (run 42659820495, 2026-11-09) — the received wisdom's own figure. Run 42685121688
+      # therefore died extracting a CUDA layer of `compute-gpu`, after three images, with the
+      # disk at 100 %. So the cleanup is back, under the condition that was missing: only where
+      # there is no room. Peak usage is still printed at the end of the job.
+      - name: Free disk space (private repository only)
+        # Only toolchains this job cannot use, and all of them are rebuilt from the runner image
+        # on the next run — the VM is thrown away. `/opt/hostedtoolcache` is deliberately NOT
+        # touched: the next step fills it with Python 3.13. The two `df` frame the operation so
+        # the gain is read in the log instead of being assumed.
+        if: github.repository != 'bob-integration/bobistudio'
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+                      /usr/local/share/boost /usr/share/swift || true
+          df -h / | tail -1
 
       - name: Python 3.13
         uses: actions/setup-python@v5
@@ -139,6 +152,7 @@ jobs:
           python tools/build_images_ci.py \
             ${{ github.event.inputs.images && format('--only {0}', github.event.inputs.images) || '' }} \
             --skip "${{ github.event.inputs.skip || 'mtl' }}" \
+            ${{ github.repository == 'bob-integration/bobistudio' && '' || '--prune-cache' }} \
             --timeout "${{ github.event.inputs.timeout || '3600' }}"
 
       - name: What was built

@@ -101,6 +101,25 @@ def gateway_ready():
     return bool(st.get("webrtc_enabled") and st.get("webrtc_gateway_ip"))
 
 
+def raison_sans_passerelle():
+    """Pourquoi il n'y a pas de passerelle, et PAR OÙ SORTIR — les deux causes n'ont pas la
+    même porte.
+
+    ★ Le message disait « Réglages → WebRTC » dans tous les cas. Or cet onglet est servi par
+    le manifeste de `services/webrtc_gateway` : service NON INSTALLÉ → pas d'onglet, et le
+    message renvoyait vers une page qui n'existe pas. C'est l'état par défaut d'une
+    installation depuis le dépôt public, où seuls deux sous-modules sont embarqués ; le
+    service s'y ajoute depuis la page Catalogue (ou par import d'un `.mxlservice` hors ligne).
+
+    Trois états, trois sorties : absent → Catalogue ; présent mais éteint ou pas déployé →
+    son propre onglet."""
+    from . import core_plugins
+    if not core_plugins.is_service("webrtc_gateway"):
+        return ("Le service WebRTC n'est pas installé (Réglages → Catalogue, ou import "
+                "d'un paquet .mxlservice si ce site est hors ligne).")
+    return "La passerelle WebRTC n'est pas déployée/activée (Réglages → WebRTC)."
+
+
 def _ip_navigateur():
     """IP de la passerelle WebRTC TELLE QUE LA VOIT UN NAVIGATEUR.
 
@@ -504,7 +523,7 @@ def create_iter(uid):
     et y déploie l'encodeur streamer."""
     yield f"Création du monitor de l'utilisateur #{uid}…"
     if not gateway_ready():
-        yield "❌ La passerelle WebRTC n'est pas déployée/activée (Réglages → WebRTC)."
+        yield "❌ " + raison_sans_passerelle()
         return
 
     c = _container_for(uid)
@@ -916,7 +935,7 @@ def create_dedicated_iter(player_vmid, shm=None, audio_shm=None, suffix=None):
     from .database import db_get_projects
 
     if not gateway_ready():
-        yield "❌ La passerelle WebRTC n'est pas déployée/activée (Réglages → WebRTC)."
+        yield "❌ " + raison_sans_passerelle()
         return
 
     player = db_get_container(player_vmid)
