@@ -96,7 +96,16 @@ def ensure_build():
     #    un COMMIT : le contenu reste identique mais l'étiquette dit encore l'ancien hash (et un
     #    `-dirty` qui n'a plus lieu d'être). Sans ce second test, on repart pour un libellé faux,
     #    simplement dans l'autre sens.
-    _hash_ok = (builder.current_build_info() or {}).get("git_hash") == builder._git_hash()
+    # ⚠ HORS DÉPÔT GIT, LA COMPARAISON N'A PAS DE SENS — et elle coûte cher. Une instance
+    # installée depuis l'archive GitHub n'a pas de `.git` : `_git_hash()` rend None, tandis que
+    # `build_info.json` porte depuis le 2026-11-10 le SHA que l'installeur connaissait
+    # (`install.py:write_build_info`). Comparer les deux donnerait « l'identité a changé » à
+    # CHAQUE appel, donc une reconstruction complète du zip à chaque ouverture de la page Flotte.
+    # On ne compare que si on sait lire l'identité locale ; sinon on s'abstient, et le seul
+    # critère reste le mtime du code — qui, lui, est mesurable partout.
+    _local = builder._git_hash()
+    _hash_ok = (_local is None
+                or (builder.current_build_info() or {}).get("git_hash") == _local)
     if os.path.exists(ZIP_PATH) and os.path.getmtime(ZIP_PATH) >= _code_mtime() and _hash_ok:
         return None
     av = builder.available()

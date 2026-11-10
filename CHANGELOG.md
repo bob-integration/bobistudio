@@ -5,6 +5,29 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Bobi.Studio 1.0 — 2026-11-10
+
+Bobi.Studio orchestre une production broadcast sur des conteneurs Docker : sources, traitements,
+composition, médias, streams et mesure, reliés par le bus MXL en mémoire partagée et par le ST 2110
+sur le réseau. Chaque fonction est un plugin, installable depuis le Catalogue.
+
+**Compatibilité des plugins.** Chaque plugin déclare la version minimale du cœur qu'il exige.
+Le Catalogue, l'installation et le déploiement refusent un plugin trop récent pour le cœur, et
+disent pourquoi.
+
+**Six plugins de plus au Catalogue.** Cartouchier, mire de synchro A/V, délai, split, Stream In et
+mélangeur sont publiés, avec leur documentation en français et en anglais. Le Catalogue en
+propose désormais douze.
+
+**Une instance installée depuis GitHub connaît sa version.** Elle se présentait jusqu'ici comme
+« dev », et deux contrôleurs au code différent paraissaient identiques dans la page Flotte. Elle
+porte maintenant la version demandée à l'installation et son empreinte.
+
+**Limite connue.** L'installeur se pilote au clavier : il ne s'exécute pas encore sans terminal,
+ce qui empêche une installation scriptée.
+
+---
+
 ## Un cœur dédié est maintenant isolé par le noyau — 2026-11-09
 
 **Réserver des cœurs ne suffisait pas : il fallait aussi que rien d'autre n'y passe.** Les cœurs

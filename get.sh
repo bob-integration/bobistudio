@@ -93,7 +93,7 @@ done
 #
 # ⚠ À BUMPER À CHAQUE MODIFICATION DE CE FICHIER, sinon elle ment — et une version qui ment est
 # pire que pas de version, puisqu'on lui fait confiance pour écarter une piste.
-INSTALLEUR_VERSION="2026.10.24"
+INSTALLEUR_VERSION="2026.11.10"
 
 # ─── Langue de l'installateur ────────────────────────────────
 #
@@ -365,6 +365,28 @@ except Exception:
     pass' 2>/dev/null || true
 }
 
+# SHA du commit que la ref installée désigne dans le dépôt PRINCIPAL.
+#
+# ★ À QUOI IL SERT. L'archive que sert codeload n'a pas de `.git`, et `build_dist` n'a pas
+# tourné : sans cette ligne, l'instance installée ne sait pas ce qu'elle est et se présente
+# comme « dev » (mesuré le 2026-11-10). On le demande donc UNE fois, ici, parce qu'après
+# l'installation plus personne ne peut le retrouver. `install.py` l'écrit dans build_info.json.
+#
+# ⚠ MÊME PIÈGE QUE `_sha_sous_module`, MÊME REMÈDE : le `|| true` final n'est pas décoratif.
+# Sous `set -euo pipefail`, l'appelant écrit `sha="$(_sha_depot_principal)"` — une affectation
+# depuis une substitution de commande PREND le code de retour. Quota anonyme épuisé (60/h et
+# par IP), proxy, coupure : sans lui, `set -e` tuerait le script SANS UN MOT juste avant de
+# lancer l'installeur. Une identité manquante ne doit jamais coûter l'installation.
+_sha_depot_principal() {
+  "${_curl[@]}" "$API/repos/$REPO/commits/$REF" 2>/dev/null \
+    | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    if isinstance(d, dict) and d.get("sha"): print(d["sha"])
+except Exception:
+    pass' 2>/dev/null || true
+}
+
 _recuperer() {   # <dépôt> <destination> <étiquette> [ref]
   local depot="$1" dest="$2" quoi="$3" ref="${4:-$REF}"
   local url="$CODELOAD/$depot/tar.gz/refs/heads/$ref"
@@ -459,4 +481,10 @@ echo
 cd "$SRC"
 # La langue choisie plus haut suit : l'installeur ne repose pas la question.
 export BOBI_LANG="$UI"
+# ★ ET CE QU'ON SAIT DE LA SOURCE. La ref est gratuite (c'est nous qui l'avons choisie) ;
+# l'empreinte coûte une requête d'API et peut rester vide — `install.py` écrit alors la ref
+# seule, ce qui reste très au-dessus de « dev ».
+export BOBI_SRC_REF="$REF"
+BOBI_SRC_SHA="$(_sha_depot_principal)"
+export BOBI_SRC_SHA
 exec python3 install/install.py

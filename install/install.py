@@ -32,6 +32,7 @@ import tempfile
 import textwrap
 import time
 import urllib.request
+import uuid
 import zipfile
 
 try:
@@ -141,6 +142,8 @@ STR = {
         "h_svc": "Service systemd (bobistudio)", "svc_copied": "Fichier service copié",
         "svc_active": "Service bobistudio : actif",
         "svc_bad": "Service bobistudio : {s} — voir : journalctl -u bobistudio -n 30",
+        "build_kept": "build_info.json déjà présent — conservé",
+        "build_written": "identité posée : {l}",
         "cfg_kept": "config_local.py déjà présent — conservé",
         "cfg_written": "config_local.py écrit (sans Proxmox)",
         "agent_local_ok": "Agent local enregistré (127.0.0.1:9100)",
@@ -261,6 +264,8 @@ STR = {
         "h_svc": "systemd service (bobistudio)", "svc_copied": "Service file copied",
         "svc_active": "bobistudio service: active",
         "svc_bad": "bobistudio service: {s} — see: journalctl -u bobistudio -n 30",
+        "build_kept": "build_info.json already present — kept",
+        "build_written": "identity recorded: {l}",
         "cfg_kept": "config_local.py already present — kept",
         "cfg_written": "config_local.py written (no Proxmox)",
         "agent_local_ok": "Local agent registered (127.0.0.1:9100)",
@@ -887,6 +892,49 @@ def install_service_bare(dest):
         warn(t("svc_bad", s=(state or "").strip()))
 
 
+def write_build_info(dest):
+    """Écrit `build_info.json` avec CE QUE L'INSTALLEUR SAIT : la ref demandée et son commit.
+
+    ★ POURQUOI ICI. Une installation depuis l'archive GitHub n'a pas de `.git`, et
+    `build_dist` n'a pas tourné : `builder.current_build_info()` retombait donc sur son repère
+    « dev », sans `build_id`, sans empreinte — alors que `v0.9.15` avait été demandé
+    explicitement. Deux contrôleurs installés ainsi, avec du code DIFFÉRENT, se présentaient
+    tous les deux comme « dev » et se comparaient comme identiques dans la page Flotte et dans
+    l'aperçu Push/Pull. Mesuré le 2026-11-10 sur une installation vierge.
+
+    L'installeur est le SEUL moment où cette information existe : `get.sh` a choisi la ref et
+    demandé son SHA à l'API. Après lui, plus personne ne peut la retrouver.
+
+    ⚠ ON N'ÉCRASE JAMAIS un `build_info.json` existant : une archive produite par `build_dist`
+    en embarque un, et il décrit mieux son contenu que nous. On ne l'écrit pas non plus quand
+    `get.sh` ne nous a rien dit (installation depuis une source locale) : l'arbre a alors son
+    `.git`, et le repli de `builder` sait lire l'empreinte tout seul.
+
+    ⚠ `git_hash` PEUT RESTER None — quota d'API épuisé, réseau coupé. Une ref sans empreinte
+    reste très au-dessus de « dev » : on écrit ce qu'on a plutôt que rien.
+    """
+    ref = (os.environ.get("BOBI_SRC_REF") or "").strip()
+    sha = (os.environ.get("BOBI_SRC_SHA") or "").strip() or None
+    if not ref:
+        return
+    path = os.path.join(dest, "build_info.json")
+    if os.path.isfile(path):
+        ok(t("build_kept"))
+        return
+    # Le libellé porte la ref, qui est ce que l'exploitant a CHOISI, et l'empreinte courte en
+    # second — l'inverse mettrait en avant ce qu'aucun humain ne retient.
+    label = ref + ((" · %s" % sha[:12]) if sha else "")
+    try:
+        with open(path, "w") as f:
+            json.dump({"build_id": uuid.uuid4().hex, "label": label,
+                       "built_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                       "git_hash": sha}, f, indent=2)
+    except OSError:
+        # Pas de quoi arrêter une installation par ailleurs saine.
+        return
+    ok(t("build_written", l=label))
+
+
 def write_config_local(dest):
     """Amorce `config_local.py` (valeurs de SITE : hôtes, jetons, secrets). N'écrase pas l'existant.
 
@@ -1120,6 +1168,7 @@ def install_controller(zip_path):
         bail(t("e_nonmos"))
     _extract(zip_path, APP_DIR)
     ok(t("code_deployed", d=APP_DIR))
+    write_build_info(APP_DIR)
     write_config_local(APP_DIR)
     install_deps_bare(APP_DIR)
     install_clock_bare(APP_DIR)
