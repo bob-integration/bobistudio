@@ -67,6 +67,14 @@ verifie("def grain(self):" in R[:R.index("def index_time_ns")], "1i. AudioReader
 
 # ================================================================ 2. orchestrateur
 print("── 2. réglage du cœur, résolu au rendu ─────────────────────────────────────────")
+# La base AVANT le premier import qui y touche : `app.settings` ouvre la base au chargement,
+# et la surcharger après ne corrige rien — chaque fil garde sa connexion (cf. app/database.py).
+# Sans ça le test ouvre la base de PRODUCTION, en lecture seule mais l'agrégat de ci.yml le
+# refuse : la CI publique de la 0.9.15 est tombée là-dessus, tous les tests verts par ailleurs.
+import tempfile  # noqa: E402
+from app import database as _database  # noqa: E402
+_database.DB_PATH = os.path.join(tempfile.mkdtemp(prefix="verif_grain_"), "principale.db")
+_database.init_db()
 from app import plugins, settings  # noqa: E402
 
 reglages = {}
