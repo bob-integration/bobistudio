@@ -110,6 +110,22 @@ def _io_media_ports(node, params, pins_key):
     return True, ports_meta, auto_ports, _slot_port
 
 
+def _is_tx_input_receiver(receiver, container):
+    """A 2110 engine owns two kinds of NMOS receivers under the same vmid tag: its RTP receivers
+    (the 2110 SOURCES it takes from the network) and one MXL-transport receiver per TX slot (the bus
+    input of each OUTPUT). The second kind is not a source. Listed with the first, an engine with
+    6 sources and 64 outputs showed 70 "RX" rows on the Sources page (seen 2026-11-11)."""
+    import json as _json
+    if not str((receiver or {}).get("transport") or "").endswith(":mxl"):
+        return False
+    dc = (container or {}).get("deploy_config")
+    try:
+        dc = _json.loads(dc) if isinstance(dc, str) else (dc or {})
+    except ValueError:
+        return False
+    return dc.get("type") == "2110_io"
+
+
 def _compute_receivers_detail(only_vmid=None):
     """Agrège pour chaque container NMOS : ses receivers (IS-04 IDs + state IS-05),
     + un fetch live des fps par pipeline depuis le /metrics du container.
@@ -136,6 +152,8 @@ def _compute_receivers_detail(only_vmid=None):
         except (ValueError, TypeError, IndexError):
             continue
         if only_vmid is not None and vmid != only_vmid:
+            continue
+        if _is_tx_input_receiver(r, by_vmid.get(vmid)):
             continue
         by_container.setdefault(vmid, []).append(r)
 

@@ -14,8 +14,8 @@ from flask import jsonify, request
 
 from . import bp, _node_host
 from .shared import _fetch_host_nics, _mtl_total_queues, _ptp_apply_core
-from .images import _build_host, _present_tags, _image_tag, _image_present
-from .nodes import _node_build_status
+from .images import _build_host, _present_tags, _image_tag, _image_present, _IMAGES, IMAGE_ORDER
+from .nodes import _node_build_status, _node_wants
 from ..auth import require_perm, require_login
 from ..addressing import (controller_ipv4s as _controller_ipv4s,
                           controller_on_subnet as _controller_on_subnet,
@@ -1913,12 +1913,22 @@ def api_node_readiness(node_id):
         if tag in present_tags:                       # l'agent confirme le tag exact
             return True
         return _image_present(host, tag)              # sinon, inspection autoritative du tag attendu
-    out["images"] = {
-        "compute": _img_ok("compute") if "compute" in caps_list else False,
-        "media":   _img_ok("media") if "media" in caps_list else False,
-        "webrtc":  _img_ok("webrtc") if "webrtc" in caps_list else False,
-        "mtl":     _img_ok("mtl") if "io2110" in caps_list else False,
-    }
+    # ★ WAS THE FOURTH HAND-WRITTEN IMAGE LIST (2026-11-13). It named four images out of seven,
+    # and it decided the node checklist: `gui` and `decklink` had no line there, so a node missing
+    # its Blackmagic image looked completely ready. Derived from `_IMAGES` now (see IMAGE_ORDER),
+    # and it carries ONLY the images this node is meant to run — an image it does not want is not
+    # « missing », it is none of its business, and reporting it as False would show a red cross on
+    # every node.
+    out["images"] = {}
+    out["images_node_only"] = []
+    out["image_builds"] = {}
+    for which in IMAGE_ORDER:
+        if not _node_wants(which, node, caps_list):
+            continue
+        out["images"][which] = _img_ok(which)
+        if _IMAGES[which].get("node_only"):
+            out["images_node_only"].append(which)
+            out["image_builds"][which] = _node_build_status(node_id, which)
     return jsonify(out)
 
 @bp.route("/api/nodes/<int:node_id>/docker-install", methods=["POST"])

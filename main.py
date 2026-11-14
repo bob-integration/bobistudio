@@ -68,6 +68,11 @@ app.jinja_loader = ChoiceLoader([
     FileSystemLoader("services"),
 ])
 app.jinja_env.filters['from_json'] = lambda s: json.loads(s) if s else None
+# Gestionnaires d'erreur : SANS EUX, toute exception non rattrapée rendait la page HTML par défaut
+# de Flask, et chaque appelant du navigateur retombait sur « HTTP 500 » — un nombre qui ne dit ni
+# la cause ni si elle a un rapport avec ce que l'opérateur vient de faire (cf. app/http_errors.py).
+from app import http_errors as _http_errors
+_http_errors.register(app)
 
 def _asset_v(path):
     """Cache-buster pour les assets statiques servis hors blueprint Flask (référencés en dur
@@ -942,6 +947,18 @@ def _start_triggers():
 # Plafond de corps de requête de Waitress (défaut 1 Gio). Doit rester AU-DESSUS de toute limite de route :
 # la plus haute aujourd'hui est le dépôt d'archive de pilote hôte (2 Gio, app/routes/host_drivers.py) ; les
 # envois de médias passent par morceaux (media_upload_api) et ne sont pas concernés.
+#
+# ★ CE PLAFOND NE PARLE QUE DES AUTRES PLAFONDS (2026-11-13). Il a été monté de 1 à 4 Gio le
+#   2026-10-27 parce qu'il refusait l'archive Desktop Video — refus exact, conclusion fausse : la
+#   comparaison s'est faite entre limites déclarées, jamais avec l'ENDROIT où les octets atterrissent.
+#   Waitress ne diffuse pas : au-delà de 512 Kio il écrit le corps ENTIER dans TMPDIR avant d'appeler
+#   l'application. Sur une Debian standard, TMPDIR est /tmp, un tmpfs — de la RAM. Mesuré le
+#   2026-11-13 sur une installation d'essai : 3,8 Gio de RAM, /tmp en tmpfs de 2 Gio, ce plafond à
+#   4 Gio. La même archive (2,09 Go) a donc été acceptée par toutes les limites, a rempli le tmpfs
+#   à 38 Mo de la fin, et a laissé son tampon ouvert : /tmp est resté plein et TOUTE requête avec un
+#   corps a échoué ensuite — y compris l'import d'un plugin, qui n'a aucun rapport. L'opérateur a vu
+#   « HTTP 500 » sur un écran sans lien avec son téléversement.
+#   D'où `app/spool.py` : l'espace de transit est CHOISI (durable, mesuré), et ce plafond y est borné.
 _WAITRESS_BODY_MAX = 4 << 30
 # Fils de service de Waitress. Chaque flux long (SSE du relais d'état, journal de déploiement,
 # lecture de média) en occupe UN pendant toute sa durée — cf. Monitoring → Connexions.
@@ -1205,9 +1222,21 @@ if __name__ == "__main__":
         # `create_server` + `run` plutôt que `serve` (qui fait exactement ces deux appels) : on garde
         # le serveur pour lire SON compteur de fils occupés et SA file d'attente — Monitoring →
         # Connexions, et l'alerte de saturation (app/http_connections.py).
+        # L'espace de transit AVANT le serveur : c'est `tempfile.tempdir` que Waitress consulte
+        # au moment de déborder, et il doit donc être posé avant la première requête.
+        from app import spool
+        spool.configure(required=_WAITRESS_BODY_MAX)
+        # Le plafond annoncé est borné par la place RÉELLE. Au-dessus, c'est une promesse que la
+        # machine ne peut pas tenir, et dont l'opérateur n'apprend la fausseté qu'à la fin d'un
+        # long téléversement — avec la machine inutilisable par-dessus le marché.
+        _corps_max = min(_WAITRESS_BODY_MAX, spool.capacity())
+        if _corps_max < _WAITRESS_BODY_MAX:
+            log.warning("request body cap lowered from %d to %d byte(s): %s holds no more "
+                        "(%s). A larger upload is refused up front instead of dying part-way.",
+                        _WAITRESS_BODY_MAX, _corps_max, spool.directory(), spool.state()["reason"])
         srv = create_server(web_mode.EcouteMachines(app), host="0.0.0.0", port=5000,
                             threads=_WAITRESS_THREADS, recv_bytes=262144,
-                            max_request_body_size=_WAITRESS_BODY_MAX)
+                            max_request_body_size=max(_corps_max, 1 << 20))
         stream_hub.install_waitress(srv)          # flux longs remis au distributeur (aucun fil gardé)
         http_connections.attach_waitress(srv, "http")
         http_connections.start_sampler()

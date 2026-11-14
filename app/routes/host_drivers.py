@@ -193,10 +193,36 @@ def api_host_driver_upload(node_id, kind):
         return bad
     name = request.args.get("name") or ""
     length = request.content_length or 0
+    # ★ A REFUSAL THAT NAMES NOTHING AND LEAVES NO TRACE (2026-11-13). Both refusals below
+    # returned a bare code. Neither had a translation, so the page fell back to its generic
+    # « Erreur » — with no detail, no log line, and nothing to tell a refused upload apart from a
+    # broken connection. An operator uploading the Blackmagic archive was left with one word.
+    # The `detail` travels to the page, and the log line survives the page being closed.
     if not _NAME_RE.match(name):
-        return jsonify({"ok": False, "error": "bad_name"}), 400
+        log.warning("host-driver upload refused (node %s, %s): rejected file name %r",
+                    node_id, kind, name[:80])
+        return jsonify({"ok": False, "error": "bad_name", "detail": name[:80]}), 400
     if length <= 0 or length > _UPLOAD_MAX:
-        return jsonify({"ok": False, "error": "bad_size"}), 400
+        log.warning("host-driver upload refused (node %s, %s): announced body of %d byte(s), "
+                    "cap %d — 0 means the request carried no Content-Length",
+                    node_id, kind, length, _UPLOAD_MAX)
+        return jsonify({"ok": False, "error": "bad_size",
+                        "detail": "%d o (max %d o)" % (length, _UPLOAD_MAX)}), 400
+    # ★ THE CAP THAT ONLY KNEW ABOUT OTHER CAPS (2026-11-13). `_UPLOAD_MAX` is declared; the room
+    # the bytes actually need is measured. Waitress writes the WHOLE body into the transit
+    # directory before this function runs (cf. app/spool.py), so a body larger than that directory
+    # does not get refused — it dies on ENOSPC part-way through, leaves its buffer behind, and
+    # takes every later request with a body down with it. Measured: a 2.09 GB driver archive
+    # passed every declared cap and made an unrelated plugin import answer « HTTP 500 ».
+    # Refusing up front costs the operator one message; the other path cost them an evening.
+    from .. import spool
+    capacite = spool.capacity()
+    if length > capacite:
+        log.warning("host-driver upload refused (node %s, %s): body of %d byte(s), transit "
+                    "directory %s holds %d (%s)", node_id, kind, length, spool.directory(),
+                    capacite, spool.state()["reason"])
+        return jsonify({"ok": False, "error": "no_spool_space",
+                        "detail": "%d o > %d o" % (length, capacite)}), 507
     ok, data = node_driver.host_driver_upload(node, kind, name, request.stream, length)
     if not ok:
         return jsonify(data if isinstance(data, dict) else _agent_error(data)), 502

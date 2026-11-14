@@ -5,6 +5,35 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Bobi.Studio 1.0.1 — 2026-11-14
+
+**Carte DeckLink : le pilote s'installe sur un nœud sans accès Internet.** Les prérequis sont pris
+dans le paquet hors ligne ou dans les paquets déposés avec l'archive Blackmagic. S'il en manque un,
+l'écran dit lequel et où le déposer.
+
+**L'image `decklink` se construit depuis le nœud.** Elle n'apparaissait sur aucun écran : ni le
+panneau Images, ni la liste de préparation du nœud ne la montraient. Un refus de déploiement nomme
+maintenant sa vraie cause.
+
+**Un gros téléversement ne bloque plus le contrôleur.** L'archive Blackmagic (2 Go) remplissait la
+mémoire du contrôleur, et toutes les requêtes suivantes échouaient en « HTTP 500 ». Le transit se fait
+sur disque, et un fichier trop gros pour la place disponible est refusé d'avance, avec la raison.
+
+**NMOS : correctif de sécurité.** Les valeurs reçues du réseau sont validées avant d'être passées à
+une commande sur le nœud. Le correctif est aussi disponible seul, dans le service NMOS 0.4.5, depuis
+le Catalogue.
+
+**Aussi corrigé.**
+- Réglages → Nœuds : dès qu'un nœud avait une image GPU, la liste affichait « Erreur de chargement
+  des nœuds » au lieu des nœuds, et on ne pouvait plus en supprimer un.
+- Un plugin dont la version épinglée n'existe plus n'est plus relancé en boucle : le conteneur est mis
+  en quarantaine tout de suite.
+- Sans groupe de lecture ni de synchronisation, l'orchestrateur ne lit plus la table des conteneurs
+  quatre fois par seconde.
+- Sources 2110 : les entrées de bus d'un moteur ne sont plus listées comme des sources.
+
+---
+
 ## Bobi.Studio 1.0 — 2026-11-10
 
 Bobi.Studio orchestre une production broadcast sur des conteneurs Docker : sources, traitements,

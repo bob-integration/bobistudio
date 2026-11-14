@@ -253,6 +253,20 @@ _IMAGES = {
                           # patché planar) et controller.py importe bobimxl pour la simu/txgen.
                           _BOBIMXL, _PLANAR_PATCH, _PLANAR_SLICES_PATCH, _FABRICS_SLICE_PATCH, _FABRICS_FENCE_PATCH]},
 }
+# ── DISPLAY ORDER, DERIVED FROM `_IMAGES` ───────────────────────────────────────────────
+# ★ FOUR HAND-WRITTEN LISTS THAT FILTERED IN SILENCE (2026-11-13). The Images panel, the node
+# checklist, `/readiness` and the browser's `_imgMap` each enumerated the images by hand, and none
+# of them came from `_IMAGES`. Each one therefore dropped whatever it did not know about: `gui`
+# (2026-10-18) and `decklink` (2026-11-01) reached no reader at all. The product offered to build
+# an image that no screen showed, and its own refusal message pointed at a screen that could not
+# exist — the operator reported « I cannot see what to build a decklink image from », and they
+# were right. A missing row does not look like a bug; it looks like nothing to do.
+# The ORDER stays a display decision. COMPLETENESS no longer is: a key added to `_IMAGES` and
+# forgotten here lands at the end of the list rather than nowhere.
+_PREFERRED_ORDER = ("compute", "compute-gpu", "media", "webrtc", "mtl", "gui", "decklink")
+IMAGE_ORDER = tuple([w for w in _PREFERRED_ORDER if w in _IMAGES]
+                    + [w for w in _IMAGES if w not in _PREFERRED_ORDER])
+
 _img_build = {w: {"status": "idle", "msg": ""} for w in _IMAGES}
 _img_lock = threading.Lock()
 _node_img_build = {}   # "{node_id}:{which}" → {status:idle|building|ok|error, msg} (build PAR-NŒUD via agent)
@@ -1095,6 +1109,10 @@ def _build_node_only_worker(which):
         with _img_lock:
             _img_build[which] = {"status": "error", "msg": str(e),
                                  "msg_key": e.key, "msg_params": e.params}
+        # ★ THE `return` THAT WAS MISSING (2026-11-13). Without it, execution fell through to the
+        # loop below with `ctx` unbound — a NameError that OVERWROTE the one clear message of the
+        # whole function (« base image <tag> absent from the node ») with a Python traceback.
+        return
     except Exception as e:
         with _img_lock:
             _img_build[which] = {"status": "error", "msg": str(e)}
@@ -1363,7 +1381,8 @@ def _build_image_worker(which):
 def api_images_status():
     host = _build_host()
     local = _build_is_local()
-    out = {"_host": "local" if local else host}
+    # `_order` is served so the browser stops keeping its own list (see IMAGE_ORDER).
+    out = {"_host": "local" if local else host, "_order": list(IMAGE_ORDER)}
     for which, spec in _IMAGES.items():
         tag = _image_tag(which)
         with _img_lock:

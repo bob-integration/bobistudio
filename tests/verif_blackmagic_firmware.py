@@ -40,7 +40,8 @@ BOOT = "11111111-2222-3333-4444-555555555555"
 
 
 def sonde(liste=RELEVE_REEL, tool=True, list_rc=0, noeuds=12, boot=BOOT, flashe="",
-          paquet="16.4a1", fichiers=(), dkms=True, headers=True):
+          paquet="16.4a1", fichiers=(), dkms=True, headers=True, headers_meta=True,
+          libgl=True):
     reponses = {
         "tool": (0, "/usr/bin/DesktopVideoUpdateTool") if tool else (1, ""),
         "list": (list_rc, liste),
@@ -51,6 +52,12 @@ def sonde(liste=RELEVE_REEL, tool=True, list_rc=0, noeuds=12, boot=BOOT, flashe=
         "files": (0, "\n".join(fichiers)),
         "dkms": (0, "/usr/sbin/dkms") if dkms else (1, ""),
         "headers": (0, "/lib/modules/x/build") if headers else (1, ""),
+        # ★ LA PRÉSENCE SE LIT SUR LE CODE DE RETOUR, pas sur la sortie (`gather_facts` :
+        #   `rc_meta == 0`) — d'où `(0, "")` pour « présent ». Une sonde qui encoderait
+        #   l'inverse rendrait ces deux prérequis manquants dans TOUS les cas du fichier,
+        #   et la garde mesurerait autre chose que ce qu'elle annonce.
+        "headers_meta": (0, "") if headers_meta else (1, ""),
+        "libgl": (0, "") if libgl else (1, ""),
     }
     bm._marqueur_lu = lambda: flashe          # noqa: SLF001 — on injecte le marqueur
     return lambda nom: reponses[nom]
@@ -194,7 +201,36 @@ verifier("prérequis manquant : on le DIT au lieu d'échouer à mi-chemin",
          e["status"] == "missing_prereqs", e["status"])
 verifier("et on NOMME ce qui manque",
          "dkms" in (e["plan"]["params"].get("missing") or ""), e["plan"]["params"].get("missing"))
-verifier("on ne propose pas de lancer une installation vouée à l'échec", e["can_run"] is False)
+# ★ TRANCHÉ LE 2026-11-14 EN FAVEUR DU PILOTE : `missing_prereqs` est devenu EXÉCUTABLE en
+#   1.3.0, et ce fichier attendait encore `can_run is False`, c'est-à-dire le cul-de-sac d'avant.
+#   Ce qui a changé n'est pas la règle mais le geste disponible : le plan porte désormais DEUX
+#   étapes, `prereqs` puis `install`, et `install_prerequisites` pose les .deb déposés à côté de
+#   l'archive avant de tenter APT. Sur un nœud sans accès sortant — le cas normal ici — nommer ce
+#   qui manque sans accepter qu'on l'apporte ne laissait qu'un shell sur l'hôte, ce que cet écran
+#   existe pour éviter.
+#   L'INTENTION DU CAS NE CHANGE PAS pour autant : ce qui serait voué à l'échec, c'est de lancer
+#   l'installation du PILOTE sans ses prérequis. C'est donc l'ORDRE des étapes qu'il faut tenir,
+#   et c'est ce que ce cas mesure maintenant — un plan qui poserait `install` en tête serait
+#   exactement la panne de 1.2.x, qu'un simple `can_run is True` ne verrait pas.
+verifier("un geste existe : les prérequis s'installent, l'archive est déjà là",
+         e["can_run"] is True, e["can_run"])
+verifier("et les prérequis passent AVANT l'installation du pilote",
+         [p["id"] for p in e["plan"]["steps"]] == ["prereqs", "install"],
+         [p["id"] for p in e["plan"]["steps"]])
+verifier("ce n'est plus l'archive qu'on réclame, mais les paquets manquants",
+         "dkms_" in (e.get("upload_hint") or ""), e.get("upload_hint"))
+
+# ★ LES DEUX PRÉREQUIS AJOUTÉS EN 1.3.0 N'AVAIENT AUCUN CAS, et ce sont EXACTEMENT ceux sur
+#   lesquels dpkg a refusé le 2026-11-13, pendant que l'écran affichait « dkms oui, en-têtes
+#   oui ». Un prérequis vérifié par le pilote et par aucune garde se périme sans bruit.
+for nom, arg in (("le méta-paquet d'en-têtes", "headers_meta"), ("libgl1", "libgl")):
+    e = bm.state(sonde(paquet="", liste="", tool=False, noeuds=0, fichiers=(ARCHIVE,),
+                       **{arg: False}))
+    verifier("%s manquant est DÉTECTÉ" % nom, e["status"] == "missing_prereqs", e["status"])
+    verifier("et il est NOMMÉ à l'exploitant",
+             arg.replace("headers_meta", "headers meta-package").replace("libgl", "libgl1")
+             in (e["plan"]["params"].get("missing") or ""),
+             e["plan"]["params"].get("missing"))
 
 # Le pilote absent passe AVANT tout le reste : sans lui il n'y a ni outil, ni /dev/blackmagic.
 e = bm.state(sonde(paquet="", liste=RELEVE_REEL, noeuds=12))

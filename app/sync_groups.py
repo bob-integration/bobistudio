@@ -1208,7 +1208,9 @@ class Engine:
     def tick(self):
         self.ticks += 1
         gs = self.groups()
-        players = self.players()
+        # No group, nothing to drive: skip the container table. Reading and decoding it costs tens of
+        # milliseconds under the interpreter lock, on every instance, group or not.
+        players = self.players() if gs else {}
         if time.time() - self.last_poll >= POLL_S:
             self.last_poll = time.time()
             self._poll(gs, players)

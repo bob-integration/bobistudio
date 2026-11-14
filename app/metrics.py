@@ -73,6 +73,22 @@ def reset_crash_loop(vmid):
     _reset_cadence(vmid)
 
 
+def _redeploy_impossible(type_, params):
+    """Reason why redeploying this plugin from its persisted config can never succeed, or None.
+    Only failures that no retry can heal belong here: today, a pinned plugin version that cannot be
+    recalled (`plugins.deploy_files` refuses it). Anything uncertain returns None and is retried."""
+    try:
+        from . import plugins
+        if not plugins.is_plugin(type_):
+            return None
+        plugins.deploy_files(type_, (params or {}).get("plugin_version"))
+    except ValueError as e:
+        return str(e)
+    except Exception:                                                  # noqa: BLE001
+        return None
+    return None
+
+
 def _redeployer_script_perdu(vmid):
     """Script PERDU (agent :8081 → running:false, path:null) : le rootfs éphémère du conteneur a
     été recréé (docker restart) et /opt/script est vide — l'auto-restart /start ne peut rien
@@ -127,6 +143,20 @@ def _redeployer_script_perdu(vmid):
                 db_add_alert("alert.agent.type_inconnu", "error",
                              vmid=vmid, node_id=c.get("node_id"), kind="agent",
                              params={"vmid": vmid})
+                return
+            # A redeploy that CANNOT succeed is not retried. Each attempt costs a full NMOS model
+            # rebuild under the interpreter lock, and the backoff state lives in process memory, so
+            # every orchestrator restart replayed the whole series. Measured 2026-11-11: three
+            # containers pinned to an archived plugin version whose files are not archived held the
+            # lock about a fifth of the time and pushed unrelated API calls to several seconds.
+            why = _redeploy_impossible(t, dc.get("params") or {})
+            if why:
+                _crash_quarantine.add(vmid)
+                db_update_status(vmid, "crash_loop", cause=why)
+                db_add_alert("alert.crash_loop.actif", "error", vmid=vmid,
+                             node_id=c.get("node_id"), kind="crash_loop",
+                             params={"vmid": vmid, "count": _script_restart_count.get(vmid, 0)})
+                log.warning("script repair %s abandoned, not retryable: %s", vmid, why)
                 return
             db_add_alert("alert.agent.redeploiement_auto", "warning",
                          vmid=vmid, node_id=c.get("node_id"), kind="agent",

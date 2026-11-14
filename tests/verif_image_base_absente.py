@@ -430,8 +430,7 @@ for chemin, attendus in (
         ("templates/settings.html", ["function buildMsg(j, repli)",
                                      "buildMsg(s, '')",            # bandeau page Images
                                      "buildMsg(mb, setT(",         # dernier build échoué
-                                     "buildMsg(j, T('settings.js.st_fail')); _mtlPoll",
-                                     "buildMsg(j, T('settings.js.st_fail')); _gpuPoll"])):
+                                     "buildMsg(j, T('settings.js.st_fail')); _imgNodePoll"])):
     txt = TPL[chemin]
     for att in attendus:
         verifie(f"8n. {chemin} : {att[:46]}", att in txt)

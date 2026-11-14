@@ -6922,7 +6922,7 @@ async function chargerReadiness(id, mode) {
         // Cœurs : chargé à part parce qu'il MESURE le cpuset appliqué sur l'hôte (un exec).
         chargerCoeurs(id);
         // Build bobi-mtl en cours (même après reload) → ré-attache le suivi.
-        if (j.io2110 && j.io2110.mtl_build && j.io2110.mtl_build.status === 'building') _pollMtlBuild(id);
+        if (j.io2110 && j.io2110.mtl_build && j.io2110.mtl_build.status === 'building') _pollNodeImageBuild(id, 'mtl');
     } catch (e) { box.innerHTML = '<span class="meta" style="color:var(--status-stopped-fg)">✕ '+escapeHtml(''+e)+'</span>'; }
 }
 function _ckRow(label, state, detail, id) {
@@ -6971,15 +6971,14 @@ async function lancerReachTest(spanId, ckId) {
         }
     } catch (e) { if (el) { el.style.color = 'var(--status-stopped-fg)'; el.textContent = '✕ ' + e; } }
 }
-// Images d'exécution PERTINENTES pour ce nœud (selon ses capacités). Partagé checklist/section/assistant.
+// Images d'exécution PERTINENTES pour ce nœud. Partagé checklist/section/assistant.
+// ★ Était une liste écrite à la main, qui nommait 4 images sur 7 : `gui` et `decklink` n'avaient
+// aucune ligne de checklist, donc un nœud sans son image Blackmagic se lisait « prêt ». C'est
+// maintenant `/readiness` qui décide, en croisant `_IMAGES` et les capacités du nœud — ici on
+// n'ajoute plus de filtre, et l'ordre vient de IMAGE_ORDER (ordre d'insertion JSON).
 function _imgMap(j) {
-    const im = j.images || {}, caps = j.capabilities || [];
-    return [
-        caps.includes('compute') && { k: 'compute', ok: im.compute },
-        caps.includes('media')   && { k: 'media',   ok: im.media },
-        caps.includes('webrtc')  && { k: 'webrtc',  ok: im.webrtc },
-        caps.includes('io2110')  && { k: 'mtl',     ok: im.mtl },
-    ].filter(Boolean);
+    const im = j.images || {};
+    return Object.keys(im).map(k => ({ k, ok: im[k] }));
 }
 // ─── Sections de configuration nœud (source UNIQUE : réutilisées par la vue complète ET l'assistant) ───
 function _secChecklist(id, j) {
@@ -7205,20 +7204,32 @@ function _secDocker(id, j) {
         <span id="pf_${id}_msg" class="meta"></span></div>` : '<span class="meta">' + setT('settings.st.docker_operational') + '</span>';
 }
 function _secImages(id, j) {
-    const io = j.io2110 || null;
     const imgMap = _imgMap(j), imgMissing = imgMap.some(x => !x.ok);
     if (!imgMap.length) return '';
+    // ★ Le bouton de construction n'existait QUE pour `mtl`, en dur, et la phrase d'explication
+    // nommait « compute/media/webrtc » comme seules images de cluster. Depuis gui (10/2026) et
+    // decklink (11/2026) elle mentait, et une image node_only manquante renvoyait vers l'onglet
+    // Build sans dire qu'elle se construit ICI. Le serveur dit maintenant lesquelles sont
+    // node_only (`images_node_only`) et où en est leur build (`image_builds`).
+    const nodeOnly = j.images_node_only || [], builds = j.image_builds || {};
+    const manquantes = imgMap.filter(x => !x.ok);
+    const surNoeud = manquantes.filter(x => nodeOnly.includes(x.k));
+    const cluster  = manquantes.filter(x => !nodeOnly.includes(x.k));
+    const boutons = surNoeud.map(x => {
+        const mb = builds[x.k] || {}, sid = `imgbuild_${id}_${x.k}`;
+        if (mb.status === 'building')
+            return `<span class="meta" id="${sid}" style="color:var(--text-muted)">⏳ bobi-${escapeHtml(x.k)}…</span>`;
+        return `<button type="button" class="btn btn-green" onclick="buildNodeImage(${id},'${x.k}')">`
+             + `${mb.status === 'error' ? setT('settings.js2.relancer') : setT('settings.js2.builder')} bobi-${escapeHtml(x.k)}</button> `
+             + `<span id="${sid}" class="meta" ${mb.status === 'error' ? 'style="color:var(--status-stopped-fg)"' : ''}>`
+             + `${mb.status === 'error' ? '✕ ' + escapeHtml(buildMsg(mb, setT('settings.js.st_fail'))) : ''}</span>`;
+    }).join(' ');
     return `<div style="font-weight:600;margin-top:var(--space-2);margin-bottom:2px">${setT('settings.js2.runtime_images')} <span class="meta" style="font-weight:normal">${setT('settings.st.presence_on_this_node')}</span></div>
         <div class="meta" style="margin-bottom:4px">${imgMap.map(x => x.k + ' ' + (x.ok ? '<span style="color:var(--status-running-fg)">✓</span>' : '<span style="color:var(--status-stopped-fg)">✗</span>')).join(' · ')}</div>
-        ${imgMissing ? `<div class="meta" style="margin-bottom:4px;opacity:.85"><code>compute</code>/<code>media</code>/<code>webrtc</code> sont des images <strong>cluster</strong> : construites une fois (onglet Build) puis renseignées/poussées aux nœuds. <code>bobi-mtl</code> se build <strong>{{ _('settings.st.on_the_target_node') }}</strong> (E810 + libmtl).</div>
+        ${imgMissing ? `<div class="meta" style="margin-bottom:4px;opacity:.85">${surNoeud.length ? setT('settings.img.hint_node_only') + ' ' : ''}${cluster.length ? setT('settings.img.hint_cluster') : ''}</div>
         <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap">
-          ${imgMap.some(x => x.k === 'mtl' && !x.ok) ? (() => {
-            const mb = (io && io.mtl_build) || {};
-            if (mb.status === 'building')
-                return `<span class="meta" id="imgbuild_${id}" style="color:var(--text-muted)">⏳ build bobi-mtl en cours…</span>`;
-            return `<button type="button" class="btn btn-green" onclick="buildMtlNode(${id})">${mb.status === 'error' ? setT('settings.js2.relancer') : setT('settings.js2.builder')} ${setT('settings.js2.bobi_mtl_on_this_node')}</button> <span id="imgbuild_${id}" class="meta" ${mb.status === 'error' ? 'style="color:var(--status-stopped-fg)"' : ''}>${mb.status === 'error' ? '✕ ' + escapeHtml(buildMsg(mb, setT('settings.js.st_fail'))) : ''}</span>`;
-          })() : ''}
-          ${imgMap.some(x => x.k !== 'mtl' && !x.ok) ? `<button class="btn" onclick="switchDeployTab('build')">Images cluster (onglet Build) →</button>` : ''}
+          ${boutons}
+          ${cluster.length ? `<button class="btn" onclick="switchDeployTab('build')">${setT('settings.img.go_build_tab')}</button>` : ''}
         </div>` : ''}`;
 }
 // Vue complète : composition des sections (DOM identique à l'ancien rendu d'un bloc).
@@ -7322,7 +7333,7 @@ const NodeWizard = {
             </div>`;
         // Post-rendu spécifique à l'étape (mêmes hooks que la vue complète, mais ciblés).
         if (step.key === 'queues') this._ensureQueues(id);
-        if (step.key === 'images' && j.io2110 && j.io2110.mtl_build && j.io2110.mtl_build.status === 'building') _pollMtlBuild(id);
+        if (step.key === 'images' && j.io2110 && j.io2110.mtl_build && j.io2110.mtl_build.status === 'building') _pollNodeImageBuild(id, 'mtl');
         const m = document.getElementById('wiz_'+id+'_msg');
         if (m && done && !step.final) { m.style.color = 'var(--status-running-fg)'; m.textContent = '✓ ' + T('wiz.node.ok_confirmed'); }
     },
@@ -7522,37 +7533,44 @@ async function installerDockerNode(id) {
         else { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+(j.msg||j.error||T('settings.js.st_fail')); }
     } catch (e) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; }
 }
-// Build de bobi-mtl SUR le nœud (via l'agent) — node-only. Asynchrone (minutes) → polling de l'état.
-async function buildMtlNode(id) {
-    const msg = document.getElementById('imgbuild_'+id);
+// Build d'une image node_only SUR le nœud (via l'agent). Asynchrone (minutes) → polling de l'état.
+// ★ Était `buildMtlNode(id)`, câblée sur `which:'mtl'`. La route serveur, elle, a toujours accepté
+// n'importe quelle image node_only : seule l'interface ne savait en construire qu'une. gui,
+// decklink et compute-gpu passent par le même chemin — `which` est désormais un paramètre.
+async function buildNodeImage(id, which) {
+    const msg = document.getElementById('imgbuild_'+id+'_'+which);
     if (msg) { msg.style.color='var(--text-muted)'; msg.textContent=T('settings.js.build_started'); }
     try {
-        const r = await fetch('/api/nodes/'+id+'/build-image', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({which:'mtl'})});
+        const r = await fetch('/api/nodes/'+id+'/build-image', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({which})});
         const j = await r.json();
         if (!j.ok) { if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+(j.error||T('settings.js.st_fail')); } return; }
-        _pollMtlBuild(id);   // suivi EN PLACE dans le span (pas de re-render → pas de flicker)
+        _pollNodeImageBuild(id, which);   // suivi EN PLACE dans le span (pas de re-render → pas de flicker)
     } catch (e) { if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; } }
 }
-let _mtlPoll = {};   // un seul poller par nœud
-function _pollMtlBuild(id) {
-    if (_mtlPoll[id]) return;
-    _mtlPoll[id] = true;
+let _imgNodePoll = {};   // un seul poller par (nœud, image)
+function _pollNodeImageBuild(id, which) {
+    const cle = id+':'+which;
+    if (_imgNodePoll[cle]) return;
+    _imgNodePoll[cle] = true;
     const tick = async () => {
-        const msg = document.getElementById('imgbuild_'+id);
-        if (!msg) { _mtlPoll[id] = false; return; }   // panneau refermé → stop
+        const msg = document.getElementById('imgbuild_'+id+'_'+which);
+        if (!msg) { _imgNodePoll[cle] = false; return; }   // panneau refermé → stop
         try {
-            const j = await (await fetch('/api/nodes/'+id+'/build-image/status?which=mtl')).json();
+            const j = await (await fetch('/api/nodes/'+id+'/build-image/status?which='+encodeURIComponent(which))).json();
             if (j.status === 'building') {
                 const el = (j.elapsed != null) ? ` · ${Math.floor(j.elapsed/60)}m${String(j.elapsed%60).padStart(2,'0')}s` : '';
-                msg.style.color='var(--text-muted)'; msg.textContent='⏳ '+(j.msg||'build…')+el+' (long : clone libmtl/DPDK, ~10-15 min)';
+                // La durée attendue n'est pas la même d'une image à l'autre : mtl clone libmtl+DPDK,
+                // les couches fines (gui, decklink, compute-gpu) partent de bobi-compute déjà présent.
+                const dur = which === 'mtl' ? T('settings.img.build_long_mtl') : T('settings.img.build_layer');
+                msg.style.color='var(--text-muted)'; msg.textContent='⏳ '+(j.msg||'build…')+el+' '+dur;
                 setTimeout(tick, 4000);
             } else if (j.status === 'ok') {
-                msg.style.color='var(--status-running-fg)'; msg.textContent='✓ '+(j.msg||T('settings.js.built')); _mtlPoll[id]=false; chargerReadiness(id);
+                msg.style.color='var(--status-running-fg)'; msg.textContent='✓ '+(j.msg||T('settings.js.built')); _imgNodePoll[cle]=false; chargerReadiness(id);
             } else if (j.status === 'error') {
                 // EN PLACE : on garde l'erreur visible (pas de re-render qui l'effacerait).
-                msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+buildMsg(j, T('settings.js.st_fail')); _mtlPoll[id]=false;
-            } else { _mtlPoll[id]=false; }
-        } catch (e) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; _mtlPoll[id]=false; }
+                msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+buildMsg(j, T('settings.js.st_fail')); _imgNodePoll[cle]=false;
+            } else { _imgNodePoll[cle]=false; }
+        } catch (e) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; _imgNodePoll[cle]=false; }
     };
     setTimeout(tick, 1500);
 }
@@ -7620,9 +7638,9 @@ function _hdLigneGpu(n) {
     return `<div class="meta" style="margin-top:4px">GPU
                 <code>${n.gpu_capable ? ('NVIDIA ×' + (n.gpu_count || 1)) : '—'}</code>${
                   n.gpu_capable && !n.compute_gpu_image ? ` <span class="badge stopped">${T('settings.js.gpu_image_todo')}</span>` : ''}${
-                  n.compute_gpu_image ? ` · <code>${v(n.compute_gpu_image)}</code>` : ''}
+                  n.compute_gpu_image ? ` · <code>${escapeHtml(n.compute_gpu_image)}</code>` : ''}
                 <button type="button" class="btn" onclick="detecterGpu(${n.id})">${T('settings.js.gpu_detect')}</button>${
-                  n.gpu_capable ? ` <button type="button" class="btn" onclick="buildImageGpu(${n.id})">${T('settings.js.gpu_build')}</button> <span id="gpubuild_${n.id}" class="meta"></span>` : ''}
+                  n.gpu_capable ? ` <button type="button" class="btn" onclick="buildNodeImage(${n.id},'compute-gpu')">${T('settings.js.gpu_build')}</button> <span id="imgbuild_${n.id}_compute-gpu" class="meta"></span>` : ''}
                 <button type="button" class="btn" style="min-height:44px" onclick="hostDrvToggle(${n.id},'nvidia')">${T('settings.hostdrv.nvidia.open')}</button>
                 <span id="gpudet_${n.id}" class="meta"></span></div>
               ${_hdBoxHtml(n, 'nvidia')}`;
@@ -7758,8 +7776,20 @@ const _hd = {};   // "<id>_<kind>" -> {timer, offset}
 function _hdFmt(s, p) { return String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null) ? p[k] : ''); }
 function _hdBox(id, kind) { return document.getElementById('hostdrv_'+kind+'_'+id); }
 function _hdStop(id, kind) { const st = _hd[id+'_'+kind]; if (st && st.timer) { clearTimeout(st.timer); st.timer = null; } }
-function _hdErr(j) { return T('settings.hostdrv.err.'+(j && j.error)) !== 'settings.hostdrv.err.'+(j && j.error)
-    ? T('settings.hostdrv.err.'+j.error) : T('settings.hostdrv.err.default')+(j && j.detail ? ' : '+j.detail : ''); }
+function _hdErr(j) {
+    // The detail is appended whatever the code: a TRANSLATED refusal used to drop it, and with it
+    // the only thing that made it actionable — the refused name, the announced size.
+    const cle = 'settings.hostdrv.err.' + (j && j.error);
+    const texte = T(cle) !== cle ? T(cle) : T('settings.hostdrv.err.default');
+    return texte + (j && j.detail ? ' : ' + j.detail : '');
+}
+// Le fichier attendu est une donnée du PILOTE (`upload_hint` de son état), pas une traduction :
+// celle de blackmagic n'existait pas et la page affichait la clé brute. L'i18n reste le repli.
+function _hdHint(j, P) {
+    if (j && j.upload_hint) return j.upload_hint;
+    const cle = P + 'upload_hint';
+    return T(cle) !== cle ? T(cle) : '';
+}
 function hostDrvToggle(id, kind) {
     const box = _hdBox(id, kind);
     if (!box) return;
@@ -7788,7 +7818,14 @@ function hostDrvRender(id, kind, j) {
         +'</td><td><code>'+escapeHtml(String(r.value))+'</code></td></tr>').join('');
     let msg = _hdFmt(T(P+'plan.'+plan.code), plan.params);
     if (plan.params && plan.params.fallback) msg += ' '+T(P+'plan.fallback.'+plan.params.fallback);
-    const steps = (plan.steps || []).map(s => '<li>'+escapeHtml(T(P+'step.'+s))+'</li>').join('');
+    // Un pas est soit un code nu, soit {id, params} : les deux formes existent chez les pilotes
+    // livrés, et celle avec params n'était PAS rendue — la clé partait en 'step.[object Object]'
+    // et la page affichait la clé brute. Les placeholders du libellé ({file}, {card})
+    // n'étaient substitués dans aucun des deux cas.
+    const steps = (plan.steps || []).map(p0 => {
+        const sid = (p0 && p0.id) ? p0.id : p0;
+        return '<li>'+escapeHtml(_hdFmt(T(P+'step.'+sid), (p0 && p0.params) || plan.params))+'</li>';
+    }).join('');
     const pend = job.pending || (plan.status === 'pending_reboot' ? 'reboot' : '');
     const btnStyle = 'min-height:44px;padding:0 16px';
     let pendHtml = '';
@@ -7799,7 +7836,7 @@ function hostDrvRender(id, kind, j) {
         +'<div class="meta" style="color:var(--status-warning-fg,#c80)">⚠ '+escapeHtml(T('settings.hostdrv.pending.shutdown'))+'</div>'
         +'<div style="margin-top:6px"><button type="button" class="btn btn-orange" style="'+btnStyle+'" onclick="hostDrvPoweroff('+id+',\''+kind+'\')">'+escapeHtml(T('settings.hostdrv.poweroff_now'))+'</button></div></div>';
     const upload = j.upload_dir ? '<div style="margin-top:10px"><div class="meta">'+escapeHtml(T('settings.hostdrv.upload'))
-        +' <span class="meta">('+escapeHtml(T(P+'upload_hint'))+')</span></div>'
+        +' <span class="meta">('+escapeHtml(_hdHint(j, P))+')</span></div>'
         +'<input type="file" id="hostdrv_file_'+kind+'_'+id+'" style="max-width:100%"> '
         +'<button type="button" class="btn" style="'+btnStyle+'" onclick="hostDrvUpload('+id+',\''+kind+'\')">'+escapeHtml(T('settings.hostdrv.upload'))+'</button> '
         +'<span class="meta" id="hostdrv_up_'+kind+'_'+id+'"></span></div>' : '';
@@ -7895,7 +7932,9 @@ function hostDrvUpload(id, kind) {
         msg.textContent = j.ok ? '✓ '+T('settings.hostdrv.uploaded')+' ('+j.name+')' : '✕ '+_hdErr(j);
         if (j.ok) setTimeout(() => hostDrvLoad(id, kind), 1200);
     };
-    xhr.onerror = () => { msg.style.color = 'var(--status-stopped-fg)'; msg.textContent = '✕ '+T('settings.hostdrv.err.default'); };
+    // Transport cassé ≠ refus du serveur. Les deux rendaient « Erreur », le mot le moins utile
+    // de l'écran : rien n'a été refusé ici, la requête n'est jamais arrivée.
+    xhr.onerror = () => { msg.style.color = 'var(--status-stopped-fg)'; msg.textContent = '✕ '+T('settings.hostdrv.err.transport'); };
     xhr.send(f);
 }
 
@@ -7935,39 +7974,10 @@ async function detecterGpu(id) {
         await rafraichirNodes();
     } catch (e) { poser('var(--status-stopped-fg)', '✕ '+e); }
 }
-// Build de bobi-compute-gpu SUR le nœud GPU (node-only, FROM bobi-compute + cupy). Async → polling.
-async function buildImageGpu(id) {
-    const msg = document.getElementById('gpubuild_'+id);
-    if (msg) { msg.style.color='var(--text-muted)'; msg.textContent='⏳ '+T('settings.js.gpu_build_started'); }
-    try {
-        const r = await fetch('/api/nodes/'+id+'/build-image', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({which:'compute-gpu'})});
-        const j = await r.json();
-        if (!j.ok) { if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+(j.error||T('settings.js.st_fail')); } return; }
-        _pollGpuBuild(id);
-    } catch (e) { if (msg) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; } }
-}
-let _gpuPoll = {};
-function _pollGpuBuild(id) {
-    if (_gpuPoll[id]) return;
-    _gpuPoll[id] = true;
-    const tick = async () => {
-        const msg = document.getElementById('gpubuild_'+id);
-        if (!msg) { _gpuPoll[id] = false; return; }
-        try {
-            const j = await (await fetch('/api/nodes/'+id+'/build-image/status?which=compute-gpu')).json();
-            if (j.status === 'building') {
-                const el = (j.elapsed != null) ? ` · ${Math.floor(j.elapsed/60)}m${String(j.elapsed%60).padStart(2,'0')}s` : '';
-                msg.style.color='var(--text-muted)'; msg.textContent='⏳ '+(j.msg||'build…')+el+' ('+T('settings.js.gpu_build_hint')+')';
-                setTimeout(tick, 4000);
-            } else if (j.status === 'ok') {
-                msg.style.color='var(--status-running-fg)'; msg.textContent='✓ '+(j.msg||T('settings.js.built')); _gpuPoll[id]=false; rafraichirNodes();
-            } else if (j.status === 'error') {
-                msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+buildMsg(j, T('settings.js.st_fail')); _gpuPoll[id]=false;
-            } else { _gpuPoll[id]=false; }
-        } catch (e) { msg.style.color='var(--status-stopped-fg)'; msg.textContent='✕ '+e; _gpuPoll[id]=false; }
-    };
-    setTimeout(tick, 1500);
-}
+// (buildImageGpu/_pollGpuBuild retirés le 2026-11-13 : ils doublaient buildNodeImage /
+// _pollNodeImageBuild sur la même route, avec un span de nom différent. Deux copies d'une
+// même règle finissent par diverger — et c'est celle câblée sur `mtl` qui a laissé
+// gui et decklink sans aucun bouton.)
 // Bascule d'affichage entre les deux modes. Le mode SITE a une carte parent et un VLAN ; le
 // mode INTERNE a un sous-réseau privé. Laisser les deux visibles ferait saisir des valeurs qui
 // ne seront pas lues — et personne ne saurait lesquelles comptent.
@@ -8200,7 +8210,9 @@ async function rafraichirImages() {
     if (!box) return;
     try {
         const d = await (await fetch('/api/images/status')).json();
-        const order = ['compute', 'media', 'webrtc', 'mtl'];
+        // Ordre SERVI par /api/images/status (dérivé de `_IMAGES`). Cette liste-ci en
+        // nommait 4 sur 7 : le panneau Images n'offrait pas de construire gui ni decklink.
+        const order = d._order || ['compute', 'media', 'webrtc', 'mtl'];
         const hostLine = `<div class="meta" style="margin-bottom:6px">${T('settings.js.build_host_label')} <code>${escapeHtml(d._host||T('settings.js.not_configured'))}</code></div>`;
         let anyBuilding = false;
         box.innerHTML = hostLine + order.filter(w => d[w]).map(w => {
@@ -8260,12 +8272,12 @@ async function rafraichirImages() {
                 box.innerHTML += `<div style="display:flex; align-items:center; gap:var(--space-3); padding:4px 0; flex-wrap:wrap">
                     <span style="min-width:210px">bobi-compute-gpu — ${escapeHtml(n.name || ('#' + n.id))} <code>${escapeHtml(n.compute_gpu_image || '—')}</code></span>
                     <span class="meta">${T('settings.js.gpu_derived_note')}</span>
-                    <button class="btn" onclick="buildImageGpu(${n.id})">${T('settings.js.build_word')}</button>
-                    <span id="gpubuild_${n.id}" class="meta"></span>
+                    <button class="btn" onclick="buildNodeImage(${n.id},'compute-gpu')">${T('settings.js.build_word')}</button>
+                    <span id="imgbuild_${n.id}_compute-gpu" class="meta"></span>
                 </div>`;
                 // Build déjà en cours (lancé d'ici ou de l'éditeur de nœud) → raccrocher le suivi.
                 fetch('/api/nodes/' + n.id + '/build-image/status?which=compute-gpu')
-                    .then(r => r.json()).then(j => { if (j.status === 'building') _pollGpuBuild(n.id); })
+                    .then(r => r.json()).then(j => { if (j.status === 'building') _pollNodeImageBuild(n.id, 'compute-gpu'); })
                     .catch(() => {});
             }
         } catch (e) {}

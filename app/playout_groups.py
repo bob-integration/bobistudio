@@ -973,7 +973,9 @@ class Engine:
         now = self.now()
         gs = self.groups()
         self._cache = gs
-        players = self.players()
+        # No group, nothing to drive: skip the container table. Reading and decoding it costs tens of
+        # milliseconds under the interpreter lock, on every instance, group or not.
+        players = self.players() if gs else {}
         if now - self.last_poll >= POLL_MEMBERS_S:
             self.last_poll = now
             self._poll(gs, players)

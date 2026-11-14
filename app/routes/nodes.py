@@ -12,7 +12,7 @@ import threading
 from flask import jsonify, request
 
 from . import bp
-from .images import (_IMAGES, _img_lock, _node_img_build, _node_img_push, _image_tag, _stage_tar,
+from .images import (_IMAGES, IMAGE_ORDER, _img_lock, _node_img_build, _node_img_push, _image_tag, _stage_tar,
                      _image_present, _image_present_node, _repo_root,
                      _provision_shared_images, _node_image_inventory, _used_tag,
                      node_images_state, record_node_only_tag,
@@ -709,12 +709,15 @@ def api_node_capability_state(node_id):
 
 
 # ─── Mise à jour des images vers les NŒUDS (≠ Flotte = entre orchestrateurs) ────────────────────
-_SHARED_IMAGES = ("compute", "media", "webrtc")   # images PARTAGÉES (build-once + push) ; mtl = par-nœud
+# SHARED images (built once + pushed) against node_only ones (built on each node that needs them).
+# Derived, because the difference is already declared in `_IMAGES`: a hand-written list would have
+# to be edited again at the next image, and forgetting it classifies a node_only image as shared —
+# the orchestrator would then push an image that only exists on one node.
+_SHARED_IMAGES = tuple(w for w in IMAGE_ORDER if not _IMAGES[w].get("node_only"))
 
-# ⚠ EVERY IMAGE IN `_IMAGES` MUST APPEAR HERE. This list ORDERS, but it also FILTERS: an image
-# missing from it shows up nowhere on the Nodes page, so nobody builds it — and that is silent.
-# `decklink` added on 2026-11-01 along with the image itself.
-_IMG_ORDER = ("compute", "compute-gpu", "media", "webrtc", "mtl", "gui", "decklink")
+# Was a hand-written list that both ordered AND filtered: an image missing from it showed up
+# nowhere on the Nodes page, so nobody built it — silently. Now derived (see IMAGE_ORDER).
+_IMG_ORDER = IMAGE_ORDER
 
 def _node_wants(which, node, caps):
     """Ce nœud exécute-t-il cette image ? (capacités déclarées + flag GPU pour la variante GPU)."""

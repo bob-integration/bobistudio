@@ -52,9 +52,22 @@ appels = [n for n in ast.walk(main) if isinstance(n, ast.Call)
           and getattr(n.func, "id", None) in ("serve", "create_server")]
 ok(len(appels) == 1, "un seul appel serve()/create_server() dans main.py", len(appels))
 kw = {k.arg: k.value for c in appels for k in c.keywords}
-ok(isinstance(kw.get("max_request_body_size"), ast.Name)
-   and kw["max_request_body_size"].id == "_WAITRESS_BODY_MAX",
-   "serve() reçoit max_request_body_size=_WAITRESS_BODY_MAX", ast.dump(kw.get("max_request_body_size", ast.Constant(None))))
+# Depuis le 2026-11-14 (3e84c8e0), le plafond est BORNÉ par la place réelle de l'espace de transit
+# (app/spool.py) : `max(_corps_max, 1 << 20)` avec `_corps_max = min(_WAITRESS_BODY_MAX, …)`.
+# Ce qu'on tient : le serveur reçoit `_corps_max`, et `_corps_max` ne dépasse jamais le plafond.
+v = kw.get("max_request_body_size", ast.Constant(None))
+recu = v.id if isinstance(v, ast.Name) else (
+    v.args[0].id if isinstance(v, ast.Call) and getattr(v.func, "id", None) == "max"
+    and v.args and isinstance(v.args[0], ast.Name) else None)
+ok(recu in ("_WAITRESS_BODY_MAX", "_corps_max"),
+   "serve() reçoit le plafond (direct, ou borné par l'espace de transit)", ast.dump(v))
+if recu == "_corps_max":
+    borne = [n.value for n in ast.walk(main) if isinstance(n, ast.Assign)
+             and any(isinstance(t, ast.Name) and t.id == "_corps_max" for t in n.targets)]
+    ok(len(borne) == 1 and isinstance(borne[0], ast.Call) and getattr(borne[0].func, "id", None) == "min"
+       and any(isinstance(x, ast.Name) and x.id == "_WAITRESS_BODY_MAX" for x in borne[0].args),
+       "_corps_max = min(_WAITRESS_BODY_MAX, …) : jamais au-dessus du plafond",
+       [ast.dump(x) for x in borne])
 
 print()
 if ko:

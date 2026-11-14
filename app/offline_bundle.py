@@ -59,8 +59,13 @@ ORCH_PACKAGES = ["python3", "python3-venv", "python3-pip",
 # dkms + build-essential : le pilote NVIDIA (capacité gpu) se compile en DKMS sur le nœud, y compris
 # l'installeur .run embarqué (vendor/nvidia/). Les en-têtes du noyau EN COURS ne sont pas
 # prévisibles à la construction du bundle : ils doivent déjà être sur le nœud ou venir d'un miroir.
+# libgl1 + linux-headers-<arch> : dépendances DÉCLARÉES du paquet Blackmagic desktopvideo, que
+# le pilote hôte `blackmagic` installe sur un nœud porteur d'une DeckLink. Mesuré le 2026-11-13 :
+# sans elles, `dpkg -i` dépaquette et laisse le paquet non configuré, sans un seul module. Le
+# méta-paquet d'en-têtes satisfait la dépendance de desktopvideo ; les en-têtes VERSIONNÉS du
+# noyau en cours (ce contre quoi DKMS compile) restent hors bundle pour la raison dite au-dessus.
 NODE_PACKAGES = ["docker.io", "docker-cli", "docker-buildx", "ethtool", "ca-certificates", "linuxptp",
-                 "dkms", "build-essential"]
+                 "dkms", "build-essential", "libgl1", "linux-headers-amd64"]
 APT_PACKAGES = sorted(set(ORCH_PACKAGES + NODE_PACKAGES))
 
 

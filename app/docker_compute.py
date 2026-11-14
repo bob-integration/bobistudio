@@ -927,13 +927,34 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
 
     network = node.get("docker_network")
     mxl = node.get("mxl_mount") or "/dev/shm"
-    if not (image and network):
-        _quoi = ("média (media_image)" if variant == "media" else "interfaces natives (gui_image)"
-                 if variant == "gui" else "E/S Blackmagic (decklink_image)" if variant == "decklink"
-                 else "compute (compute_image)")
-        db_add_alert("alert.deploy.compute.sans_image_ou_reseau", "error", vmid=vmid,
+    # ★ ONE MESSAGE FOR THREE CAUSES, AND IT TALKED ABOUT DOCKER (2026-11-13). `sans_image_ou_reseau`
+    # read « node N has no <what> image or Docker network » — an *or* between two unrelated failures,
+    # and it fired on a THIRD cause it never named: a node that has not been given the capability has
+    # no image tag recorded either, so the operator was told to go and look at a Docker network that
+    # was perfectly fine. Measured on the testing instance: the operator added the `decklink`
+    # capability, which was the actual fix, after having been sent to Docker.
+    # Worse, this guard ran BEFORE the deferred capability refusal (`_refus_capacite`, ~400 lines
+    # below), so `alert.deploy.compute.sans_capacite_decklink` — the one precise message — was
+    # UNREACHABLE whenever the tag setting was empty. The precise message existed and could not
+    # be reached: that is the silent-failure antipattern with a translation.
+    # Three causes, three messages, in order of truth:
+    #   1. the capability is not declared → the deferred refusal below (it alone knows whether we
+    #      are really creating a container; see the 2026-11-02 block above), so we do NOT refuse here;
+    #   2. no container network on the node → that is a node-level setup gap;
+    #   3. no image tag recorded → name the SETTING to fill, not Docker.
+    # `alert.deploy.compute.sans_image_ou_reseau` STAYS in the catalogue: alerts persist their key,
+    # and rows written before today would otherwise render as a raw code.
+    _reglage_img = ("media_image" if variant == "media" else "gui_image" if variant == "gui"
+                    else "decklink_image" if variant == "decklink" else "compute_image")
+    if not network:
+        db_add_alert("alert.deploy.compute.sans_reseau_conteneurs", "error", vmid=vmid,
+                     node_id=node.get("id"), kind="net",
+                     params={"vmid": vmid, "n": node["name"]})
+        return False
+    if not image and not _refus_capacite:
+        db_add_alert("alert.deploy.compute.image_non_enregistree", "error", vmid=vmid,
                      node_id=node.get("id"), kind="deploy",
-                     params={"vmid": vmid, "n": node["name"], "quoi": _quoi})
+                     params={"vmid": vmid, "n": node["name"], "r": _reglage_img})
         return False
 
     name = c.get("docker_name") or _name(vmid)

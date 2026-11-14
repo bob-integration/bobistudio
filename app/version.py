@@ -20,7 +20,7 @@ de publier sur un désaccord : deux sources recopiées à la main finissent touj
 et c'est le genre d'écart que personne ne remarque avant d'en avoir besoin.
 """
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 
 def analyser(v):

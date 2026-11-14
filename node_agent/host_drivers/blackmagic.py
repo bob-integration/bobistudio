@@ -47,7 +47,7 @@ import subprocess
 import sys
 
 KIND = "blackmagic"
-SCRIPT_VERSION = "1.0.0"
+SCRIPT_VERSION = "1.3.0"
 
 EXIT_OK, EXIT_REBOOT, EXIT_SHUTDOWN = 0, 10, 11
 
@@ -66,6 +66,12 @@ FILES_DIR = os.path.join(os.environ.get("BOBI_HOST_DRIVERS_FILES",
 # Ce qu'on sait reconnaître dans ce dossier. L'archive officielle est un .tar.gz ; un .deb seul
 # est accepté aussi, parce que c'est ce qu'un exploitant extrait parfois lui-même.
 ARCHIVES = (".tar.gz", ".tgz", ".tar")
+# How the driver's own .deb is recognised: that is the name Blackmagic gives it inside the
+# archive, and `installer_pilote` installs nothing else. Any OTHER .deb dropped in the same
+# directory is a prerequisite carried in by hand (cf. prereq_debs) — a node with no outbound
+# access cannot apt-get, which is the normal case here. Until 1.3.0 `installable()` answered
+# « the driver to install » for a dropped `libgl1_*.deb`.
+DRIVER_DEB = "desktopvideo"
 
 PROBES = {
     "list":    "%s --list 2>&1" % TOOL,
@@ -77,6 +83,18 @@ PROBES = {
     "files":   "ls -1 %s 2>/dev/null" % FILES_DIR,
     "dkms":    "command -v dkms 2>/dev/null",
     "headers": "ls -d /lib/modules/$(uname -r)/build 2>/dev/null",
+    # ★ DEUX SONDES AJOUTÉES LE 2026-11-13, APRÈS UN ÉCHEC EN VRAI. `headers` ci-dessus mesure ce
+    #   dont DKMS a besoin pour compiler — et c'est bien ce qu'il faut. Mais ce n'est pas ce que
+    #   DPKG exige : le paquet desktopvideo dépend d'une ALTERNATIVE de méta-paquets
+    #   (`linux-headers-amd64 | linux-headers-arm64 | …`), qu'un `linux-headers-6.12.90+deb13-amd64`
+    #   installé seul ne satisfait PAS. Résultat mesuré : la page affichait « kernel headers yes »
+    #   et dpkg répondait « Le paquet linux-headers-amd64 n'est pas installé », en laissant
+    #   desktopvideo non configuré. Une sonde qui mesure autre chose que la condition réelle est
+    #   pire qu'une sonde absente : elle affirme.
+    #   `libgl1` est l'autre dépendance déclarée, qu'on n'installait pas du tout.
+    "headers_meta": "dpkg-query -W -f='${Status}' linux-headers-$(dpkg --print-architecture) "
+                    "2>/dev/null | grep -q 'install ok installed'",
+    "libgl":   "dpkg-query -W -f='${Status}' libgl1 2>/dev/null | grep -q 'install ok installed'",
 }
 
 
@@ -86,6 +104,80 @@ def _sh(cmd, timeout=120):
         return p.returncode, (p.stdout or "") + ("" if p.returncode == 0 else (p.stderr or ""))
     except Exception as e:                              # noqa: BLE001
         return 255, str(e)
+
+
+def prereq_packages():
+    """What the Blackmagic package needs in order to build: DKMS and the RUNNING kernel's headers.
+
+    The headers are version-pinned: `linux-headers-6.12.43+deb13-amd64`, not a meta-package. A
+    node booted on another kernel than the one installed last needs the headers of the kernel it
+    is running NOW, which is why this is computed and not written down.
+    """
+    # Les DEUX formes d'en-têtes sont nécessaires, et pour deux raisons différentes :
+    #   - `linux-headers-<version>` : ce contre quoi DKMS compile, pour le noyau EN COURS ;
+    #   - `linux-headers-<arch>` (méta) : ce que la dépendance du paquet desktopvideo réclame.
+    # Poser seulement le premier donnait un écran vert et un dpkg qui refuse (mesuré le 13/11).
+    arch = _architecture_noeud() or "amd64"
+    return ["dkms", "libgl1", "linux-headers-%s" % os.uname().release, "linux-headers-%s" % arch]
+
+
+def install_prereqs(sh=None, fichiers=None, probe=None):
+    """Install the prerequisites. Returns (ok, message).
+
+    ★ THE SCREEN THAT DIAGNOSED AND STOPPED (2026-11-13). `run()` used to answer « Nothing to do:
+      install_prereqs_missing » and return success, while the page showed « dkms no, kernel
+      headers no » with no button to press. The product knew the exact name of what was missing,
+      knew how to install it, and left the operator to find that out elsewhere — on a screen whose
+      whole purpose is installing this driver. Diagnosing without offering the act is not caution,
+      it is an unfinished feature: the operator asked for the driver, and the prerequisites are
+      part of installing the driver.
+      A node with no outbound access cannot apt-get. That is a real case here (nodes are often
+      kept off the Internet), and it is why the failure NAMES the two packages: they can be
+      carried in by hand. What it must never do is fail without saying which.
+
+    ★ AND THE NODE WITH NO INTERNET MUST BE ABLE TO GET THERE TOO (2026-11-14). The .deb dropped
+      in the upload directory are installed FIRST, with no network, by the same
+      `apt-get install ./…` that resolves them against each other. APT is tried afterwards only
+      for what is still missing — and on an offline node `apt-get update` only spends its
+      timeout. Which is why this re-reads the facts when it can (`probe`) instead of assuming.
+    """
+    sh = sh or _sh
+    pkgs = prereq_packages()
+    deposes = prereq_debs(fichiers)
+    if deposes:
+        chemins = " ".join(os.path.join(FILES_DIR, x) for x in deposes)
+        say("Installing %d prerequisite package(s) dropped on this node: %s"
+            % (len(deposes), ", ".join(deposes)))
+        rc_l, out_l = sh("DEBIAN_FRONTEND=noninteractive apt-get install -y "
+                         "--no-install-recommends %s 2>&1" % chemins, timeout=1800)
+        for ligne in (out_l or "").splitlines()[-12:]:
+            if ligne.strip():
+                say("  " + ligne.strip())
+        if rc_l != 0:
+            say("  the dropped package(s) did not install (exit %d)" % rc_l)
+        if probe is not None:
+            reste = missing_prereqs(gather_facts(probe))
+            if not reste:
+                say("Prerequisites satisfied from the dropped package(s) - APT was not needed.")
+                return True, "prerequisites installed from the dropped packages"
+            say("Still missing after the dropped package(s): %s" % ", ".join(reste))
+    say("Installing prerequisites: %s" % ", ".join(pkgs))
+    sh("DEBIAN_FRONTEND=noninteractive apt-get update 2>&1 | tail -3", timeout=300)
+    rc, out = sh("DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends %s "
+                 "2>&1 | tail -20" % " ".join(pkgs), timeout=1800)
+    for ligne in (out or "").splitlines()[-12:]:
+        if ligne.strip():
+            say("  " + ligne.strip())
+    if rc == 0:
+        return True, "prerequisites installed"
+    msg = ("could not install %s (apt exit %d). If this node has no outbound access, build that "
+           "set on a CONNECTED Debian of the same release - `mkdir -p d/partial && apt-get "
+           "install -y --reinstall --download-only -o Dir::Cache::archives=\"$PWD/d\" %s` - then "
+           "drop the .deb in the panel's upload field (they land in %s) and run this again. The "
+           "headers must match the running kernel exactly (%s)."
+           % (", ".join(pkgs), rc, " ".join(pkgs), FILES_DIR, os.uname().release))
+    say("FAILED - " + msg)
+    return False, msg
 
 
 def live_probe(name):
@@ -134,6 +226,8 @@ def gather_facts(probe=live_probe):
     _, fichiers = probe("files")
     rc_dkms, _dk = probe("dkms")
     rc_hdr, _hd = probe("headers")
+    rc_meta, _mt = probe("headers_meta")
+    rc_gl, _gl = probe("libgl")
     try:
         noeuds = int((devdir or "0").strip() or 0)
     except ValueError:
@@ -152,6 +246,8 @@ def gather_facts(probe=live_probe):
             "files": [x.strip() for x in (fichiers or "").splitlines() if x.strip()],
             "dkms": rc_dkms == 0,
             "headers": rc_hdr == 0,
+            "headers_meta": rc_meta == 0,
+            "libgl": rc_gl == 0,
             "flashed_boot": _marqueur_lu()}
 
 
@@ -166,9 +262,37 @@ def installable(fichiers):
         #   ne se terminait jamais. Trouvé par la garde, pas à la lecture.
         if bas.endswith(".installed"):
             continue
-        if bas.endswith(ARCHIVES) or bas.endswith(".deb"):
+        if bas.endswith(ARCHIVES):
+            return f
+        if bas.endswith(".deb") and bas.startswith(DRIVER_DEB):
             return f
     return None
+
+
+def prereq_debs(fichiers):
+    """Prerequisite .deb dropped on the node, in the SAME upload directory as the archive.
+
+    ★ NAMING WHAT IS MISSING IS NOT THE SAME AS LETTING SOMEONE BRING IT (2026-11-14). The
+      failure message listed the packages, which tells an operator WHAT to carry in; nothing in
+      the product accepted it. On a node kept off the Internet — the normal case here — that
+      left exactly one route: a shell on the host, which is what this whole screen exists to
+      avoid. The upload door already existed for the archive, so it takes these too.
+    """
+    out = []
+    for f in sorted(fichiers or []):
+        bas = f.lower()
+        if bas.endswith(".installed") or not bas.endswith(".deb") or bas.startswith(DRIVER_DEB):
+            continue
+        out.append(f)
+    return out
+
+
+def missing_prereqs(f):
+    """What is missing, as CODES for the UI. One definition, read by `decide` and by the install:
+    two lists would drift, and the one that drifted would be the one the operator reads."""
+    return [n for n, ok in (("dkms", f["dkms"]), ("headers", f["headers"]),
+                            ("headers meta-package", f.get("headers_meta", True)),
+                            ("libgl1", f.get("libgl", True))) if not ok]
 
 
 def _marqueur_lu():
@@ -211,13 +335,19 @@ def decide(f):
             # n'est pas récupérable sans accepter un contrat sur leur site, et le nœud peut
             # n'avoir aucun accès sortant. C'est le cas NORMAL, pas une erreur.
             return _plan("install_needs_file", "driver_missing_upload_needed")
-        manque = [n for n, ok in (("dkms", f["dkms"]), ("headers", f["headers"])) if not ok]
+        manque = missing_prereqs(f)
         if manque:
             # Le paquet Blackmagic se construit par DKMS contre les en-têtes du noyau courant.
             # Sans eux, `dpkg -i` laisse un paquet « configuré à moitié » et aucun module. On le
             # DIT au lieu de lancer une installation qui échouera à mi-chemin.
+            # `steps` n'est pas décoratif : c'est lui qui dit à l'écran qu'un geste existe.
+            # Sans lui la page affichait un constat et aucun bouton.
             return _plan("missing_prereqs", "install_prereqs_missing",
-                         params={"missing": ", ".join(manque), "file": fichier})
+                         params={"missing": ", ".join(manque), "file": fichier,
+                                 "packages": " ".join(prereq_packages())},
+                         steps=[{"id": "prereqs",
+                                 "params": {"packages": " ".join(prereq_packages())}},
+                                {"id": "install", "params": {"file": fichier}}])
         return _plan("install", "driver_install_from_file", params={"file": fichier},
                      steps=[{"id": "install", "params": {"file": fichier}}])
     # ★ IL N'EXISTE PAS DE « FICHIER DE MICROLOGICIEL » CHEZ BLACKMAGIC (vérifié le 20/10) :
@@ -267,8 +397,15 @@ def rows_for_ui(f, plan):
         rows.append({"key": "card", "value": "-"})
     rows.append({"key": "package", "value": f["package"] or "-"})
     rows.append({"key": "files", "value": ", ".join(f["files"]) or "-"})
-    rows.append({"key": "prereqs", "value": "dkms %s, kernel headers %s"
-                 % ("yes" if f["dkms"] else "no", "yes" if f["headers"] else "no")})
+    # ★ THE ROW NAMED TWO CONDITIONS OUT OF FOUR (2026-11-13), and the two it left out were
+    #   exactly the ones dpkg refused on. The screen read « dkms yes, kernel headers yes » while
+    #   the install failed on `libgl1` and the headers meta-package. A status row that shows a
+    #   subset of what is checked does not reassure, it misleads.
+    rows.append({"key": "prereqs", "value": ", ".join(
+        "%s %s" % (nom, "yes" if ok else "no")
+        for nom, ok in (("dkms", f["dkms"]), ("kernel headers", f["headers"]),
+                        ("headers meta-package", f.get("headers_meta", True)),
+                        ("libgl1", f.get("libgl", True))))})
     rows.append({"key": "kernel", "value": "%d module(s), %d device node(s)"
                  % (f["modules"], f["dev_nodes"])})
     return rows
@@ -279,15 +416,21 @@ def state(probe=live_probe):
     plan = decide(f)
     return {"kind": KIND, "version": SCRIPT_VERSION, "status": plan["status"], "plan": plan,
             "rows": rows_for_ui(f, plan), "facts": f,
-            "can_run": plan["status"] in ("update", "install", "upgrade"),
+            "can_run": plan["status"] in ("update", "install", "upgrade", "missing_prereqs"),
             # Ce que l'interface doit proposer de déposer, et où ça atterrit. `install_needs_file`
             # est le SEUL état où l'absence de fichier EST le problème : c'est là que la zone de
             # dépôt doit apparaître, pas en permanence.
             # Le dépôt reste offert MÊME QUAND TOUT VA BIEN : c'est le seul chemin pour amener
             # un micrologiciel plus récent, puisqu'il arrive dans le paquet du pilote.
-            "wants_upload": plan["status"] in ("install_needs_file", "ok", "update", "no_tool"),
+            # `missing_prereqs` en fait partie depuis 1.3.0 : c'est l'état où un nœud hors
+            # ligne a quelque chose à déposer, et le seul où la zone de dépôt attend autre chose
+            # que l'archive.
+            "wants_upload": plan["status"] in ("install_needs_file", "ok", "update", "no_tool",
+                                               "missing_prereqs"),
             "upload_dir": FILES_DIR,
-            "upload_hint": "Blackmagic_Desktop_Video_Linux_<version>.tar.gz"}
+            "upload_hint": ("dkms_*.deb, libgl1_*.deb, linux-headers-*.deb"
+                            if plan["status"] == "missing_prereqs"
+                            else "Blackmagic_Desktop_Video_Linux_<version>.tar.gz")}
 
 
 # ─── exécution ────────────────────────────────────────────────────────────────────────────────────
@@ -377,12 +520,40 @@ def installer_pilote(fichier):
     #   renommée `.installed` juste en dessous — une reprise ne trouvait plus rien à poser.
     #   C'est ce qui rendait la panne de la Z8 muette alors que le message d'erreur de dpkg
     #   s'affichait dans le journal du job. On tronque en Python, après avoir lu le code.
-    rc, out = _sh("dpkg -i %s 2>&1" % " ".join(debs), timeout=1800)
+    # ★★ `dpkg -i` NE RÉSOUT AUCUNE DÉPENDANCE (mesuré le 2026-11-13, en vrai, sur un nœud).
+    #    Il dépaquette, constate que `libgl1` et le méta-paquet d'en-têtes manquent, et laisse
+    #    desktopvideo « non configuré » — c'est-à-dire présent pour `dpkg-query` mais sans aucun
+    #    module construit. La sonde `package` le voyait alors comme INSTALLÉ, et l'écran passait
+    #    au plan suivant sur une installation qui n'avait rien installé.
+    #    `apt-get install ./x.deb` pose le paquet LOCAL et tire ses dépendances depuis le dépôt.
+    #    Le repli `dpkg -i` + `apt-get -f install` existe pour les apt trop anciens pour la forme
+    #    locale ; il réalise la même chose en deux temps.
+    #    ⚠ PAS DE TUBE : `… | tail` rendrait le code de `tail`, soit 0 quoi qu'il arrive.
+    locaux = " ".join(d if d.startswith("/") else "./" + d for d in debs)
+    rc, out = _sh("DEBIAN_FRONTEND=noninteractive apt-get install -y "
+                  "--no-install-recommends %s 2>&1" % locaux, timeout=1800)
+    if rc != 0:
+        say("  apt-get could not install the local package(s) (exit %d), retrying with dpkg + "
+            "dependency repair" % rc)
+        rc_d, out_d = _sh("dpkg -i %s 2>&1" % " ".join(debs), timeout=1800)
+        rc_f, out_f = _sh("DEBIAN_FRONTEND=noninteractive apt-get -f install -y 2>&1", timeout=1800)
+        out = (out or "") + "\n" + (out_d or "") + "\n" + (out_f or "")
+        rc = rc_f if rc_d != 0 else rc_d
     lignes = [l.strip() for l in (out or "").splitlines() if l.strip()]
     for ligne in lignes[-40:]:
         say("  " + ligne)
     if rc != 0:
-        say("FAILED: dpkg returned %d" % rc)
+        say("FAILED: the package could not be configured (exit %d). Its declared dependencies "
+            "are libgl1 and one of the linux-headers meta-packages; a node with no access to its "
+            "APT repository cannot pull them, and dpkg alone will not." % rc)
+        return False
+    # ★ UN PAQUET « NON CONFIGURÉ » N'EST PAS UN PAQUET INSTALLÉ. Sans ce contrôle, la sonde
+    #   `package` (qui lit la VERSION) rendait un numéro pour un paquet à moitié posé, et tout
+    #   l'écran raisonnait ensuite sur une installation qui n'avait pas eu lieu.
+    rc_st, st = _sh("dpkg-query -W -f='${Status}' desktopvideo 2>/dev/null", timeout=60)
+    if "install ok installed" not in (st or ""):
+        say("FAILED: desktopvideo is unpacked but NOT configured (dpkg status: %s)"
+            % (st or "unknown").strip())
         return False
     # Archive CONSOMMÉE : on la renomme plutôt que de l'effacer — elle dit quelle version a été
     # posée, et un dossier qui garde sa trace vaut mieux qu'un dossier vide dont personne ne
@@ -395,6 +566,20 @@ def run(probe=live_probe):
     f = gather_facts(probe)
     plan = decide(f)
     besoin_redemarrage = False
+
+    # Les prérequis font PARTIE de l'installation demandée : on les pose, puis on relit les faits
+    # et on reprend le cours normal. En cas d'échec on s'arrête ici — mais en ayant nommé ce qui
+    # manque et comment l'apporter à la main (cf. install_prereqs).
+    if plan["status"] == "missing_prereqs":
+        ok, msg = install_prereqs(fichiers=f["files"], probe=probe)
+        if not ok:
+            return 1
+        f = gather_facts(probe)
+        plan = decide(f)
+        if plan["status"] == "missing_prereqs":
+            say("FAILED - prerequisites still missing after install: %s"
+                % plan["params"].get("missing"))
+            return 1
 
     if plan["status"] in ("install", "upgrade"):
         if not installer_pilote(plan["params"]["file"]):
