@@ -23,6 +23,13 @@ import tempfile
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, RACINE)
+# Throwaway database, set BEFORE the first access: the connection is kept per thread,
+# so overriding DB_PATH afterwards isolates nothing.
+import tempfile as _tempfile_iso                                            # noqa: E402
+from app import config as _cfg_iso, database as _dbm_iso                    # noqa: E402
+_cfg_iso.DB_PATH = _dbm_iso.DB_PATH = os.path.join(
+    _tempfile_iso.mkdtemp(prefix="verif-iso-"), "principale.db")
+_dbm_iso._tls.__dict__.pop("conn", None)
 
 from app import spool, http_errors                                            # noqa: E402
 
