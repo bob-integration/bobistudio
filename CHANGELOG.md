@@ -5,6 +5,37 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Bobi.Studio 1.0.2 — 2026-11-14
+
+**Le bouton « Mettre à jour » fonctionne.** En 1.0.0 et 1.0.1, le bouton de Réglages → Mises à
+jour ne faisait rien : le clic n'envoyait aucune demande. Le défaut était dans la page, pas dans la
+mise à jour elle-même. Le message s'affiche maintenant à côté du bouton, et la page se recharge
+d'elle-même quand la nouvelle version est en place.
+
+**Instance en 1.0.0 ou 1.0.1 ?** Son bouton reste sans effet : passez une fois par le terminal. Sur
+le contrôleur, en SSH :
+
+```bash
+D=$(systemctl show -p WorkingDirectory --value bobistudio); cd "${D:-/opt/bobistudio}" && sudo ./venv/bin/python -c "from app import updater; ok, msg = updater.apply_update_github(); print(msg)"
+```
+
+La commande tire la dernière version publiée, vérifie son empreinte, l'applique et redémarre le
+service. Elle répond `mise à jour vX.Y.Z appliquée — redémarrage en cours`. Rechargez la page au bout
+de quelques secondes. Les conteneurs en marche ne sont pas touchés.
+
+Sans accès SSH, la même demande part depuis la console du navigateur (F12), sur l'onglet Mises à jour :
+
+```js
+fetch('/api/update/core/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(r=>r.json()).then(console.log)
+```
+
+**Le workspace et la page Médias s'ouvrent sans le gestionnaire de médias.** Sur une instance où
+ce service n'est pas installé, le workspace répondait « HTTP 500 », et la page Médias aussi pour qui
+a le droit de gérer les médias. Le gestionnaire de médias n'apparaît plus que si son service est
+installé.
+
+---
+
 ## Bobi.Studio 1.0.1 — 2026-11-14
 
 **Carte DeckLink : le pilote s'installe sur un nœud sans accès Internet.** Les prérequis sont pris

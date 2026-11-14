@@ -33,7 +33,7 @@ def _plugin_public(m):
 def _render_plugin_section(section_id, default_label):
     """Shell unifié de rubrique de plugins (Traitements, Médias, …) : onglets par type
     + sidebar d'instances + UI de contrôle. Un seul template `plugin_section.html`."""
-    from .. import plugins
+    from .. import plugins, core_plugins
     section = plugins.sections().get(section_id) or {"label": default_label, "plugins": []}
     return render_template("plugin_section.html", page=section_id,
                            section_id=section_id,
@@ -41,6 +41,9 @@ def _render_plugin_section(section_id, default_label):
                            plugins=[_plugin_public(m) for m in section.get("plugins", [])],
                            # Ferme de transcodage : seulement si le plugin transcoder est installé.
                            has_farm=section_id == "medias" and bool(plugins.get("transcoder")),
+                           # Media manager view: only if the media_manager SERVICE is installed — its
+                           # template lives in the service, and an instance without it got a 500 (2026-11-14).
+                           has_manager=section_id == "medias" and core_plugins.is_service("media_manager"),
                            # Groupes de lecture A/B/C… (app/playout_groups.py) : dès que le player est installé.
                            has_playout=section_id == "medias" and bool(plugins.get("player")))
 

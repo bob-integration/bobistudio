@@ -72,7 +72,7 @@
 <!-- Gestionnaire / éditeur de macros (overlay) -->
 {# Gestionnaire de médias COMPLET : inclus UNE fois (ses identifiants sont fixes), en réserve ;
    le widget « manager » le prend à l'affichage et le rend avant chaque redessin de la grille. #}
-<div id="wsp-mm-holder" hidden>{% include 'media_manager/embed.html' %}</div>
+{% if has_manager %}<div id="wsp-mm-holder" hidden>{% include 'media_manager/embed.html' %}</div>{% endif %}
 <div class="wsp-overlay" id="wsp-fnedit" hidden>
     <div class="wsp-overlay-box">
         <h3 style="margin-top:0">{{ _('projects.fn_settings') }}</h3>
@@ -891,9 +891,11 @@
 
     // ── Gestionnaire de médias COMPLET (un par vue) : le vrai gestionnaire, ouvert sur une
     //    disposition enregistrée (« Mes dispositions ») ou sur celle du poste.
+    const HAS_MM = {{ has_manager | tojson }};   // media_manager service installed
     let MM_LAYOUTS = null;
     async function loadMmLayouts() {
         if (MM_LAYOUTS) return MM_LAYOUTS;
+        if (!HAS_MM) return (MM_LAYOUTS = []);
         try { const r = await fetch('/api/media-manager/layouts'); MM_LAYOUTS = r.ok ? ((await r.json()).layouts || []) : []; }
         catch (e) { MM_LAYOUTS = []; }
         return MM_LAYOUTS;
@@ -1182,9 +1184,9 @@
             esc(T('projects.ws_widget_shotbox')) + '</span>' +
             '<button type="button" class="btn btn-blue" onclick="wspAdd(\'shotbox\')">＋ ' +
             esc(T('projects.ws_add')) + '</button></div>' +
-            '<div class="wsp-pal-item"><span class="wsp-pal-name">' + esc(T('projects.ws_widget_manager')) + '</span>' +
+            (HAS_MM ? '<div class="wsp-pal-item"><span class="wsp-pal-name">' + esc(T('projects.ws_widget_manager')) + '</span>' +
             '<button type="button" class="btn btn-blue" ' + (layout.some(w => w.widget === 'manager') ? 'disabled title="' +
-            esc(T('projects.ws_mm_one')) + '"' : '') + ' onclick="wspAdd(\'manager\')">＋ ' + esc(T('projects.ws_add')) + '</button></div>' +
+            esc(T('projects.ws_mm_one')) + '"' : '') + ' onclick="wspAdd(\'manager\')">＋ ' + esc(T('projects.ws_add')) + '</button></div>' : '') +
             '<div class="wsp-pal-item"><span class="wsp-pal-name">▤ ' +
             esc(T('projects.ws_widget_panel')) + '</span>' +
             '<button type="button" class="btn btn-blue" onclick="wspAdd(\'panel\')">＋ ' +

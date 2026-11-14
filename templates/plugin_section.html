@@ -213,7 +213,7 @@
     {% if has_playout %}<button class="tab" id="medias-mode-playout" onclick="mediasMode('playout')">{{ _('section.medias.mode_playout') }}</button>
     {# « Lecture synchrone » (app/sync_groups.py) : players qui lisent ENSEMBLE — même condition que la Lecture A/B. #}
     <button class="tab" id="medias-mode-syncplay" onclick="mediasMode('syncplay')">{{ _('section.medias.mode_syncplay') }}</button>{% endif %}
-    {% if has_perm('media.manage') %}<button class="tab" id="medias-mode-manager" onclick="mediasMode('manager')">{{ _('section.medias.mode_manager') }}</button>
+    {% if has_perm('media.manage') %}{% if has_manager %}<button class="tab" id="medias-mode-manager" onclick="mediasMode('manager')">{{ _('section.medias.mode_manager') }}</button>{% endif %}
     {% if has_farm %}<button class="tab" id="medias-mode-farm" onclick="mediasMode('farm')">{{ _('section.medias.mode_farm') }}</button>{% endif %}{% endif %}
   </div>
   {% endif %}
@@ -245,9 +245,11 @@
 </div><!-- /medias-plugins-view -->
 {% if medias_modes %}
 {% if has_perm('media.manage') %}
+{% if has_manager %}
 <div id="medias-mgr-view" hidden>
 {% include 'media_manager/embed.html' %}
 </div>
+{% endif %}
 {% if has_farm %}
 <div id="medias-farm-view" hidden>
 {% include 'transcode_farm_embed.html' %}

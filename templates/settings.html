@@ -15811,9 +15811,13 @@ async function catCoreCharger(force) {
       html += '<span class="cat-chip ok">' + escapeHtml(CAT_T('core_uptodate', 'à jour')) + '</span>';
     } else if (d.applicable) {
       html += '<span class="cat-chip maj">' + escapeHtml(CAT_T('core_available', 'mise à jour disponible')) + '</span>'
+            // escapeHtml AROUND JSON.stringify: its double quotes closed the double-quoted
+            // attribute, so the click raised a SyntaxError and sent nothing — 1.0.0 → 1.0.1 could
+            // not be applied from this button (2026-11-14).
             + '<button class="btn btn-green" id="cat-core-btn" onclick="catCoreAppliquer(this, '
-            + JSON.stringify(d.tag || '') + ', ' + JSON.stringify(d.version || '') + ')">'
-            + escapeHtml(CAT_T('core_apply', 'Mettre à jour vers {v}').replace('{v}', d.version || '')) + '</button>';
+            + escapeHtml(JSON.stringify(d.tag || '')) + ', ' + escapeHtml(JSON.stringify(d.version || '')) + ')">'
+            + escapeHtml(CAT_T('core_apply', 'Mettre à jour vers {v}').replace('{v}', d.version || '')) + '</button>'
+            + '<div id="cat-core-msg" class="cat-core-note" role="status"></div>';
     } else {
       html += '<span class="cat-chip maj">' + escapeHtml(CAT_T('core_available', 'mise à jour disponible')) + '</span>'
             + '<div class="cat-core-note">' + escapeHtml(CAT_T('core_not_applicable',
@@ -15837,21 +15841,49 @@ async function catCoreAppliquer(btn, tag, version) {
     confirmLabel: CAT_T('core_apply_short', 'Mettre à jour'), danger: true });
   if (!ok) return;
   btn.disabled = true;
-  const out = document.getElementById('cat-result');
+  // The message goes NEXT TO THE BUTTON. It used to go to `#cat-result`, at the top of the
+  // tab: the server answered in 4 s and restarted, and the operator, scrolled down to the
+  // button, saw a greyed button and nothing else (reported 2026-11-14).
+  const out = document.getElementById('cat-core-msg') || document.getElementById('cat-result');
   out.textContent = CAT_T('core_applying', 'Mise à jour en cours — le service redémarre…');
+  let j = null;
   try {
     const r = await fetch('/api/update/core/apply', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tag: tag || null }) });
-    const j = await r.json();
-    out.textContent = j.message || (j.ok ? CAT_T('core_applying', 'Mise à jour en cours — le service redémarre…')
-                                         : CAT_T('http', 'Échec : HTTP {c}').replace('{c}', r.status));
-    if (!j.ok) btn.disabled = false;
+    j = await r.json();
+    if (!j.ok) {
+      out.textContent = j.message || CAT_T('http', 'Échec : HTTP {c}').replace('{c}', r.status);
+      btn.disabled = false;
+      return;
+    }
+    out.textContent = j.message || CAT_T('core_applying', 'Mise à jour en cours — le service redémarre…');
   } catch (e) {
     // Le redémarrage COUPE la requête : une erreur réseau ici est le cas NORMAL du succès, pas
     // un échec. Le dire autrement ferait relancer la mise à jour par-dessus elle-même.
-    out.textContent = CAT_T('core_applying', 'Mise à jour en cours — le service redémarre…');
   }
+  await catCoreAttendre(out, version);
+}
+
+// After a successful apply the service restarts and this page still carries the OLD version's
+// code and numbers. Wait until the instance itself reports the new version, then reload — the
+// version shown is the one measured, never the one requested.
+async function catCoreAttendre(out, version) {
+  const debut = Date.now();
+  while (Date.now() - debut < 180000) {
+    await new Promise(res => setTimeout(res, 3000));
+    try {
+      const r = await fetch('/api/update/core', { cache: 'no-store' });
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (j.version_installee === version) {
+        out.textContent = CAT_T('core_done', 'Bobi.Studio {v} est en place — rechargement de la page…').replace('{v}', version);
+        setTimeout(() => location.reload(), 1500);
+        return;
+      }
+    } catch (e) { /* still restarting */ }
+  }
+  out.textContent = CAT_T('core_timeout', "L'instance ne répond pas encore en {v} au bout de 3 minutes. Rechargez la page pour lire la version installée.").replace('{v}', version);
 }
 
 // ── Jeton GitHub personnel ───────────────────────────────────────────────────

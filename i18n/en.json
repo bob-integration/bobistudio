@@ -920,6 +920,8 @@
   "catalogue.core_release": "View the release",
   "catalogue.core_unknown": "latest published version unknown — online lookup disabled or unreachable",
   "catalogue.core_uptodate": "up to date",
+  "catalogue.core_done": "Bobi.Studio {v} is in place — reloading the page…",
+  "catalogue.core_timeout": "The instance does not report {v} yet after 3 minutes. Reload the page to read the installed version.",
   "catalogue.done_active": "{t} {v} installed and activated.",
   "catalogue.done_active_drift": "{t} {v} enabled — {n} container(s) still run the previous version: redeploy them under Settings → Plugins.",
   "catalogue.done_stored": "{t} {v} fetched but NOT enabled — enable it under Settings → Plugins.",

@@ -43,6 +43,7 @@ def workspaces_page():
 def workspace_page(pid):
     """Espace de travail d'un projet (stub chantier 1 : résumé containers + monitoring ;
     les vues composables arrivent au chantier 2)."""
+    from .. import core_plugins
     proj = db_get_project(pid)
     if not proj:
         abort(404)
@@ -51,7 +52,10 @@ def workspace_page(pid):
                            my_role=project_role_for(pid),
                            # accès global → section « Macros système » de l'overlay ⚡
                            # (édition des macros système via l'éditeur Scénario)
-                           is_global=has_global_access())
+                           is_global=has_global_access(),
+                           # The media manager widget comes from the media_manager SERVICE: without it,
+                           # no widget and no include (TemplateNotFound → 500, 2026-11-14).
+                           has_manager=core_plugins.is_service("media_manager"))
 
 
 @bp.route("/plugin-window/<int:vmid>")

@@ -920,6 +920,8 @@
   "catalogue.core_release": "Voir la release",
   "catalogue.core_unknown": "version publiée inconnue — consultation en ligne coupée ou injoignable",
   "catalogue.core_uptodate": "à jour",
+  "catalogue.core_done": "Bobi.Studio {v} est en place — rechargement de la page…",
+  "catalogue.core_timeout": "L'instance ne répond pas encore en {v} au bout de 3 minutes. Rechargez la page pour lire la version installée.",
   "catalogue.done_active": "{t} {v} installé et activé.",
   "catalogue.done_active_drift": "{t} {v} activé — {n} conteneur(s) tournent encore la version précédente : à redéployer depuis Réglages → Plugins.",
   "catalogue.done_stored": "{t} {v} récupéré mais NON activé — à activer depuis Réglages → Plugins.",

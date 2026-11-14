@@ -19,6 +19,12 @@ Deux choses vérifiées, et la seconde est celle qui casse en silence :
      concaténation de chaînes passe `node --check` quoi qu'il arrive : seule l'exécution dit si
      l'état « pas d'artefact » affiche bien son explication au lieu d'un bouton qui échouerait.
 
+  3. le GESTE `catCoreAppliquer()` est exécuté, serveur simulé : le message s'écrit À CÔTÉ du
+     bouton, et la page attend que l'instance annonce la nouvelle version avant de se
+     recharger. Le 2026-11-14, sur une 1.0.0, le serveur avait appliqué et redémarré en 4 s ;
+     l'exploitant voyait un bouton grisé et une version inchangée — le message était parti en
+     haut de l'onglet et rien ne relisait la version.
+
 ⚠ La mise à jour n'est PAS appliquée ici : elle tire du code depuis GitHub et redémarre le
 service. C'est du banc, jamais de la CI.
 """
@@ -112,6 +118,44 @@ global.fetch = async function(){ return { json: async () => global.REPONSE, ok: 
 """
 
 
+GESTE = """
+var _msg = { textContent: '' }, _haut = { textContent: '' }, _btn = { disabled: false };
+var _recharge = false, _lectures = 0;
+document.getElementById = function(id){
+  return id === 'cat-core-msg' ? _msg : (id === 'cat-result' ? _haut : _inerte); };
+setTimeout = function(f){ f(); };
+mxlConfirm = async function(){ return true; };
+location.reload = function(){ _recharge = true; };
+fetch = async function(url){
+  if (url === '/api/update/core/apply')
+    return { ok: APPLY.ok, status: APPLY.ok ? 200 : 400, json: async () => APPLY };
+  _lectures++;
+  // 1st read: the service is restarting; 2nd: still the old code; then the new version.
+  if (_lectures === 1) throw new Error('connection reset');
+  return { ok: true, status: 200,
+           json: async () => ({ version_installee: _lectures === 2 ? '1.0.0' : '1.0.1' }) };
+};
+catCoreAppliquer(_btn, 'v1.0.1', '1.0.1').then(function(){
+  console.log(JSON.stringify({ msg: _msg.textContent, haut: _haut.textContent,
+                               recharge: _recharge, desactive: _btn.disabled,
+                               lectures: _lectures })); });
+"""
+
+
+def executer_geste(blocs, apply_reponse):
+    """Run catCoreAppliquer() against a simulated server; dict of what the operator sees."""
+    f = os.path.join(tempfile.mkdtemp(), "g.js")
+    open(f, "w", encoding="utf-8").write(
+        # REPONSE `{}`, not null: the page's other inline blocks fetch at load (version-watch
+        # banner) and would crash on null before the gesture is reached.
+        STUB + "\nglobal.REPONSE = {};\nvar APPLY = %s;\n" % json.dumps(apply_reponse)
+        + blocs + GESTE)
+    r = subprocess.run(["node", f], capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        return {"plante": r.stderr.strip()[:200]}
+    return json.loads(r.stdout.strip().splitlines()[-1])
+
+
 def main():
     chemin = os.path.join(tempfile.mkdtemp(), "t.db")
     config.DB_PATH = chemin
@@ -169,6 +213,52 @@ def main():
         verifier(ok, libelle)
         if not ok:
             print("      rendu :", html.strip()[:200])
+
+    # ── 2b. Le bouton rendu, CLIQUÉ comme le ferait un navigateur : l'attribut `onclick` est
+    #      lu par un analyseur HTML, puis exécuté. Le 2026-11-14, `JSON.stringify` non échappé
+    #      fermait l'attribut : le clic levait une SyntaxError et n'envoyait RIEN. Appeler
+    #      `catCoreAppliquer()` directement (section 3) ne pouvait pas le voir.
+    print("\n── le bouton rendu, cliqué")
+    from html.parser import HTMLParser
+
+    class _Onclick(HTMLParser):
+        valeur = None
+
+        def handle_starttag(self, tag, attrs):
+            d = dict(attrs)
+            if d.get("id") == "cat-core-btn":
+                _Onclick.valeur = d.get("onclick")
+
+    applicable = next(c[1] for c in CAS if "cat-core-btn" in c[3 - 1] and c[1]["disponible"])
+    f = os.path.join(tmp, "b.js")
+    open(f, "w", encoding="utf-8").write(
+        STUB + blocs + "\nglobal.REPONSE = %s;\ncatCoreCharger().then(function(){ console.log(_sortie); });\n"
+        % json.dumps(applicable))
+    r = subprocess.run(["node", f], capture_output=True, text=True)
+    _Onclick().feed(r.stdout)
+    onclick = _Onclick.valeur or ""
+    f2 = os.path.join(tmp, "o.js")
+    open(f2, "w", encoding="utf-8").write(
+        "function catCoreAppliquer(b, tag, v){ console.log(JSON.stringify([tag, v])); }\n"
+        "(function(){ %s }).call({});\n" % onclick)
+    r2 = subprocess.run(["node", f2], capture_output=True, text=True)
+    attendu = json.dumps(["v" + AMONT, AMONT], separators=(",", ":"))
+    verifier(r2.returncode == 0 and r2.stdout.strip() == attendu,
+             "le clic sur le bouton appelle catCoreAppliquer(%s)" % attendu
+             + ("" if r2.returncode == 0 else " — " + r2.stderr.strip().splitlines()[-1][:120]
+                if r2.stderr.strip() else ""))
+
+    # ── 3. Le GESTE, exécuté.
+    print("\n── catCoreAppliquer() : ce que voit l'exploitant après le clic")
+    g = executer_geste(blocs, {"ok": True, "message": "mise à jour v1.0.1 appliquée — redémarrage en cours"})
+    verifier("plante" not in g, "le geste s'exécute sans planter" + (" : " + g.get("plante", "") if "plante" in g else ""))
+    verifier("1.0.1" in g.get("msg", "") and not g.get("haut"),
+             "succès : le message est écrit À CÔTÉ du bouton, pas en haut de l'onglet")
+    verifier(g.get("recharge") is True and g.get("lectures", 0) >= 3,
+             "succès : la page relit la version jusqu'à la nouvelle, puis se recharge")
+    g = executer_geste(blocs, {"ok": False, "message": "téléchargement échoué : quota"})
+    verifier("quota" in g.get("msg", "") and g.get("desactive") is False and not g.get("recharge"),
+             "refus : le motif s'affiche à côté du bouton, le bouton redevient actif, pas de rechargement")
 
     print()
     if ECHECS:
