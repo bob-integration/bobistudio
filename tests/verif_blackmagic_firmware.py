@@ -41,13 +41,13 @@ BOOT = "11111111-2222-3333-4444-555555555555"
 
 def sonde(liste=RELEVE_REEL, tool=True, list_rc=0, noeuds=12, boot=BOOT, flashe="",
           paquet="16.4a1", fichiers=(), dkms=True, headers=True, headers_meta=True,
-          libgl=True):
+          libgl=True, modules=2, pci=2, built=2, noyau="6.12.117+deb13-amd64"):
     reponses = {
         "tool": (0, "/usr/bin/DesktopVideoUpdateTool") if tool else (1, ""),
         "list": (list_rc, liste),
         "package": (0, paquet or ""),
         "devdir": (0, str(noeuds)),
-        "modules": (0, "2"),
+        "modules": (0, str(modules)),
         "boot_id": (0, boot),
         "files": (0, "\n".join(fichiers)),
         "dkms": (0, "/usr/sbin/dkms") if dkms else (1, ""),
@@ -58,6 +58,9 @@ def sonde(liste=RELEVE_REEL, tool=True, list_rc=0, noeuds=12, boot=BOOT, flashe=
         #   et la garde mesurerait autre chose que ce qu'elle annonce.
         "headers_meta": (0, "") if headers_meta else (1, ""),
         "libgl": (0, "") if libgl else (1, ""),
+        "pci": (0, str(pci)),
+        "built": (0, str(built)),
+        "kernel": (0, noyau),
     }
     bm._marqueur_lu = lambda: flashe          # noqa: SLF001 — on injecte le marqueur
     return lambda nom: reponses[nom]
@@ -240,6 +243,98 @@ verifier("pilote absent : ce cas prime sur tout le reste",
 # Paquet là mais outil absent = installation incomplète, PAS « aucune carte ».
 p = bm.decide(bm.gather_facts(sonde(tool=False)))
 verifier("paquet posé, outil absent : installation incomplète", p["status"] == "no_tool", p["status"])
+
+# ── 9. UNE CARTE SUR LE BUS ET AUCUN MODULE N'EST PAS « AUCUNE CARTE » (2026-11-14) ───────────
+#     Vécu sur un nœud : pilote posé, deux Quad 2 sur le bus PCI, DKMS avait compilé pour 6.12.116,
+#     le redémarrage demandé par le panneau a démarré 6.12.117 — et l'écran disait « Aucune carte
+#     DeckLink sur ce nœud ». Sans module, l'outil ne liste rien : la conclusion était fausse.
+VIDE = "Available Devices:\n"
+e = bm.state(sonde(liste=VIDE, noeuds=0, modules=0, pci=2, built=0))
+verifier("cartes sur le bus, aucun module : ce n'est PAS « aucune carte »",
+         e["status"] == "module_missing" and e["plan"]["code"] == "module_not_built",
+         "%s/%s" % (e["status"], e["plan"]["code"]))
+verifier("et un geste est offert : compiler pour le noyau EN COURS",
+         e["can_run"] is True and e["plan"]["steps"][0]["params"]["kernel"] == "6.12.117+deb13-amd64",
+         e["plan"]["steps"])
+e = bm.state(sonde(liste=VIDE, noeuds=0, modules=0, pci=2, built=2))
+verifier("module compilé mais pas chargé : on le CHARGE, sans recompiler",
+         e["plan"]["code"] == "module_not_loaded" and e["plan"]["steps"] == ["load"],
+         e["plan"]["code"])
+e = bm.state(sonde(liste=VIDE, noeuds=0, modules=0, pci=2, built=0, headers=False))
+verifier("sans les en-têtes du noyau en cours : on les pose AVANT de compiler",
+         [x["id"] for x in e["plan"]["steps"]] == ["prereqs", "build"]
+         and e["plan"]["code"] == "module_not_built_no_headers", e["plan"]["code"])
+verifier("et un nœud hors ligne peut les déposer, le nom exact est donné",
+         e["wants_upload"] is True and "linux-headers-6.12.117+deb13-amd64" in e["upload_hint"],
+         e.get("upload_hint"))
+p = bm.decide(bm.gather_facts(sonde(liste=VIDE, noeuds=0, modules=0, pci=0, built=0)))
+verifier("rien sur le bus, rien de chargé : « aucune carte » reste la réponse", p["status"] == "no_card",
+         p["status"])
+
+
+def rejouer(cas, rc_dkms=0, apres_charge=True, install=False):
+    """run() on the node's real situation; returns (code, dkms install calls, log)."""
+    etat = {"charge": False}
+    noyaux = "6.12.107+deb13-amd64 no\n6.12.116+deb13-amd64 yes\n6.12.117+deb13-amd64 yes\n"
+    confs = ("/usr/src/blackmagic-io-16.5a1/dkms.conf:PACKAGE_NAME=blackmagic-io\n"
+             "/usr/src/blackmagic-io-16.5a1/dkms.conf:PACKAGE_VERSION=16.5a1\n"
+             "/usr/src/blackmagic-16.5a1/dkms.conf:PACKAGE_NAME=blackmagic\n"
+             "/usr/src/blackmagic-16.5a1/dkms.conf:PACKAGE_VERSION=16.5a1\n")
+    poses, journal = [], []
+
+    def sh(cmd, timeout=120):
+        if "dkms.conf" in cmd:
+            return 0, confs
+        if cmd.startswith("for d in /lib/modules"):
+            return 0, noyaux
+        if cmd.startswith("find /lib/modules/"):
+            k = cmd.split()[1].rsplit("/", 1)[-1]
+            return 0, "2" if (k == "6.12.116+deb13-amd64" or k in poses) else "0"
+        if cmd.startswith("dkms install"):
+            k = cmd.split("-k ")[1].split()[0]
+            if rc_dkms == 0 and k not in poses:
+                poses.append(k)
+            return rc_dkms, "make failed" if rc_dkms else "installed"
+        if cmd.startswith("modprobe"):
+            etat["charge"] = apres_charge
+            return 0, ""
+        return 0, ""
+
+    def probe(nom):
+        ok = etat["charge"]
+        return sonde(liste=(TOUT_A_JOUR if ok else VIDE), noeuds=(8 if ok else 0),
+                     modules=(2 if ok else 0), pci=2, built=0,
+                     paquet=("" if install and not etat.get("pose") else "16.5a1"),
+                     fichiers=(("x.tar.gz",) if install and not etat.get("pose") else ()))(nom)
+
+    vrais = (bm._sh, bm.say, bm.installer_pilote)
+    bm._sh = sh
+    bm.say = journal.append
+    bm.installer_pilote = lambda fichier: etat.__setitem__("pose", True) or True
+    try:
+        return bm.run(probe), poses, journal
+    finally:
+        bm._sh, bm.say, bm.installer_pilote = vrais
+
+
+code, poses, journal = rejouer("module")
+verifier("le bouton compile pour le noyau en cours, charge, et rend 0",
+         code == bm.EXIT_OK and "6.12.117+deb13-amd64" in poses, "%s %s" % (code, poses))
+verifier("le noyau sans en-têtes est NOMMÉ, avec le paquet qui le répare",
+         any("6.12.107+deb13-amd64" in l and "linux-headers-6.12.107" in l for l in journal))
+verifier("pas de « Nothing to do » après un chargement réussi",
+         not any(l.startswith("Nothing to do") for l in journal))
+code, poses, journal = rejouer("module", rc_dkms=1)
+verifier("compilation en échec : le geste ÉCHOUE et le dit", code == 1
+         and any("FAILED" in l for l in journal), code)
+code, poses, journal = rejouer("module", apres_charge=False)
+verifier("module compilé mais refusé par le noyau : échec, pas un faux succès", code == 1, code)
+# L'installation, elle, doit compiler pour TOUS les noyaux installés qui ont leurs en-têtes,
+# avant de demander le redémarrage qui peut en démarrer un autre.
+code, poses, journal = rejouer("install", install=True)
+verifier("installation : le module est compilé pour le noyau EN ATTENTE (6.12.117)",
+         "6.12.117+deb13-amd64" in poses, poses)
+verifier("et le redémarrage n'est demandé qu'ensuite", code == bm.EXIT_REBOOT, code)
 
 print("→ le pilote de micrologiciel dit la vérité et ne reflashe pas en rond." if not ko
       else "→ ÉCHEC : le pilote de micrologiciel se trompe.")

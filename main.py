@@ -1066,6 +1066,19 @@ if __name__ == "__main__":
             except Exception as e:
                 log.error(f"Backfill moteurs 2110_io au boot : {e}")
         threading.Thread(target=_boot_backfill_engines, daemon=True).start()
+        # Single-node install whose WebRTC gateway is still missing (service on, image present):
+        # deploy it, there is no node to choose (services/webrtc_gateway `auto_deploy`). Deferred
+        # like the engines backfill, for the node agent to answer first.
+        def _boot_webrtc_gateway():
+            time.sleep(60)
+            try:
+                from app import core_plugins as _cp
+                _wg = (_cp._entry("webrtc_gateway") or {}).get("module")
+                if _wg is not None and hasattr(_wg, "auto_deploy"):
+                    _wg.auto_deploy("boot")
+            except Exception as e:
+                log.error("webrtc gateway auto-deploy at boot: %s", e)
+        threading.Thread(target=_boot_webrtc_gateway, daemon=True, name="webrtc-auto-boot").start()
         from app import monitor as _monitor
         _monitor.start_reaper()
         # On-air state of the running projects that asked for a periodic capture (off by default).

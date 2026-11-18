@@ -1368,6 +1368,13 @@ def _build_image_worker(which):
             if where != "localement":
                 _params["n"] = where
             db_add_alert(_cle, "warning" if d_fail else "info", kind="prep", params=_params)
+            if which == "webrtc":
+                # Single-node install: the gateway now has its image and nowhere else to go
+                # (services/webrtc_gateway `auto_deploy`). The service may be absent: no-op then.
+                from .. import core_plugins as _cp
+                _wg = (_cp._entry("webrtc_gateway") or {}).get("module")
+                if _wg is not None and hasattr(_wg, "auto_deploy_async"):
+                    _wg.auto_deploy_async("image_built")
         else:
             with _img_lock:
                 _img_build[which] = {"status": "error",

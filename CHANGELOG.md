@@ -5,6 +5,14 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Bobi.Studio 1.0.3 — 2026-11-18
+
+**Carte DeckLink : plus de carte perdue au redémarrage.** Le pilote installé compilait son module pour le seul noyau en cours. Si l'installation tirait un noyau plus récent, le nœud redémarrait dessus sans module, et l'écran disait « Aucune carte ». Le module est maintenant compilé pour chaque noyau installé, avant de demander le redémarrage. Un nœud déjà dans ce cas affiche « Module noyau absent », avec un bouton qui compile et charge le module, sans redémarrer. Le journal de la dernière opération est daté et replié, pour ne plus se lire comme l'état actuel.
+
+**Sortie DeckLink entrelacée : l'image n'est plus verte.** En sortie entrelacée, une ligne sur deux était mise à zéro, et l'image sortait verte. Chaque champ est maintenant empaqueté ligne par ligne. Plugin DeckLink 0.29.57.
+
+**Tout-en-un : la passerelle WebRTC se déploie seule.** Sur une installation à un seul nœud, il fallait choisir ce nœud dans une liste d'une ligne avant que le monitoring affiche une image. La passerelle se déploie maintenant d'elle-même dès que le service est allumé et que son image est sur le nœud. Un cluster de plusieurs nœuds n'est pas concerné : la place de la passerelle y reste un choix. Il faut le service WebRTC 0.3.6. Le déploiement ne demande plus l'image `bobi-compute`, que la passerelle n'utilise pas : sans elle, le bouton échouait aussi.
+
 ## Bobi.Studio 1.0.2 — 2026-11-14
 
 **Le bouton « Mettre à jour » fonctionne.** En 1.0.0 et 1.0.1, le bouton de Réglages → Mises à

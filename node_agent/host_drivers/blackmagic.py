@@ -47,7 +47,7 @@ import subprocess
 import sys
 
 KIND = "blackmagic"
-SCRIPT_VERSION = "1.3.0"
+SCRIPT_VERSION = "1.4.0"
 
 EXIT_OK, EXIT_REBOOT, EXIT_SHUTDOWN = 0, 10, 11
 
@@ -95,6 +95,17 @@ PROBES = {
     "headers_meta": "dpkg-query -W -f='${Status}' linux-headers-$(dpkg --print-architecture) "
                     "2>/dev/null | grep -q 'install ok installed'",
     "libgl":   "dpkg-query -W -f='${Status}' libgl1 2>/dev/null | grep -q 'install ok installed'",
+    # ★ THREE PROBES ADDED ON 2026-11-14, AFTER A NODE CAME BACK FROM ITS REBOOT WITH NO CARD.
+    #   The package was installed, the tool answered, two Quad 2 sat on the PCI bus — and the
+    #   panel said « no DeckLink card on this node ». DKMS had built the module for the kernel
+    #   running at install time; the reboot the panel itself asked for started a newer one, for
+    #   which nothing was built. Without the PCI count the driver could not tell « no card »
+    #   from « a card the kernel cannot drive »; without `built` it could not tell « not built »
+    #   from « built but not loaded ». Vendor 0xbdbd is read from sysfs: `lspci` is pciutils,
+    #   which a minimal node may not carry.
+    "pci":     "grep -l 0xbdbd /sys/bus/pci/devices/*/vendor 2>/dev/null | wc -l",
+    "built":   "find /lib/modules/$(uname -r) -name 'blackmagic*.ko*' 2>/dev/null | wc -l",
+    "kernel":  "uname -r",
 }
 
 
@@ -228,6 +239,9 @@ def gather_facts(probe=live_probe):
     rc_hdr, _hd = probe("headers")
     rc_meta, _mt = probe("headers_meta")
     rc_gl, _gl = probe("libgl")
+    rc_pci, pci = probe("pci")
+    rc_bt, built = probe("built")
+    _, noyau = probe("kernel")
     try:
         noeuds = int((devdir or "0").strip() or 0)
     except ValueError:
@@ -248,7 +262,17 @@ def gather_facts(probe=live_probe):
             "headers": rc_hdr == 0,
             "headers_meta": rc_meta == 0,
             "libgl": rc_gl == 0,
+            "pci": _count(pci) if rc_pci == 0 else 0,
+            "built": _count(built) if rc_bt == 0 else 0,
+            "kernel": (noyau or "").strip(),
             "flashed_boot": _marqueur_lu()}
+
+
+def _count(txt):
+    try:
+        return int((txt or "0").strip() or 0)
+    except ValueError:
+        return 0
 
 
 def installable(fichiers):
@@ -364,6 +388,21 @@ def decide(f):
     if not f["tool"]:
         # Paquet présent mais outil absent : installation incomplète, pas « aucune carte ».
         return _plan("no_tool", "tool_missing")
+    # ★ A CARD ON THE BUS AND NO MODULE IS NOT « NO CARD » (2026-11-14). Without the module the
+    #   tool lists nothing, so this case used to fall through to « no DeckLink card on this
+    #   node » — on a node carrying two. The three sub-cases differ by what the act is.
+    if f.get("pci", 0) > 0 and f["modules"] == 0:
+        k = f.get("kernel") or "?"
+        prm = {"kernel": k, "pci": f["pci"]}
+        if f.get("built", 0) > 0:
+            return _plan("module_missing", "module_not_loaded", params=prm, steps=["load"])
+        if not f["headers"]:
+            prm["packages"] = "linux-headers-%s" % k
+            return _plan("module_missing", "module_not_built_no_headers", params=prm,
+                         steps=[{"id": "prereqs", "params": {"packages": prm["packages"]}},
+                                {"id": "build", "params": {"kernel": k}}])
+        return _plan("module_missing", "module_not_built", params=prm,
+                     steps=[{"id": "build", "params": {"kernel": k}}])
     if f["list_rc"] != 0:
         return _plan("unreadable", "list_failed")
 
@@ -406,8 +445,8 @@ def rows_for_ui(f, plan):
         for nom, ok in (("dkms", f["dkms"]), ("kernel headers", f["headers"]),
                         ("headers meta-package", f.get("headers_meta", True)),
                         ("libgl1", f.get("libgl", True))))})
-    rows.append({"key": "kernel", "value": "%d module(s), %d device node(s)"
-                 % (f["modules"], f["dev_nodes"])})
+    rows.append({"key": "kernel", "value": "%s - %d module(s), %d device node(s), %d PCI device(s)"
+                 % (f.get("kernel") or "?", f["modules"], f["dev_nodes"], f.get("pci", 0))})
     return rows
 
 
@@ -416,7 +455,8 @@ def state(probe=live_probe):
     plan = decide(f)
     return {"kind": KIND, "version": SCRIPT_VERSION, "status": plan["status"], "plan": plan,
             "rows": rows_for_ui(f, plan), "facts": f,
-            "can_run": plan["status"] in ("update", "install", "upgrade", "missing_prereqs"),
+            "can_run": plan["status"] in ("update", "install", "upgrade", "missing_prereqs",
+                                          "module_missing"),
             # Ce que l'interface doit proposer de déposer, et où ça atterrit. `install_needs_file`
             # est le SEUL état où l'absence de fichier EST le problème : c'est là que la zone de
             # dépôt doit apparaître, pas en permanence.
@@ -425,11 +465,14 @@ def state(probe=live_probe):
             # `missing_prereqs` en fait partie depuis 1.3.0 : c'est l'état où un nœud hors
             # ligne a quelque chose à déposer, et le seul où la zone de dépôt attend autre chose
             # que l'archive.
-            "wants_upload": plan["status"] in ("install_needs_file", "ok", "update", "no_tool",
-                                               "missing_prereqs"),
+            "wants_upload": (plan["status"] in ("install_needs_file", "ok", "update", "no_tool",
+                                                "missing_prereqs")
+                             or plan["code"] == "module_not_built_no_headers"),
             "upload_dir": FILES_DIR,
             "upload_hint": ("dkms_*.deb, libgl1_*.deb, linux-headers-*.deb"
                             if plan["status"] == "missing_prereqs"
+                            else "%s_*.deb" % plan["params"].get("packages", "linux-headers-*")
+                            if plan["code"] == "module_not_built_no_headers"
                             else "Blackmagic_Desktop_Video_Linux_<version>.tar.gz")}
 
 
@@ -562,10 +605,96 @@ def installer_pilote(fichier):
     return True
 
 
+def dkms_modules(sh=None):
+    """The Blackmagic DKMS modules the package registered, as [(name, version)], read from their
+    dkms.conf. Read, not written down: the archive has carried one module or two depending on
+    the version, and their names are Blackmagic's."""
+    sh = sh or _sh
+    _, out = sh("grep -H -E '^PACKAGE_(NAME|VERSION)=' /usr/src/blackmagic*/dkms.conf 2>/dev/null",
+                timeout=30)
+    par_fichier = {}
+    for ligne in (out or "").splitlines():
+        m = re.match(r"^(.+?):PACKAGE_(NAME|VERSION)=[\"']?([^\"'\s]+)", ligne.strip())
+        if m:
+            par_fichier.setdefault(m.group(1), {})[m.group(2)] = m.group(3)
+    return sorted((d["NAME"], d["VERSION"]) for d in par_fichier.values()
+                  if "NAME" in d and "VERSION" in d)
+
+
+def installed_kernels(sh=None):
+    """[(release, has_headers)] for every kernel under /lib/modules."""
+    sh = sh or _sh
+    _, out = sh("for d in /lib/modules/*/; do k=${d%/}; k=${k##*/}; "
+                "if [ -e /lib/modules/$k/build ]; then echo \"$k yes\"; else echo \"$k no\"; fi; "
+                "done", timeout=30)
+    res = []
+    for ligne in (out or "").splitlines():
+        m = re.match(r"^(\S+) (yes|no)$", ligne.strip())
+        if m and m.group(1) != "*":
+            res.append((m.group(1), m.group(2) == "yes"))
+    return res
+
+
+def build_modules(sh=None):
+    """Build the Blackmagic modules for EVERY installed kernel that has its headers.
+
+    ★ NOT ONLY THE RUNNING ONE (2026-11-14). The package's own install builds for the kernel
+      running at that moment. A node with a newer kernel waiting — pulled by the headers
+      meta-package we install as a prerequisite, or by an earlier upgrade — boots on it at the
+      reboot this panel asks for, finds no module, and the card disappears. Measured on a node:
+      built for 6.12.116, rebooted on 6.12.117, « no DeckLink card » with two on the bus.
+      A kernel without headers cannot be built for: it is NAMED, with the package that fixes
+      it, because booting on it means no card. Returns (built, no_headers, failed) lists.
+    """
+    sh = sh or _sh
+    mods = dkms_modules(sh)
+    if not mods:
+        say("WARNING: no Blackmagic DKMS module registered under /usr/src - nothing to build")
+        return [], [], []
+    faits, sans_entetes, echecs = [], [], []
+    for k, entetes in installed_kernels(sh):
+        if not entetes:
+            sans_entetes.append(k)
+            continue
+        _, n = sh("find /lib/modules/%s -name 'blackmagic*.ko*' 2>/dev/null | wc -l" % k, timeout=60)
+        if _count(n) >= len(mods):
+            faits.append(k)
+            continue
+        say("Building the Blackmagic module(s) for kernel %s..." % k)
+        ok = True
+        for nom, ver in mods:
+            sh("dkms add -m %s -v %s 2>&1" % (nom, ver), timeout=120)
+            rc, out = sh("dkms install -m %s -v %s -k %s 2>&1" % (nom, ver, k), timeout=1800)
+            if rc != 0:
+                ok = False
+                for ligne in (out or "").strip().splitlines()[-8:]:
+                    say("  " + ligne.strip())
+                say("  FAILED: %s %s for %s (exit %d) - build log under /var/lib/dkms/%s/%s/build/"
+                    % (nom, ver, k, rc, nom, ver))
+        (faits if ok else echecs).append(k)
+    for k in sans_entetes:
+        say("WARNING: kernel %s has no headers, so no module can be built for it. If this node "
+            "boots on it, the card will not be seen: install linux-headers-%s (or drop its .deb "
+            "in the panel's upload field) and run this again." % (k, k))
+    if faits:
+        say("Module(s) built for: %s" % ", ".join(faits))
+    return faits, sans_entetes, echecs
+
+
+def load_modules(sh=None):
+    """modprobe each Blackmagic module. No reboot needed once they are built."""
+    sh = sh or _sh
+    for nom, _ver in dkms_modules(sh):
+        rc, out = sh("modprobe %s 2>&1" % nom, timeout=120)
+        if rc != 0:
+            say("  modprobe %s failed (exit %d): %s" % (nom, rc, (out or "").strip()[:300]))
+
+
 def run(probe=live_probe):
     f = gather_facts(probe)
     plan = decide(f)
     besoin_redemarrage = False
+    module_charge = False
 
     # Les prérequis font PARTIE de l'installation demandée : on les pose, puis on relit les faits
     # et on reprend le cours normal. En cas d'échec on s'arrête ici — mais en ayant nommé ce qui
@@ -581,10 +710,35 @@ def run(probe=live_probe):
                 % plan["params"].get("missing"))
             return 1
 
+    if plan["status"] == "module_missing":
+        k = plan["params"].get("kernel")
+        if plan["code"] == "module_not_built_no_headers":
+            ok, _msg = install_prereqs(fichiers=f["files"], probe=probe)
+            if not ok:
+                return 1
+        if plan["code"] != "module_not_loaded":
+            faits, _sans, _echecs = build_modules()
+            if k not in faits:
+                say("FAILED - no Blackmagic module could be built for the running kernel %s" % k)
+                return 1
+        say("Loading the Blackmagic module(s)...")
+        load_modules()
+        f = gather_facts(probe)
+        plan = decide(f)
+        if plan["status"] == "module_missing":
+            say("FAILED - the module(s) are built but the kernel did not load them (see "
+                "`journalctl -k -b` on the node)")
+            return 1
+        say("DONE - module(s) loaded on %s: %d card(s) visible." % (k, len(f["cards"])))
+        module_charge = True
+
     if plan["status"] in ("install", "upgrade"):
         if not installer_pilote(plan["params"]["file"]):
             return 1
         besoin_redemarrage = True
+        # The package built its module for the RUNNING kernel only. Build it for every other
+        # installed kernel too, before asking for the reboot that may start one of them.
+        build_modules()
         # Le paquet vient d'arriver : l'état d'AVANT ne vaut plus rien. On relit, car c'est très
         # souvent ici qu'on découvre un micrologiciel périmé — un pilote neuf ne s'entend pas
         # forcément avec la flash d'une carte posée il y a deux ans.
@@ -596,6 +750,8 @@ def run(probe=live_probe):
             say("")
             say("DONE - driver installed. A REBOOT is required to load the kernel modules.")
             return EXIT_REBOOT
+        if module_charge:
+            return EXIT_OK
         say("Nothing to do: %s" % plan["code"])
         return EXIT_OK
 

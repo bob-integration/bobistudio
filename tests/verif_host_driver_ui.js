@@ -22,8 +22,8 @@ global.escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'
 global.fetch = async () => ({ json: async () => ({ ok: true }) });
 global.confirm = () => true;
 global.setTimeout = () => 0;
-(0, eval)(html.slice(a, b) + '\nglobal.__hd = { hostDrvRender, _hdFmt, _hdErr };');
-const { hostDrvRender: render, _hdFmt: fmt, _hdErr: herr } = global.__hd;
+(0, eval)(html.slice(a, b) + '\nglobal.__hd = { hostDrvRender, _hdFmt, _hdErr, _hdLogFolded };');
+const { hostDrvRender: render, _hdFmt: fmt, _hdErr: herr, _hdLogFolded: logFolded } = global.__hd;
 
 let ko = 0;
 const ok = (c, t, d) => { console.log((c ? '  ok  ' : ' ÉCHEC ') + t); if (!c) { console.log('         ' + (d || '')); ko++; } };
@@ -56,4 +56,23 @@ h = els['hostdrv_nvidia_7'].innerHTML;
 ok(h.includes('repli sur l\'installeur'), 'repli hors-ligne annoncé dans le message', '');
 ok(fmt('a {x} b {y}', { x: 1 }) === 'a 1 b ', 'substitution des paramètres', '');
 ok(herr({ error: 'agent_too_old' }).includes('trop ancien') && herr({ error: 'zzz', detail: 'd' }).includes('Erreur'), 'erreurs : code connu traduit, inconnu → libellé par défaut', '');
+// ── DeckLink, 2026-11-14 : cartes sur le bus, aucun module. Le bouton nomme CE geste (il disait
+//    « Mettre à jour le micrologiciel » dans tous les états), et le journal d'une opération finie
+//    est titré, daté et replié — sinon il se lit comme l'état actuel.
+mk('hostdrv_blackmagic_7');
+render(7, 'blackmagic', { ok: true, kind: 'blackmagic', can_run: true, upload_dir: '/x',
+  rows: [{ key: 'kernel', value: '6.12.117+deb13-amd64 - 0 module(s), 0 device node(s), 2 PCI device(s)' }],
+  plan: { status: 'module_missing', code: 'module_not_built', params: { kernel: '6.12.117+deb13-amd64', pci: 2 },
+          steps: [{ id: 'build', params: { kernel: '6.12.117+deb13-amd64' } }] }, job: { status: 'none' } });
+h = els['hostdrv_blackmagic_7'].innerHTML;
+ok(h.includes('Compiler et charger le module') && !h.includes('Mettre à jour le micrologiciel'),
+   'module absent : le bouton nomme le geste (compiler), pas le micrologiciel', h.slice(0, 300));
+ok(h.includes('Module noyau absent') && h.includes('6.12.117+deb13-amd64') && !h.includes('Aucune carte'),
+   'module absent : statut et message vrais, jamais « Aucune carte »', '');
+ok(!/settings\.hostdrv\.[a-z_.]+/.test(h), 'module absent : aucune clé i18n brute', (h.match(/settings\.hostdrv\.[a-z_.]+/g) || []).join(','));
+const lf = logFolded({ status: 'done', started: 1763138000, ended: 1763138312, elapsed: 312 }, 'Installing desktopvideo_16.5a1_amd64.deb <x>');
+ok(lf.includes('Journal de la dernière opération') && lf.includes('terminé') && lf.includes('312 s') && /— [^<]*\d/.test(lf),
+   'journal fini : titré « dernière opération », statut, date et durée', lf.slice(0, 200));
+ok(lf.startsWith('<details') && !/<details[^>]*\bopen\b/.test(lf), 'journal fini : REPLIÉ par défaut', lf.slice(0, 80));
+ok(lf.includes('&lt;x&gt;') && !lf.includes('<x>'), 'journal fini : contenu échappé', '');
 process.exit(ko ? 1 : 0);

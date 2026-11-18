@@ -7775,6 +7775,26 @@ function _pollCapAdd(id) {
 const _hd = {};   // "<id>_<kind>" -> {timer, offset}
 function _hdFmt(s, p) { return String(s).replace(/\{(\w+)\}/g, (m, k) => (p && p[k] != null) ? p[k] : ''); }
 function _hdBox(id, kind) { return document.getElementById('hostdrv_'+kind+'_'+id); }
+// The run button names the act of THIS state when the driver has a label for it. One label for
+// every state read « Mettre à jour le micrologiciel » on a node that needed its module compiled.
+function _hdRunLabel(P, status) {
+    const cle = P + 'run.' + status;
+    return T(cle) !== cle ? T(cle) : T(P + 'run');
+}
+// A finished job's log stays on screen after the state is re-read. Without a title and a date it
+// read as the CURRENT state: an install log sat under « À jour », after the reboot (2026-11-14).
+function _hdLogTitle(job) {
+    const t = job && (job.ended || job.started);
+    const quand = t ? new Date(t * 1000).toLocaleString(undefined, {dateStyle: 'short', timeStyle: 'short'}) : '';
+    return _hdFmt(T('settings.hostdrv.last_log'), {status: T('settings.hostdrv.job.' + (job && job.status)),
+                                                  date: quand, s: (job && job.elapsed) || 0});
+}
+function _hdLogFolded(job, log) {
+    return '<details style="margin-top:4px"><summary class="meta" style="cursor:pointer;min-height:44px;display:flex;align-items:center">'
+        + escapeHtml(_hdLogTitle(job)) + '</summary>'
+        + '<pre class="meta" style="margin-top:4px;max-height:260px;overflow:auto;white-space:pre-wrap;background:var(--bg-input);border:1px solid var(--border-soft);border-radius:6px;padding:6px">'
+        + escapeHtml(log) + '</pre></details>';
+}
 function _hdStop(id, kind) { const st = _hd[id+'_'+kind]; if (st && st.timer) { clearTimeout(st.timer); st.timer = null; } }
 function _hdErr(j) {
     // The detail is appended whatever the code: a TRANSLATED refusal used to drop it, and with it
@@ -7847,7 +7867,7 @@ function hostDrvRender(id, kind, j) {
         +(steps && j.can_run ? '<div class="meta">'+escapeHtml(T('settings.hostdrv.steps'))+'</div><ol class="meta" style="margin:2px 0 8px 18px">'+steps+'</ol>' : '')
         +pendHtml
         +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
-        +(j.can_run ? '<button type="button" class="btn btn-blue" style="'+btnStyle+'" '+(running?'disabled':'')+' onclick="hostDrvRun('+id+',\''+kind+'\')">'+escapeHtml(T(P+'run'))+'</button>' : '')
+        +(j.can_run ? '<button type="button" class="btn btn-blue" style="'+btnStyle+'" '+(running?'disabled':'')+' onclick="hostDrvRun('+id+',\''+kind+'\')">'+escapeHtml(_hdRunLabel(P, plan.status))+'</button>' : '')
         +'<button type="button" class="btn" style="'+btnStyle+'" onclick="hostDrvLoad('+id+',\''+kind+'\')">'+escapeHtml(T('settings.hostdrv.refresh'))+'</button></div>'
         +(j.can_run ? '<div class="meta" style="margin-top:4px">'+escapeHtml(T(P+'license'))+'</div>' : '')
         +upload
@@ -7886,19 +7906,22 @@ async function hostDrvPoll(id, kind) {
     pre.textContent = st.log;
     if (atBottom) pre.scrollTop = pre.scrollHeight;
     if (run) { st.timer = setTimeout(() => hostDrvPoll(id, kind), 2000); return; }
+    st.job = job;
     if (!st.refreshed) { st.refreshed = true; hostDrvRefreshState(id, kind); }
 }
 // Fin de job : relire l'état (statut, bandeau « redémarrage requis ») SANS effacer le journal affiché.
 async function hostDrvRefreshState(id, kind) {
     const keepLog = (_hd[id+'_'+kind] || {}).log || '';
+    const keepJob = (_hd[id+'_'+kind] || {}).job || {};
     try {
         const j = await (await fetch('/api/nodes/'+id+'/host-drivers/'+kind+'/state')).json();
         if (!j.ok) return;
         const out = document.getElementById('hostdrv_job_'+kind+'_'+id);
         hostDrvRender(id, kind, Object.assign({}, j, {job: Object.assign({}, j.job, {status: 'none'})}));
-        const st = _hd[id+'_'+kind] = {timer: null, offset: 0, log: keepLog, refreshed: true};
+        const st = _hd[id+'_'+kind] = {timer: null, offset: 0, log: keepLog, job: keepJob, refreshed: true};
         const o2 = document.getElementById('hostdrv_job_'+kind+'_'+id);
-        if (o2 && keepLog) { o2.innerHTML = '<pre class="meta" style="max-height:260px;overflow:auto;white-space:pre-wrap;background:var(--bg-input);border:1px solid var(--border-soft);border-radius:6px;padding:6px"></pre>'; o2.querySelector('pre').textContent = keepLog; }
+        // Titled, dated, FOLDED: it is the record of the last operation, not the state above it.
+        if (o2 && keepLog) o2.innerHTML = _hdLogFolded(keepJob, keepLog);
         void out; void st;
     } catch (e) { /* le journal reste affiché */ }
 }

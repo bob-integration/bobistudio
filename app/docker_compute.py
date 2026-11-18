@@ -319,7 +319,10 @@ def creer_container_compute(node_id, deploy_type, hostname=None):
         db_add_alert("alert.deploy.compute.noeud_introuvable", "error", node_id=node_id,
                      kind="deploy", params={"node_id": node_id})
         return None
-    if not node.get("compute_image"):
+    # The WebRTC gateway runs bobi-webrtc, not bobi-compute (cf. `deploy_compute`), and
+    # its deploy checks that image on the node itself. Requiring compute_image refused the gateway on
+    # an all-in-one install that had only built bobi-webrtc (aio bench, 2026-11-18).
+    if deploy_type != "webrtc_gateway" and not node.get("compute_image"):
         db_add_alert("alert.deploy.compute.sans_image", "error", node_id=node_id,
                      kind="deploy", params={"n": node["name"]})
         return None
