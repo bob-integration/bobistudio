@@ -48,6 +48,11 @@ c_g=$'\033[32m'; c_y=$'\033[33m'; c_r=$'\033[31m'; c_b=$'\033[34m'; c_d=$'\033[2
 log(){ echo "${c_b}▶${c_0} $*"; }; ok(){ echo "${c_g}✓${c_0} $*"; }
 warn(){ echo "${c_y}!${c_0} $*"; }; die(){ echo "${c_r}✗${c_0} $*" >&2; exit 1; }
 item(){ echo "      ${c_d}·${c_0} $*"; }
+# Messages follow the installer's language: BOBI_LANG (exported by get.sh and install.py), else the
+# locale, as get.sh decides. An English install used to get a French removal (tester, 2026-11-22).
+# The confirmation word stays RETIRER in both: it is what `install.py --confirm` expects.
+case "${BOBI_LANG:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}" in fr*|FR*|"") UI=fr;; *) UI=en;; esac
+T(){ if [ "$UI" = en ]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
 
 # Arguments d'origine mémorisés AVANT le parsing : la boucle ci-dessous les consomme (`shift`), or
 # on se relance plus bas (relocalisation hors de $APP_DIR) et « $@ » serait alors VIDE — un
@@ -66,11 +71,11 @@ while [ $# -gt 0 ]; do
     --purge-media) PURGE_MEDIA=1; shift;;
     --app-dir) APP_DIR="$2"; shift 2;;
     -h|--help) sed -n '3,32p' "$0"; exit 0;;
-    *) die "option inconnue : $1";;
+    *) die "$(T "option inconnue : $1" "unknown option: $1")";;
   esac
 done
 
-[ "$(id -u)" = "0" ] || die "à lancer en root."
+[ "$(id -u)" = "0" ] || die "$(T "à lancer en root." "must run as root.")"
 
 # ─── Ce script vit peut-être DANS ce qu'il doit effacer ──────────────────────
 # `node_agent/uninstall-controller.sh` est sous $APP_DIR. Or bash lit son script au fil de
@@ -116,67 +121,71 @@ fi
 # ─── 1. Inventaire ────────────────────────────────────────────────────────────
 echo
 echo "  ╔══════════════════════════════════════════════════════╗"
-echo "  ║  B O B I . S T U D I O  —  retrait de l'orchestrateur ║"
+if [ "$UI" = en ]; then
+echo "  ║  B O B I . S T U D I O  —  orchestrator removal      ║"
+else
+echo "  ║ B O B I . S T U D I O  —  retrait de l'orchestrateur ║"
+fi
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo
-log "Inventaire de ce qui est présent sur $(hostname) :"
+log "$(T "Inventaire de ce qui est présent sur $(hostname) :" "Inventory of what is present on $(hostname):")"
 
 if [ -d "$APP_DIR" ]; then
-  item "application $APP_DIR ($(_taille "$APP_DIR")) — code, venv, base, sauvegardes, CA du plan de contrôle"
+  item "application $APP_DIR ($(_taille "$APP_DIR")) — $(T "code, venv, base, sauvegardes, CA du plan de contrôle" "code, venv, database, backups, control-plane CA")"
   if [ -f "$APP_DIR/db_bobistudio.db" ]; then
-    item "  base $APP_DIR/db_bobistudio.db ($(_taille "$APP_DIR/db_bobistudio.db")) — nœuds, conteneurs, projets, emplacements, macros"
+    item "  $(T "base" "database") $APP_DIR/db_bobistudio.db ($(_taille "$APP_DIR/db_bobistudio.db")) — $(T "nœuds, conteneurs, projets, emplacements, macros" "nodes, containers, projects, slots, macros")"
   fi
-  if [ -d "$APP_DIR/backups" ]; then item "  sauvegardes $APP_DIR/backups ($(_taille "$APP_DIR/backups"))"; fi
-  if [ -d "$APP_DIR/tls" ];     then item "  CA / certificats du plan de contrôle $APP_DIR/tls"; fi
+  if [ -d "$APP_DIR/backups" ]; then item "  $(T "sauvegardes" "backups") $APP_DIR/backups ($(_taille "$APP_DIR/backups"))"; fi
+  if [ -d "$APP_DIR/tls" ];     then item "$(T "  CA / certificats du plan de contrôle $APP_DIR/tls" "  control-plane CA / certificates $APP_DIR/tls")"; fi
 else
-  item "application : $APP_DIR absent"
+  item "$(T "application : $APP_DIR absent" "application: $APP_DIR absent")"
 fi
 if [ -f "/etc/systemd/system/$SERVICE.service" ]; then
-  item "service systemd $SERVICE ($(systemctl is-active $SERVICE 2>/dev/null || echo inactif))"
+  item "$(T "service systemd" "systemd service") $SERVICE ($(systemctl is-active $SERVICE 2>/dev/null || T inactif inactive))"
 fi
-if [ -d "$NODE_SRC" ]; then item "charge utile nœud $NODE_SRC ($(_taille "$NODE_SRC"))"; fi
-if [ "$_n_img" -gt 0 ]; then item "images Docker ($_n_img) : $(echo "$_i_list" | tr '\n' ' ')"; fi
-if [ -n "$_mounts" ]; then item "partages montés sous $EXT_ROOT : $(echo "$_mounts" | tr '\n' ' ') (démontés, JAMAIS effacés)"; fi
-if [ -f "$VIP_CONF" ] && grep -qs "$VIP_MARKER" "$VIP_CONF"; then item "VIP keepalived (conf posée par Bobi.Studio)"; fi
+if [ -d "$NODE_SRC" ]; then item "$(T "charge utile nœud" "node payload") $NODE_SRC ($(_taille "$NODE_SRC"))"; fi
+if [ "$_n_img" -gt 0 ]; then item "$(T "images Docker" "Docker images") ($_n_img) : $(echo "$_i_list" | tr '\n' ' ')"; fi
+if [ -n "$_mounts" ]; then item "$(T "partages montés sous" "shares mounted under") $EXT_ROOT : $(echo "$_mounts" | tr '\n' ' ') ($(T "démontés, JAMAIS effacés" "unmounted, NEVER erased"))"; fi
+if [ -f "$VIP_CONF" ] && grep -qs "$VIP_MARKER" "$VIP_CONF"; then item "$(T "VIP keepalived (conf posée par Bobi.Studio)" "keepalived VIP (configuration set by Bobi.Studio)")"; fi
 if [ "$_agent_local" = 1 ]; then
-  if [ -n "$NODE_UNINSTALLER" ]; then item "agent-nœud LOCAL (machine « tout-en-un ») → retiré aussi, via uninstall-node.sh"
-  else warn "agent-nœud LOCAL présent mais uninstall-node.sh introuvable — il faudra le retirer à part."; fi
+  if [ -n "$NODE_UNINSTALLER" ]; then item "$(T "agent-nœud LOCAL (machine « tout-en-un ») → retiré aussi, via uninstall-node.sh" "LOCAL node agent (all-in-one machine) → removed too, via uninstall-node.sh")"
+  else warn "$(T "agent-nœud LOCAL présent mais uninstall-node.sh introuvable — il faudra le retirer à part." "LOCAL node agent present but uninstall-node.sh not found — it will have to be removed separately.")"; fi
 fi
 if [ -f /root/.ssh/id_ed25519 ]; then
-  item "clé SSH de l'orchestrateur /root/.ssh/id_ed25519 ($(awk '{print $NF}' /root/.ssh/id_ed25519.pub 2>/dev/null || echo '?'))"
+  item "$(T "clé SSH de l'orchestrateur" "orchestrator SSH key") /root/.ssh/id_ed25519 ($(awk '{print $NF}' /root/.ssh/id_ed25519.pub 2>/dev/null || echo '?'))"
 fi
 
 echo
 if [ "$PURGE_DATA" = 0 ]; then
-  echo "    Les DONNÉES (base, sauvegardes, config_local.py, CA) seront ARCHIVÉES dans /root avant effacement."
+  echo "$(T "    Les DONNÉES (base, sauvegardes, config_local.py, CA) seront ARCHIVÉES dans /root avant effacement." "    The DATA (database, backups, config_local.py, CA) will be ARCHIVED in /root before erasing.")"
 else
-  warn "--purge-data : la base, les sauvegardes et la CA seront effacées SANS copie. Irréversible."
+  warn "$(T "--purge-data : la base, les sauvegardes et la CA seront effacées SANS copie. Irréversible." "--purge-data: the database, the backups and the CA will be erased WITHOUT a copy. Irreversible.")"
 fi
 if [ "$PURGE_PKGS" = 1 ]; then
-  warn "--purge-packages : ffmpeg, cifs-utils, nfs-common, python3-venv/pip et keepalived seront désinstallés."
+  warn "$(T "--purge-packages : ffmpeg, cifs-utils, nfs-common, python3-venv/pip et keepalived seront désinstallés." "--purge-packages: ffmpeg, cifs-utils, nfs-common, python3-venv/pip and keepalived will be uninstalled.")"
 else
-  echo "    Paquets système (ffmpeg, python3, rsync…) : conservés (--purge-packages pour les retirer)."
+  echo "$(T "    Paquets système (ffmpeg, python3, rsync…) : conservés (--purge-packages pour les retirer)." "    System packages (ffmpeg, python3, rsync…): kept (--purge-packages to remove them).")"
 fi
 if [ "$PURGE_IMAGES" = 0 ] && [ "$_n_img" -gt 0 ]; then
-  echo "    Images Docker bobi-* : conservées (--purge-images pour les retirer)."
+  echo "$(T "    Images Docker bobi-* : conservées (--purge-images pour les retirer)." "    bobi-* Docker images: kept (--purge-images to remove them).")"
 fi
 echo
-warn "Les NŒUDS enrôlés ne sont PAS touchés : leurs conteneurs continueront de tourner, et la liste"
-echo "    de ces nœuds disparaît avec la base. Les retirer AVANT (uninstall-node.sh sur chacun) si"
-echo "    l'installation entière est mise au rebut."
+warn "$(T "Les NŒUDS enrôlés ne sont PAS touchés : leurs conteneurs continueront de tourner, et la liste" "Enrolled NODES are NOT touched: their containers will keep running, and the list")"
+echo "$(T "    de ces nœuds disparaît avec la base. Les retirer AVANT (uninstall-node.sh sur chacun) si" "    of these nodes goes with the database. Remove them FIRST (uninstall-node.sh on each) if")"
+echo "$(T "    l'installation entière est mise au rebut." "    the whole installation is being retired.")"
 echo
 
 if [ "$DRY" = 1 ]; then
-  ok "Simulation (--dry-run) : rien n'a été modifié."
+  ok "$(T "Simulation (--dry-run) : rien n'a été modifié." "Dry run (--dry-run): nothing was changed.")"
   exit 0
 fi
 
 # ─── 2. Confirmation ──────────────────────────────────────────────────────────
 if [ "$ASSUME_YES" = 0 ]; then
-  [ -t 0 ] || die "non-interactif : relancer avec --yes pour confirmer (rien n'a été fait)."
-  printf "%b" "${c_y}?${c_0} Retirer l'orchestrateur de cette machine ? Taper ${c_r}RETIRER${c_0} pour confirmer : "
+  [ -t 0 ] || die "$(T "non-interactif : relancer avec --yes pour confirmer (rien n'a été fait)." "non-interactive: run again with --yes to confirm (nothing was done).")"
+  printf "%b" "${c_y}?${c_0} $(T "Retirer l'orchestrateur de cette machine ? Taper" "Remove the orchestrator from this machine? Type") ${c_r}RETIRER${c_0} $(T "pour confirmer :" "to confirm:") "
   read -r _ans || _ans=""
-  [ "$_ans" = "RETIRER" ] || die "annulé (rien n'a été fait)."
+  [ "$_ans" = "RETIRER" ] || die "$(T "annulé (rien n'a été fait)." "cancelled (nothing was done).")"
 fi
 echo
 
@@ -185,7 +194,7 @@ echo
 ARCHIVE=""
 if [ "$PURGE_DATA" = 0 ] && [ -d "$APP_DIR" ]; then
   ARCHIVE="/root/bobistudio-retrait-$(date +%Y%m%d-%H%M%S).tar.gz"
-  log "Archivage des données dans $ARCHIVE…"
+  log "$(T "Archivage des données dans $ARCHIVE…" "Archiving the data in $ARCHIVE…")"
   # Liste EXPLICITE : la base et ses journaux WAL, la conf de site, les sauvegardes, la CA, l'état
   # de la recette et l'identité de build. Ni le code ni le venv (ils se réinstallent).
   _inc=""
@@ -197,23 +206,23 @@ if [ "$PURGE_DATA" = 0 ] && [ -d "$APP_DIR" ]; then
     # shellcheck disable=SC2086  (word-splitting voulu : liste de chemins relatifs)
     if tar -czf "$ARCHIVE" -C "$APP_DIR" $_inc 2>/dev/null; then
       chmod 600 "$ARCHIVE"
-      ok "archive écrite : $ARCHIVE ($(_taille "$ARCHIVE"))"
+      ok "$(T "archive écrite :" "archive written:") $ARCHIVE ($(_taille "$ARCHIVE"))"
     else
-      die "archivage ÉCHOUÉ — rien n'a été effacé. Corriger (place disque ?) ou assumer --purge-data."
+      die "$(T "archivage ÉCHOUÉ — rien n'a été effacé. Corriger (place disque ?) ou assumer --purge-data." "archiving FAILED — nothing was erased. Fix it (disk space?) or accept --purge-data.")"
     fi
   else
-    warn "aucune donnée à archiver (installation vide ?)"
+    warn "$(T "aucune donnée à archiver (installation vide ?)" "no data to archive (empty installation?)")"
     ARCHIVE=""
   fi
 fi
 
 # ─── 4. Service ───────────────────────────────────────────────────────────────
 if [ -f "/etc/systemd/system/$SERVICE.service" ] || systemctl is-active "$SERVICE" >/dev/null 2>&1; then
-  log "Arrêt de l'orchestrateur…"
+  log "$(T "Arrêt de l'orchestrateur…" "Stopping the orchestrator…")"
   systemctl disable --now "$SERVICE" >/dev/null 2>&1 || true
   rm -f "/etc/systemd/system/$SERVICE.service"
   systemctl daemon-reload >/dev/null 2>&1 || true
-  ok "service $SERVICE arrêté et retiré"
+  ok "$(T "service $SERVICE arrêté et retiré" "service $SERVICE stopped and removed")"
 fi
 
 # ─── 5. VIP keepalived ────────────────────────────────────────────────────────
@@ -222,44 +231,44 @@ fi
 if [ -f "$VIP_CONF" ] && grep -qs "$VIP_MARKER" "$VIP_CONF"; then
   systemctl disable --now keepalived >/dev/null 2>&1 || true
   rm -f "$VIP_CONF"
-  ok "VIP keepalived retirée (conf Bobi.Studio supprimée, service arrêté)"
+  ok "$(T "VIP keepalived retirée (conf Bobi.Studio supprimée, service arrêté)" "keepalived VIP removed (Bobi.Studio configuration deleted, service stopped)")"
 elif [ -f "$VIP_CONF" ]; then
-  warn "keepalived présent avec une conf qui n'est PAS la nôtre — laissée intacte."
+  warn "$(T "keepalived présent avec une conf qui n'est PAS la nôtre — laissée intacte." "keepalived present with a configuration that is NOT ours — left untouched.")"
 fi
 
 # ─── 6. Partages montés ───────────────────────────────────────────────────────
 # On démonte ce que nous avons monté ; le contenu est DISTANT, il ne nous appartient pas.
 if [ -n "$_mounts" ]; then
-  log "Démontage des partages sous $EXT_ROOT…"
+  log "$(T "Démontage des partages sous $EXT_ROOT…" "Unmounting the shares under $EXT_ROOT…")"
   for m in $_mounts; do
-    umount "$m" >/dev/null 2>&1 || umount -l "$m" >/dev/null 2>&1 || warn "  $m non démonté (occupé)"
+    umount "$m" >/dev/null 2>&1 || umount -l "$m" >/dev/null 2>&1 || warn "$(T "  $m non démonté (occupé)" "  $m not unmounted (busy)")"
     rmdir "$m" 2>/dev/null || true
     item "$m"
   done
   rmdir "$EXT_ROOT" 2>/dev/null || true
-  ok "partages démontés (aucun fichier distant touché)"
+  ok "$(T "partages démontés (aucun fichier distant touché)" "shares unmounted (no remote file touched)")"
 fi
 
 # ─── 7. Agent-nœud local (machine « tout-en-un ») ────────────────────────────
 # AVANT d'effacer $APP_DIR (le désinstalleur de nœud en vient), et sans -o pipefail surprise :
 # son échec ne doit pas interrompre le retrait de l'orchestrateur.
 if [ "$_agent_local" = 1 ] && [ -n "$NODE_UNINSTALLER" ]; then
-  log "── retrait de l'agent-nœud local ──"
+  log "$(T "── retrait de l'agent-nœud local ──" "── removing the local node agent ──")"
   _nargs="--yes"
   if [ "$PURGE_IMAGES" = 1 ]; then _nargs="$_nargs --purge-images"; fi
   if [ "$PURGE_MEDIA" = 1 ]; then _nargs="$_nargs --purge-media"; fi
   # shellcheck disable=SC2086
-  bash "$NODE_UNINSTALLER" $_nargs || warn "le retrait de l'agent-nœud a signalé une erreur (voir ci-dessus)"
+  bash "$NODE_UNINSTALLER" $_nargs || warn "$(T "le retrait de l'agent-nœud a signalé une erreur (voir ci-dessus)" "the node agent removal reported an error (see above)")"
   echo
 fi
 
 # ─── 8. Application ───────────────────────────────────────────────────────────
 if [ -d "$APP_DIR" ]; then
-  log "Suppression de $APP_DIR…"
+  log "$(T "Suppression de $APP_DIR…" "Deleting $APP_DIR…")"
   rm -rf "${APP_DIR:?}"
-  ok "application supprimée"
+  ok "$(T "application supprimée" "application deleted")"
 fi
-if [ -d "$NODE_SRC" ]; then rm -rf "${NODE_SRC:?}"; ok "charge utile nœud $NODE_SRC supprimée"; fi
+if [ -d "$NODE_SRC" ]; then rm -rf "${NODE_SRC:?}"; ok "$(T "charge utile nœud $NODE_SRC supprimée" "node payload $NODE_SRC deleted")"; fi
 
 # ─── 9. Images Docker ─────────────────────────────────────────────────────────
 if [ "$PURGE_IMAGES" = 1 ]; then
@@ -270,9 +279,9 @@ if [ "$PURGE_IMAGES" = 1 ]; then
   # exactement ce qu'on ne veut pas (signalé en recette, 2026-08-21).
   _i_list="$(_images)"
   if [ -n "$_i_list" ]; then
-    log "Suppression des images Docker bobi-*…"
+    log "$(T "Suppression des images Docker bobi-*…" "Deleting the bobi-* Docker images…")"
     for i in $_i_list; do _docker rmi -f "$i" >/dev/null; item "$i"; done
-    ok "images supprimées"
+    ok "$(T "images supprimées" "images deleted")"
   fi
 fi
 
@@ -283,7 +292,7 @@ fi
 if [ -f /root/.ssh/id_ed25519 ]; then
   if [ "$PURGE_KEY" = 1 ] || grep -qs bobistudio-controller /root/.ssh/id_ed25519.pub; then
     rm -f /root/.ssh/id_ed25519 /root/.ssh/id_ed25519.pub
-    ok "clé SSH de l'orchestrateur supprimée"
+    ok "$(T "clé SSH de l'orchestrateur supprimée" "orchestrator SSH key deleted")"
   else
     CLE_RESTANTE=1
   fi
@@ -291,31 +300,32 @@ fi
 
 # ─── 11. Paquets ──────────────────────────────────────────────────────────────
 if [ "$PURGE_PKGS" = 1 ]; then
-  log "Désinstallation des paquets posés par l'installation…"
+  log "$(T "Désinstallation des paquets posés par l'installation…" "Uninstalling the packages the installation added…")"
   export DEBIAN_FRONTEND=noninteractive
   # JAMAIS python3 ni curl : la machine (et apt lui-même) en dépendent.
   apt-get purge -y -qq ffmpeg cifs-utils nfs-common python3-venv python3-pip keepalived >/dev/null 2>&1 || true
   apt-get autoremove -y -qq >/dev/null 2>&1 || true
-  ok "paquets désinstallés (python3, curl et rsync conservés : le système s'en sert)"
+  ok "$(T "paquets désinstallés (python3, curl et rsync conservés : le système s'en sert)" "packages uninstalled (python3, curl and rsync kept: the system uses them)")"
 fi
 
 # ─── 12. Résumé ───────────────────────────────────────────────────────────────
 echo
-ok "Orchestrateur Bobi.Studio retiré de cette machine."
+ok "$(T "Orchestrateur Bobi.Studio retiré de cette machine." "Bobi.Studio orchestrator removed from this machine.")"
 if [ -n "$ARCHIVE" ]; then
   echo
-  echo "    ${c_g}Vos données sont dans $ARCHIVE${c_0}"
-  echo "    (base, sauvegardes, config_local.py, CA du plan de contrôle, téléversements)."
-  echo "    Pour repartir de cet état : réinstaller, puis restaurer l'archive dans /opt/bobistudio"
-  echo "    AVANT le premier démarrage du service."
+  echo "    ${c_g}$(T "Vos données sont dans" "Your data is in") $ARCHIVE${c_0}"
+  echo "$(T "    (base, sauvegardes, config_local.py, CA du plan de contrôle, téléversements)." "    (database, backups, config_local.py, control-plane CA, uploads).")"
+  echo "$(T "    Pour repartir de cet état : réinstaller, puis restaurer l'archive dans /opt/bobistudio" "    To start again from this state: reinstall, then restore the archive into /opt/bobistudio")"
+  echo "$(T "    AVANT le premier démarrage du service." "    BEFORE the service first starts.")"
 fi
-echo "    Conservé volontairement :"
-if [ "$PURGE_PKGS" = 0 ]; then echo "      · les paquets système (ffmpeg, python3, rsync…)"; fi
-if [ "$PURGE_IMAGES" = 0 ] && [ "$_n_img" -gt 0 ]; then echo "      · $_n_img image(s) Docker bobi-* (--purge-images)"; fi
-echo "      · la configuration réseau, les comptes et les partages distants"
+echo "$(T "    Conservé volontairement :" "    Deliberately kept:")"
+if [ "$PURGE_PKGS" = 0 ]; then echo "$(T "      · les paquets système (ffmpeg, python3, rsync…)" "      · the system packages (ffmpeg, python3, rsync…)")"; fi
+if [ "$PURGE_IMAGES" = 0 ] && [ "$_n_img" -gt 0 ]; then echo "      · $_n_img $(T "image(s) Docker bobi-*" "bobi-* Docker image(s)") (--purge-images)"; fi
+echo "$(T "      · la configuration réseau, les comptes et les partages distants" "      · the network configuration, the accounts and the remote shares")"
 if [ "${CLE_RESTANTE:-0}" = 1 ]; then
   echo
-  warn "À VÉRIFIER : /root/.ssh/id_ed25519 a été CONSERVÉE (commentaire « $(awk '{print $NF}' /root/.ssh/id_ed25519.pub 2>/dev/null) » : impossible d'affirmer qu'elle est la nôtre). Elle ouvre encore un accès root aux nœuds qui l'ont dans leur authorized_keys — la supprimer avec --purge-key si elle ne sert qu'à ça."
+  _kc="$(awk '{print $NF}' /root/.ssh/id_ed25519.pub 2>/dev/null)"
+  warn "$(T "À VÉRIFIER : /root/.ssh/id_ed25519 a été CONSERVÉE (commentaire « $_kc » : impossible d'affirmer qu'elle est la nôtre). Elle ouvre encore un accès root aux nœuds qui l'ont dans leur authorized_keys — la supprimer avec --purge-key si elle ne sert qu'à ça." "TO CHECK: /root/.ssh/id_ed25519 was KEPT (comment \"$_kc\": no way to tell it is ours). It still opens root access to the nodes that have it in their authorized_keys — delete it with --purge-key if that is all it is for.")"
 fi
 echo
-echo "  → Les nœuds enrôlés tournent toujours. Sur chacun : bash uninstall-node.sh"
+echo "$(T "  → Les nœuds enrôlés tournent toujours. Sur chacun : bash uninstall-node.sh" "  → The enrolled nodes are still running. On each: bash uninstall-node.sh")"

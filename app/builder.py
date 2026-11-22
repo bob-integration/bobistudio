@@ -50,8 +50,7 @@ RUNTIME_IMAGE_DIRS = ["plugins/_compute_runtime", "plugins/_compute_gpu_runtime"
 # Fichiers individuels à la racine.
 CORE_FILES = [
     "main.py", "requirements.txt", "bobistudio.service",
-    "config_local.example.py", "install.sh", "install/install.py",
-    "install/install_proxmox.py", "build_info.json",
+    "config_local.example.py", "install.sh", "install/install.py", "build_info.json",
     # Doc publique de la racine. INSTALL/INFRASTRUCTURE/HA/THIRD-PARTY sont rendus par la page
     # Aide (/api/doc) : les OMETTRE ici casserait l'aide en ligne sur toute instance installée.
     "LICENSE", "CHANGELOG.md", "CLAUDE.md", "README.md", "README.en.md", "NODE_AGENT.md",
@@ -332,9 +331,9 @@ def build(plugins=None, services=None, dest=DEFAULT_DEST, stamp=True, offline=Fa
 
     os.replace(tmp, dest)
 
-    # Rafraîchir les installeurs servis à côté du zip (/install/install.py + install_proxmox.py).
+    # Rafraîchir l'installeur servi à côté du zip (/install/install.py).
     import shutil
-    for _inst in ("install/install.py", "install/install_proxmox.py"):
+    for _inst in ("install/install.py",):
         _src = os.path.join(ROOT, _inst)
         if os.path.isfile(_src):
             # basename : la ROUTE sert « /install/install.py » depuis DIST_DIR à plat, et

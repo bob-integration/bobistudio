@@ -21,6 +21,14 @@
     <button class="tab"        id="set-group-btn-nmos"      onclick="switchSetGroup('nmos')">{{ _('settings.group.nmos') }}</button>
     <button class="tab"        id="set-group-btn-systeme"   onclick="switchSetGroup('systeme')">{{ _('settings.group.system') }}</button>
     </div>
+    {# Search across tabs and field labels (tester, 2026-11-22: about fifty tabs in ten groups,
+       and the plugin catalogue was not found). Filled by setSearch*() below. #}
+    <div class="set-search">
+        <input type="search" id="set-search" autocomplete="off" placeholder="{{ _('settings.search.placeholder') }}"
+               aria-label="{{ _('settings.search.placeholder') }}" oninput="setSearchRun(this.value)"
+               onkeydown="setSearchKey(event)">
+        <div class="set-search-results" id="set-search-results" role="listbox" hidden></div>
+    </div>
 </div>
 
 <!-- Niveau 1 : onglets existants (filtrés selon le groupe actif par switchSetGroup). -->
@@ -5235,6 +5243,80 @@ function _tallyEntetes() {
          + '<div class="tp-head mid">' + setT('settings.tally.level') + '</div>'
          + '<div class="tp-head right">' + setT('settings.tally.reads') + '</div>';
 }
+
+// ─── Search in Settings (tester, 2026-11-22) ────────────────────────────────
+// Indexes, on first use, each tab's name and the field labels and headings of its panel; a hit
+// opens the group and the tab, then points at the field. Read from the page itself: a list kept
+// by hand would miss the next tab, and plugin/service tabs come and go.
+let _setSearchIdx = null, _setSearchSel = 0, _setSearchHits = [];
+function _setSearchNorm(s) { return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+function _setSearchIndex() {
+    const idx = [];
+    for (const g of SET_GROUPS) {
+        const gb = document.getElementById('set-group-btn-' + g.id);
+        if (!gb) continue;
+        for (const tab of g.tabs) {
+            const tb = document.getElementById('set-tab-btn-' + tab);
+            const panel = document.getElementById('set-tab-' + tab);
+            if (!tb || !panel) continue;
+            const where = gb.textContent.trim() + ' › ' + tb.textContent.trim();
+            idx.push({group: g.id, tab, el: null, text: tb.textContent.trim(), where: gb.textContent.trim()});
+            panel.querySelectorAll('label, h2, h3, h4, legend, summary').forEach(el => {
+                const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                if (txt.length >= 3 && txt.length <= 140) idx.push({group: g.id, tab, el, text: txt, where});
+            });
+        }
+    }
+    return idx;
+}
+function setSearchRun(q) {
+    const box = document.getElementById('set-search-results');
+    const n = _setSearchNorm(q.trim());
+    if (n.length < 2) { box.hidden = true; _setSearchHits = []; return; }
+    if (!_setSearchIdx) _setSearchIdx = _setSearchIndex();
+    const vus = new Set();
+    _setSearchHits = _setSearchIdx.filter(e => {
+        if (!_setSearchNorm(e.text).includes(n)) return false;
+        const k = e.tab + '|' + e.text;
+        if (vus.has(k)) return false;
+        vus.add(k); return true;
+    }).sort((a, b) => (a.el ? 1 : 0) - (b.el ? 1 : 0)).slice(0, 15);    // tabs first, then fields
+    _setSearchSel = 0;
+    box.innerHTML = _setSearchHits.length
+        ? _setSearchHits.map((e, i) => `<button type="button" role="option" class="${i === 0 ? 'on' : ''}"
+              onmousedown="event.preventDefault()" onclick="setSearchOpen(${i})">${escapeHtml(e.text)}
+              <span class="where">${escapeHtml(e.where)}</span></button>`).join('')
+        : `<div class="none">${escapeHtml(window.t('settings.search.none'))}</div>`;
+    box.hidden = false;
+}
+function setSearchKey(ev) {
+    const box = document.getElementById('set-search-results');
+    if (ev.key === 'Escape') { ev.target.value = ''; box.hidden = true; return; }
+    if (!_setSearchHits.length) return;
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        _setSearchSel = (_setSearchSel + (ev.key === 'ArrowDown' ? 1 : -1) + _setSearchHits.length) % _setSearchHits.length;
+        box.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', i === _setSearchSel));
+    } else if (ev.key === 'Enter') { ev.preventDefault(); setSearchOpen(_setSearchSel); }
+}
+function setSearchOpen(i) {
+    const e = _setSearchHits[i];
+    if (!e) return;
+    document.getElementById('set-search-results').hidden = true;
+    switchSetGroup(e.group);
+    switchSetTab(e.tab);
+    if (e.el) {
+        e.el.scrollIntoView({block: 'center'});
+        e.el.classList.add('set-search-hit');
+        setTimeout(() => e.el.classList.remove('set-search-hit'), 2500);
+    }
+}
+document.addEventListener('click', ev => {
+    if (!ev.target.closest || !ev.target.closest('.set-search')) {
+        const b = document.getElementById('set-search-results');
+        if (b) b.hidden = true;
+    }
+});
 
 function switchSetTab(name) {
     SET_TABS.forEach(t => {
@@ -13766,10 +13848,24 @@ async function appliquerLangueDefaut() {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ui_lang_default: val})
     });
+    if (!r.ok) { alert(window.t('js.lang.error')); return; }
+    // ★ A PERSONAL LANGUAGE WINS OVER THIS DEFAULT. The account that changes it often has one
+    //   (the wizard used to set it), and then nothing visible happened: « changing the language in
+    //   the settings does nothing » (tester, 2026-11-22). Say so, and offer to align it.
+    try {
+        const me = await (await fetch('/api/users/me')).json();
+        if (me.lang && me.lang !== val) {
+            const sel = document.getElementById('s_ui_lang_default');
+            const nom = (sel.selectedOptions[0] || {}).textContent || val;
+            if (confirm(window.t('js.lang.own_differs').replace('{lang}', nom))) {
+                await fetch('/api/users/me/lang', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                    body: JSON.stringify({lang: val})});
+            }
+        }
+    } catch (e) {}
     // Rechargement : ce défaut change ce que voient les comptes SANS préférence — dont
     // peut-être celui qui vient de le régler.
-    if (r.ok) location.reload();
-    else alert(window.t('js.lang.error'));
+    location.reload();
 }
 
 async function chargerSettings() {

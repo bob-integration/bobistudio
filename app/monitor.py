@@ -254,6 +254,9 @@ def set_fluid(uid, on, *, _touch=True):
     return out
 
 
+MONITOR_MAX_SIZE = (960, 540)   # encoded size cap of every monitor (aspect kept)
+
+
 def _params(uid, shm="", audio_shm=None, fmt=None, hot=False, fluid=False):
     """Params du monitor : encode `shm` (vidéo) + `audio_shm` optionnel en H.264/Opus et pousse
     un leg WebRTC sur le path per-user. Le format d'ENTRÉE (résolution, chroma, profondeur,
@@ -289,7 +292,12 @@ def _params(uid, shm="", audio_shm=None, fmt=None, hot=False, fluid=False):
                   # suit la source — clé `chroma` du haut). Le WebRTC des navigateurs ne décode que
                   # du H.264 4:2:0 ; une source 4:2:2 partait en « High 4:4:4 Predictive »
                   # (`h264_nvenc` ne sait pas le 4:2:2, ffmpeg choisissait le 4:4:4 seul).
-                  "fps": out_fps, "chroma": "420", "colorimetry": f.get("colorimetry") or ""},
+                  "fps": out_fps, "chroma": "420", "colorimetry": f.get("colorimetry") or "",
+                  # Preview cap (streamer ≥ 0.19.11; older ones ignore both): a 1080i50 source cost
+                  # 103 % of the 40 ms budget at 1920×1080. 960×540 is plenty to check a picture,
+                  # and an interlaced source sends one field instead of weave + bwdif (2026-11-21).
+                  "max_width": MONITOR_MAX_SIZE[0], "max_height": MONITOR_MAX_SIZE[1],
+                  "field_only": True},
         "audio": {"enabled": bool(audio_shm), "bitrate": "128k",
                   "tracks": [{"channels": [0, 1]}] if audio_shm else []},
         "destinations": [{"type": "webrtc", "path": _path(uid), "enabled": True}],

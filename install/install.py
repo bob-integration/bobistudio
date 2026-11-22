@@ -13,11 +13,12 @@ et provisionne SUR CETTE MACHINE l'un de :
   1) Nœud de process (bobi-node-agent seul, bare Debian)
   2) Orchestrateur (contrôleur Flask :5000)
   3) Tout-en-un (orchestrateur + nœud local, « collapse 1-box »)
-  4) Orchestrateur sur une VM Proxmox (chemin legacy → install_proxmox.main())
+  4) Désinstaller
 
 Stdlib uniquement (tourne sur une box nue avant tout venv). Navigation clavier en mode brut
 (termios/tty) avec repli en saisie numérotée si stdin/stdout n'est pas un terminal.
-Réutilise le flux Proxmox de `install_proxmox.py`. Cf. NODE_AGENT.md (§9b), node_agent/REINSTALL.md.
+Cf. NODE_AGENT.md (§9b), node_agent/REINSTALL.md. The Proxmox path (orchestrator in an LXC
+container, `install_proxmox.py`) was removed on 2026-11-22: the product no longer uses LXC.
 """
 import glob
 import json
@@ -35,16 +36,29 @@ import urllib.request
 import uuid
 import zipfile
 
-try:
-    import install_proxmox as ip
-except ImportError:
-    print("install_proxmox.py introuvable à côté de install.py — installeur incomplet.", file=sys.stderr)
-    sys.exit(1)
+R, BOLD, DIM, REVERSE = "\033[0m", "\033[1m", "\033[2m", "\033[7m"
+GREEN, RED, YELLOW, CYAN, WHITE = "\033[32m", "\033[31m", "\033[33m", "\033[36m", "\033[97m"
 
-run, run_stream = ip.run, ip.run_stream
-R, BOLD, DIM = ip.R, ip.BOLD, ip.DIM
-GREEN, RED, YELLOW, CYAN, WHITE = ip.GREEN, ip.RED, ip.YELLOW, ip.CYAN, ip.WHITE
-REVERSE = "\033[7m"
+
+def run(cmd, check=True, capture=False, input_data=None):
+    """Runs a command. Returns (returncode, stdout) — stdout only when capture=True.
+    ⚠ No `cwd`: the child inherits the installer's current directory."""
+    if capture:
+        r = subprocess.run(cmd, capture_output=True, text=True, input=input_data)
+        return r.returncode, r.stdout.strip()
+    r = subprocess.run(cmd, text=True, input=input_data)
+    if check and r.returncode != 0:
+        raise RuntimeError(f"Commande échouée : {' '.join(str(x) for x in cmd)}")
+    return r.returncode, ""
+
+
+def run_stream(cmd, prefix="     "):
+    """Runs a command and prints its output line by line."""
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    for line in proc.stdout:
+        print(f"{prefix}{DIM}{line.rstrip()}{R}", flush=True)
+    proc.wait()
+    return proc.returncode
 
 APP_DIR = "/opt/bobistudio"
 NODE_SRC = "/opt/bobi-node-src"
@@ -57,9 +71,25 @@ STR = {
         "installer": "Installeur",
         "default": "défaut", "choice": "Choix", "invalid_choice": "Choix invalide.",
         "cancelled": "Installation annulée.",
+        "ua_missing": "Sans clavier, cette réponse manque : {q}. La fournir par {opt}.",
+        "ua_bad": "Réponse « {v} » refusée pour {opt} : attendu {ok}.",
+        "ua_enroll": "Le contrôleur a refusé l'enrôlement : vérifier --controller et le jeton.",
+        "ua_mode": "Installation sans clavier : réponses de {src}.",
+        "ua_partial": "Installation incomplète : code de sortie 3.",
+        "ua_args": "{e}",
+        "ua_answers": "Fichier de réponses illisible ({p}) : {e}",
+        "ua_token_file": "Fichier du jeton illisible ({p}) : {e}",
+        "ua_missing_many": "Sans clavier, ces réponses manquent : {opts}. Rien n'a été modifié.",
+        "ua_uninstall": "--inventory (inventaire seul) ou --confirm RETIRER (retrait réel)",
         "nav_single": "↑/↓ déplacer · Entrée valider · ← retour",
         "nav_single_top": "↑/↓ déplacer · Entrée valider",
         "nav_multi": "↑/↓ déplacer · Espace cocher · Entrée valider · ← retour",
+        "nav_multi_none": "↑/↓ déplacer · Espace cocher · Entrée valider (rien coché = aucun)",
+        "multi_need_one": "Cochez au moins une case (Espace), puis Entrée.",
+        "install_done": "Installation terminée.",
+        "plugin_auto_ok": "Plugin {p} {v} installé depuis le catalogue (requis par la capacité du nœud).",
+        "plugin_auto_fail": "Plugin {p} non installé ({e}) : l'installer depuis Réglages → Mises à jour et catalogue.",
+        "plugin_auto_unknown": "Plugins requis par les capacités du nœud : résultat illisible, vérifier Réglages → Mises à jour et catalogue.",
         "nav_input": "Entrée valider · ⌫ effacer",
         "nav_input_back": "Entrée valider · ⌫ effacer · ← retour",
         "back_hint": "(« < » pour revenir)", "yes": "Oui", "no": "Non",
@@ -71,8 +101,6 @@ STR = {
         "o_ctrl_d": "Interface de contrôle web (port 5000) qui pilote la flotte.",
         "o_all_l": "Tout-en-un",
         "o_all_d": "Orchestrateur + nœud de process sur la même machine.",
-        "o_pve_l": "Orchestrateur sur une VM Proxmox",
-        "o_pve_d": "Déploiement via hyperviseur Proxmox (avancé, hérité).",
         "o_del_l": "Désinstaller",
         "o_del_d": "Retirer Bobi.Studio de CETTE machine (nœud et/ou orchestrateur).",
         "del_title": "Que faut-il retirer de cette machine ?",
@@ -86,12 +114,14 @@ STR = {
         "del_warn_nodes": "Les NŒUDS déjà enrôlés ne sont pas touchés : leurs conteneurs continueront de tourner, et la liste de ces nœuds disparaît avec la base. Les retirer AVANT si toute l'installation part au rebut.",
         "del_dryrun": "Faire d'abord un inventaire (sans rien modifier) ?",
         "del_archive": "Conserver une archive des données (base, sauvegardes, certificats) dans /root ?",
-        "del_images": "Supprimer aussi les images Docker bobi-* (plusieurs Go) ?",
+        "del_images": "Supprimer aussi les images Docker de Bobi.Studio ? Ce sont les modèles à partir desquels les conteneurs de traitement sont créés (plusieurs Go). Les garder accélère une réinstallation ; les supprimer libère la place, et elles seront reconstruites au besoin.",
         "del_media": "Supprimer aussi les MÉDIAS stockés sur cette machine (irréversible) ?",
         "del_confirm_hint": "Le script demandera de taper RETIRER pour confirmer.",
         "e_delscript": "script de désinstallation introuvable (%s) : ni dans l'archive téléchargée, ni dans /opt/bobistudio/node_agent. Reconstruire le paquet de distribution (Réglages → Déploiement) puis relancer.",
         "del_fallback": "absent de l'archive — on utilise la copie installée : {d}",
         "del_done": "Retrait terminé.",
+        "del_now": "Inventaire terminé, rien n'a été modifié. Retirer maintenant ce qui vient d'être listé ?",
+        "del_dry_done": "Inventaire terminé : rien n'a été modifié.",
         "del_failed": "Le retrait a signalé une erreur — relire la sortie ci-dessus.",
         # nœud
         "h_node": "Nœud de process",
@@ -102,24 +132,29 @@ STR = {
         "cap_webrtc_d": "Passerelle WebRTC (MediaMTX).",
         "need_one": "Sélectionnez au moins une capacité.",
         "ctrl_url": "Adresse du contrôleur — IP ou hôte (ex. x.x.x.x)",
-        "enroll_tok": "Jeton d'enrôlement (web → Réglages → Nœuds & Matériel → « Jeton d'enrôlement »)",
-        "enroll_help": "Le nœud va s'annoncer à ce contrôleur. Génère le jeton en 1 clic dans le web "
-                       "(carte « Jeton d'enrôlement ») et colle-le ici.",
+        "enroll_tok": "Jeton d'enrôlement",
+        "enroll_help": "Le nœud va s'annoncer à ce contrôleur. Il faudra ensuite un jeton "
+                       "d'enrôlement, créé dans son interface web (Réglages → Nœuds & Matériel → "
+                       "Déploiement, « + Nouveau jeton »).",
         "enroll_err": "Annonce au contrôleur échouée : {e}",
         "enroll_fail": "Annonce impossible — vérifie l'adresse/le jeton, puis relance.",
+        "enroll_tok_help": "Le jeton d'enrôlement est un code à usage unique qui autorise cette machine à rejoindre l'orchestrateur, comme un code d'invitation. Il se crée sur l'orchestrateur, dans l'interface web : Réglages → Nœuds & Matériel → Déploiement, « Enrôlements en attente », bouton « + Nouveau jeton ». Copiez-le, puis collez-le ici.",
+        "enroll_tok_refused": "L'orchestrateur n'a pas accepté cette machine : jeton erroné, expiré ou déjà utilisé, ou adresse injoignable ({url}). Saisissez le jeton à nouveau, ou ← pour corriger l'adresse.",
         "h_node_install": "Installation du nœud (bobi-node-agent)",
         "node_ready": "Nœud installé et annoncé au contrôleur.",
         "node_register": "→ Le nœud apparaît tout seul dans le web (Monitoring → Serveurs / "
                          "Réglages → Nœuds & Matériel). Rien d'autre à saisir.",
         "io2110_pending": "io2110 : choisis la carte E810 et active le PTP depuis l'orchestrateur "
-                          "(Réglages → Nœuds & Matériel) une fois le nœud enrôlé.",
+                          "(Réglages → Nœuds & Matériel) une fois le nœud enrôlé. "
+                          "L'orchestrateur installe de lui-même le plugin 2110_io depuis le catalogue ; "
+                          "il restera à construire l'image bobi-mtl (Réglages → Nœuds & Matériel → Déploiement → Build).",
         # contrôleur
         "h_ctrl": "Orchestrateur (contrôleur Flask)",
         "ctrl_exists": "{d} contient déjà du code — mettre à jour (config/DB conservées) ?",
         "code_deployed": "Code déployé dans {d}",
         "ctrl_ready": "Orchestrateur prêt.",
-        "access": "Accès : {url}  (créer le compte admin à la 1ʳᵉ visite)",
-        "update_default": "Vérification des mises à jour : ACTIVÉE par défaut (une fois par jour, lecture des versions publiées sur GitHub, rien n'est envoyé ni installé). Désactivable à la 1ʳᵉ visite, ou dans Réglages → Mises à jour.",
+        "access": "Accès : {url}  (créer le compte admin à la 1re visite)",
+        "update_default": "Vérification des mises à jour : ACTIVÉE par défaut (une fois par jour, lecture des versions publiées sur GitHub, rien n'est envoyé ni installé). Désactivable à la 1re visite, ou dans Réglages → Mises à jour.",
         "aio_ready": "Tout-en-un prêt (orchestrateur + nœud local).",
         "gestes_title": "Il reste ceci à faire pour qu'un conteneur puisse tourner :",
         "services_title": "Services utiles, éteints par défaut. Cochez ceux à activer :",
@@ -182,9 +217,25 @@ STR = {
         "installer": "Installer",
         "default": "default", "choice": "Choice", "invalid_choice": "Invalid choice.",
         "cancelled": "Installation cancelled.",
+        "ua_missing": "Without a keyboard, this answer is missing: {q}. Provide it with {opt}.",
+        "ua_bad": "Answer “{v}” refused for {opt}: expected {ok}.",
+        "ua_enroll": "The controller refused the enrolment: check --controller and the token.",
+        "ua_mode": "Unattended installation: answers from {src}.",
+        "ua_partial": "Installation incomplete: exit code 3.",
+        "ua_args": "{e}",
+        "ua_answers": "Answers file unreadable ({p}): {e}",
+        "ua_token_file": "Token file unreadable ({p}): {e}",
+        "ua_missing_many": "Without a keyboard, these answers are missing: {opts}. Nothing was changed.",
+        "ua_uninstall": "--inventory (inventory only) or --confirm RETIRER (real removal)",
         "nav_single": "↑/↓ move · Enter select · ← back",
         "nav_single_top": "↑/↓ move · Enter select",
         "nav_multi": "↑/↓ move · Space toggle · Enter confirm · ← back",
+        "nav_multi_none": "↑/↓ move · Space toggle · Enter confirm (nothing ticked = none)",
+        "multi_need_one": "Tick at least one box (Space), then Enter.",
+        "install_done": "Installation finished.",
+        "plugin_auto_ok": "Plugin {p} {v} installed from the catalogue (required by the node's capability).",
+        "plugin_auto_fail": "Plugin {p} not installed ({e}): install it from Settings → Updates & catalogue.",
+        "plugin_auto_unknown": "Plugins required by the node's capabilities: unreadable result, check Settings → Updates & catalogue.",
         "nav_input": "Enter confirm · ⌫ erase",
         "nav_input_back": "Enter confirm · ⌫ erase · ← back",
         "back_hint": "(\"<\" to go back)", "yes": "Yes", "no": "No",
@@ -196,8 +247,6 @@ STR = {
         "o_ctrl_d": "Web control interface (port 5000) that drives the fleet.",
         "o_all_l": "All-in-one",
         "o_all_d": "Orchestrator + process node on the same machine.",
-        "o_pve_l": "Orchestrator on a Proxmox VM",
-        "o_pve_d": "Deployment via the Proxmox hypervisor (advanced, legacy).",
         "o_del_l": "Uninstall",
         "o_del_d": "Remove Bobi.Studio from THIS machine (node and/or orchestrator).",
         "del_title": "What should be removed from this machine?",
@@ -211,12 +260,14 @@ STR = {
         "del_warn_nodes": "Already-enrolled NODES are untouched: their containers keep running, and the list of those nodes disappears with the database. Remove them FIRST if the whole install is being scrapped.",
         "del_dryrun": "Start with an inventory (changes nothing)?",
         "del_archive": "Keep an archive of the data (database, backups, certificates) in /root?",
-        "del_images": "Also delete the bobi-* Docker images (several GB)?",
+        "del_images": "Also delete the Bobi.Studio Docker images? They are the templates the processing containers are created from (several GB). Keeping them speeds up a reinstall; deleting them frees the space, and they are rebuilt when needed.",
         "del_media": "Also delete the MEDIA stored on this machine (irreversible)?",
         "del_confirm_hint": "The script will ask you to type RETIRER to confirm.",
         "e_delscript": "uninstall script not found (%s): neither in the downloaded archive nor in /opt/bobistudio/node_agent. Rebuild the distribution package (Settings → Deployment) then retry.",
         "del_fallback": "missing from the archive — using the installed copy: {d}",
         "del_done": "Removal finished.",
+        "del_now": "Inventory finished, nothing was changed. Remove what was just listed now?",
+        "del_dry_done": "Inventory finished: nothing was changed.",
         "del_failed": "The removal reported an error — read the output above.",
         "h_node": "Process node",
         "caps_title": "Node capabilities — toggle with Space",
@@ -226,17 +277,22 @@ STR = {
         "cap_webrtc_d": "WebRTC gateway (MediaMTX).",
         "need_one": "Select at least one capability.",
         "ctrl_url": "Controller address — IP or host (e.g. x.x.x.x)",
-        "enroll_tok": "Enrollment token (web → Settings → Nodes & Hardware → \"Enrollment token\")",
-        "enroll_help": "The node will announce itself to this controller. Generate the token in one "
-                       "click in the web UI (\"Enrollment token\" card) and paste it here.",
+        "enroll_tok": "Enrollment token",
+        "enroll_help": "The node will announce itself to this controller. It will then need an "
+                       "enrollment token, created in its web interface (Settings → Nodes & Hardware "
+                       "→ Deployment, \"+ New token\").",
         "enroll_err": "Announcing to controller failed: {e}",
         "enroll_fail": "Announce failed — check the address/token, then retry.",
+        "enroll_tok_help": "The enrollment token is a single-use code that lets this machine join the orchestrator, like an invitation code. Create it on the orchestrator, in the web interface: Settings → Nodes & Hardware → Deployment, \"Pending enrollments\", \"+ New token\" button. Copy it, then paste it here.",
+        "enroll_tok_refused": "The orchestrator did not accept this machine: wrong, expired or already used token, or unreachable address ({url}). Enter the token again, or ← to fix the address.",
         "h_node_install": "Node installation (bobi-node-agent)",
         "node_ready": "Node installed and announced to the controller.",
         "node_register": "→ The node shows up on its own in the web UI (Monitoring → Servers / "
                          "Settings → Nodes & Hardware). Nothing else to enter.",
         "io2110_pending": "io2110: pick the E810 card and enable PTP from the orchestrator "
-                          "(Settings → Nodes & Hardware) once the node is enrolled.",
+                          "(Settings → Nodes & Hardware) once the node is enrolled. "
+                          "The orchestrator installs the 2110_io plugin from the catalogue by itself; "
+                          "the bobi-mtl image will then need building (Settings → Nodes & Hardware → Deployment → Build).",
         "h_ctrl": "Orchestrator (Flask controller)",
         "ctrl_exists": "{d} already contains code — update it (config/DB kept)?",
         "code_deployed": "Code deployed to {d}",
@@ -305,6 +361,126 @@ STR = {
 def t(key, **kw):
     s = STR.get(LANG, STR["fr"]).get(key, STR["fr"].get(key, key))
     return s.format(**kw) if kw else s
+
+
+# ─── Installation SANS CLAVIER : réponses fournies d'avance (2026-11-21) ─────
+# CI, recette scriptée, déploiement en série. Chaque question porte un NOM ; un nom = une option
+# = une clé du fichier de réponses (`--answers fichier.json`, les options l'emportent sur lui).
+# Le mode sans clavier s'active dès qu'une réponse est fournie, et il ne DEVINE rien : une réponse
+# absente arrête l'installation en nommant l'option à fournir (code 2). Seules ont un défaut les
+# réponses sans conséquence (langue) ou du côté sûr (ne rien purger, garder l'archive). Le repli
+# numéroté lu sur l'entrée standard reste, mais il dépend de l'ORDRE des questions : une question
+# ajoutée y décale toutes les réponses sans prévenir — c'est pourquoi on nomme.
+# Le jeton d'enrôlement n'a PAS d'option en clair (il se lirait dans `ps` et l'historique) :
+# `--token-file`, la variable BOBI_ENROLL_TOKEN, ou la clé `token` du fichier.
+OPTIONS = {
+    "lang": "--lang", "role": "--role", "caps": "--caps", "controller": "--controller",
+    "token": "--token-file", "update": "--update", "net": "--net", "services": "--services",
+    "target": "--target", "inventory": "--inventory", "confirm": "--confirm",
+    "purge_images": "--purge-images", "purge_media": "--purge-media", "purge_data": "--purge-data",
+}
+ANSWERS = {}
+UNATTENDED = False
+ANSWERS_SRC = ""
+EXIT_MISSING, EXIT_PARTIAL = 2, 3
+_PARTIAL = [False]          # an outcome the installer itself calls incomplete
+_NO_DEFAULT = object()
+
+
+def _ua_exit(msg, code):
+    print(); err(msg); print(); sys.exit(code)
+
+
+def parse_args(argv):
+    """Options → ANSWERS. Renvoie le dict des réponses (vide = installation au clavier)."""
+    import argparse
+    # allow_abbrev=False: `--token <secret>` would otherwise be taken for `--token-file`.
+    p = argparse.ArgumentParser(prog="install.py", allow_abbrev=False, description="Bobi.Studio installer. Any "
+                                "answer given here switches to unattended mode: a missing "
+                                "answer stops with the option to provide (exit 2).")
+    p.add_argument("--answers", metavar="FILE", help="JSON answers file (keys = option names)")
+    p.add_argument("--lang", choices=["fr", "en"])
+    p.add_argument("--role", choices=["node", "controller", "all", "uninstall"])
+    p.add_argument("--caps", help="node capabilities, comma-separated (compute,io2110,media,webrtc)")
+    p.add_argument("--controller", metavar="URL", help="controller to enrol with (node)")
+    p.add_argument("--token-file", metavar="FILE", help="file holding the enrolment token (node)")
+    p.add_argument("--update", choices=["yes", "no"], help="update an existing installation")
+    p.add_argument("--net", choices=["interne", "site"], help="container network (all-in-one)")
+    p.add_argument("--services", help="services to turn on, comma-separated, or none")
+    p.add_argument("--target", choices=["node", "controller", "both"], help="what to uninstall")
+    p.add_argument("--inventory", action="store_true", help="uninstall: inventory only")
+    p.add_argument("--confirm", metavar="RETIRER", help="uninstall: real removal")
+    p.add_argument("--purge-images", action="store_true")
+    p.add_argument("--purge-media", action="store_true")
+    p.add_argument("--purge-data", action="store_true", help="uninstall: no data archive")
+    try:
+        a = p.parse_args(argv)
+    except SystemExit as e:
+        sys.exit(EXIT_MISSING if e.code else 0)
+    ans = {}
+    if a.answers:
+        try:
+            with open(a.answers) as f:
+                ans = json.load(f)
+            if not isinstance(ans, dict):
+                raise ValueError("an object {name: answer} is expected")
+        except (OSError, ValueError) as e:
+            _ua_exit(t("ua_answers", p=a.answers, e=e), EXIT_MISSING)
+        if ans.get("token_file") and not ans.get("token"):
+            ans["token"] = _read_token(ans.pop("token_file"))
+    for nom in OPTIONS:
+        v = getattr(a, nom, None) if nom != "token" else None
+        if v not in (None, False):
+            ans[nom] = v
+    if a.token_file:
+        ans["token"] = _read_token(a.token_file)
+    elif not ans.get("token") and os.environ.get("BOBI_ENROLL_TOKEN"):
+        ans["token"] = os.environ["BOBI_ENROLL_TOKEN"].strip()
+    return ans
+
+
+def _read_token(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError as e:
+        _ua_exit(t("ua_token_file", p=path, e=e), EXIT_MISSING)
+
+
+def _ua_value(name, question, default=_NO_DEFAULT):
+    if name in ANSWERS and ANSWERS[name] not in (None, ""):
+        return ANSWERS[name]
+    if default is not _NO_DEFAULT:
+        return default
+    _ua_exit(t("ua_missing", q=re.sub(r"\x1b\[[0-9;]*m", "", str(question)), opt=OPTIONS.get(name, name)),
+             EXIT_MISSING)
+
+
+def _ua_select(name, question, items, default=_NO_DEFAULT):
+    v = _ua_value(name, question, default)
+    keys = [k for k, _l, _d in items]
+    if isinstance(v, bool) or set(keys) == {True, False}:
+        b = {"yes": True, "oui": True, "true": True, "1": True,
+             "no": False, "non": False, "false": False, "0": False}.get(str(v).strip().lower())
+        if b is not None and b in keys:
+            return b
+    for k in keys:
+        if str(k).lower() == str(v).strip().lower():
+            return k
+    attendu = "yes | no" if set(keys) == {True, False} else " | ".join(map(str, keys))
+    _ua_exit(t("ua_bad", v=v, opt=OPTIONS.get(name, name), ok=attendu), EXIT_MISSING)
+
+
+def _ua_multi(name, question, items, default=_NO_DEFAULT):
+    v = _ua_value(name, question, default)
+    vals = v if isinstance(v, list) else [x.strip() for x in str(v).split(",")]
+    vals = [x for x in vals if x and str(x).lower() not in ("none", "aucun")]
+    keys = [k for k, _l, _d in items]
+    bad = [x for x in vals if x not in keys]
+    if bad:
+        _ua_exit(t("ua_bad", v=",".join(map(str, bad)), opt=OPTIONS.get(name, name),
+                   ok=",".join(map(str, keys)) + " | none"), EXIT_MISSING)
+    return [k for k in keys if k in vals]
 
 
 def ok(m):   print(f"  {GREEN}✓{R}  {m}")
@@ -397,6 +573,9 @@ class _AltScreen:
 
 
 _ANSI = re.compile(r"\033\[[0-9;?]*[A-Za-z]")
+# The Linux text console (TERM=linux) has no ❯ in its font: it showed as a diamond (tester
+# photos, 2026-11-22). Same for superscript letters, which the strings no longer use.
+PTR = ">" if os.environ.get("TERM") == "linux" else "❯"
 def _vlen(s):  return len(_ANSI.sub("", s))                       # longueur visible (sans ANSI)
 def _pad(s, w): return s + " " * max(0, w - _vlen(s))            # complète à droite
 def _center(s, w):                                              # centre dans w colonnes
@@ -411,11 +590,21 @@ def _term_size():
     return sz.columns, sz.lines
 
 
-def _menu_lines(title, items, idx, checks=None, multi=False, allow_back=True, width=70):
-    """Construit le corps du menu (sans le cadre). items=[(key,label,desc)]."""
+def _menu_lines(title, items, idx, checks=None, multi=False, allow_back=True, width=70,
+                allow_empty=False, notice=""):
+    """Construit le corps du menu (sans le cadre). items=[(key,label,desc)].
+
+    The title and the descriptions WRAP to the frame (tester photos, 2026-11-22: a long question
+    pushed the right border out, and descriptions were cut with « … » into useless halves).
+    Descriptions only fall back to one truncated line when the wrapped menu would not fit the
+    terminal height."""
     has_desc = any(d for _, _, d in items)
     iw = width - 2
-    lines = [f"{BOLD}{title}{R}", ""]
+    lines = [f"{BOLD}{tl}{R}" for tl in (textwrap.wrap(str(title), iw - 2) or [""])] + [""]
+    wrapped = {i: textwrap.wrap(d or "", iw - 4) or [""] for i, (_k, _l, d) in enumerate(items)}
+    _cols, rows = _term_size()
+    if has_desc and len(lines) + sum(1 + len(w) for w in wrapped.values()) + 12 > rows:
+        wrapped = {i: [_trunc(d or "", iw - 4)] for i, (_k, _l, d) in enumerate(items)}
     for i, (key, label, desc) in enumerate(items):
         cur = (i == idx)
         box = ""
@@ -423,13 +612,18 @@ def _menu_lines(title, items, idx, checks=None, multi=False, allow_back=True, wi
             box = f"{GREEN}[x]{R} " if checks and checks[i] else f"{DIM}[ ]{R} "
         lab = _trunc(label, iw - 6)
         if cur:
-            lines.append(f"{CYAN}{BOLD}❯{R} {box}{REVERSE}{BOLD} {lab} {R}")
+            lines.append(f"{CYAN}{BOLD}{PTR}{R} {box}{REVERSE}{BOLD} {lab} {R}")
         else:
             lines.append(f"  {box}{lab}")
         if has_desc:
-            lines.append(f"    {DIM}{_trunc(desc or '', iw - 4)}{R}")
-    hint = t("nav_multi") if multi else (t("nav_single") if allow_back else t("nav_single_top"))
-    lines += ["", f"{DIM}{hint}{R}"]
+            lines += [f"    {DIM}{dl}{R}" for dl in wrapped[i]]
+    if multi:
+        hint = t("nav_multi_none") if allow_empty else t("nav_multi")
+    else:
+        hint = t("nav_single") if allow_back else t("nav_single_top")
+    lines += [""] + [f"{DIM}{hl}{R}" for hl in textwrap.wrap(hint, iw - 2)]
+    if notice:
+        lines += [f"{YELLOW}{nl}{R}" for nl in textwrap.wrap(notice, iw - 2)]
     return lines
 
 
@@ -460,8 +654,11 @@ def _panel_width():
     return min(max(cols - 6, 32), 74)
 
 
-def menu_select(title, items, default=0, allow_back=True):
-    """Sélection unique au curseur, panneau plein écran. Renvoie la clé, ou BACK. Repli numéroté hors TTY."""
+def menu_select(title, items, default=0, allow_back=True, name=None, ua_default=_NO_DEFAULT):
+    """Sélection unique au curseur, panneau plein écran. Renvoie la clé, ou BACK. Repli numéroté hors TTY.
+    `name` : la réponse fournie d'avance qui y répond sans clavier (cf. OPTIONS)."""
+    if UNATTENDED:
+        return _ua_select(name, title, items, ua_default)
     if not _interactive():
         return _select_fallback(title, items, default, allow_back)
     idx = default
@@ -482,16 +679,26 @@ def menu_select(title, items, default=0, allow_back=True):
     print(); bail(t("cancelled"))
 
 
-def menu_multi(title, items, preselected=None, allow_back=True):
-    """Cases à cocher, panneau plein écran. Renvoie la liste des clés cochées, ou BACK. Repli CSV hors TTY."""
+def menu_multi(title, items, preselected=None, allow_back=True, name=None, ua_default=_NO_DEFAULT,
+               allow_empty=False):
+    """Cases à cocher, panneau plein écran. Renvoie la liste des clés cochées, ou BACK. Repli CSV hors TTY.
+
+    `allow_empty`: Enter with nothing ticked answers « none ». Without it, Enter on an empty
+    selection used to do NOTHING, silently — on the services screen that was a dead end, whose
+    only way out was Ctrl-C, which cancels everything (tester, 2026-11-22; noted 2026-11-10)."""
+    if UNATTENDED:
+        return _ua_multi(name, title, items, ua_default)
     if not _interactive():
         return _multi_fallback(title, items, preselected, allow_back)
     pre = set(preselected or [])
     checks = [it[0] in pre for it in items]
     idx = 0
+    notice = ""
     with _AltScreen(), _Raw():
         while True:
-            _frame(_menu_lines(title, items, idx, checks=checks, multi=True, width=_panel_width()))
+            _frame(_menu_lines(title, items, idx, checks=checks, multi=True, width=_panel_width(),
+                               allow_empty=allow_empty, notice=notice))
+            notice = ""
             k = _read_key()
             if k == "up":
                 idx = (idx - 1) % len(items)
@@ -501,8 +708,9 @@ def menu_multi(title, items, preselected=None, allow_back=True):
                 checks[idx] = not checks[idx]
             elif k == "enter":
                 sel = [items[i][0] for i in range(len(items)) if checks[i]]
-                if sel:
+                if sel or allow_empty:
                     return sel
+                notice = t("multi_need_one")
             elif k in ("back", "left") and allow_back:
                 return BACK
             elif k == "quit":
@@ -553,7 +761,10 @@ def _input_lines(prompt, buf, default, secret, allow_back, help=None, width=70):
     lines = [f"{BOLD}{pl}{R}" for pl in (textwrap.wrap(prompt, iw - 2) or [""])]
     if help:
         lines.append("")
-        lines += [f"{DIM}{hl}{R}" for hl in textwrap.wrap(help, iw - 2)]
+        for i, para in enumerate(help.split("\n\n")):          # paragraphs stay apart
+            if i:
+                lines.append("")
+            lines += [f"{DIM}{hl}{R}" for hl in textwrap.wrap(para, iw - 2)]
     lines.append("")
     text = buf.decode("utf-8", "ignore")
     if text:
@@ -562,13 +773,15 @@ def _input_lines(prompt, buf, default, secret, allow_back, help=None, width=70):
         field = f"{DIM}{_trunc(str(default), iw - 4)}{R}"
     else:
         field = ""
-    lines.append(f"{CYAN}❯{R} {field}{REVERSE} {R}")          # bloc inversé = faux curseur
+    lines.append(f"{CYAN}{PTR}{R} {field}{REVERSE} {R}")          # bloc inversé = faux curseur
     lines += ["", f"{DIM}{t('nav_input_back') if allow_back else t('nav_input')}{R}"]
     return lines
 
 
-def ask(prompt, default=None, secret=False, required=True, allow_back=False, help=None):
+def ask(prompt, default=None, secret=False, required=True, allow_back=False, help=None, name=None):
     """Saisie texte plein écran (mode brut). ← / Échap → BACK si allow_back. Repli ligne hors TTY."""
+    if UNATTENDED:
+        return str(_ua_value(name, prompt))
     if not _interactive():
         return _ask_fallback(prompt, default, secret, required, allow_back)
     fd = sys.stdin.fileno()
@@ -612,7 +825,7 @@ def _ask_fallback(prompt, default, secret, required, allow_back):
     hint = f" {DIM}[{default}]{R}" if default is not None else ""
     while True:
         try:
-            line = f"  {BOLD}{prompt}{R}{hint}{bh} {CYAN}❯{R} "
+            line = f"  {BOLD}{prompt}{R}{hint}{bh} {CYAN}{PTR}{R} "
             val = (__import__("getpass").getpass(line) if secret else input(line)).strip()
         except (EOFError, KeyboardInterrupt):
             print(); bail(t("cancelled"))
@@ -627,10 +840,11 @@ def _ask_fallback(prompt, default, secret, required, allow_back):
         return val
 
 
-def ask_yn_menu(prompt, default=False, allow_back=True):
+def ask_yn_menu(prompt, default=False, allow_back=True, name=None, ua_default=_NO_DEFAULT):
     """Oui/Non au curseur (réutilise menu_select). Renvoie True/False ou BACK."""
     sel = menu_select(prompt, [(True, t("yes"), None), (False, t("no"), None)],
-                      default=0 if default else 1, allow_back=allow_back)
+                      default=0 if default else 1, allow_back=allow_back,
+                      name=name, ua_default=ua_default)
     return sel
 
 
@@ -737,7 +951,7 @@ def _hdr(title):
     print(f"  {CYAN}{_line()}{R}")
 
 
-# ─── Étapes bare (transposition de install_proxmox.step5/step6, sans pct_exec) ───
+# ─── Étapes bare (orchestrateur posé directement sur cette machine) ───
 # Paquets système (miroir de app/offline_bundle.APT_PACKAGES + python3 de base).
 APT_PACKAGES = ["python3", "python3-venv", "python3-pip",
                 "ffmpeg", "rsync", "curl", "cifs-utils", "nfs-common"]
@@ -824,6 +1038,13 @@ def install_deps_bare(dest):
     if rc != 0:
         bail(t("e_initdb"))
     ok(t("db_ok"))
+    # The web interface opens in the installer's language (tester, 2026-11-22: installed in English,
+    # the setup page came up in French). Only when nothing is stored yet: an update keeps the
+    # language chosen since.
+    run([f"{venv}/bin/python", "-c",
+         f"import sys; sys.path.insert(0,'{dest}'); from app import database as d; "
+         f"d.db_get_setting('ui_lang_default') is None and d.db_set_setting('ui_lang_default', '{LANG}')"],
+        check=False, capture=True)
 
 
 def install_clock_bare(dest):
@@ -849,11 +1070,13 @@ def install_clock_bare(dest):
                 "# Sans table de secondes intercalaires, le noyau garde tai_offset=0 et CLOCK_TAI\n"
                 "# vaut l'UTC : 37 s d'écart avec la grille média, et rien ne le signale.\n"
                 "leapseclist /usr/share/zoneinfo/leap-seconds.list\n")
-    run(["systemctl", "disable", "--now", "systemd-timesyncd"], check=False)
-    run(["systemctl", "restart", "chrony"], check=False)
+    # Captured: on a Debian without timesyncd, systemctl printed « Failed to disable unit » in red
+    # in the middle of a successful install (tester, 2026-11-22). The verdict below is what counts.
+    run(["systemctl", "disable", "--now", "systemd-timesyncd"], check=False, capture=True)
+    run(["systemctl", "restart", "chrony"], check=False, capture=True)
     # On VÉRIFIE au lieu de supposer — mais chrony ne pose l'offset qu'APRÈS sa première synchro :
     # mesurer aussitôt donnerait 0 sur une machine parfaitement saine (constaté en recette).
-    run(["chronyc", "waitsync", "6", "0", "0", "5"], check=False)
+    run(["chronyc", "waitsync", "6", "0", "0", "5"], check=False, capture=True)
     tai = None
     for _ in range(6):
         try:
@@ -1023,7 +1246,8 @@ def run_tty(cmd):
     stdout) : le désinstalleur demande de taper RETIRER, et une invite sans retour à la ligne
     resterait invisible derrière un tube. La confirmation appartient au script, pas à ce menu —
     un seul endroit décide, et c'est celui qui sait ce qu'il va détruire."""
-    return subprocess.call(cmd)
+    # BOBI_LANG: the removal scripts speak the installer's language (they were French only).
+    return subprocess.call(cmd, env={**os.environ, "BOBI_LANG": LANG})
 
 
 def path_uninstall(zip_path):
@@ -1032,7 +1256,7 @@ def path_uninstall(zip_path):
         ("node", t("del_node_l"), t("del_node_d")),
         ("controller", t("del_ctrl_l"), t("del_ctrl_d")),
         ("both", t("del_both_l"), t("del_both_d")),
-    ], default=0, allow_back=True)
+    ], default=0, allow_back=True, name="target")
     if cible is BACK:
         return BACK
 
@@ -1061,51 +1285,80 @@ def path_uninstall(zip_path):
                 return chemin
         bail(t("e_delscript") % nom)
 
-    dry = ask_yn_menu(t("del_dryrun"), default=True, allow_back=True)
-    if dry is BACK:
-        return BACK
-
-    args_node, args_ctrl = [], []
-    if not dry:
-        images = ask_yn_menu(t("del_images"), default=False, allow_back=True)
-        if images is BACK:
+    # After an inventory the installer used to QUIT: the operator had to run the curl command again
+    # to get back here and remove for real (tester, 2026-11-22). It now offers the removal at once.
+    real_now = False
+    while True:
+        if UNATTENDED:
+            # Without a keyboard, a REAL removal is never a default: it takes `--confirm RETIRER`,
+            # the word typed at the scripts' own prompt (they get `--yes`, which they require then).
+            _c = ANSWERS.get("confirm")
+            if _c not in (None, "", "RETIRER"):
+                _ua_exit(t("ua_bad", v=_c, opt="--confirm", ok="RETIRER"), EXIT_MISSING)
+            if _c == "RETIRER":
+                dry = False
+            elif ANSWERS.get("inventory"):
+                dry = True
+            else:
+                _ua_exit(t("ua_missing", q=t("del_dryrun"), opt=t("ua_uninstall")), EXIT_MISSING)
+        elif not real_now:
+            dry = ask_yn_menu(t("del_dryrun"), default=True, allow_back=True, name="inventory")
+        else:
+            dry = False
+        if dry is BACK:
             return BACK
-        if images:
-            args_node.append("--purge-images"); args_ctrl.append("--purge-images")
-        if cible in ("node", "both"):
-            media = ask_yn_menu(t("del_media"), default=False, allow_back=True)
-            if media is BACK:
-                return BACK
-            if media:
-                args_node.append("--purge-media")
-        if cible in ("controller", "both"):
-            archive = ask_yn_menu(t("del_archive"), default=True, allow_back=True)
-            if archive is BACK:
-                return BACK
-            if not archive:
-                args_ctrl.append("--purge-data")
-        info(t("del_confirm_hint"))
-    else:
-        args_node.append("--dry-run"); args_ctrl.append("--dry-run")
 
-    rc = 0
-    # « Les deux » = un seul appel : le désinstalleur d'orchestrateur enchaîne lui-même celui du
-    # nœud (il doit le faire AVANT d'effacer /opt/bobistudio, d'où il vient).
-    if cible == "controller":
-        rc = run_tty(["bash", _script("uninstall-controller.sh"), "--keep-node", *args_ctrl])
-    elif cible == "both":
-        # En retrait RÉEL : un seul appel — le script orchestrateur enchaîne lui-même celui du nœud
-        # (il doit le faire AVANT d'effacer /opt/bobistudio, d'où ce dernier vient).
-        # En INVENTAIRE : il s'arrête avant de chaîner, donc on affiche les deux à la suite.
-        rc = run_tty(["bash", _script("uninstall-controller.sh"), *args_ctrl, *args_node])
-        if dry and rc == 0:
+        args_node, args_ctrl = [], []
+        if not dry:
+            images = ask_yn_menu(t("del_images"), default=False, allow_back=True,
+                                 name="purge_images", ua_default=False)
+            if images is BACK:
+                return BACK
+            if images:
+                args_node.append("--purge-images"); args_ctrl.append("--purge-images")
+            if cible in ("node", "both"):
+                media = ask_yn_menu(t("del_media"), default=False, allow_back=True,
+                                    name="purge_media", ua_default=False)
+                if media is BACK:
+                    return BACK
+                if media:
+                    args_node.append("--purge-media")
+            if cible in ("controller", "both"):
+                archive = (not ANSWERS.get("purge_data")) if UNATTENDED else \
+                    ask_yn_menu(t("del_archive"), default=True, allow_back=True)
+                if archive is BACK:
+                    return BACK
+                if not archive:
+                    args_ctrl.append("--purge-data")
+            if UNATTENDED:
+                args_node.append("--yes"); args_ctrl.append("--yes")
+            else:
+                info(t("del_confirm_hint"))
+        else:
+            args_node.append("--dry-run"); args_ctrl.append("--dry-run")
+
+        rc = 0
+        # « Les deux » = un seul appel : le désinstalleur d'orchestrateur enchaîne lui-même celui du
+        # nœud (il doit le faire AVANT d'effacer /opt/bobistudio, d'où il vient).
+        if cible == "controller":
+            rc = run_tty(["bash", _script("uninstall-controller.sh"), "--keep-node", *args_ctrl])
+        elif cible == "both":
+            # En retrait RÉEL : un seul appel — le script orchestrateur enchaîne lui-même celui du nœud
+            # (il doit le faire AVANT d'effacer /opt/bobistudio, d'où ce dernier vient).
+            # En INVENTAIRE : il s'arrête avant de chaîner, donc on affiche les deux à la suite.
+            rc = run_tty(["bash", _script("uninstall-controller.sh"), *args_ctrl, *args_node])
+            if dry and rc == 0:
+                rc = run_tty(["bash", _script("uninstall-node.sh"), *args_node])
+        else:
             rc = run_tty(["bash", _script("uninstall-node.sh"), *args_node])
-    else:
-        rc = run_tty(["bash", _script("uninstall-node.sh"), *args_node])
 
-    print()
-    ok(t("del_done")) if rc == 0 else warn(t("del_failed"))
-    return None
+        print()
+        ok(t("del_dry_done" if dry else "del_done")) if rc == 0 else warn(t("del_failed"))
+        if dry and rc == 0 and not UNATTENDED:
+            real_now = ask_yn_menu(t("del_now"), default=False, allow_back=False) is True
+            if real_now:
+                continue
+        return None
 
 
 def run_install_node(zip_path, args):
@@ -1122,21 +1375,37 @@ def run_install_node(zip_path, args):
 def path_node(zip_path):
     """Pose l'agent (capacités choisies ici) et ANNONCE le nœud au contrôleur (push).
     Renvoie BACK pour revenir au menu principal."""
+    # One step at a time, and ← goes back ONE step. A refused token used to send the operator
+    # back to the capabilities screen, the very first question (tester, 2026-11-22): it is the
+    # token that was wrong, so it is the token that is asked again, with the reason.
+    step, refused = "caps", False
     while True:
-        caps = menu_multi(t("caps_title"), _cap_items(), preselected=["compute"], allow_back=True)
-        if caps is BACK:
-            return BACK
-        # La carte E810 (io2110) est auto-détectée par _enroll (driver `ice`) et le reste
-        # du réseau est réglé après coup depuis l'orchestrateur → aucune saisie ici.
-        url = ask(t("ctrl_url"), allow_back=True, help=t("enroll_help"))
-        if url is BACK:
+        if step == "caps":
+            caps = menu_multi(t("caps_title"), _cap_items(), preselected=["compute"], allow_back=True,
+                              name="caps")
+            if caps is BACK:
+                return BACK
+            step = "url"
             continue
-        tok = ask(t("enroll_tok"), allow_back=True)
+        if step == "url":
+            # La carte E810 (io2110) est auto-détectée par _enroll (driver `ice`) et le reste
+            # du réseau est réglé après coup depuis l'orchestrateur → aucune saisie ici.
+            url = ask(t("ctrl_url"), allow_back=True, help=t("enroll_help"), name="controller")
+            step = "caps" if url is BACK else "token"
+            refused = False
+            continue
+        aide = t("enroll_tok_help")
+        if refused:
+            aide = t("enroll_tok_refused", url=url) + "\n\n" + aide
+        tok = ask(t("enroll_tok"), allow_back=True, help=aide, name="token")
         if tok is BACK:
+            step = "url"
             continue
         args = _enroll(url, tok, caps)
         if args is None:
-            warn(t("enroll_fail"))
+            if UNATTENDED:
+                _ua_exit(t("ua_enroll"), 1)        # the same answers would fail again: no loop
+            refused = True
             continue
         break
     run_install_node(zip_path, args)
@@ -1146,6 +1415,7 @@ def path_node(zip_path):
     info(t("node_register"))
     if "io2110" in caps:
         info(t("io2110_pending"))
+    print(); ok(f"{BOLD}{t('install_done')}{R}"); print()
     return None
 
 
@@ -1153,7 +1423,7 @@ def path_node(zip_path):
 def install_controller(zip_path):
     _hdr(t("h_ctrl"))
     if os.path.isfile(os.path.join(APP_DIR, "main.py")):
-        upd = ask_yn_menu(t("ctrl_exists", d=APP_DIR), default=True, allow_back=True)
+        upd = ask_yn_menu(t("ctrl_exists", d=APP_DIR), default=True, allow_back=True, name="update")
         if upd is BACK:
             return BACK
         if not upd:
@@ -1224,6 +1494,32 @@ def appliquer_reseau_conteneurs(mode):
                    or ((r.stderr or "").strip().splitlines() or ["?"])[-1])
 
 
+def installer_plugins_requis():
+    """Plugins the local node's capabilities require, fetched from the catalogue (io2110 →
+    2110_io). Without it, the 2110 engine and the 2110 probe have no image to run on, and
+    nothing said so (tester, 2026-11-22). Same code as an enrolment: app/plugin_autoinstall.py."""
+    code = ("import json\n"
+            "from app import plugin_autoinstall as p\n"
+            "print(json.dumps({k: list(v) for k, v in p.ensure('install').items()}))\n")
+    r = subprocess.run([f"{APP_DIR}/venv/bin/python", "-c", code], cwd=APP_DIR,
+                       capture_output=True, text=True)
+    res = None
+    for ligne in (r.stdout or "").splitlines():
+        if ligne.startswith("{"):
+            try:
+                res = json.loads(ligne)
+            except Exception:
+                pass
+    if res is None:
+        warn(t("plugin_auto_unknown"))
+        return
+    for type_, (ok_, detail) in res.items():
+        if ok_:
+            ok(t("plugin_auto_ok", p=type_, v=detail))
+        else:
+            warn(t("plugin_auto_fail", p=type_, e=detail))
+
+
 def register_local_agent(token):
     """Enrôle l'agent LOCAL, et DIT la vérité sur le résultat. Rend True si la ligne existe.
 
@@ -1233,7 +1529,7 @@ def register_local_agent(token):
     donc rien de déployable. Les trois premiers viennent de ce que cette fonction jugeait sur le
     code de sortie d'un processus, et non sur ce qu'elle voulait obtenir.
 
-    (a) `run()` NE FIXE PAS LE RÉPERTOIRE COURANT (`install_proxmox.py:260`, aucun `cwd`). L'enfant
+    (a) `run()` NE FIXE PAS LE RÉPERTOIRE COURANT (`run()` ci-dessus, aucun `cwd`). L'enfant
         importe `app`, introuvable ailleurs que depuis APP_DIR : lancé depuis `/tmp` — le cas
         NORMAL quand `get.sh` déroule dans un répertoire temporaire — l'import meurt en
         `ModuleNotFoundError: No module named 'app'`.
@@ -1329,7 +1625,8 @@ def proposer_services():
         return                               # rien à proposer : on ne pose pas une question vide
     items = [(o["id"], o["label"], o.get("why_text") or "") for o in offres]
     choix = menu_multi(t("services_title"), items,
-                       preselected=[o["id"] for o in offres if o.get("on")], allow_back=False)
+                       preselected=[o["id"] for o in offres if o.get("on")], allow_back=False,
+                       name="services", allow_empty=True)
     cles = [o["key"] for o in offres if o["id"] in (choix or [])]
     if not cles:
         info(t("services_none"))
@@ -1442,12 +1739,14 @@ def path_controller(zip_path):
     dire_gestes_restants()
     info(t("access", url=f"{BOLD}{CYAN}http://{_host_ip() or os.uname().nodename}:5000{R}"))
     info(t("update_default"))
+    print(); ok(f"{BOLD}{t('install_done')}{R}"); print()
     return None
 
 
 def path_all_in_one(zip_path):
     # Capacités du nœud LOCAL (comme pour un nœud dédié) : compute/io2110/media/webrtc.
-    caps = menu_multi(t("caps_title"), _cap_items(), preselected=["compute"], allow_back=True)
+    caps = menu_multi(t("caps_title"), _cap_items(), preselected=["compute"], allow_back=True,
+                      name="caps")
     if caps is BACK:
         return BACK
     if install_controller(zip_path) is BACK:
@@ -1456,6 +1755,8 @@ def path_all_in_one(zip_path):
     run_install_node(zip_path, ["--with", ",".join(caps) or "compute",
                                 "--port", "9100", "--token", token])
     noeud_ok = register_local_agent(token)
+    if noeud_ok:
+        installer_plugins_requis()
     # Le mode réseau se demande APRÈS l'enrôlement : sans ligne de nœud en base, il n'y a rien
     # sur quoi le poser. Et on ne le demande pas du tout si l'enrôlement a échoué — ce serait
     # une question dont la réponse ne pourrait aller nulle part.
@@ -1470,7 +1771,7 @@ def path_all_in_one(zip_path):
         mode = menu_select(t("net_title"), [
             ("interne", t("net_interne_l"), t("net_interne_d")),
             ("site", t("net_site_l"), t("net_site_d")),
-        ], default=0, allow_back=False)
+        ], default=0, allow_back=False, name="net")
         net_demande = (mode == "interne")
         net_ok, detail = appliquer_reseau_conteneurs(mode)
         if mode == "interne" and net_ok:
@@ -1483,8 +1784,10 @@ def path_all_in_one(zip_path):
     print()
     if not noeud_ok:
         warn(t("aio_partial"))
+        _PARTIAL[0] = True
     elif net_demande and not net_ok:
         warn(t("aio_partial_net"))
+        _PARTIAL[0] = True
     else:
         ok(t("aio_ready"))
     # Les services utiles sont TOUS éteints par défaut : on propose, à l'endroit où quelqu'un
@@ -1495,10 +1798,53 @@ def path_all_in_one(zip_path):
     dire_gestes_restants()
     info(t("access", url=f"{BOLD}{CYAN}http://{_host_ip() or os.uname().nodename}:5000{R}"))
     info(t("update_default"))
+    print(); ok(f"{BOLD}{t('install_done')}{R}"); print()
     return None
 
 
 # ─── Menu / boucle principale (avec retour en arrière) ───────────────────────
+def _ua_preflight(role):
+    """Every answer the role will need, checked BEFORE anything is installed.
+
+    Each question still checks its own answer when it comes; this only moves the verdict
+    forward. Without it, `--role all` without `--net` installed the orchestrator, Docker and
+    the agent, then stopped with "answer missing" (bench VMs, 2026-11-21). `services` is
+    required even when the list offered may turn out empty: which services are offered is only
+    known once the orchestrator runs, and `none` is a valid answer."""
+    need = {"node": ["caps", "controller", "token"],
+            "controller": ["services"],
+            "all": ["caps", "net", "services"],
+            "uninstall": ["target"]}[role]
+    if role in ("controller", "all") and os.path.isfile(os.path.join(APP_DIR, "main.py")):
+        need.append("update")
+    missing = [OPTIONS[n] for n in need if ANSWERS.get(n) in (None, "", [])]
+    if role == "uninstall" and not ANSWERS.get("confirm") and not ANSWERS.get("inventory"):
+        missing.append(t("ua_uninstall"))
+    if missing:
+        _ua_exit(t("ua_missing_many", opts=", ".join(missing)), EXIT_MISSING)
+    if "caps" in need:
+        _ua_multi("caps", t("caps_title"), _cap_items())
+    if role == "uninstall" and ANSWERS.get("confirm") not in (None, "", "RETIRER"):
+        _ua_exit(t("ua_bad", v=ANSWERS["confirm"], opt="--confirm", ok="RETIRER"), EXIT_MISSING)
+
+
+def _main_unattended(lang_herite):
+    """Même chemin qu'au clavier, sans menu ni retour : les réponses viennent d'OPTIONS."""
+    global LANG
+    LANG = _ua_select("lang", "lang", [("fr", "", None), ("en", "", None)], lang_herite)
+    _banner()
+    info(t("ua_mode", src=ANSWERS_SRC))
+    sel = _ua_value("role", t("menu_title"))
+    sel = _ua_select("role", t("menu_title"), [("node", "", None), ("controller", "", None),
+                                                ("all", "", None), ("uninstall", "", None)])
+    _ua_preflight(sel)
+    zip_path = _find_source()[1]
+    {"node": path_node, "controller": path_controller, "all": path_all_in_one,
+     "uninstall": path_uninstall}[sel](zip_path)
+    if _PARTIAL[0]:
+        _ua_exit(t("ua_partial"), EXIT_PARTIAL)
+
+
 def main():
     global LANG
     # ★ NE PAS REPOSER UNE QUESTION DÉJÀ RÉPONDUE. `get.sh` demande la langue avant de nous
@@ -1512,6 +1858,8 @@ def main():
     _premier = _herite in ("fr", "en")
     if _premier:
         LANG = _herite
+    if UNATTENDED:
+        return _main_unattended(_herite if _premier else "fr")
     while True:
         # Étape 1 : langue (pas de retour avant elle).
         if _premier:
@@ -1526,14 +1874,10 @@ def main():
                 ("node", t("o_node_l"), t("o_node_d")),
                 ("controller", t("o_ctrl_l"), t("o_ctrl_d")),
                 ("all", t("o_all_l"), t("o_all_d")),
-                ("proxmox", t("o_pve_l"), t("o_pve_d")),
                 ("uninstall", t("o_del_l"), t("o_del_d")),
             ], default=0, allow_back=True)
             if sel is BACK:
                 break                       # ← retour au choix de la langue
-            if sel == "proxmox":
-                ip.main()                   # flux legacy inchangé (crée la VM orchestrateur)
-                return
             zip_path = _find_source()[1]
             res = {"node": path_node, "controller": path_controller, "all": path_all_in_one,
                    "uninstall": path_uninstall}[sel](zip_path)
@@ -1543,6 +1887,10 @@ def main():
 
 
 if __name__ == "__main__":
+    # Options first: `--help` answers without root, and a bad option costs nothing.
+    ANSWERS.update(parse_args(sys.argv[1:]))
+    UNATTENDED = bool(ANSWERS)
+    ANSWERS_SRC = " ".join(a for a in sys.argv[1:] if a.startswith("--")) or "?"
     if os.geteuid() != 0:
         print(f"\n  {RED}{STR['fr']['must_root']} / {STR['en']['must_root']}{R}\n")
         sys.exit(1)

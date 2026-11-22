@@ -84,6 +84,11 @@ def _enroll_finalize(node_id, ip):
                  "info" if ok else "warning", node_id=node_id, kind="node",
                  params=({"n": node.get("name")} if ok
                          else {"n": node.get("name"), "res": res}))
+    # Plugins its capabilities require (io2110 → 2110_io, from the catalogue): without it, no
+    # bobi-mtl image can be built for the 2110 engine or the probe (tester, 2026-11-22).
+    if ok:
+        from .. import plugin_autoinstall
+        plugin_autoinstall.ensure("enroll")
     # Pool de cœurs : posé DÈS L'ENRÔLEMENT, sinon un nœud neuf ne peut rien réserver — ses
     # conteneurs restent tous partagés et le bouton « Garantir » se refuse, sans que rien n'indique
     # qu'il manque un réglage. Constaté le 2026-08-02 : cinq nœuds sur six sans pool.

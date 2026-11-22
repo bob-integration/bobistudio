@@ -52,14 +52,11 @@ def v(cond, quoi):
 
 
 def _charger(source_texte=None):
-    """Loads install.py FROM SOURCE, optionally mutated. `install_proxmox` sits next to it."""
+    """Loads install.py FROM SOURCE, optionally mutated."""
     texte = source_texte if source_texte is not None else SRC_INSTALL.read_text(encoding="utf-8")
     with tempfile.TemporaryDirectory() as d:
         cible = pathlib.Path(d) / "install.py"
         cible.write_text(texte, encoding="utf-8")
-        # The module refuses to load without its sibling; we link the real one.
-        os.symlink(RACINE / "install" / "install_proxmox.py",
-                   pathlib.Path(d) / "install_proxmox.py")
         spec = importlib.util.spec_from_file_location("inst_essai", cible)
         m = importlib.util.module_from_spec(spec)
         sys.modules["inst_essai"] = m

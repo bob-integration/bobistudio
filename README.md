@@ -205,7 +205,7 @@ points d'attention qui font échouer une installation :
 
 | | |
 |---|---|
-| [§2.1](INSTALL.md#21-installeur-unifié-recommandé) · [§2.2](INSTALL.md#22-installation-manuelle) | Installeur depuis un paquet ou un clone, installation manuelle, service systemd, désinstallation |
+| [§2.1](INSTALL.md#21-depuis-un-clone-git) · [§2.2](INSTALL.md#22-installation-manuelle) | Installeur depuis un paquet ou un clone, installation manuelle, service systemd, désinstallation |
 | [§4](INSTALL.md#4-enrôlement-dun-nœud) | Enrôler un nœud : directe, zéro-touche, ou sans y toucher (PXE / UEFI HTTP, USB, iLO) |
 | [§5](INSTALL.md#5-préparation-dun-nœud-média-st-2110) | Préparer un nœud média ST 2110 : hugepages, DDP, files, PTP |
 | [§8.3](INSTALL.md#83-installation-sans-accès-internet-bundle-hors-ligne) | Installer sans accès Internet, depuis un paquet hors-ligne |
@@ -243,7 +243,7 @@ plugins/              ← un plugin par type de container (plugin.json + script.
                         + dossiers `_*_runtime` (images Docker partagées, pas des plugins)
 services/             ← services de l'orchestrateur — `ls services/` fait foi
 node_agent/           ← agent-nœud (agent.py) + installeur de nœud (install-node.sh) + iso/
-install/              ← installeur unifié (install.py) + flux Proxmox hérité
+install/              ← installeur unifié (install.py)
 templates/            ← vues HTML Jinja2
 static/               ← JS (scripts.js + js/), CSS (base.css, nav.css, thèmes), uploads/
 i18n/                 ← catalogues de traduction (fr.json, en.json)

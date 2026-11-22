@@ -12,13 +12,12 @@ from flask import jsonify, request, Response, send_file, abort
 from . import bp
 from ..auth import require_perm, require_login
 
-# Le nœud Proxmox télécharge le bootstrap + le zip sans session : routes PUBLIQUES,
+# La machine cible télécharge le bootstrap + le zip sans session : routes PUBLIQUES,
 # gardées par le réglage install_hosting_enabled. Le zip est nettoyé de tout secret
 # par app.builder (garde-fou). One-liner : bash <(curl -fsSL http://<host>/install.sh)
 
 _INSTALL_FILES = {
     "install.py":         "text/x-python",   # installeur unifié (menu : nœud / orchestrateur / …)
-    "install_proxmox.py": "text/x-python",   # flux legacy Proxmox (délégué par install.py)
     "bobistudio.zip":     "application/zip",
 }
 
@@ -38,7 +37,6 @@ def install_sh():
         'TMP="$(mktemp -d)"; cd "$TMP"\n'
         'echo "Bobi.Studio — téléchargement depuis $BASE"\n'
         'curl -fsSL "$BASE/install/install.py"          -o install.py\n'
-        'curl -fsSL "$BASE/install/install_proxmox.py"  -o install_proxmox.py\n'
         'curl -fsSL "$BASE/install/bobistudio.zip"      -o bobistudio.zip\n'
         'echo "Lancement de l\'installeur…"\n'
         "python3 install.py\n"

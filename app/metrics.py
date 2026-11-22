@@ -1784,6 +1784,19 @@ def _cause_arret(vmid, cont, etat_agent, tail_row=None):
 # lit plus). On exige donc que TOUTES les entrées soient muettes, jamais une seule.
 _DECROCHE_SEUIL = 6          # polls consécutifs (~30 s à 5 s de période) avant d'alerter
 _decroche_ctr = {}           # vmid → nb de polls consécutifs en contradiction
+# What was already SAID survives a restart (2026-11-21). The counter above lives in memory: a
+# container stuck for hours was announced again 30 s after every orchestrator restart, as if it
+# had just broken — a dozen restarts on 2026-10-20 read as « pas mal de galères ». vmid →
+# instance_uuid of the container alerted for: a recycled vmid (another uuid) is a new case.
+from .episodes import EtatEpisodes as _Episodes
+_decroche_dit = _Episodes("decrochage")
+
+
+def _decroche_fin(vmid):
+    """The contradiction is over (or never started): forget it, so the next one is said."""
+    _decroche_ctr.pop(vmid, None)
+    _decroche_dit.retirer(vmid)
+    _decroche_dit.flush(force=True)     # no-op unless something changed (rare)
 
 
 def _detecter_decrochage(vmid, m, lat):
@@ -1796,7 +1809,7 @@ def _detecter_decrochage(vmid, m, lat):
     except (TypeError, ValueError):
         return False
     if sortie <= 0:
-        _decroche_ctr.pop(vmid, None)
+        _decroche_fin(vmid)
         return False        # il n'émet pas : c'est un autre problème, pas un décrochage
 
     # `in_fps_seen` (streamer) est le témoin le plus direct quand il existe.
@@ -1808,18 +1821,33 @@ def _detecter_decrochage(vmid, m, lat):
         # Sinon : au moins une entrée connue, et TOUTES sans latence (aucune trame reçue).
         entrees = {k: v for k, v in (lat or {}).items() if k != "*"}
         if not entrees:
-            _decroche_ctr.pop(vmid, None)
+            _decroche_fin(vmid)
             return False    # aucune entrée déclarée → rien à conclure (générateur, mire…)
         muet = all(v is None for v in entrees.values())
 
     if not muet:
-        _decroche_ctr.pop(vmid, None)
+        _decroche_fin(vmid)
         return False
     n = _decroche_ctr.get(vmid, 0) + 1
     _decroche_ctr[vmid] = n
     if n != _DECROCHE_SEUIL:
         return False        # alerte UNE fois au franchissement, pas à chaque poll
     c = db_get_container(vmid) or {}
+    uuid = c.get("instance_uuid") or ""
+    if _decroche_dit.get(vmid) == uuid:
+        # Already said before a restart, and still the same stuck container: nothing new.
+        log.info("still stuck: vmid %s (already alerted)", vmid)
+        return False
+    try:        # rare event: drop the entries of containers that no longer exist
+        from .database import db_get_containers
+        _vivants = {str(x.get("vmid")) for x in (db_get_containers() or [])}
+        _decroche_dit.purger(lambda k: k in _vivants)
+    except Exception:
+        pass
+    _decroche_dit.poser(vmid, uuid)
+    # Written NOW: the flush is debounced (30 s) and nothing else may call it before a restart —
+    # which is exactly when this state is needed.
+    _decroche_dit.flush(force=True)
     db_add_alert(
         "alert.signal.decrochage", "warning", vmid=vmid, kind="signal",
         params={"h": c.get("hostname") or ("container " + str(vmid)), "vmid": vmid, "fps": sortie})

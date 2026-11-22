@@ -637,6 +637,35 @@ def _read_container_ip(host, name, network):
     return ip if (rc == 0 and ip and ip != "<no value>") else ""
 
 
+def _still_on_node(host, name):
+    """True if the container still exists on the node, False if it is gone, None if the node
+    could not tell (agent or SSH unreachable)."""
+    rc, out, _ = ssh_run(
+        host, f"docker inspect {shlex.quote(name)} >/dev/null 2>&1 && echo present || echo absent",
+        timeout=15)
+    out = (out or "").strip()
+    if rc != 0 or out not in ("present", "absent"):
+        return None
+    return out == "present"
+
+
+def ips_held_on_node(node, network):
+    """{ip: docker name} of the containers Docker has attached to `network` on this node — the
+    node's own view, which an orphan the database forgot is still part of. {} if unreadable."""
+    from . import container_net
+    try:
+        net = container_net.inspect_reseau(node, network) or {}
+    except Exception as e:
+        log.warning("IPs held on %s/%s unreadable: %s", (node or {}).get("name"), network, e)
+        return {}
+    held = {}
+    for a in (net.get("Containers") or {}).values():
+        ip = str(a.get("IPv4Address") or "").split("/")[0]
+        if ip:
+            held[ip] = a.get("Name") or ""
+    return held
+
+
 def _diagnose_container(host, name):
     """Diagnostic court quand le conteneur ne donne pas d'IP : état + code de sortie + fin des logs.
     Aide à distinguer crash au démarrage (image/agent) d'un échec d'IPAM macvlan."""
@@ -967,7 +996,9 @@ def deploy_compute(vmid, params=None, deploy_type=None, force=False):
     from . import allocations
     alloc_ip = None
     if network != "host" and allocations.centralized_ipam(node["id"]):
-        alloc_ip = allocations.allocate_container_ip(vmid, node_id=node["id"])
+        alloc_ip = allocations.allocate_container_ip(
+            vmid, node_id=node["id"],
+            held_on_node={ip: nm for ip, nm in ips_held_on_node(node, network).items() if nm != name})
         if not alloc_ip:
             db_update_status(vmid, "stopped")
             return False
@@ -1600,6 +1631,22 @@ def destroy_compute(vmid, progress=None):
     name = c.get("docker_name") or _name(vmid)
     if node:
         ssh_run(node["host"], f"docker rm -f {shlex.quote(name)} >/dev/null 2>&1", timeout=30)
+        # The row goes only once the node CONFIRMS the container is gone (2026-11-21). A failed
+        # `docker rm` used to be ignored: the row was deleted, the container kept running with its
+        # IP, and the next allocation handed that IP out again — « Address already in use » on a
+        # container that had nothing to do with the orphan, which nothing named.
+        left = _still_on_node(node["host"], name)
+        if left is True:
+            db_add_alert("alert.deploy.compute.destruction_refusee", "error", vmid=vmid,
+                         node_id=node.get("id"), kind="deploy",
+                         params={"h": name, "vmid": vmid, "n": node.get("name")})
+            if progress:
+                progress(f"❌ {name} is still on {node.get('name')} after docker rm: row kept")
+            return False
+        if left is None:
+            db_add_alert("alert.deploy.compute.destruction_non_verifiee", "warning", vmid=vmid,
+                         node_id=node.get("id"), kind="deploy",
+                         params={"h": name, "vmid": vmid, "n": node.get("name")})
     _sortait = False
     try:
         from .database import container_egress, EGRESS_INTERNET

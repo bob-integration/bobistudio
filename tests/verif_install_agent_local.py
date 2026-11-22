@@ -9,7 +9,7 @@ deux, et la table `nodes` était VIDE : « Aucun nœud déclaré », donc rien d
 
 `register_local_agent()` lançait un enfant qui fait `from app import …`, SANS fixer le répertoire
 courant. Or le script d'installation servi par un orchestrateur (`app/routes/updates.py`) fait
-`TMP="$(mktemp -d)"; cd "$TMP"` et n'y télécharge QUE `install.py`, `install_proxmox.py` et le
+`TMP="$(mktemp -d)"; cd "$TMP"` et n'y télécharge QUE `install.py` et le
 zip — pas `app/`. L'import échouait donc à 100 % sur ce chemin, et la trace partait à la poubelle
 (`run(capture=True)` ne rend que `stdout`). Il restait un `warn` noyé, puis « prêt ».
 
@@ -80,7 +80,7 @@ verif(bool(avec_cwd), "★ un appel de sous-processus passe `cwd=`",
       "sans cwd, l'enfant importe `app` depuis le dossier d'où l'installeur a été lancé")
 verif(any(any(k.arg == "cwd" and ast.unparse(k.value) == "APP_DIR" for k in c.keywords)
           for c in appels), "   et ce `cwd` vaut APP_DIR")
-# `run()` (install_proxmox.py) n'accepte PAS de cwd : s'en servir ici rouvre la panne.
+# `run()` (install.py) n'accepte PAS de cwd : s'en servir ici rouvre la panne.
 verif(not any(isinstance(c.func, ast.Name) and c.func.id == "run" for c in appels),
       "★ n'utilise PAS le raccourci `run()`, qui ne sait pas fixer le cwd")
 

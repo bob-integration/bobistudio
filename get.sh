@@ -32,12 +32,15 @@
 #   --liste              affiche les versions disponibles et s'arrête
 #   --dry-run            récupère et vérifie la source, puis s'arrête — n'installe RIEN
 #   --keep               conserve le dossier de travail (débogage)
+#   -- <options>         transmises telles quelles à install.py : installation SANS CLAVIER
+#                        (ex. `-- --role all --caps compute --net interne --services none`)
 #
 # Variables d'environnement :
 #   BOBI_REPO      dépôt principal      (défaut : bob-integration/bobistudio)
 #   BOBI_REF       comme --ref
-#   GITHUB_TOKEN   jeton — nécessaire tant que les dépôts sont PRIVÉS (sinon GitHub renvoie une
-#                  page de connexion, et l'on déballerait du HTML en croyant avoir une archive).
+#   GITHUB_TOKEN   jeton — nécessaire pour un dépôt PRIVÉ (sinon GitHub renvoie une page de
+#                  connexion, et l'on déballerait du HTML en croyant avoir une archive), et utile
+#                  contre le quota anonyme de l'API (60 requêtes/h par adresse IP).
 #   BOBI_CODELOAD  base des archives (défaut : https://codeload.github.com). Sert à un miroir
 #                  interne, à un GitHub Enterprise, ou à éprouver ce script hors ligne.
 #   BOBI_API       base de l'API (défaut : https://api.github.com) — même usage, pour la liste
@@ -72,6 +75,7 @@ c_g=$'\033[32m'; c_y=$'\033[33m'; c_r=$'\033[31m'; c_b=$'\033[34m'; c_0=$'\033[0
 log(){ echo "  ${c_b}·${c_0} $*"; }; ok(){ echo "  ${c_g}✓${c_0} $*"; }
 warn(){ echo "  ${c_y}!${c_0} $*"; }; die(){ echo "  ${c_r}✗${c_0} $*" >&2; exit 1; }
 
+INSTALL_ARGS=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --ref) REF="$2"; shift 2;;
@@ -79,6 +83,8 @@ while [ $# -gt 0 ]; do
     --dry-run) DRY=1; shift;;
     --keep) KEEP=1; shift;;
     -h|--help) sed -n '5,40p' "$0"; exit 0;;
+    # Everything after `--` is for install.py (unattended install: `-- --role all --net interne`).
+    --) shift; INSTALL_ARGS=("$@"); break;;
     *) die "$(_t option_inconnue "$1")";;
   esac
 done
@@ -93,7 +99,7 @@ done
 #
 # ⚠ À BUMPER À CHAQUE MODIFICATION DE CE FICHIER, sinon elle ment — et une version qui ment est
 # pire que pas de version, puisqu'on lui fait confiance pour écarter une piste.
-INSTALLEUR_VERSION="2026.11.10"
+INSTALLEUR_VERSION="2026.11.21"
 
 # ─── Langue de l'installateur ────────────────────────────────
 #
@@ -487,4 +493,4 @@ export BOBI_LANG="$UI"
 export BOBI_SRC_REF="$REF"
 BOBI_SRC_SHA="$(_sha_depot_principal)"
 export BOBI_SRC_SHA
-exec python3 install/install.py
+exec python3 install/install.py "${INSTALL_ARGS[@]}"

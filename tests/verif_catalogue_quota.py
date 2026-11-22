@@ -133,9 +133,45 @@ def main():
         return [{"tag_name": "v9.9.9", "html_url": "u", "published_at": "2026-01-01",
                  "prerelease": False, "assets": [{"name": "bobistudio.zip"}], "draft": False}]
     cat._http_json = faux_releases
+    vrai_index = cat._index_cdn
+    cat._index_cdn = lambda org: None            # no static index: the API path is what is measured
     cat.derniere_version_core()
     cat.derniere_version_core()
     verifier(len(appels) == 1, "★ deux appels, UNE seule requête (le cache tient)")
+    cat._index_cdn = vrai_index
+
+    # ── 5. Static index on the CDN (2026-11-22): the catalogue costs NO API request ─────────
+    # A tester exhausted the anonymous quota (60/h per address) just by refreshing the page:
+    # one API request per repository. The publication's `catalog.json` replaces them all.
+    print("\n── 5. index statique : zéro requête d'API")
+    import json as _json
+    org = cat._reglages()[0]
+    index = {"schema": cat.INDEX_SCHEMA, "org": org, "generated_at": "2026-11-22T00:00:00Z",
+             "entries": [{"genre": "plugin", "type": "essai", "depot": "bobistudio-plugin-essai",
+                          "tag": "v1.2.3", "label": "Essai", "description": "", "version_dispo": "1.2.3",
+                          "url": "u", "manifeste_lu": True, "installable": True, "indisponible": ""},
+                         {"genre": "plugin", "type": "intrus", "depot": "autre-depot", "tag": "v1",
+                          "installable": True}],
+             "core": {"version": "9.9.9", "tag": "v9.9.9", "url": "u", "publiee_le": "2026-11-22",
+                      "prerelease": False, "artefacts": ["bobistudio.zip"]}}
+    api = []
+    cat._http_json = lambda url: api.append(url) or []
+    cat._http_texte = lambda url: _json.dumps(index) if url.endswith("/" + cat.INDEX_FICHIER) else "{}"
+    cat._cache.update({"t": 0.0, "entrees": [], "erreur": None, "org": None})
+    cat._cache_core.update({"t": 0.0, "info": None, "org": None})
+    r = cat.lister(force=True)
+    info = cat.derniere_version_core(force=True)
+    verifier(not api, "★ catalogue et version du cœur lus SANS requête d'API (%d)" % len(api))
+    verifier(r.get("source") == "index" and [e["depot"] for e in r["entrees"]] == ["bobistudio-plugin-essai"],
+             "les entrées viennent de l'index, un dépôt sans préfixe de paquet est écarté")
+    verifier(r["entrees"] and r["entrees"][0]["etat"] == "absent" and r["entrees"][0]["installable"],
+             "l'état LOCAL est ajouté ici (absent → installable)")
+    verifier(info and info["version"] == "9.9.9" and info["artefacts"] == ["bobistudio.zip"],
+             "la version du cœur vient de l'index")
+    index["org"] = "quelqu-un-d-autre"
+    cat._cache.update({"t": 0.0, "entrees": [], "erreur": None, "org": None})
+    cat.lister(force=True)
+    verifier(api, "index d'une AUTRE organisation : refusé, retour à l'API")
 
     print()
     if ECHECS:

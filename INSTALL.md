@@ -48,7 +48,7 @@ l'installer s'il manque — puis fait `exec python3 install/install.py`. C'est `
 pose tout le reste : venv Python et `requirements.txt`, `config_local.py`, horloge TAI (chrony),
 service systemd `bobistudio`, base SQLite initialisée.
 
-### 2.0 Depuis GitHub, sur une machine vierge (le plus court)
+### 2.0 Depuis GitHub, sur une machine vierge (recommandé)
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/bob-integration/bobistudio/main/get.sh)
@@ -62,8 +62,10 @@ développement), récupère la source, puis lance le même menu qu'au §2.1.
 Il ne demande **ni `git`, ni paquet préconstruit** : GitHub sert une archive par dépôt, donc
 `curl` et `tar` suffisent. Options : `--liste` (voir les versions sans rien installer),
 `--ref <tag>` (épingler sans question), `--dry-run` (récupérer et vérifier seulement),
-`GITHUB_TOKEN=…` tant que les dépôts sont privés, `BOBI_CODELOAD=` / `BOBI_API=` pour un miroir
-interne ou un GitHub Enterprise.
+`GITHUB_TOKEN=…` pour un miroir privé, ou pour dépasser le quota anonyme de GitHub (60 requêtes
+par heure et par adresse IP, partagé par toutes les machines derrière le même NAT ; sans jeton,
+la liste des versions peut manquer et `get.sh` se rabat sur la branche `main`), `BOBI_CODELOAD=` /
+`BOBI_API=` pour un miroir interne ou un GitHub Enterprise.
 
 **Ce qui est récupéré, et ce qui ne l'est pas.** Les plugins et services sont des sous-modules, et
 une archive de code source GitHub ne contient pas leur contenu. `get.sh` prend donc le dépôt
@@ -74,7 +76,7 @@ nomme pas la cause. Tout le reste (les autres services, tous les plugins) s'inst
 la **page Catalogue** de l'interface, qui lit la même organisation GitHub. C'est le chemin prévu
 pour un exploitant : il n'a pas à cloner un dépôt pour ajouter un traitement vidéo.
 
-### 2.1 Installeur unifié (recommandé)
+### 2.1 Depuis un clone git
 
 ```bash
 git clone --recurse-submodules https://github.com/bob-integration/bobistudio /opt/bobistudio
@@ -95,15 +97,16 @@ deux façons, et les deux sont voulues :
 
 L'installeur copie alors la source vers `/opt/bobistudio`.
 
-Le menu (navigation clavier ↑/↓/Entrée, repli en saisie numérotée hors TTY) propose :
+Le menu se pilote au clavier (↑/↓/Entrée). Hors terminal, il passe en saisie numérotée, lue sur
+l'entrée standard ; si celle-ci est vide ou fermée (session sans clavier, CI), l'installation
+s'arrête sur « Installation annulée » ; pour installer sans clavier, voir plus bas. Le menu
+propose :
 
 - **Nœud de process** : pose uniquement l'agent-nœud sur cette machine et l'**annonce** à un
   contrôleur déjà installé (adresse + jeton d'enrôlement, cf. §4).
 - **Orchestrateur** : contrôleur seul (port 5000).
 - **Tout-en-un** : contrôleur + agent-nœud local (loopback `127.0.0.1:9100`), pour un labo ou
   un petit site — même chemin de code qu'un nœud distant, aucun cas particulier.
-- **Orchestrateur sur une VM Proxmox** : chemin hérité (`install_proxmox.py`), à ne choisir que
-  pour une installation Proxmox existante.
 - **Désinstaller** : retire Bobi.Studio de CETTE machine — nœud, orchestrateur, ou les deux. Le
   menu propose de commencer par un **inventaire** (aucune modification), puis pose les questions
   qui engagent (images Docker, médias, archive des données), et laisse la confirmation finale au
@@ -125,10 +128,41 @@ Le menu (navigation clavier ↑/↓/Entrée, repli en saisie numérotée hors TT
   liste termine l'assistant de premier démarrage. « Prêt » ne voulait pas dire « déployable » :
   un tout-en-un n'a aucune image, et rien ne le disait.
 
-⚠ Une installation **scriptée** (réponses tuyautées sur l'entrée standard) doit donc fournir une
-réponse de plus, pour les services : `3`, ligne vide (capacités), `1` (réseau interne), ligne
-vide (services pré-cochés). Sans elle, l'installeur s'arrête sur « Installation annulée » —
-c'est le comportement normal du repli sur EOF.
+**Sans clavier** (CI, recette scriptée, déploiement en série) : chaque question a un nom, donné
+en option ou dans un fichier de réponses JSON (mêmes noms, les options l'emportent sur le fichier).
+Dès qu'une réponse est fournie, l'installeur ne pose plus de question et **ne devine rien** : les
+réponses du chemin choisi sont vérifiées **avant** toute installation, et une réponse manquante
+l'arrête en nommant toutes les options à fournir (code 2, rien n'est modifié). Une installation
+incomplète sort en code 3. `install.py --help` liste les options.
+
+```bash
+# Tout-en-un
+python3 install/install.py --role all --caps compute --net interne --services webrtc_gateway
+# Nœud : le jeton vient d'un fichier (ou de BOBI_ENROLL_TOKEN), jamais d'une option en clair
+python3 install/install.py --role node --caps compute,media --controller https://ctrl:5000 \
+        --token-file /root/jeton
+# Depuis GitHub : ce qui suit « -- » est transmis à install.py
+bash <(curl -fsSL https://raw.githubusercontent.com/bob-integration/bobistudio/main/get.sh) \
+     --ref v1.0.3 -- --answers /root/reponses.json
+```
+
+| Nom (option) | Question | Valeurs |
+|---|---|---|
+| `lang` (`--lang`) | langue | `fr` (défaut), `en` |
+| `role` (`--role`) | chemin | `node`, `controller`, `all`, `uninstall` |
+| `caps` (`--caps`) | capacités du nœud | `compute,io2110,media,webrtc` |
+| `controller` (`--controller`), `token` (`--token-file`) | enrôlement d'un nœud | URL, jeton |
+| `update` (`--update`) | mettre à jour une installation existante (exigé s'il y en a une) | `yes`, `no` |
+| `net` (`--net`) | réseau des conteneurs (tout-en-un) | `interne`, `site` |
+| `services` (`--services`) | services à allumer (orchestrateur, tout-en-un) | liste, ou `none` |
+| `target` (`--target`) | désinstaller quoi | `node`, `controller`, `both` |
+
+Une **désinstallation** n'est jamais réelle par défaut : `--inventory` fait l'inventaire seul,
+`--confirm RETIRER` retire vraiment (le mot qu'on taperait au clavier). Les purges restent du côté
+sûr tant qu'on ne les demande pas (`--purge-images`, `--purge-media`, `--purge-data`).
+
+Le repli numéroté lu sur l'entrée standard existe toujours, mais il dépend de l'**ordre** des
+questions : une question ajoutée décale toutes les réponses sans prévenir. Préférer les noms.
 
 Piège : la fonction `write_config_local()` n'écrit un `config_local.py` (un simple commentaire,
 sans aucun réglage) que s'il n'existe pas déjà — si un `config_local.py` traîne d'une tentative

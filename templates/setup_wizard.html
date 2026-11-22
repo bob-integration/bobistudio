@@ -56,7 +56,10 @@
                    border-radius: var(--radius-small); padding: 10px 12px; margin-top: 12px;
                    font-family: var(--font-mono, monospace); font-size: 0.8em; white-space: pre-wrap;
                    max-height: 220px; overflow-y: auto; display: none; }
-        .wiz-logo-prev { max-height: 48px; max-width: 160px; margin-top: 8px; display: none; }
+        .wiz-file { display: flex; align-items: center; gap: 10px; }
+        .wiz-file .name { color: var(--text-muted); font-size: 0.9em; overflow: hidden;
+                          text-overflow: ellipsis; white-space: nowrap; }
+        .wiz .identity-logo-frame { margin-top: 8px; }
         .wiz-note { background: var(--bg-input); border-left: 3px solid var(--accent);
                    padding: 12px 14px; border-radius: var(--radius-small); font-size: 0.86em;
                    line-height: 1.55; margin-bottom: 18px; }
@@ -120,6 +123,15 @@ async function saveSettings(obj) { return api('POST', '/api/settings', obj); }
 const wiz = {
     i: 0,
     steps: [],
+    // ★ ONE STEP CHANGE AT A TIME. The last step is slow to build (it measures what remains to do),
+    //   and the buttons used to switch BEFORE it: under step 4, « Go to Bobi.Studio » showed and
+    //   could be clicked, skipping the last screen (tester, 2026-11-22). The buttons now wait for
+    //   the step they belong to, and stay inert while a step is being saved or built.
+    busy: false,
+    setBusy(on) {
+        this.busy = on;
+        for (const id of ['wiz-prev', 'wiz-skip', 'wiz-next']) document.getElementById(id).disabled = on;
+    },
     detected: null,   // résultat nic detect
     selNic: null,
 
@@ -128,6 +140,12 @@ const wiz = {
             this.language, this.welcome, this.identity, this.network,
             this.videofmt, this.updates, this.done
         ];
+        // Back from the reload that applies a new language: carry on where it was asked.
+        try {
+            const k = +sessionStorage.getItem('wiz_resume');
+            sessionStorage.removeItem('wiz_resume');
+            if (k > 0 && k < this.steps.length) this.i = k;
+        } catch (e) {}
         this.renderProgress();
         this.render();
     },
@@ -140,37 +158,49 @@ const wiz = {
         m.textContent = text || ''; m.className = 'wiz-msg ' + (kind || '');
     },
     async render() {
-        this.msg('');
-        this.renderProgress();
-        document.getElementById('wiz-prev').style.display = this.i > 0 ? '' : 'none';
-        const last = this.i === this.steps.length - 1;
-        document.getElementById('wiz-skip').style.display = (this.i === 0 || last) ? 'none' : '';
-        document.getElementById('wiz-next').textContent = last ? T('wiz.finish') : T('wiz.next');
-        const def = await this.steps[this.i].call(this);
-        document.getElementById('wiz-body').innerHTML = def.html;
-        if (def.after) def.after.call(this);
+        this.setBusy(true);
+        try {
+            const def = await this.steps[this.i].call(this);
+            this.msg('');
+            this.renderProgress();
+            const last = this.i === this.steps.length - 1;
+            document.getElementById('wiz-prev').style.display = this.i > 0 ? '' : 'none';
+            document.getElementById('wiz-skip').style.display = (this.i === 0 || last) ? 'none' : '';
+            document.getElementById('wiz-next').textContent = last ? T('wiz.finish') : T('wiz.next');
+            document.getElementById('wiz-body').innerHTML = def.html;
+            if (def.after) def.after.call(this);
+        } finally {
+            this.setBusy(false);
+        }
     },
     async next() {
+        if (this.busy) return;
         const step = this.steps[this.i];
         // valider/sauver l'étape courante
         if (step.save) {
-            const ok = await step.save.call(this);
+            this.setBusy(true);
+            let ok = false;
+            try { ok = await step.save.call(this); } finally { if (!this.leaving) this.setBusy(false); }
             if (!ok) return;
         }
         if (this.i === this.steps.length - 1) { location.href = '/'; return; }
         this.i++; this.render();
     },
-    prev() { if (this.i > 0) { this.i--; this.render(); } },
-    skip() { if (this.i < this.steps.length - 1) { this.i++; this.render(); } },
+    prev() { if (!this.busy && this.i > 0) { this.i--; this.render(); } },
+    skip() { if (!this.busy && this.i < this.steps.length - 1) { this.i++; this.render(); } },
     async skipAll() {
+        if (this.busy) return;
+        this.setBusy(true);
         await api('POST', '/api/setup/complete');
         location.href = '/';
     },
 
     // ── Étape 0 : Langue ──────────────────────────────────
     // En PREMIER : le choix de langue s'applique à tout l'assistant et à l'app.
-    // Changer la langue persiste (préférence utilisateur + défaut global) puis
-    // recharge la page → l'assistant se ré-affiche dans la langue choisie.
+    // ★ APPLIED ON « NEXT », NOT ON CHANGE (2026-11-22). Applied on change, it raced the click on
+    //   Next: step 2 came up in the old language, then the reload brought the wizard back to
+    //   step 1, and the language had to be chosen again (tester). Next now saves it (user
+    //   preference + installation default), reloads, and resumes at step 2 in that language.
     language() {
         const opts = (LANGUAGES || []).map(l =>
             `<option value="${esc(l.code)}" ${l.code === window.LANG ? 'selected' : ''}>${esc(l.label)}</option>`).join('');
@@ -179,13 +209,7 @@ const wiz = {
             <h1>${esc(T('wiz.lang.title'))}</h1>
             <p class="lead">${T('wiz.lang.lead')}</p>
             <div class="field"><label>${esc(T('wiz.lang.label'))}</label>
-                <select id="f-lang" onchange="wiz.setLang(this.value)">${opts}</select></div>` };
-    },
-    async setLang(code) {
-        if (!code || code === window.LANG) return;
-        await api('POST', '/api/users/me/lang', { lang: code });   // effet immédiat (admin connecté)
-        await saveSettings({ ui_lang_default: code });             // défaut global de l'installation
-        location.reload();                                          // ré-affiche l'assistant traduit
+                <select id="f-lang">${opts}</select></div>` };
     },
 
     // ── Étape 1 : Bienvenue ───────────────────────────────
@@ -219,18 +243,27 @@ const wiz = {
                 <select id="f-tz">${tzOptions(s.timezone || '')}</select>
                 <div class="hint">${esc(TZ_TXT.help)}</div></div>
             <div class="field"><label>${esc(T('wiz.identity.logo'))} <span class="opt">${esc(T('wiz.identity.logo_opt'))}</span></label>
-                <input type="file" id="f-logo" accept="image/*">
-                <img class="wiz-logo-prev" id="logo-prev" ${s.brand_logo_url ? `src="${esc(s.brand_logo_url)}" style="display:block"` : ''}>
+                {# Our own button: the native file input speaks the BROWSER's language (« Choisir un
+                   fichier » in an English wizard, tester 2026-11-22). The preview uses the same
+                   frame as Settings → identity, so what is seen here is what is seen there. #}
+                <div class="wiz-file">
+                  <input type="file" id="f-logo" accept="image/*" hidden>
+                  <label for="f-logo" class="btn" style="margin:0">${esc(T('wiz.identity.logo_choose'))}</label>
+                  <span class="name" id="f-logo-name">${esc(T('wiz.identity.logo_none'))}</span>
+                </div>
+                <div class="identity-logo-frame" id="logo-frame" ${s.brand_logo_url ? '' : 'style="display:none"'}>
+                  <img id="logo-prev" alt="" ${s.brand_logo_url ? `src="${esc(s.brand_logo_url)}"` : ''}></div>
             </div>`,
             after() {
                 document.getElementById('f-logo').addEventListener('change', async (e) => {
                     const f = e.target.files[0]; if (!f) return;
+                    document.getElementById('f-logo-name').textContent = f.name;
                     const fd = new FormData(); fd.append('logo', f);
                     this.msg(T('wiz.identity.logo_sending'));
                     const r = await api('POST', '/api/settings/logo', fd, true);
                     if (r.ok) {
-                        const p = document.getElementById('logo-prev');
-                        p.src = r.data.url; p.style.display = 'block';
+                        document.getElementById('logo-prev').src = r.data.url;
+                        document.getElementById('logo-frame').style.display = '';
                         this.msg(T('wiz.identity.logo_saved'), 'ok');
                     } else this.msg(r.data.error || T('wiz.identity.logo_fail'), 'err');
                 });
@@ -391,6 +424,20 @@ function tzOptions(courant) {
     return html;
 }
 
+wiz.language.save = async function() {
+    const code = val('f-lang');
+    if (!code || code === window.LANG) return true;
+    // The installation default only. A personal language would then WIN over every later change
+    // of that default in Settings, silently (tester, 2026-11-22) — so it is only aligned when the
+    // account already has one.
+    await saveSettings({ ui_lang_default: code });
+    const me = await api('GET', '/api/users/me');
+    if (me.ok && me.data.lang && me.data.lang !== code) await api('POST', '/api/users/me/lang', { lang: code });
+    try { sessionStorage.setItem('wiz_resume', String(this.i + 1)); } catch (e) {}
+    this.leaving = true;                                        // stays inert until the reload
+    location.reload();
+    return false;
+};
 wiz.identity.save = async function() {
     await saveSettings({ brand_system_name: val('f-sysname'), brand_org_name: val('f-org'),
                          brand_location: val('f-loc'), timezone: val('f-tz') });

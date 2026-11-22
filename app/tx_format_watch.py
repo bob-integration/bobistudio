@@ -207,6 +207,13 @@ def scan_once():
         # insertions en parallèle éliraient le MÊME UDC libre (sa sortie n'est pas encore câblée)
         # et la seconde écraserait le format de la première. Constaté au banc.
         threading.Thread(target=_insert_all, args=(pending,), daemon=True, name="tx-fmt-udc").start()
+    # Mode-driven outputs (DeckLink SDI) ride on this loop: same poll, same source of truth.
+    try:
+        from . import sdi_format
+        sdi_format.purger_episodes()
+        sdi_format.scan_once()
+    except Exception as e:
+        log.warning("sdi_format: %s", e)
     return drifts
 
 

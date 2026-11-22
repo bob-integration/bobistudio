@@ -388,7 +388,7 @@ def _try_unwire_hot(to_vmid, target, t, params, body):
         pass
     return True, 200, {"to_vmid": to_vmid, "type": t, "hot_wired": True}
 
-def _format_gate(from_vmid, shm, to_type, params):
+def _format_gate(from_vmid, shm, to_type, params, to_slot=None):
     """Gating broadcast au câblage. Retourne (verdict, raison) — verdict ∈ "ok" | "refuse" | "warn".
 
     Refuse une source vidéo incompatible avec le consommateur (NON-adaptateur) : RÉSOLUTION, CHROMA
@@ -415,6 +415,16 @@ def _format_gate(from_vmid, shm, to_type, params):
     if not pf:
         return "ok", None                       # format producteur inconnu → ne bloque pas
     _ko = "refuse" if _mesure else "warn"
+    # A port whose format is a VIDEO MODE (DeckLink output `outputs[].mode`, cf. app/sdi_format):
+    # the top-level width/height/fps below do not exist there, and scan matters — a 1080i50
+    # source into a 1080p50 output was accepted and came out combed at the wrong rate (2026-11-21).
+    from .. import sdi_format as _sdi
+    _want, _port = _sdi.expected(to_type, params, "video", to_slot, shm)
+    if _want:
+        if _sdi.mismatch(pf, _want):
+            return _ko, (f"source {_sdi.label(pf)} ≠ {_sdi.label(_want)} réglé sur « {_port} » du "
+                         f"{to_type} → régler le mode de la sortie, ou insérer un UDC")
+        return "ok", None
     cw = int(params.get("width") or params.get("out_width") or 0)
     ch = int(params.get("height") or params.get("out_height") or 0)
     pw = int(pf.get("width") or 0); ph = int(pf.get("height") or 0)
@@ -696,7 +706,7 @@ def _wire_now(from_vmid, to_vmid, shm, kind, to_slot=None, audio_shm=None, force
     # consommateur non-adaptateur, avec une raison (#27). Profondeur de bits = avertissement seul.
     if kind == "video":
         try:
-            _verdict, _why = _format_gate(from_vmid, shm, t, params)
+            _verdict, _why = _format_gate(from_vmid, shm, t, params, to_slot)
             if _verdict == "refuse" and force:
                 db_add_alert("alert.cablage.force_ecart_format", "warning", vmid=to_vmid,
                              kind="deploy", params={"shm": shm, "vmid": to_vmid, "why": _why})
@@ -1175,6 +1185,17 @@ def _target_input_format(to_vmid, kind="video", to_slot=None):
         spec = (next((x for x in cands if x.get("slot") == ws), None)
                 or next((x for x in cands if x.get("slot") is None), None))
     spec = spec or (cands[0] if cands else None)
+    if (spec or {}).get("format_field") and (kind or "video") == "video":
+        # Mode-driven port (DeckLink output): the format is its mode, at the FRAME rate the UDC
+        # expects (cf. _insert_udc).
+        from .. import sdi_format as _sdi
+        from ..tx_maintenance import _norm_fps
+        want, _l = _sdi.expected(dc["type"], dc.get("params") or {}, "video", to_slot,
+                                 hostname=c.get("hostname") or "")
+        if want:
+            return {"width": want["width"], "height": want["height"], "scan": want["scan"],
+                    "fps": _norm_fps(want["fps"], want["scan"]),
+                    "field_order": "tff" if want["scan"] == "i" else "", "chroma": "422"}
     return (spec or {}).get("format")
 
 def _udc_out_shm(vmid):

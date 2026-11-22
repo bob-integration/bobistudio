@@ -54,6 +54,18 @@ PREFIXE_SERVICE = "bobistudio-service-"
 # À JOUR. Il est nommé ici pour que `derniere_version_core()` sache où regarder.
 DEPOT_CORE = "bobistudio"
 
+# ── Static INDEX of the catalogue (2026-11-22) ───────────────────────────────
+# Reading the catalogue through the API costs one request for the organisation plus ONE PER
+# REPOSITORY, out of 60 per hour and per address — an address that a whole site shares, installs
+# included: a tester hit « quota GitHub anonyme épuisé » just by refreshing the page. The
+# publication now writes what the API would answer into `catalog.json`, in a repository of its
+# own, served by raw.githubusercontent — a CDN, outside the quota. One request, no quota; the API
+# stays as the fallback (index absent, unreadable, or for another organisation).
+# Built by `tools/catalogue_index.py`, run by the publication after each release.
+DEPOT_INDEX = "bobistudio-catalog"
+INDEX_FICHIER = "catalog.json"
+INDEX_SCHEMA = 1
+
 # ⚠ L'API GitHub ANONYME est limitée à 60 requêtes par heure et par adresse. Le
 # listing coûte UNE requête ; les manifestes passent par raw.githubusercontent.com,
 # qui est un CDN et ne compte pas dans ce quota. C'est ce découpage qui rend le
@@ -235,8 +247,9 @@ def _comparer(dispo, installee):
     return "maj" if _pl._ver_key(dispo) > _pl._ver_key(installee) else "locale_plus_recente"
 
 
-def _construire(org):
-    """Interroge l'organisation et rend la liste des paquets publiés."""
+def _publies_api(org):
+    """What the organisation publishes, read through the API (costs quota). Entries carry no
+    local state — `_construire` adds what is installed here."""
     depots = _http_json("%s/orgs/%s/repos?per_page=100&type=public" % (API, org))
     entrees = []
     for d in depots:
@@ -261,10 +274,6 @@ def _construire(org):
         # donc changé l'identité d'un plugin déjà installé : la mise à jour se serait posée
         # À CÔTÉ de l'existant au lieu de le remplacer, sans que rien ne le signale.
         type_ = (man.get("type") or man.get("id") or ident) if man else ident
-        if genre == "plugin":
-            installee = (_pl.get(type_) or {}).get("version") if _pl.is_plugin(type_) else None
-        else:
-            installee = _version_service_installee(type_)
         dispo = man.get("version") or ""
         entrees.append({
             "genre":      genre,
@@ -274,8 +283,6 @@ def _construire(org):
             "label":      man.get("label") or man.get("name") or type_,
             "description": (d.get("description") or "").strip(),
             "version_dispo":    dispo,
-            "version_installee": installee,
-            "etat":       _comparer(dispo, installee),
             "url":        d.get("html_url") or "",
             # Un manifeste illisible n'est pas une erreur fatale : le dépôt existe,
             # on l'affiche, mais on refuse de l'installer sans savoir ce qu'il est.
@@ -289,6 +296,71 @@ def _construire(org):
         })
     entrees.sort(key=lambda e: (e["genre"], e["label"].lower()))
     return entrees
+
+
+_CLES_INDEX = ("genre", "type", "depot", "tag", "label", "description", "version_dispo", "url",
+               "manifeste_lu", "installable", "indisponible")
+
+
+def _index_cdn(org):
+    """The published index (`catalog.json` on the CDN), or None when absent or not trusted.
+
+    ⚠ ONLY ITS OWN ORGANISATION. The index names repositories that `telecharger` will fetch; one
+    claiming another organisation is refused, as is any entry whose repository does not carry a
+    package prefix — the same rule as the API path."""
+    url = "%s/%s/%s/HEAD/%s" % (RAW, org, DEPOT_INDEX, INDEX_FICHIER)
+    try:
+        idx = json.loads(_http_texte(url))
+    except Exception as e:                       # absent (404), offline, not JSON: fall back
+        log.debug("catalogue: no index at %s (%s)", url, e)
+        return None
+    if not isinstance(idx, dict) or idx.get("schema") != INDEX_SCHEMA or idx.get("org") != org:
+        log.info("catalogue: index at %s ignored (schema/org)", url)
+        return None
+    entrees = []
+    for x in idx.get("entries") or []:
+        if not isinstance(x, dict):
+            continue
+        depot = str(x.get("depot") or "")
+        if not (depot.startswith(PREFIXE_PLUGIN) or depot.startswith(PREFIXE_SERVICE)):
+            continue
+        e = {k: x.get(k) for k in _CLES_INDEX}
+        e["label"] = str(e["label"] or e["type"] or depot)
+        e["tag"] = str(e["tag"] or "")
+        e["version_dispo"] = str(e["version_dispo"] or "")
+        e["indisponible"] = str(e["indisponible"] or "")
+        e["installable"] = bool(e["installable"]) and bool(e["tag"])
+        entrees.append(e)
+    return {"entries": entrees, "core": idx.get("core") if isinstance(idx.get("core"), dict) else None,
+            "generated_at": idx.get("generated_at")}
+
+
+def construire_index(org):
+    """The index `tools/catalogue_index.py` publishes: what the API says, without local state."""
+    import datetime
+    return {"schema": INDEX_SCHEMA, "org": org,
+            "generated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "entries": [{k: e.get(k) for k in _CLES_INDEX} for e in _publies_api(org)],
+            "core": _core_api(org)}
+
+
+def _construire(org):
+    """The catalogue: what is published (static index, else the API) + what is installed HERE.
+    Returns (entries, source) — source = "index" or "api"."""
+    idx = _index_cdn(org)
+    publies, source = (idx["entries"], "index") if idx else (_publies_api(org), "api")
+    entrees = []
+    for p in publies:
+        e = dict(p)
+        if e["genre"] == "plugin":
+            installee = (_pl.get(e["type"]) or {}).get("version") if _pl.is_plugin(e["type"]) else None
+        else:
+            installee = _version_service_installee(e["type"])
+        e["version_installee"] = installee
+        e["etat"] = _comparer(e.get("version_dispo") or "", installee)
+        entrees.append(e)
+    entrees.sort(key=lambda e: (e["genre"], e["label"].lower()))
+    return entrees, source
 
 
 def lister(force=False):
@@ -305,9 +377,10 @@ def lister(force=False):
         frais = (time.time() - _cache["t"]) < ttl and _cache["org"] == org
         if _cache["entrees"] and frais and not force:
             return {"actif": True, "entrees": list(_cache["entrees"]), "erreur": _cache["erreur"],
-                    "org": org, "age_s": round(time.time() - _cache["t"], 1)}
+                    "org": org, "age_s": round(time.time() - _cache["t"], 1),
+                    "source": _cache.get("source")}
     try:
-        entrees = _construire(org)
+        entrees, source = _construire(org)
         erreur = None
     except urllib.error.HTTPError as e:
         # 403 sur l'API GitHub = quota épuisé, pas un refus d'accès. Le dire précisément évite
@@ -330,12 +403,14 @@ def lister(force=False):
         entrees, erreur = None, "catalogue illisible : %r" % (e,)
     with _verrou:
         if entrees is not None:
-            _cache.update({"t": time.time(), "entrees": entrees, "erreur": None, "org": org})
+            _cache.update({"t": time.time(), "entrees": entrees, "erreur": None, "org": org,
+                           "source": source})
         else:
             _cache["erreur"] = erreur
         return {"actif": True, "entrees": list(_cache["entrees"]), "erreur": _cache["erreur"],
                 "org": org,
-                "age_s": None if not _cache["t"] else round(time.time() - _cache["t"], 1)}
+                "age_s": None if not _cache["t"] else round(time.time() - _cache["t"], 1),
+                "source": _cache.get("source")}
 
 
 def entree(depot):
@@ -380,6 +455,22 @@ def derniere_version_core(force=False):
         frais = (time.time() - _cache_core["t"]) < ttl and _cache_core["org"] == org
         if frais and not force and _cache_core["info"] is not None:
             return dict(_cache_core["info"])
+    # The static index first (outside the quota), the API as the fallback.
+    idx = _index_cdn(org)
+    info = (idx or {}).get("core")
+    if not (isinstance(info, dict) and info.get("version") and info.get("tag")):
+        info = _core_api(org)
+    if not info:
+        return None
+    info = {k: info.get(k) for k in ("version", "tag", "url", "publiee_le", "prerelease", "artefacts")}
+    info["artefacts"] = list(info.get("artefacts") or [])
+    with _verrou_core:
+        _cache_core.update({"t": time.time(), "info": dict(info), "org": org})
+    return info
+
+
+def _core_api(org):
+    """Latest release of the orchestrator itself, read through the API, or None."""
     try:
         rels = _http_json("%s/repos/%s/%s/releases?per_page=10" % (API, org, DEPOT_CORE))
     except Exception as e:
@@ -411,8 +502,6 @@ def derniere_version_core(force=False):
         # bouton qui échouerait.
         "artefacts":  [a.get("name") for a in (r.get("assets") or [])],
     }
-    with _verrou_core:
-        _cache_core.update({"t": time.time(), "info": dict(info), "org": org})
     return info
 
 

@@ -83,7 +83,9 @@
         <h1>{{ _('setup.welcome') }}</h1>
         <div class="setup-ok">{{ _('setup.ok') }}</div>
         <div class="setup-intro">
-            {{ _('setup.intro') }}
+            {#- The catalogue line holds a <br>; autoescaping printed it as text (tester, 2026-11-22).
+                Split on it so each part stays escaped. -#}
+            {% for part in _('setup.intro').split('<br>') %}{% if not loop.first %}<br>{% endif %}{{ part }}{% endfor %}
         </div>
         <hr class="setup-sep">
         <div class="setup-err">{{ error or '' }}</div>

@@ -415,8 +415,17 @@ def _soumettre_metrics(vmid):
 # SSH legacy, DB) → alerte à transition, info au retour à la normale.
 _TICK_SLOW_S = 30.0
 _tick_slow = [False]
+_tick_n = [0]
 
 def _watchdog_tick(duree):
+    _tick_n[0] += 1
+    if _tick_n[0] == 1:
+        # The FIRST pass after a start pays for cold caches (every agent, every :8080, the DB):
+        # 30-40 s measured on 2026-10-20, and an alert at each of a dozen restarts that evening.
+        # It is logged, not alerted; from the second pass on a slow pass is a real slowness.
+        if duree > _TICK_SLOW_S:
+            log.info(f"surveillance: first pass after start took {duree:.1f} s (cold caches)")
+        return
     if duree > _TICK_SLOW_S and not _tick_slow[0]:
         log.warning(f"surveillance : tick lent ({duree:.1f} s)")
         db_add_alert(f"Boucle de surveillance lente ({duree:.0f} s) — un nœud/agent qui "
@@ -1079,6 +1088,16 @@ if __name__ == "__main__":
             except Exception as e:
                 log.error("webrtc gateway auto-deploy at boot: %s", e)
         threading.Thread(target=_boot_webrtc_gateway, daemon=True, name="webrtc-auto-boot").start()
+        # Plugins a node capability requires and that are still missing (io2110 → 2110_io, from the
+        # catalogue): a catch-up for an enrolment made while the catalogue was out of reach.
+        def _boot_plugin_autoinstall():
+            time.sleep(90)
+            try:
+                from app import plugin_autoinstall as _pa
+                _pa.ensure("boot")
+            except Exception as e:
+                log.error("plugin auto-install at boot: %s", e)
+        threading.Thread(target=_boot_plugin_autoinstall, daemon=True, name="plugin-autoinstall-boot").start()
         from app import monitor as _monitor
         _monitor.start_reaper()
         # On-air state of the running projects that asked for a periodic capture (off by default).

@@ -198,7 +198,7 @@ def centralized_ipam(node_id=None):
     return len(db_get_nodes() or []) > 1
 
 
-def allocate_container_ip(vmid, node_id=None):
+def allocate_container_ip(vmid, node_id=None, held_on_node=None):
     """IP du plan conteneurs pour ce conteneur, dans la plage EFFECTIVE de son nœud (plage
     personnalisée de la carte containers/mgmt_containers si posée, sinon plage cluster
     `ip_start..ip_end`). `node_id` : passé par l'appelant (docker_compute) ; à défaut, relu du
@@ -210,7 +210,12 @@ def allocate_container_ip(vmid, node_id=None):
     concurrentes ne peuvent plus obtenir la même IP macvlan (le perdant sur l'INSERT retente l'IP
     suivante). La réservation est transitoire : elle est levée dès que `db_update_docker_ip` persiste
     l'IP (containers.docker_ip prend alors le relais comme source de vérité), et à la destruction du
-    conteneur (db_delete_container). Voir database.db_reserve_ip."""
+    conteneur (db_delete_container). Voir database.db_reserve_ip.
+
+    `held_on_node` ({ip: docker name}, from the node itself): IPs Docker already gives out on the
+    node's network. The database cannot see a container it forgot (failed destroy, hand-made
+    container); Docker refuses its IP with « Address already in use ». Those IPs are skipped, and
+    each one held by a container unknown here raises an alert naming it (2026-11-21)."""
     from .database import (db_get_container, db_add_alert, db_reserve_ip,
                            db_used_ip_reservations, db_release_ip_reservations_for_vmid)
     c = db_get_container(vmid) or {}
@@ -228,6 +233,14 @@ def allocate_container_ip(vmid, node_id=None):
     blocked = (_used_ips(exclude_vmid=vmid, node_id=node_id if _prive else None)
                | _reserved_ips(node_id)        # passerelle / orchestrateur / hôtes des nœuds
                | db_used_ip_reservations())    # + IP réservées par une alloc concurrente
+    held = held_on_node or {}
+    if held:
+        known = _used_ips(exclude_vmid=None, node_id=None) | db_used_ip_reservations()
+        for ip, nm in sorted(held.items()):
+            if ip in rng and ip not in known:
+                db_add_alert("alert.net.ip_tenue_hors_base", "warning", vmid=vmid, node_id=node_id,
+                             kind="net", params={"ip": ip, "c": nm or "?", "vmid": vmid})
+        blocked |= set(held)
     cur = c.get("docker_ip")
     if cur and cur in rng and cur not in blocked:
         # STICKY : docker_ip existant fait déjà autorité (présent dans _used_ips) → inutile de réserver.

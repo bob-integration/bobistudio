@@ -103,7 +103,7 @@ controle("★★★ la garde « paquet incomplet » est présente",
 
 if m2:
     garde = m2.group(1)
-    INDISPENSABLES = ("main.py", "install/install.py", "install/install_proxmox.py")
+    INDISPENSABLES = ("main.py", "install/install.py")
 
     def paquet(modules):
         """Construit un vrai zip et lui soumet la VRAIE garde. Rend (rc, sortie)."""

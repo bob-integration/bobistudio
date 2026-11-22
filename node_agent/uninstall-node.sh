@@ -51,6 +51,11 @@ c_g=$'\033[32m'; c_y=$'\033[33m'; c_r=$'\033[31m'; c_b=$'\033[34m'; c_d=$'\033[2
 log(){ echo "${c_b}▶${c_0} $*"; }; ok(){ echo "${c_g}✓${c_0} $*"; }
 warn(){ echo "${c_y}!${c_0} $*"; }; die(){ echo "${c_r}✗${c_0} $*" >&2; exit 1; }
 item(){ echo "      ${c_d}·${c_0} $*"; }
+# Messages follow the installer's language: BOBI_LANG (exported by get.sh and install.py), else the
+# locale, as get.sh decides. An English install used to get a French removal (tester, 2026-11-22).
+# The confirmation word stays RETIRER in both: it is what `install.py --confirm` expects.
+case "${BOBI_LANG:-${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}}" in fr*|FR*|"") UI=fr;; *) UI=en;; esac
+T(){ if [ "$UI" = en ]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -63,11 +68,11 @@ while [ $# -gt 0 ]; do
     --media-mount) MEDIA_MOUNT="$2"; shift 2;;
     --controller-key) CTRL_KEY="$2"; shift 2;;
     -h|--help) sed -n '3,40p' "$0"; exit 0;;
-    *) die "option inconnue : $1";;
+    *) die "$(T "option inconnue : $1" "unknown option: $1")";;
   esac
 done
 
-[ "$(id -u)" = "0" ] || die "à lancer en root."
+[ "$(id -u)" = "0" ] || die "$(T "à lancer en root." "must run as root.")"
 
 # ─── Réglages du nœud : on les LIT plutôt que de les deviner ─────────────────
 # Le nom du réseau containers et la racine média ne sont pas figés (ils viennent de l'install et
@@ -153,50 +158,54 @@ _images() { _docker images --filter 'reference=bobi-*' --format '{{.Repository}}
 # ─── 1. Inventaire ────────────────────────────────────────────────────────────
 echo
 echo "  ╔══════════════════════════════════════════════════════╗"
+if [ "$UI" = en ]; then
+echo "  ║   B O B I . S T U D I O  —  node removal             ║"
+else
 echo "  ║   B O B I . S T U D I O  —  retrait du nœud          ║"
+fi
 echo "  ╚══════════════════════════════════════════════════════╝"
 echo
-log "Inventaire de ce qui est présent sur $(hostname) :"
+log "$(T "Inventaire de ce qui est présent sur $(hostname) :" "Inventory of what is present on $(hostname):")"
 
 _c_list="$(_containers)"; _i_list="$(_images)"
 _n_cont="$(printf '%s\n' "$_c_list" | sed '/^$/d' | wc -l | tr -d ' ')"
 _n_img="$(printf '%s\n' "$_i_list" | sed '/^$/d' | wc -l | tr -d ' ')"
 
 if [ -d "$AGENT_DIR" ] || [ -d "$CONF_DIR" ]; then
-  item "agent-nœud : $AGENT_DIR, $CONF_DIR (dont le token et le matériel mTLS), $STATE_DIR"
+  item "$(T "agent-nœud : $AGENT_DIR, $CONF_DIR (dont le token et le matériel mTLS), $STATE_DIR" "node agent: $AGENT_DIR, $CONF_DIR (token and mTLS material included), $STATE_DIR")"
 else
-  item "agent-nœud : absent"
+  item "$(T "agent-nœud : absent" "node agent: absent")"
 fi
-if [ -n "$_present_units$_vlan_units" ]; then item "unités systemd :$_present_units$_vlan_units"; fi
-if [ -n "$_present_files" ]; then item "réglages hôte :$(echo "$_present_files" | tr '\n' ' ')"; fi
-if [ "$_n_cont" -gt 0 ]; then item "conteneurs ($_n_cont) : $(echo "$_c_list" | tr '\n' ' ')"; fi
-if [ "$_n_img" -gt 0 ]; then item "images Docker ($_n_img) : $(echo "$_i_list" | tr '\n' ' ')"; fi
-if _docker_q network inspect "$MACVLAN_NAME"; then item "réseau containers « $MACVLAN_NAME »"; fi
-if [ -d "$MXL_MOUNT/mxl" ]; then item "domaine MXL $MXL_MOUNT/mxl ($(du -sh "$MXL_MOUNT/mxl" 2>/dev/null | cut -f1))"; fi
-if [ -d /etc/bobi ]; then item "/etc/bobi (binds vfio, SR-IOV, domain_def)"; fi
-if [ -d "$MEDIA_MOUNT" ]; then item "racine média $MEDIA_MOUNT ($(du -sh "$MEDIA_MOUNT" 2>/dev/null | cut -f1)) — CONSERVÉE sauf --purge-media"; fi
+if [ -n "$_present_units$_vlan_units" ]; then item "$(T "unités systemd :$_present_units$_vlan_units" "systemd units:$_present_units$_vlan_units")"; fi
+if [ -n "$_present_files" ]; then item "$(T "réglages hôte :" "host settings:")$(echo "$_present_files" | tr '\n' ' ')"; fi
+if [ "$_n_cont" -gt 0 ]; then item "$(T "conteneurs" "containers") ($_n_cont) : $(echo "$_c_list" | tr '\n' ' ')"; fi
+if [ "$_n_img" -gt 0 ]; then item "$(T "images Docker" "Docker images") ($_n_img) : $(echo "$_i_list" | tr '\n' ' ')"; fi
+if _docker_q network inspect "$MACVLAN_NAME"; then item "$(T "réseau containers « $MACVLAN_NAME »" "container network \"$MACVLAN_NAME\"")"; fi
+if [ -d "$MXL_MOUNT/mxl" ]; then item "$(T "domaine MXL" "MXL domain") $MXL_MOUNT/mxl ($(du -sh "$MXL_MOUNT/mxl" 2>/dev/null | cut -f1))"; fi
+if [ -d /etc/bobi ]; then item "$(T "/etc/bobi (binds vfio, SR-IOV, domain_def)" "/etc/bobi (vfio binds, SR-IOV, domain_def)")"; fi
+if [ -d "$MEDIA_MOUNT" ]; then item "$(T "racine média" "media root") $MEDIA_MOUNT ($(du -sh "$MEDIA_MOUNT" 2>/dev/null | cut -f1)) — $(T "CONSERVÉE sauf --purge-media" "KEPT unless --purge-media")"; fi
 if [ -s /root/.ssh/authorized_keys ]; then
-  item "clé(s) SSH autorisée(s) : $(awk '{print $NF}' /root/.ssh/authorized_keys | tr '\n' ' ')"
+  item "$(T "clé(s) SSH autorisée(s) :" "authorized SSH key(s):") $(awk '{print $NF}' /root/.ssh/authorized_keys | tr '\n' ' ')"
 fi
 if [ "$KEEP_CMDLINE" = 0 ] && grep -qsE 'hugepages=|isolcpus=|nohz_full=|rcu_nocbs=|intel_iommu=' /etc/default/grub; then
-  item "cmdline noyau (hugepages / isolation de cœurs / IOMMU) → nettoyé, REBOOT nécessaire"
+  item "$(T "cmdline noyau (hugepages / isolation de cœurs / IOMMU) → nettoyé, REBOOT nécessaire" "kernel cmdline (hugepages / core isolation / IOMMU) → cleaned, REBOOT required")"
 fi
-if [ -s /etc/bobi/vfio-binds ]; then item "port(s) réseau bindés à vfio-pci → rendus au pilote noyau"; fi
+if [ -s /etc/bobi/vfio-binds ]; then item "$(T "port(s) réseau bindés à vfio-pci → rendus au pilote noyau" "network port(s) bound to vfio-pci → given back to the kernel driver")"; fi
 
 echo
-echo "    Conservés dans tous les cas : la configuration réseau de l'hôte, les dépôts apt Debian,"
-echo "    les comptes et les clés SSH d'autrui."
+echo "    $(T "Conservés dans tous les cas : la configuration réseau de l'hôte, les dépôts apt Debian," "Always kept: the host network configuration, the Debian apt repositories,")"
+echo "    $(T "les comptes et les clés SSH d'autrui." "other people's accounts and SSH keys.")"
 if [ "$PURGE_PKGS" = 1 ]; then
-  warn "--purge-packages : docker, pilote NVIDIA, nvidia-container-toolkit, linuxptp et chrony seront DÉSINSTALLÉS."
+  warn "$(T "--purge-packages : docker, pilote NVIDIA, nvidia-container-toolkit, linuxptp et chrony seront DÉSINSTALLÉS." "--purge-packages: docker, NVIDIA driver, nvidia-container-toolkit, linuxptp and chrony will be UNINSTALLED.")"
 else
-  echo "    Paquets tiers (docker, pilote NVIDIA, linuxptp, chrony) : conservés (--purge-packages pour les retirer)."
+  echo "    $(T "Paquets tiers (docker, pilote NVIDIA, linuxptp, chrony) : conservés (--purge-packages pour les retirer)." "Third-party packages (docker, NVIDIA driver, linuxptp, chrony): kept (--purge-packages to remove them).")"
 fi
-if [ "$PURGE_IMAGES" = 0 ]; then echo "    Images Docker bobi-* : conservées (--purge-images pour les retirer)."; fi
-if [ "$PURGE_MEDIA" = 1 ]; then warn "--purge-media : le CONTENU de $MEDIA_MOUNT sera SUPPRIMÉ (irréversible)."; fi
+if [ "$PURGE_IMAGES" = 0 ]; then echo "    $(T "Images Docker bobi-* : conservées (--purge-images pour les retirer)." "bobi-* Docker images: kept (--purge-images to remove them).")"; fi
+if [ "$PURGE_MEDIA" = 1 ]; then warn "$(T "--purge-media : le CONTENU de $MEDIA_MOUNT sera SUPPRIMÉ (irréversible)." "--purge-media: the CONTENT of $MEDIA_MOUNT will be DELETED (irreversible).")"; fi
 echo
 
 if [ "$DRY" = 1 ]; then
-  ok "Simulation (--dry-run) : rien n'a été modifié."
+  ok "$(T "Simulation (--dry-run) : rien n'a été modifié." "Dry run (--dry-run): nothing was changed.")"
   exit 0
 fi
 
@@ -204,10 +213,10 @@ fi
 # En non-interactif SANS --yes on REFUSE plutôt que de supposer : ce script détruit, et il est
 # appelable à distance (pipé sur stdin par l'orchestrateur) — le défaut doit être « ne rien faire ».
 if [ "$ASSUME_YES" = 0 ]; then
-  [ -t 0 ] || die "non-interactif : relancer avec --yes pour confirmer (rien n'a été fait)."
-  printf "%b" "${c_y}?${c_0} Retirer Bobi.Studio de ce nœud ? Taper ${c_r}RETIRER${c_0} pour confirmer : "
+  [ -t 0 ] || die "$(T "non-interactif : relancer avec --yes pour confirmer (rien n'a été fait)." "non-interactive: run again with --yes to confirm (nothing was done).")"
+  printf "%b" "${c_y}?${c_0} $(T "Retirer Bobi.Studio de ce nœud ? Taper" "Remove Bobi.Studio from this node? Type") ${c_r}RETIRER${c_0} $(T "pour confirmer :" "to confirm:") "
   read -r _ans || _ans=""
-  [ "$_ans" = "RETIRER" ] || die "annulé (rien n'a été fait)."
+  [ "$_ans" = "RETIRER" ] || die "$(T "annulé (rien n'a été fait)." "cancelled (nothing was done).")"
 fi
 echo
 
@@ -215,17 +224,17 @@ echo
 # D'abord les conteneurs : tant qu'ils tournent, ils tiennent le réseau macvlan et les fichiers du
 # domaine MXL, et le réseau refuserait de partir.
 if [ "$_n_cont" -gt 0 ]; then
-  log "Arrêt et suppression de $_n_cont conteneur(s)…"
+  log "$(T "Arrêt et suppression de $_n_cont conteneur(s)…" "Stopping and removing $_n_cont container(s)…")"
   for c in $_c_list; do
     _docker rm -f "$c" >/dev/null
     item "$c"
   done
-  ok "conteneurs retirés"
+  ok "$(T "conteneurs retirés" "containers removed")"
 fi
 
 # ─── 4. Unités systemd ────────────────────────────────────────────────────────
 # L'agent est traité EN DERNIER (§10) : ce script tourne peut-être dans un shell qu'il a lancé.
-log "Arrêt des services…"
+log "$(T "Arrêt des services…" "Stopping services…")"
 for u in $_present_units $_vlan_units; do
   if [ "$u" = "bobi-node-agent" ]; then continue; fi   # traité en dernier (§10), et détaché
   systemctl disable --now "$u.service" >/dev/null 2>&1 || true
@@ -233,14 +242,14 @@ for u in $_present_units $_vlan_units; do
   item "$u"
 done
 systemctl daemon-reload >/dev/null 2>&1 || true
-ok "services retirés"
+ok "$(T "services retirés" "services removed")"
 
 # ─── 5. Ports réseau rendus au noyau (vfio-pci → ice/mlx5) ───────────────────
 # Un port laissé sur vfio-pci n'a plus de netdev : la machine perdrait une carte pour toujours,
 # sans rien afficher d'anormal ailleurs que dans `ip link`. On le rend AVANT d'effacer /etc/bobi
 # (c'est ce fichier qui dit lesquels sont à rendre).
 if [ -s /etc/bobi/vfio-binds ]; then
-  log "Restitution des ports bindés à vfio-pci…"
+  log "$(T "Restitution des ports bindés à vfio-pci…" "Giving back the ports bound to vfio-pci…")"
   while read -r bdf _rest; do
     [ -n "$bdf" ] || continue
     d="/sys/bus/pci/devices/$bdf"
@@ -250,24 +259,24 @@ if [ -s /etc/bobi/vfio-binds ]; then
     echo "" > "$d/driver_override" 2>/dev/null || true
     echo "$bdf" > /sys/bus/pci/drivers/vfio-pci/unbind 2>/dev/null || true
     echo "$bdf" > /sys/bus/pci/drivers_probe 2>/dev/null || true
-    item "$bdf rendu au pilote noyau"
+    item "$bdf $(T "rendu au pilote noyau" "given back to the kernel driver")"
   done < /etc/bobi/vfio-binds
-  ok "ports restitués"
+  ok "$(T "ports restitués" "ports given back")"
 fi
 
 # ─── 6. Réseau containers + domaine MXL ──────────────────────────────────────
 if _docker_q network inspect "$MACVLAN_NAME"; then
-  _docker network rm "$MACVLAN_NAME" >/dev/null && ok "réseau containers « $MACVLAN_NAME » supprimé" \
-    || warn "réseau « $MACVLAN_NAME » non supprimé (un conteneur y est-il encore attaché ?)"
+  _docker network rm "$MACVLAN_NAME" >/dev/null && ok "$(T "réseau containers « $MACVLAN_NAME » supprimé" "container network \"$MACVLAN_NAME\" deleted")" \
+    || warn "$(T "réseau « $MACVLAN_NAME » non supprimé (un conteneur y est-il encore attaché ?)" "network \"$MACVLAN_NAME\" not deleted (is a container still attached to it?)")"
 fi
 if [ -d "$MXL_MOUNT/mxl" ]; then
   rm -rf "${MXL_MOUNT:?}/mxl"
-  ok "domaine MXL $MXL_MOUNT/mxl effacé"
+  ok "$(T "domaine MXL $MXL_MOUNT/mxl effacé" "MXL domain $MXL_MOUNT/mxl erased")"
 fi
 
 # ─── 7. Réglages hôte ─────────────────────────────────────────────────────────
 if [ -n "$_present_files" ] || [ -d /etc/bobi ]; then
-  log "Retrait des réglages hôte…"
+  log "$(T "Retrait des réglages hôte…" "Removing host settings…")"
   for f in $_present_files; do rm -f "$f"; item "$f"; done
   rm -rf /etc/bobi
   # `vfio.conf` ne porte que « vfio-pci » et c'est NOUS qui l'avons écrit (préparation MTL) ; on ne
@@ -280,7 +289,7 @@ if [ -n "$_present_files" ] || [ -d /etc/bobi ]; then
   sysctl -qw net.ipv4.conf.all.arp_ignore=0 net.ipv4.conf.all.arp_announce=0 2>/dev/null || true
   systemctl restart systemd-journald >/dev/null 2>&1 || true
   systemctl restart chrony >/dev/null 2>&1 || true
-  ok "réglages hôte retirés"
+  ok "$(T "réglages hôte retirés" "host settings removed")"
 fi
 
 # Clé SSH du contrôleur (posée à l'enrôlement). ★ On ne peut pas la deviner à coup sûr : son
@@ -297,13 +306,13 @@ if [ -s /root/.ssh/authorized_keys ]; then
       grep -vF "$_b64" /root/.ssh/authorized_keys > /root/.ssh/authorized_keys.tmp \
         && mv /root/.ssh/authorized_keys.tmp /root/.ssh/authorized_keys
       chmod 600 /root/.ssh/authorized_keys
-      ok "clé SSH du contrôleur retirée de /root/.ssh/authorized_keys"
+      ok "$(T "clé SSH du contrôleur retirée de /root/.ssh/authorized_keys" "controller SSH key removed from /root/.ssh/authorized_keys")"
     else
-      warn "clé fournie (--controller-key) ABSENTE de authorized_keys — rien retiré."
+      warn "$(T "clé fournie (--controller-key) ABSENTE de authorized_keys — rien retiré." "given key (--controller-key) NOT in authorized_keys — nothing removed.")"
     fi
   elif grep -qs bobistudio-controller /root/.ssh/authorized_keys; then
     sed -i '/bobistudio-controller/d' /root/.ssh/authorized_keys
-    ok "clé SSH du contrôleur retirée de /root/.ssh/authorized_keys"
+    ok "$(T "clé SSH du contrôleur retirée de /root/.ssh/authorized_keys" "controller SSH key removed from /root/.ssh/authorized_keys")"
   else
     CLE_RESTANTE=1
   fi
@@ -315,11 +324,11 @@ fi
 REBOOT_REQUIS=0
 if [ "$KEEP_CMDLINE" = 0 ] && [ -f /etc/default/grub ] \
    && grep -qE 'hugepages=|isolcpus=|nohz_full=|rcu_nocbs=|intel_iommu=|iommu=pt|hugepagesz=' /etc/default/grub; then
-  log "Nettoyage du cmdline noyau…"
+  log "$(T "Nettoyage du cmdline noyau…" "Cleaning the kernel cmdline…")"
   cp -a /etc/default/grub "/etc/default/grub.bak.retrait-$(date +%Y%m%d-%H%M%S)"
   sed -i -E 's/(default_hugepagesz|hugepagesz|hugepages|isolcpus|nohz_full|rcu_nocbs|intel_iommu|iommu)=[^ "]*//g; s/  +/ /g; s/= "/="/; s/ "$/"/' /etc/default/grub
   if command -v update-grub >/dev/null 2>&1; then
-    update-grub >/dev/null 2>&1 || warn "update-grub a échoué — vérifier /etc/default/grub à la main"
+    update-grub >/dev/null 2>&1 || warn "$(T "update-grub a échoué — vérifier /etc/default/grub à la main" "update-grub failed — check /etc/default/grub by hand")"
   elif command -v proxmox-boot-tool >/dev/null 2>&1; then
     proxmox-boot-tool refresh >/dev/null 2>&1 || true
   fi
@@ -329,26 +338,26 @@ if [ "$KEEP_CMDLINE" = 0 ] && [ -f /etc/default/grub ] \
     [ -w "$h" ] && echo 0 > "$h" 2>/dev/null || true
   done
   REBOOT_REQUIS=1
-  ok "cmdline nettoyé (sauvegarde /etc/default/grub.bak.retrait-*)"
+  ok "$(T "cmdline nettoyé (sauvegarde /etc/default/grub.bak.retrait-*)" "cmdline cleaned (backup /etc/default/grub.bak.retrait-*)")"
 fi
 
 # ─── 9. Images / médias / paquets (sur demande explicite) ────────────────────
 if [ "$PURGE_IMAGES" = 1 ] && [ "$_n_img" -gt 0 ]; then
-  log "Suppression des images Docker bobi-*…"
+  log "$(T "Suppression des images Docker bobi-*…" "Deleting the bobi-* Docker images…")"
   for i in $_i_list; do _docker rmi -f "$i" >/dev/null; item "$i"; done
-  ok "images supprimées"
+  ok "$(T "images supprimées" "images deleted")"
 fi
 
 if [ "$PURGE_MEDIA" = 1 ] && [ -d "$MEDIA_MOUNT" ]; then
   # On vide la racine SANS l'effacer : ce peut être un point de MONTAGE (baie, NFS), et le
   # supprimer masquerait le montage plutôt que d'en retirer le contenu.
-  log "Suppression du contenu de $MEDIA_MOUNT…"
+  log "$(T "Suppression du contenu de $MEDIA_MOUNT…" "Deleting the content of $MEDIA_MOUNT…")"
   find "$MEDIA_MOUNT" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
-  ok "racine média vidée (le point de montage lui-même est conservé)"
+  ok "$(T "racine média vidée (le point de montage lui-même est conservé)" "media root emptied (the mount point itself is kept)")"
 fi
 
 if [ "$PURGE_PKGS" = 1 ]; then
-  log "Désinstallation des paquets posés par l'install…"
+  log "$(T "Désinstallation des paquets posés par l'install…" "Uninstalling the packages the install added…")"
   export DEBIAN_FRONTEND=noninteractive
   rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list \
         /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
@@ -360,7 +369,7 @@ if [ "$PURGE_PKGS" = 1 ]; then
   apt-get purge -y -qq linuxptp chrony >/dev/null 2>&1 || true
   apt-get autoremove -y -qq >/dev/null 2>&1 || true
   apt-get update -qq >/dev/null 2>&1 || true
-  ok "paquets désinstallés (les composants apt contrib/non-free restent activés : ils ne gênent rien)"
+  ok "$(T "paquets désinstallés (les composants apt contrib/non-free restent activés : ils ne gênent rien)" "packages uninstalled (the apt contrib/non-free components stay enabled: they do no harm)")"
   REBOOT_REQUIS=1
 fi
 
@@ -377,27 +386,27 @@ if [ -d "$AGENT_DIR" ] || [ -d "$CONF_DIR" ] || [ -f /etc/systemd/system/bobi-no
     systemctl daemon-reload >/dev/null 2>&1
     rm -rf '$AGENT_DIR' '$CONF_DIR' '$STATE_DIR'
   " >/dev/null 2>&1 < /dev/null &
-  ok "agent-nœud : arrêt et effacement lancés (token et certificat mTLS compris) — quelques secondes"
+  ok "$(T "agent-nœud : arrêt et effacement lancés (token et certificat mTLS compris) — quelques secondes" "node agent: stop and erase started (token and mTLS certificate included) — a few seconds")"
 fi
 
 # ─── 11. Résumé ───────────────────────────────────────────────────────────────
 echo
-ok "Bobi.Studio retiré de ce nœud."
-echo "    Conservé volontairement :"
-if [ "$PURGE_PKGS" = 0 ]; then echo "      · paquets tiers (docker, pilote NVIDIA, linuxptp, chrony) et leurs réglages propres"; fi
-if [ "$PURGE_IMAGES" = 0 ] && [ "$_n_img" -gt 0 ]; then echo "      · $_n_img image(s) Docker bobi-* (--purge-images)"; fi
-if [ "$PURGE_MEDIA" = 0 ] && [ -d "$MEDIA_MOUNT" ]; then echo "      · les médias de $MEDIA_MOUNT (--purge-media)"; fi
-echo "      · la configuration réseau de l'hôte et les dépôts apt"
+ok "$(T "Bobi.Studio retiré de ce nœud." "Bobi.Studio removed from this node.")"
+echo "    $(T "Conservé volontairement :" "Deliberately kept:")"
+if [ "$PURGE_PKGS" = 0 ]; then echo "      · $(T "paquets tiers (docker, pilote NVIDIA, linuxptp, chrony) et leurs réglages propres" "third-party packages (docker, NVIDIA driver, linuxptp, chrony) and their own settings")"; fi
+if [ "$PURGE_IMAGES" = 0 ] && [ "$_n_img" -gt 0 ]; then echo "      · $_n_img $(T "image(s) Docker bobi-*" "bobi-* Docker image(s)") (--purge-images)"; fi
+if [ "$PURGE_MEDIA" = 0 ] && [ -d "$MEDIA_MOUNT" ]; then echo "      · $(T "les médias de" "the media in") $MEDIA_MOUNT (--purge-media)"; fi
+echo "      · $(T "la configuration réseau de l'hôte et les dépôts apt" "the host network configuration and the apt repositories")"
 if [ "${CLE_RESTANTE:-0}" = 1 ]; then
   echo
-  warn "À VÉRIFIER À LA MAIN : /root/.ssh/authorized_keys contient des clés que ce script n'a pas su attribuer au contrôleur (commentaire non reconnu). Tant qu'elle y est, le contrôleur garde un accès root à cette machine :"
+  warn "$(T "À VÉRIFIER À LA MAIN : /root/.ssh/authorized_keys contient des clés que ce script n'a pas su attribuer au contrôleur (commentaire non reconnu). Tant qu'elle y est, le contrôleur garde un accès root à cette machine :" "CHECK BY HAND: /root/.ssh/authorized_keys holds keys this script could not attribute to the controller (unknown comment). While it is there, the controller keeps root access to this machine:")"
   awk '{print "      · " $NF}' /root/.ssh/authorized_keys
-  echo "      → relancer avec --controller-key \"<clé>\", ou retirer la ligne à la main."
+  echo "      → $(T "relancer avec --controller-key \"<clé>\", ou retirer la ligne à la main." "run again with --controller-key \"<key>\", or remove the line by hand.")"
 fi
 if [ "$REBOOT_REQUIS" = 1 ]; then
   echo
-  warn "REBOOT nécessaire : le cmdline noyau a changé (hugepages / isolation de cœurs / IOMMU restent actifs jusque-là)."
+  warn "$(T "REBOOT nécessaire : le cmdline noyau a changé (hugepages / isolation de cœurs / IOMMU restent actifs jusque-là)." "REBOOT required: the kernel cmdline changed (hugepages / core isolation / IOMMU stay active until then).")"
 fi
 echo
-echo "  → Côté orchestrateur : supprimer ce nœud dans Réglages → Déploiement → Nœuds"
-echo "    (c'est ce geste qui défait aussi ses liens RDMA et libère les emplacements de production)."
+echo "  → $(T "Côté orchestrateur : supprimer ce nœud dans Réglages → Déploiement → Nœuds" "On the orchestrator: delete this node in Settings → Deployment → Nodes")"
+echo "    $(T "(c'est ce geste qui défait aussi ses liens RDMA et libère les emplacements de production)." "(that is what also undoes its RDMA links and frees its production slots).")"

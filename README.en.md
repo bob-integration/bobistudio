@@ -205,7 +205,7 @@ that make an installation fail:
 
 | | |
 |---|---|
-| [§2.1](INSTALL.md#21-installeur-unifié-recommandé) · [§2.2](INSTALL.md#22-installation-manuelle) | Installer from a package or a clone, manual installation, systemd service, uninstallation |
+| [§2.1](INSTALL.md#21-depuis-un-clone-git) · [§2.2](INSTALL.md#22-installation-manuelle) | Installer from a package or a clone, manual installation, systemd service, uninstallation |
 | [§4](INSTALL.md#4-enrôlement-dun-nœud) | Enrolling a node: direct, zero-touch, or without touching it (PXE / UEFI HTTP, USB, iLO) |
 | [§5](INSTALL.md#5-préparation-dun-nœud-média-st-2110) | Preparing an ST 2110 media node: hugepages, DDP, queues, PTP |
 | [§8.3](INSTALL.md#83-installation-sans-accès-internet-bundle-hors-ligne) | Installing without Internet access, from an offline package |
@@ -245,7 +245,7 @@ plugins/              ← one plugin per container type (plugin.json + script.py
                         plus `_*_runtime` directories (shared Docker images, not plugins)
 services/             ← orchestrator services — `ls services/` is authoritative
 node_agent/           ← node agent (agent.py) + node installer (install-node.sh) + iso/
-install/              ← unified installer (install.py) + legacy Proxmox flow
+install/              ← unified installer (install.py)
 templates/            ← Jinja2 HTML views
 static/               ← JS (scripts.js + js/), CSS (base.css, nav.css, themes), uploads/
 i18n/                 ← translation catalogues (fr.json, en.json)

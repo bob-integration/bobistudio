@@ -112,6 +112,42 @@ def _activer_apres_defaut():
     return str(st.get("catalogue_activer") or "1") not in ("0", "false", "no")
 
 
+def install_plugin_archive(brut, tmp, activer):
+    """Installs a plugin archive (catalogue zip) → (body, http code).
+
+    The ONE path for a catalogue plugin: the « Install » button and the automatic install of a
+    plugin a node capability requires (`app/plugin_autoinstall.py`) both come here — two paths
+    would drift."""
+    from .plugin_registry import _extract_validated_package
+    from .. import plugins
+    root, man, err = _extract_validated_package(brut, tmp)
+    if err:
+        return {"error": err}, 400
+    type_, ver = man["type"], man["version"]
+    existait = plugins.is_plugin(type_)
+    courante = (plugins.get(type_) or {}).get("version") if existait else None
+    # ⚠ RÉINSTALLER LA MÊME VERSION N'EST PAS ANODIN : `install_package`
+    # archiverait un doublon sous versions/<ver>/ sans rien changer. La
+    # route d'import manuel rend 409 dans ce cas ; on fait pareil, au lieu
+    # de laisser croire à une mise à jour qui n'a rien mis à jour.
+    if existait and ver in plugins.versions(type_):
+        return {"status": "deja_present", "genre": "plugin", "type": type_, "version": ver,
+                "version_courante": courante}, 409
+    plugins.stamp_imported_at(root)
+    plugins.install_package(root, activate=activer)
+    statut = "installe" if activer else "range"
+    db_add_alert("alert.deploy.plugin_importe", "info", kind="deploy",
+                 params={"t": type_, "v": ver, "statut": statut})
+    # ★ CE QUE L'ACTIVATION LAISSE DERRIÈRE, COMPTÉ. Promouvoir une version ne
+    # touche AUCUN conteneur en marche : ils continuent sur le script qu'ils ont
+    # reçu, et se retrouvent en DÉRIVE. C'est ce que la page Plugins savait dire et
+    # que le catalogue taisait — on rend donc le nombre, pour que le message le
+    # dise au lieu d'un « installé et activé » qui laisse croire le parc à jour.
+    derive = _en_derive(type_, ver) if (activer and existait) else 0
+    return {"status": statut, "genre": "plugin", "type": type_, "version": ver,
+            "version_precedente": courante, "activee": activer, "derive": derive}, 200
+
+
 @bp.route("/api/catalogue/install", methods=["POST"])
 @require_perm("settings.edit")
 def catalogue_installer():
@@ -122,9 +158,6 @@ def catalogue_installer():
     `str.format`. Une archive GitHub a un dossier racine englobant, que
     `_extract_validated_package` tolère déjà — il n'y a donc pas de second chemin
     d'installation à maintenir, et c'est délibéré : deux chemins divergent."""
-    from .plugin_registry import _extract_validated_package
-    from .. import plugins
-
     data = request.get_json(silent=True) or {}
     depot = (data.get("depot") or "").strip()
     # ★ ACTIVER OU NON EST UN CHOIX DE L'EXPLOITANT, plus une règle déduite du fait que le
@@ -150,34 +183,8 @@ def catalogue_installer():
     tmp = tempfile.mkdtemp(prefix="catalogue-")
     try:
         if e["genre"] == "plugin":
-            root, man, err = _extract_validated_package(brut, tmp)
-            if err:
-                return jsonify({"error": err}), 400
-            type_, ver = man["type"], man["version"]
-            existait = plugins.is_plugin(type_)
-            courante = (plugins.get(type_) or {}).get("version") if existait else None
-            # ⚠ RÉINSTALLER LA MÊME VERSION N'EST PAS ANODIN : `install_package`
-            # archiverait un doublon sous versions/<ver>/ sans rien changer. La
-            # route d'import manuel rend 409 dans ce cas ; on fait pareil, au lieu
-            # de laisser croire à une mise à jour qui n'a rien mis à jour.
-            if existait and ver in plugins.versions(type_):
-                return jsonify({"status": "deja_present", "genre": "plugin",
-                                "type": type_, "version": ver,
-                                "version_courante": courante}), 409
-            plugins.stamp_imported_at(root)
-            plugins.install_package(root, activate=activer)
-            statut = "installe" if activer else "range"
-            db_add_alert("alert.deploy.plugin_importe", "info", kind="deploy",
-                         params={"t": type_, "v": ver, "statut": statut})
-            # ★ CE QUE L'ACTIVATION LAISSE DERRIÈRE, COMPTÉ. Promouvoir une version ne
-            # touche AUCUN conteneur en marche : ils continuent sur le script qu'ils ont
-            # reçu, et se retrouvent en DÉRIVE. C'est ce que la page Plugins savait dire et
-            # que le catalogue taisait — on rend donc le nombre, pour que le message le
-            # dise au lieu d'un « installé et activé » qui laisse croire le parc à jour.
-            derive = _en_derive(type_, ver) if (activer and existait) else 0
-            return jsonify({"status": statut, "genre": "plugin", "type": type_,
-                            "version": ver, "version_precedente": courante,
-                            "activee": activer, "derive": derive})
+            corps, code = install_plugin_archive(brut, tmp, activer)
+            return jsonify(corps), code
 
         # ── Service : MÊME chemin que l'import manuel d'un .mxlservice ───────
         # ⚠ Un service a son propre registre versionné (`core_plugins`), au même

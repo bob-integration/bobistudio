@@ -5,13 +5,48 @@ Le contenu est rendu dynamiquement sur la page Aide.
 
 ---
 
+## Bobi.Studio 1.0.4 — 2026-11-22
+
+**Suppression d'un conteneur : plus d'IP donnée deux fois.** Quand `docker rm` échouait, la fiche était effacée quand même. Le conteneur continuait de tourner avec son IP, et le déploiement suivant recevait cette IP : il échouait sur « Address already in use », sans dire pourquoi. La fiche n'est maintenant effacée qu'une fois que le nœud confirme que le conteneur est parti. Sinon, une alerte le signale. L'allocation saute aussi les IP que le nœud donne déjà, et nomme le conteneur inconnu qui en tient une.
+
+**Sortie DeckLink : une source au mauvais format est refusée au câblage.** Une source 1080i50 câblée sur une sortie réglée en 1080p50 était acceptée sans avertissement, et l'image sortait fausse. Le câblage compare maintenant la source au mode de la sortie, balayage compris, et propose de régler la sortie ou d'insérer un UDC. Il refuse une source qui tourne ; pour une source pas encore démarrée, le câble est posé avec un avertissement. En exploitation, un écart survenu après coup lève une alerte qui nomme les deux formats. Il faut aussi decklink_io 0.29.58.
+
+**Moniteur : au plus 960×540.** Sur une source 1080i50, le moniteur dépassait son budget de temps. Il encode maintenant au plus en 960×540 et, sur une source entrelacée, un seul champ. Il faut aussi streamer 0.19.11.
+
+**Redémarrage de l'orchestrateur : plus d'alertes rejouées.** Un décrochage déjà signalé l'était à nouveau après chaque redémarrage. Il est maintenant mémorisé tant qu'il dure. Le premier tour de surveillance est journalisé, sans alerte. L'état des alertes en cours est écrit sur disque même quand rien ne change ensuite : posé juste après un démarrage, il pouvait se perdre au redémarrage suivant.
+
+**Installation sans clavier.** Chaque question de l'installeur a un nom, donné en option ou dans un fichier de réponses JSON. L'installeur ne devine rien : il vérifie les réponses avant d'installer, et s'arrête en nommant celles qui manquent, sans rien modifier. Le jeton d'enrôlement d'un nœud se lit dans un fichier ou dans `BOBI_ENROLL_TOKEN`, jamais en option sur la ligne de commande. `get.sh` transmet à l'installeur ce qui suit `--`. Une désinstallation sans clavier ne fait que l'inventaire, sauf `--confirm RETIRER`. Détails et liste des options : INSTALL.md.
+
+**Installation et premier démarrage : retours du testeur.** L'installeur s'affiche correctement sur la console Linux, et Entrée sans rien cocher veut dire « aucun service ». Il explique le jeton d'enrôlement et le redemande après un refus. La langue choisie à l'installation devient celle de l'interface, et la désinstallation est traduite. Dans l'assistant de premier démarrage, la langue s'applique dès « Suivant », et les boutons restent inactifs pendant qu'une étape se prépare.
+
+**Nœud 2110 : le plugin 2110_io s'installe seul.** Un nœud enrôlé avec la capacité io2110 a besoin du plugin 2110_io, qui n'est pas dans le cœur. Rien ne le disait : la sonde 2110 n'avait pas d'image, sans explication. Le plugin s'installe maintenant depuis le catalogue, à l'enrôlement, par l'installeur tout-en-un, et au démarrage s'il manque encore. En cas d'échec, une alerte le dit.
+
+**Catalogue : moins de requêtes à GitHub.** Le catalogue lit d'abord un index publié à part, hors du quota de l'API GitHub (60 requêtes par heure et par adresse IP sans jeton). Sans cet index, il passe par l'API comme avant.
+
+**Réglages : recherche.** Un champ cherche dans les onglets et les réglages. L'onglet des mises à jour s'appelle « Mises à jour et catalogue ». Une langue personnelle qui l'emporte sur celle de l'instance est signalée.
+
+**Chemin Proxmox retiré.** L'installation de l'orchestrateur dans un conteneur LXC Proxmox (`install_proxmox.py`) n'existe plus : l'installeur unifié la remplace.
+
+**Publiés le même jour, hors du cœur.** Ces deux plugins ne sont pas dans la 1.0.4. Ils s'installent par Réglages → Mises à jour.
+
+- **decklink_io 0.29.58** : le port de sortie déclare son format, ce qui permet le contrôle au câblage décrit plus haut.
+- **streamer 0.19.11** : moniteur plafonné à 960×540, un seul champ sur une source entrelacée. L'image noire de repli a la bonne taille sur une source 10 bits.
+
 ## Bobi.Studio 1.0.3 — 2026-11-18
 
 **Carte DeckLink : plus de carte perdue au redémarrage.** Le pilote installé compilait son module pour le seul noyau en cours. Si l'installation tirait un noyau plus récent, le nœud redémarrait dessus sans module, et l'écran disait « Aucune carte ». Le module est maintenant compilé pour chaque noyau installé, avant de demander le redémarrage. Un nœud déjà dans ce cas affiche « Module noyau absent », avec un bouton qui compile et charge le module, sans redémarrer. Le journal de la dernière opération est daté et replié, pour ne plus se lire comme l'état actuel.
 
-**Sortie DeckLink entrelacée : l'image n'est plus verte.** En sortie entrelacée, une ligne sur deux était mise à zéro, et l'image sortait verte. Chaque champ est maintenant empaqueté ligne par ligne. Plugin DeckLink 0.29.57.
+**Tout-en-un : la passerelle WebRTC se déploie seule.** Sur une installation à un seul nœud, il fallait choisir ce nœud dans une liste d'une ligne avant que le monitoring affiche une image. La passerelle se déploie maintenant d'elle-même dès que le service est allumé et que son image est sur le nœud. Un cluster de plusieurs nœuds n'est pas concerné : la place de la passerelle y reste un choix. Il faut aussi le service WebRTC 0.3.6, qui s'installe par Réglages → Mises à jour. Le déploiement ne demande plus l'image `bobi-compute`, que la passerelle n'utilise pas : sans elle, le bouton échouait aussi.
 
-**Tout-en-un : la passerelle WebRTC se déploie seule.** Sur une installation à un seul nœud, il fallait choisir ce nœud dans une liste d'une ligne avant que le monitoring affiche une image. La passerelle se déploie maintenant d'elle-même dès que le service est allumé et que son image est sur le nœud. Un cluster de plusieurs nœuds n'est pas concerné : la place de la passerelle y reste un choix. Il faut le service WebRTC 0.3.6. Le déploiement ne demande plus l'image `bobi-compute`, que la passerelle n'utilise pas : sans elle, le bouton échouait aussi.
+**Publiés le même jour, hors du cœur.** Ces correctifs sont dans des plugins et un service, que
+la 1.0.3 ne contient pas. Ils s'installent par Réglages → Mises à jour.
+
+- **decklink_io 0.29.57** : en sortie entrelacée, une ligne sur deux était mise à zéro, et l'image
+  sortait verte.
+- **color_corrector 0.15.4** : sur une entrée entrelacée, le premier champ de chaque trame était
+  sauté, et la sortie SDI envoyait du noir.
+- **streamer 0.19.10** : un moniteur déployé directement sur une source entrelacée affichait du noir.
+- **Service WebRTC 0.3.6** : nécessaire au déploiement automatique de la passerelle décrit plus haut.
 
 ## Bobi.Studio 1.0.2 — 2026-11-14
 

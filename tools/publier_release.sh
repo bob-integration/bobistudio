@@ -71,7 +71,7 @@ ZIP="dist/bobistudio.zip"
 ./venv/bin/python - "$ZIP" <<'PY' || die "paquet incomplet — publication annulée."
 import sys, zipfile
 z = zipfile.ZipFile(sys.argv[1]); noms = z.namelist()
-manque = [f for f in ("main.py", "install/install.py", "install/install_proxmox.py") if f not in noms]
+manque = [f for f in ("main.py", "install/install.py") if f not in noms]
 if manque:
     sys.exit("fichiers absents du paquet : " + ", ".join(manque))
 # ⚠ LES DEUX FAMILLES. Ce contrôle ne regardait que `plugins/` — or `services/nmos` est le
